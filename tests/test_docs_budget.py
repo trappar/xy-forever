@@ -20,7 +20,7 @@ FIRST_READS = {
 }
 LOCAL_STATUS = 6000                 # docs/status/README.md; its leaves are not checked
 
-# Read on demand, capped at about their size until plan item A.2 splits them into trees (bytes).
+# Read on demand, capped at about their size until #42 splits them into trees (bytes).
 CAPS = {
     'docs/ARCHITECTURE.md': 25600,
     'docs/GOALS.md': 14200,

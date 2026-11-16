@@ -23,7 +23,7 @@ commands and device scripts (the only agent that touches the device or asks the 
 3. Take the next item: the first under "Yours" (interrupted work), else the first under "Next" (milestone
    order, then issue number; needs are "blocked by" links, so a listed item's needs are done).
 4. Read it: `gh issue view <N>` (add `--comments` only when its body says progress is in comments). Claim it:
-   `gh issue edit <N> --add-assignee @me`, then `git switch -c <ID>-<slug>` from an up-to-date `main`.
+   `gh issue edit <N> --add-assignee @me`, then `git switch -c <N>-<slug>` from an up-to-date `main`.
 5. Write the brief (below), start **one** agent.
 6. When it returns, run the item's check yourself; never accept "tests pass" from a report. Standard:
    `python3 scripts/run_tests.py`; before anything goes to the device: `XYF_EXHAUSTIVE=1` in front.
@@ -41,12 +41,12 @@ not depend on the answer. A question that can wait is an issue labeled `decision
 
 ### Changing the plan
 
-The orchestrator may add, split and reorder items. A new item is an issue with a plain title, its body
-starting `**Plan item <ID>**`, then context and `**Done when:** ...`; milestone like "M4. Packages"; label
+The orchestrator may add, split and reorder items. A new item is an issue with a plain title; its body: context, `**Kind:** ...`
+(e.g. `device safe`), `**Done when:** ...`; milestone like "M4. Packages"; label
 `kind:build|research|device|review`; a need is a "blocked by" link
 (`gh api -X POST repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by -F issue_id=<id of the needed issue>`).
-A loose end that is not an item yet is an issue labeled `thread`. PR titles are plain, like issues; the body says
-"Plan item <ID>" and "Closes #<N>". Items marked "to be split" are split by a research agent's decision record,
+A loose end that is not an item yet is an issue labeled `thread`. Items have no IDs of their own: the issue
+number is the name. PR titles are plain, like issues; the body says "Closes #<N>". Items marked "to be split" are split by a research agent's decision record,
 not by guessing. It may not drop a requirement, change the shape ([GOALS.md](GOALS.md)), or relax a safety rule;
 those go to the developer. **Device checkpoints first:** prefer the order that reaches a device test soonest;
 host-only work never runs far ahead of what the device has confirmed (a byte match proves the output, not that the
@@ -73,7 +73,7 @@ Follow-ups on the same code go to the same agent while it is under 150k (SendMes
 ### Brief (what the orchestrator sends)
 
 ```
-Item <ID>: <title>. Kind: <kind>.
+Issue #<N>: <title>. Kind: <kind>.
 Goal: <the "done when" text>.
 Read first: xy-forever/AGENTS.md, then <at most five named files or decision records>.
 Do not read: docs/status/, HISTORY.md, unrelated docs.

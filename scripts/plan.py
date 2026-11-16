@@ -4,18 +4,15 @@
     python3 scripts/plan.py            yours (in progress), next (unblocked, unassigned), decisions waiting
     python3 scripts/plan.py --all      also blocked items, items taken by others, and threads
 
-Order: milestone (its GitHub number, the roadmap's order), then issue number. An item is an issue whose
-body starts `**Plan item <ID>**`; labels `kind:*` give its kind, `blocked` stops it, `thread` marks a loose
-end and `decision` a question for the developer. Needs are GitHub "blocked by" dependencies.
+Order: milestone (its GitHub number, the roadmap's order), then issue number. An item is an issue with a
+`kind:*` label (its kind); `blocked` stops it, `thread` marks a loose end and `decision` a question for the
+developer. Needs are GitHub "blocked by" dependencies. The issue number is the item's only name.
 Uses the `gh` CLI (authenticated); docs/ORCHESTRATION.md says how the queue is worked.
 """
 import argparse
 import json
-import re
 import subprocess
 import sys
-
-ITEM = re.compile(r'\*\*Plan item ([^*]+)\*\*')
 
 
 def fetch():
@@ -30,9 +27,8 @@ def fetch():
 def fields(issue):
     labels = [l['name'] for l in issue.get('labels', [])]
     milestone = issue.get('milestone') or {}
-    m = ITEM.search(issue.get('body') or '')
     return dict(
-        number=issue['number'], title=issue['title'], id=m.group(1).strip() if m else None,
+        number=issue['number'], title=issue['title'],
         kinds=[l[5:] for l in labels if l.startswith('kind:')], labels=set(labels),
         milestone=milestone.get('number', 10 ** 6), mkey=(milestone.get('title') or '-').split('.')[0],
         assignees=[a['login'] for a in issue.get('assignees') or []],
@@ -41,13 +37,12 @@ def fields(issue):
 
 def line(f, extra=''):
     kind = ','.join(f['kinds'])
-    return '#%d %s %s%s%s%s' % (f['number'], f['mkey'], f['id'] + ' ' if f['id'] else '', f['title'],
-                                ' [%s]' % kind if kind else '', extra)
+    return '#%d %s %s%s%s' % (f['number'], f['mkey'], f['title'], ' [%s]' % kind if kind else '', extra)
 
 
 def queue(issues, me, everything=False):
     rows = sorted((fields(i) for i in issues), key=lambda f: (f['milestone'], f['number']))
-    items = [f for f in rows if f['id'] and not f['labels'] & {'thread', 'decision'}]
+    items = [f for f in rows if f['kinds'] and not f['labels'] & {'thread', 'decision'}]
     mine = [f for f in items if me in f['assignees']]
     others = [f for f in items if f['assignees'] and me not in f['assignees']]
     free = [f for f in items if not f['assignees']]
