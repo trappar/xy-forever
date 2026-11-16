@@ -30,6 +30,9 @@ where they stall, and fix this file. Budget: 150 lines.
   tools/blackfin/  link to tools/open-xy/local/toolchain, or anywhere with XYF_TOOLCHAIN
   private/         firmware, builds, device reports, evidence, dev-menu kits: never in git
 ```
+- Run-time loading (plan 8.9) lives on the private fork `trappar/open-xy`, branch `runtime-loading`
+  (on upstream `ba943a8`): clone it to `<workspace>/open-xy` only for items that need it. It is not
+  the pinned upstream clone `fixtures` makes for open-xy facts (AGENTS.md), nor `tools/open-xy`.
 
 ```sh
 cd <workspace>/xy-forever
@@ -98,19 +101,17 @@ Done when `doctor` exits 0 and the suite passes (the skips `doctor` lists are ex
 
 ## 6. The developer's own approvals
 
-Read [docs/SAFETY.md](docs/SAFETY.md) first: it is binding for everything on the device. Device
-work needs the developer's explicit yes (SAFETY.md, ORCHESTRATION.md "Approvals"); two kinds can
-be given once, as standing approvals for their own device. Ask each separately, with your
-recommendation; record the answer and its scope in the local `docs/STATUS.md` ("Standing
-approvals"), never in git: approvals belong to one developer and one device.
+Read [docs/SAFETY.md](docs/SAFETY.md) first: it binds all device work. Device work needs the developer's
+explicit yes (SAFETY.md, ORCHESTRATION.md "Approvals"); two kinds can be given once, as standing approvals for
+their own device. Ask each separately, with your recommendation; record the answer and its scope in the local
+`docs/STATUS.md` ("Standing approvals"), never in git: approvals belong to one developer and one device.
 
 1. **Host access:** agents may operate this OP-XY through XY Forever's own USB service
    (`xyf_host.py` and the scripts built on it), under SAFETY.md. Recommend yes: every device item
    needs it. Without it, device items wait for a yes each time.
-2. **Routine USB installs:** a build that passed `--verify` and the full suite, carrying one
-   understood change, is installed without a separate yes; what is being installed is still said
-   first. New or risky behaviour (storage writes, new every-boot paths, new reset behaviour) is
-   asked each time. Recommend yes.
+2. **Routine USB installs:** a build that passed `--verify` and the full suite, carrying one understood change,
+   is installed without a separate yes; what is being installed is still said first. New or risky behaviour
+   (storage writes, new every-boot paths, new reset behaviour) is asked each time. Recommend yes.
 
 Never standing: anything SAFETY.md lists under "Never", companion chips, 1.2.5, relaxing a
 builder audit, a new kind of storage write. Each is asked for that exact operation.
@@ -129,11 +130,10 @@ of the build `fixtures` verified (`doctor`, "verified build"), as in [docs/OPERA
 COM at power-on, Track 3, Track 2 (MTP), copy it to the device as `/os.ldr` (not 0 bytes), Track 2
 (exit), Track 5 ("write os to boot partition"), wait for "firmware written ok!", power cycle.
 
-Then: start `python3 xyf_host.py --timeout 120 status`, and ask the developer to power on holding
-PLAY and let go at the logo. The XY Forever menu opens ([docs/GUIDE.md](docs/GUIDE.md)); with an
-empty library it says "No firmware found". Add the stock OS as the default entry (`library-add`,
-then `set-default`; check each command's `--help`, run it without `--yes-…` first). Undo:
-`xyf_host.py uninstall`, or the stock kit through the dev menu.
+Then: start `python3 xyf_host.py --timeout 120 status`, and ask the developer to power on holding PLAY and let
+go at the logo. The XY Forever menu opens ([docs/GUIDE.md](docs/GUIDE.md)); with an empty library it says "No
+firmware found". Add the stock OS as the default entry (`library-add`, then `set-default`; check each command's
+`--help`, run it without `--yes-…` first). Undo: `xyf_host.py uninstall`, or the stock kit through the dev menu.
 
 ## 8. Device pass and known-good kit (not yet run end to end)
 

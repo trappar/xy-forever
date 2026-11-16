@@ -17,12 +17,11 @@ scripts (the only agent that touches the device or asks the developer for anythi
 1. Read PLAN.md and your local `docs/STATUS.md`. No local setup yet: [ONBOARDING.md](../ONBOARDING.md) first.
 2. Is the device there? `python3 xyf_host.py --timeout 5 status`; if yes, the device queue goes
    first. If the developer said the device is absent, skip this and the device queue.
-3. Take the next item: first one whose GitHub issue is assigned to you (your interrupted work;
-   without a remote: a `[~]` you set yourself this sitting), else the first `[ ]` item whose needs
-   are done, honouring any pause PLAN.md states. Skip device items when the device is absent.
-4. Claim it: find its issue (`gh issue list --search "<ID>"`). Assigned to someone else: skip
-   it. Otherwise `gh issue edit <N> --add-assignee @me`, then `git switch -c <ID>-<slug>` from an
-   up-to-date `main`. (No GitHub remote yet: skip the claim, work on `main`.)
+3. Take the next item: first one whose GitHub issue is assigned to you (interrupted work; no remote: a `[~]` you set
+   this sitting), else the first `[ ]` item whose needs are done. Skip device items when the device is absent.
+4. Claim it: find its issue (`gh issue list --search "<ID>"`; titles are plain, the ID opens the body).
+   Assigned to someone else: skip it. Otherwise `gh issue edit <N> --add-assignee @me`, then
+   `git switch -c <ID>-<slug>` from an up-to-date `main`. (No GitHub remote yet: skip the claim, work on `main`.)
 5. Mark it `[~]`, write the brief (below), start **one** agent.
 6. When it returns, run the item's check yourself; never accept "tests pass" from a report. Standard:
    `python3 scripts/run_tests.py`; before anything goes to the device: `XYF_EXHAUSTIVE=1` in front.
@@ -39,12 +38,13 @@ keep working on what does not depend on the answer.
 
 ### Changing the plan
 
-The orchestrator may add, split and reorder items; a new item gets a GitHub issue (milestone: its PLAN heading, e.g.
-"M4. Packages"; label `kind:build|research|device|review`). Items marked "to be split" are split by a research agent's
-decision record, not by guessing. It may not drop a requirement, change the shape, or relax a safety rule; those go to
-the developer. **Device checkpoints first:** prefer the order that reaches a device test soonest; host-only work never
-runs far ahead of what the device has confirmed (a byte match proves the output, not that the device loads it; the
-simulator guesses whatever was never seen on hardware). Spare agent capacity prepares the next device test.
+The orchestrator may add, split and reorder items; a new item gets a GitHub issue with a plain title, its body
+starting `**Plan item <ID>**` (milestone: its PLAN heading, e.g. "M4. Packages"; label `kind:build|research|device|review`).
+PR titles are plain, like issues; the body says "Plan item <ID>" and "Closes #<N>". Items marked "to be split" are split
+by a research agent's decision record, not by guessing. It may not drop a requirement, change the shape, or relax a
+safety rule; those go to the developer. **Device checkpoints first:** prefer the order that reaches a device test soonest;
+host-only work never runs far ahead of what the device has confirmed (a byte match proves the output, not that the
+device loads it; the simulator guesses whatever was never seen on hardware). Spare agent capacity prepares the next device test.
 
 ## Agents
 
