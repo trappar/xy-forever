@@ -33,8 +33,8 @@ Read only what the task needs:
 - **Private data stays out of git.** Firmware, keys, decompiled listings, build outputs and device
   reports live in `../private/` (layout: `xy_forever/paths.py`; set up by `scripts/setup.py`),
   outside every checkout. Never print or commit key material.
-- **Toolchain:** the authenticated Blackfin toolchain at `../tools/blackfin` (or `XYF_TOOLCHAIN`).
-  Never change its pinned hashes (`toolchains.json`).
+- **Python 3.9+ and toolchain:** the authenticated Blackfin toolchain at `../tools/blackfin` (or
+  `XYF_TOOLCHAIN`; `setup.py bootstrap` downloads it). Never change its pinned hashes (`toolchains.json`).
 - **Open-XY facts come from a fresh upstream clone** (`../private/xy-forever/open-xy-upstream/`,
   made by `setup.py fixtures`; fetch it again when a question needs current upstream) and name
   the commit used. Never from another local open-xy checkout. If the developer cites an open-xy
