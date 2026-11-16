@@ -30,7 +30,7 @@ from xy_forever import paths  # noqa: E402
 
 MARKER = 'leak-ok'
 EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}')
-EMAILS_OK = {'noreply@anthropic.com'}                     # commit attribution
+EMAILS_OK = {'noreply@anthropic.com', 'git@github.com'}   # commit attribution; GitHub's SSH clone user
 EXAMPLE_DOMAINS = re.compile(r'@(.+\.)?example\.(com|org|net)$', re.I)
 HOME = re.compile(r'(?:/Users|/home)/(?!<|Shared\b)[A-Za-z0-9._-]+|[A-Za-z]:\\+Users\\+(?!<)[A-Za-z0-9._-]+')
 EVIDENCE = re.compile(r'xy-forever/(sessions|analysis|reports)/([^\s/`\'"<>)]+)')

@@ -6,9 +6,9 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 
 ## Start here
 
-- **Main agent of a session** (asked to "continue development" or "resume work"): if this clone
-  has no local setup (no `docs/STATUS.md`, or `python3 scripts/setup.py doctor` exits non-zero:
-  no private folder, toolchain or stock pair), follow [ONBOARDING.md](ONBOARDING.md) first.
+- **Main agent of a session** (asked to "continue development" or "resume work"): if `python3
+  scripts/setup.py doctor` exits non-zero, or your local `docs/STATUS.md` is missing or records no
+  standing-approvals answer yet, onboarding is unfinished: follow [ONBOARDING.md](ONBOARDING.md) first.
   Otherwise you are the orchestrator: read [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) and
   [docs/PLAN.md](docs/PLAN.md), then follow them. Do not read or write code yourself.
 - **Sub-agent with a brief:** read what the brief names, plus
@@ -64,7 +64,7 @@ Read only what the task needs:
 ## Quick reference
 
 ```sh
-python3 scripts/setup.py doctor                                         # private folder: stock files, fixtures (init, import-stock)
+python3 scripts/setup.py doctor                                         # private folder: stock files, fixtures (bootstrap, import-stock)
 python3 scripts/run_tests.py --jobs 6                                   # unit tests in parallel: ~2 min, 998 tests (busy machine: rerun a timing flake)
 python3 -m unittest discover -s tests                                   # the same in order: ~8 min
 XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6                  # everything (+ exhaustive bit flips): ~2 min
