@@ -1,7 +1,11 @@
 """scripts/setup.py with synthetic stand-ins for the stock files (never the real bytes): the pin check, the 1.2.5
 refusal, unknown files, a copied /upgrade/ tree as input, and where the private folder comes from
-(XYF_PRIVATE > xyf.local.json > ../private), the Python check (3.9+; 3.11+ for open-xy's sdk.py)."""
+(XYF_PRIVATE > xyf.local.json > ../private), the Python check (3.9+; 3.11+ for open-xy's sdk.py), and `bootstrap`
+in a temporary workspace with git, open-xy's toolchain fetch and npm stubbed (no network)."""
+import contextlib
 import hashlib
+import io
+import re
 import importlib.util
 import json
 from pathlib import Path
@@ -157,6 +161,160 @@ class PrivateRoot(unittest.TestCase):
 
     def test_local_config_is_gitignored(self):
         self.assertIn(paths.LOCAL_CONFIG.name, (ROOT / '.gitignore').read_text().split())
+
+
+class Bootstrap(unittest.TestCase):
+    """bootstrap in a temporary workspace: git clone, `sdk.py toolchain fetch` and npm ci are stubbed."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.ws = Path(tmp.name).resolve() / 'ws'
+        self.repo = self.ws / 'xy-forever'
+        (self.repo / 'docs').mkdir(parents=True)
+        (self.repo / 'docs/STATUS.template.md').write_text('# status\n')
+        for d in S.NPM_DIRS:
+            (self.repo / d).mkdir(parents=True)
+        self.config = self.repo / 'xyf.local.json'
+        self.calls, self.stock, self.which = [], False, {'node', 'npm', 'python3.14'}
+        self.version = (3, 12)
+        for name, value in (('run', self.fake_run), ('toolchain_problem', self.fake_toolchain),
+                            ('stock_present', lambda: self.stock), ('cmd_doctor', lambda args: 1),
+                            ('cmd_fixtures', lambda args: self.calls.append('fixtures')),
+                            ('fixtures_missing', lambda: ['verified build']), ('host_name', lambda: 'darwin-arm64'),
+                            ('python_version', lambda exe: self.version)):
+            patcher = mock.patch.object(S, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        for target, name, value in ((S.shutil, 'which', self.fake_which), (S.subprocess, 'run', self.fake_subprocess)):
+            patcher = mock.patch.object(target, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def fake_run(self, cmd, cwd=None):
+        self.calls.append(' '.join(map(str, cmd[:2])))
+        if cmd[0] == 'git':
+            Path(cmd[-1]).mkdir(parents=True)
+            (Path(cmd[-1]) / 'sdk.py').write_text('')
+        else:
+            (Path(cwd) / 'node_modules').mkdir()
+
+    def fake_subprocess(self, cmd, cwd=None, **kw):             # only `sdk.py toolchain fetch` gets here
+        self.assertEqual(cmd[1:], ['sdk.py', 'toolchain', 'fetch'])
+        self.calls.append('fetch ' + cmd[0])
+        (Path(cwd) / 'local/toolchain/bin').mkdir(parents=True)
+        return S.subprocess.CompletedProcess(cmd, 0)
+
+    def fake_which(self, name):
+        return '/bin/' + name if name in self.which else None
+
+    def fake_toolchain(self, directory=None):
+        return None if directory and (Path(directory) / 'bin').is_dir() else 'missing'
+
+    def bootstrap(self, dry_run=False, workspace=None, environ=None):
+        out = io.StringIO()
+        b = S.Bootstrap(workspace or self.ws, self.repo, self.config, dry_run, environ or {})
+        with contextlib.redirect_stdout(out):
+            b.run()
+        return b, out.getvalue()
+
+    def tree(self):
+        return sorted((str(p.relative_to(self.ws)), p.is_symlink(), p.read_bytes() if p.is_file() else None)
+                      for p in self.ws.rglob('*'))
+
+    def test_fresh_workspace_then_a_second_run_changes_nothing(self):
+        b, out = self.bootstrap()
+        for name in S.LAYOUT:
+            self.assertTrue((self.ws / 'private' / getattr(paths, name).relative_to(paths.PRIVATE_ROOT)).is_dir())
+        self.assertTrue((self.ws / 'private/incoming').is_dir())
+        self.assertEqual((self.repo / 'docs/STATUS.md').read_text(), '# status\n')
+        self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})   # ../private: nothing recorded
+        link = self.ws / 'tools/blackfin'
+        self.assertEqual(Path(S.os.readlink(link)), self.ws / 'tools/open-xy/local/toolchain')
+        self.assertEqual(self.calls, ['git clone', 'fetch ' + sys.executable if sys.version_info >= (3, 11) else
+                                      'fetch /bin/python3.14', '/bin/npm ci', '/bin/npm ci'])
+        self.assertRegex(out, r'Next:\n  1\. Copy os\.ldr and bootloader\.ldr .* into %s.*/upgrade/firmware/blackfin/bin/'
+                         % (self.ws / 'private/incoming'))
+        self.assertIn('import-stock %s' % (self.ws / 'private/incoming'), out)
+        self.assertRegex(out, r'4\. Open Claude Code in %s and say "Continue development"' % self.repo)
+        before, self.calls = self.tree(), []
+        b, out = self.bootstrap()
+        self.assertEqual((b.actions, self.calls, self.tree()), ([], [], before))
+        self.assertIn('nothing to do: the workspace is already set up; nothing changed', out)
+
+    def test_dry_run_prints_every_action_and_changes_nothing(self):
+        before = self.tree()
+        b, out = self.bootstrap(dry_run=True)
+        self.assertEqual((self.calls, self.tree()), ([], before))
+        for what in ('create 12 folders', 'copy docs/STATUS.template.md', '"leak_patterns"', 'clone https://github.com/',
+                     'sdk.py toolchain fetch', 'link %s' % (self.ws / 'tools/blackfin'), 'npm ci in clients/ts',
+                     'npm ci in web'):
+            self.assertRegex(out, r'  would .*' + re.escape(what))
+        self.assertIn('dry run: the 8 actions above would run; nothing changed', out)
+
+    def test_old_python_without_a_311_stops_with_how_to_rerun(self):
+        self.which = {'node', 'npm', 'python3.13'}
+        self.version = None                                            # a shim with no version installed
+        with mock.patch.object(S.sys, 'version_info', (3, 9, 6, 'final', 0)):
+            with self.assertRaises(S.SetupError) as caught:
+                self.bootstrap()
+            message = str(caught.exception)
+            self.assertRegex(message, r'needs Python 3\.11\+; this is 3\.9\.6 .*brew install python@3\.12')
+            self.assertIn('rerun `python3 scripts/setup.py bootstrap`', message)
+            self.assertIn('python3.13 is there but does not run', message)
+            self.assertTrue((self.repo / 'docs/STATUS.md').exists())   # what came before stays done
+            self.assertEqual(self.calls, ['git clone'])
+            self.version = (3, 12)
+            self.assertEqual(S.sdk_python(), '/bin/python3.13')
+        with mock.patch.object(S.sys, 'version_info', (3, 11, 2, 'final', 0)):
+            self.assertEqual(S.sdk_python(), sys.executable)
+
+    def test_toolchain_already_set_up_or_linux_is_not_fetched(self):
+        with mock.patch.object(S, 'toolchain_problem', lambda directory=None: None):
+            b, out = self.bootstrap()
+        self.assertIn('toolchain: ok', out)
+        self.assertEqual(self.calls, ['/bin/npm ci', '/bin/npm ci'])
+        self.calls = []
+        with mock.patch.object(S, 'host_name', lambda: 'linux-x86_64'):
+            b, out = self.bootstrap()
+        self.assertIn('build it with Docker (open-xy docs/build.md, "On Linux")', out)
+        self.assertEqual((self.calls, (self.ws / 'tools').exists()), ([], False))
+
+    def test_no_node_skips_npm_with_a_note(self):
+        self.which = {'python3.14'}
+        b, out = self.bootstrap()
+        self.assertNotIn('/bin/npm ci', self.calls)
+        self.assertIn('clients/ts: skipped: Node not found', out)
+
+    def test_another_workspace_is_recorded_unless_the_private_folder_is_set(self):
+        other = self.ws.parent / 'other'
+        with mock.patch.object(S, 'host_name', lambda: 'linux-x86_64'):
+            self.bootstrap(workspace=other)
+            self.assertEqual(json.loads(self.config.read_text()), {'private': str(other / 'private'), 'leak_patterns': []})
+            self.assertTrue((other / 'private/firmware/stock-1.2.1').is_dir())
+            self.config.unlink()
+            b, out = self.bootstrap(workspace=other, environ={'XYF_PRIVATE': str(self.ws / 'env')})
+        self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})
+        self.assertIn('private folder: %s (XYF_PRIVATE)' % (self.ws / 'env'), out)
+        self.assertTrue((self.ws / 'env/xy-forever/builds').is_dir())
+
+    def test_imported_stock_pair_runs_fixtures_and_shortens_next(self):
+        self.stock = True
+        (self.ws / 'private/firmware/stock-1.2.1').mkdir(parents=True)
+        (self.ws / 'private/firmware/stock-1.2.1/os.ldr').write_bytes(b'os')
+        b, out = self.bootstrap()
+        self.assertEqual(self.calls[-1], 'fixtures')
+        self.assertFalse((self.ws / 'private/incoming').exists())
+        self.assertRegex(out, r'Next:\n  1\. Open Claude Code in ')
+
+    def test_a_link_that_fails_its_pins_is_left_alone(self):
+        link = self.ws / 'tools/blackfin'
+        link.parent.mkdir(parents=True)
+        S.os.symlink(str(self.ws / 'nowhere'), str(link))
+        with self.assertRaisesRegex(S.SetupError, 'fails its pins .*move it aside, then rerun bootstrap'):
+            self.bootstrap()
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(self.calls, [])
 
 
 if __name__ == '__main__':

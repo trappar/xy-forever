@@ -11,7 +11,7 @@ where they stall, and fix this file. Budget: 150 lines.
 
 - A host computer: macOS on Apple silicon (the tested host; toolchain pins also exist for Windows
   and Linux x86_64, USB tools untested there). Python 3.9+ for XY Forever; 3.11+ for open-xy's
-  `sdk.py toolchain fetch` (step 2; macOS's `python3` is often 3.9: run e.g. `python3.12` there), git, `gh`
+  `sdk.py toolchain fetch` (step 2: bootstrap finds e.g. `python3.12` on PATH), git, `gh`
   (GitHub CLI, logged in: `gh auth status`; step 9 claims items with it), clang++ (simulator, host
   bridges), Node 22.18+ or 23.6+ (`clients/ts`, `web/`).
 - An OP-XY still on stock 1.2.1, never updated to 1.2.5: a 1.2.5 device cannot run XY Forever,
@@ -21,49 +21,49 @@ where they stall, and fix this file. Budget: 150 lines.
 - A USB cable and an MTP client: OpenMTP on macOS (quit Field Kit first), File Explorer on
   Windows, the file manager on Linux.
 
-## 1. Workspace
+## 1. Bootstrap the workspace
 
 ```text
 <workspace>/
   xy-forever/      this checkout
-  tools/blackfin/  the Blackfin toolchain (step 2), or anywhere with XYF_TOOLCHAIN
+  tools/open-xy/   public open-xy, only for its `sdk.py toolchain fetch` (step 2)
+  tools/blackfin/  link to tools/open-xy/local/toolchain, or anywhere with XYF_TOOLCHAIN
   private/         firmware, builds, device reports, evidence, dev-menu kits: never in git
 ```
 
-- `private/` sits outside every checkout. Elsewhere: `setup.py init --private DIR` (recorded in the
-  gitignored `xyf.local.json`) or `XYF_PRIVATE`. Layout: `xy_forever/paths.py`.
-- Open-XY: `setup.py fixtures` clones upstream into `private/xy-forever/open-xy-upstream/` at the
-  commit pinned in `stock.json`. Never take open-xy facts from another local checkout (AGENTS.md).
-- Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/` ([docs/HARDWARE.md](docs/HARDWARE.md)).
+```sh
+cd <workspace>/xy-forever
+python3 scripts/setup.py bootstrap    # only what is missing; never deletes; --dry-run: print, change nothing
+```
+
+Rerun it even if the developer already did (README). Each step acts only when its result is missing:
+
+- **Private folder:** `private/`'s layout (`xy_forever/paths.py`) and `private/incoming/` (step 4).
+  Elsewhere: `XYF_PRIVATE`, or `setup.py init --private DIR` first (recorded in `xyf.local.json`).
+- **Toolchain** (step 2), **local files** (step 3), **`npm ci`** in `clients/ts` and `web/` (skipped
+  with a note without Node), and, once the stock pair is imported, `setup.py fixtures` (step 5).
+- It asks for nothing and ends with `doctor` and a "Next:" list (steps 4, 5). It stops with a message
+  (a rerun carries on) when no Python 3.11+ runs or a `tools/` entry fails its pins (move it aside).
 
 ## 2. Toolchain
 
-Open-XY publishes the pinned toolchain (`toolchain-1`): a download for macOS arm64 and Windows
-x86_64; on Linux x86_64 it is built with Docker (open-xy `docs/build.md`, "On Linux"). This clone
-is for `sdk.py toolchain fetch` only: open-xy facts come from the pinned clone of step 5 (AGENTS.md).
+Open-XY publishes the pinned toolchain (`toolchain-1`) for macOS arm64 and Windows x86_64. Unless
+`doctor`'s toolchain row is ok, bootstrap clones public open-xy into `tools/open-xy`, runs its
+`sdk.py toolchain fetch` with Python 3.11+ (this one, else `python3.14`..`python3.11` on PATH) and
+links `tools/blackfin` (better than `XYF_TOOLCHAIN`, which every building shell needs). Linux x86_64:
+it points at open-xy `docs/build.md`, "On Linux" (Docker); link the result yourself.
 
-```sh
-git clone https://github.com/etcetc000/open-xy <workspace>/tools/open-xy
-cd <workspace>/tools/open-xy && python3 sdk.py toolchain fetch    # Python 3.11+; lands in local/toolchain
-ln -s "$PWD/local/toolchain" <workspace>/tools/blackfin           # or set XYF_TOOLCHAIN to it
-```
-
-- Recommend the link: `XYF_TOOLCHAIN` must be set in every shell that builds (no config setting).
 - `doctor` checks every tool against `toolchains.json`; refused files are not the `toolchain-1`
   release: fetch it with `sdk.py toolchain fetch --archive <zip>` from that release. Never edit the pins.
+- Open-XY facts come only from the pinned clone `fixtures` makes (step 5), never `tools/open-xy` (AGENTS.md).
+- Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/` ([docs/HARDWARE.md](docs/HARDWARE.md)).
 
-## 3. Private folder and local files
+## 3. Local files and leak patterns
 
-```sh
-cd <workspace>/xy-forever
-python3 scripts/setup.py init                 # creates ../private's layout (--private DIR: elsewhere)
-cp docs/STATUS.template.md docs/STATUS.md     # local device and session state; gitignored
-```
-
-Ask the developer for their name, email addresses and host name, and add them as regexes to the
-`"leak_patterns"` list `init` left empty in `xyf.local.json`. The leak test then refuses them in
-tracked files without them ever being written into the repository. Patterns are case-sensitive:
-start each with `(?i)` to match any case, e.g. `"(?i)jane ?doe"`.
+Bootstrap copies `docs/STATUS.template.md` to the gitignored `docs/STATUS.md` (device and session
+state) and gives `xyf.local.json` an empty `"leak_patterns"` list. Ask the developer for their name,
+email addresses and host name; add them there as regexes, which the leak test refuses in tracked files
+without them entering the repository. Case-sensitive: `(?i)` first matches any case (`"(?i)jane ?doe"`).
 
 ## 4. Stock files from the developer's OP-XY
 
@@ -89,7 +89,7 @@ python3 scripts/setup.py import-stock ../private/incoming    # checks both SHA-2
 
 ```sh
 python3 scripts/setup.py fixtures     # network: public open-xy and its kit; builds and verifies one product build
-(cd clients/ts && npm ci) && (cd web && npm ci)   # TypeScript client; web app (uses clients/ts)
+python3 scripts/setup.py bootstrap    # npm ci in clients/ts and web/ if Node came later; else "nothing to do"
 python3 scripts/setup.py doctor       # every row "ok"; exit 0
 python3 scripts/run_tests.py          # the full suite; the first run compiles host bridges (slower)
 ```

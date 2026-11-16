@@ -6,6 +6,19 @@ boots at close to stock speed. XY Forever is a chain-loaded second-stage `os.ldr
 real 1.2.1 bootloader stays untouched and loads it from the NAND boot partition,
 and the dev menu (hold COM) remains available for recovery.
 
+## Getting started
+
+Clone into an empty workspace folder (the clone's parent also holds `private/` and `tools/`):
+
+```sh
+mkdir xyf && cd xyf && git clone git@github.com:trappar/xy-forever.git && cd xy-forever
+python3 scripts/setup.py bootstrap      # private folder, toolchain, local files, npm; safe to rerun
+```
+
+Then open Claude Code in `xy-forever/` and say "Continue development". Step by step, with
+what bootstrap does and what it leaves to you (the stock files off your OP-XY):
+[ONBOARDING.md](ONBOARDING.md).
+
 Status: under development, installed and tested on one device. Not for general
 use. Roadmap: [docs/PLAN.md](docs/PLAN.md).
 
@@ -45,12 +58,9 @@ docs/             PLAN, STATUS, SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORA
 - Private inputs outside the repo (`../private/` or `$XYF_PRIVATE`): the stock 1.2.1
   `os.ldr` and `bootloader.ldr`, and the decrypted official packages. They are not
   distributed. Tests that need them skip when they are absent. `python3 scripts/setup.py`
-  creates the folder and imports the stock pair (`init`, `import-stock DIR`, `doctor`).
+  creates the folder and imports the stock pair (`bootstrap`, `import-stock DIR`, `doctor`).
 
 ## Quick start
-
-Setting up a fresh clone, step by step (written for a coding agent working with you):
-[ONBOARDING.md](ONBOARDING.md).
 
 ```sh
 python3 -m unittest discover -s tests
