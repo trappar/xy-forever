@@ -1,0 +1,8 @@
+type=firmware
+name=OP-XY 1.2.1
+version=1.2.1+0
+kind=official
+bytes=2373336
+crc32=0c8d1e77
+sha256=fb36a1628575db88da3a97e53b92747027953c3cc95098c86db083797754a151
+content=1.2.1

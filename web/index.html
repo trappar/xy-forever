@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>XY Forever</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <div class="brand"><span class="mark">XY</span><span>Forever</span></div>
+      <nav id="nav">
+        <a href="#connect" data-page="connect">Connect</a>
+        <a href="#device" data-page="device">Device</a>
+        <a href="#mods" data-page="mods">Mods</a>
+        <a href="#files" data-page="files">Files</a>
+      </nav>
+      <div class="link" id="link"><span class="dot"></span><span id="link-text">Not connected</span></div>
+    </aside>
+    <main>
+      <div id="notice" class="notice" hidden></div>
+      <section id="page-connect" class="page"></section>
+      <section id="page-device" class="page" hidden></section>
+      <section id="page-mods" class="page" hidden></section>
+      <section id="page-files" class="page" hidden></section>
+    </main>
+  </div>
+  <dialog id="dialog"><form method="dialog" id="dialog-form"></form></dialog>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

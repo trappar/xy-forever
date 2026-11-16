@@ -1,0 +1,353 @@
+"""Mod packages sent to the device (plan 5.4p; xy_forever/modsend.py, `xyf_host.py mods push|list|remove`),
+against the device simulator. A push leaves the package set byte-identical under
+/yaffs2/xy-forever/mods/<profile>/<generation>/; a second push sends nothing; a push cut off part-way never
+leaves a package folder with files.sha256 unless every listed file is there and right, and running it again
+completes it; --verify passes. The proof that matters: the host build of the device job (host/mod_assemble.cpp
+`job`) run on the files as they sit in the simulator's storage gives exactly what it gives on the host
+package set. Synthetic packages always; the published 0.0.6 set when present. No device access."""
+import contextlib
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import shutil
+import struct
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / 'tests'))
+import xyf_host as host                                                       # noqa: E402
+from xy_forever import hostbuild, modkit as M, modpatch as MP, modsend as S, paths, sim  # noqa: E402
+from xy_forever import usb_proto as P                                         # noqa: E402
+from test_mod_job import run                                                  # noqa: E402
+from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
+import test_modkit as TK                                                      # noqa: E402
+
+UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
+
+
+class Cut(Exception):
+    pass
+
+
+class CutDevice(host.Device):
+    """Drops the connection after `after` file writes (the device keeps what it wrote)."""
+
+    def __init__(self, transport, after):
+        super().__init__(transport, on_log=None)
+        self.after = after
+
+    def file_write(self, path, sha, timeout):
+        self.after -= 1
+        if self.after < 0:
+            self.t.close()
+            raise Cut(path)
+        return super().file_write(path, sha, timeout)
+
+
+class Harness:
+    @classmethod
+    def start_class(cls, work):
+        cls.work = Path(work)
+        cls.out = sim.build()
+        cls.seeded = sim.seed(cls.work / 'seed')
+        cls.binary = MP.build(cls.work / 'bin', run=hostbuild.run)
+        cls.runs = 0
+
+    def setUp(self):
+        type(self).runs += 1
+        self.dir = self.work / ('run-%d' % self.runs)
+        shutil.copytree(self.seeded, self.dir / 'yaffs2')
+        self.sim = sim.Simulator(self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out,
+                                 log=self.dir / 'log.txt').start()
+        self.links = []
+        self.addCleanup(self.stop)
+        info = MP.info_values(self.gen / 'base/info.txt')
+        self.stored = self.dir / 'yaffs2/xy-forever/mods' / info['profile'] / info['generation']
+
+    def stop(self):
+        for link in self.links:
+            link.t.close()
+        self.sim.stop()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def connect(self, after=None):
+        transport = host.TcpPort(self.sim.address)
+        dev = host.Device(transport, on_log=None) if after is None else CutDevice(transport, after)
+        self.links.append(dev)
+        self.assertEqual(dev.hello()[0], 0)
+        return dev
+
+    def push(self, dev=None, **kw):
+        lines = []
+        total = S.push(dev or self.connect(), self.gen, out=lines.append, **kw)
+        return total, lines
+
+    def assert_stored(self, names=None):
+        """The device's generation folder holds exactly the host's packages (names: these only)."""
+        want = {p: b for p, b in MP.tree(self.gen).items() if names is None or p.split('/')[0] in names}
+        stored = MP.tree(self.stored)
+        self.assertEqual(sorted(stored), sorted(want))
+        self.assertEqual([p for p in want if stored[p] != want[p]], [])
+
+    def assert_nothing_false_complete(self):
+        """Every package folder holding files.sha256 has every listed file with its listed SHA-256."""
+        for folder in self.stored.iterdir() if self.stored.is_dir() else ():
+            if (folder / S.LIST).is_file():
+                for sha, rel in S.list_paths((folder / S.LIST).read_bytes()):
+                    self.assertTrue((folder / rel).is_file(), (folder.name, rel))
+                    self.assertEqual(hashlib.sha256((folder / rel).read_bytes()).hexdigest(), sha, (folder.name, rel))
+
+    def job(self, generation, machines, exts):
+        """The host build of the device job over `generation`: (report, {path: bytes} of its entry)."""
+        folder = Path(tempfile.mkdtemp(dir=self.work))
+        (folder / 'job.txt').write_text(self.job_text(generation, machines, exts))
+        (folder / 'out').mkdir()
+        report = run(self.binary, 'job', folder / 'job.txt', folder / 'out')
+        return report, MP.tree(folder / 'out')
+
+    def assert_job_identical(self, machines, exts):
+        on_host = self.job(self.gen, machines, exts)
+        on_device = self.job(self.stored, machines, exts)
+        for report, _ in (on_host, on_device):
+            self.assertEqual((report['error'], report['phase']), ('none', 'done'), report)
+        self.assertIn('os.ldr', on_device[1])
+        self.assertEqual(sorted(on_device[1]), sorted(on_host[1]))
+        for path in on_host[1]:
+            self.assertEqual(on_device[1][path], on_host[1][path], path)
+
+
+@unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
+class Synthetic(Harness, unittest.TestCase):
+    """Packages split by modkit from tests/test_modpatch.py's synthetic kit (as tests/test_mod_job.py)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-modsend-')
+        cls.addClassCleanup(cls.tmp.cleanup)
+        cls.start_class(cls.tmp.name)
+        data = stock()
+        (cls.work / 'os.ldr').write_bytes(data)
+        (cls.work / 'op1_factory.json').write_bytes(CATALOG)
+        (cls.work / 'content.sha256').write_text(official_text(OFFICIAL))
+        (cls.work / 'kit.json').write_text(json.dumps(kit_for(profile_for(data))))
+        cls.gen = Path(M.split_kit(cls.work / 'kit.json', cls.work / 'packages', finish=finish,
+                                   sdk_source='https://github.com/example/sdk@abc')['root'])
+
+    def job_text(self, generation, machines, exts):
+        return MP.job_text(generation, machines, exts, self.work / 'os.ldr', self.work / 'op1_factory.json',
+                           official=self.work / 'content.sha256', unverified=True)
+
+    def test_push_twice_verify_and_the_job_reads_the_device_copy(self):
+        argv = ['--sim', self.sim.address, 'mods', 'push', str(self.gen), '--verify']
+        saved = host.SIM
+        self.addCleanup(setattr, host, 'SIM', saved)
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(host.main(argv), 0)
+        text = printed.getvalue()
+        self.assertIn('verify: %d files read back identical' % len(MP.tree(self.gen)), text)
+        self.assertIn('%d packages sent, 0 skipped' % len(os.listdir(self.gen)), text)
+        self.assert_stored()
+        total, lines = self.push()
+        self.assertEqual((total['sent'], total['files'], total['bytes']), (0, 0, 0))
+        self.assertEqual(total['skipped'], len(os.listdir(self.gen)))
+        self.assertEqual(sum(' skipped ' in l for l in lines), total['skipped'])
+        for machines, exts in ((['alpha', 'gamma'], ['cap', 'flt']), (['delta'], [])):
+            with self.subTest(machines=machines, extensions=exts):
+                self.assert_job_identical(machines, exts)
+
+    def test_a_cut_push_never_looks_complete_and_a_second_push_completes_it(self):
+        files = len(MP.tree(self.gen))
+        for after in (0, 1, 5, files // 2, files - 1):
+            with self.subTest(after=after):
+                with self.assertRaises(Cut):
+                    self.push(self.connect(after=after))
+                self.assert_nothing_false_complete()
+                total, _ = self.push()
+                self.assertEqual(total['files'], files - after)
+                self.assert_stored()
+                shutil.rmtree(self.stored)
+        # a file replaced part-way (file.write_staged truncates, then writes) in a complete package:
+        # the list goes first, and the next push sends the file and the list again
+        self.push()
+        victim = self.stored / 'alpha' / 'catalog.txt'
+        victim.write_bytes(victim.read_bytes()[:5])
+        with self.assertRaises(Cut):
+            self.push(self.connect(after=0))
+        self.assertFalse((self.stored / 'alpha' / S.LIST).exists())
+        total, lines = self.push()
+        self.assertEqual((total['sent'], total['files']), (1, 2))
+        self.assert_stored()
+        self.assert_job_identical(['alpha'], [])
+
+    def test_only_list_and_remove(self):
+        total, _ = self.push(only=['beta'])
+        self.assertEqual(total['sent'], 2)                             # base comes along
+        self.assert_stored({'base', 'beta'})
+        with self.assertRaises(S.Refused):
+            S.local_set(self.gen, ['nosuch'])
+        self.push()
+        (self.stored / 'gamma' / S.LIST).unlink()                     # as a cut push leaves it
+        lines = []
+        held = S.show(self.connect(), out=lines.append)
+        info = MP.info_values(self.gen / 'base/info.txt')
+        self.assertEqual([(p, g) for p, g, _ in held], [(info['profile'], info['generation'])])
+        rows = {name: (count, size, complete) for name, _, count, size, complete in held[0][2]}
+        tree = MP.tree(self.gen)
+        del tree['gamma/' + S.LIST]
+        for name in os.listdir(self.gen):
+            mine = [b for p, b in tree.items() if p.split('/')[0] == name]
+            self.assertEqual(rows[name], (len(mine), sum(map(len, mine)), name != 'gamma'), name)
+        self.assertIn('INCOMPLETE', next(l for l in lines if 'gamma' in l))
+        self.assertIn('mod-base', next(l for l in lines if l.strip().startswith('base')))
+        dev = self.connect()
+        self.assertEqual(S.remove(dev, 'alpha', out=lines.append), 0)  # dry run
+        self.assertTrue((self.stored / 'alpha').is_dir())
+        self.assertEqual(S.remove(dev, 'alpha', yes=True, out=lines.append), 0)
+        self.assertFalse((self.stored / 'alpha').exists())
+        self.assertTrue((self.stored / 'beta').is_dir())
+        self.assertEqual(S.remove(dev, 'nosuch', yes=True, out=lines.append), 1)
+        self.assertEqual(S.remove(dev, info['generation'], yes=True, out=lines.append), 0)
+        self.assertFalse(self.stored.exists())
+        self.assertEqual([g for _, g, _ in S.holdings(dev)], [])
+
+
+def _published():
+    return ((PACKAGES / 'base/info.txt').is_file() and TK.STOCK.is_file() and TK.CATALOG.is_file() and
+            MP.default_official(PACKAGES).is_file())
+
+
+@unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
+@unittest.skipUnless(_published(), 'published-kit packages, stock os.ldr, op1_factory.json or content.sha256 absent')
+class PublishedPackages(Harness, unittest.TestCase):
+    """The real 0.0.6 package set (82 packages, about 12.5 MB)."""
+
+    gen = PACKAGES
+
+    @classmethod
+    def setUpClass(cls):
+        paths.SESSIONS.mkdir(parents=True, exist_ok=True)
+        cls.tmp = tempfile.TemporaryDirectory(prefix='modsend-real-', dir=paths.SESSIONS)
+        cls.addClassCleanup(cls.tmp.cleanup)
+        cls.start_class(cls.tmp.name)
+
+    def job_text(self, generation, machines, exts):
+        return MP.job_text(generation, machines, exts, TK.STOCK, TK.CATALOG, official=MP.default_official(PACKAGES))
+
+    def test_push_twice_and_the_job_reads_the_device_copy(self):
+        total, _ = self.push()
+        self.assertEqual((total['sent'], total['skipped']), (len([p for p in PACKAGES.iterdir() if p.is_dir()]), 0))
+        self.assert_stored()
+        again, _ = self.push()
+        self.assertEqual((again['sent'], again['files']), (0, 0))
+        ids = [row[1] for row in M.read_table((PACKAGES / 'base/machines.txt').read_bytes())]
+        fit = M.fitting(PACKAGES, ids)
+        self.assert_job_identical(fit[:7], ['capture', 'master_dj_filter'])
+
+
+class WaitAllowance(unittest.TestCase):
+    """193: job.status unanswered while B waits in one request to A: wait asks again (QUIET), then gives up."""
+    def run_wait(self, silent_calls):
+        clock = [0.0]
+        replies = []
+
+        def fake_status(dev, job):
+            replies.append(job)
+            if len(replies) <= silent_calls:
+                clock[0] += 5.0                                          # one call's timeout
+                raise TimeoutError('no reply to 0x45')
+            return 0, {'phase': S.DONE, 'steps': 1, 'detail': 'x', 'done': 1, 'total': 1, 'error': 0, 'code': 0,
+                       'elapsed_ms': 0, 'longest_ms': 0, 'debris': 0}
+        lines = []
+        with mock.patch.object(S, 'job_status', fake_status):
+            return S.wait(None, 0, out=lines.append, sleep=lambda s: None, clock=lambda: clock[0]), lines
+
+    def test_a_late_first_answer_is_waited_for(self):
+        f, lines = self.run_wait(3)                                      # 15 s without an answer
+        self.assertEqual(f['phase'], S.DONE)
+        self.assertEqual(sum('no answer yet' in l for l in lines), 1)
+
+    def test_silence_past_the_allowance_raises(self):
+        with self.assertRaises(TimeoutError):
+            self.run_wait(int(S.QUIET // 5) + 2)
+
+
+class ApplySelection(unittest.TestCase):
+    """`mods apply`'s selection on the host (no device, no simulator): a selection once
+    passed its ids as one shell word (zsh does not split an unquoted variable), which the device answered
+    bad_request as one invalid id; split, they are the 16 to 30 ids the device builds. A selection the
+    device would refuse is refused before connecting, naming the limit. Synthetic ids."""
+
+    class Dev:
+        def __init__(self):
+            self.payloads = []
+
+        def call(self, type_, payload, timeout=None):
+            self.payloads.append((type_, payload))
+            return 0, struct.pack('<II', 7, 0)
+
+    def run_apply(self, words, *options):
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--timeout', type=float, default=5.0)
+        S.add_arguments(parser.add_subparsers(dest='command').add_parser('mods'))
+        args = parser.parse_args(['mods', 'apply', '--base', 'opxy-121-stock', '--generation', 'opxy-1.2.1/g1']
+                                 + list(words) + list(options))
+        dev, connected = self.Dev(), []
+
+        def connect(timeout):
+            connected.append(timeout)
+            return dev, 'fake', 'XYF1;service=usb;role=b;proto=1.12'
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            code = S.command(args, connect)
+        return code, printed.getvalue(), dev.payloads, connected
+
+    def fields(self, payload):
+        return payload[:-36].split(b'\0')
+
+    def test_ids_in_one_word_are_split(self):
+        ids = ['m%02d' % i for i in range(30)]
+        for words in ([' '.join(ids)], [','.join(ids)], ids[:10] + [' '.join(ids[10:20]), ','.join(ids[20:])]):
+            code, out, payloads, _ = self.run_apply(words, '--name', 'Measure 30', '--ext', 'e1 e2')
+            self.assertEqual(code, 0, out)
+            ((type_, payload),) = payloads
+            self.assertEqual(type_, P.ids.MODS_APPLY)
+            self.assertEqual(payload, S.apply_request('opxy-121-stock', 'opxy-1.2.1', 'g1', ids, ['e1', 'e2'],
+                                                      'Measure 30'))
+            self.assertEqual(self.fields(payload)[3], ','.join(ids).encode())
+
+    def test_the_largest_selection_is_sent(self):
+        ids = ['m%014d' % i for i in range(64)]                          # 64 ids of 15 characters: 1023 bytes
+        exts = ['e%030d' % i for i in range(8)]                          # 8 of 31: 255 bytes
+        code, out, payloads, _ = self.run_apply(ids, '--ext', *exts, '--name', 'N' * 47)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(self.fields(payloads[0][1])[3]), 1023)
+
+    def test_a_selection_the_device_refuses_is_refused_first(self):
+        cases = (
+            (['m%02d' % i for i in range(65)], (), '65 machines: at most 64'),
+            (['m%015d' % i for i in range(64)], (), 'the machine list is 1087 bytes: at most 1023'),
+            (['a'], ['e%d' % i for i in range(9)], '9 extensions: at most 8'),
+            (['a', 'Bad'], (), "machine id 'Bad'"),
+            (['a', 'b', 'a'], (), 'machine a given twice'),
+            (['a'], ['x' * 32], "extension id '%s'" % ('x' * 32)),
+            ([','], (), 'no machine'),
+        )
+        for machines, exts, why in cases:
+            code, out, payloads, connected = self.run_apply(machines, *(('--ext',) + tuple(exts) if exts else ()))
+            self.assertEqual((code, payloads, connected), (2, [], []), out)
+            self.assertIn('mods apply: refused: ' + why, out)
+        code, out, payloads, connected = self.run_apply(['a'], '--name', ' x')
+        self.assertEqual((code, connected), (2, []))
+        self.assertIn('name', out)
+
+
+if __name__ == '__main__':
+    unittest.main()

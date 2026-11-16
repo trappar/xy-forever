@@ -1,0 +1,3 @@
+name=Open-XY build
+kind=open-xy
+built_by=sdk.py 0.0.6

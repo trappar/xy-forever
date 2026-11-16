@@ -1,0 +1,9 @@
+# mods/opxy-1.2.1/<gen>/base/info.txt (010: the base line)
+type=mod-base
+name=open-xy SDK base
+version=0.0.6
+profile=opxy-1.2.1
+generation=kit-0.0.6
+needs_os=fb36a1628575db88da3a97e53b92747027953c3cc95098c86db083797754a151
+source=github.com/open-xy/open-xy@52c8de9
+licence=MIT

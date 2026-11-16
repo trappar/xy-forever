@@ -1,0 +1,5 @@
+name=OP-XY 1.2.5
+version=1.2.5+0
+kind=official
+bytes=2303624
+crc32=9f1c0a42

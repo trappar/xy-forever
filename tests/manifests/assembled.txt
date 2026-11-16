@@ -1,0 +1,12 @@
+# firmware/mods-opxy-1.2.1-a/info.txt: a mod set assembled by Apply (010)
+type=firmware
+name=Mods A
+version=kit-0.0.6
+kind=open-xy
+bytes=2459008
+crc32=3a5b7c9d
+sha256=17e821f39c05313e6b0022e6264211b22418ce48731ff1272487dfb2875ff13d
+content=1.2.1
+generation=kit-0.0.6
+needs_os=fb36a1628575db88da3a97e53b92747027953c3cc95098c86db083797754a151
+profile=opxy-1.2.1

@@ -1,0 +1,647 @@
+{
+  "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md (design: docs/decisions/004-protocol-v1.md). Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
+  "protocol": {
+    "name": "XY Forever serial protocol",
+    "version": "1.13",
+    "intro": [
+      "XY Forever is a boot menu and firmware manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
+      "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
+      "All numbers are little-endian. Byte counts are in decimal unless written in hex (`0x...`)."
+    ]
+  },
+  "transport": {
+    "doc": "How a tool reaches the protocol. `verified` is true for facts read from device sessions or the code, false for facts nobody has checked yet.",
+    "usb_vendor_id": {"value": 9063, "verified": true, "doc": "teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), which the product build (188 and later) falls back to when a boot-time check fails, and which builds before 188 always used"},
+    "usb_product_id": {"value": 33, "verified": true, "doc": "the stock OS uses the same id with no serial interface (MTP, vendor class 0xFF; another mode is 0x8021, class 0x01), so a filter on both ids finds only XY Forever's service on the stock identity; a tool must accept this pair and `product_usb_ids`"},
+    "product_usb_ids": {"value": [9063, 33], "verified": true, "doc": "since product build 189-002 the composite (this CDC serial interface, MTP on interface 2) has the stock pair 2367:0021 (`xyf_build.py` MTP_USB_IDS), told apart from the stock OS's MTP and the stock serial fallback by its device class 0xEF (IAD); builds 188 to 189-001 used pid.codes' test pair 1209:0001; not yet seen on the device"},
+    "usb_product": {"value": "OP_XY Boot", "verified": true, "doc": "the product string as macOS reports it in the session logs (two log lines show `OP-XY Boot`); informational: filter on the ids"},
+    "interface_classes": {"value": [2, 10], "verified": true, "doc": "USB CDC: communications (0x02) and data (0x0A); on macOS the port is `/dev/cu.usbmodem*`"},
+    "stream": {"value": "frames", "verified": true, "doc": "the CDC data interface carries exactly the frame stream described here, in both directions, with no other framing; the simulator's TCP port carries the same bytes"},
+    "line_settings": {"value": "ignored", "verified": true, "doc": "baud rate, parity, stop bits and flow control do not matter (an API that needs a baud rate may pass any); open the port raw (no echo, no line editing)"},
+    "control_lines": {"value": "unknown", "verified": false, "doc": "whether the device needs DTR or RTS set: `xyf_host.py` leaves them as macOS sets them on open"},
+    "usb_serial_number": {"value": "unknown", "verified": false, "doc": "macOS names the port `cu.usbmodem<string>1`, which suggests a serial-number string; a browser may need one to find the port again after a restart without asking the user"},
+    "simulator_port": {"value": 7341, "verified": true, "doc": "default TCP port of the device simulator (`python3 -m xy_forever.sim`, 127.0.0.1 only; control on the next port), one client at a time"}
+  },
+  "frame": {
+    "magic": "XF",
+    "reply_bit": "0x80",
+    "crc": "zlib CRC-32 (polynomial 0xEDB88320, initial value and final XOR 0xFFFFFFFF, as Python's zlib.crc32) over every byte before it",
+    "fields": [
+      {"name": "magic", "type": "bytes[2]", "doc": "ASCII `XF` (0x58 0x46)"},
+      {"name": "type", "type": "u8", "doc": "message type: a request (< 0x80), its reply (request type + 0x80) or an event"},
+      {"name": "seq", "type": "u8", "doc": "chosen by the tool for each request; the reply carries the same value; events use 0"},
+      {"name": "length", "type": "u32", "doc": "payload bytes, at most `max_payload`"},
+      {"name": "payload", "type": "rest", "doc": "`length` bytes"},
+      {"name": "crc", "type": "u32", "doc": "CRC-32 of magic, type, seq, length and payload"}
+    ]
+  },
+  "constants": [
+    {"name": "header_bytes", "value": 8, "doc": "magic, type, seq and length"},
+    {"name": "trailer_bytes", "value": 4, "doc": "the CRC-32"},
+    {"name": "max_payload", "value": 4160, "doc": "largest payload in either direction; a frame announcing more is treated as noise"},
+    {"name": "max_data", "value": 4096, "doc": "largest file or image data in one reply"},
+    {"name": "max_read", "value": 1024, "doc": "largest `length` of a ranged `file.read`, and the most data `screen.read` returns per reply"},
+    {"name": "put_chunk", "value": 1024, "doc": "data bytes per `stage.data` request that tools should send: the device's USB receive buffer holds 2048 bytes, and a 4 KiB frame overflowed it (no reply)"},
+    {"name": "max_path", "value": 240, "doc": "largest device path, including its NUL"},
+    {"name": "max_stage", "value": 7340032, "doc": "largest staged image (7 MiB)"},
+    {"name": "max_log_text", "value": 200, "doc": "largest text of a `log` event"},
+    {"name": "idle_reset_ms", "value": 250, "doc": "the device drops a partial frame once its receive buffer has been empty for this long (XY Forever builds 181 and earlier never did)"},
+    {"name": "max_hello", "value": 200, "doc": "largest `hello` text; a build's text is fixed but for its stage-2 parts (170 bytes in the product build without stage 2), checked when it is compiled"}
+  ],
+  "rules": [
+    {"name": "request_types", "text": "Request types are below 0x80. A reply has the request's type plus 0x80 and the request's seq, and its payload starts with a u32 status code (0 = ok); the fields listed under each command follow it."},
+    {"name": "one_outstanding", "text": "One request at a time: send a request, then wait for its reply (or the command's timeout) before sending the next. The device handles requests one by one and its receive buffer is small."},
+    {"name": "hello_first", "text": "Send `hello` first. Until the device has answered a `hello` since it started, it answers every other request with status `state` and does nothing."},
+    {"name": "unsupported_types", "text": "A request type this build does not answer gets status `unsupported`. The `cmds` key of the `hello` reply lists the types a build answers; tools send no others and tell the user to update XY Forever instead. A command with an optional build switch is missing from a build without it; a command whose switch is not optional is in every build that has this service (the firmware does not build without it)."},
+    {"name": "pre_v1", "text": "Devices that send `proto=1` and no `cmds` (XY Forever builds 153 and earlier) speak 1.0 without the `hello` keys added in 1.1: tools treat every 1.0 command as answered (one the build lacks gets status 2) and expect no status above 13."},
+    {"name": "stale_replies", "text": "Tools drop frames whose seq or type does not match the request they wait for, and reset their frame parser after a timeout: a late reply to an earlier request is then ignored."},
+    {"name": "link_lost", "text": "After a `link` error, later file commands return `link` at once until the device's 60 s lost limit, a restart, or (from build 159) the device's own recovery."},
+    {"name": "events", "text": "Events are frames the device sends on its own, with seq 0 and a type of 0x80 or above that is not a reply to the request outstanding. Today there is one, `log` (0xD0). Tools accept events at any time, also while waiting for a reply, and ignore types they do not know."},
+    {"name": "resync", "text": "Both sides decode byte by byte. On a wrong magic, a length above `max_payload` or a CRC mismatch the decoder drops one byte and searches again, so a frame after noise or a damaged frame is still found (the `streams` in the spec file are test cases). A frame cut short (a write that stopped part way, bytes lost on the way) is dropped once no byte has arrived for `idle_reset_ms`, so a request sent after that silence is found. Tools send each frame in one go (no pause of `idle_reset_ms` inside a frame). Builds 181 and earlier never time out a partial frame: it waits until as many bytes as its header announced have arrived, swallowing the start of the next requests; a tool clears that by sending `put_chunk` bytes of 0x00 and then `hello`, up to 5 times, until the `hello` is answered (5 rounds cover the largest frame)."},
+    {"name": "decoding", "text": "Requests are decoded strictly: exactly the listed fields (the device checks lengths). Replies and events are decoded leniently: a tool ignores bytes after the fields it knows, so a later 1.x can add fields at the end. A reply or event marked `extensible: false` ends in `rest` or `text` and can never gain fields; a later version that needs more adds a command. An error reply holds the fields its `on_error` names, or the status alone. A common status sent as such (`state` before `hello`, `unsupported`, `busy`) always comes alone; a command that lists the same status among its own errors may send its `on_error` fields with it (`file.write_staged` and `boot.install` do for `state`), so decoders accept both."},
+    {"name": "optional", "text": "Optional fields come last and are all present or all absent (`optional_fields: all_or_none` on the layout): a `file.read` request is the path alone, or the path, offset and length."},
+    {"name": "text", "text": "Each `cstr` and `text` field states its encoding. `ascii`: bytes 0x01 to 0x7F. `utf-8`: file and folder names, which MTP clients and computers make with any characters. Limits: `max_bytes` counts bytes, not characters; a name never holds NUL, and `/` separates its parts; the device compares names as bytes, without Unicode normalisation (macOS may send decomposed accents, Windows composed ones, so one visible name can be two files). The device checks the `/yaffs2/` start, the parts (no empty, `.` or `..`), the NUL and control bytes (below 0x20, and 0x7F: `refused` since build 155), and passes every other byte to the stock file system unchanged: invalid UTF-8 is not refused."},
+    {"name": "lengths", "text": "The device checks request lengths exactly (except where a command says the payload is ignored); a request with the wrong length is refused with the status the command lists."},
+    {"name": "versions", "text": "Version 1 never renumbers a type or status, changes a meaning or changes a request layout. A later 1.x may add commands, status codes, events, `hello` keys and fields at the end of a reply: tools ignore reply bytes after the fields they know and `hello` keys they do not know, and show an unknown status by number as a failure. A tool stops when the major version in `proto` is not the one it speaks. Developer commands are outside this promise."},
+    {"name": "destructive", "text": "Commands marked destructive change what the OP-XY stores. Each binds its request to what it changes: the data it writes (a SHA-256 the tool sends again as confirmation; `library.set_default`: the id), or, for `file.delete`, `file.rmdir` and `file.mkdir`, the SHA-256 of the path bytes (without the NUL; `file.rename` and `file.copy`: both paths and the NUL between them). Tools must show the user what will be written or removed and ask before sending one."}
+  ],
+  "statuses": [
+    {"code": 0, "name": "ok", "class": "ok", "since": "1.0", "doc": "done"},
+    {"code": 1, "name": "bad_request", "class": "request", "since": "1.0", "doc": "malformed request: wrong length, a value out of its allowed set, an invalid path or id"},
+    {"code": 2, "name": "unsupported", "class": "support", "since": "1.0", "doc": "this build does not answer this type (named `unknown` before 1.1)"},
+    {"code": 3, "name": "state", "class": "order", "since": "1.0", "doc": "wrong order: no `hello` yet, nothing staged, staging incomplete; the same request will not succeed until something else changes"},
+    {"code": 4, "name": "range", "class": "request", "since": "1.0", "doc": "an offset or address outside what the command allows"},
+    {"code": 5, "name": "crc", "class": "content", "since": "1.0", "doc": "a CRC-32 differs (staged data, or a written file read back)"},
+    {"code": 6, "name": "sha", "class": "content", "since": "1.0", "doc": "a SHA-256 differs (staged data or the confirmation token)"},
+    {"code": 7, "name": "storage", "class": "device", "since": "1.0", "doc": "a file-system call on the device failed"},
+    {"code": 8, "name": "not_found", "class": "device", "since": "1.0", "doc": "no such file"},
+    {"code": 9, "name": "too_large", "class": "request", "since": "1.0", "doc": "a size above its limit (staging capacity, boot partition, whole-file read)"},
+    {"code": 10, "name": "image", "class": "content", "since": "1.0", "doc": "the staged image is not acceptable for this install"},
+    {"code": 11, "name": "install", "class": "device", "since": "1.0", "doc": "the boot-partition write or its read-back check failed"},
+    {"code": 12, "name": "link", "class": "device", "since": "1.0", "doc": "processor A did not answer a request processor B passed on to it"},
+    {"code": 13, "name": "identity", "class": "device", "since": "1.0", "doc": "stock code in the device's memory differs from the checked bootloader image; the command did not run"},
+    {"code": 14, "name": "refused", "class": "policy", "since": "1.1", "doc": "well formed, but forbidden by the device's safety policy (a path the file engine refuses, or, for a change, outside the write area: since 1.13 all of `/yaffs2/` except `/yaffs2/bootloader.dev` and `/yaffs2/upgrade` with all below it)"},
+    {"code": 15, "name": "busy", "class": "job", "since": "1.10", "doc": "a job (`mods.apply`) is running, or B is still closing A's write window after it ended (seconds); retry later, or `job.cancel` a running job"},
+    {"code": 16, "name": "cancelled", "class": "job", "since": "1.1", "doc": "the job was cancelled (not sent by any command yet)"},
+    {"code": 17, "name": "no_content", "class": "order", "since": "1.10", "doc": "the library entry's content is not installed in `/yaffs2/content/` (a mod set built on the device, or any entry while another one's content is installed): it is listed but does not boot as it is; make it the default to install its content"},
+    {"code": 18, "name": "started", "class": "job", "since": "1.10", "doc": "the request started a job (`library.set_default`: the content switch); follow it with `job.status`, whose end is the request's result"},
+    {"code": 19, "name": "declined", "class": "policy", "since": "1.11", "doc": "the user refused the command at the device's Confirm on device prompt, or nobody answered it in time; nothing was done (not sent by any command yet: the prompt is not built)"}
+  ],
+  "common_errors": [
+    {"status": "state", "except": ["hello"], "doc": "the device has not answered a `hello` since it started; nothing was done"},
+    {"status": "unsupported", "except": ["hello"], "doc": "this build does not answer the type (it is not in `cmds`)"},
+    {"status": "busy", "except": ["hello"], "doc": "a job is running, or its write window is still closing after `job.status` said it ended: every command that needs processor A, the staging or a boot waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `job.cancel` are answered)"}
+  ],
+  "commands": [
+    {
+      "type": "0x01", "name": "hello", "symbol": "hello", "class": "core", "since": "1.1", "switch": null,
+      "summary": "greet the device; required before any other command",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"ignored": true, "size": [0, 0], "fields": []},
+      "reply": {"size": [1, 200], "extensible": false, "on_error": "status", "fields": [
+        {"name": "info", "type": "text", "encoding": "ascii", "min_bytes": 1, "max_bytes": 200, "doc": "ASCII, `XYF1` and then `key=value` items, separated by `;`; no NUL; at most `max_hello` bytes. The keys are listed below; tools ignore keys they do not know."}
+      ]},
+      "errors": [],
+      "doc": "Answers in every state. While searching for the device, a tool may send `hello` every 0.5 s on the open port until a reply with status ok arrives. The reply tells the tool what the device supports: the protocol version, the build, the limits and the commands it answers. 1.1 added the keys from `build` on; a device without `cmds` is a pre-v1 device (see the rules)."
+    },
+    {
+      "type": "0x02", "name": "diag.status", "symbol": "status", "class": "dev", "since": "1.0", "switch": null,
+      "summary": "device counters as tagged binary blocks",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"ignored": true, "size": [0, 0], "fields": []},
+      "reply": {"size": [0, 4092], "extensible": false, "on_error": "status", "fields": [
+        {"name": "blocks", "type": "rest", "max_bytes": 4092, "doc": "a sequence of blocks `{u32 magic, u32 bytes, bytes...}`; the block layouts belong to the build (decoder: `xy_forever/census.py`) and change without notice"}
+      ]},
+      "errors": [],
+      "doc": "Development aid: the USB service's counters, the processor link, the file server, boot timing and the last dry-run boot."
+    },
+    {
+      "type": "0x03", "name": "file.read", "symbol": "read_file", "class": "product", "since": "1.0", "switch": null,
+      "summary": "read a file, whole (at most 4096 bytes) or a range",
+      "timeout_ms": 15000, "destructive": false,
+      "request": {"size": [10, 248], "optional_fields": "all_or_none", "fields": [
+        {"name": "path", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "absolute path under `/yaffs2/`, NUL-terminated; no empty, `.` or `..` parts; no control bytes"},
+        {"name": "offset", "type": "u32", "optional": true, "doc": "first byte to read"},
+        {"name": "length", "type": "u32", "optional": true, "range": [1, 1024], "doc": "bytes to read, at most `max_read`"}
+      ]},
+      "reply": {"size": [0, 4096], "extensible": false, "on_error": "status", "fields": [
+        {"name": "data", "type": "rest", "max_bytes": 4096, "doc": "ranged form: up to `length` bytes, fewer only at the end of the file; whole form: the whole file"}
+      ]},
+      "errors": ["bad_request", "refused", "link", "storage", "not_found", "range", "too_large"],
+      "doc": "Two forms: with `offset` and `length` (ranged), or the path alone (whole file, `too_large` above 4096 bytes). Use the ranged form: whole-file replies above 1 KiB hung the device in tests. To read any file, read ranges of `max_read` bytes from offset 0 until a reply holds fewer. An offset at or past the end of the file is ok with no data; `range` means the device's seek to the offset failed. A malformed path is `bad_request`; a well-formed one that the device's file policy refuses (a control byte) is `refused` (since build 155; earlier builds passed it to the file system)."
+    },
+    {
+      "type": "0x04", "name": "screen.read", "symbol": "screen", "class": "product", "since": "1.0", "switch": null,
+      "summary": "read part of the display framebuffer (screenshot)",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [4, 4], "fields": [
+        {"name": "offset", "type": "u32", "range": [0, 245759], "doc": "byte offset into the framebuffer"}
+      ]},
+      "reply": {"size": [5, 1028], "extensible": false, "on_error": ["framebuffer"], "fields": [
+        {"name": "framebuffer", "type": "u32", "doc": "the framebuffer's address (informational; also sent with `range`)"},
+        {"name": "pixels", "type": "rest", "min_bytes": 1, "max_bytes": 1024, "doc": "up to `max_read` bytes from `offset`"}
+      ]},
+      "errors": ["range"],
+      "doc": "Reads memory only. The framebuffer is 245760 (0x3C000) bytes: 480 columns, stored right to left, of 256 RGB565 pixels each, top to bottom; the visible picture is the first 216 pixels of each column. A screenshot reads offsets 0, 1024, 2048, ... until it has 245760 bytes. A request that is not exactly 4 bytes, an offset past the end or no valid framebuffer gives `range`."
+    },
+    {
+      "type": "0x05", "name": "diag.peek", "symbol": "peek", "class": "dev", "test_only": true, "since": "1.0", "switch": null,
+      "summary": "read device memory or registers (test only)",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [8, 8], "fields": [
+        {"name": "address", "type": "u32", "doc": "first byte"},
+        {"name": "bytes", "type": "u32", "range": [1, 1024], "doc": "bytes to read"}
+      ]},
+      "reply": {"size": [5, 1028], "extensible": false, "on_error": "status", "fields": [
+        {"name": "address", "type": "u32", "doc": "the address read"},
+        {"name": "data", "type": "rest", "min_bytes": 1, "max_bytes": 1024, "doc": "the bytes"}
+      ]},
+      "errors": ["range"],
+      "doc": "Read-only, inside an allowlist of stock DDR, L2, L1 data and interrupt, reset and watchdog registers (usb_service.cpp peek_allowed, mmr_allowed); anything else is `range`."
+    },
+    {
+      "type": "0x07", "name": "diag.engine_test", "symbol": "mtp_test", "class": "dev", "test_only": true, "since": "1.0", "switch": "XYF_MTP", "switch_optional": true,
+      "summary": "storage self-test from processor B's main loop (test only)",
+      "timeout_ms": 60000, "destructive": false,
+      "request": {"size": [4, 4], "fields": [
+        {"name": "hold_ms", "type": "u32", "range": [0, 60000], "doc": "how long to hold the storage window open in the middle"}
+      ]},
+      "reply": {"size": [64, 64], "extensible": true, "on_error": "full", "fields": [
+        {"name": "step", "type": "u32", "doc": "last step reached (11 = all done)"},
+        {"name": "mounted", "type": "u32", "doc": "mount result"},
+        {"name": "space", "type": "u32", "doc": "storage info result"},
+        {"name": "stat", "type": "u32", "doc": "object info result"},
+        {"name": "dir", "type": "u32", "doc": "folder handle"},
+        {"name": "entries", "type": "u32", "doc": "folder entries listed"},
+        {"name": "closedir", "type": "u32", "doc": "folder close result"},
+        {"name": "fd", "type": "u32", "doc": "file handle"},
+        {"name": "read", "type": "u32", "doc": "bytes read"},
+        {"name": "closed", "type": "u32", "doc": "file close result"},
+        {"name": "wait_ms", "type": "u32", "doc": "time held"},
+        {"name": "stat2", "type": "u32", "doc": "object info result, again"},
+        {"name": "space2", "type": "u32", "doc": "storage info result, again"},
+        {"name": "unmounted", "type": "u32", "doc": "1 when unmounted"},
+        {"name": "entry_bytes", "type": "u32", "doc": "unused (0)"},
+        {"name": "reserved", "type": "u32", "doc": "unused (0)"}
+      ]},
+      "errors": ["bad_request", "identity", "link"],
+      "doc": "Runs the storage calls the old MTP code made, from B's main loop (Test 097). The host waits 60 s plus hold_ms. To be renamed when the file engine (M2) replaces it."
+    },
+    {
+      "type": "0x10", "name": "stage.begin", "symbol": "put_begin", "class": "product", "since": "1.0", "switch": null,
+      "summary": "announce an image to stage in RAM",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [40, 40], "fields": [
+        {"name": "size", "type": "u32", "range": [1, 7340032], "doc": "image bytes, at most `max_stage`"},
+        {"name": "crc32", "type": "u32", "doc": "CRC-32 of the whole image"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "SHA-256 of the whole image"}
+      ]},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["bad_request", "too_large"],
+      "doc": "Starts a new staging and forgets any earlier one, also when it is refused (a `stage.data` after a refused `stage.begin` is `state`). Staging holds one image in processor B's RAM for `file.write_staged`, `boot.install` or `boot.uninstall`; it does not survive a restart. A size of 0 is also `too_large`."
+    },
+    {
+      "type": "0x11", "name": "stage.data", "symbol": "put_data", "class": "product", "since": "1.0", "switch": null,
+      "summary": "send the next piece of the staged image",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [5, 4160], "fields": [
+        {"name": "offset", "type": "u32", "doc": "must equal the bytes received so far"},
+        {"name": "data", "type": "rest", "min_bytes": 1, "max_bytes": 4156, "doc": "the next bytes; send `put_chunk` (1024) at a time"}
+      ]},
+      "reply": {"size": [4, 4], "extensible": true, "on_error": "status", "fields": [
+        {"name": "received", "type": "u32", "doc": "bytes received so far"}
+      ]},
+      "errors": ["state", "range"],
+      "doc": "In order, without gaps: `range` when `offset` is not the bytes received so far or the data would pass the announced size; a resend of bytes already received, unchanged (a retry after a lost reply), is ok and `received` stays. `state` without a `stage.begin`, and also for a request without data."
+    },
+    {
+      "type": "0x12", "name": "stage.end", "symbol": "put_end", "class": "product", "since": "1.0", "switch": null,
+      "summary": "check the staged image against its CRC-32 and SHA-256",
+      "timeout_ms": 10000, "destructive": false,
+      "request": {"ignored": true, "size": [0, 0], "fields": []},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["state", "crc", "sha"],
+      "doc": "`state` when not every announced byte arrived. After any error the staging is discarded; start again with `stage.begin`. A repeated `stage.end` after an ok one (a retry after a lost reply) is ok again and keeps the staging, until `boot.install`, `boot.uninstall` or `file.copy` uses it up or a `stage.begin` replaces it."
+    },
+    {
+      "type": "0x13", "name": "file.write_staged", "symbol": "file_write", "class": "product", "since": "1.1", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "write the staged image to a file under /yaffs2/ (the write area)",
+      "timeout_ms": 60000, "destructive": true,
+      "request": {"size": [42, 272], "fields": [
+        {"name": "path", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "`/yaffs2/` and at least one more character, NUL-terminated; no empty, `.` or `..` parts; no control bytes; never `/yaffs2/bootloader.dev`, never inside `/yaffs2/upgrade/` (1.13); missing folders are created"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the staged image's SHA-256 again"}
+      ]},
+      "reply": {"size": [8, 8], "extensible": true, "on_error": "full", "fields": [
+        {"name": "written", "type": "u32", "doc": "bytes written"},
+        {"name": "readback_crc", "type": "u32", "doc": "CRC-32 of the file read back"}
+      ]},
+      "errors": ["bad_request", "refused", "state", "sha", "link", "storage", "not_found", "crc"],
+      "doc": "Creates or replaces the file, reads it back and compares its CRC-32 (`crc` on a difference). A path the device's write check rejects is `refused` (1.0: `bad_request`): since 1.13 the write area is all of `/yaffs2/` except the dev-menu marker `/yaffs2/bootloader.dev` and the stock updater's inbox `/yaffs2/upgrade` (and anything inside it), both any ASCII case and also when reached through a link; also a path with an empty, `.` or `..` part, or, since build 155, a control byte. Before 1.13 the area was `/yaffs2/xy-forever/` and (1.7) `/yaffs2/content/`, no name holding `bootloader`; a request whose length does not match its path is `bad_request`. Needs a complete staging (`state` otherwise). The host tool restarts the device (`device.reboot`) and stages again before each write, the tested path; a second write in the same boot is untested. The host waits 60 s plus 1 s per 20000 bytes. To be replaced by streaming file commands (plan item 2.4)."
+    },
+    {
+      "type": "0x14", "name": "file.list", "symbol": "list_dir", "class": "product", "since": "1.5", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "list one folder, a page at a time",
+      "timeout_ms": 30000, "destructive": false,
+      "request": {"size": [12, 244], "fields": [
+        {"name": "path", "type": "cstr", "encoding": "utf-8", "min_bytes": 8, "max_bytes": 240, "doc": "absolute folder path, `/yaffs2` or below, NUL-terminated; a trailing `/` is allowed"},
+        {"name": "skip", "type": "u32", "doc": "entries to pass over first: 0, then the previous `skip` plus `count` while `more` is 1"}
+      ]},
+      "reply": {"size": [8, 1024], "extensible": false, "on_error": "status", "fields": [
+        {"name": "count", "type": "u32", "doc": "entries in this page"},
+        {"name": "more", "type": "u32", "range": [0, 1], "values": {"0": "the folder ends in this page", "1": "ask again with skip + count"}, "doc": "whether the listing goes on"},
+        {"name": "entries", "type": "rest", "max_bytes": 1016, "doc": "`count` entries, each `{u8 kind (0 file, 1 folder, 2 other), u32 size (bytes; 0 for a folder), u8 name_bytes, name}`: the name as UTF-8 bytes, 1 to 255 of them, without the folder or a NUL"}
+      ]},
+      "errors": ["bad_request", "refused", "link", "storage", "not_found"],
+      "doc": "One page of a folder's entries in the file system's order, without `.` and `..`; at most 1016 bytes of entries (a reply never passes `max_read`) and 64 entries per page. Each page opens the folder, passes over `skip` entries and closes it again, so a folder that changes between pages may show an entry twice or not at all; a page with `more` 1 may hold no entries. A path the device's file policy refuses (outside `/yaffs2`, an empty, `.` or `..` part, a control byte) is `refused`; a request whose length does not match its path is `bad_request`; a folder that does not exist (or a file) is `not_found`. Reads only: the write window stays as it is."
+    },
+    {
+      "type": "0x15", "name": "file.delete", "symbol": "delete_file", "class": "product", "since": "1.5", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "delete one file",
+      "timeout_ms": 60000, "destructive": true,
+      "request": {"size": [42, 272], "fields": [
+        {"name": "path", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "absolute path of a file in the write area (`file.write_staged`; 1.13: all of `/yaffs2/` but the marker and `upgrade/`), NUL-terminated"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the SHA-256 of the path bytes, without the NUL"}
+      ]},
+      "reply": {"size": [4, 4], "extensible": true, "on_error": "full", "fields": [
+        {"name": "error", "type": "u32", "doc": "the device file system's error number (0 when none; 2 no such object, 21 a folder, 93 a folder not empty)"}
+      ]},
+      "errors": ["bad_request", "refused", "sha", "link", "storage", "not_found"],
+      "doc": "Removes the file through the device's write window (opened by the first change, closed by the device 8 s after the last one, as `file.write_staged`). Never `/yaffs2` itself, `/yaffs2/bootloader.dev` or `/yaffs2/upgrade` and anything inside it (any ASCII case, any spelling, also through a link; 1.13): `refused`, as every path the file policy refuses and every path outside `file.write_staged`'s write area; a wrong confirmation is `sha`. A missing file is `not_found`; a folder (error 21) or any other failure `storage`."
+    },
+    {
+      "type": "0x16", "name": "file.rmdir", "symbol": "remove_dir", "class": "product", "since": "1.5", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "remove one empty folder",
+      "timeout_ms": 60000, "destructive": true,
+      "request": {"size": [42, 272], "fields": [
+        {"name": "path", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "absolute path of a folder in the write area (as `file.delete`), NUL-terminated"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the SHA-256 of the path bytes, without the NUL"}
+      ]},
+      "reply": {"size": [4, 4], "extensible": true, "on_error": "full", "fields": [
+        {"name": "error", "type": "u32", "doc": "the device file system's error number (0 when none; 2 no such object, 20 not a folder, 93 not empty)"}
+      ]},
+      "errors": ["bad_request", "refused", "sha", "state", "link", "storage", "not_found"],
+      "doc": "As `file.delete`, for an empty folder only: a folder that still holds entries is `state` (error 93; remove them first); a file (error 20) or any other failure is `storage`."
+    },
+    {
+      "type": "0x17", "name": "file.mkdir", "symbol": "make_dir", "class": "product", "since": "1.5", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "create one folder",
+      "timeout_ms": 60000, "destructive": true,
+      "request": {"size": [42, 272], "fields": [
+        {"name": "path", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "absolute path of the new folder in the write area (as `file.delete`), NUL-terminated; its parent must exist"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the SHA-256 of the path bytes, without the NUL"}
+      ]},
+      "reply": {"size": [4, 4], "extensible": true, "on_error": "full", "fields": [
+        {"name": "error", "type": "u32", "doc": "the device file system's error number (0 when none; 2 the parent is missing, 17 the name exists)"}
+      ]},
+      "errors": ["bad_request", "refused", "sha", "link", "storage", "not_found"],
+      "doc": "Creates one folder through the write window (as `file.delete`). A missing parent is `not_found`; a name that exists already (error 17) or any other failure is `storage`. Paths the file policy refuses are `refused`."
+    },
+    {
+      "type": "0x18", "name": "file.rename", "symbol": "rename_file", "class": "product", "since": "1.8", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "rename or move one file or folder",
+      "timeout_ms": 60000, "destructive": true,
+      "request": {"size": [60, 512], "fields": [
+        {"name": "source", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "absolute path of a file or folder in the write area (as `file.delete`), NUL-terminated"},
+        {"name": "target", "type": "cstr", "encoding": "utf-8", "min_bytes": 18, "max_bytes": 240, "doc": "its new path, in the write area (never the marker, never in `upgrade/`); must not exist; its parent must"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the SHA-256 of the source bytes, a NUL and the target bytes"}
+      ]},
+      "reply": {"size": [4, 4], "extensible": true, "on_error": "full", "fields": [
+        {"name": "error", "type": "u32", "doc": "the device file system's error number (0 when none; 2 no source or no target parent, 17 the target exists, 22 a folder into itself)"}
+      ]},
+      "errors": ["bad_request", "refused", "sha", "state", "link", "storage", "not_found"],
+      "doc": "Renames, or moves between folders, a file or a whole folder through the write window (as `file.delete`). Both paths must pass `file.delete`'s checks (`refused`); a target that exists is `state` (nothing replaced); a missing source or target parent `not_found`; a folder into itself (error 22) or any other failure `storage`."
+    },
+    {
+      "type": "0x19", "name": "file.copy", "symbol": "copy_file", "class": "product", "since": "1.9", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "copy one file on the device",
+      "timeout_ms": 60000, "destructive": true,
+      "request": {"size": [60, 512], "fields": [
+        {"name": "source", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "absolute path of a file `file.read` may read, NUL-terminated"},
+        {"name": "target", "type": "cstr", "encoding": "utf-8", "min_bytes": 18, "max_bytes": 240, "doc": "the new file's path, as for `file.write_staged`; must not exist; its folder must"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the SHA-256 of the source bytes, a NUL and the target bytes"}
+      ]},
+      "reply": {"size": [12, 12], "extensible": true, "on_error": "full", "fields": [
+        {"name": "bytes", "type": "u32", "doc": "bytes read from the source"},
+        {"name": "error", "type": "u32", "doc": "the device file system's error number (0 when none; 2 no target folder, 17 the target exists)"},
+        {"name": "partial", "type": "u32", "range": [0, 1], "values": {"0": "no partial target left", "1": "a partial target may remain"}, "doc": "after a failed write: whether its target may remain (the device deletes it when it can)"}
+      ]},
+      "errors": ["bad_request", "refused", "sha", "state", "link", "storage", "not_found", "too_large", "crc"],
+      "doc": "Processor B reads the source whole into its staging buffer (at most `stage` bytes, else `too_large`) and writes it to the target as `file.write_staged` does, read back and compared (`crc`); the bytes never cross USB. A staging held before is discarded (`file.write_staged` and `boot.install` then answer `state`). A source `file.read` refuses, or a target `file.write_staged` refuses, is `refused`; a missing source or target folder `not_found`; a target that exists `state` (nothing replaced). After a failed write the device deletes the target. The host waits 60 s plus 1 s per 10000 bytes."
+    },
+    {
+      "type": "0x20", "name": "boot.install", "symbol": "install", "class": "product", "since": "1.0", "switch": null,
+      "summary": "install the staged XY Forever build into the boot partition",
+      "timeout_ms": 900000, "destructive": true,
+      "request": {"size": [32, 32], "fields": [
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the staged image's SHA-256 again"}
+      ]},
+      "reply": {"size": [12, 12], "extensible": true, "on_error": "full", "fields": [
+        {"name": "written", "type": "u32", "doc": "non-zero when the boot-partition writer finished"},
+        {"name": "partition", "type": "u32", "doc": "active boot partition read back (1 or 2; 0 = none)"},
+        {"name": "sectors", "type": "u32", "doc": "512-byte sectors read back and compared"}
+      ]},
+      "errors": ["state", "sha", "image", "link", "too_large", "install"],
+      "doc": "Accepts only a staged XY Forever build (its cold descriptor and a valid LDR structure; `image` otherwise) that fits the boot partition (`too_large`). Writes with the stock bootloader's own A/B boot-partition writer, then reads the partition back and compares every byte (`install` on any difference). Sends `log` events while it runs. A wrong-length request or no complete staging is `state`. Once the writer has run (`ok` or `install`) the staging is used up; a request refused before writing leaves it as it was. Takes minutes; the host waits up to 900 s."
+    },
+    {
+      "type": "0x21", "name": "boot.uninstall", "symbol": "uninstall", "class": "product", "since": "1.0", "switch": null,
+      "summary": "put the stock 1.2.1 os.ldr back into the boot partition",
+      "timeout_ms": 900000, "destructive": true,
+      "request": {"size": [32, 32], "fields": [
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the staged image's SHA-256 again"}
+      ]},
+      "reply": {"size": [12, 12], "extensible": true, "on_error": "full", "fields": [
+        {"name": "written", "type": "u32", "doc": "non-zero when the boot-partition writer finished"},
+        {"name": "partition", "type": "u32", "doc": "active boot partition read back (1 or 2; 0 = none)"},
+        {"name": "sectors", "type": "u32", "doc": "512-byte sectors read back and compared"}
+      ]},
+      "errors": ["state", "sha", "image", "link", "too_large", "install"],
+      "doc": "As `boot.install`, but accepts only the exact stock OP-XY 1.2.1 `os.ldr` (2373336 bytes, SHA-256 `60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f`). Afterwards the OP-XY boots stock 1.2.1 and this service is gone; files under `/yaffs2/xy-forever/` stay."
+    },
+    {
+      "type": "0x30", "name": "device.reboot", "symbol": "reboot", "class": "product", "since": "1.0", "switch": null,
+      "summary": "restart both processors",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [0, 4], "optional_fields": "all_or_none", "fields": [
+        {"name": "target", "type": "u32", "optional": true, "range": [0, 2], "values": {"0": "the XY Forever menu with USB", "1": "the default firmware (OS)", "2": "the XY Forever menu with USB"}, "doc": "where the device goes; without it: 2"}
+      ]},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["bad_request"],
+      "doc": "The reply comes first; the device restarts about 50 ms later and the USB port goes away. Wait for the port to come back, then send `hello`. Targets 0 and 2 behave the same today. A target above 2 is `bad_request`; a payload that is neither empty nor 4 bytes counts as no target."
+    },
+    {
+      "type": "0x31", "name": "menu.continue", "symbol": "continue", "class": "product", "since": "1.0", "switch": null,
+      "summary": "leave the menu and boot the default firmware",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [0, 4], "optional_fields": "all_or_none", "fields": [
+        {"name": "mode", "type": "u32", "optional": true, "range": [0, 1], "values": {"0": "boot the default firmware", "1": "dry run: the whole boot path without starting the OS, then back to the menu"}, "doc": "without it: 0"}
+      ]},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["link"],
+      "doc": "After the ok reply the menu closes and USB goes away. Any other payload, or a mode above 1, is answered with `link` (not `bad_request`); so is a dry run processor A did not accept. Modes 2 and 3 (\"open the menu with USB\", Test 058, before boot model v3) are not part of v1: the menu is the home loop that answers this protocol, so a tool that is connected is already in the menu."
+    },
+    {
+      "type": "0x32", "name": "service.hold", "symbol": "hold", "class": "product", "since": "1.0", "switch": null,
+      "summary": "keep the device in the menu across restarts",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [4, 4], "fields": [
+        {"name": "on", "type": "u32", "range": [0, 1], "values": {"0": "off", "1": "on"}, "doc": "on: stay in the XY Forever menu (with USB) across `device.reboot` until power-off"}
+      ]},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["bad_request"],
+      "doc": ""
+    },
+    {
+      "type": "0x33", "name": "diag.guard", "symbol": "guard", "class": "dev", "test_only": true, "since": "1.0", "switch": null,
+      "summary": "watchdog guard on, off or expiry test (test only)",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [4, 4], "fields": [
+        {"name": "on", "type": "u32", "range": [0, 2], "values": {"0": "off", "1": "on", "2": "expiry test (only while off)"}, "doc": "watchdog guard state"}
+      ]},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["bad_request"],
+      "doc": "On: a hung processor restarts into the menu (both processors armed); carried across restarts, off after power-off. Off: both processors disarmed. Expiry test: about 3 s without reloads, the guard must restart B (processor A follows)."
+    },
+    {
+      "type": "0x34", "name": "diag.key", "symbol": "key", "class": "dev", "test_only": true, "since": "1.0", "switch": null,
+      "summary": "inject a key event into the menu (test only)",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [8, 8], "fields": [
+        {"name": "key", "type": "u32", "range": [0, 63], "doc": "key number (xyf_host.py KEYS)"},
+        {"name": "pressed", "type": "u32", "range": [0, 1], "doc": "1 press, 0 release"}
+      ]},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["bad_request"],
+      "doc": "As if the key changed on the OP-XY. A press can close the menu and end USB."
+    },
+    {
+      "type": "0x40", "name": "library.set_default", "symbol": "set_default", "class": "product", "since": "1.0", "switch": "XYF_USB_SET_DEFAULT", "switch_optional": false,
+      "summary": "make a library entry the default firmware",
+      "timeout_ms": 75000, "destructive": true,
+      "request": {"size": [2, 32], "fields": [
+        {"name": "id", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 32, "doc": "library entry id: 1-31 of `a-z 0-9 _ -`, NUL-terminated (the folder name under `/yaffs2/xy-forever/firmware/`)"}
+      ]},
+      "reply": {"size": [4, 4], "extensible": true, "on_error": "full", "fields": [
+        {"name": "id_hash", "type": "u32", "doc": "CRC-32 of the id bytes, as sent to processor A (0 for `bad_request`)"}
+      ]},
+      "errors": ["bad_request", "link", "storage", "no_content", "started"],
+      "doc": "An entry whose content is not installed (listed as content not installed) first gets its content: B starts the content switch as a job and answers `started` (`job.status`: phase `inputs`, `content` with done/total in files, `finish` while it writes the record and the default; `done` with detail = the id once the default is written; `failed` leaves the default unchanged, `error` 15 with code 1 when `/yaffs2/content/` is not the official set, 2 when the entry would replace an official file; a cut or failure leaves the content state switching, which nothing boots from until this request runs again). A build without the switch answers `no_content` (nothing sent to A). Processor A finds the one entry whose id has this hash and an `os.ldr`, and writes the next of the two state files (`/yaffs2/xy-forever/state-a.txt`, `state-b.txt`). ok means A finished and the menu shows the new default; `storage` means the menu's default did not change. Tools can confirm by reading both state files: the valid one with the higher `seq=` holds `default=ID`."
+    },
+    {
+      "type": "0x43", "name": "library.boot", "symbol": "library_boot", "class": "product", "since": "1.7", "switch": null,
+      "summary": "boot a library entry once, as PLAY on it in the library menu",
+      "timeout_ms": 30000, "destructive": false,
+      "request": {"size": [34, 64], "fields": [
+        {"name": "id", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 32, "doc": "library entry id: 1-31 of `a-z 0-9 _ -`, NUL-terminated"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the SHA-256 of the id bytes, without the NUL"}
+      ]},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["bad_request", "sha", "link", "not_found", "state", "no_content"],
+      "doc": "After the ok reply the menu closes, USB goes away and the entry boots once; the default and the state files do not change. Errors boot nothing: an entry the menu does not list is `not_found`, one it lists without an `os.ldr` (not selectable there) `state`, one whose content is not installed `no_content` (make it the default to install its content), a lost link `link`."
+    },
+    {
+      "type": "0x41", "name": "tfw.check", "symbol": "tfw_check", "class": "product", "since": "1.2", "switch": "XYF_TFW_CHECK", "switch_optional": true,
+      "summary": "check that a firmware package on the device is official and that the device's own keys open it",
+      "timeout_ms": 60000, "destructive": false,
+      "request": {"size": [10, 240], "fields": [
+        {"name": "path", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "absolute path under `/yaffs2/` of a `.tfw` file or a cut of one, NUL-terminated"}
+      ]},
+      "reply": {"size": [40, 40], "extensible": true, "on_error": "status", "fields": [
+        {"name": "verdict", "type": "u32", "range": [0, 1], "values": {"0": "pass", "1": "fail"}, "doc": "the result"},
+        {"name": "reason", "type": "u32", "range": [0, 8], "values": {"0": "pass", "1": "a read failed", "2": "not a package, or its sizes differ from the file", "3": "an AES key index other than 0", "4": "the device's one-time-programmable memory gave no key", "5": "the device's public key is not on the curve", "6": "the signature does not verify", "7": "the device's key does not decrypt the package", "8": "the decrypted ZIP directory is malformed"}, "doc": "why"},
+        {"name": "public_key_sha256", "type": "bytes[32]", "doc": "SHA-256 of the device's 56-byte public key; zero when none was read"}
+      ]},
+      "errors": ["bad_request", "refused", "link", "storage", "not_found", "range"],
+      "doc": "Processor B reads the package header, verifies its P-224 signature with the public key in the device's one-time-programmable memory (OTP), then checks that the AES key there decrypts the package's name block and ZIP directory. It reads nothing else and changes nothing; the keys are read only for a well-formed header and nothing derived from them is sent. A cut (16-byte header: u32 `0x54434658`, package bytes, head bytes, tail offset; then the package's first head bytes and its bytes from the tail offset on) is checked as the package. ok: the check ran (see `verdict`); an error: the file could not be read."
+    },
+    {
+      "type": "0x42", "name": "stage2.info", "symbol": "stage2_info", "class": "dev", "test_only": true, "since": "1.6", "switch": "XYF_STAGE2_LOADED", "switch_optional": true,
+      "summary": "report the loaded stage 2: its version, image hash, services version and loop turns",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [0, 0], "fields": []},
+      "reply": {"size": [20, 20], "extensible": true, "on_error": "status", "fields": [
+        {"name": "version", "type": "u32", "doc": "the stage-2 version in its file header"},
+        {"name": "sha256_prefix", "type": "bytes[8]", "doc": "the first 8 bytes of the SHA-256 of its image (the file after its 96-byte header)"},
+        {"name": "services", "type": "u32", "doc": "the version of the services table stage 1 handed it"},
+        {"name": "turns", "type": "u32", "doc": "service loop passes stage 2 has seen since it was loaded; rises between two requests"}
+      ]},
+      "errors": ["bad_request"],
+      "doc": "Answered by stage 2's own code (`/yaffs2/xy-forever/stage2/main.xys2`, docs/STORAGE.md), which processor B loads at the first `hello` of a boot when the file is there and passes its checks. Without a loaded stage 2 the type is not in `cmds` and gets `unsupported`; `hello` key `stage2` is then 0."
+    },
+    {
+      "type": "0x44", "name": "mods.apply", "symbol": "mods_apply", "class": "product", "since": "1.10", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "start assembling mod firmware on the device (a job)",
+      "timeout_ms": 30000, "destructive": true,
+      "request": {"size": [47, 1460], "fields": [
+        {"name": "base", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 32, "doc": "library entry id whose `os.ldr` is the stock image; its `content.sha256` is the firmware's content list"},
+        {"name": "profile", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 32, "doc": "`mods/<profile>/` (1-31 of `a-z 0-9 . _ -`, a letter or digit first)"},
+        {"name": "generation", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 32, "doc": "`mods/<profile>/<generation>/`, the package set (as `profile`)"},
+        {"name": "machines", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 1024, "doc": "1 to 64 machine ids (library id form), comma-separated, in layout order"},
+        {"name": "extensions", "type": "cstr", "encoding": "ascii", "min_bytes": 1, "max_bytes": 256, "doc": "0 to 8 extension ids, comma-separated (empty: none)"},
+        {"name": "name", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 48, "doc": "the entry's `info.txt` name: 1-47 printable bytes, no space at either end"},
+        {"name": "flags", "type": "u32", "range": [0, 3], "values": {"0": "a known base only, standard memory", "1": "the user confirmed a base that is not a known one", "2": "the 4 MiB mod memory layout (since 1.12; the base's `expanded_module_base`)", "3": "both"}, "doc": "bit 0: base trust; bit 1 (1.12): the 4 MiB layout, refused (`bad_request`) by a 1.11 device"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the SHA-256 of every request byte before it"}
+      ]},
+      "reply": {"size": [8, 8], "extensible": true, "on_error": "full", "fields": [
+        {"name": "job", "type": "u32", "doc": "the job's id (0 when refused); its output folder is `/yaffs2/xy-forever/tmp/job-<id>/`"},
+        {"name": "missing", "type": "u32", "range": [0, 4], "values": {"0": "none", "1": "the base's `os.ldr`", "2": "the base's `content.sha256`", "3": "`/yaffs2/content/op1_factory.json`", "4": "the generation's `base/info.txt`"}, "doc": "with `not_found`: the input the device lacks"}
+      ]},
+      "errors": ["bad_request", "sha", "link", "not_found", "state", "storage"],
+      "doc": "Checks the request and that every input exists (`not_found`, `missing` says which), makes the output folder and answers at once; processor B then runs the job in small steps from its menu loop, which stays live (`job.status`, `job.cancel`). Reads only the generation's packages, the base entry, the stock catalog and the output; writes only the output folder: an entry's files as `<name>.part`, read back, renamed, `os.ldr` last. A failed or cancelled job leaves no `os.ldr`; it removes its files and folders (`debris` 1 in `job.status` when it could not). Before the job's first step B removes leftover `tmp/job-*` folders (bounded). A finished entry becomes library entry `mods-a` or `mods-b` (phase `finish`, detail `commit`): never the default or the boot-once entry; the absent one, else the one not written last; the old entry is renamed into `tmp/` first, then the new one into `firmware/`, then the old one removed. It is listed with its content not installed (`no_content`). A staged upload in progress is `busy`; no free job id, or both mods ids are the default and the boot-once entry, `state`."
+    },
+    {
+      "type": "0x45", "name": "job.status", "symbol": "job_status", "class": "product", "since": "1.10", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "progress of the running or last job",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [4, 4], "fields": [
+        {"name": "job", "type": "u32", "doc": "the job's id; 0: the running or last job"}
+      ]},
+      "reply": {"size": [76, 76], "extensible": true, "on_error": "status", "fields": [
+        {"name": "job", "type": "u32", "doc": "its id"},
+        {"name": "phase", "type": "u32", "range": [0, 10], "values": {"0": "idle", "1": "inputs", "2": "link", "3": "patch", "4": "content", "5": "write", "6": "verify", "7": "finish", "8": "done", "9": "failed", "10": "cancelled"}, "doc": "8, 9 and 10 are final"},
+        {"name": "done", "type": "u32", "doc": "units of the phase done (inputs: bytes; link, patch: steps; content: packages; write, verify, finish: outputs)"},
+        {"name": "total", "type": "u32", "doc": "of total (0: not known ahead)"},
+        {"name": "error", "type": "u32", "range": [0, 21], "values": {"0": "none", "1": "argument", "2": "path", "3": "region", "4": "open", "5": "read", "6": "truncated", "7": "size", "8": "list", "9": "unlisted", "10": "sha256", "11": "info", "12": "base", "13": "linker", "14": "patch", "15": "content", "16": "write", "17": "rename", "18": "verify", "19": "cancelled", "20": "image", "21": "link"}, "doc": "why it failed (`native/mod_job.hpp`; 12 with code 18: a base that is not a known one, not confirmed; 17: also the library commit; 21: processor A did not answer)"},
+        {"name": "code", "type": "u32", "doc": "the refusing step's own status number"},
+        {"name": "elapsed_ms", "type": "u32", "doc": "since the start (to the end once final)"},
+        {"name": "steps", "type": "u32", "doc": "steps run"},
+        {"name": "longest_ms", "type": "u32", "doc": "the longest menu-loop pass the job took"},
+        {"name": "peak", "type": "u32", "doc": "work-region bytes used at most"},
+        {"name": "debris", "type": "u32", "range": [0, 1], "values": {"0": "nothing left behind", "1": "a failed job's files or folders may remain in its output folder"}, "doc": "after a failed or cancelled job"},
+        {"name": "detail", "type": "bytes[32]", "doc": "ASCII, NUL-padded: which file, object, edit or check; when done, the library entry id (also for a content switch)"}
+      ]},
+      "errors": ["bad_request", "not_found"],
+      "doc": "A job id this boot has not started (none yet, for 0) is `not_found`."
+    },
+    {
+      "type": "0x46", "name": "job.cancel", "symbol": "job_cancel", "class": "product", "since": "1.10", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "stop the running job",
+      "timeout_ms": 60000, "destructive": false,
+      "request": {"size": [4, 4], "fields": [
+        {"name": "job", "type": "u32", "doc": "the job's id; 0: the running job"}
+      ]},
+      "reply": {"size": [4, 4], "extensible": true, "on_error": "full", "fields": [
+        {"name": "debris", "type": "u32", "range": [0, 1], "values": {"0": "nothing left behind", "1": "files or folders may remain in its output folder"}, "doc": "after the clean-up"}
+      ]},
+      "errors": ["bad_request", "not_found", "state"],
+      "doc": "Removes what the job wrote and answers once that is done; a job that already ended, or is in its library commit (phase `finish`, detail `commit`), or a content switch (`library.set_default`), is `state`."
+    },
+    {
+      "type": "0x60", "name": "diag.hang", "symbol": "test_hang", "class": "dev", "test_only": true, "since": "1.0", "switch": null,
+      "summary": "stop reloading the watchdog (guard test only)",
+      "timeout_ms": 5000, "destructive": false,
+      "request": {"size": [4, 4], "fields": [
+        {"name": "token", "type": "u32", "range": [1196310856, 1196310856], "doc": "0x474E4148, the bytes `HANG`"}
+      ]},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["bad_request"],
+      "doc": "Only while the guard is on (`bad_request` otherwise). After the ok reply processor B spins until the guard restarts it."
+    }
+  ],
+  "events": [
+    {
+      "type": "0xd0", "name": "log", "symbol": "log", "since": "1.0",
+      "summary": "a progress line while `boot.install` or `boot.uninstall` runs",
+      "payload": {"size": [8, 208], "extensible": false, "fields": [
+        {"name": "zero", "type": "u32", "doc": "always 0"},
+        {"name": "ms", "type": "u32", "doc": "device milliseconds since its service started"},
+        {"name": "text", "type": "text", "encoding": "ascii", "max_bytes": 200, "doc": "ASCII, no NUL, at most `max_log_text` bytes"}
+      ]},
+      "doc": "Sent with seq 0 while an install writes the boot partition, as long as the tool keeps reading (the device stops sending after the first line that cannot be delivered). Lines like `xyf install step N value 0x...` mark the install's steps."
+    }
+  ],
+  "hello": {
+    "prefix": "XYF1",
+    "doc": "The `hello` text: `XYF1`, then these keys in this order, each as `;key=value`. A build's text never changes while it runs, except `stage2` and the stage-2 command's bit of `cmds`: both are set before the reply to the first `hello` of a boot when stage 2 loads, and cleared again if stage 2 stops answering as it should. Tools ignore keys they do not know and must not rely on the order.",
+    "keys": [
+      {"name": "service", "since": "1.0", "value": "usb", "doc": "the service that answers"},
+      {"name": "role", "since": "1.0", "value": "b", "doc": "the processor that answers"},
+      {"name": "proto", "since": "1.0", "source": "version", "doc": "protocol version `MAJOR.MINOR` (pre-v1 devices: `1`)"},
+      {"name": "install", "since": "1.0", "value": "stock-88a06a7e", "doc": "the boot-partition writer `boot.install` uses (the stock bootloader's own, at 0x88a06a7e)"},
+      {"name": "build", "since": "1.1", "source": "build", "max_bytes": 5, "doc": "XY Forever build number, decimal"},
+      {"name": "mode", "since": "1.1", "source": "mode", "max_bytes": 16, "doc": "build mode (`product`, the only mode with this service)"},
+      {"name": "payload", "since": "1.1", "constant": "max_payload", "doc": "`max_payload`"},
+      {"name": "read", "since": "1.1", "constant": "max_read", "doc": "`max_read`"},
+      {"name": "stage", "since": "1.1", "constant": "max_stage", "doc": "`max_stage`"},
+      {"name": "cmds", "since": "1.1", "source": "cmds", "doc": "the request types this build answers: 32 lowercase hex digits, a 128-bit number written most significant digit first, in which bit t (value 2^t) is set when type t is answered (Python: `int(cmds, 16) >> t & 1`). Derived from each command's build switch when the build is compiled; the stage-2 command's bit is set at run time while stage 2 is loaded"},
+      {"name": "dev", "since": "1.1", "source": "dev", "doc": "`1` when the build answers developer commands; absent otherwise"},
+      {"name": "stage2", "since": "1.6", "source": "stage2", "doc": "the loaded stage 2's version, decimal; `0` when none is loaded (no file, or it failed a check). Always the last key"}
+    ]
+  },
+  "golden": [
+    {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
+     "hex": "58460101000000004c8d0632"},
+    {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.13;install=stock-88a06a7e;build=172;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000010000007b001f000303ff00be;dev=1;stage2=0"}, "hex": "58468101ae00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31333b696e7374616c6c3d73746f636b2d38386130366137653b6275696c643d3137323b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030313030303030303762303031663030303330336666303062653b6465763d313b7374616765323d300ca9d072"},
+    {"name": "hello, answered by a pre-v1 device (build 153 and earlier)", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
+    {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,
+     "fields": {"path": "/yaffs2/firmware.version", "offset": 0, "length": 1024}, "hex": "58460302210000002f7961666673322f6669726d776172652e76657273696f6e000000000000040000689897a6"},
+    {"name": "file.read, file not found", "message": "file.read", "direction": "reply", "seq": 2, "status": "not_found",
+     "fields": {}, "hex": "584683020400000008000000a085651d"},
+    {"name": "any request before hello is refused", "message": "stage.begin", "direction": "reply", "seq": 3, "status": "state",
+     "fields": {}, "hex": "584690030400000003000000092c8611"},
+    {"name": "screen.read at offset 1024", "message": "screen.read", "direction": "request", "seq": 4, "fields": {"offset": 1024},
+     "hex": "584604040400000000040000616e1ba8"},
+    {"name": "stage the 4 bytes `test`", "message": "stage.begin", "direction": "request", "seq": 5,
+     "fields": {"size": 4, "crc32": 3632233996, "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"},
+     "hex": "5846100528000000040000000c7e7fd89f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08e9fa8ac6"},
+    {"name": "stage.data, 4 bytes received", "message": "stage.data", "direction": "reply", "seq": 6, "status": "ok",
+     "fields": {"received": 4}, "hex": "584691060800000000000000040000007dbfb5ee"},
+    {"name": "a write path outside the write area is refused", "message": "file.write_staged", "direction": "reply", "seq": 8, "status": "refused",
+     "fields": {"written": 0, "readback_crc": 0}, "hex": "584693080c0000000e00000000000000000000008489a955"},
+    {"name": "a common status comes alone, whatever on_error says", "message": "file.write_staged", "direction": "reply", "seq": 9, "status": "state",
+     "fields": {}, "hex": "584693090400000003000000941d9f6f"},
+    {"name": "reboot into the menu", "message": "device.reboot", "direction": "request", "seq": 7,
+     "fields": {"target": 2}, "hex": "584630070400000002000000b1108e5d"},
+    {"name": "an install log line", "message": "log", "direction": "event", "seq": 0,
+     "fields": {"zero": 0, "ms": 1234, "text": "xyf install step 1 value 0x00001000"}, "hex": "5846d0002b00000000000000d204000078796620696e7374616c6c207374657020312076616c756520307830303030313030305c419715"}
+  ],
+  "streams": [
+    {"name": "noise before a frame", "direction": "to_device",
+     "chunks": ["00ff58004613580d0a58460101000000004c8d0632"],
+     "frames": [{"type": "0x01", "seq": 1, "payload": ""}],
+     "doc": "bytes that are not a frame, including a lone `X` and an `X` not followed by `F`, then `hello`"},
+    {"name": "a bad CRC, then a good frame", "direction": "to_device",
+     "chunks": ["58460102000000009cf7a68a58460103000000002cdec648"],
+     "frames": [{"type": "0x01", "seq": 3, "payload": ""}],
+     "doc": "`hello` seq 2 with its last CRC byte changed is dropped; `hello` seq 3 after it is found"},
+    {"name": "a frame split at every byte", "direction": "to_device",
+     "chunks": ["58", "46", "01", "04", "00", "00", "00", "00", "3c", "02", "e6", "fa"],
+     "frames": [{"type": "0x01", "seq": 4, "payload": ""}],
+     "doc": "`hello` seq 4 arriving one byte per read"},
+    {"name": "two frames back to back", "direction": "to_device",
+     "chunks": ["58460105000000008c2b86c7584612060000000069216405"],
+     "frames": [{"type": "0x01", "seq": 5, "payload": ""}, {"type": "0x12", "seq": 6, "payload": ""}],
+     "doc": "`hello` seq 5 and `stage.end` seq 6 in one read: both are found, in order"},
+    {"name": "an oversized length", "direction": "to_device",
+     "chunks": ["584601074110000058460108000000003def163f"],
+     "frames": [{"type": "0x01", "seq": 8, "payload": ""}],
+     "doc": "a header announcing 4161 bytes (one above `max_payload`) is noise; `hello` seq 8 after it is found"},
+    {"name": "a frame cut short, then a frame", "direction": "to_device",
+     "chunks": ["58460409040000000004", "5846010a000000005dbcd645"],
+     "frames": [{"type": "0x01", "seq": 10, "payload": ""}],
+     "doc": "the first 10 of the 16 bytes of `screen.read` seq 9, then `hello` seq 10: the parser takes `hello`'s first 6 bytes as the rest of the cut frame, the CRC fails, and the rescan finds `hello`"},
+    {"name": "frames split across reads", "direction": "to_device",
+     "chunks": ["5846010b00", "000000ed95b678584612", "0c00000000c839d44f"],
+     "frames": [{"type": "0x01", "seq": 11, "payload": ""}, {"type": "0x12", "seq": 12, "payload": ""}],
+     "doc": "`hello` seq 11 and `stage.end` seq 12 cut into reads of 5, 10 and 9 bytes, the second spanning both frames"},
+    {"name": "an event and a reply back to back", "direction": "to_host",
+     "chunks": ["5846d0002b00000000000000d204000078796620696e7374616c6c207374657020312076616c756520307830303030313030305c4197155846a00d100000000000000001000000020000001c1200000d3af393"],
+     "frames": [{"type": "0xd0", "seq": 0, "payload": "00000000d204000078796620696e7374616c6c207374657020312076616c75652030783030303031303030"}, {"type": "0xa0", "seq": 13, "payload": "0000000001000000020000001c120000"}],
+     "doc": "a `log` event and the `boot.install` reply seq 13 in one read"},
+    {"name": "noise and a reply split across reads", "direction": "to_host",
+     "chunks": ["5846ff584691", "0e0800000000", "000000000400009b53dd3c"],
+     "frames": [{"type": "0x91", "seq": 14, "payload": "0000000000040000"}],
+     "doc": "`XF` and a byte, then the `stage.data` reply seq 14 in three reads"}
+  ],
+  "reserved": {
+    "doc": "Numbers decision 004 assigns for later items. Not answered by any build yet: nothing here exists on the wire.",
+    "statuses": [],
+    "renames": [],
+    "types": [
+      {"first": "0x60", "last": "0x7f", "kind": "dev", "item": "004", "doc": "new developer commands (0x60 is a test command today)"},
+      {"first": "0xd0", "last": "0xdf", "kind": "event", "item": "004", "doc": "events, seq 0 (0xD0 is log today; progress 0xD1 with item 4.3d)"}
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "provenance": "SHA-256 of the stock OP-XY files a developer copies from /upgrade/firmware/blackfin/bin/ over the stock dev menu's MTP, and of the public open-xy inputs scripts/setup.py fetches",
+  "stock": {
+    "1.2.1": {
+      "os.ldr": "60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f",
+      "bootloader.ldr": "139459f2a8b7bbe5cd9432d4870a758f4e9e9d7e875ebb10701144b73f40f75d"
+    },
+    "1.2.5": {
+      "os.ldr": "bed98a0011d2c5cb4f7fbd02fe9c6518ed56886586f975f6fce53c1d2c9d4283",
+      "bootloader.ldr": "74a90f7bc851783a8550c5550d9aa1c8e11aa120637ff35d9893f737478abdd3"
+    }
+  },
+  "open_xy": {
+    "repository": "https://github.com/etcetc000/open-xy",
+    "sdk_commit": "52c8de911a415e043fd4d1afc396c3869fcd1029",
+    "catalog_path": "profiles/opxy-1.2.1/content/op1_factory.json",
+    "catalog_sha256": "36d14444dcc12cac8f33784c4d0e96079cfa0b5042ac9edfe31d34cc9b303ff0",
+    "kit_url": "https://open-xy.com/kit.json",
+    "kit_version": "0.0.6",
+    "kit_sha256": "ca0c09570a4e49c250c5c0265ee2f6971c4e91d8c48f38c53007b7ec244e2423"
+  }
+}

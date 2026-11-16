@@ -1,0 +1,29 @@
+#ifndef XYF_CLOCK_HPP
+#define XYF_CLOCK_HPP
+#include <stdint.h>
+// Millisecond clock for the cold code (400 MHz CCLK; ms = (cycles >> 10) * 21 / 8192,
+// 0.13% fast, as before). The old formula ((units * 21) >> 13) overflowed its 32-bit
+// product after ~524 s, which is why link sessions were capped at 300 s and the menu
+// had to restart itself. ms_from_cycles is the exact floor(units * 21 / 8192) mod 2^32
+// of the full 64-bit cycle counter, computed in 32-bit pieces: it wraps cleanly every
+// ~49.7 days, so the unsigned difference of two readings is right across a wrap.
+namespace xyf { namespace clock {
+inline uint32_t ms_from_cycles(uint32_t low, uint32_t high) {
+    const uint32_t units_low = (low >> 10) | (high << 22), units_high = high >> 10;
+    // units * 21 = (21 * units_high) * 2^32 + (21 * (units_low >> 16)) * 2^16 + 21 * (units_low & 0xffff);
+    // the first two terms are multiples of 2^13, so the floor applies to the last one only.
+    return ((21u * units_high) << 19) + ((21u * (units_low >> 16)) << 3) + ((21u * (units_low & 0xffffu)) >> 13);
+}
+// Milliseconds for a 32-bit difference of cycles >> 10 (intervals up to ~3 h), without overflow.
+inline uint32_t ms_from_units(uint32_t units) {
+    return (units >> 13) * 21u + (((units & 0x1fffu) * 21u) >> 13);
+}
+#if defined(__bfin__)
+inline uint32_t ms() {
+    uint32_t low, high;
+    __asm__ volatile("%0 = CYCLES; %1 = CYCLES2;" : "=d"(low), "=d"(high));
+    return ms_from_cycles(low, high);
+}
+#endif
+} }
+#endif

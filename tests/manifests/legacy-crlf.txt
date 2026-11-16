@@ -1,0 +1,8 @@
+# XY Forever library entry
+name = Custom build 
+
+  # indented comment
+version=	9.9.9+0
+kind=custom
+bytes=12
+crc32=00000000

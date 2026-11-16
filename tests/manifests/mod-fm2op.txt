@@ -1,0 +1,8 @@
+# mods/opxy-1.2.1/<gen>/fm2op/info.txt (010, right column; + files.sha256)
+type=mod
+name=FM2OP
+version=v0.3.0
+machine=synth
+generation=kit-0.0.6
+source=github.com/open-xy/fm2op@4f2c9e1
+licence=MIT

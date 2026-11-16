@@ -1,0 +1,49 @@
+#ifndef XYF_MODS_IO_HPP
+#define XYF_MODS_IO_HPP
+#include <stdint.h>
+#include "xyf_mods.hpp"
+#include "xyf_menu.hpp"
+// The Mods page's work on processor B (plan 5.4e1): reads the newest complete mod package generation
+// under /yaffs2/xy-forever/mods/ through B's timed file client (read-only; one bounded request per step,
+// steps for at most slice_ms per menu-loop pass, so USB and the screen stay live), and starts, follows
+// and cancels the job through the USB service's own mods.apply start (usb_service mods_start). The page
+// writes nothing itself: every write is the job's (under tmp/job-<id>/, then its commit into the library).
+// The product build only (one link session and the job); elsewhere the menu says "not available".
+#if defined(XYF_ONE_SESSION) && defined(XYF_USB_FILE_WRITE)
+#define XYF_MODS_PAGE 1
+#endif
+namespace xy_forever { namespace mods_io {
+static const uint32_t slice_ms = 8, redraw_ms = 150, progress_ms = 200, read_bytes = 2048;   // 8.2: progress_ms
+static const char root[] = "/yaffs2/xy-forever/mods";
+#if defined(__bfin__) && defined(XYF_MODS_PAGE)
+// The page (kept for the whole boot: the toggles stay across visits).
+xyf::mods::Page& page();
+// The menu opened the page: reads the packages unless a complete list is already held.
+void open();
+// 4.8m2: the Settings page is shown (every pass): the reading starts as open() does when it is not running or
+// done (pump(true) then carries it; its base says whether Mod memory can be the 4 MiB layout). memory_flip: PLAY
+// on the Mod memory row: the pending choice flipped, or the line saying why not (xyf::mods::flip_memory).
+void prepare();
+const char* memory_flip();
+// A key while the page is shown (xyf::mods::key).
+xyf::mods::Effect key(uint32_t key, bool pressed);
+// One slice of the page's work, every menu-loop pass (shown: the page is on screen; when it is not, an
+// open folder is closed and the reading stops; a running job is still followed). Nonzero: draw again
+// (1: the page changed; 2, 8.2: only the building bar and its numbers moved, every progress_ms while a job runs).
+uint32_t pump(bool shown);
+// The longest pump pass this boot (ms).
+uint32_t longest_ms();
+// 8.4a: the saved configuration (xyf_config.hpp; read once the menu runs) and the save sequence. menu_state:
+// the menu's view of it (pending, save_blocked, save_note, continue_label, open_xy, hidden; 4.8m2: memory and
+// memory_pending, the Mod memory row); true when the home row's text or the Mod memory row changed. save_begin: the Save dialog's Save (the page then shows the sequence's progress;
+// STOP cancels while the build runs); save_state: save_running, then save_boot (the default is the saved
+// configuration: boot it) or save_failed (save_reason; the changes stay pending); save_done: taken.
+enum SaveState : uint32_t { save_idle = 0, save_running, save_boot, save_failed };
+bool menu_state(xyf::menu::State& app);
+void save_begin();
+uint32_t save_state();
+const char* save_reason();
+void save_done();
+#endif
+} }
+#endif

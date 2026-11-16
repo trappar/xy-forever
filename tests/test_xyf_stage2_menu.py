@@ -1,0 +1,264 @@
+"""Stage 2 main (ABI 2, --xyf-stage2-menu): the real stage-2 menu program run
+on the host against a scripted stage 1, stage 1's request decisions (same C++
+as the device), the 32-bit ABI layout (cross compiler), and the builder/source
+rules. No device execution."""
+import ctypes as C
+import os
+from pathlib import Path
+import re
+import struct
+import subprocess
+import sys
+import tempfile
+import unittest
+import zlib
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from xy_forever import hostbuild  # noqa: E402
+import xyf_build as builder
+from xy_forever import xyf_stage2 as S
+
+KEY_UI = (ROOT / 'target/key_ui.cpp').read_text()
+STAGE2_H = (ROOT / 'target/xyf_stage2.hpp').read_text()
+MENU = (ROOT / 'target/stage2_menu.cpp').read_text()
+FILE_BOOT = (ROOT / 'target/file_boot.cpp').read_text()
+MINUS, PLUS, PLAY, STOP, SHIFT = 53, 54, 51, 52, 55
+NEVER = 0xffffffff
+BOOT_DEFAULT, BOOT_ENTRY, MENU_FALLBACK, BOOT_BUILTIN, SET_DEFAULT, MTP, NOTE_UNAVAILABLE, NOTE_NO_ENTRY = range(8)
+F_CATALOG, F_SET_DEFAULT, F_MTP, F_UNINSTALL = 1, 2, 4, 8
+
+
+def press(key):
+    return [key | 1 << 8, key]
+
+
+def catalog_blob(entries, default=0xffffffff):
+    """XYC1 blob exactly as processor a encodes it (target/xyf_catalog.cpp)."""
+    body = struct.pack('<4I', 0x31435958, len(entries), default, 0)
+    for ident, name, kind, flags in entries:
+        body += (ident.encode().ljust(32, b'\0') + name.encode().ljust(48, b'\0') + b'1.0'.ljust(32, b'\0') +
+                 struct.pack('<BBH', kind, flags, 0))
+    return body + struct.pack('<I', zlib.crc32(body))
+
+
+LIBRARY = catalog_blob([('opxy-121', 'OP-XY 1.2.1', 1, 1), ('granular', 'open-xy: granular', 2, 7),
+                        ('opxy-125', 'OP-XY 1.2.5', 1, 1)], default=0)
+
+
+def build_stage2(tmp, tag):
+    lib = Path(tmp) / ('stage2-menu-%s.dylib' % tag)
+    sources = ['target/stage2_menu.cpp', 'target/xyf_menu.cpp', 'target/xyf_menu_view.cpp', 'target/ui_pages.cpp',
+               'target/ui_screens.cpp', 'target/ui_gfx.cpp', 'target/xyf_catalog.cpp', 'target/xyf_store.cpp',
+               'tests/stage2_menu_bridge.cpp']
+    hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
+                   '-ffreestanding', '-fno-builtin', '-fno-exceptions', '-fno-rtti',
+                   *[str(ROOT / s) for s in sources], '-o', str(lib)], check=True, capture_output=True)
+    lib = C.CDLL(str(lib))
+    lib.s2_run.argtypes = [C.POINTER(C.c_uint16), C.POINTER(C.c_uint), C.c_uint, C.c_uint, C.c_char_p, C.c_uint,
+                           C.c_uint, C.c_char_p, C.c_uint, C.POINTER(C.c_uint), C.POINTER(C.c_uint)]
+    lib.s2_run.restype = C.c_uint
+    lib.s2_constant.restype = C.c_uint
+    return lib
+
+
+class Stage2Program:
+    """One loaded stage 2 (its .data persists across runs, as on the device)."""
+    def __init__(self, lib):
+        self.lib = lib
+        self.fb = (C.c_uint16 * (480 * 256))()
+
+    def run(self, keys=(), lost=NEVER, blob=LIBRARY, features=F_CATALOG, note=None, abi=2):
+        arr = (C.c_uint * max(1, len(keys)))(*keys)
+        frames, ms = C.c_uint(0), C.c_uint(0)
+        exit = self.lib.s2_run(self.fb, arr, len(keys), lost, blob, len(blob) if blob else 0, features,
+                               note.encode() if note else None, abi, C.byref(frames), C.byref(ms))
+        return exit, frames.value, ms.value
+
+
+class Stage2MenuProgramTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-stage2-menu-')
+        cls.count = 0
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def fresh(self):
+        type(self).count += 1
+        return Stage2Program(build_stage2(self.tmp.name, self.count))
+
+    def test_constants_match_host_and_python(self):
+        lib = self.fresh().lib
+        values = [lib.s2_constant(i) for i in range(13)]
+        self.assertEqual(values, [S.ABI_HELLO, S.ABI_MENU, 0, 1, 2, 3, 4, 5, 1, 2, 4, 8, 32])
+
+    def test_unknown_stage1_gets_menu_without_drawing(self):
+        p = self.fresh()
+        self.assertEqual(p.run(abi=1)[:2], (1, 0))                  # exit_menu: stage 1 keeps its own menu
+        self.assertEqual(p.run(abi=3)[:2], (1, 0))
+
+    def test_continue_boot_once_and_set_default_requests(self):
+        p = self.fresh()
+        exit, frames, _ = p.run(press(PLAY))                       # main row 0: Continue
+        self.assertEqual(exit, 0)
+        self.assertGreaterEqual(frames, 1)
+        p = self.fresh()                                             # Library -> entry 1 -> PLAY: boot once
+        self.assertEqual(p.run(press(PLUS) + press(PLAY) + press(PLUS) + press(PLAY))[0], 2 | 1 << 8)
+        p = self.fresh()                                             # SHIFT+PLAY on entry 2: set default
+        keys = press(PLUS) + press(PLAY) + press(PLUS) + press(PLUS) + [SHIFT | 1 << 8] + press(PLAY)
+        self.assertEqual(p.run(keys)[0], 3 | 2 << 8)
+        p = self.fresh()                                             # Uninstall row -> confirm -> accept
+        self.assertEqual(p.run(press(MINUS) * 3 + press(PLAY) + press(PLUS) + press(PLAY))[0], 5)   # Uninstall (4.8: past Info, Settings)
+        p = self.fresh()                                             # 5.4e1: Mods -> the stage-1 menu runs the page
+        self.assertEqual(p.run(press(PLUS) * 2 + press(PLAY))[0], 1)  # 5.4e1b: right below Firmware library
+
+    def test_link_loss_and_idle_return_continue(self):
+        p = self.fresh()
+        self.assertEqual(p.run(press(PLUS), lost=1)[0], 0)
+        exit, frames, ms = self.fresh().run()
+        self.assertEqual((exit, frames), (0, 1))
+        self.assertGreater(ms, 60000)
+        self.assertLess(ms, 60100)
+
+    def test_invalid_or_withheld_catalog_means_no_library(self):
+        bad = bytearray(LIBRARY); bad[-1] ^= 1
+        keys = press(PLUS) + press(PLAY) + press(PLAY) + press(PLUS) * 2 + press(PLAY) + press(PLUS) + press(PLAY)
+        for blob, features in ((bytes(bad), F_CATALOG), (LIBRARY, 0), (None, F_CATALOG), (LIBRARY[:-1], F_CATALOG)):
+            # Empty library: PLAY goes back to main, PLUS twice moves to Uninstall (188: no MTP row), accepted:
+            # request 5 (not a boot of entry 0).
+            self.assertEqual(self.fresh().run(keys, blob=blob, features=features | F_UNINSTALL)[0], 5, (features, blob and len(blob)))
+        self.assertEqual(self.fresh().run(press(PLUS) + press(PLAY) + press(PLAY))[0], 2)   # with it: boot once 0
+
+    def test_reentry_keeps_place_shows_note_and_clears_shift(self):
+        p = self.fresh()
+        keys = press(PLUS) + press(PLAY) + press(PLUS) + [SHIFT | 1 << 8] + press(PLAY)
+        self.assertEqual(p.run(keys)[0], 3 | 1 << 8)                # set default 1 (SHIFT left held)
+        # Stage 1 answered with a note: main page, menu row and library row kept,
+        # SHIFT cleared, so PLAY, PLAY now boots entry 1 once.
+        exit, frames, _ = p.run(press(PLAY) + press(PLAY), note='Not available in this build.')
+        self.assertEqual(exit, 2 | 1 << 8)
+        self.assertGreaterEqual(frames, 2)
+
+    def test_draws_only_through_services_and_never_writes_outside_the_frame(self):
+        p = self.fresh()
+        canary = (C.c_uint16 * (480 * 256 + 64))()
+        for i in range(len(canary)):
+            canary[i] = 0xa5a5
+        frames, ms = C.c_uint(0), C.c_uint(0)
+        arr = (C.c_uint * 2)(*press(PLAY))
+        p.lib.s2_run(C.cast(C.byref(canary, 32 * 2), C.POINTER(C.c_uint16)), arr, 2, NEVER, LIBRARY, len(LIBRARY),
+                     F_CATALOG, None, 2, C.byref(frames), C.byref(ms))
+        self.assertTrue(all(canary[i] == 0xa5a5 for i in range(32)))
+        self.assertTrue(all(canary[i] == 0xa5a5 for i in range(32 + 480 * 256, len(canary))))
+
+
+class Stage1DecisionTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-stage2-decide-')
+        lib = Path(cls.tmp.name) / 'decide.dylib'
+        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
+                       '-ffreestanding', '-fno-builtin', str(ROOT / 'target/xyf_stage2.cpp'),
+                       str(ROOT / 'target/xyf_crc32.cpp'), str(ROOT / 'native/hash.cpp'),
+                       str(ROOT / 'tests/xyf_stage2_bridge.cpp'), '-o', str(lib)], check=True, capture_output=True)
+        cls.lib = C.CDLL(str(lib))
+        cls.lib.stage2_decide.argtypes = [C.c_uint, C.c_uint, C.c_uint, C.c_uint, C.POINTER(C.c_uint)]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def decide(self, exit, lost=0, count=3, features=F_CATALOG):
+        entry = C.c_uint(0xdead)
+        return self.lib.stage2_decide(exit, lost, count, features, C.byref(entry)), entry.value
+
+    def test_requests(self):
+        self.assertEqual(self.decide(0), (BOOT_DEFAULT, 0))
+        self.assertEqual(self.decide(1), (MENU_FALLBACK, 0))
+        self.assertEqual(self.decide(2 | 2 << 8), (BOOT_ENTRY, 2))
+        self.assertEqual(self.decide(2 | 3 << 8), (NOTE_NO_ENTRY, 0))       # out of range
+        self.assertEqual(self.decide(2 | 0 << 8, features=0), (NOTE_NO_ENTRY, 0))   # no catalog
+        self.assertEqual(self.decide(2 | 1 << 8, count=0), (NOTE_NO_ENTRY, 0))
+        # Set default only where the build offers it (write builds), and only in range.
+        self.assertEqual(self.decide(3 | 1 << 8), (NOTE_UNAVAILABLE, 0))
+        self.assertEqual(self.decide(3 | 1 << 8, features=F_CATALOG | F_SET_DEFAULT), (SET_DEFAULT, 1))
+        self.assertEqual(self.decide(3 | 5 << 8, features=F_CATALOG | F_SET_DEFAULT), (NOTE_NO_ENTRY, 0))
+        self.assertEqual(self.decide(4), (NOTE_UNAVAILABLE, 0))
+        self.assertEqual(self.decide(4, features=F_MTP), (MTP, 0))
+        self.assertEqual(self.decide(5), (NOTE_UNAVAILABLE, 0))
+        self.assertEqual(self.decide(5, features=F_UNINSTALL), (NOTE_UNAVAILABLE, 0))   # no uninstall yet
+        for unknown in (6, 0xff, 0xffffffff, 0x1234500):                  # as ABI 1: continue
+            self.assertEqual(self.decide(unknown)[0], BOOT_DEFAULT)
+        for code in (0, 1, 2 | 1 << 8, 3, 4, 5, 9):                       # link lost wins
+            self.assertEqual(self.decide(code, lost=1), (BOOT_BUILTIN, 0))
+
+
+class Stage2MenuRulesTest(unittest.TestCase):
+    def test_device_layout_32_bit(self):
+        gxx = Path(os.environ.get('XYF_TOOLCHAIN') or ROOT.parent / 'tools/blackfin') / 'bin/bfin-elf-g++'
+        if not gxx.exists():
+            self.skipTest('Blackfin toolchain absent')
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / 'layout.cpp'
+            src.write_text('#include <stddef.h>\n#include "xyf_stage2.hpp"\nusing namespace xyf::stage2;\n'
+                           'static_assert(sizeof(Abi) == 32 && sizeof(Abi2) == 48, "size");\n'
+                           'static_assert(offsetof(Abi2, v1) == 0 && offsetof(Abi2, catalog) == 32 && '
+                           'offsetof(Abi2, catalog_bytes) == 36 && offsetof(Abi2, features) == 40 && '
+                           'offsetof(Abi2, note) == 44, "offsets");\n'
+                           'static_assert(offsetof(Abi, services) == 28 && offsetof(Services, now_ms) == 16, "v1");\n'
+                           'static_assert(abi == 2 && this_stage1 == 2, "menu stage 1");\n')
+            subprocess.run([str(gxx), '-mcpu=bf707', '-std=gnu++11', '-ffreestanding', '-fsyntax-only',
+                            '-DXYF_STAGE2_MENU=1', '-I', str(ROOT / 'target'), str(src)], check=True,
+                           capture_output=True)
+            src.write_text('#include "xyf_stage2.hpp"\nstatic_assert(xyf::stage2::abi == 1 && '
+                           'xyf::stage2::this_stage1 == 1, "hello stage 1");\n')
+            subprocess.run([str(gxx), '-mcpu=bf707', '-std=gnu++11', '-ffreestanding', '-fsyntax-only',
+                            '-I', str(ROOT / 'target'), str(src)], check=True, capture_output=True)
+
+    def test_stage1_runner_rules(self):
+        menu = KEY_UI[KEY_UI.index('#if defined(XYF_STAGE2_MENU)\n// ABI 2'):KEY_UI.index('#else\n// Runs a loaded')]
+        self.assertEqual(menu.count('xyf_stage2_enter('), 1)              # one call site per variant
+        self.assertIn('xyf_stage2_enter(entry, &abi2.v1)', menu)
+        self.assertEqual(KEY_UI.count('xyf_stage2_enter(entry, &abi)'), 1)  # hello variant unchanged
+        self.assertIn('round != max_rounds', menu)
+        self.assertIn('abi2.v1.bytes = sizeof(abi2)', menu)
+        # Writes only through the existing set_default path, only in write builds.
+        write = menu.index('#if defined(XYF_STATE_WRITE)')
+        self.assertLess(write, menu.index('feature_set_default'))
+        self.assertLess(write, menu.index('xyf_boot::set_default(chosen)'))
+        self.assertNotRegex(menu, r'write_state|unlink|install|06a7e')
+        self.assertIn('const uint8_t* catalog_blob(uint32_t& bytes)', FILE_BOOT)
+
+    def test_stage2_program_rules(self):
+        self.assertIn('section(".text.entry")', MENU)
+        self.assertNotRegex(MENU, r'0x8[89a][0-9a-f]{5}|0x11[0-9a-f]{6}|0x20[0-9a-f]{6}')   # no stock addresses
+        self.assertIn('return stage2::exit_menu;', MENU)                   # unknown stage 1
+        self.assertIn('event == stage2::event_link_lost', MENU)
+        self.assertNotRegex(MENU, r'reinterpret_cast<[^>]*\*>\(0x')        # no absolute pointers
+
+    def test_report_decoder_names_requests(self):
+        from xy_forever.census import STAGE2_REQUESTS, stage2_exit_name
+        block = re.search(r'enum Request : uint32_t \{([^}]+)\}', STAGE2_H).group(1)
+        names = re.findall(r'request_(\w+) = (\d+)', block)
+        self.assertEqual([n for n, _ in names], STAGE2_REQUESTS)
+        self.assertEqual([int(v) for _, v in names], list(range(len(STAGE2_REQUESTS))))
+        self.assertEqual([stage2_exit_name(x) for x in (0, 1, 2 | 1 << 8, 3 | 2 << 8, 4, 5, 9, 0xffffffff)],
+                         ['continue', 'menu', 'boot_once 1', 'set_default 2', 'mtp', 'uninstall', 9, None])
+
+    def test_builder_mode(self):
+        self.assertEqual(builder.MODES['xyf-stage2-menu'], ('xyf-stage2-menu-034', 'stage2m-034-#.bin'))
+        self.assertEqual(builder.FILE_VARIANT_REPORTS['xyf-stage2-menu'], 'file-034-#.bin')
+        self.assertNotIn('xyf-stage2-menu', builder.WRITE_AUDIT_MODES)    # no write of any kind
+        self.assertIn('target/stage2_menu.cpp', builder.own_sources())
+        image = b'\x01\x02' * 64
+        for abi in (S.ABI_HELLO, S.ABI_MENU):
+            self.assertEqual(S.inspect(S.pack(image, S.WINDOW[0], S.WINDOW[0], 1, 'x', abi=abi))['abi'], abi)
+        with self.assertRaises(ValueError):
+            S.pack(image, S.WINDOW[0], S.WINDOW[0], 1, 'x', abi=4)
+
+
+if __name__ == '__main__':
+    unittest.main()
