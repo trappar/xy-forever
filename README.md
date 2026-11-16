@@ -8,16 +8,24 @@ and the dev menu (hold COM) remains available for recovery.
 
 ## Getting started
 
-Clone into an empty workspace folder (the clone's parent also holds `private/` and `tools/`):
+Make an empty workspace folder, open Claude Code in it and paste this prompt:
+
+> Set me up to develop XY Forever in this folder. Clone the private GitHub repository
+> trappar/xy-forever here with `gh repo clone trappar/xy-forever`, then read xy-forever/AGENTS.md
+> and follow xy-forever/ONBOARDING.md with me from the first step. Run every command yourself; ask
+> me only for what needs my hands (the OP-XY) or my decision. When setup is done, tell me how to
+> start the next session.
+
+Later sessions: open Claude Code in the workspace folder (or `xy-forever/`) and say "Continue
+development". By hand instead (Python 3.9+; the workspace also holds `private/` and `tools/`):
 
 ```sh
-mkdir xyf && cd xyf && git clone git@github.com:trappar/xy-forever.git && cd xy-forever
-python3 scripts/setup.py bootstrap      # private folder, toolchain, local files, npm; safe to rerun
+mkdir xyf && cd xyf && gh repo clone trappar/xy-forever && cd xy-forever
+python3 scripts/setup.py bootstrap      # private folder, toolchain download, local files, npm; safe to rerun
 ```
 
-Then open Claude Code in `xy-forever/` and say "Continue development". Step by step, with
-what bootstrap does and what it leaves to you (the stock files off your OP-XY):
-[ONBOARDING.md](ONBOARDING.md).
+Step by step, with what bootstrap does and what it leaves to you (the stock files off your
+OP-XY): [ONBOARDING.md](ONBOARDING.md).
 
 Status: under development, installed and tested on one device. Not for general
 use. Roadmap: [docs/PLAN.md](docs/PLAN.md).
@@ -50,11 +58,11 @@ docs/             PLAN, STATUS, SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORA
 
 ## Requirements
 
-- macOS (arm64) or Windows x86_64 host with Python 3.9+ (standard library only; open-xy's
-  `sdk.py` needs 3.11) and clang for the host tests. Node 22.18+ for `clients/ts` and `web/`.
-- The Blackfin toolchain (`bfin-elf` GCC 8) from the Open-XY toolchain build, at
-  `../tools/blackfin` or `$XYF_TOOLCHAIN`. Its files are checked against
-  `toolchains.json`.
+- macOS (arm64) or Windows x86_64 host with Python 3.9+ (standard library only) and clang
+  for the host tests. Node 22.18+ for `clients/ts` and `web/`.
+- The Blackfin toolchain (`bfin-elf` GCC 8): Open-XY's `toolchain-1` release, which
+  `setup.py bootstrap` downloads into `../tools/blackfin` (or `$XYF_TOOLCHAIN`). The archive is
+  checked against `stock.json` and every file against `toolchains.json`.
 - Private inputs outside the repo (`../private/` or `$XYF_PRIVATE`): the stock 1.2.1
   `os.ldr` and `bootloader.ldr`, and the decrypted official packages. They are not
   distributed. Tests that need them skip when they are absent. `python3 scripts/setup.py`

@@ -7,13 +7,15 @@
                                                    (the two files, or a copied /upgrade/ tree)
     python3 scripts/setup.py fixtures              what tests need from the stock pair + public open-xy
     python3 scripts/setup.py doctor                what is set up, what is missing, what will skip
-    python3 scripts/setup.py bootstrap [--workspace DIR] [--dry-run]
+    python3 scripts/setup.py bootstrap [--workspace DIR] [--dry-run] [--toolchain-archive ZIP]
                                                    all of the above that needs no OP-XY, plus the toolchain
-                                                   (public open-xy), docs/STATUS.md and npm ci; safe to rerun
+                                                   (open-xy's toolchain-1 release, or ZIP already downloaded),
+                                                   docs/STATUS.md and npm ci; safe to rerun
 
 The stock pair comes from your own OP-XY on stock 1.2.1: in the stock dev menu's MTP, copy
 /upgrade/firmware/blackfin/bin/os.ldr and bootloader.ldr (or the whole /upgrade/ folder).
-Pins: stock.json. Network: fixtures clones public open-xy and fetches its published kit.
+Pins: stock.json. Network: fixtures clones public open-xy and fetches its published kit; bootstrap
+downloads the toolchain archive.
 """
 import argparse
 import hashlib
@@ -25,7 +27,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
+import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
@@ -37,8 +41,7 @@ LAYOUT = ('FIRMWARE', 'STOCK_121', 'XYF', 'BUILDS', 'RECOVERY', 'FIXTURES', 'REP
           'SESSIONS', 'MOD_PACKAGES')
 
 
-MIN_PYTHON = (3, 9)                 # XY Forever's own scripts and tests
-SDK_PYTHON = (3, 11)                # open-xy's sdk.py (`sdk.py toolchain fetch`, ONBOARDING step 2)
+MIN_PYTHON = (3, 9)                 # XY Forever's own scripts and tests (and bootstrap)
 
 
 class SetupError(Exception):
@@ -52,15 +55,6 @@ def python_problem(version=None):
         return None
     return ('Python %d.%d.%d is too old: XY Forever needs 3.9+. Run a newer one by name, e.g. '
             '`python3.12 scripts/setup.py doctor` (macOS: `brew install python@3.12`, python.org, mise or pyenv)' % v)
-
-
-def python_warning(version=None):
-    """None, or a note that open-xy's sdk.py needs a newer Python than this one (3.11+)."""
-    v = tuple((version or sys.version_info)[:3])
-    if v[:2] >= SDK_PYTHON or python_problem(v):
-        return None
-    return ('Python %d.%d.%d: fine for XY Forever; 3.11+ is needed for open-xy\'s sdk.py toolchain fetch '
-            '(ONBOARDING step 2): run a newer one by name there, e.g. `python3.12 sdk.py toolchain fetch`' % v)
 
 
 def require_python(version=None):
@@ -350,22 +344,17 @@ def cmd_fixtures(args):
 # doctor
 
 def toolchain_hint():
-    candidate = paths.OPEN_XY_UPSTREAM / 'local/toolchain'
-    lines = ['Open-XY\'s pinned toolchain: in an open-xy clone run `python sdk.py toolchain fetch` (the toolchain-1 '
-             'release: darwin-arm64, windows-x86_64; linux-x86_64: build it, open-xy docs/build.md "On Linux"); '
-             'it lands in local/toolchain. Then link it at %s or set XYF_TOOLCHAIN.' % (REPO.parent / 'tools/blackfin')]
-    if candidate.is_dir():
-        lines.append('found %s: try XYF_TOOLCHAIN=%s' % (candidate, candidate))
-    return lines
+    return ['`python3 scripts/setup.py bootstrap` downloads open-xy\'s toolchain-1 release into %s (darwin-arm64, '
+            'windows-x86_64); linux-x86_64: build it (open-xy docs/build.md "On Linux"), then put it there or set '
+            'XYF_TOOLCHAIN.' % (REPO.parent / TOOLCHAIN_DIR)]
 
 
 def doctor():
     """[(label, ok, detail)] plus the list of what will skip."""
     from xy_forever import sim
     rows, skips = [], []
-    problem, warning = python_problem(), python_warning()
-    rows.append(('python', False if problem else 'warn' if warning else True,
-                 problem or warning or '%d.%d.%d' % tuple(sys.version_info[:3])))
+    problem = python_problem()
+    rows.append(('python', problem is None, problem or '%d.%d.%d' % tuple(sys.version_info[:3])))
     rows.append(('private folder', paths.PRIVATE_ROOT.is_dir(), '%s (%s)' % (paths.PRIVATE_ROOT, private_source())))
     problem = toolchain_problem()
     rows.append(('toolchain', problem is None, problem or 'authenticated against toolchains.json'))
@@ -412,7 +401,7 @@ def doctor():
 def cmd_doctor(args):
     rows, skips = doctor()
     for label, ok, detail in rows:
-        print('%-4s %-20s %s' % (('warn' if ok == 'warn' else 'ok' if ok else '--') if label else '', label, detail))
+        print('%-4s %-20s %s' % (('ok' if ok else '--') if label else '', label, detail))
     print('tests that will skip:')
     for s in skips or ['none of the known private-only groups']:
         print('     ' + s)
@@ -422,10 +411,21 @@ def cmd_doctor(args):
 
 # bootstrap
 
-OPEN_XY_TOOLS = 'tools/open-xy'         # <workspace>/tools/open-xy: public open-xy, only for `sdk.py toolchain fetch`
-TOOLCHAIN_LINK = 'tools/blackfin'       # <workspace>/tools/blackfin -> tools/open-xy/local/toolchain
-SDK_PYTHONS = ('python3.14', 'python3.13', 'python3.12', 'python3.11')
+TOOLCHAIN_DIR = 'tools/blackfin'        # <workspace>/tools/blackfin: open-xy's toolchain-1 release, unpacked
 NPM_DIRS = ('clients/ts', 'web')         # web uses clients/ts: in this order
+WORKSPACE_GUIDE = """# XY Forever workspace
+
+This folder is an XY Forever development workspace, set up by `%(repo)s/scripts/setup.py bootstrap`.
+
+| Path | What |
+|---|---|
+| `%(repo)s/` | the XY Forever repository (git). **Read `%(repo)s/AGENTS.md` first and follow it: all its rules apply.** |
+| `%(private)s/` | stock firmware, keys, builds, device reports: local only, never committed |
+| `tools/` | the Blackfin toolchain (`tools/blackfin`): local only, never committed |
+
+"Continue development" works from here: treat `%(repo)s/` as the repository for every command (run
+them there, as its docs show), and keep everything else in this folder out of git.
+"""
 
 
 def host_name():
@@ -434,30 +434,59 @@ def host_name():
     return platform.system().lower() + '-' + {'aarch64': 'arm64', 'amd64': 'x86_64'}.get(machine, machine)
 
 
-def python_version(exe):
-    """(major, minor) of the interpreter exe, or None when it does not run (e.g. a shim without a version)."""
-    r = subprocess.run([exe, '-c', 'import sys; print("%d %d" % sys.version_info[:2])'], capture_output=True, text=True)
-    try:
-        return tuple(int(n) for n in r.stdout.split()) if r.returncode == 0 else None
-    except ValueError:
-        return None
+def download(url, path):
+    """url into path (stdlib only; GitHub wants a User-Agent)."""
+    request = urllib.request.Request(url, headers={'User-Agent': 'xy-forever-setup'})
+    with urllib.request.urlopen(request, timeout=120) as response, Path(path).open('wb') as handle:
+        shutil.copyfileobj(response, handle, 1 << 20)
 
 
-def sdk_python():
-    """An interpreter for open-xy's sdk.py (3.11+): this one, else python3.14 .. python3.11 on PATH."""
-    if tuple(sys.version_info[:2]) >= SDK_PYTHON:
-        return sys.executable
-    broken = []
-    for name in SDK_PYTHONS:
-        exe = shutil.which(name)
-        if exe and (python_version(exe) or (0,)) >= SDK_PYTHON:
-            return exe
-        broken += [name] if exe else []
-    raise SetupError("open-xy's `sdk.py toolchain fetch` needs Python 3.11+; this is %d.%d.%d and none of %s runs on "
-                     "PATH%s. Install one (macOS: `brew install python@3.12`; or python.org, mise, pyenv), then rerun "
-                     "`python3 scripts/setup.py bootstrap`: it carries on where it stopped"
-                     % (tuple(sys.version_info[:3]) + (', '.join(SDK_PYTHONS), ' (%s is there but does not run: a '
-                        'version manager shim with no version set?)' % ', '.join(broken) if broken else '')))
+def unpack(archive, folder, destination):
+    """folder/* of the zip archive into destination, every entry inside it, executable bits kept (zipfile drops
+    them: they are in the high 16 bits of external_attr)."""
+    with zipfile.ZipFile(str(archive)) as files:
+        for info in files.infolist():
+            parts = info.filename.split('/')
+            if parts[0] != folder or '..' in parts or '\\' in info.filename or info.filename.startswith('/'):
+                raise SetupError('unexpected entry in the toolchain archive: %s' % info.filename)
+            if info.is_dir() or len([p for p in parts if p]) == 1:
+                continue
+            target = destination.joinpath(*parts[1:])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with files.open(info) as source, target.open('wb') as handle:
+                shutil.copyfileobj(source, handle, 1 << 20)
+            if (info.external_attr >> 16) & 0o111:
+                target.chmod(0o755)
+
+
+def install_toolchain(record, destination, archive=None):
+    """Download record's archive (or use archive), check its SHA-256, unpack it next to destination, check every
+    file against toolchains.json, then move it into place. Nothing is left behind on a failure."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.blackfin-', dir=str(destination.parent)) as tmp:
+        if archive is None:
+            archive = Path(tmp) / 'archive.zip'
+            try:
+                download(record['url'], archive)
+            except (urllib.error.URLError, OSError) as e:
+                note = (' (macOS: run "Install Certificates.command" in the Python folder in Applications)'
+                        if 'CERTIFICATE_VERIFY_FAILED' in str(e) else '')
+                raise SetupError('could not download %s (%s)%s. Download it in a browser, then run '
+                                 '`python3 scripts/setup.py bootstrap --toolchain-archive <the zip>`'
+                                 % (record['url'], e, note))
+        got = sha256(archive)
+        if got != record['sha256']:
+            raise SetupError('toolchain archive hash mismatch: %s is %s, the pin (stock.json) is %s: not the '
+                             'toolchain-1 release for this host' % (archive, got, record['sha256']))
+        staged = Path(tmp) / 'blackfin'
+        try:
+            unpack(archive, record['folder'], staged)
+        except zipfile.BadZipFile as e:
+            raise SetupError('%s is not a readable zip (%s)' % (archive, e))
+        problem = toolchain_problem(staged)
+        if problem:
+            raise SetupError('the unpacked toolchain fails its pins (toolchains.json): %s' % problem)
+        os.replace(str(staged), str(destination))
 
 
 def fixtures_missing():
@@ -474,12 +503,14 @@ def fixtures_missing():
 class Bootstrap:
     """`setup.py bootstrap`: every step looks first and acts only on what is missing. Never deletes anything."""
 
-    def __init__(self, workspace=None, repo=REPO, config=None, dry_run=False, environ=os.environ):
+    def __init__(self, workspace=None, repo=REPO, config=None, dry_run=False, environ=os.environ,
+                 toolchain_archive=None):
         self.repo = Path(repo).resolve()
         self.workspace = Path(workspace or self.repo.parent).expanduser().resolve()
         self.config = Path(config) if config else self.repo / paths.LOCAL_CONFIG.name
         self.dry_run, self.environ, self.actions = dry_run, environ, []
         self.private_root = None
+        self.toolchain_archive = Path(toolchain_archive).expanduser().resolve() if toolchain_archive else None
 
     def do(self, what, action, *args, **kw):
         self.actions.append(what)
@@ -496,7 +527,7 @@ class Bootstrap:
     def run(self):
         require_python()
         print('bootstrap: workspace %s%s' % (self.workspace, ' (dry run: nothing changes)' if self.dry_run else ''))
-        for step in (self.private, self.local_files, self.toolchain, self.npm, self.fixtures):
+        for step in (self.private, self.local_files, self.workspace_guide, self.toolchain, self.npm, self.fixtures):
             step()
         if not self.actions:
             print('nothing to do: the workspace is already set up; nothing changed')
@@ -552,65 +583,49 @@ class Bootstrap:
             self.do('add an empty "leak_patterns" list to %s' % self.config.name, ensure_leak_patterns, self.config)
 
     def toolchain(self):
-        link = self.workspace / TOOLCHAIN_LINK
+        folder = self.workspace / TOOLCHAIN_DIR
         if toolchain_problem() is None:
             print('toolchain: ok (authenticated against toolchains.json)')
             return
-        if (link.exists() or link.is_symlink()) and toolchain_problem(link) is None:
-            print('toolchain: ok at %s' % link)
-            return self.toolchain_note(link)
+        if (folder.exists() or folder.is_symlink()) and toolchain_problem(folder) is None:
+            print('toolchain: ok at %s' % folder)
+            return self.toolchain_note(folder)
+        if folder.exists() or folder.is_symlink():
+            raise SetupError('%s exists but fails its pins (%s): move it aside, then rerun bootstrap (it never deletes)'
+                             % (folder, toolchain_problem(folder)))
         host = host_name()
+        record = PINS['toolchain']['archives'].get(host)
         if host == 'linux-x86_64':
             print('toolchain: missing; open-xy publishes no download for linux-x86_64: build it with Docker '
-                  '(open-xy docs/build.md, "On Linux"), then link it at %s or set XYF_TOOLCHAIN' % link)
+                  '(open-xy docs/build.md, "On Linux"), then put it at %s or set XYF_TOOLCHAIN' % folder)
             return
-        if host not in json.loads((REPO / 'toolchains.json').read_text())['hosts']:
-            print('toolchain: no pinned toolchain for %s (toolchains.json): use macOS arm64, Windows x86_64 or '
+        if not record:
+            print('toolchain: no pinned toolchain for %s (stock.json): use macOS arm64, Windows x86_64 or '
                   'Linux x86_64' % host)
             return
-        if link.exists() or link.is_symlink():
-            raise SetupError('%s exists but fails its pins (%s): move it aside, then rerun bootstrap (it never deletes)'
-                             % (link, toolchain_problem(link)))
-        clone = self.workspace / OPEN_XY_TOOLS
-        fetched = clone / 'local/toolchain'
-        print("toolchain: missing; getting open-xy's pinned toolchain-1 for %s" % host)
-        if not clone.exists():
-            url = PINS['open_xy']['repository']
-            self.do('clone %s into %s' % (url, clone), run, ['git', 'clone', '--quiet', url, str(clone)])
-        elif not (clone / 'sdk.py').is_file():
-            raise SetupError('%s is not an open-xy clone (no sdk.py): move it aside, then rerun bootstrap' % clone)
-        if fetched.exists():
-            problem = toolchain_problem(fetched)
-            if problem:
-                raise SetupError('%s fails its pins (%s): remove it, then rerun bootstrap' % (fetched, problem))
-        else:
-            try:
-                python = sdk_python()
-            except SetupError as e:
-                if not self.dry_run:
-                    raise
-                self.actions.append('stop')
-                print('  would stop: ' + str(e))
-                return
-            self.do('run `%s sdk.py toolchain fetch` in %s (a download)' % (python, clone), self.fetch, python, clone)
-        self.do('link %s -> %s' % (link, fetched), self.link, fetched, link)
-        self.toolchain_note(link)
+        if self.toolchain_archive and not self.toolchain_archive.is_file():
+            raise SetupError('--toolchain-archive %s: no such file' % self.toolchain_archive)
+        print("toolchain: missing; open-xy's toolchain-1 release for %s goes into %s" % (host, folder))
+        source = ('%s (given)' % self.toolchain_archive) if self.toolchain_archive else 'download %s' % record['url']
+        self.do('%s, check its SHA-256, unpack it, check every file against toolchains.json' % source,
+                install_toolchain, record, folder, self.toolchain_archive)
+        self.toolchain_note(folder)
 
-    def fetch(self, python, clone):
-        print('     (Python %s)' % '.'.join(map(str, python_version(python) or ('?',))), flush=True)
-        if subprocess.run([python, 'sdk.py', 'toolchain', 'fetch'], cwd=str(clone)).returncode:
-            raise SetupError("open-xy's `sdk.py toolchain fetch` failed (its output is above): fix that, then rerun "
-                             "bootstrap")
-
-    def link(self, fetched, link):
-        link.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.symlink(str(fetched), str(link), target_is_directory=True)
-        except OSError as e:
-            raise SetupError('could not link %s (%s): set XYF_TOOLCHAIN=%s in every shell that builds' % (link, e, fetched))
-        problem = toolchain_problem(link)
-        if problem:
-            raise SetupError('%s fails its pins after the fetch: %s' % (link, problem))
+    def workspace_guide(self):
+        if self.workspace not in self.repo.parents:
+            print('workspace AGENTS.md: skipped (%s is not inside the workspace %s)' % (self.repo, self.workspace))
+            return
+        repo = self.repo.relative_to(self.workspace).as_posix()
+        private = (self.private_root.relative_to(self.workspace).as_posix()
+                   if self.workspace in self.private_root.parents else str(self.private_root))
+        for name, text in (('AGENTS.md', WORKSPACE_GUIDE % {'repo': repo, 'private': private}),
+                           ('CLAUDE.md', '@AGENTS.md\n')):
+            path = self.workspace / name
+            if path.exists():
+                print('workspace %s: present (left as it is; bootstrap never overwrites it)' % name)
+            else:
+                print('workspace %s: missing' % name)
+                self.do('write %s (the workspace guide for agents)' % path, path.write_text, text)
 
     def toolchain_note(self, link):
         if self.environ.get('XYF_TOOLCHAIN'):
@@ -649,14 +664,16 @@ class Bootstrap:
                       '(ONBOARDING.md step 4).' % incoming,
                       'python3 scripts/setup.py import-stock %s' % incoming,
                       'python3 scripts/setup.py fixtures']
-        steps.append('Open Claude Code in %s and say "Continue development".' % self.repo)
+        where = ('%s (or %s)' % (self.workspace, self.repo) if (self.workspace / 'AGENTS.md').is_file()
+                 and self.workspace in self.repo.parents else str(self.repo))
+        steps.append('Open Claude Code in %s and say "Continue development".' % where)
         print('\nNext:')
         for n, step in enumerate(steps, 1):
             print('  %d. %s' % (n, step))
 
 
 def cmd_bootstrap(args):
-    return Bootstrap(args.workspace, dry_run=args.dry_run).run()
+    return Bootstrap(args.workspace, dry_run=args.dry_run, toolchain_archive=args.toolchain_archive).run()
 
 
 def main(argv=None):
@@ -671,6 +688,8 @@ def main(argv=None):
     b = sub.add_parser('bootstrap', help='set up this workspace (all that needs no OP-XY); safe to rerun')
     b.add_argument('--workspace', help="the folder that holds this clone, private/ and tools/ (default: the clone's parent)")
     b.add_argument('--dry-run', action='store_true', help='print every action without doing it')
+    b.add_argument('--toolchain-archive', metavar='ZIP', help="open-xy's toolchain-1 release zip for this host, already "
+                   'downloaded (default: bootstrap downloads it)')
     args = p.parse_args(argv)
     try:
         return {'init': cmd_init, 'import-stock': cmd_import_stock, 'fixtures': cmd_fixtures,

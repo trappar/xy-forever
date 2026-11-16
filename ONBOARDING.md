@@ -1,7 +1,7 @@
 # Onboarding
 
-From a fresh clone to working on the plan, for the developer's coding agent: follow the steps in
-order with the developer. Run every command yourself; ask the developer only for what needs their
+From an empty workspace folder to working on the plan, for the developer's coding agent: follow
+the steps in order with the developer. Run every command yourself; ask the developer only for what needs their
 hands (the OP-XY, a file copy over MTP) or their decision, one question at a time, each with your
 recommendation. Stop at the first step that fails, fix what is yours to fix, say plainly what is
 missing, and resume there. Steps 7 and 8 (the device) have not yet been run end to end: report
@@ -10,10 +10,9 @@ where they stall, and fix this file. Budget: 150 lines.
 ## 0. What the developer needs
 
 - A host computer: macOS on Apple silicon (the tested host; toolchain pins also exist for Windows
-  and Linux x86_64, USB tools untested there). Python 3.9+ for XY Forever; 3.11+ for open-xy's
-  `sdk.py toolchain fetch` (step 2: bootstrap finds e.g. `python3.12` on PATH), git, `gh`
-  (GitHub CLI, logged in: `gh auth status`; step 9 claims items with it), clang++ (simulator, host
-  bridges), Node 22.18+ or 23.6+ (`clients/ts`, `web/`).
+  and Linux x86_64, USB tools untested there). Python 3.9+ (macOS's own `python3` will do), git,
+  `gh` (GitHub CLI, logged in: `gh auth status`; step 1 clones with it, step 9 claims items),
+  clang++ (simulator, host bridges), Node 22.18+ or 23.6+ (`clients/ts`, `web/`).
 - An OP-XY still on stock 1.2.1, never updated to 1.2.5: a 1.2.5 device cannot run XY Forever,
   and teenage engineering's built-in updater cannot downgrade it. To tell: the version the OS shows
   is 1.2.1, te-boot (hold COM while switching on) shows "3. dev menu" (1.2.5 has none; on 1.2.1,
@@ -23,19 +22,21 @@ where they stall, and fix this file. Budget: 150 lines.
 
 ## 1. Bootstrap the workspace
 
+Start in the workspace folder (where Claude Code was opened); it ends up as:
 ```text
 <workspace>/
+  AGENTS.md, CLAUDE.md  the workspace guide (bootstrap writes them if absent; never overwritten)
   xy-forever/      this checkout
-  tools/open-xy/   public open-xy, only for its `sdk.py toolchain fetch` (step 2)
-  tools/blackfin/  link to tools/open-xy/local/toolchain, or anywhere with XYF_TOOLCHAIN
+  tools/blackfin/  open-xy's toolchain-1 release, unpacked by bootstrap (or anywhere with XYF_TOOLCHAIN)
   private/         firmware, builds, device reports, evidence, dev-menu kits: never in git
 ```
 - Run-time loading (plan 8.9) lives on the private fork `trappar/open-xy`, branch `runtime-loading`
   (on upstream `ba943a8`): clone it to `<workspace>/open-xy` only for items that need it. It is not
-  the pinned upstream clone `fixtures` makes for open-xy facts (AGENTS.md), nor `tools/open-xy`.
+  the pinned upstream clone `fixtures` makes for open-xy facts (AGENTS.md).
 
 ```sh
-cd <workspace>/xy-forever
+gh repo clone trappar/xy-forever      # only if xy-forever/ is absent (from the workspace folder)
+cd xy-forever
 python3 scripts/setup.py bootstrap    # only what is missing; never deletes; --dry-run: print, change nothing
 ```
 
@@ -43,22 +44,20 @@ Rerun it even if the developer already did (README). Each step acts only when it
 
 - **Private folder:** `private/`'s layout (`xy_forever/paths.py`) and `private/incoming/` (step 4).
   Elsewhere: `XYF_PRIVATE`, or `setup.py init --private DIR` first (recorded in `xyf.local.json`).
-- **Toolchain** (step 2), **local files** (step 3), **`npm ci`** in `clients/ts` and `web/` (skipped
-  with a note without Node), and, once the stock pair is imported, `setup.py fixtures` (step 5).
+- **Workspace guide** (`AGENTS.md`, `CLAUDE.md`), **toolchain** (step 2), **local files** (step 3),
+  **`npm ci`** in `clients/ts`, `web/` (skipped without Node), with the stock pair `fixtures` (step 5).
 - It asks for nothing and ends with `doctor` and a "Next:" list (steps 4, 5). It stops with a message
-  (a rerun carries on) when no Python 3.11+ runs or a `tools/` entry fails its pins (move it aside).
+  (a rerun carries on) when the download fails or `tools/blackfin` fails its pins (move it aside).
 
 ## 2. Toolchain
 
 Open-XY publishes the pinned toolchain (`toolchain-1`) for macOS arm64 and Windows x86_64. Unless
-`doctor`'s toolchain row is ok, bootstrap clones public open-xy into `tools/open-xy`, runs its
-`sdk.py toolchain fetch` with Python 3.11+ (this one, else `python3.14`..`python3.11` on PATH) and
-links `tools/blackfin` (better than `XYF_TOOLCHAIN`, which every building shell needs). Linux x86_64:
-it points at open-xy `docs/build.md`, "On Linux" (Docker); link the result yourself.
+`doctor`'s toolchain row is ok, bootstrap downloads this host's release zip, checks its SHA-256
+(`stock.json`), unpacks it into `tools/blackfin` and checks every file against `toolchains.json`.
+Linux x86_64: it points at open-xy `docs/build.md`, "On Linux" (Docker); put the result there yourself.
 
-- `doctor` checks every tool against `toolchains.json`; refused files are not the `toolchain-1`
-  release: fetch it with `sdk.py toolchain fetch --archive <zip>` from that release. Never edit the pins.
-- Open-XY facts come only from the pinned clone `fixtures` makes (step 5), never `tools/open-xy` (AGENTS.md).
+- No download (proxy, certificates): get the zip from the `toolchain-1` release page in a browser and
+  run `python3 scripts/setup.py bootstrap --toolchain-archive <zip>`. Never edit the pins.
 - Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/` ([docs/HARDWARE.md](docs/HARDWARE.md)).
 
 ## 3. Local files and leak patterns
@@ -145,6 +144,7 @@ No device at hand: say so; device items wait and the orchestrator skips them.
 
 ## 9. Continue development
 
-"Continue development" now runs the orchestrator ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)): claim a
+Later sessions: open Claude Code in the workspace folder (or `xy-forever/`) and say "Continue
+development". It runs the orchestrator ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)): claim a
 plan item's GitHub issue, then one branch and one pull request per item. While the repository has
 no GitHub remote (`git remote` prints nothing), work stays on the local `main`.

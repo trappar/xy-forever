@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "provenance": "SHA-256 of the stock OP-XY files a developer copies from /upgrade/firmware/blackfin/bin/ over the stock dev menu's MTP, and of the public open-xy inputs scripts/setup.py fetches",
+  "provenance": "SHA-256 of the stock OP-XY files a developer copies from /upgrade/firmware/blackfin/bin/ over the stock dev menu's MTP, and of the public open-xy inputs scripts/setup.py fetches, and of the open-xy toolchain-1 release archives bootstrap downloads (equal to the release's SHA256SUMS and to open-xy profiles/toolchains.json)",
   "stock": {
     "1.2.1": {
       "os.ldr": "60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f",
@@ -19,5 +19,20 @@
     "kit_url": "https://open-xy.com/kit.json",
     "kit_version": "0.0.6",
     "kit_sha256": "ca0c09570a4e49c250c5c0265ee2f6971c4e91d8c48f38c53007b7ec244e2423"
+  },
+  "toolchain": {
+    "release": "https://github.com/etcetc000/open-xy/releases/tag/toolchain-1",
+    "archives": {
+      "darwin-arm64": {
+        "url": "https://github.com/etcetc000/open-xy/releases/download/toolchain-1/open-xy-toolchain-darwin-arm64.zip",
+        "sha256": "65b1ee794831973894542ad89145c444cc1d1316911fd149a07879d1bf3549a5",
+        "folder": "open-xy-toolchain-darwin-arm64"
+      },
+      "windows-x86_64": {
+        "url": "https://github.com/etcetc000/open-xy/releases/download/toolchain-1/open-xy-toolchain-windows-x86_64.zip",
+        "sha256": "6be9516300c6b43c6cb33d01cbcb867ce38e185be0c70a56b7613cdffbb6d9e8",
+        "folder": "open-xy-toolchain-windows-x86_64"
+      }
+    }
   }
 }
