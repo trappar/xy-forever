@@ -3,4 +3,6 @@ __pycache__/
 .DS_Store
 node_modules/
 xyf.local.json
+# local device and session state (docs/STATUS.md: the older single file; bootstrap moves it into docs/status/)
+docs/status/
 docs/STATUS.md

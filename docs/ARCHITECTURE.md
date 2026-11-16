@@ -2,7 +2,7 @@
 
 How XY Forever boots, how its two halves talk, and where the code is. Product
 goals: [GOALS.md](GOALS.md). On-device files: [STORAGE.md](STORAGE.md). Addresses
-and stock-code facts: [HARDWARE.md](HARDWARE.md). Roadmap: [PLAN.md](PLAN.md).
+and stock-code facts: [HARDWARE.md](HARDWARE.md). Roadmap: GitHub issues.
 
 Status marks: **proven** (ran on the device), **built** (offline, verified, not
 device-tested), **planned**.
@@ -182,7 +182,7 @@ Stage 1/2 is built, not device-tested.
 - **Stock MTP** (the product's menu item 091-150; the offline `--xyf-mtp` build went in
   0.4b): stock MTP requests run in B's USB ISR. Abandoned (HISTORY, "Stock MTP"); removed
   from the product in 151 (the MTP row says "not available yet"); our own MTP
-  responder replaces it (PLAN.md, M3).
+  responder replaces it (milestone M3).
 - **Uninstall** (USB command `UNINSTALL`; proven on 087): rewrites the boot partition
   with the exact stock 1.2.1 `os.ldr` (size + SHA checked). It deletes nothing.
 

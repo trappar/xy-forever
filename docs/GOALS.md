@@ -129,9 +129,26 @@ and a device updated to 1.2.5 cannot be downgraded with the built-in firmware up
 
 ## Roadmap
 
-The roadmap and its milestones are in [PLAN.md](PLAN.md) (after publication, work is
-claimed through GitHub Issues); your device's state is in your local `STATUS.md` (copy
-`STATUS.template.md`); lessons from device tests are in [HISTORY.md](HISTORY.md).
+The roadmap is the repository's GitHub issues, in milestones (`python3 scripts/plan.py`); your device's
+state is in your local `docs/status/`; lessons from device tests are in [HISTORY.md](HISTORY.md).
+
+### Shape (decided with the developer; the orchestrator may not change it)
+
+One **file engine** (list, read, write, delete, make folder over `/yaffs2`, minus the brick paths in
+SAFETY.md), running in our main loops with timeouts. Two doors onto it:
+
+- **Serial protocol** (formal, published spec): commands, installs, automation, the web app.
+- **Our own MTP responder**: standard file access with any MTP client.
+
+Firmware, mods and content packs are "put a file, send install" through either door or the on-device menu.
+Stock MTP (interrupt code that blocks on processor A) and its watchdog recovery are abandoned: builds 139-150,
+do not continue them.
+
+**Stock code is a driver layer, nothing more.** The stock 1.2.1 bootloader's hardware drivers stay in use
+(storage, USB controller, link, screen, keys), each checksum-verified before use. Hard rule from 007:
+processor B never waits on processor A without a time limit. We call them as plain functions from our own
+loops. We do not run stock features, drive stock state machines, or patch stock state. Item 0.3 lists what
+crosses that line today.
 
 ## Biggest unknowns
 

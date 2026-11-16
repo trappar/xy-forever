@@ -88,7 +88,7 @@ Host tools reach the device only through XY Forever's own USB service (`xyf_host
 scripts built on it), and through the stock dev menu by the developer's hand for recovery. No
 flashing tools, no official updater, no TE tools. An agent operates a developer's OP-XY only after
 that developer has granted it for their own device (ONBOARDING step 6, recorded in their local
-STATUS.md). The grant covers XY Forever's USB service under these rules, nothing else.
+`docs/status/`). The grant covers XY Forever's USB service under these rules, nothing else.
 
 ## Before installing any build over USB
 

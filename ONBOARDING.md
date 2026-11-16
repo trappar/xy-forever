@@ -62,8 +62,8 @@ Linux x86_64: it points at open-xy `docs/build.md`, "On Linux" (Docker); put the
 
 ## 3. Local files and leak patterns
 
-Bootstrap copies `docs/STATUS.template.md` to the gitignored `docs/STATUS.md` (device and session
-state) and gives `xyf.local.json` an empty `"leak_patterns"` list. Ask the developer for their name,
+Bootstrap copies `docs/STATUS.template.md` to `docs/status/README.md`, the index of a gitignored folder
+for device and session state, and gives `xyf.local.json` an empty `"leak_patterns"` list. Ask the developer for their name,
 email addresses and host name; add them there as regexes, which the leak test refuses in tracked files
 without them entering the repository. Case-sensitive: `(?i)` first matches any case (`"(?i)jane ?doe"`).
 
@@ -103,7 +103,7 @@ Done when `doctor` exits 0 and the suite passes (the skips `doctor` lists are ex
 Read [docs/SAFETY.md](docs/SAFETY.md) first: it binds all device work. Device work needs the developer's
 explicit yes (SAFETY.md, ORCHESTRATION.md "Approvals"); two kinds can be given once, as standing approvals for
 their own device. Ask each separately, with your recommendation; record the answer and its scope in the local
-`docs/STATUS.md` ("Standing approvals"), never in git: approvals belong to one developer and one device.
+`docs/status/README.md` ("Standing approvals"), never in git: approvals belong to one developer and one device.
 
 1. **Host access:** agents may operate this OP-XY through XY Forever's own USB service
    (`xyf_host.py` and the scripts built on it), under SAFETY.md. Recommend yes: every device item
@@ -138,7 +138,7 @@ firmware found". Add the stock OS as the default entry (`library-add`, then `set
 
 Run `python3 scripts/device_pass.py --wait 120` (`--plan` first shows every step), relaying its `NEED:`
 line ([docs/OPERATING.md](docs/OPERATING.md#device-pass-scriptsdevice_passpy)). When it passes, copy the
-build's `candidate.ldr` to `../private/xy-forever/recovery/known-good-NNN/os.ldr` and fill in `docs/STATUS.md`: device
+build's `candidate.ldr` to `../private/xy-forever/recovery/known-good-NNN/os.ldr` and fill in `docs/status/README.md`: device
 state, installed build, known-good build and kit. End the session in keepalive, never in the OS.
 No device at hand: say so; device items wait and the orchestrator skips them.
 
