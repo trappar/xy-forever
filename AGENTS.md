@@ -55,7 +55,7 @@ Read only what the task needs:
 - **Git:** one branch per plan item and one pull request per branch, after claiming the item's
   GitHub issue ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)). Never push to `main`; never take an
   item someone else is assigned. Until the repository has its GitHub remote, commit locally on
-  `main`. Commit messages end with the `Co-Authored-By` line. Every new on-device file and wire
+  `main`. No AI attribution in commit messages. Every new on-device file and wire
   format carries a version, and its reader refuses a newer version with a message, never a crash.
 - **Keep your local `docs/STATUS.md` current** whenever a build is installed or tested, or the
   device state changes. Where everything else goes: the table in
@@ -65,7 +65,7 @@ Read only what the task needs:
 
 ```sh
 python3 scripts/setup.py doctor                                         # private folder: stock files, fixtures (init, import-stock)
-python3 scripts/run_tests.py --jobs 6                                   # unit tests in parallel: ~2 min, 994 tests (busy machine: rerun a timing flake)
+python3 scripts/run_tests.py --jobs 6                                   # unit tests in parallel: ~2 min, 998 tests (busy machine: rerun a timing flake)
 python3 -m unittest discover -s tests                                   # the same in order: ~8 min
 XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6                  # everything (+ exhaustive bit flips): ~2 min
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-0NN-001

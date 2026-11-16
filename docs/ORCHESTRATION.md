@@ -1,9 +1,8 @@
 # Orchestration
 
-How work on XY Forever is run. The main agent of a session is the **orchestrator**.
-It does not read or write code. It runs [PLAN.md](PLAN.md) one item at a time through
-sub-agents, checks their results, and keeps the plan current. Budget: 125 lines. Why: open-ended
-sessions bloat docs and contexts and cost many power cycles; parallel agents collide.
+How work on XY Forever is run. The session's main agent, the **orchestrator**, reads and writes no
+code: it runs [PLAN.md](PLAN.md) one item at a time through sub-agents, checks their results, and keeps
+the plan current. Budget: 125 lines (open-ended sessions bloat contexts, cost power cycles; parallel agents collide).
 
 ## The orchestrator
 
@@ -16,24 +15,27 @@ scripts (the only agent that touches the device or asks the developer for anythi
 ### One sitting
 
 1. Read PLAN.md and your local `docs/STATUS.md`. No local setup yet: [ONBOARDING.md](../ONBOARDING.md) first.
-2. Is the device there? `python3 xyf_host.py --timeout 5 status`. If yes, the device queue goes first.
-3. Take the next item: a `[~]` item first (it was interrupted), else the first `[ ]` item whose
-   needs are done. Skip device items when the device is absent.
+2. Is the device there? `python3 xyf_host.py --timeout 5 status`; if yes, the device queue goes
+   first. If the developer said the device is absent, skip this and the device queue.
+3. Take the next item: first one whose GitHub issue is assigned to you (your interrupted work;
+   without a remote: a `[~]` you set yourself this sitting), else the first `[ ]` item whose needs
+   are done, honouring any pause PLAN.md states. Skip device items when the device is absent.
 4. Claim it: find its issue (`gh issue list --search "<ID>"`). Assigned to someone else: skip
    it. Otherwise `gh issue edit <N> --add-assignee @me`, then `git switch -c <ID>-<slug>` from an
    up-to-date `main`. (No GitHub remote yet: skip the claim, work on `main`.)
 5. Mark it `[~]`, write the brief (below), start **one** agent.
 6. When it returns, run the item's check yourself; never accept "tests pass" from a report. Standard:
    `python3 scripts/run_tests.py`; before anything goes to the device: `XYF_EXHAUSTIVE=1` in front.
-   - Pass: mark `[x]`, commit, push the branch, open a pull request (`gh pr create`), go to 3.
+   - Pass: mark `[x]`, commit, push the branch, open a pull request (`gh pr create`; no remote: commit
+     on `main` only), go to 3.
    - Fail: give a fresh agent the commit and the failing output (the same agent only
      if it is under 200k tokens). A second failure marks the item `[!]` with a reason.
 7. Stop when a decision is the developer's, when nothing is unblocked, or when told to.
    Close with at most ten lines: done, blocked, waiting on the device, decisions needed.
 
-The plan is committed with every item, so the next session resumes from disk. **Asking the
-developer:** one self-contained question at a time, your recommendation first (the agent's question
-tool if it has one); keep working on what does not depend on the answer.
+The plan is committed with every item, so the next session resumes from disk. **Asking the developer:**
+one self-contained question at a time, your recommendation first (the agent's question tool if any);
+keep working on what does not depend on the answer.
 
 ### Changing the plan
 
@@ -46,11 +48,9 @@ whatever was never seen on hardware). Spare agent capacity prepares the next dev
 
 ## Agents
 
-One agent at a time. The only exception: one read-only **research** agent may run
-beside one build agent, on a different item. Never two agents that write.
-
-Every sub-agent runs on **Opus 5.5 with high reasoning** (`model: "opus"`, `effort: "high"`),
-whatever the orchestrator's own model is.
+One agent at a time; the only exception: one read-only **research** agent beside one build agent, on
+a different item. Never two agents that write. Every sub-agent runs on **Opus 5.5 with high
+reasoning** (`model: "opus"`, `effort: "high"`), whatever the orchestrator's own model is.
 
 | Kind | May | Ends with |
 |---|---|---|

@@ -37,7 +37,7 @@ docs/             PLAN, STATUS, SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORA
 
 ## Requirements
 
-- macOS (arm64) or Windows x86_64 host with Python 3.11+ (standard library only; open-xy's
+- macOS (arm64) or Windows x86_64 host with Python 3.9+ (standard library only; open-xy's
   `sdk.py` needs 3.11) and clang for the host tests. Node 22.18+ for `clients/ts` and `web/`.
 - The Blackfin toolchain (`bfin-elf` GCC 8) from the Open-XY toolchain build, at
   `../tools/blackfin` or `$XYF_TOOLCHAIN`. Its files are checked against

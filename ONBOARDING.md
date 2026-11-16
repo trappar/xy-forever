@@ -1,18 +1,19 @@
 # Onboarding
 
-From a fresh clone to working on the plan. Written for the developer's coding agent: follow the
-steps in order together with the developer. Run every command yourself; ask the developer only for
-what needs their hands (the OP-XY, a file copy over MTP) or their decision, one question at a time,
-each with your recommendation. Stop at the first step that fails, fix what is yours to fix, say
-plainly what is missing, and resume at that step. Budget: 150 lines.
-
-Steps 7 and 8 (the device) have not yet been run end to end: report where they stall, and fix this file.
+From a fresh clone to working on the plan, for the developer's coding agent: follow the steps in
+order with the developer. Run every command yourself; ask the developer only for what needs their
+hands (the OP-XY, a file copy over MTP) or their decision, one question at a time, each with your
+recommendation. Stop at the first step that fails, fix what is yours to fix, say plainly what is
+missing, and resume there. Steps 7 and 8 (the device) have not yet been run end to end: report
+where they stall, and fix this file. Budget: 150 lines.
 
 ## 0. What the developer needs
 
-- A host computer: macOS on Apple silicon (the tested host); toolchain pins also exist for
-  Windows x86_64 and Linux x86_64, but the USB tools are tested on macOS only. Python 3.11+, git,
-  clang++ (simulator and host bridges), Node 22.18+ or 23.6+ (`clients/ts`, `web/`).
+- A host computer: macOS on Apple silicon (the tested host; toolchain pins also exist for Windows
+  and Linux x86_64, USB tools untested there). Python 3.9+ for XY Forever; 3.11+ for open-xy's
+  `sdk.py toolchain fetch` (step 2; macOS's `python3` is often 3.9: run e.g. `python3.12` there), git, `gh`
+  (GitHub CLI, logged in: `gh auth status`; step 9 claims items with it), clang++ (simulator, host
+  bridges), Node 22.18+ or 23.6+ (`clients/ts`, `web/`).
 - An OP-XY still on stock 1.2.1, never updated to 1.2.5: a 1.2.5 device cannot run XY Forever,
   and teenage engineering's built-in updater cannot downgrade it. To tell: the version the OS shows
   is 1.2.1, te-boot (hold COM while switching on) shows "3. dev menu" (1.2.5 has none; on 1.2.1,
@@ -33,24 +34,23 @@ Steps 7 and 8 (the device) have not yet been run end to end: report where they s
   gitignored `xyf.local.json`) or `XYF_PRIVATE`. Layout: `xy_forever/paths.py`.
 - Open-XY: `setup.py fixtures` clones upstream into `private/xy-forever/open-xy-upstream/` at the
   commit pinned in `stock.json`. Never take open-xy facts from another local checkout (AGENTS.md).
-- Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor) are for research items only; they can go under `tools/` too ([docs/HARDWARE.md](docs/HARDWARE.md)).
+- Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/` ([docs/HARDWARE.md](docs/HARDWARE.md)).
 
 ## 2. Toolchain
 
 Open-XY publishes the pinned toolchain (`toolchain-1`): a download for macOS arm64 and Windows
-x86_64; on Linux x86_64 it is built with Docker (open-xy `docs/build.md`, "On Linux").
+x86_64; on Linux x86_64 it is built with Docker (open-xy `docs/build.md`, "On Linux"). This clone
+is for `sdk.py toolchain fetch` only: open-xy facts come from the pinned clone of step 5 (AGENTS.md).
 
 ```sh
 git clone https://github.com/etcetc000/open-xy <workspace>/tools/open-xy
-cd <workspace>/tools/open-xy && python3 sdk.py toolchain fetch    # lands in local/toolchain
+cd <workspace>/tools/open-xy && python3 sdk.py toolchain fetch    # Python 3.11+; lands in local/toolchain
 ln -s "$PWD/local/toolchain" <workspace>/tools/blackfin           # or set XYF_TOOLCHAIN to it
 ```
 
-- Recommend the link: it needs no environment; `XYF_TOOLCHAIN` must be set in every shell that
-  builds (`xyf.local.json` has no toolchain setting).
-- Every tool is checked against `toolchains.json`. If `doctor` refuses the files, the fetched
-  release is not `toolchain-1`: fetch it with `sdk.py toolchain fetch --archive <zip>` from that
-  release. Never edit the pins.
+- Recommend the link: `XYF_TOOLCHAIN` must be set in every shell that builds (no config setting).
+- `doctor` checks every tool against `toolchains.json`; refused files are not the `toolchain-1`
+  release: fetch it with `sdk.py toolchain fetch --archive <zip>` from that release. Never edit the pins.
 
 ## 3. Private folder and local files
 
@@ -60,9 +60,10 @@ python3 scripts/setup.py init                 # creates ../private's layout (--p
 cp docs/STATUS.template.md docs/STATUS.md     # local device and session state; gitignored
 ```
 
-Ask the developer for their name, email addresses and host name, and add them as regexes to a
-`"leak_patterns"` list in `xyf.local.json` (create the file if `init` did not). The leak test then
-refuses them in tracked files without them ever being written into the repository.
+Ask the developer for their name, email addresses and host name, and add them as regexes to the
+`"leak_patterns"` list `init` left empty in `xyf.local.json`. The leak test then refuses them in
+tracked files without them ever being written into the repository. Patterns are case-sensitive:
+start each with `(?i)` to match any case, e.g. `"(?i)jane ?doe"`.
 
 ## 4. Stock files from the developer's OP-XY
 
@@ -82,8 +83,7 @@ python3 scripts/setup.py import-stock ../private/incoming    # checks both SHA-2
 
 - **1.2.5 files: stop.** This device is on 1.2.5 and cannot run XY Forever: the 1.2.5 bootloader
   has no dev menu, and the built-in updater cannot downgrade it (SAFETY.md, "Never").
-- Official `.tfw` packages and update keys are not distributed and never made from the stock
-  pair. The tests that need them skip; `doctor` lists them.
+- Official `.tfw` packages and update keys are never distributed or made from the stock pair: their tests skip (`doctor`).
 
 ## 5. Fixtures, doctor, tests
 
@@ -99,10 +99,10 @@ Done when `doctor` exits 0 and the suite passes (the skips `doctor` lists are ex
 ## 6. The developer's own approvals
 
 Read [docs/SAFETY.md](docs/SAFETY.md) first: it is binding for everything on the device. Device
-work needs the developer's explicit yes (SAFETY.md, ORCHESTRATION.md "Approvals"). Two
-of those can be given once, as standing approvals for their own device. Ask each separately,
-with your recommendation, and record the answer and its scope in the local `docs/STATUS.md`
-("Standing approvals"). Never in git: approvals belong to one developer and one device.
+work needs the developer's explicit yes (SAFETY.md, ORCHESTRATION.md "Approvals"); two kinds can
+be given once, as standing approvals for their own device. Ask each separately, with your
+recommendation; record the answer and its scope in the local `docs/STATUS.md` ("Standing
+approvals"), never in git: approvals belong to one developer and one device.
 
 1. **Host access:** agents may operate this OP-XY through XY Forever's own USB service
    (`xyf_host.py` and the scripts built on it), under SAFETY.md. Recommend yes: every device item
@@ -141,10 +141,10 @@ Run `python3 scripts/device_pass.py --wait 120` (`--plan` first shows every step
 line ([docs/OPERATING.md](docs/OPERATING.md#device-pass-scriptsdevice_passpy)). When it passes, copy the
 build's `candidate.ldr` to `../private/xy-forever/recovery/known-good-NNN/os.ldr` and fill in `docs/STATUS.md`: device
 state, installed build, known-good build and kit. End the session in keepalive, never in the OS.
-
 No device at hand: say so; device items wait and the orchestrator skips them.
 
 ## 9. Continue development
 
-Setup is done. "Continue development" now runs the orchestrator ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)):
-claim a plan item's GitHub issue, then one branch and one pull request per item.
+"Continue development" now runs the orchestrator ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)): claim a
+plan item's GitHub issue, then one branch and one pull request per item. While the repository has
+no GitHub remote (`git remote` prints nothing), work stays on the local `main`.
