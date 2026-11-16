@@ -7,6 +7,9 @@
                                                    (the two files, or a copied /upgrade/ tree)
     python3 scripts/setup.py fixtures              what tests need from the stock pair + public open-xy
     python3 scripts/setup.py doctor                what is set up, what is missing, what will skip
+    python3 scripts/setup.py bootstrap [--workspace DIR] [--dry-run]
+                                                   all of the above that needs no OP-XY, plus the toolchain
+                                                   (public open-xy), docs/STATUS.md and npm ci; safe to rerun
 
 The stock pair comes from your own OP-XY on stock 1.2.1: in the stock dev menu's MTP, copy
 /upgrade/firmware/blackfin/bin/os.ldr and bootloader.ldr (or the whole /upgrade/ folder).
@@ -17,6 +20,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import sys
@@ -300,10 +304,11 @@ def fixture_mods():
     print('mod package set: %s' % paths.PUBLISHED_MODS)
 
 
-def toolchain_problem():
+def toolchain_problem(directory=None):
+    """None, or why the toolchain (XYF_TOOLCHAIN, ../tools/blackfin, or directory) fails its pins."""
     from xy_forever import toolchain
     try:
-        toolchain.authenticate()
+        toolchain.authenticate(directory)
     except (ValueError, OSError) as e:
         return str(e)
     return None
@@ -415,6 +420,245 @@ def cmd_doctor(args):
     return 0 if all(ok for label, ok, _ in rows if label in essential) else 1
 
 
+# bootstrap
+
+OPEN_XY_TOOLS = 'tools/open-xy'         # <workspace>/tools/open-xy: public open-xy, only for `sdk.py toolchain fetch`
+TOOLCHAIN_LINK = 'tools/blackfin'       # <workspace>/tools/blackfin -> tools/open-xy/local/toolchain
+SDK_PYTHONS = ('python3.14', 'python3.13', 'python3.12', 'python3.11')
+NPM_DIRS = ('clients/ts', 'web')         # web uses clients/ts: in this order
+
+
+def host_name():
+    """This host as toolchains.json names it (as xy_forever/toolchain.py does)."""
+    machine = platform.machine().lower()
+    return platform.system().lower() + '-' + {'aarch64': 'arm64', 'amd64': 'x86_64'}.get(machine, machine)
+
+
+def python_version(exe):
+    """(major, minor) of the interpreter exe, or None when it does not run (e.g. a shim without a version)."""
+    r = subprocess.run([exe, '-c', 'import sys; print("%d %d" % sys.version_info[:2])'], capture_output=True, text=True)
+    try:
+        return tuple(int(n) for n in r.stdout.split()) if r.returncode == 0 else None
+    except ValueError:
+        return None
+
+
+def sdk_python():
+    """An interpreter for open-xy's sdk.py (3.11+): this one, else python3.14 .. python3.11 on PATH."""
+    if tuple(sys.version_info[:2]) >= SDK_PYTHON:
+        return sys.executable
+    broken = []
+    for name in SDK_PYTHONS:
+        exe = shutil.which(name)
+        if exe and (python_version(exe) or (0,)) >= SDK_PYTHON:
+            return exe
+        broken += [name] if exe else []
+    raise SetupError("open-xy's `sdk.py toolchain fetch` needs Python 3.11+; this is %d.%d.%d and none of %s runs on "
+                     "PATH%s. Install one (macOS: `brew install python@3.12`; or python.org, mise, pyenv), then rerun "
+                     "`python3 scripts/setup.py bootstrap`: it carries on where it stopped"
+                     % (tuple(sys.version_info[:3]) + (', '.join(SDK_PYTHONS), ' (%s is there but does not run: a '
+                        'version manager shim with no version set?)' % ', '.join(broken) if broken else '')))
+
+
+def fixtures_missing():
+    """What `setup.py fixtures` would still make (the doctor rows it fills)."""
+    ox = PINS['open_xy']
+    return [name for name, ok in (
+        ('open-xy clone', has_commit(paths.OPEN_XY_UPSTREAM, ox['sdk_commit'])),
+        ('stock catalog', paths.CATALOG_121.is_file() and sha256(paths.CATALOG_121) == ox['catalog_sha256']),
+        ('published kit', paths.PUBLISHED_KIT.is_file()),
+        ('mod package set', (paths.PUBLISHED_MODS / 'base/info.txt').is_file()),
+        ('verified build', bool(paths.newest_verified_build()) or toolchain_problem() is not None)) if not ok]
+
+
+class Bootstrap:
+    """`setup.py bootstrap`: every step looks first and acts only on what is missing. Never deletes anything."""
+
+    def __init__(self, workspace=None, repo=REPO, config=None, dry_run=False, environ=os.environ):
+        self.repo = Path(repo).resolve()
+        self.workspace = Path(workspace or self.repo.parent).expanduser().resolve()
+        self.config = Path(config) if config else self.repo / paths.LOCAL_CONFIG.name
+        self.dry_run, self.environ, self.actions = dry_run, environ, []
+        self.private_root = None
+
+    def do(self, what, action, *args, **kw):
+        self.actions.append(what)
+        print('  %s %s' % ('would' if self.dry_run else '->', what), flush=True)
+        if not self.dry_run:
+            action(*args, **kw)
+
+    def settings(self):
+        try:
+            return json.loads(self.config.read_text())
+        except FileNotFoundError:
+            return {}
+
+    def run(self):
+        require_python()
+        print('bootstrap: workspace %s%s' % (self.workspace, ' (dry run: nothing changes)' if self.dry_run else ''))
+        for step in (self.private, self.local_files, self.toolchain, self.npm, self.fixtures):
+            step()
+        if not self.actions:
+            print('nothing to do: the workspace is already set up; nothing changed')
+        elif self.dry_run:
+            print('dry run: the %d actions above would run; nothing changed' % len(self.actions))
+        else:
+            print('done: %d actions' % len(self.actions))
+        print('\ndoctor:')
+        cmd_doctor(None)
+        self.next_steps()
+        return 0
+
+    def private(self):
+        env, configured = self.environ.get('XYF_PRIVATE'), self.settings().get('private')
+        if env:
+            root, source = Path(env).expanduser().resolve(), 'XYF_PRIVATE'
+        elif configured:
+            root, source = Path(configured).expanduser().resolve(), self.config.name
+        else:
+            root, source = self.workspace / 'private', 'default ../private'
+        if inside_checkout(root):
+            raise SetupError('the private folder must be outside every git checkout: %s' % root)
+        print('private folder: %s (%s)' % (root, source))
+        if source.startswith('default') and root != (self.repo.parent / 'private').resolve():
+            self.do('record it in %s (it is not next to this clone)' % self.config.name, self.record_private, root)
+        wanted = [root / getattr(paths, name).relative_to(paths.PRIVATE_ROOT) for name in LAYOUT]
+        if not (root / paths.STOCK_121.relative_to(paths.PRIVATE_ROOT) / PAIR[0]).is_file():
+            wanted.append(root / 'incoming')                            # where the stock pair is copied to (Next)
+        missing = [d for d in wanted if not d.is_dir()]
+        if missing:
+            self.do('create %s of the private layout (xy_forever/paths.py) under it'
+                    % ('%d folders' % len(missing) if len(missing) > 1 else missing[0].name),
+                    lambda: [d.mkdir(parents=True, exist_ok=True) for d in missing])
+        self.private_root = root
+
+    def record_private(self, root):
+        global paths
+        write_config(root, self.config)
+        if self.config.resolve() == paths.LOCAL_CONFIG.resolve():
+            import importlib
+            paths = importlib.reload(paths)
+
+    def local_files(self):
+        status = self.repo / 'docs/STATUS.md'
+        print('docs/STATUS.md: %s' % ('present' if status.exists() else 'missing (local, gitignored)'))
+        if not status.exists():
+            self.do('copy docs/STATUS.template.md to docs/STATUS.md', shutil.copyfile,
+                    self.repo / 'docs/STATUS.template.md', status)
+        leaks = self.settings().get('leak_patterns')
+        print('%s: %s' % (self.config.name, 'no "leak_patterns" list' if leaks is None else
+                          '%d leak patterns' % len(leaks)))
+        if leaks is None:
+            self.do('add an empty "leak_patterns" list to %s' % self.config.name, ensure_leak_patterns, self.config)
+
+    def toolchain(self):
+        link = self.workspace / TOOLCHAIN_LINK
+        if toolchain_problem() is None:
+            print('toolchain: ok (authenticated against toolchains.json)')
+            return
+        if (link.exists() or link.is_symlink()) and toolchain_problem(link) is None:
+            print('toolchain: ok at %s' % link)
+            return self.toolchain_note(link)
+        host = host_name()
+        if host == 'linux-x86_64':
+            print('toolchain: missing; open-xy publishes no download for linux-x86_64: build it with Docker '
+                  '(open-xy docs/build.md, "On Linux"), then link it at %s or set XYF_TOOLCHAIN' % link)
+            return
+        if host not in json.loads((REPO / 'toolchains.json').read_text())['hosts']:
+            print('toolchain: no pinned toolchain for %s (toolchains.json): use macOS arm64, Windows x86_64 or '
+                  'Linux x86_64' % host)
+            return
+        if link.exists() or link.is_symlink():
+            raise SetupError('%s exists but fails its pins (%s): move it aside, then rerun bootstrap (it never deletes)'
+                             % (link, toolchain_problem(link)))
+        clone = self.workspace / OPEN_XY_TOOLS
+        fetched = clone / 'local/toolchain'
+        print("toolchain: missing; getting open-xy's pinned toolchain-1 for %s" % host)
+        if not clone.exists():
+            url = PINS['open_xy']['repository']
+            self.do('clone %s into %s' % (url, clone), run, ['git', 'clone', '--quiet', url, str(clone)])
+        elif not (clone / 'sdk.py').is_file():
+            raise SetupError('%s is not an open-xy clone (no sdk.py): move it aside, then rerun bootstrap' % clone)
+        if fetched.exists():
+            problem = toolchain_problem(fetched)
+            if problem:
+                raise SetupError('%s fails its pins (%s): remove it, then rerun bootstrap' % (fetched, problem))
+        else:
+            try:
+                python = sdk_python()
+            except SetupError as e:
+                if not self.dry_run:
+                    raise
+                self.actions.append('stop')
+                print('  would stop: ' + str(e))
+                return
+            self.do('run `%s sdk.py toolchain fetch` in %s (a download)' % (python, clone), self.fetch, python, clone)
+        self.do('link %s -> %s' % (link, fetched), self.link, fetched, link)
+        self.toolchain_note(link)
+
+    def fetch(self, python, clone):
+        print('     (Python %s)' % '.'.join(map(str, python_version(python) or ('?',))), flush=True)
+        if subprocess.run([python, 'sdk.py', 'toolchain', 'fetch'], cwd=str(clone)).returncode:
+            raise SetupError("open-xy's `sdk.py toolchain fetch` failed (its output is above): fix that, then rerun "
+                             "bootstrap")
+
+    def link(self, fetched, link):
+        link.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.symlink(str(fetched), str(link), target_is_directory=True)
+        except OSError as e:
+            raise SetupError('could not link %s (%s): set XYF_TOOLCHAIN=%s in every shell that builds' % (link, e, fetched))
+        problem = toolchain_problem(link)
+        if problem:
+            raise SetupError('%s fails its pins after the fetch: %s' % (link, problem))
+
+    def toolchain_note(self, link):
+        if self.environ.get('XYF_TOOLCHAIN'):
+            print('  note: XYF_TOOLCHAIN=%s is set and fails its pins; it wins over %s: unset it'
+                  % (self.environ['XYF_TOOLCHAIN'], link))
+        elif self.workspace != self.repo.parent:
+            print('  note: this clone is not in %s: set XYF_TOOLCHAIN=%s in every shell that builds' % (self.workspace, link))
+
+    def npm(self):
+        node, npm = shutil.which('node'), shutil.which('npm')
+        for rel in NPM_DIRS:
+            folder = self.repo / rel
+            if (folder / 'node_modules').is_dir():
+                print('%s: node_modules present' % rel)
+            elif not (node and npm):
+                print('%s: skipped: Node not found (install Node 22.18+ or 23.6+, then rerun bootstrap)' % rel)
+            else:
+                print('%s: node_modules missing' % rel)
+                self.do('npm ci in %s' % rel, run, [npm, 'ci', '--no-audit', '--no-fund'], cwd=folder)
+
+    def fixtures(self):
+        if not stock_present():
+            print('fixtures: waiting for the stock pair (Next, below)')
+            return
+        missing = fixtures_missing()
+        print('fixtures: %s' % ('ok' if not missing else 'missing ' + ', '.join(missing)))
+        if missing:
+            self.do('run setup.py fixtures (network: public open-xy and its kit; one product build)', cmd_fixtures, None)
+
+    def next_steps(self):
+        incoming = self.private_root / 'incoming'
+        steps = []
+        if not stock_present():
+            steps += ['Copy os.ldr and bootloader.ldr off your OP-XY (stock 1.2.1) into %s: hold COM while switching '
+                      'it on, Track 3 (dev menu), Track 2 (MTP), then copy them from /upgrade/firmware/blackfin/bin/ '
+                      '(ONBOARDING.md step 4).' % incoming,
+                      'python3 scripts/setup.py import-stock %s' % incoming,
+                      'python3 scripts/setup.py fixtures']
+        steps.append('Open Claude Code in %s and say "Continue development".' % self.repo)
+        print('\nNext:')
+        for n, step in enumerate(steps, 1):
+            print('  %d. %s' % (n, step))
+
+
+def cmd_bootstrap(args):
+    return Bootstrap(args.workspace, dry_run=args.dry_run).run()
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest='command', required=True)
@@ -424,10 +668,13 @@ def main(argv=None):
     s.add_argument('dir')
     sub.add_parser('fixtures', help='make test inputs from the stock pair and public open-xy')
     sub.add_parser('doctor', help='summary')
+    b = sub.add_parser('bootstrap', help='set up this workspace (all that needs no OP-XY); safe to rerun')
+    b.add_argument('--workspace', help="the folder that holds this clone, private/ and tools/ (default: the clone's parent)")
+    b.add_argument('--dry-run', action='store_true', help='print every action without doing it')
     args = p.parse_args(argv)
     try:
         return {'init': cmd_init, 'import-stock': cmd_import_stock, 'fixtures': cmd_fixtures,
-                'doctor': cmd_doctor}[args.command](args) or 0
+                'doctor': cmd_doctor, 'bootstrap': cmd_bootstrap}[args.command](args) or 0
     except SetupError as e:
         print('setup: ' + str(e), file=sys.stderr)
         return 1

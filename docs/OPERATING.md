@@ -7,7 +7,7 @@ with the developer at the device. The rules in [SAFETY.md](SAFETY.md) are bindin
 
 ```sh
 cd xy-forever        # toolchain: ../tools/blackfin (or set XYF_TOOLCHAIN)
-python3 scripts/setup.py doctor   # stock pair + fixtures in place? (first: init, import-stock DIR)
+python3 scripts/setup.py doctor   # stock pair + fixtures in place? (first: bootstrap, import-stock DIR)
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-0NN-001
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-0NN-002  # same candidate SHA
 python3 xyf_build.py --verify --out ../private/xy-forever/builds/xy-forever-product-0NN-001      # {"passed": true}

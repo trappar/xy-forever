@@ -39,12 +39,12 @@ keep working on what does not depend on the answer.
 
 ### Changing the plan
 
-The orchestrator may add, split and reorder items. Items marked "to be split" are split by a
-research agent's decision record, not by guessing. It may not drop a requirement, change the shape,
-or relax a safety rule; those go to the developer. **Device checkpoints first:** prefer the order
-that reaches a device test soonest; host-only work never runs far ahead of what the device has
-confirmed (a byte match proves the output, not that the device loads it; the simulator guesses
-whatever was never seen on hardware). Spare agent capacity prepares the next device test.
+The orchestrator may add, split and reorder items; a new item gets a GitHub issue (milestone: its PLAN heading, e.g.
+"M4. Packages"; label `kind:build|research|device|review`). Items marked "to be split" are split by a research agent's
+decision record, not by guessing. It may not drop a requirement, change the shape, or relax a safety rule; those go to
+the developer. **Device checkpoints first:** prefer the order that reaches a device test soonest; host-only work never
+runs far ahead of what the device has confirmed (a byte match proves the output, not that the device loads it; the
+simulator guesses whatever was never seen on hardware). Spare agent capacity prepares the next device test.
 
 ## Agents
 
