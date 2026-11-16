@@ -1,6 +1,6 @@
 """scripts/setup.py with synthetic stand-ins for the stock files (never the real bytes): the pin check, the 1.2.5
 refusal, unknown files, a copied /upgrade/ tree as input, and where the private folder comes from
-(XYF_PRIVATE > xyf.local.json > ../private)."""
+(XYF_PRIVATE > xyf.local.json > ../private), the Python check (3.9+; 3.11+ for open-xy's sdk.py)."""
 import hashlib
 import importlib.util
 import json
@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -98,6 +99,30 @@ class Pins(unittest.TestCase):
         self.assertEqual(paths.PUBLISHED_MODS.parent.name, 'opxy-1.2.1')
 
 
+class PythonVersion(unittest.TestCase):
+    def test_39_or_newer_runs_and_311_needs_no_note(self):
+        for v in ((3, 9, 6), (3, 10, 14), (3, 11, 0), (3, 12, 4), (4, 0, 0)):
+            self.assertIsNone(S.python_problem(v))
+            S.require_python(v)
+        for v in ((3, 11, 0), (4, 0, 0)):
+            self.assertIsNone(S.python_warning(v))
+
+    def test_39_and_310_warn_about_the_open_xy_sdk_only(self):
+        for v in ((3, 9, 6), (3, 10, 14)):
+            self.assertRegex(S.python_warning(v), r"%d\.%d\.%d: fine for XY Forever; 3\.11\+ is needed for "
+                             r"open-xy's sdk\.py toolchain fetch" % v)
+
+    def test_older_than_39_is_refused_before_doing_anything(self):
+        self.assertRegex(S.python_problem((3, 8, 10)), r'3\.8\.10 is too old: XY Forever needs 3\.9\+.*python3\.12')
+        self.assertIsNone(S.python_warning((3, 8, 10)))
+        old = (3, 8, 10, 'final', 0)
+        with mock.patch.object(S.sys, 'version_info', old), mock.patch.object(S, 'make_layout') as layout:
+            for cmd in (S.cmd_init, S.cmd_fixtures):
+                with self.assertRaisesRegex(S.SetupError, 'too old'):
+                    cmd(S.argparse.Namespace(private=None))
+        layout.assert_not_called()
+
+
 class PrivateRoot(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -118,6 +143,17 @@ class PrivateRoot(unittest.TestCase):
         with self.assertRaisesRegex(S.SetupError, 'outside every git checkout'):
             S.write_config(ROOT / 'private', self.config)
         self.assertFalse(self.config.exists())
+
+    def test_init_adds_an_empty_leak_list_and_keeps_other_keys(self):
+        S.ensure_leak_patterns(self.config)
+        self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})
+        self.assertEqual(paths.private_root({}, self.config), (paths.REPO.parent / 'private').resolve())
+        self.config.write_text(json.dumps({'private': 'p', 'other': 1}))
+        S.ensure_leak_patterns(self.config)
+        self.assertEqual(json.loads(self.config.read_text()), {'private': 'p', 'other': 1, 'leak_patterns': []})
+        self.config.write_text(json.dumps({'leak_patterns': ['(?i)jane']}))
+        S.ensure_leak_patterns(self.config)
+        self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': ['(?i)jane']})
 
     def test_local_config_is_gitignored(self):
         self.assertIn(paths.LOCAL_CONFIG.name, (ROOT / '.gitignore').read_text().split())

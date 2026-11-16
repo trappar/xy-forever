@@ -33,8 +33,36 @@ LAYOUT = ('FIRMWARE', 'STOCK_121', 'XYF', 'BUILDS', 'RECOVERY', 'FIXTURES', 'REP
           'SESSIONS', 'MOD_PACKAGES')
 
 
+MIN_PYTHON = (3, 9)                 # XY Forever's own scripts and tests
+SDK_PYTHON = (3, 11)                # open-xy's sdk.py (`sdk.py toolchain fetch`, ONBOARDING step 2)
+
+
 class SetupError(Exception):
     pass
+
+
+def python_problem(version=None):
+    """None, or why this interpreter is too old for XY Forever (3.9+)."""
+    v = tuple((version or sys.version_info)[:3])
+    if v[:2] >= MIN_PYTHON:
+        return None
+    return ('Python %d.%d.%d is too old: XY Forever needs 3.9+. Run a newer one by name, e.g. '
+            '`python3.12 scripts/setup.py doctor` (macOS: `brew install python@3.12`, python.org, mise or pyenv)' % v)
+
+
+def python_warning(version=None):
+    """None, or a note that open-xy's sdk.py needs a newer Python than this one (3.11+)."""
+    v = tuple((version or sys.version_info)[:3])
+    if v[:2] >= SDK_PYTHON or python_problem(v):
+        return None
+    return ('Python %d.%d.%d: fine for XY Forever; 3.11+ is needed for open-xy\'s sdk.py toolchain fetch '
+            '(ONBOARDING step 2): run a newer one by name there, e.g. `python3.12 sdk.py toolchain fetch`' % v)
+
+
+def require_python(version=None):
+    problem = python_problem(version)
+    if problem:
+        raise SetupError(problem)
 
 
 def sha256(path):
@@ -65,6 +93,17 @@ def write_config(private, config=paths.LOCAL_CONFIG):
     return private
 
 
+def ensure_leak_patterns(config=paths.LOCAL_CONFIG):
+    """Give the local config a "leak_patterns" list (empty) for the developer to fill; keep other keys."""
+    try:
+        values = json.loads(Path(config).read_text())
+    except FileNotFoundError:
+        values = {}
+    if 'leak_patterns' not in values:
+        values['leak_patterns'] = []
+        Path(config).write_text(json.dumps(values, indent=2) + '\n')
+
+
 def make_layout():
     for name in LAYOUT:
         getattr(paths, name).mkdir(parents=True, exist_ok=True)
@@ -72,6 +111,7 @@ def make_layout():
 
 def cmd_init(args):
     global paths
+    require_python()
     if args.private:
         chosen = Path(args.private).expanduser().resolve()
         env = os.environ.get('XYF_PRIVATE')
@@ -83,14 +123,22 @@ def cmd_init(args):
     if inside_checkout(paths.PRIVATE_ROOT):
         raise SetupError('the private folder must be outside every git checkout: %s' % paths.PRIVATE_ROOT)
     make_layout()
+    ensure_leak_patterns(paths.LOCAL_CONFIG)
     print('private folder: %s (%s)' % (paths.PRIVATE_ROOT, private_source()))
+    if not paths.leak_patterns():
+        print('next: add your name, emails and host name as regexes to "leak_patterns" in %s '
+              '(case-sensitive; "(?i)" first matches any case)' % paths.LOCAL_CONFIG.name)
     print('next: python3 scripts/setup.py import-stock DIR   (DIR: os.ldr + bootloader.ldr, or a copied /upgrade/)')
 
 
 def private_source():
     if os.environ.get('XYF_PRIVATE'):
         return 'XYF_PRIVATE'
-    return paths.LOCAL_CONFIG.name if paths.LOCAL_CONFIG.is_file() else 'default ../private'
+    try:
+        configured = json.loads(paths.LOCAL_CONFIG.read_text()).get('private')
+    except FileNotFoundError:
+        configured = None
+    return paths.LOCAL_CONFIG.name if configured else 'default ../private'
 
 
 # import-stock
@@ -274,7 +322,7 @@ def fixture_build():
     while (paths.BUILDS / ('xy-forever-product-000-%03d' % n)).exists():
         n += 1
     out = paths.BUILDS / ('xy-forever-product-000-%03d' % n)
-    print('building %s (a few minutes)' % out.name)
+    print('building and verifying %s (under a minute)' % out.name)
     run([sys.executable, 'xyf_build.py', '--xyf-product', '--out', str(out)])
     run([sys.executable, 'xyf_build.py', '--verify', '--out', str(out)])
     if paths.newest_verified_build() != out:
@@ -283,6 +331,7 @@ def fixture_build():
 
 
 def cmd_fixtures(args):
+    require_python()
     if not stock_present():
         raise SetupError('the stock 1.2.1 pair is missing from %s: run import-stock first' % paths.STOCK_121)
     make_layout()
@@ -309,6 +358,9 @@ def doctor():
     """[(label, ok, detail)] plus the list of what will skip."""
     from xy_forever import sim
     rows, skips = [], []
+    problem, warning = python_problem(), python_warning()
+    rows.append(('python', False if problem else 'warn' if warning else True,
+                 problem or warning or '%d.%d.%d' % tuple(sys.version_info[:3])))
     rows.append(('private folder', paths.PRIVATE_ROOT.is_dir(), '%s (%s)' % (paths.PRIVATE_ROOT, private_source())))
     problem = toolchain_problem()
     rows.append(('toolchain', problem is None, problem or 'authenticated against toolchains.json'))
@@ -340,7 +392,8 @@ def doctor():
     rows.append(('simulator', why is None, why or 'buildable'))
     leaks = paths.leak_patterns()
     rows.append(('leak patterns', bool(leaks), '%d private regexes for tests/test_no_leaks.py' % len(leaks) if leaks else
-                 'none: add your name and emails as regexes to "leak_patterns" in %s' % paths.LOCAL_CONFIG.name))
+                 'none: add your name and emails as regexes to "leak_patterns" in %s (case-sensitive; "(?i)" first '
+                 'matches any case)' % paths.LOCAL_CONFIG.name))
     if not (paths.DECRYPTED.is_dir() and any(paths.DECRYPTED.iterdir())):
         skips.append('official .tfw packages, update keys, decrypted packages and content manifests: never made '
                       'from the stock pair')
@@ -354,11 +407,11 @@ def doctor():
 def cmd_doctor(args):
     rows, skips = doctor()
     for label, ok, detail in rows:
-        print('%-4s %-20s %s' % (('ok' if ok else '--') if label else '', label, detail))
+        print('%-4s %-20s %s' % (('warn' if ok == 'warn' else 'ok' if ok else '--') if label else '', label, detail))
     print('tests that will skip:')
     for s in skips or ['none of the known private-only groups']:
         print('     ' + s)
-    essential = {'private folder', 'toolchain', 'stock os.ldr', 'stock bootloader.ldr'}
+    essential = {'python', 'private folder', 'toolchain', 'stock os.ldr', 'stock bootloader.ldr'}
     return 0 if all(ok for label, ok, _ in rows if label in essential) else 1
 
 
