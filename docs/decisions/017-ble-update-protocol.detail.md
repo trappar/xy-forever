@@ -50,8 +50,8 @@ before booting the OS.
 ## 5. Images [M, L]
 
 `.tfw` ZIP members `firmware/ble/bin/ble.bin` (raw image linked at `0xc000`, no header; its version exists only in the metadata string), `ble.version` (text
-`1.0.1+0@5b06dea7…` / `1.0.2+0@dd8d0b65…`), `nordic_bootloader_{0,1}.bin` + `nordic_bootloader.version` (`1000.0.10+0`). 1.0.1: 244,280 B, SHA-256
-`74549ae976b6c4c334755addb93d1f73616916eabc5c0ab1e37ad9bf71d39626` (1.1.33 and 1.2.1). 1.0.2: 244,816 B,
+`1.0.1+0@5b06dea7…` / `1.0.2+0@dd8d0b65…`), `nordic_bootloader_{0,1}.bin` + `nordic_bootloader.version` (`1000.0.10+0`). 1.0.1: 244,280 B,
+SHA-256 `74549ae976b6c4c334755addb93d1f73616916eabc5c0ab1e37ad9bf71d39626` (1.1.33 and 1.2.1). 1.0.2: 244,816 B,
 `5a713c93a5e5ccd1af4ceb5e21d8cfd2a1f37cf6d9b197da96f70f62234052fe` (1.2.5). The chip checks only the magic, length, CRC-16 and address range: **no signature,
 platform or rollback check**. So 1.0.2 is accepted beside the 1.2.1 bootloader, and 1.0.1 can be written back [L, untested]. Any image with a correct CRC is
 accepted too: our SHA-256 match against these two is the only guard.
