@@ -52,7 +52,7 @@ recognises). Run `python3 -m xy_forever.modkit --help` for their options.
 - A machine package holds its objects, `objects.txt`, `catalog.txt`, and its content
   (`content/display/…`, `content/presets/<id>/…`).
 
-The full format is in [STORAGE.md](STORAGE.md), section "Mod packages".
+The full format is in [storage/mods.md](storage/mods.md), section "Mod packages".
 
 ## 2. Send them to the device
 

@@ -59,7 +59,7 @@ const char* after_folder(const char* s, const char* folder) {   // "<folder>/res
     for (U32 i = 0; i != n; ++i) if (s[i] != folder[i]) return 0;
     return s[n] == '/' ? s + n + 1 : 0;
 }
-bool list_path_ok(const char* p) {         // docs/STORAGE.md files.sha256 path rules
+bool list_path_ok(const char* p) {         // docs/storage/packages.md files.sha256 path rules
     const U32 n = length(p, max_path + 1);
     if (!n || n > max_path || p[n - 1] == '/' || p[n - 1] == '.' || p[n - 1] == ' ') return false;
     const char* word = "bootloader";      // no name containing it (case ignored)

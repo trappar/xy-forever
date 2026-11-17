@@ -218,7 +218,7 @@ EDITS_MAGIC = b'XYFE'
 
 
 def encode_edits(profile):
-    """The profile's edits as the device reads them (docs/STORAGE.md, "Mod packages")."""
+    """The profile's edits as the device reads them (docs/storage/mods.md, "Mod packages")."""
     services = list(profile.get('services', {}))
     strings, offsets = bytearray(), {}
 
@@ -842,7 +842,7 @@ def placeholder_object(eid, accessors):
 
 
 def rebuild_kit(generation_dir, machines, extensions, catalog):
-    """The base plus the selected packages as a kit core.mjs accepts (docs/STORAGE.md, "Mod packages")."""
+    """The base plus the selected packages as a kit core.mjs accepts (docs/storage/mods.md, "Mod packages")."""
     root = Path(generation_dir)
     check(len(set(machines)) == len(machines) and len(set(extensions)) == len(extensions),
           'duplicate ids in the selection')

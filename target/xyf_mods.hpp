@@ -2,7 +2,7 @@
 #define XYF_MODS_HPP
 #include <stdint.h>
 // The Mods page (processor B's menu): the machines and extensions of the newest complete
-// mod package generation on the device (docs/STORAGE.md, "Mod packages"), an on/off toggle each, the
+// mod package generation on the device (docs/storage/mods.md, "Mod packages"), an on/off toggle each, the
 // memory the choice needs against the mods region, and a status row saying what Continue will do with
 // the toggles: they are a pending copy of the saved configuration (xyf_config.hpp), saved and built when you
 // boot (xyf_mods_io's save sequence, whose progress screen is this page's building view).

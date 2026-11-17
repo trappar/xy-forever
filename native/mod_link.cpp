@@ -1,6 +1,6 @@
 // Device mod linker: a port of open-xy builder/core.mjs linkKit, selectRuntime, activeServices,
 // numberSymbols and openKit's object and number checks (MIT, commit 52c8de9), over the package
-// files of docs/STORAGE.md ("Mod packages"), in steps of one whole file (mod_link.hpp).
+// files of docs/storage/mods.md ("Mod packages"), in steps of one whole file (mod_link.hpp).
 #include "mod_internal.hpp"
 
 namespace xyf_core { namespace mod_link {

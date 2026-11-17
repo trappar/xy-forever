@@ -25,7 +25,7 @@ enum class Status { ok, more, argument, capacity, catalog, insert, entry, number
                     official, unlinked };
 enum class Kind : Byte { synth, drum, sample, effect, player, extension };
 struct File { const char* path; hash::Digest sha256; };   // one files.sha256 line
-// One selected package, from its info.txt and files.sha256 (docs/STORAGE.md, "Mod packages").
+// One selected package, from its info.txt and files.sha256 (docs/storage/mods.md, "Mod packages").
 struct Package {
     const char* id;                 // id=
     Kind kind;                      // machine=
