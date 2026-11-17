@@ -37,7 +37,9 @@ commands and device scripts (the only agent that touches the device or asks the 
 Progress lives on GitHub (assignee, branch, pull request); an item left unfinished gets a comment saying
 where it stands, so the next session resumes from there. **Asking the developer:** one self-contained
 question at a time, your recommendation first (the agent's question tool if any); keep working on what does
-not depend on the answer. A question that can wait is an issue labeled `decision`.
+not depend on the answer. A question that can wait is an issue labeled `decision`; its body starts "Undecided for
+now:" and then the question. Issues, comments and pull requests are written in the developer's voice ("I", "my explicit
+yes", "Decided:"), never "the developer", "the maintainer" or "the orchestrator".
 
 ### Changing the plan
 
