@@ -330,7 +330,8 @@ class Bootstrap(unittest.TestCase):
         self.assertIn('Read `xy-forever/AGENTS.md` first and follow it', guide)
         self.assertIn('"Continue development" works from here', guide)
         self.assertTrue(10 <= len(guide.splitlines()) <= 15)
-        self.assertRegex(out, r'Next:\n  1\. Copy os\.ldr and bootloader\.ldr .* into %s.*/upgrade/firmware/blackfin/bin/'
+        self.assertRegex(out, r'Next:\n  1\. Put your OP-XY .* in MTP mode: hold COM .*\n  2\. python3 scripts/setup\.py '
+                         r'import-stock --from-device +\(reads them into %s.*/upgrade/firmware/blackfin/bin/os\.ldr'
                          % (self.ws / 'private/incoming'))
         self.assertIn('import-stock %s' % (self.ws / 'private/incoming'), out)
         self.assertIn('4. Open Claude Code in %s (or %s) and say "Continue development"' % (self.ws, self.repo), out)
