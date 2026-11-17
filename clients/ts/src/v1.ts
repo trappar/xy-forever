@@ -33,7 +33,7 @@ export const MAX_FRAME = HEADER_BYTES + MAX_PAYLOAD + TRAILER_BYTES;
 /** A reply has the request type | REPLY; events are 0x80 and above too. */
 export const REPLY = 0x80;
 
-/** Transport facts (docs/PROTOCOL.md, Transport). How a tool reaches the protocol. verified is true for facts read from device sessions or the code, false for facts nobody has checked yet. */
+/** Transport facts (docs/protocol/transport.md, Transport). How a tool reaches the protocol. verified is true for facts read from device sessions or the code, false for facts nobody has checked yet. */
 export const TRANSPORT = {
   usbVendorId: { value: 9063, verified: true, doc: "teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), which the product build (188 and later) falls back to when a boot-time check fails, and which builds before 188 always used" },
   usbProductId: { value: 33, verified: true, doc: "the stock OS uses the same id with no serial interface (MTP, vendor class 0xFF; another mode is 0x8021, class 0x01), so a filter on both ids finds only XY Forever's service on the stock identity; a tool must accept this pair and `product_usb_ids`" },

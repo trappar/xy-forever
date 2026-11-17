@@ -1,6 +1,6 @@
 // The call layer's core: one request at a time over a transport. Picks the seq, waits for the reply
 // with the same type and seq (or the timeout, or a cancel), drops stale replies, resets the frame
-// parser after a timeout (docs/PROTOCOL.md, Rules), and hands events (0xD0..0xDF, seq 0) to
+// parser after a timeout (docs/protocol/rules.md), and hands events (0xD0..0xDF, seq 0) to
 // listeners. It sends whatever it is given: hello, the cmds check and typed codecs are client.ts.
 import { XyfError } from './errors.ts';
 import type { Transport } from './transport.ts';

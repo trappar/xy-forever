@@ -74,7 +74,7 @@ enum Status : uint32_t {
     s_declined = 19,                            // the user refused the command at the device's Confirm on device prompt, or nobody answered it in time; nothing was done (not sent by any command yet: the prompt is not built)
 };
 } }
-// hello text (docs/PROTOCOL.md, hello). The build defines XYF_BUILD_NUMBER and XYF_BUILD_MODE (string literals).
+// hello text (docs/protocol/cmd-session.md, hello). The build defines XYF_BUILD_NUMBER and XYF_BUILD_MODE (string literals).
 // XYF_USBP_CMDS: the cmds bitmap, most significant hex digit first; a digit that a build switch
 // changes is one #if block keyed by the switches of its commands (as home_pump's dispatch).
 // XYF_STAGE2_LOADED: never defined by a build; the device sets those bits at run time.
