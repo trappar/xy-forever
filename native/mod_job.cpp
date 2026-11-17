@@ -14,11 +14,10 @@ enum Stage {
     st_content_start, st_content, st_entry,                                            // content, entry texts
     st_write, st_verify, st_check_start, st_check, st_finish
 };
-// Outputs in write, read-back and rename order: mod_content's list (content/..., sorted), then these four,
+// Outputs in write, read-back and rename order: mod_content's list (content/..., sorted), then these three,
 // os.ldr last.
-const U32 fixed_outputs = 4, none = 0xffffffffu;
-const char* const fixed_names[fixed_outputs] = {"layout.json", "info.txt", "files.sha256", "os.ldr"};
-const char* const slots[3] = {"engine", "effect", "player"};
+const U32 fixed_outputs = 3, none = 0xffffffffu;
+const char* const fixed_names[fixed_outputs] = {"info.txt", "files.sha256", "os.ldr"};
 const char part[] = ".part";
 const char* const kinds[6] = {"synth", "drum", "sample", "effect", "player", "extension"};
 
@@ -66,7 +65,7 @@ bool compose(Job& j, const char* a, const char* b, const char* c, const char* su
 }
 
 // Removes every output name the job may have written (parts and finals: each content file opened so far,
-// the four fixed names always) and closes an open handle. Results are ignored: a name that is absent stays
+// the three fixed names always) and closes an open handle. Results are ignored: a name that is absent stays
 // absent. Folders stay.
 void cleanup(Job& j) {
     const Files& f = *j.files;
@@ -323,13 +322,13 @@ __attribute__((noinline)) const char* out_name(const Job& j, U32 i) {
 __attribute__((noinline)) const Byte* out_data(const Job& j, U32 i) {
     const U32 listed = j.out_count - fixed_outputs;
     if (i < listed) return j.builder.listed[i].package == none ? j.catalog_out : j.source;
-    const Byte* const fixed[fixed_outputs] = {j.layout_out, j.info_out, j.list_out, j.image};
+    const Byte* const fixed[fixed_outputs] = {j.info_out, j.list_out, j.image};
     return fixed[i - listed];
 }
 __attribute__((noinline)) const hash::Digest& out_digest(const Job& j, U32 i) {
     const U32 listed = j.out_count - fixed_outputs;
     if (i < listed) return *j.builder.listed[i].sha256;
-    const hash::Digest* const fixed[fixed_outputs] = {&j.layout_sha256, &j.info_sha256, &j.list_sha256, &j.ldr_sha256};
+    const hash::Digest* const fixed[fixed_outputs] = {&j.info_sha256, &j.list_sha256, &j.ldr_sha256};
     return *fixed[i - listed];
 }
 // Every folder of content output i below `out` that the output before it did not already need (the list
@@ -372,10 +371,7 @@ struct Text {
     __attribute__((noinline)) void hex(const Byte* b, U32 n) {
         for (U32 i = 0; i != n; ++i) { byte(Byte("0123456789abcdef"[b[i] >> 4])); byte(Byte("0123456789abcdef"[b[i] & 15u])); }
     }
-    __attribute__((noinline)) void json_value(bool has, int v) {   // a number, or null
-        if (!has) { text("null"); return; }
-        if (v < 0) { byte('-'); number(0u - U32(v)); } else number(U32(v));
-    }
+
 };
 // [a-z0-9][a-z0-9._-]*, at most 31 bytes (info.txt generation, profile).
 bool token(const Byte* v, U32 n) {
@@ -387,54 +383,11 @@ bool token(const Byte* v, U32 n) {
     }
     return true;
 }
-// A JSON string's bytes that need no escape: printable ASCII but '"' and '\\'.
-bool plain(const char* s, U32 n) {
-    for (U32 i = 0; i != n; ++i) if (Byte(s[i]) < 0x20 || Byte(s[i]) > 0x7e || s[i] == '"' || s[i] == '\\') return false;
-    return true;
-}
-U32 length(const char* s) { U32 n = 0; while (s[n]) ++n; return n; }
-// layout.json as open-xy's website writes it (builder/app.mjs build(): JSON.stringify(value, null, 2) +
-// "\n"): format, profile, selected (the selection's order), extensions (collection order: the linked rows
-// of extensions.txt), machines (the link's numbers in its order: fixed, layout, new; {slot, page}).
-Error build_layout(Job& j, const Byte* profile, U32 profile_bytes) {
-    Text t = {j.layout_out, 0, layout_bytes, true};
-    t.text("{\n  \"format\": \"opxy-layout/1\",\n  \"profile\": \"");
-    t.bytes(profile, profile_bytes);
-    t.text("\",\n  \"selected\": [");
-    const mod_link::Selection& sel = j.input->selection;
-    for (U32 i = 0; i != sel.machine_count; ++i) { t.text(i ? ",\n    \"" : "\n    \""); t.text(sel.machines[i]); t.byte('"'); }
-    t.text(sel.machine_count ? "\n  ],\n  \"extensions\": [" : "],\n  \"extensions\": [");
-    U32 count = 0;
-    for (U32 i = 0; i != 32; ++i) {
-        const char* id; U32 n;
-        if (!(j.linked.extensions >> i & 1u)) continue;
-        if (!mod_link::extension_at(j.workspace, i, id, n) || !plain(id, n)) { set_detail_text(j, "layout extension"); return Error::base; }
-        t.text(count++ ? ",\n    \"" : "\n    \""); t.bytes(reinterpret_cast<const Byte*>(id), n); t.byte('"');
-    }
-    t.text(count ? "\n  ],\n  \"machines\": {" : "],\n  \"machines\": {");
-    mod_link::Number number;
-    U32 i = 0;
-    for (; mod_link::number_at(j.workspace, i, number); ++i) {
-        number.id[mod_link::id_bytes - 1] = 0;
-        if (number.identity.slot > 2 || !plain(number.id, length(number.id))) { set_detail_text(j, "layout machine"); return Error::base; }
-        t.text(i ? ",\n    \"" : "\n    \""); t.text(number.id); t.text("\": {\n      \"");
-        t.text(slots[number.identity.slot]); t.text("\": "); t.json_value(number.identity.has_number, number.identity.number);
-        t.text(",\n      \"page\": "); t.json_value(number.identity.has_page, number.identity.page); t.text("\n    }");
-    }
-    t.text(i ? "\n  }" : "}");
-    if (j.profile.expanded) {            // as the website records its 4 MiB option
-        t.text(",\n  \"memory\": \"expanded\",\n  \"reserved_bytes\": "); t.number(j.reserved_bytes);
-    }
-    t.text("\n}\n");
-    if (!t.ok) { set_detail_text(j, "layout.json"); return Error::size; }
-    j.layout_size = t.size;
-    return Error::none;
-}
 // "<64 hex>  <path>\n"
 void list_line(Text& t, const hash::Digest& d, const char* path) {
     t.hex(d.bytes, 32); t.text("  "); t.text(path); t.byte('\n');
 }
-// The entry's texts (layout.json, info.txt, files.sha256 completed) and their SHA-256s; the outputs' table.
+// The entry's native texts (info.txt, files.sha256 completed) and their SHA-256s; the outputs' table.
 __attribute__((noinline)) Error entry_texts(Job& j) {
     const Job::Package& base = j.packages[0];
     const Byte *generation, *profile; U32 generation_bytes, profile_bytes;
@@ -446,14 +399,11 @@ __attribute__((noinline)) Error entry_texts(Job& j) {
     }
     const U32 count = j.builder.listed_count + fixed_outputs;
     j.out_sizes = reinterpret_cast<U32*>(take(j, count * 4u, true));
-    j.layout_out = j.out_sizes ? take(j, layout_bytes, true) : 0;
-    j.info_out = j.layout_out ? take(j, info_bytes, true) : 0;
+    j.info_out = j.out_sizes ? take(j, info_bytes, true) : 0;
     if (!j.info_out) { set_detail_text(j, "entry"); return Error::region; }
     j.out_count = count;
     j.ldr_bytes = j.patcher.total;
     copy_digest(j.ldr_sha256, j.patcher.sha256);
-    const Error e = build_layout(j, profile, profile_bytes);
-    if (e != Error::none) return e;
     // info.txt: a firmware entry that is an assembled mod set (docs/STORAGE.md; xyf_entry.manifest_text order)
     Text t = {j.info_out, 0, info_bytes, true};
     t.text("type=firmware\nname="); t.text(j.input->name);
@@ -464,26 +414,24 @@ __attribute__((noinline)) Error entry_texts(Job& j) {
     t.text("\nneeds_os="); t.hex(j.profile.stock_sha256.bytes, 32);
     t.text("\ngeneration="); t.bytes(generation, generation_bytes);
     t.text("\nprofile="); t.bytes(profile, profile_bytes);
+    t.text("\nmachines="); t.number(j.input->selection.machine_count);
     t.byte('\n');
     if (!t.ok) { set_detail_text(j, "info.txt"); return Error::size; }
     j.info_size = t.size;
     hash::Sha256 h;
-    h.reset(); h.update(j.layout_out, j.layout_size); h.finish(j.layout_sha256);
     h.reset(); h.update(j.info_out, j.info_size); h.finish(j.info_sha256);
     // files.sha256: mod_content's content/... lines, then these (sorted: "content/" < "info.txt" <
-    // "layout.json" < "os.ldr"); never itself.
+    // "os.ldr"); never itself.
     Text list = {j.list_out, j.builder.list_bytes, list_bytes, true};
     list_line(list, j.info_sha256, "info.txt");
-    list_line(list, j.layout_sha256, "layout.json");
     list_line(list, j.ldr_sha256, "os.ldr");
     if (!list.ok) { set_detail_text(j, "files.sha256"); return Error::size; }
     j.list_size = list.size;
     h.reset(); h.update(j.list_out, j.list_size); h.finish(j.list_sha256);
     const U32 listed = count - fixed_outputs;
     for (U32 i = 0; i != listed; ++i) j.out_sizes[i] = j.builder.listed[i].package == none ? j.builder.catalog_bytes : 0;
-    j.out_sizes[listed] = j.layout_size; j.out_sizes[listed + 1] = j.info_size;
-    j.out_sizes[listed + 2] = j.list_size; j.out_sizes[listed + 3] = j.ldr_bytes;
-    j.work = j.layout_size + j.info_size + j.list_size;
+    j.out_sizes[listed] = j.info_size; j.out_sizes[listed + 1] = j.list_size; j.out_sizes[listed + 2] = j.ldr_bytes;
+    j.work = j.info_size + j.list_size;
     return Error::none;
 }
 bool valid_name(const char* s) {        // info.txt name

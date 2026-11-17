@@ -19,13 +19,12 @@ Part of the [XY Forever storage layout](../STORAGE.md).
   (the job pins its SHA-256; while a mod set's content is installed, the saved `content-official/` copy); output `tmp/job-<id>/`.
   An aux preset path two machines carry is listed once, with the later machine's bytes (as `core.mjs`).
 - **The assembled entry** (`native/mod_job`; host reference `modpatch.entry_files`): the job's
-  output folder holds every `content/…` file above, `layout.json`, `info.txt`, `files.sha256` and
-  `os.ldr`. `layout.json` is what open-xy's website writes (`builder/app.mjs`, `JSON.stringify(…, null,
-  2)` + LF): `format`, `profile`, `selected` (the selection's order), `extensions` (collection order),
-  `machines` (the link's numbers: fixed, layout, new), expanded: `"memory": "expanded"`, `reserved_bytes`. `info.txt`: `type=firmware`, `name` (the
-  caller's), `kind=open-xy`, `bytes`, `crc32`, `sha256`, and the base's `needs_os`, `generation`,
-  `profile`. `files.sha256` lists every file of the entry but itself (the `content/…` lines above, then
-  `info.txt`, `layout.json`, `os.ldr`); a content switch takes its `content/` lines. Each file is
+  output folder holds every `content/…` file above, `info.txt`, `files.sha256` and `os.ldr`.
+  `info.txt`: `type=firmware`, `name` (the caller's), `kind=open-xy`, `bytes`, `crc32`,
+  `sha256`, the base's `needs_os`, `generation`, `profile`, and `machines` (the selected
+  machine count). Selection and memory choice stay in native `config.txt`; no external
+  layout is produced. `files.sha256` lists every file of the entry but itself (the sorted
+  `content/…` lines above, then `info.txt`, `os.ldr`); a content switch takes its `content/` lines. Each file is
   written as `<name>.part`, read back by SHA-256, `os.ldr` also checked by `start_verify`, then renamed,
   `os.ldr` last: an entry with an `os.ldr` is complete.
 - **Into the library** (B after the job's last step, one request per menu-loop pass; decision 019

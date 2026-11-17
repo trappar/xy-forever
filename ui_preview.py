@@ -14,7 +14,7 @@ def build(out, run=subprocess.run):
         '-ffreestanding', '-fno-builtin', '-fno-exceptions', '-fno-rtti',
         str(ROOT / 'target/ui_gfx.cpp'), str(ROOT / 'target/ui_screens.cpp'),
         str(ROOT / 'target/ui_pages.cpp'), str(ROOT / 'tests/ui_preview_bridge.cpp'),
-        str(ROOT / 'tests/ui_pages_bridge.cpp'), str(ROOT / 'target/xyf_store.cpp'), str(ROOT / 'target/xyf_layout.cpp'), str(ROOT / 'target/xyf_info.cpp'),
+        str(ROOT / 'tests/ui_pages_bridge.cpp'), str(ROOT / 'target/xyf_store.cpp'), str(ROOT / 'target/xyf_info.cpp'),
         str(ROOT / 'target/xyf_library.cpp'), str(ROOT / 'target/xyf_state.cpp'), str(ROOT / 'target/xyf_crc32.cpp'), str(ROOT / 'target/xyf_catalog.cpp'),
         str(ROOT / 'target/xyf_menu.cpp'), str(ROOT / 'target/xyf_menu_view.cpp'),
         str(ROOT / 'tests/ui_flow_bridge.cpp'), str(ROOT / 'target/xyf_mods.cpp'), str(ROOT / 'target/xyf_mods_view.cpp'),

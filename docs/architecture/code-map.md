@@ -20,7 +20,7 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 | `target/usb_service_*.ipp` | `usb_service.cpp`'s parts, one per section, included in place: one translation unit (decision 034) |
 | `target/storage_server.cpp`, `file_engine.cpp`, `file_client.cpp` | A's storage server (the file engine's entries and window, install mode); the engine's path policy and request decision (both processors); B's timed file client |
 | `target/cold_storage.cpp`, `boot_services.cpp`, `retained_lookup.cpp`, `cold_heap.cpp` | cold-time yaffs session, stock fs prefixes, retained device lookup, allocator guard |
-| `target/xyf_library.cpp`, `xyf_cold_library.cpp`, `xyf_catalog.cpp`, `xyf_store.cpp`, `xyf_layout.cpp`, `xyf_info.cpp` | library scan, catalog blob, key=value and `layout.json` parsers |
+| `target/xyf_library.cpp`, `xyf_cold_library.cpp`, `xyf_catalog.cpp`, `xyf_store.cpp`, `xyf_info.cpp` | library scan, catalog blob, native key=value parsers |
 | `target/xyf_state*.cpp` | A/B state slots and the set-default write |
 | `target/xyf_menu.cpp`, `xyf_menu_view.cpp`, `ui_*.cpp` | menu state machine, pages, drawing (own font/logo) |
 | `target/census.cpp`, `warm_snapshot.cpp`, `storage_probe_record.cpp`, `storage_probe_reporter.*` | diagnostic census + report written after the OS mounts storage |

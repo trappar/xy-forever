@@ -1,5 +1,8 @@
 # 008: On-device mod selection (design)
 
+Layout reader/output and migration proposals below are superseded by
+[035: browser onboarding only](035-layout-migration.md).
+
 Detail of [008-mod-assembly.md](008-mod-assembly.md).
 
 ## Design

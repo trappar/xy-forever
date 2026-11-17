@@ -2,17 +2,22 @@
 
 Part of the [XY Forever storage layout](../STORAGE.md).
 
-## `layout.json` (open-xy)
+## External Open-XY layouts
 
-XY Forever reads only `format` (it must be `opxy-layout/1`), `profile`, and the
-machine IDs under `machines`. Each machine is an `engine` or an `effect`, with a
-`page`. The reader is a bounded streaming scanner: at most 8 KiB, nesting at most
-8 deep, and at most 64 machines. The format is defined by open-xy
-(`../open-xy/tooling/machines.py`, `LAYOUT_FORMAT`).
+`layout.json` belongs to Open-XY. XY Forever's firmware does not read, write or require
+it. Leftover copies in existing entries are ignored; `info.txt` supplies the optional
+native machine count. The editable selection belongs to `config.txt`.
 
-Upstream's `machines` is a map of number reservations (it keeps disabled and fixed
-machines); the enabled set is `selected`, and `extensions` is separate. Our reader
-rejects `player` machines today, and larger collections may exceed its bounds.
+Browser onboarding will read an existing layout's `selected`, `extensions`, `profile`
+and memory choice, match them to native packages, show missing or incompatible mods,
+and let the user review the native selection before rebuilding. It imports a mod
+selection, never a compiled firmware image or a second runtime format. SDK layouts
+without `selected` cannot recover a selection: `machines` includes historical number
+reservations. This browser flow is planned in issue #94; regular users need no project
+workspace, Python or CLI. [Decision 035](../decisions/035-layout-migration.md) owns this boundary.
+
+Upstream checked at `a07b08faeb58cc7e74cdbc8bd98f809a8ffd5159` (2026-11-17):
+`tooling/machines.py:layout_document` and `builder/app.mjs`'s `nextLayout`.
 
 ## Mod packages (`mods/<profile>/<generation>/`)
 

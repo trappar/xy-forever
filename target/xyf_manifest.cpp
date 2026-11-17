@@ -6,16 +6,16 @@ namespace xyf { namespace manifest {
 namespace {
 const char* const key_names[key_count] = {
     "type", "name", "version", "kind", "bytes", "crc32", "sha256", "content",
-    "needs_os", "generation", "profile", "machine", "source", "licence"};
+    "needs_os", "generation", "profile", "machine", "source", "licence", "machines"};
 const char* const machine_names[] = {"synth", "drum", "sample", "effect", "player", "extension"};
 const uint16_t bit_type = 1u << key_type;
 // Keys each type takes and needs (010: the firmware and mod examples, the base line).
 const uint16_t firmware_keys = uint16_t(
     1u << key_name | 1u << key_version | 1u << key_kind | 1u << key_bytes | 1u << key_crc32 | 1u << key_sha256 |
     1u << key_content | 1u << key_needs_os | 1u << key_generation | 1u << key_profile | 1u << key_source |
-    1u << key_licence);
+    1u << key_licence | 1u << key_machines);
 const uint16_t base_keys = uint16_t(1u << key_name | 1u << key_version | 1u << key_profile | 1u << key_generation |
-                                    1u << key_needs_os | 1u << key_source | 1u << key_licence);
+                                    1u << key_needs_os | 1u << key_source | 1u << key_licence | 1u << key_machines);
 const uint16_t mod_keys = uint16_t(1u << key_name | 1u << key_version | 1u << key_machine | 1u << key_generation |
                                    1u << key_profile | 1u << key_source | 1u << key_licence);
 const uint16_t firmware_needs = uint16_t(1u << key_name | 1u << key_bytes | 1u << key_crc32 | 1u << key_sha256);
@@ -95,6 +95,7 @@ Status store_value(Manifest& m, uint32_t key, const char* v, uint32_t n) {
         for (uint32_t i = 0; i != sizeof(machine_names) / sizeof(machine_names[0]); ++i)
             if (same(v, n, machine_names[i])) { m.machine = uint8_t(machine_synth + i); return ok; }
         return bad_value;
+    case key_machines: return number(v, n, m.machines) && m.machines <= 65535u ? ok : bad_number;
     case key_bytes: return number(v, n, m.bytes) ? ok : bad_number;
     case key_crc32: {
         uint8_t b[4];
@@ -236,6 +237,8 @@ void legacy_info(const Manifest& m, store::Info& info) {
     info.has_crc32 = has(m, key_crc32);
     info.crc32 = info.has_crc32 ? m.crc32 : 0;
     info.has_generation = has(m, key_generation);
+    info.has_machines = has(m, key_machines);
+    info.machines = info.has_machines ? m.machines : 0;
 }
 
 namespace {

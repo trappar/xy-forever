@@ -25,7 +25,7 @@ static const U32 id_bytes = 16;          // machine id, NUL-terminated (core.mjs
 struct Number { char id[id_bytes]; Identity identity; };
 
 // What to link; ids NUL-terminated, order irrelevant (as in linkKit). `layout`: the device
-// layout's numbers (opxy-layout/1 "machines"); has_layout false = none (null). The arrays must
+// Prior number reservations; has_layout false = none (null). The arrays must
 // stay valid until the last step.
 // `expanded`: the website's experimental 4 MiB option (core.mjs memoryKit(kit, true)): the module
 // starts at the base's expanded_module_base and keeps its end, so the limit grows by the difference (4080

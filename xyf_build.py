@@ -286,7 +286,7 @@ GC_MODES = (*PRODUCT_MODES, 'xyf-stage2', 'xyf-stage2-menu')
 # Stage 2 main (--xyf-stage2-menu, ABI 2): the stage-1 build is --xyf-stage2
 # plus XYF_STAGE2_MENU; the image links the XY Forever menu modules.
 STAGE2_MENU_MODULES = ('ui_gfx', 'ui_screens', 'ui_pages', 'xyf_menu', 'xyf_menu_view', 'xyf_catalog', 'xyf_store')
-GC_MODULES = ('inflate', 'xyf_stage2', 'xyf_store', 'xyf_layout', 'xyf_info', 'xyf_state', 'xyf_state_write',
+GC_MODULES = ('inflate', 'xyf_stage2', 'xyf_store', 'xyf_info', 'xyf_state', 'xyf_state_write',
               'xyf_library', 'xyf_cold_library', 'xyf_catalog', 'xyf_crc32', 'ui_pages', 'ui_gfx', 'ui_screens',
               'xyf_menu', 'xyf_menu_view', 'usb_proto', 'otp_keys') + TFW_CHECK_MODULES + MOD_JOB_MODULES + \
     MODS_PAGE_MODULES
@@ -1184,7 +1184,7 @@ def build(out, stock, boot, mode):
         cpp('xyf_stage2', SOURCE / 'target/xyf_stage2.cpp', ('-DXYF_STAGE2_SERVICE=1',))
         assembly('xyf_stage2_enter', SOURCE / 'target/xyf_stage2_enter.s')
     if file_boot:
-        for name in ('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_layout', 'xyf_info'):
+        for name in ('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info'):
             cpp(name, SOURCE / ('target/' + name + '.cpp'))
     links = (('file_boot',) if file_boot else ()) + (('menu_link',) if menu_link else ())
     names += [*links, 'peer_services']
@@ -1240,7 +1240,7 @@ def build(out, stock, boot, mode):
                       (('usb_service', 'file_client', 'usb_proto', 'xyf_crc32', 'xyf_store', 'xyf_state',
                         'xyf_state_write') if usb else ()) +
                       (('xyf_stage2', 'xyf_stage2_enter') if stage2 or stage2_service else ()) +
-                      (('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_layout', 'xyf_info') if file_boot
+                      (('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info') if file_boot
                        else ()) +
                       ('xyf_crc32',) +
                       links + ('peer_services', 'peer_boot', 'hash', 'inflate') +

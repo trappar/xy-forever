@@ -44,12 +44,12 @@ class EntryFiles(unittest.TestCase):
                                                % (PROFILE, GENERATION, needs))
             (gen / 'base/extensions.txt').write_text('')
             assembled = {'os.ldr': image, **{'content/' + p: b for p, b in CONTENT.items()}}
-            ref = MP.entry_files(gen, assembled, ['fm2op'], [], {'fm2op': {'engine': 34, 'page': 82}}, name='Loader test')
-        mine = te.entry_files(image, CONTENT, ref['layout.json'], 'Loader test', needs, GENERATION, PROFILE)
+            ref = MP.entry_files(gen, assembled, ['fm2op'], name='Loader test')
+        mine = te.entry_files(image, CONTENT, 'Loader test', needs, GENERATION, PROFILE, machines=1)
         self.assertEqual(mine, ref)
         self.assertEqual([l.split('  ')[1] for l in mine['files.sha256'].decode().splitlines()],
                          ['content/display/fm2op.svg', 'content/op1_factory.json', 'content/presets/fm2op/default.json',
-                          'info.txt', 'layout.json', 'os.ldr'])
+                          'info.txt', 'os.ldr'])
 
     def test_candidate_refuses_files_outside_loaded_id(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -89,8 +89,6 @@ class TestEntrySimulator(unittest.TestCase):
         (self.cand / 'os.ldr').write_bytes(stock)
         (self.cand / 'xy-forever/loaded/loader-test').mkdir(parents=True)
         (self.cand / 'xy-forever/loaded/loader-test/sift.oxl').write_bytes(b'oxl' * 100)
-        self.layout = work / 'layout.json'
-        self.layout.write_text(json.dumps({'format': 'opxy-layout/1', 'profile': PROFILE}, indent=2) + '\n')
         self.sim = sim.Simulator(self.root, work / 'bootpart.bin', build_dir=sim.build(), log=work / 'log.txt').start()
         self.addCleanup(self.sim.stop)
 
@@ -99,7 +97,7 @@ class TestEntrySimulator(unittest.TestCase):
         folder = Path(tempfile.mkdtemp(dir=self.tmp.name))
         try:
             with contextlib.redirect_stdout(out):
-                code = te.main(['--sim', self.sim.address, '--candidate', str(self.cand), '--layout', str(self.layout)]
+                code = te.main(['--sim', self.sim.address, '--candidate', str(self.cand)]
                                + list(argv), sleep=lambda s: self.sim.advance(int(s * 1000)), folder=folder)
         finally:
             host.SIM = None
@@ -120,7 +118,7 @@ class TestEntrySimulator(unittest.TestCase):
         self.assertIn('os.ldr kept', out)
         self.assertIn('needs_os taken from firmware/mods-a/info.txt', out)
         stock = sim.STOCK_OS.read_bytes()
-        want = te.entry_files(stock, CONTENT, self.layout.read_bytes(), 'Loader test', hashlib.sha256(stock).hexdigest(),
+        want = te.entry_files(stock, CONTENT, 'Loader test', hashlib.sha256(stock).hexdigest(),
                               GENERATION, PROFILE)
         self.assertEqual(MP.tree(entry), want)
         self.assertTrue((self.root / 'xy-forever/loaded/loader-test/sift.oxl').is_file())

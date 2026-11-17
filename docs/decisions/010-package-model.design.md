@@ -1,5 +1,8 @@
 # 010: Package model (design)
 
+Layout reader/output and migration proposals below are superseded by
+[035: browser onboarding only](035-layout-migration.md).
+
 Detail of [010-package-model.md](010-package-model.md).
 
 ## Layout (keeps every existing path; nothing to migrate) [D]

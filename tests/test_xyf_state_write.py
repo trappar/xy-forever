@@ -18,7 +18,7 @@ class StateWriteTest(unittest.TestCase):
             binary = Path(tmp) / 'sw'
             hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                            '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                           *(str(ROOT / 'target' / f) for f in ('xyf_store.cpp', 'xyf_layout.cpp', 'xyf_info.cpp', 'xyf_crc32.cpp', 'xyf_state.cpp',
+                           *(str(ROOT / 'target' / f) for f in ('xyf_store.cpp', 'xyf_info.cpp', 'xyf_crc32.cpp', 'xyf_state.cpp',
                                                                  'xyf_library.cpp', 'xyf_state_write.cpp', 'xyf_state_write_library.cpp',
                                                                  'xyf_state_write_test.cpp')),
                             '-o', str(binary)], check=True, capture_output=True, text=True)

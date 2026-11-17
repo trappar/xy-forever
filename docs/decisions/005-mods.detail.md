@@ -1,5 +1,8 @@
 # 005: Mods today (detail)
 
+Layout reader/output and migration proposals below are superseded by
+[035: browser onboarding only](035-layout-migration.md).
+
 Detail of [005-mods.md](005-mods.md).
 
 ## `layout.json` and our parser

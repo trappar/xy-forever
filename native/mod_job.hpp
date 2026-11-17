@@ -17,16 +17,15 @@ namespace xyf_core { namespace mod_job {
 // op1_factory.json (the content step pins it) and the firmware's content.sha256.
 // Outputs: one whole library entry in the existing folder `out` (docs/STORAGE.md): every content/...
 // file of mod_content's list (the packages' display and preset files copied, content/op1_factory.json
-// built), layout.json (opxy-layout/1 as open-xy's website writes it: profile, selected, extensions,
-// machines = the link's numbers), info.txt (type=firmware, an assembled mod set: name, kind open-xy,
-// bytes, crc32, sha256, needs_os, generation, profile), files.sha256 (every file above and os.ldr,
+// built), info.txt (type=firmware, an assembled mod set: name, kind open-xy,
+// bytes, crc32, sha256, needs_os, generation, profile, machines), files.sha256 (every file above and os.ldr,
 // sorted), then os.ldr. The job makes the folders under `out` it needs (mkdir). Each output is written
 // as <name>.part and read back and compared by SHA-256; os.ldr is read back whole, its SHA-256 must be the
 // assembly's (the image the patch's restore check passed), and it must pass mod_patch::start_verify's
 // layout checks and the policy (`hashed`: the restore hashes are not repeated); then
 // every part is renamed onto its name, os.ldr last, so an entry with an os.ldr is complete. A failed
 // or cancelled job removes every name it may have written (parts and finals; folders stay), and the
-// four fixed names always; it never leaves an os.ldr.
+// three fixed names always; it never leaves an os.ldr.
 //
 // One step() is one of: one read or write call of at most chunk_bytes, one linker step (one whole
 // object, at most 1 MiB, or one 128 KiB zero slice), one patch or image-check step (128 KiB hashed or
@@ -49,9 +48,7 @@ struct Files {
 // The selection and the files, as host/mod_assemble.cpp's job; everything must stay valid until the
 // job ends.
 struct Input {
-    mod_link::Selection selection;   // machines (layout.json "selected" keeps their order), extensions, layout,
-                                     // memory (expanded: the 4 MiB option; layout.json then records
-                                     // "memory": "expanded" and its reserved_bytes)
+    mod_link::Selection selection;   // machines, extensions, prior number reservations, memory option
     const char* generation;          // folder holding base/, <machine>/, ext-<id>/
     const char* stock;               // stock os.ldr
     const char* catalog;             // stock content/op1_factory.json
@@ -87,7 +84,7 @@ enum class Error {
     image        // os.ldr read back fails start_verify or differs from the assembly (status: mod_patch::Status)
 };
 static const U32 chunk_bytes = 64u * 1024u, path_bytes = 240, detail_bytes = 33,
-                 catalog_bytes = 16384, list_bytes = 65536, layout_bytes = 8192, info_bytes = 1024,
+                 catalog_bytes = 16384, list_bytes = 65536, info_bytes = 1024,
                  crc_slice = 128u * 1024u;
 // State of one job; caller-owned (no BSS), reusable: start() resets it.
 struct Job {
@@ -114,7 +111,7 @@ struct Job {
     Load load;
     int out_handle;
     U32 out_index, out_done;
-    U32 out_count, out_written;                  // outputs (content files + 4); how many were opened
+    U32 out_count, out_written;                  // outputs (content files + 3); how many were opened
     U32* out_sizes;                              // each output's size (a content file's once loaded)
     const Byte* source;                          // the content file being written (loaded from its package)
     bool check_object;                           // the file being read is a mod object (check_object)
@@ -129,9 +126,9 @@ struct Job {
     U32 stock_catalog_bytes, official_bytes;
     mod_link::Workspace workspace; mod_link::Result linked;
     mod_patch::Patcher patcher; mod_content::Builder builder;
-    Byte *layout_out, *info_out;
-    U32 layout_size, info_size, list_size, ldr_bytes, crc, crc_done;
-    hash::Digest ldr_sha256, layout_sha256, info_sha256, list_sha256;
+    Byte* info_out;
+    U32 info_size, list_size, ldr_bytes, crc, crc_done;
+    hash::Digest ldr_sha256, info_sha256, list_sha256;
     U32 link_pass;                               // timing: the link's last step: 1 tables/pass 1, 2 zero, 3 pass 2
 };
 // The part of the job a step belongs to, finer than Phase (the save-time log, target/xyf_save_log.hpp).

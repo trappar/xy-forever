@@ -24,8 +24,9 @@ Part of [XY Forever goals](../GOALS.md).
    content. XY Forever and the dev menu stay available.
 6. **Everything the stock bootloader does,** including installing content
    packs (new in 1.2.5; a later goal).
-7. **Mods.** Load open-xy builds, see which mods each contains (from
-   `layout.json`), and turn individual mods on or off from the menu.
+7. **Mods.** Manage native mod packages and turn individual mods on or off from the
+   menu. Browser onboarding imports an Open-XY mod selection for XY Forever to rebuild;
+   the device uses its own configuration and metadata.
 8. **Update manager.** One place to update everything:
    - XY Forever itself;
    - firmware (official and open-xy builds);

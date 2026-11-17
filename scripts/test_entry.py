@@ -4,10 +4,10 @@ firmware accepts (a TEST path only: the OP-XY assembles mod firmware itself; hos
 
 The entry is what native/mod_job writes (docs/storage/mods-assembly.md, "The assembled entry"; host twin
 modpatch.entry_files): firmware/<id>/ with the candidate's content/... (op1_factory.json, display/, presets/),
-layout.json (the Open-XY build's), info.txt (type=firmware name kind=open-xy bytes crc32 sha256 needs_os
-generation profile), files.sha256 over every other file (sorted bytewise) and os.ldr. needs_os is the sha256=
+info.txt (type=firmware name kind=open-xy bytes crc32 sha256 needs_os
+generation profile machines), files.sha256 over every other file (sorted bytewise) and os.ldr. needs_os is the sha256=
 of firmware/<--stock-entry>/info.txt (the stock os.ldr the image was built from); generation and profile are
-those of firmware/<--like>/info.txt (the device's own Open-XY entry); layout.json's profile must equal it.
+those of firmware/<--like>/info.txt (the device's own Open-XY entry).
 The candidate's xy-forever/loaded/<id>/... files (runtime-loaded objects) go to /yaffs2/xy-forever/loaded/<id>/.
 
 Modes (each a separate run; the first FAIL stops, exit 1; usage exit 2):
@@ -45,15 +45,14 @@ RECORD = XYF + '/content-state.txt'
 T_SWITCH = 300.0               # set-default with the content switch (a job; xyf_host waits for it)
 
 
-def entry_files(image, content, layout, name, needs_os, generation, profile):
+def entry_files(image, content, name, needs_os, generation, profile, machines=None):
     """{path: bytes} of the entry, as modpatch.entry_files (the device job's host twin) builds one."""
     files = {'content/' + p: b for p, b in content.items()}
     files['os.ldr'] = image
-    files['layout.json'] = layout
     files['info.txt'] = xyf_entry.manifest_text(dict(
         type='firmware', name=name, kind='open-xy', bytes=len(image), crc32='%08x' % (zlib.crc32(image) & 0xffffffff),
         sha256=hashlib.sha256(image).hexdigest(), needs_os=needs_os, generation=generation,
-        profile=profile)).encode()
+        profile=profile, **({'machines': machines} if machines is not None else {}))).encode()
     files['files.sha256'] = modpatch.list_text(files).encode()
     xyf_entry.read_files_sha256(files['files.sha256'])
     xyf_entry.parse_manifest(files['info.txt'])
@@ -141,7 +140,6 @@ class TestEntry(dp.Pass):
     def upload(self):
         o = self.opts
         image, content, extras = candidate(o.candidate, o.id)
-        layout = Path(o.layout).read_bytes()
         default, once = self.default_once()
         if o.id in (default, once):
             raise StepFail('%s is the default or once entry: refused' % o.id)
@@ -159,10 +157,7 @@ class TestEntry(dp.Pass):
             self.ok(['get', '%s/firmware/%s/os.ldr' % (XYF, o.stock_entry), local], 60.0)
             stock['sha256'] = hashlib.sha256(local.read_bytes()).hexdigest()
             self.say('needs_os: SHA-256 of firmware/%s/os.ldr read back' % o.stock_entry)
-        if json.loads(layout).get('profile') != like['profile']:
-            raise StepFail('layout.json profile %r, the device base %r' % (json.loads(layout).get('profile'),
-                                                                           like['profile']))
-        files = entry_files(image, content, layout, o.name, stock['sha256'], like['generation'], like['profile'])
+        files = entry_files(image, content, o.name, stock['sha256'], like['generation'], like['profile'])
         local = self.folder / 'entry'
         for path, data in files.items():
             (local / path).parent.mkdir(parents=True, exist_ok=True)
@@ -245,7 +240,6 @@ def parse_args(argv):
     p.add_argument('--id', default='loader-test')
     p.add_argument('--name', default='Loader test', help='display name (at most 47 bytes)')
     p.add_argument('--candidate', type=Path, help='upload: os.ldr, content/, xy-forever/loaded/ (a build folder)')
-    p.add_argument('--layout', type=Path, help="upload: the Open-XY build's layout.json")
     p.add_argument('--stock-entry', default='opxy-121-stock', help='its info.txt sha256= becomes needs_os')
     p.add_argument('--like', default='mods-a', help='the Open-XY entry whose generation and profile are used')
     mode = p.add_mutually_exclusive_group()
@@ -255,8 +249,8 @@ def parse_args(argv):
     o = p.parse_args(argv)
     if not xyf_entry.ID.fullmatch(o.id) or len(o.name.encode()) > 47:
         p.error('id must be 1-31 of [a-z0-9_-], name at most 47 bytes')
-    if not (o.boot or o.cleanup) and not (o.candidate and o.layout):
-        p.error('an upload needs --candidate and --layout')
+    if not (o.boot or o.cleanup) and not o.candidate:
+        p.error('an upload needs --candidate')
     return o
 
 

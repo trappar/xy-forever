@@ -59,15 +59,12 @@ Part of [XY Forever goals](../GOALS.md).
     - **The main XY Forever** is a file. It updates like any other library
       entry and keeps the previous version. If a new version fails, the
       starter falls back to the previous one.
-- **Mods.** Today an open-xy build is linked on a computer. Every chosen
-  machine is built into one `os.ldr`, and dynamic loading isn't implemented.
-  `layout.json` lists the machines and their engine/effect numbers.
-  - **Step 1 (no open-xy changes).** Each open-xy build is a library entry,
-    and XY Forever shows its machine list from `layout.json`.
-  - **Step 2 (with the open-xy maintainers).** The builder also outputs each
-    machine as a relocatable module, plus a base firmware and a link plan. XY
-    Forever then links the enabled machines into the firmware in memory at
-    boot. That's fast at 400 MHz and writes nothing.
+- **Mods.** XY Forever assembles the selected native packages into a library entry,
+  with its own `info.txt` and content lists. `config.txt` owns the editable selection
+  and memory choice. The browser will offer onboarding from an Open-XY `layout.json`:
+  review its selected mods against native packages, then rebuild through XY Forever.
+  The firmware never reads or writes that external file. Importing a compiled Open-XY
+  image as the user's migration path is outside this flow (decision 035).
   - **Saved projects stay safe.** open-xy already writes a small "companion"
     file next to each project, recording which machine each number meant, so
     projects open correctly after the machine set changes.

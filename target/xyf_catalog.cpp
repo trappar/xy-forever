@@ -41,8 +41,7 @@ uint32_t encode(const library::Library& library, uint8_t* out, uint32_t capacity
         field(r + 32, 48, e.info.name);
         field(r + 80, 32, e.info.version);
         r[112] = uint8_t(e.info.kind);
-        r[113] = uint8_t((e.usable ? 1 : 0) | (e.has_layout ? 2 : 0) | (e.layout_ok ? 4 : 0) |
-                         (e.image_present && e.content_missing ? flag_content_missing : 0));
+        r[113] = uint8_t((e.usable ? 1 : 0) | (e.image_present && e.content_missing ? flag_content_missing : 0));
         const uint32_t machines = e.machines > 0xffffu ? 0xffffu : e.machines;
         r[114] = uint8_t(machines); r[115] = uint8_t(machines >> 8);
     }

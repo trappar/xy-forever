@@ -22,7 +22,6 @@ def main(argv=None):
     entry.add_argument('--name', required=True)
     entry.add_argument('--version', default='')
     entry.add_argument('--kind', default='custom', choices=('official', 'open-xy', 'custom'))
-    entry.add_argument('--layout', type=Path)
     args = parser.parse_args(argv)
     try:
         if args.command == 'inspect-ldr':
@@ -32,8 +31,7 @@ def main(argv=None):
         elif args.command == 'inspect-package':
             _, result = validate_package(args.path)
         else:
-            result = make_entry(args.ldr, private_output(args.out), args.id, args.name, args.version, args.kind,
-                                args.layout)
+            result = make_entry(args.ldr, private_output(args.out), args.id, args.name, args.version, args.kind)
         print(json.dumps(result, indent=2))
         return 0
     except (ValueError, OSError) as error:

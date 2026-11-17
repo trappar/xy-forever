@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ('xyf_store', 'xyf_layout', 'xyf_info', 'xyf_manifest', 'xyf_filelist', 'xyf_recognise', 'xyf_library', 'xyf_catalog', 'xyf_menu', 'xyf_menu_view', 'xyf_crc32', 'xyf_state', 'xyf_state_write', 'xyf_state_write_library', 'xyf_stage2', 'stage2_menu', 'stage2_hello', 'usb_proto', 'ui_gfx', 'ui_screens', 'ui_pages', 'file_engine')
+MODULES = ('xyf_store', 'xyf_info', 'xyf_manifest', 'xyf_filelist', 'xyf_recognise', 'xyf_library', 'xyf_catalog', 'xyf_menu', 'xyf_menu_view', 'xyf_crc32', 'xyf_state', 'xyf_state_write', 'xyf_state_write_library', 'xyf_stage2', 'stage2_menu', 'stage2_hello', 'usb_proto', 'ui_gfx', 'ui_screens', 'ui_pages', 'file_engine')
 FLAGS = ['-mcpu=bf707', '-std=gnu++11', '-ffreestanding', '-fno-exceptions', '-fno-rtti', '-fno-threadsafe-statics',
          '-fno-use-cxa-atexit', '-fno-asynchronous-unwind-tables', '-fno-unwind-tables', '-fno-common',
          '-fno-tree-loop-distribute-patterns', '-fomit-frame-pointer', '-nostdinc++', '-Wall', '-Werror',
