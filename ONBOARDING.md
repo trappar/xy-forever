@@ -76,11 +76,13 @@ the developer copies them off their own device. Give these steps one at a time:
 2. Press **Track 3** ("3. dev menu"), then **Track 2** ("2. mtp file transfer (mac)"; Track 3 is
    the Windows and Linux mode). Wait for "mtp mode active".
 3. In the MTP client, copy `/upgrade/firmware/blackfin/bin/os.ldr` and `bootloader.ldr` (or the
-   whole `/upgrade/` folder) to a folder outside every checkout, e.g. `private/incoming/`.
+   whole `/upgrade/` folder) to a folder outside every checkout, e.g. `private/incoming/`. Copy
+   `/content/op1_factory.json` there too: teenage engineering's catalog, taken from the developer's
+   own device; `fixtures` downloads it only if this copy is missing or modified.
 4. Press **Track 2** ("2. exit"), then switch the OP-XY off.
 
 ```sh
-python3 scripts/setup.py import-stock ../private/incoming    # checks both SHA-256 pins (stock.json)
+python3 scripts/setup.py import-stock ../private/incoming    # checks the SHA-256 pins (stock.json)
 ```
 
 - **1.2.5 files: stop.** This device is on 1.2.5 and cannot run XY Forever: the 1.2.5 bootloader
