@@ -12,16 +12,34 @@ KINDS = ('official', 'open-xy', 'custom')
 
 
 def check_layout(text):
+    """Validate the device reader's bounded layout shape; return the known selection count.
+
+    sdk.py omits selected: its machine map records number history, so the count is unknown.
+    """
     data = json.loads(text)
-    if data.get('format') != 'opxy-layout/1' or not isinstance(data.get('machines'), dict):
+    if not isinstance(data, dict) or data.get('format') != 'opxy-layout/1' or not isinstance(data.get('machines'), dict):
         raise ValueError('layout.json is not opxy-layout/1')
+    if data.get('profile') not in ('opxy-1.2.1', 'opxy-1.2.0'):
+        raise ValueError('layout.json has an unsupported profile')
     machines = data['machines']
-    if len(machines) > 64 or len(text.encode()) > 8192:
+    if len(machines) > 256 or len(text.encode()) > 16384:
         raise ValueError('layout.json exceeds the XY Forever reader limits')
     for name, m in machines.items():
-        if not re.fullmatch(r'[a-z0-9_-]{1,15}', name) or ('engine' in m) == ('effect' in m) or 'page' not in m:
+        kinds = [k for k in ('engine', 'effect', 'player') if isinstance(m, dict) and k in m]
+        if not ID.fullmatch(name) or len(kinds) != 1 or 'page' not in m or \
+                type(m[kinds[0]]) is not int or not 0 <= m[kinds[0]] <= 255 or \
+                type(m['page']) is not int or not 0 <= m['page'] <= 1023:
             raise ValueError('layout.json machine not readable by XY Forever: ' + name)
-    return len(machines)
+    for key, limit in (('selected', 256), ('extensions', 64)):
+        if key not in data:
+            continue
+        ids = data[key]
+        if not isinstance(ids, list) or len(ids) > limit or \
+                any(not isinstance(name, str) or not ID.fullmatch(name) for name in ids) or len(set(ids)) != len(ids):
+            raise ValueError('layout.json has an invalid ' + key + ' list')
+    if 'selected' in data and any(name not in machines for name in data['selected']):
+        raise ValueError('layout.json selected machine has no numbers')
+    return len(data['selected']) if 'selected' in data else None
 
 
 def info_text(name, version, kind, data):

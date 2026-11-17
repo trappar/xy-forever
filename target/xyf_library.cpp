@@ -70,7 +70,8 @@ void apply_layout(Entry& e, uint8_t* scratch, uint32_t length) {
     e.has_layout = true;
     store::Layout* layout = reinterpret_cast<store::Layout*>(scratch + layout_offset);
     e.layout_ok = store::parse_layout(reinterpret_cast<const char*>(scratch), length, *layout);
-    e.machines = e.layout_ok ? layout->count : 0;
+    e.machines = e.layout_ok && layout->has_selected ? layout->selected_count : 0;
+    e.numbers_only = e.layout_ok && !layout->has_selected;
 }
 void finish(Library& out, Entry& e) {
     e.usable = e.image_present && !e.content_missing;

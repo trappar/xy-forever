@@ -32,6 +32,17 @@ int main() {
     catalog::describe(cat.items[2], text, sizeof(text)); REQUIRE(!strcmp(text, "official"));
     cat.items[0].machines = 1; catalog::describe(cat.items[0], text, sizeof(text)); REQUIRE(!strcmp(text, "open-xy, 1 machine"));
     catalog::describe(cat.items[0], text, 5); REQUIRE(!strcmp(text, "open"));
+    // The current build may select none or all 256; SDK number history is explicitly unknown.
+    lib.entries[0].machines = 0;
+    REQUIRE(catalog::decode(buffer, catalog::encode(lib, buffer, sizeof(buffer)), cat));
+    catalog::describe(cat.items[0], text, sizeof(text)); REQUIRE(!strcmp(text, "open-xy, 0 machines"));
+    lib.entries[0].numbers_only = true;
+    REQUIRE(catalog::decode(buffer, catalog::encode(lib, buffer, sizeof(buffer)), cat));
+    REQUIRE(cat.items[0].flags == (7 | catalog::flag_numbers_only));
+    catalog::describe(cat.items[0], text, sizeof(text)); REQUIRE(!strcmp(text, "open-xy, numbers only"));
+    lib.entries[0].numbers_only = false; lib.entries[0].machines = 256;
+    REQUIRE(catalog::decode(buffer, catalog::encode(lib, buffer, sizeof(buffer)), cat) && cat.items[0].machines == 256);
+    catalog::describe(cat.items[0], text, sizeof(text)); REQUIRE(!strcmp(text, "open-xy, 256 machines"));
     // An entry whose content is not installed (os.ldr there): flag 8, not usable, its own row text;
     // without an os.ldr it stays "missing os.ldr".
     lib.entries[0].usable = false; lib.entries[0].content_missing = lib.entries[0].image_present = true;

@@ -24,7 +24,8 @@ class EntryTest(unittest.TestCase):
 
     def test_layout_limits(self):
         good = {'format': 'opxy-layout/1', 'profile': 'opxy-1.2.1', 'machines': {'karplus': {'engine': 36, 'page': 84}}}
-        self.assertEqual(check_layout(json.dumps(good)), 1)
+        self.assertIsNone(check_layout(json.dumps(good)))
+        self.assertEqual(check_layout(json.dumps(dict(good, selected=['karplus']))), 1)
         for bad in (dict(good, format='x'), dict(good, machines={'Bad': {'engine': 1, 'page': 1}}),
                     dict(good, machines={'x': {'engine': 1, 'effect': 2, 'page': 1}})):
             with self.assertRaises(ValueError):

@@ -4,15 +4,22 @@ Part of the [XY Forever storage layout](../STORAGE.md).
 
 ## `layout.json` (open-xy)
 
-XY Forever reads only `format` (it must be `opxy-layout/1`), `profile`, and the
-machine IDs under `machines`. Each machine is an `engine` or an `effect`, with a
-`page`. The reader is a bounded streaming scanner: at most 8 KiB, nesting at most
-8 deep, and at most 64 machines. The format is defined by open-xy
-(`../open-xy/tooling/machines.py`, `LAYOUT_FORMAT`).
+XY Forever accepts `format=opxy-layout/1` and profiles `opxy-1.2.1` or `opxy-1.2.0`.
+`machines` maps IDs to exactly one `engine`, `effect` or `player` number (0..255),
+plus a `page` (0..1023). IDs are 1–31 lowercase letters, digits, `_` or `-`.
+The reader keeps the ordered `selected` and `extensions` lists. Unknown keys,
+including `memory` and `reserved_bytes`, are ignored; the 4 MiB website layout is accepted.
 
-Upstream's `machines` is a map of number reservations (it keeps disabled and fixed
-machines); the enabled set is `selected`, and `extensions` is separate. Our reader
-rejects `player` machines today, and larger collections may exceed its bounds.
+`machines` is number history, including disabled and fixed machines. Only `selected`
+names this build's machines; every selected ID must have numbers. The library row uses
+its count, including zero, and says "numbers only" when `selected` is absent (SDK builds).
+Catalog flag 16 carries that distinction; older XYC1 readers refuse the unknown flag.
+
+Bounds: 16 KiB of JSON, 256 machine mappings and selected IDs, 64 extensions, nesting
+at most 8 deep for ignored values; duplicate IDs or known keys are refused. Text plus
+the parsed layout fits A's existing 40 KiB scan scratch (36,400 bytes total).
+Upstream checked at `a07b08faeb58cc7e74cdbc8bd98f809a8ffd5159` (2026-11-17):
+`tooling/machines.py:layout_document` and `builder/app.mjs`'s `nextLayout`.
 
 ## Mod packages (`mods/<profile>/<generation>/`)
 

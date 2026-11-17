@@ -31,7 +31,8 @@ struct Entry {
     char id[store::max_id + 1];
     store::Info info;
     bool has_info, has_layout, layout_ok, image_present;
-    uint32_t machines;         // from layout.json (open-xy), else 0
+    uint32_t machines;         // selected in layout.json, else 0 (number history is not a selection)
+    bool numbers_only;         // valid layout, but its producer did not record selected
     bool content_missing;      // its content is not installed in /yaffs2/content/ (content_installed)
     bool usable;               // os.ldr present and content installed (size/CRC checked at load)
 };
