@@ -9,7 +9,7 @@ SPEC.loader.exec_module(Q)
 
 
 def issue(number, title, milestone=None, labels=(), assignees=(), blocked_by=0):
-    return {'number': number, 'title': title, 'body': '**Done when:** x.',
+    return {'number': number, 'title': title, 'body': '## Acceptance criteria\n- [ ] x',
             'labels': [{'name': l} for l in labels], 'assignees': [{'login': a} for a in assignees],
             'milestone': {'number': milestone[0], 'title': milestone[1]} if milestone else None,
             'issue_dependencies_summary': {'blocked_by': blocked_by}}
@@ -29,6 +29,10 @@ ISSUES = [
 
 
 class Queue(unittest.TestCase):
+    def test_device_risk_shown_with_the_kind(self):
+        f = Q.fields(issue(8, 'Writer', M2, ['kind:build', 'device:risky', 'kind:device']))
+        self.assertEqual(Q.line(f), '#8 M2 Writer [build,device,device:risky]')
+
     def test_sections_and_order(self):
         out = Q.queue(ISSUES, 'me')
         self.assertEqual(out, [

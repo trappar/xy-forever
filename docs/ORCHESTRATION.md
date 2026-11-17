@@ -37,15 +37,14 @@ commands and device scripts (the only agent that touches the device or asks the 
 Progress lives on GitHub (assignee, branch, pull request); an item left unfinished gets a comment saying
 where it stands, so the next session resumes from there. **Asking the developer:** one self-contained
 question at a time, your recommendation first (the agent's question tool if any); keep working on what does
-not depend on the answer. A question that can wait is an issue labeled `decision`; its body starts "Undecided for
-now:" and then the question. Issues, comments and pull requests are written in the developer's voice ("I", "my explicit
-yes", "Decided:"), never "the developer", "the maintainer" or "the orchestrator".
+not depend on the answer. A question that can wait is a `decision` issue starting "Undecided for now:". All GitHub
+text is in the developer's voice ("I", "my explicit yes"), never "the developer" or "the orchestrator".
 
 ### Changing the plan
 
-The orchestrator may add, split and reorder items. A new item is an issue with a plain title; its body: context, `**Kind:** ...`
-(e.g. `device safe`), `**Done when:** ...`; milestone like "M4. Packages"; label
-`kind:build|research|device|review`; a need is a "blocked by" link
+The orchestrator may add, split and reorder items. A new item is an issue that reads alone, per `.github/ISSUE_TEMPLATE/` (Summary, testable Acceptance
+criteria, Notes that link); milestone like "M4. Packages"; label `kind:build|research|device|review`
+(+ `device:safe|risky` for device work). A gating review or device run is a criterion, not an issue. A need is a "blocked by" link
 (`gh api -X POST repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by -F issue_id=<id of the needed issue>`).
 A loose end that is not an item yet is an issue labeled `thread`. Items have no IDs of their own: the issue
 number is the name. PR titles are plain, like issues; the body says "Closes #<N>". Items marked "to be split" are split by a research agent's decision record,
@@ -76,7 +75,7 @@ Follow-ups on the same code go to the same agent while it is under 150k (SendMes
 
 ```
 Issue #<N>: <title>. Kind: <kind>.
-Goal: <the "done when" text>.
+Goal: <the acceptance criteria>.
 Read first: xy-forever/AGENTS.md, then <at most five named files or decision records>.
 Do not read: docs/status/, HISTORY.md, unrelated docs.
 Constraints: <safety notes; the developer's explicit yes where needed, in their words>.
