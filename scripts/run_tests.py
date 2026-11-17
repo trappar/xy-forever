@@ -38,9 +38,9 @@ FIRST = ('test_simulator', 'test_conformance', 'test_ts_client', 'test_p224',
          'test_tfw_os', 'test_protocol_spec')    # the longest modules start first (any order is correct)
 # Modules too slow for one process, split by test (a cheap setUpClass: a cached simulator build and a
 # seeded library) or by class (an expensive setUpClass: bridge and sanitizer builds, run once a class).
-# test_guard_reset stays whole: alone in a process, test_recovery_holds_across_the_model_guesses takes
-# 50-95 s (2.5 s inside its module).
-SPLIT = {'test_simulator': 'test', 'test_mod_link': 'class', 'test_modpatch': 'class', 'test_sim_mods_page': 'class',
+SPLIT = {'test_simulator': 'test', 'test_sim_mod_job': 'test', 'test_sim_content_switch': 'test',
+         'test_sim_config': 'test', 'test_guard_reset': 'test', 'test_mod_link': 'class', 'test_modpatch': 'class',
+         'test_sim_mods_page': 'class', 'test_modsend': 'class', 'test_sim_memory': 'class',
          'test_ts_client': 'class'}   # NodeSuiteTest (npm test, up to ~120 s) in its own process
 
 

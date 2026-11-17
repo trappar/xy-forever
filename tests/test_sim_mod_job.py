@@ -280,7 +280,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.until_phase(job, 2)
         extra = self.output(job) / 'extra' / 'deep'
         extra.mkdir(parents=True, exist_ok=True)
-        for i in range(250):
+        for i in range(60):                                                 # dozens of loop passes (~0.3 s each)
             (extra / ('%03d' % i)).write_bytes(b'x')
         begun = t = time.monotonic()
         self.assertEqual(MS.job_cancel(self.dev, job)[0], 0)
@@ -367,7 +367,8 @@ class SyntheticJob(Base, unittest.TestCase):
         thread.start()                                                      # answered once the job ended
         for _ in range(8):                                                  # the request's bound, then the close's
             self.sim.advance(6000, step=None)
-            thread.join(0.5)
+            self.sim.ran_on()                                               # B saw the jump
+            thread.join(0.1)
             if 'r' in reply:
                 break
         thread.join(10.0)
@@ -593,7 +594,8 @@ class SyntheticJob(Base, unittest.TestCase):
         thread.start()
         for _ in range(12):                                                 # the rename's bound (45 s), then the close's
             self.sim.advance(6000, step=None)
-            thread.join(0.5)
+            self.sim.ran_on()                                               # B saw the jump
+            thread.join(0.1)
             if 'r' in reply:
                 break
         thread.join(10.0)
