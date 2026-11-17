@@ -5,8 +5,8 @@
     python3 scripts/plan.py --all      also blocked items, items taken by others, and threads
 
 Order: milestone (its GitHub number, the roadmap's order), then issue number. An item is an issue with a
-`kind:*` label (its kind); `blocked` stops it, `thread` marks a loose end and `decision` a question for the
-developer. Needs are GitHub "blocked by" dependencies. The issue number is the item's only name.
+`kind:*` label (its kind; `device:safe` or `device:risky` is shown with it); `blocked` stops it, `thread`
+marks a loose end and `decision` a question I have not decided yet. Needs are GitHub "blocked by" dependencies. The issue number is the item's only name.
 Uses the `gh` CLI (authenticated); docs/ORCHESTRATION.md says how the queue is worked.
 """
 import argparse
@@ -29,7 +29,8 @@ def fields(issue):
     milestone = issue.get('milestone') or {}
     return dict(
         number=issue['number'], title=issue['title'],
-        kinds=[l[5:] for l in labels if l.startswith('kind:')], labels=set(labels),
+        kinds=[l[5:] for l in labels if l.startswith('kind:')] + [l for l in labels if l.startswith('device:')],
+        labels=set(labels),
         milestone=milestone.get('number', 10 ** 6), mkey=(milestone.get('title') or '-').split('.')[0],
         assignees=[a['login'] for a in issue.get('assignees') or []],
         blocked_by=(issue.get('issue_dependencies_summary') or {}).get('blocked_by', 0))
@@ -58,7 +59,7 @@ def queue(issues, me, everything=False):
 
     section('Yours, in progress', mine)
     section('Next: unblocked, unassigned', ready)
-    section('Decisions waiting for the developer', decisions)
+    section('Decisions waiting for me', decisions)
     if everything:
         section('Blocked', waiting, lambda f: ' (blocked by %d)' % f['blocked_by'] if f['blocked_by'] else ' (label)')
         section('Taken by others', others, lambda f: ' @' + ','.join(f['assignees']))
