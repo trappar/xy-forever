@@ -329,6 +329,7 @@ class PortTaken(RuntimeError):
 
 class Simulator:
     """One running simulator: start() it, talk to 127.0.0.1:port, control() its board."""
+    QUIET_READS = 500           # advance(): B's clock reads with nothing sent that end a step (an idle link)
 
     def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing."""
@@ -418,7 +419,10 @@ class Simulator:
         In steps of step ms (above B's 250 ms keepalive interval, well below its 1 s answer patience
         and A's 10 s idle limit): after each, until the link has carried a message each way (a
         keepalive and an answer), so the link sees time pass as it would, not one silent jump.
-        step=None: one jump, for a link with nothing to keep alive (B waiting on A's reply)."""
+        step=None: one jump, for a link with nothing to keep alive (B waiting on A's reply).
+        A step also ends once B's loop has read the advanced clock QUIET_READS times and sent nothing:
+        B saw the time pass and chose not to send (the link is idle, e.g. A in its bootloader), so
+        waiting the second out would only cost host time."""
         while ms > 0:
             n = min(step or ms, ms)
             ms -= n
@@ -426,13 +430,23 @@ class Simulator:
             if not self.control('advance %d' % n).get('ok'):
                 raise ValueError('simulator: advance %r refused' % n)
             deadline = time.monotonic() + (1.0 if step else 0)
+            reads = self.status()['b_clock_reads'] if step else 0
             while time.monotonic() < deadline:
                 now = self.status()
                 if (now['to_a'] > before['to_a'] and now['to_b'] > before['to_b']) or \
                         (now['a'], now['b'], now['a_boots'], now['b_boots']) != \
                         ('running', 'running', before['a_boots'], before['b_boots']):
                     break                                  # time passed on the link, or no link to wait for
+                if now['to_a'] == before['to_a'] and now['b_clock_reads'] - reads >= self.QUIET_READS:
+                    break                                  # B ran on past the new time and sent nothing
                 time.sleep(0.001)
+
+    def ran_on(self, reads=QUIET_READS, timeout=0.5):
+        """Until B's loop has read its clock reads more times (it saw the device time as it is now, e.g.
+        after an advance), at most timeout s of host time (B may be stopped)."""
+        start, deadline = self.status()['b_clock_reads'], time.monotonic() + timeout
+        while time.monotonic() < deadline and self.status()['b_clock_reads'] - start < reads:
+            time.sleep(0.001)
 
     def reset(self, which):
         """Resets processor 'a' or 'b' alone (no handler runs, the other keeps running); after the
