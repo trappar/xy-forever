@@ -48,7 +48,7 @@ criteria, Notes that link); milestone like "M4. Packages"; label `kind:build|res
 (`gh api -X POST repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by -F issue_id=<id of the needed issue>`).
 A loose end that is not an item yet is an issue labeled `thread`. Items have no IDs of their own: the issue
 number is the name. PR titles are plain, like issues; the body says "Closes #<N>". Items marked "to be split" are split by a research agent's decision record,
-not by guessing. It may not drop a requirement, change the shape ([GOALS.md](GOALS.md)), or relax a safety rule;
+not by guessing. It may not drop a requirement, change the [shape](goals/roadmap.md), or relax a safety rule;
 those go to the developer. **Device checkpoints first:** prefer the order that reaches a device test soonest;
 host-only work never runs far ahead of what the device has confirmed (a byte match proves the output, not that the
 device loads it; the simulator guesses whatever was never seen on hardware). Spare agent capacity prepares the next device test.
@@ -121,7 +121,7 @@ Aim: one power-on per sitting, and none for offline work.
   sitting, with the developer present.
 - **Two strikes.** An item that needs a second manual power cycle stops: it becomes
   `blocked` and a research item is added. Do not iterate on a freezing device.
-- Asking for a power cycle: start the listener first, then one short line (OPERATING.md).
+- Asking for a power cycle: start the listener first, then one short line (operating/at-the-device.md).
 
 ## Approvals
 
