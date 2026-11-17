@@ -77,7 +77,7 @@ python3 xyf_build.py --verify --out ../private/xy-forever/builds/my-build
 python3 scripts/neutral.py        # after a refactor: every build mode's candidate is unchanged
 ```
 
-Installing on a device: [docs/OPERATING.md](docs/OPERATING.md), under the rules in
+Installing on a device: [docs/operating/build-install.md](docs/operating/build-install.md), under the rules in
 [docs/SAFETY.md](docs/SAFETY.md).
 
 ## Native codec limits

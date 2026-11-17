@@ -11,6 +11,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_build as builder
@@ -90,7 +91,7 @@ class StockOpenFlagsTest(unittest.TestCase):
 class FileWriteSourceTest(unittest.TestCase):
     def setUp(self):
         self.server = (ROOT / 'target/storage_server.cpp').read_text()
-        self.usb = (ROOT / 'target/usb_service.cpp').read_text()
+        self.usb = unit_text(ROOT / 'target/usb_service.cpp')
 
     def test_a_enters_the_engine_and_pauses_its_guard(self):
         latch = self.server[self.server.index('void latch(Stock121PeerSession& session) {'):]
@@ -286,7 +287,7 @@ class ScreenTest(unittest.TestCase):
     """Test 053: read-only framebuffer view (SCREEN) and the host PNG conversion."""
 
     def test_device_bounds(self):
-        src = (ROOT / 'target/usb_service.cpp').read_text()
+        src = unit_text(ROOT / 'target/usb_service.cpp')
         s = src[src.index('void screen(uint8_t seq'):]
         s = s[:s.index('\n}\n')]
         self.assertIn('fb < 0x80000000u || fb > 0x90000000u - screen_bytes || (fb & 1u) || offset >= screen_bytes', s)

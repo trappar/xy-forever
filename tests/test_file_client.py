@@ -11,6 +11,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 import xyf_build as B  # noqa: E402
 from xy_forever import usb_proto_ids as ids  # noqa: E402
@@ -37,7 +38,7 @@ class AllowlistTest(unittest.TestCase):
         self.assertEqual(allowed & B.REMOVED_CLIENT_CALLS, B.A_MARKER_CALLS)
         self.assertEqual(B.A_MARKER_CALLS, {'889f3516', '889f3b50', '889f285a'})
         for name in ('usb_service.cpp', 'file_client.cpp', 'file_boot.cpp', 'menu_link.cpp'):
-            text = (ROOT / 'target' / name).read_text()
+            text = unit_text(ROOT / 'target' / name)
             for call in B.REMOVED_CLIENT_CALLS:
                 self.assertNotIn('0x%su' % call, text, (name, call))
 
@@ -159,7 +160,7 @@ class BoundsTest(unittest.TestCase):
         self.assertEqual(self.lib.fc_readdir_result(-1), error)
         # Both readers use it: file.list and the MTP self-test (proven on the device).
         self.assertEqual((ROOT / 'target/file_client.cpp').read_text().count('readdir_result(r.value)'), 1)
-        self.assertIn('C::readdir_result(int32_t(v))', (ROOT / 'target/usb_service.cpp').read_text())
+        self.assertIn('C::readdir_result(int32_t(v))', unit_text(ROOT / 'target/usb_service.cpp'))
 
     def test_child_path(self):
         out = C.create_string_buffer(240)

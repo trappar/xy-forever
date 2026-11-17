@@ -118,7 +118,7 @@ instead.
    Kits (`RECOVERY` in `xy_forever/paths.py`):
    - `known-good-NNN/os.ldr` (your current known-good build; keep a few older kits)
    - `stock-1.2.1/os.ldr` (stock)
-   - Procedure: [OPERATING.md](OPERATING.md#dev-menu).
+   - Procedure: [operating/at-the-device.md](operating/at-the-device.md#dev-menu).
 3. **Official 1.2.1 `.tfw` through the normal updater** (proven once after a dev-MTP
    crash; the dev bootloader survived). It may rewrite the companions with their
    1.2.1 versions. File: the official `opxy_firmware_1_2_1.tfw`, kept in the private

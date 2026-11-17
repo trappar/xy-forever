@@ -32,15 +32,16 @@ TREES = {
     'docs/ARCHITECTURE.md': 'docs/architecture',
     'docs/STORAGE.md': 'docs/storage',
     'docs/HARDWARE.md': 'docs/hardware',
+    'docs/GOALS.md': 'docs/goals',
+    'docs/OPERATING.md': 'docs/operating',
 }
 
-# Read on demand (bytes). GOALS, OPERATING, SAFETY and GUIDE are over LEAF but outside #42's split.
+# Read on demand (bytes). SAFETY and GUIDE are over LEAF and stay whole on purpose: SAFETY is binding and must be read
+# in full before device work; GUIDE is for OP-XY owners and mod writers, who read it end to end.
 CAPS = {
     'docs/ARCHITECTURE.md': 25600,
-    'docs/GOALS.md': 14200,
     'docs/HARDWARE.md': 20200,
     'docs/HISTORY.md': 6600,
-    'docs/OPERATING.md': 13800,
     'docs/SAFETY.md': 11500,
     'docs/STORAGE.md': 25000,
     'docs/PROTOCOL.md': 56000,      # generated from protocol/v1.json (scripts/protogen.py)

@@ -7,6 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 
 
@@ -21,7 +22,7 @@ class StackMarkTests(unittest.TestCase):
             self.assertIn('5 stack mark checks passed', result.stdout)
 
     def test_status_reports_the_live_mark(self):
-        source = (ROOT/'target/usb_service.cpp').read_text()
+        source = unit_text(ROOT / 'target/usb_service.cpp')
         body = source[source.index('void status(uint8_t seq) {'):]
         body = body[:body.index('\n}\n')]
         self.assertIn('stack_mark::used', body)       # computed for every STATUS, before the Result block is copied

@@ -44,13 +44,14 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   and correct it if it is wrong, then give one recommendation with its reasons and what is
   uncertain. Do not adopt a view only because of pushback. Product scope, risk to the device and
   approvals stay the developer's.
-- **Checks:** run the unit tests for every change: `python3 scripts/run_tests.py` (parallel;
-  `--times` lists the slowest) or `python3 -m unittest discover -s tests` (in order); everything:
-  `XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py`. Host bridges and the simulator are compiled once
-  per input hash and cached in `../private/xy-forever/sessions/`, so a run after a source change is
-  slower. Also `python3 xyf_build.py --xyf-product …` plus `--verify` for anything that reaches the
-  firmware. A change meant to be behaviour-neutral (even removing unused code) must leave every
-  build mode's candidate SHA-256 unchanged: `python3 scripts/neutral.py [REF]`.
+- **Checks:** run the unit tests for every change: `python3 scripts/run_tests.py` (`--times`: the
+  slowest; in order, everything: Quick reference). Host bridges and the simulator are cached per input
+  hash in `../private/xy-forever/sessions/`, so a run after a source change is slower. Also `python3
+  xyf_build.py --xyf-product …` plus `--verify` for anything that reaches the firmware. A change meant
+  to be behaviour-neutral (even removing unused code) must leave every build mode's candidate SHA-256
+  unchanged: `python3 scripts/neutral.py [REF]`.
+- **Source files stay under 32 KB** (`tests/test_source_budget.py`): to grow a file on its over-cap list,
+  first split out the part you touch.
 - **No flashing scripts.** Host tools talk only to XY Forever's own USB service (`xyf_host.py`), and
   may read files, never write, over the stock dev-menu MTP. `docs/SAFETY.md` rules every device action.
 - **Git:** one branch per plan item and one pull request per branch, after claiming the item's
@@ -65,18 +66,18 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 ## Quick reference
 
 ```sh
-python3 scripts/setup.py doctor                                         # private folder: stock files, fixtures (bootstrap, import-stock)
-python3 scripts/plan.py                                                # the plan: next items, decisions waiting (--all: blocked, threads)
-python3 scripts/run_tests.py --jobs 6                                   # unit tests in parallel: ~2 min, 998 tests (busy machine: rerun a timing flake)
-python3 -m unittest discover -s tests                                   # the same in order: ~8 min
-XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6                  # everything (+ exhaustive bit flips): ~2 min
+python3 scripts/setup.py doctor                         # private folder: stock files, fixtures (bootstrap, import-stock)
+python3 scripts/plan.py                                 # the plan: next items, decisions waiting (--all: blocked, threads)
+python3 scripts/run_tests.py --jobs 6                   # unit tests in parallel: ~2 min, 998 tests (busy machine: rerun a timing flake)
+python3 -m unittest discover -s tests                   # the same in order: ~8 min
+XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6  # everything (+ exhaustive bit flips): ~2 min
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-0NN-001
 python3 xyf_build.py --verify --out ../private/xy-forever/builds/xy-forever-product-0NN-001
-python3 scripts/neutral.py                                              # working tree vs HEAD: same candidates?
-python3 xyf_host.py status                                              # device over USB
-python3 -m xy_forever.sim                                               # device simulator (127.0.0.1:7341; xyf_host.py --sim)
-(cd web && npm ci && npm run dev)                                       # web app on 127.0.0.1:5173 (?sim=7341); npm test, npm run test:e2e
-python3 scripts/conformance.py --sim 127.0.0.1:7341                     # protocol conformance suite (no --sim: OP-XY, safe cases)
-python3 -m xy_forever.census REPORT.bin                                 # decode a device report
-python3 ui_preview.py                                                   # menu screens -> ../private/xy-forever/previews
+python3 scripts/neutral.py                              # working tree vs HEAD: same candidates?
+python3 xyf_host.py status                              # device over USB
+python3 -m xy_forever.sim                               # device simulator (127.0.0.1:7341; xyf_host.py --sim)
+(cd web && npm ci && npm run dev)                       # web app on 127.0.0.1:5173 (?sim=7341); npm test, npm run test:e2e
+python3 scripts/conformance.py --sim 127.0.0.1:7341     # protocol conformance suite (no --sim: OP-XY, safe cases)
+python3 -m xy_forever.census REPORT.bin                 # decode a device report
+python3 ui_preview.py                                   # menu screens -> ../private/xy-forever/previews
 ```

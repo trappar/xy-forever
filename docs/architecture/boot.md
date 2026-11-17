@@ -56,7 +56,7 @@ every user-facing decision.
 - **PLAY at power-on:** the boot menu with USB on (Test 064). Before 068 this failed
   when A's storage mount was slow (HISTORY, Diag 076).
 - **USB service:** entered after XY Forever's own reboots (reboot marker at SDRAM
-  `0x8bfff000`); host commands in [OPERATING.md](../OPERATING.md).
+  `0x8bfff000`); host commands in [operating/host-tool.md](../operating/host-tool.md).
 
 ## Boot model v3 (proven)
 

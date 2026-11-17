@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 import xyf_build as builder
 from xy_forever.paths import DECRYPTED, SESSIONS
 
@@ -68,13 +69,13 @@ class ProductLayoutTest(unittest.TestCase):
         self.assertIn('#define XYF_STACK_PAINT_FLOOR (XYF_STACK_END - 0x8000u)', layout)
         for name in ('key_ui.cpp', 'file_boot.cpp'):
             self.assertIn('if (begin < XYF_STACK_PAINT_FLOOR) begin = XYF_STACK_PAINT_FLOOR;',
-                          (ROOT / 'target' / name).read_text(), name)
+                          unit_text(ROOT / 'target' / name), name)
 
     def test_code_uses_the_layout_define(self):
         header = (ROOT / 'target/cold_layout.hpp').read_text()
         self.assertIn('#define XYF_STACK_END 0x8ab10000u', header)
         for name in ('cold.cpp', 'key_ui.cpp', 'file_boot.cpp', 'peer_services.cpp'):
-            text = (ROOT / 'target' / name).read_text()
+            text = unit_text(ROOT / 'target' / name)
             self.assertIn('#include "cold_layout.hpp"', text, name)
             self.assertNotIn('0x8ab10000u', text, name)
 
@@ -126,7 +127,7 @@ class DryRunTest(unittest.TestCase):
         fb = (ROOT / 'target/file_boot.cpp').read_text()
         end = fb[fb.index('extern "C" void xy_forever_file_boot() {'):]
         self.assertLess(end.index('hand_off(bytes, crc)'), end.index('usb_service::dry_run_finish(&r, sizeof(r));'))
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         finish = us[us.index('void dry_run_finish('):]
         finish = finish[:finish.index('\n}\n')]
         self.assertIn('marker_write(marker_reboot | carried_flags, 0);', finish)
@@ -168,7 +169,7 @@ class SetDefaultWriteTest(unittest.TestCase):
     """Test 048: the first storage write on hardware (USB SET_DEFAULT in the product build)."""
 
     def test_b_waits_for_a_write_behind_a_barrier(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         body = us[us.index('U32 default_commit(U32 hash)'):]                  # set_default's A/B write
         body = body[:body.index('\n}\n')]
         order = ['storage_used = 1;', 'menu_link::usb_patience(write_patience_ms);',
@@ -182,7 +183,7 @@ class SetDefaultWriteTest(unittest.TestCase):
         self.assertIn("timeout=75.0)", src)                      # host outlasts b's patience
 
     def test_a_write_is_unguarded_and_not_idle(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         a = us[us.index('void a_set_default('):]
         a = a[:a.index('\n}\n')]
         self.assertLess(a.index('guard_disarm();'), a.index('storage.write_state_slot('))
@@ -260,7 +261,7 @@ class ServiceScreenTest(unittest.TestCase):
     """Test 054: the USB service draws an XY Forever screen, only after a host HELLO."""
 
     def test_draws_only_after_hello_and_crc_gated(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         say = us[us.index('void say(const char* a'):]
         say = say[:say.index('\n}\n')]
         self.assertIn('if (screen_on) key_ui::service_screen(a, b, c, d);', say)
@@ -283,7 +284,7 @@ class MenuOverUsbTest(unittest.TestCase):
     """Test 058: the XY Forever menu with USB (SCREEN/KEY); v3 home answers every command."""
 
     def test_device_side(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         pump = us[us.index('uint32_t home_pump() {'):]
         pump = pump[:pump.index('\n}\n')]
         self.assertIn('P::get32(payload) < 64u && P::get32(payload + 4) <= 1u', pump)
@@ -368,13 +369,13 @@ class BootModelTest(unittest.TestCase):
     USB; our reboots return home (v3; the v2 held service and its menu HOLD are gone)."""
 
     def test_home_only_after_our_reboots(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         hb = us[us.index('bool home_begin() {'):]
         self.assertIn('r.present = presence() == 3 ? 3u : 0u;', hb[:hb.index('\n}\n')])
         self.assertEqual(builder.SERVICE_ON_MARKER_MODES, builder.PRODUCT_MODES)
 
     def test_play_menu_usb_and_hold(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         start = us[us.index('void menu_start_usb() {'):]
         start = start[:start.index('\n}\n')]
         self.assertLess(start.index('identity()'), start.index('usb_start();'))
@@ -399,7 +400,7 @@ class KeepUsbTest(unittest.TestCase):
     """Test 062: USB never stops and restarts within one boot; check reply size; progress."""
 
     def test_device(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertIn('bool menu_requested() { return menu_usb == 1u || menu_usb == 2u; }', us)
         self.assertIn('if (menu_usb == 3u) { menu_usb = 1; return; }      // Test 062: USB kept from the service', us)
         fb = (ROOT / 'target/file_boot.cpp').read_text()
@@ -415,7 +416,7 @@ class RebootTargetsTest(unittest.TestCase):
         hdr = (ROOT / 'target/usb_service.hpp').read_text()
         self.assertIn('static const uint32_t marker_menu = 0x400u;', hdr)
         self.assertIn('reboot_service = 0, reboot_os = 1, reboot_menu = 2;', hdr)
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         # v3: REBOOT from home goes to the OS (no marker) or home again (service and menu alike).
         pump = us[us.index('uint32_t home_pump() {'):]
         pump = pump[:pump.index('\n}\n')]
@@ -458,7 +459,7 @@ class OneSessionTest(unittest.TestCase):
         self.assertIn('void finish(cold_storage::Stock121ReadOnlySession& storage) { close_engine(storage); }', ss)
 
     def test_b_home(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         hp = us[us.index('uint32_t home_pump() {'):]
         hp = hp[:hp.index('\n}\n')]
         for needed in ('P::t_install', 'P::t_file_write', 'P::t_read_file', 'P::t_put_begin', 'P::t_set_default',
@@ -491,7 +492,7 @@ class OneSessionTest(unittest.TestCase):
         ps = (ROOT / 'target/peer_services.cpp').read_text()
         self.assertIn('if(timeout_!=no_cap&&diagnostic_.elapsed_ms>=timeout_)return fail(Result::timeout);', ps)
         for name in ('file_boot', 'usb_service'):
-            source = (ROOT / 'target' / (name + '.cpp')).read_text()
+            source = unit_text(ROOT / 'target' / (name + '.cpp'))
             self.assertIn('now() { return xyf::clock::ms() - start_ms; }', source)
             self.assertNotIn('* 21u) >> 13', source)
 
@@ -500,7 +501,7 @@ class OneSessionWriteTest(unittest.TestCase):
     """Test 066: file writes after reads in the one link session (no fresh boot needed)."""
 
     def test_flow(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         fw = us[us.index('void file_write(uint8_t seq'):]
         fw = fw[:fw.index('\n}\n')]
         order = ['mounted == file_client::mounted_stale && !read_enabled &&',
@@ -576,7 +577,7 @@ class PeekTest(unittest.TestCase):
     """093: read-only PEEK of stock DDR/L2 code, never L1 instruction memory."""
 
     def test_bounds(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         body = us[us.index('bool peek_allowed(U32 address, U32 bytes) {'):]
         body = body[:body.index('\n}\n')]
         self.assertIn('bytes && bytes <= read_range_max', body)
@@ -591,7 +592,7 @@ class PeekTest(unittest.TestCase):
 
     def test_mmr_reads(self):
         """095: SEC/core registers by 32-bit reads only, never CSID (0x2000441c) or the core SID."""
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         body = us[us.index('bool mmr_allowed(U32 address, U32 bytes) {'):]
         body = body[:body.index('\n}\n')]
         self.assertIn('!(address & 3u) && !(bytes & 3u)', body)
@@ -624,7 +625,7 @@ class MtpSelfTestTest(unittest.TestCase):
         self.assertEqual(len(items), len(set(items)))
 
     def test_selftest_order(self):
-        ss = (ROOT / 'target/usb_service.cpp').read_text()
+        ss = unit_text(ROOT / 'target/usb_service.cpp')
         body = ss[ss.index('bool mtp_do(U32 n, MtpSelfTest& t, uint8_t* out) {'):]
         body = body[:body.index('\n}\n')]
         # B's file client, every request bounded (no stock posix client call).
@@ -634,7 +635,7 @@ class MtpSelfTestTest(unittest.TestCase):
         self.assertEqual(at, sorted(at))
         self.assertNotIn('C::write(', body)             # reads only
         self.assertNotIn('stock<', body)
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         t = us[us.index('void mtp_test(uint8_t seq'):]
         t = t[:t.index('\n}\n')]
         self.assertLess(t.index('mtp_enter()'), t.index('mtp_selftest(t, hold'))
@@ -646,7 +647,7 @@ class MtpSelfTestTest(unittest.TestCase):
         self.assertEqual(usb_proto.MTP_TEST, 0x07)
 
     def test_usb_notice(self):
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         start = us[us.index('void menu_start_usb() {'):]
         start = start[:start.index('\n}\n')]
         self.assertLess(start.index('usb_off = identity()'), start.index('usb_start();'))
