@@ -57,22 +57,6 @@ ALLOWED = {
 RECORD = re.compile(r'^(\d{3}-[a-z0-9-]+)\.md$')
 DETAIL = re.compile(r'^(\d{3}-[a-z0-9-]+)\.[a-z0-9-]+\.md$')
 
-# reflowed by #42 part B7 (files with a line over WIDTH outside code blocks and table rows)
-UNWRAPPED = {
-    'docs/HISTORY.md', 'docs/OPERATING.md',
-    'docs/decisions/001-dead-code.md', 'docs/decisions/002-usb-function-driver.md',
-    'docs/decisions/003-tfw-install.md', 'docs/decisions/004-protocol-v1.md', 'docs/decisions/005-mods.md',
-    'docs/decisions/006-content.md', 'docs/decisions/007-stock-inventory.md',
-    'docs/decisions/008-mod-assembly.md', 'docs/decisions/009-file-engine.md',
-    'docs/decisions/010-package-model.md', 'docs/decisions/011-user-storage.md',
-    'docs/decisions/012-boot-writer.md', 'docs/decisions/013-web-app.md', 'docs/decisions/014-extensions.md',
-    'docs/decisions/015-companions.md', 'docs/decisions/016-guard-reset.md',
-    'docs/decisions/017-ble-update-protocol.md', 'docs/decisions/018-catalog-entries.md',
-    'docs/decisions/019-assembly-on-device.md', 'docs/decisions/020-code-space-and-stage2.md',
-    'docs/decisions/021-restart-a-freeze.md', 'docs/decisions/022-lone-b-reset.md',
-    'docs/decisions/023-knob-input.md', 'docs/decisions/024-safety-review.md',
-    'docs/decisions/028-converging-saves.md', 'docs/decisions/032-run-time-mod-loading.md',
-}
 
 # Files whose relative links must resolve (docs/status/ is local and not checked).
 LINKED = ['AGENTS.md', 'ONBOARDING.md', 'README.md']
@@ -188,15 +172,9 @@ class DocsBudget(unittest.TestCase):
 
     def test_width(self):
         for path in docs():
-            name = rel(path)
             long = [n for n, line in prose(path) if len(line) > WIDTH and not line.lstrip().startswith('|')]
-            with self.subTest(doc=name):
-                if name in UNWRAPPED:
-                    self.assertTrue(long, f'{name} is reflowed: remove it from UNWRAPPED')
-                else:
-                    self.assertEqual(long, [], f'{name}: lines over {WIDTH} characters')
-        for name in UNWRAPPED:
-            self.assertTrue((ROOT / name).is_file(), f'UNWRAPPED names a missing doc {name}')
+            with self.subTest(doc=rel(path)):
+                self.assertEqual(long, [], f'{rel(path)}: lines over {WIDTH} characters')
 
     def test_links(self):
         for path in docs() + [ROOT / n for n in LINKED]:

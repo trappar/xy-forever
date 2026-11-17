@@ -1,18 +1,42 @@
 # 010: Package model
 
-Research record, 2026-11-14; no device, no build. **[C]** read from code or records, **[D]** design choice, **[U]** unverified. **Question:** one model for official firmware, XY Forever itself, mod packages, assembled mod sets, content and content packs (companion chips named only): kinds, layout, manifest, state, jobs and power cuts, dependencies, host view, space, build order.
+Research record, 2026-11-14; no device, no build. **[C]** read from code or records, **[D]** design choice, **[U]** unverified. **Question:** one model for
+official firmware, XY Forever itself, mod packages, assembled mod sets, content and content packs (companion chips named only): kinds, layout, manifest, state,
+jobs and power cuts, dependencies, host view, space, build order.
 ## Model in brief [D]
-- **The folders are the state.** A package is installed when its folder or file sits at its home and passes its checks. The library scan already works this way [C `xyf_library.cpp`]. No package database: a copy over MTP and an install by a job give the same result. Only two things need a record: what boots (the A/B slots, unchanged) and what XY Forever put into the shared `/yaffs2/content/`.
-- **Every add or remove is one rename.** A job builds its result in `tmp/<job>/`, checks it, then renames it onto its home (009's rename on A). A remove renames into `tmp/`, then deletes. A power cut leaves only `tmp/` debris. Only the content switch changes many files in a shared folder, so only it keeps a journal.
-- **Content files are kept by hash.** Every file named by a kept content manifest is either at its path in `content/` or in `blobs/<sha256>`. A `.tfw` install stores the content files the device lacks as blobs, so the 98 MB file can be deleted afterwards and any installed version's content is rebuilt without it. This is 006's option b ("cache") with no per-entry copies: 1.1.33 next to 1.2.1 costs ~100 KB [C 006].
-- **Kinds** (`type=`): `firmware` (official from a `.tfw`, custom `.ldr`, open-xy builder ZIP via the host, and the mod sets assembled by Apply: two fixed ids per profile, `mods-<profile>-a`/`-b`, Apply writes the one that is not the default, so the other is the way back and no old sets pile up); `mod-base` and `mod` (008); content packs (stock's own `content/dlc/<name>/manifest.json` is their manifest [C 006]; plain folder or content-only `.tfw`); `xyf-stage2` (the 96-byte `XYS2` header is its manifest [C `xyf_stage2.hpp`]); `xyf-stage1` (an XY Forever `os.ldr`, boot partition through the stock writer only, as INSTALL today; menu install decided with stage 2); `companion` (named; the device refuses the type). A content set is not stored as a package: it is a manifest in the firmware entry plus blobs.
+- **The folders are the state.** A package is installed when its folder or file sits at its home and passes its checks. The library scan already works this way
+  [C `xyf_library.cpp`]. No package database: a copy over MTP and an install by a job give the same result. Only two things need a record: what boots (the A/B
+  slots, unchanged) and what XY Forever put into the shared `/yaffs2/content/`.
+- **Every add or remove is one rename.** A job builds its result in `tmp/<job>/`, checks it, then renames it onto its home (009's rename on A). A remove renames
+  into `tmp/`, then deletes. A power cut leaves only `tmp/` debris. Only the content switch changes many files in a shared folder, so only it keeps a journal.
+- **Content files are kept by hash.** Every file named by a kept content manifest is either at its path in `content/` or in `blobs/<sha256>`. A `.tfw` install
+  stores the content files the device lacks as blobs, so the 98 MB file can be deleted afterwards and any installed version's content is rebuilt without it.
+  This is 006's option b ("cache") with no per-entry copies: 1.1.33 next to 1.2.1 costs ~100 KB [C 006].
+- **Kinds** (`type=`): `firmware` (official from a `.tfw`, custom `.ldr`, open-xy builder ZIP via the host, and the mod sets assembled by Apply: two fixed ids
+  per profile, `mods-<profile>-a`/`-b`, Apply writes the one that is not the default, so the other is the way back and no old sets pile up); `mod-base` and
+  `mod` (008); content packs (stock's own `content/dlc/<name>/manifest.json` is their manifest [C 006]; plain folder or content-only `.tfw`); `xyf-stage2` (the
+  96-byte `XYS2` header is its manifest [C `xyf_stage2.hpp`]); `xyf-stage1` (an XY Forever `os.ldr`, boot partition through the stock writer only, as INSTALL
+  today; menu install decided with stage 2); `companion` (named; the device refuses the type). A content set is not stored as a package: it is a manifest in the
+  firmware entry plus blobs.
 
-Detail: Layout, Manifest, Jobs in [010-package-model.design.md](010-package-model.design.md); Dependencies, Build items in [010-package-model.plan.md](010-package-model.plan.md)
+Detail: Layout, Manifest, Jobs in [010-package-model.design.md](010-package-model.design.md); Dependencies, Build items in
+[010-package-model.plan.md](010-package-model.plan.md)
 
 ## Installed state and power cuts [D]
-- Boot state stays in the proven A/B slots: stage 1 reads them on every boot and is full, so it cannot learn rename. Every new file is written `tmp/` then rename (simpler, any size).
-- `content.list` (`shasum` format: every file XY Forever wrote under `content/`, `dlc/` excluded) is renamed in first, then `content.txt` (`set=1.2.5`, `overlay=<entry id or empty>`, `list=<sha256 of content.list>`). A pair that disagrees means "content unknown": the next switch hashes `content/` instead of trusting the record.
-- `job.txt` (`op=activate`, `to=<id>`, `from=<id>`) exists only during a content switch. Repair runs when the menu or USB service starts, never on a plain boot (no writes on boot): sweep `tmp/`; finish a journalled switch (roll forward: the plan is idempotent, files already right are skipped [C `native/content`]), or, if a source is missing, offer to activate `from`. Stage 2 (when it exists) opens the menu instead of booting while `job.txt` exists; stage 1 cannot, so until then a cut mid-switch boots the old default on mixed content (recoverable: PLAY at power-on, finish).
+- Boot state stays in the proven A/B slots: stage 1 reads them on every boot and is full, so it cannot learn rename. Every new file is written `tmp/` then
+  rename (simpler, any size).
+- `content.list` (`shasum` format: every file XY Forever wrote under `content/`, `dlc/` excluded) is renamed in first, then `content.txt` (`set=1.2.5`,
+  `overlay=<entry id or empty>`, `list=<sha256 of content.list>`). A pair that disagrees means "content unknown": the next switch hashes `content/` instead of
+  trusting the record.
+- `job.txt` (`op=activate`, `to=<id>`, `from=<id>`) exists only during a content switch. Repair runs when the menu or USB service starts, never on a plain boot
+  (no writes on boot): sweep `tmp/`; finish a journalled switch (roll forward: the plan is idempotent, files already right are skipped [C `native/content`]),
+  or, if a source is missing, offer to activate `from`. Stage 2 (when it exists) opens the menu instead of booting while `job.txt` exists; stage 1 cannot, so
+  until then a cut mid-switch boots the old default on mixed content (recoverable: PLAY at power-on, finish).
 ## Code, unproven, rejected
-Kept and extended: library scan, `xyf_store` reader (`info.txt` keys `type sha256 content needs_os generation`), A/B slots, catalog (type in flags), `native/package` + `package_policy` (the `.tfw` reader, bootloader exclusion), `native/content` plan/apply (the switch: add move-to-blobs; "modified" stops only for files of no record), `xyf_stage2` header, `xyf_entry.py` (writes the new keys and lists). Replaced: `packages.py`'s staging tree (`payload/`, `companions/`, `INCOMPLETE`) by the entry layout; `update_plan.py` stays a host review tool.
-**Unproven:** rename on the device and its power-safe replace, of folders too [U 009]; hashing 126 MB per switch (else trust the record, hash only in repair); RAM for ~840 content items on A. **Rejected:** a package database (drifts from file copies); JSON manifests; per-entry full content copies; keeping every `.tfw`; version ranges or a solver; moving boot state off the slots now.
+Kept and extended: library scan, `xyf_store` reader (`info.txt` keys `type sha256 content needs_os generation`), A/B slots, catalog (type in flags),
+`native/package` + `package_policy` (the `.tfw` reader, bootloader exclusion), `native/content` plan/apply (the switch: add move-to-blobs; "modified" stops only
+for files of no record), `xyf_stage2` header, `xyf_entry.py` (writes the new keys and lists). Replaced: `packages.py`'s staging tree (`payload/`, `companions/`,
+`INCOMPLETE`) by the entry layout; `update_plan.py` stays a host review tool.
+**Unproven:** rename on the device and its power-safe replace, of folders too [U 009]; hashing 126 MB per switch (else trust the record, hash only in repair);
+RAM for ~840 content items on A. **Rejected:** a package database (drifts from file copies); JSON manifests; per-entry full content copies; keeping every
+`.tfw`; version ranges or a solver; moving boot state off the slots now.

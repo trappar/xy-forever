@@ -29,8 +29,10 @@ A = storage processor (role 0); B = screen/keys/USB/PSoC (role 1).
 - 023/024: the cold A↔B link works and B can hold A and send it commands; B enters ~0.53 s before A.
 - 041/042: ranged reads leaked A's stock request slots until each ended with a 1-byte probe: release every stock request.
 - 043/044: a second session right after a released one never reached A: wait before a new session.
-- Diag 075/076: op-10 commands are only sampled by A and are lost while A is busy (a slow storage mount), not because PLAY was held: commands that matter are queued requests (068).
-- 069: A's dispatcher re-read the pending request pointer in each branch, so a late request reached the wrong handler: read shared pointers once per poll (`tests/test_peer_dispatch.py`).
+- Diag 075/076: op-10 commands are only sampled by A and are lost while A is busy (a slow storage mount), not because PLAY was held: commands that matter are
+  queued requests (068).
+- 069: A's dispatcher re-read the pending request pointer in each branch, so a late request reached the wrong handler: read shared pointers once per poll
+  (`tests/test_peer_dispatch.py`).
 - 076: a build batching five unqualified changes could not be qualified: one change per build, each qualified.
 - 117-130: a reply missing a body the requester always expects freezes B for good: refusals use the stock reply shape.
 - 022: a restart of B alone freezes the device: never restart one processor alone; prevent hangs with bounded waits.
@@ -40,7 +42,8 @@ A = storage processor (role 0); B = screen/keys/USB/PSoC (role 1).
 - 032: a stale stock CDC callback (11a03e04) drained the receive ring: clear it while serving.
 - 033/034: the stock provider registry is `{0, begin, end, capacity}`; the CDC ring is 0x800 B: 1 KiB chunks.
 - 035: `begin()` refuses session caps above 600 s.
-- 036: stock partition select returns 0 on success, and a failed writer verify erases the old partition's block 0: check return conventions before any boot-partition write.
+- 036: stock partition select returns 0 on success, and a failed writer verify erases the old partition's block 0: check return conventions before any
+  boot-partition write.
 - 038: replies above 1 KiB hung B; the bootloader starts USB only on its charging path (057: B starts USB itself).
 - 040: an SDRAM marker survives a soft reset; RAM does not survive a power cycle: a freeze breadcrumb must be drawn on the screen.
 - 045: hold + guard left on with no host gave a reset loop, and a stock reset with our guard armed fails: disarm before reset, never leave hold on unattended.

@@ -1,16 +1,29 @@
 # 028: Saves that converge (#27, research)
 
-Research record, 2026-11-15; read-only, no device action. Open-XY facts from a fresh upstream clone (`paths.OPEN_XY_UPSTREAM`) at **`ba943a8`** (`builder/core.mjs`); our linker ports `52c8de9`. Packages: the published 0.0.6 set (`paths.PUBLISHED_MODS`). Timings: the first mods-apply session (builds 172-173) and two device passes' apply and switch steps (the maintainer's, not shared). Tags: **[C]** our code, **[O]** open-xy, **[M]** measured, **[I]** inferred, **[U]** unknown.
-**In brief.** An image *can* be edited: every tie between a mod and the image can be listed in a manifest. But a power-cut-safe edit still writes the whole `os.ldr` (yaffs gives us no cheap copy). So editing saves only the package reads and the link: about 4 s of an estimated 35-70 s Save with 30 mods. For remove-one, the larger costs are probably per file: ~140 content files written into the new entry, the old entry's files removed at the commit, and the content switch copying every file again. **Recommendation:** measure first. Then make the content switch converge (write only what differs). Then let the other slot act as a cache. Build the edited image (placement as an input plus a manifest) only if the measurement still shows link and reads as a large share. Steps in §9.
+Research record, 2026-11-15; read-only, no device action. Open-XY facts from a fresh upstream clone (`paths.OPEN_XY_UPSTREAM`) at **`ba943a8`**
+(`builder/core.mjs`); our linker ports `52c8de9`. Packages: the published 0.0.6 set (`paths.PUBLISHED_MODS`). Timings: the first mods-apply session (builds
+172-173) and two device passes' apply and switch steps (the maintainer's, not shared). Tags: **[C]** our code, **[O]** open-xy, **[M]** measured, **[I]**
+inferred, **[U]** unknown.
+**In brief.** An image *can* be edited: every tie between a mod and the image can be listed in a manifest. But a power-cut-safe edit still writes the whole
+`os.ldr` (yaffs gives us no cheap copy). So editing saves only the package reads and the link: about 4 s of an estimated 35-70 s Save with 30 mods. For
+remove-one, the larger costs are probably per file: ~140 content files written into the new entry, the old entry's files removed at the commit, and the content
+switch copying every file again. **Recommendation:** measure first. Then make the content switch converge (write only what differs). Then let the other slot act
+as a cache. Build the edited image (placement as an input plus a manifest) only if the measurement still shows link and reads as a large share. Steps in §9.
 
 Detail: §1, §2 in [028-converging-saves.image.md](028-converging-saves.image.md); §3-§6 in [028-converging-saves.costs.md](028-converging-saves.costs.md)
 
 ## 7. Risks
-- **Fragmentation:** fallback is always the full build, so holes never refuse a selection. The meter keeps showing the packed size, which is what the full build needs, with "gaps" as an optional second number. Compact when the holes exceed a set share, or when nothing fits.
-- **Stale manifest:** it carries the image SHA-256, the base (`needs_os`), the generation, the layout and each package's `files.sha256` hash. The edit job hashes the old image while it copies. Any mismatch, missing manifest or parse error falls back to a full build. A package that changed under the same id counts as replace-one or a full build.
-- **Power cuts:** content by difference keeps today's record order. A cut leaves `switching`, and the repair converges. The cache adds no write. The edit job writes `tmp/job-<id>` and commits as today (STORAGE "Into the library"), so it behaves identically.
-- **Memory and code:** a streaming edit needs less than the 5.5-7.4 MiB a link uses (B's region is 8 MiB − 64 KiB). The assembler tripwire (51,152 of 51,200 B, `tests/test_xyf_freestanding.py:38`) must be raised deliberately. Manifest writer + edit job ~4-8 KB [I].
-- **Compatibility:** open-xy's `recoverFirmware` (`core.mjs:1060`) accepts an image only if it can rebuild it byte for byte. An edited image is therefore not recoverable on its website. This is accepted.
+- **Fragmentation:** fallback is always the full build, so holes never refuse a selection. The meter keeps showing the packed size, which is what the full build
+  needs, with "gaps" as an optional second number. Compact when the holes exceed a set share, or when nothing fits.
+- **Stale manifest:** it carries the image SHA-256, the base (`needs_os`), the generation, the layout and each package's `files.sha256` hash. The edit job
+  hashes the old image while it copies. Any mismatch, missing manifest or parse error falls back to a full build. A package that changed under the same id
+  counts as replace-one or a full build.
+- **Power cuts:** content by difference keeps today's record order. A cut leaves `switching`, and the repair converges. The cache adds no write. The edit job
+  writes `tmp/job-<id>` and commits as today (STORAGE "Into the library"), so it behaves identically.
+- **Memory and code:** a streaming edit needs less than the 5.5-7.4 MiB a link uses (B's region is 8 MiB − 64 KiB). The assembler tripwire (51,152 of 51,200 B,
+  `tests/test_xyf_freestanding.py:38`) must be raised deliberately. Manifest writer + edit job ~4-8 KB [I].
+- **Compatibility:** open-xy's `recoverFirmware` (`core.mjs:1060`) accepts an image only if it can rebuild it byte for byte. An edited image is therefore not
+  recoverable on its website. This is accepted.
 ## 8. Options
 | Option | Gain, remove-one of 30 | Code, device memory | Risk | Test |
 |---|---|---|---|---|
@@ -19,11 +32,24 @@ Detail: §1, §2 in [028-converging-saves.image.md](028-converging-saves.image.m
 | C. Content by reference | ~140 writes + ~140 unlinks per Save | STORAGE + switch + job; none | medium | simulator, STORAGE tests |
 | D. Pinned placement + manifest + edit-copy | ~4 s (link + reads) | builder + job ~4-8 KB; less than today | medium: manifest drift | rule below |
 | E. In-place edit of the spare | image write too (~2 s) | as D + seek writes | high: untried yaffs path | not proposed |
-**Test rule (improved).** (1) The full builder takes an optional placement (section addresses and the included set). Without one, it equals `core.mjs`, as today. (2) The placement holds addresses only, and the included set stays a function of the selection, so remove also drops orphaned services and runtime members. (3) An edited image **and its manifest** equal a full build given the edited manifest's placement. (4) Every edited image passes `start_verify` with its SHA-256. (5) The simulator runs random remove/add/replace sequences with compaction, checking (3) at each step.
+**Test rule (improved).** (1) The full builder takes an optional placement (section addresses and the included set). Without one, it equals `core.mjs`, as
+today. (2) The placement holds addresses only, and the included set stays a function of the selection, so remove also drops orphaned services and runtime
+members. (3) An edited image **and its manifest** equal a full build given the edited manifest's placement. (4) Every edited image passes `start_verify` with
+its SHA-256. (5) The simulator runs random remove/add/replace sequences with compaction, checking (3) at each step.
 ## 9. Recommendation and steps (one builder each)
-1. **Measure** (orchestrator, device; nothing else changes). Read `config.txt` to confirm `slot=mods-a`, then run twice: `python3 xyf_host.py --timeout 300 mods apply --base opxy-121-stock --generation opxy-1.2.1/0.0.6-370a949e96aa pingpong ringmod grainfield lustre vibe halo omnifilter gentape breadboard papasrapa fm2op drone daath sift halcyon solar tattva hwander matrixy lint acidline mmnois mmsin mmpar mmens wane tandem mmpulse diffusion mmstat --name "Measure 30" --wait`. These are the 30 smallest machines that are not players; our `layout.json` reader rejects players. Record each phase line and the wall time. Run 2's commit removes run 1's 30-mod tree. Only `firmware/mods-b` and `tmp/` are written. `mods-a`, `content/`, `content-state.txt`, `config.txt` and the default stay. Optional, and only with the developer's explicit yes (it changes the installed content for about a minute): `set-default mods-b --yes-write`, then `set-default mods-a --yes-write`. This times the content switch both ways and ends as before. A cut leaves `switching`, which a Save repairs.
+1. **Measure** (orchestrator, device; nothing else changes). Read `config.txt` to confirm `slot=mods-a`, then run twice:
+   ```sh
+   python3 xyf_host.py --timeout 300 mods apply --base opxy-121-stock --generation opxy-1.2.1/0.0.6-370a949e96aa pingpong ringmod grainfield lustre vibe halo omnifilter gentape breadboard papasrapa fm2op drone daath sift halcyon solar tattva hwander matrixy lint acidline mmnois mmsin mmpar mmens wane tandem mmpulse diffusion mmstat --name "Measure 30" --wait
+   ```
+   These are the 30 smallest machines that are not players; our `layout.json` reader rejects players. Record each phase line and the wall time. Run 2's commit
+   removes run 1's 30-mod tree. Only `firmware/mods-b` and `tmp/` are written. `mods-a`, `content/`, `content-state.txt`, `config.txt` and the default stay.
+   Optional, and only with the developer's explicit yes (it changes the installed content for about a minute): `set-default mods-b --yes-write`, then
+   `set-default mods-a --yes-write`. This times the content switch both ways and ends as before. A cut leaves `switching`, which a Save repairs.
 2. **A:** the switch reads each live file and skips the write when its SHA-256 matches. Simulator tests.
 3. **B:** the other slot as a cache in `check()`. Host tests, then one device Save toggling back.
-4. **Decide D on the numbers.** Go ahead if link + stock read are > 25 % of a 30-mod Save after steps 2-3, else close #27. If D: (4a) host builder: placement input and manifest, rule (1)-(3); (4b) remove-one edit on the host, rule (3)-(5); (4c) the device job, streaming copy with substitutions; (4d) add/replace into holes with a gap layout; compact = full build.
+4. **Decide D on the numbers.** Go ahead if link + stock read are > 25 % of a 30-mod Save after steps 2-3, else close #27. If D: (4a) host builder: placement
+   input and manifest, rule (1)-(3); (4b) remove-one edit on the host, rule (3)-(5); (4c) the device job, streaming copy with substitutions; (4d) add/replace
+   into holes with a gap layout; compact = full build.
 5. Consider C separately: it is a separate storage-format decision.
-**Unknown:** the per-file cost of content writes, of unlinks and of the commit, which decides between A, C and D; the window-close time after ~4 MB; whether 30 typical mods fit expanded memory on the device (never run).
+**Unknown:** the per-file cost of content writes, of unlinks and of the commit, which decides between A, C and D; the window-close time after ~4 MB; whether 30
+typical mods fit expanded memory on the device (never run).
