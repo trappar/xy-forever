@@ -244,7 +244,7 @@ class Bootstrap(unittest.TestCase):
         for name in S.LAYOUT:
             self.assertTrue((self.ws / 'private' / getattr(paths, name).relative_to(paths.PRIVATE_ROOT)).is_dir())
         self.assertTrue((self.ws / 'private/incoming').is_dir())
-        self.assertEqual((self.repo / 'docs/STATUS.md').read_text(), '# status\n')
+        self.assertEqual((self.repo / 'docs/status/README.md').read_text(), '# status\n')
         self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})   # ../private: nothing recorded
         tools = self.ws / 'tools/blackfin'
         self.assertFalse(tools.is_symlink())
@@ -265,6 +265,13 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual((b.actions, self.calls, self.tree()), ([], [], before))
         self.assertIn('nothing to do: the workspace is already set up; nothing changed', out)
 
+    def test_an_older_single_status_file_becomes_the_folder_index(self):
+        (self.repo / 'docs/STATUS.md').write_text('# mine\n')
+        b, out = self.bootstrap()
+        self.assertEqual((self.repo / 'docs/status/README.md').read_text(), '# mine\n')
+        self.assertFalse((self.repo / 'docs/STATUS.md').exists())
+        self.assertIn('move docs/STATUS.md to docs/status/README.md', out)
+
     @unittest.skipIf(sys.platform == 'win32', 'no unix permission bits')
     def test_executable_bits_come_back_from_the_zip(self):
         self.bootstrap()
@@ -277,7 +284,7 @@ class Bootstrap(unittest.TestCase):
         before = self.tree()
         b, out = self.bootstrap(dry_run=True)
         self.assertEqual((self.calls, self.tree()), ([], before))
-        for what in ('create 12 folders', 'copy docs/STATUS.template.md', '"leak_patterns"',
+        for what in ('create 12 folders', 'copy docs/STATUS.template.md to docs/status/README.md', '"leak_patterns"',
                      'write %s' % (self.ws / 'AGENTS.md'), 'write %s' % (self.ws / 'CLAUDE.md'),
                      'download %s, check its SHA-256' % self.record['url'], 'npm ci in clients/ts', 'npm ci in web'):
             self.assertRegex(out, r'  would .*' + re.escape(what))
@@ -288,7 +295,7 @@ class Bootstrap(unittest.TestCase):
         with self.assertRaisesRegex(S.SetupError, 'toolchain archive hash mismatch: .* the pin \\(stock.json\\) is %s'
                                     % self.record['sha256']):
             self.bootstrap()
-        self.assertTrue((self.repo / 'docs/STATUS.md').exists())   # what came before stays done
+        self.assertTrue((self.repo / 'docs/status/README.md').exists())   # what came before stays done
         self.assertEqual(list((self.ws / 'tools').iterdir()), [])
 
     def test_a_given_archive_is_used_without_a_download(self):

@@ -1,9 +1,10 @@
 # XY Forever status
 
-Your own device and session state. Copy this file to `docs/STATUS.md` on first setup;
-that copy is local (gitignored) and nobody else reads it. Keep it current whenever a build
-is installed or tested, or the device state changes. Work runs from [PLAN.md](PLAN.md)
-under [ORCHESTRATION.md](ORCHESTRATION.md); lessons are in [HISTORY.md](HISTORY.md).
+Your own device and session state: the index of your local, gitignored `docs/status/` folder (bootstrap copies
+`docs/STATUS.template.md` here); nobody else reads it. It holds only what is true now, under 6 KB (checked by
+`tests/test_docs_budget.py`); anything longer is a leaf file in this folder, one line under "Leaves". Keep it
+current whenever a build is installed or tested, or the device state changes. Work runs from the GitHub
+issues (`scripts/plan.py`) under [ORCHESTRATION.md](../ORCHESTRATION.md); lessons: [HISTORY.md](../HISTORY.md).
 
 Last updated:
 
@@ -14,8 +15,9 @@ Last updated:
 
 ## Standing approvals
 
-What you granted for this device (ONBOARDING step 6), with its scope: host access, routine USB
-installs. Everything else is asked each time.
+What you granted for this device (ONBOARDING step 6), with its scope: host access, routine USB installs.
+A specific yes for one item: `approvals/<date>-<topic>.md`, one file each, one line each in
+`approvals/README.md`. Everything else is asked each time.
 
 ## Installed build
 
@@ -36,4 +38,9 @@ None recorded.
 
 ## Session notes
 
-Handover for the next session: what ran, what is waiting on the device, evidence folders.
+Handover for the next session: what ran, what is waiting on the device, evidence folders. Short; an older
+note moves to a leaf or goes.
+
+## Leaves
+
+- `approvals/`: specific approvals, one file each (index: its README.md).

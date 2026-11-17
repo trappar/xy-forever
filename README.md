@@ -28,7 +28,7 @@ Step by step, with what bootstrap does and what it leaves to you (the stock file
 OP-XY): [ONBOARDING.md](ONBOARDING.md).
 
 Status: under development, installed and tested on one device. Not for general
-use. Roadmap: [docs/PLAN.md](docs/PLAN.md).
+use. Roadmap: the GitHub issues and milestones.
 
 Supported devices: an OP-XY still on 1.2.1 only; a device updated to 1.2.5 cannot be
 downgraded with the built-in firmware updater, so XY Forever cannot be installed on it.

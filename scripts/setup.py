@@ -10,7 +10,7 @@
     python3 scripts/setup.py bootstrap [--workspace DIR] [--dry-run] [--toolchain-archive ZIP]
                                                    all of the above that needs no OP-XY, plus the toolchain
                                                    (open-xy's toolchain-1 release, or ZIP already downloaded),
-                                                   docs/STATUS.md and npm ci; safe to rerun
+                                                   docs/status/README.md and npm ci; safe to rerun
 
 The stock pair comes from your own OP-XY on stock 1.2.1: in the stock dev menu's MTP, copy
 /upgrade/firmware/blackfin/bin/os.ldr and bootloader.ldr (or the whole /upgrade/ folder).
@@ -412,6 +412,17 @@ def cmd_doctor(args):
 # bootstrap
 
 TOOLCHAIN_DIR = 'tools/blackfin'        # <workspace>/tools/blackfin: open-xy's toolchain-1 release, unpacked
+STATUS_INDEX = 'docs/status/README.md'  # the local, gitignored status folder's index (from docs/STATUS.template.md)
+
+
+def copy_into(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+
+
+def move_into(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source.rename(target)
 NPM_DIRS = ('clients/ts', 'web')         # web uses clients/ts: in this order
 WORKSPACE_GUIDE = """# XY Forever workspace
 
@@ -571,11 +582,14 @@ class Bootstrap:
             paths = importlib.reload(paths)
 
     def local_files(self):
-        status = self.repo / 'docs/STATUS.md'
-        print('docs/STATUS.md: %s' % ('present' if status.exists() else 'missing (local, gitignored)'))
+        status, single = self.repo / STATUS_INDEX, self.repo / 'docs/STATUS.md'
+        print('%s: %s' % (STATUS_INDEX, 'present' if status.exists() else 'missing (local, gitignored)'))
         if not status.exists():
-            self.do('copy docs/STATUS.template.md to docs/STATUS.md', shutil.copyfile,
-                    self.repo / 'docs/STATUS.template.md', status)
+            if single.exists():                         # the older single local file becomes the folder's index
+                self.do('move docs/STATUS.md to %s' % STATUS_INDEX, move_into, single, status)
+            else:
+                self.do('copy docs/STATUS.template.md to %s' % STATUS_INDEX, copy_into,
+                        self.repo / 'docs/STATUS.template.md', status)
         leaks = self.settings().get('leak_patterns')
         print('%s: %s' % (self.config.name, 'no "leak_patterns" list' if leaks is None else
                           '%d leak patterns' % len(leaks)))

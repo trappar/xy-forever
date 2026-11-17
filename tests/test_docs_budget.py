@@ -1,69 +1,83 @@
-"""Doc budgets and the allowed docs/ files (docs/ORCHESTRATION.md, "Where things go")."""
+"""Doc budgets and the allowed docs/ files (docs/ORCHESTRATION.md, "Where things go").
+
+Budgets are bytes, not lines: a line budget is met by writing longer lines. What every agent reads first
+also has a line-length limit. Over budget: split into a tree (an index plus leaves), do not squeeze.
+"""
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
 DECISIONS = DOCS / 'decisions'
+STATUS = DOCS / 'status'            # local and gitignored: only its index is checked, when present
 
-BUDGETS = {
-    'docs/PLAN.md': 160,
-    # The local docs/STATUS.md is gitignored and not budget-checked; the committed template is.
-    'docs/STATUS.template.md': 40,
-    'docs/ORCHESTRATION.md': 125,
-    'AGENTS.md': 80,
-    'ONBOARDING.md': 150,
-    # Generated from protocol/v1.json (scripts/protogen.py): one section per published command,
-    # with its request and reply tables, so it outgrows the 300-line reference budget. 430 lines
-    # for 14 commands at 1.0; 458 at 1.1 (HELLO keys, three status codes); 482 with 1.2e (transport table,
-    # decoding/optional/text rules, common statuses); 490 with 1.4 (conformance suite section); 586 with
-    # 1.5 (file.list, file.delete, file.rmdir, file.mkdir); 605 with 1.7 (library.boot: 17 generated lines); 1.8
-    # (file.rename, 22 lines) paid for by one-line examples and inline common statuses and reserved numbers;
-    # 1.9 (file.copy) by each command's summary and description in one paragraph; 1.10 (mods.apply, job.status,
-    # job.cancel: 59 lines) by the request and reply sizes in their tables' heads.
-    'docs/PROTOCOL.md': 610,
-    # For OP-XY owners and mod writers, not agents (plan 9.1).
-    'docs/GUIDE.md': 220,
-    'docs/MODS-DEV.md': 120,
+# Read by every agent, or by the orchestrator every sitting: (bytes, longest line).
+FIRST_READS = {
+    'AGENTS.md': (6500, 160),
+    'ONBOARDING.md': (10000, 160),
+    'docs/ORCHESTRATION.md': (9600, 190),
+    'docs/STATUS.template.md': (2500, 120),
 }
-DECISION_BUDGET = 60
-# Reference docs (plan 0.4b): each stays within one budget (PROTOCOL.md has its own, above).
-REFERENCE = ('ARCHITECTURE.md', 'GOALS.md', 'HARDWARE.md', 'HISTORY.md', 'OPERATING.md', 'SAFETY.md', 'STORAGE.md')
-REFERENCE_BUDGET = 300
+LOCAL_STATUS = 6000                 # docs/status/README.md; its leaves are not checked
+
+# Read on demand, capped at about their size until #42 splits them into trees (bytes).
+CAPS = {
+    'docs/ARCHITECTURE.md': 25600,
+    'docs/GOALS.md': 14200,
+    'docs/HARDWARE.md': 20200,
+    'docs/HISTORY.md': 6600,
+    'docs/OPERATING.md': 13800,
+    'docs/SAFETY.md': 11500,
+    'docs/STORAGE.md': 25000,
+    'docs/PROTOCOL.md': 56000,      # generated from protocol/v1.json (scripts/protogen.py)
+    'docs/GUIDE.md': 11500,         # for OP-XY owners and mod writers, not agents (plan 9.1)
+    'docs/MODS-DEV.md': 5500,
+}
+DECISION_CAP = 16000
 
 ALLOWED = {
     'ARCHITECTURE.md', 'GOALS.md', 'GUIDE.md', 'HARDWARE.md', 'HISTORY.md', 'MODS-DEV.md', 'OPERATING.md',
-    'ORCHESTRATION.md', 'PLAN.md', 'PROTOCOL.md', 'SAFETY.md', 'STATUS.md', 'STATUS.template.md',
-    'STORAGE.md',
+    'ORCHESTRATION.md', 'PROTOCOL.md', 'SAFETY.md', 'STATUS.template.md', 'STORAGE.md',
 }
 
 
-def lines(path):
-    return len(path.read_text(encoding='utf-8').splitlines())
+def size(path):
+    return len(path.read_bytes())
+
+
+def longest(path):
+    return max((len(l) for l in path.read_text(encoding='utf-8').splitlines()), default=0)
 
 
 class DocsBudget(unittest.TestCase):
-    def test_budgets(self):
-        for rel, budget in BUDGETS.items():
-            with self.subTest(doc=rel):
-                self.assertLessEqual(lines(ROOT / rel), budget, f'{rel} is over its budget')
+    def check(self, path, budget, width=None):
+        rel = path.relative_to(ROOT)
+        with self.subTest(doc=str(rel)):
+            self.assertLessEqual(size(path), budget, f'{rel} is over its budget: split it into a tree')
+            if width:
+                self.assertLessEqual(longest(path), width, f'{rel} has a line over {width} characters')
 
-    def test_reference_docs(self):
-        for name in REFERENCE:
-            path = DOCS / name
-            with self.subTest(doc=name):
-                self.assertLessEqual(lines(path), REFERENCE_BUDGET, f'docs/{name} is over its budget')
+    def test_first_reads(self):
+        for rel, (budget, width) in FIRST_READS.items():
+            self.check(ROOT / rel, budget, width)
 
-    def test_decision_records(self):
+    def test_local_status_index(self):
+        index = STATUS / 'README.md'
+        if not index.is_file():
+            self.skipTest('no local docs/status/README.md')
+        self.assertLessEqual(size(index), LOCAL_STATUS,
+                             'your local docs/status/README.md is over 6 KB: move detail into leaf files beside it')
+
+    def test_caps(self):
+        for rel, cap in CAPS.items():
+            self.check(ROOT / rel, cap)
         for path in sorted(DECISIONS.glob('*.md')):
-            with self.subTest(doc=path.name):
-                self.assertLessEqual(lines(path), DECISION_BUDGET,
-                                     f'docs/decisions/{path.name} is over its budget')
+            self.check(path, DECISION_CAP)
 
     def test_only_allowed_docs(self):
         extra = []
         for path in DOCS.rglob('*.md'):
-            if path.parent == DECISIONS:
+            if path.parent == DECISIONS or STATUS in path.parents:
                 continue
             if path.parent != DOCS or path.name not in ALLOWED:
                 extra.append(str(path.relative_to(ROOT)))

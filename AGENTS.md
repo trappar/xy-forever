@@ -7,17 +7,18 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 ## Start here
 
 - **Main agent of a session** (asked to "continue development" or "resume work"): if `python3
-  scripts/setup.py doctor` exits non-zero, or your local `docs/STATUS.md` is missing or records no
+  scripts/setup.py doctor` exits non-zero, or your local `docs/status/README.md` is missing or records no
   standing-approvals answer yet, onboarding is unfinished: follow [ONBOARDING.md](ONBOARDING.md) first.
-  Otherwise you are the orchestrator: read [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) and
-  [docs/PLAN.md](docs/PLAN.md), then follow them. Do not read or write code yourself.
+  Otherwise you are the orchestrator: read [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) and follow it;
+  the plan is the GitHub issues (`python3 scripts/plan.py`). Do not read or write code yourself.
 - **Sub-agent with a brief:** read what the brief names, plus
   [docs/SAFETY.md](docs/SAFETY.md) (**binding**: never brick the developer's OP-XY) before
   anything that reaches the firmware or the device.
-- Your local `docs/STATUS.md` (gitignored): device state, installed build, standing approvals,
-  open problems.
+- Your local `docs/status/` (gitignored): `README.md` holds device state, installed build, standing
+  approvals, open problems; longer detail sits in leaf files beside it.
 
-Read only what the task needs:
+**Context is the cost.** Read only what the task needs: an index before its leaves, `grep -n` then ranges
+(at most 120 lines), command output through `tail`. A doc over its budget is split into a tree, never squeezed.
 
 | Task | Read |
 |---|---|
@@ -57,7 +58,7 @@ Read only what the task needs:
   item someone else is assigned. Until the repository has its GitHub remote, commit locally on
   `main`. No AI attribution in commit messages. Every new on-device file and wire
   format carries a version, and its reader refuses a newer version with a message, never a crash.
-- **Keep your local `docs/STATUS.md` current** whenever a build is installed or tested, or the
+- **Keep your local `docs/status/README.md` current** whenever a build is installed or tested, or the
   device state changes. Where everything else goes: the table in
   [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md). Logs and scratch files never go in the repository.
 
@@ -65,6 +66,7 @@ Read only what the task needs:
 
 ```sh
 python3 scripts/setup.py doctor                                         # private folder: stock files, fixtures (bootstrap, import-stock)
+python3 scripts/plan.py                                                # the plan: next items, decisions waiting (--all: blocked, threads)
 python3 scripts/run_tests.py --jobs 6                                   # unit tests in parallel: ~2 min, 998 tests (busy machine: rerun a timing flake)
 python3 -m unittest discover -s tests                                   # the same in order: ~8 min
 XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6                  # everything (+ exhaustive bit flips): ~2 min
