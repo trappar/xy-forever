@@ -18,7 +18,7 @@ static const uint32_t abi_hello = 1, abi_menu = 2, abi_service = 3;
 static const uint32_t abi = abi_menu;
 static const uint32_t this_stage1 = 2;                     // stage-1 version of this build
 #elif defined(XYF_STAGE2_SERVICE)
-// ABI 3 (4.7a1): the product's stage 2, called from B's USB service. The stage-1 version a
+// ABI 3: the product's stage 2, called from B's USB service. The stage-1 version a
 // header's min_stage1 is checked against is the stage-1 build number (usb_service passes it).
 static const uint32_t abi = abi_service;
 static const uint32_t this_stage1 = 0;                     // unused: the build number is passed
@@ -26,7 +26,7 @@ static const uint32_t this_stage1 = 0;                     // unused: the build 
 static const uint32_t abi = abi_hello;
 static const uint32_t this_stage1 = 1;                     // stage-1 version of this build
 #endif
-// Load window (FINDINGS-stage2.md; moved in 4.7x): in the 1 MiB-aligned region
+// Load window (FINDINGS-stage2.md): in the 1 MiB-aligned region
 // that holds the executing cold module (product: 0x8ab00000..0x8ab84000, module
 // + stack), above the stack top with a 48 KiB gap. Never loaded by the outer LDR
 // or the stock bootloader, outside the retained heap arena (..0x8aa65bf4), and
@@ -132,7 +132,7 @@ enum class Do : uint32_t { boot_default, boot_entry, menu, boot_builtin, set_def
                            note_no_entry };
 Do decide(uint32_t exit, bool link_lost, uint32_t catalog_count, uint32_t features, uint32_t& entry);
 
-// ---- ABI 3: stage 2 in the product's USB service (4.7a1, XYF_STAGE2_SERVICE) ----------
+// ---- ABI 3: stage 2 in the product's USB service (XYF_STAGE2_SERVICE) ----------
 // B's USB service loads the file at the first HELLO of a boot (a plain boot never reads it),
 // accept()s it against the stage-1 build number, copies the image to load_address (FLUSH,
 // IFLUSH) and then calls

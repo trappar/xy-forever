@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plan 3.4 T2b: real MTP on the composite's MTP interface (test build xyf-mtp-usb), from macOS, no clicks.
+"""Real MTP on the composite's MTP interface (test build xyf-mtp-usb), from macOS, no clicks.
 
 With the composite up (--no-trial when it already is; else the trial of scripts/mtp_usb_probe.py first), over MTP
 (interface 2) and the serial (the composite's CDC), HELLO between the steps:

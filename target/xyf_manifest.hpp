@@ -1,7 +1,7 @@
 #ifndef XYF_MANIFEST_HPP
 #define XYF_MANIFEST_HPP
 #include <stdint.h>
-// The package model's manifests (docs/decisions/010-package-model.md, plan item 4.1a;
+// The package model's manifests (docs/decisions/010-package-model.md;
 // docs/STORAGE.md): the strict info.txt reader, the streamed files.sha256 reader, the
 // recogniser for dropped files and folders, and the device's exact-match dependency rules.
 // Freestanding like xyf_store: no libc, no allocation, no struct copies, every loop bounded by
@@ -14,7 +14,7 @@ namespace xyf { namespace manifest {
 static const uint32_t max_text = 4096, max_line = 255, max_keys = 32, max_key = 31, max_value = 127;
 
 enum Type : uint8_t {
-    type_none = 0,         // no type= key: a firmware entry (every info.txt written before 4.1a)
+    type_none = 0,         // no type= key: a firmware entry (every info.txt written before type= existed)
     type_firmware, type_mod_base, type_mod,
     type_companion         // parsed only to be refused (Status refused_type)
 };

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Device pass: the regression that proves an XY Forever build on the OP-XY (plan 0.5).
+"""Device pass: the regression that proves an XY Forever build on the OP-XY.
 
 Every device command goes through xyf_host.py's own main() (imported), with its
 checks, confirmation flags and dry-run defaults. The OS is never booted: this
@@ -12,7 +12,7 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            processes already running are stopped first: they share the port.)
   session  always: guard on (guard kicks must advance), hold on.
   read     default: status; state slots; the default entry's info.txt; ls firmware/
-           lists the default and ls /yaffs2/xy-forever lists firmware (2.4b); 8 ranged
+           lists the default and ls /yaffs2/xy-forever lists firmware; 8 ranged
            reads of its os.ldr (compared with the local stock os.ldr when info.txt
            names it); screenshot; peek of the reboot marker (guard bit set).
   install  --install BUILD_DIR: `install --yes-install` (xyf_host's build checks;
@@ -35,31 +35,31 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            show the Mods row selected, the first row not; no PLAY).
   writes   default: put-file /yaffs2/xy-forever/log/device-pass.txt (2,500 B,
            overwritten each pass) and log/device-pass-2.txt (1,000 B) back to back,
-           ranged read-back of both (one read-write window, 2.2c); no write for ~10 s:
+           ranged read-back of both (one read-write window); no write for ~10 s:
            STATUS shows B closed that one window (op 9: it was open) and fetched the
            catalog; put-file firmware/xyf-pass-scratch/info.txt (a scratch entry with
            no os.ldr, its name new each pass) and, once the window closed, the menu's
            catalog (PEEK of B's copy) shows that name, no restart; set-default to another
            entry and back to the starting default; rm the scratch entry (info.txt, then its
-           folder: also the one build 163's pass left); file commands (2.4a) in a scratch
+           folder: also the one build 163's pass left); file commands in a scratch
            folder /yaffs2/xy-forever/xyf-pass-files it creates and removes (a leftover's
            two files and the folder removed first, by name): mkdir, put a
            300,000 B and a 2,500 B file, ls shows both with their sizes, get both back
-           identical, rm both, rmdir, ls shows the folder gone (put and get KiB/s); 2.4c,
+           identical, rm both, rmdir, ls shows the folder gone (put and get KiB/s); then
            the same folder again: mv a file into a subfolder, mv that subfolder (a whole
-           folder), mv onto an existing name (state), rm all; 2.4c2, again: cp a 100,000 B
+           folder), mv onto an existing name (state), rm all; then again: cp a 100,000 B
            file on the device, get both identical, cp onto an existing name (state), rm all;
            REBOOT; both files and the default checked again, the scratch entry absent.
-  mods     default (5.4d2): only when the device holds the package set (mods/opxy-1.2.1/<the local
+  mods     default: only when the device holds the package set (mods/opxy-1.2.1/<the local
            set's generation>/ with fm2op) and a library entry with os.ldr and content.sha256
            (else SKIP with the reason; also when the library holds mods-a and mods-b): mods apply
            fm2op --wait (the device assembles, sweeps tmp/job-* first, and commits into library entry
-           mods-a, or mods-b when mods-a is there; 5.4d2f: --wait ends once file commands are served
+           mods-a, or mods-b when mods-a is there; --wait ends once file commands are served
            again), ls tmp/ at once (answered within its bound), get its os.ldr, SHA-256 equal to the
            host's one-shot assembly of the same inputs (host assembly only here); the menu catalog lists
            it "content not installed" (only then:) boot of it refused (no_content); the entry removed
            file by file.
-  content  default (4.6c2): only when the device holds the package set, its default is a stock entry with
+  content  default: only when the device holds the package set, its default is a stock entry with
            content.sha256 and content/ is official (no record or state=official, op1_factory.json's SHA-256 its
            content.sha256 line; else SKIP with the reason): mods apply fm2op --wait (entry mods-a or -b),
            set-default to it (B's content switch runs first), the record says installed for it,
@@ -70,10 +70,10 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            plus the catalog's hash: the row says which), the entry's files and folders are gone, content/ is
            listed exactly as before; the entry removed. A failure after the first switch still sets the
            previous default back (the row says the device's state). The OS is never booted.
-           8.4b (writes set-default, mods, content): before the first change and at the end, config.txt (and
+           writes (set-default), mods and content: before the first change and at the end, config.txt (and
            config.old), the default, the library and the first home row (STOP, TRACK1, screenshot: no
            "(to apply)" or "(rebuild)" mark) must be as found.
-  config   default (8.4b, keys): only when the device holds the package set (alone), the saved configuration has
+  config   default (keys): only when the device holds the package set (alone), the saved configuration has
            no mods (no config.txt, or mods= empty and base= the default), the default has its official content (else
            SKIP, nothing sent but reads): STOP, TRACK3 (the Mods row seen selected), PLAY: the Mods page;
            PLUS to fm2op (its row from the local set), PLAY: on; STOP, TRACK1: the first row's text longer (the
@@ -157,27 +157,27 @@ MARKER, MARKER_MAGIC = 0x8bfff000, 0x52465859            # usb_service.hpp reboo
 MARKER_BITS = ((0x100, 'held'), (0x200, 'guard'), (0x400, 'menu'))
 PASS_FILE = '/yaffs2/xy-forever/log/device-pass.txt'
 PASS_FILE2 = '/yaffs2/xy-forever/log/device-pass-2.txt'
-SCRATCH_ID = 'xyf-pass-scratch'                     # 2.2c: the library change (an entry without os.ldr)
+SCRATCH_ID = 'xyf-pass-scratch'                     # the library change (an entry without os.ldr)
 SCRATCH_INFO = '/yaffs2/xy-forever/firmware/%s/info.txt' % SCRATCH_ID
-FILES_DIR = '/yaffs2/xy-forever/xyf-pass-files'     # 2.4a: the file commands' scratch folder (removed again)
+FILES_DIR = '/yaffs2/xy-forever/xyf-pass-files'     # the file commands' scratch folder (removed again)
 FILES_LEAVES = ('big.bin', 'small.txt')             # the files it holds (an interrupted pass leaves them)
 LIBRARY = '/yaffs2/xy-forever/firmware'             # never empty: the default entry is in it
-CONTENT_SCRATCH = '/yaffs2/content/xyf-pass-scratch.txt'   # 2.4d: no official content has this name
-# 2.4c: file.rename in the same scratch folder: a file renamed into a subfolder, then that subfolder
+CONTENT_SCRATCH = '/yaffs2/content/xyf-pass-scratch.txt'   # no official content has this name
+# file.rename in the same scratch folder: a file renamed into a subfolder, then that subfolder
 # renamed as a whole (left by an interrupted pass: these names, removed first, deepest first).
 MOVE_LEFT = ('a.txt', 'sub/b.txt', 'sub2/b.txt', '--dir sub', '--dir sub2')
 STATE = P.STATUS_NAMES.index('state')
-COPY_LEFT = ('a.bin', 'b.bin')                      # 2.4c2: file.copy's source and target in FILES_DIR
+COPY_LEFT = ('a.bin', 'b.bin')                      # file.copy's source and target in FILES_DIR
 COPY_BYTES = 100000
 FILES_BIG = 300000                                  # a few hundred KB: the measured put and get
 T_FILES = 240.0
-# 5.4d2: the mods/apply step. fm2op on B: ~8,500 one-KiB requests (simulator count), ~45 s at the measured
+# The mods/apply step. fm2op on B: ~8,500 one-KiB requests (simulator count), ~45 s at the measured
 # 5.6 ms per request; the bound leaves room for yaffs write pauses.
 MODS_PROFILE, MODS_MACHINE, MODS_NAME = 'opxy-1.2.1', 'fm2op', 'XY Forever pass'
 MODS_PACKAGES = Path(os.environ.get('XYF_MOD_PACKAGES', paths.PUBLISHED_MODS))
 MODS_CATALOG = paths.CATALOG_121
 T_MODS = 180.0
-# 4.6c2: the content/switch step. A switch is one file request per step (fm2op: a few dozen files); its own
+# The content/switch step. A switch is one file request per step (fm2op: a few dozen files); its own
 # bound per set-default leaves room for yaffs write pauses. The content check hashes every official file only
 # when that read is estimated at most FULL_READ seconds (the speed of the step's own gets), else sizes.
 T_SWITCH = 300.0
@@ -189,9 +189,9 @@ SETTLE = 9.0        # B closes the write window 8 s after the last write (storag
 T_WINDOW = 30.0     # ... then op 9 (yaffs checkpoint) and the catalog fetch: polled once a second
 ALT_DEFAULTS = ('opxy-121', 'opxy-121-stock')
 RANGES = 8
-# 8.4b: the saved configuration (8.4a, target/xyf_config.hpp; read: config.txt, else config.old) and what the
+# The saved configuration (target/xyf_config.hpp; read: config.txt, else config.old) and what the
 # home menu's first row shows. Screenshots (xyf_host screen_png: 480 x 216 RGB, filter none): ui_screens
-# draw_menu puts seven rows 18 px apart from y 60 (4.8, build 184: Settings; row i's white bar: y 58 + 18 i .. +16,
+# draw_menu puts seven rows 18 px apart from y 60 (build 184: Settings; row i's white bar: y 58 + 18 i .. +16,
 # x 10..469, its text y 60 + 18 i .. +13 from x 20); ui_pages draw_choice fills the selected button white at y 172..195, the others have grey edges.
 CONFIG_RECORD = '/yaffs2/xy-forever/config.txt'
 CONFIG_OLD = '/yaffs2/xy-forever/config.old'
@@ -202,7 +202,7 @@ BAR_X, BAR_RIGHT = 12, 470      # inside a row's bar, left of its text; the bar'
 BUTTON_Y = 174                  # a dialog's button row (above the button text)
 T_PAGE = 30                     # the Mods page reads its package list (screenshots 1.5 s apart until two equal)
 MARK_GROWTH = 60                # px: "(changed)" lengthens the first row's text by more than this
-# Protocol stage (plan 1.2d; docs/PROTOCOL.md).
+# Protocol stage (docs/PROTOCOL.md).
 LAST_PRE_V1 = 153          # the spec's pre_v1 rule: builds 153 and earlier send no cmds
 PRE_V1 = 'pre-v1 device'
 HELLO_ROUNDS = 5
@@ -222,7 +222,7 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
               ('read-state', T_ANSWER, 'whole reads of state-a.txt/state-b.txt: the default entry'),
               ('read-info', T_ANSWER, 'whole read of firmware/<default>/info.txt'),
               ('ls-library', T_ANSWER, 'ls firmware/ lists the default entry, ls /yaffs2/xy-forever/ lists '
-                                       'firmware (2.4b: build 165 listed every folder empty)'),
+                                       'firmware (build 165 listed every folder empty)'),
               ('read-ranges', T_ANSWER, '%d ranged reads (1 KiB) of firmware/<default>/os.ldr' % RANGES),
               ('screenshot', T_ANSWER, 'screenshot of home'),
               ('peek', T_ANSWER, 'peek 16 B at 0x%08x: reboot marker, guard bit set' % MARKER))),
@@ -280,7 +280,7 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
                   '(SKIP without a package set, a stock default with content.sha256 and official content)'
                   % (MODS_MACHINE, FULL_READ)),)),
     ('config', (('pending', T_ANSWER * 6 + 2 * T_PAGE,
-                 'keys (8.4a, only with the package set, official content and a saved configuration without mods; '
+                 'keys (only with the package set, official content and a saved configuration without mods; '
                  'else SKIP: reads only, no key): Mods, %s on, home: the first row shows the pending mark; PLAY on it '
                  '(only then): the Save dialog, MINUS to Back (checked), PLAY: still pending; Mods, %s off, home: '
                  'the mark gone. Never Save, never Discard, never a boot; on a failure STOP until home'
@@ -353,13 +353,13 @@ def row_selected(rows, row):
 
 
 MODS_KINDS = ('synth', 'drum', 'sample', 'effect', 'player', 'extension')   # xyf_mods Kind order
-# 8.6: packages only (8.4d: status, filter, all rows first); xyf_mods_view visible_rows, rows_top, row_height
+# packages only (status, filter, all rows first); xyf_mods_view visible_rows, rows_top, row_height
 MODS_VISIBLE_ROWS, MODS_ROWS_TOP, MODS_ROW_HEIGHT = 9, 43, 18
 
 
 def mods_row(packages, machine):
-    """8.4d: machine's row on the Mods page and the page's row count, as (position, rows), or None when the local
-    set has no readable package of that name. Rows (8.6: packages only, the first selected when the page opens),
+    """Machine's row on the Mods page and the page's row count, as (position, rows), or None when the local
+    set has no readable package of that name. Rows (packages only, the first selected when the page opens),
     filter All: the packages xyf_mods sooner() orders: kind (MODS_KINDS order), then name (its first 22 bytes, A-Z folded), then
     folder (without "ext-")."""
     def fold(text):
@@ -749,7 +749,7 @@ class Pass:
             raise StepFail('screenshot %s is not a PNG' % path.name)
         return data
 
-    # -- 8.4b: what the menu shows (device: screenshots; simulator: its log, --sim-log) ----------------------
+    # -- what the menu shows (device: screenshots; simulator: its log, --sim-log) ----------------------------
     def sim_lines(self, marker):
         log = Path(self.opts.sim_log).read_text(errors='replace') if Path(self.opts.sim_log).exists() else ''
         return [line[line.find(marker) + len(marker):] for line in log.splitlines() if marker in line]
@@ -776,7 +776,7 @@ class Pass:
             lines = self.sim_lines('menu: home row: ')
             if not lines:
                 raise StepFail('simulator log %s: no "menu: home row:" line' % self.opts.sim_log)
-            line = re.sub(r' memory=[^;]*; note=[^;]*;', '', lines[-1])   # 4.8m2: the Settings row, the save note
+            line = re.sub(r' memory=[^;]*; note=[^;]*;', '', lines[-1])   # the Settings row, the save note
             label, _, rest = line.rpartition(' pending=')
             return dict(band=line, label=label, pending=rest.startswith('1'), right=None, shot=None)
         shot = self.shot(name)
@@ -787,7 +787,7 @@ class Pass:
         return dict(band=b''.join(rows[ROW0_BAND[0]:ROW0_BAND[1]]), right=right, pending=None, shot=shot)
 
     def saved_state(self, tag):
-        """8.4b: what 8.4a compares (the saved configuration, the default, the library) and the first home row."""
+        """What the menu compares (the saved configuration, the default, the library) and the first home row."""
         return dict(config=self.read(CONFIG_RECORD, tag + '-config.txt', '--all'),
                     old=self.read(CONFIG_OLD, tag + '-config.old', '--all'),
                     default=self.slots(tag)[2]['default'], library=sorted(self.names(LIBRARY)),
@@ -847,7 +847,7 @@ class Pass:
         return '%s: %s, %s B, crc32 %s' % (self.state['default'], info.get('name'), info['bytes'], info.get('crc32'))
 
     def step_ls_library(self):
-        # 2.4b: folders known to be non-empty, so an empty listing (build 165) fails here, early.
+        # folders known to be non-empty, so an empty listing (build 165) fails here, early.
         code, out, err = self.host(['ls', LIBRARY, '--json'], T_ANSWER)
         if code and 'does not answer' in out + err:
             raise StepSkip('the device has no file.list (before build 165)')
@@ -1215,7 +1215,7 @@ class Pass:
         n = self.check_pass_file('read-back.txt')
         return '%d B in %d ranges, identical' % (n, -(-n // host.READ_RANGE))
 
-    # 2.2c: B's own record of the write window (storage_server Result on B, STATUS "remote_read"):
+    # B's own record of the write window (storage_server Result on B, STATUS "remote_read"):
     # b_window = op 9's answer when B closed it (1 none was open, 3 closed one, 0 failed), b_windows
     # = windows closed, b_catalogs = catalogs fetched after writes.
     def window_status(self):
@@ -1278,7 +1278,7 @@ class Pass:
         if not alt:
             raise StepFail('no other entry to use (pass --alt-default)')
         self.state['default0'] = default
-        self.state['saved0'] = self.saved_state('alt-before')       # 8.4b: as found again after set-default-back
+        self.state['saved0'] = self.saved_state('alt-before')       # as found again after set-default-back
         self.ok(['set-default', alt[0], '--yes-write'])
         self.state['alt'] = alt[0]
         return '%s -> %s (slots read back)' % (default, alt[0])
@@ -1292,7 +1292,7 @@ class Pass:
                            % (error, alt, default))
         return '%s -> %s (slots read back); %s' % (alt, default, self.same_state(self.state['saved0'], 'alt-after'))
 
-    # 2.4a: the file commands (xyf_host ls / get / put / rm / mkdir).
+    # The file commands (xyf_host ls / get / put / rm / mkdir).
     def ls(self, path):
         out = self.ok(['ls', path, '--json'])
         try:
@@ -1301,7 +1301,7 @@ class Pass:
             raise StepFail('ls %s: no JSON listing' % path)
 
     def names(self, path):
-        """The names ls lists in path; a folder known to hold entries must not list empty (2.4b)."""
+        """The names ls lists in path; a folder known to hold entries must not list empty."""
         return [e['name'] for e in self.ls(path)]
 
     def remove(self, *argv):
@@ -1318,7 +1318,7 @@ class Pass:
         if SCRATCH_ID in names:
             raise StepFail('firmware/ still lists %s' % SCRATCH_ID)
         default = self.state.get('default0') or self.state.get('default')
-        if default and default not in names:                         # 2.4b: no vacuous pass
+        if default and default not in names:                         # no vacuous pass
             raise StepFail('ls firmware/: %d entries, no %s (the default): the listing is wrong' % (len(names), default))
         return '%s: %s; firmware/ lists %d entries, none %s' % (SCRATCH_ID, ', '.join(done), len(names), SCRATCH_ID)
 
@@ -1327,7 +1327,7 @@ class Pass:
         # Left by an interrupted pass: its two known names, then the folder (no listing needed:
         # build 165's listing was empty). not_found is fine for each.
         left = [self.remove('%s/%s' % (FILES_DIR, leaf)) for leaf in FILES_LEAVES] + [self.remove('--dir', FILES_DIR)]
-        if 'firmware' not in self.names(base):                       # 2.4b: no vacuous pass
+        if 'firmware' not in self.names(base):                       # no vacuous pass
             raise StepFail('ls %s lists no firmware: the listing is wrong' % base)
         self.ok(['mkdir', FILES_DIR])
         files = tuple(zip(FILES_LEAVES, (filler(FILES_BIG), pass_file('files'))))
@@ -1436,7 +1436,7 @@ class Pass:
         self.ok(['rm', '--dir', folder])
 
     def step_apply(self):
-        """5.4d2: fm2op assembled by the device, its os.ldr compared with the host's reference."""
+        """fm2op assembled by the device, its os.ldr compared with the host's reference."""
         packages = MODS_PACKAGES
         if not (packages / 'base/info.txt').is_file() or not MODS_CATALOG.is_file():
             raise StepSkip('no local package set or stock catalog (%s): the reference needs them' % packages)
@@ -1460,7 +1460,7 @@ class Pass:
         if base is None:
             raise StepSkip('no library entry holds os.ldr and content.sha256 (put %s to firmware/opxy-121/)'
                            % (paths.XYF / 'content-manifests/1.2.1/content.sha256'))
-        # 5.4d3a: the build becomes library entry mods-a or mods-b (the absent one); the pass removes it again
+        # The build becomes library entry mods-a or mods-b (the absent one); the pass removes it again
         # and never replaces an entry the device already holds.
         if 'mods-a' in entries and 'mods-b' in entries:
             raise StepSkip('the library holds mods-a and mods-b: the build would replace one (the pass leaves '
@@ -1470,7 +1470,7 @@ class Pass:
             want = mods_reference(packages, [MODS_MACHINE], MODS_NAME)
         except Exception as error:                                       # noqa: BLE001
             raise StepFail('host reference: %s' % error)
-        as_found = self.saved_state('apply-before')                    # 8.4b: the menu compares these with config.txt
+        as_found = self.saved_state('apply-before')                    # the menu compares these with config.txt
         start = time.monotonic()
         out = self.ok(['mods', 'apply', '--base', base, '--generation', '%s/%s' % (MODS_PROFILE, packages.name),
                        MODS_MACHINE, '--name', MODS_NAME, '--wait'], T_MODS)
@@ -1478,7 +1478,7 @@ class Pass:
         found = re.search(r'job (\d+) started', out)
         if not found:
             raise StepFail('mods apply: no job id in %r' % out[-200:])
-        # 5.4d2f: a new session's file command right after the job (build 172 froze here once): answered.
+        # A new session's file command right after the job (build 172 froze here once): answered.
         listed = time.monotonic()
         self.ok(['ls', '/yaffs2/xy-forever/tmp'], T_ANSWER)
         listed = time.monotonic() - listed
@@ -1518,7 +1518,7 @@ class Pass:
                    'after %s s' % closed.group(1) if closed else 'within 1 s', listed, expect, len(data), folder,
                    len(leftovers), self.same_state(as_found, 'apply-after')))
 
-    # 4.6c2: the content switch, both ways, on the device.
+    # The content switch, both ways, on the device.
     def tree(self, folder, rel=''):
         """Every file under folder ({relative path: size}) and every folder (set of relative paths)."""
         files, dirs = {}, set()
@@ -1563,7 +1563,7 @@ class Pass:
         return out
 
     def step_switch(self):
-        """4.6c2: fm2op built, made the default (content switch), the previous default set back (switch back)."""
+        """fm2op built, made the default (content switch), the previous default set back (switch back)."""
         packages = MODS_PACKAGES
         root = '/yaffs2/xy-forever/mods/' + MODS_PROFILE
         code, out, err = self.host(['ls', '%s/%s' % (root, packages.name), '--json'], T_ANSWER)
@@ -1597,7 +1597,7 @@ class Pass:
             raise StepSkip('content/ lacks %d official files (%s...)' % (len(missing), missing[0]))
         # The build (as mods/apply, on the default as base).
         expect = 'mods-b' if 'mods-a' in entries else 'mods-a'
-        as_found = self.saved_state('switch-before')                   # 8.4b: the menu compares these with config.txt
+        as_found = self.saved_state('switch-before')                   # the menu compares these with config.txt
         start = time.monotonic()
         out = self.ok(['mods', 'apply', '--base', previous, '--generation', '%s/%s' % (MODS_PROFILE, packages.name),
                        MODS_MACHINE, '--name', MODS_NAME, '--wait'], T_MODS)
@@ -1696,7 +1696,7 @@ class Pass:
             left = '%s not removed (%s)' % (entry, error)
         return 'state: default %s set back (content official by the switch; not re-checked), %s' % (previous, left)
 
-    # 8.4b: the Mods page edits a pending copy of the saved configuration (8.4a); the pass shows the mark appear
+    # The Mods page edits a pending copy of the saved configuration; the pass shows the mark appear
     # and clear, opens the Save dialog only while the mark is seen, and leaves it by Back. Never Save or Discard.
     def config_ready(self):
         """The preconditions (reads only; StepSkip with the reason): fm2op's Mods page row."""
@@ -1785,7 +1785,7 @@ class Pass:
         raise StepFail('the Mods page did not settle within %d s (still reading?)' % T_PAGE)
 
     def dialog(self, name, before, back):
-        """The Save dialog (8.4a): device: the screen changed and one filled button, with back: the last one (no
+        """The Save dialog: device: the screen changed and one filled button, with back: the last one (no
         button edge right of it); simulator: screen 5, with back: choice 2."""
         self.sleep(0.3)
         if self.opts.sim:
@@ -1825,7 +1825,7 @@ class Pass:
             chosen = self.seen('config-chosen.png', page0, 'PLUS x%d' % position)
             if self.opts.sim:
                 self.sim_wait(lambda p: p.get('selected') == MODS_MACHINE, '%s selected' % MODS_MACHINE)
-            else:                             # 8.4d: the bar on the row worked out (sorted; 8.6: packages only), alone
+            else:                             # the bar on the row worked out (sorted; packages only), alone
                 pixels, row = png_pixels(chosen), mods_screen_row(position, total)
                 if not all(mods_row_selected(pixels, r) == (r == row) for r in range(MODS_VISIBLE_ROWS)):
                     raise StepFail('after PLUS x%d the selected Mods page row is not visible row %d (of %d rows; '
@@ -1941,7 +1941,7 @@ class Pass:
         self.shot('home-after-mtp.png')
         return 'no restart (frames %s), slots read' % usb.get('frames')
 
-    # -- guard (0.9k2: one step, B's guard expiry while A runs) ------------------------------------
+    # -- guard (one step, B's guard expiry while A runs) -------------------------------------------
     def guard_step(self, body, hint):
         """Runs one guard step; a miss says what happened and what the developer would do."""
         try:

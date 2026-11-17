@@ -1,4 +1,4 @@
-"""3.5b: the MTP session on processor B in the simulator (target/mtp_session, usb_service job_kind 4), without
+"""The MTP session on processor B in the simulator (target/mtp_session, usb_service job_kind 4), without
 real USB: the menu's MTP mode row starts it, the dev command diag.mtp (0x61) is the test transport, and the
 scripted MTP client of test_mtp_responder.py drives it. Needs clang++ and the private stock 1.2.1 images
 (skipped without them). No device access."""
@@ -147,7 +147,7 @@ class MtpSessionTests(unittest.TestCase):
     def test_browse_download_upload_delete_and_busy(self):
         self.assertEqual(self.file_command(), P.S_OK)
         self.enter()
-        self.assertEqual(self.file_command(), P.S_OK)                    # T2b: an open session holds nothing
+        self.assertEqual(self.file_command(), P.S_OK)                    # an open session holds nothing
         code, _, info = self.c.transaction(0x1001)
         self.assertEqual(code, R.OK)
         self.assertTrue(info)
@@ -195,7 +195,7 @@ class MtpSessionTests(unittest.TestCase):
         self.c.out(self.c.command(0x1009, names['big.bin']))
         code, body = self.c.tunnel(3, struct.pack('<I', 4096))
         self.assertEqual(code, P.S_OK)
-        self.assertEqual(self.file_command(), P.S_BUSY)                  # T2b: a transfer in flight holds the files
+        self.assertEqual(self.file_command(), P.S_BUSY)                  # a transfer in flight holds the files
         self.assertEqual(self.c.tunnel(4)[0], P.S_OK)                      # class request Cancel
         deadline = time.monotonic() + 20
         while self.c.state()['device_status'] != R.OK:
@@ -230,7 +230,7 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual(self.dev.call(P.STATUS)[0], P.S_OK)
         self.leave()                                                       # leaving still works cleanly
         self.assertEqual(self.file_command(), P.S_LINK)                    # the link is down: B answers link
-        # T2b: entering needs nothing of A (the composite enables the session at its start); each operation that
+        # Entering needs nothing of A (the composite enables the session at its start); each operation that
         # needs the files checks A first and answers Device_Busy while A is gone (the link above).
 
     def test_leave_and_reenter_twice(self):

@@ -1,4 +1,4 @@
-"""scripts/mod_boot.py against the device simulator (plan 5.4e0, 2.4d): upload of an image into the
+"""scripts/mod_boot.py against the device simulator: upload of an image into the
 scratch entry (read back, catalog, default unchanged), the content delta (catalog saved first, put back
 byte-identical by --cleanup), the boot once through library.boot and the cleanup. Synthetic image;
 skipped without the simulator. The real kit's assembly runs when its packages are present."""

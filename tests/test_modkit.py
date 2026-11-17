@@ -1,4 +1,4 @@
-"""Mod packages from an open-xy kit (plan 5.4a, xy_forever/modkit.py; docs/decisions/008, 010, 014).
+"""Mod packages from an open-xy kit (xy_forever/modkit.py; docs/decisions/008, 010, 014).
 
 Synthetic kits made here from scratch run in the standard suite: package layout, the device's
 manifest and files.sha256 readers (tests/test_xyf_manifest.py's bridge), edits.bin, the rebuilt
@@ -317,7 +317,7 @@ class Synthetic(unittest.TestCase):
                     M.rebuild_kit(gen, ['alpha'], [], CATALOG_BYTES)
 
     def test_expanded_layout_rules(self):
-        """4.8m1: expanded_base follows core.mjs offersExpandedMemory; split writes expanded_module_base only when
+        """expanded_base follows core.mjs offersExpandedMemory; split writes expanded_module_base only when
         offered; rebuild refuses a key that differs from the profile."""
         mib = 1 << 20
         load = lambda value: M.struct.pack('<4H', 0xda01, value >> 16, value & 0xffff, 0).hex()  # noqa: E731

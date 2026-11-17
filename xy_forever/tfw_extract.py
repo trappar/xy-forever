@@ -1,4 +1,4 @@
-"""OS-only extraction from an official .tfw on the host (plans 4.3a, 4.3b; docs/decisions/003-tfw-install.md).
+"""OS-only extraction from an official .tfw on the host (docs/decisions/003-tfw-install.md).
 
 Runs the device's own freestanding extractor (native/tfw_os.cpp) and signature check
 (native/tfw_signature.cpp, native/p224.cpp), compiled for the Mac with host/tfw_extract.cpp as

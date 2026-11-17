@@ -1,9 +1,9 @@
 #ifndef XYF_MODS_HPP
 #define XYF_MODS_HPP
 #include <stdint.h>
-// The Mods page (plan 5.4e1; processor B's menu): the machines and extensions of the newest complete
+// The Mods page (processor B's menu): the machines and extensions of the newest complete
 // mod package generation on the device (docs/STORAGE.md, "Mod packages"), an on/off toggle each, the
-// memory the choice needs against the mods region, and (8.4a) a status row saying what Continue will do with
+// memory the choice needs against the mods region, and a status row saying what Continue will do with
 // the toggles: they are a pending copy of the saved configuration (xyf_config.hpp), saved and built when you
 // boot (xyf_mods_io's save sequence, whose progress screen is this page's building view).
 // This part is pure (host-tested, previewed): the page model, its keys, the package texts it reads,
@@ -12,15 +12,15 @@
 namespace xyf { namespace mods {
 static const uint32_t max_packages = 96, pool_bytes = 3072, max_services = 16, name_chars = 22;
 static const uint32_t max_machines = 64, max_extensions = 8;    // mods.apply's bounds (usb_service)
-// Page::selected: no row (nothing listed). 8.6: the list holds only packages; the status, filter and all rows of
-// 8.4a/8.4d left it (the status joined the memory line, the filter the title bar; SHIFT + keys act on them).
+// Page::selected: no row (nothing listed). The list holds only packages; the status, filter and all rows of
+// earlier versions left it (the status joined the memory line, the filter the title bar; SHIFT + keys act on them).
 static const uint32_t no_row = 0xffffu;
 static const uint32_t missing_ids_taken = 5;                    // start_refused: usb_service mods_ids_taken
 enum Kind : uint8_t { kind_synth, kind_drum, kind_sample, kind_effect, kind_player, kind_extension, kind_other };
-// 8.4d: Page::filter: filter_all, 1 + a Kind (that kind only), or filter_on (what was on when it was chosen).
+// Page::filter: filter_all, 1 + a Kind (that kind only), or filter_on (what was on when it was chosen).
 static const uint32_t filter_all = 0, filter_on = uint32_t(kind_other) + 1;
-enum Flag : uint8_t { flag_on = 1, flag_read = 2, flag_saved = 4, flag_listed = 8 };   // 8.4a: saved: on in the saved
-                                                                // configuration; 8.4d: listed: the filter shows it
+enum Flag : uint8_t { flag_on = 1, flag_read = 2, flag_saved = 4, flag_listed = 8 };   // saved: on in the saved
+                                                                // configuration; listed: the filter shows it
 struct Package {
     uint16_t id, name;              // pool offsets: folder name (an extension's id without "ext-"), info name=
     uint8_t kind, flags;
@@ -41,7 +41,7 @@ struct Page {
     uint32_t request;
     bool shift;
     char profile[32], generation[32];
-    // limit: the mods region of the standard layout (base info module_bytes); 4.8m2: expanded_limit, the 4 MiB
+    // limit: the mods region of the standard layout (base info module_bytes); expanded_limit, the 4 MiB
     // layout's (module_bytes + module_base - expanded_module_base; 0: the base offers none). memory_limit() is
     // the one in use.
     uint32_t limit, expanded_limit, base_bytes, service_count;
@@ -49,27 +49,27 @@ struct Page {
     uint16_t service_names[max_services];
     Package packages[max_packages];
     uint8_t rows[max_packages];     // build order (requests, saves): machines by order, then extensions by order
-    // 8.4d: the display: sorted = every shown package by kind (Kind order), then name (case-insensitive), then
+    // The display: sorted = every shown package by kind (Kind order), then name (case-insensitive), then
     // folder; list = the rows the filter shows (listed of them), in that order.
     uint8_t sorted[max_packages], list[max_packages];
     uint32_t filter, listed;
     char pool[pool_bytes];
     uint32_t pool_used;
     // the job (xyf_mods_io): phase 0..10 as mod_job::Phase, done of total in that phase; job_commit: 1 while
-    // B commits the result into the library (5.4e2: phase finish, done of 3; it cannot be cancelled)
+    // B commits the result into the library (phase finish, done of 3; it cannot be cancelled)
     uint32_t job, job_phase, job_done, job_total, job_commit;
     char job_name[16];
-    // 8.2: the building bar (progress): 0..bar_full for the whole build, never lower than before; the
+    // The building bar (progress): 0..bar_full for the whole build, never lower than before; the
     // current step (stage << 16 | done) and when it began (ms since the job started).
     uint32_t bar, bar_step, bar_since;
     Line line;
     char text[80];                  // the reading or result line
-    // 8.4a: the save sequence on the building view: save = save_on | save_build (it builds), its stage (0 the
-    // build, 1 installing content, 2 saving); unknown_ok: SHIFT+STOP (8.6; was SHIFT+PLAY on the status row) allowed an unknown base;
+    // The save sequence on the building view: save = save_on | save_build (it builds), its stage (0 the
+    // build, 1 installing content, 2 saving); unknown_ok: SHIFT+STOP (was SHIFT+PLAY on the status row) allowed an unknown base;
     // saved_missing: saved mods this package set does not list (xyf_mods_io; the selection then differs).
     uint32_t save, save_stage, saved_missing;
     bool unknown_ok;
-    // 4.8m2: Mod memory (the Settings page): expanded, the pending choice (the 4 MiB layout); expanded_saved, the
+    // Mod memory (the Settings page): expanded, the pending choice (the 4 MiB layout); expanded_saved, the
     // saved configuration's (config.txt memory=). Both outlive reset(): the choice is made before the list is read.
     bool expanded, expanded_saved;
 };
@@ -77,7 +77,7 @@ static const uint32_t save_on = 1, save_build = 2;
 // Empty page, reading (keeps nothing but the memory choice: expanded, expanded_saved).
 void reset(Page& page);
 // One key event. Returns 0 nothing, 1 redraw, 2 leave the page (STOP on the list).
-// 8.6: - / + move (wrapping), SHIFT + - / + the first / last row; PLAY (a knob push) toggles the selected row,
+// - / + move (wrapping), SHIFT + - / + the first / last row; PLAY (a knob push) toggles the selected row,
 // SHIFT + PLAY turns every listed row on, or off when all are on; a knob turn (- / + with menu::key_turn, key_ui's
 // turn_knobs) moves as - / +, with SHIFT held it steps the filter (one step per click, wrapping); STOP leaves,
 // SHIFT + STOP allows (or refuses again) an unknown base for the next save.
@@ -85,7 +85,7 @@ enum Effect : uint32_t { effect_none = 0, effect_redraw, effect_leave };
 Effect key(Page& page, uint32_t key, bool pressed);
 // The selection's row in list (0 when nothing is listed).
 uint32_t position(const Page& page);
-// 8.4d: the filter. set_filter: list again (filter_on: what is on now; 8.6: the selection stays when listed, else
+// The filter. set_filter: list again (filter_on: what is on now; the selection stays when listed, else
 // the first row); next_filter: the filter after f, back: before f (All, each kind with a package, On only,
 // wrapping); kind_count: shown packages of a kind; all_on: every listed row is on (false when none is listed);
 // on_count: listed rows on; filter_name: "All", "Synths", ... "On only".
@@ -111,12 +111,12 @@ int add_package(Page& page, const char* folder);
 bool parse_package(Page& page, uint32_t index, const char* text, uint32_t length);
 // The memory estimate for the current toggles: the base, runtime, every service a chosen package
 // names and each chosen package's bytes. The linker's check (module_bytes) stays the authority.
-// 4.8m2: shared, the services' part of it (a service is charged once, with the first mod that needs it);
+// Shared, the services' part of it (a service is charged once, with the first mod that needs it);
 // memory_limit, the region of the pending layout (limit, or expanded_limit when the choice is expanded).
 uint32_t used(const Page& page);
 uint32_t shared(const Page& page);
 uint32_t memory_limit(const Page& page);
-// 4.8m2: Settings' Mod memory row (xyf_settings.hpp Memory): reading until the base is read (read: the reading is
+// Settings' Mod memory row (xyf_settings.hpp Memory): reading until the base is read (read: the reading is
 // over), unavailable when the base offers no 4 MiB layout (unless the choice is expanded: it can go back), else the
 // choice. flip_memory: PLAY on the row: the choice flipped (pending until boot), or why not (nothing changed).
 uint32_t memory_row(const Page& page, bool read);
@@ -124,12 +124,12 @@ const char* flip_memory(Page& page, bool read);
 uint32_t chosen(const Page& page, bool extensions);
 // Why Build cannot start, or 0.
 const char* build_refusal(const Page& page);
-// 8.4a: the toggles differ from the saved configuration (flag_saved, saved_missing; 4.8m2: or the memory choice).
+// The toggles differ from the saved configuration (flag_saved, saved_missing; or the memory choice).
 bool changed(const Page& page);
 // Why the toggles cannot be saved (build_refusal when any mod is on), or 0.
 const char* save_refusal(const Page& page);
 // mods.apply's request without its SHA-256: base NUL profile NUL generation NUL machines NUL
-// extensions NUL name NUL u32 flags (bit 0 unverified, 4.8m2: bit 1 expanded, the page's choice). Bytes, 0 when
+// extensions NUL name NUL u32 flags (bit 0 unverified, bit 1 expanded, the page's choice). Bytes, 0 when
 // it does not fit. The name is "Mods: <count>".
 uint32_t request(const Page& page, const char* base, bool unverified, char* name, uint32_t name_capacity,
                  uint8_t* out, uint32_t capacity);
@@ -137,15 +137,15 @@ uint32_t request(const Page& page, const char* base, bool unverified, char* name
 // ended job (phase done 8, failed 9, cancelled 10; error and status as job.status; done: the job committed
 // library entry job_name, its content not installed). out: page.text.
 void start_refused(Page& page, uint32_t status, uint32_t missing);
-// STOP in the library commit: not cancelled, said (the line shows on the progress page). 8.4a: also while the
+// STOP in the library commit: not cancelled, said (the line shows on the progress page). Also while the
 // save sequence installs content or saves (stage 1, 2).
 void refuse_cancel(Page& page);
 void job_ended(Page& page, uint32_t phase, uint32_t error, uint32_t status, uint32_t debris);
 void say(Page& page, Line line, const char* a, const char* b = "", const char* c = "");
-// 8.2: the building bar for the job fields above at ms (since the job started): stage i (0..7 the job's
+// The building bar for the job fields above at ms (since the job started): stage i (0..7 the job's
 // phases, 8 the library commit) fills its share of the bar by its own done of total, and within one step
 // by the time it has taken against the stage's typical time (approaching, never reaching, the step's end),
-// so the bar moves on during a long step. Only ever moves forward. Returns page.bar. 8.4a: in a save (page.save)
+// so the bar moves on during a long step. Only ever moves forward. Returns page.bar. In a save (page.save)
 // the build fills the first save_build_part of the bar (none without save_build), installing content
 // (done of total files) up to save_content_end, saving the rest.
 static const uint32_t save_build_part = 800000, save_content_end = 970000, save_content_only = 900000;

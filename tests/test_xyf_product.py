@@ -15,12 +15,12 @@ from xy_forever.paths import DECRYPTED, SESSIONS
 class ProductLayoutTest(unittest.TestCase):
     def test_only_the_product_modes_are_wide(self):
         for mode in builder.MODES:
-            wide = builder.product_kind(mode) in builder.PRODUCT_MODES     # 3.4: the MTP USB test build is the product's
+            wide = builder.product_kind(mode) in builder.PRODUCT_MODES     # the MTP USB test build is the product's
             self.assertEqual(builder.layout(mode), (0x8ab00000, 0x8ab80000 if wide else 0x8ab0c000,
                                                     0x8ab84000 if wide else 0x8ab10000), mode)
 
     def test_one_product_mode(self):
-        # xyf-product-v2 (build 064's two-session flow) was removed in plan 0.4b.
+        # xyf-product-v2 (build 064's two-session flow) was removed.
         self.assertEqual(builder.PRODUCT_MODES, ('xyf-product',))
         self.assertNotIn('xyf-product-v2', builder.MODES)
         src = (ROOT / 'xyf_build.py').read_text()
@@ -32,7 +32,7 @@ class ProductLayoutTest(unittest.TestCase):
 
     def test_wide_layout_is_a_512k_window_then_the_stack_below_the_stage2_window(self):
         base, stack, end = builder.layout('xyf-product')
-        self.assertEqual(stack - base, 512 * 1024)                  # 4.7x: the code window
+        self.assertEqual(stack - base, 512 * 1024)                  # the code window
         self.assertEqual(end - stack, 0x4000)                       # same 16 KiB stack, above the code
         self.assertEqual(builder.STAGE2_WINDOW, (0x8ab90000, 0x8ac00000))
         self.assertLessEqual(end, builder.STAGE2_WINDOW[0])         # below the (dormant) window, no overlap
@@ -91,7 +91,7 @@ class ProductFlowTest(unittest.TestCase):
     def test_file_boot_is_the_only_link_session(self):
         cold = (ROOT / 'target/cold.cpp').read_text()
         self.assertIn('xy_forever_file_boot();', cold)
-        self.assertNotIn('xy_forever_menu_link', cold)          # the v2 USB service session (plan 0.4b)
+        self.assertNotIn('xy_forever_menu_link', cold)          # the v2 USB service session
 
     def test_play_menu_belongs_to_file_boot(self):
         link = (ROOT / 'target/menu_link.cpp').read_text()
@@ -169,7 +169,7 @@ class SetDefaultWriteTest(unittest.TestCase):
 
     def test_b_waits_for_a_write_behind_a_barrier(self):
         us = (ROOT / 'target/usb_service.cpp').read_text()
-        body = us[us.index('U32 default_commit(U32 hash)'):]                  # 4.6c1: set_default's A/B write
+        body = us[us.index('U32 default_commit(U32 hash)'):]                  # set_default's A/B write
         body = body[:body.index('\n}\n')]
         order = ['storage_used = 1;', 'menu_link::usb_patience(write_patience_ms);',
                  'if (!menu_link::usb_command(storage_server::usb_mode_item)) code = P::s_link;',
@@ -245,7 +245,7 @@ class PlainImageTest(unittest.TestCase):
             records = parse_ldr(p.read_bytes())
             validate_memory(records, allowed, protected)
             self.assertEqual(records[-1].target, 0x11a00000)
-            # 4.7x: no record of these images lands anywhere in the gap the module and stage 2 use.
+            # no record of these images lands anywhere in the gap the module and stage 2 use.
             self.assertFalse([r for r in records if r.count and r.target < builder.FREE_GAP[1] and
                               builder.FREE_GAP[0] < r.target + r.count], p)
 
@@ -298,7 +298,7 @@ class MenuOverUsbTest(unittest.TestCase):
         self.assertIn('if (!r.play_snapshot && !xy_forever::usb_service::menu_requested() && !xy_forever::xyf_boot::menu_forced() &&', ui)
         self.assertIn('if (const uint32_t leave = xy_forever::usb_service::home_pump()) {', ui)
         self.assertIn('void inject_key(uint32_t key, uint32_t pressed) { key_injected = 1; on_key(key, pressed); key_injected = 0; }',
-                      ui)                                                    # 4.8: injected keys marked
+                      ui)                                                    # injected keys marked
         self.assertEqual(builder.USB_MENU_MODES, builder.PRODUCT_MODES)
 
 
@@ -310,7 +310,7 @@ class MenuOverUsbHostTest(unittest.TestCase):
         from xy_forever import usb_proto as P
         self.assertEqual(P.KEY, 0x34)
         src = (ROOT / 'xyf_host.py').read_text()
-        self.assertIn("payload = struct.pack('<I', 1) if args.dry_run else b''", src)   # no --menu (1.2b)
+        self.assertIn("payload = struct.pack('<I', 1) if args.dry_run else b''", src)   # no --menu
         self.assertNotIn('args.menu', src)
         self.assertIn("dev.call(P.KEY, struct.pack('<II', key, 1))", src)
 
@@ -365,7 +365,7 @@ class MenuOnFailureTest(unittest.TestCase):
 
 class BootModelTest(unittest.TestCase):
     """Test 060 (project rule): normal boots never wait for a computer; PLAY opens the menu with
-    USB; our reboots return home (v3; the v2 held service and its menu HOLD went in plan 0.4b)."""
+    USB; our reboots return home (v3; the v2 held service and its menu HOLD are gone)."""
 
     def test_home_only_after_our_reboots(self):
         us = (ROOT / 'target/usb_service.cpp').read_text()
@@ -452,7 +452,7 @@ class OneSessionTest(unittest.TestCase):
         self.assertIn('item == storage_server::file_write_item) { session.set_rpc(true); continue; }', r0)
         self.assertIn('session.set_rpc(false);', r0)
         self.assertEqual(fb.count('if (mounted) { a_close_files(storage); r.storage_end = U32(storage.end()); mounted = false; }'), 5)
-        # 2.3b: every way out closes the engine (window and handles) before the shared mount ends.
+        # every way out closes the engine (window and handles) before the shared mount ends.
         ss_files = ss[ss.index('void close_files(cold_storage::Stock121ReadOnlySession& storage) {'):]
         self.assertLess(ss_files.index('close_engine(storage);'), ss_files.index('mounted = 0;'))
         self.assertIn('void finish(cold_storage::Stock121ReadOnlySession& storage) { close_engine(storage); }', ss)
@@ -513,7 +513,7 @@ class OneSessionWriteTest(unittest.TestCase):
         ss = (ROOT / 'target/storage_server.cpp').read_text()
         self.assertIn('if ((used && !adopted) || !mount(storage)) return false;   // v3: the adopted mount is reusable', ss)
         self.assertIn('if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item', ss)
-        # 2.3b: op 9 fails while the window is open or when its read-only reopen failed (as 154).
+        # op 9 fails while the window is open or when its read-only reopen failed (as 154).
         self.assertIn('const bool ok = !window_open && (!had || window_result == U32(cold_storage::Result::ok));', ss)
         self.assertIn('if (!seen || seen == engine_latched || engine == entry_run) return;', ss)
 
@@ -565,7 +565,7 @@ class MtpExecutorTest(unittest.TestCase):
         self.assertIn('if (adopted) window_result = U32(storage.reopen_read_only());', cl)
 
     def test_menu_row(self):
-        """0.4a: the stock MTP mode is gone; 188: so is the MTP mode row (MTP is always on with the composite)."""
+        """The stock MTP mode is gone; 188: so is the MTP mode row (MTP is always on with the composite)."""
         ui = (ROOT / 'target/key_ui.cpp').read_text()
         self.assertNotIn('mtp_mode', ui)
         self.assertNotIn('mtp_mode', (ROOT / 'target/xyf_menu.hpp').read_text())
@@ -584,7 +584,7 @@ class PeekTest(unittest.TestCase):
         self.assertIn('within(address, bytes, 0x08000000u, 0x08040000u)', body)
         self.assertIn('within(address, bytes, 0x11b00000u, 0x11b02000u)', body)   # L1 data only
         self.assertNotIn('0x11a', body)                 # L1 instruction: data loads from it stall
-        self.assertIn('within(address, bytes, 0x8b810000u, 0x8b811000u)', body)   # 2.2c: B's catalog buffer
+        self.assertIn('within(address, bytes, 0x8b810000u, 0x8b811000u)', body)   # B's catalog buffer
         self.assertIn('bool within(U32 address, U32 bytes, U32 start, U32 end) { return address >= start && address <= end - bytes; }', us)
         hp = us[us.index('uint32_t home_pump() {'):]
         self.assertIn('else if (type == P::t_peek) peek(seq, payload, length);', hp)
@@ -627,7 +627,7 @@ class MtpSelfTestTest(unittest.TestCase):
         ss = (ROOT / 'target/usb_service.cpp').read_text()
         body = ss[ss.index('bool mtp_do(U32 n, MtpSelfTest& t, uint8_t* out) {'):]
         body = body[:body.index('\n}\n')]
-        # 2.2b: B's file client, every request bounded (no stock posix client call).
+        # B's file client, every request bounded (no stock posix client call).
         order = ['C::mount()', 'C::statfs(', 'C::stat(', 'C::opendir(', 'C::readdir(', 'C::closedir(',
                  'C::open(', 'C::read(', 'C::close(', 'C::unmount()']
         at = [body.index(a) for a in order]
@@ -641,7 +641,7 @@ class MtpSelfTestTest(unittest.TestCase):
         self.assertLess(t.index('mtp_selftest(t, hold'), t.index('mtp_leave(t)'))
         enter = ss[ss.index('U32 mtp_enter() {'):]
         self.assertLess(enter.index('file_client::release(mounted)'), enter.index('storage_server::engine_run_item'))
-        self.assertNotIn('guard_pause', t)              # 2.2b: the guard is never paused on b
+        self.assertNotIn('guard_pause', t)              # the guard is never paused on b
         from xy_forever import usb_proto
         self.assertEqual(usb_proto.MTP_TEST, 0x07)
 

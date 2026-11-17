@@ -1,4 +1,4 @@
-# 023: Reading the four knobs (turn and push) in the menu (plan item 8.1)
+# 023: Reading the four knobs (turn and push) in the menu
 
 Research record, 2026-11-14; no device action, nothing built. Listing: the private `analysis/bootloader-121-listing` (`linear121.ann.asm`). OS: stock 1.2.1 `os.ldr`, LDR blocks disassembled with `tools/blackfin/bin/bfin-elf-objdump` (scratch only, nothing kept). Tags: **[L]** read from code, **[C]** our code, **[M]** measured, **[I]** inferred, **[U]** unknown.
 

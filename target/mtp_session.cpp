@@ -4,7 +4,7 @@
 #include "storage_server.hpp"
 #include "xyf_clock.hpp"
 #include "usb_proto.hpp"
-// 3.5b: the responder's FileOps over B's timed file client (mtp_session.hpp). One request per call (list:
+// The responder's FileOps over B's timed file client (mtp_session.hpp). One request per call (list:
 // one file.list page, which is opendir + readdirs + stats + closedir, as the serial file.list's page).
 // A request past its bound (link) or a lost link sets link: every later call answers f_link at once.
 namespace xy_forever { namespace mtp_session {

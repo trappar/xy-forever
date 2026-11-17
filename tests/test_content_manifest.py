@@ -1,4 +1,4 @@
-"""Content-set manifests (plan 4.6a1, xy_forever/content_manifest.py): synthetic folders made here;
+"""Content-set manifests (xy_forever/content_manifest.py): synthetic folders made here;
 the official sets in the private area are checked only when present (nothing from them is kept)."""
 import contextlib
 import hashlib

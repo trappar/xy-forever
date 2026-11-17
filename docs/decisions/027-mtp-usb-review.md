@@ -1,4 +1,4 @@
-# 027: Review of the MTP USB driver's stock calls (plan 3.3)
+# 027: Review of the MTP USB driver's stock calls (#10)
 Independent review of `MTP_USB_CALLS` (xyf_build.py) against the 1.2.1 bootloader listing
 (the private `analysis/bootloader-121-listing`, `linear121.ann.asm`). Call closure computed by
 a flow-following walk (branches followed to RTS, CALL targets recursed, indirect calls listed).
@@ -30,7 +30,7 @@ pointer at -4). Buffers <= 0x190 on endpoint 5 come from a 2-slot static pool (0
 ## Spans
 All eight entries and their closure are inside `target/mtp_spans.hpp` except: (1) heap free body
 88a2ed30..88a2ee14 (covered by server/peer spans, acceptable as in `check_mtp_spans`); (2) TX start
-88a0c0b0..88a0c12e: its own set `target/mtp_usb_spans.hpp` (3.4), read only by the MTP USB mode, because
+88a0c0b0..88a0c12e: its own set `target/mtp_usb_spans.hpp`, read only by the MTP USB mode, because
 the product CRC-checks `mtp_spans.hpp` at run time. Census 2026-11-15: 128 bytes peeked on B (build 182)
 equal the 1.2.1 image (CRC 0xcd2ec45b); B, where the driver runs, checks the span before registering.
 ## Approval scope
@@ -39,7 +39,7 @@ Kick (88a094aa) and service-RX (88a0ba08) did not (interrupt-path routines run f
 007); both are allowed for MTP only, first in a test build with one device test. Changing this list needs
 the developer's explicit yes. 007's own-FIFO read
 names no FIFO data register, so it is not implemented.
-## Misuse in target/mtp_usb.cpp (fixed in 3.2b)
+## Misuse in target/mtp_usb.cpp (fixed)
 1. Unmasked heap calls: send() failure and all of free_ours() masked (at most kRing = 8 free_urb calls);
    the stack model fires the interrupt inside any unmasked heap call (`unmasked-free` case).
 2. Deconfigure/stop (0xa/0xf, dispatcher 88a08c7c) and SET_CONFIGURATION/SET_INTERFACE flush every endpoint
@@ -48,7 +48,7 @@ names no FIFO data register, so it is not implemented.
 3. `on_urb_sent` returning 1 = "stack frees", consistent with 88a095a8.
 4. Kicks: compiled only with XYF_MTP_USB_KICK; without them the model stalls after 49664 bytes.
 5. The 88a0ba08 binding refuses endpoint 0 and anything but bulk OUT before the call.
-## Test build (3.4)
+## Test build
 Mode `xyf-mtp-usb` (builder: the product's feature sets via `product_kind`, plus `XYF_MTP_USB` and the
 kicks); the builder admits MTP_USB_CALLS and the kicks only there, with both span sets checked and the
 pid.codes test pair 1209:0001 (private tests; the shipped pair is undecided: stock MTP and CDC both

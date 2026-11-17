@@ -3,7 +3,7 @@
 #include "p224.hpp"
 #include "tfw.hpp"
 namespace xyf_core { namespace tfw {
-// The stock manifest signature check (1.2.1 bootloader 88a17f2a, plan 4.3b), natively and
+// The stock manifest signature check (1.2.1 bootloader 88a17f2a), natively and
 // without touching the header. Over the 0x300-byte crypto header:
 //   - signature key index (+0x89) must be 0, the vendor ("cloud") key; stock's 1 (per-device)
 //     and 0xff (dev bring-up) keys need its dev mode and are refused here;

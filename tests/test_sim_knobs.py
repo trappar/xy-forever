@@ -1,4 +1,4 @@
-"""Knob turns in the menu (plan 8.3, target/knob_input.*) in the simulator.
+"""Knob turns in the menu (target/knob_input.*) in the simulator.
 
 The board hands PSoC frames to B's stock receive queue as the hardware does (control "knob", "knob_raw",
 "knob_jump"; sim/runtime.hpp): the slot written, the write index advanced, the read index following as the
@@ -131,11 +131,11 @@ class Knobs(PageBase, unittest.TestCase):
         self.press(STOP)                                                   # pushes are still PLAY: Continue
         self.turn(1, -1, N)
         self.assertEqual(self.until_frames(14 + 3 * N)['main'], 0)
-        self.key(12, 1)                                                    # continue_boot (8.4a: no change: boots)
+        self.key(12, 1)                                                    # continue_boot (no change: boots)
         self.until(lambda: self.lines('menu: boots the default '), 'continued')
 
     def test_turns_move_the_mods_list(self):
-        """8.6: turns move the list (packages only); SHIFT + a turn of any knob steps the filter, one step per
+        """Turns move the list (packages only); SHIFT + a turn of any knob steps the filter, one step per
         click, wrapping; SHIFT + a knob push turns every listed row on (then off); a push toggles the row."""
         ids = [f[4:] if f.startswith('ext-') else f for f, _ in display_order(self.gen_dir)]
         counts = [sum(1 for _, k in display_order(self.gen_dir) if k == i) for i in range(len(KINDS))]
@@ -248,10 +248,10 @@ class Knobs(PageBase, unittest.TestCase):
         self.assertEqual(self.until_frames(7 * N)['main'], 2)
         self.press(PLAY)
         self.wait(lambda p: p['view'] == VIEW_LIST and p['shown'] == 1, 'listed')
-        self.key(SHIFT, 1); self.press(STOP); self.key(SHIFT, 0)          # 8.6: SHIFT + STOP: the unknown base allowed
+        self.key(SHIFT, 1); self.press(STOP); self.key(SHIFT, 0)          # SHIFT + STOP: the unknown base allowed
         self.toggle(['beta'])
         self.sim.set('a_slow_ms', 30)
-        self.press(STOP)                                                   # 8.4a: Continue, Save: the build's view
+        self.press(STOP)                                                   # Continue, Save: the build's view
         self.wait(lambda p: p['shown'] == 0, 'left')
         self.press(MINUS); self.press(MINUS); self.press(PLAY); self.press(PLAY)
         self.wait(lambda p: p['view'] == VIEW_BUILDING, 'building')
@@ -281,7 +281,7 @@ class Knobs(PageBase, unittest.TestCase):
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class OldKnobRecord(Knobs):
-    """4.8m2: the demo knob direction left; a settings.txt written by build 184 (knob=reversed) still loads, and
+    """The demo knob direction left; a settings.txt written by build 184 (knob=reversed) still loads, and
     clockwise moves down as everywhere."""
     settings_text = b'format=1\nconfirm=0\nknob=reversed\n'
 
@@ -294,7 +294,7 @@ class OldKnobRecord(Knobs):
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class SettingsPage(PageBase, unittest.TestCase):
-    """4.8: the menu with Settings (home row 5, above Info); 4.8m2: its Mod memory row is tests/test_sim_memory.py."""
+    """The menu with Settings (home row 5, above Info); its Mod memory row is tests/test_sim_memory.py."""
     base = 'modbase'
     unverified = True
 
@@ -315,7 +315,7 @@ class SettingsPage(PageBase, unittest.TestCase):
             time.sleep(0.01)
 
     def test_real_keys_drive_the_menu_as_injected_ones(self):
-        """4.8c: control "realkey K P" sends a key as the PSoC does (not the host's KEY command): logged as
+        """Control "realkey K P" sends a key as the PSoC does (not the host's KEY command): logged as
         real, and it moves the menu as an injected one does."""
         self.wait('settings: confirm=0')
         rows = len(self.lines('menu: screen 0 row '))

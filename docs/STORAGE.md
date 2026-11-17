@@ -13,13 +13,13 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   firmware/<id>/files.sha256, content.sha256 + firmware.version   optional lists (010)  [planned]
   mods/<profile>/<generation>/{base,<machine>,ext-<extension>}/   mod packages (below)  [host-made]
   log/                      device reports, prod-NNN-a.bin / prod-NNN-b.bin (from build 067)
-  stage2/main.xys2          stage 2 (4.7a1): B loads it at the first HELLO of a boot; see below
+  stage2/main.xys2          stage 2: B loads it at the first HELLO of a boot; see below
   inbox/                    MTP drop folder: .tfw, .ldr, open-xy bundles   [planned]
-  tmp/job-<id>/             mods.apply's output (5.4d2) until the commit; -old: the replaced entry; swept (below)
-  content-state.txt         what /yaffs2/content/ matches, and what XY Forever installed there (4.6c1, below)
+  tmp/job-<id>/             mods.apply's output until the commit; -old: the replaced entry; swept (below)
+  content-state.txt         what /yaffs2/content/ matches, and what XY Forever installed there (below)
   content-official/         the official op1_factory.json and content.sha256, saved before the first content change
-  config.txt                the saved configuration: base, mods on, what Open-XY was built from (8.4a, below)
-  settings.txt              device settings (4.8, the Settings page; target/xyf_settings.hpp): confirm=0|1 stored for Confirm on device (not built); absent or unreadable: the defaults
+  config.txt                the saved configuration: base, mods on, what Open-XY was built from (below)
+  settings.txt              device settings (#21, the Settings page; target/xyf_settings.hpp): confirm=0|1 stored for Confirm on device (not built); absent or unreadable: the defaults
 ```
 
 Changes by hand (MTP, serial file commands; protocol 1.13) may touch all of `/yaffs2` except
@@ -43,7 +43,7 @@ most 127 bytes. Files are at most 4 KiB. Two readers:
   the boot check): bytes are not checked, malformed lines are skipped, unknown keys
   ignored, the last of duplicate keys wins, longer names are cut to fit (47 / 31
   bytes).
-- **Strict** (`xyf_manifest`, plan 4.1a: package admission and the inbox; not yet
+- **Strict** (`xyf_manifest`: package admission and the inbox; not yet
   used by the library scan): the first problem refuses the whole file, with a
   status and its line. Refused: an empty file (no key line); no LF after the last
   line (a cut copy); a line over 255 bytes; any byte outside printable ASCII
@@ -75,7 +75,7 @@ listed ("content not installed", catalog flag 8); PLAY (boot once) and `library.
 (`no_content`: make it the default to install its content); SHIFT+PLAY and `library.set_default` run the
 content switch first and write the default only when it succeeded (`started`, then `job.status`).
 
-### Content state (4.6c1)
+### Content state
 
 `/yaffs2/content/` is the OS's content; a mod firmware halts without its files, and a catalog naming mods
 the firmware lacks breaks the OS's menus (decision 018), so it must match the booted entry.
@@ -88,7 +88,7 @@ the firmware lacks breaks the OS's menus (decision 018), so it must match the bo
 | `state=installed`, `entry=<id>` | content/ matches assembled mod set `<id>` (only it is usable) |
 | `state=switching`, `target=<id>` | a switch did not finish: nothing is usable, the menu says "content needs repair" |
 
-Then one `file=<path>` line per file XY Forever installed (relative to `/yaffs2/content/`, any order); in an installed record (8.8) each is `file=<path>` TAB `<SHA-256 hex>`, sorted, the bytes
+Then one `file=<path>` line per file XY Forever installed (relative to `/yaffs2/content/`, any order); in an installed record (#27) each is `file=<path>` TAB `<SHA-256 hex>`, sorted, the bytes
 written. The switch writes by difference: a target file whose line in a trusted record (installed, sorted, another entry than the target) carries its SHA-256 is skipped unread; otherwise the live file
 is read, and written only when missing or different. Switching to the installed entry again is the repair: it reads every file. A's engine never renames onto an existing file, so B replaces the record
 as record -> `content-state.old`, `.part` -> record, `.old` removed; only a `.old` (a cut between) reads as switching, never as official. Stock entries (no `generation`) are usable only in the
@@ -103,15 +103,15 @@ catalog's SHA-256 must equal the `op1_factory.json` line of a library entry's `c
 its SHA-256 checked); the record for the target. A failure or cut leaves `switching` (or the old or new record); running the switch again repairs it. Writes: only the record, the saved copies and, in
 `/yaffs2/content/`, the catalog and paths from a mod set's `files.sha256` or the record, never `dlc/`, `user/` or a name holding `bootloader` (`xyf::content::allowed`, one function).
 
-### Saved configuration (8.4a)
+### Saved configuration
 
 `config.txt` (`target/xyf_config.hpp`): `base`, `profile`, `generation`, `unverified`, `built=<base> <generation>
 <set> <count>[ expanded]` (set: sum of the names' CRC-32), `slot` (the Open-XY entry), `stamp` (its `info.txt`
-`sha256=`), `memory=standard|expanded` (4.8m2, Mod memory; anything else: standard), `mods` (last). Replaced as `content-state.txt` is; a reader takes `config.old` when the record is missing; no
+`sha256=`), `memory=standard|expanded` (Mod memory; anything else: standard), `mods` (last). Replaced as `content-state.txt` is; a reader takes `config.old` when the record is missing; no
 record: no mods. Save builds into the spare slot unless `slot` exists, `built` matches and its `sha256=` equals
 `stamp`; then the content switch (no default), the record, the default (one job, `config_store`).
 
-`log/save-times.txt` (8.8, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
+`log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
 Save, USB build or content switch, the last 20; `kind result mods memory added removed total` then each
 part's milliseconds and the switch's counts. Written by B in the last write window of the sequence (`.part`,
 the old file removed, renamed); a failed write is ignored, a failed Save writes none.
@@ -119,7 +119,7 @@ the old file removed, renamed); a failed write is ignored, a failed Save writes 
 ### `info.txt` (package manifest)
 
 Every package folder's manifest (decisions/010). Without `type` it is a firmware
-entry: every `info.txt` written before 4.1a is one, unchanged.
+entry: every `info.txt` written before `type` existed is one, unchanged.
 
 | Key | Value (strict reader) |
 |---|---|
@@ -174,7 +174,7 @@ Files, by their first 268 bytes and size, never by extension:
 | LDR image | first block: XOR of its 16 bytes 0, byte 3 `0xad`, flags `0x5004`, count 0, length word = size - 16 (custom firmware or an XY Forever stage 1: not told apart) |
 | stage 2 | `XYS2`, at least 96 bytes (`xyf_stage2` checks the rest) |
 
-Stage 2 (4.7a1, `target/xyf_stage2.hpp` ABI 3): `stage2/main.xys2` is read by B's USB service at the first HELLO of a boot (never on a plain boot), checked (header, CRC, SHA-256, window `0x8ab90000..0x8ac00000` (since 171), `min_stage1` <= the stage-1 build) and copied to its load address; stage 2 makes no stock call and reaches stage 1 only through the append-only services table. Any failure leaves stage 1 as before (STATUS `usb_service.stage2` says why). Built by `xyf_build.py --xyf-product` as `main.xys2` beside `candidate.ldr`.
+Stage 2 (`target/xyf_stage2.hpp` ABI 3): `stage2/main.xys2` is read by B's USB service at the first HELLO of a boot (never on a plain boot), checked (header, CRC, SHA-256, window `0x8ab90000..0x8ac00000` (since 171), `min_stage1` <= the stage-1 build) and copied to its load address; stage 2 makes no stock call and reaches stage 1 only through the append-only services table. Any failure leaves stage 1 as before (STATUS `usb_service.stage2` says why). Built by `xyf_build.py --xyf-product` as `main.xys2` beside `candidate.ldr`.
 | ZIP | `PK\3\4` or `PK\5\6`: an open-xy builder ZIP, imported by the host only |
 
 Folders, by their names and `info.txt`: `info.txt` decides by `type` (firmware
@@ -198,10 +198,10 @@ Upstream's `machines` is a map of number reservations (it keeps disabled and fix
 machines); the enabled set is `selected`, and `extensions` is separate. Our reader
 rejects `player` machines today, and larger collections may exceed its bounds.
 
-## Mod packages (`mods/<profile>/<generation>/`, plan 5.4a)
+## Mod packages (`mods/<profile>/<generation>/`)
 
-Written on the host by `python3 -m xy_forever.modkit split` from an open-xy kit (008, 014); local index + archives, `mods fetch`: `xy_forever/modindex.py` (6.2f);
-read by the device linker `native/mod_link` (5.4b; not in a build yet). One flat folder per package: `base/`, `<machine id>/`,
+Written on the host by `python3 -m xy_forever.modkit split` from an open-xy kit (008, 014); local index + archives, `mods fetch`: `xy_forever/modindex.py`;
+read by the device linker `native/mod_link` (not in a build yet). One flat folder per package: `base/`, `<machine id>/`,
 `ext-<extension id>/` (`-` is not valid in an id, so names cannot collide). Each holds an
 `info.txt` the strict reader accepts (extra keys below are unknown to it and ignored) and a
 sorted `files.sha256` of every other file. `<generation>` is `<kit version>-<12 hex>`: SHA-256
@@ -214,7 +214,7 @@ separated by one space, `-` for none.
   meter's limit), `stock_bytes`, `edits`, `objects`, `machines`, `extensions`, `code`/`data`/`state`
   (SDK objects every build links), `runtime_*`, `catalog_sha256`, `catalog_engine_at`/`_fx_at`/
   `_seq_at` (stock catalog insertion offsets), the patcher's `stock_records`, `reserved_bytes`,
-  `heap_fill_base` (`0x` hex), `heap_fill_bytes`, `expanded_module_base` (4.8m1: the 4 MiB module's start, same end; older readers skip it) (32 keys: the reader allows 32). Files: `edits.bin`; `objects/sdk/…` unchanged with
+  `heap_fill_base` (`0x` hex), `heap_fill_bytes`, `expanded_module_base` (the 4 MiB module's start, same end; older readers skip it) (32 keys: the reader allows 32). Files: `edits.bin`; `objects/sdk/…` unchanged with
   `objects.txt` (`<order> <role> <path>`, role `core`, `service=<name>` or `runtime`; link order is
   ascending `order` across all packages); `definitions.txt`; `fixed.txt`; `fallbacks.txt`;
   `services.txt` (users and the bytes the service adds); `machines.txt` and `absent.txt` (the whole
@@ -255,7 +255,7 @@ separated by one space, `-` for none.
   is in the base: its numbers (0), fallbacks, accessors (aliased to `kit_absent`). A mod package
   holds no edits, definitions or absolute symbols, and its objects import only SDK and runtime
   exports (a machine also its own number symbols); `modkit` refuses anything else.
-- **Assembly after the link** (5.4c, `native/mod_patch`, `native/mod_content`, reading the linker's
+- **Assembly after the link** (`native/mod_patch`, `native/mod_content`, reading the linker's
   result through `native/mod_link.hpp`; host end to end, link included: `python3 -m xy_forever.modkit
   prove-patch`, byte-identical to `core.mjs`). In place in one
   buffer of stock + 16 + `module_bytes` bytes: stock `os.ldr` at 0, the module at `stock_bytes`
@@ -265,11 +265,11 @@ separated by one space, `-` for none.
   `content/op1_factory.json` (the whole file, never a patch), the packages' `content/display/…`
   and `content/presets|aux_presets/…` unchanged (the job copies them), and `files.sha256` beside
   `content/` listing exactly those `content/…` files, so a content switch removes exactly them.
-- **On the device** (5.4d2, `mods.apply`; processor B runs the job): the stock `os.ldr` and the content list are
+- **On the device** (`mods.apply`; processor B runs the job): the stock `os.ldr` and the content list are
   the base entry's `firmware/<base>/os.ldr` and `content.sha256`, the stock catalog `/yaffs2/content/op1_factory.json`
   (the job pins its SHA-256; while a mod set's content is installed, the saved `content-official/` copy); output `tmp/job-<id>/`.
   An aux preset path two machines carry is listed once, with the later machine's bytes (as `core.mjs`).
-- **The assembled entry** (5.4d1b, `native/mod_job`; host reference `modpatch.entry_files`): the job's
+- **The assembled entry** (`native/mod_job`; host reference `modpatch.entry_files`): the job's
   output folder holds every `content/…` file above, `layout.json`, `info.txt`, `files.sha256` and
   `os.ldr`. `layout.json` is what open-xy's website writes (`builder/app.mjs`, `JSON.stringify(…, null,
   2)` + LF): `format`, `profile`, `selected` (the selection's order), `extensions` (collection order),
@@ -279,7 +279,7 @@ separated by one space, `-` for none.
   `info.txt`, `layout.json`, `os.ldr`); a content switch takes its `content/` lines. Each file is
   written as `<name>.part`, read back by SHA-256, `os.ldr` also checked by `start_verify`, then renamed,
   `os.ldr` last: an entry with an `os.ldr` is complete.
-- **Into the library** (5.4d3a, B after the job's last step, one request per menu-loop pass; decision 019
+- **Into the library** (B after the job's last step, one request per menu-loop pass; decision 019
   section 5): the target is `mods-a` or `mods-b`, never the default or the boot-once entry (both taken:
   `mods.apply` answers `state`); of two, the absent one, else the one not written last this boot (B sees no
   file times), else `mods-a`. Order: rename `firmware/<target>` (if there) to `tmp/job-<id>-old`, rename
@@ -288,7 +288,7 @@ separated by one space, `-` for none.
   target missing; never a part entry in `firmware/`. Debris stays in `tmp/job-*`: before a job's first step
   B removes `tmp/job-*` folders (never its own output), one list page and one unlink or rmdir per pass, at
   most 600 calls per sweep.
-- **Trust** (packages are unsigned; 5.4x). A base is *known* when its stock, catalog and `edits.bin`
+- **Trust** (packages are unsigned). A base is *known* when its stock, catalog and `edits.bin`
   SHA-256 and patcher numbers match an entry of `native/mod_known_bases.inc` (official open-xy bases;
   regenerate: `python3 -m xy_forever.modkit known-base BASE... --write`; `expanded_module_base` counts only when expanded); any other base is refused
   (`unverified`) unless the user confirmed it on the device, and the result says known or unverified.

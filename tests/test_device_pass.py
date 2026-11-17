@@ -31,7 +31,7 @@ def catalog_blob(files):
         info = dict(line.split('=', 1) for line in files.get(BASE + 'firmware/%s/info.txt' % i, b'').decode().splitlines()
                     if '=' in line)
         image = BASE + 'firmware/%s/os.ldr' % i in files
-        content = 'generation' in info                                 # 5.4d3a: content not installed
+        content = 'generation' in info                                 # content not installed
         flags = (8 if content else 1) if image else 0
         out += (i.encode().ljust(32, b'\0') + info.get('name', i).encode().ljust(48, b'\0') +
                 info.get('version', '').encode().ljust(32, b'\0') + bytes((0, flags, 0, 0)))
@@ -71,10 +71,10 @@ class FakeDevice:
         self.calls, self.guard, self.hold, self.crash, self.frames, self.kicks = [], False, False, 0, 0, 0
         self.screen, self.dry, self.seq, self.default = 0, None, 7, 'opxy-121-stock'
         self.row = 0                                  # the selected home row (keys track1/track3/minus/plus)
-        # 2.2c: B's write window: writes since B last closed it; B's STATUS fields; the menu catalog.
+        # B's write window: writes since B last closed it; B's STATUS fields; the menu catalog.
         self.writes, self.window = 0, dict(b_window=0, b_windows=0, b_catalogs=0)
         self.catalog = b''
-        self.dirs = set()                                            # 2.4a: folders made with mkdir
+        self.dirs = set()                                            # folders made with mkdir
         image = bytes(range(256)) * 40                               # 10,240 B
         self.files = {BASE + 'state-a.txt': slot(self.default, self.seq),
                       BASE + 'firmware/opxy-121-stock/info.txt':
@@ -226,7 +226,7 @@ class FakeDevice:
             self.files[argv[2]] = Path(argv[1]).read_bytes()
             self.writes += 1
             return 0, '%s: ok\n' % name, ''
-        if name == 'mods' and argv[1] == 'apply':                   # 5.4d3a: into library entry mods-a
+        if name == 'mods' and argv[1] == 'apply':                   # into library entry mods-a
             out = '%sfirmware/mods-a' % BASE
             image = b'assembled' if 'mods-differ' not in self.faults else b'other'
             self.files.update({out + '/os.ldr': image, out + '/info.txt': b'type=firmware\ngeneration=0.0.6\n',
@@ -236,11 +236,11 @@ class FakeDevice:
             self.catalog = catalog_blob(self.files)
             return 0, ('mods apply: job 1 started; output %stmp/job-1/\njob 1: done 7/7, 45.0 s, 8496 steps\n'
                        'mods apply: done; library entry mods-a (%s/)\n' % (BASE, out)), ''
-        if name == 'boot':                                           # 5.4d3a: content not installed: refused
+        if name == 'boot':                                           # content not installed: refused
             return (0, 'boot: ok\n', '') if 'boot-ok' in self.faults else (17, 'boot %s: no_content\n' % argv[1], '')
-        if name == 'ls' and 'empty-ls' in self.faults:               # 2.4b: build 165 on the device
+        if name == 'ls' and 'empty-ls' in self.faults:               # build 165 on the device
             return 0, 'connected fake\n[]', ''
-        if name == 'ls':                                             # 2.4a: files and the folders they imply
+        if name == 'ls':                                             # files and the folders they imply
             path = argv[1].rstrip('/') + '/'
             rows = {}
             for f, data in self.files.items():
@@ -268,7 +268,7 @@ class FakeDevice:
                 found = self.files.pop(path, None) is not None
             self.writes += 1
             return (0, 'rm: ok\n', '') if found else (8, 'rm: not_found\n', '')
-        if name == 'mv':                                             # 2.4c: a file or a folder, never onto a name
+        if name == 'mv':                                             # a file or a folder, never onto a name
             source, target = argv[1], argv[2]
             def held(p):
                 return p in self.files or p in self.dirs or any(k.startswith(p + '/') for k in list(self.files) + list(self.dirs))
@@ -281,7 +281,7 @@ class FakeDevice:
             self.dirs = {target + d[len(source):] if d == source or d.startswith(source + '/') else d for d in self.dirs}
             self.writes += 1
             return 0, 'mv: ok\n', ''
-        if name == 'cp':                                             # 2.4c2: a file, never onto a name
+        if name == 'cp':                                             # a file, never onto a name
             source, target = argv[1], argv[2]
             if target in self.files or target in self.dirs:
                 return 3, 'cp: state (error 17)\n', ''
@@ -339,7 +339,7 @@ class FakeKeepalive:
 
 
 class ModsRowTest(unittest.TestCase):
-    """8.4d: the Mods page row of a package: kind, then name (A-Z folded), then folder (8.6: packages only)."""
+    """The Mods page row of a package: kind, then name (A-Z folded), then folder (packages only)."""
     def test_sorted_order(self):
         sizes = 'order=0\nobjects=1\ncode=1\ndata=1\nstate=1\n'
         with tempfile.TemporaryDirectory() as tmp:
@@ -361,7 +361,7 @@ class ModsRowTest(unittest.TestCase):
             self.assertIsNone(dp.mods_row(tmp, 'missing'))
 
     def test_screen_row(self):
-        self.assertEqual([dp.mods_screen_row(p, 11) for p in range(11)], [0, 1, 2, 3, 4, 4, 4, 5, 6, 7, 8])   # 8.6: 9 rows
+        self.assertEqual([dp.mods_screen_row(p, 11) for p in range(11)], [0, 1, 2, 3, 4, 4, 4, 5, 6, 7, 8])   # 9 rows
         self.assertEqual(dp.mods_screen_row(4, 6), 4)
         self.assertEqual(dp.mods_screen_row(40, 81), 4)
         self.assertEqual(dp.mods_screen_row(80, 81), 8)
@@ -427,8 +427,8 @@ class DevicePassTest(unittest.TestCase):
         self.assertEqual(order, sorted(order, key=stages.index))
         ran = {r['stage'] for r in self.summary['steps'] if r['result'] == 'PASS'}
         self.assertEqual(ran, {'check', 'session', 'read', 'boot', 'writes', 'mtp', 'end'})
-        self.assertEqual(self.rows()[('config', 'pending')]['result'], 'SKIP')     # 8.4b: no package set
-        found = dp.mods_row(dp.MODS_PACKAGES, 'fm2op')                            # 8.4d: (position, rows)
+        self.assertEqual(self.rows()[('config', 'pending')]['result'], 'SKIP')     # no package set
+        found = dp.mods_row(dp.MODS_PACKAGES, 'fm2op')                            # (position, rows)
         self.assertTrue(found is None or 0 <= found[0] < found[1])
         for stage in ('install', 'guard'):
             for r in self.summary['steps']:
@@ -461,7 +461,7 @@ class DevicePassTest(unittest.TestCase):
         install = self.dev.calls.index('install %s --yes-install' % build)
         self.assertLess(next(i for i, c in enumerate(self.dev.calls) if c.startswith('peek')), install)
         self.assertLess(install, next(i for i, c in enumerate(self.dev.calls) if c.startswith('continue')))
-        # 0.9k2: the guard stage is one step after MTP: a read, guard off, one expiry-test (no restart-a).
+        # the guard stage is one step after MTP: a read, guard off, one expiry-test (no restart-a).
         guard = self.dev.calls[self.dev.calls.index('mtp-test --hold-ms 2000 --yes-test') + 1:]
         self.assertEqual(guard.count('guard expiry-test'), 1)
         self.assertLess(guard.index('guard off'), guard.index('guard expiry-test'))
@@ -496,7 +496,7 @@ class DevicePassTest(unittest.TestCase):
         def restarted(argv, timeout, **limits):
             result = real(argv, timeout, **limits)
             if argv[0] == 'mtp-test':
-                dev.crash += 1                                 # a lost link restarted both (0.9b F2)
+                dev.crash += 1                                 # a lost link restarted both (F2, decision 016)
             return result
         dev.command = restarted
         with patch.object(dp.host, 'load_build', return_value=(b'image', ['b', 'LDR ok'])):
@@ -533,7 +533,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertNotIn('key play', self.dev.calls)          # PLAY is never sent blind
 
     def test_content_switch_skips(self):
-        """4.6c2: content/switch is SKIP with the reason on a device without the package set (the simulator pass
+        """content/switch is SKIP with the reason on a device without the package set (the simulator pass
         runs it for real: scripts/device_pass.py --sim)."""
         self.assertEqual(self.run_pass(['--stage', 'content']), dp.EXIT_PASS)
         row = self.rows()[('content', 'switch')]
@@ -542,7 +542,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertFalse([c for c in self.dev.calls if c.startswith(('set-default', 'mods'))])
 
     def test_mods_apply_step(self):
-        """5.4d2: SKIP without a package set on the device (the default fake), or without a base entry holding
+        """SKIP without a package set on the device (the default fake), or without a base entry holding
         content.sha256; else mods apply --wait, get os.ldr, equal to the host reference, the output removed
         (left when it differs)."""
         self.assertEqual(self.run_pass(['--stage', 'mods']), dp.EXIT_PASS)
@@ -589,7 +589,7 @@ class DevicePassTest(unittest.TestCase):
             self.assertIn(BASE + 'firmware/mods-a/os.ldr', self.dev.files)
 
     def test_write_window_steps(self):
-        """2.2c: two writes then one window closed by B; the scratch entry's name in the menu catalog;
+        """Two writes then one window closed by B; the scratch entry's name in the menu catalog;
         a window that never closes is a FAIL that says so."""
         self.assertEqual(self.run_pass(['--stage', 'writes']), dp.EXIT_PASS)
         rows = self.rows()
@@ -598,7 +598,7 @@ class DevicePassTest(unittest.TestCase):
         puts = [c.split()[2] for c in self.dev.calls if c.startswith('put-file')]
         self.assertEqual(puts, [dp.PASS_FILE, dp.PASS_FILE2, dp.SCRATCH_INFO])
         self.assertTrue(all(p.startswith(BASE + 'log/') or p == dp.SCRATCH_INFO for p in puts))
-        # 2.4c: a file into a subfolder, the subfolder as a whole, onto an existing name (state); all removed.
+        # a file into a subfolder, the subfolder as a whole, onto an existing name (state); all removed.
         self.assertEqual(rows[('writes', 'rename')]['result'], 'PASS')
         self.assertIn('mv sub sub2 (a folder with a file)', rows[('writes', 'rename')]['detail'])
         self.assertEqual([c for c in self.dev.calls if c.startswith('mv ')],
@@ -606,7 +606,7 @@ class DevicePassTest(unittest.TestCase):
                           for a, b in (('a.txt', 'sub/b.txt'), ('sub', 'sub2'), ('sub2/b.txt', 'sub2'))])
         self.assertFalse(any(k.startswith(dp.FILES_DIR) for k in self.dev.files) or
                          any(d.startswith(dp.FILES_DIR) for d in self.dev.dirs))
-        # 2.4c2: a file copied on the device, both read back, onto an existing name (state); all removed.
+        # a file copied on the device, both read back, onto an existing name (state); all removed.
         self.assertEqual(rows[('writes', 'copy')]['result'], 'PASS')
         self.assertIn('cp 100000 B on the device', rows[('writes', 'copy')]['detail'])
         self.assertEqual([c for c in self.dev.calls if c.startswith('cp ')],
@@ -617,7 +617,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertIn('the write window may still be open', row['detail'])
 
     def test_an_empty_listing_never_passes(self):
-        """2.4b: build 165 listed every folder empty with status ok; the read stage's ls-library,
+        """Build 165 listed every folder empty with status ok; the read stage's ls-library,
         scratch-cleanup and file-commands fail on it instead of passing vacuously."""
         self.run_pass(['--stage', 'read'], dev=FakeDevice(faults={'empty-ls'}))
         row = self.rows()[('read', 'ls-library')]
@@ -847,7 +847,7 @@ class DevicePassTest(unittest.TestCase):
                 row = self.rows()[('protocol', step)]
                 self.assertEqual(row['result'], 'FAIL')
                 self.assertIn(detail, row['detail'])
-        # Plan item 0.6: build 153 (pre-v1) installed, the protocol stage is SKIP lines only.
+        # Build 153 (pre-v1) installed, the protocol stage is SKIP lines only.
         self.assertEqual(self.run_install(153, PRE_V1_HELLO), dp.EXIT_PASS)
         self.assertEqual({r['result'] for r in self.protocol_rows()}, {'SKIP'})
 

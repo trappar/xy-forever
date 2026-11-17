@@ -6,7 +6,7 @@
 //   NotFoundError when nothing matches.
 // - getPorts() lists the granted ports that are attached. Attached = the simulator's USB endpoint
 //   listens (the relay's GET /status). A device that comes back after a restart or a pulled cable is
-//   a new SerialPort object, and its grant survives (as with a USB serial number: 6.2d checks that).
+//   a new SerialPort object, and its grant survives (as with a USB serial number; unverified on a device).
 // - open() needs a baud rate, refuses a second open, and fails with NetworkError while the device
 //   is away. readable/writable are created on access while open; a byte stream for reading.
 // - The relay closing the WebSocket is the device going away: both streams error with

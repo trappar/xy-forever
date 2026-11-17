@@ -12,7 +12,7 @@ unsigned engine_request(unsigned vtable, unsigned op, unsigned argument, unsigne
                          unsigned(dir_known), unsigned(dir_space), unsigned(partition)};
     return decide_request(vtable, op, argument, pointer, path, state);
 }
-unsigned engine_rename_to(const char* source, const char* target, int window) {   // 2.4c: path 0x21 rename_to
+unsigned engine_rename_to(const char* source, const char* target, int window) {   // path 0x21 rename_to
     const State state = {1, 1, unsigned(window), 1, 1, 1, 1, 0};
     return decide_request(path_class, 0x21, rename_to, path_buffer, target, state, source);
 }

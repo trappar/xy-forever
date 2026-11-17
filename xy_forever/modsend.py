@@ -1,4 +1,4 @@
-"""Mod packages on the device (plan 5.4p): `xyf_host.py mods push | list | remove`; 5.4d2: `mods apply | cancel`.
+"""Mod packages on the device: `xyf_host.py mods push | list | remove`, `mods apply | cancel`.
 
 The host only puts packages on the OP-XY; the device assembles mod firmware from them (native/mod_job).
 A package set is one generation folder as `modkit split` writes it (docs/STORAGE.md): base/, <machine>/,
@@ -145,7 +145,7 @@ def remote_hashes(dev, path):
 def push(dev, package_dir, only=(), verify=False, out=print, by_hash=False):
     """Puts the package set on the device; returns the summary dict (sent: [(package, path)] too). Raises
     Refused (or the transport's error) on the first failure: what was written stays, and running it again
-    completes it. by_hash (5.6, mods dev): a file is skipped only when the device's files.sha256 lists it
+    completes it. by_hash (mods dev): a file is skipped only when the device's files.sha256 lists it
     with the same SHA-256 and the device copy has the same size (a rebuilt mod often keeps its size)."""
     profile, generation, packages = local_set(package_dir, only)
     gen_path = '%s/%s/%s' % (ROOT, profile, generation)
@@ -281,7 +281,7 @@ def remove(dev, what, yes=False, out=print):
     return 0
 
 
-# -- 5.4d2: the device assembles (mods.apply, job.status, job.cancel) --------------------------------
+# -- the device assembles (mods.apply, job.status, job.cancel) --------------------------------------
 # The host only starts, watches and cancels the job; the device reads the packages and writes the entry
 # into /yaffs2/xy-forever/tmp/job-<id>/ (registering it as a library entry is a later step).
 PHASES = ('idle', 'inputs', 'link', 'patch', 'content', 'write', 'verify', 'finish', 'done', 'failed', 'cancelled')
@@ -295,7 +295,7 @@ LIBRARY = '/yaffs2/xy-forever/firmware'
 DEFAULT_NAME = 'OP-XY mods'
 DEFAULT_PROFILE = 'opxy-1.2.1'
 STALL = 90.0            # --wait gives up when the job's step count has not moved for this long
-SERVED = 60.0           # 5.4d2f: --wait then waits this long at most for file commands to be served again
+SERVED = 60.0           # --wait then waits this long at most for file commands to be served again
 # 193 (device, build 192 after an OS crash: the first job.status went unanswered): B answers job.status
 # between its requests to A, and one request may take up to write_patience_ms (60 s, the default's write;
 # a file request's bound is change_ms, 45 s). wait asks again after a timeout until no answer came this long.
@@ -386,7 +386,7 @@ def wait(dev, job, out=print, poll=0.5, sleep=time.sleep, clock=time.monotonic):
 
 
 def served(dev, out=print, poll=0.25, sleep=time.sleep, clock=time.monotonic):
-    """5.4d2f: when a job ends, B closes A's write window (op 9; yaffs's checkpoint took up to about 17 s on
+    """When a job ends, B closes A's write window (op 9; yaffs's checkpoint took up to about 17 s on
     the device) while USB keeps answering; file commands answer busy until it is closed. Lists tmp/ until
     the answer is not busy: that status (0 or not_found: served), or None after SERVED seconds."""
     start = clock()
@@ -490,7 +490,7 @@ def add_arguments(parser):
     a.add_argument('--wait', action='store_true', help='poll job.status until it ends; non-zero exit on failure')
     c = sub.add_parser('cancel', help='stop the running assembly job (it removes what it wrote)')
     c.add_argument('job', nargs='?', type=int, default=0, help='job id (default: the running job)')
-    from . import moddev                                     # 5.6: mods dev (the edit-build-boot loop)
+    from . import moddev                                     # mods dev (the edit-build-boot loop)
     moddev.add_arguments(sub)
 
 

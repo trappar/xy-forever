@@ -2,11 +2,11 @@
 #define XYF_MTP_SESSION_HPP
 #include <stdint.h>
 #include "../native/mtp_responder.hpp"
-// 3.5b / T2b: the MTP session on processor B (build switch XYF_MTP_SESSION: the simulator and the test build
+// The MTP session on processor B (build switch XYF_MTP_SESSION: the simulator and the test build
 // xyf-mtp-usb, never the product). The responder core (native/mtp_responder) runs over B's timed file client:
 // one request per FileOps call, run from B's menu loop (usb_service mtp_pump), responder steps for at most a
 // slice per pass. Speed (2026-11-15): while MTP traffic is active the menu loop's pass repeats driver passes and steps
-// (usb_service mtp_burst, up to 40 ms), so small operations finish within one pass. T2b: an open session is not a job: only an operation in flight (Responder::busy) holds the
+// (usb_service mtp_burst, up to 40 ms), so small operations finish within one pass. An open session is not a job: only an operation in flight (Responder::busy) holds the
 // file client (serial file commands, jobs, menu actions answer busy meanwhile; an MTP operation that needs the
 // files while a job, a window close or a serial upload runs answers Device_Busy). Its state (Session, about
 // 35 KB, mostly the responder) lives in the last 64 KiB of the job region (the jobs' work regions end below).
@@ -47,7 +47,7 @@ struct Session {
     Files files;
     InPhase in;
     uint32_t stage, bytes_in, bytes_out, longest_ms, started_ms, steps, cancels, said_ms;
-    // T2b: stalls (an operation without USB progress for stall_ms: cancelled), operations refused busy,
+    // Stalls (an operation without USB progress for stall_ms: cancelled), operations refused busy,
     // operations logged; the log ring (T2c: 128 entries of 5 words): {code | response << 16, parameters 1..3,
     // data | parameter count << 4 | ms << 8} (mtp_responder.hpp).
     uint32_t stalls, refused_busy, log_count, progress_ms, operations, longest_op_ms, op_started_ms;

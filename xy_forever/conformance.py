@@ -1,4 +1,4 @@
-"""The conformance suite of the serial protocol (plan 1.4): protocol/v1.conformance.json.
+"""The conformance suite of the serial protocol: protocol/v1.conformance.json.
 
 The cases are data (their keywords: the file's `syntax`). This module loads and validates them
 against protocol/v1.json (scripts/protogen.py calls validate()), interprets every case without a

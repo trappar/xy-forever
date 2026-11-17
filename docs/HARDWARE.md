@@ -57,7 +57,7 @@ Same on A and B (separate SDRAM). Evidence for the free gap and the hand-off: [A
 | `0x8ab80000..0x8ab84000` | XY Forever stack (16 KiB; entry sets SP `0x8ab84000`) | entry audit (P0.H/P0.L) |
 | `0x8ab90000..0x8ac00000` | stage-2 window (dormant loader, B only) | `check_stage2_image` |
 | `0x8ac00000..0x8b000000` | unused | |
-| `0x8b000000..0x8b800000` | B's mod job: 64 KiB state, then the work region (5.4d2; 6.3 MiB peak); 3.5b MTP session state (33 KiB, sim only) | `cold_layout.hpp`, `check_memory_map` |
+| `0x8b000000..0x8b800000` | B's mod job: 64 KiB state, then the work region (6.3 MiB peak); MTP session state (33 KiB, sim only) | `cold_layout.hpp`, `check_memory_map` |
 | `0x8b800000..0x8c000000` | our scratch, catalog, USB frames, staging (B 7 MiB image buffer), reboot marker `0x8bfff000` | |
 | `0x8c000000..0x8c03c000` | B's framebuffer | |
 | `0x8d3be380..0x8d4d0380` | census, reporter, carry slot (inside the OS image's heap) | |
@@ -165,7 +165,7 @@ There is no rename and no format request. A's slave interrupt answers the link h
     with the stock builders and polls the done flag itself, with a bound (`file_client.cpp`).
     A request that the running A took and never answered is answered by A's bootloader
     after A restarts (Test 108 recovered that way). So in any mode A must never ANSWER a
-    restarted B's boot requests: leave them and restart A. Since build 159 (plan 0.9b, record
+    restarted B's boot requests: leave them and restart A. Since build 159 (record
     016) it holds in every mode: B's link open (op 10 `0x12345678`) after its first command,
     or a boot request (select, sector read) with nothing frozen outside install mode, is held
     unanswered, A closes storage and restarts; a B that loses A at the menu stays there (164).
@@ -195,8 +195,8 @@ There is no rename and no format request. A's slave interrupt answers the link h
 
 ## Stock USB function-driver API (unverified)
 
-From an offline study that was never re-checked or device-tested; plan
-item 3.1 redoes it. Stock MTP (`88a0ecda..88a12478`) is one block run from the USB
+From an offline study that was never re-checked or device-tested;
+decision 002 redoes it. Stock MTP (`88a0ecda..88a12478`) is one block run from the USB
 interrupt; its only hook is the storage callback table (`0x88073380` -> `0x11906c48`).
 Below it, a generic function-driver API that CDC also uses: one driver slot
 `[0x11803af0]`, register `88a09d5c(drv)`, unregister `88a09d44(drv)`; driver =
@@ -224,9 +224,9 @@ bulk-OUT urb leaves the packet in the FIFO and nothing re-arms reception (check
 - **Signatures:** the signing (private) key is unknown, so stock rejects any custom
   `.tfw`. The old bootloader also rejects unsigned and legacy containers; key index
   `fe` is no bypass. The vendor public key (signature key index 0) was recovered
-  from the three official signatures (plan 4.3b; one common key, verified by our
+  from the three official signatures (one common key, verified by our
   verifier and OpenSSL): `keys/opxy-tfw-public-key.json` in the private folder. Not yet read from
-  a device (OTP selector 9; `tfw.check`, plan 4.3e: `scripts/tfw_probe.py`).
+  a device (OTP selector 9; `tfw.check`, #15: `scripts/tfw_probe.py`).
 - **OTP (read from the 1.2.1 listing).** Boot-ROM jump table, 4-byte entries:
   `0x04000008` ROM loader (via `88a3477a`); `0x04000048` read (R0 selector, R1 buffer; R0 the
   answer); `0x0400004c` (only `88a2123c`: selector 0x13, a 16-byte buffer filled before the call

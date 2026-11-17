@@ -10,7 +10,7 @@ import ui_preview as P  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 
 NONE, REDRAW, CONTINUE, BOOT_ONCE, SET_DEFAULT, UNINSTALL = range(6)
-CHANGE_SETTING = 9                                             # xyf_menu Action (4.8; 188: no mtp_mode)
+CHANGE_SETTING = 9                                             # xyf_menu Action (build 188: no mtp_mode)
 
 
 class UiFlowTest(unittest.TestCase):
@@ -50,8 +50,8 @@ class UiFlowTest(unittest.TestCase):
 
 
     def test_settings_page(self):
-        """4.8: Settings, the row above Info: - / + choose, PLAY acts (change_setting, entry = row), STOP back.
-        4.8m2: the one row is Mod memory, its value and pending mark as xyf_mods_io sets them. Saves previews
+        """Settings, the row above Info: - / + choose, PLAY acts (change_setting, entry = row), STOP back.
+        The one row is Mod memory, its value and pending mark as xyf_mods_io sets them. Saves previews
         (settings-memory-standard.png, settings-memory-expanded-pending.png) in XYF_MEMORY_PREVIEW when set."""
         import os
         out = os.environ.get('XYF_MEMORY_PREVIEW')

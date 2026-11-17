@@ -374,7 +374,7 @@ Status parse_base(State& st, U32 index, Cursor& c) {
             !st.info.module_bytes || st.info.module_base > 0xffffffffu - st.info.module_bytes) return refuse(st, Status::table, "base/info.txt");
         copy_text(st.generation, 64, bytes(st.info.generation), length_of(st.info.generation, 64));
         st.module_base = st.info.module_base; st.module_bytes = st.info.module_bytes;
-        if (st.selection->expanded) {     // 4.8m1: the larger layout keeps the module's end
+        if (st.selection->expanded) {     // the larger layout keeps the module's end
             const U32 x = st.info.expanded_base;
             if (!st.info.expanded_ok || !x || x >= st.module_base) return refuse(st, Status::table, "expanded_module_base");
             st.module_bytes += st.module_base - x;

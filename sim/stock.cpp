@@ -188,7 +188,7 @@ bool provider();
 int handle_of(int fd) { return fd >= 0 && unsigned(fd) < max_handles && handles[fd].used ? fd : -1; }
 int open_file(const char* path, bool write, bool create, bool truncate, bool exclusive) {
     std::string where;
-    if (path && strstr(path, "/xy-forever/stage2/")) ++shared->stage2_opens;          // 4.7a1 test count
+    if (path && strstr(path, "/xy-forever/stage2/")) ++shared->stage2_opens;          // test count
     if (!mounted()) return fail(19);
     if (!to_host(path, where)) return fail(2);
     int error = 0;
@@ -245,7 +245,7 @@ int path_op(uint32_t op, const char* path) {          // mkdir 0x26, unlink 0x25
     if (op == 0x21) { struct stat st; return stat(where.c_str(), &st) ? fail(errno) : 0; }
     int error = 0;
     if (!media(error) || write_fault(0, error, false)) return fail(error);
-    // 2.4a: the device's yaffs error numbers (1.2.1 listing 889fa4b0), not the Mac's: a folder for unlink
+    // The device's yaffs error numbers (1.2.1 listing 889fa4b0), not the Mac's: a folder for unlink
     // is EISDIR 21 (the Mac: EPERM), a folder not empty ENOTEMPTY 93 (the Mac: 66).
     struct stat st;
     if (op == 0x25 && !lstat(where.c_str(), &st) && S_ISDIR(st.st_mode)) return fail(21);   // yaffs: a link itself
@@ -258,7 +258,7 @@ int path_op(uint32_t op, const char* path) {          // mkdir 0x26, unlink 0x25
     storage_op_done();
     return 0;
 }
-// 2.4c: the yaffs rename A calls itself (889fa834(old, new) -> yaffsfs rename 889fa604, 1.2.1 listing):
+// The yaffs rename A calls itself (889fa834(old, new) -> yaffsfs rename 889fa604, 1.2.1 listing):
 // 0, or -1 with the negative error number in yaffs's error word 0x8806f940 (889f998c stores it, the
 // posix wrapper 889f165a negates 889f9982's read of it). The stock checks, in order: either parent
 // folder or the source missing ENOENT 2, read-only EROFS 30, a file onto a folder EISDIR 21
@@ -274,7 +274,7 @@ int rename_object(const char* from, const char* to) {
     if (stat(a.c_str(), &st)) return failed(2);
     int error = 0;
     if (!media(error) || write_fault(0, error, false)) return failed(error);
-    const int32_t n = shared->rename_fault, kind = shared->rename_fault_kind;   // 5.4d3a fault hook
+    const int32_t n = shared->rename_fault, kind = shared->rename_fault_kind;   // fault hook
     const bool hit = n > 0 && (shared->rename_fault = n - 1) == 0;
     if (hit && kind == 1) { log("fault: rename failed"); return failed(5); }
     if (rename(a.c_str(), b.c_str())) return failed(errno == ENOTEMPTY ? 93 : errno);
@@ -323,7 +323,7 @@ uint32_t next_entry(uint32_t handle) {                 // yaffs_dirent: type at 
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
         const uint32_t at = dirents + uint32_t(i) * dirent_bytes;
         memset(host(at), 0, dirent_bytes);
-        w8(at + 10, e->d_type == DT_DIR ? 4 : e->d_type == DT_LNK ? 10 : 8);   // 2.3f: yaffs reports links (DT_LNK)
+        w8(at + 10, e->d_type == DT_DIR ? 4 : e->d_type == DT_LNK ? 10 : 8);   // yaffs reports links (DT_LNK)
         strncpy(static_cast<char*>(host(at + 11)), e->d_name, 255 < dirent_bytes - 12 ? 255 : dirent_bytes - 12);
         return at;
     }
@@ -539,7 +539,7 @@ void executor(uint32_t address, uint32_t request) {
     if (address == 0x889f6feau && cls == cls_path) {
         if (op == 0x29) return finish(request, posix_open(path, a0));
         if (op == 0x26 || op == 0x25 || op == 0x27 || op == 0x21) return finish(request, provider() ? path_op(op, path) : fail(19));
-        // A failed opendir answers 0 (NULL), as the stock client 889f7286 expects (2.4a; was -1).
+        // A failed opendir answers 0 (NULL), as the stock client 889f7286 expects (was -1).
         if (op == 0x2e) { const uint32_t d = provider() ? open_directory(path) : 0; return finish(request, int(d)); }
         if (op == 0x28 || op == 0x35) return finish(request, provider() ? 0 : fail(19));   // sync, set times
     }
@@ -549,7 +549,7 @@ void executor(uint32_t address, uint32_t request) {
         const bool found = provider() && mounted() && to_host(path, where) && !stat(where.c_str(), &st);
         const uint32_t bytes = op == 0x23 ? 0x0cu : op == 0x31 ? 8u : 0x34u;
         memset(host(a_out_buffer), 0, bytes);
-        if (op == 0x22 && found) {                      // 2.4a: the stock yaffs stat record (889fa848)
+        if (op == 0x22 && found) {                      // the stock yaffs stat record (889fa848)
             w32(a_out_buffer + 4, uint32_t(st.st_ino));
             w32(a_out_buffer + 8, S_ISDIR(st.st_mode) ? 0x41edu : S_ISREG(st.st_mode) ? 0x81a4u : 0xa1ffu);
             w32(a_out_buffer + 0xc, uint32_t(st.st_nlink));
@@ -579,7 +579,7 @@ void executor(uint32_t address, uint32_t request) {
         return finish(request, ok ? 0 : fail(5));
     }
     if (address == 0x889f6b7cu && cls == cls_sector && op == 0x2f) {             // MTP: readdir
-        // Stock 889f6bfa..889f6c26: the result is yaffs_readdir's dirent address (2.4b: was 1, which
+        // Stock 889f6bfa..889f6c26: the result is yaffs_readdir's dirent address (was 1, which
         // hid build 165's empty listings), 0 at the end with the posix errno, which earlier calls
         // left (last_error is never cleared either); a 0x10c-byte body either way.
         const uint32_t entry = next_entry(a0);
@@ -677,7 +677,7 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     // link requests (session builders and submit; A's answer)
     case 0x889f4e82u: b_build(p(0), 0, u(1), u(2), 0, 0, 0, 0, 0, 0); return 0;
     case 0x889f65a4u: b_build(p(0), 0, u(1), 0, 0, 0, 0, 0, 0, 0); return 0;
-    // the stock request builders (the session's and, 2.2b, B's file client: file_client.cpp), with
+    // the stock request builders (the session's and B's file client: file_client.cpp), with
     // the stock argument layout: partition (req, op, a0, a1 -> +0x18, a2 -> +0x1c), sector (req, op,
     // sector, count, 0, out, bytes), path (req, op, path, a0, a1), query (req, op, path, 0, 0, out,
     // bytes), read (req, 0x2a, fd, count, out, 0x1000), write (req, 0x2b, fd, count, data, count),
@@ -692,24 +692,24 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     case 0x11a0060cu: b_submit(p(1)); return 0;
     case 0x889f6508u: a_respond(u(1)); return 0;
     // A's own posix calls (they reach yaffs on role 0). B's stock posix client (889f869e ->
-    // 889f7b12, an unbounded wait) is no longer called (2.2b): on B these end the processor.
+    // 889f7b12, an unbounded wait) is no longer called: on B these end the processor.
     case 0x889f3b50u:                                   // posix open
-        if (role) crash("B called the stock posix open (removed in 2.2b)");
+        if (role) crash("B called the stock posix open (B uses its own timed file client)");
         if (shared->fail_open.load() > 0 && --shared->fail_open == 0) {
             log("fault: A's posix open failed"); return uint64_t(int64_t(fail(5)));
         }
         return uint64_t(int64_t(posix_open(s(1), u(2))));
     case 0x889f3516u:                                   // posix stat
-        if (role) crash("B called the stock posix stat (removed in 2.2b)");
+        if (role) crash("B called the stock posix stat (B uses its own timed file client)");
         return uint64_t(int64_t(stat_record(s(0), static_cast<uint32_t*>(p(1)))));
     case 0x889f44f4u:                                   // posix closedir
-        if (role) crash("B called the stock posix closedir (removed in 2.2b)");
+        if (role) crash("B called the stock posix closedir (B uses its own timed file client)");
         return uint64_t(int64_t(close_directory(u(0))));
-    case 0x889fa834u:                                   // yaffs rename (2.4c)
+    case 0x889fa834u:                                   // yaffs rename
         if (role) crash("B called the yaffs rename (A's only)");
         return uint64_t(int64_t(rename_object(s(0), s(1))));
     case 0x889f285au:                                   // posix close
-        if (role) crash("B called the stock posix close (removed in 2.2b)");
+        if (role) crash("B called the stock posix close (B uses its own timed file client)");
         return uint64_t(int64_t(close_file(int(u(0)))));
     // B: boot partition
     case 0x889f65f0u: return b_call(0, 5, 0, 0, 0, 0, 0, 0, 0);

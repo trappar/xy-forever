@@ -1,7 +1,7 @@
 #ifndef XYF_STACK_MARK_HPP
 #define XYF_STACK_MARK_HPP
 #include <stdint.h>
-// 0.12 (decision 025): B's stack high-water mark. key_ui paints [begin, its SP - 256) with `paint` before the
+// Decision 025: B's stack high-water mark. key_ui paints [begin, its SP - 256) with `paint` before the
 // menu loop; used() is the number of bytes below `top` that no longer hold the paint (the deepest the stack
 // reached since then). STATUS reports it live in usb_service's Result.stack_used.
 namespace xy_forever { namespace stack_mark {

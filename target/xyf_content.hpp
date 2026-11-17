@@ -1,7 +1,7 @@
 #ifndef XYF_CONTENT_HPP
 #define XYF_CONTENT_HPP
 #include <stdint.h>
-// 4.6c1: what /yaffs2/content/ currently matches (the content state record, docs/STORAGE.md "Content
+// What /yaffs2/content/ currently matches (the content state record, docs/STORAGE.md "Content
 // state"), and the one path rule for every write the content switch makes (allowed). Freestanding, header
 // only: processor A reads the record's head in the library scan (xyf_library.hpp), processor B runs the
 // switch (xyf_content_job.hpp). Functions are static: an inline (weak) function is a register call on Blackfin,

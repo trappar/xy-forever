@@ -113,14 +113,14 @@ class FileWriteSourceTest(unittest.TestCase):
         self.assertIn('if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item',
                       engine)
         self.assertIn('const bool ok = engine == entry_run ? open_window(storage) : mount(storage);', engine)
-        # 2.2c: the write entry's first change opens the window, then the request is decided again.
+        # the write entry's first change opens the window, then the request is decided again.
         self.assertIn('if (action == file_engine::refuse_read_only && engine == entry_write && !state.window && '
                       'open_window(storage)) {', engine)
         self.assertIn('storage.open_write_window(step)', self.server)
         self.assertIn('window_result = U32(storage.close_write_window());', self.server)
 
     def test_b_client_sequence(self):
-        """2.2b: B's file client (file_client.cpp), every request bounded."""
+        """B's file client (file_client.cpp), every request bounded."""
         client = (ROOT / 'target/file_client.cpp').read_text()
         c = client[client.index('uint32_t write_file('):]
         c = c[:c.index('\n}\n')]
@@ -130,12 +130,12 @@ class FileWriteSourceTest(unittest.TestCase):
                  '(total != size || c != crc)) code = xyf::usbp::s_crc;']
         at = [c.index(s) for s in order]
         self.assertEqual(at, sorted(at))
-        self.assertNotIn('unmount()', c)                 # 2.2c: the window stays open for the next write
-        self.assertIn('const U32 root_bytes = storage_server::write_root(path);', c)   # 2.4d: 19 or 16
+        self.assertNotIn('unmount()', c)                 # the window stays open for the next write
+        self.assertIn('const U32 root_bytes = storage_server::write_root(path);', c)   # 19 or 16
         self.assertEqual((len('/yaffs2/xy-forever/'), len('/yaffs2/content/')), (19, 16))
         self.assertIn("folder[k] = '/';", c)                                 # restored after each mkdir
         self.assertNotIn('guard_pause', client)
-        # Each request: built into the session's slot, then waited for with a bound (5.4d2f: one poll per
+        # Each request: built into the session's slot, then waited for with a bound (one poll per
         # answer(); await_answer loops on it while busy, unmount_poll calls it once per pass of B's loop).
         answer = client[client.index('Reply answer(Stock121PeerSession& session'):]
         answer = answer[:answer.index('\n}\n')]
@@ -157,7 +157,7 @@ class FileWriteSourceTest(unittest.TestCase):
                  'file_client::write_file(']
         at = [h.index(s) for s in order]
         self.assertEqual(at, sorted(at))
-        self.assertNotIn('guard_pause', h)                                   # 2.2b: never paused on b
+        self.assertNotIn('guard_pause', h)                                   # never paused on b
         self.assertIn('else if (type == P::t_file_write) file_write(seq, payload, length);', self.usb)
         self.assertIn('if (!size || size > image_capacity)', self.usb)
 
@@ -169,7 +169,7 @@ class FileWriteSourceTest(unittest.TestCase):
 class FileWriteBuilderTest(unittest.TestCase):
     def test_wiring(self):
         self.assertEqual(builder.FILE_WRITE_MODES, builder.PRODUCT_MODES)
-        self.assertFalse(hasattr(builder, 'FILE_WRITE_CALLS'))              # 2.2b: b's write goes through the client
+        self.assertFalse(hasattr(builder, 'FILE_WRITE_CALLS'))              # b's write goes through the client
         self.assertTrue(builder.FORBIDDEN_TARGETS.isdisjoint(builder.FILE_CLIENT_CALLS | {'889f6dca'}))
         src = (ROOT / 'xyf_build.py').read_text()
         self.assertIn("if mode in FILE_WRITE_MODES:\n        flags = [*flags, '-DXYF_USB_FILE_WRITE=1']", src)

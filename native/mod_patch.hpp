@@ -3,11 +3,11 @@
 #include "hash.hpp"
 #include "mod_link.hpp"
 namespace xyf_core { namespace mod_patch {
-// The patch step of mod assembly (plan 5.4c; decisions 008, 014, 019): a freestanding port of
+// The patch step of mod assembly (decisions 008, 014, 019): a freestanding port of
 // open-xy builder/core.mjs patchFirmware, in place on the caller's image buffer.
 //   image[0, stock_bytes)            stock os.ldr, loaded by the caller (SHA-256 pinned: proven after
 //                                    assembly, by the restore check below; a difference is Status::stock)
-//   image[stock_bytes, + module)     the module, written there by the linker (5.4b)
+//   image[stock_bytes, + module)     the module, written there by the linker
 // Result, in the same buffer: stock with every edit applied up to FINAL, the module's loader record
 // (module_base) in FINAL's old place, the module, FINAL after it, the first record's length
 // rewritten: core.mjs's candidate byte for byte. Capacity: stock_bytes + 16 + module limit
@@ -26,7 +26,7 @@ enum class Status {
 // official catalog's SHA-256 (the content step's pin: pass it as mod_content::Catalog::sha256).
 // expanded_base: the module base of the profile's larger layout (info.txt expanded_module_base, 0: none;
 // core.mjs offersExpandedMemory). `expanded` is the caller's choice, the website's experimental 4 MiB option
-// (4.8m1; core.mjs expandedProfile): the module starts at expanded_base and ends where it did (the relocated
+// (core.mjs expandedProfile): the module starts at expanded_base and ends where it did (the relocated
 // tables at its top, every hook and other edit unchanged), and the two heap edits load the smaller heap
 // (expanded_base - heap_fill_base). The facts stay the standard ones; the patch derives the layout.
 struct Profile {   // field order fixed: the known-base table (mod_patch.cpp) matches its first 96 bytes (92 + expanded_base)
@@ -97,7 +97,7 @@ Status step(Patcher& p);
 // when the image was assembled, and treat a difference as a refusal. `hashed`: the caller has already
 // proven the image's SHA-256 equal to that of an image this code assembled (start() to ok, which ran the
 // restore check): the layout checks and the policy only, no hashing; p.sha256 is left as that patch set it
-// (the same Patcher), for the caller's comparison (plan 8.8, build 190).
+// (the same Patcher), for the caller's comparison (build 190).
 Status start_verify(Patcher& p, const Profile& profile, const Byte* edits, U32 edits_bytes,
                     const hash::Digest& edits_sha256, const Byte* image, U32 size, bool unverified_confirmed,
                     const Policy& policy, const Limits& limits, Byte* scratch, U32 scratch_capacity,

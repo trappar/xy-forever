@@ -1,4 +1,4 @@
-"""Protocol spec drift test (decision 004, plan 1.2a): protocol/v1.json validates, the generated
+"""Protocol spec drift test (decision 004): protocol/v1.json validates, the generated
 files are current, the golden frames round-trip through the real host codec (and the device
 encoder), the device dispatch answers exactly the spec's commands, and the hand-written values
 that stay outside the generated files agree with the spec. No device access."""
@@ -86,7 +86,7 @@ class SpecTest(unittest.TestCase):
                command(s, 'hello')['reply']['fields'][0].update(max_bytes=92), 'at most max_hello')
         broken(lambda s: command(s, 'stage.begin').update(test_only=True), 'test_only')
         broken(lambda s: s['golden'][0].update(message='nothing'), 'unknown message')
-        # 1.2e: optional fields, encodings, extensible replies, switches, common errors, transport, streams.
+        # optional fields, encodings, extensible replies, switches, common errors, transport, streams.
         broken(lambda s: command(s, 'file.read')['request'].pop('optional_fields'), 'optional_fields is required')
         broken(lambda s: command(s, 'stage.begin')['request'].update(optional_fields='all_or_none'),
                'optional_fields is required')
@@ -204,7 +204,7 @@ class GoldenFramesTest(unittest.TestCase):
                           '-DXYF_BUILD_MODE="product"'))
         self.assertLessEqual(len(g['fields']['info']), ids.MAX_HELLO)
         self.assertEqual(len(g['fields']['info']), 170)                   # 1.10: proto=1.10
-        self.assertTrue(g['fields']['info'].endswith(';stage2=0'))         # 4.7a1: set at run time
+        self.assertTrue(g['fields']['info'].endswith(';stage2=0'))         # set at run time
         loaded = P.hello_text(info.keys['build'], info.keys['mode'], product, stage2=12)
         self.assertTrue(loaded.endswith(';stage2=12') and P.Hello(loaded).answers(P.ids.STAGE2_INFO))
         self.assertFalse(info.answers(P.ids.STAGE2_INFO))
@@ -231,7 +231,7 @@ class GoldenFramesTest(unittest.TestCase):
 
 
 class SpecDataTest(unittest.TestCase):
-    """The data 1.2e added: stream vectors, codec rules, text encodings, transport facts."""
+    """The spec's stream vectors, codec rules, text encodings, transport facts."""
 
     def test_stream_vectors_through_the_parser(self):
         streams = spec()['streams']
@@ -301,7 +301,7 @@ class SpecDataTest(unittest.TestCase):
         self.assertEqual(unverified, ['control_lines', 'usb_serial_number'])
 
     def test_idle_reset(self):
-        """1.3 found the device never timed out a partial frame; 1.5 added the idle reset: the spec
+        """The device never timed out a partial frame; the idle reset fixes that: the spec
         names the limit, the device code uses it, and the frame header comment agrees."""
         s = spec()
         self.assertEqual(protogen.constants(s)['idle_reset_ms'], 250)
@@ -332,7 +332,7 @@ class DeviceAgreesTest(unittest.TestCase):
 
     def test_dispatch_matches_spec(self):
         handled = self.dispatch()
-        # stage2.info (4.7a1) is answered by stage 2's code (stage2_command), not by this if-chain.
+        # stage2.info is answered by stage 2's code (stage2_command), not by this if-chain.
         commands = {c['symbol']: c['switch'] for c in spec()['commands'] if c['switch'] != 'XYF_STAGE2_LOADED'}
         self.assertEqual(sorted(handled), sorted(commands), 'dispatch and spec answer different types')
         self.assertEqual(handled, commands, 'a command is compiled under a different switch than the spec says')
@@ -368,7 +368,7 @@ class DeviceAgreesTest(unittest.TestCase):
                          (k['max_read'], k['put_chunk'], k['max_stage']))
 
     def test_write_path_check_is_refused(self):
-        """1.2b: a write path the check rejects is refused (a wrong length stays bad_request)."""
+        """A write path the check rejects is refused (a wrong length stays bad_request)."""
         us = text('target/usb_service.cpp')
         self.assertIn('    if (path_bytes + 1 + 32 != length) code = P::s_bad_request;\n'
                       '    else if (!storage_server::valid_write_path(path)) code = P::s_refused;\n', us)
@@ -388,7 +388,7 @@ class DeviceAgreesTest(unittest.TestCase):
                 self.assertNotIn(heading, doc, c['name'])
             else:
                 self.assertIn('### %s %s' % (c['type'], heading), doc)
-        self.assertEqual(command(spec(), 'screen.read')['class'], 'product')   # project rule (plan 1.2a)
+        self.assertEqual(command(spec(), 'screen.read')['class'], 'product')   # project rule
 
 
 if __name__ == '__main__':

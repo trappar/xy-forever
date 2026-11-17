@@ -1,11 +1,11 @@
-// Host bridge for the Mods page (plan 5.4e1): the device's page model and view (target/xyf_mods*.cpp)
+// Host bridge for the Mods page: the device's page model and view (target/xyf_mods*.cpp)
 // fed with package texts by the tests, rendered for previews. Not linked into the device.
 #include "../target/xyf_mods_view.hpp"
 #include <string.h>
 using namespace xyf;
 static mods::Page page;
 static mods::Frame frame;
-extern xyf::ui::Chrome bridge_chrome;                 // ui_preview_bridge.cpp (8.7)
+extern xyf::ui::Chrome bridge_chrome;                 // ui_preview_bridge.cpp
 extern "C" {
 void mods_reset() { memset(&page, 0, sizeof(page)); mods::reset(page); }
 int mods_base(const char* text, unsigned bytes) { return mods::parse_base(page, text, bytes); }
@@ -28,7 +28,7 @@ void mods_reading(unsigned done) {
 unsigned mods_key(unsigned key, unsigned pressed) { return mods::key(page, key, pressed != 0); }
 unsigned mods_used() { return mods::used(page); }
 unsigned mods_limit() { return page.limit; }
-// 4.8m2: Mod memory: the 4 MiB layout's region, the choice (pending, saved), the limit in use, the shared part,
+// Mod memory: the 4 MiB layout's region, the choice (pending, saved), the limit in use, the shared part,
 // the Settings row and its PLAY.
 unsigned mods_expanded_limit() { return page.expanded_limit; }
 void mods_set_memory(unsigned expanded, unsigned saved) { page.expanded = expanded != 0; page.expanded_saved = saved != 0; }
@@ -42,13 +42,13 @@ unsigned mods_count() { return page.count; }
 unsigned mods_position() { return mods::position(page); }
 unsigned mods_request() { const unsigned r = page.request; page.request = mods::request_none; return r; }
 const char* mods_refusal() { const char* r = mods::build_refusal(page); return r ? r : ""; }
-const char* mods_save_refusal() { const char* r = mods::save_refusal(page); return r ? r : ""; }   // 8.4a
+const char* mods_save_refusal() { const char* r = mods::save_refusal(page); return r ? r : ""; }
 unsigned mods_changed() { return mods::changed(page); }
-void mods_mark_saved() {                        // 8.4a: the toggles as the saved selection (xyf_mods_io read_record)
+void mods_mark_saved() {                        // the toggles as the saved selection (xyf_mods_io read_record)
     for (unsigned i = 0; i != page.count; ++i)
         page.packages[i].flags = (page.packages[i].flags & ~mods::flag_saved) | (page.packages[i].flags & mods::flag_on ? mods::flag_saved : 0);
 }
-void mods_saving(unsigned build, unsigned stage, unsigned done, unsigned total) {   // 8.4a: the save's progress
+void mods_saving(unsigned build, unsigned stage, unsigned done, unsigned total) {   // the save's progress
     if (page.view != mods::View::building) page.bar = page.bar_step = page.bar_since = 0;
     page.view = mods::View::building; page.job = 0x10001; page.line = mods::line_none;
     page.save = mods::save_on | (build ? mods::save_build : 0); page.save_stage = stage;
@@ -57,7 +57,7 @@ void mods_saving(unsigned build, unsigned stage, unsigned done, unsigned total) 
 const char* mods_text() { return page.text; }
 unsigned mods_line() { return page.line; }
 const char* mods_row_id(unsigned row) { return mods::text_at(page, page.packages[page.rows[row]].id); }
-// 8.4d: the display: the filter, the rows it lists (id, kind, name), every row in display order.
+// the display: the filter, the rows it lists (id, kind, name), every row in display order.
 unsigned mods_filter() { return page.filter; }
 unsigned mods_all_on() { return mods::all_on(page); }
 unsigned mods_listed() { return page.listed; }
@@ -88,7 +88,7 @@ void mods_ended(unsigned phase, unsigned error, unsigned status, unsigned debris
 }
 void mods_refused(unsigned status, unsigned missing) { mods::start_refused(page, status, missing); }
 int mods_compare(const char* a, const char* b) { return mods::compare_generation(a, b); }
-// A full repaint (as after any other screen), or 8.2's update of what the framebuffer holds.
+// A full repaint (as after any other screen), or an incremental update of what the framebuffer holds.
 void mods_draw(uint16_t* fb) { frame.drawn = 0; mods::draw(fb, page, &bridge_chrome, frame); }
 void mods_update(uint16_t* fb) { mods::draw(fb, page, &bridge_chrome, frame); }
 unsigned mods_progress(unsigned ms) { return mods::progress(page, ms); }

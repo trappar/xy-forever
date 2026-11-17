@@ -1,4 +1,4 @@
-"""8.4a in the simulator: one "Open-XY" firmware configured like a BIOS. The Mods page's toggles are a pending copy of
+"""In the simulator: one "Open-XY" firmware configured like a BIOS. The Mods page's toggles are a pending copy of
 the saved configuration (/yaffs2/xy-forever/config.txt); Continue with changes asks Save / Discard / Back; Save builds
 the selection into the spare mods slot when needed, installs its content, writes the record and the default, and
 boots it. Driven by injected keys; what boots is the simulator's "menu: boots the default" line and both processors
@@ -72,7 +72,7 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         """Open the Mods page, (allow the unknown synthetic base), toggle folders, back to the home menu."""
         self.open_page()
         if unknown and not self.page()['text'].startswith('Unknown mod bases allowed'):
-            self.key(SHIFT, 1); self.press(STOP); self.key(SHIFT, 0)       # 8.6: SHIFT + STOP
+            self.key(SHIFT, 1); self.press(STOP); self.key(SHIFT, 0)       # SHIFT + STOP
             self.wait(lambda p: p['text'].startswith('Unknown mod bases allowed'), 'unknown base allowed', 5.0)
         self.toggle(folders)
         self.press(STOP)
@@ -244,7 +244,7 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.wait_log(lambda: '(changed) pending=1' in self.home(), 'still pending')
 
     def test_save_and_discard_wait_for_a_usb_job(self):
-        """9.3 (review 024, 7 with 8.4a): with a USB build running, Save and Discard in the Save dialog show the busy
+        """Review 024, 7: with a USB build running, Save and Discard in the Save dialog show the busy
         line and do nothing (the changes stay pending, nothing written); Continue pressed while the Save's own build
         runs is the save's progress screen (no busy line) and the save boots."""
         busy = 'menu: line: Busy: a build or content change is running.'

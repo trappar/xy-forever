@@ -1,4 +1,4 @@
-# 022: Why a lone reset of B never completes (plan item 0.9j)
+# 022: Why a lone reset of B never completes
 
 Research record, 2026-11-14; no device action. Listing: the private `analysis/bootloader-121-listing` (`linear121.ann.asm`; one image, run by both processors). Evidence: device passes 1, 5 and 8 (the maintainer's, not shared), HISTORY, commit messages. Tags: **[L]** read from the listing, **[C]** our code, **[M]** measured, **[I]** inferred, **[U]** unknown. Supersedes record 021's causes; 021 also misnamed `0x2000001c`: it is RCU0_BCODE, not SIDIS [L, Ghidra pspec].
 

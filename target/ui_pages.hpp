@@ -5,8 +5,8 @@
 // confirmation dialog, progress screen and the "no firmware" home screen.
 // Same rules as ui_screens: full repaint, no stock calls, no division helpers.
 namespace xyf { namespace ui {
-static const uint32_t list_visible = 7;          // 8.2: the compact title bar leaves room for 7 rows (was 5)
-// 8.7: what every page shows besides its own content. usb: a host is talking serial frames (the USB mark,
+static const uint32_t list_visible = 7;          // the compact title bar leaves room for 7 rows (was 5)
+// What every page shows besides its own content. usb: a host is talking serial frames (the USB mark,
 // top right); mtp (188): an MTP command within 5 s or a transfer running (the MTP mark, left of the USB
 // mark's place); activity: what a host command, a job started over USB or MTP is doing ("USB: writing
 // files", "MTP: transfer"; null: nothing), on the home page right-aligned under the marks, on the other pages
@@ -17,20 +17,20 @@ struct Chrome { const char* build; bool usb; const char* activity; bool mtp; };
 // available; lit only while active). marks_w: the width both take.
 static const int mark_w = 23, mark_h = 11, mark_gap = 3, marks_w = 2 * mark_w + mark_gap;
 void usb_mark(uint16_t* fb, int right, int y, bool usb, bool mtp);
-// 8.2: every page but the home menu has a one-line title bar instead of the logo header: the title (2x),
-// an optional subtitle after it (1x, grey, cut to fit) and (8.7) the place of the USB mark on the right; it
+// Every page but the home menu has a one-line title bar instead of the logo header: the title (2x),
+// an optional subtitle after it (1x, grey, cut to fit) and the place of the USB mark on the right; it
 // clears the screen. Content starts at compact_top.
 static const int compact_bar = 24, compact_top = 30, compact_mark_y = 7;
 void compact_header(uint16_t* fb, const char* title, const char* subtitle, const Chrome* chrome);
-// 8.7: how many subtitle characters fit after title in the title bar.
+// How many subtitle characters fit after title in the title bar.
 uint32_t subtitle_room(const char* title);
-// 8.7: the home pages' logo header (the logo, the marks' place, 188: the activity right-aligned under the
+// The home pages' logo header (the logo, the marks' place, 188: the activity right-aligned under the
 // marks at home_activity_y, the rule at home_bar) and footer: status as the line above the hint; the build
 // right-aligned on the hint line.
 static const int home_bar = 56, home_logo_x = 20, home_logo_y = 11, home_activity_y = home_logo_y + mark_h + 5;   // the logo's left edge = the list text's
 void home_header(uint16_t* fb, const Chrome* chrome);
 void home_footer(uint16_t* fb, const char* status, const char* hint, const Chrome* chrome);
-// 8.7: the bottom line (y): the activity in accent while there is one, else hint (grey; may be null).
+// The bottom line (y): the activity in accent while there is one, else hint (grey; may be null).
 void footer_line(uint16_t* fb, int y, const char* hint, const Chrome* chrome);
 struct ListRow { const char* title; const char* detail; bool marked; };   // marked = default
 struct List {
@@ -56,7 +56,7 @@ struct Progress {
     const char* warning;      // e.g. "Do not power off"
     const Chrome* chrome;
 };
-// 8.4a: a dialog of up to three buttons in a row (the Save dialog); buttons[i] 0: not shown.
+// A dialog of up to three buttons in a row (the Save dialog); buttons[i] 0: not shown.
 struct Choice {
     const char* heading;
     const char* lines[4];

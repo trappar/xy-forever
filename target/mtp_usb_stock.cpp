@@ -1,4 +1,4 @@
-// Plan 3.2: mtp_usb::stock_port(), the device binding of the MTP driver's Port to the stock 1.2.1
+// mtp_usb::stock_port(), the device binding of the MTP driver's Port to the stock 1.2.1
 // USB function-driver entry points (decision record 002 section 5; USB stack functions only; changing
 // the list needs the developer's explicit yes, docs/SAFETY.md). Every main-loop call into the stack runs
 // with interrupts masked (002: the stack's own queue code runs unmasked in the USB interrupt).

@@ -1,5 +1,5 @@
-"""The mod assembly job on processor B in the simulator (plan 5.4d2: mods.apply, job.status, job.cancel;
-5.4d3a: the commit into library entry mods-a / mods-b, "content not installed", the tmp/job-* sweep).
+"""The mod assembly job on processor B in the simulator (mods.apply, job.status, job.cancel;
+the commit into library entry mods-a / mods-b, "content not installed", the tmp/job-* sweep).
 
 B runs native/mod_job from its menu loop over its timed file client; the entry it leaves in
 /yaffs2/xy-forever/tmp/job-<id>/ must equal test_mod_job.py's reference (the one-shot host assembly,
@@ -80,7 +80,7 @@ class Base:
         self.dir = self.work / ('run-%d' % self.runs)
         self.root = self.dir / 'yaffs2'
         shutil.copytree(self.seeded, self.root)
-        if getattr(self, 'settings_text', None):                         # 4.8: settings.txt for this test
+        if getattr(self, 'settings_text', None):                         # settings.txt for this test
             (self.root / 'xy-forever/settings.txt').write_bytes(self.settings_text)
         self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', log=self.dir / 'log.txt').start()
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
@@ -109,7 +109,7 @@ class Base:
         while True:
             f = self.status(job)
             if f['phase'] in (MS.DONE, MS.FAILED, MS.CANCELLED):
-                if served:                                                  # 5.4d2f: the window closed (as --wait)
+                if served:                                                  # the window closed (as --wait)
                     self.assertIn(MS.served(self.dev, out=lambda line: None), (0, ids.S_NOT_FOUND))
                 return f
             self.assertLess(time.monotonic(), deadline, 'job %d did not end: %s' % (job, f))
@@ -168,7 +168,7 @@ class Base:
         f = self.finished(job)
         seconds = time.monotonic() - t
         self.assertEqual((MS.PHASES[f['phase']], MS.ERRORS[f['error']], f['debris']), ('done', 'none', 0), f)
-        self.assertIn(f['detail'], ('mods-a', 'mods-b'), f)                 # 5.4d3a: the library entry
+        self.assertIn(f['detail'], ('mods-a', 'mods-b'), f)                 # the library entry
         self.assertFalse(self.output(job).exists())                         # moved into the library
         got, want = tree(self.entry(f['detail'])), self.reference(machines, exts)
         self.assertEqual(sorted(got), sorted(want))                         # no .part, nothing else
@@ -185,7 +185,7 @@ class Base:
 
     def assert_clean_failure(self, job, f, phase, error):
         self.assertEqual((MS.PHASES[f['phase']], MS.ERRORS[f['error']]), (phase, error), f)
-        self.assertIn(MS.served(self.dev, out=lambda line: None), (0, ids.S_NOT_FOUND))   # 5.4d2f: window closed
+        self.assertIn(MS.served(self.dev, out=lambda line: None), (0, ids.S_NOT_FOUND))   # window closed
         left = tree(self.output(job))
         self.assertNotIn('os.ldr', left)
         self.assertFalse([p for p in left if p.endswith('.part')], left)
@@ -212,7 +212,7 @@ class SyntheticJob(Base, unittest.TestCase):
         cls.seed_with(gen, MP.info_values(gen / 'base/info.txt')['profile'], data, CATALOG, official_text(OFFICIAL))
 
     def test_entries_match_the_reference(self):
-        """5.4d3a: the first build becomes mods-a, the second mods-b (absent), the third replaces mods-a (both
+        """The first build becomes mods-a, the second mods-b (absent), the third replaces mods-a (both
         there, neither the default: the one not written last); the other entry, the default and tmp/ stay."""
         seen = []
         for machines, exts, want in ((['alpha'], [], 'mods-a'), (['alpha', 'beta', 'gamma', 'delta'], [], 'mods-b'),
@@ -255,7 +255,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertGreater(len({p for p, _ in seen}), 2, seen)             # several phases seen
         self.assertEqual([s for _, s in seen], sorted(s for _, s in seen))
         self.assertGreater(seen[-1][1], seen[0][1])
-        self.assertEqual(MS.served(self.dev, out=lambda line: None), 0)     # 5.4d2f: busy until the window closed
+        self.assertEqual(MS.served(self.dev, out=lambda line: None), 0)     # busy until the window closed
         self.assertEqual(self.dev.call(*FILE_COMMAND)[0], 0)              # served again
         self.assertEqual(MS.job_cancel(self.dev, job), (ids.S_STATE, 0))     # it ended
         self.assertEqual(self.status(0)['job'], job)
@@ -272,7 +272,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assemble_and_compare(['alpha'])                                # the next job works
 
     def test_cancel_with_a_large_output_answers_throughout(self):
-        """2.3f (review 024, 6): a cancelled job whose output holds a large tree: the removal runs one step per
+        """Review 024, 6: a cancelled job whose output holds a large tree: the removal runs one step per
         loop pass ("cleaning up", storage commands busy); job.cancel, HELLO and status answer throughout (no
         answer takes a quarter of the removal), and the output is gone at the end."""
         self.sim.set('a_slow_ms', 4)
@@ -332,7 +332,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assert_clean_failure(job, self.finished(job), 'failed', 'open')
 
     def test_up_to_64_machines_parsed(self):
-        """8.4e: the request parser takes 40 and 64 machines (64 ids filling the field's 1023 bytes); a 65th is
+        """The request parser takes 40 and 64 machines (64 ids filling the field's 1023 bytes); a 65th is
         bad_request. Only the packages present decide what follows (here: the first absent one fails the job at
         open, before anything is built); memory is the job's limit, not the count."""
         call = lambda machines: MS.start(self.dev, self.base, self.profile, self.generation, machines, (), NAME, True)   # noqa: E731
@@ -384,7 +384,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
 
     def test_slow_window_close_b_stays_live(self):
-        """5.4d2f: the window close at the job's end takes seconds on the device (yaffs checkpoint). B never
+        """The window close at the job's end takes seconds on the device (yaffs checkpoint). B never
         waits in it: every job.status, a new session's HELLO and diag.status right after done answer at once;
         file commands and mods.apply answer busy until A closed the window, then work (the build 172 freeze
         lead: B answered nothing, not even HELLO, until op 9 returned)."""
@@ -416,7 +416,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.sim.set('unmount_ms', 0)
 
     def test_window_close_past_its_bound_link_and_b_answers(self):
-        """5.4d2f: A never answers the close within its bound (change_ms): B stays live throughout, file
+        """A never answers the close within its bound (change_ms): B stays live throughout, file
         commands answer busy, then link once the bound passed; when A answers late, they work again."""
         self.sim.set('unmount_ms', 60000)
         job = self.start(['alpha'])
@@ -436,7 +436,7 @@ class SyntheticJob(Base, unittest.TestCase):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.1)
 
-    # -- 5.4d3a: the commit into the library, "content not installed", the sweep ---------------------
+    # -- the commit into the library, "content not installed", the sweep ---------------------
     def slot(self, default='opxy-121', once=''):
         """A newer state slot (state-b.txt, seq 2) naming the default and the boot-once entry."""
         body = ('default=%s\n%sseq=2\n' % (default, 'once=%s\n' % once if once else '')).encode()
@@ -487,7 +487,7 @@ class SyntheticJob(Base, unittest.TestCase):
             self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
 
     def test_menu_actions_wait_for_the_job(self):
-        """2.3f (review 024, 7): Continue, Boot once and Set default pressed while a build runs show the busy line
+        """Review 024, 7: Continue, Boot once and Set default pressed while a build runs show the busy line
         and do nothing; the build completes."""
         play, plus, shift = 51, 54, 55
         self.sim.set('a_slow_ms', 4)
@@ -506,7 +506,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertNotIn('menu: continue', (self.dir / 'log.txt').read_text())
 
     def test_default_set_before_the_commit_keeps_the_entry(self):
-        """2.3f (review 024, 4): the target (mods-b) becomes the default while the build runs: the commit
+        """Review 024, 4: the target (mods-b) becomes the default while the build runs: the commit
         re-reads the state slots and fails cleanly; mods-b, the default, stays as it was."""
         self.two_entries(['alpha'])
         old = tree(self.entry('mods-b'))
@@ -523,7 +523,7 @@ class SyntheticJob(Base, unittest.TestCase):
 
     def test_content_not_installed_is_refused(self):
         """The new entry is listed (its name, content not installed) but library.boot refuses it with no_content
-        (4.6c1: set default installs its content first: test_sim_content_switch.py); the state slots and the
+        (set default installs its content first: test_sim_content_switch.py); the state slots and the
         default stay, B stays home."""
         self.assemble_and_compare(['alpha'])
         slots = tree(self.root / 'xy-forever')
@@ -647,7 +647,7 @@ class SyntheticJob(Base, unittest.TestCase):
         print('\nsweep cap: %d of 700 files left; job %d steps' % (left, f['steps']), file=sys.stderr)
 
     def test_sweep_never_follows_a_link(self):
-        """2.3f (review 024, note 5): a symlink inside a leftover tmp/job-* folder (to a folder outside tmp/) is
+        """Review 024, note 5: a symlink inside a leftover tmp/job-* folder (to a folder outside tmp/) is
         removed itself; the sweep never descends through it."""
         outside = self.root / 'user/keep'
         outside.mkdir(parents=True)
@@ -672,13 +672,13 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn('job 1 started', out)
         self.assertIn('done 7/7', out)
-        self.assertIn('library entry mods-a', out)                          # 5.4d3a: the entry id printed
+        self.assertIn('library entry mods-a', out)                          # the entry id printed
         self.assertTrue((self.entry('mods-a') / 'os.ldr').is_file())
         code, out = cli('apply', '--base', self.base, '--generation', self.generation, '--profile', self.profile,
                         'alpha', '--wait')                                  # not confirmed: the base is unknown
         self.assertEqual(code, 1, out)
         self.assertIn('failed', out)
-        self.assertIn('(base 18 base)', out)                                # 5.4d3a: error base, code unverified
+        self.assertIn('(base 18 base)', out)                                # error base, code unverified
         code, out = cli('cancel')
         self.assertEqual(code, ids.S_STATE, out)
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
@@ -716,7 +716,7 @@ class PublishedJob(Base, unittest.TestCase):
 
 
 class Served(unittest.TestCase):
-    """5.4d2f: mods apply --wait ends once file commands are served again (busy while B closes the window)."""
+    """mods apply --wait ends once file commands are served again (busy while B closes the window)."""
     def run_served(self, codes):
         class Dev:
             def list_page(self, path):

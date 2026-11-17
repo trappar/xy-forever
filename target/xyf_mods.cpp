@@ -56,7 +56,7 @@ bool token(const char* t, bool dot) {           // mods.apply's job_token: 1-31 
 // Keys of a key=value text into a small record.
 struct Fields {
     uint32_t values[9]; bool have[9];
-    const char* const* names; uint32_t count, hex;  // hex: bit i, names[i] is "0x" hex (4.8m2: the base's addresses)
+    const char* const* names; uint32_t count, hex;  // hex: bit i, names[i] is "0x" hex (the base's addresses)
     char a[32], b[32];                          // two text fields (base: profile, generation; package: name, machine)
     char list[128];                             // services=
     const char *a_key, *b_key;
@@ -81,7 +81,7 @@ bool before(const Package& a, const Package& b) {   // machines by order, then e
     if (ea != eb) return eb;
     return a.order < b.order;
 }
-// 8.4d: the display order: kind (Kind order: synths, drums, samplers, effects, players, extensions), then name
+// The display order: kind (Kind order: synths, drums, samplers, effects, players, extensions), then name
 // ignoring case, then folder.
 char lower(char c) { return c >= 'A' && c <= 'Z' ? char(c + ('a' - 'A')) : c; }
 int compare_text(const char* a, const char* b, bool fold) {
@@ -96,7 +96,7 @@ bool sooner(const Page& p, const Package& a, const Package& b) {
 }
 // list = the sorted rows the filter shows. fresh: filter_on takes what is on now; else it keeps what it listed
 // (a row turned off stays until the filter changes).
-// 8.6: the selection stays on its package while listed; on the first row (or none, or unlisted): the first row.
+// The selection stays on its package while listed; on the first row (or none, or unlisted): the first row.
 void relist(Page& p, bool fresh) {
     const bool top = !p.listed || p.selected == p.list[0];
     uint32_t n = 0;
@@ -110,7 +110,7 @@ void relist(Page& p, bool fresh) {
     p.listed = n;
     if (top || p.selected >= p.count || !(p.packages[p.selected].flags & flag_listed)) p.selected = n ? p.list[0] : no_row;
 }
-// A toggle: the last result line no longer applies (8.6: nor a note: the line shows the status again).
+// A toggle: the last result line no longer applies (nor a note: the line shows the status again).
 void toggled(Page& p) { if (p.view == View::list) p.line = line_none; }
 }
 
@@ -188,14 +188,14 @@ void say(Page& p, Line line, const char* a, const char* b, const char* c) {
 }
 
 Effect key(Page& p, uint32_t k, bool pressed) {
-    const bool turn = (k & key_turn) != 0;      // 8.6: a knob turn's row (key_ui turn_knobs)
-    k = as_play(k & ~key_turn);                 // 8.2: a knob push is PLAY
+    const bool turn = (k & key_turn) != 0;      // a knob turn's row (key_ui turn_knobs)
+    k = as_play(k & ~key_turn);                 // a knob push is PLAY
     if (k == key_shift) { p.shift = pressed; return effect_none; }
     if (!pressed) return effect_none;
     if (p.view == View::building) {             // only STOP acts: cancel (the job's own cleanup runs)
         if (k != key_stop || p.request == request_cancel) return effect_none;
-        if (p.job_commit || p.save_stage) {     // 5.4e2: the library commit cannot be cancelled: said once (8.4a:
-                                                // nor installing content or saving)
+        if (p.job_commit || p.save_stage) {     // the library commit cannot be cancelled: said once (and
+                                                // neither can installing content or saving)
             if (p.line == line_info) return effect_none;
             refuse_cancel(p);
             return effect_redraw;
@@ -205,24 +205,24 @@ Effect key(Page& p, uint32_t k, bool pressed) {
     }
     if (k == key_stop) {
         if (!p.shift) return effect_leave;
-        p.unknown_ok = !p.unknown_ok;           // 8.4a: unknown bases (8.6: SHIFT+STOP; was the status row)
+        p.unknown_ok = !p.unknown_ok;           // unknown bases (SHIFT+STOP; was the status row)
         say(p, line_info, p.unknown_ok ? "Unknown mod bases allowed for the next save." : "Unknown mod bases refused.");
         return effect_redraw;
     }
     if (k == key_minus || k == key_plus) {
-        if (turn && p.shift) {                  // 8.6: SHIFT + turn: the filter, one step per click
+        if (turn && p.shift) {                  // SHIFT + turn: the filter, one step per click
             set_filter(p, next_filter(p, p.filter, k == key_minus));
             return effect_redraw;
         }
         if (!p.listed) return effect_none;
         const uint32_t at = position(p), last = p.listed - 1;
-        const uint32_t next = p.shift && !turn ? (k == key_plus ? last : 0) :     // 8.6: SHIFT + - / +: first / last
+        const uint32_t next = p.shift && !turn ? (k == key_plus ? last : 0) :     // SHIFT + - / +: first / last
                               k == key_plus ? (at == last ? 0 : at + 1) : (at == 0 ? last : at - 1);
         p.selected = p.list[next];
         return effect_redraw;
     }
     if (k != key_play) return effect_none;
-    if (p.shift) {                              // 8.6 (8.4d's all row): every listed row on, or (all on) off: pending only
+    if (p.shift) {                              // every listed row on, or (all on) off: pending only
         if (!p.listed) return effect_none;
         const bool on = !all_on(p);
         for (uint32_t r = 0; r != p.listed; ++r) {
@@ -265,7 +265,7 @@ bool parse_base(Page& p, const char* text, uint32_t length) {
     for (uint32_t i = 0; i != 7; ++i) if (!f.have[i]) return false;
     if (!f.values[0] || !token(f.a, true) || !token(f.b, true)) return false;
     p.limit = f.values[0];
-    // 4.8m2: the 4 MiB layout's region (the assembler's mod_patch::layout checks the layout itself)
+    // The 4 MiB layout's region (the assembler's mod_patch::layout checks the layout itself)
     const uint32_t x = f.values[8], below = f.values[7] - x;
     p.expanded_limit = f.have[7] && f.have[8] && x && x < f.values[7] && below <= 0x10000000u ? p.limit + below : 0u;
     p.base_bytes = f.values[1] + f.values[2] + f.values[3] + f.values[4] + f.values[5] + f.values[6];
@@ -364,7 +364,7 @@ bool parse_package(Page& p, uint32_t index, const char* text, uint32_t length) {
     uint32_t r = p.shown;                       // insert in build order
     while (r && before(m, p.packages[p.rows[r - 1]])) { p.rows[r] = p.rows[r - 1]; --r; }
     p.rows[r] = uint8_t(index);
-    r = p.shown;                                // 8.4d: and in the display order (one insertion: bounded per read)
+    r = p.shown;                                // and in the display order (one insertion: bounded per read)
     while (r && sooner(p, m, p.packages[p.sorted[r - 1]])) { p.sorted[r] = p.sorted[r - 1]; --r; }
     p.sorted[r] = uint8_t(index);
     ++p.shown;
@@ -507,7 +507,7 @@ void start_refused(Page& p, uint32_t status, uint32_t missing) {
 }
 
 void job_ended(Page& p, uint32_t phase, uint32_t error, uint32_t status, uint32_t debris) {
-    if (phase == uint32_t(mj::Phase::done)) {   // 5.4d3a: committed; an assembled set is never installed
+    if (phase == uint32_t(mj::Phase::done)) {   // committed; an assembled set is never installed
         say(p, line_done, "Built: ", p.job_name, " is in the Firmware library (content not installed yet).");
         return;
     }
@@ -546,7 +546,7 @@ void job_ended(Page& p, uint32_t phase, uint32_t error, uint32_t status, uint32_
     say(p, line_error, "Build failed: ", line, ".");
 }
 
-// 8.2: the stages' shares of the bar and typical device times: the simulator's stage times of real one- and
+// The stages' shares of the bar and typical device times: the simulator's stage times of real one- and
 // seven-mod builds (the published set; tests/test_sim_mods_page.py PublishedPage prints them), averaged as
 // shares and scaled to the device's 9 s and 12 s; the near-instant stages (start, content, finish, commit)
 // get a small floor so the bar visibly passes them.
@@ -568,11 +568,11 @@ uint32_t progress(Page& p, uint32_t ms) {
     if (building) {
         for (uint32_t i = 0; i != stage; ++i) base += shares[i];
         share = shares[stage]; typical_ms = times[stage];
-        if (p.save) {                           // 8.4a: the build's part of a save's bar
+        if (p.save) {                           // the build's part of a save's bar
             const uint32_t span = p.save & save_build ? save_build_part : 0u;
             base = ui::scale(span, base, bar_full); share = ui::scale(span, share, bar_full);
         }
-    } else {                                    // 8.4a: installing content (files), then saving
+    } else {                                    // installing content (files), then saving
         const uint32_t from = p.save & save_build ? save_build_part : 0u;
         const uint32_t mid = p.save & save_build ? save_content_end : save_content_only;
         base = p.save_stage == 1 ? from : mid;

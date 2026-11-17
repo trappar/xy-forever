@@ -1,4 +1,4 @@
-# 007: Stock code inventory (plan item 0.3)
+# 007: Stock code inventory
 
 Research record, 2026-11-14; no device, no build. Call targets taken with the builder's own `call_targets()` from build 153's `module.asm`: **74 stock entry points** (the union of the `*_CALLS` groups plus `STATE_WRITE_ENTRY` `889fbb0c`; `889f9982` and `040201c4` are allowed but not called). **[C]** read from our code, **[L]** from the 1.2.1 listing (`re/bootloader.py`, `re/reach.py`), **[I]** inferred, **[U]** not verified.
 
@@ -36,11 +36,11 @@ Research record, 2026-11-14; no device, no build. Call targets taken with the bu
 
 ## 4. Ranked crossings (most dangerous first)
 
-1. **B waits on A with no bound** (17 entries above). If A stalls (media retry, fault, restart), B freezes with USB up and needs a power cycle; the guard is disarmed during `file_write` and `mtp-test` [C `usb_service.cpp` 502, 654] and set to its maximum during INSTALL (690). Fix: **M2 (2.1/2.2)**: B's file path uses only bounded submit+poll; delete `CLIENT_CALLS`, `FILE_WRITE_CALLS`, `MTP_TEST_CALLS`. Install: new research item (before 4.3d): run `88a06a7e` on A, or keep it on B with A-side progress reports and a bound.
+1. **B waits on A with no bound** (17 entries above). If A stalls (media retry, fault, restart), B freezes with USB up and needs a power cycle; the guard is disarmed during `file_write` and `mtp-test` [C `usb_service.cpp` 502, 654] and set to its maximum during INSTALL (690). Fix: **M2**: B's file path uses only bounded submit+poll; delete `CLIENT_CALLS`, `FILE_WRITE_CALLS`, `MTP_TEST_CALLS`. Install: new research item (before #14): run `88a06a7e` on A, or keep it on B with A-side progress reports and a bound.
 2. **Link composition** (b)(d)(e): our port of the stock SPI open, the pending-slot takeover and stock ISRs doing the protocol; past faults lived here (069 dispatch, 146 request/body split). Fix: keep + wrap now (single submitter: B's main loop; invariants in `test_peer_dispatch`); new item after M2: decide on owning the link if faults persist.
-3. **002's kick** (`88a094aa`, `88a0ba08` from the main loop, USB IRQ masked): crosses (a): it runs interrupt-path stack routines outside the ISR, and `88a0ba08` calls our `recv_urb` there. Alternative [I]: keep the stack's single bulk-OUT urb held so its ISR never touches that FIFO (002: returns when `[ep+0xc]==0`) and read RxCount/FIFO/clear RxPktRdy ourselves (~60 lines, per-endpoint MUSB registers). **M3 3.2:** probe both; prefer our own read.
-4. **yaffs media retry forever** (`88a345f4`): cannot be wrapped from outside; item 1 makes B notice; keep A's guard armed for long jobs (**M2 2.1**).
-5. **A's slave ISR and the stock allocator** [U]: check run-time allocation in **2.1**.
+3. **002's kick** (`88a094aa`, `88a0ba08` from the main loop, USB IRQ masked): crosses (a): it runs interrupt-path stack routines outside the ISR, and `88a0ba08` calls our `recv_urb` there. Alternative [I]: keep the stack's single bulk-OUT urb held so its ISR never touches that FIFO (002: returns when `[ep+0xc]==0`) and read RxCount/FIFO/clear RxPktRdy ourselves (~60 lines, per-endpoint MUSB registers). **M3 (#9):** probe both; prefer our own read.
+4. **yaffs media retry forever** (`88a345f4`): cannot be wrapped from outside; item 1 makes B notice; keep A's guard armed for long jobs (**M2**).
+5. **A's slave ISR and the stock allocator** [U]: check run-time allocation in **the file engine (009)**.
 6. **PSoC poll** (a, mild) and the small (b) patches (log sinks, `smc_dma_active`, CDC callback): keep; the INSTALL log hook goes if item 1 moves the writer.
 
 ## 5. Open questions

@@ -1,8 +1,8 @@
-"""4.8m2 in the simulator: Mod memory, the Settings page's one row. Part of the saved configuration (config.txt
+"""Mod memory in the simulator: the Settings page's one row. Part of the saved configuration (config.txt
 memory=), pending until boot like the Mods page's toggles: PLAY flips it, Continue asks Save / Discard / Back, Save
 rebuilds Open-XY in the 4 MiB layout (mods.apply flag bit 1); a power-on keeps the mode; no change, no rebuild; back
 to Standard with a selection over 2032 KiB: Save refused with the limit text. The published 0.0.6 set (its base
-has expanded_module_base); the synthetic set (none, as a set from before 4.8m1): the row unavailable, PLAY changes
+has expanded_module_base); the synthetic set (none, as a set from before the 4 MiB option): the row unavailable, PLAY changes
 nothing. Driven by injected keys (tests/test_sim_config.py's helpers). Needs clang++ and the private stock 1.2.1
 images (skipped without them). No device access."""
 from pathlib import Path
@@ -110,7 +110,7 @@ class PublishedMemory(Memory, unittest.TestCase):
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class OldPackagesMemory(Memory, unittest.TestCase):
-    """The synthetic set: its base has no expanded_module_base (a set written before 4.8m1)."""
+    """The synthetic set: its base has no expanded_module_base (a set written before the 4 MiB option)."""
     base = 'modbase'
     unverified = True
 

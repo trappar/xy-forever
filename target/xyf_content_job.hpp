@@ -3,7 +3,7 @@
 #include "xyf_content.hpp"
 #include "xyf_store.hpp"
 #include "../native/hash.hpp"
-// 4.6c1: the content switch (docs/STORAGE.md "Content state"), run by processor B as a job: makes
+// The content switch (docs/STORAGE.md "Content state"), run by processor B as a job: makes
 // /yaffs2/content/ match a target library entry. step() sends at most one file request per call (B's menu
 // loop calls it in slices; usb_service.cpp's ContentIo is one bounded file-client request per call). Io:
 //   int open(const char* path, bool write)       fd >= 0; -2 no such file; else -1 (write: create/truncate)
@@ -22,7 +22,7 @@
 // before the first write. Then: from the official state, that list and the catalog saved under
 // content-official/ (unless the same copies are there); the record "switching" (its files: the target's and
 // the previous ones); the previous files the target does not carry removed (and folders left empty); the
-// target's files copied (.part, read back, renamed over) unless the live file is the target's already (8.8:
+// target's files copied (.part, read back, renamed over) unless the live file is the target's already (see
 // "by difference", below); the catalog last (a stock target: the saved official one); the record for the
 // target (installed: each file= line carries the SHA-256 it was written with).
 // By difference: a target file is skipped without a read when the record is trusted (state=installed, read
@@ -59,7 +59,7 @@ struct Job {
     bool record_on_disk;                                 // the record file exists (store renames it to .old)
     bool sorted, trusted;                                // the record's file= lines sorted; trusted (above)
     uint32_t stage, leg, sub, error, code, done, total, steps, peak;
-    uint32_t compared, read, written, removed, bytes;    // 8.8 timing log: target files compared, live files read,
+    uint32_t compared, read, written, removed, bytes;    // timing log: target files compared, live files read,
                                                          // files written (catalog too), removed; bytes written
     char detail[32];
     State state;                                         // the record's head as the job found it
@@ -529,7 +529,7 @@ template <class Io> static uint32_t step(Job& j, Io& io) {
         if (j.index == j.list_count) { j.stage = st_catalog; j.leg = 0; note(j, catalog); break; }
         const Ref& f = j.list_refs[j.index];
         const uint8_t* rel = j.list.data + f.path;
-        if (j.leg == 0) {                                // 8.8: the trusted record's SHA-256 is the target's?
+        if (j.leg == 0) {                                // the trusted record's SHA-256 is the target's?
             ++j.compared;
             j.leg = 1;
             if (j.trusted) {

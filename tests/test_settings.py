@@ -1,6 +1,6 @@
-"""4.8: the settings record (/yaffs2/xy-forever/settings.txt) and the confirm gate, target/xyf_settings.hpp, on the
+"""The settings record (/yaffs2/xy-forever/settings.txt) and the confirm gate, target/xyf_settings.hpp, on the
 host: defaults when absent (confirm on), exact values, round trip, a record with the old knob= key, the page row
-(Mod memory, 4.8m2) and its texts, and the gate (only
+(Mod memory) and its texts, and the gate (only
 a real PLAY / STOP answers; injected keys and releases are ignored; 30 s bound, wrap-safe)."""
 from pathlib import Path
 import subprocess

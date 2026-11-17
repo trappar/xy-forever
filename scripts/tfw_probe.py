@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OTP probe (plan 4.3e): the first read of the OP-XY's one-time-programmable memory (OTP) by XY
+"""OTP probe (#15): the first read of the OP-XY's one-time-programmable memory (OTP) by XY
 Forever's own code. RISKY STEP: run it only with the developer present, on a build with tfw.check
 (157 or later), after the device pass.
 

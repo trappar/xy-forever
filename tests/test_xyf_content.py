@@ -1,4 +1,4 @@
-"""The content switch (plan 4.6c1): the path rule, the record's head and the job over an in-memory file system,
+"""The content switch: the path rule, the record's head and the job over an in-memory file system,
 with a fault, a power cut and A going silent at every request (target/xyf_content_test.cpp)."""
 from pathlib import Path
 import subprocess

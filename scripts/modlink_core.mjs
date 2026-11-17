@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Reference for the native mod linker (xy_forever/modlink.py, plan 5.4b): runs open-xy's own
+// Reference for the native mod linker (xy_forever/modlink.py): runs open-xy's own
 // builder/core.mjs (unmodified) linkKit on each job's kit and prints everything the native linker
 // must reproduce: module digest, globals, aliases, numbers, objects, services, extensions, sizes,
 // or core.mjs's error text. open: "full" = openKit (the reviewed profile only); "light" = what

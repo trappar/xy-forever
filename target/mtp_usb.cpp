@@ -1,4 +1,4 @@
-// Plan 3.2 / 3.4 T2a: our composite function driver (mtp_usb.hpp): CDC serial + MTP. Interrupt side: the four
+// Our composite function driver (mtp_usb.hpp): CDC serial + MTP. Interrupt side: the four
 // stock callbacks only push urbs and counters into single-producer rings (serial OUT: bytes into a RAM
 // ring). Main-loop side: pump(), bounded per pass; serial_read / serial_write.
 #include "mtp_usb.hpp"
@@ -23,7 +23,7 @@ const Ops kOps = {on_event, on_urb_sent, on_recv_urb, on_recv_setup};
 // engineering's pair, reused; revisit before a public release; xyf_build.py
 // MTP_USB_IDS). Builds 186 to 189-001 used pid.codes' test pair 1209:0001. The device class 0xEF (below)
 // tells the composite from the stock OS's MTP and the stock serial fallback on the same pair.
-// T2a: class EF/02/01 (miscellaneous, IAD): Windows and Linux bind the CDC pair through the IAD.
+// Class EF/02/01 (miscellaneous, IAD): Windows and Linux bind the CDC pair through the IAD.
 const DevInfo kDevInfo = {0xef, 2, 1, 0, 0x2367u, 0x0021u, kMaker, kProduct, kSerial};
 // dir: 0x80 for IN, as the stock MTP records (driver 88a12534); the stack ORs it into bEndpointAddress
 // (88a0a758..60), review 029 finding 4.
@@ -31,7 +31,7 @@ const EpDesc kEps[3] = {{uint8_t(kBulkIn), 2, uint16_t(kMaxPacket), 0, 0x80, 0},
                         {uint8_t(kBulkOut), 2, uint16_t(kMaxPacket), 0, 0, 0},
                         {uint8_t(kIntIn), 3, 64, 6, 0x80, 0}};
 const AltDesc kAlt = {kIface, 0, 0, 0, 3, kEps};
-// T2a CDC (record 031 b2): notify as the stock CDC's (0x88a134bc: 0x81, interrupt, 16 bytes, interval 0x10);
+// CDC (record 031 b2): notify as the stock CDC's (0x88a134bc: 0x81, interrupt, 16 bytes, interval 0x10);
 // data on 0x08 / 0x8b, 512 (endpoint numbers 1, 3, 8, 9, 10, 11 in all: one FIFO per number, 5 and 6 avoided).
 const EpDesc kNotifyEp[1] = {{uint8_t(kNotifyIn), 3, 16, 0x10, 0x80, 0}};
 const EpDesc kDataEps[2] = {{uint8_t(kSerialOut), 2, uint16_t(kMaxPacket), 0, 0, 0},
@@ -67,7 +67,7 @@ volatile uintptr_t g_dev = 0;
 // OUT (no SET_CONFIGURATION follows a resume; review 029 finding 3). setup_seen: SET_ADDRESS (5), a
 // configuration or a class request reached the driver (standard requests stay in the stack, record 002).
 volatile bool configured_bus = false, suspended = false, setup_seen = false;
-// T2a serial. OUT: the interrupt copies each received urb into the ring (head: interrupt, or main under mask)
+// The serial. OUT: the interrupt copies each received urb into the ring (head: interrupt, or main under mask)
 // and lets the stack re-queue it (return 1, as the stock CDC); with no room, or while any urb is held, it
 // holds the urb (return 0) in held[], in order: pump() copies it once there is room and recycles it (the
 // host meanwhile gets NAKs: flow control). IN: one urb in flight, recognised by its pointer in urb_sent.
@@ -111,7 +111,7 @@ const uint8_t* src_data = 0;
 uint32_t src_len = 0, src_off = 0, in_inflight_seen = 0;
 bool in_inflight = false;
 uint32_t resp_code = 0, resp_param[2] = {}, resp_nparam = 0;
-// T2b: the handler (usb_service's responder). rx_off: bytes of the ring's head urb already delivered; h_left:
+// The handler (usb_service's responder). rx_off: bytes of the ring's head urb already delivered; h_left:
 // bytes left of the IN container being sent (0: the next one starts).
 const Handler* g_handler = 0;
 uint32_t rx_off = 0, h_left = 0;
@@ -172,7 +172,7 @@ int on_recv_setup(Urb* ep0) {
     setup_seen = true;
     const uint8_t* s = ep0->setup;
     if ((s[0] & 0x60) != 0x20) return 1;                       // class requests only
-    if (s[4] == kIfaceComm) switch (s[1]) {                    // T2a: CDC ACM by interface (wIndex)
+    if (s[4] == kIfaceComm) switch (s[1]) {                    // CDC ACM by interface (wIndex)
     case 0x20: copy(line_coding, ep0->buf, 7); ++g_stats.line_codings; ep0->wanted = 0; return 0;   // data stage in
     case 0x21: copy(ep0->buf, line_coding, 7); ep0->wanted = 7; return 0;
     case 0x22: g_stats.control_lines = get16(s + 2); ep0->wanted = 0; return 0;
@@ -208,7 +208,7 @@ void free_ours() {                       // urbs pump() still holds (taken from 
     in_inflight = false; src = Src::none;
     phase = Phase::command;
     rx_off = h_left = 0;
-    if (g_handler) g_handler->cancel(true);            // T2b: the transfer is gone with the configuration
+    if (g_handler) g_handler->cancel(true);            // the transfer is gone with the configuration
 }
 void requeue(Urb* urb) {                 // record 002 section 2: recycle (append to the stack's queue)
     const uint32_t m = g_port->mask();
@@ -242,7 +242,7 @@ void configure() {
         out_urbs[n_out++] = u;
         requeue(u);
     }
-    for (uint32_t i = 0; i != kSerialOutUrbs; ++i) {            // T2a: the serial's bulk OUT
+    for (uint32_t i = 0; i != kSerialOutUrbs; ++i) {            // the serial's bulk OUT
         const uint32_t mm = g_port->mask();
         Urb* u = g_port->alloc(dev, kSerialOut, kSerialOutSize);
         g_port->unmask(mm);
@@ -349,7 +349,7 @@ bool received(Urb* u) {
     if (!g_handler) { if (len && phase == Phase::command) command(u->buf, len); return true; }  // a ZLP: ignored
     if (!len) return true;                                        // a ZLP after a 512-multiple data phase
     if (!rx_off && phase == Phase::command && src == Src::none && g_handler->idle() && test_command(u->buf, len)) {
-        command(u->buf, len);                                     // T2a's test operations (the sink)
+        command(u->buf, len);                                     // the driver's test operations (the sink)
         return true;
     }
     if (!rx_off && g_handler->idle() && len >= 12 && get16(u->buf + 4) == 1) {   // a command: the MTP mark
@@ -365,7 +365,7 @@ bool received(Urb* u) {
     rx_off = 0;
     return true;
 }
-// T2b: the handler's next IN piece: whole packets, or the rest of the container (ZLP when it is a multiple of 512).
+// The handler's next IN piece: whole packets, or the rest of the container (ZLP when it is a multiple of 512).
 void handler_in() {
     const uint32_t pending = g_handler->pending();
     if (!pending) return;
@@ -448,7 +448,7 @@ bool begin(const Port& port) {
     if (port.register_driver(&g_driver)) { g_port = 0; mark(mark_register_refused); return false; }
     mark(mark_registered);
     mark(mark_before_start);
-    port.start(kCompositeFlags);          // T2a: the boot's only start (its own teardown finds nothing running)
+    port.start(kCompositeFlags);          // the boot's only start (its own teardown finds nothing running)
     g_state = State::started;
     mark(mark_after_start);
     return true;
@@ -499,7 +499,7 @@ uint32_t pump() {
         const bool reset = reset_flag;
         if (reset_flag) { ++g_stats.resets; g_session_open = false; } else ++g_stats.cancels;
         reset_flag = cancel_flag = false; src = Src::none; phase = Phase::command;
-        if (g_handler) {                                          // T2b: what the ring holds belongs to the old transfer
+        if (g_handler) {                                          // what the ring holds belongs to the old transfer
             g_handler->cancel(reset);
             if (g_state == State::configured)
                 while (ring_tail != ring_head) { Urb* u = ring[ring_tail % kRing]; ring_tail = ring_tail + 1; requeue(u); }
@@ -519,7 +519,7 @@ uint32_t pump() {
         }
         return 0;
     }
-    for (;;) {                                                     // T2a: held serial urbs, in order, as room frees
+    for (;;) {                                                     // held serial urbs, in order, as room frees
         const uint32_t m = g_port->mask();
         if (held_tail == held_head || serial_room() < held[held_tail % kHeld]->done) { g_port->unmask(m); break; }
         Urb* u = held[held_tail % kHeld];
@@ -531,7 +531,7 @@ uint32_t pump() {
     uint32_t urbs = 0, bytes = 0;
     while (urbs != kOutUrbs && ring_tail != ring_head) {
         Urb* u = ring[ring_tail % kRing];
-        if (!received(u)) break;                                   // T2b: held for the handler
+        if (!received(u)) break;                                   // held for the handler
         bytes += u->done;
         ring_tail = ring_tail + 1;
         ++urbs; ++g_stats.urbs_received;

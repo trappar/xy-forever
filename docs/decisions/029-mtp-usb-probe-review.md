@@ -1,4 +1,4 @@
-# 029: Review of the MTP USB probe build (plan 3.4)
+# 029: Review of the MTP USB probe build
 **Verdict: GO WITH CONDITIONS.** No path writes flash, storage, the boot partition, OTP or a companion, or resets B. Worst case:
 a freeze, or a live menu with USB dead; a power cycle clears either. Conditions: `scripts/mtp_usb_probe.py --window 60`
 (finding 5), one run, stop at the first unexpected result. Checked against `linear121.ann.asm` and the linked image

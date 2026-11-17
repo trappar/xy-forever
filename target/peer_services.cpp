@@ -410,7 +410,7 @@ void Stock121PeerSession::observe(U32 now) {
     if((first[0]&0xffu)==10u){
         last_argument_=first[1];
         if((first[1]>>16)==command_tag){++commands_seen_;last_command_=first[1];}
-        else if(first[1]==handshake_value&&staged_&&commands_seen_&&!peer_restart_){peer_restart_=true;peer_ms_=now;}   // 0.9b F1
+        else if(first[1]==handshake_value&&staged_&&commands_seen_&&!peer_restart_){peer_restart_=true;peer_ms_=now;}   // record 016 F1
     }
 }
 Result Stock121PeerSession::command(U32 value) {
@@ -491,7 +491,7 @@ Result Stock121PeerSession::poll(U32 now) {
         // the next poll, not bypass command/RPC handling into image transfer.
         const U32 queued=word(primary_+4);
         if(diagnostic_.after.protocol_state==1)diagnostic_.link_initialized=1;
-        // Plan 0.9b F1 (record 016): b restarted alone. Never answer its bootloader: hold its first boot
+        // Record 016 F1: b restarted alone. Never answer its bootloader: hold its first boot
         // request unanswered (a's bootloader answers it after a restarts) and serve nothing else.
         if(staged_&&!agreed_&&!pending_&&queued&&request_pool_slot(driver_,queued)&&
            !*reinterpret_cast<volatile unsigned short*>(queued+0x1c)&&
@@ -611,7 +611,7 @@ Result Stock121PeerSession::poll(U32 now) {
             }
             else {
                 ++diagnostic_.responses;
-                if(filing_){filing_=false;return Result::waiting;}            // 2.2b: the file client reads it
+                if(filing_){filing_=false;return Result::waiting;}            // the file client reads it
                 const xyf_core::peer::Phase phase=client_.phase();
                 if(asking_){
                     asking_=false;

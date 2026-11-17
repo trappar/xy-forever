@@ -1,6 +1,6 @@
 // Web Serial transport (Chrome, Edge, Opera on the desktop; decision 013). Runs in Chrome against
-// the simulator through a fake navigator.serial (test/browser/); not yet against an OP-XY (plan
-// 6.2d). Typed with the few parts of the Web Serial API it uses, so it needs no extra type package.
+// the simulator through a fake navigator.serial (test/browser/); not yet against an OP-XY.
+// Typed with the few parts of the Web Serial API it uses, so it needs no extra type package.
 import type { Opener, Transport, TransportSink } from './transport.ts';
 import { USB_FILTERS } from './v1.ts';
 
@@ -110,7 +110,7 @@ export class WebSerialTransport implements Transport {
 /**
  * Opens the first granted XY Forever port each time it is called (after a restart the port comes
  * back as a new port object, without the chooser only if the device has a USB serial number:
- * unverified, plan 6.2d). Call requestPort() from a click first.
+ * unverified). Call requestPort() from a click first.
  */
 export function webSerialOpener(options: { baudRate?: number; bufferSize?: number } = {}): Opener {
   return async () => {

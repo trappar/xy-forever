@@ -243,7 +243,7 @@ Errors: `state`, `crc`, `sha`. Tool timeout: 10 s. Since 1.0.
 
 ### 0x13 `file.write_staged`
 
-Write the staged image to a file under /yaffs2/ (the write area). Creates or replaces the file, reads it back and compares its CRC-32 (`crc` on a difference). A path the device's write check rejects is `refused` (1.0: `bad_request`): since 1.13 the write area is all of `/yaffs2/` except the dev-menu marker `/yaffs2/bootloader.dev` and the stock updater's inbox `/yaffs2/upgrade` (and anything inside it), both any ASCII case and also when reached through a link; also a path with an empty, `.` or `..` part, or, since build 155, a control byte. Before 1.13 the area was `/yaffs2/xy-forever/` and (1.7) `/yaffs2/content/`, no name holding `bootloader`; a request whose length does not match its path is `bad_request`. Needs a complete staging (`state` otherwise). The host tool restarts the device (`device.reboot`) and stages again before each write, the tested path; a second write in the same boot is untested. The host waits 60 s plus 1 s per 20000 bytes. To be replaced by streaming file commands (plan item 2.4).
+Write the staged image to a file under /yaffs2/ (the write area). Creates or replaces the file, reads it back and compares its CRC-32 (`crc` on a difference). A path the device's write check rejects is `refused` (1.0: `bad_request`): since 1.13 the write area is all of `/yaffs2/` except the dev-menu marker `/yaffs2/bootloader.dev` and the stock updater's inbox `/yaffs2/upgrade` (and anything inside it), both any ASCII case and also when reached through a link; also a path with an empty, `.` or `..` part, or, since build 155, a control byte. Before 1.13 the area was `/yaffs2/xy-forever/` and (1.7) `/yaffs2/content/`, no name holding `bootloader`; a request whose length does not match its path is `bad_request`. Needs a complete staging (`state` otherwise). The host tool restarts the device (`device.reboot`) and stages again before each write, the tested path; a second write in the same boot is untested. The host waits 60 s plus 1 s per 20000 bytes. To be replaced by streaming file commands.
 
 | Request field (42 to 272 bytes) | Type | Meaning |
 |---|---|---|
@@ -587,4 +587,4 @@ Types 0x05, 0x07, 0x33, 0x34, 0x42, 0x60 are internal test commands, described o
 
 ## Reserved for later versions
 
-Numbers decision 004 assigns for later items. Not answered by any build yet: nothing here exists on the wire. Types 0x60..0x7f: new developer commands (0x60 is a test command today). Types 0xd0..0xdf: events, seq 0 (0xD0 is log today; progress 0xD1 with item 4.3d).
+Numbers decision 004 assigns for later items. Not answered by any build yet: nothing here exists on the wire. Types 0x60..0x7f: new developer commands (0x60 is a test command today). Types 0xd0..0xdf: events, seq 0 (0xD0 is log today; progress 0xD1 with #14).

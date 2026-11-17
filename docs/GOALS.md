@@ -147,7 +147,7 @@ do not continue them.
 **Stock code is a driver layer, nothing more.** The stock 1.2.1 bootloader's hardware drivers stay in use
 (storage, USB controller, link, screen, keys), each checksum-verified before use. Hard rule from 007:
 processor B never waits on processor A without a time limit. We call them as plain functions from our own
-loops. We do not run stock features, drive stock state machines, or patch stock state. Item 0.3 lists what
+loops. We do not run stock features, drive stock state machines, or patch stock state. Decision 007 lists what
 crosses that line today.
 
 ## Biggest unknowns
@@ -197,7 +197,7 @@ crosses that line today.
   (memory peek, key injection, hang test) stay in every build but are left out of the
   published documentation.
 - **Destructive host commands:** whether they also need a key press on the OP-XY is a
-  setting, changeable only on the device (PLAN 4.8). Web app (013): the confirmation is on
+  setting, changeable only on the device (#21). Web app (013): the confirmation is on
   by default (a test device may turn it off so tests run unattended); Chrome only.
 - **Mods:** on the device you choose which mods are active and XY Forever sets up the
   firmware for that choice; inactive mods are not loaded and use no memory, so no

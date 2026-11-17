@@ -8,7 +8,7 @@ uint32_t step(uint32_t value, uint32_t count, bool forward) {
     return value == 0 ? count - 1 : value - 1;
 }
 uint32_t library_count(const State& s) { return s.catalog ? s.catalog->count : 0; }
-// 8.4a: the library's next row, past the hidden (spare mods) entry.
+// The library's next row, past the hidden (spare mods) entry.
 uint32_t library_step(const State& s, uint32_t value, bool forward) {
     const uint32_t count = library_count(s);
     uint32_t next = step(value, count, forward);
@@ -16,7 +16,7 @@ uint32_t library_step(const State& s, uint32_t value, bool forward) {
     return next;
 }
 bool usable(const State& s, uint32_t i) { return s.catalog && i < s.catalog->count && (s.catalog->items[i].flags & 1); }
-// 4.6c1: listed with its os.ldr but its content not installed: SHIFT+PLAY installs it (set default); PLAY's
+// Listed with its os.ldr but its content not installed: SHIFT+PLAY installs it (set default); PLAY's
 // boot once is answered by stage 1 ("make it the default to install its content").
 bool selectable(const State& s, uint32_t i) {
     return usable(s, i) || (s.catalog && i < s.catalog->count && (s.catalog->items[i].flags & catalog::flag_content_missing));
@@ -45,7 +45,7 @@ const char* main_label(const State& s, uint32_t item) {
         if (s.storage == storage_waiting) return "";
         if (s.storage == storage_unavailable) return "Storage unavailable";
         if (storage_down(s)) return "Starting storage...";
-        if (s.continue_label) return s.continue_label;                     // 8.4a
+        if (s.continue_label) return s.continue_label;
         if (s.catalog && s.catalog->default_index < s.catalog->count) return s.catalog->items[s.catalog->default_index].name;
         if (s.storage == storage_ready) return "Continue (no default firmware set)";
         return "Continue (built-in OP-XY)";                                // offline modes: the embedded stock OS
@@ -82,7 +82,7 @@ Action key(State& s, uint32_t k, bool pressed) {
         }
         s.note = 0;
         switch (s.main_selected) {
-        case item_continue:                       // 8.4a: pending changes: the Save dialog first
+        case item_continue:                       // pending changes: the Save dialog first
             if (!s.pending) return Action::continue_boot;
             s.screen = Screen::confirm_save;
             s.save_selected = s.save_blocked ? uint32_t(choice_discard) : uint32_t(choice_save);
@@ -111,7 +111,7 @@ Action key(State& s, uint32_t k, bool pressed) {
         if (s.confirm_accept) return Action::uninstall;
         s.screen = Screen::main;
         return Action::redraw;
-    case Screen::confirm_save: {                  // 8.4a: Save / Discard / Back (blocked: Discard / Back)
+    case Screen::confirm_save: {                  // Save / Discard / Back (blocked: Discard / Back)
         const uint32_t first = s.save_blocked ? uint32_t(choice_discard) : uint32_t(choice_save);
         if (minus) { s.save_selected = s.save_selected <= first ? uint32_t(choice_back) : s.save_selected - 1; return Action::redraw; }
         if (plus) { s.save_selected = s.save_selected >= uint32_t(choice_back) ? first : s.save_selected + 1; return Action::redraw; }
@@ -121,7 +121,7 @@ Action key(State& s, uint32_t k, bool pressed) {
         if (s.save_selected == choice_discard) return Action::discard;
         return Action::redraw;
     }
-    case Screen::settings:                        // 4.8: one row per setting; PLAY (or a knob push) flips one
+    case Screen::settings:                        // one row per setting; PLAY (or a knob push) flips one
         if (minus || plus) { s.settings_selected = step(s.settings_selected, settings::rows, plus); s.settings_note = 0; return Action::redraw; }
         if (!play) return Action::none;
         s.entry = s.settings_selected;

@@ -1,4 +1,4 @@
-"""The Mods page (plan 5.4e1) on the host: the device's page model and view (target/xyf_mods.cpp,
+"""The Mods page on the host: the device's page model and view (target/xyf_mods.cpp,
 xyf_mods_view.cpp) fed with real package texts: the list, toggles and keys, the memory estimate against
 an independent Python sum, mods.apply's request bytes, the result lines, and previews (empty, a few on,
 over the limit, building, done, failed) drawn inside the visible rows. Synthetic packages always; the
@@ -23,7 +23,7 @@ PLAY, STOP, MINUS, PLUS, SHIFT = 51, 52, 53, 54, 55
 NONE, REDRAW, LEAVE = range(3)
 LINE_NONE, LINE_INFO, LINE_ERROR, LINE_DONE = range(4)
 REQUEST_NONE, REQUEST_BUILD, REQUEST_UNVERIFIED, REQUEST_CANCEL = range(4)
-TURN = 0x100                                                               # 8.6: menu::key_turn (a knob turn's row)
+TURN = 0x100                                                               # menu::key_turn (a knob turn's row)
 RED, ACCENT = 0xf9e7, 0xfd20
 REAL_PREVIEWS = paths.PREVIEWS / 'mods-page'
 KEEP = paths.XYF.is_dir()                                                  # previews kept only in a private area
@@ -101,7 +101,7 @@ def toggle(lib, folders):
 
 
 def shifted(lib, key):
-    """8.6: key with SHIFT held."""
+    """Key with SHIFT held."""
     lib.mods_key(SHIFT, 1)
     effect = press(lib, key)
     lib.mods_key(SHIFT, 0)
@@ -150,7 +150,7 @@ class Base:
         self.draw(folder / 'mods-3-list.png')
         if lib.mods_used() * 448 // lib.mods_limit():
             self.assertEqual(self.pixel(16, 25), ACCENT)                     # the meter's used part
-        shifted(lib, PLUS)                                                  # 8.6: SHIFT + +: the last row
+        shifted(lib, PLUS)                                                  # SHIFT + +: the last row
         self.draw(folder / 'mods-4-last-row.png')
         if over_base:
             load(lib, self.gen, over_base)
@@ -166,7 +166,7 @@ class Base:
         self.draw(folder / 'mods-7-cancelling.png')
         load(lib, self.gen)
         toggle(lib, few)
-        lib.mods_job(3, 7, 2, 3, b'Mods: %d' % len(few), 0, 1)           # 5.4e2: the library commit
+        lib.mods_job(3, 7, 2, 3, b'Mods: %d' % len(few), 0, 1)           # the library commit
         lib.mods_progress(9000)
         self.draw(folder / 'mods-7b-commit.png')
         self.assertEqual(press(lib, STOP), REDRAW)                          # refused, said
@@ -182,7 +182,7 @@ class Base:
         self.assertEqual(self.text(), 'Build failed: the content catalog is not the official one.')
 
 
-# 8.2: a whole build as the page sees it: (phase, total, typical share of the time) per stage, the commit last.
+# a whole build as the page sees it: (phase, total, typical share of the time) per stage, the commit last.
 BUILD = [(0, 0, 3), (1, 40, 15), (2, 6, 10), (3, 9, 10), (4, 3, 8), (5, 120, 25), (6, 30, 15), (7, 2, 4), ('commit', 3, 10)]
 
 
@@ -203,7 +203,7 @@ def build_trace(slow=1, stall=None):
 
 
 class Progress(Base, unittest.TestCase):
-    """8.2: the building screen's bar (forward only, moving every 500 ms) and its incremental drawing."""
+    """The building screen's bar (forward only, moving every 500 ms) and its incremental drawing."""
 
     def run_trace(self, trace):
         lib = self.lib
@@ -264,7 +264,7 @@ class Progress(Base, unittest.TestCase):
             self.assertEqual(self.hidden_writes(), 0)
 
     def test_update_draws_the_usb_mark_and_line(self):
-        """8.7: on the building screen a change of the USB mark or the activity line alone is drawn by an update
+        """On the building screen a change of the USB mark or the activity line alone is drawn by an update
         (the bar's filled part stays) and equals a full repaint; the line sits below the footer."""
         lib, fb = self.lib, self.fb
         lib.mods_reset(); lib.mods_ready(b'', b'')
@@ -306,7 +306,7 @@ CONFIG_PREVIEWS = paths.PREVIEWS / 'mods-config'
 
 
 class SaveModel(Base, unittest.TestCase):
-    """8.4a: the home row, the Save dialog's keys (Save / Discard / Back; blocked: Discard / Back), the library
+    """The home row, the Save dialog's keys (Save / Discard / Back; blocked: Discard / Back), the library
     showing Open-XY (the spare slot hidden), the Mods status row and the save's progress screen; previews kept in
     <private>/xy-forever/previews/mods-config/ when private/ is there."""
     CONTINUE, SAVE, DISCARD, REDRAW_ACTION, MAIN, LIBRARY, DIALOG = 2, 7, 8, 1, 0, 1, 5   # 188: no mtp_mode
@@ -390,7 +390,7 @@ class SyntheticPage(Base, unittest.TestCase):
         self.assertGreater(c(b'1.2.3.1-a', b'1.2.3-a'), 0)
 
     def test_status_row_previews(self):
-        """8.4a: the status row: no changes, changes applied when you boot, a selection that cannot be saved."""
+        """The status row: no changes, changes applied when you boot, a selection that cannot be saved."""
         lib = self.lib
         load(lib, self.gen)
         self.draw(CONFIG_PREVIEWS / 'mods-status-none.png' if KEEP else None)
@@ -426,7 +426,7 @@ class SyntheticPage(Base, unittest.TestCase):
         self.assertEqual(lib.mods_changed(), 1)
         toggle(lib, ['gamma'])
         self.assertEqual(lib.mods_changed(), 0)
-        self.assertEqual(shifted(lib, STOP), REDRAW)                        # 8.6: SHIFT+STOP: unknown bases
+        self.assertEqual(shifted(lib, STOP), REDRAW)                        # SHIFT+STOP: unknown bases
         self.assertEqual((lib.mods_request(), lib.mods_line(), self.text()),
                          (REQUEST_NONE, LINE_INFO, 'Unknown mod bases allowed for the next save.'))
         self.assertEqual(shifted(lib, STOP), REDRAW)
@@ -444,13 +444,13 @@ class SyntheticPage(Base, unittest.TestCase):
         load(lib, self.gen)
         self.assertEqual(press(lib, STOP), LEAVE)
         self.assertEqual(press(lib, 6), NONE)                               # other keys: nothing
-        self.assertEqual(lib.mods_position(), 0)                            # 8.6: the first package
+        self.assertEqual(lib.mods_position(), 0)                            # the first package
         self.assertEqual(press(lib, MINUS), REDRAW)                         # wraps to the last row
         self.assertEqual(lib.mods_position(), lib.mods_shown() - 1)
         self.assertEqual(press(lib, PLUS), REDRAW)                          # and back to the first
         self.assertEqual(lib.mods_position(), 0)
         press(lib, PLUS); press(lib, PLUS)
-        self.assertEqual(shifted(lib, PLUS), REDRAW)                        # 8.6: SHIFT + +: the last row
+        self.assertEqual(shifted(lib, PLUS), REDRAW)                        # SHIFT + +: the last row
         self.assertEqual(lib.mods_position(), lib.mods_shown() - 1)
         self.assertEqual(shifted(lib, MINUS), REDRAW)                       # SHIFT + -: the first
         self.assertEqual(lib.mods_position(), 0)
@@ -467,7 +467,7 @@ class SyntheticPage(Base, unittest.TestCase):
         self.assertEqual(lib.mods_request(), REQUEST_CANCEL)
         lib.mods_job(1, 2, 1, 5, b'Mods: 1', 1, 0)
         self.assertEqual(press(lib, STOP), NONE)                            # once
-        lib.mods_job(1, 7, 1, 3, b'Mods: 1', 0, 1)                          # 5.4e2: the commit cannot be cancelled
+        lib.mods_job(1, 7, 1, 3, b'Mods: 1', 0, 1)                          # the commit cannot be cancelled
         for key in (PLAY, PLUS, MINUS, SHIFT, 6):
             self.assertEqual(press(lib, key), NONE)
         self.assertEqual(press(lib, STOP), REDRAW)                          # said, not cancelled
@@ -480,7 +480,7 @@ class SyntheticPage(Base, unittest.TestCase):
         self.assertEqual(press(lib, STOP), LEAVE)                           # the list again: STOP leaves
 
     def test_device_pass_reads_the_selected_row(self):
-        """8.6: scripts/device_pass.py's Mods page geometry (config/pending checks the bar by screenshot) is the
+        """scripts/device_pass.py's Mods page geometry (config/pending checks the bar by screenshot) is the
         one drawn: every position of the list, the bar on mods_screen_row's visible row alone."""
         import test_device_pass
         dp = test_device_pass.dp
@@ -511,7 +511,7 @@ class SyntheticPage(Base, unittest.TestCase):
         self.assertNotIn('tmp/', self.text())
         ended = [((9, 15, 4), 'Build failed: the content catalog is not the official one.'),
                  ((9, 14, 18), 'Unknown mod base: SHIFT+STOP on the Mods page allows it.'),
-                 ((9, 12, 18), 'Unknown mod base: SHIFT+STOP on the Mods page allows it.'),   # 5.4d3a
+                 ((9, 12, 18), 'Unknown mod base: SHIFT+STOP on the Mods page allows it.'),
                  ((9, 17, 2), 'Build failed: writing to storage failed.'),                         # a commit rename
                  ((9, 13, 45), 'Build failed: the mods do not fit in the mods memory.'),
                  ((9, 21, 0), 'Build failed: the storage side stopped answering.'),
@@ -536,7 +536,7 @@ def folder_of(package_id, kind):
 
 
 def display_order(gen):
-    """8.4d: the page's display order computed here: kind (Kind order), then the shown name (22 chars, A-Z
+    """The page's display order computed here: kind (Kind order), then the shown name (22 chars, A-Z
     folded) as bytes, then the folder id; [(folder, kind index)]."""
     rows = []
     for d in gen.iterdir():
@@ -563,7 +563,7 @@ def listed(lib):
 
 
 def to_filter(lib, want):
-    """8.6: steps the filter (SHIFT + a knob turn clockwise) to want."""
+    """Steps the filter (SHIFT + a knob turn clockwise) to want."""
     for _ in range(FILTER_ON + 1):
         if lib.mods_filter() == want:
             return
@@ -572,7 +572,7 @@ def to_filter(lib, want):
 
 
 class PageOrder(Base, unittest.TestCase):
-    """8.4d: the order (kind, then name), the filter row (All, each kind present, On only), all shown on / off,
+    """The order (kind, then name), the filter row (All, each kind present, On only), all shown on / off,
     and the meter counting every mod whatever the filter shows. The published set when present (previews kept
     under <private>/xy-forever/previews/mods-config/modspage-*.png), else the synthetic one."""
 
@@ -623,7 +623,7 @@ class PageOrder(Base, unittest.TestCase):
         toggle(lib, [self.order[0][0], self.order[-1][0]])
         goto(lib, 0)
         seen = [(lib.mods_filter(), lib.mods_listed())]
-        for _ in range(FILTER_ON + 1):                                      # 8.6: SHIFT + turn clockwise: the next
+        for _ in range(FILTER_ON + 1):                                      # SHIFT + turn clockwise: the next
             self.assertEqual(shifted(lib, PLUS | TURN), REDRAW)
             self.assertLess(lib.mods_position(), lib.mods_listed())
             seen.append((lib.mods_filter(), lib.mods_listed()))
@@ -666,7 +666,7 @@ class PageOrder(Base, unittest.TestCase):
         to_filter(lib, kind + 1)
         shown = [f for f, k in self.order if k == kind]
         self.assertEqual(lib.mods_all_on(), 0)
-        self.assertEqual(shifted(lib, PLAY), REDRAW)                        # 8.6: SHIFT + PLAY: all shown
+        self.assertEqual(shifted(lib, PLAY), REDRAW)                        # SHIFT + PLAY: all shown
         self.assertEqual([lib.mods_list_on(r) for r in range(lib.mods_listed())], [1] * len(shown))
         self.assertEqual(lib.mods_used(), estimate(self.gen, shown + [outside]))   # the meter counts everything
         self.assertEqual((lib.mods_changed(), lib.mods_all_on()), (1, 1))
@@ -679,7 +679,7 @@ class PageOrder(Base, unittest.TestCase):
         self.assertEqual(lib.mods_used(), estimate(self.gen, everything))
         if self.real:
             self.assertGreater(lib.mods_used(), lib.mods_limit())
-            machines = sum(1 for _, k in self.order if KINDS[k] != 'extension')   # 8.4e: at most 64 machines
+            machines = sum(1 for _, k in self.order if KINDS[k] != 'extension')   # at most 64 machines
             extensions = len(self.order) - machines
             self.assertEqual(lib.mods_save_refusal(), b'At most 64 machines in one build.' if machines > 64 else
                              b'At most 8 extensions in one build.' if extensions > 8 else
@@ -751,10 +751,10 @@ class PublishedPage(Base, unittest.TestCase):
         everything = sorted(p.name for p in self.gen.iterdir() if p.is_dir() and p.name != 'base')
         toggle(lib, [f for f in everything if not f.startswith('ext-')][:32])
         self.assertGreater(lib.mods_used(), 2080768)                        # 32 machines: over 2032 KiB
-        self.assertEqual(lib.mods_save_refusal(), b'Too big for the mods memory: turn some mods off.')   # 8.4a
+        self.assertEqual(lib.mods_save_refusal(), b'Too big for the mods memory: turn some mods off.')
 
     def test_mod_memory(self):
-        """4.8m2: the base's expanded_module_base gives the 4 MiB layout's region (module_bytes + 2 MiB = 4080 KiB);
+        """The base's expanded_module_base gives the 4 MiB layout's region (module_bytes + 2 MiB = 4080 KiB);
         the Settings row flips the pending choice (changed until saved), the meter and the fit check use the pending
         layout, mods.apply's flags carry bit 1; a selection over 2032 KiB fits expanded and is refused standard with
         the existing text; shared services counted once. A base without the key (an older set): the row is
@@ -833,7 +833,7 @@ class PublishedPage(Base, unittest.TestCase):
         self.assertEqual(self.pixel(460, 25), RED)
         load(lib, self.gen)
         toggle(lib, many)
-        self.draw(REAL_PREVIEWS / '176-mods-list.png')                      # 8.6: 9 rows under the compact bar
+        self.draw(REAL_PREVIEWS / '176-mods-list.png')                      # 9 rows under the compact bar
         print('\nreal-set previews: %s' % REAL_PREVIEWS, file=sys.stderr)
 
 

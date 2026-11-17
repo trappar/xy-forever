@@ -1,4 +1,4 @@
-"""Native ECDSA P-224 verification and the .tfw header signature check (plan 4.3b).
+"""Native ECDSA P-224 verification and the .tfw header signature check.
 
 Where each vector comes from:
   - RFC 6979 appendix A.2.4 (P-224 key and its deterministic signatures of "sample" and "test"

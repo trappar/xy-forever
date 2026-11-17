@@ -1,4 +1,4 @@
-// Host driver for native/mod_link (plan 5.4b): feeds the files the linker asks for from a package
+// Host driver for native/mod_link: feeds the files the linker asks for from a package
 // folder on disk and prints the result for xy_forever/modlink.py.
 //   mod_link_bridge GENERATION_DIR OUT_MODULE [-m machine]... [-e extension]... [-l LAYOUT]
 //                   [-2 PACKAGE/PATH=FILE]   (FILE in place of that file from its second request on)

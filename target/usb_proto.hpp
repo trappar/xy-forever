@@ -8,7 +8,7 @@
 // their payload with a u32 status (0 = ok). The parser resynchronises on the
 // next 'X' 'F' after a bad header, length or CRC, rescanning the rejected
 // bytes. The parser itself has no clock: usb_service's home_pump drops a partial
-// frame after idle_reset_ms of silence (an empty receive ring; plan 1.5).
+// frame after idle_reset_ms of silence (an empty receive ring).
 // Numbers (types, status codes, limits): usb_proto_ids.hpp, generated from
 // protocol/v1.json by scripts/protogen.py (docs/PROTOCOL.md).
 #include "usb_proto_ids.hpp"

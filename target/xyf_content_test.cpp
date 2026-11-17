@@ -1,4 +1,4 @@
-// Host test for the content switch (4.6c1): the path rule, the record's head, and the job over an in-memory
+// Host test for the content switch: the path rule, the record's head, and the job over an in-memory
 // file system with a fault, a power cut or A going silent at every request.
 #include "xyf_content_job.hpp"
 #include <stdio.h>
@@ -365,7 +365,7 @@ static void refusals() {
     REQUIRE(run(io, "mods-a") == st_done && io.t == expected(seed(), "mods-a"));
 }
 
-// 8.8: by difference. Writes counted: unchanged files are neither written nor (trusted record) read; one mod
+// By difference. Writes counted: unchanged files are neither written nor (trusted record) read; one mod
 // removed removes only its files; one added writes only its files; a file changed behind our back is repaired
 // by switching to the installed entry again (or from an untrusted record).
 static size_t count_of(const std::vector<std::string>& v, const std::string& p) { size_t n = 0; for (const auto& x : v) n += x == p; return n; }

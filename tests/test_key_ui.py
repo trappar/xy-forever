@@ -120,8 +120,8 @@ class KeyUiTest(unittest.TestCase):
             self.assertAlmostEqual(ms / (seconds * 1000), 1, delta=0.005)
 
     def test_menu_busy_guard_matches_the_simulator(self):
-        """2.3f (review 024, 7) and 9.3: key_ui and the simulator's mirror (sim/devices.cpp) hold the same menu actions
-        while a job owns the write window: Continue, Discard, Boot once, Set default and Save (8.4a)."""
+        """Review 024, 7: key_ui and the simulator's mirror (sim/devices.cpp) hold the same menu actions
+        while a job owns the write window: Continue, Discard, Boot once, Set default and Save."""
         expected = {'continue_boot', 'discard', 'boot_once', 'set_default', 'save'}
         for path in ('target/key_ui.cpp', 'sim/devices.cpp'):
             text = (ROOT / path).read_text()
@@ -130,8 +130,8 @@ class KeyUiTest(unittest.TestCase):
             self.assertEqual(set(re.findall(r'Action::(\w+)', head)), expected, path)
 
     def test_simulator_mirrors_every_menu_action(self):
-        """4.8: the simulator does not compile key_ui.cpp: sim/devices.cpp handles each menu action key_ui does (but
-        MTP mode, which the simulator now runs as the 3.5b MTP session, while key_ui has no session yet). 4.8m2: both run the Mod memory row's PLAY through mods_io::memory_flip, have the
+        """The simulator does not compile key_ui.cpp: sim/devices.cpp handles each menu action key_ui does (but
+        MTP mode, which the simulator now runs as the MTP session, while key_ui has no session yet). Both run the Mod memory row's PLAY through mods_io::memory_flip, have the
         Settings page read the mod packages (prepare, pump while it is shown), and no longer turn knob rows by a
         stored direction (the demo setting left)."""
         actions = {}

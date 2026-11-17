@@ -1,5 +1,5 @@
 """menu_link (the USB service's command link) and the file boot link it rides on: Result layout,
-decoder, link timing and wiring; no device execution. The Test024 held session is gone (plan 0.4b)."""
+decoder, link timing and wiring; no device execution. The Test024 held session is gone."""
 from pathlib import Path
 import re
 import struct
@@ -95,7 +95,7 @@ class MenuLinkTest(unittest.TestCase):
                       'return fail(Result::timeout);', poll)
 
     def test_key_ui_runs_in_file_boot_session_only(self):
-        # --xyf-mtp (removed, plan 0.4b) was the only mode whose menu used the menu-link session.
+        # --xyf-mtp (removed) was the only mode whose menu used the menu-link session.
         ui = (ROOT / 'target/key_ui.cpp').read_text()
         self.assertNotIn('menu_link', ui)
         self.assertNotIn('KEY_UI_MENU_LINK', ui)
