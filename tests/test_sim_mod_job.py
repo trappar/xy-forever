@@ -674,7 +674,7 @@ class SyntheticJob(Base, unittest.TestCase):
                         'alpha', '--ext', 'cap', '--unverified', '--wait')
         self.assertEqual(code, 0, out)
         self.assertIn('job 1 started', out)
-        self.assertIn('done 7/7', out)
+        self.assertIn('done 6/6', out)                                     # three content + three native files
         self.assertIn('library entry mods-a', out)                          # the entry id printed
         self.assertTrue((self.entry('mods-a') / 'os.ldr').is_file())
         code, out = cli('apply', '--base', self.base, '--generation', self.generation, '--profile', self.profile,
