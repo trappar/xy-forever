@@ -51,8 +51,8 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   slower. Also `python3 xyf_build.py --xyf-product …` plus `--verify` for anything that reaches the
   firmware. A change meant to be behaviour-neutral (even removing unused code) must leave every
   build mode's candidate SHA-256 unchanged: `python3 scripts/neutral.py [REF]`.
-- **No flashing scripts.** Host tools talk only to XY Forever's own USB service
-  (`xyf_host.py`). The rules in `docs/SAFETY.md` apply to every device action.
+- **No flashing scripts.** Host tools talk only to XY Forever's own USB service (`xyf_host.py`), and
+  may read files, never write, over the stock dev-menu MTP. `docs/SAFETY.md` rules every device action.
 - **Git:** one branch per plan item and one pull request per branch, after claiming the item's
   GitHub issue ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)). Never push to `main`; never take an
   item someone else is assigned. Until the repository has its GitHub remote, commit locally on

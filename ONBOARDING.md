@@ -17,8 +17,8 @@ where they stall, and fix this file. Budget: 10 KB (10000 bytes).
   and teenage engineering's built-in updater cannot downgrade it. To tell: the version the OS shows
   is 1.2.1, te-boot (hold COM while switching on) shows "3. dev menu" (1.2.5 has none; on 1.2.1,
   Open-XY's browser builder can enable it: open-xy `docs/builder.md`), and step 4 confirms it.
-- A USB cable and an MTP client: OpenMTP on macOS (quit Field Kit first), File Explorer on
-  Windows, the file manager on Linux.
+- A USB cable, libusb (macOS: `brew install libusb`) and an MTP client: OpenMTP on macOS (quit Field Kit
+  first), File Explorer on Windows, the file manager on Linux.
 
 ## 1. Bootstrap the workspace
 
@@ -71,18 +71,18 @@ without them entering the repository. Case-sensitive: `(?i)` first matches any c
 ## 4. Stock files from the developer's OP-XY
 
 XY Forever builds on the stock 1.2.1 `os.ldr` and `bootloader.ldr`. They are not distributed;
-the developer copies them off their own device. Give these steps one at a time:
+they come off the developer's own device. Give these steps one at a time:
 
 1. Switch the OP-XY off. Hold **COM** while switching it on: te-boot shows "3. dev menu".
 2. Press **Track 3** ("3. dev menu"), then **Track 2** ("2. mtp file transfer (mac)"; Track 3 is
    the Windows and Linux mode). Wait for "mtp mode active".
-3. In the MTP client, copy `/upgrade/firmware/blackfin/bin/os.ldr` and `bootloader.ldr` (or the
-   whole `/upgrade/` folder) to a folder outside every checkout, e.g. `private/incoming/`.
+3. Run `python3 scripts/setup.py import-stock --from-device` yourself. It only reads: the pair from
+   `/upgrade/firmware/blackfin/bin/` and `/content/op1_factory.json` (teenage engineering's catalog;
+   `fixtures` downloads it only if missing or modified) into `private/incoming/`, then checks the pins (`stock.json`).
 4. Press **Track 2** ("2. exit"), then switch the OP-XY off.
 
-```sh
-python3 scripts/setup.py import-stock ../private/incoming    # checks both SHA-256 pins (stock.json)
-```
+If step 3 fails, its one line says why. Fallback: the developer copies those files with an MTP client
+(OpenMTP) into `private/incoming/`; then run `python3 scripts/setup.py import-stock ../private/incoming`.
 
 - **1.2.5 files: stop.** This device is on 1.2.5 and cannot run XY Forever: the 1.2.5 bootloader
   has no dev menu, and the built-in updater cannot downgrade it (SAFETY.md, "Never").

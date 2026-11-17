@@ -66,7 +66,7 @@ docs/             PLAN, STATUS, SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORA
 - Private inputs outside the repo (`../private/` or `$XYF_PRIVATE`): the stock 1.2.1
   `os.ldr` and `bootloader.ldr`, and the decrypted official packages. They are not
   distributed. Tests that need them skip when they are absent. `python3 scripts/setup.py`
-  creates the folder and imports the stock pair (`bootstrap`, `import-stock DIR`, `doctor`).
+  creates the folder and imports the stock pair (`bootstrap`, `import-stock --from-device` or `DIR`, `doctor`).
 
 ## Quick start
 

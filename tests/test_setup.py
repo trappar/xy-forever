@@ -91,6 +91,80 @@ class ImportStock(unittest.TestCase):
             self.imported(self.work / 'half')
 
 
+CATALOG = b'{"synthetic": "stock catalog"}'
+
+
+class StockCatalog(unittest.TestCase):
+    """The device's /content/op1_factory.json (a synthetic stand-in, its pin patched): kept by import-stock only
+    if it matches; fixtures downloads (git_show stubbed) only when no valid copy is present."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.work = Path(tmp.name)
+        self.dest = self.work / 'private/firmware/stock-1.2.1'
+        patcher = mock.patch.dict(S.PINS['open_xy'], {'catalog_sha256': hashlib.sha256(CATALOG).hexdigest()})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def imported(self, folder):
+        for name in S.PAIR:
+            (folder / name).write_bytes(FILES['1.2.1', name])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            S.import_stock(folder, self.dest, PINS)
+        return out.getvalue()
+
+    def test_matching_copy_beside_the_pair_or_in_a_content_folder_is_kept(self):
+        for label, where in (('beside', ''), ('content', 'content')):
+            with self.subTest(label):
+                folder = self.work / label
+                (folder / where).mkdir(parents=True)
+                (folder / where / 'op1_factory.json').write_bytes(CATALOG)
+                out = self.imported(folder)
+                self.assertEqual((self.dest / 'op1_factory.json').read_bytes(), CATALOG)
+                self.assertIn('from your device copy', out)
+                (self.dest / 'op1_factory.json').unlink()
+
+    def test_a_modified_copy_is_reported_and_ignored(self):
+        folder = self.work / 'modded'
+        (folder / 'content').mkdir(parents=True)
+        (folder / 'content/op1_factory.json').write_bytes(CATALOG + b' modded')
+        out = self.imported(folder)
+        self.assertEqual(len(out.strip().splitlines()), 1)
+        self.assertRegex(out, r'ignored, not the stock 1\.2\.1 file .*Open-XY mods rewrite it')
+        self.assertEqual(sorted(p.name for p in self.dest.iterdir()), sorted(S.PAIR))
+
+    def fixture_catalog(self, served):
+        shown = []
+        out = io.StringIO()
+        with mock.patch.object(S.paths, 'STOCK_121', self.dest), \
+                mock.patch.object(S.paths, 'CATALOG_121', self.dest / 'op1_factory.json'), \
+                mock.patch.object(S, 'git_show', lambda path: shown.append(path) or served), \
+                contextlib.redirect_stdout(out):
+            S.fixture_catalog()
+        return shown, out.getvalue()
+
+    def test_fixtures_download_only_without_a_valid_copy(self):
+        self.dest.mkdir(parents=True)
+        for label, present in (('none', None), ('modified', CATALOG + b' modded')):
+            with self.subTest(label):
+                if present:
+                    (self.dest / 'op1_factory.json').write_bytes(present)
+                shown, out = self.fixture_catalog(CATALOG)
+                self.assertEqual(shown, [S.PINS['open_xy']['catalog_path']])
+                self.assertIn('from open-xy %s' % S.PINS['open_xy']['sdk_commit'][:7], out)
+                self.assertEqual((self.dest / 'op1_factory.json').read_bytes(), CATALOG)
+                (self.dest / 'op1_factory.json').unlink()
+        (self.dest / 'op1_factory.json').write_bytes(CATALOG)
+        shown, out = self.fixture_catalog(b'never used')
+        self.assertEqual(shown, [])
+        self.assertIn('no download', out)
+        with self.assertRaisesRegex(S.SetupError, 'does not match the pinned stock catalog'):
+            (self.dest / 'op1_factory.json').unlink()
+            self.fixture_catalog(CATALOG + b' upstream changed')
+
+
 class Pins(unittest.TestCase):
     def test_stock_pins_agree_with_the_code(self):
         self.assertEqual(S.PINS['stock']['1.2.1'], {'os.ldr': usb_proto.STOCK_OS_LDR_SHA256,
@@ -256,7 +330,8 @@ class Bootstrap(unittest.TestCase):
         self.assertIn('Read `xy-forever/AGENTS.md` first and follow it', guide)
         self.assertIn('"Continue development" works from here', guide)
         self.assertTrue(10 <= len(guide.splitlines()) <= 15)
-        self.assertRegex(out, r'Next:\n  1\. Copy os\.ldr and bootloader\.ldr .* into %s.*/upgrade/firmware/blackfin/bin/'
+        self.assertRegex(out, r'Next:\n  1\. Put your OP-XY .* in MTP mode: hold COM .*\n  2\. python3 scripts/setup\.py '
+                         r'import-stock --from-device +\(reads them into %s.*/upgrade/firmware/blackfin/bin/os\.ldr'
                          % (self.ws / 'private/incoming'))
         self.assertIn('import-stock %s' % (self.ws / 'private/incoming'), out)
         self.assertIn('4. Open Claude Code in %s (or %s) and say "Continue development"' % (self.ws, self.repo), out)
