@@ -5,7 +5,7 @@ the steps in order with the developer. Run every command yourself; ask the devel
 hands (the OP-XY, a file copy over MTP) or their decision, one question at a time, each with your
 recommendation. Stop at the first step that fails, fix what is yours to fix, say plainly what is
 missing, and resume there. Steps 7 and 8 (the device) have not yet been run end to end: report
-where they stall, and fix this file. Budget: 150 lines.
+where they stall, and fix this file. Budget: 10 KB (10000 bytes).
 
 ## 0. What the developer needs
 
