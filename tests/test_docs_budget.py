@@ -56,13 +56,6 @@ ALLOWED = {
 # docs/decisions/: a record NNN-title.md, and its detail leaves NNN-title.<topic>.md, each linked from the record.
 RECORD = re.compile(r'^(\d{3}-[a-z0-9-]+)\.md$')
 DETAIL = re.compile(r'^(\d{3}-[a-z0-9-]+)\.[a-z0-9-]+\.md$')
-UNTRIMMED_CAP = 16000
-# trimmed by #42 part B4/B5; remove entries as they are trimmed (empty when #42 is done)
-UNTRIMMED = {
-    '019-assembly-on-device.md',
-    '020-code-space-and-stage2.md', '021-restart-a-freeze.md', '022-lone-b-reset.md', '028-converging-saves.md',
-    '032-run-time-mod-loading.md',
-}
 
 # reflowed by #42 part B7 (files with a line over WIDTH outside code blocks and table rows)
 UNWRAPPED = {
@@ -187,17 +180,11 @@ class DocsBudget(unittest.TestCase):
             with self.subTest(decision=name):
                 record, detail = RECORD.match(name), DETAIL.match(name)
                 self.assertTrue(record or detail, f'{rel(path)}: name it NNN-title.md or NNN-title.<topic>.md')
-                if record:
-                    if name in UNTRIMMED:
-                        self.assertGreater(size(path), LEAF, f'{name} is trimmed: remove it from UNTRIMMED')
-                    self.check(path, UNTRIMMED_CAP if name in UNTRIMMED else LEAF)
+                self.check(path, LEAF)
                 if detail:
-                    self.check(path, LEAF)
                     parent = DECISIONS / f'{detail.group(1)}.md'
                     self.assertTrue(parent.is_file(), f'{name} has no record {parent.name}')
                     self.assertIn(name, [Path(f).name for f, _ in links(parent)], f'{parent.name} must link {name}')
-        for name in UNTRIMMED:
-            self.assertTrue((DECISIONS / name).is_file(), f'UNTRIMMED names a missing record {name}')
 
     def test_width(self):
         for path in docs():
