@@ -39,8 +39,4 @@ Nothing fails at boot, but a superset is not safe in use. The OS loads the catal
 ## 6. Check against 008
 No contradiction. Offsets 4435 (the `\n\t]` closing `engine_types`, not `_old`), 1583 and 2565 hold for 1.2.1 and 1.2.5 (same file `36d14444…`); 1.1.33's catalog (5,229 B) differs, so they do not apply there [M]. Player `id` = type + 4 matches stock (arpeggio 6 = type 2), and stock selects players by `id` [L]. Addition: stock never checks an effect's or player's `id` against its own list, so a collision would go unnoticed [I].
 
-## 7. Device check (safe; no content write beyond #17 and #18)
-1. With #17: the host hashes `content/op1_factory.json` and lists `presets/` and `display/` names outside the official manifest (leftovers of the old open-xy setup).
-2. After a content switch (#18): the developer boots the entry, opens the instrument, send-effect and player menus and reads out the names, choosing no unknown one. Expected: stock names plus the entry's mods only.
-3. Power cycle to XY Forever (PLAY at power-on); the host rehashes the catalog and `content.list`: unchanged = the OS wrote nothing (settles the 1.2.1 writer).
-Choosing a leftover entry (the [U] cells) is not needed under the strict rule; never try the player row.
+Detail: §7 Device check in [018-catalog-entries.detail.md](018-catalog-entries.detail.md)
