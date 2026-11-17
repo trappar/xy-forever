@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, truncateSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
-import { afterAll, beforeAll, describe, expect, inject, test, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, inject, test, vi } from 'vitest';
 import { Client, JobError, PackageError, XyfError, applyMods, cancelJob, folderSource, infoValues, isXyfError, jobFolder, jobStatus, libraryBases, listPackages,
   listPaths, makeDefault, localSet, pushPackages, removePackage, tcpOpener } from '../src/node.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
@@ -192,6 +192,10 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     makeModBase(sim!.root, 'modbase');
     request = { base: 'modbase', profile, generation, machines: ['alpha', 'gamma'], extensions: ['cap'], name: 'OP-XY mods', unverified: true };
   });
+  /** Storage is served again once the last job's processor B closes (A's write window). */
+  const served = () => vi.waitFor(async () => expect((await client.listDir('/yaffs2')).length).toBeGreaterThan(0),
+    { timeout: 20_000, interval: 100 });
+  beforeEach(served);                                                   // a job's write window outlives the job
   afterAll(async () => {
     await control(sim!.control, 'set a_slow_ms 0').catch(() => undefined);
     await client?.close();
@@ -215,6 +219,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     expect(readdirSync(out)).toContain('os.ldr');
     expect(JSON.parse(readFileSync(join(out, 'layout.json'), 'utf-8'))['selected']).toEqual(['alpha', 'gamma']);
     expect(infoValues(readFileSync(join(out, 'info.txt')))['name']).toBe('OP-XY mods');
+    await served();
     expect((await libraryBases(client)).map((b) => b.id)).toEqual(['modbase', 'opxy-121', 'opxy-121-stock']);   // not a base
     expect(await jobStatus(client)).toEqual(result);                      // job 0: the last job
     await expect(cancelJob(client, result.job)).rejects.toMatchObject({ code: 'state' });   // it ended
@@ -227,6 +232,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     const made = await makeDefault(client, 'mods-a', { pollMs: 20, onProgress: (s) => seen.push(s) });
     expect(made).toMatchObject({ id: 'mods-a', switched: true, status: { phase: 'done', detail: 'mods-a', error: 'none' } });
     expect(seen.at(-1)).toEqual(made.status);                           // followed to its end (a fast switch may show no middle phase)
+    await served();
     expect((await client.readState())?.default).toBe('mods-a');
     expect(await makeDefault(client, 'mods-a')).toEqual({ id: 'mods-a', switched: false, status: null });   // installed already
   });
@@ -261,8 +267,12 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
       const stop = new AbortController();
       const seen: JobStatus[] = [];
       const build = applyMods(client, request, { pollMs: 20, signal: stop.signal, onProgress: (s) => seen.push(s) });
-      build.catch(() => undefined);
-      await vi.waitFor(() => expect(seen.some((s) => !s.final && s.phase !== 'idle')).toBe(true), { timeout: 10_000, interval: 20 });
+      let refused: unknown;
+      build.catch((e: unknown) => { refused = e; });
+      await vi.waitFor(() => {
+        if (refused) throw new Error(`the build ended early: ${String(refused)}`);
+        expect(seen.some((s) => !s.final && s.phase !== 'idle')).toBe(true);
+      }, { timeout: 10_000, interval: 20 });
       const busy = await client.listDir('/yaffs2').catch((e: unknown) => e);
       expect(isXyfError(busy, 'busy'), String(busy)).toBe(true);
       expect((busy as XyfError).message).toBe('file.list /yaffs2: the OP-XY is building mod firmware (a job is running); try again when it ends, or cancel it');
@@ -276,7 +286,6 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     } finally {
       await control(sim!.control, 'set a_slow_ms 0');
     }
-    await vi.waitFor(async () => expect((await client.listDir('/yaffs2')).length).toBeGreaterThan(0),   // served again once B closes
-      { timeout: 20_000, interval: 100 });                                                                // A's write window
+    await served();
   });
 });
