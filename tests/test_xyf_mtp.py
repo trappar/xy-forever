@@ -10,6 +10,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 import xyf_build as builder
 from xyf_build import (A_MARKER_CALLS, FORBIDDEN_TARGETS, MTP_CALLS, SERVER_CALLS, WRITE_ENTRIES, mtp_spans,
                        peer_spans, server_spans)
@@ -55,11 +56,11 @@ class MtpTest(unittest.TestCase):
         self.assertNotIn('y_write(', repair)
         self.assertNotIn('y_open(', repair)
         self.assertEqual(repair.count('return mount_guarded();'), 1)
-        users = sorted(p.name for p in (ROOT / 'target').glob('*.cpp') if 'repair_fresh(' in p.read_text())
+        users = sorted(p.name for p in (ROOT / 'target').glob('*.cpp') if 'repair_fresh(' in unit_text(p))
         self.assertEqual(users, ['cold_storage.cpp', 'file_boot.cpp'])
         guard = src.rindex('#if defined(XYF_MTP)', 0, src.index('Result Stock121ReadOnlySession::open_write_window('))
         self.assertGreater(guard, src.index('Result Stock121ReadOnlySession::write_state_slot('))
-        users = sorted(p.name for p in (ROOT / 'target').glob('*.cpp') if 'open_write_window(' in p.read_text())
+        users = sorted(p.name for p in (ROOT / 'target').glob('*.cpp') if 'open_write_window(' in unit_text(p))
         self.assertEqual(users, ['cold_storage.cpp', 'storage_server.cpp'])
 
     def test_serve_loop_pins(self):
@@ -103,7 +104,7 @@ class MtpTest(unittest.TestCase):
         # b's ranged read seeks with the partition builder (op 0x2c), never stock lseek 889f297c.
         self.assertIn('889f297c', builder.REMOVED_CLIENT_CALLS)
         for name in ('storage_server.cpp', 'usb_service.cpp', 'file_client.cpp'):
-            self.assertNotIn('0x889f297cu', (ROOT / 'target' / name).read_text(), name)
+            self.assertNotIn('0x889f297cu', unit_text(ROOT / 'target' / name), name)
         client = (ROOT / 'target/file_client.cpp').read_text()
         self.assertIn('Reply seek(int fd, int offset) { return partition(0x2c, U32(fd), U32(offset), 0); }', client)
 

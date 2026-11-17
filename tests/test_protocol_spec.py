@@ -14,6 +14,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 sys.path.insert(0, str(ROOT / 'scripts'))
 import protogen  # noqa: E402
@@ -32,7 +33,7 @@ def command(s, name):
 
 
 def text(rel):
-    return (ROOT / rel).read_text()
+    return unit_text(ROOT / rel)
 
 
 def header_value(source, name):

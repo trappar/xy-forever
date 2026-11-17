@@ -1,12 +1,15 @@
 """scripts/mtp_span_census.py: peeks only the probe's listed spans, retries a busy port, reports words."""
 import importlib.util
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 spec = importlib.util.spec_from_file_location('mtp_span_census', ROOT / 'scripts/mtp_span_census.py')
 C = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(C)
@@ -49,7 +52,7 @@ class CensusTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_order_matches_probe_start(self):
-        service = (ROOT / 'target/usb_service.cpp').read_text()
+        service = unit_text(ROOT / 'target/usb_service.cpp')
         gate = (ROOT / 'target/mtp_usb_gate.hpp').read_text()       # 186-003: the boot-time identity() result,
         self.assertIn('return gate::refusal<crc_at>(menu_usb == 2u && !usb_off, engine, spans,', service)   # then engine, probe
         self.assertLess(gate.index('return check_usb;'), gate.index('return check_engine;'))

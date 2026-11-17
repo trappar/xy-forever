@@ -17,6 +17,7 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 | `target/menu_link.cpp`, `peer_services.cpp` | USB command link (file boot's session); stock SPI peer session wrappers |
 | `target/key_ui.cpp` | B's hold-key UI loop, keys from the PSoC, screen present |
 | `target/usb_service.cpp`, `usb_proto.cpp` | USB CDC service on B (install, files, reboot, screen, key) |
+| `target/usb_service_*.ipp` | `usb_service.cpp`'s parts, one per section, included in place: one translation unit (decision 034) |
 | `target/storage_server.cpp`, `file_engine.cpp`, `file_client.cpp` | A's storage server (the file engine's entries and window, install mode); the engine's path policy and request decision (both processors); B's timed file client |
 | `target/cold_storage.cpp`, `boot_services.cpp`, `retained_lookup.cpp`, `cold_heap.cpp` | cold-time yaffs session, stock fs prefixes, retained device lookup, allocator guard |
 | `target/xyf_library.cpp`, `xyf_cold_library.cpp`, `xyf_catalog.cpp`, `xyf_store.cpp`, `xyf_layout.cpp`, `xyf_info.cpp` | library scan, catalog blob, key=value and `layout.json` parsers |

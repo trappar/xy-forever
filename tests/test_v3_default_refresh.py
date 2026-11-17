@@ -7,6 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 
 
@@ -17,7 +18,7 @@ def function(source, signature):
 
 class V3DefaultRefreshTest(unittest.TestCase):
     def test_same_session_default_and_failure_paths(self):
-        usb = (ROOT / 'target/usb_service.cpp').read_text()
+        usb = unit_text(ROOT / 'target/usb_service.cpp')
         boot = (ROOT / 'target/file_boot.cpp').read_text()
         ui = (ROOT / 'target/key_ui.cpp').read_text()
         fs = (ROOT / 'target/xyf_library_test.cpp').read_text()

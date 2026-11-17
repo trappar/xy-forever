@@ -7,6 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 
 
@@ -106,7 +107,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('mtp_usb_probe', ROOT / 'scripts/mtp_usb_probe.py')
         script = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(script)                    # imports only: pyusb is loaded in main()
-        service = (ROOT / 'target/usb_service.cpp').read_text()
+        service = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertIn('const uint8_t t_mtp_usb = 0x%02x;' % script.T_MTP_USB, service)
         self.assertIn('const U32 probe_words = %d;' % len(script.PROBE_WORDS), service)
         names = re.search(r'enum : U32 \{ (p_state.*?) \};', service, re.S).group(1)
@@ -141,7 +142,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertEqual(re.findall(r'port\.start\((\w+)\)', driver), ['kCompositeFlags'])
         self.assertEqual(len(re.findall(r'port\.stop\(kStopKeepTimer\)', driver)), 1)
         self.assertLess(begin.index('register_driver'), begin.index('port.start(kCompositeFlags)'))
-        service = (ROOT / 'target/usb_service.cpp').read_text()
+        service = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertNotIn('start_serial', service)
         boot = re.search(r'void usb_begin\(\) \{(.*?)\n\}', service, re.S).group(1)
         order = ['C::stat(flag_path', 'C::unlink(flag_path)', 'mu::mark(mu::mark_flag_found)', 'probe_spans()',
@@ -203,7 +204,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertEqual(names[1:], [n for n, _ in script.MARKS])
         self.assertEqual(len(script.MARKS), 14)
         self.assertEqual(script.PASS_MARKS, list(range(1, 7)) + [8, 9, 10, 11])
-        service = (ROOT / 'target/usb_service.cpp').read_text()
+        service = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertIn('const char marks_path[] = "%s";' % script.MARKS_PATH, service)
         self.assertTrue(script.MARKS_PATH.startswith('/yaffs2/xy-forever/tmp/'))
         # The whole file fits one 1 KiB write: header + 15 lines of "NN <10 digits> <name>".
@@ -239,7 +240,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('mtp_usb_probe', ROOT / 'scripts/mtp_usb_probe.py')
         script = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(script)
-        service = (ROOT / 'target/usb_service.cpp').read_text()
+        service = unit_text(ROOT / 'target/usb_service.cpp')
         gate = (ROOT / 'target/mtp_usb_gate.hpp').read_text()
         self.assertIn('const uint32_t record_words = %d;' % len(script.REFUSAL_WORDS), gate)
         names = re.search(r'enum : uint32_t \{ (r_check.*?) \};', gate, re.S).group(1)
@@ -270,7 +271,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
 
     def test_start_does_not_repeat_identity(self):
         import re
-        service = (ROOT / 'target/usb_service.cpp').read_text()
+        service = unit_text(ROOT / 'target/usb_service.cpp')
         start = re.search(r'void usb_begin\(\) \{(.*?)\n\}', service, re.S).group(1) + \
             re.search(r'U32 trial_start\(\) \{(.*?)\n\}', service, re.S).group(1)
         spans = re.search(r'gate::Check probe_spans\(\) \{(.*?)\n\}', service, re.S).group(1)
