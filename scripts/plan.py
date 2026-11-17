@@ -5,8 +5,8 @@
     python3 scripts/plan.py --all      also blocked items, items taken by others, and threads
 
 Order: milestone (its GitHub number, the roadmap's order), then issue number. An item is an issue with a
-`kind:*` label (its kind; `device:safe` or `device:risky` is shown with it); `blocked` stops it, `thread` marks a loose end and `decision` a question for the
-developer. Needs are GitHub "blocked by" dependencies. The issue number is the item's only name.
+`kind:*` label (its kind; `device:safe` or `device:risky` is shown with it); `blocked` stops it, `thread`
+marks a loose end and `decision` a question I have not decided yet. Needs are GitHub "blocked by" dependencies. The issue number is the item's only name.
 Uses the `gh` CLI (authenticated); docs/ORCHESTRATION.md says how the queue is worked.
 """
 import argparse
@@ -59,7 +59,7 @@ def queue(issues, me, everything=False):
 
     section('Yours, in progress', mine)
     section('Next: unblocked, unassigned', ready)
-    section('Decisions waiting for the developer', decisions)
+    section('Decisions waiting for me', decisions)
     if everything:
         section('Blocked', waiting, lambda f: ' (blocked by %d)' % f['blocked_by'] if f['blocked_by'] else ' (label)')
         section('Taken by others', others, lambda f: ' @' + ','.join(f['assignees']))

@@ -41,7 +41,7 @@ class Queue(unittest.TestCase):
             'Next: unblocked, unassigned (2)',
             '  #4 M2 Atomic replace [build]',          # milestone order first, then issue number
             '  #13 M4 Fixes [build]',
-            'Decisions waiting for the developer (1)',
+            'Decisions waiting for me (1)',
             '  #56 M4 Default of the confirm gate',
             'Not shown: 2 blocked, 1 taken by others, 1 threads (--all)'])
 
