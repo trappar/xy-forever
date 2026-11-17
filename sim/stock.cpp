@@ -468,7 +468,7 @@ uint32_t b_write(uint32_t sector, const uint8_t* data, uint32_t count) {
     return b_call(cls_write, sector ? 0x16 : 0x15, sector, count, 0, data, count * 512u, 0, 0);
 }
 bool active(const uint8_t* sector) { uint32_t v; memcpy(&v, sector, 4); return v >= 2 && sector[12]; }
-// 88a06a7e(buf, size, 0) (docs/HARDWARE.md, Boot partition and USB): target the first
+// 88a06a7e(buf, size, 0) (docs/hardware/usb.md, Boot partition and USB): target the first
 // non-active partition (1, else 2; 2 if both are active), trim, write sectors 1.. in batches of
 // 128, verify, then sector 0 last (the commit), then erase block 0 of the other partition.
 // No encryption (the device's OTP key would encrypt the image in place).

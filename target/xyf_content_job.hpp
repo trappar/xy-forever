@@ -3,7 +3,7 @@
 #include "xyf_content.hpp"
 #include "xyf_store.hpp"
 #include "../native/hash.hpp"
-// The content switch (docs/STORAGE.md "Content state"), run by processor B as a job: makes
+// The content switch (docs/storage/state.md "Content state"), run by processor B as a job: makes
 // /yaffs2/content/ match a target library entry. step() sends at most one file request per call (B's menu
 // loop calls it in slices; usb_service.cpp's ContentIo is one bounded file-client request per call). Io:
 //   int open(const char* path, bool write)       fd >= 0; -2 no such file; else -1 (write: create/truncate)

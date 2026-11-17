@@ -1,7 +1,7 @@
 #ifndef XYF_CONTENT_HPP
 #define XYF_CONTENT_HPP
 #include <stdint.h>
-// What /yaffs2/content/ currently matches (the content state record, docs/STORAGE.md "Content
+// What /yaffs2/content/ currently matches (the content state record, docs/storage/state.md "Content
 // state"), and the one path rule for every write the content switch makes (allowed). Freestanding, header
 // only: processor A reads the record's head in the library scan (xyf_library.hpp), processor B runs the
 // switch (xyf_content_job.hpp). Functions are static: an inline (weak) function is a register call on Blackfin,
@@ -24,7 +24,7 @@ static const char root[] = "/yaffs2/content/";         // the OS's content folde
 static const char catalog[] = "op1_factory.json";       // relative to root
 static const uint32_t root_bytes = sizeof(root) - 1;
 static const uint32_t max_path = 240;                   // bytes with the NUL (file_engine::max_path)
-static const uint32_t max_rel = 160;                    // a listed path (docs/STORAGE.md files.sha256)
+static const uint32_t max_rel = 160;                    // a listed path (docs/storage/packages.md files.sha256)
 static const uint32_t head_bytes = 64;                  // A reads only this much of the record
 
 enum Kind : uint32_t { official = 0, installed = 1, switching = 2 };

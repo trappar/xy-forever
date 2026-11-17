@@ -94,7 +94,7 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            watchdog reset is cleared by a clean REBOOT), guard off (kicks stop),
            hold off, then scripts/keepalive.sh started on the session folder.
 
-Simulator (--sim HOST:PORT, docs/ARCHITECTURE.md "Simulator"): the same steps through
+Simulator (--sim HOST:PORT, docs/architecture/simulator.md "Simulator"): the same steps through
 xyf_host.py --sim; steps the simulator does not host are SKIP with the reason (SIM_SKIPS).
 
 End state: the XY Forever boot menu (home) with USB, guard off, hold off, crash

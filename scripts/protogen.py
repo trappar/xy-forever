@@ -9,10 +9,11 @@ edited by hand:
   target/usb_proto_ids.hpp      enums and constants for the firmware (freestanding)
   xy_forever/usb_proto_ids.py   constants and field tables for host tools
   clients/ts/src/v1.ts          the TypeScript protocol module (decision 013; see render_ts)
-  docs/PROTOCOL.md              the published specification (test-only commands left out)
+  docs/PROTOCOL.md              the published specification's index (test-only commands left out)
+  docs/protocol/*.md            its leaves (DOC_LEAVES; a file there that is not one is removed)
 It also validates the conformance suite, protocol/v1.conformance.json, against the spec
 (xy_forever/conformance.py: keys, values, coverage, real-device safety); its text and case
-counts go into docs/PROTOCOL.md. Stdlib only (Python 3.9).
+counts go into docs/protocol/examples.md. Stdlib only (Python 3.9).
 """
 import argparse
 import itertools
@@ -700,7 +701,7 @@ def render_cpp(spec):
 
 def render_cpp_hello(spec):
     """Macros for the hello text: string literals and #if blocks only (no table, no code)."""
-    lines = ['// hello text (docs/PROTOCOL.md, hello). The build defines %s and %s (string literals).' % (
+    lines = ['// hello text (docs/protocol/cmd-session.md, hello). The build defines %s and %s (string literals).' % (
                  BUILD_MACROS['build'], BUILD_MACROS['mode']),
              '// XYF_USBP_CMDS: the cmds bitmap, most significant hex digit first; a digit that a build switch',
              '// changes is one #if block keyed by the switches of its commands (as home_pump\'s dispatch).',
@@ -929,7 +930,7 @@ def render_hello(spec, md):
         md.append('| `%s` | %s | %s%s |' % (key['name'], key['since'], ('`%s`: ' % fixed) if fixed else '', key['doc']))
     example = next(g for g in spec['golden'] if g['message'] == 'hello' and g['direction'] == 'reply')
     md += ['', 'The product build answers (%d bytes):' % len(example['fields']['info']), '',
-           '`%s`' % example['fields']['info']]
+           '```text', example['fields']['info'], '```']
 
 
 def render_conformance(cases):
@@ -949,17 +950,74 @@ def render_conformance(cases):
     return md
 
 
+# docs/PROTOCOL.md is the index of a tree; its leaves sit in docs/protocol/, each under the docs byte budget
+# (tests/test_docs_budget.py). A command leaf holds the published non-developer commands whose type falls in
+# its range, so a new command lands in a leaf by its number; the budget test says when a leaf must split.
+DOC_DIR = 'docs/protocol'
+CMD_LEAVES = (   # (first type, last type, file, title)
+    (0x00, 0x0f, 'cmd-session.md', 'session commands'),
+    (0x10, 0x13, 'cmd-stage.md', 'staging commands'),
+    (0x14, 0x17, 'cmd-files.md', 'file commands'),
+    (0x18, 0x1f, 'cmd-file-move.md', 'file move and copy commands'),
+    (0x20, 0x3f, 'cmd-boot.md', 'boot and device commands'),
+    (0x40, 0x43, 'cmd-library.md', 'library commands'),
+    (0x44, 0x7f, 'cmd-jobs.md', 'job commands'),
+)
+DOC_LEAVES = tuple('%s/%s' % (DOC_DIR, f) for f in (
+    ['transport.md', 'rules.md', 'commands.md'] + [leaf[2] for leaf in CMD_LEAVES] + ['examples.md', 'events-dev.md']))
+WIDTH = 160                              # longest prose line in a generated page (tables and headings excepted)
+LINE_START = re.compile(r'^([-+*>]|#{1,6}|[0-9]{1,9}[.)])$')   # a word that would start a list or heading
+
+
+def wrap(text):
+    """text with every prose line over WIDTH folded at spaces (a list item's rest indented by two); code blocks,
+    table rows, headings and comments stay whole, and no folded line starts with a list or heading marker."""
+    out, code = [], False
+    for line in text.split('\n'):
+        code ^= line.startswith('```')
+        if code or len(line) <= WIDTH or line.startswith(('|', '#', '<!--', '```')):
+            out.append(line)
+            continue
+        indent = '  ' if line.startswith('- ') else ''
+        row = ''
+        for word in line.split(' '):
+            if row.strip() and len(row) + 1 + len(word) > WIDTH:
+                head, _, last = row.rpartition(' ')
+                if LINE_START.match(word) and head.strip():
+                    out.append(head)
+                    row = indent + last + ' ' + word
+                else:
+                    out.append(row)
+                    row = indent + word
+            else:
+                row = row + ' ' + word if row else word
+        out.append(row)
+    return '\n'.join(out)
+
+
+def cmd_leaf(cmd):
+    """The file name of the docs leaf that holds a published non-developer command."""
+    number = int(cmd['type'], 16)
+    for first, last, name, _ in CMD_LEAVES:
+        if first <= number <= last:
+            return name
+    raise SpecError('command %s %s: its type is in no docs leaf (protogen.CMD_LEAVES)' % (cmd['type'], cmd['name']))
+
+
+def anchor(cmd, here=None):
+    """The link target of '### 0x03 `file.read`': its leaf's file name (unless the link is in that leaf, here) and
+    GitHub's heading anchor."""
+    slug = re.sub(r'[^a-z0-9 _-]', '', ('%s %s' % (cmd['type'], cmd['name'])).lower()).replace(' ', '-')
+    leaf = cmd_leaf(cmd)
+    return '#' + slug if leaf == here else '%s#%s' % (leaf, slug)
+
+
 def render_md(spec, cases=None):
+    """{repository-relative path: text} of the specification: the index docs/PROTOCOL.md and every leaf."""
     p, k = spec['protocol'], constants(spec)
-    md = ['<!-- %s -->' % NOTICE, '# %s %s' % (p['name'], p['version']), '']
-    for para in p['intro']:
-        md += [para, '']
-    md += ['The machine-readable specification is [`protocol/v1.json`](../protocol/v1.json); this page, the '
-           'firmware header, the host module and the TypeScript module (`clients/ts/src/v1.ts`) are generated from '
-           'it. Version %s describes the device as it is today. "Since" names the version that introduced an '
-           'entry\'s current form.' % p['version'], '']
+    pages = {}                           # leaf file name: (title, what it holds, body lines)
     t = spec['transport']
-    md += ['## Transport', '', t['doc'], '', '| Fact | Value | Verified | Notes |', '|---|---|---|---|']
+    md = ['', '## Transport', '', t['doc'], '', '| Fact | Value | Verified | Notes |', '|---|---|---|---|']
     for name in TRANSPORT_FACTS:
         value = t[name]['value']
         shown = ('0x%04x' % value if name in ('usb_vendor_id', 'usb_product_id') else
@@ -983,52 +1041,68 @@ def render_md(spec, cases=None):
            'Payload fields are packed without gaps. Types: `u8`, `u16`, `u32` unsigned little-endian; '
            '`bytes[N]` exactly N bytes; `cstr` text ending in one NUL; `text` text to the end of the payload, '
            'no NUL; `rest` raw bytes to the end of the payload. Each text field names its encoding (ASCII or '
-           'UTF-8; see the rules). Optional fields come last and are all present or all absent. A reply payload '
-           'is a `u32` status followed by the fields listed for it.']
-    md += ['', '## Rules', '']
-    md += ['- %s' % r['text'] for r in spec['rules']]
+           'UTF-8; see the [rules](rules.md)). Optional fields come last and are all present or all absent. A reply '
+           'payload is a `u32` status followed by the fields listed for it.']
     md += ['', '## Constants', '', '| Name | Value | Meaning |', '|---|---|---|']
     md += ['| `%s` | %d | %s |' % (c['name'], c['value'], c['doc']) for c in spec['constants']]
-    md += ['', '## Status codes', '',
-           'Every reply starts with one. A tool shows a code it does not know by number and treats it as a failure. '
-           'Besides the errors listed under each command, these can come to any command, as the status alone '
-           '(whatever its `on_error` says): %s' % ' '.join(
-               '`%s`, to any command%s: %s.' % (e['status'], ' but `%s`' % '`, `'.join(e['except']) if e['except'] else '',
-                                               e['doc']) for e in spec['common_errors']), '',
-           '| Code | Name | Since | Meaning |', '|---|---|---|---|']
+    pages['transport.md'] = ('transport, frames and constants',
+                             'how a tool reaches the device, the frame layout and CRC, payload types, the limits', md)
+    md = ['', '## Rules', '']
+    md += ['- %s' % r['text'] for r in spec['rules']]
+    pages['rules.md'] = ('rules', 'sequence numbers, timeouts, encodings, compatibility: what every tool must follow',
+                         md)
+    md = ['', '## Status codes', '',
+          'Every reply starts with one. A tool shows a code it does not know by number and treats it as a failure. '
+          'Besides the errors listed under each command, these can come to any command, as the status alone '
+          '(whatever its `on_error` says): %s' % ' '.join(
+              '`%s`, to any command%s: %s.' % (e['status'], ' but `%s`' % '`, `'.join(e['except']) if e['except'] else '',
+                                              e['doc']) for e in spec['common_errors']), '',
+          '| Code | Name | Since | Meaning |', '|---|---|---|---|']
     md += ['| %d | `%s` | %s | %s |' % (s['code'], s['name'], s['since'], s['doc']) for s in spec['statuses']]
     commands = sorted(spec['commands'], key=lambda c: int(c['type'], 16))
     main = [c for c in commands if c['class'] != 'dev']
     dev = [c for c in commands if c['class'] == 'dev' and published(c)]
     hidden = [c for c in commands if not published(c)]
     md += ['', '## Commands', '', '| Type | Name | What it does |', '|---|---|---|']
-    md += ['| %s | [`%s`](#%s) | %s |' % (c['type'], c['name'], anchor(c), c['summary']) for c in main]
+    md += ['| %s | [`%s`](%s) | %s |' % (c['type'], c['name'], anchor(c, 'commands.md'), c['summary']) for c in main]
     md += ['', 'A typical session: `hello`; then reads (`file.read`, `screen.read`); to write, `stage.begin`, '
            '`stage.data` in order, `stage.end`, then one of `file.write_staged`, `boot.install`, '
            '`boot.uninstall`.']
-    for c in main:
-        render_command(c, md)
-        if c['name'] == 'hello':
-            render_hello(spec, md)
-    md += ['', '## Events']
-    for ev in spec['events']:
-        md += ['', '### %s `%s`' % (ev['type'], ev['name']), '', ev['summary'][0].upper() + ev['summary'][1:] + '.',
-               '', ev['doc'], '', 'Payload (%s):' % size_text(ev['payload']['size']), '']
-        md += field_table(ev['payload']['fields'])
-    md += ['', '## Examples', '', 'Whole frames in hex, as the device and the host tool encode them '
-           '(checked by `tests/test_protocol_spec.py`). The spec file also holds byte streams (`streams`) with the '
-           'frames a correct parser finds in each: %s.' % '; '.join(st['name'] for st in spec['streams']), '']
+    pages['commands.md'] = ('status codes and commands', 'every status code, and the table of commands with a link '
+                            'to each', md)
+    for first, last, name, title in CMD_LEAVES:
+        md = []
+        held = [c for c in main if cmd_leaf(c) == name]
+        for c in held:
+            render_command(c, md)
+            if c['name'] == 'hello':
+                render_hello(spec, md)
+        pages[name] = (title, ', '.join('`%s`' % c['name'] + (' and its keys' if c['name'] == 'hello' else '')
+                                        for c in held), md)
+    md = ['', '## Examples', '', 'Whole frames in hex, as the device and the host tool encode them '
+          '(checked by `tests/test_protocol_spec.py`). The spec file also holds byte streams (`streams`) with the '
+          'frames a correct parser finds in each: %s.' % '; '.join(st['name'] for st in spec['streams']), '']
     shown = {c['name'] for c in main + dev} | {e['name'] for e in spec['events']}
+    answers = next(g for g in spec['golden'] if g['message'] == 'hello' and g['direction'] == 'reply')['fields']['info']
     for g in spec['golden']:
         if g['message'] not in shown:
             continue
         values = ', '.join('`%s` = %s' % (n, json.dumps(v)) for n, v in g['fields'].items())
+        if g['message'] == 'hello' and g['fields'].get('info') == answers:     # one word too wide for a line
+            values = '`info` = the product build\'s text in [`hello` keys](%s#hello-keys)' % cmd_leaf(
+                next(c for c in main if c['name'] == 'hello'))
         head = '`%s` %s, seq %d' % (g['message'], g['direction'], g['seq'])
         if 'status' in g:
             head += ', status `%s`' % g['status']
         md.append('- %s (%s)%s: `%s`' % (g['name'][0].upper() + g['name'][1:], head, ('; ' + values) if values else '',
                                          frame_hex(g['hex'])))
     md += render_conformance(cases)
+    pages['examples.md'] = ('examples and conformance', 'whole frames in hex, and the conformance suite', md)
+    md = ['', '## Events']
+    for ev in spec['events']:
+        md += ['', '### %s `%s`' % (ev['type'], ev['name']), '', ev['summary'][0].upper() + ev['summary'][1:] + '.',
+               '', ev['doc'], '', 'Payload (%s):' % size_text(ev['payload']['size']), '']
+        md += field_table(ev['payload']['fields'])
     md += ['', '## Appendix: developer commands', '',
            'Unstable: they may change or disappear in any version, outside the compatibility rules.']
     for c in dev:
@@ -1040,13 +1114,27 @@ def render_md(spec, cases=None):
              ['Status %d is to be renamed `%s` (now `%s`; item %s).' % (n['status'], n['to'], n['from'], n['item'])
               for n in r['renames']] +
              ['Types %s..%s: %s.' % (t['first'], t['last'], t['doc']) for t in r['types']])
-    md += ['', '## Reserved for later versions', '', ' '.join([r['doc']] + items), '']
-    return '\n'.join(md)
-
-
-def anchor(cmd):
-    """GitHub's heading anchor for '### 0x03 `file.read`'."""
-    return re.sub(r'[^a-z0-9 _-]', '', ('%s %s' % (cmd['type'], cmd['name'])).lower()).replace(' ', '-')
+    md += ['', '## Reserved for later versions', '', ' '.join([r['doc']] + items)]
+    pages['events-dev.md'] = ('events, developer commands, reserved',
+                              'device events, unstable developer commands, numbers reserved for later versions', md)
+    assert sorted('%s/%s' % (DOC_DIR, n) for n in pages) == sorted(DOC_LEAVES)
+    head = '%s %s' % (p['name'], p['version'])
+    index = ['<!-- %s -->' % NOTICE, '# ' + head, '']
+    for para in p['intro']:
+        index += [para, '']
+    index += ['The machine-readable specification is [`protocol/v1.json`](../protocol/v1.json); these pages, the '
+              'firmware header, the host module and the TypeScript module (`clients/ts/src/v1.ts`) are generated from '
+              'it. Version %s describes the device as it is today. "Since" names the version that introduced an '
+              'entry\'s current form.' % p['version'], '', '## Contents', '']
+    out = {}
+    for rel in DOC_LEAVES:
+        name = rel.rsplit('/', 1)[1]
+        title, holds, body = pages[name]
+        index.append('- [%s](protocol/%s): %s' % (title[0].upper() + title[1:], name, holds))
+        out[rel] = wrap('\n'.join(['<!-- %s -->' % NOTICE, '# %s: %s' % (head, title), '',
+                                   'Part of the [%s](../PROTOCOL.md).' % head] + body + ['']))
+    out[DOC] = wrap('\n'.join(index + ['']))
+    return out
 
 
 # ---- TypeScript ---------------------------------------------------------------------------
@@ -1511,7 +1599,7 @@ def render_ts(spec):
     out += ['export const MAX_FRAME = HEADER_BYTES + MAX_PAYLOAD + TRAILER_BYTES;',
             '/** A reply has the request type | REPLY; events are 0x80 and above too. */',
             'export const REPLY = %s;' % spec['frame']['reply_bit'], '']
-    out.append(ts_comment('Transport facts (docs/PROTOCOL.md, Transport). ' + t['doc']))
+    out.append(ts_comment('Transport facts (docs/protocol/transport.md, Transport). ' + t['doc']))
     out.append('export const TRANSPORT = {')
     for name in TRANSPORT_FACTS:
         fact = t[name]
@@ -1641,7 +1729,7 @@ def render_ts(spec):
 
 def generate(spec, cases=None):
     """{repository-relative path: text} of every generated file. cases: the conformance suite
-    (protocol/v1.conformance.json, validated against the spec; its text goes into docs/PROTOCOL.md)."""
+    (protocol/v1.conformance.json, validated against the spec; its text goes into docs/protocol/examples.md)."""
     validate(spec)
     if cases is None:
         cases = load(CONFORMANCE)
@@ -1652,13 +1740,15 @@ def generate(spec, cases=None):
         conformance.validate(spec, cases)
     except conformance.CaseError as error:
         raise SpecError('%s: %s' % (CONFORMANCE.relative_to(ROOT), error))
-    return {CPP: render_cpp(spec), PY: render_py(spec), TS: render_ts(spec), DOC: render_md(spec, cases)}
+    return dict({CPP: render_cpp(spec), PY: render_py(spec), TS: render_ts(spec)}, **render_md(spec, cases))
 
 
 def stale(out, root=ROOT):
-    """Paths of generated files whose text on disk differs from out."""
-    return [rel for rel, text in out.items()
-            if not (root / rel).is_file() or (root / rel).read_text(encoding='utf-8') != text]
+    """Paths of generated files whose text on disk differs from out, then files in DOC_DIR that out does not hold."""
+    extra = sorted(str(path.relative_to(root)) for path in (root / DOC_DIR).glob('*') if path.is_file())
+    return ([rel for rel, text in out.items()
+             if not (root / rel).is_file() or (root / rel).read_text(encoding='utf-8') != text] +
+            [rel for rel in extra if rel not in out])
 
 
 def main(argv=None):
@@ -1677,6 +1767,10 @@ def main(argv=None):
             print('stale: %s (run python3 scripts/protogen.py)' % rel, file=sys.stderr)
         return 1 if differ else 0
     for rel in differ:
+        if rel not in out:
+            (ROOT / rel).unlink()
+            print('removed %s' % rel)
+            continue
         (ROOT / rel).parent.mkdir(parents=True, exist_ok=True)
         (ROOT / rel).write_text(out[rel], encoding='utf-8')
         print('wrote %s' % rel)

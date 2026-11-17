@@ -53,7 +53,7 @@ STAMP = (1980, 1, 1, 0, 0, 0)
 MAX_INDEX = 16 << 20                                   # index.json
 MAX_FILE = 32 << 20                                    # one member
 MAX_ARCHIVE = 256 << 20                                # one archive
-MAX_FILES = 4096                                       # files.sha256 limit on the device (docs/STORAGE.md)
+MAX_FILES = 4096                                       # files.sha256 limit on the device (docs/storage/packages.md)
 KINDS = ('base', 'machine', 'extension')
 
 

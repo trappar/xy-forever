@@ -5,7 +5,7 @@ the steps in order with the developer. Run every command yourself; ask the devel
 hands (the OP-XY, a file copy over MTP) or their decision, one question at a time, each with your
 recommendation. Stop at the first step that fails, fix what is yours to fix, say plainly what is
 missing, and resume there. Steps 7 and 8 (the device) have not yet been run end to end: report
-where they stall, and fix this file. Budget: 150 lines.
+where they stall, and fix this file. Budget: 10 KB (10000 bytes).
 
 ## 0. What the developer needs
 
@@ -58,7 +58,8 @@ Linux x86_64: it points at open-xy `docs/build.md`, "On Linux" (Docker); put the
 
 - No download (proxy, certificates): get the zip from the `toolchain-1` release page in a browser and
   run `python3 scripts/setup.py bootstrap --toolchain-archive <zip>`. Never edit the pins.
-- Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/` ([docs/HARDWARE.md](docs/HARDWARE.md)).
+- Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/`
+  ([docs/hardware/tools.md](docs/hardware/tools.md)).
 
 ## 3. Local files and leak patterns
 

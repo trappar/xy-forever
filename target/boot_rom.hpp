@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 // OP-XY bootloader 1000.0.20+0: observed ROM data layout, not a complete
-// runnable handoff. See docs/HARDWARE.md, Boot partition and USB (boot ROM).
+// runnable handoff. See docs/hardware/usb.md, Boot partition and USB (boot ROM).
 // This module deliberately contains no ROM call or persistent-write primitive.
 namespace xy_forever { namespace boot_rom {
 

@@ -35,7 +35,7 @@ commands and device scripts (the only agent that touches the device or asks the 
    Close with at most ten lines: done, blocked, waiting on the device, decisions needed.
 
 Progress lives on GitHub (assignee, branch, pull request); an item left unfinished gets a comment saying
-where it stands, so the next session resumes from there. **Asking the developer:** one self-contained
+where it stands, for the next session. **Asking the developer:** one self-contained
 question at a time, your recommendation first (the agent's question tool if any); keep working on what does
 not depend on the answer. A question that can wait is a `decision` issue starting "Undecided for now:". All GitHub
 text is in the developer's voice ("I", "my explicit yes"), never "the developer" or "the orchestrator".
@@ -61,13 +61,13 @@ reasoning** (`model: "opus"`, `effort: "high"`), whatever the orchestrator's own
 
 | Kind | May | Ends with |
 |---|---|---|
-| research | read anything in the workspace; write only its decision record | `docs/decisions/NNN-title.md`, <= 60 lines: question, answer, evidence (addresses, files), rejected options |
+| research | read anything in the workspace; write only its decision record and its detail leaves | a decision record, <= 8 KB: question, answer, evidence, rejected options |
 | build | edit code and tests for its item only | tests pass; one commit; reference docs updated if a fact in them changed |
 | review | read the diff and what it touches; write nothing | findings, most serious first, or "none" |
 
 An agent that cannot finish returns "split needed" with a proposed split; it never hands back half-done work or widens its item.
 **Context budget**: one concern per item, sized for under 150k tokens (every call re-sends the context); past 250k stop the agent.
-Most of an agent's context goes to reading files, so every brief says: no whole-file reads (ranges of at most 120 lines,
+Reading files costs most context, so every brief says: no whole-file reads (ranges of at most 120 lines,
 found by `grep -n`), build and test output through `tail`, and it names the functions to read when a previous report gave them.
 Follow-ups on the same code go to the same agent while it is under 150k (SendMessage), otherwise to a fresh one.
 
@@ -90,24 +90,24 @@ item must know, open questions, the three things that used most of your context.
 |---|---|
 | What to do next, loose ends, questions for the developer | GitHub issues: items, `thread`, `decision` (`scripts/plan.py`) |
 | Device state, installed build, open device problems, session notes | your local `docs/status/README.md` (gitignored; detail in leaf files beside it) |
-| A settled question (so nobody researches it twice) | `docs/decisions/NNN-title.md` |
+| A settled question (so nobody researches it twice) | `docs/decisions/NNN-title.md`; detail in `NNN-title.<topic>.md` beside it, linked from it |
 | Facts that stay true (addresses, formats, design) | the reference doc that owns them |
 | What a test showed | your local `docs/status/`; a lasting lesson (what failed, the rule it produced) as one line in HISTORY.md |
 | Logs, dumps, probe output, screenshots, scratch scripts | `../private/xy-forever/sessions/<date>-<topic>/`, never the repository |
 | What an agent tried that did not work | its report; one line in the decision record if it prevents a repeat |
 
-No other new files in `docs/`. `tests/test_docs_budget.py` budgets docs in bytes (and line length for what every
-agent reads first) and fails the suite when one grows past it: split it into a tree (an index, leaves), never squeeze.
+No other new files in `docs/`. `tests/test_docs_budget.py` budgets docs in bytes and line width, checks
+their links, and fails the suite when one grows past it: split it into a tree (an index plus leaves under 8 KB each), never squeeze.
 
 ## The device
 
-The aim is one power-on per sitting, and none for offline work.
+Aim: one power-on per sitting, and none for offline work.
 
 - **Sub-agents never touch the device.** They cannot ask the developer to power cycle it or
   put it in a mode. A build agent writes the device script for its item and proves it
   against the simulator. The orchestrator runs that script for a `device` item.
-- **Scripts state what they need.** A device script first checks the device is in the
-  state it needs. If not, it prints one line (`NEED: power on holding PLAY`) and exits;
+- **Scripts state what they need.** A device script first checks the device's
+  state. If not, it prints one line (`NEED: power on holding PLAY`) and exits;
   the orchestrator relays that line to the developer and reruns the script.
 - **Scripts leave evidence.** Output goes to `../private/xy-forever/sessions/`; the
   script prints a PASS/FAIL table and the folder. On FAIL the orchestrator gives a
@@ -117,9 +117,9 @@ The aim is one power-on per sitting, and none for offline work.
 - **Guard on** for every device session, so a hang resets the device and the service
   comes back. Sessions end in keepalive, never in the OS.
 - **`safe` items** run only main-loop code with timeouts. **`risky` items** add
-  interrupt code, a new stock call, or new reset behaviour. They run last in a
+  interrupt code, a new stock call, or new reset behaviour, and run last in a
   sitting, with the developer present.
-- **Two strikes.** If an item needs a second manual power cycle, it stops. It becomes
+- **Two strikes.** An item that needs a second manual power cycle stops: it becomes
   `blocked` and a research item is added. Do not iterate on a freezing device.
 - Asking for a power cycle: start the listener first, then one short line (OPERATING.md).
 

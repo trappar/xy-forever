@@ -364,7 +364,7 @@ export function configText(config: SavedConfig | null): string {
     `mods on: ${mods.length ? mods.join(', ') : 'none'}; ${built}.`;
 }
 
-/** content-state.txt in words (docs/STORAGE.md, content state): no file or official, installed, switching. */
+/** content-state.txt in words (docs/storage/state.md, content state): no file or official, installed, switching. */
 export function contentText(text: string | null, oldExists: boolean): string {
   if (text === null) return oldExists ? 'Content: needs repair (a switch did not finish).' : 'Content: official.';
   const s = parseKeyValues(text);

@@ -379,7 +379,7 @@ Result Stock121ReadOnlySession::mount_guarded() {
 bool Stock121ReadOnlySession::ready() const {
     // Every session is fresh (begin_fresh is the only way in). The second return below and
     // the activated_ branches in end() belong to the removed non-fresh session and never
-    // run; they stay because removing them changes the candidate (docs/ARCHITECTURE.md, "Build modes").
+    // run; they stay because removing them changes the candidate (docs/architecture/build.md, "Build modes").
     if (fresh_)
         return diagnostic_.stage == Stage::mounted && diagnostic_.result == Result::ok &&
                guarded_ && mounted_ && !activated_ && owner == reinterpret_cast<U32>(this) &&

@@ -23,7 +23,7 @@
 #include "mtp_usb_gate.hpp"         // which check refuses a probe start, and why
 #endif
 // XY Forever USB service (see usb_service.hpp). Stock addresses: the
-// authenticated 1.2.1 bootloader, mapped offline (docs/HARDWARE.md, Boot partition and USB).
+// authenticated 1.2.1 bootloader, mapped offline (docs/hardware/usb.md, Boot partition and USB).
 namespace xy_forever { namespace usb_service {
 #if defined(__bfin__)
 // Initialized data, not BSS: the cold link has no zero-initialization.

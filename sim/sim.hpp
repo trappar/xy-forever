@@ -1,6 +1,6 @@
 #ifndef XYF_SIM_HPP
 #define XYF_SIM_HPP
-// XY Forever device simulator (docs/ARCHITECTURE.md, "Simulator"). Force-included
+// XY Forever device simulator (docs/architecture/simulator.md, "Simulator"). Force-included
 // (-include) into every device source the simulator hosts; xy_forever/sim.py
 // rewrites those sources mechanically so that:
 //  - reinterpret_cast<T>(...) becomes xyf_sim::cast<T>(...): a device address

@@ -2,7 +2,7 @@
 #define XYF_STATE_HPP
 #include <stdint.h>
 #include "xyf_store.hpp"
-// Power-safe state.txt without rename (docs/STORAGE.md, State slots):
+// Power-safe state.txt without rename (docs/storage/state.md, State slots):
 // two alternating slots state-a.txt / state-b.txt, each "key=value" lines plus
 // "seq=<n>" and a final "crc32=<8 hex>" line covering every byte before it.
 // Read: the valid slot with the higher seq wins; legacy state.txt (no CRC)

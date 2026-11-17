@@ -1,4 +1,4 @@
-"""XY Forever device simulator: build, seed, run and control (docs/ARCHITECTURE.md, "Simulator").
+"""XY Forever device simulator: build, seed, run and control (docs/architecture/simulator.md, "Simulator").
 
 The simulator runs the device's own C++ on the Mac: B's USB service and menu link, A's storage
 server, both sides of the file boot and the peer session, cold_storage's yaffs session. Each

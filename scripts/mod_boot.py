@@ -308,7 +308,7 @@ class ModBoot(dp.Pass):
 
     def step_dry_run_named(self):
         raise StepSkip('no dry run of a named entry exists: CONTINUE mode 1 dry-runs the default only '
-                       '(PROTOCOL.md 0x31)')
+                       '(docs/protocol/cmd-boot.md, 0x31)')
 
     # -- boot once -----------------------------------------------------------------------------
     def slot_fields(self, tag):

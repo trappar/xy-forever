@@ -12,7 +12,7 @@ U32 le32(const Byte* p) { return le16(p) | le16(p + 2) << 16; }
 __attribute__((noinline)) void put16(Byte* p, U32 v) { p[0] = Byte(v); p[1] = Byte(v >> 8); }
 void put32(Byte* p, U32 v) { put16(p, v); put16(p + 2, v >> 16); }
 U32 round4(U32 n) { return (n + 3u) & ~3u; }
-// Official open-xy bases (docs/STORAGE.md, "Mod packages"), laid out as Profile's first 96 bytes (stock and
+// Official open-xy bases (docs/storage/mods-assembly.md, "Trust"), laid out as Profile's first 96 bytes (stock and
 // catalog SHA-256, then stock_bytes, stock_records, module_base, reserved_bytes, module_bytes,
 // heap_fill_base, heap_fill_bytes, expanded_base), then edits.bin's SHA-256. The first 92 bytes and the edits
 // make a base known; its expanded_base must match too only when the larger layout is used, so a base

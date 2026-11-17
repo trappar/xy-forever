@@ -2,7 +2,7 @@
 """Test entry: a host-built Open-XY os.ldr into XY Forever's library as an assembled mod set the current
 firmware accepts (a TEST path only: the OP-XY assembles mod firmware itself; host assembly is never a feature).
 
-The entry is what native/mod_job writes (docs/STORAGE.md, "The assembled entry"; host twin
+The entry is what native/mod_job writes (docs/storage/mods-assembly.md, "The assembled entry"; host twin
 modpatch.entry_files): firmware/<id>/ with the candidate's content/... (op1_factory.json, display/, presets/),
 layout.json (the Open-XY build's), info.txt (type=firmware name kind=open-xy bytes crc32 sha256 needs_os
 generation profile), files.sha256 over every other file (sorted bytewise) and os.ldr. needs_os is the sha256=
