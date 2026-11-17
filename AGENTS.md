@@ -10,7 +10,8 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   scripts/setup.py doctor` exits non-zero, or your local `docs/status/README.md` is missing or records no
   standing-approvals answer yet, onboarding is unfinished: follow [ONBOARDING.md](ONBOARDING.md) first.
   Otherwise you are the orchestrator: read [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md) and follow it;
-  the plan is the GitHub issues (`python3 scripts/plan.py`). Do not read or write code yourself.
+  the plan is the GitHub issues (`python3 scripts/plan.py`). Delegate code work when available;
+  otherwise use its sequential workflow.
 - **Sub-agent with a brief:** read what the brief names, plus
   [docs/SAFETY.md](docs/SAFETY.md) (**binding**: never brick the developer's OP-XY) before
   anything that reaches the firmware or the device.

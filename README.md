@@ -8,7 +8,7 @@ and the dev menu (hold COM) remains available for recovery.
 
 ## Getting started
 
-Make an empty workspace folder, open Claude Code in it and paste this prompt:
+Make an empty workspace folder, open your coding agent in it and paste this prompt:
 
 > Set me up to develop XY Forever in this folder. Clone the private GitHub repository
 > trappar/xy-forever here with `gh repo clone trappar/xy-forever`, then read xy-forever/AGENTS.md
@@ -16,8 +16,11 @@ Make an empty workspace folder, open Claude Code in it and paste this prompt:
 > me only for what needs my hands (the OP-XY) or my decision. When setup is done, tell me how to
 > start the next session.
 
-Later sessions: open Claude Code in the workspace folder (or `xy-forever/`) and say "Continue
-development". By hand instead (Python 3.9+; the workspace also holds `private/` and `tools/`):
+Later sessions: open your agent in the workspace folder (or `xy-forever/`) and say "Continue
+development". `AGENTS.md` is the entry point; if your harness does not load it automatically,
+ask it to read that file first. Bootstrap also writes a workspace `CLAUDE.md` for Claude Code.
+Delegation is optional; [the workflow](docs/ORCHESTRATION.md) supports sequential work too.
+By hand instead (Python 3.9+; the workspace also holds `private/` and `tools/`):
 
 ```sh
 mkdir xyf && cd xyf && gh repo clone trappar/xy-forever && cd xy-forever

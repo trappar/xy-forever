@@ -22,7 +22,7 @@ where they stall, and fix this file. Budget: 10 KB (10000 bytes).
 
 ## 1. Bootstrap the workspace
 
-Start in the workspace folder (where Claude Code was opened); it ends up as:
+Start in the workspace folder (where the coding agent was opened); it ends up as:
 ```text
 <workspace>/
   AGENTS.md, CLAUDE.md  the workspace guide (bootstrap writes them if absent; never overwritten)
@@ -145,7 +145,9 @@ No device at hand: say so; device items wait and the orchestrator skips them.
 
 ## 9. Continue development
 
-Later sessions: open Claude Code in the workspace folder (or `xy-forever/`) and say "Continue
-development". It runs the orchestrator ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)): claim a
-plan item's GitHub issue, then one branch and one pull request per item. While the repository has
+Later sessions: open your coding agent in the workspace folder (or `xy-forever/`) and say "Continue
+development". If it does not load `AGENTS.md`, ask it to read that file first. `CLAUDE.md` imports
+the workspace guide for Claude Code. The [workflow](docs/ORCHESTRATION.md) supports delegation or
+sequential work: claim a plan item's GitHub issue, then one branch and one pull request per item.
+While the repository has
 no GitHub remote (`git remote` prints nothing), work stays on the local `main`.

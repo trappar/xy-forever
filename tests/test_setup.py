@@ -334,7 +334,7 @@ class Bootstrap(unittest.TestCase):
                          r'import-stock --from-device +\(reads them into %s.*/upgrade/firmware/blackfin/bin/os\.ldr'
                          % (self.ws / 'private/incoming'))
         self.assertIn('import-stock %s' % (self.ws / 'private/incoming'), out)
-        self.assertIn('4. Open Claude Code in %s (or %s) and say "Continue development"' % (self.ws, self.repo), out)
+        self.assertIn('4. Open your agent in %s (or %s) and say "Continue development"' % (self.ws, self.repo), out)
         before, self.calls = self.tree(), []
         b, out = self.bootstrap()
         self.assertEqual((b.actions, self.calls, self.tree()), ([], [], before))
@@ -437,7 +437,7 @@ class Bootstrap(unittest.TestCase):
         b, out = self.bootstrap()
         self.assertEqual(self.calls[-1], 'fixtures')
         self.assertFalse((self.ws / 'private/incoming').exists())
-        self.assertRegex(out, r'Next:\n  1\. Open Claude Code in ')
+        self.assertRegex(out, r'Next:\n  1\. Open your agent in ')
 
     def test_an_existing_toolchain_folder_or_link_that_fails_its_pins_is_left_alone(self):
         tools = self.ws / 'tools/blackfin'
