@@ -6,7 +6,7 @@ filled with garbage), reading and writing through a file-call table (on the host
 backed by the real files, folders only through the job's mkdir) and leaves one whole library entry. Its
 folder must hold exactly modpatch.entry_files of the one-shot assembler's output (host/mod_assemble.cpp run,
 itself proven against core.mjs by tests/test_modpatch.py): os.ldr and every content file byte-identical,
-plus layout.json, info.txt (the strict reader's) and files.sha256 over all of them. Faults (a read or write
+plus native info.txt (the strict reader's) and files.sha256 over all of them. Faults (a read or write
 failure at every step, cancel at every step, a region one byte short, missing, truncated and short files, a
 missing or damaged content file, an os.ldr that fails start_verify) must end in their error code with no
 output name left and the same Job reusable. Synthetic packages always; the published 0.0.6 package set when
@@ -54,7 +54,7 @@ class Harness:
         (out.parent / 'ref').mkdir()
         report = P.run(self.binary, out.parent / 'job.txt', out.parent / 'ref')
         self.assertEqual([report[k] for k in ('input', 'patch', 'verify', 'content', 'copy')], ['ok'] * 5, report)
-        return P.entry_files(self.gen, P.tree(out.parent / 'ref'), machines, exts, report['numbers'], memory=memory)
+        return P.entry_files(self.gen, P.tree(out.parent / 'ref'), machines)
 
     def faults(self, machines, exts=(), stride=1):
         folder = Path(tempfile.mkdtemp(dir=self.work))
@@ -70,7 +70,11 @@ class Harness:
         for path in want:
             self.assertEqual(tree[path], want[path], path)
         xyf_entry.parse_manifest(tree['info.txt'])                    # the strict reader accepts it
-        self.assertEqual(json.loads(tree['layout.json'])['selected'], list(machines))
+        self.assertNotIn('layout.json', tree)
+        self.assertEqual(xyf_entry.parse_manifest(tree['info.txt'])['machines'], len(machines))
+        listed = {path: digest for digest, path in xyf_entry.read_files_sha256(tree['files.sha256'])}
+        self.assertEqual(set(listed), set(tree) - {'files.sha256'})
+        self.assertTrue(all(M.sha256(tree[path]) == digest for path, digest in listed.items()))
         self.assertLessEqual(report['peak'], DEVICE_REGION)
         for phase in ('inputs', 'write'):                             # one read or write call of <= 64 KiB
             self.assertLessEqual(report['largest'][phase], CHUNK, phase)
@@ -186,16 +190,13 @@ class PublishedPackages(Harness, unittest.TestCase):
 
     def test_expanded_memory(self):
         """The 4 MiB option on the device job: the entry is the one-shot assembly's (itself proven against
-        core.mjs, test_modpatch PublishedKitExpanded), layout.json records the option as the website does, and
+        core.mjs, test_modpatch PublishedKitExpanded), native metadata has the count, and
         the larger image still fits B's region (the image is kept last; link files use the module's free part)."""
         from test_modpatch import LARGE, NEAR
         for name, machines in (('large', LARGE), ('near', NEAR)):
             with self.subTest(name):
                 report, out = self.job(machines, [], memory='expanded')
                 tree = self.assert_identical(report, out, machines, [], memory='expanded')
-                layout = json.loads(tree['layout.json'])
-                self.assertEqual((layout['memory'], layout['reserved_bytes']), ('expanded', 4 << 20))
-                self.assertEqual(list(layout)[-2:], ['memory', 'reserved_bytes'])
                 self.assertLessEqual(report['peak'], DEVICE_REGION)
         report, out = self.job(LARGE, [])
         self.assertEqual((report['error'], report['phase']), ('link', 'failed'))     # standard: does not fit
@@ -208,7 +209,6 @@ class PublishedPackages(Harness, unittest.TestCase):
             with self.subTest(name):
                 report, out = self.job(machines, exts)
                 tree = self.assert_identical(report, out, machines, exts)
-                self.assertLessEqual(len(tree['layout.json']), 8192)   # XY Forever's layout.json reader
                 if 'fm2op' in machines:                                 # the content a mod firmware opens at boot
                     self.assertIn('content/display/fm2op.svg', tree)
                     self.assertIn('content/presets/fm2op/default.json', tree)

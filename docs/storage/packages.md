@@ -14,6 +14,7 @@ entry: every `info.txt` written before `type` existed is one, unchanged.
 | `version` | version text (display and equality only), at most 31 bytes |
 | `kind` | `official`, `open-xy` or `custom` |
 | `bytes` | size of `os.ldr`: decimal, no sign, no leading zero, below 2^32 |
+| `machines` | optional decimal count, 0..65535: selected machines for firmware, catalog machines for a mod-base; absent means unknown |
 | `crc32` | CRC-32 of `os.ldr`, 8 lowercase hex digits (checked before boot) |
 | `sha256`, `needs_os` | 64 lowercase hex digits: the `os.ldr` SHA-256; the one this package needs |
 | `content` | the content set's version (`content.sha256` holds the set), at most 31 bytes |
@@ -24,8 +25,8 @@ entry: every `info.txt` written before `type` existed is one, unchanged.
 | `type` | Required | Also allowed |
 |---|---|---|
 | none | nothing | the firmware keys |
-| `firmware` | `name bytes crc32 sha256` | `version kind content source licence profile`, `generation` + `needs_os` (together: an assembled mod set) |
-| `mod-base` | `profile generation needs_os` | `name version source licence` |
+| `firmware` | `name bytes crc32 sha256` | `version kind content source licence profile machines`, `generation` + `needs_os` (together: an assembled mod set) |
+| `mod-base` | `profile generation needs_os` | `name version source licence machines` |
 | `mod` | `name machine generation` | `version profile source licence` |
 
 Any other known key for a type is refused. Dependencies are exact matches, checked
@@ -67,8 +68,7 @@ reaches stage 1 only through the append-only services table. Any failure leaves 
 | ZIP | `PK\3\4` or `PK\5\6`: an open-xy builder ZIP, imported by the host only |
 
 Folders, by their names and `info.txt`: `info.txt` decides by `type` (firmware
-entries need `os.ldr`; one with `generation` is an assembled mod set and needs
-`layout.json`); without it, `manifest.json` is a content pack and `os.ldr` a
+entries need `os.ldr`; one with `generation` is an assembled mod set); without it, `manifest.json` is a content pack and `os.ldr` a
 firmware entry. `content.sha256` and `firmware.version` (a content set) come
 together or not at all. Refused always: a name that is not one safe name (1-127
 printable ASCII bytes, no `/`, `\` or `:`, not ending in `.` or space), any name

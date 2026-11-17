@@ -122,34 +122,19 @@ def job_text(generation_dir, machines, extensions, stock, catalog, profiling=Fal
 ENTRY_NAME = 'OP-XY mods'               # host/mod_assemble.cpp's default info.txt name for the stepped job
 
 
-def entry_layout_text(profile, selected, extensions, numbers, reserved_bytes=None):
-    """layout.json of an assembled entry as open-xy's website writes it (builder/app.mjs build():
-    JSON.stringify(value, null, 2) + newline): numbers {id: {slot: n, 'page': page}} in the link's order,
-    extensions in collection order; reserved_bytes (the 4 MiB option's reservation) adds "memory": "expanded"
-    and it."""
-    value = {'format': 'opxy-layout/1', 'profile': profile, 'selected': list(selected),
-             'extensions': list(extensions), 'machines': numbers}
-    if reserved_bytes is not None:
-        value.update(memory='expanded', reserved_bytes=reserved_bytes)
-    return json.dumps(value, indent=2) + '\n'
-
-
-def entry_files(generation_dir, assembled, machines, extensions, numbers, name=ENTRY_NAME, memory='standard'):
+def entry_files(generation_dir, assembled, machines, name=ENTRY_NAME):
     """The whole library entry the device job (native/mod_job) writes, from the one-shot assembly's
-    {path: bytes} (run: os.ldr, content/..., files.sha256 of the content) and its link numbers (run's
-    report['numbers']): the content and os.ldr unchanged, layout.json, info.txt (an assembled mod set,
+    {path: bytes} (run: os.ldr, content/..., files.sha256 of the content):
+    the content and os.ldr unchanged, native info.txt (an assembled mod set,
     docs/STORAGE.md) and files.sha256 over every other file."""
     root = Path(generation_dir)
     base = info_values(root / 'base/info.txt')
     files = {p: b for p, b in assembled.items() if p != 'files.sha256'}
     ldr = files['os.ldr']
-    order = [row[1] for row in M.read_table((root / 'base/extensions.txt').read_bytes())]
-    files['layout.json'] = entry_layout_text(base['profile'], machines, [e for e in order if e in extensions],
-                                             numbers, expanded_reserved(base) if memory == 'expanded' else None).encode()
     files['info.txt'] = xyf_entry.manifest_text(dict(
         type='firmware', name=name, kind='open-xy', bytes=len(ldr), crc32='%08x' % (zlib.crc32(ldr) & 0xffffffff),
         sha256=M.sha256(ldr), needs_os=base['needs_os'], generation=base['generation'],
-        profile=base['profile'])).encode()
+        profile=base['profile'], machines=len(machines))).encode()
     files['files.sha256'] = list_text(files).encode()
     return files
 

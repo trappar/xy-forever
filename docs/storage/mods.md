@@ -2,22 +2,20 @@
 
 Part of the [XY Forever storage layout](../STORAGE.md).
 
-## `layout.json` (open-xy)
+## External Open-XY layouts
 
-XY Forever accepts `format=opxy-layout/1` and profiles `opxy-1.2.1` or `opxy-1.2.0`.
-`machines` maps IDs to exactly one `engine`, `effect` or `player` number (0..255),
-plus a `page` (0..1023). IDs are 1–31 lowercase letters, digits, `_` or `-`.
-The reader keeps the ordered `selected` and `extensions` lists. Unknown keys,
-including `memory` and `reserved_bytes`, are ignored; the 4 MiB website layout is accepted.
+`layout.json` belongs to Open-XY. XY Forever's firmware does not read, write or require
+it. Leftover copies in existing entries are ignored; `info.txt` supplies the optional
+native machine count. The editable selection belongs to `config.txt`.
 
-`machines` is number history, including disabled and fixed machines. Only `selected`
-names this build's machines; every selected ID must have numbers. The library row uses
-its count, including zero, and says "numbers only" when `selected` is absent (SDK builds).
-Catalog flag 16 carries that distinction; older XYC1 readers refuse the unknown flag.
+Browser onboarding will read an existing layout's `selected`, `extensions`, `profile`
+and memory choice, match them to native packages, show missing or incompatible mods,
+and let the user review the native selection before rebuilding. It imports a mod
+selection, never a compiled firmware image or a second runtime format. SDK layouts
+without `selected` cannot recover a selection: `machines` includes historical number
+reservations. This browser flow is planned in issue #94; regular users need no project
+workspace, Python or CLI. [Decision 035](../decisions/035-layout-migration.md) owns this boundary.
 
-Bounds: 16 KiB of JSON, 256 machine mappings and selected IDs, 64 extensions, nesting
-at most 8 deep for ignored values; duplicate IDs or known keys are refused. Text plus
-the parsed layout fits A's existing 40 KiB scan scratch (36,400 bytes total).
 Upstream checked at `a07b08faeb58cc7e74cdbc8bd98f809a8ffd5159` (2026-11-17):
 `tooling/machines.py:layout_document` and `builder/app.mjs`'s `nextLayout`.
 

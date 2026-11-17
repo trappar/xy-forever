@@ -1,5 +1,5 @@
 """Prepare an XY Forever firmware-library entry (docs/STORAGE.md)
-on the host: firmware/<id>/{os.ldr, info.txt[, layout.json]}. Offline only."""
+on the host: firmware/<id>/{os.ldr, info.txt}. Offline only."""
 import json
 import re
 import zlib
@@ -9,37 +9,6 @@ from .ldr import MAX_IMAGE, inspect_ldr
 
 ID = re.compile(r'^[a-z0-9_-]{1,31}$')
 KINDS = ('official', 'open-xy', 'custom')
-
-
-def check_layout(text):
-    """Validate the device reader's bounded layout shape; return the known selection count.
-
-    sdk.py omits selected: its machine map records number history, so the count is unknown.
-    """
-    data = json.loads(text)
-    if not isinstance(data, dict) or data.get('format') != 'opxy-layout/1' or not isinstance(data.get('machines'), dict):
-        raise ValueError('layout.json is not opxy-layout/1')
-    if data.get('profile') not in ('opxy-1.2.1', 'opxy-1.2.0'):
-        raise ValueError('layout.json has an unsupported profile')
-    machines = data['machines']
-    if len(machines) > 256 or len(text.encode()) > 16384:
-        raise ValueError('layout.json exceeds the XY Forever reader limits')
-    for name, m in machines.items():
-        kinds = [k for k in ('engine', 'effect', 'player') if isinstance(m, dict) and k in m]
-        if not ID.fullmatch(name) or len(kinds) != 1 or 'page' not in m or \
-                type(m[kinds[0]]) is not int or not 0 <= m[kinds[0]] <= 255 or \
-                type(m['page']) is not int or not 0 <= m['page'] <= 1023:
-            raise ValueError('layout.json machine not readable by XY Forever: ' + name)
-    for key, limit in (('selected', 256), ('extensions', 64)):
-        if key not in data:
-            continue
-        ids = data[key]
-        if not isinstance(ids, list) or len(ids) > limit or \
-                any(not isinstance(name, str) or not ID.fullmatch(name) for name in ids) or len(set(ids)) != len(ids):
-            raise ValueError('layout.json has an invalid ' + key + ' list')
-    if 'selected' in data and any(name not in machines for name in data['selected']):
-        raise ValueError('layout.json selected machine has no numbers')
-    return len(data['selected']) if 'selected' in data else None
 
 
 def info_text(name, version, kind, data):
@@ -53,7 +22,7 @@ def info_text(name, version, kind, data):
     return '\n'.join(lines) + '\n'
 
 
-def make_entry(ldr, out_root, entry_id, name, version='', kind='custom', layout=None):
+def make_entry(ldr, out_root, entry_id, name, version='', kind='custom'):
     if not ID.fullmatch(entry_id):
         raise ValueError('id must be 1-31 of [a-z0-9_-]')
     if kind not in KINDS:
@@ -65,17 +34,11 @@ def make_entry(ldr, out_root, entry_id, name, version='', kind='custom', layout=
     folder = Path(out_root) / 'xy-forever' / 'firmware' / entry_id
     if folder.exists():
         raise ValueError('entry folder already exists: ' + str(folder))
-    machines = None
-    if layout is not None:
-        layout_text = Path(layout).read_text()
-        machines = check_layout(layout_text)
     folder.mkdir(parents=True)
     (folder / 'os.ldr').write_bytes(data)
     (folder / 'info.txt').write_text(info_text(name, version, kind, data))
-    if layout is not None:
-        (folder / 'layout.json').write_text(layout_text)
     return dict(folder=str(folder), bytes=len(data), crc32=f'{zlib.crc32(data) & 0xffffffff:08x}',
-                sha256=structure['sha256'], entry=structure['entry'], machines=machines, device_installation=False)
+                sha256=structure['sha256'], entry=structure['entry'], device_installation=False)
 
 
 # The package manifests (docs/decisions/010-package-model.md, docs/STORAGE.md): the host twin of
@@ -83,7 +46,7 @@ def make_entry(ldr, out_root, entry_id, name, version='', kind='custom', layout=
 # device readers (tests/test_xyf_manifest.py compares them); the writers emit only what they accept.
 MANIFEST_LIMITS = dict(text=4096, line=255, keys=32, key=31, value=127)
 MANIFEST_KEYS = ('type', 'name', 'version', 'kind', 'bytes', 'crc32', 'sha256', 'content',
-                 'needs_os', 'generation', 'profile', 'machine', 'source', 'licence')
+                 'needs_os', 'generation', 'profile', 'machine', 'source', 'licence', 'machines')
 MANIFEST_STATUS = ('ok', 'too_large', 'empty', 'no_newline', 'line_too_long', 'bad_byte', 'syntax', 'bad_key',
                    'duplicate_key', 'too_many_keys', 'value_too_long', 'empty_value', 'bad_number', 'bad_hex',
                    'bad_value', 'unknown_type', 'refused_type', 'key_not_for_type', 'missing_key')
@@ -91,9 +54,9 @@ TYPES = ('firmware', 'mod-base', 'mod', 'companion')
 MACHINES = ('synth', 'drum', 'sample', 'effect', 'player', 'extension')
 _CAPACITY = dict(name=48, version=32, content=32, generation=32, profile=32, source=128, licence=64)
 _FIRMWARE_KEYS = {'name', 'version', 'kind', 'bytes', 'crc32', 'sha256', 'content', 'needs_os', 'generation',
-                  'profile', 'source', 'licence'}
+                  'profile', 'source', 'licence', 'machines'}
 _ALLOWED = {None: _FIRMWARE_KEYS, 'firmware': _FIRMWARE_KEYS,
-            'mod-base': {'name', 'version', 'profile', 'generation', 'needs_os', 'source', 'licence'},
+            'mod-base': {'name', 'version', 'profile', 'generation', 'needs_os', 'source', 'licence', 'machines'},
             'mod': {'name', 'version', 'machine', 'generation', 'profile', 'source', 'licence'}}
 _NEEDS = {None: set(), 'firmware': {'name', 'bytes', 'crc32', 'sha256'},
           'mod-base': {'profile', 'generation', 'needs_os'}, 'mod': {'name', 'machine', 'generation'}}
@@ -115,8 +78,8 @@ def _value(key, v):
         return (v.decode(), None) if v.decode() in KINDS else (None, 'bad_value')
     if key == 'machine':
         return (v.decode(), None) if v.decode() in MACHINES else (None, 'bad_value')
-    if key == 'bytes':
-        ok = v.isdigit() and len(v) <= 10 and (len(v) == 1 or v[:1] != b'0') and int(v) < 1 << 32
+    if key in ('bytes', 'machines'):
+        ok = v.isdigit() and len(v) <= 10 and (len(v) == 1 or v[:1] != b'0') and int(v) < (1 << 16 if key == 'machines' else 1 << 32)
         return (int(v), None) if ok else (None, 'bad_number')
     if key in ('crc32', 'sha256', 'needs_os'):
         ok = _HEX.fullmatch(v) and len(v) == (8 if key == 'crc32' else 64)

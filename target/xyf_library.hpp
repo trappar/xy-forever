@@ -5,7 +5,7 @@
 #include "xyf_state.hpp"
 #include "xyf_content.hpp"
 // XY Forever firmware library (docs/STORAGE.md): scans
-// /yaffs2/xy-forever/{state.txt, firmware/<id>/{info.txt,os.ldr,layout.json}}
+// /yaffs2/xy-forever/{state.txt, firmware/<id>/{info.txt,os.ldr}}
 // and decides what to boot. Read-only: never creates, writes, renames or
 // removes anything.
 //
@@ -30,9 +30,8 @@ static const uint32_t dirent_type = 10, dirent_name = 11, dirent_regular = 8;
 struct Entry {
     char id[store::max_id + 1];
     store::Info info;
-    bool has_info, has_layout, layout_ok, image_present;
-    uint32_t machines;         // selected in layout.json, else 0 (number history is not a selection)
-    bool numbers_only;         // valid layout, but its producer did not record selected
+    bool has_info, image_present;
+    uint32_t machines;         // optional native info.txt count; no inference from external layout history
     bool content_missing;      // its content is not installed in /yaffs2/content/ (content_installed)
     bool usable;               // os.ldr present and content installed (size/CRC checked at load)
 };
@@ -45,9 +44,8 @@ struct Library {
     uint32_t skipped;          // invalid ids, duplicates, over capacity, missing images
     content::State content;    // what /yaffs2/content/ matches (the content state record's head)
 };
-// scratch: one text file plus a parsed layout.
-static const uint32_t layout_offset = (store::max_layout + 7u) & ~7u;
-static const uint32_t scratch_needed = layout_offset + sizeof(store::Layout);
+// scratch: one native text file.
+static const uint32_t scratch_needed = store::max_text;
 enum class Choice { menu, once, by_default };
 // once (if usable) > default (if usable) > menu ("XY Forever is home").
 Choice boot_choice(const Library& library, uint32_t& index);
@@ -71,7 +69,6 @@ void add_entry(Library& out, const char* name);
 void sort(Library& out);
 void apply_state(Library& out, state::Source source, const uint8_t* text, uint32_t length);
 void apply_info(Entry& e, const uint8_t* text, uint32_t length);
-void apply_layout(Entry& e, uint8_t* scratch, uint32_t length);
 void finish(Library& out, Entry& e);
 extern const char root[];
 
@@ -137,8 +134,6 @@ template <class Fs> Error scan_direct(Fs& fs, Library& out, uint8_t* scratch, ui
         Entry& e = out.entries[i];
         if (path(p, root, "/firmware/", e.id, "/info.txt") && read_text(fs, p, scratch, store::max_text, length))
             apply_info(e, scratch, length);
-        if (path(p, root, "/firmware/", e.id, "/layout.json") && read_text(fs, p, scratch, store::max_layout, length))
-            apply_layout(e, scratch, length);
         e.image_present = path(p, root, "/firmware/", e.id, "/os.ldr") && present(fs, p);
         e.content_missing = !content_installed(out.content, e);
         finish(out, e);

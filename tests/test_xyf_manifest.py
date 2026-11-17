@@ -26,7 +26,7 @@ MACHINES = (None,) + E.MACHINES
 FILE_KINDS = ('unknown', 'firmware_entry', 'assembled_entry', 'official_tfw', 'ldr_image', 'xyf_stage2', 'zip',
               'mod_base', 'mod', 'content_pack', 'companion', 'bootloader')
 REASONS = ('ok', 'bad_name', 'short', 'unknown', 'refused', 'host_only', 'need_manifest', 'manifest',
-           'missing_image', 'missing_layout', 'content_set', 'ambiguous')
+           'missing_image', 'reserved_9', 'content_set', 'ambiguous')
 DEPENDENCY = ('ok', 'invalid', 'not_firmware', 'not_base', 'not_mod', 'not_dependent', 'no_sha256', 'os_mismatch',
               'generation', 'profile')
 TEXT = ('name', 'version', 'content', 'generation', 'profile', 'source', 'licence')
@@ -34,13 +34,13 @@ TEXT = ('name', 'version', 'content', 'generation', 'profile', 'source', 'licenc
 
 class Info(C.Structure):          # xyf_store::Info (tests/test_xyf_store.py)
     _fields_ = [('name', C.c_char * 48), ('version', C.c_char * 32), ('kind', C.c_uint32),
-                ('bytes', C.c_uint32), ('crc32', C.c_uint32), ('has_bytes', C.c_bool), ('has_crc32', C.c_bool)]
+                ('bytes', C.c_uint32), ('crc32', C.c_uint32), ('machines', C.c_uint32), ('has_bytes', C.c_bool), ('has_crc32', C.c_bool), ('has_machines', C.c_bool), ('has_generation', C.c_bool)]
 
 
 class Manifest(C.Structure):
     _fields_ = [('status', C.c_uint8), ('type', C.c_uint8), ('kind', C.c_uint8), ('machine', C.c_uint8),
                 ('key', C.c_uint8), ('reserved', C.c_uint8), ('line', C.c_uint16), ('keys', C.c_uint16),
-                ('lines', C.c_uint16), ('bytes', C.c_uint32), ('crc32', C.c_uint32),
+                ('lines', C.c_uint16), ('bytes', C.c_uint32), ('crc32', C.c_uint32), ('machines', C.c_uint32),
                 ('sha256', C.c_uint8 * 32), ('needs_os', C.c_uint8 * 32),
                 ('name', C.c_char * 48), ('version', C.c_char * 32), ('content', C.c_char * 32),
                 ('generation', C.c_char * 32), ('profile', C.c_char * 32), ('source', C.c_char * 128),
@@ -63,8 +63,8 @@ def fields(m):
             out[key] = KINDS[m.kind]
         elif key == 'machine':
             out[key] = MACHINES[m.machine]
-        elif key == 'bytes':
-            out[key] = m.bytes
+        elif key in ('bytes', 'machines'):
+            out[key] = getattr(m, key)
         elif key == 'crc32':
             out[key] = '%08x' % m.crc32
         elif key in ('sha256', 'needs_os'):
@@ -102,7 +102,7 @@ class ManifestTest(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-manifest-')
         lib = Path(cls.tmp.name) / 'manifest.dylib'
         sources = ['target/xyf_manifest.cpp', 'target/xyf_filelist.cpp', 'target/xyf_recognise.cpp',
-                   'target/xyf_store.cpp', 'target/xyf_info.cpp', 'target/xyf_layout.cpp', 'tests/manifest_bridge.cpp']
+                   'target/xyf_store.cpp', 'target/xyf_info.cpp', 'tests/manifest_bridge.cpp']
         hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
                        '-ffreestanding', '-fno-builtin', '-fno-exceptions', '-fno-rtti',
                        *[str(ROOT / s) for s in sources], '-o', str(lib)], check=True, capture_output=True)
@@ -561,7 +561,7 @@ class ManifestTest(unittest.TestCase):
             (['info.txt'], legacy, ('firmware_entry', 'missing_image', False, False)),
             (['info.txt', 'OS.LDR'], legacy, ('firmware_entry', 'missing_image', False, False)),
             (['info.txt', 'os.ldr', 'layout.json'], info('assembled.txt'), ('assembled_entry', 'ok', True, False)),
-            (['info.txt', 'os.ldr'], info('assembled.txt'), ('assembled_entry', 'missing_layout', False, False)),
+            (['info.txt', 'os.ldr'], info('assembled.txt'), ('assembled_entry', 'ok', True, False)),
             (['info.txt', 'files.sha256', 'objects'], info('mod-base.txt'), ('mod_base', 'ok', True, False)),
             (['info.txt', 'files.sha256', 'objects', 'svg', 'presets'], info('mod-fm2op.txt'), ('mod', 'ok', True, False)),
             (['manifest.json', 'presets', 'projects'], None, ('content_pack', 'ok', True, False)),

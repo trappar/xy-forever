@@ -65,15 +65,8 @@ void apply_state(Library& out, state::Source source, const uint8_t* text, uint32
 void apply_info(Entry& e, const uint8_t* text, uint32_t length) {
     e.has_info = store::parse_info(reinterpret_cast<const char*>(text), length, e.info);
 }
-void apply_layout(Entry& e, uint8_t* scratch, uint32_t length) {
-    // Parse into the scratch space after the text; only the count is kept.
-    e.has_layout = true;
-    store::Layout* layout = reinterpret_cast<store::Layout*>(scratch + layout_offset);
-    e.layout_ok = store::parse_layout(reinterpret_cast<const char*>(scratch), length, *layout);
-    e.machines = e.layout_ok && layout->has_selected ? layout->selected_count : 0;
-    e.numbers_only = e.layout_ok && !layout->has_selected;
-}
 void finish(Library& out, Entry& e) {
+    e.machines = e.has_info && e.info.has_machines ? e.info.machines : 0;
     e.usable = e.image_present && !e.content_missing;
     if (!e.usable) ++out.skipped;
     if (!e.has_info || !e.info.name[0]) copy(e.info.name, sizeof(e.info.name), e.id);

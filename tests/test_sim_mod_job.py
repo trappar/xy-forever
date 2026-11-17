@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import census, hostbuild, modkit as M, modpatch as MP, modsend as MS, paths, sim   # noqa: E402
+from xy_forever import xyf_entry, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, paths, sim   # noqa: E402
 from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
 import test_modkit as TK                                                  # noqa: E402
@@ -159,7 +159,7 @@ class Base:
                                    unverified=self.unverified, name=NAME))
         report = MP.run(self.binary, job, folder / 'ref')
         self.assertEqual([report[k] for k in ('input', 'patch', 'verify', 'content', 'copy')], ['ok'] * 5, report)
-        return MP.entry_files(self.gen_dir, MP.tree(folder / 'ref'), machines, exts, report['numbers'], name=NAME)
+        return MP.entry_files(self.gen_dir, MP.tree(folder / 'ref'), machines, name=NAME)
 
     def assemble_and_compare(self, machines, exts=()):
         before = outside_tmp(self.root)
@@ -221,7 +221,8 @@ class SyntheticJob(Base, unittest.TestCase):
                 other = tree(self.entry('mods-b' if want == 'mods-a' else 'mods-a'))
                 job, f = self.assemble_and_compare(machines, exts)
                 self.assertEqual(f['detail'], want)
-                self.assertEqual(json.loads(tree(self.entry(want))['layout.json'])['selected'], machines)
+                self.assertNotIn('layout.json', tree(self.entry(want)))
+                self.assertEqual(xyf_entry.parse_manifest(tree(self.entry(want))['info.txt'])['machines'], len(machines))
                 self.assertEqual(tree(self.entry('mods-b' if want == 'mods-a' else 'mods-a')), other)
                 self.assertEqual(self.leftovers(), [])                      # the old mods-a removed from tmp/
                 seen.append(f['detail'])

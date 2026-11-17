@@ -2,13 +2,13 @@
 #define XYF_STORE_HPP
 #include <stdint.h>
 // XY Forever storage formats (docs/STORAGE.md): key=value text for
-// state.txt / info.txt and a bounded reader for open-xy layout.json.
+// state.txt / info.txt; external Open-XY formats never enter the firmware.
 // Freestanding: no libc, no allocation, every loop bounded by its input.
 namespace xyf { namespace store {
-static const uint32_t max_text = 4096, max_layout = 16384, max_key = 31, max_value = 127;
-static const uint32_t max_id = 31, max_machines = 256, max_machine_id = 31, max_extensions = 64, max_depth = 8;
+static const uint32_t max_text = 4096, max_key = 31, max_value = 127;
+static const uint32_t max_id = 31;
 
-// Library entry / machine identifiers: [a-z0-9_-]{1,31}.
+// Library entry identifiers: [a-z0-9_-]{1,31}.
 bool valid_id(const char* id);
 
 typedef void (*Visit)(void* context, const char* key, const char* value);
@@ -32,22 +32,11 @@ enum Kind : uint32_t { kind_unknown = 0, kind_official = 1, kind_open_xy = 2, ki
 struct Info {
     char name[48], version[32];
     Kind kind;
-    uint32_t bytes, crc32;
-    bool has_bytes, has_crc32;
+    uint32_t bytes, crc32, machines;
+    bool has_bytes, has_crc32, has_machines;
     bool has_generation;       // a generation key (an assembled mod set: xyf_library content_installed)
 };
 bool parse_info(const char* text, uint32_t length, Info& info);
 
-enum MachineKind : uint8_t { machine_engine = 1, machine_effect = 2, machine_player = 3 };
-struct Machine { char id[max_machine_id + 1]; MachineKind kind; int16_t number, page; };
-struct Layout {
-    char profile[32]; uint32_t count; Machine machines[max_machines];
-    uint32_t selected_count, extension_count;
-    char selected[max_machines][max_machine_id + 1], extensions[max_extensions][max_machine_id + 1];
-    bool has_selected;                  // absent: machines holds numbers only, not this build's selection
-};
-// opxy-layout/1, profiles opxy-1.2.1/opxy-1.2.0. Machines keeps all assigned numbers;
-// selected is the build's ordered machine list. Invalid ids/numbers are refused.
-bool parse_layout(const char* json, uint32_t length, Layout& layout);
 } }
 #endif

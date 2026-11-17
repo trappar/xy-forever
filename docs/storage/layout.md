@@ -11,7 +11,6 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   state.txt                 legacy single slot (read if no A/B slot is valid)
   firmware/<id>/os.ldr      one library entry's firmware image
   firmware/<id>/info.txt    its description (key=value, below)
-  firmware/<id>/layout.json open-xy builds only: machines and numbers
   firmware/<id>/files.sha256, content.sha256 + firmware.version   optional lists (010)  [planned]
   mods/<profile>/<generation>/{base,<machine>,ext-<extension>}/   mod packages (below)  [host-made]
   log/                      device reports, prod-NNN-a.bin / prod-NNN-b.bin (from build 067)

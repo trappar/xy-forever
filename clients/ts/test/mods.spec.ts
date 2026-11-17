@@ -217,7 +217,8 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     expect(existsSync(join(sim!.root, 'xy-forever', 'tmp', `job-${result.job}`))).toBe(false);   // committed, not left in tmp/
     const out = join(sim!.root, 'xy-forever', 'firmware', built.entry);
     expect(readdirSync(out)).toContain('os.ldr');
-    expect(JSON.parse(readFileSync(join(out, 'layout.json'), 'utf-8'))['selected']).toEqual(['alpha', 'gamma']);
+    expect(readdirSync(out)).not.toContain('layout.json');
+    expect(infoValues(readFileSync(join(out, 'info.txt')))['machines']).toBe('2');
     expect(infoValues(readFileSync(join(out, 'info.txt')))['name']).toBe('OP-XY mods');
     await served();
     expect((await libraryBases(client)).map((b) => b.id)).toEqual(['modbase', 'opxy-121', 'opxy-121-stock']);   // not a base

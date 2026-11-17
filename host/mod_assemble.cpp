@@ -781,7 +781,7 @@ int job_run(const Job& job, const std::string& outdir) {
     };
     const bool ldr = reference && same(job_outputs[0], a.image.data(), p.total);
     const bool catalog = reference && same(job_outputs[1], a.out.data(), b.catalog_bytes);
-    auto it = fs.written.find(job_outputs[2]);           // the content list, then info.txt, layout.json, os.ldr
+    auto it = fs.written.find(job_outputs[2]);           // content list, then info.txt, os.ldr
     const bool list = reference && it != fs.written.end() && it->second.size() >= b.list_bytes &&
                       !std::memcmp(it->second.data(), a.list.data(), b.list_bytes);
     std::vector<std::string> unused;

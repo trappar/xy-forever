@@ -18,8 +18,9 @@ struct FakeFs {
     struct Open { const File* file; uint32_t position; } open[8];
     int open_fds, open_dirs;
     const Dir* dir; unsigned dir_at; uint8_t dirent[80];
-    bool fail_closedir;
+    bool fail_closedir, opened_layout;
     int direct_open(const char* path) {
+        if (strstr(path, "/layout.json")) opened_layout = true;
         for (unsigned i = 0; i != file_count; ++i)
             if (!strcmp(files[i].path, path))
                 for (int h = 0; h != 8; ++h) if (!open[h].file) { open[h].file = &files[i]; open[h].position = 0; ++open_fds; return h; }
@@ -58,9 +59,8 @@ int main() {
     fs.files[n++] = {"/yaffs2/xy-forever/firmware/opxy-121/info.txt", "name=OP-XY 1.2.1\nkind=official\nbytes=2373336\ncrc32=89d08ddd\n"};
     fs.files[n++] = {"/yaffs2/xy-forever/firmware/opxy-121/os.ldr", 0};
     fs.files[n++] = {"/yaffs2/xy-forever/firmware/granular/os.ldr", 0};
-    fs.files[n++] = {"/yaffs2/xy-forever/firmware/granular/layout.json",
-        "{\"format\":\"opxy-layout/1\",\"profile\":\"opxy-1.2.1\",\"machines\":{\"granular\":{\"engine\":73,\"page\":229},"
-        "\"ringmod\":{\"effect\":1,\"page\":21}},\"selected\":[\"granular\"]}"};
+    fs.files[n++] = {"/yaffs2/xy-forever/firmware/granular/info.txt", "machines=2\n"};
+    fs.files[n++] = {"/yaffs2/xy-forever/firmware/granular/layout.json", "invalid external leftovers"};
     fs.files[n++] = {"/yaffs2/xy-forever/firmware/broken/info.txt", "name=Broken\nbytes=10\n"};
     fs.files[n++] = {"/yaffs2/xy-forever/firmware/broken/os.ldr", 0};
     fs.file_count = n;
@@ -76,22 +76,20 @@ int main() {
     REQUIRE(!strcmp(lib.entries[0].id, "broken") && !strcmp(lib.entries[1].id, "granular"));
     REQUIRE(!strcmp(lib.entries[2].id, "noimage") && !strcmp(lib.entries[3].id, "opxy-121"));
     REQUIRE(lib.entries[0].usable && lib.entries[0].info.has_bytes && lib.entries[0].info.bytes == 10);
-    REQUIRE(lib.entries[1].usable && lib.entries[1].has_layout && lib.entries[1].layout_ok && lib.entries[1].machines == 1 &&
-            !lib.entries[1].numbers_only);
+    REQUIRE(lib.entries[1].usable && lib.entries[1].machines == 2 && !fs.opened_layout);
     REQUIRE(!strcmp(lib.entries[1].info.name, "granular"));   // no info.txt -> id as name
     REQUIRE(!lib.entries[2].usable && !lib.entries[2].image_present);
     REQUIRE(lib.entries[3].usable && lib.entries[3].info.kind == store::kind_official &&
             lib.entries[3].info.crc32 == 0x89d08dddu && !strcmp(lib.entries[3].info.name, "OP-XY 1.2.1"));
     REQUIRE(lib.skipped == 3);                                 // "Bad Name", duplicate "granular", noimage
 
-    // The SDK preserves assigned numbers but does not record this firmware's selected list.
-    fs.files[4].text = "{\"format\":\"opxy-layout/1\",\"profile\":\"opxy-1.2.1\","
-                       "\"machines\":{\"chords\":{\"player\":1,\"page\":90}}}";
+    // Count metadata is optional. Leftover layout.json never supplies a selection or affects boot.
+    fs.files[4].text = "machines=invalid\n";
     REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok);
-    REQUIRE(lib.entries[1].layout_ok && lib.entries[1].numbers_only && lib.entries[1].machines == 0);
-    fs.files[4].text = "{\"format\":\"opxy-layout/1\",\"profile\":\"opxy-1.2.1\",\"machines\":{},\"selected\":[]}";
+    REQUIRE(lib.entries[1].usable && lib.entries[1].machines == 0 && !fs.opened_layout);
+    fs.files[4].text = "machines=0\n";
     REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok);
-    REQUIRE(lib.entries[1].layout_ok && !lib.entries[1].numbers_only && lib.entries[1].machines == 0);
+    REQUIRE(lib.entries[1].usable && lib.entries[1].info.has_machines && lib.entries[1].machines == 0);
 
     uint32_t index = 99;
     REQUIRE(library::boot_choice(lib, index) == library::Choice::once && index == 1);

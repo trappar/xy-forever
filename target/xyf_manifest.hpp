@@ -21,7 +21,7 @@ enum Type : uint8_t {
 // Known keys, as bit numbers of Manifest::keys (and Manifest::key on an error).
 enum Key : uint8_t {
     key_type, key_name, key_version, key_kind, key_bytes, key_crc32, key_sha256, key_content,
-    key_needs_os, key_generation, key_profile, key_machine, key_source, key_licence, key_count,
+    key_needs_os, key_generation, key_profile, key_machine, key_source, key_licence, key_machines, key_count,
     key_unknown = 0xff
 };
 enum Machine : uint8_t { machine_none, machine_synth, machine_drum, machine_sample, machine_effect,
@@ -55,7 +55,7 @@ struct Manifest {
     uint16_t line;                          // 1-based line of the error, 0 if none
     uint16_t keys;                          // 1 << Key for each known key present
     uint16_t lines;                         // lines read
-    uint32_t bytes, crc32;
+    uint32_t bytes, crc32, machines;
     uint8_t sha256[32], needs_os[32];
     char name[48], version[32], content[32], generation[32], profile[32];
     char source[128], licence[64];
@@ -108,7 +108,7 @@ ListStatus list_end(ListReader& reader);
 enum Kind : uint8_t {
     kind_unknown = 0,
     kind_firmware_entry,   // folder: os.ldr (+ info.txt without type, or type=firmware)
-    kind_assembled_entry,  // folder: firmware entry whose info.txt has generation + needs_os, with layout.json
+    kind_assembled_entry,  // folder: firmware entry whose info.txt has generation + needs_os, native info.txt only
     kind_official_tfw,     // file: the .tfw wrapper and crypto-header magics
     kind_ldr_image,        // file: an LDR stream (custom firmware or an XY Forever stage 1: not told apart)
     kind_xyf_stage2,       // file: an XY Forever stage 2 (XYS2 header)
@@ -129,7 +129,7 @@ enum Reason : uint8_t {
     reason_need_manifest,  // the folder has info.txt but no parsed manifest was given
     reason_manifest,       // its info.txt did not parse (the manifest's status says why)
     reason_missing_image,  // a firmware entry without os.ldr
-    reason_missing_layout, // an assembled entry without layout.json
+    reason_reserved_9,     // retired: kept to preserve reason numbering
     reason_content_set,    // content.sha256 without firmware.version or the reverse
     reason_ambiguous       // os.ldr and a pack manifest.json with no info.txt
 };

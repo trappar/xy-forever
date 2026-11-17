@@ -101,14 +101,13 @@ void recognise_file(const char* name, uint32_t size, const uint8_t* p, uint32_t 
 void recognise_folder(const char* name, const char* const* names, uint32_t count, const Manifest* info,
                       Recognition& out) {
     if (!valid_name(name) || (count && !names)) return set(out, kind_unknown, reason_bad_name);
-    bool has_info = false, has_ldr = false, has_layout = false, has_pack = false, has_list = false,
+    bool has_info = false, has_ldr = false, has_pack = false, has_list = false,
          has_version = false;
     for (uint32_t i = 0; i != count; ++i) {
         if (!valid_name(names[i])) return set(out, kind_unknown, reason_bad_name);
         if (refused_name(names[i], out)) return;
         has_info |= exact(names[i], "info.txt");
         has_ldr |= exact(names[i], "os.ldr");
-        has_layout |= exact(names[i], "layout.json");
         has_pack |= exact(names[i], "manifest.json");
         has_list |= exact(names[i], "content.sha256");
         has_version |= exact(names[i], "firmware.version");
@@ -123,7 +122,6 @@ void recognise_folder(const char* name, const char* const* names, uint32_t count
         const uint8_t kind = has(*info, key_generation) ? kind_assembled_entry : kind_firmware_entry;
         if (!has_ldr) return set(out, kind, reason_missing_image);
         if (has_list != has_version) return set(out, kind, reason_content_set);
-        if (kind == kind_assembled_entry && !has_layout) return set(out, kind, reason_missing_layout);
         return set(out, kind, reason_ok, content_set);
     }
     if (has_pack) return set(out, has_ldr ? kind_unknown : kind_content_pack, has_ldr ? reason_ambiguous : reason_ok);

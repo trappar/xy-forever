@@ -43,6 +43,7 @@ void info_visit(void* context, const char* key, const char* value) {
         f.kind = equal(value, "official") ? kind_official : equal(value, "open-xy") ? kind_open_xy :
                  equal(value, "custom") ? kind_custom : kind_unknown;
     else if (equal(key, "bytes")) f.has_bytes = decimal(value, f.bytes);
+    else if (equal(key, "machines")) f.has_machines = decimal(value, f.machines) && f.machines <= 65535u;
     else if (equal(key, "crc32")) f.has_crc32 = hex8(value, f.crc32);
     else if (equal(key, "generation")) f.has_generation = *value != 0;
 }

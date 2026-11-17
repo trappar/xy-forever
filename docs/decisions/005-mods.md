@@ -1,5 +1,8 @@
 # 005: Mods today
 
+Layout reader/output and migration proposals below are superseded by
+[035: browser onboarding only](035-layout-migration.md).
+
 Research record, 2026-11-14, against the open-xy checkout `4718876` (branch `sdk/synth-postmix`, VERSION 0.0.4, clean); `git show origin/staging` (`fd66c4a`,
 0.0.6) where noted. No device, no build, no network. **[C]** read from code/docs, **[I]** inferred, **[U]** unverified.
 

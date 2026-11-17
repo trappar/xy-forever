@@ -1,5 +1,8 @@
 # 019: Where mod assembly runs on the device
 
+Layout reader/output and migration proposals below are superseded by
+[035: browser onboarding only](035-layout-migration.md).
+
 Research record, 2026-11-14, against build 158's map, the mod package set (the private `paths.PUBLISHED_MODS`), open-xy `core.mjs` at `52c8de9`, device evidence
 from device pass 4, qualification run 085 and build 069's report (the maintainer's, not shared). No device, no build. **[C]** read from code/docs, **[L]** stock
 listing, **[M]** measured, **[I]** inferred, **[U]** unknown.

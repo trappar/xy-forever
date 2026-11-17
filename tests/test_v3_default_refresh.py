@@ -43,7 +43,7 @@ class V3DefaultRefreshTest(unittest.TestCase):
             (out / 'fake_fs.inc').write_text(fs)
             (out / 'default.inc').write_text(bodies)
             binary = out / 'default'
-            sources = ['xyf_store', 'xyf_layout', 'xyf_info', 'xyf_library', 'xyf_state',
+            sources = ['xyf_store', 'xyf_info', 'xyf_library', 'xyf_state',
                        'xyf_crc32', 'xyf_state_write', 'xyf_catalog', 'xyf_menu', 'usb_proto']
             hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                            '-fsanitize=address,undefined', '-fno-omit-frame-pointer',

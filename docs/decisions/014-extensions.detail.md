@@ -1,5 +1,8 @@
 # 014: Open-XY extensions (detail)
 
+Layout reader/output and migration proposals below are superseded by
+[035: browser onboarding only](035-layout-migration.md).
+
 Detail of [014-extensions.md](014-extensions.md).
 
 ## Design

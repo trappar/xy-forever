@@ -16,7 +16,7 @@ class MenuTest(unittest.TestCase):
             binary = Path(tmp) / 'menu'
             hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                            '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                           str(ROOT / 'target/xyf_store.cpp'), str(ROOT / 'target/xyf_layout.cpp'), str(ROOT / 'target/xyf_info.cpp'), str(ROOT / 'target/xyf_library.cpp'), str(ROOT / 'target/xyf_state.cpp'), str(ROOT / 'target/xyf_crc32.cpp'),
+                           str(ROOT / 'target/xyf_store.cpp'), str(ROOT / 'target/xyf_info.cpp'), str(ROOT / 'target/xyf_library.cpp'), str(ROOT / 'target/xyf_state.cpp'), str(ROOT / 'target/xyf_crc32.cpp'),
                            str(ROOT / 'target/xyf_catalog.cpp'), str(ROOT / 'target/xyf_menu.cpp'),
                            str(ROOT / 'target/xyf_menu_test.cpp'), '-o', str(binary)],
                           check=True, capture_output=True, text=True)

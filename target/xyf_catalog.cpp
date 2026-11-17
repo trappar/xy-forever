@@ -41,9 +41,7 @@ uint32_t encode(const library::Library& library, uint8_t* out, uint32_t capacity
         field(r + 32, 48, e.info.name);
         field(r + 80, 32, e.info.version);
         r[112] = uint8_t(e.info.kind);
-        r[113] = uint8_t((e.usable ? 1 : 0) | (e.has_layout ? 2 : 0) | (e.layout_ok ? 4 : 0) |
-                         (e.image_present && e.content_missing ? flag_content_missing : 0) |
-                         (e.numbers_only ? flag_numbers_only : 0));
+        r[113] = uint8_t((e.usable ? 1 : 0) | (e.image_present && e.content_missing ? flag_content_missing : 0));
         const uint32_t machines = e.machines > 0xffffu ? 0xffffu : e.machines;
         r[114] = uint8_t(machines); r[115] = uint8_t(machines >> 8);
     }
@@ -65,7 +63,7 @@ bool decode(const uint8_t* data, uint32_t length, Catalog& out) {
         for (uint32_t k = 0; k != 112; ++k) reinterpret_cast<uint8_t*>(item.id)[k] = r[k];   // id, name, version
         item.kind = r[112]; item.flags = r[113]; item.machines = uint16_t(r[114] | r[115] << 8);
         if (!terminated(item.id, 32) || !terminated(item.name, 48) || !terminated(item.version, 32) ||
-            !store::valid_id(item.id) || item.kind > store::kind_custom || (item.flags & ~31u)) return false;
+            !store::valid_id(item.id) || item.kind > store::kind_custom || (item.flags & ~15u)) return false;
     }
     out.count = count;
     out.default_index = default_index;
@@ -82,10 +80,7 @@ void describe(const Item& item, char* out, uint32_t capacity) {
     else if (!(item.flags & 1)) put("missing os.ldr");
     else {
         put(kind);
-        if (item.flags & flag_numbers_only) {
-            if (*kind) put(", ");
-            put("numbers only");
-        } else if (item.machines || ((item.flags & 6u) == 6u)) {
+        if (item.machines) {
             char digits[6]; uint32_t v = item.machines, n = 0;
             static const uint32_t powers[5] = {10000, 1000, 100, 10, 1};
             for (uint32_t p = 0; p != 5; ++p) { char d = '0'; while (v >= powers[p]) { v -= powers[p]; ++d; } if (n || d != '0' || p == 4) digits[n++] = d; }
