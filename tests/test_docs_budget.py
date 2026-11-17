@@ -69,7 +69,7 @@ UNTRIMMED = {
 
 # reflowed by #42 part B7 (files with a line over WIDTH outside code blocks and table rows)
 UNWRAPPED = {
-    'docs/ARCHITECTURE.md', 'docs/HISTORY.md', 'docs/OPERATING.md',
+    'docs/HISTORY.md', 'docs/OPERATING.md',
     'docs/decisions/001-dead-code.md', 'docs/decisions/002-usb-function-driver.md',
     'docs/decisions/003-tfw-install.md', 'docs/decisions/004-protocol-v1.md', 'docs/decisions/005-mods.md',
     'docs/decisions/006-content.md', 'docs/decisions/007-stock-inventory.md',

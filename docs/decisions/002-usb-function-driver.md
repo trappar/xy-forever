@@ -35,7 +35,7 @@ How does a private function driver plug into the stock USB stack (smxUSBD), can 
 
 Notes [L]: the stack frees urbs that are queued or active on OUT at reconfigure, deconfigure (incl. suspend) and stop without a callback (`88a095a8`): forget them; held ones stay ours. Avoid endpoint numbers 5 (static 0x190-byte buffers in `88a0926c`) and 6 (async DMA in `88a0b434`); the ISR serves 1-11. Use stock MTP's `0x89`/`0x0a`/`0x83` (above 8: PIO, no DMA cache work).
 
-## Earlier claims (HARDWARE.md "unverified")
+## Earlier claims (hardware/usb.md "unverified")
 
 Right: slot, register/unregister, ops order, endpoints `0x89`/`0x0a`/`0x83`, send = alloc/fill/submit/free as `cdc_write`, recycle `88a08f08`, start = register + `88a35044(0)`, the open risk. Wrong or incomplete: the driver words +8/+0xc are a devinfo record and a config-record array (not descriptors), +0x10/+0x14/+0x1c are filled by the stack (struct must be writable), +0x18 is the configuration count; "one packet per urb" holds only for the stack's own OUT urb; the callback return values, the ZLP flag and the "recycle does not re-arm" detail were missing. New: every stock driver (MTP, CDC, MassStorage) declares 64-byte bulk endpoints although start sets POWER.HSEnab (`88a0bffa`); high speed requires 512.
 

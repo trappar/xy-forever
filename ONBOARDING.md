@@ -58,7 +58,8 @@ Linux x86_64: it points at open-xy `docs/build.md`, "On Linux" (Docker); put the
 
 - No download (proxy, certificates): get the zip from the `toolchain-1` release page in a browser and
   run `python3 scripts/setup.py bootstrap --toolchain-archive <zip>`. Never edit the pins.
-- Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/` ([docs/HARDWARE.md](docs/HARDWARE.md)).
+- Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/`
+  ([docs/hardware/tools.md](docs/hardware/tools.md)).
 
 ## 3. Local files and leak patterns
 

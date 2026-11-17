@@ -654,7 +654,7 @@ def heap_record(stock):
     return record
 
 
-# Memory map facts the layout is checked against (docs/ARCHITECTURE.md, "Memory map").
+# Memory map facts the layout is checked against (docs/architecture/boot.md, "Memory map").
 RETAINED_ARENA = (0x88a65bf8, 0x8aa65bf4)   # stock allocator arena (table at 0x88a2a4d0, checked below)
 BOOT_SOURCE = (0x8a000000, 0x8a810000)      # stock 8 MiB stream read (88a34a12) + margin; our boot copy
 JOB_REGION = (0x8b000000, 0x8b800000)       # B's mod job region (cold_layout.hpp); offline modes' embedded OS

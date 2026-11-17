@@ -7,7 +7,7 @@
 // 0x8ab84000, below the stage-2 window (0x8ab90000). The whole range lies above
 // the stock allocator arena and below A's job region, where no stock reference,
 // stock allocation or outer LDR load exists (xyf_build.py check_memory_map;
-// docs/ARCHITECTURE.md, "Memory map").
+// docs/architecture/boot.md, "Memory map").
 // B's mod job region (decision 019's region, the job runs on B): the job's state and work
 // region (native/mod_job, peak 6.3 MiB) in 0x8b000000..0x8b800000, above the free gap, below the
 // session scratch and staging. Nothing else may claim it: xyf_build.py check_memory_map checks these

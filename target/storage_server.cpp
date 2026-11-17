@@ -10,7 +10,7 @@
 #include "xyf_boot.hpp"                 // clock_ms(): a's session clock for run_engine
 #endif
 // Processor a's storage server and the file engine (see storage_server.hpp). Stock addresses:
-// the authenticated 1.2.1 bootloader, mapped offline (docs/HARDWARE.md, Stock storage server requests).
+// the authenticated 1.2.1 bootloader, mapped offline (docs/hardware/storage-server.md, Stock storage server requests).
 namespace xy_forever { namespace storage_server {
 #if defined(__bfin__)
 // Initialized data, not BSS: the cold link has no zero-initialization.
