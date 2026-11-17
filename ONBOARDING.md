@@ -126,7 +126,7 @@ cp ../private/firmware/stock-1.2.1/os.ldr ../private/xy-forever/recovery/stock-1
 ```
 
 The first install goes through the dev menu (no XY Forever service yet). Install the `candidate.ldr`
-of the build `fixtures` verified (`doctor`, "verified build"), as in [docs/OPERATING.md](docs/OPERATING.md#dev-menu):
+of the build `fixtures` verified (`doctor`, "verified build"), as in [docs/operating/at-the-device.md](docs/operating/at-the-device.md#dev-menu):
 COM at power-on, Track 3, Track 2 (MTP), copy it to the device as `/os.ldr` (not 0 bytes), Track 2
 (exit), Track 5 ("write os to boot partition"), wait for "firmware written ok!", power cycle.
 
@@ -138,7 +138,7 @@ firmware found". Add the stock OS as the default entry (`library-add`, then `set
 ## 8. Device pass and known-good kit (not yet run end to end)
 
 Run `python3 scripts/device_pass.py --wait 120` (`--plan` first shows every step), relaying its `NEED:`
-line ([docs/OPERATING.md](docs/OPERATING.md#device-pass-scriptsdevice_passpy)). When it passes, copy the
+line ([docs/operating/device-pass.md](docs/operating/device-pass.md#device-pass-scriptsdevice_passpy)). When it passes, copy the
 build's `candidate.ldr` to `../private/xy-forever/recovery/known-good-NNN/os.ldr` and fill in `docs/status/README.md`: device
 state, installed build, known-good build and kit. End the session in keepalive, never in the OS.
 No device at hand: say so; device items wait and the orchestrator skips them.
