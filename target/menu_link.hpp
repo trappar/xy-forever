@@ -6,7 +6,7 @@
 // item goes to a as one tagged command on the file boot's link session (Test 065:
 // one link session per boot; xyf_boot link_*). The Test024 held session that ran
 // before file boot, and with it the separate USB service session of builds 034-064,
-// is gone (plan 0.4b). Result keeps its layout: STATUS and the census still carry it.
+// is gone. Result keeps its layout: STATUS and the census still carry it.
 namespace xy_forever { namespace menu_link {
 static const uint32_t magic = 0x314b4c4du;           // "MLK1"
 struct Result {

@@ -1,7 +1,7 @@
 // What the simulator puts in place of the parts it does not host: the stock 1.2.1 image in
 // memory and the retained state the stock bootloader leaves at XY Forever's cold entry;
 // cold.cpp's policy and report fixture; and B's menu (key_ui.cpp), whose screen and keys are
-// not hosted: home_pump runs in the same loop and order as key_ui's menu loop. 5.4e1: the menu's
+// not hosted: home_pump runs in the same loop and order as key_ui's menu loop. The menu's
 // state machine (xyf_menu) and the Mods page (xyf_mods_io) are: injected keys drive them as key_ui's
 // on_key does, the page's pump runs in the loop as in key_ui's, and each change of the page is logged
 // ("mods page: ..."); the other menu actions are logged, not performed.
@@ -95,7 +95,7 @@ void cold_state(int which, bool power_on, bool play) {
         memset(host(frame), 0, 16);
         w8(frame + 2, 0x42); w8(frame + 3, 0x0a);
         if (play) w8(frame + 4 + 51 / 8, uint8_t(1u << (51 % 8)));
-        // 8.3: the stock PSoC receive queue's indexes as the device showed them idle in the menu (25/25).
+        // The stock PSoC receive queue's indexes as the device showed them idle in the menu (25/25).
         w32(xy_forever::knob_input::read_index, 25); w32(xy_forever::knob_input::write_index, 25);
         // Display framebuffer (SCREEN reads it): a plain test pattern; the menu is not drawn.
         const uint32_t fb = 0x89c00000u;
@@ -123,14 +123,14 @@ extern "C" const xyf_core::Byte xy_forever_trace_expected[sizeof(xy_forever::sto
 };
 
 // key_ui.cpp (B's menu): not hosted. The loop below is its menu loop without the screen
-// and the PSoC keys: home_pump, then the session tick, then the link check (0.9b F2: a lost link
-// restarts B, at most 3 times in a row; refused, 2.2b: with USB on, a lost link keeps the menu and
+// and the PSoC keys: home_pump, then the session tick, then the link check (record 016 F2: a lost link
+// restarts B, at most 3 times in a row; refused: with USB on, a lost link keeps the menu and
 // USB still answers).
 namespace {
 xyf::menu::State sim_app;
-bool sim_menu = false, sim_mods = false, sim_leave = false;   // 8.4a: sim_leave: Continue / Discard boots
-xyf::key_repeat::Held sim_held = {xyf::key_repeat::none, 0};        // 8.2: as key_ui
-int sim_pending = -1;                                               // 8.4a: logged on a change
+bool sim_menu = false, sim_mods = false, sim_leave = false;   // sim_leave: Continue / Discard boots
+xyf::key_repeat::Held sim_held = {xyf::key_repeat::none, 0};        // as key_ui
+int sim_pending = -1;                                               // logged on a change
 uint32_t device_ms() { return uint32_t(xyf_sim::device_cycles() / 400000u); }   // B's clock (advance included)
 #if defined(XYF_MODS_PAGE)
 void log_page() {                       // the page's state, for tests (tests/test_sim_mods_page.py)
@@ -146,21 +146,21 @@ void log_page() {                       // the page's state, for tests (tests/te
         if (n >= sizeof(on)) n = sizeof(on) - 1;
     }
     on[n] = 0;
-    const char* selected = p.selected >= p.count ? "none" : text_at(p, p.packages[p.selected].id);   // 8.6: no other rows
+    const char* selected = p.selected >= p.count ? "none" : text_at(p, p.packages[p.selected].id);   // no other rows
     xyf_sim::log("mods page: shown=%d view=%u count=%u shown_rows=%u filter=%u listed=%u selected=%s on=%s used=%u "
                  "limit=%u job=%u phase=%u done=%u total=%u commit=%u line=%u longest=%u bar=%u ms=%u save=%u stage=%u "
                  "changed=%u expanded=%u shared=%u text=%s", sim_mods ? 1 : 0, uint32_t(p.view), p.count, p.shown, p.filter, p.listed,
                  selected, on, used(p), memory_limit(p), p.job, p.job_phase, p.job_done, p.job_total,
                  p.job_commit, uint32_t(p.line), xy_forever::mods_io::longest_ms(), p.bar, device_ms(), p.save, p.save_stage,
-                 changed(p) ? 1u : 0u, p.expanded ? 1u : 0u, shared(p), p.text);   // 4.8m2: the memory choice, shared
+                 changed(p) ? 1u : 0u, p.expanded ? 1u : 0u, shared(p), p.text);   // the memory choice, shared
 }
-void log_bar() {                        // 8.2: a progress-only redraw (the bar and its numbers moved)
+void log_bar() {                        // a progress-only redraw (the bar and its numbers moved)
     const xyf::mods::Page& p = xy_forever::mods_io::page();
     xyf_sim::log("mods bar: job=%u bar=%u phase=%u done=%u total=%u commit=%u ms=%u", p.job, p.bar, p.job_phase,
                  p.job_done, p.job_total, p.job_commit, device_ms());
 }
 #endif
-// 8.7: the USB mark and the activity line key_ui draws (draw_screen), logged on each change ("menu: usb mark on",
+// The USB mark and the activity line key_ui draws (draw_screen), logged on each change ("menu: usb mark on",
 // "menu: usb line: USB: writing files") where key_ui redraws them: every menu pass and key_ui::host_view.
 bool sim_usb_seen = false;
 const char* sim_usb_line = 0;
@@ -171,7 +171,7 @@ void usb_view() {
     if (line != sim_usb_line) xyf_sim::log("menu: usb line: %s at %u ms", line ? line : "none", device_ms());
     sim_usb_seen = seen; sim_usb_line = line;
 }
-// 8.3: the PSoC frames the board holds for B (runtime.hpp) reach the stock receive queue where the stock poll
+// The PSoC frames the board holds for B (runtime.hpp) reach the stock receive queue where the stock poll
 // runs in key_ui's loop: each into slot write % 128, the write index advanced (counting on, or wrapping at
 // 128), then the read index set to it (the poll pops them all; type 0x45 is dropped).
 void knob_deliver() {
@@ -215,32 +215,32 @@ void dispatch(uint32_t key, uint32_t pressed) {
     if (sim_menu) {
         const xyf::menu::Action action = xyf::menu::key(sim_app, key, pressed != 0);
         if (action == xyf::menu::Action::open_mods) { sim_mods = true; mods_io::open(); log_page(); return; }
-        if (action == xyf::menu::Action::continue_boot || action == xyf::menu::Action::discard ||   // 2.3f: as key_ui
+        if (action == xyf::menu::Action::continue_boot || action == xyf::menu::Action::discard ||   // as key_ui
             action == xyf::menu::Action::boot_once || action == xyf::menu::Action::set_default ||
-            action == xyf::menu::Action::save) {                       // 9.3: and Save
+            action == xyf::menu::Action::save) {                       // and Save
             if (const char* busy = usb_service::menu_busy()) {        // key_ui: the line, back on the home rows
                 sim_app.screen = xyf::menu::Screen::main; xyf_sim::log("menu: line: %s", busy); return;
             }
         }
-        if (action == xyf::menu::Action::continue_boot || action == xyf::menu::Action::discard) {   // 8.4a: as key_ui
+        if (action == xyf::menu::Action::continue_boot || action == xyf::menu::Action::discard) {   // as key_ui
             xyf_sim::log("menu: %s", action == xyf::menu::Action::discard ? "discard" : "continue");
             sim_leave = true;
             return;
         }
 #if defined(XYF_SETTINGS)
-        if (action == xyf::menu::Action::change_setting) {             // 4.8m2: as key_ui (Mod memory, pending)
+        if (action == xyf::menu::Action::change_setting) {             // as key_ui (Mod memory, pending)
             sim_app.settings_note = mods_io::memory_flip();
             xyf_sim::log("settings: play on row %u: note=%s", sim_app.entry, sim_app.settings_note ? sim_app.settings_note : "");
             return;
         }
 #endif
-        if (action == xyf::menu::Action::save) {                       // 8.4a: as key_ui
+        if (action == xyf::menu::Action::save) {                       // as key_ui
             xyf_sim::log("menu: save");
             sim_mods = true; mods_io::save_begin(); log_page();
             return;
         }
 #if defined(XYF_CONTENT_SWITCH)
-        if (action == xyf::menu::Action::set_default) {                // 4.6c1: as key_ui (SHIFT+PLAY)
+        if (action == xyf::menu::Action::set_default) {                // as key_ui (SHIFT+PLAY)
             const char* note = usb_service::content_default(sim_app.entry);
             xyf_sim::log("menu: set default %u: %s", sim_app.entry, note ? note : "content installed (not simulated)");
             return;
@@ -260,17 +260,17 @@ void dispatch(uint32_t key, uint32_t pressed) {
 // A key from the PSoC (real_keys_deliver) or the host's KEY command (inject_key), as key_ui's on_key.
 void key_event(uint32_t key, uint32_t pressed, bool injected) {
 #if defined(XYF_SETTINGS)
-    if (xy_forever::usb_service::confirm_key(key, pressed, injected)) {   // 4.8: a prompt has the keys
+    if (xy_forever::usb_service::confirm_key(key, pressed, injected)) {   // a prompt has the keys
         xyf_sim::log("confirm: key %u %s (%s)", key, pressed ? "pressed" : "released", injected ? "injected" : "real");
         return;
     }
 #endif
-    if (key == xyf::menu::key_minus || key == xyf::menu::key_plus)   // 8.2: the repeat tests time from these
+    if (key == xyf::menu::key_minus || key == xyf::menu::key_plus)   // the repeat tests time from these
         xyf_sim::log("menu: key %u %s at %u ms", key, pressed ? "pressed" : "released", device_ms());
     xyf::key_repeat::event(sim_held, key, pressed != 0, device_ms());
     dispatch(key, pressed);
 }
-// 4.8: control "realkey K P": key events as the PSoC sends them (not injected), taken where the stock poll runs.
+// Control "realkey K P": key events as the PSoC sends them (not injected), taken where the stock poll runs.
 void real_keys_deliver() {
     using xyf_sim::shared; using xyf_sim::Shared;
     const uint32_t head = shared->real_head.load();
@@ -290,13 +290,13 @@ bool service_screen(const char* a, const char* b, const char* c, const char* d) 
     return true;
 }
 void inject_key(uint32_t key, uint32_t pressed) { key_event(key, pressed, true); }
-void host_view() { if (sim_menu) usb_view(); }                        // 8.7: as key_ui (the menu loop has the screen)
-void refresh_catalog() {                                               // as key_ui (the page stays, 5.4e2: its row)
+void host_view() { if (sim_menu) usb_view(); }                        // as key_ui (the menu loop has the screen)
+void refresh_catalog() {                                               // as key_ui (the page stays, and its row)
 #if defined(XYF_MODS_PAGE)
     const uint32_t row = sim_app.main_selected;
 #endif
 #if defined(XYF_SETTINGS)
-    const bool keep = sim_app.screen == xyf::menu::Screen::settings;   // 4.8: as key_ui (the Settings page stays)
+    const bool keep = sim_app.screen == xyf::menu::Screen::settings;   // as key_ui (the Settings page stays)
     const uint32_t kept_row = sim_app.main_selected, kept_setting = sim_app.settings_selected;
     const char* const kept_note = sim_app.settings_note;
 #endif
@@ -325,8 +325,8 @@ extern "C" void xy_forever_key_ui() {
     xyf::menu::start(sim_app, xyf_boot::catalog(), true);
     sim_app.storage = xyf_boot::storage_view();                        // 193: as key_ui.cpp
     sim_menu = true; sim_mods = false; sim_leave = false; sim_pending = -1; sim_held.key = xyf::key_repeat::none;
-    sim_usb_seen = false; sim_usb_line = 0;                            // 8.7: nothing drawn yet
-    knob_input::start(knob_identity());                                // 8.3: as key_ui.cpp
+    sim_usb_seen = false; sim_usb_line = 0;                            // nothing drawn yet
+    knob_input::start(knob_identity());                                // as key_ui.cpp
     xyf_sim::log("knob: reader state %u", knob_input::result.state);
     bool noted = false;
 #if defined(XYF_SETTINGS)
@@ -334,14 +334,14 @@ extern "C" void xy_forever_key_ui() {
 #endif
     for (;;) {
 #if defined(XYF_SETTINGS)
-        if (!settings_logged && usb_service::settings_load()) {           // 4.8: as key_ui.cpp
+        if (!settings_logged && usb_service::settings_load()) {           // as key_ui.cpp
             settings_logged = true;
             xyf_sim::log("settings: confirm=%u", usb_service::settings().confirm);
         }
 #endif
         knob_deliver();                                                    // where key_ui's stock poll runs
-        real_keys_deliver();                                               // 4.8: the PSoC's key events
-        {                                                                  // 8.3: as key_ui.cpp turn_knobs
+        real_keys_deliver();                                               // the PSoC's key events
+        {                                                                  // as key_ui.cpp turn_knobs
             const knob_input::Result& k = knob_input::result;
             const uint32_t before[] = {k.frames, k.dropped, k.resyncs, k.idle, k.pass_read, k.max_read};
 #if defined(XYF_MODS_PAGE)
@@ -352,7 +352,7 @@ extern "C" void xy_forever_key_ui() {
             const bool selection = !job && (sim_mods || sim_app.screen != xyf::menu::Screen::confirm_uninstall);
             const int32_t rows = knob_input::pass(device_ms(), selection);
             const uint32_t step = (rows > 0 ? xyf::menu::key_plus : xyf::menu::key_minus) | (sim_mods ? xyf::menu::key_turn : 0u);
-            for (int32_t i = rows < 0 ? -rows : rows; i; --i) dispatch(step, 1);   // 8.6: as key_ui (the Mods page knows a turn)
+            for (int32_t i = rows < 0 ? -rows : rows; i; --i) dispatch(step, 1);   // as key_ui (the Mods page knows a turn)
             const uint32_t after[] = {k.frames, k.dropped, k.resyncs, k.idle, k.pass_read, k.max_read};
             if (rows || memcmp(before, after, sizeof(before)))
                 xyf_sim::log("knob: rows=%d read=%u screen=%u main=%u library=%u home=%u accept=%u mods=%d frames=%u "
@@ -368,7 +368,7 @@ extern "C" void xy_forever_key_ui() {
         }
         if (xyf::key_repeat::due(sim_held, device_ms()) && sim_app.screen != xyf::menu::Screen::confirm_uninstall &&
             sim_app.screen != xyf::menu::Screen::confirm_save) {
-            xyf_sim::log("menu: repeat key %u at %u ms", sim_held.key, device_ms());   // 8.2: as key_ui.cpp
+            xyf_sim::log("menu: repeat key %u at %u ms", sim_held.key, device_ms());   // as key_ui.cpp
             dispatch(sim_held.key, 1);
         }
         xyf_boot::tick();
@@ -381,26 +381,26 @@ extern "C" void xy_forever_key_ui() {
             }
         }
 #if defined(XYF_MODS_PAGE)
-        const bool settings_shown = !sim_mods && sim_app.screen == xyf::menu::Screen::settings;   // 4.8m2: as key_ui.cpp
+        const bool settings_shown = !sim_mods && sim_app.screen == xyf::menu::Screen::settings;   // as key_ui.cpp
         if (settings_shown) mods_io::prepare();
         if (const uint32_t redraw = mods_io::pump(sim_mods || settings_shown)) {   // as key_ui.cpp
             if (sim_mods && redraw == 1) log_page();
             else if (sim_mods) log_bar();
         }
-        static const char* sim_note = 0;                                 // 4.8m2: and the save note (a list read)
-        if (mods_io::menu_state(sim_app) || storage_moved || int(sim_app.pending) != sim_pending || sim_app.save_note != sim_note) {   // 8.4a: the first row and pending
+        static const char* sim_note = 0;                                 // and the save note (a list read)
+        if (mods_io::menu_state(sim_app) || storage_moved || int(sim_app.pending) != sim_pending || sim_app.save_note != sim_note) {   // the first row and pending
             sim_pending = int(sim_app.pending); sim_note = sim_app.save_note;
-            xyf_sim::log("menu: home row: %s pending=%u blocked=%u memory=%s; note=%s; open_xy=%d hidden=%d",   // 4.8m2: memory
+            xyf_sim::log("menu: home row: %s pending=%u blocked=%u memory=%s; note=%s; open_xy=%d hidden=%d",   // memory
                          xyf::menu::main_label(sim_app, 0), sim_app.pending ? 1u : 0u, sim_app.save_blocked ? 1u : 0u,
                          xyf::settings::memory_text(sim_app.memory, sim_app.memory_pending),
                          sim_app.save_note ? sim_app.save_note : "", int32_t(sim_app.open_xy), int32_t(sim_app.hidden));
         }
 #endif
 #if defined(XYF_CONTENT_SWITCH)
-        if (const char* line = usb_service::content_line()) xyf_sim::log("menu: line: %s", line);   // 4.6c1
+        if (const char* line = usb_service::content_line()) xyf_sim::log("menu: line: %s", line);
 #endif
 #if defined(XYF_MODS_PAGE)
-        if (const uint32_t saved = mods_io::save_state()) {               // 8.4a: as key_ui.cpp
+        if (const uint32_t saved = mods_io::save_state()) {               // as key_ui.cpp
             if (saved == mods_io::save_boot) { mods_io::save_done(); xyf_sim::log("menu: saved"); sim_leave = true; }
             else if (saved == mods_io::save_failed) {
                 xyf_sim::log("menu: save failed: %s", mods_io::save_reason());
@@ -415,9 +415,9 @@ extern "C" void xy_forever_key_ui() {
             xyf_boot::choose_default();
             break;
         }
-        usb_view();                                                        // 8.7: as key_ui.cpp (before its redraw)
+        usb_view();                                                        // as key_ui.cpp (before its redraw)
         if (xyf_boot::link_lost() && !usb_service::home_usb()) { xyf_sim::log("menu: storage link lost"); break; }
-        if (xyf_boot::link_lost() && !noted) {             // 0.9k2: B never resets itself on it
+        if (xyf_boot::link_lost() && !noted) {             // record 022: B never resets itself on it
             noted = true; xyf_sim::log("menu: storage link lost: %s (USB still answers)", xyf_boot::status());
         }
         xyf_sim::cdc_wait(1);

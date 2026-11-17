@@ -32,7 +32,7 @@ int main() {
     catalog::describe(cat.items[2], text, sizeof(text)); REQUIRE(!strcmp(text, "official"));
     cat.items[0].machines = 1; catalog::describe(cat.items[0], text, sizeof(text)); REQUIRE(!strcmp(text, "open-xy, 1 machine"));
     catalog::describe(cat.items[0], text, 5); REQUIRE(!strcmp(text, "open"));
-    // 5.4d3a: an entry whose content is not installed (os.ldr there): flag 8, not usable, its own row text;
+    // An entry whose content is not installed (os.ldr there): flag 8, not usable, its own row text;
     // without an os.ldr it stays "missing os.ldr".
     lib.entries[0].usable = false; lib.entries[0].content_missing = lib.entries[0].image_present = true;
     lib.entries[1].content_missing = true;

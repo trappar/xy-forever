@@ -13,7 +13,7 @@ static const uint8_t flag_usable = 1, flag_content_missing = 8;
 struct Item {
     char id[32], name[48], version[32];
     uint8_t kind, flags;                             // flags: 1 usable, 2 has_layout, 4 layout_ok,
-                                                     // 8 content not installed (5.4d3a; then not usable)
+                                                     // 8 content not installed (then not usable)
     uint16_t machines;
 };
 static_assert(sizeof(Item) == 116, "Item layout");

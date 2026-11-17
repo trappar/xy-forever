@@ -1,4 +1,4 @@
-# 017: Bluetooth update protocol, re-derived from the 1.2.1 listing (plan item 7.2)
+# 017: Bluetooth update protocol, re-derived from the 1.2.1 listing
 
 Research record, 2026-11-14; nothing built, no device. **[L]** read from the 1.2.1 bootloader listing (the private `analysis/bootloader-121-listing`) or the Nordic images (Thumb disassembly, bootloader 1000.0.10, application 1.0.1/1.0.2), **[M]** measured on files, **[I]** inferred, **[U]** unknown. Scratch and regeneration scripts: the maintainer's (not shared). Corrects 015 in four places (marked **015:**).
 
@@ -31,7 +31,7 @@ Research record, 2026-11-14; nothing built, no device. **[L]** read from the 1.2
 - **Slots:** the Nordic bootloader is A/B (slot 0 at `0x3000`, slot 1 at `0x8000`; records at `0x2000`/`0x7000`; stage-0 at `0x0`, in no package). It only ever flashes the other slot (kind `b1`, `88a2756e` via `boot_slot`). **We never send `b1`.** The application has one slot, `0xc000-0x7c000`.
 - **Power cut:** before start: no change. From start to finish: no valid application; at the next boot the chip is in its loop, reachable, reporting `sw_version:0.0.0+0`. A cut during the settings write leaves a tiny window with the magic but no valid version [I]. After finish: valid.
 - **1.2.5 bootloader:** the same functions, constants and order (op-sequence diff 0.81-0.90, register allocation only); the platform word moves to `0x8803d8a8` [L].
-- **Native `ble_session`/`companions`/`companions.py` differed (fixed, host only, in plan item 7.7a):** (1) **the header puts the version at 9-16 and the CRC at 17-18, so every update would fail its final CRC and leave the application invalid**; (2) one `0xee` only: from the application, the second `0xee` (the answer to `[0xbb]`) is missing, and start gets no reply; (3) the `0e[54]` from the application is not consumed; (4) there is no exit, `0x18` handling or live check, and `complete` arrives before the application runs; (5) the platform word is no image guard (the chip ignores it); (6) the `92` pending phases never happen. Matching: start, chunk prefix and size, CRC-16, the 0x70000 limit, timeouts.
+- **Native `ble_session`/`companions`/`companions.py` differed (fixed, host only):** (1) **the header puts the version at 9-16 and the CRC at 17-18, so every update would fail its final CRC and leave the application invalid**; (2) one `0xee` only: from the application, the second `0xee` (the answer to `[0xbb]`) is missing, and start gets no reply; (3) the `0e[54]` from the application is not consumed; (4) there is no exit, `0x18` handling or live check, and `complete` arrives before the application runs; (5) the platform word is no image guard (the chip ignores it); (6) the `92` pending phases never happen. Matching: start, chunk prefix and size, CRC-16, the 0x70000 limit, timeouts.
 
 ## 4. Nordic bootloader with no valid application [L]
 

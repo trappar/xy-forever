@@ -3,7 +3,7 @@
 #include "../target/ui_screens.hpp"
 #include "../target/ui_gfx.hpp"
 using namespace xyf;
-// 8.7: the chrome every bridge draws with (ui_pages.hpp): the build, the USB mark, the activity line.
+// The chrome every bridge draws with (ui_pages.hpp): the build, the USB mark, the activity line.
 ui::Chrome bridge_chrome = {"build 188", false, nullptr, false};
 static char bridge_activity[64];
 extern "C" {

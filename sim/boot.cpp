@@ -1,4 +1,4 @@
-// Plan 0.9a (decision record 016 §5): WDOG0 (XY Forever's guard) and the stock 1.2.1
+// Decision record 016 §5: WDOG0 (XY Forever's guard) and the stock 1.2.1
 // bootloader's side of a boot after one processor resets alone. Tags in comments:
 // [L] read from the 1.2.1 listing, [F] earlier device finding, [I] inferred, [U] unknown.
 //

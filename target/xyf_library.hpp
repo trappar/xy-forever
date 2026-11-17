@@ -32,7 +32,7 @@ struct Entry {
     store::Info info;
     bool has_info, has_layout, layout_ok, image_present;
     uint32_t machines;         // from layout.json (open-xy), else 0
-    bool content_missing;      // 5.4d3a: its content is not installed in /yaffs2/content/ (content_installed)
+    bool content_missing;      // its content is not installed in /yaffs2/content/ (content_installed)
     bool usable;               // os.ldr present and content installed (size/CRC checked at load)
 };
 struct Library {
@@ -42,7 +42,7 @@ struct Library {
     Entry entries[max_entries];
     uint32_t count;            // sorted by id
     uint32_t skipped;          // invalid ids, duplicates, over capacity, missing images
-    content::State content;    // 4.6c1: what /yaffs2/content/ matches (the content state record's head)
+    content::State content;    // what /yaffs2/content/ matches (the content state record's head)
 };
 // scratch: one text file plus a parsed layout.
 static const uint32_t layout_offset = (store::max_layout + 7u) & ~7u;
@@ -52,7 +52,7 @@ enum class Choice { menu, once, by_default };
 Choice boot_choice(const Library& library, uint32_t& index);
 int32_t find(const Library& library, const char* id);
 
-// 5.4d3a, 4.6c1: THE rule for whether an entry's content is installed in /yaffs2/content/ (an entry whose
+// THE rule for whether an entry's content is installed in /yaffs2/content/ (an entry whose
 // content is not installed is listed, "content not installed", but never booted or made the default as it
 // is: a mod firmware halts at boot without its content files, and a catalog naming mods the firmware lacks
 // breaks the OS's menus, decision 018). The content state record says what content/ matches: an assembled
@@ -126,7 +126,7 @@ template <class Fs> Error scan_direct(Fs& fs, Library& out, uint8_t* scratch, ui
     for (uint32_t k = 0; k != 3; ++k)
         if (path(p, root, names[k]) && read_text(fs, p, scratch, store::max_text, length))
             apply_state(out, sources[k], scratch, length);
-    content::read_state(fs, out.content);           // 4.6c1: before the entries (content_installed)
+    content::read_state(fs, out.content);           // before the entries (content_installed)
     if (!path(p, root, "/firmware")) return Error::path;
     bool missing = false;
     if (!list(fs, p, out, missing)) { out.count = 0; return Error::directory; }

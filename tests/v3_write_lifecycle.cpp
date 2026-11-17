@@ -68,7 +68,7 @@ bool guard_pause() { ++pauses; return true; }
 void guard_resume(bool was) { if (was) ++resumes; }
 }
 void close_handles() { ++handles_closed; result.open_fds = 0; }
-U32 window_touched = 0, library_dirty = 0;                   // 2.2c: the idle timer and the rescan flag
+U32 window_touched = 0, library_dirty = 0;                   // the idle timer and the rescan flag
 void note(U32, U32, U32) {}
 bool mount(cold_storage::Stock121ReadOnlySession& storage) {
     if (mounted) return true;
@@ -77,7 +77,7 @@ bool mount(cold_storage::Stock121ReadOnlySession& storage) {
     return true;
 }
 void unmount(cold_storage::Stock121ReadOnlySession&) { mounted = 0; }
-U32 selected = 0;                                          // install mode's boot partition (2.3b)
+U32 selected = 0;                                          // install mode's boot partition
 bool boot_selected() { return selected != 0; }
 U32 held = 0;                                              // files and folders b opened (read-only entry)
 U32 held_files() { return held; }
@@ -121,13 +121,13 @@ int main() {
 
     reset();
     Stock121ReadOnlySession on_boot_partition;
-    selected = 1;                                          // 2.3b: never read-write while a boot partition is selected
+    selected = 1;                                          // never read-write while a boot partition is selected
     assert(!open_window(on_boot_partition));
     assert(mounts.empty() && on_boot_partition.ready() && !window_open && pauses == 0);
 
     reset();
     Stock121ReadOnlySession busy;
-    held = 1;                                              // 2.3b: a read-entry file still open: busy, nothing unmounted
+    held = 1;                                              // a read-entry file still open: busy, nothing unmounted
     assert(!open_window(busy));
     assert(mounts.empty() && busy.ready() && !window_open && pauses == 0);
     held = 0;

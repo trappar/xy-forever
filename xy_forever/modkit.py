@@ -1,4 +1,4 @@
-"""Mod packages from an open-xy kit (plan item 5.4a; docs/decisions/008, 010, 014; docs/STORAGE.md).
+"""Mod packages from an open-xy kit (docs/decisions/008, 010, 014; docs/STORAGE.md).
 
     python3 -m xy_forever.modkit split KIT.json --sdk OPEN_XY [--sdk-commit C] --out DIR
                                  [--sdk-source URL@COMMIT] [--extension-catalog extensions.json]
@@ -19,8 +19,8 @@ commit, or with --sdk-commit that commit of an open-xy checkout, taken with git 
 modified). rebuild turns the base plus a selection's packages back into a kit that core.mjs
 accepts; prove links every selection twice (original kit, rebuilt kit) with core.mjs and requires
 byte-identical module, globals, numbers, patched os.ldr (website mode) and content. prove-patch
-compares the native end-to-end assembly (link, patch, content: 5.4b, 5.4c, 5.4i; xy_forever/modpatch.py)
-with core.mjs; --memory expanded does both with the website's experimental 4 MiB option (4.8m1).
+compares the native end-to-end assembly (link, patch, content; xy_forever/modpatch.py)
+with core.mjs; --memory expanded does both with the website's experimental 4 MiB option.
 Host only: no device, no network. Outputs go under the private root, outside every checkout.
 """
 import argparse
@@ -678,7 +678,7 @@ def write_base(folder, model, common, sdk_source):
     runtime = [o for o in objects if o['runtime']]
     extra += [('runtime_%s' % k, sum(o[k] for o in runtime)) for k in ('code', 'data', 'state')]
     x = expanded_base(profile)
-    if x is not None:                    # the 4 MiB option (4.8m1): older readers skip the unknown key
+    if x is not None:                    # the 4 MiB option: older readers skip the unknown key
         extra.append(('expanded_module_base', '0x%08x' % x))
     files['info.txt'] = info_text(known, extra)
     write_package(folder, files)

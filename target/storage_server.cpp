@@ -51,7 +51,7 @@ uint32_t own_area(const char* path) {
     if (!valid_path(path)) return 0;
     const uint32_t root = prefix(path, xyf) ? sizeof(xyf) - 1 : prefix(path, content) ? sizeof(content) - 1 : 0;
     if (!root || !path[root]) return 0;
-    for (uint32_t i = 8; path[i]; ++i) {                  // 2.4d: no name holding "bootloader" (any case)
+    for (uint32_t i = 8; path[i]; ++i) {                  // no name holding "bootloader" (any case)
         static const char word[] = "bootloader";
         uint32_t k = 0;
         while (word[k] && (path[i + k] | 0x20) == word[k]) ++k;
@@ -96,7 +96,7 @@ template<U32 A, class R, class... Args> __attribute__((noinline, noclone)) R sto
     return reinterpret_cast<R(*)(Args...)>(A)(args...);
 }
 #if defined(XYF_USB_FILE_WRITE)
-// 2.4c: the admitted yaffs rename (xyf_build.py A_RENAME_CALLS): 889fa834(old, new)
+// The admitted yaffs rename (xyf_build.py A_RENAME_CALLS): 889fa834(old, new)
 // -> yaffsfs rename 889fa604 -> yaffs_rename_obj 88a01afa (1.2.1 listing). Stock convention: 0 done,
 // -1 failed with the negative error number in yaffs's error word (889f998c stores it at 0x8806f940,
 // 889f9982 reads it). Called only while every engine span matches (mtp_spans.hpp: they cover
@@ -254,7 +254,7 @@ void unmount(cold_storage::Stock121ReadOnlySession& storage) {
 // Install mode (a): exact Track-5 request set, see storage_server.hpp.
 volatile U32 install_enabled __attribute__((section(".data"))) = 0;
 volatile U32 selected_partition __attribute__((section(".data"))) = 0;
-// 2.3c: a select of a boot partition was attempted and no select of 0 has succeeded since. The
+// A select of a boot partition was attempted and no select of 0 has succeeded since. The
 // stock select may have switched the chip's partition register before it failed, so a failed
 // select counts as selected for storage (boot_selected); boot writes still need a confirmed one.
 volatile U32 select_attempted __attribute__((section(".data"))) = 0;
@@ -274,11 +274,11 @@ bool serve_install(U32 request, U32 vtable, U32 op, Stock121PeerSession& session
     switch (action) {
     case install_select: {
         const U32 argument = word(request + 8);
-        if (argument) select_attempted = 1;                     // 2.3c: before the stock call, whatever it answers
+        if (argument) select_attempted = 1;                     // before the stock call, whatever it answers
         stock<0x889f76cau, void>(request);
         // Stock reply = 88a08710's result: 0 = switched (Test 036: the writer only
         // continues on 0; "nonzero = selected" refused every trim after it). A failed select
-        // leaves the chip's partition unknown: no boot write until a select succeeds (2.3c).
+        // leaves the chip's partition unknown: no boot write until a select succeeds.
         if (word(request + 0x10) == 0) {
             selected_partition = argument;
             if (!argument) select_attempted = 0;
@@ -294,7 +294,7 @@ bool serve_install(U32 request, U32 vtable, U32 op, Stock121PeerSession& session
     return true;
 }
 #endif
-// 2.3b: install mode has a boot partition selected. yaffs (partition 0) is then not what the
+// Install mode has a boot partition selected. yaffs (partition 0) is then not what the
 // chip's partition register addresses: no engine request, no window, no state write.
 bool boot_selected() {
 #if defined(XYF_USB_SERVICE)
@@ -310,14 +310,14 @@ const U32 entry_none = 0, entry_read = 1, entry_write = 2, entry_run = 3;
 volatile U32 engine __attribute__((section(".data"))) = 0;
 volatile U32 engine_latched __attribute__((section(".data"))) = 0;    // commands_seen of the entry
 volatile U32 engine_refused __attribute__((section(".data"))) = 0;    // the stock code check failed
-// 2.3b: a's own copy of a path or query request's path. The stock request stage receives every
+// a's own copy of a path or query request's path. The stock request stage receives every
 // such body into the one stock buffer from the interrupt (889f8d94 stage 1 sets +0x18 to
 // 0x8803f6e0), so a later request could change it between the check and the executor. a decides
 // on this copy and points the request at it: both executors read the path only through +0x18
 // (889f6fea, 889f72e4), and the next request's stage 1 sets +0x18 afresh.
 char path_copy[max_path] __attribute__((section(".data"))) = {0};
 #if defined(XYF_USB_FILE_WRITE)
-// 2.4c: file.rename's source (a's copy, from its rename_from request), armed for the next request only.
+// file.rename's source (a's copy, from its rename_from request), armed for the next request only.
 char rename_source[max_path] __attribute__((section(".data"))) = {0};
 volatile U32 rename_armed __attribute__((section(".data"))) = 0;
 #endif
@@ -325,7 +325,7 @@ volatile U32 rename_armed __attribute__((section(".data"))) = 0;
 volatile U32 window_open __attribute__((section(".data"))) = 0;
 volatile U32 window_step __attribute__((section(".data"))) = 0;
 volatile U32 window_result __attribute__((section(".data"))) = 0;
-// 2.2c: a request reached the open window since a's loop last looked (tick), a's clock then, and a
+// A request reached the open window since a's loop last looked (tick), a's clock then, and a
 // window opened since the last rescan (library_changed).
 volatile U32 window_touched __attribute__((section(".data"))) = 0;
 volatile U32 window_since __attribute__((section(".data"))) = 0;
@@ -364,13 +364,13 @@ void latch(Stock121PeerSession& session) {
 
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
 // The read-write window on a's read-only mount (fresh, or the adopted one): op 8 in the run entry;
-// in the write entry the first request that changes storage (2.2c). The write entry pauses a's
+// in the write entry the first request that changes storage. The write entry pauses a's
 // guard around the read-write mount and unmount (Test 049: a long mount or checkpoint is not a
 // hang); the run entry keeps it (097).
 __attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession& storage) {   // noinline: builder scope
     if (window_open) return window_result == U32(cold_storage::Result::ok);   // not after a failed close
-    if (boot_selected()) return false;                         // 2.3b: never read-write on a boot partition
-    // 2.3b (009: the window opens only with nothing open, else busy): files or folders b opened in
+    if (boot_selected()) return false;                         // never read-write on a boot partition
+    // (009: the window opens only with nothing open, else busy): files or folders b opened in
     // the read-only entry would make the read-only unmount fail and end a's storage for this boot.
     // They stay b's; op 9 closes them.
     if (held_files()) return false;
@@ -388,13 +388,13 @@ __attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession
     usb_service::guard_resume(was);
     if (w != cold_storage::Result::ok) { unmount(storage); return false; }
     window_open = 1; window_touched = 1;
-    if (engine == entry_write) library_dirty = 1;              // 2.2c (the run entry rescans after itself)
+    if (engine == entry_write) library_dirty = 1;              // (the run entry rescans after itself)
     return true;
 }
 #endif
 
 // Op 9 (or any end): close b's leftovers, close the read-write window (yaffs unmount writes its
-// checkpoint; gates back; the shared read-only mount again), then end the session (end; 2.2c: not
+// checkpoint; gates back; the shared read-only mount again), then end the session (end; not
 // when a closes the window between requests). A window that fails to close stays mounted (never
 // hand off read-write). noinline: the builder finds a's guard pause only here and in open_window.
 __attribute__((noinline)) void close_engine(cold_storage::Stock121ReadOnlySession& storage, bool end = true) {
@@ -416,7 +416,7 @@ __attribute__((noinline)) void close_engine(cold_storage::Stock121ReadOnlySessio
     if (end) unmount(storage);
 }
 #if defined(XYF_USB_FILE_WRITE)
-// 2.2c: a closes the window between requests (idle, another command item). A failed close keeps it
+// a closes the window between requests (idle, another command item). A failed close keeps it
 // open (reported in a's log; retried after the next idle time; the restart paths still reset, the
 // boot paths refuse); a failed read-only reopen ends the session's mount, as op 9 reports it.
 void close_between(cold_storage::Stock121ReadOnlySession& storage) {
@@ -427,7 +427,7 @@ void close_between(cold_storage::Stock121ReadOnlySession& storage) {
 #endif
 
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
-// 2.3b: the dev-menu marker around every unlink and rmdir (the operations that remove a name; 2.4c:
+// The dev-menu marker around every unlink and rmdir (the operations that remove a name;
 // and rename, rename_now). The policy checks the spelling, but yaffs follows symlinks and hardlinks inside a
 // path (/yaffs2/s/bootloader.dev with s -> /yaffs2). "The marker exists" = the stock posix stat of
 // marker_path succeeds: whatever object the name resolves to (file, folder, links followed), as the
@@ -476,7 +476,7 @@ __attribute__((noinline)) bool reaches_protected(char* path) {
     }
     return false;
 }
-// 2.4c: file.rename on a, after rename_to passed decide_request (the pair's policy; the write window is
+// file.rename on a, after rename_to passed decide_request (the pair's policy; the write window is
 // open): both paths in the write area again, the source must exist (ENOENT) and the target must not
 // (EEXIST: the stock rename would replace it), the marker by another name is refused and a marker that
 // vanishes is re-created (as for unlink and rmdir), then the yaffs rename. 0, or the error number.
@@ -519,14 +519,14 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
     }
     const U32 handle = word(request + 8);
 #if defined(XYF_USB_FILE_WRITE)
-    const char* source = rename_armed ? rename_source : 0;           // 2.4c: the request just before only
+    const char* source = rename_armed ? rename_source : 0;           // the request just before only
     rename_armed = 0;
 #else
     const char* source = 0;
 #endif
     file_engine::State state;
     state.on = engine != entry_none && !engine_refused;
-    state.session = engine == entry_run ? window : mounted != 0;      // 2.2c: the write entry opens it lazily
+    state.session = engine == entry_run ? window : mounted != 0;      // the write entry opens it lazily
     state.window = window;
     state.fd_known = known(int(handle)); state.fd_space = space();
 #if defined(XYF_MTP)
@@ -540,7 +540,7 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
         action = file_engine::decide_request(vtable, op, handle, path_pointer,
             path_pointer == path_buffer ? path_copy : 0, state, source);
 #if defined(XYF_USB_FILE_WRITE)
-        // 2.2c: the write entry's first change opens the window (the policy has passed:
+        // The write entry's first change opens the window (the policy has passed:
         // refuse_read_only comes after it); the request is then decided again with the window open.
         if (action == file_engine::refuse_read_only && engine == entry_write && !state.window && open_window(storage)) {
             state.window = true;
@@ -559,7 +559,7 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
         return;
     }
 #if defined(XYF_USB_FILE_WRITE)
-    // 2.3f (review 024, 1): B's write area on A too, outside the run entry (diag.engine_test, MTP): open for
+    // Review 024, 1: B's write area on A too, outside the run entry (diag.engine_test, MTP): open for
     // writing, unlink, mkdir and rmdir only where write_root passes and no link reaches the marker or the inbox
     // (reaches_protected; rename: rename_now), whatever B checked.
     const bool change = (action == file_engine::run_open && handle) ||
@@ -593,7 +593,7 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
         const bool had = window_open != 0;
         close_engine(storage);
-        // 2.3b, as build 154: failure while the window is still open, and when this close's
+        // As build 154: failure while the window is still open, and when this close's
         // read-only reopen failed (a's storage is then unmounted).
         const bool ok = !window_open && (!had || window_result == U32(cold_storage::Result::ok));
         if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item
@@ -601,7 +601,7 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
         close_engine(storage);
         const bool ok = true, had = false;
 #endif
-        // Stock success is 1 (889f7710); 2.2c: 3 when this op 9 closed a window.
+        // Stock success is 1 (889f7710); 3 when this op 9 closed a window.
         session.reply(request, ok ? (had ? 3 : 1) : 0, ok ? 0 : error_access);
         ++r.executed; note(op, action, mounted ? 0xfffeu : 1);
         return;
@@ -632,14 +632,14 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
         break;
     }
 #if defined(XYF_USB_FILE_WRITE)
-    case file_engine::run_rename_from: {                                      // 2.4c: keep the source
+    case file_engine::run_rename_from: {                                      // keep the source
         const bool ok = writable && write_root(path_copy);
         if (ok) { for (U32 i = 0; i != max_path; ++i) if (!(rename_source[i] = path_copy[i])) break; rename_armed = 1; }
         session.reply(request, ok ? 0 : 0xffffffffu, ok ? 0 : error_access);
         ++(ok ? r.executed : r.refused); note(op, action, ok ? 0 : 0xffffu);
         return;
     }
-    case file_engine::run_rename_to: {                                        // 2.4c: rename it
+    case file_engine::run_rename_to: {                                        // rename it
         const U32 error = rename_now(path_copy);
         session.reply(request, error ? 0xffffffffu : 0, error);
         ++r.executed; note(op, action, error ? 0xff00u | error : 0);
@@ -682,7 +682,7 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
         if (vtable == sector_class && op == 0x2fu) {
             // 128: b's readdir always waits for a 0x10c-byte entry (stock 889f6b7c sends one
             // even at the end of a folder). A refusal without it froze b inside its USB
-            // interrupt (126/127). Refuse with a zeroed entry, the errno and result -1 (2.4b: not
+            // interrupt (126/127). Refuse with a zeroed entry, the errno and result -1 (not
             // the stock end of folder, 0, so B's file.list reports it; the stock result is A's
             // dirent address, any nonzero word, so the body travels the same way).
             for (U32 i = 0; i != dirent_bytes / 4; ++i) dirent_zero[i] = 0;
@@ -716,7 +716,7 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
             engine = entry_read; r.enabled = entry_read;
         }
     }
-    // 0.9f: the exemption from F1 holds only while the boot-partition writer is active (b's latest
+    // The exemption from F1 holds only while the boot-partition writer is active (b's latest
     // command is install_item; b sends command_item once the install ends, failed or not) or a boot
     // partition is selected, not for the rest of the boot.
     const bool install_mode = install_enabled && engine != entry_write && engine != entry_run &&
@@ -724,7 +724,7 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
 #else
     const bool install_mode = false;
 #endif
-    // Plan 0.9b F1 (record 016): outside install mode a boot request is b's stock bootloader (b
+    // F1 (record 016): outside install mode a boot request is b's stock bootloader (b
     // restarted alone): no answer; the session holds it and the owner closes storage and restarts a.
     if (!install_mode && peer_services::boot_request(vtable, op, word(request + 8), word(request + 0x18))) {
         session.follow(request); ++r.refused; note(op, file_engine::refuse_raw_layer, 0xfffbu);
@@ -748,10 +748,10 @@ void install(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySession
     session.serve(serve, &storage);
 }
 
-void finish(cold_storage::Stock121ReadOnlySession& storage) { close_engine(storage); }   // 2.3b: the window too
+void finish(cold_storage::Stock121ReadOnlySession& storage) { close_engine(storage); }   // the window too
 void adopt() { adopted = 1; }
 void close_files(cold_storage::Stock121ReadOnlySession& storage) {
-    close_engine(storage);                // 2.3b: the read-write window first (checkpoint), then b's handles
+    close_engine(storage);                // the read-write window first (checkpoint), then b's handles
     close_handles();
     mounted = 0;
 }
@@ -803,7 +803,7 @@ void run_engine(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySess
         session.touch(xyf_boot::clock_ms());
         const peer_services::Result s = session.poll(xyf_boot::clock_ms());
         if (s != peer_services::Result::waiting && s != peer_services::Result::choose_image) break;
-        if (session.follow_now(xyf_boot::clock_ms())) break;   // b restarted: follow it (0.9b F1)
+        if (session.follow_now(xyf_boot::clock_ms())) break;   // b restarted: follow it (F1, record 016)
         if (session.commands_seen() != seen) {
             seen = session.commands_seen();
             const U32 item = session.last_command() >> 8 & 0xffu;

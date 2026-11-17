@@ -1,4 +1,4 @@
-"""Plan 3.2: our MTP function driver (target/mtp_usb.*) against a host model of the stock USB stack."""
+"""Our MTP function driver (target/mtp_usb.*) against a host model of the stock USB stack."""
 from pathlib import Path
 import subprocess
 import sys
@@ -12,7 +12,7 @@ from xy_forever import hostbuild  # noqa: E402
 
 class MtpUsbTest(unittest.TestCase):
     def test_driver_against_stack_model(self):
-        # T2a composite: descriptors (EF/02/01, IAD, CDC extras, one FIFO per endpoint number), GetDeviceInfo,
+        # Composite: descriptors (EF/02/01, IAD, CDC extras, one FIFO per endpoint number), GetDeviceInfo,
         # sessions, 1 MiB paced sink with bounded passes, source, loopback, EP0 class requests by interface (CDC
         # line coding, control lines, break; MTP), the serial ring with held urbs (flow control), serial writes
         # (one in flight, ZLP), deconfigure / bus reset / suspend mid-transfer, leave with a held urb; twice.
@@ -127,7 +127,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         return script
 
     def test_composite_started_once(self):
-        # T2a (record 031 b2): register, start(0x200), never a stop or a start inside the boot but the leave
+        # Composite (record 031 b2): register, start(0x200), never a stop or a start inside the boot but the leave
         # (stop(0): GP timer 7 kept) before a restart or a boot; the flag deleted before anything starts.
         import re
         stock = (ROOT / 'target/mtp_usb_stock.cpp').read_text()

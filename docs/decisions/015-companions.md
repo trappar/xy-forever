@@ -1,4 +1,4 @@
-# 015: Companion chips: what they are, how stock updates them, what is recoverable (plan item 7.1)
+# 015: Companion chips: what they are, how stock updates them, what is recoverable
 
 Research record, 2026-11-14; no device, nothing built or written. **[L]** read from the 1.2.1 bootloader listing (the private `analysis/bootloader-121-listing`) or OS strings, **[M]** measured on files in the private folder, **[I]** inferred, **[U]** unknown, **[D]** design choice. Prior evidence (re-checked where cited): the maintainer's (not shared).
 
@@ -54,6 +54,6 @@ Neither OS contains companion-programming code or a companion-version check; the
 
 ## Split
 
-7.2 research: protocols re-derived from 1.2.1; Nordic DFU without an application answered or marked [U]; question (1) put to TE or hardware documents. 7.3 device, developer: O1 answered. 7.4 build: read-only `companions` command (stages 1–2, CP001 port, simulator, conformance, the builder rule above). 7.5 review: call closure, ISRs and UART handover of 7.4. 7.6 device safe: live versions, modes and hardware revision reported; nothing changed. 7.7 build: BLE updater with journal; simulator fault matrix passes. 7.8 review of 7.7. 7.9 device risky: stage 3, then stage 4, each with the developer's explicit yes; done when BLE 1.0.2 is reported live and BLE MIDI works. 7.10 gate: backplane go or no-go, recorded from 7.2 and 7.3.
+Research (017): protocols re-derived from 1.2.1; Nordic DFU without an application answered or marked [U]; question (1) put to TE or hardware documents. Device, developer: O1 answered. #31 build: read-only `companions` command (stages 1–2, CP001 port, simulator, conformance, the builder rule above). #32 review: call closure, ISRs and UART handover of #31. #32 device safe: live versions, modes and hardware revision reported; nothing changed. #33 build: BLE updater with journal; simulator fault matrix passes. #33 review of the updater. #33 device risky: stage 3, then stage 4, each with the developer's explicit yes; done when BLE 1.0.2 is reported live and BLE MIDI works. Gate: backplane go or no-go, recorded from the research and the O1 answer.
 
 **Open questions:** (1) BLE first, with the backplane deferred, possibly for good? (2) Which recovery is acceptable: reinstalling 1.1.33 and then XY Forever? Never 1.2.5? (3) is opening the case with a PSoC programmer ever acceptable? If not, the backplane is never written. (4) who does O1 at the device? (5) allow the 4 raw UART calls for the read-only inventory?

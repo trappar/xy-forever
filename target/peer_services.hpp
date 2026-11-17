@@ -33,7 +33,7 @@ struct Diagnostic {
 Result check_closed(const Snapshot& snapshot);
 Result check_open(const Snapshot& snapshot);
 Result check_drained(const Snapshot& snapshot);
-// Plan 0.9h: the link hardware off after the master close 889f562e (SPI control and both DMA
+// The link hardware off after the master close 889f562e (SPI control and both DMA
 // configurations 0, no link interrupt registered), before a stock reset of b. The close never
 // completes a request it abandons, so the driver's request pointers are not checked.
 Result check_quiet(const Snapshot& snapshot);
@@ -49,7 +49,7 @@ bool request_pool_slot(U32 driver, U32 request);
 // install selects a partition number, so the two cannot be confused.
 bool command_request(U32 operation, U32 argument0, U32 argument1);
 inline U32 command_ack(U32 value) { return ~value; }   // role0's answer to a command
-// Plan 0.9b (record 016 F1): a request of the stock bootloader's boot read, the one b's bootloader
+// Record 016 F1: a request of the stock bootloader's boot read, the one b's bootloader
 // sends after b restarted alone: partition select 0x18 (not a command) or sector read 0x11/0x12.
 bool boot_request(U32 vtable, U32 operation, U32 argument0, U32 argument1);
 static const U32 handshake_value = 0x12345678u;        // the stock link open's op-10 argument (889f55fc)
@@ -167,7 +167,7 @@ public:
     // command_ack(value). So busy() ending with one more echoes() means role0's loop
     // has the command, and it acts on it before it polls again.
     Result ask(U32 value);
-    // Plan 0.9b (role0, staged; record 016 F1): b restarted alone and its stock bootloader asks.
+    // Record 016 F1 (role0, staged): b restarted alone and its stock bootloader asks.
     // Seen as the stock link open's op-10 header (handshake_value) after b's first command, or as a
     // boot request while image mode has nothing frozen (in RPC mode the serve hook decides and calls
     // follow(), as it knows install mode). From then on poll() answers nothing: it takes b's first
@@ -184,7 +184,7 @@ public:
     // the stock reset disables interrupts at once.
     bool answering() const;
     Result release();              // role1, held, link ready and idle
-    // Plan 2.2b (role1, staged, link ready and idle): B's own file request (file_client.cpp) on this
+    // Role1, staged, link ready and idle: B's own file request (file_client.cpp) on this
     // session's one request slot. request_slot() is the zeroed request object for a stock request
     // builder, or 0 while the slot is taken (a keepalive, command, transfer or file request) or the
     // session is not held. send_request() submits it as the stock RPC 889f7b12 does (done byte +4
@@ -240,9 +240,9 @@ private:
     U32 echoes_, activity_, commands_seen_, last_command_, last_argument_, max_gap_;
     Serve serve_; void* serve_context_; U32 served_; bool served_activity_; bool rpc_;
     bool asking_;                  // role1: the outstanding request is an ask()
-    bool filing_;                  // role1: the outstanding request is a file request (2.2b)
+    bool filing_;                  // role1: the outstanding request is a file request
     U32 identity_ms_;
-    bool peer_restart_;            // role0: b's bootloader seen (0.9b F1)
+    bool peer_restart_;            // role0: b's bootloader seen (record 016 F1)
     U32 peer_request_, peer_ms_;   // role0: the boot request held unanswered; when b's restart was seen
     static bool capture_state(Snapshot& snapshot);   // capture() without the identity CRC
     void observe(U32 now);

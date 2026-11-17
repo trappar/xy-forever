@@ -1,5 +1,5 @@
-// Host bridge for B's file client (plan 2.2b; file_client.cpp non-device part): request bounds and
-// the USB status of an outcome; 2.4a: change statuses, list entries, child paths; 2.4b: readdir results.
+// Host bridge for B's file client (file_client.cpp non-device part): request bounds and
+// the USB status of an outcome; change statuses, list entries, child paths; readdir results.
 #include "../target/file_client.hpp"
 using namespace xy_forever::file_client;
 extern "C" {

@@ -1,6 +1,6 @@
-// Host adapter for mod assembly (plans 5.4b, 5.4c, 5.4i): runs the device's freestanding linker, patch
+// Host adapter for mod assembly: runs the device's freestanding linker, patch
 // and content steps (native/mod_link, mod_patch, mod_content) on the Mac end to end, the way the device
-// job (5.4d, decision 019) will: every input file whole in RAM (the base and the chosen packages, each
+// job (decision 019) does: every input file whole in RAM (the base and the chosen packages, each
 // checked against its files.sha256, the stock os.ldr, the official catalog), stock loaded into the image
 // buffer, the linker writing the module straight into that buffer at stock_bytes, step() until done.
 // The facts come from the package files only (the base's info.txt through mod_patch::read_profile, its
@@ -17,7 +17,7 @@
 //                                       package file, the assembled image), file hashes refreshed so the
 //                                       damage reaches the parsers; prints the status counts (built with
 //                                       sanitizers).
-//   mod_assemble job JOB OUT            the stepped device job (native/mod_job, plans 5.4d1a, 5.4d1b) over
+//   mod_assemble job JOB OUT            the stepped device job (native/mod_job) over
 //                                       an in-memory file system backed by the real files (folders made by
 //                                       the job's mkdir calls), in an 8 MiB region filled with garbage; its
 //                                       os.ldr and catalog compared with this one-shot assembly's, its
@@ -126,7 +126,7 @@ bool read_job(const char* path, Job& job) {
         else if (key == "name") job.name = rest();
         else if (key == "profiling") { int v = 0; in >> v; job.profiling = v; }
         else if (key == "unverified") { int v = 0; in >> v; job.unverified = v; }
-        else if (key == "memory") {          // 4.8m1: standard, or expanded (the 4 MiB option)
+        else if (key == "memory") {          // standard, or expanded (the 4 MiB option)
             const std::string m = rest();
             if (m != "standard" && m != "expanded") return false;
             job.expanded = m == "expanded";

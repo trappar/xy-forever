@@ -1,7 +1,7 @@
 #ifndef XYF_SETTINGS_HPP
 #define XYF_SETTINGS_HPP
 #include <stdint.h>
-// 4.8: device settings (the Settings page) and the "Confirm on device" gate (not built: no prompt opens it yet).
+// Device settings (the Settings page) and the "Confirm on device" gate (not built: no prompt opens it yet).
 // Freestanding, header only, pure.
 // A sibling of config.txt (xyf_config.hpp), not part of it: config.txt is the pending/saved mod selection
 // written only by Save (its mods= line last), while a setting changes on its own page.
@@ -9,7 +9,7 @@
 // The record, /yaffs2/xy-forever/settings.txt (key=value lines, LF; unknown keys ignored):
 //   format=1
 //   confirm=0|1            Confirm on device: a host command that changes which code runs next waits for PLAY
-// (4.8m2: the demo "knob=normal|reversed" left; a record that still has it reads as before, the key ignored.)
+// (The demo "knob=normal|reversed" left; a record that still has it reads as before, the key ignored.)
 // Replaced as config.txt is: settings.txt.part, settings.txt -> settings.old, .part -> settings.txt, old removed.
 // No record (absent or unreadable): the defaults, confirm=1 (unused until the gate); tests seed confirm=0.
 // The confirm setting is to change only on the device, never over USB: with its gate, file.write must refuse
@@ -57,7 +57,7 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
 
 // The Settings page: one row per setting that works; PLAY or a knob push acts on the selected one. Confirm on
 // device is stored (confirm=) but has no row until its gate is built.
-// 4.8m2: Mod memory, part of the saved configuration (config.txt memory=, xyf_config.hpp), not of this record: like
+// Mod memory, part of the saved configuration (config.txt memory=, xyf_config.hpp), not of this record: like
 // the Mods page's toggles it is pending until boot (Continue asks Save / Discard / Back). xyf_mods_io keeps it and
 // says which of these the row shows (menu::State memory, memory_pending).
 enum Row : uint32_t { row_memory = 0, rows = 1 };

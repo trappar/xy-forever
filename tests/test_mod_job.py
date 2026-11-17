@@ -1,4 +1,4 @@
-"""The stepped mod assembly job (plans 5.4d1a, 5.4d1b; decision 019; native/mod_job, host/mod_assemble.cpp
+"""The stepped mod assembly job (decision 019; native/mod_job, host/mod_assemble.cpp
 job|faults).
 
 The job runs the device's linker, patch and content steps in bounded steps inside one work region (8 MiB,
@@ -185,7 +185,7 @@ class PublishedPackages(Harness, unittest.TestCase):
         return P.job_text(PACKAGES, machines, exts, TK.STOCK, TK.CATALOG, memory=memory)
 
     def test_expanded_memory(self):
-        """4.8m1: the 4 MiB option on the device job: the entry is the one-shot assembly's (itself proven against
+        """The 4 MiB option on the device job: the entry is the one-shot assembly's (itself proven against
         core.mjs, test_modpatch PublishedKitExpanded), layout.json records the option as the website does, and
         the larger image still fits B's region (the image is kept last; link files use the module's free part)."""
         from test_modpatch import LARGE, NEAR

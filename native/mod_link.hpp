@@ -1,7 +1,7 @@
 #ifndef XYF_MOD_LINK_HPP
 #define XYF_MOD_LINK_HPP
 #include "ldr.hpp"
-// Device mod linker (plan 5.4b; docs/decisions/008, 014, 019; docs/STORAGE.md, "Mod packages"):
+// Device mod linker (docs/decisions/008, 014, 019; docs/STORAGE.md, "Mod packages"):
 // a freestanding port of open-xy builder/core.mjs readObject, numberLayout and linkKit (MIT,
 // open-xy commit 52c8de9) with the selection checks of xy_forever/modkit.py rebuild_kit.
 //
@@ -27,7 +27,7 @@ struct Number { char id[id_bytes]; Identity identity; };
 // What to link; ids NUL-terminated, order irrelevant (as in linkKit). `layout`: the device
 // layout's numbers (opxy-layout/1 "machines"); has_layout false = none (null). The arrays must
 // stay valid until the last step.
-// `expanded`: the website's experimental 4 MiB option (4.8m1; core.mjs memoryKit(kit, true)): the module
+// `expanded`: the website's experimental 4 MiB option (core.mjs memoryKit(kit, true)): the module
 // starts at the base's expanded_module_base and keeps its end, so the limit grows by the difference (4080
 // KiB for 1.2.1); false = standard (module_base, module_bytes).
 struct Selection {
@@ -71,7 +71,7 @@ enum class Status {
     absent_extension, absent_machine, service_fallback, unresolved, overflow, branch,
     // device bounds core.mjs does not have: a name over 255 bytes; too many names in one hash chain
     name_length, name_chain,
-    // device rules for packages anyone can copy to the device (plan 5.4w2): an absolute symbol in a
+    // device rules for packages anyone can copy to the device: an absolute symbol in a
     // package object (detail: the object); a package object importing another package's symbol (the
     // name); over 16 claims in one extension (its id); a NUL byte in a text table (the path); an
     // info.txt value too long to keep (the key)

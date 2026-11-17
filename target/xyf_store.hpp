@@ -34,7 +34,7 @@ struct Info {
     Kind kind;
     uint32_t bytes, crc32;
     bool has_bytes, has_crc32;
-    bool has_generation;       // 5.4d3a: a generation key (an assembled mod set: xyf_library content_installed)
+    bool has_generation;       // a generation key (an assembled mod set: xyf_library content_installed)
 };
 bool parse_info(const char* text, uint32_t length, Info& info);
 

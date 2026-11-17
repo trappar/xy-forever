@@ -12,15 +12,15 @@
 #include "xyf_boot.hpp"
 #endif
 #include "xyf_crc32.hpp"
-#include "knob_input.hpp"      // 8.3: the knob reader's counters (diag.status block KNB1)
+#include "knob_input.hpp"      // the knob reader's counters (diag.status block KNB1)
 #if defined(XYF_MTP_SESSION)
-#include "mtp_session.hpp"          // 3.5b: the MTP session (simulator only so far)
+#include "mtp_session.hpp"          // the MTP session (simulator only so far)
 #endif
 #if defined(XYF_MTP_USB)
-#include "mtp_usb.hpp"              // 3.4: the MTP USB probe (test build xyf-mtp-usb only)
+#include "mtp_usb.hpp"              // the MTP USB probe (test build xyf-mtp-usb only)
 #include "mtp_usb_spans.hpp"
 #include "mtp_spans.hpp"
-#include "mtp_usb_gate.hpp"         // 3.4: which check refuses a probe start, and why
+#include "mtp_usb_gate.hpp"         // which check refuses a probe start, and why
 #endif
 // XY Forever USB service (see usb_service.hpp). Stock addresses: the
 // authenticated 1.2.1 bootloader, mapped offline (docs/HARDWARE.md, Boot partition and USB).
@@ -68,14 +68,14 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "../native/ldr.hpp"
 #include "../native/mod_job.hpp"
 #include "cold_layout.hpp"
-#include "stack_mark.hpp"         // 0.12: live stack high-water mark in STATUS
+#include "stack_mark.hpp"         // live stack high-water mark in STATUS
 #include "xyf_store.hpp"
 #include "xyf_stage2.hpp"
-#include "xyf_save_log.hpp"           // 8.8: the save-time log
+#include "xyf_save_log.hpp"           // #27: the save-time log
 #if defined(XYF_CONTENT_SWITCH)
 #include "xyf_content_job.hpp"
-#include "xyf_config.hpp"           // 8.4a: the saved configuration (the config job)
-#include "xyf_settings.hpp"         // 4.8: settings.txt (through the config job), the confirm gate
+#include "xyf_config.hpp"           // the saved configuration (the config job)
+#include "xyf_settings.hpp"         // #21: settings.txt (through the config job), the confirm gate
 #endif
 #if defined(XYF_TFW_CHECK)
 #include "otp_keys.hpp"
@@ -112,7 +112,7 @@ void lines(U32 address, U32 bytes, bool invalidate) {
 void usb_start() { stock<0x88a35044u, void>(0x400u); }               // smxUSBD, CDC "Serial" only
 void usb_stop() { stock<0x88a34fecu, void>(1u); }                    // release + PHY down (stock boot path)
 #if defined(XYF_MTP_USB)
-// T2a: the serial service's transport is our composite's CDC while it is up (composite_on), else the stock
+// The serial service's transport is our composite's CDC while it is up (composite_on), else the stock
 // CDC's four calls exactly as in the product. Writes on the composite go out as one urb of up to
 // kSerialInMax bytes (write_chunk), not 512.
 volatile U32 composite_on __attribute__((section(".data"))) = 0;   // usb_begin sets it, menu_release clears it
@@ -152,7 +152,7 @@ uint8_t* const tx = reinterpret_cast<uint8_t*>(tx_frame);
 uint8_t* const files = reinterpret_cast<uint8_t*>(file_buffer);
 uint8_t* const staged = reinterpret_cast<uint8_t*>(image);
 P::Parser parser __attribute__((section(".data"))) = {0, 0, 0, 0};
-volatile U32 rx_quiet_from __attribute__((section(".data"))) = 0;   // 1.5: now() when input last ended
+volatile U32 rx_quiet_from __attribute__((section(".data"))) = 0;   // now() when input last ended
 
 // PUT state.
 volatile U32 put_expected __attribute__((section(".data"))) = 0;
@@ -187,7 +187,7 @@ void say(const char*, const char*, const char*, const char*);
 char guard_text[3][40] __attribute__((section(".data"))) = {{0}, {0}, {0}};
 bool ram(U32 a) { return !(a & 3u) && ((a >= 0x88000000u && a < 0x8c000000u) || (a >= 0x11800000u && a < 0x11c00000u)); }
 void hex8(char* at, U32 v) { for (U32 i = 0; i != 8; ++i) { const U32 d = v >> (28 - 4 * i) & 0xfu; at[i] = char(d < 10 ? '0' + d : 'a' + d - 10); } }
-// Plan 0.9h (record 021 (a)): b's stock reset did not complete with a link request open (148-160) or
+// Record 021 (a): b's stock reset did not complete with a link request open (148-160) or
 // with USB on (096-108). Every reset of b closes the link first (xyf_boot::link_close: an open request
 // waited for, at most close_ms, then the master close, then the hardware checked off); USB stops after
 // that. False: the link could not be shown closed, so b does not reset (nor tries again this boot).
@@ -216,7 +216,7 @@ __attribute__((optimize("no-omit-frame-pointer"))) void guard_expired(U32, U32) 
     say("Watchdog fired. Please read me:", a, b, c);
     // 107: a reset with USB running froze b every time (fault reset, test-hang, 105-106's
     // interrupt); every working REBOOT stops USB first (menu_release -> usb_stop). Same here.
-    // a has no USB: it resets as its other restarts do (103). 0.9h: b closes the link first (no
+    // a has no USB: it resets as its other restarts do (103). Record 021: b closes the link first (no
     // wait: nothing completes a request inside this interrupt); refused: no reset, guard off.
     if (byte(0x8807cac4u)) {
         if (!b_link_closed(false)) { guard_disarm(); return; }
@@ -358,7 +358,7 @@ bool status_only(uint8_t type, uint8_t seq, U32 status) {
 
 // HELLO text (docs/PROTOCOL.md): generated from protocol/v1.json; the build defines
 // XYF_BUILD_NUMBER and XYF_BUILD_MODE, the build switches set the cmds bitmap. It ends in
-// ";stage2=0": stage2_hello sets the loaded stage 2's version and its cmds bit (4.7a1).
+// ";stage2=0": stage2_hello sets the loaded stage 2's version and its cmds bit.
 static_assert(sizeof(XYF_USBP_HELLO_TEXT) - 1 <= P::max_hello, "hello text above max_hello");
 constexpr bool ends_with(const char* text, U32 n, const char* end, U32 m) {
     return m <= n && (!m || (text[n - 1] == end[m - 1] && ends_with(text, n - 1, end, m - 1)));
@@ -386,7 +386,7 @@ U32 append_block(uint8_t* p, U32 n, const void* data, U32 bytes) {
     for (U32 i = 0; i != bytes; ++i) p[n++] = d[i];
     return n;
 }
-// 0.12 (decision 025): where key_ui painted B's stack (0: not painted, as in the simulator).
+// Decision 025: where key_ui painted B's stack (0: not painted, as in the simulator).
 volatile U32 stack_paint_begin __attribute__((section(".data"))) = 0;
 void status(uint8_t seq) {
     uint8_t* p = files;
@@ -397,7 +397,7 @@ void status(uint8_t seq) {
     U32 n = append_block(p, 4, &result, sizeof(Result));
     n = append_block(p, n, &menu_link::result, sizeof(menu_link::Result));
     n = append_block(p, n, &storage_server::result, sizeof(storage_server::Result));
-    n = append_block(p, n, &knob_input::result, sizeof(knob_input::Result));   // 8.3
+    n = append_block(p, n, &knob_input::result, sizeof(knob_input::Result));   // the knob reader's counters
 #if defined(XYF_MENU_ON_FAILURE)
     n = append_block(p, n, &file_boot::result.timing, sizeof(xyf_boot::TimingInfo));
 #endif
@@ -409,12 +409,12 @@ void status(uint8_t seq) {
     send(P::t_status, seq, p, n);
 }
 
-// 2.2r: before each file command, is a still XY Forever, serving b's read entry (a's bootloader,
+// Before each file command, is a still XY Forever, serving b's read entry (a's bootloader,
 // after a lone restart, would serve the request with no path policy)? One bounded link round trip
 // per command (file_client::serving).
 bool a_serving() { return (read_enabled = file_client::serving() == P::s_ok) != 0; }
 
-// ---- 4.7a1: stage 2 (target/xyf_stage2.hpp ABI 3; docs/STORAGE.md) ------------------------
+// ---- Stage 2 (target/xyf_stage2.hpp ABI 3; docs/STORAGE.md) ------------------------
 // At the first HELLO of a boot (a plain boot has no USB service and never gets here), B reads
 // /yaffs2/xy-forever/stage2/main.xys2 through its file client (every request bounded): first its
 // 96-byte header (a ranged read), then the whole file, no larger than the header says, into the
@@ -548,7 +548,7 @@ void read_file(uint8_t seq, const uint8_t* payload, U32 length) {
     P::put32(files, code);
     result.last_status = code;
     send(P::t_read_file, seq, files, 4 + (code == P::s_ok ? bytes : 0));
-    // 2.2r: the probe and close after the reply, while the host sends its next request (this pays
+    // The probe and close after the reply, while the host sends its next request (this pays
     // for the a_serving() check); past its bound either marks the mount stale (op 9 before the next open).
     file_client::finish_read(left, mounted);
 }
@@ -595,7 +595,7 @@ bool peek_allowed(U32 address, U32 bytes) {
             within(address, bytes, 0x08000000u, 0x08040000u) ||
             within(address, bytes, 0x11b00000u, 0x11b02000u) ||  // L1 data: stock IRQ/driver tables
             within(address, bytes, 0x8bfff000u, 0x8bfff800u) ||  // 111: the reboot-marker page
-            within(address, bytes, 0x8b810000u, 0x8b811000u));   // 2.2c: the menu's catalog (xyf_boot catalog_buffer)
+            within(address, bytes, 0x8b810000u, 0x8b811000u));   // the menu's catalog (xyf_boot catalog_buffer)
 }
 // 095/096: interrupt-controller state, 32-bit reads only, and only registers the stock
 // bootloader itself reads or writes: SEC0 GCTL/GSTAT, FCTL/FSTAT, core interface 0
@@ -624,7 +624,7 @@ void peek(uint8_t seq, const uint8_t* payload, U32 length) {
 
 #if defined(XYF_MTP)
 // 097: MTP self-test: MTP's storage calls from b's main loop (each one request to a, served by the
-// engine's run entry), each step on the screen first. 2.2b: through B's file client (every request
+// engine's run entry), each step on the screen first. Through B's file client (every request
 // bounded; a link error ends the test with link).
 void mtp_step(uint32_t n) {
     static const char* const names[] = {"", "1 mount (op 8)", "2 storage info (0x23)", "3 object info (0x22)",
@@ -661,7 +661,7 @@ bool mtp_do(U32 n, MtpSelfTest& t, uint8_t* out) {
     } else if (n == 5 && t.dir) {
         for (U32 k = 0; k != 64; ++k) {
             if (!mtp_value(C::readdir(t.dir, out), v)) return false;    // op 0x2f
-            if (C::readdir_result(int32_t(v)) != C::folder_entry) break;   // file.list's reading (2.4b)
+            if (C::readdir_result(int32_t(v)) != C::folder_entry) break;   // file.list's reading
             ++t.entries;
         }
     } else if (n == 6 && t.dir) {
@@ -675,7 +675,7 @@ bool mtp_do(U32 n, MtpSelfTest& t, uint8_t* out) {
         }
     } else if (n == 10) {
         if (!mtp_value(C::unmount(), v)) return false;                  // op 9: a closes the window
-        t.unmounted = v == 1 || v == 3;                                  // stock success is 1 (2.2c: 3 closed the window)
+        t.unmounted = v == 1 || v == 3;                                  // stock success is 1 (3 closed the window)
     }
     return true;
 }
@@ -687,7 +687,7 @@ bool mtp_selftest(MtpSelfTest& t, U32 hold_ms, uint8_t* out) {
     }
     mtp_step(8);                                                          // window open, a idle (as MTP between requests)
     const U32 start = now();
-    while (now() - start < hold_ms) {                                     // 2.2b: the guard stays armed
+    while (now() - start < hold_ms) {                                     // the guard stays armed
         guard_kick();
         const U32 kicked = now();
         while (now() - kicked < 10u && now() - start < hold_ms) {}
@@ -717,7 +717,7 @@ void mtp_test(uint8_t seq, const uint8_t* payload, U32 length) {
     const U32 hold = length == 4 ? P::get32(payload) : 0;
     if (length != 4 || hold > 60000u) code = P::s_bad_request;
     else if ((code = mtp_enter()) == P::s_ok) {
-        const bool answered = mtp_selftest(t, hold, files + 0x1000);    // 2.2b: no guard pause
+        const bool answered = mtp_selftest(t, hold, files + 0x1000);    // no guard pause
         code = mtp_leave(t);
         if (!answered) code = P::s_link;
         say(code == P::s_ok && t.step == 11 ? "MTP self-test finished." : "MTP self-test FAILED.");
@@ -730,7 +730,7 @@ void mtp_test(uint8_t seq, const uint8_t* payload, U32 length) {
 }
 #endif
 void put_begin(uint8_t seq, const uint8_t* payload, U32 length) {
-    // 1.5: any stage.begin, refused or not, forgets the earlier staging: no stage.data after a
+    // Any stage.begin, refused or not, forgets the earlier staging: no stage.data after a
     // refused one writes into the old announcement or continues its hashes.
     put_expected = 0; result.put_ok = 0; result.put_received = 0; result.put_size = 0; result.put_crc = 0;
     if (length != 4 + 4 + 32) { status_only(P::t_put_begin, seq, P::s_bad_request); return; }
@@ -746,7 +746,7 @@ void put_begin(uint8_t seq, const uint8_t* payload, U32 length) {
 void put_data(uint8_t seq, const uint8_t* payload, U32 length) {
     if (!put_expected || length < 5) { status_only(P::t_put_data, seq, P::s_state); return; }
     const U32 offset = P::get32(payload), n = length - 4;
-    // 1.5: a resend of bytes already received unchanged (the host's retry after a lost reply) is
+    // A resend of bytes already received unchanged (the host's retry after a lost reply) is
     // ok with the count unchanged; it neither stores nor hashes them again.
     bool again = offset < result.put_received && offset + n <= result.put_received;
     for (U32 i = 0; again && i != n; ++i) again = staged[offset + i] == payload[4 + i];
@@ -765,7 +765,7 @@ bool sha_equal(const uint8_t* a, const uint8_t* b) { U32 d = 0; for (U32 i = 0; 
 void put_end(uint8_t seq) {
     U32 code = P::s_ok;
     xyf_core::hash::Digest digest;
-    // 1.5: a repeated stage.end (the host's retry after a lost reply) answers ok again and keeps
+    // A repeated stage.end (the host's retry after a lost reply) answers ok again and keeps
     // the staging; the hashes were checked once and finish() must not run twice.
     if (result.put_ok && put_expected && result.put_received == put_expected) { status_only(P::t_put_end, seq, P::s_ok); return; }
     if (!put_expected || result.put_received != put_expected) code = P::s_state;
@@ -816,14 +816,14 @@ U32 verify(U32 size, U32 crc) {
 }
 
 #if defined(XYF_USB_FILE_WRITE)
-// 2.2c: A keeps its read-write window across this boot's FILE_WRITEs. B closes it (op 9, bounded)
+// A keeps its read-write window across this boot's FILE_WRITEs. B closes it (op 9, bounded)
 // once no write came for storage_server::window_settle_ms, and before a command A would close it
 // for (install, set default, CONTINUE, REBOOT): A closing it in its own loop (window_idle_ms, the
 // fallback) would leave B's probes unanswered while yaffs writes its checkpoint. Then B fetches the
 // catalog A scanned again after the close and the menu shows it (no fresh boot).
 volatile U32 writes_due __attribute__((section(".data"))) = 0;
 volatile U32 writes_ms __attribute__((section(".data"))) = 0;
-// 5.4d2f: 1 while an op 9 started by settle_begin is out (file commands answer busy: job_blocks).
+// 1 while an op 9 started by settle_begin is out (file commands answer busy: job_blocks).
 volatile U32 closing __attribute__((section(".data"))) = 0;
 void settle_end(U32 v, bool catalog);
 void settle_writes(bool catalog = true) {
@@ -837,7 +837,7 @@ void settle_writes(bool catalog = true) {
     }
     settle_end(v, catalog);
 }
-// 5.4d2f: the same close at the mod job's end without waiting in op 9: yaffs's
+// The same close at the mod job's end without waiting in op 9: yaffs's
 // checkpoint after megabytes took 0.3 s to about 17 s on the device, and B's loop answered no USB
 // meanwhile (not even HELLO). settle_turn, every pass, ends it once A answered or the bound passed (then
 // no catalog fetch: it would find the request still out and end the link; a late answer frees it).
@@ -870,7 +870,7 @@ void settle_end(U32 v, bool catalog) {
 void settle_writes(bool = true) {}
 #endif
 
-// 5.4d3a: the catalog item B's menu lists for a library id (n bytes), or 0.
+// The catalog item B's menu lists for a library id (n bytes), or 0.
 const xyf::catalog::Item* catalog_item(const char* id, U32 n) {
     const xyf::catalog::Catalog* catalog = xyf_boot::catalog();
     for (U32 i = 0; catalog && i != catalog->count; ++i) {
@@ -886,7 +886,7 @@ const xyf::catalog::Item* catalog_item(const char* id, U32 n) {
 // Test 042: compiled out (module space). Test 048: back in the product build
 // (wide layout); the first storage write run on hardware.
 // SET_DEFAULT: payload = library id NUL. b passes CRC-32(id) to a as eight
-// tagged nibble commands (1.5: low three bits 0) and a commit; a looks up the unique usable entry and
+// tagged nibble commands (low three bits 0) and a commit; a looks up the unique usable entry and
 // writes the next A/B state slot (the only storage write). Reply: u32 status
 // (ok = a received all nine commands), u32 hash. The write result is in a's
 // report (a_state_write); the host verifies by READ_FILE of the slot.
@@ -894,7 +894,7 @@ const xyf::catalog::Item* catalog_item(const char* id, U32 n) {
 U32 content_begin(const char* id, bool menu, bool write_default = true);
 #endif
 // The A/B state write of the default (the entry with this id hash): eight tagged nibble commands and the commit,
-// the barrier, B's catalog fetched again and checked. 4.6c1: also the content switch's last step.
+// the barrier, B's catalog fetched again and checked. Also the content switch's last step.
 U32 default_commit(U32 hash) {
     U32 code = P::s_ok;
     for (U32 k = 0; k != 8 && code == P::s_ok; ++k)
@@ -924,8 +924,8 @@ void set_default(uint8_t seq, const uint8_t* payload, U32 length) {
         code = P::s_bad_request;
     const U32 hash = code == P::s_ok ? xyf::state_write::id_hash(id) : 0;
     if (code == P::s_ok) settle_writes();
-    // 5.4d3a: an entry whose content is not installed never becomes the default as it is (nothing sent to A);
-    // 4.6c1: the content switch installs it first (a job) and writes the default when it succeeded.
+    // An entry whose content is not installed never becomes the default as it is (nothing sent to A);
+    // The content switch installs it first (a job) and writes the default when it succeeded.
     const xyf::catalog::Item* item = code == P::s_ok ? catalog_item(id, length - 1) : 0;
     if (item && (item->flags & xyf::catalog::flag_content_missing)) {
 #if defined(XYF_CONTENT_SWITCH)
@@ -942,11 +942,11 @@ void set_default(uint8_t seq, const uint8_t* payload, U32 length) {
 }
 #endif
 
-// LIBRARY_BOOT (2.4d): payload = library id NUL + 32-byte confirmation (the SHA-256 of the id
+// LIBRARY_BOOT: payload = library id NUL + 32-byte confirmation (the SHA-256 of the id
 // bytes). As PLAY on that entry in the Firmware library menu (key_ui.cpp: xyf_boot::choose of its
 // catalog index): no boot over a lost link (link); the entry must be in B's catalog (not_found;
 // written entries are fetched first: settle_writes) and usable, i.e. have an os.ldr, as xyf_menu's
-// usable() (state), and its content installed (5.4d3a: no_content). Nothing is written: the default and the state slots stay. Returns the catalog
+// usable() (state), and its content installed (no_content). Nothing is written: the default and the state slots stay. Returns the catalog
 // index + 1 to boot after the ok reply, else 0.
 U32 library_boot(uint8_t seq, const uint8_t* payload, U32 length) {
     U32 n = 0;
@@ -959,7 +959,7 @@ U32 library_boot(uint8_t seq, const uint8_t* payload, U32 length) {
     else if (!h.update(payload, n) || !h.finish(d) || !sha_equal(d.bytes, payload + n + 1)) code = P::s_sha;
     else if (!menu_link::usb_link_up()) code = P::s_link;
     if (code == P::s_ok) {
-        settle_writes();                               // 2.2c: A's window closed, the catalog fetched again
+        settle_writes();                               // A's window closed, the catalog fetched again
         const xyf::catalog::Item* item = catalog_item(id, n);
         code = !menu_link::usb_link_up() ? P::s_link : !item ? P::s_not_found : (item->flags & 1u) ? P::s_ok :
                (item->flags & xyf::catalog::flag_content_missing) ? P::s_no_content : P::s_state;
@@ -972,7 +972,7 @@ U32 library_boot(uint8_t seq, const uint8_t* payload, U32 length) {
 }
 
 #if defined(XYF_USB_FILE_WRITE)
-// 2.4a: before a delete, rmdir or mkdir, as file_write does before its write: a request left past its
+// Before a delete, rmdir or mkdir, as file_write does before its write: a request left past its
 // bound (stale) is closed first (op 9, which must reach a in RPC mode), then A's write entry.
 U32 enter_writes() {
     if (mounted == file_client::mounted_stale && !read_enabled &&
@@ -981,7 +981,7 @@ U32 enter_writes() {
     if (mounted == file_client::mounted_stale) file_client::release(mounted);
     return menu_link::usb_command(storage_server::file_write_item) ? P::s_ok : P::s_link;
 }
-// 2.4a: path NUL + 32-byte confirmation (the SHA-256 of the path bytes). The path's length (0: the
+// Path NUL + 32-byte confirmation (the SHA-256 of the path bytes). The path's length (0: the
 // request does not match its path), else 0.
 U32 confirmed_path(const uint8_t* payload, U32 length, bool& confirmed) {
     U32 n = 0;
@@ -993,8 +993,8 @@ U32 confirmed_path(const uint8_t* payload, U32 length, bool& confirmed) {
     confirmed = h.update(payload, n) && h.finish(d) && sha_equal(d.bytes, payload + n + 1);
     return n;
 }
-// FILE_DELETE / FILE_RMDIR / FILE_MKDIR (2.4a): the path in the write area and through the engine's
-// policy (refused; 2.4d: valid_change_path, as FILE_WRITE), its
+// FILE_DELETE / FILE_RMDIR / FILE_MKDIR: the path in the write area and through the engine's
+// policy (refused; valid_change_path, as FILE_WRITE), its
 // confirmation (sha), then one change in A's write window (writes_due: B closes it as after a
 // FILE_WRITE). Reply: u32 status, u32 A's error number.
 void file_change(uint8_t type, uint8_t seq, const uint8_t* payload, U32 length) {
@@ -1006,7 +1006,7 @@ void file_change(uint8_t type, uint8_t seq, const uint8_t* payload, U32 length) 
     uint32_t error = 0;
     U32 code = P::s_ok;
     if (!confirmed_path(payload, length, confirmed)) code = P::s_bad_request;
-    else if (!storage_server::valid_change_path(path, policy)) code = P::s_refused;   // 2.4d: the write area
+    else if (!storage_server::valid_change_path(path, policy)) code = P::s_refused;   // the write area
     else if (!confirmed) code = P::s_sha;
     else if ((code = enter_writes()) == P::s_ok) {
         storage_used = 1;
@@ -1017,7 +1017,7 @@ void file_change(uint8_t type, uint8_t seq, const uint8_t* payload, U32 length) 
     result.last_status = code;
     send(type, seq, p, 8);
 }
-// FILE_RENAME (2.4c): source NUL + target NUL + 32-byte confirmation (the SHA-256 of source, NUL,
+// FILE_RENAME: source NUL + target NUL + 32-byte confirmation (the SHA-256 of source, NUL,
 // target). Both paths in the write area and the pair through the engine's policy (refused; nothing
 // sent), its confirmation (sha), then A renames in its write window (writes_due, as FILE_DELETE). The
 // target must not exist (state). Reply: u32 status, u32 A's error number.
@@ -1044,7 +1044,7 @@ void file_rename(uint8_t seq, const uint8_t* payload, U32 length) {
     result.last_status = code;
     send(P::t_rename_file, seq, p, 8);
 }
-// FILE_COPY (2.4c2): source NUL + target NUL + 32-byte confirmation (as FILE_RENAME). B copies through
+// FILE_COPY: source NUL + target NUL + 32-byte confirmation (as FILE_RENAME). B copies through
 // its staging buffer with requests the device has proven, no new stock call: the target and its folder
 // checked (stat, as file.list), the source read whole (as READ_FILE and stage 2's load; a staged PUT is
 // discarded), then FILE_WRITE's write and read-back in A's write window (writes_due). After a failed
@@ -1083,7 +1083,7 @@ void file_copy(uint8_t seq, const uint8_t* payload, U32 length) {
     result.last_status = code;
     send(P::t_copy_file, seq, p, 16);
 }
-// FILE_LIST (2.4a): path NUL + u32 skip. Reply: u32 status, u32 count, u32 more, entries
+// FILE_LIST: path NUL + u32 skip. Reply: u32 status, u32 count, u32 more, entries
 // (file_client::list_entry), at most read_range_max reply bytes after the status.
 void list_dir(uint8_t seq, const uint8_t* payload, U32 length) {
     U32 n = 0;
@@ -1104,7 +1104,7 @@ void list_dir(uint8_t seq, const uint8_t* payload, U32 length) {
 // FILE_WRITE (Test 049): payload = path NUL + 32-byte confirm token (SHA-256
 // of the staged PUT data). Writes the staged bytes to path in the write area
 // (all of /yaffs2 but the marker and /yaffs2/upgrade, since 1.13) through a's write allowlist, reads the file back and
-// compares its CRC-32. 2.2c: a's read-write window stays open for the next
+// compares its CRC-32. a's read-write window stays open for the next
 // write; settle_writes closes it. Reply: u32 status, u32 bytes written, u32
 // read-back CRC-32.
 void file_write(uint8_t seq, const uint8_t* payload, U32 length) {
@@ -1117,7 +1117,7 @@ void file_write(uint8_t seq, const uint8_t* payload, U32 length) {
     else if (!storage_server::valid_write_path(path)) code = P::s_refused;
     else if (!result.put_ok || !put_expected) code = P::s_state;
     else if (!sha_equal(payload + path_bytes + 1, put_sha)) code = P::s_sha;
-    // Test 066: the mount is shared. 2.2c: a request left past its bound (stale) is closed first
+    // Test 066: the mount is shared. A request left past its bound (stale) is closed first
     // (op 9: A closes b's files and its window); op 9 must reach a in RPC mode (read allowlist).
     else if (mounted == file_client::mounted_stale && !read_enabled &&
              !(read_enabled = menu_link::usb_command(storage_server::command_item)))
@@ -1127,7 +1127,7 @@ void file_write(uint8_t seq, const uint8_t* payload, U32 length) {
     else {
         storage_used = 1;
         say("Writing a library file...", path, "Do not unplug or power off.");
-        // 2.2b: every request bounded, the guard reloaded while b waits (never paused). 2.2c: A's
+        // Every request bounded, the guard reloaded while b waits (never paused). A's
         // window stays open for the next write; settle_writes closes it.
         code = file_client::write_file(path, staged, put_expected, result.put_crc, written, back, mounted);
         writes_due = 1; writes_ms = now();
@@ -1138,7 +1138,7 @@ void file_write(uint8_t seq, const uint8_t* payload, U32 length) {
     send(P::t_file_write, seq, p, 12);
 }
 
-// ---- 5.4d2: the mod assembly job on B (native/mod_job; decision 019's flow, run on B) ----------------
+// ---- The mod assembly job on B (native/mod_job; decision 019's flow, run on B) ----------------
 // mods.apply starts it, B's menu loop runs it in slices of steps (job_pump), job.status reads it and
 // job.cancel stops it. Its state and work region live in XYF_JOB_REGION (cold_layout.hpp: 8 MiB on B, the
 // builder's memory map keeps everything else out). Every file call is one bounded file-client request
@@ -1150,7 +1150,7 @@ void file_write(uint8_t seq, const uint8_t* payload, U32 length) {
 // (or a lost link) fails the job with error link at once: later calls send nothing. A failed or cancelled
 // job removes its files (mod_job) and folders (wipe_step); debris = 1 when that could not be done. B
 // closes A's write window when the job ends (settle_writes).
-// 5.4d3a: before the job's first step B sweeps leftover tmp/job-* folders (js_sweep); after the last, it commits the entry into the library (decision 019
+// Before the job's first step B sweeps leftover tmp/job-* folders (js_sweep); after the last, it commits the entry into the library (decision 019
 // section 5, run by B): the target id (job_target, chosen before anything is written) is never the default
 // or the boot-once entry; the old entry is renamed into tmp/job-<id>-old, the new one onto the target, then
 // the old tree is removed. One request (or one list page and one change) per loop pass; A rescans the
@@ -1158,7 +1158,7 @@ void file_write(uint8_t seq, const uint8_t* payload, U32 length) {
 namespace mj = xyf_core::mod_job;
 const U32 job_slot_bytes = 0x10000u, job_slice_ms = 20, job_ids = 32, job_say_ms = 1000;
 #if defined(XYF_MTP_SESSION)
-const U32 mtp_slot_bytes = 0x10000u, job_work_end = XYF_JOB_REGION_END - mtp_slot_bytes;   // T2b: the session's slot above
+const U32 mtp_slot_bytes = 0x10000u, job_work_end = XYF_JOB_REGION_END - mtp_slot_bytes;   // the MTP session's slot above
 #else
 const U32 job_work_end = XYF_JOB_REGION_END;
 #endif
@@ -1166,23 +1166,23 @@ const U32 max_job_machines = 64, max_job_extensions = 8, job_link_error = 21;
 const char job_firmware[] = "/yaffs2/xy-forever/firmware/", job_mods[] = "/yaffs2/xy-forever/mods/";
 const char job_tmp[] = "/yaffs2/xy-forever/tmp", job_catalog[] = "/yaffs2/content/op1_factory.json";
 enum JobState : U32 { job_none = 0, job_busy, job_ended };
-// 5.4d3a: removing one folder tree under tmp/ in bounded steps (tree_step), and the sweep of leftovers.
+// Removing one folder tree under tmp/ in bounded steps (tree_step), and the sweep of leftovers.
 struct Tree { char path[file_engine::max_path]; U32 root; };
 struct Sweep { Tree tree; U32 removing, skip, calls; char keep[file_engine::max_path]; };
-enum JobStage : U32 { js_sweep = 0, js_assemble, js_away, js_in, js_clean, js_wipe };   // 2.3f: js_wipe
+enum JobStage : U32 { js_sweep = 0, js_assemble, js_away, js_in, js_clean, js_wipe };   // js_wipe
 struct JobSlot {
     mj::Job job;
     mj::Input input;
     mj::Files calls;
     const char* machines[max_job_machines];
     const char* extensions[max_job_extensions];
-    char text[1536];                                                     // the request's ids and name (8.4e: 1328)
+    char text[1536];                                                     // the request's ids and name
     char base[file_engine::max_path], stock[file_engine::max_path], official[file_engine::max_path];
     char generation[file_engine::max_path], out[file_engine::max_path], sweep[file_engine::max_path];
     char line[48];
     U32 id, started_ms, ended_ms, longest_ms, link, debris, said_ms, said_phase;
     uint8_t page[read_range_max];                                        // the tree steps' listing
-    // 5.4d3a: the commit and the sweep.
+    // The commit and the sweep.
     char target[8], entry[file_engine::max_path], old[file_engine::max_path];
     U32 stage, had_old, commit_error, commit_code, extra_steps, clean_calls;
     Tree tree;                                                           // the old entry's tree in tmp/
@@ -1192,13 +1192,13 @@ struct JobSlot {
 static_assert(sizeof(JobSlot) <= job_slot_bytes, "the job's state fits before its work region");
 volatile U32 job_state __attribute__((section(".data"))) = job_none;
 volatile U32 job_counter __attribute__((section(".data"))) = 0;
-volatile U32 job_last_target __attribute__((section(".data"))) = 0;   // 5.4d3a: 1 mods-a, 2 mods-b (this boot)
-volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 4.6c1: 0 mods.apply, 1 content switch, 2 config, 4 MTP session (3 reserved: record 004)
-volatile U32 job_usb __attribute__((section(".data"))) = 0;           // 8.7: the job was started over USB
+volatile U32 job_last_target __attribute__((section(".data"))) = 0;   // 1 mods-a, 2 mods-b (this boot)
+volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 0 mods.apply, 1 content switch, 2 config, 4 MTP session (3 reserved: record 004)
+volatile U32 job_usb __attribute__((section(".data"))) = 0;           // the job was started over USB
 JobSlot& slot() { return *reinterpret_cast<JobSlot*>(XYF_JOB_REGION_BEGIN); }
 bool job_running() { return job_state == job_busy; }
 #if defined(XYF_MTP_SESSION)
-bool mtp_busy();                                                        // T2b: an MTP operation in flight
+bool mtp_busy();                                                        // an MTP operation in flight
 #define XYF_OR_MTP_BUSY || mtp_busy()
 #define XYF_AND_NOT_MTP_BUSY && !mtp_busy()
 #else
@@ -1242,7 +1242,7 @@ bool inside(const char* path, const char* folder) {                    // folder
 bool job_read_ok(const JobSlot& s, const char* path) {
     if (!storage_server::valid_path(path)) return false;
     if (inside(path, s.generation) || inside(path, s.base) || inside(path, s.out)) return true;
-    const char* catalog = s.input.catalog;                              // 4.6c1: or the saved official copy
+    const char* catalog = s.input.catalog;                              // or the saved official copy
     U32 i = 0;
     while (catalog[i] && path[i] == catalog[i]) ++i;
     return !catalog[i] && !path[i];
@@ -1352,7 +1352,7 @@ int job_mkdir(void* c, const char* path) {
     if (q.outcome) return job_fail(s, q);
     return q.value == 0 && (P::get32(record + 8) & 0xf000u) == 0x4000u ? 0 : -1;
 }
-// ---- 5.4d3a: bounded tree removal under tmp/, the leftover sweep, the target id and the commit
+// ---- Bounded tree removal under tmp/, the leftover sweep, the target id and the commit
 const U32 one_entry = 6 + file_client::max_name;                         // a file.list page of one entry
 const U32 sweep_cap = 600, clean_cap = 600, wipe_cap = 1024;             // calls per sweep, old tree, output
 enum TreeStep : U32 { tree_more = 0, tree_done, tree_failed };
@@ -1460,7 +1460,7 @@ U32 job_target(JobSlot& s) {
     join(s.entry, job_firmware, s.target);
     return P::s_ok;
 }
-// ---- 8.8: the save-time log (xyf_save_log.hpp): the times of the running Save, USB build or switch ----------
+// ---- The save-time log (xyf_save_log.hpp): the times of the running Save, USB build or switch ----------
 namespace xl = xyf::save_log;
 xl::Times save_times __attribute__((section(".data"))) = {};
 volatile U32 save_active __attribute__((section(".data"))) = 0;   // a menu Save holds save_times
@@ -1500,7 +1500,7 @@ void commit_step(JobSlot& s) {
     U32 code = P::s_ok;
     ++s.extra_steps;
     if (s.stage == js_away) {                                            // the old entry into tmp/, if any
-        xyf::state::Choice choice;                                       // 2.3f: still neither default nor once?
+        xyf::state::Choice choice;                                       // still neither default nor once?
         if ((code = job_choice(s, choice)) != P::s_ok) return commit_fail(s, code, 0, "state");
         if (same_text(s.target, choice.state.default_id) || same_text(s.target, choice.state.once))
             return commit_fail(s, P::s_state, 0, "taken");
@@ -1541,13 +1541,13 @@ void job_say(JobSlot& s, bool force) {
 }
 // The job ended (done, failed or cancelled): a failed one's folders removed, A's window closed (A rescans the
 // library: a committed entry is listed).
-// 2.3f (review 024, 6): a failed one's output is removed by job_pump, one tree_step per loop pass (stage
+// Review 024, 6: a failed one's output is removed by job_pump, one tree_step per loop pass (stage
 // js_wipe, "cleaning up": the job still owns the slot, so storage commands answer busy), then job_end.
 void job_end(JobSlot& s) {
     const bool done = s.job.phase == mj::Phase::done && !s.commit_error;
     job_state = job_ended;
     save_lap(xl::p_close);
-    if (!save_active && !s.link) save_log_write(done);                  // 8.8: a USB build's line, in its window
+    if (!save_active && !s.link) save_log_write(done);                  // a USB build's line, in its window
     settle_begin();                                                      // op 9 (B's loop stays live), catalog
     if (done) say("Mod firmware added to the library.", s.entry + 19, "Its content is not installed yet.");
     else say(s.job.phase == mj::Phase::cancelled ? "Mod firmware: cancelled." : "Mod firmware assembly FAILED.",
@@ -1574,12 +1574,12 @@ void config_pump();
 void job_pump() {
     if (!job_running()) return;
 #if defined(XYF_CONTENT_SWITCH)
-    if (job_kind == 2) return config_pump();                             // 8.4a
-    if (job_kind) return content_pump();                                 // 4.6c1
+    if (job_kind == 2) return config_pump();                             // the config job
+    if (job_kind) return content_pump();
 #endif
     JobSlot& s = slot();
     const U32 start = now();
-    if (s.stage == js_sweep) {                                           // 5.4d3a: leftovers first
+    if (s.stage == js_sweep) {                                           // leftovers first
         ++s.extra_steps;
         if (!sweep_step(s.leftovers, s.page)) s.stage = js_assemble;
     } else if (s.stage == js_assemble) {
@@ -1595,13 +1595,13 @@ void job_pump() {
         }
         else if (p == mj::Phase::failed || p == mj::Phase::cancelled) job_finish(s);
         else job_say(s, false);
-    } else if (s.stage == js_wipe) wipe_step(s);                         // 2.3f: a failed job's output
-    else commit_step(s);                                                 // 5.4d3a: into the library
+    } else if (s.stage == js_wipe) wipe_step(s);                         // a failed job's output
+    else commit_step(s);                                                 // into the library
     const U32 pass = now() - start;
     if (pass > s.longest_ms) s.longest_ms = pass;
 }
 #if defined(XYF_CONTENT_SWITCH)
-// ---- 4.6c1: the content switch (xyf_content_job.hpp) as the job slot's second kind (job_kind 1) ----------
+// ---- The content switch (xyf_content_job.hpp) as the job slot's second kind (job_kind 1) ----------
 // library.set_default or the menu's SHIFT+PLAY on an entry whose content is not installed starts it: the same
 // single-job rule (job_state; job_blocks answers busy), job.status reports it, job.cancel answers state (a
 // switch is repaired by running it again, not undone). Its state follows the mod job's slot, its work region
@@ -1682,7 +1682,7 @@ struct ContentSlot {
     xc::Job job;
     ContentIo io;
     U32 id, started_ms, ended_ms, longest_ms, stage, menu, said_ms, said_phase, line_seq;
-    U32 write_default;                                                   // 8.4a: 0 for the save sequence's switch
+    U32 write_default;                                                   // 0 for the save sequence's switch
     char line[64], progress[24];
 };
 const U32 content_slot_bytes = (sizeof(ContentSlot) + 63u) & ~63u;
@@ -1771,7 +1771,7 @@ U32 content_begin(const char* id, bool menu, bool write_default) {
     c.io.link = 0; c.id = ++job_counter; c.started_ms = c.ended_ms = now(); c.longest_ms = 0;
     c.stage = file_client::mkdir_start(window_folder).outcome ? cs_switch : cs_opening;   // 193: not sent: the first change opens it
     c.menu = menu ? 1u : 0u; c.said_ms = 0; c.said_phase = ~0u; c.write_default = write_default ? 1u : 0u;
-    if (save_active) save_lap(xl::p_switch); else xl::begin(save_times, xl::k_switch, now(), xl::p_switch);   // 8.8
+    if (save_active) save_lap(xl::p_switch); else xl::begin(save_times, xl::k_switch, now(), xl::p_switch);
     job_kind = 1; job_state = job_busy; job_usb = menu ? 0u : 1u;
     content_say(c, true);
     return P::s_ok;
@@ -1796,7 +1796,7 @@ void content_pump() {
             save_times.compared = c.job.compared; save_times.read = c.job.read; save_times.written = c.job.written;
             save_times.removed_files = c.job.removed; save_times.bytes = c.job.bytes;
             save_lap(xl::p_switch_close);
-            if (!save_active) save_log_write(c.job.stage == xc::st_done && !c.io.link);   // 8.8: in its window
+            if (!save_active) save_log_write(c.job.stage == xc::st_done && !c.io.link);   // in its window
             settle_begin();
         }
         else content_say(c, false);
@@ -1848,7 +1848,7 @@ void content_status(uint8_t seq, U32 want) {
 }
 #endif
 #if defined(XYF_CONTENT_SWITCH)
-// ---- 8.4a: the config job (job_kind 2): the saved configuration's record (xyf_config.hpp), then the default ---
+// ---- The config job (job_kind 2): the saved configuration's record (xyf_config.hpp), then the default ---
 // The save sequence's last step (xyf_mods_io): config.txt.part written, then config.txt -> config.old (A never
 // renames onto a file), .part -> config.txt, config.old removed; A's window closed; then, after a success, the
 // default (default_commit) unless it is that entry already. A failure or cut leaves the old record (or only its
@@ -1858,7 +1858,7 @@ struct ConfigSlot {
     ContentIo io;
     int fd;
     U32 id, step, at, length, error, code, had, started_ms, ended_ms, hash;
-    const char *path, *old_path, *part_path;     // 4.8: config.txt's, or settings.txt's (xyf_settings.hpp)
+    const char *path, *old_path, *part_path;     // config.txt's, or settings.txt's (xyf_settings.hpp)
     char text[xg::max_text];
 };
 // In the content switch's work region (one job at a time; the switch has ended when this starts).
@@ -1880,7 +1880,7 @@ U32 config_begin(const char* text, U32 length, const char* id, const char* path 
     writes_due = 1; writes_ms = now();                                  // closed when the record is in
     g.id = ++job_counter; g.started_ms = g.ended_ms = now();
     job_kind = 2; job_state = job_busy; job_usb = 0;
-    if (save_active && path == xg::path) save_lap(xl::p_config);       // 8.8: a Save's record
+    if (save_active && path == xg::path) save_lap(xl::p_config);       // a Save's record
     return P::s_ok;
 }
 void config_step(ConfigSlot& g) {
@@ -1920,7 +1920,7 @@ void config_step(ConfigSlot& g) {
         g.step = cg_closing;
     }
     if (g.step == cg_closing) {                                         // op 9: A rescans, B fetches the catalog
-        if (save_active && g.path == xg::path) save_log_write(!g.error && !g.io.link);   // 8.8: the Save's line
+        if (save_active && g.path == xg::path) save_log_write(!g.error && !g.io.link);   // the Save's line
         settle_begin();
     }
 }
@@ -1963,7 +1963,7 @@ void config_status(uint8_t seq, U32 want) {
 namespace xyf_sim { void log(const char* format, ...); }                // the session screen in the log (sim/runtime.hpp)
 namespace {
 #endif
-// ---- 3.5b / T2b: the MTP session (mtp_session.hpp). Not a job: enabled when the composite starts (the test build)
+// ---- The MTP session (mtp_session.hpp). Not a job: enabled when the composite starts (the test build)
 // or from the menu's MTP mode row / diag.mtp op 0 (the simulator), it stays until STOP / op 1 (session_leave:
 // cancel, the open files closed one per pass, A's window closed) or the boot's end. Each pass runs responder
 // steps for at most mtp_slice_ms (one file request each). Only an operation in flight holds the file client
@@ -1995,11 +1995,11 @@ xyf_core::U32 mtp_prepare(void*) {                                              
     ms::Session& m = mslot();
     if (job_running() || closing || put_running()) { ++m.refused_busy; return mr::r_device_busy; }
     if (!writes_due) m.files.window = 0;                                 // the settle closed A's window
-    // Speed (2026-11-15): A's check (2.2r) at most once per mtp_serving_ms (a request each; the open window
+    // Speed (2026-11-15): A's check at most once per mtp_serving_ms (a request each; the open window
     // already skipped it).
     const bool serving = writes_due || (m.served_ms && now() - m.served_ms < mtp_serving_ms);
     if (!serving && a_serving()) m.served_ms = now() | 1u;
-    if ((!serving && !m.served_ms) || file_client::mount_ready(mounted) != P::s_ok) {   // A gone (2.2r) or silent
+    if ((!serving && !m.served_ms) || file_client::mount_ready(mounted) != P::s_ok) {   // A gone or silent
         m.files.link = 1; m.served_ms = 0;
         return mr::r_device_busy;
     }
@@ -2092,7 +2092,7 @@ void mtp_pump() {
     if (pass > m.longest_ms) m.longest_ms = pass;
 }
 #if defined(XYF_MTP_USB)
-// T2b: the composite's MTP interface (mtp_usb::Handler) over the session's responder.
+// The composite's MTP interface (mtp_usb::Handler) over the session's responder.
 bool mtp_live() { return mtp_on && mslot().stage == ms::st_running; }
 bool h_deliver(const uint8_t* data, uint32_t n) {
     ms::Session& m = mslot();
@@ -2175,13 +2175,13 @@ void mtp_tunnel(uint8_t seq, const uint8_t* payload, U32 length) {
     send(t_mtp_tunnel, seq, files, n);
 }
 #endif
-// MODS_APPLY (5.4d2): base NUL profile NUL generation NUL machines NUL extensions NUL name NUL u32 flags +
+// MODS_APPLY: base NUL profile NUL generation NUL machines NUL extensions NUL name NUL u32 flags +
 // SHA-256 of every byte before it. Reply: u32 status, u32 job id, u32 missing input. mods_begin is the
-// start itself (5.4e1: the menu's Mods page starts the job through it too).
+// start itself (the menu's Mods page starts the job through it too).
 U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& taken) {
     JobSlot& s = slot();
     const char* field[6];
-    const U32 most[6] = {31, 31, 31, 1023, 255, 47};   // 8.4e: 64 machines
+    const U32 most[6] = {31, 31, 31, 1023, 255, 47};   // 64 machines
     U32 at = 0, code = P::s_ok, machines = 0, extensions = 0;
     id = 0; missing = 0; taken = 0;
     for (U32 k = 0; k != 6 && code == P::s_ok; ++k) {
@@ -2223,12 +2223,12 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
         code = P::s_bad_request;
     if (code == P::s_ok && !a_serving()) code = P::s_link;
     if (code == P::s_ok) code = file_client::mount_ready(mounted);
-    if (code == P::s_ok) { code = job_target(s); taken = code == P::s_state; }   // 5.4d3a: the library id it takes
+    if (code == P::s_ok) { code = job_target(s); taken = code == P::s_state; }   // the library id it takes
     // Every input there (one stat each, read-only), before anything is written.
     char probe[file_engine::max_path];
     const char* catalog = job_catalog;
 #if defined(XYF_CONTENT_SWITCH)
-    if (code == P::s_ok) catalog = content_job_catalog();               // 4.6c1: the saved copy while mods are in
+    if (code == P::s_ok) catalog = content_job_catalog();               // the saved copy while mods are in
 #endif
     const char* inputs[4] = {s.stock, s.official, catalog, probe};
     join(probe, s.generation, "/base/info.txt");
@@ -2245,7 +2245,7 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
         id = ++job_counter;
         decimal_text(number, id);
         join(s.out, job_tmp, "/job-", number);
-        join(s.old, s.out, "-old");                                      // 5.4d3a: the old entry's place
+        join(s.old, s.out, "-old");                                      // the old entry's place
         uint8_t record[file_client::record_bytes];
         file_client::Reply r = file_client::stat(s.out, record);
         if (!r.outcome && r.value != 0) r = file_client::stat(s.old, record);
@@ -2264,7 +2264,7 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
         s.input.selection.machines = s.machines; s.input.selection.machine_count = machines;
         s.input.selection.extensions = s.extensions; s.input.selection.extension_count = extensions;
         s.input.selection.layout = 0; s.input.selection.layout_count = 0; s.input.selection.has_layout = false;
-        s.input.selection.expanded = (flags & 2u) != 0;                      // 4.8m2: bit 1, the 4 MiB layout
+        s.input.selection.expanded = (flags & 2u) != 0;                      // bit 1, the 4 MiB layout
         s.input.generation = s.generation; s.input.stock = s.stock; s.input.catalog = catalog;
         s.input.official = s.official; s.input.out = s.out; s.input.policy = xy_forever_cold_policy;
         s.input.profiling = false; s.input.unverified = (flags & 1u) != 0;
@@ -2274,10 +2274,10 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
         s.id = id; s.started_ms = s.ended_ms = now(); s.longest_ms = 0; s.link = 0; s.debris = 0;
         s.said_ms = s.started_ms; s.said_phase = ~0u;
         s.stage = js_sweep; s.had_old = s.commit_error = s.commit_code = s.extra_steps = s.clean_calls = 0;
-        sweep_begin(s.leftovers, s.out);                                     // 5.4d3a: leftovers, never this output
-        job_kind = 0; job_usb = 0;                                       // 8.7: mods_apply sets it
+        sweep_begin(s.leftovers, s.out);                                     // leftovers, never this output
+        job_kind = 0; job_usb = 0;                                       // mods_apply sets it
         job_state = job_busy;
-        if (save_active) save_lap(xl::p_job_base);                       // 8.8: a Save's build, else a USB one
+        if (save_active) save_lap(xl::p_job_base);                       // a Save's build, else a USB one
         else {
             xl::begin(save_times, xl::k_build, now(), xl::p_job_base);
             save_times.mods = machines + extensions; save_times.expanded = (flags & 2u) ? 1u : 0u;
@@ -2294,16 +2294,16 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
 void mods_apply(uint8_t seq, const uint8_t* payload, U32 length) {
     U32 id = 0, missing = 0, taken = 0;
     const U32 code = mods_begin(payload, length, id, missing, taken);
-    if (code == P::s_ok && job_running()) job_usb = 1;                  // 8.7: the menu names it
+    if (code == P::s_ok && job_running()) job_usb = 1;                  // the menu names it
     uint8_t p[12]; P::put32(p, code); P::put32(p + 4, id); P::put32(p + 8, missing);
     result.last_status = code;
     send(P::t_mods_apply, seq, p, 12);
 }
 }
-namespace xy_forever { namespace usb_service {      // 5.4e1: the Mods page's hooks (usb_service.hpp)
+namespace xy_forever { namespace usb_service {      // the Mods page's hooks (usb_service.hpp)
 uint32_t page_serving() { return a_serving() ? uint32_t(P::s_ok) : uint32_t(P::s_link); }
 volatile uint32_t& page_mount() { return mounted; }
-bool page_busy() { return job_running() || closing XYF_OR_MTP_BUSY; }    // 4.6c2: as job_blocks (T2b: an MTP transfer)
+bool page_busy() { return job_running() || closing XYF_OR_MTP_BUSY; }    // as job_blocks (an MTP transfer)
 void save_log_begin() { xl::begin(save_times, xl::k_save, now(), xl::p_list); save_active = 1; }
 void save_log_selection(uint32_t mods, bool expanded, uint32_t added, uint32_t removed) {
     if (!save_active) return;
@@ -2314,20 +2314,20 @@ void save_log_drop() { if (save_active) { save_times.kind = xl::k_none; save_act
 uint32_t mods_start(const uint8_t* payload, uint32_t length, uint32_t& job, uint32_t& missing) {
     U32 id = 0, why = 0, taken = 0;
     job = 0; missing = 0;
-    if (job_blocks(P::t_mods_apply)) return P::s_busy;                  // 5.4e2: as mods.apply (a job, the close)
+    if (job_blocks(P::t_mods_apply)) return P::s_busy;                  // as mods.apply (a job, the close)
     const U32 code = mods_begin(payload, length, id, why, taken);
-    job = id; missing = taken ? mods_ids_taken : why;                 // 5.4e2: the page says why
+    job = id; missing = taken ? mods_ids_taken : why;                 // the page says why
     return code;
 }
-void job_view(JobView& v) {                                             // as job_status (5.4e2: the commit too)
+void job_view(JobView& v) {                                             // as job_status (the commit too)
 #if defined(XYF_CONTENT_SWITCH)
-    if (job_kind == 2) {                                                 // 8.4a: the config job
+    if (job_kind == 2) {                                                 // the config job
         const ConfigSlot& g = gslot();
         v.state = job_state; v.id = g.id; v.phase = g.step != cg_ended ? 0u : g.error ? U32(xc::phase_failed) : U32(xc::phase_done);
         v.done = g.step; v.total = cg_ended; v.error = g.step == cg_ended ? g.error : 0u; v.status = g.code; v.debris = 0; v.commit = 0;
         return;
     }
-    if (job_kind) {                                                      // 4.6c1: a content switch (its own id)
+    if (job_kind) {                                                      // a content switch (its own id)
         const ContentSlot& c = cslot();
         v.state = job_state; v.id = c.id; v.phase = content_phase(c); v.done = c.job.done; v.total = c.job.total;
         v.error = c.stage == cs_ended ? c.job.error : 0u; v.status = c.job.code; v.debris = 0; v.commit = 0;
@@ -2345,15 +2345,15 @@ void job_view(JobView& v) {                                             // as jo
     v.status = s.commit_error ? s.commit_code : g.status;
     v.debris = s.debris; v.commit = committing ? 1u : 0u;
 }
-uint32_t job_stop() {                                                   // as job.cancel (5.4e2: not in the commit)
-    if (!job_running() || job_kind) return P::s_not_found;              // 4.6c1: a content switch is not a mod job
+uint32_t job_stop() {                                                   // as job.cancel (not in the commit)
+    if (!job_running() || job_kind) return P::s_not_found;              // a content switch is not a mod job
     if (slot().stage >= js_away) return P::s_state;
     mj::cancel(slot().job);
     job_finish(slot());
     return P::s_ok;
 }
 #if defined(XYF_CONTENT_SWITCH)
-const char* content_default(uint32_t entry) {                            // 4.6c1: the menu's SHIFT+PLAY
+const char* content_default(uint32_t entry) {                            // the menu's SHIFT+PLAY
     const xyf::catalog::Catalog* catalog = xyf_boot::catalog();
     if (!catalog || entry >= catalog->count || !(catalog->items[entry].flags & xyf::catalog::flag_content_missing))
         return 0;
@@ -2362,9 +2362,9 @@ const char* content_default(uint32_t entry) {                            // 4.6c
     return code == P::s_ok ? "Installing content..." : code == P::s_busy ? "Busy: a job is running." :
            code == P::s_link ? "Storage link lost." : "Content switch: could not start.";
 }
-uint32_t content_switch(const char* id) { return content_begin(id, true, false); }   // 8.4a
+uint32_t content_switch(const char* id) { return content_begin(id, true, false); }
 uint32_t config_store(const char* text, uint32_t length, const char* default_id) { return config_begin(text, length, default_id); }
-// 4.8: settings.txt (xyf_settings.hpp; usb_service.hpp).
+// settings.txt (xyf_settings.hpp; usb_service.hpp).
 namespace xs = xyf::settings;
 xs::Record settings_record __attribute__((section(".data"))) = {1};
 U32 settings_loaded __attribute__((section(".data"))) = 0;
@@ -2404,13 +2404,13 @@ const char* content_line() {
 #endif
 } }
 namespace {
-// JOB_STATUS (5.4d2): u32 job (0: the running or last). Reply: u32 status, then the job_status fields.
+// JOB_STATUS: u32 job (0: the running or last). Reply: u32 status, then the job_status fields.
 void job_status(uint8_t seq, const uint8_t* payload, U32 length) {
     JobSlot& s = slot();
     const U32 want = length == 4 ? P::get32(payload) : 0;
 #if defined(XYF_CONTENT_SWITCH)
-    if (length == 4 && job_kind == 2) return config_status(seq, want);   // 8.4a
-    if (length == 4 && job_kind) return content_status(seq, want);       // 4.6c1
+    if (length == 4 && job_kind == 2) return config_status(seq, want);
+    if (length == 4 && job_kind) return content_status(seq, want);
 #endif
     uint8_t* p = files;
     U32 code = length != 4 ? P::s_bad_request : job_state == job_none || (want && want != s.id) ? P::s_not_found : P::s_ok;
@@ -2419,7 +2419,7 @@ void job_status(uint8_t seq, const uint8_t* payload, U32 length) {
     mj::Progress g;
     mj::progress(s.job, g);
     const bool failed_link = s.link && g.phase == mj::Phase::failed;
-    // 5.4d3a: the commit is phase finish (done = its step, of 3) until it ends; a failed commit is failed.
+    // The commit is phase finish (done = its step, of 3) until it ends; a failed commit is failed.
     const bool committing = job_running() && s.stage >= js_away && s.stage != js_wipe;
     const U32 phase = s.commit_error ? U32(mj::Phase::failed) : committing ? U32(mj::Phase::finish) : U32(g.phase);
     const U32 values[11] = {s.id, phase, committing ? s.stage - js_away + 1 : g.done, committing ? 3u : g.total,
@@ -2434,13 +2434,13 @@ void job_status(uint8_t seq, const uint8_t* payload, U32 length) {
     result.last_status = code;
     send(P::t_job_status, seq, p, 80);
 }
-// JOB_CANCEL (5.4d2): u32 job (0: the running one). mod_job closes its handle and removes its files,
+// JOB_CANCEL: u32 job (0: the running one). mod_job closes its handle and removes its files,
 // job_finish its folders and the window. Reply: u32 status, u32 debris.
 void job_cancel(uint8_t seq, const uint8_t* payload, U32 length) {
     JobSlot& s = slot();
     const U32 want = length == 4 ? P::get32(payload) : 0;
 #if defined(XYF_CONTENT_SWITCH)
-    if (length == 4 && job_kind) {                                       // 4.6c1: a switch is repaired, not cancelled
+    if (length == 4 && job_kind) {                                       // a switch is repaired, not cancelled
         const U32 code = want && want != cslot().id ? P::s_not_found : P::s_state;
         uint8_t p[8]; P::put32(p, code); P::put32(p + 4, 0);
         result.last_status = code;
@@ -2449,7 +2449,7 @@ void job_cancel(uint8_t seq, const uint8_t* payload, U32 length) {
     }
 #endif
     U32 code = length != 4 ? P::s_bad_request : job_state == job_none || (want && want != s.id) ? P::s_not_found :
-               !job_running() || s.stage >= js_away ? P::s_state : P::s_ok;   // 5.4d3a: not in the commit
+               !job_running() || s.stage >= js_away ? P::s_state : P::s_ok;   // not in the commit
     if (code == P::s_ok) { mj::cancel(s.job); job_finish(s); }
     uint8_t p[8]; P::put32(p, code); P::put32(p + 4, code == P::s_bad_request || code == P::s_not_found ? 0 : s.debris);
     result.last_status = code;
@@ -2458,7 +2458,7 @@ void job_cancel(uint8_t seq, const uint8_t* payload, U32 length) {
 #endif
 
 #if defined(XYF_TFW_CHECK)
-// TFW_CHECK (plan 4.3c): path NUL. Is the file an official package that this device's own keys
+// TFW_CHECK: path NUL. Is the file an official package that this device's own keys
 // open (native/tfw_check)? Reads the file through a's read-only server into a window of the file
 // buffer, and the device's keys from b's OTP (otp_keys). Reply: u32 status, then (ok) u32 verdict
 // (0 pass, 1 fail), u32 reason (tfw_check::Reason), the SHA-256 of the 56-byte public key read
@@ -2528,7 +2528,7 @@ void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
     else if (!sha_equal(payload, put_sha)) code = P::s_sha;
     else code = validate_image(put_expected, uninstall);
     if (code == P::s_ok) beacon(step_checked, put_expected);
-    if (code == P::s_ok) settle_writes();                 // 2.2c: A's window closed before install mode
+    if (code == P::s_ok) settle_writes();                 // A's window closed before install mode
     if (code == P::s_ok && !menu_link::usb_command(storage_server::install_item)) code = P::s_link;
     const bool a_install = code == P::s_ok;         // a answered install_item: its exemption is on
     if (code == P::s_ok) {
@@ -2553,7 +2553,7 @@ void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
         result.put_ok = 0;
         beacon(step_writer_done, result.install_written);
         code = result.install_written ? verify(put_expected, result.put_crc) : P::s_install;
-        // 2.3b: a failed writer stops before its own select 0 (verify ends with one): back to the
+        // A failed writer stops before its own select 0 (verify ends with one): back to the
         // user partition here, or a's engine refuses all storage until a restarts.
         if (!result.install_written) for (U32 tries = 0; tries != 8 && select_partition(0) != 0; ++tries) {}
         say(code == P::s_ok ? "Install finished and verified." : "Install FAILED.",
@@ -2562,7 +2562,7 @@ void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
         beacon(step_verify_done, code | result.verify_partition << 8 | result.verify_mismatch << 16);
     }
     log_open = 0;
-    // 0.9f: the writer's turn is over: one more command ends a's install exemption (F1 again; a boot
+    // The writer's turn is over: one more command ends a's install exemption (F1 again; a boot
     // partition still selected keeps it). A lost link here is found by the next command anyway.
     if (a_install) menu_link::usb_command(storage_server::command_item);
     result.install_status = code;
@@ -2666,7 +2666,7 @@ bool dry_run_requested() { return dry_run != 0; }
 void a_dry_run() { dry_run = 1; }
 void dry_run_finish(const void* block, uint32_t bytes) {
     if (result.role == 1) {
-        // 0.9h: the session already ended; a link not shown closed halts b (never the OS).
+        // The session already ended; a link not shown closed halts b (never the OS).
         if (!b_link_closed(false)) { say("Internal link lost.", "Turn the OP-XY off and on."); for (;;) {} }
         menu_release();                                // USB off (already off after the boot's release)
         const U32 n = bytes < dry_run_max_bytes ? bytes : dry_run_max_bytes;
@@ -2685,7 +2685,7 @@ bool menu_requested() { return menu_usb == 1u || menu_usb == 2u; }   // 3: USB k
 // Test 060: PLAY at power-on: the menu starts USB itself so the host can attach.
 volatile U32 usb_off __attribute__((section(".data"))) = 0;   // 097: why the menu has no USB (0 = none)
 #if defined(XYF_MTP_USB)
-volatile U32 usb_deferred __attribute__((section(".data"))) = 0;   // T2a: menu_usb 2, USB not started yet
+volatile U32 usb_deferred __attribute__((section(".data"))) = 0;   // menu_usb 2, USB not started yet
 #endif
 void menu_start_usb() {
     if (menu_usb == 3u) { menu_usb = 1; return; }      // Test 062: USB kept from the service
@@ -2695,7 +2695,7 @@ void menu_start_usb() {
     P::reset(parser, rx);
     result.stock_callback = cdc_callback();
 #if defined(XYF_MTP_USB)
-    usb_deferred = 1;                                  // T2a: home_pump's first pass reads the flag, then starts USB
+    usb_deferred = 1;                                  // home_pump's first pass reads the flag, then starts USB
 #else
     set_cdc_callback(0);
     usb_start();
@@ -2716,7 +2716,7 @@ void stack_watch(uint32_t painted_begin) { stack_paint_begin = painted_begin; }
 void guard_reload() { guard_kick(); }
 bool home_active() { return home != 0; }
 bool home_usb() { return menu_usb != 0; }
-// 8.7: the menu's USB mark and activity line (usb_service.hpp).
+// The menu's USB mark and activity line (usb_service.hpp).
 volatile U32 host_framed __attribute__((section(".data"))) = 0;          // a valid frame arrived this boot
 volatile U32 host_frame_ms __attribute__((section(".data"))) = 0;        // now() at the last one
 volatile U32 host_change __attribute__((section(".data"))) = 0;          // the last changing request's line
@@ -2740,7 +2740,7 @@ U32 change_line(uint8_t type) {                                          // the 
     return line_none;
 }
 #if defined(XYF_MTP_USB)
-// ---- 3.4 T2a: serial + MTP as one composite device (record 031 b2) ------------------------------------------
+// ---- Serial + MTP as one composite device (record 031 b2) ------------------------------------------
 // USB is started once per boot and never stopped or restarted inside it (serial and MTP both always on).
 // 188: the product (no flag, no trial, no fallback restart: a device used without a computer never sees a
 // HELLO): every boot whose boot-time USB check passed (menu_start_usb) starts the composite in the menu loop's
@@ -2944,7 +2944,7 @@ void usb_begin() {
             result.stock_callback = cdc_callback();                      // unchanged (menu_release restores it)
             probe[p_started] = probe[p_last] = now();
             mu::set_sink_hook(probe_sink);
-            session_enter();                                             // T2b: the responder on interface 2
+            session_enter();                                             // the responder on interface 2
             mu::set_handler(&mtp_handler);
             if (mu::begin(mu::stock_port())) {                           // register, start(0x200): marks 3-5 / 14
                 probe[p_slot] = word(usb_driver_slot);
@@ -3070,7 +3070,7 @@ void mtp_usb_command(uint8_t seq, const uint8_t* payload, U32 length) {
 }
 #endif
 #if defined(XYF_MTP_USB)
-// T2b: the MTP mark: a transfer runs or a command came within mtp_seen_ms (an open session alone does not light it).
+// The MTP mark: a transfer runs or a command came within mtp_seen_ms (an open session alone does not light it).
 bool mtp_seen() { return composite_on && (mtp_busy() || (last_commands && now() - mtp_ms < mtp_seen_ms)); }
 #endif
 bool host_seen() { return host_framed && now() - host_frame_ms < host_seen_ms; }
@@ -3083,7 +3083,7 @@ uint32_t host_marks() {
 }
 const char* host_activity() {
 #if defined(XYF_MTP_USB)
-    if (mtp_seen()) return mtp_busy() ? "MTP: transfer" : "MTP: active";   // T2a: redraws the MTP mark
+    if (mtp_seen()) return mtp_busy() ? "MTP: transfer" : "MTP: active";   // redraws the MTP mark
 #endif
 #if defined(XYF_USB_FILE_WRITE)
     if (job_running() && job_usb) return host_line(job_kind == 1 ? line_content : line_build);
@@ -3133,7 +3133,7 @@ void home_reboot(U32 target) {
     const U32 t = now();
     while (now() - t < 100u) {}
     const U32 carry = flags();
-    if (!b_link_closed(true)) return;                  // 0.9h: refused: home stays, the link lost
+    if (!b_link_closed(true)) return;                  // refused: home stays, the link lost
     guard_disarm();
     menu_release();
     if (target == reboot_os) marker_clear();
@@ -3143,32 +3143,32 @@ void home_reboot(U32 target) {
 
 
 // Every pass of the menu loop: 0 = stay home, 1 = leave home and boot the default, 2 + i = leave
-// home and boot catalog entry i once (2.4d: library.boot).
+// home and boot catalog entry i once (library.boot).
 uint32_t home_pump() {
     Result& r = result;
     if (!menu_usb) return 0;
     guard_kick();
 #if defined(XYF_MTP_USB)
-    if (usb_deferred) { usb_deferred = 0; usb_begin(); return 0; }   // T2a: the flag, then the boot's only start
+    if (usb_deferred) { usb_deferred = 0; usb_begin(); return 0; }   // the flag, then the boot's only start
 #endif
     stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
-    job_pump();                                        // 5.4d2: a slice of the mod job
-    settle_turn();                                     // 5.4d2f: a window close still out
-    if (writes_due && !job_running() XYF_AND_NOT_MTP_BUSY && now() - writes_ms > storage_server::window_settle_ms) settle_writes();   // 2.2c
+    job_pump();                                        // a slice of the mod job
+    settle_turn();                                     // a window close still out
+    if (writes_due && !job_running() XYF_AND_NOT_MTP_BUSY && now() - writes_ms > storage_server::window_settle_ms) settle_writes();
 #endif
 #if defined(XYF_MTP_USB)
-    composite_turn();                                  // T2a: the driver's pass, the HELLO bound (fallback restart)
+    composite_turn();                                  // the driver's pass, the HELLO bound (fallback restart)
 #endif
 #if defined(XYF_USB_FILE_WRITE) && defined(XYF_MTP_SESSION)
-    mtp_pump();                                        // T2b: responder steps for a slice (one file request each)
+    mtp_pump();                                        // responder steps for a slice (one file request each)
 #endif
 #if defined(XYF_MTP_USB)
     mtp_burst();                                       // speed: more passes of both while MTP traffic is active
 #endif
     const U32 avail = cdc_available();
     if (!avail) {
-        // 1.5: a partial frame followed by idle_reset_ms of silence (nothing left in the receive
+        // A partial frame followed by idle_reset_ms of silence (nothing left in the receive
         // ring) is dropped, so it cannot swallow the start of the next request.
         if (parser.have && now() - rx_quiet_from > P::idle_reset_ms) {
             parser.dropped += parser.have; parser.have = 0; r.dropped = parser.dropped;
@@ -3179,7 +3179,7 @@ uint32_t home_pump() {
     const U32 got = cdc_read(chunk, avail < rx_chunk_bytes ? avail : rx_chunk_bytes);
     ++r.rx_events; r.rx_bytes += got;
 #if defined(XYF_MTP_USB)
-    if (got) composite_byte();                         // T2a: mark 10 once
+    if (got) composite_byte();                         // mark 10 once
 #endif
     for (U32 i = 0; i != got; ++i) {
         if (!P::feed(parser, chunk[i])) continue;
@@ -3187,7 +3187,7 @@ uint32_t home_pump() {
         const uint8_t* payload = P::frame_payload(parser);
         const U32 length = P::frame_length(parser);
         ++r.frames; r.last_type = type;
-        host_framed = 1; host_frame_ms = now();                         // 8.7: the USB mark
+        host_framed = 1; host_frame_ms = now();                         // the USB mark
         if (const U32 line = change_line(type)) {
             host_change = line; host_change_ms = host_frame_ms;
 #if defined(XYF_USB_FILE_WRITE) && defined(XYF_MTP_SESSION)
@@ -3195,26 +3195,26 @@ uint32_t home_pump() {
 #endif
         }
 #if defined(XYF_SERVICE_SCREEN)
-        key_ui::host_view();                                           // 8.7: drawn before a long request runs
+        key_ui::host_view();                                           // drawn before a long request runs
 #endif
         U32 leave = 0;
         if (type == P::t_hello) {
             if (!home_greeted) { home_greeted = 1; if (!r.hello_at_ms) r.hello_at_ms = now(); }
-            if (!s2_tried) stage2_load();                  // 4.7a1: once per boot, before the reply
+            if (!s2_tried) stage2_load();                  // once per boot, before the reply
             hello(seq);
 #if defined(XYF_MTP_USB)
-            composite_hello();                         // T2a: the composite stays this boot; mark 11, marks end
+            composite_hello();                         // the composite stays this boot; mark 11, marks end
 #endif
         }
         else if (!home_greeted) status_only(type, seq, P::s_state);
 #if defined(XYF_MTP_USB)
-        else if (type == t_mtp_usb) mtp_usb_command(seq, payload, length);   // 3.4: the probe (test build only)
+        else if (type == t_mtp_usb) mtp_usb_command(seq, payload, length);   // the probe (test build only)
 #endif
 #if defined(XYF_USB_FILE_WRITE)
 #if defined(XYF_MTP_SESSION)
-        else if (type == t_mtp_tunnel) mtp_tunnel(seq, payload, length);   // 3.5b: the test transport
+        else if (type == t_mtp_tunnel) mtp_tunnel(seq, payload, length);   // the test transport
 #endif
-        else if (job_blocks(type)) status_only(type, seq, P::s_busy);   // 5.4d2: one request slot
+        else if (job_blocks(type)) status_only(type, seq, P::s_busy);   // one request slot
         else if (type == P::t_mods_apply) mods_apply(seq, payload, length);
         else if (type == P::t_job_status) job_status(seq, payload, length);
         else if (type == P::t_job_cancel) job_cancel(seq, payload, length);
@@ -3250,15 +3250,15 @@ uint32_t home_pump() {
             if (ok) key_ui::inject_key(P::get32(payload), P::get32(payload + 4));
             status_only(type, seq, ok ? P::s_ok : P::s_bad_request);
         }
-        else if (type == P::t_library_boot) {         // 2.4d: boot a named entry once (as PLAY on it)
+        else if (type == P::t_library_boot) {         // boot a named entry once (as PLAY on it)
             const U32 chosen = library_boot(seq, payload, length);
             if (chosen) { dry_run = 0; carried_flags = flags(); held = 0; leave = 1 + chosen; }
         }
         else if (type == P::t_continue) {              // payload u32: 0 boot the default, 1 dry run
             const U32 mode = length == 4 ? P::get32(payload) : 0;
             bool ok = length == 0 || (length == 4 && mode <= 1);
-            if (ok && !menu_link::usb_link_up()) ok = false;   // 2.2b: no boot over a lost link (menu stays)
-            if (ok) settle_writes(false);                  // 2.2c: A's window closed before the boot
+            if (ok && !menu_link::usb_link_up()) ok = false;   // no boot over a lost link (menu stays)
+            if (ok) settle_writes(false);                  // A's window closed before the boot
             if (ok && mode == 1) ok = menu_link::usb_command(storage_server::dry_run_item);
             if (ok) { dry_run = mode; carried_flags = flags(); held = 0; leave = 1; }
             status_only(type, seq, ok ? P::s_ok : P::s_link);
@@ -3269,7 +3269,7 @@ uint32_t home_pump() {
                 // 105: guard expiry test without a hang: b only, ~3 s, no kicks; the menu loop
                 // keeps running. The watchdog interrupt must restart b; if it does not, the
                 // host can still read the watchdog and SEC registers.
-                guard_arm();                                // b only (0.9k2): a follows once b is silent
+                guard_arm();                                // b only (record 022): a follows once b is silent
                 guard_count_set(guard_test_count); guard_muted = 1;
                 marker_write(marker_active | marker_menu | flags(), r.crash_restarts);   // 109: back home
                 status_only(type, seq, P::s_ok);
@@ -3278,7 +3278,7 @@ uint32_t home_pump() {
             }
             if (on <= 1) {
                 if (type == P::t_hold) { held = on; home = on; }
-                else if (on) guard_arm();                  // b only (0.9k2: a has no guard)
+                else if (on) guard_arm();                  // b only (record 022: a has no guard)
                 else guard_disarm();
                 // 109: a guarded PLAY menu (home == 0) also marks itself, so a guard reset comes home.
                 if (home || guard_on) marker_write(marker_active | marker_menu | flags(), r.crash_restarts);
@@ -3295,7 +3295,7 @@ uint32_t home_pump() {
             status_only(type, seq, ok ? P::s_ok : P::s_bad_request);
             if (ok) for (;;) {}                        // the guard must reset this processor
         }
-        else if (stage2_command(type, seq, payload, length)) {}   // 4.7a1: stage 2's types (stage2.info)
+        else if (stage2_command(type, seq, payload, length)) {}   // stage 2's types (stage2.info)
         else status_only(type, seq, P::s_unsupported);
         P::next(parser);
         if (leave) { r.exit = exit_continue; return leave; }
@@ -3309,7 +3309,7 @@ void menu_release() {
     if (!menu_usb) return;
     menu_usb = 0;
 #if defined(XYF_MTP_USB)
-    if (usb_deferred) { usb_deferred = 0; return; }    // T2a: USB never started this boot: nothing to stop
+    if (usb_deferred) { usb_deferred = 0; return; }    // USB never started this boot: nothing to stop
     if (composite_on) {                                // our driver leaves (stop(0), unregister, frees)
         composite_on = 0;
         mu::leave();

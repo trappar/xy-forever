@@ -1,4 +1,4 @@
-// 4.8: host test of xyf_settings.hpp (tests/test_settings.py).
+// Host test of xyf_settings.hpp (tests/test_settings.py).
 #include "xyf_settings.hpp"
 #include <cstdio>
 #include <cstring>
@@ -9,7 +9,7 @@ static Record parsed(const char* t) { Record r; parse(t, uint32_t(std::strlen(t)
 int main() {
     Record r = parsed("");                                         // no record: the product defaults
     CHECK(r.confirm == 1);
-    r = parsed("format=1\nconfirm=0\nknob=reversed\n");             // 4.8m2: a record with the old knob= loads
+    r = parsed("format=1\nconfirm=0\nknob=reversed\n");             // a record with the old knob= loads
     CHECK(r.confirm == 0);
     r = parsed("confirm=00\n");                                     // only exact values count
     CHECK(r.confirm == 1);

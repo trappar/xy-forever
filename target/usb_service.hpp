@@ -72,8 +72,8 @@ static const uint32_t reboot_service = 0, reboot_os = 1, reboot_menu = 2;
 // Watchdog guard (Test 041): while the service runs, WDOG0 (0x20046000) is armed
 // the way the stock reset 11a03518 arms it (RCU_CTL |= 0x100, SEC source 3 =
 // SEN|FEN, SEC FCTL 0x41), with a long count reloaded on every loop pass (STAT
-// write). A hang (e.g. an unanswered stock RPC) resets b (b only since
-// 0.9k2; a restarts once b is silent past its idle window, file_boot). Longer count around the stock
+// write). A hang (e.g. an unanswered stock RPC) resets b (b only, record
+// 022; a restarts once b is silent past its idle window, file_boot). Longer count around the stock
 // writer; disarmed (CTL 0xAD0, saved RCU/SEC values back) before USB stops.
 static const uint32_t wdog_ctl = 0x20046000u, wdog_cnt = 0x20046004u, wdog_stat = 0x20046008u;
 static const uint32_t wdog_disable = 0x0ad0u, wdog_enable = 1;      // stock 11a035ca writes 1
@@ -110,14 +110,14 @@ struct Result {
     uint32_t verify_partition, verify_sectors, verify_mismatch, capacity;
     uint32_t heap_before, heap_after, start_cycles, end_ms;
     // a (role 0): install-mode counters (storage_server serve_install); a_selected: the confirmed
-    // partition | 1 << 8 while a boot-partition select was attempted (2.3c)
+    // partition | 1 << 8 while a boot-partition select was attempted
     uint32_t a_identity, a_install_enabled, a_selects, a_trims;
     uint32_t a_reads, a_writes, a_refused, a_selected;
     uint32_t a_last_refused, a_reboot, stack_used, a_state_write;   // status | result << 8 | step << 16 | seq << 24
     // Version 2 (Test 031 found 0 bytes received after the host opened the
     // port): CDC receive counters and read-only USB snapshots (diag_layout).
     uint32_t rx_events, rx_bytes, diag_count, stock_callback;   // CDC receive callback found at start (cleared while serving)
-    uint32_t stage2[8];                     // 4.7a1: stage-2 load record (s2w_* words below; was diag[0][0..7])
+    uint32_t stage2[8];                     // stage-2 load record (s2w_* words below; was diag[0][0..7])
     uint32_t diag[64];                      // unused since Test 041 (diag_count 0)
     // Version 3 (Test 034 INSTALL gave no reply): install log forwarding.
     uint32_t log_lines, log_sent, log_skipped, log_level_before;
@@ -127,7 +127,7 @@ struct Result {
     uint32_t power_status, boot_reason, crash_restarts, guard_kicks;   // present: presence() | held << 4
 };
 static_assert(sizeof(Result) == 132 * 4, "Result layout");
-// stage2[] (4.7a1, usb_service.cpp stage2_load): words, and the status word's values. detail: the
+// stage2[] (usb_service.cpp stage2_load): words, and the status word's values. detail: the
 // file client's status (missing, link, read), the xyf::stage2::Check (check), or stage 2's answer
 // (init, hook). reads: stage-2 file reads this boot (a plain boot: none).
 enum Stage2Word : uint32_t {
@@ -188,11 +188,11 @@ void home_start();
 uint32_t home_pump();
 bool guard_armed();      // 109: the watchdog guard is armed (either processor)
 void guard_reload();     // b: reload the guard (if armed) while waiting for a's answer to a command
-void stack_watch(uint32_t painted_begin);   // 0.12: b's painted stack floor; STATUS reports stack_used live
-// 2.2b (b): the menu has USB on. A lost link then keeps the menu: USB still answers (commands
-// that need a get link) until a power cycle; b never resets itself on it (0.9k2, record 022).
+void stack_watch(uint32_t painted_begin);   // b's painted stack floor; STATUS reports stack_used live
+// b: the menu has USB on. A lost link then keeps the menu: USB still answers (commands
+// that need a get link) until a power cycle; b never resets itself on it (record 022).
 bool home_usb();
-// 8.7 (b): what the menu shows of the host (key_ui draw_screen). host_seen: a valid frame arrived within
+// b: what the menu shows of the host (key_ui draw_screen). host_seen: a valid frame arrived within
 // host_seen_ms (the USB mark: steady under scripts/keepalive.sh, one status call about every 2.5 s, and out
 // within 5 s of the host's last frame). host_activity: while a job started over USB runs ("USB: building
 // Open-XY", "USB: changing content"), or within host_activity_ms of a request that changes something
@@ -209,15 +209,15 @@ uint32_t host_marks();
 const char* host_activity();
 const char* build_label();
 #if defined(XYF_USB_FILE_WRITE)
-// 5.4e1 (b): the menu's Mods page (xyf_mods_io.cpp). mods_start: the start mods.apply runs (the same
-// request bytes, SHA-256 included; status, job id, missing input; 5.4e2: missing = mods_ids_taken with
+// b: the menu's Mods page (xyf_mods_io.cpp). mods_start: the start mods.apply runs (the same
+// request bytes, SHA-256 included; status, job id, missing input; missing = mods_ids_taken with
 // status state when both mods ids are the default and the boot-once entry). job_view: the running or last
-// job as job.status sees it (state 0 none, 1 running, 2 ended; 5.4e2: the library commit is phase finish,
+// job as job.status sees it (state 0 none, 1 running, 2 ended; the library commit is phase finish,
 // commit = 1 while it runs, done of 3; a failed commit is failed). job_stop: job.cancel's stop (s_ok; s_state
-// in the commit, which cannot be cancelled; s_not_found: no job runs; 4.6c1: a content switch is shown with
+// in the commit, which cannot be cancelled; s_not_found: no job runs; a content switch is shown with
 // its own id, commit 0, and job_stop never stops it: s_not_found). page_serving: is A XY Forever's file
-// engine (s_ok, else s_link; one request). page_mount: B's op-8 state, for the page's reads. page_busy
-// (4.6c2): a job owns the slot (mods.apply or a content switch) or its write window is closing: the page
+// engine (s_ok, else s_link; one request). page_mount: B's op-8 state, for the page's reads. page_busy:
+// a job owns the slot (mods.apply or a content switch) or its write window is closing: the page
 // sends no storage request then (no request; A's handles are gone after the window).
 static const uint32_t mods_ids_taken = 5;
 struct JobView { uint32_t state, id, phase, done, total, error, status, debris, commit; };
@@ -227,26 +227,26 @@ uint32_t job_stop();
 uint32_t page_serving();
 volatile uint32_t& page_mount();
 bool page_busy();
-// 2.3f (review 024, 7): the menu's Continue, Discard, Boot once and Set default while a job owns the write
+// Review 024, 7: the menu's Continue, Discard, Boot once and Set default while a job owns the write
 // window: this line instead of the action (null: none runs; injected keys see it too).
 inline const char* menu_busy() { return page_busy() ? "Busy: a build or content change is running." : nullptr; }
 #endif
 #if defined(XYF_USB_FILE_WRITE) && defined(XYF_USB_SET_DEFAULT) && defined(XYF_ONE_SESSION)
-// 4.6c1 (b): the content switch (xyf_content_job.hpp), a job of B's menu loop. content_default: the menu's
+// b: the content switch (xyf_content_job.hpp), a job of B's menu loop. content_default: the menu's
 // SHIFT+PLAY on catalog entry `entry`: 0 when its content is installed (set the default as before), else the
 // status line (the switch started; it writes the default when it succeeded; or why it did not start).
 // content_line: the menu's status line while a switch runs and once it ended; 0 when unchanged.
 #define XYF_CONTENT_SWITCH 1
 const char* content_default(uint32_t entry);
 const char* content_line();
-// 8.4a (b): the save sequence's storage steps (xyf_mods_io; xyf_config.hpp). content_switch: the switch to
+// b: the save sequence's storage steps (xyf_mods_io; xyf_config.hpp). content_switch: the switch to
 // library entry id as a job, without writing the default (status as content_default's start: s_ok started,
 // s_busy, s_link, s_bad_request). config_store: the config job (job_view: phase 0 running, 8 done, 9 failed;
 // error as a switch's): the record written (replaced by renames), A's window closed, then the default set to
 // default_id unless it is that already ("" or 0: not changed). job_target: the entry the last mod job
 // committed into ("mods-a" / "mods-b").
 uint32_t content_switch(const char* id);
-// 8.8: the save-time log (xyf_save_log.hpp). save_log_begin: the Save key (the times start; the build, the
+// The save-time log (xyf_save_log.hpp). save_log_begin: the Save key (the times start; the build, the
 // switch and the record add theirs; the record's job writes the line); save_log_selection: what was asked;
 // save_log_lap: the part from now (xyf::save_log::Part); save_log_drop: the Save failed (no line).
 void save_log_begin();
@@ -255,7 +255,7 @@ void save_log_lap(uint32_t part);
 void save_log_drop();
 uint32_t config_store(const char* text, uint32_t length, const char* default_id);
 const char* job_target();
-// 4.8: settings.txt (xyf_settings.hpp). settings_load: once A serves, one bounded read (settings.txt, else
+// settings.txt (xyf_settings.hpp). settings_load: once A serves, one bounded read (settings.txt, else
 // settings.old; absent or unreadable: the defaults); true when done (call each menu pass until then).
 // settings: the record (the defaults until loaded). settings_store: the record replaced as config.txt is (the
 // config job with settings' paths, no default change; status as config_store).
@@ -263,7 +263,7 @@ const char* job_target();
 bool settings_load();
 xyf::settings::Record& settings();
 uint32_t settings_store();
-// 4.8: a key event (key_ui on_key; injected: the host's KEY command). While a confirm prompt is open it takes
+// A key event (key_ui on_key; injected: the host's KEY command). While a confirm prompt is open it takes
 // every key (true: not for the menu); only a real PLAY / STOP answers it (xyf_settings.hpp gate_key).
 bool confirm_key(uint32_t key, uint32_t pressed, bool injected);
 #endif

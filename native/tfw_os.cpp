@@ -1,4 +1,4 @@
-// OS-only .tfw extractor (plan 4.3a). ZIP32 fields from PKWARE APPNOTE 6.3.10.
+// OS-only .tfw extractor. ZIP32 fields from PKWARE APPNOTE 6.3.10.
 #include "tfw_os.hpp"
 namespace xyf_core { namespace tfw_os {
 namespace {

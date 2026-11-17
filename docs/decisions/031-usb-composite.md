@@ -1,4 +1,4 @@
-# 031: Why our driver never enumerated, and serial + MTP as one composite device (plan 3.4)
+# 031: Why our driver never enumerated, and serial + MTP as one composite device
 2026-11-15, listing + linked image of build 186-005. [L] listing, [A] image, [C] ours, [U] unknown, [E] device test.
 ## 1. Nothing on the bus after our start(0): our config record is 8 bytes short
 - **A stock config record is 0x18 bytes** [L]: +0 name, +4 bmAttributes, +5 bMaxPower, +8 n_ifaces, +0xc ifaces,

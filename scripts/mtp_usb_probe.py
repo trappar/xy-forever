@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plan 3.4 T2a: serial + MTP as one composite device on the OP-XY (test build xyf-mtp-usb), from macOS, no clicks.
+"""Serial + MTP as one composite device on the OP-XY (test build xyf-mtp-usb), from macOS, no clicks.
 
 What it does, each step with a time bound:
   1. serial (the stock serial service): HELLO (10 s; mode mtp-usb), then diag.mtp_usb op 0 (the trial): the device
@@ -50,7 +50,7 @@ MTP_INTERFACE = 2
 # What the composite should look like (record 031 b2): interface number -> (class triple, endpoint addresses).
 INTERFACES = {0: ((2, 2, 1), {0x81}), 1: ((0x0a, 0, 0), {0x08, 0x8b}), 2: ((6, 1, 1), {0x89, 0x0a, 0x83})}
 SINK_BYTES = 4 << 20
-OP_GET_DEVICE_INFO, OP_OPEN, OP_CLOSE, OP_SINK = 0x1001, 0x1002, 0x1003, 0x9f01   # T2b: the sink moved off 0x9801
+OP_GET_DEVICE_INFO, OP_OPEN, OP_CLOSE, OP_SINK = 0x1001, 0x1002, 0x1003, 0x9f01   # the sink moved off 0x9801
 RC_OK = 0x2001
 CONFIG_PATH = '/yaffs2/xy-forever/config.txt'
 PROBE_WORDS = ('state', 'flag', 'delete', 'gate', 'slot', 'started_ms', 'first_byte_ms', 'hello_ms', 'passes',
@@ -218,7 +218,7 @@ def claim(usb, dev, run, interface):
 
 
 def describe(dev, run, result):
-    """The device's and each interface's descriptors as macOS (libusb) reads them; True if they are T2a's."""
+    """The device's and each interface's descriptors as macOS (libusb) reads them; True if they are the composite's."""
     d = dict(bcdUSB='0x%04x' % dev.bcdUSB, device_class=[dev.bDeviceClass, dev.bDeviceSubClass, dev.bDeviceProtocol],
              speed=getattr(dev, 'speed', None), interfaces={})
     cfg = dev.get_active_configuration()
@@ -421,7 +421,7 @@ def finish(run, result):
     result['checks'] = [dict(name=n, ok=ok, detail=d) for n, ok, d in run.checks]
     (run.out / 'result.json').write_text(json.dumps(result, indent=2, default=str) + '\n')
     failed = [n for n, ok, _ in run.checks if not ok]
-    run.log('T2a %s%s' % ('PASS' if not failed else 'FAIL', '' if not failed else ': ' + ', '.join(failed)))
+    run.log('composite %s%s' % ('PASS' if not failed else 'FAIL', '' if not failed else ': ' + ', '.join(failed)))
     raise SystemExit(0 if not failed else 1)
 
 

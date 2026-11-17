@@ -1,4 +1,4 @@
-// Mod assembly job (plans 5.4d1a, 5.4d1b; decision 019): mod_link, mod_patch and mod_content in bounded
+// Mod assembly job (decision 019): mod_link, mod_patch and mod_content in bounded
 // steps over one work region, every file through the caller's file calls, one library entry out. See
 // mod_job.hpp.
 #include "mod_job.hpp"
@@ -422,7 +422,7 @@ Error build_layout(Job& j, const Byte* profile, U32 profile_bytes) {
         t.text(",\n      \"page\": "); t.json_value(number.identity.has_page, number.identity.page); t.text("\n    }");
     }
     t.text(i ? "\n  }" : "}");
-    if (j.profile.expanded) {            // 4.8m1: as the website records its 4 MiB option
+    if (j.profile.expanded) {            // as the website records its 4 MiB option
         t.text(",\n  \"memory\": \"expanded\",\n  \"reserved_bytes\": "); t.number(j.reserved_bytes);
     }
     t.text("\n}\n");
@@ -541,7 +541,7 @@ Phase step_link(Job& j) {
     }
     j.check_object = p != j.packages && starts(r.path, "objects/");
     // The file goes into the module's unused part of the image and on into the free region above it (the image
-    // is the last thing kept; 4.8m1: the larger layout's image leaves too little room above it for the largest
+    // is the last thing kept; the larger layout's image leaves too little room above it for the largest
     // objects): from the module's start before the zero steps (initialized is 0 until pass 1 ends), after its
     // initialized part in pass 2 (the linker writes only below that).
     const U32 used = (j.linked.sizes.initialized + 7u) & ~7u, at = U32(j.image - j.region) + j.profile.stock_bytes + used;
@@ -644,7 +644,7 @@ Phase step(Job& j) {
         copy_digest(j.pins.sha256, j.profile.catalog_sha256);
         if (!listed(base, "edits.bin")) { set_detail_text(j, "edits.bin"); return fail(j, Error::base); }
         j.profile.expanded = in.selection.expanded;
-        mod_patch::Profile used;             // the layout the link and patch use (4.8m1: maybe the larger one)
+        mod_patch::Profile used;             // the layout the link and patch use (maybe the larger one)
         if (!mod_patch::layout(j.profile, used)) { set_detail_text(j, "expanded_module_base"); return fail(j, Error::base); }
         j.module_limit = used.module_bytes; j.reserved_bytes = used.reserved_bytes;
         if (j.module_limit > 0xffffffffu - 16u - j.profile.stock_bytes) {
@@ -741,7 +741,7 @@ Phase step(Job& j) {
         if (before && s == mod_patch::Status::wait) { go(j, st_link_begin); return j.phase; }
         if (!before && s == mod_patch::Status::ok) { j.crc = 0xffffffffu; j.crc_done = 0; go(j, st_crc); return j.phase; }
         set_detail_text(j, j.patcher.detail);
-        return fail(j, s == mod_patch::Status::unverified ? Error::base : Error::patch, U32(s));   // 5.4d3a: an unknown base: base
+        return fail(j, s == mod_patch::Status::unverified ? Error::base : Error::patch, U32(s));   // an unknown base: base
     }
     case st_link_begin: {
         const mod_link::Limits llimits;

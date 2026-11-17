@@ -1,4 +1,4 @@
-"""The save-time log (plan 8.8 step 0): target/xyf_save_log.hpp's laps, line and merge (last 20 records),
+"""The save-time log: target/xyf_save_log.hpp's laps, line and merge (last 20 records),
 and xyf_host.py save-times' table over its lines."""
 from pathlib import Path
 import subprocess

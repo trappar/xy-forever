@@ -80,7 +80,7 @@ IMAGE_CAPACITY = 0x700000                         # usb_service.hpp image_capaci
 PUT_CHUNK = 1024
 # Build modes that keep this USB service. xyf-usb is the retired Test 031-042 mode: the
 # builder no longer makes it, but the tests' private fixture build was made with it.
-USB_MODES = ('xyf-usb', 'xyf-product', 'xyf-mtp-usb')   # 3.4: the MTP USB test build keeps the service
+USB_MODES = ('xyf-usb', 'xyf-product', 'xyf-mtp-usb')   # the MTP USB test build keeps the service
 READ_RANGE = 1024              # device read_range_max (Test 038: 4 KiB replies hung)
 INSTALL_TIMEOUT = 900.0         # host bound for one INSTALL (v3 link sessions have no device cap)
 COPY_RATE = 10000.0             # file.copy: the host waits its timeout plus 1 s per this many bytes
@@ -91,7 +91,7 @@ WRITE_PATH_RE = re.compile(r'^/yaffs2/xy-forever(/[A-Za-z0-9._-]{1,64}){1,4}$')
 INFO_TEXT_RE = re.compile(r'^[ -<>-~]{1,47}$')   # printable ASCII except '='
 # Test 058: key numbers (xyf_menu.hpp / key_ui.cpp): KPlay 51, KStop 52, -/+ 53/54, shift 55, track1 6.
 KEYS = dict(minus=53, plus=54, play=51, stop=52, shift=55, **{'track%d' % (i + 1): 6 + i for i in range(8)})
-# 2.4d: put/rm/mkdir write only here (the device's write area: target/storage_server.cpp write_root).
+# put/rm/mkdir write only here (the device's write area: target/storage_server.cpp write_root).
 AREA_TEXT = 'under /yaffs2/, never bootloader.dev or upgrade/'
 WRITE_ROOTS = ('/yaffs2/',)       # since 1.13: all of /yaffs2 but the two below
 SLOTS = ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt')
@@ -658,7 +658,7 @@ def run(argv):
     liba.add_argument('id'); liba.add_argument('os_ldr', type=Path)
     liba.add_argument('--name', required=True); liba.add_argument('--version', required=True)
     liba.add_argument('--yes-write', action='store_true')
-    sub.add_parser('save-times', help='print the save-time log (/yaffs2/xy-forever/log/save-times.txt, 8.8) as a '
+    sub.add_parser('save-times', help='print the save-time log (/yaffs2/xy-forever/log/save-times.txt) as a '
                    'table: one row per Save, USB build or content switch, milliseconds per part (read-only)')
     cont = sub.add_parser('continue')
     cont.add_argument('--dry-run', action='store_true',
@@ -675,7 +675,7 @@ def run(argv):
     mtpt = sub.add_parser('mtp-test', help="097: MTP's storage calls from b's main loop (a opens its read-write window), then home")
     mtpt.add_argument('--hold-ms', type=int, default=5000); mtpt.add_argument('--yes-test', action='store_true')
     uninst = sub.add_parser('uninstall'); uninst.add_argument('stock_os_ldr'); uninst.add_argument('--yes-uninstall', action='store_true')
-    from xy_forever import modsend      # 5.4p: mods push|list|remove (xy_forever/modsend.py)
+    from xy_forever import modsend      # mods push|list|remove (xy_forever/modsend.py)
     modsend.add_arguments(sub.add_parser('mods', help='mod packages on the device: push, list, remove, apply, dev'))
     args = parser.parse_args(argv)
     global SIM
@@ -763,7 +763,7 @@ def run(argv):
         print('Plan: processor a writes the next A/B state slot (/yaffs2/xy-forever/state-a.txt or -b.txt)')
         print('      with default=%s, reads it back, then remounts read-only. Nothing else is written;' % args.id)
         print('      the entry must exist and have an os.ldr. Verified here by reading both slots back.')
-        print('      An entry whose content is not installed gets it first (4.6c1): B rewrites /yaffs2/content/')
+        print('      An entry whose content is not installed gets it first: B rewrites /yaffs2/content/')
         print('      (the catalog, the mods\' files; official files, dlc/ and user/ are never touched), then the default.')
         if not args.yes_write:
             print('DRY RUN: nothing sent. Re-run with --yes-write to write.')
@@ -896,7 +896,7 @@ def run(argv):
     if args.command == 'set-default':
         code, sent_hash = dev.set_default(args.id)
         print('set-default sent: %s (id hash %08x)' % (P.status_name(code), sent_hash))
-        if code == P.ids.S_STARTED:                    # 4.6c1: the content switch runs first, then the default
+        if code == P.ids.S_STARTED:                    # the content switch runs first, then the default
             from xy_forever import modsend
             f = modsend.wait(dev, 0)
             if f is None or f['phase'] != modsend.DONE:
@@ -974,7 +974,7 @@ def run(argv):
 
 
 def files_command(dev, hello, args):
-    """ls, get, put, rm, mkdir (plan 2.4a), mv (2.4c)."""
+    """ls, get, put, rm, mkdir, mv."""
     if args.command == 'mv':
         code, error = dev.rename(args.source.rstrip('/'), args.target.rstrip('/'))
         print('mv %s %s: %s%s' % (args.source, args.target, P.status_name(code), ' (error %d)' % error if error else ''))
@@ -1039,7 +1039,7 @@ def files_command(dev, hello, args):
 
 
 def copy_command(dev, source, target, recursive):
-    """cp (2.4c2): the source's kind and size from its folder's listing, then copy_entry."""
+    """cp: the source's kind and size from its folder's listing, then copy_entry."""
     parent, name = split_path(source)
     code, entries = dev.list_dir(parent)
     found = [(k, s) for k, s, n in entries if n == name.encode('utf-8')]
@@ -1078,7 +1078,7 @@ def copy_entry(dev, source, target, kind, size):
     return 0
 
 
-SAVE_TIMES = '/yaffs2/xy-forever/log/save-times.txt'   # 8.8: target/xyf_save_log.hpp
+SAVE_TIMES = '/yaffs2/xy-forever/log/save-times.txt'   # target/xyf_save_log.hpp
 
 
 def save_times_table(text):
@@ -1116,7 +1116,7 @@ def decode_status(body):
                 boot_timing=census.boot_timing(regions, dump),
                 storage_start=census.storage_start(regions, dump),     # 191
                 dry_run_file_boot=census.file_boot(regions, dump),
-                knob_input=next((k for k in map(census.knob_summary, (d for _, d in blocks)) if k), None),   # 8.3
+                knob_input=next((k for k in map(census.knob_summary, (d for _, d in blocks)) if k), None),
                 blocks=['0x%08x:%d' % (m, len(d)) for m, d in blocks])
 
 

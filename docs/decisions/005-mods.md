@@ -1,4 +1,4 @@
-# 005: Mods today (plan item 5.1)
+# 005: Mods today
 
 Research record, 2026-11-14, against the open-xy checkout `4718876` (branch `sdk/synth-postmix`, VERSION 0.0.4, clean); `git show origin/staging` (`fd66c4a`, 0.0.6) where noted. No device, no build, no network. **[C]** read from code/docs, **[I]** inferred, **[U]** unverified.
 
@@ -34,7 +34,7 @@ Research record, 2026-11-14, against the open-xy checkout `4718876` (branch `sdk
 
 **Recommendation:** build (a) + (a') now: open-xy builds as library entries with a correct machine list, content handled per entry, new combinations linked on the host. Ask the maintainers for (b) and build it when it ships: it is the cheapest true per-mod toggle on the device. Defer (c): no user gain over (a')+(b) except offline arbitrary combinations, at the highest cost and risk.
 
-**Package needs (input to 4.1).** Machine: catalog entry as is (`id kind maintainer status repository tag commit path cpu`) + `sdk` minimum + the profile(s) it builds for. Missing: a machine version in build outputs; a profile/firmware field in the catalog (implicit today: the SDK supports only 1.2.1). Firmware build: `build.json` + `layout.json` + files. Missing: per-selected-machine `{id, kind, tag, commit}` and profile id in `build.json`; one signed/hashed manifest that names which files are content. Dependency: machine -> SDK >= `sdk`; SDK release -> profile (`opxy-1.2.1`) -> stock OS hash. A machine depends on an OS version only through the SDK's profile [C].
+**Package needs (input to decision 010).** Machine: catalog entry as is (`id kind maintainer status repository tag commit path cpu`) + `sdk` minimum + the profile(s) it builds for. Missing: a machine version in build outputs; a profile/firmware field in the catalog (implicit today: the SDK supports only 1.2.1). Firmware build: `build.json` + `layout.json` + files. Missing: per-selected-machine `{id, kind, tag, commit}` and profile id in `build.json`; one signed/hashed manifest that names which files are content. Dependency: machine -> SDK >= `sdk`; SDK release -> profile (`opxy-1.2.1`) -> stock OS hash. A machine depends on an OS version only through the SDK's profile [C].
 ## Asks for the maintainers
 
 1. Write per-machine `{id, kind, tag, commit, sdk}`, `profile` and the extension list into `build.json` (and `selected` from `sdk.py build` too).
@@ -47,14 +47,14 @@ Research record, 2026-11-14, against the open-xy checkout `4718876` (branch `sdk
 
 **Rejected:** Patching a machine out of a linked `os.ldr` by pattern-matching (no symbols; a wrong guess crashes the OS and nothing proves a guess right). Pre-linking every subset (2^n). Having the OS read a toggle file at startup (file I/O inside the stock initializer). Link-at-boot now (above).
 
-## Proposed split of 5.2
+## Proposed split
 
-| Item | Done when |
+| Step | Done when |
 |---|---|
-| 5.2a build: layout reader v2 | accepts `player`, keeps `selected`/`extensions`, ignores `memory`; machine list = `selected` (else "numbers only"); bounds 256 machines/16 KiB if scratch allows; profile must be `opxy-1.2.1`/`opxy-1.2.0`; synthetic builder- and sdk-shaped fixtures; tests pass; product builds and verifies |
-| 5.2b build: host import | `xyf_host.py library-add --open-xy <zip>`: checks `build.json` hashes and `source_sha256`, writes `info.txt` (`kind=open-xy`, version from kit), `layout.json`, `build.json`, content under `firmware/<id>/content/`; simulator tests |
-| 5.2c build: menu | an open-xy entry shows its machines and version; `ui_preview.py` screens; tests |
-| 5.2d research + device safe: content per entry | superset vs swap decided with ask 4; one device check that an extended `op1_factory.json` with an absent machine boots stock 1.2.1 and an open-xy entry (backup restored) |
-| 5.2e build: content switch | on an explicit default change only, via `native/content` generations, stock content kept; fault tests |
-| 5.2f device safe: two mod sets | two open-xy entries + official 1.2.1; switch from the menu; each shows its machines; no project saved |
-| 5.2g build: per-mod toggle | blocked on ask 2; split when the manifest exists |
+| #22 build: layout reader v2 | accepts `player`, keeps `selected`/`extensions`, ignores `memory`; machine list = `selected` (else "numbers only"); bounds 256 machines/16 KiB if scratch allows; profile must be `opxy-1.2.1`/`opxy-1.2.0`; synthetic builder- and sdk-shaped fixtures; tests pass; product builds and verifies |
+| build: host import | `xyf_host.py library-add --open-xy <zip>`: checks `build.json` hashes and `source_sha256`, writes `info.txt` (`kind=open-xy`, version from kit), `layout.json`, `build.json`, content under `firmware/<id>/content/`; simulator tests |
+| build: menu | an open-xy entry shows its machines and version; `ui_preview.py` screens; tests |
+| research + device safe: content per entry | superset vs swap decided with ask 4; one device check that an extended `op1_factory.json` with an absent machine boots stock 1.2.1 and an open-xy entry (backup restored) |
+| build: content switch | on an explicit default change only, via `native/content` generations, stock content kept; fault tests |
+| device safe: two mod sets | two open-xy entries + official 1.2.1; switch from the menu; each shows its machines; no project saved |
+| build: per-mod toggle | blocked on ask 2; split when the manifest exists |

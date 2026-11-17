@@ -1,4 +1,4 @@
-# 030: The 186-003 freeze, switching inside a boot, and a composite device (plan 3.4)
+# 030: The 186-003 freeze, switching inside a boot, and a composite device
 2026-11-15, reading `linear121.ann.asm`. 186-003 froze B on its switch (no 1209:0001, no serial, menu frozen).
 [L] listing, [C] our code, [I] inferred, [U] unknown. MTP by restart (rejected; its branch is only in the maintainer's archive).
 ## 1. What the switch does on the stock side

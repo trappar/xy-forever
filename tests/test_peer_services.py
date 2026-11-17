@@ -120,7 +120,7 @@ class PeerServicesTests(unittest.TestCase):
         s=configured(1);s.interrupts[0].index=1;self.assertEqual(self.check(s),IRQ)
 
     def test_quiet_check_needs_the_hardware_off_not_the_driver_pointers(self):
-        # Plan 0.9h: before b's stock reset. The master close (889f562e) never completes a request it
+        # Before b's stock reset. The master close (889f562e) never completes a request it
         # abandons, so the driver's pointers may still name it; SPI, DMA and the handlers must be off.
         for name in ('spi_control','tx_config','rx_config'):
             s=configured(1);setattr(s,name,1);self.assertEqual(self.check(s,3),LIFECYCLE,name)

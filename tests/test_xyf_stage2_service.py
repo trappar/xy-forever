@@ -1,4 +1,4 @@
-"""Stage 2 in the product (4.7a1, target/xyf_stage2.hpp ABI 3) in the device simulator: B's USB
+"""Stage 2 in the product (target/xyf_stage2.hpp ABI 3) in the device simulator: B's USB
 service loads /yaffs2/xy-forever/stage2/main.xys2 at the first HELLO, checks it and runs stage 2's
 code (target/stage2_main.cpp, built for the Mac, through the same services table), which answers
 stage2.info. Every failure leaves stage 1 as before. Simulator clock only; no device access."""

@@ -1,4 +1,4 @@
-# 002: Stock USB function-driver API and upload pacing (plan item 3.1)
+# 002: Stock USB function-driver API and upload pacing
 
 Research record, 2026-11-14, from the 1.2.1 bootloader listing only (no device). **[L]** = read from the listing, **[I]** = inferred (MUSB behaviour or reasoning), to be proven by 3.2-3.4.
 

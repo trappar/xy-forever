@@ -1,4 +1,4 @@
-"""The file engine's path policy and request decision (target/file_engine.cpp, plan 2.2a,
+"""The file engine's path policy and request decision (target/file_engine.cpp,
 docs/decisions/009-file-engine.md), compiled for the host: every operation against every
 protected path and its spellings, the limits, the request classes; and the wiring that makes A
 apply it to every request and B before it sends. No device execution."""
@@ -228,7 +228,7 @@ class FileEngineTest(unittest.TestCase):
         self.assertEqual(self.request(WRITE, 0x2b), 'run_write')
 
     def test_rename_pair(self):
-        """2.4c: path 0x21 with rename_from keeps a source (checked as one: never /yaffs2 or the marker);
+        """Path 0x21 with rename_from keeps a source (checked as one: never /yaffs2 or the marker);
         rename_to needs one and decides the pair (never onto /yaffs2) and is a change (the window)."""
         RNFR, RNTO = 0x52464e52, 0x4f544e52
         ok, other = '/yaffs2/xy-forever/a.txt', '/yaffs2/xy-forever/b.txt'
@@ -327,7 +327,7 @@ class FileEngineTest(unittest.TestCase):
             self.assertEqual(self.request(vt, op, on=0), 'refuse_off')
 
     def test_a_selected_boot_partition_refuses_every_request(self):
-        """2.3b: install mode selected a boot partition: yaffs is not what the chip addresses, so every
+        """Install mode selected a boot partition: yaffs is not what the chip addresses, so every
         request is refused in every state (mount, unmount, reads and changes alike); the raw layer
         keeps its own refusal (the run entry's sign that b's bootloader asks)."""
         requests = [(PARTITION, 8, 0, 0, None), (PARTITION, 9, 0, 0, None), (PARTITION, 0x2d, 0, 0, None),
@@ -360,7 +360,7 @@ class FileEngineWiringTest(unittest.TestCase):
         return b[:b.index('\n}\n')]
 
     def test_rename_is_gated_and_checked_on_both_processors(self):
-        """2.4c: A calls the approved yaffs rename (889fa834) only from a_side::rename_object, only while
+        """A calls the approved yaffs rename (889fa834) only from a_side::rename_object, only while
         every engine span matches (they cover 889fa604 and 88a01afa), after the pair's checks, the
         source's existence and the target's absence; B checks the pair before the confirmation and
         before anything reaches A."""
@@ -406,13 +406,13 @@ class FileEngineWiringTest(unittest.TestCase):
         self.assertIn('session.follow(request);', peer)
         self.assertNotIn('reply', peer)
         self.assertNotIn('stock<', peer)
-        # 0.9b F1: outside install mode a boot request is b's bootloader in every entry: no answer either.
+        # F1 (decision 016): outside install mode a boot request is b's bootloader in every entry: no answer either.
         boot = serve[serve.index('if (!install_mode && peer_services::boot_request('):]
         boot = boot[:boot.index('return;')]
         self.assertIn('session.follow(request);', boot)
         self.assertNotIn('reply', boot)
         self.assertLess(serve.index('if (!install_mode && peer_services::boot_request('), serve.index('serve_install('))
-        # 0.9f: the exemption holds only while the writer is active or a boot partition is selected.
+        # the exemption holds only while the writer is active or a boot partition is selected.
         self.assertIn('const bool install_mode = install_enabled && engine != entry_write && engine != entry_run &&\n'
                       '        ((session.last_command() >> 8 & 0xffu) == install_item || boot_selected());', serve)
         run = self.body(self.server, 'void run_engine(Stock121PeerSession& session')
@@ -433,7 +433,7 @@ class FileEngineWiringTest(unittest.TestCase):
         self.assertIn('word(vtable + 0x14) != executor', engine)          # the CRC-checked class executor
 
     def test_a_decides_on_its_own_copy_of_the_path(self):
-        """2.3b: the stock path buffer is the interrupt's (any later request's body lands there);
+        """The stock path buffer is the interrupt's (any later request's body lands there);
         a copies it (<= max_path bytes), decides on the copy and points the request at the copy
         before any executor runs, so the executor uses the path that was checked."""
         engine = self.body(self.server, 'void serve_engine(')
@@ -448,7 +448,7 @@ class FileEngineWiringTest(unittest.TestCase):
         self.assertIn('char path_copy[max_path]', self.server)
 
     def test_a_keeps_the_marker_around_every_removal(self):
-        """2.3b: unlink and rmdir run between a stat of the marker before (a path resolving to the
+        """Unlink and rmdir run between a stat of the marker before (a path resolving to the
         marker's object is refused) and after (a marker that was there and is gone is re-created,
         lowercase, the name the 1.2.1 bootloader asks for)."""
         self.assertIn('const char marker_path[] = "/yaffs2/bootloader.dev";', self.server)
@@ -472,7 +472,7 @@ class FileEngineWiringTest(unittest.TestCase):
                 self.assertNotIn(name, path.read_text(), (name, path.name))
 
     def test_b_checks_before_it_sends(self):
-        """2.2b: every path B's file client sends passes the engine's policy first; a refused path
+        """Every path B's file client sends passes the engine's policy first; a refused path
         never reaches a stock builder."""
         client = (ROOT / 'target/file_client.cpp').read_text()
         allowed = self.body(client, 'bool allowed(const char* path, file_engine::Operation op)')
@@ -481,19 +481,19 @@ class FileEngineWiringTest(unittest.TestCase):
             b = self.body(client, name)
             self.assertIn('if (!allowed(path, ', b, name)
             self.assertIn('return outcome(refused);', b[b.index('if (!allowed(path, '):b.index('claim(session, why)')])
-            self.assertLess(b.index('if (!allowed(path, '), b.index('place(path);'), name)   # 2.2r: then claim, place
+            self.assertLess(b.index('if (!allowed(path, '), b.index('place(path);'), name)   # then claim, place
             self.assertLess(b.index('place(path);'), b.index('stock<'), name)
         self.assertEqual(client.count('stock<0x889f8d22u'), 1)       # the path builder: only in path_request
         self.assertEqual(client.count('stock<0x889f8e36u'), 1)       # the query builder: only in query
         read = self.body(client, 'uint32_t read_file(')
         check = read.index('file_engine::decide_engine(file_engine::op_read, path) != file_engine::allow')
         self.assertLess(check, read.index('mount_ready(mounted)'))
-        listing = self.body(client, 'uint32_t list(')                 # 2.4a
+        listing = self.body(client, 'uint32_t list(')
         self.assertLess(listing.index('file_engine::decide_engine(file_engine::op_list, path) != file_engine::allow'),
                         listing.index('mount_ready(mounted)'))
         change = self.body(self.usb, 'void file_change(')
         self.assertLess(change.index('!storage_server::valid_change_path(path, policy)) code = P::s_refused;'),
-                        change.index('enter_writes()'))                     # 2.4d: the write area, then the policy
+                        change.index('enter_writes()'))                     # the write area, then the policy
         self.assertIn('return xyf::usbp::s_refused;', read[check:check + 200])
         write = self.body(self.server, 'bool valid_change_path(')
         self.assertIn('write_root(path) && file_engine::decide_engine(op, path) == file_engine::allow', write)

@@ -1,7 +1,7 @@
 #ifndef XYF_CONFIG_HPP
 #define XYF_CONFIG_HPP
 #include <stdint.h>
-// 8.4a: the saved configuration ("Open-XY", configured like a BIOS: the Mods page changes a pending copy,
+// The saved configuration ("Open-XY", configured like a BIOS: the Mods page changes a pending copy,
 // Continue asks to save and applies it when you boot). Freestanding, header only, pure (host-tested through
 // the simulator; processor B's xyf_mods_io reads and applies it, usb_service's config job writes it).
 // Functions are static: an inline (weak) function is a register call on Blackfin (the builder's call audit).
@@ -15,7 +15,7 @@
 //                                      of the CRC-32 of every name of the selection, 8 hex: order-free)
 //   slot=mods-a|mods-b                 the library entry holding it (empty: never built)
 //   stamp=<64 hex>                     that entry's info.txt sha256= (its os.ldr) when it was built
-//   memory=standard|expanded           4.8m2: Mod memory (Settings): expanded, the 4 MiB layout (mods.apply flag
+//   memory=standard|expanded           Mod memory (Settings): expanded, the 4 MiB layout (mods.apply flag
 //                                      bit 1); absent or anything else: standard. built= then ends " expanded".
 //   mods=<name>,<name>,...             the mods switched on: machine folders, then ext-<id>; empty: none (last)
 // Written as config.txt.part, then (A never renames onto a file) config.txt -> config.old, .part -> config.txt,
@@ -121,7 +121,7 @@ static inline void put_number(Out& o, uint32_t v) {     // no division (no libgc
     d[n] = 0;
     put(o, d);
 }
-// built= for a selection (set: the order-free sum of its names' CRC-32; count: how many; 4.8m2: " expanded"
+// built= for a selection (set: the order-free sum of its names' CRC-32; count: how many; " expanded"
 // after it in the 4 MiB layout, so a change of Mod memory rebuilds).
 static inline void built_text(char* out, uint32_t capacity, const char* base, const char* generation, uint32_t set,
                               uint32_t count, bool expanded) {

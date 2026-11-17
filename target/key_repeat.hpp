@@ -2,7 +2,7 @@
 #define XYF_KEY_REPEAT_HPP
 #include <stdint.h>
 #include "xyf_menu.hpp"
-// Key repeat for - and + (plan 8.2), as on a computer keyboard: holding either repeats its press after
+// Key repeat for - and +, as on a computer keyboard: holding either repeats its press after
 // delay_ms, then every interval_ms. The menu loop learns of presses and releases from the stock PSoC key
 // diff (key_ui on_key: pressed 1, then 0); this keeps the one held key and says, once per loop pass, when
 // it is due. At most one repeat per pass and the next counted from now, so a long pass (a job slice, a slow

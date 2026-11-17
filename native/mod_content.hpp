@@ -3,7 +3,7 @@
 #include "hash.hpp"
 #include "mod_link.hpp"
 namespace xyf_core { namespace mod_content {
-// The content step of mod assembly (plan 5.4c; decisions 008, 010, 014, 018, 019): a freestanding
+// The content step of mod assembly (decisions 008, 010, 014, 018, 019): a freestanding
 // port of open-xy builder/core.mjs buildAssets for packages split by xy_forever/modkit.py. Into
 // caller buffers: content/op1_factory.json, the official file (SHA-256 pinned) as one whole file
 // with each listed machine's catalog.txt inserted at the three pinned offsets (an effect's "id"

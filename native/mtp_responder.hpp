@@ -1,7 +1,7 @@
 #ifndef XYF_MTP_RESPONDER_HPP
 #define XYF_MTP_RESPONDER_HPP
 #include "ldr.hpp"
-// 3.5a: the MTP (PTP) responder core, freestanding (no heap, no libc), no USB. The transport hands it
+// The MTP (PTP) responder core, freestanding (no heap, no libc), no USB. The transport hands it
 // whole bulk-OUT transfers (receive), takes the bulk-IN byte stream (take: data container, then the
 // response container; one container per IN phase, so the transport ends a phase whose length is a
 // multiple of the packet size with a ZLP), forwards the class request Cancel (cancel) and asks the
@@ -50,7 +50,7 @@ struct FileOps {
     int (*unlink)(void* context, const char* path);
     int (*rmdir)(void* context, const char* path);
     int (*rename)(void* context, const char* from, const char* to);
-    // T2b (optional, null: none): prepare runs before an operation that reaches the files; nonzero is the
+    // Hooks (optional, null: none): prepare runs before an operation that reaches the files; nonzero is the
     // response instead (Device_Busy while another user holds B's file client). log sees every operation:
     // code, first parameter, response code, data: 1 a data phase came in, 2 one went out, 3 an unasked data
     // phase was dropped (code = its container code).
@@ -110,7 +110,7 @@ public:
     bool step();
     void cancel() { cancelling = 1; }                    // class request Cancel (may come from an interrupt)
     void reset() { resetting = 1; cancelling = 1; }      // Device Reset, bus reset: cancel, then no session
-    // T2b: an operation is in flight (it may hold a file): other users of the file client must wait.
+    // An operation is in flight (it may hold a file): other users of the file client must wait.
     bool busy() const { return cancelling || phase != p_idle || fd >= 0; }
     U32 staged_length() const;                           // the length of the container at the IN head (0: < 4 bytes)
     bool session_open() const { return session != 0; }

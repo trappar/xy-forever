@@ -1,4 +1,4 @@
-"""tfw.check (plan 4.3c): the native verdict (native/tfw_check) on synthetic packages and cuts, the
+"""tfw.check: the native verdict (native/tfw_check) on synthetic packages and cuts, the
 official packages with the private keys, and the command on the simulator, whose boot-ROM stand-in
 answers B's OTP reads with the private keys (xy_forever/sim.py otp_fields) or fails on request.
 

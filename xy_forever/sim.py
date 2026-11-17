@@ -45,14 +45,14 @@ TARGET_SOURCES = ('usb_service', 'usb_proto', 'storage_server', 'file_engine', '
                   'cold_storage', 'retained_lookup', 'cold_heap', 'peer_services', 'xyf_library', 'xyf_cold_library',
                   'xyf_catalog', 'xyf_state', 'xyf_state_write', 'xyf_store', 'xyf_layout', 'xyf_info', 'xyf_crc32',
                   'boot_services', 'otp_keys', 'xyf_stage2', 'stage2_main',
-                  'xyf_menu', 'xyf_mods', 'xyf_mods_io',                 # 5.4e1: the menu's state and the Mods page
-                  'ui_pages', 'ui_gfx',                                   # 8.2: the bar's scale() (nothing is drawn)
-                  'knob_input',                                           # 8.3: the knob reader
-                  'mtp_session')                                          # 3.5b: the MTP session (XYF_MTP_SESSION)
+                  'xyf_menu', 'xyf_mods', 'xyf_mods_io',                 # the menu's state and the Mods page
+                  'ui_pages', 'ui_gfx',                                   # the bar's scale() (nothing is drawn)
+                  'knob_input',                                           # the knob reader
+                  'mtp_session')                                          # the MTP session (XYF_MTP_SESSION)
 NATIVE_SOURCES = ('ldr', 'hash', 'trace_slot', 'trace_slot_zero', 'memory', 'peer_boot', 'inflate',
                   'tfw_check', 'tfw', 'tfw_signature', 'p224', 'aes',
-                  'mod_job', 'mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content',   # 5.4d2: the job on B
-                  'mtp_responder')                                                                  # 3.5b
+                  'mod_job', 'mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content',   # the job on B
+                  'mtp_responder')                                                                  # the MTP responder
 SIM_SOURCES = ('runtime', 'link', 'stock', 'devices', 'boot', 'stage2')
 # Files whose device-only (__bfin__) part the simulator hosts. boot_services.cpp is not one:
 # its device part reads the OTP key and stays out.
@@ -105,7 +105,7 @@ def product_defines(build=None, mode='xyf-product', switches=None, hello=None):
              '-DXYF_CENSUS_BASE=%#xu' % (xyf_build.REPORTER - xyf_build.CENSUS_BYTES),
              '-DXYF_CENSUS_BYTES=%#xu' % xyf_build.CENSUS_BYTES, '-DXYF_MENU_LINK=1', '-DXYF_FILE_BOOT=1',
              '-DXYF_REMOTE_READ=1', '-DXYF_USB_SERVICE=1', '-DXYF_STAGE2_SERVICE=1',
-             '-DXYF_MTP_SESSION=1',                    # 3.5b: the MTP session (never in the product build)
+             '-DXYF_MTP_SESSION=1',                    # the MTP session (never in the product build)
              '-DXYF_BUILD_NUMBER="%s"' % (number if build is None else build), '-DXYF_BUILD_MODE="%s"' % name]
     flags += ['-D%s=1' % s for s in sorted(switches)]
     if hello is not None:
@@ -279,9 +279,9 @@ def seed(root, image=None):
         (folder / 'info.txt').write_bytes(info_text(image, name, '1.2.1'))
     (base / 'log').mkdir(exist_ok=True)
     (base / 'state-a.txt').write_bytes(slot_text('opxy-121', 1))
-    (base / 'settings.txt').write_bytes(b'format=1\nconfirm=0\n')   # 4.8: tests run unattended
+    (base / 'settings.txt').write_bytes(b'format=1\nconfirm=0\n')   # the Settings file: tests run unattended
     (root / 'firmware.version').write_text('1.2.1\n')
-    content = root / 'content'                         # 2.4d: the OS's content folder (writable), a stand-in catalog
+    content = root / 'content'                         # the OS's content folder (writable), a stand-in catalog
     content.mkdir(exist_ok=True)
     (content / 'op1_factory.json').write_text('{"xyf_sim": "stand-in op1_factory.json"}\n')
     return root

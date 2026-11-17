@@ -25,7 +25,7 @@ extern "C" uint32_t xyf_stage2_main(const xyf::stage2::Abi* abi) __asm__("xyf_st
 namespace {
 using namespace xyf;
 const uint32_t idle_ms = 60000;             // as the stage-1 menu: no keys for 60 s -> boot the default
-const ui::Chrome chrome = {"stage 2 (ABI 2)", false, 0, false};   // 8.7: the build line; no USB mark here
+const ui::Chrome chrome = {"stage 2 (ABI 2)", false, 0, false};   // the build line; no USB mark here
 
 catalog::Catalog catalog_copy XYF_DATA = {};
 menu::State menu_state XYF_DATA = {};
@@ -76,9 +76,9 @@ extern "C" uint32_t xyf_stage2_main(const stage2::Abi* abi) {
             case menu::Action::boot_once: return request(stage2::request_boot_once, menu_state.entry);
             case menu::Action::set_default: return request(stage2::request_set_default, menu_state.entry);
             case menu::Action::uninstall: return request(stage2::request_uninstall, 0);
-            case menu::Action::open_mods: return stage2::exit_menu;     // 5.4e1: stage 1 runs the Mods page
-            case menu::Action::save: case menu::Action::discard: return stage2::exit_menu;   // 8.4a: stage 1's (never here)
-            case menu::Action::change_setting: break;                  // 4.8: stage 1's Settings (no record here)
+            case menu::Action::open_mods: return stage2::exit_menu;     // stage 1 runs the Mods page
+            case menu::Action::save: case menu::Action::discard: return stage2::exit_menu;   // stage 1's (never here)
+            case menu::Action::change_setting: break;                  // stage 1's Settings (no record here)
             }
         }
         if (s.now_ms() - last_key > idle_ms) return request(stage2::request_continue, 0);

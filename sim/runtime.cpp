@@ -209,13 +209,13 @@ int power_ons = 0;
 unsigned relayed[2] = {0, 0};        // link messages delivered to A and to B (status: to_a, to_b)
 uint64_t cut_pending = 0;
 const char* names[2] = {"A", "B"};
-// Raw requests to A sent by the board itself, as if from B but past B's own checks (plan 2.2a:
-// A must refuse every brick path on its own). Their answers stay here; B never sees them.
+// Raw requests to A sent by the board itself, as if from B but past B's own checks:
+// A must refuse every brick path on its own. Their answers stay here; B never sees them.
 const uint32_t inject_bit = 0x80000000u;
 struct Injected { bool done; uint32_t result, error, body; };
 std::map<uint32_t, Injected> injected;
 uint32_t inject_count = 0;
-// Plan 0.9a: class requests B sent that A took and has not answered (by tag). After a reset of A
+// Class requests B sent that A took and has not answered (by tag). After a reset of A
 // they reach A's bootloader once it is on the link (a_redeliver; Test 108: "the request still in
 // flight" was answered by A's bootloader [F]; how the stock link carries it over is not known [U]).
 // A request sent while a processor is resetting is lost (forward(): nobody on the link) [I: 154's
@@ -331,7 +331,7 @@ void route(int from, const Message& m, std::vector<uint8_t>& body) {
     if (from == 1) {                                       // B -> A
         b_sent_ms = board_ms();
         if (m.cls == cls_partition && m.op == 0x18 && (m.a0 >> 16) == 0x434du) {
-            if (m.a0 & 7u) {                               // plan 0.9f: never from XY Forever's B
+            if (m.a0 & 7u) {                               // never from XY Forever's B
                 ++shared->odd_selects;
                 log("board: B's tagged select %08x has low bits %u", m.a0, m.a0 & 7u);
             }
@@ -514,7 +514,7 @@ std::string command(const std::string& line, bool& quit) {
         shared->swap_armed = 1;
         return "{\"ok\": true}";
     }
-    if (n >= 2 && (!strcmp(verb, "knob") || !strcmp(verb, "knob_raw"))) {   // 8.3 (runtime.hpp)
+    if (n >= 2 && (!strcmp(verb, "knob") || !strcmp(verb, "knob_raw"))) {   // runtime.hpp
         static uint8_t seq = 0xc4;                        // the PSoC's frame counter (as measured)
         Shared::KnobFrame f = {};
         long count = 1;
@@ -545,7 +545,7 @@ std::string command(const std::string& line, bool& quit) {
         shared->knob_head.store(head + uint32_t(count));
         return "{\"ok\": true}";
     }
-    if (n >= 2 && !strcmp(verb, "realkey")) {            // 4.8: realkey K P (runtime.hpp)
+    if (n >= 2 && !strcmp(verb, "realkey")) {            // realkey K P (runtime.hpp)
         long key = -1, pressed = -1;
         if (sscanf(line.c_str(), "realkey %ld %ld", &key, &pressed) != 2 || key < 0 || key > 255 || pressed < 0 || pressed > 1)
             return "{\"ok\": false, \"error\": \"realkey: K P\"}";

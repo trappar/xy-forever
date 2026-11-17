@@ -37,7 +37,7 @@ enum Reason : uint32_t {
     reason_policy = 5, reason_entry = 6, reason_report_slot = 7, reason_census_slot = 8,
     reason_heap = 9, reason_unmount = 10, reason_not_run = 11,
     reason_no_library = 12, reason_mismatch = 13,     // library boot: nothing bootable / info.txt size or CRC
-    reason_content = 14, reason_content_repair = 15   // 4.6c1: its content is not installed / a switch is unfinished
+    reason_content = 14, reason_content_repair = 15   // its content is not installed / a switch is unfinished
 };
 // Library boot: a picks the image from the XY Forever library (xyf_cold_library).
 struct LibraryInfo {

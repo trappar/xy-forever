@@ -1,8 +1,8 @@
 #ifndef XYF_FILE_ENGINE_HPP
 #define XYF_FILE_ENGINE_HPP
 #include <stdint.h>
-// The file engine's path policy and request decision (docs/decisions/009-file-engine.md, plan
-// item 2.2a). Pure and freestanding (no heap, no library calls), host-tested.
+// The file engine's path policy and request decision (docs/decisions/009-file-engine.md).
+// Pure and freestanding (no heap, no library calls), host-tested.
 //
 // One function decides every path: decide_engine. Processor A applies it to every request it
 // serves (storage_server.cpp serve_engine, through decide_request); processor B applies it to
@@ -30,7 +30,7 @@
 //    removed): harmless, keep it. The real marker is the lowercase name (88a202b0), which is
 //    what a re-creates (storage_server.cpp marker_path); do not "fix" one to match the other;
 //  - every raw boot-partition operation (the boot partition is written by INSTALL only);
-//  - a streamed write open (op_stream, plan item 2.2d) outside /yaffs2/xy-forever/tmp/.
+//  - a streamed write open (op_stream, #4) outside /yaffs2/xy-forever/tmp/.
 // Spelling: '/' runs count as one and a trailing '/' is ignored before the names are compared,
 // so "/yaffs2//BOOTLOADER.DEV/" is the marker. Bytes 0x80..0xff pass (UTF-8 names: the device
 // compares bytes and does not check UTF-8).
@@ -40,7 +40,7 @@ static const uint32_t max_path = 240;                  // bytes with the NUL (st
 static const uint32_t partition_class = 0x11907694u, path_class = 0x119076b4u, read_class = 0x11907368u,
                       sector_class = 0x11907348u, write_class = 0x11907710u, query_class = 0x11907388u;
 static const uint32_t path_buffer = 0x8803f6e0u;
-// 2.4c: file.rename's two paths reach A as two path-class access requests (op 0x21, the stock path
+// file.rename's two paths reach A as two path-class access requests (op 0x21, the stock path
 // builder 889f8d22 on B), told apart from an access by their argument word: rename_from carries the
 // source (A keeps it), rename_to the destination (A renames). A pairs a rename_to only with a
 // rename_from that was the request just before it (source below; 0: none).
@@ -50,7 +50,7 @@ enum Operation : uint32_t {
     op_list,            // open a folder
     op_stat,            // stat, file-system space, access
     op_write,           // open with any write, create or truncate flag
-    op_stream,          // open a streamed write (2.2d: only under /yaffs2/xy-forever/tmp/)
+    op_stream,          // open a streamed write (#4: only under /yaffs2/xy-forever/tmp/)
     op_mkdir,
     op_unlink,
     op_rmdir,
@@ -94,10 +94,10 @@ enum Action : uint32_t {
     run_read,           // read 0x2a
     run_readdir,        // sector 0x2f
     run_write,          // write 0x2b
-    refuse_partition,   // 2.3b: a boot partition is selected (install mode): yaffs is not on the chip's
+    refuse_partition,   // a boot partition is selected (install mode): yaffs is not on the chip's
                         // partition register, so nothing may reach storage until it is 0 again
-    run_rename_from,    // 2.4c: path 0x21 rename_from (A keeps the source; nothing runs)
-    run_rename_to       // 2.4c: path 0x21 rename_to (A renames source -> this path: a change)
+    run_rename_from,    // path 0x21 rename_from (A keeps the source; nothing runs)
+    run_rename_to       // path 0x21 rename_to (A renames source -> this path: a change)
 };
 // What a knows when it decides (each nonzero = true). session: a's storage session for this
 // entry is mounted; window: the read-write window is open; partition: install mode has a boot

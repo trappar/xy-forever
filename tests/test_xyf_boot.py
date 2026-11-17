@@ -202,7 +202,7 @@ class XyfBootTest(unittest.TestCase):
         self.assertNotIn('session.command(', ask)
         # The only op-10 command left in the file boot is the keepalive (v3 and the older modes).
         self.assertEqual(re.findall(r'session(?:\.|->)command\(([^)]*)', SOURCE), ['keepalive_tag << 16 | (++b_sequence & 0xffffu'])
-        # 0.9k2: keepalives are plain op-10 commands again (the probe is gone).
+        # keepalives are plain op-10 commands again (the probe is gone).
         tick = body(SOURCE, 'bool tick() {')
         self.assertNotIn('session->ask(', tick)
         self.assertNotIn('probe_item', SOURCE + SESSION)
@@ -225,7 +225,7 @@ class XyfBootTest(unittest.TestCase):
                      '++commands_seen_;last_command_=last_argument_=value;',
                      'respond(command_ack(value));', 'return Result::waiting;'):
             self.assertIn(text, block)
-        # 0.9b F1: b's bootloader (b restarted alone) is held before any command or request use.
+        # F1 (decision 016): b's bootloader (b restarted alone) is held before any command or request use.
         follow = poll.index('boot_request(word(queued),byte(queued+5),word(queued+8),word(queued+0x18))')
         self.assertLess(follow, take)
         self.assertLess(poll.index('if(peer_restart_&&staged_&&!agreed_)return Result::waiting;'), take)
@@ -249,8 +249,8 @@ class XyfBootTest(unittest.TestCase):
         # this wait b never gets the answer to a reboot command and waits command_ms.
         owner = body(SOURCE, 'bool role0_menu_boot(U32& bytes, U32& crc) {')
         resets = [m.start() for m in re.finditer(r'usb_service::reset_self\(\);', owner)]
-        # 0.9b: a follows b (nothing to answer: not a command handler) through a_follow, which closes
-        # storage first: b's bootloader asks (F1), or the idle window. 0.9k2: no guard, no alone rule.
+        # a follows b (nothing to answer: not a command handler) through a_follow, which closes
+        # storage first: b's bootloader asks (F1), or the idle window. Record 022: no guard, no alone rule.
         follow = body(SOURCE, 'void a_follow(cold_storage::Stock121ReadOnlySession& storage) {')
         self.assertLess(follow.index('a_close_files(storage);'), follow.index('usb_service::reset_self();'))
         self.assertIn('if (session.follow_now(now())) a_follow(storage);', owner)

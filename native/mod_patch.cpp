@@ -1,4 +1,4 @@
-// Mod assembly, patch step (plan 5.4c): a port of open-xy builder/core.mjs patchFirmware.
+// Mod assembly, patch step: a port of open-xy builder/core.mjs patchFirmware.
 #include "mod_patch.hpp"
 namespace xyf_core { namespace mod_patch {
 namespace {
@@ -15,7 +15,7 @@ U32 round4(U32 n) { return (n + 3u) & ~3u; }
 // Official open-xy bases (docs/STORAGE.md, "Mod packages"), laid out as Profile's first 96 bytes (stock and
 // catalog SHA-256, then stock_bytes, stock_records, module_base, reserved_bytes, module_bytes,
 // heap_fill_base, heap_fill_bytes, expanded_base), then edits.bin's SHA-256. The first 92 bytes and the edits
-// make a base known; its expanded_base must match too only when the larger layout is used (4.8m1), so a base
+// make a base known; its expanded_base must match too only when the larger layout is used, so a base
 // written before that key (expanded_base 0) stays known for the standard layout.
 struct KnownBase { Byte stock[32], catalog[32]; U32 numbers[8]; Byte edits[32]; };
 const U32 known_bytes = 92;

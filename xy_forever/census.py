@@ -252,7 +252,7 @@ KNOB_STATES = ('off', 'on', 'identity')
 
 
 def knob_summary(block):
-    """8.3: the knob reader's counters (target/knob_input.hpp Result, diag.status block KNB1); None if not one."""
+    """The knob reader's counters (target/knob_input.hpp Result, diag.status block KNB1); None if not one."""
     if len(block) != 4 * len(KNOB_FIELDS):
         return None
     out = dict(zip(KNOB_FIELDS, struct.unpack('<13I4i3I', block)))
@@ -528,7 +528,7 @@ USB_SERVICE_V3_FIELDS = ('log_lines log_sent log_skipped log_level_before log_si
 USB_SERVICE_V3_WORDS = USB_SERVICE_V2_WORDS + len(USB_SERVICE_V3_FIELDS)
 USB_SERVICE_V4_FIELDS = 'power_status boot_reason crash_restarts guard_kicks'.split()
 USB_SERVICE_V4_WORDS = USB_SERVICE_V3_WORDS + len(USB_SERVICE_V4_FIELDS)
-# 4.7a1 (usb_service.hpp Stage2Word / Stage2Status): the stage-2 load record in the unused diag words.
+# usb_service.hpp Stage2Word / Stage2Status: the stage-2 load record in the unused diag words.
 USB_STAGE2_FIELDS = 'status detail version bytes load_ms trace_code trace_value reads'.split()
 USB_STAGE2_STATUS = 'none loaded missing link read check copy init hook'.split()
 USB_INSTALL_STEPS = 'none checked a_install capacity writer writer_done verify_done'.split()
@@ -567,7 +567,7 @@ def usb_service(regions, dump):
             at += 16
             out['diag'] = [usb_diag(struct.unpack_from('<%dI' % USB_DIAG_WORDS, block, at + 4 * USB_DIAG_WORDS * i))
                            for i in range(min(out['diag_count'], USB_DIAG_SNAPSHOTS))]
-            if not out['diag_count']:                  # 4.7a1: the first 8 words hold the stage-2 record
+            if not out['diag_count']:                  # the first 8 words hold the stage-2 record
                 record = dict(zip(USB_STAGE2_FIELDS, struct.unpack_from('<8I', block, at)))
                 record['status'] = _peer_name(USB_STAGE2_STATUS, record['status'])
                 out['stage2'] = record

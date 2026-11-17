@@ -1,7 +1,7 @@
 #ifndef XYF_FILE_CLIENT_HPP
 #define XYF_FILE_CLIENT_HPP
 #include <stdint.h>
-// Processor B's file client (plan 2.2b, docs/decisions/009-file-engine.md): B's own requests to
+// Processor B's file client (docs/decisions/009-file-engine.md): B's own requests to
 // A's file engine, each one ending within a time limit. It replaced B's 12 stock posix client
 // calls, which submit through 889f869e -> 889f7b12 and spin on the request's done byte with no
 // limit (a silent A froze B for good; the builder now forbids both entries).
@@ -17,7 +17,7 @@
 //   write     889f8c10: 0x2b write (<= chunk bytes)
 //   readdir   889f88ac: 0x2f readdir (one 0x10c-byte entry)
 // Bounds: request_ms per request, change_ms for the ones that may change storage or wait for a
-// read-write mount or checkpoint (op 8, op 9, mkdir, unlink, rmdir, a write open, write, close, 2.4c the
+// read-write mount or checkpoint (op 8, op 9, mkdir, unlink, rmdir, a write open, write, close, the
 // rename_to access). Past its bound the
 // caller gets link and the request stays out (the slot is busy: later calls get busy, also link to
 // a host) until A answers or xyf_boot::lost_ms passes (then the link is lost until a reboot; the
@@ -46,12 +46,12 @@ struct Reply { uint32_t outcome; int32_t value; uint32_t error; };
 uint32_t bound_ms(uint32_t op, uint32_t argument);
 // The USB status for an outcome other than done (refused, else link).
 uint32_t status(uint32_t outcome);
-// 2.4a (pure; host-tested). The USB status of A's failed unlink, rmdir or mkdir by its error number
+// Pure; host-tested. The USB status of A's failed unlink, rmdir or mkdir by its error number
 // (the device's yaffs numbers, 1.2.1 listing 889fa4b0): 2 not_found, 13 (A's policy) refused, 93
 // (a folder not empty) state, any other storage.
 static const uint32_t enoent = 2, eacces = 13, enotempty = 93;
 uint32_t change_status(uint32_t error);
-// 2.4c (pure; host-tested): file.rename's status by A's error number: 17 (the target exists; A refuses
+// Pure; host-tested: file.rename's status by A's error number: 17 (the target exists; A refuses
 // it before the stock rename, which would replace it) state, else as change_status.
 static const uint32_t eexist = 17;
 uint32_t rename_status(uint32_t error);
@@ -63,12 +63,12 @@ static const uint32_t max_name = 255;
 uint32_t list_entry(const uint8_t* entry, bool have_record, const uint8_t* record, uint8_t* out, uint32_t room);
 // folder + '/' + name into out (file_engine::max_path bytes); false when it does not fit.
 bool child_path(const char* folder, const char* name, char* out);
-// 2.4b: what one readdir answer means (pure; host-tested). Stock 889f6bfa..889f6c02 (1.2.1, A's
+// What one readdir answer means (pure; host-tested). Stock 889f6bfa..889f6c02 (1.2.1, A's
 // sector executor 889f6b7c, op 0x2f): the reply value is A's yaffs_readdir result, the address of
 // A's yaffs_dirent (any nonzero word, high bit set on the device), 0 at the end of the folder; the
 // error word at the end is the stock posix errno (0x8807da98), which stays from earlier calls, so it
 // says nothing. A's own refusal of a readdir answers -1 (storage_server, with a zeroed entry). Build
-// 165 took only 1 as an entry: every folder listed empty on the device (2.4b). The MTP self-test and
+// 165 took only 1 as an entry: every folder listed empty on the device. The MTP self-test and
 // file.list both read entries through this.
 enum Folder : uint32_t { folder_entry = 0, folder_end, folder_error };
 uint32_t readdir_result(int32_t value);
@@ -81,7 +81,7 @@ uint32_t identity();
 // 1 = done; open: fd; opendir: folder handle, 0 = none; readdir: readdir_result).
 Reply mount();
 Reply unmount();
-// 5.4d2f: op 9 without waiting in it (the window close at the mod job's end; yaffs's
+// Op 9 without waiting in it (the window close at the mod job's end; yaffs's
 // checkpoint took 0.3 s to about 17 s on the device), so B's loop keeps answering USB meanwhile.
 // unmount_start: sent (done), or why not (busy, lost). unmount_poll, once per pass of B's loop: busy
 // while A has not answered within the bound (change_ms); then done (A's value), link (past the bound;
@@ -102,10 +102,10 @@ Reply statfs(const char* path, uint8_t* space);                     // space_byt
 Reply opendir(const char* path);
 Reply readdir(uint32_t folder, uint8_t* entry);                     // entry_bytes
 Reply closedir(uint32_t folder);
-Reply unlink(const char* path);                                     // 2.4a: op 0x25
-Reply rmdir(const char* path);                                      // 2.4a: op 0x27
+Reply unlink(const char* path);                                     // op 0x25
+Reply rmdir(const char* path);                                      // op 0x27
 // The USB service's file commands (xyf::usbp statuses; link when A did not answer).
-// 2.2r: before each one, is A still XY Forever? command_item as one bounded request (request_ms;
+// Before each one, is A still XY Forever? command_item as one bounded request (request_ms;
 // past it link, the request left out as any other): only A's XY Forever loop answers it with
 // command_ack (A's bootloader, after a lone restart, answers the select 0 and has no path policy).
 // s_ok, else s_link. It also latches A's read entry, as the menu's command item did.
@@ -114,14 +114,14 @@ uint32_t serving();
 // offset (fewer = end of file). mounted: B's op-8 state across calls (mounted_stale: a request of
 // an earlier read ran out its bound, so A may hold a handle B never closes: op 9 before the next
 // open). An open A refuses with EMFILE (its handle table is full) is s_storage, not s_not_found.
-// left (2.2r): the end of the read is the caller's, after its USB reply, so A's last requests overlap
+// left: the end of the read is the caller's, after its USB reply, so A's last requests overlap
 // the host's next request (this pays for the usb_service per-command check): the file read_file
 // opened (fd -1: none) and whether a ranged read's 1-byte probe is still due before the close.
 struct Open { int fd; bool probe; };
 uint32_t read_file(const char* path, uint32_t offset, bool ranged, uint8_t* out, uint32_t capacity,
                    uint32_t& bytes, volatile uint32_t& mounted, Open* left = 0);
 void finish_read(const Open& left, volatile uint32_t& mounted);     // probe, close; link: mounted_stale
-// LIST (2.4a): one page of a folder (opendir, readdir past skip entries, then entries with a stat
+// LIST: one page of a folder (opendir, readdir past skip entries, then entries with a stat
 // each while they fit capacity and max_page, closedir); more = 1 when the page ended before the
 // folder did. mounted as read_file. A folder A cannot open is s_not_found (EMFILE: s_storage); a
 // readdir A refused (folder_error) is s_storage after the closedir: never an ok, short page.
@@ -129,7 +129,7 @@ static const uint32_t max_page = 64;
 uint32_t list(const char* path, uint32_t skip, uint8_t* out, uint32_t capacity, uint32_t& count, uint32_t& more,
               uint32_t& bytes, volatile uint32_t& mounted);
 void release(volatile uint32_t& mounted);                           // op 9 when mounted
-// 5.4d2: B's op-8 state ready for raw requests (the mod job's file calls): a stale mount closed first (op 9),
+// B's op-8 state ready for raw requests (the mod job's file calls): a stale mount closed first (op 9),
 // then op 8 when not mounted. s_ok, else the status (link, storage).
 uint32_t mount_ready(volatile uint32_t& mounted);
 // FILE_WRITE (Test 049/050): op 8 (A opens the read-write window), mkdir for every folder below
@@ -137,16 +137,16 @@ uint32_t mount_ready(volatile uint32_t& mounted);
 // mounted must be 0. s_crc when the read-back differs from crc.
 uint32_t write_file(const char* path, const uint8_t* data, uint32_t size, uint32_t crc,
                     uint32_t& written, uint32_t& readback_crc, volatile uint32_t& mounted);
-// DELETE / RMDIR / MKDIR (2.4a): op 8 when needed, then the one change (op 0x25, 0x27 or 0x26; A opens
+// DELETE / RMDIR / MKDIR: op 8 when needed, then the one change (op 0x25, 0x27 or 0x26; A opens
 // its read-write window for it, as for FILE_WRITE). mounted must not be stale (s_state; the caller
 // sends op 9 first). error: A's error number when it failed (change_status).
 uint32_t change(uint32_t op, const char* path, uint32_t& error, volatile uint32_t& mounted);
-// RENAME (2.4c): the pair through valid_rename first (refused: nothing sent), op 8 when needed, then two
+// RENAME: the pair through valid_rename first (refused: nothing sent), op 8 when needed, then two
 // path requests on the path builder 889f8d22 (no new stock call): op 0x21 with argument rename_from and
 // the source (A keeps it), then op 0x21 rename_to and the target (A renames in its write window; bound
 // change_ms). mounted as change; error: A's error number (rename_status).
 uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint32_t& mounted);
-// COPY (2.4c2), the checks before B reads the source: op 8 when needed, then a stat of the target (as
+// COPY, the checks before B reads the source: op 8 when needed, then a stat of the target (as
 // file.list's; found: s_state, error eexist) and of its folder (missing: s_not_found, error enoent).
 // mounted as read_file (stale: op 9 first, in read mode).
 uint32_t copy_target(const char* path, uint32_t& error, volatile uint32_t& mounted);

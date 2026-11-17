@@ -1,12 +1,12 @@
-"""The menu's Mods page in the simulator (plan 5.4e1), driven by injected keys (key commands).
+"""The menu's Mods page in the simulator, driven by injected keys (key commands).
 
 The simulator hosts B's menu state machine and the page (sim/devices.cpp; the screen is not hosted): each
 change of the page is logged as one "mods page:" line, which these tests read. Opening the page from the
 home menu, the list filling while it is read (A slowed), the toggles and the memory estimate, Build (the
 job mods.apply starts: its entry must equal the same selection built through mods.apply byte for byte),
-(8.4a: the page no longer builds: Continue saves, tests/test_sim_config.py) the result lines (content.sha256 missing, a catalog that is not the official one, an unknown base and its
+(the page no longer builds: Continue saves, tests/test_sim_config.py) the result lines (content.sha256 missing, a catalog that is not the official one, an unknown base and its
 SHIFT confirmation), keys during the job, cancel, and the page staying responsive while it lists 80+
-packages (the longest pump pass is printed). 5.4e2 (build 174's commit): a built set becomes library entry
+packages (the longest pump pass is printed). Build 174's commit: a built set becomes library entry
 mods-a or mods-b, listed "content not installed", and the page says so; the commit stage (keys and STOP in
 it: not cancelled, said), a second Build at once (busy while the window closes, then the other id), a failed
 commit, both ids taken, a USB job while the page is used, leaving and coming back. Synthetic packages always;
@@ -30,13 +30,13 @@ import test_sim_content_switch as CS                                      # noqa
 from test_ui_mods import FILTER_ON, KINDS, display_order, estimate        # noqa: E402
 
 PLAY, STOP, MINUS, PLUS, SHIFT = 51, 52, 53, 54, 55
-MODS_ROW = 2                                                               # xyf_menu item_mods (5.4e1b)
+MODS_ROW = 2                                                               # xyf_menu item_mods
 VIEW_READING, VIEW_LIST, VIEW_BUILDING = range(3)
 LINE_NONE, LINE_INFO, LINE_ERROR, LINE_DONE = range(4)
 BUILT = 'Built: Mods: %d is in the Firmware library (content not installed yet).'
 NO_CANCEL = 'Cannot cancel now: it is being added to the library.'
 BUSY = 'Build failed: busy (a job, an upload or a save is running): try again.'
-BUSY_READ = 'Busy: a build or content change is running.'                 # 4.6c2: the page waits for a job
+BUSY_READ = 'Busy: a build or content change is running.'                 # the page waits for a job
 
 
 class PageBase(J.Base):
@@ -71,7 +71,7 @@ class PageBase(J.Base):
         return [line[line.find(marker) + len(marker):] for line in log.splitlines() if marker in line]
 
     def bars(self, job):
-        """8.2: the building bar of job at every redraw ("mods page:" and "mods bar:" lines, in order), as
+        """The building bar of job at every redraw ("mods page:" and "mods bar:" lines, in order), as
         dicts with ms (B's clock), bar, phase, done, total, commit."""
         out = []
         log = (self.dir / 'log.txt').read_text(errors='replace') if (self.dir / 'log.txt').exists() else ''
@@ -137,7 +137,7 @@ class PageBase(J.Base):
         self.fail('%s never selected' % folder)
 
     def walk(self):
-        """8.6: the rows' selections in order from the first row (SHIFT + -), by + presses (one full turn)."""
+        """The rows' selections in order from the first row (SHIFT + -), by + presses (one full turn)."""
         self.shifted(MINUS)
         first = self.page()['selected']
         order = []
@@ -150,7 +150,7 @@ class PageBase(J.Base):
         return order
 
     def shifted(self, key, field=None):
-        """8.6: key with SHIFT held; the page's answer (with field: the first line where it changed)."""
+        """Key with SHIFT held; the page's answer (with field: the first line where it changed)."""
         before, was = len(self.pages()), field and self.page()[field]
         self.key(SHIFT, 1)
         self.press(key)
@@ -159,13 +159,13 @@ class PageBase(J.Base):
                          'answered SHIFT + %d' % key)
 
     def spin(self, clicks, knob=1):
-        """8.6: knob turns as the PSoC reports them (the simulator's knob frames): clicks clockwise (< 0:
+        """Knob turns as the PSoC reports them (the simulator's knob frames): clicks clockwise (< 0:
         anticlockwise), one click = 2 counts (knob_input counts_per_row)."""
         reply = self.sim.control('knob %d %d %d' % (knob, 1 if clicks > 0 else -1, 2 * abs(clicks)))
         self.assertTrue(reply.get('ok'), reply)
 
     def shift_spin(self, clicks, knob=1):
-        """8.6: SHIFT held, one click: the filter steps; the page's answer."""
+        """SHIFT held, one click: the filter steps; the page's answer."""
         before, was = len(self.pages()), self.page()['filter']
         self.key(SHIFT, 1)
         self.spin(clicks, knob)
@@ -188,7 +188,7 @@ class PageBase(J.Base):
         return self.wait(lambda p: len(self.pages()) > before, 'answered PLAY')
 
     def to_filter(self, want):
-        """8.6: SHIFT + a knob turn clockwise until the filter is want."""
+        """SHIFT + a knob turn clockwise until the filter is want."""
         for _ in range(FILTER_ON + 1):
             if self.page()['filter'] == want:
                 return self.page()
@@ -285,7 +285,7 @@ class SyntheticPage(PageBase, unittest.TestCase):
 
     def test_toggle_and_meter(self):
         p = self.open_page()
-        first = display_order(self.gen_dir)[0][0]                          # 8.6: the first package selected
+        first = display_order(self.gen_dir)[0][0]                          # the first package selected
         self.assertEqual((p['shown_rows'], p['count'], p['selected'], p['on']),
                          (len(self.folders),) * 2 + (first[4:] if first.startswith('ext-') else first, []))
         self.assertEqual(p['used'], estimate(self.gen_dir, []))
@@ -297,7 +297,7 @@ class SyntheticPage(PageBase, unittest.TestCase):
         self.toggle(['gamma'])                                              # off again
         self.assertEqual(self.page()['used'], estimate(self.gen_dir, ['alpha', 'ext-cap']))
         self.toggle(['gamma'])
-        self.assertEqual((self.page()['changed'], self.page()['job']), (1, 0))   # 8.4a: pending until Continue saves
+        self.assertEqual((self.page()['changed'], self.page()['job']), (1, 0))   # pending until Continue saves
 
     def test_selection_kept_across_visits(self):
         self.open_page()
@@ -309,16 +309,16 @@ class SyntheticPage(PageBase, unittest.TestCase):
         self.assertEqual((p['view'], sorted(p['on'])), (VIEW_LIST, ['beta', 'ext-flt']))
 
     def test_order_filter_and_all_shown(self):
-        """8.4d: rows by kind then name; the filter cycles All, each kind present (its count), On only; all shown
+        """Rows by kind then name; the filter cycles All, each kind present (its count), On only; all shown
         on / off touches only the rows shown; the meter, the status and the home row count every mod."""
         order = display_order(self.gen_dir)
         counts = [sum(1 for _, k in order if k == i) for i in range(len(KINDS))]
         p = self.open_page()
         self.assertEqual((p['filter'], p['listed']), (0, len(order)))
         ids = [f[4:] if f.startswith('ext-') else f for f, _ in order]
-        self.assertEqual(self.walk(), ids)                                  # 8.6: only the packages
+        self.assertEqual(self.walk(), ids)                                  # only the packages
         seen = [(0, len(order))]
-        for knob in range(1, 1 + FILTER_ON + 1):                            # 8.6: SHIFT + turn, any knob
+        for knob in range(1, 1 + FILTER_ON + 1):                            # SHIFT + turn, any knob
             q = self.shift_spin(1, (knob - 1) % 4 + 1)
             seen.append((q['filter'], q['listed']))
             if q['filter'] == 0:
@@ -335,7 +335,7 @@ class SyntheticPage(PageBase, unittest.TestCase):
         self.toggle(['ext-cap'])                                            # outside the synths
         synth = KINDS.index('synth')
         self.to_filter(synth + 1)
-        q = self.shifted(PLAY, 'on')                                        # 8.6: SHIFT + PLAY: every synth on, nothing else touched
+        q = self.shifted(PLAY, 'on')                                        # SHIFT + PLAY: every synth on, nothing else touched
         synths = [f for f, k in order if k == synth]
         self.assertEqual(sorted(q['on']), sorted(synths + ['ext-cap']))
         self.assertEqual((q['used'], q['changed'], q['job']), (estimate(self.gen_dir, synths + ['ext-cap']), 1, 0))
@@ -367,7 +367,7 @@ class SyntheticPage(PageBase, unittest.TestCase):
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class MenuQuality(PageBase, unittest.TestCase):
-    """8.2: - / + repeat while held (400 ms, then every 80 ms; key_repeat.hpp), timed by B's clock in the
+    """- / + repeat while held (400 ms, then every 80 ms; key_repeat.hpp), timed by B's clock in the
     simulator's log; the knob pushes (keys 10..13) act as PLAY; the building bar over a whole build."""
     base = 'modbase'
     unverified = True
@@ -431,7 +431,7 @@ class MenuQuality(PageBase, unittest.TestCase):
         time.sleep(0.4)
         self.assertEqual(len(self.lines('menu: repeat key ')), count)       # no queued moves after the job
         p = self.page()
-        self.assertEqual(p['selected'], self.page_order()[(1 + len(repeats)) % len(self.folders)])   # 8.6: packages only
+        self.assertEqual(p['selected'], self.page_order()[(1 + len(repeats)) % len(self.folders)])   # packages only
 
     def page_order(self):
         """The rows' ids in order (the first package first), from the selection walk of the log."""
@@ -443,7 +443,7 @@ class MenuQuality(PageBase, unittest.TestCase):
 
     def test_knob_pushes_are_play(self):
         p = self.open_page()                                                # Mods row, then a knob as PLAY
-        first = self.page()['selected']                                     # 8.6: the first package
+        first = self.page()['selected']                                     # the first package
         self.press(12)
         self.assertEqual(self.wait(lambda p: p['on'], 'toggled by a knob', 5.0)['on'], [first])
         self.press(13)
@@ -463,8 +463,8 @@ class MenuQuality(PageBase, unittest.TestCase):
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class PageAndSwitch(PageBase, CS.Switch, unittest.TestCase):
-    """4.6c1 on 5.4e2: the content switch shares the job slot with the page's build. A switch running while the
-    page is opened fresh: busy, no reading until it ends (4.6c2; also during a USB job's write phase); with the
+    """The content switch shares the job slot with the page's build. A switch running while the
+    page is opened fresh: busy, no reading until it ends (also during a USB job's write phase); with the
     list held, Build is refused busy (nothing started) and the switch goes on to its end (default set, record
     written); the page's next Build reads the saved official catalog. Set-default to the entry a page build just
     committed: the switch runs and the record says it is installed. (CS.Switch's helpers for the switch.)"""
@@ -500,7 +500,7 @@ class PageAndSwitch(PageBase, CS.Switch, unittest.TestCase):
         self.assertTrue(self.record().startswith('state=installed\nentry=%s\n' % entry), self.record())
 
     def opened_busy(self, what):
-        """4.6c2: the page opened fresh (no list held) while a job owns the slot: the busy line at once, no
+        """The page opened fresh (no list held) while a job owns the slot: the busy line at once, no
         reading (no storage request) while it lasts."""
         for _ in range(MODS_ROW):
             self.press(PLUS)
@@ -510,7 +510,7 @@ class PageAndSwitch(PageBase, CS.Switch, unittest.TestCase):
         return p
 
     def listed_after(self, what):
-        """4.6c2: the list once the job is over (the page stayed open), never a storage error, every pump pass
+        """The list once the job is over (the page stayed open), never a storage error, every pump pass
         short; the longest is printed."""
         p = self.wait(lambda p: p['view'] == VIEW_LIST and p['shown'] == 1, 'listed after ' + what, 60.0)
         self.assertEqual((p['count'], p['shown_rows'], p['line']), (len(self.folders),) * 2 + (LINE_NONE,), p)
@@ -586,7 +586,7 @@ class ManyPackages(PageBase, unittest.TestCase):
         self.assertTrue(any(0 < n < total for n in partial), partial)       # filled as entries arrived
         self.assertEqual((p['shown_rows'], p['line']), (total, LINE_NONE))
         self.assertLess(p['longest'], 60, p)
-        for _ in range(3):                                                  # keys work at once (8.4d: past
+        for _ in range(3):                                                  # keys work at once (past
             self.press(PLUS)                                                # the filter and all rows)
         self.press(PLAY)
         self.assertEqual(len(self.page()['on']), 1)
@@ -619,7 +619,7 @@ class PublishedPage(PageBase, unittest.TestCase):
         self.toggle(on)
         p = self.page()
         self.assertEqual(p['used'], estimate(self.gen_dir, on))
-        # 8.4d: sorted while read; the display order as specified; the longest pass within ManyPackages' bound
+        # sorted while read; the display order as specified; the longest pass within ManyPackages' bound
         self.assertLess(p['longest'], 60, p)
         ids = [f[4:] if f.startswith('ext-') else f for f, _ in display_order(self.gen_dir)]
         self.assertEqual(self.walk(), ids)

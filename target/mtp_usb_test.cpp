@@ -35,7 +35,7 @@ enum Op : uint32_t { op_none, op_stop, op_register, op_start, op_alloc, op_submi
 uint32_t freeze_op, freeze_nth, calls[op_ops];
 void step(Op op) { if (++calls[op] == freeze_nth && op == freeze_op) throw Freeze(); }
 Driver other = {"other", 0, 0, 0, 0, 0, 0, 0};
-void boot() {                          // T2a: a boot before USB: empty slot, nothing started
+void boot() {                          // a boot before USB: empty slot, nothing started
     slot = 0; started = false; flags_word = 0; timer_open = true;
     stops.clear(); starts.clear();
     for (uint32_t& c : calls) c = 0;
@@ -49,7 +49,7 @@ Endpoint ep_in = {kBulkIn, 0, 0, 0, 0, kMaxPacket, 0}, ep_ser_in = {kSerialIn, 0
 std::deque<Urb*> in_pending;
 std::vector<uint8_t> host_in, host_serial;   // bytes the host has read from bulk IN (MTP, serial)
 uint32_t serial_zlps, serial_in_urbs;
-// T2b: with check_containers, every MTP IN urb starts at a container's start or continues one; only a container's
+// With check_containers, every MTP IN urb starts at a container's start or continues one; only a container's
 // last urb may be short, and it carries a ZLP exactly when it is a multiple of 512.
 bool check_containers; uint32_t mtp_left, mtp_zlps, mtp_urbs;
 std::set<Urb*> live;
@@ -225,7 +225,7 @@ static void enumerate() {
 
 static uint32_t longest_us;
 static uint32_t stalls __attribute__((unused));
-static void (*after_pump)() = 0;                                       // T2b: the responder's steps (usb_service)
+static void (*after_pump)() = 0;                                       // the responder's steps (usb_service)
 static void pass() {
     const auto t0 = std::chrono::steady_clock::now();
     pump();
@@ -271,7 +271,7 @@ static void run_until_response(std::vector<uint8_t>& data, std::vector<uint8_t>&
 }
 
 #if XYF_MTP_USB_KICK
-// 3.4: the probe's sink hook sees exactly the sink's data, in order.
+// The probe's sink hook sees exactly the sink's data, in order.
 static std::vector<uint8_t> hooked;
 static unsigned hook_starts;
 static void hook(const uint8_t* data, uint32_t n, bool first) {
@@ -280,7 +280,7 @@ static void hook(const uint8_t* data, uint32_t n, bool first) {
 }
 #endif
 
-// T2a: every OUT urb live after a configure: ours (MTP, serial) and the stack's own one per OUT endpoint.
+// Every OUT urb live after a configure: ours (MTP, serial) and the stack's own one per OUT endpoint.
 static const size_t kAllOut = kOutUrbs + kSerialOutUrbs + 2;
 
 // CDC ACM requests on interface 0 (wIndex): line coding stored and returned, control lines, break.
@@ -407,7 +407,7 @@ static void session() {
     stack::boot();
     REQUIRE(begin(stack::port) && state() == State::started && stack::slot == driver());
     REQUIRE(!begin(stack::port));
-    REQUIRE(stack::starts == std::vector<uint32_t>({kCompositeFlags}) && stack::stops.empty());   // T2a: one start, no stop
+    REQUIRE(stack::starts == std::vector<uint32_t>({kCompositeFlags}) && stack::stops.empty());   // one start, no stop
     enumerate();
     pass();
     REQUIRE(state() == State::configured && stack::live.size() == kAllOut);   // ours + the stack's own
@@ -548,7 +548,7 @@ static void session() {
     pump();                                                                // off: nothing
 }
 
-// ---- T2a: progress marks --------------------------------------------------------------------------------
+// ---- Progress marks --------------------------------------------------------------------------------
 // The hook as usb_service's: each mark rewrites the whole file (here: the list); fail_at's write fails.
 static std::vector<uint32_t> marks_file, marks_ram;
 static uint32_t fail_at, hook_calls;
@@ -641,7 +641,7 @@ static void unmasked_free() {           // argv "unmasked-free": the model must 
 }
 
 #if XYF_MTP_USB_KICK
-// ---- T2b: the responder as the MTP interface's handler, over an in-memory /yaffs2 --------------------------------
+// ---- The responder as the MTP interface's handler, over an in-memory /yaffs2 --------------------------------
 namespace t2b {
 namespace M = xyf_core::mtp;
 using xyf_core::U32;

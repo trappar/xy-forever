@@ -1,4 +1,4 @@
-"""B's timed file client (plan 2.2b, file_client.cpp): the six admitted stock calls, their
+"""B's timed file client (file_client.cpp): the six admitted stock calls, their
 scope and CRC spans, the request bounds, the removed stock client. Behaviour (silent, slow, lossy
 A): tests/test_simulator.py. No device execution."""
 import ctypes as C
@@ -56,7 +56,7 @@ class AllowlistTest(unittest.TestCase):
         self.assertNotIn('guard_pause', client)
 
     def test_path_copied_only_after_the_slot_is_claimed(self):
-        # 2.2r: a request left out past its bound points at path_buffer, and the stock driver reads
+        # a request left out past its bound points at path_buffer, and the stock driver reads
         # it only when it sends: no caller may write it before claim() succeeded.
         client = (ROOT / 'target/file_client.cpp').read_text()
         for name in ('Reply path_request(', 'Reply query('):
@@ -103,7 +103,7 @@ class BoundsTest(unittest.TestCase):
             self.assertEqual(self.lib.fc_bound_ms(op, argument), long, hex(op))
         for op, argument in ((0x29, 0), (0x2a, 0), (0x2c, 3), (0x2e, 0), (0x2f, 0), (0x30, 0), (0x22, 0), (0x23, 0)):
             self.assertEqual(self.lib.fc_bound_ms(op, argument), short, hex(op))
-        # 2.4c: file.rename's rename_to opens the write window and renames (long); rename_from only keeps it.
+        # file.rename's rename_to opens the write window and renames (long); rename_from only keeps it.
         self.assertEqual(self.lib.fc_bound_ms(0x21, 0x4f544e52), long)
         for argument in (0x52464e52, 0, 4):
             self.assertEqual(self.lib.fc_bound_ms(0x21, argument), short, hex(argument))
@@ -116,11 +116,11 @@ class BoundsTest(unittest.TestCase):
             self.assertEqual(self.lib.fc_status(outcome), ids.S_LINK)
 
     def test_change_status(self):
-        # 2.4a: A's yaffs error numbers (1.2.1 listing 889fa4b0): ENOENT 2, A's policy EACCES 13, ENOTEMPTY 93.
+        # A's yaffs error numbers (1.2.1 listing 889fa4b0): ENOENT 2, A's policy EACCES 13, ENOTEMPTY 93.
         for error, status in ((2, ids.S_NOT_FOUND), (13, ids.S_REFUSED), (93, ids.S_STATE), (17, ids.S_STORAGE),
                               (20, ids.S_STORAGE), (21, ids.S_STORAGE), (30, ids.S_STORAGE), (0, ids.S_STORAGE)):
             self.assertEqual(self.lib.fc_change_status(error), status, error)
-        # 2.4c: file.rename: A's EEXIST (the target exists: refused before the stock rename) is state.
+        # file.rename: A's EEXIST (the target exists: refused before the stock rename) is state.
         for error, status in ((17, ids.S_STATE), (2, ids.S_NOT_FOUND), (13, ids.S_REFUSED), (93, ids.S_STATE),
                               (22, ids.S_STORAGE), (5, ids.S_STORAGE), (0, ids.S_STORAGE)):
             self.assertEqual(self.lib.fc_rename_status(error), status, error)
@@ -143,14 +143,14 @@ class BoundsTest(unittest.TestCase):
         self.assertEqual(self.entry(b'sub', 8, (0x41ed, 2048)), b'\x01' + bytes(4) + b'\x03sub')   # stat decides
         self.assertEqual(self.entry(b'sub', 4), b'\x01' + bytes(4) + b'\x03sub')                  # no stat: d_type
         self.assertEqual(self.entry(b'link', 10, (0xa1ff, 9))[0], 2)
-        self.assertEqual(self.entry(b'link', 10, (0x41ed, 0))[0], 2)   # 2.3f: a link to a folder: never a folder
+        self.assertEqual(self.entry(b'link', 10, (0x41ed, 0))[0], 2)   # a link to a folder: never a folder
         self.assertEqual(self.entry(b'f', 8)[:5], b'\x00' + bytes(4))                             # no stat: no size
         self.assertEqual(len(self.entry(b'x' * 300, 8)), 6 + 255)                                   # names stop at 255
         self.assertEqual(self.entry(b'abc', 8, room=8), b'')                                         # 9 B do not fit
         self.assertEqual(len(self.entry(b'abc', 8, room=9)), 9)
 
     def test_readdir_result(self):
-        # 2.4b: stock 889f6c02 answers A's dirent address (build 165 took only 1 as an entry: every
+        # stock 889f6c02 answers A's dirent address (build 165 took only 1 as an entry: every
         # device folder listed empty), 0 at the end; A's refusal -1 (storage_server).
         entry, end, error = 0, 1, 2
         for value in (0x8806f9a4 - (1 << 32), 0x0804f700, 1, 0x7fffffff, -2):

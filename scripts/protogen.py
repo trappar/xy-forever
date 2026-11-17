@@ -75,7 +75,7 @@ REQUIRED_CONSTANTS = ('header_bytes', 'trailer_bytes', 'max_payload', 'max_data'
 HELLO_SOURCES = ('version', 'build', 'mode', 'cmds', 'dev', 'stage2')
 STAGE2_DIGITS = 10                                # a u32 in decimal
 # Switches no build defines: the device sets the command's cmds bit at run time (stage2.info: while
-# stage 2 is loaded, 4.7a1). The generated #if blocks give the digit without them.
+# stage 2 is loaded). The generated #if blocks give the digit without them.
 RUNTIME_SWITCHES = ('XYF_STAGE2_LOADED',)
 BUILD_MACROS = {'build': 'XYF_BUILD_NUMBER', 'mode': 'XYF_BUILD_MODE'}
 HELLO_TEXT = re.compile(r'^[!-:<>-~]+$')          # printable ASCII without space, ';' and '='

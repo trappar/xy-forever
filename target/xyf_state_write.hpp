@@ -10,7 +10,7 @@
 //   item_set_default + i        menu: b has the catalog, i = library index
 //   item_id_nibble + k, seq = nibble k of CRC-32(id) << 3, k = 0..7, then
 //   item_set_default_by_id      USB: the host names the entry by id
-// 1.5: nibbles, not bytes: the low three bits of every command value stay 0 (docs/HARDWARE.md: a
+// Nibbles, not bytes: the low three bits of every command value stay 0 (docs/HARDWARE.md: a
 // command that reaches A's bootloader selects partition value & 7; 0 is the user area).
 namespace xyf { namespace state_write {
 static const uint32_t max_bytes = 4096;

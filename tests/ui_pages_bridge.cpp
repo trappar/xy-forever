@@ -1,7 +1,7 @@
 // Host bridge for XY Forever pages (previews and tests; not linked into the device).
 #include "../target/ui_pages.hpp"
 using namespace xyf::ui;
-extern xyf::ui::Chrome bridge_chrome;                 // ui_preview_bridge.cpp (8.7)
+extern xyf::ui::Chrome bridge_chrome;                 // ui_preview_bridge.cpp
 extern "C" {
 void ui_render_library(uint16_t* fb, unsigned selected, unsigned count) {
     static const ListRow rows[] = {

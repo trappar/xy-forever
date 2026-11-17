@@ -16,7 +16,7 @@ python3 scripts/device_pass.py --install ../private/xy-forever/builds/xy-forever
 ```
 
 `--xyf-product` is the product (boot model v3) and the only installable mode (the
-v2 two-session flow was removed in plan 0.4b). STATUS names the installed and
+v2 two-session flow was removed). STATUS names the installed and
 known-good builds. Builds are deterministic, but `--verify` from a later checkout
 fails with "Source changed since build": re-verify an old build from its own commit.
 Only the install's verify reply proves an install; a later successful boot does not.
@@ -81,10 +81,10 @@ one guard expiry-test after a read while A runs; B resets, A follows ~10.4 s lat
   overwritten each pass) and `device-pass-2.txt`; since 165 it removes its library scratch
   entry and its file-command folder `xyf-pass-files` again.
 
-## Mod boot `scripts/mod_boot.py` (5.4e0; `--plan`, `--sim`, NEED/exit 3 like the device pass)
+## Mod boot `scripts/mod_boot.py` (`--plan`, `--sim`, NEED/exit 3 like the device pass)
 
 `python3 scripts/mod_boot.py`: assemble fm2op (`--mods a,b`), upload to `firmware/xyf-mods-test/`
-(`--replace` if present), read back, menu catalog check. `--content` (2.4d) then saves the device's
+(`--replace` if present), read back, menu catalog check. `--content` then saves the device's
 `content/op1_factory.json` (`get`, SHA-256) and puts the content delta (`display/<id>.svg`,
 `presets/<id>/`, the assembled catalog); refused if the catalog cannot be saved first.
 `--boot-once` sends `boot ID` (library.boot: the menu's boot once, no state write); it prints what

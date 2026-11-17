@@ -1,4 +1,4 @@
-"""Content-set manifests (plan 4.6a1, docs/decisions/010-package-model.md, docs/STORAGE.md).
+"""Content-set manifests (docs/decisions/010-package-model.md, docs/STORAGE.md).
 
 A content set is every file of an official package's `firmware/blackfin/content/` folder, which
 the OS reads as `/yaffs2/content/`. Its manifest is `content.sha256`: the files.sha256 list form

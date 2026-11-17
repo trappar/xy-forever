@@ -438,7 +438,7 @@ class HostToolTest(unittest.TestCase):
         self.assertEqual(fake.installed, data)
 
     def test_hello_gates_commands(self):
-        """1.2b: a v1 device's `cmds` decides what the host sends; a pre-v1 HELLO (build 153 and
+        """A v1 device's `cmds` decides what the host sends; a pre-v1 HELLO (build 153 and
         earlier: no cmds) and a missing proto gate nothing; another major version stops the tool."""
         import contextlib, io
         host = self.host
@@ -594,7 +594,7 @@ class SelectConventionTest(unittest.TestCase):
         text = (ROOT / 'target/storage_server.cpp').read_text()
         self.assertIn('        if (word(request + 0x10) == 0) {\n            selected_partition = argument;', text)
         self.assertNotIn('if (word(request + 0x10)) selected_partition', text)
-        # 2.3c: a boot-partition select counts as selected for storage from the attempt on.
+        # a boot-partition select counts as selected for storage from the attempt on.
         self.assertLess(text.index('if (argument) select_attempted = 1;'), text.index('stock<0x889f76cau, void>(request);\n'
                         '        // Stock reply = 88a08710'))
         self.assertIn('return selected_partition != 0 || select_attempted != 0;', text)
@@ -634,7 +634,7 @@ class FastLinkAndReportsTest(unittest.TestCase):
         self.assertLessEqual(interval, 1000)
 
     def test_ranged_read_uses_stock_lseek_and_is_allowed(self):
-        text = (ROOT / 'target/file_client.cpp').read_text()       # 2.2b: op 0x2c by the partition builder
+        text = (ROOT / 'target/file_client.cpp').read_text()       # op 0x2c by the partition builder
         self.assertIn('const Reply k = seek(fd, int(offset));', text)
         self.assertIn('if (k.value != int(offset)) code = xyf::usbp::s_range;', text)
 
@@ -694,7 +694,7 @@ class UsbPresenceTest(unittest.TestCase):
         release = release[:release.index('\n}\n')]
         self.assertLess(release.index('guard_disarm();'), release.index('usb_stop();'))
         pump = text[text.index('uint32_t home_pump() {'):]
-        self.assertIn('else if (on) guard_arm();', pump)   # otherwise only the host arms it (b only: 0.9k2)
+        self.assertIn('else if (on) guard_arm();', pump)   # otherwise only the host arms it (b only: record 022)
         self.assertNotIn('guard_item', text)
         install = text[text.index('void install(uint8_t seq'):]
         self.assertLess(install.index('guard_count_set(guard_writer_count);'), install.index('write_boot(staged'))
@@ -719,8 +719,8 @@ class UsbPresenceTest(unittest.TestCase):
         self.assertEqual(P.TEST_HANG, 0x60)
 
     def test_a_has_no_guard_and_restarts_only_by_following_b(self):
-        # 0.9k2 (record 022): a's own guard and its alone rule are gone; a restarts only to follow b
-        # (F1, the idle window), closing the window first (2.3b), or on b's REBOOT item.
+        # record 022: a's own guard and its alone rule are gone; a restarts only to follow b
+        # (F1, the idle window), closing the window first, or on b's REBOOT item.
         text = (ROOT / 'target/file_boot.cpp').read_text()
         for gone in ('a_guarded', 'a_alone_ms', 'a_guard', 'restart_a_item'):
             self.assertNotIn(gone, text)
@@ -740,7 +740,7 @@ class UsbPresenceTest(unittest.TestCase):
 
 
 class HoldTest(unittest.TestCase):
-    """Test 041 hold and guard: the v2 held service loop is gone (plan 0.4b); v3 home keeps
+    """Test 041 hold and guard: the v2 held service loop is gone; v3 home keeps
     HOLD/GUARD (home_pump). What still applies: resets disarm the guard first; host commands."""
 
     def test_reset_disarms_the_guard_first(self):

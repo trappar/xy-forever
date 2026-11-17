@@ -13,7 +13,7 @@ FLAGS = ['-mcpu=bf707', '-std=gnu++11', '-ffreestanding', '-fno-exceptions', '-f
          '-fno-use-cxa-atexit', '-fno-asynchronous-unwind-tables', '-fno-unwind-tables', '-fno-common',
          '-fno-tree-loop-distribute-patterns', '-fomit-frame-pointer', '-nostdinc++', '-Wall', '-Werror',
          '-Wno-unused-variable', '-Os', '-fstack-usage']
-# The OS-only .tfw extractor (plan 4.3a), tfw.check's verdict (4.3c) and the native codecs they
+# The OS-only .tfw extractor, tfw.check's verdict and the native codecs they
 # use. The codecs' aggregate copies (and tfw_check's zeroed View) call memcpy/memset, which
 # native/memory.cpp supplies; the extractor itself calls nothing outside xyf_core. tfw::Archive::open hashes into a 1 KiB stack buffer; the extractor
 # uses open_digested instead.
@@ -21,18 +21,18 @@ EXTRACTOR = ('tfw_os', 'tfw', 'tfw_check', 'tfw_signature', 'p224', 'aes', 'hash
 SUPPLIED = {'_memcpy', '_memset'}
 SELF_CONTAINED = {'tfw_os', 'tfw_signature', 'p224'}      # no calls outside xyf_core at all
 LARGE_FRAMES = ('xyf_core::tfw::Archive::open(',)
-# The signature check (plan 4.3b): its whole call tree, and the bound on its stack.
+# The signature check: its whole call tree, and the bound on its stack.
 SIGNATURE = ('tfw_signature', 'p224', 'hash')
 SIGNATURE_STACK = 3072
-# Mod assembly's patch and content steps (plan 5.4c, decision 019): no calls outside xyf_core at all
+# Mod assembly's patch and content steps (decision 019): no calls outside xyf_core at all
 # (no memcpy, memset or division helpers), no BSS, no recursion.
 MOD_ASSEMBLY = ('mod_patch', 'mod_content')
 MOD_ASSEMBLY_TREE = MOD_ASSEMBLY + ('hash', 'ldr')
 MOD_ASSEMBLY_STACK = 2048
-# The whole mod assembler (link, patch, content; plans 5.4b, 5.4c, 5.4j): one bound on the text +
+# The whole mod assembler (link, patch, content): one bound on the text +
 # rodata of every native mod source at the firmware's flags (xy_forever/toolchain.CXX_FLAGS, -O2),
 # which stage 2 must find room for. A tripwire against unnoticed growth, not a hard limit: measured
-# 2026-11-14 at 49,596 B (-O2) after the linker (5.4w1) and patch/content hardening; the bound is that
+# 2026-11-14 at 49,596 B (-O2) after the linker and patch/content hardening; the bound is that
 # rounded up to 1 KiB plus 1 KiB of headroom. Raise it deliberately when a change justifies it.
 MOD_ASSEMBLER = ('mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content')
 MOD_ASSEMBLER_CODE = 51200

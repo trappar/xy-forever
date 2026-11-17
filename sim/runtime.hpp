@@ -25,7 +25,7 @@ struct Shared {
     std::atomic<int32_t> fail_mount;              // the Nth yaffs mount from now fails (EIO)
     std::atomic<int32_t> a_silenced;              // B's class requests a_silent kept from A (tests: the request is out)
     std::atomic<uint32_t> clock_reads[2];         // device clock reads by A and B (tests: a processor ran on past an advance)
-    // 2.2b test hooks: the Nth stock select on A switches the partition and then answers failure;
+    // Test hooks: the Nth stock select on A switches the partition and then answers failure;
     // every yaffs unmount fails while fail_unmount is set; the Nth posix open on A (the marker's
     // restore) fails; the next path body reaches the stock path buffer whole (240 bytes, no NUL
     // added) instead of cut at 239 bytes.
@@ -40,7 +40,7 @@ struct Shared {
     // yaffs's own record across restarts and power cuts: a read-write mount not yet unmounted (no
     // checkpoint written), and the mounts that found one (on the device: a full scan, a slow boot).
     std::atomic<int32_t> rw_open, unclean_mounts;
-    std::atomic<int32_t> rw_mounts;              // 2.2c: read-write mounts since the simulator started (window opens)
+    std::atomic<int32_t> rw_mounts;              // read-write mounts since the simulator started (window opens)
     // Test hook (control "swap PATH"): the next path or query executor on A finds PATH in the stock
     // path buffer, as if a second request's body had arrived between A's check and the executor.
     std::atomic<int32_t> swap_armed;
@@ -55,14 +55,14 @@ struct Shared {
     // 1 the ROM answers nothing, 2 the public key is off the curve, 3 it is another valid key (the
     // P-224 generator), 4 the AES key is wrong. Counted: ROM inits and reads.
     std::atomic<int32_t> otp_fail, otp_inits, otp_reads;
-    // Plan 0.9a (sim/boot.cpp, decision record 016): per processor, 1 while its stock bootloader
+    // Decision record 016 (sim/boot.cpp): per processor, 1 while its stock bootloader
     // stand-in runs (after a reset, until it boots XY Forever); WDOG0 expiries seen; control
     // "expire a|b" (the guard counts out at the processor's next host call, if armed). The
     // board's reset delays (ms from a reset until the processor's bootloader is on the link) and
     // whether the requests A took and never answered reach A's bootloader (Test 108; switchable).
     std::atomic<int32_t> in_bootloader[2], expiries[2], expire[2];
     std::atomic<int32_t> a_boot_ms, b_boot_ms, a_redeliver;
-    // set a_stall_now MS (0.9k1): A's main thread (its loop) stalls MS ms of device time at its next
+    // set a_stall_now MS: A's main thread (its loop) stalls MS ms of device time at its next
     // host call (a hung A; the link thread still echoes op-10). odd_selects: B's tagged selects
     // (command_tag in the argument's high half) whose low three bits are not 0 (A's bootloader's
     // select takes the argument & 7).
@@ -74,7 +74,7 @@ struct Shared {
     // Test hook (set cut_body N): the next reply body longer than N bytes reaches B cut after N bytes,
     // and then nothing more from A reaches B (the link dropped mid-body) until B restarts.
     std::atomic<int32_t> b_queue, b_queued, cut_body;
-    // Plan 0.9k1 (decision record 022 §1, §6): a reset of B lands in B's bootloader, which probes A
+    // Decision record 022 §1, §6: a reset of B lands in B's bootloader, which probes A
     // (one byte) before the display, USB or the link: a freshly reset A (boot ROM, 0xff) gets its
     // bootloader pushed and both go on; an A already running anything (its bootloader with the slave
     // open, XY Forever) makes B wait with no bound until A resets. The board decides at B's reset:
@@ -84,10 +84,10 @@ struct Shared {
     // completes. Test hook (set b_close_stuck 1): B's next master close leaves SPI and DMA enabled
     // and the link interrupts registered (a close that did not take).
     std::atomic<int32_t> boot_a_window_ms, b_gate, b_waits_a, b_close_stuck;
-    // 4.7a1: opens of anything under /yaffs2/xy-forever/stage2/ on A (a plain boot makes none), and
+    // Opens of anything under /yaffs2/xy-forever/stage2/ on A (a plain boot makes none), and
     // stage-2 calls through the trampoline stand-in (sim/stage2.cpp).
     std::atomic<int32_t> stage2_opens, stage2_calls;
-    // 5.4d2f (set unmount_ms MS): every read-write yaffs unmount on A (the window close; the device's
+    // set unmount_ms MS: every read-write yaffs unmount on A (the window close; the device's
     // checkpoint after megabytes of writes took 0.3 s to about 17 s) takes MS ms more of host time (set 0:
     // a checkpoint in progress ends).
     std::atomic<int32_t> unmount_ms;
@@ -101,10 +101,10 @@ struct Shared {
     // media change (it calls the erase callback, dev +0x88) and fails, until a read-write mount is
     // followed by its unmount (the checkpoint; a power cut before that leaves it set).
     std::atomic<int32_t> needs_repair;
-    // 5.4d3a (set rename_fault N, rename_fault_kind K): the Nth yaffs rename on A from now fails with EIO
+    // set rename_fault N, rename_fault_kind K: the Nth yaffs rename on A from now fails with EIO
     // (K 1, nothing renamed), is followed by a power cut (K 2) or leaves A silent from then on (K 3: a_silent).
     std::atomic<int32_t> rename_fault, rename_fault_kind;
-    // 8.3 test hooks (control "knob ID DELTA [COUNT]", "knob_raw HEX [COUNT]", "knob_jump N"): PSoC frames for
+    // Test hooks (control "knob ID DELTA [COUNT]", "knob_raw HEX [COUNT]", "knob_jump N"): PSoC frames for
     // B's stock receive queue, as the stock UART handler stores them. B's menu loop takes them where the stock
     // poll runs (sim/devices.cpp): each into slot write % 128, the write index advanced, then the read index
     // set to it (the poll pops them; type 0x45 is dropped). set knob_per_pass N: at most N frames per pass (0
@@ -115,7 +115,7 @@ struct Shared {
     KnobFrame knob_frame[knob_frames];
     std::atomic<uint32_t> knob_head, knob_tail;
     std::atomic<int32_t> knob_jump, knob_per_pass, knob_wrap, knob_identity_fail;
-    // 4.8 test hook (control "realkey K P"): key events from the PSoC (not the host's KEY command), key | P << 8;
+    // Test hook (control "realkey K P"): key events from the PSoC (not the host's KEY command), key | P << 8;
     // B's menu loop takes them where the stock poll runs.
     static const uint32_t real_keys = 64;
     uint32_t real_key[real_keys];
@@ -156,7 +156,7 @@ uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t a2
 void b_build(void* request, uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t a2, const void* body,
              uint32_t bytes, void* out, uint32_t capacity);
 void b_submit(void* request);
-// B (plan 0.9h): the master close (889f562e) abandons the requests B sent (or its driver holds)
+// B: the master close (889f562e) abandons the requests B sent (or its driver holds)
 // with no answer yet: SPI and DMA off, handlers gone, nothing completes them afterwards.
 void b_link_closed();
 // A: answer the request in a pool slot (stock 889f6508); executors use it too.
@@ -169,7 +169,7 @@ static const uint32_t a_driver = 0x88a66000u, b_driver = 0x88a66000u, primary = 
 uint32_t driver();
 // Storage (sim/yaffs.cpp): the host folder standing in for /yaffs2, with the mount state.
 void storage_op_done();                          // one mutating storage operation finished (power-cut hook)
-// Plan 0.9a (sim/boot.cpp): WDOG0 and the stock bootloader after a lone reset.
+// sim/boot.cpp: WDOG0 and the stock bootloader after a lone reset.
 uint64_t device_cycles();                        // this processor's CCLK cycle count (advance included)
 void watchdog_start();                           // processor start: WDOG0 at its reset value, this thread is main
 void watchdog_poll();                            // at host calls on the main thread: count, reload, expire
