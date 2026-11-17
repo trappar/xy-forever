@@ -740,7 +740,7 @@ class Bootstrap:
                       'python3 scripts/setup.py fixtures']
         where = ('%s (or %s)' % (self.workspace, self.repo) if (self.workspace / 'AGENTS.md').is_file()
                  and self.workspace in self.repo.parents else str(self.repo))
-        steps.append('Open Claude Code in %s and say "Continue development".' % where)
+        steps.append('Open your agent in %s and say "Continue development".' % where)
         print('\nNext:')
         for n, step in enumerate(steps, 1):
             print('  %d. %s' % (n, step))

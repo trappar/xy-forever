@@ -1,87 +1,94 @@
 # Orchestration
 
-How work on XY Forever is run. The session's main agent, the **orchestrator**, reads and writes no
-code: it runs the plan, which is the repository's GitHub issues, one item at a time through sub-agents,
-checks their results, and keeps the issues current. Context is the cost (open-ended sessions bloat
-contexts, cost power cycles; parallel agents collide): read the smallest thing that answers the question.
+The main agent, the **orchestrator**, runs the GitHub issue queue one item at a time, checks results,
+and keeps issues current. Delegate implementation when possible; otherwise use the sequential mode
+below. Read only what the task needs.
 
 ## The orchestrator
 
-**Reads:** the queue (`python3 scripts/plan.py`: one line per issue), the issue it takes
-(`gh issue view <N>`), the local `docs/status/README.md` (its leaves only when needed), this file, agent
-reports, and the last lines of check commands. Decision records only when writing a brief that depends on one.
-**Never opens:** source, listings, logs, device reports, HISTORY.md, other docs.
-**Writes:** issues (comments, labels, new items), the local `docs/status/`, briefs. Nothing else. **Runs:** check
-commands and device scripts (the only agent that touches the device or asks the developer for anything).
+**Reads:** the queue (`python3 scripts/plan.py`), its issue (`gh issue view <N>`), local
+`docs/status/README.md` (leaves as needed), this guide, agent reports, and check summaries.
+Read decision records only when a brief needs them. When delegating, leave source, listings,
+logs, device reports, HISTORY.md, and other docs to the worker.
+**Writes:** issues, local `docs/status/`, briefs. **Runs:** checks and device scripts.
+Without delegation, also do the scoped worker's work below. Only the main agent operates the device
+or asks the developer for actions.
 
 ### One sitting
 
-1. Run `python3 scripts/plan.py`; read your local `docs/status/README.md`. No local setup yet:
+1. Run `python3 scripts/plan.py`; read local `docs/status/README.md`. Setup unfinished:
    [ONBOARDING.md](../ONBOARDING.md) first.
-2. Is the device there? `python3 xyf_host.py --timeout 5 status`; if yes, ready `kind:device` items go
-   first. If the developer said the device is absent, skip this and every device item.
-3. Take the next item: the first under "Yours" (interrupted work), else the first under "Next" (milestone
-   order, then issue number; needs are "blocked by" links, so a listed item's needs are done).
-4. Read it: `gh issue view <N>` (add `--comments` only when its body says progress is in comments). Claim it:
-   `gh issue edit <N> --add-assignee @me`, then `git switch -c <N>-<slug>` from an up-to-date `main`.
-5. Write the brief (below), start **one** agent.
-6. When it returns, run the item's check yourself; never accept "tests pass" from a report. Standard:
-   `python3 scripts/run_tests.py`; before anything goes to the device: `XYF_EXHAUSTIVE=1` in front.
-   - Pass: commit, push the branch, open a pull request (`gh pr create`, body "Closes #<N>": merging
-     closes the item), go to 3.
-   - Fail: give a fresh agent the commit and the failing output (the same agent only if it is under
-     200k tokens). A second failure: label the issue `blocked`, comment the reason, unassign it.
-7. Stop when a decision is the developer's, when nothing is unblocked, or when told to.
-   Close with at most ten lines: done, blocked, waiting on the device, decisions needed.
+2. Check `python3 xyf_host.py --timeout 5 status`; ready `kind:device` items go first when connected.
+   If the developer says the device is absent, skip the check and device items.
+3. Take the first item under "Yours" (interrupted work), else "Next" (milestone order, then issue
+   number). Dependencies are "blocked by" links; listed items have their needs met.
+4. Read `gh issue view <N>` (`--comments` only if the body points there). Claim with
+   `gh issue edit <N> --add-assignee @me`; branch from up-to-date `main`: `git switch -c <N>-<slug>`.
+5. Write the brief below. Start **one** agent, or do its scoped work yourself without delegation.
+6. Run the check yourself; never accept a report's "tests pass". Standard: `python3 scripts/run_tests.py`;
+   add `XYF_EXHAUSTIVE=1` before anything goes to the device.
+   - Pass: commit, push the branch, open a PR (`gh pr create`, body "Closes #<N>"), return to step 3.
+   - Fail: give the worker the commit and failing output; start fresh if context is tight.
+     Without delegation, fix within scope and rerun. A second failure: label `blocked`, comment why,
+     and unassign the issue.
+7. Stop when a decision needs the developer, nothing is unblocked, or told to.
+   Close in at most ten lines: done, blocked, waiting on the device, decisions needed.
 
-Progress lives on GitHub (assignee, branch, pull request); an item left unfinished gets a comment saying
-where it stands, for the next session. **Asking the developer:** one self-contained
-question at a time, your recommendation first (the agent's question tool if any); keep working on what does
-not depend on the answer. A question that can wait is a `decision` issue starting "Undecided for now:". All GitHub
-text is in the developer's voice ("I", "my explicit yes"), never "the developer" or "the orchestrator".
+Progress lives on GitHub (assignee, branch, PR). Comment on unfinished items so the next session can
+resume. Ask one self-contained question at a time, recommendation first; use the harness's question
+tool or chat, and keep working on independent tasks. Deferrable questions become `decision` issues
+starting "Undecided for now:". GitHub text uses the developer's voice ("I", "my explicit yes").
 
 ### Changing the plan
 
-The orchestrator may add, split and reorder items. A new item is an issue that reads alone, per `.github/ISSUE_TEMPLATE/` (Summary, testable Acceptance
-criteria, Notes that link); milestone like "M4. Packages"; label `kind:build|research|device|review`
-(+ `device:safe|risky` for device work). A gating review or device run is a criterion, not an issue. A need is a "blocked by" link
-(`gh api -X POST repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by -F issue_id=<id of the needed issue>`).
-A loose end that is not an item yet is an issue labeled `thread`. Items have no IDs of their own: the issue
-number is the name. PR titles are plain, like issues; the body says "Closes #<N>". Items marked "to be split" are split by a research agent's decision record,
-not by guessing. It may not drop a requirement, change the [shape](goals/roadmap.md), or relax a safety rule;
-those go to the developer. **Device checkpoints first:** prefer the order that reaches a device test soonest;
-host-only work never runs far ahead of what the device has confirmed (a byte match proves the output, not that the
-device loads it; the simulator guesses whatever was never seen on hardware). Spare agent capacity prepares the next device test.
+The orchestrator may add, split, and reorder items. Each issue stands alone and follows
+`.github/ISSUE_TEMPLATE/`: Summary, testable Acceptance criteria, linked Notes; a milestone like
+"M4. Packages"; `kind:build|research|device|review` (+ `device:safe|risky` for device work).
+A gating review or device run is a criterion, not an issue. Dependencies use "blocked by" links:
+`gh api -X POST repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by -F issue_id=<needed issue id>`.
+Loose ends use `thread`. Issue numbers identify items; PR titles are plain and bodies say "Closes #<N>".
+Items marked "to be split" need a research decision record first.
+
+Dropping requirements, changing the [shape](goals/roadmap.md), or relaxing safety rules needs the
+developer. Prefer work that reaches a device test soonest; host work must not run far ahead of
+hardware evidence. Byte matches and simulation cannot prove a device loads a build. Spare agent
+capacity prepares the next device test.
 
 ## Agents
 
-One agent at a time; the only exception: one read-only **research** agent beside one build agent, on
-a different item. Never two agents that write. Every sub-agent runs on **Opus 5.5 with high
-reasoning** (`model: "opus"`, `effort: "high"`), whatever the orchestrator's own model is.
+One worker at a time, except one read-only research agent may accompany a build agent on another
+item. Never two writers. Use a capable model available in the harness, with high reasoning effort
+if configurable; otherwise use its default. No provider or tool names are required. Use native
+worker/follow-up tools; without follow-ups, send a fresh brief with the prior report.
+
+**Without sub-agents:** keep the same issue, branch, brief, role limits, report, and checks. The main
+agent may read and edit its item's files, then return to coordination. Self-review does not satisfy
+an independent-review requirement; leave that criterion open. Safety, permissions, and approvals
+apply in either mode. Report missing required capabilities; never bypass them.
 
 | Kind | May | Ends with |
 |---|---|---|
-| research | read anything in the workspace; write only its decision record and its detail leaves | a decision record, <= 8 KB: question, answer, evidence, rejected options |
-| build | edit code and tests for its item only | tests pass; one commit; reference docs updated if a fact in them changed |
-| review | read the diff and what it touches; write nothing | findings, most serious first, or "none" |
+| research | read workspace; write its decision record and detail leaves | record <= 8 KB: question, answer, evidence, rejected options |
+| build | edit its item's code and tests | passing tests; one commit; reference docs updated for changed facts |
+| review | read the diff and what it touches; write nothing | findings by severity, or "none" |
 
-An agent that cannot finish returns "split needed" with a proposed split; it never hands back half-done work or widens its item.
-**Context budget**: one concern per item, sized for under 150k tokens (every call re-sends the context); past 250k stop the agent.
-Reading files costs most context, so every brief says: no whole-file reads (ranges of at most 120 lines,
-found by `grep -n`), build and test output through `tail`, and it names the functions to read when a previous report gave them.
-Follow-ups on the same code go to the same agent while it is under 150k (SendMessage), otherwise to a fresh one.
+If an item is too large, return "split needed" with a proposed split; do not widen scope or hand back
+half-done work. Aim below 150k tokens or the harness's smaller limit; stop before 250k or its limit.
+Without counters, use a fresh brief per item and hand off when context crowds. Reuse a worker for
+follow-ups while it has room; otherwise send its report to a fresh one. Read ranges of at most
+120 lines found with `rg -n`; pipe build/test output through `tail`. Name functions when known.
 
 ### Brief (what the orchestrator sends)
 
 ```
 Issue #<N>: <title>. Kind: <kind>.
-Goal: <the acceptance criteria>.
-Read first: xy-forever/AGENTS.md, then <at most five named files or decision records>.
+Goal: <acceptance criteria>.
+Read first: xy-forever/AGENTS.md, then <at most five files or decision records>.
 Do not read: docs/status/, HISTORY.md, unrelated docs.
-Constraints: <safety notes; the developer's explicit yes where needed, in their words>.
-Check: <command(s) the orchestrator will run>.
-Report: <= 15 lines: what changed (files, functions with line numbers), check result, what the next
-item must know, open questions, the three things that used most of your context. No narrative.
+Constraints: <safety notes; required explicit approvals in the developer's words>.
+Check: <commands the orchestrator will run>.
+Report: <= 15 lines: changed files/functions with line numbers, checks, next-item facts,
+open questions, three largest context costs. No narrative.
 ```
 
 ## Where things go
