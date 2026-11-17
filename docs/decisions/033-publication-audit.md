@@ -1,4 +1,4 @@
-# 033: Publication audit (plan item P.2, research)
+# 033: Publication audit (research)
 
 Research record, 2026-11-16; read-only, no device action. Scope: every tracked file of `xy-forever` (491) and
 `xy-forever-web` (16), by `git ls-files` and `git grep` counts. The per-file list stays private with the
@@ -11,8 +11,8 @@ to each tracked file: keep, scrub, drop, or local-only (gitignored, template com
 file is tracked. No key material, vendor bytes or decompiled code.
 
 1. **Personal data.** One PLAN.md line (MP section) has the maintainer's name, a personal email and
-   home-relative paths; P.7's export path is home-relative. Nothing else in either repo (40+ hex strings are
-   digests, pins, RFC 6979 vectors or synthetic keys). Fix in P.4, with a leak test.
+   home-relative paths; one export path is home-relative. Nothing else in either repo (40+ hex strings are
+   digests, pins, RFC 6979 vectors or synthetic keys). Fix with a leak test.
 2. **Private references** (251 in 89 files). Through `xy_forever.paths` / `XYF_PRIVATE`: keep (~30 files).
    Hardcoded `../private`, bypassing `XYF_PRIVATE`: fix in code (capture_session.py, open_xy_link_codex.mjs
    and test, test_sim_mtp_session.py, clients/ts device-browser-test.ts, web e2e). Session or build defaults:
@@ -51,7 +51,7 @@ file is tracked. No key material, vendor bytes or decompiled code.
    "Continue development"; host-authorisation scope to a SAFETY rule plus a per-developer grant; cleanup
    logging to OPERATING. The paused port folders stay out.
 
-**Build split for P.3-P.5:** (i) hardcoded private paths and session/build defaults; (ii) fixtures and setup
+**Build split:** (i) hardcoded private paths and session/build defaults; (ii) fixtures and setup
 (empty private folder: skips only); (iii) voice in code and protocol/v1.json, regenerate PROTOCOL.md and v1.ts;
 (iv) voice and hashes in reference docs and records; (v) PLAN/STATUS/HISTORY split, template, leak test;
 (vi) memory and workspace rules into the docs and ONBOARDING; (vii) web repo paths.

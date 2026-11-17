@@ -1,4 +1,4 @@
-// 3.5a: MTP responder core (see mtp_responder.hpp). Freestanding: no heap, no libc calls.
+// MTP responder core (see mtp_responder.hpp). Freestanding: no heap, no libc calls.
 #include "mtp_responder.hpp"
 
 namespace xyf_core { namespace mtp {
@@ -88,7 +88,7 @@ U32 prop_type(U32 prop) {
 }
 const U16 properties[] = { U16(prop_friendly_name) };
 const char friendly_name[] = "OP-XY";
-// T2b: the operations that reach the files (FileOps::prepare first).
+// The operations that reach the files (FileOps::prepare first).
 bool uses_files(U32 code) {
     return code == op_get_storage_info || code == op_get_object_handles || code == op_get_object_info ||
            code == op_get_object || code == op_get_partial_object || code == op_delete_object ||

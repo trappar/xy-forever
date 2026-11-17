@@ -30,7 +30,7 @@ CAPS = {
     'docs/SAFETY.md': 11500,
     'docs/STORAGE.md': 25000,
     'docs/PROTOCOL.md': 56000,      # generated from protocol/v1.json (scripts/protogen.py)
-    'docs/GUIDE.md': 11500,         # for OP-XY owners and mod writers, not agents (plan 9.1)
+    'docs/GUIDE.md': 11500,         # for OP-XY owners and mod writers, not agents
     'docs/MODS-DEV.md': 5500,
 }
 DECISION_CAP = 16000

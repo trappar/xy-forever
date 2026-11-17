@@ -1,4 +1,4 @@
-# 021: Why `restart-a` froze the device on build 160 (plan item 0.9g)
+# 021: Why `restart-a` froze the device on build 160
 
 Research record, 2026-11-14, on build 160 (candidate `d1be9727…`); no device action. Evidence: device pass 5 (steps 32-37, what the screen showed, a status read after the power cycle; the maintainer's, not shared). Tags: **[C]** our code, **[L]** 1.2.1 listing (`linear121.ann.asm`), **[M]** measured from the evidence, **[F]** earlier finding (HARDWARE, HISTORY), **[I]** inferred, **[U]** unknown.
 

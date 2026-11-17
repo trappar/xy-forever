@@ -33,9 +33,9 @@ class V3DefaultRefreshTest(unittest.TestCase):
         bodies += function(boot, 'U32 a_default_index(')
         bodies += 'namespace xyf_boot {\n' + function(boot, 'bool refresh_catalog()') + '\n}\n'
         bodies += 'namespace key_ui {\n' + function(ui, 'void refresh_catalog()') + '\n}\n'
-        bodies += 'void settle_writes(bool = true) {}   // 2.2c: no write window in this harness\n'
-        bodies += function(usb, 'const xyf::catalog::Item* catalog_item(')   # 5.4d3a
-        bodies += function(usb, 'U32 default_commit(U32 hash)')                  # 4.6c1: set_default's A/B write
+        bodies += 'void settle_writes(bool = true) {}   // no write window in this harness\n'
+        bodies += function(usb, 'const xyf::catalog::Item* catalog_item(')
+        bodies += function(usb, 'U32 default_commit(U32 hash)')                  # set_default's A/B write
         bodies += function(usb, 'void set_default(uint8_t seq')
         with tempfile.TemporaryDirectory(prefix='xyf-default-refresh-') as temporary:
             out = Path(temporary)

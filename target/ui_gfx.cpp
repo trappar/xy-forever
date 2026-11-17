@@ -78,7 +78,7 @@ int text(uint16_t* fb, int x, int y, const char* s, Color color, int scale) {
 }
 
 int logo(uint16_t* fb, int x, int y, Color mark, Color word) {
-    // 8.7: one 35 px band from y: the infinity mark (two rings, 35 px tall, stroke 5 px as the letters'),
+    // One 35 px band from y: the infinity mark (two rings, 35 px tall, stroke 5 px as the letters'),
     // "XY" (scale 5, cap height 35) and "FOREVER" (scale 2) on the same baseline (y + 34), the mark's left
     // edge at x and logo_gap px between the three parts. The right ring passes under the left one at the
     // bottom crossing for an interlocked look.

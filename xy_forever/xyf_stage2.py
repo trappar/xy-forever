@@ -4,7 +4,7 @@ import struct
 import zlib
 
 MAGIC, ABI, HEADER_BYTES = 0x32535958, 1, 96
-ABI_HELLO, ABI_MENU, ABI_SERVICE = 1, 2, 3   # hello test image; menu; the product's (4.7a1)
+ABI_HELLO, ABI_MENU, ABI_SERVICE = 1, 2, 3   # hello test image; menu; the product's
 WINDOW = (0x8ab90000, 0x8ac00000)   # target/xyf_stage2.hpp window_begin..window_end
 PATH = "/yaffs2/xy-forever/stage2/main.xys2"
 

@@ -1,4 +1,4 @@
-"""The conformance suite (plan 1.4): protocol/v1.conformance.json validates against the spec and
+"""The conformance suite: protocol/v1.conformance.json validates against the spec and
 every case is interpretable; the validator refuses bad data; the device guard refuses what could
 change a real device beyond the test area; scripts/conformance.py runs every case against the
 simulator (and the pre-v1 variant), and prints one NEED line when nothing answers. The TypeScript

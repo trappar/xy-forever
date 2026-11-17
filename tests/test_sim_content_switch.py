@@ -1,4 +1,4 @@
-"""The content switch on processor B in the simulator (plan 4.6c1): library.set_default of an entry whose content
+"""The content switch on processor B in the simulator: library.set_default of an entry whose content
 is not installed makes /yaffs2/content/ match it first (a job), then writes the default.
 
 official -> mods set A -> mods set B -> official, /yaffs2/content/ compared byte for byte (files and folders)
@@ -134,9 +134,9 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         f = self.switched(a)
         own = {p: b for p, b in content(self.root / LIB / a)[0].items() if p != 'op1_factory.json'}
         self.assertTrue(own, 'the synthetic set installs files of its own')
-        self.assertEqual(self.record(), 'state=installed\nentry=%s\n' % a +       # 8.8: each file's SHA-256 written
+        self.assertEqual(self.record(), 'state=installed\nentry=%s\n' % a +       # each file's SHA-256 written
                          ''.join('file=%s\t%s\n' % (p, hashlib.sha256(own[p]).hexdigest()) for p in sorted(own)))
-        log = (self.root / 'xy-forever/log/save-times.txt').read_text().splitlines()[-1]   # 8.8: the switch's line
+        log = (self.root / 'xy-forever/log/save-times.txt').read_text().splitlines()[-1]   # the switch's line
         fields = dict(f.split('=', 1) for f in log.split())
         self.assertEqual((fields['kind'], fields['result'], fields['written'], fields['read']),
                          ('switch', 'ok', str(len(own) + 1), '0'), log)
@@ -180,7 +180,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         self.assertIn('menu: line: Default: %s (content installed)' % a, (self.dir / 'log.txt').read_text())
 
     def test_menu_actions_wait_for_a_switch(self):
-        """2.3f (review 024, 7): Continue and Set default pressed during a content switch show the busy line and
+        """Review 024, 7: Continue and Set default pressed during a content switch show the busy line and
         do nothing; the switch completes."""
         a = self.build(['alpha'])
         self.sim.set('a_slow_ms', 4)

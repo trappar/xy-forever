@@ -26,7 +26,7 @@ HEAP_BASE, HEAP_BYTES = 0x8c0d0380, 0x1400000
 REPORTER, CARRY, END = 0x8d4ce380, 0x8d4cf380, 0x8d4d0380
 HOOK = 0x8d506a02
 MODULE, STACK, STACK_END = 0x8ab00000, 0x8ab0c000, 0x8ab10000
-# Wide product layout (target/cold_layout.hpp; 4.7x, build 171): a 512 KiB code window
+# Wide product layout (target/cold_layout.hpp; build 171): a 512 KiB code window
 # 0x8ab00000..0x8ab80000, then the 16 KiB stack to 0x8ab84000. The whole reservation lies in
 # FREE_GAP (check_memory_map). Only WIDE_MODES use it; every other mode keeps the narrow layout.
 WIDE_STACK, WIDE_STACK_END = 0x8ab80000, 0x8ab84000
@@ -47,7 +47,7 @@ MODES = {
     'xyf-product': ('xyf-product-193', 'prod-193-#.bin'),
     'xyf-stage2': ('xyf-stage2-032', 'stage2-032-#.bin'),
     'xyf-stage2-menu': ('xyf-stage2-menu-034', 'stage2m-034-#.bin'),
-    # 3.4: the MTP USB test build: 188: the product (which has the composite, XYF_MTP_USB) plus the old
+    # The MTP USB test build: 188: the product (which has the composite, XYF_MTP_USB) plus the old
     # trial (XYF_MTP_USB_TRIAL: the flag file, progress marks, the result file, the 20 s no-HELLO fallback
     # restart, diag.mtp_usb op 0). Builds and verifies as the product (product_kind) apart from its name,
     # reports, hello mode and the trial.
@@ -74,7 +74,7 @@ def hello_defines(mode):
 
 def usb_switches(mode):
     """Build switches the USB service of a mode is compiled with that the protocol spec names."""
-    mode = product_kind(mode)                       # 3.4: the MTP USB test build answers what the product does
+    mode = product_kind(mode)                       # the MTP USB test build answers what the product does
     return ({'XYF_MTP'} if features(mode)['mtp'] else set()) | \
         ({'XYF_USB_FILE_WRITE'} if mode in FILE_WRITE_MODES else set()) | \
         ({'XYF_USB_SET_DEFAULT'} if mode in USB_SET_DEFAULT_MODES else set()) | \
@@ -85,7 +85,7 @@ def features(mode):
     """Feature switches of a build mode (xyf-stage2-menu shares xyf-stage2's stage 1)."""
     kind = 'xyf-stage2' if mode == 'xyf-stage2-menu' else mode
     product, stage2, mtp = kind in PRODUCT_MODES, kind == 'xyf-stage2', kind == 'xyf-product'
-    # stage2_service (4.7a1): the product's stage 2, loaded by B's USB service (ABI 3).
+    # stage2_service: the product's stage 2, loaded by B's USB service (ABI 3).
     return dict(stage2_menu=mode == 'xyf-stage2-menu', stage2=stage2, mtp=mtp, usb=product,
                 menu_link=product, remote_read=product, file_boot=product or stage2, stage2_service=product)
 
@@ -114,24 +114,24 @@ PEER_L1_CALLS = {'11a04f78', '11a0060c'}
 # Test027 remote read: stock entries called by storage_server.cpp on a: provider registration and
 # the three allowlisted executors (+ posix close for leftover handles).
 SERVER_CALLS = {'889f3910', '889f76ca', '889f6fea', '889f6cd6', '889f285a'}
-# 2.3c: a's own posix calls for the dev-menu marker check (storage_server.cpp: stat 889f3516 in
+# a's own posix calls for the dev-menu marker check (storage_server.cpp: stat 889f3516 in
 # stat_into, open 889f3b50 "wb" in restore_marker, close 889f285a there and in close_handles). On a
 # they reach yaffs directly (role 0). Scoped: loaded only by storage_server::a_side stock wrappers,
 # called only from those three functions (check_scoped_calls).
 A_MARKER_CALLS = {'889f3516', '889f3b50', '889f285a'}
 A_MARKER_CALLERS = ('9stat_into', '14restore_marker', '13close_handles')
-# 2.2b (009 decision 4): yaffs rename on a (889fa834 -> yaffsfs rename 889fa604), the commit of
-# 2.2d. Changing this list needs the developer's explicit yes (docs/SAFETY.md). Allowed only through a storage_server::a_side wrapper; not
+# 009 decision 4: yaffs rename on a (889fa834 -> yaffsfs rename 889fa604), the commit step
+# of #4. Changing this list needs the developer's explicit yes (docs/SAFETY.md). Allowed only through a storage_server::a_side wrapper; not
 # called yet. CRC gate: the server spans.
 A_RENAME_CALLS = {'889fa834'}
-# 2.2b (009 decision 2): b's own timed file client (file_client.cpp; changing this list needs the
+# 009 decision 2: b's own timed file client (file_client.cpp; changing this list needs the
 # developer's explicit yes, docs/SAFETY.md) builds its requests with the five stock request builders (path 889f8d22, read
 # 889f6c5c, write 889f8c10, query 889f8e36, readdir 889f88ac; the partition builder 889f87d4 is a
 # peer call) and submits them on its session's slot. Builders only: none of them waits. Scoped:
 # loaded only by file_client stock wrappers, called only from file_client. CRC gate: the client
 # spans (= peer spans 0 and 1).
 FILE_CLIENT_CALLS = {'889f8d22', '889f6c5c', '889f8c10', '889f8e36', '889f88ac'}
-# The 12 stock role-1 posix client calls b used before 2.2b (mount, open, read, lseek, close,
+# The 12 stock role-1 posix client calls b used before its own file client (mount, open, read, lseek, close,
 # unmount, write, mkdir; the 097 self-test's statfs, stat, opendir, readdir): each ends in
 # 889f869e -> 889f7b12, which waits on a with no bound. None may be a b call again; open, close and
 # stat stay for a only (A_MARKER_CALLS).
@@ -143,7 +143,7 @@ REMOVED_CLIENT_CALLS = {'889f7692', '889f3b50', '889f2924', '889f297c', '889f285
 USB_CALLS = {'88a35044', '88a34fec', '88a12c7c', '88a13328', '88a1334a', '88a132f6', '889f65f0', '88a06a7e',
              '889f683c', '889f6a6a', '889f6abe', '889f6b7c', '889f6dca', '11a03518'}
 USB_L1_CALLS = {'11a03518'}             # the stock RCU reset
-# 3.2 (decision 002 section 5; USB stack functions only; changing this list needs the developer's
+# Decision 002 section 5 (USB stack functions only; changing this list needs the developer's
 # explicit yes, docs/SAFETY.md): our MTP function driver (target/mtp_usb_stock.cpp, built only with XYF_MTP_USB,
 # no product mode yet): register 88a09d5c / unregister 88a09d44 the slot driver, allocate urb+buffer
 # 88a092ee, submit IN 88a08f24, recycle OUT 88a08f08, free 88a09418, kick an idle endpoint 88a094aa,
@@ -163,12 +163,12 @@ MTP_USB_KICK_CALLS = {'88a094aa', '88a0ba08'}
 # only with the MTP spans verified plus the driver's own span set (target/mtp_usb_spans.hpp: TX start
 # 88a0c0b0, reached via 88a08f24), both checked here against the stock image and on B at every boot before
 # the start (usb_service probe_spans: a failed check starts the stock serial instead).
-# 3.4: the mode is in MODES as the device test build (product_kind: the product's feature sets).
+# The MTP USB mode is in MODES as the device test build (product_kind: the product's feature sets).
 MTP_USB_MODE = 'xyf-mtp-usb'
 MTP_USB_MODES = ('xyf-product', MTP_USB_MODE)      # 188: the composite (product_kind 'xyf-product')
 MTP_USB_DEFINES = ('-DXYF_MTP_USB=1', '-DXYF_MTP_USB_KICK=1')
 MTP_USB_TRIAL_DEFINES = ('-DXYF_MTP_USB_TRIAL=1',)  # the test mode only
-MTP_SESSION_DEFINES = ('-DXYF_MTP_SESSION=1',)     # T2b: the session on the composite's MTP interface
+MTP_SESSION_DEFINES = ('-DXYF_MTP_SESSION=1',)     # the MTP session on the composite's MTP interface
 MTP_USB_TX_START_SPAN = (0x88a0c0b0, 0x80)
 
 
@@ -184,7 +184,7 @@ def mtp_usb_ids():
     return int(m.group(1), 16), int(m.group(2), 16)
 
 
-# The composite's pair, the product and the test mode alike. 3.4 to 189-001: pid.codes' test pair 1209:0001
+# The composite's pair, the product and the test mode alike. Until 189-001: pid.codes' test pair 1209:0001
 # while the shipping pair was undecided. Since then: the stock pair 2367:0021 (teenage engineering's, as the
 # stock MTP and CDC drivers declare it; revisit before a public release).
 MTP_USB_IDS = (0x2367, 0x0021)
@@ -205,7 +205,7 @@ def check_mtp_usb(boot, mode, targets):
     return MTP_USB_CALLS | MTP_USB_KICK_CALLS
 # Never reachable from any build: SPI-NOR erase/write, SPI metadata, the
 # updater orchestrator and its bootloader/companion/spiboot handlers.
-# 4.3c (decision 003): the stock .tfw pipeline (handle_tfw 88a25d28, extract-all 88a25c6c, its
+# Decision 003: the stock .tfw pipeline (handle_tfw 88a25d28, extract-all 88a25c6c, its
 # load/run steps 88a2901a/88a28cfc/88a27d00, file decrypt 88a196cc/88a18cae, verify driver
 # 88a1871c), the update-mode RAM disk 88a14820, the SPI metadata parse 11a05340 and gate setter
 # 88a34ed0, the generic dispatcher 88a21456 (it reaches the metadata writer); and the two boot-ROM
@@ -217,7 +217,7 @@ FORBIDDEN_TARGETS = {'11a062c6', '11a06376', '11a06470', '11a05312', '88a2863c',
                      '88a2742c', '88a2756e', '88a26f90', '88a26a80', '88a27278',
                      '88a25d28', '88a25c6c', '88a2901a', '88a28cfc', '88a27d00', '88a196cc', '88a18cae', '88a1871c',
                      '88a14820', '11a05340', '88a21456', '88a34ed0', '0400004c', '04000050',
-                     # 2.2b: the stock role-1 RPC (submit, then spin on the done byte with no bound)
+                     # the stock role-1 RPC (submit, then spin on the done byte with no bound)
                      '889f869e', '889f7b12'}
 # Boot ROM (BF707, 0x04000000..): the only entries a module may load or call (decision 003):
 # memcpy 040201c4, and, only with tfw.check, the OTP read 04000048 and init 04000054 of the stock
@@ -227,20 +227,20 @@ BOOT_ROM = (0x04000000, 0x04100000)
 ROM_TARGETS = {'040201c4', '04000048', '04000054'}
 OTP_CALLS = {'04000048', '04000054'}
 OTP_READ, OTP_INIT, OTP_INIT_FLAG = 0x04000048, 0x04000054, 0x11b01650   # the flag: stock 11a05a32's guard byte
-# tfw.check (plan 4.3c; XYF_TFW_CHECK): the only feature that reads OTP, and with it the native
+# tfw.check (XYF_TFW_CHECK): the only feature that reads OTP, and with it the native
 # .tfw check (native/tfw_check and the decoder parts it uses) and the key provider.
 TFW_CHECK_MODES = ('xyf-product',)
 TFW_CHECK_MODULES = ('tfw_check', 'tfw', 'tfw_signature', 'p224', 'aes')
-# 5.4d2: the mod assembly job (native/mod_job and the linker, patch and content steps) runs on B.
+# The mod assembly job (native/mod_job and the linker, patch and content steps) runs on B.
 MOD_JOB_MODULES = ('mod_job', 'mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content')
-# 5.4e1: the menu's Mods page (target/xyf_mods*: model, view, B's reading and the job's start), product only.
+# The menu's Mods page (target/xyf_mods*: model, view, B's reading and the job's start), product only.
 MODS_PAGE_MODULES = ('xyf_mods', 'xyf_mods_view', 'xyf_mods_io')
-# The file engine on a (storage_server.cpp, plan 2.2a; the historical MTP group): the executors
+# The file engine on a (storage_server.cpp; the historical MTP group): the executors
 # for the query class (stat/statfs/space), readdir via the sector class and posix write via the
 # write class (file_engine decide_request admits only ops 0x22/0x23/0x31, 0x2f and 0x2b there)
 # and posix closedir for leftover folder handles.
 MTP_CALLS = {'889f72e4', '889f6b7c', '889f6dca', '889f44f4'}
-# XY Forever USB file write (Test 049, --xyf-product): b's file client (2.2b), a's write
+# XY Forever USB file write (Test 049, --xyf-product): b's file client, a's write
 # executor 889f6dca (a USB and MTP call).
 FILE_WRITE_MODES = PRODUCT_MODES
 # Test 051: the library may hold plain official os.ldr images (no report slot).
@@ -273,13 +273,13 @@ STATE_WRITE_ENTRY = 0x889fbb0c
 USB_SET_DEFAULT_MODES = PRODUCT_MODES
 WRITE_AUDIT_MODES = USB_SET_DEFAULT_MODES
 # Stage 2 (--xyf-stage2): the hello image and its load window (target/xyf_stage2.hpp). Above the
-# wide stack with a 48 KiB gap (4.7x); the product's loader stays dormant (no file).
+# wide stack with a 48 KiB gap; the product's loader stays dormant (no file).
 STAGE2_WINDOW = (0x8ab90000, 0x8ac00000)
 # Earlier cold_storage entry points that no build may link (directory listing, non-fresh sessions).
 LEGACY_STORAGE_SYMBOLS = ('open_directory', 'next_directory', 'close_directory', 'open_file',
                           'Stock121ReadOnlySession5begin', 'storage_shutdown')
 STAGE2_ENTER = 'xyf_stage2_enter'     # the one register jump stage 1 may make (target/xyf_stage2_enter.s)
-# 4.7a1: the product's stage 2 (ABI 3, target/stage2_main.cpp): its version, and the first stage-1
+# The product's stage 2 (ABI 3, target/stage2_main.cpp; decision 020): its version, and the first stage-1
 # build with the services it needs (min_stage1; services only grow).
 STAGE2_SERVICE_VERSION, STAGE2_SERVICE_MIN_STAGE1 = 1, 167
 GC_MODES = (*PRODUCT_MODES, 'xyf-stage2', 'xyf-stage2-menu')
@@ -595,7 +595,7 @@ def check_stage2_image(out):
     for m in re.finditer(r'\b[a-z][a-z0-9]*\.h = 0x([0-9a-f]{1,4});', listing):
         high = int(m.group(1), 16) << 16
         require(not any(lo <= high < hi for lo, hi in foreign), 'Stage 2 builds a foreign address ' + hex(high))
-    # 4.7a1: no such address in its data either (every aligned word of .rodata and .data).
+    # No such address in its data either (every aligned word of .rodata and .data).
     for name in ('.rodata', '.data'):
         section = sections.get(name)
         if not section or not section['size']:
@@ -657,7 +657,7 @@ def heap_record(stock):
 # Memory map facts the layout is checked against (docs/ARCHITECTURE.md, "Memory map").
 RETAINED_ARENA = (0x88a65bf8, 0x8aa65bf4)   # stock allocator arena (table at 0x88a2a4d0, checked below)
 BOOT_SOURCE = (0x8a000000, 0x8a810000)      # stock 8 MiB stream read (88a34a12) + margin; our boot copy
-JOB_REGION = (0x8b000000, 0x8b800000)       # B's mod job region (5.4d2, cold_layout.hpp); offline modes' embedded OS
+JOB_REGION = (0x8b000000, 0x8b800000)       # B's mod job region (cold_layout.hpp); offline modes' embedded OS
 FRAMEBUFFER = (0x8c000000, 0x8c03c000)      # B's display framebuffer
 # No stock code, data or allocation lies here: above the arena, below the job region; the 1.2.1
 # bootloader holds no address in it (no immediate, no data word; only 0x8a000000 in 0x8a..0x8c).
@@ -665,7 +665,7 @@ FREE_GAP = (RETAINED_ARENA[1], JOB_REGION[0])
 
 
 def check_memory_map():
-    """Layout audit (4.7x): both layouts' module + stack and the stage-2 window lie in FREE_GAP,
+    """Layout audit: both layouts' module + stack and the stage-2 window lie in FREE_GAP,
     clear of every buffer, and the hand-off copy cannot reach the module or its stack."""
     def apart(a, b):
         return a[1] <= b[0] or b[1] <= a[0]
@@ -685,7 +685,7 @@ def check_memory_map():
     require(FREE_GAP[0] <= STAGE2_WINDOW[0] < STAGE2_WINDOW[1] <= FREE_GAP[1] and
             all(apart(STAGE2_WINDOW, r) for r in busy), 'Stage-2 window leaves the free gap')
     require((MODULE, WIDE_STACK_END) in PROBE_PROTECTED, 'Wide module + stack not protected from the OS')
-    # 5.4d2: B's mod job region, as the firmware's layout header states it, claimed by nothing else.
+    # B's mod job region, as the firmware's layout header states it, claimed by nothing else.
     header = target_source('cold_layout.hpp')
     declared = tuple(int(re.search(r'#define XYF_JOB_REGION_%s (0x[0-9a-f]{8})u' % k, header).group(1), 16)
                      for k in ('BEGIN', 'END'))
@@ -822,7 +822,7 @@ def verify(out, stock, boot):
     manifest = json.loads((out / 'manifest.json').read_text())
     mode = manifest.get('mode')
     require(mode in MODES, 'Unknown build mode')
-    mode_name, mode = mode, product_kind(mode)        # 3.4: see build()
+    mode_name, mode = mode, product_kind(mode)        # see build()
     _, stack, stack_end = layout(mode)
     require(manifest.get('cold_stack', [hex(stack), hex(stack_end)]) == [hex(stack), hex(stack_end)],
             'Manifest stack layout differs')
@@ -928,14 +928,14 @@ def verify(out, stock, boot):
     require(has('xyf3gfx') or has('xyf2ui'), 'XY Forever UI missing')
     require(has('xyf4menu3key'), 'XY Forever menu model missing')
     raw = (out / 'module.asm').read_text()
-    # 2.2b: no b call of the stock posix client (their RPC waits without a bound); a keeps three.
+    # No b call of the stock posix client (their RPC waits without a bound); a keeps three.
     require(not targets & (REMOVED_CLIENT_CALLS - A_MARKER_CALLS),
             'Module calls a removed stock file-client entry: ' + ', '.join(sorted(targets & REMOVED_CLIENT_CALLS)))
     check_scoped_calls(raw, A_MARKER_CALLS - SERVER_CALLS, '14storage_server6a_side', A_MARKER_CALLERS, 'Marker check')
     check_scoped_calls(raw, {'889f285a'}, '14storage_server6a_side', A_MARKER_CALLERS, 'Leftover close')
     check_scoped_calls(raw, A_RENAME_CALLS, '14storage_server6a_side', ('14storage_server',), 'Rename')
     check_scoped_calls(raw, FILE_CLIENT_CALLS, '11file_client', ('11file_client',), 'File client')
-    # 2.2b: the guard is never paused on b; only a's write entry still pauses its own (2.2c).
+    # The guard is never paused on b; only a's write entry still pauses its own.
     pausers = referencing_symbols(raw, 'guard_pause')
     require(all('open_window' in u or 'close_engine' in u for u in pausers),
             'Guard paused outside a\'s write window: ' + ', '.join(sorted(pausers)))
@@ -969,7 +969,7 @@ def verify(out, stock, boot):
     file_write = mode in FILE_WRITE_MODES
     require((has('engine_identity') or has('open_write_window')) == (mtp or file_write),
             'Write window linked only in the MTP / file-write modes')
-    # 2.2a: one file engine replaced the read, file-write and MTP allowlists on a.
+    # One file engine replaced the read, file-write and MTP allowlists on a.
     for banned in ('decide_mtp', 'decide_write', 'serve_mtp', 'run_mtp', 'open_mtp', 'close_mtp', 'mtp_identity',
                    'mtp_protected_path', 'valid_mtp_path', 'mtp_boot_layer', 'serve_write', 'open_fw', 'close_fw'):
         require(not has(banned), 'Module links the replaced storage mode ' + banned)
@@ -1025,7 +1025,7 @@ def verify(out, stock, boot):
                         Firmware((out / 'candidate.ldr').read_bytes()).segments),
                 'Outer image loads into the stage-2 window')
     elif stage2_service:
-        # 4.7a1: B's USB service loads stage 2 (ABI 3); none of the offline modes' loader is linked.
+        # B's USB service loads stage 2 (ABI 3); none of the offline modes' loader is linked.
         stage2_info = check_stage2_image(out)
         for needed in ('stage2_load', 'prepare_code', 'stage26accept', 's2_now', 's2_trace', 's2_reply'):
             require(has(needed), 'Stage 2 path lacks ' + needed)
@@ -1059,7 +1059,7 @@ def verify(out, stock, boot):
 
 def build(out, stock, boot, mode):
     require(mode in MODES, 'Unknown build mode')
-    mode_name, mode = mode, product_kind(mode)        # 3.4: the MTP USB test build is the product plus its probe
+    mode_name, mode = mode, product_kind(mode)        # the MTP USB test build is the product plus its probe
     mtp_usb = mode_name in MTP_USB_MODES                # 188: the product has the composite
     _, stack, stack_end = layout(mode)
     f = features(mode)
@@ -1210,10 +1210,10 @@ def build(out, stock, boot, mode):
             (hello_defines(mode_name) + (('-DXYF_STAGE2_SERVICE=1',) if stage2_service else ()) +
              (MTP_USB_DEFINES + MTP_SESSION_DEFINES if mtp_usb else ()) +
              (MTP_USB_TRIAL_DEFINES if mode_name == MTP_USB_MODE else ()) if name == 'usb_service' else ()))
-    if mtp_usb:                                     # 3.4: the driver, its stock binding (kicks on); 188: the product
+    if mtp_usb:                                     # the driver, its stock binding (kicks on); 188: the product
         for name in ('mtp_usb', 'mtp_usb_stock'):
             cpp(name, SOURCE / ('target/' + name + '.cpp'), MTP_USB_DEFINES + ('-fno-zero-initialized-in-bss',))   # no BSS
-        # T2b: the MTP session (target/mtp_session) over the responder (native/mtp_responder)
+        # The MTP session (target/mtp_session) over the responder (native/mtp_responder)
         cpp('mtp_session', SOURCE / 'target/mtp_session.cpp', MTP_SESSION_DEFINES + ('-fno-zero-initialized-in-bss', '-fno-function-cse'))
         cpp('mtp_responder', SOURCE / 'native/mtp_responder.cpp', ('-fno-optimize-sibling-calls', '-fno-zero-initialized-in-bss'))
     cpp('cold', SOURCE / 'target/cold.cpp', probe_defines)
@@ -1266,7 +1266,7 @@ def build(out, stock, boot, mode):
                                                build_id='menu-034', min_stage1=2, abi=S2.ABI_MENU))
         check_stage2_image(out)
     elif stage2_service:
-        # 4.7a1: the product's stage 2 (ABI 3): a freestanding image at the window start, packed
+        # The product's stage 2 (ABI 3): a freestanding image at the window start, packed
         # as main.xys2 (device path /yaffs2/xy-forever/stage2/main.xys2) for this stage 1.
         cpp('stage2_main', SOURCE / 'target/stage2_main.cpp',
             ('-DXYF_STAGE2_SERVICE=1', '-ffunction-sections', '-fdata-sections'))
@@ -1333,7 +1333,7 @@ def main():
     modes.add_argument('--xyf-product', dest='mode', action='store_const', const='xyf-product',
                        help='The XY Forever product: USB service, menu, file/library boot (wide layout)')
     modes.add_argument('--xyf-mtp-usb', dest='mode', action='store_const', const='xyf-mtp-usb',
-                       help='Device test (plan 3.4): the product plus the MTP USB probe (diag.mtp_usb); never the product')
+                       help='Device test: the product plus the MTP USB probe (diag.mtp_usb); never the product')
     modes.add_argument('--xyf-stage2', dest='mode', action='store_const', const='xyf-stage2',
                        help='Offline (Test032): menu boot + read-only "hello" stage 2 (PLAY: load, check, run, return)')
     modes.add_argument('--xyf-stage2-menu', dest='mode', action='store_const', const='xyf-stage2-menu',

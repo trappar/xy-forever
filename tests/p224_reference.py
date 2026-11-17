@@ -1,4 +1,4 @@
-"""A small, slow ECDSA P-224 reference written only for the tests (plan 4.3b).
+"""A small, slow ECDSA P-224 reference written only for the tests.
 
 Affine textbook arithmetic over Python integers (SEC 1 v2 section 4.1, FIPS 186-4): it signs
 synthetic headers with synthetic keys, re-derives the RFC 6979 vectors and builds edge cases.

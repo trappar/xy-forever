@@ -1,4 +1,4 @@
-"""Mod assembly on the host, end to end (plans 5.4b, 5.4c, 5.4i; docs/decisions/008, 014, 010, 018, 019;
+"""Mod assembly on the host, end to end (docs/decisions/008, 014, 010, 018, 019;
 docs/STORAGE.md).
 
 Runs the device's freestanding linker, patch and content steps (native/mod_link, mod_patch,

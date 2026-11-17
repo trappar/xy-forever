@@ -1,4 +1,4 @@
-"""A local package index for mod packages (plan 6.2f): `xyf_package.py index build | verify`,
+"""A local package index for mod packages: `xyf_package.py index build | verify`,
 `xyf_host.py mods fetch`.
 
 `index build GENERATION_DIR --out DIR` turns one generation folder (as `modkit split` writes it, checked

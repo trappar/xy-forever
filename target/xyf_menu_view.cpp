@@ -38,7 +38,7 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         const uint32_t count = s.catalog ? s.catalog->count : 0;
         uint32_t shown = 0, selected = 0;
         for (uint32_t i = 0; i != count; ++i) {
-            if (i == s.hidden) continue;                 // 8.4a: the spare mods entry (the next build's)
+            if (i == s.hidden) continue;                 // the spare mods entry (the next build's)
             const catalog::Item& item = s.catalog->items[i];
             if (i == s.library_selected) selected = shown;
             catalog::describe(item, details[shown], sizeof(details[shown]));
@@ -57,11 +57,11 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         ui::draw_list(fb, list);
         return;
     }
-    case Screen::settings: {                             // 4.8: the compact title bar, as the library
+    case Screen::settings: {                             // the compact title bar, as the library
         static ui::ListRow rows[settings::rows] XYF_DATA = {};
         for (uint32_t i = 0; i != settings::rows; ++i) {
             rows[i].title = settings::label(i);
-            rows[i].detail = settings::memory_text(s.memory, s.memory_pending);   // 4.8m2: the one row
+            rows[i].detail = settings::memory_text(s.memory, s.memory_pending);   // the one row
             rows[i].marked = false;
         }
         const ui::List list = {"Settings", rows, settings::rows, s.settings_selected,
@@ -71,7 +71,7 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
     }
     case Screen::info: {
         // Every slot explicit: a zero-filled tail would compile to memset.
-        // 8.7: the build as the home page shows it (build 186), not a fixed version.
+        // The build as the home page shows it (build 186), not a fixed version.
         const char* build = chrome && chrome->build ? chrome->build : "";
         const ui::Message info = {"Info", {"XY Forever", build, "Real bootloader: 1.2.1 (never updated)",
                                            "Hold PLAY at power-on to open this menu.", "", "", "", ""},
@@ -89,7 +89,7 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
     case Screen::home_empty:
         ui::draw_home_empty(fb, s.home_selected, chrome);
         return;
-    case Screen::confirm_save: {                         // 8.4a
+    case Screen::confirm_save: {
         const ui::Choice c = {"Save changes?", {s.save_blocked ? "These changes cannot be saved:" :
                                                 "Save: builds Open-XY if needed, installs its content, then boots it.",
                                                 s.save_blocked ? (s.save_note ? s.save_note : "") :

@@ -1,4 +1,4 @@
-"""Mod packages sent to the device (plan 5.4p; xy_forever/modsend.py, `xyf_host.py mods push|list|remove`),
+"""Mod packages sent to the device (xy_forever/modsend.py, `xyf_host.py mods push|list|remove`),
 against the device simulator. A push leaves the package set byte-identical under
 /yaffs2/xy-forever/mods/<profile>/<generation>/; a second push sends nothing; a push cut off part-way never
 leaves a package folder with files.sha256 unless every listed file is there and right, and running it again

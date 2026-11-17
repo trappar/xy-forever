@@ -1,4 +1,4 @@
-"""`xyf_host.py mods dev` (plan 5.6): an edit-build-boot loop for people who write Open-XY mods, without the
+"""`xyf_host.py mods dev`: an edit-build-boot loop for people who write Open-XY mods, without the
 dev menu. Host tool only; it uses the existing commands:
 
   push   modsend.push(by_hash=True): only the files whose SHA-256 differs from the device's files.sha256 line
@@ -10,7 +10,7 @@ Every phase is printed with its time, then the total. --watch repeats on a chang
 packages used (mtime poll, no dependency). The way back: the default before the first dev run is kept in a
 small state file under the host's cache dir (never on the device); `mods dev --restore` sets it again.
 
-The saved configuration (/yaffs2/xy-forever/config.txt, 8.4a) names the default the menu expects. When it
+The saved configuration (/yaffs2/xy-forever/config.txt) names the default the menu expects. When it
 is present a dev run changes the default behind it, and the menu's Continue line then ends in "(to apply)"
 (or "(rebuild)"); mods dev refuses unless --ignore-config, and says what the menu will show. It does not
 rewrite config.txt (that record is the menu's own: Save in the menu writes it again)."""

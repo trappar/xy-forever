@@ -183,7 +183,7 @@ bool b_step(Stock121PeerSession& session) {
     b_lost = 1;
     return false;
 }
-// b: wait (bounded) for the outstanding echo. 2.2b: a file request still out past its caller's
+// b: wait (bounded) for the outstanding echo. A file request still out past its caller's
 // bound is not (yet) a lost link: the caller fails (link), the session stays up until lost_ms.
 bool b_settle(Stock121PeerSession& session) {
     const U32 start = now();
@@ -224,7 +224,7 @@ bool b_send(Stock121PeerSession& session, U32 item, U32 wait_ms = xyf_boot::comm
 #if defined(XYF_ONE_SESSION)
     usb_service::rpc_reset();                          // Test 065: a leaves RPC mode on every b_send item
 #endif
-    // 0.9f: the low three bits stay 0 (a's bootloader's select takes the argument & 7: the user area).
+    // The low three bits stay 0 (a's bootloader's select takes the argument & 7: the user area).
     return b_ask(session, Stock121PeerSession::command_tag << 16 | (item & 0xffu) << 8 | (++b_sequence << 3 & 0xf8u),
                  wait_ms);
 }
@@ -363,15 +363,15 @@ void a_answer_out(Stock121PeerSession& session) {
 const U32 product_role0_idle_ms = 10000;
 #endif
 // Test 065 (a): b's files open through the storage server close before the shared mount ends;
-// 2.3b: the read-write window too, on every path out (boot, session end, reboot, alone reset).
+// The read-write window too, on every path out (boot, session end, reboot, alone reset).
 #if defined(XYF_ONE_SESSION)
 inline void a_close_files(cold_storage::Stock121ReadOnlySession& storage) { storage_server::close_files(storage); }
 #else
 inline void a_close_files(cold_storage::Stock121ReadOnlySession&) {}
 #endif
 #if defined(XYF_ONE_SESSION)
-// Plan 0.9b (record 016): a follows b. b's bootloader asks (F1), or b went silent past the session's
-// idle window: close storage (the read-write window first, 2.3b) and restart, so a's bootloader
+// Record 016: a follows b. b's bootloader asks (F1), or b went silent past the session's
+// idle window: close storage (the read-write window first) and restart, so a's bootloader
 // serves b's next boot (it answers the request the session holds). Never between a request's
 // executor and its answer: only from this loop, between polls.
 void a_follow(cold_storage::Stock121ReadOnlySession& storage) {
@@ -390,7 +390,7 @@ U32 a_default_index(xyf::library::Library& lib) {
     return xyf::library::boot_choice(lib, choice) == xyf::library::Choice::menu ? 0xffu : U32(choice);
 }
 
-// 4.6c1: a default (index >= count) or entry that is listed with its os.ldr but whose content is not
+// A default (index >= count) or entry that is listed with its os.ldr but whose content is not
 // installed: reason_content, or reason_content_repair while a content switch is unfinished; index becomes
 // that entry's (the menu's line names it). Else reason_no_library.
 U32 a_content_reason(const xyf::library::Library& lib, U32& index) {
@@ -572,7 +572,7 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
     U32 handled = 0;
     while (running(status)) {
 #if defined(XYF_ONE_SESSION)
-        if (session.follow_now(now())) a_follow(storage);   // 0.9b F1: b's bootloader asks
+        if (session.follow_now(now())) a_follow(storage);   // F1: b's bootloader asks
 #endif
 #if defined(XYF_ONE_SESSION) && (defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE))
         // 192: B took the catalog whose word says "repair pending" and asks again at once: repair
@@ -585,7 +585,7 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         }
 #endif
 #if defined(XYF_ONE_SESSION) && defined(XYF_USB_FILE_WRITE)
-        // 2.2c: the write window closes after its idle time; a library it changed is scanned again
+        // The write window closes after its idle time; a library it changed is scanned again
         // (b fetches the new catalog after it closed the window itself, or at its next catalog item).
         storage_server::tick(storage, now());
         if (storage_server::library_changed()) { catalog_bytes = a_rescan(storage, mounted, lib); session.touch(now()); }
@@ -602,7 +602,7 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         const U32 command = session.last_command(), item = (command >> 8) & 0xffu;
         r.menu.commands_seen = handled; r.menu.last_command = command;
 #if defined(XYF_ONE_SESSION) && defined(XYF_USB_FILE_WRITE)
-        // 2.2c: every command item but reads, writes and the USB/guard switches closes the write window
+        // Every command item but reads, writes and the USB/guard switches closes the write window
         // first (catalog, check, boot, set default, install, dry run, reboot, run entry).
         if (item != storage_server::command_item && item != storage_server::file_write_item &&
             item != storage_server::usb_mode_item && item != storage_server::guard_item) {
@@ -736,7 +736,7 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         if (item == xyf_boot::item_check_default || item == xyf_boot::item_boot_default) index = a_default_index(lib);
         if (check) {
             U32 reason = a_prepare(storage, mounted, lib, index, bytes, crc);
-            if (reason == reason_no_library) reason = a_content_reason(lib, index);   // 4.6c1: the menu says why
+            if (reason == reason_no_library) reason = a_content_reason(lib, index);   // the menu says why
             a_prepared = reason == reason_ok ? index : 0xffffffffu;
             xyf_boot::CheckStatus& s = *reinterpret_cast<xyf_boot::CheckStatus*>(xyf_boot::status_buffer);
             for (U32 i = 0; i != sizeof(s); ++i) reinterpret_cast<volatile Byte*>(&s)[i] = 0;
@@ -819,7 +819,7 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         session.touch(now());
     }
 #if defined(XYF_ONE_SESSION)
-    // 0.9b: b went silent past the idle window after it spoke (hung, restarted without reaching this
+    // b went silent past the idle window after it spoke (hung, restarted without reaching this
     // session, or one of its requests was lost) with nothing frozen or agreed: restart instead of
     // halting, so a reset b's bootloader gets past its boot-A step (record 022).
     if (status == SessionResult::timeout && session.commands_seen() && !session.agreed() && !session.committed() &&
@@ -1177,7 +1177,7 @@ bool tick() {
         const U32 t = now();
         if (session->busy()) {
 #if defined(XYF_ONE_SESSION)
-            // 2.2b: a file request left at link_sent(); it may stay out up to lost_ms.
+            // A file request left at link_sent(); it may stay out up to lost_ms.
             if (t - b_last_send > (session->filing() ? xyf_boot::lost_ms :
                                    b_patience_ms ? b_patience_ms : 2 * answer_ms)) b_lost = 1;
 #else
@@ -1210,7 +1210,7 @@ bool link_step() {
     return session && b_step(*session);
 }
 void link_sent() { b_last_send = now(); }
-// Plan 0.9h (record 021 (a)): before any stock reset of b. A request still open is polled until
+// Record 021 (a): before any stock reset of b. A request still open is polled until
 // answered or close_ms passes (wait: false in the guard interrupt, where nothing completes it);
 // then the session ends: the stock master close 889f562e turns SPI and both DMA channels off and
 // removes the link interrupts, so nothing can complete the request later (its object is the
@@ -1265,7 +1265,7 @@ const char* status() {
     if (!b_lost && b_notice[0]) return b_notice;      // Test 059: why the menu opened
 #endif
 #if defined(XYF_ONE_SESSION)
-    if (b_lost) return "Internal link lost. Turn the OP-XY off and on.";   // 2.2b, 0.9k2: the menu (USB) stays
+    if (b_lost) return "Internal link lost. Turn the OP-XY off and on.";   // record 022: the menu (USB) stays
     // 193: the first row says "Starting storage..." (xyf_menu); this line says why it takes long.
     switch (storage_view()) {
     case xyf::menu::storage_checking: return "Checking storage after an unclean shutdown";   // 191: a full scan
@@ -1275,7 +1275,7 @@ const char* status() {
     default: return "";
     }
 #endif
-    return b_lost ? "Storage link lost: starting the built-in OP-XY." :   // 8.7: nothing when storage is OK
+    return b_lost ? "Storage link lost: starting the built-in OP-XY." :   // nothing when storage is OK
            b_catalog_ok ? "" : "Storage link: OK (library unavailable)";
 }
 const char* command(uint32_t) { return "Not available yet."; }

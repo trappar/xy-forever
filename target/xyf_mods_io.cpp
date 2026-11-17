@@ -34,8 +34,8 @@ struct Io {
     uint32_t step, folder, why;                 // why: the status of a failed step
     uint32_t profile_count, profile_at, candidate_count, candidate_at, package_at;
     uint32_t drawn, longest, dirty;               // drawn: units() of the last redraw
-    uint32_t job_units, drawn_bar, drawn_done;    // 8.2: the job's start; the bar and done of the last redraw
-    uint32_t waiting;                             // 4.6c2: the reading waits for another job (page_busy)
+    uint32_t job_units, drawn_bar, drawn_done;    // the job's start; the bar and done of the last redraw
+    uint32_t waiting;                             // the reading waits for another job (page_busy)
     char profiles[max_profiles][32];
     Candidate candidates[max_candidates];
     char path[240];
@@ -261,7 +261,7 @@ void step() {
         io.dirty = 1;
         return;
     }
-    case s_saved:                                // 8.4a: the saved selection onto the toggles
+    case s_saved:                                // the saved selection onto the toggles
         if (read_record(true) == xyf::usbp::s_link) { io.why = xyf::usbp::s_link; lost(); return; }
         finish(0);
         return;
@@ -270,7 +270,7 @@ void step() {
     }
 }
 // Build: the default library entry as base when it is a usable official image, else the first one.
-// 4.6c1: an official image whose only lack is the official content (a mod set's content is installed) is
+// An official image whose only lack is the official content (a mod set's content is installed) is
 // a base too: mods.apply then reads the saved official catalog.
 const char* base_entry() {
     const xyf::catalog::Catalog* c = xyf_boot::catalog();
@@ -283,7 +283,7 @@ const char* base_entry() {
     for (uint32_t i = 0; i != c->count; ++i) if (fits(i)) return c->items[i].id;
     return 0;
 }
-// ---- 8.4a: the saved configuration (xyf_config.hpp) and the save sequence ------------------------------------
+// ---- The saved configuration (xyf_config.hpp) and the save sequence ------------------------------------------
 namespace xg = xyf::config;
 enum SaveStage : uint32_t {
     sv_idle = 0, sv_reading, sv_check, sv_build, sv_stamp, sv_switch, sv_switching, sv_record, sv_recording, sv_boot,
@@ -334,7 +334,7 @@ uint32_t read_record(bool toggles) {
         marked += on ? 1u : 0u;
     }
     p.saved_missing = rec.count > marked ? rec.count - marked : 0u;
-    // 4.8m2: the saved memory layout; the pending choice follows it unless the user changed it (Settings may
+    // The saved memory layout; the pending choice follows it unless the user changed it (Settings may
     // come before the list is read)
     const bool kept = p.expanded != p.expanded_saved;
     p.expanded_saved = rec.state == xg::present && rec.expanded;
@@ -353,7 +353,7 @@ uint32_t fail(const char* reason) {
     m::Page& p = the_page;
     copy(sv.reason, reason, sizeof(sv.reason));
     sv.stage = sv_failed;
-    usb_service::save_log_drop();               // 8.8: a failed Save writes no line
+    usb_service::save_log_drop();               // a failed Save writes no line
     p.view = m::View::list; p.save = p.save_stage = 0; p.request = m::request_none;
     m::say(p, m::line_error, sv.reason);
     rec.state = xg::unread;                     // read again: the record or the default may have changed
@@ -386,7 +386,7 @@ uint32_t check() {                              // what the save needs: the buil
                                               reinterpret_cast<const uint8_t*>(id), n);
         set += crc;
     }
-    uint32_t added = 0, removed = 0;            // 8.8: against the saved selection
+    uint32_t added = 0, removed = 0;            // against the saved selection
     for (uint32_t r = 0; r != p.shown; ++r) {
         const uint8_t f = p.packages[p.rows[r]].flags;
         added += (f & m::flag_on) && !(f & m::flag_saved);
@@ -511,7 +511,7 @@ uint32_t save_follow() {
         copy(r.base, sv.base, sizeof(r.base)); copy(r.profile, p.profile, sizeof(r.profile));
         copy(r.generation, p.generation, sizeof(r.generation));
         r.unverified = sv.unverified;
-        r.expanded = p.expanded ? 1u : 0u;      // 4.8m2
+        r.expanded = p.expanded ? 1u : 0u;
         const bool built = sv.count != 0;       // all off: the Open-XY slot stays as the record had it (spare)
         copy(r.built, built ? sv.built : rec.built, sizeof(r.built));
         copy(r.slot, built ? sv.slot : rec.slot, sizeof(r.slot));
@@ -554,7 +554,7 @@ m::Page& page() { return the_page; }
 
 void open() {
     m::Page& p = the_page;
-    if (rec.state == xg::failed) rec.state = xg::unread;   // 8.4a: try the record again
+    if (rec.state == xg::failed) rec.state = xg::unread;   // try the record again
     if (p.view == m::View::building || (p.view == m::View::list && p.shown)) return;   // kept for this boot
     if (io.folder) return;                       // (never: pump closes it when the page is left)
     m::reset(p);
@@ -571,11 +571,11 @@ const char* memory_flip() { return m::flip_memory(the_page, io.step == s_done); 
 uint32_t pump(bool shown) {
     const uint32_t begin = units();
     uint32_t redraw = save_follow();
-    // 8.4a: the saved configuration, once the menu runs (one bounded read; again after a failed save).
+    // The saved configuration, once the menu runs (one bounded read; again after a failed save).
     if (rec.state == xg::unread && sv.stage == sv_idle && !reading() && !usb_service::page_busy() &&
         usb_service::page_serving() == s_ok && read_record(false) != s_ok)
         rec.state = xg::failed;
-    // 4.6c2: while another job owns the slot or its window closes, the reading sends nothing (a request
+    // While another job owns the slot or its window closes, the reading sends nothing (a request
     // then met a stale folder handle or waited out A's bound). A's handles end with that window: the folder
     // is forgotten, not closed, and the reading starts again from the top once the job is over.
     const bool busy = reading() && usb_service::page_busy();
@@ -620,7 +620,7 @@ bool menu_state(xyf::menu::State& a) {
     const bool any = c && def < c->count;      // no catalog or no default: the built-in copy, nothing to apply
     const bool usable = !any || (c->items[def].flags & xyf::catalog::flag_usable);
     const bool applied = usable && (!have || (any && implied[0] && xg::same(c->items[def].id, implied)));
-    const bool changes = (listed && m::changed(p)) || p.expanded != p.expanded_saved;   // 4.8m2: memory any time
+    const bool changes = (listed && m::changed(p)) || p.expanded != p.expanded_saved;   // memory any time
     a.pending = changes || !applied;
     a.save_note = listed ? m::save_refusal(p) : 0;
     a.save_blocked = a.save_note != 0;
@@ -644,7 +644,7 @@ bool menu_state(xyf::menu::State& a) {
         *o.at = 0;
     }
     a.continue_label = next[0] ? label : 0;
-    const uint32_t memory = m::memory_row(p, io.step == s_done);   // 4.8m2: the Settings row
+    const uint32_t memory = m::memory_row(p, io.step == s_done);   // the Settings row
     const bool memory_pending = p.expanded != p.expanded_saved, row_moved = memory != a.memory || memory_pending != a.memory_pending;
     a.memory = memory; a.memory_pending = memory_pending;
     bool same_text = true;
@@ -658,7 +658,7 @@ void save_begin() {
     ++sv.serial;
     sv.reason[0] = 0;
     sv.stage = sv_reading;
-    usb_service::save_log_begin();              // 8.8: the save-time log starts at the key
+    usb_service::save_log_begin();              // the save-time log starts at the key
     if (io.step == s_done) the_page.line = m::line_none;   // a held list: the last result line no longer applies
     open();                                     // the list and the saved toggles, unless held already
 }

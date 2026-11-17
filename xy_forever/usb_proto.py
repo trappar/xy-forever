@@ -29,7 +29,7 @@ def answered(switches):
     return sum(1 << t for t, c in ids.COMMANDS.items() if c['switch'] is None or c['switch'] in switches)
 
 
-STAGE2_LOADED = 'XYF_STAGE2_LOADED'      # the run-time switch of stage2.info (4.7a1)
+STAGE2_LOADED = 'XYF_STAGE2_LOADED'      # the run-time switch of stage2.info
 
 
 def hello_text(build, mode, switches, stage2=0):

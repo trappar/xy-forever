@@ -1,7 +1,7 @@
 #ifndef XYF_KNOB_INPUT_HPP
 #define XYF_KNOB_INPUT_HPP
 #include <stdint.h>
-// Knob turns in B's menu (plan 8.3; decision record 023, option (b)). The PSoC reports turns as frames of
+// Knob turns in B's menu (decision record 023, option (b)). The PSoC reports turns as frames of
 // type 0x45, which the stock poll receives into its receive queue and then drops. Every frame stays in its
 // slot, so after each stock poll this reads the slots written since the last pass (plain memory reads; no
 // stock call, nothing sent, nothing written to the queue) and turns the knobs' counts into list moves: one

@@ -152,7 +152,7 @@ uint32_t link_keepalives();
 bool refresh_catalog();                 // invalidate B's cache, then fetch A's current catalog
 uint32_t storage_view();                // 193: xyf::menu::StorageView of A's storage (the menu's first row)
 uint32_t clock_ms();                    // this boot's session clock (both roles)
-// Plan 2.2b (b): B's file client (file_client.cpp) on this session. link_claim(): the session with
+// On b: B's file client (file_client.cpp) on this session. link_claim(): the session with
 // its request slot free (an outstanding keepalive echo waited for, bounded), else 0: link lost, or
 // an earlier file request still out past its caller's bound. link_step(): one poll, the guard
 // reloaded; false once the link is lost. link_sent(): a file request left (the keepalive clock and
@@ -162,7 +162,7 @@ static const uint32_t lost_ms = 60000;   // > the client's longest bound (45 s)
 peer_services::Stock121PeerSession* link_claim();
 bool link_step();
 void link_sent();
-// Plan 0.9h (b): close the link before b's stock reset (file_boot.cpp); true when its hardware is
+// On b: close the link before b's stock reset (file_boot.cpp); true when its hardware is
 // off. close_ms bounds the wait for a request still open (wait: false in the guard interrupt).
 static const uint32_t close_ms = 500;
 bool link_close(bool wait);

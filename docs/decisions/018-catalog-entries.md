@@ -1,4 +1,4 @@
-# 018: Catalog entries for missing machines (plan item 5.2d, research part)
+# 018: Catalog entries for missing machines (research)
 
 Research record, 2026-11-14, against open-xy `4718876`. Static only: OS images 1.2.1 (main), 1.2.5 and 1.1.33 from the private `firmware/decrypted`, linear listings of 1.2.1, 1.2.5 and 1.1.33 (the maintainer's evidence, not shared), Ghidra decompiles of single functions (project copies). No device. **[L]** read from listing or decompile, **[C]** read from open-xy code/docs, **[M]** measured on files, **[I]** inferred, **[U]** unknown. Addresses are 1.2.1 OS unless noted.
 
@@ -32,15 +32,15 @@ Nothing fails at boot, but a superset is not safe in use. The OS loads the catal
 1.2.5 = 1.2.1 in loading, lookup (33), lists and project reset; only the catalog writer is gone [L]. 1.1.33: same design and writer; its drum list is `drum`/`dbox`, so 1.2.1 content puts `drumline` in its synth list as engine 33 and filter `dynamic` (18) in its filter list [L/I], a candidate cause of 006's "1.1.33 pretty broken", not proven.
 
 ## 5. Design rule
-- **Strict per entry.** The content switch (4.6c) makes `content/` equal the entry's set before it becomes the default: `op1_factory.json` byte-equal to the entry's (official 1.2.1/1.2.5: SHA-256 `36d14444…`; assembled: 5.4c's), every `presets/<id>/` and `display/<id>.svg` of a mod outside the entry removed, the entry's added. A catalog is one whole file per selection, never merged. `user/` needs nothing.
+- **Strict per entry.** The content switch (#18) makes `content/` equal the entry's set before it becomes the default: `op1_factory.json` byte-equal to the entry's (official 1.2.1/1.2.5: SHA-256 `36d14444…`; assembled: the patcher's), every `presets/<id>/` and `display/<id>.svg` of a mod outside the entry removed, the entry's added. A catalog is one whole file per selection, never merged. `user/` needs nothing.
 - Smallest rule if a switch must be cheaper: catalog and `presets/` exact; svgs may stay [I]. A superset catalog is never safe (player rows).
 - Drift: the content record's catalog hash (010) is checked at every switch; a 1.2.1 flush would rewrite the file with re-serialised bytes and must show as "content unknown", not as an error.
 
 ## 6. Check against 008
 No contradiction. Offsets 4435 (the `\n\t]` closing `engine_types`, not `_old`), 1583 and 2565 hold for 1.2.1 and 1.2.5 (same file `36d14444…`); 1.1.33's catalog (5,229 B) differs, so they do not apply there [M]. Player `id` = type + 4 matches stock (arpeggio 6 = type 2), and stock selects players by `id` [L]. Addition: stock never checks an effect's or player's `id` against its own list, so a collision would go unnoticed [I].
 
-## 7. Device check (safe; no content write beyond 4.6b and 4.6c)
-1. With 4.6b: the host hashes `content/op1_factory.json` and lists `presets/` and `display/` names outside the official manifest (leftovers of the old open-xy setup).
-2. After a 4.6c/5.2f switch: the developer boots the entry, opens the instrument, send-effect and player menus and reads out the names, choosing no unknown one. Expected: stock names plus the entry's mods only.
+## 7. Device check (safe; no content write beyond #17 and #18)
+1. With #17: the host hashes `content/op1_factory.json` and lists `presets/` and `display/` names outside the official manifest (leftovers of the old open-xy setup).
+2. After a content switch (#18): the developer boots the entry, opens the instrument, send-effect and player menus and reads out the names, choosing no unknown one. Expected: stock names plus the entry's mods only.
 3. Power cycle to XY Forever (PLAY at power-on); the host rehashes the catalog and `content.list`: unchanged = the OS wrote nothing (settles the 1.2.1 writer).
 Choosing a leftover entry (the [U] cells) is not needed under the strict rule; never try the player row.

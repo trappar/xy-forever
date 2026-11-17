@@ -25,8 +25,8 @@ int main() {
     REQUIRE(press(s, menu::key_minus) == Action::redraw && s.main_selected == menu::item_info);
     REQUIRE(press(s, menu::key_plus) == Action::redraw && s.main_selected == 0);
     REQUIRE(press(s, menu::key_track1 + 2) == Action::redraw && s.main_selected == menu::item_mods);
-    // 5.4e1: Mods opens the page (stage 1 runs it; the menu itself stays on main). 5.4e1b: the row right
-    // below Firmware library. 8.2: keys 10..13 are the knob pushes: PLAY (no TRACK5/6 jumps).
+    // Mods opens the page (stage 1 runs it; the menu itself stays on main). The row right
+    // below Firmware library. Keys 10..13 are the knob pushes: PLAY (no TRACK5/6 jumps).
     REQUIRE(press(s, menu::key_track1 + 1) == Action::redraw && press(s, menu::key_plus) == Action::redraw &&
             s.main_selected == menu::item_mods && menu::item_mods == menu::item_library + 1);
     REQUIRE(press(s, menu::key_track1 + 3) == Action::redraw && s.main_selected == menu::item_uninstall);
@@ -47,7 +47,7 @@ int main() {
     menu::key(s, menu::key_shift, false);
     REQUIRE(press(s, menu::key_knob1 + 1) == Action::boot_once && s.entry == 0);
     press(s, menu::key_plus); REQUIRE(s.library_selected == 1 && press(s, menu::key_play) == Action::none);
-    // 5.4d3a, 4.6c1: an entry whose content is not installed (flag 8, not usable): SHIFT+PLAY makes it the
+    // An entry whose content is not installed (flag 8, not usable): SHIFT+PLAY makes it the
     // default (the content switch first), PLAY asks for a boot once (stage 1 answers it with a note).
     cat.items[1].flags = catalog::flag_content_missing | 2 | 4;
     REQUIRE(press(s, menu::key_play) == Action::boot_once && s.entry == 1);

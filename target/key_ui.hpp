@@ -43,7 +43,7 @@ bool service_screen(const char* a, const char* b, const char* c, const char* d);
 void inject_key(uint32_t key, uint32_t pressed);   // Test 058
 #if defined(XYF_ONE_SESSION)
 void refresh_catalog();                 // return to the main menu and redraw the current default
-// 8.7: a USB frame arrived (usb_service home_pump): while the menu loop has the screen, redraw it at once when
+// A USB frame arrived (usb_service home_pump): while the menu loop has the screen, redraw it at once when
 // the USB mark or the activity line changed (before a long request such as INSTALL runs).
 void host_view();
 #endif

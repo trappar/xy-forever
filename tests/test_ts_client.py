@@ -9,7 +9,7 @@ client's Node suite (Vitest, with its own simulators: `npm test` in clients/ts) 
 node_modules is installed (NodeSuiteTest, its own process in scripts/run_tests.py; about 120 s at
 most); the browser suite (`npm run test:browser`) is not run here. No device, no network.
 
-The conformance runner (clients/ts/test/conformance.ts, plan 1.4) interprets every case of
+The conformance runner (clients/ts/test/conformance.ts) interprets every case of
 protocol/v1.conformance.json, as the Python runner does, and runs them against the simulator over
 TCP (skipped without Node, or without clang++ and the private stock images the simulator needs)."""
 import json
@@ -53,7 +53,7 @@ class TypeScriptClientTest(unittest.TestCase):
 
     @unittest.skipUnless(node_strips_types(), 'Node 22.18+/23.6+ not found')
     def test_mod_index_fetch_in_node(self):
-        """6.2f: loadIndex + fetchPackages over a local HTTP server (clients/ts/test/modindex.test.ts)."""
+        """loadIndex + fetchPackages over a local HTTP server (clients/ts/test/modindex.test.ts)."""
         run = subprocess.run([NODE, 'test/modindex.test.ts'], cwd=CLIENT, capture_output=True, text=True, timeout=120)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertRegex(run.stdout, r'modindex: \d+ checks passed')

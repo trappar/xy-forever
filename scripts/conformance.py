@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Conformance suite: run protocol/v1.conformance.json against the simulator or the OP-XY (plan 1.4).
+"""Conformance suite: run protocol/v1.conformance.json against the simulator or the OP-XY.
 
     python3 scripts/conformance.py --sim 127.0.0.1:7341     every case, against a running simulator
     python3 scripts/conformance.py                          the OP-XY over USB: cases marked real_device

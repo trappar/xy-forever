@@ -1,4 +1,4 @@
-"""3.5a: the MTP responder core (native/mtp_responder) against a scripted MTP client and a temp folder tree."""
+"""The MTP responder core (native/mtp_responder) against a scripted MTP client and a temp folder tree."""
 import os
 from pathlib import Path
 import random
@@ -167,7 +167,7 @@ class MtpResponderTests(unittest.TestCase):
         self.assertEqual(code, OK)
         self.assertEqual(struct.unpack_from("<HHHQQI", data), (3, 2, 0, 4096 * 65536, 4096 * 32768, 0xFFFFFFFF))
         self.assertEqual(c.transaction(0x1005, 7)[0], 0x2008)
-        self.assertEqual(c.transaction(0x1014, 0x5001)[0], 0x200A)          # T2b: DeviceProp_Not_Supported
+        self.assertEqual(c.transaction(0x1014, 0x5001)[0], 0x200A)          # DeviceProp_Not_Supported
         code, _, data = c.transaction(0x1015, 0xD402)                       # the friendly name
         self.assertEqual((code, data), (OK, bytes([6]) + 'OP-XY\0'.encode('utf-16-le')))
         self.assertEqual(c.transaction(0x95C1, 1, 0, 0, 16)[0], NOT_SUPPORTED)   # Android GetPartialObject64

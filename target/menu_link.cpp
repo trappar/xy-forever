@@ -23,7 +23,7 @@ void usb_patience(uint32_t ms) { xyf_boot::link_patience(ms); }
 bool usb_idle() { return xyf_boot::link_idle(); }
 uint32_t keepalives() { return xyf_boot::link_keepalives(); }
 bool usb_command(uint32_t item) {
-    // 0.9f: the low three bits stay 0: should it reach a's bootloader (seconds after a restart), the
+    // The low three bits stay 0: should it reach a's bootloader (seconds after a restart), the
     // stock select takes the argument & 7 as the partition: 0, the user area.
     return xyf_boot::link_value(Stock121PeerSession::command_tag << 16 | (item & 0xffu) << 8 |
                                 (++sequence << 3 & 0xf8u));

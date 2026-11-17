@@ -91,7 +91,7 @@ class OfficialPackageTests(unittest.TestCase):
 @unittest.skipUnless(available() and tfw_extract.PUBLIC_KEY.is_file(),
                      'official packages, the .tfw key or the vendor public key are not in the private area')
 class OfficialSignatureTests(unittest.TestCase):
-    """The ciphertext is bound through the signed header hash (plan 4.3b); header-only
+    """The ciphertext is bound through the signed header hash; header-only
     signature cases are in test_p224.py."""
     @classmethod
     def setUpClass(cls):

@@ -63,7 +63,7 @@ struct Session {
     U32 served_ = 0, scratch_capacity_ = 0, frozen_size_ = 0, blobs_ = 0;
     bool staged_ = true, agreed_ = false, handshake_only_ = false, rpc_ = true;
     bool blob_ = false, served_activity_ = false, committed_ = false, declined_ = false;
-    bool peer_restart_ = false;                  // 0.9b F1
+    bool peer_restart_ = false;                  // F1 (decision 016)
     U32 peer_request_ = 0, peer_ms_ = 0;
     Byte* scratch_ = nullptr;
     void* serve_context_ = nullptr;
@@ -117,7 +117,7 @@ int main() {
     assert(image.pending_ == request_address);
     assert(image.dispatch(101) == Result::choose_image);
     assert(image.server_.calls == 2);
-    // 0.9b F1: with nothing frozen a boot request is b's bootloader (b restarted alone): taken, held
+    // F1 (decision 016): with nothing frozen a boot request is b's bootloader (b restarted alone): taken, held
     // unanswered, nothing else runs, and every later poll serves nothing.
     for (unsigned op : {0x11u, 0x12u, 0x18u}) {
         reset(1, op == 0x18); request_bytes[5] = Byte(op); words[request_address + 8] = op == 0x18 ? 1 : 0;

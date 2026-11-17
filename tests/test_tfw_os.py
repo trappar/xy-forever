@@ -1,4 +1,4 @@
-"""OS-only .tfw extractor (native/tfw_os, plan 4.3a) on synthetic packages built here.
+"""OS-only .tfw extractor (native/tfw_os) on synthetic packages built here.
 
 Packages use the public synthetic AES vector from test_tfw.py, never a device key, and are
 signed (where a test needs it) with a synthetic P-224 key through tests/p224_reference.py. Every

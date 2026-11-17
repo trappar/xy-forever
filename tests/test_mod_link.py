@@ -1,4 +1,4 @@
-"""Native mod linker (plan 5.4b; native/mod_link.hpp, xy_forever/modlink.py; docs/decisions/008, 014, 019).
+"""Native mod linker (native/mod_link.hpp, xy_forever/modlink.py; docs/decisions/008, 014, 019).
 
 A synthetic kit made here from scratch (small ELF objects with every relocation type, alignments,
 services, runtime members, absent machines and extensions) is split into packages by modkit and
@@ -590,7 +590,7 @@ class Synthetic(unittest.TestCase):
                     ref.pop('name')
                     self.assertEqual(L.compare(r, ref), [])
 
-    # ---------------------------------------------------------------- hostile packages (plan 5.4w1)
+    # ---------------------------------------------------------------- hostile packages
     # Work is counted, not timed: the bridge reports the most XYF_WORK units one step took.
 
     def hostile(self, change, machines=('alpha',), args=()):
@@ -621,7 +621,7 @@ class Synthetic(unittest.TestCase):
         r = self.hostile(definitions)
         self.assertEqual((r['status'], r['detail']), ('name_length', 'c' * 32), r)
 
-    # ---------------------------------------------------------------- device rules (plan 5.4w2)
+    # ---------------------------------------------------------------- device rules
     def test_refuses_absolute_symbols_in_package_objects(self):
         for name, sym in (('global', ('alpha_abs', 0xfff1, 0x8d000000, GLOBAL, OBJ, 0)),
                           ('local', ('abs_local', 0xfff1, 0x8c000000, LOCAL, OBJ, 0))):

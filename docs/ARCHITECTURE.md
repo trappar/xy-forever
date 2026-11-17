@@ -26,7 +26,7 @@ A cold descriptor carries the CRCs of the stock helpers the module calls (payloa
 
 ## Memory map (product, build 171)
 
-Table and owners: [HARDWARE.md](HARDWARE.md#memory-map-product-build-171). The module (code window `0x8ab00000..0x8ab80000`), its stack (`..0x8ab84000`) and the dormant stage-2 window (`0x8ab90000..0x8ac00000`) lie in `0x8aa65bf4..0x8b000000`, above the stock allocator arena and below B's mod job region (5.4d2); `xyf_build.py` `check_memory_map` (build and `--verify`) fails the build if either layout leaves that gap or touches the boot source, job region, staging, framebuffer or report slots.
+Table and owners: [HARDWARE.md](HARDWARE.md#memory-map-product-build-171). The module (code window `0x8ab00000..0x8ab80000`), its stack (`..0x8ab84000`) and the dormant stage-2 window (`0x8ab90000..0x8ac00000`) lie in `0x8aa65bf4..0x8b000000`, above the stock allocator arena and below B's mod job region; `xyf_build.py` `check_memory_map` (build and `--verify`) fails the build if either layout leaves that gap or touches the boot source, job region, staging, framebuffer or report slots.
 - **Free at power-on:** outside every static bootloader segment and the arena (both build-checked); the 1.2.1 bootloader's disassembly loads no immediate in `0x8a000000..0x8c000000` but its stream buffer `0x8a000000`, and its initialized data holds no aligned pointer into `0x8ab00000..0x8ac00000` (one byte-table word at `0x1190029c` looks like one); its load path reads at most 8 MiB into `0x8a000000` (`88a34a12`) and then places our two records. Our own buffers are all elsewhere; peer DMA (`owned_buffer_range`) refuses `0x8ab00000..XYF_STACK_END`. Never shown on the device: a cold-time write above `0x8ab20000` (171's first boot is the first).
 - **Hand-off:** the image is copied from staging to `0x8a000000` (at most `staging_bytes` 0x7e0000 B, so below `0x8a800000`); every record is admitted by `cold.cpp`'s policy, whose protected range `0x8ab00000..XYF_STACK_END` covers the running code and stack, before the stock RAM loader (also protected) places it. Stock 1.2.1 (2,373,336 B), 1.2.5's `os.ldr` and a device-assembled mod image (2,493,876 B) place nothing in the gap (`test_official_images_pass_the_product_policy`); any image up to the 8 MiB boot source meets the same check, so size does not matter.
 
@@ -69,22 +69,22 @@ every user-facing decision.
    is CRC-checked once (089): A's file read at CHECK, B's received bytes as they arrive, each boot copy
    at hand-off. Any failure means no boot (menu, or the halt screen).
 5. **Storage server** (proven, Tests 027–050, 097–139). A runs B's file requests with the stock
-   executors through one file engine (build 155, plan 2.2a; `target/file_engine.cpp`, decision 009):
+   executors through one file engine (build 155; `target/file_engine.cpp`, decision 009):
    every request passes `decide_request` and its path policy `decide_engine`, which B also applies
-   before it sends. B's timed client (158, 2.2b; `target/file_client.cpp`) uses the stock builders on
+   before it sends. B's timed client (build 158; `target/file_client.cpp`) uses the stock builders on
    the session's one slot, never the stock RPC; every wait bounded (5 s, 45 s for a change: then `link`;
    still out after 60 s: link lost, B stays at the menu: item 6).
-   Changes share one read-write window (163, 2.2c): A opens it on the first change; B closes it (op 9)
+   Changes share one read-write window (build 163): A opens it on the first change; B closes it (op 9)
    8 s after its last write and before install, set default, CONTINUE, REBOOT; A after 10 s idle, before
    other command items, when B is gone; A then rescans, B fetches the catalog. Refused: removing or
    renaming away `/yaffs2` or `/yaffs2/bootloader.dev` (also via links), anything outside `/yaffs2`, bad
    paths, the raw boot-partition layer (install mode only), all while a boot partition may be selected.
-6. **Lone restarts** (plan 0.9b, record 016; built 159): a restart of one processor becomes a restart of
+6. **Lone restarts** (record 016; built 159): a restart of one processor becomes a restart of
    both, in the stock order (A's bootloader serves B's boot). A never answers B's stock bootloader: its
    link open (op 10 `0x12345678`) after B's first command, or a boot request (select, sector read) with
    nothing frozen outside install mode, is held unanswered; A closes storage, restarts, and its bootloader
    answers the held request (Test 108). A also follows when B is silent past its idle window. Since 164
-   (0.9k2, record 022) B never resets itself on a lost link (menu, USB, `link`), A has no guard of its
+   (record 022) B never resets itself on a lost link (menu, USB, `link`), A has no guard of its
    own and never restarts by a timer of its own; keepalives are plain op-10 commands.
 
 ## Boot flows (product)
@@ -134,7 +134,7 @@ record 012).
 The menu's own set-default (SHIFT+PLAY, `XYF_STATE_WRITE`, `target/xyf_state_write_library.cpp`) was
 proven in Test 030 but is not in the product: stage 1 is full. It is meant to return in stage 2.
 
-## Simulator (plan 1.3; offline)
+## Simulator (offline)
 
 The device's own C++ on the Mac, speaking the protocol on 127.0.0.1 (raw byte stream, no
 framing of its own). Code reaches the device only after it passes here (ORCHESTRATION.md).
@@ -163,7 +163,7 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   partition; `rw_open`/`unclean_mounts`, read-write mounts never unmounted; `to_a`/`to_b`, link messages relayed),
   `power [play|plain]`, `cut`, `set NAME N` with `a_silent`, `a_slow_ms`, `drop_request`, `drop_body`, `cable_pull`
   (bytes), `space`, `fail_write` (the Nth write, boot partition too), `fail_mount`, `vanish_marker`, `cut_after`,
-  2.2b: `fail_select` (switches, then fails), `fail_unmount` (while set), `fail_open` (A's), `full_path` (240 B, no NUL)
+  `fail_select` (switches, then fails), `fail_unmount` (while set), `fail_open` (A's), `full_path` (240 B, no NUL)
   (storage operations, then a power cut and a PLAY power-on); `swap PATH` (stock path buffer); `inject CLASS OP ARG0
   ARG2 [HEX]` sends A a raw request past B's checks (class 0: generic), `injected TAG` reads A's answer
   (`Simulator.ask_a`); `advance MS` moves both processors' cycle counters ahead, so a device time-out (A's idle
@@ -179,8 +179,8 @@ Stage 1/2 is built, not device-tested.
   audited trampoline (`xyf_stage2_enter`); ABI 1 = hello, ABI 2 = the menu. Format:
   `target/xyf_stage2.hpp`, `xy_forever/xyf_stage2.py`. Builds: `--xyf-stage2`,
   `--xyf-stage2-menu`.
-- **Stock MTP** (the product's menu item 091-150; the offline `--xyf-mtp` build went in
-  0.4b): stock MTP requests run in B's USB ISR. Abandoned (HISTORY, "Stock MTP"); removed
+- **Stock MTP** (the product's menu item 091-150; the offline `--xyf-mtp` build was
+  removed): stock MTP requests run in B's USB ISR. Abandoned (HISTORY, "Stock MTP"); removed
   from the product in 151 (the MTP row says "not available yet"); our own MTP
   responder replaces it (milestone M3).
 - **Uninstall** (USB command `UNINSTALL`; proven on 087): rewrites the boot partition
@@ -197,7 +197,7 @@ Stage 1/2 is built, not device-tested.
 `scripts/neutral.py [REF]` builds every mode from a git ref and from the working tree and compares the
 candidates (for changes that must not alter the firmware). Builds are deterministic. Only the modules in
 `GC_MODULES` (`xyf_build.py`) get section garbage collection, so unreferenced code in the others is
-linked into the product. The pre-v3 flow and the stock MTP code went in plan 0.4 (decision record 001);
+linked into the product. The pre-v3 flow and the stock MTP code were removed (decision record 001);
 the never-running `activated_` branches in `cold_storage.cpp` stay because removing them changes the
 candidate. Never linked, kept for planned features: `boot_services.cpp`'s update-key reader (calls stock
 L1 wrappers; superseded by `otp_keys.cpp`) and most of `native/`. The verifier re-checks every CRC span,
@@ -215,7 +215,7 @@ The C++ is one source tree compiled with different `-DXYF_…` switches per mode
 | `XYF_USB_SERVICE` | product | the USB service on B |
 | `XYF_STAGE2`, `XYF_STAGE2_MENU` | stage2, stage2-menu | the stage-2 loader; ABI 2 with the menu in stage 2 |
 | `XYF_MTP` | product | A's MTP executor and B's 097 self-test (`mtp-test`) |
-| `XYF_TFW_CHECK` | product | `tfw.check` (4.3c): B reads its OTP keys (`otp_keys.cpp`) and checks a `.tfw` (`native/tfw_check`) |
+| `XYF_TFW_CHECK` | product | `tfw.check`: B reads its OTP keys (`otp_keys.cpp`) and checks a `.tfw` (`native/tfw_check`) |
 | `XYF_USB_SET_DEFAULT`, `XYF_USB_FILE_WRITE`, `XYF_PLAIN_IMAGES`, `XYF_SERVICE_SCREEN`, `XYF_USB_MENU`, `XYF_MENU_ON_FAILURE`, `XYF_SERVICE_ON_MARKER_ONLY`, `XYF_REBOOT_TARGETS` | product | one product step each (Tests 048–064), all proven on hardware in build 064 |
 | `XYF_ONE_SESSION` | product | boot model v3 (proven since 069/075) |
 | `XYF_NO_EMBEDDED` | product | no embedded OS; `xy_forever_no_image()` halt screen |
@@ -247,8 +247,8 @@ question 3). Host tests compile `usb_service.cpp` and `storage_server.cpp` with 
 | `target/census.cpp`, `warm_snapshot.cpp`, `storage_probe_record.cpp`, `storage_probe_reporter.*` | diagnostic census + report written after the OS mounts storage |
 | `target/*_spans.hpp` | CRC spans of stock code each feature calls (generated by `re/spans.py`) |
 | `target/xyf_stage2*`, `stage2_*.cpp` | stage-2 loader and images |
-| `native/` | freestanding codecs: LDR, SHA-256, inflate/zip, AES/TFW, package admission, OS-only `.tfw` extractor (`tfw_os`, 003) and P-224 signature check (`p224`, `tfw_signature`), content, companions, BLE session, peer boot, `tfw.check`'s verdict (`tfw_check`, linked with `tfw`, `p224`, `aes`), the mod linker (`mod_link`, `mod_elf`, `mod_numbers`: core.mjs `linkKit` in file steps, 5.4b), mod assembly's patch and content steps (`mod_patch`, `mod_content`, 5.4c; they read the linker's result, 5.4i); host-tested, the rest not linked yet |
-| `xy_forever/` | Python: build helpers (`compile.py`, `outer.py`, `toolchain.py`), report decoder (`census.py`), USB protocol, library entries, stage-2 packer, private paths (`paths.py`), mod packages from an open-xy kit (`modkit.py`, 5.4a; STORAGE.md), the native linker's host proof (`modlink.py`), the native patch/content steps on the host (`modpatch.py`, `host/mod_assemble.cpp`) |
+| `native/` | freestanding codecs: LDR, SHA-256, inflate/zip, AES/TFW, package admission, OS-only `.tfw` extractor (`tfw_os`, 003) and P-224 signature check (`p224`, `tfw_signature`), content, companions, BLE session, peer boot, `tfw.check`'s verdict (`tfw_check`, linked with `tfw`, `p224`, `aes`), the mod linker (`mod_link`, `mod_elf`, `mod_numbers`: core.mjs `linkKit` in file steps), mod assembly's patch and content steps (`mod_patch`, `mod_content`; they read the linker's result); host-tested, the rest not linked yet |
+| `xy_forever/` | Python: build helpers (`compile.py`, `outer.py`, `toolchain.py`), report decoder (`census.py`), USB protocol, library entries, stage-2 packer, private paths (`paths.py`), mod packages from an open-xy kit (`modkit.py`; STORAGE.md), the native linker's host proof (`modlink.py`), the native patch/content steps on the host (`modpatch.py`, `host/mod_assemble.cpp`) |
 | `re/` | reverse-engineering tools over the private 1.2.1 listing (reach, MTP reach, CRC spans) |
 | `scripts/` | device session helpers (`keepalive.sh`, `dryshow.py`, `capture_session.py`); `neutral.py` (candidate comparison); `modkit_core.mjs`, `modlink_core.mjs` (run open-xy's `core.mjs` for `modkit.py`, `modlink.py`; `link_out` writes its link result) |
 | `sim/`, `xy_forever/sim.py` | the device simulator (above) |

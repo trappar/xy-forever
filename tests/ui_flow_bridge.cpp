@@ -5,7 +5,7 @@
 using namespace xyf;
 static catalog::Catalog cat;
 static menu::State flow_state;
-extern xyf::ui::Chrome bridge_chrome;                 // ui_preview_bridge.cpp (8.7)
+extern xyf::ui::Chrome bridge_chrome;                 // ui_preview_bridge.cpp
 extern "C" {
 // mode: 0 = built-in copy only, 1 = library + built-in, 2 = nothing bootable.
 void flow_start(unsigned mode) {
@@ -23,7 +23,7 @@ void flow_start(unsigned mode) {
 }
 unsigned flow_key(unsigned key) { const unsigned a = unsigned(menu::key(flow_state, key, true)); menu::key(flow_state, key, false); return a; }
 void flow_hold(unsigned key, unsigned pressed) { menu::key(flow_state, key, pressed != 0); }
-// 4.8: the Settings page's line; 4.8m2: its Mod memory row (settings::Memory) and pending mark, as key_ui and
+// the Settings page's line; its Mod memory row (settings::Memory) and pending mark, as key_ui and
 // xyf_mods_io menu_state set them.
 void flow_settings(unsigned memory, unsigned pending, const char* note) {
     flow_state.memory = memory; flow_state.memory_pending = pending != 0;
@@ -31,7 +31,7 @@ void flow_settings(unsigned memory, unsigned pending, const char* note) {
 }
 void flow_storage(unsigned view) { flow_state.storage = view; }      // 193: xyf::menu::StorageView
 void flow_draw(uint16_t* fb, const char* status) { menu::draw(fb, flow_state, status, &bridge_chrome); }
-// 8.4a: the saved configuration as xyf_mods_io::menu_state sets it; a library holding Open-XY (mods-a, the default)
+// the saved configuration as xyf_mods_io::menu_state sets it; a library holding Open-XY (mods-a, the default)
 // and the spare mods-b.
 void flow_config(const char* label, unsigned pending, unsigned blocked, const char* note) {
     flow_state.continue_label = label && *label ? label : 0;

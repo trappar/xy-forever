@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Mod boot (plan 5.4e0): a host-assembled mod firmware into XY Forever's library, booted once.
+"""Mod boot: a host-assembled mod firmware into XY Forever's library, booted once.
 
-Superseded since the content switch (4.6c1): its entry has no content of its own, so the menu lists it
+Superseded since the content switch: its entry has no content of its own, so the menu lists it
 "content not installed" and its content stage writes /yaffs2/content/ directly. A host-built test image goes
 in with scripts/test_entry.py (an assembled entry the device's content switch installs).
 
@@ -21,7 +21,7 @@ Stages:
              os.ldr; put info.txt (strict manifest: type=firmware name version kind bytes crc32
              sha256); ls sizes; get os.ldr whole: SHA-256 equal; after the write window closed the
              menu catalog lists <id> usable, firmware/ lists it, the slots' default is unchanged.
-  content    --content [DIR] only (2.4d): get content/op1_factory.json into the evidence folder
+  content    --content [DIR] only: get content/op1_factory.json into the evidence folder
              (SHA-256 recorded; if that fails nothing is written), and every delta file that exists
              already; then mkdir the missing folders, put display/<id>.svg and presets/<id>/*.json,
              and the assembled op1_factory.json last (each read back). DIR: a content delta made
@@ -247,7 +247,7 @@ class ModBoot(dp.Pass):
         return 'menu lists %s %r usable (item %d of %d); default %s unchanged' % (
             self.opts.id, item[0]['name'], catalog['items'].index(item[0]), catalog['count'], default)
 
-    # -- content (2.4d) -------------------------------------------------------------------------
+    # -- content -------------------------------------------------------------------------------
     def listing(self, path):
         """{name: (type, size)} of a device folder; None when it does not exist."""
         code, out, err = self.host(['ls', path, '--json'], dp.T_ANSWER)
@@ -308,7 +308,7 @@ class ModBoot(dp.Pass):
 
     def step_dry_run_named(self):
         raise StepSkip('no dry run of a named entry exists: CONTINUE mode 1 dry-runs the default only '
-                       '(PROTOCOL.md 0x31); not added in 5.4e0')
+                       '(PROTOCOL.md 0x31)')
 
     # -- boot once -----------------------------------------------------------------------------
     def slot_fields(self, tag):

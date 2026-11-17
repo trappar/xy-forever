@@ -173,7 +173,7 @@ void draw_progress(uint16_t* fb, const Progress& p) {
     digits[n++] = '%'; digits[n] = 0;
     text(fb, margin, bar_y + bar_h + 30, digits, grey, 1);
     if (p.warning && *p.warning) text(fb, margin, height - 30, p.warning, accent, 1);
-    hint_line(fb, "", p.chrome);                      // 8.7: the activity line only
+    hint_line(fb, "", p.chrome);                      // the activity line only
 }
 
 void draw_home_empty(uint16_t* fb, uint32_t selected, const Chrome* chrome) {

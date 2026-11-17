@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only census of every CRC span the MTP USB probe checks before it switches (plan 3.4).
+"""Read-only census of every CRC span the MTP USB probe checks before it switches.
 
 usage: python3 scripts/mtp_span_census.py [--check usb|engine|probe] [--span N] [--dry-run]
 

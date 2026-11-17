@@ -1,11 +1,11 @@
-// Host adapter for native/tfw_os (plans 4.3a, 4.3b): runs the device's freestanding extractor
+// Host adapter for native/tfw_os: runs the device's freestanding extractor
 // and signature check against a .tfw file on the Mac. Built and driven by xy_forever/tfw_extract.py.
 //
 //   tfw_extract digest PACKAGE
 //   tfw_extract extract PACKAGE OUT (--public-key-stdin | --unverified | --reject-signature)
 //               [--digest HEX] [--allow LO:HI]... [--image-limit N] [--directory-limit N]
 //               [--entries N] [--fail-write]
-//   tfw_extract check FILE [--public-key-stdin] [--allow LO:HI]...    (native/tfw_check, plan 4.3c)
+//   tfw_extract check FILE [--public-key-stdin] [--allow LO:HI]...    (native/tfw_check)
 //
 // check: the tfw.check verdict on a package or a cut of one. Without --public-key-stdin the device
 // has no public key (reason no_otp); AES records follow as for extract (none: no_otp).

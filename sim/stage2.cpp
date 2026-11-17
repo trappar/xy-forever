@@ -1,4 +1,4 @@
-// The simulator's stage-2 trampoline (4.7a1; on the device: target/xyf_stage2_enter.s). Stage 1
+// The simulator's stage-2 trampoline (on the device: target/xyf_stage2_enter.s). Stage 1
 // reads, checks and copies the stage-2 file into the emulated window exactly as on the device, but
 // that image is Blackfin code; in its place runs the same stage-2 source compiled for the Mac
 // (target/stage2_main.cpp, through the same Services3 table). The entry must lie in the copied

@@ -30,7 +30,7 @@ Start in the workspace folder (where Claude Code was opened); it ends up as:
   tools/blackfin/  open-xy's toolchain-1 release, unpacked by bootstrap (or anywhere with XYF_TOOLCHAIN)
   private/         firmware, builds, device reports, evidence, dev-menu kits: never in git
 ```
-- Run-time loading (plan 8.9) lives on the private fork `trappar/open-xy`, branch `runtime-loading`
+- Run-time loading (#28) lives on the private fork `trappar/open-xy`, branch `runtime-loading`
   (on upstream `ba943a8`): clone it to `<workspace>/open-xy` only for items that need it. It is not
   the pinned upstream clone `fixtures` makes for open-xy facts (AGENTS.md).
 

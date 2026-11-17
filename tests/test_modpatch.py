@@ -1,4 +1,4 @@
-"""Mod assembly on the host, end to end (plans 5.4b, 5.4c, 5.4i: native/mod_link, mod_patch, mod_content,
+"""Mod assembly on the host, end to end (native/mod_link, mod_patch, mod_content,
 host/mod_assemble.cpp, xy_forever/modpatch.py).
 
 Synthetic fixtures made here from scratch run in the standard suite: a stock LDR, a profile with an
@@ -421,7 +421,7 @@ class Synthetic(unittest.TestCase):
             data = TK.obj(['alpha_register'], ['sdk_start', 'alpha_engine_id'], absolute=['fixed_address'])
             (root / 'alpha/objects/alpha/voice.o').write_bytes(data)
             return ['alpha']
-        # the linker refuses it first (plan 5.4w2), before the content step's own check
+        # the linker refuses it first, before the content step's own check
         self.refused(['alpha'], 'link', 'absolute', gen=self.variant(absolute), detail='alpha/voice.o')
 
     def test_refuses_missing_svg_or_preset(self):
@@ -461,7 +461,7 @@ class Synthetic(unittest.TestCase):
             self.assertEqual(verify(bytes(blob)), 'verify', at)
         self.assertEqual(verify(data[:-1]), 'verify')
 
-    # -- hardening (plan 5.4x) ----------------------------------------------------------------------
+    # -- hardening ----------------------------------------------------------------------
     def fixed(self, offset, address, length=4):
         """A well-formed table edit at file offset/address: stock's bytes before, 0xab after."""
         return dict(kind='table', name='extra', address='0x%08x' % address, file_offset='0x%x' % offset, length=length,
@@ -661,7 +661,7 @@ class PublishedKit(unittest.TestCase):
 
 
 
-# 4.8m1, the website's experimental 4 MiB option: a small selection, one that fits only the larger layout, one
+# The website's experimental 4 MiB option: a small selection, one that fits only the larger layout, one
 # 1,180 B below its 4080 KiB limit, and one over it (refused alike).
 LARGE = ['troupe', 'x0x', 'wander']
 NEAR = LARGE + ['weave', 'choir', 'macroosc', 'crease', 'solar', 'drone', 'papasrapa', 'chords']
@@ -712,7 +712,7 @@ class PublishedKitExpanded(unittest.TestCase):
         return P.run(self.binary, folder / 'job.txt', folder / 'out')
 
     def test_bases_without_or_with_a_wrong_expanded_layout(self):
-        """A base written before 4.8m1 (no expanded_module_base) stays known for standard and is refused for
+        """A base written before the 4 MiB option (no expanded_module_base) stays known for standard and is refused for
         expanded; a base whose expanded_module_base differs from the known one is not known in expanded mode."""
         for name, value in (('old', None), ('moved', '0x8d1d0380'), ('unaligned', '0x8d0d0384')):
             gen = Path(self.tmp.name) / ('gen-' + name)

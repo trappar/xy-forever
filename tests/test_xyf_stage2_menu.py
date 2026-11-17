@@ -111,9 +111,9 @@ class Stage2MenuProgramTest(unittest.TestCase):
         keys = press(PLUS) + press(PLAY) + press(PLUS) + press(PLUS) + [SHIFT | 1 << 8] + press(PLAY)
         self.assertEqual(p.run(keys)[0], 3 | 2 << 8)
         p = self.fresh()                                             # Uninstall row -> confirm -> accept
-        self.assertEqual(p.run(press(MINUS) * 3 + press(PLAY) + press(PLUS) + press(PLAY))[0], 5)   # Uninstall (4.8: past Info, Settings)
-        p = self.fresh()                                             # 5.4e1: Mods -> the stage-1 menu runs the page
-        self.assertEqual(p.run(press(PLUS) * 2 + press(PLAY))[0], 1)  # 5.4e1b: right below Firmware library
+        self.assertEqual(p.run(press(MINUS) * 3 + press(PLAY) + press(PLUS) + press(PLAY))[0], 5)   # Uninstall (past Info, Settings)
+        p = self.fresh()                                             # Mods -> the stage-1 menu runs the page
+        self.assertEqual(p.run(press(PLUS) * 2 + press(PLAY))[0], 1)  # right below Firmware library
 
     def test_link_loss_and_idle_return_continue(self):
         p = self.fresh()

@@ -1,4 +1,4 @@
-// XY Forever stage 2, product image (4.7a1, ABI 3; target/xyf_stage2.hpp). Linked at
+// XY Forever stage 2, product image (ABI 3; target/xyf_stage2.hpp). Linked at
 // xyf::stage2::window_begin with this function first, packed by xyf_build.py --xyf-product as
 // main.xys2 (device path /yaffs2/xy-forever/stage2/main.xys2). Stage 1 (B's USB service) calls
 // it with op_init once, op_turn every home_pump pass and op_command for a request type stage 1

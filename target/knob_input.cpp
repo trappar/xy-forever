@@ -1,5 +1,5 @@
 #include "knob_input.hpp"
-// Plan 8.3 (knob_input.hpp). Reads only: the two index words and the slots between them.
+// Knob turns (knob_input.hpp). Reads only: the two index words and the slots between them.
 namespace xy_forever { namespace knob_input {
 // Initialized data, not BSS: the cold link has no zero-initialization.
 Result result __attribute__((section(".data"))) = {magic};

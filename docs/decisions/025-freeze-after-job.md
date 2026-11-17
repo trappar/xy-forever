@@ -1,4 +1,4 @@
-# 025: The freeze after a mod job (plan item 0.12)
+# 025: The freeze after a mod job
 
 Research record, 2026-11-15; no device action. Evidence: the first mods-apply session's freeze log
 (build 172; the maintainer's, not shared). Signature: job done, then the next HELLO (0.3 s later) unanswered, USB still

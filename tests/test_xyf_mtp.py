@@ -32,7 +32,7 @@ class MtpTest(unittest.TestCase):
         engine = ss[ss.index('void serve_engine('):]
         engine = engine[:engine.index('\n}\n')]
         self.assertIn('state.on = engine != entry_none && !engine_refused;', engine)
-        self.assertIn('state.session = engine == entry_run ? window : mounted != 0;', engine)   # 2.2c: lazy write window
+        self.assertIn('state.session = engine == entry_run ? window : mounted != 0;', engine)   # lazy write window
 
     def test_write_window_pins(self):
         src = (ROOT / 'target/cold_storage.cpp').read_text()
@@ -94,13 +94,13 @@ class MtpTest(unittest.TestCase):
             self.assertEqual(zlib.crc32(firmware.read(address, length)), crc, hex(address))
 
     def test_only_the_product_has_mtp(self):
-        self.assertNotIn('xyf-mtp', builder.MODES)                       # removed (plan 0.4b)
+        self.assertNotIn('xyf-mtp', builder.MODES)                       # removed
         self.assertEqual([m for m in builder.MODES if builder.features(m)['mtp']], ['xyf-product'])
         src = (ROOT / 'xyf_build.py').read_text()
         self.assertIn("require(not has('serve_only')", src)
 
     def test_ranged_read_lseek_is_the_file_client_s(self):
-        # 2.2b: b's ranged read seeks with the partition builder (op 0x2c), never stock lseek 889f297c.
+        # b's ranged read seeks with the partition builder (op 0x2c), never stock lseek 889f297c.
         self.assertIn('889f297c', builder.REMOVED_CLIENT_CALLS)
         for name in ('storage_server.cpp', 'usb_service.cpp', 'file_client.cpp'):
             self.assertNotIn('0x889f297cu', (ROOT / 'target' / name).read_text(), name)

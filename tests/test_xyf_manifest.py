@@ -1,4 +1,4 @@
-"""Package manifests (plan 4.1a, docs/decisions/010-package-model.md, docs/STORAGE.md): the strict
+"""Package manifests (docs/decisions/010-package-model.md, docs/STORAGE.md): the strict
 info.txt reader, the files.sha256 reader, the recogniser and the dependency rules, as host-built
 device C++ (target/xyf_manifest.hpp), compared with the host twin in xy_forever/xyf_entry.py."""
 import ctypes as C
@@ -419,7 +419,7 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(entries[100], (hashlib.sha256(names[100]).hexdigest(), names[100].decode(), 0))
 
     def test_device_reads_a_content_manifest(self):
-        """content.sha256 from the host writer (plan 4.6a1) in the device reader's order, any pieces."""
+        """content.sha256 from the host writer in the device reader's order, any pieces."""
         from xy_forever import content_manifest as CM
         names = ['B.wav', 'a/b', 'a-b', 'a b/c', 'a.b', 'a!', 'Z/#1.aif', '_x', '~y', 'd/' + 'e' * 158]
         with tempfile.TemporaryDirectory() as tmp:

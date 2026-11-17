@@ -1,4 +1,4 @@
-// The tfw.check verdict (plan 4.3c). ZIP32 fields from PKWARE APPNOTE 6.3.10; record rules as in
+// The tfw.check verdict. ZIP32 fields from PKWARE APPNOTE 6.3.10; record rules as in
 // tfw_os.cpp (the stock packages' plain subset).
 #include "tfw_check.hpp"
 #include "tfw_signature.hpp"

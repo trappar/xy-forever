@@ -3,7 +3,7 @@
 #include "ldr.hpp"
 namespace xyf_core { namespace p224 {
 // ECDSA signature verification over NIST P-224 (FIPS 186-4 sections 6.4 and D.1.2.2; SEC 1 v2
-// section 4.1.4), for the .tfw header check (plan 4.3b, tfw::verify_header). Verification only:
+// section 4.1.4), for the .tfw header check (tfw::verify_header). Verification only:
 // public inputs, no secrets, no signing. Written to be read: textbook Jacobian formulas over
 // plain field elements, one generic modular multiply (Montgomery, 16-bit digits, so every
 // product and sum fits a U32), inverses by Fermat. No heap, no library calls, no recursion.

@@ -74,7 +74,7 @@ class StateWriteHostTest(unittest.TestCase):
         self.assertEqual(int(re.search(r't_set_default = (0x[0-9a-f]+)', header).group(1), 16), P.SET_DEFAULT)
         sw = (ROOT / 'target/xyf_state_write.hpp').read_text()
         self.assertIn('static const uint32_t item_set_default = 0x40;', sw)
-        self.assertIn('static const uint32_t item_id_nibble = 0x68;', sw)   # 1.5: nibbles, low bits 0
+        self.assertIn('static const uint32_t item_id_nibble = 0x68;', sw)   # nibbles, low bits 0
         self.assertEqual(H.SLOTS, ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt'))
 
 

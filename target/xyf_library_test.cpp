@@ -101,7 +101,7 @@ int main() {
     fs.fail_closedir = true;
     REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::directory && lib.count == 0);
     fs.fail_closedir = false;
-    // 5.4d3a: an assembled mod set (info.txt with generation) is listed, its content not installed: not usable,
+    // An assembled mod set (info.txt with generation) is listed, its content not installed: not usable,
     // never the boot choice even as default or once (content_installed).
     fs.files[0].text = "default=mods-a\nonce=mods-a\n";
     fs.files[fs.file_count++] = {"/yaffs2/xy-forever/firmware/mods-a/info.txt",
@@ -114,7 +114,7 @@ int main() {
             !lib.entries[mods].usable && !strcmp(lib.entries[mods].info.name, "OP-XY mods"));
     REQUIRE(!library::content_installed(lib.content, lib.entries[mods]) && library::content_installed(lib.content, lib.entries[0]));
     REQUIRE(library::boot_choice(lib, index) == library::Choice::menu);
-    // 4.6c1: the content state record decides. Installed for mods-a: mods-a usable (the boot choice), the
+    // The content state record decides. Installed for mods-a: mods-a usable (the boot choice), the
     // stock entries not; switching (or a malformed record): nothing; official again: the stock entries.
     const int32_t stock = library::find(lib, "opxy-121");
     REQUIRE(stock >= 0 && lib.entries[stock].usable && lib.content.kind == content::official);

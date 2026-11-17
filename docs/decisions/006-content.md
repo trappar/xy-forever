@@ -1,8 +1,8 @@
-# 006: Content and content packs (plan item 4.5)
+# 006: Content and content packs
 
 Research record, 2026-11-14; no device, no build. **[L]** read from a listing or our code (1.2.1 bootloader `bootloader-121-listing`; OS linear listings of 1.2.1 and 1.2.5, strings resolved from the `os.ldr` images), **[F]** read from a package, doc or saved device listing, **[M]** measured on files in the private folder, **[I]** inferred, **[U]** unknown. OS addresses are 1.2.1 unless noted. Listings and device evidence: the maintainer's (not shared).
 
-**Question:** what content is, how it depends on the OS version, how stock installs it and content packs, what XY Forever can do with its own decoder, and the options for a library with several entries (input to 4.6 and 5.2d).
+**Question:** what content is, how it depends on the OS version, how stock installs it and content packs, what XY Forever can do with its own decoder, and the options for a library with several entries (input to content installs and to content per entry).
 
 ## 1. What content is
 - **Package:** `firmware/blackfin/content/` = 839 files, 125,790,852 B in 1.2.1 and 1.2.5 (identical), 829 in 1.1.33 [M]. `samples` 469 files / 112 MB, `legacy_projects2` 8.1 MB, `display` 85 svg/otf 1.9 MB, `wavetables` 9 `.mip` 1.8 MB, `presets` 165, `projects` 13 `.xy`, `debug_projects`, `legacy_*`, `beats`, `patterns`, `tunings`, `readme`, `op1.json` 10,557 B, `op1_factory.json` 5,501 B [M]. No code [F: `analysis/tfw-install-001/OS125-SAFETY.md`].
@@ -27,9 +27,9 @@ Research record, 2026-11-14; no device, no build. **[L]** read from a listing or
 - **Not new in 1.2.5:** the 1.2.1 bootloader installs them and "2. uninstall content packs" (`88a1df4e`, `88a1e27e`) deletes every `/yaffs2/content/dlc/*` [L]; the 1.1.33, 1.2.1 and 1.2.5 OSes read `content/dlc/` [M]. 1.2.1/1.2.5 OS: each `content/dlc/<pack>/manifest.json` (`name`, `author`, `description`, `version`) is logged "dlc pack: %s name=%s version=%s" and registered as a path shortcut (reserved names refused); startup tests `content/dlc/dc_nyc/manifest.json` (`8c0b8698`, purpose unknown) [L]; pack `presets` and `projects` templates appear beside the factory ones [I from strings].
 - **Format** [I from the bootloader code]: a TE-signed `.tfw` whose ZIP holds only `firmware/blackfin/content/dlc/<pack>/...` plus a `partial_upgrade` marker (without it the FULL path would wipe factory content). Delivered through the bootloader's update mode (USB disk or MIDI); the OS has no install path [F: OS125-SAFETY]; no host tool known.
 - **Missing:** an actual pack file (none in the maintainer's evidence): container fields (key index, signature key, SKU, version), member layout and the marker are unverified; where TE publishes packs is unknown.
-- **XY Forever on bootloader 1.2.1:** 4.3's decoder and signature check, then PARTIAL semantics (delete `content/dlc/<pack>/`, copy, skip the marker); uninstall = delete the folder. The OS reads plain folders, so a pack copied by MTP should register too [I, untested].
+- **XY Forever on bootloader 1.2.1:** decision 003's decoder and signature check, then PARTIAL semantics (delete `content/dlc/<pack>/`, copy, skip the marker); uninstall = delete the folder. The OS reads plain folders, so a pack copied by MTP should register too [I, untested].
 
-## 5. Options for a multi-entry library (facts for 5.2d)
+## 5. Options for a multi-entry library (facts for content per entry)
 | Option | Takes | Risks |
 |---|---|---|
 | (a) one shared tree | nothing per switch; newest official content + every mod's additions | 1.1.33 broken as seen; entries for machines an OS lacks [U] (005 ask 4); one `op1_factory.json` must carry every mod set |
@@ -42,14 +42,14 @@ Research record, 2026-11-14; no device, no build. **[L]** read from a listing or
 - Missing or mixed `content/` breaks the OS, not XY Forever (it runs first and never reads `content/`): reinstall from a `.tfw` or by MTP, dev menu, or official 1.2.1 `.tfw` (ladder step 3). Recoverable without hardware, as is a full yaffs (delete over MTP) [I].
 - No content operation touches the boot partition, SPI, OTP, companions or `/yaffs2/bootloader.dev` (root, outside `content/`), and none uses stock updater code.
 
-## 7. Proposed split of 4.6
-| Item | Done when |
+## 7. Proposed split
+| Step | Done when |
 |---|---|
-| 4.6a build: manifests + status (host) | manifests (path, size, SHA-256) of the 1.1.33/1.2.1/1.2.5 content from the decrypted ZIPs as private fixtures plus a compact list the device can hold; `xyf_host.py content-status` names the matching version and lists extra/missing/modified files; simulator test |
-| 4.6b device safe: content inventory | read-only: the device's `content/` (version, open-xy leftovers, packs) and yaffs free space recorded in STATUS; host backup of `content/` in the private folder |
-| 4.6c build: content install job | all content members streamed through 003's reader into `native/content`: FULL = install/erase against the known previous generation, `content/dlc/` kept; PARTIAL = pack folder replaced, marker skipped; `firmware.version` last; generation record. Simulator: 1.2.1 -> 1.1.33 -> 1.2.1 byte-identical; a cut at every write resumes; `user/`, `content/dlc/`, `bootloader.dev` untouched; paths outside `content/` refused |
-| 4.6d device risky: 1.1.33 round trip | after 4.6b's backup: 1.1.33 content installed, `opxy-1133` booted (user: works?), 1.2.1 content restored, status matches 1.2.1 |
-| 4.6e build: content packs | pack list, install of a content-only `.tfw` (synthetic, test key, host-only) and uninstall, from the menu and serial; simulator |
-| 4.6f device: a real pack | blocked: needs a pack file |
+| build: manifests + status (host) | manifests (path, size, SHA-256) of the 1.1.33/1.2.1/1.2.5 content from the decrypted ZIPs as private fixtures plus a compact list the device can hold; `xyf_host.py content-status` names the matching version and lists extra/missing/modified files; simulator test |
+| #17 device safe: content inventory | read-only: the device's `content/` (version, open-xy leftovers, packs) and yaffs free space recorded in STATUS; host backup of `content/` in the private folder |
+| #18 build: content install job | all content members streamed through 003's reader into `native/content`: FULL = install/erase against the known previous generation, `content/dlc/` kept; PARTIAL = pack folder replaced, marker skipped; `firmware.version` last; generation record. Simulator: 1.2.1 -> 1.1.33 -> 1.2.1 byte-identical; a cut at every write resumes; `user/`, `content/dlc/`, `bootloader.dev` untouched; paths outside `content/` refused |
+| #19 device risky: 1.1.33 round trip | after #17's backup: 1.1.33 content installed, `opxy-1133` booted (user: works?), 1.2.1 content restored, status matches 1.2.1 |
+| #20 build: content packs | pack list, install of a content-only `.tfw` (synthetic, test key, host-only) and uninstall, from the menu and serial; simulator |
+| #20 device: a real pack | blocked: needs a pack file |
 
-**Open questions:** (1) may an install overwrite or delete `content/` files that match no official version, or must it stop or move them aside? (2) 5.2d: (a), (b) or (c)? (3) back up `content/` (126 MB over USB) before the first write? (4) is a pack file (e.g. `dc_nyc`) available, and what said packs are new in 1.2.5? (5) may XY Forever install unsigned packs (plain folders)?
+**Open questions:** (1) may an install overwrite or delete `content/` files that match no official version, or must it stop or move them aside? (2) section 5: (a), (b) or (c)? (3) back up `content/` (126 MB over USB) before the first write? (4) is a pack file (e.g. `dc_nyc`) available, and what said packs are new in 1.2.5? (5) may XY Forever install unsigned packs (plain folders)?

@@ -1,5 +1,5 @@
 {
-  "$comment": "Conformance suite of the XY Forever serial protocol v1 (plan item 1.4; spec: protocol/v1.json, decisions 004 and 013). The behaviour a v1 device must show, as data: each case is a named exchange that every client runs the same way (Python: scripts/conformance.py; TypeScript: clients/ts/test/conformance.ts) against the simulator or a device. scripts/protogen.py validates this file against the spec (xy_forever/conformance.py) and the coverage rules; `syntax` documents every keyword. Frame-level vectors stay in v1.json (`streams`) and are referenced by name, not copied.",
+  "$comment": "Conformance suite of the XY Forever serial protocol v1 (spec: protocol/v1.json, decisions 004 and 013). The behaviour a v1 device must show, as data: each case is a named exchange that every client runs the same way (Python: scripts/conformance.py; TypeScript: clients/ts/test/conformance.ts) against the simulator or a device. scripts/protogen.py validates this file against the spec (xy_forever/conformance.py) and the coverage rules; `syntax` documents every keyword. Frame-level vectors stay in v1.json (`streams`) and are referenced by name, not copied.",
   "format": "xyf-conformance/1",
   "protocol": "1.13",
   "doc": [
@@ -286,7 +286,7 @@
        {"send": "stage.end", "fields": {}, "expect": {"status": "state", "alone": true}}
      ]},
     {"name": "stage/failed-begin", "effects": ["staging"], "real_device": true,
-     "doc": "A stage.begin that fails forgets the earlier staging too (1.5; builds 181 and earlier kept its announcement and hashes and took stage.data from offset 0 into it): stage.data and stage.end are then state.",
+     "doc": "A stage.begin that fails forgets the earlier staging too (builds 181 and earlier kept its announcement and hashes and took stage.data from offset 0 into it): stage.data and stage.end are then state.",
      "steps": [
        {"send": "stage.begin", "fields": {"size": {"size": "tiny"}, "crc32": {"crc32": "tiny"}, "sha256": {"sha256": "tiny"}}, "expect": {"status": "ok"}},
        {"send": "stage.data", "fields": {"offset": 0, "data": {"blob": "tiny", "from": 0, "length": 10}}, "expect": {"status": "ok", "fields": {"received": 10}}},
@@ -298,7 +298,7 @@
        {"send": "stage.data", "fields": {"offset": 0, "data": {"blob": "tiny"}}, "expect": {"status": "state", "alone": true}}
      ]},
     {"name": "stage/end-repeated", "rules": ["destructive"], "effects": ["staging", "writes_test_area"], "real_device": true,
-     "doc": "1.5: a second stage.end after an ok one (a retry after a lost reply) is ok again and keeps the staging: file.write_staged still writes it.",
+     "doc": "A second stage.end after an ok one (a retry after a lost reply) is ok again and keeps the staging: file.write_staged still writes it.",
      "steps": [
        {"send": "stage.begin", "fields": {"size": {"size": "tiny"}, "crc32": {"crc32": "tiny"}, "sha256": {"sha256": "tiny"}}, "expect": {"status": "ok"}},
        {"send": "stage.data", "fields": {"offset": 0, "data": {"blob": "tiny"}}, "expect": {"status": "ok", "fields": {"received": {"size": "tiny"}}}},
@@ -307,7 +307,7 @@
        {"send": "file.write_staged", "fields": {"path": "/yaffs2/xy-forever/log/conformance/end-repeated.txt", "sha256": {"sha256": "tiny"}}, "expect": {"status": "ok"}}
      ]},
     {"name": "stage/data-resend", "effects": ["staging"], "real_device": true,
-     "doc": "1.5: stage.data resending bytes already received, unchanged (a retry after a lost reply), is ok with received unchanged; changed bytes at an old offset are range.",
+     "doc": "stage.data resending bytes already received, unchanged (a retry after a lost reply), is ok with received unchanged; changed bytes at an old offset are range.",
      "steps": [
        {"send": "stage.begin", "fields": {"size": {"size": "tiny"}, "crc32": {"crc32": "tiny"}, "sha256": {"sha256": "tiny"}}, "expect": {"status": "ok"}},
        {"send": "stage.data", "fields": {"offset": 0, "data": {"blob": "tiny", "from": 0, "length": 10}}, "expect": {"status": "ok", "fields": {"received": 10}}},
@@ -795,13 +795,13 @@
        {"reconnect": {"hello": true}}
      ]},
     {"name": "tfw.check/not-a-package", "effects": [], "real_device": false,
-     "why_not": "tfw.check first runs on a device in the OTP probe (scripts/tfw_probe.py, plan 4.3e)",
+     "why_not": "tfw.check first runs on a device in the OTP probe (scripts/tfw_probe.py, #15)",
      "doc": "A file that is not a package: the check runs (ok) and fails with reason 2; no key is read, so the public-key hash is zero.",
      "steps": [
        {"send": "tfw.check", "fields": {"path": "/yaffs2/firmware.version"}, "expect": {"status": "ok", "fields": {"verdict": 1, "reason": 2, "public_key_sha256": {"fill": 0, "count": 32}}}}
      ]},
     {"name": "tfw.check/errors", "rules": ["text"], "effects": [], "real_device": false,
-     "why_not": "tfw.check first runs on a device in the OTP probe (scripts/tfw_probe.py, plan 4.3e)",
+     "why_not": "tfw.check first runs on a device in the OTP probe (scripts/tfw_probe.py, #15)",
      "doc": "A path without its NUL or outside /yaffs2/ is bad_request, a path the file policy refuses is refused, a missing file not_found: the status alone.",
      "steps": [
        {"send": "tfw.check", "payload": {"text": "/yaffs2/firmware.version"}, "expect": {"status": "bad_request", "alone": true}},
@@ -810,7 +810,7 @@
        {"send": "tfw.check", "fields": {"path": "/yaffs2/xy-forever/log/conformance/missing.tfw"}, "expect": {"status": "not_found", "alone": true}}
      ]},
     {"name": "tfw.check/unsigned", "effects": ["staging", "writes_test_area"], "real_device": false,
-     "why_not": "it reads the device's keys from OTP: the first such read on a device is the OTP probe (plan 4.3e)",
+     "why_not": "it reads the device's keys from OTP: the first such read on a device is the OTP probe (#15)",
      "doc": "A well-formed package header whose signature is not the vendor's fails with reason 6 (the simulator without the private keys: reason 4, no key); a public-key hash comes with reason 6.",
      "given": {"files": [{"path": "/yaffs2/xy-forever/log/conformance/unsigned.tfw", "data": {"blob": "unsigned_tfw"}}]},
      "steps": [
@@ -838,7 +838,7 @@
      "doc": "The spec's stream: two frames cut into reads that span both.",
      "steps": [{"stream": "frames split across reads"}]},
     {"name": "frame/cut-frame-idle-reset", "rules": ["resync"], "effects": [], "real_device": true,
-     "doc": "1.5: a cut header announcing max_payload is dropped after idle_reset_ms of silence: the next hello is answered at once, nothing swallowed.",
+     "doc": "A cut header announcing max_payload is dropped after idle_reset_ms of silence: the next hello is answered at once, nothing swallowed.",
      "steps": [
        {"send_bytes": {"frame": {"type": "0x11", "seq": 2, "payload": {"fill": 0, "count": 4160}}, "length": 10}, "expect": {"none_within_ms": 600}},
        {"send_bytes": {"frame": {"type": "0x01", "seq": 11}}, "expect": {"replies": [{"type": "0x81", "seq": 11, "status": "ok"}]}}

@@ -1,4 +1,4 @@
-# 011: Where the OS keeps projects and samples (plan item 2.7)
+# 011: Where the OS keeps projects and samples
 
 Research record, 2026-11-14; no device, no build. **[L]** read from a listing or image (1.2.1 bootloader `bootloader-121-listing`; OS `xy-forever-125-002/norm-os{121,125}.asm`, strings from the `os.ldr` images), **[F]** read from a doc, report or git history, **[M]** measured on files, **[I]** inferred, **[U]** unknown. OS addresses are 1.2.1.
 

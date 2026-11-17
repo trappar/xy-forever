@@ -1,11 +1,11 @@
-# 014: Open-XY extensions (plan item 5.5)
+# 014: Open-XY extensions
 
 Research record, 2026-11-14. Sources: `../open-xy` checkout `4718876` (branch `sdk/synth-postmix`, 0.0.4: capture only, 166 edits); `origin/main` `52c8de9` (0.0.6, the SDK of the published kit; 205 edits); `origin/staging` `fd66c4a` (0.0.6+, 217 edits); the kit 0.0.6 of 008 (the private fixture `paths.PUBLISHED_KIT`). Facts are from main/kit unless named. Extension source repositories were not read. No device, no firmware build, no network. **[C]** read from code/docs, **[M]** measured (kit objects parsed; main's `builder/core.mjs` `linkKit` run under Node on the kit, no stock OS), **[I]** inferred, **[U]** unverified.
 
 **Question:** what extensions are, how open-xy attaches them, and how each becomes an on/off package in 008's base-plus-modules assembly, with nothing loaded when off.
 
 ## Answer in brief
-An extension is one compiled object plus a few metadata fields. It owns **no firmware edits**. Its hooks are SDK "services" in the profile, as for machines: one service (`extensions`, 7 hooks) feeds every event extension, and one (`master_filter`, 8 hooks) feeds every master processor. Each service is applied only when a selected extension needs it [C `docs/extensions.md`, `core.mjs linkKit`]. So an extension fits 008 as one package that names the services it uses. The base already holds every edit as data. Off: the object is not linked, the service stays unapplied (stock bytes) when no other extension needs it, and the accessor symbols go to `kit_absent`. **Extensions can be in the first version** (5.4): the same mechanism, about 250 device lines and 120 host lines more, checked byte for byte with `core.mjs`, which takes the extension list as an argument.
+An extension is one compiled object plus a few metadata fields. It owns **no firmware edits**. Its hooks are SDK "services" in the profile, as for machines: one service (`extensions`, 7 hooks) feeds every event extension, and one (`master_filter`, 8 hooks) feeds every master processor. Each service is applied only when a selected extension needs it [C `docs/extensions.md`, `core.mjs linkKit`]. So an extension fits 008 as one package that names the services it uses. The base already holds every edit as data. Off: the object is not linked, the service stays unapplied (stock bytes) when no other extension needs it, and the accessor symbols go to `kit_absent`. **Extensions can be in the first version**: the same mechanism, about 250 device lines and 120 host lines more, checked byte for byte with `core.mjs`, which takes the extension list as an argument.
 
 ## The extensions
 | id | Status | What the player gets | Uses |
@@ -30,12 +30,12 @@ An extension is one compiled object plus a few metadata fields. It owns **no fir
 - **Shared edits and order**: services are shared, never owned. One copy serves all subscribers and is applied once (union). `patchFirmware` refuses overlapping intervals across the whole profile, so no two services conflict. Edit order does not matter; object order is the kit's, and callback order is the collection's.
 - **What "off" does** [C/I]: capture keeps no saved state, so Record double-tap is stock again. DJ filter: projects open with stock EQ (the stock EQ values stay in `.xy`). A save made while it is off drops the DJ choice and settings, because the SDK writes `open-xy.master-filter` only when a processor is linked [C `projects.md`; I]. Turning it back on before saving restores them. Drumline page (staging): pads play as stock; whether a save keeps their settings is [U].
 
-## What changes in 5.4a-e (all in v1)
-- **5.4a** packager: extension packages, source pins from the catalog, `uses`/`exclusive`/accessor lists; the recombination test covers every `extensionChoices(kit)` (4 for 0.0.6). ≈ +100 lines Python.
-- **5.4b** linker: extension validation (ids, claims, collection order, ≤ 16), the object filter, absent-extension aliases, services from `uses`. ≈ +80 lines C++.
-- **5.4c** patcher and content: no new edit kind. The processor SVG goes into the entry's content delta as `display/<asset>`, with the asset-collision check. ≈ +30 lines.
-- **5.4d** job: the selection and the entry's inputs record extensions, and `layout.json` gets `extensions` (as the builder writes it; 5.2a keeps it). ≈ +20 lines.
-- **5.4e** Mods page: an Extensions section, a conflict message ("both use Record double-tap"), the meter counting the object plus first-use service bytes, extension ids in `xyf_host.py mods`. ≈ +80 lines + previews.
+## What changes in the mod-assembly steps (all in v1)
+- **Packager:** extension packages, source pins from the catalog, `uses`/`exclusive`/accessor lists; the recombination test covers every `extensionChoices(kit)` (4 for 0.0.6). ≈ +100 lines Python.
+- **Linker:** extension validation (ids, claims, collection order, ≤ 16), the object filter, absent-extension aliases, services from `uses`. ≈ +80 lines C++.
+- **Patcher and content:** no new edit kind. The processor SVG goes into the entry's content delta as `display/<asset>`, with the asset-collision check. ≈ +30 lines.
+- **Job (#24):** the selection and the entry's inputs record extensions, and `layout.json` gets `extensions` (as the builder writes it; #22 keeps it). ≈ +20 lines.
+- **Mods page:** an Extensions section, a conflict message ("both use Record double-tap"), the meter counting the object plus first-use service bytes, extension ids in `xyf_host.py mods`. ≈ +80 lines + previews.
 - **Byte check**: run `linkKit(kit, sel, layout, ext)`, `patchFirmware` and `buildAssets(…, ext)` for every extension choice crossed with every subset of the 7 `linked` machines and with 008's 20 random selections. The module, `os.ldr`, layout and content must be identical. The kit's own export probably already proves `linked` + all its extensions against GNU ld [I: native builds include the whole collection, `docs/extensions.md`].
 
 ## Safety

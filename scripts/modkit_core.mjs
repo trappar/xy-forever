@@ -3,7 +3,7 @@
 // xy_forever/modkit.py: openKit, then linkKit + patchFirmware (website mode: profiling off) +
 // buildAssets, or only assignNumbers + buildAssets (assets_only). Writes one result per job:
 // SHA-256 digests of everything the build produces, so two kits can be compared byte for byte.
-// With link_out (xy_forever/modpatch.py, plan 5.4c) a job also writes linkKit's result there
+// With link_out (xy_forever/modpatch.py) a job also writes linkKit's result there
 // (module.bin, link.json: globals, services, extensions, numbers, sizes) and the patched os.ldr.
 // A job with expanded: true links, patches and builds assets with the 4 MiB option (core.memoryKit).
 // Host only: no device, no network.
@@ -27,7 +27,7 @@ async function open(path) {
 }
 
 async function run(job) {
-  // expanded (XY Forever 4.8m1): the website's "Use 4 MiB for machines" option, core.memoryKit(kit, true).
+  // expanded: the website's "Use 4 MiB for machines" option, core.memoryKit(kit, true).
   const kit = job.expanded ? core.memoryKit(await open(job.kit), true) : await open(job.kit);
   const catalog = core.decode64(kit.stockCatalog);
   const result = {name: job.name};

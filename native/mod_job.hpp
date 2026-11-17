@@ -4,10 +4,10 @@
 #include "mod_link.hpp"
 #include "mod_patch.hpp"
 namespace xyf_core { namespace mod_job {
-// The device's mod assembly job (plans 5.4d1a, 5.4d1b; decision 019): the linker, patch and content
+// The device's mod assembly job (decision 019): the linker, patch and content
 // steps (mod_link, mod_patch, mod_content) driven in small bounded steps inside one caller-given work
 // region, every file read and written through a table of file calls (on the device: processor B's
-// file client, one 1 KiB request per call, usb_service's mods.apply; 5.4d2). Same inputs as host/mod_assemble.cpp's one-shot run, same
+// file client, one 1 KiB request per call, usb_service's mods.apply). Same inputs as host/mod_assemble.cpp's one-shot run, same
 // bytes out.
 //
 // Inputs, each read whole into the region and checked against its package's files.sha256 when it
@@ -50,7 +50,7 @@ struct Files {
 // job ends.
 struct Input {
     mod_link::Selection selection;   // machines (layout.json "selected" keeps their order), extensions, layout,
-                                     // memory (expanded: the 4 MiB option, 4.8m1; layout.json then records
+                                     // memory (expanded: the 4 MiB option; layout.json then records
                                      // "memory": "expanded" and its reserved_bytes)
     const char* generation;          // folder holding base/, <machine>/, ext-<id>/
     const char* stock;               // stock os.ldr
@@ -122,7 +122,7 @@ struct Job {
     char path[path_bytes];
     // the assembly
     mod_patch::Profile profile; mod_content::Catalog pins;
-    U32 module_limit, reserved_bytes;            // the layout in use (mod_patch::layout; 4.8m1 expanded or not)
+    U32 module_limit, reserved_bytes;            // the layout in use (mod_patch::layout; expanded or not)
     Byte* image; U32 image_bytes;
     const Byte* edits; U32 edits_bytes;
     Byte *stock_catalog, *official, *link_scratch, *patch_scratch, *content_scratch, *catalog_out, *list_out;
@@ -132,9 +132,9 @@ struct Job {
     Byte *layout_out, *info_out;
     U32 layout_size, info_size, list_size, ldr_bytes, crc, crc_done;
     hash::Digest ldr_sha256, layout_sha256, info_sha256, list_sha256;
-    U32 link_pass;                               // 8.8 timing: the link's last step: 1 tables/pass 1, 2 zero, 3 pass 2
+    U32 link_pass;                               // timing: the link's last step: 1 tables/pass 1, 2 zero, 3 pass 2
 };
-// 8.8: the part of the job a step belongs to, finer than Phase (the save-time log, target/xyf_save_log.hpp).
+// The part of the job a step belongs to, finer than Phase (the save-time log, target/xyf_save_log.hpp).
 enum TimingPart : U32 {
     tp_base, tp_packages, tp_catalog, tp_stock, tp_patch1, tp_link1, tp_zero, tp_link2, tp_set_module, tp_patch2,
     tp_crc, tp_content, tp_write, tp_verify, tp_check, tp_finish, tp_count

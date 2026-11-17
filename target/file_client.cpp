@@ -22,7 +22,7 @@ uint32_t list_entry(const uint8_t* entry, bool have_record, const uint8_t* recor
     uint32_t size = 0;
     if (have_record) {
         const uint32_t mode = xyf::usbp::get32(record + 8) & 0xf000u;
-        kind = entry[10] == 10 ? 2 : mode == 0x4000u ? 1 : mode == 0x8000u ? 0 : 2;   // 2.3f: a link (DT_LNK) stays
+        kind = entry[10] == 10 ? 2 : mode == 0x4000u ? 1 : mode == 0x8000u ? 0 : 2;   // a link (DT_LNK) stays
     }                                                                     // other: stat follows it, removals never do
     if (have_record && !kind) size = xyf::usbp::get32(record + 0x1c);
     out[0] = uint8_t(kind);
@@ -115,7 +115,7 @@ bool allowed(const char* path, file_engine::Operation op) {
 }
 // The path into the client's buffer, only once the slot is claimed: a request left out after its
 // bound still points at path_buffer, and the stock driver reads the path (and its length) only when
-// it sends it, which may be later (2.2r).
+// it sends it, which may be later.
 void place(const char* path) {
     char* to = reinterpret_cast<char*>(path_buffer);
     U32 k = 0;
@@ -136,7 +136,7 @@ Reply partition(U32 op, U32 a0, U32 a1, U32 a2) {
     const Reply s = partition_out(session, op, a0, a1, a2);
     return s.outcome ? s : await_answer(*session, bound_ms(op, a0));
 }
-// 5.4d2f: the op 9 left by unmount_start (its session and when it left; 0: none).
+// The op 9 left by unmount_start (its session and when it left; 0: none).
 Stock121PeerSession* volatile closing_session __attribute__((section(".data"))) = 0;
 volatile U32 closing_start __attribute__((section(".data"))) = 0;
 // A path-class request (the only call site of its builder, behind the policy check). left: only
@@ -247,7 +247,7 @@ Reply readdir(uint32_t folder, uint8_t* entry) {
 
 volatile U32 command_sequence __attribute__((section(".data"))) = 0;
 uint32_t serving() {
-    // 0.9f: the low three bits stay 0 (A's bootloader's select takes the argument & 7: the user area).
+    // The low three bits stay 0 (A's bootloader's select takes the argument & 7: the user area).
     const U32 value = U32(Stock121PeerSession::command_tag) << 16 | (storage_server::command_item & 0xffu) << 8 |
                       (++command_sequence << 3 & 0xf8u);
     const Reply r = partition(0x18, value, 0, 0);                        // a command item, bounded
@@ -258,7 +258,7 @@ uint32_t serving() {
 // B's op-8 state before a request: a request past its bound (stale) is closed first (op 9: A closes
 // B's files and folders), then op 8 (A's read-only mount) when not mounted.
 uint32_t mount_ready(volatile uint32_t& mounted) {
-    if (mounted == mounted_stale) {                                      // 2.2r: a request ran out its bound
+    if (mounted == mounted_stale) {                                      // a request ran out its bound
         const Reply u = unmount();                                       // op 9: A closes B's files and folders
         if (u.outcome) return status(u.outcome);
         mounted = 0;
@@ -292,7 +292,7 @@ uint32_t read_file(const char* path, uint32_t offset, bool ranged, uint8_t* out,
         if (k.outcome) return failed(k);
         if (k.value != int(offset)) code = xyf::usbp::s_range;
     }
-    for (U32 guard = 0; guard != 4096 + (capacity >> 10) && code == xyf::usbp::s_ok; ++guard) {   // 2.4c2: 7 MiB copies
+    for (U32 guard = 0; guard != 4096 + (capacity >> 10) && code == xyf::usbp::s_ok; ++guard) {   // 7 MiB copies
         const U32 room = capacity - bytes;
         uint8_t probe[4];
         // Range full: the 1-byte probe still runs (Test 041: ranged reads that closed right after
@@ -366,7 +366,7 @@ void release(volatile uint32_t& mounted) {
 uint32_t write_file(const char* path, const uint8_t* bytes, uint32_t size, uint32_t crc,
                     uint32_t& written, uint32_t& readback_crc, volatile uint32_t& mounted) {
     written = 0; readback_crc = 0;
-    // file_write checks the path first; the rest cannot happen from it (staged data). 2.4c2: size 0 (a copy
+    // file_write checks the path first; the rest cannot happen from it (staged data). Size 0 (a copy
     // of an empty file) opens, writes nothing and closes.
     if (!storage_server::valid_write_path(path) || !bytes) return xyf::usbp::s_refused;
     if (mounted == mounted_stale) return xyf::usbp::s_state;            // file_write sends op 9 first
@@ -376,7 +376,7 @@ uint32_t write_file(const char* path, const uint8_t* bytes, uint32_t size, uint3
         if (m.value) return xyf::usbp::s_storage;
         mounted = 1;
     }
-    // 2.2c: a opens its read-write window on the first change below and keeps it for the next
+    // a opens its read-write window on the first change below and keeps it for the next
     // writes; b closes it (op 9) once no write came for a while (usb_service). Past a request's
     // bound: op 9 before the next file command (a closes b's handles and the window).
     auto failed = [&mounted](const Reply& r) -> uint32_t { mounted = mounted_stale; return status(r.outcome); };

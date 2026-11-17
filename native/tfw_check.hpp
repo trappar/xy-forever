@@ -2,12 +2,12 @@
 #define XYF_TFW_CHECK_HPP
 #include "tfw.hpp"
 namespace xyf_core { namespace tfw_check {
-// The `tfw.check` command's verdict (plan 4.3c; docs/decisions/003-tfw-install.md, step 3 up to
+// The `tfw.check` command's verdict (docs/decisions/003-tfw-install.md, step 3 up to
 // the directory): is this file an official package that this device's own keys open? In 003's
 // order: the header's structure (no key), the P-224 signature with the device's public key, the
 // AES key on the encrypted name block and the padding, then the ZIP end record and every central
 // directory record. Nothing is extracted or written, the payload hash is not checked (that is
-// A's keyless hash job, 4.3d), and only the header, the name block, the last cipher block and
+// A's keyless hash job, #14), and only the header, the name block, the last cipher block and
 // the directory are read.
 //
 // A file may also be a cut (cut_magic): a package's first `head` bytes and its bytes from `tail`

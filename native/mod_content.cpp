@@ -1,4 +1,4 @@
-// Mod assembly, content step (plan 5.4c): a port of open-xy builder/core.mjs buildAssets.
+// Mod assembly, content step: a port of open-xy builder/core.mjs buildAssets.
 #include "mod_content.hpp"
 namespace xyf_core { namespace mod_content {
 namespace {

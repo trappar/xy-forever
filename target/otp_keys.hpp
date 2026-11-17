@@ -2,7 +2,7 @@
 #define XYF_OTP_KEYS_HPP
 #include "../native/ldr.hpp"
 // The device's own .tfw keys, read from processor B's one-time-programmable memory (OTP) through
-// the two boot-ROM entries the stock 1.2.1 bootloader uses (plan 4.3c; docs/decisions/003,
+// the two boot-ROM entries the stock 1.2.1 bootloader uses (docs/decisions/003,
 // docs/HARDWARE.md "OTP"). Read only: no OTP write or program entry is linked (the builder's ROM
 // rule admits only these two and the ROM memcpy). Used only by `tfw.check` (XYF_TFW_CHECK), which
 // passes the functions to native/tfw_check as its keys.

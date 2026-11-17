@@ -4,8 +4,8 @@
 namespace xyf { namespace mods {
 namespace {
 using namespace gfx;
-// 8.6: the compact title bar (ui_pages) with the filter and count; the memory meter on its edge, one line for
-// the memory and the status (or a result), then 9 rows of 18 px above the hint line (8.2: 7 of 20, 3 not packages).
+// The compact title bar (ui_pages) with the filter and count; the memory meter on its edge, one line for
+// the memory and the status (or a result), then 9 rows of 18 px above the hint line (was 7 of 20, 3 not packages).
 const int margin = 16, row_height = 18, meter_y = ui::compact_bar, meter_h = 4, line_y = ui::compact_bar + 7,
           rows_top = 43, hint_y = height - 11;
 const int bar_y = ui::compact_top + 10, bar_h = 16, step_y = bar_y + bar_h + 8, detail_y = step_y + 22,
@@ -26,7 +26,7 @@ void building(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& f) {
     char* at = line;
     const char* end = line + sizeof(line) - 1;
     if (full) {
-        if (p.save) put(at, end, "Saving changes");     // 8.4a: the save sequence
+        if (p.save) put(at, end, "Saving changes");     // the save sequence
         else { put(at, end, "Building "); put(at, end, p.job_name); }
         *at = 0;
         ui::compact_header(fb, line, "", chrome);
@@ -35,7 +35,7 @@ void building(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& f) {
     }
     const uint32_t px = ui::scale(uint32_t(bar_w), p.bar, bar_full);
     if (px > f.bar_px) { fill(fb, margin + int(f.bar_px), bar_y, int(px - f.bar_px), bar_h, accent); f.bar_px = px; }
-    // The step (5.4e2: step 8 is B's commit into the library).
+    // The step (step 8 is B's commit into the library).
     const bool cancelling = p.request == request_cancel;
     const uint32_t phase = p.job_phase > 7 ? 7 : p.job_phase;
     const uint32_t step = cancelling ? 0xffffu : p.save && p.save_stage ? 8u + p.save_stage : p.job_commit ? 8u : phase ? phase : 1u;
@@ -72,7 +72,7 @@ void building(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& f) {
                                                     "STOP  cancel      Keep the OP-XY powered.", accent, 1);
         f.footer = footer;
     }
-    // 8.7: the USB mark and the activity line (below the footer), each over its own background.
+    // The USB mark and the activity line (below the footer), each over its own background.
     const uint32_t usb = (chrome && chrome->usb ? 1u : 0u) | (chrome && chrome->mtp ? 2u : 0u);   // 188: both marks
     const char* activity = chrome && chrome->activity && *chrome->activity ? chrome->activity : 0;
     if (!full && usb != f.usb) {
@@ -99,7 +99,7 @@ void draw(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& frame) {
     char line[96], title[40];
     const char* end = line + sizeof(line) - 1;
     char* at = title;
-    put(at, title + sizeof(title) - 1, "Mods");     // 8.6: "Mods - Synths 3/57": the filter, listed rows on / listed
+    put(at, title + sizeof(title) - 1, "Mods");     // "Mods - Synths 3/57": the filter, listed rows on / listed
     if (p.shown) {
         const char* tend = title + sizeof(title) - 1;
         put(at, tend, " - "); put(at, tend, filter_name(p.filter)); put(at, tend, " ");
@@ -107,7 +107,7 @@ void draw(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& frame) {
     }
     *at = 0;
     at = line;
-    if (p.generation[0]) {                      // 8.7: the generation alone when the profile with it would be cut
+    if (p.generation[0]) {                      // the generation alone when the profile with it would be cut
         uint32_t n = 0, g = 0;
         while (p.profile[n]) ++n;
         while (p.generation[g]) ++g;
@@ -117,12 +117,12 @@ void draw(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& frame) {
     *at = 0;
     ui::compact_header(fb, title, line, chrome);
     // The memory meter on the title bar's edge: the estimate for the toggles against the mods region (module_bytes;
-    // 4.8m2: of the pending Mod memory layout).
+    // of the pending Mod memory layout).
     const uint32_t used_bytes = used(p), limit = memory_limit(p), services = shared(p);
     const bool over = limit && used_bytes > limit;
     fill(fb, margin, meter_y, bar_w, meter_h, dark);
     if (limit) fill(fb, margin, meter_y, over ? bar_w : int(ui::scale(uint32_t(bar_w), used_bytes, limit)), meter_h, over ? red : accent);
-    // 8.6: one line: a result (or the reading line) when there is one, else the memory and the status (8.4a's first
+    // One line: a result (or the reading line) when there is one, else the memory and the status (formerly the first
     // row: what Continue will do with the toggles), the status right-aligned.
     if (p.line != line_none && p.text[0])
         text(fb, margin, line_y, p.text, p.line == line_error ? red : p.line == line_done ? green : accent, 1);
@@ -132,7 +132,7 @@ void draw(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& frame) {
             put(at, end, "Memory "); put_number(at, end, (used_bytes + 1023u) >> 10);
             put(at, end, " of "); put_number(at, end, limit >> 10); put(at, end, " KiB, ");
             if (over) { put_number(at, end, (used_bytes - limit + 1023u) >> 10); put(at, end, " over"); }
-            else if (services) { put_number(at, end, (services + 1023u) >> 10); put(at, end, " shared"); }   // 4.8m2
+            else if (services) { put_number(at, end, (services + 1023u) >> 10); put(at, end, " shared"); }
             else { put_number(at, end, (limit - used_bytes) >> 10); put(at, end, " free"); }
         } else put(at, end, p.view == View::reading ? "Memory: reading..." : "Memory: -");
         *at = 0;
@@ -154,7 +154,7 @@ void draw(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& frame) {
         *at = 0;
         text(fb, width - margin - text_width(status, 1), line_y, status, color, 1);
     }
-    // Rows: the packages the filter shows (8.6: nothing else).
+    // Rows: the packages the filter shows (nothing else).
     const uint32_t rows = p.listed, selected = position(p), first = first_row(rows, selected);
     for (uint32_t i = 0; i < visible_rows && first + i < rows; ++i) {
         const uint32_t r = first + i;
@@ -163,7 +163,7 @@ void draw(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& frame) {
         if (on) fill(fb, margin - 6, y - 1, width - 2 * margin + 12, row_height - 1, white);
         const Color fg = on ? black : white, soft = on ? dark : grey;
         const Package& m = p.packages[p.list[r]];
-        // 8.4d: a thin line above the first row of each kind (no extra row)
+        // A thin line above the first row of each kind (no extra row)
         if (r && p.packages[p.list[r - 1]].kind != m.kind) fill(fb, margin, y - 2, width - 2 * margin, 1, grey);
         box(fb, margin + 4, y + 1, (m.flags & flag_on) != 0, fg);
         text(fb, margin + 24, y, text_at(p, m.name), fg, 2);
@@ -183,7 +183,7 @@ void draw(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& frame) {
     const int empty_y = rows_top + 2;           // (nothing listed: no scrolling)
     if (!p.shown && p.view == View::list) text(fb, margin + 4, empty_y, "No mod packages on this OP-XY.", grey, 2);
     else if (p.shown && !p.listed) text(fb, margin + 4, empty_y, "Nothing on.", grey, 2);
-    // 8.6: the SHIFT keys named here (no row of their own).
+    // The SHIFT keys named here (no row of their own).
     ui::footer_line(fb, hint_y, p.listed ? "PLAY on/off    SHIFT+turn filter    SHIFT+PLAY all on/off    STOP back" :
                                            "SHIFT+turn filter    STOP back", chrome);
 }

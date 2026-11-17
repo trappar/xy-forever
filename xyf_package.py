@@ -5,7 +5,7 @@
     python3 xyf_package.py extract-os PACKAGE.tfw --out DIR     OS-only library entry from an official .tfw
     python3 xyf_package.py content-manifest CONTENT --out DIR   content.sha256 of an extracted content set
     python3 xyf_package.py content-compare A B [--paths]        two lists or folders; exit 0 when identical
-    python3 xyf_package.py index build GENERATION_DIR --out DIR  local mod package index + archives (6.2f)
+    python3 xyf_package.py index build GENERATION_DIR --out DIR  local mod package index + archives
     python3 xyf_package.py index verify DIR                      every archive matches index.json
 
 extract-os runs the device's own extractor and signature check (native/tfw_os, tfw_signature,

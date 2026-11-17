@@ -52,7 +52,7 @@ int main() {
     REQUIRE(state_write::find_by_hash(lib, h) == -2);
     lib.count = 3;
     // Collector: all eight nibbles, any order, then commit; incomplete commit refused and resets.
-    // 1.5: every command value keeps its low three bits 0 (a's bootloader's select: the user area).
+    // Every command value keeps its low three bits 0 (a's bootloader's select: the user area).
     state_write::Collector col = {0, 0};
     const uint32_t order[8] = {2u, 0u, 7u, 3u, 5u, 1u, 6u, 4u};
     for (uint32_t k = 0; k != 8; ++k) REQUIRE((state_write::id_nibble_command(0xffffffffu, k) & 7u) == 0);
