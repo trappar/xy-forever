@@ -20,6 +20,7 @@ from test_tfw_os import (BOOTLOADER, Extractor, KEYS, OS, PUBLIC_KEY, SIGNING_KE
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 import xyf_host as host                              # noqa: E402
 from xy_forever import paths, sim, tfw_extract       # noqa: E402
 from xy_forever import usb_proto_ids as ids          # noqa: E402
@@ -346,6 +347,6 @@ class BuilderRules(unittest.TestCase):
             if path.name not in ('otp_keys.cpp', 'boot_services.cpp'):
                 self.assertNotIn('0x04000048', path.read_text(), path.name)
                 self.assertNotIn('0x04000054', path.read_text(), path.name)
-        service = (ROOT / 'target/usb_service.cpp').read_text()
+        service = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertIn('#if defined(XYF_TFW_CHECK)\n        else if (type == P::t_tfw_check) tfw_check(seq, payload, length);',
                       service)

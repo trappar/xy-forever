@@ -16,6 +16,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 from xy_forever import usb_proto as P
 from xy_forever.census import (USB_SERVICE_FIELDS, USB_SERVICE_V2_WORDS, USB_SERVICE_V3_WORDS,
@@ -550,7 +551,7 @@ class InstallLogTest(unittest.TestCase):
     may have encrypted in place, and keeps a's session open long enough for the install."""
 
     def test_install_hooks_the_log_only_around_the_writer(self):
-        text = (ROOT / 'target/usb_service.cpp').read_text()
+        text = unit_text(ROOT / 'target/usb_service.cpp')
         body = text[text.index('void install(uint8_t seq'):text.index('namespace xy_forever { namespace usb_service {\nuint32_t presence()')]
         hook, write, unhook = (body.index(x) for x in ('hook_logs();', 'write_boot(staged, put_expected);', 'unhook_logs();'))
         self.assertLess(hook, write); self.assertLess(write, unhook)
@@ -600,7 +601,7 @@ class SelectConventionTest(unittest.TestCase):
         self.assertIn('return selected_partition != 0 || select_attempted != 0;', text)
 
     def test_b_verify_treats_zero_as_selected(self):
-        text = (ROOT / 'target/usb_service.cpp').read_text()
+        text = unit_text(ROOT / 'target/usb_service.cpp')
         body = text[text.index('U32 verify(U32 size, U32 crc)'):text.index('// SET_DEFAULT')]
         self.assertIn('if (select_partition(p) != 0) continue;', body)
         self.assertIn('if (active && select_partition(active) == 0) {', body)
@@ -608,7 +609,7 @@ class SelectConventionTest(unittest.TestCase):
         self.assertNotIn('!select_partition(', body)
 
     def test_stock_log_line_skips_the_binary_time_prefix(self):
-        text = (ROOT / 'target/usb_service.cpp').read_text()
+        text = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertIn('log_line(text ? text + log_time_bytes : text)', text)
         self.assertIn('log_time_bytes = 4;', (ROOT / 'target/usb_service.hpp').read_text())
 
@@ -659,7 +660,7 @@ class UsbPresenceTest(unittest.TestCase):
     marker that the next cold entry consumes."""
 
     def test_presence_accepts_stock_usb_or_usb_power(self):
-        text = (ROOT / 'target/usb_service.cpp').read_text()
+        text = unit_text(ROOT / 'target/usb_service.cpp')
         body = text[text.index('uint32_t presence() {'):]
         body = body[:body.index('\n}\n')]
         self.assertIn('if (byte(0x88a35934u) == 1 && (word(0x88a3593cu) & 0x40u)) return 1;', body)
@@ -667,7 +668,7 @@ class UsbPresenceTest(unittest.TestCase):
         self.assertIn('if (word(reboot_marker) == reboot_magic && word(reboot_marker + 4) == ~reboot_magic) return 3;', body)
 
     def test_reboot_marker_is_set_before_reset_and_cleared_on_entry(self):
-        text = (ROOT / 'target/usb_service.cpp').read_text()
+        text = unit_text(ROOT / 'target/usb_service.cpp')
         begin = text[text.index('bool home_begin() {'):]
         begin = begin[:begin.index('\n}\n')]
         self.assertLess(begin.index('marker_clear();'), begin.index('home = 1; held = 1;'))   # one home per marker
@@ -684,7 +685,7 @@ class UsbPresenceTest(unittest.TestCase):
         self.assertLess(marker + 16, 0x8c000000)
 
     def test_watchdog_guard_is_armed_only_inside_the_service(self):
-        text = (ROOT / 'target/usb_service.cpp').read_text()
+        text = unit_text(ROOT / 'target/usb_service.cpp')
         # v3: home arms the guard only when the marker carries it (or the host asks), after USB
         # started; menu_release() disarms it before USB stops.
         start = text[text.index('void home_start() {'):]
@@ -714,7 +715,7 @@ class UsbPresenceTest(unittest.TestCase):
         self.assertIn('max_crash_restarts = 3;', header)
 
     def test_hang_test_needs_the_token_and_an_armed_guard(self):
-        text = (ROOT / 'target/usb_service.cpp').read_text()
+        text = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertIn('const bool ok = length == 4 && P::get32(payload) == hang_token && guard_on;', text)
         self.assertEqual(P.TEST_HANG, 0x60)
 
@@ -727,7 +728,7 @@ class UsbPresenceTest(unittest.TestCase):
         follow = text[text.index('void a_follow(cold_storage::Stock121ReadOnlySession& storage) {'):]
         self.assertIn('    a_close_files(storage);\n    usb_service::reset_self();\n}', follow)
         self.assertIn('!session.image_size()) a_follow(storage);', text)
-        self.assertNotIn('void a_guard', (ROOT / 'target/usb_service.cpp').read_text())
+        self.assertNotIn('void a_guard', unit_text(ROOT / 'target/usb_service.cpp'))
 
     def test_ranged_reads_stay_small(self):
         header = (ROOT / 'target/usb_service.hpp').read_text()
@@ -735,7 +736,7 @@ class UsbPresenceTest(unittest.TestCase):
         import xyf_host as host
         self.assertLessEqual(limit, 1024)
         self.assertEqual(host.READ_RANGE, limit)
-        text = (ROOT / 'target/usb_service.cpp').read_text()
+        text = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertIn('if (!want || want > (ranged ? read_range_max : P::max_data))', text)
 
 
@@ -746,7 +747,7 @@ class HoldTest(unittest.TestCase):
     def test_reset_disarms_the_guard_first(self):
         """Test 045: a reset on the reboot item with its guard armed; the stock reset's short
         WDOG count did not replace the guard's 2e9 count, so a stalled and missed b."""
-        text = (ROOT / 'target/usb_service.cpp').read_text()
+        text = unit_text(ROOT / 'target/usb_service.cpp')
         body = text[text.index('void reset_self() {'):]
         body = body[:body.index('}\n')]
         self.assertLess(body.index('guard_disarm();'), body.index('stock<0x11a03518u'))

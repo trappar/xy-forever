@@ -608,7 +608,7 @@ def check_stage2_image(out):
     return info
 
 
-SOURCE_SUFFIXES = ('.cpp', '.hpp', '.s', '.py')
+SOURCE_SUFFIXES = ('.cpp', '.hpp', '.ipp', '.inc', '.s', '.py')   # .ipp: a file's included part (decision 034)
 
 
 def own_sources():

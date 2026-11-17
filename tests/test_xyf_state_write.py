@@ -8,6 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 
 
@@ -43,14 +44,14 @@ class StateWriteTest(unittest.TestCase):
         # Exactly two callers: the menu (file_boot.cpp, only in XYF_STATE_WRITE
         # builds: none today) and the USB service (usb_service.cpp); never cold.cpp
         # or any normal-boot code.
-        users = sorted(p.name for p in (ROOT / 'target').glob('*.cpp') if 'write_state_slot(' in p.read_text())
+        users = sorted(p.name for p in (ROOT / 'target').glob('*.cpp') if 'write_state_slot(' in unit_text(p))
         self.assertEqual(users, ['cold_storage.cpp', 'file_boot.cpp', 'usb_service.cpp'])
-        us_src = (ROOT / 'target/usb_service.cpp').read_text()     # Test 042: USB write compiled out by default
+        us_src = unit_text(ROOT / 'target/usb_service.cpp')     # Test 042: USB write compiled out by default
         self.assertLess(us_src.index('#if defined(XYF_USB_SET_DEFAULT)\nvoid a_set_default'), us_src.index('storage.write_state_slot('))
         fb = (ROOT / 'target/file_boot.cpp').read_text()
         at = fb.index('storage.write_state_slot(')
         self.assertNotIn('#endif', fb[fb.rindex('#if defined(XYF_STATE_WRITE)\n', 0, at):at])
-        us = (ROOT / 'target/usb_service.cpp').read_text()
+        us = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertIn('void a_set_default(cold_storage::Stock121ReadOnlySession& storage, uint32_t hash) {', us)
 
 

@@ -12,6 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 from xy_forever.census import ENGINE_ACTIONS   # noqa: E402
 
@@ -353,7 +354,7 @@ class FileEngineWiringTest(unittest.TestCase):
 
     def setUp(self):
         self.server = (ROOT / 'target/storage_server.cpp').read_text()
-        self.usb = (ROOT / 'target/usb_service.cpp').read_text()
+        self.usb = unit_text(ROOT / 'target/usb_service.cpp')
 
     def body(self, text, start):
         b = text[text.index(start):]

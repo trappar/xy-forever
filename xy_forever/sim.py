@@ -65,16 +65,17 @@ STOCK_TEMPLATE = re.compile(r'template<U32 A,\s*class R,\s*class\.\.\. Args>\s*_
 REWRITES = (   # (pattern, replacement, files it must match in: exact count per file)
     (STOCK_TEMPLATE, 'template<U32 A, class R, class... Args> R stock(Args... args) '
                      '{ return ::xyf_sim::stock<A, R>(args...); }',
-     {'usb_service.cpp': 1, 'storage_server.cpp': 1, 'file_client.cpp': 1, 'peer_services.cpp': 1, 'otp_keys.cpp': 1}),
+     {'usb_service_transport.ipp': 1, 'storage_server.cpp': 1, 'file_client.cpp': 1, 'peer_services.cpp': 1,
+      'otp_keys.cpp': 1}),
     (re.compile(r'template<class F> F\* call\(U32 address\) \{ return reinterpret_cast<F\*>\(address\); \}'),
      'template<class F> ::xyf_sim::Call<F> call(U32 address) { return ::xyf_sim::Call<F>{address}; }',
      {'cold_storage.cpp': 1}),
     (re.compile(r'__asm__ volatile\("%0 = CYCLES; %1 = CYCLES2;" : "=d"\((\w+)\), "=d"\((\w+)\)\);'),
-     r'::xyf_sim::cycles(\1, \2);', {'usb_service.cpp': 1, 'file_boot.cpp': 1, 'xyf_clock.hpp': 1}),
+     r'::xyf_sim::cycles(\1, \2);', {'usb_service_transport.ipp': 1, 'file_boot.cpp': 1, 'xyf_clock.hpp': 1}),
     (re.compile(r'__asm__ volatile\("(?:FLUSHINV|FLUSH|IFLUSH) \[%0\];" : : "a"\((\w+)\) : "memory"\);'), r'(void)(\1);',
-     {'usb_service.cpp': 3, 'file_client.cpp': 2, 'file_boot.cpp': 2}),
+     {'usb_service_transport.ipp': 2, 'usb_service_stage2.ipp': 1, 'file_client.cpp': 2, 'file_boot.cpp': 2}),
     (re.compile(r'__asm__ volatile\("SSYNC;(?: CSYNC;)?" : : : "memory"\);'), ';',
-     {'usb_service.cpp': 2, 'file_client.cpp': 1, 'file_boot.cpp': 2}),
+     {'usb_service_transport.ipp': 1, 'usb_service_stage2.ipp': 1, 'file_client.cpp': 1, 'file_boot.cpp': 2}),
     (re.compile(r'section\("\.text\.entry"\), '), '', {'stage2_main.cpp': 1}),   # no such Mach-O section
     # 192: 7 -> 10, the three in repair_fresh (as the write window; changing these counts needs the
     # developer's explicit yes, docs/SAFETY.md).
@@ -119,7 +120,7 @@ def rewrite(name, text):
         if counts is not None and name in counts and n != counts[name]:
             raise RuntimeError('simulator rewrite %r matched %d times in %s, expected %d: update xy_forever/sim.py'
                                % (pattern.pattern[:40], n, name, counts.get(name, 0)))
-    if name in DEVICE_PARTS:
+    if name in DEVICE_PARTS or name.startswith('usb_service_'):     # usb_service.cpp's parts (.ipp, decision 034)
         text = text.replace('defined(__bfin__)', '(defined(__bfin__) || defined(XYF_SIM))')
     if name == 'usb_service.cpp':
         if text.count(HELLO_HOOK) != 1:
@@ -217,7 +218,7 @@ def compile_into(work, defines):
     (work / 'native').mkdir()
     for path in ROOT.glob('target/*.?pp'):
         text = rewrite(path.name, path.read_text())
-        if '__asm__ volatile' in text and (path.suffix == '.hpp' or path.stem in TARGET_SOURCES):
+        if '__asm__ volatile' in text and (path.suffix in ('.hpp', '.ipp') or path.stem in TARGET_SOURCES):
             raise RuntimeError('simulator: %s has asm no rewrite covers' % path.name)
         (work / 'target' / path.name).write_text(text)
     for path in [*ROOT.glob('native/*.?pp'), *ROOT.glob('native/*.inc')]:   # mod_patch: mod_known_bases.inc
