@@ -59,8 +59,6 @@ DETAIL = re.compile(r'^(\d{3}-[a-z0-9-]+)\.[a-z0-9-]+\.md$')
 UNTRIMMED_CAP = 16000
 # trimmed by #42 part B4/B5; remove entries as they are trimmed (empty when #42 is done)
 UNTRIMMED = {
-    '001-dead-code.md', '002-usb-function-driver.md', '003-tfw-install.md', '004-protocol-v1.md', '005-mods.md',
-    '006-content.md', '007-stock-inventory.md', '008-mod-assembly.md', '009-file-engine.md',
     '010-package-model.md', '012-boot-writer.md', '013-web-app.md', '014-extensions.md', '015-companions.md',
     '016-guard-reset.md', '017-ble-update-protocol.md', '018-catalog-entries.md', '019-assembly-on-device.md',
     '020-code-space-and-stage2.md', '021-restart-a-freeze.md', '022-lone-b-reset.md', '028-converging-saves.md',

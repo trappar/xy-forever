@@ -19,25 +19,8 @@ How does a private function driver plug into the stock USB stack (smxUSBD), can 
    - Confidence: high that the stack parks and never resumes (direct reading); medium that the host sees plain NAKs and that the kick is enough (hardware behaviour, plus two interrupt-path routines called from the main loop). Not settled without the probe.
 3. **ZLP, short packets, stalls, class requests.** IN: a short last packet is automatic; a ZLP is sent only if `+0x2c` is set (stock `cdc_write` sets it when length % max packet == 0) [L]; split a long IN phase into urbs of whole packets, flag only the last. OUT: completion status 5; a ZLP completes with length 0 [L]. Class and vendor requests reach `recv_setup` in the interrupt with the setup at `+0x10` and a 0x280-byte buffer at `+0x18`; set `+0x20` to the reply length, return 0 (nonzero = EP0 stall); an OUT data stage (Cancel 0x64, 6 bytes) arrives before the call [L]. So Cancel, Get Device Status (0x67) and Device Reset (0x66) are plain `recv_setup` cases. Standard requests (all GET_DESCRIPTOR, incl. strings) stay in the stack: no MS OS 0xEE string, so use interface class 06/01/01 [I]. CLEAR_FEATURE(HALT) is done by the stack (`88a08a6c`, then event 8/9); its clear found no data-toggle reset [L]. Do not stall bulk endpoints: `88a08a6c` also resets the EP0 urb, so it belongs in setup context only [L].
 4. **Composite: must switch.** One slot, and the stock start(0x400) registers CDC itself (`88a1327e`) and fails if the slot is taken [L]. A composite would mean our driver re-implementing CDC ACM plus an IAD (only placeable as an "extra" of the previous interface) [I]: not worth it. Enter and leave MTP by stop, unregister, register, start (a re-enumeration), as the serial service does today.
-5. **Entry points** (all [L]; mask the USB interrupts around every main-loop call: the stack's own queue code and its SET_CONFIGURATION malloc run unmasked in the interrupt [L/I]). Static reach of rows 1-8 together (plus the indirect TX start `88a0c0b0`): USB core/controller `88a08a6c..88a0c0b0` (for `88a0ba08` this includes the EP0 standard-request path, not taken for n != 0) and the stock heap (`88a135e4`, `88a13628` -> `88a2ec6c..88a2f110`, L2 `0803e324/e374`, abort `0803dfc4`, ROM `0402xxxx`); **no storage client (`889f*`), mmc, SPI flash, updater, peer link or FORBIDDEN_TARGETS** (`re/reach.py`, controller op table `0x11803d00` added by hand).
 
-| Addr | What | Args -> return | Called from | Reaches |
-|---|---|---|---|---|
-| `88a09d5c` | register driver | drv -> 0 / -1 | main, before start | nothing (leaf) |
-| `88a09d44` | unregister driver | drv | main, after stop | nothing (leaf) |
-| `88a092ee` | allocate urb + buffer (endpoint must be configured) | dev, ep addr, len -> urb / 0 | main | stock heap |
-| `88a08f24` | submit IN urb (queue + start TX, op `88a0c0b0`); **never for OUT** (start is the TX path) | urb -> 0 / -1 | main or interrupt | MUSB TX FIFO/DMA `88a0b79e` |
-| `88a08f08` | hand an OUT urb back (length 0, status 3, append to queue) | urb | main or interrupt | queue only |
-| `88a09418` | free urb + buffer (only urbs we own: not queued/active) | urb | main | stock heap |
-| `88a094aa` | kick 1: idle endpoint takes its queue head | ep object | main, masked | queue; `urb_sent` only if active+done |
-| `88a0ba08` | kick 2: service a parked RX packet (only if RxPktRdy) | ep number | main, masked | MUSB RX FIFO `88a0b434`, `recv_urb` |
-| `88a35044`/`88a34fec` | start(0) / stop(1) (already in USB_CALLS) | flags | main | as today |
-
-Notes [L]: the stack frees urbs that are queued or active on OUT at reconfigure, deconfigure (incl. suspend) and stop without a callback (`88a095a8`): forget them; held ones stay ours. Avoid endpoint numbers 5 (static 0x190-byte buffers in `88a0926c`) and 6 (async DMA in `88a0b434`); the ISR serves 1-11. Use stock MTP's `0x89`/`0x0a`/`0x83` (above 8: PIO, no DMA cache work).
-
-## Earlier claims (hardware/usb.md "unverified")
-
-Right: slot, register/unregister, ops order, endpoints `0x89`/`0x0a`/`0x83`, send = alloc/fill/submit/free as `cdc_write`, recycle `88a08f08`, start = register + `88a35044(0)`, the open risk. Wrong or incomplete: the driver words +8/+0xc are a devinfo record and a config-record array (not descriptors), +0x10/+0x14/+0x1c are filled by the stack (struct must be writable), +0x18 is the configuration count; "one packet per urb" holds only for the stack's own OUT urb; the callback return values, the ZLP flag and the "recycle does not re-arm" detail were missing. New: every stock driver (MTP, CDC, MassStorage) declares 64-byte bulk endpoints although start sets POWER.HSEnab (`88a0bffa`); high speed requires 512.
+Detail: Answer 5 (entry points), Earlier claims in [002-usb-function-driver.detail.md](002-usb-function-driver.detail.md)
 
 ## Still unproven (probe 3.2-3.4 must show)
 
