@@ -145,9 +145,7 @@ No device at hand: say so; device items wait and the orchestrator skips them.
 
 ## 9. Continue development
 
-Later sessions: open your coding agent in the workspace folder (or `xy-forever/`) and say "Continue
-development". If it does not load `AGENTS.md`, ask it to read that file first. `CLAUDE.md` imports
-the workspace guide for Claude Code. The [workflow](docs/ORCHESTRATION.md) supports delegation or
-sequential work: claim a plan item's GitHub issue, then one branch and one pull request per item.
-While the repository has
-no GitHub remote (`git remote` prints nothing), work stays on the local `main`.
+Open your coding agent in the workspace folder (or `xy-forever/`) and say "Continue development".
+Ask it to read `AGENTS.md` first if the harness does not load it; `CLAUDE.md` imports it for Claude Code.
+Follow [ORCHESTRATION.md](docs/ORCHESTRATION.md), with or without delegation: claim an issue, then
+one branch and PR per item. Without a GitHub remote (`git remote` prints nothing), use local `main`.

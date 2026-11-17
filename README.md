@@ -19,7 +19,7 @@ Make an empty workspace folder, open your coding agent in it and paste this prom
 Later sessions: open your agent in the workspace folder (or `xy-forever/`) and say "Continue
 development". `AGENTS.md` is the entry point; if your harness does not load it automatically,
 ask it to read that file first. Bootstrap also writes a workspace `CLAUDE.md` for Claude Code.
-Delegation is optional; [the workflow](docs/ORCHESTRATION.md) supports sequential work too.
+The [workflow](docs/ORCHESTRATION.md) also supports agents without delegation.
 By hand instead (Python 3.9+; the workspace also holds `private/` and `tools/`):
 
 ```sh

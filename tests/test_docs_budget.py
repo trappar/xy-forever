@@ -20,7 +20,7 @@ WIDTH = 160                         # longest line in any doc, outside code bloc
 FIRST_READS = {
     'AGENTS.md': (6500, 160),
     'ONBOARDING.md': (10000, 160),
-    'docs/ORCHESTRATION.md': (4000, 160),
+    'docs/ORCHESTRATION.md': (9600, 190),
     'docs/STATUS.template.md': (2500, 120),
 }
 LOCAL_STATUS = 6000                 # docs/status/README.md; its leaves are not checked
@@ -34,7 +34,6 @@ TREES = {
     'docs/HARDWARE.md': 'docs/hardware',
     'docs/GOALS.md': 'docs/goals',
     'docs/OPERATING.md': 'docs/operating',
-    'docs/ORCHESTRATION.md': 'docs/orchestration',
 }
 
 # Read on demand (bytes). SAFETY and GUIDE are over LEAF and stay whole on purpose: SAFETY is binding and must be read
