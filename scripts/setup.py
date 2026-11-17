@@ -4,7 +4,8 @@
     python3 scripts/setup.py init [--private DIR]   create the private layout; --private records DIR
                                                    in xyf.local.json (gitignored; XYF_PRIVATE wins)
     python3 scripts/setup.py import-stock DIR      copy the stock 1.2.1 os.ldr + bootloader.ldr from DIR
-                                                   (the two files, or a copied /upgrade/ tree)
+                                                   (the two files, or a copied /upgrade/ tree), and the
+                                                   stock catalog op1_factory.json if beside them or in DIR/content/
     python3 scripts/setup.py fixtures              what tests need from the stock pair + public open-xy
     python3 scripts/setup.py doctor                what is set up, what is missing, what will skip
     python3 scripts/setup.py bootstrap [--workspace DIR] [--dry-run] [--toolchain-archive ZIP]
@@ -13,7 +14,8 @@
                                                    docs/status/README.md and npm ci; safe to rerun
 
 The stock pair comes from your own OP-XY on stock 1.2.1: in the stock dev menu's MTP, copy
-/upgrade/firmware/blackfin/bin/os.ldr and bootloader.ldr (or the whole /upgrade/ folder).
+/upgrade/firmware/blackfin/bin/os.ldr and bootloader.ldr (or the whole /upgrade/ folder), and
+/content/op1_factory.json (fixtures takes it from public open-xy only when no stock copy is present).
 Pins: stock.json. Network: fixtures clones public open-xy and fetches its published kit; bootstrap
 downloads the toolchain archive.
 """
@@ -37,6 +39,7 @@ from xy_forever import paths  # noqa: E402
 
 PINS = json.loads((REPO / 'stock.json').read_text())
 PAIR = ('os.ldr', 'bootloader.ldr')
+CATALOG = 'op1_factory.json'                                  # the device's /content/op1_factory.json
 LAYOUT = ('FIRMWARE', 'STOCK_121', 'XYF', 'BUILDS', 'RECOVERY', 'FIXTURES', 'REPORTS', 'ANALYSIS', 'PREVIEWS',
           'SESSIONS', 'MOD_PACKAGES')
 
@@ -189,7 +192,34 @@ def import_stock(folder, dest=None, pins=None):
             tmp.unlink()
             raise SetupError('copy of %s changed on the way; try again' % path)
         tmp.replace(target)
+    import_catalog(folder, found['os.ldr'].parent, dest)
     return dest
+
+
+def import_catalog(folder, pair_dir, dest):
+    """Copy the device's /content/op1_factory.json (beside the pair, or in a copied content/ folder) to dest if
+    it is the pinned stock 1.2.1 catalog; a changed copy (Open-XY mods rewrite it) is reported and ignored."""
+    folder, pinned = Path(folder).expanduser(), PINS['open_xy']['catalog_sha256']
+    for source in dict.fromkeys((pair_dir / CATALOG, folder / CATALOG, folder / 'content' / CATALOG)):
+        if not source.is_file():
+            continue
+        digest = sha256(source)
+        target = dest / CATALOG
+        if digest != pinned:
+            print('stock catalog %s: ignored, not the stock 1.2.1 file (SHA-256 %s; Open-XY mods rewrite it); '
+                  'fixtures downloads it from open-xy' % (source, digest))
+            continue
+        if not (target.is_file() and sha256(target) == pinned):
+            tmp = target.with_suffix('.part')
+            shutil.copyfile(source, tmp)
+            if sha256(tmp) != pinned:
+                tmp.unlink()
+                print('stock catalog %s: ignored, the copy changed on the way' % source)
+                continue
+            tmp.replace(target)
+        print('stock catalog %s: from your device copy %s' % (CATALOG, source))
+        return True
+    return False
 
 
 def cmd_import_stock(args):
@@ -237,15 +267,17 @@ def git_show(path):
 
 
 def fixture_catalog():
+    """Keep a valid stock catalog already present (import-stock's device copy); else take it from open-xy."""
     ox = PINS['open_xy']
     if paths.CATALOG_121.is_file() and sha256(paths.CATALOG_121) == ox['catalog_sha256']:
-        print('stock catalog op1_factory.json: ok')
+        print('stock catalog %s: ok, the copy in %s (no download)' % (CATALOG, paths.CATALOG_121.parent))
         return
     data = git_show(ox['catalog_path'])
     if hashlib.sha256(data).hexdigest() != ox['catalog_sha256']:
         raise SetupError('open-xy %s does not match the pinned stock catalog' % ox['catalog_path'])
-    (paths.STOCK_121 / 'op1_factory.json').write_bytes(data)
-    print('stock catalog op1_factory.json: from open-xy %s' % ox['sdk_commit'][:7])
+    (paths.STOCK_121 / CATALOG).write_bytes(data)
+    print('stock catalog %s: from open-xy %s (no stock device copy; import-stock takes /content/%s)'
+          % (CATALOG, ox['sdk_commit'][:7], CATALOG))
 
 
 def fixture_kit():
@@ -674,8 +706,8 @@ class Bootstrap:
         steps = []
         if not stock_present():
             steps += ['Copy os.ldr and bootloader.ldr off your OP-XY (stock 1.2.1) into %s: hold COM while switching '
-                      'it on, Track 3 (dev menu), Track 2 (MTP), then copy them from /upgrade/firmware/blackfin/bin/ '
-                      '(ONBOARDING.md step 4).' % incoming,
+                      'it on, Track 3 (dev menu), Track 2 (MTP), then copy them from /upgrade/firmware/blackfin/bin/, '
+                      'and /content/op1_factory.json beside them (ONBOARDING.md step 4).' % incoming,
                       'python3 scripts/setup.py import-stock %s' % incoming,
                       'python3 scripts/setup.py fixtures']
         where = ('%s (or %s)' % (self.workspace, self.repo) if (self.workspace / 'AGENTS.md').is_file()
