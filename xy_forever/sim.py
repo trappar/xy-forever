@@ -30,7 +30,7 @@ import tempfile
 import time
 import zlib
 
-from xy_forever import paths
+from xy_forever import paths, procgroup
 from xy_forever import usb_proto as P
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -553,16 +553,20 @@ def main(argv=None):
     sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp)
     print('simulator: USB endpoint 127.0.0.1:%d (python3 xyf_host.py --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
           ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root), file=sys.stderr, flush=True)
+    # Its own process group (the board and both processors), ended with this process however it ends:
+    # Ctrl-C, SIGTERM or SIGHUP, or (tie_to_parent) the process that started this one gone (#133).
+    process = procgroup.popen(sim.argv(), stdin=subprocess.PIPE if otp else None)
     try:
-        if not otp:
-            return subprocess.call(sim.argv())
-        process = subprocess.Popen(sim.argv(), stdin=subprocess.PIPE)
-        process.stdin.write(otp)
-        process.stdin.close()
+        if otp:
+            process.stdin.write(otp)
+            process.stdin.close()
         return process.wait()
     except KeyboardInterrupt:
         return 0
+    finally:
+        procgroup.kill_group(process)
 
 
 if __name__ == '__main__':
+    procgroup.tie_to_parent()
     sys.exit(main())

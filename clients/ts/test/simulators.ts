@@ -70,8 +70,13 @@ async function start(name: string, port: number, state: string, extra: string[])
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   const log = openSync(join(dir, 'sim.log'), 'a');
+  // In this process's group (a group kill of the test run reaches it); the wrapper ends its own
+  // xyf_sim group when it is terminated or this process is gone (xy_forever/procgroup.py, #133).
   const child = spawn('python3', ['-m', 'xy_forever.sim', '--port', String(port), '--state', dir, ...extra],
-    { cwd: REPO, stdio: ['ignore', log, log], detached: true });
+    { cwd: REPO, stdio: ['ignore', log, log] });
+  live.add(child);
+  child.once('exit', () => live.delete(child));
+  endWithThisProcess();
   const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`the ${name} simulator exited (${child.exitCode}); see ${dir}/sim.log`);
@@ -87,8 +92,22 @@ async function start(name: string, port: number, state: string, extra: string[])
 }
 
 function stopChild(child: ChildProcess): void {
-  if (child.exitCode === null && child.pid !== undefined) {
-    try { process.kill(-child.pid, 'SIGTERM'); } catch { /* gone */ }
+  if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+}
+
+// Every simulator started here and still running: stopped when this process exits or is
+// terminated, whatever the tests did (a failure, a timeout, Ctrl-C).
+const live = new Set<ChildProcess>();
+let hooked = false;
+function endWithThisProcess(): void {
+  if (hooked) return;
+  hooked = true;
+  process.once('exit', () => { for (const child of live) stopChild(child); });
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.once(signal, () => {
+      for (const child of live) stopChild(child);
+      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);   // its default: end
+    });
   }
 }
 
