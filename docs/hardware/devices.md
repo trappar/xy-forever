@@ -35,6 +35,28 @@ reset the cursor on invalid indices/restart. Unknown ids do not control the menu
 - Zero the `0x3c000`-byte framebuffer before the first frame, or text appears over
   the logo. The stock text console is `889eeab2`.
 
+### Where codes (#114)
+
+Each blocking wait on B sets a where code (`target/where.hpp`; product builds only). A wait still running after
+500 ms while the menu has the screen paints `W<code>` in the top-right corner once, from its own loop through the
+menu's present (never from an interrupt), and the menu redraws without it when the wait ends. Normal waits paint
+nothing. The crash screen names the wait B was in, else the last one it left.
+
+| Code | Wait |
+|---|---|
+| W1 | file client: A's answer to a file request (`await_answer`) |
+| W2 | link settle: the outstanding echo before B's next request |
+| W3 | A's answer to a command item (`b_ask`) |
+| W4 | A's check status blob (`b_check`) |
+| W5 | the catalog blob |
+| W6 | the stage-2 blob (the stage-2 test modes, built without where codes: reserved) |
+| W7 | the link handshake (before the menu) |
+| W8 | a link user waits for the catalog request in flight (`fetch_wait`) |
+| W9 | the open request before B resets (`link_close`) |
+| W10 | the boot image transfer (after the menu) |
+| W11 | a USB reply into the CDC |
+| W12 | an install log line over USB (never paints: 200 ms bound) |
+
 ## Storage (A, yaffs)
 
 - No YAFFS device is registered at cold entry on a normal boot (the sentinel at

@@ -40,8 +40,9 @@ bool b_step(Stock121PeerSession& session) {
 // b: wait (bounded) for the outstanding echo. A file request still out past its caller's
 // bound is not (yet) a lost link: the caller fails (link), the session stays up until lost_ms.
 bool b_settle(Stock121PeerSession& session) {
+    const key_ui::Where where(xyf::where::link_settle);
     const U32 start = now();
-    while (session.busy() && !b_lost && now() - start < answer_ms) b_step(session);
+    while (session.busy() && !b_lost && now() - start < answer_ms) { b_step(session); where.wait(); }
     if (session.busy() && !session.filing()) b_lost = 1;
     return !b_lost && !session.busy();
 }
@@ -58,9 +59,11 @@ bool b_ask(Stock121PeerSession& session, U32 value, U32 wait_ms) {
     const U32 before = session.echoes();
     if (session.ask(value) != SessionResult::waiting) { b_lost = 1; return false; }
     ++result.menu.commands;
+    const key_ui::Where where(xyf::where::command);
     const U32 start = now();
     while (session.busy() && !b_lost && now() - start < wait_ms) {
         b_step(session);
+        where.wait();
     }
     if (session.busy() || session.echoes() != before + 1) b_lost = 1;
     // Report (b): when a answered the first command, and the longest wait for an answer.

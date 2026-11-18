@@ -13,9 +13,9 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 | `xyf_package.py` | review and stage a decrypted official ZIP on the host (HARDWARE, `.tfw`); `extract-os`: OS-only library entry from an official `.tfw`, run by the device's own extractor compiled for the Mac (`host/tfw_extract.cpp`, `xy_forever/tfw_extract.py`) |
 | `target/cold.cpp`, `storage_probe_entry.s` | cold entry on both processors; boots the loaded library image |
 | `target/xyf_clock.hpp` | wrap-safe millisecond clock for every cold module |
-| `target/file_boot.cpp`, `xyf_boot.hpp` | file/library boot session on both roles; menu boot |
+| `target/file_boot.cpp`, `file_boot_b_*.ipp`, `xyf_boot.hpp` | file/library boot session on both roles; B's side (link, menu boot, `xyf_boot` functions) in the parts |
 | `target/menu_link.cpp`, `peer_services.cpp` | USB command link (file boot's session); stock SPI peer session wrappers |
-| `target/key_ui.cpp`, `key_ui_*.ipp`, `crash_screen.hpp` | B's hold-key UI loop, keys from the PSoC, screen present; B's crash screen (its exception vector while the menu has the screen) |
+| `target/key_ui.cpp`, `key_ui_*.ipp`, `crash_screen.hpp`, `where.hpp` | B's hold-key UI loop, keys from the PSoC, screen present; B's crash screen (its exception vector while the menu has the screen); where codes of B's waits |
 | `target/usb_service.cpp`, `usb_proto.cpp` | USB CDC service on B (install, files, reboot, screen, key) |
 | `target/usb_service_*.ipp` | `usb_service.cpp`'s parts, one per section, included in place: one translation unit |
 | `target/storage_server.cpp`, `file_engine.cpp`, `file_client.cpp` | A's storage server (the file engine's entries and window, install mode); the engine's path policy and request decision (both processors); B's timed file client |

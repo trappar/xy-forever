@@ -88,6 +88,7 @@ void present() {
         r.present_skips += 0x10000u;
     }
     draw_screen(reinterpret_cast<uint16_t*>(word(framebuffer)));   // full repaint
+    where_draw(reinterpret_cast<uint16_t*>(word(framebuffer)));    // a long wait's code (key_ui_where.ipp)
     flush_framebuffer(word(framebuffer));
     transfer();
     if (byte(smc_dma_active)) ++r.presents;

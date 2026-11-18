@@ -1,6 +1,7 @@
 #ifndef XYF_KEY_UI_HPP
 #define XYF_KEY_UI_HPP
 #include <stdint.h>
+#include "where.hpp"
 // Hold-key UI (processor b only; Test018 onwards). Reads the stock bootloader's
 // boot-time key snapshot (PSoC request 0x41 reply, frame type 0x42, 10-byte key
 // bitmap; bit i = key enum i, KPlay = 51). When the menu opens (PLAY held, or
@@ -40,6 +41,33 @@ extern Result result;
 // The exception vector the stock code left, back in place if the menu had put the crash screen's there
 // (key_ui_crash.ipp); a no-op otherwise (and on A). usb_service::reset_self calls it before B resets.
 void crash_disarm();
+// #114: B's where codes (where.hpp). A blocking wait on B holds a Where for its whole length (any return
+// clears it) and calls wait() in its loop: past where::paint_ms while the menu has the screen, that paints the
+// code in the top-right corner once (the menu's present, never from an interrupt); the end of a painted wait
+// redraws without it. A nested wait puts the outer code back; the outer one counts again from there.
+// Built with the USB service (the product builds); the narrow offline modes have no room (a Where does nothing).
+#if defined(XYF_USB_SERVICE)
+uint32_t where_enter(uint32_t code);     // returns the word before (for where_leave)
+void where_wait();
+void where_leave(uint32_t before);
+// Inlined: an out-of-line destructor was called through a register (unresolved in the call audit).
+class Where {
+public:
+    __attribute__((always_inline)) explicit Where(uint32_t code) : before_(where_enter(code)) {}
+    __attribute__((always_inline)) ~Where() { where_leave(before_); }
+    __attribute__((always_inline)) void wait() const { where_wait(); }
+private:
+    Where(const Where&);
+    Where& operator=(const Where&);
+    uint32_t before_;
+};
+#else
+class Where {
+public:
+    explicit Where(uint32_t) {}
+    void wait() const {}
+};
+#endif
 #if defined(XYF_CRASH_TRIGGER)
 // Test build xyf-crash-trigger only (#102): whether the crash vector is armed (the menu has the screen), and
 // one chosen fault (1..4, key_ui_crash.ipp) when it is; returns otherwise. The simulator halts B instead.

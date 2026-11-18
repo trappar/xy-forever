@@ -208,6 +208,7 @@ __attribute__((noinline)) void wait_dma() { reinterpret_cast<WaitDma*>(0x889eed4
 __attribute__((noinline)) void transfer() { reinterpret_cast<Transfer*>(0x889efa6au)(word(framebuffer), 1); }
 __attribute__((noinline)) void close_links() { reinterpret_cast<CloseLinks*>(0x88a35e82u)(1); }
 
+#include "key_ui_where.ipp"     // where B waits (#114): the corner code
 #include "key_ui_crash.ipp"     // the crash screen: its record and text, before the draw
 #include "key_ui_display.ipp"   // the screen model, the draw, the present
 

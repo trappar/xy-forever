@@ -7,9 +7,12 @@ StorageStart storage_start __attribute__((section(".data"))) = {start_magic, 2, 
 // first (A's answer is normally milliseconds away), at most fetch_wait_ms. True when none is out.
 bool fetch_wait() {
     Stock121PeerSession* session = b_session;
+    const key_ui::Where where(xyf::where::catalog_first);
     const U32 start = now(), phase = storage_start.phase;
-    while (session && b_fetching && !b_lost && now() - start < fetch_wait_ms)
+    while (session && b_fetching && !b_lost && now() - start < fetch_wait_ms) {
         if (b_fetch_step(*session) && !b_lost && (storage_start.phase != 3 || phase == 1)) key_ui::refresh_catalog();
+        where.wait();
+    }
     return !b_fetching;
 }
 #endif
@@ -75,9 +78,11 @@ void link_sent() { b_last_send = now(); }
 bool link_close(bool wait) {
     Stock121PeerSession* session = b_session;
     if (session) {
+        const key_ui::Where where(xyf::where::link_close);
         const U32 start = now();
         while (wait && session->busy() && now() - start < close_ms) {
             session->poll(now());
+            where.wait();
         }
         b_lost = 1;
         result.end_result = U32(session->end());

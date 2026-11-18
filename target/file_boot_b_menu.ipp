@@ -10,8 +10,9 @@ __attribute__((noinline)) void b_load_stage2(Stock121PeerSession& session) {
         b_lost = 1;                                     // a holds a frozen blob nobody fetches: give up
         return;
     }
+    const key_ui::Where where(xyf::where::stage2_blob);
     const U32 start = now();
-    while (!session.blob_done() && now() - start < xyf_boot::stage2_ms && b_step(session)) {}
+    while (!session.blob_done() && now() - start < xyf_boot::stage2_ms && b_step(session)) where.wait();
     if (!session.blob_done()) { b_lost = 1; return; }
     b_last_send = now();
     const U32 size = session.image_size();
@@ -72,8 +73,9 @@ U32 b_check(Stock121PeerSession& session, U32 item) {
     for (U32 i = 0; i != sizeof(xyf_boot::CheckStatus); ++i) status[i] = 0;
     if (!b_send(session, item) ||
         session.transfer(status, xyf_boot::b_status_capacity, true) != SessionResult::waiting) { b_lost = 1; return reason_storage; }
+    const key_ui::Where where(xyf::where::check_blob);
     const U32 start = now();
-    while (!session.blob_done() && now() - start < xyf_boot::check_ms && b_step(session)) {}
+    while (!session.blob_done() && now() - start < xyf_boot::check_ms && b_step(session)) where.wait();
     if (!session.blob_done()) { b_lost = 1; return reason_storage; }
     if (session.image_size() < sizeof(xyf_boot::CheckStatus) || b_status().magic != xyf_boot::check_magic)   // Test 062: >=
         return reason_read;
@@ -100,8 +102,9 @@ bool b_fetch_catalog(Stock121PeerSession& session) {
     if (!b_send(session, xyf_boot::item_catalog) ||
         session.transfer(reinterpret_cast<Byte*>(xyf_boot::catalog_buffer), xyf_boot::catalog_capacity, true) !=
             SessionResult::waiting) { b_lost = 1; return false; }
+    const key_ui::Where where(xyf::where::catalog_blob);
     const U32 start = now();
-    while (!session.blob_done() && now() - start < xyf_boot::blob_ms && b_step(session)) {}
+    while (!session.blob_done() && now() - start < xyf_boot::blob_ms && b_step(session)) where.wait();
     if (!session.blob_done()) { b_lost = 1; return false; }
     return b_take_catalog(session);
 }
@@ -134,7 +137,8 @@ bool b_fetch_step(Stock121PeerSession& session) {
             // The blob in one bounded loop, as b_fetch_catalog (sim: polls spread over the menu loop
             // could end it with a protocol error). A retry's mount runs inside it (A answered first).
             b_fetching = 2;
-            while (!session.blob_done() && now() - b_fetch_at <= xyf_boot::start_ms && b_step(session)) {}
+            const key_ui::Where where(xyf::where::catalog_blob);
+            while (!session.blob_done() && now() - b_fetch_at <= xyf_boot::start_ms && b_step(session)) where.wait();
         }
     }
     if (alive && !b_lost && b_fetching == 2 && session.blob_done()) {
@@ -181,7 +185,10 @@ bool role1_menu_boot(U32& bytes) {
 #endif
     r.begin_result = U32(status);
     b_lost = running(status) ? 0 : 1;
-    while (!b_lost && !session.link_ready()) b_step(session);     // bounded by handshake_ms
+    {
+        const key_ui::Where where(xyf::where::handshake);
+        while (!b_lost && !session.link_ready()) { b_step(session); where.wait(); }   // bounded by handshake_ms
+    }
     if (!b_lost) r.link_ms = now();
 #if defined(XYF_MENU_ON_FAILURE)
     // Test 059: check the default first; if it can't boot, open the menu (like a
@@ -244,6 +251,7 @@ bool role1_menu_boot(U32& bytes) {
             r.menu.boot_ms = now();
             xyf_boot::TimingDetail& d = r.detail;
             U32 poll_start = r.menu.boot_ms, admitted_at = 0;
+            const key_ui::Where where(xyf::where::boot_image);
             while ((status == SessionResult::waiting || status == SessionResult::choose_image ||
                     status == SessionResult::admit_image) &&
                    now() - r.menu.boot_ms < xyf_boot::boot_transfer_ms) {   // Test 061: own bound
@@ -273,6 +281,7 @@ bool role1_menu_boot(U32& bytes) {
                 poll_start = now();
                 status = session.poll(poll_start);
                 ++r.polls;
+                where.wait();
             }
             if (admitted_at) d.b_release_ms = now() - admitted_at;
         } else status = SessionResult::unavailable;
@@ -282,8 +291,9 @@ bool role1_menu_boot(U32& bytes) {
         if (b_send(session, xyf_boot::item_catalog) &&
             session.transfer(reinterpret_cast<Byte*>(xyf_boot::catalog_buffer), xyf_boot::catalog_capacity, true) ==
                 SessionResult::waiting) {
+            const key_ui::Where where(xyf::where::catalog_blob);
             const U32 start = now();
-            while (!session.blob_done() && now() - start < xyf_boot::blob_ms && b_step(session)) {}
+            while (!session.blob_done() && now() - start < xyf_boot::blob_ms && b_step(session)) where.wait();
             if (session.blob_done()) {
                 r.menu.catalog_bytes = session.image_size();
                 b_catalog_ok = xyf::catalog::decode(reinterpret_cast<const Byte*>(xyf_boot::catalog_buffer),
@@ -312,6 +322,7 @@ bool role1_menu_boot(U32& bytes) {
             session.transfer(reinterpret_cast<Byte*>(staging), staging_bytes, false) == SessionResult::waiting) {
             status = SessionResult::waiting;
             r.menu.boot_ms = now();
+            const key_ui::Where where(xyf::where::boot_image);
             while (status == SessionResult::waiting || status == SessionResult::choose_image ||
                    status == SessionResult::admit_image) {
                 if (status == SessionResult::admit_image) {
@@ -328,6 +339,7 @@ bool role1_menu_boot(U32& bytes) {
                 }
                 status = session.poll(now());
                 ++r.polls;
+                where.wait();
             }
         } else status = SessionResult::unavailable;
     } else status = SessionResult::unavailable;

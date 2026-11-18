@@ -124,6 +124,7 @@ bool raw_send(const uint8_t* frame, U32 n) {
         const U32 most = 512u;
 #endif
         const U32 chunk = n - at < most ? n - at : most;
+        const key_ui::Where where(xyf::where::usb_log);   // no wait(): inside the stock writer, 200 ms at most
         const U32 start = now();
         int wrote = -1;
         while ((wrote = cdc_write(frame + at, chunk)) < 0) if (now() - start > 200u) return false;
@@ -186,10 +187,12 @@ bool send(uint8_t type, uint8_t seq, const uint8_t* payload, U32 length) {
         const U32 most = 512u;
 #endif
         const U32 chunk = n - at < most ? n - at : most;
+        const key_ui::Where where(xyf::where::usb_reply);
         const U32 start = now();
         int wrote = -1;
         while ((wrote = cdc_write(tx + at, chunk)) < 0) {
             tick();
+            where.wait();
             if (now() - start > 500u) { ++result.write_errors; return false; }
         }
         at += U32(wrote) ? U32(wrote) : chunk;
