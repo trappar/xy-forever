@@ -14,13 +14,16 @@
 #include "xyf_crc32.hpp"
 #include "knob_input.hpp"      // the knob reader's counters (diag.status block KNB1)
 #if defined(XYF_MTP_SESSION)
-#include "mtp_session.hpp"          // the MTP session (simulator only so far)
+#include "mtp_session.hpp"          // the MTP session (product build and simulator)
 #endif
 #if defined(XYF_MTP_USB)
-#include "mtp_usb.hpp"              // the MTP USB probe (test build xyf-mtp-usb only)
+#include "mtp_usb.hpp"              // the composite MTP USB driver (product build and xyf-mtp-usb)
 #include "mtp_usb_spans.hpp"
 #include "mtp_spans.hpp"
 #include "mtp_usb_gate.hpp"         // which check refuses a probe start, and why
+#endif
+#if defined(XYF_MTP_SESSION) || defined(XYF_MTP_USB)
+#include "unlisted_op.hpp"          // what 0x61 and 0x62 answer to a request none of their ops takes
 #endif
 // XY Forever USB service (see usb_service.hpp). Stock addresses: the
 // authenticated 1.2.1 bootloader, mapped offline (docs/hardware/usb.md, Boot partition and USB).

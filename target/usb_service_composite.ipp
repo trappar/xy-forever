@@ -328,6 +328,6 @@ void mtp_usb_command(uint8_t seq, const uint8_t* payload, U32 length) {
         home_reboot(reboot_menu);
     }
     else if (op == 1 && length == 1) probe_result(seq);
-    else status_only(t_mtp_usb, seq, op > 1 && op != 0xff ? P::s_unsupported : P::s_bad_request);
+    else status_only(t_mtp_usb, seq, xyf::unlisted_op::status(payload, length, 1));   // test only: never listed
 }
 #endif
