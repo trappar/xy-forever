@@ -111,7 +111,7 @@ listed with its content not installed (it does not boot until `makeDefault` inst
 | `makeDefault(client, id, { onProgress, pollMs, stallMs })` → `{ id, switched, status }` | destructive (ask first): `library.set_default`; an entry whose content is not installed answers `started` and the content switch runs as a job, followed through `job.status` until the default is written (`switched: true`); a failed switch: `JobError` (`what: 'content switch'`, the default unchanged) |
 | `jobStatus(client, job = 0)` → `JobStatus` | `{ job, phase, done, total, error, code, elapsedMs, steps, longestMs, peak, debris, detail, final, folder }`; job 0: the running or last one; when done, `detail` is the library entry id; `folder`: its work folder in `tmp/` (debris of a failed job) |
 | `cancelJob(client, job = 0)` → `{ debris }` | stops a build; answers once its files are removed; one that ended, one in its library commit, or a content switch: `state` |
-| `libraryBases(client)` → `[{ id, name }]` | firmware library entries holding an `os.ldr` that are not assembled mod sets (candidates for `base`; `mods-a`/`mods-b` left out) |
+| `libraryBases(client)` → `[{ id, name, contentList }]` | firmware library entries holding an `os.ldr` that are not assembled mod sets (candidates for `base`; `mods-a`/`mods-b` left out); `contentList`: it has `content.sha256`, which a build needs |
 
 While a job runs, every command that needs storage answers `busy`: `isXyfError(error, 'busy')`, with the reason
 in the message; wait for the job (or cancel it) and try again.

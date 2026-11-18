@@ -18,9 +18,10 @@ Usage (stdlib only; macOS /dev/cu.usbmodem*):
                                                read back and compared; --no-verify skips the read-back)
   python3 xyf_host.py rm /yaffs2/PATH          delete a file (or an empty folder with --dir)
   python3 xyf_host.py mkdir /yaffs2/PATH       create a folder (its parent must exist)
-  python3 xyf_host.py library-add ID OS_LDR --name NAME --version VER   DRY RUN: plan
-  python3 xyf_host.py library-add ID OS_LDR --name NAME --version VER --yes-write
-                                               firmware/ID/os.ldr + info.txt (reboots between writes)
+  python3 xyf_host.py library-add ID OS_LDR --name NAME --version VER [--content DIR]   DRY RUN: plan
+  python3 xyf_host.py library-add ID OS_LDR --name NAME --version VER --content DIR --yes-write
+                                               firmware/ID/os.ldr + info.txt, and from DIR (the official
+                                               content) content.sha256 + firmware.version (reboots between)
   python3 xyf_host.py screenshot --out FILE.png   the display (read-only framebuffer view)
   python3 xyf_host.py tfw-check /yaffs2/PATH   is a .tfw (or a cut) on the device official, and do the
                                                device's own OTP keys open it? JSON; writes nothing
@@ -65,8 +66,9 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from xy_forever import depth, usb_proto as P
-from xy_forever.ldr import MAX_IMAGE, inspect_ldr, parse_ldr
+from xy_forever import depth, library_add, usb_proto as P
+from xy_forever.library_add import ID_RE
+from xy_forever.ldr import MAX_IMAGE, inspect_ldr
 from xy_forever.transport import SerialPort, TcpPort, sim_address
 
 DESCRIPTOR = struct.pack('<II', 0x584c4348, 1)
@@ -83,10 +85,8 @@ READ_RANGE = 1024              # device read_range_max (Test 038: 4 KiB replies 
 INSTALL_TIMEOUT = 900.0         # host bound for one INSTALL (v3 link sessions have no device cap)
 COPY_RATE = 10000.0             # file.copy: the host waits its timeout plus 1 s per this many bytes
 MTP_TEST_TIMEOUT = 60.0         # host bound for one MTP_TEST, plus its hold time
-ID_RE = re.compile(r'^[a-z0-9_-]{1,31}$')
 # Test 049 put-file: under /yaffs2/xy-forever/, plain names only (the device re-checks).
 WRITE_PATH_RE = re.compile(r'^/yaffs2/xy-forever(/[A-Za-z0-9._-]{1,64}){1,4}$')
-INFO_TEXT_RE = re.compile(r'^[ -<>-~]{1,47}$')   # printable ASCII except '='
 # Test 058: key numbers (xyf_menu.hpp / key_ui.cpp): KPlay 51, KStop 52, -/+ 53/54, shift 55, track1 6.
 KEYS = dict(minus=53, plus=54, play=51, stop=52, shift=55, **{'track%d' % (i + 1): 6 + i for i in range(8)})
 # put/rm/mkdir write only here (the device's write area: target/storage_server.cpp write_root).
@@ -521,11 +521,6 @@ def screen_png(raw):
             chunk(b'IDAT', zlib.compress(b''.join(rows), 9)) + chunk(b'IEND', b''))
 
 
-def library_info(data, name, version):
-    return ('name=%s\nversion=%s\nkind=official\nbytes=%d\ncrc32=%08x\n' %
-            (name, version, len(data), zlib.crc32(data) & 0xffffffff)).encode('ascii')
-
-
 def main(argv=None):
     try:
         return run(argv)
@@ -582,10 +577,8 @@ def run(argv):
     tfwc = sub.add_parser('tfw-check', help="check a .tfw or a cut of one on the device with the device's own OTP "
                           "keys (pass/fail, reason, the public key's SHA-256); writes nothing")
     tfwc.add_argument('path')
-    liba = sub.add_parser('library-add', help='add an official os.ldr as library entry ID (os.ldr + info.txt)')
-    liba.add_argument('id'); liba.add_argument('os_ldr', type=Path)
-    liba.add_argument('--name', required=True); liba.add_argument('--version', required=True)
-    liba.add_argument('--yes-write', action='store_true')
+    library_add.add_arguments(sub.add_parser('library-add', help='add an official os.ldr as library entry ID (os.ldr, '
+                                             'info.txt; with --content its content.sha256 + firmware.version)'))
     sub.add_parser('save-times', help='print the save-time log (/yaffs2/xy-forever/log/save-times.txt) as a '
                    'table: one row per Save, USB build or content switch, milliseconds per part (read-only)')
     cont = sub.add_parser('continue')
@@ -655,26 +648,9 @@ def run(argv):
             print('DRY RUN: nothing sent. Re-run with --yes-write to write.')
             return 0
     if args.command == 'library-add':
-        if not ID_RE.match(args.id):
-            print('refused: id must be 1-31 of [a-z0-9_-]'); return 2
-        if not INFO_TEXT_RE.match(args.name) or len(args.name) > 47 or not INFO_TEXT_RE.match(args.version) or \
-                len(args.version) > 31:
-            print('refused: name (<= 47) and version (<= 31) must be printable ASCII without = or newlines'); return 2
-        data = args.os_ldr.read_bytes()
-        try:
-            records = parse_ldr(data)
-        except Exception as error:
-            print('refused: not an LDR stream: %s' % error); return 2
-        if records[-1].target != 0x11a00000 or not data or len(data) > IMAGE_CAPACITY:
-            print('refused: entry must be 0x11a00000 and size 1..%d' % IMAGE_CAPACITY); return 2
-        info = library_info(data, args.name, args.version)
-        print('Plan: /yaffs2/xy-forever/firmware/%s/os.ldr (%d bytes, CRC-32 %08x), then info.txt:' %
-              (args.id, len(data), zlib.crc32(data) & 0xffffffff))
-        print('      ' + info.decode().strip().replace('\n', '\n      '))
-        print('      Each write on a fresh boot (REBOOT before, between and after). The default is unchanged.')
-        if not args.yes_write:
-            print('DRY RUN: nothing sent. Re-run with --yes-write to write.')
-            return 0
+        code, files = library_add.plan(args, IMAGE_CAPACITY)
+        if files is None:
+            return code
     if args.command == 'boot':
         if not ID_RE.match(args.id):
             print('refused: id must be 1-31 of [a-z0-9_-]'); return 2
@@ -806,18 +782,7 @@ def run(argv):
         print('screenshot: framebuffer %08x -> %s' % (struct.unpack_from('<I', body)[0], args.out))
         return 0
     if args.command == 'library-add':
-        data = args.os_ldr.read_bytes()
-        base = '/yaffs2/xy-forever/firmware/%s/' % args.id
-        for remote, body in ((base + 'os.ldr', data), (base + 'info.txt', library_info(data, args.name, args.version))):
-            dev = fresh(dev, args.timeout)
-            if dev is None:
-                return 11
-            code = put(dev, body, remote)
-            if code:
-                return code
-        dev = fresh(dev, args.timeout)                  # leave a fresh boot (CONTINUE/set-default ready)
-        print('library-add %s: ok' % args.id)
-        return 0 if dev is not None else 11
+        return library_add.write(dev, args, files, lambda d: fresh(d, args.timeout), put)
     if args.command == 'set-default':
         code, sent_hash = dev.set_default(args.id)
         print('set-default sent: %s (id hash %08x)' % (P.status_name(code), sent_hash))

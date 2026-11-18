@@ -282,6 +282,47 @@ class LibraryAddTest(unittest.TestCase):
             self.assertEqual(host.main(['library-add', 'x', str(junk), '--name', 'a=b', '--version', 'b']), 2)
             self.assertEqual(host.main(['library-add', 'x', str(junk), '--name', 'a', '--version', 'b\nc']), 2)
 
+    def test_content_sources_in_the_plan(self):
+        """--content: a content folder or a content.sha256 + firmware.version folder; a release mismatch or a missing
+        source is refused with how to give one; none at all is a note (the entry still boots)."""
+        import contextlib
+        import hashlib
+        import io
+        import xyf_host as host
+        from test_ldr import image
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            ldr = tmp / 'os.ldr'
+            ldr.write_bytes(image([(4, 0x11a00000, 8, 0, bytes(range(8)))], entry=0x11a00000))
+            content = tmp / 'pkg/firmware/blackfin/content'
+            (content / 'presets').mkdir(parents=True)
+            (content / 'presets/a.json').write_bytes(b'a')
+            (content / 'op1_factory.json').write_bytes(b'{}')
+            (tmp / 'pkg/firmware/firmware.version').write_bytes(b'1.2.1+0\n')
+            listed = tmp / 'listed'
+            listed.mkdir()
+            (listed / 'content.sha256').write_bytes(b'%s  op1_factory.json\n' % hashlib.sha256(b'{}').hexdigest().encode())
+            (listed / 'firmware.version').write_bytes(b'1.2.5+0\n')
+
+            def plan(*extra):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    code = host.main(['library-add', 'x', str(ldr), '--name', 'a', '--version', '1.2.1', *extra])
+                return code, out.getvalue()
+            code, text = plan('--content', str(content))
+            self.assertEqual(code, 0, text)
+            self.assertIn('then firmware.version (1.2.1+0) and content.sha256 (2 files', text)
+            code, text = plan('--content', str(listed))
+            self.assertEqual(code, 2, text)
+            self.assertIn('refused: --content is firmware 1.2.5+0, the entry is --version 1.2.1', text)
+            code, text = plan('--content', str(tmp / 'absent'))
+            self.assertEqual(code, 2, text)
+            self.assertIn('not a folder', text)
+            self.assertIn('Give --content DIR', text)
+            code, text = plan()
+            self.assertEqual(code, 0, text)
+            self.assertIn('note: firmware/x gets no content.sha256 + firmware.version', text)
+
 
 class ScreenTest(unittest.TestCase):
     """Test 053: read-only framebuffer view (SCREEN) and the host PNG conversion."""

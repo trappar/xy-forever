@@ -9,7 +9,8 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 `wait`, `status`, `read PATH [--all --out F]`, `install BUILD --yes-install`,
 `reboot --yes-reboot [--to service|os|menu]`, `set-default ID --yes-write`,
 `put-file LOCAL /yaffs2/xy-forever/PATH --yes-write` (creates missing folders),
-`library-add ID OS_LDR --name --version --yes-write`, `screenshot --out F.png`,
+`library-add ID OS_LDR --name --version [--content DIR] --yes-write` (`--content`: the release's official content;
+the entry gets `content.sha256` + `firmware.version`, which mod builds need of their base), `screenshot --out F.png`,
 `continue [--dry-run]`, `boot ID --yes-boot` (1.7: boot a library entry once; leaves XY Forever), `key K`, `hold
 on|off`, `uninstall STOCK_OS_LDR --yes-uninstall`.
 

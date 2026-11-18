@@ -262,7 +262,7 @@ function buildCard(config: SavedConfig | null | undefined): HTMLElement {
   };
   gen.addEventListener('change', fill);
   fill();
-  void libraryBases(client!).then((list) => base.replaceChildren(...list.map((b) => h('option', { value: b.id }, `${b.name} (${b.id})`)))).catch(() => undefined);
+  void libraryBases(client!).then((list) => base.replaceChildren(...list.map((b) => h('option', { value: b.id }, `${b.name} (${b.id})${b.contentList ? '' : ': no content list, a build refuses it'}`)))).catch(() => undefined);
   const cancel = btn('Cancel', () => building?.abort(), 'danger');
   cancel.disabled = true;
   const start = btn('Build on device', () => void run(async () => {

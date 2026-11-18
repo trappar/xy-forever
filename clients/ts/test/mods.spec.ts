@@ -234,6 +234,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     const bases = await libraryBases(client);
     expect(bases.map((b) => b.id)).toEqual(['modbase', 'opxy-121', 'opxy-121-stock']);
     expect(bases[0]!.name).toBe('Mod base');
+    expect(bases.map((b) => b.contentList)).toEqual([true, false, false]);   // the seed's stock entries have no content list
     const seen: JobStatus[] = [];
     const built = await applyMods(client, request, { pollMs: 20, onProgress: (s) => seen.push(s) });
     const result = built.status;

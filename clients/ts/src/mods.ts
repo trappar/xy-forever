@@ -539,7 +539,8 @@ export async function makeDefault(client: Client, id: string, options: Omit<Appl
   return { id, switched: true, status };
 }
 
-export interface BaseEntry { readonly id: string; readonly name: string }
+/** contentList: the entry has content.sha256, which a build needs of its base (`xyf_host.py library-add --content` writes it). */
+export interface BaseEntry { readonly id: string; readonly name: string; readonly contentList: boolean }
 
 /**
  * Firmware library entries that hold an os.ldr and are not assembled mod sets (no `generation` in info.txt: a
@@ -559,7 +560,8 @@ export async function libraryBases(client: Client, options: CallOptions = {}): P
     if (!files.some((f) => f.kind === 'file' && f.name === 'os.ldr')) continue;
     const info = files.some((f) => f.name === INFO) ? infoValues(await client.readFile(`${LIBRARY_ROOT}/${e.name}/${INFO}`, options)) : {};
     if (info['generation']) continue;                         // an assembled mod set, not a stock base
-    out.push({ id: e.name, name: info['name'] || e.name });
+    const contentList = files.some((f) => f.kind === 'file' && f.name === 'content.sha256');
+    out.push({ id: e.name, name: info['name'] || e.name, contentList });
   }
   return out;
 }
