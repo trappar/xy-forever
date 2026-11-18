@@ -21,7 +21,10 @@ const char* host_activity() {
     return host_change && now() - host_change_ms < host_activity_ms ? host_line(host_change) : nullptr;
 }
 const char* version_label() { return "v" XYF_VERSION; }
-const char* image_label() { return image_text; }
+// A separate text until the hash settles: the pointer changes when it does, and the Info page redraws.
+const char* image_label() {
+    return result.image_state == image_known || result.image_state == image_unknown ? image_text : "image ...";
+}
 bool home_hold() { return home != 0 || home_greeted != 0; }
 
 // b, at the start of the file boot: a valid marker (our REBOOT, a dry-run return, or a reset

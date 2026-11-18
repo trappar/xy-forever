@@ -15,7 +15,7 @@ U32 image_hash_storage[(sizeof(xyf_core::hash::Sha256) + 3) / 4] __attribute__((
 xyf_core::hash::Sha256& image_hash() { return *reinterpret_cast<xyf_core::hash::Sha256*>(image_hash_storage); }
 volatile U32 image_bytes __attribute__((section(".data"))) = 0;
 volatile U32 image_done __attribute__((section(".data"))) = 0;
-char image_text[16] __attribute__((section(".data"))) = "image ...";         // the Info page's line
+char image_text[16] __attribute__((section(".data"))) = "image ...";         // the Info page's line, once settled
 
 void image_label_set(const char* tail) {
     for (U32 i = 0; i != sizeof(image_text) - 6; ++i) { image_text[6 + i] = *tail; if (*tail) ++tail; }

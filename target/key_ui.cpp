@@ -545,7 +545,7 @@ extern "C" void xy_forever_key_ui() {
                          "Uninstall: not available yet.";
             }
 #if defined(XYF_ONE_SESSION)
-            if (usb_view_changed()) dirty = 1;     // the USB mark went on or out, or the activity line changed
+            if (usb_view_changed()) dirty = 1;     // the USB mark, the activity line or the Info page's image changed
 #endif
             if (dirty) { dirty = 0; show(0, status); }
             // Test 059: after a failed check the menu waits for a choice (never the broken default).
