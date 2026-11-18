@@ -8,13 +8,14 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever.census import (MENU_LINK_BYTES, MENU_LINK_FIELDS, MENU_LINK_MAGIC, PEER_DIAGNOSTIC_FIELDS,
                                    PEER_SNAPSHOT_WORDS, menu_link)
 
 HEADER = (ROOT / 'target/menu_link.hpp').read_text()
 SOURCE = (ROOT / 'target/menu_link.cpp').read_text()
 SESSION = (ROOT / 'target/peer_services.cpp').read_text()
-FILE_BOOT = (ROOT / 'target/file_boot.cpp').read_text()
+FILE_BOOT = unit_text(ROOT / 'target/file_boot.cpp')
 
 
 def constant(name, text=HEADER):

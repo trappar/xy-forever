@@ -114,7 +114,7 @@ class ProductFlowTest(unittest.TestCase):
 
 class LibraryBootTimingTest(unittest.TestCase):
     def test_a_waits_long_enough_for_b_to_admit_the_image(self):
-        text = (ROOT / 'target/file_boot.cpp').read_text()
+        text = unit_text(ROOT / 'target/file_boot.cpp')
         body = text[text.index('bool role0_menu_boot(U32& bytes, U32& crc) {'):]
         self.assertIn('session.stage(product_role0_idle_ms, handshake_ms);', body[:body.index('session.begin(')])
         ms = int(re.search(r'product_role0_idle_ms = (\d+);', text).group(1))
@@ -124,7 +124,7 @@ class LibraryBootTimingTest(unittest.TestCase):
 
 class DryRunTest(unittest.TestCase):
     def test_dry_run_resets_instead_of_starting_the_os(self):
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         end = fb[fb.index('extern "C" void xy_forever_file_boot() {'):]
         self.assertLess(end.index('hand_off(bytes, crc)'), end.index('usb_service::dry_run_finish(&r, sizeof(r));'))
         us = unit_text(ROOT / 'target/usb_service.cpp')
@@ -134,7 +134,7 @@ class DryRunTest(unittest.TestCase):
         self.assertLess(finish.index('marker_write('), finish.index('reset_self();'))
         self.assertNotIn('write_state_slot', finish)
         self.assertIn('if (ok && mode == 1) ok = menu_link::usb_command(storage_server::dry_run_item);', us)
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         self.assertIn('if (item == storage_server::dry_run_item) { usb_service::a_dry_run(); continue; }', fb)
 
     def test_dry_run_area_is_clear_of_staging_and_marker(self):
@@ -188,7 +188,7 @@ class SetDefaultWriteTest(unittest.TestCase):
         a = a[:a.index('\n}\n')]
         self.assertIn('storage.write_state_slot(', a)
         self.assertNotIn('guard_', a)
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         w = fb[fb.index('usb_service::a_set_default(storage, a_collector.hash);'):]
         self.assertIn('session.touch(now());', w[:w.index('continue;')])        # the write is not idleness
         self.assertIn('b_patience_ms ? b_patience_ms : 2 * answer_ms)) b_lost = 1;', fb)
@@ -205,7 +205,7 @@ class PlainImageTest(unittest.TestCase):
     """Test 051: plain official os.ldr images (no report slot) boot from the library."""
 
     def test_admit_classifies_missing_slot_as_plain(self):
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         a = fb[fb.index('U32 admit(Byte* image, U32 bytes) {'):]
         a = a[:a.index('\n}\n')]
         order = ['xy_forever_storage_image_plain = 0;', 'xyf_core::inspect(image, bytes, *policy, summary)',
@@ -289,7 +289,7 @@ class MenuOverUsbTest(unittest.TestCase):
         self.assertIn('P::get32(payload) < 64u && P::get32(payload + 4) <= 1u', pump)
         rel = us[us.index('void menu_release() {'):]
         self.assertLess(rel.index('menu_usb = 0;'), rel.index('usb_stop();'))
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         r1 = fb[fb.index('bool role1_menu_boot(U32& bytes) {'):]
         self.assertLess(r1.index('if (usb_service::menu_requested()) r.menu.play = 1;'), r1.index('xy_forever_key_ui();'))
         self.assertLess(r1.index('xy_forever_key_ui();'), r1.index('usb_service::menu_release();'))
@@ -319,7 +319,7 @@ class MenuOnFailureTest(unittest.TestCase):
     """Test 059: a default that can't boot opens the menu (CHECK before BOOT; a keeps the session)."""
 
     def setUp(self):
-        self.fb = (ROOT / 'target/file_boot.cpp').read_text()
+        self.fb = unit_text(ROOT / 'target/file_boot.cpp')
 
     def test_a_checks_with_storage_mounted(self):
         prep = self.fb[self.fb.index('U32 a_prepare('):]
@@ -380,7 +380,7 @@ class BootModelTest(unittest.TestCase):
         self.assertLess(start.index('identity()'), start.index('usb_start();'))
         home = us[us.index('void home_start() {'):]
         self.assertIn('menu_start_usb();', home[:home.index('\n}\n')])
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         r1 = fb[fb.index('bool role1_menu_boot(U32& bytes) {'):]
         self.assertLess(r1.index('usb_service::home_start();'), r1.index('xy_forever_key_ui();'))
         hdr = (ROOT / 'target/xyf_boot.hpp').read_text()
@@ -389,7 +389,7 @@ class BootModelTest(unittest.TestCase):
 
 class BootTransferBoundTest(unittest.TestCase):
     def test_bounds(self):
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         self.assertIn('while (session.blob_pending() && now() - t < 2000u) session.poll(now());', fb)
         self.assertIn('now() - r.menu.boot_ms < xyf_boot::boot_transfer_ms) {   // Test 061: own bound', fb)
         self.assertIn('boot_transfer_ms = 30000;', (ROOT / 'target/xyf_boot.hpp').read_text())
@@ -402,7 +402,7 @@ class KeepUsbTest(unittest.TestCase):
         us = unit_text(ROOT / 'target/usb_service.cpp')
         self.assertIn('bool menu_requested() { return menu_usb == 1u || menu_usb == 2u; }', us)
         self.assertIn('if (menu_usb == 3u) { menu_usb = 1; return; }      // Test 062: USB kept from the service', us)
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         self.assertIn('session.image_size() < sizeof(xyf_boot::CheckStatus)', fb)
         self.assertIn('usb_service::progress("Checking the default firmware...", "");', fb)
 
@@ -444,7 +444,7 @@ class OneSessionTest(unittest.TestCase):
         u = ss[ss.index('void unmount(cold_storage::Stock121ReadOnlySession& storage) {'):]
         u = u[:u.index('\n}\n')]
         self.assertLess(u.index('if (adopted) { mounted = 0; return; }'), u.index('storage.end()'))
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         r0 = fb[fb.index('bool role0_menu_boot(U32& bytes, U32& crc) {'):]
         self.assertLess(r0.index('storage_server::install(session, storage);'), r0.index('session.begin('))
         # 191: adopted also when the mount failed (op 8 answers a failure until a retry mounts)
@@ -537,7 +537,7 @@ class NoEmbeddedOsTest(unittest.TestCase):
         cold = (ROOT / 'target/cold.cpp').read_text()
         self.assertIn('descriptor.payload_bytes != 0', cold)
         self.assertIn('if (!from_storage) { xy_forever_no_image(); stop(); }', cold)
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         handler = fb[fb.index('extern "C" void xy_forever_no_image() {'):]
         self.assertIn('if (result.role != 1) return;', handler)
         self.assertIn('"Internal link lost."', handler)
@@ -551,7 +551,7 @@ class MtpExecutorTest(unittest.TestCase):
     """091/097: a serves the engine's run entry from the boot session (the self-test reaches it)."""
 
     def test_flow(self):
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         a = fb[fb.index('if (item == storage_server::engine_run_item) {'):]
         a = a[:a.index('#endif')]
         self.assertLess(a.index('session.set_rpc(true);'), a.index('storage_server::run_engine(session, storage);'))
@@ -617,7 +617,7 @@ class MtpSelfTestTest(unittest.TestCase):
         # the window must be closed before the run entry ends
         self.assertLess(v3.index('close_engine(storage);'), v3.index('engine = entry_read;'))
         self.assertIn('if (window_open) continue;', v3)
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         self.assertIn('handled = session.commands_seen();          // the leave item was consumed in run_engine', fb)
         hpp = (ROOT / 'target/storage_server.hpp').read_text()
         self.assertIn('static const uint32_t engine_leave_item = 11;', hpp)

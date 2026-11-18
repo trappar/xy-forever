@@ -713,7 +713,7 @@ class UsbPresenceTest(unittest.TestCase):
     def test_a_has_no_guard_and_restarts_only_by_following_b(self):
         # a restarts only when b's bootloader asks (F1), closing the window first, or on b's REBOOT
         # item; a b silent past the idle window only ends a's session (no restart).
-        text = (ROOT / 'target/file_boot.cpp').read_text()
+        text = unit_text(ROOT / 'target/file_boot.cpp')
         for gone in ('a_guarded', 'a_alone_ms', 'a_guard', 'restart_a_item', 'guard_reload', 'guard_item'):
             self.assertNotIn(gone, text)
         follow = text[text.index('void a_follow(cold_storage::Stock121ReadOnlySession& storage) {'):]

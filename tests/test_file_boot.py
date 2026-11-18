@@ -7,12 +7,13 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 import xyf_build as builder
 from xy_forever.census import (FILE_BOOT_BYTES, FILE_BOOT_FIELDS, FILE_BOOT_MAGIC, PEER_DIAGNOSTIC_FIELDS,
                                    PEER_SNAPSHOT_WORDS, STORAGE_DIAGNOSTIC_WORDS, file_boot)
 
 HEADER = (ROOT / 'target/file_boot.hpp').read_text()
-SOURCE = (ROOT / 'target/file_boot.cpp').read_text()
+SOURCE = unit_text(ROOT / 'target/file_boot.cpp')
 SESSION = (ROOT / 'target/peer_services.cpp').read_text()
 COLD = (ROOT / 'target/cold.cpp').read_text()
 BOOT_HEADER = (ROOT / 'target/xyf_boot.hpp').read_text()

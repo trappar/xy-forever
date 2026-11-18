@@ -19,7 +19,7 @@ def function(source, signature):
 class V3DefaultRefreshTest(unittest.TestCase):
     def test_same_session_default_and_failure_paths(self):
         usb = unit_text(ROOT / 'target/usb_service.cpp')
-        boot = (ROOT / 'target/file_boot.cpp').read_text()
+        boot = unit_text(ROOT / 'target/file_boot.cpp')
         ui = (ROOT / 'target/key_ui.cpp').read_text()
         fs = (ROOT / 'target/xyf_library_test.cpp').read_text()
         fs = fs[fs.index('struct File {'):fs.index('static uint8_t scratch')]
