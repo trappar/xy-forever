@@ -45,8 +45,9 @@ class FileWritePathTest(unittest.TestCase):
         self.assertEqual(self.lib.fw_open_flags(), 0x8301)
         items = (ROOT / 'target/storage_server.hpp').read_text()
         for other in ('command_item = 3', 'install_item = 4, reboot_item = 5', 'engine_run_item = 6',
-                      'usb_mode_item = 7', 'guard_item = 8', 'dry_run_item = 9', 'engine_leave_item = 11'):
+                      'usb_mode_item = 7', 'dry_run_item = 9', 'engine_leave_item = 11'):
             self.assertIn(other, items)                      # 10 collides with none of them
+        self.assertNotIn('guard_item', items)                # 8 and 12 stay reserved (the removed guard)
 
     def test_paths(self):
         for path in (b'/yaffs2/xy-forever/', b'/yaffs2/xy-forever/../a', b'/yaffs2/xy-forever/./a',
@@ -93,7 +94,7 @@ class FileWriteSourceTest(unittest.TestCase):
         self.server = (ROOT / 'target/storage_server.cpp').read_text()
         self.usb = unit_text(ROOT / 'target/usb_service.cpp')
 
-    def test_a_enters_the_engine_and_pauses_its_guard(self):
+    def test_a_enters_the_engine(self):
         latch = self.server[self.server.index('void latch(Stock121PeerSession& session) {'):]
         latch = latch[:latch.index('\n}\n')]
         self.assertIn('if (item == file_write_item && engine != entry_write) entry = entry_write;', latch)
@@ -106,9 +107,8 @@ class FileWriteSourceTest(unittest.TestCase):
         for name in ('bool open_window(', 'void close_engine('):
             body = self.server[self.server.index(name):]
             body = body[:body.index('\n}\n')]
-            self.assertIn('const bool was = engine == entry_write ? usb_service::guard_pause() : false;', body)
-            self.assertLess(body.index('guard_pause()'), body.index('_write_window('))
-            self.assertLess(body.index('_write_window('), body.index('usb_service::guard_resume(was);'))
+            self.assertIn('_write_window(', body)
+            self.assertNotIn('guard_', body)                                 # there is no guard to pause
         engine = self.server[self.server.index('void serve_engine('):]
         engine = engine[:engine.index('\n}\n')]
         self.assertIn('if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item',
@@ -158,7 +158,7 @@ class FileWriteSourceTest(unittest.TestCase):
                  'file_client::write_file(']
         at = [h.index(s) for s in order]
         self.assertEqual(at, sorted(at))
-        self.assertNotIn('guard_pause', h)                                   # never paused on b
+        self.assertNotIn('guard_', h)                                        # there is no guard
         self.assertIn('else if (type == P::t_file_write) file_write(seq, payload, length);', self.usb)
         self.assertIn('if (!size || size > image_capacity)', self.usb)
 

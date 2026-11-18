@@ -364,9 +364,7 @@ void latch(Stock121PeerSession& session) {
 
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
 // The read-write window on a's read-only mount (fresh, or the adopted one): op 8 in the run entry;
-// in the write entry the first request that changes storage. The write entry pauses a's
-// guard around the read-write mount and unmount (Test 049: a long mount or checkpoint is not a
-// hang); the run entry keeps it (097).
+// in the write entry the first request that changes storage.
 __attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession& storage) {   // noinline: builder scope
     if (window_open) return window_result == U32(cold_storage::Result::ok);   // not after a failed close
     if (boot_selected()) return false;                         // never read-write on a boot partition
@@ -375,7 +373,6 @@ __attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession
     // They stay b's; op 9 closes them.
     if (held_files()) return false;
     if ((used && !adopted) || !mount(storage)) return false;   // v3: the adopted mount is reusable
-    const bool was = engine == entry_write ? usb_service::guard_pause() : false;
     services::U32 step = 0;
     const cold_storage::Result w = storage.open_write_window(step);
     window_step = step; window_result = U32(w);
@@ -385,7 +382,6 @@ __attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession
         const cold_storage::Result resumed = storage.reopen_read_only();
         if (resumed != cold_storage::Result::ok) window_result = U32(resumed);
     }
-    usb_service::guard_resume(was);
     if (w != cold_storage::Result::ok) { unmount(storage); return false; }
     window_open = 1; window_touched = 1;
     if (engine == entry_write) library_dirty = 1;              // (the run entry rescans after itself)
@@ -396,19 +392,17 @@ __attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession
 // Op 9 (or any end): close b's leftovers, close the read-write window (yaffs unmount writes its
 // checkpoint; gates back; the shared read-only mount again), then end the session (end; not
 // when a closes the window between requests). A window that fails to close stays mounted (never
-// hand off read-write). noinline: the builder finds a's guard pause only here and in open_window.
+// hand off read-write).
 __attribute__((noinline)) void close_engine(cold_storage::Stock121ReadOnlySession& storage, bool end = true) {
     if (!mounted) return;
     close_handles();
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
     if (window_open) {
-        const bool was = engine == entry_write ? usb_service::guard_pause() : false;
         window_result = U32(storage.close_write_window());
         if (window_result == U32(cold_storage::Result::ok)) {
             window_open = 0;
             if (adopted) window_result = U32(storage.reopen_read_only());
         }
-        usb_service::guard_resume(was);
         note(9, 0x20u, window_result);                       // 0x20: a window close (any trigger)
         if (window_open) return;
     }
@@ -796,10 +790,9 @@ void run_engine(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySess
     // v3: the boot session (RPC mode, no cap) serves b's requests through the serve hook, with
     // no idle window (a refreshes its own activity). engine_leave_item ends the run entry and
     // returns to the read-only entry. Every other way out restarts a, with storage closed first
-    // (see storage_server.hpp: the raw layer). a's guard, if armed, is reloaded on every pass.
+    // (see storage_server.hpp: the raw layer).
     U32 seen = session.commands_seen();
     for (;;) {
-        usb_service::guard_reload();
         session.touch(xyf_boot::clock_ms());
         const peer_services::Result s = session.poll(xyf_boot::clock_ms());
         if (s != peer_services::Result::waiting && s != peer_services::Result::choose_image) break;

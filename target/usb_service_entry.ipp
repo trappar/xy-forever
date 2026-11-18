@@ -69,14 +69,9 @@ void a_set_default(cold_storage::Stock121ReadOnlySession& storage, uint32_t hash
             if (!state_write::plan_default_id(choice, id, plan)) status = state_write::status_plan;
             else {
                 seq = plan.seq;
-                // Test 048: never a watchdog reset mid-write. Disarm/arm (both proven)
-                // rather than a count change while enabled (cf. the Test 045 reset).
-                const bool guarded = guard_on != 0;
-                guard_disarm();
                 const cold_storage::Result w = storage.write_state_slot(plan.path,
                     reinterpret_cast<const uint8_t*>(plan.text), plan.length,
                     reinterpret_cast<uint8_t*>(state_write::a_readback), step);
-                if (guarded) guard_arm();
                 written = U32(w);
                 status = w == cold_storage::Result::ok ? state_write::status_ok : state_write::status_storage;
             }
@@ -135,9 +130,7 @@ const char* usb_notice() {
 void progress(const char* a, const char* b) { say(a, b); }
 // ---- Test 065: one link session; the menu is home and answers every USB command ----
 void rpc_reset() { read_enabled = 0; }               // a left RPC mode (a transfer item was sent)
-bool guard_armed() { return guard_on != 0; }
 void stack_watch(uint32_t painted_begin) { stack_paint_begin = painted_begin; }
-void guard_reload() { guard_kick(); }
 bool home_active() { return home != 0; }
 bool home_usb() { return menu_usb != 0; }
 // The menu's USB mark and activity line (usb_service.hpp).

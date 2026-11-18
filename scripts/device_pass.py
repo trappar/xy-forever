@@ -10,11 +10,11 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
   check    always: HELLO + STATUS within --wait s. No answer: one `NEED:` line,
            exit 3, no session folder, nothing sent but HELLO. (keepalive.sh
            processes already running are stopped first: they share the port.)
-  session  always: guard on (guard kicks must advance), hold on.
+  session  always: hold on.
   read     default: status; state slots; the default entry's info.txt; ls firmware/
            lists the default and ls /yaffs2/xy-forever lists firmware; 8 ranged
            reads of its os.ldr (compared with the local stock os.ldr when info.txt
-           names it); screenshot; peek of the reboot marker (guard bit set).
+           names it); screenshot; peek of the reboot marker (held bit set).
   install  --install BUILD_DIR: `install --yes-install` (xyf_host's build checks;
            the device verifies the partition), REBOOT, fresh boot back home.
   protocol default (after install, before any restart): one port per step. HELLO text
@@ -82,25 +82,19 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            start. Never Save or Discard (both boot), no PLAY on the first row without the mark. A failure: STOP
            (up to 3) until the home menu shows; the row says what may be pending (only until a restart).
   mtp      default: mtp-test --hold-ms 2000 (097: processor A's storage executor;
-           the guard is paused while it runs, so a hang inside it needs a power
-           cycle), then home answers without a restart and a read works.
-  guard    --guard-test only (never in the default pass), last; not started if
-           home-after-mtp found a restart. One step, expiry: a read, guard off, then
-           guard expiry-test while A runs XY Forever (153): B resets (~3 s),
-           its bootloader waits until A, B silent past A's 10 s idle window, follows
-           (model: home ~10.7 s after B's reset; wait limit 20 s), crash +1, a read works.
-           A miss says what to do (one power cycle). The end stage leaves guard and hold off.
+           a hang inside it needs a power cycle), then home answers without a
+           restart and a read works.
   end      always once the device answered: status (a crash count left by a
-           watchdog reset is cleared by a clean REBOOT), guard off (kicks stop),
-           hold off, then scripts/keepalive.sh started on the session folder.
+           restart is cleared by a clean REBOOT), hold off, then scripts/keepalive.sh
+           started on the session folder. No step anywhere turns a watchdog on: there is none.
 
 Simulator (--sim HOST:PORT, docs/architecture/simulator.md "Simulator"): the same steps through
 xyf_host.py --sim; steps the simulator does not host are SKIP with the reason (SIM_SKIPS).
 
-End state: the XY Forever boot menu (home) with USB, guard off, hold off, crash
-count 0, polled by keepalive.sh (a host stays attached). Not in the OS. Guard and
-hold are off because keepalive.sh gives up after 3 misses and SAFETY.md forbids
-hold or guard with no host; the v3 menu never times out once a host said HELLO.
+End state: the XY Forever boot menu (home) with USB, hold off, crash count 0,
+polled by keepalive.sh (a host stays attached). Not in the OS. Hold is off
+because keepalive.sh gives up after 3 misses and SAFETY.md forbids hold with
+no host; the v3 menu never times out once a host said HELLO.
 Before any other device command: touch FOLDER/stop-keepalive (this script stops
 running keepalives itself).
 
@@ -148,13 +142,9 @@ T_DRY = 20.0        # dry run: A mounts (up to ~5 s, 076), reads the default (0.
 T_INSTALL = 120.0   # install ~14 s + verify 1.3 s (039); xyf_host's own bound is 900 s
 HOLD_MS = 2000
 T_MTP = 15.0        # mtp-test: HOLD_MS + the storage calls (097)
-T_EXPIRY = 10.0     # guard expiry-test: WDOG0 count 3e8 at SCLK 100 MHz = 3 s, then the reset
-T_GUARD_BACK = 20.0  # guard expiry: B resets, A follows ~10.4 s later (idle window), home ~10.7 s
-POWER_CYCLE = ('if the menu does not answer: power off, wait 5 s, power on holding PLAY (release at the logo), '
-               'then rerun')
 T_KEEPALIVE = 10.0  # keepalive.sh's first status
 MARKER, MARKER_MAGIC = 0x8bfff000, 0x52465859            # usb_service.hpp reboot marker ("YXFR")
-MARKER_BITS = ((0x100, 'held'), (0x200, 'guard'), (0x400, 'menu'))
+MARKER_BITS = ((0x100, 'held'), (0x400, 'menu'))
 PASS_FILE = '/yaffs2/xy-forever/log/device-pass.txt'
 PASS_FILE2 = '/yaffs2/xy-forever/log/device-pass-2.txt'
 SCRATCH_ID = 'xyf-pass-scratch'                     # the library change (an entry without os.ldr)
@@ -216,8 +206,7 @@ BIG_CHUNK = 4096           # --big-replies: stage.data size (Test 034: a 4 KiB f
 
 STAGES = (    # (stage, steps: (name, bound in s, what it does))
     ('check', (('check', None, 'HELLO + STATUS: the USB service answers at home (else NEED, exit 3)'),)),
-    ('session', (('guard-on', T_ANSWER, 'guard on; guard kicks advance between two STATUS'),
-                 ('hold-on', T_ANSWER, 'hold on'))),
+    ('session', (('hold-on', T_ANSWER, 'hold on'),)),
     ('read', (('status', T_ANSWER, 'STATUS: service version 4, role b'),
               ('read-state', T_ANSWER, 'whole reads of state-a.txt/state-b.txt: the default entry'),
               ('read-info', T_ANSWER, 'whole read of firmware/<default>/info.txt'),
@@ -225,7 +214,7 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
                                        'firmware (build 165 listed every folder empty)'),
               ('read-ranges', T_ANSWER, '%d ranged reads (1 KiB) of firmware/<default>/os.ldr' % RANGES),
               ('screenshot', T_ANSWER, 'screenshot of home'),
-              ('peek', T_ANSWER, 'peek 16 B at 0x%08x: reboot marker, guard bit set' % MARKER))),
+              ('peek', T_ANSWER, 'peek 16 B at 0x%08x: reboot marker, held bit set' % MARKER))),
     ('install', (('install', T_INSTALL, 'install BUILD_DIR --yes-install: device verifies the partition'),
                  ('install-restart', T_GONE + T_BACK, 'REBOOT --to menu; a fresh boot answers'))),
     ('protocol', (('hello', T_ANSWER, 'HELLO text; pre-v1: every protocol step SKIP; v1: proto 1.x, %d '
@@ -288,10 +277,7 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
     ('mtp', (('mtp-test', T_MTP, 'mtp-test --hold-ms %d --yes-test: all 11 steps' % HOLD_MS),
              ('home-after-mtp', T_ANSWER, 'no restart (frames kept, crash restarts 0), a read works, '
                                           'screenshot'))),
-    ('guard', (('expiry', T_EXPIRY + T_GUARD_BACK, 'a read; guard off, expiry-test while A runs (153): B resets, '
-                                                   'A follows ~10.4 s later, home, crash +1, a read works'),)),
     ('end', (('end-status', T_BACK + T_GONE + T_BACK, 'STATUS; a clean REBOOT if crash restarts > 0'),
-             ('guard-off', T_ANSWER, 'guard off; guard kicks stop'),
              ('hold-off', T_ANSWER, 'hold off'),
              ('keepalive', T_KEEPALIVE, 'start scripts/keepalive.sh FOLDER; its first STATUS'))),
 )
@@ -441,8 +427,9 @@ class Wire:
     def check(self, kind, payload, raw):
         name = ids.COMMANDS[kind]['name'] if kind in ids.COMMANDS else '0x%02x' % kind
         if raw or kind not in ids.COMMANDS:
-            if not (raw and kind < P.REPLY and kind not in ids.COMMANDS):
-                raise ValueError('device_pass sends a raw frame only for an unknown type, not %s' % name)
+            if not (raw and kind < P.REPLY and kind not in ids.COMMANDS and not payload):
+                # empty: builds before 1.14 still act on 0x33 (diag.guard) and 0x60 (diag.hang) with a payload
+                raise ValueError('device_pass sends a raw frame only for an unknown type, empty, not %s' % name)
         elif kind == P.PUT_DATA:
             if self.announced is None or len(payload) < 5 or \
                     struct.unpack_from('<I', payload)[0] + len(payload) - 4 >= self.announced:
@@ -695,12 +682,6 @@ class Pass:
             raise StepFail('status: no USB service block in the reply')
         return decoded, usb
 
-    def kicks(self):
-        _, first = self.status()
-        self.sleep(0.5)
-        _, second = self.status()
-        return first.get('guard_kicks', 0), second.get('guard_kicks', 0)
-
     def gone(self, timeout, what):
         start = time.monotonic()
         if not self.dev.port_gone(timeout):
@@ -713,7 +694,7 @@ class Pass:
         self.gone(T_GONE, 'REBOOT')
         decoded, usb = self.status(T_BACK)
         if usb.get('crash_restarts'):
-            raise StepFail('came back with crash restarts %s: a watchdog reset, not the REBOOT' % usb['crash_restarts'])
+            raise StepFail('came back with crash restarts %s: a crash restart, not the REBOOT' % usb['crash_restarts'])
         return time.monotonic() - start, decoded, usb
 
     def read(self, path, name, *extra):
@@ -811,13 +792,6 @@ class Pass:
         self.state['check'] = usb
         return 'home answers; identity %s, crash restarts %s' % (usb.get('identity'), usb.get('crash_restarts'))
 
-    def step_guard_on(self):
-        self.ok(['guard', 'on'])
-        first, second = self.kicks()
-        if second <= first:
-            raise StepFail('guard on replied ok but guard kicks did not advance (%d -> %d)' % (first, second))
-        return 'guard kicks %d -> %d' % (first, second)
-
     def step_hold_on(self):
         self.ok(['hold', 'on'])
         return 'ok'
@@ -889,8 +863,8 @@ class Pass:
         bits = [name for bit, name in MARKER_BITS if reason & bit]
         if magic != MARKER_MAGIC or inverse != ~MARKER_MAGIC & 0xffffffff:
             raise StepFail('no reboot marker (magic %08x)' % magic)
-        if not reason & 0x200:
-            raise StepFail('marker reason %#x has no guard bit' % reason)
+        if not reason & 0x100:
+            raise StepFail('marker reason %#x has no held bit' % reason)
         return 'marker reason %#x (%s), crash restarts %d' % (reason, ', '.join(bits), crashes)
 
     # -- install -------------------------------------------------------------------------------
@@ -1934,50 +1908,12 @@ class Pass:
         _, usb = self.status()
         if usb.get('frames', 0) <= self.state['frames']:
             raise StepFail('frames %s <= %s: the device restarted' % (usb.get('frames'), self.state['frames']))
-        if usb.get('crash_restarts') != self.state['crashes']:     # a restart (a guard reset) during MTP
+        if usb.get('crash_restarts') != self.state['crashes']:     # a restart during MTP
             raise StepFail('crash restarts %s -> %s: the device restarted' % (self.state['crashes'],
                                                                              usb.get('crash_restarts')))
         self.slots(None)
         self.shot('home-after-mtp.png')
         return 'no restart (frames %s), slots read' % usb.get('frames')
-
-    # -- guard (one step, B's guard expiry while A runs) -------------------------------------------
-    def guard_step(self, body, hint):
-        """Runs one guard step; a miss says what happened and what the developer would do."""
-        try:
-            return body()
-        except StepFail as error:
-            raise StepFail('MISS: %s; %s' % (error, hint if not self.no_answer else POWER_CYCLE))
-
-    def read_ok(self, name):
-        """A whole read of a state slot (A answers a file command)."""
-        if all(self.read(path, '%s-%s' % (name, Path(path).name)) is None for path in host.SLOTS):
-            raise StepFail('read: neither state slot found')
-
-    def guard_reset(self, argv, gone, what, back=T_BACK):
-        _, usb = self.status()
-        before = usb.get('crash_restarts', 0)
-        self.ok(argv)
-        start = time.monotonic()
-        try:
-            self.gone(gone, what)
-        except StepFail:
-            raise StepFail('no restart within %g s of %s' % (gone, what))
-        reset = time.monotonic() - start
-        _, usb = self.status(back)
-        if usb.get('crash_restarts') != before + 1:
-            raise StepFail('came back with crash restarts %s, expected %d' % (usb.get('crash_restarts'), before + 1))
-        return reset, time.monotonic() - start, before + 1
-
-    def step_expiry(self):
-        def body():
-            self.read_ok('expiry-before')
-            self.ok(['guard', 'off'])
-            reset, home, crashes = self.guard_reset(['guard', 'expiry-test'], T_EXPIRY, 'guard expiry-test',
-                                                    T_GUARD_BACK)
-            self.read_ok('expiry-after')
-            return 'reset after %.1f s, home in %.1f s, crash restarts %d, a read works' % (reset, home, crashes)
-        return self.guard_step(body, 'a guard reset after a file read does not come back (153)')
 
     # -- end -----------------------------------------------------------------------------------
     def step_end_status(self):
@@ -1986,13 +1922,6 @@ class Pass:
         if not crashes:
             return 'home answers, crash restarts 0'
         return 'crash restarts %s cleared by a clean REBOOT (%.1f s)' % (crashes, self.restart()[0])
-
-    def step_guard_off(self):
-        self.ok(['guard', 'off'])
-        first, second = self.kicks()
-        if second != first:
-            raise StepFail('guard off replied ok but guard kicks still advance (%d -> %d)' % (first, second))
-        return 'guard kicks stopped at %d' % second
 
     def step_hold_off(self):
         self.ok(['hold', 'off'])
@@ -2065,8 +1994,6 @@ def selected_stages(opts):
         raise ValueError('unknown stage(s) %s; choose from %s' % (', '.join(sorted(unknown)), ','.join(DEFAULT_STAGES)))
     if opts.install:
         chosen.add('install')
-    if opts.guard_test:
-        chosen.add('guard')
     return chosen | {'check', 'session', 'end'}
 
 
@@ -2111,10 +2038,10 @@ def print_plan(opts, chosen):
             if opts.build_number > LAST_PRE_V1 else 'pre-v1 build %d: protocol steps SKIP' % opts.build_number)))
     if opts.big_replies and 'protocol' in chosen:
         print('--big-replies: replies above HELLO read= and 4 KiB stage.data are sent (Test 038: a 4 KiB '
-              'reply hung the device; the guard should reset it)')
+              'reply hung the device; a hang needs a power cycle)')
     if opts.sim:
         print('simulator %s: SKIP %s' % (opts.sim, ', '.join(n for n in SIM_SKIPS)))
-    print('end state: home menu with USB, guard off, hold off, crash count 0, keepalive.sh polling '
+    print('end state: home menu with USB, hold off, crash count 0, keepalive.sh polling '
           '(stop: touch FOLDER/stop-keepalive); never the OS.')
 
 
@@ -2123,13 +2050,10 @@ def parse_args(argv):
     parser.add_argument('--plan', action='store_true', help='print the steps and exit; touches nothing')
     parser.add_argument('--stages', help='comma list of %s (default: all of them)' % ','.join(DEFAULT_STAGES))
     parser.add_argument('--install', metavar='BUILD_DIR', help='install this verified build (stage install)')
-    parser.add_argument('--guard-test', action='store_true',
-                        help='stage guard, last: one guard expiry-test while A runs (a broken guard needs a power '
-                        'cycle); never in the default pass')
     parser.add_argument('--big-replies', action='store_true',
                         help='stage protocol: also whole-file reads of 1-4 KiB (replies above HELLO read=) and '
-                        '%d B stage.data chunks. CAN HANG THE DEVICE (Test 038: a 4 KiB reply hung it; the guard '
-                        'should reset it, then later steps SKIP); off by default' % BIG_CHUNK)
+                        '%d B stage.data chunks. CAN HANG THE DEVICE (Test 038: a 4 KiB reply hung it; '
+                        'a hang needs a power cycle, then later steps SKIP); off by default' % BIG_CHUNK)
     parser.add_argument('--alt-default', metavar='ID', help='entry for the set-default round trip '
                         '(default: %s, whichever is not the default)' % ' or '.join(ALT_DEFAULTS))
     parser.add_argument('--sim', metavar='HOST:PORT', help='run against the device simulator (xyf_host.py --sim); '

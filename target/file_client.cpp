@@ -90,14 +90,14 @@ Reply submit(Stock121PeerSession& session, U32 op) {
     const Reply r = {done, 0, 0};
     return r;
 }
-// A's answer once it came; else one poll (B's guard reloaded): lost, link past bound ms since start
+// A's answer once it came; else one poll: lost, link past bound ms since start
 // (the request stays out), or busy (still waiting).
 Reply answer(Stock121PeerSession& session, U32 start, U32 bound) {
     if (!session.filing()) { const Reply r = {done, int32_t(session.request_value()), session.request_error()}; return r; }
     if (!xyf_boot::link_step()) return outcome(lost);
     return outcome(xyf_boot::clock_ms() - start > bound ? link : busy);
 }
-// Wait for A's answer to the request that just left, at most bound ms (B's guard reloaded).
+// Wait for A's answer to the request that just left, at most bound ms.
 Reply await_answer(Stock121PeerSession& session, U32 bound) {
     const U32 start = xyf_boot::clock_ms();
     for (;;) {

@@ -67,7 +67,7 @@ ENCODINGS = ('ascii', 'utf-8')
 STREAM_DIRECTIONS = ('to_device', 'to_host')
 TRANSPORT_FACTS = ('usb_vendor_id', 'usb_product_id', 'product_usb_ids', 'usb_product', 'interface_classes', 'stream', 'line_settings',
                    'control_lines', 'usb_serial_number', 'simulator_port')
-RANGE_KINDS = ('dev', 'event')
+RANGE_KINDS = ('dev', 'event', 'retired')
 REQUIRED_CONSTANTS = ('header_bytes', 'trailer_bytes', 'max_payload', 'max_data', 'max_read', 'put_chunk',
                       'max_path', 'max_stage', 'max_log_text', 'max_hello')
 # hello key sources besides a fixed value or constant; build and mode come from the build (C macros below).

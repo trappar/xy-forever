@@ -73,9 +73,8 @@ static const uint32_t install_item = 4, reboot_item = 5;
 // USB service started (Test 041): no action on a; it makes commands_seen
 // nonzero so a restarts with b if the session is then lost (menu_link).
 static const uint32_t usb_mode_item = 7;
-// Retired: a's own guard (Test 042, guard_item 8; guard off 12) and
-// diag.restart_a (13). b no longer sends them; the numbers stay reserved (8 still keeps the window).
-static const uint32_t guard_item = 8;
+// Retired: items 8 and 12 (a's own watchdog, removed) and 13 (diag.restart_a); the numbers
+// stay reserved.
 static const uint32_t dry_run_item = 9;        // usb_service.hpp: a resets instead of starting the OS
 static const uint32_t sector_class = 0x11907348u, write_class = 0x11907710u;
 enum InstallAction : uint32_t {

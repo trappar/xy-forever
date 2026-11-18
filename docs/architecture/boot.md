@@ -63,7 +63,7 @@ every user-facing decision.
 | Plain power-on | straight to the default OS, as fast as possible; no USB |
 | Default can't boot | boot menu (with the reason) |
 | Power-on with PLAY | boot menu with USB on |
-| Agent reboots | to the OS or to the menu only (held, USB-ready); guard use is prohibited by SAFETY.md |
+| Agent reboots | to the OS or to the menu only (held, USB-ready); there is no watchdog guard |
 | Agent attached to the menu | menu and USB service are one: every command works from the menu, never a reboot to switch (a transient "working" screen is fine) |
 | Menu timeout | never |
 

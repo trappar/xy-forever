@@ -83,7 +83,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #endif
 extern "C" { extern const xyf_core::Policy* volatile xy_forever_cold_policy; }   // cold.cpp
 namespace {
-#include "usb_service_transport.ipp"        // stock wrappers, transport, PUT state, watchdog guard, install log, HELLO, STATUS
+#include "usb_service_transport.ipp"        // stock wrappers, transport, PUT state, install log, HELLO, STATUS
 #include "usb_service_stage2.ipp"           // the stage 2 loader
 #include "usb_service_files.ipp"            // READ_FILE, SCREEN, PEEK, the MTP self-test, PUT, SET_DEFAULT, LIBRARY_BOOT
 #if defined(XYF_USB_FILE_WRITE)

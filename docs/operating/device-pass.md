@@ -8,11 +8,9 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 
 The regression that proves a build on the device; run by the orchestrator only
 (ORCHESTRATION.md, "The device"). `--plan` prints every step and its wait and sends
-nothing. **Hardware execution is blocked:** the script unconditionally enables the broken guard.
-Use `--plan` or `--sim` until [issue #1](https://github.com/trappar/xy-forever/issues/1) removes it.
-Selecting stages does not skip the guard-on session. Default stages: read, protocol, boot (dry run, restart, keys), writes, mtp;
-`--install BUILD_DIR` adds the install. `--stages` picks stages; `--guard-test` is prohibited on
-hardware and may be used only in simulator tests.
+nothing; `--sim` runs it against the simulator. There is no guard step anywhere (there is no watchdog).
+The session stage always runs: hold on. Default stages: read, protocol, boot (dry run, restart, keys), writes, mtp;
+`--install BUILD_DIR` adds the install. `--stages` picks stages.
 
 - **Protocol** (after read and install, before any restart): records the HELLO; on a
   pre-v1 device every step is SKIP "pre-v1 device". On v1:
@@ -25,9 +23,8 @@ hardware and may be used only in simulator tests.
 - **Needs** the device at home. Without an answer it prints one `NEED:` line and
   exits 3 with nothing changed. To start it before asking for the power-on, give
   it `--wait 120`.
-- **Current script behavior:** guard on for the whole pass (the reason hardware execution is blocked); the first FAIL stops the pass (later steps SKIP),
-  but the end steps always run: guard off, hold off, crash count cleared, then
-  `scripts/keepalive.sh` on the session folder. It never boots the OS.
+- **Stops at the first FAIL** (later steps SKIP), but the end steps always run: crash count cleared,
+  hold off, then `scripts/keepalive.sh` on the session folder. It ends with hold off and never boots the OS.
 - **Evidence:** `../private/xy-forever/sessions/<date>-device-pass-<n>/` (one file
   per step, `summary.json`); it prints a PASS/FAIL/SKIP table and the folder.
   Exit 0 only if nothing failed.

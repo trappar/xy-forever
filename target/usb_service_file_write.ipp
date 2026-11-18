@@ -154,7 +154,7 @@ void file_write(uint8_t seq, const uint8_t* payload, U32 length) {
     else {
         storage_used = 1;
         say("Writing a library file...", path, "Do not unplug or power off.");
-        // Every request bounded, the guard reloaded while b waits (never paused). A's
+        // Every request bounded. A's
         // window stays open for the next write; settle_writes closes it.
         code = file_client::write_file(path, staged, put_expected, result.put_crc, written, back, mounted);
         writes_due = 1; writes_ms = now();

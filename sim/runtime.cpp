@@ -105,7 +105,7 @@ uint64_t device_cycles() {
     return (ns - start_ns) * 2 / 5 + 400000000u;                // 400 MHz; one second in, as after boot
 }
 void cycles(uint32_t& low, uint32_t& high) {
-    watchdog_poll();                                            // WDOG0 counts with this clock (sim/boot.cpp)
+    host_poll();                                                // sim/boot.cpp
     // A processor polling the clock in a loop (A's link loop, B's waits) would hold a host core at
     // 100% and, with many simulators at once (the test suite), starve the others past the link's
     // answer bounds. A short sleep every 64 reads leaves the device's timing to the clock.
@@ -164,7 +164,7 @@ void processor(int which, int fd, int sdram_fd, bool power_on) {
     attach_sdram(sdram_fd);
     load_stock();
     cold_state(which, power_on, power_on && shared->play.load());
-    watchdog_start();
+    host_start();
     link_start();
     // Power-on stands for the stock bootloader's normal boot (it loaded XY Forever); after a reset
     // the bootloader stand-in runs its side of the boot first (sim/boot.cpp; it may never return).
@@ -172,7 +172,7 @@ void processor(int which, int fd, int sdram_fd, bool power_on) {
         stock_bootloader();
         load_stock();
         cold_state(which, false, false);              // the retained state its teardown leaves
-        watchdog_start();
+        host_start();
     }
     log("cold entry (%s)", power_on ? "power-on" : "reset");
     xy_forever_file_boot();                            // cold.cpp: the boot decision
@@ -434,7 +434,7 @@ std::string status_json() {
              "\"drop_body\": %d, \"cable_pull\": %d, \"cut_after\": %d, \"fail_write\": %d, \"space\": %lld, "
              "\"partition\": %d, \"boot_writes\": %d, \"rw_open\": %d, \"unclean_mounts\": %d, \"clock_skip_ms\": %lld, "
              "\"to_a\": %u, \"to_b\": %u, \"otp_fields\": %d, \"otp_fail\": %d, \"otp_inits\": %d, \"otp_reads\": %d, "
-             "\"a_bootloader\": %d, \"b_bootloader\": %d, \"a_expiries\": %d, \"b_expiries\": %d, \"clock_ms\": %lld, "
+             "\"a_bootloader\": %d, \"b_bootloader\": %d, \"clock_ms\": %lld, "
              "\"b_sent_ms\": %lld, \"a_reset_ms\": %lld, \"b_reset_ms\": %lld, \"outstanding\": %zu, "
              "\"odd_selects\": %d, \"b_queue\": %d, \"b_queued\": %d, \"cut_body\": %d, "
              "\"boot_a_window_ms\": %d, \"b_waits_a\": %d, \"b_close_stuck\": %d, \"rw_mounts\": %d, "
@@ -446,8 +446,8 @@ std::string status_json() {
              (long long)shared->space.load(), shared->partition.load(), shared->boot_writes.load(),
              shared->rw_open.load(), shared->unclean_mounts.load(), (long long)(shared->clock_skip_us.load() / 1000), relayed[0], relayed[1],
              otp_fields(), shared->otp_fail.load(), shared->otp_inits.load(), shared->otp_reads.load(),
-             shared->in_bootloader[0].load(), shared->in_bootloader[1].load(), shared->expiries[0].load(),
-             shared->expiries[1].load(), (long long)board_ms(), (long long)b_sent_ms, (long long)reset_ms[0],
+             shared->in_bootloader[0].load(), shared->in_bootloader[1].load(),
+             (long long)board_ms(), (long long)b_sent_ms, (long long)reset_ms[0],
              (long long)reset_ms[1], outstanding.size(), shared->odd_selects.load(),
              shared->b_queue.load(), shared->b_queued.load(), shared->cut_body.load(),
              shared->boot_a_window_ms.load(), shared->b_waits_a.load(), shared->b_close_stuck.load(), shared->rw_mounts.load(),
@@ -497,13 +497,9 @@ std::string command(const std::string& line, bool& quit) {
         snprintf(text, sizeof(text), "{\"ok\": true, \"tag\": %u}", m.tag & ~inject_bit);
         return text;
     }
-    if (n == 2 && (!strcmp(verb, "reset") || !strcmp(verb, "expire")) && (!strcmp(name, "a") || !strcmp(name, "b"))) {
+    if (n == 2 && !strcmp(verb, "reset") && (!strcmp(name, "a") || !strcmp(name, "b"))) {
         const int k = name[0] == 'a' ? 0 : 1;
         if (procs[k].state != "running") return "{\"ok\": false, \"error\": \"processor not running\"}";
-        if (verb[0] == 'e') {                             // expire a|b: WDOG0 counts out (only if armed)
-            shared->expire[k] = 1;
-            return "{\"ok\": true}";
-        }
         log("control: reset %s alone", names[k]);         // reset a|b: no handler, no USB stop
         stop(k);
         resetting(k);

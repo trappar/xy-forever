@@ -56,11 +56,10 @@ struct Shared {
     // P-224 generator), 4 the AES key is wrong. Counted: ROM inits and reads.
     std::atomic<int32_t> otp_fail, otp_inits, otp_reads;
     // sim/boot.cpp: per processor, 1 while its stock bootloader
-    // stand-in runs (after a reset, until it boots XY Forever); WDOG0 expiries seen; control
-    // "expire a|b" (the guard counts out at the processor's next host call, if armed). The
+    // stand-in runs (after a reset, until it boots XY Forever). The
     // board's reset delays (ms from a reset until the processor's bootloader is on the link) and
     // whether the requests A took and never answered reach A's bootloader (Test 108; switchable).
-    std::atomic<int32_t> in_bootloader[2], expiries[2], expire[2];
+    std::atomic<int32_t> in_bootloader[2];
     std::atomic<int32_t> a_boot_ms, b_boot_ms, a_redeliver;
     // set a_stall_now MS: A's main thread (its loop) stalls MS ms of device time at its next
     // host call (a hung A; the link thread still echoes op-10). odd_selects: B's tagged selects
@@ -169,10 +168,10 @@ static const uint32_t a_driver = 0x88a66000u, b_driver = 0x88a66000u, primary = 
 uint32_t driver();
 // Storage (sim/yaffs.cpp): the host folder standing in for /yaffs2, with the mount state.
 void storage_op_done();                          // one mutating storage operation finished (power-cut hook)
-// sim/boot.cpp: WDOG0 and the stock bootloader after a lone reset.
+// sim/boot.cpp: the stock bootloader after a lone reset.
 uint64_t device_cycles();                        // this processor's CCLK cycle count (advance included)
-void watchdog_start();                           // processor start: WDOG0 at its reset value, this thread is main
-void watchdog_poll();                            // at host calls on the main thread: count, reload, expire
+void host_start();                               // processor start: this thread is main
+void host_poll();                                // at host calls on the main thread (A's control stall)
 void stock_bootloader();                         // after a reset: the stock bootloader's side of the boot
 void a_boot_request(uint32_t request);           // A's bootloader: answer one pool request (sim/stock.cpp)
 }

@@ -207,9 +207,6 @@ bool b_ask(Stock121PeerSession& session, U32 value, U32 wait_ms) {
     const U32 start = now();
     while (session.busy() && !b_lost && now() - start < wait_ms) {
         b_step(session);
-#if defined(XYF_ONE_SESSION)
-        usb_service::guard_reload();                    // a guarded home never resets while a is busy
-#endif
     }
     if (session.busy() || session.echoes() != before + 1) b_lost = 1;
     // Report (b): when a answered the first command, and the longest wait for an answer.
@@ -370,10 +367,10 @@ inline void a_close_files(cold_storage::Stock121ReadOnlySession& storage) { stor
 inline void a_close_files(cold_storage::Stock121ReadOnlySession&) {}
 #endif
 #if defined(XYF_ONE_SESSION)
-// a follows b. b's bootloader asks (F1), or b went silent past the session's
-// idle window: close storage (the read-write window first) and restart, so a's bootloader
-// serves b's next boot (it answers the request the session holds). Never between a request's
-// executor and its answer: only from this loop, between polls.
+// a follows b when b's bootloader asks (F1): close storage (the read-write window first) and
+// restart, so a's bootloader serves b's next boot (it answers the request the session holds).
+// Never between a request's executor and its answer: only from this loop, between polls. A b
+// silent past the session's idle window only ends a's session (window closed, no restart).
 void a_follow(cold_storage::Stock121ReadOnlySession& storage) {
     a_close_files(storage);
     usb_service::reset_self();
@@ -602,10 +599,10 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         const U32 command = session.last_command(), item = (command >> 8) & 0xffu;
         r.menu.commands_seen = handled; r.menu.last_command = command;
 #if defined(XYF_ONE_SESSION) && defined(XYF_USB_FILE_WRITE)
-        // Every command item but reads, writes and the USB/guard switches closes the write window
+        // Every command item but reads, writes and the USB switch closes the write window
         // first (catalog, check, boot, set default, install, dry run, reboot, run entry).
         if (item != storage_server::command_item && item != storage_server::file_write_item &&
-            item != storage_server::usb_mode_item && item != storage_server::guard_item) {
+            item != storage_server::usb_mode_item) {
             storage_server::end_writes(storage);
             if (storage_server::library_changed()) catalog_bytes = a_rescan(storage, mounted, lib);
         }
@@ -818,13 +815,6 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         r.hash_ms = now();
         session.touch(now());
     }
-#if defined(XYF_ONE_SESSION)
-    // b went silent past the idle window after it spoke (hung, restarted without reaching this
-    // session, or one of its requests was lost) with nothing frozen or agreed: restart instead of
-    // halting, so a reset b's bootloader gets past its boot-A step.
-    if (status == SessionResult::timeout && session.commands_seen() && !session.agreed() && !session.committed() &&
-        !session.image_size()) a_follow(storage);
-#endif
     if (mounted) { a_close_files(storage); r.storage_end = U32(storage.end()); mounted = false; }
     r.poll_result = U32(status);
     if (status != SessionResult::ready) r.end_result = U32(session.end());
@@ -921,7 +911,6 @@ void b_fetch_begin(Stock121PeerSession& session) {
 // One step of it; true when it ended (b_catalog_ok, storage_start tell how).
 bool b_fetch_step(Stock121PeerSession& session) {
     xyf_boot::StorageStart& st = xyf_boot::storage_start;
-    usb_service::guard_reload();
     const bool alive = b_step(session);
     const U32 t = now(), waited = t - b_fetch_at;
     st.waited_ms = waited;
@@ -934,8 +923,7 @@ bool b_fetch_step(Stock121PeerSession& session) {
             // The blob in one bounded loop, as b_fetch_catalog (sim: polls spread over the menu loop
             // could end it with a protocol error). A retry's mount runs inside it (A answered first).
             b_fetching = 2;
-            while (!session.blob_done() && now() - b_fetch_at <= xyf_boot::start_ms && b_step(session))
-                usb_service::guard_reload();
+            while (!session.blob_done() && now() - b_fetch_at <= xyf_boot::start_ms && b_step(session)) {}
         }
     }
     if (alive && !b_lost && b_fetching == 2 && session.blob_done()) {
@@ -1003,8 +991,8 @@ bool role1_menu_boot(U32& bytes) {
         r.menu.refused = reason | b_status().index << 8 | (reason == reason_ok ? 0u : 0x10000u);
     }
 #if defined(XYF_ONE_SESSION)
-    if (!b_lost && !boot_item) {                    // Test 065: home (USB on, guard, marker)
-        b_session = &session;                       // home_start sends the guard item through the link
+    if (!b_lost && !boot_item) {                    // Test 065: home (USB on, marker)
+        b_session = &session;                       // home_start: USB on, the marker written
         usb_service::home_start();
         b_session = 0;
     }
@@ -1206,12 +1194,11 @@ Stock121PeerSession* link_claim() {
 }
 bool link_step() {
     Stock121PeerSession* session = b_session;
-    usb_service::guard_reload();                       // B's guard stays armed: kicked while it waits
     return session && b_step(*session);
 }
 void link_sent() { b_last_send = now(); }
 // before any stock reset of b. A request still open is polled until
-// answered or close_ms passes (wait: false in the guard interrupt, where nothing completes it);
+// answered or close_ms passes (wait: false: the request is not waited for);
 // then the session ends: the stock master close 889f562e turns SPI and both DMA channels off and
 // removes the link interrupts, so nothing can complete the request later (its object is the
 // session's own, which outlives this: the session is the menu's caller's). The link is lost from
@@ -1222,7 +1209,6 @@ bool link_close(bool wait) {
         const U32 start = now();
         while (wait && session->busy() && now() - start < close_ms) {
             session->poll(now());
-            usb_service::guard_reload();
         }
         b_lost = 1;
         result.end_result = U32(session->end());

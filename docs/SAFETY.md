@@ -49,7 +49,7 @@ needs the highest bar of confidence. These rules are binding and override conven
   B's bootloader seen, B silent past A's idle window, 10 s without a request and every command
   item but reads and writes. B closes it with op 9 before install, set default, CONTINUE and REBOOT. If that close
   fails, the window stays mounted and the restart paths still reset (by design: the next
-  mount scans fully); CONTINUE never boots then. (A has no guard.)
+  mount scans fully); CONTINUE never boots then. A silent B only ends A's session: no restart.
 
 - **What may be changed by hand** (MTP and the serial file commands; protocol 1.13): everything on
   `/yaffs2` is writable, `user/` and the root included, except (1) `/yaffs2/bootloader.dev`: never
@@ -125,13 +125,14 @@ Keep a known-good build and its dev-menu kit ready at all times.
 
 ## Current rules from device failures
 
-- **The guard does not recover a hang.** Do not use `guard on` or `--guard-test` on the device.
-  Restarting B alone freezes the device; never send REBOOT after a suspected lone A restart.
-  Stop on a suspected hang and request a manual power cycle. Removal is tracked in
-  [issue #1](https://github.com/trappar/xy-forever/issues/1).
-- **Never leave hold or guard on with no host attached.** Hold and guard together caused a
-  repeated self-reboot. `reset_self` disarms first; a held restart with no HELLO boots normally;
-  held restarts wait 30 s for the host. This does not authorize enabling the broken guard above.
+- **There is no guard (watchdog).** No processor arms WDOG0, and no host command or pass step
+  turns one on: `diag.guard` (0x33) and `diag.hang` (0x60) are retired since protocol 1.14. Nothing
+  recovers a hang but a manual power cycle: stop on a suspected hang and request one. Restarting B
+  alone freezes the device; never send REBOOT after a suspected lone A restart. Builds before 1.14
+  still answer `diag.guard`: never send it to them either.
+- **Never leave hold on with no host attached.** Hold and the old guard together caused a
+  repeated self-reboot. A held restart with no HELLO boots normally; held restarts wait 30 s
+  for the host.
 - **Prevent hangs; do not recover from lone restarts.** Use time-limited waits and simple main loops.
   A restart of B completes only if A restarts at about the same time or after it. B never resets
   itself on a lost link: the menu stays with USB, commands that need A answer `link`, and a power
@@ -145,8 +146,8 @@ Keep a known-good build and its dev-menu kit ready at all times.
   froze B. Compare descriptor layouts against stock, including the full 0x18-byte config record.
 - **Register reads can hang B:** SEC SCTL/SSTAT reads over sources 0..127 hung B; the BF707 most
   likely does not implement the upper sources. Read only registers the stock bootloader itself uses
-  (`mmr_allowed` in `target/usb_service.cpp`). Any new probe needs review and bounded operations;
-  the broken guard is no protection and does not authorize unreviewed reads.
+  (`mmr_allowed` in `target/usb_service_files.ipp`). Any new probe needs review and bounded operations:
+  nothing but a power cycle recovers a hung B.
 - **No embedded OS:** a boot whose link fails shows "Internal link lost" and both halt until a power
   cycle. A build that breaks the link on every boot needs dev-menu recovery: qualify warm checks,
   a real boot and a PLAY power-on before making it the known-good kit.

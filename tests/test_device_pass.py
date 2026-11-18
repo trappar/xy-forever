@@ -68,7 +68,7 @@ class FakeDevice:
         self.fail, self.answer = set(fail), answer
         self.hello_text, self.faults, self.wire, self.opens = hello, set(faults), [], 0
         self.staging, self.completed, self.left = None, False, False     # [announced, received, data]
-        self.calls, self.guard, self.hold, self.crash, self.frames, self.kicks = [], False, False, 0, 0, 0
+        self.calls, self.hold, self.crash, self.frames = [], False, 0, 0
         self.screen, self.dry, self.seq, self.default = 0, None, 7, 'opxy-121-stock'
         self.row = 0                                  # the selected home row (keys track1/track3/minus/plus)
         # B's write window: writes since B last closed it; B's STATUS fields; the menu catalog.
@@ -86,9 +86,7 @@ class FakeDevice:
 
     def status(self):
         self.frames += 2
-        if self.guard:
-            self.kicks += 50
-        usb = dict(version=4, role=1, frames=self.frames, crash_restarts=self.crash, guard_kicks=self.kicks,
+        usb = dict(version=4, role=1, frames=self.frames, crash_restarts=self.crash, retired_kicks=0,
                    identity='0x0', put_size=0, reads=0)
         if self.writes and 'no-settle' not in self.faults:   # B closed the window since the last call
             self.writes = 0
@@ -178,14 +176,8 @@ class FakeDevice:
         name = argv[0]
         if name == 'status':
             return 0, self.status(), ''
-        if name in ('guard', 'hold'):
-            if argv[1] == 'expiry-test':
-                self.crash += 1                       # guard fires, device comes back guarded
-                self.guard = True
-            elif name == 'guard':
-                self.guard = argv[1] == 'on'
-            else:
-                self.hold = argv[1] == 'on'
+        if name == 'hold':
+            self.hold = argv[1] == 'on'
             return 0, '%s %s: ok\n' % (name, argv[1]), ''
         if name == 'read':
             path, out = argv[1], Path(self.out(argv, '--out'))
@@ -210,7 +202,7 @@ class FakeDevice:
             Path(self.out(argv, '--out')).write_bytes(self.catalog.ljust(int(argv[2]), b'\0'))
             return 0, 'peek: catalog\n', ''
         if name == 'peek':
-            reason = 2 | 0x400 | (0x200 if self.guard else 0) | (0x100 if self.hold else 0)
+            reason = 2 | 0x400 | (0x100 if self.hold else 0)
             Path(self.out(argv, '--out')).write_bytes(struct.pack('<4I', 0x52465859, ~0x52465859 & 0xffffffff,
                                                                   reason, self.crash))
             return 0, 'peek: 16 bytes\n', ''
@@ -430,7 +422,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertEqual(self.rows()[('config', 'pending')]['result'], 'SKIP')     # no package set
         found = dp.mods_row(dp.MODS_PACKAGES, 'fm2op')                            # (position, rows)
         self.assertTrue(found is None or 0 <= found[0] < found[1])
-        for stage in ('install', 'guard'):
+        for stage in ('install',):
             for r in self.summary['steps']:
                 if r['stage'] == stage:
                     self.assertEqual((r['result'], r['detail']), ('SKIP', 'not selected'))
@@ -440,7 +432,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertIn('set-default opxy-121 --yes-write', self.dev.calls)
         self.assertFalse(any(c.startswith('continue') and '--dry-run' not in c for c in self.dev.calls))
         self.assertFalse(any('--to os' in c for c in self.dev.calls))
-        self.assertFalse(self.dev.guard)
+        self.assertFalse(any(c.startswith(('guard', 'test-hang')) for c in self.dev.calls))   # no guard step anywhere
         self.assertFalse(self.dev.hold)
         self.assertEqual(self.keepalive.started, [self.folder])
 
@@ -450,45 +442,32 @@ class DevicePassTest(unittest.TestCase):
         (build / 'manifest.json').write_text(json.dumps(dict(format='xyf-product-%d' % number, mode='xyf-product')))
         return build
 
-    def test_install_and_guard_test_stages_run_in_place(self):
+    def test_install_stage_runs_in_place(self):
         build = self.build(153)
         with patch.object(dp.host, 'load_build', return_value=(b'image', ['b', 'LDR ok'])):
-            code = self.run_pass(['--install', str(build), '--guard-test'])
+            code = self.run_pass(['--install', str(build)])
         self.assertEqual(code, dp.EXIT_PASS, self.out)
         passed = [r['stage'] for r in self.summary['steps'] if r['result'] == 'PASS']
         self.assertEqual(sorted(set(passed), key=passed.index),
-                         ['check', 'session', 'read', 'install', 'boot', 'writes', 'mtp', 'guard', 'end'])
+                         ['check', 'session', 'read', 'install', 'boot', 'writes', 'mtp', 'end'])
         install = self.dev.calls.index('install %s --yes-install' % build)
         self.assertLess(next(i for i, c in enumerate(self.dev.calls) if c.startswith('peek')), install)
         self.assertLess(install, next(i for i, c in enumerate(self.dev.calls) if c.startswith('continue')))
-        # the guard stage is one step after MTP: a read, guard off, one expiry-test (no restart-a).
-        guard = self.dev.calls[self.dev.calls.index('mtp-test --hold-ms 2000 --yes-test') + 1:]
-        self.assertEqual(guard.count('guard expiry-test'), 1)
-        self.assertLess(guard.index('guard off'), guard.index('guard expiry-test'))
         self.assertFalse(any(c.startswith('restart-a') for c in self.dev.calls))
-        self.assertEqual([r['step'] for r in self.summary['steps'] if r['stage'] == 'guard'], ['expiry'])
-        # The pass's own end still leaves guard and hold off after the expiry step.
-        last = guard.index('guard expiry-test')
-        self.assertIn('guard off', guard[last:])
-        self.assertIn('hold off', guard[last:])
-        self.assertFalse(self.dev.guard)
+        # The pass ends with hold off; no guard step anywhere (there is no guard).
+        self.assertEqual([r['step'] for r in self.summary['steps'] if r['stage'] == 'end'],
+                         ['end-status', 'hold-off', 'keepalive'])
+        self.assertIn('hold off', self.dev.calls[self.dev.calls.index('mtp-test --hold-ms 2000 --yes-test'):])
+        self.assertFalse(any(c.startswith(('guard', 'test-hang')) for c in self.dev.calls))
         self.assertFalse(self.dev.hold)
-        self.assertNotIn('test-hang --yes-hang', self.dev.calls)
-        self.assertEqual(self.dev.crash, 0)                    # cleared by a clean REBOOT
+        self.assertEqual(self.dev.crash, 0)
+        self.assertNotIn('guard', {r['stage'] for r in self.summary['steps']})
 
-    def test_a_guard_miss_says_what_to_do_and_still_ends_the_session(self):
-        build = self.build(153)
-        with patch.object(dp.host, 'load_build', return_value=(b'image', ['b', 'LDR ok'])):
-            code = self.run_pass(['--install', str(build), '--guard-test'], dev=FakeDevice(fail={'guard expiry-test'}))
-        self.assertEqual(code, dp.EXIT_FAIL)
-        rows = self.rows()
-        self.assertEqual(rows[('guard', 'expiry')]['result'], 'FAIL')
-        self.assertTrue(rows[('guard', 'expiry')]['detail'].startswith('MISS: '))
-        self.assertIn('a guard reset after a file read does not come back (153)', rows[('guard', 'expiry')]['detail'])
-        for name in ('end-status', 'guard-off', 'hold-off', 'keepalive'):
-            self.assertEqual(rows[('end', name)]['result'], 'PASS')
+    def test_the_guard_test_option_is_gone(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            dp.parse_args(['--guard-test'])
 
-    def test_a_restart_after_mtp_stops_before_the_guard_stage(self):
+    def test_a_restart_after_mtp_fails_home_after_mtp_and_still_ends_the_session(self):
         build = self.build(153)
         dev = FakeDevice()
         real = dev.command
@@ -496,17 +475,17 @@ class DevicePassTest(unittest.TestCase):
         def restarted(argv, timeout, **limits):
             result = real(argv, timeout, **limits)
             if argv[0] == 'mtp-test':
-                dev.crash += 1                                 # a lost link restarted both (F2)
+                dev.crash += 1                                 # a lost link restarted both
             return result
         dev.command = restarted
         with patch.object(dp.host, 'load_build', return_value=(b'image', ['b', 'LDR ok'])):
-            code = self.run_pass(['--install', str(build), '--guard-test'], dev=dev)
+            code = self.run_pass(['--install', str(build)], dev=dev)
         self.assertEqual(code, dp.EXIT_FAIL)
         rows = self.rows()
         self.assertEqual(rows[('mtp', 'home-after-mtp')]['result'], 'FAIL')
         self.assertIn('crash restarts 0 -> 1', rows[('mtp', 'home-after-mtp')]['detail'])
-        self.assertEqual(rows[('guard', 'expiry')]['detail'], 'after FAIL of mtp/home-after-mtp')
-        self.assertNotIn('guard expiry-test', dev.calls)
+        for name in ('end-status', 'hold-off', 'keepalive'):
+            self.assertEqual(rows[('end', name)]['result'], 'PASS')
 
     def test_stop_on_failure_skips_the_rest_and_still_ends_the_session(self):
         code = self.run_pass(dev=FakeDevice(fail={'continue --dry-run'}))
@@ -519,10 +498,9 @@ class DevicePassTest(unittest.TestCase):
             self.assertEqual(rows[key]['detail'], 'after FAIL of boot/dry-run')
         failed_at = self.dev.calls.index('continue --dry-run')
         later = self.dev.calls[failed_at + 1:]
-        self.assertIn('guard off', later)
         self.assertIn('hold off', later)
         self.assertFalse(any(c.startswith(('key', 'put-file', 'mtp-test')) for c in later))
-        for name in ('end-status', 'guard-off', 'hold-off', 'keepalive'):
+        for name in ('end-status', 'hold-off', 'keepalive'):
             self.assertEqual(rows[('end', name)]['result'], 'PASS')
         self.assertEqual(self.keepalive.started, [self.folder])
 
@@ -665,7 +643,7 @@ class DevicePassTest(unittest.TestCase):
         rows = self.rows()
         self.assertEqual(rows[('mtp', 'mtp-test')]['result'], 'FAIL')
         self.assertEqual(rows[('end', 'end-status')]['result'], 'FAIL')
-        for name in ('guard-off', 'hold-off', 'keepalive'):
+        for name in ('hold-off', 'keepalive'):
             self.assertEqual(rows[('end', name)]['result'], 'SKIP')
             self.assertIn('power on holding PLAY', rows[('end', name)]['detail'])
         self.assertEqual(self.keepalive.started, [])
@@ -701,7 +679,7 @@ class DevicePassTest(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out), patch.object(dp, 'HostDevice', Untouchable), \
                 patch.object(dp, 'Keepalive', Untouchable):
-            code = dp.main(['--plan', '--guard-test'], device=Untouchable(), keepalive=Untouchable(),
+            code = dp.main(['--plan'], device=Untouchable(), keepalive=Untouchable(),
                            sessions=self.sessions)
         self.assertEqual(code, dp.EXIT_PASS)
         self.assertEqual(list(self.sessions.iterdir()), [])
@@ -756,7 +734,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertEqual(self.run_pass(dev=FakeDevice(hello=V1_HELLO)), dp.EXIT_PASS, self.out)
         rows = {r['step']: r for r in self.protocol_rows()}
         self.assertEqual({r['result'] for r in rows.values()}, {'PASS'}, rows)
-        self.assertIn('proto 1.13, build 154 (product)', rows['hello']['detail'])
+        self.assertIn('proto %s, build 154 (product)' % P.ids.VERSION, rows['hello']['detail'])
         self.assertIn(V1_HELLO, rows['hello']['detail'])
         self.assertIn('recorded (no --install to compare)', rows['build']['detail'])
         self.assertIn('type 0x5f', rows['unsupported']['detail'])
@@ -799,7 +777,7 @@ class DevicePassTest(unittest.TestCase):
                              for c in dev.calls))
 
     def test_each_protocol_check_fails_with_a_clear_detail(self):
-        cases = [(dict(hello=V1_HELLO.replace('proto=1.13', 'proto=2.0')), 'hello', 'this pass speaks 1.x'),
+        cases = [(dict(hello=V1_HELLO.replace('proto=%s' % P.ids.VERSION, 'proto=2.0')), 'hello', 'this pass speaks 1.x'),
                  (dict(faults={'hello-text'}), 'hello', 'differs'),
                  (dict(faults={'unsupported'}), 'unsupported', 'unknown type 0x5f: ok, expected unsupported'),
                  (dict(faults={'refused'}), 'refused', 'state, written 0; expected refused'),
@@ -887,8 +865,8 @@ class DevicePassTest(unittest.TestCase):
         u32 = lambda v: struct.pack('<I', v)                                  # noqa: E731
         for kind, payload, raw in ((P.INSTALL, bytes(32), False), (P.UNINSTALL, bytes(32), False),
                                    (P.SET_DEFAULT, b'opxy-121\0', False), (P.REBOOT, u32(1), False),
-                                   (P.KEY, u32(51) + u32(1), False), (P.GUARD, u32(1), False),
-                                   (P.TEST_HANG, b'HANG', False), (P.MTP_TEST, u32(0), False),
+                                   (P.KEY, u32(51) + u32(1), False), (0x33, u32(1), True),
+                                   (0x60, b'HANG', True), (P.MTP_TEST, u32(0), False),
                                    (P.FILE_WRITE, BASE.encode() + b'x\0' + bytes(32), False),
                                    (P.CONTINUE, b'', False), (P.CONTINUE, u32(0), False), (P.CONTINUE, u32(1), False),
                                    (P.PUT_END, b'', False), (P.PUT_DATA, u32(0) + b'x', False),

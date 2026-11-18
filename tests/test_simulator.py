@@ -38,7 +38,7 @@ PARTITION_CLASS, PATH_CLASS, SECTOR_CLASS, WRITE_CLASS = 0x11907694, 0x119076b4,
 READ_CLASS = 0x11907368
 EACCES, EBADF, EROFS, EBUSY, EMFILE = 13, 9, 30, 16, 24
 COMMAND_TAG = 0x434d                                # peer_services.hpp: a command item's argument tag
-INSTALL_ITEM, GUARD_ITEM, FILE_WRITE_ITEM = 4, 8, 10   # storage_server.hpp
+INSTALL_ITEM, USB_MODE_ITEM, FILE_WRITE_ITEM = 4, 7, 10   # storage_server.hpp
 MARKER_SPELLINGS = ['/yaffs2/bootloader.dev', '/yaffs2//bootloader.dev', '/yaffs2/bootloader.dev/',
                     '/yaffs2/BOOTLOADER.DEV', '/yaffs2/Bootloader.Dev//']
 ROOT_SPELLINGS = ['/yaffs2', '/yaffs2/', '/yaffs2//']
@@ -169,7 +169,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(dev.call(P.PUT_DATA, struct.pack('<I', 1) + b'x')[0], ids.S_RANGE)
         self.assertEqual(dev.call(P.PUT_END)[0], ids.S_STATE)                 # incomplete: discarded
 
-    def test_set_default_mtp_test_keys_hold_guard(self):
+    def test_set_default_mtp_test_keys_hold(self):
         dev = self.connect()
         code, _ = dev.set_default('opxy-121-stock')
         self.assertEqual(code, 0)
@@ -183,12 +183,11 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(dev.call(P.KEY, struct.pack('<II', 54, 1))[0], 0)   # + (PLAY on Continue boots)
         self.assertEqual(dev.call(P.KEY, struct.pack('<II', 64, 1))[0], ids.S_BAD_REQUEST)
         self.assertEqual(dev.call(P.HOLD, struct.pack('<I', 1))[0], 0)
-        self.assertEqual(dev.call(P.GUARD, struct.pack('<I', 1))[0], 0)
-        kicks = host.decode_status(dev.call(P.STATUS)[1])['usb_service']['guard_kicks']
-        time.sleep(0.1)
-        self.assertGreater(host.decode_status(dev.call(P.STATUS)[1])['usb_service']['guard_kicks'], kicks)
-        self.assertEqual(dev.call(P.TEST_HANG, b'NOPE')[0], ids.S_BAD_REQUEST)
-        self.assertEqual(dev.call(P.GUARD, struct.pack('<I', 0))[0], 0)
+        self.assertEqual(host.decode_status(dev.call(P.STATUS)[1])['usb_service']['retired_kicks'], 0)
+        info, dev.hello_info = dev.hello_info, None        # xyf_host refuses types missing from cmds
+        self.assertEqual(dev.call(0x33, struct.pack('<I', 1))[0], ids.S_UNSUPPORTED)   # diag.guard is gone
+        self.assertEqual(dev.call(0x60, b'HANG')[0], ids.S_UNSUPPORTED)                 # diag.hang is gone
+        dev.hello_info = info
         self.assertEqual(dev.call(P.HOLD, struct.pack('<I', 7))[0], ids.S_BAD_REQUEST)
 
     def test_restart_dry_run_and_continue_link(self):
@@ -256,7 +255,7 @@ class SimulatorTest(unittest.TestCase):
             sessions.cleanup()
         self.assertEqual(code, 0, out.getvalue())
         rows = {line.split()[0]: line.split()[1] for line in out.getvalue().splitlines()[1:-1]}
-        self.assertEqual({k for k, v in rows.items() if v == 'SKIP' and not k.startswith('guard/')},
+        self.assertEqual({k for k, v in rows.items() if v == 'SKIP'},
                          {'boot/keys', 'end/keepalive', 'mods/apply',                       # no package set seeded
                           'content/switch', 'config/pending'} |                            # no --sim-log
                          ({'install/install', 'install/install-restart'} if '--install' not in argv else set()))
@@ -541,8 +540,9 @@ class SimulatorTest(unittest.TestCase):
 
     def test_failed_window_close_on_restart_paths(self):
         """The read-write window cannot close (every yaffs unmount fails while the hook is set). A
-        REBOOT and the alone reset still restart A (a reset with the window open is a power cut
-        for yaffs: the next mount scans fully, never a hang); CONTINUE never boots the OS."""
+        REBOOT still restarts A (a reset with the window open is a power cut for yaffs: the next
+        mount scans fully, never a hang); a silent B ends A's session without a restart; CONTINUE
+        never boots the OS."""
         dev = self.connect()
         self.write_entry()
         self.sim.set('fail_unmount', 1)
@@ -566,16 +566,17 @@ class SimulatorTest(unittest.TestCase):
         self.sim.set('fail_unmount', 0)
         status = self.restarted(boots['b_boots'])
         self.assertEqual(status['unclean_mounts'], 2)
-        # The alone reset (B silent past the idle window) with the close failing
+        # B silent past the idle window with the close failing: A's session ends (no restart)
         self.connect()
-        self.assertTrue(self.command(GUARD_ITEM))
+        self.assertTrue(self.command(USB_MODE_ITEM))
         self.write_entry()
         self.sim.set('fail_unmount', 1)
         boots = self.sim.status()['a_boots']
         time.sleep(0.2)
         self.sim.set('a_silent', 1)
         self.sim.advance(12000, step=None)
-        self.wait(lambda s: s['a_boots'] > boots, timeout=5.0, what='A alone reset')
+        status = self.wait(lambda s: s['a'] != 'running', timeout=5.0, what='A out of its session')
+        self.assertEqual(status['a_boots'], boots)
         self.sim.set('a_silent', 0)
         self.sim.set('fail_unmount', 0)
         self.sim.control('power')
@@ -747,13 +748,13 @@ class SimulatorTest(unittest.TestCase):
         self.sim.control('power')
         self.wait(lambda s: s['listening'], what='menu with USB after the power cycle')
 
-    def test_alone_reset_closes_the_write_window(self):
-        """B goes silent (nothing reaches A; F3: B's keepalives count, so an idle host never
-        restarts A): after the session's idle window (10 s) A follows, the read-write window closed
-        first. The device clock is advanced (control "advance"), not waited for: 8 s silent, A is
-        still in its session (window open); 12 s, it has restarted."""
+    def test_silent_b_ends_the_session_with_the_write_window_closed(self):
+        """B goes silent (nothing reaches A; B's keepalives count, so an idle host never ends the
+        session): after the session's idle window (10 s) A's session ends with the read-write window
+        closed, and A does not restart. The device clock is advanced (control "advance"), not waited
+        for: 8 s silent, A is still in its session (window open); 12 s, its session has ended."""
         self.connect()
-        self.assertTrue(self.command(GUARD_ITEM))
+        self.assertTrue(self.command(USB_MODE_ITEM))
         self.write_entry()
         time.sleep(0.2)                                   # A's loop has seen the last request
         self.sim.set('a_silent', 1)
@@ -762,7 +763,8 @@ class SimulatorTest(unittest.TestCase):
         status = self.sim.status()
         self.assertEqual((status['a_boots'], status['a'], status['rw_open']), (1, 'running', 1))
         self.sim.advance(4000, step=None)
-        status = self.wait(lambda s: s['a_boots'] > 1, timeout=5.0, what='A alone reset')
+        status = self.wait(lambda s: s['a'] != 'running', timeout=5.0, what='A out of its session')
+        self.assertEqual(status['a_boots'], 1)
         self.sim.set('a_silent', 0)
         self.assertEqual((status['rw_open'], status['unclean_mounts']), (0, 0))
         self.sim.control('power')

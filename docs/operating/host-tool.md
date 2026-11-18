@@ -11,9 +11,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 `put-file LOCAL /yaffs2/xy-forever/PATH --yes-write` (creates missing folders),
 `library-add ID OS_LDR --name --version --yes-write`, `screenshot --out F.png`,
 `continue [--dry-run]`, `boot ID --yes-boot` (1.7: boot a library entry once; leaves XY Forever), `key K`, `hold
-on|off`, `guard on|off|expiry-test` (processor B only),
-`test-hang`,
-`uninstall STOCK_OS_LDR --yes-uninstall`.
+on|off`, `uninstall STOCK_OS_LDR --yes-uninstall`.
 
 Commands with `--yes-*` are dry runs without that flag. The file commands below act at once.
 Manual changes may touch `/yaffs2` except the protected marker and updater inbox in SAFETY.md.
@@ -29,9 +27,8 @@ window, closed 8 s after the last change. `rm`, `mkdir`, `put`, `mv` and `cp` ac
 `mv` renames or moves a file or folder; its target must not exist. `cp` copies on the device
 (the bytes never cross USB); `cp -r` lists a folder and copies file by file to new names.
 
-`guard on`, `guard expiry-test`, `test-hang` and `--guard-test` must not run on the device.
-The guard does not recover hangs; see [SAFETY.md](../SAFETY.md). Never send REBOOT after
-suspecting a lone restart of A.
+There is no guard (watchdog) and no command for one: a hang needs a power cycle; see
+[SAFETY.md](../SAFETY.md). Never send REBOOT after suspecting a lone restart of A.
 
 ```sh
 python3 xyf_host.py ls /yaffs2/xy-forever [--json]       # type, size, name (paged; any folder size)

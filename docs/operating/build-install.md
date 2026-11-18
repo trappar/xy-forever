@@ -33,7 +33,5 @@ A change that should not alter the firmware (refactor, comments, dead code): run
 (default `HEAD`) and from the working tree and compares the candidates. Its
 builds go to `../private/xy-forever/sessions/neutral/`.
 
-The device-pass script currently enables the broken guard in its unconditional session stage.
-Do not run it on hardware, even with selected stages, until [issue #1](https://github.com/trappar/xy-forever/issues/1)
-removes that behavior. `--plan` and simulator runs remain available offline. Every hardware qualification
-still needs the checks and approvals in [SAFETY.md](../SAFETY.md).
+The device pass turns on no watchdog: there is none (protocol 1.14). `--plan` and simulator runs work
+offline. Every hardware qualification still needs the checks and approvals in [SAFETY.md](../SAFETY.md).

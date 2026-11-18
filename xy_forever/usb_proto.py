@@ -11,7 +11,7 @@ from xy_forever import usb_proto_ids as ids
 # Numbers: generated from protocol/v1.json (scripts/protogen.py; docs/PROTOCOL.md).
 from xy_forever.usb_proto_ids import (  # noqa: F401  (re-exported for the host tools)
     HELLO, STATUS, READ_FILE, SCREEN, PEEK, MTP_TEST, PUT_BEGIN, PUT_DATA, PUT_END, FILE_WRITE, INSTALL,
-    UNINSTALL, REBOOT, CONTINUE, HOLD, GUARD, KEY, SET_DEFAULT, TEST_HANG, LOG, REPLY, MAX_PAYLOAD, MAX_DATA,
+    UNINSTALL, REBOOT, CONTINUE, HOLD, KEY, SET_DEFAULT, LOG, REPLY, MAX_PAYLOAD, MAX_DATA,
     LIST_DIR, DELETE_FILE, REMOVE_DIR, MAKE_DIR, RENAME_FILE, COPY_FILE,
     STATUS_NAMES)
 OK, STATE = ids.S_OK, ids.S_STATE

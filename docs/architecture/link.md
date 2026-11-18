@@ -41,9 +41,9 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
    both, in the stock order (A's bootloader serves B's boot). A never answers B's stock bootloader: its
    link open (op 10 `0x12345678`) after B's first command, or a boot request (select, sector read) with
    nothing frozen outside install mode, is held unanswered; A closes storage, restarts, and its bootloader
-   answers the held request. A also follows when B is silent past its idle window. B never resets itself on a lost link
-   (menu, USB, `link`), A has no guard of its
-   own and never restarts by a timer of its own; keepalives are plain op-10 commands.
+   answers the held request. A B silent past A's idle window only ends A's session (write window closed, no
+   restart). B never resets itself on a lost link (menu, USB, `link`). There is no watchdog guard: neither
+   processor restarts by a timer of its own; keepalives are plain op-10 commands.
 
 Every stock request must be released, including after ranged reads. Submit a second request only
 after the first request and its data body have both completed; they are not one atomic exchange.

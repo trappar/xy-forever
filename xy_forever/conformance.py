@@ -16,6 +16,8 @@ import struct
 import time
 import zlib
 
+from xy_forever.device_guard import REPLY_BIT, UNSAFE_TOKEN, device_guard, path_in as _path_in  # noqa: F401
+
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / 'protocol' / 'v1.conformance.json'
 SPEC = ROOT / 'protocol' / 'v1.json'
@@ -60,8 +62,7 @@ FORMS = (('prefix', {'prefix', 'fill', 'length'}), ('text', {'text'}), ('hex', {
          ('frame', {'frame', 'from', 'length'}), ('concat', {'concat'}))
 BLOB_FORMS = ('text', 'hex', 'fill', 'ramp', 'fixture')
 CONSTRAINTS = {'len', 'len_min', 'len_max', 'min', 'max', 'matches', 'one_of'}
-REPLY_BIT, EVENT_LOG = 0x80, 0xd0
-UNSAFE_TOKEN = b'\xff' * 32          # a confirmation token no staging's SHA-256 matches
+EVENT_LOG = 0xd0
 
 
 class CaseError(ValueError):
@@ -407,88 +408,6 @@ def decode_fields(command, payload):
         return P.unpack(table, body, exact=False)
     except (ValueError, UnicodeDecodeError) as error:
         raise Fail('reply fields do not decode: %s' % error)
-
-
-# ---- the device guard -------------------------------------------------------------------------
-
-def _path_in(path, area):
-    if not path.startswith(area):
-        return False
-    parts = path[len(area):].split('/')
-    return all(p and p not in ('.', '..') for p in parts)
-
-
-def device_guard(spec, kind, payload, test_area):
-    """None when a real device may get this request, else why not. Allowed: reads, the screenshot,
-    staging, file.write_staged, file.delete, file.rmdir, file.mkdir, file.rename and file.copy (its target) in the test area (or with a token
-    no staging or path matches), file.list, job.status, a mods.apply or job.cancel the device refuses, every
-    restart into the menu, and the requests the device refuses without doing anything (unknown
-    types, menu.continue modes it answers link, service.hold values it answers bad_request).
-    Never: boot.install, boot.uninstall, library.set_default, test-only commands, the OS, or a
-    request above put_chunk data bytes."""
-    command = spec.by_type.get(kind)
-    if kind >= REPLY_BIT:
-        return 'type 0x%02x is not a request' % kind
-    if len(payload) > spec.constants['put_chunk'] + 4:
-        return 'a %d-byte request (Test 034: frames above put_chunk overflowed the device)' % len(payload)
-    if command is None:
-        return None
-    name = command['name']
-    value = struct.unpack('<I', payload)[0] if len(payload) == 4 else None
-    if name in ('hello', 'diag.status', 'file.read', 'file.list', 'screen.read', 'stage.begin', 'stage.data',
-                'stage.end', 'job.status'):
-        return None
-    if name == 'mods.apply':                                  # 1.10: only requests refused before anything
-        if len(payload) < 33 or hashlib.sha256(payload[:-32]).digest() != payload[-32:] or \
-                payload.startswith(b'xyf-conformance-'):
-            return None                                       # bad_request, sha, or a base no device holds
-        return 'mods.apply is sent to a real device only when refused (sha, or a base named xyf-conformance-*)'
-    if name == 'job.cancel':
-        if value is None or value == 0xffffffff:
-            return None                                       # bad_request, or a job id no job has
-        return 'job.cancel is sent to a real device only for job 4294967295 (no such job)'
-    if name in ('file.delete', 'file.rmdir', 'file.mkdir'):
-        end = payload.find(b'\0')
-        if end < 0 or len(payload) != end + 1 + 32:
-            return None                                       # bad_request: the length does not match
-        path = payload[:end].decode('utf-8', 'replace')
-        if _path_in(path, test_area) or payload[end + 1:] == UNSAFE_TOKEN:
-            return None
-        return '%s outside the test area %s needs a token no path matches' % (name, test_area)
-    if name == 'file.rename':
-        first = payload.find(b'\0')
-        second = payload.find(b'\0', first + 1) if first >= 0 else -1
-        if second < 0 or len(payload) != second + 1 + 32:
-            return None                                       # bad_request: the length does not match
-        paths = [payload[:first].decode('utf-8', 'replace'), payload[first + 1:second].decode('utf-8', 'replace')]
-        if all(_path_in(p, test_area) for p in paths) or payload[second + 1:] == UNSAFE_TOKEN:
-            return None
-        return 'file.rename outside the test area %s needs a token no pair matches' % test_area
-    if name == 'file.copy':                                   # 1.9: the source is only read
-        first = payload.find(b'\0')
-        second = payload.find(b'\0', first + 1) if first >= 0 else -1
-        if second < 0 or len(payload) != second + 1 + 32:
-            return None                                       # bad_request: the length does not match
-        if _path_in(payload[first + 1:second].decode('utf-8', 'replace'), test_area) or \
-                payload[second + 1:] == UNSAFE_TOKEN:
-            return None
-        return 'file.copy outside the test area %s needs a token no pair matches' % test_area
-    if name == 'file.write_staged':
-        end = payload.find(b'\0')
-        if end < 0 or len(payload) != end + 1 + 32:
-            return None                                       # bad_request: the length does not match
-        path = payload[:end].decode('utf-8', 'replace')
-        if _path_in(path, test_area) or payload[end + 1:] == UNSAFE_TOKEN:
-            return None
-        return 'file.write_staged outside the test area %s needs a token no staging matches' % test_area
-    if name == 'device.reboot':
-        return 'device.reboot to the OS' if value == 1 else None
-    if name == 'menu.continue':
-        return None if (len(payload) not in (0, 4) or (value is not None and value >= 2)) else \
-            'menu.continue leaves the menu'
-    if name == 'service.hold':
-        return None if value is None or value > 1 else 'service.hold changes every restart until power-off'
-    return '%s is never sent to a real device' % name
 
 
 # ---- validation (scripts/protogen.py) ---------------------------------------------------------

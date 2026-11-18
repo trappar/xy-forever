@@ -122,9 +122,8 @@ Aim: one power-on per sitting, and none for offline work.
   research agent the folder, not the log text. A probe it needs is a new script.
 - **Simulator first, batched.** A device item starts only after its code passes the simulator and
   the offline suite. Ready `kind:device` items wait for a sitting and run together.
-- **Guard off:** it does not recover a hang; do not run `guard on` or `--guard-test` on the device.
-  Never send REBOOT after a suspected lone A restart. Stop on a suspected hang and request a manual
-  power cycle ([SAFETY.md](SAFETY.md), [issue #1](https://github.com/trappar/xy-forever/issues/1)).
+- **No guard:** there is no watchdog; a hang needs a manual power cycle. Never send REBOOT after a
+  suspected lone A restart. Stop on a suspected hang and request one ([SAFETY.md](SAFETY.md)).
   Sessions end in keepalive, never in the OS.
 - **`safe` items** run only main-loop code with timeouts. **`risky` items** add
   interrupt code, a new stock call, or new reset behaviour, and run last in a

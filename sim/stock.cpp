@@ -639,7 +639,7 @@ void a_boot_request(uint32_t request) {
 
 uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     (void)count;
-    watchdog_poll();                                   // a pending guard interrupt runs before the call
+    host_poll();
     auto u = [a](unsigned i) { return uint32_t(a[i]); };
     auto p = [a](unsigned i) { return reinterpret_cast<void*>(uintptr_t(a[i])); };
     auto s = [a](unsigned i) { return static_cast<const char*>(reinterpret_cast<void*>(uintptr_t(a[i]))); };
