@@ -228,6 +228,7 @@ void menu_release() {
 }
 
 void reset_self() {
+    key_ui::crash_disarm();                            // the stock exception vector, before the reset
     stock<0x11a03518u, void>(U32(*reinterpret_cast<volatile uint16_t*>(0x88a35938u)), 0u);   // stock "6. reset"
     for (;;) {}
 }

@@ -37,6 +37,9 @@ struct Result {
 };
 static_assert(sizeof(Result) == 0xc0, "Result layout");
 extern Result result;
+// The exception vector the stock code left, back in place if the menu had put the crash screen's there
+// (key_ui_crash.ipp); a no-op otherwise (and on A). usb_service::reset_self calls it before B resets.
+void crash_disarm();
 #if defined(XYF_SERVICE_SCREEN)
 // Test 054: draw the USB service screen (b); false when the display code check failed.
 bool service_screen(const char* a, const char* b, const char* c, const char* d);

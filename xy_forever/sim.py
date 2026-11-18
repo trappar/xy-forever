@@ -220,6 +220,10 @@ def compile_into(work, defines):
     (work / 'native').mkdir()
     for path in ROOT.glob('target/*.?pp'):
         text = rewrite(path.name, path.read_text())
+        owner = re.match(r'// Part of (\w+)\.cpp', text)      # a part of a source the simulator does not host
+        if owner and owner.group(1) not in TARGET_SOURCES:      # (key_ui's) is not compiled either
+            (work / 'target' / path.name).write_text(text)
+            continue
         if '__asm__ volatile' in text and (path.suffix in ('.hpp', '.ipp') or path.stem in TARGET_SOURCES):
             raise RuntimeError('simulator: %s has asm no rewrite covers' % path.name)
         (work / 'target' / path.name).write_text(text)

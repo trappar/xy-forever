@@ -285,6 +285,7 @@ void real_keys_deliver() {
 }
 namespace xy_forever { namespace key_ui {
 Result result = {magic};
+void crash_disarm() {}                                                 // no vector: the screen is not hosted
 bool service_screen(const char* a, const char* b, const char* c, const char* d) {
     xyf_sim::log("screen: %s | %s | %s | %s", a ? a : "", b ? b : "", c ? c : "", d ? d : "");
     return true;

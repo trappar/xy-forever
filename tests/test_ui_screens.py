@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import ui_preview as P  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
+from xy_forever.source_text import unit_text  # noqa: E402
 
 
 class UiScreensTest(unittest.TestCase):
@@ -120,7 +121,7 @@ class UiScreensTest(unittest.TestCase):
 
     def test_device_strings_fit_the_screen(self):
         # 6 px per character per scale unit; message lines use scale 1.
-        text = (ROOT / 'target/key_ui.cpp').read_text()
+        text = unit_text(ROOT / 'target/key_ui.cpp')        # draw_screen is in its part key_ui_display.ipp
         body = text[text.index('void draw_screen('):text.index('void flush_framebuffer(')]
         literals = re.findall(r'"((?:[^"\\\n]|\\.)*)"', body)
         self.assertIn('Connected to a computer (xyf_host.py)', literals)
