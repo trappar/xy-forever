@@ -308,6 +308,26 @@ bool service_screen(const char* a, const char* b, const char* c, const char* d) 
 }
 void inject_key(uint32_t key, uint32_t pressed) { key_event(key, pressed, true); }
 void host_view() { if (sim_menu) usb_view(); }                        // as key_ui (the menu loop has the screen)
+// #114, as key_ui_where.ipp: a wait past where::paint_ms while the menu has the screen logs "menu: where W3
+// shown" where key_ui paints the code, and "menu: where W3 cleared" where it redraws without it.
+uint32_t sim_where = 0, sim_where_since = 0, sim_where_shown = 0;
+uint32_t where_enter(uint32_t code) {
+    const uint32_t before = sim_where;
+    sim_where = xyf::where::entered(code); sim_where_since = device_ms();
+    return before;
+}
+void where_wait() {
+    const uint32_t code = xyf::where::current(sim_where);
+    if (!sim_menu || sim_where_shown || !code || device_ms() - sim_where_since < xyf::where::paint_ms) return;
+    sim_where_shown = code;
+    xyf_sim::log("menu: where W%u shown at %u ms", code, device_ms());
+}
+void where_leave(uint32_t before) {
+    sim_where = xyf::where::current(before) | (sim_where & 0xffff0000u); sim_where_since = device_ms();
+    if (!sim_where_shown) return;
+    xyf_sim::log("menu: where W%u cleared at %u ms", sim_where_shown, device_ms());
+    sim_where_shown = 0;
+}
 void refresh_catalog() {                                               // as key_ui (the page stays, and its row)
 #if defined(XYF_MODS_PAGE)
     const uint32_t row = sim_app.main_selected;

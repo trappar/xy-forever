@@ -48,7 +48,7 @@ class StateWriteTest(unittest.TestCase):
         self.assertEqual(users, ['cold_storage.cpp', 'file_boot.cpp', 'usb_service.cpp'])
         us_src = unit_text(ROOT / 'target/usb_service.cpp')     # Test 042: USB write compiled out by default
         self.assertLess(us_src.index('#if defined(XYF_USB_SET_DEFAULT)\nvoid a_set_default'), us_src.index('storage.write_state_slot('))
-        fb = (ROOT / 'target/file_boot.cpp').read_text()
+        fb = unit_text(ROOT / 'target/file_boot.cpp')
         at = fb.index('storage.write_state_slot(')
         self.assertNotIn('#endif', fb[fb.rindex('#if defined(XYF_STATE_WRITE)\n', 0, at):at])
         us = unit_text(ROOT / 'target/usb_service.cpp')

@@ -47,6 +47,7 @@ bool child_path(const char* folder, const char* name, char* out) {
 #include "storage_server.hpp"
 #include "xyf_boot.hpp"
 #include "xyf_crc32.hpp"
+#include "key_ui.hpp"             // where B waits (#114)
 namespace xy_forever { namespace file_client {
 namespace {
 using peer_services::Stock121PeerSession;
@@ -99,10 +100,12 @@ Reply answer(Stock121PeerSession& session, U32 start, U32 bound) {
 }
 // Wait for A's answer to the request that just left, at most bound ms.
 Reply await_answer(Stock121PeerSession& session, U32 bound) {
+    const key_ui::Where where(xyf::where::file_answer);
     const U32 start = xyf_boot::clock_ms();
     for (;;) {
         const Reply r = answer(session, start, bound);
         if (r.outcome != busy) return r;
+        where.wait();
     }
 }
 // Submit the built request and wait for A's answer.

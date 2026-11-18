@@ -10,6 +10,7 @@ import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from xy_forever import hostbuild  # noqa: E402
+from xy_forever.source_text import unit_text  # noqa: E402
 
 U32=C.c_uint
 BYTE=C.c_ubyte
@@ -374,5 +375,5 @@ class SmallBlobCapacityTest(PeerBootTests):
             self.step(server, client); steps += 1
         self.assertTrue(self.lib.peer_client_ready(client))
         self.assertEqual(bytes(self.destination[:52]), image)
-        fb = (root / 'target/file_boot.cpp').read_text()
+        fb = unit_text(root / 'target/file_boot.cpp')
         self.assertIn('session.transfer(status, xyf_boot::b_status_capacity, true)', fb)

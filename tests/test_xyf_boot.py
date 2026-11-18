@@ -8,6 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 import xyf_build as builder
 from xy_forever.census import (FILE_BOOT_BYTES, FILE_BOOT_FIELDS, FILE_BOOT_LIBRARY_BYTES, FILE_BOOT_MAGIC,
                                    FILE_BOOT_MENU_BYTES, FILE_BOOT_MENU_FIELDS, file_boot,
@@ -16,7 +17,7 @@ from xy_forever.census import (FILE_BOOT_BYTES, FILE_BOOT_FIELDS, FILE_BOOT_LIBR
                                    BOOT_DETAIL_FIELDS, BOOT_DETAIL_MAGIC, BOOT_DETAIL_BYTES)
 
 XYF = (ROOT / 'target/xyf_boot.hpp').read_text()
-SOURCE = (ROOT / 'target/file_boot.cpp').read_text()
+SOURCE = unit_text(ROOT / 'target/file_boot.cpp')
 SESSION = (ROOT / 'target/peer_services.cpp').read_text()
 SESSION_H = (ROOT / 'target/peer_services.hpp').read_text()
 KEY_UI = (ROOT / 'target/key_ui.cpp').read_text()

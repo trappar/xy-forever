@@ -21,7 +21,7 @@ volatile uint32_t crash_stack __asm__("xyf_crash_stack") __attribute__((section(
 volatile uint32_t crash_saved __attribute__((section(".data"))) = 0;   // EVT3 before crash_on
 volatile uint32_t crash_armed __attribute__((section(".data"))) = 0;
 volatile uint32_t crash_shown __attribute__((section(".data"))) = 0;   // draw_screen draws the crash screen
-xyf::crash::Text crash_text __attribute__((section(".data"))) = {{0}, {0}, {0}};
+xyf::crash::Text crash_text __attribute__((section(".data"))) = {{0}, {0}, {0}, {0}};
 
 __asm__(
     ".text\n"
@@ -72,7 +72,7 @@ void present();
 void crash_show() __asm__("xyf_crash_show");
 __attribute__((used, noinline)) void crash_show() {
     const xyf::crash::Record r = {crash_record.taken, crash_record.seqstat, crash_record.retx, crash_record.rets};
-    xyf::crash::describe(r, crash_text);
+    xyf::crash::describe(r, where_word_now, crash_text);
     crash_shown = 1;
     for (uint32_t i = 0; i != 10; ++i) {
         const uint32_t sent = result.presents;
@@ -81,6 +81,7 @@ __attribute__((used, noinline)) void crash_show() {
     }
 }
 void crash_on() {
+    where_screen = 1;                               // key_ui_where.ipp: a long wait may paint its code from here
     if (crash_armed) return;
     crash_record.taken = 0;
     crash_saved = word(evt3);                       // the stock code reads it too (88a33b98)
@@ -89,6 +90,7 @@ void crash_on() {
     crash_armed = 1;
 }
 void crash_off() {
+    where_screen = 0;
     if (!crash_armed) return;
     *reinterpret_cast<volatile uint32_t*>(evt3) = crash_saved;
     __asm__ volatile("CSYNC;" : : : "memory");
@@ -133,7 +135,7 @@ extern "C" void xyf_crash_fault(uint32_t kind) __asm__("xyf_crash_fault");
 #endif
 #else
 const uint32_t crash_shown = 0;
-const xyf::crash::Text crash_text = {{0}, {0}, {0}};
+const xyf::crash::Text crash_text = {{0}, {0}, {0}, {0}};
 void crash_on() {}
 void crash_off() {}
 #endif

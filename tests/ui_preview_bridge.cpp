@@ -31,13 +31,18 @@ void ui_render_message(uint16_t* fb) {
                            5, "PLAY  back", &bridge_chrome};
     ui::draw_message(fb, message);
 }
-// B's crash screen (target/key_ui_crash.ipp) for a recorded SEQSTAT, RETX and RETS.
-void ui_render_crash(uint16_t* fb, unsigned seqstat, unsigned retx, unsigned rets) {
+// B's crash screen (target/key_ui_crash.ipp) for a recorded SEQSTAT, RETX and RETS, and B's where word (#114).
+void ui_render_crash(uint16_t* fb, unsigned seqstat, unsigned retx, unsigned rets, unsigned where) {
     static crash::Text text;
     const crash::Record record = {1, seqstat, retx, rets};
-    crash::describe(record, text);
+    crash::describe(record, where, text);
     const ui::Chrome still = {bridge_chrome.version, false, nullptr, false, bridge_chrome.image};
     ui::draw_message(fb, crash::message(text, &still));
+}
+// The menu with a long wait's code in the corner (key_ui present: the screen, then where::draw).
+void ui_render_where(uint16_t* fb, unsigned code) {
+    ui_render_menu(fb, 0, "");
+    where::draw(fb, code);
 }
 void ui_render_text(uint16_t* fb, int x, int y, const char* s, int scale) {
     gfx::clear(fb, gfx::black);

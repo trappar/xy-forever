@@ -11,6 +11,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 import xyf_build as builder
 from xy_forever import xyf_stage2 as S
@@ -20,7 +21,7 @@ from xy_forever.census import (FILE_BOOT_BYTES, FILE_BOOT_FIELDS, FILE_BOOT_LIBR
 
 XYF = (ROOT / 'target/xyf_boot.hpp').read_text()
 STAGE2_H = (ROOT / 'target/xyf_stage2.hpp').read_text()
-FILE_BOOT = (ROOT / 'target/file_boot.cpp').read_text()
+FILE_BOOT = unit_text(ROOT / 'target/file_boot.cpp')
 FILE_BOOT_H = (ROOT / 'target/file_boot.hpp').read_text()
 KEY_UI = (ROOT / 'target/key_ui.cpp').read_text()
 HELLO = (ROOT / 'target/stage2_hello.cpp').read_text()

@@ -16,13 +16,14 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild  # noqa: E402
+from xy_forever.source_text import unit_text  # noqa: E402
 import xyf_build as builder
 from xy_forever import xyf_stage2 as S
 
 KEY_UI = (ROOT / 'target/key_ui.cpp').read_text()
 STAGE2_H = (ROOT / 'target/xyf_stage2.hpp').read_text()
 MENU = (ROOT / 'target/stage2_menu.cpp').read_text()
-FILE_BOOT = (ROOT / 'target/file_boot.cpp').read_text()
+FILE_BOOT = unit_text(ROOT / 'target/file_boot.cpp')
 MINUS, PLUS, PLAY, STOP, SHIFT = 53, 54, 51, 52, 55
 NEVER = 0xffffffff
 BOOT_DEFAULT, BOOT_ENTRY, MENU_FALLBACK, BOOT_BUILTIN, SET_DEFAULT, MTP, NOTE_UNAVAILABLE, NOTE_NO_ENTRY = range(8)
