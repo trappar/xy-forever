@@ -204,8 +204,10 @@ class Knobs(PageBase, unittest.TestCase):
                     '41014503010040',                                      # +64: out of range
                     '4101450601000102ff00'):                               # knob 2 -256 in a 2-record frame
             self.control('knob_raw %s' % raw)
-        self.control('knob_raw 41014503070005')                            # id 7 only: accepted, no counts
         self.control('knob_raw 4101420a00000000000000000000')              # a key frame: not a knob frame
+        self.control('knob_raw 41014503070005')                            # id 7 only: accepted, no counts
+        # The accepted frame goes last: frames == 1 then means the reader has read every frame sent so far.
+        # A frame still unread at the jump below is skipped with it (1001, as on the OP-XY).
         k = self.until(lambda: (self.last() or {}).get('frames') == 1 and self.last(), 'read them')
         self.assertEqual((k['dropped'], k['moves'], k['main'], k['idle']), (6, 0, 0, 0), k)
         self.control('knob_jump 1000')                                     # a 1,000-frame jump
