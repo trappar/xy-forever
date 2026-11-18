@@ -83,8 +83,8 @@ el('connect').addEventListener('click', action(async () => {
     return;
   }
   client = await Client.connect(open, { timeoutMs: 10_000 });
-  const { build, proto, mode } = client.info;
-  el('build').textContent = String(build ?? '?');
+  const { version, image, proto, mode } = client.info;
+  el('version').textContent = `${version ?? '?'}, image ${image ?? '?'}`;
   el('proto').textContent = proto;
   el('mode').textContent = mode ?? '?';
   await browse('/yaffs2');

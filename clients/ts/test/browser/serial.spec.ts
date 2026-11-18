@@ -72,7 +72,8 @@ describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` 
   test('connect and hello', async () => {
     client = await Client.connect(webSerialOpener(), { timeoutMs: 10_000 });
     expect(client.info).toMatchObject({ proto: VERSION, mode: 'product', limits: { read: 1024, payload: 4160 } });
-    expect(client.info.build).toBeGreaterThan(153);
+    expect(client.info.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(client.info.image).toMatch(/^([0-9a-f]{8}|unknown)$/);
     expect(serial.xyfPorts[0]!.opens).toBe(1);
   });
 

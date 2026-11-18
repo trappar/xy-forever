@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location('check_script', Path(__file__).resolve().parents[1] / 'scripts/check.py')
 C = importlib.util.module_from_spec(SPEC)
@@ -136,7 +137,7 @@ class CheckReceiptTests(unittest.TestCase):
         status, text = self.confirm()
         self.assertEqual(status, 0)
         self.assertIn('tests: 12 run, 1 skipped, 0 failed', text)
-        self.assertIn('candidate: sha256 ' + 'ab' * 32 + ', 1234 bytes', text)
+        self.assertIn('candidate: image abababab, sha256 ' + 'ab' * 32 + ', 1234 bytes', text)
 
     def test_merge_base_prefers_origin_main(self):
         stale = self.git('rev-parse', 'HEAD')
@@ -163,17 +164,25 @@ class CheckReceiptTests(unittest.TestCase):
 
     def test_verify_parser(self):
         with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp)
+            builds = Path(tmp)
+            out = builds / 'check-123'
+            out.mkdir()
             (out / 'candidate.ldr').write_bytes(b'candidate')
             digest = __import__('hashlib').sha256(b'candidate').hexdigest()
-            (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256=digest)))
-            parse = C.verify_parser(out)
-            self.assertTrue(parse(0, 'log line\n{\n  "passed": true\n}\n')[0])
+            parse = C.verify_parser(out, 't' * 40, 'c' * 40)
+            (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256='0' * 64, image='00000000')))
+            self.assertFalse(parse(0, '{\n  "passed": true\n}\n')[0])      # bytes differ from the manifest
+            (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256=digest, image=digest[:8])))
             self.assertFalse(parse(0, '{\n  "passed": false\n}\n')[0])
             self.assertFalse(parse(1, '{\n  "passed": true\n}\n')[0])
-            (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256='0' * 64)))
-            self.assertFalse(parse(0, '{\n  "passed": true\n}\n')[0])
-
+            with mock.patch.object(C.paths, 'BUILDS', builds):
+                passed, facts = parse(0, 'log line\n{\n  "passed": true\n}\n')
+            self.assertTrue(passed)
+            named = builds / digest[:8]                          # moved to builds/<image>
+            self.assertEqual(facts['candidate'], dict(sha256=digest, image=digest[:8], bytes=9, build=str(named)))
+            self.assertEqual(json.loads((named / 'check.json').read_text()),
+                             dict(image=digest[:8], tree='t' * 40, commit='c' * 40))
+            self.assertFalse(out.exists())
 
 if __name__ == '__main__':
     unittest.main()

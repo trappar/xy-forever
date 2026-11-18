@@ -6,6 +6,7 @@ import { XyfError, isXyfError, statusError } from './errors.ts';
 import { Link } from './link.ts';
 import type { Trace } from './link.ts';
 import type { Opener, Transport } from './transport.ts';
+import { SCREEN } from './screen.ts';
 import * as v1 from './v1.ts';
 
 type Codecs = typeof v1.codecs;
@@ -40,7 +41,9 @@ export interface DeviceInfo {
   readonly hello: v1.Hello;
   /** Protocol version, `1.N`. */
   readonly proto: string;
-  readonly build: number | null;
+  /** Release version and image (8 hex digits or `unknown`), from 1.15. */
+  readonly version: string | null;
+  readonly image: string | null;
   readonly mode: string | null;
   /** From hello: payload (largest payload), read (largest ranged read), stage (largest staged image). */
   readonly limits: { readonly payload: number; readonly read: number; readonly stage: number };
@@ -83,8 +86,6 @@ type FileCommand = 'file.read' | 'file.list' | ChangeCommand;
 
 export interface Staged { readonly size: number; readonly crc32: number; readonly sha256: Uint8Array }
 
-/** The display framebuffer (screen.read): 480 columns stored right to left, 256 RGB565 pixels each. */
-export const SCREEN = { bytes: 0x3c000, width: 480, height: 216, stride: 256 } as const;
 
 export const STATE_FILES = ['/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt'] as const;
 
@@ -129,7 +130,7 @@ function deviceInfo(hello: v1.Hello): DeviceInfo {
   }
   const k = hello.keys;
   return {
-    hello, proto: hello.proto, build: k['build'] ? number(k['build'], 0) : null, mode: k['mode'] ?? null, dev: k['dev'] === '1',
+    hello, proto: hello.proto, version: k['version'] ?? null, image: k['image'] ?? null, mode: k['mode'] ?? null, dev: k['dev'] === '1',
     limits: { payload: number(k['payload'], v1.MAX_PAYLOAD), read: number(k['read'], v1.MAX_READ), stage: number(k['stage'], v1.MAX_STAGE) },
   };
 }
@@ -180,7 +181,7 @@ async function handshake(open: Opener, options: ConnectOptions): Promise<[Link, 
 export async function invoke(client: Client, command: v1.Command, codec: AnyCodec, request: unknown,
   options: CallOptions = {}): Promise<Record<string, v1.Value>> {
   if (command.name !== 'hello' && !client.info.hello.answers(command.type)) {
-    throw new XyfError('update_required', `this OP-XY's XY Forever (build ${client.info.build ?? '?'}) does not answer ` +
+    throw new XyfError('update_required', `this OP-XY's XY Forever (${client.info.version ?? 'old'}) does not answer ` +
       `${command.name}: update XY Forever`, { command: command.name });
   }
   const payload = codec.encodeRequest(request);         // a bad argument throws TypeError/RangeError
@@ -623,20 +624,4 @@ export function parseSlot(data: Uint8Array): { seq: number; fields: Record<strin
   const fields = keyValues(new TextDecoder().decode(data.subarray(0, line)));
   const seq = fields['seq'];
   return seq !== undefined && /^[0-9]+$/.test(seq) ? { seq: parseInt(seq, 10), fields } : null;
-}
-
-/** Framebuffer bytes to RGBA pixels, row by row (as ImageData takes them). */
-export function decodeScreen(raw: Uint8Array): { width: number; height: number; rgba: Uint8ClampedArray } {
-  if (raw.length < SCREEN.bytes) throw new RangeError(`a screenshot is ${SCREEN.bytes} bytes`);
-  const { width, height, stride } = SCREEN;
-  const rgba = new Uint8ClampedArray(width * height * 4);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const at = ((width - 1 - x) * stride + y) * 2;
-      const v = raw[at]! | raw[at + 1]! << 8;
-      const r = v >> 11, g = (v >> 5) & 63, b = v & 31, o = (y * width + x) * 4;
-      rgba[o] = r << 3 | r >> 2; rgba[o + 1] = g << 2 | g >> 4; rgba[o + 2] = b << 3 | b >> 2; rgba[o + 3] = 255;
-    }
-  }
-  return { width, height, rgba };
 }

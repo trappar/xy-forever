@@ -46,7 +46,6 @@ OVER = {
     'target/storage_server.cpp': 43048,
     'target/xyf_content_job.hpp': 34146,
     'target/xyf_mods_io.cpp': 33346,
-    'xy_forever/census.py': 34225,
     'xy_forever/conformance.py': 63763,
     'xy_forever/modkit.py': 64034,
     'xyf_build.py': 83047,

@@ -42,7 +42,7 @@ it.skipIf(found.why !== null)('connects to the simulator and shows the device an
   const page = await browser!.newPage();
   await page.goto(`http://127.0.0.1:${httpPort}/?sim=${port}`);
   await page.getByRole('button', { name: 'Connect' }).click();
-  await expect.poll(() => page.locator('[data-fact=build]').textContent(), { timeout: 20_000 }).toMatch(/\d+/);
+  await expect.poll(() => page.locator('[data-fact=version]').textContent(), { timeout: 20_000 }).toMatch(/^\d+\.\d+\.\d+$/);
   await page.locator('#nav a[data-page=files]').click();
   await expect.poll(() => page.locator('#crumbs').textContent(), { timeout: 10_000 }).toContain('yaffs2');
   await expect.poll(() => page.locator('#files-rules').textContent()).toContain('never /yaffs2/bootloader.dev or /yaffs2/upgrade');

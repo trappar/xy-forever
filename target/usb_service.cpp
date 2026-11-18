@@ -85,6 +85,7 @@ extern "C" { extern const xyf_core::Policy* volatile xy_forever_cold_policy; }  
 namespace {
 #include "usb_service_transport.ipp"        // stock wrappers, transport, PUT state, install log, HELLO, STATUS
 #include "usb_service_stage2.ipp"           // the stage 2 loader
+#include "usb_service_identity.ipp"         // hello version= and image=, the menu's labels
 #include "usb_service_files.ipp"            // READ_FILE, SCREEN, PEEK, the MTP self-test, PUT, SET_DEFAULT, LIBRARY_BOOT
 #if defined(XYF_USB_FILE_WRITE)
 #include "usb_service_file_write.ipp"       // FILE_DELETE/RMDIR/MKDIR/RENAME/COPY/LIST/WRITE

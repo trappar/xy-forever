@@ -24,9 +24,12 @@ from xy_forever import usb_proto as P
 def plan(state=False, reports=()):
     paths = list(host.SLOTS) if state else []
     for report in reports:
-        if not re.fullmatch(r"[0-9]{3}", report):
-            raise ValueError("report build must be three digits")
-        paths.extend(f"/yaffs2/xy-forever/log/prod-{report}-{role}.bin"
+        # A report's name (xyf_build.py MODES: prod, pfile, ...), or an old build's three-digit number (prod-NNN).
+        if re.fullmatch(r"[0-9]{3}", report):
+            report = "prod-" + report
+        elif not re.fullmatch(r"[a-z0-9]{1,16}", report):
+            raise ValueError("report: a report name (prod, pfile) or an old build's three digits")
+        paths.extend(f"/yaffs2/xy-forever/log/{report}-{role}.bin"
                      for role in ("a", "b"))
     return paths
 
@@ -99,7 +102,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", required=True, type=Path, help="new private reports directory")
     parser.add_argument("--state", action="store_true", help="read both boot-state slots")
-    parser.add_argument("--report", action="append", default=[], help="read prod-NNN-a/b.bin")
+    parser.add_argument("--report", action="append", default=[], help="read NAME-a/b.bin (prod, pfile; an old build's NNN: prod-NNN)")
     parser.add_argument("--timeout", type=float, default=30.0, help="HELLO wait in seconds")
     parser.add_argument("--capture", action="store_true", help="connect to the device now")
     args = parser.parse_args(argv)

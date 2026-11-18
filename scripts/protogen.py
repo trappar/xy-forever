@@ -70,15 +70,15 @@ TRANSPORT_FACTS = ('usb_vendor_id', 'usb_product_id', 'product_usb_ids', 'usb_pr
 RANGE_KINDS = ('dev', 'event', 'retired')
 REQUIRED_CONSTANTS = ('header_bytes', 'trailer_bytes', 'max_payload', 'max_data', 'max_read', 'put_chunk',
                       'max_path', 'max_stage', 'max_log_text', 'max_hello')
-# hello key sources besides a fixed value or constant; build and mode come from the build (C macros below).
-# stage2: the loaded stage 2's version, 0 in the compiled text; the device sets it at run time, so it is
-# the last key (usb_service.cpp replaces the trailing 0).
-HELLO_SOURCES = ('version', 'build', 'mode', 'cmds', 'dev', 'stage2')
+# hello key sources besides a fixed value or constant: release and mode from the build (C macros below);
+# set at run time: image (compiled `unknown`) and stage2 (compiled 0, so the last key).
+HELLO_SOURCES = ('version', 'release', 'image', 'mode', 'cmds', 'dev', 'stage2')
 STAGE2_DIGITS = 10                                # a u32 in decimal
 # Switches no build defines: the device sets the command's cmds bit at run time (stage2.info: while
 # stage 2 is loaded). The generated #if blocks give the digit without them.
 RUNTIME_SWITCHES = ('XYF_STAGE2_LOADED',)
-BUILD_MACROS = {'build': 'XYF_BUILD_NUMBER', 'mode': 'XYF_BUILD_MODE'}
+BUILD_MACROS = {'release': 'XYF_VERSION', 'mode': 'XYF_BUILD_MODE'}
+IMAGE_DIGITS, IMAGE_UNKNOWN = 8, 'unknown'
 HELLO_TEXT = re.compile(r'^[!-:<>-~]+$')          # printable ASCII without space, ';' and '='
 CMDS_DIGITS = 32                                  # request types 0x00..0x7f, four per hex digit
 # object kind -> (required keys, optional keys)
@@ -586,7 +586,7 @@ def check_hello(c, spec, constants, messages):
             c.fail(where, 'needs exactly one of value, constant, source')
             continue
         if ('max_bytes' in k) != (k.get('source') in BUILD_MACROS):
-            c.fail(where, 'max_bytes is required for, and only for, the build and mode sources')
+            c.fail(where, 'max_bytes is required for, and only for, the release and mode sources')
             continue
         if 'value' in k:
             value = k['value'] if isinstance(k['value'], str) and HELLO_TEXT.match(k['value']) else None
@@ -609,7 +609,7 @@ def check_hello(c, spec, constants, messages):
             size = k['max_bytes']
         else:
             size = {'version': len(spec['protocol']['version']), 'cmds': CMDS_DIGITS, 'dev': 1,
-                    'stage2': STAGE2_DIGITS}[k['source']]
+                    'image': max(IMAGE_DIGITS, len(IMAGE_UNKNOWN)), 'stage2': STAGE2_DIGITS}[k['source']]
             if k['source'] == 'stage2' and k is not keys[-1]:
                 c.fail(where, 'the stage2 key must be the last key (the device sets it at run time)')
         longest += 2 + len(k['name']) + size
@@ -702,7 +702,7 @@ def render_cpp(spec):
 def render_cpp_hello(spec):
     """Macros for the hello text: string literals and #if blocks only (no table, no code)."""
     lines = ['// hello text (docs/protocol/cmd-session.md, hello). The build defines %s and %s (string literals).' % (
-                 BUILD_MACROS['build'], BUILD_MACROS['mode']),
+                 BUILD_MACROS['release'], BUILD_MACROS['mode']),
              '// XYF_USBP_CMDS: the cmds bitmap, most significant hex digit first; a digit that a build switch',
              '// changes is one #if block keyed by the switches of its commands (as home_pump\'s dispatch).',
              '// %s: never defined by a build; the device sets those bits at run time.' % ', '.join(RUNTIME_SWITCHES)]
@@ -744,6 +744,8 @@ def render_cpp_hello(spec):
             else:
                 lines.append('#define XYF_USBP_HELLO_DEV ""')
             pieces.append(('macro', 'XYF_USBP_HELLO_DEV'))
+        elif source == 'image':
+            pieces.append(';%s=%s' % (key['name'], IMAGE_UNKNOWN))
         elif source == 'stage2':
             pieces.append(';%s=0' % key['name'])      # usb_service.cpp: the loaded stage 2's version
         else:
@@ -812,8 +814,7 @@ def render_py(spec):
     out.append('}')
     out.append('')
     out.append('# hello text: HELLO_PREFIX, then each key as ;name=value. A key is (name, since, source, text):')
-    out.append('# source fixed (text given), or build, mode, cmds (bitmap of the types answered), dev (present')
-    out.append('# only when the build answers developer commands), stage2 (the loaded stage 2\'s version, 0 for none).')
+    out.append('# source fixed (text given), or release, image, mode, cmds, dev, stage2 (docs/protocol: hello).')
     out.append('HELLO_PREFIX = %r' % spec['hello']['prefix'])
     out.append('HELLO_KEYS = (')
     for key in spec['hello']['keys']:

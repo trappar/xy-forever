@@ -2,7 +2,7 @@
 
 Usage (stdlib only; macOS /dev/cu.usbmodem*):
   python3 xyf_host.py wait                     wait for the service, send HELLO (prints protocol and build)
-  python3 xyf_host.py status                   protocol, build and decoded result blocks
+  python3 xyf_host.py status                   protocol, version, image and decoded result blocks
   python3 xyf_host.py read /yaffs2/firmware.version [--out FILE]
   python3 xyf_host.py read /yaffs2/xy-forever/log/prod-069-b.bin --all --out FILE   (any size, 4 KiB ranges)
   python3 xyf_host.py install BUILD_DIR        DRY RUN: checks and prints the plan

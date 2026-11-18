@@ -168,6 +168,7 @@ void processor(int which, int fd, int sdram_fd, bool power_on) {
     link_start();
     // Power-on stands for the stock bootloader's normal boot (it loaded XY Forever); after a reset
     // the bootloader stand-in runs its side of the boot first (sim/boot.cpp; it may never return).
+    if (power_on && which == 1) power_on_image();
     if (!power_on) {
         stock_bootloader();
         load_stock();

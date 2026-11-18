@@ -102,7 +102,12 @@ struct Result {
     // port): CDC receive counters and read-only USB snapshots (diag_layout).
     uint32_t rx_events, rx_bytes, diag_count, stock_callback;   // CDC receive callback found at start (cleared while serving)
     uint32_t stage2[8];                     // stage-2 load record (s2w_* words below; was diag[0][0..7])
-    uint32_t diag[64];                      // unused since Test 041 (diag_count 0)
+    // Version 5 (#107), in the first unused diag words: the build identity (usb_service_identity.ipp).
+    // release: XYF_VERSION_CODE; image: the first 4 bytes of the running image's SHA-256 (hello image=);
+    // image_state: ImageState (0 not started: no menu this boot); image_ms: menu start to known (ms);
+    // image_kcycles: the hashing's own time, CYCLES / 1024.
+    uint32_t release, image, image_state, image_ms, image_kcycles;
+    uint32_t diag[59];                      // unused since Test 041 (diag_count 0)
     // Version 3 (Test 034 INSTALL gave no reply): install log forwarding.
     uint32_t log_lines, log_sent, log_skipped, log_level_before;
     uint32_t log_sink_before, install_step, install_step_ms, session_cap;
@@ -183,7 +188,8 @@ bool home_usb();
 // within 5 s of the host's last frame). host_activity: while a job started over USB runs ("USB: building
 // Open-XY", "USB: changing content"), or within host_activity_ms of a request that changes something
 // ("USB: receiving a file", "USB: writing files", "USB: installing XY Forever", ...), that line; else null.
-// build_label: "build N", N the build number HELLO reports (XYF_BUILD_NUMBER).
+// version_label: "v" and the release version HELLO reports (XYF_VERSION), the home page's corner.
+// image_label: "image " and the image HELLO reports (8 hex digits; "..." until known; "unknown").
 static const uint32_t host_seen_ms = 5000, host_activity_ms = 2000;
 bool host_seen();
 #if defined(XYF_MTP_USB)
@@ -193,7 +199,8 @@ bool mtp_seen();
 // 188: the marks the screen shows: bit 0 host_seen (USB), bit 1 mtp_seen (MTP; 0 without the composite).
 uint32_t host_marks();
 const char* host_activity();
-const char* build_label();
+const char* version_label();
+const char* image_label();
 #if defined(XYF_USB_FILE_WRITE)
 // b: the menu's Mods page (xyf_mods_io.cpp). mods_start: the start mods.apply runs (the same
 // request bytes, SHA-256 included; status, job id, missing input; missing = mods_ids_taken with

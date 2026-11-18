@@ -118,7 +118,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertEqual([f.replace('st.', '').replace('mu::state()', 'state') for f in fields], list(script.DRIVER_WORDS))
         self.assertEqual((script.VID, script.PID), self.B.MTP_USB_IDS)
         self.assertIn('op_test_sink = 0x%04x' % script.OP_SINK, (ROOT / 'target/mtp_usb.hpp').read_text())
-        self.assertIn("'mtp-usb'", repr(self.B.hello_defines(self.B.MTP_USB_MODE)[1].split('"')[1:2]))
+        self.assertIn("'mtp-usb'", repr(self.B.hello_defines(self.B.MTP_USB_MODE)[-1].split('"')[1:2]))
 
     def _script(self):
         import importlib.util

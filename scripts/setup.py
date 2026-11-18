@@ -376,13 +376,11 @@ def fixture_build():
     if problem:
         print('verified product build: skipped (toolchain: %s; see doctor)' % problem)
         return
-    n = 1
-    while (paths.BUILDS / ('xy-forever-product-000-%03d' % n)).exists():
-        n += 1
-    out = paths.BUILDS / ('xy-forever-product-000-%03d' % n)
-    print('building and verifying %s (under a minute)' % out.name)
+    out = paths.BUILDS / 'setup-build'
+    print('building and verifying the product (under a minute)')
     run([sys.executable, 'xyf_build.py', '--xyf-product', '--out', str(out)])
     run([sys.executable, 'xyf_build.py', '--verify', '--out', str(out)])
+    out = paths.name_by_image(out)                     # builds/<image>
     if paths.newest_verified_build() != out:
         raise SetupError('%s did not verify' % out)
     print('verified product build: %s' % out.name)

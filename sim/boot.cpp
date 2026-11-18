@@ -6,6 +6,7 @@
 #include "runtime.hpp"
 #include <pthread.h>
 #include <string.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 namespace xyf_sim {
@@ -120,6 +121,24 @@ void a_bootloader() {
     w32(0x20057004u, r32(0x20057004u) & ~0x2000u);     // teardown: slave closed
     log("stock bootloader (A): released: reads its own os.ldr and boots it");
 }
+}
+
+// B at power-on: what the stock bootloader's fetch left at the RAM-boot source 0x8a000000 (the image
+// of the active boot partition, read from the file directly; hello image= hashes it). Nothing when none.
+void power_on_image() {
+    const int fd = open(shared->bootpart, O_RDONLY);
+    if (fd < 0) return;
+    uint8_t sector[512];
+    for (uint32_t p = 0; p != 2; ++p) {
+        const off_t at = off_t(p * uint64_t(shared->capacity));
+        uint32_t size = 0;
+        if (pread(fd, sector, 512, at) != 512 || !sector[12]) continue;
+        memcpy(&size, sector + 4, 4);
+        if (size && size <= 0x800000u && size + 512u <= shared->capacity)
+            if (pread(fd, host(0x8a000000u), size, at + 512) == ssize_t(size)) log("stock bootloader (B): image read at power-on (%u bytes)", size);
+        break;
+    }
+    close(fd);
 }
 
 void stock_bootloader() {

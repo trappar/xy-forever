@@ -20,14 +20,15 @@ const char* host_activity() {
 #endif
     return host_change && now() - host_change_ms < host_activity_ms ? host_line(host_change) : nullptr;
 }
-const char* build_label() { return "build " XYF_BUILD_NUMBER; }
+const char* version_label() { return "v" XYF_VERSION; }
+const char* image_label() { return image_text; }
 bool home_hold() { return home != 0 || home_greeted != 0; }
 
 // b, at the start of the file boot: a valid marker (our REBOOT, a dry-run return, or a reset
 // while home) makes this boot go home; at most max_crash_restarts such resets in a row.
 bool home_begin() {
     Result& r = result;
-    r.version = 4; r.role = 1;
+    r.version = 5; r.role = 1;
     r.start_cycles = cycles_div1024();
     start_ms = xyf::clock::ms();
     r.power_status = word(power_status_address);
@@ -72,6 +73,7 @@ void home_reboot(U32 target) {
 // home and boot catalog entry i once (library.boot).
 uint32_t home_pump() {
     Result& r = result;
+    image_step();                                      // the image's hash, a slice per pass
     if (!menu_usb) return 0;
 #if defined(XYF_MTP_USB)
     if (usb_deferred) { usb_deferred = 0; usb_begin(); return 0; }   // the flag, then the boot's only start

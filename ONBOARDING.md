@@ -139,7 +139,7 @@ firmware found". Add the stock OS as the default entry (`library-add`, then `set
 
 Run `python3 scripts/device_pass.py --wait 120` (`--plan` first shows every step), relaying its `NEED:`
 line ([docs/operating/device-pass.md](docs/operating/device-pass.md#device-pass-scriptsdevice_passpy)). When it passes, copy the
-build's `candidate.ldr` to `../private/xy-forever/recovery/known-good-NNN/os.ldr` and fill in `docs/status/README.md`: device
+build's `candidate.ldr` to `../private/xy-forever/recovery/known-good-<image>/os.ldr` and fill in `docs/status/README.md`: device
 state, installed build, known-good build and kit. End the session in keepalive, never in the OS.
 No device at hand: say so; device items wait and the orchestrator skips them.
 

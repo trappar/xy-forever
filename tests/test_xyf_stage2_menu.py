@@ -249,8 +249,8 @@ class Stage2MenuRulesTest(unittest.TestCase):
                          ['continue', 'menu', 'boot_once 1', 'set_default 2', 'mtp', 'uninstall', 9, None])
 
     def test_builder_mode(self):
-        self.assertEqual(builder.MODES['xyf-stage2-menu'], ('xyf-stage2-menu-034', 'stage2m-034-#.bin'))
-        self.assertEqual(builder.FILE_VARIANT_REPORTS['xyf-stage2-menu'], 'file-034-#.bin')
+        self.assertEqual(builder.MODES['xyf-stage2-menu'], 'stage2m-#.bin')
+        self.assertEqual(builder.FILE_VARIANT_REPORTS['xyf-stage2-menu'], 'file2m-#.bin')
         self.assertNotIn('xyf-stage2-menu', builder.WRITE_AUDIT_MODES)    # no write of any kind
         self.assertIn('target/stage2_menu.cpp', builder.own_sources())
         image = b'\x01\x02' * 64

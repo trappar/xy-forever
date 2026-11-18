@@ -21,13 +21,13 @@ from xy_forever import sim, usb_proto as P, xyf_stage2 as S2   # noqa: E402
 from xy_forever import usb_proto_ids as ids         # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
-BUILD = int(xyf_build.MODES['xyf-product'][0].rsplit('-', 1)[1])
+STAGE1 = xyf_build.release.code()                  # this stage 1's release (XYF_VERSION_CODE)
 SWITCHES = xyf_build.usb_switches('xyf-product')
 IMAGE = bytes(range(256)) * 2                       # not run here: the host build of stage 2 is
 CHECK_MAGIC, CHECK_SIZE, CHECK_STAGE1, CHECK_SHA = 2, 1, 9, 11    # xyf::stage2::Check
 
 
-def stage2_file(version=7, min_stage1=BUILD, image=IMAGE):
+def stage2_file(version=7, min_stage1=STAGE1, image=IMAGE):
     return S2.pack(image, S2.WINDOW[0], S2.WINDOW[0], version=version, build_id='test', min_stage1=min_stage1,
                    abi=S2.ABI_SERVICE)
 
@@ -84,7 +84,7 @@ class Stage2ServiceTest(unittest.TestCase):
         self.start(data)
         dev = self.connect()
         code, text = dev.hello()
-        self.assertEqual((code, text), (0, P.hello_text(BUILD, 'product', SWITCHES)))
+        self.assertEqual((code, text), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES)))
         self.assertEqual(self.info(dev), (ids.S_UNSUPPORTED, b''))
         record = self.record(dev)
         self.assertEqual(record['status'], status, record)
@@ -100,7 +100,7 @@ class Stage2ServiceTest(unittest.TestCase):
         self.start(data)
         dev = self.connect()
         code, text = dev.hello()
-        self.assertEqual((code, text), (0, P.hello_text(BUILD, 'product', SWITCHES, stage2=7)))
+        self.assertEqual((code, text), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES, stage2=7)))
         self.assertTrue(P.Hello(text).answers(ids.STAGE2_INFO) and text.endswith(';stage2=7'))
         turns = []
         for _ in range(2):
@@ -139,8 +139,12 @@ class Stage2ServiceTest(unittest.TestCase):
         too_big = reheader(stage2_file(), 24, S2.WINDOW[1] - S2.WINDOW[0] + 4)       # image_bytes above the window
         self.refused(too_big, 'check', CHECK_SIZE, opens=1)
 
-    def test_min_stage1_newer_than_the_build(self):
-        self.refused(stage2_file(min_stage1=BUILD + 1), 'check', CHECK_STAGE1)
+    def test_min_stage1_newer_than_the_release(self):
+        self.refused(stage2_file(min_stage1=STAGE1 + 1), 'check', CHECK_STAGE1)     # for a later stage 1
+
+    def test_a_file_for_an_old_build_numbered_stage1_still_loads(self):
+        self.assertGreater(STAGE1, 195)                 # every build number lies below 0.1.0's code
+        self.assertEqual(xyf_build.STAGE2_SERVICE_MIN_STAGE1, 0x100)
 
     def test_link_error_while_loading(self):
         self.start(stage2_file())
@@ -153,7 +157,7 @@ class Stage2ServiceTest(unittest.TestCase):
         self.sim.advance(6000, step=None)              # past the request bound, on the simulator clock
         thread.join(9.0)
         code, body = reply['r']
-        self.assertEqual((code, body.decode()), (0, P.hello_text(BUILD, 'product', SWITCHES)))
+        self.assertEqual((code, body.decode()), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES)))
         self.assertEqual(self.info(dev), (ids.S_UNSUPPORTED, b''))
         record = self.record(dev)
         self.assertEqual((record['status'], record['detail']), ('link', ids.S_LINK), record)

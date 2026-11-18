@@ -70,8 +70,8 @@ void home_header(uint16_t* fb, const Chrome* chrome) {
 void home_footer(uint16_t* fb, const char* status, const char* hint, const Chrome* chrome) {
     if (status && *status) text(fb, margin, height - 30, status, accent, 1);   // 188: the activity is in the header
     if (hint && *hint) text(fb, margin, height - 14, hint, grey, 1);
-    if (chrome && chrome->build && *chrome->build)
-        text(fb, width - margin - text_width(chrome->build, 1), height - 14, chrome->build, grey, 1);
+    if (chrome && chrome->version && *chrome->version)
+        text(fb, width - margin - text_width(chrome->version, 1), height - 14, chrome->version, grey, 1);
 }
 
 uint32_t scale(uint32_t a, uint32_t b, uint32_t c) {

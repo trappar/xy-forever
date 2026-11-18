@@ -210,6 +210,15 @@ class UsbServiceTest(unittest.TestCase):
         self.assertEqual(len(out2['diag']), 2); self.assertNotIn('log_lines', out2)
         old = struct.pack('<%dI' % len(USB_SERVICE_FIELDS), *words[:len(USB_SERVICE_FIELDS)])   # version 1 (Test 031)
         self.assertNotIn('diag', usb_service([dict(address=0, bytes=len(old), offset=0)], old))
+        # Version 5 (#107): the build identity after the stage-2 record (diag_count 0).
+        words[1], words[base + 2] = 5, 0
+        words[base + 12:base + 17] = [0x000100, 0xf458e3cc, 2, 85, 30000]
+        v5 = struct.pack('<%dI' % len(words), *words)
+        out5 = usb_service([dict(address=0, bytes=len(v5), offset=0)], v5)
+        self.assertEqual(out5['build'], dict(version='0.1.0', image='f458e3cc', state='known', ms=85, kcycles=30000))
+        words[base + 14] = 3                                                                   # unknown
+        v5 = struct.pack('<%dI' % len(words), *words)
+        self.assertEqual(usb_service([dict(address=0, bytes=len(v5), offset=0)], v5)['build']['image'], 'unknown')
 
     def test_spans_match_bootloader_and_cover_calls(self):
         boot = STOCK_121 / 'bootloader.ldr'
@@ -470,12 +479,13 @@ class HostToolTest(unittest.TestCase):
                 host.connect = original
             return code, out.getvalue(), fake.sent
 
-        lean = P.hello_text(154, 'product', set())                   # no file write, set default, MTP test
-        full = P.hello_text(154, 'product', {'XYF_MTP', 'XYF_USB_FILE_WRITE', 'XYF_USB_SET_DEFAULT'})
+        lean = P.hello_text('0.1.0', 'f458e3cc', 'product', set())                   # no file write, set default, MTP test
+        full = P.hello_text('0.1.0', 'f458e3cc', 'product', {'XYF_MTP', 'XYF_USB_FILE_WRITE', 'XYF_USB_SET_DEFAULT'})
         old = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e'
         code, out, sent = run(full, ['wait'])
-        self.assertEqual(code, 0); self.assertIn('protocol %s, build 154 (product)' % P.ids.VERSION, out)
-        code, out, sent = run(full.replace('proto=%s;' % P.ids.VERSION, 'proto=1.13;'), ['wait'])   # an older 1.x
+        self.assertEqual(code, 0); self.assertIn('protocol %s, version 0.1.0, image f458e3cc (product)' % P.ids.VERSION, out)
+        older = 'XYF1;service=usb;role=b;proto=1.13;install=stock-88a06a7e;build=154;mode=product;cmds=' + full.split('cmds=')[1]
+        code, out, sent = run(older, ['wait'])                                             # an older 1.x: a build number
         self.assertEqual(code, 0); self.assertIn('protocol 1.13, build 154 (product)', out)
         code, out, sent = run(old, ['wait'])
         self.assertEqual(code, 0); self.assertIn('protocol 1: pre-v1 device', out)

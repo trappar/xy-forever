@@ -114,7 +114,7 @@ async function connect(): Promise<string> {
   await page!.click('#connect');
   await settled();
   if ((await text('status')) !== 'connected') throw new Error(`status ${await text('status')}`);
-  return `build ${await text('build')}, protocol ${await text('proto')}, mode ${await text('mode')}`;
+  return `version ${await text('version')}, protocol ${await text('proto')}, mode ${await text('mode')}`;
 }
 
 async function openDir(): Promise<string> {

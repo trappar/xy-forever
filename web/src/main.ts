@@ -71,7 +71,7 @@ function renderConnect(): void {
     h('div', { class: 'card' },
       supported
         ? h('div', { class: 'row' },
-          client ? h('span', {}, `Connected to build ${client.info.build ?? '?'}.`) : btn('Connect', () => void run(connect, 'Looking for the OP-XY...'), 'primary'),
+          client ? h('span', {}, `Connected to XY Forever ${client.info.version ?? '?'}.`) : btn('Connect', () => void run(connect, 'Looking for the OP-XY...'), 'primary'),
           client && btn('Disconnect', () => void run(disconnect)),
           h('span', { class: 'muted' }, sim ? `Simulator on 127.0.0.1:${sim} (development)` : 'Web Serial over USB'))
         : h('div', {}, h('h2', {}, 'This browser cannot talk to the OP-XY'),
@@ -130,7 +130,8 @@ async function loadDevice(): Promise<void> {
   page('device').replaceChildren(
     h('h1', {}, 'Device'), h('p', { class: 'lede' }, 'What the OP-XY reports right now.'),
     h('div', { class: 'card' }, h('dl', { class: 'facts', id: 'device-facts' },
-      h('dt', {}, 'XY Forever build'), h('dd', { 'data-fact': 'build' }, String(info.build ?? 'unknown')),
+      h('dt', {}, 'XY Forever'), h('dd', { 'data-fact': 'version' }, info.version ?? 'unknown'),
+      h('dt', {}, 'Image'), h('dd', { 'data-fact': 'image' }, info.image ?? 'unknown'),
       h('dt', {}, 'Running'), h('dd', {}, modeText(info.mode)),
       h('dt', {}, 'Boots next'), h('dd', { 'data-fact': 'boots' }, boots),
       h('dt', {}, 'Saved mods'), h('dd', {}, config === undefined ? 'Could not read the saved configuration.' : configText(config)),

@@ -231,9 +231,10 @@ void draw_screen(uint16_t* fb) {
     const uint32_t marks = xy_forever::usb_service::host_marks();   // 188: bit 0 USB, bit 1 MTP
     const char* const activity = xy_forever::usb_service::host_activity();
     usb_drawn = marks; usb_drawn_line = activity;
-    const Chrome chrome = {xy_forever::usb_service::build_label(), (marks & 1u) != 0, activity, (marks & 2u) != 0};
+    namespace U = xy_forever::usb_service;
+    const Chrome chrome = {U::version_label(), (marks & 1u) != 0, activity, (marks & 2u) != 0, U::image_label()};
 #else
-    const Chrome chrome = {"", false, 0, false};
+    const Chrome chrome = {"", false, 0, false, ""};
 #endif
     if (ui_screen == 2) {
         const Message bye = {"Starting", {ui_status}, 1, "", &chrome};

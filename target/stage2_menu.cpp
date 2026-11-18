@@ -25,7 +25,7 @@ extern "C" uint32_t xyf_stage2_main(const xyf::stage2::Abi* abi) __asm__("xyf_st
 namespace {
 using namespace xyf;
 const uint32_t idle_ms = 60000;             // as the stage-1 menu: no keys for 60 s -> boot the default
-const ui::Chrome chrome = {"stage 2 (ABI 2)", false, 0, false};   // the build line; no USB mark here
+const ui::Chrome chrome = {"stage 2 (ABI 2)", false, 0, false, ""};   // the version line; no USB mark here
 
 catalog::Catalog catalog_copy XYF_DATA = {};
 menu::State menu_state XYF_DATA = {};

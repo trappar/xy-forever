@@ -7,7 +7,8 @@
 The standard set, in order, stopping at the first failure:
   - the exhaustive unit suite: XYF_EXHAUSTIVE=1 scripts/run_tests.py (every test, never a subset);
   - the product build into a fresh private build folder (<private>/xy-forever/builds/check-<tree>),
-    then xyf_build.py --verify of it;
+    then xyf_build.py --verify of it; a verified build moves to builds/<image> (its name: the first 8 hex
+    digits of the candidate's SHA-256, hello image=), with check.json naming the tree and commit;
   - scripts/neutral.py REF with --neutral (default REF: the merge base with origin/main, else main);
   - npm test in clients/ts when clients/ts differs from that merge base, or with --npm (refused up front,
     naming npm ci, when clients/ts/node_modules is missing).
@@ -41,7 +42,7 @@ from xy_forever import paths  # noqa: E402
 
 VERSION = 1                                  # receipt format; a reader refuses a newer one
 CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json
-KEEP_BUILDS = 5                              # check-* build folders kept (about 7 MB each)
+KEEP_BUILDS = 5                              # builds/<image> folders a check made (check.json) kept, ~7 MB each
 
 
 class CheckError(Exception):
@@ -118,8 +119,9 @@ def tests_parser(summary):
     return parse
 
 
-def verify_parser(out):
-    """--verify passed, and the candidate's bytes match the build's manifest."""
+def verify_parser(out, tree=None, commit=None):
+    """--verify passed, and the candidate's bytes match the build's manifest. Then the build moves to
+    BUILDS/<image>, and check.json there maps it to the tree and commit."""
     def parse(status, text):
         result, candidate = last_json(text), out / 'candidate.ldr'
         if status or not result or result.get('passed') is not True or not candidate.is_file():
@@ -130,19 +132,24 @@ def verify_parser(out):
             recorded = json.loads((out / 'manifest.json').read_text()).get('candidate_sha256')
         except (OSError, ValueError):
             recorded = None
-        return recorded == digest, dict(candidate=dict(sha256=digest, bytes=len(data), build=str(out)))
+        if recorded != digest:
+            return False, {}
+        named = paths.name_by_image(out)
+        write_json(named / 'check.json', dict(image=named.name, tree=tree, commit=commit))
+        return True, dict(candidate=dict(sha256=digest, image=named.name, bytes=len(data), build=str(named)))
     return parse
 
 
 def fresh_build_folder(tree):
-    """BUILDS/check-<tree>, emptied; older check-* folders beyond KEEP_BUILDS are removed."""
-    out = paths.BUILDS / ('check-' + tree[:12])
-    shutil.rmtree(out, ignore_errors=True)
-    old = sorted(paths.BUILDS.glob('check-*'), key=lambda p: p.stat().st_mtime, reverse=True)
-    for folder in old[KEEP_BUILDS - 1:]:
-        if folder.is_dir():
-            shutil.rmtree(folder, ignore_errors=True)
-    return out
+    """BUILDS/check-<tree>, emptied (and any other check-* left by a failed run); of the builds/<image>
+    folders a check made, those beyond the KEEP_BUILDS - 1 newest are removed."""
+    for folder in paths.BUILDS.glob('check-*'):
+        shutil.rmtree(folder, ignore_errors=True)
+    made = sorted((p for p in paths.BUILDS.glob('*/check.json') if paths.IMAGE_NAME.fullmatch(p.parent.name)),
+                  key=lambda p: p.stat().st_mtime, reverse=True)
+    for marker in made[KEEP_BUILDS - 1:]:
+        shutil.rmtree(marker.parent, ignore_errors=True)
+    return paths.BUILDS / ('check-' + tree[:12])
 
 
 def standard_steps(args, root, tree, work):
@@ -154,7 +161,8 @@ def standard_steps(args, root, tree, work):
                   root, {'XYF_EXHAUSTIVE': '1'}, tests_parser(summary))]
     out = fresh_build_folder(tree)
     steps += [step('product build', [py, root / 'xyf_build.py', '--xyf-product', '--out', out], root),
-              step('verify', [py, root / 'xyf_build.py', '--verify', '--out', out], root, parse=verify_parser(out))]
+              step('verify', [py, root / 'xyf_build.py', '--verify', '--out', out], root,
+                   parse=verify_parser(out, tree, git(root, 'rev-parse', 'HEAD')))]
     if args.neutral is not None:
         ref = args.neutral or merge_base(root)
         if not ref:
@@ -313,7 +321,8 @@ def describe(record):
     if t:
         lines.append('tests: %d run, %d skipped, %d failed (%s s)' % (t['run'], t['skipped'], t['failed'], t.get('seconds')))
     if c:
-        lines.append('candidate: sha256 %s, %d bytes, %s' % (c['sha256'], c['bytes'], c['build']))
+        lines.append('candidate: image %s, sha256 %s, %d bytes, %s' % (c.get('image', c['sha256'][:8]), c['sha256'],
+                                                                      c['bytes'], c['build']))
     lines.append('log: %s' % record.get('log'))
     return lines
 

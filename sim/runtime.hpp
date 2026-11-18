@@ -173,6 +173,7 @@ uint64_t device_cycles();                        // this processor's CCLK cycle 
 void host_start();                               // processor start: this thread is main
 void host_poll();                                // at host calls on the main thread (A's control stall)
 void stock_bootloader();                         // after a reset: the stock bootloader's side of the boot
+void power_on_image();                           // B at power-on: the image its bootloader read (boot.cpp)
 void a_boot_request(uint32_t request);           // A's bootloader: answer one pool request (sim/stock.cpp)
 }
 #endif
