@@ -70,12 +70,20 @@ def private_output(path):
     return path
 
 
-def newest_verified_build():
-    """The verified product build tests use when present: of BUILDS/xy-forever-product-NNN-MMM, the highest NNN
-    then MMM whose verification.json says passed, mode xyf-product. None when there is none."""
+def source_build_number():
+    """The product build number this checkout's source builds (xyf_build.py MODES), or None."""
     import re
-    found = []
-    for d in BUILDS.glob('xy-forever-product-*'):
+    m = re.search(r"'xyf-product': \('xyf-product-(\d+)'", (REPO / 'xyf_build.py').read_text())
+    return int(m[1]) if m else None
+
+
+def newest_verified_build():
+    """The verified product build tests use when present: of BUILDS/xy-forever-product-NNN-MMM with NNN this
+    source's build number (another branch's builds never count), the highest MMM whose verification.json says
+    passed, mode xyf-product. None when there is none."""
+    import re
+    found, number = [], source_build_number()
+    for d in BUILDS.glob('xy-forever-product-%d-*' % number if number else 'xy-forever-product-*'):
         m = re.fullmatch(r'xy-forever-product-(\d+)-(\d+)', d.name)
         try:
             v = json.loads((d / 'verification.json').read_text()) if m else None
