@@ -62,6 +62,7 @@ def main():
         lib.ui_render_menu(fb, 0, b''); png(out / 'menu.png', pixels(fb))
         lib.ui_render_menu(fb, 4, b'Uninstall: not available yet.'); png(out / 'menu-status.png', pixels(fb))
         lib.ui_render_message(fb); png(out / 'info.png', pixels(fb))
+        lib.ui_render_crash(fb, 0x26, 0x8ab03d14, 0x8ab05a20); png(out / 'crash.png', pixels(fb))
         lib.ui_render_library(fb, 3, 7); png(out / 'library.png', pixels(fb))
         lib.ui_render_confirm(fb, 1); png(out / 'confirm.png', pixels(fb))
         lib.ui_render_progress(fb, 1300000, 2000000); png(out / 'progress.png', pixels(fb))

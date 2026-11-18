@@ -41,7 +41,6 @@ OVER = {
     'sim/stock.cpp': 40937,
     'target/cold_storage.cpp': 33710,
     'target/file_boot.cpp': 73184,
-    'target/key_ui.cpp': 35692,
     'target/peer_services.cpp': 41949,
     'target/storage_server.cpp': 43048,
     'target/xyf_content_job.hpp': 34146,

@@ -7,6 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from xy_forever.source_text import unit_text
 from xyf_build import KEY_UI_CALLS, call_targets, key_ui_spans
 from xy_forever.census import (KEYS, KEY_UI_DISPLAY_FIELDS, KEY_UI_FIELDS, KEY_UI_MAGIC, boot_key_snapshot,
                                    held_keys, key_ui)
@@ -77,7 +78,7 @@ class KeyUiTest(unittest.TestCase):
         self.assertEqual((out['dma_not_idle'], out['stale_busy_cleared']), (0, 1))
 
     def test_present_uses_stock_synchronous_display_path(self):
-        text = (ROOT / 'target/key_ui.cpp').read_text()
+        text = unit_text(ROOT / 'target/key_ui.cpp')      # present() is in its part key_ui_display.ipp
         body = text[text.index('void present() {'):text.index('\n}\n', text.index('void present() {'))]
         order = [body.index(s) for s in ('dma_idle(', 'wait_dma();', 'draw_screen(', 'flush_framebuffer(',
                                          'transfer();')]
@@ -109,7 +110,7 @@ class KeyUiTest(unittest.TestCase):
 
     def test_ms_conversion_matches_400_mhz_clock(self):
         # Test018 regression: *41 >> 4 gave microseconds (20 s timeout fired at 20 ms).
-        text = (ROOT / 'target/key_ui.cpp').read_text()
+        text = unit_text(ROOT / 'target/key_ui.cpp')      # present() is in its part key_ui_display.ipp
         self.assertIn('uint32_t ms_since(uint32_t start) { return xyf::clock::ms_from_units(cycles_div1024() - start); }',
                       text)
         clock = (ROOT / 'target/xyf_clock.hpp').read_text()     # ms_from_units: (units >> 13) * mul + ...

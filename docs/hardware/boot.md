@@ -23,7 +23,18 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   `0x6160`). The PA2 role strap reads 0 at cold time, because stock `88a1d510`
   enables PA0/2/8 inputs only while it samples them.
 - **Interrupts:** the GPIO callback vector is at `0x11b00000` (L1 data scratch), not
-  SDRAM. IMASK at cold entry is `0x881f`.
+  SDRAM. IMASK at cold entry is `0x881f` (IVG5, hardware errors, masked).
+- **Exceptions:** core MMRs sit at `0x1fc00000`; the event vector table at `0x1fc02000` (EVT3, the
+  exception vector, `+0xc`; stock `88a33b6a` reads and writes EVT[n]). The stock code holds no EXCPT
+  instruction (the listing's EXCPT decodes all lie in data) and installs all its CPLB descriptors at
+  start (14 data, 9 instruction), so an exception at cold time is a fault. Its exception dispatch
+  tables are L1 data (`0x11b005d0` handlers, `0x11b00b30` EXCAUSE to slot). While B's menu has the
+  screen, the product build's crash vector is in EVT3 (`target/key_ui_crash.ipp`). Misaligned 32-bit and 16-bit
+  data reads (SDRAM and L1 data, P- and I-register addressing) complete without an exception on B (#102).
+- **Data CPLBs:** the stock table at L2 `0x0803c0b4` (`{address, data}`, -1 ends; page 1 KiB * 4^PSIZE, data
+  bits 16-19, start `11a008e6`): L2 `0x08000000..0x08040000`, boot ROM `0x04000000..0x04080000`, SDRAM
+  `0x80000000..0x90000000`, `0x40000000..0x48000000`, 4 KiB at `0x70000000` and `0x38000000`. Nothing else is
+  mapped for data (`0x90000000`: the crash trigger test build's unmapped read, `scripts/crash_trigger.py`).
 - **Retained heap:** `0x88a65bf8..0x8aa65bf4` (allocator table at `0x88a2a4d0`). The
   old default module address `0x8a800000` lay inside it.
 - **Cold layout:** ROM trampoline at `0x11a00000`, RAM loader `0x88a3477a`; the embedded OS at

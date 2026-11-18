@@ -56,18 +56,21 @@ MODES = {
     # restart, diag.mtp_usb op 0). Builds and verifies as the product (product_kind) apart from its name,
     # reports, hello mode and the trial.
     'xyf-mtp-usb': 'mtpu-#.bin',
+    # The crash trigger test build (#102): the product plus diag.crash (XYF_CRASH_TRIGGER), a fault on purpose.
+    'xyf-crash-trigger': 'crash-#.bin',
 }
 MANIFEST_SCHEMA = 2                 # 2: no build number; version and image. --verify refuses another schema.
 # Reports go to this device folder (the reporter does not create it).
 REPORT_DIR = '/yaffs2/xy-forever/log/'
 # Report name written by the file image (the library os.ldr); it shows which image a processor booted.
 FILE_VARIANT_REPORTS = {'xyf-product': 'pfile-#.bin', 'xyf-stage2': 'file2-#.bin',
-                        'xyf-stage2-menu': 'file2m-#.bin', 'xyf-mtp-usb': 'fmtpu-#.bin'}
+                        'xyf-stage2-menu': 'file2m-#.bin', 'xyf-mtp-usb': 'fmtpu-#.bin',
+                        'xyf-crash-trigger': 'fcrash-#.bin'}
 
 
 def product_kind(mode):
-    """The mode whose feature sets a build mode uses: the MTP USB test build is the product plus its probe."""
-    return 'xyf-product' if mode == 'xyf-mtp-usb' else mode
+    """The mode whose feature sets a build mode uses: each device test build is the product plus its test."""
+    return 'xyf-product' if mode in ('xyf-mtp-usb', CRASH_TRIGGER_MODE) else mode
 
 
 def hello_defines(mode):
@@ -173,10 +176,12 @@ MTP_USB_KICK_CALLS = {'88a094aa', '88a0ba08'}
 # the start (usb_service probe_spans: a failed check starts the stock serial instead).
 # The MTP USB mode is in MODES as the device test build (product_kind: the product's feature sets).
 MTP_USB_MODE = 'xyf-mtp-usb'
-MTP_USB_MODES = ('xyf-product', MTP_USB_MODE)      # 188: the composite (product_kind 'xyf-product')
+MTP_USB_MODES = ('xyf-product', MTP_USB_MODE, 'xyf-crash-trigger')   # 188: the composite (product_kind 'xyf-product')
 MTP_USB_DEFINES = ('-DXYF_MTP_USB=1', '-DXYF_MTP_USB_KICK=1')
 MTP_USB_TRIAL_DEFINES = ('-DXYF_MTP_USB_TRIAL=1',)  # the test mode only
-MTP_SESSION_DEFINES = ('-DXYF_MTP_SESSION=1',)     # the MTP session on the composite's MTP interface
+MTP_SESSION_DEFINES = ('-DXYF_MTP_SESSION=1',)
+# #102: diag.crash (target/usb_service_crash_trigger.ipp, key_ui_crash.ipp) only in this test mode; never the product.
+CRASH_TRIGGER_MODE, CRASH_TRIGGER_DEFINES = 'xyf-crash-trigger', ('-DXYF_CRASH_TRIGGER=1',)     # the MTP session on the composite's MTP interface
 MTP_USB_TX_START_SPAN = (0x88a0c0b0, 0x80)
 
 
@@ -867,6 +872,9 @@ def verify(out, stock, boot):
     # 20 s fallback restart) only in the test mode.
     require(has('mtp_usb') == (mode_name in MTP_USB_MODES), 'MTP USB driver linked outside ' + ', '.join(MTP_USB_MODES))
     require(has('fallback_restart') == (mode_name == MTP_USB_MODE), 'MTP USB trial linked outside ' + MTP_USB_MODE)
+    trigger = mode_name == CRASH_TRIGGER_MODE
+    require(has('crash_command') == trigger and has('xyf_crash_fault') == trigger and has('crash_fault') == trigger,
+            'Crash trigger linked outside ' + CRASH_TRIGGER_MODE)
     if mode_name in MTP_USB_MODES:
         require(MTP_USB_CALLS | MTP_USB_KICK_CALLS <= targets, 'MTP USB build lacks its stock calls: ' +
                 ', '.join(sorted((MTP_USB_CALLS | MTP_USB_KICK_CALLS) - targets)))
@@ -1165,7 +1173,8 @@ def build(out, stock, boot, mode):
                                        'file_boot', 'storage_server', 'usb_service', 'file_client') else ()) +
             (hello_defines(mode_name) + (('-DXYF_STAGE2_SERVICE=1',) if stage2_service else ()) +
              (MTP_USB_DEFINES + MTP_SESSION_DEFINES if mtp_usb else ()) +
-             (MTP_USB_TRIAL_DEFINES if mode_name == MTP_USB_MODE else ()) if name == 'usb_service' else ()))
+             (MTP_USB_TRIAL_DEFINES if mode_name == MTP_USB_MODE else ()) if name == 'usb_service' else ()) +
+            (CRASH_TRIGGER_DEFINES if mode_name == CRASH_TRIGGER_MODE and name in ('usb_service', 'key_ui') else ()))
     if mtp_usb:                                     # the driver, its stock binding (kicks on); 188: the product
         for name in ('mtp_usb', 'mtp_usb_stock'):
             cpp(name, SOURCE / ('target/' + name + '.cpp'), MTP_USB_DEFINES + ('-fno-zero-initialized-in-bss',))   # no BSS
@@ -1291,6 +1300,8 @@ def main():
                        help='The XY Forever product: USB service, menu, file/library boot (wide layout)')
     modes.add_argument('--xyf-mtp-usb', dest='mode', action='store_const', const='xyf-mtp-usb',
                        help='Device test: the product plus the MTP USB probe (diag.mtp_usb); never the product')
+    modes.add_argument('--xyf-crash-trigger', dest='mode', action='store_const', const=CRASH_TRIGGER_MODE,
+                       help='Device test (#102): the product plus diag.crash, a fault on purpose; never the product')
     modes.add_argument('--xyf-stage2', dest='mode', action='store_const', const='xyf-stage2',
                        help='Offline (Test032): menu boot + read-only "hello" stage 2 (PLAY: load, check, run, return)')
     modes.add_argument('--xyf-stage2-menu', dest='mode', action='store_const', const='xyf-stage2-menu',

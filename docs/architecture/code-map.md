@@ -15,7 +15,7 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 | `target/xyf_clock.hpp` | wrap-safe millisecond clock for every cold module |
 | `target/file_boot.cpp`, `xyf_boot.hpp` | file/library boot session on both roles; menu boot |
 | `target/menu_link.cpp`, `peer_services.cpp` | USB command link (file boot's session); stock SPI peer session wrappers |
-| `target/key_ui.cpp` | B's hold-key UI loop, keys from the PSoC, screen present |
+| `target/key_ui.cpp`, `key_ui_*.ipp`, `crash_screen.hpp` | B's hold-key UI loop, keys from the PSoC, screen present; B's crash screen (its exception vector while the menu has the screen) |
 | `target/usb_service.cpp`, `usb_proto.cpp` | USB CDC service on B (install, files, reboot, screen, key) |
 | `target/usb_service_*.ipp` | `usb_service.cpp`'s parts, one per section, included in place: one translation unit |
 | `target/storage_server.cpp`, `file_engine.cpp`, `file_client.cpp` | A's storage server (the file engine's entries and window, install mode); the engine's path policy and request decision (both processors); B's timed file client |

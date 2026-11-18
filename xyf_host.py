@@ -79,7 +79,7 @@ IMAGE_CAPACITY = 0x700000                         # usb_service.hpp image_capaci
 PUT_CHUNK = 1024
 # Build modes that keep this USB service. xyf-usb is the retired Test 031-042 mode: the
 # builder no longer makes it, but the tests' private fixture build was made with it.
-USB_MODES = ('xyf-usb', 'xyf-product', 'xyf-mtp-usb')   # the MTP USB test build keeps the service
+USB_MODES = ('xyf-usb', 'xyf-product', 'xyf-mtp-usb', 'xyf-crash-trigger')   # the device test builds keep the service
 READ_RANGE = 1024              # device read_range_max (Test 038: 4 KiB replies hung)
 INSTALL_TIMEOUT = 900.0         # host bound for one INSTALL (v3 link sessions have no device cap)
 COPY_RATE = 10000.0             # file.copy: the host waits its timeout plus 1 s per this many bytes

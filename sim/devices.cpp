@@ -285,6 +285,14 @@ void real_keys_deliver() {
 }
 namespace xy_forever { namespace key_ui {
 Result result = {magic};
+void crash_disarm() {}                                                 // no vector: the screen is not hosted
+#if defined(XYF_CRASH_TRIGGER)
+bool crash_armed_now() { return sim_menu; }                           // as key_ui: armed while the menu has the screen
+void crash_fault(uint32_t kind) {                                     // no exception vector here: B stops answering
+    xyf_sim::log("crash trigger: kind %u; the simulator has no fault or crash screen: B halts here", kind);
+    xyf_sim::exit_processor(xyf_sim::exit_halt);
+}
+#endif
 bool service_screen(const char* a, const char* b, const char* c, const char* d) {
     xyf_sim::log("screen: %s | %s | %s | %s", a ? a : "", b ? b : "", c ? c : "", d ? d : "");
     return true;

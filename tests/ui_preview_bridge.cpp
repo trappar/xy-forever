@@ -2,6 +2,7 @@
 // tests can check bounds and write PNG previews. Not linked into the device.
 #include "../target/ui_screens.hpp"
 #include "../target/ui_gfx.hpp"
+#include "../target/crash_screen.hpp"
 using namespace xyf;
 // The chrome every bridge draws with (ui_pages.hpp): the version, the USB mark, the activity line, the image.
 ui::Chrome bridge_chrome = {"v0.1.0", false, nullptr, false, "image f458e3cc"};
@@ -29,6 +30,14 @@ void ui_render_message(uint16_t* fb) {
                                     "Hold PLAY at power-on to open this menu."},
                            5, "PLAY  back", &bridge_chrome};
     ui::draw_message(fb, message);
+}
+// B's crash screen (target/key_ui_crash.ipp) for a recorded SEQSTAT, RETX and RETS.
+void ui_render_crash(uint16_t* fb, unsigned seqstat, unsigned retx, unsigned rets) {
+    static crash::Text text;
+    const crash::Record record = {1, seqstat, retx, rets};
+    crash::describe(record, text);
+    const ui::Chrome still = {bridge_chrome.version, false, nullptr, false, bridge_chrome.image};
+    ui::draw_message(fb, crash::message(text, &still));
 }
 void ui_render_text(uint16_t* fb, int x, int y, const char* s, int scale) {
     gfx::clear(fb, gfx::black);

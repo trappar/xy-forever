@@ -130,6 +130,8 @@ Keep a known-good build and its dev-menu kit ready at all times.
   recovers a hang but a manual power cycle: stop on a suspected hang and request one. Restarting B
   alone freezes the device; never send REBOOT after a suspected lone A restart. Builds before 1.14
   still answer `diag.guard`: never send it to them either.
+- **A fault on B while its menu has the screen** shows the crash screen (cause, addresses) and B halts until a
+  power cycle; no reset, no storage write (#102, `key_ui_crash.ipp`). Outside the menu the stock vector runs.
 - **Never leave hold on with no host attached.** Hold and the old guard together caused a
   repeated self-reboot. A held restart with no HELLO boots normally; held restarts wait 30 s
   for the host.

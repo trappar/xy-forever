@@ -111,6 +111,8 @@ def product_defines(version=None, mode='xyf-product', switches=None, hello=None)
                                                                                                   release.VERSION),
              '-DXYF_BUILD_MODE="%s"' % mode[len('xyf-'):]]
     flags += ['-D%s=1' % s for s in sorted(switches)]
+    if mode == xyf_build.CRASH_TRIGGER_MODE:            # diag.crash; sim/devices.cpp halts B in place of the fault
+        flags += xyf_build.CRASH_TRIGGER_DEFINES
     if hello is not None:
         flags.append('-DXYF_SIM_HELLO_TEXT="%s"' % hello)
     return flags
@@ -220,6 +222,10 @@ def compile_into(work, defines):
     (work / 'native').mkdir()
     for path in ROOT.glob('target/*.?pp'):
         text = rewrite(path.name, path.read_text())
+        owner = re.match(r'// Part of (\w+)\.cpp', text)      # a part of a source the simulator does not host
+        if owner and owner.group(1) not in TARGET_SOURCES:      # (key_ui's) is not compiled either
+            (work / 'target' / path.name).write_text(text)
+            continue
         if '__asm__ volatile' in text and (path.suffix in ('.hpp', '.ipp') or path.stem in TARGET_SOURCES):
             raise RuntimeError('simulator: %s has asm no rewrite covers' % path.name)
         (work / 'target' / path.name).write_text(text)
@@ -526,6 +532,8 @@ def main(argv=None):
     parser.add_argument('--plain', action='store_true', help='power on without PLAY (boots the default: no USB)')
     parser.add_argument('--version', help='hello version= (default: this checkout\'s release version)')
     parser.add_argument('--pre-v1', action='store_true', help='serve the pre-v1 hello text (builds 153 and earlier)')
+    parser.add_argument('--crash-trigger', action='store_true',
+                        help='the crash trigger test build (#102): diag.crash halts B (no fault, no screen)')
     parser.add_argument('--no-otp', action='store_true',
                         help="processor B's OTP answers nothing (default: the private keys, when present)")
     args = parser.parse_args(argv)
@@ -539,7 +547,8 @@ def main(argv=None):
         seed(root)
     hello = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e' if args.pre_v1 else None
     print('building the simulator...', file=sys.stderr, flush=True)
-    out = build(state / 'builds', version=args.version, hello=hello)
+    out = build(state / 'builds', version=args.version, hello=hello,
+                mode='xyf-crash-trigger' if args.crash_trigger else 'xyf-product')
     otp = None if args.no_otp else otp_fields()
     print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
     sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp)
