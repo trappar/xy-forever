@@ -106,7 +106,7 @@ def product_defines(version=None, mode='xyf-product', switches=None, hello=None)
              '-DXYF_CENSUS_BASE=%#xu' % (xyf_build.REPORTER - xyf_build.CENSUS_BYTES),
              '-DXYF_CENSUS_BYTES=%#xu' % xyf_build.CENSUS_BYTES, '-DXYF_MENU_LINK=1', '-DXYF_FILE_BOOT=1',
              '-DXYF_REMOTE_READ=1', '-DXYF_USB_SERVICE=1', '-DXYF_STAGE2_SERVICE=1',
-             '-DXYF_MTP_SESSION=1',                    # the MTP session (never in the product build)
+             '-DXYF_MTP_SESSION=1',                    # the MTP session (the product build's too)
              '-DXYF_VERSION="%s"' % (version or release.VERSION), '-DXYF_VERSION_CODE=%#xu' % release.code(version or
                                                                                                   release.VERSION),
              '-DXYF_BUILD_MODE="%s"' % mode[len('xyf-'):]]

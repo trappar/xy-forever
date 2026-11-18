@@ -211,7 +211,7 @@ void mtp_tunnel(uint8_t seq, const uint8_t* payload, U32 length) {
         n = 8;
         for (U32 i = first; i != count; ++i)
             for (U32 k = 0; k != 5; ++k, n += 4) P::put32(files + n, m.log[i % ms::log_entries][k]);
-    } else code = op > 6 ? P::s_unsupported : P::s_bad_request;   // no op: as an unlisted type (not in protocol/v1.json yet)
+    } else code = xyf::unlisted_op::status(payload, length, 6);     // not in protocol/v1.json yet
     P::put32(files, code);
     result.last_status = code;
     send(t_mtp_tunnel, seq, files, n);
