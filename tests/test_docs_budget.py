@@ -3,6 +3,7 @@
 Budgets are bytes, not lines: a line budget is met by writing longer lines. Every doc line has a width limit.
 Over budget: split into a tree (an index plus leaves), do not squeeze.
 """
+import os
 import re
 import unittest
 from pathlib import Path
@@ -162,7 +163,7 @@ class DocsBudget(unittest.TestCase):
         for path in docs() + [ROOT / n for n in LINKED]:
             broken = []
             for file, anchor in links(path):
-                target = (BASE.get(rel(path), path.parent) / file) if file else path
+                target = Path(os.path.normpath(BASE.get(rel(path), path.parent) / file)) if file else path   # lexical: docs/status/ may be absent
                 if not target.exists():
                     broken.append(f'{file}#{anchor}' if anchor else file)
                 elif anchor and target.suffix == '.md' and anchor not in slugs(target):
