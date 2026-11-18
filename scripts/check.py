@@ -8,8 +8,9 @@ The standard set, in order, stopping at the first failure:
   - the exhaustive unit suite: XYF_EXHAUSTIVE=1 scripts/run_tests.py (every test, never a subset);
   - the product build into a fresh private build folder (<private>/xy-forever/builds/check-<tree>),
     then xyf_build.py --verify of it;
-  - scripts/neutral.py REF with --neutral (default REF: the merge base with main);
-  - npm test in clients/ts when clients/ts differs from main's merge base, or with --npm.
+  - scripts/neutral.py REF with --neutral (default REF: the merge base with origin/main, else main);
+  - npm test in clients/ts when clients/ts differs from that merge base, or with --npm (refused up front,
+    naming npm ci, when clients/ts/node_modules is missing).
 Step output goes to a log under <private>/xy-forever/sessions/<date>-check/; a short summary is printed.
 
 The working tree must be clean (`git status --porcelain` empty: untracked files count, gitignored ones
@@ -68,8 +69,8 @@ def require_clean(root, when):
 
 
 def merge_base(root):
-    """HEAD's merge base with main (else origin/main), or None."""
-    for main in ('main', 'origin/main'):
+    """HEAD's merge base with origin/main (else a local main, which may be stale), or None."""
+    for main in ('origin/main', 'main'):
         try:
             return git(root, 'merge-base', 'HEAD', main)
         except CheckError:
@@ -78,7 +79,7 @@ def merge_base(root):
 
 
 def clients_changed(root):
-    """Whether clients/ts differs between main's merge base and HEAD (True without a main to compare)."""
+    """Whether clients/ts differs between HEAD and its merge base with main (True without a main to compare)."""
     base = merge_base(root)
     if base is None:
         return True
@@ -147,6 +148,7 @@ def fresh_build_folder(tree):
 def standard_steps(args, root, tree, work):
     """The standard set for this run (work: a temporary folder for the suite's counts)."""
     py, summary = sys.executable, Path(work) / 'tests.json'
+    npm = npm_steps(args, root)                  # before anything runs: a missing node_modules stops the run
     jobs = ['--jobs', str(args.jobs)] if args.jobs else []
     steps = [step('unit tests (exhaustive)', [py, root / 'scripts/run_tests.py', *jobs, '--summary', summary],
                   root, {'XYF_EXHAUSTIVE': '1'}, tests_parser(summary))]
@@ -158,9 +160,18 @@ def standard_steps(args, root, tree, work):
         if not ref:
             raise CheckError('--neutral: no main to compare with; name a REF')
         steps.append(step('neutral vs %s' % ref[:12], [py, root / 'scripts/neutral.py', ref], root))
-    if (args.npm or clients_changed(root)) and (root / 'clients/ts').is_dir():
-        steps.append(step('npm test (clients/ts)', [shutil.which('npm') or 'npm', 'test'], root / 'clients/ts'))
+    steps += npm
     return steps
+
+
+def npm_steps(args, root):
+    """npm test in clients/ts when it changed (or --npm); CheckError when its node_modules is not installed."""
+    clients = root / 'clients/ts'
+    if not clients.is_dir() or not (args.npm or clients_changed(root)):
+        return []
+    if not (clients / 'node_modules').is_dir():
+        raise CheckError('npm test needs clients/ts/node_modules, which is missing: run `npm ci` in clients/ts')
+    return [step('npm test (clients/ts)', [shutil.which('npm') or 'npm', 'test'], clients)]
 
 
 def run_steps(steps, log):
@@ -313,7 +324,7 @@ def main(argv=None, root=ROOT, checks=CHECKS):
                         help="exit 0 only when a passing receipt matches REF's tree (default HEAD)")
     parser.add_argument('--jobs', type=int, help="unit-test processes at a time (default: run_tests.py's)")
     parser.add_argument('--neutral', nargs='?', const='', metavar='REF',
-                        help='also scripts/neutral.py REF (default REF: the merge base with main)')
+                        help='also scripts/neutral.py REF (default REF: the merge base with origin/main, else main)')
     parser.add_argument('--npm', action='store_true', help='npm test in clients/ts even when it did not change')
     args = parser.parse_args(argv)
     try:

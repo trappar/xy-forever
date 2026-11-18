@@ -43,6 +43,7 @@ class CheckReceiptTests(unittest.TestCase):
                               text=True).stdout.strip()
 
     def commit(self, name, text):
+        (self.root / name).parent.mkdir(parents=True, exist_ok=True)
         (self.root / name).write_text(text)
         self.git('add', '-A')
         self.git('commit', '-q', '-m', name)
@@ -136,6 +137,29 @@ class CheckReceiptTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertIn('tests: 12 run, 1 skipped, 0 failed', text)
         self.assertIn('candidate: sha256 ' + 'ab' * 32 + ', 1234 bytes', text)
+
+    def test_merge_base_prefers_origin_main(self):
+        stale = self.git('rev-parse', 'HEAD')
+        self.commit('clients/ts/a.ts', 'merged on main')
+        self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
+        self.git('switch', '-q', '-c', '7-topic')
+        self.git('branch', '-q', '-f', 'main', stale)       # local main behind origin/main
+        self.commit('b.txt', 'two')
+        self.assertEqual(C.merge_base(self.root), self.git('rev-parse', 'origin/main'))
+        self.assertFalse(C.clients_changed(self.root))
+        self.git('update-ref', '-d', 'refs/remotes/origin/main')
+        self.assertEqual(C.merge_base(self.root), stale)    # no origin/main: the local main
+        self.assertTrue(C.clients_changed(self.root))
+
+    def test_npm_needs_node_modules(self):
+        args = C.argparse.Namespace(npm=True)
+        self.assertEqual(C.npm_steps(args, self.root), [])  # no clients/ts: nothing to test
+        (self.root / 'clients/ts').mkdir(parents=True)
+        with self.assertRaisesRegex(C.CheckError, 'node_modules, which is missing: run `npm ci`'):
+            C.npm_steps(args, self.root)
+        (self.root / 'clients/ts/node_modules').mkdir()
+        self.assertEqual([s['name'] for s in C.npm_steps(args, self.root)], ['npm test (clients/ts)'])
+        self.assertEqual(C.npm_steps(C.argparse.Namespace(npm=False), self.root), [])   # unchanged on main
 
     def test_verify_parser(self):
         with tempfile.TemporaryDirectory() as tmp:

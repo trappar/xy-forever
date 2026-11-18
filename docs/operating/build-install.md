@@ -48,11 +48,12 @@ python3 scripts/check.py --confirm BRANCH              # seconds, no build: what
 `scripts/check.py` runs once on a clean, committed tree: the exhaustive suite (`XYF_EXHAUSTIVE=1
 scripts/run_tests.py`, every test, never a subset), the product build into
 `../private/xy-forever/builds/check-<tree>` plus `--verify`, `scripts/neutral.py` with `--neutral [REF]`, and
-`npm test` in `clients/ts` when that folder differs from main's merge base (or `--npm`). Step output goes to a
-log in `../private/xy-forever/sessions/<date>-check/`; it prints a short summary. Only when every step passed
-and the tree was clean (`git status --porcelain` empty) at the start and the end does it write the receipt
-`../private/xy-forever/checks/<tree>.json`, keyed to `git rev-parse HEAD^{tree}`: each step's command, result
-and time, the test counts, the candidate SHA-256 and size, the build folder. A failed run leaves
+`npm test` in `clients/ts` when that folder differs from the merge base with `origin/main` (else local `main`)
+or with `--npm`; it stops first, naming `npm ci`, when `clients/ts/node_modules` is missing. Step output goes
+to a log in `../private/xy-forever/sessions/<date>-check/`; it prints a short summary. Only when every step
+passed and the tree was clean (`git status --porcelain` empty) at the start and the end does it write the
+receipt `../private/xy-forever/checks/<tree>.json`, keyed to `git rev-parse HEAD^{tree}`: each step's command,
+result and time, the test counts, the candidate SHA-256 and size, the build folder. A failed run leaves
 `<tree>.failed.json` instead and removes that tree's receipt.
 
 `--confirm [REF]` (default `HEAD`) exits 0 only for a passing receipt of REF's tree, and prints it; otherwise
