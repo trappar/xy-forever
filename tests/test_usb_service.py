@@ -695,7 +695,7 @@ class UsbPresenceTest(unittest.TestCase):
         release = release[:release.index('\n}\n')]
         self.assertLess(release.index('guard_disarm();'), release.index('usb_stop();'))
         pump = text[text.index('uint32_t home_pump() {'):]
-        self.assertIn('else if (on) guard_arm();', pump)   # otherwise only the host arms it (b only: record 022)
+        self.assertIn('else if (on) guard_arm();', pump)   # otherwise only the host arms it (B only)
         self.assertNotIn('guard_item', text)
         install = text[text.index('void install(uint8_t seq'):]
         self.assertLess(install.index('guard_count_set(guard_writer_count);'), install.index('write_boot(staged'))
@@ -720,7 +720,7 @@ class UsbPresenceTest(unittest.TestCase):
         self.assertEqual(P.TEST_HANG, 0x60)
 
     def test_a_has_no_guard_and_restarts_only_by_following_b(self):
-        # record 022: a's own guard and its alone rule are gone; a restarts only to follow b
+        # a's own guard and its alone rule are gone; a restarts only to follow b
         # (F1, the idle window), closing the window first, or on b's REBOOT item.
         text = (ROOT / 'target/file_boot.cpp').read_text()
         for gone in ('a_guarded', 'a_alone_ms', 'a_guard', 'restart_a_item'):

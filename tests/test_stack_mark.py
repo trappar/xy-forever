@@ -1,4 +1,4 @@
-"""0.12 (decision 025): B's stack high-water mark, as STATUS reports it."""
+"""0.12: B's stack high-water mark, as STATUS reports it."""
 from pathlib import Path
 import subprocess
 import sys

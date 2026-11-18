@@ -27,7 +27,7 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 | Stock addresses, keys, display, yaffs, `.tfw`, RE tools | [docs/HARDWARE.md](docs/HARDWARE.md) |
 | On-device files and formats | [docs/STORAGE.md](docs/STORAGE.md) |
 | Product scope and decisions | [docs/GOALS.md](docs/GOALS.md) |
-| Lessons from device tests (what failed, the rule it produced) | [docs/HISTORY.md](docs/HISTORY.md) |
+| Current safety constraints and device lessons | [docs/SAFETY.md](docs/SAFETY.md) |
 
 ## Rules for this repository
 
@@ -44,8 +44,8 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   and correct it if it is wrong, then give one recommendation with its reasons and what is
   uncertain. Do not adopt a view only because of pushback. Product scope, risk to the device and
   approvals stay the developer's.
-- **Checks:** run the unit tests for every change: `python3 scripts/run_tests.py` (`--times`: the
-  slowest; in order, everything: Quick reference). Host bridges and the simulator are cached per input
+- **Checks:** run the unit tests for every change: `python3 scripts/run_tests.py` (`--times` lists the slowest).
+  Host bridges and the simulator are cached per input
   hash in `../private/xy-forever/sessions/`, so a run after a source change is slower. Also `python3
   xyf_build.py --xyf-product …` plus `--verify` for anything that reaches the firmware. A change meant
   to be behaviour-neutral (even removing unused code) must leave every build mode's candidate SHA-256
@@ -59,6 +59,9 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   item someone else is assigned. Until the repository has its GitHub remote, commit locally on
   `main`. No AI attribution in commit messages. Every new on-device file and wire
   format carries a version, and its reader refuses a newer version with a message, never a crash.
+- **Current facts belong in their owning reference or code comment.** Research findings, decisions and
+  follow-ups belong in GitHub issues; use Git history for derivation. Never create repository research
+  reports, numbered decision records, ADRs, or replacement archives/indexes.
 - **Keep your local `docs/status/README.md` current** whenever a build is installed or tested, or the
   device state changes. Where everything else goes: the table in
   [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md). Logs and scratch files never go in the repository.
@@ -68,11 +71,11 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 ```sh
 python3 scripts/setup.py doctor                         # private folder: stock files, fixtures (bootstrap, import-stock)
 python3 scripts/plan.py                                 # the plan: next items, decisions waiting (--all: blocked, threads)
-python3 scripts/run_tests.py --jobs 6                   # unit tests in parallel: ~1.5 min, 1038 tests (busy machine: rerun a timing flake)
+python3 scripts/run_tests.py --jobs 6                   # unit tests in parallel (rerun a timing flake on a busy machine)
 python3 -m unittest discover -s tests                   # the same in order: ~8 min
 XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6  # everything (+ exhaustive bit flips): ~1-2 min
-python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-0NN-001
-python3 xyf_build.py --verify --out ../private/xy-forever/builds/xy-forever-product-0NN-001
+python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-current
+python3 xyf_build.py --verify --out ../private/xy-forever/builds/xy-forever-product-current
 python3 scripts/neutral.py                              # working tree vs HEAD: same candidates?
 python3 xyf_host.py status                              # device over USB
 python3 -m xy_forever.sim                               # device simulator (127.0.0.1:7341; xyf_host.py --sim)

@@ -1,4 +1,4 @@
-"""The stepped mod assembly job (decision 019; native/mod_job, host/mod_assemble.cpp
+"""The stepped mod assembly job (native/mod_job, host/mod_assemble.cpp
 job|faults).
 
 The job runs the device's linker, patch and content steps in bounded steps inside one work region (8 MiB,

@@ -559,7 +559,7 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
         return;
     }
 #if defined(XYF_USB_FILE_WRITE)
-    // Review 024, 1: B's write area on A too, outside the run entry (diag.engine_test, MTP): open for
+    // B's write area on A too, outside the run entry (diag.engine_test, MTP): open for
     // writing, unlink, mkdir and rmdir only where write_root passes and no link reaches the marker or the inbox
     // (reaches_protected; rename: rename_now), whatever B checked.
     const bool change = (action == file_engine::run_open && handle) ||
@@ -724,7 +724,7 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
 #else
     const bool install_mode = false;
 #endif
-    // F1 (record 016): outside install mode a boot request is b's stock bootloader (b
+    // F1: outside install mode a boot request is b's stock bootloader (b
     // restarted alone): no answer; the session holds it and the owner closes storage and restarts a.
     if (!install_mode && peer_services::boot_request(vtable, op, word(request + 8), word(request + 0x18))) {
         session.follow(request); ++r.refused; note(op, file_engine::refuse_raw_layer, 0xfffbu);
@@ -803,7 +803,7 @@ void run_engine(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySess
         session.touch(xyf_boot::clock_ms());
         const peer_services::Result s = session.poll(xyf_boot::clock_ms());
         if (s != peer_services::Result::waiting && s != peer_services::Result::choose_image) break;
-        if (session.follow_now(xyf_boot::clock_ms())) break;   // b restarted: follow it (F1, record 016)
+        if (session.follow_now(xyf_boot::clock_ms())) break;   // b restarted: follow it (F1)
         if (session.commands_seen() != seen) {
             seen = session.commands_seen();
             const U32 item = session.last_command() >> 8 & 0xffu;

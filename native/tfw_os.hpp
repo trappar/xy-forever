@@ -3,7 +3,7 @@
 #include "tfw.hpp"
 #include "inflate.hpp"
 namespace xyf_core { namespace tfw_os {
-// OS-only extraction from an official .tfw (docs/decisions/003-tfw-install.md).
+// OS-only extraction from an official .tfw (docs/hardware/tfw.md).
 // Decrypts only the package header's name block, the ZIP end record and central directory,
 // and the two wanted members, firmware/blackfin/bin/os.ldr and os.version; every other
 // member (bootloader, companions, content) is known only by its directory record. AES-CBC

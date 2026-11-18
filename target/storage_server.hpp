@@ -7,7 +7,7 @@
 // Processor a's storage server: b's stock SPI file requests on the file boot's link session (RPC
 // mode, Test 065), run by the stock slave executors on a's own storage session.
 //
-// File engine (docs/decisions/009-file-engine.md): one engine mode serves every file
+// File engine (docs/architecture/link.md): one engine mode serves every file
 // request. Each request is decided by file_engine::decide_request, whose path policy
 // (file_engine::decide_engine) is the same function b applies before it sends: a enforces it on
 // every request, so no caller can bypass it. b enters the engine with one of three op-10/request
@@ -73,7 +73,7 @@ static const uint32_t install_item = 4, reboot_item = 5;
 // USB service started (Test 041): no action on a; it makes commands_seen
 // nonzero so a restarts with b if the session is then lost (menu_link).
 static const uint32_t usb_mode_item = 7;
-// Retired (record 022): a's own guard (Test 042, guard_item 8; guard off 12) and
+// Retired: a's own guard (Test 042, guard_item 8; guard off 12) and
 // diag.restart_a (13). b no longer sends them; the numbers stay reserved (8 still keeps the window).
 static const uint32_t guard_item = 8;
 static const uint32_t dry_run_item = 9;        // usb_service.hpp: a resets instead of starting the OS

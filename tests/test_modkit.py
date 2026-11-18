@@ -1,4 +1,4 @@
-"""Mod packages from an open-xy kit (xy_forever/modkit.py; docs/decisions/008, 010, 014).
+"""Mod packages from an open-xy kit (xy_forever/modkit.py; docs/storage/mods.md).
 
 Synthetic kits made here from scratch run in the standard suite: package layout, the device's
 manifest and files.sha256 readers (tests/test_xyf_manifest.py's bridge), edits.bin, the rebuilt

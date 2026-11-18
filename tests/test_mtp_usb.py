@@ -128,7 +128,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         return script
 
     def test_composite_started_once(self):
-        # Composite (record 031 b2): register, start(0x200), never a stop or a start inside the boot but the leave
+        # Composite: register, start(0x200), never a stop or a start inside the boot but the leave
         # (stop(0): GP timer 7 kept) before a restart or a boot; the flag deleted before anything starts.
         import re
         stock = (ROOT / 'target/mtp_usb_stock.cpp').read_text()
@@ -186,7 +186,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertIn('0c00000003000120' + '01000000', lines[0])
 
     def test_config_record_is_the_stock_size(self):
-        # Record 031: the stock config record is 0x18 (n_iads at +0x10, IAD array at +0x14); ours ends in two zeros.
+        # the stock config record is 0x18 (n_iads at +0x10, IAD array at +0x14); ours ends in two zeros.
         header = (ROOT / 'target/mtp_usb.hpp').read_text()
         self.assertIn('uint32_t n_iads; const struct Iad* iads; };', header)
         self.assertIn('sizeof(ConfigDesc) == 0x18', header)
@@ -257,7 +257,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
                               length='0x00000344', crc_now='0x12345678', failing=2))
 
     def test_start_gate_against_span_model(self):
-        # 186-003: the start uses the boot-time identity() result (record 029) and still
+        # 186-003: the start uses the boot-time identity() result and still
         # scans engine_identity()'s and probe_spans()'s spans: census words changed -> start; an MTP or the
         # probe span changed -> refused, naming the check and span; boot-time check failed -> refused.
         with tempfile.TemporaryDirectory(prefix='xyf-mtpgate-') as tmp:
@@ -282,9 +282,6 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertIn('{xyf::mtp_usb_spans::table, xyf::mtp_usb_spans::count}', spans)
         self.assertLess(start.index('probe[p_gate] = probe_spans();'), start.index('mu::begin(mu::stock_port())'))
         self.assertIn('if (probe_spans()) return P::s_identity;', start)
-        head = service[:service.index('gate::Check probe_spans() {')]
-        self.assertIn('// Rule (record 029): the MTP start skips the second identity()', head[-600:])
-        self.assertIn('rule, record 029: the MTP start skips', (ROOT / 'target/mtp_usb_gate.hpp').read_text())
         # Only the test build compiles the gate; menu_start_usb (product) still runs identity() at menu start.
         self.assertIn('usb_off = identity() ? 1u : file_client::identity() ? 2u : 0u;', service)
         include = service.index('#include "mtp_usb_gate.hpp"')

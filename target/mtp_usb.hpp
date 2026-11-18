@@ -1,7 +1,7 @@
 #ifndef XYF_MTP_USB_HPP
 #define XYF_MTP_USB_HPP
-// Our own USB function driver on the stock USB stack (smxUSBD), records 002 and 031.
-// The composite (record 031 variant b2): one composite device, started once per boot and never stopped inside it:
+// Our own USB function driver on the stock USB stack (smxUSBD).
+// The composite: one composite device, started once per boot and never stopped inside it:
 // device class EF/02/01 with one IAD over interfaces 0..1; interface 0 CDC comm (notify IN 0x81),
 // interface 1 CDC data (bulk OUT 0x08, bulk IN 0x8b), interface 2 MTP (still image 06/01/01: bulk IN
 // 0x89, bulk OUT 0x0a, interrupt IN 0x83). Registered before the boot's only start, start(0x200): bit 9
@@ -12,12 +12,12 @@
 // three test operations: sink (count N bytes), source (send N pattern bytes) and loopback (echo up to
 // kLoopMax bytes). Serial: serial_available / serial_read / serial_write for the USB service's frames.
 // Stock entry points go through Port, so the host test (mtp_usb_test.cpp) mocks the stack;
-// mtp_usb::stock_port() binds them to the 1.2.1 addresses (record 002 section 5).
+// mtp_usb::stock_port() binds them to the 1.2.1 addresses.
 #include <stdint.h>
 
 namespace xyf { namespace mtp_usb {
 
-// Stock structures (record 002 section 1). Word fields are pointer-sized so the layout matches the
+// Stock structures. Word fields are pointer-sized so the layout matches the
 // 32-bit target; on the host the mock builds them itself. [U] = byte layout inside the word not
 // read from the listing yet: confirm before the device.
 struct Urb {                                   // 0x30, zeroed stock heap
@@ -41,14 +41,14 @@ struct AltDesc { const char* name; uint32_t alt; uint32_t n_extra; const void* e
 // IfaceDesc / ConfigDesc byte layout: as the stock MTP records (driver 88a12534: config 'MTP Config' c0 fa,
 // interface 'MTP Data Intf' 06 01 01) and the CDC ones (driver 88a1349c), read from the 1.2.1 image.
 struct IfaceDesc { const char* name; uint8_t cls, subclass, protocol, pad; uint32_t n_alts; const AltDesc* alts; };
-// ConfigDesc is 0x18 (record 031 section 1): +0x10 n_iads (at most 4, 88a0aa0e), +0x14 the IAD array (88a0aa34);
+// ConfigDesc is 0x18: +0x10 n_iads (at most 4, 88a0aa0e), +0x14 the IAD array (88a0aa34);
 // stock records end in two zero words (CDC 0x88a13460, MTP 0x88a12504). 186-005's 0x10 record let the stack read
 // the next record's name pointer as n_iads: the descriptor build failed and attach 88a08d52 returned -1.
 // The other records match the stock ones word for word (DevInfo 0x14: 0x88a1251c; Driver 0x20: 0x88a12534;
 // IfaceDesc 0x10: 0x88a12674, 0x88a13530; AltDesc 0x18: 0x88a1265c, 0x88a13500; EpDesc 8: 0x88a1262c, 0x88a134bc).
 struct ConfigDesc { const char* name; uint8_t attributes, max_power; uint16_t pad; uint32_t n_ifaces; const IfaceDesc* ifaces;
                     uint32_t n_iads; const struct Iad* iads; };
-// Composite (record 031 section 1, 88a0aa34..98): one IAD record, 0xc: name (iFunction), class, subclass, protocol,
+// Composite (88a0aa34..98): one IAD record, 0xc: name (iFunction), class, subclass, protocol,
 // first interface, interface count. CDC extras (88a0a22a, filled by 88a0a3e0 only with start bit 9, for
 // interfaces 0..1): 0x3c-byte records, +0 type 0x24, +1 subtype, +4/+5 the subtype's fields (header 0: none,
 // bcdCDC 0x0200 by the stack; call management 1: caps, data interface; ACM 2: caps; union 6: master, slave).
@@ -59,21 +59,21 @@ struct Driver { const char* name; const Ops* ops; const DevInfo* devinfo; const 
                 uintptr_t f10, f14; uint32_t n_configs; uintptr_t f1c; };   // writable: the stack fills +0x10/+0x14/+0x1c
 
 #if defined(__bfin__)
-static_assert(sizeof(Urb) == 0x30 && sizeof(Endpoint) == 0x18 && sizeof(Ops) == 0x10 && sizeof(DevInfo) == 0x14, "002");
-static_assert(sizeof(EpDesc) == 8 && sizeof(AltDesc) == 0x18 && sizeof(IfaceDesc) == 0x10 && sizeof(ConfigDesc) == 0x18, "031");
-static_assert(__builtin_offsetof(ConfigDesc, n_iads) == 0x10 && __builtin_offsetof(ConfigDesc, iads) == 0x14, "031");
-static_assert(sizeof(Iad) == 0xc && __builtin_offsetof(Iad, first) == 7 && sizeof(CdcExtra) == 0x3c, "031");
-static_assert(sizeof(Driver) == 0x20 && __builtin_offsetof(Urb, buf) == 0x18 && __builtin_offsetof(Urb, zlp) == 0x2c, "002");
-static_assert(__builtin_offsetof(Endpoint, active) == 0xc && __builtin_offsetof(Endpoint, max_packet) == 0x12, "002");
+static_assert(sizeof(Urb) == 0x30 && sizeof(Endpoint) == 0x18 && sizeof(Ops) == 0x10 && sizeof(DevInfo) == 0x14, "stock USB core structure sizes");
+static_assert(sizeof(EpDesc) == 8 && sizeof(AltDesc) == 0x18 && sizeof(IfaceDesc) == 0x10 && sizeof(ConfigDesc) == 0x18, "stock USB descriptor sizes");
+static_assert(__builtin_offsetof(ConfigDesc, n_iads) == 0x10 && __builtin_offsetof(ConfigDesc, iads) == 0x14, "stock USB IAD array offsets");
+static_assert(sizeof(Iad) == 0xc && __builtin_offsetof(Iad, first) == 7 && sizeof(CdcExtra) == 0x3c, "stock USB IAD and CDC extra layout");
+static_assert(sizeof(Driver) == 0x20 && __builtin_offsetof(Urb, buf) == 0x18 && __builtin_offsetof(Urb, zlp) == 0x2c, "stock USB driver and URB layout");
+static_assert(__builtin_offsetof(Endpoint, active) == 0xc && __builtin_offsetof(Endpoint, max_packet) == 0x12, "stock USB endpoint offsets");
 #endif
 #ifndef XYF_MTP_USB_KICK
-#define XYF_MTP_USB_KICK 0                     // kick / kick_rx (88a094aa / 88a0ba08): off, see record 027
+#define XYF_MTP_USB_KICK 0                     // kick / kick_rx (88a094aa / 88a0ba08): off, separate approval required
 #endif
 struct Port {
     int (*register_driver)(Driver*);                          // 88a09d5c: 0 / -1
     void (*unregister_driver)(Driver*);                       // 88a09d44
     void (*start)(uint32_t flags);                            // 88a35044: kCompositeFlags (once per boot)
-    void (*stop)(uint32_t arg);                               // 88a34fec: always kStopKeepTimer (record 030 (a))
+    void (*stop)(uint32_t arg);                               // 88a34fec: always kStopKeepTimer
     Urb* (*alloc)(uintptr_t dev, uint32_t ep, uint32_t len);  // 88a092ee
     int (*submit_in)(Urb*);                                   // 88a08f24 (IN only)
     void (*recycle)(Urb*);                                    // 88a08f08 (OUT urb back to its queue)
@@ -86,17 +86,17 @@ struct Port {
 };
 
 enum : uint32_t {
-    // Record 030 route (a): both switches stop with 0, as start's own stop does (88a3505e): teardown only, GP
+    // both switches stop with 0, as start's own stop does (88a3505e): teardown only, GP
     // timer 7 (the stack's tick, which the controller init's 5-tick wait needs) stays open. stop(1) closes it.
     kStopKeepTimer = 0, kSerialFlags = 0x400,  // start(0x400): the stock CDC serial service (menu_start_usb)
-    // Bit 9 only (record 031 b2; any stock USB function is admitted for MTP): no stock class.
+    // Bit 9 only (no stock USB class): no stock class.
     kCompositeFlags = 0x200,
     kBulkIn = 0x89, kBulkOut = 0x0a, kIntIn = 0x83, kMaxPacket = 512,
     kNotifyIn = 0x81, kSerialOut = 0x08, kSerialIn = 0x8b,   // CDC: interface 0 (notify), 1 (data)
     kIfaceComm = 0, kIfaceData = 1, kIfaceMtp = 2,
     kSerialOutUrbs = 2, kSerialOutSize = 512,  // one packet per urb: each completes at once (no ZLP question)
     kSerialRing = 8192, kSerialInMax = 16384,  // RAM ring (power of two); one IN urb at most this long
-    kOutUrbs = 4, kOutSize = 16384,           // K x S (record 002 section 2); S a multiple of 512
+    kOutUrbs = 4, kOutSize = 16384,           // K x S; S a multiple of 512
     kInChunk = 16384, kLoopMax = 4096,
     op_get_device_info = 0x1001, op_open_session = 0x1002, op_close_session = 0x1003,
     // Vendor codes no client uses (the old 0x9801..03 are MTP's GetObjectPropsSupported etc.: macOS clients send them)
@@ -106,7 +106,7 @@ enum : uint32_t {
 };
 enum class State : uint32_t { off, started, configured };
 // 88a0ba08 takes the control-endpoint (EP0) path for 0: the binding refuses 0 and every endpoint but
-// our two bulk OUTs (record 027; the serial's 0x08 too).
+// our two bulk OUTs (the serial's 0x08 too).
 inline bool rx_service_allowed(uint32_t ep_number) { return ep_number == (kBulkOut & 0x0fu) || ep_number == (kSerialOut & 0x0fu); }
 
 struct Stats {
@@ -134,7 +134,7 @@ void set_sink_hook(SinkHook hook);
 // One boot's steps (usb_service writes 1-2, 3-7 here, 10-11 and 13-14 usb_service, 8-9 and 12 pump()).
 enum Mark : uint32_t {
     mark_flag_found = 1, mark_flag_deleted, mark_registered, mark_before_start, mark_after_start,
-    mark_attach_ok, mark_attach_failed,        // the stack's init flag [0x88a137a0] after start (88a13714, record 031)
+    mark_attach_ok, mark_attach_failed,        // the stack's init flag [0x88a137a0] after start (88a13714)
     mark_first_setup, mark_configured, mark_first_serial_byte, mark_first_hello, mark_first_command,
     mark_fallback_restart, mark_register_refused,
     mark_count
@@ -180,7 +180,7 @@ uint32_t pump();                               // one bounded main-loop pass; re
 State state();
 const Stats& stats();
 const Driver* driver();
-const Port& stock_port();                      // device binding (record 002 addresses)
+const Port& stock_port();                      // device binding
 
 }}
 #endif

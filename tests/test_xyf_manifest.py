@@ -1,4 +1,4 @@
-"""Package manifests (docs/decisions/010-package-model.md, docs/STORAGE.md): the strict
+"""Package manifests (docs/storage/packages.md, docs/STORAGE.md): the strict
 info.txt reader, the files.sha256 reader, the recogniser and the dependency rules, as host-built
 device C++ (target/xyf_manifest.hpp), compared with the host twin in xy_forever/xyf_entry.py."""
 import ctypes as C

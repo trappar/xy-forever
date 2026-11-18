@@ -1,7 +1,7 @@
 #ifndef XYF_MOD_LINK_HPP
 #define XYF_MOD_LINK_HPP
 #include "ldr.hpp"
-// Device mod linker (docs/decisions/008, 014, 019; docs/storage/mods.md, "Mod packages"):
+// Device mod linker (docs/storage/mods.md, "Mod packages"):
 // a freestanding port of open-xy builder/core.mjs readObject, numberLayout and linkKit (MIT,
 // open-xy commit 52c8de9) with the selection checks of xy_forever/modkit.py rebuild_kit.
 //

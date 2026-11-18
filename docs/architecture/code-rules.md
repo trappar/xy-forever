@@ -21,5 +21,9 @@ The role-A dispatcher snapshots the pending request pointer once per poll. All
 command, storage-RPC and image-transfer checks use that snapshot. An interrupt
 arrival after the snapshot waits for the next poll; re-reading the pointer in
 each branch let late storage requests bypass RPC dispatch and fail the image
-protocol (069 install stalls). `tests/test_peer_dispatch.py` exercises the
+protocol. `tests/test_peer_dispatch.py` exercises the
 production dispatch body with controlled arrivals.
+
+When a stock CRC differs, report its differing word before considering a call or changing a span;
+mutable globals are not permission to weaken code checks. Take each processor's role from the stock
+role byte, not a cold-time GPIO strap. Every boot path needs its peer side.

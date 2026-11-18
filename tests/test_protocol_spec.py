@@ -1,4 +1,4 @@
-"""Protocol spec drift test (decision 004): protocol/v1.json validates, the generated
+"""Protocol spec drift test: protocol/v1.json validates, the generated
 files are current, the golden frames round-trip through the real host codec (and the device
 encoder), the device dispatch answers exactly the spec's commands, and the hand-written values
 that stay outside the generated files agree with the spec. No device access."""

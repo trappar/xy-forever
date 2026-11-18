@@ -4,11 +4,11 @@
     python3 scripts/protogen.py            validate protocol/v1.json, write the generated files
     python3 scripts/protogen.py --check    validate; exit 1 if a generated file differs from disk
 
-The spec (protocol/v1.json, decision 004) is the single source. Generated, never
+The spec (protocol/v1.json) is the single source. Generated, never
 edited by hand:
   target/usb_proto_ids.hpp      enums and constants for the firmware (freestanding)
   xy_forever/usb_proto_ids.py   constants and field tables for host tools
-  clients/ts/src/v1.ts          the TypeScript protocol module (decision 013; see render_ts)
+  clients/ts/src/v1.ts          the TypeScript protocol module (see render_ts)
   docs/PROTOCOL.md              the published specification's index (test-only commands left out)
   docs/protocol/*.md            its leaves (DOC_LEAVES; a file there that is not one is removed)
 It also validates the conformance suite, protocol/v1.conformance.json, against the spec

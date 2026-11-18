@@ -12,17 +12,17 @@ Part of [XY Forever goals](../GOALS.md).
   all live.
   - **No writes on boot, so no wear.** Booting only reads the file. Storage is
     written only when you install, update or change a setting.
-  - **Boot time close to stock.** Tests 014/015 read a full OS file (2.4 MB) in
+  - **Boot time close to stock.** A full OS file (2.4 MB) has been read in
     about 0.5–0.7 s. The stock bootloader already sends the OS from A to B
     over the internal link on every boot, so that part costs the same as now.
-  - **No embedded OS** since build 088: a default that can't boot opens the
+  - **No embedded OS**: a default that can't boot opens the
     menu.
 - **The two processors.** The OP-XY has two:
   - **A** owns storage.
   - **B** owns the screen, keys and USB.
 
   XY Forever runs on both and coordinates them over their internal link,
-  which Test 023 proved works at startup.
+  which works at startup.
 - **Stock code is a driver layer, nothing more.** The stock
   bootloader's code is still in memory when XY Forever runs. Its hardware
   drivers stay in use, each checksum-verified, called as plain functions from
@@ -30,16 +30,15 @@ Part of [XY Forever goals](../GOALS.md).
   - storage, the USB controller, the link between the processors;
   - the display and keys;
   - writing the boot area;
-  - decrypting and verifying official firmware files with the device's own
-    built-in key, so no keys are shipped with XY Forever.
+  Native codecs decrypt and verify official firmware with the device's own keys; no keys are shipped.
 
   XY Forever does not run stock features, drive stock state machines or patch
-  stock state. Stock MTP was tried and dropped (HISTORY.md).
+  stock state. Stock MTP is abandoned because its interrupt handler blocks on storage without a timeout.
 - **Booting a firmware.** A reads and checks the chosen file and sends it to
   B, then both processors start it.
 - **Official update.** XY Forever opens the official `.tfw` and installs:
   - the OS, as a library entry;
-  - the companion chip firmware (keyboard/backplane and Bluetooth);
+  - companion firmware only as a deferred goal, subject to the explicit programming ban in SAFETY.md;
   - the content.
 
   It never installs the 1.2.5 bootloader, which has no dev menu. The real
@@ -50,13 +49,13 @@ Part of [XY Forever goals](../GOALS.md).
     is installed.
   - **Firmware and mods.** Each update adds a new library entry. The old one
     stays until you remove it, so you can always go back.
-  - **Companion chips.** These use the stock update routines, and only when a
-    package changes them.
-  - **XY Forever itself.** It comes in two parts:
+  - **Companion chips.** Programming is deferred and needs separate explicit approval. Stock
+    update routines can reach SPI metadata and are not an approved driver layer.
+  - **XY Forever itself.** The product is one image. A future two-part update design would use:
     - **A small, rarely changed starter** sits in the boot area. Its stock
       writer has two slots and saves the new version's header last, so a
       power cut during an update never leaves the device unbootable.
-    - **The main XY Forever** is a file. It updates like any other library
+    - **The main XY Forever** as a file. It updates like any other library
       entry and keeps the previous version. If a new version fails, the
       starter falls back to the previous one.
 - **Mods.** XY Forever assembles the selected native packages into a library entry,
@@ -64,7 +63,7 @@ Part of [XY Forever goals](../GOALS.md).
   and memory choice. The browser will offer onboarding from an Open-XY `layout.json`:
   review its selected mods against native packages, then rebuild through XY Forever.
   The firmware never reads or writes that external file. Importing a compiled Open-XY
-  image as the user's migration path is outside this flow (decision 035).
+  image as the user's migration path is outside this flow.
   - **Saved projects stay safe.** open-xy already writes a small "companion"
     file next to each project, recording which machine each number meant, so
     projects open correctly after the machine set changes.

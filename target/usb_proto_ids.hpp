@@ -14,7 +14,7 @@ static const uint32_t put_chunk = 1024;         // data bytes per stage.data req
 static const uint32_t max_path = 240;           // largest device path, including its NUL
 static const uint32_t max_stage = 7340032;      // largest staged image (7 MiB)
 static const uint32_t max_log_text = 200;       // largest text of a log event
-static const uint32_t idle_reset_ms = 250;      // the device drops a partial frame once its receive buffer has been empty for this long (XY Forever builds 181 and earlier never did)
+static const uint32_t idle_reset_ms = 250;      // the device drops a partial frame once its receive buffer has been empty for this long
 static const uint32_t max_hello = 200;          // largest hello text; a build's text is fixed but for its stage-2 parts (170 bytes in the product build without stage 2), checked when it is compiled
 enum Type : uint8_t {
     t_hello = 0x01,                             // hello (core)

@@ -8,11 +8,10 @@ below. Read only what the task needs.
 
 **Reads:** the queue (`python3 scripts/plan.py`), its issue (`gh issue view <N>`), local
 `docs/status/README.md` (leaves as needed), this guide, agent reports, and check summaries.
-Read decision records only when a brief needs them. When delegating, leave source, listings,
-logs, device reports, HISTORY.md, and other docs to the worker.
+Read current reference docs only when the issue needs them. When delegating, leave source, listings,
+logs, device reports, and other docs to the worker.
 **Writes:** issues, local `docs/status/`, briefs. **Runs:** checks and device scripts.
-Without delegation, also do the scoped worker's work below. Only the main agent operates the device
-or asks the developer for actions.
+Without delegation, also do the scoped worker's work below.
 
 ### One sitting
 
@@ -47,7 +46,7 @@ The orchestrator may add, split, and reorder items. Each issue stands alone and 
 A gating review or device run is a criterion, not an issue. Dependencies use "blocked by" links:
 `gh api -X POST repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by -F issue_id=<needed issue id>`.
 Loose ends use `thread`. Issue numbers identify items; PR titles are plain and bodies say "Closes #<N>".
-Items marked "to be split" need a research decision record first.
+Items marked "to be split" need findings and a proposed split in their GitHub issue first.
 
 Dropping requirements, changing the [shape](goals/roadmap.md), or relaxing safety rules needs the
 developer. Prefer work that reaches a device test soonest; host work must not run far ahead of
@@ -68,7 +67,7 @@ apply in either mode. Report missing required capabilities; never bypass them.
 
 | Kind | May | Ends with |
 |---|---|---|
-| research | read workspace; write its decision record and detail leaves | record <= 8 KB: question, answer, evidence, rejected options |
+| research | read workspace; report findings in its GitHub issue | concise answer, evidence links, uncertainty and actionable follow-ups |
 | build | edit its item's code and tests | passing tests; one commit; reference docs updated for changed facts |
 | review | read the diff and what it touches; write nothing | findings by severity, or "none" |
 
@@ -83,8 +82,8 @@ follow-ups while it has room; otherwise send its report to a fresh one. Read ran
 ```
 Issue #<N>: <title>. Kind: <kind>.
 Goal: <acceptance criteria>.
-Read first: xy-forever/AGENTS.md, then <at most five files or decision records>.
-Do not read: docs/status/, HISTORY.md, unrelated docs.
+Read first: xy-forever/AGENTS.md, then <at most five current reference files>.
+Do not read: docs/status/, unrelated docs.
 Constraints: <safety notes; required explicit approvals in the developer's words>.
 Check: <commands the orchestrator will run>.
 Report: <= 15 lines: changed files/functions with line numbers, checks, next-item facts,
@@ -97,12 +96,14 @@ open questions, three largest context costs. No narrative.
 |---|---|
 | What to do next, loose ends, questions for the developer | GitHub issues: items, `thread`, `decision` (`scripts/plan.py`) |
 | Device state, installed build, open device problems, session notes | your local `docs/status/README.md` (gitignored; detail in leaf files beside it) |
-| A settled question (so nobody researches it twice) | `docs/decisions/NNN-title.md`; detail in `NNN-title.<topic>.md` beside it, linked from it |
-| Facts that stay true (addresses, formats, design) | the reference doc that owns them |
-| What a test showed | your local `docs/status/`; a lasting lesson (what failed, the rule it produced) as one line in HISTORY.md |
+| Research findings, decisions, rejected options, evidence and follow-ups | the relevant GitHub issue; link existing issues rather than copy them |
+| Current facts developers need (addresses, formats, design, safety) | the reference doc or code comment that owns them; concise, checked against the implementation |
+| What a test showed | your local `docs/status/`; a lasting current rule in its owning reference |
 | Logs, dumps, probe output, screenshots, scratch scripts | `../private/xy-forever/sessions/<date>-<topic>/`, never the repository |
-| What an agent tried that did not work | its report; one line in the decision record if it prevents a repeat |
+| What an agent tried that did not work | its report and the relevant GitHub issue if it prevents a repeat |
 
+Do not create research reports, numbered decision records, ADRs, or archive indexes in the source tree.
+Git history holds how the implementation arrived here; current references explain what developers need now.
 No other new files in `docs/`. `tests/test_docs_budget.py` budgets docs in bytes and line width, checks
 their links, and fails the suite when one grows past it: split it into a tree (an index plus leaves under 8 KB each), never squeeze.
 
@@ -121,8 +122,10 @@ Aim: one power-on per sitting, and none for offline work.
   research agent the folder, not the log text. A probe it needs is a new script.
 - **Simulator first, batched.** A device item starts only after its code passes the simulator and
   the offline suite. Ready `kind:device` items wait for a sitting and run together.
-- **Guard on** for every device session, so a hang resets the device and the service
-  comes back. Sessions end in keepalive, never in the OS.
+- **Guard off:** it does not recover a hang; do not run `guard on` or `--guard-test` on the device.
+  Never send REBOOT after a suspected lone A restart. Stop on a suspected hang and request a manual
+  power cycle ([SAFETY.md](SAFETY.md), [issue #1](https://github.com/trappar/xy-forever/issues/1)).
+  Sessions end in keepalive, never in the OS.
 - **`safe` items** run only main-loop code with timeouts. **`risky` items** add
   interrupt code, a new stock call, or new reset behaviour, and run last in a
   sitting, with the developer present.

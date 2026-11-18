@@ -1,5 +1,5 @@
 """The file engine's path policy and request decision (target/file_engine.cpp,
-docs/decisions/009-file-engine.md), compiled for the host: every operation against every
+docs/architecture/link.md), compiled for the host: every operation against every
 protected path and its spellings, the limits, the request classes; and the wiring that makes A
 apply it to every request and B before it sends. No device execution."""
 import ctypes as C
@@ -83,7 +83,7 @@ class FileEngineTest(unittest.TestCase):
 
     # -- the path policy ------------------------------------------------------------------------
     def expected(self, op, kind):
-        """What the policy says for an operation on a path of a kind (009's rules)."""
+        """What the policy says for an operation on a path of a kind."""
         if op == 'raw':
             return 'refuse_raw'
         if kind in ('outside', 'path'):
@@ -407,7 +407,7 @@ class FileEngineWiringTest(unittest.TestCase):
         self.assertIn('session.follow(request);', peer)
         self.assertNotIn('reply', peer)
         self.assertNotIn('stock<', peer)
-        # F1 (decision 016): outside install mode a boot request is b's bootloader in every entry: no answer either.
+        # F1: outside install mode a boot request is b's bootloader in every entry: no answer either.
         boot = serve[serve.index('if (!install_mode && peer_services::boot_request('):]
         boot = boot[:boot.index('return;')]
         self.assertIn('session.follow(request);', boot)

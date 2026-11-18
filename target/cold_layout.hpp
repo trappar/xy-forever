@@ -8,7 +8,7 @@
 // the stock allocator arena and below A's job region, where no stock reference,
 // stock allocation or outer LDR load exists (xyf_build.py check_memory_map;
 // docs/architecture/boot.md, "Memory map").
-// B's mod job region (decision 019's region, the job runs on B): the job's state and work
+// B's mod job region (the job runs on B): the job's state and work
 // region (native/mod_job, peak 6.3 MiB) in 0x8b000000..0x8b800000, above the free gap, below the
 // session scratch and staging. Nothing else may claim it: xyf_build.py check_memory_map checks these
 // numbers against its JOB_REGION and every other reservation; cold.cpp's protected ranges keep any

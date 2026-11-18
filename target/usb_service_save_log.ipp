@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 // ---- The save-time log (xyf_save_log.hpp): the times of the running Save, USB build or switch ----------
 namespace xl = xyf::save_log;
 xl::Times save_times __attribute__((section(".data"))) = {};
@@ -80,7 +80,7 @@ void job_say(JobSlot& s, bool force) {
 }
 // The job ended (done, failed or cancelled): a failed one's folders removed, A's window closed (A rescans the
 // library: a committed entry is listed).
-// Review 024, 6: a failed one's output is removed by job_pump, one tree_step per loop pass (stage
+// a failed one's output is removed by job_pump, one tree_step per loop pass (stage
 // js_wipe, "cleaning up": the job still owns the slot, so storage commands answer busy), then job_end.
 void job_end(JobSlot& s) {
     const bool done = s.job.phase == mj::Phase::done && !s.commit_error;

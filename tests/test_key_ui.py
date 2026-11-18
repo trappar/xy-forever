@@ -120,7 +120,7 @@ class KeyUiTest(unittest.TestCase):
             self.assertAlmostEqual(ms / (seconds * 1000), 1, delta=0.005)
 
     def test_menu_busy_guard_matches_the_simulator(self):
-        """Review 024, 7: key_ui and the simulator's mirror (sim/devices.cpp) hold the same menu actions
+        """key_ui and the simulator's mirror (sim/devices.cpp) hold the same menu actions
         while a job owns the write window: Continue, Discard, Boot once, Set default and Save."""
         expected = {'continue_boot', 'discard', 'boot_once', 'set_default', 'save'}
         for path in ('target/key_ui.cpp', 'sim/devices.cpp'):

@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 #if defined(XYF_MTP_USB)
 // The MTP mark: a transfer runs or a command came within mtp_seen_ms (an open session alone does not light it).
 bool mtp_seen() { return composite_on && (mtp_busy() || (last_commands && now() - mtp_ms < mtp_seen_ms)); }
@@ -199,7 +199,7 @@ uint32_t home_pump() {
                 // 105: guard expiry test without a hang: b only, ~3 s, no kicks; the menu loop
                 // keeps running. The watchdog interrupt must restart b; if it does not, the
                 // host can still read the watchdog and SEC registers.
-                guard_arm();                                // b only (record 022): a follows once b is silent
+                guard_arm();                                // b only: a follows once b is silent
                 guard_count_set(guard_test_count); guard_muted = 1;
                 marker_write(marker_active | marker_menu | flags(), r.crash_restarts);   // 109: back home
                 status_only(type, seq, P::s_ok);
@@ -208,7 +208,7 @@ uint32_t home_pump() {
             }
             if (on <= 1) {
                 if (type == P::t_hold) { held = on; home = on; }
-                else if (on) guard_arm();                  // b only (record 022: a has no guard)
+                else if (on) guard_arm();                  // b only (a has no guard)
                 else guard_disarm();
                 // 109: a guarded PLAY menu (home == 0) also marks itself, so a guard reset comes home.
                 if (home || guard_on) marker_write(marker_active | marker_menu | flags(), r.crash_restarts);

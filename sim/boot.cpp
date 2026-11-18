@@ -1,4 +1,4 @@
-// Decision record 016 §5: WDOG0 (XY Forever's guard) and the stock 1.2.1
+// WDOG0 (XY Forever's guard) and the stock 1.2.1
 // bootloader's side of a boot after one processor resets alone. Tags in comments:
 // [L] read from the 1.2.1 listing, [F] earlier device finding, [I] inferred, [U] unknown.
 //
@@ -123,7 +123,7 @@ uint32_t fetch() {
     return found && size <= 0x800000u && size ? size : 1;
 }
 
-// 88a1d34c, record 022 §1 [L]: early in B's bootloader (before the display reset, USB and the link)
+// 88a1d34c [L]: early in B's bootloader (before the display reset, USB and the link)
 // B sends A 0x03. A freshly reset A (its boot ROM answers 0xff) gets the bootloader's LDR blocks from
 // B's flash, and both go on; any other answer (A running its bootloader or XY Forever) makes B send
 // eleven 0x0f and wait for PA6 with no bound: it goes on only once A resets. The board decides which

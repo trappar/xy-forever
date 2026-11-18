@@ -1,4 +1,4 @@
-"""Source file budget: no hand-written source file over CAP bytes (decision 034).
+"""Source file budget: no hand-written source file over CAP bytes.
 
 A file over the cap today is listed in OVER with its size: it may not grow, and once it is under the cap (or gone)
 its entry fails the test until it is removed, so the list only shrinks. To grow a listed file, first split out the

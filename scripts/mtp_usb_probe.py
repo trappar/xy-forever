@@ -5,7 +5,7 @@ What it does, each step with a time bound:
   1. serial (the stock serial service): HELLO (10 s; mode mtp-usb), then diag.mtp_usb op 0 (the trial): the device
      writes /yaffs2/xy-forever/tmp/composite.flag and does the product's full restart.
   2. USB: waits for the composite 2367:0021, device class 0xEF (30 s). The boot that finds the flag deletes it first, then starts USB once as the
-     composite (record 031 b2). Prints the device's and each interface's descriptors as macOS sees them, whether a
+     composite. Prints the device's and each interface's descriptors as macOS sees them, whether a
      /dev/cu.usbmodem* node appeared (if not: what ioreg shows of the device's interfaces and their drivers).
   3. serial over the composite: HELLO with xyf_host's normal connect (the device restarts by itself when no valid
      HELLO arrives within 20 s of its start), status, one file read (config.txt).
@@ -47,7 +47,7 @@ COMPOSITE_CLASS = 0xef              # kDevInfo's device class: the stock OS and 
 USB_IDS = '%04x:%04x' % (VID, PID)
 EP_OUT, EP_IN, EP_INT = 0x0a, 0x89, 0x83
 MTP_INTERFACE = 2
-# What the composite should look like (record 031 b2): interface number -> (class triple, endpoint addresses).
+# What the composite should look like: interface number -> (class triple, endpoint addresses).
 INTERFACES = {0: ((2, 2, 1), {0x81}), 1: ((0x0a, 0, 0), {0x08, 0x8b}), 2: ((6, 1, 1), {0x89, 0x0a, 0x83})}
 SINK_BYTES = 4 << 20
 OP_GET_DEVICE_INFO, OP_OPEN, OP_CLOSE, OP_SINK = 0x1001, 0x1002, 0x1003, 0x9f01   # the sink moved off 0x9801
@@ -74,7 +74,7 @@ MARKS = (
     ('flag-found', 'the delete was refused (stock serial follows), or writing mark 2 froze'),
     ('flag-deleted', 'the span gate (refused: stock serial) or register (88a09d5c)'),
     ('registered', 'writing the next mark (nothing else between)'),
-    ('before-start-0x200', 'start(0x200): the controller init, its 5-tick wait on GP timer 7 (record 030)'),
+    ('before-start-0x200', 'start(0x200): the controller init, its 5-tick wait on GP timer 7'),
     ('after-start-0x200', 'reading the stack\'s init flag, writing the next mark'),
     ('attach-ok', 'no SETUP reached the driver (the host never enumerated it)'),
     ('attach-failed', 'nothing: the descriptor build failed; the fallback restart 20 s after the start'),

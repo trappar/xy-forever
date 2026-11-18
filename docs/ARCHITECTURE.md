@@ -9,7 +9,7 @@ device-tested), **planned**.
 
 ## Contents
 
-- [Boot](architecture/boot.md): the boot chain, the memory map (product, build 171), the processors, boot flows, boot model v3, writes
+- [Boot](architecture/boot.md): the boot chain, the memory map (product), the processors, boot flows, boot model v3, writes
 - [The link between the processors](architecture/link.md): the stock SPI request protocol, reopened at cold time
 - [Simulator](architecture/simulator.md): the offline simulator
 - [Self-update and build modes](architecture/build.md): self-update and uninstall, build modes (`xyf_build.py`), feature switches

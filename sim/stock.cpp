@@ -654,7 +654,7 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     // interrupts, reset
     case 0x88a30798u: irq_register(u(0), u(1), u(2)); return 0;
     case 0x88a319fau: return 0;
-    case 0x11a03518u:                                   // always completes (record 022 §1): B's hang is in its boot
+    case 0x11a03518u:                                   // always completes: B's hang is in its boot
         log("stock reset"); exit_processor(exit_reset);
     // SPI driver setup and teardown (peer_services.cpp master_setup / slave_setup / end)
     case 0x889f533au: case 0x889f53aeu: case 0x889f537au: case 0x889f52f4u: case 0x889f4e3eu:

@@ -1,4 +1,4 @@
-// Mod assembly job (decision 019): mod_link, mod_patch and mod_content in bounded
+// Mod assembly job: mod_link, mod_patch and mod_content in bounded
 // steps over one work region, every file through the caller's file calls, one library entry out. See
 // mod_job.hpp.
 #include "mod_job.hpp"

@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 // Before a delete, rmdir or mkdir, as file_write does before its write: a request left past its
 // bound (stale) is closed first (op 9, which must reach a in RPC mode), then A's write entry.
 U32 enter_writes() {

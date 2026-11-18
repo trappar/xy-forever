@@ -14,15 +14,15 @@ and let the user review the native selection before rebuilding. It imports a mod
 selection, never a compiled firmware image or a second runtime format. SDK layouts
 without `selected` cannot recover a selection: `machines` includes historical number
 reservations. This browser flow is planned in issue #94; regular users need no project
-workspace, Python or CLI. [Decision 035](../decisions/035-layout-migration.md) owns this boundary.
+workspace, Python or CLI.
 
 Upstream checked at `a07b08faeb58cc7e74cdbc8bd98f809a8ffd5159` (2026-11-17):
 `tooling/machines.py:layout_document` and `builder/app.mjs`'s `nextLayout`.
 
 ## Mod packages (`mods/<profile>/<generation>/`)
 
-Written on the host by `python3 -m xy_forever.modkit split` from an open-xy kit (008, 014); local index + archives, `mods fetch`: `xy_forever/modindex.py`;
-read by the device linker `native/mod_link` (not in a build yet). One flat folder per package: `base/`, `<machine id>/`,
+Written on the host by `python3 -m xy_forever.modkit split` from an open-xy kit; local index + archives, `mods fetch`: `xy_forever/modindex.py`;
+read by the device linker `native/mod_link` (B runs the assembly job). One flat folder per package: `base/`, `<machine id>/`,
 `ext-<extension id>/` (`-` is not valid in an id, so names cannot collide). Each holds an
 `info.txt` the strict reader accepts (extra keys below are unknown to it and ignored) and a
 sorted `files.sha256` of every other file. `<generation>` is `<kit version>-<12 hex>`: SHA-256

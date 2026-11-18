@@ -86,7 +86,7 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            cycle), then home answers without a restart and a read works.
   guard    --guard-test only (never in the default pass), last; not started if
            home-after-mtp found a restart. One step, expiry: a read, guard off, then
-           guard expiry-test while A runs XY Forever (153, record 022): B resets (~3 s),
+           guard expiry-test while A runs XY Forever (153): B resets (~3 s),
            its bootloader waits until A, B silent past A's 10 s idle window, follows
            (model: home ~10.7 s after B's reset; wait limit 20 s), crash +1, a read works.
            A miss says what to do (one power cycle). The end stage leaves guard and hold off.
@@ -139,7 +139,7 @@ NOT_FOUND = P.STATUS_NAMES.index('not_found')
 SESSIONS = paths.SESSIONS
 STOCK_OS_LDR = paths.STOCK_121 / 'os.ldr'
 
-# Waits (s), sized to the known outcome time (OPERATING.md, HISTORY.md, usb_service.hpp).
+# Waits (s), sized to the known outcome time (OPERATING.md, usb_service.hpp).
 T_ANSWER = 5.0      # home answers HELLO within ~10 ms (session logs); xyf_host: 5 s per call
 T_GONE = 5.0        # REBOOT: USB stops ~150 ms after the reply (home_reboot: 50 + 100 ms)
 T_BACK = 15.0       # REBOOT -> service answers again in ~3.7 s (Test 040)
@@ -149,7 +149,7 @@ T_INSTALL = 120.0   # install ~14 s + verify 1.3 s (039); xyf_host's own bound i
 HOLD_MS = 2000
 T_MTP = 15.0        # mtp-test: HOLD_MS + the storage calls (097)
 T_EXPIRY = 10.0     # guard expiry-test: WDOG0 count 3e8 at SCLK 100 MHz = 3 s, then the reset
-T_GUARD_BACK = 20.0  # guard expiry: B resets, A follows ~10.4 s later (idle window), home ~10.7 s (record 022)
+T_GUARD_BACK = 20.0  # guard expiry: B resets, A follows ~10.4 s later (idle window), home ~10.7 s
 POWER_CYCLE = ('if the menu does not answer: power off, wait 5 s, power on holding PLAY (release at the logo), '
                'then rerun')
 T_KEEPALIVE = 10.0  # keepalive.sh's first status

@@ -120,7 +120,7 @@ def rewrite(name, text):
         if counts is not None and name in counts and n != counts[name]:
             raise RuntimeError('simulator rewrite %r matched %d times in %s, expected %d: update xy_forever/sim.py'
                                % (pattern.pattern[:40], n, name, counts.get(name, 0)))
-    if name in DEVICE_PARTS or name.startswith('usb_service_'):     # usb_service.cpp's parts (.ipp, decision 034)
+    if name in DEVICE_PARTS or name.startswith('usb_service_'):     # usb_service.cpp's parts (.ipp)
         text = text.replace('defined(__bfin__)', '(defined(__bfin__) || defined(XYF_SIM))')
     if name == 'usb_service.cpp':
         if text.count(HELLO_HOOK) != 1:

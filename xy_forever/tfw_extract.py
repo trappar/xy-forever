@@ -1,4 +1,4 @@
-"""OS-only extraction from an official .tfw on the host (docs/decisions/003-tfw-install.md).
+"""OS-only extraction from an official .tfw on the host (docs/hardware/tfw.md).
 
 Runs the device's own freestanding extractor (native/tfw_os.cpp) and signature check
 (native/tfw_signature.cpp, native/p224.cpp), compiled for the Mac with host/tfw_extract.cpp as
@@ -153,7 +153,7 @@ def extract_os(package, out, *, keys=None, public_key_file=None, require_signatu
 
 
 CUT_MAGIC, CUT_HEAD = 0x54434658, 0x480        # "XFCT"; the wrapper, crypto header and name block
-CUT_TAIL = 256 * 1024                          # the official directories are ~80 KB (decision 003)
+CUT_TAIL = 256 * 1024                          # the official directories are ~80 KB
 
 
 def cut(package, tail=CUT_TAIL, head=CUT_HEAD):

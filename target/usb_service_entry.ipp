@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 uint32_t presence() {
     // 1: the stock bootloader started USB (MSC). It does so only on its "wait
     // for battery" path (88a1dbae: 88a1c8fc -> 88a35044(0x40)), i.e. powered on

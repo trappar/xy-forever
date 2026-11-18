@@ -13,8 +13,8 @@ What it does on the device (never interactive; every command through xyf_host.py
             /yaffs2/xy-forever/probe/: the package's first 0x480 bytes (wrapper, crypto header,
             name block) and its last 256 KiB (ZIP directory, ~80 KB), 263 KB, behind a 16-byte cut
             header (native/tfw_check.hpp). A whole package (~98 MB) cannot be written yet: the
-            staged write holds 7 MB. tfw.check reads only those parts of a package anyway (decision
-            003's step order: header, signature, name block, directory), so a cut checks the same.
+            staged write holds 7 MB. tfw.check reads only those parts of a package anyway
+            (header, signature, name block, directory), so a cut checks the same.
   otp-*     tfw.check on each cut: B reads OTP selector 9 (the vendor public key), verifies the
             signature, reads selectors 3/4 (the AES key) and decrypts the directory. PASS: verdict
             pass, and the public key's SHA-256 equals that of the key recovered from the official

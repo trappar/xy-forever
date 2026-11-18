@@ -3,7 +3,7 @@
 These helpers never open a device or flash anything. Native bridge drivers,
 power-loss recovery and runtime entry into each bootloader require device proof.
 The Cypress (backplane) details come from the 1.2.5 listings; the Bluetooth
-update session follows decision 017 (the 1.2.1 bootloader on the device).
+update session follows the 1.2.1 Nordic bootloader (native/ble_session.hpp).
 """
 
 from dataclasses import dataclass
@@ -248,7 +248,7 @@ class NordicApplication:
     def transfer_header(self, version: Tuple[int, int, int, int], device_id: int) -> bytes:
         """Encode the stock TE 64-byte header sent through bridge command 0x0d."""
         _validate_ble_metadata(version, device_id)
-        # Decision 017 (1.2.1 bootloader): CRC-16 at bytes 9-10, version at 11-18.
+        # 1.2.1 Nordic bootloader: CRC-16 at bytes 9-10, version at 11-18.
         header = struct.pack(">IBIH4HII", 0xBEEFCAFE, 3, len(self.data), self.checksum,
                              *version, 0x1F000, device_id)
         return header.ljust(64, b"\0")
@@ -273,7 +273,7 @@ def ble_start_packet(version: Tuple[int, int, int, int], image_kind: int, device
     return b"\x02" + struct.pack(">4HBI", *version, image_kind, device_id)
 
 
-# Bluetooth update session, decision 017. Phase order and request tuples match
+# Bluetooth update session. Phase order and request tuples match
 # native/ble_session.hpp exactly (the tests run both in lockstep).
 BLE_PHASES = ("uninitialized", "query", "enter", "settle", "probe", "greeting", "answer",
               "start", "header", "data", "finish", "exit", "regreeting", "release", "verify",
@@ -318,7 +318,7 @@ def ble_platform_word(hardware_revision: int) -> int:
 
 
 class BleSession:
-    """Decision 017 update session; see native/ble_session.hpp for the contract.
+    """Nordic update session; see native/ble_session.hpp for the contract.
 
     `known` maps the SHA-256 hex digest of each admitted official ble.bin to its
     version; nothing is sent unless the image matches one exactly. request()

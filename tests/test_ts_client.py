@@ -1,4 +1,4 @@
-"""The TypeScript client (clients/ts/: generated src/v1.ts, scripts/protogen.py; decision 013).
+"""The TypeScript client (clients/ts/: generated src/v1.ts, scripts/protogen.py).
 
 The drift test (test_protocol_spec) keeps the generated file current without Node. Here, when the
 tools are on this machine: Node runs clients/ts/test/v1.test.ts (golden frames through the typed

@@ -27,8 +27,8 @@ Part of the [XY Forever storage layout](../STORAGE.md).
   `content/…` lines above, then `info.txt`, `os.ldr`); a content switch takes its `content/` lines. Each file is
   written as `<name>.part`, read back by SHA-256, `os.ldr` also checked by `start_verify`, then renamed,
   `os.ldr` last: an entry with an `os.ldr` is complete.
-- **Into the library** (B after the job's last step, one request per menu-loop pass; decision 019
-  section 5): the target is `mods-a` or `mods-b`, never the default or the boot-once entry (both taken:
+- **Into the library** (B after the job's last step, one request per menu-loop pass): the target is
+  `mods-a` or `mods-b`, never the default or the boot-once entry (both taken:
   `mods.apply` answers `state`); of two, the absent one, else the one not written last this boot (B sees no
   file times), else `mods-a`. Order: rename `firmware/<target>` (if there) to `tmp/job-<id>-old`, rename
   `tmp/job-<id>` to `firmware/<target>`, remove the old tree; B's window close makes A rescan the library.

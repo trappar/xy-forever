@@ -48,7 +48,7 @@ content switch first and write the default only when it succeeded (`started`, th
 ### Content state
 
 `/yaffs2/content/` is the OS's content; a mod firmware halts without its files, and a catalog naming mods
-the firmware lacks breaks the OS's menus (decision 018), so it must match the booted entry.
+the firmware lacks breaks the OS's menus, so it must match the booted entry.
 `content-state.txt` (read by A's library scan, head only; written by B as `.part` and renamed):
 
 | First lines | Meaning |

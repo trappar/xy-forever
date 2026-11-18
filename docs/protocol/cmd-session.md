@@ -49,8 +49,7 @@ XYF1;service=usb;role=b;proto=1.13;install=stock-88a06a7e;build=172;mode=product
 Read a file, whole (at most 4096 bytes) or a range. Two forms: with `offset` and `length` (ranged), or the path alone (whole file, `too_large` above 4096
 bytes). Use the ranged form: whole-file replies above 1 KiB hung the device in tests. To read any file, read ranges of `max_read` bytes from offset 0 until a
 reply holds fewer. An offset at or past the end of the file is ok with no data; `range` means the device's seek to the offset failed. A malformed path is
-`bad_request`; a well-formed one that the device's file policy refuses (a control byte) is `refused` (since build 155; earlier builds passed it to the file
-system).
+`bad_request`; a well-formed one that the device's file policy refuses (a control byte) is `refused`.
 
 | Request field (10 to 248 bytes) | Type | Meaning |
 |---|---|---|

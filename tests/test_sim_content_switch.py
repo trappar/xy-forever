@@ -180,7 +180,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         self.assertIn('menu: line: Default: %s (content installed)' % a, (self.dir / 'log.txt').read_text())
 
     def test_menu_actions_wait_for_a_switch(self):
-        """Review 024, 7: Continue and Set default pressed during a content switch show the busy line and
+        """Continue and Set default pressed during a content switch show the busy line and
         do nothing; the switch completes."""
         a = self.build(['alpha'])
         self.sim.set('a_slow_ms', 4)

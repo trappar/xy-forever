@@ -731,7 +731,7 @@ class PageOrder(Base, unittest.TestCase):
 @unittest.skipUnless((PACKAGES / 'base/info.txt').is_file(), 'published 0.0.6 package set absent')
 class PublishedPage(Base, unittest.TestCase):
     """The real 0.0.6 set: 79 machines + 2 extensions; the estimate against the linker's own figures
-    (record 014, test_modkit) and the 2032 KiB limit; previews kept for review."""
+    (test_modkit) and the 2032 KiB limit; previews kept for review."""
     gen = PACKAGES
     test_device_pass_reads_the_selected_row = SyntheticPage.test_device_pass_reads_the_selected_row   # 81 rows: scrolling
 

@@ -25,7 +25,7 @@ export const MAX_PATH = 240;
 export const MAX_STAGE = 7340032;
 /** largest text of a log event */
 export const MAX_LOG_TEXT = 200;
-/** the device drops a partial frame once its receive buffer has been empty for this long (XY Forever builds 181 and earlier never did) */
+/** the device drops a partial frame once its receive buffer has been empty for this long */
 export const IDLE_RESET_MS = 250;
 /** largest hello text; a build's text is fixed but for its stage-2 parts (170 bytes in the product build without stage 2), checked when it is compiled */
 export const MAX_HELLO = 200;
@@ -35,9 +35,9 @@ export const REPLY = 0x80;
 
 /** Transport facts (docs/protocol/transport.md, Transport). How a tool reaches the protocol. verified is true for facts read from device sessions or the code, false for facts nobody has checked yet. */
 export const TRANSPORT = {
-  usbVendorId: { value: 9063, verified: true, doc: "teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), which the product build (188 and later) falls back to when a boot-time check fails, and which builds before 188 always used" },
+  usbVendorId: { value: 9063, verified: true, doc: "teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), used as fallback when a boot-time check fails" },
   usbProductId: { value: 33, verified: true, doc: "the stock OS uses the same id with no serial interface (MTP, vendor class 0xFF; another mode is 0x8021, class 0x01), so a filter on both ids finds only XY Forever's service on the stock identity; a tool must accept this pair and `product_usb_ids`" },
-  productUsbIds: { value: [9063, 33], verified: true, doc: "since product build 189-002 the composite (this CDC serial interface, MTP on interface 2) has the stock pair 2367:0021 (`xyf_build.py` MTP_USB_IDS), told apart from the stock OS's MTP and the stock serial fallback by its device class 0xEF (IAD); builds 188 to 189-001 used pid.codes' test pair 1209:0001; not yet seen on the device" },
+  productUsbIds: { value: [9063, 33], verified: true, doc: "the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (`xyf_build.py` MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. This identity change still needs device qualification" },
   usbProduct: { value: "OP_XY Boot", verified: true, doc: "the product string as macOS reports it in the session logs (two log lines show `OP-XY Boot`); informational: filter on the ids" },
   interfaceClasses: { value: [2, 10], verified: true, doc: "USB CDC: communications (0x02) and data (0x0A); on macOS the port is `/dev/cu.usbmodem*`" },
   stream: { value: "frames", verified: true, doc: "the CDC data interface carries exactly the frame stream described here, in both directions, with no other framing; the simulator's TCP port carries the same bytes" },
@@ -1322,7 +1322,7 @@ export const GOLDEN: readonly GoldenFrame[] = [
   { name: "hello, answered", message: "hello", direction: "reply", seq: 1, status: "ok",
     fields: {"info": "XYF1;service=usb;role=b;proto=1.13;install=stock-88a06a7e;build=172;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000010000007b001f000303ff00be;dev=1;stage2=0"},
     hex: "58468101ae00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31333b696e7374616c6c3d73746f636b2d38386130366137653b6275696c643d3137323b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030313030303030303762303031663030303330336666303062653b6465763d313b7374616765323d300ca9d072" },
-  { name: "hello, answered by a pre-v1 device (build 153 and earlier)", message: "hello", direction: "reply", seq: 1, status: "ok",
+  { name: "hello, answered by a pre-v1 device", message: "hello", direction: "reply", seq: 1, status: "ok",
     fields: {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"},
     hex: "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5" },
   { name: "read 1024 bytes from offset 0", message: "file.read", direction: "request", seq: 2, status: null,

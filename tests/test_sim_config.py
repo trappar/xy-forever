@@ -244,7 +244,7 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.wait_log(lambda: '(changed) pending=1' in self.home(), 'still pending')
 
     def test_save_and_discard_wait_for_a_usb_job(self):
-        """Review 024, 7: with a USB build running, Save and Discard in the Save dialog show the busy
+        """with a USB build running, Save and Discard in the Save dialog show the busy
         line and do nothing (the changes stay pending, nothing written); Continue pressed while the Save's own build
         runs is the save's progress screen (no busy line) and the save boots."""
         busy = 'menu: line: Busy: a build or content change is running.'

@@ -1,8 +1,8 @@
-"""Lone resets and the guard in the simulator (decision records 016, 022).
+"""Lone resets and the guard in the simulator.
 
 The simulator models WDOG0 (each processor's guard), a reset of one processor alone and the stock
 bootloaders' side of the boot that follows (sim/boot.cpp). It replaced the guessed restart model
-(records 016, 021) with record 022's, read from the 1.2.1 listing and checked against nine device cases:
+with the stock ordering, read from the 1.2.1 listing and checked on the device:
 B's stock reset always completes, but B's bootloader probes A before the display, USB or the link: it
 goes on only if A reset at most boot_a_window_ms before B's reset (device: about 0.1 s works, the
 boundary lies between 0.15 s and 1.4 s) or resets at any time after it; otherwise B waits with no
@@ -10,13 +10,13 @@ bound (off USB, the old frame on screen), shown as b_waits_a. The device cases, 
 
 1. REBOOT (A answers and resets, B about 0.1 s later): both come back.
 2. A restarts alone (160, 162 used diag.restart_a; B then restarted itself, F2, and hung in its
-   bootloader). Since record 022 B never resets itself: it stays at the menu with USB, commands answer link.
+   bootloader). B never resets itself: it stays at the menu with USB, commands answer link.
 3. B's guard expiry while A runs XY Forever: B waits until A follows (its idle window, about 10 s
    after B went silent), then both come back (108 recovered so, 25 s later).
 4. A B reset where A never resets: B hangs (148-150, 153).
 5. A resets long before B (9 s, 135): B hangs.
 
-The expectations are what the model predicts for the current firmware. Record 022 removed F2 (B's
+The expectations are what the model predicts for the current firmware. The firmware removed F2 (B's
 own restart on a lost link), the probe, diag.restart_a and A's guard (markers below): a lost link now
 ends as link with USB up and no restart.
 """
@@ -35,14 +35,14 @@ import xyf_host as host                             # noqa: E402
 from xy_forever import paths, sim, usb_proto as P   # noqa: E402
 from xy_forever import usb_proto_ids as ids         # noqa: E402
 
-# Record 022 §4 flipped these.
+# No autonomous lone-restart recovery.
 F2_REMOVED = True                  # B no longer restarts itself on a lost link (link_lost_restart, F2)
 RESTART_A_REMOVED = True           # the test command diag.restart_a is gone
 A_GUARD_REMOVED = True             # A's own guard (a_guard, a_guarded) is gone
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 STATE_FILE = '/yaffs2/xy-forever/state-a.txt'
 LOST_MS = 60000                                             # xyf_boot.hpp lost_ms
-RESTART_A, RSTA = 0x61, b'RSTA'                             # diag.restart_a (removed by record 022: unsupported)
+RESTART_A, RSTA = 0x61, b'RSTA'                             # diag.restart_a (removed; unsupported)
 # Every time-out in these cases runs on the simulator's clock (control "advance": B's answer patience,
 # its probe interval, A's idle window, the guard counts, the bootloaders' start times, which the board
 # also counts on that clock). Host time only bounds a hang: a case never needs real seconds to pass.
@@ -162,7 +162,7 @@ class GuardResetTest(unittest.TestCase):
 
     def lone_a_outcome(self, dev):
         """After a lone restart of A (its bootloader waits for B with no bound): B stays at the menu
-        with USB, file commands answer link (record 022; before, F2 restarted B and it hung, case 2)."""
+        with USB, file commands answer link (the former F2 restart hung in case 2)."""
         return self.refused_after(dev)
 
     def assert_b_hangs(self, a_bootloader):
@@ -204,7 +204,7 @@ class GuardResetTest(unittest.TestCase):
         self.fail("A's loop did not run on: %s" % self.sim.status())
 
     def refused_after(self, dev):
-        """After a lone reset of A that B must not answer with a restart (record 022: B never resets itself).
+        """After a lone reset of A that B must not answer with a restart (B never resets itself).
         A's stock interrupt echoes plain keepalives in every mode and its bootloader answers the file
         client's command check (a select) with no ack, so B's menu may not tell; every file command
         answers link (B asks A before each one). 12 s on (F2 restarted B within ~5 s) and past the
@@ -223,7 +223,7 @@ class GuardResetTest(unittest.TestCase):
         self.assertEqual(dev.call(P.READ_FILE, STATE_FILE.encode() + b'\0', timeout=10.0)[0], ids.S_LINK)
         return status
 
-    # -- the five device cases (record 022 §2) ----------------------------------------------------
+    # -- the five device cases ----------------------------------------------------
     def test_case1_reboot_both_come_back(self):
         """REBOOT: A answers and resets, B resets about 0.1 s later, inside the window: B's bootloader
         finds A fresh and both come back (device: about 2 s), crash count 0."""
@@ -238,7 +238,7 @@ class GuardResetTest(unittest.TestCase):
 
     def test_case2_a_restarts_alone_b_stays_at_the_menu(self):
         """160, 162 (diag.restart_a, now unsupported): A restarts alone and its bootloader waits. B
-        never restarts itself (record 022; F2 restarted it and it hung): the menu stays with USB, file
+        never restarts itself (the former F2 restart hung): the menu stays with USB, file
         commands answer link, the crash count stays 0, B's bootloader never runs."""
         dev = self.connect()
         self.assertEqual(dev.read_file(STATE_FILE)[0], 0)
@@ -306,7 +306,7 @@ class GuardResetTest(unittest.TestCase):
             self.sim.advance(300)
         status = self.settled()
         self.assertEqual((status['a_boots'], status['b_boots']), (1, 1))   # nothing restarted
-        self.sim.expire('a')                                        # A has no guard (record 022): nothing happens
+        self.sim.expire('a')                                        # A has no guard: nothing happens
         self.sim.expire('b')
         self.sim.advance(300)                                       # both loops ran (the flags are consumed)
         self.assertEqual((self.sim.status()['a_expiries'], self.sim.status()['b_expiries']), (0, 0))
@@ -315,7 +315,7 @@ class GuardResetTest(unittest.TestCase):
 
     def test_108_expiry_straight_after_a_restart(self):
         """REBOOT, then B's guard expiry before any read: as case 3, A follows after its idle window
-        (before record 022 the model had A follow at once, holding B's bootloader's select: F1)."""
+        (the former model held B's bootloader select while A followed at once)."""
         dev = self.connect()
         boots = self.sim.status()['b_boots']
         self.assertEqual(dev.call(P.REBOOT, struct.pack('<I', 2))[0], 0)      # home again, no read since
@@ -346,7 +346,7 @@ class GuardResetTest(unittest.TestCase):
     # -- lone restarts ---------------------------------------------------------------------------------
     def test_lone_b_reset_a_follows(self):
         """B resets alone with no handler (no marker of its own): B's bootloader waits; A follows after
-        its idle window (before record 022: at once, holding B's bootloader's select, F1); the home marker
+        its idle window (the former model held B's bootloader select); the home marker
         brings B back home."""
         dev = self.connect()
         self.ok(dev, P.HOLD, 1)                                     # home writes the marker
@@ -360,7 +360,7 @@ class GuardResetTest(unittest.TestCase):
     def test_a_file_request_still_out_never_restarts_b(self):
         """A file request A never answered (A silent, the request lost): file commands end with link
         within their bound; meanwhile A, silent past its idle window, has restarted to wait for B. Past
-        the lost limit (60 s after the request left) B still does not restart (record 022: before, F2
+        the lost limit (60 s after the request left) B still does not restart (before, F2
         restarted it there, long after A, and it hung): the menu stays on USB."""
         dev = self.connect()
         path = STATE_FILE.encode() + b'\0'
@@ -438,7 +438,7 @@ class GuardResetTest(unittest.TestCase):
                 self.ok(dev, P.GUARD, 0)
 
     def test_what_depends_on_test_108(self):
-        """a_redeliver 0 (A's bootloader does not get a request A held): before record 022 a lone B reset then
+        """a_redeliver 0 (A's bootloader does not get a request A held): the former model let a lone B reset then
         waited for good on its select. Now B's bootloader sends A nothing until A has reset, so a lone B
         reset comes back the same way without it (A follows)."""
         self.sim.set('a_redeliver', 0)
@@ -451,7 +451,7 @@ class GuardResetTest(unittest.TestCase):
 
     # -- the review's fixes (build 160) --------------------------------------------------------
     def test_a_stall_at_the_menu_restarts_nothing(self):
-        """A's loop stalls 2 s at the menu (a rescan after the run entry, say; record 022: no probe, A's stock
+        """A's loop stalls 2 s at the menu (a rescan after the run entry, say: no probe, A's stock
         interrupt echoes the keepalives meanwhile): nothing restarts and the link still carries file
         commands."""
         dev = self.connect()
@@ -531,7 +531,7 @@ class GuardResetTest(unittest.TestCase):
         self.sim.expire('a')
         self.sim.advance(300)                                       # both loops ran (the flags are consumed)
         self.assertEqual((self.sim.status()['b_expiries'], self.sim.status()['a_expiries']), (0, 0))
-        self.ok(dev, P.GUARD, 1)                                    # B only (record 022): A has no guard
+        self.ok(dev, P.GUARD, 1)                                    # B only: A has no guard
         for _ in range(5):
             self.sim.expire('a')
             self.sim.advance(100)

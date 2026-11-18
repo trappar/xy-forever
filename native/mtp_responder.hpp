@@ -6,7 +6,7 @@
 // response container; one container per IN phase, so the transport ends a phase whose length is a
 // multiple of the packet size with a ZLP), forwards the class request Cancel (cancel) and asks the
 // device status (device_status). All storage work happens in step(), at most one file call per step,
-// so B's main loop can run it between USB services (docs/decisions/002-usb-function-driver.md).
+// so B's main loop can run it between USB services (docs/hardware/usb.md).
 //
 // One storage (storage_id) rooted at /yaffs2. Changes (SendObjectInfo, SendObject, DeleteObject, renames)
 // anywhere below /yaffs2/ (the write rule, since 1.13) except /yaffs2/bootloader.dev
@@ -102,7 +102,7 @@ class Responder {
 public:
     void init(const FileOps& ops);                       // also a device reset: no session
     // One bulk-OUT transfer (<= buffer_bytes). false: not now (the transport keeps it and calls
-    // step() first; this is the flow control of decision 002: the urb stays held).
+    // step() first; this is the USB backpressure: the urb stays held).
     bool receive(const Byte* data, U32 count);
     U32 pending() const { return cancelling ? 0 : out_len - out_pos; }
     U32 take(Byte* out, U32 room);                       // bulk-IN bytes

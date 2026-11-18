@@ -4,7 +4,7 @@ Part of the [XY Forever storage layout](../STORAGE.md). Its files use the [text 
 
 ## `info.txt` (package manifest)
 
-Every package folder's manifest (decisions/010). Without `type` it is a firmware
+Every package folder's manifest. Without `type` it is a firmware
 entry: every `info.txt` written before `type` existed is one, unchanged.
 
 | Key | Value (strict reader) |
@@ -62,7 +62,7 @@ Files, by their first 268 bytes and size, never by extension:
 | stage 2 | `XYS2`, at least 96 bytes (`xyf_stage2` checks the rest) |
 
 Stage 2 (`target/xyf_stage2.hpp` ABI 3): `stage2/main.xys2` is read by B's USB service at the first HELLO of a boot (never on a plain boot), checked (header,
-CRC, SHA-256, window `0x8ab90000..0x8ac00000` (since 171), `min_stage1` <= the stage-1 build) and copied to its load address; stage 2 makes no stock call and
+CRC, SHA-256, window `0x8ab90000..0x8ac00000`, `min_stage1` <= the stage-1 build) and copied to its load address; stage 2 makes no stock call and
 reaches stage 1 only through the append-only services table. Any failure leaves stage 1 as before (STATUS `usb_service.stage2` says why). Built by `xyf_build.py
 --xyf-product` as `main.xys2` beside `candidate.ldr`.
 | ZIP | `PK\3\4` or `PK\5\6`: an open-xy builder ZIP, imported by the host only |

@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 #if defined(XYF_MTP_SESSION)
 #if defined(XYF_SIM)
 }

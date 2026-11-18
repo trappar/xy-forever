@@ -4,7 +4,7 @@
 #include "mod_link.hpp"
 #include "mod_patch.hpp"
 namespace xyf_core { namespace mod_job {
-// The device's mod assembly job (decision 019): the linker, patch and content
+// The device's mod assembly job: the linker, patch and content
 // steps (mod_link, mod_patch, mod_content) driven in small bounded steps inside one caller-given work
 // region, every file read and written through a table of file calls (on the device: processor B's
 // file client, one 1 KiB request per call, usb_service's mods.apply). Same inputs as host/mod_assemble.cpp's one-shot run, same

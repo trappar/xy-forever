@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 uint32_t page_serving() { return a_serving() ? uint32_t(P::s_ok) : uint32_t(P::s_link); }
 volatile uint32_t& page_mount() { return mounted; }
 bool page_busy() { return job_running() || closing XYF_OR_MTP_BUSY; }    // as job_blocks (an MTP transfer)

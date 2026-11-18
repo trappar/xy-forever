@@ -13,19 +13,18 @@ Part of the [XY Forever serial protocol 1.13](../PROTOCOL.md).
 - A request type this build does not answer gets status `unsupported`. The `cmds` key of the `hello` reply lists the types a build answers; tools send no others
   and tell the user to update XY Forever instead. A command with an optional build switch is missing from a build without it; a command whose switch is not
   optional is in every build that has this service (the firmware does not build without it).
-- Devices that send `proto=1` and no `cmds` (XY Forever builds 153 and earlier) speak 1.0 without the `hello` keys added in 1.1: tools treat every 1.0 command
-  as answered (one the build lacks gets status 2) and expect no status above 13.
+- Devices that send `proto=1` and no `cmds` speak 1.0 without the `hello` keys added in 1.1: tools treat every 1.0 command as answered (one the build lacks gets
+  status 2) and expect no status above 13.
 - Tools drop frames whose seq or type does not match the request they wait for, and reset their frame parser after a timeout: a late reply to an earlier request
   is then ignored.
-- After a `link` error, later file commands return `link` at once until the device's 60 s lost limit, a restart, or (from build 159) the device's own recovery.
+- After a `link` error, later file commands return `link` at once while the outstanding request remains unresolved. B never resets itself to recover a lost
+  link; a power cycle restores the processors together.
 - Events are frames the device sends on its own, with seq 0 and a type of 0x80 or above that is not a reply to the request outstanding. Today there is one,
   `log` (0xD0). Tools accept events at any time, also while waiting for a reply, and ignore types they do not know.
 - Both sides decode byte by byte. On a wrong magic, a length above `max_payload` or a CRC mismatch the decoder drops one byte and searches again, so a frame
   after noise or a damaged frame is still found (the `streams` in the spec file are test cases). A frame cut short (a write that stopped part way, bytes lost on
   the way) is dropped once no byte has arrived for `idle_reset_ms`, so a request sent after that silence is found. Tools send each frame in one go (no pause of
-  `idle_reset_ms` inside a frame). Builds 181 and earlier never time out a partial frame: it waits until as many bytes as its header announced have arrived,
-  swallowing the start of the next requests; a tool clears that by sending `put_chunk` bytes of 0x00 and then `hello`, up to 5 times, until the `hello` is
-  answered (5 rounds cover the largest frame).
+  `idle_reset_ms` inside a frame).
 - Requests are decoded strictly: exactly the listed fields (the device checks lengths). Replies and events are decoded leniently: a tool ignores bytes after the
   fields it knows, so a later 1.x can add fields at the end. A reply or event marked `extensible: false` ends in `rest` or `text` and can never gain fields; a
   later version that needs more adds a command. An error reply holds the fields its `on_error` names, or the status alone. A common status sent as such (`state`
@@ -36,8 +35,8 @@ Part of the [XY Forever serial protocol 1.13](../PROTOCOL.md).
 - Each `cstr` and `text` field states its encoding. `ascii`: bytes 0x01 to 0x7F. `utf-8`: file and folder names, which MTP clients and computers make with any
   characters. Limits: `max_bytes` counts bytes, not characters; a name never holds NUL, and `/` separates its parts; the device compares names as bytes, without
   Unicode normalisation (macOS may send decomposed accents, Windows composed ones, so one visible name can be two files). The device checks the `/yaffs2/`
-  start, the parts (no empty, `.` or `..`), the NUL and control bytes (below 0x20, and 0x7F: `refused` since build 155), and passes every other byte to the
-  stock file system unchanged: invalid UTF-8 is not refused.
+  start, the parts (no empty, `.` or `..`), the NUL and control bytes (below 0x20, and 0x7F: `refused`), and passes every other byte to the stock file system
+  unchanged: invalid UTF-8 is not refused.
 - The device checks request lengths exactly (except where a command says the payload is ignored); a request with the wrong length is refused with the status the
   command lists.
 - Version 1 never renumbers a type or status, changes a meaning or changes a request layout. A later 1.x may add commands, status codes, events, `hello` keys
