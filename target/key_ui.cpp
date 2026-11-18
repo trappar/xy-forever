@@ -10,9 +10,7 @@
 #include "xyf_mods_view.hpp"
 #include "key_repeat.hpp"        // - / + repeat while held
 #include "knob_input.hpp"        // knob turns move the selection
-#if defined(XYF_USB_MENU)
 #include "usb_service.hpp"
-#endif
 #if defined(XYF_STAGE2)
 #include "xyf_stage2.hpp"      // stage-2 ABI; the call goes through xyf_stage2_enter (asm)
 extern "C" uint32_t xyf_stage2_enter(uint32_t entry, const xyf::stage2::Abi* abi) __asm__("xyf_stage2_enter");

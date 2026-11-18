@@ -162,6 +162,11 @@ bool menu_requested();
 void menu_release();
 // Test 062 (b): progress lines on the service screen (drawn only if a host said HELLO this boot).
 void progress(const char* a, const char* b);
+#if defined(XYF_USB_SERVICE)
+void stack_watch(uint32_t painted_begin);   // b's painted stack floor; STATUS reports stack_used live
+#else
+inline void stack_watch(uint32_t) {}        // no USB status in builds without the service
+#endif
 #if defined(XYF_ONE_SESSION)
 // Test 065 (b): one link session; the menu is home and answers every USB command.
 void rpc_reset();
@@ -170,7 +175,6 @@ bool home_hold();
 bool home_begin();
 void home_start();
 uint32_t home_pump();
-void stack_watch(uint32_t painted_begin);   // b's painted stack floor; STATUS reports stack_used live
 // b: the menu has USB on. A lost link then keeps the menu: USB still answers (commands
 // that need a get link) until a power cycle; b never resets itself on it.
 bool home_usb();

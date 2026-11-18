@@ -1071,7 +1071,7 @@ def build(out, stock, boot, mode):
     hashes = source_hashes()
     out.mkdir(parents=True)
     commands = []
-    flags = compile_core(out, compiler, tools, commands, ('ldr', 'memory', 'trace_slot', 'trace_slot_zero'))
+    flags = compile_core(out, compiler, tools, commands, ('ldr', 'memory', 'trace_slot', 'trace_slot_zero'), split_sections=stage2)
     if mode in WIDE_MODES:
         flags = [*flags, '-DXYF_STACK_END=%#xu' % stack_end, '-DXYF_CENSUS_REGIONS=24']
     if mode in USB_SET_DEFAULT_MODES:
