@@ -939,7 +939,7 @@ def verify(out, stock, boot):
         check_construct_spans(boot)
         require(has('xy_forever_file_boot'), 'File boot hook missing')
         require(not has('peer_probe') and (usb or not has('menu_link')), 'File boot links another link session')
-        for needed in ('begin_fresh', 'construct_fresh', 'direct_open', 'direct_read', 'Stock121PeerSession6freeze',
+        for needed in ('begin_fresh', 'construct_fresh', 'direct_open', 'direct_read', 'Stock121PeerSession12freeze_image',
                        'Stock121PeerSession5admit', 'Stock121PeerSession5stage', 'Stock121PeerSession11freeze_blob',
                        'Stock121PeerSession8transfer', 'Stock121PeerSession6refuse', 'xyf_boot4tick',
                        'xy_forever_key_ui', 'xyf7catalog6decode', 'xyf7catalog6encode', 'scan_direct'):
