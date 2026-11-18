@@ -104,12 +104,15 @@ def name_by_image(out):
 
 
 def newest_verified_build():
-    """The verified product build tests use when present: of BUILDS/<image> builds of this checkout's release
-    version (xy_forever/release.py), the one verified last. None when there is none."""
-    from xy_forever import release
+    """The verified product build tests use when present: of BUILDS/<image> builds made from this checkout's
+    source as it is now (manifest source_sha256 == xyf_build.source_hashes(), the tie --verify requires;
+    a build of another branch or an older commit never counts), the one verified last. None when there is
+    none: scripts/check.py builds one before its suite, `setup.py fixtures` too."""
+    import xyf_build
+    source = xyf_build.source_hashes()
     found = []
     for d in BUILDS.glob('*'):
         named = build_image(d)
-        if named and named[1].get('version') == release.VERSION:
+        if named and named[1].get('source_sha256') == source:
             found.append(((d / 'verification.json').stat().st_mtime, d.name, d))
     return max(found)[2] if found else None

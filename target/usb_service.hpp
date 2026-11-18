@@ -189,7 +189,8 @@ bool home_usb();
 // Open-XY", "USB: changing content"), or within host_activity_ms of a request that changes something
 // ("USB: receiving a file", "USB: writing files", "USB: installing XY Forever", ...), that line; else null.
 // version_label: "v" and the release version HELLO reports (XYF_VERSION), the home page's corner.
-// image_label: "image " and the image HELLO reports (8 hex digits; "..." until known; "unknown").
+// image_label: "image " and the image HELLO reports (8 hex digits; "..." until known; "unknown"); another
+// pointer once the hash settles (image_step, about 0.5 s after the menu starts), so a drawn Info page can tell.
 static const uint32_t host_seen_ms = 5000, host_activity_ms = 2000;
 bool host_seen();
 #if defined(XYF_MTP_USB)

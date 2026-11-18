@@ -8,14 +8,17 @@ const char* volatile service_lines[4] __attribute__((section(".data"))) = {"", "
 #endif
 
 #if defined(XYF_ONE_SESSION)
-// The USB mark and activity line on screen (set by draw_screen), and whether the menu loop has the screen
-// (key_ui::host_view redraws only then).
+// The USB mark, activity line and image line on screen (set by draw_screen), and whether the menu loop has
+// the screen (key_ui::host_view redraws only then). The image line counts only on the Info page, the one that
+// shows it: it redraws when the image's hash settles (image_label's pointer changes) while it is open.
 volatile uint32_t usb_drawn __attribute__((section(".data"))) = 0;
 const char* volatile usb_drawn_line __attribute__((section(".data"))) = 0;
+const char* volatile image_drawn __attribute__((section(".data"))) = 0;
 volatile uint32_t menu_screen __attribute__((section(".data"))) = 0;
 bool usb_view_changed() {
     return xy_forever::usb_service::host_marks() != usb_drawn ||
-           xy_forever::usb_service::host_activity() != usb_drawn_line;
+           xy_forever::usb_service::host_activity() != usb_drawn_line ||
+           (app.screen == xyf::menu::Screen::info && xy_forever::usb_service::image_label() != image_drawn);
 }
 #endif
 
@@ -27,6 +30,7 @@ void draw_screen(uint16_t* fb) {
     usb_drawn = marks; usb_drawn_line = activity;
     namespace U = xy_forever::usb_service;
     const Chrome chrome = {U::version_label(), (marks & 1u) != 0, activity, (marks & 2u) != 0, U::image_label()};
+    image_drawn = chrome.image;
 #else
     const Chrome chrome = {"", false, 0, false, ""};
 #endif

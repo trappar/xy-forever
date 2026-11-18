@@ -9,7 +9,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 ```sh
 cd xy-forever        # toolchain: ../tools/blackfin (or set XYF_TOOLCHAIN)
 python3 scripts/setup.py doctor   # stock pair + fixtures in place? (first: bootstrap, import-stock DIR)
-python3 scripts/check.py             # suite, build, --verify: the build lands in builds/<image> (receipt: its commit, tree)
+python3 scripts/check.py             # build, --verify, suite: the build lands in builds/<image> (receipt: its commit, tree)
 python3 scripts/check.py --confirm   # this commit's check receipt, with its image
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/repeat   # by hand: same candidate SHA
 python3 xyf_build.py --verify --out ../private/xy-forever/builds/repeat        # {"passed": true}
@@ -48,9 +48,10 @@ python3 scripts/check.py --neutral                     # also scripts/neutral.py
 python3 scripts/check.py --confirm BRANCH              # seconds, no build: what the branch's receipt records
 ```
 
-`scripts/check.py` runs once on a clean, committed tree: the exhaustive suite (`XYF_EXHAUSTIVE=1
-scripts/run_tests.py`, every test, never a subset), the product build into
-`../private/xy-forever/builds/check-<tree>` plus `--verify`, `scripts/neutral.py` with `--neutral [REF]`, and
+`scripts/check.py` runs once on a clean, committed tree: the product build into
+`../private/xy-forever/builds/check-<tree>` plus `--verify`, the exhaustive suite (`XYF_EXHAUSTIVE=1
+scripts/run_tests.py`, every test, never a subset; tests that use a build take only one made from this
+checkout's source, `paths.newest_verified_build`), `scripts/neutral.py` with `--neutral [REF]`, and
 `npm test` in `clients/ts` when that folder differs from the merge base with `origin/main` (else local `main`)
 or with `--npm`; it stops first, naming `npm ci`, when `clients/ts/node_modules` is missing. Step output goes
 to a log in `../private/xy-forever/sessions/<date>-check/`; it prints a short summary. Only when every step

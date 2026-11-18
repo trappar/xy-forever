@@ -164,12 +164,20 @@ void log_bar() {                        // a progress-only redraw (the bar and i
 // "menu: usb line: USB: writing files") where key_ui redraws them: every menu pass and key_ui::host_view.
 bool sim_usb_seen = false;
 const char* sim_usb_line = 0;
+// The image line key_ui drew last (draw_screen), logged at each Info page redraw: "menu: info image: image ...".
+const char* sim_image_drawn = 0;
+void info_drawn() {
+    sim_image_drawn = xy_forever::usb_service::image_label();
+    if (sim_app.screen == xyf::menu::Screen::info) xyf_sim::log("menu: info image: %s at %u ms", sim_image_drawn, device_ms());
+}
 void usb_view() {
     const bool seen = xy_forever::usb_service::host_seen();
     const char* const line = xy_forever::usb_service::host_activity();
     if (seen != sim_usb_seen) xyf_sim::log("menu: usb mark %s at %u ms", seen ? "on" : "off", device_ms());
     if (line != sim_usb_line) xyf_sim::log("menu: usb line: %s at %u ms", line ? line : "none", device_ms());
     sim_usb_seen = seen; sim_usb_line = line;
+    if (sim_app.screen == xyf::menu::Screen::info && xy_forever::usb_service::image_label() != sim_image_drawn)
+        info_drawn();                                                  // as key_ui: the hash settled while Info is open
 }
 // The PSoC frames the board holds for B (runtime.hpp) reach the stock receive queue where the stock poll
 // runs in key_ui's loop: each into slot write % 128, the write index advanced (counting on, or wrapping at
@@ -246,6 +254,7 @@ void dispatch(uint32_t key, uint32_t pressed) {
             return;
         }
 #endif
+        if (action == xyf::menu::Action::redraw) info_drawn();
         if (action == xyf::menu::Action::redraw && sim_app.note)        // 193: a row refused while storage starts
             xyf_sim::log("menu: line: %s", sim_app.note);
         else if (action == xyf::menu::Action::redraw)
