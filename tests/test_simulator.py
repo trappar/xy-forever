@@ -126,7 +126,8 @@ class SimulatorTest(unittest.TestCase):
         for kind in (P.STATUS, P.READ_FILE, P.PUT_BEGIN, P.REBOOT, 0x5f):
             self.assertEqual(dev.call(kind, b'')[0], ids.S_STATE, kind)       # before HELLO: state, nothing done
         code, text = dev.hello()
-        self.assertEqual((code, text), (0, P.hello_text(193, 'product', xyf_build.usb_switches('xyf-product'))))
+        self.assertEqual((code, text), (0, P.hello_text(int(xyf_build.MODES['xyf-product'][0].rsplit('-', 1)[1]), 'product',
+                                                   xyf_build.usb_switches('xyf-product'))))
         self.assertEqual(P.Hello(text).cmds, P.answered(xyf_build.usb_switches('xyf-product')))
         dev.hello_info = None                             # xyf_host refuses types missing from cmds
         self.assertEqual(dev.call(0x5f, b''), (ids.S_UNSUPPORTED, b''))     # not in cmds: status only
