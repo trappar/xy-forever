@@ -913,5 +913,31 @@ class DevicePassTest(unittest.TestCase):
             link.call(0x5f, b'', 1.0)
 
 
+class SilentExitTest(unittest.TestCase):
+    """#50: a run never stops without saying why."""
+
+    def test_only_keepalive_loops_are_stopped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for args in (['/bin/sh', '/repo/scripts/keepalive.sh', tmp], ['sh', 'scripts/keepalive.sh', tmp],
+                         ['bash', '-c', 'scripts/keepalive.sh', tmp, '>/dev/null']):
+                self.assertEqual(dp.keepalive_dir(args), tmp, args)
+            for args in (['grep', '-v', '-e', 'keepalive.sh', '-e', tmp],        # a filter on the script's output
+                         ['/bin/zsh', '-c', 'pgrep', '-fl', 'keepalive.sh', '&&', 'python3'],   # the shell that ran it
+                         ['sh', 'scripts/keepalive.sh', tmp + '/missing'], ['sh', 'scripts/keepalive.sh'], []):
+                self.assertIsNone(dp.keepalive_dir(args), args)
+
+    def test_an_error_after_the_folder_is_written_there(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(dp, 'EVIDENCE', [Path(tmp)]), \
+                patch.object(dp.signal, 'signal'):
+            def broken():
+                raise BrokenPipeError('the output pipe closed')
+            with self.assertRaises(BrokenPipeError):
+                dp.run_main(broken)
+            self.assertIn('BrokenPipeError: the output pipe closed', (Path(tmp) / 'error.txt').read_text())
+            (Path(tmp) / 'error.txt').unlink()
+            self.assertEqual(dp.run_main(lambda: dp.EXIT_NEED), dp.EXIT_NEED)
+            self.assertFalse((Path(tmp) / 'error.txt').exists())
+
+
 if __name__ == '__main__':
     unittest.main()

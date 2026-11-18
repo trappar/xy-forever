@@ -85,6 +85,15 @@ class ScriptTest(unittest.TestCase):
         self.assertEqual(max(b for a, b in entries if a >= 0x80000000), ct.UNMAPPED)
         self.assertFalse([e for e in entries if e[0] <= ct.UNMAPPED < e[1]])
 
+    def test_an_unexpected_error_in_a_step_is_a_fail_row(self):
+        run = ct.Run(None, None, None)
+        run.rows = []
+
+        def step():
+            raise KeyError('identity')
+        row = run.run('trigger', 'identity', step)
+        self.assertEqual((row['result'], row['detail']), ('FAIL', "KeyError: 'identity'"))
+
     def test_expected_screen_from_module_asm(self):
         asm = ('8ab02e10 <xyf_crash_fault>:\n8ab02e2a <xyf_crash_at_excpt>:\n'
                '8ab02e3c <xyf_crash_at_illegal>:\n8ab02e48 <xyf_crash_at_unmapped>:\n'

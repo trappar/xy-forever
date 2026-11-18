@@ -198,6 +198,8 @@ class Run(dp.Pass):
             detail, result = function(), 'PASS'
         except dp.StepFail as error:
             detail, result = str(error), 'FAIL'
+        except Exception as error:           # a bug or a local file problem: still a FAIL row (#50)
+            detail, result = '%s: %s' % (type(error).__name__, error), 'FAIL'
         row = dict(stage=stage, step=name, result=result, seconds=time.monotonic() - start, detail=detail)
         if self.folder:
             prefix = 'after-' if self.opts.after else ''
@@ -211,6 +213,8 @@ def after_folder(sessions, kind):
     day = datetime.now().strftime('%Y-%m-%d')
     found = sorted((p for p in sessions.glob('%s-%s-*' % (day, kind)) if (p / 'summary.json').is_file()
                     and not (p / 'after.json').is_file()), key=lambda p: int(p.name.rsplit('-', 1)[1]))
+    if found:
+        dp.EVIDENCE.append(found[-1])
     return found[-1] if found else dp.new_folder(sessions, kind)
 
 
@@ -311,4 +315,4 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(dp.run_main(main))
