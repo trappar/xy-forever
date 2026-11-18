@@ -245,17 +245,16 @@ def compile_into(work, defines):
         flags, source = job
         obj = work / (source.parent.name + '-' + source.stem + '.o')
         result = subprocess.run([*flags, '-c', str(source), '-o', str(obj)], capture_output=True, text=True)
-        if result.returncode:
-            raise RuntimeError('simulator build failed: %s\n%s' % (source.name, result.stderr[-4000:]))
-        return obj
+        return obj, result.stderr if result.returncode else None
     with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
-        futures = [pool.submit(compile_one, job) for job in jobs]
-        for future in concurrent.futures.as_completed(futures):
-            if future.exception():                     # the first failure: the queued compiles are not run
-                for other in futures:
-                    other.cancel()
-                raise future.exception()
-        objects = [future.result() for future in futures]
+        compiled = list(pool.map(compile_one, jobs))
+    # Every compile runs, and every failing source is named in source order: the error does not
+    # depend on which compile finished first (a missing switch can break several sources).
+    failed = [(source.name, error) for (_, source), (_, error) in zip(jobs, compiled) if error is not None]
+    if failed:
+        raise RuntimeError('simulator build failed: %s\n%s' % (', '.join(name for name, _ in failed), '\n'.join(
+            '%s:\n%s' % (name, error[-4000:]) for name, error in failed)))
+    objects = [obj for obj, _ in compiled]
     result = subprocess.run([CXX, '-pthread', *map(str, objects), '-o', str(work / 'xyf_sim')], capture_output=True,
                             text=True)
     if result.returncode:
