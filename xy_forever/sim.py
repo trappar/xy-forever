@@ -208,10 +208,17 @@ def prune(cache, keep=KEEP_BUILDS):
     """Removes builds beyond the keep most recently used that no build() asked for in a day (a
     simulator started from one may still be running), and partial builds over an hour old."""
     now = time.time()
-    builds = sorted((p for p in cache.iterdir() if p.is_dir() and not p.name.startswith('build-')),
-                    key=lambda p: p.stat().st_mtime, reverse=True)
-    old = [p for p in builds[keep:] if now - p.stat().st_mtime > 86400]
-    partial = [p for p in cache.glob('build-*') if now - p.stat().st_mtime > 3600]
+
+    def mtime(path):                                   # None: gone (another test job pruned it first)
+        try:
+            return path.stat().st_mtime if path.is_dir() else None
+        except OSError:
+            return None
+    times = {p: mtime(p) for p in cache.iterdir()}
+    builds = sorted((p for p, t in times.items() if t is not None and not p.name.startswith('build-')),
+                    key=times.get, reverse=True)
+    old = [p for p in builds[keep:] if now - times[p] > 86400]
+    partial = [p for p, t in times.items() if t is not None and p.name.startswith('build-') and now - t > 3600]
     for path in old + partial:
         shutil.rmtree(path, ignore_errors=True)
 
