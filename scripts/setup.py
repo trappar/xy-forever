@@ -433,7 +433,7 @@ def doctor():
              ('stock catalog', catalog, 'ok' if catalog else 'missing: run fixtures'),
              ('published kit', kit, ox['kit_version'] if kit else 'missing: run fixtures'),
              ('mod package set', mods, paths.PUBLISHED_MODS.name if mods else 'missing: run fixtures'),
-             ('verified build', bool(build), build.name if build else 'missing: run fixtures')]
+             ('verified build', bool(build), build.name if build else 'none of this source: run fixtures')]
     node = shutil.which('node')
     version = subprocess.run([node, '--version'], capture_output=True, text=True).stdout.strip() if node else None
     tsc = (REPO / 'clients/ts/node_modules/.bin/tsc').exists()

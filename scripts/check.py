@@ -5,10 +5,11 @@
     python3 scripts/check.py --confirm [REF]      (default REF: HEAD; fast, builds nothing)
 
 The standard set, in order, stopping at the first failure:
-  - the exhaustive unit suite: XYF_EXHAUSTIVE=1 scripts/run_tests.py (every test, never a subset);
   - the product build into a fresh private build folder (<private>/xy-forever/builds/check-<tree>),
     then xyf_build.py --verify of it; a verified build moves to builds/<image> (its name: the first 8 hex
     digits of the candidate's SHA-256, hello image=), with check.json naming the tree and commit;
+  - the exhaustive unit suite: XYF_EXHAUSTIVE=1 scripts/run_tests.py (every test, never a subset), after
+    the build so the tests that use one (paths.newest_verified_build) get the build of this very source;
   - scripts/neutral.py REF with --neutral (default REF: the merge base with origin/main, else main);
   - npm test in clients/ts when clients/ts differs from that merge base, or with --npm (refused up front,
     naming npm ci, when clients/ts/node_modules is missing).
@@ -157,12 +158,12 @@ def standard_steps(args, root, tree, work):
     py, summary = sys.executable, Path(work) / 'tests.json'
     npm = npm_steps(args, root)                  # before anything runs: a missing node_modules stops the run
     jobs = ['--jobs', str(args.jobs)] if args.jobs else []
-    steps = [step('unit tests (exhaustive)', [py, root / 'scripts/run_tests.py', *jobs, '--summary', summary],
-                  root, {'XYF_EXHAUSTIVE': '1'}, tests_parser(summary))]
     out = fresh_build_folder(tree)
-    steps += [step('product build', [py, root / 'xyf_build.py', '--xyf-product', '--out', out], root),
-              step('verify', [py, root / 'xyf_build.py', '--verify', '--out', out], root,
-                   parse=verify_parser(out, tree, git(root, 'rev-parse', 'HEAD')))]
+    steps = [step('product build', [py, root / 'xyf_build.py', '--xyf-product', '--out', out], root),
+             step('verify', [py, root / 'xyf_build.py', '--verify', '--out', out], root,
+                  parse=verify_parser(out, tree, git(root, 'rev-parse', 'HEAD'))),
+             step('unit tests (exhaustive)', [py, root / 'scripts/run_tests.py', *jobs, '--summary', summary],
+                  root, {'XYF_EXHAUSTIVE': '1'}, tests_parser(summary))]
     if args.neutral is not None:
         ref = args.neutral or merge_base(root)
         if not ref:

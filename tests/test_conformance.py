@@ -24,7 +24,7 @@ from xy_forever import usb_proto as P                 # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 PRE_V1 = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e'
-BUILD = paths.newest_verified_build()                    # a verified product build, when present
+BUILD = paths.newest_verified_build()                    # a verified build of this source, when present
 AREA = '/yaffs2/xy-forever/log/conformance/'
 
 

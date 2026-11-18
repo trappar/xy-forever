@@ -32,7 +32,7 @@ LOCAL_TSC = CLIENT / 'node_modules' / '.bin' / 'tsc'                # npm ci in 
 TSC = os.environ.get('XYF_TSC') or (str(LOCAL_TSC) if LOCAL_TSC.exists() else None)
 CASES = json.loads((ROOT / 'protocol' / 'v1.conformance.json').read_text())['cases']
 SIM_UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
-BUILD = paths.newest_verified_build()                    # a verified product build, when present
+BUILD = paths.newest_verified_build()                    # a verified build of this source, when present
 
 
 def node_strips_types():

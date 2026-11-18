@@ -31,7 +31,7 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 BASE = '/yaffs2/xy-forever/'
 PRE_V1 = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e'
 SPEC = json.loads((ROOT / 'protocol' / 'v1.json').read_text())
-BUILD = paths.newest_verified_build()                    # a verified product build, when present
+BUILD = paths.newest_verified_build()                    # a verified build of this source, when present
 
 
 PARTITION_CLASS, PATH_CLASS, SECTOR_CLASS, WRITE_CLASS = 0x11907694, 0x119076b4, 0x11907348, 0x11907710

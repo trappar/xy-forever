@@ -349,7 +349,7 @@ class HostToolTest(unittest.TestCase):
     def test_real_build_validates_and_installs_on_fake_device(self):
         build = paths.newest_verified_build()
         if build is None:
-            self.skipTest('no verified product build (run scripts/setup.py fixtures)')
+            self.skipTest('no verified build of this source (scripts/check.py or setup.py fixtures makes one)')
         data, notes = self.host.load_build(build)
         self.assertTrue(any('verified' in n for n in notes))
         fake = FakeDevice({'/yaffs2/firmware.version': b'1.2.1+0@abc\n'})
@@ -513,7 +513,7 @@ class HostToolTest(unittest.TestCase):
     def test_install_and_reboot_default_to_dry_run(self):
         build = paths.newest_verified_build()
         if build is None:
-            self.skipTest('no verified product build (run scripts/setup.py fixtures)')
+            self.skipTest('no verified build of this source (scripts/check.py or setup.py fixtures makes one)')
         called = []
         original = self.host.connect
         self.host.connect = lambda timeout: called.append(1)
