@@ -10,7 +10,8 @@ of firmware/<--stock-entry>/info.txt (the stock os.ldr the image was built from)
 those of firmware/<--like>/info.txt (the device's own Open-XY entry).
 The candidate's xy-forever/loaded/<id>/... files (runtime-loaded objects) go to /yaffs2/xy-forever/loaded/<id>/.
 
-Modes (each a separate run; the first FAIL stops, exit 1; usage exit 2):
+Modes (each a separate run; the first FAIL stops, exit 1; usage exit 2; with --sim the evidence folder is
+removed when the run passed, unless --keep):
   upload (default) completes or replaces firmware/<id>/: info.txt removed first, files the entry does not
                    hold removed, os.ldr kept when its size and the old info.txt's sha256= match, info.txt
                    written last; B's catalog then lists <id> as "content not installed" (expected).
@@ -246,6 +247,7 @@ def parse_args(argv):
     mode.add_argument('--boot', action='store_true', help='set-default <id> (content switch), then boot it once')
     mode.add_argument('--cleanup', action='store_true', help='remove the entry (not while default or installed)')
     p.add_argument('--sim', metavar='HOST:PORT')
+    p.add_argument('--keep', action='store_true', help='with --sim: keep the evidence folder when it passed')
     o = p.parse_args(argv)
     if not xyf_entry.ID.fullmatch(o.id) or len(o.name.encode()) > 47:
         p.error('id must be 1-31 of [a-z0-9_-], name at most 47 bytes')
@@ -272,6 +274,8 @@ def main(argv=None, device=None, sleep=time.sleep, folder=None):
         print('FAIL: %s' % error, flush=True)
         code = 1
     (run.folder / 'host-log.txt').write_text(''.join(run.log))
+    if not folder:
+        print('evidence: %s' % dp.settle_folder(run.folder, o.sim, code == 0, o.keep), flush=True)
     return code
 
 

@@ -308,8 +308,8 @@ class SpecDataTest(unittest.TestCase):
         self.assertEqual(unverified, ['control_lines', 'usb_serial_number'])
 
     def test_idle_reset(self):
-        """The device never timed out a partial frame; the idle reset fixes that: the spec
-        names the limit, the device code uses it, and the frame header comment agrees."""
+        """A partial frame is dropped after idle_reset_ms of silence: the spec names the limit,
+        the device code uses it, and the frame header comment agrees."""
         s = spec()
         self.assertEqual(protogen.constants(s)['idle_reset_ms'], 250)
         self.assertIn('is dropped once no byte has arrived for `idle_reset_ms`',
