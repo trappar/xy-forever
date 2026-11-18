@@ -199,7 +199,7 @@ def mtp_usb_ids():
 
 # The composite's pair, the product and the test mode alike. Until 189-001: pid.codes' test pair 1209:0001
 # while the shipping pair was undecided. Since then: the stock pair 2367:0021 (teenage engineering's, as the
-# stock MTP and CDC drivers declare it; revisit before a public release).
+# stock MTP and CDC drivers declare it; kept for good: #58).
 MTP_USB_IDS = (0x2367, 0x0021)
 
 
