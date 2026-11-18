@@ -30,7 +30,7 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 | `xy_forever/` | Python: build helpers (`compile.py`, `outer.py`, `toolchain.py`), report decoder (`census.py`), USB protocol, library entries, stage-2 packer, private paths (`paths.py`), mod packages from an open-xy kit (`modkit.py`; STORAGE.md), the native linker's host proof (`modlink.py`), the native patch/content steps on the host (`modpatch.py`, `host/mod_assemble.cpp`) |
 | `re/` | reverse-engineering tools over the private 1.2.1 listing (reach, MTP reach, CRC spans) |
 | `scripts/` | device session helpers (`keepalive.sh`, `dryshow.py`, `capture_session.py`); `neutral.py` (candidate comparison); `check.py` (the standard checks once, with a receipt per tree); `modkit_core.mjs`, `modlink_core.mjs` (run open-xy's `core.mjs` for `modkit.py`, `modlink.py`; `link_out` writes its link result) |
-| `sim/`, `xy_forever/sim.py` | the device simulator (above) |
+| `sim/`, `xy_forever/sim.py` | the device simulator (above); `xy_forever/procgroup.py`: child processes (the simulator, node and npm in the tests) that end with what started them |
 | `protocol/v1.json`, `scripts/protogen.py` | the serial protocol spec and its generator: `target/usb_proto_ids.hpp`, `xy_forever/usb_proto_ids.py`, `clients/ts/src/v1.ts`, `docs/PROTOCOL.md` |
 | `clients/ts/` | TypeScript client for the web app: generated `v1.ts`, call layer, Node TCP and Web Serial transports; `npm test` (Vitest, simulators started by the tests); `clients/ts/README.md` |
 | `tests/` | `python3 -m unittest discover -s tests` (host-compiled C++ bridges + Python) |

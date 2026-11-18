@@ -40,7 +40,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import paths  # noqa: E402
+from xy_forever import paths, procgroup  # noqa: E402
 
 VERSION = 1                                  # receipt format; a reader refuses a newer one
 CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json
@@ -202,8 +202,8 @@ def run_steps(steps, log):
             f.flush()
             start = time.monotonic()
             try:
-                proc = subprocess.run(s['cmd'], cwd=s['cwd'], env=dict(os.environ, **s['env']), stdout=subprocess.PIPE,
-                                      stderr=subprocess.STDOUT, text=True, errors='replace')
+                proc = procgroup.run(s['cmd'], cwd=s['cwd'], env=dict(os.environ, **s['env']), stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT, text=True, errors='replace')
                 status, text = proc.returncode, proc.stdout
             except OSError as e:
                 status, text = 127, str(e)

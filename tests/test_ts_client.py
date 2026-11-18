@@ -24,7 +24,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import paths, sim  # noqa: E402
+from xy_forever import paths, procgroup, sim  # noqa: E402
 
 CLIENT = ROOT / 'clients' / 'ts'
 NODE = shutil.which('node')
@@ -47,28 +47,28 @@ def node_strips_types():
 class TypeScriptClientTest(unittest.TestCase):
     @unittest.skipUnless(node_strips_types(), 'Node 22.18+/23.6+ not found')
     def test_golden_frames_and_streams_in_node(self):
-        run = subprocess.run([NODE, 'test/v1.test.ts'], cwd=CLIENT, capture_output=True, text=True, timeout=60)
+        run = procgroup.run([NODE, 'test/v1.test.ts'], cwd=CLIENT, capture_output=True, text=True, timeout=60)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertRegex(run.stdout, r'^ok \d+ checks')
 
     @unittest.skipUnless(node_strips_types(), 'Node 22.18+/23.6+ not found')
     def test_mod_index_fetch_in_node(self):
         """loadIndex + fetchPackages over a local HTTP server (clients/ts/test/modindex.test.ts)."""
-        run = subprocess.run([NODE, 'test/modindex.test.ts'], cwd=CLIENT, capture_output=True, text=True, timeout=120)
+        run = procgroup.run([NODE, 'test/modindex.test.ts'], cwd=CLIENT, capture_output=True, text=True, timeout=120)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertRegex(run.stdout, r'modindex: \d+ checks passed')
 
     @unittest.skipUnless(TSC, 'no TypeScript compiler (npm ci in clients/ts, or XYF_TSC)')
     def test_type_checks_strictly(self):
         command = [TSC] if os.access(TSC, os.X_OK) and not TSC.endswith('.js') else [NODE or 'node', TSC]
-        run = subprocess.run(command + ['-p', 'tsconfig.json'], cwd=CLIENT, capture_output=True, text=True, timeout=120)
+        run = procgroup.run(command + ['-p', 'tsconfig.json'], cwd=CLIENT, capture_output=True, text=True, timeout=120)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)          # strict settings: tsconfig.json
 
     @unittest.skipUnless(node_strips_types(), 'Node 22.18+/23.6+ not found')
     def test_conformance_cases_interpret(self):
         """Every case of the file is interpretable by the TypeScript runner (the Python runner: test_conformance)."""
-        run = subprocess.run([NODE, 'test/conformance.ts', '--check'], cwd=CLIENT, capture_output=True, text=True,
-                             timeout=60)
+        run = procgroup.run([NODE, 'test/conformance.ts', '--check'], cwd=CLIENT, capture_output=True, text=True,
+                            timeout=60)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertEqual(run.stdout.strip(), 'ok %d cases interpreted' % len(CASES))
 
@@ -81,8 +81,8 @@ class TypeScriptClientTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='xyf-ts-conf-') as tmp:
             root = sim.seed(Path(tmp) / 'yaffs2')
             with sim.Simulator(root, Path(tmp) / 'bootpart.bin', build_dir=sim.build(), log=Path(tmp) / 'log.txt') as s:
-                run = subprocess.run([NODE, 'test/conformance.ts', '--sim', s.address] + fixtures, cwd=CLIENT,
-                                     capture_output=True, text=True, timeout=120)
+                run = procgroup.run([NODE, 'test/conformance.ts', '--sim', s.address] + fixtures, cwd=CLIENT,
+                                    capture_output=True, text=True, timeout=120)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         rows = {line.split()[0]: line.split()[1] for line in run.stdout.splitlines()[1:]}
         self.assertEqual(len(rows), len(CASES))
@@ -110,7 +110,7 @@ class NodeSuiteTest(unittest.TestCase):
         if not npm:
             self.skipTest('npm not found')
         try:
-            run = subprocess.run([npm, 'test'], cwd=CLIENT, capture_output=True, text=True, timeout=120)
+            run = procgroup.run([npm, 'test'], cwd=CLIENT, capture_output=True, text=True, timeout=120)
         except subprocess.TimeoutExpired as e:
             self.fail('npm test in clients/ts took over 120 s: %s' % (e.stdout or b'')[-2000:])
         self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])

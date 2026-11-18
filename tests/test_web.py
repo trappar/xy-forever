@@ -4,10 +4,13 @@ reason. Its e2e test (`npm run test:e2e`: system Chrome against the simulator) i
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / 'web'
+sys.path.insert(0, str(ROOT))
+from xy_forever import procgroup  # noqa: E402
 
 
 class WebAppTest(unittest.TestCase):
@@ -18,7 +21,7 @@ class WebAppTest(unittest.TestCase):
         if not (WEB / 'node_modules' / '.bin' / 'vitest').exists():
             self.skipTest('web/node_modules absent: run npm ci in web/ to include the web app suite (npm test)')
         try:
-            run = subprocess.run([npm, 'test'], cwd=WEB, capture_output=True, text=True, timeout=120)
+            run = procgroup.run([npm, 'test'], cwd=WEB, capture_output=True, text=True, timeout=120)
         except subprocess.TimeoutExpired as e:
             self.fail('npm test in web/ took over 120 s: %s' % (e.stdout or b'')[-2000:])
         self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])
