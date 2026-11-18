@@ -33,7 +33,7 @@ OVER = {
     'native/mod_content.cpp': 33307,
     'native/mod_job.cpp': 47043,
     'native/mod_link.cpp': 65785,
-    'native/mtp_responder.cpp': 33303,
+    'native/mtp_responder.cpp': 33255,
     'scripts/device_pass.py': 128359,
     'scripts/protogen.py': 90178,
     'scripts/setup.py': 38448,
@@ -44,11 +44,10 @@ OVER = {
     'target/peer_services.cpp': 41949,
     'target/storage_server.cpp': 43048,
     'target/xyf_content_job.hpp': 34146,
-    'target/xyf_mods_io.cpp': 33346,
     'xy_forever/conformance.py': 63763,
     'xy_forever/modkit.py': 64034,
     'xyf_build.py': 83047,
-    'xyf_host.py': 55162,
+    'xyf_host.py': 53499,
 }
 
 

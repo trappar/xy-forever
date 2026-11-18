@@ -226,7 +226,8 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
     def build():
         code, job, missing = MS.start(dev, base, profile, generation, machines, exts, args.name, args.unverified)
         if code:
-            out('apply: %s%s' % (P.status_name(code), ' (missing %s)' % MS.MISSING[missing] if missing else ''))
+            out('apply: %s%s' % (P.status_name(code),
+                                 ' (missing %s)' % MS.MISSING[missing] if missing and code == MS.NOT_FOUND else ''))
             return None
         f = MS.wait(dev, job, out)
         if f is None:
@@ -332,6 +333,10 @@ def command(args, connect, slots, current_state, out=print):
     out('connected %s: %s' % (port, text))
     if P.Hello(text).major != '1':
         out('refused: the device speaks protocol %s; this tool speaks 1.x' % P.Hello(text).proto)
+        return 2
+    if not args.restore and not MS.layout_ok(P.Hello(text).proto):
+        out('refused: this XY Forever (protocol %s) reads mods/<profile>/<generation>/; install a build with '
+            'protocol 1.16 or later first (#124)' % P.Hello(text).proto)
         return 2
     try:
         if args.restore:

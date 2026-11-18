@@ -1818,6 +1818,66 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(code, ids.S_STATE, out)
         self.assertIn('state (error 17)', out)
 
+    # -- the depth rule (#124) --------------------------------------------------------------
+    def test_depth_rule_on_every_write_command(self):
+        """No folder more than 6 below /yaffs2 and no file in one: file.mkdir, file.write_staged, file.copy and
+        file.rename are refused at the limit + 1 (nothing reaches A) and done at the limit; a folder moved deeper
+        is walked (refused when a folder inside it would sit too deep). Reads, listing and deletes of an older
+        deep tree still work. xyf_host.py says why before it connects, and cp -r checks the whole tree."""
+        root = self.dir / 'yaffs2'
+        W = BASE + 'wt/'                                                  # 2 folders
+        six = W + 'a/b/c/d'                                               # 6 folders
+        (root / 'xy-forever/wt/a/b/c/d/e').mkdir(parents=True)           # e: 7, made before the rule
+        (root / 'xy-forever/wt/a/b/c/d/e/old.txt').write_bytes(b'old')
+        (root / 'xy-forever/wt/t/u/v').mkdir(parents=True)               # a tree 3 folders tall
+        (root / 'xy-forever/wt/t/u/v/x.txt').write_bytes(b'x')
+        (root / 'xy-forever/wt/s.txt').write_bytes(b's')
+        dev = self.connect()
+        before = self.sim.status()
+        self.assertEqual(dev.change(P.MAKE_DIR, six + '/g'), (ids.S_REFUSED, 0))
+        self.assertEqual(dev.copy(W + 's.txt', six + '/e/s.txt')[0], ids.S_REFUSED)
+        self.assertEqual(dev.rename(W + 's.txt', six + '/e/s.txt'), (ids.S_REFUSED, 0))
+        self.assertEqual(dev.stage(b'abc'), 0)
+        code, _ = dev.call(P.FILE_WRITE, (six + '/e/w.txt').encode() + b'\0' + hashlib.sha256(b'abc').digest())
+        self.assertEqual(code, ids.S_REFUSED)
+        self.assertEqual(self.sim.status()['to_a'], before['to_a'])       # refused on B
+        self.assertEqual(host.put(dev, b'abc', six + '/w.txt'), 0)         # at the limit
+        self.assertEqual(dev.copy(W + 's.txt', six + '/c.txt')[0], 0)
+        self.assertEqual(dev.change(P.MAKE_DIR, W + 'a/b/c/n'), (0, 0))
+        self.assertEqual(dev.rename(W + 't/u', W + 'a/u'), (0, 0))       # a/u/v: 5 folders
+        self.assertEqual(dev.rename(W + 'a/u', W + 'a/b/u'), (0, 0))     # 6
+        self.assertEqual(dev.rename(W + 'a/b/u', W + 'a/b/c/u'), (ids.S_REFUSED, 0))   # v would be 7th
+        self.assertEqual(dev.rename(W + 'a/b/u', W + 'u'), (0, 0))       # shallower: no walk
+        self.assertEqual((root / 'xy-forever/wt/u/v/x.txt').read_bytes(), b'x')
+        self.assertEqual(dev.read_file(six + '/e/old.txt'), (0, b'old'))   # an older deep tree: read, list, delete
+        self.assertEqual(dev.list_dir(six + '/e'), (0, [(0, 3, b'old.txt')]))
+        self.assertEqual(dev.change(P.DELETE_FILE, six + '/e/old.txt'), (0, 0))
+        self.assertEqual(dev.change(P.REMOVE_DIR, six + '/e'), (0, 0))
+
+        def run(*argv):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()), warnings.catch_warnings():
+                warnings.simplefilter('ignore', ResourceWarning)
+                code = host.main(['--sim', self.sim.address] + list(argv))
+                gc.collect()
+            return code, out.getvalue()
+        text = 'is more than 6 folders below /yaffs2'
+        for argv in (['mkdir', six + '/g'], ['mv', W + 's.txt', six + '/g/s.txt'], ['cp', W + 's.txt', six + '/g/s']):
+            code, out = run(*argv)
+            self.assertEqual(code, 2, out)
+            self.assertIn(text, out)
+            self.assertNotIn('connected', out)
+        code, out = run('cp', '-r', W + 'u', W + 'a/b/c/u')                # u/v: v would be 7th
+        self.assertEqual(code, 2, out)
+        self.assertIn('with the folders inside it ' + text, out)
+        self.assertFalse((root / 'xy-forever/wt/a/b/c/u').exists())
+        code, out = run('cp', '-r', W + 'u', W + 'a/b/u2')
+        self.assertEqual(code, 0, out)
+        self.assertEqual((root / 'xy-forever/wt/a/b/u2/v/x.txt').read_bytes(), b'x')
+        code, out = run('mv', W + 'u', W + 'a/b/c/u')
+        self.assertEqual(code, ids.S_REFUSED, out)
+        self.assertIn('a folder moved deeper', out)
+
     def test_a_renames_only_a_checked_pair_in_its_window(self):
         """A, from the board (B's checks bypassed): rename_from keeps a source only for the very next
         request; a rename_to without one is refused; the pair's policy and the write area apply on A

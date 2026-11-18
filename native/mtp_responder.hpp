@@ -97,6 +97,14 @@ enum : U16 { f_undefined = 0x3000, f_association = 0x3001 };
 // The write rule (pure): below /yaffs2/, first name not "upgrade", not the marker /yaffs2/bootloader.dev
 // (ASCII case ignored).
 bool writable(const char* path);
+// The depth rule (#124, target/file_engine.hpp): a new folder at most 6 names below /yaffs2, a new
+// file at most 7 (deeper hangs the stock dev-menu MTP, then Track 5). SendObjectInfo answers Access_Denied
+// past it; B's policy refuses the same when the folder is made or the file opened.
+inline bool within_depth(const char* path, bool folder) {
+    U32 names = 0;
+    for (U32 i = 7; path[i]; ++i) if (path[i] != '/' && path[i - 1] == '/') ++names;
+    return names <= 6u + (folder ? 0u : 1u);
+}
 
 class Responder {
 public:

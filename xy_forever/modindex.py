@@ -148,7 +148,7 @@ def build(gen_dir, out_dir):
 # -- checking an index (from anywhere) -----------------------------------------------------------------
 def check_path(profile, generation, package, rel):
     parts = rel.split('/')
-    device = '%s/%s/%s/%s/%s' % (S.ROOT, profile, generation, package, rel)
+    device = '%s/%s/%s/%s' % (S.ROOT, generation, package, rel)       # at most its stored name's length
     if (not rel or rel.startswith('/') or '\\' in rel or any(p in ('', '.', '..') for p in parts) or
             ':' in parts[0] or any(ord(c) < 0x20 or ord(c) == 0x7f for c in rel)):
         raise Refused('%s: unusable path %r' % (package, rel[:80]))

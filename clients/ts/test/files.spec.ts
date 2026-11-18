@@ -92,7 +92,8 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
 
   test('changes outside the write area: refused here with the reason, nothing sent (nothing staged)', async () => {
     // Since 1.13 all of /yaffs2 is writable by hand except bootloader.dev and anything in upgrade/ (inWriteArea).
-    const roots = 'the OP-XY changes files only under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade (or inside it)';
+    const roots = 'the OP-XY changes files only under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade (or inside it), ' +
+      'at most 6 folders deep';
     const call = vi.spyOn(client, 'call');
     try {
       const write = await failure(client.writeFile('/yaffs2/bootloader.dev', new Uint8Array(16)));
@@ -175,7 +176,8 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
     expect(readFileSync(host(`${dir}/taken.txt`), 'utf-8')).toBe('taken');
     expect(readFileSync(host(`${dir}/b.txt`), 'utf-8')).toBe('a');
     await expect(client.renamePath(`${dir}/none.txt`, `${dir}/c.txt`)).rejects.toMatchObject({ code: 'not_found', command: 'file.rename' });
-    await expect(client.renamePath(`${dir}/moved`, `${dir}/moved/inside`)).rejects.toMatchObject({ code: 'storage', command: 'file.rename',
+    await client.makeDir(`${dir}/solo`);                               // no folder inside: within the depth rule
+    await expect(client.renamePath(`${dir}/solo`, `${dir}/solo/inside`)).rejects.toMatchObject({ code: 'storage', command: 'file.rename',
       message: expect.stringMatching(/a folder cannot move into itself$/) });
   });
 
@@ -220,6 +222,33 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
     }
     await expect(client.copyTree(`${dir}/none`, `${dir}/none-copy`)).rejects.toMatchObject({ code: 'not_found' });
     await expect(client.copyTree(`${dir}/src`, `${dir}/dst`)).rejects.toMatchObject({ code: 'storage', command: 'file.mkdir' });
+  });
+
+  test('the depth rule (#124): at most 6 folders below /yaffs2; refused here at 7, a folder moved deeper by the device', async () => {
+    const W = '/yaffs2/xy-forever/dt', six = `${W}/a/b/c/d`;              // 2 + 4 = 6 folders
+    seed(`${six}/f/old.txt`, 'old');                                     // 7: made before the rule
+    seed(`${W}/t/u/v/x.txt`, 'x');
+    const call = vi.spyOn(client, 'call');
+    try {
+      const deep = await failure(client.writeFile(`${six}/f/w.txt`, new Uint8Array(3)));
+      expect(deep).toMatchObject({ code: 'refused', command: 'file.write_staged', status: null });
+      expect(deep.message).toContain('is more than 6 folders below /yaffs2');
+      await expect(client.makeDir(`${six}/g`)).rejects.toMatchObject({ code: 'refused', status: null });
+      await expect(client.copyFile(`${W}/t/u/v/x.txt`, `${six}/f/x.txt`)).rejects.toMatchObject({ code: 'refused', status: null });
+      await expect(client.copyTree(`${W}/t/u`, `${W}/a/b/c/u`)).rejects.toMatchObject({ code: 'refused', status: null });
+      expect(call.mock.calls.filter(([name]) => name !== 'file.list')).toEqual([]);
+    } finally {
+      call.mockRestore();
+    }
+    await client.writeFile(`${six}/w.txt`, new TextEncoder().encode('abc'));          // at the limit
+    await client.makeDir(`${W}/a/b/c/n`);
+    await client.copyTree(`${W}/t/u`, `${W}/a/b/u2`);
+    expect(readFileSync(host(`${W}/a/b/u2/v/x.txt`), 'utf8')).toBe('x');
+    await expect(client.renamePath(`${W}/t/u`, `${W}/a/b/c/u`)).rejects.toMatchObject({ code: 'refused', command: 'file.rename', status: 14 });
+    await client.renamePath(`${W}/t/u`, `${W}/a/b/u`);
+    expect(new TextDecoder().decode(await client.readFile(`${six}/f/old.txt`))).toBe('old');   // older: read and delete
+    await client.deleteFile(`${six}/f/old.txt`);
+    await client.removeDir(`${six}/f`);
   });
 
   test('library.boot: only with confirm; a missing entry boots nothing; then the link drops', async () => {

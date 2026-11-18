@@ -42,8 +42,7 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
     if (code == P::s_ok && !xy_forever_cold_policy) code = P::s_state;
     if (code == P::s_ok && (!join(s.base, job_firmware, field[0]) || !join(s.stock, s.base, "/os.ldr") ||
                             !join(s.official, s.base, "/content.sha256") ||
-                            !join(s.generation, job_mods, field[1], "/") ||
-                            !join(s.generation + text_bytes(s.generation), field[2], "")))
+                            !join(s.generation, job_mods, field[2], "")))   // mods/<generation>/ (#124)
         code = P::s_bad_request;
     if (code == P::s_ok && !a_serving()) code = P::s_link;
     if (code == P::s_ok) code = file_client::mount_ready(mounted);
@@ -61,6 +60,17 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
         const file_client::Reply r = file_client::stat(inputs[k], record);
         if (r.outcome) { if (r.outcome == file_client::link) mounted = file_client::mounted_stale; code = file_client::status(r.outcome); }
         else if (r.value != 0) { code = P::s_not_found; missing = k + 1; }
+    }
+    if (code == P::s_ok) {                                               // the store's version (#124, missing 5)
+        uint8_t text[16];
+        uint32_t bytes = 0, version = 0;
+        join(probe, s.generation, "/", xyf::mods_store::file);
+        code = file_client::read_file(probe, 0, true, text, sizeof(text), bytes, mounted);
+        if (code == P::s_ok) version = xyf::mods_store::version_of(text, bytes);
+        if (code == P::s_not_found || (code == P::s_ok && version != xyf::mods_store::version)) {
+            code = version > xyf::mods_store::version ? P::s_unsupported : P::s_not_found;   // newer; older or unreadable
+            missing = 5;
+        }
     }
     // A job id whose output folder does not exist yet.
     for (U32 tries = 0; code == P::s_ok; ++tries) {
@@ -91,7 +101,7 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
         s.input.selection.expanded = (flags & 2u) != 0;                      // bit 1, the 4 MiB layout
         s.input.generation = s.generation; s.input.stock = s.stock; s.input.catalog = catalog;
         s.input.official = s.official; s.input.out = s.out; s.input.policy = xy_forever_cold_policy;
-        s.input.profiling = false; s.input.unverified = (flags & 1u) != 0;
+        s.input.profiling = false; s.input.unverified = (flags & 1u) != 0; s.input.flat = true;
         s.calls.context = &s; s.calls.size = job_size; s.calls.open = job_open; s.calls.read = job_read;
         s.calls.write = job_write; s.calls.close = job_close; s.calls.rename = job_rename; s.calls.remove = job_remove;
         s.calls.mkdir = job_mkdir;

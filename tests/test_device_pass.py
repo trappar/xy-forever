@@ -527,7 +527,7 @@ class DevicePassTest(unittest.TestCase):
         (left when it differs)."""
         self.assertEqual(self.run_pass(['--stage', 'mods']), dp.EXIT_PASS)
         self.assertEqual(self.rows()[('mods', 'apply')]['result'], 'SKIP')
-        gen = BASE + 'mods/opxy-1.2.1/%s/' % dp.MODS_PACKAGES.name
+        gen = BASE + 'mods/%s/' % dp.MODS_PACKAGES.name
 
         def holding(base_list=True, faults=()):
             dev = FakeDevice(faults=faults)
@@ -540,7 +540,7 @@ class DevicePassTest(unittest.TestCase):
                 patch.object(dp, 'mods_reference', lambda *a: hashlib.sha256(b'assembled').hexdigest()):
             (Path(tmp) / 'base').mkdir()
             (Path(tmp) / 'base/info.txt').write_text('x')
-            gen = BASE + 'mods/opxy-1.2.1/%s/' % Path(tmp).name
+            gen = BASE + 'mods/%s/' % Path(tmp).name
             self.run_pass(['--stage', 'mods'], dev=holding(base_list=False))
             self.assertEqual(self.rows()[('mods', 'apply')]['result'], 'SKIP')
             self.assertIn('content.sha256', self.rows()[('mods', 'apply')]['detail'])

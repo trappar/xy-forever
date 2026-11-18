@@ -60,9 +60,11 @@ The full format is in [storage/mods.md](storage/mods.md), section "Mod packages"
 python3 xyf_host.py mods push DIR/mods/opxy-1.2.1/<generation> [--only ID ...] [--verify]
 ```
 
-The set goes to `/yaffs2/xy-forever/mods/<profile>/<generation>/`. The base is always
-sent. A file already there with the same size is skipped, so after an edit that
-keeps a file's size, remove that package first (`mods remove ID --yes`). `--verify`
+The set goes to `/yaffs2/xy-forever/mods/<generation>/`, stored flat (protocol 1.16 or later;
+[the store](storage/mods-store.md)). `mods list` names an older layout, too deep for the dev menu's MTP:
+`mods remove <folder> --yes`, then push again. The base is always sent. A file in a folder is stored under
+its SHA-256, so an edit always sends it; a top-level file (`catalog.txt`, ...) with the same size is
+skipped: after such an edit, `mods remove ID --yes` first, or use `mods dev` (it compares SHA-256). `--verify`
 reads every file back and stops on a difference. If a push stops part-way, run it
 again. `files.sha256` is written last, so a half-sent package is
 never used.

@@ -1,6 +1,6 @@
 // The pure parts of the app (no DOM, no device): the saved configuration, mod grouping, path rules,
 // and the plain-words summaries. Unit tested in test/model.test.ts.
-import { PROTECTED_NAMES, WRITE_ROOTS, inWriteArea } from 'xy-forever-client';
+import { MAX_FOLDERS, PROTECTED_NAMES, WRITE_ROOTS, foldersOf, inWriteArea } from 'xy-forever-client';
 import type { HeldPackage } from 'xy-forever-client';
 
 export const CONFIG_FILE = '/yaffs2/xy-forever/config.txt';
@@ -132,10 +132,14 @@ export function folderWritable(dir: string): boolean { return inWriteArea(`${dir
 
 /**
  * Why the device would refuse a change at path, in plain words; null: allowed. Uses the
- * client's inWriteArea (the device checks again and stays the authority).
+ * client's inWriteArea and the depth rule (#124: folder: path is a new folder, else a file); the
+ * device checks again and stays the authority.
  */
-export function changeRefusal(path: string): string | null {
-  if (inWriteArea(path)) return null;
+export function changeRefusal(path: string, folder = false): string | null {
+  if (inWriteArea(path)) {
+    return foldersOf(path, folder) <= MAX_FOLDERS ? null
+      : `That is more than ${MAX_FOLDERS} folders below /yaffs2: deeper hangs the dev menu's file transfer.`;
+  }
   if (!WRITE_ROOTS.some((r) => path.startsWith(r))) return `Only files under ${WRITE_ROOTS.join(' and ')} can be changed.`;
   if (inWriteArea(path.replace(/^\/yaffs2\//, '/yaffs2/x/'))) return `${PROTECTED_NAMES.join(' and ')} (and what is inside it) are never changed by hand.`;
   return 'That name is not allowed (empty, "." or "..").';

@@ -20,7 +20,7 @@ PARTITION, PATH, QUERY, READ, SECTOR, WRITE = 0x11907694, 0x119076b4, 0x11907388
 BUFFER = 0x8803f6e0
 OPS = dict(read=1, list=2, stat=3, write=4, stream=5, mkdir=6, unlink=7, rmdir=8, rename=9, raw=10)
 VERDICTS = ['allow', 'refuse_path', 'refuse_outside', 'refuse_protected', 'refuse_tmp', 'refuse_raw',
-            'refuse_operation']
+            'refuse_operation', 'refuse_depth']
 MAX_PATH = 240                                          # bytes with the NUL
 TMP = '/yaffs2/xy-forever/tmp/'
 
@@ -198,6 +198,34 @@ class FileEngineTest(unittest.TestCase):
             self.assertEqual(self.decide('stream', path), 'refuse_tmp', path)
         self.assertEqual(self.decide('stream', TMP + '../a'), 'refuse_path')
         self.assertEqual(self.decide('write', '/yaffs2/projects/x.xy'), 'allow')    # direct writes: not yet tmp-only
+
+    def test_depth_rule(self):
+        """#124: no folder made more than 6 folders below /yaffs2, no file written, streamed or renamed into one
+        (the stock dev-menu MTP's limit); reads, listing, stat and removals at any depth; A sees bad_path."""
+        def deep(n, root='/yaffs2'):
+            return root + ''.join('/d%d' % i for i in range(n))
+        for spelled in (lambda p: p, lambda p: p.replace('/d', '//d') + '/'):
+            self.assertEqual(self.decide('mkdir', spelled(deep(6))), 'allow')
+            self.assertEqual(self.decide('mkdir', spelled(deep(7))), 'refuse_depth')
+            self.assertEqual(self.decide('write', spelled(deep(7))), 'allow')            # a file in the 6th folder
+            self.assertEqual(self.decide('write', spelled(deep(8))), 'refuse_depth')
+        self.assertEqual(self.decide('stream', deep(4, TMP + 'x')), 'allow')           # 7 names
+        self.assertEqual(self.decide('stream', deep(5, TMP + 'x')), 'refuse_depth')
+        for op in ('read', 'list', 'stat', 'unlink', 'rmdir'):
+            self.assertEqual(self.decide(op, deep(30)), 'allow', op)
+        self.assertEqual(self.decide('rename', deep(3), deep(7)), 'allow')
+        self.assertEqual(self.decide('rename', deep(3), deep(8)), 'refuse_depth')
+        self.assertEqual(self.decide('rename', deep(8), deep(3)), 'refuse_depth')      # A's rename_from: the source too
+        self.assertEqual(self.decide('mkdir', '/yaffs2/upgrade' + deep(9, '')), 'refuse_protected')
+        self.lib.engine_depth.argtypes = [C.c_char_p]
+        self.lib.engine_depth.restype = C.c_uint
+        self.assertEqual([self.lib.engine_depth(p) for p in (b'/yaffs2', b'/yaffs2//a/b/', b'/yaffs2/a/../b', b'/x')],
+                         [0, 2, 0xffffffff, 0xffffffff])
+        PATH_OPS = dict(open=(0x29, 0x8301), mkdir=(0x26, 0))
+        self.assertEqual(self.request(PATH, *PATH_OPS['open'], BUFFER, deep(8)), 'refuse_bad_path')
+        self.assertEqual(self.request(PATH, *PATH_OPS['mkdir'], BUFFER, deep(7)), 'refuse_bad_path')
+        self.assertEqual(self.request(PATH, 0x29, 0, BUFFER, deep(20)), 'run_open')
+        self.assertEqual(self.request(PATH, 0x25, 0, BUFFER, deep(20)), 'run_path')
 
     def test_header_enums_match(self):
         text = (ROOT / 'target/file_engine.hpp').read_text()

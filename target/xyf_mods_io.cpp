@@ -11,6 +11,7 @@
 #include "xyf_config.hpp"
 #include "xyf_crc32.hpp"
 #include "xyf_save_log.hpp"
+#include "xyf_mods_store.hpp"
 // See xyf_mods_io.hpp. The reading is a small state machine: one file-client call per step (a folder
 // open, one entry, its close, one stat, or one whole small file), steps while the pass is under
 // slice_ms. An open folder is held across passes and closed when the walk ends, fails or the page is
@@ -24,19 +25,19 @@ using xyf::usbp::s_ok;
 #define XYF_DATA __attribute__((section(".data")))
 #endif
 enum Step : uint32_t {
-    s_idle = 0, s_serving, s_mount, s_profiles, s_generations, s_base_list, s_base_info, s_services,
+    s_idle = 0, s_serving, s_mount, s_generations, s_store, s_base_list, s_base_info, s_services,
     s_packages, s_package_list, s_package_info, s_saved, s_done
 };
 enum Walk : uint32_t { walk_entry, walk_more, walk_done, walk_missing, walk_failed };
-static const uint32_t max_profiles = 4, max_candidates = 8;
-struct Candidate { uint32_t profile; char name[32]; };
+static const uint32_t max_candidates = 8;
+struct Candidate { char name[32]; };
 struct Io {
     uint32_t step, folder, why;                 // why: the status of a failed step
-    uint32_t profile_count, profile_at, candidate_count, candidate_at, package_at;
+    uint32_t candidate_count, candidate_at, package_at;
     uint32_t drawn, longest, dirty;               // drawn: units() of the last redraw
     uint32_t job_units, drawn_bar, drawn_done;    // the job's start; the bar and done of the last redraw
     uint32_t waiting;                             // the reading waits for another job (page_busy)
-    char profiles[max_profiles][32];
+    uint32_t newer;                               // a candidate's store is newer than this build reads
     Candidate candidates[max_candidates];
     char path[240];
     uint8_t entry[fc::entry_bytes + 4];         // the last folder entry (walk_entry: its name at +11)
@@ -64,19 +65,6 @@ bool path_of(const char* const* parts, uint32_t count) {
         for (const char* s = parts[k]; *s; ++s) { if (n + 1 >= sizeof(io.path)) { fits = false; break; } io.path[n++] = *s; }
     io.path[n] = 0;
     return fits;
-}
-bool folder_path(const char* profile) {
-    const char* parts[3] = {root, profile[0] ? "/" : "", profile};
-    return path_of(parts, 3);
-}
-bool token(const char* t) {                     // a profile or generation folder name mods.apply takes
-    uint32_t n = 0;
-    for (; t[n]; ++n) {
-        const char c = t[n];
-        const bool alnum = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
-        if (n >= 31 || !(alnum || c == '_' || c == '-' || c == '.') || (!n && !alnum)) return false;
-    }
-    return n != 0;
 }
 void copy(char* out, const char* s, uint32_t room) { uint32_t n = 0; while (s[n] && n + 1 < room) { out[n] = s[n]; ++n; } out[n] = 0; }
 uint32_t failed(const fc::Reply& r) {
@@ -107,27 +95,22 @@ Walk walk() {
     io.why = xyf::usbp::s_storage;
     return walk_failed;
 }
-void each_profile(const char* name) {
-    if (token(name) && io.profile_count != max_profiles) copy(io.profiles[io.profile_count++], name, 32);
-}
 void each_generation(const char* name) {
-    if (!token(name)) return;
+    if (!m::generation_token(name)) return;
     uint32_t at = io.candidate_count;
     if (at == max_candidates) {                  // full: replace the oldest when this one is newer
         if (m::compare_generation(name, io.candidates[at - 1].name) <= 0) return;
         --at;
     } else ++io.candidate_count;
     while (at && m::compare_generation(name, io.candidates[at - 1].name) > 0) { io.candidates[at] = io.candidates[at - 1]; --at; }
-    io.candidates[at].profile = io.profile_at;
     copy(io.candidates[at].name, name, 32);
 }
 const char* entry_name() { return reinterpret_cast<const char*>(io.entry + 11); }
-// The candidate generation's folder, or a file of one of its packages, into io.path.
+// The candidate generation's folder (mods/<generation>/, #124), or a file of one of its packages, into io.path.
 bool generation_path(const char* prefix, const char* package, const char* file) {
     const Candidate& c = io.candidates[io.candidate_at];
-    const char* parts[10] = {root, "/", io.profiles[c.profile], "/", c.name, package[0] ? "/" : "", prefix, package,
-                             file[0] ? "/" : "", file};
-    return path_of(parts, 10);
+    const char* parts[8] = {root, "/", c.name, package[0] ? "/" : "", prefix, package, file[0] ? "/" : "", file};
+    return path_of(parts, 8);
 }
 bool package_path(uint32_t index, const char* file) {
     const m::Package& p = the_page.packages[index];
@@ -145,14 +128,6 @@ bool read_text(const char* path, uint32_t& bytes) {   // the whole small file in
     io.why = fc::read_file(path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
     return io.why == s_ok;
 }
-void reading_line() {
-    char a[12], tail[24];
-    tail[0] = ' '; tail[1] = 'o'; tail[2] = 'f'; tail[3] = ' ';
-    m::decimal(a, io.package_at);
-    const uint32_t n = 4 + m::decimal(tail + 4, the_page.count);
-    tail[n] = '.'; tail[n + 1] = '.'; tail[n + 2] = '.'; tail[n + 3] = 0;
-    m::say(the_page, m::line_info, "Reading mod packages: ", a, tail);
-}
 void finish(const char* error) {              // the list is final
     if (io.folder) { fc::closedir(io.folder); io.folder = 0; }
     io.step = s_done;
@@ -168,8 +143,11 @@ void lost() {
 // The next base candidate, or the end.
 void next_candidate() {
     ++io.candidate_at;
-    if (io.candidate_at >= io.candidate_count) { finish(io.candidate_count ? "No complete mod package set found." : 0); return; }
-    io.step = s_base_list;
+    if (io.candidate_at >= io.candidate_count) {
+        finish(io.newer ? "The mod packages need a newer XY Forever." : io.candidate_count ? "No complete mod package set found." : 0);
+        return;
+    }
+    io.step = s_store;
 }
 uint32_t read_record(bool toggles);
 // One step of the reading.
@@ -182,29 +160,27 @@ void step() {
         return;
     case s_mount:
         if ((io.why = fc::mount_ready(usb_service::page_mount())) != s_ok) { lost(); return; }
-        folder_path("");
-        io.step = s_profiles;
-        return;
-    case s_profiles: {
-        const Walk w = walk();
-        if (w == walk_entry) { each_profile(entry_name()); return; }
-        if (w == walk_more) return;
-        if (w == walk_failed) { lost(); return; }
-        if (w == walk_missing || !io.profile_count) { finish(0); return; }   // no mods/ folder: the empty page
-        io.profile_at = 0;
-        folder_path(io.profiles[0]);
+        { const char* parts[1] = {root}; path_of(parts, 1); }
         io.step = s_generations;
         return;
-    }
-    case s_generations: {
+    case s_generations: {                        // mods/<generation>/ (an older mods/<profile>/ has no base/)
         const Walk w = walk();
         if (w == walk_entry) { each_generation(entry_name()); return; }
         if (w == walk_more) return;
         if (w == walk_failed) { lost(); return; }
-        if (++io.profile_at < io.profile_count) { folder_path(io.profiles[io.profile_at]); return; }
-        if (!io.candidate_count) { finish(0); return; }
+        if (w == walk_missing || !io.candidate_count) { finish(0); return; }   // no mods/ folder: the empty page
         io.candidate_at = 0;
-        io.step = s_base_list;
+        io.step = s_store;
+        return;
+    }
+    case s_store: {                              // store.txt's version (#124); none: an older layout, skipped
+        uint32_t bytes = 0;
+        generation_path("", "", xyf::mods_store::file);
+        if (!read_text(io.path, bytes)) { if (io.why == xyf::usbp::s_link) { lost(); return; } next_candidate(); return; }
+        const uint32_t v = xyf::mods_store::version_of(io.buffer, bytes);
+        io.newer |= v > xyf::mods_store::version ? 1u : 0u;
+        if (v == xyf::mods_store::version) io.step = s_base_list;
+        else next_candidate();
         return;
     }
     case s_base_list:                            // complete: its files.sha256 is there
@@ -226,10 +202,11 @@ void step() {
         generation_path("", "base", "services.txt");
         if (!read_text(io.path, bytes)) { if (io.why == xyf::usbp::s_link) { lost(); return; } next_candidate(); return; }
         if (!m::parse_services(p, reinterpret_cast<const char*>(io.buffer), bytes)) { next_candidate(); return; }
-        const Candidate& c = io.candidates[io.candidate_at];   // mods.apply takes the folder names
-        copy(p.profile, io.profiles[c.profile], sizeof(p.profile));
-        copy(p.generation, c.name, sizeof(p.generation));
-        generation_path("", "", "");
+        const char *g = p.generation, *folder = io.candidates[io.candidate_at].name;   // the same name
+        uint32_t k = 0;
+        while (g[k] && g[k] == folder[k]) ++k;
+        if (g[k] != folder[k]) { next_candidate(); return; }
+        generation_path("", "", "");                 // base/info.txt's profile; its generation names the folder
         io.step = s_packages;
         io.dirty = 1;
         return;
@@ -241,7 +218,7 @@ void step() {
         if (w != walk_done) { lost(); return; }
         io.package_at = 0;
         io.step = s_package_list;
-        reading_line();
+        m::reading_line(p, io.package_at);
         return;
     }
     case s_package_list:
@@ -257,7 +234,7 @@ void step() {
         else if (io.why == xyf::usbp::s_link) { lost(); return; }
         ++io.package_at;
         io.step = s_package_list;
-        reading_line();
+        m::reading_line(p, io.package_at);
         io.dirty = 1;
         return;
     }
@@ -558,7 +535,7 @@ void open() {
     if (p.view == m::View::building || (p.view == m::View::list && p.shown)) return;   // kept for this boot
     if (io.folder) return;                       // (never: pump closes it when the page is left)
     m::reset(p);
-    io.step = s_serving; io.profile_count = io.candidate_count = io.package_at = 0; io.dirty = 1; io.waiting = 0;
+    io.step = s_serving; io.candidate_count = io.package_at = io.newer = 0; io.dirty = 1; io.waiting = 0;
     m::say(p, m::line_info, "Reading mod packages...");
 }
 
@@ -586,7 +563,7 @@ uint32_t pump(bool shown) {
     }
     if (shown && busy && !io.waiting) {
         m::reset(the_page);
-        io.step = s_serving; io.profile_count = io.candidate_count = io.package_at = 0;
+        io.step = s_serving; io.candidate_count = io.package_at = io.newer = 0;
         io.waiting = 1; io.dirty = 1;
         m::say(the_page, m::line_info, "Busy: a build or content change is running.");
     } else if (shown && reading() && io.waiting && !busy) {

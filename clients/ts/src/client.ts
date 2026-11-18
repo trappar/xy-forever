@@ -2,6 +2,7 @@
 // command, typed commands with per-command timeouts, status codes as XyfError, cancellation by
 // AbortSignal, chunked transfers with progress, reconnect after a restart. Behaviour follows the
 // Python host tool (xyf_host.py) and docs/PROTOCOL.md.
+import { depthRefusal, foldersBelow } from './depth.ts';
 import { XyfError, isXyfError, statusError } from './errors.ts';
 import { Link } from './link.ts';
 import type { Trace } from './link.ts';
@@ -406,6 +407,7 @@ export class Client {
     if (target === source || target.startsWith(source + '/')) throw new RangeError(`copyTree: the target ${target} is inside the source ${source}`);
     const entry = await this.entryOf(source, options);
     if (entry === null) throw new XyfError('not_found', `file.list ${source}: no such file or folder`, { command: 'file.list' });
+    if (entry.kind === 'folder') checkChange('file.mkdir', target, target, await foldersBelow((p) => this.listDir(p, options), source));
     const done = { files: 0, bytes: 0 };
     await this.copyEntry(source, target, entry, done, options);
     return done;
@@ -552,7 +554,7 @@ function plainReason(error: XyfError): string {
   const roots = `/yaffs2/, never ${PROTECTED_NAMES.join(' or ')} (or inside it)`;
   switch (error.code) {
     case 'refused':
-      return change ? `the OP-XY changes files only under ${roots}`
+      return change ? `the OP-XY changes files only under ${roots}, at most 6 folders deep`
         : error.command === 'file.copy' ? `the OP-XY copies only a file it may read, to a path under ${roots}`
           : 'the OP-XY refuses this path (outside /yaffs2, an empty, "." or ".." part, or a control character)';
     case 'not_found':
@@ -589,9 +591,10 @@ function pathPair(source: string, target: string): Uint8Array {
 }
 
 /** Before anything is sent: a change outside the write area is `refused` here (status null), as the device would answer. */
-function checkChange(command: ChangeCommand, path: string, label: string): void {
-  if (inWriteArea(path)) return;
-  const reason = fileReason(new XyfError('refused', '', { command }));
+function checkChange(command: ChangeCommand, path: string, label: string, below = 0): void {
+  const deep = command === 'file.delete' || command === 'file.rmdir' ? null : depthRefusal(path, command === 'file.mkdir', below);
+  if (inWriteArea(path) && !deep) return;
+  const reason = deep ?? fileReason(new XyfError('refused', '', { command }));
   throw new XyfError('refused', `${command} ${label}: ${reason}`, { command });
 }
 

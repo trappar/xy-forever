@@ -12,7 +12,7 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   firmware/<id>/os.ldr      one library entry's firmware image
   firmware/<id>/info.txt    its description (key=value, below)
   firmware/<id>/files.sha256, content.sha256 + firmware.version   optional lists
-  mods/<profile>/<generation>/{base,<machine>,ext-<extension>}/   mod packages (below)  [host-made]
+  mods/<generation>/store.txt, {base,<machine>,ext-<extension>}/<file>   mod packages, flat (below)  [host-made]
   log/                      device reports, prod-a.bin / prod-b.bin, pfile-a.bin / pfile-b.bin
   stage2/main.xys2          stage 2: B loads it at the first HELLO of a boot; see below
   inbox/                    MTP drop folder: .tfw, .ldr, open-xy bundles   [planned]
@@ -34,3 +34,16 @@ wrote it (`python3 -m xy_forever.census`: `usb_service.build`; the image only wh
 Builds before #107 wrote `prod-NNN-{a,b}.bin`.
 
 `<id>`: 1–31 characters, lowercase letters, digits, `-` and `_`; also the folder name.
+
+**Depth** (#124; protocol 1.16): no file more than 6 folders below `/yaffs2` (`xy-forever/wt/a/b/c/d/x.txt`
+is the deepest). The stock dev-menu MTP walks `/yaffs2` with 10-entry stacks (`889f1ff6`/`889f2200`/`889f22d8`).
+On the device, after dev MTP has walked a file 7 folders deep (it lists, copies and deletes it), Track 5 in
+that boot hangs at "looking for /os.ldr" and the next boot needs a storage repair; 8 cannot be read or
+deleted, 9 crashes dev MTP at start. XY Forever refuses a deeper folder,
+write, copy or move (`file_engine::decide_engine`; `file_client::rename` walks a folder moved deeper; the MTP
+responder's `within_depth`; status `refused`); the host tools check first (`xy_forever/depth.py`,
+`clients/ts/src/depth.ts`). Reads, listing and deletes work at any depth: delete an older deeper tree through
+XY Forever's file service (`xyf_host.py rm`, `mods remove`), never through dev MTP. The deepest paths XY
+Forever makes: an entry's content, `tmp/job-<id>-old/content/presets/<id>/<file>` and
+`firmware/<id>/content/presets/<id>/<file>` (6, the OS's own layout below the entry); mod packages sit flat,
+`mods/<generation>/<package>/<file>` (4: [the store](mods-store.md)).

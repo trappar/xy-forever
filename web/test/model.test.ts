@@ -59,6 +59,10 @@ describe('path rules', () => {
     expect(changeRefusal('/yaffs2/BootLoader.dev')).toMatch(/never changed by hand/);
     expect(changeRefusal('/yaffs2/upgrade/x.tfw')).toMatch(/never changed by hand/);
     expect(changeRefusal('/yaffs2/UPGRADE')).toMatch(/never changed by hand/);
+    expect(changeRefusal('/yaffs2/xy-forever/wt/a/b/c/d/x.txt')).toBeNull();                    // #124: 6 folders
+    expect(changeRefusal('/yaffs2/xy-forever/wt/a/b/c/d/e/x.txt')).toMatch(/more than 6 folders/);
+    expect(changeRefusal('/yaffs2/xy-forever/wt/a/b/c/d', true)).toBeNull();
+    expect(changeRefusal('/yaffs2/xy-forever/wt/a/b/c/d/e', true)).toMatch(/more than 6 folders/);
   });
   it('knows which folders accept changes', () => {
     expect(folderWritable('/yaffs2')).toBe(true);

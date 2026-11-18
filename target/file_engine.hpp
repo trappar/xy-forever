@@ -30,12 +30,20 @@
 //    removed): harmless, keep it. The real marker is the lowercase name (88a202b0), which is
 //    what a re-creates (storage_server.cpp marker_path); do not "fix" one to match the other;
 //  - every raw boot-partition operation (the boot partition is written by INSTALL only);
-//  - a streamed write open (op_stream, #4) outside /yaffs2/xy-forever/tmp/.
+//  - a streamed write open (op_stream, #4) outside /yaffs2/xy-forever/tmp/;
+//  - the depth rule (#124, docs/SAFETY.md): no folder made more than max_folders below /yaffs2 and no
+//    file written, created or renamed into one (refuse_depth): after the stock dev-menu MTP (10-entry
+//    stacks, 889f1ff6) has walked a file 7 folders deep, Track 5 in that boot hangs and the next boot
+//    needs a storage repair; 8 cannot be read or deleted, 9 crashes it. Reads, listing and removals stay allowed
+//    at any depth, so an older deep tree can be deleted. A rename checks both names as files (A's
+//    rename_from sees only the source); a folder target, and a folder moved deeper, are B's check
+//    (file_client::rename walks the folder).
 // Spelling: '/' runs count as one and a trailing '/' is ignored before the names are compared,
 // so "/yaffs2//BOOTLOADER.DEV/" is the marker. Bytes 0x80..0xff pass (UTF-8 names: the device
 // compares bytes and does not check UTF-8).
 namespace xy_forever { namespace file_engine {
 static const uint32_t max_path = 240;                  // bytes with the NUL (stock path buffer)
+static const uint32_t max_folders = 6;                 // folders below /yaffs2 a file may sit in (#124)
 // Stock slave request classes (the factory 889f8f38) and the stock slave path body (889f8d94).
 static const uint32_t partition_class = 0x11907694u, path_class = 0x119076b4u, read_class = 0x11907368u,
                       sector_class = 0x11907348u, write_class = 0x11907710u, query_class = 0x11907388u;
@@ -64,10 +72,13 @@ enum Verdict : uint32_t {
     refuse_protected,   // changes /yaffs2, /yaffs2/bootloader.dev or /yaffs2/upgrade (see above)
     refuse_tmp,         // a streamed write open outside /yaffs2/xy-forever/tmp/
     refuse_raw,         // the raw boot-partition layer
-    refuse_operation    // not an operation (or a second path where none belongs)
+    refuse_operation,   // not an operation (or a second path where none belongs)
+    refuse_depth        // the depth rule (above): more than max_folders folders below /yaffs2
 };
 // The path policy. second: op_rename's target, else 0.
 Verdict decide_engine(Operation op, const char* path, const char* second = 0);
+// The names below /yaffs2 in path (a file's folders are this minus one); 0xffffffff when it does not parse.
+uint32_t depth(const char* path);
 
 // The raw boot-partition layer as stock requests: partition class 4 / 0x14 trim / 0x18 select,
 // sector class 0x11 / 0x12 reads, write class 0x15 / 0x16 writes.
@@ -78,7 +89,7 @@ enum Action : uint32_t {
     refuse_off = 0x60,  // no engine entry yet, or its stock code check failed
     refuse_class, refuse_op,
     refuse_raw_layer,   // decide_engine: refuse_raw
-    refuse_bad_path,    // not in the stock path buffer, or decide_engine: refuse_path
+    refuse_bad_path,    // not in the stock path buffer, or decide_engine: refuse_path, refuse_depth
     refuse_outside_path, refuse_protected_path, refuse_tmp_path,   // decide_engine
     refuse_mount,       // no storage session (op 8 first)
     refuse_read_only,   // a change without the read-write window

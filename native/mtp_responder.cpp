@@ -417,7 +417,7 @@ void Responder::start() {
         respond(r_ok);
         return;
     }
-    default:                                                     // SendObjectInfo, SendObject, SetObjectPropValue: p_data
+    default:  // SendObjectInfo, SendObject, SetObjectPropValue: p_data
         return;
     }
 }
@@ -438,7 +438,7 @@ U32 Responder::prop_value(Byte* p, U32 handle, U32 prop) {
     case p_object_file_name: case p_name: w.str(name); break;
     case p_date_modified: w.str(fixed_date); break;
     case p_parent_object: w.u32(o.parent); break;
-    case p_puoid: {                                               // the handle and an FNV-1a hash of the path
+    case p_puoid: {  // the handle and an FNV-1a hash of the path
         U32 hash = 0x811c9dc5u;
         for (const char* c = where; *c; ++c) hash = (hash ^ Byte(*c)) * 0x01000193u;
         w.u32(handle); w.u32(hash); w.u32(0); w.u32(0);
@@ -649,7 +649,7 @@ bool Responder::work() {
         if (n + 1 + k >= max_path) { respond(r_invalid_dataset); return true; }
         path[n] = '/';
         for (U32 i = 0; i <= k; ++i) path[n + 1 + i] = name[i];
-        if (!writable(path)) { respond(r_access_denied); return true; }
+        if (!writable(path) || !within_depth(path, format == f_association)) { respond(r_access_denied); return true; }
         if (format == f_association) { stage = 1; return true; }
         const U32 h = add(target, name, 0, size);
         if (!h) { respond(r_store_full); return true; }

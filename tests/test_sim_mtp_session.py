@@ -188,6 +188,31 @@ class MtpSessionTests(unittest.TestCase):
         self.leave()
         self.assertEqual(self.file_command(), P.S_OK)                      # serial commands work again
 
+    def test_depth_rule(self):
+        """#124: SendObjectInfo makes a file in the 6th folder below /yaffs2 but no folder there (Access_Denied, nothing
+        made, as for a file in a 7th folder made by hand); an older deep file still deletes."""
+        deep = self.root / 'xy-forever/wt/a/b/c/d'
+        (deep / 'f').mkdir(parents=True)
+        (deep / 'f' / 'old.txt').write_bytes(b'old')                      # 7 folders deep: made before the rule
+        self.enter()
+        self.opened()
+        handle = self.folder('xy-forever')
+        for name in ('wt', 'a', 'b', 'c', 'd'):
+            handle = self.c.named(handle)[name]
+        code, params, _ = self.c.transaction(0x100C, R.STORAGE, handle, data=R.object_info('x.txt', 3, parent=handle))
+        self.assertEqual(code, R.OK)
+        self.assertEqual(self.c.transaction(0x100D, data=b'abc')[0], R.OK)
+        self.assertEqual((deep / 'x.txt').read_bytes(), b'abc')
+        info = R.object_info('g', fmt=R.FOLDER, parent=handle)
+        self.assertEqual(self.c.transaction(0x100C, R.STORAGE, handle, data=info)[0], R.ACCESS_DENIED)
+        self.assertFalse((deep / 'g').exists())
+        f = self.c.named(handle)['f']
+        info = R.object_info('y.txt', 3, parent=f)
+        self.assertEqual(self.c.transaction(0x100C, R.STORAGE, f, data=info)[0], R.ACCESS_DENIED)
+        self.assertEqual(self.c.transaction(0x100B, self.c.named(f)['old.txt'])[0], R.OK)
+        self.assertFalse((deep / 'f' / 'old.txt').exists())
+        self.leave()
+
     def test_cancel_mid_transfer_then_continue(self):
         self.enter()
         self.opened()

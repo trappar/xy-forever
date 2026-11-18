@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import moddev, modsend as MS                              # noqa: E402
+from xy_forever import moddev, modsend as MS, modstore                    # noqa: E402
 import test_sim_content_switch as CS                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_mods_page import synthetic_setup                            # noqa: E402
@@ -105,8 +105,9 @@ class ModDev(CS.Switch, unittest.TestCase):
         self.edit(PRESET, same)
         text = self.loop()
         self.assertEqual(self.sent(text), [('alpha', 2)], text)
-        self.assertEqual((self.root / 'xy-forever/mods' / self.profile / self.generation / 'alpha' / PRESET)
-                         .read_bytes(), same)
+        stored = self.root / 'xy-forever/mods' / self.generation / 'alpha'      # the flat store (#124)
+        self.assertEqual((stored / modstore.stored_name(PRESET, hashlib.sha256(same).hexdigest())).read_bytes(), same)
+        self.assertFalse((stored / modstore.stored_name(PRESET, hashlib.sha256(bigger).hexdigest())).exists())
         self.assertEqual((self.root / PRESET).read_bytes(), same)
 
         code, text = self.host('--restore')                                 # 5: the way back

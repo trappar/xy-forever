@@ -183,6 +183,15 @@ function chosenText(set: LocalSet): string {
 }
 
 function generationCard(g: HeldGeneration, config: SavedConfig | null | undefined): HTMLElement {
+  if (g.older || g.newer) {                          // no store.txt, or a newer store version (#124)
+    const kind = g.older ? 'older' : 'newer';
+    return h('div', { class: 'card' },
+      h('div', { class: 'row' }, h('h2', { style: 'margin:0' }, `${g.generation} (${kind} layout)`), h('span', { class: 'spacer' }),
+        btn('Remove all', () => void run(() => remove(g.generation, null, `the ${kind} ${g.generation} folder`)), 'small danger')),
+      h('p', { class: 'muted' }, g.older
+        ? 'Packages sent by an older XY Forever, in folders too deep for the dev menu\'s file transfer. Remove them, then send the package set again.'
+        : 'Packages in a newer layout than this page reads: update it, or remove them and send the package set again.'));
+  }
   const sameSet = config && config.profile === g.profile && config.generation === g.generation;
   const groups = groupMods(g.packages, sameSet || config === undefined ? config : null);
   const body = h('tbody');
@@ -353,7 +362,7 @@ async function uploadFiles(input: HTMLInputElement): Promise<void> {
 async function newFolder(): Promise<void> {
   const name = await promptText('New folder', `In ${cwd}`, '', 'Create');
   if (name === null) return;
-  const problem = nameProblem(name);
+  const problem = nameProblem(name) ?? changeRefusal(joinPath(cwd, name), true);
   if (problem) throw new Error(problem);
   await client!.makeDir(joinPath(cwd, name));
   await browse(cwd);

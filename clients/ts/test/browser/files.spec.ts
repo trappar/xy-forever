@@ -137,7 +137,7 @@ describe.skipIf(!sim)(`the demo page's Files panel against the simulator${sim ? 
     expect($('files-hint').textContent).toBe('Changes under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade: this folder is read-only.');
     click('old.bin', 'Delete');
     expect(await done()).toBe('refused: file.delete /yaffs2/upgrade/old.bin: the OP-XY changes files only under ' +
-      '/yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade (or inside it)');
+      '/yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade (or inside it), at most 6 folders deep');
     expect(row('old.bin')).toBeDefined();
     expect(status()).toBe('connected');
 

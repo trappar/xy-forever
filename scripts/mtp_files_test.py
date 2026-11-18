@@ -15,7 +15,7 @@ With the composite up (--no-trial when it already is; else the trial of scripts/
      (SetObjectPropValue) and deleted (0x200D), a write into upgrade/ (or making upgrade/ when absent) and a root
      file renamed to "upgrade" (Access_Denied 0x200F; tmp/t2d-up.txt renamed to "upgrade" is accepted); serial confirms the marker and upgrade/ unchanged.
   5c. speed: 200 GetObjectInfo + GetObjectPropValue pairs on the children of
-     xy-forever/mods/opxy-1.2.1/0.0.6-370a949e96aa (operations per second); 8 MiB up and down (3 MiB in step 3).
+     xy-forever/mods/0.0.6-370a949e96aa (operations per second); 8 MiB up and down (3 MiB in step 3).
   5b. T2c object properties: GetObjectPropsSupported, ObjectSize and ObjectFileName (GetObjectPropValue) of
      config.txt and tmp/ against serial ls, a file renamed in tmp/ by SetObjectPropValue (serial sees the new name,
      not the old).

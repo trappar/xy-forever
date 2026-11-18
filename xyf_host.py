@@ -65,7 +65,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from xy_forever import usb_proto as P
+from xy_forever import depth, usb_proto as P
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr, parse_ldr
 from xy_forever.transport import SerialPort, TcpPort, sim_address
 
@@ -623,6 +623,9 @@ def run(argv):
             return 0
     if args.command in ('ls', 'get', 'rm', 'mkdir'):
         device_path(args.path if args.command != 'get' else args.remote)
+    deep = depth.command_refusal(args)
+    if deep:
+        print(deep); return 2
     if args.command == 'mv' and not (in_write_area(args.source.rstrip('/')) and in_write_area(args.target.rstrip('/'))):
         print('refused: mv moves only %s (file.rename)' % AREA_TEXT); return 2
     if args.command == 'cp':
@@ -768,7 +771,8 @@ def run(argv):
     if args.command in ('ls', 'get', 'put', 'rm', 'mkdir', 'mv'):
         return files_command(dev, hello, args)
     if args.command == 'cp':
-        return copy_command(dev, args.source.rstrip('/'), args.target.rstrip('/'), args.recursive)
+        from xy_forever import filecopy
+        return filecopy.copy_command(dev, args.source.rstrip('/'), args.target.rstrip('/'), args.recursive)
     if args.command == 'tfw-check':
         code, body = dev.call(P.ids.TFW_CHECK, args.path.encode('utf-8') + b'\0', timeout=TFW_CHECK_TIMEOUT)
         _, fields = P.decode_reply(P.ids.TFW_CHECK, struct.pack('<I', code) + body)
@@ -892,7 +896,8 @@ def files_command(dev, hello, args):
     """ls, get, put, rm, mkdir, mv."""
     if args.command == 'mv':
         code, error = dev.rename(args.source.rstrip('/'), args.target.rstrip('/'))
-        print('mv %s %s: %s%s' % (args.source, args.target, P.status_name(code), ' (error %d)' % error if error else ''))
+        print('mv %s %s: %s%s%s' % (args.source, args.target, P.status_name(code), ' (error %d)' % error if error else '',
+                                    depth.move_note(code)))
         return code
     if args.command == 'ls':
         code, entries = dev.list_dir(args.path)
@@ -950,46 +955,6 @@ def files_command(dev, hello, args):
     print('put %s: %d B in %.2f s (%.1f KiB/s)%s' % (args.remote, len(data), seconds,
                                                    len(data) / 1024.0 / max(seconds, 1e-6),
                                                    '' if args.no_verify else '; read back identical'))
-    return 0
-
-
-def copy_command(dev, source, target, recursive):
-    """cp: the source's kind and size from its folder's listing, then copy_entry."""
-    parent, name = split_path(source)
-    code, entries = dev.list_dir(parent)
-    found = [(k, s) for k, s, n in entries if n == name.encode('utf-8')]
-    if code or not found:
-        code = code or P.STATUS_NAMES.index('not_found')
-        print('cp %s: %s' % (source, P.status_name(code))); return code
-    if found[0][0] == 1 and not recursive:
-        print('cp: %s is a folder (cp -r copies folders)' % source); return 2
-    return copy_entry(dev, source, target, *found[0])
-
-
-def copy_entry(dev, source, target, kind, size):
-    """One file.copy per file; a folder: file.mkdir of the target, then each entry of its listing."""
-    if kind == 0:
-        start = time.monotonic()
-        code, done, error, partial = dev.copy(source, target, size)
-        print('cp %s %s: %s%s%s%s' % (source, target, P.status_name(code),
-                                      '' if code else ', %d B in %.2f s' % (done, time.monotonic() - start),
-                                      ' (error %d)' % error if error else '',
-                                      '; a partial target may remain' if partial else ''))
-        return code
-    if kind != 1:
-        print('cp %s: skipped (not a file or folder)' % source); return 0
-    code, error = dev.change(P.ids.MAKE_DIR, target)
-    print('mkdir %s: %s%s' % (target, P.status_name(code), ' (error %d)' % error if error else ''))
-    if code:
-        return code
-    code, entries = dev.list_dir(source)
-    if code:
-        print('ls %s: %s' % (source, P.status_name(code))); return code
-    for k, s, n in entries:
-        name = n.decode('utf-8')
-        code = copy_entry(dev, source + '/' + name, target + '/' + name, k, s)
-        if code:
-            return code
     return 0
 
 

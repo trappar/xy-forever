@@ -239,6 +239,16 @@ Effect key(Page& p, uint32_t k, bool pressed) {
     return effect_redraw;
 }
 
+bool generation_token(const char* t) {
+    uint32_t n = 0;
+    for (; t[n]; ++n) {
+        const char c = t[n];
+        const bool alnum = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+        if (n >= 31 || !(alnum || c == '_' || c == '-' || c == '.') || (!n && !alnum)) return false;
+    }
+    return n != 0;
+}
+
 int compare_generation(const char* a, const char* b) {
     // `<n>.<n>.<n>-<hex>`: numbers compared as numbers up to the '-', then the text.
     while (*a && *a != '-' && *b && *b != '-') {
@@ -487,6 +497,15 @@ void refuse_cancel(Page& p) {
                       p.save_stage ? "Cannot cancel now: saving." : "Cannot cancel now: it is being added to the library.");
 }
 
+void reading_line(Page& p, uint32_t at) {
+    char a[12], tail[24];
+    tail[0] = ' '; tail[1] = 'o'; tail[2] = 'f'; tail[3] = ' ';
+    decimal(a, at);
+    const uint32_t n = 4 + decimal(tail + 4, p.count);
+    tail[n] = '.'; tail[n + 1] = '.'; tail[n + 2] = '.'; tail[n + 3] = 0;
+    say(p, line_info, "Reading mod packages: ", a, tail);
+}
+
 void start_refused(Page& p, uint32_t status, uint32_t missing) {
     using namespace xyf::usbp;
     const char* why = status == s_busy ? "busy (a job, an upload or a save is running): try again." :
@@ -494,12 +513,14 @@ void start_refused(Page& p, uint32_t status, uint32_t missing) {
                       status == s_bad_request ? "the request was refused (names or counts)." :
                       status == s_state && missing == missing_ids_taken ?
                           "both mod slots are in use by the default and boot-once." :
-                      status == s_state ? "XY Forever cannot start a job now." : 0;
+                      status == s_state ? "XY Forever cannot start a job now." :
+                      status == s_unsupported ? "the mod packages need a newer XY Forever." : 0;
     if (status == s_not_found)
         why = missing == 1 ? "the base firmware has no os.ldr." :
               missing == 2 ? "content.sha256 missing beside the base." :
               missing == 3 ? "content/op1_factory.json is missing." :
-              missing == 4 ? "the mod base package is missing." : "an input is missing.";
+              missing == 4 ? "the mod base package is missing." :
+              missing == 5 ? "the mod packages are in an older layout: push them again." : "an input is missing.";
     if (why) { say(p, line_error, "Build failed: ", why); return; }
     char d[12];
     decimal(d, status);
