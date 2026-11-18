@@ -12,7 +12,7 @@ python3 scripts/setup.py doctor   # stock pair + fixtures in place? (first: boot
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-current
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-repeat  # same candidate SHA
 python3 xyf_build.py --verify --out ../private/xy-forever/builds/xy-forever-product-current      # {"passed": true}
-python3 -m unittest discover -s tests
+python3 scripts/check.py --confirm   # this commit's check receipt (none: python3 scripts/check.py)
 python3 scripts/device_pass.py --plan --install ../private/xy-forever/builds/xy-forever-product-current  # inspect the qualification plan
 ```
 
@@ -35,3 +35,28 @@ builds go to `../private/xy-forever/sessions/neutral/`.
 
 The device pass turns on no watchdog: there is none (protocol 1.14). `--plan` and simulator runs work
 offline. Every hardware qualification still needs the checks and approvals in [SAFETY.md](../SAFETY.md).
+
+## Checks and receipts
+
+```sh
+python3 scripts/run_tests.py test_a test_b.SomeTests   # while iterating: the tests you touch (--times: slowest)
+python3 scripts/check.py                               # the end of every change, on its commit: a receipt
+python3 scripts/check.py --neutral                     # also scripts/neutral.py against main's merge base
+python3 scripts/check.py --confirm BRANCH              # seconds, no build: what the branch's receipt records
+```
+
+`scripts/check.py` runs once on a clean, committed tree: the exhaustive suite (`XYF_EXHAUSTIVE=1
+scripts/run_tests.py`, every test, never a subset), the product build into
+`../private/xy-forever/builds/check-<tree>` plus `--verify`, `scripts/neutral.py` with `--neutral [REF]`, and
+`npm test` in `clients/ts` when that folder differs from main's merge base (or `--npm`). Step output goes to a
+log in `../private/xy-forever/sessions/<date>-check/`; it prints a short summary. Only when every step passed
+and the tree was clean (`git status --porcelain` empty) at the start and the end does it write the receipt
+`../private/xy-forever/checks/<tree>.json`, keyed to `git rev-parse HEAD^{tree}`: each step's command, result
+and time, the test counts, the candidate SHA-256 and size, the build folder. A failed run leaves
+`<tree>.failed.json` instead and removes that tree's receipt.
+
+`--confirm [REF]` (default `HEAD`) exits 0 only for a passing receipt of REF's tree, and prints it; otherwise
+it says what is missing: no receipt, a failed check, or a receipt for an older tree of the branch (rerun after
+a rebase or a merge onto a newer main). The orchestrator and merging use the worker's receipt instead of
+rerunning. Host bridges and the simulator are cached per input hash in `../private/xy-forever/sessions/`, so a
+run after a source change is slower. A receipt never stands in for a device test.

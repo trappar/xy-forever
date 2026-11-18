@@ -24,12 +24,15 @@ Without delegation, also do the scoped worker's work below.
 4. Read `gh issue view <N>` (`--comments` only if the body points there). Claim with
    `gh issue edit <N> --add-assignee @me`; branch from up-to-date `main`: `git switch -c <N>-<slug>`.
 5. Write the brief below. Start **one** agent, or do its scoped work yourself without delegation.
-6. Run the check yourself; never accept a report's "tests pass". Standard: `python3 scripts/run_tests.py`;
-   add `XYF_EXHAUSTIVE=1` before anything goes to the device.
-   - Pass: commit, push the branch, open a PR (`gh pr create`, body "Closes #<N>"), return to step 3.
-   - Fail: give the worker the commit and failing output; start fresh if context is tight.
-     Without delegation, fix within scope and rerun. A second failure: label `blocked`, comment why,
-     and unassign the issue.
+6. Confirm the check: `python3 scripts/check.py --confirm <branch>` (seconds, no build). A report's
+   "tests pass" counts only with a matching receipt, which records the exhaustive suite, the product
+   build and `--verify` for that exact tree; do not rerun what it records. Run `python3 scripts/check.py`
+   yourself only when the receipt is missing or the tree changed (a rebase or merge onto newer main).
+   Merging uses the same receipt. A receipt never stands in for a device test.
+   - Pass: push the branch, open a PR (`gh pr create`, body "Closes #<N>"), return to step 3.
+   - Fail: give the worker what `--confirm` printed and the log it names; start fresh if context is tight.
+     Without delegation, commit and run `scripts/check.py` yourself; fix within scope and rerun.
+     A second failure: label `blocked`, comment why, and unassign the issue.
 7. Stop when a decision needs the developer, nothing is unblocked, or told to.
    Close in at most ten lines: done, blocked, waiting on the device, decisions needed.
 
@@ -68,7 +71,7 @@ apply in either mode. Report missing required capabilities; never bypass them.
 | Kind | May | Ends with |
 |---|---|---|
 | research | read workspace; report findings in its GitHub issue | concise answer, evidence links, uncertainty and actionable follow-ups |
-| build | edit its item's code and tests | passing tests; one commit; reference docs updated for changed facts |
+| build | edit its item's code and tests | one commit, then `python3 scripts/check.py` on it (a passing receipt); reference docs updated for changed facts |
 | review | read the diff and what it touches; write nothing | findings by severity, or "none" |
 
 If an item is too large, return "split needed" with a proposed split; do not widen scope or hand back
@@ -85,7 +88,8 @@ Goal: <acceptance criteria>.
 Read first: xy-forever/AGENTS.md, then <at most five current reference files>.
 Do not read: docs/status/, unrelated docs.
 Constraints: <safety notes; required explicit approvals in the developer's words>.
-Check: <commands the orchestrator will run>.
+Check: commit, then end with `python3 scripts/check.py` <+ --neutral for a behaviour-neutral change>;
+the orchestrator confirms its receipt (`--confirm`), so a report's "tests pass" needs one.
 Report: <= 15 lines: changed files/functions with line numbers, checks, next-item facts,
 open questions, three largest context costs. No narrative.
 ```
@@ -114,23 +118,11 @@ Aim: one power-on per sitting, and none for offline work.
 - **Sub-agents never touch the device.** They cannot ask the developer to power cycle it or
   put it in a mode. A build agent writes the device script for its item and proves it
   against the simulator. The orchestrator runs that script for a `device` item.
-- **Scripts state what they need.** A device script first checks the device's
-  state. If not, it prints one line (`NEED: power on holding PLAY`) and exits;
-  the orchestrator relays that line to the developer and reruns the script.
-- **Scripts leave evidence.** Output goes to `../private/xy-forever/sessions/`; the
-  script prints a PASS/FAIL table and the folder. On FAIL the orchestrator gives a
-  research agent the folder, not the log text. A probe it needs is a new script.
-- **Simulator first, batched.** A device item starts only after its code passes the simulator and
-  the offline suite. Ready `kind:device` items wait for a sitting and run together.
 - **No guard:** there is no watchdog; a hang needs a manual power cycle. Never send REBOOT after a
   suspected lone A restart. Stop on a suspected hang and request one ([SAFETY.md](SAFETY.md)).
   Sessions end in keepalive, never in the OS.
-- **`safe` items** run only main-loop code with timeouts. **`risky` items** add
-  interrupt code, a new stock call, or new reset behaviour, and run last in a
-  sitting, with the developer present.
-- **Two strikes.** An item that needs a second manual power cycle stops: it becomes
-  `blocked` and a research item is added. Do not iterate on a freezing device.
-- Asking for a power cycle: start the listener first, then one short line (operating/at-the-device.md).
+- **Running device items** (NEED lines, evidence, batching, `safe` and `risky`, two strikes):
+  [operating/device-items.md](operating/device-items.md).
 
 ## Approvals
 

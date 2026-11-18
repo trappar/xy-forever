@@ -6,6 +6,7 @@
     python3 scripts/run_tests.py --jobs 1       in this process, in order (as unittest discover does)
     python3 scripts/run_tests.py --times        also the slowest modules and tests
     python3 scripts/run_tests.py test_simulator test_aes.NativeAesTests   only these
+    python3 scripts/run_tests.py --summary FILE also the counts as JSON in FILE (scripts/check.py)
 
 Each test is charged the wall time since the previous test of its process finished, so class
 and module fixtures (bridge compiles, simulator starts) land on the first test that needed
@@ -161,6 +162,7 @@ def main():
                         help='processes at a time (default %(default)s; 1: in this process, in order)')
     parser.add_argument('--times', action='store_true', help='print the slowest modules and tests')
     parser.add_argument('--top', type=int, default=15, help='rows per --times table (default %(default)s)')
+    parser.add_argument('--summary', metavar='FILE', help='write the counts as JSON: run, skipped, failed, seconds, jobs')
     parser.add_argument('--worker', metavar='REPORT', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.worker:
@@ -186,9 +188,12 @@ def main():
         table(results, args.top)
     for kind, name, _ in problems:
         print('%s: %s' % (kind, name))
+    run, skipped = sum(r['run'] for r in results), sum(r['skipped'] for r in results)
     print('\n%d tests, %d skipped, %d failed or errored, %.1f s (%s)' % (
-        sum(r['run'] for r in results), sum(r['skipped'] for r in results), len(problems), total,
-        'in order' if args.jobs == 1 else '%d jobs' % args.jobs))
+        run, skipped, len(problems), total, 'in order' if args.jobs == 1 else '%d jobs' % args.jobs))
+    if args.summary:
+        Path(args.summary).write_text(json.dumps(dict(run=run, skipped=skipped, failed=len(problems),
+                                                      seconds=round(total, 1), jobs=args.jobs)))
     return 1 if problems else 0
 
 

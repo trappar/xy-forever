@@ -44,12 +44,11 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   and correct it if it is wrong, then give one recommendation with its reasons and what is
   uncertain. Do not adopt a view only because of pushback. Product scope, risk to the device and
   approvals stay the developer's.
-- **Checks:** run the unit tests for every change: `python3 scripts/run_tests.py` (`--times` lists the slowest).
-  Host bridges and the simulator are cached per input
-  hash in `../private/xy-forever/sessions/`, so a run after a source change is slower. Also `python3
-  xyf_build.py --xyf-product …` plus `--verify` for anything that reaches the firmware. A change meant
-  to be behaviour-neutral (even removing unused code) must leave every build mode's candidate SHA-256
-  unchanged: `python3 scripts/neutral.py [REF]`.
+- **Checks:** iterate with `python3 scripts/run_tests.py NAMES`. Every change ends, committed, with
+  `python3 scripts/check.py` (exhaustive suite, product build, `--verify`; `--neutral` for a behaviour-neutral
+  change): it leaves a receipt for the tree. Others run `--confirm <branch>` instead of rerunning, and rerun
+  only when it is missing or the tree changed. A receipt never stands in for a device test.
+  [Checks and receipts](docs/operating/build-install.md#checks-and-receipts).
 - **Source files stay under 32 KB** (`tests/test_source_budget.py`): to grow a file on its over-cap list,
   first split out the part you touch.
 - **No flashing scripts.** Host tools talk only to XY Forever's own USB service (`xyf_host.py`), and
@@ -72,8 +71,8 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 python3 scripts/setup.py doctor                         # private folder: stock files, fixtures (bootstrap, import-stock)
 python3 scripts/plan.py                                 # the plan: next items, decisions waiting (--all: blocked, threads)
 python3 scripts/run_tests.py --jobs 6                   # unit tests in parallel (rerun a timing flake on a busy machine)
-python3 -m unittest discover -s tests                   # the same in order: ~8 min
 XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6  # everything (+ exhaustive bit flips): ~1-2 min
+python3 scripts/check.py                                # end of every change -> receipt (--confirm REF)
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-current
 python3 xyf_build.py --verify --out ../private/xy-forever/builds/xy-forever-product-current
 python3 scripts/neutral.py                              # working tree vs HEAD: same candidates?

@@ -1,0 +1,155 @@
+"""scripts/check.py: the receipt key, the clean-tree and failed-step refusals, the version refusal and
+--confirm, in a temporary git repository with stubbed steps (nothing is built)."""
+import contextlib
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+
+SPEC = importlib.util.spec_from_file_location('check_script', Path(__file__).resolve().parents[1] / 'scripts/check.py')
+C = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(C)
+
+ENV = dict(os.environ, GIT_AUTHOR_NAME='test', GIT_AUTHOR_EMAIL='test@example.com', GIT_COMMITTER_NAME='test',
+           GIT_COMMITTER_EMAIL='test@example.com', GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1')
+
+
+def ok(name='ok'):
+    return C.step(name, [sys.executable, '-c', 'pass'], '.')
+
+
+def fails(name='bad'):
+    return C.step(name, [sys.executable, '-c', 'raise SystemExit(3)'], '.')
+
+
+class CheckReceiptTests(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root, self.checks = Path(tmp.name) / 'repo', Path(tmp.name) / 'checks'
+        self.log = Path(tmp.name) / 'check.log'
+        self.root.mkdir()
+        self.git('init', '-q', '-b', 'main')
+        (self.root / '.gitignore').write_text('ignored.txt\n')
+        self.commit('a.txt', 'one')
+
+    def git(self, *args):
+        return subprocess.run(['git', *args], cwd=self.root, env=ENV, check=True, capture_output=True,
+                              text=True).stdout.strip()
+
+    def commit(self, name, text):
+        (self.root / name).write_text(text)
+        self.git('add', '-A')
+        self.git('commit', '-q', '-m', name)
+
+    def run_check(self, *steps):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return C.check(self.root, lambda tree: list(steps), self.checks, self.log)
+
+    def confirm(self, ref='HEAD'):
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()) as err:
+            status = C.main(['--confirm', ref], self.root, self.checks)
+        return status, out.getvalue() + err.getvalue()
+
+    def test_key_is_the_tree(self):
+        record = self.run_check(ok())
+        self.assertEqual(record['tree'], self.git('rev-parse', 'HEAD^{tree}'))
+        self.assertTrue((self.checks / (record['tree'] + '.json')).is_file())
+        self.assertEqual(record['version'], C.VERSION)
+        self.assertEqual([s['result'] for s in record['steps']], ['pass'])
+        self.git('commit', '-q', '--allow-empty', '-m', 'same files')     # another commit, the same tree
+        self.assertEqual(self.confirm()[0], 0)
+
+    def test_dirty_tree_refused(self):
+        (self.root / 'ignored.txt').write_text('gitignored files do not count')
+        (self.root / 'new.txt').write_text('untracked')
+        with self.assertRaisesRegex(C.CheckError, 'not clean at start'):
+            self.run_check(ok())
+        (self.root / 'new.txt').unlink()
+        (self.root / 'a.txt').write_text('changed')
+        with self.assertRaisesRegex(C.CheckError, 'not clean at start'):
+            self.run_check(ok())
+        self.assertFalse(self.checks.exists())
+
+    def test_tree_dirtied_during_run_refused(self):
+        dirty = C.step('dirty', [sys.executable, '-c', 'open("x.txt", "w").write("x")'], self.root)
+        with self.assertRaisesRegex(C.CheckError, 'not clean at end'):
+            self.run_check(dirty)
+        self.assertFalse(self.checks.exists())
+
+    def test_failed_step_writes_no_receipt(self):
+        tree = self.git('rev-parse', 'HEAD^{tree}')
+        self.run_check(ok())
+        record = self.run_check(ok(), fails(), ok('never run'))
+        self.assertFalse(record['passed'])
+        self.assertEqual([s['result'] for s in record['steps']], ['pass', 'fail'])
+        self.assertFalse((self.checks / (tree + '.json')).exists())        # the older pass is gone too
+        status, text = self.confirm()
+        self.assertEqual(status, 1)
+        self.assertIn('failed at bad', text)
+
+    def test_newer_version_refused(self):
+        record = self.run_check(ok())
+        path = self.checks / (record['tree'] + '.json')
+        path.write_text(json.dumps(dict(record, version=C.VERSION + 1)))
+        status, text = self.confirm()
+        self.assertEqual(status, 1)
+        self.assertIn('newer than this check.py reads', text)
+
+    def test_confirm_no_receipt(self):
+        status, text = self.confirm()
+        self.assertEqual(status, 1)
+        self.assertIn('no receipt for HEAD', text)
+
+    def test_confirm_failed_receipt(self):
+        record = self.run_check(ok())
+        path = self.checks / (record['tree'] + '.json')
+        path.write_text(json.dumps(dict(record, passed=False)))
+        status, text = self.confirm()
+        self.assertEqual(status, 1)
+        self.assertIn('failed receipt', text)
+
+    def test_confirm_tree_differs(self):
+        self.git('switch', '-q', '-c', '7-topic')
+        self.commit('b.txt', 'two')
+        self.run_check(ok())
+        self.assertEqual(self.confirm('7-topic')[0], 0)
+        self.git('switch', '-q', 'main')
+        self.commit('c.txt', 'newer main')
+        self.git('switch', '-q', '7-topic')
+        self.git('rebase', '-q', 'main')                    # the same change on a newer main: another tree
+        status, text = self.confirm('7-topic')
+        self.assertEqual(status, 1)
+        self.assertIn('tree differs', text)
+
+    def test_confirm_prints_the_record(self):
+        facts = C.step('facts', [sys.executable, '-c', 'pass'], '.', parse=lambda status, text: (True, dict(
+            tests=dict(run=12, skipped=1, failed=0, seconds=2.0),
+            candidate=dict(sha256='ab' * 32, bytes=1234, build='/private/builds/check-x'))))
+        self.run_check(facts)
+        status, text = self.confirm()
+        self.assertEqual(status, 0)
+        self.assertIn('tests: 12 run, 1 skipped, 0 failed', text)
+        self.assertIn('candidate: sha256 ' + 'ab' * 32 + ', 1234 bytes', text)
+
+    def test_verify_parser(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            (out / 'candidate.ldr').write_bytes(b'candidate')
+            digest = __import__('hashlib').sha256(b'candidate').hexdigest()
+            (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256=digest)))
+            parse = C.verify_parser(out)
+            self.assertTrue(parse(0, 'log line\n{\n  "passed": true\n}\n')[0])
+            self.assertFalse(parse(0, '{\n  "passed": false\n}\n')[0])
+            self.assertFalse(parse(1, '{\n  "passed": true\n}\n')[0])
+            (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256='0' * 64)))
+            self.assertFalse(parse(0, '{\n  "passed": true\n}\n')[0])
+
+
+if __name__ == '__main__':
+    unittest.main()
