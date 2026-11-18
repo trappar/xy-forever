@@ -48,7 +48,10 @@ The orchestrator may add, split, and reorder items. Each issue stands alone and 
 "M4. Packages"; `kind:build|research|device|review` (+ `device:safe|risky` for device work).
 A gating review or device run is a criterion, not an issue. Dependencies use "blocked by" links:
 `gh api -X POST repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by -F issue_id=<needed issue id>`.
-Loose ends use `thread`. Issue numbers identify items; PR titles are plain and bodies say "Closes #<N>".
+Findings made while working an item are fixed in its branch as extra commits and listed in its PR body. A new
+issue only when the fix would become the PR's main scope or nothing in progress relates, and then the most
+related open issue before a new one. `thread` is for findings with no related open work.
+Issue numbers identify items; PR titles are plain and bodies say "Closes #<N>".
 Items marked "to be split" need findings and a proposed split in their GitHub issue first.
 
 Dropping requirements, changing the [shape](goals/roadmap.md), or relaxing safety rules needs the
@@ -71,11 +74,11 @@ apply in either mode. Report missing required capabilities; never bypass them.
 | Kind | May | Ends with |
 |---|---|---|
 | research | read workspace; report findings in its GitHub issue | concise answer, evidence links, uncertainty and actionable follow-ups |
-| build | edit its item's code and tests | one commit, then `python3 scripts/check.py` on it (a passing receipt); reference docs updated for changed facts |
+| build | edit its item's code and tests | as many commits as the work needs, then one `python3 scripts/check.py` on the last (a passing receipt); reference docs updated for changed facts |
 | review | read the diff and what it touches; write nothing | findings by severity, or "none" |
 
-If an item is too large, return "split needed" with a proposed split; do not widen scope or hand back
-half-done work. Aim below 150k tokens or the harness's smaller limit; stop before 250k or its limit.
+Absorb small findings. If an item is too large, or a finding would take over the item, return "split needed"
+with a proposed split; never hand back half-done work. Aim below 150k tokens or the harness's smaller limit; stop before 250k or its limit.
 Without counters, use a fresh brief per item and hand off when context crowds. Reuse a worker for
 follow-ups while it has room; otherwise send its report to a fresh one. Read ranges of at most
 120 lines found with `rg -n`; pipe build/test output through `tail`. Name functions when known.
@@ -88,7 +91,7 @@ Goal: <acceptance criteria>.
 Read first: xy-forever/AGENTS.md, then <at most five current reference files>.
 Do not read: docs/status/, unrelated docs.
 Constraints: <safety notes; required explicit approvals in the developer's words>.
-Check: commit, then end with `python3 scripts/check.py` <+ --neutral for a behaviour-neutral change>;
+Check: commit as often as needed, then end with one `python3 scripts/check.py` <+ --neutral for a behaviour-neutral change>;
 the orchestrator confirms its receipt (`--confirm`), so a report's "tests pass" needs one.
 Report: <= 15 lines: changed files/functions with line numbers, checks, next-item facts,
 open questions, three largest context costs. No narrative.
