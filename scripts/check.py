@@ -11,8 +11,9 @@ The standard set, in order, stopping at the first failure:
   - the exhaustive unit suite: XYF_EXHAUSTIVE=1 scripts/run_tests.py (every test, never a subset), after
     the build so the tests that use one (paths.newest_verified_build) get the build of this very source;
   - scripts/neutral.py REF with --neutral (default REF: the merge base with origin/main, else main);
-  - npm test in clients/ts when clients/ts differs from that merge base, or with --npm (refused up front,
-    naming npm ci, when clients/ts/node_modules is missing).
+  - npm test in clients/ts when clients/ts differs from that merge base, then npm test and npm run typecheck
+    in web/ when web/ or clients/ts (which it uses) differs; both with --npm. Refused up front, naming
+    npm ci, when the folder's node_modules is missing.
 Step output goes to a log under <private>/xy-forever/sessions/<date>-check/; a short summary is printed.
 
 The working tree must be clean (`git status --porcelain` empty: untracked files count, gitignored ones
@@ -80,12 +81,12 @@ def merge_base(root):
     return None
 
 
-def clients_changed(root):
-    """Whether clients/ts differs between HEAD and its merge base with main (True without a main to compare)."""
+def changed(root, *folders):
+    """Whether any of folders differs between HEAD and its merge base with main (True without a main to compare)."""
     base = merge_base(root)
     if base is None:
         return True
-    return subprocess.run(['git', 'diff', '--quiet', base, 'HEAD', '--', 'clients/ts'], cwd=root).returncode != 0
+    return subprocess.run(['git', 'diff', '--quiet', base, 'HEAD', '--', *folders], cwd=root).returncode != 0
 
 
 def step(name, cmd, cwd, env=None, parse=None):
@@ -173,14 +174,22 @@ def standard_steps(args, root, tree, work):
     return steps
 
 
+NPM = (('clients/ts', ('clients/ts',), (('npm test', ['test']),)),        # folder, what changing reruns it, steps
+       ('web', ('web', 'clients/ts'), (('npm test', ['test']), ('npm run typecheck', ['run', 'typecheck']))))
+
+
 def npm_steps(args, root):
-    """npm test in clients/ts when it changed (or --npm); CheckError when its node_modules is not installed."""
-    clients = root / 'clients/ts'
-    if not clients.is_dir() or not (args.npm or clients_changed(root)):
-        return []
-    if not (clients / 'node_modules').is_dir():
-        raise CheckError('npm test needs clients/ts/node_modules, which is missing: run `npm ci` in clients/ts')
-    return [step('npm test (clients/ts)', [shutil.which('npm') or 'npm', 'test'], clients)]
+    """NPM's steps for each folder that changed (or all with --npm); CheckError when its node_modules is not
+    installed."""
+    steps, npm = [], shutil.which('npm') or 'npm'
+    for rel, watched, commands in NPM:
+        folder = root / rel
+        if not folder.is_dir() or not (args.npm or changed(root, *watched)):
+            continue
+        if not (folder / 'node_modules').is_dir():
+            raise CheckError('npm test needs %s/node_modules, which is missing: run `npm ci` in %s' % (rel, rel))
+        steps += [step('%s (%s)' % (name, rel), [npm, *words], folder) for name, words in commands]
+    return steps
 
 
 def run_steps(steps, log):
@@ -335,7 +344,7 @@ def main(argv=None, root=ROOT, checks=CHECKS):
     parser.add_argument('--jobs', type=int, help="unit-test processes at a time (default: run_tests.py's)")
     parser.add_argument('--neutral', nargs='?', const='', metavar='REF',
                         help='also scripts/neutral.py REF (default REF: the merge base with origin/main, else main)')
-    parser.add_argument('--npm', action='store_true', help='npm test in clients/ts even when it did not change')
+    parser.add_argument('--npm', action='store_true', help='the npm steps in clients/ts and web even when they did not change')
     args = parser.parse_args(argv)
     try:
         if args.confirm:

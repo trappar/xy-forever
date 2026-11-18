@@ -36,7 +36,7 @@ OVER = {
     'native/mtp_responder.cpp': 33255,
     'scripts/device_pass.py': 128359,
     'scripts/protogen.py': 90178,
-    'scripts/setup.py': 38448,
+    'scripts/setup.py': 38062,
     'sim/runtime.cpp': 36479,
     'sim/stock.cpp': 40937,
     'target/cold_storage.cpp': 33710,

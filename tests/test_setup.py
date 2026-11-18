@@ -17,7 +17,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import modlink, outer, paths, usb_proto  # noqa: E402
+from xy_forever import modlink, node_deps, outer, paths, usb_proto  # noqa: E402
 
 spec = importlib.util.spec_from_file_location('xyf_setup', ROOT / 'scripts/setup.py')
 S = importlib.util.module_from_spec(spec)
@@ -464,6 +464,36 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual((self.ws / 'AGENTS.md').read_text(), 'mine\n')
         self.assertIn('workspace AGENTS.md: present (left as it is; bootstrap never overwrites it)', out)
         self.assertEqual((self.ws / 'CLAUDE.md').read_text(), '@AGENTS.md\n')
+
+
+
+class DoctorNodeRows(unittest.TestCase):
+    """doctor's node rows: one for clients/ts and one for web, each ready once its node_modules tools are."""
+
+    def rows(self, root, node='/bin/node'):
+        version = mock.Mock(stdout='v24.0.0\n')
+        with mock.patch.object(node_deps.shutil, 'which', lambda name: node), \
+                mock.patch.object(node_deps.subprocess, 'run', return_value=version):
+            return node_deps.doctor_rows(root)
+
+    def test_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertEqual(self.rows(root), [
+                ('node (clients/ts)', False, 'v24.0.0; run `npm ci` in clients/ts'),
+                ('node (web)', False, 'v24.0.0; run `npm ci` in web')])
+            for rel in ('clients/ts/node_modules/.bin/tsc', 'web/node_modules/.bin/tsc'):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).touch()
+            self.assertEqual([r[1:] for r in self.rows(root)],
+                             [(True, 'v24.0.0; node_modules ok'), (False, 'v24.0.0; run `npm ci` in web')])
+            (root / 'web/node_modules/.bin/vitest').touch()
+            self.assertEqual([r[1] for r in self.rows(root)], [True, True])
+            self.assertEqual([r[1:] for r in self.rows(root, node=None)],
+                             [(False, 'not found (Node 22.18+ or 23.6+); node_modules ok')] * 2)
+
+    def test_doctor_reports_them(self):
+        self.assertEqual([r[0] for r in S.doctor()[0] if r[0].startswith('node')], ['node (clients/ts)', 'node (web)'])
 
 
 if __name__ == '__main__':

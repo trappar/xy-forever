@@ -147,10 +147,11 @@ class CheckReceiptTests(unittest.TestCase):
         self.git('branch', '-q', '-f', 'main', stale)       # local main behind origin/main
         self.commit('b.txt', 'two')
         self.assertEqual(C.merge_base(self.root), self.git('rev-parse', 'origin/main'))
-        self.assertFalse(C.clients_changed(self.root))
+        self.assertFalse(C.changed(self.root, 'clients/ts'))
+        self.assertFalse(C.changed(self.root, 'web'))
         self.git('update-ref', '-d', 'refs/remotes/origin/main')
         self.assertEqual(C.merge_base(self.root), stale)    # no origin/main: the local main
-        self.assertTrue(C.clients_changed(self.root))
+        self.assertTrue(C.changed(self.root, 'clients/ts'))
 
     def test_npm_needs_node_modules(self):
         args = C.argparse.Namespace(npm=True)
@@ -161,6 +162,31 @@ class CheckReceiptTests(unittest.TestCase):
         (self.root / 'clients/ts/node_modules').mkdir()
         self.assertEqual([s['name'] for s in C.npm_steps(args, self.root)], ['npm test (clients/ts)'])
         self.assertEqual(C.npm_steps(C.argparse.Namespace(npm=False), self.root), [])   # unchanged on main
+        (self.root / 'web').mkdir()
+        with self.assertRaisesRegex(C.CheckError, 'web/node_modules, which is missing: run `npm ci` in web'):
+            C.npm_steps(args, self.root)
+        (self.root / 'web/node_modules').mkdir()
+        steps = C.npm_steps(args, self.root)
+        self.assertEqual([s['name'] for s in steps],
+                         ['npm test (clients/ts)', 'npm test (web)', 'npm run typecheck (web)'])
+        self.assertEqual([s['cmd'][1:] for s in steps], [['test'], ['test'], ['run', 'typecheck']])
+        self.assertEqual(steps[-1]['cwd'], self.root / 'web')
+
+    def test_web_steps_follow_web_and_clients(self):
+        for rel in ('clients/ts/node_modules', 'web/node_modules'):
+            (self.root / rel).mkdir(parents=True)
+        self.git('switch', '-q', '-c', '8-topic')
+        names = lambda: [s['name'] for s in C.npm_steps(C.argparse.Namespace(npm=False), self.root)]  # noqa: E731
+        self.assertEqual(names(), [])
+        self.commit('web/a.ts', 'web only')
+        self.assertEqual(names(), ['npm test (web)', 'npm run typecheck (web)'])
+        self.commit('clients/ts/a.ts', 'the client web uses')
+        self.assertEqual(names(), ['npm test (clients/ts)', 'npm test (web)', 'npm run typecheck (web)'])
+
+    def test_failing_web_step_fails_the_check(self):
+        tsc = C.step('npm run typecheck (web)', [sys.executable, '-c', 'raise SystemExit(2)'], '.')
+        results, _ = C.run_steps([ok(), tsc, ok('after')], self.log)
+        self.assertEqual([(r['name'], r['result']) for r in results], [('ok', 'pass'), ('npm run typecheck (web)', 'fail')])
 
     def test_verify_parser(self):
         with tempfile.TemporaryDirectory() as tmp:
