@@ -1945,12 +1945,15 @@ class SimulatorVariantTest(unittest.TestCase):
                           'tfw.check': True, 'file.list': False, 'file.delete': False, 'file.rmdir': False,
                           'file.mkdir': False, 'file.rename': False, 'file.copy': False, 'stage2.info': True,
                           'mods.apply': False, 'job.status': False, 'job.cancel': False})
+        required = set()
         with tempfile.TemporaryDirectory(prefix='xyf-sim-') as tmp:
             for c in switched:
                 switches = product - {c['switch']}
-                if not c['switch_optional']:
-                    with self.assertRaisesRegex(RuntimeError, 'simulator build failed: file_boot.cpp'):
-                        sim.build(switches=switches)
+                if not c['switch_optional']:              # the spec says only that it fails, not where
+                    if c['switch'] not in required:       # one failing build per switch (failures are not cached)
+                        required.add(c['switch'])
+                        with self.assertRaisesRegex(RuntimeError, '^simulator build failed: '):
+                            sim.build(switches=switches)
                     continue
                 out = sim.build(switches=switches)
                 root = sim.seed(Path(tmp) / c['symbol'] / 'yaffs2')
