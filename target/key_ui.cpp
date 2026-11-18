@@ -587,6 +587,10 @@ extern "C" void xy_forever_key_ui() {
 
 namespace xy_forever { namespace key_ui {
 void crash_disarm() { crash_off(); }
+#if defined(XYF_CRASH_TRIGGER)
+bool crash_armed_now() { return crash_armed != 0; }
+void crash_fault(uint32_t kind) { if (crash_armed) xyf_crash_fault(kind); }
+#endif
 } }
 
 #if defined(XYF_SERVICE_SCREEN)

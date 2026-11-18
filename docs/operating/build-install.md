@@ -17,7 +17,8 @@ python3 scripts/device_pass.py --plan --install ../private/xy-forever/builds/IMA
 ```
 
 `--xyf-product` is the product (boot model v3) and the only installable mode (the
-v2 two-session flow was removed). Local `docs/status/` names the installed and known-good builds. Builds are deterministic, but `--verify` from a later checkout
+v2 two-session flow was removed); a device test build (`--xyf-crash-trigger`) installs only for its own test.
+Local `docs/status/` names the installed and known-good builds. Builds are deterministic, but `--verify` from a later checkout
 fails with "Source changed since build": re-verify an old build from its own commit.
 Only the install's verify reply proves an install; a later successful boot does not.
 

@@ -21,6 +21,7 @@ abandoned; our MTP responder uses the file engine from the main loop.
 | Flag | What | Use |
 |---|---|---|
 | `--xyf-product` | the product with boot model v3 (wide layout, USB service, menu, file/library boot, no embedded OS) | installs |
+| `--xyf-crash-trigger` | device test (#102): the product plus `diag.crash` (0x63), a fault on purpose for the crash screen (`scripts/crash_trigger.py`); never the product (its verifier refuses the trigger) | that test only |
 | `--xyf-stage2` / `--xyf-stage2-menu` | stage-1 + stage-2 split (offline demos) | offline |
 | `--verify` | re-check an existing build dir (mode from its manifest) | every install |
 

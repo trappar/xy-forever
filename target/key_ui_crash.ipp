@@ -94,6 +94,53 @@ void crash_off() {
     __asm__ volatile("CSYNC;" : : : "memory");
     crash_armed = 0;
 }
+#if defined(XYF_CRASH_TRIGGER)
+// Test build xyf-crash-trigger only (#102; xyf_build.py refuses it in any other mode): one chosen fault from
+// the menu loop (home_pump, diag.crash) while the vector above is armed. R0 = kind: 1 EXCPT 1 (EXCAUSE 0x01,
+// RETX the next instruction); 2 a 32-bit read of crash_record + 2 (0x24 misaligned; our own data, mapped);
+// 3 the undefined opcode 0x0001 (0x21); 4 a read of 0x90000000 (0x26: just above the 256 MiB of SDRAM, in no
+// stock data CPLB: table 0x0803c0b4, docs/hardware/boot.md). Reads only, no store. Returns for another kind.
+__asm__(
+    ".text\n"
+    ".align 2\n"
+    ".global xyf_crash_fault\n"
+    ".type xyf_crash_fault, STT_FUNC\n"
+    "xyf_crash_fault:\n"
+    "    R1 = 1;\n"
+    "    CC = R0 == R1;\n"
+    "    IF CC JUMP xyf_crash_at_excpt;\n"
+    "    R1 = 2;\n"
+    "    CC = R0 == R1;\n"
+    "    IF CC JUMP xyf_crash_misaligned;\n"
+    "    R1 = 3;\n"
+    "    CC = R0 == R1;\n"
+    "    IF CC JUMP xyf_crash_at_illegal;\n"
+    "    R1 = 4;\n"
+    "    CC = R0 == R1;\n"
+    "    IF CC JUMP xyf_crash_unmapped;\n"
+    "    RTS;\n"
+    "xyf_crash_at_excpt:\n"
+    "    EXCPT 1;\n"
+    "    RTS;\n"
+    "xyf_crash_misaligned:\n"
+    "    P0.H = xyf_crash_record;\n"
+    "    P0.L = xyf_crash_record;\n"
+    "    P0 += 2;\n"
+    "xyf_crash_at_misaligned:\n"
+    "    R0 = [P0];\n"
+    "    RTS;\n"
+    "xyf_crash_at_illegal:\n"
+    "    .short 0x0001\n"
+    "    RTS;\n"
+    "xyf_crash_unmapped:\n"
+    "    P0.H = 0x9000;\n"
+    "    P0.L = 0;\n"
+    "xyf_crash_at_unmapped:\n"
+    "    R0 = [P0];\n"
+    "    RTS;\n"
+    ".size xyf_crash_fault, .-xyf_crash_fault\n");
+extern "C" void xyf_crash_fault(uint32_t kind) __asm__("xyf_crash_fault");
+#endif
 #else
 const uint32_t crash_shown = 0;
 const xyf::crash::Text crash_text = {{0}, {0}, {0}};

@@ -150,7 +150,7 @@ class HostInstallTest(unittest.TestCase):
     def test_host_installs_only_builds_with_the_usb_service(self):
         import json, tempfile, hashlib
         import xyf_host as host
-        self.assertEqual(host.USB_MODES, ('xyf-usb', *builder.PRODUCT_MODES, builder.MTP_USB_MODE))
+        self.assertEqual(host.USB_MODES, ('xyf-usb', *builder.PRODUCT_MODES, builder.MTP_USB_MODE, builder.CRASH_TRIGGER_MODE))
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             data = bytes(70000)
