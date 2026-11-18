@@ -38,7 +38,7 @@ import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from xy_forever import mtp_read, paths  # noqa: E402
+from xy_forever import mtp_read, node_deps, paths  # noqa: E402
 
 PINS = json.loads((REPO / 'stock.json').read_text())
 PAIR = ('os.ldr', 'bootloader.ldr')
@@ -434,11 +434,7 @@ def doctor():
              ('published kit', kit, ox['kit_version'] if kit else 'missing: run fixtures'),
              ('mod package set', mods, paths.PUBLISHED_MODS.name if mods else 'missing: run fixtures'),
              ('verified build', bool(build), build.name if build else 'none of this source: run fixtures')]
-    node = shutil.which('node')
-    version = subprocess.run([node, '--version'], capture_output=True, text=True).stdout.strip() if node else None
-    tsc = (REPO / 'clients/ts/node_modules/.bin/tsc').exists()
-    rows.append(('node (clients/ts)', bool(node and tsc), '%s; %s' % (
-        version or 'not found (Node 22.18+ or 23.6+)', 'node_modules ok' if tsc else 'run `npm ci` in clients/ts')))
+    rows += node_deps.doctor_rows(REPO)
     why = sim.available()
     rows.append(('simulator', why is None, why or 'buildable'))
     leaks = paths.leak_patterns()
