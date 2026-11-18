@@ -44,7 +44,7 @@ PROBE_PROTECTED = tuple(r for r in PROTECTED if r != (0x8a000000, 0x8a810000)) +
     (0x8a000000, 0x8a800000), (MODULE, WIDE_STACK_END), (CARRY, END))   # the inner OS never loads either layout
 # Build mode -> (manifest format, cold report file name; # = the processor letter).
 MODES = {
-    'xyf-product': ('xyf-product-193', 'prod-193-#.bin'),
+    'xyf-product': ('xyf-product-195', 'prod-195-#.bin'),
     'xyf-stage2': ('xyf-stage2-032', 'stage2-032-#.bin'),
     'xyf-stage2-menu': ('xyf-stage2-menu-034', 'stage2m-034-#.bin'),
     # The MTP USB test build: 188: the product (which has the composite, XYF_MTP_USB) plus the old
