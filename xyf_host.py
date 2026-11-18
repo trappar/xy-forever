@@ -57,11 +57,9 @@ import json
 import os
 from pathlib import Path
 import re
-import select
 import socket
 import struct
 import sys
-import termios
 import time
 import zlib
 
@@ -69,6 +67,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from xy_forever import usb_proto as P
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr, parse_ldr
+from xy_forever.transport import SerialPort, TcpPort, sim_address
 
 DESCRIPTOR = struct.pack('<II', 0x584c4348, 1)
 MIN_IMAGE = 0x10000
@@ -97,80 +96,10 @@ SLOTS = ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt')
 SCREEN_BYTES, SCREEN_W, SCREEN_H, SCREEN_STRIDE = 0x3c000, 480, 216, 256   # ui_gfx.hpp
 
 
-class SerialPort:
-    """Raw termios transport on a CDC tty."""
-
-    def __init__(self, path):
-        self.fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
-        attrs = termios.tcgetattr(self.fd)
-        attrs[0] = 0
-        attrs[1] = 0
-        attrs[2] = termios.CS8 | termios.CREAD | termios.CLOCAL
-        attrs[3] = 0
-        termios.tcsetattr(self.fd, termios.TCSANOW, attrs)
-        termios.tcflush(self.fd, termios.TCIOFLUSH)
-
-    def write(self, data):
-        view = memoryview(data)
-        while view:
-            _, ready, _ = select.select([], [self.fd], [], 2.0)
-            if not ready:
-                raise TimeoutError('write timeout')
-            n = os.write(self.fd, view)
-            view = view[n:]
-
-    def read(self, timeout):
-        ready, _, _ = select.select([self.fd], [], [], timeout)
-        return os.read(self.fd, 65536) if ready else b''
-
-    def close(self):
-        if self.fd is not None:                  # idempotent (scripts/device_pass.py closes every port)
-            os.close(self.fd)
-            self.fd = None
-
-
-class TcpPort:
-    """The device simulator's USB endpoint (python3 -m xy_forever.sim): the same raw byte stream
-    on a local TCP port. Only loopback addresses: the simulator never listens elsewhere."""
-
-    def __init__(self, address):
-        host, port = sim_address(address)
-        self.sock = socket.create_connection((host, port), timeout=2.0)
-        self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.fd = self.sock.fileno()
-
-    def write(self, data):
-        _, ready, _ = select.select([], [self.sock], [], 2.0)
-        if not ready:
-            raise TimeoutError('write timeout')
-        self.sock.sendall(data)
-
-    def read(self, timeout):
-        ready, _, _ = select.select([self.sock], [], [], timeout)
-        if not ready:
-            return b''
-        data = self.sock.recv(65536)
-        if not data:
-            raise OSError('the simulator closed the connection (device restart or USB off)')
-        return data
-
-    def close(self):
-        if self.fd is not None:
-            self.sock.close()
-            self.fd = None
-
-
 SIM = os.environ.get('XYF_SIM') or None
 # tfw.check reasons (protocol/v1.json; native/tfw_check.hpp Reason).
 TFW_REASONS = ('pass', 'read', 'not_package', 'key_index', 'no_otp', 'public_key', 'signature', 'decrypt', 'directory')
 TFW_CHECK_TIMEOUT = 60.0        # HOST:PORT of the device simulator (--sim)
-
-
-def sim_address(address):
-    host, _, port = address.rpartition(':')
-    if host not in ('127.0.0.1', 'localhost', '::1') or not port.isdigit():
-        raise ValueError('--sim needs a loopback HOST:PORT, e.g. 127.0.0.1:7341 (got %r)' % address)
-    return host, int(port)
 
 
 def sim_listening(address):
