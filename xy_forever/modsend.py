@@ -352,7 +352,8 @@ def remove(dev, what, yes=False, out=print):
 PHASES = ('idle', 'inputs', 'link', 'patch', 'content', 'write', 'verify', 'finish', 'done', 'failed', 'cancelled')
 ERRORS = ('none', 'argument', 'path', 'region', 'open', 'read', 'truncated', 'size', 'list', 'unlisted', 'sha256',
           'info', 'base', 'linker', 'patch', 'content', 'write', 'rename', 'verify', 'cancelled', 'image', 'link')
-MISSING = ('none', "the base's os.ldr", "the base's content.sha256", '/yaffs2/content/op1_factory.json',
+MISSING = ('none', "the base's os.ldr", "the base's content.sha256; library-add --content adds it",
+           '/yaffs2/content/op1_factory.json',
            "the generation's base/info.txt", "the generation's store.txt (older layout: remove it, push again)")
 DONE, FAILED, CANCELLED = 8, 9, 10
 TMP = '/yaffs2/xy-forever/tmp'
