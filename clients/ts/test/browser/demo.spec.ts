@@ -13,7 +13,7 @@ const poll = { timeout: 30_000, interval: 100 };
 describe.skipIf(!sim)(`the demo page against the simulator${sim ? '' : ` (skipped: ${web.why})`}`, () => {
   test('connect, read a file, screenshot, disconnect', async () => {
     const direct = await Client.connect(webSocketOpener(sim!.relay), { timeoutMs: 10_000 });
-    const build = direct.info.build;
+    const version = `${direct.info.version}, image ${direct.info.image}`;
     await direct.close();
     const onMac = atob(await commands.simRead(sim!.root, '/yaffs2/firmware.version'));
 
@@ -27,7 +27,7 @@ describe.skipIf(!sim)(`the demo page against the simulator${sim ? '' : ` (skippe
     $('connect').click();
     expect(await done()).toBe('');
     expect(status()).toBe('connected');
-    expect($('build').textContent).toBe(String(build));
+    expect($('version').textContent).toBe(version);
     expect($('proto').textContent).toMatch(/^1\.\d+$/);
     expect($('mode').textContent).toBe('product');
 

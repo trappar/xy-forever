@@ -94,11 +94,11 @@ HELLO_OVERRIDE = ('#if defined(XYF_SIM_HELLO_TEXT)\n#undef XYF_USBP_HELLO_TEXT\n
                   '#define XYF_USBP_HELLO_TEXT XYF_SIM_HELLO_TEXT\n#endif\n')
 
 
-def product_defines(build=None, mode='xyf-product', switches=None, hello=None):
-    """The product build's defines (xyf_build.py build()), the hello build number and mode, and
-    optionally other usb build switches or a whole hello text (a pre-v1 device, say)."""
+def product_defines(version=None, mode='xyf-product', switches=None, hello=None):
+    """The product build's defines (xyf_build.py build()), the hello release version (another one: version)
+    and mode, and optionally other usb build switches or a whole hello text (a pre-v1 device, say)."""
     import xyf_build
-    number, name = (d.split('"')[1] for d in xyf_build.hello_defines(mode))
+    from xy_forever import release
     switches = set(xyf_build.usb_switches(mode) if switches is None else switches)
     flags = ['-DXYF_SIM=1', '-DXYF_STACK_END=%#xu' % xyf_build.WIDE_STACK_END, '-DXYF_CENSUS_REGIONS=24',
              '-DXYF_PLAIN_IMAGES=1', '-DXYF_SERVICE_SCREEN=1', '-DXYF_USB_MENU=1', '-DXYF_MENU_ON_FAILURE=1',
@@ -107,7 +107,9 @@ def product_defines(build=None, mode='xyf-product', switches=None, hello=None):
              '-DXYF_CENSUS_BYTES=%#xu' % xyf_build.CENSUS_BYTES, '-DXYF_MENU_LINK=1', '-DXYF_FILE_BOOT=1',
              '-DXYF_REMOTE_READ=1', '-DXYF_USB_SERVICE=1', '-DXYF_STAGE2_SERVICE=1',
              '-DXYF_MTP_SESSION=1',                    # the MTP session (never in the product build)
-             '-DXYF_BUILD_NUMBER="%s"' % (number if build is None else build), '-DXYF_BUILD_MODE="%s"' % name]
+             '-DXYF_VERSION="%s"' % (version or release.VERSION), '-DXYF_VERSION_CODE=%#xu' % release.code(version or
+                                                                                                  release.VERSION),
+             '-DXYF_BUILD_MODE="%s"' % mode[len('xyf-'):]]
     flags += ['-D%s=1' % s for s in sorted(switches)]
     if hello is not None:
         flags.append('-DXYF_SIM_HELLO_TEXT="%s"' % hello)
@@ -522,7 +524,7 @@ def main(argv=None):
     parser.add_argument('--state', type=Path, default=STATE,
                         help='folder for yaffs2/ (seeded when missing), bootpart.bin and builds (default %(default)s)')
     parser.add_argument('--plain', action='store_true', help='power on without PLAY (boots the default: no USB)')
-    parser.add_argument('--build', type=int, help='hello build= number (default: the product build)')
+    parser.add_argument('--version', help='hello version= (default: this checkout\'s release version)')
     parser.add_argument('--pre-v1', action='store_true', help='serve the pre-v1 hello text (builds 153 and earlier)')
     parser.add_argument('--no-otp', action='store_true',
                         help="processor B's OTP answers nothing (default: the private keys, when present)")
@@ -537,7 +539,7 @@ def main(argv=None):
         seed(root)
     hello = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e' if args.pre_v1 else None
     print('building the simulator...', file=sys.stderr, flush=True)
-    out = build(state / 'builds', build=args.build, hello=hello)
+    out = build(state / 'builds', version=args.version, hello=hello)
     otp = None if args.no_otp else otp_fields()
     print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
     sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp)

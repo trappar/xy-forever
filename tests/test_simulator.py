@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_build                                    # noqa: E402
 import xyf_host as host                             # noqa: E402
-from xy_forever import census, paths, sim, usb_proto as P   # noqa: E402
+from xy_forever import census, paths, release, sim, usb_proto as P   # noqa: E402
 from xy_forever import usb_proto_ids as ids         # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
@@ -126,7 +126,7 @@ class SimulatorTest(unittest.TestCase):
         for kind in (P.STATUS, P.READ_FILE, P.PUT_BEGIN, P.REBOOT, 0x5f):
             self.assertEqual(dev.call(kind, b'')[0], ids.S_STATE, kind)       # before HELLO: state, nothing done
         code, text = dev.hello()
-        self.assertEqual((code, text), (0, P.hello_text(int(xyf_build.MODES['xyf-product'][0].rsplit('-', 1)[1]), 'product',
+        self.assertEqual((code, text), (0, P.hello_text(release.VERSION, None, 'product',   # an empty boot partition
                                                    xyf_build.usb_switches('xyf-product'))))
         self.assertEqual(P.Hello(text).cmds, P.answered(xyf_build.usb_switches('xyf-product')))
         dev.hello_info = None                             # xyf_host refuses types missing from cmds
@@ -137,7 +137,7 @@ class SimulatorTest(unittest.TestCase):
         dev = self.connect()
         code, body = dev.call(P.STATUS)
         decoded = host.decode_status(body)
-        self.assertEqual((code, decoded['usb_service']['version'], decoded['usb_service']['identity']), (0, 4, '0x0'))
+        self.assertEqual((code, decoded['usb_service']['version'], decoded['usb_service']['identity']), (0, 5, '0x0'))
         self.assertEqual(dev.read_file(BASE + 'state-a.txt'), (0, self.file(BASE + 'state-a.txt')))
         os_ldr = BASE + 'firmware/opxy-121/os.ldr'
         data = b''.join(dev.read_file(os_ldr, offset)[1] for offset in range(0, 8192, 1024))
@@ -239,6 +239,47 @@ class SimulatorTest(unittest.TestCase):
             self.assertEqual(struct.unpack_from('<3I', raw, 0x400000), (3, len(data), zlib.crc32(data)))
         self.assertEqual(dev.stage(stock), 0)
         self.assertEqual(dev.install(hashlib.sha256(stock).digest())[0], ids.S_IMAGE)    # no cold descriptor
+
+    def boot_image(self, size):
+        """A stand-in XY Forever os.ldr of size bytes: the LDR first record (flags 0x5004, argument size - 16) and the
+        cold descriptor (magic, version 1); hello image= needs nothing more."""
+        head = bytearray(struct.pack('<4I', 0xad005004, 0, 0, size - 16))
+        for byte in bytes(head):
+            head[2] ^= byte                                # the header check byte: the 16 bytes XOR to 0
+        body = bytes(i * 7 & 0xff for i in range(size - 16 - 8)) + struct.pack('<2I', 0x584c4348, 1)
+        return bytes(head) + body
+
+    def test_hello_image_is_the_installed_images_hash(self):
+        """image= hashes what B's bootloader read (0x8a000000): at power-on and after a restart; the cost is in STATUS."""
+        self.sim.stop()
+        data = self.boot_image(270 * 1024)                 # about the product's size
+        bootpart = bytearray(0x400000 * 2)
+        bootpart[:12] = struct.pack('<3I', 3, len(data), zlib.crc32(data))
+        bootpart[12] = 1
+        bootpart[512:512 + len(data)] = data
+        (self.dir / 'bootpart.bin').write_bytes(bytes(bootpart))
+        self.sim = sim.Simulator(self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out,
+                                 log=self.dir / 'log2.txt').start()
+        dev = self.connect(hello=False)
+        code, text = dev.hello()
+        image = hashlib.sha256(data).hexdigest()[:8]
+        self.assertEqual((code, text), (0, P.hello_text(release.VERSION, image, 'product',
+                                                       xyf_build.usb_switches('xyf-product'))))
+        self.assertEqual(dev.hello(), (0, text))                                # the same text all boot
+        code, body = dev.call(P.STATUS)
+        built = host.decode_status(body)['usb_service']['build']
+        self.assertEqual((built['version'], built['image'], built['state']), (release.VERSION, image, 'known'))
+        print('\nimage hash, %d bytes: %d ms menu start to known, %d kcycles hashing (%.1f ms at 400 MHz)' % (
+            len(data), built['ms'], built['kcycles'], built['kcycles'] * 1024 / 400e3), file=sys.stderr)
+        bad = bytearray(data)
+        bad[-8] ^= 1                                       # no cold descriptor: not an XY Forever image
+        bootpart[512:512 + len(data)] = bad
+        (self.dir / 'bootpart.bin').write_bytes(bytes(bootpart))
+        boots = self.sim.status()['b_boots']
+        self.assertEqual(dev.call(P.REBOOT, struct.pack('<I', 2))[0], 0)       # home again: the bootloader reads it
+        self.restarted(boots)
+        dev = self.connect(hello=False)
+        self.assertIn(';image=unknown;', dev.hello()[1])
 
     def test_device_pass_against_the_simulator(self):
         spec = importlib.util.spec_from_file_location('device_pass', ROOT / 'scripts/device_pass.py')

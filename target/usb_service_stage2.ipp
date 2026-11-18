@@ -5,14 +5,13 @@
 // 96-byte header (a ranged read), then the whole file, no larger than the header says, into the
 // staging buffer (nothing is staged before the first HELLO). accept() checks magic, ABI, header
 // CRC, sizes, the load range inside the window, the entry inside the image, the image CRC and
-// SHA-256 and min_stage1 <= this build. Only then is the image copied to load_address, its CRC
+// SHA-256 and min_stage1 <= this stage 1's release (XYF_VERSION_CODE). Only then is the image copied to load_address, its CRC
 // checked again there, flushed (FLUSH, IFLUSH) and its init called through the one audited
 // trampoline. Any failure leaves stage 1 exactly as before and stage2[] says why. Stage 2 is
 // called only after init answered init_ok, and never again after an answer it does not define.
 namespace S2 = xyf::stage2;
 extern "C" uint32_t xyf_stage2_enter(uint32_t entry, const S2::Call* call) __asm__("xyf_stage2_enter");
-constexpr U32 decimal(const char* s, U32 v = 0) { return *s ? decimal(s + 1, v * 10 + U32(*s - '0')) : v; }
-const U32 stage1_build = decimal(XYF_BUILD_NUMBER);
+const U32 stage1_version = XYF_VERSION_CODE;          // xy_forever/release.py code()
 volatile U32 s2_tried __attribute__((section(".data"))) = 0;
 volatile U32 s2_entry __attribute__((section(".data"))) = 0;          // 0: not loaded (or stopped)
 S2::Header s2_header __attribute__((section(".data"))) = {};
@@ -21,7 +20,7 @@ void s2_trace(uint32_t code, uint32_t value) { result.stage2[s2w_trace_code] = c
 uint32_t s2_reply(uint32_t type, uint32_t seq, const uint8_t* payload, uint32_t length) {
     return send(uint8_t(type), uint8_t(seq), payload, length) ? 1u : 0u;
 }
-const S2::Services3 s2_services = {S2::services_version, sizeof(S2::Services3), stage1_build, s2_now, s2_trace, s2_reply};
+const S2::Services3 s2_services = {S2::services_version, sizeof(S2::Services3), stage1_version, s2_now, s2_trace, s2_reply};
 void s2_stop(U32 status, U32 detail) {
     s2_entry = 0;
     result.stage2[s2w_status] = status; result.stage2[s2w_detail] = detail;
@@ -52,7 +51,7 @@ __attribute__((noinline)) void stage2_load() {
     } else if (code == P::s_ok) code = P::s_range;                     // shorter than a header
     if (code != P::s_ok) { s2_stop(code == P::s_not_found ? s2_missing : code == P::s_link ? s2_link : s2_read, code); return; }
     S2::Header h;
-    const S2::Check check = S2::accept(staged, bytes, stage1_build, h);
+    const S2::Check check = S2::accept(staged, bytes, stage1_version, h);
     if (check != S2::Check::ok) { s2_stop(s2_check, U32(check)); return; }
     volatile uint8_t* to = reinterpret_cast<volatile uint8_t*>(h.load_address);
     for (U32 i = 0; i != h.image_bytes; ++i) to[i] = staged[S2::header_bytes + i];

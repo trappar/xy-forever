@@ -34,12 +34,13 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 ## Reports
 
 - **Report files:** each processor writes one report after the OS mounts storage.
-  Files are `/yaffs2/xy-forever/log/prod-<build>-{a,b}.bin`; `<build>` is the firmware
-  build number reported by HELLO, used to identify private evidence.
+  Files are `/yaffs2/xy-forever/log/prod-{a,b}.bin` (`pfile-` from a library image); the
+  next boot overwrites them. Inside, B's USB service block names the release version and image
+  (as HELLO `version=` and `image=`) that wrote them; builds before #107 wrote `prod-NNN-{a,b}.bin`.
 - **Fetch:** `xyf_host.py read PATH --all --out FILE`, or dev MTP (below).
 - **Decode:** `python3 -m xy_forever.census FILE.bin`.
 - **Dry-run summary:** `python3 scripts/dryshow.py STATUS.json`.
-- **Evidence capture:** `scripts/capture_session.py --out DIR --state --report NNN`
+- **Evidence capture:** `scripts/capture_session.py --out DIR --state --report prod`
   prints a plan; add `--capture` to run it (HELLO, STATUS and the chosen reads only;
   HELLO marks a host as present, so not for host-free menu tests).
 - **Storage:** keep fetched reports in `../private/xy-forever/reports/<test>/`.

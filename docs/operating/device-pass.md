@@ -14,8 +14,8 @@ The session stage always runs: hold on. Default stages: read, protocol, boot (dr
 
 - **Protocol** (after read and install, before any restart): records the HELLO; on a
   pre-v1 device every step is SKIP "pre-v1 device". On v1:
-  after `--install`, `build=` and `cmds` must match that build (shows which build
-  runs); `unsupported`, `refused`, `bad_request`, CONTINUE mode 2 `link`, with requests
+  after `--install`, `image=` (the first 8 hex digits of its candidate's SHA-256), `version=` and `cmds`
+  must match that build (shows which build runs); `unsupported`, `refused`, `bad_request`, CONTINUE mode 2 `link`, with requests
   that change nothing (a staging is never complete; `stage.end` discards it); HELLO
   round trip, read and stage KiB/s in the table and `summary.json`. `--big-replies`
   adds replies above HELLO `read=` and 4 KiB `stage.data`: can hang the device.

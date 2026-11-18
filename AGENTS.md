@@ -73,8 +73,8 @@ python3 scripts/plan.py                                 # the plan: next items, 
 python3 scripts/run_tests.py --jobs 6                   # unit tests in parallel (rerun a timing flake on a busy machine)
 XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6  # everything (+ exhaustive bit flips): ~1-2 min
 python3 scripts/check.py                                # end of every change -> receipt (--confirm REF)
-python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/xy-forever-product-current
-python3 xyf_build.py --verify --out ../private/xy-forever/builds/xy-forever-product-current
+python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/current   # check.py: builds/<image>
+python3 xyf_build.py --verify --out ../private/xy-forever/builds/current
 python3 scripts/neutral.py                              # working tree vs HEAD: same candidates?
 python3 xyf_host.py status                              # device over USB
 python3 -m xy_forever.sim                               # device simulator (127.0.0.1:7341; xyf_host.py --sim)

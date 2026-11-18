@@ -18,7 +18,7 @@ from xy_forever.ldr import parse_ldr, validate_memory
 from xy_forever.stage2_audit import STAGE2_ENTER, STAGE2_LITERALS as S2_LITERALS, STAGE2_WINDOW, \
     check_stage2_image, stage2_enter_sites
 from xy_forever.probe_report import report_only_fixture
-from xy_forever import usb_proto, xyf_stage2 as S2
+from xy_forever import release, usb_proto, xyf_stage2 as S2
 
 # Layout names (historical): "reporter" is the small program added to the stock OS
 # image that writes the cold report to storage, "carry" the report slot it reads,
@@ -44,22 +44,25 @@ def layout(mode):
 
 PROBE_PROTECTED = tuple(r for r in PROTECTED if r != (0x8a000000, 0x8a810000)) + (
     (0x8a000000, 0x8a800000), (MODULE, WIDE_STACK_END), (CARRY, END))   # the inner OS never loads either layout
-# Build mode -> (manifest format, cold report file name; # = the processor letter).
+# Build mode -> cold report file name (# = the processor letter). A build is named by its image (the
+# first 8 hex digits of its candidate's SHA-256) and carries the release version (xy_forever/release.py);
+# a report says both in its contents (the USB service block), not in its name.
 MODES = {
-    'xyf-product': ('xyf-product-195', 'prod-195-#.bin'),
-    'xyf-stage2': ('xyf-stage2-032', 'stage2-032-#.bin'),
-    'xyf-stage2-menu': ('xyf-stage2-menu-034', 'stage2m-034-#.bin'),
+    'xyf-product': 'prod-#.bin',
+    'xyf-stage2': 'stage2-#.bin',
+    'xyf-stage2-menu': 'stage2m-#.bin',
     # The MTP USB test build: 188: the product (which has the composite, XYF_MTP_USB) plus the old
     # trial (XYF_MTP_USB_TRIAL: the flag file, progress marks, the result file, the 20 s no-HELLO fallback
     # restart, diag.mtp_usb op 0). Builds and verifies as the product (product_kind) apart from its name,
     # reports, hello mode and the trial.
-    'xyf-mtp-usb': ('xyf-mtp-usb-186', 'mtpu-186-#.bin'),
+    'xyf-mtp-usb': 'mtpu-#.bin',
 }
+MANIFEST_SCHEMA = 2                 # 2: no build number; version and image. --verify refuses another schema.
 # Reports go to this device folder (the reporter does not create it).
 REPORT_DIR = '/yaffs2/xy-forever/log/'
 # Report name written by the file image (the library os.ldr); it shows which image a processor booted.
-FILE_VARIANT_REPORTS = {'xyf-product': 'pfile-188-#.bin', 'xyf-stage2': 'file-032-#.bin',
-                        'xyf-stage2-menu': 'file-034-#.bin', 'xyf-mtp-usb': 'fmtpu-186-#.bin'}
+FILE_VARIANT_REPORTS = {'xyf-product': 'pfile-#.bin', 'xyf-stage2': 'file2-#.bin',
+                        'xyf-stage2-menu': 'file2m-#.bin', 'xyf-mtp-usb': 'fmtpu-#.bin'}
 
 
 def product_kind(mode):
@@ -68,10 +71,13 @@ def product_kind(mode):
 
 
 def hello_defines(mode):
-    """The build number and mode name in the USB service's hello text (usb_proto_ids.hpp)."""
-    number = MODES[mode][0].rsplit('-', 1)[1]
-    require(number.isdigit(), 'Build number missing from the manifest format')
-    return ('-DXYF_BUILD_NUMBER="%s"' % number, '-DXYF_BUILD_MODE="%s"' % mode[len('xyf-'):])
+    """The release version and mode name in the USB service's hello text (usb_proto_ids.hpp)."""
+    return release.defines() + ('-DXYF_BUILD_MODE="%s"' % mode[len('xyf-'):],)
+
+
+def image_name(candidate_sha256):
+    """A build's name: the first 8 hex digits of its candidate's SHA-256 (hello image=, builds/<image>/)."""
+    return candidate_sha256[:8]
 
 
 def usb_switches(mode):
@@ -277,9 +283,10 @@ WRITE_AUDIT_MODES = USB_SET_DEFAULT_MODES
 # Earlier cold_storage entry points that no build may link (directory listing, non-fresh sessions).
 LEGACY_STORAGE_SYMBOLS = ('open_directory', 'next_directory', 'close_directory', 'open_file',
                           'Stock121ReadOnlySession5begin', 'storage_shutdown')
-# The product's stage 2 (ABI 3, target/stage2_main.cpp): its version, and the first stage-1
-# build with the services it needs (min_stage1; services only grow).
-STAGE2_SERVICE_VERSION, STAGE2_SERVICE_MIN_STAGE1 = 1, 167
+# The product's stage 2 (ABI 3, target/stage2_main.cpp): its version, and the first stage-1 release
+# with the services it needs (min_stage1, a release.code; services only grow). 0x100 = 0.1.0 lies
+# above every old build number, which earlier stage 1s compared it with: they refuse it.
+STAGE2_SERVICE_VERSION, STAGE2_SERVICE_MIN_STAGE1 = 1, release.code('0.1.0')
 GC_MODES = (*PRODUCT_MODES, 'xyf-stage2', 'xyf-stage2-menu')
 # Stage 2 main (--xyf-stage2-menu, ABI 2): the stage-1 build is --xyf-stage2
 # plus XYF_STAGE2_MENU; the image links the XY Forever menu modules.
@@ -777,7 +784,12 @@ def verify(out, stock, boot):
     menu_link, remote_read, file_boot = f['menu_link'], f['remote_read'], f['file_boot']
     stage2_service = f['stage2_service']
     dump_bytes = CENSUS_BYTES
-    require(manifest['format'] == MODES[mode_name][0], 'Manifest format and mode differ')
+    schema = manifest.get('schema')
+    require(schema == MANIFEST_SCHEMA, 'Manifest schema %s, this builder reads %d: %s' % (
+        schema, MANIFEST_SCHEMA, 'update this checkout' if isinstance(schema, int) and schema > MANIFEST_SCHEMA
+        else 'rebuild it'))
+    require(manifest.get('version') == release.VERSION, 'Manifest release version differs')
+    require(manifest.get('image') == image_name(manifest['candidate_sha256']), 'Manifest image name differs')
     require(manifest['source_sha256'] == source_hashes(), 'Source changed since build')
     compiler, _ = toolchain()
     require(manifest['tool_sha256'] == compiler['checked'], 'Tool identities changed')
@@ -790,7 +802,7 @@ def verify(out, stock, boot):
         return any(text in name for name in symbols)
 
     reporter, _ = verify_elf(out, 'reporter', REPORTER, CARRY)
-    result_path = (REPORT_DIR + MODES[mode_name][1] + '\0').encode('ascii')
+    result_path = (REPORT_DIR + MODES[mode_name] + '\0').encode('ascii')
     require(result_path in reporter, 'Reporter destination differs')
     # Every mode carries the cold snapshot in the admitted inner-loader DATA slot.
     require(has('xy_forever_patch_warm_snapshot') and has('trace_slot7replace'), 'Missing stream snapshot patch path')
@@ -904,8 +916,8 @@ def verify(out, stock, boot):
     if usb:
         check_usb_spans(boot)
         require(USB_CALLS <= targets, 'USB service lacks its stock calls: ' + ', '.join(sorted(USB_CALLS - targets)))
-        number, name = (d.split('"')[1] for d in hello_defines(mode_name))
-        hello = usb_proto.hello_text(number, name, usb_switches(mode)).encode('ascii')
+        name = mode_name[len('xyf-'):]
+        hello = usb_proto.hello_text(release.VERSION, None, name, usb_switches(mode)).encode('ascii')
         require(len(hello) <= usb_proto.ids.MAX_HELLO and module.count(hello + b'\0') == 1,
                 'USB service hello text differs from the protocol spec')
     file_write = mode in FILE_WRITE_MODES
@@ -973,9 +985,8 @@ def verify(out, stock, boot):
             require(has(needed), 'Stage 2 path lacks ' + needed)
         for banned in ('a_serve_stage2', 'b_load_stage2', 'run_stage2', 'stage26decide', 'stage28classify'):
             require(not has(banned), 'Product links the offline stage-2 path ' + banned)
-        number = int(MODES[mode_name][0].rsplit('-', 1)[1])
         require(stage2_info['abi'] == S2.ABI_SERVICE and stage2_info['version'] == STAGE2_SERVICE_VERSION and
-                stage2_info['min_stage1'] == STAGE2_SERVICE_MIN_STAGE1 <= number,
+                stage2_info['min_stage1'] == STAGE2_SERVICE_MIN_STAGE1 <= release.code(),
                 'Stage-2 image ABI, version or min_stage1 differs from this stage 1')
         require(not any(lo < STAGE2_WINDOW[1] and STAGE2_WINDOW[0] < hi for lo, hi, _ in
                         Firmware((out / 'candidate.ldr').read_bytes()).segments),
@@ -1078,7 +1089,7 @@ def build(out, stock, boot, mode):
 
     cpp('record', SOURCE / 'target/storage_probe_record.cpp')
     census_defines = ['-DXYF_CENSUS_BASE=%#xu' % (REPORTER - CENSUS_BYTES), '-DXYF_CENSUS_BYTES=%#xu' % CENSUS_BYTES]
-    report_defines = ['-DXYF_REPORT_PATH="' + REPORT_DIR + MODES[mode_name][1] + '"'] + census_defines
+    report_defines = ['-DXYF_REPORT_PATH="' + REPORT_DIR + MODES[mode_name] + '"'] + census_defines
     cpp('reporter', SOURCE / 'target/storage_probe_reporter.cpp', report_defines)
     assembly('reporter_entry', SOURCE / 'target/storage_probe_reporter.s')
     link('reporter', REPORTER, CARRY, 'xy_forever_report_entry',
@@ -1217,9 +1228,8 @@ def build(out, stock, boot, mode):
             ('-DXYF_STAGE2_SERVICE=1', '-ffunction-sections', '-fdata-sections'))
         link('stage2', STAGE2_WINDOW[0], STAGE2_WINDOW[1], 'xyf_stage2_main', ('stage2_main',))
         image = (out / 'stage2.bin').read_bytes()
-        number = MODES[mode_name][0].rsplit('-', 1)[1]
         (out / 'main.xys2').write_bytes(S2.pack(image, STAGE2_WINDOW[0], STAGE2_WINDOW[0],
-                                               version=STAGE2_SERVICE_VERSION, build_id='product-' + number,
+                                               version=STAGE2_SERVICE_VERSION, build_id='product-' + release.VERSION,
                                                min_stage1=STAGE2_SERVICE_MIN_STAGE1, abi=S2.ABI_SERVICE))
         check_stage2_image(out)
     elif stage2:
@@ -1249,7 +1259,8 @@ def build(out, stock, boot, mode):
     require(source_hashes() == hashes, 'Sources changed during build')
     (out / 'commands.json').write_text(json.dumps(commands, indent=2) + '\n')
     artifacts = {p.name: sha(p.read_bytes()) for p in out.iterdir() if p.is_file()}
-    manifest = dict(schema=1, format=MODES[mode_name][0], installable=False, mode=mode_name,
+    manifest = dict(schema=MANIFEST_SCHEMA, version=release.VERSION, image=image_name(sha(candidate)),
+                    installable=False, mode=mode_name,
                     report_origin='cold snapshot patched into loader stream',
                     hardware_tested=False, candidate_sha256=sha(candidate), candidate_bytes=len(candidate),
                     module_bytes=len(module), reporter_bytes=len(reporter), stock_sha256=sha(stock),

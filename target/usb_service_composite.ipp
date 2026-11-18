@@ -119,7 +119,7 @@ bool probe_mark(uint32_t step) {
 }
 void marks_begin() {
     marks_length = 0;
-    marks_append("xy-forever mtp-usb composite marks, build " XYF_BUILD_NUMBER ": step ms name\n");
+    marks_append("xy-forever mtp-usb composite marks, version " XYF_VERSION ": step ms name\n");
     mu::set_mark_hook(probe_mark);
 }
 void marks_end() { mu::set_mark_hook(0); }                              // writes_due: A's window closes by the settle
@@ -157,7 +157,9 @@ void sink_digest() {                                                     // afte
 }
 U32 result_text(char* t) {                   // <= 1024 (one write): about 700 bytes
     sink_digest();
-    U32 n = text_put(t, 0, "xy-forever mtp-usb composite result, build " XYF_BUILD_NUMBER "\n");
+    U32 n = text_put(t, 0, "xy-forever mtp-usb composite result, version " XYF_VERSION ", ");
+    n = text_put(t, n, image_label());
+    n = text_put(t, n, "\n");
     n = text_words(t, n, "probe", probe, probe_words);
     U32 driver[n_driver_words];
     driver_words(driver);

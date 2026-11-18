@@ -25,7 +25,7 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
 - **Not hosted:** the menu's screen and keys, os.ldr itself, CDC ring and USB timing, NAND timing, encryption,
   stage 2; yaffs is a (case-insensitive) host folder.
 - **Run:** `python3 -m xy_forever.sim` (`SESSIONS/simulator/` in the private folder: seeded `yaffs2/`, `bootpart.bin`,
-  `builds/`; `--port`, `--plain`, `--build N`, `--pre-v1`), then `xyf_host.py --sim 127.0.0.1:7341` (or `XYF_SIM`),
+  `builds/`; `--port`, `--plain`, `--version V`, `--pre-v1`), then `xyf_host.py --sim 127.0.0.1:7341` (or `XYF_SIM`),
   `scripts/device_pass.py` / `scripts/conformance.py --sim …` (evidence removed when nothing failed, unless `--keep`).
 - **Control** (port + 1, one line, JSON reply): `status` (A's `partition`; `boot_writes`, yaffs changes on a boot
   partition; `rw_open`/`unclean_mounts`, read-write mounts never unmounted; `to_a`/`to_b`, link messages relayed),

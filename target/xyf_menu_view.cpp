@@ -71,11 +71,12 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
     }
     case Screen::info: {
         // Every slot explicit: a zero-filled tail would compile to memset.
-        // The build as the home page shows it (build 186), not a fixed version.
-        const char* build = chrome && chrome->build ? chrome->build : "";
-        const ui::Message info = {"Info", {"XY Forever", build, "Real bootloader: 1.2.1 (never updated)",
-                                           "Hold PLAY at power-on to open this menu.", "", "", "", ""},
-                                  4, "PLAY / STOP  back", chrome};
+        // The release version as the home page shows it (v0.1.0) and the running image (hello image=).
+        const char* version = chrome && chrome->version ? chrome->version : "";
+        const char* image = chrome && chrome->image ? chrome->image : "";
+        const ui::Message info = {"Info", {"XY Forever", version, image, "Real bootloader: 1.2.1 (never updated)",
+                                           "Hold PLAY at power-on to open this menu.", "", "", ""},
+                                  5, "PLAY / STOP  back", chrome};
         ui::draw_message(fb, info);
         return;
     }

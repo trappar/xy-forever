@@ -193,7 +193,6 @@ BUTTON_Y = 174                  # a dialog's button row (above the button text)
 T_PAGE = 30                     # the Mods page reads its package list (screenshots 1.5 s apart until two equal)
 MARK_GROWTH = 60                # px: "(changed)" lengthens the first row's text by more than this
 # Protocol stage (docs/PROTOCOL.md).
-LAST_PRE_V1 = 153          # the spec's pre_v1 rule: builds 153 and earlier send no cmds
 PRE_V1 = 'pre-v1 device'
 HELLO_ROUNDS = 5
 REFUSED_PATH = '/yaffs2/upgrade/device-pass-refused.txt'    # readable; 1.13: the stock updater's inbox is never written
@@ -219,7 +218,7 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
                  ('install-restart', T_GONE + T_BACK, 'REBOOT --to menu; a fresh boot answers'))),
     ('protocol', (('hello', T_ANSWER, 'HELLO text; pre-v1: every protocol step SKIP; v1: proto 1.x, %d '
                              'HELLO round trips' % HELLO_ROUNDS),
-                  ('build', T_ANSWER, 'build=, mode, cmds: those of the --install build (manifest, spec bitmap)'),
+                  ('build', T_ANSWER, 'image=, version=, mode, cmds: those of the --install build (manifest, spec bitmap)'),
                   ('unsupported', T_ANSWER, 'an unknown type (no command, not in cmds): unsupported'),
                   ('refused', T_ANSWER, 'stage 16 of 17 B; file.write_staged %s: refused, absent '
                                         'before and after; stage.end discards (state)' % REFUSED_PATH),
@@ -787,7 +786,7 @@ class Pass:
     # -- check and session -----------------------------------------------------------------------
     def step_check(self):
         decoded, usb = self.status(self.opts.wait)
-        if usb.get('version') != 4 or usb.get('role') != 1:
+        if usb.get('version') not in (4, 5) or usb.get('role') != 1:     # 5: the build identity
             raise StepFail('unexpected service: version %s, role %s' % (usb.get('version'), usb.get('role')))
         self.state['check'] = usb
         return 'home answers; identity %s, crash restarts %s' % (usb.get('identity'), usb.get('crash_restarts'))
@@ -799,7 +798,7 @@ class Pass:
     # -- read ----------------------------------------------------------------------------------
     def step_status(self):
         decoded, usb = self.status()
-        if usb.get('version') != 4 or usb.get('role') != 1:
+        if usb.get('version') not in (4, 5) or usb.get('role') != 1:     # 5: the build identity
             raise StepFail('unexpected service: version %s, role %s' % (usb.get('version'), usb.get('role')))
         return 'version 4, frames %s, reads %s, blocks %s' % (usb.get('frames'), usb.get('reads'),
                                                              len(decoded.get('blocks', ())))
@@ -921,10 +920,10 @@ class Pass:
         with self.wire() as (wire, text):
             self.hello = hello = P.Hello(text)
             proto = self.state['protocol'] = dict(hello=text, pre_v1=hello.pre_v1)
-            installed = self.opts.build_number if self.state.get('installed') else None
+            installed = self.opts.build_image if self.state.get('installed') else None
             if hello.pre_v1:
-                if installed and installed > LAST_PRE_V1:
-                    raise StepFail('installed build %d speaks v1, but the HELLO is pre-v1: %s' % (installed, text))
+                if installed:
+                    raise StepFail('installed build %s speaks v1, but the HELLO is pre-v1: %s' % (installed, text))
                 raise StepSkip('%s; HELLO %s' % (PRE_V1, text))
             if hello.major != '1':
                 raise StepFail('protocol %s; this pass speaks 1.x (HELLO %s)' % (hello.proto, text))
@@ -936,22 +935,27 @@ class Pass:
                 if code or body.decode('ascii', 'replace') != text:
                     raise StepFail('HELLO %d: %s, text %r differs' % (i + 1, P.status_name(code), body[:60]))
         times.sort()
-        proto.update(proto=hello.proto, build=hello.keys.get('build'), mode=hello.keys.get('mode'),
+        proto.update(proto=hello.proto, version=hello.keys.get('version'), image=hello.keys.get('image'),
+                     build=hello.keys.get('build'), mode=hello.keys.get('mode'),
                      cmds=hello.keys.get('cmds'), read=hello.keys.get('read'),
                      hello_ms=dict(median=round(times[len(times) // 2], 2), max=round(times[-1], 2), n=len(times)))
-        return 'proto %s, build %s (%s); HELLO round trip median %.1f ms, max %.1f ms; HELLO %s' % (
-            hello.proto, proto['build'], proto['mode'], proto['hello_ms']['median'], proto['hello_ms']['max'], text)
+        return '%s; HELLO round trip median %.1f ms, max %.1f ms; HELLO %s' % (
+            hello.describe(), proto['hello_ms']['median'], proto['hello_ms']['max'], text)
 
     def step_build(self):
         hello = self.v1()
-        build, mode, cmds = hello.keys.get('build'), hello.keys.get('mode'), hello.cmds
+        image, version, mode, cmds = (hello.keys.get('image'), hello.keys.get('version'), hello.keys.get('mode'),
+                                      hello.cmds)
+        build = 'image %s, version %s' % (image, version)
         if not self.state.get('installed'):
-            return 'build %s (%s), cmds %032x: recorded (no --install to compare)' % (build, mode, cmds)
+            return '%s (%s), cmds %032x: recorded (no --install to compare)' % (build, mode, cmds)
         want_mode = self.opts.build_mode.split('-', 1)[-1]
         wrong = []
-        if build != str(self.opts.build_number):
-            wrong.append('build=%s, expected %d: the installed build is not the one running' % (
-                build, self.opts.build_number))
+        if image != self.opts.build_image:
+            wrong.append('image=%s, expected %s: the installed build is not the one running' % (
+                image, self.opts.build_image))
+        if version != self.opts.build_version:
+            wrong.append('version=%s, expected %s' % (version, self.opts.build_version))
         if mode != want_mode:
             wrong.append('mode=%s, expected %s' % (mode, want_mode))
         if cmds != self.opts.build_cmds:
@@ -959,7 +963,7 @@ class Pass:
                                                                          self.opts.build_mode))
         if wrong:
             raise StepFail('; '.join(wrong))
-        return 'build %s (%s) is the installed build; cmds %032x = the spec bitmap for %s' % (
+        return '%s (%s) is the installed build; cmds %032x = the spec bitmap for %s' % (
             build, mode, cmds, self.opts.build_mode)
 
     def step_unsupported(self):
@@ -1978,13 +1982,15 @@ def filler(n):
 
 
 def build_identity(build_dir):
-    """(build number, mode, cmds bitmap) the HELLO of this build must show: its manifest, and the
-    bitmap the spec gives for its mode (xyf_build.usb_switches, as --verify checks it)."""
+    """(image, release version, mode, cmds bitmap) the HELLO of this build must show: its manifest (image: the
+    first 8 hex digits of its candidate's SHA-256), and the bitmap the spec gives for its mode (xyf_build.usb_switches,
+    as --verify checks it)."""
     manifest = json.loads((Path(build_dir) / 'manifest.json').read_text())
-    number = str(manifest['format']).rsplit('-', 1)[-1]
-    if not number.isdigit():
-        raise ValueError('no build number in manifest format %r' % manifest['format'])
-    return int(number), manifest['mode'], P.answered(xyf_build.usb_switches(manifest['mode']))
+    if manifest.get('schema') != xyf_build.MANIFEST_SCHEMA:
+        raise ValueError('manifest schema %r, this pass reads %d: rebuild it' % (manifest.get('schema'),
+                                                                                xyf_build.MANIFEST_SCHEMA))
+    return (xyf_build.image_name(manifest['candidate_sha256']), manifest['version'], manifest['mode'],
+            P.answered(xyf_build.usb_switches(manifest['mode'])))
 
 
 def selected_stages(opts):
@@ -2034,8 +2040,8 @@ def print_plan(opts, chosen):
             print('  %-16s <= %5.0f s  %s' % (name, bound, text))
     if opts.install:
         print('install build: %s (%s); %s' % (opts.install, opts.build_note, (
-            'its HELLO must show build=%d, cmds %032x' % (opts.build_number, opts.build_cmds)
-            if opts.build_number > LAST_PRE_V1 else 'pre-v1 build %d: protocol steps SKIP' % opts.build_number)))
+            'its HELLO must show image=%s, version=%s, cmds %032x' % (opts.build_image, opts.build_version,
+                                                                      opts.build_cmds))))
     if opts.big_replies and 'protocol' in chosen:
         print('--big-replies: replies above HELLO read= and 4 KiB stage.data are sent (Test 038: a 4 KiB '
               'reply hung the device; a hang needs a power cycle)')
@@ -2077,11 +2083,11 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     except ValueError as error:
         print('device_pass: %s' % error, file=sys.stderr)
         return EXIT_USAGE
-    opts.build_sha = opts.build_note = opts.build_number = opts.build_mode = opts.build_cmds = None
+    opts.build_sha = opts.build_note = opts.build_image = opts.build_version = opts.build_mode = opts.build_cmds = None
     if opts.install:
         try:
             data, notes = host.load_build(opts.install)
-            opts.build_number, opts.build_mode, opts.build_cmds = build_identity(opts.install)
+            opts.build_image, opts.build_version, opts.build_mode, opts.build_cmds = build_identity(opts.install)
         except (ValueError, OSError, KeyError) as error:
             print('device_pass: install build refused: %s' % error, file=sys.stderr)
             return EXIT_USAGE

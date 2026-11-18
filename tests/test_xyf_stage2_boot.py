@@ -171,8 +171,8 @@ class Stage2BootTest(unittest.TestCase):
         self.assertEqual(builder.call_targets(listing), {'unresolved', 'stage2-enter'})
         self.assertEqual(builder.stage2_enter_sites(listing), 1)
         self.assertEqual(builder.stage2_enter_sites(listing + '\n8ab047b6:\t50 00       \tjump (p0);'), 2)
-        self.assertEqual(builder.MODES['xyf-stage2'], ('xyf-stage2-032', 'stage2-032-#.bin'))
-        self.assertEqual(builder.FILE_VARIANT_REPORTS['xyf-stage2'], 'file-032-#.bin')
+        self.assertEqual(builder.MODES['xyf-stage2'], 'stage2-#.bin')
+        self.assertEqual(builder.FILE_VARIANT_REPORTS['xyf-stage2'], 'file2-#.bin')
         self.assertNotIn('xyf-stage2', builder.WRITE_AUDIT_MODES)          # no write of any kind
 
 

@@ -10,8 +10,9 @@ static const uint32_t list_visible = 7;          // the compact title bar leaves
 // top right); mtp (188): an MTP command within 5 s or a transfer running (the MTP mark, left of the USB
 // mark's place); activity: what a host command, a job started over USB or MTP is doing ("USB: writing
 // files", "MTP: transfer"; null: nothing), on the home page right-aligned under the marks, on the other pages
-// in place of the hint line; build: the build ("build 188"), on the home page only. A null Chrome: none.
-struct Chrome { const char* build; bool usb; const char* activity; bool mtp; };
+// in place of the hint line; version: the release version ("v0.1.0"), on the home page only; image: the
+// running image ("image f458e3cc"), on the Info page. A null Chrome: none.
+struct Chrome { const char* version; bool usb; const char* activity; bool mtp; const char* image; };
 // The marks (188): "MTP" and "USB" in black on accent boxes, mark_w x mark_h each, mark_gap apart, the USB
 // box's right edge at right, each at a fixed place; a mark that is off is not drawn (both are always
 // available; lit only while active). marks_w: the width both take.
@@ -25,8 +26,8 @@ void compact_header(uint16_t* fb, const char* title, const char* subtitle, const
 // How many subtitle characters fit after title in the title bar.
 uint32_t subtitle_room(const char* title);
 // The home pages' logo header (the logo, the marks' place, 188: the activity right-aligned under the
-// marks at home_activity_y, the rule at home_bar) and footer: status as the line above the hint; the build
-// right-aligned on the hint line.
+// marks at home_activity_y, the rule at home_bar) and footer: status as the line above the hint; the
+// version right-aligned on the hint line.
 static const int home_bar = 56, home_logo_x = 20, home_logo_y = 11, home_activity_y = home_logo_y + mark_h + 5;   // the logo's left edge = the list text's
 void home_header(uint16_t* fb, const Chrome* chrome);
 void home_footer(uint16_t* fb, const char* status, const char* hint, const Chrome* chrome);

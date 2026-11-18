@@ -19,7 +19,8 @@ spec.loader.exec_module(dp)
 BASE = '/yaffs2/xy-forever/'
 P = dp.P
 PRE_V1_HELLO = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e'
-V1_HELLO = P.hello_text(154, 'product', dp.xyf_build.usb_switches('xyf-product'))
+IMAGE = 'f458e3cc'                                   # the installed build's image (self.build)
+V1_HELLO = P.hello_text('0.1.0', IMAGE, 'product', dp.xyf_build.usb_switches('xyf-product'))
 PROTOCOL_STEPS = [name for name, _, _ in dict(dp.STAGES)['protocol']]
 
 
@@ -436,20 +437,21 @@ class DevicePassTest(unittest.TestCase):
         self.assertFalse(self.dev.hold)
         self.assertEqual(self.keepalive.started, [self.folder])
 
-    def build(self, number, name='build'):
+    def build(self, image=IMAGE, name='build', version='0.1.0'):
         build = self.sessions.parent / name
         build.mkdir(exist_ok=True)
-        (build / 'manifest.json').write_text(json.dumps(dict(format='xyf-product-%d' % number, mode='xyf-product')))
+        (build / 'manifest.json').write_text(json.dumps(dict(schema=2, version=version, image=image, mode='xyf-product',
+                                                             candidate_sha256=image + '0' * 56)))
         return build
 
     def test_install_stage_runs_in_place(self):
-        build = self.build(153)
+        build = self.build()
         with patch.object(dp.host, 'load_build', return_value=(b'image', ['b', 'LDR ok'])):
-            code = self.run_pass(['--install', str(build)])
+            code = self.run_pass(['--install', str(build)], dev=FakeDevice(hello=V1_HELLO))
         self.assertEqual(code, dp.EXIT_PASS, self.out)
         passed = [r['stage'] for r in self.summary['steps'] if r['result'] == 'PASS']
         self.assertEqual(sorted(set(passed), key=passed.index),
-                         ['check', 'session', 'read', 'install', 'boot', 'writes', 'mtp', 'end'])
+                         ['check', 'session', 'read', 'install', 'protocol', 'boot', 'writes', 'mtp', 'end'])
         install = self.dev.calls.index('install %s --yes-install' % build)
         self.assertLess(next(i for i, c in enumerate(self.dev.calls) if c.startswith('peek')), install)
         self.assertLess(install, next(i for i, c in enumerate(self.dev.calls) if c.startswith('continue')))
@@ -468,8 +470,8 @@ class DevicePassTest(unittest.TestCase):
             dp.parse_args(['--guard-test'])
 
     def test_a_restart_after_mtp_fails_home_after_mtp_and_still_ends_the_session(self):
-        build = self.build(153)
-        dev = FakeDevice()
+        build = self.build()
+        dev = FakeDevice(hello=V1_HELLO)
         real = dev.command
 
         def restarted(argv, timeout, **limits):
@@ -734,7 +736,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertEqual(self.run_pass(dev=FakeDevice(hello=V1_HELLO)), dp.EXIT_PASS, self.out)
         rows = {r['step']: r for r in self.protocol_rows()}
         self.assertEqual({r['result'] for r in rows.values()}, {'PASS'}, rows)
-        self.assertIn('proto %s, build 154 (product)' % P.ids.VERSION, rows['hello']['detail'])
+        self.assertIn('protocol %s, version 0.1.0, image %s (product)' % (P.ids.VERSION, IMAGE), rows['hello']['detail'])
         self.assertIn(V1_HELLO, rows['hello']['detail'])
         self.assertIn('recorded (no --install to compare)', rows['build']['detail'])
         self.assertIn('type 0x5f', rows['unsupported']['detail'])
@@ -745,8 +747,8 @@ class DevicePassTest(unittest.TestCase):
         self.assertIn('read=1024: no larger range', rows['read-speed']['detail'])
         self.assertIn('1024 B chunks: 64 KiB in', rows['stage-speed']['detail'])
         proto = self.summary['protocol']
-        self.assertEqual((proto['hello'], proto['build'], proto['read'], proto['hello_ms']['n']),
-                         (V1_HELLO, '154', '1024', dp.HELLO_ROUNDS))
+        self.assertEqual((proto['hello'], proto['image'], proto['version'], proto['read'], proto['hello_ms']['n']),
+                         (V1_HELLO, IMAGE, '0.1.0', '1024', dp.HELLO_ROUNDS))
         self.assertEqual((set(proto['read_kib_s']), set(proto['stage_kib_s'])), ({'1024'}, {'1024'}))
         # Placed after read (and install), before the boot stage restarts the device.
         order = [r['stage'] for r in self.summary['steps']]
@@ -802,32 +804,32 @@ class DevicePassTest(unittest.TestCase):
                 if 'end' not in dev.faults:
                     self.assertIsNone(dev.staging)          # discarded even after the FAIL
 
-    def run_install(self, number, hello):
+    def run_install(self, image, hello, version='0.1.0'):
         with patch.object(dp.host, 'load_build', return_value=(b'image', ['b', 'LDR ok'])):
-            return self.run_pass(['--install', str(self.build(number)), '--stages', 'protocol'],
+            return self.run_pass(['--install', str(self.build(image, version=version)), '--stages', 'protocol'],
                                  dev=FakeDevice(hello=hello))
 
-    def test_build_number_and_bitmap_after_install(self):
-        self.assertEqual(self.run_install(154, V1_HELLO), dp.EXIT_PASS, self.out)
+    def test_image_version_and_bitmap_after_install(self):
+        self.assertEqual(self.run_install(IMAGE, V1_HELLO), dp.EXIT_PASS, self.out)
         build = self.rows()[('protocol', 'build')]
         self.assertEqual(build['result'], 'PASS')
-        self.assertIn('build 154 (product) is the installed build; cmds %s' % V1_HELLO.split('cmds=')[1][:32],
-                      build['detail'])
+        self.assertIn('image %s, version 0.1.0 (product) is the installed build; cmds %s' % (
+            IMAGE, V1_HELLO.split('cmds=')[1][:32]), build['detail'])
         order = [(r['stage'], r['step']) for r in self.summary['steps']]
         self.assertLess(order.index(('install', 'install-restart')), order.index(('protocol', 'hello')))
-        for number, hello, step, detail in (
-                (155, V1_HELLO, 'build', 'build=154, expected 155: the installed build is not the one running'),
-                (154, P.hello_text(154, 'product', set()), 'build',
+        for image, version, hello, step, detail in (
+                ('0badc0de', '0.1.0', V1_HELLO, 'build',
+                 'image=%s, expected 0badc0de: the installed build is not the one running' % IMAGE),
+                (IMAGE, '0.2.0', V1_HELLO, 'build', 'version=0.1.0, expected 0.2.0'),
+                (IMAGE, '0.1.0', V1_HELLO.replace(IMAGE, 'unknown'), 'build', 'image=unknown, expected %s' % IMAGE),
+                (IMAGE, '0.1.0', P.hello_text('0.1.0', IMAGE, 'product', set()), 'build',
                  'cmds %032x, expected %032x' % (P.answered(set()), P.answered(dp.xyf_build.usb_switches('xyf-product')))),
-                (154, PRE_V1_HELLO, 'hello', 'installed build 154 speaks v1, but the HELLO is pre-v1')):
-            with self.subTest(number=number, step=step):
-                self.assertEqual(self.run_install(number, hello), dp.EXIT_FAIL)
+                (IMAGE, '0.1.0', PRE_V1_HELLO, 'hello', 'installed build %s speaks v1, but the HELLO is pre-v1' % IMAGE)):
+            with self.subTest(image=image, step=step, detail=detail):
+                self.assertEqual(self.run_install(image, hello, version), dp.EXIT_FAIL)
                 row = self.rows()[('protocol', step)]
                 self.assertEqual(row['result'], 'FAIL')
                 self.assertIn(detail, row['detail'])
-        # Build 153 (pre-v1) installed, the protocol stage is SKIP lines only.
-        self.assertEqual(self.run_install(153, PRE_V1_HELLO), dp.EXIT_PASS)
-        self.assertEqual({r['result'] for r in self.protocol_rows()}, {'SKIP'})
 
     def test_big_replies_only_on_request(self):
         dev = FakeDevice(hello=V1_HELLO)

@@ -33,7 +33,8 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
 
   test('connect and hello', async () => {
     expect(client.info).toMatchObject({ proto: VERSION, mode: 'product', limits: { read: 1024, payload: 4160, stage: 7340032 } });
-    expect(client.info.build).toBeGreaterThan(153);
+    expect(client.info.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(client.info.image).toMatch(/^([0-9a-f]{8}|unknown)$/);
     expect((await client.status()).proto).toBe(VERSION);
   });
 

@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.14",
+    "version": "1.15",
     "intro": [
       "XY Forever is a boot menu and firmware manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -46,7 +46,7 @@
     {"name": "max_stage", "value": 7340032, "doc": "largest staged image (7 MiB)"},
     {"name": "max_log_text", "value": 200, "doc": "largest text of a `log` event"},
     {"name": "idle_reset_ms", "value": 250, "doc": "the device drops a partial frame once its receive buffer has been empty for this long"},
-    {"name": "max_hello", "value": 200, "doc": "largest `hello` text; a build's text is fixed but for its stage-2 parts (170 bytes in the product build without stage 2), checked when it is compiled"}
+    {"name": "max_hello", "value": 224, "doc": "largest `hello` text (200 before 1.15); a build's text is fixed but for its stage-2 parts (190 bytes in the product build without stage 2), checked when it is compiled"}
   ],
   "rules": [
     {"name": "request_types", "text": "Request types are below 0x80. A reply has the request's type plus 0x80 and the request's seq, and its payload starts with a u32 status code (0 = ok); the fields listed under each command follow it."},
@@ -98,11 +98,11 @@
       "summary": "greet the device; required before any other command",
       "timeout_ms": 5000, "destructive": false,
       "request": {"ignored": true, "size": [0, 0], "fields": []},
-      "reply": {"size": [1, 200], "extensible": false, "on_error": "status", "fields": [
-        {"name": "info", "type": "text", "encoding": "ascii", "min_bytes": 1, "max_bytes": 200, "doc": "ASCII, `XYF1` and then `key=value` items, separated by `;`; no NUL; at most `max_hello` bytes. The keys are listed below; tools ignore keys they do not know."}
+      "reply": {"size": [1, 224], "extensible": false, "on_error": "status", "fields": [
+        {"name": "info", "type": "text", "encoding": "ascii", "min_bytes": 1, "max_bytes": 224, "doc": "ASCII, `XYF1` and then `key=value` items, separated by `;`; no NUL; at most `max_hello` bytes. The keys are listed below; tools ignore keys they do not know."}
       ]},
       "errors": [],
-      "doc": "Answers in every state. While searching for the device, a tool may send `hello` every 0.5 s on the open port until a reply with status ok arrives. The reply tells the tool what the device supports: the protocol version, the build, the limits and the commands it answers. 1.1 added the keys from `build` on; a device without `cmds` is a pre-v1 device (see the rules)."
+      "doc": "Answers in every state. While searching for the device, a tool may send `hello` every 0.5 s on the open port until a reply with status ok arrives. The reply tells the tool what the device supports: the protocol version, the release version and image it runs, the limits and the commands it answers. 1.1 added the keys from `mode` on (and `build`, replaced in 1.15 by `version` and `image`); a device without `cmds` is a pre-v1 device (see the rules)."
     },
     {
       "type": "0x02", "name": "diag.status", "symbol": "status", "class": "dev", "since": "1.0", "switch": null,
@@ -536,7 +536,8 @@
       {"name": "role", "since": "1.0", "value": "b", "doc": "the processor that answers"},
       {"name": "proto", "since": "1.0", "source": "version", "doc": "protocol version `MAJOR.MINOR` (pre-v1 devices: `1`)"},
       {"name": "install", "since": "1.0", "value": "stock-88a06a7e", "doc": "the boot-partition writer `boot.install` uses (the stock bootloader's own, at 0x88a06a7e)"},
-      {"name": "build", "since": "1.1", "source": "build", "max_bytes": 5, "doc": "XY Forever build number, decimal"},
+      {"name": "version", "since": "1.15", "source": "release", "max_bytes": 11, "doc": "XY Forever release version `MAJOR.MINOR.PATCH` (`0.1.0` the first); builds between two releases carry the same one"},
+      {"name": "image", "since": "1.15", "source": "image", "doc": "the os.ldr this boot runs: the first 8 lowercase hex digits of its SHA-256, which name its build (`builds/<image>/`). The device hashes the image the stock bootloader read from the boot partition, however it was installed (`boot.install` or the dev menu), once per boot, before its first `hello` reply; `unknown` when no XY Forever image is there to hash"},
       {"name": "mode", "since": "1.1", "source": "mode", "max_bytes": 16, "doc": "build mode (`product`, the only mode with this service)"},
       {"name": "payload", "since": "1.1", "constant": "max_payload", "doc": "`max_payload`"},
       {"name": "read", "since": "1.1", "constant": "max_read", "doc": "`max_read`"},
@@ -550,7 +551,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.14;install=stock-88a06a7e;build=172;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000007b0017000303ff00be;dev=1;stage2=0"}, "hex": "58468101ae00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31343b696e7374616c6c3d73746f636b2d38386130366137653b6275696c643d3137323b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030303762303031373030303330336666303062653b6465763d313b7374616765323d3072536c0e"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.15;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000007b0017000303ff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31353b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030303762303031373030303330336666303062653b6465763d313b7374616765323d30413f3e03"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

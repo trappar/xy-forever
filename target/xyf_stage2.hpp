@@ -18,10 +18,11 @@ static const uint32_t abi_hello = 1, abi_menu = 2, abi_service = 3;
 static const uint32_t abi = abi_menu;
 static const uint32_t this_stage1 = 2;                     // stage-1 version of this build
 #elif defined(XYF_STAGE2_SERVICE)
-// ABI 3: the product's stage 2, called from B's USB service. The stage-1 version a
-// header's min_stage1 is checked against is the stage-1 build number (usb_service passes it).
+// ABI 3: the product's stage 2, called from B's USB service. The stage-1 version a header's
+// min_stage1 is checked against is stage 1's release, MAJOR << 16 | MINOR << 8 | PATCH
+// (XYF_VERSION_CODE, usb_service passes it): 0.1.0 = 0x100, above every earlier build number.
 static const uint32_t abi = abi_service;
-static const uint32_t this_stage1 = 0;                     // unused: the build number is passed
+static const uint32_t this_stage1 = 0;                     // unused: the release is passed
 #else
 static const uint32_t abi = abi_hello;
 static const uint32_t this_stage1 = 1;                     // stage-1 version of this build
@@ -134,7 +135,7 @@ Do decide(uint32_t exit, bool link_lost, uint32_t catalog_count, uint32_t featur
 
 // ---- ABI 3: stage 2 in the product's USB service (XYF_STAGE2_SERVICE) ----------
 // B's USB service loads the file at the first HELLO of a boot (a plain boot never reads it),
-// accept()s it against the stage-1 build number, copies the image to load_address (FLUSH,
+// accept()s it against the stage-1 release, copies the image to load_address (FLUSH,
 // IFLUSH) and then calls
 //     uint32_t entry(const Call* call)
 // through the one audited trampoline (xyf_stage2_enter) with op_init once, op_turn on every
@@ -142,14 +143,14 @@ Do decide(uint32_t exit, bool link_lost, uint32_t catalog_count, uint32_t featur
 // stock call and touches no address it was not given: it calls only the Services3 entries below.
 // Services are append-only: a later stage 1 adds entries at the end and raises version; a
 // stage 2 needs version >= services_version (and bytes >= sizeof(Services3)) and refuses init
-// otherwise; its header's min_stage1 names the first stage-1 build with what it needs, and
-// stage 1 refuses a min_stage1 above its own build (Check::stage1). Stage 1 calls op_turn and
+// otherwise; its header's min_stage1 names the first stage-1 release with what it needs, and
+// stage 1 refuses a min_stage1 above its own release (Check::stage1). Stage 1 calls op_turn and
 // op_command only after init answered init_ok, and stops calling stage 2 for the rest of the
 // boot as soon as an answer is not one it defines.
 static const uint32_t services_version = 1;
 struct Services3 {                                  // the ABI-3 services table
     uint32_t version, bytes;                        // services_version, sizeof(Services3)
-    uint32_t stage1_build;                          // this stage 1's build number
+    uint32_t stage1_version;                        // this stage 1's release (XYF_VERSION_CODE)
     uint32_t (*now_ms)();                           // ms since the USB service started
     void (*trace)(uint32_t code, uint32_t value);   // last trace point (USB1 block, STATUS)
     // A reply frame through the USB service: type | 0x80, seq, payload (u32 status first). 1 = sent.

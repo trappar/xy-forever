@@ -13,7 +13,7 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   firmware/<id>/info.txt    its description (key=value, below)
   firmware/<id>/files.sha256, content.sha256 + firmware.version   optional lists
   mods/<profile>/<generation>/{base,<machine>,ext-<extension>}/   mod packages (below)  [host-made]
-  log/                      device reports, prod-NNN-a.bin / prod-NNN-b.bin
+  log/                      device reports, prod-a.bin / prod-b.bin, pfile-a.bin / pfile-b.bin
   stage2/main.xys2          stage 2: B loads it at the first HELLO of a boot; see below
   inbox/                    MTP drop folder: .tfw, .ldr, open-xy bundles   [planned]
   tmp/job-<id>/             mods.apply's output until the commit; -old: the replaced entry; swept (below)
@@ -28,7 +28,9 @@ Changes by hand (MTP, serial file commands; protocol 1.13) may touch all of `/ya
 deleted, nothing written into or renamed onto either. Details and XY Forever's own narrower rules:
 [SAFETY.md](../SAFETY.md).
 
-The reporter never creates `log/` (create it over USB first). Report names include the running
-firmware build number (`prod-NNN-{a,b}.bin`) so private evidence can identify its producer.
+The reporter never creates `log/` (create it over USB first). Report names carry no build: the next
+boot of any build overwrites them. B's USB service block inside says which release version and image
+wrote it (`python3 -m xy_forever.census`: `usb_service.build`; the image only when the menu ran that boot).
+Builds before #107 wrote `prod-NNN-{a,b}.bin`.
 
 `<id>`: 1–31 characters, lowercase letters, digits, `-` and `_`; also the folder name.

@@ -204,8 +204,9 @@ bool status_only(uint8_t type, uint8_t seq, U32 status) {
 }
 
 // HELLO text (docs/PROTOCOL.md): generated from protocol/v1.json; the build defines
-// XYF_BUILD_NUMBER and XYF_BUILD_MODE, the build switches set the cmds bitmap. It ends in
-// ";stage2=0": stage2_hello sets the loaded stage 2's version and its cmds bit.
+// XYF_VERSION and XYF_BUILD_MODE, the build switches set the cmds bitmap. hello_text writes the image
+// (usb_service_identity.ipp). It ends in ";stage2=0": stage2_hello sets the loaded stage 2's version
+// and its cmds bit.
 static_assert(sizeof(XYF_USBP_HELLO_TEXT) - 1 <= P::max_hello, "hello text above max_hello");
 constexpr bool ends_with(const char* text, U32 n, const char* end, U32 m) {
     return m <= n && (!m || (text[n - 1] == end[m - 1] && ends_with(text, n - 1, end, m - 1)));
@@ -215,12 +216,11 @@ static_assert(ends_with(XYF_USBP_HELLO_TEXT, sizeof(XYF_USBP_HELLO_TEXT) - 1, ";
               "hello text must end in the stage2 key");
 #endif
 U32 stage2_hello(uint8_t* p, U32 n, U32 room);
+U32 hello_text(uint8_t* p, U32 n, U32 room);
 void hello(uint8_t seq) {
     uint8_t p[4 + P::max_hello];
     P::put32(p, P::s_ok);
-    const char* text = XYF_USBP_HELLO_TEXT;
-    U32 n = 4;
-    for (; *text && n != sizeof(p); ++text) p[n++] = uint8_t(*text);
+    U32 n = hello_text(p, 4, sizeof(p));
     n = stage2_hello(p, n, sizeof(p));
     send(P::t_hello, seq, p, n);
 }

@@ -113,7 +113,7 @@ instead.
 1. **XY Forever's USB service:** reinstall a build, or `uninstall` to stock 1.2.1.
 2. **Dev menu.** The developer holds COM at power-on, then Track 5 installs `/os.ldr`.
    Kits (`RECOVERY` in `xy_forever/paths.py`):
-   - `known-good-NNN/os.ldr` (your current known-good build; keep a few older kits)
+   - `known-good-<image>/os.ldr` (your current known-good build, by its image; keep a few older kits)
    - `stock-1.2.1/os.ldr` (stock)
    - Procedure: [operating/at-the-device.md](operating/at-the-device.md#dev-menu).
 3. **Official 1.2.1 `.tfw` through the normal updater** (proven once after a dev-MTP

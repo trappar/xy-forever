@@ -1,38 +1,55 @@
-"""Tests pick only a verified build of this checkout's own build number, never another branch's newer one."""
+"""Builds are named by their image (builds/<hash8>/); tests pick the verified one of this release verified last."""
+import hashlib
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from xy_forever import paths
+from xy_forever import paths, release
 
 
-def make(builds, name, passed=True, mode='xyf-product'):
-    d = builds / name
+def make(builds, data, passed=True, mode='xyf-product', version=release.VERSION, name=None, when=0):
+    digest = hashlib.sha256(data).hexdigest()
+    d = builds / (name or digest[:8])
     d.mkdir()
-    (d / 'candidate.ldr').write_bytes(b'x')
+    (d / 'candidate.ldr').write_bytes(data)
+    (d / 'manifest.json').write_text(json.dumps({'image': digest[:8], 'candidate_sha256': digest, 'version': version}))
     (d / 'verification.json').write_text(json.dumps({'passed': passed, 'mode': mode}))
+    os.utime(d / 'verification.json', (when, when))
     return d
 
 
 class NewestVerifiedBuild(unittest.TestCase):
-    def test_source_number_is_read_from_modes(self):
-        self.assertIsInstance(paths.source_build_number(), int)
-
-    def test_only_this_source_number_counts(self):
+    def test_the_last_verified_of_this_release_counts(self):
         with tempfile.TemporaryDirectory() as tmp:
             builds = Path(tmp)
-            make(builds, 'xy-forever-product-193-001')
-            want = make(builds, 'xy-forever-product-193-002')
-            make(builds, 'xy-forever-product-193-003', passed=False)
-            make(builds, 'xy-forever-product-195-001')          # another branch's newer build
-            with mock.patch.object(paths, 'BUILDS', builds), \
-                    mock.patch.object(paths, 'source_build_number', return_value=193):
+            make(builds, b'a', when=1000)
+            want = make(builds, b'b', when=2000)
+            make(builds, b'c', passed=False, when=3000)
+            make(builds, b'd', version='99.0.0', when=4000)          # another release
+            make(builds, b'e', mode='xyf-mtp-usb', when=5000)
+            make(builds, b'f', name='xy-forever-product-195-001', when=6000)   # the old numbered names
+            make(builds, b'g', name='0badc0de', when=7000)            # not its image
+            with mock.patch.object(paths, 'BUILDS', builds):
                 self.assertEqual(paths.newest_verified_build(), want)
-            with mock.patch.object(paths, 'BUILDS', builds), \
-                    mock.patch.object(paths, 'source_build_number', return_value=194):
+            with mock.patch.object(paths, 'BUILDS', builds), mock.patch.object(release, 'VERSION', '0.0.9'):
                 self.assertIsNone(paths.newest_verified_build())
+
+    def test_name_by_image_moves_and_replaces(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            builds = Path(tmp)
+            staged = make(builds, b'x', name='check-123')
+            old = builds / hashlib.sha256(b'x').hexdigest()[:8]
+            old.mkdir()
+            (old / 'stale').write_text('')
+            with mock.patch.object(paths, 'BUILDS', builds):
+                moved = paths.name_by_image(staged)
+            self.assertEqual(moved, old)
+            self.assertFalse(staged.exists())
+            self.assertFalse((moved / 'stale').exists())
+            self.assertEqual(paths.build_image(moved)[0], moved.name)
 
 
 if __name__ == '__main__':

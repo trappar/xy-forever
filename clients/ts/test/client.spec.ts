@@ -85,10 +85,11 @@ async function connected(dev: FakeDevice): Promise<Client> {
 }
 
 describe('connect', () => {
-  test('hello gives the protocol, build and limits', async () => {
+  test('hello gives the protocol, version, image and limits', async () => {
     const client = await connected(new FakeDevice());
     expect(client.info.proto).toBe(v1.VERSION);
-    expect(client.info.build).toBe(parseInt(/;build=([0-9]+)/.exec(PRODUCT_HELLO)![1]!, 10));
+    expect(client.info.version).toBe(/;version=([0-9.]+);/.exec(PRODUCT_HELLO)![1]);
+    expect(client.info.image).toBe(/;image=([0-9a-f]{8});/.exec(PRODUCT_HELLO)![1]);
     expect(client.info.limits).toEqual({ payload: 4160, read: 1024, stage: 7340032 });
     expect(client.info.dev).toBe(true);
   });

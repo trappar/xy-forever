@@ -5,6 +5,7 @@ xyf.local.json (written by `scripts/setup.py init --private DIR`); ../private ne
 repository. Firmware, keys, builds and device reports never enter git.
 """
 import json
+import re
 import os
 from pathlib import Path
 
@@ -70,25 +71,45 @@ def private_output(path):
     return path
 
 
-def source_build_number():
-    """The product build number this checkout's source builds (xyf_build.py MODES), or None."""
-    import re
-    m = re.search(r"'xyf-product': \('xyf-product-(\d+)'", (REPO / 'xyf_build.py').read_text())
-    return int(m[1]) if m else None
+IMAGE_NAME = re.compile(r'[0-9a-f]{8}')      # a build folder's name: its image (hello image=)
+
+
+def build_image(folder):
+    """(image, manifest) of a verified product build folder named by its image (the first 8 hex digits of its
+    candidate's SHA-256, xyf_build.py image_name), else None."""
+    folder = Path(folder)
+    try:
+        v = json.loads((folder / 'verification.json').read_text())
+        m = json.loads((folder / 'manifest.json').read_text())
+    except (OSError, ValueError):
+        return None
+    if not (IMAGE_NAME.fullmatch(folder.name) and v.get('passed') is True and v.get('mode') == 'xyf-product' and
+            m.get('image') == folder.name and str(m.get('candidate_sha256', '')).startswith(folder.name) and
+            (folder / 'candidate.ldr').is_file()):
+        return None
+    return folder.name, m
+
+
+def name_by_image(out):
+    """Moves a built and verified folder to BUILDS/<image> (replacing an older copy of the same image) and
+    returns the new path."""
+    image = json.loads((Path(out) / 'manifest.json').read_text())['image']
+    target = BUILDS / image
+    if Path(out).resolve() != target.resolve():
+        if target.exists():
+            import shutil
+            shutil.rmtree(target)
+        Path(out).rename(target)
+    return target
 
 
 def newest_verified_build():
-    """The verified product build tests use when present: of BUILDS/xy-forever-product-NNN-MMM with NNN this
-    source's build number (another branch's builds never count), the highest MMM whose verification.json says
-    passed, mode xyf-product. None when there is none."""
-    import re
-    found, number = [], source_build_number()
-    for d in BUILDS.glob('xy-forever-product-%d-*' % number if number else 'xy-forever-product-*'):
-        m = re.fullmatch(r'xy-forever-product-(\d+)-(\d+)', d.name)
-        try:
-            v = json.loads((d / 'verification.json').read_text()) if m else None
-        except (OSError, ValueError):
-            continue
-        if v and v.get('passed') is True and v.get('mode') == 'xyf-product' and (d / 'candidate.ldr').is_file():
-            found.append((int(m[1]), int(m[2]), d))
+    """The verified product build tests use when present: of BUILDS/<image> builds of this checkout's release
+    version (xy_forever/release.py), the one verified last. None when there is none."""
+    from xy_forever import release
+    found = []
+    for d in BUILDS.glob('*'):
+        named = build_image(d)
+        if named and named[1].get('version') == release.VERSION:
+            found.append(((d / 'verification.json').stat().st_mtime, d.name, d))
     return max(found)[2] if found else None

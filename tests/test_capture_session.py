@@ -79,6 +79,8 @@ class CaptureSessionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             capture.plan(reports=["../keys"])
         self.assertEqual(len(capture.plan(True, ["069"])), 4)
+        self.assertEqual(capture.plan(reports=["prod", "069"]), ["/yaffs2/xy-forever/log/prod-a.bin", "/yaffs2/xy-forever/log/prod-b.bin",
+                                                                "/yaffs2/xy-forever/log/prod-069-a.bin", "/yaffs2/xy-forever/log/prod-069-b.bin"])
 
 
 if __name__ == "__main__":

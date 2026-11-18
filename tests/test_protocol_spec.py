@@ -15,7 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever.source_text import unit_text  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild, release  # noqa: E402
 sys.path.insert(0, str(ROOT / 'scripts'))
 import protogen  # noqa: E402
 from xy_forever import usb_proto as P  # noqa: E402
@@ -183,36 +183,40 @@ class GoldenFramesTest(unittest.TestCase):
                     with self.assertRaises(ValueError):           # strict: exactly the request's fields
                         P.unpack(fields, body + b'\0')
 
-    def device_hello(self, switches, build='154', mode='product'):
+    def device_hello(self, switches, version='0.1.0', mode='product'):
         """(hello text, cmds) as the generated header composes them for a build with these switches."""
         source = Path(self.tmp.name) / 'hello.cpp'
         source.write_text('#include <stdio.h>\n#include "usb_proto_ids.hpp"\n'
                           'int main() { printf("%s\\n%s", XYF_USBP_HELLO_TEXT, XYF_USBP_CMDS); return 0; }\n')
         exe = Path(self.tmp.name) / 'hello'
         hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Werror', '-I', str(ROOT / 'target'),
-                       '-DXYF_BUILD_NUMBER="%s"' % build, '-DXYF_BUILD_MODE="%s"' % mode] +
+                       '-DXYF_VERSION="%s"' % version, '-DXYF_BUILD_MODE="%s"' % mode] +
                       ['-D%s=1' % s for s in switches] + [str(source), '-o', str(exe)], check=True, capture_output=True)
         return subprocess.run([str(exe)], check=True, capture_output=True, text=True).stdout.split('\n')
 
     def test_hello_golden_is_the_device_text(self):
-        """The product build's hello (generated macros, the build's number and mode) is the golden text."""
+        """The product build's hello (generated macros, the release version and mode; the device writes the image
+        over the compiled `unknown`) is the golden text."""
         g = next(g for g in spec()['golden'] if g['message'] == 'hello' and g['direction'] == 'reply')
         info = P.Hello(g['fields']['info'])
+        image = info.keys['image']
         product = builder.usb_switches('xyf-product')
         self.assertEqual(product, {'XYF_MTP', 'XYF_USB_FILE_WRITE', 'XYF_USB_SET_DEFAULT', 'XYF_TFW_CHECK'})
-        self.assertEqual(self.device_hello(product, info.keys['build'], info.keys['mode'])[0], g['fields']['info'])
-        self.assertEqual(P.hello_text(info.keys['build'], info.keys['mode'], product), g['fields']['info'])
+        compiled = self.device_hello(product, info.keys['version'], info.keys['mode'])[0]
+        self.assertEqual(compiled, g['fields']['info'].replace(';image=%s;' % image, ';image=unknown;'))
+        self.assertEqual(P.hello_text(info.keys['version'], image, info.keys['mode'], product), g['fields']['info'])
         self.assertEqual(builder.hello_defines('xyf-product'),
-                         ('-DXYF_BUILD_NUMBER="%s"' % builder.MODES['xyf-product'][0].split('-')[-1],
+                         ('-DXYF_VERSION="%s"' % release.VERSION, '-DXYF_VERSION_CODE=%#xu' % release.code(),
                           '-DXYF_BUILD_MODE="product"'))
         self.assertLessEqual(len(g['fields']['info']), ids.MAX_HELLO)
-        self.assertEqual(len(g['fields']['info']), 170)                   # 1.10: proto=1.10
+        self.assertEqual(len(g['fields']['info']), 189)                   # 1.15: version=0.1.0;image=<8 hex>
         self.assertTrue(g['fields']['info'].endswith(';stage2=0'))         # set at run time
-        loaded = P.hello_text(info.keys['build'], info.keys['mode'], product, stage2=12)
+        loaded = P.hello_text(info.keys['version'], image, info.keys['mode'], product, stage2=12)
         self.assertTrue(loaded.endswith(';stage2=12') and P.Hello(loaded).answers(P.ids.STAGE2_INFO))
         self.assertFalse(info.answers(P.ids.STAGE2_INFO))
         us = text('target/usb_service.cpp')
-        self.assertIn('const char* text = XYF_USBP_HELLO_TEXT;', us)
+        self.assertIn('const char* text = XYF_USBP_HELLO_TEXT;', us)                 # usb_service_identity.ipp
+        self.assertIn('U32 n = hello_text(p, 4, sizeof(p));', us)
         self.assertIn('static_assert(sizeof(XYF_USBP_HELLO_TEXT) - 1 <= P::max_hello, "hello text above max_hello");', us)
         self.assertIn('uint8_t p[4 + P::max_hello];', us)
 
@@ -226,7 +230,7 @@ class GoldenFramesTest(unittest.TestCase):
                 hello, cmds = self.device_hello(on)
                 self.assertEqual(int(cmds, 16), P.answered(on))
                 self.assertEqual(int(cmds, 16), protogen.answered(spec(), on))
-                self.assertEqual(hello, P.hello_text('154', 'product', on))
+                self.assertEqual(hello, P.hello_text('0.1.0', None, 'product', on))      # as compiled: image=unknown
                 parsed = P.Hello(hello)
                 for c in spec()['commands']:
                     self.assertEqual(parsed.answers(int(c['type'], 16)), c['switch'] in on or c['switch'] is None)
