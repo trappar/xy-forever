@@ -96,7 +96,7 @@ polled by keepalive.sh (a host stays attached). Not in the OS. Hold is off
 because keepalive.sh gives up after 3 misses and SAFETY.md forbids hold with
 no host; the v3 menu never times out once a host said HELLO.
 Before any other device command: touch FOLDER/stop-keepalive (this script stops
-running keepalives itself).
+running keepalives itself; one that will not stop is a NEED line, exit 3).
 
 Evidence: ../private/xy-forever/sessions/<date>-device-pass-<n>/: one file per
 step (every command, its stdout and stderr), artifacts, summary.json. A simulator run
@@ -118,6 +118,7 @@ import struct
 import subprocess
 import sys
 import time
+import traceback
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -286,6 +287,8 @@ SIM_SKIPS = {
     'keys': 'simulator: the menu screen and keys are not hosted',
     'keepalive': 'simulator: no keepalive.sh (the simulator keeps running without a host)',
 }
+KEEPALIVE_NEED = 'NEED: keepalive.sh pid %d still runs: kill it (its folder %s), then rerun'
+SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
 SIM_NEED = 'NEED: start the simulator (python3 -m xy_forever.sim), then rerun with --sim 127.0.0.1:7341'
 
 
@@ -566,17 +569,26 @@ class Keepalive:
             pids = subprocess.run(['pgrep', '-f', 'keepalive.sh'], capture_output=True, text=True).stdout.split()
         except OSError:
             return []
+        mine, pid = set(), os.getpid()
+        while pid > 1 and pid not in mine:              # this script and its ancestors (the shell that ran it)
+            mine.add(pid)
+            pid = int(subprocess.run(['ps', '-o', 'ppid=', '-p', str(pid)], capture_output=True, text=True).stdout
+                      or 0)
         found = []
-        for pid in map(int, pids):
+        for pid in set(map(int, pids)) - mine:
             args = subprocess.run(['ps', '-o', 'args=', '-p', str(pid)], capture_output=True, text=True).stdout.split()
-            at = [i for i, a in enumerate(args) if a.endswith('keepalive.sh')]
-            if at and at[0] + 1 < len(args):
-                found.append((pid, args[at[0] + 1]))
+            statedir = keepalive_dir(args)
+            if statedir:
+                found.append((pid, statedir))
         return found
 
     def stop_running(self, wait=8.0):
+        """Stops every keepalive.sh loop: its stop file, then (still running after wait s) SIGTERM to its status
+        call and to it. One that outlives that still holds the port: its NEED line, then SystemExit(EXIT_NEED)."""
         stopped = []
         for pid, statedir in self.running():
+            print('[%s] stopping keepalive.sh pid %d (%s)' % (time.strftime('%H:%M:%S'), pid, statedir),
+                  file=sys.stderr, flush=True)
             with contextlib.suppress(OSError):
                 (Path(statedir) / 'stop-keepalive').touch()
             deadline = time.monotonic() + wait
@@ -586,6 +598,12 @@ class Keepalive:
                 subprocess.run(['pkill', '-TERM', '-P', str(pid)], capture_output=True)
                 with contextlib.suppress(OSError):
                     os.kill(pid, signal.SIGTERM)
+                deadline = time.monotonic() + 2.0
+                while time.monotonic() < deadline and alive(pid):
+                    time.sleep(0.2)
+            if alive(pid):
+                print(KEEPALIVE_NEED % (pid, statedir), flush=True)
+                raise SystemExit(EXIT_NEED)
             stopped.append(dict(pid=pid, statedir=statedir))
         return stopped
 
@@ -597,6 +615,16 @@ class Keepalive:
         log.close()
         (folder / 'keepalive.pid').write_text('%d\n' % proc.pid)
         return proc.pid
+
+
+def keepalive_dir(args):
+    """STATEDIR when ps args are a keepalive.sh loop (`sh .../keepalive.sh DIR`, as Keepalive.start runs it, or
+    `bash -c .../keepalive.sh DIR`), else None. A command line that only mentions keepalive.sh (a grep filter on
+    this script's output) is none: stopping one killed the script's own pipeline, silently (#50)."""
+    i = (2 if args[1:2] == ['-c'] else 1) if args and Path(args[0]).name.lstrip('-') in SHELLS else 0
+    if len(args) > i + 1 and args[i].endswith('keepalive.sh') and Path(args[i + 1]).is_dir():
+        return args[i + 1]
+    return None
 
 
 def alive(pid):
@@ -2003,12 +2031,29 @@ def selected_stages(opts):
     return chosen | {'check', 'session', 'end'}
 
 
+EVIDENCE = []                      # this run's evidence folders: run_main writes error.txt into the last
+
+
+def run_main(main):
+    """A device script's __main__: SIGTERM ends the run as an error, and an error that stops the script after its
+    evidence folder exists is written there too (error.txt), so no exit is silent (#50)."""
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit('stopped by SIGTERM'))
+    try:
+        return main()
+    except BaseException as error:
+        if EVIDENCE and not (isinstance(error, SystemExit) and isinstance(error.code, int)):
+            with contextlib.suppress(OSError):
+                (EVIDENCE[-1] / 'error.txt').write_text(traceback.format_exc())
+        raise
+
+
 def new_folder(root, kind='device-pass'):
     day = datetime.now().strftime('%Y-%m-%d')
     taken = [int(m.group(1)) for p in root.glob('%s-%s-*' % (day, kind))
              if (m := re.fullmatch(r'.*-%s-(\d+)' % kind, p.name))]
     folder = paths.private_output(root / ('%s-%s-%d' % (day, kind, max(taken, default=0) + 1)))
     folder.mkdir(parents=True, exist_ok=False)
+    EVIDENCE.append(folder)
     return folder
 
 
@@ -2161,4 +2206,4 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(run_main(main))

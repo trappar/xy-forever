@@ -138,6 +138,8 @@ class Probe:
             detail, result = function(), 'PASS'
         except dp.StepFail as error:
             detail, result = str(error), 'FAIL'
+        except Exception as error:           # a bug or a local file problem: still a FAIL row (#50)
+            detail, result = '%s: %s' % (type(error).__name__, error), 'FAIL'
         row = dict(stage=stage, step=name, result=result, seconds=time.monotonic() - start, detail=detail)
         if getattr(self, 'folder', None):
             (self.folder / ('%02d-%s.txt' % (len(self.rows) + 1, name))).write_text(''.join(self.log))
@@ -201,4 +203,4 @@ def main(argv=None, device=None, keepalive=None, sessions=None):
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(dp.run_main(main))
