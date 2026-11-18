@@ -477,12 +477,78 @@ uint32_t change(uint32_t op, const char* path, uint32_t& error, volatile uint32_
     return change_status(error);
 }
 
+namespace {
+// The depth rule for a folder moved deeper (#124, file_engine.hpp): the target and every folder below
+// the source must stay within max_folders after the move. Walks the source's folders only (readdir's
+// type: DT_DIR 4; a stat for an entry that says neither folder, file nor link), down to the first
+// one too deep, one folder handle at a time (a level resumes after the subfolder it went into).
+// s_ok (also when nothing gets deeper or the source is not a folder: the rename answers for it),
+// s_refused, else the request's status.
+uint32_t deeper_ok(const char* from, const char* to, volatile uint32_t& mounted) {
+    const uint32_t s = file_engine::depth(from), t = file_engine::depth(to);
+    if (t <= s) return xyf::usbp::s_ok;                                  // nothing gets deeper (both parse)
+    auto failed = [&mounted](const Reply& r) -> uint32_t { if (r.outcome == link) mounted = mounted_stale; return status(r.outcome); };
+    uint8_t record[record_bytes], entry[entry_bytes + 4];
+    const Reply q = stat(from, record);                                  // op 0x22
+    if (q.outcome) return failed(q);
+    if (q.value != 0 || (xyf::usbp::get32(record + 8) & 0xf000u) != 0x4000u) return xyf::usbp::s_ok;
+    if (t > file_engine::max_folders) return xyf::usbp::s_refused;
+    const U32 room = file_engine::max_folders - t;                       // folder levels allowed below the target
+    char path[file_engine::max_path], child[file_engine::max_path];
+    for (U32 k = 0; k != file_engine::max_path; ++k) if (!(path[k] = from[k])) break;   // < max_path: it parsed
+    U32 skip[file_engine::max_folders + 1], level = 0;
+    skip[0] = 0;
+    for (;;) {
+        const Reply d = opendir(path);                                   // op 0x2e
+        if (d.outcome) return failed(d);
+        if (!d.value || d.value == -1) return d.error == emfile ? xyf::usbp::s_storage : xyf::usbp::s_not_found;
+        U32 code = xyf::usbp::s_ok, seen = 0;
+        bool down = false;
+        for (; seen != 0x10000u && !down; ++seen) {
+            const Reply r = readdir(U32(d.value), entry);                // op 0x2f
+            if (r.outcome) return failed(r);
+            const U32 got = readdir_result(r.value);
+            if (got == folder_end) break;
+            if (got == folder_error) { code = xyf::usbp::s_storage; break; }
+            if (seen < skip[level]) continue;
+            entry[11 + max_name] = 0;
+            if (!child_path(path, reinterpret_cast<const char*>(entry + 11), child)) { code = xyf::usbp::s_refused; break; }
+            bool folder = entry[10] == 4;
+            if (entry[10] != 4 && entry[10] != 8 && entry[10] != 10) {   // not said: stat it
+                const Reply e = stat(child, record);
+                if (e.outcome) return failed(e);
+                folder = e.value == 0 && (xyf::usbp::get32(record + 8) & 0xf000u) == 0x4000u;
+            }
+            if (!folder) continue;
+            if (level + 1 > room) code = xyf::usbp::s_refused;           // this folder would sit too deep
+            skip[level] = seen + 1;
+            down = true;
+        }
+        const Reply c = closedir(U32(d.value));                          // op 0x30
+        if (c.outcome) return failed(c);
+        if (code != xyf::usbp::s_ok) return code;
+        if (down) {
+            for (U32 k = 0; k != file_engine::max_path; ++k) if (!(path[k] = child[k])) break;
+            skip[++level] = 0;
+            continue;
+        }
+        if (!level) return xyf::usbp::s_ok;
+        U32 cut = 0;                                                     // back up to the parent folder
+        for (U32 k = 0; path[k]; ++k) if (path[k] == '/') cut = k;
+        path[cut] = 0;
+        --level;
+    }
+}
+}
+
 uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint32_t& mounted) {
     error = 0;
     if (!storage_server::valid_rename(from, to)) return xyf::usbp::s_refused;   // file_rename checks it first
     if (mounted == mounted_stale) return xyf::usbp::s_state;            // the caller sends op 9 first
     const uint32_t ready = mount_ready(mounted);                         // op 8: a's read-only mount
     if (ready != xyf::usbp::s_ok) return ready;
+    const uint32_t deep = deeper_ok(from, to, mounted);                  // #124: a folder moved deeper
+    if (deep != xyf::usbp::s_ok) return deep;
     const U32 tags[2] = {file_engine::rename_from, file_engine::rename_to};
     const char* paths[2] = {from, to};
     for (U32 i = 0; i != 2; ++i) {                                      // the pair checked above: op_stat here

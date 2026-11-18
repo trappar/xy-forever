@@ -84,14 +84,18 @@ system's error number in `fields.error`, and a message `command path: reason` in
 
 Mod packages (`src/mods.ts`, `test/mods.spec.ts`), as `xyf_host.py mods push | list | remove`: the host
 only puts packages on the OP-XY (the device assembles mod firmware itself). A package set is one
-generation folder from `modkit split`; it goes to `MODS_ROOT/<profile>/<generation>/<package>/<path>`
-(`MODS_ROOT` = `/yaffs2/xy-forever/mods`; profile and generation from `base/info.txt`). A device or
+generation folder from `modkit split`; it goes to `MODS_ROOT/<generation>/<package>/<stored name>`, the flat
+store (`src/modstore.ts`, docs/storage/mods.md: `store.txt`, a file with a folder in its path under its
+SHA-256's first 12 hex digits and extension; `MODS_ROOT` = `/yaffs2/xy-forever/mods`; generation from
+`base/info.txt`; protocol 1.16, older devices are refused with `update_required`; a folder without `store.txt`
+lists with `older: true`, a newer store with `newer: true`). Every change keeps the depth rule (`src/depth.ts`,
+#124): at most 6 folders below `/yaffs2`. A device or
 package-set problem: `XyfError` or `PackageError`.
 
 | Function | Does |
 |---|---|
 | `pushPackages(client, source, { only, verify, onPackage, onProgress })` → `{ sent, skipped, files, bytes, seconds, packages, verified }` | checks every file against its package's `files.sha256` first (nothing sent on a bad set); per package (base first): the listed files, then `info.txt`, then `files.sha256` last; a file the device holds with the same size is skipped; if anything in a package goes over, the device's `files.sha256` is deleted first, so a folder holding it has every listed file. Stops at the first failure; pushing again sends exactly the rest. `only`: these packages plus base; `verify`: reads everything back. `onProgress(done, total, 'send' \| 'verify')` in bytes |
-| `listPackages(client)` → `[{ profile, generation, packages: [{ name, info, files, bytes, complete }] }]` | what the device holds; `complete: false`: an interrupted push (push again) |
+| `listPackages(client)` → `[{ profile, generation, older, newer, packages: [{ name, info, files, bytes, complete }] }]` | what the device holds; `complete: false`: an interrupted push (push again) |
 | `removePackage(client, what, { generation, dryRun })` → `[{ path, files, bytes }]` | a generation folder (`what` names a generation) or that package in every generation (or in `generation`); `files.sha256` first, then the files and folders; `dryRun`: what would go (for the confirmation); `[]`: nothing named `what`. Ask first |
 | `fileListSource(files)` / `folderSource(dir)` (`./node`) | the `source`: a folder chosen with `<input type="file" webkitdirectory>` (the generation folder), or a folder on disk |
 | `localSet(source, only)` | the checked package set, in send order, without the device |

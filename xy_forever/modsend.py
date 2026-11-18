@@ -3,15 +3,18 @@
 The host only puts packages on the OP-XY; the device assembles mod firmware from them (native/mod_job).
 A package set is one generation folder as `modkit split` writes it (docs/STORAGE.md): base/, <machine>/,
 ext-<id>/, each with info.txt and files.sha256 listing every file of the package. On the device it goes to
-/yaffs2/xy-forever/mods/<profile>/<generation>/<package>/<path>, the layout mod_job reads (it is given the
-generation folder and opens <generation>/<package>/<path>).
+/yaffs2/xy-forever/mods/<generation>/<package>/<stored name>, the flat store mod_job reads (xy_forever/modstore.py:
+store.txt names its version; a file with a folder in its path is stored under its SHA-256's first 12 hex digits
+and extension, so every file sits 4 folders below /yaffs2: #124, the dev menu's MTP depth limit). An older tree
+(mods/<profile>/<generation>/, or a package tree without store.txt) shows in `mods list` and goes with
+`mods remove <folder>` (deletes work at any depth).
 
 Only the existing file commands are used: file.list, stage + file.write_staged (the device creates missing
 folders, reads the file back and compares its CRC-32), file.read, file.delete, file.rmdir. The protocol has
 no way to hash a device file without reading it, so a push skips a file by its size alone (`--verify` reads
 everything back). Within a package files.sha256 is written last and deleted first whenever anything in the
 package changes, so a package folder holding files.sha256 has every listed file (mod_job also checks every
-file it reads against that list)."""
+file it reads against that list); stored files the new list no longer names go after it."""
 import hashlib
 from pathlib import Path
 import re
@@ -19,7 +22,7 @@ import struct
 import time
 import zlib
 
-from . import usb_proto as P
+from . import depth, modstore, usb_proto as P
 
 ROOT = '/yaffs2/xy-forever/mods'
 LIST = 'files.sha256'
@@ -75,10 +78,12 @@ def local_set(package_dir, only=()):
             raise Refused('%s/%s does not list %s' % (name, LIST, INFO))
         files = []
         for sha, rel in entries:
-            device = '%s/%s/%s/%s/%s' % (ROOT, profile, generation, name, rel)
+            device = '%s/%s/%s/%s' % (ROOT, generation, name, modstore.stored_name(rel, sha))
             parts = rel.split('/')
             if rel == LIST or any(p in ('', '.', '..') for p in parts) or len(device.encode()) > MAX_PATH:
                 raise Refused('%s: unusable path %r' % (name, rel))
+            if depth.refusal(device):
+                raise Refused('%s: %s' % (name, depth.refusal(device)[len('refused: '):]))
             data = (folder / rel).read_bytes() if (folder / rel).is_file() else None
             if data is None or hashlib.sha256(data).hexdigest() != sha:
                 raise Refused('%s/%s: missing or differs from its %s line' % (name, rel, LIST))
@@ -87,11 +92,24 @@ def local_set(package_dir, only=()):
             files.append((rel, data))
         files.sort(key=lambda f: f[0] == INFO)                # info.txt after the other listed files
         files.append((LIST, (folder / LIST).read_bytes()))     # files.sha256 last
+        try:
+            modstore.stored_files(name, files)
+        except modstore.Clash as error:
+            raise Refused(str(error))
         packages[name] = files
     return profile, generation, packages
 
 
 # -- the device ----------------------------------------------------------------------------------------
+def layout_ok(proto):
+    """Whether a device of this protocol reads mods/<generation>/ (1.16 and later)."""
+    try:
+        major, minor = (int(n) for n in proto.split('.'))
+    except ValueError:
+        return False
+    return (major, minor) >= (1, 16)
+
+
 def check(code, what):
     if code:
         raise Refused('%s: %s' % (what, P.status_name(code)))
@@ -142,47 +160,73 @@ def remote_hashes(dev, path):
         return {}
 
 
+def store_check(dev, gen_path, have):
+    """Writes store.txt into a new generation folder (have: its remote_tree, None when absent). Refused when the
+    folder holds another layout: an older one (no store.txt) or a newer store version."""
+    if have and modstore.FILE in have[0]:
+        code, data = dev.read_all('%s/%s' % (gen_path, modstore.FILE), limit=1024)
+        check(code, 'file.read %s/%s' % (gen_path, modstore.FILE))
+        version = modstore.version_of(data)
+        if version == modstore.VERSION:
+            return
+        if version > modstore.VERSION:
+            raise Refused('%s: store version %d, newer than this tool writes: update XY Forever\'s tools' % (gen_path, version))
+    if have and (have[0] or have[1]):
+        raise Refused('%s holds an older layout (no %s): xyf_host.py mods remove %s --yes deletes it, then push '
+                      'again' % (gen_path, modstore.FILE, gen_path.rsplit('/', 1)[1]))
+    write_file(dev, modstore.TEXT, '%s/%s' % (gen_path, modstore.FILE))
+
+
 def push(dev, package_dir, only=(), verify=False, out=print, by_hash=False):
     """Puts the package set on the device; returns the summary dict (sent: [(package, path)] too). Raises
     Refused (or the transport's error) on the first failure: what was written stays, and running it again
-    completes it. by_hash (mods dev): a file is skipped only when the device's files.sha256 lists it
-    with the same SHA-256 and the device copy has the same size (a rebuilt mod often keeps its size)."""
+    completes it. by_hash (mods dev): a top-level file is skipped only when the device's files.sha256 lists it
+    with the same SHA-256 and the device copy has the same size (a rebuilt mod often keeps its size); a stored
+    name already holds its content."""
     profile, generation, packages = local_set(package_dir, only)
-    gen_path = '%s/%s/%s' % (ROOT, profile, generation)
+    gen_path = '%s/%s' % (ROOT, generation)
     start = time.monotonic()
     have = remote_tree(dev, gen_path)
+    store_check(dev, gen_path, have)
     present = {d for d in have[1] if '/' not in d} if have else set()
-    total = dict(sent=0, skipped=0, files=0, bytes=0, paths=[])
+    total = dict(sent=0, skipped=0, files=0, bytes=0, paths=[], removed=0)
     for name, files in packages.items():
         t0 = time.monotonic()
         folder = gen_path + '/' + name
+        stored = modstore.stored_files(name, files)            # [(stored name, rel, bytes)], files.sha256 last
         remote = remote_tree(dev, folder)[0] if name in present else {}
         if by_hash:
             hashes = remote_hashes(dev, folder + '/' + LIST) if LIST in remote else {}
             listed = dict((rel, sha) for sha, rel in list_paths(files[-1][1]))
-            need = [(rel, data) for rel, data in files[:-1]
-                    if remote.get(rel) != len(data) or hashes.get(rel) != listed[rel]]
+            need = [f for f in stored[:-1]
+                    if remote.get(f[0]) != len(f[2]) or ('/' not in f[1] and hashes.get(f[1]) != listed[f[1]])]
             if need or hashes != listed:
-                need.append(files[-1])
+                need.append(stored[-1])
         else:
-            need = [(rel, data) for rel, data in files if remote.get(rel) != len(data)]
+            need = [f for f in stored if remote.get(f[0]) != len(f[2])]
         if need:                                               # the list: off first, back at the end
             if LIST in remote:
                 delete(dev, folder + '/' + LIST)
             if need[-1][0] != LIST:
-                need.append(files[-1])
-        for rel, data in need:
-            write_file(dev, data, folder + '/' + rel)
-        size = sum(len(d) for _, d in need)
+                need.append(stored[-1])
+        for name_, _, data in need:
+            write_file(dev, data, folder + '/' + name_)
+        keep = {f[0] for f in stored}
+        stale = sorted(f for f in remote if '/' not in f and f not in keep)   # an earlier version's stored files
+        for f in stale:
+            delete(dev, folder + '/' + f)
+        size = sum(len(f[2]) for f in need)
         total['sent' if need else 'skipped'] += 1
         total['files'] += len(need)
         total['bytes'] += size
-        total['paths'] += [(name, rel) for rel, _ in need]
+        total['removed'] += len(stale)
+        total['paths'] += [(name, rel) for _, rel, _ in need]
         if need:
-            out('%-22s sent     %4d of %4d files %10d B %7.2f s' % (name, len(need), len(files), size,
-                                                                   time.monotonic() - t0))
+            out('%-22s sent     %4d of %4d files %10d B %7.2f s%s' % (name, len(need), len(stored), size,
+                                                                     time.monotonic() - t0,
+                                                                     ', %d old removed' % len(stale) if stale else ''))
         else:
-            out('%-22s skipped  %4d files already on the device (same %s)' % (name, len(files),
+            out('%-22s skipped  %4d files already on the device (same %s)' % (name, len(stored),
                                                                               'SHA-256' if by_hash else 'sizes'))
     total['seconds'] = time.monotonic() - start
     out('%s/%s: %d packages sent, %d skipped; %d files, %d B in %.2f s' % (
@@ -190,8 +234,8 @@ def push(dev, package_dir, only=(), verify=False, out=print, by_hash=False):
     if verify:
         t0, count = time.monotonic(), 0
         for name, files in packages.items():
-            for rel, data in files:
-                path = '%s/%s/%s' % (gen_path, name, rel)
+            for stored, _, data in modstore.stored_files(name, files):
+                path = '%s/%s/%s' % (gen_path, name, stored)
                 code, back = dev.read_all(path, limit=len(data) + 1024)
                 check(code, 'file.read %s' % path)
                 if back != data:
@@ -201,16 +245,29 @@ def push(dev, package_dir, only=(), verify=False, out=print, by_hash=False):
     return total
 
 
+OLDER, NEWER = 'older', 'newer'          # holdings: a generation folder this store version does not read
+
+
 def holdings(dev):
-    """[(profile, generation, [(package, info dict, files, bytes, complete)])] on the device."""
+    """[(profile, generation, [(package, info dict, files, bytes, complete)], layout)] on the device; profile
+    from the base's info.txt. layout None for this store, OLDER for a folder without store.txt (an older
+    mods/<profile>/ folder, or a package tree from before the flat store), NEWER for a newer store version;
+    neither lists packages."""
     out = []
     tree = remote_tree(dev, ROOT)
     if not tree:
         return out
     files, dirs = tree
-    for gen in sorted(d for d in dirs if d.count('/') == 1):
+    for gen in sorted(d for d in dirs if '/' not in d):
+        version = 0
+        if '%s/%s' % (gen, modstore.FILE) in files:
+            code, data = dev.read_all('%s/%s/%s' % (ROOT, gen, modstore.FILE), limit=1024)
+            version = modstore.version_of(data) if not code else 0
+        if version != modstore.VERSION:
+            out.append((None, gen, [], NEWER if version > modstore.VERSION else OLDER))
+            continue
         packages = []
-        for name in sorted(d.rsplit('/', 1)[1] for d in dirs if d.startswith(gen + '/') and d.count('/') == 2):
+        for name in sorted(d.rsplit('/', 1)[1] for d in dirs if d.startswith(gen + '/') and d.count('/') == 1):
             prefix = '%s/%s/' % (gen, name)
             mine = {p[len(prefix):]: s for p, s in files.items() if p.startswith(prefix)}
             info, complete = {}, False
@@ -220,11 +277,12 @@ def holdings(dev):
             if LIST in mine:
                 code, data = dev.read_all('%s/%s%s' % (ROOT, prefix, LIST), limit=1 << 20)
                 try:
-                    complete = not code and all(p in mine for _, p in list_paths(data))
+                    complete = not code and modstore.listed_names(list_paths(data)) <= set(mine)
                 except Refused:
                     complete = False
             packages.append((name, info, len(mine), sum(mine.values()), complete))
-        out.append((gen.split('/')[0], gen.split('/')[1], packages))
+        base = next((p[1] for p in packages if p[0] == 'base'), {})
+        out.append((base.get('profile', '?'), gen, packages, None))
     return out
 
 
@@ -232,7 +290,15 @@ def show(dev, out=print):
     held = holdings(dev)
     if not held:
         out('no mod packages on the device (%s)' % ROOT)
-    for profile, generation, packages in held:
+    for profile, generation, packages, layout in held:
+        if layout == OLDER:
+            out('%s: an older layout (no %s; its files may sit too deep for the dev menu\'s MTP: #124); '
+                'xyf_host.py mods remove %s --yes deletes it, then push the set again' % (generation, modstore.FILE, generation))
+            continue
+        if layout == NEWER:
+            out('%s: a newer store version than these tools read; update XY Forever\'s tools (xyf_host.py mods remove '
+                '%s --yes deletes it)' % (generation, generation))
+            continue
         out('%s/%s: %d packages, %d files, %d B' % (profile, generation, len(packages),
                                                    sum(p[2] for p in packages), sum(p[3] for p in packages)))
         for name, info, count, size, complete in packages:
@@ -246,10 +312,9 @@ def targets(dev, what):
     in every generation holding it."""
     tree = remote_tree(dev, ROOT)
     dirs = tree[1] if tree else []
-    gens = [d for d in dirs if d.count('/') == 1 and d.split('/')[1] == what]
-    if gens:
-        return gens
-    return [d for d in dirs if d.count('/') == 2 and d.split('/')[2] == what]
+    if what in dirs:                                      # a generation (or an older mods/<profile>/ folder)
+        return [what]
+    return [d for d in dirs if d.count('/') == 1 and d.split('/')[1] == what]
 
 
 def remove_folder(dev, folder):
@@ -288,7 +353,7 @@ PHASES = ('idle', 'inputs', 'link', 'patch', 'content', 'write', 'verify', 'fini
 ERRORS = ('none', 'argument', 'path', 'region', 'open', 'read', 'truncated', 'size', 'list', 'unlisted', 'sha256',
           'info', 'base', 'linker', 'patch', 'content', 'write', 'rename', 'verify', 'cancelled', 'image', 'link')
 MISSING = ('none', "the base's os.ldr", "the base's content.sha256", '/yaffs2/content/op1_factory.json',
-           "the generation's base/info.txt")
+           "the generation's base/info.txt", "the generation's store.txt (older layout: remove it, push again)")
 DONE, FAILED, CANCELLED = 8, 9, 10
 TMP = '/yaffs2/xy-forever/tmp'
 LIBRARY = '/yaffs2/xy-forever/firmware'
@@ -439,7 +504,8 @@ def apply_command(dev, args, out=print):
     code, job, missing = start(dev, args.base, profile or args.profile, generation, args.machines, args.ext,
                                args.name, args.unverified, expanded)
     if code:
-        out('mods apply: %s%s%s' % (P.status_name(code), ' (missing %s)' % MISSING[missing] if missing else '',
+        out('mods apply: %s%s%s' % (P.status_name(code),
+                                    ' (missing %s)' % MISSING[missing] if missing and code == NOT_FOUND else '',
                                     ' (--memory expanded needs XY Forever with protocol 1.12 or later)'
                                     if expanded and code == P.ids.S_BAD_REQUEST else ''))
         return code
@@ -520,6 +586,10 @@ def command(args, connect):
     print('connected %s: %s' % (port, text))
     if P.Hello(text).major != '1':
         print('refused: the device speaks protocol %s; this tool speaks 1.x' % P.Hello(text).proto)
+        return 2
+    if args.mods_command in ('push', 'apply') and not layout_ok(P.Hello(text).proto):
+        print('refused: this XY Forever (protocol %s) reads mod packages from mods/<profile>/<generation>/; '
+              'install a build with protocol 1.16 or later first (#124)' % P.Hello(text).proto)
         return 2
     try:
         if args.mods_command == 'push':

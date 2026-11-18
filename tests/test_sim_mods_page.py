@@ -23,7 +23,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import modsend as MS, sim                                  # noqa: E402
+from xy_forever import modsend as MS, modstore, sim                        # noqa: E402
 from xy_forever import usb_proto as P                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 import test_sim_content_switch as CS                                      # noqa: E402
@@ -298,6 +298,26 @@ class SyntheticPage(PageBase, unittest.TestCase):
         self.assertEqual(self.page()['used'], estimate(self.gen_dir, ['alpha', 'ext-cap']))
         self.toggle(['gamma'])
         self.assertEqual((self.page()['changed'], self.page()['job']), (1, 0))   # pending until Continue saves
+
+    def test_a_set_without_this_store_version_is_not_listed(self):
+        """#124: no store.txt (an older layout): the set is skipped; a newer store version is skipped and said;
+        this version again: listed."""
+        store = self.root / 'xy-forever/mods' / self.generation / modstore.FILE
+        store.unlink()
+        for _ in range(MODS_ROW):
+            self.press(PLUS)
+        for text, said in ((None, 'No complete mod package set found.'), (b'version=2\n', 'need a newer XY Forever'),
+                           (modstore.TEXT, None)):
+            if text is not None:
+                store.write_bytes(text)
+            self.press(PLAY)
+            if said is None:
+                self.wait(lambda p: p['view'] == VIEW_LIST and p['count'] == len(self.folders), 'listed')
+                break
+            p = self.wait(lambda p: said in p['text'], said)
+            self.assertEqual(p['count'], 0)
+            self.press(STOP)
+            self.wait(lambda p: p['shown'] == 0, 'left')
 
     def test_selection_kept_across_visits(self):
         self.open_page()

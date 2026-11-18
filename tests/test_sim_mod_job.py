@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import xyf_entry, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, paths, sim   # noqa: E402
+from xy_forever import xyf_entry, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, modstore, paths, sim   # noqa: E402
 from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
 import test_modkit as TK                                                  # noqa: E402
@@ -64,7 +64,7 @@ class Base:
     @classmethod
     def seed_with(cls, gen_dir, profile, stock_bytes, catalog, official_text_):
         cls.seeded = sim.seed(cls.work / 'seed')
-        shutil.copytree(gen_dir, cls.seeded / 'xy-forever/mods' / profile / gen_dir.name)
+        modstore.copy_set(gen_dir, cls.seeded / 'xy-forever/mods' / gen_dir.name)   # the flat store (#124)
         entry = cls.seeded / 'xy-forever/firmware' / cls.base
         entry.mkdir(parents=True, exist_ok=True)
         (entry / 'os.ldr').write_bytes(stock_bytes)
@@ -326,6 +326,17 @@ class SyntheticJob(Base, unittest.TestCase):
         shutil.move(str(self.dir / 'catalog'), str(catalog))
         self.assertEqual(call(generation='../x')[0], ids.S_BAD_REQUEST)
         self.assertEqual(call(machines=['alpha', '../x'])[0], ids.S_BAD_REQUEST)
+        # #124: the store's version, mods/<generation>/store.txt: absent (an older layout) or unreadable is missing 5,
+        # a newer one unsupported
+        store = self.root / 'xy-forever/mods' / self.generation / modstore.FILE
+        for text, want in ((None, (ids.S_NOT_FOUND, 0, 5)), (b'version=x\n', (ids.S_NOT_FOUND, 0, 5)),
+                           (b'version=2\n', (ids.S_UNSUPPORTED, 0, 5))):
+            with self.subTest(store=text):
+                store.unlink()
+                if text is not None:
+                    store.write_bytes(text)
+                self.assertEqual(call(), want)
+                store.write_bytes(modstore.TEXT)
         self.assertEqual(outside_tmp(self.root), before)
         self.assertFalse((self.root / TMP).exists())
         # A package that is not there: the job starts, fails (open), leaves nothing.

@@ -1,6 +1,6 @@
 // Mod packages (src/mods.ts) against the simulator (test/simulators.ts, its own `mods` simulator), with
-// the synthetic package set of tests/test_modsend.py: a push leaves the set byte-identical under
-// /yaffs2/xy-forever/mods/<profile>/<generation>/ and verify passes; a second push sends nothing, and
+// the synthetic package set of tests/test_modsend.py: a push leaves the set byte-identical, stored flat, under
+// /yaffs2/xy-forever/mods/<generation>/ and verify passes; a second push sends nothing, and
 // neither does `xyf_host.py mods push` (the Python tool agrees on the layout); a push cut off after N
 // files never leaves a package folder holding files.sha256 without every listed file, and the next
 // push sends exactly the rest; only; list (an incomplete package flagged); remove. Checked through the
@@ -11,12 +11,13 @@
 // storage command during the job is the typed busy. Runs in order (one client at a time).
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, truncateSync, unlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, test, vi } from 'vitest';
 import { Client, JobError, PackageError, XyfError, applyMods, cancelJob, folderSource, infoValues, isXyfError, jobFolder, jobStatus, libraryBases, listPackages,
   listPaths, makeDefault, localSet, pushPackages, removePackage, tcpOpener } from '../src/node.ts';
+import { STORE_FILE, STORE_TEXT, storedName } from '../src/modstore.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
 import { REPO, control, makeModBase, makeModSet } from './simulators.ts';
 
@@ -59,9 +60,20 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     });
     await expect(pushPackages(client, source())).rejects.toThrow('cut');
   };
-  const host = () => tree(gen);
+  /** What a push leaves (the flat store, #124): store.txt, each package's files under their stored names. */
+  const host = (): Map<string, Buffer> => {
+    const out = new Map<string, Buffer>([[STORE_FILE, Buffer.from(STORE_TEXT)]]);
+    for (const name of readdirSync(gen)) {
+      const list = readFileSync(join(gen, name, 'files.sha256'));
+      for (const [sha, rel] of listPaths(list)) out.set(`${name}/${storedName(rel, sha)}`, readFileSync(join(gen, name, rel)));
+      out.set(`${name}/files.sha256`, list);
+    }
+    return out;
+  };
+  /** The package files of host() (store.txt is no package's). */
+  const packageFiles = (): Map<string, Buffer> => { const m = host(); m.delete(STORE_FILE); return m; };
   const assertStored = (names?: readonly string[]): void => {
-    const want = [...host()].filter(([p]) => !names || names.includes(p.split('/')[0]!));
+    const want = [...host()].filter(([p]) => !names || p === STORE_FILE || names.includes(p.split('/')[0]!));
     const have = tree(stored);
     expect([...have.keys()].sort()).toEqual(want.map(([p]) => p).sort());
     expect(want.filter(([p, b]) => !have.get(p)!.equals(b)).map(([p]) => p)).toEqual([]);
@@ -72,7 +84,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
       const list = join(stored, name, 'files.sha256');
       if (!existsSync(list)) continue;
       for (const [sha, rel] of listPaths(readFileSync(list))) {
-        const file = join(stored, name, rel);
+        const file = join(stored, name, storedName(rel, sha));
         expect(existsSync(file), `${name}/${rel}`).toBe(true);
         expect(createHash('sha256').update(readFileSync(file)).digest('hex'), `${name}/${rel}`).toBe(sha);
       }
@@ -83,7 +95,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     work = mkdtempSync(join(tmpdir(), 'xyf-ts-mods-'));
     gen = makeModSet(work);
     ({ profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'info.txt'))));
-    stored = join(sim!.root, 'xy-forever', 'mods', profile, generation);
+    stored = join(sim!.root, 'xy-forever', 'mods', generation);
   });
   afterAll(async () => {
     await Promise.all(clients.map((c) => c.close()));
@@ -91,7 +103,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
   });
 
   test('push with verify: byte-identical on the device, progress per package and in bytes', async () => {
-    const files = host(), names = readdirSync(gen).sort();
+    const files = packageFiles(), names = readdirSync(gen).sort();
     const bytes = [...files.values()].reduce((n, b) => n + b.length, 0);
     const seen: PackageResult[] = [];
     const progress: [number, number, string][] = [];
@@ -119,12 +131,12 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
   });
 
   test('a cut push never looks complete, and the next push sends exactly the rest', async () => {
-    const files = host().size;
+    const files = host().size;                                          // store.txt first, then the packages
     for (const after of [0, 1, 5, Math.floor(files / 2), files - 1]) {
       rmSync(stored, { recursive: true, force: true });
       await cutPush(after);
       assertNothingFalseComplete();
-      expect((await push()).files, `cut after ${after}`).toBe(files - after);
+      expect((await push()).files, `cut after ${after}`).toBe(files - Math.max(after, 1));
       assertStored();
     }
     // a file damaged in a complete package: the list goes first, then the file and the list again
@@ -148,13 +160,29 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     await client.close();
   });
 
+  test('a mirrored tree (no store.txt) lists as older and a push refuses it; a newer store as newer', async () => {
+    rmSync(stored, { recursive: true, force: true });
+    cpSync(gen, stored, { recursive: true });
+    const client = await connect();
+    expect((await listPackages(client)).map((g) => [g.generation, g.older, g.newer, g.packages.length])).toEqual([[generation, true, false, 0]]);
+    await expect(pushPackages(client, source())).rejects.toThrow(/older layout/);
+    await removePackage(client, generation);
+    await pushPackages(client, source());
+    assertStored();
+    writeFileSync(join(stored, STORE_FILE), 'version=2\n');
+    expect((await listPackages(client)).map((g) => [g.older, g.newer])).toEqual([[false, true]]);
+    await expect(pushPackages(client, source())).rejects.toThrow(/store version 2, newer/);
+    writeFileSync(join(stored, STORE_FILE), STORE_TEXT);
+    await client.close();
+  });
+
   test('list (an interrupted package flagged), then remove a package and a generation', async () => {
     await push();
     unlinkSync(join(stored, 'gamma', 'files.sha256'));                 // as a cut push leaves it
     const client = await connect();
     const held = await listPackages(client);
-    expect(held.map((g) => [g.profile, g.generation])).toEqual([[profile, generation]]);
-    const files = host();
+    expect(held.map((g) => [g.profile, g.generation, g.older, g.newer])).toEqual([[profile, generation, false, false]]);
+    const files = packageFiles();
     files.delete('gamma/files.sha256');
     for (const name of readdirSync(gen)) {
       const mine = [...files].filter(([p]) => p.split('/')[0] === name).map(([, b]) => b.length);
@@ -164,7 +192,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     expect(held[0]!.packages.find((p) => p.name === 'base')!.info['type']).toBe('mod-base');
 
     const dry = await removePackage(client, 'alpha', { dryRun: true });
-    expect(dry).toEqual([{ path: `/yaffs2/xy-forever/mods/${profile}/${generation}/alpha`, files: tree(join(stored, 'alpha')).size,
+    expect(dry).toEqual([{ path: `/yaffs2/xy-forever/mods/${generation}/alpha`, files: tree(join(stored, 'alpha')).size,
       bytes: [...tree(join(stored, 'alpha')).values()].reduce((n, b) => n + b.length, 0) }]);
     expect(existsSync(join(stored, 'alpha'))).toBe(true);
     expect(await removePackage(client, 'alpha', { generation: 'other-gen' })).toEqual([]);
@@ -172,7 +200,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     expect(existsSync(join(stored, 'alpha'))).toBe(false);
     expect(existsSync(join(stored, 'beta'))).toBe(true);
     expect(await removePackage(client, 'nosuch')).toEqual([]);
-    expect((await removePackage(client, generation)).map((r) => r.path)).toEqual([`/yaffs2/xy-forever/mods/${profile}/${generation}`]);
+    expect((await removePackage(client, generation)).map((r) => r.path)).toEqual([`/yaffs2/xy-forever/mods/${generation}`]);
     expect(existsSync(stored)).toBe(false);
     expect((await listPackages(client)).flatMap((g) => g.packages)).toEqual([]);
     await client.close();

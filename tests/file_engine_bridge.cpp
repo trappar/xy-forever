@@ -18,4 +18,5 @@ unsigned engine_rename_to(const char* source, const char* target, int window) { 
 }
 int engine_raw(unsigned vtable, unsigned op) { return raw_request(vtable, op); }
 unsigned engine_max_path() { return max_path; }
+unsigned engine_depth(const char* path) { return depth(path); }
 }

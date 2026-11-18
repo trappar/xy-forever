@@ -9,9 +9,18 @@
 import { describe, expect, inject, test } from 'vitest';
 import { commands } from 'vitest/browser';
 import { load } from './frame.ts';
+import { STORE_FILE, storedName } from '../../src/modstore.ts';
 
 const web = inject('web');
 const sim = web.demo;
+
+/** A set file's place in the device's flat store (#124, src/modstore.ts), by its package's files.sha256 line. */
+function storedPath(set: { files: { path: string; base64: string }[] }, path: string): string {
+  const pkg = path.split('/')[0]!, rel = path.slice(pkg.length + 1);
+  const list = atob(set.files.find((f) => f.path === `${pkg}/files.sha256`)!.base64);
+  const line = list.split('\n').find((l) => l.slice(66) === rel);
+  return line ? `${pkg}/${storedName(rel, line.slice(0, 64))}` : path;
+}
 const poll = { timeout: 30_000, interval: 100 };
 
 describe.skipIf(!sim)(`the demo page's Mods panel against the simulator${sim ? '' : ` (skipped: ${web.why})`}`, () => {
@@ -19,7 +28,7 @@ describe.skipIf(!sim)(`the demo page's Mods panel against the simulator${sim ? '
     const set = await commands.modSet();
     const info = Object.fromEntries(atob(set.files.find((f) => f.path === 'base/info.txt')!.base64).split('\n')
       .filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
-    const gen = `/yaffs2/xy-forever/mods/${info['profile']}/${info['generation']}`;
+    const gen = `/yaffs2/xy-forever/mods/${info['generation']}`;
     const packages = [...new Set(set.files.map((f) => f.path.split('/')[0]!))].sort();
 
     const page = await load(`/demo/index.html?sim=${sim!.port}`);
@@ -55,7 +64,7 @@ describe.skipIf(!sim)(`the demo page's Mods panel against the simulator${sim ? '
     expect(await done()).toBe('');
     expect(asked.at(-1)).toMatch(new RegExp(`^Send ${packages.length} packages of ${info['profile']}/${info['generation']} to /yaffs2/xy-forever/mods/ on the OP-XY\\?`));
     expect($('mods-progress').textContent).toMatch(new RegExp(`^Sent ${packages.length} packages, skipped 0: ${set.files.length} files, .* in [0-9.]+ s$`));
-    for (const f of set.files) expect(await commands.simRead(sim!.root, `${gen}/${f.path}`), f.path).toBe(f.base64);
+    for (const f of set.files) expect(await commands.simRead(sim!.root, `${gen}/${storedPath(set, f.path)}`), f.path).toBe(f.base64);
     expect(rows().map((r) => r.dataset['name']).sort()).toEqual(packages);
     expect(rows().every((r) => r.dataset['complete'] === 'true')).toBe(true);
     expect(row('base')!.cells[1]!.textContent).toMatch(/^mod-base/);
@@ -94,8 +103,9 @@ describe.skipIf(!sim)(`the demo page's Mods panel against the simulator${sim ? '
     const set = await commands.modSet();
     const info = Object.fromEntries(atob(set.files.find((f) => f.path === 'base/info.txt')!.base64).split('\n')
       .filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
-    const gen = `/yaffs2/xy-forever/mods/${info['profile']}/${info['generation']}`;
-    for (const f of set.files) await commands.simWrite(sim!.root, `${gen}/${f.path}`, f.base64);
+    const gen = `/yaffs2/xy-forever/mods/${info['generation']}`;
+    await commands.simWrite(sim!.root, `${gen}/${STORE_FILE}`, btoa('version=1\n'));
+    for (const f of set.files) await commands.simWrite(sim!.root, `${gen}/${storedPath(set, f.path)}`, f.base64);
     await commands.modBase(sim!.root, 'modbase');
 
     const page = await load(`/demo/index.html?sim=${sim!.port}`);

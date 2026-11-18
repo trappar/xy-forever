@@ -7,11 +7,11 @@ namespace xyf_core { namespace mod_job {
 namespace {
 enum Stage {
     st_base_list, st_base_info, st_alloc, st_edits,
-    st_package_list, st_package_info, st_package_catalog, st_catalog, st_official, st_stock,   // inputs
-    st_patch_start, st_patch_wait,                                                     // patch up to the module
-    st_link_begin, st_link,                                                            // link
-    st_set_module, st_patch, st_crc,                                                   // patch, os.ldr's CRC-32
-    st_content_start, st_content, st_entry,                                            // content, entry texts
+    st_package_list, st_package_info, st_package_catalog, st_catalog, st_official, st_stock,  // inputs
+    st_patch_start, st_patch_wait,              // patch up to the module
+    st_link_begin, st_link,                     // link
+    st_set_module, st_patch, st_crc,            // patch, os.ldr's CRC-32
+    st_content_start, st_content, st_entry,     // content, entry texts
     st_write, st_verify, st_check_start, st_check, st_finish
 };
 // Outputs in write, read-back and rename order: mod_content's list (content/..., sorted), then these three,
@@ -303,7 +303,9 @@ Phase load_listed(Job& j, Job::Package& p, const char* path, bool keep) {
     set_detail(j, p.name, path);
     const hash::Digest* want = listed(p, path);
     if (!want) return fail(j, Error::unlisted);
-    if (!compose(j, j.input->generation, p.name, path, 0)) return fail(j, Error::path);
+    char stored[24];                             // flat: mod_job.hpp
+    if (j.input->flat) stored_name(path, *want, stored);
+    if (!compose(j, j.input->generation, p.name, j.input->flat ? stored : path, 0)) return fail(j, Error::path);
     const Error e = begin_load(j, want, 0, 0, keep);
     return e == Error::none ? j.phase : fail(j, e);
 }

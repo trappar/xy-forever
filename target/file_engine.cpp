@@ -65,19 +65,26 @@ Verdict decide_engine(Operation op, const char* path, const char* second) {
     case op_unlink: case op_rmdir:
         return protected_name ? refuse_protected : allow;
     case op_mkdir: case op_write:                                    // /yaffs2 itself: harmless (EEXIST, EISDIR)
-        return p.marker || p.inbox ? refuse_protected : allow;
+        if (p.marker || p.inbox) return refuse_protected;
+        return p.names > max_folders + (op == op_write) ? refuse_depth : allow;
     case op_rename: {
         if (protected_name) return refuse_protected;
         Parsed q;
         const Verdict w = parse(second, q);
         if (w != allow) return w;
-        return q.names == 0 || q.marker || q.inbox ? refuse_protected : allow;
+        if (q.names == 0 || q.marker || q.inbox) return refuse_protected;
+        return p.names > max_folders + 1 || q.names > max_folders + 1 ? refuse_depth : allow;   // A: rename_from (q = p)
     }
     case op_stream:
-        return p.tmp ? allow : refuse_tmp;
+        return !p.tmp ? refuse_tmp : p.names > max_folders + 1 ? refuse_depth : allow;
     default:
         return allow;                                                // read, list, stat
     }
+}
+
+uint32_t depth(const char* path) {
+    Parsed p;
+    return parse(path, p) == allow ? p.names : 0xffffffffu;
 }
 
 bool raw_request(uint32_t vtable, uint32_t op) {
@@ -90,7 +97,7 @@ namespace {
 Action refusal(Verdict v) {
     return v == refuse_raw ? refuse_raw_layer : v == refuse_outside ? refuse_outside_path :
            v == refuse_protected ? refuse_protected_path : v == refuse_tmp ? refuse_tmp_path :
-           v == refuse_path ? refuse_bad_path : refuse_op;
+           v == refuse_path || v == refuse_depth ? refuse_bad_path : refuse_op;
 }
 }
 

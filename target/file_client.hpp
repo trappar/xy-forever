@@ -144,7 +144,8 @@ uint32_t change(uint32_t op, const char* path, uint32_t& error, volatile uint32_
 // RENAME: the pair through valid_rename first (refused: nothing sent), op 8 when needed, then two
 // path requests on the path builder 889f8d22 (no new stock call): op 0x21 with argument rename_from and
 // the source (A keeps it), then op 0x21 rename_to and the target (A renames in its write window; bound
-// change_ms). mounted as change; error: A's error number (rename_status).
+// change_ms). Before them, a folder moved deeper is walked for the depth rule (#124, file_engine.hpp;
+// refused: nothing renamed). mounted as change; error: A's error number (rename_status).
 uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint32_t& mounted);
 // COPY, the checks before B reads the source: op 8 when needed, then a stat of the target (as
 // file.list's; found: s_state, error eexist) and of its folder (missing: s_not_found, error enoent).

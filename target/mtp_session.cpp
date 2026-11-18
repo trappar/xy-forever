@@ -64,8 +64,11 @@ int errno_result(uint32_t error) {
     return error == C::enoent ? M::f_not_found : error == C::eacces ? M::f_refused : error == C::eexist ? M::f_exists :
            error == C::enotempty ? M::f_not_empty : M::f_storage;
 }
-bool may_change(Files& f, const char* path) {                       // the write rule, then A's window
-    if (!M::writable(path) || !storage_server::valid_write_path(path)) return false;
+// The write rule and the engine's policy for this change (the depth rule binds writes, mkdir and
+// renames, never removals: #124), then A's window. to: a rename's target.
+bool may_change(Files& f, const char* path, file_engine::Operation op, const char* to = 0) {
+    if (!M::writable(path) || (to && !M::writable(to))) return false;
+    if (to ? !storage_server::valid_rename(path, to) : !storage_server::valid_change_path(path, op)) return false;
     f.last_change_ms = xyf::clock::ms();
     if (f.window) return true;
     if (f.on_change() != P::s_ok) { f.link = 1; return false; }
@@ -132,7 +135,7 @@ int open(void* c, const char* path, bool write) {
     uint32_t slot = 0;
     while (slot != max_open && f.open[slot] >= 0) ++slot;
     if (slot == max_open) return M::f_storage;
-    if (write && !may_change(f, path)) return f.link ? M::f_link : M::f_refused;
+    if (write && !may_change(f, path, file_engine::op_write)) return f.link ? M::f_link : M::f_refused;
     const C::Reply r = C::open(path, write ? storage_server::write_open_flags : 0u);   // op 0x29
     if (r.outcome) return fail(f, r);
     if (r.value < 0) return errno_result(r.error);
@@ -185,7 +188,9 @@ int close(void* c, int fd) {
 int change(void* c, uint32_t op, const char* path) {
     Files& f = of(c);
     if (f.link) return M::f_link;
-    if (!may_change(f, path)) return f.link ? M::f_link : M::f_refused;
+    const file_engine::Operation policy = op == 0x25u ? file_engine::op_unlink : op == 0x27u ? file_engine::op_rmdir :
+                                          file_engine::op_mkdir;
+    if (!may_change(f, path, policy)) return f.link ? M::f_link : M::f_refused;
     const C::Reply r = op == 0x25u ? C::unlink(path) : op == 0x27u ? C::rmdir(path) : C::mkdir(path);
     if (r.outcome) return fail(f, r);
     return r.value >= 0 ? 0 : errno_result(r.error);
@@ -196,7 +201,7 @@ int rmdir(void* c, const char* path) { return change(c, 0x27u, path); }
 int rename(void* c, const char* from, const char* to) {
     Files& f = of(c);
     if (f.link) return M::f_link;
-    if (!may_change(f, from) || !may_change(f, to)) return f.link ? M::f_link : M::f_refused;
+    if (!may_change(f, from, file_engine::op_rename, to)) return f.link ? M::f_link : M::f_refused;
     uint32_t error = 0;
     const uint32_t code = C::rename(from, to, error, *f.mounted);
     if (code == P::s_ok) return 0;

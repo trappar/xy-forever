@@ -58,7 +58,28 @@ struct Input {
     const Policy* policy;            // ldr::inspect's policy (the cold LDR policy)
     bool profiling;                  // false: the website's mode
     bool unverified;                 // the user confirmed a base that is not a known one
+    bool flat;                       // the device's store (docs/storage/mods.md): package files under stored_name
 };
+// A package file's name in the device's flat store (#124): a top-level path as it is, a path with a folder
+// as the first 12 hex digits of its SHA-256 plus the extension of its last part (the text from its last
+// '.', not the part's first character, followed by 1-7 of A-Z a-z 0-9), so every file sits right in its
+// package's folder. out: at least 21 bytes. xy_forever/modstore.py and clients/ts/src/modstore.ts match it.
+inline void stored_name(const char* path, const hash::Digest& sha, char* out) {
+    U32 slash = 0, n = 0;
+    for (U32 i = 0; path[i]; ++i) if (path[i] == '/') slash = i + 1;
+    if (!slash) { while ((out[n] = path[n])) ++n; return; }
+    const char* digits = "0123456789abcdef";
+    for (U32 k = 0; k != 6; ++k) { out[n++] = digits[sha.bytes[k] >> 4]; out[n++] = digits[sha.bytes[k] & 15]; }
+    U32 dot = 0, end = slash;
+    for (; path[end]; ++end) if (path[end] == '.') dot = end;
+    bool ext = dot > slash && end - dot >= 2 && end - dot <= 8;
+    for (U32 i = dot + 1; ext && i != end; ++i) {
+        const char c = path[i];
+        ext = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+    }
+    for (U32 i = dot; ext && i != end; ++i) out[n++] = path[i];
+    out[n] = 0;
+}
 enum class Phase { idle, inputs, link, patch, content, write, verify, finish, done, failed, cancelled };
 enum class Error {
     none,

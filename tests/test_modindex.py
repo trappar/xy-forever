@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                     # noqa: E402
 import xyf_package                                                          # noqa: E402
-from xy_forever import modindex as I, modkit as M, modpatch as MP, modsend as S, sim  # noqa: E402
+from xy_forever import modindex as I, modkit as M, modpatch as MP, modsend as S, modstore, sim  # noqa: E402
 from test_modpatch import finish, kit_for, profile_for, stock               # noqa: E402
 
 SIM_UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
@@ -292,10 +292,11 @@ class Index(unittest.TestCase):
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(host.main(['--sim', simulator.address, 'mods', 'push', str(target), '--verify']), 0)
-        self.assertIn('verify: %d files read back identical' % len(MP.tree(self.gen)), printed.getvalue())
+        modstore.copy_set(self.gen, state / 'want')                    # the flat store a push leaves (#124)
+        want = MP.tree(state / 'want')
+        self.assertIn('verify: %d files read back identical' % (len(want) - 1), printed.getvalue())
         info = MP.info_values(self.gen / 'base/info.txt')
-        stored = MP.tree(state / 'yaffs2/xy-forever/mods' / info['profile'] / info['generation'])
-        want = MP.tree(self.gen)
+        stored = MP.tree(state / 'yaffs2/xy-forever/mods' / info['generation'])
         self.assertEqual(sorted(stored), sorted(want))
         self.assertEqual([p for p in want if stored[p] != want[p]], [])
 

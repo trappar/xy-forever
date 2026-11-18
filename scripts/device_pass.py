@@ -50,8 +50,8 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            folder), mv onto an existing name (state), rm all; then again: cp a 100,000 B
            file on the device, get both identical, cp onto an existing name (state), rm all;
            REBOOT; both files and the default checked again, the scratch entry absent.
-  mods     default: only when the device holds the package set (mods/opxy-1.2.1/<the local
-           set's generation>/ with fm2op) and a library entry with os.ldr and content.sha256
+  mods     default: only when the device holds the package set (mods/<the local set's
+           generation>/ with fm2op) and a library entry with os.ldr and content.sha256
            (else SKIP with the reason; also when the library holds mods-a and mods-b): mods apply
            fm2op --wait (the device assembles, sweeps tmp/job-* first, and commits into library entry
            mods-a, or mods-b when mods-a is there; --wait ends once file commands are served
@@ -1446,7 +1446,7 @@ class Pass:
         packages = MODS_PACKAGES
         if not (packages / 'base/info.txt').is_file() or not MODS_CATALOG.is_file():
             raise StepSkip('no local package set or stock catalog (%s): the reference needs them' % packages)
-        root = '/yaffs2/xy-forever/mods/' + MODS_PROFILE
+        root = '/yaffs2/xy-forever/mods'          # mods/<generation>/ (#124)
         code, out, err = self.host(['ls', '%s/%s' % (root, packages.name), '--json'], T_ANSWER)
         try:
             held = [e['name'] for e in json.loads(out[out.index('['):])] if code == 0 else []
@@ -1571,7 +1571,7 @@ class Pass:
     def step_switch(self):
         """fm2op built, made the default (content switch), the previous default set back (switch back)."""
         packages = MODS_PACKAGES
-        root = '/yaffs2/xy-forever/mods/' + MODS_PROFILE
+        root = '/yaffs2/xy-forever/mods'          # mods/<generation>/ (#124)
         code, out, err = self.host(['ls', '%s/%s' % (root, packages.name), '--json'], T_ANSWER)
         try:
             held = [e['name'] for e in json.loads(out[out.index('['):])] if code == 0 else []
@@ -1712,7 +1712,7 @@ class Pass:
         if found is None:
             raise StepSkip('no local package set with %s readable in it (%s): its Mods page row is not known'
                            % (MODS_MACHINE, MODS_PACKAGES))
-        root = '/yaffs2/xy-forever/mods/' + MODS_PROFILE
+        root = '/yaffs2/xy-forever/mods'          # mods/<generation>/ (#124)
         code, out, err = self.host(['ls', root, '--json'], T_ANSWER)
         try:
             sets = [e['name'] for e in json.loads(out[out.index('['):])] if code == 0 else []

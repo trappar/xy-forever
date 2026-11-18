@@ -70,6 +70,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "../native/hash.hpp"
 #include "../native/ldr.hpp"
 #include "../native/mod_job.hpp"
+#include "xyf_mods_store.hpp"        // mods.apply: the store's version (#124)
 #include "cold_layout.hpp"
 #include "stack_mark.hpp"         // live stack high-water mark in STATUS
 #include "xyf_store.hpp"

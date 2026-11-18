@@ -143,7 +143,7 @@ bool read_job(const char* path, Job& job) {
 
 // One package as the job holds it: its files.sha256 listing and every listed file, whole.
 struct Package {
-    std::string name;                                     // "base", a machine id, "ext-<id>"
+    std::string name;                         // "base", a machine id, "ext-<id>"
     std::vector<std::pair<std::string, std::string>> listing;   // sha256 hex, path
     std::map<std::string, Bytes> files;
 };
@@ -235,12 +235,12 @@ std::string hex_text(const char* s) {
 
 // One end-to-end assembly over inputs in RAM. Status words: "ok", a refusal, or "skipped".
 struct Assembly {
-    std::string input = "ok", input_detail;               // the job's own checks (hashes, base facts)
+    std::string input = "ok", input_detail;   // the job's own checks (hashes, base facts)
     mod_link::Status link = mod_link::Status::argument;
     bool linked = false, patched = false, contented = false;
     mod_patch::Status patch = mod_patch::Status::argument, verify = mod_patch::Status::argument;
     mod_content::Status content = mod_content::Status::argument;
-    std::string content_object;                           // a mod object check_object refused
+    std::string content_object;               // a mod object check_object refused
     mod_patch::Profile profile{};
     mod_content::Catalog pins{};
     Bytes image, out, list;
@@ -285,7 +285,7 @@ bool check_inputs(const Inputs& in, Assembly& a) {
     U32* fields[] = {&a.pins.engine_at, &a.pins.fx_at, &a.pins.seq_at};
     for (int k = 0; k != 3; ++k)
         if (!number_of(info, keys[k], *fields[k])) { a.input = "base"; a.input_detail = keys[k]; return false; }
-    a.pins.sha256 = a.profile.catalog_sha256;       // checked against the known bases by the patch
+    a.pins.sha256 = a.profile.catalog_sha256;   // checked against the known bases by the patch
     if (!listed_sha(in.packages[0], "edits.bin")) { a.input = "base"; a.input_detail = "edits.bin"; return false; }
     return true;
 }
@@ -319,7 +319,7 @@ bool content_view(const Inputs& in, Assembly& a) {
         pkg.files = a.files[i].data(); pkg.file_count = U32(a.files[i].size());
         auto it = p.files.find("catalog.txt");
         if (it != p.files.end()) { pkg.catalog_text = it->second.data(); pkg.catalog_bytes = U32(it->second.size()); }
-        for (auto& f : p.files)                        // each mod object, as the job loads it
+        for (auto& f : p.files)   // each mod object, as the job loads it
             if (!f.first.compare(0, 8, "objects/") &&
                 mod_content::check_object(f.second.data(), U32(f.second.size())) != mod_content::Status::ok) {
                 a.content = mod_content::Status::package; a.content_object = p.name + "/" + f.first;
@@ -451,7 +451,7 @@ int run(const Job& job, const std::string& outdir) {
     }
     const char* copy = "ok";
     const bool content_ok = a.contented && a.content == mod_content::Status::ok;
-    if (content_ok) {                                  // the job's part: write, copy the listed files
+    if (content_ok) {   // the job's part: write, copy the listed files
         write_file(outdir + "/content/op1_factory.json", a.out.data(), b.catalog_bytes, written);
         for (U32 i = 0; i != b.listed_count; ++i) {
             const mod_content::Listed& l = b.listed[i];
@@ -553,20 +553,20 @@ int fuzz(const Job& job, unsigned seed, unsigned count) {
         Inputs in = in0;
         const int target = rng() % 8;
         const bool refresh = rng() % 4 != 0;
-        if (target == 0) {                                 // the stock os.ldr (its pin refreshed)
+        if (target == 0) {   // the stock os.ldr (its pin refreshed)
             damage(in.stock, rng);
             if (refresh) set_info(in.packages[0], "needs_os", hex(digest(in.stock.data(), in.stock.size())));
-        } else if (target == 1) {                          // the official catalog (its pin refreshed)
+        } else if (target == 1) {   // the official catalog (its pin refreshed)
             damage(in.catalog, rng);
             if (refresh) set_info(in.packages[0], "catalog_sha256", hex(digest(in.catalog.data(), in.catalog.size())));
-        } else if (target <= 4) {                          // any file of the base (2) or of a package (3, 4)
+        } else if (target <= 4) {   // any file of the base (2) or of a package (3, 4)
             Package& pk = in.packages[target == 2 || in.packages.size() == 1 ? 0 : 1 + rng() % (in.packages.size() - 1)];
             if (!pk.listing.empty()) {
                 const std::string path = pk.listing[rng() % pk.listing.size()].second;
                 damage(pk.files[path], rng);
                 if (refresh) rehash(pk, path);
             }
-        } else if (target == 5) {                          // a base fact
+        } else if (target == 5) {   // a base fact
             const char* keys[] = {"stock_bytes", "module_base", "module_bytes", "catalog_engine_at", "catalog_fx_at",
                                   "catalog_seq_at", "stock_records", "reserved_bytes", "heap_fill_base", "heap_fill_bytes"};
             const auto info = info_of(in.packages[0]);
@@ -612,8 +612,8 @@ int fuzz(const Job& job, unsigned seed, unsigned count) {
 // replace or misreport files and fail every read or write call made during one step.
 struct MemFs {
     std::map<std::string, Bytes> cache, replaced, written;
-    std::set<std::string> missing, short_size;     // short_size: size() reports one byte more
-    std::set<std::string> dirs{"/out"};            // folders: the output folder, then what mkdir made
+    std::set<std::string> missing, short_size;   // short_size: size() reports one byte more
+    std::set<std::string> dirs{"/out"};          // folders: the output folder, then what mkdir made
     struct Handle { std::string path; size_t pos; bool write, open; };
     std::vector<Handle> handles;
     unsigned now = 0, fail_read = 0, fail_write = 0;   // step numbers (1-based; 0: never)
@@ -721,6 +721,8 @@ struct JobSetup {
         in.generation = job.generation.c_str(); in.stock = job.stock.c_str(); in.catalog = job.catalog.c_str();
         in.official = job.official.c_str(); in.out = "/out"; in.name = job.name.c_str(); in.policy = &cold;
         in.profiling = job.profiling; in.unverified = job.unverified;
+        Bytes store;
+        in.flat = slurp(job.generation + "/store.txt", store);   // the device's store (a copy of it)
         files = {&fs, MemFs::size, MemFs::open, MemFs::read, MemFs::write, MemFs::close, MemFs::rename, MemFs::remove,
                  MemFs::mkdir};
         region.assign((8u << 20) / 4, 0);

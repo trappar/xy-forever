@@ -19,7 +19,11 @@ workspace, Python or CLI.
 Upstream checked at `a07b08faeb58cc7e74cdbc8bd98f809a8ffd5159` (2026-11-17):
 `tooling/machines.py:layout_document` and `builder/app.mjs`'s `nextLayout`.
 
-## Mod packages (`mods/<profile>/<generation>/`)
+## Mod packages (`mods/<generation>/`)
+
+On the device a set lives in `mods/<generation>/` as a flat store, every file 4 folders below `/yaffs2`
+(protocol 1.16, #124): [the store](mods-store.md). On the host, `modkit split` writes the tree below,
+`DIR/mods/<profile>/<generation>/`.
 
 Written on the host by `python3 -m xy_forever.modkit split` from an open-xy kit; local index + archives, `mods fetch`: `xy_forever/modindex.py`;
 read by the device linker `native/mod_link` (B runs the assembly job). One flat folder per package: `base/`, `<machine id>/`,

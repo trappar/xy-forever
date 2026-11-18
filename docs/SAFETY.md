@@ -62,6 +62,8 @@ needs the highest bar of confidence. These rules are binding and override conven
   early in the clients (`xyf_host.in_write_area`, `clients/ts inWriteArea`). XY Forever's own jobs keep
   their narrower rules (the content job: `storage_server::own_area`, never `user/`). Before changing
   `content/op1_factory.json`, save the device's copy first.
+- **Depth** (#124): no file over 6 folders below `/yaffs2`; deeper hangs Track 5 after dev MTP.
+  Deletes work at any depth ([details](storage/layout.md)).
 
 The "never program the companion chips" and "never write SPI metadata" rules give
 way only to the developer's explicit, separate yes for that exact operation.

@@ -100,6 +100,8 @@ const char* text_at(const Page& page, uint16_t offset);
 // A generation folder found: keeps the newest kit version (`<version>-<12 hex>`, dotted numbers
 // compared as numbers). >0: a newer than b.
 int compare_generation(const char* a, const char* b);
+// A generation folder name mods.apply takes (1-31 of a-z 0-9 _ - ., a letter or digit first).
+bool generation_token(const char* t);
 // Package texts. The base's info.txt (module_bytes, code/data/state, runtime_*) and services.txt
 // (`name users=… code= data= state=`): false when a needed field is missing.
 bool parse_base(Page& page, const char* text, uint32_t length);
@@ -142,6 +144,7 @@ void start_refused(Page& page, uint32_t status, uint32_t missing);
 void refuse_cancel(Page& page);
 void job_ended(Page& page, uint32_t phase, uint32_t error, uint32_t status, uint32_t debris);
 void say(Page& page, Line line, const char* a, const char* b = "", const char* c = "");
+void reading_line(Page& page, uint32_t at);   // "Reading mod packages: <at> of <count>..."
 // The building bar for the job fields above at ms (since the job started): stage i (0..7 the job's
 // phases, 8 the library commit) fills its share of the bar by its own done of total, and within one step
 // by the time it has taken against the stage's typical time (approaching, never reaching, the step's end),
