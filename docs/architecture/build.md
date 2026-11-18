@@ -33,6 +33,24 @@ candidate. Never linked, kept for planned features: `boot_services.cpp`'s update
 L1 wrappers; superseded by `otp_keys.cpp`) and most of `native/`. The verifier re-checks every CRC span,
 every stock call target and every symbol rule; see "Safety rules" below.
 
+### Stage-2 image audit
+
+`xy_forever/stage2_audit.py::check_stage2_image` checks every stage-2 image: no BSS, entry at the window
+start, direct calls inside the image, no high-half load of a foreign address (stock code/data, L1, MMIO,
+core MMRs, SDRAM outside the image) and the packed `main.xys2`. Data is audited by mode:
+
+- The product's stage 2 (ABI 3): every aligned word of `.rodata` and `.data` is scanned for a foreign address.
+- `--xyf-stage2` / `--xyf-stage2-menu` (model (c) of #97): their link brackets the compiler's merged strings
+  (`.rodata*.str1.*`) with `__stage2_literals`/`__stage2_literals_end`, and a second link with `-q` keeps
+  the data relocations (`stage2.audit.elf`; its loaded bytes must equal `stage2.bin`). Pass 1: every
+  `.rodata`/`.data` relocation is `R_BFIN_BYTE4_DATA` to inside the image, outside the literal ranges.
+  Literal ranges: the bracketed strings plus `STAGE2_LITERAL_SYMBOLS` (the font, exact size). Pass 2:
+  the word scan over every word not wholly inside a literal range. Host fixtures: `tests/test_stage2_audit.py`.
+
+The link map is not parsed: `ld` reports merged-string section sizes that overlap their neighbours.
+Not caught (nor by the word scan): an address inside a string or the font, a `{hi, lo}` `uint16_t`
+pair, unaligned words, an address built in code without a `.h =` immediate, register-call targets.
+
 ### Feature switches
 
 The C++ is one source tree compiled with different `-DXYF_…` switches per mode.

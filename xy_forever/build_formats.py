@@ -134,7 +134,9 @@ class Firmware:
         return rows
 
 
-def elf32(data):
+def elf32(data, relocations=False):
+    """Sections and named symbols of a linked ELF32. relocations=True (a `ld -q` link) also returns its RELA
+    entries: {relocated section: [dict(offset, type, target)]}, offset an address, target symbol + addend."""
     require(len(data) >= 52 and data[:7] == b'\x7fELF\x01\x01\x01', 'Expected little-endian ELF32')
     require(struct.unpack_from('<H', data, 18)[0] == 106, 'Expected Blackfin machine type')
     offset = struct.unpack_from('<I', data, 32)[0]
@@ -160,20 +162,36 @@ def elf32(data):
     names = contents(headers[names_index])
     sections = {}
     symbols = {}
-    for h in headers:
+    values = {}                                 # symbol table index -> every entry's value, by symbol index
+    for index, h in enumerate(headers):
         name = string(names, h[0])
         require(name not in sections, 'Duplicate ELF section')
-        require(not (h[1] in (4, 9) and h[5]), 'Unresolved ELF relocations')
+        require(not (h[1] in (4, 9) and h[5]) or relocations and h[1] == 4, 'Unresolved ELF relocations')
         body = contents(h)
         sections[name] = dict(type=h[1], flags=h[2], address=h[3], size=h[5], data=body)
         if h[1] != 2:
             continue
         require(h[6] < count and h[9] == 16 and h[5] % 16 == 0, 'Invalid ELF symbols')
         strings = contents(headers[h[6]])
+        values[index] = []
         for at in range(0, len(body), 16):
             n, value, size, info, other, section = struct.unpack_from('<IIIBBH', body, at)
+            values[index].append(value)
             symbol = string(strings, n)
             if symbol:
                 require(section != 0, 'Undefined ELF symbol: ' + symbol)
                 symbols[symbol] = dict(value=value, size=size, type=info & 15)
-    return sections, symbols
+    if not relocations:
+        return sections, symbols
+    relocated = {}
+    for h in headers:
+        if h[1] != 4 or not h[5]:
+            continue
+        require(h[6] in values and h[7] < count and h[9] == 12 and h[5] % 12 == 0, 'Invalid ELF relocations')
+        table, body = values[h[6]], contents(h)
+        entries = relocated.setdefault(string(names, headers[h[7]][0]), [])
+        for at in range(0, len(body), 12):
+            offset, info, addend = struct.unpack_from('<IIi', body, at)
+            require(info >> 8 < len(table), 'Invalid ELF relocation symbol')
+            entries.append(dict(offset=offset, type=info & 0xff, target=(table[info >> 8] + addend) & 0xffffffff))
+    return sections, symbols, relocated

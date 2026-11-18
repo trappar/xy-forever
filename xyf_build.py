@@ -15,6 +15,8 @@ from xy_forever.outer import BOOT_HASH, HELPERS, ALLOWED, PROTECTED, package, ve
 from xy_forever.paths import STOCK_121, private_output
 from xy_forever.build_formats import Firmware, elf32, header, parse_stream, require
 from xy_forever.ldr import parse_ldr, validate_memory
+from xy_forever.stage2_audit import STAGE2_ENTER, STAGE2_LITERALS as S2_LITERALS, STAGE2_WINDOW, \
+    check_stage2_image, stage2_enter_sites
 from xy_forever.probe_report import report_only_fixture
 from xy_forever import usb_proto, xyf_stage2 as S2
 
@@ -272,13 +274,9 @@ STATE_WRITE_ENTRY = 0x889fbb0c
 # Test 048: the product's USB SET_DEFAULT is that write (no menu SHIFT+PLAY write).
 USB_SET_DEFAULT_MODES = PRODUCT_MODES
 WRITE_AUDIT_MODES = USB_SET_DEFAULT_MODES
-# Stage 2 (--xyf-stage2): the hello image and its load window (target/xyf_stage2.hpp). Above the
-# wide stack with a 48 KiB gap; the product's loader stays dormant (no file).
-STAGE2_WINDOW = (0x8ab90000, 0x8ac00000)
 # Earlier cold_storage entry points that no build may link (directory listing, non-fresh sessions).
 LEGACY_STORAGE_SYMBOLS = ('open_directory', 'next_directory', 'close_directory', 'open_file',
                           'Stock121ReadOnlySession5begin', 'storage_shutdown')
-STAGE2_ENTER = 'xyf_stage2_enter'     # the one register jump stage 1 may make (target/xyf_stage2_enter.s)
 # The product's stage 2 (ABI 3, target/stage2_main.cpp): its version, and the first stage-1
 # build with the services it needs (min_stage1; services only grow).
 STAGE2_SERVICE_VERSION, STAGE2_SERVICE_MIN_STAGE1 = 1, 167
@@ -554,58 +552,6 @@ def call_targets(listing):
                 found = 'unresolved'; break
         targets.add(found if found else 'unresolved ' + line.split(':')[0].strip())
     return targets
-
-
-def stage2_enter_sites(listing):
-    """Register calls/jumps inside the stage-2 trampoline (must be exactly one)."""
-    count, function = 0, None
-    for line in listing.splitlines():
-        named = re.match(r'^[0-9a-f]{8} <(.+)>:$', line)
-        if named:
-            function = named.group(1)
-        elif function == STAGE2_ENTER and re.search(r'(?:call|jump) \((p[0-5])\)', line):
-            count += 1
-    return count
-
-
-def check_stage2_image(out):
-    """Stage 2: freestanding image at the window, packed file consistent."""
-    sections, symbols = elf32((out / 'stage2.elf').read_bytes())
-    image = (out / 'stage2.bin').read_bytes()
-    require(not sections.get('.bss', {}).get('size', 0), 'Stage 2 has BSS')
-    require(symbols['xyf_stage2_main']['value'] == STAGE2_WINDOW[0], 'Stage 2 entry is not at the window start')
-    require(STAGE2_WINDOW[0] + len(image) <= STAGE2_WINDOW[1], 'Stage 2 exceeds its window')
-    packed = (out / 'main.xys2').read_bytes()
-    info = S2.inspect(packed)
-    require(packed[S2.HEADER_BYTES:] == image and int(info['load_address'], 16) == STAGE2_WINDOW[0] and
-            int(info['entry'], 16) == STAGE2_WINDOW[0], 'Packed stage 2 differs from its image')
-    listing = (out / 'stage2.asm').read_text().lower()
-    # Only its own code and data: no stock entry or other absolute address loads,
-    # no direct calls outside the image; register calls are the ABI services.
-    for m in re.finditer(r'(?:call|jump(?:\.[sl])?) 0x([0-9a-f]+)', listing):
-        target = int(m.group(1), 16)
-        require(STAGE2_WINDOW[0] <= target < STAGE2_WINDOW[0] + len(image), 'Stage 2 calls outside itself: ' + hex(target))
-    # Addresses are built with a high-half load (objdump's combined comment is
-    # a heuristic, so judge the high half): none may point at stock code/data,
-    # L1, MMIO, core MMRs or SDRAM outside the image. Small values (0x1 << 16)
-    # are plain constants.
-    foreign = ((0x08000000, 0x08100000), (0x11800000, 0x11c00000), (0x20000000, 0x30000000),
-               (0x80000000, STAGE2_WINDOW[0]), ((STAGE2_WINDOW[0] + len(image) + 0xffff) & ~0xffff, 0x90000000),
-               (0xffc00000, 0xffff0000))
-    for m in re.finditer(r'\b[a-z][a-z0-9]*\.h = 0x([0-9a-f]{1,4});', listing):
-        high = int(m.group(1), 16) << 16
-        require(not any(lo <= high < hi for lo, hi in foreign), 'Stage 2 builds a foreign address ' + hex(high))
-    # No such address in its data either (every aligned word of .rodata and .data).
-    for name in ('.rodata', '.data'):
-        section = sections.get(name)
-        if not section or not section['size']:
-            continue
-        data = section['data']
-        for at in range(0, len(data) - 3, 4):
-            value = struct.unpack_from('<I', data, at)[0]
-            require(not any(lo <= value < hi for lo, hi in foreign),
-                    'Stage 2 data holds a foreign address %#x at %#x' % (value, section['address'] + at))
-    return info
 
 
 SOURCE_SUFFIXES = ('.cpp', '.hpp', '.ipp', '.inc', '.s', '.py')   # .ipp: a file's included part
@@ -1010,7 +956,7 @@ def verify(out, stock, boot):
         require(len(file_image) <= FILE_STAGING[1] - FILE_STAGING[0] - 0x20000 - 512, 'File image exceeds staging')
     stage2_info = None
     if stage2:
-        stage2_info = check_stage2_image(out)
+        stage2_info = check_stage2_image(out, relocated=True)
         for needed in ('a_serve_stage2', 'b_load_stage2', 'prepare_code', 'run_stage2', 'stage26accept') + \
                 (('stage26decide', 'catalog_blob') if stage2_menu else ()):
             require(has(needed), 'Stage 2 path lacks ' + needed)
@@ -1110,20 +1056,23 @@ def build(out, stock, boot, mode):
     def assembly(name, path):
         invoke([tools['as'], '-mcpu=bf707', '-o', out / (name + '.o'), path], commands)
 
-    def link(stem, base, limit, entry, names):
+    def link(stem, base, limit, entry, names, audited=False):
+        # audited (standalone stage 2): bracket the merged strings, then relink with -q (stage2_audit.py).
+        literals = '%s = .; *(.rodata*.str1.*) %s = .; ' % S2_LITERALS if audited else ''
         script = out / (stem + '.ld')
         script.write_text('OUTPUT_FORMAT("elf32-bfin")\nENTRY(' + entry + ')\nSECTIONS {\n'
                           ' . = ' + hex(base) + ';\n'
                           ' .text : { KEEP(*(.text.entry)) *(.text*) }\n'
-                          ' .rodata : ALIGN(4) { *(.rodata*) *(.data.rel.ro*) }\n'
+                          ' .rodata : ALIGN(4) { ' + literals + '*(.rodata*) *(.data.rel.ro*) }\n'
                           ' .data : ALIGN(4) { *(.data*) *(.sdata*) }\n'
                           ' .bss (NOLOAD) : ALIGN(4) { *(.bss*) *(.sbss*) *(COMMON) }\n'
                           ' __end = .;\n /DISCARD/ : { *(.comment*) *(.note*) *(.eh_frame*) }\n}\n'
                           'ASSERT(SIZEOF(.bss) == 0, "No implicit BSS")\n'
                           'ASSERT(__end <= ' + hex(limit) + ', "Module exceeds reservation")\n')
         gc = ['--gc-sections'] if stem == 'module' or stem == 'stage2' and (stage2_menu or stage2_service) else []
-        invoke([tools['ld'], '--no-undefined', *gc, '-T', script, '-Map', out / (stem + '.map'),
-                '-o', out / (stem + '.elf'), *[out / (n + '.o') for n in names]], commands)
+        for suffix, keep in [('', [])] + ([('.audit', ['-q'])] if audited else []):
+            invoke([tools['ld'], '--no-undefined', *gc, *keep, '-T', script, '-Map', out / (stem + suffix + '.map'),
+                    '-o', out / (stem + suffix + '.elf'), *[out / (n + '.o') for n in names]], commands)
         invoke([tools['objcopy'], '-O', 'binary', out / (stem + '.elf'), out / (stem + '.bin')], commands)
         (out / (stem + '.asm')).write_text(invoke([tools['objdump'], '-d', out / (stem + '.elf')], commands))
 
@@ -1256,11 +1205,11 @@ def build(out, stock, boot, mode):
         for name in STAGE2_MENU_MODULES:
             cpp('stage2_' + name, SOURCE / ('target/' + name + '.cpp'), s2_flags)
         link('stage2', STAGE2_WINDOW[0], STAGE2_WINDOW[1], 'xyf_stage2_main',
-             ('stage2_menu',) + tuple('stage2_' + n for n in STAGE2_MENU_MODULES))
+             ('stage2_menu',) + tuple('stage2_' + n for n in STAGE2_MENU_MODULES), audited=True)
         image = (out / 'stage2.bin').read_bytes()
         (out / 'main.xys2').write_bytes(S2.pack(image, STAGE2_WINDOW[0], STAGE2_WINDOW[0], version=1,
                                                build_id='menu-034', min_stage1=2, abi=S2.ABI_MENU))
-        check_stage2_image(out)
+        check_stage2_image(out, relocated=True)
     elif stage2_service:
         # The product's stage 2 (ABI 3): a freestanding image at the window start, packed
         # as main.xys2 (device path /yaffs2/xy-forever/stage2/main.xys2) for this stage 1.
@@ -1278,11 +1227,12 @@ def build(out, stock, boot, mode):
         # layer), linked at the window start, packed as main.xys2.
         cpp('stage2_hello', SOURCE / 'target/stage2_hello.cpp')
         cpp('stage2_gfx', SOURCE / 'target/ui_gfx.cpp')
-        link('stage2', STAGE2_WINDOW[0], STAGE2_WINDOW[1], 'xyf_stage2_main', ('stage2_hello', 'stage2_gfx'))
+        link('stage2', STAGE2_WINDOW[0], STAGE2_WINDOW[1], 'xyf_stage2_main', ('stage2_hello', 'stage2_gfx'),
+             audited=True)
         image = (out / 'stage2.bin').read_bytes()
         (out / 'main.xys2').write_bytes(S2.pack(image, STAGE2_WINDOW[0], STAGE2_WINDOW[0], version=1,
                                                build_id='hello-032'))
-        check_stage2_image(out)
+        check_stage2_image(out, relocated=True)
     embedded = None if mode in NO_EMBEDDED_MODES else inner
     candidate = package(module, embedded, MODULE)
     verify_outer(candidate, module, embedded, MODULE)
