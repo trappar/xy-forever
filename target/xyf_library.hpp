@@ -54,7 +54,7 @@ int32_t find(const Library& library, const char* id);
 // THE rule for whether an entry's content is installed in /yaffs2/content/ (an entry whose
 // content is not installed is listed, "content not installed", but never booted or made the default as it
 // is: a mod firmware halts at boot without its content files, and a catalog naming mods the firmware lacks
-// breaks the OS's menus, decision 018). The content state record says what content/ matches: an assembled
+// breaks the OS's menus). The content state record says what content/ matches: an assembled
 // mod set (info.txt with `generation`) when the record is installed for it, every other entry when it is
 // official (no record), nothing while a switch is unfinished (xyf_content.hpp).
 inline bool content_installed(const content::State& state, const Entry& e) {

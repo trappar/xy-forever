@@ -20,7 +20,7 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   last, the other erased, no encryption), the retained cold state, `cold.cpp` (its policy is extracted; an OS
   start stops both processes: `os`; no image: `halted`) and `key_ui` (the menu loop without screen or keys:
   `home_pump`, tick, link check; SCREEN shows a test pattern, KEY does nothing).
-- **Resets** (`sim/boot.cpp`, record 022): WDOG0 at host calls; a stock reset always lands in the bootloader stand-in. B's probes A
+- **Resets** (`sim/boot.cpp`): WDOG0 at host calls; a stock reset always lands in the bootloader stand-in. B's probes A
   first: on only if A reset <= `boot_a_window_ms` (400; device 0.15-1.4 s) before B or later, else waits (`b_waits_a`).
 - **Not hosted:** the menu's screen and keys, os.ldr itself, CDC ring and USB timing, NAND timing, encryption,
   stage 2; yaffs is a (case-insensitive) host folder.

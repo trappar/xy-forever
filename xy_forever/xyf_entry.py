@@ -41,7 +41,7 @@ def make_entry(ldr, out_root, entry_id, name, version='', kind='custom'):
                 sha256=structure['sha256'], entry=structure['entry'], device_installation=False)
 
 
-# The package manifests (docs/decisions/010-package-model.md, docs/STORAGE.md): the host twin of
+# The package manifests (docs/storage/packages.md, docs/STORAGE.md): the host twin of
 # target/xyf_manifest.hpp. parse_manifest and read_files_sha256 give the same answer as the
 # device readers (tests/test_xyf_manifest.py compares them); the writers emit only what they accept.
 MANIFEST_LIMITS = dict(text=4096, line=255, keys=32, key=31, value=127)

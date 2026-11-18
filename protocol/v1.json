@@ -1,5 +1,5 @@
 {
-  "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md (design: docs/decisions/004-protocol-v1.md). Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
+  "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
     "version": "1.13",
@@ -11,9 +11,9 @@
   },
   "transport": {
     "doc": "How a tool reaches the protocol. `verified` is true for facts read from device sessions or the code, false for facts nobody has checked yet.",
-    "usb_vendor_id": {"value": 9063, "verified": true, "doc": "teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), which the product build (188 and later) falls back to when a boot-time check fails, and which builds before 188 always used"},
+    "usb_vendor_id": {"value": 9063, "verified": true, "doc": "teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), used as fallback when a boot-time check fails"},
     "usb_product_id": {"value": 33, "verified": true, "doc": "the stock OS uses the same id with no serial interface (MTP, vendor class 0xFF; another mode is 0x8021, class 0x01), so a filter on both ids finds only XY Forever's service on the stock identity; a tool must accept this pair and `product_usb_ids`"},
-    "product_usb_ids": {"value": [9063, 33], "verified": true, "doc": "since product build 189-002 the composite (this CDC serial interface, MTP on interface 2) has the stock pair 2367:0021 (`xyf_build.py` MTP_USB_IDS), told apart from the stock OS's MTP and the stock serial fallback by its device class 0xEF (IAD); builds 188 to 189-001 used pid.codes' test pair 1209:0001; not yet seen on the device"},
+    "product_usb_ids": {"value": [9063, 33], "verified": true, "doc": "the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (`xyf_build.py` MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. This identity change still needs device qualification"},
     "usb_product": {"value": "OP_XY Boot", "verified": true, "doc": "the product string as macOS reports it in the session logs (two log lines show `OP-XY Boot`); informational: filter on the ids"},
     "interface_classes": {"value": [2, 10], "verified": true, "doc": "USB CDC: communications (0x02) and data (0x0A); on macOS the port is `/dev/cu.usbmodem*`"},
     "stream": {"value": "frames", "verified": true, "doc": "the CDC data interface carries exactly the frame stream described here, in both directions, with no other framing; the simulator's TCP port carries the same bytes"},
@@ -45,7 +45,7 @@
     {"name": "max_path", "value": 240, "doc": "largest device path, including its NUL"},
     {"name": "max_stage", "value": 7340032, "doc": "largest staged image (7 MiB)"},
     {"name": "max_log_text", "value": 200, "doc": "largest text of a `log` event"},
-    {"name": "idle_reset_ms", "value": 250, "doc": "the device drops a partial frame once its receive buffer has been empty for this long (XY Forever builds 181 and earlier never did)"},
+    {"name": "idle_reset_ms", "value": 250, "doc": "the device drops a partial frame once its receive buffer has been empty for this long"},
     {"name": "max_hello", "value": 200, "doc": "largest `hello` text; a build's text is fixed but for its stage-2 parts (170 bytes in the product build without stage 2), checked when it is compiled"}
   ],
   "rules": [
@@ -53,14 +53,14 @@
     {"name": "one_outstanding", "text": "One request at a time: send a request, then wait for its reply (or the command's timeout) before sending the next. The device handles requests one by one and its receive buffer is small."},
     {"name": "hello_first", "text": "Send `hello` first. Until the device has answered a `hello` since it started, it answers every other request with status `state` and does nothing."},
     {"name": "unsupported_types", "text": "A request type this build does not answer gets status `unsupported`. The `cmds` key of the `hello` reply lists the types a build answers; tools send no others and tell the user to update XY Forever instead. A command with an optional build switch is missing from a build without it; a command whose switch is not optional is in every build that has this service (the firmware does not build without it)."},
-    {"name": "pre_v1", "text": "Devices that send `proto=1` and no `cmds` (XY Forever builds 153 and earlier) speak 1.0 without the `hello` keys added in 1.1: tools treat every 1.0 command as answered (one the build lacks gets status 2) and expect no status above 13."},
+    {"name": "pre_v1", "text": "Devices that send `proto=1` and no `cmds` speak 1.0 without the `hello` keys added in 1.1: tools treat every 1.0 command as answered (one the build lacks gets status 2) and expect no status above 13."},
     {"name": "stale_replies", "text": "Tools drop frames whose seq or type does not match the request they wait for, and reset their frame parser after a timeout: a late reply to an earlier request is then ignored."},
-    {"name": "link_lost", "text": "After a `link` error, later file commands return `link` at once until the device's 60 s lost limit, a restart, or (from build 159) the device's own recovery."},
+    {"name": "link_lost", "text": "After a `link` error, later file commands return `link` at once while the outstanding request remains unresolved. B never resets itself to recover a lost link; a power cycle restores the processors together."},
     {"name": "events", "text": "Events are frames the device sends on its own, with seq 0 and a type of 0x80 or above that is not a reply to the request outstanding. Today there is one, `log` (0xD0). Tools accept events at any time, also while waiting for a reply, and ignore types they do not know."},
-    {"name": "resync", "text": "Both sides decode byte by byte. On a wrong magic, a length above `max_payload` or a CRC mismatch the decoder drops one byte and searches again, so a frame after noise or a damaged frame is still found (the `streams` in the spec file are test cases). A frame cut short (a write that stopped part way, bytes lost on the way) is dropped once no byte has arrived for `idle_reset_ms`, so a request sent after that silence is found. Tools send each frame in one go (no pause of `idle_reset_ms` inside a frame). Builds 181 and earlier never time out a partial frame: it waits until as many bytes as its header announced have arrived, swallowing the start of the next requests; a tool clears that by sending `put_chunk` bytes of 0x00 and then `hello`, up to 5 times, until the `hello` is answered (5 rounds cover the largest frame)."},
+    {"name": "resync", "text": "Both sides decode byte by byte. On a wrong magic, a length above `max_payload` or a CRC mismatch the decoder drops one byte and searches again, so a frame after noise or a damaged frame is still found (the `streams` in the spec file are test cases). A frame cut short (a write that stopped part way, bytes lost on the way) is dropped once no byte has arrived for `idle_reset_ms`, so a request sent after that silence is found. Tools send each frame in one go (no pause of `idle_reset_ms` inside a frame)."},
     {"name": "decoding", "text": "Requests are decoded strictly: exactly the listed fields (the device checks lengths). Replies and events are decoded leniently: a tool ignores bytes after the fields it knows, so a later 1.x can add fields at the end. A reply or event marked `extensible: false` ends in `rest` or `text` and can never gain fields; a later version that needs more adds a command. An error reply holds the fields its `on_error` names, or the status alone. A common status sent as such (`state` before `hello`, `unsupported`, `busy`) always comes alone; a command that lists the same status among its own errors may send its `on_error` fields with it (`file.write_staged` and `boot.install` do for `state`), so decoders accept both."},
     {"name": "optional", "text": "Optional fields come last and are all present or all absent (`optional_fields: all_or_none` on the layout): a `file.read` request is the path alone, or the path, offset and length."},
-    {"name": "text", "text": "Each `cstr` and `text` field states its encoding. `ascii`: bytes 0x01 to 0x7F. `utf-8`: file and folder names, which MTP clients and computers make with any characters. Limits: `max_bytes` counts bytes, not characters; a name never holds NUL, and `/` separates its parts; the device compares names as bytes, without Unicode normalisation (macOS may send decomposed accents, Windows composed ones, so one visible name can be two files). The device checks the `/yaffs2/` start, the parts (no empty, `.` or `..`), the NUL and control bytes (below 0x20, and 0x7F: `refused` since build 155), and passes every other byte to the stock file system unchanged: invalid UTF-8 is not refused."},
+    {"name": "text", "text": "Each `cstr` and `text` field states its encoding. `ascii`: bytes 0x01 to 0x7F. `utf-8`: file and folder names, which MTP clients and computers make with any characters. Limits: `max_bytes` counts bytes, not characters; a name never holds NUL, and `/` separates its parts; the device compares names as bytes, without Unicode normalisation (macOS may send decomposed accents, Windows composed ones, so one visible name can be two files). The device checks the `/yaffs2/` start, the parts (no empty, `.` or `..`), the NUL and control bytes (below 0x20, and 0x7F: `refused`), and passes every other byte to the stock file system unchanged: invalid UTF-8 is not refused."},
     {"name": "lengths", "text": "The device checks request lengths exactly (except where a command says the payload is ignored); a request with the wrong length is refused with the status the command lists."},
     {"name": "versions", "text": "Version 1 never renumbers a type or status, changes a meaning or changes a request layout. A later 1.x may add commands, status codes, events, `hello` keys and fields at the end of a reply: tools ignore reply bytes after the fields they know and `hello` keys they do not know, and show an unknown status by number as a failure. A tool stops when the major version in `proto` is not the one it speaks. Developer commands are outside this promise."},
     {"name": "destructive", "text": "Commands marked destructive change what the OP-XY stores. Each binds its request to what it changes: the data it writes (a SHA-256 the tool sends again as confirmation; `library.set_default`: the id), or, for `file.delete`, `file.rmdir` and `file.mkdir`, the SHA-256 of the path bytes (without the NUL; `file.rename` and `file.copy`: both paths and the NUL between them). Tools must show the user what will be written or removed and ask before sending one."}
@@ -128,7 +128,7 @@
         {"name": "data", "type": "rest", "max_bytes": 4096, "doc": "ranged form: up to `length` bytes, fewer only at the end of the file; whole form: the whole file"}
       ]},
       "errors": ["bad_request", "refused", "link", "storage", "not_found", "range", "too_large"],
-      "doc": "Two forms: with `offset` and `length` (ranged), or the path alone (whole file, `too_large` above 4096 bytes). Use the ranged form: whole-file replies above 1 KiB hung the device in tests. To read any file, read ranges of `max_read` bytes from offset 0 until a reply holds fewer. An offset at or past the end of the file is ok with no data; `range` means the device's seek to the offset failed. A malformed path is `bad_request`; a well-formed one that the device's file policy refuses (a control byte) is `refused` (since build 155; earlier builds passed it to the file system)."
+      "doc": "Two forms: with `offset` and `length` (ranged), or the path alone (whole file, `too_large` above 4096 bytes). Use the ranged form: whole-file replies above 1 KiB hung the device in tests. To read any file, read ranges of `max_read` bytes from offset 0 until a reply holds fewer. An offset at or past the end of the file is ok with no data; `range` means the device's seek to the offset failed. A malformed path is `bad_request`; a well-formed one that the device's file policy refuses (a control byte) is `refused`."
     },
     {
       "type": "0x04", "name": "screen.read", "symbol": "screen", "class": "product", "since": "1.0", "switch": null,
@@ -185,7 +185,7 @@
         {"name": "reserved", "type": "u32", "doc": "unused (0)"}
       ]},
       "errors": ["bad_request", "identity", "link"],
-      "doc": "Runs the storage calls the old MTP code made, from B's main loop (Test 097). The host waits 60 s plus hold_ms. To be renamed when the file engine (M2) replaces it."
+      "doc": "Runs the storage calls the old MTP code made, from B's main loop. The host waits 60 s plus hold_ms. To be renamed when the file engine (M2) replaces it."
     },
     {
       "type": "0x10", "name": "stage.begin", "symbol": "put_begin", "class": "product", "since": "1.0", "switch": null,
@@ -236,7 +236,7 @@
         {"name": "readback_crc", "type": "u32", "doc": "CRC-32 of the file read back"}
       ]},
       "errors": ["bad_request", "refused", "state", "sha", "link", "storage", "not_found", "crc"],
-      "doc": "Creates or replaces the file, reads it back and compares its CRC-32 (`crc` on a difference). A path the device's write check rejects is `refused` (1.0: `bad_request`): since 1.13 the write area is all of `/yaffs2/` except the dev-menu marker `/yaffs2/bootloader.dev` and the stock updater's inbox `/yaffs2/upgrade` (and anything inside it), both any ASCII case and also when reached through a link; also a path with an empty, `.` or `..` part, or, since build 155, a control byte. Before 1.13 the area was `/yaffs2/xy-forever/` and (1.7) `/yaffs2/content/`, no name holding `bootloader`; a request whose length does not match its path is `bad_request`. Needs a complete staging (`state` otherwise). The host tool restarts the device (`device.reboot`) and stages again before each write, the tested path; a second write in the same boot is untested. The host waits 60 s plus 1 s per 20000 bytes. To be replaced by streaming file commands."
+      "doc": "Creates or replaces the file, reads it back and compares its CRC-32 (`crc` on a difference). A path the device's write check rejects is `refused` (1.0: `bad_request`): since 1.13 the write area is all of `/yaffs2/` except the dev-menu marker `/yaffs2/bootloader.dev` and the stock updater's inbox `/yaffs2/upgrade` (and anything inside it), both any ASCII case and also when reached through a link; also a path with an empty, `.` or `..` part, or a control byte. Before 1.13 the area was `/yaffs2/xy-forever/` and (1.7) `/yaffs2/content/`, no name holding `bootloader`; a request whose length does not match its path is `bad_request`. Needs a complete staging (`state` otherwise). The host tool restarts the device (`device.reboot`) and stages again before each write, the tested path; a second write in the same boot is untested. The host waits 60 s plus 1 s per 20000 bytes. To be replaced by streaming file commands."
     },
     {
       "type": "0x14", "name": "file.list", "symbol": "list_dir", "class": "product", "since": "1.5", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
@@ -378,7 +378,7 @@
       ]},
       "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
       "errors": ["link"],
-      "doc": "After the ok reply the menu closes and USB goes away. Any other payload, or a mode above 1, is answered with `link` (not `bad_request`); so is a dry run processor A did not accept. Modes 2 and 3 (\"open the menu with USB\", Test 058, before boot model v3) are not part of v1: the menu is the home loop that answers this protocol, so a tool that is connected is already in the menu."
+      "doc": "After the ok reply the menu closes and USB goes away. Any other payload, or a mode above 1, is answered with `link` (not `bad_request`); so is a dry run processor A did not accept. Modes 2 and 3 (\"open the menu with USB\", outside boot model v3) are not part of v1: the menu is the home loop that answers this protocol, so a tool that is connected is already in the menu."
     },
     {
       "type": "0x32", "name": "service.hold", "symbol": "hold", "class": "product", "since": "1.0", "switch": null,
@@ -573,7 +573,7 @@
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1.13;install=stock-88a06a7e;build=172;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000010000007b001f000303ff00be;dev=1;stage2=0"}, "hex": "58468101ae00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31333b696e7374616c6c3d73746f636b2d38386130366137653b6275696c643d3137323b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030313030303030303762303031663030303330336666303062653b6465763d313b7374616765323d300ca9d072"},
-    {"name": "hello, answered by a pre-v1 device (build 153 and earlier)", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
+    {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,
      "fields": {"path": "/yaffs2/firmware.version", "offset": 0, "length": 1024}, "hex": "58460302210000002f7961666673322f6669726d776172652e76657273696f6e000000000000040000689897a6"},
@@ -636,7 +636,7 @@
      "doc": "`XF` and a byte, then the `stage.data` reply seq 14 in three reads"}
   ],
   "reserved": {
-    "doc": "Numbers decision 004 assigns for later items. Not answered by any build yet: nothing here exists on the wire.",
+    "doc": "Numbers reserved for later items. Not answered by any build yet: nothing here exists on the wire.",
     "statuses": [],
     "renames": [],
     "types": [

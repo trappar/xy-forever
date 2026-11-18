@@ -1,7 +1,7 @@
 #ifndef XYF_FILE_ENGINE_HPP
 #define XYF_FILE_ENGINE_HPP
 #include <stdint.h>
-// The file engine's path policy and request decision (docs/decisions/009-file-engine.md).
+// The file engine's path policy and request decision (docs/architecture/link.md).
 // Pure and freestanding (no heap, no library calls), host-tested.
 //
 // One function decides every path: decide_engine. Processor A applies it to every request it
@@ -108,7 +108,7 @@ struct State { uint32_t on, session, window, fd_known, fd_space, dir_known, dir_
 // requests, then op 8 / op 9, then session, window, handles. argument = word +8
 // (open flags for 0x29, the handle for handle requests, rename_from / rename_to for 0x21). source:
 // the armed rename source (op_rename with this path as its target), else 0. Not exposed (refuse_op): truncate 0x36,
-// set times 0x35, fsync 0x34 / 0x28 (009).
+// set times 0x35, fsync 0x34 / 0x28.
 Action decide_request(uint32_t vtable, uint32_t op, uint32_t argument, uint32_t path_pointer, const char* path,
                       const State& state, const char* source = 0);
 } }

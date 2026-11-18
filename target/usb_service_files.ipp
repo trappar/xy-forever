@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 // READ_FILE: payload "/yaffs2/..." NUL [u32 offset, u32 length]. Reply: u32
 // status, then data: the whole file (<= max_data), or the range (length <=
 // read_range_max; fewer bytes = end of file).

@@ -1,4 +1,4 @@
-"""Mod packages from an open-xy kit (docs/decisions/008, 010, 014; docs/STORAGE.md).
+"""Mod packages from an open-xy kit (docs/storage/mods.md; docs/STORAGE.md).
 
     python3 -m xy_forever.modkit split KIT.json --sdk OPEN_XY [--sdk-commit C] --out DIR
                                  [--sdk-source URL@COMMIT] [--extension-catalog extensions.json]
@@ -50,7 +50,7 @@ EDIT_KEYS = {'kind', 'name', 'address', 'file_offset', 'length', 'before', 'afte
              'profiling', 'events'}
 MACHINE_ID = re.compile(r'[a-z][a-z0-9_]{0,14}')
 EXTENSION_ID = re.compile(r'[a-z][a-z0-9_]{0,31}')
-RELOCATIONS = (6, 7, 10, 13, 18)   # LUIMM16, HUIMM16, PCREL24, PCREL24_JUMP_L, BYTE4_DATA (008)
+RELOCATIONS = (6, 7, 10, 13, 18)   # LUIMM16, HUIMM16, PCREL24, PCREL24_JUMP_L, BYTE4_DATA
 SHN_ABS, SHN_COMMON = 0xfff1, 0xfff2
 STT_FILE = 4
 # Files a mod package may hold (anything else, e.g. edits or definitions, belongs only to the base).

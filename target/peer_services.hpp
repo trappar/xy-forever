@@ -49,7 +49,7 @@ bool request_pool_slot(U32 driver, U32 request);
 // install selects a partition number, so the two cannot be confused.
 bool command_request(U32 operation, U32 argument0, U32 argument1);
 inline U32 command_ack(U32 value) { return ~value; }   // role0's answer to a command
-// Record 016 F1: a request of the stock bootloader's boot read, the one b's bootloader
+// a request of the stock bootloader's boot read, the one b's bootloader
 // sends after b restarted alone: partition select 0x18 (not a command) or sector read 0x11/0x12.
 bool boot_request(U32 vtable, U32 operation, U32 argument0, U32 argument1);
 static const U32 handshake_value = 0x12345678u;        // the stock link open's op-10 argument (889f55fc)
@@ -167,7 +167,7 @@ public:
     // command_ack(value). So busy() ending with one more echoes() means role0's loop
     // has the command, and it acts on it before it polls again.
     Result ask(U32 value);
-    // Record 016 F1 (role0, staged): b restarted alone and its stock bootloader asks.
+    // role0, staged: b restarted alone and its stock bootloader asks.
     // Seen as the stock link open's op-10 header (handshake_value) after b's first command, or as a
     // boot request while image mode has nothing frozen (in RPC mode the serve hook decides and calls
     // follow(), as it knows install mode). From then on poll() answers nothing: it takes b's first
@@ -242,7 +242,7 @@ private:
     bool asking_;                  // role1: the outstanding request is an ask()
     bool filing_;                  // role1: the outstanding request is a file request
     U32 identity_ms_;
-    bool peer_restart_;            // role0: b's bootloader seen (record 016 F1)
+    bool peer_restart_;            // role0: b's bootloader seen
     U32 peer_request_, peer_ms_;   // role0: the boot request held unanswered; when b's restart was seen
     static bool capture_state(Snapshot& snapshot);   // capture() without the identity CRC
     void observe(U32 now);

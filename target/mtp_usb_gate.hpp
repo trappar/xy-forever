@@ -32,7 +32,7 @@ template<CrcAt crc_at> bool first_bad(uint32_t check, const Spans& s, uint32_t* 
 }
 // identity() (usb_spans.hpp) is not run again here: the serial USB service, live since the menu started
 // it, changes five stock words in its spans #65 (0x88a13460) and #86 (0x88a32128) (device census
-// 2026-11-15). The result of the boot-time run is used instead (rule, record 029: the MTP start skips
+// 2026-11-15). The result of the boot-time run is used instead (rule: the MTP start skips
 // that second fingerprint; the power-on one stays, and the two MTP-specific ones stay and pass).
 // The MTP checks still run, in order, before anything is switched; a failed one names its check and
 // span.

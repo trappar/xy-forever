@@ -1,4 +1,4 @@
-"""The native mod linker on the host (native/mod_link.hpp; docs/decisions/008, 014, 019).
+"""The native mod linker on the host (native/mod_link.hpp; docs/storage/mods.md).
 
     python3 -m xy_forever.modlink prove GENERATION_DIR --sdk OPEN_XY [--sdk-commit C]
                                   [--catalog op1_factory.json] [--subsets] [--scratch DIR]

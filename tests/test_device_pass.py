@@ -496,7 +496,7 @@ class DevicePassTest(unittest.TestCase):
         def restarted(argv, timeout, **limits):
             result = real(argv, timeout, **limits)
             if argv[0] == 'mtp-test':
-                dev.crash += 1                                 # a lost link restarted both (F2, decision 016)
+                dev.crash += 1                                 # a lost link restarted both (F2)
             return result
         dev.command = restarted
         with patch.object(dp.host, 'load_build', return_value=(b'image', ['b', 'LDR ok'])):

@@ -531,7 +531,7 @@ extern "C" void xy_forever_key_ui() {
             }
 #endif
 #if defined(XYF_ONE_SESSION)
-            // Record 022: b never resets itself on a lost link. With USB on, the menu
+            // b never resets itself on a lost link. With USB on, the menu
             // stays (USB still answers; commands that need a get link) until a power cycle.
             // Without USB nothing can answer: stop as before.
             const bool lost = xy_forever::xyf_boot::link_lost();

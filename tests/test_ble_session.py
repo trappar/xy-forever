@@ -1,4 +1,4 @@
-"""Bluetooth (Nordic) application update session, decision 017 (1.2.1 bootloader).
+"""Bluetooth (Nordic) application update session (1.2.1 bootloader).
 
 The native session and the Python model run in lockstep against a host model of
 the chip (NordicChip). Synthetic images only; the official images' hashes come
@@ -53,7 +53,7 @@ def version_text(version):
 
 
 class NordicChip:
-    """Host model of the Nordic chip as decision 017 describes it.
+    """Host model of the Nordic chip; native/ble_session.hpp is the contract.
 
     mode: "app" (application running), "loop" (bootloader serial loop),
     "session" (bootloader update session), "off" (System OFF: in-session 0x18

@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 #if defined(XYF_TFW_CHECK)
 // TFW_CHECK: path NUL. Is the file an official package that this device's own keys
 // open (native/tfw_check)? Reads the file through a's read-only server into a window of the file

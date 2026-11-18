@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 #if defined(XYF_CONTENT_SWITCH)
 // ---- The content switch (xyf_content_job.hpp) as the job slot's second kind (job_kind 1) ----------
 // library.set_default or the menu's SHIFT+PLAY on an entry whose content is not installed starts it: the same

@@ -81,7 +81,7 @@ Status ble_header(U32 image_size, const U32* version, U32 crc, U32 device_id,
     if (capacity < 64) return Status::capacity;
     for (U32 i = 0; i < 64; ++i) output[i] = 0;
     big32(output, 0xbeefcafeu); output[4] = 3;
-    // Decision 017 (1.2.1 bootloader): CRC-16 at 9-10, version at 11-18.
+    // 1.2.1 Nordic bootloader: CRC-16 at 9-10, version at 11-18.
     big32(output + 5, image_size); big16(output + 9, crc);
     version_write(output + 11, version); big32(output + 19, 0x1f000u); big32(output + 23, device_id);
     produced = 64;

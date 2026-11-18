@@ -10,25 +10,28 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 `reboot --yes-reboot [--to service|os|menu]`, `set-default ID --yes-write`,
 `put-file LOCAL /yaffs2/xy-forever/PATH --yes-write` (creates missing folders),
 `library-add ID OS_LDR --name --version --yes-write`, `screenshot --out F.png`,
-`continue [--dry-run]`, `boot ID --yes-boot` (1.7: boot a library entry once; leaves XY Forever), `key K`, `hold on|off`, `guard on|off|expiry-test` (processor
-B only since 164),
+`continue [--dry-run]`, `boot ID --yes-boot` (1.7: boot a library entry once; leaves XY Forever), `key K`, `hold
+on|off`, `guard on|off|expiry-test` (processor B only),
 `test-hang`,
 `uninstall STOCK_OS_LDR --yes-uninstall`.
 
-Every write or install is a dry run without its `--yes-*` flag. Writes are limited
-to `/yaffs2/xy-forever/` and (build 168+) `/yaffs2/content/`. Example: creating the report folder before installing
-build 067+ (a storage write, so ask the developer first):
+Commands with `--yes-*` are dry runs without that flag. The file commands below act at once.
+Manual changes may touch `/yaffs2` except the protected marker and updater inbox in SAFETY.md.
+Creating the report folder is a storage write and requires the developer's approval:
 `python3 xyf_host.py put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.
 
-### File commands (build 165+, protocol 1.5)
+### File commands
 
-Absolute device paths under `/yaffs2`; the device refuses `/yaffs2/bootloader.dev`, `/yaffs2`
-itself and anything outside `/yaffs2`. Build 168+: `put`, `rm` and `mkdir` only under
-`/yaffs2/xy-forever/` and `/yaffs2/content/` (no name holding `bootloader`). Changes go through the device's write window (closed
-8 s after the last change). `rm`, `mkdir`, `put`, `mv` and `cp` act at once (no `--yes-*` flag). Build 169+:
-`mv` renames or moves a file or a whole folder within those two folders; the target must not exist.
-Build 170+: `cp` copies on the device (the bytes never cross USB) from any readable file to a new name
-in those folders; `cp -r` copies a folder (the tool lists it and copies file by file).
+Absolute device paths stay under `/yaffs2`; the device refuses changes to `/yaffs2/bootloader.dev`,
+`/yaffs2/upgrade` and everything inside it (any ASCII case, also through links), and refuses removing
+or renaming the root. The protected paths remain readable. Changes share the device's read-write
+window, closed 8 s after the last change. `rm`, `mkdir`, `put`, `mv` and `cp` act at once.
+`mv` renames or moves a file or folder; its target must not exist. `cp` copies on the device
+(the bytes never cross USB); `cp -r` lists a folder and copies file by file to new names.
+
+`guard on`, `guard expiry-test`, `test-hang` and `--guard-test` must not run on the device.
+The guard does not recover hangs; see [SAFETY.md](../SAFETY.md). Never send REBOOT after
+suspecting a lone restart of A.
 
 ```sh
 python3 xyf_host.py ls /yaffs2/xy-forever [--json]       # type, size, name (paged; any folder size)

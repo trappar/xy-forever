@@ -190,7 +190,7 @@ bool guard_armed();      // 109: the watchdog guard is armed (either processor)
 void guard_reload();     // b: reload the guard (if armed) while waiting for a's answer to a command
 void stack_watch(uint32_t painted_begin);   // b's painted stack floor; STATUS reports stack_used live
 // b: the menu has USB on. A lost link then keeps the menu: USB still answers (commands
-// that need a get link) until a power cycle; b never resets itself on it (record 022).
+// that need a get link) until a power cycle; b never resets itself on it.
 bool home_usb();
 // b: what the menu shows of the host (key_ui draw_screen). host_seen: a valid frame arrived within
 // host_seen_ms (the USB mark: steady under scripts/keepalive.sh, one status call about every 2.5 s, and out
@@ -227,7 +227,7 @@ uint32_t job_stop();
 uint32_t page_serving();
 volatile uint32_t& page_mount();
 bool page_busy();
-// Review 024, 7: the menu's Continue, Discard, Boot once and Set default while a job owns the write
+// the menu's Continue, Discard, Boot once and Set default while a job owns the write
 // window: this line instead of the action (null: none runs; injected keys see it too).
 inline const char* menu_busy() { return page_busy() ? "Busy: a build or content change is running." : nullptr; }
 #endif

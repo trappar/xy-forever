@@ -370,7 +370,7 @@ inline void a_close_files(cold_storage::Stock121ReadOnlySession& storage) { stor
 inline void a_close_files(cold_storage::Stock121ReadOnlySession&) {}
 #endif
 #if defined(XYF_ONE_SESSION)
-// Record 016: a follows b. b's bootloader asks (F1), or b went silent past the session's
+// a follows b. b's bootloader asks (F1), or b went silent past the session's
 // idle window: close storage (the read-write window first) and restart, so a's bootloader
 // serves b's next boot (it answers the request the session holds). Never between a request's
 // executor and its answer: only from this loop, between polls.
@@ -821,7 +821,7 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
 #if defined(XYF_ONE_SESSION)
     // b went silent past the idle window after it spoke (hung, restarted without reaching this
     // session, or one of its requests was lost) with nothing frozen or agreed: restart instead of
-    // halting, so a reset b's bootloader gets past its boot-A step (record 022).
+    // halting, so a reset b's bootloader gets past its boot-A step.
     if (status == SessionResult::timeout && session.commands_seen() && !session.agreed() && !session.committed() &&
         !session.image_size()) a_follow(storage);
 #endif
@@ -1210,7 +1210,7 @@ bool link_step() {
     return session && b_step(*session);
 }
 void link_sent() { b_last_send = now(); }
-// Record 021 (a): before any stock reset of b. A request still open is polled until
+// before any stock reset of b. A request still open is polled until
 // answered or close_ms passes (wait: false in the guard interrupt, where nothing completes it);
 // then the session ends: the stock master close 889f562e turns SPI and both DMA channels off and
 // removes the link interrupts, so nothing can complete the request later (its object is the
@@ -1265,7 +1265,7 @@ const char* status() {
     if (!b_lost && b_notice[0]) return b_notice;      // Test 059: why the menu opened
 #endif
 #if defined(XYF_ONE_SESSION)
-    if (b_lost) return "Internal link lost. Turn the OP-XY off and on.";   // record 022: the menu (USB) stays
+    if (b_lost) return "Internal link lost. Turn the OP-XY off and on.";   // the menu (USB) stays
     // 193: the first row says "Starting storage..." (xyf_menu); this line says why it takes long.
     switch (storage_view()) {
     case xyf::menu::storage_checking: return "Checking storage after an unclean shutdown";   // 191: a full scan

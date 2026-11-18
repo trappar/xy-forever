@@ -45,7 +45,7 @@ ROOT_SPELLINGS = ['/yaffs2', '/yaffs2/', '/yaffs2//']
 RAW_LAYER = [(PARTITION_CLASS, 0x18, 1, b''), (PARTITION_CLASS, 0x14, 0, b''), (PARTITION_CLASS, 4, 0, b''),
              (SECTOR_CLASS, 0x11, 0, b''), (SECTOR_CLASS, 0x12, 1, b''), (WRITE_CLASS, 0x15, 0, bytes(512)),
              (WRITE_CLASS, 0x16, 1, bytes(512))]
-# F1 (decision 016): the stock bootloader's boot read (b restarted alone): outside install mode a never answers
+# F1: the stock bootloader's boot read (b restarted alone): outside install mode a never answers
 # these; it holds the request, closes storage and restarts. The rest of the raw layer is refused.
 BOOT_REQUESTS = [(c, o, a, b) for c, o, a, b in RAW_LAYER if (c, o) in ((PARTITION_CLASS, 0x18), (SECTOR_CLASS, 0x11),
                                                                     (SECTOR_CLASS, 0x12))]
@@ -362,9 +362,9 @@ class SimulatorTest(unittest.TestCase):
         self.wait(lambda s: s['listening'], what='menu with USB after the power cycle')
 
     def test_boot_requests_are_held_and_a_restarts(self):
-        """F1 (decision 016): outside install mode each request of the stock bootloader's boot read (b
+        """F1: outside install mode each request of the stock bootloader's boot read (b
         restarted alone) is held unanswered in every A mode: A closes storage and restarts, and its
-        bootloader would answer it. B (here not actually restarted) never restarts itself (record 022): it
+        bootloader would answer it. B (here not actually restarted) never restarts itself: it
         stays at the menu on USB, file commands answer link; a power cycle brings both back. Nothing
         reaches a boot partition."""
         bootpart = self.dir / 'bootpart.bin'
@@ -486,7 +486,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertIn('reached the path buffer whole', (self.dir / 'log.txt').read_text())
 
     def test_write_area_on_a_with_b_bypassed(self):
-        """Review 024, 1, the write rule (since 1.13): in the write entry A itself
+        """The write rule (since 1.13): in the write entry A itself
         refuses open-for-write, mkdir, unlink and rmdir of the marker and in /yaffs2/upgrade (EACCES), also through a
         link (reaches_protected), whatever B checked; everything else on /yaffs2 works (user/, the root)."""
         root = self.dir / 'yaffs2'
@@ -1139,8 +1139,8 @@ class SimulatorTest(unittest.TestCase):
 
     def lost_but_answering(self, dev):
         """B stays in its menu: file commands get link at once, everything else is answered. A, silent
-        past its idle window, has restarted to wait for B (decision 016). Past the lost limit (60 s on the
-        device clock after the request left) B still does not restart (record 022; F2 restarted it): the
+        past its idle window, has restarted to wait for B. Past the lost limit (60 s on the
+        device clock after the request left) B still does not restart (the former F2 restarted it): the
         menu stays on USB, crash restarts 0; a power cycle brings files back."""
         boots = self.sim.status()['b_boots']
         self.sim.advance(40000, step=None)

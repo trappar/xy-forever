@@ -225,7 +225,7 @@ class XyfBootTest(unittest.TestCase):
                      '++commands_seen_;last_command_=last_argument_=value;',
                      'respond(command_ack(value));', 'return Result::waiting;'):
             self.assertIn(text, block)
-        # F1 (decision 016): b's bootloader (b restarted alone) is held before any command or request use.
+        # F1: b's bootloader (b restarted alone) is held before any command or request use.
         follow = poll.index('boot_request(word(queued),byte(queued+5),word(queued+8),word(queued+0x18))')
         self.assertLess(follow, take)
         self.assertLess(poll.index('if(peer_restart_&&staged_&&!agreed_)return Result::waiting;'), take)
@@ -250,7 +250,7 @@ class XyfBootTest(unittest.TestCase):
         owner = body(SOURCE, 'bool role0_menu_boot(U32& bytes, U32& crc) {')
         resets = [m.start() for m in re.finditer(r'usb_service::reset_self\(\);', owner)]
         # a follows b (nothing to answer: not a command handler) through a_follow, which closes
-        # storage first: b's bootloader asks (F1), or the idle window. Record 022: no guard, no alone rule.
+        # storage first: b's bootloader asks (F1), or the idle window. no guard, no alone rule.
         follow = body(SOURCE, 'void a_follow(cold_storage::Stock121ReadOnlySession& storage) {')
         self.assertLess(follow.index('a_close_files(storage);'), follow.index('usb_service::reset_self();'))
         self.assertIn('if (session.follow_now(now())) a_follow(storage);', owner)

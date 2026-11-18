@@ -1,4 +1,4 @@
-"""Native mod linker (native/mod_link.hpp, xy_forever/modlink.py; docs/decisions/008, 014, 019).
+"""Native mod linker (native/mod_link.hpp, xy_forever/modlink.py; docs/storage/mods.md).
 
 A synthetic kit made here from scratch (small ELF objects with every relocation type, alignments,
 services, runtime members, absent machines and extensions) is split into packages by modkit and

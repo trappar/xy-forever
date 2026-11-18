@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 using namespace xy_forever;
 using namespace xy_forever::usb_service;
 namespace P = xyf::usbp;
@@ -103,10 +103,9 @@ void say(const char*, const char*, const char*, const char*);
 char guard_text[3][40] __attribute__((section(".data"))) = {{0}, {0}, {0}};
 bool ram(U32 a) { return !(a & 3u) && ((a >= 0x88000000u && a < 0x8c000000u) || (a >= 0x11800000u && a < 0x11c00000u)); }
 void hex8(char* at, U32 v) { for (U32 i = 0; i != 8; ++i) { const U32 d = v >> (28 - 4 * i) & 0xfu; at[i] = char(d < 10 ? '0' + d : 'a' + d - 10); } }
-// Record 021 (a): b's stock reset did not complete with a link request open (148-160) or
-// with USB on (096-108). Every reset of b closes the link first (xyf_boot::link_close: an open request
-// waited for, at most close_ms, then the master close, then the hardware checked off); USB stops after
-// that. False: the link could not be shown closed, so b does not reset (nor tries again this boot).
+// Before resetting B, close its pending link request (at most close_ms), then the master link;
+// stop USB afterwards. A lone B restart hangs in its stock bootloader until A restarts too.
+// False: the link could not be shown closed, so B does not reset or retry this boot.
 volatile U32 reset_refused __attribute__((section(".data"))) = 0;
 void guard_disarm();
 #if defined(XYF_ONE_SESSION) && defined(XYF_SERVICE_ON_MARKER_ONLY)
@@ -132,7 +131,7 @@ __attribute__((optimize("no-omit-frame-pointer"))) void guard_expired(U32, U32) 
     say("Watchdog fired. Please read me:", a, b, c);
     // 107: a reset with USB running froze b every time (fault reset, test-hang, 105-106's
     // interrupt); every working REBOOT stops USB first (menu_release -> usb_stop). Same here.
-    // a has no USB: it resets as its other restarts do (103). Record 021: b closes the link first (no
+    // a has no USB: it resets as its other restarts do (103). b closes the link first (no
     // wait: nothing completes a request inside this interrupt); refused: no reset, guard off.
     if (byte(0x8807cac4u)) {
         if (!b_link_closed(false)) { guard_disarm(); return; }
@@ -302,7 +301,7 @@ U32 append_block(uint8_t* p, U32 n, const void* data, U32 bytes) {
     for (U32 i = 0; i != bytes; ++i) p[n++] = d[i];
     return n;
 }
-// Decision 025: where key_ui painted B's stack (0: not painted, as in the simulator).
+// where key_ui painted B's stack (0: not painted, as in the simulator).
 volatile U32 stack_paint_begin __attribute__((section(".data"))) = 0;
 void status(uint8_t seq) {
     uint8_t* p = files;

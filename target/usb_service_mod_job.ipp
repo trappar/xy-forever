@@ -1,5 +1,5 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
-// ---- The mod assembly job on B (native/mod_job; decision 019's flow, run on B) ----------------
+// Part of usb_service.cpp, included there at this point: not compiled alone.
+// ---- The mod assembly job on B (native/mod_job's flow, run on B) ----------------
 // mods.apply starts it, B's menu loop runs it in slices of steps (job_pump), job.status reads it and
 // job.cancel stops it. Its state and work region live in XYF_JOB_REGION (cold_layout.hpp: 8 MiB on B, the
 // builder's memory map keeps everything else out). Every file call is one bounded file-client request
@@ -11,8 +11,8 @@
 // (or a lost link) fails the job with error link at once: later calls send nothing. A failed or cancelled
 // job removes its files (mod_job) and folders (wipe_step); debris = 1 when that could not be done. B
 // closes A's write window when the job ends (settle_writes).
-// Before the job's first step B sweeps leftover tmp/job-* folders (js_sweep); after the last, it commits the entry into the library (decision 019
-// section 5, run by B): the target id (job_target, chosen before anything is written) is never the default
+// Before the job's first step B sweeps leftover tmp/job-* folders (js_sweep); after the last, it commits the entry into the library:
+// the target id (job_target, chosen before anything is written) is never the default
 // or the boot-once entry; the old entry is renamed into tmp/job-<id>-old, the new one onto the target, then
 // the old tree is removed. One request (or one list page and one change) per loop pass; A rescans the
 // library when B closes the window (settle_begin, as after a put).
@@ -54,7 +54,7 @@ static_assert(sizeof(JobSlot) <= job_slot_bytes, "the job's state fits before it
 volatile U32 job_state __attribute__((section(".data"))) = job_none;
 volatile U32 job_counter __attribute__((section(".data"))) = 0;
 volatile U32 job_last_target __attribute__((section(".data"))) = 0;   // 1 mods-a, 2 mods-b (this boot)
-volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 0 mods.apply, 1 content switch, 2 config, 4 MTP session (3 reserved: record 004)
+volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 0 mods.apply, 1 content switch, 2 config, 4 MTP session (3 reserved)
 volatile U32 job_usb __attribute__((section(".data"))) = 0;           // the job was started over USB
 JobSlot& slot() { return *reinterpret_cast<JobSlot*>(XYF_JOB_REGION_BEGIN); }
 bool job_running() { return job_state == job_busy; }
@@ -282,7 +282,7 @@ void sweep_begin(Sweep& w, const char* keep) {
     w.removing = w.skip = w.calls = 0;
     join(w.keep, keep, "");
 }
-// Decision 019 section 5 (1): the mods id that is neither the default nor the boot-once entry; of two, the
+// the mods id that is neither the default nor the boot-once entry; of two, the
 // absent one, else the one not written last this boot (B sees no file times), else mods-a. Reads the
 // state slots (as A's scan: a, b, legacy) and stats both folders; s_state when both ids are taken.
 const char* const job_ids_mods[2] = {"mods-a", "mods-b"};

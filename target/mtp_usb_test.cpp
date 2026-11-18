@@ -1,8 +1,8 @@
 // Host test: the MTP function driver (mtp_usb.*) against a thin model of the stock USB stack
-// (record 002): one driver slot, start/stop, descriptors built from the driver tables, the stack's
+//: one driver slot, start/stop, descriptors built from the driver tables, the stack's
 // OUT urb queue (completion when full or on a short packet, a packet parks while no urb is active,
 // recycle only appends, kick / kick_rx resume), IN urbs completing later through urb_sent, and the
-// stop/deconfigure teardown that frees queued OUT urbs without a callback. 186-005 (record 030 (a)): the
+// stop/deconfigure teardown that frees queued OUT urbs without a callback. 186-005: the
 // serial service (CDC) in the slot before and after, stop(arg) closing GP timer 7 only for arg != 0 and a
 // start with the timer closed never returning (candidate 1), progress marks, and freezes injected at
 // every stock step (each in a forked child) leaving the marks file naming that step.
@@ -72,13 +72,13 @@ void drop_out(OutEp& o) {              // 88a095a8: queued and active OUT urbs f
     o.queue.clear(); o.has_parked = false;
 }
 uint32_t stack_urbs;                   // the stack's own one-packet OUT urb per OUT endpoint, armed at every configure
-void flush() {                         // 88a08ab4 -> 88a095a8 per endpoint (record 027): OUT queued+active
+void flush() {                         // 88a08ab4 -> 88a095a8 per endpoint: OUT queued+active
     drop_out(mtp_out); drop_out(ser_out);   // freed without a callback; IN queued+active completed (status 2)
     while (!in_pending.empty()) { Urb* u = in_pending.front(); in_pending.pop_front(); if (slot->ops->urb_sent(u)) release(u); }
 }
 void isr_event(uint32_t code) {
     REQUIRE(!masked);
-    if (code == 0xa || code == 7) flush();   // deconfigure / suspend / disconnect; SET_INTERFACE (027 item 2)
+    if (code == 0xa || code == 7) flush();   // deconfigure / suspend / disconnect; SET_INTERFACE
     if (code == 6) {                   // 88a08b16 -> 88a09612: flush, then arm one 512-byte stack urb
         flush();
         for (OutEp* o : {&mtp_out, &ser_out}) {
@@ -110,7 +110,7 @@ bool deliver(const uint8_t* p, uint32_t n) { return deliver(mtp_out, p, n); }
 // Port
 int reg(Driver* d) { step(op_register); REQUIRE(!masked); if (slot) return -1; slot = d; return 0; }
 void unreg(Driver* d) { step(op_unregister); if (slot == d) slot = 0; }
-void stop(uint32_t arg) {              // 88a34fec (record 030 section 1)
+void stop(uint32_t arg) {              // 88a34fec
     stops.push_back(arg); step(op_stop);
     if (started) {                     // teardown only while the init flag is set
         started = false;
@@ -186,7 +186,7 @@ void service_in() {                    // the controller finishes one IN urb (in
 }
 }
 
-// Enumeration: the descriptors the stack builds from the driver tables (record 031 b2).
+// Enumeration: the descriptors the stack builds from the driver tables.
 static void enumerate() {
     const Driver* d = stack::slot;
     REQUIRE(d && d->n_configs == 1 && d->devinfo->cls == 0xef && d->devinfo->subclass == 2 && d->devinfo->protocol == 1);
@@ -213,7 +213,7 @@ static void enumerate() {
     REQUIRE(a.n_eps == 3 && a.eps[0].address == kBulkIn && a.eps[1].address == kBulkOut && a.eps[2].address == kIntIn);
     REQUIRE(a.eps[0].attributes == 2 && a.eps[1].attributes == 2 && a.eps[2].attributes == 3);
     REQUIRE(a.eps[0].max_packet == 512 && a.eps[1].max_packet == 512);
-    REQUIRE(a.eps[0].dir == 0x80 && a.eps[1].dir == 0 && a.eps[2].dir == 0x80);   // review 029 finding 4
+    REQUIRE(a.eps[0].dir == 0x80 && a.eps[1].dir == 0 && a.eps[2].dir == 0x80);   //
     // One FIFO per endpoint number (88a0c202): no number twice across the interfaces.
     std::set<uint32_t> numbers;
     uint32_t n_eps = 0;
@@ -335,7 +335,7 @@ static void serial() {
     host_serial_out(data, got, 700);                                       // the reader slower than the host
     REQUIRE(got == data && stats().serial_held > held0 && stats().serial_rx >= data.size());
 #else
-    // No kick: a held urb is recycled, but a parked packet is never resumed (as MTP's OUT, record 002).
+    // No kick: a held urb is recycled, but a parked packet is never resumed (as MTP's OUT).
     for (uint32_t off = 0; off < 64 * 1024 && !stack::ser_out.has_parked; off += kMaxPacket)
         stack::deliver(stack::ser_out, data.data() + off, kMaxPacket);
     REQUIRE(stack::ser_out.has_parked && stats().serial_held > held0);
@@ -448,7 +448,7 @@ static void session() {
     REQUIRE(hook_starts == 1 && hooked.size() == mib && std::equal(hooked.begin(), hooked.end(), payload.begin() + 12));
 #else
     // No kick (default): the host bursts; once every urb is full before pump() recycles one, the next
-    // packet parks and nothing resumes it (record 002 section 2): OUT stalls until re-enumeration.
+    // packet parks and nothing resumes it: OUT stalls until re-enumeration.
     uint32_t accepted = 0;
     while (accepted < payload.size() && stack::deliver(payload.data() + accepted, kMaxPacket)) accepted += kMaxPacket;
     for (unsigned i = 0; i != 10000; ++i) { pass(); stack::service_in(); }
@@ -511,7 +511,7 @@ static void session() {
     stack::isr_event(5); stack::isr_event(6); pass();
     REQUIRE(state() == State::configured && stack::live.size() == kAllOut);
     // A flush between taking a urb from the ring and requeueing it (event 0xa while pump() is inside the
-    // sink hook): the old-generation urb is freed, not appended to the stack's queue (review 029 finding 2).
+    // sink hook): the old-generation urb is freed, not appended to the stack's queue.
     host_out(container(1, op_test_sink, 12, {mib}));
     set_sink_hook(flush_inside_pump);
     flushed_inside = false;
@@ -525,7 +525,7 @@ static void session() {
     REQUIRE(state() == State::started && stack::live.empty());
     stack::isr_event(6); pass();
     REQUIRE(state() == State::configured && stack::live.size() == kAllOut);
-    // SET_INTERFACE flushes like SET_CONFIGURATION: re-armed (review 029 finding 3).
+    // SET_INTERFACE flushes like SET_CONFIGURATION: re-armed.
     stack::isr_event(7); pass();
     REQUIRE(state() == State::configured && stack::live.size() == kAllOut - 2);
     // Suspend (0xa flushes), then resume (0xc, no SET_CONFIGURATION): bulk OUT re-armed; a lone 0xc changes nothing.

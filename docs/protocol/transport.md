@@ -9,9 +9,9 @@ How a tool reaches the protocol. `verified` is true for facts read from device s
 
 | Fact | Value | Verified | Notes |
 |---|---|---|---|
-| usb vendor id | `0x2367` | yes | teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), which the product build (188 and later) falls back to when a boot-time check fails, and which builds before 188 always used |
+| usb vendor id | `0x2367` | yes | teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), used as fallback when a boot-time check fails |
 | usb product id | `0x0021` | yes | the stock OS uses the same id with no serial interface (MTP, vendor class 0xFF; another mode is 0x8021, class 0x01), so a filter on both ids finds only XY Forever's service on the stock identity; a tool must accept this pair and `product_usb_ids` |
-| product usb ids | `2367:0021` | yes | since product build 189-002 the composite (this CDC serial interface, MTP on interface 2) has the stock pair 2367:0021 (`xyf_build.py` MTP_USB_IDS), told apart from the stock OS's MTP and the stock serial fallback by its device class 0xEF (IAD); builds 188 to 189-001 used pid.codes' test pair 1209:0001; not yet seen on the device |
+| product usb ids | `2367:0021` | yes | the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (`xyf_build.py` MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. This identity change still needs device qualification |
 | usb product | `OP_XY Boot` | yes | the product string as macOS reports it in the session logs (two log lines show `OP-XY Boot`); informational: filter on the ids |
 | interface classes | `0x02, 0x0a` | yes | USB CDC: communications (0x02) and data (0x0A); on macOS the port is `/dev/cu.usbmodem*` |
 | stream | `frames` | yes | the CDC data interface carries exactly the frame stream described here, in both directions, with no other framing; the simulator's TCP port carries the same bytes |
@@ -53,5 +53,5 @@ Optional fields come last and are all present or all absent. A reply payload is 
 | `max_path` | 240 | largest device path, including its NUL |
 | `max_stage` | 7340032 | largest staged image (7 MiB) |
 | `max_log_text` | 200 | largest text of a `log` event |
-| `idle_reset_ms` | 250 | the device drops a partial frame once its receive buffer has been empty for this long (XY Forever builds 181 and earlier never did) |
+| `idle_reset_ms` | 250 | the device drops a partial frame once its receive buffer has been empty for this long |
 | `max_hello` | 200 | largest `hello` text; a build's text is fixed but for its stage-2 parts (170 bytes in the product build without stage 2), checked when it is compiled |

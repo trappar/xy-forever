@@ -50,8 +50,7 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
 - **Companion update paths:** the stock updater resumes through the SPI marker, which
   XY Forever may not write. The stock backplane handler polls a generic message
   dispatcher with a conditional path to the SPI metadata writer, so skipping the
-  stock orchestrator does not make it SPI-safe. Static findings only: records 003
-  and 015.
+  stock orchestrator does not make it SPI-safe. Static findings only; these paths remain forbidden.
 - **Package contents (official ZIPs, compared offline):** 1.2.1 → 1.2.5 changes the OS,
   backplane (367 rows) and BLE application (244,816 B); all 839 content files
   (125,790,852 B) are identical. 1.1.33 has 829 content files: 825 identical, 3
@@ -60,3 +59,17 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
 - **Host tools:** `../tools/tfw-decrypt/`; `xyf_package.py ZIP [--baseline ZIP]
   [--stage DIR]` reviews and stages a decrypted vendor ZIP (host only, unauthenticated,
   bootloader members never staged).
+
+## Companion recovery hazards (offline findings; programming is forbidden)
+
+A silent keyboard/backplane PSoC can prevent NAND boot and the COM recovery path:
+keys and power management depend on it. Recovery after interrupted programming without
+external hardware is unproven. Do not substitute a stock handler: it can reach SPI metadata.
+
+The Nordic bootloader accepts application data without a signature, platform or rollback
+check; the host-only `native/ble_session` models a response-driven transfer, not a safe
+on-device feature. Never write its bootloader slots. With an invalid application, `0x18`
+inside a DFU session enters System OFF with no proven power-cycle recovery; outside a
+session it jumps to the application without validating it. Stock reinstall is therefore
+not a proven recovery for interrupted BLE programming. None of these findings relaxes
+[SAFETY.md](../SAFETY.md) or authorizes UART probes or programming.

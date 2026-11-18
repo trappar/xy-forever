@@ -1,5 +1,5 @@
 {
-  "$comment": "Conformance suite of the XY Forever serial protocol v1 (spec: protocol/v1.json, decisions 004 and 013). The behaviour a v1 device must show, as data: each case is a named exchange that every client runs the same way (Python: scripts/conformance.py; TypeScript: clients/ts/test/conformance.ts) against the simulator or a device. scripts/protogen.py validates this file against the spec (xy_forever/conformance.py) and the coverage rules; `syntax` documents every keyword. Frame-level vectors stay in v1.json (`streams`) and are referenced by name, not copied.",
+  "$comment": "Conformance suite of the XY Forever serial protocol v1 (spec: protocol/v1.json, protocol/v1.json). The behaviour a v1 device must show, as data: each case is a named exchange that every client runs the same way (Python: scripts/conformance.py; TypeScript: clients/ts/test/conformance.ts) against the simulator or a device. scripts/protogen.py validates this file against the spec (xy_forever/conformance.py) and the coverage rules; `syntax` documents every keyword. Frame-level vectors stay in v1.json (`streams`) and are referenced by name, not copied.",
   "format": "xyf-conformance/1",
   "protocol": "1.13",
   "doc": [
@@ -76,7 +76,7 @@
     "unsigned_tfw": {"hex": "babecafe000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000beefcafe000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000544553470100010001400800010002000100000020010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"}
   },
   "uncovered": [
-    {"status": "busy", "why": "no build sends it yet (reserved for jobs, decision 004)"},
+    {"status": "busy", "why": "no build sends it yet (reserved for jobs)"},
     {"command": "file.read", "status": "link", "why": "processor A must fail to answer: the simulator's link faults make B wait without bound (the stock client), not answer link"},
     {"command": "file.read", "status": "storage", "why": "A's mount must fail; no fault hook makes it"},
     {"command": "file.read", "status": "range", "why": "sent only when A's seek fails; a seek past the end succeeds on yaffs and in the simulator (ok, no data)"},
@@ -153,7 +153,7 @@
        {"each_type": "unlisted", "expect": {"status": "unsupported", "alone": true}}
      ]},
     {"name": "hello/pre-v1", "variant": "pre_v1", "rules": ["pre_v1"], "effects": [], "real_device": true,
-     "doc": "A pre-v1 device (build 153 and earlier) sends proto=1 and no cmds; a client treats every 1.0 command as answered.",
+     "doc": "A pre-v1 device sends proto=1 and no cmds; a client treats every 1.0 command as answered.",
      "steps": [
        {"send": "hello", "fields": {}, "expect": {"status": "ok", "hello": {"prefix": "XYF1", "pre_v1": true, "keys": {"proto": "1", "service": "usb"}, "lacks": ["cmds", "build", "read"]}}},
        {"send": "file.read", "fields": {"path": "/yaffs2/firmware.version", "offset": 0, "length": 1024}, "expect": {"status": "ok", "fields": {"data": {"len_max": {"const": "max_read"}}}}}
@@ -197,7 +197,7 @@
        {"send": "file.read", "payload": {"text": "/yaffs2/firmware.version"}, "expect": {"status": "bad_request", "alone": true}}
      ]},
     {"name": "file.read/refused-control-bytes", "rules": ["text"], "effects": [], "real_device": true,
-     "doc": "A well-formed path with a control byte (below 0x20, or 0x7F) is refused by the device's file policy before anything is sent to storage (build 155 on).",
+     "doc": "A well-formed path with a control byte (below 0x20, or 0x7F) is refused by the device's file policy before anything is sent to storage.",
      "steps": [
        {"send": "file.read", "fields": {"path": "/yaffs2/xy-forever/log/conformance/a\u0001b", "offset": 0, "length": 16}, "expect": {"status": "refused", "alone": true}},
        {"send": "file.read", "fields": {"path": "/yaffs2/firmware.version\u007f", "offset": 0, "length": 16}, "expect": {"status": "refused", "alone": true}},
@@ -220,7 +220,7 @@
        {"send": "file.read", "fields": {"path": "/yaffs2/xy-forever/log/conformance/large.bin"}, "expect": {"status": "too_large", "alone": true}}
      ]},
     {"name": "file.read/whole-above-read", "effects": ["staging", "writes_test_area"], "real_device": false,
-     "why_not": "a reply above the device's read= limit (2.5 KiB) hung the device in Test 038",
+     "why_not": "a reply above the device's read= limit (2.5 KiB) hung the device",
      "doc": "The whole form returns a file of up to max_data bytes in one reply.",
      "given": {"files": [{"path": "/yaffs2/xy-forever/log/conformance/whole.bin", "data": {"blob": "ramp2500"}}]},
      "steps": [
@@ -286,7 +286,7 @@
        {"send": "stage.end", "fields": {}, "expect": {"status": "state", "alone": true}}
      ]},
     {"name": "stage/failed-begin", "effects": ["staging"], "real_device": true,
-     "doc": "A stage.begin that fails forgets the earlier staging too (builds 181 and earlier kept its announcement and hashes and took stage.data from offset 0 into it): stage.data and stage.end are then state.",
+     "doc": "A stage.begin that fails forgets the earlier staging too: stage.data and stage.end are then state.",
      "steps": [
        {"send": "stage.begin", "fields": {"size": {"size": "tiny"}, "crc32": {"crc32": "tiny"}, "sha256": {"sha256": "tiny"}}, "expect": {"status": "ok"}},
        {"send": "stage.data", "fields": {"offset": 0, "data": {"blob": "tiny", "from": 0, "length": 10}}, "expect": {"status": "ok", "fields": {"received": 10}}},
@@ -317,7 +317,7 @@
        {"send": "stage.end", "fields": {}, "expect": {"status": "ok", "alone": true}}
      ]},
     {"name": "stage/max-payload", "effects": ["staging"], "real_device": false,
-     "why_not": "a frame above about 2 KiB overflowed the device's USB receive buffer (Test 034; tools send put_chunk bytes)",
+     "why_not": "a frame above about 2 KiB overflowed the device's USB receive buffer (tools send put_chunk bytes)",
      "doc": "A request of max_payload bytes (stage.data with 4156 data bytes) is one frame the device accepts.",
      "steps": [
        {"send": "stage.begin", "fields": {"size": {"size": "frame_data"}, "crc32": {"crc32": "frame_data"}, "sha256": {"sha256": "frame_data"}}, "expect": {"status": "ok"}},
@@ -345,7 +345,7 @@
        {"send": "file.read", "fields": {"path": "/yaffs2/xy-forever/log/conformance/written.bin", "offset": 1024, "length": 1024}, "expect": {"status": "ok", "fields": {"data": {"blob": "ramp1500", "from": 1024}}}}
      ]},
     {"name": "file.write_staged/refused", "rules": ["destructive"], "effects": ["staging"], "real_device": true,
-     "doc": "1.13: the marker or a path in /yaffs2/upgrade (any case), a folder path (trailing /), a .. part or (build 155 on) a control byte is refused (written 0), checked before the staging and the token; the file stays absent.",
+     "doc": "1.13: the marker or a path in /yaffs2/upgrade (any case), a folder path (trailing /), a .. part or a control byte is refused (written 0), checked before the staging and the token; the file stays absent.",
      "steps": [
        {"stage": {"blob": "tiny"}},
        {"send": "file.write_staged", "fields": {"path": "/yaffs2/upgrade/conformance-refused.txt", "sha256": {"blob": "ff32"}}, "expect": {"status": "refused", "fields": {"written": 0, "readback_crc": 0}}},

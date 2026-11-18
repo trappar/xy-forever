@@ -5,7 +5,7 @@
 
 namespace xyf_core { namespace companion {
 
-// Decision 017 order. uninitialized..answer happen before the bootloader
+// Nordic application update order. uninitialized..answer happen before the bootloader
 // session; start..exit inside it; regreeting..verify after the chip left it.
 enum class BlePhase {
     uninitialized, query, enter, settle, probe, greeting, answer,
@@ -62,7 +62,7 @@ private:
     bool configured_;
 };
 
-// Response-driven Nordic application update, decision 017 (1.2.1 bootloader):
+// Response-driven Nordic application update (1.2.1 bootloader):
 // query mode; from the application send 0xee, read its 0x54, wait for the
 // bootloader; answer its [0xbb] greeting with 0xee (session); start, header,
 // 248-byte chunks, finish; exit with 0x18, answer the next [0xbb] with 0x18,

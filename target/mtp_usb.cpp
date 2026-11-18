@@ -26,12 +26,12 @@ const Ops kOps = {on_event, on_urb_sent, on_recv_urb, on_recv_setup};
 // Class EF/02/01 (miscellaneous, IAD): Windows and Linux bind the CDC pair through the IAD.
 const DevInfo kDevInfo = {0xef, 2, 1, 0, 0x2367u, 0x0021u, kMaker, kProduct, kSerial};
 // dir: 0x80 for IN, as the stock MTP records (driver 88a12534); the stack ORs it into bEndpointAddress
-// (88a0a758..60), review 029 finding 4.
+// (88a0a758..60).
 const EpDesc kEps[3] = {{uint8_t(kBulkIn), 2, uint16_t(kMaxPacket), 0, 0x80, 0},
                         {uint8_t(kBulkOut), 2, uint16_t(kMaxPacket), 0, 0, 0},
                         {uint8_t(kIntIn), 3, 64, 6, 0x80, 0}};
 const AltDesc kAlt = {kIface, 0, 0, 0, 3, kEps};
-// CDC (record 031 b2): notify as the stock CDC's (0x88a134bc: 0x81, interrupt, 16 bytes, interval 0x10);
+// CDC: notify as the stock CDC's (0x88a134bc: 0x81, interrupt, 16 bytes, interval 0x10);
 // data on 0x08 / 0x8b, 512 (endpoint numbers 1, 3, 8, 9, 10, 11 in all: one FIFO per number, 5 and 6 avoided).
 const EpDesc kNotifyEp[1] = {{uint8_t(kNotifyIn), 3, 16, 0x10, 0x80, 0}};
 const EpDesc kDataEps[2] = {{uint8_t(kSerialOut), 2, uint16_t(kMaxPacket), 0, 0, 0},
@@ -64,8 +64,8 @@ volatile uint32_t config_gen = 0;                   // event 6 bumps config_gen;
 volatile bool want_config = false, cancel_flag = false, reset_flag = false;
 volatile uintptr_t g_dev = 0;
 // 186-005: suspended: a 0xa came after a configuration (no bus reset since), so a resume (0xc) re-arms bulk
-// OUT (no SET_CONFIGURATION follows a resume; review 029 finding 3). setup_seen: SET_ADDRESS (5), a
-// configuration or a class request reached the driver (standard requests stay in the stack, record 002).
+// OUT (no SET_CONFIGURATION follows a resume). setup_seen: SET_ADDRESS (5), a
+// configuration or a class request reached the driver (standard requests stay in the stack).
 volatile bool configured_bus = false, suspended = false, setup_seen = false;
 // The serial. OUT: the interrupt copies each received urb into the ring (head: interrupt, or main under mask)
 // and lets the stack re-queue it (return 1, as the stock CDC); with no room, or while any urb is held, it
@@ -124,11 +124,11 @@ uint8_t pattern(uint64_t i) { return uint8_t(i * 7u + (i >> 9)); }
 
 // ---- interrupt side ---------------------------------------------------------------------
 int on_event(uintptr_t dev, uint32_t code) {
-    // Record 027: deconfigure (0xa), stop (0xf) and every SET_CONFIGURATION (6/7) flush all endpoints
+    // deconfigure (0xa), stop (0xf) and every SET_CONFIGURATION (6/7) flush all endpoints
     // (88a08ab4 -> 88a095a8): queued/active OUT urbs freed by the stack, IN completed through urb_sent.
     // Bus reset (4) does not flush: our queued urbs stay with the stack until the next configure frees
     // them. Either way the queued ones are never ours to free; only urbs taken from the ring are.
-    // SET_INTERFACE (7) flushes as 6 does (027 item 2): the same reconfigure (review 029 finding 3).
+    // SET_INTERFACE (7) flushes as 6 does: the same reconfigure.
     // A resume (0xc) after a suspend's 0xa brings no SET_CONFIGURATION: re-arm bulk OUT as one.
     if (code == 6 || code == 7) { g_dev = dev; ++config_gen; want_config = true; configured_bus = true;
                                   suspended = false; setup_seen = true; }
@@ -194,7 +194,7 @@ int on_recv_setup(Urb* ep0) {
 
 // ---- main-loop side ---------------------------------------------------------------------
 void free_ours() {                       // urbs pump() still holds (taken from the ring, not requeued)
-    // Masked throughout (record 027): the stock heap has no lock and the USB interrupt mallocs, and the
+    // Masked throughout: the stock heap has no lock and the USB interrupt mallocs, and the
     // interrupt may push to the ring while we read ring_head. Longest masked section of the driver:
     // at most kRing (8) free_urb calls, each one buffer free and one urb free in the stock heap.
     const uint32_t m = g_port->mask();
@@ -210,17 +210,17 @@ void free_ours() {                       // urbs pump() still holds (taken from 
     rx_off = h_left = 0;
     if (g_handler) g_handler->cancel(true);            // the transfer is gone with the configuration
 }
-void requeue(Urb* urb) {                 // record 002 section 2: recycle (append to the stack's queue)
+void requeue(Urb* urb) {                 // recycle (append to the stack's queue)
     const uint32_t m = g_port->mask();
-    if (config_gen != main_gen) {        // review 029 finding 2: a flush came since this urb was taken; it
+    if (config_gen != main_gen) {        // a flush came since this urb was taken; it
         g_port->free_urb(urb);           // belongs to the old configuration: ours to free, never re-queued
         g_port->unmask(m);
         return;
     }
     g_port->recycle(urb);
 #if XYF_MTP_USB_KICK
-    // Off by default (record 027): the two kicks run interrupt-path stack code from the main loop
-    // (record 007 (a)); admitted separately (MTP_USB_KICK_CALLS), each needs the developer's explicit yes.
+    // Off by default: the two kicks run interrupt-path stack code from the main loop
+    // admitted separately (MTP_USB_KICK_CALLS), each needs the developer's explicit yes.
     Endpoint* ep = reinterpret_cast<Endpoint*>(urb->ep);
     if (ep && !ep->active) { g_port->kick(ep); ++g_stats.kicks;
         const uint32_t n = ep->address & 0x0f;

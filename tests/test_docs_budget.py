@@ -9,10 +9,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / 'docs'
-DECISIONS = DOCS / 'decisions'
 STATUS = DOCS / 'status'            # local and gitignored: only its index is checked, when present
 
-LEAF = 8000                         # a leaf of a tree, a decision record, a decision detail leaf (bytes)
+LEAF = 8000                         # a current-reference leaf (bytes)
 INDEX = 4000                        # the index of a tree (bytes)
 WIDTH = 160                         # longest line in any doc, outside code blocks and table rows
 
@@ -41,7 +40,6 @@ TREES = {
 CAPS = {
     'docs/ARCHITECTURE.md': 25600,
     'docs/HARDWARE.md': 20200,
-    'docs/HISTORY.md': 6600,
     'docs/SAFETY.md': 11500,
     'docs/STORAGE.md': 25000,
     'docs/PROTOCOL.md': 56000,      # generated from protocol/v1.json (scripts/protogen.py)
@@ -50,14 +48,9 @@ CAPS = {
 }
 
 ALLOWED = {
-    'ARCHITECTURE.md', 'GOALS.md', 'GUIDE.md', 'HARDWARE.md', 'HISTORY.md', 'MODS-DEV.md', 'OPERATING.md',
+    'ARCHITECTURE.md', 'GOALS.md', 'GUIDE.md', 'HARDWARE.md', 'MODS-DEV.md', 'OPERATING.md',
     'ORCHESTRATION.md', 'PROTOCOL.md', 'SAFETY.md', 'STATUS.template.md', 'STORAGE.md',
 }
-
-# docs/decisions/: a record NNN-title.md, and its detail leaves NNN-title.<topic>.md, each linked from the record.
-RECORD = re.compile(r'^(\d{3}-[a-z0-9-]+)\.md$')
-DETAIL = re.compile(r'^(\d{3}-[a-z0-9-]+)\.[a-z0-9-]+\.md$')
-
 
 # Files whose relative links must resolve (docs/status/ is local and not checked).
 LINKED = ['AGENTS.md', 'ONBOARDING.md', 'README.md']
@@ -159,18 +152,6 @@ class DocsBudget(unittest.TestCase):
                 for leaf in leaves:
                     self.assertEqual(targets.count(leaf.resolve()), 1, f'{name} must link {rel(leaf)} exactly once')
 
-    def test_decisions(self):
-        for path in sorted(DECISIONS.iterdir()):
-            name = path.name
-            with self.subTest(decision=name):
-                record, detail = RECORD.match(name), DETAIL.match(name)
-                self.assertTrue(record or detail, f'{rel(path)}: name it NNN-title.md or NNN-title.<topic>.md')
-                self.check(path, LEAF)
-                if detail:
-                    parent = DECISIONS / f'{detail.group(1)}.md'
-                    self.assertTrue(parent.is_file(), f'{name} has no record {parent.name}')
-                    self.assertIn(name, [Path(f).name for f, _ in links(parent)], f'{parent.name} must link {name}')
-
     def test_width(self):
         for path in docs():
             long = [n for n, line in prose(path) if len(line) > WIDTH and not line.lstrip().startswith('|')]
@@ -193,7 +174,7 @@ class DocsBudget(unittest.TestCase):
         folders = {ROOT / f for f in TREES.values()}
         extra = []
         for path in DOCS.rglob('*.md'):
-            if path.parent == DECISIONS or path.parent in folders or STATUS in path.parents:
+            if path.parent in folders or STATUS in path.parents:
                 continue
             if path.parent != DOCS or path.name not in ALLOWED:
                 extra.append(rel(path))

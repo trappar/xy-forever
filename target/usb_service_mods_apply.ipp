@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 // MODS_APPLY: base NUL profile NUL generation NUL machines NUL extensions NUL name NUL u32 flags +
 // SHA-256 of every byte before it. Reply: u32 status, u32 job id, u32 missing input. mods_begin is the
 // start itself (the menu's Mods page starts the job through it too).

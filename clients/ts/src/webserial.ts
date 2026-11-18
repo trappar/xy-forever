@@ -1,4 +1,4 @@
-// Web Serial transport (Chrome, Edge, Opera on the desktop; decision 013). Runs in Chrome against
+// Web Serial transport (Chrome, Edge, Opera on the desktop). Runs in Chrome against
 // the simulator through a fake navigator.serial (test/browser/); not yet against an OP-XY.
 // Typed with the few parts of the Web Serial API it uses, so it needs no extra type package.
 import type { Opener, Transport, TransportSink } from './transport.ts';

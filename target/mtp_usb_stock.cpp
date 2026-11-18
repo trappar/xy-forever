@@ -1,5 +1,5 @@
 // mtp_usb::stock_port(), the device binding of the MTP driver's Port to the stock 1.2.1
-// USB function-driver entry points (decision record 002 section 5; USB stack functions only; changing
+// USB function-driver entry points (docs/hardware/usb.md; USB stack functions only; changing
 // the list needs the developer's explicit yes, docs/SAFETY.md). Every main-loop call into the stack runs
 // with interrupts masked (002: the stack's own queue code runs unmasked in the USB interrupt).
 // Built only with XYF_MTP_USB; the builder's MTP_USB_CALLS lists exactly these addresses.
@@ -14,12 +14,12 @@ template<U32 A, class R, class... Args> __attribute__((noinline, noclone)) R sto
 int reg(Driver* d) { return stock<0x88a09d5cu, int>(d); }                       // register driver (slot 0x11803af0)
 void unreg(Driver* d) { stock<0x88a09d44u, void>(d); }                          // unregister (only if the slot holds d)
 void start(U32 flags) { stock<0x88a35044u, void>(flags); }                      // start(0): ours; 0x400: CDC serial
-void stop(U32) { stock<0x88a34fecu, void>(U32(kStopKeepTimer)); }               // record 030 (a): stop(0) only
+void stop(U32) { stock<0x88a34fecu, void>(U32(kStopKeepTimer)); }               // stop(0) only
 Urb* alloc(uintptr_t dev, U32 ep, U32 len) { return stock<0x88a092eeu, Urb*>(dev, ep, len); }   // urb + buffer
 int submit_in(Urb* u) { return stock<0x88a08f24u, int>(u); }                    // queue + start TX (IN only)
 void recycle(Urb* u) { stock<0x88a08f08u, void>(u); }                           // OUT urb back to its queue
 void free_urb(Urb* u) { stock<0x88a09418u, void>(u); }                          // urb + buffer
-#if XYF_MTP_USB_KICK                                                            // off: record 027, needs the developer's yes
+#if XYF_MTP_USB_KICK                                                            // off: needs the developer's yes
 void kick(Endpoint* e) { stock<0x88a094aau, void>(e); }                         // idle endpoint takes its queue head
 void kick_rx(U32 n) {                                                           // service a parked RX packet
     if (!rx_service_allowed(n)) return;                                         // never EP0 or another endpoint

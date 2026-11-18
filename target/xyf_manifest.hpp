@@ -1,7 +1,7 @@
 #ifndef XYF_MANIFEST_HPP
 #define XYF_MANIFEST_HPP
 #include <stdint.h>
-// The package model's manifests (docs/decisions/010-package-model.md;
+// The package model's manifests (docs/storage/packages.md;
 // docs/STORAGE.md): the strict info.txt reader, the streamed files.sha256 reader, the
 // recogniser for dropped files and folders, and the device's exact-match dependency rules.
 // Freestanding like xyf_store: no libc, no allocation, no struct copies, every loop bounded by

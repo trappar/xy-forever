@@ -13,6 +13,14 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
 - **Links:** the boot teardown `88a35540` closes the PSoC and USB-serial links. The
   poll `88a24922(0x88a522c8)` reopens them and greets.
 
+## Knobs (B, through the PSoC)
+
+Pushes are keys 10..13 (`KEncClick1..4`). Turns are frame type `0x45`: three-byte
+`[id][signed int16 big-endian delta]` records, ids 1..4. `knob_input` reads only consumed
+stock queue slots after polling; it sends no PSoC commands. Queue `0x88a522fc`: 128 slots of
+0xfd bytes, read/write indices +0x7e80/+0x7e84. Accept route 0x48, len <=249 divisible by 3;
+reset the cursor on invalid indices/restart. Unknown ids do not control the menu.
+
 ## Display (B)
 
 - Frames go to `0x8c000000` and are posted to the mailbox at `0x11905f30`.
@@ -49,4 +57,17 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   FAILED").
 - **Mount time:** the read-only mount takes 55–63 ms with a checkpoint and 4.5–5.1 s
   on a full scan. A full OS read took 487 ms (about 4.9 MB/s). A dev-menu MTP copy
-  invalidates the checkpoint, so the next boot rescans (16.85 s once, after 087).
+  invalidates the checkpoint, so the next boot rescans (a full scan has taken 16.85 s).
+
+## User storage and recovery hazards
+
+The OS owns `/fat32` on the same eMMC user area as yaffs; its MTP exposes projects,
+samples and presets there. XY Forever and dev-menu MTP expose `/yaffs2`, and cannot
+read those files through the bootloader's FatFs (which serves a RAM disk only).
+XY Forever access to projects/samples is outside the product scope.
+
+The stock OS formats `/fat32` automatically if its mount fails. FAT-sector damage or
+factory reset can therefore destroy projects without a confirmation at the next boot;
+this is not a repair path for user data. The stock dev-menu factory reset erases the
+FAT boot sector as well as `/yaffs2/user`, logs and content packs. No raw FAT write,
+erase or partition-select path is authorized by these observations.

@@ -1,6 +1,6 @@
 // Host adapter for mod assembly: runs the device's freestanding linker, patch
 // and content steps (native/mod_link, mod_patch, mod_content) on the Mac end to end, the way the device
-// job (decision 019) does: every input file whole in RAM (the base and the chosen packages, each
+// job does: every input file whole in RAM (the base and the chosen packages, each
 // checked against its files.sha256, the stock os.ldr, the official catalog), stock loaded into the image
 // buffer, the linker writing the module straight into that buffer at stock_bytes, step() until done.
 // The facts come from the package files only (the base's info.txt through mod_patch::read_profile, its

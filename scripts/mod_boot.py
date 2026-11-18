@@ -15,7 +15,7 @@ Stages:
   assemble   host: native assembly (modpatch: link, patch, content) of --mods (default fm2op);
              patch ok (cold LDR policy, ldr::inspect), start_verify ok, base known, entry
              0x11a00000; library-add's LDR checks; size and SHA-256. The content delta stays in
-             the evidence folder (decision 018: without it the machines play but are not listed).
+             the evidence folder (without it the machines play but are not listed).
              --image FILE uses an image assembled earlier (the LDR checks only).
   upload     ls firmware/: <id> absent (--replace: overwritten), not the default; mkdir; put
              os.ldr; put info.txt (strict manifest: type=firmware name version kind bytes crc32
@@ -65,7 +65,7 @@ CATALOG = paths.CATALOG_121
 PUT_KIB_S, GET_KIB_S = 158.0, 168.0                         # measured in a build 166 device pass
 LOOK_FOR = ('On the OP-XY, look for: the screen goes dark, then the normal OP-XY 1.2.1 start-up and its main screen '
             'within about 15 s; keys and sound work (play a few notes on track 1). The mod machines are in the '
-            'menus only if --content wrote the content delta (decision 018). A black screen, a freeze or a restart '
+            'menus only if --content wrote the content delta. A black screen, a freeze or a restart '
             'loop: the image did not boot.')
 CONTENT = '/yaffs2/content'
 CATALOG_LEAF = 'op1_factory.json'

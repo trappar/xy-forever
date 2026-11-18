@@ -41,5 +41,5 @@ Types 0x05, 0x07, 0x33, 0x34, 0x42, 0x60 are internal test commands, described o
 
 ## Reserved for later versions
 
-Numbers decision 004 assigns for later items. Not answered by any build yet: nothing here exists on the wire. Types 0x60..0x7f: new developer commands (0x60 is
-a test command today). Types 0xd0..0xdf: events, seq 0 (0xD0 is log today; progress 0xD1 with #14).
+Numbers reserved for later items. Not answered by any build yet: nothing here exists on the wire. Types 0x60..0x7f: new developer commands (0x60 is a test
+command today). Types 0xd0..0xdf: events, seq 0 (0xD0 is log today; progress 0xD1 with #14).

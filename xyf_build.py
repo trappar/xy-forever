@@ -120,11 +120,11 @@ SERVER_CALLS = {'889f3910', '889f76ca', '889f6fea', '889f6cd6', '889f285a'}
 # called only from those three functions (check_scoped_calls).
 A_MARKER_CALLS = {'889f3516', '889f3b50', '889f285a'}
 A_MARKER_CALLERS = ('9stat_into', '14restore_marker', '13close_handles')
-# 009 decision 4: yaffs rename on a (889fa834 -> yaffsfs rename 889fa604), the commit step
+# yaffs rename on a (889fa834 -> yaffsfs rename 889fa604), the commit step
 # of #4. Changing this list needs the developer's explicit yes (docs/SAFETY.md). Allowed only through a storage_server::a_side wrapper; not
 # called yet. CRC gate: the server spans.
 A_RENAME_CALLS = {'889fa834'}
-# 009 decision 2: b's own timed file client (file_client.cpp; changing this list needs the
+# B's own timed file client (file_client.cpp; changing this list needs the
 # developer's explicit yes, docs/SAFETY.md) builds its requests with the five stock request builders (path 889f8d22, read
 # 889f6c5c, write 889f8c10, query 889f8e36, readdir 889f88ac; the partition builder 889f87d4 is a
 # peer call) and submits them on its session's slot. Builders only: none of them waits. Scoped:
@@ -143,13 +143,13 @@ REMOVED_CLIENT_CALLS = {'889f7692', '889f3b50', '889f2924', '889f297c', '889f285
 USB_CALLS = {'88a35044', '88a34fec', '88a12c7c', '88a13328', '88a1334a', '88a132f6', '889f65f0', '88a06a7e',
              '889f683c', '889f6a6a', '889f6abe', '889f6b7c', '889f6dca', '11a03518'}
 USB_L1_CALLS = {'11a03518'}             # the stock RCU reset
-# Decision 002 section 5 (USB stack functions only; changing this list needs the developer's
+# USB stack functions only (docs/hardware/usb.md; changing this list needs the developer's
 # explicit yes, docs/SAFETY.md): our MTP function driver (target/mtp_usb_stock.cpp, built only with XYF_MTP_USB,
-# no product mode yet): register 88a09d5c / unregister 88a09d44 the slot driver, allocate urb+buffer
+# product and test modes): register 88a09d5c / unregister 88a09d44 the slot driver, allocate urb+buffer
 # 88a092ee, submit IN 88a08f24, recycle OUT 88a08f08, free 88a09418, kick an idle endpoint 88a094aa,
-# service a parked RX packet 88a0ba08. Start(0)/stop(1) are USB_CALLS. Reach: USB core and the stock
-# heap only (002). 188: in the product's allowed set (below), with spans (re/spans.py) checked at build and boot.
-# Record 027: the two kicks run interrupt-path code from the main loop, so they are admitted
+# service a parked RX packet 88a0ba08. Start/stop are USB_CALLS. Reach: USB core and the stock
+# heap only. The product allows these calls with spans (re/spans.py) checked at build and boot.
+# The two kicks run interrupt-path code from the main loop, so they are admitted
 # separately: 88a094aa (kick: finishes a sent transfer, takes the next from the queue) and 88a0ba08
 # (services reception for an endpoint), MTP only, first in a test build with one device test before
 # the normal build; changing this needs the developer's explicit yes (docs/SAFETY.md).
@@ -205,7 +205,7 @@ def check_mtp_usb(boot, mode, targets):
     return MTP_USB_CALLS | MTP_USB_KICK_CALLS
 # Never reachable from any build: SPI-NOR erase/write, SPI metadata, the
 # updater orchestrator and its bootloader/companion/spiboot handlers.
-# Decision 003: the stock .tfw pipeline (handle_tfw 88a25d28, extract-all 88a25c6c, its
+# The stock .tfw pipeline (handle_tfw 88a25d28, extract-all 88a25c6c, its
 # load/run steps 88a2901a/88a28cfc/88a27d00, file decrypt 88a196cc/88a18cae, verify driver
 # 88a1871c), the update-mode RAM disk 88a14820, the SPI metadata parse 11a05340 and gate setter
 # 88a34ed0, the generic dispatcher 88a21456 (it reaches the metadata writer); and the two boot-ROM
@@ -219,7 +219,7 @@ FORBIDDEN_TARGETS = {'11a062c6', '11a06376', '11a06470', '11a05312', '88a2863c',
                      '88a14820', '11a05340', '88a21456', '88a34ed0', '0400004c', '04000050',
                      # the stock role-1 RPC (submit, then spin on the done byte with no bound)
                      '889f869e', '889f7b12'}
-# Boot ROM (BF707, 0x04000000..): the only entries a module may load or call (decision 003):
+# Boot ROM (BF707, 0x04000000..): the only entries a module may load or call:
 # memcpy 040201c4, and, only with tfw.check, the OTP read 04000048 and init 04000054 of the stock
 # OTP wrappers 11a05a1e / 11a05a32 (the two ROM memory-read functions; they read the device's key
 # from OTP). Changing this list needs the developer's explicit yes (docs/SAFETY.md).
@@ -279,7 +279,7 @@ STAGE2_WINDOW = (0x8ab90000, 0x8ac00000)
 LEGACY_STORAGE_SYMBOLS = ('open_directory', 'next_directory', 'close_directory', 'open_file',
                           'Stock121ReadOnlySession5begin', 'storage_shutdown')
 STAGE2_ENTER = 'xyf_stage2_enter'     # the one register jump stage 1 may make (target/xyf_stage2_enter.s)
-# The product's stage 2 (ABI 3, target/stage2_main.cpp; decision 020): its version, and the first stage-1
+# The product's stage 2 (ABI 3, target/stage2_main.cpp): its version, and the first stage-1
 # build with the services it needs (min_stage1; services only grow).
 STAGE2_SERVICE_VERSION, STAGE2_SERVICE_MIN_STAGE1 = 1, 167
 GC_MODES = (*PRODUCT_MODES, 'xyf-stage2', 'xyf-stage2-menu')
@@ -608,7 +608,7 @@ def check_stage2_image(out):
     return info
 
 
-SOURCE_SUFFIXES = ('.cpp', '.hpp', '.ipp', '.inc', '.s', '.py')   # .ipp: a file's included part (decision 034)
+SOURCE_SUFFIXES = ('.cpp', '.hpp', '.ipp', '.inc', '.s', '.py')   # .ipp: a file's included part
 
 
 def own_sources():

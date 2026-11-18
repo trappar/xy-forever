@@ -58,8 +58,8 @@ Errors: `bad_request`. Tool timeout: 5 s. Since 1.0.
 ### 0x31 `menu.continue`
 
 Leave the menu and boot the default firmware. After the ok reply the menu closes and USB goes away. Any other payload, or a mode above 1, is answered with
-`link` (not `bad_request`); so is a dry run processor A did not accept. Modes 2 and 3 ("open the menu with USB", Test 058, before boot model v3) are not part of
-v1: the menu is the home loop that answers this protocol, so a tool that is connected is already in the menu.
+`link` (not `bad_request`); so is a dry run processor A did not accept. Modes 2 and 3 ("open the menu with USB", outside boot model v3) are not part of v1: the
+menu is the home loop that answers this protocol, so a tool that is connected is already in the menu.
 
 | Request field (0 to 4 bytes) | Type | Meaning |
 |---|---|---|

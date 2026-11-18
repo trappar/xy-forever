@@ -123,7 +123,7 @@ extern "C" const xyf_core::Byte xy_forever_trace_expected[sizeof(xy_forever::sto
 };
 
 // key_ui.cpp (B's menu): not hosted. The loop below is its menu loop without the screen
-// and the PSoC keys: home_pump, then the session tick, then the link check (record 016 F2: a lost link
+// and the PSoC keys: home_pump, then the session tick, then the link check (a lost link
 // restarts B, at most 3 times in a row; refused: with USB on, a lost link keeps the menu and
 // USB still answers).
 namespace {
@@ -417,7 +417,7 @@ extern "C" void xy_forever_key_ui() {
         }
         usb_view();                                                        // as key_ui.cpp (before its redraw)
         if (xyf_boot::link_lost() && !usb_service::home_usb()) { xyf_sim::log("menu: storage link lost"); break; }
-        if (xyf_boot::link_lost() && !noted) {             // record 022: B never resets itself on it
+        if (xyf_boot::link_lost() && !noted) {             // B never resets itself on it
             noted = true; xyf_sim::log("menu: storage link lost: %s (USB still answers)", xyf_boot::status());
         }
         xyf_sim::cdc_wait(1);

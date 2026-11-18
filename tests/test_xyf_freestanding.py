@@ -24,7 +24,7 @@ LARGE_FRAMES = ('xyf_core::tfw::Archive::open(',)
 # The signature check: its whole call tree, and the bound on its stack.
 SIGNATURE = ('tfw_signature', 'p224', 'hash')
 SIGNATURE_STACK = 3072
-# Mod assembly's patch and content steps (decision 019): no calls outside xyf_core at all
+# Mod assembly's patch and content steps: no calls outside xyf_core at all
 # (no memcpy, memset or division helpers), no BSS, no recursion.
 MOD_ASSEMBLY = ('mod_patch', 'mod_content')
 MOD_ASSEMBLY_TREE = MOD_ASSEMBLY + ('hash', 'ldr')

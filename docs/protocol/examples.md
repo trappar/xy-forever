@@ -15,9 +15,9 @@ oversized length; a frame cut short, then a frame; frames split across reads; an
   38 38 61 30 36 61 37 65 3b 62 75 69 6c 64 3d 31 37 32 3b 6d 6f 64 65 3d 70 72 6f 64 75 63 74 3b 70 61 79 6c 6f 61 64 3d 34 31 36 30 3b 72 65 61 64 3d 31 30 32
   34 3b 73 74 61 67 65 3d 37 33 34 30 30 33 32 3b 63 6d 64 73 3d 30 30 30 30 30 30 30 31 30 30 30 30 30 30 37 62 30 30 31 66 30 30 30 33 30 33 66 66 30 30 62 65
   3b 64 65 76 3d 31 3b 73 74 61 67 65 32 3d 30 0c a9 d0 72`
-- Hello, answered by a pre-v1 device (build 153 and earlier) (`hello` reply, seq 1, status `ok`); `info` =
-  "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e": `58 46 81 01 3a 00 00 00 00 00 00 00 58 59 46 31 3b 73 65 72 76 69 63 65 3d 75 73 62 3b 72 6f 6c 65
-  3d 62 3b 70 72 6f 74 6f 3d 31 3b 69 6e 73 74 61 6c 6c 3d 73 74 6f 63 6b 2d 38 38 61 30 36 61 37 65 26 35 15 c5`
+- Hello, answered by a pre-v1 device (`hello` reply, seq 1, status `ok`); `info` = "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e": `58 46 81 01 3a 00
+  00 00 00 00 00 00 58 59 46 31 3b 73 65 72 76 69 63 65 3d 75 73 62 3b 72 6f 6c 65 3d 62 3b 70 72 6f 74 6f 3d 31 3b 69 6e 73 74 61 6c 6c 3d 73 74 6f 63 6b 2d 38
+  38 61 30 36 61 37 65 26 35 15 c5`
 - Read 1024 bytes from offset 0 (`file.read` request, seq 2); `path` = "/yaffs2/firmware.version", `offset` = 0, `length` = 1024: `58 46 03 02 21 00 00 00 2f 79
   61 66 66 73 32 2f 66 69 72 6d 77 61 72 65 2e 76 65 72 73 69 6f 6e 00 00 00 00 00 00 04 00 00 68 98 97 a6`
 - File.read, file not found (`file.read` reply, seq 2, status `not_found`): `58 46 83 02 04 00 00 00 08 00 00 00 a0 85 65 1d`

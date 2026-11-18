@@ -1,4 +1,4 @@
-"""Mod assembly on the host, end to end (docs/decisions/008, 014, 010, 018, 019;
+"""Mod assembly on the host, end to end (docs/storage/mods-assembly.md;
 docs/STORAGE.md).
 
 Runs the device's freestanding linker, patch and content steps (native/mod_link, mod_patch,
@@ -17,7 +17,7 @@ every content file and the link's numbers must be identical, the content list (f
 name exactly buildAssets's files, the patch must pass its own checks including the cold LDR policy
 (ldr::inspect with target/cold.cpp's ranges) and start_verify must accept the image read back from
 disk; a selection core.mjs refuses must be refused alike by the native linker. The adapter runs the
-steps as the device job will (decision 019): whole files in RAM, each checked against its
+steps as the device job will: whole files in RAM, each checked against its
 files.sha256, stock in the image buffer, the module linked straight into it at stock_bytes. Every
 fact comes from the package files (the base's info.txt and identities.txt included); the job names
 only the selection and the files. Host only: no device, no network. Outputs go under the private root.

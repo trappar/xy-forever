@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 // JOB_STATUS: u32 job (0: the running or last). Reply: u32 status, then the job_status fields.
 void job_status(uint8_t seq, const uint8_t* payload, U32 length) {
     JobSlot& s = slot();

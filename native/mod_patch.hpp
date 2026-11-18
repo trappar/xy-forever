@@ -3,7 +3,7 @@
 #include "hash.hpp"
 #include "mod_link.hpp"
 namespace xyf_core { namespace mod_patch {
-// The patch step of mod assembly (decisions 008, 014, 019): a freestanding port of
+// The patch step of mod assembly (docs/storage/mods-assembly.md): a freestanding port of
 // open-xy builder/core.mjs patchFirmware, in place on the caller's image buffer.
 //   image[0, stock_bytes)            stock os.ldr, loaded by the caller (SHA-256 pinned: proven after
 //                                    assembly, by the restore check below; a difference is Status::stock)

@@ -1,4 +1,4 @@
-"""A source file as one text with its included parts inlined (decision 034).
+"""A source file as one text with its included parts inlined.
 
 target/usb_service.cpp includes its parts (usb_service_*.ipp) where their text was. Tests that read
 the file as text read unit_text(path): the same text as before the split, whatever the parts are.

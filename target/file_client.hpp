@@ -1,7 +1,7 @@
 #ifndef XYF_FILE_CLIENT_HPP
 #define XYF_FILE_CLIENT_HPP
 #include <stdint.h>
-// Processor B's file client (docs/decisions/009-file-engine.md): B's own requests to
+// Processor B's file client (docs/architecture/link.md): B's own requests to
 // A's file engine, each one ending within a time limit. It replaced B's 12 stock posix client
 // calls, which submit through 889f869e -> 889f7b12 and spin on the request's done byte with no
 // limit (a silent A froze B for good; the builder now forbids both entries).

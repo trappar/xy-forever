@@ -273,7 +273,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assemble_and_compare(['alpha'])                                # the next job works
 
     def test_cancel_with_a_large_output_answers_throughout(self):
-        """Review 024, 6: a cancelled job whose output holds a large tree: the removal runs one step per
+        """a cancelled job whose output holds a large tree: the removal runs one step per
         loop pass ("cleaning up", storage commands busy); job.cancel, HELLO and status answer throughout (no
         answer takes a quarter of the removal), and the output is gone at the end."""
         self.sim.set('a_slow_ms', 4)
@@ -467,7 +467,7 @@ class SyntheticJob(Base, unittest.TestCase):
             time.sleep(0.05)
 
     def test_default_and_once_mods_entries_are_kept(self):
-        """019 section 5: a mods entry that is the default (or the boot-once entry) is never replaced; with both
+        """A mods entry that is the default (or the boot-once entry) is never replaced; with both
         ids taken mods.apply is refused (state) and writes nothing."""
         self.assemble_and_compare(['alpha'])                                # mods-a
         self.slot(default='mods-a')
@@ -489,7 +489,7 @@ class SyntheticJob(Base, unittest.TestCase):
             self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
 
     def test_menu_actions_wait_for_the_job(self):
-        """Review 024, 7: Continue, Boot once and Set default pressed while a build runs show the busy line
+        """Continue, Boot once and Set default pressed while a build runs show the busy line
         and do nothing; the build completes."""
         play, plus, shift = 51, 54, 55
         self.sim.set('a_slow_ms', 4)
@@ -508,7 +508,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertNotIn('menu: continue', (self.dir / 'log.txt').read_text())
 
     def test_default_set_before_the_commit_keeps_the_entry(self):
-        """Review 024, 4: the target (mods-b) becomes the default while the build runs: the commit
+        """the target (mods-b) becomes the default while the build runs: the commit
         re-reads the state slots and fails cleanly; mods-b, the default, stays as it was."""
         self.two_entries(['alpha'])
         old = tree(self.entry('mods-b'))
@@ -650,7 +650,7 @@ class SyntheticJob(Base, unittest.TestCase):
         print('\nsweep cap: %d of 700 files left; job %d steps' % (left, f['steps']), file=sys.stderr)
 
     def test_sweep_never_follows_a_link(self):
-        """Review 024, note 5: a symlink inside a leftover tmp/job-* folder (to a folder outside tmp/) is
+        """a symlink inside a leftover tmp/job-* folder (to a folder outside tmp/) is
         removed itself; the sweep never descends through it."""
         outside = self.root / 'user/keep'
         outside.mkdir(parents=True)

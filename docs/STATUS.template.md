@@ -4,7 +4,7 @@ Your own device and session state: the index of your local, gitignored `docs/sta
 `docs/STATUS.template.md` here); nobody else reads it. It holds only what is true now, under 6 KB (checked by
 `tests/test_docs_budget.py`); anything longer is a leaf file in this folder, one line under "Leaves". Keep it
 current whenever a build is installed or tested, or the device state changes. Work runs from the GitHub
-issues (`scripts/plan.py`) under [ORCHESTRATION.md](../ORCHESTRATION.md); lessons: [HISTORY.md](../HISTORY.md).
+issues (`scripts/plan.py`) under [ORCHESTRATION.md](../ORCHESTRATION.md); lessons: [SAFETY.md](../SAFETY.md).
 
 Last updated:
 

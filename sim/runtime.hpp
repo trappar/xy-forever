@@ -55,7 +55,7 @@ struct Shared {
     // 1 the ROM answers nothing, 2 the public key is off the curve, 3 it is another valid key (the
     // P-224 generator), 4 the AES key is wrong. Counted: ROM inits and reads.
     std::atomic<int32_t> otp_fail, otp_inits, otp_reads;
-    // Decision record 016 (sim/boot.cpp): per processor, 1 while its stock bootloader
+    // sim/boot.cpp: per processor, 1 while its stock bootloader
     // stand-in runs (after a reset, until it boots XY Forever); WDOG0 expiries seen; control
     // "expire a|b" (the guard counts out at the processor's next host call, if armed). The
     // board's reset delays (ms from a reset until the processor's bootloader is on the link) and
@@ -74,7 +74,7 @@ struct Shared {
     // Test hook (set cut_body N): the next reply body longer than N bytes reaches B cut after N bytes,
     // and then nothing more from A reaches B (the link dropped mid-body) until B restarts.
     std::atomic<int32_t> b_queue, b_queued, cut_body;
-    // Decision record 022 §1, §6: a reset of B lands in B's bootloader, which probes A
+    // a reset of B lands in B's bootloader, which probes A
     // (one byte) before the display, USB or the link: a freshly reset A (boot ROM, 0xff) gets its
     // bootloader pushed and both go on; an A already running anything (its bootloader with the slave
     // open, XY Forever) makes B wait with no bound until A resets. The board decides at B's reset:

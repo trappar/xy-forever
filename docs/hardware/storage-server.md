@@ -19,7 +19,7 @@ data body, and B waits for it without a timeout**, so a refusal must have the sa
 There is no rename and no format request. A's slave interrupt answers the link handshake
 (ops 1 and 10) by itself in every mode, so a B that restarts alone talks to the old A.
 
-- **Restart order (stock boot, read from the listing; record 022):**
+- **Restart order (stock boot, read from the listing):**
   - B boots A, not the reverse: early in B's bootloader (`88a1d34c`, before the display reset,
     USB and the link) B sends A `0x03`. A fresh A (boot ROM, `0xff`) gets the bootloader pushed
     and both go on; a running A (its bootloader or XY Forever) makes B wait for PA6 with no
@@ -32,14 +32,13 @@ There is no rename and no format request. A's slave interrupt answers the link h
     makes the function return that error as the length, and B then "boots" whatever is
     at `0x8a000000`. A sector read (op `0x11`) that fails is retried forever.
   - B's request call (`889f869e` -> `889f7b12`) waits for the done flag with no timeout.
-    XY Forever never calls it (forbidden since 158): B's file client builds the same requests
+    XY Forever never calls it: B's file client builds the same requests
     with the stock builders and polls the done flag itself, with a bound (`file_client.cpp`).
     A request that the running A took and never answered is answered by A's bootloader
-    after A restarts (Test 108 recovered that way). So in any mode A must never ANSWER a
-    restarted B's boot requests: leave them and restart A. Since build 159 (record
-    016) it holds in every mode: B's link open (op 10 `0x12345678`) after its first command,
+    after A restarts. So in any mode A must never ANSWER a
+    restarted B's boot requests: leave them and restart A. In every mode, B's link open (op 10 `0x12345678`) after its first command,
     or a boot request (select, sector read) with nothing frozen outside install mode, is held
-    unanswered, A closes storage and restarts; a B that loses A at the menu stays there (164).
+    unanswered, A closes storage and restarts; a B that loses A at the menu stays there.
   - The stock select `88a08710` uses only the argument's low 3 bits and passes them with
     `0xb3` to `88a0826c` [I: eMMC EXT_CSD 179, partition access]: a command request (`'CM'`
     tag) that reaches A's bootloader selects partition `value & 7`. B's command values keep

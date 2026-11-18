@@ -1,6 +1,6 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 #if defined(XYF_MTP_USB)
-// ---- Serial + MTP as one composite device (record 031 b2) ------------------------------------------
+// ---- Serial + MTP as one composite device ------------------------------------------
 // USB is started once per boot and never stopped or restarted inside it (serial and MTP both always on).
 // 188: the product (no flag, no trial, no fallback restart: a device used without a computer never sees a
 // HELLO): every boot whose boot-time USB check passed (menu_start_usb) starts the composite in the menu loop's
@@ -8,7 +8,7 @@
 // trial below (the flag, the marks, the result file, the 20 s fallback, diag op 0) is the test mode's only
 // (xyf-mtp-usb, XYF_MTP_USB_TRIAL).
 // Trial with a cheap net: diag.mtp_usb (0x62, dev, test only, not in the published spec) op 0 writes the flag
-// file and does the product's full restart (home_reboot(reboot_menu): both processors, record 022). Every boot
+// file and does the product's full restart (home_reboot(reboot_menu): both processors). Every boot
 // of this build defers its USB start to the first pass of the menu loop (usb_begin: B reaches files only
 // through A, which serves by then): one bounded check of A (command item), a stat of the flag; found: deleted
 // FIRST (A's write entry, unlink), then ours registered and start(0x200). No flag, A silent, the delete
@@ -23,7 +23,7 @@
 namespace mu = xyf::mtp_usb;
 const uint8_t t_mtp_usb = 0x62;
 const U32 composite_hello_ms = 20000, mtp_seen_ms = 5000;
-const U32 usb_driver_slot = 0x11803af0u;                                // record 002: the one function-driver slot
+const U32 usb_driver_slot = 0x11803af0u;                                // the one function-driver slot
 const char flag_path[] = "/yaffs2/xy-forever/tmp/composite.flag";
 enum CompositeState : U32 { cs_none, cs_deferred, cs_stock, cs_composite, cs_fallback };
 enum FlagCheck : U32 { flag_unchecked, flag_absent, flag_found, flag_a_silent };
@@ -50,7 +50,7 @@ uint32_t crc_at(uint32_t address, uint32_t length) {                      // sto
     return xyf::crc::update_volatile(0, reinterpret_cast<const volatile uint8_t*>(address), length);
 }
 // Not identity() again (the live serial service changes five words of usb_spans.hpp, #65, #86).
-// Rule (record 029): the MTP start skips the second identity() (mtp_usb_gate.hpp). The boot-time identity() must have
+// Rule: the MTP start skips the second identity() (mtp_usb_gate.hpp). The boot-time identity() must have
 // passed (menu_start_usb: usb_off 0, menu_usb 2). Then engine_identity()'s spans (mtp_spans.hpp), then the
 // driver's own (mtp_usb_spans.hpp, TX start), all on B. In usb_begin: before USB starts.
 gate::Check probe_spans() {
@@ -58,7 +58,7 @@ gate::Check probe_spans() {
     const gate::Spans spans = {xyf::mtp_usb_spans::table, xyf::mtp_usb_spans::count};
     return gate::refusal<crc_at>(menu_usb == 2u && !usb_off, engine, spans, probe_refusal);
 }
-// ---- progress marks that survive a power cycle (record 030 section 5) ----------------------------------------
+// ---- progress marks that survive a power cycle ----------------------------------------
 // mu::mark() calls probe_mark before each step that could freeze. Each mark appends one line to marks_text
 // ("NN MS NAME": step, B's clock in ms, name) and rewrites the whole file through A's file engine: open "wb",
 // one write (<= 1 KiB, one chunk), close: three requests, each bounded by the file client (change_ms). With A's
@@ -126,7 +126,7 @@ void marks_end() { mu::set_mark_hook(0); }                              // write
 // The composite's result as text (everything op 1 reports), one line per part, words as 8 hex digits:
 // "probe" probe_words words, "driver" the driver words, "sha256" the last sink's digest, "refusal" gate::record_words.
 const char result_path[] = "/yaffs2/xy-forever/tmp/mtp-probe-result.txt";
-const U32 stack_attached = 0x88a137a0u;      // record 031: 88a13714 sets it to 1 only when attach 88a08d52 returned 0
+const U32 stack_attached = 0x88a137a0u;      // 88a13714 sets it to 1 only when attach 88a08d52 returned 0
 const U32 n_driver_words = 32;
 void driver_words(U32* w) {
     const mu::Stats& st = mu::stats();
@@ -222,7 +222,7 @@ void usb_begin() {
 }
 // No valid HELLO within composite_hello_ms: leave (stop(0), unregister, frees), the last mark, the result file,
 // A's window closed (op 9, as before a REBOOT), then the REBOOT from home (A resets on the reboot item, B stops
-// USB and resets 100 ms later: both processors, record 022; never B alone). The next boot: no flag, stock serial.
+// USB and resets 100 ms later: both processors; never B alone). The next boot: no flag, stock serial.
 #if defined(XYF_MTP_USB_TRIAL)
 void fallback_restart() {
     probe[p_state] = cs_fallback;
@@ -298,7 +298,7 @@ U32 trial_start() {
     if (true) return P::s_unsupported;                                   // 188: the product has no trial
 #endif
     if (job_running() || closing XYF_OR_MTP_BUSY || (put_expected && result.put_received != put_expected)) return P::s_busy;
-    if (guard_on || !menu_usb || composite_on) return P::s_state;       // record 022: nothing restarts B alone
+    if (guard_on || !menu_usb || composite_on) return P::s_state;       // nothing restarts B alone
     if (probe_spans()) return P::s_identity;
     return file_put(flag_path, "T2a\n", 4);
 }

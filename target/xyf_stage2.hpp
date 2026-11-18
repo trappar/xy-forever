@@ -1,7 +1,7 @@
 #ifndef XYF_STAGE2_HPP
 #define XYF_STAGE2_HPP
 #include <stdint.h>
-// Stage-2 ("main XY Forever") file format (docs/decisions/020-code-space-and-stage2.md).
+// Stage-2 ("main XY Forever") file format (docs/storage/packages.md).
 // A 96-byte header followed by a raw module image that stage 1 copies to
 // load_address and calls at entry (with a versioned ABI struct). Stage 1
 // accepts it only if every check below passes; otherwise it keeps its own

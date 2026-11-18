@@ -14,7 +14,11 @@ labels: kind:build
 
 ## Notes
 
-<!-- Optional: related issues, decision records, branches, out of scope. Link instead of copying detail. -->
+<!-- Optional: related issues, current reference docs, branches, out of scope. Link instead of copying detail. -->
+
+<!-- Research findings, evidence, decisions and follow-ups live in this issue.
+Do not generate repository research reports, numbered decision records or ADRs.
+Promote only necessary current facts to their owning reference docs or code comments. -->
 
 <!--
 Definition of done (every task):

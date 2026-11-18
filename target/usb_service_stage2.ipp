@@ -1,4 +1,4 @@
-// Part of usb_service.cpp, included there at this point: not compiled alone (decision 034).
+// Part of usb_service.cpp, included there at this point: not compiled alone.
 // ---- Stage 2 (target/xyf_stage2.hpp ABI 3; docs/STORAGE.md) ------------------------
 // At the first HELLO of a boot (a plain boot has no USB service and never gets here), B reads
 // /yaffs2/xy-forever/stage2/main.xys2 through its file client (every request bounded): first its

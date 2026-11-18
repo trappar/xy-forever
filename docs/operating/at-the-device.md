@@ -8,9 +8,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 
 1. Start a listener first: `python3 xyf_host.py --timeout 3600 status` (or a session
    script). Only then ask the developer to **power on holding PLAY and let go when the
-   logo appears** (holding it longer is fine). Up to build 064 this sometimes
-   failed (HISTORY, Diag 076: a slow storage mount, not the key) and the device booted
-   the OS after about 15 s.
+   logo appears** (holding it longer is fine).
 2. The PLAY boot opens the boot menu (home) with USB; it answers the tool's HELLO and,
    once a host said HELLO, never times out. `hold on` keeps home across restarts
    (every non-OS restart from home comes back home anyway).
@@ -26,7 +24,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 - Boots are not stopwatch-timed by hand. Estimate from device data:
   the dry-run result's `start_cycles` (B's entry since reset, ×1024/400 MHz),
   `link_ms`, the timing block and the transfer detail (`dry_run_file_boot.detail`),
-  calibrated against the measured points in HARDWARE.md. After a dry run,
+  interpreted with [hardware/boot.md](../hardware/boot.md). After a dry run,
   `status` shows that boot's phases in `dry_run_file_boot.timing` (`boot_timing` is
   the current boot). `null` means not measured; A and B have different time origins,
   and `end_ms` includes time spent in the menu.
@@ -36,8 +34,8 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 ## Reports
 
 - **Report files:** each processor writes one report after the OS mounts storage.
-  Build 067 and later write `/yaffs2/xy-forever/log/prod-0NN-{a,b}.bin`; builds up
-  to 066 wrote `/yaffs2/chained-loader/`.
+  Files are `/yaffs2/xy-forever/log/prod-<build>-{a,b}.bin`; `<build>` is the firmware
+  build number reported by HELLO, used to identify private evidence.
 - **Fetch:** `xyf_host.py read PATH --all --out FILE`, or dev MTP (below).
 - **Decode:** `python3 -m xy_forever.census FILE.bin`.
 - **Dry-run summary:** `python3 scripts/dryshow.py STATUS.json`.
@@ -48,7 +46,8 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 
 ## Dev menu
 
-1. The developer holds **COM** at power-on.
+1. Stop every host tool, including keepalive, before the developer enters the stock dev menu.
+   The developer holds **COM** at power-on.
 2. **MTP:** Track 3 opens the dev menu, then Track 2 starts Mac MTP. Use OpenMTP on
    the Mac.
 3. **Copy:** copy `os.ldr` to `/os.ldr`. Check the copied file is not 0 bytes, then
@@ -66,6 +65,7 @@ an OS reinstall, so crash logs can be fetched from it.
 - Give brief, simple hardware instructions. Ask only whether it booted or what
   the screen shows, and read the reports yourself. Don't ask them to read files back
   by hand, and never ask them to repeat a crash.
+- After stopping keepalive, wait 2 s before the next host operation.
 - **Power cycles:** start the listener first, then just say "power cycle it". To
   take control, they power on holding PLAY and release at the logo. Ask for a pause
   of about 5 s on power cycles.

@@ -14,7 +14,7 @@ Part of [XY Forever goals](../GOALS.md).
   and the stock dev menu (hold COM) remains the last resort.
 - **Shape:** one file engine in XY Forever's main loops, with
   timeouts, behind two doors: our own MTP responder and a published serial
-  protocol. Stock MTP and its watchdog recovery (builds 139–150) are abandoned.
+  protocol. Stock MTP and its watchdog recovery are abandoned.
 - **Link failure:** no automatic restart scheme; fix the causes of
   link loss at their source. A boot that loads no image shows why and halts
   until a power cycle.
@@ -30,12 +30,12 @@ Part of [XY Forever goals](../GOALS.md).
   command is a product command and is documented. Commands used only for testing
   (memory peek, key injection, hang test) stay in every build but are left out of the
   published documentation.
-- **Destructive host commands:** whether they also need a key press on the OP-XY is a
-  setting, changeable only on the device (#21). Web app (013): the confirmation is on
-  by default (a test device may turn it off so tests run unattended); Chrome only.
+- **Destructive host commands:** on-device confirmation policy remains undecided in
+  [issue #56](https://github.com/trappar/xy-forever/issues/56); the setting is tracked in #21.
+  The web app targets Chrome.
 - **Mods:** on the device you choose which mods are active and XY Forever sets up the
   firmware for that choice; inactive mods are not loaded and use no memory, so no
-  enable table inside one big build (005, option b). We support the mods open-xy can
+  enable table inside one big build. We support the mods open-xy can
   load, loading them our own way with our own tooling (no collaboration needed to
   start). Packages are split from open-xy's kit by a host tool; the whole published
   catalog is offered; builds use the website's mode (per-voice measuring off) by default,
@@ -57,7 +57,7 @@ Part of [XY Forever goals](../GOALS.md).
   first: official content is re-creatable from the `.tfw`. Unknown files in `content/`
   are left and reported; a full reinstall removes them. Unsigned content packs (plain
   folders) may be installed.
-- **Packages (010):** leaving a trial of an entry with other content is Undo in the
+- **Packages:** leaving a trial of an entry with other content is Undo in the
   menu, never a write during a normal boot; a `.tfw` is deleted after install; stock's
   `upgrade/` folder is never deleted automatically (its size is shown, removal offered).
 - **No recovery for a lone-processor restart:** prevent hangs with bounded waits
@@ -65,8 +65,8 @@ Part of [XY Forever goals](../GOALS.md).
 - **Keys on the device need no protection** (no peek exclusion, no key hiding in the
   firmware); keys stay out of the repository, commits and published files.
 - **Not planned:** reading the owner's projects and samples from XY Forever (the OS's
-  own MTP covers it; 011); a fix for projects that use a mod which is off (at most a
+  own MTP covers it); a fix for projects that use a mod which is off (at most a
   notice before boot).
-- **007's recommendations apply.** 009's six stock calls are allowed, on `/yaffs2` only.
-  The first A-side boot write (012) risks a dev-menu reinstall at worst and needs the
-  developer's explicit yes.
+- **Stock code stays a driver layer.** File-engine stock calls are scoped and audited; see
+  [code rules](../architecture/code-rules.md). A first A-side boot write needs the developer's
+  explicit yes and a dev-menu recovery kit.

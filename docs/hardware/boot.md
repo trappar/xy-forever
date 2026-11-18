@@ -11,7 +11,7 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
 | Stock 1.2.1 `os.ldr` | SHA-256 `60358afd…2b52f`, 2,373,336 B, `STOCK_121/os.ldr` |
 | 1.2.5 `os.ldr` | SHA-256 `bed98a00…4283` |
 | 1.2.1 → 1.2.5 companions | backplane 1.0.7 → 1.0.8, BLE 1.0.1 → 1.0.2; factory content identical |
-| Normal-OS USB (MTP) | VID `0x2367`, PID `0x0021` ("OP-XY"), vendor class 0xFF; another mode PID `0x8021`, class 01. XY Forever's service: same ids, "OP_XY Boot", CDC classes 02 + 0A (session logs; protocol `transport`) before product build 188, and from 188 when a boot-time check fails; otherwise, from 188, one composite `1209:0001` (pid.codes test pair, temporary): CDC serial plus MTP on interface 2 |
+| USB identities | stock OS: `2367:0021`, vendor class 0xFF (another mode `2367:8021`, class 01); XY Forever composite: `2367:0021`, device class EF/02/01, CDC plus MTP interface 2; stock CDC fallback: "OP_XY Boot", classes 02 + 0A; [transport](../protocol/transport.md) |
 | SDRAM | 256 MiB (DMC_CFG `0x522`) |
 | CCLK | 400 MHz (word `0x88a2ef28` = 400000000, written by `88a30fbc`); ms = cycles `*21 >> 13` |
 
@@ -27,29 +27,24 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
 - **Retained heap:** `0x88a65bf8..0x8aa65bf4` (allocator table at `0x88a2a4d0`). The
   old default module address `0x8a800000` lay inside it.
 - **Cold layout:** ROM trampoline at `0x11a00000`, RAM loader `0x88a3477a`; the embedded OS at
-  `0x8b000000` exists in offline modes only (none in the product since 088). Memory map below.
+  `0x8b000000` exists in offline modes only (none in the product). Memory map below.
 - **Reboot marker:** SDRAM `0x8bfff000` ("YXFR"; magic, ~magic, reason, crash
   restarts). SDRAM survives a soft reset, not a power cycle.
 - **Watchdog guard:** WDOG0 at `0x20046000`, used the way the stock reset `11a03518`
-  uses it.
-- **Timing baselines (stopwatch, switch → OS visible):** stock
-  1.2.1 ~4.6 s; XY Forever 087 ~7.15 s; 088 ~5.84 s; 090 estimated ~4.5 s. With
-  the 77 KB product `os.ldr`, B enters XY Forever 1.07 s after reset and A is ready
-  17 ms later (with the 3.5 MB file: 1.98 s and 0.55 s). Older notes:
-  B enters about 0.53 s before A (Test 023). Library boot
-  reached the OS in about 13 s, product normal boot in 6 s, official 1.2.1 in 11 s
-  (Test 052). A stock boot-time baseline was never measured.
+  uses it. It does not recover device hangs; enabling it is forbidden by SAFETY.md.
+- **Timing:** read the current boot's timing fields, not old stopwatch estimates. A full yaffs scan
+  can take tens of seconds; a checkpoint mount is much faster. The processors have different time origins.
 
-## Memory map (product, build 171)
+## Memory map (product)
 
-Same on A and B (separate SDRAM). Evidence for the free gap and the hand-off: [architecture/boot.md](../architecture/boot.md#memory-map-product-build-171).
+Same on A and B (separate SDRAM). Evidence for the free gap and the hand-off: [architecture/boot.md](../architecture/boot.md#memory-map-product).
 
 | Range | Owner, use | Evidence |
 |---|---|---|
 | `0x88000000..0x88a63bf8` | stock bootloader image, data, BSS | static segments (`check_boot_reservations`) |
 | `0x88a65bf8..0x8aa65bf4` | stock allocator arena (yaffs device, caches) | allocator table `0x88a2a4d0` (build-checked) |
 | `0x8a000000..0x8a800000` (+64 KiB margin) | stock stream buffer: the boot loader reads `os.ldr` here (8 MiB cap, `88a34a12`); our boot copy (staging -> here, <= `staging_bytes` 0x7e0000 B) for the RAM loader `88a3477a` | listing; `cold.cpp` protected |
-| `0x8ab00000..0x8ab80000` | XY Forever code + data (512 KiB window; 172 uses ~166 KB) | linker `ASSERT`, `verify_elf` |
+| `0x8ab00000..0x8ab80000` | XY Forever code + data (512 KiB window) | linker `ASSERT`, `verify_elf` |
 | `0x8ab80000..0x8ab84000` | XY Forever stack (16 KiB; entry sets SP `0x8ab84000`) | entry audit (P0.H/P0.L) |
 | `0x8ab90000..0x8ac00000` | stage-2 window (dormant loader, B only) | `check_stage2_image` |
 | `0x8ac00000..0x8b000000` | unused | |

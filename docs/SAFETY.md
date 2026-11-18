@@ -17,15 +17,14 @@ needs the highest bar of confidence. These rules are binding and override conven
 - **Never run the official updater or TE tools near the device.** An unmodified
   official OS in the library keeps its own updater, which can stage a bootloader
   flash.
-  - Only the 1.2.5 `os.ldr` goes into the library
-    (record 003).
+  - Only the 1.2.5 `os.ldr` goes into the library.
   - Do not install a full 1.2.5 OS without first proving that the OS can't trigger
     an upgrade, and then only with the developer's explicit yes.
 - **Never program the companion chips** (keyboard/backplane PSoC, BLE).
 - **Never write SPI metadata** (the record at SPI `0xc000`: upgrade marker, `factory`
   field).
 - **Never write OTP.** XY Forever only reads it, on B, through the boot-ROM read `0x04000048`
-  and init `0x04000054` exactly as the stock wrappers do (`tfw.check`, build 157). The builder
+  and init `0x04000054` exactly as the stock wrappers do (`tfw.check`). The builder
   admits no other ROM entry but memcpy `0x040201c4`; `0x0400004c` and `0x04000050` (never called
   by the 1.2.1 bootloader: unknown, possibly the program entry) are forbidden. Keys read on the
   device need no protection there; they never go into the repository.
@@ -34,27 +33,25 @@ needs the highest bar of confidence. These rules are binding and override conven
   its dev menu (recovery step 2 below) when this file exists (`88a1d7e6`); no known
   method recreates it once XY Forever is gone too. The file engine refuses to remove or
   rename it away, on A for every request and on B before sending
-  (`file_engine::decide_engine`, build 155; MTP mode's `mtp_protected_path` in builds
-  136–154). Since build 187 it is also never written, replaced or
+  (`file_engine::decide_engine`). It is also never written, replaced or
   renamed onto by hand (MTP, serial file commands); only A's own restore below re-creates it. Any future file feature (file
   write, uninstall, cleanup) must keep that rule. Spelling is not enough (yaffs follows
-  links inside a path): since build 156 A also stats the marker around every unlink and
+  links inside a path): A also stats the marker around every unlink and
   rmdir, refuses a path that resolves to it, and re-creates (lowercase) a marker that
   existed before the operation and is gone after it; it never creates one that was absent.
 - **Never let storage reach a boot partition by accident.** While install mode has a boot
   partition selected, A refuses every engine request, the read-write window and the state
-  write; B selects partition 0 after every install, failed or not (build 156). A failed
-  select of a boot partition counts as selected until a select of 0 succeeds (build 158).
+  write; B selects partition 0 after every install, failed or not. A failed
+  select of a boot partition counts as selected until a select of 0 succeeds.
 - **Close the read-write window before any reset; never boot with it open** (a reset with it
-  open is a power cut for yaffs). Every way out (reboot, the session's end; since 159
-  also B's bootloader seen, B silent past A's idle window; since
-  163 also 10 s without a request and every command item but reads and writes, and B closes it with
-  op 9 before install, set default, CONTINUE and REBOOT) closes it first, from A's loop between
-  requests or as op 9, never inside an executor. If that close
+  open is a power cut for yaffs). Every way out closes it first,
+  from A's loop between requests or as op 9, never inside an executor: reboot, the session's end,
+  B's bootloader seen, B silent past A's idle window, 10 s without a request and every command
+  item but reads and writes. B closes it with op 9 before install, set default, CONTINUE and REBOOT. If that close
   fails, the window stays mounted and the restart paths still reset (by design: the next
-  mount scans fully); CONTINUE never boots then. (A has no guard since 164.)
+  mount scans fully); CONTINUE never boots then. (A has no guard.)
 
-- **What may be changed by hand** (MTP and the serial file commands; build 187, protocol 1.13): everything on
+- **What may be changed by hand** (MTP and the serial file commands; protocol 1.13): everything on
   `/yaffs2` is writable, `user/` and the root included, except (1) `/yaffs2/bootloader.dev`: never
   changed, replaced, renamed or deleted, nothing renamed onto it; (2) `/yaffs2/upgrade/` (the stock
   updater's inbox): nothing written, created, renamed into or deleted inside it, `upgrade` itself never
@@ -126,48 +123,38 @@ instead.
 
 Keep a known-good build and its dev-menu kit ready at all times.
 
-## Lessons that cost a device session
+## Current rules from device failures
 
-- **Test 045 reset loop:** hold and guard left on with no host gave a 30 s
-  self-reboot, forever.
-  - Cause: the watchdog stayed armed through the stock reset, and the reset missed
-    B.
-  - Fixed in 046–047: `reset_self` disarms first; a held restart with no HELLO
-    boots normally; held restarts wait 30 s for the host.
-  - Rule: never leave hold or guard on with no host attached.
-- **Prevent hangs; do not recover from lone restarts.** Effort goes into preventing hangs
-  (time-limited waits, simple main loops), not into recovering from one processor crashing or
-  restarting alone. A restart of B completes only if A restarts at about the same time or after
-  it (record 022); every lone-restart recovery tried (builds 159-163) froze the device. Since 164
-  B never resets itself on a lost link: the menu stays with USB, commands that need A answer
-  `link`, and a power cycle recovers. A real hang needs a power cycle; that is accepted. Do not
-  propose new device experiments for lone-restart recovery; prefer removing such machinery.
-- **The stock Track-5 writer** erases the old partition's block 0 even when its own
-  verify fails. It retries forever if A leaves mid-install. Test 034 hung on the
-  300 s session cap.
-- **USB:**
-  - Replies of 4 KiB hung B, so ranged reads are capped at 1 KiB.
-  - `begin()` refuses session caps over 600 s.
-  - The stale stock CDC callback (`11a03e04`) drained the host's HELLOs until it was
-    detached (Test 032).
-- **Register reads can hang B (Test 095):** one PEEK of SEC SCTL/SSTAT for
-  sources 0..127 hung B (no guard; power cycle needed). The BF707 most likely does not
-  implement the upper sources. Read only registers the stock bootloader itself uses
-  (`mmr_allowed` in `target/usb_service.cpp`), start with the smallest read, and arm
-  the guard before anything new.
-- **No embedded OS (since 088):** a boot whose link fails no longer falls back to
-  a working OS; B shows "Internal link lost" and both halt until a power cycle.
-  A build that breaks the link on every boot can only be recovered through the dev
-  menu, so qualify every build (warm checks, a real boot, a PLAY power-on) before
-  making it the kit.
-- **Clock overflow (fixed in 086):** the cold ms formula overflowed after ~524 s;
-  every timeout across that point was wrong. Use `xyf_clock.hpp` for all timing.
-- **Module size:** a change that fits the product can push another mode past its
-  reservation (084 broke `--xyf-mtp` by 272 bytes). Run `scripts/neutral.py` (it
-  builds every mode) after shared-code changes.
+- **The guard does not recover a hang.** Do not use `guard on` or `--guard-test` on the device.
+  Restarting B alone freezes the device; never send REBOOT after a suspected lone A restart.
+  Stop on a suspected hang and request a manual power cycle. Removal is tracked in
+  [issue #1](https://github.com/trappar/xy-forever/issues/1).
+- **Never leave hold or guard on with no host attached.** Hold and guard together caused a
+  repeated self-reboot. `reset_self` disarms first; a held restart with no HELLO boots normally;
+  held restarts wait 30 s for the host. This does not authorize enabling the broken guard above.
+- **Prevent hangs; do not recover from lone restarts.** Use time-limited waits and simple main loops.
+  A restart of B completes only if A restarts at about the same time or after it. B never resets
+  itself on a lost link: the menu stays with USB, commands that need A answer `link`, and a power
+  cycle recovers. A real hang needs a power cycle; that is accepted. Do not propose new device
+  experiments for lone-restart recovery; prefer removing such machinery.
+- **The stock Track-5 writer** erases the old partition's block 0 even when its own verify fails.
+  It retries forever if A leaves mid-install. Check stock return conventions before any boot write.
+- **USB:** replies of 4 KiB hung B, so ranged reads are capped at 1 KiB. `begin()` refuses session caps
+  over 600 s. Detach the stale stock CDC callback `11a03e04`, which drains the host's HELLOs.
+  Start USB once per boot as one composite device; stopping and restarting functions inside a boot
+  froze B. Compare descriptor layouts against stock, including the full 0x18-byte config record.
+- **Register reads can hang B:** SEC SCTL/SSTAT reads over sources 0..127 hung B; the BF707 most
+  likely does not implement the upper sources. Read only registers the stock bootloader itself uses
+  (`mmr_allowed` in `target/usb_service.cpp`). Any new probe needs review and bounded operations;
+  the broken guard is no protection and does not authorize unreviewed reads.
+- **No embedded OS:** a boot whose link fails shows "Internal link lost" and both halt until a power
+  cycle. A build that breaks the link on every boot needs dev-menu recovery: qualify warm checks,
+  a real boot and a PLAY power-on before making it the known-good kit.
+- **Timing:** use `xyf_clock.hpp` for wrap-safe timing. Size boot waits for a full yaffs scan, which
+  can take tens of seconds after a dev-menu MTP copy; do not assume the fast checkpoint mount.
+- **Module size:** shared code can push another mode past its reservation. Run `scripts/neutral.py`
+  (it builds every mode) after shared-code changes.
 - **Fast power cycles** skip the stock USB start. Wait about 5 s after any power-off.
-- **L1 instruction SRAM:** data loads from it stall the boot at the logo. Tests 002,
-  005 and 006 did this; 003, 004 and 007 did not.
-- **Never leave the device in the OS** unnecessarily. Booting the OS is one-way, and
-  only a power cycle at the device returns. End sessions held by keepalive, and use dry
-  runs to test boot paths.
+- **L1 instruction SRAM:** data loads from it stall the boot at the logo; never read it as data.
+- **Never leave the device in the OS** unnecessarily. Booting the OS is one-way; only a power cycle
+  at the device returns. End sessions held by keepalive, and use dry runs to test boot paths.

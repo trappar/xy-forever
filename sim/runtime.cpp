@@ -278,7 +278,7 @@ void resetting(int which) {
     Proc& p = procs[which];
     p.state = "resetting";
     shared->in_bootloader[which] = 0;
-    // Record 022 (sim/boot.cpp b_boot_a): a reset of A lets a B that is resetting or waits in its
+    // sim/boot.cpp b_boot_a: a reset of A lets a B that is resetting or waits in its
     // bootloader through; a reset of B gets through at once only if A reset at most boot_a_window_ms
     // before it (A still in its boot ROM).
     if (which == 0) shared->b_gate = 1;
@@ -607,7 +607,7 @@ int main(int argc, char** argv) {
     // [U] bootloader start times (unmeasured): A's comes first after a REBOOT's 100 ms stagger (REBOOTs
     // work on the device) and outlasts B's 250 ms keepalive interval (154: B lost the link).
     shared->a_boot_ms = 300; shared->b_boot_ms = 400; shared->a_redeliver = 1;
-    // Record 022: a REBOOT's A-then-B stagger (100 ms on the device, plus host scheduling here) must fall
+    // a REBOOT's A-then-B stagger (100 ms on the device, plus host scheduling here) must fall
     // inside the window, every lone restart (B notices a lost A after 1 s or more) outside it. The device
     // boundary lies between 0.15 s and 1.4 s [U]; 400 ms sits in that range.
     shared->boot_a_window_ms = 400;

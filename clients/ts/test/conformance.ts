@@ -1,6 +1,6 @@
 // Conformance runner: the cases of protocol/v1.conformance.json, run with the generated module's
 // codecs (src/v1.ts) through the call layer's link (src/link.ts) and TCP transport (src/tcp.ts)
-// against the device simulator (decision 013). Same data and meaning as the Python
+// against the device simulator. Same data and meaning as the Python
 // runner (xy_forever/conformance.py, scripts/conformance.py); validation and coverage live there.
 // test/conformance.spec.ts runs it under Vitest; this file also runs alone under Node.
 //

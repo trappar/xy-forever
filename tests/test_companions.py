@@ -178,7 +178,7 @@ class NordicProtocolTests(unittest.TestCase):
         self.assertEqual(len(header), 64)
         self.assertEqual(header[:5], bytes.fromhex("beefcafe03"))
         self.assertEqual(header[5:9], len(self.data).to_bytes(4, "big"))
-        # Decision 017 (1.2.1 bootloader): CRC-16 at 9-10, version at 11-18.
+        # 1.2.1 Nordic bootloader: CRC-16 at 9-10, version at 11-18.
         self.assertEqual(header[9:11], self.image.checksum.to_bytes(2, "big"))
         self.assertEqual(header[11:19], bytes.fromhex("0001000200030004"))
         self.assertEqual(header[19:27], bytes.fromhex("0001f00012345678"))

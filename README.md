@@ -55,8 +55,8 @@ web/              the web app (Chrome, Web Serial): mod package manager and file
 re/               reverse-engineering tools over the private 1.2.1 listing
 scripts/          device session helpers; neutral.py compares candidates between a git ref and the working tree
 tests/            unit tests (host-compiled C++ bridges + Python)
-docs/             PLAN, STATUS, SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORAGE, GOALS, HISTORY,
-                  ORCHESTRATION, GUIDE, MODS-DEV; decisions/ (settled questions)
+docs/             SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORAGE, GOALS,
+                  ORCHESTRATION, GUIDE, MODS-DEV; current reference leaves
 ```
 
 ## Requirements
