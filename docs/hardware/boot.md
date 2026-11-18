@@ -29,7 +29,8 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   instruction (the listing's EXCPT decodes all lie in data) and installs all its CPLB descriptors at
   start (14 data, 9 instruction), so an exception at cold time is a fault. Its exception dispatch
   tables are L1 data (`0x11b005d0` handlers, `0x11b00b30` EXCAUSE to slot). While B's menu has the
-  screen, the product build's crash vector is in EVT3 (`target/key_ui_crash.ipp`).
+  screen, the product build's crash vector is in EVT3 (`target/key_ui_crash.ipp`). A 32-bit read of SDRAM at a
+  2-byte offset did not fault on B (crash trigger, 2026-11-18): misaligned reads do not always raise 0x24 here.
 - **Data CPLBs:** the stock table at L2 `0x0803c0b4` (`{address, data}`, -1 ends; page 1 KiB * 4^PSIZE, data
   bits 16-19, start `11a008e6`): L2 `0x08000000..0x08040000`, boot ROM `0x04000000..0x04080000`, SDRAM
   `0x80000000..0x90000000`, `0x40000000..0x48000000`, 4 KiB at `0x70000000` and `0x38000000`. Nothing else is

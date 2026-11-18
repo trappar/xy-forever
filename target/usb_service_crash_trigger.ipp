@@ -2,7 +2,7 @@
 #if defined(XYF_CRASH_TRIGGER) && defined(XYF_USB_FILE_WRITE)
 // diag.crash (0x63; dev, test build xyf-crash-trigger only, never the product; not in the published spec, so in
 // no build's cmds) (#102): one chosen fault on B while the menu has the screen, to see the crash screen
-// (key_ui_crash.ipp) on real faults. Request: u8 kind: 1 EXCPT, 2 misaligned read, 3 undefined instruction,
+// (key_ui_crash.ipp) on real faults. Request: u8 kind: 1 EXCPT, 2 misaligned reads, 3 undefined instruction,
 // 4 read of unmapped memory (scripts/crash_trigger.py). Any other payload, none included: unsupported.
 // Refused busy while A's read-write window may be open: a write's window B has not closed yet (writes_due), its
 // close still out (closing), the last close lost on the link (mounted stale), a job, MTP traffic or an upload
