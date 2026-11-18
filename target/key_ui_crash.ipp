@@ -97,14 +97,9 @@ void crash_off() {
 #if defined(XYF_CRASH_TRIGGER)
 // Test build xyf-crash-trigger only (#102; xyf_build.py refuses it in any other mode): one chosen fault from
 // the menu loop (home_pump, diag.crash) while the vector above is armed. R0 = kind: 1 EXCPT 1 (EXCAUSE 0x01,
-// RETX the next instruction); 2 misaligned reads (0x24), see below; 3 the undefined opcode 0x0001 (0x21); 4 a
-// read of 0x90000000 (0x26: just above the 256 MiB of SDRAM, in no stock data CPLB: table 0x0803c0b4,
-// docs/hardware/boot.md). Reads only, no store. Returns for another kind, or when no misaligned read faults.
-// Kind 2 on the OP-XY (2026-11-18): the 32-bit read of crash_record + 2 (SDRAM) completed without a fault; the
-// BF707's Blackfin+ core evidently completes some misaligned reads. So kind 2 tries a ladder of reads, each at
-// its own label, until one faults; "At" on the screen names the first that did (scripts/crash_trigger.py):
-// misaligned 32-bit at crash_record + 2, _odd 32-bit at + 1, _half 16-bit at + 1, _dag 32-bit through I0 at
-// + 2 (SDRAM, our own data), _l1 32-bit at 0x11b00002 (L1 data scratch, the stock GPIO callback words).
+// RETX the next instruction); 3 the undefined opcode 0x0001 (0x21); 4 a read of 0x90000000 (0x26: just above
+// the 256 MiB of SDRAM, in no stock data CPLB: table 0x0803c0b4, docs/hardware/boot.md). No kind 2: misaligned
+// reads do not fault on B (docs/hardware/boot.md). Reads only, no store. Returns for another kind.
 __asm__(
     ".text\n"
     ".align 2\n"
@@ -114,9 +109,6 @@ __asm__(
     "    R1 = 1;\n"
     "    CC = R0 == R1;\n"
     "    IF CC JUMP xyf_crash_at_excpt;\n"
-    "    R1 = 2;\n"
-    "    CC = R0 == R1;\n"
-    "    IF CC JUMP xyf_crash_misaligned;\n"
     "    R1 = 3;\n"
     "    CC = R0 == R1;\n"
     "    IF CC JUMP xyf_crash_at_illegal;\n"
@@ -126,28 +118,6 @@ __asm__(
     "    RTS;\n"
     "xyf_crash_at_excpt:\n"
     "    EXCPT 1;\n"
-    "    RTS;\n"
-    "xyf_crash_misaligned:\n"
-    "    P1.H = xyf_crash_record;\n"
-    "    P1.L = xyf_crash_record;\n"
-    "    P0 = P1;\n"
-    "    P0 += 2;\n"
-    "xyf_crash_at_misaligned:\n"
-    "    R0 = [P0];\n"
-    "    P0 = P1;\n"
-    "    P0 += 1;\n"
-    "xyf_crash_at_misaligned_odd:\n"
-    "    R0 = [P0];\n"
-    "xyf_crash_at_misaligned_half:\n"
-    "    R0 = W[P0] (Z);\n"
-    "    I0 = P1;\n"
-    "    I0 += 2;\n"
-    "xyf_crash_at_misaligned_dag:\n"
-    "    R0 = [I0];\n"
-    "    P0.H = 0x11b0;\n"
-    "    P0.L = 2;\n"
-    "xyf_crash_at_misaligned_l1:\n"
-    "    R0 = [P0];\n"
     "    RTS;\n"
     "xyf_crash_at_illegal:\n"
     "    .short 0x0001\n"

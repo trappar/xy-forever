@@ -63,10 +63,10 @@ class ModeTest(unittest.TestCase):
         part = (ROOT / 'target/key_ui_crash.ipp').read_text()
         fault = part[part.index('"xyf_crash_fault:\\n"'):part.index('".size xyf_crash_fault')]
         self.assertNotRegex(fault, r'\] = ')                               # reads only: no store
-        # Absolute addresses: L1 data scratch for the last misaligned read (never L1 instruction 0x11a0...), then
-        # the unmapped read.
         self.assertEqual(re.findall(r'(EXCPT \d|\.short 0x\w+|P0\.H = 0x\w+)', fault),
-                         ['EXCPT 1', 'P0.H = 0x11b0', '.short 0x0001', 'P0.H = 0x9000'])
+                         ['EXCPT 1', '.short 0x0001', 'P0.H = 0x9000'])
+        self.assertEqual(re.findall(r'R1 = (\d);', fault), ['1', '3', '4'])          # no kind 2 (misaligned)
+        self.assertIn('kind == 2', (ROOT / 'target/usb_service_crash_trigger.ipp').read_text())
         usb = (ROOT / 'target/usb_service_crash_trigger.ipp').read_text()
         for refusal in ('writes_due', 'closing', 'mounted_stale', 'job_running()', 'put_expected', 'crash_armed_now()'):
             self.assertIn(refusal, usb)
@@ -86,9 +86,7 @@ class ScriptTest(unittest.TestCase):
         self.assertFalse([e for e in entries if e[0] <= ct.UNMAPPED < e[1]])
 
     def test_expected_screen_from_module_asm(self):
-        asm = ('8ab02e10 <xyf_crash_fault>:\n8ab02e2a <xyf_crash_at_excpt>:\n8ab02e38 <xyf_crash_at_misaligned>:\n'
-               '8ab02e3e <xyf_crash_at_misaligned_odd>:\n8ab02e40 <xyf_crash_at_misaligned_half>:\n'
-               '8ab02e46 <xyf_crash_at_misaligned_dag>:\n8ab02e50 <xyf_crash_at_misaligned_l1>:\n'
+        asm = ('8ab02e10 <xyf_crash_fault>:\n8ab02e2a <xyf_crash_at_excpt>:\n'
                '8ab02e3c <xyf_crash_at_illegal>:\n8ab02e48 <xyf_crash_at_unmapped>:\n'
                '8ab03ba4 <__ZN10xy_forever6key_ui11crash_faultEm>:\n'
                '8ab03bb2:\tff e2 2f f9 \tJUMP.L 0x8ab02e10 <xyf_crash_fault>;\n'
@@ -100,12 +98,6 @@ class ScriptTest(unittest.TestCase):
         self.assertEqual(ct.screen_lines('unmapped', 0x8ab02e48, 0x8ab1088c),
                          ['Cause 0x26: data access to unmapped memory', 'At 0x8ab02e48, called from 0x8ab1088c',
                           'SEQSTAT 0x00000026 (or 0x00002026)'])
-        # Misaligned: a ladder of reads; "At" is the first that faulted, so the screen lines name them all.
-        ladder = ct.ladder(asm)
-        self.assertEqual([a for _, a in ladder], [0x8ab02e38, 0x8ab02e3e, 0x8ab02e40, 0x8ab02e46, 0x8ab02e50])
-        self.assertEqual(ct.screen_lines('misaligned', 0x8ab02e38, 0x8ab1088c, ladder[1:])[1],
-                         'At 0x8ab02e38, called from 0x8ab1088c (or At a later misaligned read: 0x8ab02e3e odd, '
-                         '0x8ab02e40 half, 0x8ab02e46 dag, 0x8ab02e50 l1)')
 
     def test_cause_names_are_the_screens(self):
         screen = (ROOT / 'target/crash_screen.hpp').read_text()
@@ -144,7 +136,7 @@ class ScriptTest(unittest.TestCase):
             build = sim.build(mode=B.CRASH_TRIGGER_MODE)
             simulator = sim.Simulator(root, tmp / 'bootpart.bin', build_dir=build, log=tmp / 'log.txt').start()
             try:
-                for payload in (b'', b'\x00', b'\x05', b'\x01\x00'):                      # unlisted ops
+                for payload in (b'', b'\x00', b'\x02', b'\x05', b'\x01\x00'):       # unlisted ops (2: no misaligned)
                     self.assertEqual(raw(simulator.address, payload), ct.ids.S_UNSUPPORTED, payload)
                 code, out = main('--sim', simulator.address, '--kind', 'unmapped')
                 self.assertEqual(code, 3, out)
