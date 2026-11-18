@@ -31,9 +31,7 @@ struct TestFs : FakeFs {
     }
 } storage;
 bool mounted = true;
-U32 a_prepared = 0, catalog_bytes = 0, storage_used = 0, guard_on = 0;
-void guard_disarm() {}
-void guard_arm() {}
+U32 a_prepared = 0, catalog_bytes = 0, storage_used = 0;
 Byte scan_data[library::scratch_needed], catalog_data[catalog::max_bytes], readback[4097];
 state_write::Plan test_plan;
 library::Library lib;

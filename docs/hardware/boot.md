@@ -30,8 +30,8 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   `0x8b000000` exists in offline modes only (none in the product). Memory map below.
 - **Reboot marker:** SDRAM `0x8bfff000` ("YXFR"; magic, ~magic, reason, crash
   restarts). SDRAM survives a soft reset, not a power cycle.
-- **Watchdog guard:** WDOG0 at `0x20046000`, used the way the stock reset `11a03518`
-  uses it. It does not recover device hangs; enabling it is forbidden by SAFETY.md.
+- **WDOG0** at `0x20046000`: the stock reset `11a03518` arms it with a short count. XY Forever
+  does not use it (its watchdog guard was removed in protocol 1.14: it never recovered a hang).
 - **Timing:** read the current boot's timing fields, not old stopwatch estimates. A full yaffs scan
   can take tens of seconds; a checkpoint mount is much faster. The processors have different time origins.
 

@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.13",
+    "version": "1.14",
     "intro": [
       "XY Forever is a boot menu and firmware manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -392,17 +392,6 @@
       "doc": ""
     },
     {
-      "type": "0x33", "name": "diag.guard", "symbol": "guard", "class": "dev", "test_only": true, "since": "1.0", "switch": null,
-      "summary": "watchdog guard on, off or expiry test (test only)",
-      "timeout_ms": 5000, "destructive": false,
-      "request": {"size": [4, 4], "fields": [
-        {"name": "on", "type": "u32", "range": [0, 2], "values": {"0": "off", "1": "on", "2": "expiry test (only while off)"}, "doc": "watchdog guard state"}
-      ]},
-      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
-      "errors": ["bad_request"],
-      "doc": "On: a hung processor restarts into the menu (both processors armed); carried across restarts, off after power-off. Off: both processors disarmed. Expiry test: about 3 s without reloads, the guard must restart B (processor A follows)."
-    },
-    {
       "type": "0x34", "name": "diag.key", "symbol": "key", "class": "dev", "test_only": true, "since": "1.0", "switch": null,
       "summary": "inject a key event into the menu (test only)",
       "timeout_ms": 5000, "destructive": false,
@@ -525,17 +514,6 @@
       ]},
       "errors": ["bad_request", "not_found", "state"],
       "doc": "Removes what the job wrote and answers once that is done; a job that already ended, or is in its library commit (phase `finish`, detail `commit`), or a content switch (`library.set_default`), is `state`."
-    },
-    {
-      "type": "0x60", "name": "diag.hang", "symbol": "test_hang", "class": "dev", "test_only": true, "since": "1.0", "switch": null,
-      "summary": "stop reloading the watchdog (guard test only)",
-      "timeout_ms": 5000, "destructive": false,
-      "request": {"size": [4, 4], "fields": [
-        {"name": "token", "type": "u32", "range": [1196310856, 1196310856], "doc": "0x474E4148, the bytes `HANG`"}
-      ]},
-      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
-      "errors": ["bad_request"],
-      "doc": "Only while the guard is on (`bad_request` otherwise). After the ok reply processor B spins until the guard restarts it."
     }
   ],
   "events": [
@@ -572,7 +550,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.13;install=stock-88a06a7e;build=172;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000010000007b001f000303ff00be;dev=1;stage2=0"}, "hex": "58468101ae00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31333b696e7374616c6c3d73746f636b2d38386130366137653b6275696c643d3137323b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030313030303030303762303031663030303330336666303062653b6465763d313b7374616765323d300ca9d072"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.14;install=stock-88a06a7e;build=172;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000007b0017000303ff00be;dev=1;stage2=0"}, "hex": "58468101ae00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31343b696e7374616c6c3d73746f636b2d38386130366137653b6275696c643d3137323b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030303762303031373030303330336666303062653b6465763d313b7374616765323d3072536c0e"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,
@@ -636,11 +614,13 @@
      "doc": "`XF` and a byte, then the `stage.data` reply seq 14 in three reads"}
   ],
   "reserved": {
-    "doc": "Numbers reserved for later items. Not answered by any build yet: nothing here exists on the wire.",
+    "doc": "Numbers reserved for later items, and retired numbers that are never used again. Not answered by any build: nothing here exists on the wire.",
     "statuses": [],
     "renames": [],
     "types": [
-      {"first": "0x60", "last": "0x7f", "kind": "dev", "item": "004", "doc": "new developer commands (0x60 is a test command today)"},
+      {"first": "0x33", "last": "0x33", "kind": "retired", "item": "#1", "doc": "retired, never reused: the test command `diag.guard` until 1.13 (the watchdog guard was removed in 1.14)"},
+      {"first": "0x60", "last": "0x60", "kind": "retired", "item": "#1", "doc": "retired, never reused: the test command `diag.hang` until 1.13"},
+      {"first": "0x61", "last": "0x7f", "kind": "dev", "item": "004", "doc": "new developer commands"},
       {"first": "0xd0", "last": "0xdf", "kind": "event", "item": "004", "doc": "events, seq 0 (0xD0 is log today; progress 0xD1 with #14)"}
     ]
   }

@@ -110,6 +110,7 @@ class DeviceGuardTest(unittest.TestCase):
                               ('device.reboot', b''), ('device.reboot', u32(2)), ('device.reboot', u32(0)),
                               ('device.reboot', b'\1\0'), ('menu.continue', u32(2)), ('menu.continue', bytes(5)),
                               ('service.hold', u32(2)), ('service.hold', b''), (0x06, b''),
+                              (0x33, b''), (0x60, b''),           # retired types: empty, every build refuses
                               ('file.write_staged', (AREA + 'a/b.txt\0').encode() + bytes(32)),
                               ('file.write_staged', b'/yaffs2/x\0' + C.UNSAFE_TOKEN),
                               ('file.write_staged', b'/yaffs2/xy-forever/state-a.txt\0' + bytes(31))):

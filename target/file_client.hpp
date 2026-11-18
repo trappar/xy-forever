@@ -21,7 +21,7 @@
 // rename_to access). Past its bound the
 // caller gets link and the request stays out (the slot is busy: later calls get busy, also link to
 // a host) until A answers or xyf_boot::lost_ms passes (then the link is lost until a reboot; the
-// menu says so and USB still answers). B's guard is never paused: the wait loop reloads it.
+// menu says so and USB still answers).
 // Every path passes the engine's policy (file_engine::decide_engine) before anything is sent;
 // A applies it again to every request. Paths, request and reply bodies live only in the client's
 // own buffers (path_buffer, data_buffer), so an answer that arrives after its caller gave up can

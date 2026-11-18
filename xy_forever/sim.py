@@ -455,13 +455,6 @@ class Simulator:
         if not reply.get('ok'):
             raise RuntimeError('simulator: %s' % reply.get('error'))
 
-    def expire(self, which):
-        """Makes processor 'a' or 'b''s guard (WDOG0) count out at its next host call, if armed;
-        status a_expiries/b_expiries counts the expiries."""
-        reply = self.control('expire %s' % which)
-        if not reply.get('ok'):
-            raise RuntimeError('simulator: %s' % reply.get('error'))
-
     def inject(self, cls, op, argument=0, argument2=0, body=b''):
         """Sends one raw stock request to processor A, as if from B but past B's checks (the
         board's own link end); returns its tag for injected()."""

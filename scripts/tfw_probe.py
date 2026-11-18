@@ -6,8 +6,7 @@ Forever's own code. RISKY STEP: run it only with the developer present, on a bui
 What it does on the device (never interactive; every command through xyf_host.py's own main()):
   check     HELLO + STATUS: the menu answers and its HELLO lists tfw.check. Otherwise one `NEED:`
             line, exit 3, nothing sent but HELLO and STATUS.
-  session   guard on (a hang inside the ROM read resets processor B within ~20 s and it comes
-            back to the menu), hold on.
+  session   hold on.
   control   tfw.check on /yaffs2/firmware.version: not_package, no key read (the command without OTP).
   put-*     put-file of a cut of each official package (1.2.1 and 1.2.5 by default) to
             /yaffs2/xy-forever/probe/: the package's first 0x480 bytes (wrapper, crypto header,
@@ -20,10 +19,10 @@ What it does on the device (never interactive; every command through xyf_host.py
             pass, and the public key's SHA-256 equals that of the key recovered from the official
             signatures (../private/keys/opxy-tfw-public-key.json; never printed). Nothing is written
             by the check.
-  end       status, guard off, hold off, scripts/keepalive.sh on the evidence folder (as device_pass).
+  end       status, hold off, scripts/keepalive.sh on the evidence folder (as device_pass).
 
-What could go wrong on the first OTP read: the ROM read or init hangs or faults (the guard resets
-B; the probe then reports FAIL and B comes back home), or answers other bytes (reason signature or
+What could go wrong on the first OTP read: the ROM read or init hangs or faults (there is no
+watchdog: the probe reports FAIL and the device needs a power cycle), or answers other bytes (reason signature or
 decrypt, no harm: the keys are only read). OTP is never written: no OTP write or program entry is
 linked (xyf_build.py's boot-ROM rule). The cuts stay in /yaffs2/xy-forever/probe/ (ciphertext).
 
@@ -54,7 +53,6 @@ CONTROL = '/yaffs2/firmware.version'
 T_ANSWER = dp.T_ANSWER
 T_PUT = 30.0               # 263 KB staged in 1 KiB chunks, written and read back
 T_CHECK = 60.0             # header + ~80 KB directory read from A, one P-224 verify (spec timeout)
-T_BACK = 40.0              # after a hang: the guard's ~20 s, then the restart home
 NEED_BUILD = 'NEED: install a build with tfw.check (157 or later) first: python3 scripts/device_pass.py --install BUILD'
 
 
@@ -101,10 +99,6 @@ class Probe:
             raise dp.StepFail('the device does not answer tfw.check (%s)' % self.state['hello'])
         return hello.describe()
 
-    def step_guard_on(self):
-        self.ok(['guard', 'on'])
-        return 'guard on'
-
     def step_hold_on(self):
         self.ok(['hold', 'on'])
         return 'hold on'
@@ -132,12 +126,8 @@ class Probe:
         return 'pass; public key = the key recovered from the official signatures'
 
     def step_end_status(self):
-        out = self.ok(['status'], T_BACK if self.state.get('hang') else T_ANSWER)
+        out = self.ok(['status'], T_ANSWER)
         return out.splitlines()[0] if out else ''
-
-    def step_guard_off(self):
-        self.ok(['guard', 'off'])
-        return 'guard off'
 
     def step_hold_off(self):
         self.ok(['hold', 'off'])
@@ -156,8 +146,6 @@ class Probe:
             detail, result = function(), 'PASS'
         except dp.StepFail as error:
             detail, result = str(error), 'FAIL'
-            if name == 'control' or name.startswith('otp'):
-                self.state['hang'] = True              # a hang in the check: the guard's restart takes ~20 s
         row = dict(stage=stage, step=name, result=result, seconds=time.monotonic() - start, detail=detail)
         if getattr(self, 'folder', None):
             (self.folder / ('%02d-%s.txt' % (len(self.rows) + 1, name))).write_text(''.join(self.log))
@@ -201,7 +189,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None):
         print(probe.state.get('need') or (dp.SIM_NEED if opts.sim else dp.NEED))
         return dp.EXIT_NEED
     probe.folder = dp.new_folder(Path(sessions or dp.SESSIONS), 'sim-tfw-probe' if opts.sim else 'tfw-probe')
-    steps = [('session', 'guard-on', probe.step_guard_on), ('session', 'hold-on', probe.step_hold_on),
+    steps = [('session', 'hold-on', probe.step_hold_on),
              ('probe', 'control', probe.step_control)]
     for name in names:
         steps += [('probe', 'put-' + name[len('opxy_firmware_'):-4], lambda n=name: probe.step_put(n)),
@@ -215,7 +203,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None):
         if probe.run(stage, name, function)['result'] == 'FAIL':
             failed = '%s/%s' % (stage, name)
     lost = None
-    for name, function in (('end-status', probe.step_end_status), ('guard-off', probe.step_guard_off),
+    for name, function in (('end-status', probe.step_end_status),
                            ('hold-off', probe.step_hold_off), ('keepalive', probe.step_keepalive)):
         if lost:
             probe.rows.append(dict(stage='end', step=name, result='SKIP', seconds=0.0, detail=lost))

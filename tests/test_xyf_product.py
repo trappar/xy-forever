@@ -182,13 +182,12 @@ class SetDefaultWriteTest(unittest.TestCase):
         src = (ROOT / 'xyf_host.py').read_text()
         self.assertIn("timeout=75.0)", src)                      # host outlasts b's patience
 
-    def test_a_write_is_unguarded_and_not_idle(self):
+    def test_a_write_is_not_idle(self):
         us = unit_text(ROOT / 'target/usb_service.cpp')
         a = us[us.index('void a_set_default('):]
         a = a[:a.index('\n}\n')]
-        self.assertLess(a.index('guard_disarm();'), a.index('storage.write_state_slot('))
-        self.assertLess(a.index('storage.write_state_slot('), a.index('if (guarded) guard_arm();'))
-        self.assertNotIn('guard_count_set', a)
+        self.assertIn('storage.write_state_slot(', a)
+        self.assertNotIn('guard_', a)
         fb = (ROOT / 'target/file_boot.cpp').read_text()
         w = fb[fb.index('usb_service::a_set_default(storage, a_collector.hash);'):]
         self.assertIn('session.touch(now());', w[:w.index('continue;')])        # the write is not idleness
@@ -463,12 +462,13 @@ class OneSessionTest(unittest.TestCase):
         hp = us[us.index('uint32_t home_pump() {'):]
         hp = hp[:hp.index('\n}\n')]
         for needed in ('P::t_install', 'P::t_file_write', 'P::t_read_file', 'P::t_put_begin', 'P::t_set_default',
-                       'P::t_screen', 'P::t_key', 'P::t_continue', 'P::t_reboot', 'P::t_hold', 'P::t_guard', 'P::t_status'):
+                       'P::t_screen', 'P::t_key', 'P::t_continue', 'P::t_reboot', 'P::t_hold', 'P::t_status'):
             self.assertIn(needed, hp)
         self.assertIn('else if (!home_greeted) status_only(type, seq, P::s_state);', hp)
         hr = us[us.index('void home_reboot(U32 target) {'):]
         hr = hr[:hr.index('\n}\n')]
-        order = ['menu_link::usb_command(storage_server::reboot_item);', 'guard_disarm();', 'menu_release();',
+        self.assertNotIn('P::t_guard', hp)
+        order = ['menu_link::usb_command(storage_server::reboot_item);', 'menu_release();',
                  'if (target == reboot_os) marker_clear();', 'reset_self();']
         at = [hr.index(s) for s in order]
         self.assertEqual(at, sorted(at))
@@ -642,7 +642,7 @@ class MtpSelfTestTest(unittest.TestCase):
         self.assertLess(t.index('mtp_selftest(t, hold'), t.index('mtp_leave(t)'))
         enter = ss[ss.index('U32 mtp_enter() {'):]
         self.assertLess(enter.index('file_client::release(mounted)'), enter.index('storage_server::engine_run_item'))
-        self.assertNotIn('guard_pause', t)              # the guard is never paused on b
+        self.assertNotIn('guard', t)                    # there is no guard
         from xy_forever import usb_proto
         self.assertEqual(usb_proto.MTP_TEST, 0x07)
 

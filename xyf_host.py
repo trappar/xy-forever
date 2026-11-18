@@ -29,7 +29,6 @@ Usage (stdlib only; macOS /dev/cu.usbmodem*):
   python3 xyf_host.py boot ID --yes-boot       boot library entry ID once (leaves XY Forever)
   python3 xyf_host.py continue --dry-run       the whole boot path without starting the OS, then back
   python3 xyf_host.py hold on|off              stay in the service across reboots
-  python3 xyf_host.py guard on|off             watchdog guard (resets a hung device)
   python3 xyf_host.py uninstall STOCK_OS_LDR   DRY RUN: only the exact stock 1.2.1 os.ldr
   python3 xyf_host.py uninstall STOCK_OS_LDR --yes-uninstall
   python3 xyf_host.py mods dev PKG_DIR [--with ID...] [--base ID] [--boot | --watch]
@@ -668,10 +667,6 @@ def run(argv):
     keyp.add_argument('--hold', action='store_true', help='press only (no release)')
     hold = sub.add_parser('hold', help='device stays in the service across reboots (until continue/power-off/unplug)')
     hold.add_argument('state', choices=('on', 'off'))
-    guard = sub.add_parser('guard', help='watchdog guard on/off (resets a hung device; carried across reboots)')
-    guard.add_argument('state', choices=('on', 'off', 'expiry-test'))
-    hang = sub.add_parser('test-hang', help='watchdog guard test: the device stops reloading its watchdog')
-    hang.add_argument('--yes-hang', action='store_true')
     mtpt = sub.add_parser('mtp-test', help="097: MTP's storage calls from b's main loop (a opens its read-write window), then home")
     mtpt.add_argument('--hold-ms', type=int, default=5000); mtpt.add_argument('--yes-test', action='store_true')
     uninst = sub.add_parser('uninstall'); uninst.add_argument('stock_os_ldr'); uninst.add_argument('--yes-uninstall', action='store_true')
@@ -781,9 +776,6 @@ def run(argv):
         if not args.yes_uninstall:
             print('DRY RUN: nothing sent. Re-run with --yes-uninstall to uninstall.')
             return 0
-    if args.command == 'test-hang' and not args.yes_hang:
-        print('DRY RUN: would make processor b spin until its watchdog guard resets it. Re-run with --yes-hang.')
-        return 0
     if args.command == 'mtp-test' and not args.yes_test:
         print('DRY RUN: would put a into MTP mode (read-write window open, reads only), run MTP\'s storage calls')
         print('from b, unmount and return home. A hang needs a power cycle. Re-run with --yes-test.')
@@ -956,9 +948,6 @@ def run(argv):
     if args.command == 'hold':
         code, _ = dev.call(P.HOLD, struct.pack('<I', 1 if args.state == 'on' else 0))
         print('hold %s: %s' % (args.state, P.status_name(code))); return code
-    if args.command == 'guard':
-        code, _ = dev.call(P.GUARD, struct.pack('<I', {'on': 1, 'off': 0, 'expiry-test': 2}[args.state]))
-        print('guard %s: %s' % (args.state, P.status_name(code))); return code
     if args.command == 'mtp-test':
         names = ('step', 'mounted', 'space', 'stat', 'dir', 'entries', 'closedir', 'fd', 'read', 'closed',
                  'wait_ms', 'stat2', 'space2', 'unmounted', 'entry_bytes', 'reserved')
@@ -967,9 +956,6 @@ def run(argv):
         print(json.dumps(dict(status=P.status_name(code), **{n: (v if v < 0x80000000 else v - (1 << 32))
                                                               for n, v in zip(names, values)}), indent=1))
         return code
-    if args.command == 'test-hang':
-        code, _ = dev.call(P.TEST_HANG, b'HANG')
-        print('test-hang: %s (the device should reset within ~30 s and come back)' % P.status_name(code)); return code
     return 0
 
 

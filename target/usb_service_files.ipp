@@ -31,7 +31,6 @@ void read_file(uint8_t seq, const uint8_t* payload, U32 length) {
 // draws (normal use is unchanged even if drawing were ever to fail).
 volatile U32 screen_on __attribute__((section(".data"))) = 0;
 volatile U32 home __attribute__((section(".data"))) = 0;             // Test 065: our reboot -> the menu is home
-volatile U32 home_guarded __attribute__((section(".data"))) = 0;
 volatile U32 home_greeted __attribute__((section(".data"))) = 0;
 volatile U32 menu_usb __attribute__((section(".data"))) = 0;     // Test 058: USB kept up for the menu
 void say(const char* a, const char* b = "", const char* c = "", const char* d = "") {
@@ -160,11 +159,7 @@ bool mtp_selftest(MtpSelfTest& t, U32 hold_ms, uint8_t* out) {
     }
     mtp_step(8);                                                          // window open, a idle (as MTP between requests)
     const U32 start = now();
-    while (now() - start < hold_ms) {                                     // the guard stays armed
-        guard_kick();
-        const U32 kicked = now();
-        while (now() - kicked < 10u && now() - start < hold_ms) {}
-    }
+    while (now() - start < hold_ms) {}
     t.wait_ms = now() - start;
     for (U32 n = 9; n != 11; ++n) { mtp_step(n); if (!mtp_do(n, t, out)) return false; }
     t.step = 11;
@@ -190,7 +185,7 @@ void mtp_test(uint8_t seq, const uint8_t* payload, U32 length) {
     const U32 hold = length == 4 ? P::get32(payload) : 0;
     if (length != 4 || hold > 60000u) code = P::s_bad_request;
     else if ((code = mtp_enter()) == P::s_ok) {
-        const bool answered = mtp_selftest(t, hold, files + 0x1000);    // no guard pause
+        const bool answered = mtp_selftest(t, hold, files + 0x1000);
         code = mtp_leave(t);
         if (!answered) code = P::s_link;
         say(code == P::s_ok && t.step == 11 ? "MTP self-test finished." : "MTP self-test FAILED.");
@@ -375,7 +370,7 @@ U32 default_commit(U32 hash) {
     if (code == P::s_ok && !menu_link::usb_command(xyf::state_write::item_set_default_by_id)) code = P::s_link;
     if (code == P::s_ok) {
         // a writes right after it answers the commit. One more command is the barrier:
-        // a's loop answers it only once the write has returned (bounded, guard reloaded).
+        // a's loop answers it only once the write has returned (bounded).
         storage_used = 1;
         menu_link::usb_patience(write_patience_ms);
         if (!menu_link::usb_command(storage_server::usb_mode_item)) code = P::s_link;

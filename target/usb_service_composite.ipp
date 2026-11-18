@@ -258,7 +258,7 @@ void composite_turn() {
 // answered in this pass (command in, data and response out: 1-3 ms instead of two or three 6 ms passes) and a
 // transfer streams (each file request's 1 KiB goes out while the next is read). The burst ends after
 // mtp_quiet_ms without USB or responder progress, or after mtp_burst_ms (the menu still redraws between
-// bursts; the guard is kicked every pass).
+// bursts).
 const U32 mtp_burst_ms = 40, mtp_quiet_ms = 3, mtp_recent_ms = 300;
 void mtp_burst() {
     if (!composite_on || !mtp_live()) return;
@@ -290,7 +290,7 @@ void composite_hello() {                                                 // afte
     marks_end();                                                         // no more marks this boot
 #endif
 }
-// diag.mtp_usb op 0: the trial. Refused while anything else runs, without the guard rule, on the composite
+// diag.mtp_usb op 0: the trial. Refused while anything else runs, without the menu's USB, on the composite
 // already, or when the span gate refuses (s_identity, op 1 says which span). Else the flag file (s_ok after its
 // close), the reply, A's window closed, the full restart.
 U32 trial_start() {
@@ -298,7 +298,7 @@ U32 trial_start() {
     if (true) return P::s_unsupported;                                   // 188: the product has no trial
 #endif
     if (job_running() || closing XYF_OR_MTP_BUSY || (put_expected && result.put_received != put_expected)) return P::s_busy;
-    if (guard_on || !menu_usb || composite_on) return P::s_state;       // nothing restarts B alone
+    if (!menu_usb || composite_on) return P::s_state;
     if (probe_spans()) return P::s_identity;
     return file_put(flag_path, "T2a\n", 4);
 }

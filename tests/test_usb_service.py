@@ -1,8 +1,10 @@
 """XY Forever USB service: frame codec (device C++ vs host Python), the exact
 install allowlist, image/header checks, decoder layout, builder spans, and the
 host tool against a fake device. No device access."""
+import contextlib
 import ctypes as C
 import hashlib
+import io
 import json
 from pathlib import Path
 import random
@@ -472,6 +474,8 @@ class HostToolTest(unittest.TestCase):
         full = P.hello_text(154, 'product', {'XYF_MTP', 'XYF_USB_FILE_WRITE', 'XYF_USB_SET_DEFAULT'})
         old = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e'
         code, out, sent = run(full, ['wait'])
+        self.assertEqual(code, 0); self.assertIn('protocol %s, build 154 (product)' % P.ids.VERSION, out)
+        code, out, sent = run(full.replace('proto=%s;' % P.ids.VERSION, 'proto=1.13;'), ['wait'])   # an older 1.x
         self.assertEqual(code, 0); self.assertIn('protocol 1.13, build 154 (product)', out)
         code, out, sent = run(old, ['wait'])
         self.assertEqual(code, 0); self.assertIn('protocol 1: pre-v1 device', out)
@@ -684,50 +688,28 @@ class UsbPresenceTest(unittest.TestCase):
         self.assertGreaterEqual(marker, staging_end)
         self.assertLess(marker + 16, 0x8c000000)
 
-    def test_watchdog_guard_is_armed_only_inside_the_service(self):
+    def test_the_watchdog_guard_is_gone(self):
+        # A lone restart of B freezes the device: no guard (WDOG0), no hang test, no reason bit 0x200.
         text = unit_text(ROOT / 'target/usb_service.cpp')
-        # v3: home arms the guard only when the marker carries it (or the host asks), after USB
-        # started; menu_release() disarms it before USB stops.
-        start = text[text.index('void home_start() {'):]
-        start = start[:start.index('\n}\n')]
-        self.assertLess(start.index('menu_start_usb();'), start.index('if (home && home_guarded) guard_arm();'))
-        release = text[text.index('void menu_release() {'):]
-        release = release[:release.index('\n}\n')]
-        self.assertLess(release.index('guard_disarm();'), release.index('usb_stop();'))
-        pump = text[text.index('uint32_t home_pump() {'):]
-        self.assertIn('else if (on) guard_arm();', pump)   # otherwise only the host arms it (B only)
-        self.assertNotIn('guard_item', text)
-        install = text[text.index('void install(uint8_t seq'):]
-        self.assertLess(install.index('guard_count_set(guard_writer_count);'), install.index('write_boot(staged'))
-        self.assertLess(install.index('write_boot(staged'), install.index('guard_count_set(guard_count);'))
-        guard = text[text.index('void guard_arm()'):text.index('void marker_write(', text.index('void guard_arm()'))]
-        # 104: WDOG0 expiry raises a priority-0 interrupt whose handler runs the stock reset;
-        # no hardware fault reset (it froze b on v3).
-        for line in ('stock<0x88a30798u, U32>(3u, reinterpret_cast<U32>(&guard_expired), 0u, 1u);',
-                     'stock<0x88a319fau, U32>(3u, 0u);', 'word(wdog_ctl) = wdog_disable;',
-                     'word(sec_sctl3) = guard_saved[3];'):
-            self.assertIn(line, guard)
-        self.assertNotIn('0x41', guard)
-        expired = text[text.index('void guard_expired(U32, U32) {'):]
-        self.assertIn('reset_self();', expired[:expired.index('\n}\n')])
         header = (ROOT / 'target/usb_service.hpp').read_text()
-        self.assertIn('wdog_ctl = 0x20046000u, wdog_cnt = 0x20046004u, wdog_stat = 0x20046008u;', header)
+        for gone in ('guard_arm', 'guard_kick', 'guard_disarm', 'guard_expired', 'guard_count_set', 'guard_pause',
+                     'guard_reload', 'guard_on', 'wdog_', 'hang_token', 'P::t_guard', 'P::t_test_hang',
+                     'home_guarded', 'marker_guard', 'guard_kicks'):
+            self.assertNotIn(gone, text + header)
+        self.assertIn('retired_kicks', header)                         # the status word's slot stays
+        self.assertFalse(hasattr(P, 'GUARD') or hasattr(P, 'TEST_HANG'))
         self.assertIn('max_crash_restarts = 3;', header)
 
-    def test_hang_test_needs_the_token_and_an_armed_guard(self):
-        text = unit_text(ROOT / 'target/usb_service.cpp')
-        self.assertIn('const bool ok = length == 4 && P::get32(payload) == hang_token && guard_on;', text)
-        self.assertEqual(P.TEST_HANG, 0x60)
-
     def test_a_has_no_guard_and_restarts_only_by_following_b(self):
-        # a's own guard and its alone rule are gone; a restarts only to follow b
-        # (F1, the idle window), closing the window first, or on b's REBOOT item.
+        # a restarts only when b's bootloader asks (F1), closing the window first, or on b's REBOOT
+        # item; a b silent past the idle window only ends a's session (no restart).
         text = (ROOT / 'target/file_boot.cpp').read_text()
-        for gone in ('a_guarded', 'a_alone_ms', 'a_guard', 'restart_a_item'):
+        for gone in ('a_guarded', 'a_alone_ms', 'a_guard', 'restart_a_item', 'guard_reload', 'guard_item'):
             self.assertNotIn(gone, text)
         follow = text[text.index('void a_follow(cold_storage::Stock121ReadOnlySession& storage) {'):]
         self.assertIn('    a_close_files(storage);\n    usb_service::reset_self();\n}', follow)
-        self.assertIn('!session.image_size()) a_follow(storage);', text)
+        self.assertNotIn('!session.image_size()) a_follow(storage);', text)
+        self.assertEqual(text.count('a_follow(storage)'), 1)                 # F1 only
         self.assertNotIn('void a_guard', unit_text(ROOT / 'target/usb_service.cpp'))
 
     def test_ranged_reads_stay_small(self):
@@ -741,24 +723,15 @@ class UsbPresenceTest(unittest.TestCase):
 
 
 class HoldTest(unittest.TestCase):
-    """Test 041 hold and guard: the v2 held service loop is gone; v3 home keeps
-    HOLD/GUARD (home_pump). What still applies: resets disarm the guard first; host commands."""
-
-    def test_reset_disarms_the_guard_first(self):
-        """Test 045: a reset on the reboot item with its guard armed; the stock reset's short
-        WDOG count did not replace the guard's 2e9 count, so a stalled and missed b."""
-        text = unit_text(ROOT / 'target/usb_service.cpp')
-        body = text[text.index('void reset_self() {'):]
-        body = body[:body.index('}\n')]
-        self.assertLess(body.index('guard_disarm();'), body.index('stock<0x11a03518u'))
-        self.assertLess(text.index('void guard_disarm() {'), text.index('void reset_self() {'))
-        disarm = text[text.index('void guard_disarm() {'):]
-        self.assertIn('if (!guard_on) return;', disarm[:200])   # no-op when unguarded
+    """Test 041 hold: the v2 held service loop is gone; v3 home keeps HOLD (home_pump). The guard
+    (GUARD, HANG) is gone."""
 
     def test_host_commands(self):
         import xyf_host as host
-        self.assertEqual(host.main(['test-hang']), 0)           # dry run without --yes-hang
-        self.assertEqual((P.HOLD, P.TEST_HANG), (0x32, 0x60))
+        self.assertEqual(P.HOLD, 0x32)
+        for gone in (['guard', 'on'], ['test-hang']):
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                host.main(gone)
 
 
 class RangedProbeTest(unittest.TestCase):

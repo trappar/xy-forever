@@ -1,15 +1,8 @@
-// WDOG0 (XY Forever's guard) and the stock 1.2.1
-// bootloader's side of a boot after one processor resets alone. Tags in comments:
+// The stock 1.2.1 bootloader's side of a boot after one processor resets alone. Tags in comments:
 // [L] read from the 1.2.1 listing, [F] earlier device finding, [I] inferred, [U] unknown.
 //
-// WDOG0 (0x20046000 CTL/CNT/STAT, usb_service.hpp): plain emulated memory the device code writes;
-// watchdog_poll(), called at host calls on the processor's main thread (cycles(), stock calls, B's
-// stock request wait), counts it with the device clock (control "advance" included): SCLK = CCLK/4.
-// Enabled while CTL bits 4..11 are not 0xad (reset value 0x0ad0). A write to STAT reloads the count
-// from CNT (it is seen as STAT no longer holding what the model last wrote). At zero: CTL bit 15
-// (WDRO) and, with SEC source 3 enabled and a handler registered (guard_arm), that handler runs at
-// once on the main thread, as the priority-0 interrupt nests above everything (usb_service.cpp 104).
-// A host-call-free loop (TEST_HANG's for (;;) {}) is never interrupted here.
+// host_poll(), called at host calls on the processor's main thread (cycles(), stock calls, B's
+// stock request wait), runs control "set a_stall_now MS" on A.
 #include "runtime.hpp"
 #include <pthread.h>
 #include <string.h>
@@ -17,65 +10,20 @@
 
 namespace xyf_sim {
 namespace {
-const uint32_t wdog_ctl = 0x20046000u, wdog_cnt = 0x20046004u, wdog_stat = 0x20046008u;
-const uint32_t sec_sctl3 = 0x20004818u, irq_index = 0x11b00ac4u, irq_handler = 0x11b008d0u, irq_context = 0x11b005d4u;
 pthread_t main_thread;
-bool have_main = false, in_handler = false, counting = false;
-uint64_t reload_at = 0;
-uint32_t stat_written = 0;
-
-void expired() {
-    ++shared->expiries[role];
-    w32(wdog_ctl, r32(wdog_ctl) | 0x8000u);            // WDRO
-    counting = false;
-    const uint32_t source = 3, index = r8(irq_index + source);
-    const uint32_t handler = index ? r32(irq_handler + index * 4) : 0;
-    if ((r32(sec_sctl3) & 5u) == 5u && handler) {
-        log("WDOG0 expired: the guard's interrupt (SEC source 3) runs");
-        in_handler = true;
-        reinterpret_cast<void (*)(uint32_t, uint32_t)>(host(handler))(source, r32(irq_context + index * 8));
-        in_handler = false;                             // guard_expired never returns (it resets)
-        return;
-    }
-    // [I] without its interrupt the expiry resets the processor, as the stock reset 11a03518 uses
-    // WDOG0 (Test 046); XY Forever never leaves WDOG0 counting with source 3 off.
-    log("WDOG0 expired with its interrupt off: processor reset");
-    exit_processor(exit_reset);
-}
+bool have_main = false;
 }
 
-void watchdog_start() {
-    main_thread = pthread_self(); have_main = true; in_handler = false; counting = false;
-    w32(wdog_ctl, 0x0ad0u); w32(wdog_cnt, 0); w32(wdog_stat, 0); stat_written = 0;
-    shared->expire[role] = 0;
-}
+void host_start() { main_thread = pthread_self(); have_main = true; }
 
-void watchdog_poll() {
-    if (!have_main || in_handler || !pthread_equal(pthread_self(), main_thread)) return;
+void host_poll() {
+    if (!have_main || !pthread_equal(pthread_self(), main_thread)) return;
     if (role == 0 && !shared->in_bootloader[0])
         if (const int32_t ms = shared->a_stall_now.exchange(0)) {    // control "set a_stall_now MS"
             log("control: A's loop stalls %d ms (device time)", ms);
             const uint64_t until = device_cycles() + uint64_t(ms) * 400000u;
             while (device_cycles() < until) usleep(1000);
         }
-    const bool force = shared->expire[role].exchange(0) != 0;          // control "expire a|b"
-    if (((r32(wdog_ctl) >> 4) & 0xffu) == 0xadu) {
-        counting = false;
-        if (force) log("control expire: WDOG0 is disabled (guard not armed): nothing happens");
-        return;
-    }
-    const uint64_t now = device_cycles();
-    if (!counting || r32(wdog_stat) != stat_written) { counting = true; reload_at = now; }
-    const uint64_t elapsed = (now - reload_at) / 4;
-    const uint32_t count = r32(wdog_cnt);
-    if (force || elapsed >= count) {
-        stat_written = 0; w32(wdog_stat, 0);
-        if (force) log("control expire: WDOG0 counts out now");
-        expired();
-        return;
-    }
-    stat_written = uint32_t(count - elapsed);
-    w32(wdog_stat, stat_written);
 }
 
 // ---- the stock bootloader after a lone reset ------------------------------------------------------

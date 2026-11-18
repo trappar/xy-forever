@@ -250,13 +250,14 @@ class XyfBootTest(unittest.TestCase):
         owner = body(SOURCE, 'bool role0_menu_boot(U32& bytes, U32& crc) {')
         resets = [m.start() for m in re.finditer(r'usb_service::reset_self\(\);', owner)]
         # a follows b (nothing to answer: not a command handler) through a_follow, which closes
-        # storage first: b's bootloader asks (F1), or the idle window. no guard, no alone rule.
+        # storage first, only when b's bootloader asks (F1): a b silent past the idle window ends the
+        # session without a restart. No guard, no alone rule.
         follow = body(SOURCE, 'void a_follow(cold_storage::Stock121ReadOnlySession& storage) {')
         self.assertLess(follow.index('a_close_files(storage);'), follow.index('usb_service::reset_self();'))
         self.assertIn('if (session.follow_now(now())) a_follow(storage);', owner)
         self.assertNotIn('a_alone_ms', SOURCE)
         self.assertNotIn('a_guarded', SOURCE)
-        self.assertEqual(owner.count('a_follow(storage);'), 2)
+        self.assertEqual(owner.count('a_follow(storage);'), 1)
         self.assertEqual(len(resets), 1)                             # the reboot item (v3)
         for at in resets:
             handler = owner[owner.rindex('if (item == ', 0, at):at]
@@ -271,7 +272,7 @@ class XyfBootTest(unittest.TestCase):
         self.assertIn('word(driver_+0x30)||word(driver_+0x1c4)||word(driver_+0x1c8)||byte(driver_+0x28)', answering)
         # b resets 100 ms after the answer: a's whole wait must stay well inside that.
         self.assertLess(constant(XYF, 'answer_out_ms') + constant(XYF, 'answer_quiet_ms'), 100)
-        # v3: the guard item at home start goes through the link, so the session must be published first.
+        # v3: home start may use the link, so the session must be published first.
         client = body(SOURCE, 'bool role1_menu_boot(U32& bytes) {')
         home = client[client.index('b_session = &session;'):]
         self.assertLess(home.index('b_session = &session;'), home.index('usb_service::home_start();'))

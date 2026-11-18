@@ -82,32 +82,14 @@ volatile uint32_t mounted __attribute__((section(".data"))) = 0;
 volatile U32 read_enabled __attribute__((section(".data"))) = 0;
 volatile U32 storage_used __attribute__((section(".data"))) = 0;   // Test 048: a wrote (set default)
 
-// Watchdog guard (usb_service.hpp, Test 041).
-const U32 rcu_ctl = 0x20000000u, sec_gctl = 0x20004000u, sec_fctl = 0x20004010u, sec_sctl3 = 0x20004818u;
-U32 guard_saved[4] __attribute__((section(".data"))) = {0, 0, 0, 0};
-volatile U32 guard_on __attribute__((section(".data"))) = 0;
 volatile U32 held __attribute__((section(".data"))) = 0;
 volatile U32 dry_run __attribute__((section(".data"))) = 0;      // this boot ends in a dry-run reset
-volatile U32 carried_flags __attribute__((section(".data"))) = 0; // hold/guard for the dry-run marker
-U32 flags() { return (held ? marker_held : 0) | (guard_on ? marker_guard : 0); }
-// 104: the watchdog no longer requests a hardware fault reset (RCU_CTL bit 8, SEC fault):
-// on v3 that reset dropped USB but left b frozen (Tests 096-103). WDOG0 expiry (SEC source 3)
-// now raises a priority-0 interrupt (it nests above the USB interrupt, 096) whose handler runs
-// reset_self(), the stock reset every REBOOT uses. A hang with interrupts disabled is not covered.
-volatile U32 guard_fired __attribute__((section(".data"))) = 0;
-void say(const char*, const char*, const char*, const char*);
-// 112: where b was stuck. Our caller is the stock nesting wrapper 11a015d8 (LINK 0, then
-// [--SP] = RETI): with a frame pointer, [FP] is the wrapper's FP, [wrapper FP - 4] the
-// interrupted PC (RETI), [wrapper FP + 4] its return into 11a01570 (expect 0x11a015b2), and
-// [wrapper FP] the interrupted code's FP (walked for its callers).
-char guard_text[3][40] __attribute__((section(".data"))) = {{0}, {0}, {0}};
-bool ram(U32 a) { return !(a & 3u) && ((a >= 0x88000000u && a < 0x8c000000u) || (a >= 0x11800000u && a < 0x11c00000u)); }
-void hex8(char* at, U32 v) { for (U32 i = 0; i != 8; ++i) { const U32 d = v >> (28 - 4 * i) & 0xfu; at[i] = char(d < 10 ? '0' + d : 'a' + d - 10); } }
+volatile U32 carried_flags __attribute__((section(".data"))) = 0; // hold for the dry-run marker
+U32 flags() { return held ? marker_held : 0; }
 // Before resetting B, close its pending link request (at most close_ms), then the master link;
 // stop USB afterwards. A lone B restart hangs in its stock bootloader until A restarts too.
 // False: the link could not be shown closed, so B does not reset or retry this boot.
 volatile U32 reset_refused __attribute__((section(".data"))) = 0;
-void guard_disarm();
 #if defined(XYF_ONE_SESSION) && defined(XYF_SERVICE_ON_MARKER_ONLY)
 bool b_link_closed(bool wait) {
     if (reset_refused || !xyf_boot::link_close(wait)) { reset_refused = 1; return false; }
@@ -116,56 +98,6 @@ bool b_link_closed(bool wait) {
 #else
 bool b_link_closed(bool) { return true; }
 #endif
-__attribute__((optimize("no-omit-frame-pointer"))) void guard_expired(U32, U32) {
-    guard_fired = 1;
-    const U32 fp = reinterpret_cast<U32>(__builtin_frame_address(0));
-    const U32 wfp = ram(fp) ? word(fp) : 0;
-    const U32 reti = ram(wfp) ? word(wfp - 4) : 0, check = ram(wfp) ? word(wfp + 4) : 0;
-    const U32 ifp = ram(wfp) ? word(wfp) : 0;
-    const U32 r1 = ram(ifp) ? word(ifp + 4) : 0, ifp2 = ram(ifp) ? word(ifp) : 0;
-    const U32 r2 = ram(ifp2) ? word(ifp2 + 4) : 0;
-    char* a = guard_text[0]; char* b = guard_text[1]; char* c = guard_text[2];
-    const char* p = "stuck at "; U32 k = 0; for (; p[k]; ++k) a[k] = p[k]; hex8(a + k, reti); a[k + 8] = 0;
-    p = "wrapper "; for (k = 0; p[k]; ++k) b[k] = p[k]; hex8(b + k, check); b[k + 8] = 0;
-    p = "callers "; for (k = 0; p[k]; ++k) c[k] = p[k]; hex8(c + k, r1); c[k + 8] = ' '; hex8(c + k + 9, r2); c[k + 17] = 0;
-    say("Watchdog fired. Please read me:", a, b, c);
-    // 107: a reset with USB running froze b every time (fault reset, test-hang, 105-106's
-    // interrupt); every working REBOOT stops USB first (menu_release -> usb_stop). Same here.
-    // a has no USB: it resets as its other restarts do (103). b closes the link first (no
-    // wait: nothing completes a request inside this interrupt); refused: no reset, guard off.
-    if (byte(0x8807cac4u)) {
-        if (!b_link_closed(false)) { guard_disarm(); return; }
-        usb_stop();
-    }
-    reset_self();                                        // guard_disarm, then the stock reset
-}
-void guard_arm() {
-    if (guard_on) return;
-    guard_saved[0] = word(rcu_ctl); guard_saved[1] = word(sec_gctl);
-    guard_saved[2] = word(sec_fctl); guard_saved[3] = word(sec_sctl3);
-    word(wdog_ctl) = wdog_disable;
-    word(wdog_cnt) = guard_count;
-    stock<0x88a30798u, U32>(3u, reinterpret_cast<U32>(&guard_expired), 0u, 1u);   // source 3: SEN|IEN
-    stock<0x88a319fau, U32>(3u, 0u);                     // priority 0 (highest)
-    word(wdog_stat) = 0;                                 // reload from CNT
-    word(wdog_ctl) = wdog_enable;
-    guard_on = 1;
-}
-volatile U32 guard_muted __attribute__((section(".data"))) = 0;   // 105: expiry test (b keeps running)
-void guard_kick() {
-    if (guard_on && !guard_muted) { word(wdog_stat) = 0; ++result.guard_kicks; }
-}
-// 107: WDOG0 takes a new count only while disabled (106: CNT kept the old value).
-void guard_count_set(U32 count) {
-    if (!guard_on) return;
-    word(wdog_ctl) = wdog_disable; word(wdog_cnt) = count; word(wdog_stat) = 0; word(wdog_ctl) = wdog_enable;
-}
-void guard_disarm() {
-    if (!guard_on) return;
-    word(wdog_ctl) = wdog_disable;
-    word(sec_sctl3) = guard_saved[3];                    // source 3 off again (its slot stays registered)
-    guard_on = 0;
-}
 void marker_write(U32 reason, U32 crashes) {
     word(reboot_marker + 8) = reason; word(reboot_marker + 12) = crashes;
     word(reboot_marker) = reboot_magic; word(reboot_marker + 4) = ~reboot_magic;
@@ -175,7 +107,7 @@ void marker_clear() {
     for (U32 i = 0; i != 4; ++i) word(reboot_marker + 4 * i) = 0;
     lines(reboot_marker, 16, false);
 }
-void tick() { guard_kick(); menu_link::tick(); }
+void tick() { menu_link::tick(); }
 
 // Install log (usb_service.hpp, Test 035). Runs inside the stock writer: no
 // session step here (poll() requires muted sinks), bounded CDC waits only.

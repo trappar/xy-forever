@@ -62,11 +62,7 @@ int fds[max_fds] = {-1, -1, -1, -1};
 struct { U32 open_fds = 0; } result;
 U32 mounted = 0, adopted = 1, used = 0, window_open = 0, window_step = 0, window_result = 0;
 const U32 entry_write = 2, entry_run = 3;
-U32 engine = entry_write, pauses = 0, resumes = 0, handles_closed = 0;
-namespace usb_service {
-bool guard_pause() { ++pauses; return true; }
-void guard_resume(bool was) { if (was) ++resumes; }
-}
+U32 engine = entry_write, handles_closed = 0;
 void close_handles() { ++handles_closed; result.open_fds = 0; }
 U32 window_touched = 0, library_dirty = 0;                   // the idle timer and the rescan flag
 void note(U32, U32, U32) {}
@@ -87,7 +83,7 @@ void reset() {
     identities = true;
     fail_rw = fail_ro = partial_ro = fail_unmount = false;
     mounted = used = window_open = window_step = window_result = selected = held = 0;
-    engine = entry_write; pauses = resumes = handles_closed = 0;
+    engine = entry_write; handles_closed = 0;
 }
 int main() {
     using cold_storage::Stock121ReadOnlySession;
@@ -101,15 +97,14 @@ int main() {
         assert(good.ready()); // subsequent reads and another write remain possible
     }
     assert((mounts == std::vector<int>{0, 1, 0, 1}));
-    assert(pauses == 4 && resumes == 4 && handles_closed == 2);   // the write entry: a's guard paused, then back
+    assert(handles_closed == 2);
 
     reset();
     Stock121ReadOnlySession run;
-    engine = entry_run;                                    // the run entry keeps a's guard on (097)
+    engine = entry_run;
     assert(open_window(run) && window_open);
     close_engine(run);
     assert(!window_open && !mounted && window_result == U32(Result::ok) && run.ready());
-    assert(pauses == 0 && resumes == 0);
 
     reset();
     Stock121ReadOnlySession rw_failed;
@@ -123,13 +118,13 @@ int main() {
     Stock121ReadOnlySession on_boot_partition;
     selected = 1;                                          // never read-write while a boot partition is selected
     assert(!open_window(on_boot_partition));
-    assert(mounts.empty() && on_boot_partition.ready() && !window_open && pauses == 0);
+    assert(mounts.empty() && on_boot_partition.ready() && !window_open);
 
     reset();
     Stock121ReadOnlySession busy;
     held = 1;                                              // a read-entry file still open: busy, nothing unmounted
     assert(!open_window(busy));
-    assert(mounts.empty() && busy.ready() && !window_open && pauses == 0);
+    assert(mounts.empty() && busy.ready() && !window_open);
     held = 0;
     assert(open_window(busy) && window_open);              // once b's handles are closed (op 9)
 

@@ -64,7 +64,9 @@ class SpecTest(unittest.TestCase):
         broken(lambda s: s['commands'][0].update(extra=1), "unknown key 'extra'")
         broken(lambda s: s['commands'][0]['request'].update(bogus=True), "unknown key 'bogus'")
         broken(lambda s: s['statuses'][3].update(code=4), 'codes must run')
-        broken(lambda s: command(s, 'diag.key').update(type='0x33'), 'already used')
+        broken(lambda s: command(s, 'diag.key').update(type='0x32'), 'already used')
+        for retired in ('0x33', '0x60'):                 # diag.guard, diag.hang until 1.13: never reused
+            broken(lambda s: command(s, 'diag.key').update(type=retired), 'reserved retired range')
         broken(lambda s: s['commands'].append(dict(copy.deepcopy(command(s, 'hello')), name='other', symbol='other')),
                'already used')
         broken(lambda s: s['events'][0].update(type='0x81'), 'already used')
@@ -358,7 +360,6 @@ class DeviceAgreesTest(unittest.TestCase):
         self.assertEqual(header_value(usb, 'image_capacity'), k['max_stage'])
         self.assertEqual(header_value(usb, 'log_text_max'), k['max_log_text'])
         self.assertEqual(header_value(usb, 'screen_bytes'), command(s, 'screen.read')['request']['fields'][0]['range'][1] + 1)
-        self.assertEqual(header_value(usb, 'hang_token'), command(s, 'diag.hang')['request']['fields'][0]['range'][0])
         targets = command(s, 'device.reboot')['request']['fields'][0]['values']
         self.assertEqual([header_value(usb, n) for n in ('reboot_service', 'reboot_os', 'reboot_menu')],
                          [int(v) for v in sorted(targets)])

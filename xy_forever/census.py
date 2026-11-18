@@ -522,11 +522,11 @@ USB_SERVICE_FIELDS = ('magic version role present identity exit configured_ms he
 USB_SERVICE_V2_FIELDS = 'rx_events rx_bytes diag_count stock_callback'.split()
 USB_DIAG_WORDS, USB_DIAG_SNAPSHOTS = 24, 3
 USB_SERVICE_V2_WORDS = len(USB_SERVICE_FIELDS) + len(USB_SERVICE_V2_FIELDS) + USB_DIAG_WORDS * USB_DIAG_SNAPSHOTS
-# Version 3 (Test 035) appends the install log counters.
+# Version 3 (Test 035) adds the install log counters.
 USB_SERVICE_V3_FIELDS = ('log_lines log_sent log_skipped log_level_before log_sink_before install_step '
                          'install_step_ms session_cap').split()
 USB_SERVICE_V3_WORDS = USB_SERVICE_V2_WORDS + len(USB_SERVICE_V3_FIELDS)
-USB_SERVICE_V4_FIELDS = 'power_status boot_reason crash_restarts guard_kicks'.split()
+USB_SERVICE_V4_FIELDS = 'power_status boot_reason crash_restarts retired_kicks'.split()
 USB_SERVICE_V4_WORDS = USB_SERVICE_V3_WORDS + len(USB_SERVICE_V4_FIELDS)
 # usb_service.hpp Stage2Word / Stage2Status: the stage-2 load record in the unused diag words.
 USB_STAGE2_FIELDS = 'status detail version bytes load_ms trace_code trace_value reads'.split()

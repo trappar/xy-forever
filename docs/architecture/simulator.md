@@ -20,7 +20,7 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   last, the other erased, no encryption), the retained cold state, `cold.cpp` (its policy is extracted; an OS
   start stops both processes: `os`; no image: `halted`) and `key_ui` (the menu loop without screen or keys:
   `home_pump`, tick, link check; SCREEN shows a test pattern, KEY does nothing).
-- **Resets** (`sim/boot.cpp`): WDOG0 at host calls; a stock reset always lands in the bootloader stand-in. B's probes A
+- **Resets** (`sim/boot.cpp`): a stock reset always lands in the bootloader stand-in (no WDOG0 model). B's probes A
   first: on only if A reset <= `boot_a_window_ms` (400; device 0.15-1.4 s) before B or later, else waits (`b_waits_a`).
 - **Not hosted:** the menu's screen and keys, os.ldr itself, CDC ring and USB timing, NAND timing, encryption,
   stage 2; yaffs is a (case-insensitive) host folder.
@@ -35,5 +35,5 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   (storage operations, then a power cut and a PLAY power-on); `swap PATH` (stock path buffer); `inject CLASS OP ARG0
   ARG2 [HEX]` sends A a raw request past B's checks (class 0: generic), `injected TAG` reads A's answer
   (`Simulator.ask_a`); `advance MS` moves both processors' cycle counters ahead, so a device time-out (A's idle
-  window, a held window) passes unwaited (`Simulator.advance`, in steps); `reset a|b`, `expire a|b` (if armed),
-  `set a_boot_ms|b_boot_ms|a_redeliver|boot_a_window_ms|a_stall_now`. Tests: `tests/test_simulator.py`, `tests/test_guard_reset.py`.
+  window, a held window) passes unwaited (`Simulator.advance`, in steps); `reset a|b`,
+  `set a_boot_ms|b_boot_ms|a_redeliver|boot_a_window_ms|a_stall_now`. Tests: `tests/test_simulator.py`.

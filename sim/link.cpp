@@ -228,7 +228,7 @@ uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t a2
     bool noted = false;
     while (!w.done.load(std::memory_order_acquire)) {        // stock 889f7b12: spins until answered
         usleep(50);
-        watchdog_poll();                                     // an interrupt may end the wait (the guard)
+        host_poll();
         if (!noted && now_us() - start > 5000000u) {
             noted = true;
             log("waiting for A's answer to op %02x (the stock client waits without a bound)", op);

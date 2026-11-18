@@ -23,8 +23,8 @@ const char* host_activity() {
 const char* build_label() { return "build " XYF_BUILD_NUMBER; }
 bool home_hold() { return home != 0 || home_greeted != 0; }
 
-// b, at the start of the file boot: a valid marker (our REBOOT, a dry-run return, or a guard
-// reset while home) makes this boot go home; at most max_crash_restarts guard resets in a row.
+// b, at the start of the file boot: a valid marker (our REBOOT, a dry-run return, or a reset
+// while home) makes this boot go home; at most max_crash_restarts such resets in a row.
 bool home_begin() {
     Result& r = result;
     r.version = 4; r.role = 1;
@@ -36,7 +36,6 @@ bool home_begin() {
     if (!r.present) return false;
     const U32 reason = word(reboot_marker + 8);
     r.crash_restarts = (reason & 0xffu) == marker_active ? word(reboot_marker + 12) + 1 : 0;
-    home_guarded = (reason & marker_guard) ? 1 : 0;
     marker_clear();
     // No reset loop: at most max_crash_restarts in a row.
     if (r.crash_restarts >= max_crash_restarts) {
@@ -47,16 +46,14 @@ bool home_begin() {
     return true;
 }
 
-// b, right before the menu loop (home, PLAY or a failed default): USB on; a guarded home
-// arms the guard on both processors; a watchdog reset comes back home.
+// b, right before the menu loop (home, PLAY or a failed default): USB on.
 void home_start() {
     menu_start_usb();
-    if (home && home_guarded) guard_arm();
     if (home) marker_write(marker_active | marker_menu | flags(), result.crash_restarts);
 }
 
 // REBOOT from home: a resets on the reboot item, b 100 ms later; target OS = no marker,
-// anything else = home again (held, guard carried).
+// anything else = home again (held carried).
 void home_reboot(U32 target) {
     say("Restarting...");
     menu_link::usb_command(storage_server::reboot_item);
@@ -64,7 +61,6 @@ void home_reboot(U32 target) {
     while (now() - t < 100u) {}
     const U32 carry = flags();
     if (!b_link_closed(true)) return;                  // refused: home stays, the link lost
-    guard_disarm();
     menu_release();
     if (target == reboot_os) marker_clear();
     else marker_write(marker_reboot | marker_menu | carry, 0);
@@ -77,7 +73,6 @@ void home_reboot(U32 target) {
 uint32_t home_pump() {
     Result& r = result;
     if (!menu_usb) return 0;
-    guard_kick();
 #if defined(XYF_MTP_USB)
     if (usb_deferred) { usb_deferred = 0; usb_begin(); return 0; }   // the flag, then the boot's only start
 #endif
@@ -193,25 +188,11 @@ uint32_t home_pump() {
             if (ok) { dry_run = mode; carried_flags = flags(); held = 0; leave = 1; }
             status_only(type, seq, ok ? P::s_ok : P::s_link);
         }
-        else if (type == P::t_hold || type == P::t_guard) {
+        else if (type == P::t_hold) {
             const U32 on = length == 4 ? P::get32(payload) : 2;
-            if (type == P::t_guard && on == 2 && length == 4 && !guard_on) {
-                // 105: guard expiry test without a hang: b only, ~3 s, no kicks; the menu loop
-                // keeps running. The watchdog interrupt must restart b; if it does not, the
-                // host can still read the watchdog and SEC registers.
-                guard_arm();                                // b only: a follows once b is silent
-                guard_count_set(guard_test_count); guard_muted = 1;
-                marker_write(marker_active | marker_menu | flags(), r.crash_restarts);   // 109: back home
-                status_only(type, seq, P::s_ok);
-                P::next(parser);
-                continue;
-            }
             if (on <= 1) {
-                if (type == P::t_hold) { held = on; home = on; }
-                else if (on) guard_arm();                  // b only (a has no guard)
-                else guard_disarm();
-                // 109: a guarded PLAY menu (home == 0) also marks itself, so a guard reset comes home.
-                if (home || guard_on) marker_write(marker_active | marker_menu | flags(), r.crash_restarts);
+                held = on; home = on;
+                if (home) marker_write(marker_active | marker_menu | flags(), r.crash_restarts);
             }
             status_only(type, seq, on <= 1 ? P::s_ok : P::s_bad_request);
         }
@@ -219,11 +200,6 @@ uint32_t home_pump() {
             const U32 target = length == 4 ? P::get32(payload) : reboot_menu;
             if (target > reboot_menu) status_only(type, seq, P::s_bad_request);
             else { status_only(type, seq, P::s_ok); settle_writes(false); const U32 t = now(); while (now() - t < 50u) {} home_reboot(target); }
-        }
-        else if (type == P::t_test_hang) {
-            const bool ok = length == 4 && P::get32(payload) == hang_token && guard_on;
-            status_only(type, seq, ok ? P::s_ok : P::s_bad_request);
-            if (ok) for (;;) {}                        // the guard must reset this processor
         }
         else if (stage2_command(type, seq, payload, length)) {}   // stage 2's types (stage2.info)
         else status_only(type, seq, P::s_unsupported);
@@ -235,7 +211,6 @@ uint32_t home_pump() {
     return 0;
 }
 void menu_release() {
-    guard_disarm();                                    // nothing after home runs guarded
     if (!menu_usb) return;
     menu_usb = 0;
 #if defined(XYF_MTP_USB)
@@ -249,13 +224,8 @@ void menu_release() {
     usb_stop();
     set_cdc_callback(result.stock_callback);
 }
-bool guard_pause() { const bool was = guard_on != 0; guard_disarm(); return was; }
-void guard_resume(bool was) { if (was) guard_arm(); }
 
 void reset_self() {
-    // Test 046: the stock reset arms WDOG0 with a short count; a guard left
-    // armed keeps its long count, so a stalled for seconds and missed b.
-    guard_disarm();
     stock<0x11a03518u, void>(U32(*reinterpret_cast<volatile uint16_t*>(0x88a35938u)), 0u);   // stock "6. reset"
     for (;;) {}
 }

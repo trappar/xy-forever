@@ -47,8 +47,8 @@ static const uint32_t power_status_address = 0x88a1cdb4u, power_status_usb = 0x1
 // record of an XY Forever build or the stock OS loads it.
 static const uint32_t reboot_marker = 0x8bfff000u, reboot_magic = 0x52465859u;   // "YXFR"
 // Marker words: magic, ~magic, reason, crash restarts. Reason active = the service
-// was running (set once it starts, cleared on every clean exit): a watchdog reset
-// (below) therefore comes back into the service, at most max_crash_restarts times
+// was running (set once it starts, cleared on every clean exit): a reset of b
+// therefore comes back into the service, at most max_crash_restarts times
 // in a row, then the boot is normal.
 static const uint32_t marker_reboot = 1, marker_active = 2, max_crash_restarts = 3;
 // Test 057's USB probe (b started USB itself and waited probe_ms for the stock
@@ -60,30 +60,14 @@ static const uint32_t host_flag = 0x88a35929u, host_stamp = 0x88a3592cu;
 // HOLD (Test 041; v3: home_pump): payload u32 1 keeps home (the menu), 0 leaves it
 // to the menu's own rules; the marker reason flag carries it across REBOOT.
 static const uint32_t marker_held = 0x100u;
-// GUARD (t_guard, payload u32 1/0) arms/disarms the watchdog guard; the marker
-// carries it across REBOOT / guard resets. A fresh power-on starts unguarded,
-// so a misbehaving guard can never block a USB install of a fix.
-static const uint32_t marker_guard = 0x200u;
+// Reason bit 0x200 (the removed watchdog guard) is retired: never set, ignored.
 // Test 064 (project rule): REBOOT payload u32 target: 0 (or none) = back into the
 // USB service (as before), 1 = straight to the OS (no marker), 2 = the boot menu
 // with USB (marker_menu; like PLAY at power-on). Also from the menu over USB.
 static const uint32_t marker_menu = 0x400u;
 static const uint32_t reboot_service = 0, reboot_os = 1, reboot_menu = 2;
-// Watchdog guard (Test 041): while the service runs, WDOG0 (0x20046000) is armed
-// the way the stock reset 11a03518 arms it (RCU_CTL |= 0x100, SEC source 3 =
-// SEN|FEN, SEC FCTL 0x41), with a long count reloaded on every loop pass (STAT
-// write). A hang (e.g. an unanswered stock RPC) resets b (b only, record
-// 022; a restarts once b is silent past its idle window, file_boot). Longer count around the stock
-// writer; disarmed (CTL 0xAD0, saved RCU/SEC values back) before USB stops.
-static const uint32_t wdog_ctl = 0x20046000u, wdog_cnt = 0x20046004u, wdog_stat = 0x20046008u;
-static const uint32_t wdog_disable = 0x0ad0u, wdog_enable = 1;      // stock 11a035ca writes 1
-static const uint32_t guard_test_count = 300000000u;   // 105: ~3 s (SCLK 100 MHz)
-static const uint32_t guard_count = 0x77359400u;                    // 2e9 SCLK cycles (stock reset: 0x1312d00)
-static const uint32_t guard_writer_count = 0xffffffffu;
 // SET_DEFAULT (Test 048): b waits up to this long for a's state write to finish.
 static const uint32_t write_patience_ms = 60000;
-// HANG (t_test_hang, payload "HANG"): spin without reloading (guard test only).
-static const uint32_t hang_token = 0x474e4148u;                      // "HANG"
 static const uint32_t image = 0x8b820000u, image_capacity = 0x700000u;   // staging (b)
 static const uint32_t readback_buffer = 0x8bf20000u, readback_sectors = 128;   // 64 KiB, end of staging
 // Install log (Test 035, version 3): while the stock writer runs, b's stock log
@@ -124,7 +108,7 @@ struct Result {
     uint32_t log_sink_before, install_step, install_step_ms, session_cap;
     // Version 4 (Test 038: REBOOT / fast power cycle skipped the service):
     // present = 1 stock USB running, 2 USB power only (service started anyway).
-    uint32_t power_status, boot_reason, crash_restarts, guard_kicks;   // present: presence() | held << 4
+    uint32_t power_status, boot_reason, crash_restarts, retired_kicks;   // present: presence() | held << 4; retired_kicks: always 0 (was the removed guard's count)
 };
 static_assert(sizeof(Result) == 132 * 4, "Result layout");
 // stage2[] (usb_service.cpp stage2_load): words, and the status word's values. detail: the
@@ -186,8 +170,6 @@ bool home_hold();
 bool home_begin();
 void home_start();
 uint32_t home_pump();
-bool guard_armed();      // 109: the watchdog guard is armed (either processor)
-void guard_reload();     // b: reload the guard (if armed) while waiting for a's answer to a command
 void stack_watch(uint32_t painted_begin);   // b's painted stack floor; STATUS reports stack_used live
 // b: the menu has USB on. A lost link then keeps the menu: USB still answers (commands
 // that need a get link) until a power cycle; b never resets itself on it.
@@ -274,10 +256,6 @@ void menu_start_usb();
 // 097: why menu_start_usb left USB off (stock code check failed), or 0.
 const char* usb_notice();
 #endif
-// Test 049: disarm around one long job (read-write mount, checkpoint, file
-// write) and re-arm only if it was armed; both proven (Tests 041/046).
-bool guard_pause();
-void guard_resume(bool was);
 // Both roles: stock processor reset (RCU), never returns.
 void reset_self();
 #endif

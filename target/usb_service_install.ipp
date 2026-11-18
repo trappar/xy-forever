@@ -86,9 +86,7 @@ void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
         say("Installing XY Forever...", "Do not unplug or power off.");
         beacon(step_writer, put_expected);
         hook_logs();
-        guard_count_set(guard_writer_count);        // no reloads inside the stock writer
         result.install_written = write_boot(staged, put_expected);
-        guard_count_set(guard_count);
         unhook_logs();                              // before any session step (verify ticks)
         result.install_ms = now() - start;
         // The writer may have encrypted the staging in place: never write it again.

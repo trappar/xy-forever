@@ -935,10 +935,6 @@ def verify(out, stock, boot):
     check_scoped_calls(raw, {'889f285a'}, '14storage_server6a_side', A_MARKER_CALLERS, 'Leftover close')
     check_scoped_calls(raw, A_RENAME_CALLS, '14storage_server6a_side', ('14storage_server',), 'Rename')
     check_scoped_calls(raw, FILE_CLIENT_CALLS, '11file_client', ('11file_client',), 'File client')
-    # The guard is never paused on b; only a's write entry still pauses its own.
-    pausers = referencing_symbols(raw, 'guard_pause')
-    require(all('open_window' in u or 'close_engine' in u for u in pausers),
-            'Guard paused outside a\'s write window: ' + ', '.join(sorted(pausers)))
     if usb:
         check_client_spans(boot)
         require(FILE_CLIENT_CALLS <= targets, 'File client lacks its stock builders: ' +

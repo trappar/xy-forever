@@ -49,8 +49,8 @@ There is no rename and no format request. A's slave interrupt answers the link h
     (B's main loop is safe; an interrupt above the USB interrupt is not).
   - A stock flag `B[0x88a1cdc1]` (set by the inter-CPU command handler `0x88a5a454`)
     makes a bootloader reset itself; unused by XY Forever.
-- **WDOG0 as an interrupt (SEC source 3):** the expiry flag WDRO (`WDOG_CTL` bit 15, write
-  1 to clear) clears only while the watchdog is disabled. Write the disable value first,
+- **WDOG0 as an interrupt (SEC source 3;** found with the removed guard, unused now): the expiry flag
+  WDRO (`WDOG_CTL` bit 15, write 1 to clear) clears only while the watchdog is disabled. Write the disable value first,
   then the disable value with bit 15, then reload and enable. Clearing it in the disable
   write leaves the request up: the handler re-enters forever as soon as it returns.
 - **The display keeps its last frame** when B resets or hangs: a frozen screen does not
