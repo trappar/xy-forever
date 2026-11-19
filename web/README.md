@@ -1,6 +1,6 @@
 # XY Forever Web
 
-The friendly front end for XY Forever, the boot-menu firmware for the OP-XY: a package manager for
+The friendly front end for XY Forever, the firmware and mod manager for the OP-XY: a package manager for
 Open-XY mods and a file manager, talking to the OP-XY over Web Serial. Desktop Chrome (or Edge) only.
 
 The host never assembles firmware: it sends mod packages and asks the OP-XY to build.

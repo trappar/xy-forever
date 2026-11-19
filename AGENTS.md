@@ -1,6 +1,6 @@
 # XY Forever: agent guide
 
-XY Forever is a boot menu and firmware manager for the OP-XY. It is a chain-loaded
+XY Forever is a firmware and mod manager for the OP-XY, never a bootloader. It is a chain-loaded
 second-stage `os.ldr`: the real 1.2.1 bootloader (never modified) loads it from the
 NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 

@@ -1,4 +1,4 @@
-"""Host-side tooling for XY Forever, the OP-XY boot menu and firmware manager."""
+"""Host-side tooling for XY Forever, the OP-XY firmware and mod manager."""
 import sys
 
 __version__ = "0.1.0"

@@ -4,6 +4,10 @@ Part of [XY Forever goals](../GOALS.md).
 
 ## Decisions
 
+- **Name:** XY Forever is a "firmware and mod manager" ("firmware & mod manager" only in
+  headings and tight blurbs). Never call it a bootloader or boot manager: those terms stay
+  with teenage engineering's stock bootloaders and the community's replacement-bootloader
+  project, a different layer.
 - **The real bootloader stays at 1.2.1 forever.** Uninstall restores a
   stock OS but keeps the 1.2.1 bootloader.
 - **No OS is embedded in XY Forever.** It boots firmware from a file every
