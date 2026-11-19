@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.19",
+    "version": "1.20",
     "intro": [
       "XY Forever is a boot menu and firmware manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -485,6 +485,113 @@
       "doc": "Processor B reads the package header, verifies its P-224 signature with the public key in the device's one-time-programmable memory (OTP), then checks that the AES key there decrypts the package's name block and ZIP directory. It reads nothing else and changes nothing; the keys are read only for a well-formed header and nothing derived from them is sent. A cut (16-byte header: u32 `0x54434658`, package bytes, head bytes, tail offset; then the package's first head bytes and its bytes from the tail offset on) is checked as the package. ok: the check ran (see `verdict`); an error: the file could not be read."
     },
     {
+      "type": "0x48",
+      "name": "tfw.check_role",
+      "symbol": "tfw_check_role",
+      "class": "product",
+      "since": "1.20",
+      "switch": "XYF_TFW_CHECK",
+      "switch_optional": true,
+      "summary": "check an official firmware cut with the selected processor’s own OTP keys",
+      "timeout_ms": 6000,
+      "destructive": false,
+      "request": {
+        "size": [
+          18,
+          248
+        ],
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32",
+            "doc": "format version: 1"
+          },
+          {
+            "name": "role",
+            "type": "u32",
+            "doc": "processor: 0=A, 1=B"
+          },
+          {
+            "name": "path",
+            "type": "cstr",
+            "encoding": "utf-8",
+            "min_bytes": 10,
+            "max_bytes": 240,
+            "doc": "absolute path under `/yaffs2/` of a `.tfw` file or a cut of one, NUL-terminated"
+          }
+        ]
+      },
+      "reply": {
+        "size": [
+          48,
+          48
+        ],
+        "extensible": true,
+        "on_error": "status",
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32",
+            "doc": "format version: 1"
+          },
+          {
+            "name": "role",
+            "type": "u32",
+            "doc": "processor: 0=A, 1=B"
+          },
+          {
+            "name": "verdict",
+            "type": "u32",
+            "range": [
+              0,
+              1
+            ],
+            "values": {
+              "0": "pass",
+              "1": "fail"
+            },
+            "doc": "the result"
+          },
+          {
+            "name": "reason",
+            "type": "u32",
+            "range": [
+              0,
+              8
+            ],
+            "values": {
+              "0": "pass",
+              "1": "a read failed",
+              "2": "not a package, or its sizes differ from the file",
+              "3": "an AES key index other than 0",
+              "4": "the device's one-time-programmable memory gave no key",
+              "5": "the device's public key is not on the curve",
+              "6": "the signature does not verify",
+              "7": "the device's key does not decrypt the package",
+              "8": "the decrypted ZIP directory is malformed"
+            },
+            "doc": "why"
+          },
+          {
+            "name": "public_key_sha256",
+            "type": "bytes[32]",
+            "doc": "SHA-256 of the device's 56-byte public key; zero when none was read"
+          }
+        ]
+      },
+      "errors": [
+        "bad_request",
+        "refused",
+        "link",
+        "storage",
+        "not_found",
+        "range",
+        "busy",
+        "unsupported"
+      ],
+      "doc": "Version 1, role 0=A or 1=B. Runs the full native package check locally on that processor. A accepts cuts up to 300000 bytes and uses only its existing read-only storage session. Requires partition 0, closed write window, no open files, jobs, package lease or boot probe. After a link error or timeout send no further commands; a ROM hang needs a manual power cycle. No keys are exported."
+    },
+    {
       "type": "0x42", "name": "stage2.info", "symbol": "stage2_info", "class": "dev", "test_only": true, "since": "1.6", "switch": "XYF_STAGE2_LOADED", "switch_optional": true,
       "summary": "report the loaded stage 2: its version, image hash, services version and loop turns",
       "timeout_ms": 5000, "destructive": false,
@@ -652,7 +759,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.19;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=00000000000000fb001700031fff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31393b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030306662303031373030303331666666303062653b6465763d313b7374616765323d30e8911311"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.20;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=00000000000001fb001700031fff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32303b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030316662303031373030303331666666303062653b6465763d313b7374616765323d307314d750"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

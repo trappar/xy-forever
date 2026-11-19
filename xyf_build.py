@@ -245,7 +245,7 @@ OTP_READ, OTP_INIT, OTP_INIT_FLAG = 0x04000048, 0x04000054, 0x11b01650   # the f
 # tfw.check (XYF_TFW_CHECK): the only feature that reads OTP, and with it the native
 # .tfw check (native/tfw_check and the decoder parts it uses) and the key provider.
 TFW_CHECK_MODES = ('xyf-product',)
-from xy_forever.build_modules import TFW_CHECK_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES
+from xy_forever.build_modules import TFW_CHECK_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES, compile_tfw
 # The mod assembly job (native/mod_job and the linker, patch and content steps) runs on B.
 # The menu's Mods page (target/xyf_mods*: model, view, B's reading and the job's start), product only.
 # The file engine on a (storage_server.cpp; the historical MTP group): the executors
@@ -1062,9 +1062,7 @@ def build(out, stock, boot, mode):
     cpp('peer_boot', SOURCE / 'native/peer_boot.cpp')
     tfw_check = mode in TFW_CHECK_MODES
     if tfw_check:
-        for name in TFW_CHECK_MODULES:
-            cpp(name, SOURCE / ('native/' + name + '.cpp'))
-        cpp('otp_keys', SOURCE / 'target/otp_keys.cpp')
+        compile_tfw(cpp, SOURCE)
     if mode in FILE_WRITE_MODES:
         for name in MOD_JOB_MODULES:          # -O2 as their host-proven freestanding compile: -Os calls libgcc
             cpp(name, SOURCE / ('native/' + name + '.cpp'), ('-O2',))
@@ -1116,7 +1114,7 @@ def build(out, stock, boot, mode):
                        else ()) +
                       ('xyf_crc32',) +
                       links + ('peer_services', 'peer_boot', 'hash', 'inflate') +
-                      (('otp_keys',) + TFW_CHECK_MODULES if tfw_check else ()) +
+                      (('otp_keys', 'tfw_device_check') + TFW_CHECK_MODULES if tfw_check else ()) +
                       (MOD_JOB_MODULES if mode in FILE_WRITE_MODES else ()) +
                       (MODS_PAGE_MODULES if mods_page else ()) +
                       (('mtp_usb', 'mtp_usb_stock', 'mtp_session', 'mtp_responder') if mtp_usb else ()))

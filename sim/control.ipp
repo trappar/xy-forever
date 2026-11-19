@@ -70,6 +70,7 @@ std::string command(const std::string& line, bool& quit, int client) {
             {"a_silent", &shared->a_silent}, {"a_slow_ms", &shared->a_slow_ms}, {"drop_request", &shared->drop_request},
             {"drop_body", &shared->drop_body}, {"cable_pull", &shared->cable_pull}, {"cut_after", &shared->cut_after},
             {"fail_write", &shared->fail_write}, {"vanish_marker", &shared->vanish_marker},
+            {"tfw_rpc_version", &shared->tfw_rpc_version}, {"a_otp_fail", &shared->a_otp_fail}, {"a_otp_preinit", &shared->a_otp_preinit},
             {"fail_mount", &shared->fail_mount}, {"otp_fail", &shared->otp_fail}, {"otp_preinit", &shared->otp_preinit},
             {"fail_select", &shared->fail_select},
             {"fail_unmount", &shared->fail_unmount}, {"fail_open", &shared->fail_open}, {"full_path", &shared->full_path},

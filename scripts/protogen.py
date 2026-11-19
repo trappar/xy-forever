@@ -954,18 +954,7 @@ def render_conformance(cases):
 # docs/PROTOCOL.md is the index of a tree; its leaves sit in docs/protocol/, each under the docs byte budget
 # (tests/test_docs_budget.py). A command leaf holds the published non-developer commands whose type falls in
 # its range, so a new command lands in a leaf by its number; the budget test says when a leaf must split.
-DOC_DIR = 'docs/protocol'
-CMD_LEAVES = (   # (first type, last type, file, title)
-    (0x00, 0x0f, 'cmd-session.md', 'session commands'),
-    (0x10, 0x13, 'cmd-stage.md', 'staging commands'),
-    (0x14, 0x17, 'cmd-files.md', 'file commands'),
-    (0x18, 0x1f, 'cmd-file-move.md', 'file move and copy commands'),
-    (0x20, 0x3f, 'cmd-boot.md', 'boot and device commands'),
-    (0x40, 0x43, 'cmd-library.md', 'library commands'),
-    (0x44, 0x7f, 'cmd-jobs.md', 'job commands'),
-)
-DOC_LEAVES = tuple('%s/%s' % (DOC_DIR, f) for f in (
-    ['transport.md', 'rules.md', 'commands.md'] + [leaf[2] for leaf in CMD_LEAVES] + ['examples.md', 'events-dev.md']))
+from protogen_leaves import DOC_DIR, CMD_LEAVES, DOC_LEAVES
 WIDTH = 160                              # longest prose line in a generated page (tables and headings excepted)
 LINE_START = re.compile(r'^([-+*>]|#{1,6}|[0-9]{1,9}[.)])$')   # a word that would start a list or heading
 

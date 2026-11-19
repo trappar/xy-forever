@@ -389,15 +389,19 @@ int otp_fields() { int n = 0; for (uint8_t length : shared->otp_length) n += len
 bool load_otp() {
     uint8_t head[2];
     while (fread(head, 1, 2, stdin) == 2) {
-        if (head[0] >= 16 || !head[1] || head[1] > 64 ||
-            fread(shared->otp_field[head[0]], 1, head[1], stdin) != head[1]) return false;
-        shared->otp_length[head[0]] = head[1];
+        const bool a = (head[0] & 0x80u) != 0;
+        const uint8_t selector = head[0] & 0x7fu;
+        if (selector >= 16 || !head[1] || head[1] > 64 ||
+            fread(a ? shared->a_otp_field[selector] : shared->otp_field[selector], 1, head[1], stdin) != head[1]) return false;
+        (a ? shared->a_otp_length : shared->otp_length)[selector] = head[1];
     }
     return true;
 }
 void wipe_otp() {
     volatile uint8_t* p = &shared->otp_field[0][0];
     for (size_t i = 0; i != sizeof(shared->otp_field); ++i) p[i] = 0;
+    p = &shared->a_otp_field[0][0];
+    for (size_t i = 0; i != sizeof(shared->a_otp_field); ++i) p[i] = 0;
 }
 #include "runtime_status.ipp"
 #include "control.ipp"
@@ -439,6 +443,7 @@ int main(int argc, char** argv) {
         const char* v = i + 1 < argc ? argv[i + 1] : 0;
         if (a == "--plain") { play = false; continue; }
         if (a == "--otp-stdin") { otp = true; continue; }
+        if (a == "--a-otp-initialized") { shared->a_otp_preinit = 1; continue; }
         if (a == "--otp-initialized") { shared->otp_preinit = 1; continue; }
         if (a == "--virtual") { shared->virtual_clock = 1; continue; }   // sim/clock.cpp (test runs)
         if (!v) return usage();

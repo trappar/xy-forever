@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""OTP probe (#15), processor B only: the first read of B's one-time-programmable memory (OTP)
-by XY Forever's own code. RISKY STEP: run only with the developer's explicit yes,
-on a build with tfw.check after the device pass. This does not determine A's OTP contents.
+"""OTP probe (#15): legacy B, or --roles a,b for both processors' one-time-programmable
+memory (OTP) through XY Forever's own checker. RISKY STEP: run only with the developer's explicit yes,
+on a checked build after the device pass. --roles a,b requires tfw.check_role v1;
+readable negative results are evidence and do not abort the remaining role checks.
 
 What it does on the device (never interactive; every command through xyf_host.py's own main()):
   check     HELLO + STATUS: the menu answers and its HELLO lists tfw.check. Otherwise one `NEED:`
             line, exit 3, nothing sent but HELLO and STATUS.
-  control   tfw.check on /yaffs2/firmware.version: not_package, no key read (the command without OTP).
+  control   tfw.check on /yaffs2/firmware.version (A: xy-forever/state-a.txt): not_package, no key read (the command without OTP).
   put-*     put-file of a cut of each official package (1.2.1 and 1.2.5 by default) to
             /yaffs2/xy-forever/probe/: the package's first 0x480 bytes (wrapper, crypto header,
             name block) and its last 256 KiB (ZIP directory, ~80 KB), 263 KB, behind a 16-byte cut
             header (native/tfw_check.hpp). A whole package (~98 MB) cannot be written yet: the
             staged write holds 7 MB. tfw.check reads only those parts of a package anyway
             (header, signature, name block, directory), so a cut checks the same.
-  otp-*     tfw.check on each cut: B reads OTP selector 9 (the vendor public key), verifies the
+  otp-*     tfw.check on each cut: the selected processor reads OTP selector 9 (the vendor public key), verifies the
             signature, reads selectors 3/4 (the AES key) and decrypts the directory. PASS: verdict
             pass, and the public key's SHA-256 equals that of the key recovered from the official
             signatures (../private/keys/opxy-tfw-public-key.json; never printed). Nothing is written
-            by the check.
+            by the check. --roles a,b records each role, public-key hash match and verdict;
+            readable negative results continue. A read/storage failure stops the probe.
   cleanup   remove only the cuts whose uploads were attempted, with a cleanup log first. A failed
             check with a valid reply still permits cleanup; transport loss sends no more commands.
   end       on success only, scripts/keepalive.sh on the evidence folder. No hold, guard or reset.
@@ -70,7 +72,7 @@ class Probe:
         self.dev, self.opts, self.keepalive = dev, opts, keepalive
         self.log, self.rows, self.state = [], [], {}
         self.no_answer = False
-        self.attempted, self.remaining = [], []
+        self.attempted, self.remaining, self.matrix = [], [], []
 
     def host(self, argv, timeout):
         argv = [str(a) for a in argv]
@@ -96,8 +98,14 @@ class Probe:
             raise dp.StepFail('%s: %s' % (argv[0], dp.why(code, out, err)))
         return out
 
-    def check_file(self, path):
-        code, out, err = self.host(['tfw-check', path], self.opts.check_timeout)
+    def check_file(self, path, role=None):
+        command = ['tfw-check', path] + (['--role', role] if role else [])
+        deadline = time.monotonic() + (self.opts.wait if role else 0)
+        while True:
+            code, out, err = self.host(command, self.opts.check_timeout)
+            if not role or code != P.ids.S_BUSY or time.monotonic() >= deadline:
+                break
+            time.sleep(.05)                 # A closes the preceding upload's write window between requests
         if self.no_answer:
             raise dp.StepFail('power cycle needed: tfw.check stopped answering; no more commands sent')
         report = dp.parse_json(out)
@@ -110,13 +118,13 @@ class Probe:
         out = self.ok(['status'], self.opts.wait)
         hello = P.Hello(out.splitlines()[0].split(': ', 1)[-1]) if out else None
         self.state['hello'] = out.splitlines()[0] if out else ''
-        if hello is None or hello.pre_v1 or not hello.answers(P.ids.TFW_CHECK):
+        if hello is None or hello.pre_v1 or not hello.answers(P.ids.TFW_CHECK_ROLE if self.opts.roles else P.ids.TFW_CHECK):
             self.state['need'] = NEED_BUILD
             raise dp.StepFail('the device does not answer tfw.check (%s)' % self.state['hello'])
         return hello.describe()
 
-    def step_control(self):
-        report = self.check_file(CONTROL)
+    def step_control(self, role=None):
+        report = self.check_file('/yaffs2/xy-forever/state-a.txt' if role == 'a' else CONTROL, role)
         if (report['verdict'], report['reason'], report['public_key_sha256']) != ('fail', 'not_package', '00' * 32):
             raise dp.StepFail('expected fail/not_package with no key read: %s' % report)
         return 'not_package, no key read'
@@ -133,8 +141,16 @@ class Probe:
             local.unlink()
         return '%s: %d B (CRC-32 checked by the device)' % (remote(name), len(data))
 
-    def step_otp(self, name):
-        report = self.check_file(remote(name))
+    def step_otp(self, name, role=None):
+        report = self.check_file(remote(name), role)
+        if role:
+            if report.get('role') != role or report.get('verdict') not in ('pass', 'fail'):
+                raise dp.StepFail('invalid processor result')
+            if report.get('reason') == 'read':
+                raise dp.StepFail('processor %s could not read the cut' % role)
+            match = report['public_key_sha256'] == self.expected
+            self.matrix.append(dict(package=name, role=role, public_key_match=match, verdict=report['verdict']))
+            return '%s: %s; public key hash %s' % (role.upper(), report['verdict'], 'matches' if match else 'differs or absent')
         if (report['verdict'], report['reason']) != ('pass', 'pass'):
             raise dp.StepFail('%s: %s (%s)' % (name, report['verdict'], report['reason']))
         if report['public_key_sha256'] != self.expected:
@@ -186,6 +202,7 @@ class Probe:
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--sim', metavar='HOST:PORT', help='run against the device simulator (xyf_host.py --sim)')
+    parser.add_argument('--roles', help='comma-separated a,b for versioned per-processor evidence; default: legacy B probe')
     parser.add_argument('--packages', default=','.join(PACKAGES),
                         help='official packages to cut and check (default %(default)s)')
     parser.add_argument('--firmware', type=Path, default=paths.FIRMWARE / 'official', help='where they are')
@@ -200,6 +217,9 @@ def main(argv=None, device=None, keepalive=None, sessions=None, cleanup_dir=None
     opts = parse_args(argv)
     names = [n.strip() for n in opts.packages.split(',') if n.strip()]
     try:
+        roles = opts.roles.split(',') if opts.roles else [None]
+        if any(role not in ('a', 'b') for role in roles if role is not None) or len(set(roles)) != len(roles):
+            raise ValueError('--roles takes a,b (each at most once)')
         if not math.isfinite(opts.check_timeout) or opts.check_timeout <= 0:
             raise ValueError('--check-timeout must be positive and finite')
         if any(not re.fullmatch(r'opxy_firmware_\d+(?:_\d+)*\.tfw', n) for n in names):
@@ -220,16 +240,19 @@ def main(argv=None, device=None, keepalive=None, sessions=None, cleanup_dir=None
     probe.expected = expected
     if not opts.sim:
         keepalive.stop_running()
+        if opts.roles:
+            time.sleep(2)                         # let the previous keeper release its USB port
     started = datetime.now(timezone.utc)
     check = probe.run('check', 'check', probe.step_check)
     if check['result'] == 'FAIL' and (probe.no_answer or probe.state.get('need')):
         print(probe.state.get('need') or (dp.SIM_NEED if opts.sim else dp.NEED))
         return dp.EXIT_NEED
     probe.folder = dp.new_folder(Path(sessions or dp.SESSIONS), 'sim-tfw-probe' if opts.sim else 'tfw-probe')
-    steps = [('probe', 'control', probe.step_control)]
+    steps = [('probe', 'control' + ('-' + role if role else ''), lambda r=role: probe.step_control(r)) for role in roles]
     for name in names:
-        steps += [('probe', 'put-' + name[len('opxy_firmware_'):-4], lambda n=name: probe.step_put(n)),
-                  ('probe', 'otp-' + name[len('opxy_firmware_'):-4], lambda n=name: probe.step_otp(n))]
+        steps += [('probe', 'put-' + name[len('opxy_firmware_'):-4], lambda n=name: probe.step_put(n))]
+        steps += [('probe', 'otp-' + name[len('opxy_firmware_'):-4] + ('-' + role if role else ''),
+                   lambda n=name, r=role: probe.step_otp(n, r)) for role in roles]
     failed = None if check['result'] == 'PASS' else 'check'
     for stage, name, function in steps:
         if failed:
@@ -251,7 +274,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, cleanup_dir=None
     summary = dict(format='xyf-tfw-probe/1', folder=str(probe.folder), argv=list(argv or sys.argv[1:]),
                    started_utc=started.isoformat(), finished_utc=datetime.now(timezone.utc).isoformat(),
                    packages=names, hello=probe.state.get('hello'), steps=probe.rows, exit_code=code,
-                   remaining_cuts=probe.remaining, power_cycle_needed=probe.no_answer)
+                   remaining_cuts=probe.remaining, power_cycle_needed=probe.no_answer, roles=probe.matrix)
     (probe.folder / 'summary.json').write_text(json.dumps(summary, indent=1) + '\n')
     print(dp.table(probe.rows, dp.settle_folder(probe.folder, opts.sim, code == dp.EXIT_PASS, opts.keep)))
     return code

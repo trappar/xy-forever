@@ -2,6 +2,7 @@
 #include "file_engine.hpp"
 #include "usb_proto.hpp"
 #include "boot_partition_probe.hpp"
+#include "tfw_role_probe.hpp"
 // Processor B's file client (see file_client.hpp).
 namespace xy_forever { namespace file_client {
 uint32_t bound_ms(uint32_t op, uint32_t argument) {
@@ -169,7 +170,7 @@ Reply leave(Stock121PeerSession* session, const Reply& submitted, U32 bound) {
 // submitted (*left: its session; the caller polls the answer), else A's answer awaited. sent: the bytes that go
 // instead of path (rename_upload's, file_engine::join_upload; path is its target, checked).
 Reply path_request(const char* path, file_engine::Operation policy, U32 op, U32 argument,
-                   Stock121PeerSession** left = 0, const char* sent = 0) {
+                   Stock121PeerSession** left = 0, const char* sent = 0, U32 bound = 0) {
     if (!allowed(path, policy)) return outcome(refused);
     Stock121PeerSession* session; Reply why;
     U32* request = claim(session, why);
@@ -178,7 +179,7 @@ Reply path_request(const char* path, file_engine::Operation policy, U32 op, U32 
     place(path);
     stock<0x889f8d22u, void>(request, op, path_copy(), argument, 0u);   // path class (flushes the path)
     if (left) { *left = session; return submit(*session, op); }
-    return send(*session, op, bound_ms(op, argument));
+    return send(*session, op, bound ? bound : bound_ms(op, argument));
 }
 Reply query(const char* path, U32 op, uint8_t* out, U32 bytes) {
     if (!allowed(path, file_engine::op_stat)) return outcome(refused);
@@ -296,6 +297,9 @@ const uint8_t* stream(uint32_t at, uint32_t count) {
     return reinterpret_cast<const uint8_t*>(stream_buffer + at);
 }
 Reply a_timing(uint32_t k) { return path_request("/yaffs2", file_engine::op_stat, 0x21, file_engine::timing_tag | (k & 0xffu)); }
+Reply tfw_probe(const char* path, uint32_t op) {
+    return path_request(path, file_engine::op_stat, 0x21, tfw_role_probe::tag | op, 0, 0, 5000u);
+}
 Reply boot_probe(uint32_t op) {
     return path_request("/yaffs2", file_engine::op_stat, 0x21, boot_partition_probe::tag | (op & 0xffu));
 }

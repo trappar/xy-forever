@@ -569,9 +569,8 @@ def run(argv):
     peek.add_argument('address', type=lambda s: int(s, 0)); peek.add_argument('bytes', type=lambda s: int(s, 0))
     peek.add_argument('--out', type=Path, required=True)
     shot.add_argument('--out', type=Path, required=True)
-    tfwc = sub.add_parser('tfw-check', help="check a .tfw or a cut of one on the device with the device's own OTP "
-                          "keys (pass/fail, reason, the public key's SHA-256); writes nothing")
-    tfwc.add_argument('path')
+    from xy_forever import tfw_check_cli
+    tfw_check_cli.configure(sub)
     library_add.configure(sub)
     sub.add_parser('save-times', help='print the save-time log (/yaffs2/xy-forever/log/save-times.txt) as a '
                    'table: one row per Save, USB build or content switch, milliseconds per part (read-only)')
@@ -743,16 +742,8 @@ def run(argv):
         from xy_forever import filecopy
         return filecopy.copy_command(dev, args.source.rstrip('/'), args.target.rstrip('/'), args.recursive)
     if args.command == 'tfw-check':
-        code, body = dev.call(P.ids.TFW_CHECK, args.path.encode('utf-8') + b'\0', timeout=TFW_CHECK_TIMEOUT)
-        _, fields = P.decode_reply(P.ids.TFW_CHECK, struct.pack('<I', code) + body)
-        report = dict(status=P.status_name(code))
-        if fields:
-            reason = fields['reason']
-            report.update(verdict='pass' if fields['verdict'] == 0 else 'fail', reason=TFW_REASONS[reason]
-                          if reason < len(TFW_REASONS) else 'reason_%d' % reason,
-                          public_key_sha256=fields['public_key_sha256'].hex())
-        print(json.dumps(report))
-        return code or (0 if report['verdict'] == 'pass' else 1)
+        from xy_forever import tfw_check_cli
+        return tfw_check_cli.command(dev, args, TFW_CHECK_TIMEOUT)
     if args.command == 'peek':
         data = bytearray()
         while len(data) < args.bytes:
