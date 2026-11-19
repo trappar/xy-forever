@@ -174,9 +174,25 @@ const xyf::mtp_usb::Handler mtp_handler = {h_deliver, h_pending, h_length, h_tak
 #endif
 // #144 diag.mtp op 7, u8 then: 0 the timing: u32 status, u32 piece, u32 B's clock (units of 1024 cycles), B's
 // mtp_session::Timing (timing_words), u32 1 when A's words follow (0: A not asked now: an operation, a job or a
-// window close holds the file client, or A did not answer), A's file_engine::timing_words
+// window close holds the file client, or A did not answer), A's file_engine::timing_base_words
 // (storage_server_timing.ipp); 1 clear both (u32 status, u32 A cleared); 2 u32 bytes: the transfer piece, chunk
-// to buffer_bytes (u32 status, u32 piece; s_busy during an operation). The status; n: the reply's length.
+// to buffer_bytes (u32 status, u32 piece; s_busy during an operation); 3 A's other requests by operation: u32
+// status, u32 1 when A's words follow (as for 0), file_engine::timing_op_slots x (count, sum, longest, checks). The status;
+// n: the reply's length.
+// A's timing words [first, end) at files + n, after a u32 flag: 1 when A answered them all (a_free: A may be asked).
+void a_words(bool a_free, U32 first, U32 end, U32& n) {
+    const U32 flag = n;
+    U32 a_ok = a_free ? 1u : 0u;
+    n += 4;
+    for (U32 k = first / 2; k != end / 2; ++k, n += 8) {
+        file_client::Reply r = {file_client::refused, 0, 0};
+        if (a_ok) r = file_client::a_timing(k);
+        if (r.outcome != file_client::done) a_ok = 0;
+        P::put32(files + n, a_ok ? U32(r.value) : 0u); P::put32(files + n + 4, a_ok ? r.error : 0u);
+    }
+    P::put32(files + flag, a_ok);
+}
+static_assert(file_engine::timing_base_words % 2 == 0 && file_engine::timing_words % 2 == 0, "A's word pairs");
 U32 mtp_timing(const uint8_t* payload, U32 length, bool live, U32& n) {
     ms::Session& m = mslot();
     const uint8_t sub = payload[1];
@@ -187,16 +203,12 @@ U32 mtp_timing(const uint8_t* payload, U32 length, bool live, U32& n) {
         const U32* b = reinterpret_cast<const U32*>(&m.files.timing);
         n = 12;
         for (U32 i = 0; i != ms::timing_words; ++i, n += 4) P::put32(files + n, mtp_on ? b[i] : 0u);
-        const U32 flag = n;
-        U32 a_ok = a_free ? 1u : 0u;
-        n += 4;
-        for (U32 k = 0; k != file_engine::timing_words / 2; ++k, n += 8) {
-            file_client::Reply r = {file_client::refused, 0, 0};
-            if (a_ok) r = file_client::a_timing(k);
-            if (r.outcome != file_client::done) a_ok = 0;
-            P::put32(files + n, a_ok ? U32(r.value) : 0u); P::put32(files + n + 4, a_ok ? r.error : 0u);
-        }
-        P::put32(files + flag, a_ok);
+        a_words(a_free, 0, file_engine::timing_base_words, n);
+        return P::s_ok;
+    }
+    if (sub == 3 && length == 2) {
+        n = 4;
+        a_words(a_free, file_engine::timing_base_words, file_engine::timing_words, n);
         return P::s_ok;
     }
     if (sub == 1 && length == 2) {

@@ -21,7 +21,8 @@ Every wait is bounded. One table row per route; exit 0 only when every route pas
 
 After the xyf-mtp route, where its time went (#144, xy_forever/mtp_timing.py): for each phase (big files written,
 small files written, read back), B's file requests to A (their round trips), A's own storage time per request,
-the link and queues between them, B's responder and USB work, and the rest. It is read over the serial service
+the link and queues between them, A's other requests by operation (open, close, the rename pair, mkdir, window
+open and close...), B's responder and USB work, and the rest. It is read over the serial service
 beside MTP (diag.mtp op 7); without it (--no-breakdown, or no serial) only the table is printed.
 """
 import argparse

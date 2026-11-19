@@ -15,7 +15,12 @@ CYCLE_US = 1 / 400.0                  # one cycle, microseconds
 B_WORDS = ('reads', 'read_units', 'read_max', 'writes', 'write_units', 'write_max', 'calls', 'call_units',
            'steps', 'step_units', 'pumps', 'pump_units', 'waits', 'read_bytes', 'write_bytes', 'started')
 A_WORDS = ('reads', 'read_units', 'read_max', 'writes', 'write_units', 'write_max',
-           'others', 'other_units', 'gaps', 'gap_units', 'gap_max', 'unused')
+           'others', 'other_units', 'gaps', 'gap_units', 'gap_max', 'checks')
+# A's other requests by operation (file_engine.hpp TimingSlot, in order): count, sum (units), longest (cycles) and
+# A's own checks in them (units: stats, the engine spans' CRC; the rest is the stock executor's) each
+A_OPS = ('mount (op 8)', 'window close (op 9)', 'access', 'rename from (RNFR)', 'rename to (RNTO/RPTO)', 'stat',
+         'statfs', 'unlink', 'mkdir', 'rmdir', 'open', 'seek', 'close', 'opendir', 'readdir', 'closedir', 'other',
+         'window open (+ its request)')
 PIECES = (1024, 4096)                 # the transfer piece: chunk .. the responder's buffer
 DEFAULT_PIECE = 4096                  # the device's default (mtp_responder.hpp default_piece)
 
@@ -34,8 +39,9 @@ def call(dev, body, timeout=10.0):
 
 
 def read(dev, wait=3.0, sleep=time.sleep, clock=time.monotonic):
-    """{'piece', 'b_now', 'b': {...}, 'a': {...} or None}; waits up to wait s for A's words (A is asked only
-    while nothing holds the file client: a window close just after an upload, say)."""
+    """{'piece', 'b_now', 'b': {...}, 'a': {...} or None, 'a_ops': {name: (count, units, longest)} or None};
+    waits up to wait s for A's words (A is asked only while nothing holds the file client: a window close just
+    after an upload, say)."""
     deadline = clock() + wait
     while True:
         code, body = call(dev, b'\0')
@@ -50,8 +56,18 @@ def read(dev, wait=3.0, sleep=time.sleep, clock=time.monotonic):
         a_ok, = struct.unpack_from('<I', body, at)
         a = dict(zip(A_WORDS, struct.unpack_from('<%dI' % len(A_WORDS), body, at + 4))) if a_ok else None
         if a is not None or clock() >= deadline:
-            return dict(piece=piece, b_now=now, b=b, a=a)
+            return dict(piece=piece, b_now=now, b=b, a=a, a_ops=read_ops(dev) if a is not None else None)
         sleep(0.1)
+
+
+def read_ops(dev):
+    """A's other requests by operation (op 7 sub 3): {name: (count, units, longest, check units)} of those that
+    ran, or None (A not asked now, or a build without them)."""
+    code, body = call(dev, b'\3')
+    if code or len(body) < 4 + 16 * len(A_OPS) or not struct.unpack_from('<I', body)[0]:
+        return None
+    words = struct.unpack_from('<%dI' % (4 * len(A_OPS)), body, 4)
+    return {name: words[4 * i:4 * i + 4] for i, name in enumerate(A_OPS) if words[4 * i]}
 
 
 def clear(dev, wait=3.0, sleep=time.sleep, clock=time.monotonic):
@@ -113,6 +129,13 @@ def lines(t, seconds, label):
             row('  link and queues (round trip - A)', data_n, max(0, data_units - a_units))
         row('A idle between requests (< 20 ms)', a['gaps'], a['gap_units'], a['gap_max'])
         row('A other requests', a['others'], a['other_units'])
+        for name, (count, units, longest, checks) in (t.get('a_ops') or {}).items():
+            row('  ' + name, count, units, longest, 'A\'s checks %.0f us each' % _avg_us(checks, count))
+        if a['others'] and b['calls']:                     # A's dispatch latency and the link, per other request
+            row('  link and queues (B calls - A)', a['others'], max(0, b['call_units'] - a['other_units']))
+        if a['checks']:
+            out.append('  %-34s %6d  (stats, the engine spans\' CRC: A\'s own, inside the requests above)' % (
+                'A checks', a['checks']))
     else:
         out.append('  (A\'s counters not read: the file client was busy)')
     row('B other file calls', b['calls'], b['call_units'])

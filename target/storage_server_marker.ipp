@@ -1,4 +1,13 @@
 // Part of storage_server.cpp, included there at this point: not compiled alone.
+// #144: A's own checks inside a request (stat_into below, engine_identity) counted and timed for
+// storage_server_timing.ipp, so a request's time splits into ours and the stock executor's.
+struct Checks { U32 count; uint64_t cycles; };
+Checks a_checks __attribute__((section(".data"))) = {0, 0};
+struct CheckSpan {
+    const uint64_t start;
+    CheckSpan() : start(xyf::clock::cycles()) {}
+    ~CheckSpan() { ++a_checks.count; a_checks.cycles += xyf::clock::cycles() - start; }
+};
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
 // The dev-menu marker around every unlink and rmdir (the operations that remove a name;
 // and rename, rename_now). The policy checks the spelling, but yaffs follows symlinks and hardlinks inside a
@@ -13,6 +22,7 @@ const char marker_path[] = "/yaffs2/bootloader.dev";
 static const U32 record_words = 0x80 / 4;                             // >= the stock stat record (0x34)
 U32 marker_record[2][record_words] __attribute__((section(".data"))) = {};
 __attribute__((noinline)) bool stat_into(const char* path, U32* record) {   // noinline: the builder's scope
+    const CheckSpan span;
     for (U32 i = 0; i != record_words; ++i) record[i] = 0;
     return stock<0x889f3516u, int>(path, record) == 0;                 // stock posix stat (on a: yaffs)
 }

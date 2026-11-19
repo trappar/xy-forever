@@ -58,8 +58,18 @@ static const uint32_t rename_from = 0x52464e52u, rename_to = 0x4f544e52u;   // "
 static const uint32_t rename_over = 0x4f545052u;                          // "RPTO" (LE)
 // #144: A's request timing (storage_server_timing.ipp), read by B as a path-class access too (path /yaffs2):
 // argument timing_tag | k answers words 2k and 2k + 1 of A's counters as the reply's value and errno; k =
-// timing_clear zeroes them. A answers it itself: nothing reaches storage, and the policy never sees it.
-static const uint32_t timing_tag = 0x4d495400u, timing_clear = 0xffu, timing_words = 12;   // "\0TIM" (LE) | k
+// timing_clear zeroes them. A answers it itself: nothing reaches storage, and the policy never sees it. Words
+// [0, timing_base_words): the request kinds and gaps; then timing_op_slots x (count, sum, longest, checks): A's
+// other requests by operation (TimingSlot; xy_forever/mtp_timing.py A_OPS names them in this order), checks: the
+// part of the sum in A's own checks (the stats around a change, the engine spans' CRC), not the stock executor.
+enum TimingSlot : uint32_t {
+    t_mount, t_unmount, t_access, t_rename_from, t_rename_to, t_stat, t_statfs, t_unlink, t_mkdir, t_rmdir, t_open,
+    t_seek, t_close, t_opendir, t_readdir, t_closedir, t_other,
+    t_window_open,      // the request (any operation) that opened the read-write window, instead of its own slot
+    timing_op_slots
+};
+static const uint32_t timing_tag = 0x4d495400u, timing_clear = 0xffu;   // "\0TIM" (LE) | k
+static const uint32_t timing_base_words = 12, timing_words = timing_base_words + 4 * timing_op_slots;
 enum Operation : uint32_t {
     op_read = 1,        // open for reading (flags 0)
     op_list,            // open a folder

@@ -1,5 +1,6 @@
 #include "storage_server.hpp"
 #include "cold_heap.hpp"
+#include "xyf_clock.hpp"
 #if defined(XYF_USB_SERVICE)
 #include "usb_service.hpp"
 #endif
@@ -7,7 +8,7 @@
 #include "mtp_spans.hpp"
 #endif
 #if defined(XYF_MTP)
-#include "xyf_boot.hpp"                 // clock_ms(): a's session clock for run_engine
+#include "xyf_boot.hpp"                 // run_engine's clock
 #endif
 // Processor a's storage server and the file engine (see storage_server.hpp). Stock addresses:
 // the authenticated 1.2.1 bootloader, mapped offline (docs/hardware/storage-server.md, Stock storage server requests).
