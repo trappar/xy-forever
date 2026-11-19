@@ -142,6 +142,17 @@ class StreamWriteTest(unittest.TestCase):
         self.assertEqual(host_write.write_stream(dev, TARGET, data)[:2], (0, len(data)))
         self.assertEqual(self.local(TARGET).read_bytes(), data)
 
+    def test_a_device_before_1_18_gets_the_staged_write(self):
+        """host_write.put on a 1.17 device (no file.write_begin in cmds): stage + file.write_staged, as before."""
+        dev = self.connect()
+        cmds = dev.hello_info.cmds & ~(7 << P.WRITE_BEGIN)
+        dev.hello_info.keys['cmds'] = '%032x' % cmds
+        dev.hello_info.cmds = cmds
+        self.assertFalse(host_write.streams(dev))
+        data = b'staged\n' * 100
+        self.assertEqual(host_write.put(dev, data, TARGET, say=lambda line: None), 0)
+        self.assertEqual(self.local(TARGET).read_bytes(), data)
+
     # -- faults ---------------------------------------------------------------------------------
     def test_cable_pull_mid_write_leaves_the_old_file_and_removes_the_upload(self):
         dev = self.connect()

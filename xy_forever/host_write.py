@@ -33,9 +33,25 @@ def write_stream(dev, path, data, progress=None):
     return code, written, back, error
 
 
+def streams(dev):
+    """The device answers file.write_begin (1.18; a device without a hello list is taken to)."""
+    info = getattr(dev, 'hello_info', None)
+    return info is None or info.answers(P.ids.WRITE_BEGIN)
+
+
+def write_staged(dev, path, data, progress=None):
+    """Before 1.18 (the throughput table's "before" row): stage, then file.write_staged (in place, staging-sized)."""
+    code = dev.stage(data, progress)
+    if code:
+        return code, 0, 0, 0
+    code, written, back = dev.file_write(path, hashlib.sha256(data).digest(), timeout=60.0 + len(data) / 20000.0)
+    return code, written, back, 0
+
+
 def put(dev, data, remote, progress=None, say=print):
-    """Write data to remote (streamed, then renamed onto it); 0 only when written and read back exactly."""
-    code, written, back, error = write_stream(dev, remote, data, progress)
+    """Write data to remote (streamed, then renamed onto it; staged on a device before 1.18); 0 only when written and
+    read back exactly."""
+    code, written, back, error = (write_stream if streams(dev) else write_staged)(dev, remote, data, progress)
     want = zlib.crc32(data) & 0xffffffff
     say('put-file %s: %s, written %d/%d, read-back CRC %08x (expected %08x)%s' %
         (remote, P.status_name(code), written, len(data), back, want, ', error %d' % error if error else ''))
