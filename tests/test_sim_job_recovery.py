@@ -121,7 +121,7 @@ class Recovery(Switch, unittest.TestCase):
             snapshot = self.dir / ('undo' if undo else 'replay')
             shutil.copytree(self.root, snapshot)
             (snapshot / JOURNAL).write_bytes(journal)
-            # Measure the complete automatic repair. Every admitted A-side IO is a cut boundary.
+            # Measure the complete automatic repair. Every mutating A-side operation is a cut boundary (native tests also cut every read/close).
             self.dev.t.close(); self.sim.stop()
             shutil.rmtree(self.root); shutil.copytree(snapshot, self.root)
             self.sim.start(); self.reconnect(); self.dev.hello()
@@ -149,3 +149,35 @@ class Recovery(Switch, unittest.TestCase):
             self.dev.t.close(); self.sim.stop()
             shutil.rmtree(self.root); shutil.copytree(original, self.root)
             self.sim.start(); self.reconnect(); self.dev.hello()
+
+    def test_repeated_interrupted_replay_and_undo(self):
+        previous = self.default()
+        target = self.build(['alpha'])
+        for undo in (False, True):
+            with self.subTest(undo=undo):
+                (self.root / JOURNAL).write_bytes(intent(self.root, target, previous, undo))
+                cuts = self.sim.status()['cuts']
+                self.sim.set('a_slow_ms', 20)
+                self.sim.set('cut_after', 6)
+                self.sim.control('power play')
+                end = time.monotonic() + 30
+                while self.sim.status()['cuts'] == cuts:
+                    self.assertLess(time.monotonic(), end, 'first interrupted replay')
+                    time.sleep(0.005)
+                self.sim.set('cut_after', 1)
+                while self.sim.status()['cuts'] < cuts + 2:
+                    self.assertLess(time.monotonic(), end, 'replay interrupted again')
+                    time.sleep(0.005)
+                self.sim.set('a_slow_ms', 0)
+                self.sim.wait_listening(30); self.reconnect(); self.dev.hello()
+                self.repaired(previous if undo else target, official=undo)
+
+    def test_official_previous_entry_is_the_actual_default(self):
+        target = self.build(['alpha'])
+        self.assertEqual(self.dev.set_default(self.base)[0], 0)
+        self.sim.set('a_slow_ms', 10)
+        self.assertEqual(self.dev.set_default(target)[0], P.ids.S_STARTED)
+        self.wait(lambda: (self.root / JOURNAL).exists(), 'durable intent')
+        self.assertIn('previous=%s\n' % self.base, (self.root / JOURNAL).read_text())
+        self.sim.set('a_slow_ms', 0)
+        self.repaired(target)

@@ -910,7 +910,7 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
     type: 0x49, name: "package.list", class: "product", since: "1.21",
     summary: "list packages and their exact identity",
     switch: "XYF_USB_FILE_WRITE", switchOptional: false, timeoutMs: 600000, destructive: false,
-    errors: ["bad_request", "unsupported", "busy", "link", "storage", "not_found"],
+    errors: ["bad_request", "unsupported", "busy", "link", "storage", "not_found", "too_large"],
     request: { size: [16, 16], ignored: false, fields: [
       { name: "version", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "area", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: [0, 2] },
@@ -929,7 +929,7 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
     type: 0x4a, name: "state.get", class: "product", since: "1.21",
     summary: "read boot slots, content record and durable job intent",
     switch: "XYF_USB_FILE_WRITE", switchOptional: false, timeoutMs: 60000, destructive: false,
-    errors: ["bad_request", "unsupported", "busy", "link", "storage", "not_found"],
+    errors: ["bad_request", "unsupported", "busy", "link", "storage", "not_found", "range"],
     request: { size: [12, 12], ignored: false, fields: [
       { name: "version", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "part", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: [0, 4] },

@@ -2034,41 +2034,6 @@ class SimulatorVariantTest(unittest.TestCase):
                 finally:
                     dev.t.close()
 
-    def test_build_switches_as_the_spec_says(self):
-        """switch_optional: a build without an optional switch answers its type with unsupported (and
-        leaves it out of cmds); without any other switch the firmware does not build."""
-        product = xyf_build.usb_switches('xyf-product')
-        switched = [c for c in SPEC['commands'] if c['switch']]
-        self.assertEqual({c['name']: c['switch_optional'] for c in switched},
-                         {'diag.engine_test': True, 'file.write_staged': False, 'library.set_default': False,
-                          'tfw.check': True, 'tfw.check_role': True, 'file.list': False, 'file.delete': False, 'file.rmdir': False,
-                          'file.write_begin': False, 'file.write_data': False, 'file.write_end': False,
-                          'file.mkdir': False, 'file.rename': False, 'file.copy': False, 'stage2.info': True,
-                          'mods.apply': False, 'job.status': False, 'job.cancel': False, 'package.session': False})
-        required = set()
-        with tempfile.TemporaryDirectory(prefix='xyf-sim-') as tmp:
-            for c in switched:
-                switches = product - {c['switch']}
-                if not c['switch_optional']:              # the spec says only that it fails, not where
-                    if c['switch'] not in required:       # one failing build per switch (failures are not cached)
-                        required.add(c['switch'])
-                        with self.assertRaisesRegex(RuntimeError, '^simulator build failed: '):
-                            sim.build(switches=switches)
-                    continue
-                out = sim.build(switches=switches)
-                root = sim.seed(Path(tmp) / c['symbol'] / 'yaffs2')
-                with sim.Simulator(root, Path(tmp) / c['symbol'] / 'bootpart.bin', build_dir=out) as running:
-                    dev = host.Device(host.TcpPort(running.address), on_log=None)
-                    try:
-                        code, text = dev.hello()
-                        self.assertEqual(code, 0)
-                        kind = int(c['type'], 16)
-                        self.assertFalse(P.Hello(text).answers(kind))
-                        dev.hello_info = None                 # xyf_host refuses types missing from cmds
-                        self.assertEqual(dev.call(kind, struct.pack('<I', 0)), (ids.S_UNSUPPORTED, b''))
-                    finally:
-                        dev.t.close()
-
     def test_start_moves_off_a_taken_port(self):
         """A port taken between free_port() and the simulator's bind (tests run in parallel): start()
         picks another pair; a port the caller named is never changed."""

@@ -8,9 +8,10 @@ Part of the [XY Forever serial protocol 1.21](../PROTOCOL.md).
 List packages and their exact identity. One item per page, in filesystem order. Start both cursors at zero and use the returned cursors until more is zero. Area
 2 walks mods/<generation>/<package>. Item keys: id (relative to area), type, version, sha256 (manifest image hash, or single-file hash), identity (SHA-256 of
 exact files.sha256 bytes; absent list: the single file itself), needs_os, generation, profile, valid (strict manifest admitted; 0 for legacy or unknown). Inbox
-files are recognised by bytes, never extension. Unknown items remain visible. The caller waits up to 600 seconds (large official inbox files are streamed, never
-buffered whole). Hashing is streamed in menu-loop slices while other storage commands return busy. Directory contents may change between pages; use
-package.session for a stable cooperative snapshot. This read never changes admission or legacy boot semantics.
+files are recognised by bytes, never extension. Unknown or incomplete folders remain visible with valid=0 and an empty identity when no list or single image
+exists. The caller waits up to 600 seconds (large official inbox files are streamed, never buffered whole). Hashing is streamed in menu-loop slices while other
+storage commands return busy. Directory contents may change between pages; use package.session for a stable cooperative snapshot. This read never changes
+admission or legacy boot semantics.
 
 | Request field (16 bytes) | Type | Meaning |
 |---|---|---|
@@ -27,8 +28,8 @@ package.session for a stable cooperative snapshot. This read never changes admis
 | `more` | u32 | 1: request next page, 0: end (0..1) |
 | `item` | rest, 0..980 B | At most one item: LF key=value ASCII text; empty on end |
 
-On an error: the status only. Errors: `bad_request`, `unsupported`, `busy`, `link`, `storage`, `not_found`. The reply never gains fields (it ends in `rest`).
-Tool timeout: 600 s. Build switch `XYF_USB_FILE_WRITE`, not optional: the firmware does not build without it. Since 1.21.
+On an error: the status only. Errors: `bad_request`, `unsupported`, `busy`, `link`, `storage`, `not_found`, `too_large`. The reply never gains fields (it ends
+in `rest`). Tool timeout: 600 s. Build switch `XYF_USB_FILE_WRITE`, not optional: the firmware does not build without it. Since 1.21.
 
 ### 0x4a `state.get`
 
@@ -52,8 +53,8 @@ no separate repair command.
 | `more` | u32 | 1: another page may follow (0..1) |
 | `text` | rest, 0..1004 B | Exact stored bytes (up to 1004); slot CRCs and journal version remain visible |
 
-On an error: the status only. Errors: `bad_request`, `unsupported`, `busy`, `link`, `storage`, `not_found`. The reply never gains fields (it ends in `rest`).
-Tool timeout: 60 s. Build switch `XYF_USB_FILE_WRITE`, not optional: the firmware does not build without it. Since 1.21.
+On an error: the status only. Errors: `bad_request`, `unsupported`, `busy`, `link`, `storage`, `not_found`, `range`. The reply never gains fields (it ends in
+`rest`). Tool timeout: 60 s. Build switch `XYF_USB_FILE_WRITE`, not optional: the firmware does not build without it. Since 1.21.
 
 ### 0x4b `storage.space`
 

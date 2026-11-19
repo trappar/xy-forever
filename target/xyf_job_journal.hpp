@@ -42,7 +42,9 @@ static inline uint32_t format(const Record& r, char* t) {
 static inline int parse(const char* t, uint32_t n, Record& r) {
     if (n < 10 || n >= capacity) return -1;
     const char prefix[]="version="; for (uint32_t i=0;i!=8;++i) if(t[i]!=prefix[i]) return -1;
-    if(t[8]>='2' && t[8]<='9') return -2;
+    uint32_t version=0, v=8;
+    while(v<n && t[v]>='0' && t[v]<='9') { if(version>100000u)return -2; version=version*10+uint32_t(t[v++]-'0'); }
+    if(v<n && t[v]=='\n' && version>1) return -2;
     for(uint32_t i=0;i!=sizeof(r);++i) reinterpret_cast<uint8_t*>(&r)[i]=0;
     const char* keys[10]={"version=","target=","previous=","default=","undo=","target_info=","target_list=","previous_info=","previous_list=","crc32="};
     uint32_t at=0;
@@ -110,7 +112,8 @@ template<class Io> int write_step(File& f,Io& io) {
     case 5:if(io.close(f.fd))return -1;f.fd=-1;f.stage=6;return 0;
     case 6:f.fd=io.open(path,false);if(f.fd==-2){f.stage=9;return 0;}if(f.fd<0)return -1;f.stage=7;return 0;
     case 7:if(io.close(f.fd))return -1;f.fd=-1;f.stage=8;return 0;
-    case 8:if(io.unlink(old)<0 || io.rename(path,old)<0)return -1;f.stage=9;return 0;
+    case 8:if(io.unlink(old)<0)return -1;f.stage=11;return 0;
+    case 11:if(io.rename(path,old)<0)return -1;f.stage=9;return 0;
     case 9:if(io.rename(part,path)<0)return -1;f.stage=10;return 0;
     default:return io.unlink(old)<0?-1:1;
     }

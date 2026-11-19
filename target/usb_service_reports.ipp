@@ -4,11 +4,12 @@ struct PackageReport {
     ContentIo io;
     xyf::manifest::Manifest manifest;
     xyf_core::hash::Sha256 sha;
-    U32 seq, area, outer, inner, stage, folder, valid, n, bytes, prefix_n, text_n;
+    U32 seq, area, outer, inner, stage, folder, valid, n, bytes, prefix_n, text_n, have_identity, single;
     int fd;
     char path[240], parent[240], id[256], name[256], text[980];
     uint8_t buffer[4096], prefix[268], identity[32];
 };
+static_assert(sizeof(PackageReport) <= 0x10000u, "report workspace fits below the reserved MTP slot");
 PackageReport& report_slot() { return *reinterpret_cast<PackageReport*>(job_work_end - 0x10000u); }
 void report_end(U32 code, bool more = true) {
     PackageReport& r = report_slot();
@@ -43,8 +44,9 @@ void report_finish_item() {
              found.kind==xyf::manifest::kind_xyf_stage2?"stage2":found.kind==xyf::manifest::kind_zip?"zip":"unknown";
     }
     r.text_n=0;bool ok=report_field(r,"id",r.id)&&report_field(r,"type",type)&&report_field(r,"version",r.manifest.version);
-    xj::hex(h,r.identity,32);ok=ok&&report_field(r,"identity",h);
-    if(!r.folder) {ok=ok&&report_field(r,"sha256",h);} else {xj::hex(h,r.manifest.sha256,32);ok=ok&&report_field(r,"sha256",h);}
+    if(r.have_identity)xj::hex(h,r.identity,32);else h[0]=0;
+    ok=ok&&report_field(r,"identity",h);
+    if(r.single) {ok=ok&&report_field(r,"sha256",h);} else {xj::hex(h,r.manifest.sha256,32);ok=ok&&report_field(r,"sha256",h);}
     xj::hex(h,r.manifest.needs_os,32);ok=ok&&report_field(r,"needs_os",h)&&report_field(r,"generation",r.manifest.generation)&&
        report_field(r,"profile",r.manifest.profile)&&report_field(r,"valid",r.valid?"1":"0");
     report_end(ok?P::s_ok:P::s_too_large);
@@ -69,7 +71,7 @@ void report_step() {
         if(!xyf::manifest::valid_name(r.name)){++r.outer;return;}
         if(!join(r.parent,roots[r.area],"/",r.name)){report_end(P::s_too_large);return;}
         if(r.area==2){if(kind!=1){++r.outer;return;}xj::copy(r.id,r.name);r.stage=1;return;}
-        xj::copy(r.id,r.name);r.folder=kind==1;++r.outer;r.stage=r.folder?2:4;xj::copy(r.path,r.parent);return;
+        xj::copy(r.id,r.name);r.folder=kind==1;r.single=!r.folder;++r.outer;r.stage=r.folder?2:4;xj::copy(r.path,r.parent);return;
     }
     if(r.stage==1) {
         uint32_t kind=0;const int found=r.io.list_one(r.parent,r.inner,r.name,kind);
@@ -99,11 +101,12 @@ void report_step() {
     if(r.stage==3) {
         if(!join(r.path,r.parent,"/files.sha256")){report_end(P::s_too_large);return;}
         r.fd=r.io.open(r.path,false);
-        if(r.fd==-2){if(!join(r.path,r.parent,"/os.ldr")){report_end(P::s_too_large);return;}r.stage=4;return;}
+        if(r.fd==-2){r.single=1;if(!join(r.path,r.parent,"/os.ldr")){report_end(P::s_too_large);return;}r.stage=4;return;}
         if(r.fd<0){report_end(r.io.lost()?P::s_link:P::s_storage);return;}r.sha.reset();r.bytes=0;r.stage=5;return;
     }
     if(r.stage==4) {
-        r.fd=r.io.open(r.path,false);if(r.fd<0){report_end(r.fd==-2?P::s_not_found:r.io.lost()?P::s_link:P::s_storage);return;}
+        r.fd=r.io.open(r.path,false);if(r.fd==-2 && r.folder){r.valid=0;report_finish_item();return;}
+        if(r.fd<0){report_end(r.fd==-2?P::s_not_found:r.io.lost()?P::s_link:P::s_storage);return;}
         r.sha.reset();r.bytes=0;r.stage=5;return;
     }
     if(r.stage==5) {
@@ -114,15 +117,18 @@ void report_step() {
         r.stage=8;return;
     }
     if(r.io.close(r.fd)){r.fd=-1;report_end(P::s_storage);return;}r.fd=-1;
-    xyf_core::hash::Digest digest;r.sha.finish(digest);for(U32 i=0;i!=32;++i)r.identity[i]=digest.bytes[i];report_finish_item();
+    xyf_core::hash::Digest digest;r.sha.finish(digest);for(U32 i=0;i!=32;++i)r.identity[i]=digest.bytes[i];
+    r.have_identity=1;report_finish_item();
 }
 void report_turn() {
+    if (reporting && package_active) package_ms = now(); // this owner is still reading a package
     const U32 began = now();
     do report_step(); while (reporting && report_slot().stage == 5 && now() - began < job_slice_ms);
 }
 void state_get(uint8_t seq,const uint8_t* payload,U32 length) {
     U32 code=length!=12?P::s_bad_request:P::get32(payload)>1?P::s_unsupported:
              P::get32(payload)!=1||P::get32(payload+4)>4?P::s_bad_request:P::s_ok;
+    if(!code && P::get32(payload+8)>0x7fffffffu)code=P::s_range;
     if(!code && ((job_running()&&!package_active)||reporting||closing||recovery_pending XYF_OR_MTP_BUSY))code=P::s_busy;
     if(!code && !a_serving())code=P::s_link;
     if(code){status_only(P::t_state_get,seq,code);return;}

@@ -16,7 +16,7 @@ Host transactions use `package.session` (protocol 1.19, session ABI 1): an owner
 startup sweep, MTP, other jobs and boots while the ordinary file RPCs stage/check/commit. It adds no
 storage operation. A contender cannot renew another owner's token; busy acquisition requests cannot
 keep an abandoned owner alive. Owner renewals and file activity renew the ten-second idle period;
-an in-flight upload keeps it held. Release closes the write window asynchronously. A newer session
+an in-flight upload or package-list read keeps it held. Release closes the write window asynchronously. A newer session
 ABI is refused. This is cooperative exclusion for one CDC client, not a security boundary on manual
 file operations. The marker, updater inbox, boot-partition latch and depth rules still apply on A.
 

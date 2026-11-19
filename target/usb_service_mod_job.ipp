@@ -93,6 +93,8 @@ bool job_blocks(U32 type) {                                             // also 
     if (package_active && (type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space || type == P::t_read_file || type == P::t_list_dir || type == P::t_delete_file ||
         type == P::t_remove_dir || type == P::t_make_dir || type == P::t_rename_file || type == P::t_write_begin ||
         type == P::t_write_data || type == P::t_write_end)) { package_ms = now(); package_file = 1; return false; }
+    if (recovery_pending && !boot_probe_active() && !job_running() && !closing XYF_AND_NOT_MTP_BUSY &&
+        (type == P::t_read_file || type == P::t_list_dir)) return false; // legitimate early read-only access
     if (!boot_probe_active() && !job_running() && !recovery_pending && !closing XYF_AND_NOT_MTP_BUSY) return false;
     return type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space || type == P::t_read_file || type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end ||
            type == P::t_file_write || type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir ||

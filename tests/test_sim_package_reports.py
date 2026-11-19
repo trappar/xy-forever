@@ -57,6 +57,9 @@ class Reports(unittest.TestCase):
         self.assertEqual(library['report']['identity'], hashlib.sha256(files['files.sha256']).hexdigest())
         self.assertEqual(library['report']['sha256'], hashlib.sha256(files['os.ldr']).hexdigest())
         self.assertEqual(library['report']['valid'], '1')
+        legacy_sha = hashlib.sha256((self.root / 'xy-forever/firmware/opxy-121/os.ldr').read_bytes()).hexdigest()
+        self.assertEqual(library['opxy-121']['sha256'], legacy_sha)
+        self.assertEqual(library['opxy-121']['identity'], legacy_sha)
         dropped = self.packages(0)
         self.assertEqual([(r['id'], r['identity']) for r in dropped],
                          [('no-extension', hashlib.sha256(files['os.ldr']).hexdigest())])
@@ -79,11 +82,52 @@ class Reports(unittest.TestCase):
                 break
         self.assertEqual(got, text)
         self.assertEqual(self.request(P.ids.STATE_GET, 1, 4, 0)[0], P.ids.S_NOT_FOUND)
+        self.sim.set('space', 0x123456789)
         code, body = self.request(P.ids.STORAGE_SPACE, 1)
         self.assertEqual((code, len(body)), (0, 12))
-        self.assertEqual(struct.unpack('<I', body[:4]), (1,))
+        self.assertEqual(struct.unpack('<3I', body), (1, 0x23456789, 1))
+        self.sim.set('space', -1)
         for cmd, words in ((P.ids.PACKAGE_LIST, (2, 0, 0, 0)), (P.ids.STATE_GET, (2, 0, 0)), (P.ids.STORAGE_SPACE, (2,))):
             self.assertEqual(self.request(cmd, *words)[0], P.ids.S_UNSUPPORTED)
             self.assertEqual(self.dev.call(cmd, b'')[0], P.ids.S_BAD_REQUEST)
         self.assertEqual(self.request(P.ids.STATE_GET, 1, 5, 0)[0], P.ids.S_BAD_REQUEST)
         self.assertEqual(self.request(P.ids.PACKAGE_LIST, 1, 3, 0, 0)[0], P.ids.S_BAD_REQUEST)
+
+    def test_large_inbox_identity_is_streamed_without_size_cap(self):
+        inbox = self.root / 'xy-forever/inbox'
+        inbox.mkdir()
+        file = inbox / 'large-without-extension'
+        block = bytes(range(256)) * 4096
+        sha = hashlib.sha256()
+        with file.open('wb') as stream:
+            for _ in range(100):  # representative official inbox size, bounded test-side memory too
+                stream.write(block)
+                sha.update(block)
+        code, body = self.dev.call(P.ids.PACKAGE_LIST, struct.pack('<4I', 1, 0, 0, 0), timeout=600)
+        self.assertEqual(code, 0)
+        row = dict(line.split('=', 1) for line in body[16:].decode().splitlines())
+        self.assertEqual(row['identity'], sha.hexdigest())
+        self.assertEqual(row['sha256'], sha.hexdigest())
+
+    def test_unresolved_journal_retains_blobs_in_both_collectors(self):
+        value = b'journal-only content'
+        sha = hashlib.sha256(value).hexdigest()
+        blobs = self.root / 'xy-forever/blobs'
+        blobs.mkdir(exist_ok=True)
+        blob = blobs / sha
+        blob.write_bytes(value)
+        journal = self.root / 'xy-forever/job.txt'
+        journal.write_bytes(b'version=2\n')
+        with S.Session(self.dev) as session:
+            self.assertEqual(session.collect(), 0)
+        self.sim.advance(10000)
+        for _ in range(20):
+            self.dev.hello()
+            time.sleep(0.01)
+        self.assertEqual(blob.read_bytes(), value)
+
+    def test_path_and_offset_bounds(self):
+        target = self.root / 'xy-forever/mods' / ('g' * 127) / ('p' * 127)
+        target.mkdir(parents=True)
+        self.assertEqual(self.request(P.ids.PACKAGE_LIST, 1, 2, 0, 0)[0], P.ids.S_TOO_LARGE)
+        self.assertEqual(self.request(P.ids.STATE_GET, 1, 0, 0xffffffff)[0], P.ids.S_RANGE)
