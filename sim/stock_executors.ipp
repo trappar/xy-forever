@@ -11,14 +11,7 @@ void executor(uint32_t address, uint32_t request) {
     if (address == 0x889f76cau && cls == cls_partition) {
         if (op == 0x2c) return finish(request, provider() ? seek_file(int(a0), int(r32(request + 0x18)), int(r32(request + 0xc))) : fail(19));
         if (op == 0x2d) return finish(request, close_file(int(a0)));
-        if (op == 0x18) {
-            if (a0 <= 2) shared->partition = int32_t(selected = a0);
-            if (a0 <= 2 && shared->fail_select.load() > 0 && --shared->fail_select == 0) {   // test hook
-                log("fault: select %u switched the partition, then failed", a0);
-                return finish(request, 1);
-            }
-            return finish(request, a0 <= 2 ? 0 : 1);
-        }
+        if (op == 0x18) return finish(request, local_select(a0));
         if (op == 0x14) return finish(request, trim(a0) ? 0 : fail(5));
         if (op == 0x30) return finish(request, close_directory(a0));              // MTP: closedir
         if (op == 0x34 || op == 0x36) return finish(request, handle_of(int(a0)) < 0 ? fail(9) : 0);   // fsync, truncate

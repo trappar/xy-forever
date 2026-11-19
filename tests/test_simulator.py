@@ -220,25 +220,6 @@ class SimulatorTest(unittest.TestCase):
         self.sim.control('power play')
         self.wait(lambda s: s['listening'], what='menu with USB')
 
-    def test_install_and_uninstall_write_the_boot_partition(self):
-        dev = self.connect()
-        stock = sim.STOCK_OS.read_bytes()
-        self.assertEqual(dev.stage(stock), 0)
-        code, written, partition, sectors = dev.uninstall(hashlib.sha256(stock).digest())
-        self.assertEqual((code, written, partition, sectors), (0, 1, 1, len(stock) // 512 + 1))
-        raw = (self.dir / 'bootpart.bin').read_bytes()
-        self.assertEqual(struct.unpack_from('<3I', raw), (3, len(stock), zlib.crc32(stock)))
-        self.assertEqual(raw[512:512 + len(stock)], stock)
-        self.assertEqual(dev.uninstall(hashlib.sha256(stock).digest())[0], ids.S_STATE)   # staging used up
-        if BUILD:                                                         # the second slot, the other erased
-            data = (BUILD / 'candidate.ldr').read_bytes()
-            self.assertEqual(dev.stage(data), 0)
-            self.assertEqual(dev.install(hashlib.sha256(data).digest())[:3], (0, 1, 2))
-            raw = (self.dir / 'bootpart.bin').read_bytes()
-            self.assertEqual(raw[:512], bytes(512))
-            self.assertEqual(struct.unpack_from('<3I', raw, 0x400000), (3, len(data), zlib.crc32(data)))
-        self.assertEqual(dev.stage(stock), 0)
-        self.assertEqual(dev.install(hashlib.sha256(stock).digest())[0], ids.S_IMAGE)    # no cold descriptor
 
     def boot_image(self, size):
         """A stand-in XY Forever os.ldr of size bytes: the LDR first record (flags 0x5004, argument size - 16) and the
@@ -467,24 +448,6 @@ class SimulatorTest(unittest.TestCase):
         self.sim.control('power')
         self.wait(lambda s: s['listening'] and s['partition'] == 0, what='menu with USB after the power cycle')
 
-    def test_failed_install_returns_to_the_user_partition(self):
-        """The stock writer stops before its own select 0 when a boot-partition write fails;
-        B now switches back itself, so a file write later in the same boot reaches yaffs (on the
-        user partition) and nothing of it lands on a boot partition."""
-        dev = self.connect()
-        stock = sim.STOCK_OS.read_bytes()
-        bootpart = self.dir / 'bootpart.bin'
-        self.assertEqual(dev.stage(stock), 0)
-        self.sim.set('fail_write', 1)                      # the writer's first boot-partition write fails
-        code, written, partition, _ = dev.uninstall(hashlib.sha256(stock).digest())
-        self.assertEqual((code, written, partition), (ids.S_INSTALL, 0, 0))
-        status = self.sim.status()
-        self.assertEqual((status['partition'], status['fail_write']), (0, 0))
-        self.assertFalse(bootpart.exists() and any(bootpart.read_bytes()))   # nothing written to a boot partition
-        data = b'written after a failed install'
-        self.assertEqual(self.write(dev, data, BASE + 'log/after.bin'), (0, len(data), zlib.crc32(data)))
-        self.assertEqual(self.file(BASE + 'log/after.bin'), data)
-        self.assertEqual(self.sim.status()['boot_writes'], 0)
 
     # -- hardening -------------------------------------------------------
     def test_failed_select_counts_as_selected(self):

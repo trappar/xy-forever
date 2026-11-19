@@ -4,6 +4,7 @@
 // host_poll(), called at host calls on the processor's main thread (cycles(), stock calls, B's
 // stock request wait), runs control "set a_stall_now MS" on A.
 #include "runtime.hpp"
+#include "boot_crypto.hpp"
 #include <pthread.h>
 #include <string.h>
 #include <fcntl.h>
@@ -56,6 +57,7 @@ uint32_t fetch() {
     read_retried(0, 1, sector);
     bool found = sector[12] != 0;
     if (!found && !select(2)) { read_retried(0, 1, sector); found = sector[12] != 0; }
+    const bool model_crypto = boot_crypto_model(sector);
     uint32_t size = 0;
     memcpy(&size, sector + 4, 4);
     if (found && size <= 0x800000u)
@@ -64,6 +66,7 @@ uint32_t fetch() {
             read_retried(1 + at, n, host(0x8a000000u + at * 512u));
             at += n; left -= n;
         }
+    if (found && size <= 0x800000u && model_crypto) boot_crypt(static_cast<uint8_t*>(host(0x8a000000u)), size);
     while (select(0)) {}
     // The simulator's boot partition file is only the evidence of installs (it starts empty), and its
     // bytes are never run: an empty or invalid one counts as XY Forever read (the stock bootloader would
@@ -135,7 +138,10 @@ void power_on_image() {
         if (pread(fd, sector, 512, at) != 512 || !sector[12]) continue;
         memcpy(&size, sector + 4, 4);
         if (size && size <= 0x800000u && size + 512u <= shared->capacity)
-            if (pread(fd, host(0x8a000000u), size, at + 512) == ssize_t(size)) log("stock bootloader (B): image read at power-on (%u bytes)", size);
+            if (pread(fd, host(0x8a000000u), size, at + 512) == ssize_t(size)) {
+                if (boot_crypto_model(sector)) boot_crypt(static_cast<uint8_t*>(host(0x8a000000u)), size);
+                log("stock bootloader (B): image read at power-on (%u bytes)", size);
+            }
         break;
     }
     close(fd);
