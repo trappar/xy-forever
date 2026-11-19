@@ -68,6 +68,14 @@ class SimulatorOtp(unittest.TestCase):
                         tempfile.TemporaryDirectory(dir=paths.SESSIONS) as temp:
                     folder = Path(temp)
                     machine = self.start(folder, initialized)
+                    dev = host.Device(host.TcpPort(machine.address), on_log=None)
+                    try:
+                        code, hello = dev.hello()
+                        self.assertEqual(code, 0)
+                        wait_startup_ready(hello, lambda remaining: dev.call(
+                            P.ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
+                    finally:
+                        dev.t.close()
                     machine.set('otp_fail', failure)
                     firmware, sessions = folder / 'firmware', folder / 'sessions'
                     firmware.mkdir()
@@ -91,6 +99,11 @@ class SimulatorOtp(unittest.TestCase):
                     self.assertEqual(state['otp_inits'], 0 if initialized else 1)
                     self.assertEqual(state['otp_reads'], 1 if initialized else 0)
                     if failure == 6:
+                        self.assertIn('CRASH: processor OTP ROM fault', (folder / 'sim.log').read_text())
+                        # The hook ran and exited; the board publishes its waitpid result asynchronously.
+                        while state['b'] == 'running':
+                            self.assertLess(time.monotonic() - start, 4, state)
+                            state = machine.status()       # board observer only; never another device command
                         self.assertEqual(state['b'], 'crashed')
                     else:
                         # A true stuck ROM call cannot be released by clearing the fault flag.

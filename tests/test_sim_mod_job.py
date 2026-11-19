@@ -86,6 +86,9 @@ class Base:
         self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', log=self.dir / 'log.txt').start()
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
+        # These fixtures begin with an admitted job; boot/recovery observations use later reconnects.
+        wait_startup_ready(self.dev.hello_info.text, lambda remaining: self.dev.call(
+            ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
 
     def tearDown(self):
         self.dev.t.close()
@@ -359,8 +362,6 @@ class SyntheticJob(Base, unittest.TestCase):
         """The request parser takes 40 and 64 machines (64 ids filling the field's 1023 bytes); a 65th is
         bad_request. Only the packages present decide what follows (here: the first absent one fails the job at
         open, before anything is built); memory is the job's limit, not the count."""
-        wait_startup_ready(self.dev.hello_info.text, lambda remaining: self.dev.call(
-            ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
         call = lambda machines: MS.start(self.dev, self.base, self.profile, self.generation, machines, (), NAME, True)   # noqa: E731
         sixty_four = ['alpha'] + ['m%014d' % i for i in range(63)]
         self.assertEqual(len(','.join(sixty_four)), 1013)

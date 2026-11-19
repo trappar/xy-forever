@@ -175,7 +175,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(dev.call(P.PUT_END)[0], ids.S_STATE)                 # incomplete: discarded
 
     def test_set_default_mtp_test_keys_hold(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         code, _ = dev.set_default('opxy-121-stock')
         self.assertEqual(code, 0)
         best = host.current_state({p: self.file(p) if (self.dir / 'yaffs2' / p[8:]).exists() else None
@@ -1888,6 +1888,8 @@ class SimulatorTest(unittest.TestCase):
         rename_over's own checks still answer (EINVAL: size, EISDIR: a folder there), and the renames that pass work
         with both in place."""
         RNFR, RNTO, RPTO = 0x52464e52, 0x4f544e52, 0x4f545052
+        # Seed operation inputs after startup's leftover-upload sweep, before direct-A admission.
+        self.connect(startup_ready=True)
         root = self.dir / 'yaffs2'
         (root / 'bootloader.dev').write_bytes(b'dev menu\n')
         (root / 'upgrade').mkdir()
@@ -1903,7 +1905,6 @@ class SimulatorTest(unittest.TestCase):
         (root / 'xy-forever/tmp/put-00000009-00000002').write_bytes(b'short')
         (root / 'user/folder').mkdir()
         L, T = BASE + 'log/', BASE + 'tmp/'
-        self.connect()
         self.write_entry()
 
         def pair(source, target, tag=RNTO):

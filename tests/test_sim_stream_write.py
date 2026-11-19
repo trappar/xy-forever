@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_host as host                                                   # noqa: E402
 from xy_forever import host_write, sim, usb_proto_ids as P               # noqa: E402
+from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 TARGET = '/yaffs2/user/stream/song.bin'
@@ -47,10 +48,13 @@ class StreamWriteTest(unittest.TestCase):
             link.t.close()
         self.sim.stop()
 
-    def connect(self):
+    def connect(self, startup_ready=False):
         dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.links.append(dev)
         self.assertEqual(dev.hello()[0], 0)
+        if startup_ready:
+            wait_startup_ready(dev.hello_info.text, lambda remaining: dev.call(
+                P.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
         return dev
 
     def local(self, path):
@@ -86,7 +90,7 @@ class StreamWriteTest(unittest.TestCase):
 
     # -- the write ------------------------------------------------------------------------------
     def test_a_streamed_write_creates_then_replaces_a_file(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         first = bytes(range(256)) * 40                                    # 10 KiB: ten pieces
         self.assertEqual(host_write.write_stream(dev, TARGET, first), (0, len(first), zlib.crc32(first), 0))
         self.assertEqual(self.local(TARGET).read_bytes(), first)
@@ -100,7 +104,7 @@ class StreamWriteTest(unittest.TestCase):
         self.assertEqual(self.local(TARGET).read_bytes(), b'')
 
     def test_order_range_checks_and_refusals(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         old = self.old()
         self.assertEqual(dev.call(P.WRITE_DATA, struct.pack('<I', 0) + b'x')[0], P.S_STATE)
         self.assertEqual(dev.call(P.WRITE_END)[0], P.S_STATE)
@@ -120,7 +124,7 @@ class StreamWriteTest(unittest.TestCase):
         self.assertEqual(self.local(TARGET).read_bytes(), data)
 
     def test_a_wrong_crc_or_sha_or_a_folder_target_leaves_the_target(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         old = self.old()
         data = b'payload\n' * 100
         for crc, sha, status in ((zlib.crc32(data) ^ 1, None, P.S_CRC), (None, bytes(32), P.S_SHA)):
@@ -136,7 +140,7 @@ class StreamWriteTest(unittest.TestCase):
         self.assertEqual(self.uploads(), [])
 
     def test_larger_than_the_staging_area(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         data = bytes(range(251)) * ((P.MAX_STAGE + 4096) // 251 + 1)       # above stage= (7 MiB)
         self.assertGreater(len(data), P.MAX_STAGE)
         self.assertEqual(host_write.write_stream(dev, TARGET, data)[:2], (0, len(data)))
@@ -144,7 +148,7 @@ class StreamWriteTest(unittest.TestCase):
 
     def test_a_device_before_1_18_gets_the_staged_write(self):
         """host_write.put on a 1.17 device (no file.write_begin in cmds): stage + file.write_staged, as before."""
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         cmds = dev.hello_info.cmds & ~(7 << P.WRITE_BEGIN)
         dev.hello_info.keys['cmds'] = '%032x' % cmds
         dev.hello_info.cmds = cmds
@@ -155,7 +159,7 @@ class StreamWriteTest(unittest.TestCase):
 
     # -- faults ---------------------------------------------------------------------------------
     def test_cable_pull_mid_write_leaves_the_old_file_and_removes_the_upload(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         old = self.old()
         data = b'half sent\n' * 500
         self.assertEqual(self.begin(dev, TARGET, data), 0)
@@ -169,7 +173,7 @@ class StreamWriteTest(unittest.TestCase):
         self.assertEqual(self.local(TARGET).read_bytes(), data)
 
     def test_full_storage_and_a_failed_write(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         old = self.old()
         data = bytes(5000)
         for fault, value, sent in (('space', 2500, 2048), ('fail_write', 2, 1024)):   # the 3rd / 2nd piece fails
@@ -181,7 +185,7 @@ class StreamWriteTest(unittest.TestCase):
         self.assertEqual(host_write.write_stream(dev, TARGET, data)[0], 0)
 
     def test_power_cut_mid_write_then_the_sweep(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         old = self.old()
         data = b'cut short\n' * 500
         self.assertEqual(self.begin(dev, TARGET, data), 0)
@@ -194,7 +198,7 @@ class StreamWriteTest(unittest.TestCase):
         self.assertEqual(self.local(TARGET).read_bytes(), old)
 
     def test_power_cut_right_after_the_rename_keeps_the_new_file(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         self.old()
         data = b'renamed then cut\n' * 100
         self.sim.set('rename_fault_kind', 2)
