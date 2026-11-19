@@ -19,7 +19,8 @@ inline uint32_t ms_from_units(uint32_t units) {
     return (units >> 13) * 21u + (((units & 0x1fffu) * 21u) >> 13);
 }
 #if defined(__bfin__)
-inline uint64_t cycles() {                      // the 64-bit cycle counter (400 MHz)
+// the 64-bit cycle counter (400 MHz); always inlined: a call through a register is refused by the call audit
+__attribute__((always_inline)) inline uint64_t cycles() {
     uint32_t low, high;
     __asm__ volatile("%0 = CYCLES; %1 = CYCLES2;" : "=d"(low), "=d"(high));
     return uint64_t(high) << 32 | low;
