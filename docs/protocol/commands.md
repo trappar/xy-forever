@@ -66,7 +66,7 @@ waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `jo
 | 0x45 | [`job.status`](cmd-jobs.md#0x45-jobstatus) | progress of the running or last job |
 | 0x46 | [`job.cancel`](cmd-jobs.md#0x46-jobcancel) | stop the running job |
 | 0x47 | [`package.session`](cmd-jobs.md#0x47-packagesession) | exclude other storage jobs during a host package transaction |
-| 0x48 | [`tfw.check_role`](cmd-jobs.md#0x48-tfwcheck_role) | check an official firmware cut with the selected processor’s own OTP keys |
+| 0x48 | [`tfw.check_role`](cmd-firmware.md#0x48-tfwcheck_role) | check an official firmware cut with the selected processor’s own OTP keys |
 
 A typical session: `hello`; then reads (`file.read`, `screen.read`); to write, `stage.begin`, `stage.data` in order, `stage.end`, then one of
 `file.write_staged`, `boot.install`, `boot.uninstall`.

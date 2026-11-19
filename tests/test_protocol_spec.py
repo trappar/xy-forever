@@ -278,7 +278,7 @@ class SpecDataTest(unittest.TestCase):
         encodings = {(c['name'], f['name']): f['encoding'] for c in s['commands'] for part in ('request', 'reply')
                      for f in c[part]['fields'] if 'encoding' in f}
         self.assertEqual({k for k, v in encodings.items() if v == 'utf-8'},
-                         {('file.read', 'path'), ('file.write_staged', 'path'), ('file.write_begin', 'path'), ('tfw.check', 'path'),
+                         {('file.read', 'path'), ('file.write_staged', 'path'), ('file.write_begin', 'path'), ('tfw.check', 'path'), ('tfw.check_role', 'path'),
                           ('file.list', 'path'), ('file.delete', 'path'), ('file.rmdir', 'path'), ('file.mkdir', 'path'),
                           ('file.rename', 'source'), ('file.rename', 'target'), ('file.copy', 'source'), ('file.copy', 'target')})
         fields = ids.COMMANDS[P.READ_FILE]['request']
