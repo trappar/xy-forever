@@ -127,7 +127,8 @@ class FileWriteSourceTest(unittest.TestCase):
         c = c[:c.index('\n}\n', c.index('uint32_t write_file('))]
         order = ['const U32 root_bytes = storage_server::write_root(path);', 'mkdir(folder);', "folder[k] = '/';",
                  'if (mounted == mounted_stale) return xyf::usbp::s_state;', 'const Reply m = mount();',
-                 'make_folders(path, mounted);', 'open(path, storage_server::write_open_flags);',
+                 'Reply o = open(path, storage_server::write_open_flags);', 'if (o.value < 0 && o.error == enoent) {',
+                 'make_folders(path, mounted);', '    o = open(path, storage_server::write_open_flags);',
                  'write(fd, bytes + done, n);', 'close(fd);', 'Reply o = open(path, 0);',
                  'read(o.value, chunk_bytes, chunk);', '(total != size || readback_crc != crc)) code = xyf::usbp::s_crc;']
         at = [c.index(s) for s in order]

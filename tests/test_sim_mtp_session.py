@@ -176,6 +176,12 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual((self.root / 'user/x.bin').read_bytes(), b'abc')
         self.assertEqual(self.c.transaction(0x100B, params[2])[0], R.OK)
         self.assertFalse((self.root / 'user/x.bin').exists())
+        shutil.rmtree(self.root / 'xy-forever/tmp')                       # #144: tmp/ gone: the open makes it again
+        code, params, _ = self.c.transaction(0x100C, R.STORAGE, user, data=R.object_info('y.bin', 3, parent=user))
+        self.assertEqual(code, R.OK)
+        self.assertEqual(self.c.transaction(0x100D, data=b'def')[0], R.OK)
+        self.assertEqual((self.root / 'user/y.bin').read_bytes(), b'def')
+        self.assertTrue((self.root / 'xy-forever/tmp').is_dir())
         (self.root / 'upgrade').mkdir(exist_ok=True)
         inbox = self.folder('upgrade')
         code, _, _ = self.c.transaction(0x100C, R.STORAGE, inbox, data=R.object_info('x.tfw', 3, parent=inbox))
@@ -218,7 +224,9 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual(b['reads'], 0)
         ops = t['a_ops']                                                    # A's other requests by operation
         self.assertEqual(sum(o[0] for o in ops.values()), a['others'], ops)
-        self.assertEqual((ops['open'][0], ops['close'][0], ops['rename from (RNFR)'][0]), (1, 1, 1), ops)
+        opened = ops.get('open', (0,))[0] + ops.get('window open (+ its request)', (0,))[0]   # its first change
+        self.assertEqual((opened, ops['close'][0], ops['rename from (RNFR)'][0]), (1, 1, 1), ops)
+        self.assertNotIn('mkdir', ops)                                      # tmp/ is there: no mkdir -p
         self.assertGreater(a['checks'], 0)                                  # A's own stats and CRC, timed apart
         self.assertLessEqual(ops['rename to (RNTO/RPTO)'][3], ops['rename to (RNTO/RPTO)'][1])
         self.assertIn('    rename to (RNTO/RPTO)', '\n'.join(T.lines(t, 1.0, 'upload')))

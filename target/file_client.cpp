@@ -399,10 +399,16 @@ uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted) {
     // a opens its read-write window on the first change below and keeps it for the next
     // writes; b closes it (op 9) once no write came for a while (usb_service). Past a request's
     // bound: op 9 before the next file command (a closes b's handles and the window).
-    const U32 made = make_folders(path, mounted);
-    if (made != xyf::usbp::s_ok) return made;
-    const Reply o = open(path, storage_server::write_open_flags);        // op 0x29, "wb"
+    // #144: the open first; the folders (mkdir -p) only when it fails ENOENT, then the open again: an upload's
+    // tmp/ is there after the first one, so a file takes one request here instead of one per folder too.
+    Reply o = open(path, storage_server::write_open_flags);              // op 0x29, "wb"
     if (o.outcome) return failed(o, mounted);
+    if (o.value < 0 && o.error == enoent) {
+        const U32 made = make_folders(path, mounted);
+        if (made != xyf::usbp::s_ok) return made;
+        o = open(path, storage_server::write_open_flags);
+        if (o.outcome) return failed(o, mounted);
+    }
     if (o.value < 0) return xyf::usbp::s_storage;
     fd = o.value;
     return xyf::usbp::s_ok;
@@ -579,7 +585,8 @@ uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint
     if (mounted == mounted_stale) return xyf::usbp::s_state;            // the caller sends op 9 first
     const uint32_t ready = mount_ready(mounted);                         // op 8: a's read-only mount
     if (ready != xyf::usbp::s_ok) return ready;
-    const uint32_t deep = deeper_ok(from, to, mounted);                  // #124: a folder moved deeper
+    // #124: a folder moved deeper. #144: not for rename_over, whose source A takes only as a file (an upload).
+    const uint32_t deep = over ? U32(xyf::usbp::s_ok) : deeper_ok(from, to, mounted);
     if (deep != xyf::usbp::s_ok) return deep;
     const U32 tags[2] = {file_engine::rename_from, over ? file_engine::rename_over : file_engine::rename_to};
     const char* paths[2] = {from, to};

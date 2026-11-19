@@ -441,6 +441,9 @@ class FileEngineWiringTest(unittest.TestCase):
                  'restore_marker(0x21)']
         at = [now.index(o) for o in order]
         self.assertEqual(at, sorted(at))
+        # #144: B skips the depth walk (#124) only for rename_over, whose source A takes only as a regular file (above)
+        client = (ROOT / 'target/file_client.cpp').read_text()
+        self.assertIn('const uint32_t deep = over ? U32(xyf::usbp::s_ok) : deeper_ok(from, to, mounted);', client)
         # The write rule: every change by hand, on A, also through links (reaches_protected: the marker, /yaffs2/upgrade)
         self.assertIn('(!write_root(path_copy) || reaches_protected(path_copy))', self.server)
         guard = self.body(self.server, '__attribute__((noinline)) bool reaches_protected(char* path) {')
