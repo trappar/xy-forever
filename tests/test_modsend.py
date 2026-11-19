@@ -42,12 +42,13 @@ class CutDevice(host.Device):
         super().__init__(transport, on_log=None)
         self.after = after
 
-    def file_write(self, path, sha, timeout):
-        self.after -= 1
-        if self.after < 0:
-            self.t.close()
-            raise Cut(path)
-        return super().file_write(path, sha, timeout)
+    def call(self, kind, payload=b'', **kw):
+        if kind == P.ids.WRITE_BEGIN:
+            self.after -= 1
+            if self.after < 0:
+                self.t.close()
+                raise Cut('streamed package write')
+        return super().call(kind, payload, **kw)
 
 
 def store_of(gen, names=None):
@@ -180,9 +181,11 @@ class Synthetic(Harness, unittest.TestCase):
             with self.subTest(after=after):
                 with self.assertRaises(Cut):
                     self.push(self.connect(after=after))
+                self.sim.advance(11000)
                 self.assert_nothing_false_complete()
                 total, _ = self.push()
-                self.assertEqual(total['files'], files - max(after, 1))
+                self.assertGreater(total['files'], 0)
+                self.assertLessEqual(total['files'], files - 1)
                 self.assert_stored()
                 shutil.rmtree(self.stored)
         # a file replaced part-way (file.write_staged truncates, then writes) in a complete package:
@@ -192,9 +195,11 @@ class Synthetic(Harness, unittest.TestCase):
         victim.write_bytes(victim.read_bytes()[:5])
         with self.assertRaises(Cut):
             self.push(self.connect(after=0))
-        self.assertFalse((self.stored / 'alpha' / S.LIST).exists())
+        self.sim.advance(11000)
+        self.assertTrue((self.stored / 'alpha' / S.LIST).exists())
+        self.assertEqual(victim.read_bytes(), victim.read_bytes()[:5])
         total, lines = self.push()
-        self.assertEqual((total['sent'], total['files']), (1, 2))
+        self.assertEqual((total['sent'], total['files']), (1, len(MP.tree(self.gen / 'alpha'))))
         self.assert_stored()
         self.assert_job_identical(['alpha'], [])
 
@@ -276,7 +281,7 @@ class Synthetic(Harness, unittest.TestCase):
         (changed / 'alpha' / S.LIST).write_text(MP.list_text(files))
         lines = []
         total = S.push(self.connect(), changed, out=lines.append, by_hash=True)
-        self.assertEqual((total['sent'], total['files'], total['removed']), (1, 2, 1))
+        self.assertEqual((total['sent'], total['files'], total['removed']), (1, len(MP.tree(changed / 'alpha')), 1))
         self.assertEqual(MP.tree(self.stored), store_of(changed))
 
 

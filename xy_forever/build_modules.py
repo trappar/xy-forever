@@ -1,0 +1,8 @@
+"""Freestanding module groups shared by the product builder. No stock-call policy."""
+TFW_CHECK_MODULES = ('tfw_check', 'tfw', 'tfw_signature', 'p224', 'aes')
+MOD_JOB_MODULES = ('mod_job', 'mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content')
+MODS_PAGE_MODULES = ('xyf_mods', 'xyf_mods_view', 'xyf_mods_io')
+GC_MODULES = ('inflate', 'xyf_stage2', 'xyf_store', 'xyf_info', 'xyf_state', 'xyf_state_write',
+              'xyf_library', 'xyf_cold_library', 'xyf_catalog', 'xyf_crc32', 'ui_pages', 'ui_gfx', 'ui_screens',
+              'xyf_menu', 'xyf_menu_view', 'usb_proto', 'otp_keys', 'xyf_filelist') + TFW_CHECK_MODULES + MOD_JOB_MODULES + \
+    MODS_PAGE_MODULES

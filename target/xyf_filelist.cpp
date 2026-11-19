@@ -34,7 +34,7 @@ bool valid_path(const char* p, uint32_t n) {
 }
 ListStatus fail(ListReader& r, ListStatus s) { r.status = s; return s; }
 // The line without its LF is r.line[0..r.length).
-ListStatus line(ListReader& r, FileVisit visit, void* context) {
+template<class Visit> ListStatus line(ListReader& r, Visit visit) {
     ++r.lines;
     FileEntry e;
     if (r.length < 64) return fail(r, list_bad_hex);
@@ -70,21 +70,16 @@ ListStatus line(ListReader& r, FileVisit visit, void* context) {
     e.index = r.count;
     e.binary = r.line[65] == '*';
     ++r.count;
-    if (visit && !visit(context, e)) return fail(r, list_stopped);
+    if (!visit(e)) return fail(r, list_stopped);
     return list_ok;
 }
-}
 
-void list_begin(ListReader& r) {
-    for (uint32_t i = 0; i != sizeof(r); ++i) reinterpret_cast<char*>(&r)[i] = 0;
-}
-
-ListStatus list_feed(ListReader& r, const char* data, uint32_t length, FileVisit visit, void* context) {
+template<class Visit> ListStatus feed(ListReader& r, const char* data, uint32_t length, Visit visit) {
     if (r.status) return ListStatus(r.status);
     if (!data && length) return fail(r, list_syntax);
     for (uint32_t i = 0; i != length; ++i) {
         if (data[i] == '\n') {
-            const ListStatus s = line(r, visit, context);
+            const ListStatus s = line(r, visit);
             if (s != list_ok) return s;
             r.length = 0;
             continue;
@@ -93,6 +88,35 @@ ListStatus list_feed(ListReader& r, const char* data, uint32_t length, FileVisit
         r.line[r.length++] = data[i];
     }
     return list_ok;
+}
+
+struct Callback {
+    FileVisit visit; void* context;
+    bool operator()(const FileEntry& e) const { return !visit || visit(context, e); }
+};
+struct Index {
+    HashIndex* index; bool content_only;
+    bool operator()(const FileEntry& e) const {
+        static const char prefix[] = "content/";
+        if (content_only) {
+            if (e.length < sizeof(prefix)) return true;
+            for (uint32_t i = 0; i != sizeof(prefix) - 1; ++i) if (e.path[i] != prefix[i]) return true;
+        }
+        if (index->count == index->capacity) return false;
+        for (uint32_t i = 0; i != 32; ++i) index->data[index->count * 32u + i] = e.sha256[i];
+        ++index->count;
+        return true;
+    }
+};
+} // private
+void list_begin(ListReader& r) {
+    for (uint32_t i = 0; i != sizeof(r); ++i) reinterpret_cast<char*>(&r)[i] = 0;
+}
+ListStatus list_feed(ListReader& r, const char* data, uint32_t length, FileVisit visit, void* context) {
+    return feed(r, data, length, Callback{visit, context});
+}
+ListStatus list_index_feed(ListReader& r, const char* data, uint32_t length, HashIndex& index, bool content_only) {
+    return feed(r, data, length, Index{&index, content_only});
 }
 
 ListStatus list_end(ListReader& r) {

@@ -1262,22 +1262,8 @@ class Pass:
         return found
 
     def step_library_change(self):
-        before = self.state['window1']
-        label = 'Pass %s' % (self.folder.name[-24:] if self.folder else 'plan')
-        local = self.artifact('scratch-info.txt')
-        local.write_bytes(('name=%s\nversion=0\n' % label).encode())
-        self.ok(['put-file', local, SCRATCH_INFO, '--yes-write'])
-        usb, server = self.settled(before, 'library-change')
-        if server['b_window'] != 3:
-            raise StepFail('op 9 answered %s (3 = it closed the open window)' % server['b_window'])
-        if usb.get('crash_restarts') != self.state['crashes1']:
-            raise StepFail('crash restarts %s -> %s: the device restarted' % (self.state['crashes1'],
-                                                                             usb.get('crash_restarts')))
-        entry = [i for i in self.menu_catalog('catalog.bin')['items'] if i['id'] == SCRATCH_ID]
-        if not entry or entry[0]['name'] != label:
-            raise StepFail('menu catalog: %s is %s, expected the name %r' % (
-                SCRATCH_ID, entry[0]['name'] if entry else 'missing', label))
-        return 'menu shows %s = %r without a restart (removed again by scratch-cleanup)' % (SCRATCH_ID, label)
+        from scripts.device_pass_library import change
+        return change(self, SCRATCH_INFO, SCRATCH_ID, StepFail)
 
     def step_set_default_alt(self):
         default = self.state['default0'] = self.slots('before')[2]['default']   # after-restart checks it

@@ -17,13 +17,14 @@ import type { CallOptions, Client, ReplyOf } from './client.ts';
 import { depthRefusal, readsFlatMods } from './depth.ts';
 import { STORE_FILE, STORE_VERSION, generationVersion, remoteTree, storeRefusal, storedName } from './modstore.ts';
 import { XyfError, isXyfError } from './errors.ts';
+import { parseFileList, parseManifest } from './package-manifest.ts';
+import { packageTransaction } from './package-store.ts';
 import { encodeModsApplyRequest } from './v1.ts';
 
 export const MODS_ROOT = '/yaffs2/xy-forever/mods';
 const LIST = 'files.sha256';
 const INFO = 'info.txt';
 const TOKEN = /^[a-z0-9][a-z0-9._-]{0,30}$/;                 // info.txt generation, profile
-const LINE = /^([0-9a-f]{64}) {2}(\S.*)$/;
 const MAX_PATH = 239;                                          // max_path 240 with the NUL
 
 /** The package set or the device's answer is not what a push or remove can use (modsend.py Refused). */
@@ -75,11 +76,7 @@ export function infoValues(data: Uint8Array): Record<string, string> {
 
 /** files.sha256 -> [sha256 hex, path] in file order. */
 export function listPaths(data: Uint8Array): [string, string][] {
-  return lines(utf8(data)).map((line) => {
-    const m = LINE.exec(line);
-    if (!m) throw new PackageError(`${LIST}: bad line ${JSON.stringify(line.slice(0, 80))}`);
-    return [m[1]!, m[2]!];
-  });
+  try { return parseFileList(data); } catch (error) { throw new PackageError((error as Error).message); }
 }
 
 /** stored: its name in the device's store (modstore.ts). */
@@ -99,7 +96,7 @@ export interface LocalSet {
 export async function localSet(source: PackageSource, only: readonly string[] = []): Promise<LocalSet> {
   const paths = new Set(await source.paths());
   if (!paths.has(`base/${INFO}`)) throw new PackageError('no base/info.txt (choose the generation folder modkit split wrote)');
-  const base = infoValues(await source.read(`base/${INFO}`));
+  const base = parseManifest(await source.read(`base/${INFO}`));
   const profile = base['profile'] ?? '', generation = base['generation'] ?? '';
   if (base['type'] !== 'mod-base' || !TOKEN.test(profile) || !TOKEN.test(generation)) {
     throw new PackageError('base/info.txt: not a mod-base with a profile and generation');
@@ -131,6 +128,9 @@ export async function localSet(source: PackageSource, only: readonly string[] = 
     if (shas.has(LIST)) throw new PackageError(`${name}: a file shares the stored name ${LIST}`);
     files.sort((a, b) => Number(a.path === INFO) - Number(b.path === INFO));   // info.txt after the other listed files
     files.push({ path: LIST, data: listed, stored: LIST });                      // files.sha256 last
+    const fields = parseManifest(files.find((file) => file.path === INFO)!.data);
+    if (fields['generation'] !== generation || (fields['profile'] ?? profile) !== profile ||
+        fields['type'] !== (name === 'base' ? 'mod-base' : 'mod')) throw new PackageError(`${name}: package dependencies or type differ`);
     packages.set(name, files);
   }
   return { profile, generation, packages };
@@ -181,55 +181,40 @@ export async function pushPackages(client: Client, source: PackageSource, option
   flatMods(client, 'mods push');
   const genPath = `${MODS_ROOT}/${generation}`;
   const start = performance.now();
-  const tree = await remoteTree(client, genPath, call);
-  const refused = await storeRefusal(client, genPath, tree, call);
-  if (refused) throw new PackageError(refused);
-  const have = tree?.files ?? new Map<string, number>();
-  const plan = [...packages].map(([name, files]) => {
-    const need = files.filter((f) => have.get(`${name}/${f.stored}`) !== f.data.length);
-    if (need.length && need.at(-1)!.path !== LIST) need.push(files.at(-1)!);
-    const keep = new Set(files.map((f) => f.stored));
-    const stale = [...have.keys()].filter((p) => p.startsWith(`${name}/`) && p.split('/').length === 2 && !keep.has(p.slice(name.length + 1)));
-    return { name, files, need, stale, listed: have.has(`${name}/${LIST}`) };
-  });
-  const total = plan.reduce((n, p) => n + p.need.reduce((m, f) => m + f.data.length, 0), 0);
-  const results: PackageResult[] = [];
-  let done = 0;
-  for (const { name, files, need, stale, listed } of plan) {
-    const t0 = performance.now();
-    const folder = `${genPath}/${name}`;
-    if (need.length && listed) await client.deleteFile(`${folder}/${LIST}`, call);   // the list: off first, back at the end
-    for (const f of need) {
-      await client.writeFile(`${folder}/${f.stored}`, f.data, { ...call,
-        onProgress: (staged) => options.onProgress?.(done + staged, total, 'send') });
-      done += f.data.length;
-    }
-    for (const p of stale) await client.deleteFile(`${genPath}/${p}`, call);   // an earlier version's stored files
-    const result: PackageResult = { name, state: need.length ? 'sent' : 'skipped', files: need.length, of: files.length,
-      bytes: need.reduce((n, f) => n + f.data.length, 0), seconds: (performance.now() - t0) / 1000, removed: stale.length };
-    results.push(result);
-    options.onPackage?.(result);
-  }
-  const summary = { profile, generation, sent: results.filter((r) => r.state === 'sent').length,
-    skipped: results.filter((r) => r.state === 'skipped').length, files: results.reduce((n, r) => n + r.files, 0),
-    bytes: done, seconds: (performance.now() - start) / 1000, packages: results, verified: 0 };
-  if (options.verify) {
-    const all = plan.reduce((n, p) => n + p.files.reduce((m, f) => m + f.data.length, 0), 0);
-    let read = 0;
-    for (const { name, files } of plan) {
-      for (const f of files) {
-        const path = `${genPath}/${name}/${f.stored}`;
-        const back = await client.readFile(path, call);
-        if (back.length !== f.data.length || back.some((b, i) => b !== f.data[i])) {
-          throw new PackageError(`verify: ${path} differs on the device (${back.length} B read)`);
-        }
-        read += f.data.length;
-        summary.verified += 1;
-        options.onProgress?.(read, all, 'verify');
+  return packageTransaction(client, call, async (session) => {
+    const tree = await remoteTree(client, genPath, call);
+    const refused = await storeRefusal(client, genPath, tree, call);
+    if (refused) throw new PackageError(refused);
+    const results: PackageResult[] = [];
+    let done = 0, verified = 0;
+    const total = [...packages.values()].reduce((size, files) => size + files.reduce((sum, file) => sum + file.data.length, 0), 0);
+    for (const [name, files] of packages) {
+      const t0 = performance.now(), folder = `${genPath}/${name}`;
+      const existing = await remoteTree(client, folder, call);
+      let same = existing !== null && existing.files.size === files.length;
+      if (same) for (const file of files) {
+        await session.command(1);
+        const back = await client.readFile(`${folder}/${file.stored}`, call);
+        if (back.length !== file.data.length || back.some((byte, index) => byte !== file.data[index])) { same = false; break; }
       }
+      const stale = existing ? [...existing.files.keys()].filter((path) => !files.some((file) => file.stored === path)).length : 0;
+      if (!same) {
+        await session.publish(folder, new Map(files.map((file) => [file.stored, file.data])));
+        done += files.reduce((sum, file) => sum + file.data.length, 0);
+        options.onProgress?.(done, total, 'send');
+      }
+      if (options.verify) verified += files.length;
+      const result: PackageResult = { name, state: same ? 'skipped' : 'sent', files: same ? 0 : files.length,
+        of: files.length, bytes: same ? 0 : files.reduce((sum, file) => sum + file.data.length, 0),
+        seconds: (performance.now() - t0) / 1000, removed: stale };
+      results.push(result); options.onPackage?.(result);
     }
-  }
-  return summary;
+    if (options.verify) options.onProgress?.(total, total, 'verify');
+    return { profile, generation, sent: results.filter((result) => result.state === 'sent').length,
+      skipped: results.filter((result) => result.state === 'skipped').length,
+      files: results.reduce((sum, result) => sum + result.files, 0), bytes: done,
+      seconds: (performance.now() - start) / 1000, packages: results, verified };
+  });
 }
 
 export interface HeldPackage {
@@ -298,6 +283,11 @@ export interface Removed { readonly path: string; readonly files: number; readon
  */
 export async function removePackage(client: Client, what: string, options: CallOptions & { generation?: string | undefined; dryRun?: boolean | undefined } = {}): Promise<Removed[]> {
   const call: CallOptions = { signal: options.signal, timeoutMs: options.timeoutMs };
+  if (!options.dryRun) return packageTransaction(client, call, async (session) => {
+    const targets = await removePackage(client, what, { ...options, dryRun: true });
+    for (const target of targets) await session.remove(target.path);
+    return targets;
+  });
   const tree = await remoteTree(client, MODS_ROOT, call);
   const dirs = tree?.dirs ?? [];
   const inGeneration = (d: string): boolean => options.generation === undefined || d.split('/')[0] === options.generation;
@@ -307,13 +297,6 @@ export async function removePackage(client: Client, what: string, options: CallO
   for (const rel of found) {
     const files = [...tree!.files].filter(([p]) => p.startsWith(`${rel}/`)).map(([p, s]) => [p.slice(rel.length + 1), s] as const);
     const folder = `${MODS_ROOT}/${rel}`;
-    if (!options.dryRun) {
-      const first = (p: string): number => Number(p.split('/').at(-1) !== LIST);
-      for (const [p] of [...files].sort(([a], [b]) => first(a) - first(b) || order(a, b))) await client.deleteFile(`${folder}/${p}`, call);
-      const inner = dirs.filter((d) => d.startsWith(`${rel}/`)).sort((a, b) => b.split('/').length - a.split('/').length);
-      for (const d of inner) await client.removeDir(`${MODS_ROOT}/${d}`, call);
-      await client.removeDir(folder, call);
-    }
     out.push({ path: folder, files: files.length, bytes: files.reduce((n, [, s]) => n + s, 0) });
   }
   return out;

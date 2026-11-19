@@ -453,16 +453,8 @@ def analyse(kit):
 
 def info_text(known, extra):
     """info.txt: known keys (xyf_entry.MANIFEST_KEYS order) then extra keys; the device reader must accept it."""
-    from .xyf_entry import MANIFEST_KEYS
-    lines = ['%s=%s' % (k, known[k]) for k in MANIFEST_KEYS if known.get(k) is not None]
-    for key, value in extra:
-        value = str(value)
-        check(re.fullmatch(r'[a-z0-9_]{1,31}', key) and '\n' not in value and len(value.encode()) <= 127 and value,
-              'info.txt value for %s does not fit (127 bytes)' % key)
-        lines.append('%s=%s' % (key, value))
-    text = ('\n'.join(lines) + '\n').encode()
-    parse_manifest(text)
-    return text
+    from .xyf_entry import manifest_text
+    return manifest_text(known, extra).encode('ascii')
 
 
 def licence_of(text):

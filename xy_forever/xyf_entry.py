@@ -1,6 +1,7 @@
 """Prepare an XY Forever firmware-library entry (docs/STORAGE.md)
 on the host: firmware/<id>/{os.ldr, info.txt}. Offline only."""
 import json
+import hashlib
 import re
 import zlib
 from pathlib import Path
@@ -12,14 +13,10 @@ KINDS = ('official', 'open-xy', 'custom')
 
 
 def info_text(name, version, kind, data):
-    for field, value in (('name', name), ('version', version)):
-        if '\n' in value or '\r' in value or len(value.encode()) > 127:
-            raise ValueError(field + ' must be one line of at most 127 bytes')
-    lines = [f'name={name}']
-    if version:
-        lines.append(f'version={version}')
-    lines += [f'kind={kind}', f'bytes={len(data)}', f'crc32={zlib.crc32(data) & 0xffffffff:08x}']
-    return '\n'.join(lines) + '\n'
+    """Compatibility entry point; all new firmware descriptions use the canonical writer."""
+    return manifest_text(dict(type='firmware', name=name, version=version or None, kind=kind,
+                              bytes=len(data), crc32='%08x' % (zlib.crc32(data) & 0xffffffff),
+                              sha256=hashlib.sha256(data).hexdigest()))
 
 
 def make_entry(ldr, out_root, entry_id, name, version='', kind='custom'):
@@ -163,13 +160,24 @@ def parse_manifest(data):
     return fields
 
 
-def manifest_text(fields):
+def manifest_text(fields, extra=()):
     """Canonical info.txt for the given keys (MANIFEST_KEYS order, LF); refused unless parse_manifest accepts it."""
+    fields, unknown = dict(fields), []
+    for key, value in extra:
+        if not re.fullmatch(r'[a-z0-9_]{1,31}', key) or not str(value) or any(c in str(value) for c in '\r\n'):
+            raise ManifestError('syntax')
+        if key in fields:
+            raise ManifestError('duplicate_key')
+        if key in MANIFEST_KEYS:
+            fields[key] = value
+        else:
+            unknown.append((key, value))
     lines = []
     for key in MANIFEST_KEYS:
         if key in fields and fields[key] is not None:
             value = fields[key]
             lines.append('%s=%s' % (key, '%d' % value if key == 'bytes' else value))
+    lines += ['%s=%s' % (key, value) for key, value in unknown]
     text = ('\n'.join(lines) + '\n').encode() if lines else b''
     parse_manifest(text)
     return text.decode()

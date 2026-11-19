@@ -200,6 +200,8 @@ static Tree expected(const Tree& base, const char* target) {
     t.dirs.insert(saved_folder);
     t.files[saved_list] = list_text(official_files);
     t.files[saved_catalog] = official_files.at("op1_factory.json");
+    t.files[std::string(xyf::blob::root) + "/" + hex(official_files.at("op1_factory.json"))] = official_files.at("op1_factory.json");
+    t.dirs.insert(xyf::blob::root); t.dirs.insert("/yaffs2/xy-forever/tmp");
     return t;
 }
 static bool same_tree(const Tree& a, const Tree& b, const char* what, long n) {   // equal, else the differences
@@ -213,9 +215,10 @@ static bool same_tree(const Tree& a, const Tree& b, const char* what, long n) { 
 }
 static bool only_allowed_writes(const FakeIo& io) {
     for (const std::string& p : io.written) {
-        const bool ok = p.compare(0, C.size(), C) == 0 ? p.compare(0, C.size() + 4, C + "dlc/") != 0
-                                                       : p.compare(0, 35, "/yaffs2/xy-forever/content-official") == 0 ||
-                                                         p.compare(0, 33, "/yaffs2/xy-forever/content-state.") == 0;
+        const bool ok = allowed(Use::blob, p.c_str(), false) ||
+            (p.compare(0, C.size(), C) == 0 ? p.compare(0, C.size() + 4, C + "dlc/") != 0
+              : p.compare(0, 35, "/yaffs2/xy-forever/content-official") == 0 ||
+                p.compare(0, 33, "/yaffs2/xy-forever/content-state.") == 0);
         if (!ok) { fprintf(stderr, "write outside the rule: %s\n", p.c_str()); return false; }
         const std::string rel = p.compare(0, C.size(), C) == 0 ? p.substr(C.size()) : "";
         std::string base = rel.size() > 5 && rel.compare(rel.size() - 5, 5, ".part") == 0 ? rel.substr(0, rel.size() - 5) : rel;
@@ -278,9 +281,7 @@ static void round_trip() {
     REQUIRE(job.total == 4 + 4);                          // 3 files + catalog, 4 of mods-a's removed (common.svg stays)
     REQUIRE(run(io, "mods-b") == st_done && io.t == expected(base, "mods-b"));   // again: nothing changes
     REQUIRE(run(io, "opxy-121") == st_done && io.t == expected(base, "official") && only_allowed_writes(io));
-    Tree back = base;
-    back.dirs.insert(saved_folder); back.files[saved_list] = list_text(official_files);
-    back.files[saved_catalog] = official_files.at("op1_factory.json"); back.files[record_path] = "state=official\n";
+    Tree back = expected(base, "official");
     REQUIRE(io.t == back && io.open_.empty());
 }
 // A fault, a power cut and A going silent at every request of mods-a -> mods-b: the record is never absent,

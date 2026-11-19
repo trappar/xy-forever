@@ -77,6 +77,8 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "stack_mark.hpp"         // live stack high-water mark in STATUS
 #include "xyf_store.hpp"
 #include "xyf_stage2.hpp"
+#include "xyf_blob.hpp"
+#include "xyf_blob_gc.hpp"
 #include "xyf_save_log.hpp"           // #27: the save-time log
 #if defined(XYF_CONTENT_SWITCH)
 #include "xyf_content_job.hpp"
@@ -97,6 +99,7 @@ bool boot_probe_active();
 #if defined(XYF_USB_FILE_WRITE)
 #include "usb_service_file_write.ipp"       // FILE_DELETE/RMDIR/MKDIR/RENAME/COPY/LIST/WRITE
 #include "usb_service_stream.ipp"           // FILE_WRITE_BEGIN/DATA/END (#4)
+#include "usb_service_storage_io.ipp"
 #include "usb_service_mod_job.ipp"          // the mod assembly job on B
 #include "usb_service_save_log.ipp"         // the save-time log
 #include "usb_service_content.ipp"          // the content switch and config jobs
@@ -107,6 +110,7 @@ namespace xy_forever { namespace usb_service {      // the Mods page's hooks (us
 #include "usb_service_mods_page.ipp"        // the Mods page's hooks
 } }
 namespace {
+#include "usb_service_package_session.ipp"
 #include "usb_service_job_status.ipp"       // JOB_STATUS, JOB_CANCEL
 #include "usb_service_boot_probe.ipp"       // #7: read-only boot-partition diagnostic
 #else

@@ -22,7 +22,7 @@ import struct
 import time
 import zlib
 
-from . import depth, modstore, usb_proto as P
+from . import depth, modstore, package_store, usb_proto as P
 
 ROOT = '/yaffs2/xy-forever/mods'
 LIST = 'files.sha256'
@@ -72,8 +72,10 @@ def local_set(package_dir, only=()):
         raise Refused('no such package in %s: %s' % (root, ', '.join(unknown)))
     packages = {}
     for name in sorted(set(wanted), key=lambda n: (n != 'base', n)):
+        if not package_store.package_name(name):
+            raise Refused('unsafe package name: %s' % name)
         folder = root / name
-        entries = list_paths((folder / LIST).read_bytes())
+        entries = package_store.read_files_sha256((folder / LIST).read_bytes())
         if INFO not in [p for _, p in entries]:
             raise Refused('%s/%s does not list %s' % (name, LIST, INFO))
         files = []
@@ -96,6 +98,10 @@ def local_set(package_dir, only=()):
             modstore.stored_files(name, files)
         except modstore.Clash as error:
             raise Refused(str(error))
+        fields = package_store.validate(dict(files))
+        if (fields.get('generation') != generation or fields.get('profile', profile) != profile or
+                fields.get('type') != ('mod-base' if name == 'base' else 'mod')):
+            raise Refused('%s: generation/profile differs from its base' % name)
         packages[name] = files
     return profile, generation, packages
 
@@ -186,63 +192,45 @@ def push(dev, package_dir, only=(), verify=False, out=print, by_hash=False):
     profile, generation, packages = local_set(package_dir, only)
     gen_path = '%s/%s' % (ROOT, generation)
     start = time.monotonic()
-    have = remote_tree(dev, gen_path)
-    store_check(dev, gen_path, have)
-    present = {d for d in have[1] if '/' not in d} if have else set()
     total = dict(sent=0, skipped=0, files=0, bytes=0, paths=[], removed=0)
-    for name, files in packages.items():
-        t0 = time.monotonic()
-        folder = gen_path + '/' + name
-        stored = modstore.stored_files(name, files)            # [(stored name, rel, bytes)], files.sha256 last
-        remote = remote_tree(dev, folder)[0] if name in present else {}
-        if by_hash:
-            hashes = remote_hashes(dev, folder + '/' + LIST) if LIST in remote else {}
-            listed = dict((rel, sha) for sha, rel in list_paths(files[-1][1]))
-            need = [f for f in stored[:-1]
-                    if remote.get(f[0]) != len(f[2]) or ('/' not in f[1] and hashes.get(f[1]) != listed[f[1]])]
-            if need or hashes != listed:
-                need.append(stored[-1])
-        else:
-            need = [f for f in stored if remote.get(f[0]) != len(f[2])]
-        if need:                                               # the list: off first, back at the end
-            if LIST in remote:
-                delete(dev, folder + '/' + LIST)
-            if need[-1][0] != LIST:
-                need.append(stored[-1])
-        for name_, _, data in need:
-            write_file(dev, data, folder + '/' + name_)
-        keep = {f[0] for f in stored}
-        stale = sorted(f for f in remote if '/' not in f and f not in keep)   # an earlier version's stored files
-        for f in stale:
-            delete(dev, folder + '/' + f)
-        size = sum(len(f[2]) for f in need)
-        total['sent' if need else 'skipped'] += 1
-        total['files'] += len(need)
-        total['bytes'] += size
-        total['removed'] += len(stale)
-        total['paths'] += [(name, rel) for _, rel, _ in need]
-        if need:
-            out('%-22s sent     %4d of %4d files %10d B %7.2f s%s' % (name, len(need), len(stored), size,
-                                                                     time.monotonic() - t0,
-                                                                     ', %d old removed' % len(stale) if stale else ''))
-        else:
-            out('%-22s skipped  %4d files already on the device (same %s)' % (name, len(stored),
-                                                                              'SHA-256' if by_hash else 'sizes'))
-    total['seconds'] = time.monotonic() - start
-    out('%s/%s: %d packages sent, %d skipped; %d files, %d B in %.2f s' % (
-        profile, generation, total['sent'], total['skipped'], total['files'], total['bytes'], total['seconds']))
-    if verify:
-        t0, count = time.monotonic(), 0
-        for name, files in packages.items():
-            for stored, _, data in modstore.stored_files(name, files):
-                path = '%s/%s/%s' % (gen_path, name, stored)
-                code, back = dev.read_all(path, limit=len(data) + 1024)
-                check(code, 'file.read %s' % path)
-                if back != data:
-                    raise Refused('verify: %s differs on the device (%d B read)' % (path, len(back)))
-                count += 1
-        out('verify: %d files read back identical in %.2f s' % (count, time.monotonic() - t0))
-    return total
+    try:
+        with package_store.Session(dev) as session:
+            version = session.read(gen_path + '/' + modstore.FILE, optional=True)
+            if version is not None and modstore.version_of(version) != modstore.VERSION:
+                raise Refused('store version %d, newer or unsupported: update the tools or remove the old generation first' % modstore.version_of(version))
+            if version is None:
+                if session.entries(gen_path):
+                    raise Refused('older layout: mods remove %s --yes, then push again' % generation)
+                session.write(gen_path + '/' + modstore.FILE, modstore.TEXT)
+            for name, files in packages.items():
+                folder = gen_path + '/' + name
+                stored = modstore.stored_files(name, files)
+                physical = {stored_name: data for stored_name, _, data in stored}
+                existing = remote_tree(dev, folder)
+                same = existing is not None and set(existing[0]) == set(physical)
+                if same:
+                    for rel, data in physical.items():
+                        if session.read(folder + '/' + rel) != data:
+                            same = False
+                            break
+                if same:
+                    total['skipped'] += 1
+                else:
+                    session.publish(folder, physical)
+                    total['sent'] += 1
+                    total['files'] += len(stored)
+                    total['bytes'] += sum(len(data) for _, _, data in stored)
+                    total['paths'] += [(name, rel) for _, rel, _ in stored]
+                    total['removed'] += len(set(existing[0]) - set(physical)) if existing else 0
+                out('%-22s %s %4d files (SHA-256 verified)' % (name, 'skipped' if same else 'sent', len(stored)))
+        total['seconds'] = time.monotonic() - start
+        out('%s/%s: %d packages sent, %d skipped; %d files, %d B in %.2f s' % (
+            profile, generation, total['sent'], total['skipped'], total['files'], total['bytes'], total['seconds']))
+        if verify:
+            out('verify: %d files read back identical before publication' % sum(len(files) for files in packages.values()))
+        return total
+    except (OSError, ValueError) as error:
+        raise Refused(str(error))
 
 
 OLDER, NEWER = 'older', 'newer'          # holdings: a generation folder this store version does not read
@@ -331,19 +319,25 @@ def remove_folder(dev, folder):
 
 
 def remove(dev, what, yes=False, out=print):
-    found = targets(dev, what)
-    if not found:
-        out('mods remove: nothing named %r under %s' % (what, ROOT))
-        return 1
-    for rel in found:
-        out('%s %s/%s' % ('removing' if yes else 'would remove', ROOT, rel))
     if not yes:
+        found = targets(dev, what)
+        for rel in found:
+            out('would remove %s/%s' % (ROOT, rel))
         out('DRY RUN: nothing deleted. Re-run with --yes to delete.')
+        return 0 if found else 1
+    try:
+        with package_store.Session(dev) as session:
+            found = targets(dev, what)
+            if not found:
+                out('mods remove: nothing named %r under %s' % (what, ROOT)); return 1
+            for rel in found:
+                folder = '%s/%s' % (ROOT, rel)
+                files, _ = remote_tree(dev, folder) or ({}, [])
+                session.remove(folder)
+                out('removed %s: %d files, %d B' % (folder, len(files), sum(files.values())))
         return 0
-    for rel in found:
-        count, size = remove_folder(dev, '%s/%s' % (ROOT, rel))
-        out('removed %s/%s: %d files, %d B' % (ROOT, rel, count, size))
-    return 0
+    except (OSError, ValueError) as error:
+        raise Refused(str(error))
 
 
 # -- the device assembles (mods.apply, job.status, job.cancel) --------------------------------------

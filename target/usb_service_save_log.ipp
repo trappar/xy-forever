@@ -19,7 +19,8 @@ void job_finish(JobSlot& s);
 // Past the first rename (the old entry in tmp/), B renames it back, so the old entry stays usable.
 void commit_fail(JobSlot& s, U32 code, uint32_t error, const char* step) {
     if (code == P::s_link) s.link = 1;
-    s.commit_error = s.link ? job_link_error : U32(mj::Error::rename);
+    s.commit_error = s.link ? job_link_error : U32(s.stage == js_cache ? mj::Error::verify :
+        s.stage == js_gc ? mj::Error::list : mj::Error::rename);
     s.commit_code = error ? error : code;
     job_text(s, "commit ", step);
     if (s.stage == js_in && s.had_old && !s.link) {
@@ -30,8 +31,8 @@ void commit_fail(JobSlot& s, U32 code, uint32_t error, const char* step) {
 }
 void commit_done(JobSlot& s) {
     job_last_target = s.target[5] == 'a' ? 1u : 2u;
-    job_text(s, s.target);
-    job_finish(s);
+    xyf::blob::collect_begin(s.garbage, reinterpret_cast<uint8_t*>(job_work_end - xyf::blob::index_bytes), xyf::blob::index_bytes);
+    s.stage = js_gc;
 }
 // One commit step per loop pass (js_away, js_in, js_clean).
 void commit_step(JobSlot& s) {
@@ -84,7 +85,7 @@ void job_say(JobSlot& s, bool force) {
 // js_wipe, "cleaning up": the job still owns the slot, so storage commands answer busy), then job_end.
 void job_end(JobSlot& s) {
     const bool done = s.job.phase == mj::Phase::done && !s.commit_error;
-    job_state = job_ended;
+    job_state = job_ended; boot_sweep = 3;
     save_lap(xl::p_close);
     if (!save_active && !s.link) save_log_write(done);                  // a USB build's line, in its window
     settle_begin();                                                      // op 9 (B's loop stays live), catalog
@@ -111,7 +112,7 @@ void content_pump();
 void config_pump();
 #endif
 void job_pump() {
-    if (!job_running()) return;
+    if (package_active || blob_collecting || !job_running()) return;
 #if defined(XYF_CONTENT_SWITCH)
     if (job_kind == 2) return config_pump();                             // the config job
     if (job_kind) return content_pump();
@@ -129,11 +130,41 @@ void job_pump() {
             if (save_times.kind && part != save_times.current) save_lap(part);
         } while (p != mj::Phase::done && p != mj::Phase::failed && p != mj::Phase::cancelled && now() - start < job_slice_ms);
         if (p == mj::Phase::done) {
-            s.stage = js_away; job_text(s, "commit"); say("Adding to the library...", s.target);
+            s.stage = js_cache; s.cache_index = s.cache_active = 0; job_text(s, "commit"); say("Adding to the library...", s.target);
             save_lap(xl::p_away); save_times.entry_files = s.job.out_count;
         }
         else if (p == mj::Phase::failed || p == mj::Phase::cancelled) job_finish(s);
         else job_say(s, false);
+    } else if (s.stage == js_gc) {
+        ContentIo io = {s.link};
+        const int collected = xyf::blob::collect_step(s.garbage, io);
+        s.link = io.link; ++s.extra_steps;
+        if (collected < 0) {
+            if (s.garbage.fd >= 0) io.close(s.garbage.fd);
+            s.debris = 1; return commit_fail(s, s.link ? P::s_link : P::s_storage, 0, "blob gc");
+        }
+        if (collected) { job_text(s, s.target); job_finish(s); }
+    } else if (s.stage == js_cache) {
+        if (s.cache_index == s.job.builder.listed_count) s.stage = js_away;
+        else {
+            ContentIo io = {s.link};
+            if (!s.cache_active) {
+                const xyf_core::mod_content::Listed& f = s.job.builder.listed[s.cache_index];
+                char source[file_engine::max_path], temporary[file_engine::max_path];
+                if (!join(source, s.out, "/", f.path) || !join(temporary, s.out, "/blob.part") ||
+                    !xyf::blob::begin(s.cache, source, temporary, f.sha256->bytes))
+                    return commit_fail(s, P::s_refused, 0, "blob path");
+                s.cache_active = 1;
+            }
+            const int cached = xyf::blob::step(s.cache, io);
+            s.link = io.link;
+            if (cached < 0) {
+                xyf::blob::abandon(s.cache, io);
+                return commit_fail(s, s.link ? P::s_link : P::s_storage, 0, "blob verify");
+            }
+            if (cached) { ++s.cache_index; s.cache_active = 0; }
+            ++s.extra_steps;
+        }
     } else if (s.stage == js_wipe) wipe_step(s);                         // a failed job's output
     else commit_step(s);                                                 // into the library
     const U32 pass = now() - start;
