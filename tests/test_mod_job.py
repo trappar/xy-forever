@@ -29,6 +29,7 @@ import test_modkit as TK  # noqa: E402
 from test_xyf_freestanding import code_bytes, compiler  # noqa: E402
 
 EXHAUSTIVE = bool(os.environ.get('XYF_EXHAUSTIVE'))
+FAULT_SHARDS = 4                         # PublishedPackages.test_faults_0 .. _3
 REGION = 8 << 20
 DEVICE_REGION = (8 << 20) - (64 << 10)   # B's job region less the job's state (usb_service.cpp job_slot_bytes)
 CHUNK = 64 * 1024
@@ -56,10 +57,10 @@ class Harness:
         self.assertEqual([report[k] for k in ('input', 'patch', 'verify', 'content', 'copy')], ['ok'] * 5, report)
         return P.entry_files(self.gen, P.tree(out.parent / 'ref'), machines)
 
-    def faults(self, machines, exts=(), stride=1):
+    def faults(self, machines, exts=(), stride=1, first=1):
         folder = Path(tempfile.mkdtemp(dir=self.work))
         (folder / 'job.txt').write_text(self.job_text(list(machines), list(exts)))
-        return run(self.binary, 'faults', folder / 'job.txt', stride)
+        return run(self.binary, 'faults', folder / 'job.txt', stride, first)
 
     def assert_identical(self, report, out, machines, exts, memory='standard'):
         self.assertEqual((report['error'], report['phase'], report['reference']), ('none', 'done', True), report)
@@ -83,10 +84,10 @@ class Harness:
         self.assertLessEqual(report['largest']['patch'], SLICE)        # a patch or CRC-32 slice
         return tree
 
-    def assert_faults(self, report, stride):
+    def assert_faults(self, report, stride, first=1):
         self.assertEqual(report['violations'], [])
         steps = report['steps']
-        self.assertEqual(report['counts']['cancel'], len(range(1, steps, stride)))
+        self.assertEqual(report['counts']['cancel'], len(range(first, steps, stride)))
         self.assertGreater(report['counts']['read'], 0)
         self.assertGreater(report['counts']['write'], 0)
 
@@ -214,9 +215,27 @@ class PublishedPackages(Harness, unittest.TestCase):
                     self.assertIn('content/presets/fm2op/default.json', tree)
         self.assertEqual(self.fit[0], 'fm2op')
 
-    def test_faults(self):
-        stride = 1 if EXHAUSTIVE else 23                              # every step: ~25 s
-        self.assert_faults(self.faults(self.fit[:1], stride=stride), stride)
+    # Every 23rd step in test_faults_0; with XYF_EXHAUSTIVE every step (~25 s) in FAULT_SHARDS tests, each every
+    # FAULT_SHARDS-th step from its own first, so scripts/run_tests.py runs them side by side.
+    def faults_shard(self, shard):
+        if not EXHAUSTIVE and shard:
+            self.skipTest('set XYF_EXHAUSTIVE=1 (without it test_faults_0 takes every 23rd step)')
+        stride, first = (FAULT_SHARDS, 1 + shard) if EXHAUSTIVE else (23, 1)
+        report = self.faults(self.fit[:1], stride=stride, first=first)
+        self.assert_faults(report, stride, first)
+        self.assertLess(first, report['steps'])
+
+    def test_faults_0(self):
+        self.faults_shard(0)
+
+    def test_faults_1(self):
+        self.faults_shard(1)
+
+    def test_faults_2(self):
+        self.faults_shard(2)
+
+    def test_faults_3(self):
+        self.faults_shard(3)
 
 
 class BlackfinCompile(unittest.TestCase):

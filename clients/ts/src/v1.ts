@@ -37,7 +37,7 @@ export const REPLY = 0x80;
 export const TRANSPORT = {
   usbVendorId: { value: 9063, verified: true, doc: "teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), used as fallback when a boot-time check fails" },
   usbProductId: { value: 33, verified: true, doc: "the stock OS uses the same id with no serial interface (MTP, vendor class 0xFF; another mode is 0x8021, class 0x01), so a filter on both ids finds only XY Forever's service on the stock identity; a tool must accept this pair and `product_usb_ids`" },
-  productUsbIds: { value: [9063, 33], verified: true, doc: "the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (`xyf_build.py` MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. This identity change still needs device qualification" },
+  productUsbIds: { value: [9063, 33], verified: true, doc: "the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (`xyf_build.py` MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. XY Forever keeps this pair for good (#58)" },
   usbProduct: { value: "OP_XY Boot", verified: true, doc: "the product string as macOS reports it in the session logs (two log lines show `OP-XY Boot`); informational: filter on the ids" },
   interfaceClasses: { value: [2, 10], verified: true, doc: "USB CDC: communications (0x02) and data (0x0A); on macOS the port is `/dev/cu.usbmodem*`" },
   stream: { value: "frames", verified: true, doc: "the CDC data interface carries exactly the frame stream described here, in both directions, with no other framing; the simulator's TCP port carries the same bytes" },

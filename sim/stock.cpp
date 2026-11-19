@@ -90,6 +90,7 @@ int cdc_read(uint8_t* out, uint32_t n) {
     if (client < 0) return 0;
     const ssize_t got = recv(client, out, n, MSG_DONTWAIT);
     if (got == 0) { cdc_close_client("closed the port"); return 0; }
+    if (got > 0) xyf_sim::active();
     return got > 0 ? int(got) : 0;
 }
 int cdc_write(const uint8_t* data, uint32_t n) {
@@ -98,6 +99,7 @@ int cdc_write(const uint8_t* data, uint32_t n) {
     const int32_t pull = shared->cable_pull;
     if (pull > 0 && uint32_t(pull) < allowed) allowed = uint32_t(pull);
     const ssize_t sent = send(client, data, allowed, MSG_DONTWAIT);
+    if (sent > 0) xyf_sim::active();
     if (sent < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) return -1;
         cdc_close_client("went away");
@@ -364,7 +366,8 @@ int mount(uint32_t device, int read_only_mount) {
     std::atomic<int32_t>& slow = read_only_mount ? shared->mount_ms : shared->rw_mount_ms;   // 193: and read-write
     if (const int32_t ms = slow.load()) {                // ends early once the fault is cleared
         log("fault: the %s mount takes %d ms", read_only_mount ? "read-only" : "read-write", ms);
-        for (int32_t waited = 0; waited < ms && slow.load(); waited += 5) usleep(5000);
+        for (const uint64_t end = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < end && slow.load();)
+            idle_pause(end, 5000);
     }
     if (read_only_mount && shared->needs_repair.load()) {   // 192: the scan wants to repair (erase)
         const uint32_t gate = r32(device + 0x88);
@@ -393,7 +396,8 @@ int unmount(uint32_t device) {
     if (!read_only()) {
         if (const int32_t ms = shared->unmount_ms.load()) {           // ends early once the fault is cleared
             log("fault: the checkpoint takes %d ms", ms);
-            for (int32_t waited = 0; waited < ms && shared->unmount_ms.load(); waited += 5) usleep(5000);
+            for (const uint64_t end = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < end &&
+                 shared->unmount_ms.load();) idle_pause(end, 5000);
         }
         media_change("read-write unmount (checkpoint)"); shared->rw_open = 0;
         if (shared->needs_repair.exchange(0)) log("yaffs: repaired; the checkpoint is written");
@@ -515,6 +519,7 @@ uint32_t stock_writer(const uint8_t* image, uint32_t size) {
 
 // ---- A's stock request executors (a pool slot; they queue their own answer) -------------------
 void executor(uint32_t address, uint32_t request) {
+    xyf_sim::active();
     const uint32_t cls = r32(request), op = r8(request + 5), a0 = r32(request + 8);
     if ((cls == cls_path || cls == cls_query) && shared->swap_armed.exchange(0)) {
         strncpy(static_cast<char*>(host(0x8803f6e0u)), shared->swap_path, 239);
@@ -599,7 +604,7 @@ void storage_op_done() {
         log("fault: power cut armed: cutting after this storage operation");
         Message m = {message_magic, k_event, 0, 0, e_cut, 0, 0, 0, 0, 0, 0};
         send_message(link_fd, m, 0);
-        for (;;) pause();                              // the board cuts the power
+        for (;;) idle_pause(0, 1000000);               // the board cuts the power
     }
 }
 // ---- B's boot ROM: the OTP init and read (target/otp_keys.cpp) ------------------------------
@@ -618,11 +623,7 @@ uint32_t rom_otp_read(uint32_t selector, uint8_t* out) {
     if (selector == 3 && fault == 4) out[0] ^= 0x80;
     return 1;
 }
-void cdc_wait(int ms) {                                // B's menu loop pause, woken by USB data
-    pollfd p[1] = {{client >= 0 ? client : listener, POLLIN, 0}};
-    if (p[0].fd < 0) { usleep(ms * 1000); return; }
-    ::poll(p, 1, ms);
-}
+int cdc_fd() { return client >= 0 ? client : listener; }
 
 // A's stock bootloader (sim/boot.cpp) after a reset: it serves the boot-partition layer B's
 // bootloader uses through the same stock executors (select, sector reads). Other requests: the

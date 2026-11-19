@@ -52,9 +52,11 @@ python3 scripts/check.py --confirm BRANCH              # seconds, no build: what
 `../private/xy-forever/builds/check-<tree>` plus `--verify`, the exhaustive suite (`XYF_EXHAUSTIVE=1
 scripts/run_tests.py`, every test, never a subset; tests that use a build take only one made from this
 checkout's source, `paths.newest_verified_build`), `scripts/neutral.py` with `--neutral [REF]`, and
-`npm test` in `clients/ts` when that folder differs from the merge base with `origin/main` (else local `main`),
-then `npm test` and `npm run typecheck` in `web` when `web` or `clients/ts` differs; both with `--npm`. It stops
-first, naming `npm ci`, when that folder's `node_modules` is missing (`setup.py doctor` shows both). Step output goes
+`npm test` and `npm run typecheck` in `web` when `web` or `clients/ts` differs from the merge base with
+`origin/main` (else local `main`), or with `--npm`. `npm test` in `clients/ts` runs once, inside the suite
+(`NodeSuiteTest`, whenever its `node_modules` is installed); when `clients/ts` differs (or with `--npm`) the check
+requires that `node_modules` so the test cannot skip. It stops first, naming `npm ci`, when a needed
+`node_modules` is missing (`setup.py doctor` shows both). Step output goes
 to a log in `../private/xy-forever/sessions/<date>-check/`; it prints a short summary. Only when every step
 passed and the tree was clean (`git status --porcelain` empty) at the start and the end does it write the
 receipt `../private/xy-forever/checks/<tree>.json`, keyed to `git rev-parse HEAD^{tree}`: each step's command,

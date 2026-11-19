@@ -24,8 +24,8 @@
 //                                       files.sha256 must begin with this one's content list; the whole
 //                                       entry is written to OUT; prints JSON (steps, largest step per
 //                                       phase, peak region use).
-//   mod_assemble faults JOB [STRIDE]    the job with a read and a write failure injected at every
-//                                       STRIDE-th step, cancelled at every STRIDE-th step, a region one
+//   mod_assemble faults JOB [STRIDE [K]] the job with a read and a write failure injected at every
+//                                       STRIDE-th step from K (1), cancelled there, a region one
 //                                       byte short, missing, truncated and short files: each must end in
 //                                       its error with no output name left, and the same Job must then
 //                                       assemble the same bytes again; prints JSON with any violations.
@@ -800,7 +800,7 @@ int job_run(const Job& job, const std::string& outdir) {
     return 0;
 }
 
-int job_faults(const Job& job, unsigned stride) {
+int job_faults(const Job& job, unsigned stride, unsigned k0) {
     static MemFs fs;
     JobSetup s(job, fs);
     static mod_job::Job mj;
@@ -825,7 +825,7 @@ int job_faults(const Job& job, unsigned stride) {
         if (r.phase != mod_job::Phase::done || fs.written != want || fs.open_handles())
             violations.push_back(what + ": not the baseline (" + mod_job::error_name(r.error) + " " + r.detail + ")");
     };
-    for (unsigned k = 1; k <= base.steps; k += stride) {
+    for (unsigned k = k0; k <= base.steps; k += stride) {
         for (int mode = 0; mode != 2; ++mode) {
             fs.reset();
             (mode ? fs.fail_write : fs.fail_read) = k;
@@ -1007,7 +1007,8 @@ int main(int argc, char** argv) {
         return job_fuzz(job, unsigned(std::strtoul(argv[3], 0, 10)), unsigned(std::strtoul(argv[4], 0, 10)),
                         std::strtod(argv[5], 0));
     if (argc >= 3 && !std::strcmp(argv[1], "faults") && read_job(argv[2], job))
-        return job_faults(job, argc >= 4 ? std::max(1u, unsigned(std::strtoul(argv[3], 0, 10))) : 1u);
-    std::fprintf(stderr, "usage: mod_assemble run JOB OUT | verify JOB IMAGE | fuzz JOB SEED N | job JOB OUT | faults JOB [STRIDE] | jobfuzz JOB SEED N SECONDS\n");
+        return job_faults(job, argc > 3 ? std::max(1ul, std::strtoul(argv[3], 0, 10)) : 1,
+                          argc > 4 ? std::max(1ul, std::strtoul(argv[4], 0, 10)) : 1);
+    std::fprintf(stderr, "usage: mod_assemble run JOB OUT | verify JOB IMAGE | fuzz JOB SEED N | job JOB OUT | faults JOB [STRIDE [K]] | jobfuzz JOB SEED N SECONDS\n");
     return 2;
 }

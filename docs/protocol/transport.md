@@ -11,7 +11,7 @@ How a tool reaches the protocol. `verified` is true for facts read from device s
 |---|---|---|---|
 | usb vendor id | `0x2367` | yes | teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), used as fallback when a boot-time check fails |
 | usb product id | `0x0021` | yes | the stock OS uses the same id with no serial interface (MTP, vendor class 0xFF; another mode is 0x8021, class 0x01), so a filter on both ids finds only XY Forever's service on the stock identity; a tool must accept this pair and `product_usb_ids` |
-| product usb ids | `2367:0021` | yes | the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (`xyf_build.py` MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. This identity change still needs device qualification |
+| product usb ids | `2367:0021` | yes | the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (`xyf_build.py` MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. XY Forever keeps this pair for good (#58) |
 | usb product | `OP_XY Boot` | yes | the product string as macOS reports it in the session logs (two log lines show `OP-XY Boot`); informational: filter on the ids |
 | interface classes | `0x02, 0x0a` | yes | USB CDC: communications (0x02) and data (0x0A); on macOS the port is `/dev/cu.usbmodem*` |
 | stream | `frames` | yes | the CDC data interface carries exactly the frame stream described here, in both directions, with no other framing; the simulator's TCP port carries the same bytes |

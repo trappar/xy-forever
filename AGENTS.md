@@ -70,7 +70,7 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 ```sh
 python3 scripts/setup.py doctor                         # private folder: stock files, fixtures (bootstrap, import-stock)
 python3 scripts/plan.py                                 # the plan: next items, decisions waiting (--all: blocked, threads)
-python3 scripts/run_tests.py --jobs 6                   # unit tests in parallel (rerun a timing flake on a busy machine)
+python3 scripts/run_tests.py --jobs 6                   # unit tests in parallel (simulator tests run on device time: sim/clock.cpp)
 XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6  # everything (+ exhaustive bit flips): ~1-2 min
 python3 scripts/check.py                                # end of every change -> receipt (--confirm REF)
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/current   # check.py: builds/<image>

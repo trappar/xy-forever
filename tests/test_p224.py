@@ -354,11 +354,18 @@ class OfficialHeaderTests(Native):
                 changed[0x89] = 1
                 self.assertEqual(self.header(changed, key), H_KEY_INDEX)
 
-    @unittest.skipUnless(os.environ.get('XYF_EXHAUSTIVE'), 'set XYF_EXHAUSTIVE=1 (about 20 s)')
-    def test_every_bit_of_the_signed_range_through_the_whole_check(self):
-        for package, header, key in self.official():
-            with self.subTest(package=package):
+    def every_bit(self, package):
+        for name, header, key in self.official():
+            if name == package:
                 self.check_signed_range(header, key, every_bit=True)
+
+
+# One test per package (about 7 s each), so scripts/run_tests.py runs them side by side.
+for _package in PACKAGES:
+    setattr(OfficialHeaderTests, 'test_every_bit_of_the_signed_range_through_the_whole_check_' +
+            _package[len('opxy_firmware_'):-len('.tfw')].replace('+', '_'),
+            unittest.skipUnless(os.environ.get('XYF_EXHAUSTIVE'), 'set XYF_EXHAUSTIVE=1')(
+                lambda self, package=_package: self.every_bit(package)))
 
 
 if __name__ == '__main__':

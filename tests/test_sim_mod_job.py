@@ -367,7 +367,7 @@ class SyntheticJob(Base, unittest.TestCase):
         before = self.sim.status()
         self.sim.set('a_silent', 1)
         deadline = time.monotonic() + 30.0
-        while self.sim.status()['a_silenced'] == before['a_silenced']:     # B's next request is held
+        while self.sim.status()['a_silenced'] == before['a_silenced']:     # B waits on a request A leaves unanswered
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.005)
         reads = self.sim.status()['b_clock_reads']
@@ -378,8 +378,7 @@ class SyntheticJob(Base, unittest.TestCase):
         thread = threading.Thread(target=lambda: reply.setdefault('r', MS.job_status(self.dev, job)), daemon=True)
         thread.start()                                                      # answered once the job ended
         for _ in range(8):                                                  # the request's bound, then the close's
-            self.sim.advance(6000, step=None)
-            self.sim.ran_on()                                               # B saw the jump
+            self.sim.advance(6000)
             thread.join(0.1)
             if 'r' in reply:
                 break
@@ -435,7 +434,7 @@ class SyntheticJob(Base, unittest.TestCase):
         job = self.start(['alpha'])
         self.assertEqual(MS.PHASES[self.finished(job, timeout=30.0, served=False)['phase']], 'done')
         self.assertEqual(self.dev.call(*FILE_COMMAND, timeout=1.0)[0], ids.S_BUSY)
-        self.sim.advance(46000, step=None)                                  # past change_ms (45 s)
+        self.sim.advance(46000)                                  # past change_ms (45 s)
         deadline = time.monotonic() + 10.0
         while self.dev.call(*FILE_COMMAND, timeout=2.0)[0] == ids.S_BUSY:
             self.assertLess(time.monotonic(), deadline)
@@ -605,8 +604,7 @@ class SyntheticJob(Base, unittest.TestCase):
         thread = threading.Thread(target=lambda: reply.setdefault('r', MS.job_status(self.dev, job)), daemon=True)
         thread.start()
         for _ in range(12):                                                 # the rename's bound (45 s), then the close's
-            self.sim.advance(6000, step=None)
-            self.sim.ran_on()                                               # B saw the jump
+            self.sim.advance(6000)
             thread.join(0.1)
             if 'r' in reply:
                 break

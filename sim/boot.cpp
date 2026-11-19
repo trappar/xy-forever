@@ -23,7 +23,7 @@ void host_poll() {
         if (const int32_t ms = shared->a_stall_now.exchange(0)) {    // control "set a_stall_now MS"
             log("control: A's loop stalls %d ms (device time)", ms);
             const uint64_t until = device_cycles() + uint64_t(ms) * 400000u;
-            while (device_cycles() < until) usleep(1000);
+            while (device_cycles() < until) idle_pause(until, 1000);
         }
 }
 
@@ -82,11 +82,11 @@ void b_boot_a() {
         shared->b_waits_a = 1;
         log("stock bootloader (B): A is already running (probe not 0xff): B waits for A with no bound "
             "(off USB, the screen keeps its last frame) until A resets");
-        while (!shared->b_gate.load()) usleep(1000);
+        while (!shared->b_gate.load()) idle_pause(0, 1000);
         shared->b_waits_a = 0;
         log("stock bootloader (B): A reset: B goes on");
     }
-    while (!shared->in_bootloader[0].load()) usleep(1000);    // B pushes A's bootloader; A's slave opens
+    while (!shared->in_bootloader[0].load()) idle_pause(0, 1000);   // B pushes A's bootloader; A's slave opens
 }
 
 void b_bootloader() {
@@ -116,7 +116,7 @@ void a_bootloader() {
         a_service();
         if (const uint32_t request = r32(primary + 4)) { w32(primary + 4, 0); a_boot_request(request); continue; }
         if (r8(primary)) break;
-        usleep(200);
+        idle_pause(0, 200);
     }
     w32(0x20057004u, r32(0x20057004u) & ~0x2000u);     // teardown: slave closed
     log("stock bootloader (A): released: reads its own os.ldr and boots it");
@@ -143,6 +143,7 @@ void power_on_image() {
 
 void stock_bootloader() {
     shared->in_bootloader[role] = 1;
+    kick(1 - role);                                    // B may wait for A's
     if (role == 0) a_bootloader(); else b_bootloader();
     shared->in_bootloader[role] = 0;
 }

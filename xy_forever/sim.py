@@ -53,7 +53,7 @@ NATIVE_SOURCES = ('ldr', 'hash', 'trace_slot', 'trace_slot_zero', 'memory', 'pee
                   'tfw_check', 'tfw', 'tfw_signature', 'p224', 'aes',
                   'mod_job', 'mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content',   # the job on B
                   'mtp_responder')                                                                  # the MTP responder
-SIM_SOURCES = ('runtime', 'link', 'stock', 'devices', 'boot', 'stage2')
+SIM_SOURCES = ('clock', 'runtime', 'link', 'stock', 'devices', 'boot', 'stage2')
 # Files whose device-only (__bfin__) part the simulator hosts. boot_services.cpp is not one:
 # its device part reads the OTP key and stays out.
 DEVICE_PARTS = ('usb_service.cpp', 'usb_service.hpp', 'storage_server.cpp', 'storage_server.hpp', 'file_client.cpp',
@@ -208,10 +208,17 @@ def prune(cache, keep=KEEP_BUILDS):
     """Removes builds beyond the keep most recently used that no build() asked for in a day (a
     simulator started from one may still be running), and partial builds over an hour old."""
     now = time.time()
-    builds = sorted((p for p in cache.iterdir() if p.is_dir() and not p.name.startswith('build-')),
-                    key=lambda p: p.stat().st_mtime, reverse=True)
-    old = [p for p in builds[keep:] if now - p.stat().st_mtime > 86400]
-    partial = [p for p in cache.glob('build-*') if now - p.stat().st_mtime > 3600]
+
+    def mtime(path):                                   # None: gone (another test job pruned it first)
+        try:
+            return path.stat().st_mtime if path.is_dir() else None
+        except OSError:
+            return None
+    times = {p: mtime(p) for p in cache.iterdir()}
+    builds = sorted((p for p, t in times.items() if t is not None and not p.name.startswith('build-')),
+                    key=times.get, reverse=True)
+    old = [p for p in builds[keep:] if now - times[p] > 86400]
+    partial = [p for p, t in times.items() if t is not None and p.name.startswith('build-') and now - t > 3600]
     for path in old + partial:
         shutil.rmtree(path, ignore_errors=True)
 
@@ -336,12 +343,14 @@ class PortTaken(RuntimeError):
 
 class Simulator:
     """One running simulator: start() it, talk to 127.0.0.1:port, control() its board."""
-    QUIET_READS = 500           # advance(): B's clock reads with nothing sent that end a step (an idle link)
 
-    def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None):
-        """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing."""
+    def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None,
+                 virtual=True):
+        """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
+        virtual: device time moves only under the simulator's control (sim/clock.cpp: test runs); False: real
+        time (interactive runs)."""
         self.root, self.bootpart = Path(root), Path(bootpart)
-        self.otp = otp
+        self.otp, self.virtual = otp, virtual
         self.chosen = port is None                     # a free pair picked here: start() may pick again
         self.port = port or free_port()
         self.control_port = self.port + 1
@@ -357,7 +366,7 @@ class Simulator:
         return [str(self.build_dir / 'xyf_sim'), '--root', str(self.root), '--bootpart', str(self.bootpart),
                 '--stock', str(self.build_dir / 'stock.mem'), '--port', str(self.port),
                 '--control', str(self.control_port), '--capacity', str(self.capacity)] + ([] if self.play else ['--plain']) + \
-            (['--otp-stdin'] if self.otp else [])
+            (['--otp-stdin'] if self.otp else []) + (['--virtual'] if self.virtual else [])
 
     def start(self, timeout=10.0):
         for attempt in range(3):
@@ -374,8 +383,12 @@ class Simulator:
                 return self
             except PortTaken:
                 # Another process took a port between free_port() and the simulator's bind (tests
-                # running in parallel): a new pair, when the pair was picked here.
-                self.stop()
+                # running in parallel): a new pair, when the pair was picked here. Never "quit" over
+                # the control port: it may be another simulator's.
+                self._close_control()
+                self.process.kill()
+                self.process.wait()
+                self.process = None
                 if not self.chosen or attempt == 2:
                     raise
                 self.port = free_port()
@@ -419,41 +432,21 @@ class Simulator:
         if not reply.get('ok'):
             raise ValueError('simulator: no fault %r' % name)
 
-    def advance(self, ms, step=300):
-        """Moves both processors' cycle counters ms ahead (the device code's own clock; the board's
-        host-time schedule is unchanged), so a time-out passes without waiting for it.
+    def advance(self, ms):
+        """Moves device time ms ahead (both processors' cycle counters and the board's clock), so a time-out
+        passes without waiting for it. Virtual clock: in the simulator's own steps, each taken once both
+        processors are idle (the link keeps alive as on the device: keepalives, answers and time-outs
+        happen when they are due); returns once the clock is there and both processors are idle again.
+        Real time: one jump."""
+        if ms <= 0:
+            return
+        if not self.control('advance %d' % ms, timeout=60.0 + ms / 1000.0).get('ok'):
+            raise ValueError('simulator: advance %r refused' % ms)
 
-        In steps of step ms (above B's 250 ms keepalive interval, well below its 1 s answer patience
-        and A's 10 s idle limit): after each, until the link has carried a message each way (a
-        keepalive and an answer), so the link sees time pass as it would, not one silent jump.
-        step=None: one jump, for a link with nothing to keep alive (B waiting on A's reply).
-        A step also ends once B's loop has read the advanced clock QUIET_READS times and sent nothing:
-        B saw the time pass and chose not to send (the link is idle, e.g. A in its bootloader), so
-        waiting the second out would only cost host time."""
-        while ms > 0:
-            n = min(step or ms, ms)
-            ms -= n
-            before = self.status()
-            if not self.control('advance %d' % n).get('ok'):
-                raise ValueError('simulator: advance %r refused' % n)
-            deadline = time.monotonic() + (1.0 if step else 0)
-            reads = self.status()['b_clock_reads'] if step else 0
-            while time.monotonic() < deadline:
-                now = self.status()
-                if (now['to_a'] > before['to_a'] and now['to_b'] > before['to_b']) or \
-                        (now['a'], now['b'], now['a_boots'], now['b_boots']) != \
-                        ('running', 'running', before['a_boots'], before['b_boots']):
-                    break                                  # time passed on the link, or no link to wait for
-                if now['to_a'] == before['to_a'] and now['b_clock_reads'] - reads >= self.QUIET_READS:
-                    break                                  # B ran on past the new time and sent nothing
-                time.sleep(0.001)
-
-    def ran_on(self, reads=QUIET_READS, timeout=0.5):
-        """Until B's loop has read its clock reads more times (it saw the device time as it is now, e.g.
-        after an advance), at most timeout s of host time (B may be stopped)."""
-        start, deadline = self.status()['b_clock_reads'], time.monotonic() + timeout
-        while time.monotonic() < deadline and self.status()['b_clock_reads'] - start < reads:
-            time.sleep(0.001)
+    def jump(self, ms):
+        """Moves device time ms ahead at once, whatever the processors are doing (a pass that took that long)."""
+        if not self.control('jump %d' % ms).get('ok'):
+            raise ValueError('simulator: jump %r refused' % ms)
 
     def reset(self, which):
         """Resets processor 'a' or 'b' alone (no handler runs, the other keeps running); after the
@@ -494,6 +487,9 @@ class Simulator:
                 raise PortTaken('simulator exited with %s' % self.process.returncode)
             try:
                 status = self.status()
+                if status.get('pid') != self.process.pid:      # another simulator's control port: ours failed
+                    raise PortTaken('another simulator (pid %s) answers on port %d' % (status.get('pid'),
+                                                                                     self.control_port))
                 if status.get('listening'):
                     return
                 if status.get('b') == 'crashed' and status.get('b_boots') == 1:   # the endpoint's bind failed, say
@@ -533,6 +529,8 @@ def main(argv=None):
     parser.add_argument('--pre-v1', action='store_true', help='serve the pre-v1 hello text (builds 153 and earlier)')
     parser.add_argument('--crash-trigger', action='store_true',
                         help='the crash trigger test build (#102): diag.crash halts B (no fault, no screen)')
+    parser.add_argument('--virtual-clock', action='store_true',
+                        help='device time moves only under the simulator\'s control, as in the tests (default: real time)')
     parser.add_argument('--no-otp', action='store_true',
                         help="processor B's OTP answers nothing (default: the private keys, when present)")
     args = parser.parse_args(argv)
@@ -550,7 +548,8 @@ def main(argv=None):
                 mode='xyf-crash-trigger' if args.crash_trigger else 'xyf-product')
     otp = None if args.no_otp else otp_fields()
     print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
-    sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp)
+    sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp,
+                    virtual=args.virtual_clock)
     print('simulator: USB endpoint 127.0.0.1:%d (python3 xyf_host.py --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
           ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root), file=sys.stderr, flush=True)
     # Its own process group (the board and both processors), ended with this process however it ends:

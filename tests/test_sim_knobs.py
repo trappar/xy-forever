@@ -97,19 +97,19 @@ class Knobs(PageBase, unittest.TestCase):
         # a slow click: one count, the second 400 ms later (within LEFTOVER_MS): one row
         self.turn(1, 1)
         self.until_frames(9)
-        self.sim.advance(400, step=None)
+        self.sim.advance(400)
         self.turn(1, 1)
         k = self.until_frames(10)
         self.assertEqual((k['main'], k['idle'], k['moves']), (1, 0, 5), k)
         # a lone count is dropped after LEFTOVER_MS: one count, a pause, one count: no row
         self.turn(1, 1)
         self.until_frames(11)
-        self.sim.advance(LEFTOVER_MS + 200, step=None)
+        self.sim.advance(LEFTOVER_MS + 200)
         self.until(lambda: self.last()['idle'] == 1, 'the leftover dropped')
         self.turn(1, 1)
         k = self.until_frames(12)
         self.assertEqual((k['main'], k['idle'], k['moves']), (1, 1, 5), k)
-        self.sim.advance(LEFTOVER_MS + 200, step=None)                     # that one too
+        self.sim.advance(LEFTOVER_MS + 200)                     # that one too
         self.until(lambda: self.last()['idle'] == 2, 'the last count dropped')
         # opposite counts cancel: +1 then -1 is no move, and nothing is left over
         self.turn(1, 1)
@@ -271,7 +271,7 @@ class Knobs(PageBase, unittest.TestCase):
         self.until(lambda: len(self.lines('knob: reader state ')) == 2, 'the menu again', 60.0)
         self.assertEqual(self.lines('knob: reader state ')[-1], '2')
         self.turn(1, 1, 3 * N)
-        time.sleep(0.5)
+        self.sim.advance(500)
         self.assertEqual(self.knobs(), [])                                 # nothing read, nothing moved
         self.until(lambda: self.sim.status().get('listening'), 'USB again', 60.0)
         self.dev.t.close()                                                 # USB re-enumerated: a new session

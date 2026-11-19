@@ -9,9 +9,9 @@
 #include "mtp_usb.hpp"
 #include "../native/mtp_responder.hpp"
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #include <algorithm>
-#include <chrono>
 #include <deque>
 #include <set>
 #include <stdio.h>
@@ -226,11 +226,15 @@ static void enumerate() {
 static uint32_t longest_us;
 static uint32_t stalls __attribute__((unused));
 static void (*after_pump)() = 0;                                       // the responder's steps (usb_service)
+static uint64_t cpu_us() {                                             // this thread's CPU time: a pass's own
+    timespec t; clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);              // work, not a loaded host's waits
+    return uint64_t(t.tv_sec) * 1000000u + uint64_t(t.tv_nsec) / 1000u;
+}
 static void pass() {
-    const auto t0 = std::chrono::steady_clock::now();
+    const uint64_t t0 = cpu_us();
     pump();
     if (after_pump) after_pump();
-    const uint32_t us = uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+    const uint32_t us = uint32_t(cpu_us() - t0);
     if (us > longest_us) longest_us = us;
 }
 static void host_out(const std::vector<uint8_t>& data) {               // host bulk OUT transfer, NAKed while parked

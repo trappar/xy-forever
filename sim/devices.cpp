@@ -185,19 +185,22 @@ void usb_view() {
 void knob_deliver() {
     using namespace xyf_sim;
     using xy_forever::knob_input::read_index; using xy_forever::knob_input::write_index;
-    if (const int32_t jump = shared->knob_jump.exchange(0)) {
-        w32(write_index, r32(write_index) + uint32_t(jump)); w32(read_index, r32(write_index));
-        log("knob: indexes stepped by %d to %u", jump, r32(write_index));
-    }
     const uint32_t head = shared->knob_head.load();
     uint32_t tail = shared->knob_tail.load(), limit = uint32_t(shared->knob_per_pass.load());
-    if (head == tail) return;
-    for (uint32_t taken = 0; tail != head && (limit == 0 || taken != limit); ++tail, ++taken) {
+    const uint32_t first = tail;
+    for (uint32_t taken = 0;; ++tail, ++taken) {
+        if (tail == shared->knob_jump_at.load())       // a jump comes after the frames sent before it
+            if (const int32_t jump = shared->knob_jump.exchange(0)) {
+                w32(write_index, r32(write_index) + uint32_t(jump)); w32(read_index, r32(write_index));
+                log("knob: indexes stepped by %d to %u", jump, r32(write_index));
+            }
+        if (tail == head || (limit && taken == limit)) break;
         const Shared::KnobFrame& f = shared->knob_frame[tail % Shared::knob_frames];
         const uint32_t w = r32(write_index);
         memcpy(host(xy_forever::knob_input::queue + (w % 128) * xy_forever::knob_input::slot_bytes), f.bytes, f.length);
         w32(write_index, shared->knob_wrap ? (w + 1) % 128 : w + 1);
     }
+    if (tail == first) return;
     shared->knob_tail.store(tail);
     w32(read_index, r32(write_index));
 }
@@ -459,4 +462,58 @@ extern "C" void xy_forever_key_ui() {
         }
         xyf_sim::cdc_wait(1);
     }
+}
+
+namespace xyf_sim {
+// Control "knob", "knob_raw", "knob_jump" and "realkey" (runtime.hpp): the PSoC's frames and keys for B.
+std::string input_command(const std::string& line, const char* verb) {
+    if (!strcmp(verb, "knob") || !strcmp(verb, "knob_raw")) {
+        static uint8_t seq = 0xc4;                        // the PSoC's frame counter (as measured)
+        Shared::KnobFrame f = {};
+        long count = 1;
+        if (verb[4] == 0) {                               // knob ID DELTA [COUNT]: one record each
+            long id = 0, delta = 0;
+            if (sscanf(line.c_str(), "knob %ld %ld %ld", &id, &delta, &count) < 2 || id < 0 || id > 255)
+                return "{\"ok\": false, \"error\": \"knob: ID DELTA [COUNT]\"}";
+            const uint8_t bytes[] = {0x41, 0, 0x45, 3, uint8_t(id), uint8_t(uint16_t(delta) >> 8), uint8_t(delta)};
+            f.length = sizeof(bytes);
+            memcpy(f.bytes, bytes, sizeof(bytes));
+        } else {                                          // knob_raw HEX [COUNT]: exactly these bytes
+            char hex[96] = "";
+            sscanf(line.c_str(), "knob_raw %95s %ld", hex, &count);
+            for (const char* h = hex; h[0] && h[1] && f.length < sizeof(f.bytes); h += 2) {
+                unsigned byte = 0;
+                if (sscanf(h, "%2x", &byte) != 1) return "{\"ok\": false, \"error\": \"knob_raw: bad hex\"}";
+                f.bytes[f.length++] = uint8_t(byte);
+            }
+        }
+        const uint32_t head = shared->knob_head.load(), tail = shared->knob_tail.load();
+        if (count < 1 || head - tail + uint32_t(count) > Shared::knob_frames)
+            return "{\"ok\": false, \"error\": \"knob: COUNT 1.., the mailbox holds 512\"}";
+        for (long i = 0; i != count; ++i) {
+            Shared::KnobFrame& slot = shared->knob_frame[(head + uint32_t(i)) % Shared::knob_frames];
+            slot = f;
+            if (verb[4] == 0) slot.bytes[1] = seq++;
+        }
+        shared->knob_head.store(head + uint32_t(count));
+        return "{\"ok\": true}";
+    }
+    if (!strcmp(verb, "realkey")) {                       // realkey K P
+        long key = -1, pressed = -1;
+        if (sscanf(line.c_str(), "realkey %ld %ld", &key, &pressed) != 2 || key < 0 || key > 255 || pressed < 0 || pressed > 1)
+            return "{\"ok\": false, \"error\": \"realkey: K P\"}";
+        const uint32_t head = shared->real_head.load();
+        if (head - shared->real_tail.load() >= Shared::real_keys) return "{\"ok\": false, \"error\": \"realkey: mailbox full\"}";
+        shared->real_key[head % Shared::real_keys] = uint32_t(key) | uint32_t(pressed) << 8;
+        shared->real_head.store(head + 1);
+        return "{\"ok\": true}";
+    }
+    long jump = 0;
+    if (!strcmp(verb, "knob_jump") && sscanf(line.c_str(), "knob_jump %ld", &jump) == 1) {   // after the frames sent before it
+        if (!shared->knob_jump) shared->knob_jump_at = shared->knob_head.load();
+        shared->knob_jump += int32_t(jump);
+        return "{\"ok\": true}";
+    }
+    return "{\"ok\": false, \"error\": \"unknown command\"}";
+}
 }

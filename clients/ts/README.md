@@ -44,7 +44,7 @@ http://127.0.0.1:5173/. Simulator: start `python3 -m xy_forever.sim` (port 7341)
 Chrome; Connect shows the port chooser (XY Forever only). Tested by `test/browser/demo.spec.ts`,
 `files.spec.ts` and `mods.spec.ts`.
 
-The Vitest run starts its own simulators (`python3 -m xy_forever.sim`, ports 7700-7709 and 7720-7721, state under
+The Vitest run starts its own simulators (`python3 -m xy_forever.sim --virtual-clock`, ports 7700-7709 and 7720-7721, state under
 the private sessions folder; `XYF_TS_SIM_PORT`, `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`) and skips the
 simulator tests with the reason when they cannot start. Node 22.18 or later.
 

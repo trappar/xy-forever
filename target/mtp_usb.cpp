@@ -20,7 +20,7 @@ int on_recv_urb(Urb* urb);
 int on_recv_setup(Urb* ep0);
 const Ops kOps = {on_event, on_urb_sent, on_recv_urb, on_recv_setup};
 // VID/PID: the stock pair 2367:0021 that the stock MTP and CDC drivers both declare (teenage
-// engineering's pair, reused; revisit before a public release; xyf_build.py
+// engineering's pair, reused and kept for good: #58; xyf_build.py
 // MTP_USB_IDS). Builds 186 to 189-001 used pid.codes' test pair 1209:0001. The device class 0xEF (below)
 // tells the composite from the stock OS's MTP and the stock serial fallback on the same pair.
 // Class EF/02/01 (miscellaneous, IAD): Windows and Linux bind the CDC pair through the IAD.

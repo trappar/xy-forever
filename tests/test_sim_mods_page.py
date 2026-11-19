@@ -396,16 +396,15 @@ class MenuQuality(PageBase, unittest.TestCase):
     def setUpClass(cls):
         synthetic_setup(cls)
 
-    def held(self, key, seconds, during=None):
-        """Holds key for seconds (during(): run while held); returns (pressed ms, released ms, repeat ms list)."""
+    def held(self, key, ms, during=None):
+        """Holds key, runs during(), then ms more of device time; returns (pressed ms, released ms, repeat ms list)."""
         before = len(self.lines('menu: repeat key '))
         self.key(key, 1)
-        end = time.monotonic() + seconds
         if during:
             during()
-        time.sleep(max(0.0, end - time.monotonic()))
+        self.sim.advance(ms)
         self.key(key, 0)
-        time.sleep(0.3)                                                     # nothing may follow the release
+        self.sim.advance(300)                                               # nothing may follow the release
         down = int(self.lines('menu: key %d pressed at ' % key)[-1].split()[0])
         up = int(self.lines('menu: key %d released at ' % key)[-1].split()[0])
         repeats = [int(x.split(' at ')[1].split()[0]) for x in self.lines('menu: repeat key ')[before:]]
@@ -421,7 +420,7 @@ class MenuQuality(PageBase, unittest.TestCase):
 
     def test_hold_repeats_then_stops_at_release(self):
         rows = len(self.lines('menu: screen 0 row '))
-        down, up, repeats = self.held(PLUS, 1.2)
+        down, up, repeats = self.held(PLUS, 1200)
         self.check_repeats(down, up, repeats, 'home')
         gaps = [b - a for a, b in zip(repeats, repeats[1:])]
         self.assertLessEqual(sorted(gaps)[len(gaps) // 2], 90, gaps)        # a steady 80 ms
@@ -432,7 +431,7 @@ class MenuQuality(PageBase, unittest.TestCase):
               % (up - down, repeats[0] - down, len(repeats), min(gaps), max(gaps)), file=sys.stderr)
         before = len(self.lines('menu: repeat key '))
         self.press(MINUS)                                                   # a tap: no repeat
-        time.sleep(0.6)
+        self.sim.advance(600)
         self.assertEqual(len(self.lines('menu: repeat key ')), before)
 
     def test_hold_during_a_job_and_a_slow_pass_no_burst(self):
@@ -441,14 +440,14 @@ class MenuQuality(PageBase, unittest.TestCase):
         self.open_page()
         self.sim.set('a_slow_ms', 30)
         job = self.start(['alpha', 'gamma'])
-        down, up, repeats = self.held(PLUS, 1.5, during=lambda: (time.sleep(0.6), self.sim.advance(1500, step=None)))
+        down, up, repeats = self.held(PLUS, 900, during=lambda: (self.sim.advance(600), self.sim.jump(1500)))
         self.check_repeats(down, up, repeats, 'during a job')
         self.assertTrue(any(b - a >= 1400 for a, b in zip(repeats, repeats[1:])), repeats)   # the jump: one move
         self.assertNotEqual(MS.PHASES[self.status(job)['phase']], 'done')    # it was held during the job
         self.sim.set('a_slow_ms', 0)
         self.finished(job)
         count = len(self.lines('menu: repeat key '))
-        time.sleep(0.4)
+        self.sim.advance(400)
         self.assertEqual(len(self.lines('menu: repeat key ')), count)       # no queued moves after the job
         p = self.page()
         self.assertEqual(p['selected'], self.page_order()[(1 + len(repeats)) % len(self.folders)])   # packages only
@@ -547,7 +546,7 @@ class PageAndSwitch(PageBase, CS.Switch, unittest.TestCase):
         self.until_phase(job, MS.PHASES.index('write'))
         self.opened_busy('a USB job')
         self.assertEqual(MS.PHASES[self.status(job)['phase']], 'write')     # opened in it
-        time.sleep(0.5)
+        self.sim.advance(500)
         self.assertEqual(self.page()['text'], BUSY_READ)
         self.sim.set('a_slow_ms', 0)
         f = self.finished(job)

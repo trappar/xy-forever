@@ -18,11 +18,31 @@
 #include <mutex>
 #include <poll.h>
 #include <string.h>
+#include <sys/uio.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
 
 namespace xyf_sim {
+// Both sides of a link (the board and each processor).
+bool send_message(int fd, const Message& m, const void* body) {
+    static std::mutex lock;
+    std::lock_guard<std::mutex> hold(lock);
+    if (role == 0 || role == 1) { ++shared->outflight[role]; active(); }   // sim/clock.cpp
+    // Header and body in one writev: the reader wakes once, with the whole message there.
+    iovec v[2] = {{const_cast<Message*>(&m), sizeof(m)}, {const_cast<void*>(body), body ? m.body : 0}};
+    for (int k = 0, count = v[1].iov_len ? 2 : 1; k != count;) {
+        const ssize_t n = writev(fd, v + k, count - k);
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0 && errno == EAGAIN) { pollfd p = {fd, POLLOUT, 0}; ::poll(&p, 1, 100); continue; }
+        if (n <= 0) return false;
+        size_t done = size_t(n);
+        for (; k != count && done >= v[k].iov_len; ++k) done -= v[k].iov_len;
+        if (k != count) { v[k].iov_base = static_cast<uint8_t*>(v[k].iov_base) + done; v[k].iov_len -= done; }
+    }
+    return true;
+}
+
 namespace {
 struct Wait {
     std::atomic<int> done{0};
@@ -41,23 +61,27 @@ std::map<void*, Built> built;
 std::map<void*, Wait*> session_waits;
 std::deque<void*> held;                                     // b_queue: submitted, not yet serialized
 
-bool read_all(int fd, void* to, size_t bytes) {
-    uint8_t* p = static_cast<uint8_t*>(to);
-    for (size_t at = 0; at < bytes;) {
-        const ssize_t n = read(fd, p + at, bytes - at);
-        if (n < 0 && errno == EINTR) continue;
-        if (n <= 0) return false;
-        at += size_t(n);
-    }
-    return true;
-}
+std::vector<uint8_t> link_in;                               // read from the link, not yet a whole message
+// The next message, reading what the link has in one call (no system call while one is buffered).
 bool receive(Message& m, std::vector<uint8_t>& body, int timeout_ms) {
-    pollfd p = {link_fd, POLLIN, 0};
-    if (::poll(&p, 1, timeout_ms) <= 0) return false;
-    if (!read_all(link_fd, &m, sizeof(m)) || m.magic != message_magic ||
-        (body.resize(m.body), m.body && !read_all(link_fd, body.data(), m.body)))
-        exit_processor(exit_halt);                          // the board is gone: end with it
-    return true;
+    for (;;) {
+        if (link_in.size() >= sizeof(m)) {
+            memcpy(&m, link_in.data(), sizeof(m));
+            if (m.magic != message_magic) exit_processor(exit_halt);
+            if (link_in.size() >= sizeof(m) + m.body) {
+                body.assign(link_in.begin() + sizeof(m), link_in.begin() + long(sizeof(m) + m.body));
+                link_in.erase(link_in.begin(), link_in.begin() + long(sizeof(m) + m.body));
+                return true;
+            }
+        }
+        pollfd p = {link_fd, POLLIN, 0};
+        if (::poll(&p, 1, timeout_ms) <= 0) return false;
+        uint8_t chunk[65536];
+        const ssize_t n = read(link_fd, chunk, sizeof(chunk));
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) exit_processor(exit_halt);                // the board is gone: end with it
+        link_in.insert(link_in.end(), chunk, chunk + n);
+    }
 }
 
 // ---- B -----------------------------------------------------------------------------------------
@@ -149,9 +173,9 @@ void generic(const Message& m) {                            // the stock slave I
 }
 }
 
-void a_service() {
+bool a_service() {
     std::lock_guard<std::mutex> hold(a_lock);
-    if (in_service || queue.empty() || r32(primary + 4)) return;
+    if (in_service || queue.empty() || r32(primary + 4)) return false;
     Incoming in = std::move(queue.front());
     queue.pop_front();
     const uint32_t slot = driver() + 0x3c + 0x60 * (next_slot++ & 3u);
@@ -178,6 +202,7 @@ void a_service() {
     in_service = true; service_slot = slot; service_tag = in.m.tag; service_cls = in.m.cls; service_op = in.m.op;
     std::atomic_thread_fence(std::memory_order_release);
     w32(primary + 4, slot);                                 // pending request for A's loop
+    return true;
 }
 
 void a_respond(uint32_t request) {
@@ -202,6 +227,7 @@ void link_start() {
         std::deque<Incoming> inbox;                          // A: held until its slave is set up
         for (;;) {
             const bool got = receive(m, body, 2);
+            bool work = got;
             if (role == 0) {
                 if (got && m.kind == k_request) inbox.push_back({m, body});
                 // The stock slave answers only while A's session has it open (slave_setup sets
@@ -210,12 +236,17 @@ void link_start() {
                     if (!inbox.front().m.cls) generic(inbox.front().m);
                     else { std::lock_guard<std::mutex> hold(a_lock); queue.push_back(std::move(inbox.front())); }
                     inbox.pop_front();
+                    work = true;
                 }
-                a_service();
+                work = a_service() || work;
             } else {
                 if (got && m.kind == k_response) complete(m, body);
                 if (!shared->b_queue.load()) release_held();
             }
+            // Virtual clock (sim/clock.cpp): the main thread has something to look at before the
+            // message counts as taken, so the board never steps the clock in between.
+            if (work) kick(role);
+            if (got) link_taken();
         }
     }).detach();
 }
@@ -227,7 +258,7 @@ uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t a2
     const uint64_t start = now_us();
     bool noted = false;
     while (!w.done.load(std::memory_order_acquire)) {        // stock 889f7b12: spins until answered
-        usleep(50);
+        idle_pause(0, 50);
         host_poll();
         if (!noted && now_us() - start > 5000000u) {
             noted = true;
