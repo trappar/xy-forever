@@ -20,8 +20,8 @@ struct CheckSpan {
 // bootloader asks for (88a202b0): yaffs compares names case-sensitively (file_engine.hpp).
 const char marker_path[] = "/yaffs2/bootloader.dev";
 static const U32 record_words = 0x80 / 4;                             // >= the stock stat record (0x34)
-// [0] the marker, [1] a path, [2] the inbox, [3] a folder above a path (#144: [0] and [2] kept per request).
-U32 marker_record[4][record_words] __attribute__((section(".data"))) = {};
+// [0] the marker, [1] a path, [2] the inbox, [3] a physical ancestor, [4] the mount root.
+U32 marker_record[5][record_words] __attribute__((section(".data"))) = {};
 // #144: whether the marker and the inbox exist, each stat'ed at most once per request (protect_reset at its start:
 // nothing changes storage between a request's checks and its operation): bit 0/2 asked, bit 1/3 found.
 U32 protect_known __attribute__((section(".data"))) = 0;
@@ -53,30 +53,53 @@ __attribute__((noinline)) void restore_marker(U32 op) {
 
 #if defined(XYF_USB_FILE_WRITE)
 // The two write-rule exceptions through links (yaffs follows them inside a path): a change whose path stats to
-// the marker, or whose path or any folder above it stats to /yaffs2/upgrade, is refused. The path is cut in place
-// at each '/' and restored.
+// the marker, or whose containing directory resolves inside /yaffs2/upgrade, is refused.
 const char inbox_path[] = "/yaffs2/upgrade";
 bool inbox_exists() {
     if (!(protect_known & 4u)) protect_known |= 4u | (stat_into(inbox_path, marker_record[2]) ? 8u : 0u);
     return (protect_known & 8u) != 0;
 }
-// #144: the path itself is stat'ed once (into record; *found: it exists), compared with the marker and the inbox, then
-// each folder above it with the inbox; the marker and the inbox are stat'ed once per request (above).
+bool mount_root_exists() {
+    if (!(protect_known & 16u)) protect_known |= 16u | (stat_into("/yaffs2", marker_record[4]) ? 32u : 0u);
+    return (protect_known & 32u) != 0;
+}
+bool same_identity(const U32* a, const U32* b) { return a[0] == b[0] && a[1] == b[1]; }   // device, inode
+// A legal client path has fewer than max_path/2 one-byte directory components. Give resolved aliases the same
+// bound: deeper aliases are refused if ancestry cannot be established, never mistaken for outside the inbox.
+// YAFFS resolves internal ".." after following directory links (1.2.1: 889fa246/889fa258; final ..: 889fa300).
+const U32 protect_parent_steps = max_path / 2;
+char protect_walk[max_path + 3 * protect_parent_steps] __attribute__((section(".data"))) = {0};
+bool directory_reaches_inbox(const char* path) {
+    U32 end = 0;
+    while (end != max_path && path[end]) { protect_walk[end] = path[end]; ++end; }
+    if (end == max_path || !mount_root_exists()) return true;       // no ancestry proof: refuse the change
+    protect_walk[end] = 0;
+    // Missing names and regular files have no usable /.. lookup. Start from their nearest existing directory;
+    // retaining the whole prefix lets YAFFS, rather than lexical chopping, follow any directory symlink.
+    for (;;) {
+        if (stat_into(protect_walk, marker_record[3]) && (marker_record[3][2] & 0xf000u) == 0x4000u) break;
+        while (end && protect_walk[--end] != '/') {}
+        if (end < 7) return true;
+        protect_walk[end] = 0;
+    }
+    for (U32 step = 0; step != protect_parent_steps; ++step) {
+        if (same_identity(marker_record[3], marker_record[2])) return true;
+        if (same_identity(marker_record[3], marker_record[4])) return false;
+        protect_walk[end++] = '/'; protect_walk[end++] = '.'; protect_walk[end++] = '.'; protect_walk[end] = 0;
+        if (!stat_into(protect_walk, marker_record[3])) return true;
+    }
+    return true;
+}
+// The caller's full-path record is preserved (rename keeps its mode/size). Marker/inbox/root are cached only
+// within this request; no storage operation can run between its ancestry checks and its mutation.
+// A symlink directly to an inbox FILE still needs a resolver: stat identifies the file but exposes no parent.
 __attribute__((noinline)) bool reaches_protected(char* path, U32* record = marker_record[1], bool* found = 0) {
     const bool marker = marker_exists(), inbox = inbox_exists();
     const bool got = (marker || inbox || found) && stat_into(path, record);
     if (found) *found = got;
     if (got && ((marker && same_record(record, marker_record[0])) || (inbox && same_record(record, marker_record[2]))))
         return true;
-    if (!inbox) return false;
-    for (U32 i = 9; i != max_path && path[i]; ++i) {
-        if (path[i] != '/') continue;
-        path[i] = 0;
-        const bool inside = stat_into(path, marker_record[3]) && same_record(marker_record[3], marker_record[2]);
-        path[i] = '/';
-        if (inside) return true;
-    }
-    return false;
+    return inbox && directory_reaches_inbox(path);
 }
 // file.rename on a, after rename_to passed decide_request (the pair's policy; the write window is
 // open): both paths in the write area again, the source must exist (ENOENT) and the target must not

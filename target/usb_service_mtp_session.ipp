@@ -201,7 +201,12 @@ static_assert(file_engine::timing_base_words % 2 == 0 && file_engine::timing_wor
 U32 mtp_timing(const uint8_t* payload, U32 length, bool live, U32& n) {
     ms::Session& m = mslot();
     const uint8_t sub = payload[1];
-    const bool a_free = mtp_on && !mtp_busy() && !job_running() && !closing && !put_running() && !m.files.link;
+    // A leaves file RPC for a catalog refresh (including the one after a window close).
+    // Admit the normal read service first: a raw timing request there would stay out and
+    // block the very command needed to re-enter RPC. serving() preserves an occupied slot.
+    const bool a_free = length == 2 && (sub == 0 || sub == 1 || sub == 3) &&
+                        mtp_on && !mtp_busy() && !job_running() && !closing && !put_running() && !m.files.link &&
+                        a_serving();
     if (sub == 0 && length == 2) {
         P::put32(files + 4, mtp_piece);
         P::put32(files + 8, U32(xyf::clock::cycles() >> 10));

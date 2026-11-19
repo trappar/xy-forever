@@ -70,7 +70,8 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
     // (reaches_protected; rename: rename_now), whatever B checked.
     const bool change = (action == file_engine::run_open && handle) ||
                         (action == file_engine::run_path && (op == 0x25u || op == 0x26u || op == 0x27u));
-    if (change && engine != entry_run && (!write_root(path_copy) || reaches_protected(path_copy))) {   // (on path_copy)
+    // The run entry also enforces object protection: its narrower lexical area can contain directory aliases.
+    if (change && ((engine != entry_run && !write_root(path_copy)) || reaches_protected(path_copy))) {
         session.reply(request, 0xffffffffu, error_access); ++r.refused; note(op, file_engine::refuse_outside_path, 0xfff6u);
         return;
     }

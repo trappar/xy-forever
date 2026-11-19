@@ -49,6 +49,10 @@ There is no rename and no format request. A's slave interrupt answers the link h
     (B's main loop is safe; an interrupt above the USB interrupt is not).
   - A stock flag `B[0x88a1cdc1]` (set by the inter-CPU command handler `0x88a5a454`)
     makes a bootloader reset itself; unused by XY Forever.
+- **Timing diagnostics:** `diag.mtp` op 7 admits A's normal read service before reading or clearing
+  its counters: a catalog refresh leaves A outside file RPC, where a raw timing request would remain
+  unanswered. Busy jobs, uploads, MTP operations and window closes exclude these queries. An outstanding
+  file request keeps its slot; unavailable counters never cancel it or reset a processor.
 - **WDOG0 as an interrupt (SEC source 3;** found with the removed guard, unused now): the expiry flag
   WDRO (`WDOG_CTL` bit 15, write 1 to clear) clears only while the watchdog is disabled. Write the disable value first,
   then the disable value with bit 15, then reload and enable. Clearing it in the disable
@@ -62,3 +66,24 @@ There is no rename and no format request. A's slave interrupt answers the link h
   the SPI metadata word read by `11a05244` equals `0xab0d`. Files in `/yaffs2/upgrade/`
   alone do nothing. The bootloader's update mode takes a `.tfw` from a FatFs RAM disk over
   USB mass storage, never from yaffs.
+
+## Protected inbox paths
+
+A's mutation guard compares the marker's identity and walks the resolved parent directories of a path
+before changing storage. This catches aliases directly into inbox subfolders, not just aliases to the
+`upgrade/` root. YAFFS follows directory links before interpreting internal `..` (1.2.1 listing:
+`889fa246` / `889fa258`; a final `..` uses the parent at `889fa300`). The guard uses the already-admitted
+local stat call, never a new stock entry; client paths still reject literal `.` and `..` components.
+
+The walk is bounded at 120 parent steps, enough for every direct client path's 239-byte limit. An alias
+hiding deeper ancestry, a failed parent stat or a missing mount root refuses the mutation. This is not
+the six-folder creation cap: existing deep files remain deletable when ancestry fits that bound.
+The extra stats have not been timed on hardware.
+
+**Remaining gap (#6):** a link directly to an inbox file exposes no parent through stat. The directory
+walk cannot prove that file's containment. Simulator reproduction through the production staged
+`file.write_staged` endpoint: a link under `xy-forever/log/` to `upgrade/sub/x.tfw` lets the write replace
+the protected file's bytes (`usb_service_file_write.ipp`, `file_client::write_file` opens the final path).
+The newer streaming upload and MTP use temporary files and rename; their final-path behavior does not
+establish safety of this older endpoint. Full inbox protection remains an open review requirement;
+the binding rule in [SAFETY](../SAFETY.md) is unchanged. No device experiment establishes this gap.
