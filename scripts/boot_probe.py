@@ -94,8 +94,6 @@ def run(dev, folder):
                 output.write(data); sha.update(data); crc = zlib.crc32(data, crc); count += len(data)
         result.update(image_bytes=count, image_sha256=sha.hexdigest(), image_crc32='%08x' % crc)
         result['go'] = result['menu_pointer'] == 0 and result['upgrade_resume'] == 0
-        result['recommendation'] = ('go for #8 design; no boot write authorized' if result['go'] else
-                                    'no-go: A writer preconditions are nonzero')
     except (ConnectionError, TimeoutError) as error:
         lost = True
         result['link_lost'] = True
@@ -112,6 +110,9 @@ def run(dev, folder):
                 if isinstance(error, (OSError, TimeoutError)):
                     result['link_lost'] = True
         result['go'] = result['go'] and result['restored'] and 'error' not in result
+        result['recommendation'] = ('go for #8 design; no boot write authorized' if result['go'] else
+                                    'no-go: A writer preconditions are nonzero' if result['restored'] and
+                                    'error' not in result else 'no-go: probe incomplete or partition restoration failed')
         (folder / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
     return result
 

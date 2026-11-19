@@ -9,7 +9,10 @@ U32 probe_result(const file_client::Reply& r) {
 }
 void boot_probe_command(uint8_t seq, const uint8_t* payload, U32 length) {
     U32 code = P::s_bad_request, bytes = 8;
-    const U32 op = length >= 8 ? P::get32(payload) : ~0u;
+    const U32 op = length >= 4 ? P::get32(payload) : ~0u;
+    if (!length || payload[0] > bp::end || (length >= 4 && op > bp::end)) {
+        status_only(bp::command, seq, P::s_unsupported); return; // unlisted-type error has only its status
+    }
     if (length >= 8 && P::get32(payload + 4) != bp::version) code = P::s_unsupported;
     else if (op == bp::begin && length == 8) {
         if (probe_on || job_blocks(P::t_read_file) || uploading() || boot_sweep != 2) code = P::s_busy;
