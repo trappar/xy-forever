@@ -39,6 +39,10 @@ function randomBytes(n: number): Uint8Array {
   return out;
 }
 
+test('Chrome has no real Web Serial here: tests may not open a real device (vitest.browser.config.ts)', () => {
+  expect('serial' in navigator).toBe(false);
+});
+
 describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` (skipped: ${web.why})`}`, () => {
   const serial = new FakeSerial(sim?.relay ?? '');
   let uninstall = (): void => undefined;
