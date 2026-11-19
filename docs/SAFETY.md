@@ -83,13 +83,13 @@ the raw partition layer (boot partition; MTP never sends it), the real bootloade
 
 ## Host access
 
-Host tools reach the device only through XY Forever's own USB service (`xyf_host.py` and the
-scripts built on it), and through the stock dev menu by the developer's hand for recovery. One
-exception, also before the grant below: host tools may read files over the stock dev-menu MTP, never
-write (`xy_forever/mtp_read.py` refuses every other operation; ONBOARDING step 4). No
-flashing tools, no official updater, no TE tools. An agent operates a developer's OP-XY only after
-that developer has granted it for their own device (ONBOARDING step 6, recorded in their local
-`docs/status/`). The grant covers XY Forever's USB service under these rules, nothing else.
+Host tools reach the device via XY Forever's USB service (`xyf_host.py`), standard MTP (stock OS,
+stock dev menu, XY Forever's MTP mode), and the dev menu by hand (recovery). Over MTP they may
+write under the rules above (protected names, depth); test files go in a scratch folder, removed
+after and [logged](operating/at-the-device.md); nothing else is deleted. Before the grant, only dev-menu
+MTP reads (ONBOARDING step 4). No flashing tools, no official updater, no TE tools. An agent operates a
+developer's OP-XY only after that developer has granted it for their device (ONBOARDING step 6,
+recorded in their `docs/status/`). The grant covers these routes and rules, nothing else.
 
 ## Before installing any build over USB
 

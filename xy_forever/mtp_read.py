@@ -2,8 +2,9 @@
 
 Shared by scripts/mtp_probe.py and `scripts/setup.py import-stock --from-device`. Read only, enforced here:
 Session.transact is the one place a command leaves the host, and it refuses every operation outside READ_ONLY
-before anything reaches the transport; no data phase is ever sent to the device. A transport is any object with
-write(bytes) -> libusb rc, read(size) -> (rc, bytes) and close() (UsbTransport, or a fake in the tests).
+before anything reaches the transport; no data phase is ever sent to the device (writes: mtp_write.Writer,
+a subclass with its own checks). A transport is any object with write(bytes) -> libusb rc,
+read(size) -> (rc, bytes) and close() (UsbTransport, or a fake in the tests).
 """
 import ctypes
 import ctypes.util
@@ -39,19 +40,26 @@ def ptp_string(data, at):
 
 class Session:
     def __init__(self, transport):
-        self.transport, self.tid = transport, 0
+        self.transport, self.tid, self.answer = transport, 0, ()
 
     def transact(self, code, *params):
-        """(response code, data) of one read-only operation. The choke point: any other code is refused here."""
+        """(response code, data) of one read-only operation. The choke point: any other code is refused here
+        (writes go only through mtp_write.Writer, which checks every path before its own command)."""
         if code not in READ_ONLY:
             raise Refused('MTP operation 0x%04x refused: this client only reads' % code)
-        name = READ_ONLY[code]
+        self._command(READ_ONLY[code], code, params)
+        return self._response(READ_ONLY[code])
+
+    def _command(self, name, code, params):
         self.tid += 1
         cmd = struct.pack('<IHHI', 12 + 4 * len(params), 1, code, self.tid) + b''.join(struct.pack('<I', p)
                                                                                        for p in params)
         rc = self.transport.write(cmd)
         if rc:
             raise MtpError('%s: command not sent (libusb %d)' % (name, rc))
+
+    def _response(self, name):
+        """(response code, data in) of the transaction just sent; self.answer: the response's parameters."""
         payload, pending = b'', b''
         while True:
             got, pending = pending or self.read(name), b''
@@ -64,6 +72,8 @@ class Session:
                     data += self.read(name, 'data stopped at %d/%d bytes' % (len(data), length - 12))
                 payload, pending = bytes(data[:length - 12]), bytes(data[length - 12:])
             elif kind == 3:                                     # response
+                n = max(0, min(length, len(got)) - 12) // 4
+                self.answer = struct.unpack_from('<%dI' % n, got, 12)
                 return rcode, payload
             else:
                 raise MtpError('%s: unexpected container type %d' % (name, kind))
