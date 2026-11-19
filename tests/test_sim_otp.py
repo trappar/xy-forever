@@ -15,6 +15,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / 'scripts')]
 import tfw_probe
 import xyf_host as host
 from xy_forever import paths, sim, usb_proto as P
+from xy_forever.startup_ready import wait_startup_ready
 from test_tfw_check import package
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'stock 1.2.1 fixture absent')
@@ -44,7 +45,14 @@ class SimulatorOtp(unittest.TestCase):
                 machine = self.start(Path(temp), initialized, otp=bytes((9, 56)) + bytes(56))
                 dev = host.Device(host.TcpPort(machine.address), on_log=None)
                 try:
-                    self.assertEqual(dev.hello()[0], 0)
+                    code, hello = dev.hello()
+                    self.assertEqual(code, 0)
+                    before = machine.status()
+                    wait_startup_ready(hello, lambda remaining: dev.call(
+                        P.ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
+                    ready = machine.status()
+                    self.assertEqual((ready['otp_inits'], ready['otp_reads']),
+                                     (before['otp_inits'], before['otp_reads']))
                     code, body = dev.call(P.ids.TFW_CHECK, b'/yaffs2/xy-forever/packages/synthetic.tfw\0')
                     self.assertEqual((code, struct.unpack_from('<II', body)), (0, (1, 5)))  # public_key: zero point
                     state = machine.status()
