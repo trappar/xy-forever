@@ -265,16 +265,46 @@ class AStagingTests(unittest.TestCase):
 
     def test_transport_loss_stops_without_retry_fallback_or_restart(self):
         self.ready()
-        self.sim.set('a_silent', 1)
         before = self.sim.status()
-        self.start(self.stock)
-        self.sim.jump(5001)
+        accepted = self.start(self.stock)  # exactly one start, with A healthy and admission allowed
+        self.assertGreater(accepted['phase'], 0)
+        self.sim.set('a_slow_ms', 1000)
+        deadline = time.monotonic() + 10
+        while True:
+            code, progress = R.call(self.dev, 1)
+            self.assertEqual(code, 0)
+            if 0 < progress['done'] < progress['total'] and self.sim.status()['outstanding']:
+                break  # A acknowledged bytes; the accepted transfer now has a class request out
+            self.assertLess(time.monotonic(), deadline, progress)
+        self.sim.set('a_silent', 1)
+        self.sim.advance(45001)  # honor normal polls/answers through the existing 45 s request bound
         self.assertEqual(self.wait_done()['result'], P.S_LINK)
         later = self.sim.status()
-        for key in ('a_boots', 'b_boots', 'boot_writes', 'mount_calls', 'storage_ops'):
+        for key in ('a_boots', 'b_boots', 'boot_writes', 'mount_calls', 'storage_ops',
+                    'rw_mounts', 'raw_boot_changes', 'stage_executor_hits'):
             self.assertEqual(later[key], before[key], key)
         self.assertEqual(self.dev.call(P.STATUS)[0], 0)
         self.assertEqual(self.dev.hello()[0], 0)
+        self.sim.advance(1000)
+        self.assertEqual(self.sim.status()['b_sent_ms'], later['b_sent_ms'])  # no post-loss A request
+
+    def test_accepted_inflight_request_drop_ends_without_retry_or_mutation(self):
+        self.ready()
+        before = self.sim.status()
+        self.assertGreater(self.start(self.stock)['phase'], 0)
+        self.sim.set('drop_request', 1)  # existing hook: next class request of this accepted job
+        self.wait(lambda s: s['drop_request'] == 0,
+                  what='accepted job request dropped in flight')
+        self.sim.advance(45001)
+        self.assertEqual(self.wait_done()['result'], P.S_LINK)
+        later = self.sim.status()
+        for key in ('a_boots', 'b_boots', 'boot_writes', 'mount_calls', 'storage_ops',
+                    'rw_mounts', 'raw_boot_changes', 'stage_executor_hits'):
+            self.assertEqual(later[key], before[key], key)
+        self.assertEqual(self.dev.call(P.STATUS)[0], 0)
+        self.assertEqual(self.dev.hello()[0], 0)
+        self.sim.advance(1000)
+        self.assertEqual(self.sim.status()['b_sent_ms'], later['b_sent_ms'])
 
     def test_preflight_refuses_unexpected_a_write_window_without_checkpointing_it(self):
         self.ready()

@@ -45,6 +45,9 @@ void rehearsal_pump() {
         if (s.step == rs_abort) { rehearsal_end(s.code); return; } // success also ABORTs after collecting A's proof
         ++s.step;
     }
+    // Admission required an idle, live session. Once that accepted job loses its
+    // link between requests, idle cannot become true again in this boot.
+    if (!menu_link::usb_link_up()) { rehearsal_end(P::s_link); return; }
     if (s.cancel && s.step <= rs_begin) { rehearsal_end(s.code); return; }
     if (s.cancel && s.step > rs_begin) s.step = rs_abort;
     // A keepalive can occupy the shared slot between passes. Never enter claim's

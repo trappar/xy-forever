@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
 from xy_forever import xyf_entry, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, modstore, paths, sim   # noqa: E402
 from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
+from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
 import test_modkit as TK                                                  # noqa: E402
 
@@ -358,6 +359,8 @@ class SyntheticJob(Base, unittest.TestCase):
         """The request parser takes 40 and 64 machines (64 ids filling the field's 1023 bytes); a 65th is
         bad_request. Only the packages present decide what follows (here: the first absent one fails the job at
         open, before anything is built); memory is the job's limit, not the count."""
+        wait_startup_ready(self.dev.hello_info.text, lambda remaining: self.dev.call(
+            ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
         call = lambda machines: MS.start(self.dev, self.base, self.profile, self.generation, machines, (), NAME, True)   # noqa: E731
         sixty_four = ['alpha'] + ['m%014d' % i for i in range(63)]
         self.assertEqual(len(','.join(sixty_four)), 1013)
