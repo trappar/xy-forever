@@ -58,7 +58,8 @@ On an error: the status only. Errors: `bad_request`, `unsupported`, `busy`, `lin
 
 ### 0x4b `storage.space`
 
-Report free storage bytes. Returns the existing storage service free-space query (0x31), as an unsigned 64-bit byte count in two little-endian words. Does not
+Report free storage bytes. Uses the existing read-only statfs query (0x23) on /yaffs2: unsigned block size times free blocks, returned as a 64-bit byte count in
+two little-endian words. A successful statfs return accepts a stale YAFFS errno; a zero block size is storage failure, and zero free blocks is valid. Does not
 mount storage for writing.
 
 | Request field (4 bytes) | Type | Meaning |

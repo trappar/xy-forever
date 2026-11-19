@@ -32,6 +32,7 @@ struct Shared {
     // added) instead of cut at 239 bytes.
     std::atomic<int32_t> fail_select, fail_unmount, fail_open, full_path;
     std::atomic<int64_t> space;                  // bytes yaffs may still write (< 0: unlimited)
+    std::atomic<int32_t> statfs_override, statfs_block_bytes, statfs_free_blocks, statfs_fail;
     std::atomic<int32_t> storage_ops, play, cuts;
     std::atomic<int32_t> b_listening;            // the USB CDC endpoint is open (TCP port listening)
     // The chip's partition register as A's last stock select left it (0 user area: yaffs; 1, 2 boot

@@ -43,8 +43,26 @@ void executor(uint32_t address, uint32_t request) {
                                         uint64_t(fs.f_bavail) * fs.f_frsize : 0;
             w32(a_out_buffer, uint32_t(free_bytes)); w32(a_out_buffer + 4, uint32_t(free_bytes >> 32));
         }
+        int result = op == 0x31 ? 0 : found ? 0 : fail(2);
+        if (op == 0x23 && found) {
+            struct statvfs fs = {};
+            if (shared->statfs_fail || statvfs(where.c_str(), &fs)) result = fail(5);
+            else {
+                const uint32_t block = shared->statfs_override ? uint32_t(shared->statfs_block_bytes.load()) : uint32_t(fs.f_frsize);
+                const int64_t quota = shared->space.load();
+                const uint32_t free = shared->statfs_override ? uint32_t(shared->statfs_free_blocks.load()) :
+                                      quota >= 0 && block ? uint32_t(uint64_t(quota) / block) : uint32_t(fs.f_bavail);
+                w32(a_out_buffer, block); w32(a_out_buffer + 4, shared->statfs_override ? 0xffffffffu : uint32_t(fs.f_blocks));
+                w32(a_out_buffer + 8, free);
+            }
+        }
         w32(request + 0x20, a_out_buffer); w32(request + 0x24, bytes);
-        return finish(request, op == 0x31 ? 0 : found ? 0 : fail(2));
+        // Space queries retain YAFFS errno even on success (#12); model that bug faithfully.
+        if (op == 0x23 || op == 0x31) {
+            w32(request + 0x10, uint32_t(result)); w32(request + 0x14, uint32_t(last_error));
+            a_respond(request); return;
+        }
+        return finish(request, result);
     }
     if (address == 0x889f6cd6u && cls == cls_read && op == 0x2a) {
         // #144: one 0x1000-byte body per run (the builder's chunk). While bytes are left it sends the body and

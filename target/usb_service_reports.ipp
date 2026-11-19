@@ -139,11 +139,29 @@ void state_get(uint8_t seq,const uint8_t* payload,U32 length) {
     P::put32(files,code);P::put32(files+4,1);P::put32(files+8,which);P::put32(files+12,offset);P::put32(files+16,bytes==1004?1:0);
     result.last_status=code;send(P::t_state_get,seq,files,code?4:20+bytes);
 }
+// Same unsigned product as the MTP responder; no target 64-bit runtime helper.
+void storage_space_product(U32 a,U32 b,U32& hi,U32& lo) {
+    const U32 al=a&0xffffu,ah=a>>16,bl=b&0xffffu,bh=b>>16;
+    const U32 ll=al*bl,lh=al*bh,hl=ah*bl,hh=ah*bh;
+    const U32 mid=(ll>>16)+(lh&0xffffu)+(hl&0xffffu);
+    lo=(ll&0xffffu)|(mid<<16);hi=hh+(lh>>16)+(hl>>16)+(mid>>16);
+}
 void storage_space(uint8_t seq,const uint8_t* payload,U32 length) {
     U32 code=length!=4?P::s_bad_request:P::get32(payload)>1?P::s_unsupported:P::get32(payload)!=1?P::s_bad_request:P::s_ok;
     if(!code && ((job_running()&&!package_active)||reporting||closing||recovery_pending XYF_OR_MTP_BUSY))code=P::s_busy;
     if(!code && !a_serving())code=P::s_link;
     if(!code)code=file_client::mount_ready(mounted);
-    if(!code){const file_client::Reply r=file_client::free_space("/yaffs2",files+8);code=r.outcome?file_client::status(r.outcome):r.error?P::s_storage:P::s_ok;}
+    if(!code){
+        uint8_t record[file_client::space_bytes];
+        const file_client::Reply r=file_client::statfs("/yaffs2",record);
+        if(r.outcome)code=file_client::status(r.outcome);
+        else if(r.value!=0)code=r.error==file_client::enoent?P::s_not_found:P::s_storage;
+        else if(!P::get32(record))code=P::s_storage;
+        else{
+            U32 hi=0,lo=0;storage_space_product(P::get32(record),P::get32(record+8),hi,lo);
+            P::put32(files+8,lo);P::put32(files+12,hi);
+        }
+        // Successful stock queries retain an earlier YAFFS errno; only the return value decides success.
+    }
     P::put32(files,code);P::put32(files+4,1);result.last_status=code;send(P::t_storage_space,seq,files,code?4:16);
 }
