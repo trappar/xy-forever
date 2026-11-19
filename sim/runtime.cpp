@@ -351,6 +351,7 @@ void drain(int which) {
         const ssize_t n = read(p.fd, chunk, sizeof(chunk));
         if (n <= 0) break;
         p.in.insert(p.in.end(), chunk, chunk + n);
+        if (size_t(n) < sizeof(chunk)) break;              // all of it
     }
     while (p.in.size() >= sizeof(Message)) {
         Message m; memcpy(&m, p.in.data(), sizeof(m));
@@ -580,7 +581,7 @@ int main(int argc, char** argv) {
     power_cycle(play, "start");
     bool quit = false;
     const pid_t parent = getppid();
-    bool woken = true;                                    // the wake pipe had news at the last poll
+    bool woken = true;                       // the wake pipe fired at the last poll
     uint64_t reaped_us = 0;
     while (!quit) {
         if (getppid() != parent) { log("parent gone: stopping"); break; }   // never outlive the tool that started it
@@ -603,8 +604,7 @@ int main(int argc, char** argv) {
         }
         const int ready = ::poll(fds.data(), fds.size(), wait_ms);
         woken = fds[wake_index].revents != 0;
-        // A processor that ended hangs up its link; otherwise look every 2 ms (waitpid on each pass of a
-        // busy link is a system call per message).
+        // Ended processors: on a hung-up link, else every 2 ms (not a waitpid per message).
         bool hung_up = false;
         for (int k = 0; k != 2; ++k)
             if (link_index[k] >= 0 && (fds[link_index[k]].revents & (POLLHUP | POLLERR))) hung_up = true;

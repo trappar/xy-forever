@@ -61,23 +61,27 @@ std::map<void*, Built> built;
 std::map<void*, Wait*> session_waits;
 std::deque<void*> held;                                     // b_queue: submitted, not yet serialized
 
-bool read_all(int fd, void* to, size_t bytes) {
-    uint8_t* p = static_cast<uint8_t*>(to);
-    for (size_t at = 0; at < bytes;) {
-        const ssize_t n = read(fd, p + at, bytes - at);
-        if (n < 0 && errno == EINTR) continue;
-        if (n <= 0) return false;
-        at += size_t(n);
-    }
-    return true;
-}
+std::vector<uint8_t> link_in;                               // read from the link, not yet a whole message
+// The next message, reading what the link has in one call (no system call while one is buffered).
 bool receive(Message& m, std::vector<uint8_t>& body, int timeout_ms) {
-    pollfd p = {link_fd, POLLIN, 0};
-    if (::poll(&p, 1, timeout_ms) <= 0) return false;
-    if (!read_all(link_fd, &m, sizeof(m)) || m.magic != message_magic ||
-        (body.resize(m.body), m.body && !read_all(link_fd, body.data(), m.body)))
-        exit_processor(exit_halt);                          // the board is gone: end with it
-    return true;
+    for (;;) {
+        if (link_in.size() >= sizeof(m)) {
+            memcpy(&m, link_in.data(), sizeof(m));
+            if (m.magic != message_magic) exit_processor(exit_halt);
+            if (link_in.size() >= sizeof(m) + m.body) {
+                body.assign(link_in.begin() + sizeof(m), link_in.begin() + long(sizeof(m) + m.body));
+                link_in.erase(link_in.begin(), link_in.begin() + long(sizeof(m) + m.body));
+                return true;
+            }
+        }
+        pollfd p = {link_fd, POLLIN, 0};
+        if (::poll(&p, 1, timeout_ms) <= 0) return false;
+        uint8_t chunk[65536];
+        const ssize_t n = read(link_fd, chunk, sizeof(chunk));
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) exit_processor(exit_halt);                // the board is gone: end with it
+        link_in.insert(link_in.end(), chunk, chunk + n);
+    }
 }
 
 // ---- B -----------------------------------------------------------------------------------------

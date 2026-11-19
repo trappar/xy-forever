@@ -37,7 +37,7 @@ OVER = {
     'scripts/device_pass.py': 128359,
     'scripts/protogen.py': 90178,
     'scripts/setup.py': 38062,
-    'sim/runtime.cpp': 34817,
+    'sim/runtime.cpp': 34808,
     'sim/stock.cpp': 40937,
     'target/cold_storage.cpp': 33710,
     'target/file_boot.cpp': 40815,
