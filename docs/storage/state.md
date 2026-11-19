@@ -14,7 +14,7 @@ most 127 bytes. Files are at most 4 KiB. Two readers:
   ignored, the last of duplicate keys wins, longer names are cut to fit (47 / 31
   bytes).
 - **Strict** (`xyf_manifest`: package admission and the inbox; not yet
-  used by the library scan): the first problem refuses the whole file, with a
+  used by the library scan; [admission decision](package-transactions.md#reader-and-writer-decisions)): the first problem refuses the whole file, with a
   status and its line. Refused: an empty file (no key line); no LF after the last
   line (a cut copy); a line over 255 bytes; any byte outside printable ASCII
   `0x20..0x7e` (a tab only around key, `=` and value; a CR only before LF); a line
@@ -71,7 +71,8 @@ The switch (B's job, `target/xyf_content_job.hpp`; one file request per step, US
 `.old`); in the official state the live catalog's SHA-256 must equal the `op1_factory.json` line of a library entry's `content.sha256` (else refused: not the
 official set), otherwise the saved list is used; the target's `content/` lines of `files.sha256` (a path the official list names is refused, as is any path the
 rule refuses). Every refusal comes before the first write. Then: the official list and catalog saved under `content-official/` (official state, unless the same
-copies are there); the record `switching` (the target's files and the previous ones still to remove); the previous files the target lacks removed (with folders
+copies are there); the outgoing official catalog retained as a verified content blob; the record `switching` (the target's files and the previous ones
+still to remove); the previous files the target lacks removed (with folders
 left empty, never an official one); the target's files written as `<path>.part`, read back, the old copy removed, renamed in; the catalog last (a stock target:
 the saved official one, its SHA-256 checked); the record for the target. A failure or cut leaves `switching` (or the old or new record); running the switch
 again repairs it. Writes: only the record, the saved copies and, in `/yaffs2/content/`, the catalog and paths from a mod set's `files.sha256` or the record,

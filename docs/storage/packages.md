@@ -1,6 +1,7 @@
 # XY Forever storage layout: package files
 
 Part of the [XY Forever storage layout](../STORAGE.md). Its files use the [text format](state.md#text-format-state-txt-infotxt).
+Adding, removing and keeping content by hash: [Package transactions](package-transactions.md).
 
 ## `info.txt` (package manifest)
 

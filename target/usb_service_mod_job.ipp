@@ -30,7 +30,7 @@ enum JobState : U32 { job_none = 0, job_busy, job_ended };
 // Removing one folder tree under tmp/ in bounded steps (tree_step), and the sweep of leftovers.
 struct Tree { char path[file_engine::max_path]; U32 root; };
 struct Sweep { Tree tree; U32 removing, skip, calls; char keep[file_engine::max_path]; };
-enum JobStage : U32 { js_sweep = 0, js_assemble, js_away, js_in, js_clean, js_wipe };   // js_wipe
+enum JobStage : U32 { js_sweep = 0, js_assemble, js_away, js_in, js_clean, js_wipe, js_cache, js_gc };   // js_wipe
 struct JobSlot {
     mj::Job job;
     mj::Input input;
@@ -46,6 +46,8 @@ struct JobSlot {
     // The commit and the sweep.
     char target[8], entry[file_engine::max_path], old[file_engine::max_path];
     U32 stage, had_old, commit_error, commit_code, extra_steps, clean_calls;
+    xyf::blob::Collect garbage;
+    xyf::blob::Copy cache; U32 cache_index, cache_active;
     Tree tree;                                                           // the old entry's tree in tmp/
     Sweep leftovers;
     char state_text[xyf::store::max_text];
@@ -57,7 +59,12 @@ volatile U32 job_last_target __attribute__((section(".data"))) = 0;   // 1 mods-
 volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 0 mods.apply, 1 content switch, 2 config, 4 MTP session (3 reserved)
 volatile U32 job_usb __attribute__((section(".data"))) = 0;           // the job was started over USB
 JobSlot& slot() { return *reinterpret_cast<JobSlot*>(XYF_JOB_REGION_BEGIN); }
-bool job_running() { return job_state == job_busy; }
+volatile U32 blob_collecting __attribute__((section(".data"))) = 0;
+volatile U32 package_active __attribute__((section(".data"))) = 0;
+volatile U32 package_file __attribute__((section(".data"))) = 0;
+volatile U32 package_ms __attribute__((section(".data"))) = 0;
+uint8_t package_token[32] __attribute__((section(".data"))) = {0};
+bool job_running() { return job_state == job_busy || package_active || blob_collecting; }
 #if defined(XYF_MTP_SESSION)
 bool mtp_busy();                                                        // an MTP operation in flight
 #define XYF_OR_MTP_BUSY || mtp_busy()
@@ -67,6 +74,9 @@ bool mtp_busy();                                                        // an MT
 #define XYF_AND_NOT_MTP_BUSY
 #endif
 bool job_blocks(U32 type) {                                             // also while settle_begin's op 9 is out
+    if (package_active && (type == P::t_read_file || type == P::t_list_dir || type == P::t_delete_file ||
+        type == P::t_remove_dir || type == P::t_make_dir || type == P::t_rename_file || type == P::t_write_begin ||
+        type == P::t_write_data || type == P::t_write_end)) { package_ms = now(); package_file = 1; return false; }
     if (!boot_probe_active() && !job_running() && !closing XYF_AND_NOT_MTP_BUSY) return false;
     return type == P::t_read_file || type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end ||
            type == P::t_file_write || type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir ||
@@ -275,10 +285,11 @@ bool sweep_step(Sweep& w, uint8_t* page) {
     for (U32 i = 0; i != n; ++i) name[i] = char(page[6 + i]);
     name[n] = 0;
     const bool job = page[0] == 1 && n > 4 && name[0] == 'j' && name[1] == 'o' && name[2] == 'b' && name[3] == '-';
+    const bool package = page[0] == 1 && n > 4 && name[0] == 'p' && name[1] == 'k' && name[2] == 'g' && name[3] == '-';
     uint32_t size;                                                       // #4: an upload's tmp file left behind
     if (page[0] == 0 && join(path, job_tmp, "/", name) && file_engine::upload_size(path, size))
         return tree_change(0x25u, path) == P::s_ok;                      // unlink (uploading(): never the open one)
-    if (job && join(path, job_tmp, "/", name) && !same_text(path, w.keep) && tree_begin(w.tree, path)) w.removing = 1;
+    if ((job || package) && join(path, job_tmp, "/", name) && !same_text(path, w.keep) && tree_begin(w.tree, path)) w.removing = 1;
     else ++w.skip;
     return true;
 }
@@ -295,7 +306,18 @@ void sweep_begin(Sweep& w, const char* keep) {
 volatile U32 boot_sweep __attribute__((section(".data"))) = 0;          // 0 waiting, 1 running, 2 ended
 void boot_sweep_turn() {
     if (boot_sweep == 2) return;
-    if (job_running()) { boot_sweep = 2; return; }
+    if (mounted == file_client::mounted_stale) { blob_collecting = 0; boot_sweep = 2; return; }
+    if (blob_collecting) {
+        JobSlot& s = slot();
+        GarbageIo io; io.link = 0;
+        const int done = xyf::blob::collect_step(s.garbage, io);
+        if (done) {
+            if (s.garbage.fd >= 0 && !io.link) io.close(s.garbage.fd);
+            blob_collecting = 0; boot_sweep = 2; settle_begin();
+        }
+        return;
+    }
+    if (job_running()) { if (boot_sweep != 3) boot_sweep = 2; return; }
     if (closing || uploading() XYF_OR_MTP_BUSY) return;
 #if defined(XYF_ONE_SESSION)
     if (!boot_sweep && xyf_boot::storage_view() != xyf::menu::storage_ready) return;
@@ -303,12 +325,17 @@ void boot_sweep_turn() {
     if (!boot_sweep && !read_enabled) return;
 #endif
     JobSlot& s = slot();
+    if (boot_sweep == 3) {
+        if (now() - rx_quiet_from < storage_server::window_settle_ms) return;
+        xyf::blob::collect_begin(s.garbage, reinterpret_cast<uint8_t*>(job_work_end - xyf::blob::index_bytes), xyf::blob::index_bytes);
+        blob_collecting = 1; return;
+    }
     if (!boot_sweep) {
         boot_sweep = a_serving() ? 1u : 2u;
         sweep_begin(s.leftovers, "");
         return;
     }
-    if (!sweep_step(s.leftovers, s.page)) boot_sweep = 2;
+    if (!sweep_step(s.leftovers, s.page)) boot_sweep = 3;
 }
 // the mods id that is neither the default nor the boot-once entry; of two, the
 // absent one, else the one not written last this boot (B sees no file times), else mods-a. Reads the

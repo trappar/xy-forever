@@ -60,7 +60,7 @@ class FreshLibrary(J.Base, unittest.TestCase):
         self.assertNotIn('note:', text)
         entry = self.entry(self.base)
         self.assertEqual(sorted(p.name for p in entry.iterdir()),
-                         ['content.sha256', 'firmware.version', 'info.txt', 'os.ldr'])
+                         ['content.sha256', 'files.sha256', 'firmware.version', 'info.txt', 'os.ldr'])
         self.assertEqual((entry / 'content.sha256').read_text(), official_text(sorted(OFFICIAL)))
         self.assertEqual((entry / 'firmware.version').read_text(), '1.2.1+0\n')
         self.assemble_and_compare(['alpha'])                                # started and done, no manual step
@@ -71,7 +71,7 @@ class FreshLibrary(J.Base, unittest.TestCase):
         self.assertIn('library-add %s: ok (no content list)' % self.base, text)
         self.assertIn('note: firmware/%s gets no content.sha256 + firmware.version' % self.base, text)
         self.assertIn('Give --content DIR', text)
-        self.assertEqual(sorted(p.name for p in self.entry(self.base).iterdir()), ['info.txt', 'os.ldr'])
+        self.assertEqual(sorted(p.name for p in self.entry(self.base).iterdir()), ['files.sha256', 'info.txt', 'os.ldr'])
         code, text = self.host('mods', 'apply', '--base', self.base, '--generation',
                                '%s/%s' % (self.profile, self.generation), 'alpha', '--unverified')
         self.assertEqual(code, MS.NOT_FOUND, text)

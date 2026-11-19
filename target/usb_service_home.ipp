@@ -116,6 +116,7 @@ uint32_t home_pump() {
     stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
     if (!boot_probe_active()) {
+    package_turn();
     job_pump();                                        // a slice of the mod job
     boot_sweep_turn();                                 // #3: leftover tmp/job-* folders, a step per pass
     stream_turn();                                     // #4: a streamed write left without data
@@ -186,6 +187,7 @@ uint32_t home_pump() {
 #if defined(XYF_MTP_SESSION)
         else if (type == t_mtp_tunnel) mtp_tunnel(seq, payload, length);   // the test transport
 #endif
+        else if (type == P::t_package_session) package_session(seq, payload, length);
         else if (job_blocks(type)) status_only(type, seq, P::s_busy);   // one request slot
         else if (type == P::t_mods_apply) mods_apply(seq, payload, length);
         else if (type == P::t_job_status) job_status(seq, payload, length);
@@ -253,6 +255,9 @@ uint32_t home_pump() {
         }
         else if (stage2_command(type, seq, payload, length)) {}   // stage 2's types (stage2.info)
         else status_only(type, seq, P::s_unsupported);
+#if defined(XYF_USB_FILE_WRITE)
+        if (package_file) { package_ms = now(); package_file = 0; }
+#endif
         P::next(parser);
         if (leave) { r.exit = exit_continue; return leave; }
     }

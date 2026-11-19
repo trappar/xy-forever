@@ -63,11 +63,10 @@ python3 xyf_host.py mods push DIR/mods/opxy-1.2.1/<generation> [--only ID ...] [
 The set goes to `/yaffs2/xy-forever/mods/<generation>/`, stored flat (protocol 1.16 or later;
 [the store](storage/mods-store.md)). `mods list` names an older layout, too deep for the dev menu's MTP:
 `mods remove <folder> --yes`, then push again. The base is always sent. A file in a folder is stored under
-its SHA-256, so an edit always sends it; a top-level file (`catalog.txt`, ...) with the same size is
-skipped: after such an edit, `mods remove ID --yes` first, or use `mods dev` (it compares SHA-256). `--verify`
-reads every file back and stops on a difference. If a push stops part-way, run it
-again. `files.sha256` is written last, so a half-sent package is
-never used.
+its SHA-256. A changed package is built and SHA-256 verified in `tmp/`, then renamed into its place;
+its old folder is detached first. Python and browser pushes skip only complete, byte-identical packages.
+If a push stops part-way, run it again: an unpublished scratch
+folder is swept, and no half-sent package becomes visible. See [package transactions](storage/package-transactions.md).
 
 `mods list` shows what is on the device; `mods remove GENERATION --yes` deletes a
 set (without `--yes` it is a dry run).

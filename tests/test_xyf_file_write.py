@@ -234,48 +234,10 @@ if __name__ == '__main__':
 
 
 class LibraryAddTest(unittest.TestCase):
-    """xyf_host library-add: os.ldr then info.txt, each on a fresh boot; default unchanged."""
+    """Host admission/refusal checks; atomic publication is tested in the simulator."""
 
-    def test_flow_on_a_fake_device(self):
-        import xyf_host as host
-        from test_usb_service import FakeDevice
-        calls, files, devices = [], {}, []
-
-        class Booting(FakeDevice):
-            def close(self): calls.append('close')
-            def handle(self, kind, payload):
-                if kind in (P.REBOOT, P.FILE_WRITE, P.SET_DEFAULT, P.CONTINUE):
-                    calls.append(kind)
-                if kind == P.FILE_WRITE and self.greeted:
-                    end = payload.index(b'\0')
-                    files[payload[:end].decode()] = bytes(self.staged)
-                    return struct.pack('<III', 0, len(self.staged), zlib.crc32(self.staged) & 0xffffffff)
-                return super().handle(kind, payload)
-
-        def connect(timeout):
-            fake = Booting(); devices.append(fake)
-            dev = host.Device(fake); dev.hello()
-            return dev, 'fake%d' % len(devices), 'XYF1'
-        original, sleep = host.connect, host.time.sleep
-        host.connect, host.time.sleep = connect, lambda s: None
-        try:
-            with tempfile.TemporaryDirectory() as tmp:
-                ldr = Path(tmp) / 'os.ldr'
-                from test_ldr import image
-                data = image([(4, 0x11a00000, 8, 0, bytes(range(8)))], entry=0x11a00000)
-                from xy_forever.ldr import parse_ldr
-                self.assertEqual(parse_ldr(data)[-1].target, 0x11a00000)
-                ldr.write_bytes(data)
-                self.assertEqual(host.main(['library-add', 'opxy-xyz', str(ldr), '--name', 'Test image',
-                                            '--version', '9.9.9+0', '--yes-write']), 0)
-        finally:
-            host.connect, host.time.sleep = original, sleep
-        self.assertEqual(calls, [P.REBOOT, 'close', P.FILE_WRITE, P.REBOOT, 'close', P.FILE_WRITE, P.REBOOT, 'close'])
-        self.assertEqual(files['/yaffs2/xy-forever/firmware/opxy-xyz/os.ldr'], data)
-        info = files['/yaffs2/xy-forever/firmware/opxy-xyz/info.txt'].decode()
-        self.assertEqual(info, 'name=Test image\nversion=9.9.9+0\nkind=official\nbytes=%d\ncrc32=%08x\n' %
-                         (len(data), zlib.crc32(data) & 0xffffffff))
-        self.assertNotIn(P.SET_DEFAULT, calls)                 # the default is never changed by library-add
+    # The complete CLI/write path is exercised against the real simulator in
+    # test_sim_library_add and test_sim_package_store (including power cuts).
 
     def test_refusals(self):
         import xyf_host as host

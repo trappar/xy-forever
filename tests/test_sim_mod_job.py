@@ -50,7 +50,7 @@ def outside_tmp(root):
     keep = {}
     for p in sorted(root.rglob('*')):
         rel = p.relative_to(root).as_posix()
-        if rel.startswith((TMP, 'xy-forever/log', LIB + '/mods-')):
+        if rel.startswith((TMP, 'xy-forever/log', 'xy-forever/blobs', LIB + '/mods-')):
             continue
         keep[rel] = hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else 'folder'
     return keep
@@ -181,6 +181,10 @@ class Base:
         self.assertEqual(sorted(got), sorted(want))                         # no .part, nothing else
         for path in want:
             self.assertEqual(got[path], want[path], path)
+        for rel, data in want.items():
+            if rel.startswith('content/'):
+                digest = hashlib.sha256(data).hexdigest()
+                self.assertEqual((self.root / 'xy-forever/blobs' / digest).read_bytes(), data)
         self.assertEqual(outside_tmp(self.root), before)                    # nothing but tmp/ and the mods ids
         item = self.listed(f['detail'])                                     # listed at once (A rescanned)
         self.assertEqual((item['name'], item['usable'], item['content_missing']), (NAME, False, True), item)
