@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 import xyf_build                                    # noqa: E402
 import xyf_host as host                             # noqa: E402
 from xy_forever import census, paths, release, sim, usb_proto as P   # noqa: E402
+from xy_forever.conformance_connection import wait_startup_ready
 from xy_forever import usb_proto_ids as ids         # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
@@ -87,12 +88,15 @@ class SimulatorTest(unittest.TestCase):
         self.sim.stop()
 
     # -- helpers ---------------------------------------------------------------------------
-    def connect(self, hello=True):
+    def connect(self, hello=True, startup_ready=False):
         dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.links.append(dev)
         if hello:
             code, text = dev.hello()
             self.assertEqual(code, 0)
+            if startup_ready:
+                wait_startup_ready(text, lambda remaining: dev.call(
+                    ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
         return dev
 
     def file(self, path):
@@ -1571,7 +1575,7 @@ class SimulatorTest(unittest.TestCase):
         renames."""
         root = self.dir / 'yaffs2'
         (root / 'bootloader.dev').write_bytes(b'dev menu\n')
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         before = self.sim.status()
         for path in MARKER_SPELLINGS + ROOT_SPELLINGS:
             for kind in (P.DELETE_FILE, P.REMOVE_DIR):
@@ -1651,7 +1655,7 @@ class SimulatorTest(unittest.TestCase):
         (root / 'user').mkdir()
         (root / 'user' / 'project.txt').write_bytes(b'mine')
         (root / 'xy-forever' / 'log' / 'm.txt').write_bytes(b'm')
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         mine = BASE + 'log/m.txt'
         refused = MARKER_SPELLINGS + ROOT_SPELLINGS + [               # the write rule: the marker and upgrade/ only
             '/yaffs2/upgrade', '/yaffs2/upgrade/x.tfw', '/yaffs2/UPGRADE/new.txt', '/yaffs2/Upgrade/a/b',

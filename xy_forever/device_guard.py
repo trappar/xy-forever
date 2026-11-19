@@ -16,7 +16,7 @@ def path_in(path, area):
 
 def device_guard(spec, kind, payload, test_area):
     """None when a real device may get this request, else why not. Allowed: reads, the screenshot,
-    staging, file.write_staged, file.delete, file.rmdir, file.mkdir, file.rename, file.copy (its target) and
+    staging, storage.space version 1, file.write_staged, file.delete, file.rmdir, file.mkdir, file.rename, file.copy (its target) and
     file.write_begin (1.18; with file.write_data and file.write_end) in the test area (or with a token
     no staging or path matches), file.list, job.status, a mods.apply or job.cancel the device refuses, every
     restart into the menu, and the requests the device refuses without doing anything (unknown
@@ -39,6 +39,8 @@ def device_guard(spec, kind, payload, test_area):
     if name in ('hello', 'diag.status', 'file.read', 'file.list', 'screen.read', 'stage.begin', 'stage.data',
                 'stage.end', 'job.status'):
         return None
+    if name == 'storage.space' and value == 1:
+        return None                                          # read-only startup readiness probe, version 1
     if name == 'mods.apply':                                  # 1.10: only requests refused before anything
         if len(payload) < 33 or hashlib.sha256(payload[:-32]).digest() != payload[-32:] or \
                 payload.startswith(b'xyf-conformance-'):
