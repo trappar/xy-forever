@@ -881,7 +881,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(self.sim.status()['rw_open'], 1)
         stock = sim.STOCK_OS.read_bytes()
         self.assertEqual(dev.stage(stock), 0)
-        self.assertEqual(dev.uninstall(hashlib.sha256(stock).digest())[:2], (0, 1))
+        self.assertEqual(dev.uninstall(hashlib.sha256(stock).digest())[:2], (0, len(stock)))
         status = self.sim.status()
         self.assertEqual((status['rw_open'], status['boot_writes'], status['partition']), (0, 0, 0))
         self.assertEqual(self.b_window(dev)[0], 3)
