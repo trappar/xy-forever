@@ -17,6 +17,12 @@ Every wait is bounded. One table row per route; exit 0 only when every route pas
   python3 scripts/throughput.py                             # all four routes, asking for the stock modes
   python3 scripts/throughput.py --route serial --small-count 50
   python3 scripts/throughput.py --sim 127.0.0.1:7341        # serial and xyf-mtp against python3 -m xy_forever.sim
+  python3 scripts/throughput.py --route xyf-mtp --piece 4096 # XY Forever's MTP with 4 KiB pieces per A request
+
+After the xyf-mtp route, where its time went (#144, xy_forever/mtp_timing.py): for each phase (big files written,
+small files written, read back), B's file requests to A (their round trips), A's own storage time per request,
+the link and queues between them, B's responder and USB work, and the rest. It is read over the serial service
+beside MTP (diag.mtp op 7); without it (--no-breakdown, or no serial) only the table is printed.
 """
 import argparse
 import contextlib
@@ -31,7 +37,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import xyf_host as host  # noqa: E402
-from xy_forever import mtp_read as M, mtp_write as W  # noqa: E402
+from xy_forever import mtp_read as M, mtp_timing as T, mtp_write as W  # noqa: E402
 
 ROUTES = ('serial', 'xyf-mtp', 'os-mtp', 'dev-mtp')
 SIM_ROUTES = ('serial', 'xyf-mtp')
@@ -51,7 +57,7 @@ class Failed(Exception):
     """One line for the table."""
 
 
-ERRORS = (Failed, M.MtpError, OSError, TimeoutError, host.Unsupported)
+ERRORS = (Failed, M.MtpError, OSError, TimeoutError, host.Unsupported, T.TimingError)
 
 
 # the file set and the table
@@ -78,6 +84,7 @@ class Result:
         self.bytes = {s: sum(len(f[1]) for f in files if f[2] == s) for s in (False, True)}
         self.seconds = {}                   # ('write' | 'read', small?) -> seconds
         self.removed, self.leftovers, self.cleanup_error = [], [], None
+        self.breakdown = []                 # xyf-mtp: where the time went (lines)
 
 
 def rate(amount, seconds):
@@ -131,8 +138,11 @@ def measure(route, ops, files, clock=time.monotonic):
     try:
         r.leftovers = ops.prepare()
         tokens = {}
+        phase = getattr(ops, 'phase', None)                                # xyf-mtp: the breakdown
         for kind in ('write', 'read'):
             for small in (False, True):
+                if phase:
+                    phase(r, kind, small, None)
                 start = clock()
                 for name, data, is_small in files:
                     if is_small != small:
@@ -143,6 +153,8 @@ def measure(route, ops, files, clock=time.monotonic):
                     elif ops.read(tokens[name], path, len(data)) != data:
                         raise Failed('%s read back differs' % path)
                 r.seconds[(kind, small)] = clock() - start
+                if phase:
+                    phase(r, kind, small, r.seconds[(kind, small)])
     except ERRORS as error:
         r.error = str(error) or type(error).__name__
     except KeyboardInterrupt:
@@ -219,8 +231,10 @@ class SerialOps:
 # MTP: mtp_write.Writer over USB or the simulator's tunnel
 
 class MtpOps:
-    def __init__(self, transport):
+    def __init__(self, transport, timing=None, breakdown=True, piece=None):
         self.transport, self.where = transport, {}
+        self.timing = timing                # xyf-mtp: a serial Device for diag.mtp op 7, or None
+        self.breakdown, self.piece = breakdown, piece   # the breakdown wanted; a piece set (restored on close)
         self.w = W.Writer(transport, SCRATCH)
         try:
             self.w.open()
@@ -243,9 +257,29 @@ class MtpOps:
     def cleanup(self):
         return self.w.remove_tree()
 
+    def phase(self, r, kind, small, seconds):
+        """Before a phase (seconds None): the device's timing cleared; after it: its breakdown into r."""
+        if not self.timing or not self.breakdown:
+            return
+        label = '%s, %s %s' % (r.route, 'small files' if small else 'big files', 'written' if kind == 'write' else
+                               'read')
+        try:
+            if seconds is None:
+                T.clear(self.timing)
+            else:
+                r.breakdown += T.lines(T.read(self.timing), seconds, label)
+        except ERRORS as error:
+            r.breakdown.append('%s: no breakdown (%s)' % (label, error))
+
     def close(self):
-        self.w.close()
-        self.transport.close()
+        try:
+            if self.piece and self.piece != T.PIECES[0]:
+                T.set_piece(self.timing, T.PIECES[0])                   # the default again
+        finally:
+            self.w.close()
+            self.transport.close()
+            if self.timing and self.timing is not getattr(self.transport, 'dev', None):
+                self.timing.t.close()
 
 
 class Tunnel:
@@ -355,13 +389,38 @@ def open_route(route, args):
             code, text = dev.hello()
             if code:
                 raise Failed('hello: %s' % host.P.status_name(code))
-            return MtpOps(Tunnel(dev).enter())
+            tunnel = Tunnel(dev).enter()
+            return MtpOps(tunnel, dev, args.breakdown, piece(dev, args))
         except BaseException:
             dev.t.close()
             raise
     if route in STOCK and not args.ready:
         wait_for_enter('Put the OP-XY in %s' % STOCK[route][0], args.wait)
-    return MtpOps(open_usb_mtp(route, args.timeout_ms))
+    transport = open_usb_mtp(route, args.timeout_ms)
+    if route != 'xyf-mtp' or not (args.breakdown or args.piece):
+        return MtpOps(transport)
+    try:                                                                   # the serial beside it (the composite)
+        with contextlib.redirect_stdout(io.StringIO()):
+            dev, _, _ = host.connect(args.connect_timeout)
+        dev.on_log = None
+    except (SystemExit,) + ERRORS as error:
+        if args.piece:
+            transport.close()
+            raise Failed('--piece needs the serial service beside MTP: %s' % error)
+        print('xyf-mtp: no breakdown (serial: %s)' % error, flush=True)
+        return MtpOps(transport)
+    try:
+        return MtpOps(transport, dev, args.breakdown, piece(dev, args))
+    except BaseException:
+        dev.t.close()
+        raise
+
+
+def piece(dev, args):
+    """--piece set on the device (until the route ends), or None."""
+    if args.piece:
+        print('xyf-mtp: piece %d B' % T.set_piece(dev, args.piece), flush=True)
+    return args.piece
 
 
 def select_routes(route, sim):
@@ -408,6 +467,10 @@ def main(argv=None):
     parser.add_argument('--wait', type=int, default=300, help='seconds to wait for Enter (default 300)')
     parser.add_argument('--connect-timeout', type=float, default=30.0, help='serial connect, seconds (default 30)')
     parser.add_argument('--timeout-ms', type=int, default=10000, help='one USB transfer, ms (default 10000)')
+    parser.add_argument('--piece', type=int, choices=T.PIECES,
+                        help='xyf-mtp: bytes per file request to A, set on the device for this boot (#144)')
+    parser.add_argument('--no-breakdown', dest='breakdown', action='store_false',
+                        help='xyf-mtp: no timing breakdown (diag.mtp op 7)')
     args = parser.parse_args(argv)
     if args.big_count < 0 or args.small_count < 0 or not args.big_count + args.small_count:
         parser.error('nothing to move')
@@ -417,7 +480,7 @@ def main(argv=None):
     for route in routes:
         print('%s: %d files, %d KiB ...' % (route, len(files), sum(len(f[1]) for f in files) // 1024), flush=True)
         results.append(run_route(route, args, files))
-        for line in cleanup_lines(results[-1]):
+        for line in cleanup_lines(results[-1]) + results[-1].breakdown:
             print(line)
     print(table(results))
     return 0 if all(not r.error and not r.cleanup_error for r in results) else 1
