@@ -19,7 +19,7 @@ from xy_forever.stage2_audit import STAGE2_ENTER, STAGE2_LITERALS as S2_LITERALS
     check_stage2_image, stage2_enter_sites
 from xy_forever.probe_report import report_only_fixture
 from xy_forever.otp_audit import (function_bodies, referencing_symbols, loaded_values,
-                                  functions_loading, rom_references, check_otp_rules)
+                                  functions_loading, rom_references, check_otp_rules, check_otp_data)
 from xy_forever import release, usb_proto, xyf_stage2 as S2
 
 # Layout names (historical): "reporter" is the small program added to the stock OS
@@ -773,6 +773,7 @@ def verify(out, stock, boot):
             'Module uses a boot-ROM entry outside 040201c4/04000048/04000054: ' + ', '.join(sorted(rom - ROM_TARGETS)))
     tfw_check = mode in TFW_CHECK_MODES
     check_otp_rules((out / 'module.asm').read_text(), symbols, tfw_check)
+    check_otp_data(elf32((out / 'module.elf').read_bytes())[0], symbols)
     if tfw_check:
         require(OTP_CALLS <= targets, 'tfw.check lacks its ROM OTP calls')
         for needed in ('tfw_check5check', 'verify_header', 'otp_keys10public_key', 'otp_keys7aes_key'):

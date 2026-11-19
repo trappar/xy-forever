@@ -448,7 +448,7 @@ int listen_on(int port) {
 }
 int usage() {
     fprintf(stderr, "usage: xyf_sim --root DIR --bootpart FILE --stock MEMORY [--port 7341] [--control 7342]\n"
-                    "               [--capacity BYTES] [--plain] [--otp-stdin]\n");
+                    "               [--capacity BYTES] [--plain] [--otp-stdin] [--otp-initialized]\n");
     return 2;
 }
 }
@@ -473,6 +473,7 @@ int main(int argc, char** argv) {
         const char* v = i + 1 < argc ? argv[i + 1] : 0;
         if (a == "--plain") { play = false; continue; }
         if (a == "--otp-stdin") { otp = true; continue; }
+        if (a == "--otp-initialized") { shared->otp_preinit = 1; continue; }
         if (a == "--virtual") { shared->virtual_clock = 1; continue; }   // sim/clock.cpp (test runs)
         if (!v) return usage();
         if (a == "--root") snprintf(shared->root, sizeof(shared->root), "%s", v);

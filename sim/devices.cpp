@@ -50,6 +50,7 @@ void load_stock() {
 // The retained state at cold entry that the hosted code checks (cold_storage capture_state,
 // peer_services capture_state, cold_heap inspect, retained_lookup), as Tests 008-024 saw it.
 void cold_state(int which, bool power_on, bool play) {
+    otp_start();                                      // stock may have initialized B's OTP before XY Forever
     w8(0x8807cac4u, uint8_t(which));                    // role
     w8(0x88a1f3bcu, 0); w8(0x8804f6e4u, 0); w8(0x11907ab4u, 1);
     w32(0x11b0029cu, 1); w32(0x88073000u, 0x11b00200u);  // storage controller open, its reference held

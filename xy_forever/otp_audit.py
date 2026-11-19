@@ -1,11 +1,34 @@
 """Instruction and data rules for the product's narrowly scoped OTP reader."""
 import re
+import struct
 
 from .build_formats import require
 
 BOOT_ROM = (0x04000000, 0x04100000)
 OTP_CALLS = {'04000048', '04000054'}
 OTP_READ, OTP_INIT, OTP_INIT_FLAG = 0x04000048, 0x04000054, 0x11b01650
+TFW_CHECK_RUN = '__ZN12_GLOBAL__N_113tfw_check_runEPKcPh'
+OLD_READERS = ('read_update_key', 'stock121_otp_provider', 'stock_key_provider',
+               'stock_otp_prepare', 'stock_otp_read')
+
+
+def check_otp_data(sections, symbols):
+    """Stored pointers cannot bypass the instruction/caller audit. No ROM table entry or OTP-provider
+    address may occur in an aligned data word. Functions include interior addresses, not just entry points.
+    The keys' legitimate callbacks are built by tfw_check_run's instructions, never stored in static data."""
+    protected = [(s['value'], s['value'] + max(1, s.get('size', 0)))
+                 for name, s in symbols.items() if '8otp_keys' in name]
+    for name in ('.rodata', '.data'):
+        section = sections.get(name)
+        if not section:
+            continue
+        data = section['data']
+        for at in range(0, len(data) - 3, 4):
+            value = struct.unpack_from('<I', data, at)[0]
+            require(not (0x04000000 <= value < 0x04000200),
+                    'Stored boot-ROM entry in %s at %#x' % (name, section['address'] + at))
+            require(not any(lo <= value < hi for lo, hi in protected),
+                    'Stored otp_keys address in %s at %#x' % (name, section['address'] + at))
 
 
 def function_bodies(listing):
@@ -79,6 +102,8 @@ def check_otp_rules(raw, symbols, enabled):
     target/otp_keys.cpp, those wrappers and the init flag are used only inside otp_keys, and the
     provider's functions are reached only from the tfw.check handler. Without the feature, none of it."""
     has = lambda text: any(text in name for name in symbols)                  # noqa: E731
+    old = [name for name in symbols if any(reader in name for reader in OLD_READERS)]
+    require(not old, 'Old update-key reader linked: ' + ', '.join(sorted(old)))
     if not enabled:
         require(not rom_references(raw) & OTP_CALLS and not has('otp_keys') and not has('tfw_check'),
                 'OTP provider or tfw.check linked without XYF_TFW_CHECK')
@@ -94,6 +119,6 @@ def check_otp_rules(raw, symbols, enabled):
     flag = functions_loading(raw, OTP_INIT_FLAG)
     require(flag and all('8otp_keys' in n for n in flag), 'OTP init flag used outside otp_keys: ' + ', '.join(sorted(flag)))
     callers = referencing_symbols(raw, '8otp_keys')
-    require(callers and all('tfw_check' in c for c in callers),
+    require(callers == {TFW_CHECK_RUN},
             'OTP provider reached outside the tfw.check handler: ' + ', '.join(sorted(callers)))
 

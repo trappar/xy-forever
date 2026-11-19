@@ -345,12 +345,14 @@ class Simulator:
     """One running simulator: start() it, talk to 127.0.0.1:port, control() its board."""
 
     def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None,
-                 virtual=True):
+                 virtual=True, otp_initialized=False):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
         virtual: device time moves only under the simulator's control (sim/clock.cpp: test runs); False: real
-        time (interactive runs)."""
+        time (interactive runs). otp_initialized starts B with both its ROM and the stock initialization
+        guard already set, as after the stock bootloader's encrypted-image read."""
         self.root, self.bootpart = Path(root), Path(bootpart)
         self.otp, self.virtual = otp, virtual
+        self.otp_initialized = otp_initialized
         self.chosen = port is None                     # a free pair picked here: start() may pick again
         self.port = port or free_port()
         self.control_port = self.port + 1
@@ -366,7 +368,8 @@ class Simulator:
         return [str(self.build_dir / 'xyf_sim'), '--root', str(self.root), '--bootpart', str(self.bootpart),
                 '--stock', str(self.build_dir / 'stock.mem'), '--port', str(self.port),
                 '--control', str(self.control_port), '--capacity', str(self.capacity)] + ([] if self.play else ['--plain']) + \
-            (['--otp-stdin'] if self.otp else []) + (['--virtual'] if self.virtual else [])
+            (['--otp-stdin'] if self.otp else []) + (['--virtual'] if self.virtual else []) + \
+            (['--otp-initialized'] if self.otp_initialized else [])
 
     def start(self, timeout=10.0):
         for attempt in range(3):
