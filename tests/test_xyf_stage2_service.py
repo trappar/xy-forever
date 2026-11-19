@@ -151,14 +151,18 @@ class Stage2ServiceTest(unittest.TestCase):
         dev = self.connect()
         self.sim.set('cut_body', 200)                  # the whole-file read's body is cut, then the link drops
         reply = {}
-        thread = threading.Thread(target=lambda: reply.update(r=dev.call(P.HELLO, b'', timeout=8.0)), daemon=True)
+        thread = threading.Thread(target=lambda: reply.update(r=dev.call(P.HELLO, b'', timeout=30.0)), daemon=True)
         thread.start()
         deadline = time.monotonic() + 30.0
         while self.sim.status()['cut_body']:                 # the cut happened: B waits on the rest
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.005)
-        self.sim.advance(6000)              # past the request bound, on the simulator clock
-        thread.join(9.0)
+        for _ in range(5):                                   # past the request bound, on the simulator clock
+            self.sim.advance(6000)                           # (again if B took HELLO only after the first)
+            thread.join(0.2)
+            if 'r' in reply:
+                break
+        thread.join(30.0)
         code, body = reply['r']
         self.assertEqual((code, body.decode()), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES)))
         self.assertEqual(self.info(dev), (ids.S_UNSUPPORTED, b''))
