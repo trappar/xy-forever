@@ -103,5 +103,14 @@ uint32_t engine_identity() {
     }
     return bits;
 }
+volatile U32 spans_matched __attribute__((section(".data"))) = 0;
+uint64_t spans_matched_at __attribute__((section(".data"))) = 0;
+bool spans_match() {
+    const uint64_t now = xyf::clock::cycles();
+    if (spans_matched && now - spans_matched_at < uint64_t(spans_recheck_ms) * 400000u) return true;   // 400 MHz
+    spans_matched = engine_identity() == 0 ? 1u : 0u;
+    spans_matched_at = now;
+    return spans_matched != 0;
+}
 } }
 #endif

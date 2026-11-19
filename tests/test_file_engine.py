@@ -422,7 +422,12 @@ class FileEngineWiringTest(unittest.TestCase):
         source's existence and the target's absence; B checks the pair before the confirmation and
         before anything reaches A."""
         gate = self.body(self.server, 'int rename_object(const char* from, const char* to) {')
-        self.assertLess(gate.index('if (engine_identity()) return -2;'), gate.index('stock<0x889fa834u, int>(from, to)'))
+        self.assertLess(gate.index('if (!spans_match()) return -2;'), gate.index('stock<0x889fa834u, int>(from, to)'))
+        timing = (ROOT / 'target/storage_server_timing.ipp').read_text()
+        match = self.body(timing, 'bool spans_match() {')                 # #144: a pass kept 1 s, a mismatch never
+        self.assertIn('if (spans_matched && now - spans_matched_at < uint64_t(spans_recheck_ms) * 400000u) return true;',
+                      match)
+        self.assertIn('spans_matched = engine_identity() == 0 ? 1u : 0u;', match)
         self.assertEqual(self.server.count('0x889fa834u'), 1)
         spans = (ROOT / 'target/mtp_spans.hpp').read_text()
         table = [(int(a, 16), int(n, 16)) for a, n in re.findall(r'\{(0x[0-9a-f]+)u, (0x[0-9a-f]+)u', spans)]

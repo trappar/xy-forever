@@ -104,7 +104,7 @@ template<U32 A, class R, class... Args> __attribute__((noinline, noclone)) R sto
 // 889fa604..889fa848 and 88a01afa with what they reach); else -2 and nothing ran. noinline: the
 // builder allows the call only from this namespace.
 __attribute__((noinline)) int rename_object(const char* from, const char* to) {
-    if (engine_identity()) return -2;
+    if (!spans_match()) return -2;
     return stock<0x889fa834u, int>(from, to);
 }
 #endif
