@@ -633,6 +633,8 @@ def run(argv):
             print('refused: remote path must be /yaffs2/xy-forever/<name>[/<name>...] ([A-Za-z0-9._-] names)')
             return 2
         data = args.local.read_bytes()
+        if not data:
+            print('refused: %s is empty' % args.local); return 2
         print('Plan: stream %d bytes (CRC-32 %08x, SHA-256) into /yaffs2/xy-forever/tmp/; processor b reads them' %
               (len(data), zlib.crc32(data) & 0xffffffff))
         print('      back and compares, then processor a renames the file onto %s in one step' % args.remote)
