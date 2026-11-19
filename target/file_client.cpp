@@ -95,7 +95,12 @@ Reply submit(Stock121PeerSession& session, U32 op) {
 // A's answer once it came; else one poll: lost, link past bound ms since start
 // (the request stays out), or busy (still waiting).
 Reply answer(Stock121PeerSession& session, U32 start, U32 bound) {
-    if (!session.filing()) { const Reply r = {done, int32_t(session.request_value()), session.request_error()}; return r; }
+    if (!session.filing()) {                                            // B's poll kept its answer (#144)
+        uint32_t value, error;
+        xyf_boot::link_answer(value, error);
+        const Reply r = {done, int32_t(value), error};
+        return r;
+    }
     if (!xyf_boot::link_step()) return outcome(lost);
     return outcome(xyf_boot::clock_ms() - start > bound ? link : busy);
 }
