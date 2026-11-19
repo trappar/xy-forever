@@ -22,6 +22,7 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 TUNNEL = 0x61
 PLAY, STOP, PLUS = 51, 52, 54
 PASS_BOUND_MS = 250                                                       # one request per pass (sim timing)
+STREAM_MAX = 4096                                                         # file_client.hpp stream_max (#144)
 
 
 class TunnelClient(R.Client):
@@ -270,6 +271,48 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual(self.c.transaction(0x100D, data=body)[0], R.OK)
         self.assertEqual((self.root / 'user/keep.bin').read_bytes(), body)
         self.assertIn('keep.bin', names)
+        self.leave()
+
+    def test_read_ahead_partial_slow_host_and_cancel(self):
+        """#144: B reads ahead of the responder (two halves of the client's read-ahead buffer, A filling one while USB
+        sends the other). GetPartialObject from an odd offset, a slow host taking 700 bytes at a time, and a cancelled
+        GetObject followed by a whole one all arrive byte for byte, with no read past the transfer (one A request per
+        STREAM_MAX bytes) and nothing left out after each."""
+        from xy_forever import mtp_timing as T
+        self.enter()
+        self.opened()
+        big = self.folder('xy-forever')
+        big = self.c.named(big)['big.bin']
+        self.assertTrue(T.clear(self.dev))
+        code, params, data = self.c.transaction(0x101B, big, 1001, 50000)
+        self.assertEqual((code, params[0], data), (R.OK, 50000, self.big[1001:51001]))
+        t = T.read(self.dev)
+        self.assertEqual((t['b']['read_bytes'], t['b']['reads']), (50000, -(-50000 // STREAM_MAX)))
+        self.assertEqual(t['a']['reads'], t['b']['reads'])                  # A read nothing more
+        self.assertEqual(self.c.state()['busy'], 0)
+        self.c.out(self.c.command(0x1009, big))                            # the slow host
+        stream, total = b'', 12 + len(self.big) + 12
+        deadline = time.monotonic() + 60
+        while len(stream) < total:
+            self.assertLess(time.monotonic(), deadline)
+            code, body = self.c.tunnel(3, struct.pack('<I', 700))
+            self.assertEqual(code, P.S_OK)
+            stream += body[4:]
+        answers = self.c.answers(stream)
+        self.assertEqual((answers[0][3], answers[-1][1]), (self.big, R.OK))
+        self.c.out(self.c.command(0x1009, big))                            # cancelled after two pieces
+        for _ in range(2):
+            self.assertEqual(self.c.tunnel(3, struct.pack('<I', 4096))[0], P.S_OK)
+        self.assertEqual(self.c.tunnel(4)[0], P.S_OK)
+        deadline = time.monotonic() + 20
+        while self.c.state()['device_status'] != R.OK or self.c.state()['busy']:
+            self.assertLess(time.monotonic(), deadline, 'still busy after cancel')
+            self.c.tunnel(3, struct.pack('<I', 4096))
+            time.sleep(0.01)
+        self.c.tunnel(3, struct.pack('<I', 4096))
+        self.assertEqual(self.file_command(), P.S_OK)                    # nothing left out
+        code, _, data = self.c.transaction(0x1009, big)
+        self.assertEqual((code, data), (R.OK, self.big))
         self.leave()
 
     def test_depth_rule(self):

@@ -17,7 +17,9 @@ namespace {
 namespace ms = xy_forever::mtp_session;
 namespace mr = xyf_core::mtp;
 ms::Session& mslot() { return *reinterpret_cast<ms::Session*>(job_work_end); }
-static_assert(sizeof(ms::Session) <= mtp_slot_bytes, "the session fits its slot");
+static_assert(sizeof(ms::Session) <= mtp_slot_bytes - file_client::stream_capacity &&      // #144: the read-ahead
+              job_work_end + mtp_slot_bytes == file_client::stream_buffer + file_client::stream_capacity,
+              "the session fits its slot below the file client's read-ahead buffer (the slot's top)");
 const uint8_t t_mtp_tunnel = 0x61;                                      // diag.mtp (dev, test only): the test transport
 const U32 mtp_slice_ms = 8, mtp_stall_ms = 10000, mtp_serving_ms = 1000;
 volatile U32 mtp_pass_ms __attribute__((section(".data"))) = 0;          // the composite's longest menu-loop pass
@@ -34,7 +36,8 @@ bool mtp_busy() {                                                        // an o
     if (!mtp_on) return false;
     const U32 stage = mslot().stage;
     return stage == ms::st_leaving || stage == ms::st_closing ||
-           (stage == ms::st_running && (mslot().responder.busy() || mslot().files.write_fd >= 0));   // #144: a write out
+           (stage == ms::st_running && (mslot().responder.busy() || mslot().files.write_fd >= 0 ||   // #144: a write
+                                         mslot().files.ahead_asked));                                  // or read out
 }
 xyf_core::U32 mtp_prepare(void*) {                                                 // before an operation that needs the files
     ms::Session& m = mslot();
@@ -124,7 +127,7 @@ void mtp_pump() {
             ++m.steps; m.progress_ms = now();
             if (now() - start >= mtp_slice_ms) break;
         }
-        if (!m.responder.busy()) ms::collect(m.files);                 // #144: a write left out, MTP idle
+        if (!m.responder.busy()) ms::collect(m.files);                 // #144: a write (read) left out, MTP idle
         if (m.responder.busy()) {
             if (writes_due) writes_ms = now();                           // A's window stays while operations run
             if (now() - m.progress_ms > mtp_stall_ms) { m.responder.cancel(); ++m.stalls; m.progress_ms = now(); }

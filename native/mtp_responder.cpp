@@ -606,6 +606,7 @@ bool Responder::work() {
             stage = 3;
             return true;
         case 3:
+            if (left && ops.ahead) ops.ahead(ops.context, fd, left);   // #144: A reads while USB sends
             begin_data(left);
             stage = 4;
             return true;

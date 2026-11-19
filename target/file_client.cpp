@@ -240,14 +240,21 @@ Reply rmdir(const char* path) { return path_request(path, file_engine::op_rmdir,
 Reply opendir(const char* path) { return path_request(path, file_engine::op_list, 0x2e, 0); }
 Reply stat(const char* path, uint8_t* record) { return query(path, 0x22, record, record_bytes); }
 Reply statfs(const char* path, uint8_t* space) { return query(path, 0x23, space, space_bytes); }
-Reply read(int fd, uint8_t* out, uint32_t count) {
-    if (!count || count > piece_max) return outcome(refused);
-    Stock121PeerSession* session; Reply why;
+// A read request into dest (count bytes, the client's own buffer: data_buffer or stream_buffer) built and submitted
+// (done), or why not. A streams the reply back in 0x1000-byte bodies.
+Reply read_out(Stock121PeerSession*& session, int fd, U32 dest, uint32_t count) {
+    Reply why;
     U32* request = claim(session, why);
     if (!request) return why;
-    lines(data_buffer, count, true);
-    stock<0x889f6c5cu, void>(request, 0x2au, U32(fd), U32(count), data(), 0x1000u);   // read class
-    const Reply r = send(*session, 0x2a, bound_ms(0x2a, 0));
+    lines(dest, count, true);                                            // no dirty line over what A sends
+    stock<0x889f6c5cu, void>(request, 0x2au, U32(fd), U32(count), reinterpret_cast<uint8_t*>(dest), 0x1000u);
+    return submit(*session, 0x2a);
+}
+Reply read(int fd, uint8_t* out, uint32_t count) {
+    if (!count || count > piece_max) return outcome(refused);
+    Stock121PeerSession* session = 0;
+    const Reply s = read_out(session, fd, data_buffer, count);
+    const Reply r = s.outcome ? s : await_answer(*session, bound_ms(0x2a, 0));
     if (r.outcome == done && r.value > 0) {
         lines(data_buffer, count, true);
         const U32 n = U32(r.value) < count ? U32(r.value) : count;
@@ -275,6 +282,17 @@ Reply write_start(int fd, const uint8_t* bytes, uint32_t count) {
     Stock121PeerSession* session = 0;
     const Reply s = write_out(session, fd, bytes, count);
     return leave(session, s, bound_ms(0x2b, 0));                         // left_poll collects it
+}
+Reply read_start(int fd, uint32_t at, uint32_t count) {
+    if (!count || count > stream_max || at % 32 || at > stream_capacity - count) return outcome(refused);
+    if (left_session) return outcome(busy);
+    Stock121PeerSession* session = 0;
+    const Reply s = read_out(session, fd, stream_buffer + at, count);
+    return leave(session, s, bound_ms(0x2a, 0));                         // left_poll collects it
+}
+const uint8_t* stream(uint32_t at, uint32_t count) {
+    if (at <= stream_capacity && count <= stream_capacity - at) lines(stream_buffer + at, count, true);
+    return reinterpret_cast<const uint8_t*>(stream_buffer + at);
 }
 Reply a_timing(uint32_t k) { return path_request("/yaffs2", file_engine::op_stat, 0x21, file_engine::timing_tag | (k & 0xffu)); }
 Reply readdir(uint32_t folder, uint8_t* entry) {

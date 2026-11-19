@@ -101,6 +101,16 @@ bool left_out();
 // #144: write (op 0x2b) left out: B's loop goes on (USB, the next piece) while A writes; left_poll collects A's
 // answer (the next write_start waits for it through its claim). busy while one is left.
 Reply write_start(int fd, const uint8_t* data, uint32_t count);     // count <= piece_max
+// #144: read (op 0x2a) left out into the client's read-ahead buffer at stream_buffer + at, so B's loop goes on
+// (USB sends the bytes read before) while A reads; left_poll collects A's answer (value: the bytes read, then at
+// stream(at, value); short only at the end of the file). busy while one is left. The buffer is the client's, as
+// data_buffer is (an answer that arrives after its owner gave up lands only there): the top stream_capacity bytes
+// of the MTP session's slot (usb_service_mod_job.ipp mtp_slot_bytes; the Session stays below it), reserved only in
+// MTP builds, whose session is its only user.
+static const uint32_t stream_buffer = 0x8b7fc000u, stream_capacity = 0x4000u;
+static const uint32_t stream_max = piece_max;                        // bytes per read_start: one 0x1000 body
+Reply read_start(int fd, uint32_t at, uint32_t count);             // at + count <= stream_capacity, at % 32 == 0
+const uint8_t* stream(uint32_t at, uint32_t count);                 // after an answer: those lines invalidated
 // 193: op 0x26 (mkdir; EEXIST is fine) without waiting in it: A's first change opens its read-write window,
 // which after an unclean shutdown may take seconds; unmount_poll (the same slot, bound change_ms) ends it.
 Reply mkdir_start(const char* path);

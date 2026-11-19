@@ -42,6 +42,7 @@ void files_init(Files& f, volatile uint32_t* mounted, uint32_t (*on_change)()) {
     f.link = f.window = f.writing = f.last_change_ms = f.requests = f.data_requests = f.data_bytes = 0;
     f.timing = Timing();
     f.write_fd = -1; f.write_n = 0;
+    f.ahead_fd = -1; f.ahead_left = f.ahead_half = f.ahead_at = f.ahead_end = f.ahead_asked = 0;
     for (uint32_t i = 0; i != max_open; ++i) { f.open[i] = -1; f.open_write[i] = 0; }
 }
 #if defined(__bfin__) || defined(XYF_SIM)
@@ -171,9 +172,58 @@ int open(void* c, const char* path, bool write) {
     if (write) ++f.writing;
     return r.value;
 }
+// #144 read-ahead: C::stream_buffer in two halves. The responder's reads take the bytes of one half while the
+// request for the next ones (C::read_start, left out) fills the other: A reads while USB sends.
+const uint32_t half_bytes = C::stream_capacity / 2;
+static_assert(C::stream_max <= half_bytes && half_bytes % 32 == 0, "one request fills at most a half");
+void ask(Files& f) {                                                // the next bytes into the half not being read
+    if (f.ahead_asked || !f.ahead_left || f.link) return;
+    const uint32_t n = f.ahead_left < C::stream_max ? f.ahead_left : C::stream_max;
+    const C::Reply r = C::read_start(f.ahead_fd, (f.ahead_half ^ 1u) * half_bytes, n);   // op 0x2a, left out
+    if (r.outcome) { f.ahead_left = 0; return; }                    // nothing sent: the reads go on one by one
+    f.ahead_asked = n; f.ahead_left -= n;
+}
+int take(Files& f) {                                                // the request out, awaited: its half is next
+    const uint32_t n = f.ahead_asked;
+    f.ahead_asked = 0;
+    Span span(f);
+    const C::Reply r = C::left_poll(true);                          // bounded (request_ms)
+    span.read(r.outcome ? 0 : r.value);
+    if (r.outcome) { f.ahead_left = 0; return fail(f, r); }
+    if (r.value < 0 || uint32_t(r.value) > n) { f.ahead_left = 0; return M::f_storage; }
+    if (uint32_t(r.value) < n) f.ahead_left = 0;                    // the file ended early: nothing more to ask
+    ++f.data_requests; f.data_bytes += uint32_t(r.value);
+    f.ahead_half ^= 1u; f.ahead_at = 0; f.ahead_end = uint32_t(r.value);
+    C::stream(f.ahead_half * half_bytes, f.ahead_end);              // its cache lines invalidated
+    return 0;
+}
+void ahead(void* c, int fd, xyf_core::U32 count) {
+    Files& f = of(c);
+    const Call span(f);
+    drop_ahead(f);
+    if (f.link || f.write_fd >= 0 || C::left_out()) return;         // another request is left out: none
+    f.ahead_fd = fd; f.ahead_left = count; f.ahead_half = 1; f.ahead_at = f.ahead_end = 0;
+    ask(f);                                                         // into half 0
+    if (!f.ahead_asked) f.ahead_fd = -1;
+}
 int read(void* c, int fd, xyf_core::Byte* out, xyf_core::U32 n) {
     Files& f = of(c);
     if (f.link) return M::f_link;
+    if (fd >= 0 && fd == f.ahead_fd) {
+        if (f.ahead_at == f.ahead_end && f.ahead_asked) {
+            const int r = take(f);
+            if (r < 0) return r;
+            ask(f);                                                 // into the half just emptied
+        }
+        if (f.ahead_at != f.ahead_end) {
+            const uint32_t k = n < f.ahead_end - f.ahead_at ? n : f.ahead_end - f.ahead_at;
+            const uint8_t* from = C::stream(f.ahead_half * half_bytes + f.ahead_at, 0);
+            for (uint32_t i = 0; i != k; ++i) out[i] = from[i];
+            f.ahead_at += k;
+            return int(k);
+        }
+        f.ahead_fd = -1;                                            // all taken, none asked: one by one again
+    }
     if (n > C::piece_max) n = C::piece_max;
     Span span(f);
     const C::Reply r = C::read(fd, out, n);                        // op 0x2a
@@ -184,7 +234,16 @@ int read(void* c, int fd, xyf_core::Byte* out, xyf_core::U32 n) {
     return r.value;
 }
 }
+void drop_ahead(Files& f) {
+    if (f.ahead_asked) {
+        f.ahead_asked = 0;
+        const C::Reply r = C::left_poll(true);                      // bounded; its bytes are not needed
+        if (r.outcome) fail(f, r);
+    }
+    f.ahead_fd = -1; f.ahead_left = f.ahead_at = f.ahead_end = 0;
+}
 int collect(Files& f) {
+    drop_ahead(f);
     if (f.write_fd < 0) return 0;
     const uint32_t n = f.write_n;
     f.write_fd = -1; f.write_n = 0;
@@ -213,6 +272,7 @@ int write(void* c, int fd, const xyf_core::Byte* data, xyf_core::U32 n) {
 }
 int seek(void* c, int fd, xyf_core::U32 offset) {
     Files& f = of(c);
+    if (fd == f.ahead_fd) drop_ahead(f);                            // #144: A's position moves past the read-ahead
     if (f.link) return M::f_link;
     const C::Reply r = C::seek(fd, int(offset));                   // op 0x2c, SEEK_SET
     if (r.outcome) return fail(f, r);
@@ -220,7 +280,7 @@ int seek(void* c, int fd, xyf_core::U32 offset) {
 }
 int close(void* c, int fd) {
     Files& f = of(c);
-    const int was = collect(f);                                     // the last piece's answer first
+    const int was = collect(f);                                     // the last piece's answer (or read-ahead) first
     const Call span(f);
     bool wrote = false;
     for (uint32_t i = 0; i != max_open; ++i)
@@ -286,7 +346,7 @@ int commit(void* c, const char* path, bool keep) {
 }
 M::FileOps file_ops(Files& f) {
     M::FileOps ops = {&f, list, stat, space, open, read, write, seek, close, mkdir, unlink, rmdir, rename, 0, 0,
-                      upload, commit};
+                      upload, commit, ahead};
     return ops;
 }
 #endif

@@ -52,6 +52,11 @@ struct Files {
     Timing timing;                      // #144
     int write_fd;                       // #144: the file of the write left out (file_client::write_start), -1 none
     uint32_t write_n;                   //   its bytes
+    // #144 read-ahead (FileOps::ahead): the file (-1 none) and the bytes not yet asked of A; C::stream_buffer's two
+    // halves: the responder reads [at, end) of half `half` while A fills the other one (asked: that request's bytes,
+    // 0 none). Ends at the file's close or seek, and at collect.
+    int ahead_fd;
+    uint32_t ahead_left, ahead_half, ahead_at, ahead_end, ahead_asked;
     int open[max_open];                 // files the responder holds (closed when the session ends)
     uint8_t open_write[max_open];
     char upload[45];                    // #4: SendObject's temporary file (file_engine::upload_name)
@@ -60,8 +65,10 @@ struct Files {
 void files_init(Files& f, volatile uint32_t* mounted, uint32_t (*on_change)());
 M::FileOps file_ops(Files& f);          // the adapter (context: &f)
 // #144: A's answer to the write left out (write_start), awaited (bounded: change_ms): 0 when it wrote every byte
-// (none left: 0 too), else the failure (M::f_*). The adapter's next write and close call it first.
+// (none left: 0 too), else the failure (M::f_*). The adapter's next write and close call it first. A read-ahead
+// still out is collected and dropped first.
 int collect(Files& f);
+void drop_ahead(Files& f);              // #144: the read-ahead ended (its request out collected, bounded)
 struct Session {
     M::Responder responder;
     Files files;

@@ -128,7 +128,8 @@ int main(int argc, char** argv) {
     if (argc != 2) return 2;
     root = argv[1];
     m::FileOps ops = {0, list, stat_call, space, open_call, read_call, write_call, seek_call, close_call,
-                      mkdir_call, unlink_call, rmdir_call, rename_call, nullptr, nullptr, upload_call, commit_call};
+                      mkdir_call, unlink_call, rmdir_call, rename_call, nullptr, nullptr, upload_call, commit_call,
+                      nullptr};
     responder.init(ops);
     for (;;) {
         Byte command; U32 n;

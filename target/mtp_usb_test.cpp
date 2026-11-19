@@ -722,7 +722,7 @@ void run() {
     big.resize(512 * 137 - 12);                                         // the data container: a ZLP
     for (size_t i = 0; i != big.size(); ++i) big[i] = uint8_t(i * 13 + (i >> 8));
     const M::FileOps ops = {0, list, stat, space, open, read, write, seek, close, refuse, unlink, refuse, rename, prepare, log,
-                            upload, commit};
+                            upload, commit, 0};
     responder.init(ops);
     stack::boot();
     set_handler(&handler);

@@ -64,6 +64,9 @@ struct FileOps {
     // step, replacing a file there (keep), or removes it (!keep). 0 done, else a FileError.
     int (*upload)(void* context, const char* path, U32 size, U32 tag);
     int (*commit)(void* context, const char* path, bool keep);
+    // #144 (optional, null: none): GetObject and GetPartialObject will read count more bytes from fd, in order, until
+    // its close; the adapter may start reading them now (read-ahead) and answer the reads from what came.
+    void (*ahead)(void* context, int fd, U32 count);
 };
 static const U32 chunk = 1024;                           // bytes per read or write call (file_client::chunk)
 // #144: the piece a transfer's read or write call moves, chunk up to buffer_bytes (set_piece; default_piece, the
