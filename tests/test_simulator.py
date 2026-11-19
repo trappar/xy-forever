@@ -1618,7 +1618,7 @@ class SimulatorTest(unittest.TestCase):
         (root / 'user').mkdir()
         (root / 'user' / 'project.txt').write_bytes(b'mine')
         (root / 'xy-forever' / 'log' / 'm.txt').write_bytes(b'm')
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         mine = BASE + 'log/m.txt'
         refused = MARKER_SPELLINGS + ROOT_SPELLINGS + [               # the write rule: the marker and upgrade/ only
             '/yaffs2/upgrade', '/yaffs2/upgrade/x.tfw', '/yaffs2/UPGRADE/new.txt', '/yaffs2/Upgrade/a/b',

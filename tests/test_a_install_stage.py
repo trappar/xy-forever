@@ -27,6 +27,7 @@ class AStagingTests(unittest.TestCase):
     tearDown = T.SimulatorTest.tearDown
     connect = T.SimulatorTest.connect
     wait = T.SimulatorTest.wait
+    restarted = T.SimulatorTest.restarted
 
     def ready(self):
         self.dev = self.connect(startup_ready=True)
@@ -86,6 +87,49 @@ class AStagingTests(unittest.TestCase):
         self.assertEqual(self.dev.stage(product), 0)
         self.assertEqual(self.dev.install(hashlib.sha256(product).digest())[0], 0)
         self.assertEqual(self.sim.status()['partition'], 0)
+
+    def test_device_qualification_sequence_and_menu_cleanup(self):
+        """The documented sequence uses existing APIs; exact A mutation counters stay simulator-only."""
+        self.ready()
+        build = paths.newest_verified_build()
+        self.assertIsNotNone(build)
+        product = (build / 'candidate.ldr').read_bytes()
+        # Separately qualify the shipping B installer/reboot before measuring RAM-only rehearsal.
+        self.assertEqual(self.dev.stage(product), 0)
+        self.assertEqual(self.dev.install(hashlib.sha256(product).digest())[0], 0)
+        boots = self.sim.status()['b_boots']
+        self.assertEqual(self.dev.call(P.REBOOT, struct.pack('<I', 2))[0], 0)
+        self.dev.t.close()
+        self.restarted(boots)
+        self.dev = self.connect(startup_ready=True)  # bounded storage.space readiness, not HELLO alone
+        self.assertEqual(self.dev.hello_info.proto, P.VERSION)
+        self.assertTrue(self.dev.hello_info.answers(P.A_REHEARSAL))
+        self.assertEqual(self.dev.hello_info.keys['image'], build.name)
+        names = ('state-a.txt', 'state-b.txt', 'config.txt')
+        before_files = {n: self.dev.read_file(T.BASE + n) for n in names}
+        self.assertTrue(all(code in (P.S_OK, P.S_NOT_FOUND) for code, _ in before_files.values()))
+        before = self.counters()
+        before_boots = self.sim.status()['a_boots'], self.sim.status()['b_boots']
+        for data, uninstall in ((product, False), (self.stock, True)):
+            code, proof = R.run(self.dev, data, uninstall)
+            self.assertEqual(code, 0, proof)
+            self.assertEqual(proof['sha256'], hashlib.sha256(data).hexdigest())
+            self.assertEqual((proof['phase'], proof['done'], proof['total']), (0, len(data), len(data)))
+            self.assertEqual(self.counters(), before)
+        self.start(self.stock)
+        self.assertEqual(R.call(self.dev, 2)[0], 0)
+        self.assertEqual(self.wait_done()['result'], P.S_CANCELLED)
+        # Existing zero-size stage.begin forgets B's remaining input token; A is already released.
+        self.assertEqual(self.dev.stage(b''), P.S_TOO_LARGE)
+        self.assertEqual(self.dev.call(P.PUT_END)[0], P.S_STATE)
+        self.assertEqual({n: self.dev.read_file(T.BASE + n) for n in names}, before_files)
+        self.assertEqual(self.counters(), before)
+        self.assertEqual(self.dev.call(P.HOLD, struct.pack('<I', 0))[0], 0)
+        self.assertEqual(self.dev.call(P.STATUS)[0], 0)
+        after = self.sim.status()
+        self.assertEqual((after['a_boots'], after['b_boots']), before_boots)
+        self.assertTrue(after['listening'])
+        self.assertEqual((after['a'], after['b']), ('running', 'running'))
 
     def test_a_only_corruption_proves_local_hashing_and_ram_isolation(self):
         self.ready()
