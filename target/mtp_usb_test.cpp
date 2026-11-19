@@ -681,12 +681,12 @@ int open(void*, const char* path, bool write) {
     return M::f_not_found;
 }
 int read(void*, int fd, xyf_core::Byte* out, U32 n) {
-    REQUIRE(fd == 3 && n <= M::chunk);
+    REQUIRE(fd == 3 && n <= M::default_piece);
     if (n > big.size() - read_at) n = U32(big.size() - read_at);
     memcpy(out, big.data() + read_at, n); read_at += n;
     return int(n);
 }
-int write(void*, int fd, const xyf_core::Byte* data, U32 n) { REQUIRE(fd == 4 && n <= M::chunk); up.insert(up.end(), data, data + n); return int(n); }
+int write(void*, int fd, const xyf_core::Byte* data, U32 n) { REQUIRE(fd == 4 && n <= M::default_piece); up.insert(up.end(), data, data + n); return int(n); }
 int seek(void*, int, U32 offset) { read_at = offset; return 0; }
 int close(void*, int) { return 0; }
 int refuse(void*, const char*) { return M::f_refused; }
@@ -722,7 +722,7 @@ void run() {
     big.resize(512 * 137 - 12);                                         // the data container: a ZLP
     for (size_t i = 0; i != big.size(); ++i) big[i] = uint8_t(i * 13 + (i >> 8));
     const M::FileOps ops = {0, list, stat, space, open, read, write, seek, close, refuse, unlink, refuse, rename, prepare, log,
-                            upload, commit};
+                            upload, commit, 0};
     responder.init(ops);
     stack::boot();
     set_handler(&handler);

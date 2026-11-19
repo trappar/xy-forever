@@ -91,7 +91,8 @@ class StockOpenFlagsTest(unittest.TestCase):
 
 class FileWriteSourceTest(unittest.TestCase):
     def setUp(self):
-        self.server = (ROOT / 'target/storage_server.cpp').read_text()
+        self.server = ''.join((ROOT / 'target' / n).read_text()
+                              for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         self.usb = unit_text(ROOT / 'target/usb_service.cpp')
 
     def test_a_enters_the_engine(self):
@@ -122,12 +123,13 @@ class FileWriteSourceTest(unittest.TestCase):
 
     def test_b_client_sequence(self):
         """B's file client (file_client.cpp), every request bounded."""
-        client = (ROOT / 'target/file_client.cpp').read_text()
+        client = unit_text(ROOT / 'target/file_client.cpp')
         c = client[client.index('uint32_t make_folders('):]
         c = c[:c.index('\n}\n', c.index('uint32_t write_file('))]
         order = ['const U32 root_bytes = storage_server::write_root(path);', 'mkdir(folder);', "folder[k] = '/';",
                  'if (mounted == mounted_stale) return xyf::usbp::s_state;', 'const Reply m = mount();',
-                 'make_folders(path, mounted);', 'open(path, storage_server::write_open_flags);',
+                 'Reply o = open(path, storage_server::write_open_flags);', 'if (o.value < 0 && o.error == enoent) {',
+                 'make_folders(path, mounted);', '    o = open(path, storage_server::write_open_flags);',
                  'write(fd, bytes + done, n);', 'close(fd);', 'Reply o = open(path, 0);',
                  'read(o.value, chunk_bytes, chunk);', '(total != size || readback_crc != crc)) code = xyf::usbp::s_crc;']
         at = [c.index(s) for s in order]
@@ -148,7 +150,8 @@ class FileWriteSourceTest(unittest.TestCase):
         for name in ('Reply send(Stock121PeerSession& session', 'Reply partition(U32 op'):
             body = client[client.index(name):]
             self.assertIn('await_answer(', body[:body.index('\n}\n')])
-        self.assertIn('answer(*session, closing_start, bound_ms(9, 0))', client)
+        self.assertIn('else r = answer(*session, left_start, left_bound);', client)    # unmount_poll (#144: left_poll)
+        self.assertIn('return leave(session, s, bound_ms(9, 0));', client)
 
     def test_b_handler_order_and_the_staged_sha(self):
         h = self.usb[self.usb.index('void file_write(uint8_t seq'):]

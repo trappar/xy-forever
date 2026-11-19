@@ -31,8 +31,12 @@ static const uint32_t request_ms = 5000, change_ms = 45000;
 static const uint32_t chunk = 1024;                                  // bytes per read or write request
 static const uint32_t record_bytes = 0x34, space_bytes = 0x0c, entry_bytes = 0x10c;
 static const uint32_t mounted_stale = 2, emfile = 24;                 // read_file; A's errno EMFILE
-// b session scratch (DMA-able): the path (240 bytes with the NUL) and one request or reply body.
-static const uint32_t path_buffer = 0x8b80f000u, data_buffer = 0x8b80f100u, data_capacity = 0x400u;
+// b session scratch (DMA-able): the path (240 bytes with the NUL) and one request or reply body. #144: the body
+// buffer holds piece_max, the stock client's own piece (its fflush 889f6f54 writes at most 0x1000 per 0x2b; A's
+// read executor streams 0x1000 per body), in the free 4 KiB below log_frame (usb_service.hpp: rx_chunk ends at
+// 0x8b80c800); read and write take up to piece_max, every other caller still moves chunk.
+static const uint32_t path_buffer = 0x8b80f000u, data_buffer = 0x8b80d000u, data_capacity = 0x1000u;
+static const uint32_t piece_max = data_capacity;
 static_assert(data_capacity >= chunk && data_capacity >= entry_bytes, "one body fits the client's buffer");
 enum Outcome : uint32_t {
     done = 0,       // A answered: value and error are its reply (+0x10, +0x14)
@@ -88,12 +92,37 @@ Reply unmount();
 // the request stays out, as any request past its bound) or lost. refused: none was started.
 Reply unmount_start();
 Reply unmount_poll();
+// #144: the client leaves at most one request out for its owner (unmount_start, mkdir_start: busy while one is
+// left). Every other request collects it first (its claim waits, bounded, for the slot) and keeps its answer
+// for the owner, so neither the slot's reuse nor the next answer can take it. left_poll: the left request's
+// answer, kept or as unmount_poll (wait: awaited up to its bound); left_out: one is left.
+Reply left_poll(bool wait);
+bool left_out();
+// #144: write (op 0x2b) left out: B's loop goes on (USB, the next piece) while A writes; left_poll collects A's
+// answer (the next write_start waits for it through its claim). busy while one is left.
+Reply write_start(int fd, const uint8_t* data, uint32_t count);     // count <= piece_max
+// #144: read (op 0x2a) left out into the client's read-ahead buffer at stream_buffer + at, so B's loop goes on
+// (USB sends the bytes read before) while A reads; left_poll collects A's answer (value: the bytes read, then at
+// stream(at, value); short only at the end of the file). busy while one is left. The buffer is the client's, as
+// data_buffer is (an answer that arrives after its owner gave up lands only there): the top stream_capacity bytes
+// of the MTP session's slot (usb_service_mod_job.ipp mtp_slot_bytes; the Session stays below it), reserved only in
+// MTP builds, whose session is its only user.
+static const uint32_t stream_buffer = 0x8b7fc000u, stream_capacity = 0x4000u;
+// bytes per read_start: A streams them back in 0x1000-byte bodies, its stock read executor (889f6cd6) re-posting
+// itself after each (889f66fc) and B's stock master taking each body into place, then the done byte: the stock
+// fread's own shape (the dev menu's GetObject asks 16 KiB per request; the OS 64 KiB). Two halves of the buffer.
+static const uint32_t stream_max = stream_capacity / 2;
+static_assert(stream_max % 0x1000 == 0, "whole bodies");
+Reply read_start(int fd, uint32_t at, uint32_t count);             // at + count <= stream_capacity, at % 32 == 0
+const uint8_t* stream(uint32_t at, uint32_t count);                 // after an answer: those lines invalidated
 // 193: op 0x26 (mkdir; EEXIST is fine) without waiting in it: A's first change opens its read-write window,
 // which after an unclean shutdown may take seconds; unmount_poll (the same slot, bound change_ms) ends it.
 Reply mkdir_start(const char* path);
 Reply open(const char* path, uint32_t flags);
-Reply read(int fd, uint8_t* out, uint32_t count);                   // count <= chunk
-Reply write(int fd, const uint8_t* data, uint32_t count);           // count <= chunk
+Reply read(int fd, uint8_t* out, uint32_t count);                   // count <= piece_max
+Reply write(int fd, const uint8_t* data, uint32_t count);           // count <= piece_max
+// #144: A's request timing words 2k and 2k + 1 (value, error), or k = file_engine::timing_clear zeroes them.
+Reply a_timing(uint32_t k);
 Reply seek(int fd, int offset);                                     // SEEK_SET
 Reply close(int fd);
 Reply mkdir(const char* path);

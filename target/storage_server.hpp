@@ -122,6 +122,11 @@ static const uint32_t window_idle_ms = 10000, window_settle_ms = 8000;
 // Both roles: CRC of every span in mtp_spans.hpp (the whole stock path of the engine on both
 // processors; bit i set, folded; 0 = ok).
 uint32_t engine_identity();
+// A, before a rename (#144): engine_identity() passed within spans_recheck_ms (a pass is kept that long, a mismatch
+// never). The full CRC (140 KB, bit by bit) cost more than the rest of a small upload's requests together; the
+// engine entry checks the spans too (latch).
+static const uint32_t spans_recheck_ms = 1000;
+bool spans_match();
 #endif
 struct Result {
     uint32_t magic, version, role, enabled;

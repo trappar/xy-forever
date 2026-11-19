@@ -180,6 +180,10 @@ bool home_hold();
 bool home_begin();
 void home_start();
 uint32_t home_pump();
+// #144: the menu loop's pause after a pass (us): 5 ms, shorter while MTP traffic is active. drawn(start): a redraw
+// that began at start (cycles), counted in MTP's timing while that traffic is active.
+uint32_t menu_pause_us();
+void drawn(uint64_t start);
 // b: the menu has USB on. A lost link then keeps the menu: USB still answers (commands
 // that need a get link) until a power cycle; b never resets itself on it.
 bool home_usb();

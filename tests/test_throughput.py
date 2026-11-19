@@ -5,10 +5,12 @@ import contextlib
 import importlib.util
 import io
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
 import unittest
+import wave
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -106,6 +108,68 @@ class Logic(unittest.TestCase):
         self.assertIsNone(r.error, r.error)
         self.assertEqual(r.removed[-1], T.SCRATCH)
         self.assertEqual(len(r.removed), 6 + 2)                            # 6 files, small/, the scratch folder
+        self.assertEqual(device.tree(), before)
+
+
+NAME = r"[\w\d!+\-@\[\] #-)]+"                                     # the OS's allowlist name (smx_if.cpp)
+OS_ALLOWED = re.compile(r'^/samples/%s(/%s)?$|^/samples/%s(/%s){0,2}\.[wW][aA][vV]$' % ((NAME,) * 4))
+OS_TREE = dict(R.STOCK_TREE, **{'/samples/user/kick.wav': b'RIFF mine', '/projects/song.xy': b'mine'})
+
+
+class OsMtp(unittest.TestCase):
+    """os-mtp: the set as .wav files in /samples/throughput-scratch (all on the OS's allowlist), and cleanup
+    removing exactly what this run made."""
+
+    def test_the_wav_set(self):
+        files = T.file_set(5 << 20, 1, 4096, 3)
+        wavs = T.os_file_set(files)
+        self.assertEqual([(n, len(d), s) for n, d, s in wavs],
+                         [('big-0.wav', 5 << 20, False), ('small/s-000.wav', 4096, True),
+                          ('small/s-001.wav', 4096, True), ('small/s-002.wav', 4096, True)])
+        for (_, data, _), (_, wav_data, _) in zip(files, wavs):
+            with wave.open(io.BytesIO(wav_data)) as w:
+                self.assertEqual((w.getnchannels(), w.getsampwidth(), w.getframerate()), (2, 2, 44100))
+                self.assertEqual(w.readframes(w.getnframes()), data[T.WAV_HEADER:])
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            T.main(['--route', 'os-mtp', '--small', '40'])                     # refused before any device
+
+    def test_over_a_fake_os(self):
+        device = TW.WritableFake(OS_TREE)
+        before = device.tree()
+        r = T.measure('os-mtp', T.OsMtpOps(device), T.os_file_set(T.file_set(70000, 1, 600, 5)))
+        self.assertIsNone(r.error, r.error)
+        self.assertEqual(r.removed[-1], T.OS_SCRATCH)
+        self.assertEqual(len(r.removed), 6 + 2)
+        for path in r.removed:
+            self.assertRegex(path[len('/yaffs2'):], OS_ALLOWED)
+        self.assertEqual(device.tree(), before)
+        self.assertIn('removed /yaffs2/samples/throughput-scratch (8 paths', T.cleanup_lines(r)[0])
+
+    def test_a_refused_file_cleans_up_what_was_made(self):
+        device = TW.WritableFake(OS_TREE, deny={'s-002.wav'})
+        before = device.tree()
+        r = T.measure('os-mtp', T.OsMtpOps(device), T.os_file_set(T.file_set(1000, 1, 600, 5)))
+        self.assertIn('SendObjectInfo /yaffs2/samples/throughput-scratch/small/s-002.wav', r.error)
+        self.assertEqual(len(r.removed), 3 + 2)                            # big-0, s-000, s-001, small/, the folder
+        self.assertIsNone(r.cleanup_error)
+        self.assertEqual(device.tree(), before)
+
+    def test_a_refused_folder_sends_nothing_more(self):
+        device = TW.WritableFake(OS_TREE, deny={'throughput-scratch'})
+        before = device.tree()
+        r = T.measure('os-mtp', T.OsMtpOps(device), T.os_file_set(T.file_set(1000, 1, 600, 2)))
+        self.assertIn('SendObjectInfo /yaffs2/samples/throughput-scratch: response', r.error)
+        self.assertEqual(device.codes[-1], 0x100C)                         # no request after the refusal
+        self.assertEqual((r.removed, r.cleanup_error), ([], None))
+        self.assertEqual(device.tree(), before)
+
+    def test_an_existing_scratch_folder_is_left_alone(self):
+        device = TW.WritableFake(dict(OS_TREE, **{'/samples/throughput-scratch/mine.wav': b'RIFF'}))
+        before = device.tree()
+        r = T.measure('os-mtp', T.OsMtpOps(device), T.os_file_set(T.file_set(1000, 1, 600, 2)))
+        self.assertIn('already on the OP-XY', r.error)
+        self.assertFalse({0x100B, 0x100C, 0x100D} & set(device.codes))     # no write, no delete
+        self.assertEqual(r.removed, [])
         self.assertEqual(device.tree(), before)
 
 

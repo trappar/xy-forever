@@ -241,6 +241,12 @@ void fallback_restart() {
     menu_usb = 0;                                    // then: no USB this boot (our driver left; no stock CDC to call)
 }
 #endif
+// #144: the driver's pass, its cycles counted as the MTP session's USB side while the session runs.
+void timed_pump() {
+    const uint64_t start = xyf::clock::cycles();
+    mu::pump();
+    if (mtp_live()) { ms::Timing& t = mslot().files.timing; ++t.pumps; t.pump_units += units_since(start); }
+}
 // Every pass of home_pump with the composite up: the driver's pass, the MTP mark's clock, the HELLO bound.
 void composite_turn() {
     if (!composite_on) return;
@@ -249,7 +255,7 @@ void composite_turn() {
     if (gap > probe[p_max_gap]) probe[p_max_gap] = gap;
     mtp_pass_ms = probe[p_max_gap];
     probe[p_last] = t; ++probe[p_passes];
-    mu::pump();
+    timed_pump();
     if (mu::stats().mtp_commands != last_commands) { last_commands = mu::stats().mtp_commands; mtp_ms = now(); }
 #if defined(XYF_MTP_USB_TRIAL)
     if (!probe[p_hello] && now() - probe[p_started] >= composite_hello_ms) fallback_restart();
@@ -262,15 +268,19 @@ void composite_turn() {
 // mtp_quiet_ms without USB or responder progress, or after mtp_burst_ms (the menu still redraws between
 // bursts).
 const U32 mtp_burst_ms = 40, mtp_quiet_ms = 3, mtp_recent_ms = 300;
+bool mtp_traffic() {
+    if (!composite_on || !mtp_live()) return false;
+    const ms::Session& m = mslot();
+    return m.responder.busy() || m.responder.pending() || now() - mtp_ms <= mtp_recent_ms;
+}
 void mtp_burst() {
-    if (!composite_on || !mtp_live()) return;
+    if (!mtp_traffic()) return;
     ms::Session& m = mslot();
-    if (!m.responder.busy() && !m.responder.pending() && now() - mtp_ms > mtp_recent_ms) return;
     const U32 start = now();
     U32 moved = now();
     while (now() - start < mtp_burst_ms) {
         const U32 before = m.bytes_in + m.bytes_out + m.steps;
-        mu::pump();
+        timed_pump();
         if (mu::stats().mtp_commands != last_commands) { last_commands = mu::stats().mtp_commands; mtp_ms = now(); }
         mtp_pump();
         if (m.bytes_in + m.bytes_out + m.steps != before) moved = now();

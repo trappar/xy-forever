@@ -295,8 +295,8 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.assertEqual(self.booted(), a)
         self.saved_as(a, ['alpha'])
 
-    def cut(self):
-        cuts = self.sim.status()['cuts']
+    def cut(self, cuts):
+        """The power cut after `cuts` (read before the fault was armed) and the restart, USB answering."""
         self.wait_log(lambda: self.sim.status()['cuts'] == cuts + 1 and self.sim.status()['listening'], 'cut, restart')
         self.reconnect()
         self.assertEqual(self.dev.hello()[0], 0)
@@ -307,7 +307,8 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.sim.set('rename_fault', 1)
         cuts = self.sim.status()['cuts']
         self.cont(0)
-        self.wait_log(lambda: self.sim.status()['cuts'] == cuts + 1, 'the cut')
+        self.cut(cuts)                                                     # back in the menu (PLAY held)
+        self.until_swept()                                                 # its USB start sweeps tmp/job-* (#3)
         self.assertEqual(self.config(), None)                              # the previous configuration boots
         self.plain_boots_without_writing(self.base)
 
@@ -316,8 +317,9 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.change(['alpha'], unknown=False)
         self.sim.set('rename_fault_kind', 2)
         self.sim.set('rename_fault', 1)
+        cuts = self.sim.status()['cuts']
         self.cont(0)
-        self.cut()
+        self.cut(cuts)
         self.assertEqual(self.config()['mods'], '')                        # the record: still all off
         record = self.record()                                             # switching, or only its .old
         self.assertTrue(record.startswith('state=switching') if record else
@@ -340,10 +342,11 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.sim.set('a_slow_ms', 150)
         self.cont(0)
         self.wait(lambda p: p.get('stage') == 2, 'saving', 120.0)
+        cuts = self.sim.status()['cuts']
         self.sim.set('rename_fault_kind', 2)
         self.sim.set('rename_fault', 2)                                    # cut after .part -> config.txt
         self.sim.set('a_slow_ms', 0)
-        self.cut()
+        self.cut(cuts)
         self.assertEqual(self.config()['mods'], 'alpha')                   # the new record, the old default
         self.assertEqual(self.disk_default(), self.base)
         self.wait_log(lambda: '(to apply) pending=1' in self.home(), 'the record to apply')

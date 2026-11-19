@@ -20,6 +20,15 @@ unsigned engine_rename_over(const char* source, const char* target, int window) 
     const State state = {1, 1, unsigned(window), 1, 1, 1, 1, 0};
     return decide_request(path_class, 0x21, rename_over, path_buffer, target, state, source);
 }
+unsigned engine_rename_upload(const char* path, int window) {   // path 0x21 rename_upload (#144), as A splits it
+    char target[max_path], source[max_path];
+    for (unsigned i = 0; i != max_path; ++i) if (!(target[i] = path[i])) break;
+    const State state = {1, 1, unsigned(window), 1, 1, 1, 1, 0};
+    const bool split = split_upload(target, source);
+    return decide_request(path_class, 0x21, rename_upload, path_buffer, target, state, split ? source : 0);
+}
+int engine_join_upload(const char* source, const char* target, char* out) { return join_upload(source, target, out); }
+int engine_split_upload(char* path, char* source) { return split_upload(path, source); }
 int engine_upload_size(const char* path, unsigned* size) {
     uint32_t n = 0;
     const bool ok = upload_size(path, n);

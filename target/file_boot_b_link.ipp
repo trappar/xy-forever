@@ -27,10 +27,26 @@ volatile U32 b_failed_at __attribute__((section(".data"))) = 0;
 xyf::catalog::Catalog& b_catalog() { return *reinterpret_cast<xyf::catalog::Catalog*>(xyf_boot::library_buffer); }
 bool running(SessionResult s) { return s == SessionResult::waiting || s == SessionResult::choose_image; }
 
+// b: a file request's answer (the request's result +0x10 and errno +0x14), copied by the poll that sees it
+// complete (#144): the session's one request slot is reused by keepalives (every keepalive_ms) and menu
+// commands, which zero it, and the menu loop may run between a request's submit and its collect.
+#if defined(XYF_ONE_SESSION)
+volatile U32 b_answer[2] __attribute__((section(".data"))) = {0, 0};
+#endif
+SessionResult b_poll(Stock121PeerSession& session) {
+#if defined(XYF_ONE_SESSION)
+    const bool filing = session.filing();
+    const SessionResult status = session.poll(now());
+    if (filing && !session.filing()) { b_answer[0] = session.request_value(); b_answer[1] = session.request_error(); }
+    return status;
+#else
+    return session.poll(now());
+#endif
+}
 // b: one bounded poll; false (and lost) once the session left the held state.
 bool b_step(Stock121PeerSession& session) {
     if (b_lost) return false;
-    const SessionResult status = session.poll(now());
+    const SessionResult status = b_poll(session);
     ++result.polls;
     result.poll_result = U32(status);
     if (running(status)) return true;

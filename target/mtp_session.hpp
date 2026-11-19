@@ -31,11 +31,32 @@ struct InPhase { uint32_t length, sent; uint8_t head[4]; };
 uint32_t phase_room(const InPhase& p, uint32_t room);
 // Bytes [0, n) of data were just sent; true when they ended a container whose length % packet_bytes == 0.
 bool phase_zlp(InPhase& p, const uint8_t* data, uint32_t n);
+// #144: where an MTP transfer's time goes on B (the cycle counter, 400 MHz). Sums in units of 1024 cycles
+// (2.56 us), longest in cycles. reads/writes: the data requests (file_client read/write: the B<->A round trip,
+// A's own work included: A counts that itself, file_client::a_timing); calls: every other file call; steps:
+// responder steps that worked (their file calls included); pumps: the USB side (driver passes, or the test
+// transport's transfers); waits: steps with nothing to do while an operation is in flight (waiting for USB).
+struct Timing {
+    uint32_t reads, read_units, read_max, writes, write_units, write_max, calls, call_units;
+    uint32_t steps, step_units, pumps, pump_units, waits, read_bytes, write_bytes, started;
+    // #144: while MTP traffic is active, the menu loop outside its USB pass (home_pump: the pause, redraws, the
+    // link tick, the keys' poll) and the redraws in it (usb_service menu_pause_us, drawn).
+    uint32_t loops, loop_units, draws, draw_units;
+};
+static const uint32_t timing_words = sizeof(Timing) / 4;
 struct Files {
     volatile uint32_t* mounted;         // usb_service's op-8 state (rename needs it)
     uint32_t (*on_change)();            // opens A's write window (usb_service enter_writes): s_ok, else a status
     uint32_t link, window, writing, last_change_ms, requests;
     uint32_t data_requests, data_bytes; // speed (2026-11-15): read and write requests, the bytes they moved
+    Timing timing;                      // #144
+    int write_fd;                       // #144: the file of the write left out (file_client::write_start), -1 none
+    uint32_t write_n;                   //   its bytes
+    // #144 read-ahead (FileOps::ahead): the file (-1 none) and the bytes not yet asked of A; C::stream_buffer's two
+    // halves: the responder reads [at, end) of half `half` while A fills the other one (asked: that request's bytes,
+    // 0 none). Ends at the file's close or seek, and at collect.
+    int ahead_fd;
+    uint32_t ahead_left, ahead_half, ahead_at, ahead_end, ahead_asked;
     int open[max_open];                 // files the responder holds (closed when the session ends)
     uint8_t open_write[max_open];
     char upload[45];                    // #4: SendObject's temporary file (file_engine::upload_name)
@@ -43,6 +64,11 @@ struct Files {
 };
 void files_init(Files& f, volatile uint32_t* mounted, uint32_t (*on_change)());
 M::FileOps file_ops(Files& f);          // the adapter (context: &f)
+// #144: A's answer to the write left out (write_start), awaited (bounded: change_ms): 0 when it wrote every byte
+// (none left: 0 too), else the failure (M::f_*). The adapter's next write and close call it first. A read-ahead
+// still out is collected and dropped first.
+int collect(Files& f);
+void drop_ahead(Files& f);              // #144: the read-ahead ended (its request out collected, bounded)
 struct Session {
     M::Responder responder;
     Files files;

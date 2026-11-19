@@ -18,7 +18,7 @@ bool Responder::send_object() {
     if (stage == 1) {
         if (in_pos != in_len) {
             U32 n = in_len - in_pos;
-            if (n > chunk) n = chunk;
+            if (n > piece) n = piece;
             if (!failed) {
                 const int r = ops.write(ops.context, fd, in + in_pos, n);
                 if (r != int(n)) failed = r == f_refused ? r_access_denied : r_store_full;
@@ -33,7 +33,12 @@ bool Responder::send_object() {
     }
     if (stage == 2) {
         stage = 3;
-        if (fd >= 0) { ops.close(ops.context, fd); fd = -1; return true; }
+        if (fd >= 0) {                                            // #144: the last piece's answer comes with it
+            const int r = ops.close(ops.context, fd);
+            if (r < 0 && !failed) failed = r == f_refused ? r_access_denied : r_store_full;
+            fd = -1;
+            return true;
+        }
     }
     if (stage == 3 && opened) {                                   // onto its name, or removed
         opened = 0;

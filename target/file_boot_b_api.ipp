@@ -69,6 +69,7 @@ bool link_step() {
     return session && b_step(*session);
 }
 void link_sent() { b_last_send = now(); }
+void link_answer(uint32_t& value, uint32_t& error) { value = b_answer[0]; error = b_answer[1]; }
 // before any stock reset of b. A request still open is polled until
 // answered or close_ms passes (wait: false: the request is not waited for);
 // then the session ends: the stock master close 889f562e turns SPI and both DMA channels off and
@@ -81,7 +82,7 @@ bool link_close(bool wait) {
         const key_ui::Where where(xyf::where::link_close);
         const U32 start = now();
         while (wait && session->busy() && now() - start < close_ms) {
-            session->poll(now());
+            b_poll(*session);                           // a file request's answer kept (#144)
             where.wait();
         }
         b_lost = 1;

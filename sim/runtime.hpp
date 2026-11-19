@@ -149,7 +149,8 @@ void log(const char* format, ...) __attribute__((format(printf, 1, 2)));
 [[noreturn]] void exit_processor(int code);
 uint64_t now_us();
 // Link messages (processor <-> board <-> processor), little endian, header + body.
-enum Kind : uint32_t { k_request = 1, k_response = 2, k_event = 3 };
+// k_body: one data body of a streamed answer (A's read executor, 0x1000 bytes each) before its k_response.
+enum Kind : uint32_t { k_request = 1, k_response = 2, k_event = 3, k_body = 4 };
 enum Event : uint32_t { e_cut = 1 };
 struct Message {
     uint32_t magic, kind, tag, cls, op, a0, a1, a2, result, error, body;
@@ -174,6 +175,8 @@ void b_submit(void* request);
 void b_link_closed();
 // A: answer the request in a pool slot (stock 889f6508); executors use it too.
 void a_respond(uint32_t request);
+// A: the request in service sends one body (+0x20, +0x24) and is re-posted at primary + 4 (889f66fc) for A's loop.
+void a_stream(uint32_t request);
 bool a_service();                                // A: deliver a queued request if the slot is free (true: delivered)
 // A: fixed buffers in A's SDRAM for request bodies.
 static const uint32_t a_in_buffer = 0x8aa70000u, a_out_buffer = 0x8aa80000u, a_buffer_bytes = 0x10000u;

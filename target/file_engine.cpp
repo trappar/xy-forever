@@ -106,6 +106,28 @@ void upload_name(char* out, uint32_t size, uint32_t tag) {
     out[i + 17] = 0;
 }
 
+static const uint32_t upload_head = 27;                // "/yaffs2/xy-forever/tmp/put-"
+bool join_upload(const char* source, const char* target, char* out) {
+    uint32_t size = 0, n = 0;
+    if (!upload_size(source, size)) return false;
+    while (target[n]) if (++n + upload_tail >= max_path) return false;
+    for (uint32_t i = 0; i != n; ++i) out[i] = target[i];
+    out[n] = upload_mark;
+    for (uint32_t i = 0; i != upload_tail - 1; ++i) out[n + 1 + i] = source[upload_head + i];
+    out[n + upload_tail] = 0;
+    return true;
+}
+bool split_upload(char* path, char* source) {
+    uint32_t n = 0, size = 0;
+    while (n != max_path && path[n]) ++n;
+    if (n == max_path || n < upload_tail + 1 || path[n - upload_tail] != upload_mark) return false;
+    upload_name(source, 0, 0);
+    for (uint32_t i = 0; i != upload_tail - 1; ++i) source[upload_head + i] = path[n - upload_tail + 1 + i];
+    if (!upload_size(source, size)) return false;
+    path[n - upload_tail] = 0;
+    return true;
+}
+
 uint32_t depth(const char* path) {
     Parsed p;
     return parse(path, p) == allow ? p.names : 0xffffffffu;
@@ -143,10 +165,10 @@ Action decide_request(uint32_t vtable, uint32_t op, uint32_t argument, uint32_t 
         if (op == 0x29) { run = run_open; operation = argument ? op_write : op_read; }
         else if (op == 0x2e) { run = run_opendir; operation = op_list; }
         else if (op == 0x21 && argument == rename_from) { run = run_rename_from; operation = op_rename; }
-        else if (op == 0x21 && (argument == rename_to || argument == rename_over)) {
-            if (!source) return refuse_op;       // no rename_from just before it
+        else if (op == 0x21 && (argument == rename_to || argument == rename_over || argument == rename_upload)) {
+            if (!source) return refuse_op;       // no rename_from just before it (rename_upload: not split_upload's form)
             uint32_t size;
-            if (argument == rename_over && !upload_size(source, size)) return refuse_tmp_path;
+            if (argument != rename_to && !upload_size(source, size)) return refuse_tmp_path;
             run = argument == rename_to ? run_rename_to : run_rename_over; operation = op_rename;
         }
         else if (op == 0x21) { run = run_path; operation = op_stat; }

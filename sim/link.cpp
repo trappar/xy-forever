@@ -47,7 +47,7 @@ namespace {
 struct Wait {
     std::atomic<int> done{0};
     uint32_t result = 0, error = 0;
-    void* out = 0; uint32_t capacity = 0;
+    void* out = 0; uint32_t capacity = 0, got = 0;   // got: the bytes of a streamed answer placed so far
     uint32_t* session = 0;          // a session request_ array: done byte +4, result +0x10
     bool queued = false;            // held by the b_queue hook (counted in b_queued until answered)
 };
@@ -85,13 +85,25 @@ bool receive(Message& m, std::vector<uint8_t>& body, int timeout_ms) {
 }
 
 // ---- B -----------------------------------------------------------------------------------------
+// The stock master takes each body of an answer into the caller's buffer after the ones before it.
+void place(Wait* w, const std::vector<uint8_t>& body) {
+    if (!w->out || body.empty() || w->got >= w->capacity) return;
+    const uint32_t n = body.size() < w->capacity - w->got ? uint32_t(body.size()) : w->capacity - w->got;
+    memcpy(static_cast<uint8_t*>(w->out) + w->got, body.data(), n);
+    w->got += n;
+}
+void more(const Message& m, const std::vector<uint8_t>& body) {     // a streamed answer's body (k_body)
+    std::lock_guard<std::mutex> hold(lock);
+    auto it = waits.find(m.tag);
+    if (it != waits.end()) place(it->second, body);
+}
 void complete(const Message& m, const std::vector<uint8_t>& body) {
     std::lock_guard<std::mutex> hold(lock);
     auto it = waits.find(m.tag);
     if (it == waits.end()) return;                          // a late answer to a forgotten request
     Wait* w = it->second;
     waits.erase(it);
-    if (w->out && !body.empty()) memcpy(w->out, body.data(), body.size() < w->capacity ? body.size() : w->capacity);
+    place(w, body);
     w->result = m.result; w->error = m.error;
     if (w->queued) --shared->b_queued;
     if (w->session) {
@@ -221,6 +233,17 @@ void a_respond(uint32_t request) {
     a_service();
 }
 
+void a_stream(uint32_t request) {
+    Message m = {message_magic, k_body, 0, 0, 0, 0, 0, 0, 0, 0, r32(request + 0x24)};
+    {
+        std::lock_guard<std::mutex> hold(a_lock);
+        if (!in_service || request != service_slot) { log("a body for a request not in service (%08x)", request); return; }
+        m.tag = service_tag; m.cls = service_cls; m.op = service_op;
+    }
+    send_message(link_fd, m, m.body ? host(r32(request + 0x20)) : 0);
+    w32(primary + 4, request);                                          // re-posted: A's loop serves it again
+}
+
 void link_start() {
     std::thread([] {
         Message m; std::vector<uint8_t> body;
@@ -241,6 +264,7 @@ void link_start() {
                 work = a_service() || work;
             } else {
                 if (got && m.kind == k_response) complete(m, body);
+                if (got && m.kind == k_body) more(m, body);
                 if (!shared->b_queue.load()) release_held();
             }
             // Virtual clock (sim/clock.cpp): the main thread has something to look at before the

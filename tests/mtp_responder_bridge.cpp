@@ -7,6 +7,9 @@
 //   S:          u16 device status, u32 open files, u32 handles, u32 most file calls in one step, u32 cache hits,
 //               u32 file calls in all
 //   X:          invalidate (a change outside MTP)
+//   Z u32 bytes: set_piece (#144)                                       -> u32 the piece
+//   J u32 max:  as I, but taken as the USB driver takes them (#144): whole 512-byte packets, or the rest of the
+//               container at the head; stops when nothing can be taken and nothing is left to do
 #include "../native/mtp_responder.hpp"
 #include <algorithm>
 #include <cerrno>
@@ -72,8 +75,9 @@ static int open_call(void*, const char* path, bool write) {
     ++open_files;
     return fd;
 }
-static int read_call(void*, int fd, Byte* out, U32 n) { ++calls; if (n > m::chunk) return m::f_storage; ssize_t r = ::read(fd, out, n); return r < 0 ? fail() : int(r); }
-static int write_call(void*, int fd, const Byte* data, U32 n) { ++calls; if (n > m::chunk) return m::f_storage; ssize_t r = ::write(fd, data, n); return r < 0 ? fail() : int(r); }
+static U32 piece_limit = m::default_piece;                            // #144: the largest read or write call (Z)
+static int read_call(void*, int fd, Byte* out, U32 n) { ++calls; if (n > piece_limit) return m::f_storage; ssize_t r = ::read(fd, out, n); return r < 0 ? fail() : int(r); }
+static int write_call(void*, int fd, const Byte* data, U32 n) { ++calls; if (n > piece_limit) return m::f_storage; ssize_t r = ::write(fd, data, n); return r < 0 ? fail() : int(r); }
 static int seek_call(void*, int fd, U32 offset) { ++calls; return lseek(fd, offset, SEEK_SET) < 0 ? fail() : 0; }
 static int close_call(void*, int fd) { ++calls; --open_files; return ::close(fd) ? fail() : 0; }
 static int mkdir_call(void*, const char* p) { ++calls; return ::mkdir(host(p).c_str(), 0755) ? fail() : 0; }
@@ -124,7 +128,8 @@ int main(int argc, char** argv) {
     if (argc != 2) return 2;
     root = argv[1];
     m::FileOps ops = {0, list, stat_call, space, open_call, read_call, write_call, seek_call, close_call,
-                      mkdir_call, unlink_call, rmdir_call, rename_call, nullptr, nullptr, upload_call, commit_call};
+                      mkdir_call, unlink_call, rmdir_call, rename_call, nullptr, nullptr, upload_call, commit_call,
+                      nullptr};
     responder.init(ops);
     for (;;) {
         Byte command; U32 n;
@@ -149,6 +154,28 @@ int main(int argc, char** argv) {
                 if (!k && !step() && !responder.pending()) break;
             }
             answer(got.data(), U32(got.size()));
+        } else if (command == 'J') {
+            U32 max; std::memcpy(&max, payload.data(), 4);
+            std::vector<Byte> got;
+            Byte buffer[m::buffer_bytes];
+            static U32 left = 0;                                        // of the container at the head
+            while (got.size() < max) {
+                U32 k = 0;
+                const U32 pending = responder.pending();
+                if (pending && !left) left = responder.staged_length();
+                if (pending && left >= 12) {
+                    const U32 n = pending >= left ? left : pending & ~511u;
+                    if (n) { k = responder.take(buffer, n); left -= k; }
+                }
+                got.insert(got.end(), buffer, buffer + k);
+                if (!k && !step()) break;
+            }
+            answer(got.data(), U32(got.size()));
+        } else if (command == 'Z') {
+            U32 bytes; std::memcpy(&bytes, payload.data(), 4);
+            responder.set_piece(bytes);
+            const U32 piece = piece_limit = responder.piece_bytes();
+            answer(&piece, 4);
         } else if (command == 'C') {
             responder.cancel();
             answer(0, 0);

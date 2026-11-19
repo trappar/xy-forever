@@ -56,6 +56,26 @@ static const uint32_t path_buffer = 0x8803f6e0u;
 // (upload_size below), A checks the source's size against its name and the target is a file or absent.
 static const uint32_t rename_from = 0x52464e52u, rename_to = 0x4f544e52u;   // "RNFR", "RNTO" (LE)
 static const uint32_t rename_over = 0x4f545052u;                          // "RPTO" (LE)
+// #144 rename_upload: rename_over in one request, its source in its path: the target, upload_mark (a byte no path may
+// hold) and the upload's last 17 characters (SSSSSSSS-TTTTTTTT, upload_name below). A runs it as rename_over with
+// the source split_upload rebuilds. A target longer than max_path - 1 - upload_tail bytes goes as the pair.
+static const uint32_t rename_upload = 0x54555052u;                        // "RPUT" (LE)
+static const char upload_mark = 0x01;
+static const uint32_t upload_tail = 18;                                   // the mark and SSSSSSSS-TTTTTTTT
+// #144: A's request timing (storage_server_timing.ipp), read by B as a path-class access too (path /yaffs2):
+// argument timing_tag | k answers words 2k and 2k + 1 of A's counters as the reply's value and errno; k =
+// timing_clear zeroes them. A answers it itself: nothing reaches storage, and the policy never sees it. Words
+// [0, timing_base_words): the request kinds and gaps; then timing_op_slots x (count, sum, longest, checks): A's
+// other requests by operation (TimingSlot; xy_forever/mtp_timing.py A_OPS names them in this order), checks: the
+// part of the sum in A's own checks (the stats around a change, the engine spans' CRC), not the stock executor.
+enum TimingSlot : uint32_t {
+    t_mount, t_unmount, t_access, t_rename_from, t_rename_to, t_stat, t_statfs, t_unlink, t_mkdir, t_rmdir, t_open,
+    t_seek, t_close, t_opendir, t_readdir, t_closedir, t_other,
+    t_window_open,      // the request (any operation) that opened the read-write window, instead of its own slot
+    timing_op_slots
+};
+static const uint32_t timing_tag = 0x4d495400u, timing_clear = 0xffu;   // "\0TIM" (LE) | k
+static const uint32_t timing_base_words = 12, timing_words = timing_base_words + 4 * timing_op_slots;
 enum Operation : uint32_t {
     op_read = 1,        // open for reading (flags 0)
     op_list,            // open a folder
@@ -86,6 +106,11 @@ bool upload_size(const char* path, uint32_t& size);
 // Writes the name for size and tag into out (upload_bytes with the NUL).
 static const uint32_t upload_bytes = 45;
 void upload_name(char* out, uint32_t size, uint32_t tag);
+// #144 rename_upload's path for an upload's source and a target into out (max_path bytes); false when source is not an
+// upload or the target is too long for it. split_upload: that path back: cut at the mark (path is then the target) and
+// the source into source (max_path bytes); false when path is not of that form.
+bool join_upload(const char* source, const char* target, char* out);
+bool split_upload(char* path, char* source);
 // The names below /yaffs2 in path (a file's folders are this minus one); 0xffffffff when it does not parse.
 uint32_t depth(const char* path);
 
@@ -127,8 +152,8 @@ struct State { uint32_t on, session, window, fd_known, fd_space, dir_known, dir_
 // Every request: the raw layer first (whatever the state), then a selected boot partition (every
 // request refused, op 8 and op 9 too), then class and op, then the path policy for path
 // requests, then op 8 / op 9, then session, window, handles. argument = word +8
-// (open flags for 0x29, the handle for handle requests, rename_from / rename_to / rename_over for 0x21). source:
-// the armed rename source (op_rename with this path as its target), else 0. Not exposed (refuse_op): truncate 0x36,
+// (open flags for 0x29, the handle for handle requests, rename_from / rename_to / rename_over / rename_upload for 0x21).
+// source: the armed rename source (op_rename with this path as its target; rename_upload: its own), else 0. Not exposed (refuse_op): truncate 0x36,
 // set times 0x35, fsync 0x34 / 0x28.
 Action decide_request(uint32_t vtable, uint32_t op, uint32_t argument, uint32_t path_pointer, const char* path,
                       const State& state, const char* source = 0);

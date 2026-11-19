@@ -556,7 +556,11 @@ extern "C" void xy_forever_key_ui() {
 #endif
                 r.exit_reason = exit_timeout; break;
             }
+#if defined(XYF_ONE_SESSION)
+            delay_us(xy_forever::usb_service::menu_pause_us());   // #144: shorter while MTP traffic runs
+#else
             delay_us(5000);
+#endif
         }
 #if defined(XYF_ONE_SESSION)
         menu_screen = 0;

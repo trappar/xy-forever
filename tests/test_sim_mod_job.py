@@ -434,6 +434,23 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertTrue((self.entry(f['detail']) / 'os.ldr').is_file())
         self.sim.set('unmount_ms', 0)
 
+    def test_slow_window_close_answer_survives_keepalives(self):
+        """#144: the window close (op 9, left out by unmount_start) outlasts a keepalive period; the menu loop
+        sends a keepalive on the same request slot between A's answer and B's collect of it. B still records
+        A's answer (3: it closed the window), not the slot's zeroed or reused words."""
+        self.sim.set('unmount_ms', 1500)
+        rr = lambda: host.decode_status(self.dev.call(P.STATUS)[1])['remote_read']
+        before = rr()['b_windows']
+        job = self.start(['alpha'])
+        self.assertEqual(MS.PHASES[self.finished(job, timeout=60.0, served=False)['phase']], 'done')
+        deadline = time.monotonic() + 15.0
+        while self.dev.call(*FILE_COMMAND, timeout=2.5)[0] == ids.S_BUSY:   # until the close was collected
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.05)
+        r = rr()
+        self.assertEqual((r['b_window'], r['b_windows'] - before), (3, 1), r)
+        self.sim.set('unmount_ms', 0)
+
     def test_window_close_past_its_bound_link_and_b_answers(self):
         """A never answers the close within its bound (change_ms): B stays live throughout, file
         commands answer busy, then link once the bound passed; when A answers late, they work again."""

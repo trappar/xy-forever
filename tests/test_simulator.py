@@ -1915,6 +1915,48 @@ class SimulatorTest(unittest.TestCase):
                          (b'dev menu\n', []))
         self.assertEqual(self.file(L + 'c.txt'), b'a')
 
+    def test_a_rename_through_links_with_the_marker_and_inbox_there(self):
+        """#144: A stats the marker and the inbox once per request and each path once; a rename whose source or
+        target reaches the marker or the inbox through a link (the path itself or a folder above it) is still EACCES,
+        rename_over's own checks still answer (EINVAL: size, EISDIR: a folder there), and the renames that pass work
+        with both in place."""
+        RNFR, RNTO, RPTO = 0x52464e52, 0x4f544e52, 0x4f545052
+        root = self.dir / 'yaffs2'
+        (root / 'bootloader.dev').write_bytes(b'dev menu\n')
+        (root / 'upgrade').mkdir()
+        (root / 'upgrade/x.tfw').write_bytes(b'tfw')
+        (root / 'user').mkdir()
+        (root / 'inbox-link').symlink_to(root / 'upgrade')
+        (root / 'user/marker-link').symlink_to(root / 'bootloader.dev')
+        (root / 'user/deep').mkdir()
+        (root / 'user/deep/up').symlink_to(root / 'upgrade')
+        (root / 'xy-forever/log/a.txt').write_bytes(b'a')
+        (root / 'xy-forever/tmp').mkdir(exist_ok=True)
+        (root / 'xy-forever/tmp/put-00000003-00000001').write_bytes(b'new')
+        (root / 'xy-forever/tmp/put-00000009-00000002').write_bytes(b'short')
+        (root / 'user/folder').mkdir()
+        L, T = BASE + 'log/', BASE + 'tmp/'
+        self.connect()
+        self.write_entry()
+
+        def pair(source, target, tag=RNTO):
+            first = self.a_request(PATH_CLASS, 0x21, RNFR, path=source)
+            return first, self.a_request(PATH_CLASS, 0x21, tag, path=target)
+        for source, target in (('/yaffs2/user/marker-link', L + 'm'), (L + 'a.txt', '/yaffs2/user/marker-link'),
+                               (L + 'a.txt', '/yaffs2/inbox-link/a.txt'), ('/yaffs2/inbox-link/x.tfw', L + 'x'),
+                               (L + 'a.txt', '/yaffs2/user/deep/up/a.txt'), ('/yaffs2/user/deep/up/x.tfw', L + 'x'),
+                               (L + 'a.txt', '/yaffs2/inbox-link')):
+            self.assertEqual(pair(source, target)[1], (-1, EACCES), (source, target))
+        self.assertEqual(pair(T + 'put-00000003-00000001', '/yaffs2/inbox-link/n.tfw', RPTO)[1], (-1, EACCES))
+        self.assertEqual(pair(T + 'put-00000009-00000002', '/yaffs2/user/n.bin', RPTO)[1], (-1, 22))   # EINVAL
+        self.assertEqual(pair(T + 'put-00000003-00000001', '/yaffs2/user/folder', RPTO)[1], (-1, 21))  # EISDIR
+        self.assertEqual(((root / 'bootloader.dev').read_bytes(), sorted(p.name for p in (root / 'upgrade').iterdir())),
+                         (b'dev menu\n', ['x.tfw']))
+        self.assertEqual(pair(L + 'a.txt', '/yaffs2/user/deep/a.txt'), ((0, 0), (0, 0)))
+        self.assertEqual(pair(T + 'put-00000003-00000001', '/yaffs2/user/deep/a.txt', RPTO), ((0, 0), (0, 0)))
+        self.assertEqual(self.file('/yaffs2/user/deep/a.txt'), b'new')
+        self.assertTrue((root / 'bootloader.dev').exists())
+
     def test_content_is_in_the_write_area_and_nothing_else_is_added(self):
         """file.write_staged, mkdir, delete and rmdir work under /yaffs2/content/ (a put replaces a
         file there); every other path outside /yaffs2/xy-forever/ stays refused on B with a valid token

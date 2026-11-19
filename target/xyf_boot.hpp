@@ -162,6 +162,9 @@ static const uint32_t lost_ms = 60000;   // > the client's longest bound (45 s)
 peer_services::Stock121PeerSession* link_claim();
 bool link_step();
 void link_sent();
+// The last file request's answer (result, errno), copied when B's poll (link_step, link_close's wait) saw it
+// complete: the request slot itself is reused by keepalives and menu commands (#144).
+void link_answer(uint32_t& value, uint32_t& error);
 // On b: close the link before b's stock reset (file_boot.cpp); true when its hardware is
 // off. close_ms bounds the wait for a request still open (wait: false: not waited for).
 static const uint32_t close_ms = 500;

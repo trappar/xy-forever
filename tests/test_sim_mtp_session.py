@@ -22,6 +22,7 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 TUNNEL = 0x61
 PLAY, STOP, PLUS = 51, 52, 54
 PASS_BOUND_MS = 250                                                       # one request per pass (sim timing)
+STREAM_MAX = 8192                                                         # file_client.hpp stream_max (#144)
 
 
 class TunnelClient(R.Client):
@@ -176,6 +177,12 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual((self.root / 'user/x.bin').read_bytes(), b'abc')
         self.assertEqual(self.c.transaction(0x100B, params[2])[0], R.OK)
         self.assertFalse((self.root / 'user/x.bin').exists())
+        shutil.rmtree(self.root / 'xy-forever/tmp')                       # #144: tmp/ gone: the open makes it again
+        code, params, _ = self.c.transaction(0x100C, R.STORAGE, user, data=R.object_info('y.bin', 3, parent=user))
+        self.assertEqual(code, R.OK)
+        self.assertEqual(self.c.transaction(0x100D, data=b'def')[0], R.OK)
+        self.assertEqual((self.root / 'user/y.bin').read_bytes(), b'def')
+        self.assertTrue((self.root / 'xy-forever/tmp').is_dir())
         (self.root / 'upgrade').mkdir(exist_ok=True)
         inbox = self.folder('upgrade')
         code, _, _ = self.c.transaction(0x100C, R.STORAGE, inbox, data=R.object_info('x.tfw', 3, parent=inbox))
@@ -187,6 +194,127 @@ class MtpSessionTests(unittest.TestCase):
         self.assertIn('mtp screen: stage=1', self.log())
         self.leave()
         self.assertEqual(self.file_command(), P.S_OK)                      # serial commands work again
+
+    def test_timing_and_the_4_kib_piece(self):
+        """#144: diag.mtp op 7 sets the transfer piece and reads B's and A's counters (xy_forever/mtp_timing.py); an
+        upload and a download with 4 KiB pieces (the default) arrive byte for byte, one A request per piece."""
+        from xy_forever import mtp_timing as T
+        self.enter()
+        self.opened()
+        self.assertEqual(T.read(self.dev)['piece'], T.DEFAULT_PIECE)
+        self.assertEqual(self.c.tunnel(7, b'\2' + struct.pack('<I', 2048 + 1))[0], P.S_OK)   # any size in range
+        self.assertEqual(self.c.tunnel(7, b'\2' + struct.pack('<I', 512))[0], P.S_BAD_REQUEST)
+        self.assertEqual(self.c.tunnel(7, b'\2' + struct.pack('<I', 8192))[0], P.S_BAD_REQUEST)
+        self.assertEqual(T.set_piece(self.dev, 4096), 4096)
+        self.assertTrue(T.clear(self.dev))
+        tmp = self.c.named(self.folder('xy-forever'))['tmp']
+        body = random.Random(9).randbytes(64 * 1024 + 100)
+        code, params, _ = self.c.transaction(0x100C, R.STORAGE, tmp, data=R.object_info('p.bin', len(body), parent=tmp))
+        self.assertEqual(code, R.OK, hex(code))
+        self.assertEqual(self.c.transaction(0x100D, data=body)[0], R.OK)
+        self.assertEqual((self.root / 'xy-forever/tmp/p.bin').read_bytes(), body)
+        t = T.read(self.dev)
+        self.assertEqual(t['piece'], 4096)
+        b, a = t['b'], t['a']
+        self.assertIsNotNone(a)
+        self.assertEqual(b['write_bytes'], len(body))
+        self.assertLessEqual(b['writes'], len(body) // 4000 + 2)            # 4 KiB per request (the tunnel's 4096)
+        self.assertEqual(a['writes'], b['writes'])                          # one A request each
+        self.assertGreater(b['write_units'], 0)
+        self.assertGreater(b['step_units'], 0)
+        self.assertEqual(b['reads'], 0)
+        ops = t['a_ops']                                                    # A's other requests by operation
+        self.assertEqual(sum(o[0] for o in ops.values()), a['others'], ops)
+        opened = ops.get('open', (0,))[0] + ops.get('window open (+ its request)', (0,))[0]   # its first change
+        self.assertEqual((opened, ops['close'][0], ops['rename to (RNTO/RPTO/RPUT)'][0]), (1, 1, 1), ops)
+        self.assertNotIn('rename from (RNFR)', ops)                         # #144: one request (rename_upload)
+        self.assertNotIn('mkdir', ops)                                      # tmp/ is there: no mkdir -p
+        self.assertGreater(a['checks'], 0)                                  # A's own stats and CRC, timed apart
+        self.assertLessEqual(ops['rename to (RNTO/RPTO/RPUT)'][3], ops['rename to (RNTO/RPTO/RPUT)'][1])
+        self.assertIn('    rename to (RNTO/RPTO/RPUT)', '\n'.join(T.lines(t, 1.0, 'upload')))
+        self.assertTrue(T.clear(self.dev))
+        self.assertEqual(T.read(self.dev)['b']['writes'], 0)
+        code, _, data = self.c.transaction(0x1009, params[2])
+        self.assertEqual((code, data), (R.OK, body))
+        t = T.read(self.dev)
+        self.assertEqual((t['b']['read_bytes'], t['b']['reads']), (len(body), -(-len(body) // STREAM_MAX)))
+        self.assertEqual(t['a']['reads'], -(-len(body) // 4096))           # A: one run per 0x1000-byte body
+        self.assertEqual(self.c.transaction(0x100B, params[2])[0], R.OK)
+        text = '\n'.join(T.lines(T.read(self.dev), 1.0, 'download'))       # the breakdown: reads only
+        self.assertIn('A read executor', text)
+        self.assertNotIn('A write executor', text)
+        self.assertIn('B menu loop between USB passes', text)               # #144: zero here (no composite)
+
+    def test_a_failed_piece_fails_the_upload_at_the_next_write_or_the_close(self):
+        """#144: B leaves each piece's write out and collects A's answer at the next write or the close. A piece that
+        A failed (the first: seen at the second write; the last: seen only at the close) fails SendObject: the old
+        file stays under its name, no upload is left in tmp/, and the next upload and serial commands work."""
+        self.enter()
+        self.opened()
+        user = self.folder('user')
+        (self.root / 'user/keep.bin').write_bytes(b'old contents')
+        names = self.c.named(user)
+        body = random.Random(11).randbytes(3 * 4096 + 100)                  # four pieces of at most 4 KiB
+        for failing in (1, 4):                                              # the first piece, the last
+            self.sim.set('fail_write', failing)
+            code, params, _ = self.c.transaction(0x100C, R.STORAGE, user,
+                                                 data=R.object_info('keep.bin', len(body), parent=user))
+            self.assertEqual(code, R.OK, hex(code))
+            self.assertNotEqual(self.c.transaction(0x100D, data=body)[0], R.OK, failing)
+            self.assertEqual(self.sim.status()['fail_write'], 0, failing)   # the fault was reached
+            self.assertEqual((self.root / 'user/keep.bin').read_bytes(), b'old contents', failing)
+            self.assertEqual(sorted(p.name for p in (self.root / 'xy-forever/tmp').iterdir()), [], failing)
+            self.assertEqual(self.c.state()['busy'], 0)                     # nothing left out
+        self.assertEqual(self.file_command(), P.S_OK)
+        code, params, _ = self.c.transaction(0x100C, R.STORAGE, user, data=R.object_info('keep.bin', len(body),
+                                                                                          parent=user))
+        self.assertEqual(code, R.OK, hex(code))
+        self.assertEqual(self.c.transaction(0x100D, data=body)[0], R.OK)
+        self.assertEqual((self.root / 'user/keep.bin').read_bytes(), body)
+        self.assertIn('keep.bin', names)
+        self.leave()
+
+    def test_read_ahead_partial_slow_host_and_cancel(self):
+        """#144: B reads ahead of the responder (two halves of the client's read-ahead buffer, A filling one while USB
+        sends the other; each request streamed back in 0x1000-byte bodies). GetPartialObject from an odd offset, a slow host taking 700 bytes at a time, and a cancelled
+        GetObject followed by a whole one all arrive byte for byte, with no read past the transfer (one A request per
+        STREAM_MAX bytes) and nothing left out after each."""
+        from xy_forever import mtp_timing as T
+        self.enter()
+        self.opened()
+        big = self.folder('xy-forever')
+        big = self.c.named(big)['big.bin']
+        self.assertTrue(T.clear(self.dev))
+        code, params, data = self.c.transaction(0x101B, big, 1001, 50000)
+        self.assertEqual((code, params[0], data), (R.OK, 50000, self.big[1001:51001]))
+        t = T.read(self.dev)
+        self.assertEqual((t['b']['read_bytes'], t['b']['reads']), (50000, -(-50000 // STREAM_MAX)))
+        self.assertEqual(t['a']['reads'], -(-50000 // 4096))                # A's bodies: nothing more read
+        self.assertEqual(self.c.state()['busy'], 0)
+        self.c.out(self.c.command(0x1009, big))                            # the slow host
+        stream, total = b'', 12 + len(self.big) + 12
+        deadline = time.monotonic() + 60
+        while len(stream) < total:
+            self.assertLess(time.monotonic(), deadline)
+            code, body = self.c.tunnel(3, struct.pack('<I', 700))
+            self.assertEqual(code, P.S_OK)
+            stream += body[4:]
+        answers = self.c.answers(stream)
+        self.assertEqual((answers[0][3], answers[-1][1]), (self.big, R.OK))
+        self.c.out(self.c.command(0x1009, big))                            # cancelled after two pieces
+        for _ in range(2):
+            self.assertEqual(self.c.tunnel(3, struct.pack('<I', 4096))[0], P.S_OK)
+        self.assertEqual(self.c.tunnel(4)[0], P.S_OK)
+        deadline = time.monotonic() + 20
+        while self.c.state()['device_status'] != R.OK or self.c.state()['busy']:
+            self.assertLess(time.monotonic(), deadline, 'still busy after cancel')
+            self.c.tunnel(3, struct.pack('<I', 4096))
+            time.sleep(0.01)
+        self.c.tunnel(3, struct.pack('<I', 4096))
+        self.assertEqual(self.file_command(), P.S_OK)                    # nothing left out
+        code, _, data = self.c.transaction(0x1009, big)
+        self.assertEqual((code, data), (R.OK, self.big))
+        self.leave()
 
     def test_depth_rule(self):
         """#124: SendObjectInfo makes a file in the 6th folder below /yaffs2 but no folder there (Access_Denied, nothing

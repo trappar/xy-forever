@@ -413,7 +413,9 @@ class MenuQuality(PageBase, unittest.TestCase):
     def check_repeats(self, down, up, repeats, what):
         self.assertTrue(repeats, what)
         self.assertGreaterEqual(repeats[0] - down, 400, what)
-        self.assertLess(repeats[0] - down, 400 + 60, what)
+        # at most two slowed requests late (a_slow_ms 30): the virtual clock's steps put it at either bound (#144:
+        # A's two cycle reads per request moved it from below 460 to 460)
+        self.assertLessEqual(repeats[0] - down, 400 + 60, what)
         gaps = [b - a for a, b in zip(repeats, repeats[1:])]
         self.assertTrue(all(g >= 80 for g in gaps), (what, gaps))         # never a burst
         self.assertTrue(all(r <= up for r in repeats), (what, up, repeats))   # none after the release

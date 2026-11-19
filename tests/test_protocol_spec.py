@@ -378,7 +378,7 @@ class DeviceAgreesTest(unittest.TestCase):
         us = text('target/usb_service.cpp')
         self.assertIn('    if (path_bytes + 1 + 32 != length) code = P::s_bad_request;\n'
                       '    else if (!storage_server::valid_write_path(path)) code = P::s_refused;\n', us)
-        ss = text('target/storage_server.cpp') + text('target/file_client.cpp')
+        ss = text('target/storage_server.cpp') + unit_text(ROOT / 'target/file_client.cpp')
         self.assertIn('if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;', ss)
         self.assertIn('refused', command(spec(), 'file.write_staged')['errors'])
         self.assertEqual((ids.S_UNSUPPORTED, ids.S_REFUSED, ids.S_BUSY, ids.S_CANCELLED), (2, 14, 15, 16))

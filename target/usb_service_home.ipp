@@ -2,7 +2,25 @@
 #if defined(XYF_MTP_USB)
 // The MTP mark: a transfer runs or a command came within mtp_seen_ms (an open session alone does not light it).
 bool mtp_seen() { return composite_on && (mtp_busy() || (last_commands && now() - mtp_ms < mtp_seen_ms)); }
+// #144: the menu loop around MTP traffic (mtp_traffic): its pause after a pass is mtp_pause_us, not 5 ms (a host's
+// next command waited for it: about 4 ms of each small file's 15). loop_from: when home_pump's pass ended while
+// MTP traffic was active (0: it was not); the time to the next pass and the redraws in it count in MTP's timing.
+const U32 mtp_pause_us = 500;
+uint64_t loop_from __attribute__((section(".data"))) = 0;
 #endif
+uint32_t menu_pause_us() {
+#if defined(XYF_MTP_USB)
+    if (loop_from) return mtp_pause_us;
+#endif
+    return 5000u;
+}
+void drawn(uint64_t start) {
+#if defined(XYF_MTP_USB)
+    if (loop_from && mtp_live()) { ms::Timing& t = mslot().files.timing; ++t.draws; t.draw_units += units_since(start); }
+#else
+    (void)start;
+#endif
+}
 bool host_seen() { return host_framed && now() - host_frame_ms < host_seen_ms; }
 uint32_t host_marks() {
 #if defined(XYF_MTP_USB)
@@ -13,7 +31,8 @@ uint32_t host_marks() {
 }
 const char* host_activity() {
 #if defined(XYF_MTP_USB)
-    if (mtp_seen()) return mtp_busy() ? "MTP: transfer" : "MTP: active";   // redraws the MTP mark
+    // #144: "transfer" also between a batch's operations (mtp_traffic): not two redraws per small file.
+    if (mtp_seen()) return mtp_busy() || mtp_traffic() ? "MTP: transfer" : "MTP: active";   // redraws the MTP mark
 #endif
 #if defined(XYF_USB_FILE_WRITE)
     if (job_running() && job_usb) return host_line(job_kind == 1 ? line_content : line_build);
@@ -72,9 +91,22 @@ void home_reboot(U32 target) {
 }
 
 
+#if defined(XYF_MTP_USB)
+// #144: one home_pump pass: the menu loop since the last one counted (MTP traffic active then), its end marked.
+struct LoopMark {
+    LoopMark() {
+        if (loop_from && mtp_live()) { ms::Timing& t = mslot().files.timing; ++t.loops; t.loop_units += units_since(loop_from); }
+        loop_from = 0;
+    }
+    ~LoopMark() { loop_from = mtp_traffic() ? xyf::clock::cycles() | 1u : 0u; }
+};
+#endif
 // Every pass of the menu loop: 0 = stay home, 1 = leave home and boot the default, 2 + i = leave
 // home and boot catalog entry i once (library.boot).
 uint32_t home_pump() {
+#if defined(XYF_MTP_USB)
+    const LoopMark loop;                               // #144: the menu loop between passes
+#endif
     Result& r = result;
     image_step();                                      // the image's hash, a slice per pass
     if (!menu_usb) return 0;

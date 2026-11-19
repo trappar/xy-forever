@@ -289,6 +289,40 @@ class FileEngineTest(unittest.TestCase):
             self.assertEqual(over(source, other), 'refuse_tmp_path', source)
         for path in MARKERS + INBOX + ROOTS:
             self.assertEqual(over(upload, path), 'refuse_protected_path', path)
+        # #144: rename_upload: rename_over in one request, the source's tail after the mark in the target's path
+        lib.engine_join_upload.argtypes = [C.c_char_p, C.c_char_p, C.c_char_p]
+        lib.engine_split_upload.argtypes = [C.c_char_p, C.c_char_p]
+        lib.engine_rename_upload.argtypes = [C.c_char_p, C.c_int]
+        lib.engine_rename_upload.restype = C.c_uint
+
+        def join(source, target):
+            out = C.create_string_buffer(240)
+            return out.value if lib.engine_join_upload(raw(source), raw(target), out) else None
+
+        def split(path):
+            buf, source = C.create_string_buffer(bytes(path), 240), C.create_string_buffer(240)
+            return (buf.value, source.value) if lib.engine_split_upload(buf, source) else None
+
+        def one(path, window=1):
+            return ENGINE_ACTIONS[lib.engine_rename_upload(bytes(path), window) - 0x60]
+        joined = join(upload, other)
+        self.assertEqual(joined, other.encode() + b'\x010000000a-deadbeef')
+        self.assertEqual(split(joined), (other.encode(), upload.encode()))
+        self.assertEqual(one(joined), 'run_rename_over')
+        self.assertEqual(one(joined, window=0), 'refuse_read_only')
+        longest = '/yaffs2/' + 'a' * (221 - 8)                               # + the mark, 17 and the NUL: 240
+        self.assertEqual(split(join(upload, longest)), (longest.encode(), upload.encode()))
+        self.assertIsNone(join(upload, longest + 'b'))                       # B sends the pair instead
+        for source in (ok, upload + 'x', upload.replace('put-', 'pot-')):
+            self.assertIsNone(join(source, other), source)
+        for path in MARKERS + INBOX + ROOTS:
+            self.assertEqual(one(join(upload, path)), 'refuse_protected_path', path)
+        for path in (other.encode(), other.encode() + b'\x01', other.encode() + b'\x0100000000a-deadbeef',
+                     other.encode() + b'\x010000000a-deadbeeg', other.encode() + b'\x020000000a-deadbeef',
+                     b'\x010000000a-deadbeef', other.encode() + b'\x010000000A-deadbeef'):
+            self.assertIsNone(split(path), path)
+            self.assertEqual(one(path), 'refuse_op', path)                   # not that form: no source
+        self.assertEqual(one(b'/yaffs2/a\x01b' + joined[len(other):]), 'refuse_bad_path')   # a mark in the target
         for path in ROOTS:
             self.assertEqual(to(ok, path), 'refuse_protected_path', path)
         for path in MARKERS + INBOX:
@@ -409,7 +443,8 @@ class FileEngineWiringTest(unittest.TestCase):
     """A applies the engine to every request; B applies its policy before it sends."""
 
     def setUp(self):
-        self.server = ''.join((ROOT / 'target' / n).read_text() for n in ('storage_server.cpp', 'storage_server_marker.ipp'))
+        self.server = ''.join((ROOT / 'target' / n).read_text()
+                              for n in ('storage_server.cpp', 'storage_server_engine.ipp', 'storage_server_marker.ipp'))
         self.usb = unit_text(ROOT / 'target/usb_service.cpp')
 
     def body(self, text, start):
@@ -422,25 +457,45 @@ class FileEngineWiringTest(unittest.TestCase):
         source's existence and the target's absence; B checks the pair before the confirmation and
         before anything reaches A."""
         gate = self.body(self.server, 'int rename_object(const char* from, const char* to) {')
-        self.assertLess(gate.index('if (engine_identity()) return -2;'), gate.index('stock<0x889fa834u, int>(from, to)'))
+        self.assertLess(gate.index('if (!spans_match()) return -2;'), gate.index('stock<0x889fa834u, int>(from, to)'))
+        timing = (ROOT / 'target/storage_server_timing.ipp').read_text()
+        match = self.body(timing, 'bool spans_match() {')                 # #144: a pass kept 1 s, a mismatch never
+        self.assertIn('if (spans_matched && now - spans_matched_at < uint64_t(spans_recheck_ms) * 400000u) return true;',
+                      match)
+        self.assertIn('spans_matched = engine_identity() == 0 ? 1u : 0u;', match)
         self.assertEqual(self.server.count('0x889fa834u'), 1)
         spans = (ROOT / 'target/mtp_spans.hpp').read_text()
         table = [(int(a, 16), int(n, 16)) for a, n in re.findall(r'\{(0x[0-9a-f]+)u, (0x[0-9a-f]+)u', spans)]
         for address in (0x889fa834, 0x889fa604, 0x88a01afa):
             self.assertTrue(any(a <= address < a + n for a, n in table), hex(address))
         now = self.body(self.server, 'U32 rename_now(char* to, bool over) {')
-        order = ['if (!valid_rename(from, to) || reaches_protected(rename_source) || reaches_protected(to)) return error_access;', 'if (!stat_into(from, marker_record[1])) return error_noent;',
-                 'file_engine::upload_size(from, size)', 'marker_record[1][7] != size)) return error_inval;',
-                 'if (stat_into(to, marker_record[1]) && (!over || (marker_record[1][2] & 0xf000u) != 0x8000u))',
-                 'return over ? error_isdir : error_exist;', 'same_object()', 'a_side::rename_object(from, to)',
-                 'restore_marker(0x21)']
+        order = ['if (!valid_rename(from, to)) return error_access;',
+                 'if (reaches_protected(rename_source, marker_record[1], &source)) return error_access;',
+                 'if (reaches_protected(to, marker_record[1], &target)) return error_access;',
+                 'if (!source) return error_noent;', 'file_engine::upload_size(from, size)',
+                 'source_size != size))', 'return error_inval;',
+                 'if (target && (!over || (marker_record[1][2] & 0xf000u) != 0x8000u)) return over ? error_isdir :',
+                 'const bool marker = marker_exists();', 'a_side::rename_object(from, to)', 'restore_marker(0x21)']
         at = [now.index(o) for o in order]
         self.assertEqual(at, sorted(at))
+        # #144: B skips the depth walk (#124) only for rename_over, whose source A takes only as a regular file (above)
+        client = unit_text(ROOT / 'target/file_client.cpp')
+        self.assertIn('const uint32_t deep = over ? U32(xyf::usbp::s_ok) : deeper_ok(from, to, mounted);', client)
         # The write rule: every change by hand, on A, also through links (reaches_protected: the marker, /yaffs2/upgrade)
         self.assertIn('(!write_root(path_copy) || reaches_protected(path_copy))', self.server)
-        guard = self.body(self.server, '__attribute__((noinline)) bool reaches_protected(char* path) {')
-        self.assertIn('stat_into(marker_path, marker_record[0])', guard)
-        self.assertIn('stat_into(inbox_path, marker_record[0])', guard)
+        guard = self.body(self.server, '__attribute__((noinline)) bool reaches_protected(char* path, U32* record')
+        self.assertIn('const bool marker = marker_exists(), inbox = inbox_exists();', guard)
+        self.assertIn('(marker && same_record(record, marker_record[0])) || '
+                      '(inbox && same_record(record, marker_record[2]))', guard)
+        self.assertIn('const bool inside = stat_into(path, marker_record[3]) && '
+                      'same_record(marker_record[3], marker_record[2]);', guard)
+        # #144: the marker and the inbox stat'ed at most once per request: serve_engine forgets them first
+        self.assertIn('if (!(protect_known & 1u)) '
+                      'protect_known |= 1u | (stat_into(marker_path, marker_record[0]) ? 2u : 0u);', self.server)
+        self.assertIn('if (!(protect_known & 4u)) '
+                      'protect_known |= 4u | (stat_into(inbox_path, marker_record[2]) ? 8u : 0u);', self.server)
+        engine = self.body(self.server, 'void serve_engine(')
+        self.assertLess(engine.index('protect_reset();'), engine.index('file_engine::decide_request('))
         usb = self.body(self.usb, 'void file_rename(uint8_t seq')
         order = ['code = P::s_bad_request;', 'storage_server::valid_rename(from, to)', 'sha_equal(', 'enter_writes()',
                  'file_client::rename(from, to, error, mounted)']
@@ -514,7 +569,7 @@ class FileEngineWiringTest(unittest.TestCase):
         engine = self.body(self.server, 'void serve_engine(')
         case = engine[engine.index('case file_engine::run_path: {'):]
         case = case[:case.index('#else')]
-        before = case.index('const bool marker = (op == 0x25u || op == 0x27u) && stat_into(marker_path, marker_record[0]);')
+        before = case.index('const bool marker = (op == 0x25u || op == 0x27u) && marker_exists();')   # one stat a request
         refuse = case.index('if (marker && stat_into(path_copy, marker_record[1]) && same_object()) {')
         run = case.index('stock<0x889f6feau, void>(request);')
         after = case.index('if (marker && !stat_into(marker_path, marker_record[1])) restore_marker(op);')
@@ -533,7 +588,7 @@ class FileEngineWiringTest(unittest.TestCase):
     def test_b_checks_before_it_sends(self):
         """Every path B's file client sends passes the engine's policy first; a refused path
         never reaches a stock builder."""
-        client = (ROOT / 'target/file_client.cpp').read_text()
+        client = unit_text(ROOT / 'target/file_client.cpp')
         allowed = self.body(client, 'bool allowed(const char* path, file_engine::Operation op)')
         self.assertIn('return file_engine::decide_engine(op, path) == file_engine::allow;', allowed)
         for name in ('Reply path_request(', 'Reply query('):

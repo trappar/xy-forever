@@ -119,7 +119,7 @@ void Responder::init(const FileOps& file_ops) {
     data_total = data_got = data_seen = in_len = in_pos = out_len = out_pos = 0;
     fd = -1; left = failed = result = target = skip = more = count = offset = opened = 0;
     pending_handle = pending_size = 0;
-    hits = 0;
+    hits = 0; piece = default_piece;
     clear_objects();
 }
 
@@ -509,8 +509,12 @@ bool Responder::stream() {
         for (U32 i = out_pos; i != out_len; ++i) out[i - out_pos] = out[i];
         out_len -= out_pos; out_pos = 0;
     }
-    U32 want = left < chunk ? left : chunk;
-    if (buffer_bytes - out_len < want) return false;             // wait for the host to take bytes
+    U32 want = left < piece ? left : piece;
+    const U32 room = buffer_bytes - out_len;
+    if (room < want) {                                           // wait for the host to take bytes
+        if (room < (want < chunk ? want : chunk)) return false;
+        want = room;                                             // #144: a larger piece fills the room
+    }
     if (!failed) {
         const int r = ops.read(ops.context, fd, out + out_len, want);
         if (r <= 0 || U32(r) > want) failed = r_incomplete_transfer;
@@ -602,6 +606,7 @@ bool Responder::work() {
             stage = 3;
             return true;
         case 3:
+            if (left && ops.ahead) ops.ahead(ops.context, fd, left);   // #144: A reads while USB sends
             begin_data(left);
             stage = 4;
             return true;

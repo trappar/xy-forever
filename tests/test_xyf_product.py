@@ -437,7 +437,8 @@ class OneSessionTest(unittest.TestCase):
     def test_a_routes_and_shares_the_mount(self):
         ps = (ROOT / 'target/peer_services.cpp').read_text()
         self.assertIn('if(!agreed_&&staged_&&rpc_&&serve_&&!blob_&&!pending_&&server_.phase()==xyf_core::peer::Phase::waiting){', ps)
-        ss = (ROOT / 'target/storage_server.cpp').read_text()
+        ss = ''.join((ROOT / 'target' / n).read_text()
+                      for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         m = ss[ss.index('bool mount(cold_storage::Stock121ReadOnlySession& storage) {'):]
         m = m[:m.index('\n}\n')]
         self.assertLess(m.index('if (adopted) {'), m.index('storage.begin_fresh('))      # never a second mount
@@ -519,7 +520,8 @@ class OneSessionWriteTest(unittest.TestCase):
         prep = prep[:prep.index('\n}\n')]
         self.assertLess(prep.index('mounted != file_client::mounted_stale &&'), prep.index('a_serving()'))
         self.assertLess(prep.index('a_serving()'), prep.index('file_client::mount_ready(mounted)'))
-        ss = (ROOT / 'target/storage_server.cpp').read_text()
+        ss = ''.join((ROOT / 'target' / n).read_text()
+                      for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         self.assertIn('if ((used && !adopted) || !mount(storage)) return false;   // v3: the adopted mount is reusable', ss)
         self.assertIn('if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item', ss)
         # op 9 fails while the window is open or when its read-only reopen failed (as 154).
@@ -563,7 +565,8 @@ class MtpExecutorTest(unittest.TestCase):
         a = fb[fb.index('if (item == storage_server::engine_run_item) {'):]
         a = a[:a.index('#endif')]
         self.assertLess(a.index('session.set_rpc(true);'), a.index('storage_server::run_engine(session, storage);'))
-        ss = (ROOT / 'target/storage_server.cpp').read_text()
+        ss = ''.join((ROOT / 'target' / n).read_text()
+                      for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         run = ss[ss.index('void run_engine('):]
         run = run[:run.index('\n}\n')]
         self.assertIn('session.touch(xyf_boot::clock_ms());', run)       # b sends no keepalives in the run entry
@@ -618,7 +621,8 @@ class MtpSelfTestTest(unittest.TestCase):
     """097: the storage self-test from b's main loop; a leaves the run entry on engine_leave_item."""
 
     def test_leave(self):
-        ss = (ROOT / 'target/storage_server.cpp').read_text()
+        ss = ''.join((ROOT / 'target' / n).read_text()
+                      for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         run = ss[ss.index('void run_engine(Stock121PeerSession& session'):]
         v3 = run[:run.index('\n}\n')]
         self.assertIn('if (item == engine_leave_item) {', v3)

@@ -48,10 +48,11 @@ class AllowlistTest(unittest.TestCase):
                      "check_scoped_calls(raw, A_RENAME_CALLS, '14storage_server6a_side', ('14storage_server',), 'Rename')",
                      "check_scoped_calls(raw, A_MARKER_CALLS - SERVER_CALLS, '14storage_server6a_side', A_MARKER_CALLERS,"):
             self.assertIn(line, src)
-        server = ''.join((ROOT / 'target' / n).read_text() for n in ('storage_server.cpp', 'storage_server_marker.ipp'))
+        server = ''.join((ROOT / 'target' / n).read_text() for n in ('storage_server.cpp', 'storage_server_engine.ipp',
+                                                                      'storage_server_marker.ipp'))
         for name in ('bool stat_into(', 'void restore_marker(', 'void close_handles('):
             self.assertIn('__attribute__((noinline)) ' + name, server)
-        client = (ROOT / 'target/file_client.cpp').read_text()
+        client = unit_text(ROOT / 'target/file_client.cpp')
         for call in APPROVED_B:
             self.assertEqual(client.count('stock<0x%su' % call), 1, call)       # one call site each
         self.assertNotIn('guard_pause', client)
@@ -59,7 +60,7 @@ class AllowlistTest(unittest.TestCase):
     def test_path_copied_only_after_the_slot_is_claimed(self):
         # a request left out past its bound points at path_buffer, and the stock driver reads
         # it only when it sends: no caller may write it before claim() succeeded.
-        client = (ROOT / 'target/file_client.cpp').read_text()
+        client = unit_text(ROOT / 'target/file_client.cpp')
         for name in ('Reply path_request(', 'Reply query('):
             body = client[client.index(name):]
             body = body[:body.index('\n}\n')]
@@ -104,8 +105,10 @@ class BoundsTest(unittest.TestCase):
             self.assertEqual(self.lib.fc_bound_ms(op, argument), long, hex(op))
         for op, argument in ((0x29, 0), (0x2a, 0), (0x2c, 3), (0x2e, 0), (0x2f, 0), (0x30, 0), (0x22, 0), (0x23, 0)):
             self.assertEqual(self.lib.fc_bound_ms(op, argument), short, hex(op))
-        # file.rename's rename_to opens the write window and renames (long); rename_from only keeps it.
-        self.assertEqual(self.lib.fc_bound_ms(0x21, 0x4f544e52), long)
+        # file.rename's rename_to opens the write window and renames (long), as rename_over and rename_upload (#144);
+        # rename_from only keeps it.
+        for argument in (0x4f544e52, 0x4f545052, 0x54555052):
+            self.assertEqual(self.lib.fc_bound_ms(0x21, argument), long, hex(argument))
         for argument in (0x52464e52, 0, 4):
             self.assertEqual(self.lib.fc_bound_ms(0x21, argument), short, hex(argument))
         boot = (ROOT / 'target/xyf_boot.hpp').read_text()
@@ -159,7 +162,7 @@ class BoundsTest(unittest.TestCase):
         self.assertEqual(self.lib.fc_readdir_result(0), end)
         self.assertEqual(self.lib.fc_readdir_result(-1), error)
         # Every reader uses it: file.list, file.rename's depth walk (#124) and the MTP self-test (proven on the device).
-        self.assertEqual((ROOT / 'target/file_client.cpp').read_text().count('readdir_result(r.value)'), 2)
+        self.assertEqual(unit_text(ROOT / 'target/file_client.cpp').count('readdir_result(r.value)'), 2)
         self.assertIn('C::readdir_result(int32_t(v))', unit_text(ROOT / 'target/usb_service.cpp'))
 
     def test_child_path(self):

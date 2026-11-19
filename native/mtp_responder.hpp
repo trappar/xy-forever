@@ -35,7 +35,9 @@ static const U32 max_name = 254;                         // UTF-8 bytes of one n
 struct Entry { U32 kind; U32 size; char name[max_name + 2]; };   // kind 0 file, 1 folder, 2 other
 // The storage calls, shaped like processor B's file client (target/file_client.hpp): one page of a
 // folder (entries after skip, each with its stat; more = 1 when the folder goes on), stat, statfs,
-// open/read/write/seek/close (read, write <= chunk bytes), mkdir, unlink, rmdir, rename.
+// open/read/write/seek/close (read, write <= chunk bytes), mkdir, unlink, rmdir, rename. #144: a write may return
+// before the bytes are stored (B's adapter leaves the request out); its failure then comes from the next write or
+// the close, and SendObject fails (the upload removed) when the close fails.
 struct FileOps {
     void* context;
     int (*list)(void* context, const char* folder, U32 skip, Entry* out, U32 room, U32& count, U32& more);
@@ -62,9 +64,16 @@ struct FileOps {
     // step, replacing a file there (keep), or removes it (!keep). 0 done, else a FileError.
     int (*upload)(void* context, const char* path, U32 size, U32 tag);
     int (*commit)(void* context, const char* path, bool keep);
+    // #144 (optional, null: none): GetObject and GetPartialObject will read count more bytes from fd, in order, until
+    // its close; the adapter may start reading them now (read-ahead) and answer the reads from what came.
+    void (*ahead)(void* context, int fd, U32 count);
 };
 static const U32 chunk = 1024;                           // bytes per read or write call (file_client::chunk)
+// #144: the piece a transfer's read or write call moves, chunk up to buffer_bytes (set_piece; default_piece, the
+// stock client's own 4 KiB, measured on the device: +16% write, +26% read over chunk). A read then fills what the
+// IN staging has room for, at least chunk at a time.
 static const U32 buffer_bytes = 4096;                    // largest OUT transfer; IN staging
+static const U32 default_piece = buffer_bytes;
 static const U32 max_handles = 512, name_pool = 16384, page = 16;   // page: entries per list call
 static const U32 max_path = 240;                         // with the NUL (file_engine::max_path)
 static const U32 storage_id = 0x00010001u;
@@ -135,6 +144,8 @@ public:
     // MTP (serial file commands, jobs). A listing marks its folder's children stale first, then fresh as listed.
     void invalidate();
     U32 cache_hits() const { return hits; }
+    void set_piece(U32 bytes) { piece = bytes < chunk ? chunk : bytes > buffer_bytes ? buffer_bytes : bytes; }   // #144
+    U32 piece_bytes() const { return piece; }
 private:
     enum Phase : U32 { p_idle, p_data, p_work, p_close };
     struct Object { U16 parent; U16 name_at; Byte name_len, kind, used, fresh; U32 size; };   // fresh: kind, size known
@@ -160,6 +171,7 @@ private:
     char names[name_pool];
     U32 names_used;
     U32 hits;
+    U32 piece;                                           // set_piece (init: default_piece)
     bool cached_info();                                  // GetObjectInfo from the table (true: answered)
     void object_info(U32 handle, const char* where);     // the ObjectInfo dataset and the response
 
