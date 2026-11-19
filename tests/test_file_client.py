@@ -52,7 +52,7 @@ class AllowlistTest(unittest.TestCase):
                                                                       'storage_server_marker.ipp'))
         for name in ('bool stat_into(', 'void restore_marker(', 'void close_handles('):
             self.assertIn('__attribute__((noinline)) ' + name, server)
-        client = (ROOT / 'target/file_client.cpp').read_text()
+        client = unit_text(ROOT / 'target/file_client.cpp')
         for call in APPROVED_B:
             self.assertEqual(client.count('stock<0x%su' % call), 1, call)       # one call site each
         self.assertNotIn('guard_pause', client)
@@ -60,7 +60,7 @@ class AllowlistTest(unittest.TestCase):
     def test_path_copied_only_after_the_slot_is_claimed(self):
         # a request left out past its bound points at path_buffer, and the stock driver reads
         # it only when it sends: no caller may write it before claim() succeeded.
-        client = (ROOT / 'target/file_client.cpp').read_text()
+        client = unit_text(ROOT / 'target/file_client.cpp')
         for name in ('Reply path_request(', 'Reply query('):
             body = client[client.index(name):]
             body = body[:body.index('\n}\n')]
@@ -162,7 +162,7 @@ class BoundsTest(unittest.TestCase):
         self.assertEqual(self.lib.fc_readdir_result(0), end)
         self.assertEqual(self.lib.fc_readdir_result(-1), error)
         # Every reader uses it: file.list, file.rename's depth walk (#124) and the MTP self-test (proven on the device).
-        self.assertEqual((ROOT / 'target/file_client.cpp').read_text().count('readdir_result(r.value)'), 2)
+        self.assertEqual(unit_text(ROOT / 'target/file_client.cpp').count('readdir_result(r.value)'), 2)
         self.assertIn('C::readdir_result(int32_t(v))', unit_text(ROOT / 'target/usb_service.cpp'))
 
     def test_child_path(self):

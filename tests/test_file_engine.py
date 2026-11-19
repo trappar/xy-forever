@@ -479,7 +479,7 @@ class FileEngineWiringTest(unittest.TestCase):
         at = [now.index(o) for o in order]
         self.assertEqual(at, sorted(at))
         # #144: B skips the depth walk (#124) only for rename_over, whose source A takes only as a regular file (above)
-        client = (ROOT / 'target/file_client.cpp').read_text()
+        client = unit_text(ROOT / 'target/file_client.cpp')
         self.assertIn('const uint32_t deep = over ? U32(xyf::usbp::s_ok) : deeper_ok(from, to, mounted);', client)
         # The write rule: every change by hand, on A, also through links (reaches_protected: the marker, /yaffs2/upgrade)
         self.assertIn('(!write_root(path_copy) || reaches_protected(path_copy))', self.server)
@@ -588,7 +588,7 @@ class FileEngineWiringTest(unittest.TestCase):
     def test_b_checks_before_it_sends(self):
         """Every path B's file client sends passes the engine's policy first; a refused path
         never reaches a stock builder."""
-        client = (ROOT / 'target/file_client.cpp').read_text()
+        client = unit_text(ROOT / 'target/file_client.cpp')
         allowed = self.body(client, 'bool allowed(const char* path, file_engine::Operation op)')
         self.assertIn('return file_engine::decide_engine(op, path) == file_engine::allow;', allowed)
         for name in ('Reply path_request(', 'Reply query('):

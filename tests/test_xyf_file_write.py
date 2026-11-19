@@ -123,7 +123,7 @@ class FileWriteSourceTest(unittest.TestCase):
 
     def test_b_client_sequence(self):
         """B's file client (file_client.cpp), every request bounded."""
-        client = (ROOT / 'target/file_client.cpp').read_text()
+        client = unit_text(ROOT / 'target/file_client.cpp')
         c = client[client.index('uint32_t make_folders('):]
         c = c[:c.index('\n}\n', c.index('uint32_t write_file('))]
         order = ['const U32 root_bytes = storage_server::write_root(path);', 'mkdir(folder);', "folder[k] = '/';",
