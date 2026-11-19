@@ -48,4 +48,6 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   real time, one jump); `jump MS` moves it at once whatever runs (a slow pass, `Simulator.jump`); `knob ID DELTA
   [COUNT]`, `knob_raw HEX [COUNT]`, `knob_jump N` (after the frames sent before it), `realkey K P`; `reset a|b`,
   `set a_boot_ms|b_boot_ms|a_redeliver|boot_a_window_ms|a_stall_now`; fault delays (`mount_ms`, `rw_mount_ms`,
-  `unmount_ms`, `a_stall_now`) are device time. Status `virtual`, `steps`, `work`, `idle`, `flight`: the clock's state. Tests: `tests/test_simulator.py`.
+  `unmount_ms`, `a_stall_now`) are device time. Status `virtual`, `steps`, `work`, `idle`, `flight`: the clock's state; `pid`: the
+  board's (`Simulator.start` moves to another port pair when the answer is not its own simulator's). Tests:
+  `tests/test_simulator.py`.

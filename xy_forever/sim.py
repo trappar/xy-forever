@@ -383,8 +383,12 @@ class Simulator:
                 return self
             except PortTaken:
                 # Another process took a port between free_port() and the simulator's bind (tests
-                # running in parallel): a new pair, when the pair was picked here.
-                self.stop()
+                # running in parallel): a new pair, when the pair was picked here. Never "quit" over
+                # the control port: it may be another simulator's.
+                self._close_control()
+                self.process.kill()
+                self.process.wait()
+                self.process = None
                 if not self.chosen or attempt == 2:
                     raise
                 self.port = free_port()
@@ -483,6 +487,9 @@ class Simulator:
                 raise PortTaken('simulator exited with %s' % self.process.returncode)
             try:
                 status = self.status()
+                if status.get('pid') != self.process.pid:      # another simulator's control port: ours failed
+                    raise PortTaken('another simulator (pid %s) answers on port %d' % (status.get('pid'),
+                                                                                     self.control_port))
                 if status.get('listening'):
                     return
                 if status.get('b') == 'crashed' and status.get('b_boots') == 1:   # the endpoint's bind failed, say

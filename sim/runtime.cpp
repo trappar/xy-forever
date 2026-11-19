@@ -416,12 +416,12 @@ void wipe_otp() {
 }
 std::string status_json() {
     char text[2000], clock[200];
-    snprintf(clock, sizeof(clock), "\"virtual\": %d, \"steps\": %u, \"work\": [%u, %u], \"idle\": [%d, %d], \"flight\": [%d, %d, %d, %d], \"pids\": [%d, %d]",
+    snprintf(clock, sizeof(clock), "\"virtual\": %d, \"steps\": %u, \"work\": [%u, %u], \"idle\": [%d, %d], \"flight\": [%d, %d, %d, %d], \"pids\": [%d, %d], \"pid\": %d",
              shared->virtual_clock.load(), shared->steps.load(), shared->work[0].load(), shared->work[1].load(),
              shared->idle_work[0] == shared->work[0] && shared->idle_steps[0] == shared->steps,
              shared->idle_work[1] == shared->work[1] && shared->idle_steps[1] == shared->steps,
              shared->inflight[0].load(), shared->inflight[1].load(), shared->outflight[0].load(), shared->outflight[1].load(),
-             int(procs[0].pid), int(procs[1].pid));
+             procs[0].pid, procs[1].pid, getpid());
     snprintf(text, sizeof(text),
              "{\"a\": \"%s\", \"b\": \"%s\", \"a_boots\": %d, \"b_boots\": %d, \"power_ons\": %d, \"listening\": %d, "
              "\"storage_ops\": %d, \"cuts\": %d, \"a_silent\": %d, \"a_slow_ms\": %d, \"drop_request\": %d, "
@@ -555,7 +555,7 @@ int main(int argc, char** argv) {
     void* block = mmap(0, sizeof(Shared), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
     shared = new (block) Shared();
     shared->space = -1; shared->capacity = 0x400000u; shared->port = 7341;
-    // [U] bootloader start times (unmeasured): A's comes first after a REBOOT's 100 ms stagger (REBOOTs
+    // [U] bootloader start times: A's comes first after a REBOOT's 100 ms stagger (REBOOTs
     // work on the device) and outlasts B's 250 ms keepalive interval (154: B lost the link).
     shared->a_boot_ms = 300; shared->b_boot_ms = 400; shared->a_redeliver = 1;
     // a REBOOT's A-then-B stagger (100 ms on the device, plus host scheduling here) must fall

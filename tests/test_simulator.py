@@ -2044,6 +2044,24 @@ class SimulatorVariantTest(unittest.TestCase):
                 named.start()
             self.assertIsNone(named.process)
 
+    def test_start_never_takes_another_simulators_ports_for_its_own(self):
+        """Two tests' simulators given the same pair: the second's bind fails, but the first answers on the
+        control port before the second exits. start() must see that the answer is not its own simulator's
+        (status pid), move off, and leave the first running (no "quit" sent to it)."""
+        with tempfile.TemporaryDirectory(prefix='xyf-sim-') as tmp:
+            first = sim.Simulator(sim.seed(Path(tmp) / 'a'), Path(tmp) / 'a.bin', build_dir=sim.build()).start()
+            try:
+                self.assertEqual(first.status()['pid'], first.process.pid)
+                second = sim.Simulator(sim.seed(Path(tmp) / 'b'), Path(tmp) / 'b.bin', build_dir=sim.build())
+                second.port, second.control_port = first.port, first.control_port      # as if free_port() had
+                with second:                                                           # picked the same pair
+                    self.assertNotEqual(second.port, first.port)
+                    self.assertEqual(second.status()['pid'], second.process.pid)
+                self.assertIsNone(first.process.poll())
+                self.assertEqual(first.status()['listening'], 1)
+            finally:
+                first.stop()
+
     def test_sim_address_is_loopback_only(self):
         for bad in ('10.0.0.2:7341', 'example.com:7341', '127.0.0.1'):
             with self.assertRaises(ValueError):
