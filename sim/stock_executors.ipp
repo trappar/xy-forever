@@ -42,6 +42,13 @@ void executor(uint32_t address, uint32_t request) {
             w32(a_out_buffer + 0xc, uint32_t(st.st_nlink));
             w32(a_out_buffer + 0x1c, S_ISDIR(st.st_mode) ? 0 : uint32_t(st.st_size));
         }
+        if (op == 0x31 && found) {
+            struct statvfs fs = {};
+            const int64_t quota = shared->space.load();
+            const uint64_t free_bytes = quota >= 0 ? uint64_t(quota) : !statvfs(where.c_str(), &fs) ?
+                                        uint64_t(fs.f_bavail) * fs.f_frsize : 0;
+            w32(a_out_buffer, uint32_t(free_bytes)); w32(a_out_buffer + 4, uint32_t(free_bytes >> 32));
+        }
         w32(request + 0x20, a_out_buffer); w32(request + 0x24, bytes);
         return finish(request, op == 0x31 ? 0 : found ? 0 : fail(2));
     }

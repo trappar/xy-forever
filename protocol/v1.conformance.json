@@ -166,7 +166,9 @@
     {"command": "storage.space", "status": "busy", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
     {"command": "storage.space", "status": "link", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
     {"command": "storage.space", "status": "storage", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
-    {"command": "storage.space", "status": "not_found", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."}
+    {"command": "storage.space", "status": "not_found", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command":"package.list","status":"too_large","why":"Bounded path/list reporting failures are exercised by test_sim_package_reports.py."},
+    {"command":"state.get","status":"range","why":"Offset framing is exercised by test_sim_package_reports.py."}
   ],
   "cases": [
     {"name": "hello/before-hello", "rules": ["hello_first"], "effects": ["restarts"], "real_device": true,

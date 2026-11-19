@@ -812,9 +812,10 @@
         "busy",
         "link",
         "storage",
-        "not_found"
+        "not_found",
+        "too_large"
       ],
-      "doc": "One item per page, in filesystem order. Start both cursors at zero and use the returned cursors until more is zero. Area 2 walks mods/<generation>/<package>. Item keys: id (relative to area), type, version, sha256 (manifest image hash, or single-file hash), identity (SHA-256 of exact files.sha256 bytes; absent list: the single file itself), needs_os, generation, profile, valid (strict manifest admitted; 0 for legacy or unknown). Inbox files are recognised by bytes, never extension. Unknown items remain visible. The caller waits up to 600 seconds (large official inbox files are streamed, never buffered whole). Hashing is streamed in menu-loop slices while other storage commands return busy. Directory contents may change between pages; use package.session for a stable cooperative snapshot. This read never changes admission or legacy boot semantics."
+      "doc": "One item per page, in filesystem order. Start both cursors at zero and use the returned cursors until more is zero. Area 2 walks mods/<generation>/<package>. Item keys: id (relative to area), type, version, sha256 (manifest image hash, or single-file hash), identity (SHA-256 of exact files.sha256 bytes; absent list: the single file itself), needs_os, generation, profile, valid (strict manifest admitted; 0 for legacy or unknown). Inbox files are recognised by bytes, never extension. Unknown or incomplete folders remain visible with valid=0 and an empty identity when no list or single image exists. The caller waits up to 600 seconds (large official inbox files are streamed, never buffered whole). Hashing is streamed in menu-loop slices while other storage commands return busy. Directory contents may change between pages; use package.session for a stable cooperative snapshot. This read never changes admission or legacy boot semantics."
     },
     {
       "type": "0x4a",
@@ -900,7 +901,8 @@
         "busy",
         "link",
         "storage",
-        "not_found"
+        "not_found",
+        "range"
       ],
       "doc": "Pages the existing records without rewriting or interpreting unknown fields. The journal falls back to job.old when job.txt is absent; content falls back to content-state.old. A missing part is not_found. The valid highest-sequence boot slot wins, with the existing legacy fallback. Journal version 1 names target, previous entry, source identities, default intent and undo direction; a newer or malformed journal stays on disk and the menu explains the refusal. Missing source: the menu offers Set default to the previous entry, also available through library.set_default; no separate repair command."
     },

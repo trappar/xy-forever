@@ -366,14 +366,14 @@ COMMANDS = {
         reply=(('version', 'u32', 4, False, None), ('role', 'u32', 4, False, None), ('verdict', 'u32', 4, False, None), ('reason', 'u32', 4, False, None), ('public_key_sha256', 'bytes', 32, False, None))),
     0x49: dict(
         name='package.list', symbol='package_list', cls='product', test_only=False, switch='XYF_USB_FILE_WRITE',
-        destructive=False, timeout_ms=600000, errors=('bad_request', 'unsupported', 'busy', 'link', 'storage', 'not_found'),
+        destructive=False, timeout_ms=600000, errors=('bad_request', 'unsupported', 'busy', 'link', 'storage', 'not_found', 'too_large'),
         request_size=(16, 16), request_ignored=False,
         request=(('version', 'u32', 4, False, None), ('area', 'u32', 4, False, None), ('outer', 'u32', 4, False, None), ('inner', 'u32', 4, False, None)),
         reply_size=(16, 996), reply_on_error='status', reply_extensible=False,
         reply=(('version', 'u32', 4, False, None), ('outer', 'u32', 4, False, None), ('inner', 'u32', 4, False, None), ('more', 'u32', 4, False, None), ('item', 'rest', None, False, None))),
     0x4a: dict(
         name='state.get', symbol='state_get', cls='product', test_only=False, switch='XYF_USB_FILE_WRITE',
-        destructive=False, timeout_ms=60000, errors=('bad_request', 'unsupported', 'busy', 'link', 'storage', 'not_found'),
+        destructive=False, timeout_ms=60000, errors=('bad_request', 'unsupported', 'busy', 'link', 'storage', 'not_found', 'range'),
         request_size=(12, 12), request_ignored=False,
         request=(('version', 'u32', 4, False, None), ('part', 'u32', 4, False, None), ('offset', 'u32', 4, False, None)),
         reply_size=(16, 1020), reply_on_error='status', reply_extensible=False,

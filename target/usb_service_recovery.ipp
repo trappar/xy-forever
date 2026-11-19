@@ -23,10 +23,12 @@ void intent_pump(ContentSlot& c) {
         xj::copy(c.intent.target, c.job.target);
         const char* previous = c.job.state.kind == xc::installed ? c.job.state.entry :
                                c.job.state.kind == xc::official && c.job.candidate < c.job.candidate_count ? c.job.candidates[c.job.candidate] : "";
-        if (!xyf::store::valid_id(previous)) {
-            const xyf::catalog::Catalog* cat = xyf_boot::catalog();
-            if (cat && cat->default_index < cat->count) previous = cat->items[cat->default_index].id;
-        }
+        const xyf::catalog::Catalog* cat = xyf_boot::catalog();
+        if (c.job.state.kind == xc::official && cat && cat->default_index < cat->count &&
+            (cat->items[cat->default_index].flags & xyf::catalog::flag_usable))
+            previous = cat->items[cat->default_index].id; // actual previous default, even when catalogs are shared
+        if (!xyf::store::valid_id(previous) && cat && cat->default_index < cat->count)
+            previous = cat->items[cat->default_index].id;
         if (!xyf::store::valid_id(previous)) { intent_failure(c, "no previous entry"); return; }
         xj::copy(c.intent.previous, previous); c.intent.write_default = 1; // Save also commits this default after its configuration record
         c.intent.undo = 0;
@@ -62,9 +64,14 @@ U32 content_begin(const char* id, bool menu, bool write_default) {
 }
 volatile U32 recovery_scan __attribute__((section(".data"))) = 0;
 void recovery_turn() {
+    if (job_state == job_busy || package_active || reporting) return;
+    const U32 view = xyf_boot::storage_view();
+    if (view == xyf::menu::storage_unavailable) {
+        recovery_pending = 0; recovery_scan = 3; return; // preserve storage errors; retry intent scan after mount recovery
+    }
+    if (recovery_scan == 3 && view == xyf::menu::storage_ready) { recovery_pending = 1; recovery_scan = 0; }
     if (!recovery_pending) return;
-    if (closing || uploading() XYF_OR_MTP_BUSY || !menu_link::usb_idle() ||
-        xyf_boot::storage_view() != xyf::menu::storage_ready) return;
+    if (closing || uploading() XYF_OR_MTP_BUSY || !menu_link::usb_idle() || view != xyf::menu::storage_ready) return;
     ContentSlot& c = cslot();
     if (!recovery_scan) {
         if (!a_serving() || file_client::mount_ready(mounted) != P::s_ok) return;
@@ -82,6 +89,5 @@ void recovery_turn() {
     cslot().prepared = 1;
 }
 #else
-bool content_pending(const char*) { return false; }
 void recovery_turn() { recovery_pending = 0; }
 #endif

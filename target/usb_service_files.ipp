@@ -360,6 +360,8 @@ const xyf::catalog::Item* catalog_item(const char* id, U32 n) {
 #if defined(XYF_CONTENT_SWITCH)
 U32 content_begin(const char* id, bool menu, bool write_default = true);
 bool content_pending(const char* id);
+#else
+bool content_pending(const char*) { return false; }
 #endif
 // The A/B state write of the default (the entry with this id hash): eight tagged nibble commands and the commit,
 // the barrier, B's catalog fetched again and checked. Also the content switch's last step.
