@@ -18,11 +18,31 @@
 #include <mutex>
 #include <poll.h>
 #include <string.h>
+#include <sys/uio.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
 
 namespace xyf_sim {
+// Both sides of a link (the board and each processor).
+bool send_message(int fd, const Message& m, const void* body) {
+    static std::mutex lock;
+    std::lock_guard<std::mutex> hold(lock);
+    if (role == 0 || role == 1) { ++shared->outflight[role]; active(); }   // sim/clock.cpp
+    // Header and body in one writev: the reader wakes once, with the whole message there.
+    iovec v[2] = {{const_cast<Message*>(&m), sizeof(m)}, {const_cast<void*>(body), body ? m.body : 0}};
+    for (int k = 0, count = v[1].iov_len ? 2 : 1; k != count;) {
+        const ssize_t n = writev(fd, v + k, count - k);
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0 && errno == EAGAIN) { pollfd p = {fd, POLLOUT, 0}; ::poll(&p, 1, 100); continue; }
+        if (n <= 0) return false;
+        size_t done = size_t(n);
+        for (; k != count && done >= v[k].iov_len; ++k) done -= v[k].iov_len;
+        if (k != count) { v[k].iov_base = static_cast<uint8_t*>(v[k].iov_base) + done; v[k].iov_len -= done; }
+    }
+    return true;
+}
+
 namespace {
 struct Wait {
     std::atomic<int> done{0};
@@ -222,7 +242,7 @@ void link_start() {
             // Virtual clock (sim/clock.cpp): the main thread has something to look at before the
             // message counts as taken, so the board never steps the clock in between.
             if (work) kick(role);
-            if (got) --shared->inflight[role];
+            if (got) link_taken();
         }
     }).detach();
 }

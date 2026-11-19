@@ -188,6 +188,7 @@ uint64_t device_cycles();                        // this processor's CCLK cycle 
 bool virtual_clock();
 void kick(int which);                            // work for processor which (its main thread wakes)
 void active();                                   // the main thread did something (it is not idle)
+void link_taken();                               // a link thread took its message (after kick)
 // One pause of a wait on the main thread (B's stock request, a bootloader's wait, a fault's delay): idle
 // meanwhile. bound: the device_cycles() at which the wait ends by itself (the board steps no further), 0
 // none; real time: sleeps real_us.
@@ -195,8 +196,8 @@ void idle_pause(uint64_t bound, uint32_t real_us);
 void cdc_wait(int ms);                           // B's menu loop pause, woken by USB data
 int cdc_fd();                                    // B: the USB client's socket, else the listener's (-1: USB off)
 // Board: one step of the virtual clock when both processors are idle (deadline: the board's own next
-// event, clock_ns; 0 none); returns how long the board may wait for events (ms).
-int board_clock(const bool running[2], uint64_t deadline_ns);
+// event, clock_ns; 0 none; woken: its wake pipe had news); returns how long the board may wait for events (ms).
+int board_clock(const bool running[2], uint64_t deadline_ns, bool woken);
 void board_advance(int client, int64_t ms);      // control "advance MS": answered once the clock is there
 void board_forget(int client);
 void board_jump(int64_t ms);                     // control "jump MS": both clocks jump at once (a slow pass)

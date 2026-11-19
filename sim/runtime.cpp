@@ -109,22 +109,6 @@ void crash(const char* format, ...) {
 }
 void exit_processor(int code) { fflush(stderr); _exit(code); }
 
-bool send_message(int fd, const Message& m, const void* body) {
-    static std::mutex lock;
-    std::lock_guard<std::mutex> hold(lock);
-    if (role == 0 || role == 1) { ++shared->outflight[role]; active(); }   // sim/clock.cpp
-    const uint8_t* parts[2] = {reinterpret_cast<const uint8_t*>(&m), static_cast<const uint8_t*>(body)};
-    const size_t sizes[2] = {sizeof(m), body ? m.body : 0};
-    for (int k = 0; k != 2; ++k)
-        for (size_t at = 0; at < sizes[k];) {
-            const ssize_t n = write(fd, parts[k] + at, sizes[k] - at);
-            if (n < 0 && errno == EINTR) continue;
-            if (n < 0 && errno == EAGAIN) { pollfd p = {fd, POLLOUT, 0}; ::poll(&p, 1, 100); continue; }
-            if (n <= 0) return false;
-            at += size_t(n);
-        }
-    return true;
-}
 }
 
 // ---- processors ---------------------------------------------------------------------------
@@ -596,6 +580,8 @@ int main(int argc, char** argv) {
     power_cycle(play, "start");
     bool quit = false;
     const pid_t parent = getppid();
+    bool woken = true;                                    // the wake pipe had news at the last poll
+    uint64_t reaped_us = 0;
     while (!quit) {
         if (getppid() != parent) { log("parent gone: stopping"); break; }   // never outlive the tool that started it
         std::vector<pollfd> fds;
@@ -604,18 +590,25 @@ int main(int argc, char** argv) {
         int link_index[2] = {-1, -1};
         for (int k = 0; k != 2; ++k)
             if (procs[k].fd >= 0) { link_index[k] = int(fds.size()); fds.push_back({procs[k].fd, POLLIN, 0}); }
+        const size_t wake_index = fds.size();
         fds.push_back({shared->wake[2][0], POLLIN, 0});   // a processor went idle (sim/clock.cpp)
         // The board's next event (a delayed message to A, a restart): virtual, the steps stop there.
         uint64_t next = to_a.empty() ? 0 : to_a.front().at;
         for (const Proc& p : procs) if (p.restart_at && (!next || p.restart_at < next)) next = p.restart_at;
         const bool running[2] = {procs[0].pid > 0 && procs[0].state == "running", procs[1].pid > 0 && procs[1].state == "running"};
-        int wait_ms = board_clock(running, next * 1000u);
+        int wait_ms = board_clock(running, next * 1000u, woken);
         if (!virtual_clock() && next) {
             const uint64_t now = board_us();
             if (next - now < uint64_t(wait_ms) * 1000u || next <= now) wait_ms = next > now ? int((next - now) / 1000u) + 1 : 0;
         }
-        ::poll(fds.data(), fds.size(), wait_ms);
-        reap();
+        const int ready = ::poll(fds.data(), fds.size(), wait_ms);
+        woken = fds[wake_index].revents != 0;
+        // A processor that ended hangs up its link; otherwise look every 2 ms (waitpid on each pass of a
+        // busy link is a system call per message).
+        bool hung_up = false;
+        for (int k = 0; k != 2; ++k)
+            if (link_index[k] >= 0 && (fds[link_index[k]].revents & (POLLHUP | POLLERR))) hung_up = true;
+        if (hung_up || ready <= 0 || now_us() - reaped_us >= 2000) { reap(); reaped_us = now_us(); }
         for (int k = 0; k != 2; ++k)
             if (link_index[k] >= 0 && procs[k].fd >= 0 && (fds[link_index[k]].revents & (POLLIN | POLLHUP))) drain(k);
         while (!to_a.empty() && to_a.front().at <= board_us()) {

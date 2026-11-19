@@ -48,9 +48,15 @@ bool main_thread() {
     static pthread_t main = pthread_self();          // the first caller: the processor's main thread
     return pthread_equal(main, pthread_self());
 }
+bool in_flight() {
+    for (int k = 0; k != 2; ++k) if (shared->inflight[k].load() || shared->outflight[k].load()) return true;
+    return false;
+}
+// The board steps only with no message in flight; while one is, whoever takes it last wakes the board
+// (its own loop for outflight, link_taken() for inflight), so an idle processor need not.
 void publish(uint32_t work, uint32_t steps, uint64_t until) {
     shared->idle_until[role] = until; shared->idle_steps[role] = steps; shared->idle_work[role] = work;
-    wake(2);
+    if (!in_flight()) wake(2);
 }
 // B: USB bytes or a connection that arrived since the main thread last looked count as activity, once
 // (B may leave them unread for a while: that is no reason to stop the clock).
@@ -73,7 +79,7 @@ void block() {
         if (usb_fd >= 0 && !usb_ready) { p[1].fd = usb_fd; n = 2; }
     }
     ::poll(p, n, 2);
-    drain_wake(role);
+    if (p[0].revents) drain_wake(role);
     if (n == 2 && p[1].revents) usb_check(true);
 }
 uint64_t to_ns(uint64_t cycles) { return start_ns + (cycles - 400000000u) * 5 / 2; }
@@ -125,6 +131,12 @@ void kick(int which) {
     wake(which);
 }
 void active() { if (virtual_clock()) ++shared->work[role]; }
+void link_taken() {
+    // The main thread already idle at the work this message brought: the board is waiting for this.
+    if (--shared->inflight[role] == 0 && virtual_clock() && shared->idle_work[role].load() == shared->work[role].load() &&
+        !in_flight())
+        wake(2);
+}
 void idle_pause(uint64_t bound, uint32_t real_us) {
     if (!virtual_clock()) { usleep(real_us); return; }
     publish(shared->work[role].load(), shared->steps.load(), bound ? to_ns(bound) : 0);
@@ -178,8 +190,8 @@ void board_advance(int client, int64_t ms) {
 void board_forget(int client) {
     for (size_t i = 0; i < advances.size();) if (advances[i].client == client) advances.erase(advances.begin() + long(i)); else ++i;
 }
-int board_clock(const bool running[2], uint64_t deadline_ns) {
-    drain_wake(2);
+int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
+    if (woken) drain_wake(2);
     if (!virtual_clock()) return 20;
     const uint64_t host = now_us();
     if (host_seen) lag_ns = lag_ns + (host - host_seen) * 1000u > max_lag ? max_lag : lag_ns + (host - host_seen) * 1000u;
