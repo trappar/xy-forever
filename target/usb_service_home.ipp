@@ -221,6 +221,7 @@ uint32_t home_pump() {
 #endif
 #if defined(XYF_TFW_CHECK)
         else if (type == P::t_tfw_check) tfw_check(seq, payload, length);
+        else if (type == P::t_tfw_check_role) tfw_check_role(seq, payload, length);
 #endif
         else if (type == P::t_key) {
             const bool ok = length == 8 && P::get32(payload) < 64u && P::get32(payload + 4) <= 1u;

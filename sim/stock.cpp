@@ -383,7 +383,13 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     // readdir (req, 0x2f, folder, 0, out, 0x10c)
     case 0x889f87d4u: b_build(p(0), cls_partition, u(1), u(2), u(3), u(4), 0, 0, 0, 0); return 0;
     case 0x889f8872u: b_build(p(0), cls_sector, u(1), u(2), u(3), 0, 0, 0, p(5), u(6)); return 0;
-    case 0x889f8d22u: b_build(p(0), cls_path, u(1), u(3), 0, 0, s(2), uint32_t(strlen(s(2)) + 1), 0, 0); return 0;
+    case 0x889f8d22u: {
+        uint32_t argument = u(3);
+        // A stale peer version: alter only the transported tag, never checker decisions.
+        if (shared->tfw_rpc_version && (argument & 0x00ffff00u) == 0x00544600u)
+            argument = (argument & 0x00ffffffu) | (uint32_t(shared->tfw_rpc_version.load()) << 24);
+        b_build(p(0), cls_path, u(1), argument, 0, 0, s(2), uint32_t(strlen(s(2)) + 1), 0, 0); return 0;
+    }
     case 0x889f8e36u: b_build(p(0), cls_query, u(1), 0, 0, 0, s(2), uint32_t(strlen(s(2)) + 1), p(5), u(6)); return 0;
     case 0x889f6c5cu: b_build(p(0), cls_read, u(1), u(2), 0, u(3), 0, 0, p(4), u(3)); return 0;
     case 0x889f8c10u: b_build(p(0), cls_write, u(1), u(2), 0, u(3), p(4), u(5), 0, 0); return 0;
@@ -436,12 +442,10 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     case 0x889fbffcu: return uint64_t(int64_t(close_directory(u(0))));
     case 0x889f9982u: return uint64_t(int64_t(-last_error));
     case 0x88a344a8u: return 1;
-    // B's boot ROM (target/otp_keys.cpp): processor A never reads its OTP
+    // Each processor's boot ROM (target/otp_keys.cpp), with independent fields/state.
     case 0x04000054u:
-        if (!role) crash("ROM OTP init on processor A");
-        ++shared->otp_inits; rom_otp_failure(); rom_otp_initialised = true; return 0;
+        if (role) ++shared->otp_inits; else ++shared->a_otp_inits; rom_otp_failure(); rom_otp_initialised = true; return 0;
     case 0x04000048u:
-        if (!role) crash("ROM OTP read on processor A");
         return rom_otp_read(u(0), static_cast<uint8_t*>(p(1)));
     }
     crash("stock function %08x is not simulated", address);

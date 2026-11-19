@@ -44,7 +44,7 @@ STATE = paths.SESSIONS / 'simulator'           # default storage folder, boot pa
 TARGET_SOURCES = ('usb_service', 'usb_proto', 'storage_server', 'file_engine', 'file_client', 'menu_link', 'file_boot',
                   'cold_storage', 'retained_lookup', 'cold_heap', 'peer_services', 'xyf_library', 'xyf_cold_library',
                   'xyf_filelist', 'xyf_catalog', 'xyf_state', 'xyf_state_write', 'xyf_store', 'xyf_info', 'xyf_crc32',
-                  'boot_services', 'otp_keys', 'xyf_stage2', 'stage2_main',
+                  'boot_services', 'otp_keys', 'tfw_device_check', 'xyf_stage2', 'stage2_main',
                   'xyf_menu', 'xyf_mods', 'xyf_mods_io',                 # the menu's state and the Mods page
                   'ui_pages', 'ui_gfx',                                   # the bar's scale() (nothing is drawn)
                   'knob_input',                                           # the knob reader
@@ -58,7 +58,7 @@ SIM_SOURCES = ('clock', 'runtime', 'link', 'stock', 'devices', 'boot', 'stage2')
 # its device part reads the OTP key and stays out.
 DEVICE_PARTS = ('usb_service.cpp', 'usb_service.hpp', 'storage_server.cpp', 'storage_server.hpp', 'file_client.cpp',
                 'file_client.hpp', 'peer_services.cpp',
-                'cold_storage.cpp', 'retained_lookup.cpp', 'cold_heap.cpp', 'xyf_clock.hpp', 'otp_keys.cpp',
+                'cold_storage.cpp', 'retained_lookup.cpp', 'cold_heap.cpp', 'xyf_clock.hpp', 'otp_keys.cpp', 'tfw_device_check.cpp',
                 'xyf_mods_io.cpp', 'xyf_mods_io.hpp', 'mtp_session.cpp')
 STOCK_TEMPLATE = re.compile(r'template<U32 A,\s*class R,\s*class\.\.\. Args>\s*__attribute__\(\(noinline,\s*noclone\)\)\s*'
                             r'R stock\(Args\.\.\. args\)\s*\{\s*return reinterpret_cast<R\(\*\)\(Args\.\.\.\)>\(A\)\(args\.\.\.\);\s*\}')
@@ -345,13 +345,21 @@ class Simulator:
     """One running simulator: start() it, talk to 127.0.0.1:port, control() its board."""
 
     def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None,
-                 virtual=True, otp_initialized=False):
+                 virtual=True, otp_initialized=False, otp_a=None, a_otp_initialized=False):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
         virtual: device time moves only under the simulator's control (sim/clock.cpp: test runs); False: real
         time (interactive runs). otp_initialized starts B with both its ROM and the stock initialization
         guard already set, as after the stock bootloader's encrypted-image read."""
         self.root, self.bootpart = Path(root), Path(bootpart)
-        self.otp, self.virtual = otp, virtual
+        # B records retain their original framing; bit7 marks independent A selectors.
+        a_records = bytearray()
+        at = 0
+        while otp_a and at < len(otp_a):
+            selector, count = otp_a[at:at + 2]
+            a_records += bytes((selector | 0x80, count)) + otp_a[at + 2:at + 2 + count]
+            at += 2 + count
+        self.otp, self.virtual = (otp or b'') + a_records, virtual
+        self.a_otp_initialized = a_otp_initialized
         self.otp_initialized = otp_initialized
         self.chosen = port is None                     # a free pair picked here: start() may pick again
         self.port = port or free_port()
@@ -369,7 +377,8 @@ class Simulator:
                 '--stock', str(self.build_dir / 'stock.mem'), '--port', str(self.port),
                 '--control', str(self.control_port), '--capacity', str(self.capacity)] + ([] if self.play else ['--plain']) + \
             (['--otp-stdin'] if self.otp else []) + (['--virtual'] if self.virtual else []) + \
-            (['--otp-initialized'] if self.otp_initialized else [])
+            (['--otp-initialized'] if self.otp_initialized else []) + \
+            (['--a-otp-initialized'] if self.a_otp_initialized else [])
 
     def start(self, timeout=10.0):
         for attempt in range(3):

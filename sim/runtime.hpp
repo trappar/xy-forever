@@ -69,6 +69,7 @@ struct Shared {
     // P-224 generator), 4 the AES key is wrong, 5 hangs until reset, 6 faults B. Both init/read
     // entries honor 5/6. otp_preinit starts B with its ROM and stock guard byte already initialized.
     std::atomic<int32_t> otp_fail, otp_inits, otp_reads, otp_preinit;
+    std::atomic<int32_t> a_otp_fail, a_otp_inits, a_otp_reads, a_otp_preinit, tfw_rpc_version;
     // sim/boot.cpp: per processor, 1 while its stock bootloader
     // stand-in runs (after a reset, until it boots XY Forever). The
     // board's reset delays (ms from a reset until the processor's bootloader is on the link) and
@@ -137,6 +138,7 @@ struct Shared {
     std::atomic<uint32_t> real_head, real_tail;
     uint8_t otp_field[16][64];
     uint8_t otp_length[16];
+    uint8_t a_otp_field[16][64], a_otp_length[16];
     char swap_path[240];
     uint32_t capacity;                           // boot partition bytes (each of the two)
     int port;                                    // the USB CDC endpoint's TCP port (127.0.0.1)
