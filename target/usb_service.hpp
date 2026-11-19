@@ -24,6 +24,10 @@
 //  - a answers only the exact Track-5 request set (storage_server.hpp);
 //  - never SPI flash, companions or SPI metadata.
 namespace xy_forever { namespace usb_service {
+#if defined(XYF_SIM)
+uint32_t idle_gc_state(); // simulator-only: active/open-file flags and reference count
+#endif
+
 static const uint32_t magic = 0x31425355u;          // "USB1"
 // b SDRAM (hold-mode b never uses its session scratch 0x8b800000..0x8b810000
 // except the remote-read tail): frame buffers, file buffer, read-back buffer.

@@ -85,7 +85,7 @@ void job_say(JobSlot& s, bool force) {
 // js_wipe, "cleaning up": the job still owns the slot, so storage commands answer busy), then job_end.
 void job_end(JobSlot& s) {
     const bool done = s.job.phase == mj::Phase::done && !s.commit_error;
-    job_state = job_ended; boot_sweep = 3;
+    job_state = job_ended; boot_sweep = 3; gc_defer_ms = now();
     save_lap(xl::p_close);
     if (!save_active && !s.link) save_log_write(done);                  // a USB build's line, in its window
     settle_begin();                                                      // op 9 (B's loop stays live), catalog

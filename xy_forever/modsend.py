@@ -222,7 +222,8 @@ def push(dev, package_dir, only=(), verify=False, out=print, by_hash=False):
                     total['bytes'] += sum(len(data) for _, _, data in stored)
                     total['paths'] += [(name, rel) for _, rel, _ in stored]
                     total['removed'] += len(set(existing[0]) - set(physical)) if existing else 0
-                out('%-22s %s %4d files (SHA-256 verified)' % (name, 'skipped' if same else 'sent', len(stored)))
+                out('%-22s %s %4d of %4d files (SHA-256 verified)' % (
+                    name, 'skipped' if same else 'sent', 0 if same else len(stored), len(stored)))
         total['seconds'] = time.monotonic() - start
         out('%s/%s: %d packages sent, %d skipped; %d files, %d B in %.2f s' % (
             profile, generation, total['sent'], total['skipped'], total['files'], total['bytes'], total['seconds']))

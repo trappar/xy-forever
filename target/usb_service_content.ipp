@@ -89,6 +89,7 @@ void content_say(ContentSlot& c, bool force) {
     content_text(c, "Installing content ", c.progress);
 }
 U32 content_begin(const char* id, bool menu, bool write_default) {
+    stop_idle_gc();
     if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
     if (!a_serving()) return P::s_link;
     U32 code = file_client::mount_ready(mounted);
@@ -145,7 +146,7 @@ void content_pump() {
             }
         }
         c.ended_ms = now(); c.stage = cs_ended;
-        job_state = job_ended; boot_sweep = 3;
+        job_state = job_ended; boot_sweep = 3; gc_defer_ms = now();
         content_say(c, true);
     }
     const U32 pass = now() - start;
@@ -202,6 +203,7 @@ ConfigSlot& gslot() { return *reinterpret_cast<ConfigSlot*>(XYF_JOB_REGION_BEGIN
 enum ConfigStep : U32 { cg_open = 0, cg_write, cg_close, cg_stat, cg_unlink_old, cg_away, cg_in, cg_drop, cg_closing, cg_ended };
 U32 config_begin(const char* text, U32 length, const char* id, const char* path = xg::path,
                  const char* old_path = xg::old_path, const char* part_path = xg::part_path) {
+    stop_idle_gc();
     if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
     if (!a_serving()) return P::s_link;
     if (!length || length > xg::max_text) return P::s_bad_request;
@@ -273,7 +275,7 @@ void config_pump() {
         if (code != P::s_ok) { g.error = code == P::s_link ? xc::e_link : xc::e_write; g.code = code; }
     }
     g.step = cg_ended; g.ended_ms = now();
-    job_state = job_ended; boot_sweep = 3;
+    job_state = job_ended; boot_sweep = 3; gc_defer_ms = now();
 }
 // JOB_STATUS of the config job: the switch's fields (phase 0 running, done 8, failed 9; done, total: steps).
 void config_status(uint8_t seq, U32 want) {

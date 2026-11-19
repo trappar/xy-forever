@@ -15,6 +15,7 @@ void package_session(uint8_t seq, const uint8_t* payload, U32 length) {
     else if (P::get32(payload) != 1) code = P::s_unsupported;
     else if (action > 2) code = P::s_bad_request;
     else if (action == 0) {
+        stop_idle_gc();
         if (job_running() || closing || uploading() XYF_OR_MTP_BUSY) code = P::s_busy;
         else if (!a_serving()) code = P::s_link;
         else {

@@ -1,3 +1,12 @@
+#if defined(XYF_SIM)
+uint32_t idle_gc_state() {
+#if defined(XYF_USB_FILE_WRITE)
+    return blob_collecting ? 1u | (slot().garbage.fd >= 0 ? 2u : 0u) | (slot().garbage.refs.count << 16) : 0u;
+#else
+    return 0;
+#endif
+}
+#endif
 // Part of usb_service.cpp, included there at this point: not compiled alone.
 uint32_t presence() {
     // 1: the stock bootloader started USB (MSC). It does so only on its "wait

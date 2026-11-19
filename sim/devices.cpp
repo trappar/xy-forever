@@ -407,6 +407,7 @@ extern "C" void xy_forever_key_ui() {
             else { xyf_sim::log("menu: library.boot: catalog entry %u once", leave - 2); xyf_boot::choose(leave - 2); }
             break;
         }
+        xyf_sim::shared->package_gc = usb_service::idle_gc_state();
         if (xyf::key_repeat::due(sim_held, device_ms()) && sim_app.screen != xyf::menu::Screen::confirm_uninstall &&
             sim_app.screen != xyf::menu::Screen::confirm_save) {
             xyf_sim::log("menu: repeat key %u at %u ms", sim_held.key, device_ms());   // as key_ui.cpp
