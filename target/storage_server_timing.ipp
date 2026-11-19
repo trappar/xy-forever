@@ -32,7 +32,8 @@ U32 op_slot(U32 op, U32 argument) {                          // file_client's op
     case 0x08: return t_mount;
     case 0x09: return t_unmount;
     case 0x21: return argument == rename_from ? t_rename_from :
-                      argument == rename_to || argument == rename_over ? t_rename_to : t_access;
+                      argument == rename_to || argument == rename_over || argument == rename_upload ? t_rename_to :
+                      t_access;
     case 0x22: return t_stat;
     case 0x23: return t_statfs;
     case 0x25: return t_unlink;

@@ -23,6 +23,10 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
 #if defined(XYF_USB_FILE_WRITE)
     const char* source = rename_armed ? rename_source : 0;           // the request just before only
     rename_armed = 0;
+    // #144: rename_upload carries its source in its path (file_engine::split_upload: path_copy keeps the target).
+    if (vtable == path_class && op == 0x21u && handle == file_engine::rename_upload)
+        source = word(request + 0x18) == reinterpret_cast<U32>(path_copy) &&     // A's copy of the stock buffer's path
+                 file_engine::split_upload(path_copy, rename_source) ? rename_source : 0;
 #else
     const char* source = 0;
 #endif

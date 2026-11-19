@@ -225,11 +225,12 @@ class MtpSessionTests(unittest.TestCase):
         ops = t['a_ops']                                                    # A's other requests by operation
         self.assertEqual(sum(o[0] for o in ops.values()), a['others'], ops)
         opened = ops.get('open', (0,))[0] + ops.get('window open (+ its request)', (0,))[0]   # its first change
-        self.assertEqual((opened, ops['close'][0], ops['rename from (RNFR)'][0]), (1, 1, 1), ops)
+        self.assertEqual((opened, ops['close'][0], ops['rename to (RNTO/RPTO/RPUT)'][0]), (1, 1, 1), ops)
+        self.assertNotIn('rename from (RNFR)', ops)                         # #144: one request (rename_upload)
         self.assertNotIn('mkdir', ops)                                      # tmp/ is there: no mkdir -p
         self.assertGreater(a['checks'], 0)                                  # A's own stats and CRC, timed apart
-        self.assertLessEqual(ops['rename to (RNTO/RPTO)'][3], ops['rename to (RNTO/RPTO)'][1])
-        self.assertIn('    rename to (RNTO/RPTO)', '\n'.join(T.lines(t, 1.0, 'upload')))
+        self.assertLessEqual(ops['rename to (RNTO/RPTO/RPUT)'][3], ops['rename to (RNTO/RPTO/RPUT)'][1])
+        self.assertIn('    rename to (RNTO/RPTO/RPUT)', '\n'.join(T.lines(t, 1.0, 'upload')))
         self.assertTrue(T.clear(self.dev))
         self.assertEqual(T.read(self.dev)['b']['writes'], 0)
         code, _, data = self.c.transaction(0x1009, params[2])

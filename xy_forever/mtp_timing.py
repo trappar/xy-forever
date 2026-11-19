@@ -18,7 +18,7 @@ A_WORDS = ('reads', 'read_units', 'read_max', 'writes', 'write_units', 'write_ma
            'others', 'other_units', 'gaps', 'gap_units', 'gap_max', 'checks')
 # A's other requests by operation (file_engine.hpp TimingSlot, in order): count, sum (units), longest (cycles) and
 # A's own checks in them (units: stats, the engine spans' CRC; the rest is the stock executor's) each
-A_OPS = ('mount (op 8)', 'window close (op 9)', 'access', 'rename from (RNFR)', 'rename to (RNTO/RPTO)', 'stat',
+A_OPS = ('mount (op 8)', 'window close (op 9)', 'access', 'rename from (RNFR)', 'rename to (RNTO/RPTO/RPUT)', 'stat',
          'statfs', 'unlink', 'mkdir', 'rmdir', 'open', 'seek', 'close', 'opendir', 'readdir', 'closedir', 'other',
          'window open (+ its request)')
 PIECES = (1024, 4096)                 # the transfer piece: chunk .. the responder's buffer

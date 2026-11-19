@@ -5,7 +5,8 @@
 namespace xy_forever { namespace file_client {
 uint32_t bound_ms(uint32_t op, uint32_t argument) {
     const bool change = op == 8 || op == 9 || op == 0x25 || op == 0x26 || op == 0x27 || op == 0x2b || op == 0x2d ||
-                        (op == 0x29 && argument) || (op == 0x21 && argument == file_engine::rename_to);
+                        (op == 0x29 && argument) || (op == 0x21 && (argument == file_engine::rename_to ||
+                        argument == file_engine::rename_over || argument == file_engine::rename_upload));
     return change ? change_ms : request_ms;
 }
 uint32_t status(uint32_t outcome) { return outcome == refused ? xyf::usbp::s_refused : xyf::usbp::s_link; }
@@ -143,13 +144,15 @@ Reply partition(U32 op, U32 a0, U32 a1, U32 a2) {
 Stock121PeerSession* volatile closing_session __attribute__((section(".data"))) = 0;
 volatile U32 closing_start __attribute__((section(".data"))) = 0;
 // A path-class request (the only call site of its builder, behind the policy check). left: only
-// submitted (*left: its session; the caller polls the answer), else A's answer awaited.
+// submitted (*left: its session; the caller polls the answer), else A's answer awaited. sent: the bytes that go
+// instead of path (rename_upload's, file_engine::join_upload; path is its target, checked).
 Reply path_request(const char* path, file_engine::Operation policy, U32 op, U32 argument,
-                   Stock121PeerSession** left = 0) {
+                   Stock121PeerSession** left = 0, const char* sent = 0) {
     if (!allowed(path, policy)) return outcome(refused);
     Stock121PeerSession* session; Reply why;
     U32* request = claim(session, why);
     if (!request) return why;
+    if (sent) path = sent;                                              // (its target passed the check above)
     place(path);
     stock<0x889f8d22u, void>(request, op, path_copy(), argument, 0u);   // path class (flushes the path)
     if (left) { *left = session; return submit(*session, op); }
@@ -588,10 +591,14 @@ uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint
     // #124: a folder moved deeper. #144: not for rename_over, whose source A takes only as a file (an upload).
     const uint32_t deep = over ? U32(xyf::usbp::s_ok) : deeper_ok(from, to, mounted);
     if (deep != xyf::usbp::s_ok) return deep;
+    // #144: an upload's rename_over in one request (rename_upload) when its target leaves room for the source's tail.
+    char joined[file_engine::max_path];
+    const bool one = over && file_engine::join_upload(from, to, joined);
     const U32 tags[2] = {file_engine::rename_from, over ? file_engine::rename_over : file_engine::rename_to};
     const char* paths[2] = {from, to};
-    for (U32 i = 0; i != 2; ++i) {                                      // the pair checked above: op_stat here
-        const Reply r = path_request(paths[i], file_engine::op_stat, 0x21, tags[i]);   // a opens its window at rename_to
+    for (U32 i = one ? 1 : 0; i != 2; ++i) {                           // the pair checked above: op_stat here
+        const Reply r = one ? path_request(to, file_engine::op_stat, 0x21, file_engine::rename_upload, 0, joined) :
+                              path_request(paths[i], file_engine::op_stat, 0x21, tags[i]);   // a opens its window here
         if (r.outcome == refused) return xyf::usbp::s_refused;
         if (r.outcome) { mounted = mounted_stale; return status(r.outcome); }
         if (r.value < 0) { error = r.error; return rename_status(error); }

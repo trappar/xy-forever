@@ -289,6 +289,40 @@ class FileEngineTest(unittest.TestCase):
             self.assertEqual(over(source, other), 'refuse_tmp_path', source)
         for path in MARKERS + INBOX + ROOTS:
             self.assertEqual(over(upload, path), 'refuse_protected_path', path)
+        # #144: rename_upload: rename_over in one request, the source's tail after the mark in the target's path
+        lib.engine_join_upload.argtypes = [C.c_char_p, C.c_char_p, C.c_char_p]
+        lib.engine_split_upload.argtypes = [C.c_char_p, C.c_char_p]
+        lib.engine_rename_upload.argtypes = [C.c_char_p, C.c_int]
+        lib.engine_rename_upload.restype = C.c_uint
+
+        def join(source, target):
+            out = C.create_string_buffer(240)
+            return out.value if lib.engine_join_upload(raw(source), raw(target), out) else None
+
+        def split(path):
+            buf, source = C.create_string_buffer(bytes(path), 240), C.create_string_buffer(240)
+            return (buf.value, source.value) if lib.engine_split_upload(buf, source) else None
+
+        def one(path, window=1):
+            return ENGINE_ACTIONS[lib.engine_rename_upload(bytes(path), window) - 0x60]
+        joined = join(upload, other)
+        self.assertEqual(joined, other.encode() + b'\x010000000a-deadbeef')
+        self.assertEqual(split(joined), (other.encode(), upload.encode()))
+        self.assertEqual(one(joined), 'run_rename_over')
+        self.assertEqual(one(joined, window=0), 'refuse_read_only')
+        longest = '/yaffs2/' + 'a' * (221 - 8)                               # + the mark, 17 and the NUL: 240
+        self.assertEqual(split(join(upload, longest)), (longest.encode(), upload.encode()))
+        self.assertIsNone(join(upload, longest + 'b'))                       # B sends the pair instead
+        for source in (ok, upload + 'x', upload.replace('put-', 'pot-')):
+            self.assertIsNone(join(source, other), source)
+        for path in MARKERS + INBOX + ROOTS:
+            self.assertEqual(one(join(upload, path)), 'refuse_protected_path', path)
+        for path in (other.encode(), other.encode() + b'\x01', other.encode() + b'\x0100000000a-deadbeef',
+                     other.encode() + b'\x010000000a-deadbeeg', other.encode() + b'\x020000000a-deadbeef',
+                     b'\x010000000a-deadbeef', other.encode() + b'\x010000000A-deadbeef'):
+            self.assertIsNone(split(path), path)
+            self.assertEqual(one(path), 'refuse_op', path)                   # not that form: no source
+        self.assertEqual(one(b'/yaffs2/a\x01b' + joined[len(other):]), 'refuse_bad_path')   # a mark in the target
         for path in ROOTS:
             self.assertEqual(to(ok, path), 'refuse_protected_path', path)
         for path in MARKERS + INBOX:

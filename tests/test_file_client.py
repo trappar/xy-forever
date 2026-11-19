@@ -105,8 +105,10 @@ class BoundsTest(unittest.TestCase):
             self.assertEqual(self.lib.fc_bound_ms(op, argument), long, hex(op))
         for op, argument in ((0x29, 0), (0x2a, 0), (0x2c, 3), (0x2e, 0), (0x2f, 0), (0x30, 0), (0x22, 0), (0x23, 0)):
             self.assertEqual(self.lib.fc_bound_ms(op, argument), short, hex(op))
-        # file.rename's rename_to opens the write window and renames (long); rename_from only keeps it.
-        self.assertEqual(self.lib.fc_bound_ms(0x21, 0x4f544e52), long)
+        # file.rename's rename_to opens the write window and renames (long), as rename_over and rename_upload (#144);
+        # rename_from only keeps it.
+        for argument in (0x4f544e52, 0x4f545052, 0x54555052):
+            self.assertEqual(self.lib.fc_bound_ms(0x21, argument), long, hex(argument))
         for argument in (0x52464e52, 0, 4):
             self.assertEqual(self.lib.fc_bound_ms(0x21, argument), short, hex(argument))
         boot = (ROOT / 'target/xyf_boot.hpp').read_text()
