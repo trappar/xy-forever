@@ -84,6 +84,7 @@ uint32_t home_pump() {
     stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
     job_pump();                                        // a slice of the mod job
+    boot_sweep_turn();                                 // #3: leftover tmp/job-* folders, a step per pass
     settle_turn();                                     // a window close still out
     if (writes_due && !job_running() XYF_AND_NOT_MTP_BUSY && now() - writes_ms > storage_server::window_settle_ms) settle_writes();
 #endif

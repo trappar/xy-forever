@@ -287,7 +287,26 @@ class XyfBootTest(unittest.TestCase):
         self.assertIn('xyf::menu::start(app, xy_forever::xyf_boot::catalog(), true);', KEY_UI)
         self.assertIn('xy_forever::xyf_boot::choose(app.entry);', KEY_UI)
         self.assertIn('xy_forever::xyf_boot::choose_default();', KEY_UI)
-        self.assertIn('if (xy_forever::xyf_boot::link_lost()) { r.exit_reason = exit_link; break; }', KEY_UI)
+        # #3: a lost link ends the menu only without USB (lost_ends_menu), also after Set default; with USB
+        # the live menu stays and its status line shows the lost link at once.
+        self.assertEqual(KEY_UI.count('if (lost_ends_menu()) { r.exit_reason = exit_link; break; }'), 2)
+        self.assertNotIn('link_lost()) { r.exit_reason = exit_link; break; }', KEY_UI)
+        self.assertIn('if (lost && !shown_lost) { shown_lost = true; status = " "; dirty = 1; }', KEY_UI)
+        display = (ROOT / 'target/key_ui_display.ipp').read_text()
+        self.assertIn('return xy_forever::xyf_boot::link_lost() && !xy_forever::usb_service::home_usb();', display)
+
+    def test_link_close_with_a_request_still_out(self):
+        """#3: session.end() with a request still queued: link_close waits for it at most close_ms, marks the
+        link lost before end() (no later request can claim the slot), and passes only when the hardware is off
+        (the stock master close removes the link interrupts: nothing completes the request later)."""
+        api = (ROOT / 'target/file_boot_b_api.ipp').read_text()
+        body = api[api.index('bool link_close(bool wait) {'):]
+        body = body[:body.index('\n}\n')]
+        order = ['while (wait && session->busy() && now() - start < close_ms) {', 'b_lost = 1;',
+                 'result.end_result = U32(session->end());', 'peer_services::check_quiet(s) == peer_services::Result::ok']
+        at = [body.index(o) for o in order]
+        self.assertEqual(at, sorted(at))
+        self.assertEqual(constant(XYF, 'close_ms'), 500)
 
     def test_builder_mode(self):
         self.assertTrue(builder.features('xyf-product')['file_boot'])     # the menu boot is part of file boot

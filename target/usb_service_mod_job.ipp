@@ -282,6 +282,30 @@ void sweep_begin(Sweep& w, const char* keep) {
     w.removing = w.skip = w.calls = 0;
     join(w.keep, keep, "");
 }
+// #3 (from #24): leftover tmp/job-* folders (a cut cable, a power cut, a cleanup that failed) are removed
+// when the USB service starts, so a job's own sweep (js_sweep) finds none and its time does not depend on
+// earlier boots. Once the library is ready (A serves), A is asked once (a_serving), then one sweep_step per
+// menu pass while nothing else uses the files (no job, upload, window close or MTP operation); the job
+// slot's sweep and page are free then. A job that starts ends it (its own sweep covers the same folders).
+// Bounded as the job's sweep: sweep_cap calls, the first failure ends it.
+volatile U32 boot_sweep __attribute__((section(".data"))) = 0;          // 0 waiting, 1 running, 2 ended
+void boot_sweep_turn() {
+    if (boot_sweep == 2) return;
+    if (job_running()) { boot_sweep = 2; return; }
+    if (closing || (put_expected && result.put_received != put_expected) XYF_OR_MTP_BUSY) return;
+#if defined(XYF_ONE_SESSION)
+    if (!boot_sweep && xyf_boot::storage_view() != xyf::menu::storage_ready) return;
+#else
+    if (!boot_sweep && !read_enabled) return;
+#endif
+    JobSlot& s = slot();
+    if (!boot_sweep) {
+        boot_sweep = a_serving() ? 1u : 2u;
+        sweep_begin(s.leftovers, "");
+        return;
+    }
+    if (!sweep_step(s.leftovers, s.page)) boot_sweep = 2;
+}
 // the mods id that is neither the default nor the boot-once entry; of two, the
 // absent one, else the one not written last this boot (B sees no file times), else mods-a. Reads the
 // state slots (as A's scan: a, b, legacy) and stats both folders; s_state when both ids are taken.

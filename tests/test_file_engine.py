@@ -532,7 +532,7 @@ class FileEngineWiringTest(unittest.TestCase):
         self.assertLess(cw.index('if (!storage_server::valid_write_path(path)'), cw.index('mount()'))
         fw = self.body(self.usb, 'void file_write(uint8_t seq')
         self.assertLess(fw.index('storage_server::valid_write_path(path)) code = P::s_refused;'),
-                        fw.index('menu_link::usb_command('))
+                        fw.index('enter_writes()'))
         self.assertNotIn('stock<0x889f', self.body(self.usb, 'bool mtp_do(U32 n, MtpSelfTest& t, uint8_t* out)'))
 
 if __name__ == '__main__':

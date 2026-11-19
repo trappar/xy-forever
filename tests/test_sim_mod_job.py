@@ -146,6 +146,13 @@ class Base:
         items = [i for i in self.catalog()['items'] if i['id'] == name]
         return items[0] if items else None
 
+    def until_swept(self, timeout=30.0):
+        """The USB service's start sweep (#3) removed every tmp/job-* folder (bounded wait)."""
+        end = time.monotonic() + timeout
+        while [n for n in self.leftovers() if n.startswith('job-')]:
+            self.assertLess(time.monotonic(), end, self.leftovers())
+            time.sleep(0.05)
+
     def leftovers(self):
         tmp = self.root / TMP
         return sorted(p.name for p in tmp.iterdir()) if tmp.exists() else []
@@ -571,8 +578,8 @@ class SyntheticJob(Base, unittest.TestCase):
 
     def test_power_cut_at_each_commit_step_then_the_sweep(self):
         """A power cut right after the rename in (the new entry listed) and right after the rename away (the
-        target missing, the other entry intact); the next job first sweeps tmp/job-* (the old tree, the
-        unfinished output), never anything else."""
+        target missing, the other entry intact); the restarted USB service sweeps tmp/job-* (the old tree, the
+        unfinished output; #3), never anything else, and the next job finds nothing to sweep."""
         files = self.two_entries(['alpha'])
         (self.root / TMP / 'keep').mkdir()
         cuts = self.sim.status()['cuts']
@@ -584,7 +591,8 @@ class SyntheticJob(Base, unittest.TestCase):
                 self.wait_sim(lambda s: s['cuts'] == cuts and s['listening'], 'power cut and restart')
                 self.reconnect()
                 self.assertEqual(self.dev.hello()[0], 0)
-                self.assertEqual(len([n for n in self.leftovers() if n.startswith('job-')]), 2 if n == files + 1 else 1)
+                self.until_swept()                                          # the USB service's start (#3)
+                self.assertIn('keep', self.leftovers())
                 self.assertEqual(tree(self.entry(other)), kept)
                 if n == files + 2:                                          # the new entry, without the old marker
                     self.assertEqual(sorted(tree(self.entry(target))), sorted(tree(self.entry(other))))

@@ -33,9 +33,10 @@ Part of the [XY Forever storage layout](../STORAGE.md).
   file times), else `mods-a`. Order: rename `firmware/<target>` (if there) to `tmp/job-<id>-old`, rename
   `tmp/job-<id>` to `firmware/<target>`, remove the old tree; B's window close makes A rescan the library.
   A cut or a failure leaves the old entry (a failed rename in renames it back), the new one, or the
-  target missing; never a part entry in `firmware/`. Debris stays in `tmp/job-*`: before a job's first step
-  B removes `tmp/job-*` folders (never its own output), one list page and one unlink or rmdir per pass, at
-  most 600 calls per sweep.
+  target missing; never a part entry in `firmware/`. Debris stays in `tmp/job-*`: when the USB service starts
+  (once the library is ready; #3, `boot_sweep_turn`) and again before a job's first step, B removes `tmp/job-*`
+  folders (never a running job's output), one list page and one unlink or rmdir per pass, at most 600 calls
+  per sweep.
 - **Trust** (packages are unsigned). A base is *known* when its stock, catalog and `edits.bin`
   SHA-256 and patcher numbers match an entry of `native/mod_known_bases.inc` (official open-xy bases;
   regenerate: `python3 -m xy_forever.modkit known-base BASE... --write`; `expanded_module_base` counts only when expanded); any other base is refused

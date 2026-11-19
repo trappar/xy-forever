@@ -39,7 +39,9 @@ xyf_core::U32 mtp_prepare(void*) {                                              
     if (!writes_due) m.files.window = 0;                                 // the settle closed A's window
     // Speed (2026-11-15): A's check at most once per mtp_serving_ms (a request each; the open window
     // already skipped it).
-    const bool serving = writes_due || (m.served_ms && now() - m.served_ms < mtp_serving_ms);
+    // #3: a stale request means op 9 goes out next (mount_ready): A is asked first, whatever the cache says.
+    const bool serving = mounted != file_client::mounted_stale &&
+                         (writes_due || (m.served_ms && now() - m.served_ms < mtp_serving_ms));
     if (!serving && a_serving()) m.served_ms = now() | 1u;
     if ((!serving && !m.served_ms) || file_client::mount_ready(mounted) != P::s_ok) {   // A gone or silent
         m.files.link = 1; m.served_ms = 0;

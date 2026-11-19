@@ -153,8 +153,7 @@ class FileWriteSourceTest(unittest.TestCase):
         h = self.usb[self.usb.index('void file_write(uint8_t seq'):]
         h = h[:h.index('\n}\n')]
         order = ['!storage_server::valid_write_path(path)', '!result.put_ok || !put_expected',
-                 '!sha_equal(payload + path_bytes + 1, put_sha)', 'file_client::release(mounted)',
-                 'menu_link::usb_command(storage_server::file_write_item)', 'storage_used = 1;',
+                 '!sha_equal(payload + path_bytes + 1, put_sha)', '(code = enter_writes()) != P::s_ok', 'storage_used = 1;',
                  'file_client::write_file(']
         at = [h.index(s) for s in order]
         self.assertEqual(at, sorted(at))

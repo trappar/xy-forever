@@ -10,6 +10,7 @@
 #endif
 #if defined(XYF_SERVICE_ON_MARKER_ONLY)
 #include "xyf_boot.hpp"
+#include "xyf_menu.hpp"                     // xyf::menu::storage_ready (the start sweep, #3)
 #endif
 #include "xyf_crc32.hpp"
 #include "knob_input.hpp"      // the knob reader's counters (diag.status block KNB1)
