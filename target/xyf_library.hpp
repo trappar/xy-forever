@@ -17,6 +17,7 @@
 //   int direct_open(const char*)                 fd, <0 on failure (read-only)
 //   int direct_read(int, Byte*, U32)             bytes, 0 at EOF, <0 on error
 //   int direct_close(int)                        0 on success
+//   int direct_error() const                     raw YAFFS error (-2: missing)
 //   U32 direct_opendir(const char*)              0 on failure
 //   const Byte* direct_readdir(U32)              dirent or 0 at end
 //   int direct_closedir(U32)                     0 on success
@@ -78,7 +79,9 @@ extern const char root[];
 template <class Fs> bool read_text(Fs& fs, const char* file, uint8_t* buffer, uint32_t capacity, uint32_t& length,
                                   bool* exists = 0) {
     const int fd = fs.direct_open(file);
-    if (exists) *exists = fd >= 0;
+    // Only ENOENT authorizes legacy fallback. An unreadable native record must
+    // not be mistaken for an absent one (the stock error is negative).
+    if (exists) *exists = fd >= 0 || fs.direct_error() != -2;
     if (fd < 0) return false;
     length = 0;
     bool ok = true;

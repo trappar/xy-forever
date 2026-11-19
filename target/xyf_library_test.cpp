@@ -19,13 +19,17 @@ struct FakeFs {
     int open_fds, open_dirs;
     const Dir* dir; unsigned dir_at; uint8_t dirent[80];
     bool fail_closedir, opened_layout;
+    const char* fail_open;
+    int error;
     int direct_open(const char* path) {
+        if (fail_open && !strcmp(fail_open, path)) { error = -5; return -1; }
         if (strstr(path, "/layout.json")) opened_layout = true;
         for (unsigned i = 0; i != file_count; ++i)
             if (!strcmp(files[i].path, path))
                 for (int h = 0; h != 8; ++h) if (!open[h].file) { open[h].file = &files[i]; open[h].position = 0; ++open_fds; return h; }
-        return -1;
+        error = -2; return -1;
     }
+    int direct_error() const { return error; }
     int direct_read(int fd, uint8_t* out, uint32_t count) {
         Open& o = open[fd];
         const char* text = o.file->text ? o.file->text : "LDR";
@@ -158,6 +162,10 @@ int main() {
     REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok);
     REQUIRE(lib.entries[1].usable && lib.entries[1].has_info && lib.entries[1].machines == 3 &&
             !strcmp(lib.entries[1].info.name, "Native granular") && !lib.entries[1].invalid_record);
+    fs.fail_open = fs.files[native_at].path;
+    REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok);
+    REQUIRE(lib.entries[1].invalid_record && !lib.entries[1].usable && !lib.entries[1].has_info);
+    fs.fail_open = 0;
     const char* invalid[] = {"", "{", "{}",
         "{\"schema\":\"xy-forever.package\",\"schema_version\":2,\"type\":\"firmware\"}",
         "{\"schema\":\"stock.pack\",\"schema_version\":1}",

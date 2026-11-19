@@ -6,6 +6,8 @@ Part of [native JSON records](../native-json.md). Schemas and bounds:
 The native library selects `manifest.json` first and keeps legacy scanning
 lenient when JSON is absent. An invalid selected JSON record makes the entry
 unavailable, including as the default; scanning writes no migration files.
+Only the stock raw YAFFS not-found error (-2) permits legacy fallback after an
+open failure. Other open/read/close errors leave the native record unavailable.
 Content switches refuse invalid native metadata before any content write.
 
 The internal A-to-B catalog is XYC2 (same record sizes), with flag 16 for invalid
@@ -33,6 +35,6 @@ remain 132/260 bytes, respectively, plus the nested package reader. Measurements
 come from authenticated Blackfin `-fstack-usage` outputs; they are frame sums,
 not an observed peak stack watermark.
 
-The native-reader product is 314,020 bytes (module 313,948), 4,544 bytes above
+The native-reader product is 314,084 bytes (module 314,012), 4,608 bytes above
 the preceding `b8852f8f` product. These are partial integration measurements:
 assembly/Mods readers, producers and configuration remain pending in #95.
