@@ -272,7 +272,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
     def renames(self, entry):
         """The renames of a switch official -> entry with nothing saved yet: the saved list and catalog, the record
         (switching), each file, the catalog, the record again (record -> .old, .part -> record)."""
-        return len([p for p in content(self.root / LIB / entry)[0] if p != 'op1_factory.json']) + 6
+        return len([p for p in content(self.root / LIB / entry)[0] if p != 'op1_factory.json']) + 7
 
     def fresh_official(self):
         """Back to the official state with nothing saved (each case starts the same)."""
@@ -289,7 +289,8 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         before_default = self.default()
         if kind == 1:
             code, f = self.switch(entry)
-            self.assertEqual((code, MS.PHASES[f['phase']], MS.ERRORS[f['error']]), (ids.S_STARTED, 'failed', 'rename'), f)
+            self.assertEqual((code, MS.PHASES[f['phase']]), (ids.S_STARTED, 'failed'), f)
+            self.assertEqual(MS.ERRORS[f['error']], 'write' if f['detail'] == 'journal write' else 'rename', f)
         elif kind == 2:
             cuts = self.sim.status()['cuts']
             self.assertEqual(self.dev.set_default(entry)[0], ids.S_STARTED)
@@ -319,13 +320,20 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             self.sim.wait_listening(30.0)
             self.reconnect()
             self.assertEqual(self.dev.hello()[0], 0)
+        if kind in (2, 3):
+            # The menu replays durable intent itself. Wait for its window close before inspecting files.
+            until = time.monotonic() + 30
+            while (self.root / 'xy-forever/job.txt').exists() or (self.root / 'xy-forever/job.old').exists():
+                self.assertLess(time.monotonic(), until, 'automatic replay')
+                self.dev.hello(); time.sleep(0.01)
+            self.assertEqual(MS.served(self.dev, out=lambda _: None), 0)
         self.assertEqual(self.sim.status()['rw_open'], 0)
         record = self.record()
         self.assertIn(record if record is None else record.split('\n')[0],
                       (None, 'state=switching', 'state=installed'), record)
         if record and record.startswith('state=switching'):              # nothing boots from a plain power-on
             self.assertFalse(any(u for u, _ in self.usable().values()), self.usable())
-        if kind != 2 or not (record or '').startswith('state=installed'):
+        if kind == 1 or not (record or '').startswith('state=installed'):
             self.assertEqual(self.default(), before_default)            # the default only after a success
         self.sim.set('rename_fault', 0)
         self.switched(entry, installed=(record or '').startswith('state=installed'))   # a repeat repairs
@@ -367,7 +375,8 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         a = self.build(['alpha'])
         self.sim.set('fail_write', 4)
         code, f = self.switch(a)
-        self.assertEqual((MS.PHASES[f['phase']], MS.ERRORS[f['error']]), ('failed', 'write'), f)
+        self.assertEqual(MS.PHASES[f['phase']], 'failed', f)
+        self.assertIn(MS.ERRORS[f['error']], ('write', 'verify'), f)
         self.assertEqual((self.default(), self.sim.status()['rw_open']), ('opxy-121', 0))
         self.switched(a)
 

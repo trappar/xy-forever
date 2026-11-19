@@ -137,7 +137,7 @@ void job_pump() {
         else job_say(s, false);
     } else if (s.stage == js_gc) {
         ContentIo io = {s.link};
-        const int collected = xyf::blob::collect_step(s.garbage, io);
+        const int collected = journal_present ? 1 : xyf::blob::collect_step(s.garbage, io);
         s.link = io.link; ++s.extra_steps;
         if (collected < 0) {
             if (s.garbage.fd >= 0) io.close(s.garbage.fd);

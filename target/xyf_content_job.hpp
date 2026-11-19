@@ -271,6 +271,7 @@ template <class Io> static uint32_t step(Job& j, Io& io) {
         if (!join(p, firmware, bytes(j.target), length(j.target), "/info.txt")) { fail(j, e_path, 0, j.target); break; }
         r = load(j, io, p, j.plan, store::max_text);
         if (r == x_more || r == x_failed) break;
+        if (r == x_missing) { fail(j, e_open, 0, p); break; }
         store::Info info;
         for (uint32_t i = 0; i != sizeof(info); ++i) reinterpret_cast<uint8_t*>(&info)[i] = 0;
         j.mods = r == x_done && store::parse_info(reinterpret_cast<const char*>(j.plan.data), j.plan.length, info) &&

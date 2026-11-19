@@ -241,6 +241,7 @@ Reply unlink(const char* path) { return path_request(path, file_engine::op_unlin
 Reply rmdir(const char* path) { return path_request(path, file_engine::op_rmdir, 0x27, 0); }
 Reply opendir(const char* path) { return path_request(path, file_engine::op_list, 0x2e, 0); }
 Reply stat(const char* path, uint8_t* record) { return query(path, 0x22, record, record_bytes); }
+Reply free_space(const char* path, uint8_t* bytes) { return query(path, 0x31, bytes, 8); }
 Reply statfs(const char* path, uint8_t* space) { return query(path, 0x23, space, space_bytes); }
 // A read request into dest (count bytes, the client's own buffer: data_buffer or stream_buffer) built and submitted
 // (done), or why not. A streams the reply back in 0x1000-byte bodies.

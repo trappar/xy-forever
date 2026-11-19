@@ -43,7 +43,7 @@ STATE = paths.SESSIONS / 'simulator'           # default storage folder, boot pa
 
 TARGET_SOURCES = ('usb_service', 'usb_proto', 'storage_server', 'file_engine', 'file_client', 'menu_link', 'file_boot',
                   'cold_storage', 'retained_lookup', 'cold_heap', 'peer_services', 'xyf_library', 'xyf_cold_library',
-                  'xyf_filelist', 'xyf_catalog', 'xyf_state', 'xyf_state_write', 'xyf_store', 'xyf_info', 'xyf_crc32',
+                  'xyf_manifest', 'xyf_recognise', 'xyf_filelist', 'xyf_catalog', 'xyf_state', 'xyf_state_write', 'xyf_store', 'xyf_info', 'xyf_crc32',
                   'boot_services', 'otp_keys', 'tfw_device_check', 'xyf_stage2', 'stage2_main',
                   'xyf_menu', 'xyf_mods', 'xyf_mods_io',                 # the menu's state and the Mods page
                   'ui_pages', 'ui_gfx',                                   # the bar's scale() (nothing is drawn)
