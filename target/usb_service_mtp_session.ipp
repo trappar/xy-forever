@@ -22,7 +22,7 @@ const uint8_t t_mtp_tunnel = 0x61;                                      // diag.
 const U32 mtp_slice_ms = 8, mtp_stall_ms = 10000, mtp_serving_ms = 1000;
 volatile U32 mtp_pass_ms __attribute__((section(".data"))) = 0;          // the composite's longest menu-loop pass
 volatile U32 mtp_on __attribute__((section(".data"))) = 0;               // the session is enabled
-volatile U32 mtp_piece __attribute__((section(".data"))) = mr::chunk;    // #144: the transfer piece (diag.mtp op 7)
+volatile U32 mtp_piece __attribute__((section(".data"))) = mr::default_piece;   // #144: the transfer piece (op 7)
 U32 units_since(uint64_t start) { return U32((xyf::clock::cycles() - start) >> 10); }   // #144: 1024 cycles
 uint32_t mtp_window() {                                                  // the first change: A's write window
     U32 code = enter_writes();

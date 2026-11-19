@@ -119,7 +119,7 @@ void Responder::init(const FileOps& file_ops) {
     data_total = data_got = data_seen = in_len = in_pos = out_len = out_pos = 0;
     fd = -1; left = failed = result = target = skip = more = count = offset = opened = 0;
     pending_handle = pending_size = 0;
-    hits = 0; piece = chunk;
+    hits = 0; piece = default_piece;
     clear_objects();
 }
 

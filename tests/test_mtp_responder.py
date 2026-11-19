@@ -233,19 +233,19 @@ class MtpResponderTests(unittest.TestCase):
         self.assertEqual((code, params, data), (OK, (10,), self.big[-10:]))
 
     def test_4_kib_pieces_as_the_usb_driver_takes_them(self):
-        """#144: with set_piece(4096) a download fills the IN staging around the 12-byte header (the driver takes
-        whole 512-byte packets only, so a read that waited for 4096 bytes of room would never start), every read
-        and write call moves at most 4 KiB, and the bytes are the same."""
+        """#144: with 4 KiB pieces (the default) a download fills the IN staging around the 12-byte header (the
+        driver takes whole 512-byte packets only, so a read that waited for 4096 bytes of room would never start),
+        every read and write call moves at most 4 KiB, and the bytes are the same."""
         self.open()
         c = self.client
-        for asked, piece in ((512, 1024), (5000, 4096), (4096, 4096)):
-            self.assertEqual(struct.unpack("<I", c.call(b"Z", struct.pack("<I", asked)))[0], piece)
         big = c.named(c.named()["xy-forever"])["big.bin"]
         calls = c.status()[5]
-        c.out(c.command(0x1009, big))
+        c.out(c.command(0x1009, big))                                 # the default piece: 4 KiB
         containers = c.answers(c.call(b"J", struct.pack("<I", 1 << 30)))
         self.assertEqual((containers[0][3], containers[-1][1]), (self.big, OK))
         self.assertLess(c.status()[5] - calls, (1 << 20) // 4096 + 8)  # 4 KiB per read call, not 1 KiB
+        for asked, piece in ((512, 1024), (5000, 4096), (4096, 4096)):
+            self.assertEqual(struct.unpack("<I", c.call(b"Z", struct.pack("<I", asked)))[0], piece)
         c.out(c.command(0x101B, big, 1000, 9000))
         containers = c.answers(c.call(b"J", struct.pack("<I", 1 << 30)))
         self.assertEqual((containers[0][3], containers[-1][1]), (self.big[1000:10000], OK))

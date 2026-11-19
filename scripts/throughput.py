@@ -17,7 +17,7 @@ Every wait is bounded. One table row per route; exit 0 only when every route pas
   python3 scripts/throughput.py                             # all four routes, asking for the stock modes
   python3 scripts/throughput.py --route serial --small-count 50
   python3 scripts/throughput.py --sim 127.0.0.1:7341        # serial and xyf-mtp against python3 -m xy_forever.sim
-  python3 scripts/throughput.py --route xyf-mtp --piece 4096 # XY Forever's MTP with 4 KiB pieces per A request
+  python3 scripts/throughput.py --route xyf-mtp --piece 1024 # XY Forever's MTP with 1 KiB pieces per A request
 
 After the xyf-mtp route, where its time went (#144, xy_forever/mtp_timing.py): for each phase (big files written,
 small files written, read back), B's file requests to A (their round trips), A's own storage time per request,
@@ -273,8 +273,8 @@ class MtpOps:
 
     def close(self):
         try:
-            if self.piece and self.piece != T.PIECES[0]:
-                T.set_piece(self.timing, T.PIECES[0])                   # the default again
+            if self.piece and self.piece != T.DEFAULT_PIECE:
+                T.set_piece(self.timing, T.DEFAULT_PIECE)               # the default again
         finally:
             self.w.close()
             self.transport.close()
@@ -468,7 +468,7 @@ def main(argv=None):
     parser.add_argument('--connect-timeout', type=float, default=30.0, help='serial connect, seconds (default 30)')
     parser.add_argument('--timeout-ms', type=int, default=10000, help='one USB transfer, ms (default 10000)')
     parser.add_argument('--piece', type=int, choices=T.PIECES,
-                        help='xyf-mtp: bytes per file request to A, set on the device for this boot (#144)')
+                        help='xyf-mtp: bytes per file request to A for this route (#144; default 4096)')
     parser.add_argument('--no-breakdown', dest='breakdown', action='store_false',
                         help='xyf-mtp: no timing breakdown (diag.mtp op 7)')
     args = parser.parse_args(argv)

@@ -75,7 +75,7 @@ static int open_call(void*, const char* path, bool write) {
     ++open_files;
     return fd;
 }
-static U32 piece_limit = m::chunk;                                  // #144: the largest read or write call (Z)
+static U32 piece_limit = m::default_piece;                            // #144: the largest read or write call (Z)
 static int read_call(void*, int fd, Byte* out, U32 n) { ++calls; if (n > piece_limit) return m::f_storage; ssize_t r = ::read(fd, out, n); return r < 0 ? fail() : int(r); }
 static int write_call(void*, int fd, const Byte* data, U32 n) { ++calls; if (n > piece_limit) return m::f_storage; ssize_t r = ::write(fd, data, n); return r < 0 ? fail() : int(r); }
 static int seek_call(void*, int fd, U32 offset) { ++calls; return lseek(fd, offset, SEEK_SET) < 0 ? fail() : 0; }

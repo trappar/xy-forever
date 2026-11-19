@@ -16,7 +16,8 @@ B_WORDS = ('reads', 'read_units', 'read_max', 'writes', 'write_units', 'write_ma
            'steps', 'step_units', 'pumps', 'pump_units', 'waits', 'read_bytes', 'write_bytes', 'started')
 A_WORDS = ('reads', 'read_units', 'read_max', 'writes', 'write_units', 'write_max',
            'others', 'other_units', 'gaps', 'gap_units', 'gap_max', 'unused')
-PIECES = (1024, 4096)                 # the transfer piece: chunk (default) .. the responder's buffer
+PIECES = (1024, 4096)                 # the transfer piece: chunk .. the responder's buffer
+DEFAULT_PIECE = 4096                  # the device's default (mtp_responder.hpp default_piece)
 
 
 class TimingError(Exception):

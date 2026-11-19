@@ -190,10 +190,11 @@ class MtpSessionTests(unittest.TestCase):
 
     def test_timing_and_the_4_kib_piece(self):
         """#144: diag.mtp op 7 sets the transfer piece and reads B's and A's counters (xy_forever/mtp_timing.py); an
-        upload and a download with 4 KiB pieces arrive byte for byte, one A request per piece."""
+        upload and a download with 4 KiB pieces (the default) arrive byte for byte, one A request per piece."""
         from xy_forever import mtp_timing as T
         self.enter()
         self.opened()
+        self.assertEqual(T.read(self.dev)['piece'], T.DEFAULT_PIECE)
         self.assertEqual(self.c.tunnel(7, b'\2' + struct.pack('<I', 2048 + 1))[0], P.S_OK)   # any size in range
         self.assertEqual(self.c.tunnel(7, b'\2' + struct.pack('<I', 512))[0], P.S_BAD_REQUEST)
         self.assertEqual(self.c.tunnel(7, b'\2' + struct.pack('<I', 8192))[0], P.S_BAD_REQUEST)
