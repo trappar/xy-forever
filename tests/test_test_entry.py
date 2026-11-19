@@ -146,6 +146,19 @@ class TestEntrySimulator(unittest.TestCase):
         self.assertFalse(entry.exists())
         self.assertFalse((self.root / 'xy-forever/loaded/loader-test').exists())
 
+    def test_content_state_larger_than_one_read(self):
+        # content-state.txt lists every content file (a device's is ~8 KB): read whole, not in one range.
+        lines = ['state=installed', 'entry=loader-test'] + ['file=presets/m%03d/default.json\t%s' % (i, '0' * 64)
+                                                            for i in range(120)]
+        record = ''.join(l + '\n' for l in lines).encode()
+        self.assertGreater(len(record), 4 * host.READ_RANGE)
+        (self.root / 'xy-forever/content-state.txt').write_bytes(record)
+        code, out = self.run_script('--cleanup')
+        self.assertEqual(code, 1, out)
+        self.assertIn("'entry': 'loader-test'", out)                        # refused for what the record says
+        self.assertIn('set another default first', out)
+        self.assertTrue((self.root / 'xy-forever/firmware/loader-test').is_dir())
+
     def test_needs_os_from_the_stock_image_when_no_info_has_it(self):
         info = self.root / 'xy-forever/firmware/mods-a/info.txt'
         info.write_bytes(b''.join(l + b'\n' for l in info.read_bytes().splitlines() if not l.startswith(b'needs_os=')))

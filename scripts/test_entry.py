@@ -119,7 +119,7 @@ class TestEntry(dp.Pass):
         return fields['default'], fields.get('once', '')
 
     def record(self):
-        data = self.read(RECORD, 'content-state.txt')
+        data = self.read(RECORD, 'content-state.txt', '--all')
         return values(data or b'')
 
     def put_tree(self, base, files, local):
@@ -144,8 +144,8 @@ class TestEntry(dp.Pass):
         default, once = self.default_once()
         if o.id in (default, once):
             raise StepFail('%s is the default or once entry: refused' % o.id)
-        stock = values(self.read('%s/firmware/%s/info.txt' % (XYF, o.stock_entry), 'stock-info.txt') or b'')
-        like = values(self.read('%s/firmware/%s/info.txt' % (XYF, o.like), 'like-info.txt') or b'')
+        stock = values(self.read('%s/firmware/%s/info.txt' % (XYF, o.stock_entry), 'stock-info.txt', '--all') or b'')
+        like = values(self.read('%s/firmware/%s/info.txt' % (XYF, o.like), 'like-info.txt', '--all') or b'')
         if not stock or not {'generation', 'profile'} <= set(like):
             raise StepFail('firmware/%s/info.txt or firmware/%s/info.txt (generation, profile) missing'
                            % (o.stock_entry, o.like))
@@ -169,7 +169,7 @@ class TestEntry(dp.Pass):
         old = self.walk(self.entry())
         keep_os = False
         if old is not None:
-            old_info = values(self.read(self.entry('info.txt'), 'old-info.txt') or b'')
+            old_info = values(self.read(self.entry('info.txt'), 'old-info.txt', '--all') or b'')
             keep_os = old[0].get('os.ldr') == len(image) and old_info.get('sha256') == hashlib.sha256(image).hexdigest()
             if 'info.txt' in old[0]:
                 self.remove(self.entry('info.txt'))            # first: never a complete-looking half entry
