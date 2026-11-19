@@ -692,6 +692,8 @@ int close(void*, int) { return 0; }
 int refuse(void*, const char*) { return M::f_refused; }
 int unlink(void*, const char* path) { if (!strcmp(path, "/yaffs2/xy-forever/tmp/up.bin") && up_exists) { up_exists = false; return 0; } return M::f_not_found; }
 int rename(void*, const char*, const char*) { return M::f_refused; }
+int upload(void*, const char* path, U32, U32) { REQUIRE(!strcmp(path, "/yaffs2/xy-forever/tmp/up.bin")); up.clear(); return 4; }
+int commit(void*, const char*, bool keep) { if (keep) up_exists = true; return 0; }   // #4: the name only now
 U32 prepare(void*) { ++prepared; return 0; }
 void log(void*, U32, const U32*, U32, U32, U32) { ++logged; }
 void steps() { for (int i = 0; i != 8 && responder.step(); ++i) {} }
@@ -719,7 +721,8 @@ void run() {
     std::vector<uint8_t> data, resp;
     big.resize(512 * 137 - 12);                                         // the data container: a ZLP
     for (size_t i = 0; i != big.size(); ++i) big[i] = uint8_t(i * 13 + (i >> 8));
-    const M::FileOps ops = {0, list, stat, space, open, read, write, seek, close, refuse, unlink, refuse, rename, prepare, log};
+    const M::FileOps ops = {0, list, stat, space, open, read, write, seek, close, refuse, unlink, refuse, rename, prepare, log,
+                            upload, commit};
     responder.init(ops);
     stack::boot();
     set_handler(&handler);

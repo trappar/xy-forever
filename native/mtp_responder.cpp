@@ -485,14 +485,14 @@ bool Responder::rename_object(U32 handle, const char* name) {
 
 bool Responder::step() {
     if (cancelling) {
-        // One file call per step: close the open file, then remove a partial upload; then idle, no response.
+        // One file call per step: close the open file, then remove the upload (#4: never the name); then idle.
         if (fd >= 0) { ops.close(ops.context, fd); fd = -1; return true; }
         if (code == op_send_object && opened == 1 && path_of(pending_handle, path)) {
             opened = 0;
-            ops.unlink(ops.context, path);
+            ops.commit(ops.context, path, false);
             return true;
         }
-        if (code == op_send_object && pending_handle) forget(pending_handle);
+        if (code == op_send_object && pending_handle && pending_new) forget(pending_handle);
         if (ops.log) ops.log(ops.context, code, params, nparams, 0, 4);   // 4: cancelled
         phase = p_idle; stage = 0; opened = 0; code = 0;
         in_len = in_pos = out_len = out_pos = 0;
@@ -651,6 +651,7 @@ bool Responder::work() {
         for (U32 i = 0; i <= k; ++i) path[n + 1 + i] = name[i];
         if (!writable(path) || !within_depth(path, format == f_association)) { respond(r_access_denied); return true; }
         if (format == f_association) { stage = 1; return true; }
+        pending_new = !find(target, name);                       // #4: a failed upload keeps an old file
         const U32 h = add(target, name, 0, size);
         if (!h) { respond(r_store_full); return true; }
         objects[h - 1].fresh = 0;                                 // fresh once SendObject wrote it
@@ -692,52 +693,11 @@ bool Responder::work() {
         stage = 1;                                                // A refuses an existing name (EEXIST)
         return true;
     }
-    case op_send_object:
-        if (stage == 0) {                                         // open the target (once)
-            if (!failed && !pending_handle) failed = r_no_valid_object_info;
-            if (!failed && !path_of(pending_handle, path)) failed = r_general_error;
-            stage = 1;
-            if (!failed) {
-                const int r = ops.open(ops.context, path, true);
-                if (r < 0) failed = r == f_refused ? U32(r_access_denied) : error_code(r);
-                else { fd = r; opened = 1; }
-                return true;
-            }
-        }
-        if (stage == 1) {
-            if (in_pos != in_len) {
-                U32 n = in_len - in_pos;
-                if (n > chunk) n = chunk;
-                if (!failed) {
-                    const int r = ops.write(ops.context, fd, in + in_pos, n);
-                    if (r != int(n)) failed = r == f_refused ? r_access_denied : r_store_full;
-                    in_pos += n;
-                    return true;
-                }
-                in_pos = in_len;
-                return true;
-            }
-            if (phase == p_data) return false;                   // wait for the next OUT transfer
-            stage = 2;
-        }
-        if (stage == 2) {
-            stage = 3;
-            if (fd >= 0) { ops.close(ops.context, fd); fd = -1; return true; }
-        }
-        if (stage == 3 && failed && opened) {                    // remove the partial file
-            opened = 0;
-            ops.unlink(ops.context, path);
-            return true;
-        }
-        if (failed) { if (pending_handle && opened == 0 && failed != r_no_valid_object_info) forget(pending_handle); respond(U16(failed)); return true; }
-        objects[pending_handle - 1].size = data_total;
-        objects[pending_handle - 1].fresh = 1;
-        pending_handle = 0; opened = 0;
-        respond(r_ok);
-        return true;
+    case op_send_object: return send_object();                  // mtp_responder_send.ipp
     default:
         respond(r_general_error);
         return true;
     }
 }
+#include "mtp_responder_send.ipp"
 } }
