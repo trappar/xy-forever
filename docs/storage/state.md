@@ -61,7 +61,8 @@ the firmware lacks breaks the OS's menus, so it must match the booted entry.
 Then one `file=<path>` line per file XY Forever installed (relative to `/yaffs2/content/`, any order); in an installed record (#27) each is `file=<path>` TAB
 `<SHA-256 hex>`, sorted, the bytes written. The switch writes by difference: a target file whose line in a trusted record (installed, sorted, another entry than
 the target) carries its SHA-256 is skipped unread; otherwise the live file is read, and written only when missing or different. Switching to the installed entry
-again is the repair: it reads every file. A's engine never renames onto an existing file, so B replaces the record as record -> `content-state.old`, `.part` ->
+again is the repair: it reads every file. A's engine renames onto an existing file only from an upload (`tmp/put-*`, #4),
+so B replaces the record as record -> `content-state.old`, `.part` ->
 record, `.old` removed; only a `.old` (a cut between) reads as switching, never as official. Stock entries (no `generation`) are usable only in the official
 state; an assembled mod set only when the record is installed for it. A plain power-on never writes: an unusable default opens the menu with the reason
 ("Default <id>: content not installed" or "content needs repair").

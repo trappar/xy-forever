@@ -299,7 +299,7 @@ U32 trial_start() {
 #if !defined(XYF_MTP_USB_TRIAL)
     if (true) return P::s_unsupported;                                   // 188: the product has no trial
 #endif
-    if (job_running() || closing XYF_OR_MTP_BUSY || (put_expected && result.put_received != put_expected)) return P::s_busy;
+    if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
     if (!menu_usb || composite_on) return P::s_state;
     if (probe_spans()) return P::s_identity;
     return file_put(flag_path, "T2a\n", 4);

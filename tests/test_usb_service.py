@@ -270,6 +270,20 @@ class FakeDevice:
                 return ok + self.files[path][offset:offset + length]
             data = self.files[path]
             return ok + data if len(data) <= P.MAX_DATA else struct.pack('<I', 9)
+        if kind == P.ids.WRITE_BEGIN:                           # 1.18: streamed; the end acts as FILE_WRITE
+            end = payload.index(b'\0')
+            size, crc = struct.unpack_from('<II', payload, end + 1)
+            self.stream = (payload[:end], (size, crc, payload[end + 9:end + 41]), bytearray())
+            return ok
+        if kind == P.ids.WRITE_DATA:
+            offset = struct.unpack_from('<I', payload)[0]
+            if offset != len(self.stream[2]):
+                return struct.pack('<I', 4)
+            self.stream[2].extend(payload[4:])
+            return ok + struct.pack('<I', len(self.stream[2]))
+        if kind == P.ids.WRITE_END:
+            path, self.expected, self.staged = self.stream
+            return self.handle(P.FILE_WRITE, path + b'\0' + self.expected[2]) + struct.pack('<I', 0)
         if kind == P.PUT_BEGIN:
             size, crc = struct.unpack_from('<II', payload)
             self.expected = (size, crc, payload[8:40]); self.staged = bytearray()

@@ -149,7 +149,8 @@ const char* host_line(U32 line) {
 U32 change_line(uint8_t type) {                                          // the requests that change something
     if (type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end) return line_stage;
     if (type == P::t_file_write || type == P::t_delete_file || type == P::t_remove_dir || type == P::t_make_dir ||
-        type == P::t_rename_file || type == P::t_copy_file) return line_files;
+        type == P::t_rename_file || type == P::t_copy_file || type == P::t_write_begin || type == P::t_write_data ||
+        type == P::t_write_end) return line_files;
     if (type == P::t_install) return line_install;
     if (type == P::t_uninstall) return line_uninstall;
     if (type == P::t_set_default) return line_default;

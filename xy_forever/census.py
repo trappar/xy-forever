@@ -470,7 +470,7 @@ INSTALL_ACTIONS = ('install_none install_select install_trim install_read instal
 ENGINE_ACTIONS = ('refuse_off refuse_class refuse_op refuse_raw_layer refuse_bad_path refuse_outside_path '
                   'refuse_protected_path refuse_tmp_path refuse_mount refuse_read_only refuse_handle refuse_full '
                   'run_mount run_unmount run_file run_closedir run_open run_opendir run_path run_query run_read '
-                  'run_readdir run_write refuse_partition run_rename_from run_rename_to').split()
+                  'run_readdir run_write refuse_partition run_rename_from run_rename_to run_rename_over').split()
 
 
 def _server_action(code):

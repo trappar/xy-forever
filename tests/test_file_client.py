@@ -48,7 +48,7 @@ class AllowlistTest(unittest.TestCase):
                      "check_scoped_calls(raw, A_RENAME_CALLS, '14storage_server6a_side', ('14storage_server',), 'Rename')",
                      "check_scoped_calls(raw, A_MARKER_CALLS - SERVER_CALLS, '14storage_server6a_side', A_MARKER_CALLERS,"):
             self.assertIn(line, src)
-        server = (ROOT / 'target/storage_server.cpp').read_text()
+        server = ''.join((ROOT / 'target' / n).read_text() for n in ('storage_server.cpp', 'storage_server_marker.ipp'))
         for name in ('bool stat_into(', 'void restore_marker(', 'void close_handles('):
             self.assertIn('__attribute__((noinline)) ' + name, server)
         client = (ROOT / 'target/file_client.cpp').read_text()

@@ -285,16 +285,16 @@ int rename_object(const char* from, const char* to) {
     storage_op_done();
     return 0;
 }
-// A's local posix stat (889f3516 on A): the record's layout is the simulator's own (the firmware
-// only compares two records): device, inode, mode, links, size, change time. Links are followed.
+// A's local posix stat (889f3516 on A; the query executor's 0x22 record): device, inode, mode, links,
+// uid, gid, rdev, size (+0x1c), change time. Links are followed.
 int stat_record(const char* path, uint32_t* out) {
     std::string where;
     if (!provider() || !mounted()) return fail(19);
     if (!to_host(path, where)) return fail(2);
     struct stat st;
     if (stat(where.c_str(), &st)) return fail(errno);
-    const uint32_t record[8] = {uint32_t(st.st_dev), uint32_t(st.st_ino), uint32_t(st.st_mode), uint32_t(st.st_nlink),
-                                uint32_t(st.st_size), uint32_t(st.st_ctime), 0, 0};
+    const uint32_t record[9] = {uint32_t(st.st_dev), uint32_t(st.st_ino), uint32_t(st.st_mode), uint32_t(st.st_nlink),
+                                0, 0, 0, uint32_t(st.st_size), uint32_t(st.st_ctime)};
     memcpy(out, record, sizeof(record));
     return 0;
 }

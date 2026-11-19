@@ -66,7 +66,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from xy_forever import depth, library_add, usb_proto as P
+from xy_forever import depth, host_write, library_add, usb_proto as P
 from xy_forever.library_add import ID_RE
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr
 from xy_forever.transport import SerialPort, TcpPort, sim_address
@@ -477,6 +477,11 @@ def stage_progress(done, total):
         print('\rstaged %d/%d' % (done, total), end='', flush=True)
 
 
+def sent_progress(done, total):
+    if done == total or done % 0x10000 < PUT_CHUNK:
+        print('\rsent %d/%d' % (done, total), end='\n' if done == total else '', flush=True)
+
+
 def fresh(dev, timeout):
     """REBOOT (proven path) and reconnect: a fresh boot has no storage use yet, which
     FILE_WRITE and CONTINUE need (Tests 046/049)."""
@@ -491,18 +496,9 @@ def fresh(dev, timeout):
 
 
 def put(dev, data, remote):
-    """Stage data and FILE_WRITE it to remote; 0 only when written and read back exactly."""
-    code = dev.stage(data, stage_progress)
-    print()
-    if code:
-        print('stage: %s' % P.status_name(code)); return code
-    code, written, back = dev.file_write(remote, hashlib.sha256(data).digest(), timeout=60.0 + len(data) / 20000.0)
-    want = zlib.crc32(data) & 0xffffffff
-    print('put-file %s: %s, written %d/%d, read-back CRC %08x (expected %08x)' %
-          (remote, P.status_name(code), written, len(data), back, want))
-    if code == 0 and (written != len(data) or back != want):
-        print('NOT verified'); return 1
-    return code
+    """Write data to remote, streamed and renamed onto it (1.18, xy_forever/host_write.py); 0 only when written and
+    read back exactly."""
+    return host_write.put(dev, data, remote, sent_progress)
 
 
 def screen_png(raw):
@@ -554,7 +550,7 @@ def run(argv):
     lsp.add_argument('path'); lsp.add_argument('--json', action='store_true')
     getp = sub.add_parser('get', help='copy a device file to the computer (ranged reads; size and ranges checked)')
     getp.add_argument('remote'); getp.add_argument('local', type=Path)
-    putp = sub.add_parser('put', help='copy a file to /yaffs2/xy-forever/ or /yaffs2/content/ (staged, written, read back)')
+    putp = sub.add_parser('put', help='copy a file onto the OP-XY (streamed into tmp/, read back, renamed onto it)')
     putp.add_argument('local', type=Path); putp.add_argument('remote')
     putp.add_argument('--no-verify', action='store_true', help='skip the read-back over USB (the device still '
                       'compares the CRC-32 it reads back)')
@@ -637,13 +633,10 @@ def run(argv):
             print('refused: remote path must be /yaffs2/xy-forever/<name>[/<name>...] ([A-Za-z0-9._-] names)')
             return 2
         data = args.local.read_bytes()
-        if not data or len(data) > IMAGE_CAPACITY:
-            print('refused: size must be 1..%d bytes' % IMAGE_CAPACITY); return 2
-        print('Plan: stage %d bytes (CRC-32 %08x, SHA-256) on processor b; processor a opens a read-write' %
+        print('Plan: stream %d bytes (CRC-32 %08x, SHA-256) into /yaffs2/xy-forever/tmp/; processor b reads them' %
               (len(data), zlib.crc32(data) & 0xffffffff))
-        print('      window limited to /yaffs2/xy-forever/, b writes %s (create/truncate), reads it' % args.remote)
-        print('      back and compares the CRC, then a closes the window (read-only again). Missing folders')
-        print('      below /yaffs2/xy-forever/ are created first (mkdir, Test 050).')
+        print('      back and compares, then processor a renames the file onto %s in one step' % args.remote)
+        print('      (replacing it). Missing folders are created first (mkdir, Test 050).')
         if not args.yes_write:
             print('DRY RUN: nothing sent. Re-run with --yes-write to write.')
             return 0
@@ -903,10 +896,6 @@ def files_command(dev, hello, args):
             len(sample_offsets(len(data)))))
         return 0
     data = args.local.read_bytes()                                   # put
-    limit = int(hello.keys['stage']) if hello.keys.get('stage', '').isdigit() else IMAGE_CAPACITY
-    if not data or len(data) > limit:
-        print('put: refused: %s is %d B; the device stages 1 to %d B (HELLO stage=)' % (args.local, len(data), limit))
-        return P.STATUS_NAMES.index('too_large')
     start = time.monotonic()
     code = put(dev, data, args.remote)
     if code:

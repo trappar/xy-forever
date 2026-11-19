@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, inject, test, vi } from 'vitest';
-import { Client, isXyfError, sha256 } from '../src/node.ts';
+import { Client, crc32, isXyfError, sha256 } from '../src/node.ts';
 import { tcpOpener } from '../src/node.ts';
 
 const sims = inject('sims');
@@ -79,16 +79,13 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
     expect(readFileSync(host(path), 'utf-8')).toBe('second');
   });
 
-  test('above the hello stage limit: refused here, nothing sent', async () => {
-    const call = vi.spyOn(client, 'call');
-    try {
-      const error = await failure(client.writeFile(`${DIR}/huge.bin`, new Uint8Array(client.info.limits.stage + 1)));
-      expect(error).toMatchObject({ code: 'too_large', status: null });
-      expect(call).not.toHaveBeenCalled();
-    } finally {
-      call.mockRestore();
-    }
-  });
+  test('above the hello stage limit: streamed (1.18, file.write_*) and renamed onto its name', async () => {
+    const data = new Uint8Array(client.info.limits.stage + 1).map((_, i) => i % 251);
+    expect(await client.writeFile(`${DIR}/huge.bin`, data)).toEqual({ written: data.length, readbackCrc: crc32(data) });
+    const tail = await client.readRange(`${DIR}/huge.bin`, data.length - 16, 16);
+    expect(tail).toEqual(data.subarray(data.length - 16));
+    await client.deleteFile(`${DIR}/huge.bin`);
+  }, 120_000);
 
   test('changes outside the write area: refused here with the reason, nothing sent (nothing staged)', async () => {
     // Since 1.13 all of /yaffs2 is writable by hand except bootloader.dev and anything in upgrade/ (inWriteArea).

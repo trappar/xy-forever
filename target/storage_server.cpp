@@ -420,80 +420,7 @@ void close_between(cold_storage::Stock121ReadOnlySession& storage) {
 }
 #endif
 
-#if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
-// The dev-menu marker around every unlink and rmdir (the operations that remove a name;
-// and rename, rename_now). The policy checks the spelling, but yaffs follows symlinks and hardlinks inside a
-// path (/yaffs2/s/bootloader.dev with s -> /yaffs2). "The marker exists" = the stock posix stat of
-// marker_path succeeds: whatever object the name resolves to (file, folder, links followed), as the
-// 1.2.1 bootloader's access("bootloader.dev", R_OK) (88a1d7e6) finds it. Before the operation: a
-// path that stats to the marker's own record is refused. After it: a marker that existed before and
-// is gone is re-created (empty; stock "wb", mode 0666). A marker that did not exist before (removed
-// through the stock dev menu, the owner's right) is never created. Lowercase, the name the
-// bootloader asks for (88a202b0): yaffs compares names case-sensitively (file_engine.hpp).
-const char marker_path[] = "/yaffs2/bootloader.dev";
-static const U32 record_words = 0x80 / 4;                             // >= the stock stat record (0x34)
-U32 marker_record[2][record_words] __attribute__((section(".data"))) = {};
-__attribute__((noinline)) bool stat_into(const char* path, U32* record) {   // noinline: the builder's scope
-    for (U32 i = 0; i != record_words; ++i) record[i] = 0;
-    return stock<0x889f3516u, int>(path, record) == 0;                 // stock posix stat (on a: yaffs)
-}
-bool same_object() {
-    for (U32 i = 0; i != record_words; ++i) if (marker_record[0][i] != marker_record[1][i]) return false;
-    return true;
-}
-// The marker vanished although its spellings are refused: put it back. The executor has already
-// replied (it queues its own answer), so the refusal is in a's log (0xfff9 restored, 0xfff8 not).
-__attribute__((noinline)) void restore_marker(U32 op) {
-    const int fd = stock<0x889f3b50u, int>(0u, marker_path, 0x8301u);   // stock posix open, "wb"
-    if (fd >= 0) stock<0x889f285au, int>(fd);                          // stock posix close
-    ++result.refused;
-    note(op, file_engine::refuse_protected_path, stat_into(marker_path, marker_record[1]) ? 0xfff9u : 0xfff8u);
-}
-#endif
-
-#if defined(XYF_USB_FILE_WRITE)
-// The two write-rule exceptions through links (yaffs follows them inside a path): a change whose path stats to
-// the marker, or whose path or any folder above it stats to /yaffs2/upgrade, is refused. The path is cut in place
-// at each '/' and restored.
-const char inbox_path[] = "/yaffs2/upgrade";
-__attribute__((noinline)) bool reaches_protected(char* path) {
-    if (stat_into(marker_path, marker_record[0]) && stat_into(path, marker_record[1]) && same_object()) return true;
-    if (!stat_into(inbox_path, marker_record[0])) return false;
-    for (U32 i = 9; i != max_path; ++i) {
-        const char c = path[i];
-        if (c != '/' && c) continue;
-        path[i] = 0;
-        const bool inside = stat_into(path, marker_record[1]) && same_object();
-        path[i] = c;
-        if (inside) return true;
-        if (!c) break;
-    }
-    return false;
-}
-// file.rename on a, after rename_to passed decide_request (the pair's policy; the write window is
-// open): both paths in the write area again, the source must exist (ENOENT) and the target must not
-// (EEXIST: the stock rename would replace it), the marker by another name is refused and a marker that
-// vanishes is re-created (as for unlink and rmdir), then the yaffs rename. 0, or the error number.
-const U32 yaffs_error = 0x8806f940u;                                  // 889f998c / 889f9982
-const U32 error_noent = 2, error_io = 5, error_exist = 17;
-U32 rename_now(char* to) {
-    const char* from = rename_source;
-    if (!valid_rename(from, to) || reaches_protected(rename_source) || reaches_protected(to)) return error_access;
-    if (!stat_into(from, marker_record[1])) return error_noent;
-    if (stat_into(to, marker_record[1])) return error_exist;
-    const bool marker = stat_into(marker_path, marker_record[0]);
-    if (marker && stat_into(from, marker_record[1]) && same_object()) {
-        note(0x21, file_engine::refuse_protected_path, 0xfffau);
-        return error_access;
-    }
-    const int r = a_side::rename_object(from, to);
-    U32 error = 0;
-    if (r == -2) { note(0x21, file_engine::refuse_off, 0xfff7u); error = error_io; }   // spans differ: not called
-    else if (r < 0) { error = U32(-int32_t(word(yaffs_error))); if (!error || error > 0xffffu) error = error_io; }
-    if (marker && !stat_into(marker_path, marker_record[1])) restore_marker(0x21);
-    return error;
-}
-#endif
+#include "storage_server_marker.ipp"                  // the marker checks, rename_now
 
 // Every request in the engine: file_engine::decide_request (with the path policy) first, then
 // the class's stock executor, which must be the CRC-checked one (vtable +0x14).
@@ -633,8 +560,8 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
         ++(ok ? r.executed : r.refused); note(op, action, ok ? 0 : 0xffffu);
         return;
     }
-    case file_engine::run_rename_to: {                                        // rename it
-        const U32 error = rename_now(path_copy);
+    case file_engine::run_rename_to: case file_engine::run_rename_over: {     // rename it
+        const U32 error = rename_now(path_copy, action == file_engine::run_rename_over);
         session.reply(request, error ? 0xffffffffu : 0, error);
         ++r.executed; note(op, action, error ? 0xff00u | error : 0);
         return;

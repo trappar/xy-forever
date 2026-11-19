@@ -146,7 +146,17 @@ uint32_t change(uint32_t op, const char* path, uint32_t& error, volatile uint32_
 // the source (A keeps it), then op 0x21 rename_to and the target (A renames in its write window; bound
 // change_ms). Before them, a folder moved deeper is walked for the depth rule (#124, file_engine.hpp;
 // refused: nothing renamed). mounted as change; error: A's error number (rename_status).
-uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint32_t& mounted);
+// over (#4): rename_over instead of rename_to: from is an upload (file_engine::upload_size), and an
+// existing file at to is replaced in one step (A checks the upload's size; a folder there: EISDIR).
+uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint32_t& mounted, bool over = false);
+// Streamed writes (#4, file.write_*), FILE_WRITE's steps: open_write = op 8 when needed, mkdir -p below
+// /yaffs2/, open "wb" (fd); write_more = chunk writes (written counts on); close_write; read_crc = open
+// read-only, read to EOF (at most size + 3 KiB) with CRC-32, close. mounted as write_file.
+uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted);
+uint32_t make_folders(const char* path, volatile uint32_t& mounted);  // open_write's mkdir -p alone (mounted)
+uint32_t write_more(int fd, const uint8_t* bytes, uint32_t size, uint32_t& written, volatile uint32_t& mounted);
+uint32_t close_write(int fd, volatile uint32_t& mounted);
+uint32_t read_crc(const char* path, uint32_t size, uint32_t& total, uint32_t& crc, volatile uint32_t& mounted);
 // COPY, the checks before B reads the source: op 8 when needed, then a stat of the target (as
 // file.list's; found: s_state, error eexist) and of its folder (missing: s_not_found, error enoent).
 // mounted as read_file (stale: op 9 first, in read mode).

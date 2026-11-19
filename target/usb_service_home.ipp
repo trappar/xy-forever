@@ -85,6 +85,7 @@ uint32_t home_pump() {
 #if defined(XYF_USB_FILE_WRITE)
     job_pump();                                        // a slice of the mod job
     boot_sweep_turn();                                 // #3: leftover tmp/job-* folders, a step per pass
+    stream_turn();                                     // #4: a streamed write left without data
     settle_turn();                                     // a window close still out
     if (writes_due && !job_running() XYF_AND_NOT_MTP_BUSY && now() - writes_ms > storage_server::window_settle_ms) settle_writes();
 #endif
@@ -175,6 +176,9 @@ uint32_t home_pump() {
             file_change(type, seq, payload, length);
         else if (type == P::t_rename_file) file_rename(seq, payload, length);
         else if (type == P::t_copy_file) file_copy(seq, payload, length);
+        else if (type == P::t_write_begin) write_begin(seq, payload, length);
+        else if (type == P::t_write_data) write_data(seq, payload, length);
+        else if (type == P::t_write_end) write_end(seq);
 #endif
 #if defined(XYF_TFW_CHECK)
         else if (type == P::t_tfw_check) tfw_check(seq, payload, length);

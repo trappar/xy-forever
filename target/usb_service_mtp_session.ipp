@@ -27,7 +27,7 @@ uint32_t mtp_window() {                                                  // the 
     if (code == P::s_ok) { storage_used = 1; writes_due = 1; writes_ms = now(); code = file_client::mount_ready(mounted); }
     return code;                                                         // then op 8 again if needed, as file.change
 }
-bool put_running() { return put_expected && result.put_received != put_expected; }
+bool put_running() { return uploading(); }
 bool mtp_busy() {                                                        // an operation in flight, or the leave's closes
     if (!mtp_on) return false;
     const U32 stage = mslot().stage;

@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.17",
+    "version": "1.18",
     "intro": [
       "XY Forever is a boot menu and firmware manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -329,6 +329,47 @@
       "doc": "Processor B reads the source whole into its staging buffer (at most `stage` bytes, else `too_large`) and writes it to the target as `file.write_staged` does, read back and compared (`crc`); the bytes never cross USB. A staging held before is discarded (`file.write_staged` and `boot.install` then answer `state`). A source `file.read` refuses, or a target `file.write_staged` refuses, is `refused`; a missing source or target folder `not_found`; a target that exists `state` (nothing replaced). After a failed write the device deletes the target. The host waits 60 s plus 1 s per 10000 bytes."
     },
     {
+      "type": "0x1a", "name": "file.write_begin", "symbol": "write_begin", "class": "product", "since": "1.18", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "start a streamed, replace-safe write of one file",
+      "timeout_ms": 60000, "destructive": true,
+      "request": {"size": [50, 280], "fields": [
+        {"name": "path", "type": "cstr", "encoding": "utf-8", "min_bytes": 10, "max_bytes": 240, "doc": "the file to create or replace, as for `file.write_staged`; missing folders are created"},
+        {"name": "size", "type": "u32", "doc": "the file's size in bytes (0 allowed)"},
+        {"name": "crc", "type": "u32", "doc": "CRC-32 of the whole file"},
+        {"name": "sha256", "type": "bytes[32]", "doc": "SHA-256 of the whole file: the confirmation `file.write_end` checks before the target changes"}
+      ]},
+      "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
+      "errors": ["bad_request", "refused", "busy", "link", "storage"],
+      "doc": "Opens the write window and creates `/yaffs2/xy-forever/tmp/put-<size>-<crc>` (8 lowercase hex digits each), replacing a leftover of that name; the target is not touched. Any earlier streamed write is abandoned first (its temporary file removed). A job in progress is `busy`. The bytes follow with `file.write_data`; `file.write_end` finishes. A write left without data for 5 s is abandoned the same way (a cut cable); temporary files left by a power cut are removed when the USB service next starts."
+    },
+    {
+      "type": "0x1b", "name": "file.write_data", "symbol": "write_data", "class": "product", "since": "1.18", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "send the next piece of a streamed write",
+      "timeout_ms": 30000, "destructive": false,
+      "request": {"size": [5, 4160], "fields": [
+        {"name": "offset", "type": "u32", "doc": "must equal the bytes received so far"},
+        {"name": "data", "type": "rest", "min_bytes": 1, "max_bytes": 4156, "doc": "the next bytes; send `put_chunk` (1024) at a time (one storage write each); processor B writes them before it answers"}
+      ]},
+      "reply": {"size": [4, 4], "extensible": true, "on_error": "status", "fields": [
+        {"name": "received", "type": "u32", "doc": "bytes received and written so far"}
+      ]},
+      "errors": ["state", "range", "link", "storage"],
+      "doc": "As `stage.data`, but each piece goes to the temporary file at once: `range` when `offset` is not the bytes received so far or the data would pass the announced size; a resend inside what was received is ok and `received` stays (its bytes are not compared: `file.write_end` checks the file). `state` without a streamed write in progress. A failed storage write (`storage`, `link`; a full storage is `storage`) abandons the write and removes the temporary file when it can."
+    },
+    {
+      "type": "0x1c", "name": "file.write_end", "symbol": "write_end", "class": "product", "since": "1.18", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
+      "summary": "check the streamed file and rename it onto its target",
+      "timeout_ms": 120000, "destructive": true,
+      "request": {"ignored": true, "size": [0, 0], "fields": []},
+      "reply": {"size": [12, 12], "extensible": true, "on_error": "full", "fields": [
+        {"name": "written", "type": "u32", "doc": "bytes written to the temporary file"},
+        {"name": "readback_crc", "type": "u32", "doc": "CRC-32 of the temporary file read back (0 when it was not read)"},
+        {"name": "error", "type": "u32", "doc": "the device file system's error number of the rename (0 when none; 21 the target is a folder)"}
+      ]},
+      "errors": ["state", "crc", "sha", "link", "storage", "not_found"],
+      "doc": "Closes the temporary file, checks the received bytes' CRC-32 and SHA-256 against `file.write_begin` (`crc`, `sha`), reads the file back and compares its CRC-32 (`crc`), then processor A checks its size against its name and renames it onto the target in one step (yaffs replaces an existing file atomically: after a power cut the target is the old file or the new one, never a partial one). A target that is a folder is `storage` (error 21). On any failure the temporary file is removed and the target is unchanged. `state` when not every announced byte arrived or no streamed write is in progress. The host waits 60 s plus 1 s per 20000 bytes."
+    },
+    {
       "type": "0x20", "name": "boot.install", "symbol": "install", "class": "product", "since": "1.0", "switch": null,
       "summary": "install the staged XY Forever build into the boot partition",
       "timeout_ms": 900000, "destructive": true,
@@ -551,7 +592,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.17;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000007b0017000303ff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31373b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030303762303031373030303330336666303062653b6465763d313b7374616765323d30c9a38539"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.18;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000007b001700031fff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31383b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030303762303031373030303331666666303062653b6465763d313b7374616765323d30a7ceb932"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,
