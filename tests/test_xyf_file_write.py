@@ -91,7 +91,8 @@ class StockOpenFlagsTest(unittest.TestCase):
 
 class FileWriteSourceTest(unittest.TestCase):
     def setUp(self):
-        self.server = (ROOT / 'target/storage_server.cpp').read_text()
+        self.server = ''.join((ROOT / 'target' / n).read_text()
+                              for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         self.usb = unit_text(ROOT / 'target/usb_service.cpp')
 
     def test_a_enters_the_engine(self):
