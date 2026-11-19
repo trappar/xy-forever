@@ -246,7 +246,7 @@ class MtpSessionTests(unittest.TestCase):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.005)
         for _ in range(3):
-            self.sim.advance(6000, step=None)                              # past the request's bound
+            self.sim.advance(6000)                              # past the request's bound
         self.sim.set('a_silent', 0)
         answers = self.c.answers(self.c.take(timeout=60))
         self.assertEqual(answers[-1][1], R.BUSY)                           # a clean error (f_link: Device_Busy)

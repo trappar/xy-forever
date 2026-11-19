@@ -154,7 +154,7 @@ class Stage2ServiceTest(unittest.TestCase):
         thread = threading.Thread(target=lambda: reply.update(r=dev.call(P.HELLO, b'', timeout=8.0)), daemon=True)
         thread.start()
         time.sleep(0.3)
-        self.sim.advance(6000, step=None)              # past the request bound, on the simulator clock
+        self.sim.advance(6000)              # past the request bound, on the simulator clock
         thread.join(9.0)
         code, body = reply['r']
         self.assertEqual((code, body.decode()), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES)))

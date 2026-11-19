@@ -149,9 +149,9 @@ void generic(const Message& m) {                            // the stock slave I
 }
 }
 
-void a_service() {
+bool a_service() {
     std::lock_guard<std::mutex> hold(a_lock);
-    if (in_service || queue.empty() || r32(primary + 4)) return;
+    if (in_service || queue.empty() || r32(primary + 4)) return false;
     Incoming in = std::move(queue.front());
     queue.pop_front();
     const uint32_t slot = driver() + 0x3c + 0x60 * (next_slot++ & 3u);
@@ -178,6 +178,7 @@ void a_service() {
     in_service = true; service_slot = slot; service_tag = in.m.tag; service_cls = in.m.cls; service_op = in.m.op;
     std::atomic_thread_fence(std::memory_order_release);
     w32(primary + 4, slot);                                 // pending request for A's loop
+    return true;
 }
 
 void a_respond(uint32_t request) {
@@ -202,6 +203,7 @@ void link_start() {
         std::deque<Incoming> inbox;                          // A: held until its slave is set up
         for (;;) {
             const bool got = receive(m, body, 2);
+            bool work = got;
             if (role == 0) {
                 if (got && m.kind == k_request) inbox.push_back({m, body});
                 // The stock slave answers only while A's session has it open (slave_setup sets
@@ -210,12 +212,17 @@ void link_start() {
                     if (!inbox.front().m.cls) generic(inbox.front().m);
                     else { std::lock_guard<std::mutex> hold(a_lock); queue.push_back(std::move(inbox.front())); }
                     inbox.pop_front();
+                    work = true;
                 }
-                a_service();
+                work = a_service() || work;
             } else {
                 if (got && m.kind == k_response) complete(m, body);
                 if (!shared->b_queue.load()) release_held();
             }
+            // Virtual clock (sim/clock.cpp): the main thread has something to look at before the
+            // message counts as taken, so the board never steps the clock in between.
+            if (work) kick(role);
+            if (got) --shared->inflight[role];
         }
     }).detach();
 }
@@ -227,7 +234,7 @@ uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t a2
     const uint64_t start = now_us();
     bool noted = false;
     while (!w.done.load(std::memory_order_acquire)) {        // stock 889f7b12: spins until answered
-        usleep(50);
+        idle_pause(0, 50);
         host_poll();
         if (!noted && now_us() - start > 5000000u) {
             noted = true;

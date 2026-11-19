@@ -441,7 +441,7 @@ class MenuQuality(PageBase, unittest.TestCase):
         self.open_page()
         self.sim.set('a_slow_ms', 30)
         job = self.start(['alpha', 'gamma'])
-        down, up, repeats = self.held(PLUS, 1.5, during=lambda: (time.sleep(0.6), self.sim.advance(1500, step=None)))
+        down, up, repeats = self.held(PLUS, 1.5, during=lambda: (time.sleep(0.6), self.sim.jump(1500)))
         self.check_repeats(down, up, repeats, 'during a job')
         self.assertTrue(any(b - a >= 1400 for a, b in zip(repeats, repeats[1:])), repeats)   # the jump: one move
         self.assertNotEqual(MS.PHASES[self.status(job)['phase']], 'done')    # it was held during the job

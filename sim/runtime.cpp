@@ -45,7 +45,6 @@ const uint32_t fake_base = 0xc0000000u, slot_bits = 20, slots = 1024;
 uintptr_t slot_host[slots];
 unsigned slot_count = 0;
 std::mutex slot_lock;
-uint64_t start_ns = 0;
 
 void map_region(const Region& r, int fd) {
     void* want = reinterpret_cast<void*>(base + r.begin);
@@ -93,28 +92,6 @@ void w8(uint32_t a, uint8_t v) { *static_cast<volatile uint8_t*>(host(a)) = v; }
 void reset_private_memory() { ensure(); for (unsigned i = 0; i != sdram; ++i) map_region(regions[i], -1); }
 void attach_sdram(int fd) { ensure(); map_region(regions[sdram], fd); }
 
-uint64_t now_us() {
-    timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
-    return uint64_t(t.tv_sec) * 1000000u + uint64_t(t.tv_nsec) / 1000u;
-}
-uint64_t device_cycles() {
-    timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
-    const uint64_t ns = uint64_t(t.tv_sec) * 1000000000u + uint64_t(t.tv_nsec) +
-                        uint64_t(shared ? shared->clock_skip_us.load() : 0) * 1000u;     // control "advance MS"
-    if (!start_ns) start_ns = ns;
-    return (ns - start_ns) * 2 / 5 + 400000000u;                // 400 MHz; one second in, as after boot
-}
-void cycles(uint32_t& low, uint32_t& high) {
-    host_poll();                                                // sim/boot.cpp
-    // A processor polling the clock in a loop (A's link loop, B's waits) would hold a host core at
-    // 100% and, with many simulators at once (the test suite), starve the others past the link's
-    // answer bounds. A short sleep every 64 reads leaves the device's timing to the clock.
-    static uint32_t reads = 0;
-    if (!(++reads & 63u)) usleep(20);
-    if (shared && (role == 0 || role == 1)) ++shared->clock_reads[role];
-    const uint64_t c = device_cycles();
-    low = uint32_t(c); high = uint32_t(c >> 32);
-}
 uint32_t stack_pointer() { return 0x8ab80200u; }   // module stack (WIDE layout: WIDE_STACK + 0x200), below XYF_STACK_END
 
 void log(const char* format, ...) {
@@ -135,6 +112,7 @@ void exit_processor(int code) { fflush(stderr); _exit(code); }
 bool send_message(int fd, const Message& m, const void* body) {
     static std::mutex lock;
     std::lock_guard<std::mutex> hold(lock);
+    if (role == 0 || role == 1) { ++shared->outflight[role]; active(); }   // sim/clock.cpp (the board counts its own)
     const uint8_t* parts[2] = {reinterpret_cast<const uint8_t*>(&m), static_cast<const uint8_t*>(body)};
     const size_t sizes[2] = {sizeof(m), body ? m.body : 0};
     for (int k = 0; k != 2; ++k)
@@ -225,8 +203,11 @@ struct Held { Message m; std::vector<uint8_t> body; };
 std::map<uint32_t, Held> outstanding;
 uint64_t board_start_us = 0;
 int64_t b_sent_ms = -1, reset_ms[2] = {-1, -1};      // board clock (ms) of B's last link message, last resets
-uint64_t board_us() { return now_us() + uint64_t(shared->clock_skip_us.load()); }   // board clock (restarts)
-int64_t board_ms() {                                 // host time since start plus "advance": the device clocks' pace
+uint64_t board_us() {                                // board clock (restarts, delayed messages): sim/clock.cpp
+    return virtual_clock() ? shared->clock_ns.load() / 1000u : now_us() + uint64_t(shared->clock_skip_us.load());
+}
+int64_t board_ms() {                                 // since start, at the device clocks' pace
+    if (virtual_clock()) return int64_t(shared->clock_ns.load() / 1000000u);
     return int64_t((now_us() - board_start_us) / 1000u) + int64_t(shared->clock_skip_us.load() / 1000);
 }
 
@@ -261,6 +242,7 @@ void start(int which, bool power_on) {
     close(pair[1]);
     fcntl(pair[0], F_SETFL, O_NONBLOCK);
     p.pid = pid; p.fd = pair[0]; p.state = "running"; ++p.boots; p.restart_at = 0; p.in.clear(); p.cut = false;
+    kick(which);                                    // not idle until it says so (sim/clock.cpp)
     if (which == 0) to_a.clear();
     if (power_on) return;
     if (which == 1) { outstanding.clear(); return; }  // the master that sent them is gone
@@ -289,7 +271,7 @@ void resetting(int which) {
         log("board: B resets %lld ms after A's last reset: its bootloader %s", (long long)(reset_ms[0] >= 0 ?
             board_ms() - reset_ms[0] : -1), shared->b_gate.load() ? "finds A fresh" : "will find A running");
     }
-    // On the board clock (host time plus "advance"), so a test can pass the start time unwaited.
+    // On the board clock (sim/clock.cpp), so a test can pass the start time unwaited.
     p.restart_at = board_us() + uint64_t(which ? shared->b_boot_ms.load() : shared->a_boot_ms.load()) * 1000u;
     reset_ms[which] = board_ms();
     if (which == 1) shared->b_listening = 0;
@@ -299,6 +281,7 @@ void stop(int which) {
     Proc& p = procs[which];
     if (p.pid > 0) { kill(p.pid, SIGKILL); waitpid(p.pid, 0, 0); }
     if (p.fd >= 0) close(p.fd);
+    board_reset_flight(which);
     p.pid = 0; p.fd = -1; p.restart_at = 0; p.in.clear();
 }
 void power_cycle(bool play, const char* why) {
@@ -319,7 +302,9 @@ void power_cycle(bool play, const char* why) {
 bool forward(int to, const Message& m, const std::vector<uint8_t>& body) {
     Proc& p = procs[to];
     if (p.fd < 0 || p.state != "running") return false;    // a dead, halted or resetting processor hears nothing
-    if (!send_message(p.fd, m, body.empty() ? 0 : body.data())) return false;
+    ++shared->inflight[to];                                // taken by its link thread (sim/link.cpp)
+    if (!send_message(p.fd, m, body.empty() ? 0 : body.data())) { --shared->inflight[to]; return false; }
+    board_link_cost(uint32_t(body.size()));
     ++relayed[to];
     if (to == 0 && m.kind == k_request && m.cls && !(m.tag & inject_bit)) outstanding[m.tag] = {m, body};
     return true;
@@ -343,7 +328,7 @@ void route(int from, const Message& m, std::vector<uint8_t>& body) {
         // generic ops (handshake, op-10 echoes, release) at once.
         const int32_t slow = shared->a_slow_ms;
         if (m.cls && (slow > 0 || !to_a.empty())) {
-            to_a.push_back({now_us() + uint64_t(slow > 0 ? slow : 0) * 1000u, m, body});
+            to_a.push_back({board_us() + uint64_t(slow > 0 ? slow : 0) * 1000u, m, body});
             return;
         }
         forward(0, m, body);
@@ -354,7 +339,7 @@ void route(int from, const Message& m, std::vector<uint8_t>& body) {
             return;
         }
         if (m.kind == k_response) outstanding.erase(m.tag);
-        if (shared->a_silent) return;
+        if (shared->a_silent) { if (m.kind == k_response && m.cls) ++shared->a_silenced; return; }
         if (m.body && shared->drop_body > 0) { --shared->drop_body; log("fault: dropped reply body op %02x", m.op); return; }
         if (procs[1].cut) return;                          // the link dropped mid-body: B hears nothing more
         const int32_t cut = shared->cut_body;
@@ -389,6 +374,7 @@ void drain(int which) {
         if (p.in.size() < sizeof(m) + m.body) break;
         std::vector<uint8_t> body(p.in.begin() + sizeof(m), p.in.begin() + sizeof(m) + m.body);
         p.in.erase(p.in.begin(), p.in.begin() + sizeof(m) + m.body);
+        --shared->outflight[which];
         route(which, m, body);
     }
 }
@@ -402,6 +388,7 @@ void reap() {
             if (p.pid != pid) continue;
             if (p.fd >= 0) { drain(k); close(p.fd); }
             p.pid = 0; p.fd = -1;
+            board_reset_flight(k);
             const int code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
             if (k == 1) shared->b_listening = 0;
             if (code == exit_reset) resetting(k);
@@ -428,7 +415,12 @@ void wipe_otp() {
     for (size_t i = 0; i != sizeof(shared->otp_field); ++i) p[i] = 0;
 }
 std::string status_json() {
-    char text[1800];
+    char text[2000], clock[200];
+    snprintf(clock, sizeof(clock), "\"virtual\": %d, \"steps\": %u, \"work\": [%u, %u], \"idle\": [%d, %d], \"flight\": [%d, %d, %d, %d]",
+             shared->virtual_clock.load(), shared->steps.load(), shared->work[0].load(), shared->work[1].load(),
+             shared->idle_work[0] == shared->work[0] && shared->idle_steps[0] == shared->steps,
+             shared->idle_work[1] == shared->work[1] && shared->idle_steps[1] == shared->steps,
+             shared->inflight[0].load(), shared->inflight[1].load(), shared->outflight[0].load(), shared->outflight[1].load());
     snprintf(text, sizeof(text),
              "{\"a\": \"%s\", \"b\": \"%s\", \"a_boots\": %d, \"b_boots\": %d, \"power_ons\": %d, \"listening\": %d, "
              "\"storage_ops\": %d, \"cuts\": %d, \"a_silent\": %d, \"a_slow_ms\": %d, \"drop_request\": %d, "
@@ -439,7 +431,7 @@ std::string status_json() {
              "\"b_sent_ms\": %lld, \"a_reset_ms\": %lld, \"b_reset_ms\": %lld, \"outstanding\": %zu, "
              "\"odd_selects\": %d, \"b_queue\": %d, \"b_queued\": %d, \"cut_body\": %d, "
              "\"boot_a_window_ms\": %d, \"b_waits_a\": %d, \"b_close_stuck\": %d, \"rw_mounts\": %d, "
-             "\"stage2_opens\": %d, \"stage2_calls\": %d, \"a_silenced\": %d, \"a_clock_reads\": %u, \"b_clock_reads\": %u, \"needs_repair\": %d}",
+             "\"stage2_opens\": %d, \"stage2_calls\": %d, \"a_silenced\": %d, \"a_clock_reads\": %u, \"b_clock_reads\": %u, \"needs_repair\": %d, %s}",
              procs[0].state.c_str(), procs[1].state.c_str(), procs[0].boots, procs[1].boots, power_ons,
              shared->b_listening.load(), shared->storage_ops.load(), shared->cuts.load(), shared->a_silent.load(),
              shared->a_slow_ms.load(), shared->drop_request.load(), shared->drop_body.load(),
@@ -453,10 +445,10 @@ std::string status_json() {
              shared->b_queue.load(), shared->b_queued.load(), shared->cut_body.load(),
              shared->boot_a_window_ms.load(), shared->b_waits_a.load(), shared->b_close_stuck.load(), shared->rw_mounts.load(),
              shared->stage2_opens.load(), shared->stage2_calls.load(), shared->a_silenced.load(),
-             shared->clock_reads[0].load(), shared->clock_reads[1].load(), shared->needs_repair.load());
+             shared->clock_reads[0].load(), shared->clock_reads[1].load(), shared->needs_repair.load(), clock);
     return text;
 }
-std::string command(const std::string& line, bool& quit) {
+std::string command(const std::string& line, bool& quit, int client) {
     char verb[32] = {0}, name[32] = {0};
     long long value = 0;
     const int n = sscanf(line.c_str(), "%31s %31s %lld", verb, name, &value);
@@ -466,11 +458,12 @@ std::string command(const std::string& line, bool& quit) {
         power_cycle(n < 2 || strcmp(name, "plain"), "control");
         return "{\"ok\": true}";
     }
-    if (n == 2 && !strcmp(verb, "advance")) {             // advance MS: both processors' cycle counters jump
+    if (n == 2 && (!strcmp(verb, "advance") || !strcmp(verb, "jump"))) {   // advance|jump MS: sim/clock.cpp
         const long long ms = strtoll(name, 0, 10);
         if (ms <= 0) return "{\"ok\": false, \"error\": \"advance: MS > 0\"}";
-        shared->clock_skip_us += ms * 1000;
-        return "{\"ok\": true}";
+        if (verb[0] == 'j') { board_jump(ms); return "{\"ok\": true}"; }
+        board_advance(client, ms);
+        return "";                                        // answered when the clock is there
     }
     if (n >= 1 && !strcmp(verb, "cut")) {                 // power cut now, then power on (PLAY)
         ++shared->cuts;
@@ -511,48 +504,8 @@ std::string command(const std::string& line, bool& quit) {
         shared->swap_armed = 1;
         return "{\"ok\": true}";
     }
-    if (n >= 2 && (!strcmp(verb, "knob") || !strcmp(verb, "knob_raw"))) {   // runtime.hpp
-        static uint8_t seq = 0xc4;                        // the PSoC's frame counter (as measured)
-        Shared::KnobFrame f = {};
-        long count = 1;
-        if (verb[4] == 0) {                               // knob ID DELTA [COUNT]: one record each
-            long id = 0, delta = 0;
-            if (sscanf(line.c_str(), "knob %ld %ld %ld", &id, &delta, &count) < 2 || id < 0 || id > 255)
-                return "{\"ok\": false, \"error\": \"knob: ID DELTA [COUNT]\"}";
-            const uint8_t bytes[] = {0x41, 0, 0x45, 3, uint8_t(id), uint8_t(uint16_t(delta) >> 8), uint8_t(delta)};
-            f.length = sizeof(bytes);
-            memcpy(f.bytes, bytes, sizeof(bytes));
-        } else {                                          // knob_raw HEX [COUNT]: exactly these bytes
-            char hex[96] = "";
-            sscanf(line.c_str(), "knob_raw %95s %ld", hex, &count);
-            for (const char* h = hex; h[0] && h[1] && f.length < sizeof(f.bytes); h += 2) {
-                unsigned byte = 0;
-                if (sscanf(h, "%2x", &byte) != 1) return "{\"ok\": false, \"error\": \"knob_raw: bad hex\"}";
-                f.bytes[f.length++] = uint8_t(byte);
-            }
-        }
-        const uint32_t head = shared->knob_head.load(), tail = shared->knob_tail.load();
-        if (count < 1 || head - tail + uint32_t(count) > Shared::knob_frames)
-            return "{\"ok\": false, \"error\": \"knob: COUNT 1.., the mailbox holds 512\"}";
-        for (long i = 0; i != count; ++i) {
-            Shared::KnobFrame& slot = shared->knob_frame[(head + uint32_t(i)) % Shared::knob_frames];
-            slot = f;
-            if (verb[4] == 0) slot.bytes[1] = seq++;
-        }
-        shared->knob_head.store(head + uint32_t(count));
-        return "{\"ok\": true}";
-    }
-    if (n >= 2 && !strcmp(verb, "realkey")) {            // realkey K P (runtime.hpp)
-        long key = -1, pressed = -1;
-        if (sscanf(line.c_str(), "realkey %ld %ld", &key, &pressed) != 2 || key < 0 || key > 255 || pressed < 0 || pressed > 1)
-            return "{\"ok\": false, \"error\": \"realkey: K P\"}";
-        const uint32_t head = shared->real_head.load();
-        if (head - shared->real_tail.load() >= Shared::real_keys) return "{\"ok\": false, \"error\": \"realkey: mailbox full\"}";
-        shared->real_key[head % Shared::real_keys] = uint32_t(key) | uint32_t(pressed) << 8;
-        shared->real_head.store(head + 1);
-        return "{\"ok\": true}";
-    }
-    if (n == 2 && !strcmp(verb, "knob_jump")) { shared->knob_jump += int32_t(strtol(name, 0, 10)); return "{\"ok\": true}"; }
+    if (n >= 2 && !strncmp(verb, "knob", 4)) return input_command(line, verb);    // sim/devices.cpp
+    if (n >= 2 && !strcmp(verb, "realkey")) return input_command(line, verb);
     if (n == 2 && !strcmp(verb, "injected")) {            // injected TAG: A's answer, if any
         auto it = injected.find(inject_bit | uint32_t(strtoul(name, 0, 10)));
         if (it == injected.end()) return "{\"ok\": false, \"error\": \"no such injected request\"}";
@@ -616,6 +569,7 @@ int main(int argc, char** argv) {
         const char* v = i + 1 < argc ? argv[i + 1] : 0;
         if (a == "--plain") { play = false; continue; }
         if (a == "--otp-stdin") { otp = true; continue; }
+        if (a == "--virtual") { shared->virtual_clock = 1; continue; }   // sim/clock.cpp (test runs)
         if (!v) return usage();
         if (a == "--root") snprintf(shared->root, sizeof(shared->root), "%s", v);
         else if (a == "--bootpart") snprintf(shared->bootpart, sizeof(shared->bootpart), "%s", v);
@@ -632,6 +586,10 @@ int main(int argc, char** argv) {
     signal(SIGPIPE, SIG_IGN);
     srand(unsigned(getpid()));
     for (int k = 0; k != 2; ++k) sdram_fds[k] = make_sdram();
+    for (auto& w : shared->wake) {
+        if (pipe(w)) crash("pipe: %s", strerror(errno));
+        for (int end : w) fcntl(end, F_SETFL, O_NONBLOCK);
+    }
     control_fd = listen_on(control_port);
     log("USB CDC endpoint 127.0.0.1:%d, control 127.0.0.1:%d, storage %s", shared->port, control_port, shared->root);
     power_cycle(play, "start");
@@ -645,16 +603,21 @@ int main(int argc, char** argv) {
         int link_index[2] = {-1, -1};
         for (int k = 0; k != 2; ++k)
             if (procs[k].fd >= 0) { link_index[k] = int(fds.size()); fds.push_back({procs[k].fd, POLLIN, 0}); }
-        int wait_ms = 20;
-        if (!to_a.empty()) {
-            const uint64_t now = now_us();
-            wait_ms = to_a.front().at > now ? int((to_a.front().at - now) / 1000u) + 1 : 0;
+        fds.push_back({shared->wake[2][0], POLLIN, 0});   // a processor went idle (sim/clock.cpp)
+        // The board's next event (a delayed message to A, a restart) on its clock; virtual: a bound of the steps.
+        uint64_t next = to_a.empty() ? 0 : to_a.front().at;
+        for (const Proc& p : procs) if (p.restart_at && (!next || p.restart_at < next)) next = p.restart_at;
+        const bool running[2] = {procs[0].pid > 0 && procs[0].state == "running", procs[1].pid > 0 && procs[1].state == "running"};
+        int wait_ms = board_clock(running, next * 1000u);
+        if (!virtual_clock() && next) {
+            const uint64_t now = board_us();
+            if (next - now < uint64_t(wait_ms) * 1000u || next <= now) wait_ms = next > now ? int((next - now) / 1000u) + 1 : 0;
         }
-        ::poll(fds.data(), fds.size(), wait_ms < 20 ? wait_ms : 20);
+        ::poll(fds.data(), fds.size(), wait_ms);
         reap();
         for (int k = 0; k != 2; ++k)
             if (link_index[k] >= 0 && procs[k].fd >= 0 && (fds[link_index[k]].revents & (POLLIN | POLLHUP))) drain(k);
-        while (!to_a.empty() && to_a.front().at <= now_us()) {
+        while (!to_a.empty() && to_a.front().at <= board_us()) {
             forward(0, to_a.front().m, to_a.front().body);
             to_a.pop_front();
         }
@@ -674,15 +637,17 @@ int main(int argc, char** argv) {
             const ssize_t n = (fds.size() > i + 1 && fds[i + 1].fd == clients[i] && (fds[i + 1].revents & (POLLIN | POLLHUP)))
                               ? read(clients[i], buffer, sizeof(buffer)) : -2;
             if (n == 0 || (n < 0 && n != -2 && errno != EAGAIN)) {
+                board_forget(clients[i]);
                 close(clients[i]); clients.erase(clients.begin() + long(i)); client_in.erase(client_in.begin() + long(i));
                 continue;
             }
             if (n > 0) client_in[i].append(buffer, size_t(n));
             size_t eol;
             while ((eol = client_in[i].find('\n')) != std::string::npos) {
-                const std::string reply = command(client_in[i].substr(0, eol), quit) + "\n";
+                const std::string reply = command(client_in[i].substr(0, eol), quit, clients[i]);
                 client_in[i].erase(0, eol + 1);
-                if (write(clients[i], reply.data(), reply.size()) < 0) break;
+                kick(0); kick(1);                         // a fault, a frame or a key may wait for either
+                if (!reply.empty() && write(clients[i], (reply + "\n").data(), reply.size() + 1) < 0) break;
             }
             ++i;
         }

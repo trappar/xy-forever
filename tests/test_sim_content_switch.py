@@ -303,8 +303,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             thread = threading.Thread(target=lambda: reply.setdefault('r', MS.job_status(self.dev, 0)), daemon=True)
             thread.start()
             for _ in range(12):                                         # the request's bound, then the close's
-                self.sim.advance(6000, step=None)
-                self.sim.ran_on()                                       # B saw the jump
+                self.sim.advance(6000)
                 thread.join(0.1)
                 if 'r' in reply:
                     break

@@ -20,20 +20,32 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   last, the other erased, no encryption), the retained cold state, `cold.cpp` (its policy is extracted; an OS
   start stops both processes: `os`; no image: `halted`) and `key_ui` (the menu loop without screen or keys:
   `home_pump`, tick, link check; SCREEN shows a test pattern, KEY does nothing).
+- **Device time** (`sim/clock.cpp`): interactive runs (`python3 -m xy_forever.sim`, the web app, `conformance.py
+  --sim`) use real time. Test runs (`xy_forever.sim.Simulator`, `--virtual-clock`; the TypeScript and web tests
+  too) use a virtual clock that only the simulator moves: the board steps it (1 ms after activity, doubling to 8
+  ms, never past a known event: a reset delay, a delayed link message, a fault's delay) only while both
+  processors are idle (no link message in flight, each main thread in a wait or polling the clock with nothing
+  done); a relayed message and a busy processor's clock reads add their own time. A processor that is slow
+  on a busy host stops the clock, so no device time-out depends on host load. Idle steps keep pace with host
+  time (at most 1 s behind), so a host's pauses mean what they mean on the OP-XY; `advance` fast-forwards.
 - **Resets** (`sim/boot.cpp`): a stock reset always lands in the bootloader stand-in (no WDOG0 model). B's probes A
   first: on only if A reset <= `boot_a_window_ms` (400; device 0.15-1.4 s) before B or later, else waits (`b_waits_a`).
 - **Not hosted:** the menu's screen and keys, os.ldr itself, CDC ring and USB timing, NAND timing, encryption,
   stage 2; yaffs is a (case-insensitive) host folder.
 - **Run:** `python3 -m xy_forever.sim` (`SESSIONS/simulator/` in the private folder: seeded `yaffs2/`, `bootpart.bin`,
-  `builds/`; `--port`, `--plain`, `--version V`, `--pre-v1`), then `xyf_host.py --sim 127.0.0.1:7341` (or `XYF_SIM`),
+  `builds/`; `--port`, `--plain`, `--version V`, `--pre-v1`, `--virtual-clock`), then `xyf_host.py --sim 127.0.0.1:7341` (or `XYF_SIM`),
   `scripts/device_pass.py` / `scripts/conformance.py --sim …` (evidence removed when nothing failed, unless `--keep`).
 - **Control** (port + 1, one line, JSON reply): `status` (A's `partition`; `boot_writes`, yaffs changes on a boot
   partition; `rw_open`/`unclean_mounts`, read-write mounts never unmounted; `to_a`/`to_b`, link messages relayed),
-  `power [play|plain]`, `cut`, `set NAME N` with `a_silent`, `a_slow_ms`, `drop_request`, `drop_body`, `cable_pull`
+  `power [play|plain]`, `cut`, `set NAME N` with `a_silent` (status `a_silenced`: B's class requests kept from A or A's answers to them
+  dropped), `a_slow_ms`, `drop_request`, `drop_body`, `cable_pull`
   (bytes), `space`, `fail_write` (the Nth write, boot partition too), `fail_mount`, `vanish_marker`, `cut_after`,
   `fail_select` (switches, then fails), `fail_unmount` (while set), `fail_open` (A's), `full_path` (240 B, no NUL)
   (storage operations, then a power cut and a PLAY power-on); `swap PATH` (stock path buffer); `inject CLASS OP ARG0
   ARG2 [HEX]` sends A a raw request past B's checks (class 0: generic), `injected TAG` reads A's answer
-  (`Simulator.ask_a`); `advance MS` moves both processors' cycle counters ahead, so a device time-out (A's idle
-  window, a held window) passes unwaited (`Simulator.advance`, in steps); `reset a|b`,
-  `set a_boot_ms|b_boot_ms|a_redeliver|boot_a_window_ms|a_stall_now`. Tests: `tests/test_simulator.py`.
+  (`Simulator.ask_a`); `advance MS` moves device time ahead, so a device time-out (A's idle window, a held window)
+  passes unwaited (`Simulator.advance`: virtual, in the board's idle steps, answered once there and idle again;
+  real time, one jump); `jump MS` moves it at once whatever runs (a slow pass, `Simulator.jump`); `knob ID DELTA
+  [COUNT]`, `knob_raw HEX [COUNT]`, `knob_jump N` (after the frames sent before it), `realkey K P`; `reset a|b`,
+  `set a_boot_ms|b_boot_ms|a_redeliver|boot_a_window_ms|a_stall_now`; fault delays (`mount_ms`, `rw_mount_ms`,
+  `unmount_ms`, `a_stall_now`) are device time. Status `virtual`, `steps`, `work`, `idle`, `flight`: the clock's state. Tests: `tests/test_simulator.py`.

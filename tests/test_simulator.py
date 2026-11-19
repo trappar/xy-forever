@@ -107,7 +107,7 @@ class SimulatorTest(unittest.TestCase):
             if predicate(status):
                 return status
             if 'resetting' in (status['a'], status['b']):
-                self.sim.advance(100, step=None)
+                self.sim.advance(100)
             else:
                 time.sleep(0.01)
         self.fail('%s not reached within %g s: %s' % (what, timeout, self.sim.status()))
@@ -385,7 +385,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(self.a_request(PATH_CLASS, 0x27, path='/yaffs2/emptydir'), (0, 0))
         self.assertFalse((root / 'xy-forever/log/old.bin').exists() or (root / 'emptydir').exists())
         self.assertTrue((root / 'newdir').is_dir())
-        self.sim.advance(4000, step=None)                 # the hold's end, not waited for (B waits on A's reply)
+        self.sim.advance(4000)                 # the hold's end, not waited for (B waits on A's reply)
         thread.join(30.0)
         code, body = reply['r']
         self.assertEqual((code, struct.unpack('<16I', body[:64])[0]), (0, 11))       # the self-test still passes
@@ -616,7 +616,7 @@ class SimulatorTest(unittest.TestCase):
         boots = self.sim.status()['a_boots']
         time.sleep(0.2)
         self.sim.set('a_silent', 1)
-        self.sim.advance(12000, step=None)
+        self.sim.advance(12000)
         status = self.wait(lambda s: s['a'] != 'running', timeout=5.0, what='A out of its session')
         self.assertEqual(status['a_boots'], boots)
         self.sim.set('a_silent', 0)
@@ -800,11 +800,11 @@ class SimulatorTest(unittest.TestCase):
         self.write_entry()
         time.sleep(0.2)                                   # A's loop has seen the last request
         self.sim.set('a_silent', 1)
-        self.sim.advance(8000, step=None)
+        self.sim.advance(8000)
         time.sleep(0.3)
         status = self.sim.status()
         self.assertEqual((status['a_boots'], status['a'], status['rw_open']), (1, 'running', 1))
-        self.sim.advance(4000, step=None)
+        self.sim.advance(4000)
         status = self.wait(lambda s: s['a'] != 'running', timeout=5.0, what='A out of its session')
         self.assertEqual(status['a_boots'], 1)
         self.sim.set('a_silent', 0)
@@ -937,7 +937,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(self.write(dev, b'silent\n', BASE + 'log/w/silent.txt')[0], 0)
         time.sleep(0.2)
         self.sim.set('a_silent', 1)
-        self.sim.advance(self.IDLE_MS + 2000, step=None)
+        self.sim.advance(self.IDLE_MS + 2000)
         status = self.wait(lambda s: s['rw_open'] == 0, timeout=5.0, what='the window closed')
         self.sim.set('a_silent', 0)
         self.sim.control('power')
@@ -1015,7 +1015,7 @@ class SimulatorTest(unittest.TestCase):
         self.sim.set('mount_ms', 600000)                 # A's next read-only mount: until cleared
         dev = self.reboot_home(dev)
         self.assertEqual(self.storage_start(dev)['phase'], 'waiting for A')
-        self.sim.advance(90000, step=None)               # B's clock past every bound; A still mounting
+        self.sim.advance(90000)               # B's clock past every bound; A still mounting
         self.assertEqual(dev.hello()[0], 0)              # the menu answers meanwhile
         st = self.storage_start(dev)
         self.assertEqual((st['phase'], st['a_mount']), ('waiting for A', None))
@@ -1176,7 +1176,7 @@ class SimulatorTest(unittest.TestCase):
                 break
             self.assertLess(time.monotonic(), deadline, 'B never waited on the request: %s' % now)
             time.sleep(0.005)
-        self.sim.advance(ms, step=None)
+        self.sim.advance(ms)
         thread.join(timeout + 1.0)
         self.assertIn('r', reply, reply.get('error'))
         return reply['r']
@@ -1187,7 +1187,7 @@ class SimulatorTest(unittest.TestCase):
         device clock after the request left) B still does not restart (the former F2 restarted it): the
         menu stays on USB, crash restarts 0; a power cycle brings files back."""
         boots = self.sim.status()['b_boots']
-        self.sim.advance(40000, step=None)
+        self.sim.advance(40000)
         time.sleep(0.3)
         path = (BASE + 'state-a.txt').encode() + b'\0'
         self.assertEqual(dev.call(P.READ_FILE, path, timeout=2.0)[0], ids.S_LINK)
@@ -1195,7 +1195,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(code, 0)
         status = self.sim.status()
         self.assertEqual((status['b'], status['listening'], status['b_boots']), ('running', 1, boots))
-        self.sim.advance(21000, step=None)
+        self.sim.advance(21000)
         time.sleep(0.3)
         status = self.sim.status()
         self.assertEqual((status['b'], status['listening'], status['b_boots'], status['b_waits_a']),
