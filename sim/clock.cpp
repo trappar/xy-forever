@@ -40,6 +40,7 @@ uint32_t seen_work = 0, seen_steps = 0, spin = 0;
 bool charging = false;
 int usb_fd = -1, usb_bytes = 0;
 bool usb_ready = false;
+uint32_t usb_news = 0;                      // usb_check()s that found news (cdc_wait: one seen inside block())
 
 void wake(int which) { const char b = 1; if (write(shared->wake[which][1], &b, 1) < 0) {} }
 void drain_wake(int which) { char b[64]; while (read(shared->wake[which][0], b, sizeof(b)) > 0) {} }
@@ -60,7 +61,7 @@ bool usb_check(bool readable) {
     bool news = false;
     if (fd != usb_fd || bytes != usb_bytes) { news = bytes > usb_bytes; usb_fd = fd; usb_bytes = bytes; usb_ready = false; }
     if (readable && !usb_ready) { usb_ready = true; news = true; }
-    if (news) ++shared->work[1];
+    if (news) { ++shared->work[1]; ++usb_news; }
     return news;
 }
 // Until a step, work, new USB data or 2 ms (a flag another process set is seen then).
@@ -134,9 +135,11 @@ void cdc_wait(int ms) {                                         // B's menu loop
     pollfd p = {fd, POLLIN, 0};
     if (!virtual_clock()) { if (fd < 0) usleep(ms * 1000); else ::poll(&p, 1, ms); return; }
     // Not a bound for the board's steps: the loop's pause is no device event (key_ui has its own).
+    const uint32_t seen = usb_news;
     for (const uint64_t until = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < until;) {
         if (fd >= 0 && ::poll(&p, 1, 0) > 0 && usb_check(true)) return;     // new data, not data B left unread
         idle_pause(0, 0);
+        if (usb_news != seen) return;                                       // block() saw it arrive
     }
 }
 
