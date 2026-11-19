@@ -34,6 +34,20 @@ class Fake:
 
 
 class RunnerTests(unittest.TestCase):
+    def test_recommendation_depends_on_final_restoration(self):
+        image = b'abc'
+        good = struct.pack('<IIIBB', 3, len(image), zlib.crc32(image), 1, 0).ljust(512, b'\0')
+        for end_status in (P.S_OK, P.S_STORAGE):
+            dev = Fake([(0, struct.pack('<III', 1, 0, 0)), (0, struct.pack('<I', 1) + good),
+                        (0, struct.pack('<I', 1) + bytes(512)),
+                        (0, struct.pack('<I', 1) + image.ljust(512, b'\0')),
+                        (end_status, struct.pack('<I', 1))])
+            with tempfile.TemporaryDirectory() as tmp:
+                result = B.run(dev, Path(tmp))
+            self.assertEqual(result['go'], end_status == P.S_OK)
+            self.assertEqual(result['recommendation'].startswith('go '), end_status == P.S_OK)
+            self.assertEqual([x[1] for x in dev.calls], [B.BEGIN, B.HEADER, B.HEADER, B.SECTOR, B.END])
+
     def test_newer_reply_is_refused_and_transport_timeout_sends_no_recovery(self):
         with self.assertRaisesRegex(B.ProbeError, 'version'):
             B.call(Fake([(0, struct.pack('<I', 2))]), B.BEGIN)

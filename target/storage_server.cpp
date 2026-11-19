@@ -433,12 +433,12 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
     Result& r = result;
     cold_storage::Stock121ReadOnlySession& storage = *static_cast<cold_storage::Stock121ReadOnlySession*>(context);
     ++r.requests;
+    latch(session);
     const U32 vtable = word(request), op = byte(request + 5);
 #if defined(XYF_USB_SERVICE)
     if (probe_mode && serve_boot_probe(request, session)) return;
     if (!probe_mode) {
 #endif
-    latch(session);
 #if defined(XYF_USB_SERVICE)
     if (!install_enabled && session.commands_seen() && (session.last_command() >> 8 & 0xffu) == install_item) {
         usb_service::result.a_identity = usb_service::identity();
