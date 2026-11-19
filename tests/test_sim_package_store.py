@@ -87,6 +87,12 @@ class Packages(unittest.TestCase):
         self.assertEqual(request(1, 0), 0)
         self.assertEqual(self.dev.call(P.ids.MODS_APPLY, b'')[0], P.ids.S_BUSY)
         self.assertEqual(self.dev.call(P.REBOOT)[0], P.ids.S_BUSY)
+        # The boot probe must respect the lease even before its first file write.
+        hello, self.dev.hello_info = self.dev.hello_info, None  # unlisted developer diagnostic
+        try:
+            self.assertEqual(self.dev.call(0x64, struct.pack('<II', 0, 1))[0], P.ids.S_BUSY)
+        finally:
+            self.dev.hello_info = hello
         self.assertEqual(request(1, 2, b'b' * 32), P.ids.S_STATE)
         self.sim.advance(9000)
         self.assertEqual(request(1, 0, b'b' * 32), P.ids.S_BUSY)

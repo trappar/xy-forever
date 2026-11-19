@@ -22,7 +22,8 @@ file operations. The marker, updater inbox, boot-partition latch and depth rules
 
 When no job runs, the existing bounded startup sweep removes disposable `tmp/job-*`, `tmp/pkg-*`
 folders and abandoned `tmp/put-*` uploads. It also runs after an abandoned/released package session.
-The collector below follows after the existing eight-second storage idle period. Host transactions sweep their own versioned scratch before
+The collector below follows after eight seconds without host traffic. It re-enters A's file service
+after a window close/catalog refresh, and yields at completed IO boundaries to foreground work. Host transactions sweep their own versioned scratch before
 starting; running output is never swept.
 
 ## Content retention and collection

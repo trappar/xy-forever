@@ -597,6 +597,70 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertEqual((MS.ERRORS[f['error']], f['detail']), ('rename', 'commit in'), f)
         self.assertEqual((self.entry('mods-a').exists(), self.listed('mods-a'), self.leftovers()), (False, None, []))
 
+    def test_idle_gc_discards_its_index_before_native_workspace_reuse(self):
+        # The old snapshot has no references to the entry the foreground job
+        # will publish. Its table also lies in that job's assembly workspace.
+        extra = hashlib.sha256(b'kept gc fixture').hexdigest()
+        official = self.root / LIB / self.base / 'content.sha256'
+        official.write_bytes(official.read_bytes() + ''.join(
+            '%s  zz-gc/%04d.bin\n' % (extra, i) for i in range(512)).encode())
+        blobs = self.root / 'xy-forever/blobs'
+        blobs.mkdir(exist_ok=True); (blobs / extra).write_bytes(b'kept gc fixture')
+        wanted = self.reference(['alpha'], [])
+        self.assertEqual(self.dev.read_file('/yaffs2/xy-forever/state-a.txt')[0], 0)
+        self.sim.set('a_slow_ms', 200)
+        self.sim.advance(9000)
+        for _ in range(500):
+            state = self.sim.status().get('package_gc', 0)
+            if state & 3 == 3 and state >> 16:
+                break
+            self.sim.advance(50)
+        else:
+            self.fail('idle collector did not hold a partial reference index and open list')
+        self.sim.set('a_slow_ms', 0)
+        result = {}
+        def begin():
+            try: result['job'] = self.start(['alpha'])
+            except Exception as error: result['error'] = error
+        worker = threading.Thread(target=begin, daemon=True); worker.start()
+        for _ in range(20):
+            self.sim.advance(250); worker.join(0.02)
+            if not worker.is_alive(): break
+        self.assertFalse(worker.is_alive(), 'foreground job did not drain/preempt idle IO')
+        if 'error' in result: raise result['error']
+        f = self.finished(result['job'])
+        self.assertEqual((f['phase'], f['error']), (MS.DONE, 0), f)
+        actual = tree(self.entry(f['detail']))
+        self.assertEqual(actual, wanted)
+        self.assertEqual(self.sim.status()['package_gc'], 0)
+        # A resumed old snapshot could remove these new references after the
+        # workspace was overwritten; a fresh idle collection must keep them.
+        self.sim.advance(10000)
+        for rel, data in wanted.items():
+            if rel.startswith('content/'):
+                self.assertEqual((blobs / hashlib.sha256(data).hexdigest()).read_bytes(), data)
+        self.assertEqual((blobs / extra).read_bytes(), b'kept gc fixture')
+
+    def test_power_cut_at_every_new_content_blob_publication(self):
+        wanted = self.reference(['alpha'], [])
+        count = len({hashlib.sha256(data).digest() for path, data in wanted.items() if path.startswith('content/')})
+        before = outside_tmp(self.root)
+        for offset in range(1, count + 1):
+            with self.subTest(blob=offset):
+                shutil.rmtree(self.root / 'xy-forever/blobs', ignore_errors=True)
+                cuts = self.sim.status()['cuts']
+                self.fault(len(wanted) + offset, 2, ['alpha'])
+                self.wait_sim(lambda state: state['cuts'] == cuts + 1 and state['listening'], 'blob cut and restart')
+                self.reconnect(); self.assertEqual(self.dev.hello()[0], 0)
+                self.sim.set('rename_fault', 0)
+                self.until_swept()
+                self.assertFalse(self.entry('mods-a').exists())
+                self.assertFalse(self.entry('mods-b').exists())
+                self.assertEqual(outside_tmp(self.root), before)
+                for blob in (self.root / 'xy-forever/blobs').glob('*'):
+                    self.assertEqual(blob.name, hashlib.sha256(blob.read_bytes()).hexdigest())
+        self.assemble_and_compare(['alpha'])
+
     def test_power_cut_at_each_commit_step_then_the_sweep(self):
         """A power cut right after the rename in (the new entry listed) and right after the rename away (the
         target missing, the other entry intact); the restarted USB service sweeps tmp/job-* (the old tree, the

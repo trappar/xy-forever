@@ -73,7 +73,10 @@ bool mtp_busy();                                                        // an MT
 #define XYF_OR_MTP_BUSY                                                 // the product: the same tokens as before
 #define XYF_AND_NOT_MTP_BUSY
 #endif
+void stop_idle_gc();
 bool job_blocks(U32 type) {                                             // also while settle_begin's op 9 is out
+    if (blob_collecting && type != P::t_status && type != P::t_screen && type != P::t_peek &&
+        type != P::t_job_status && type != P::t_job_cancel) stop_idle_gc();
     if (package_active && (type == P::t_read_file || type == P::t_list_dir || type == P::t_delete_file ||
         type == P::t_remove_dir || type == P::t_make_dir || type == P::t_rename_file || type == P::t_write_begin ||
         type == P::t_write_data || type == P::t_write_end)) { package_ms = now(); package_file = 1; return false; }
@@ -303,7 +306,17 @@ void sweep_begin(Sweep& w, const char* keep) {
 // menu pass while nothing else uses the files (no job, upload, window close or MTP operation); the job
 // slot's sweep and page are free then. A job that starts ends it (its own sweep covers the same folders).
 // Bounded as the job's sweep: sweep_cap calls, the first failure ends it.
+volatile U32 gc_defer_ms __attribute__((section(".data"))) = 0;
 volatile U32 boot_sweep __attribute__((section(".data"))) = 0;          // 0 waiting, 1 running, 2 ended
+// Background collection yields only between completed IO calls. Foreground
+// jobs may then reuse the workspace; deletion was based on a complete snapshot.
+void stop_idle_gc() {
+    if (!blob_collecting) return;
+    xyf::blob::Collect& g = slot().garbage;
+    ContentIo io = {0};
+    if (g.fd >= 0) { io.close(g.fd); g.fd = -1; }
+    blob_collecting = 0; boot_sweep = 3; gc_defer_ms = now();
+}
 void boot_sweep_turn() {
     if (boot_sweep == 2) return;
     if (mounted == file_client::mounted_stale) { blob_collecting = 0; boot_sweep = 2; return; }
@@ -326,7 +339,9 @@ void boot_sweep_turn() {
 #endif
     JobSlot& s = slot();
     if (boot_sweep == 3) {
-        if (now() - rx_quiet_from < storage_server::window_settle_ms) return;
+        if (writes_due || !menu_link::usb_idle() || now() - rx_quiet_from < storage_server::window_settle_ms ||
+            now() - gc_defer_ms < storage_server::window_settle_ms) return;
+        if (!a_serving()) { boot_sweep = 2; return; }
         xyf::blob::collect_begin(s.garbage, reinterpret_cast<uint8_t*>(job_work_end - xyf::blob::index_bytes), xyf::blob::index_bytes);
         blob_collecting = 1; return;
     }
@@ -335,7 +350,7 @@ void boot_sweep_turn() {
         sweep_begin(s.leftovers, "");
         return;
     }
-    if (!sweep_step(s.leftovers, s.page)) boot_sweep = 3;
+    if (!sweep_step(s.leftovers, s.page)) { boot_sweep = 3; gc_defer_ms = now(); }
 }
 // the mods id that is neither the default nor the boot-once entry; of two, the
 // absent one, else the one not written last this boot (B sees no file times), else mods-a. Reads the
