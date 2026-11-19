@@ -2,8 +2,10 @@
 
 The native adapters (`native/json.hpp`, `xy_forever/native_json.py`,
 `clients/ts/src/native-json.ts`) define these independently versioned schemas.
-Storage migration is being implemented in issue #95; existing storage readers and
-writers still use the legacy records until their integration lands.
+Storage migration is being implemented in issue #95. Host package admission,
+modkit rebuilds, package indexes and client metadata reads accept the native
+package record. Device readers and default writers still use the legacy records
+until their integration lands.
 
 Every native record has a string `schema` and integer `schema_version` (currently
 1). The package's `version` remains display/equality metadata; it is unrelated to
@@ -88,3 +90,21 @@ On the Blackfin, the caller-owned workspace is 11,012 bytes: 8,452 bytes for the
 input/NUL/alignment and 2,560 bytes for 128 properties. This does not include the
 caller's internal text output or surrounding job workspace. Stack and linked
 firmware growth must also be measured when the adapters enter live readers.
+
+## Host package record selection
+
+Python `package_records` and TypeScript `package-records` select `manifest.json`
+when present and use `info.txt` only when JSON is absent. A malformed native
+record, wrong schema or unsupported schema version refuses; a second legacy file
+does not authorize fallback. Metadata-only library/display reads retain the old
+lenient interpretation of legacy text. Native JSON always passes through its
+bounded schema adapter.
+
+Strict package admission requires the selected manifest's original bytes to be
+covered by `files.sha256`. Hash checks use the original document, before creating
+any internal text view. A directory containing both records whose list covers
+only `info.txt` is refused. Package archives retain their exact bytes, including
+metadata; index fetch does not normalize or migrate them. Shared host integration
+cases are in `tests/package-records.json`; adapter cases shared with C++ remain in
+`tests/native-json.json`. Stock content-pack readers keep their own schema and
+text/size rules; the native adapter is used only in native package contexts.

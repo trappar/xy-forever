@@ -33,7 +33,7 @@ import subprocess
 import tempfile
 import zlib
 
-from . import modkit as M, modlink as L, xyf_entry
+from . import modkit as M, modlink as L, package_records, xyf_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 CXX = '/usr/bin/clang++'
@@ -47,7 +47,7 @@ MEMORY_MODES = ('standard', 'expanded')
 
 
 def info_values(path):
-    return dict(l.split('=', 1) for l in Path(path).read_text().splitlines() if '=' in l and not l.startswith('#'))
+    return package_records.read_values(Path(path).parent)
 
 
 def known_base_entry(base, stock=None, catalog=None):

@@ -6,6 +6,7 @@
 // refused: unknown format, bad ids, absolute, traversing or over-long paths, members not in the index,
 // duplicate or compressed members, sizes over the limits, a hash that differs. Nothing is published; the
 // index's licence and source fields are placeholders (no redistribution decision is made).
+import { recordName } from './package-records.ts';
 import { sha256 } from './client.ts';
 import { MODS_ROOT, PackageError, listPaths } from './mods.ts';
 import type { PackageSource } from './mods.ts';
@@ -69,7 +70,7 @@ function checkPackage(profile: string, generation: string, pkg: IndexPackage): v
     need(isInt(f.size, MAX_FILE), `${id}/${f.path}: bad or oversize size`);
     need(typeof f.sha256 === 'string' && SHA.test(f.sha256), `${id}/${f.path}: bad sha256`);
   }
-  need(seen.has('files.sha256') && seen.has('info.txt'), `${id}: no files.sha256 or info.txt`);
+  need(seen.has('files.sha256') && recordName(seen) !== undefined, `${id}: no files.sha256 or info.txt`);
   for (const p of seen) {
     const parts = p.split('/');
     for (let i = 1; i < parts.length; i++) need(!seen.has(parts.slice(0, i).join('/')), `${id}: a file and a folder share a name`);
