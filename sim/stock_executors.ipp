@@ -46,10 +46,18 @@ void executor(uint32_t address, uint32_t request) {
         return finish(request, op == 0x31 ? 0 : found ? 0 : fail(2));
     }
     if (address == 0x889f6cd6u && cls == cls_read && op == 0x2a) {
-        const uint32_t want = r32(request + 0xc) < a_buffer_bytes ? r32(request + 0xc) : a_buffer_bytes;
+        // #144: one 0x1000-byte body per run (the builder's chunk). While bytes are left it sends the body and
+        // re-posts itself (889f66fc), served again by A's next poll; the last body comes with the answer, whose
+        // result is every byte read (the stock fread's count). Bytes so far at +0x28.
+        const uint32_t count = r32(request + 0xc), done = r32(request + 0x28);
+        const uint32_t want = count > done ? (count - done < 0x1000u ? count - done : 0x1000u) : 0;
         const int n = read_file(int(a0), static_cast<uint8_t*>(host(a_out_buffer)), want);
         w32(request + 0x20, a_out_buffer); w32(request + 0x24, n > 0 ? uint32_t(n) : 0);
-        return finish(request, n);
+        if (n > 0 && uint32_t(n) == want && done + want < count) {
+            w32(request + 0x28, done + want);
+            return a_stream(request);
+        }
+        return finish(request, n < 0 ? n : int(done) + n);
     }
     if (address == 0x889f6dcau && cls == cls_write) {
         const uint8_t* data = static_cast<const uint8_t*>(host(r32(request + 0x20)));

@@ -22,7 +22,7 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 TUNNEL = 0x61
 PLAY, STOP, PLUS = 51, 52, 54
 PASS_BOUND_MS = 250                                                       # one request per pass (sim timing)
-STREAM_MAX = 4096                                                         # file_client.hpp stream_max (#144)
+STREAM_MAX = 8192                                                         # file_client.hpp stream_max (#144)
 
 
 class TunnelClient(R.Client):
@@ -237,7 +237,8 @@ class MtpSessionTests(unittest.TestCase):
         code, _, data = self.c.transaction(0x1009, params[2])
         self.assertEqual((code, data), (R.OK, body))
         t = T.read(self.dev)
-        self.assertEqual((t['b']['read_bytes'], t['a']['reads']), (len(body), t['b']['reads']))
+        self.assertEqual((t['b']['read_bytes'], t['b']['reads']), (len(body), -(-len(body) // STREAM_MAX)))
+        self.assertEqual(t['a']['reads'], -(-len(body) // 4096))           # A: one run per 0x1000-byte body
         self.assertEqual(self.c.transaction(0x100B, params[2])[0], R.OK)
         text = '\n'.join(T.lines(T.read(self.dev), 1.0, 'download'))       # the breakdown: reads only
         self.assertIn('A read executor', text)
@@ -275,7 +276,7 @@ class MtpSessionTests(unittest.TestCase):
 
     def test_read_ahead_partial_slow_host_and_cancel(self):
         """#144: B reads ahead of the responder (two halves of the client's read-ahead buffer, A filling one while USB
-        sends the other). GetPartialObject from an odd offset, a slow host taking 700 bytes at a time, and a cancelled
+        sends the other; each request streamed back in 0x1000-byte bodies). GetPartialObject from an odd offset, a slow host taking 700 bytes at a time, and a cancelled
         GetObject followed by a whole one all arrive byte for byte, with no read past the transfer (one A request per
         STREAM_MAX bytes) and nothing left out after each."""
         from xy_forever import mtp_timing as T
@@ -288,7 +289,7 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual((code, params[0], data), (R.OK, 50000, self.big[1001:51001]))
         t = T.read(self.dev)
         self.assertEqual((t['b']['read_bytes'], t['b']['reads']), (50000, -(-50000 // STREAM_MAX)))
-        self.assertEqual(t['a']['reads'], t['b']['reads'])                  # A read nothing more
+        self.assertEqual(t['a']['reads'], -(-50000 // 4096))                # A's bodies: nothing more read
         self.assertEqual(self.c.state()['busy'], 0)
         self.c.out(self.c.command(0x1009, big))                            # the slow host
         stream, total = b'', 12 + len(self.big) + 12

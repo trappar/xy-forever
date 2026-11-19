@@ -108,7 +108,11 @@ Reply write_start(int fd, const uint8_t* data, uint32_t count);     // count <= 
 // of the MTP session's slot (usb_service_mod_job.ipp mtp_slot_bytes; the Session stays below it), reserved only in
 // MTP builds, whose session is its only user.
 static const uint32_t stream_buffer = 0x8b7fc000u, stream_capacity = 0x4000u;
-static const uint32_t stream_max = piece_max;                        // bytes per read_start: one 0x1000 body
+// bytes per read_start: A streams them back in 0x1000-byte bodies, its stock read executor (889f6cd6) re-posting
+// itself after each (889f66fc) and B's stock master taking each body into place, then the done byte: the stock
+// fread's own shape (the dev menu's GetObject asks 16 KiB per request; the OS 64 KiB). Two halves of the buffer.
+static const uint32_t stream_max = stream_capacity / 2;
+static_assert(stream_max % 0x1000 == 0, "whole bodies");
 Reply read_start(int fd, uint32_t at, uint32_t count);             // at + count <= stream_capacity, at % 32 == 0
 const uint8_t* stream(uint32_t at, uint32_t count);                 // after an answer: those lines invalidated
 // 193: op 0x26 (mkdir; EEXIST is fine) without waiting in it: A's first change opens its read-write window,
