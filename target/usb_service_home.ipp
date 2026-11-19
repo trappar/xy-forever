@@ -2,11 +2,18 @@
 #if defined(XYF_MTP_USB)
 // The MTP mark: a transfer runs or a command came within mtp_seen_ms (an open session alone does not light it).
 bool mtp_seen() { return composite_on && (mtp_busy() || (last_commands && now() - mtp_ms < mtp_seen_ms)); }
-// #144: the menu loop around MTP traffic (mtp_traffic). loop_from: when home_pump's pass ended while MTP traffic
-// was active (0: it was not); the time to the next pass and the redraws in it count in MTP's timing.
+// #144: the menu loop around MTP traffic (mtp_traffic): its pause after a pass is mtp_pause_us, not 5 ms (a host's
+// next command waited for it: about 4 ms of each small file's 15). loop_from: when home_pump's pass ended while
+// MTP traffic was active (0: it was not); the time to the next pass and the redraws in it count in MTP's timing.
+const U32 mtp_pause_us = 500;
 uint64_t loop_from __attribute__((section(".data"))) = 0;
 #endif
-uint32_t menu_pause_us() { return 5000u; }
+uint32_t menu_pause_us() {
+#if defined(XYF_MTP_USB)
+    if (loop_from) return mtp_pause_us;
+#endif
+    return 5000u;
+}
 void drawn(uint64_t start) {
 #if defined(XYF_MTP_USB)
     if (loop_from && mtp_live()) { ms::Timing& t = mslot().files.timing; ++t.draws; t.draw_units += units_since(start); }
@@ -24,7 +31,8 @@ uint32_t host_marks() {
 }
 const char* host_activity() {
 #if defined(XYF_MTP_USB)
-    if (mtp_seen()) return mtp_busy() ? "MTP: transfer" : "MTP: active";   // redraws the MTP mark
+    // #144: "transfer" also between a batch's operations (mtp_traffic): not two redraws per small file.
+    if (mtp_seen()) return mtp_busy() || mtp_traffic() ? "MTP: transfer" : "MTP: active";   // redraws the MTP mark
 #endif
 #if defined(XYF_USB_FILE_WRITE)
     if (job_running() && job_usb) return host_line(job_kind == 1 ? line_content : line_build);
