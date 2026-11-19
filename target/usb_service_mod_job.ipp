@@ -64,7 +64,20 @@ volatile U32 package_active __attribute__((section(".data"))) = 0;
 volatile U32 package_file __attribute__((section(".data"))) = 0;
 volatile U32 package_ms __attribute__((section(".data"))) = 0;
 uint8_t package_token[32] __attribute__((section(".data"))) = {0};
-bool job_running() { return job_state == job_busy || package_active || blob_collecting; }
+volatile U32 recovery_pending __attribute__((section(".data"))) = 1;
+volatile U32 journal_present __attribute__((section(".data"))) = 0;
+volatile U32 reporting __attribute__((section(".data"))) = 0;
+bool journal_kept() {
+    if (journal_present || recovery_pending) return true;
+    uint8_t record[file_client::record_bytes];
+    const char* paths[2] = {"/yaffs2/xy-forever/job.txt", "/yaffs2/xy-forever/job.old"};
+    for (U32 i=0;i!=2;++i) {
+        const file_client::Reply r=file_client::stat(paths[i],record);
+        if (r.outcome || r.value==0 || r.error!=file_client::enoent) return true;
+    }
+    return false;
+}
+bool job_running() { return job_state == job_busy || package_active || blob_collecting || reporting; }
 #if defined(XYF_MTP_SESSION)
 bool mtp_busy();                                                        // an MTP operation in flight
 #define XYF_OR_MTP_BUSY || mtp_busy()
@@ -77,11 +90,17 @@ void stop_idle_gc();
 bool job_blocks(U32 type) {                                             // also while settle_begin's op 9 is out
     if (blob_collecting && type != P::t_status && type != P::t_screen && type != P::t_peek &&
         type != P::t_job_status && type != P::t_job_cancel) stop_idle_gc();
-    if (package_active && (type == P::t_read_file || type == P::t_list_dir || type == P::t_delete_file ||
+    if (package_active && (type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space || type == P::t_read_file || type == P::t_list_dir || type == P::t_delete_file ||
         type == P::t_remove_dir || type == P::t_make_dir || type == P::t_rename_file || type == P::t_write_begin ||
         type == P::t_write_data || type == P::t_write_end)) { package_ms = now(); package_file = 1; return false; }
-    if (!boot_probe_active() && !job_running() && !closing XYF_AND_NOT_MTP_BUSY) return false;
-    return type == P::t_read_file || type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end ||
+    if (recovery_pending && !boot_probe_active() && !job_running() && !closing XYF_AND_NOT_MTP_BUSY) {
+        if (type == P::t_read_file || type == P::t_list_dir) return false;
+        // Only the readonly scan: preserve every write-window, held-request and original boot-path check.
+        if (!writes_due && mounted != file_client::mounted_stale && !file_client::left_out() && menu_link::usb_idle() &&
+            (type == P::t_reboot || type == P::t_continue || type == P::t_library_boot)) return false;
+    }
+    if (!boot_probe_active() && !job_running() && !recovery_pending && !closing XYF_AND_NOT_MTP_BUSY) return false;
+    return type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space || type == P::t_read_file || type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end ||
            type == P::t_file_write || type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir ||
            type == P::t_make_dir || type == P::t_rename_file || type == P::t_copy_file || type == P::t_install ||
            type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end ||
@@ -339,6 +358,7 @@ void boot_sweep_turn() {
 #endif
     JobSlot& s = slot();
     if (boot_sweep == 3) {
+        if (journal_present) { boot_sweep = 2; return; }
         if (writes_due || !menu_link::usb_idle() || now() - rx_quiet_from < storage_server::window_settle_ms ||
             now() - gc_defer_ms < storage_server::window_settle_ms) return;
         if (!a_serving()) { boot_sweep = 2; return; }

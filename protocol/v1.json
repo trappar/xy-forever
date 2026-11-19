@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.20",
+    "version": "1.21",
     "intro": [
       "XY Forever is a boot menu and firmware manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -722,6 +722,248 @@
         "link"
       ],
       "doc": "Host package transactions stage and verify packages through existing file RPCs, then publish by one directory rename. An acquired session excludes MTP, other jobs, boots and the idle scratch sweep, but permits file.read/list/delete/rmdir/mkdir/rename and streamed writes. Renew before each operation. After ten seconds without requests and with no upload, the session is abandoned and idle scratch cleanup resumes. Release closes the write window asynchronously; retry subsequent file requests while busy. This is cooperative exclusion for one CDC client, not an authorization boundary. Raw file/MTP operations remain available outside a package transaction."
+    },
+    {
+      "type": "0x49",
+      "name": "package.list",
+      "symbol": "package_list",
+      "class": "product",
+      "since": "1.21",
+      "switch": "XYF_USB_FILE_WRITE",
+      "switch_optional": false,
+      "summary": "list packages and their exact identity",
+      "timeout_ms": 600000,
+      "destructive": false,
+      "request": {
+        "size": [
+          16,
+          16
+        ],
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32",
+            "doc": "API version: 1; newer is unsupported"
+          },
+          {
+            "name": "area",
+            "type": "u32",
+            "doc": "0 inbox, 1 firmware library, 2 mods",
+            "range": [
+              0,
+              2
+            ]
+          },
+          {
+            "name": "outer",
+            "type": "u32",
+            "doc": "cursor, initially 0"
+          },
+          {
+            "name": "inner",
+            "type": "u32",
+            "doc": "mod-package cursor within generation; otherwise 0"
+          }
+        ]
+      },
+      "reply": {
+        "size": [
+          16,
+          996
+        ],
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32",
+            "doc": "reply format: 1"
+          },
+          {
+            "name": "outer",
+            "type": "u32",
+            "doc": "next cursor"
+          },
+          {
+            "name": "inner",
+            "type": "u32",
+            "doc": "next inner cursor"
+          },
+          {
+            "name": "more",
+            "type": "u32",
+            "doc": "1: request next page, 0: end",
+            "range": [
+              0,
+              1
+            ]
+          },
+          {
+            "name": "item",
+            "type": "rest",
+            "doc": "At most one item: LF key=value ASCII text; empty on end",
+            "max_bytes": 980
+          }
+        ],
+        "on_error": "status",
+        "extensible": false
+      },
+      "errors": [
+        "bad_request",
+        "unsupported",
+        "busy",
+        "link",
+        "storage",
+        "not_found",
+        "too_large"
+      ],
+      "doc": "One item per page, in filesystem order. Start both cursors at zero and use the returned cursors until more is zero. Area 2 walks mods/<generation>/<package>. Item keys: id (relative to area), type, version, sha256 (manifest image hash, or single-file hash), identity (SHA-256 of exact files.sha256 bytes; absent list: the single file itself), needs_os, generation, profile, valid (strict manifest admitted; 0 for legacy or unknown). Inbox files are recognised by bytes, never extension. Unknown or incomplete folders remain visible with valid=0 and an empty identity when no list or single image exists. The caller waits up to 600 seconds (large official inbox files are streamed, never buffered whole). Hashing is streamed in menu-loop slices while other storage commands return busy. Directory contents may change between pages; use package.session for a stable cooperative snapshot. This read never changes admission or legacy boot semantics."
+    },
+    {
+      "type": "0x4a",
+      "name": "state.get",
+      "symbol": "state_get",
+      "class": "product",
+      "since": "1.21",
+      "switch": "XYF_USB_FILE_WRITE",
+      "switch_optional": false,
+      "summary": "read boot slots, content record and durable job intent",
+      "timeout_ms": 60000,
+      "destructive": false,
+      "request": {
+        "size": [
+          12,
+          12
+        ],
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32",
+            "doc": "API version: 1; newer is unsupported"
+          },
+          {
+            "name": "part",
+            "type": "u32",
+            "doc": "0 state-a, 1 state-b, 2 legacy state, 3 content-state, 4 journal",
+            "range": [
+              0,
+              4
+            ]
+          },
+          {
+            "name": "offset",
+            "type": "u32",
+            "doc": "byte offset"
+          }
+        ]
+      },
+      "reply": {
+        "size": [
+          16,
+          1020
+        ],
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32",
+            "doc": "reply format: 1"
+          },
+          {
+            "name": "part",
+            "type": "u32",
+            "doc": "requested part"
+          },
+          {
+            "name": "offset",
+            "type": "u32",
+            "doc": "requested offset"
+          },
+          {
+            "name": "more",
+            "type": "u32",
+            "doc": "1: another page may follow",
+            "range": [
+              0,
+              1
+            ]
+          },
+          {
+            "name": "text",
+            "type": "rest",
+            "doc": "Exact stored bytes (up to 1004); slot CRCs and journal version remain visible",
+            "max_bytes": 1004
+          }
+        ],
+        "on_error": "status",
+        "extensible": false
+      },
+      "errors": [
+        "bad_request",
+        "unsupported",
+        "busy",
+        "link",
+        "storage",
+        "not_found",
+        "range"
+      ],
+      "doc": "Pages the existing records without rewriting or interpreting unknown fields. The journal falls back to job.old when job.txt is absent; content falls back to content-state.old. A missing part is not_found. The valid highest-sequence boot slot wins, with the existing legacy fallback. Journal version 1 names target, previous entry, source identities, default intent and undo direction; a newer or malformed journal stays on disk and the menu explains the refusal. Missing source: the menu offers Set default to the previous entry, also available through library.set_default; no separate repair command."
+    },
+    {
+      "type": "0x4b",
+      "name": "storage.space",
+      "symbol": "storage_space",
+      "class": "product",
+      "since": "1.21",
+      "switch": "XYF_USB_FILE_WRITE",
+      "switch_optional": false,
+      "summary": "report free storage bytes",
+      "timeout_ms": 60000,
+      "destructive": false,
+      "request": {
+        "size": [
+          4,
+          4
+        ],
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32",
+            "doc": "API version: 1; newer is unsupported"
+          }
+        ]
+      },
+      "reply": {
+        "size": [
+          12,
+          12
+        ],
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32",
+            "doc": "reply format: 1"
+          },
+          {
+            "name": "free_low",
+            "type": "u32",
+            "doc": "low 32 bits of free bytes"
+          },
+          {
+            "name": "free_high",
+            "type": "u32",
+            "doc": "high 32 bits of free bytes"
+          }
+        ],
+        "on_error": "status",
+        "extensible": true
+      },
+      "errors": [
+        "bad_request",
+        "unsupported",
+        "busy",
+        "link",
+        "storage",
+        "not_found"
+      ],
+      "doc": "Returns the existing storage service free-space query (0x31), as an unsigned 64-bit byte count in two little-endian words. Does not mount storage for writing."
     }
   ],
   "events": [
@@ -759,7 +1001,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.20;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=00000000000001fb001700031fff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32303b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030316662303031373030303331666666303062653b6465763d313b7374616765323d307314d750"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.21;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000000ffb001700031fff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32313b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030666662303031373030303331666666303062653b6465763d313b7374616765323d309a126b01"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

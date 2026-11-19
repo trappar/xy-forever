@@ -1,7 +1,7 @@
 {
   "$comment": "Conformance suite of the XY Forever serial protocol v1 (spec: protocol/v1.json, protocol/v1.json). The behaviour a v1 device must show, as data: each case is a named exchange that every client runs the same way (Python: scripts/conformance.py; TypeScript: clients/ts/test/conformance.ts) against the simulator or a device. scripts/protogen.py validates this file against the spec (xy_forever/conformance.py) and the coverage rules; `syntax` documents every keyword. Frame-level vectors stay in v1.json (`streams`) and are referenced by name, not copied.",
   "format": "xyf-conformance/1",
-  "protocol": "1.20",
+  "protocol": "1.21",
   "doc": [
     "`protocol/v1.conformance.json` holds the conformance suite: the behaviour a v1 device must show, as data that any client can run. Each case is a named exchange: preconditions (`given`: a fresh boot before `hello`, files in the test area, simulator faults), requests by command name and field values (or raw bytes for malformed input and frame-level tests), and what must come back (status, field values, limits such as the device's `read=`), including reads that show what did not change. Every case says what it does (`effects`: none means read-only; `staging`, `writes_test_area`, `restarts`, `writes_device`, `boots_os`), what it needs (`needs`: simulator control, fixtures) and whether it is safe on a real device (`real_device`, else `why_not`). The keywords are documented in the file's `syntax` object.",
     "A third-party client conforms when it runs every case with its own codec and transport: send the requests in order, one at a time, and check each expectation. Two runners exist: `python3 scripts/conformance.py --sim 127.0.0.1:7341` (or without `--sim` for the OP-XY, where only cases marked safe run and a guard refuses any request that could change more than the test area `/yaffs2/xy-forever/log/conformance/`), and `node clients/ts/test/conformance.ts --sim 127.0.0.1:7341` for the TypeScript module. Both read the same file; `--check` only interprets every case."
@@ -145,7 +145,30 @@
     {"command": "tfw.check_role", "status": "not_found", "why": "Role, version, exclusion and crypto cases run in test_sim_otp_role.py."},
     {"command": "tfw.check_role", "status": "range", "why": "Role, version, exclusion and crypto cases run in test_sim_otp_role.py."},
     {"command": "tfw.check_role", "status": "busy", "why": "Role, version, exclusion and crypto cases run in test_sim_otp_role.py."},
-    {"command": "tfw.check_role", "status": "unsupported", "why": "Role, version, exclusion and crypto cases run in test_sim_otp_role.py."}
+    {"command": "tfw.check_role", "status": "unsupported", "why": "Role, version, exclusion and crypto cases run in test_sim_otp_role.py."},
+    {"command": "package.list", "status": "ok", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "package.list", "status": "bad_request", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "package.list", "status": "unsupported", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "package.list", "status": "busy", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "package.list", "status": "link", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "package.list", "status": "storage", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "package.list", "status": "not_found", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "state.get", "status": "ok", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "state.get", "status": "bad_request", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "state.get", "status": "unsupported", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "state.get", "status": "busy", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "state.get", "status": "link", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "state.get", "status": "storage", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "state.get", "status": "not_found", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "storage.space", "status": "ok", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "storage.space", "status": "bad_request", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "storage.space", "status": "unsupported", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "storage.space", "status": "busy", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "storage.space", "status": "link", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "storage.space", "status": "storage", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command": "storage.space", "status": "not_found", "why": "Version, paging, identity, exclusion and storage failures are exercised by test_sim_package_reports.py."},
+    {"command":"package.list","status":"too_large","why":"Bounded path/list reporting failures are exercised by test_sim_package_reports.py."},
+    {"command":"state.get","status":"range","why":"Offset framing is exercised by test_sim_package_reports.py."}
   ],
   "cases": [
     {"name": "hello/before-hello", "rules": ["hello_first"], "effects": ["restarts"], "real_device": true,
@@ -167,7 +190,7 @@
         "hello": {"prefix": "XYF1", "keys": {"service": "usb", "role": "b", "proto": {"matches": "^1\\.[0-9]+$"}, "install": "stock-88a06a7e",
           "version": {"matches": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}, "image": {"matches": "^([0-9a-f]{8}|unknown)$"}, "mode": {"matches": "^[a-z0-9-]{1,16}$"}, "payload": {"const": "max_payload"}, "read": {"const": "max_read"},
           "stage": {"const": "max_stage"}, "cmds": {"matches": "^[0-9a-f]{32}$"}},
-          "answers": ["hello", "diag.status", "file.read", "screen.read", "stage.begin", "stage.data", "stage.end", "file.write_staged", "file.list", "file.delete", "file.rmdir", "file.mkdir", "file.rename", "file.copy", "file.write_begin", "file.write_data", "file.write_end", "boot.install", "boot.uninstall", "device.reboot", "menu.continue", "service.hold", "library.set_default", "library.boot", "mods.apply", "job.status", "job.cancel", "package.session"]}}}
+          "answers": ["hello", "diag.status", "file.read", "screen.read", "stage.begin", "stage.data", "stage.end", "file.write_staged", "file.list", "file.delete", "file.rmdir", "file.mkdir", "file.rename", "file.copy", "file.write_begin", "file.write_data", "file.write_end", "boot.install", "boot.uninstall", "device.reboot", "menu.continue", "service.hold", "library.set_default", "library.boot", "mods.apply", "job.status", "job.cancel", "package.session", "package.list", "state.get", "storage.space"]}}}
      ]},
     {"name": "hello/repeat", "effects": [], "real_device": true,
      "doc": "A build's hello text never changes while it runs, and the device ignores a hello payload.",

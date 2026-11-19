@@ -79,9 +79,10 @@ struct ContentIo {
 
 // The idle collector normally reads only; open the existing window just for a
 // proven-unreferenced blob's unlink, as tree_change does for scratch cleanup.
+bool journal_kept();
 struct GarbageIo : ContentIo {
     int unlink(const char* p) {
-        if (link) return -1;
+        if (link || journal_kept()) return -1;
         const U32 code = enter_writes();
         if (code != P::s_ok) { if (code == P::s_link) link = 1; return -1; }
         storage_used = 1; writes_due = 1; writes_ms = now();

@@ -8,8 +8,12 @@
 // (A rescans: the catalog shows the new state), then, after a success, writes the default (default_commit).
 // Every write passed xyf::content::allowed (the job), the USB write area (ContentIo) and A's engine.
 namespace xc = xyf::content;
+namespace xj = xyf::journal;
+xj::Record recovery_record __attribute__((section(".data"))) = {};
+volatile U32 recovery_offer __attribute__((section(".data"))) = 0; // 1 missing source, 2 invalid, 3 newer
+void recovery_turn();
 
-enum ContentStage : U32 { cs_switch = 0, cs_closing, cs_ended, cs_opening };
+enum ContentStage : U32 { cs_switch = 0, cs_closing, cs_ended, cs_opening, cs_prepare, cs_validate, cs_cleanup, cs_clean_close };
 // 193: the switch opens A's write window first without waiting in it (B keeps answering USB: job.status
 // says "opening storage for writing"); the first read-write mount after an unclean shutdown is slow.
 const char window_folder[] = "/yaffs2/xy-forever/tmp";
@@ -19,7 +23,9 @@ struct ContentSlot {
     ContentIo io;
     U32 id, started_ms, ended_ms, longest_ms, stage, menu, said_ms, said_phase, line_seq;
     U32 write_default;                                                   // 0 for the save sequence's switch
-    char line[64], progress[24];
+    char line[96], progress[24];
+    xj::Record intent; xj::Source source; xj::File intent_file;
+    U32 prepared, prepare_step, replay, cleaning;
 };
 const U32 content_slot_bytes = (sizeof(ContentSlot) + 63u) & ~63u;
 // One line appended to the log inside A's open write window (before its close); every failure ignored.
@@ -88,7 +94,7 @@ void content_say(ContentSlot& c, bool force) {
     say("Installing content...", c.job.target, c.progress, "Do not unplug or power off.");
     content_text(c, "Installing content ", c.progress);
 }
-U32 content_begin(const char* id, bool menu, bool write_default) {
+U32 content_start(const char* id, bool menu, bool write_default, bool replay) {
     stop_idle_gc();
     if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
     if (!a_serving()) return P::s_link;
@@ -107,27 +113,37 @@ U32 content_begin(const char* id, bool menu, bool write_default) {
     writes_due = 1; writes_ms = now();                                  // closed when the switch ends
     c.io.link = 0; c.id = ++job_counter; c.started_ms = c.ended_ms = now(); c.longest_ms = 0;
     c.stage = file_client::mkdir_start(window_folder).outcome ? cs_switch : cs_opening;   // 193: not sent: the first change opens it
+    xj::begin(c.intent_file); c.source.fd = -1;
+    c.prepared = 0; c.prepare_step = 0; c.replay = replay ? 1u : 0u; c.cleaning = 0;
+    if (replay) { c.intent = recovery_record; if (c.stage != cs_opening) c.stage = cs_validate; xj::source_begin(c.source, id); }
     c.menu = menu ? 1u : 0u; c.said_ms = 0; c.said_phase = ~0u; c.write_default = write_default ? 1u : 0u;
     if (save_active) save_lap(xl::p_switch); else xl::begin(save_times, xl::k_switch, now(), xl::p_switch);
     job_kind = 1; job_state = job_busy; job_usb = menu ? 0u : 1u;
     content_say(c, true);
     return P::s_ok;
 }
+void intent_pump(ContentSlot& c);
 void content_pump() {
     ContentSlot& c = cslot();
     const U32 start = now();
+    if (c.stage == cs_prepare || c.stage == cs_validate) { intent_pump(c); return; }
     if (c.stage == cs_opening) {                                         // 193: A opens its write window
         const file_client::Reply r = file_client::unmount_poll();
         if (r.outcome == file_client::busy) { content_say(c, false); return; }
         if (r.outcome == file_client::link) mounted = file_client::mounted_stale;   // past its bound: still out
         if (r.outcome) c.io.link = 1;                                    // the switch fails (link), then closes
-        c.stage = cs_switch;
+        c.stage = c.replay ? cs_validate : cs_switch;
         content_say(c, true);
+        if (c.stage == cs_validate) return; // consume the opening owner before source IO
     }
     if (c.stage == cs_switch) {
         U32 ph;
-        do ph = xc::step(c.job, c.io);
-        while (ph < xc::phase_done && now() - start < job_slice_ms);
+        do {
+            if (!c.prepared && (c.job.stage == xc::st_saved_list || c.job.stage == xc::st_mark)) {
+                c.stage = cs_prepare; c.prepare_step = 0; ph = xc::phase_inputs; break;
+            }
+            ph = xc::step(c.job, c.io);
+        } while (ph < xc::phase_done && now() - start < job_slice_ms);
         if (ph >= xc::phase_done) {                                      // op 9: A rescans, B fetches the catalog
             c.stage = cs_closing;
             save_times.compared = c.job.compared; save_times.read = c.job.read; save_times.written = c.job.written;
@@ -145,13 +161,27 @@ void content_pump() {
                 xc::note(c.job, "default");
             }
         }
-        c.ended_ms = now(); c.stage = cs_ended;
-        job_state = job_ended; boot_sweep = 3; gc_defer_ms = now();
-        content_say(c, true);
+        if (c.job.stage != xc::st_done && journal_present) recovery_offer = 1;
+        if (c.job.stage == xc::st_done && journal_present && c.write_default) { c.stage = cs_cleanup; c.cleaning = 0; }
+        else { c.ended_ms = now(); c.stage = cs_ended; job_state = job_ended; boot_sweep = 3; gc_defer_ms = now(); content_say(c, true); }
+    } else if (c.stage == cs_cleanup) {
+        if (!c.cleaning) {
+            U32 code = enter_writes();
+            if (code == P::s_ok) code = file_client::mount_ready(mounted);
+            if (code != P::s_ok) { xc::fail(c.job, xc::e_write, code, "journal cleanup"); c.stage = cs_closing; return; }
+            storage_used = 1; writes_due = 1; writes_ms = now(); ++c.cleaning; return;
+        }
+        // The .old must disappear before the authoritative journal, so a cut cannot resurrect old intent.
+        const char* paths[3] = {xj::old, xj::part, xj::path};
+        if (c.io.unlink(paths[c.cleaning-1]) < 0) { xc::fail(c.job, xc::e_write, 0, "journal cleanup"); c.stage = cs_closing; settle_begin(); return; }
+        if (++c.cleaning == 4) { journal_present = 0; recovery_offer = 0; c.stage = cs_clean_close; settle_begin(); }
+    } else if (c.stage == cs_clean_close && !closing) {
+        c.ended_ms = now(); c.stage = cs_ended; job_state = job_ended; boot_sweep = 3; gc_defer_ms = now(); content_say(c, true);
     }
     const U32 pass = now() - start;
     if (pass > c.longest_ms) c.longest_ms = pass;
 }
+U32 content_begin(const char* id, bool menu, bool write_default) ;
 // The catalog mods.apply reads: the live one in the official state, else the saved official copy.
 const char* content_job_catalog() {
     uint8_t head[xc::head_bytes];
@@ -194,13 +224,13 @@ namespace xg = xyf::config;
 struct ConfigSlot {
     ContentIo io;
     int fd;
-    U32 id, step, at, length, error, code, had, started_ms, ended_ms, hash;
+    U32 id, step, at, length, error, code, had, started_ms, ended_ms, hash, cleaning;
     const char *path, *old_path, *part_path;     // config.txt's, or settings.txt's (xyf_settings.hpp)
     char text[xg::max_text];
 };
 // In the content switch's work region (one job at a time; the switch has ended when this starts).
 ConfigSlot& gslot() { return *reinterpret_cast<ConfigSlot*>(XYF_JOB_REGION_BEGIN + job_slot_bytes + content_slot_bytes); }
-enum ConfigStep : U32 { cg_open = 0, cg_write, cg_close, cg_stat, cg_unlink_old, cg_away, cg_in, cg_drop, cg_closing, cg_ended };
+enum ConfigStep : U32 { cg_open = 0, cg_write, cg_close, cg_stat, cg_unlink_old, cg_away, cg_in, cg_drop, cg_closing, cg_cleanup, cg_clean_close, cg_ended };
 U32 config_begin(const char* text, U32 length, const char* id, const char* path = xg::path,
                  const char* old_path = xg::old_path, const char* part_path = xg::part_path) {
     stop_idle_gc();
@@ -216,7 +246,7 @@ U32 config_begin(const char* text, U32 length, const char* id, const char* path 
     g.hash = id && *id ? xyf::state_write::id_hash(id) : 0u;
     storage_used = 1;
     writes_due = 1; writes_ms = now();                                  // closed when the record is in
-    g.id = ++job_counter; g.started_ms = g.ended_ms = now();
+    g.cleaning = 0; g.id = ++job_counter; g.started_ms = g.ended_ms = now();
     job_kind = 2; job_state = job_busy; job_usb = 0;
     if (save_active && path == xg::path) save_lap(xl::p_config);       // a Save's record
     return P::s_ok;
@@ -266,6 +296,21 @@ void config_pump() {
     ConfigSlot& g = gslot();
     const U32 start = now();
     while (g.step < cg_closing && now() - start < job_slice_ms) config_step(g);
+    if (g.step == cg_cleanup) {
+        if (!g.cleaning) {
+            U32 code = enter_writes();
+            if (code == P::s_ok) code = file_client::mount_ready(mounted);
+            if (code != P::s_ok) { g.error = xc::e_write; g.code = code; g.step = cg_clean_close; return; }
+            storage_used = 1; writes_due = 1; writes_ms = now(); ++g.cleaning; return;
+        }
+        const char* paths[3] = {xj::old, xj::part, xj::path};
+        if (g.io.unlink(paths[g.cleaning-1]) < 0) { g.error = xc::e_write; g.step = cg_clean_close; settle_begin(); return; }
+        if (++g.cleaning == 4) { journal_present = 0; recovery_offer = 0; g.step = cg_clean_close; settle_begin(); }
+        return;
+    }
+    if (g.step == cg_clean_close && !closing) {
+        g.step = cg_ended; g.ended_ms = now(); job_state = job_ended; boot_sweep = 3; gc_defer_ms = now(); return;
+    }
     if (g.step != cg_closing || closing) return;
     const xyf::catalog::Catalog* catalog = xyf_boot::catalog();
     const bool already = catalog && catalog->default_index < catalog->count &&
@@ -273,6 +318,9 @@ void config_pump() {
     if (!g.error && g.hash && !already) {
         const U32 code = default_commit(g.hash);
         if (code != P::s_ok) { g.error = code == P::s_link ? xc::e_link : xc::e_write; g.code = code; }
+    }
+    if (!g.error && g.hash && journal_present && g.hash == xyf::state_write::id_hash(recovery_record.target)) {
+        g.step = cg_cleanup; return; // native Save retains intent through its config + default commit
     }
     g.step = cg_ended; g.ended_ms = now();
     job_state = job_ended; boot_sweep = 3; gc_defer_ms = now();

@@ -74,8 +74,9 @@ rule refuses). Every refusal comes before the first write. Then: the official li
 copies are there); the outgoing official catalog retained as a verified content blob; the record `switching` (the target's files and the previous ones
 still to remove); the previous files the target lacks removed (with folders
 left empty, never an official one); the target's files written as `<path>.part`, read back, the old copy removed, renamed in; the catalog last (a stock target:
-the saved official one, its SHA-256 checked); the record for the target. A failure or cut leaves `switching` (or the old or new record); running the switch
-again repairs it. Writes: only the record, the saved copies and, in `/yaffs2/content/`, the catalog and paths from a mod set's `files.sha256` or the record,
+the saved official one, its SHA-256 checked); the record for the target. A failure or cut leaves `switching` (or the old or new record).
+The menu/service replays its [durable intent](jobs.md), or offers the previous entry when its source is missing. Running the switch again also repairs it.
+Writes: only the record, the saved copies and, in `/yaffs2/content/`, the catalog and paths from a mod set's `files.sha256` or the record,
 never `dlc/`, `user/` or a name holding `bootloader` (`xyf::content::allowed`, one function).
 
 ### Saved configuration

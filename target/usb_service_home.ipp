@@ -116,6 +116,8 @@ uint32_t home_pump() {
     stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
     if (!boot_probe_active()) {
+    recovery_turn();
+    report_turn();
     package_turn();
     job_pump();                                        // a slice of the mod job
     boot_sweep_turn();                                 // #3: leftover tmp/job-* folders, a step per pass
@@ -189,6 +191,9 @@ uint32_t home_pump() {
 #endif
         else if (type == P::t_package_session) package_session(seq, payload, length);
         else if (job_blocks(type)) status_only(type, seq, P::s_busy);   // one request slot
+        else if (type == P::t_package_list) package_list(seq, payload, length);
+        else if (type == P::t_state_get) state_get(seq, payload, length);
+        else if (type == P::t_storage_space) storage_space(seq, payload, length);
         else if (type == P::t_mods_apply) mods_apply(seq, payload, length);
         else if (type == P::t_job_status) job_status(seq, payload, length);
         else if (type == P::t_job_cancel) job_cancel(seq, payload, length);

@@ -16,7 +16,7 @@ Host transactions use `package.session` (protocol 1.19, session ABI 1): an owner
 startup sweep, MTP, other jobs and boots while the ordinary file RPCs stage/check/commit. It adds no
 storage operation. A contender cannot renew another owner's token; busy acquisition requests cannot
 keep an abandoned owner alive. Owner renewals and file activity renew the ten-second idle period;
-an in-flight upload keeps it held. Release closes the write window asynchronously. A newer session
+an in-flight upload or package-list read keeps it held. Release closes the write window asynchronously. A newer session
 ABI is refused. This is cooperative exclusion for one CDC client, not a security boundary on manual
 file operations. The marker, updater inbox, boot-partition latch and depth rules still apply on A.
 
@@ -44,7 +44,8 @@ Native copies stream into scratch, hash the source, read back and hash the scrat
 the hash name. A corrupt existing blob is refused rather than accepted by its name. Cuts leave only
 scratch or a complete blob. Host copies reuse the verified atomic upload and SHA-256 read-back.
 
-Collection follows host library changes, native publication and the idle sweep. It holds the job
+Collection follows host library changes, native publication and the idle sweep. An unresolved
+`job.txt` or `job.old` suspends all blob deletion until [replay or undo](jobs.md) completes. It holds the job
 exclusion while collecting all kept references, then deletes only unreferenced hash names. The native
 collector streams each list once, reuses 4 MiB of completed-job workspace for at most 131,072 hashes
 (16 entries × two 4,096-line lists), sorts in bounded heap steps and binary-searches blob names.

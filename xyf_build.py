@@ -245,7 +245,7 @@ OTP_READ, OTP_INIT, OTP_INIT_FLAG = 0x04000048, 0x04000054, 0x11b01650   # the f
 # tfw.check (XYF_TFW_CHECK): the only feature that reads OTP, and with it the native
 # .tfw check (native/tfw_check and the decoder parts it uses) and the key provider.
 TFW_CHECK_MODES = ('xyf-product',)
-from xy_forever.build_modules import TFW_CHECK_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES, compile_tfw
+from xy_forever.build_modules import TFW_CHECK_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES, USB_STORAGE_MODULES, compile_tfw
 # The mod assembly job (native/mod_job and the linker, patch and content steps) runs on B.
 # The menu's Mods page (target/xyf_mods*: model, view, B's reading and the job's start), product only.
 # The file engine on a (storage_server.cpp; the historical MTP group): the executors
@@ -1046,7 +1046,7 @@ def build(out, stock, boot, mode):
         names += ['storage_server', 'file_engine']
     if usb:
         names += ['usb_service', 'file_client']
-        for name in ('usb_proto', 'xyf_store', 'xyf_state', 'xyf_state_write', 'xyf_filelist'):
+        for name in USB_STORAGE_MODULES:
             cpp(name, SOURCE / ('target/' + name + '.cpp'))
     if stage2:
         cpp('xyf_stage2', SOURCE / 'target/xyf_stage2.cpp', ('-DXYF_STAGE2_MENU=1',) if stage2_menu else ())
@@ -1107,8 +1107,7 @@ def build(out, stock, boot, mode):
                        'census', 'key_ui', 'knob_input', 'ui_gfx', 'ui_screens',
                        'ui_pages', 'xyf_menu', 'xyf_menu_view', 'xyf_catalog', 'xyf_store', 'boot_services') +
                       (('storage_server', 'file_engine') if remote_read else ()) +
-                      (('usb_service', 'file_client', 'usb_proto', 'xyf_crc32', 'xyf_store', 'xyf_state',
-                        'xyf_state_write', 'xyf_filelist') if usb else ()) +
+                      (('usb_service', 'file_client', 'xyf_crc32') + USB_STORAGE_MODULES if usb else ()) +
                       (('xyf_stage2', 'xyf_stage2_enter') if stage2 or stage2_service else ()) +
                       (('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info') if file_boot
                        else ()) +

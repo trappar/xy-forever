@@ -359,6 +359,9 @@ const xyf::catalog::Item* catalog_item(const char* id, U32 n) {
 // report (a_state_write); the host verifies by READ_FILE of the slot.
 #if defined(XYF_CONTENT_SWITCH)
 U32 content_begin(const char* id, bool menu, bool write_default = true);
+bool content_pending(const char* id);
+#else
+bool content_pending(const char*) { return false; }
 #endif
 // The A/B state write of the default (the entry with this id hash): eight tagged nibble commands and the commit,
 // the barrier, B's catalog fetched again and checked. Also the content switch's last step.
@@ -394,7 +397,7 @@ void set_default(uint8_t seq, const uint8_t* payload, U32 length) {
     // An entry whose content is not installed never becomes the default as it is (nothing sent to A);
     // The content switch installs it first (a job) and writes the default when it succeeded.
     const xyf::catalog::Item* item = code == P::s_ok ? catalog_item(id, length - 1) : 0;
-    if (item && (item->flags & xyf::catalog::flag_content_missing)) {
+    if (item && ((item->flags & xyf::catalog::flag_content_missing) || content_pending(id))) {
 #if defined(XYF_CONTENT_SWITCH)
         code = content_begin(id, false);
         if (code == P::s_ok) code = P::s_started;
