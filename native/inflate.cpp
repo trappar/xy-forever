@@ -1,6 +1,9 @@
 // Original bounded decoder implementing RFC 1951 (https://www.rfc-editor.org/rfc/rfc1951).
 // No source is copied from zlib, puff, miniz or another implementation.
 #include "inflate.hpp"
+#if defined(XYF_SMALL_CRC)
+#include "crc32_small.hpp"
+#endif
 
 namespace xyf_core { namespace zip {
 namespace {
@@ -197,18 +200,7 @@ static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "word loads assume litt
 #if defined(XYF_SMALL_CRC)
 // Narrow (48 KiB) cold layouts: the 64-byte nibble table instead of the 1 KiB byte table.
 U32 crc32_update(U32 running, const Byte* data, U32 count) {
-    static const U32 table[16] = {
-        0x00000000u,0x1db71064u,0x3b6e20c8u,0x26d930acu,
-        0x76dc4190u,0x6b6b51f4u,0x4db26158u,0x5005713cu,
-        0xedb88320u,0xf00f9344u,0xd6d6a3e8u,0xcb61b38cu,
-        0x9b64c2b0u,0x86d3d2d4u,0xa00ae278u,0xbdbdf21cu
-    };
-    for (U32 i = 0; i != count; ++i) {
-        running ^= data[i];
-        running = (running >> 4) ^ table[running & 15u];
-        running = (running >> 4) ^ table[running & 15u];
-    }
-    return running;
+    return crc::small_update(running, data, count);
 }
 #else
 U32 crc32_update(U32 running, const Byte* data, U32 count) {
