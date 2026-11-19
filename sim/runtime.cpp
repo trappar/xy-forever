@@ -112,7 +112,7 @@ void exit_processor(int code) { fflush(stderr); _exit(code); }
 bool send_message(int fd, const Message& m, const void* body) {
     static std::mutex lock;
     std::lock_guard<std::mutex> hold(lock);
-    if (role == 0 || role == 1) { ++shared->outflight[role]; active(); }   // sim/clock.cpp (the board counts its own)
+    if (role == 0 || role == 1) { ++shared->outflight[role]; active(); }   // sim/clock.cpp
     const uint8_t* parts[2] = {reinterpret_cast<const uint8_t*>(&m), static_cast<const uint8_t*>(body)};
     const size_t sizes[2] = {sizeof(m), body ? m.body : 0};
     for (int k = 0; k != 2; ++k)
@@ -605,7 +605,7 @@ int main(int argc, char** argv) {
         for (int k = 0; k != 2; ++k)
             if (procs[k].fd >= 0) { link_index[k] = int(fds.size()); fds.push_back({procs[k].fd, POLLIN, 0}); }
         fds.push_back({shared->wake[2][0], POLLIN, 0});   // a processor went idle (sim/clock.cpp)
-        // The board's next event (a delayed message to A, a restart) on its clock; virtual: a bound of the steps.
+        // The board's next event (a delayed message to A, a restart): virtual, the steps stop there.
         uint64_t next = to_a.empty() ? 0 : to_a.front().at;
         for (const Proc& p : procs) if (p.restart_at && (!next || p.restart_at < next)) next = p.restart_at;
         const bool running[2] = {procs[0].pid > 0 && procs[0].state == "running", procs[1].pid > 0 && procs[1].state == "running"};
@@ -645,9 +645,9 @@ int main(int argc, char** argv) {
             if (n > 0) client_in[i].append(buffer, size_t(n));
             size_t eol;
             while ((eol = client_in[i].find('\n')) != std::string::npos) {
-                const std::string reply = command(client_in[i].substr(0, eol), quit, clients[i]);
+                const std::string line = client_in[i].substr(0, eol), reply = command(line, quit, clients[i]);
                 client_in[i].erase(0, eol + 1);
-                kick(0); kick(1);                         // a fault, a frame or a key may wait for either
+                if (line.compare(0, 6, "status") && line.compare(0, 8, "injected")) { kick(0); kick(1); }   // a fault, a key
                 if (!reply.empty() && write(clients[i], (reply + "\n").data(), reply.size() + 1) < 0) break;
             }
             ++i;
