@@ -170,6 +170,8 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
                                           if '=' in l)['sha256'])
         self.plain_boots_without_writing(a)
         self.menu_again()
+        self.wait_log(lambda: self.home().startswith('Open-XY - 2 mods - 1.2.1 pending=0'),
+                      'the completed home row')
         self.assertTrue(self.home().startswith('Open-XY - 2 mods - 1.2.1 pending=0'), self.home())
         p = self.open_page()
         self.assertEqual((p['on'], p['changed']), (['alpha', 'gamma'], 0))   # the saved toggles
