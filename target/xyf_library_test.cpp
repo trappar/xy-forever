@@ -162,6 +162,16 @@ int main() {
     REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok);
     REQUIRE(lib.entries[1].usable && lib.entries[1].has_info && lib.entries[1].machines == 3 &&
             !strcmp(lib.entries[1].info.name, "Native granular") && !lib.entries[1].invalid_record);
+    // A valid mod manifest alongside os.ldr is never firmware. Reports still parse
+    // mod metadata, but firmware library/content/journal callers require firmware.
+    const char* saved_native = fs.files[native_at].text;
+    fs.files[native_at].text = "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\","
+        "\"name\":\"Not firmware\",\"machine\":\"synth\",\"generation\":\"kit1\"}";
+    REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok);
+    REQUIRE(lib.entries[1].invalid_record && !lib.entries[1].usable && !lib.entries[1].has_info);
+    strcpy(lib.state.default_id, "granular"); lib.state.once[0] = 0;
+    REQUIRE(library::boot_choice(lib, index) == library::Choice::menu);
+    fs.files[native_at].text = saved_native;
     fs.fail_open = fs.files[native_at].path;
     REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok);
     REQUIRE(lib.entries[1].invalid_record && !lib.entries[1].usable && !lib.entries[1].has_info);

@@ -285,7 +285,8 @@ template <class Io> static uint32_t step(Job& j, Io& io) {
             package_record::Workspace& work = *reinterpret_cast<package_record::Workspace*>(j.list.data);
             const xyf_core::json::Status status = package_record::parse(
                 reinterpret_cast<const char*>(j.plan.data), j.plan.length, work);
-            if (status != xyf_core::json::ok || work.manifest.status != manifest::ok) {
+            if (status != xyf_core::json::ok || work.manifest.status != manifest::ok ||
+                work.manifest.type != manifest::type_firmware) {
                 fail(j, e_info, status ? 0x100u + status : work.manifest.status, p); break;
             }
             manifest::legacy_info(work.manifest, info);

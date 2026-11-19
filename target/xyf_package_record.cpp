@@ -15,6 +15,7 @@ xyf_core::json::Status parse(const char* raw, uint32_t bytes, Workspace& work) {
 bool info(const char* raw, uint32_t bytes, Workspace& work, store::Info& out) {
     const xyf_core::json::Status status = parse(raw, bytes, work);
     manifest::legacy_info(work.manifest, out);
-    return status == xyf_core::json::ok && work.manifest.status == manifest::ok;
+    return status == xyf_core::json::ok && work.manifest.status == manifest::ok &&
+           work.manifest.type == manifest::type_firmware;
 }
 } }
