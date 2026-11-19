@@ -17,24 +17,35 @@ and USB protocol versions do not change.
 
 ## Caller ownership and measurements
 
-`target/xyf_package_record` adds the bounded text view and semantic manifest to
-the JSON workspace: 15,564 bytes on Blackfin. The cold scan needs 24,015 bytes
-including raw input/alignment, within its existing 40,960-byte scratch reservation.
-The journal's source reader owns 24,692 bytes in the content slot; it hashes the
-exact selected metadata and list before constructing any view. The content job
-borrows its own unused list region during metadata reading. Reports keep input
-and workspace in 26,916 bytes of their existing 64 KiB slot. The full content
-slot occupies 31,040 aligned bytes. Neither borrows the MTP or GC slot.
-No JSON workspace is allocated on a firmware stack.
+`target/xyf_package_record` extracts typed fields directly through the strict
+manifest reader's shared semantic assignment and final validation. It validates
+all JSON payload fields, including ignored extras, before assigning semantics;
+the 4096-byte internal-view bound still applies without rendering that view.
+Reports accept every supported package type. Library, content and journal source
+readers require firmware metadata, even when a mod folder also contains `os.ldr`.
+Legacy boot metadata remains lenient; scanning writes no migration files.
 
-The package adapter's frame is 12 bytes, semantic manifest parser 164 bytes and
-cold scan 312 bytes: their nested path uses 488 bytes, excluding outer boot
-callers. The corresponding legacy parsing path used 476 bytes. The surrounding
-cold-boot caller frames remain unchanged. Journal and content reader frames
-remain 132/260 bytes, respectively, plus the nested package reader. Measurements
-come from authenticated Blackfin `-fstack-usage` outputs; they are frame sums,
-not an observed peak stack watermark.
+The package workspace is 11,468 bytes on Blackfin, 4096 below the earlier text
+adapter. The cold scan needs 19,919 bytes including raw input/alignment, within
+its existing 40,960-byte scratch reservation. The journal source owns 20,596
+bytes in the content slot and hashes the exact selected metadata/list before
+semantic extraction. The content job borrows its own unused list region during
+metadata reading. Reports use 22,820 bytes of their existing 64 KiB slot. The
+content slot occupies 26,944 aligned bytes; the content job remains 4916 bytes.
+No caller borrows MTP/GC storage or allocates a JSON workspace on a stack.
 
-The native-reader product is 314,084 bytes (module 314,012), 4,608 bytes above
-the preceding `b8852f8f` product. These are partial integration measurements:
-assembly/Mods readers, producers and configuration remain pending in #95.
+Authenticated Blackfin frame measurements: direct extraction 32 bytes, JSON
+schema parsing 28 and the pinned parser 20. Their deepest nested frame sum is
+80 bytes, before the cold scan's unchanged 312-byte frame and outer callers.
+The strict legacy manifest parser's frame is 152 bytes; native JSON no longer
+calls it. Journal/content caller frames remain 132/260 bytes, the outer boot
+caller 452 and the home pump 284. These are compiler frame sums, not an observed
+peak stack watermark.
+
+The partial native-reader product is 314,116 bytes (module 314,044), 32 bytes
+above the earlier text-adapter implementation. The offline narrow modules are
+53,424/53,764 bytes (`stage2`/`stage2-menu`), exceeding their unchanged 49,152-byte
+reservation by 4272/4612 bytes. Shared narrow CRC and direct semantic extraction
+reclaimed 2556 bytes in each mode; this phase still has no passing all-mode
+check receipt. Assembly/Mods readers, producers and configuration remain pending
+in #95 while that budget blocker is unresolved.

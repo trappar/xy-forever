@@ -147,54 +147,67 @@ bool digest(const char* s) {
         if (!((s[i] >= '0' && s[i] <= '9') || (s[i] >= 'a' && s[i] <= 'f'))) return false;
     return !s[64];
 }
-Status scalar(Out& out, const json_t* p, const char* key) {
+enum Shape { text_shape, number_shape, address_shape, null_shape, list_shape, pair_shape };
+Status scalar_size(const json_t* p, const char* key, uint32_t& size, Shape& shape) {
     const bool number = word(key, "bytes machines module_base module_bytes stock_bytes edits objects extensions code data state runtime_code runtime_data runtime_state catalog_engine_at catalog_fx_at catalog_seq_at stock_records reserved_bytes heap_fill_base heap_fill_bytes expanded_module_base order link presets");
     const bool optional = word(key, "engine effect player page");
+    size = 0; shape = text_shape;
     if (number || optional) {
         uint32_t v = 0;
-        if (optional && p->type == JSON_NULL) { out.text("-"); return ok; }
+        if (optional && p->type == JSON_NULL) { shape = null_shape; size = 1; return ok; }
         if (!unsigned_value(p, v)) return type;
-        // Existing linkers intentionally read module/heap addresses as hex.
-        if (word(key, "module_base heap_fill_base expanded_module_base")) {
-            char digits[11] = {'0','x'};
-            for (uint32_t i = 0; i != 8; ++i) digits[i + 2] = "0123456789abcdef"[(v >> (28 - 4 * i)) & 15u];
-            digits[10] = 0; out.text(digits);
-        } else out.number(v);
-        return ok;
-    }
-    if (word(key, "services features claims accessors")) {
+        shape = word(key, "module_base heap_fill_base expanded_module_base") ? address_shape : number_shape;
+        if (shape == address_shape) { size = 10; return ok; }
+    } else if (word(key, "services features claims accessors")) {
+        shape = list_shape;
         if (p->type != JSON_ARRAY) return type;
-        uint32_t n = 0;
+        uint32_t count = 0;
         for (const json_t* item = p->u.c.child; item; item = item->sibling) {
             if (!text_value(item) || !item->u.value[0]) return value;
-            for (const char* s = item->u.value; *s; ++s) if (*s == ',') return value;
-            if (n++) out.text(",");
+            if (count++) ++size;
+            for (const char* text = item->u.value; *text; ++text) {
+                if (*text == ',') return value;
+                ++size;
+            }
+        }
+        if (!count) size = 1;
+        return size <= value_bytes ? ok : value;
+    } else if (same(key, "catalog_number")) {
+        if (p->type == JSON_NULL) { shape = null_shape; size = 1; return ok; }
+        shape = pair_shape;
+        if (p->type != JSON_ARRAY) return type;
+        uint32_t count = 0, v = 0;
+        for (const json_t* item = p->u.c.child; item; item = item->sibling) {
+            if (++count > 2 || !unsigned_value(item, v)) return value;
+            if (count == 2) ++size;
+            for (const char* text = item->u.value; *text; ++text) ++size;
+        }
+        return count == 2 ? ok : value;
+    } else if (same(key, "cpu_peak_percent")) {
+        if (p->type != JSON_INTEGER && p->type != JSON_REAL) return type;
+    } else if (!text_value(p)) return type;
+    for (const char* text = p->u.value; *text; ++text) if (++size > value_bytes) return value;
+    return ok;
+}
+Status scalar(Out& out, const json_t* p, const char* key) {
+    uint32_t size = 0; Shape shape;
+    const Status status = scalar_size(p, key, size, shape);
+    if (status != ok) return status;
+    if (shape == null_shape) out.text("-");
+    else if (shape == address_shape) {
+        uint32_t v = 0; unsigned_value(p, v);
+        char digits[11] = {'0','x'};
+        for (uint32_t i = 0; i != 8; ++i) digits[i + 2] = "0123456789abcdef"[(v >> (28 - 4 * i)) & 15u];
+        digits[10] = 0; out.text(digits);
+    } else if (shape == list_shape || shape == pair_shape) {
+        uint32_t count = 0;
+        for (const json_t* item = p->u.c.child; item; item = item->sibling) {
+            if (count++) out.text(",");
             out.text(item->u.value);
         }
-        if (!n) out.text("-");
-        return ok;
-    }
-    if (same(key, "catalog_number")) {
-        if (p->type == JSON_NULL) { out.text("-"); return ok; }
-        if (p->type != JSON_ARRAY) return type;
-        uint32_t n = 0, v = 0;
-        for (const json_t* item = p->u.c.child; item; item = item->sibling) {
-            if (++n > 2 || !unsigned_value(item, v)) return value;
-            if (n == 2) out.text(",");
-            out.number(v);
-        }
-        return n == 2 ? ok : value;
-    }
-    // cpu_peak_percent is display metadata; maintain its established decimal text
-    // without invoking strtod/64-bit runtime helpers.
-    if (same(key, "cpu_peak_percent")) {
-        if (p->type != JSON_INTEGER && p->type != JSON_REAL) return type;
-        uint32_t n = 0;
-        for (const char* s = p->u.value; *s; ++s) if (++n > value_bytes) return value;
-        out.text(p->u.value); return ok;
-    }
-    if (!text_value(p)) return type;
-    out.text(p->u.value); return ok;
+        if (!count) out.text("-");
+    } else out.text(p->u.value);
+    return ok;
 }
 Status field(Out& out, const json_t* p, const char* key) {
     if (!p) return value;
@@ -204,6 +217,11 @@ Status field(Out& out, const json_t* p, const char* key) {
     if (out.bytes - start > value_bytes) return value;
     out.text("\n"); return status;
 }
+}
+Status package_field_size(const json_t* p, uint32_t& bytes) {
+    if (!p || !key_ok(p->name)) return capacity;
+    Shape shape;
+    return scalar_size(p, p->name, bytes, shape);
 }
 Status package_text(const Document& doc, char* out, uint32_t capacity_, uint32_t& bytes) {
     bytes = 0;

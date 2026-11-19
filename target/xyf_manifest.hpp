@@ -65,6 +65,13 @@ struct Manifest {
 // (when it was read) type are set and every other field is zero.
 Status parse(const char* text, uint32_t length, Manifest& out);
 bool has(const Manifest& m, Key key);
+// Shared semantic assignment for strict text and typed JSON readers. The caller
+// validates/uniquifies keys, trims values and supplies printable ASCII. Unknown
+// keys never reach field(). key_line has key_count entries; zero means absent.
+void begin(Manifest& out);
+Key find_key(const char* text, uint32_t length);
+Status field(Manifest& out, Key key, const char* value, uint32_t length, uint32_t line);
+Status finish(Manifest& out, const uint16_t* key_line, uint32_t lines);
 // The fields xyf_store::parse_info gives for the same text (only for a manifest that parsed ok).
 void legacy_info(const Manifest& m, store::Info& info);
 

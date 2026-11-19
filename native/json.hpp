@@ -26,6 +26,9 @@ bool text_value(const json_t* property, uint32_t maximum = value_bytes);
 // The bounded text view consumed by existing native semantic readers. This is an
 // in-memory adapter, never a second saved record. Lists and nulls are rendered only
 // for the explicitly named schema fields; arbitrary JSON objects are not flattened.
+// Validate a package payload field and measure its legacy-view value without
+// rendering it. Direct semantic readers retain the same field/type/value bounds.
+Status package_field_size(const json_t* field, uint32_t& bytes);
 Status package_text(const Document& doc, char* out, uint32_t capacity, uint32_t& bytes);
 Status config_text(const Document& doc, char* out, uint32_t capacity, uint32_t& bytes);
 const char* message(Status status);
