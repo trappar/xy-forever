@@ -268,10 +268,14 @@ void composite_turn() {
 // mtp_quiet_ms without USB or responder progress, or after mtp_burst_ms (the menu still redraws between
 // bursts).
 const U32 mtp_burst_ms = 40, mtp_quiet_ms = 3, mtp_recent_ms = 300;
+bool mtp_traffic() {
+    if (!composite_on || !mtp_live()) return false;
+    const ms::Session& m = mslot();
+    return m.responder.busy() || m.responder.pending() || now() - mtp_ms <= mtp_recent_ms;
+}
 void mtp_burst() {
-    if (!composite_on || !mtp_live()) return;
+    if (!mtp_traffic()) return;
     ms::Session& m = mslot();
-    if (!m.responder.busy() && !m.responder.pending() && now() - mtp_ms > mtp_recent_ms) return;
     const U32 start = now();
     U32 moved = now();
     while (now() - start < mtp_burst_ms) {

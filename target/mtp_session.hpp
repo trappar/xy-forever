@@ -39,6 +39,9 @@ bool phase_zlp(InPhase& p, const uint8_t* data, uint32_t n);
 struct Timing {
     uint32_t reads, read_units, read_max, writes, write_units, write_max, calls, call_units;
     uint32_t steps, step_units, pumps, pump_units, waits, read_bytes, write_bytes, started;
+    // #144: while MTP traffic is active, the menu loop outside its USB pass (home_pump: the pause, redraws, the
+    // link tick, the keys' poll) and the redraws in it (usb_service menu_pause_us, drawn).
+    uint32_t loops, loop_units, draws, draw_units;
 };
 static const uint32_t timing_words = sizeof(Timing) / 4;
 struct Files {

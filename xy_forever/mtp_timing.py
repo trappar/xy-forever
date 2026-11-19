@@ -13,7 +13,8 @@ OP = 7
 UNIT_S = 1024 / 400e6                 # one unit, seconds
 CYCLE_US = 1 / 400.0                  # one cycle, microseconds
 B_WORDS = ('reads', 'read_units', 'read_max', 'writes', 'write_units', 'write_max', 'calls', 'call_units',
-           'steps', 'step_units', 'pumps', 'pump_units', 'waits', 'read_bytes', 'write_bytes', 'started')
+           'steps', 'step_units', 'pumps', 'pump_units', 'waits', 'read_bytes', 'write_bytes', 'started',
+           'loops', 'loop_units', 'draws', 'draw_units')
 A_WORDS = ('reads', 'read_units', 'read_max', 'writes', 'write_units', 'write_max',
            'others', 'other_units', 'gaps', 'gap_units', 'gap_max', 'checks')
 # A's other requests by operation (file_engine.hpp TimingSlot, in order): count, sum (units), longest (cycles) and
@@ -140,7 +141,10 @@ def lines(t, seconds, label):
     row('B other file calls', b['calls'], b['call_units'])
     row('B responder steps, file calls aside', b['steps'], max(0, b['step_units'] - data_units - b['call_units']))
     row('B USB side (driver passes)', b['pumps'], b['pump_units'])
-    rest = wall - _ms(b['step_units'] + b['pump_units'])
-    out.append('  %-34s %31.1f ms %5.1f%%  (menu loop, host, USB waits; %d idle steps)' % (
+    # #144: the menu loop outside its USB pass while MTP traffic runs (its pause, redraws, the link tick)
+    row('B menu loop between USB passes', b['loops'], b['loop_units'], note='pause, redraws, link tick, keys')
+    row('  screen redraws', b['draws'], b['draw_units'])
+    rest = wall - _ms(b['step_units'] + b['pump_units'] + b['loop_units'])
+    out.append('  %-34s %31.1f ms %5.1f%%  (host, USB waits, B outside MTP traffic; %d idle steps)' % (
         'rest', rest, 100 * rest / wall, b['waits']))
     return out

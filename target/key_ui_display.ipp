@@ -103,7 +103,13 @@ const char* content_note(uint32_t entry) {
 void show(uint32_t screen, const char* status) {
     ui_screen = screen;
     ui_status = status;
+#if defined(XYF_ONE_SESSION)
+    const uint64_t start = xyf::clock::cycles();   // #144: redraws while MTP traffic runs (usb_service drawn)
     present();
+    xy_forever::usb_service::drawn(start);
+#else
+    present();
+#endif
 }
 // A lost link ends the menu only when nothing can answer (#3): with USB on, B never resets itself; the
 // live menu stays (its status line says so, commands that need A answer link) until a power cycle.

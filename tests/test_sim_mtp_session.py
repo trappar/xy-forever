@@ -241,6 +241,7 @@ class MtpSessionTests(unittest.TestCase):
         text = '\n'.join(T.lines(T.read(self.dev), 1.0, 'download'))       # the breakdown: reads only
         self.assertIn('A read executor', text)
         self.assertNotIn('A write executor', text)
+        self.assertIn('B menu loop between USB passes', text)               # #144: zero here (no composite)
 
     def test_a_failed_piece_fails_the_upload_at_the_next_write_or_the_close(self):
         """#144: B leaves each piece's write out and collects A's answer at the next write or the close. A piece that
