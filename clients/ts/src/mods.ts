@@ -18,6 +18,7 @@ import { depthRefusal, readsFlatMods } from './depth.ts';
 import { STORE_FILE, STORE_VERSION, generationVersion, remoteTree, storeRefusal, storedName } from './modstore.ts';
 import { XyfError, isXyfError } from './errors.ts';
 import { parseFileList, parseManifest } from './package-manifest.ts';
+import { packageValues, recordName } from './package-records.ts';
 import { packageTransaction } from './package-store.ts';
 import { encodeModsApplyRequest } from './v1.ts';
 
@@ -55,23 +56,12 @@ export function fileListSource(files: Iterable<File>): PackageSource {
   };
 }
 
-const utf8 = (data: Uint8Array): string => new TextDecoder().decode(data);
-const lines = (text: string): string[] => {
-  const out = text.split(/\r\n|\r|\n/);
-  if (out.at(-1) === '') out.pop();
-  return out;
-};
 const hex = (b: Uint8Array): string => [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
 const order = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** info.txt -> its key=value lines. */
-export function infoValues(data: Uint8Array): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const line of lines(utf8(data))) {
-    const at = line.indexOf('=');
-    if (at >= 0 && !line.startsWith('#')) out[line.slice(0, at)] = line.slice(at + 1);
-  }
-  return out;
+/** Metadata -> the semantic field view (legacy text or the named native record). */
+export function infoValues(data: Uint8Array, name = INFO): Record<string, string> {
+  return packageValues(data, name);
 }
 
 /** files.sha256 -> [sha256 hex, path] in file order. */
@@ -95,8 +85,9 @@ export interface LocalSet {
  */
 export async function localSet(source: PackageSource, only: readonly string[] = []): Promise<LocalSet> {
   const paths = new Set(await source.paths());
-  if (!paths.has(`base/${INFO}`)) throw new PackageError('no base/info.txt (choose the generation folder modkit split wrote)');
-  const base = parseManifest(await source.read(`base/${INFO}`));
+  const baseRecord = recordName([...paths].filter((path) => path.startsWith('base/')).map((path) => path.slice(5)));
+  if (baseRecord === undefined) throw new PackageError('no base/info.txt (choose the generation folder modkit split wrote)');
+  const base = parseManifest(await source.read(`base/${baseRecord}`), baseRecord);
   const profile = base['profile'] ?? '', generation = base['generation'] ?? '';
   if (base['type'] !== 'mod-base' || !TOKEN.test(profile) || !TOKEN.test(generation)) {
     throw new PackageError('base/info.txt: not a mod-base with a profile and generation');
@@ -109,7 +100,8 @@ export async function localSet(source: PackageSource, only: readonly string[] = 
   for (const name of [...new Set(wanted)].sort((a, b) => Number(a !== 'base') - Number(b !== 'base') || order(a, b))) {
     const listed = await source.read(`${name}/${LIST}`);
     const entries = listPaths(listed);
-    if (!entries.some(([, p]) => p === INFO)) throw new PackageError(`${name}/${LIST} does not list ${INFO}`);
+    const metadata = recordName([...paths].filter((path) => path.startsWith(`${name}/`)).map((path) => path.slice(name.length + 1)));
+    if (metadata === undefined || !entries.some(([, path]) => path === metadata)) throw new PackageError(`${name}/${LIST} does not list ${metadata ?? 'manifest.json or info.txt'}`);
     const files: LocalFile[] = [], shas = new Map<string, string>();
     for (const [sha, path] of entries) {
       const stored = storedName(path, sha), device = `${MODS_ROOT}/${generation}/${name}/${stored}`;
@@ -126,9 +118,9 @@ export async function localSet(source: PackageSource, only: readonly string[] = 
       shas.set(stored, sha);
     }
     if (shas.has(LIST)) throw new PackageError(`${name}: a file shares the stored name ${LIST}`);
-    files.sort((a, b) => Number(a.path === INFO) - Number(b.path === INFO));   // info.txt after the other listed files
+    files.sort((a, b) => Number(a.path === metadata) - Number(b.path === metadata));   // selected metadata after payloads
     files.push({ path: LIST, data: listed, stored: LIST });                      // files.sha256 last
-    const fields = parseManifest(files.find((file) => file.path === INFO)!.data);
+    const fields = parseManifest(files.find((file) => file.path === metadata)!.data, metadata);
     if (fields['generation'] !== generation || (fields['profile'] ?? profile) !== profile ||
         fields['type'] !== (name === 'base' ? 'mod-base' : 'mod')) throw new PackageError(`${name}: package dependencies or type differ`);
     packages.set(name, files);
@@ -257,7 +249,8 @@ export async function listPackages(client: Client, options: CallOptions = {}): P
       const prefix = `${gen}/${name}/`;
       const mine = new Map([...tree.files].filter(([p]) => p.startsWith(prefix)).map(([p, s]) => [p.slice(prefix.length), s]));
       let info: Record<string, string> = {}, complete = false;
-      if (mine.has(INFO)) info = infoValues(await client.readFile(`${MODS_ROOT}/${prefix}${INFO}`, options));
+      const metadata = recordName(mine.keys());
+      if (metadata !== undefined) info = infoValues(await client.readFile(`${MODS_ROOT}/${prefix}${metadata}`, options), metadata);
       if (mine.has(LIST)) {
         try {
           complete = listPaths(await client.readFile(`${MODS_ROOT}/${prefix}${LIST}`, options)).every(([s, p]) => mine.has(storedName(p, s)));
@@ -541,7 +534,8 @@ export async function libraryBases(client: Client, options: CallOptions = {}): P
   for (const e of entries.filter((x) => x.kind === 'folder').sort((a, b) => order(a.name, b.name))) {
     const files = await client.listDir(`${LIBRARY_ROOT}/${e.name}`, options);
     if (!files.some((f) => f.kind === 'file' && f.name === 'os.ldr')) continue;
-    const info = files.some((f) => f.name === INFO) ? infoValues(await client.readFile(`${LIBRARY_ROOT}/${e.name}/${INFO}`, options)) : {};
+    const metadata = recordName(files.map((file) => file.name));
+    const info = metadata !== undefined ? infoValues(await client.readFile(`${LIBRARY_ROOT}/${e.name}/${metadata}`, options), metadata) : {};
     if (info['generation']) continue;                         // an assembled mod set, not a stock base
     const contentList = files.some((f) => f.kind === 'file' && f.name === 'content.sha256');
     out.push({ id: e.name, name: info['name'] || e.name, contentList });

@@ -1,0 +1,150 @@
+[
+  {
+    "name": "legacy-only",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n"
+    },
+    "record": "info.txt",
+    "fields": {
+      "type": "mod",
+      "name": "Old",
+      "machine": "synth",
+      "generation": "v1"
+    }
+  },
+  {
+    "name": "native-only",
+    "files": {
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"New\",\"machine\":\"synth\",\"generation\":\"v1\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": {
+      "type": "mod",
+      "name": "New",
+      "machine": "synth",
+      "generation": "v1"
+    }
+  },
+  {
+    "name": "native-wins-dual",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"New\",\"machine\":\"synth\",\"generation\":\"v1\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": {
+      "type": "mod",
+      "name": "New",
+      "machine": "synth",
+      "generation": "v1"
+    }
+  },
+  {
+    "name": "native-wins-invalid-legacy",
+    "files": {
+      "info.txt": "invalid",
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"New\",\"machine\":\"synth\",\"generation\":\"v1\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": {
+      "type": "mod",
+      "name": "New",
+      "machine": "synth",
+      "generation": "v1"
+    }
+  },
+  {
+    "name": "typed-extras",
+    "files": {
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"New\",\"machine\":\"synth\",\"generation\":\"v1\",\"module_base\":2368537472,\"services\":[\"synth\",\"delay\"],\"engine\":null,\"order\":2}\n"
+    },
+    "record": "manifest.json",
+    "fields": {
+      "type": "mod",
+      "name": "New",
+      "machine": "synth",
+      "generation": "v1"
+    }
+  },
+  {
+    "name": "malformed-native",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{"
+    },
+    "record": "manifest.json",
+    "fields": null
+  },
+  {
+    "name": "newer-native",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":2,\"type\":\"mod\",\"name\":\"New\",\"machine\":\"synth\",\"generation\":\"v1\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": null
+  },
+  {
+    "name": "wrong-native-schema",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{\"schema\":\"stock.content\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"New\",\"machine\":\"synth\",\"generation\":\"v1\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": null
+  },
+  {
+    "name": "stock-unicode",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{\"schema\": \"stock.content\", \"name\": \"\\u7b8f\"}"
+    },
+    "record": "manifest.json",
+    "fields": null
+  },
+  {
+    "name": "missing-type",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"name\":\"New\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": null
+  },
+  {
+    "name": "missing-required",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"New\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": null
+  },
+  {
+    "name": "numeric-string",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"New\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":\"2\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": null
+  },
+  {
+    "name": "duplicate-key",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"New\",\"name\":\"Again\",\"machine\":\"synth\",\"generation\":\"v1\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": null
+  },
+  {
+    "name": "wrong-common-type",
+    "files": {
+      "info.txt": "type=mod\nname=Old\nmachine=synth\ngeneration=v1\n",
+      "manifest.json": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"New\",\"machine\":2,\"generation\":\"v1\"}\n"
+    },
+    "record": "manifest.json",
+    "fields": null
+  }
+]

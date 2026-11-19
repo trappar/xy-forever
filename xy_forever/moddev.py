@@ -20,7 +20,7 @@ from pathlib import Path
 import sys
 import time
 
-from . import modsend as MS
+from . import modsend as MS, package_records
 from . import usb_proto as P
 
 CONFIG = '/yaffs2/xy-forever/config.txt'
@@ -61,12 +61,13 @@ def resolve(package_dir, only=None, with_=()):
     """(generation folder, [package names: the mod first, then --with]) for a mod package folder (its info.txt
     says type=mod; its parent is the generation folder modkit split wrote) or a generation folder + only."""
     folder = Path(package_dir)
-    if (folder / 'base' / MS.INFO).is_file():
+    if any((folder / 'base' / name).is_file() for name in (package_records.NATIVE, MS.INFO)):
         if not only:
             raise MS.Refused('%s is a generation folder: name the mod with --only ID' % folder)
         gen, mod = folder, only
-    elif (folder / MS.INFO).is_file():
-        info = MS.info_values((folder / MS.INFO).read_bytes())
+    elif any((folder / name).is_file() for name in (package_records.NATIVE, MS.INFO)):
+        metadata = package_records.record_name(p.name for p in folder.iterdir() if p.is_file())
+        info = MS.info_values((folder / metadata).read_bytes(), metadata)
         if info.get('type') != 'mod':
             raise MS.Refused('%s/info.txt: type=%s, not a mod package' % (folder, info.get('type', '?')))
         gen, mod = folder.parent, folder.name
@@ -142,8 +143,14 @@ def library(dev):
 
 
 def entry_stamp(dev, entry):
-    text = read_text(dev, '%s/%s/info.txt' % (FIRMWARE, entry))
-    return MS.info_values(text.encode()).get('sha256', '') if text else ''
+    for name in (package_records.NATIVE, package_records.LEGACY):
+        code, data = dev.read_all('%s/%s/%s' % (FIRMWARE, entry, name), limit=1 << 16)
+        if code == P.ids.S_NOT_FOUND:
+            continue
+        if code:
+            raise MS.Refused('could not read %s: %s' % (name, P.status_name(code)))
+        return MS.info_values(data, name).get('sha256', '')
+    return ''
 
 
 def current_default(dev, slots, current_state):
