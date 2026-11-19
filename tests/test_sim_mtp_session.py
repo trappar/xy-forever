@@ -245,6 +245,85 @@ class MtpSessionTests(unittest.TestCase):
         self.assertNotIn('A write executor', text)
         self.assertIn('B menu loop between USB passes', text)               # #144: zero here (no composite)
 
+    def test_timing_after_window_close_and_catalog_refresh(self):
+        """A leaves file RPC for the catalog: timing must enter it before sending a raw request.
+        A raw timing request there never answers, occupies the one slot and eventually loses the link."""
+        from xy_forever import mtp_timing as T
+        self.enter()
+
+        def write_and_settle():
+            code, body = self.dev.call(P.STATUS)
+            self.assertEqual(code, P.S_OK)
+            before = host.decode_status(body)['remote_read']['b_catalogs']
+            self.assertEqual(host.put(self.dev, bytes(1024), '/yaffs2/xy-forever/tmp/timing.bin'), 0)
+            self.sim.advance(8500)
+            deadline = time.monotonic() + 10
+            while True:
+                code, body = self.dev.call(P.STATUS)
+                self.assertEqual(code, P.S_OK)
+                server = host.decode_status(body)['remote_read']
+                if server['b_catalogs'] > before:
+                    self.assertEqual(server['b_window'], 3)
+                    return
+                self.assertLess(time.monotonic(), deadline, 'write window/catalog did not settle')
+                self.sim.advance(100)
+                time.sleep(.01)
+
+        # Exercise all three A-query subcommands as the first file request after a real
+        # write-window close and catalog transfer, without a host listing/read to admit them.
+        write_and_settle()
+        timing = T.read(self.dev, wait=0)
+        self.assertIsNotNone(timing['a'])
+        self.assertGreater(timing['a']['writes'], 0)
+        self.assertGreater(timing['a_ops']['window close (op 9)'][0], 0)
+        write_and_settle()
+        self.assertTrue(T.clear(self.dev, wait=0))
+        self.assertEqual(T.read(self.dev, wait=0)['a']['writes'], 0)
+        write_and_settle()
+        self.assertGreater(T.read_ops(self.dev)['window close (op 9)'][0], 0)
+        self.sim.advance(61000)                       # a stuck raw request would latch the lost link
+        self.assertEqual(self.file_command(), P.S_OK)
+        self.assertEqual(self.sim.status()['rw_open'], 0)
+
+    def test_timing_does_not_steal_a_pending_file_request(self):
+        """A timed-out file request still owns its slot; diagnostics must not cancel or replace it."""
+        from xy_forever import mtp_timing as T
+        self.enter()
+        self.assertEqual(self.file_command(), P.S_OK)
+        self.sim.set('b_queue', 1)
+        self.assertEqual(self.dev.read_file('/yaffs2/xy-forever/big.bin')[0], P.S_LINK)
+        self.assertEqual(self.sim.status()['b_queued'], 1)
+        self.assertFalse(T.clear(self.dev, wait=0))
+        self.assertIsNone(T.read(self.dev, wait=0)['a'])
+        self.assertEqual(self.sim.status()['b_queued'], 1)
+        self.sim.set('b_queue', 0)
+        deadline = time.monotonic() + 10
+        while self.sim.status()['b_queued']:
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(.01)
+        self.assertEqual(self.file_command(), P.S_OK)
+        self.assertTrue(T.clear(self.dev, wait=0))
+        self.sim.advance(61000)
+        self.assertEqual(self.file_command(), P.S_OK)
+
+    def test_timing_does_not_interrupt_a_serial_upload(self):
+        from xy_forever import mtp_timing as T
+        import hashlib
+        import zlib
+        self.enter()
+        path, data = '/yaffs2/xy-forever/tmp/timing-upload.bin', bytes(1024)
+        begin = path.encode() + b'\0' + struct.pack('<II', len(data), zlib.crc32(data)) + hashlib.sha256(data).digest()
+        self.assertEqual(self.dev.call(P.WRITE_BEGIN, begin)[0], P.S_OK)
+        self.sim.set('b_queue', 1)                     # any diagnostic raw request would now stick
+        self.assertFalse(T.clear(self.dev, wait=0))
+        self.assertIsNone(T.read(self.dev, wait=0)['a'])
+        self.assertIsNone(T.read_ops(self.dev))
+        self.assertEqual(self.sim.status()['b_queued'], 0)
+        self.sim.set('b_queue', 0)
+        self.assertEqual(self.dev.call(P.WRITE_DATA, struct.pack('<I', 0) + data)[0], P.S_OK)
+        self.assertEqual(self.dev.call(P.WRITE_END)[0], P.S_OK)
+        self.assertEqual((self.root / 'xy-forever/tmp/timing-upload.bin').read_bytes(), data)
+
     def test_a_failed_piece_fails_the_upload_at_the_next_write_or_the_close(self):
         """#144: B leaves each piece's write out and collects A's answer at the next write or the close. A piece that
         A failed (the first: seen at the second write; the last: seen only at the close) fails SendObject: the old
