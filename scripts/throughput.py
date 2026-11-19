@@ -9,8 +9,10 @@ Routes:
 Each route writes the set into the scratch folder /yaffs2/throughput-scratch/ (MTP: /throughput-scratch at the
 storage root), reads it back, compares it, then removes the scratch folder, also after a failure; what was
 removed is printed for the cleanup log (docs/operating/at-the-device.md). Leftovers of an earlier run in that
-folder are removed first. MTP writes go through xy_forever/mtp_write.py (its checks: /yaffs2 only, never
-bootloader.dev nor upgrade/, the depth rule, deletes only in the scratch folder). This script cannot switch the
+folder are removed first. os-mtp differs (OsMtpOps): the OS's MTP takes only its allowlisted paths, so the set
+goes into /samples/throughput-scratch/ as .wav files, and only a folder this run made is removed. MTP writes
+go through xy_forever/mtp_write.py (its checks: /yaffs2 only, never bootloader.dev nor upgrade/, the depth
+rule, deletes only in the scratch folder). This script cannot switch the
 OP-XY into a stock mode: it says what to do and waits for Enter (bounded), or --ready says it already is.
 Every wait is bounded. One table row per route; exit 0 only when every route passed.
 
@@ -43,6 +45,8 @@ from xy_forever import mtp_read as M, mtp_timing as T, mtp_write as W  # noqa: E
 ROUTES = ('serial', 'xyf-mtp', 'os-mtp', 'dev-mtp')
 SIM_ROUTES = ('serial', 'xyf-mtp')
 SCRATCH = '/yaffs2/throughput-scratch'      # not xy-forever/tmp/ (swept by the device); 1 folder below /yaffs2
+OS_SCRATCH = '/yaffs2/samples/throughput-scratch'   # os-mtp: MTP /samples/throughput-scratch (the OS's /fat32/...)
+WAV_HEADER = 44
 STOCK = {
     'os-mtp': ('the stock OS\'s MTP: boot the stock OS (XY Forever: Continue into stock firmware) with USB '
                'connected; quit Field Kit, OpenMTP and Image Capture', 'leave the stock OS as it is'),
@@ -78,9 +82,21 @@ def file_set(big, big_count, small, small_count, seed=1):
             [('small/s-%03d.bin' % i, rng.randbytes(small), True) for i in range(small_count)])
 
 
+def as_wav(data):
+    """data as a PCM WAV file of the same size (16-bit stereo, 44.1 kHz): a 44-byte header, then data's tail."""
+    body = len(data) - WAV_HEADER
+    return struct.pack('<4sI4s4sIHHIIHH4sI', b'RIFF', 36 + body, b'WAVE', b'fmt ', 16, 1, 2, 44100, 176400, 4, 16,
+                       b'data', body) + data[WAV_HEADER:]
+
+
+def os_file_set(files):
+    """The set as the stock OS's MTP takes it (OsMtpOps): the same names and sizes, as .wav files."""
+    return [(name[:-len('.bin')] + '.wav', as_wav(data), small) for name, data, small in files]
+
+
 class Result:
     def __init__(self, route, files):
-        self.route, self.error = route, None
+        self.route, self.error, self.scratch = route, None, SCRATCH
         self.count = {s: sum(1 for f in files if f[2] == s) for s in (False, True)}
         self.bytes = {s: sum(len(f[1]) for f in files if f[2] == s) for s in (False, True)}
         self.seconds = {}                   # ('write' | 'read', small?) -> seconds
@@ -123,12 +139,13 @@ def cleanup_lines(r):
     """What a route removed from the device, for the cleanup log (docs/operating/at-the-device.md)."""
     lines = []
     if r.leftovers:
-        lines.append('%s: removed %d leftovers of an earlier run in %s' % (r.route, len(r.leftovers), SCRATCH))
+        lines.append('%s: removed %d leftovers of an earlier run in %s' % (r.route, len(r.leftovers), r.scratch))
     if r.removed:
         lines.append('%s: removed %s (%d paths: the test files, their folders and the folder)' % (
-            r.route, SCRATCH, len(r.removed)))
+            r.route, r.scratch, len(r.removed)))
     if r.cleanup_error:
-        lines.append('%s: cleanup FAILED (%s): %s may be left on the device' % (r.route, r.cleanup_error, SCRATCH))
+        lines.append('%s: cleanup FAILED (%s): %s may be left on the device' % (r.route, r.cleanup_error,
+                                                                                r.scratch))
     return lines
 
 
@@ -136,6 +153,7 @@ def measure(route, ops, files, clock=time.monotonic):
     """Write the set, read it back and compare, then clean up (always). ops: prepare() -> leftovers removed,
     write(path, data) -> token, read(token, path, size) -> bytes, cleanup() -> paths removed."""
     r = Result(route, files)
+    r.scratch = getattr(ops, 'scratch', SCRATCH)
     try:
         r.leftovers = ops.prepare()
         tokens = {}
@@ -148,7 +166,7 @@ def measure(route, ops, files, clock=time.monotonic):
                 for name, data, is_small in files:
                     if is_small != small:
                         continue
-                    path = SCRATCH + '/' + name
+                    path = r.scratch + '/' + name
                     if kind == 'write':
                         tokens[name] = ops.write(path, data)
                     elif ops.read(tokens[name], path, len(data)) != data:
@@ -232,11 +250,11 @@ class SerialOps:
 # MTP: mtp_write.Writer over USB or the simulator's tunnel
 
 class MtpOps:
-    def __init__(self, transport, timing=None, breakdown=True, piece=None):
-        self.transport, self.where = transport, {}
+    def __init__(self, transport, timing=None, breakdown=True, piece=None, scratch=SCRATCH):
+        self.transport, self.where, self.scratch = transport, {}, scratch
         self.timing = timing                # xyf-mtp: a serial Device for diag.mtp op 7, or None
         self.breakdown, self.piece = breakdown, piece   # the breakdown wanted; a piece set (restored on close)
-        self.w = W.Writer(transport, SCRATCH)
+        self.w = W.Writer(transport, scratch)
         try:
             self.w.open()
         except BaseException:
@@ -281,6 +299,36 @@ class MtpOps:
             self.transport.close()
             if self.timing and self.timing is not getattr(self.transport, 'dev', None):
                 self.timing.t.close()
+
+
+class OsMtpOps(MtpOps):
+    """The stock OS's MTP. It takes only the paths on its allowlist (1.2.1 OS, src/usb/mtp/smx_if.cpp, regexes
+    beside its "/fat32/" open prefix): folders /samples/<name> and /samples/<name>/<name>; sample files
+    <name>.wav (.aif, .aiff, .aifc) up to three folders below /samples; a name of letters, digits, _, space and
+    !+-@[]#$%&'() (no dot but the extension's). Nothing at the root: a SendObjectInfo there got 0x2002 and the
+    OS left MTP mode. So the set (os_file_set) goes into /samples/throughput-scratch/. That folder must not be
+    there yet: then everything in it is this run's, and cleanup removes it only when this run made it, with
+    no request at all otherwise; each step stops at its first failure, nothing is retried."""
+
+    def __init__(self, transport):
+        super().__init__(transport, scratch=OS_SCRATCH)
+        self.made = False                   # this run made the scratch folder
+
+    def prepare(self):
+        samples = self.w.locate(self.scratch.rsplit('/', 1)[0])
+        if samples is None:
+            raise Failed('the OS\'s MTP shows no /samples folder')
+        if any(c[1] == self.scratch.rsplit('/', 1)[1] for c in self.w.children(*samples)):
+            raise Failed('/samples/throughput-scratch is already on the OP-XY (an earlier run\'s?): left as it is; '
+                         'delete it over MTP by hand, then run again')
+        where = samples
+        for folder in (self.scratch, self.scratch + '/small'):
+            where = self.where[folder] = self.w.create(folder, where=where)
+            self.made = True
+        return []
+
+    def cleanup(self):
+        return self.w.remove_tree(where=self.where[self.scratch]) if self.made else []
 
 
 class Tunnel:
@@ -398,6 +446,8 @@ def open_route(route, args):
     if route in STOCK and not args.ready:
         wait_for_enter('Put the OP-XY in %s' % STOCK[route][0], args.wait)
     transport = open_usb_mtp(route, args.timeout_ms)
+    if route == 'os-mtp':
+        return OsMtpOps(transport)
     if route != 'xyf-mtp' or not (args.breakdown or args.piece):
         return MtpOps(transport)
     try:                                                                   # the serial beside it (the composite)
@@ -476,11 +526,14 @@ def main(argv=None):
     if args.big_count < 0 or args.small_count < 0 or not args.big_count + args.small_count:
         parser.error('nothing to move')
     routes = select_routes(args.route, args.sim)
+    if 'os-mtp' in routes and min(args.big if args.big_count else WAV_HEADER,
+                                  args.small if args.small_count else WAV_HEADER) < WAV_HEADER:
+        parser.error('os-mtp sends .wav files: --big and --small at least %d bytes' % WAV_HEADER)
     files = file_set(args.big, args.big_count, args.small, args.small_count)
     results = []
     for route in routes:
         print('%s: %d files, %d KiB ...' % (route, len(files), sum(len(f[1]) for f in files) // 1024), flush=True)
-        results.append(run_route(route, args, files))
+        results.append(run_route(route, args, os_file_set(files) if route == 'os-mtp' else files))
         for line in cleanup_lines(results[-1]) + results[-1].breakdown:
             print(line)
     print(table(results))
