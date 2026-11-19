@@ -23,15 +23,15 @@ checkout (`main_checkout` in `xy_forever/paths.py`; `XYF_PRIVATE` and `XYF_TOOLC
 
 - `python3 scripts/plan.py --agent NAME` splits your items: claimed by NAME (yours: resume only these),
   claimed by another agent (leave them; they leave "Next" too), and unclaimed (interrupted work: claim it
-  before you resume it). It removes claims whose pull request is merged or closed, and marks a claim whose
-  branch has had no commits of its own for two days as stale.
+  before you resume it). It removes claims whose issue is closed or whose pull request is merged or closed,
+  and marks a claim whose branch has had no commits of its own for two days as stale.
 - `python3 scripts/plan.py claim <N> --agent NAME`, in the item's new worktree, before
   `gh issue edit <N> --add-assignee @me`. The claim is `<private>/xy-forever/claims/<N>.json` (versioned:
   agent, branch, worktree, time), made by exclusive create: of two agents one wins, and the other is refused
   with the holder's name. Refused: remove your worktree (`git worktree remove`) and take the next item.
 - `python3 scripts/plan.py release <N> --agent NAME` when you stop an item that has no pull request
-  (blocked, unassigned). A merged or closed pull request releases it by itself. Another agent's stale
-  claim: ask the developer before releasing it (`release <N>` without `--agent`).
+  (blocked, unassigned). A closed issue or a merged or closed pull request releases it by itself. Another
+  agent's stale claim: ask the developer before releasing it (`release <N>` without `--agent`).
 
 ## The device and builds
 
@@ -39,5 +39,7 @@ checkout (`main_checkout` in `xy_forever/paths.py`; `XYF_PRIVATE` and `XYF_TOOLC
   `<private>/xy-forever/device.lock` (`xy_forever/device_lock.py`) until they exit, even on a crash. A second
   one waits up to its `--timeout`, then stops with "device busy" naming the holder. The simulator takes no lock.
   Device items still need the developer: work one agent's at a time.
-- `scripts/check.py` never prunes a build folder touched in the last 15 minutes, so checks in two worktrees can
-  run at once. Receipts are keyed by tree, so `--confirm` works from any worktree.
+- One `scripts/check.py` run at a time: a run holds `<private>/xy-forever/checks/check.lock` until it exits,
+  and a second prints "waiting for another check run" (the holder's pid, worktree, branch) and waits, never
+  fails. Pruning skips build folders touched in the last 15 minutes. Receipts are keyed by tree: `--confirm`
+  works from any worktree.

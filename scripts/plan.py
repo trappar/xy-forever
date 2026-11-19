@@ -117,9 +117,10 @@ def main(argv=None):
             return 0
         if args.agent:
             C.check_agent(args.agent)
-            held = C.load()
-            gone = C.sweep(held)
         issues, me = fetch()
+        if args.agent:
+            held = C.load()
+            gone = C.sweep(held, open_issues={i['number'] for i in issues})
     except C.ClaimError as error:
         print('refused: %s' % error, file=sys.stderr)
         return 1
@@ -127,8 +128,8 @@ def main(argv=None):
         print('\n'.join(queue(issues, me, args.all)))
         return 0
     print('\n'.join(queue(issues, me, args.all, args.agent, held, C.stale)))
-    for number, claim in gone:
-        print('Released #%d (%s): its pull request is merged or closed' % (number, claim['agent']))
+    for number, claim, why in gone:
+        print('Released #%d (%s): %s' % (number, claim['agent'], why))
     return 0
 
 

@@ -38,31 +38,41 @@ def hold(wait=0.0, path=None, root=None):
     folder."""
     if path is None and no_device.on():
         return None
-    path = str(path or paths.DEVICE_LOCK)
+    return lock(path or paths.DEVICE_LOCK, wait, root)
+
+
+def lock(path, wait=0.0, root=None, what=None,
+         waiting='device busy: %(who)s is talking to the OP-XY; waiting up to %(wait)g s\n'):
+    """An flock on path, held until this process exits (taken again: nothing to do); also scripts/check.py's lock.
+    Waits up to wait seconds (None: as long as it takes) for another holder, writing waiting once on stderr; then
+    raises DeviceBusy. The file records this process: its pid, what (default: its command) and the time. Returns
+    the lock path, or None when root (default the private folder) is missing."""
+    path = str(path)
     if path in _held:
         return path
     if not os.path.isdir(str(root or paths.PRIVATE_ROOT)):
         return None
     os.makedirs(os.path.dirname(path), exist_ok=True)
     f = open(path, 'a+')
-    deadline, said = time.monotonic() + wait, False
+    deadline, said = time.monotonic() + (wait or 0.0), False
     while True:
         try:
             fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             break
         except BlockingIOError:
             who = holder(path) or 'another process'
-            if time.monotonic() >= deadline:
+            if wait is not None and time.monotonic() >= deadline:
                 f.close()
                 raise DeviceBusy('device busy: %s is talking to the OP-XY (%s); try again when it ends' % (who, path))
             if not said:
-                sys.stderr.write('device busy: %s is talking to the OP-XY; waiting up to %g s\n' % (who, wait))
+                sys.stderr.write(waiting % dict(who=who, wait=wait or 0.0))
+                sys.stderr.flush()
                 said = True
             time.sleep(0.2)
     f.seek(0)
     f.truncate()
-    command = ' '.join([os.path.basename(sys.argv[0] if sys.argv else '') or 'python'] + sys.argv[1:3])
-    f.write('pid %d (%s) since %s\n' % (os.getpid(), command, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+    what = what or ' '.join([os.path.basename(sys.argv[0] if sys.argv else '') or 'python'] + sys.argv[1:3])
+    f.write('pid %d (%s) since %s\n' % (os.getpid(), what, datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
     f.flush()
     _held[path] = f
     return path

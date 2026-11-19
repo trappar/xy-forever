@@ -24,7 +24,9 @@ files give the same key whatever the commit. A run where a step failed writes no
 that tree's receipt and records the failure in <tree>.failed.json. --confirm exits 0 only when a
 passing receipt matches REF's tree and prints what it records; otherwise it says what is missing (no
 receipt, a failed check, or a receipt for an older tree of the branch). A receipt never stands in for
-a device test.
+a device test. One full run at a time on this machine: a run holds <private>/xy-forever/checks/check.lock
+(xy_forever/device_lock.py) until it exits, and a second one says so and waits (two at once starve the simulator
+timing tests). A single run never waits; a test run, or one with no private folder, takes no lock.
 """
 import argparse
 import datetime
@@ -41,7 +43,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import no_device, paths, procgroup  # noqa: E402
+from xy_forever import device_lock, no_device, paths, procgroup  # noqa: E402
 
 VERSION = 1                                  # receipt format; a reader refuses a newer one
 CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json
@@ -276,6 +278,13 @@ def check(root, steps_for, checks=CHECKS, log=None):
     return record
 
 
+def one_run_at_a_time(lock, root, private=None):
+    """Holds lock (an flock) until this process exits, first waiting, as long as it takes, for another check run
+    holding it, saying so once. None when there is no private folder."""
+    what = 'check.py in %s, branch %s' % (root, git(root, 'rev-parse', '--abbrev-ref', 'HEAD') or '-')
+    return device_lock.lock(lock, None, private, what, 'check: waiting for another check run: %(who)s\n')
+
+
 def load(path):
     """A receipt or failure record, or None when there is none; CheckError when unreadable or too new."""
     try:
@@ -366,11 +375,14 @@ def main(argv=None, root=ROOT, checks=CHECKS):
                         help='also scripts/neutral.py REF (default REF: the merge base with origin/main, else main)')
     parser.add_argument('--npm', action='store_true', help='the web npm steps and the clients/ts node_modules check even when unchanged')
     args = parser.parse_args(argv)
+    test_run = no_device.on()                    # a test run never waits for, nor blocks, a real check run
     no_device.switch_on()                        # every step and its subprocesses: no real device
     try:
         if args.confirm:
             print('\n'.join(describe(confirm(root, args.confirm, checks))))
             return 0
+        if not test_run:
+            one_run_at_a_time(checks / 'check.lock', root)
         with tempfile.TemporaryDirectory(prefix='xyf-check-') as work:
             record = check(root, lambda tree: standard_steps(args, root, tree, work), checks)
     except CheckError as e:

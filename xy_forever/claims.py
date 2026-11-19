@@ -119,15 +119,20 @@ def last_commit(branch, root=paths.REPO):
     return float(stamp) if stamp else None
 
 
-def sweep(claims, states=None, folder=None):
-    """Removes the claims whose branch's pull requests (states(branch): pr_states) are all merged or closed:
-    [(number, claim)] removed."""
+def sweep(claims, states=None, folder=None, open_issues=None):
+    """Removes the claims whose issue is closed (not in open_issues, the open issue numbers, when given) or whose
+    branch's pull requests (states(branch): pr_states) are all merged or closed: [(number, claim, why)] removed."""
     states, gone = states or pr_states, []
     for number, c in sorted(claims.items()):
-        found = states(c['branch']) if c.get('branch') else None
-        if found and 'OPEN' not in found:
-            release(number, folder=folder)
-            gone.append((number, claims.pop(number)))
+        if open_issues is not None and number not in open_issues:
+            why = 'its issue is closed'
+        else:
+            found = states(c['branch']) if c.get('branch') else None
+            if not found or 'OPEN' in found:
+                continue
+            why = 'its pull request is merged or closed'
+        release(number, folder=folder)
+        gone.append((number, claims.pop(number), why))
     return gone
 
 

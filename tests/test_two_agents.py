@@ -1,5 +1,5 @@
 """Two agents on one machine (docs/operating/two-agents.md): paths from the main checkout in a worktree and a plain
-clone, local claims and plan.py --agent, the device lock, safe build pruning. Every case also runs with nothing set
+clone, local claims and plan.py --agent, the device lock, one check run at a time, safe build pruning. Every case also runs with nothing set
 up: no claims folder, no agent name, no xyf.local.json, no XYF_* variables."""
 import contextlib
 import importlib.util
@@ -153,9 +153,20 @@ class Claims(unittest.TestCase):
         states = {'a': {'MERGED'}, 'b': {'CLOSED', 'OPEN'}, 'c': set()}.get
         held = C.load(self.folder)
         gone = C.sweep(held, states, self.folder)
-        self.assertEqual([n for n, _ in gone], [1])
+        self.assertEqual([(n, why) for n, _, why in gone], [(1, 'its pull request is merged or closed')])
         self.assertEqual(sorted(held), [2, 3, 4])
         self.assertEqual(sorted(C.load(self.folder)), [2, 3, 4])
+
+    def test_closed_issues_release_the_claim_with_or_without_a_pull_request(self):
+        for n, branch in ((1, 'a'), (2, ''), (3, 'c'), (4, 'd')):
+            C.claim(n, 'claude', folder=self.folder)
+            data = json.loads((self.folder / ('%d.json' % n)).read_text())
+            (self.folder / ('%d.json' % n)).write_text(json.dumps(dict(data, branch=branch)))
+        states = {'a': {'OPEN'}, 'c': set(), 'd': {'OPEN'}}.get
+        held = C.load(self.folder)
+        gone = C.sweep(held, states, self.folder, open_issues={3, 4})
+        self.assertEqual([(n, why) for n, _, why in gone], [(1, 'its issue is closed'), (2, 'its issue is closed')])
+        self.assertEqual(sorted(C.load(self.folder)), [3, 4])
 
     def test_stale_after_two_days_without_a_commit(self):
         claim = dict(branch='x', time='2026-01-01T00:00:00Z')
@@ -227,6 +238,12 @@ class PlanByClaim(unittest.TestCase):
                     mock.patch.object(C, 'last_commit', lambda branch: None):
                 code, out = self.run_main(['--agent', 'codex'], folder)
             self.assertIn('Yours, in progress (claimed by codex) (1)\n  #4 M0 Free [build] (', out)
+            C.claim(9, 'claude', folder=folder)                         # #9 is not among the open issues
+            with mock.patch.object(C, 'pr_states', lambda branch: {'OPEN'}), \
+                    mock.patch.object(C, 'last_commit', lambda branch: None):
+                code, out = self.run_main(['--agent', 'codex'], folder)
+            self.assertTrue(out.endswith('Released #9 (claude): its issue is closed\n'), out)
+            self.assertEqual(sorted(C.load(folder)), [4])
             self.assertEqual(self.run_main(['release', '4'], folder), (0, '#4 released (codex)\n'))
             self.assertEqual(self.run_main(['release', '4'], folder), (0, '#4 was not claimed\n'))
 
@@ -297,6 +314,50 @@ class DeviceLock(unittest.TestCase):
                 self.assertRaisesRegex(SystemExit, 'not found'):
             xyf_host.connect(0.05)
         hold.assert_called_once_with(0.05)
+
+
+CHECK_RUN = ('import sys, time; sys.path.insert(0, %r); sys.path.insert(0, %r); from test_two_agents import CHECK; '
+             'CHECK.one_run_at_a_time(sys.argv[1], %r, sys.argv[2]); print("held", flush=True); '
+             'time.sleep(float(sys.argv[3]))' % (str(ROOT), str(ROOT / 'tests'), str(ROOT)))
+
+
+class OneCheckRunAtATime(unittest.TestCase):
+    """scripts/check.py holds checks/check.lock for a whole run: a second run waits for it, never fails."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.lock = self.root / 'xy-forever/checks/check.lock'
+
+    def run_(self, seconds):
+        proc = subprocess.Popen([sys.executable, '-c', CHECK_RUN, str(self.lock), str(self.root), str(seconds)],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for f in (proc.stdout, proc.stderr):
+            self.addCleanup(f.close)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill() or proc.wait())
+        return proc
+
+    def test_a_second_run_waits_for_the_first(self):
+        first = self.run_(30)
+        self.assertEqual(first.stdout.readline().strip(), 'held')
+        second = self.run_(0)
+        self.assertRegex(second.stderr.readline(), r'^check: waiting for another check run: pid %d '
+                                                   r'\(check.py in .*, branch .*\) since ' % first.pid)
+        self.assertIsNone(second.poll())                                 # still waiting, not failed
+        first.kill()                                                     # even a crash releases it
+        self.assertEqual(second.communicate(timeout=30)[0].strip(), 'held')
+        self.assertEqual(second.returncode, 0)
+
+    def test_a_single_run_never_waits_and_a_test_run_takes_no_lock(self):
+        got = self.run_(0)
+        self.assertEqual(got.communicate(timeout=30), ('held\n', ''))
+        self.assertIsNone(CHECK.one_run_at_a_time(self.lock, ROOT, self.root / 'absent'))
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(CHECK, 'one_run_at_a_time', side_effect=AssertionError('locked')), \
+                mock.patch.object(CHECK, 'check', side_effect=CHECK.CheckError('stop')), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(CHECK.main([], ROOT, Path(tmp)), 1)              # XYF_NO_DEVICE: no lock taken
 
 
 class Pruning(unittest.TestCase):
