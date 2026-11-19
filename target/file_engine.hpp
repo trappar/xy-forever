@@ -56,6 +56,10 @@ static const uint32_t path_buffer = 0x8803f6e0u;
 // (upload_size below), A checks the source's size against its name and the target is a file or absent.
 static const uint32_t rename_from = 0x52464e52u, rename_to = 0x4f544e52u;   // "RNFR", "RNTO" (LE)
 static const uint32_t rename_over = 0x4f545052u;                          // "RPTO" (LE)
+// #144: A's request timing (storage_server_timing.ipp), read by B as a path-class access too (path /yaffs2):
+// argument timing_tag | k answers words 2k and 2k + 1 of A's counters as the reply's value and errno; k =
+// timing_clear zeroes them. A answers it itself: nothing reaches storage, and the policy never sees it.
+static const uint32_t timing_tag = 0x4d495400u, timing_clear = 0xffu, timing_words = 12;   // "\0TIM" (LE) | k
 enum Operation : uint32_t {
     op_read = 1,        // open for reading (flags 0)
     op_list,            // open a folder

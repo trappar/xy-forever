@@ -188,6 +188,44 @@ class MtpSessionTests(unittest.TestCase):
         self.leave()
         self.assertEqual(self.file_command(), P.S_OK)                      # serial commands work again
 
+    def test_timing_and_the_4_kib_piece(self):
+        """#144: diag.mtp op 7 sets the transfer piece and reads B's and A's counters (xy_forever/mtp_timing.py); an
+        upload and a download with 4 KiB pieces arrive byte for byte, one A request per piece."""
+        from xy_forever import mtp_timing as T
+        self.enter()
+        self.opened()
+        self.assertEqual(self.c.tunnel(7, b'\2' + struct.pack('<I', 2048 + 1))[0], P.S_OK)   # any size in range
+        self.assertEqual(self.c.tunnel(7, b'\2' + struct.pack('<I', 512))[0], P.S_BAD_REQUEST)
+        self.assertEqual(self.c.tunnel(7, b'\2' + struct.pack('<I', 8192))[0], P.S_BAD_REQUEST)
+        self.assertEqual(T.set_piece(self.dev, 4096), 4096)
+        self.assertTrue(T.clear(self.dev))
+        tmp = self.c.named(self.folder('xy-forever'))['tmp']
+        body = random.Random(9).randbytes(64 * 1024 + 100)
+        code, params, _ = self.c.transaction(0x100C, R.STORAGE, tmp, data=R.object_info('p.bin', len(body), parent=tmp))
+        self.assertEqual(code, R.OK, hex(code))
+        self.assertEqual(self.c.transaction(0x100D, data=body)[0], R.OK)
+        self.assertEqual((self.root / 'xy-forever/tmp/p.bin').read_bytes(), body)
+        t = T.read(self.dev)
+        self.assertEqual(t['piece'], 4096)
+        b, a = t['b'], t['a']
+        self.assertIsNotNone(a)
+        self.assertEqual(b['write_bytes'], len(body))
+        self.assertLessEqual(b['writes'], len(body) // 4000 + 2)            # 4 KiB per request (the tunnel's 4096)
+        self.assertEqual(a['writes'], b['writes'])                          # one A request each
+        self.assertGreater(b['write_units'], 0)
+        self.assertGreater(b['step_units'], 0)
+        self.assertEqual(b['reads'], 0)
+        self.assertTrue(T.clear(self.dev))
+        self.assertEqual(T.read(self.dev)['b']['writes'], 0)
+        code, _, data = self.c.transaction(0x1009, params[2])
+        self.assertEqual((code, data), (R.OK, body))
+        t = T.read(self.dev)
+        self.assertEqual((t['b']['read_bytes'], t['a']['reads']), (len(body), t['b']['reads']))
+        self.assertEqual(self.c.transaction(0x100B, params[2])[0], R.OK)
+        text = '\n'.join(T.lines(T.read(self.dev), 1.0, 'download'))       # the breakdown: reads only
+        self.assertIn('A read executor', text)
+        self.assertNotIn('A write executor', text)
+
     def test_depth_rule(self):
         """#124: SendObjectInfo makes a file in the 6th folder below /yaffs2 but no folder there (Access_Denied, nothing
         made, as for a file in a 7th folder made by hand); an older deep file still deletes."""

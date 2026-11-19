@@ -64,6 +64,8 @@ struct FileOps {
     int (*commit)(void* context, const char* path, bool keep);
 };
 static const U32 chunk = 1024;                           // bytes per read or write call (file_client::chunk)
+// #144: the piece a transfer's read or write call moves, chunk (the default) up to buffer_bytes (set_piece). A
+// read then fills what the IN staging has room for, at least chunk at a time.
 static const U32 buffer_bytes = 4096;                    // largest OUT transfer; IN staging
 static const U32 max_handles = 512, name_pool = 16384, page = 16;   // page: entries per list call
 static const U32 max_path = 240;                         // with the NUL (file_engine::max_path)
@@ -135,6 +137,8 @@ public:
     // MTP (serial file commands, jobs). A listing marks its folder's children stale first, then fresh as listed.
     void invalidate();
     U32 cache_hits() const { return hits; }
+    void set_piece(U32 bytes) { piece = bytes < chunk ? chunk : bytes > buffer_bytes ? buffer_bytes : bytes; }   // #144
+    U32 piece_bytes() const { return piece; }
 private:
     enum Phase : U32 { p_idle, p_data, p_work, p_close };
     struct Object { U16 parent; U16 name_at; Byte name_len, kind, used, fresh; U32 size; };   // fresh: kind, size known
@@ -160,6 +164,7 @@ private:
     char names[name_pool];
     U32 names_used;
     U32 hits;
+    U32 piece;                                           // set_piece (init: chunk)
     bool cached_info();                                  // GetObjectInfo from the table (true: answered)
     void object_info(U32 handle, const char* where);     // the ObjectInfo dataset and the response
 

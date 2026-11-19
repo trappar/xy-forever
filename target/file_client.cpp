@@ -212,7 +212,7 @@ Reply opendir(const char* path) { return path_request(path, file_engine::op_list
 Reply stat(const char* path, uint8_t* record) { return query(path, 0x22, record, record_bytes); }
 Reply statfs(const char* path, uint8_t* space) { return query(path, 0x23, space, space_bytes); }
 Reply read(int fd, uint8_t* out, uint32_t count) {
-    if (!count || count > chunk) return outcome(refused);
+    if (!count || count > piece_max) return outcome(refused);
     Stock121PeerSession* session; Reply why;
     U32* request = claim(session, why);
     if (!request) return why;
@@ -227,7 +227,7 @@ Reply read(int fd, uint8_t* out, uint32_t count) {
     return r;
 }
 Reply write(int fd, const uint8_t* bytes, uint32_t count) {
-    if (!count || count > chunk) return outcome(refused);
+    if (!count || count > piece_max) return outcome(refused);
     Stock121PeerSession* session; Reply why;
     U32* request = claim(session, why);
     if (!request) return why;
@@ -235,6 +235,7 @@ Reply write(int fd, const uint8_t* bytes, uint32_t count) {
     stock<0x889f8c10u, void>(request, 0x2bu, U32(fd), U32(count), data(), U32(count));   // write class (flushes)
     return send(*session, 0x2b, bound_ms(0x2b, 0));
 }
+Reply a_timing(uint32_t k) { return path_request("/yaffs2", file_engine::op_stat, 0x21, file_engine::timing_tag | (k & 0xffu)); }
 Reply readdir(uint32_t folder, uint8_t* entry) {
     Stock121PeerSession* session; Reply why;
     U32* request = claim(session, why);

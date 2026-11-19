@@ -19,10 +19,14 @@ inline uint32_t ms_from_units(uint32_t units) {
     return (units >> 13) * 21u + (((units & 0x1fffu) * 21u) >> 13);
 }
 #if defined(__bfin__)
-inline uint32_t ms() {
+inline uint64_t cycles() {                      // the 64-bit cycle counter (400 MHz)
     uint32_t low, high;
     __asm__ volatile("%0 = CYCLES; %1 = CYCLES2;" : "=d"(low), "=d"(high));
-    return ms_from_cycles(low, high);
+    return uint64_t(high) << 32 | low;
+}
+inline uint32_t ms() {
+    const uint64_t c = cycles();
+    return ms_from_cycles(uint32_t(c), uint32_t(c >> 32));
 }
 #endif
 } }

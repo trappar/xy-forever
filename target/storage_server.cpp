@@ -661,12 +661,13 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
 }
 
 }
+#include "storage_server_timing.ipp"                  // #144: timed_serve; engine_identity
 
 namespace xy_forever { namespace storage_server {
 void install(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySession& storage) {
     result.version = 1;
     result.role = 0;
-    session.serve(serve, &storage);
+    session.serve(timed_serve, &storage);
 }
 
 void finish(cold_storage::Stock121ReadOnlySession& storage) { close_engine(storage); }   // the window too
@@ -702,16 +703,6 @@ bool library_changed() {
 }
 #endif
 
-#if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
-uint32_t engine_identity() {
-    uint32_t bits = 0;
-    for (U32 i = 0; i != xyf::mtp_spans::count; ++i) {
-        const uint32_t* s = xyf::mtp_spans::table[i];
-        if (crc(s[0], s[1]) != s[2]) bits |= 1u << (i & 31u);
-    }
-    return bits;
-}
-#endif
 #if defined(XYF_MTP)
 void run_engine(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySession& storage) {
     // v3: the boot session (RPC mode, no cap) serves b's requests through the serve hook, with

@@ -18,7 +18,7 @@ bool Responder::send_object() {
     if (stage == 1) {
         if (in_pos != in_len) {
             U32 n = in_len - in_pos;
-            if (n > chunk) n = chunk;
+            if (n > piece) n = piece;
             if (!failed) {
                 const int r = ops.write(ops.context, fd, in + in_pos, n);
                 if (r != int(n)) failed = r == f_refused ? r_access_denied : r_store_full;

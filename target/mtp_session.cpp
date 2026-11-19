@@ -40,6 +40,7 @@ bool phase_zlp(InPhase& p, const uint8_t* data, uint32_t n) {
 void files_init(Files& f, volatile uint32_t* mounted, uint32_t (*on_change)()) {
     f.mounted = mounted; f.on_change = on_change;
     f.link = f.window = f.writing = f.last_change_ms = f.requests = f.data_requests = f.data_bytes = 0;
+    f.timing = Timing();
     for (uint32_t i = 0; i != max_open; ++i) { f.open[i] = -1; f.open_write[i] = 0; }
 }
 #if defined(__bfin__) || defined(XYF_SIM)
@@ -47,6 +48,28 @@ namespace {
 const uint32_t entry_room = 6 + C::max_name;
 static_assert(sizeof(Files::page) == M::page * entry_room, "one list page");
 Files& of(void* c) { ++static_cast<Files*>(c)->requests; return *static_cast<Files*>(c); }
+// #144: one file call's cycles into f.timing (data: a read or write request of bytes, else another call).
+struct Span {
+    Timing& t;
+    const uint64_t start;
+    explicit Span(Files& f) : t(f.timing), start(xyf::clock::cycles()) {}
+    uint64_t took() const { return xyf::clock::cycles() - start; }
+    static uint32_t longest(uint32_t was, uint64_t c) { return c > was ? (c >> 32 ? 0xffffffffu : uint32_t(c)) : was; }
+    void read(int32_t got) {
+        const uint64_t c = took();
+        ++t.reads; t.read_units += uint32_t(c >> 10); t.read_max = longest(t.read_max, c);
+        if (got > 0) t.read_bytes += uint32_t(got);
+    }
+    void write(int32_t put) {
+        const uint64_t c = took();
+        ++t.writes; t.write_units += uint32_t(c >> 10); t.write_max = longest(t.write_max, c);
+        if (put > 0) t.write_bytes += uint32_t(put);
+    }
+};
+struct Call : Span {                                                // every other file call
+    explicit Call(Files& f) : Span(f) {}
+    ~Call() { ++t.calls; t.call_units += uint32_t(took() >> 10); }
+};
 int fail(Files& f, const C::Reply& r) {
     if (r.outcome == C::link || r.outcome == C::lost || r.outcome == C::busy) {
         if (r.outcome == C::link) *f.mounted = C::mounted_stale;
@@ -82,6 +105,7 @@ void name_copy(char* out, const uint8_t* name, uint32_t n) {
 }
 int list(void* c, const char* folder, xyf_core::U32 skip, M::Entry* out, xyf_core::U32 room, xyf_core::U32& count, xyf_core::U32& more) {
     Files& f = of(c);
+    const Call span(f);
     count = more = 0;
     if (f.link) return M::f_link;
     if (room > M::page) room = M::page;
@@ -106,6 +130,7 @@ int list(void* c, const char* folder, xyf_core::U32 skip, M::Entry* out, xyf_cor
 }
 int stat(void* c, const char* path, M::Entry& out) {
     Files& f = of(c);
+    const Call span(f);
     if (f.link) return M::f_link;
     uint8_t record[C::record_bytes];
     const C::Reply r = C::stat(path, record);
@@ -121,6 +146,7 @@ int stat(void* c, const char* path, M::Entry& out) {
 // proven on the device; a zero block answers storage, so the responder reports no capacity).
 int space(void* c, const char* path, xyf_core::U32& block, xyf_core::U32& blocks, xyf_core::U32& free_blocks) {
     Files& f = of(c);
+    const Call span(f);
     if (f.link) return M::f_link;
     uint8_t record[C::space_bytes];
     const C::Reply r = C::statfs(path, record);
@@ -131,6 +157,7 @@ int space(void* c, const char* path, xyf_core::U32& block, xyf_core::U32& blocks
 }
 int open(void* c, const char* path, bool write) {
     Files& f = of(c);
+    const Call span(f);
     if (f.link) return M::f_link;
     uint32_t slot = 0;
     while (slot != max_open && f.open[slot] >= 0) ++slot;
@@ -146,8 +173,10 @@ int open(void* c, const char* path, bool write) {
 int read(void* c, int fd, xyf_core::Byte* out, xyf_core::U32 n) {
     Files& f = of(c);
     if (f.link) return M::f_link;
-    if (n > C::chunk) n = C::chunk;
+    if (n > C::piece_max) n = C::piece_max;
+    Span span(f);
     const C::Reply r = C::read(fd, out, n);                        // op 0x2a
+    span.read(r.outcome ? 0 : r.value);
     if (r.outcome) return fail(f, r);
     if (r.value < 0 || uint32_t(r.value) > n) return M::f_storage;
     ++f.data_requests; f.data_bytes += uint32_t(r.value);
@@ -156,9 +185,11 @@ int read(void* c, int fd, xyf_core::Byte* out, xyf_core::U32 n) {
 int write(void* c, int fd, const xyf_core::Byte* data, xyf_core::U32 n) {
     Files& f = of(c);
     if (f.link) return M::f_link;
-    if (n > C::chunk) n = C::chunk;
+    if (n > C::piece_max) n = C::piece_max;
     f.last_change_ms = xyf::clock::ms();
+    Span span(f);
     const C::Reply r = C::write(fd, data, n);                      // op 0x2b
+    span.write(r.outcome ? 0 : r.value);
     if (r.outcome) return fail(f, r);
     if (r.value < 0 || uint32_t(r.value) > n) return M::f_storage;
     ++f.data_requests; f.data_bytes += uint32_t(r.value);
@@ -173,6 +204,7 @@ int seek(void* c, int fd, xyf_core::U32 offset) {
 }
 int close(void* c, int fd) {
     Files& f = of(c);
+    const Call span(f);
     bool wrote = false;
     for (uint32_t i = 0; i != max_open; ++i)
         if (f.open[i] == fd) {
@@ -187,6 +219,7 @@ int close(void* c, int fd) {
 }
 int change(void* c, uint32_t op, const char* path) {
     Files& f = of(c);
+    const Call span(f);
     if (f.link) return M::f_link;
     const file_engine::Operation policy = op == 0x25u ? file_engine::op_unlink : op == 0x27u ? file_engine::op_rmdir :
                                           file_engine::op_mkdir;
@@ -200,6 +233,7 @@ int unlink(void* c, const char* path) { return change(c, 0x25u, path); }
 int rmdir(void* c, const char* path) { return change(c, 0x27u, path); }
 int move(void* c, const char* from, const char* to, bool over) {
     Files& f = of(c);
+    const Call span(f);
     if (f.link) return M::f_link;
     if (!may_change(f, from, file_engine::op_rename, to)) return f.link ? M::f_link : M::f_refused;
     uint32_t error = 0;
@@ -214,6 +248,7 @@ int rename(void* c, const char* from, const char* to) { return move(c, from, to,
 static_assert(sizeof(Files::upload) == file_engine::upload_bytes, "an upload's name");
 int upload(void* c, const char* path, xyf_core::U32 size, xyf_core::U32 tag) {
     Files& f = of(c);
+    const Call span(f);
     if (f.link) return M::f_link;
     uint32_t slot = 0;
     while (slot != max_open && f.open[slot] >= 0) ++slot;

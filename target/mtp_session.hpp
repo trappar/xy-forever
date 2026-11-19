@@ -31,11 +31,22 @@ struct InPhase { uint32_t length, sent; uint8_t head[4]; };
 uint32_t phase_room(const InPhase& p, uint32_t room);
 // Bytes [0, n) of data were just sent; true when they ended a container whose length % packet_bytes == 0.
 bool phase_zlp(InPhase& p, const uint8_t* data, uint32_t n);
+// #144: where an MTP transfer's time goes on B (the cycle counter, 400 MHz). Sums in units of 1024 cycles
+// (2.56 us), longest in cycles. reads/writes: the data requests (file_client read/write: the B<->A round trip,
+// A's own work included: A counts that itself, file_client::a_timing); calls: every other file call; steps:
+// responder steps that worked (their file calls included); pumps: the USB side (driver passes, or the test
+// transport's transfers); waits: steps with nothing to do while an operation is in flight (waiting for USB).
+struct Timing {
+    uint32_t reads, read_units, read_max, writes, write_units, write_max, calls, call_units;
+    uint32_t steps, step_units, pumps, pump_units, waits, read_bytes, write_bytes, started;
+};
+static const uint32_t timing_words = sizeof(Timing) / 4;
 struct Files {
     volatile uint32_t* mounted;         // usb_service's op-8 state (rename needs it)
     uint32_t (*on_change)();            // opens A's write window (usb_service enter_writes): s_ok, else a status
     uint32_t link, window, writing, last_change_ms, requests;
     uint32_t data_requests, data_bytes; // speed (2026-11-15): read and write requests, the bytes they moved
+    Timing timing;                      // #144
     int open[max_open];                 // files the responder holds (closed when the session ends)
     uint8_t open_write[max_open];
     char upload[45];                    // #4: SendObject's temporary file (file_engine::upload_name)
