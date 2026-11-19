@@ -2044,7 +2044,7 @@ class SimulatorVariantTest(unittest.TestCase):
                           'tfw.check': True, 'file.list': False, 'file.delete': False, 'file.rmdir': False,
                           'file.write_begin': False, 'file.write_data': False, 'file.write_end': False,
                           'file.mkdir': False, 'file.rename': False, 'file.copy': False, 'stage2.info': True,
-                          'mods.apply': False, 'job.status': False, 'job.cancel': False})
+                          'mods.apply': False, 'job.status': False, 'job.cancel': False, 'package.session': False})
         required = set()
         with tempfile.TemporaryDirectory(prefix='xyf-sim-') as tmp:
             for c in switched:

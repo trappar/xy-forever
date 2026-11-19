@@ -15,7 +15,8 @@ void boot_probe_command(uint8_t seq, const uint8_t* payload, U32 length) {
     }
     if (length >= 8 && P::get32(payload + 4) != bp::version) code = P::s_unsupported;
     else if (op == bp::begin && length == 8) {
-        if (probe_on || job_blocks(P::t_read_file) || uploading() || boot_sweep != 2) code = P::s_busy;
+        stop_idle_gc();
+        if (probe_on || job_running() || job_blocks(P::t_read_file) || uploading() || boot_sweep < 2) code = P::s_busy;
         else if (writes_due) { settle_begin(); code = P::s_busy; } // close the write window without blocking USB
         else if (mounted == file_client::mounted_stale) code = P::s_storage;
         else {

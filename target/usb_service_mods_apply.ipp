@@ -3,6 +3,7 @@
 // SHA-256 of every byte before it. Reply: u32 status, u32 job id, u32 missing input. mods_begin is the
 // start itself (the menu's Mods page starts the job through it too).
 U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& taken) {
+    stop_idle_gc();
     JobSlot& s = slot();
     const char* field[6];
     const U32 most[6] = {31, 31, 31, 1023, 255, 47};   // 64 machines

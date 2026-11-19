@@ -7,6 +7,7 @@ reports and the saved configuration. These pages give each file's format and the
 
 - [The folder](storage/layout.md): the `/yaffs2/xy-forever/` tree, what changes by hand may touch, the reporter's `log/`, entry ids
 - [State files](storage/state.md): the `key=value` text format, the A/B state slots, the content state and its switch, the saved configuration
+- [Package transactions](storage/package-transactions.md): atomic publication/removal, verified content blobs and collection
 - [Package files](storage/packages.md): `info.txt` keys, `files.sha256`, recognising a dropped file or folder, stage 2 (`stage2/main.xys2`)
 - [Mod packages](storage/mods.md): browser-only Open-XY migration boundary; mod packages: base, machine, extension, `edits.bin`, the linker and its bounds
 - [The mod package store](storage/mods-store.md): a package set on the device, flat (`store.txt`, stored names), older layouts

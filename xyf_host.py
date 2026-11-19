@@ -572,8 +572,7 @@ def run(argv):
     tfwc = sub.add_parser('tfw-check', help="check a .tfw or a cut of one on the device with the device's own OTP "
                           "keys (pass/fail, reason, the public key's SHA-256); writes nothing")
     tfwc.add_argument('path')
-    library_add.add_arguments(sub.add_parser('library-add', help='add an official os.ldr as library entry ID (os.ldr, '
-                                             'info.txt; with --content its content.sha256 + firmware.version)'))
+    library_add.configure(sub)
     sub.add_parser('save-times', help='print the save-time log (/yaffs2/xy-forever/log/save-times.txt) as a '
                    'table: one row per Save, USB build or content switch, milliseconds per part (read-only)')
     cont = sub.add_parser('continue')
@@ -641,7 +640,7 @@ def run(argv):
         if not args.yes_write:
             print('DRY RUN: nothing sent. Re-run with --yes-write to write.')
             return 0
-    if args.command == 'library-add':
+    if args.command.startswith('library-'):
         code, files = library_add.plan(args, IMAGE_CAPACITY)
         if files is None:
             return code
@@ -775,7 +774,7 @@ def run(argv):
         args.out.write_bytes(screen_png(bytes(raw[:SCREEN_BYTES])))
         print('screenshot: framebuffer %08x -> %s' % (struct.unpack_from('<I', body)[0], args.out))
         return 0
-    if args.command == 'library-add':
+    if args.command.startswith('library-'):
         return library_add.write(dev, args, files, lambda d: fresh(d, args.timeout), put)
     if args.command == 'set-default':
         code, sent_hash = dev.set_default(args.id)

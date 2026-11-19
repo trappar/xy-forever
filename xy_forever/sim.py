@@ -43,7 +43,7 @@ STATE = paths.SESSIONS / 'simulator'           # default storage folder, boot pa
 
 TARGET_SOURCES = ('usb_service', 'usb_proto', 'storage_server', 'file_engine', 'file_client', 'menu_link', 'file_boot',
                   'cold_storage', 'retained_lookup', 'cold_heap', 'peer_services', 'xyf_library', 'xyf_cold_library',
-                  'xyf_catalog', 'xyf_state', 'xyf_state_write', 'xyf_store', 'xyf_info', 'xyf_crc32',
+                  'xyf_filelist', 'xyf_catalog', 'xyf_state', 'xyf_state_write', 'xyf_store', 'xyf_info', 'xyf_crc32',
                   'boot_services', 'otp_keys', 'xyf_stage2', 'stage2_main',
                   'xyf_menu', 'xyf_mods', 'xyf_mods_io',                 # the menu's state and the Mods page
                   'ui_pages', 'ui_gfx',                                   # the bar's scale() (nothing is drawn)
@@ -180,7 +180,7 @@ def build(cache=None, **options):
     here = Path(__file__).parent
     for path in sorted([*ROOT.glob('target/*.?pp'), *ROOT.glob('native/*.?pp'), *ROOT.glob('native/*.inc'),
                         *SIM.glob('*.?pp'), Path(__file__),
-                        here / 'probe_report.py', here / 'build_formats.py']):
+                        here / 'probe_report.py', here / 'build_formats.py', here / 'build_modules.py']):
         inputs.update(path.name.encode() + path.read_bytes())
     inputs.update(STOCK_BOOTLOADER.read_bytes())
     cache = Path(cache or STATE / 'builds')
@@ -276,8 +276,8 @@ def slot_text(default, seq):
 
 
 def info_text(data, name, version):
-    return ('name=%s\nversion=%s\nkind=official\nbytes=%d\ncrc32=%08x\n' %
-            (name, version, len(data), zlib.crc32(data) & 0xffffffff)).encode('ascii')
+    from .xyf_entry import info_text as canonical
+    return canonical(name, version, 'official', data).encode('ascii')
 
 
 def seed(root, image=None):

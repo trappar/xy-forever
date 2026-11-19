@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.18",
+    "version": "1.19",
     "intro": [
       "XY Forever is a boot menu and firmware manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -555,6 +555,66 @@
       ]},
       "errors": ["bad_request", "not_found", "state"],
       "doc": "Removes what the job wrote and answers once that is done; a job that already ended, or is in its library commit (phase `finish`, detail `commit`), or a content switch (`library.set_default`), is `state`."
+    },
+    {
+      "type": "0x47",
+      "name": "package.session",
+      "symbol": "package_session",
+      "class": "product",
+      "since": "1.19",
+      "switch": "XYF_USB_FILE_WRITE",
+      "switch_optional": false,
+      "summary": "exclude other storage jobs during a host package transaction",
+      "timeout_ms": 5000,
+      "destructive": false,
+      "request": {
+        "size": [
+          40,
+          40
+        ],
+        "fields": [
+          {
+            "name": "version",
+            "type": "u32",
+            "range": [
+              1,
+              1
+            ],
+            "doc": "session ABI version; a newer version is unsupported"
+          },
+          {
+            "name": "action",
+            "type": "u32",
+            "range": [
+              0,
+              2
+            ],
+            "doc": "0 acquire, 1 renew, 2 release"
+          },
+          {
+            "name": "token",
+            "type": "bytes[32]",
+            "doc": "host-chosen token; renew and release must match the acquired token"
+          }
+        ]
+      },
+      "reply": {
+        "size": [
+          0,
+          0
+        ],
+        "extensible": true,
+        "on_error": "status",
+        "fields": []
+      },
+      "errors": [
+        "bad_request",
+        "unsupported",
+        "busy",
+        "state",
+        "link"
+      ],
+      "doc": "Host package transactions stage and verify packages through existing file RPCs, then publish by one directory rename. An acquired session excludes MTP, other jobs, boots and the idle scratch sweep, but permits file.read/list/delete/rmdir/mkdir/rename and streamed writes. Renew before each operation. After ten seconds without requests and with no upload, the session is abandoned and idle scratch cleanup resumes. Release closes the write window asynchronously; retry subsequent file requests while busy. This is cooperative exclusion for one CDC client, not an authorization boundary. Raw file/MTP operations remain available outside a package transaction."
     }
   ],
   "events": [
@@ -592,7 +652,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.18;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000007b001700031fff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31383b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030303762303031373030303331666666303062653b6465763d313b7374616765323d30a7ceb932"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.19;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=00000000000000fb001700031fff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e31393b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303030306662303031373030303331666666303062653b6465763d313b7374616765323d30e8911311"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

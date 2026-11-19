@@ -17,6 +17,8 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   stage2/main.xys2          stage 2: B loads it at the first HELLO of a boot; see below
   inbox/                    MTP drop folder: .tfw, .ldr, open-xy bundles   [planned]
   tmp/job-<id>/             mods.apply's output until the commit; -old: the replaced entry; swept (below)
+  tmp/pkg-v1-<token>/       host package transaction; -old: detached old package, both swept
+  blobs/<sha256>            verified content named by kept firmware entries (package-transactions.md)
   tmp/put-<size>-<tag>      an upload (file.write_*, MTP SendObject) until A renames it onto its name; swept (below)
   content-state.txt         what /yaffs2/content/ matches, and what XY Forever installed there (below)
   content-official/         the official op1_factory.json and content.sha256, saved before the first content change

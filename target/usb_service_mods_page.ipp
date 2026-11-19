@@ -1,7 +1,7 @@
 // Part of usb_service.cpp, included there at this point: not compiled alone.
 uint32_t page_serving() { return a_serving() ? uint32_t(P::s_ok) : uint32_t(P::s_link); }
 volatile uint32_t& page_mount() { return mounted; }
-bool page_busy() { return boot_probe_active() || job_running() || closing XYF_OR_MTP_BUSY; }
+bool page_busy() { stop_idle_gc(); return boot_probe_active() || job_running() || closing XYF_OR_MTP_BUSY; }
 void save_log_begin() { xl::begin(save_times, xl::k_save, now(), xl::p_list); save_active = 1; }
 void save_log_selection(uint32_t mods, bool expanded, uint32_t added, uint32_t removed) {
     if (!save_active) return;

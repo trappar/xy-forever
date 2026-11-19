@@ -73,7 +73,9 @@ class TestEntrySimulator(unittest.TestCase):
         lib = self.root / 'xy-forever/firmware'
         stock = sim.STOCK_OS.read_bytes()
         catalog = (self.root / 'content/op1_factory.json').read_bytes()
-        (lib / 'opxy-121-stock/info.txt').write_bytes(sim.info_text(stock, 'OP-XY 1.2.1', '1.2.1'))   # no sha256=, as on the device
+        (lib / 'opxy-121-stock/info.txt').write_bytes(te.xyf_entry.manifest_text(dict(
+            name='OP-XY 1.2.1', version='1.2.1', kind='official', bytes=len(stock),
+            crc32='%08x' % (zlib.crc32(stock) & 0xffffffff))).encode())   # no sha256=, as on the device
         (lib / 'opxy-121-stock/content.sha256').write_text('%s  op1_factory.json\n' % hashlib.sha256(catalog).hexdigest())
         (lib / 'mods-a').mkdir()
         (lib / 'mods-a/os.ldr').write_bytes(stock)

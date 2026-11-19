@@ -101,6 +101,9 @@ void list_begin(ListReader& reader);
 // Feed the file in pieces of any size; visit is called once per accepted line, in order.
 // After an error every call returns it again (line: reader.lines).
 ListStatus list_feed(ListReader& reader, const char* data, uint32_t length, FileVisit visit, void* context);
+// Streaming reference index, without an indirect visitor (the product's bounded blob GC).
+struct HashIndex { uint8_t* data; uint32_t count, capacity; };
+ListStatus list_index_feed(ListReader& reader, const char* data, uint32_t length, HashIndex& index, bool content_only);
 // After the last piece: refuses an unterminated last line and an empty list.
 ListStatus list_end(ListReader& reader);
 

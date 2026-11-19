@@ -157,3 +157,13 @@ U32 change_line(uint8_t type) {                                          // the 
     if (type == P::t_mods_apply) return line_build;
     return line_none;
 }
+
+#if defined(XYF_SIM)
+uint32_t idle_gc_state() {
+#if defined(XYF_USB_FILE_WRITE)
+    return blob_collecting ? 1u | (slot().garbage.fd >= 0 ? 2u : 0u) | (slot().garbage.refs.count << 16) : 0u;
+#else
+    return 0;
+#endif
+}
+#endif

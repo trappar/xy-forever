@@ -77,6 +77,7 @@ static inline bool matches(const State& s, const char* id, bool mod_set) {
 
 // ---- the path rule: every path the content switch writes, renames onto, removes or makes
 enum class Use : uint32_t {
+    blob,            // verified raw SHA-256 cache and its scratch folder
     record,          // the record (or its .part)
     saved,           // the saved official catalog and list (or their .part), their folder
     catalog,         // /yaffs2/content/op1_factory.json (or its .part)
@@ -120,6 +121,25 @@ static inline bool well_formed(const char* path) {
 // partition or bootloader.dev (not under these roots, or refused by well_formed).
 static inline bool allowed(Use use, const char* path, bool official) {
     if (!path || !well_formed(path)) return false;
+    if (use == Use::blob) {
+        if (same(path, "/yaffs2/xy-forever/tmp") || same(path, "/yaffs2/xy-forever/blobs")) return true;
+        static const char scratch[] = "/yaffs2/xy-forever/tmp/put-";
+        if (prefix(path, scratch)) {
+            const char* name = path + sizeof(scratch) - 1;
+            for (uint32_t i = 0; i != 17; ++i) {
+                if (i == 8) { if (name[i] != '-') return false; }
+                else if (!((name[i] >= '0' && name[i] <= '9') || (name[i] >= 'a' && name[i] <= 'f'))) return false;
+            }
+            return !name[17];
+        }
+        static const char base[] = "/yaffs2/xy-forever/blobs/";
+        if (!prefix(path, base)) return false;
+        const char* name = path + sizeof(base) - 1;
+        uint32_t n = 0;
+        for (; name[n] && n != 64; ++n)
+            if (!((name[n] >= '0' && name[n] <= '9') || (name[n] >= 'a' && name[n] <= 'f'))) return false;
+        return n == 64 && !name[n];
+    }
     if (use == Use::record) return with_part(path, record_path) || same(path, record_old);
     if (use == Use::saved) return same(path, saved_folder) || with_part(path, saved_list) || with_part(path, saved_catalog);
     if (!prefix(path, root) || !path[root_bytes]) return false;

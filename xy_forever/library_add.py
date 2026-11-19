@@ -13,6 +13,7 @@ import zlib
 
 from .content_manifest import LIST, VERSION, ContentError, list_text, read_version, scan
 from .ldr import parse_ldr
+from . import package_store
 from .xyf_entry import ListError, info_text, read_files_sha256
 
 ID_RE = re.compile(r'^[a-z0-9_-]{1,31}$')
@@ -21,6 +22,14 @@ LIBRARY = '/yaffs2/xy-forever/firmware/'
 HOW = ('Give --content DIR: the official package\'s extracted content folder (firmware/blackfin/content, its '
        'firmware.version two folders up, or --version-file FILE), or a folder holding content.sha256 + '
        'firmware.version (`xyf_package.py content-manifest CONTENT --out DIR` writes one).')
+
+
+def configure(sub):
+    add_arguments(sub.add_parser('library-add', help='atomically add a checked firmware package'))
+    remove = sub.add_parser('library-remove', help='atomically remove a firmware package and collect unused blobs')
+    remove.add_argument('id'); remove.add_argument('--yes-write', action='store_true')
+    gc = sub.add_parser('library-gc', help='collect content blobs no kept firmware entry names')
+    gc.add_argument('--yes-write', action='store_true')
 
 
 def add_arguments(parser):
@@ -62,7 +71,15 @@ def missing_note(entry_id):
 
 def plan(args, capacity, out=print):
     """Checks and prints the plan -> (exit code, [(remote path, bytes)] to write, or None: stop here)."""
-    if not ID_RE.match(args.id):
+    if getattr(args, 'command', 'library-add') != 'library-add':
+        if args.command == 'library-remove' and not ID_RE.fullmatch(args.id):
+            out('refused: id must be 1-31 of [a-z0-9_-]'); return 2, None
+        out('Plan: %s; unused content blobs are collected after the package commit.' %
+            ('remove firmware/' + args.id if args.command == 'library-remove' else 'collect unreferenced blobs'))
+        if not args.yes_write:
+            out('DRY RUN: nothing sent. Re-run with --yes-write to write.'); return 0, None
+        return 0, []
+    if not ID_RE.match(args.id) or not package_store.package_name(args.id):
         out('refused: id must be 1-31 of [a-z0-9_-]'); return 2, None
     if not INFO_TEXT_RE.match(args.name) or not INFO_TEXT_RE.match(args.version) or len(args.version) > 31:
         out('refused: name (<= 47) and version (<= 31) must be printable ASCII without = or newlines'); return 2, None
@@ -88,7 +105,7 @@ def plan(args, capacity, out=print):
                 'release)' % (version, args.version)); return 2, None
         files += [(base + VERSION, raw), (base + LIST, listed)]
         out('      then %s (%s) and %s (%d files, from %s)' % (VERSION, version, LIST, count, args.content))
-    out('      Each write on a fresh boot (REBOOT before, between and after). The default is unchanged.')
+    out('      Stage and verify the complete package in tmp/, retain its content by SHA-256, then rename it into place.')
     if args.content is None:
         out(missing_note(args.id))
     if not args.yes_write:
@@ -98,16 +115,32 @@ def plan(args, capacity, out=print):
 
 
 def write(dev, args, files, fresh, put, out=print):
-    """Writes the planned files, each on a fresh boot (fresh(dev) -> dev or None; put(dev, data, remote) -> code)."""
-    for remote, body in files:
-        dev = fresh(dev)
-        if dev is None:
-            return 11
-        code = put(dev, body, remote)
-        if code:
-            return code
-    dev = fresh(dev)                                   # leave a fresh boot (CONTINUE/set-default ready)
-    out('library-add %s: ok%s' % (args.id, '' if len(files) > 2 else ' (no content list)'))
-    if len(files) == 2:
-        out(missing_note(args.id))
-    return 0 if dev is not None else 11
+    """One host job over the device's existing single-job exclusion and file primitives."""
+    try:
+        with package_store.Session(dev) as session:
+            if getattr(args, 'command', 'library-add') == 'library-remove':
+                session.remove(LIBRARY.rstrip('/') + '/' + args.id)
+            elif getattr(args, 'command', 'library-add') == 'library-add':
+                base = LIBRARY + args.id + '/'
+                body = {path[len(base):]: data for path, data in files}
+                body['files.sha256'] = package_store.list_text(body)
+                package_store.validate(body)
+                sources = {}
+                if args.content is not None:
+                    for sha, rel in read_files_sha256(body[LIST]):
+                        source = args.content / rel
+                        if source.is_file():
+                            sources[rel] = source.read_bytes()
+                    session.retain(read_files_sha256(body[LIST]), sources)
+                session.publish(base.rstrip('/'), body)
+            removed = session.collect()
+        out('%s%s: ok%s' % (getattr(args, 'command', 'library-add'),
+            ' ' + args.id if hasattr(args, 'id') else '',
+            ' (no content list)' if files and len(files) == 2 else ''))
+        if files and len(files) == 2:
+            out(missing_note(args.id))
+        out('content blobs collected: %d' % removed)
+        return 0
+    except (OSError, ValueError) as error:
+        out('refused: %s' % error)
+        return 2

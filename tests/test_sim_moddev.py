@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import moddev, modsend as MS, modstore                    # noqa: E402
+from xy_forever import moddev, modsend as MS, modstore, modpatch as MP                    # noqa: E402
 import test_sim_content_switch as CS                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_mods_page import synthetic_setup                            # noqa: E402
@@ -96,7 +96,7 @@ class ModDev(CS.Switch, unittest.TestCase):
         self.edit(PRESET, bigger)
         prior = self.default()
         text = self.loop()
-        self.assertEqual(self.sent(text), [('alpha', 2)], text)            # the file and files.sha256
+        self.assertEqual(self.sent(text), [('alpha', len(MP.tree(self.gen / 'alpha')))], text)            # the file and files.sha256
         self.assertEqual((self.root / PRESET).read_bytes(), bigger)
         self.assertNotEqual(self.default(), prior)                          # rebuilt: the slot not the default
 
@@ -104,7 +104,7 @@ class ModDev(CS.Switch, unittest.TestCase):
         self.assertEqual(len(same), len(bigger))
         self.edit(PRESET, same)
         text = self.loop()
-        self.assertEqual(self.sent(text), [('alpha', 2)], text)
+        self.assertEqual(self.sent(text), [('alpha', len(MP.tree(self.gen / 'alpha')))], text)
         stored = self.root / 'xy-forever/mods' / self.generation / 'alpha'      # the flat store (#124)
         self.assertEqual((stored / modstore.stored_name(PRESET, hashlib.sha256(same).hexdigest())).read_bytes(), same)
         self.assertFalse((stored / modstore.stored_name(PRESET, hashlib.sha256(bigger).hexdigest())).exists())
