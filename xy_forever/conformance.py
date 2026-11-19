@@ -16,6 +16,7 @@ import struct
 import time
 import zlib
 
+from xy_forever.conformance_connection import ConformanceConnection
 from xy_forever.device_guard import REPLY_BIT, UNSAFE_TOKEN, device_guard, path_in as _path_in  # noqa: F401
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,7 +41,7 @@ KEYS = {   # object kind -> (required, optional)
     'expect': (set(), {'status', 'alone', 'fields', 'hello', 'save', 'events', 'replies', 'none_within_ms'}),
     'hello': (set(), {'prefix', 'keys', 'lacks', 'answers', 'pre_v1'}),
     'reply': ({'type', 'seq'}, {'status'}),
-    'reconnect': (set(), {'hello'}),
+    'reconnect': (set(), {'hello', 'ready'}),
     'disconnect': (set(), set()),
     'write': ({'path', 'data'}, set()),
     'events': ({'log'}, set()),
@@ -433,6 +434,8 @@ def walk_frames(spec, case, ctx):
             writes.append((step['write']['path'], step['write']['data']))
         elif action == 'reconnect' and step['reconnect'].get('hello', True):
             out.append((spec.type_of('hello'), b''))
+            if step['reconnect'].get('ready'):
+                out.append((spec.type_of('storage.space'), struct.pack('<I', 1)))
     for path, data in writes:
         body = resolve(data, 'bytes', ctx, where)
         out += stage_frames(spec, body)
@@ -725,6 +728,9 @@ def check_step(spec, data, case, step, where, ctx):
         check_keys(step[action], action, where)
         if not isinstance(step[action].get('hello', True), bool):
             raise CaseError('%s: hello is true or false' % where)
+        if not isinstance(step[action].get('ready', False), bool) or (
+                step[action].get('ready') and not step[action].get('hello', True)):
+            raise CaseError('%s: ready is a boolean and requires hello' % where)
     elif action == 'sim':
         if not isinstance(step['sim'], str) or not re.fullmatch(r'[a-z]+( [a-z_]+)*( -?[0-9]+)?', step['sim']):
             raise CaseError('%s: sim is a control line' % where)
@@ -879,7 +885,7 @@ class Link:
                 pass
 
 
-class Runner:
+class Runner(ConformanceConnection):
     """Runs cases against a target (an object with open(), present(), port_gone(link, timeout) and,
     on the simulator, control(line)). real: a real device (safe cases only, every frame guarded)."""
 
@@ -898,39 +904,6 @@ class Runner:
         self.lines.append(text)
 
     # -- connection --------------------------------------------------------------------------
-    def open(self, hello=True, wait=None):
-        wait = self.timing['back_ms'] / 1000.0 if wait is None else wait
-        deadline = time.monotonic() + wait
-        while True:
-            while not self.target.present():
-                if time.monotonic() > deadline:
-                    raise Fail('the port did not come back within %.1f s' % wait)
-                time.sleep(0.05)
-            last = None
-            while True:
-                try:
-                    link = Link(self.target.open(), self.spec, self.log, self.data['test_area'] if self.real else None)
-                    break
-                except OSError as error:
-                    last = error
-                    if time.monotonic() > deadline:
-                        raise Fail('the port did not open: %s' % last)
-                    time.sleep(0.1)
-            self.log('# connected')
-            if not (hello or self.real):
-                return link
-            try:
-                self.greet(link, hello, max(deadline, time.monotonic() + self.cap('hello')))
-                return link
-            except (Fail, OSError) as error:
-                # A port found while it was still going down (the restart had not reached it yet) drops
-                # during the greeting: connect again within the same time limit.
-                if not (link.closed or isinstance(error, OSError)) or time.monotonic() > deadline:
-                    raise
-                link.close()
-                self.log('# the connection dropped during the greeting: connecting again')
-                time.sleep(0.1)
-
     def greet(self, link, hello, deadline):
         """hello (hello=False: a type no command uses, which before hello gets state and does
         nothing) until answered. A real device's port can appear before its service reads it, so
@@ -1125,7 +1098,7 @@ class Runner:
             self.disconnect(link)
         elif action == 'reconnect':
             link.close()
-            return self.open(hello=step['reconnect'].get('hello', True))
+            return self.open(hello=step['reconnect'].get('hello', True), ready=step['reconnect'].get('ready', False))
         elif action == 'sim':
             link.close()
             self.control(step['sim'])

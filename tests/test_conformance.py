@@ -56,6 +56,8 @@ class CaseFileTest(unittest.TestCase):
             self.assertIn(expect, str(ctx.exception))
 
         broken(lambda d: case(d, 'hello/reply').update(extra=1), 'unknown key')
+        broken(lambda d: case(d, 'stage/lost-on-restart')['steps'][3]['reconnect'].update(ready='yes'), 'ready')
+        broken(lambda d: case(d, 'stage/lost-on-restart')['steps'][3]['reconnect'].update(hello=False), 'requires hello')
         broken(lambda d: case(d, 'hello/reply')['steps'][0].update(bogus=1), 'unknown step key')
         broken(lambda d: case(d, 'hello/reply')['steps'][0]['expect'].update(status='nope'), 'unknown status')
         broken(lambda d: case(d, 'file.read/not-found')['steps'][0].update(send='diag.peek'), 'not a published')
@@ -107,6 +109,7 @@ class DeviceGuardTest(unittest.TestCase):
         u32 = lambda v: struct.pack('<I', v)                                          # noqa: E731
         for name, payload in (('hello', b''), ('file.read', b'/yaffs2/x\0'), ('screen.read', u32(0)),
                               ('stage.begin', bytes(40)), ('stage.data', bytes(5)), ('stage.end', b''),
+                              ('storage.space', u32(1)),
                               ('device.reboot', b''), ('device.reboot', u32(2)), ('device.reboot', u32(0)),
                               ('device.reboot', b'\1\0'), ('menu.continue', u32(2)), ('menu.continue', bytes(5)),
                               ('service.hold', u32(2)), ('service.hold', b''), (0x06, b''),
