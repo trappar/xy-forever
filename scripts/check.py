@@ -46,6 +46,7 @@ from xy_forever import no_device, paths, procgroup  # noqa: E402
 VERSION = 1                                  # receipt format; a reader refuses a newer one
 CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json
 KEEP_BUILDS = 5                              # builds/<image> folders a check made (check.json) kept, ~7 MB each
+RECENT = 15 * 60                             # seconds: a build folder touched since then is never pruned
 
 
 class CheckError(Exception):
@@ -143,16 +144,33 @@ def verify_parser(out, tree=None, commit=None):
     return parse
 
 
-def fresh_build_folder(tree):
+def touched(folder):
+    """When folder or anything in it last changed (its newest mtime; 0 when it is gone)."""
+    newest = 0
+    for top, dirs, files in os.walk(folder):
+        for name in [''] + files:
+            try:
+                newest = max(newest, os.stat(os.path.join(top, name)).st_mtime)
+            except OSError:
+                pass
+    return newest
+
+
+def fresh_build_folder(tree, now=None):
     """BUILDS/check-<tree>, emptied (and any other check-* left by a failed run); of the builds/<image>
-    folders a check made, those beyond the KEEP_BUILDS - 1 newest are removed."""
+    folders a check made, those beyond the KEEP_BUILDS - 1 newest are removed. A folder touched in the last
+    RECENT seconds stays (other than this run's own): another run (a check in another worktree) may still be
+    building it or reading it."""
+    own, now = paths.BUILDS / ('check-' + tree[:12]), time.time() if now is None else now
     for folder in paths.BUILDS.glob('check-*'):
-        shutil.rmtree(folder, ignore_errors=True)
+        if folder == own or now - touched(folder) > RECENT:
+            shutil.rmtree(folder, ignore_errors=True)
     made = sorted((p for p in paths.BUILDS.glob('*/check.json') if paths.IMAGE_NAME.fullmatch(p.parent.name)),
                   key=lambda p: p.stat().st_mtime, reverse=True)
     for marker in made[KEEP_BUILDS - 1:]:
-        shutil.rmtree(marker.parent, ignore_errors=True)
-    return paths.BUILDS / ('check-' + tree[:12])
+        if now - touched(marker.parent) > RECENT:
+            shutil.rmtree(marker.parent, ignore_errors=True)
+    return own
 
 
 def standard_steps(args, root, tree, work):

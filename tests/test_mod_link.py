@@ -858,7 +858,8 @@ class BlackfinCompile(unittest.TestCase):
     small frames (compile only; nothing is linked into a build)."""
 
     def test_freestanding(self):
-        tools = Path(os.environ.get('XYF_TOOLCHAIN') or ROOT.parent / 'tools/blackfin') / 'bin/bfin-elf-g++'
+        from xy_forever import toolchain
+        tools = toolchain.location() / 'bin/bfin-elf-g++'
         if not tools.exists():
             self.skipTest('Blackfin toolchain absent')
         with tempfile.TemporaryDirectory(prefix='mod-link-cross-') as tmp:

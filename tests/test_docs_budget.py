@@ -5,10 +5,14 @@ Over budget: split into a tree (an index plus leaves), do not squeeze.
 """
 import os
 import re
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from xy_forever import paths  # noqa: E402
+
 DOCS = ROOT / 'docs'
 STATUS = DOCS / 'status'            # local and gitignored: only its index is checked, when present
 
@@ -128,7 +132,7 @@ class DocsBudget(unittest.TestCase):
             self.check(ROOT / name, budget, width)
 
     def test_local_status_index(self):
-        index = STATUS / 'README.md'
+        index = paths.STATUS / 'README.md'                        # the main checkout's, from a worktree too
         if not index.is_file():
             self.skipTest('no local docs/status/README.md')
         self.assertLessEqual(size(index), LOCAL_STATUS,

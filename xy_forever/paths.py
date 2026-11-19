@@ -1,27 +1,51 @@
 """Where XY Forever's private inputs and outputs live (outside every checkout).
 
-The private root is, in order: XYF_PRIVATE; "private" in the repository's gitignored
-xyf.local.json (written by `scripts/setup.py init --private DIR`); ../private next to this
-repository. Firmware, keys, builds and device reports never enter git.
+The private root is, in order: XYF_PRIVATE; "private" in the main checkout's gitignored xyf.local.json
+(written by `scripts/setup.py init --private DIR`); ../private next to the main checkout. Firmware, keys,
+builds and device reports never enter git. The main checkout is this checkout in a plain clone; in a
+`git worktree` it is the checkout that holds the shared .git (main_checkout), so a worktree anywhere finds
+the same private root, toolchain, xyf.local.json and local docs/status/ as the main checkout.
 """
 import json
 import re
 import os
 from pathlib import Path
+import subprocess
 
 REPO = Path(__file__).resolve().parents[1]
-LOCAL_CONFIG = REPO / 'xyf.local.json'          # this clone's settings (gitignored): {"private": DIR}
 
 
-def private_root(environ=os.environ, config=LOCAL_CONFIG):
-    """XYF_PRIVATE, else the local config's "private", else ../private next to the repository."""
+def main_checkout(repo=REPO):
+    """repo itself when its .git is a folder (a plain clone) or absent; for a worktree (.git is a file), the
+    folder holding `git rev-parse --git-common-dir` when that is a .git folder, else repo (git missing, a bare
+    repository, a submodule)."""
+    repo = Path(repo)
+    if not (repo / '.git').is_file():
+        return repo
+    try:
+        common = subprocess.run(['git', 'rev-parse', '--git-common-dir'], cwd=str(repo), capture_output=True,
+                                text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return repo
+    common = (repo / common).resolve()
+    return common.parent if common.name == '.git' and common.is_dir() else repo
+
+
+MAIN = main_checkout()                          # REPO in a plain clone
+LOCAL_CONFIG = MAIN / 'xyf.local.json'          # the main checkout's settings (gitignored): {"private": DIR}
+TOOLCHAIN = MAIN.parent / 'tools/blackfin'      # the Blackfin toolchain unless XYF_TOOLCHAIN (toolchain.location)
+STATUS = MAIN / 'docs/status'                   # the local, gitignored status folder (docs/STATUS.template.md)
+
+
+def private_root(environ=os.environ, config=LOCAL_CONFIG, main=MAIN):
+    """XYF_PRIVATE, else the local config's "private", else ../private next to the main checkout."""
     if environ.get('XYF_PRIVATE'):
         return Path(environ['XYF_PRIVATE']).expanduser().resolve()
     try:
         configured = json.loads(Path(config).read_text()).get('private')
     except FileNotFoundError:
         configured = None
-    return Path(configured or REPO.parent / 'private').expanduser().resolve()
+    return Path(configured or Path(main).parent / 'private').expanduser().resolve()
 
 
 def leak_patterns(config=LOCAL_CONFIG):
@@ -50,6 +74,8 @@ BUILDS = XYF / 'builds'                         # build outputs (xyf_build.py --
 RECOVERY = XYF / 'recovery'                     # dev-menu kits: known-good build, stock 1.2.1
 FIXTURES = XYF / 'fixtures'                     # files some tests read (they skip when absent)
 REPORTS = XYF / 'reports'                       # device report files (census dumps)
+CLAIMS = XYF / 'claims'                         # local item claims of agents on this machine (scripts/plan.py)
+DEVICE_LOCK = XYF / 'device.lock'               # held while a host tool talks to the OP-XY (xy_forever/device_lock.py)
 ANALYSIS = XYF / 'analysis'                     # reverse-engineering evidence (FINDINGS.md per study)
 LISTING_121 = ANALYSIS / 'bootloader-121-listing'   # 1.2.1 bootloader image + annotated listing
 PREVIEWS = XYF / 'previews'                     # ui_preview.py output

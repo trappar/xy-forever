@@ -55,8 +55,8 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   test files go in a scratch folder, removed after. `docs/SAFETY.md` rules every device action.
 - **Git:** one branch per plan item and one pull request per branch, after claiming the item's
   GitHub issue ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)). Never push to `main`; never take an
-  item someone else is assigned. Until the repository has its GitHub remote, commit locally on
-  `main`. No AI attribution in commit messages. Every new on-device file and wire
+  item someone else is assigned. Another agent here: own worktree and claim
+  ([two agents](docs/operating/two-agents.md)). No AI attribution in commit messages. Every new on-device file and wire
   format carries a version, and its reader refuses a newer version with a message, never a crash.
 - **Current facts belong in their owning reference or code comment.** Research findings, decisions and
   follow-ups belong in GitHub issues; use Git history for derivation. Never create repository research

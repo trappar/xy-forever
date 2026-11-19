@@ -12,7 +12,7 @@ from pathlib import Path
 import struct
 import subprocess
 
-from xy_forever import no_device
+from xy_forever import device_lock, no_device
 
 OP_XY_VID = 0x2367
 READ_ONLY = {0x1001: 'GetDeviceInfo', 0x1002: 'OpenSession', 0x1003: 'CloseSession', 0x1004: 'GetStorageIDs',
@@ -294,6 +294,7 @@ def open_op_xy(timeout_ms=5000, log=None):
     """A UsbTransport on the first OP-XY in MTP mode; MtpError (one line) otherwise. log: each device's
     interfaces as they are listed (mtp_probe prints them)."""
     no_device.refuse('USB MTP (libusb)')
+    device_lock.hold()
     lib = load_libusb()
     ctx = ctypes.c_void_p()
     if lib.libusb_init(ctypes.byref(ctx)):
