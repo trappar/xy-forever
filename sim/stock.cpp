@@ -439,7 +439,7 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     // B's boot ROM (target/otp_keys.cpp): processor A never reads its OTP
     case 0x04000054u:
         if (!role) crash("ROM OTP init on processor A");
-        ++shared->otp_inits; rom_otp_initialised = true; return 0;
+        ++shared->otp_inits; rom_otp_failure(); rom_otp_initialised = true; return 0;
     case 0x04000048u:
         if (!role) crash("ROM OTP read on processor A");
         return rom_otp_read(u(0), static_cast<uint8_t*>(p(1)));

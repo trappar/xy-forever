@@ -66,8 +66,9 @@ struct Shared {
     // fields by selector, given on the simulator's stdin at start (--otp-stdin; xy_forever/sim.py takes
     // them from the private area), never from a file or the command line. Test hook (set otp_fail N):
     // 1 the ROM answers nothing, 2 the public key is off the curve, 3 it is another valid key (the
-    // P-224 generator), 4 the AES key is wrong. Counted: ROM inits and reads.
-    std::atomic<int32_t> otp_fail, otp_inits, otp_reads;
+    // P-224 generator), 4 the AES key is wrong, 5 hangs until reset, 6 faults B. Both init/read
+    // entries honor 5/6. otp_preinit starts B with its ROM and stock guard byte already initialized.
+    std::atomic<int32_t> otp_fail, otp_inits, otp_reads, otp_preinit;
     // sim/boot.cpp: per processor, 1 while its stock bootloader
     // stand-in runs (after a reset, until it boots XY Forever). The
     // board's reset delays (ms from a reset until the processor's bootloader is on the link) and
@@ -144,6 +145,7 @@ extern Shared* shared;
 extern int role;                                 // 0 = processor A, 1 = processor B
 extern int link_fd;
 extern const char* stock_path;                   // the stock memory image (xy_forever/sim.py)                              // this processor's end of the link (to the board)
+void otp_start();                                // B's retained ROM/init-flag state at cold entry
 void log(const char* format, ...) __attribute__((format(printf, 1, 2)));
 [[noreturn]] void crash(const char* format, ...) __attribute__((format(printf, 1, 2)));
 [[noreturn]] void exit_processor(int code);
