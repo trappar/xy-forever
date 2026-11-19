@@ -11,9 +11,10 @@ The standard set, in order, stopping at the first failure:
   - the exhaustive unit suite: XYF_EXHAUSTIVE=1 scripts/run_tests.py (every test, never a subset), after
     the build so the tests that use one (paths.newest_verified_build) get the build of this very source;
   - scripts/neutral.py REF with --neutral (default REF: the merge base with origin/main, else main);
-  - npm test in clients/ts when clients/ts differs from that merge base, then npm test and npm run typecheck
-    in web/ when web/ or clients/ts (which it uses) differs; both with --npm. Refused up front, naming
-    npm ci, when the folder's node_modules is missing.
+  - npm test and npm run typecheck in web/ when web/ or clients/ts (which it uses) differs from that merge
+    base, or with --npm. npm test in clients/ts runs once, inside the suite (NodeSuiteTest); when clients/ts
+    differs (or with --npm) its node_modules is required so that test cannot skip. Refused up front, naming
+    npm ci, when a needed folder's node_modules is missing.
 Step output goes to a log under <private>/xy-forever/sessions/<date>-check/; a short summary is printed.
 
 The working tree must be clean (`git status --porcelain` empty: untracked files count, gitignored ones
@@ -174,8 +175,9 @@ def standard_steps(args, root, tree, work):
     return steps
 
 
-NPM = (('clients/ts', ('clients/ts',), (('npm test', ['test']),)),        # folder, what changing reruns it, steps
+NPM = (('clients/ts', ('clients/ts',), ()),      # folder, what changing reruns it, steps; clients/ts: no step,
        ('web', ('web', 'clients/ts'), (('npm test', ['test']), ('npm run typecheck', ['run', 'typecheck']))))
+# its npm test runs inside the suite (NodeSuiteTest, whenever node_modules is there), so it is only required.
 
 
 def npm_steps(args, root):
@@ -344,7 +346,7 @@ def main(argv=None, root=ROOT, checks=CHECKS):
     parser.add_argument('--jobs', type=int, help="unit-test processes at a time (default: run_tests.py's)")
     parser.add_argument('--neutral', nargs='?', const='', metavar='REF',
                         help='also scripts/neutral.py REF (default REF: the merge base with origin/main, else main)')
-    parser.add_argument('--npm', action='store_true', help='the npm steps in clients/ts and web even when they did not change')
+    parser.add_argument('--npm', action='store_true', help='the web npm steps and the clients/ts node_modules check even when unchanged')
     args = parser.parse_args(argv)
     try:
         if args.confirm:
