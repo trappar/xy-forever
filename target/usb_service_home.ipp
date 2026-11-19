@@ -115,7 +115,8 @@ uint32_t home_pump() {
 #endif
     stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
-    if (!boot_probe_active()) {
+    rehearsal_pump();
+    if (!boot_probe_active() && !rehearsal_active()) {
     recovery_turn();
     report_turn();
     package_turn();
@@ -183,6 +184,11 @@ uint32_t home_pump() {
         else if (type == t_crash) crash_command(seq, payload, length);       // a fault on purpose (test build only)
 #endif
 #if defined(XYF_USB_FILE_WRITE)
+#if defined(XYF_TFW_CHECK)
+        else if (type == P::t_a_rehearsal) rehearsal_command(seq, payload, length);
+        else if (rehearsal_active() && type != P::t_status && type != P::t_screen && type != P::t_peek)
+            status_only(type, seq, P::s_busy);
+#endif
         else if (type == xy_forever::boot_partition_probe::command) boot_probe_command(seq, payload, length);
         else if (boot_probe_active() && type != P::t_status && type != P::t_screen && type != P::t_peek)
             status_only(type, seq, P::s_busy);

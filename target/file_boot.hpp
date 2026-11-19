@@ -82,6 +82,9 @@ static const uint32_t stage2_bytes = 0;
 static_assert(sizeof(Result) == 36 * 4 + sizeof(cold_storage::Diagnostic) + sizeof(peer_services::Diagnostic) +
               library_bytes + menu_bytes + timing_bytes + stage2_bytes, "Result layout");
 extern Result result;
+#if defined(XYF_TFW_CHECK)
+void discard_prepared(); // A: revoke normal CHECK/BOOT lease before developer staging
+#endif
 } }
 // Pre-copy hook (both roles). Sets the storage-image handoff variables only
 // after a commit; always returns.

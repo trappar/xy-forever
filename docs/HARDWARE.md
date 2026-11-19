@@ -12,6 +12,7 @@ raw listing: Ghidra's decompiler C is unreliable for parallel instructions and i
 - [Keys, display, storage](hardware/devices.md): keys (B, through the PSoC), the display (B), storage (A, yaffs)
 - [Boot partition and USB](hardware/usb.md): the boot partition and USB (B), the stock USB function-driver API and ownership rules
 - [Stock storage server requests](hardware/storage-server.md): role 0 requests, as MTP uses them
+- [A install staging rehearsal](hardware/a-install-staging.md): RAM transfer, ownership and no-write admission
 - [Read-only boot-partition probe](hardware/boot-partition-probe.md): protocol, restoration and measured A preconditions
 - [Firmware packages](hardware/tfw.md): the `.tfw` format, the OTP boot-ROM table
 - [Reverse-engineering tools](hardware/tools.md): the listing scripts in `re/`, Ghidra

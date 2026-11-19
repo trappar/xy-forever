@@ -7,6 +7,7 @@ void executor(uint32_t address, uint32_t request) {
         strncpy(static_cast<char*>(host(0x8803f6e0u)), shared->swap_path, 239);
         log("fault: stock path buffer now holds %s", shared->swap_path);
     }
+    if (a0 == 0x41535447u) ++shared->stage_executor_hits; // quarantined RAM handle must never reach stock
     const char* path = cls == cls_path || cls == cls_query ? static_cast<const char*>(host(r32(request + 0x18))) : 0;
     if (address == 0x889f76cau && cls == cls_partition) {
         if (op == 0x2c) return finish(request, provider() ? seek_file(int(a0), int(r32(request + 0x18)), int(r32(request + 0xc))) : fail(19));

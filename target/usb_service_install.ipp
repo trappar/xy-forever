@@ -58,7 +58,7 @@ void tfw_check_role(uint8_t seq, const uint8_t* payload, U32 length) {
         const char* path = reinterpret_cast<const char*>(payload + 8);
 #if defined(XYF_USB_FILE_WRITE)
         stop_idle_gc();
-        if (boot_probe_active() || job_running() || uploading() || closing XYF_OR_MTP_BUSY) code = P::s_busy;
+        if (boot_probe_active() || rehearsal_active() || job_running() || uploading() || closing XYF_OR_MTP_BUSY) code = P::s_busy;
         else if (writes_due) { settle_begin(); code = P::s_busy; }
         else
 #endif

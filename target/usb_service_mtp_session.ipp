@@ -42,7 +42,7 @@ bool mtp_busy() {                                                        // an o
 xyf_core::U32 mtp_prepare(void*) {                                                 // before an operation that needs the files
     ms::Session& m = mslot();
     stop_idle_gc();
-    if (boot_probe_active() || recovery_pending || job_running() || closing || put_running()) { ++m.refused_busy; return mr::r_device_busy; }
+    if (boot_probe_active() || rehearsal_active() || recovery_pending || job_running() || closing || put_running()) { ++m.refused_busy; return mr::r_device_busy; }
     if (!writes_due) m.files.window = 0;                                 // the settle closed A's window
     // Speed (2026-11-15): A's check at most once per mtp_serving_ms (a request each; the open window
     // already skipped it).

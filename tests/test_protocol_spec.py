@@ -384,7 +384,8 @@ class DeviceAgreesTest(unittest.TestCase):
         self.assertEqual((ids.S_UNSUPPORTED, ids.S_REFUSED, ids.S_BUSY, ids.S_CANCELLED), (2, 14, 15, 16))
         self.assertNotIn('s_busy', ss)                                        # 1.10: only the job's one request slot
         self.assertIn('else if (job_blocks(type)) status_only(type, seq, P::s_busy);', us)
-        self.assertNotIn('s_cancelled', us + ss)
+        # The product A rehearsal can be cancelled; the old staged file writer still cannot.
+        self.assertNotIn('s_cancelled', unit_text(ROOT / 'target/usb_service_file_write.ipp') + ss)
 
     def test_published_document(self):
         doc = ''.join(text(rel) for rel in protogen.DOC_LEAVES)

@@ -151,6 +151,7 @@ uint32_t construct(uint32_t name) {
     return device;
 }
 int mount(uint32_t device, int read_only_mount) {
+    ++shared->mount_calls;
     if (device != yaffs_device || r32(device + 0xe4)) return fail(16);
     const int32_t failing = shared->fail_mount;
     if (failing > 0 && (shared->fail_mount = failing - 1) == 0) { log("fault: yaffs mount failed"); return fail(5); }
@@ -222,6 +223,7 @@ int bootpart() {
     return fd;
 }
 bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
+    if (write) ++shared->raw_boot_changes;
     if (selected != 1 && selected != 2) return false;
     const uint64_t at = uint64_t(sector) * 512u, bytes = uint64_t(count) * 512u;
     if (at + bytes > shared->capacity) return false;
@@ -237,6 +239,7 @@ bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
     return n == ssize_t(bytes);
 }
 bool trim(uint32_t block) {
+    ++shared->raw_boot_changes;
     std::vector<uint8_t> zero(erase_block, 0);
     const uint32_t first = block * (erase_block / 512u);
     const uint32_t count = first * 512u < shared->capacity ? (shared->capacity - first * 512u) / 512u : 0;

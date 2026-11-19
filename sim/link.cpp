@@ -211,6 +211,12 @@ bool a_service() {
         memcpy(host(a_in_buffer), in.body.data(), bytes < a_buffer_bytes ? bytes : a_buffer_bytes);
         w32(slot + 0x20, a_in_buffer); w32(slot + 0x24, bytes);
     }
+    // A-only RAM corruption, after every chunk crossed the real transport. B's identical
+    // numeric address belongs to its separate SDRAM object and must remain untouched.
+    if (in.m.a0 == 0x41535447u && bytes >= 32 && r32(a_in_buffer + 8) == 2 && shared->a_stage_corrupt.exchange(0)) {
+        w8(0x8b820000u, r8(0x8b820000u) ^ 1u);
+        log("fault: corrupted A staging after transfer, before local admission");
+    }
     in_service = true; service_slot = slot; service_tag = in.m.tag; service_cls = in.m.cls; service_op = in.m.op;
     std::atomic_thread_fence(std::memory_order_release);
     w32(primary + 4, slot);                                 // pending request for A's loop

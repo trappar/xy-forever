@@ -12,6 +12,7 @@ cannot be saved. Synthetic packages (test_sim_mod_job's kit). Needs clang++ and 
 import hashlib
 from pathlib import Path
 import sys
+import struct
 import time
 import unittest
 import zlib
@@ -158,6 +159,42 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         return entry
 
     # -- the tests ---------------------------------------------------------------------------------
+    def pending_save_rehearsal(self):
+        from xy_forever import a_rehearsal as R, sim
+        self.sim.set('defer_save_boot', 1)
+        self.change(['alpha'])
+        self.cont(0)
+        self.wait_log(lambda: self.lines('menu: deferred Save boot'), 'actual Save completed before boot')
+        self.assertEqual(self.dev.stage(sim.STOCK_OS.read_bytes()), 0)
+        extra = struct.pack('<II', 1, 120000) + hashlib.sha256(sim.STOCK_OS.read_bytes()).digest()
+        return R, extra
+
+    def test_pending_save_boot_waits_for_rehearsal_cancel_then_resumes(self):
+        R, extra = self.pending_save_rehearsal()
+        self.sim.set('a_slow_ms', 1000)
+        self.assertEqual(R.call(self.dev, 0, extra)[0], 0)
+        self.sim.set('defer_save_boot', 0)
+        self.assertEqual(self.dev.call(2)[0], 0)  # USB/status remains available with pending Save
+        self.assertFalse(self.lines('menu: saved'))
+        self.assertEqual(R.call(self.dev, 2)[0], 0)
+        self.sim.set('a_slow_ms', 0)
+        self.assertIn(self.booted(), ('mods-a', 'mods-b'))  # pending user action was retained
+
+    def test_pending_save_boot_stays_pending_after_rehearsal_link_failure(self):
+        R, extra = self.pending_save_rehearsal()
+        self.sim.set('a_silent', 1)
+        before = self.sim.status()
+        self.assertEqual(R.call(self.dev, 0, extra)[0], 0)
+        self.sim.set('defer_save_boot', 0)
+        self.sim.jump(5001)
+        self.wait_log(lambda: R.call(self.dev, 1)[1]['phase'] == 0, 'rehearsal link failure')
+        self.assertEqual(R.call(self.dev, 1)[1]['result'], 12)
+        self.assertFalse(self.lines('menu: saved'))
+        self.assertEqual(self.dev.call(2)[0], 0)
+        after = self.sim.status()
+        for key in ('a_boots', 'b_boots', 'storage_ops', 'raw_boot_changes'):
+            self.assertEqual(after[key], before[key], key)
+
     def test_save_boot_power_on_rebuild_and_no_change(self):
         self.wait_log(lambda: 'pending=0' in self.home(), 'the home row')
         self.change(['alpha', 'gamma'])

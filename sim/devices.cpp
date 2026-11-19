@@ -443,7 +443,14 @@ extern "C" void xy_forever_key_ui() {
 #endif
 #if defined(XYF_MODS_PAGE)
         if (const uint32_t saved = mods_io::save_state()) {               // as key_ui.cpp
-            if (saved == mods_io::save_boot) { mods_io::save_done(); xyf_sim::log("menu: saved"); sim_leave = true; }
+            if (saved == mods_io::save_boot) {
+                // Deterministically hold a REAL completed Save at its pending boot boundary.
+                if (xyf_sim::shared->defer_save_boot) {
+                    if (xyf_sim::shared->defer_save_boot.exchange(2) == 1) xyf_sim::log("menu: deferred Save boot");
+                } else if (!xyf_boot::link_lost() && xyf_boot::link_idle() && !usb_service::page_busy()) {
+                    mods_io::save_done(); xyf_sim::log("menu: saved"); sim_leave = true;
+                }
+            }
             else if (saved == mods_io::save_failed) {
                 xyf_sim::log("menu: save failed: %s", mods_io::save_reason());
                 mods_io::save_done(); sim_mods = false; sim_app.screen = xyf::menu::Screen::main;

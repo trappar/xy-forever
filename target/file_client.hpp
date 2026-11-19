@@ -91,6 +91,7 @@ Reply unmount();
 // while A has not answered within the bound (change_ms); then done (A's value), link (past the bound;
 // the request stays out, as any request past its bound) or lost. refused: none was started.
 Reply unmount_start();
+Reply serving_start(uint32_t& expected_ack); // command_item, asynchronously: no filesystem operation
 Reply unmount_poll();
 // #144: the client leaves at most one request out for its owner (unmount_start, mkdir_start: busy while one is
 // left). Every other request collects it first (its claim waits, bounded, for the slot) and keeps its answer

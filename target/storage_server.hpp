@@ -48,6 +48,9 @@
 // 889f7b12 waits without a bound). a's own posix calls (stat, open, close: the marker check; close
 // and closedir: b's leftovers) run on a, where they reach yaffs directly.
 namespace xy_forever { namespace storage_server {
+#if defined(XYF_TFW_CHECK)
+bool discard_install_stage(); // A: release RAM staging before any competing command
+#endif
 static const uint32_t magic = 0x31565352u;          // "RSV1"
 static const uint32_t command_item = 3;             // command item: the engine, read-only
 static const uint32_t settle_ms = 50;               // b: quiet after the command so a observes it
