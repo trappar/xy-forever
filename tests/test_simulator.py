@@ -589,7 +589,7 @@ class SimulatorTest(unittest.TestCase):
         self.write_entry()
         self.sim.set('fail_unmount', 1)
         self.assertEqual(dev.call(P.CONTINUE)[0], 0)              # accepted; the boot then cannot happen
-        time.sleep(1.0)
+        self.sim.advance(1000)
         status = self.sim.status()
         self.assertNotEqual(status['a'], 'os')
         self.assertNotEqual(status['b'], 'os')
@@ -614,7 +614,7 @@ class SimulatorTest(unittest.TestCase):
         self.write_entry()
         self.sim.set('fail_unmount', 1)
         boots = self.sim.status()['a_boots']
-        time.sleep(0.2)
+        self.sim.advance(200)
         self.sim.set('a_silent', 1)
         self.sim.advance(12000)
         status = self.wait(lambda s: s['a'] != 'running', timeout=5.0, what='A out of its session')
@@ -798,10 +798,9 @@ class SimulatorTest(unittest.TestCase):
         self.connect()
         self.assertTrue(self.command(USB_MODE_ITEM))
         self.write_entry()
-        time.sleep(0.2)                                   # A's loop has seen the last request
+        self.sim.advance(200)                             # A's loop has seen the last request
         self.sim.set('a_silent', 1)
         self.sim.advance(8000)
-        time.sleep(0.3)
         status = self.sim.status()
         self.assertEqual((status['a_boots'], status['a'], status['rw_open']), (1, 'running', 1))
         self.sim.advance(4000)
@@ -935,7 +934,7 @@ class SimulatorTest(unittest.TestCase):
         or the session's idle window that restarts it closes storage first): never left read-write."""
         dev = self.connect()
         self.assertEqual(self.write(dev, b'silent\n', BASE + 'log/w/silent.txt')[0], 0)
-        time.sleep(0.2)
+        self.sim.advance(200)
         self.sim.set('a_silent', 1)
         self.sim.advance(self.IDLE_MS + 2000)
         status = self.wait(lambda s: s['rw_open'] == 0, timeout=5.0, what='the window closed')
@@ -1113,8 +1112,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual((st['a_mount']['result'], st['a_mount']['attempts'], st['a_mount']['repair']['result']),
                          ('mount', 2, 'mount'))
         asks = st['asks']
-        self.sim.advance(20000)                          # four retry_ms periods
-        time.sleep(0.3)
+        self.sim.advance(20300)                          # four retry_ms periods
         st = self.storage_start(dev)
         self.assertEqual((st['asks'], st['a_mount']['attempts'], st['a_mount']['repair']['state']), (asks, 2, 'failed'))
         self.assertEqual(self.menu_catalog(dev)['items'], [])
@@ -1187,16 +1185,14 @@ class SimulatorTest(unittest.TestCase):
         device clock after the request left) B still does not restart (the former F2 restarted it): the
         menu stays on USB, crash restarts 0; a power cycle brings files back."""
         boots = self.sim.status()['b_boots']
-        self.sim.advance(40000)
-        time.sleep(0.3)
+        self.sim.advance(40300)
         path = (BASE + 'state-a.txt').encode() + b'\0'
         self.assertEqual(dev.call(P.READ_FILE, path, timeout=2.0)[0], ids.S_LINK)
         code, body = dev.call(P.STATUS, timeout=2.0)
         self.assertEqual(code, 0)
         status = self.sim.status()
         self.assertEqual((status['b'], status['listening'], status['b_boots']), ('running', 1, boots))
-        self.sim.advance(21000)
-        time.sleep(0.3)
+        self.sim.advance(21300)
         status = self.sim.status()
         self.assertEqual((status['b'], status['listening'], status['b_boots'], status['b_waits_a']),
                          ('running', 1, boots, 0))
@@ -1356,7 +1352,7 @@ class SimulatorTest(unittest.TestCase):
         # idle_reset_ms of silence, so the next request is answered at once.
         with socket.create_connection(('127.0.0.1', self.sim.port)) as s:
             s.sendall(P.encode(P.STATUS, 9, bytes(64))[:8])
-        time.sleep(0.4)
+        self.sim.advance(400)
         dev = self.connect(hello=False)
         self.assertEqual(dev.call(P.HELLO, timeout=0.5)[0], 0)
 
@@ -1400,7 +1396,7 @@ class SimulatorTest(unittest.TestCase):
             s.sendall(P.encode(P.HELLO, 1))
             self.assertEqual(len(self.frames(s, parser, lambda g: g, 2.0)), 1)
             s.sendall(P.encode(P.PUT_DATA, 2, bytes(ids.MAX_PAYLOAD))[:10])   # 4172-byte frame cut after 10
-            time.sleep(2.5 * ids.IDLE_RESET_MS / 1000)
+            self.sim.advance(int(2.5 * ids.IDLE_RESET_MS))
             s.sendall(P.encode(P.HELLO, 3))
             got = self.frames(s, parser, lambda g: g, 2.0)
             self.assertEqual([(t, seq) for t, seq, _ in got], [(P.HELLO | P.REPLY, 3)])

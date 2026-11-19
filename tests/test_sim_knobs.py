@@ -271,7 +271,7 @@ class Knobs(PageBase, unittest.TestCase):
         self.until(lambda: len(self.lines('knob: reader state ')) == 2, 'the menu again', 60.0)
         self.assertEqual(self.lines('knob: reader state ')[-1], '2')
         self.turn(1, 1, 3 * N)
-        time.sleep(0.5)
+        self.sim.advance(500)
         self.assertEqual(self.knobs(), [])                                 # nothing read, nothing moved
         self.until(lambda: self.sim.status().get('listening'), 'USB again', 60.0)
         self.dev.t.close()                                                 # USB re-enumerated: a new session

@@ -215,7 +215,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
                 self.assertLess(time.monotonic() - started, 1.0)
                 self.assertEqual((code, MS.PHASES[f['phase']], f['detail']), (0, 'inputs', 'opening storage for writing'), f)
                 self.assertEqual(self.dev.hello()[0], 0)
-                time.sleep(0.3)
+                self.sim.advance(300)
         finally:
             self.sim.set('rw_mount_ms', 0)                               # the mount ends
         f = self.finished(0)

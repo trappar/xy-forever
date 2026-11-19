@@ -7,7 +7,6 @@ from pathlib import Path
 import re
 import sys
 import tempfile
-import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +42,7 @@ class WhereCodes(unittest.TestCase):
     def test_a_short_wait_paints_nothing(self):
         for _ in range(3):
             self.assertEqual(self.dev.read_file(PATH)[0], 0)
-        time.sleep(0.2)
+        self.sim.advance(200)
         self.assertEqual(self.where(), [])
 
     def test_a_long_answer_wait_shows_its_code_then_clears(self):
@@ -53,14 +52,14 @@ class WhereCodes(unittest.TestCase):
             self.assertEqual(self.dev.read_file(PATH)[0], 0)
         finally:
             self.sim.set('a_slow_ms', 0)
-        time.sleep(1.5)                                                      # the read's close, still late, ends
+        self.sim.advance(1500)                                               # the read's close, still late, ends
         seen = self.where()
         self.assertTrue(seen, 'no where code logged')
         self.assertEqual(set(seen), {('shown', 1), ('cleared', 1)})          # W1: file_client await_answer
         self.assertEqual(seen[::2], [('shown', 1)] * (len(seen) // 2))       # each shown once, then cleared
         self.assertEqual(seen[1::2], [('cleared', 1)] * (len(seen) // 2))
         self.assertEqual(self.dev.read_file(PATH)[0], 0)                     # fast again: nothing more
-        time.sleep(0.2)
+        self.sim.advance(200)
         self.assertEqual(self.where(), seen)
 
 

@@ -57,7 +57,7 @@ class UsbStatus(J.Base, unittest.TestCase):
         self.until(lambda u: ('mark', 'on') in u, 'the mark after HELLO')
         for _ in range(5):
             self.assertEqual(self.dev.call(P.STATUS, b'')[0], 0)
-            time.sleep(0.2)
+            self.sim.advance(200)
         self.assertEqual([v for k, v in self.usb() if k == 'mark'], ['on'])
         self.sim.advance(SEEN_MS - 1500)                                     # well inside the window: still on
         self.assertEqual([v for k, v in self.usb() if k == 'mark'], ['on'])

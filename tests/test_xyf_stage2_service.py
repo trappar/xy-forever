@@ -153,7 +153,10 @@ class Stage2ServiceTest(unittest.TestCase):
         reply = {}
         thread = threading.Thread(target=lambda: reply.update(r=dev.call(P.HELLO, b'', timeout=8.0)), daemon=True)
         thread.start()
-        time.sleep(0.3)
+        deadline = time.monotonic() + 30.0
+        while self.sim.status()['cut_body']:                 # the cut happened: B waits on the rest
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.005)
         self.sim.advance(6000)              # past the request bound, on the simulator clock
         thread.join(9.0)
         code, body = reply['r']
