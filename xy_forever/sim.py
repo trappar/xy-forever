@@ -434,6 +434,8 @@ class Simulator:
         processors are idle (the link keeps alive as on the device: keepalives, answers and time-outs
         happen when they are due); returns once the clock is there and both processors are idle again.
         Real time: one jump."""
+        if ms <= 0:
+            return
         if not self.control('advance %d' % ms, timeout=60.0 + ms / 1000.0).get('ok'):
             raise ValueError('simulator: advance %r refused' % ms)
 

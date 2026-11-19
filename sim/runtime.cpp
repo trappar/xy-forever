@@ -416,11 +416,12 @@ void wipe_otp() {
 }
 std::string status_json() {
     char text[2000], clock[200];
-    snprintf(clock, sizeof(clock), "\"virtual\": %d, \"steps\": %u, \"work\": [%u, %u], \"idle\": [%d, %d], \"flight\": [%d, %d, %d, %d]",
+    snprintf(clock, sizeof(clock), "\"virtual\": %d, \"steps\": %u, \"work\": [%u, %u], \"idle\": [%d, %d], \"flight\": [%d, %d, %d, %d], \"pids\": [%d, %d]",
              shared->virtual_clock.load(), shared->steps.load(), shared->work[0].load(), shared->work[1].load(),
              shared->idle_work[0] == shared->work[0] && shared->idle_steps[0] == shared->steps,
              shared->idle_work[1] == shared->work[1] && shared->idle_steps[1] == shared->steps,
-             shared->inflight[0].load(), shared->inflight[1].load(), shared->outflight[0].load(), shared->outflight[1].load());
+             shared->inflight[0].load(), shared->inflight[1].load(), shared->outflight[0].load(), shared->outflight[1].load(),
+             int(procs[0].pid), int(procs[1].pid));
     snprintf(text, sizeof(text),
              "{\"a\": \"%s\", \"b\": \"%s\", \"a_boots\": %d, \"b_boots\": %d, \"power_ons\": %d, \"listening\": %d, "
              "\"storage_ops\": %d, \"cuts\": %d, \"a_silent\": %d, \"a_slow_ms\": %d, \"drop_request\": %d, "
