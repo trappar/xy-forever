@@ -11,6 +11,9 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
 #else
     const bool window = false;
 #endif
+#if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
+    protect_reset();                                                  // #144: the marker and the inbox: asked anew
+#endif
     const U32 path_pointer = vtable == path_class || vtable == file_engine::query_class ? word(request + 0x18) : 0;
     if (path_pointer == path_buffer) {
         for (U32 i = 0; i != max_path; ++i) if (!(path_copy[i] = char(byte(path_buffer + i)))) break;
@@ -117,7 +120,7 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
     }
     case file_engine::run_path: {                                             // access, unlink, mkdir, rmdir
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
-        const bool marker = (op == 0x25u || op == 0x27u) && stat_into(marker_path, marker_record[0]);
+        const bool marker = (op == 0x25u || op == 0x27u) && marker_exists();
         if (marker && stat_into(path_copy, marker_record[1]) && same_object()) {
             session.reply(request, 0xffffffffu, error_access);
             ++r.refused; note(op, file_engine::refuse_protected_path, 0xfffau);   // the marker by another name

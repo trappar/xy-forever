@@ -435,11 +435,13 @@ class FileEngineWiringTest(unittest.TestCase):
         for address in (0x889fa834, 0x889fa604, 0x88a01afa):
             self.assertTrue(any(a <= address < a + n for a, n in table), hex(address))
         now = self.body(self.server, 'U32 rename_now(char* to, bool over) {')
-        order = ['if (!valid_rename(from, to) || reaches_protected(rename_source) || reaches_protected(to)) return error_access;', 'if (!stat_into(from, marker_record[1])) return error_noent;',
-                 'file_engine::upload_size(from, size)', 'marker_record[1][7] != size)) return error_inval;',
-                 'if (stat_into(to, marker_record[1]) && (!over || (marker_record[1][2] & 0xf000u) != 0x8000u))',
-                 'return over ? error_isdir : error_exist;', 'same_object()', 'a_side::rename_object(from, to)',
-                 'restore_marker(0x21)']
+        order = ['if (!valid_rename(from, to)) return error_access;',
+                 'if (reaches_protected(rename_source, marker_record[1], &source)) return error_access;',
+                 'if (reaches_protected(to, marker_record[1], &target)) return error_access;',
+                 'if (!source) return error_noent;', 'file_engine::upload_size(from, size)',
+                 'source_size != size))', 'return error_inval;',
+                 'if (target && (!over || (marker_record[1][2] & 0xf000u) != 0x8000u)) return over ? error_isdir :',
+                 'const bool marker = marker_exists();', 'a_side::rename_object(from, to)', 'restore_marker(0x21)']
         at = [now.index(o) for o in order]
         self.assertEqual(at, sorted(at))
         # #144: B skips the depth walk (#124) only for rename_over, whose source A takes only as a regular file (above)
@@ -447,9 +449,19 @@ class FileEngineWiringTest(unittest.TestCase):
         self.assertIn('const uint32_t deep = over ? U32(xyf::usbp::s_ok) : deeper_ok(from, to, mounted);', client)
         # The write rule: every change by hand, on A, also through links (reaches_protected: the marker, /yaffs2/upgrade)
         self.assertIn('(!write_root(path_copy) || reaches_protected(path_copy))', self.server)
-        guard = self.body(self.server, '__attribute__((noinline)) bool reaches_protected(char* path) {')
-        self.assertIn('stat_into(marker_path, marker_record[0])', guard)
-        self.assertIn('stat_into(inbox_path, marker_record[0])', guard)
+        guard = self.body(self.server, '__attribute__((noinline)) bool reaches_protected(char* path, U32* record')
+        self.assertIn('const bool marker = marker_exists(), inbox = inbox_exists();', guard)
+        self.assertIn('(marker && same_record(record, marker_record[0])) || '
+                      '(inbox && same_record(record, marker_record[2]))', guard)
+        self.assertIn('const bool inside = stat_into(path, marker_record[3]) && '
+                      'same_record(marker_record[3], marker_record[2]);', guard)
+        # #144: the marker and the inbox stat'ed at most once per request: serve_engine forgets them first
+        self.assertIn('if (!(protect_known & 1u)) '
+                      'protect_known |= 1u | (stat_into(marker_path, marker_record[0]) ? 2u : 0u);', self.server)
+        self.assertIn('if (!(protect_known & 4u)) '
+                      'protect_known |= 4u | (stat_into(inbox_path, marker_record[2]) ? 8u : 0u);', self.server)
+        engine = self.body(self.server, 'void serve_engine(')
+        self.assertLess(engine.index('protect_reset();'), engine.index('file_engine::decide_request('))
         usb = self.body(self.usb, 'void file_rename(uint8_t seq')
         order = ['code = P::s_bad_request;', 'storage_server::valid_rename(from, to)', 'sha_equal(', 'enter_writes()',
                  'file_client::rename(from, to, error, mounted)']
@@ -523,7 +535,7 @@ class FileEngineWiringTest(unittest.TestCase):
         engine = self.body(self.server, 'void serve_engine(')
         case = engine[engine.index('case file_engine::run_path: {'):]
         case = case[:case.index('#else')]
-        before = case.index('const bool marker = (op == 0x25u || op == 0x27u) && stat_into(marker_path, marker_record[0]);')
+        before = case.index('const bool marker = (op == 0x25u || op == 0x27u) && marker_exists();')   # one stat a request
         refuse = case.index('if (marker && stat_into(path_copy, marker_record[1]) && same_object()) {')
         run = case.index('stock<0x889f6feau, void>(request);')
         after = case.index('if (marker && !stat_into(marker_path, marker_record[1])) restore_marker(op);')
