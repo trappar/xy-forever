@@ -41,7 +41,8 @@ uint32_t encode(const library::Library& library, uint8_t* out, uint32_t capacity
         field(r + 32, 48, e.info.name);
         field(r + 80, 32, e.info.version);
         r[112] = uint8_t(e.info.kind);
-        r[113] = uint8_t((e.usable ? 1 : 0) | (e.image_present && e.content_missing ? flag_content_missing : 0));
+        r[113] = uint8_t((e.usable ? 1 : 0) | (e.image_present && e.content_missing && !e.invalid_record ? flag_content_missing : 0) |
+                         (e.invalid_record ? flag_invalid_record : 0));
         const uint32_t machines = e.machines > 0xffffu ? 0xffffu : e.machines;
         r[114] = uint8_t(machines); r[115] = uint8_t(machines >> 8);
     }
@@ -52,7 +53,8 @@ uint32_t encode(const library::Library& library, uint8_t* out, uint32_t capacity
 bool decode(const uint8_t* data, uint32_t length, Catalog& out) {
     for (uint32_t i = 0; i != sizeof(out); ++i) reinterpret_cast<char*>(&out)[i] = 0;
     out.default_index = 0xffffffffu;
-    if (!data || length < header_bytes + 4 || get32(data) != magic) return false;
+    if (!data || length < header_bytes + 4 || (get32(data) != magic && get32(data) != legacy_magic)) return false;
+    const uint32_t allowed_flags = get32(data) == legacy_magic ? 15u : 31u;
     const uint32_t count = get32(data + 4), default_index = get32(data + 8);
     if (count > max_entries || length != header_bytes + count * sizeof(Item) + 4) return false;
     if (default_index != 0xffffffffu && default_index >= count) return false;
@@ -63,7 +65,7 @@ bool decode(const uint8_t* data, uint32_t length, Catalog& out) {
         for (uint32_t k = 0; k != 112; ++k) reinterpret_cast<uint8_t*>(item.id)[k] = r[k];   // id, name, version
         item.kind = r[112]; item.flags = r[113]; item.machines = uint16_t(r[114] | r[115] << 8);
         if (!terminated(item.id, 32) || !terminated(item.name, 48) || !terminated(item.version, 32) ||
-            !store::valid_id(item.id) || item.kind > store::kind_custom || (item.flags & ~15u)) return false;
+            !store::valid_id(item.id) || item.kind > store::kind_custom || (item.flags & ~allowed_flags)) return false;
     }
     out.count = count;
     out.default_index = default_index;
@@ -76,7 +78,8 @@ void describe(const Item& item, char* out, uint32_t capacity) {
                        item.kind == store::kind_custom ? "custom" : "";
     uint32_t at = 0;
     auto put = [&](const char* s) { for (; *s && at + 1 < capacity; ++s) out[at++] = *s; };
-    if (item.flags & flag_content_missing) put("content not installed");
+    if (item.flags & flag_invalid_record) put("invalid manifest.json");
+    else if (item.flags & flag_content_missing) put("content not installed");
     else if (!(item.flags & 1)) put("missing os.ldr");
     else {
         put(kind);

@@ -3,6 +3,7 @@
 #include "xyf_content.hpp"
 #include "xyf_store.hpp"
 #include "xyf_blob.hpp"
+#include "xyf_package_record.hpp"
 #include "../native/hash.hpp"
 // The content switch (docs/storage/state.md "Content state"), run by processor B as a job: makes
 // /yaffs2/content/ match a target library entry. step() sends at most one file request per call (B's menu
@@ -36,7 +37,7 @@ static const uint32_t chunk = 1024, max_files = 4096, max_candidates = 16;
 static const uint32_t text_capacity = 0x100000u;        // each list, the record and the plan
 static const uint32_t work_needed = 4 * text_capacity + 3 * max_files * 12 + 0x100000u;
 enum Error : uint32_t {                                  // job.status `error` values (as native/mod_job.hpp)
-    e_none = 0, e_path = 2, e_open = 4, e_read = 5, e_size = 7, e_list = 8, e_sha256 = 10, e_content = 15,
+    e_none = 0, e_path = 2, e_open = 4, e_read = 5, e_size = 7, e_list = 8, e_info = 9, e_sha256 = 10, e_content = 15,
     e_write = 16, e_rename = 17, e_verify = 18, e_link = 21
 };
 enum Refusal : uint32_t {                                // job.status `code` with e_content
@@ -268,14 +269,29 @@ template <class Io> static uint32_t step(Job& j, Io& io) {
     uint32_t r = x_more;
     switch (j.stage) {
     case st_info: {                                      // the target: an assembled mod set?
-        if (!join(p, firmware, bytes(j.target), length(j.target), "/info.txt")) { fail(j, e_path, 0, j.target); break; }
-        r = load(j, io, p, j.plan, store::max_text);
+        if (!join(p, firmware, bytes(j.target), length(j.target), j.leg ? "/info.txt" : "/manifest.json")) {
+            fail(j, e_path, 0, j.target); break;
+        }
+        r = load(j, io, p, j.plan, j.leg ? store::max_text : xyf_core::json::document_bytes);
         if (r == x_more || r == x_failed) break;
+        if (r == x_missing && !j.leg) { j.leg = 1; break; }
         if (r == x_missing) { fail(j, e_open, 0, p); break; }
         store::Info info;
         for (uint32_t i = 0; i != sizeof(info); ++i) reinterpret_cast<uint8_t*>(&info)[i] = 0;
-        j.mods = r == x_done && store::parse_info(reinterpret_cast<const char*>(j.plan.data), j.plan.length, info) &&
-                 info.has_generation;
+        if (j.leg) store::parse_info(reinterpret_cast<const char*>(j.plan.data), j.plan.length, info);
+        else {
+            // list is not populated until st_target. This job owns it; no GC/report
+            // workspace is borrowed, and the raw source/digest stay untouched.
+            package_record::Workspace& work = *reinterpret_cast<package_record::Workspace*>(j.list.data);
+            const xyf_core::json::Status status = package_record::parse(
+                reinterpret_cast<const char*>(j.plan.data), j.plan.length, work);
+            if (status != xyf_core::json::ok || work.manifest.status != manifest::ok) {
+                fail(j, e_info, status ? 0x100u + status : work.manifest.status, p); break;
+            }
+            manifest::legacy_info(work.manifest, info);
+        }
+        j.mods = info.has_generation;
+        j.leg = 0;
         j.stage = st_record;
         note(j, "record");
         break;

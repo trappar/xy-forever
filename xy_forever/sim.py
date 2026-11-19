@@ -43,13 +43,13 @@ STATE = paths.SESSIONS / 'simulator'           # default storage folder, boot pa
 
 TARGET_SOURCES = ('usb_service', 'usb_proto', 'storage_server', 'file_engine', 'file_client', 'menu_link', 'file_boot',
                   'cold_storage', 'retained_lookup', 'cold_heap', 'peer_services', 'xyf_library', 'xyf_cold_library',
-                  'xyf_manifest', 'xyf_recognise', 'xyf_filelist', 'xyf_catalog', 'xyf_state', 'xyf_state_write', 'xyf_store', 'xyf_info', 'xyf_crc32',
+                  'xyf_manifest', 'xyf_package_record', 'xyf_recognise', 'xyf_filelist', 'xyf_catalog', 'xyf_state', 'xyf_state_write', 'xyf_store', 'xyf_info', 'xyf_crc32',
                   'boot_services', 'otp_keys', 'tfw_device_check', 'xyf_stage2', 'stage2_main',
                   'xyf_menu', 'xyf_mods', 'xyf_mods_io',                 # the menu's state and the Mods page
                   'ui_pages', 'ui_gfx',                                   # the bar's scale() (nothing is drawn)
                   'knob_input',                                           # the knob reader
                   'mtp_session')                                          # the MTP session (XYF_MTP_SESSION)
-NATIVE_SOURCES = ('ldr', 'hash', 'trace_slot', 'trace_slot_zero', 'memory', 'peer_boot', 'inflate',
+NATIVE_SOURCES = ('ldr', 'hash', 'json', 'trace_slot', 'trace_slot_zero', 'memory', 'peer_boot', 'inflate',
                   'tfw_check', 'tfw', 'tfw_signature', 'p224', 'aes',
                   'mod_job', 'mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content',   # the job on B
                   'mtp_responder')                                                                  # the MTP responder
@@ -179,7 +179,7 @@ def build(cache=None, **options):
     inputs.update(subprocess.run([CXX, '--version'], capture_output=True).stdout)
     here = Path(__file__).parent
     for path in sorted([*ROOT.glob('target/*.?pp'), *ROOT.glob('native/*.?pp'), *ROOT.glob('native/*.inc'),
-                        *SIM.glob('*.?pp'), Path(__file__),
+                        *SIM.glob('*.?pp'), *(p for p in (ROOT / 'third_party').rglob('*') if p.is_file()), Path(__file__),
                         here / 'probe_report.py', here / 'build_formats.py', here / 'build_modules.py']):
         inputs.update(path.name.encode() + path.read_bytes())
     inputs.update(STOCK_BOOTLOADER.read_bytes())
@@ -227,6 +227,7 @@ def compile_into(work, defines):
     from xy_forever.probe_report import report_only_fixture
     (work / 'target').mkdir()
     (work / 'native').mkdir()
+    shutil.copytree(ROOT / 'third_party', work / 'third_party')
     for path in ROOT.glob('target/*.?pp'):
         text = rewrite(path.name, path.read_text())
         owner = re.match(r'// Part of (\w+)\.cpp', text)      # a part of a source the simulator does not host

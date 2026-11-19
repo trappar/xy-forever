@@ -47,6 +47,12 @@ int main() {
     catalog::describe(cat.items[1], text, sizeof(text)); REQUIRE(!strcmp(text, "missing os.ldr"));
     lib.entries[0].usable = true; lib.entries[0].content_missing = false; lib.entries[1].content_missing = false;
     REQUIRE(catalog::encode(lib, buffer, sizeof(buffer)) == n);
+    lib.entries[0].invalid_record = true; lib.entries[0].usable = false;
+    REQUIRE(catalog::decode(buffer, catalog::encode(lib, buffer, sizeof(buffer)), cat));
+    REQUIRE(cat.items[0].flags == catalog::flag_invalid_record);
+    catalog::describe(cat.items[0], text, sizeof(text)); REQUIRE(!strcmp(text, "invalid manifest.json"));
+    lib.entries[0].invalid_record = false; lib.entries[0].usable = true;
+    REQUIRE(catalog::encode(lib, buffer, sizeof(buffer)) == n);
 
     // Every single-byte corruption is rejected (CRC or structure).
     for (uint32_t i = 0; i != n; ++i) {

@@ -3,9 +3,10 @@
 The native adapters (`native/json.hpp`, `xy_forever/native_json.py`,
 `clients/ts/src/native-json.ts`) define these independently versioned schemas.
 Storage migration is being implemented in issue #95. Host package admission,
-modkit rebuilds, package indexes and client metadata reads accept the native
-package record. Device readers and default writers still use the legacy records
-until their integration lands.
+modkit rebuilds, package indexes, client metadata reads, native library/cold boot,
+content switches, journal source validation and package reports accept the native
+package record. Mod assembly/Mods readers, configuration and default writers
+still use legacy records until their integration lands. This is a partial migration.
 
 Every native record has a string `schema` and integer `schema_version` (currently
 1). The package's `version` remains display/equality metadata; it is unrelated to
@@ -91,6 +92,18 @@ input/NUL/alignment and 2,560 bytes for 128 properties. This does not include th
 caller's internal text output or surrounding job workspace. Stack and linked
 firmware growth must also be measured when the adapters enter live readers.
 
+`target/xyf_package_record` adds the bounded text view and semantic manifest to
+the caller workspace: 15,564 bytes on Blackfin. The cold scan needs 24,015 bytes
+including raw input/alignment, within its existing 40,960-byte scratch reservation.
+The journal's source reader owns 24,692 bytes in the content slot; it hashes the
+exact selected metadata and list before constructing any view. The content job
+borrows its own unused list region during metadata reading. Reports keep input
+and workspace in their existing 64 KiB slot; none borrows the MTP or GC slot.
+The package adapter's frame is 12 bytes, semantic manifest parser 164 bytes and
+cold scan 312 bytes: their nested path uses 488 bytes, excluding outer boot callers.
+No JSON workspace is allocated on a firmware stack. These measurements do not
+include the still pending assembly/config integration.
+
 ## Host package record selection
 
 Python `package_records` and TypeScript `package-records` select `manifest.json`
@@ -108,3 +121,11 @@ metadata; index fetch does not normalize or migrate them. Shared host integratio
 cases are in `tests/package-records.json`; adapter cases shared with C++ remain in
 `tests/native-json.json`. Stock content-pack readers keep their own schema and
 text/size rules; the native adapter is used only in native package contexts.
+
+The native library uses the same precedence and keeps legacy scanning lenient.
+An invalid selected JSON record makes the entry unavailable, including as the
+default; scanning writes no migration files. The internal A-to-B catalog is XYC2
+(same record sizes), with flag 16 for invalid native metadata and a menu detail
+`invalid manifest.json`. XYC1 remains readable with its original flag meanings;
+unknown catalog versions refuse. Package-session and USB protocol versions do not
+change. Content switches refuse invalid native metadata before any content write.

@@ -250,7 +250,8 @@ OTP_READ, OTP_INIT, OTP_INIT_FLAG = 0x04000048, 0x04000054, 0x11b01650   # the f
 # tfw.check (XYF_TFW_CHECK): the only feature that reads OTP, and with it the native
 # .tfw check (native/tfw_check and the decoder parts it uses) and the key provider.
 TFW_CHECK_MODES = ('xyf-product',)
-from xy_forever.build_modules import TFW_CHECK_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES, USB_STORAGE_MODULES, compile_tfw
+from xy_forever.build_modules import JSON_MODULES, TFW_CHECK_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES, USB_STORAGE_MODULES, compile_tfw
+from xy_forever.build_modules import own_sources as build_sources
 # The mod assembly job (native/mod_job and the linker, patch and content steps) runs on B.
 # The menu's Mods page (target/xyf_mods*: model, view, B's reading and the job's start), product only.
 # The file engine on a (storage_server.cpp; the historical MTP group): the executors
@@ -481,11 +482,7 @@ SOURCE_SUFFIXES = ('.cpp', '.hpp', '.ipp', '.inc', '.s', '.py')   # .ipp: a file
 
 
 def own_sources():
-    """Every file that can affect a build: target/, native/, the Python package, this script, the toolchain pins."""
-    files = [p for d in ('target', 'native', 'xy_forever') for p in (SOURCE / d).iterdir()
-             if p.is_file() and p.suffix in SOURCE_SUFFIXES]
-    files += [SOURCE / 'xyf_build.py', SOURCE / 'toolchains.json']
-    return sorted(str(p.relative_to(SOURCE)) for p in files)
+    return build_sources(SOURCE, SOURCE_SUFFIXES)
 
 
 def branch(site, destination):
@@ -1062,8 +1059,10 @@ def build(out, stock, boot, mode):
         cpp('xyf_stage2', SOURCE / 'target/xyf_stage2.cpp', ('-DXYF_STAGE2_SERVICE=1',))
         assembly('xyf_stage2_enter', SOURCE / 'target/xyf_stage2_enter.s')
     if file_boot:
-        for name in ('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info'):
+        for name in ('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info', 'xyf_manifest', 'xyf_package_record'):
             cpp(name, SOURCE / ('target/' + name + '.cpp'))
+        for name in JSON_MODULES:
+            cpp(name, SOURCE / ('native/' + name + '.cpp'))
     links = (('file_boot',) if file_boot else ()) + (('menu_link',) if menu_link else ())
     names += [*links, 'peer_services']
     cpp('peer_boot', SOURCE / 'native/peer_boot.cpp')
@@ -1116,7 +1115,7 @@ def build(out, stock, boot, mode):
                       (('storage_server', 'file_engine') if remote_read else ()) +
                       (('usb_service', 'file_client', 'xyf_crc32') + USB_STORAGE_MODULES if usb else ()) +
                       (('xyf_stage2', 'xyf_stage2_enter') if stage2 or stage2_service else ()) +
-                      (('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info') if file_boot
+                      (('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info', 'xyf_manifest', 'xyf_package_record') + JSON_MODULES if file_boot
                        else ()) +
                       ('xyf_crc32',) +
                       links + ('peer_services', 'peer_boot', 'hash', 'inflate') +

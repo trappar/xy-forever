@@ -4,8 +4,9 @@
 #include "xyf_store.hpp"
 #include "xyf_state.hpp"
 #include "xyf_content.hpp"
+#include "xyf_package_record.hpp"
 // XY Forever firmware library (docs/STORAGE.md): scans
-// /yaffs2/xy-forever/{state.txt, firmware/<id>/{info.txt,os.ldr}}
+// /yaffs2/xy-forever/{state.txt, firmware/<id>/{manifest.json,info.txt,os.ldr}}
 // and decides what to boot. Read-only: never creates, writes, renames or
 // removes anything.
 //
@@ -20,7 +21,7 @@
 //   const Byte* direct_readdir(U32)              dirent or 0 at end
 //   int direct_closedir(U32)                     0 on success
 // There is no seek/stat: an image counts as present when os.ldr opens; its
-// size/CRC are checked against info.txt when the chosen image is loaded.
+// size/CRC are checked against the selected record when the chosen image is loaded.
 namespace xyf { namespace library {
 using xy_forever::services::Error;
 static const uint32_t max_entries = 16;
@@ -31,6 +32,7 @@ struct Entry {
     char id[store::max_id + 1];
     store::Info info;
     bool has_info, image_present;
+    bool invalid_record;        // selected JSON exists but cannot be used; no legacy fallback
     uint32_t machines;         // optional native info.txt count; no inference from external layout history
     bool content_missing;      // its content is not installed in /yaffs2/content/ (content_installed)
     bool usable;               // os.ldr present and content installed (size/CRC checked at load)
@@ -44,8 +46,9 @@ struct Library {
     uint32_t skipped;          // invalid ids, duplicates, over capacity, missing images
     content::State content;    // what /yaffs2/content/ matches (the content state record's head)
 };
-// scratch: one native text file.
-static const uint32_t scratch_needed = store::max_text;
+// scratch: raw selected metadata and aligned caller-owned package adapter.
+static const uint32_t scratch_needed = xyf_core::json::document_bytes + alignof(package_record::Workspace) - 1 +
+                                      sizeof(package_record::Workspace);
 enum class Choice { menu, once, by_default };
 // once (if usable) > default (if usable) > menu ("XY Forever is home").
 Choice boot_choice(const Library& library, uint32_t& index);
@@ -72,8 +75,10 @@ void apply_info(Entry& e, const uint8_t* text, uint32_t length);
 void finish(Library& out, Entry& e);
 extern const char root[];
 
-template <class Fs> bool read_text(Fs& fs, const char* file, uint8_t* buffer, uint32_t capacity, uint32_t& length) {
+template <class Fs> bool read_text(Fs& fs, const char* file, uint8_t* buffer, uint32_t capacity, uint32_t& length,
+                                  bool* exists = 0) {
     const int fd = fs.direct_open(file);
+    if (exists) *exists = fd >= 0;
     if (fd < 0) return false;
     length = 0;
     bool ok = true;
@@ -132,7 +137,17 @@ template <class Fs> Error scan_direct(Fs& fs, Library& out, uint8_t* scratch, ui
     sort(out);
     for (uint32_t i = 0; i != out.count; ++i) {
         Entry& e = out.entries[i];
-        if (path(p, root, "/firmware/", e.id, "/info.txt") && read_text(fs, p, scratch, store::max_text, length))
+        bool native = false;
+        const bool loaded = path(p, root, "/firmware/", e.id, "/manifest.json") &&
+            read_text(fs, p, scratch, xyf_core::json::document_bytes, length, &native);
+        if (native) {
+            const uintptr_t align = alignof(package_record::Workspace);
+            package_record::Workspace& work = *reinterpret_cast<package_record::Workspace*>(
+                (reinterpret_cast<uintptr_t>(scratch + xyf_core::json::document_bytes) + align - 1u) & ~(align - 1u));
+            e.has_info = loaded && package_record::info(reinterpret_cast<const char*>(scratch), length, work, e.info);
+            e.invalid_record = !e.has_info;
+            e.machines = e.has_info && e.info.has_machines ? e.info.machines : 0;
+        } else if (path(p, root, "/firmware/", e.id, "/info.txt") && read_text(fs, p, scratch, store::max_text, length))
             apply_info(e, scratch, length);
         e.image_present = path(p, root, "/firmware/", e.id, "/os.ldr") && present(fs, p);
         e.content_missing = !content_installed(out.content, e);

@@ -6,8 +6,9 @@
 // recogniser for dropped files and folders, and the device's exact-match dependency rules.
 // Freestanding like xyf_store: no libc, no allocation, no struct copies, every loop bounded by
 // its input. Refuse, never guess: every input the readers cannot take within their bounds gets
-// a specific status. The library scan still reads info.txt with xyf_store::parse_info (lenient,
-// unchanged); legacy_info() gives the same fields from a manifest this reader accepted.
+// a specific status. xyf_package_record adapts native JSON through this semantic reader.
+// Library fallback still reads legacy info.txt leniently with xyf_store::parse_info;
+// legacy_info() gives the same fields from a manifest this reader accepted.
 namespace xyf { namespace store { struct Info; } }
 namespace xyf { namespace manifest {
 // info.txt bounds. Text values hold at most capacity - 1 bytes.

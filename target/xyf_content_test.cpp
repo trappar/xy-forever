@@ -422,6 +422,31 @@ static void by_difference() {
     REQUIRE(run(io, "mods-c") == st_done && job.read == 4 && job.written == 1);
 }
 
+static void native_records() {
+    FakeIo io; io.t = seed();
+    const std::string path = F + "mods-a/manifest.json";
+    const std::string native = "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\","
+        "\"name\":\"Native\",\"bytes\":3,\"crc32\":\"00000000\","
+        "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\","
+        "\"generation\":\"test\",\"needs_os\":\"0000000000000000000000000000000000000000000000000000000000000000\"}";
+    io.t.files[path] = native;
+    io.t.files.erase(F + "mods-a/info.txt");
+    Files listed;
+    const std::string prefix = F + "mods-a/";
+    for (const auto& f : io.t.files)
+        if (!f.first.compare(0, prefix.size(), prefix) && f.first != prefix + "files.sha256")
+            listed[f.first.substr(prefix.size())] = f.second;
+    io.t.files[prefix + "files.sha256"] = list_text(listed);
+    const Tree want = expected(io.t, "mods-a");
+    REQUIRE(run(io, "mods-a") == st_done && io.t == want && io.t.files.at(path) == native);
+    for (const char* bad : {"", "{", "{}", "{\"schema\":\"xy-forever.package\",\"schema_version\":2}"}) {
+        FakeIo refused; refused.t = seed(); refused.t.files[path] = bad;
+        const Tree before = refused.t;
+        REQUIRE(run(refused, "mods-a") == st_failed && job.error == e_info);
+        REQUIRE(refused.written.empty() && refused.t == before); // refusal before any publication
+    }
+}
+
 int main() {
     path_rule();
     head();
@@ -431,6 +456,7 @@ int main() {
     faults("mods-b", "opxy-121");
     refusals();
     by_difference();
+    native_records();
     printf("%u checks passed\n", checks);
     return 0;
 }

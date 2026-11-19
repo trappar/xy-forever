@@ -148,6 +148,32 @@ int main() {
     REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok && !lib.entries[mods].usable && lib.entries[stock].usable);
     REQUIRE(fs.open_fds == 0);
     --fs.file_count;
+    // Native metadata wins over legacy, and strict refusal cannot turn an invalid
+    // assembled entry into apparently official firmware. Reads never migrate files.
+    const unsigned native_at = fs.file_count++;
+    fs.files[native_at] = {"/yaffs2/xy-forever/firmware/granular/manifest.json",
+        "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\","
+        "\"name\":\"Native granular\",\"kind\":\"custom\",\"bytes\":10,\"crc32\":\"00000000\","
+        "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"machines\":3}"};
+    REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok);
+    REQUIRE(lib.entries[1].usable && lib.entries[1].has_info && lib.entries[1].machines == 3 &&
+            !strcmp(lib.entries[1].info.name, "Native granular") && !lib.entries[1].invalid_record);
+    const char* invalid[] = {"", "{", "{}",
+        "{\"schema\":\"xy-forever.package\",\"schema_version\":2,\"type\":\"firmware\"}",
+        "{\"schema\":\"stock.pack\",\"schema_version\":1}",
+        "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\"}"};
+    for (unsigned k = 0; k != sizeof(invalid) / sizeof(invalid[0]); ++k) {
+        fs.files[native_at].text = invalid[k];
+        REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok);
+        REQUIRE(lib.entries[1].invalid_record && !lib.entries[1].usable && !lib.entries[1].has_info);
+        strcpy(lib.state.default_id, "granular"); lib.state.once[0] = 0;
+        REQUIRE(library::boot_choice(lib, index) == library::Choice::menu); // valid other entries are not substitutes
+    }
+    fs.files[native_at].text = over;
+    REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok && lib.entries[1].invalid_record);
+    --fs.file_count;
+    REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok && lib.entries[1].usable &&
+            !lib.entries[1].invalid_record && lib.entries[1].machines == 0);
     fs.dir_count = 0;                                          // no firmware folder: empty library, not an error
     REQUIRE(library::scan_direct(fs, lib, scratch, sizeof(scratch)) == Error::ok && lib.count == 0);
     REQUIRE(library::boot_choice(lib, index) == library::Choice::menu);

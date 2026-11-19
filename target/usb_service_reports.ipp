@@ -3,11 +3,12 @@
 struct PackageReport {
     ContentIo io;
     xyf::manifest::Manifest manifest;
+    xyf::package_record::Workspace record;
     xyf_core::hash::Sha256 sha;
-    U32 seq, area, outer, inner, stage, folder, valid, n, bytes, prefix_n, text_n, have_identity, single;
+    U32 seq, area, outer, inner, stage, folder, valid, n, bytes, prefix_n, text_n, have_identity, single, legacy;
     int fd;
     char path[240], parent[240], id[256], name[256], text[980];
-    uint8_t buffer[4096], prefix[268], identity[32];
+    uint8_t buffer[xyf_core::json::document_bytes], prefix[268], identity[32];
 };
 static_assert(sizeof(PackageReport) <= 0x10000u, "report workspace fits below the reserved MTP slot");
 PackageReport& report_slot() { return *reinterpret_cast<PackageReport*>(job_work_end - 0x10000u); }
@@ -82,20 +83,30 @@ void report_step() {
         r.id[n++]='/';xj::copy(r.id+n,r.name);r.folder=1;r.stage=2;return;
     }
     if(r.stage==2) {
-        if(!join(r.path,r.parent,"/info.txt")){report_end(P::s_too_large);return;}
-        r.fd=r.io.open(r.path,false);if(r.fd==-2){r.stage=3;return;}if(r.fd<0){report_end(r.io.lost()?P::s_link:P::s_storage);return;}
+        if(!join(r.path,r.parent,r.legacy?"/info.txt":"/manifest.json")){report_end(P::s_too_large);return;}
+        r.fd=r.io.open(r.path,false);
+        if(r.fd==-2){if(!r.legacy){r.legacy=1;return;}r.stage=3;return;}
+        if(r.fd<0){report_end(r.io.lost()?P::s_link:P::s_storage);return;}
         r.n=0;r.stage=6;return;
     }
     if(r.stage==6) {
-        uint8_t extra;const U32 want=sizeof(r.buffer)-r.n<1024?sizeof(r.buffer)-r.n:1024;
+        const U32 cap=r.legacy?xyf::store::max_text:xyf_core::json::document_bytes;
+        uint8_t extra;const U32 want=cap-r.n<1024?cap-r.n:1024;
         const int n=r.io.read(r.fd,want?r.buffer+r.n:&extra,want?want:1);
         if(n<0||uint32_t(n)>want){report_end(r.io.lost()?P::s_link:P::s_too_large);return;}
         if(n){r.n+=uint32_t(n);return;}r.stage=7;return;
     }
     if(r.stage==7) {
         if(r.io.close(r.fd)){r.fd=-1;report_end(P::s_storage);return;}r.fd=-1;
-        r.valid=xyf::manifest::parse(reinterpret_cast<const char*>(r.buffer),r.n,r.manifest)==xyf::manifest::ok;
-        if(!r.valid){xyf::store::Info info={};xyf::store::parse_info(reinterpret_cast<const char*>(r.buffer),r.n,info);xj::copy(r.manifest.version,info.version);}
+        if(r.legacy) {
+            r.valid=xyf::manifest::parse(reinterpret_cast<const char*>(r.buffer),r.n,r.manifest)==xyf::manifest::ok;
+            if(!r.valid){xyf::store::Info info={};xyf::store::parse_info(reinterpret_cast<const char*>(r.buffer),r.n,info);xj::copy(r.manifest.version,info.version);}
+        } else {
+            r.valid=xyf::package_record::parse(reinterpret_cast<const char*>(r.buffer),r.n,r.record)==xyf_core::json::ok &&
+                    r.record.manifest.status==xyf::manifest::ok;
+            const uint8_t* from=reinterpret_cast<const uint8_t*>(&r.record.manifest);
+            for(U32 i=0;i!=sizeof(r.manifest);++i)reinterpret_cast<uint8_t*>(&r.manifest)[i]=from[i];
+        }
         r.stage=3;return;
     }
     if(r.stage==3) {
