@@ -69,6 +69,7 @@ bool timing_query(U32 request, Stock121PeerSession& session) {
 // The serve hook: serve() timed.
 void timed_serve(void* context, U32 request, Stock121PeerSession& session) {
     const uint64_t start = xyf::clock::cycles();
+    if (boot_probe_query(request, session)) return;
     if (timing_query(request, session)) return;
     const U32 vtable = word(request), op = byte(request + 5), argument = word(request + 8);
     const bool had_window = window_now();

@@ -87,3 +87,8 @@ the protected file's bytes (`usb_service_file_write.ipp`, `file_client::write_fi
 The newer streaming upload and MTP use temporary files and rename; their final-path behavior does not
 establish safety of this older endpoint. Full inbox protection remains an open review requirement;
 the binding rule in [SAFETY](../SAFETY.md) is unchanged. No device experiment establishes this gap.
+
+## Read-only boot-partition diagnostic (#7)
+
+The [probe protocol and measured A preconditions](boot-partition-probe.md) cover developer
+command `0x64`, its read-only storage gate, restoration and the design go-ahead for #8.
