@@ -24,6 +24,7 @@ form.
 - [File move and copy commands](protocol/cmd-file-move.md): `file.rename`, `file.copy`, `file.write_begin`, `file.write_data`, `file.write_end`
 - [Boot and device commands](protocol/cmd-boot.md): `boot.install`, `boot.uninstall`, `device.reboot`, `menu.continue`, `service.hold`
 - [Library commands](protocol/cmd-library.md): `library.set_default`, `tfw.check`, `library.boot`
-- [Job commands](protocol/cmd-jobs.md): `mods.apply`, `job.status`, `job.cancel`, `package.session`, `tfw.check_role`
+- [Job commands](protocol/cmd-jobs.md): `mods.apply`, `job.status`, `job.cancel`, `package.session`
+- [Firmware diagnostics](protocol/cmd-firmware.md): `tfw.check_role`
 - [Examples and conformance](protocol/examples.md): whole frames in hex, and the conformance suite
 - [Events, developer commands, reserved](protocol/events-dev.md): device events, unstable developer commands, numbers reserved for later versions

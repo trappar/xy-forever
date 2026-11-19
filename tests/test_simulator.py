@@ -2041,7 +2041,7 @@ class SimulatorVariantTest(unittest.TestCase):
         switched = [c for c in SPEC['commands'] if c['switch']]
         self.assertEqual({c['name']: c['switch_optional'] for c in switched},
                          {'diag.engine_test': True, 'file.write_staged': False, 'library.set_default': False,
-                          'tfw.check': True, 'file.list': False, 'file.delete': False, 'file.rmdir': False,
+                          'tfw.check': True, 'tfw.check_role': True, 'file.list': False, 'file.delete': False, 'file.rmdir': False,
                           'file.write_begin': False, 'file.write_data': False, 'file.write_end': False,
                           'file.mkdir': False, 'file.rename': False, 'file.copy': False, 'stage2.info': True,
                           'mods.apply': False, 'job.status': False, 'job.cancel': False, 'package.session': False})

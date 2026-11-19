@@ -23,8 +23,8 @@ needs the highest bar of confidence. These rules are binding and override conven
 - **Never program the companion chips** (keyboard/backplane PSoC, BLE).
 - **Never write SPI metadata** (the record at SPI `0xc000`: upgrade marker, `factory`
   field).
-- **Never write OTP.** XY Forever only reads it, on the explicitly selected A or B processor, through the boot-ROM read `0x04000048`
-  and init `0x04000054` exactly as the stock wrappers do (`tfw.check` / `tfw.check_role`, #15). The builder
+- **Never write OTP.** XY Forever reads on A or B through boot-ROM read `0x04000048`
+  and init `0x04000054` as stock does (`tfw.check[_role]`, #15). The builder
   admits no other ROM entry but memcpy `0x040201c4`; `0x0400004c` and `0x04000050` (never called
   by the 1.2.1 bootloader: unknown, possibly the program entry) are forbidden. Keys read on the
   device need no protection there; they never go into the repository.

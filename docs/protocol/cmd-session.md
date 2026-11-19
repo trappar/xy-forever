@@ -43,7 +43,7 @@ should. Tools ignore keys they do not know and must not rely on the order.
 The product build answers (189 bytes):
 
 ```text
-XYF1;service=usb;role=b;proto=1.19;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=00000000000000fb001700031fff00be;dev=1;stage2=0
+XYF1;service=usb;role=b;proto=1.20;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=00000000000001fb001700031fff00be;dev=1;stage2=0
 ```
 
 ### 0x03 `file.read`
