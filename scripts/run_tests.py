@@ -12,8 +12,9 @@ Each test is charged the wall time since the previous test of its process finish
 and module fixtures (bridge compiles, simulator starts) land on the first test that needed
 them. A module's output is shown only when it failed. Exit 1 if anything failed or errored.
 
-The longest work starts first: each run records its per-test times (TIMES, outside git) and the
-next run orders its processes by them; without a record, FIRST sets the order.
+The longest work starts first: each run records its per-test times (TIMES, outside git; one record per
+mode, as XYF_EXHAUSTIVE=1 runs some tests much longer, and a full run replaces it, dropping tests that
+are gone) and the next run orders its processes by them; without a record, FIRST sets the order.
 """
 import argparse
 import collections
@@ -33,7 +34,7 @@ TESTS = ROOT / 'tests'
 sys.path.insert(0, str(ROOT))
 from xy_forever import paths  # noqa: E402
 
-TIMES = paths.SESSIONS / 'run-tests-times.json'      # per-test seconds of the last runs (orders the next)
+TIMES = paths.SESSIONS / ('run-tests-times%s.json' % ('-exhaustive' if os.environ.get('XYF_EXHAUSTIVE') else ''))
 JOBS = max(1, min(16, (os.cpu_count() or 2) * 2 // 3))   # simulator tests start two threads each
 FIRST = ('test_simulator', 'test_conformance', 'test_ts_client', 'test_p224',
          'test_tfw_os', 'test_protocol_spec')    # the longest modules start first (any order is correct)
@@ -130,7 +131,8 @@ def recorded():
 
 
 def record(times, results):
-    """Adds this run's per-test times to TIMES (shared by worktrees; a lost update only costs order)."""
+    """Adds this run's per-test times to TIMES (shared by worktrees; a lost update only costs order); a full
+    run passes times={} and replaces it."""
     times = dict(times, **{test: round(s, 3) for r in results for test, s in r['times']})
     try:
         TIMES.parent.mkdir(parents=True, exist_ok=True)
@@ -178,7 +180,7 @@ def main():
         times = recorded()
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
             results = list(pool.map(run_unit, units(args.names, times)))
-        record(times, results)
+        record(times if args.names else {}, results)
         for r in results:
             if r['problems']:
                 print(r['output'], file=sys.stderr)
