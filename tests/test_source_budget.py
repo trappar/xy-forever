@@ -41,7 +41,6 @@ OVER = {
     'target/cold_storage.cpp': 33710,
     'target/file_boot.cpp': 40815,
     'target/peer_services.cpp': 41949,
-    'target/storage_server.cpp': 37785,
     'target/xyf_content_job.hpp': 34146,
     'xy_forever/conformance.py': 63763,
     'xy_forever/modkit.py': 64034,

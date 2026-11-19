@@ -23,7 +23,8 @@ def function(source, signature):
 class V3WriteLifecycleTest(unittest.TestCase):
     def test_success_and_fault_paths(self):
         storage = (ROOT / 'target/cold_storage.cpp').read_text()
-        server = (ROOT / 'target/storage_server.cpp').read_text()
+        server = ''.join((ROOT / 'target' / n).read_text()
+                          for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         bodies = '\n'.join(function(storage, 'Result Stock121ReadOnlySession::' + name)
                            for name in ('open_write_window(', 'close_write_window(', 'reopen_read_only('))
         bodies = bodies.replace('__asm__ volatile("ssync;" ::: "memory");', '')

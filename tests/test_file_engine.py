@@ -409,7 +409,8 @@ class FileEngineWiringTest(unittest.TestCase):
     """A applies the engine to every request; B applies its policy before it sends."""
 
     def setUp(self):
-        self.server = ''.join((ROOT / 'target' / n).read_text() for n in ('storage_server.cpp', 'storage_server_marker.ipp'))
+        self.server = ''.join((ROOT / 'target' / n).read_text()
+                              for n in ('storage_server.cpp', 'storage_server_engine.ipp', 'storage_server_marker.ipp'))
         self.usb = unit_text(ROOT / 'target/usb_service.cpp')
 
     def body(self, text, start):

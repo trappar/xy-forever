@@ -22,7 +22,8 @@ class MtpTest(unittest.TestCase):
     window, the serve hook, the stock calls and spans. The decisions: tests/test_file_engine.py."""
 
     def test_run_entry_pins(self):
-        ss = (ROOT / 'target/storage_server.cpp').read_text()
+        ss = ''.join((ROOT / 'target' / n).read_text()
+                      for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         hpp = (ROOT / 'target/storage_server.hpp').read_text()
         self.assertIn('static const uint32_t engine_run_item = 6;', hpp)   # distinct from items 1-5 (menu, read, ...)
         latch = ss[ss.index('void latch(Stock121PeerSession& session) {'):]
@@ -64,7 +65,8 @@ class MtpTest(unittest.TestCase):
         self.assertEqual(users, ['cold_storage.cpp', 'storage_server.cpp'])
 
     def test_serve_loop_pins(self):
-        server = (ROOT / 'target/storage_server.cpp').read_text()
+        server = ''.join((ROOT / 'target' / n).read_text()
+                          for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         # A writable engine entry takes precedence over install mode; the engine serves the rest.
         hook = server[server.index('void serve(void* context'):]
         self.assertLess(hook.index('latch(session);'), hook.index('#if defined(XYF_USB_SERVICE)'))

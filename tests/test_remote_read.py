@@ -81,7 +81,8 @@ class RemoteReadTest(unittest.TestCase):
             self.assertTrue(any(a <= int(call, 16) < a + n for a, n in covered), call)
         # The stock read-write mount path and write entries are never called directly.
         self.assertFalse({'%08x' % a for a in WRITE_ENTRIES} & (SERVER_CALLS | A_MARKER_CALLS | A_RENAME_CALLS))
-        source = (ROOT / 'target/storage_server.cpp').read_text()
+        source = ''.join((ROOT / 'target' / n).read_text()
+                          for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         for address in WRITE_ENTRIES:
             self.assertNotIn('0x%08x' % address, source.lower())
 
