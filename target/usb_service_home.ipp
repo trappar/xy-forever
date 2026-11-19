@@ -115,11 +115,13 @@ uint32_t home_pump() {
 #endif
     stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
+    if (!boot_probe_active()) {
     job_pump();                                        // a slice of the mod job
     boot_sweep_turn();                                 // #3: leftover tmp/job-* folders, a step per pass
     stream_turn();                                     // #4: a streamed write left without data
     settle_turn();                                     // a window close still out
     if (writes_due && !job_running() XYF_AND_NOT_MTP_BUSY && now() - writes_ms > storage_server::window_settle_ms) settle_writes();
+    }
 #endif
 #if defined(XYF_MTP_USB)
     composite_turn();                                  // the driver's pass, the HELLO bound (fallback restart)
@@ -178,6 +180,9 @@ uint32_t home_pump() {
         else if (type == t_crash) crash_command(seq, payload, length);       // a fault on purpose (test build only)
 #endif
 #if defined(XYF_USB_FILE_WRITE)
+        else if (type == xy_forever::boot_partition_probe::command) boot_probe_command(seq, payload, length);
+        else if (boot_probe_active() && type != P::t_status && type != P::t_screen && type != P::t_peek)
+            status_only(type, seq, P::s_busy);
 #if defined(XYF_MTP_SESSION)
         else if (type == t_mtp_tunnel) mtp_tunnel(seq, payload, length);   // the test transport
 #endif

@@ -1,6 +1,7 @@
 #include "file_client.hpp"
 #include "file_engine.hpp"
 #include "usb_proto.hpp"
+#include "boot_partition_probe.hpp"
 // Processor B's file client (see file_client.hpp).
 namespace xy_forever { namespace file_client {
 uint32_t bound_ms(uint32_t op, uint32_t argument) {
@@ -295,6 +296,23 @@ const uint8_t* stream(uint32_t at, uint32_t count) {
     return reinterpret_cast<const uint8_t*>(stream_buffer + at);
 }
 Reply a_timing(uint32_t k) { return path_request("/yaffs2", file_engine::op_stat, 0x21, file_engine::timing_tag | (k & 0xffu)); }
+Reply boot_probe(uint32_t op) {
+    return path_request("/yaffs2", file_engine::op_stat, 0x21, boot_partition_probe::tag | (op & 0xffu));
+}
+Reply boot_select(uint32_t p) { return p <= 2 ? partition(0x18, p, 0, 0) : outcome(refused); }
+Reply boot_sector(uint32_t at, uint8_t* out) {
+    if (at > boot_partition_probe::max_bytes / 512u) return outcome(refused);
+    Stock121PeerSession* session; Reply why;
+    U32* request = claim(session, why);
+    if (!request) return why;
+    stock<0x889f8872u, void>(request, 0x11u, at, 1u, 0u, data(), 512u); // same sector builder as peer_services
+    const Reply r = send(*session, 0x11, request_ms);
+    if (!r.outcome && !r.value) {
+        lines(data_buffer, 512, true);
+        for (U32 i = 0; i != 512; ++i) out[i] = data()[i];
+    }
+    return r;
+}
 Reply readdir(uint32_t folder, uint8_t* entry) {
     Stock121PeerSession* session; Reply why;
     U32* request = claim(session, why);

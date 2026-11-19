@@ -123,6 +123,10 @@ Reply read(int fd, uint8_t* out, uint32_t count);                   // count <= 
 Reply write(int fd, const uint8_t* data, uint32_t count);           // count <= piece_max
 // #144: A's request timing words 2k and 2k + 1 (value, error), or k = file_engine::timing_clear zeroes them.
 Reply a_timing(uint32_t k);
+// #7: only the dedicated read-only diagnostic uses these. A gates every raw request independently.
+Reply boot_probe(uint32_t operation);
+Reply boot_select(uint32_t partition);
+Reply boot_sector(uint32_t sector, uint8_t* out);
 Reply seek(int fd, int offset);                                     // SEEK_SET
 Reply close(int fd);
 Reply mkdir(const char* path);

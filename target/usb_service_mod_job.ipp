@@ -67,7 +67,7 @@ bool mtp_busy();                                                        // an MT
 #define XYF_AND_NOT_MTP_BUSY
 #endif
 bool job_blocks(U32 type) {                                             // also while settle_begin's op 9 is out
-    if (!job_running() && !closing XYF_AND_NOT_MTP_BUSY) return false;
+    if (!boot_probe_active() && !job_running() && !closing XYF_AND_NOT_MTP_BUSY) return false;
     return type == P::t_read_file || type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end ||
            type == P::t_file_write || type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir ||
            type == P::t_make_dir || type == P::t_rename_file || type == P::t_copy_file || type == P::t_install ||

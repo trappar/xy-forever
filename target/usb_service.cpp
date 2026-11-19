@@ -68,6 +68,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "menu_link.hpp"
 #include "storage_server.hpp"
 #include "file_client.hpp"
+#include "boot_partition_probe.hpp"
 #include "../native/hash.hpp"
 #include "../native/ldr.hpp"
 #include "../native/mod_job.hpp"
@@ -88,6 +89,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #endif
 extern "C" { extern const xyf_core::Policy* volatile xy_forever_cold_policy; }   // cold.cpp
 namespace {
+bool boot_probe_active();
 #include "usb_service_transport.ipp"        // stock wrappers, transport, PUT state, install log, HELLO, STATUS
 #include "usb_service_stage2.ipp"           // the stage 2 loader
 #include "usb_service_identity.ipp"         // hello version= and image=, the menu's labels
@@ -106,6 +108,9 @@ namespace xy_forever { namespace usb_service {      // the Mods page's hooks (us
 } }
 namespace {
 #include "usb_service_job_status.ipp"       // JOB_STATUS, JOB_CANCEL
+#include "usb_service_boot_probe.ipp"       // #7: read-only boot-partition diagnostic
+#else
+bool boot_probe_active() { return false; }
 #endif
 
 #include "usb_service_install.ipp"          // TFW_CHECK, INSTALL

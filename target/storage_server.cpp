@@ -1,6 +1,7 @@
 #include "storage_server.hpp"
 #include "cold_heap.hpp"
 #include "xyf_clock.hpp"
+#include "boot_partition_probe.hpp"
 #if defined(XYF_USB_SERVICE)
 #include "usb_service.hpp"
 #endif
@@ -259,6 +260,7 @@ volatile U32 selected_partition __attribute__((section(".data"))) = 0;
 // stock select may have switched the chip's partition register before it failed, so a failed
 // select counts as selected for storage (boot_selected); boot writes still need a confirmed one.
 volatile U32 select_attempted __attribute__((section(".data"))) = 0;
+volatile U32 probe_mode __attribute__((section(".data"))) = 0;
 
 bool serve_install(U32 request, U32 vtable, U32 op, Stock121PeerSession& session) {
     usb_service::Result& u = usb_service::result;
@@ -299,6 +301,7 @@ bool serve_install(U32 request, U32 vtable, U32 op, Stock121PeerSession& session
 // chip's partition register addresses: no engine request, no window, no state write.
 bool boot_selected() {
 #if defined(XYF_USB_SERVICE)
+    if (probe_mode) return true;
     return selected_partition != 0 || select_attempted != 0;
 #else
     return false;
@@ -421,6 +424,7 @@ void close_between(cold_storage::Stock121ReadOnlySession& storage) {
 }
 #endif
 
+#include "storage_server_boot_probe.ipp"              // #7: read-only raw requests and fixed RAM snapshot
 #include "storage_server_marker.ipp"                  // the marker checks, rename_now
 
 #include "storage_server_engine.ipp"                  // serve_engine: every request in the engine
@@ -429,8 +433,12 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
     Result& r = result;
     cold_storage::Stock121ReadOnlySession& storage = *static_cast<cold_storage::Stock121ReadOnlySession*>(context);
     ++r.requests;
-    latch(session);
     const U32 vtable = word(request), op = byte(request + 5);
+#if defined(XYF_USB_SERVICE)
+    if (probe_mode && serve_boot_probe(request, session)) return;
+    if (!probe_mode) {
+#endif
+    latch(session);
 #if defined(XYF_USB_SERVICE)
     if (!install_enabled && session.commands_seen() && (session.last_command() >> 8 & 0xffu) == install_item) {
         usb_service::result.a_identity = usb_service::identity();
@@ -459,6 +467,7 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
     // while a boot partition is selected), except while a writable engine entry is open.
     if (install_enabled && engine != entry_write && engine != entry_run && serve_install(request, vtable, op, session))
         return;
+    }
 #endif
     serve_engine(request, vtable, op, storage, session);
 }
