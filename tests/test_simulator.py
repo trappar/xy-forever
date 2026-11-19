@@ -291,7 +291,8 @@ class SimulatorTest(unittest.TestCase):
         sessions = tempfile.TemporaryDirectory(prefix='simulator-test-', dir=paths.SESSIONS)  # evidence: private only
         try:
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                code = dp.main(argv, sessions=sessions.name)
+                # Its pauses (the write window's settle, screens redrawn) are device time: advanced, not waited.
+                code = dp.main(argv, sessions=sessions.name, sleep=lambda s: self.sim.advance(int(s * 1000)))
         finally:
             host.SIM = None
             sessions.cleanup()
