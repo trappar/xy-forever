@@ -37,6 +37,13 @@ def digest(path):
     return hasher.hexdigest()
 
 
+def location(environ=os.environ):
+    """Where the toolchain is looked for: XYF_TOOLCHAIN, else tools/blackfin beside the main checkout
+    (paths.TOOLCHAIN: ../tools/blackfin in a plain clone, the same folder from any worktree)."""
+    from . import paths
+    return Path(environ['XYF_TOOLCHAIN']) if environ.get('XYF_TOOLCHAIN') else paths.TOOLCHAIN
+
+
 def authenticate(directory=None):
     raw = (ROOT / 'toolchains.json').read_bytes()
     if hashlib.sha256(raw).hexdigest() != PIN_SHA256:
@@ -49,12 +56,10 @@ def authenticate(directory=None):
     if records.get('schema') != 1 or host not in records['hosts']:
         raise ValueError('No authenticated toolchain for ' + host)
     profile = records['hosts'][host]
-    location = directory or os.environ.get('XYF_TOOLCHAIN')
-    if not location:
-        location = ROOT.parent / 'tools/blackfin'
-        if not location.is_dir():
-            raise ValueError('Set XYF_TOOLCHAIN to the external Blackfin toolchain directory')
-    base = Path(location).expanduser().resolve()
+    found = directory or location()
+    if not directory and not os.environ.get('XYF_TOOLCHAIN') and not found.is_dir():
+        raise ValueError('Set XYF_TOOLCHAIN to the external Blackfin toolchain directory')
+    base = Path(found).expanduser().resolve()
     checked = {}
 
     def check(relative, expected):

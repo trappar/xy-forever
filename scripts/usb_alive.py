@@ -18,7 +18,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mtp_probe import DeviceDescriptor, OP_XY_VID, load   # noqa: E402
-from xy_forever import no_device   # noqa: E402
+from xy_forever import device_lock, no_device   # noqa: E402
 
 
 def product(lib, ctx):
@@ -58,6 +58,7 @@ def main(argv=None):
     ap.add_argument('--every', type=float, default=2)
     args = ap.parse_args(argv)
     no_device.refuse('USB (libusb)')
+    device_lock.hold()
     lib = load()
     ctx = ctypes.c_void_p()
     if lib.libusb_init(ctypes.byref(ctx)):

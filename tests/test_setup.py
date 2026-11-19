@@ -208,7 +208,7 @@ class PrivateRoot(unittest.TestCase):
         self.assertEqual(paths.private_root(env, self.config), self.work / 'env')
         self.assertEqual(paths.private_root({}, self.config), self.work / 'mine')
         self.assertEqual(paths.private_root({'XYF_PRIVATE': ''}, self.config), self.work / 'mine')
-        self.assertEqual(paths.private_root({}, self.work / 'absent.json'), (paths.REPO.parent / 'private').resolve())
+        self.assertEqual(paths.private_root({}, self.work / 'absent.json'), (paths.MAIN.parent / 'private').resolve())
 
     def test_config_refuses_a_checkout(self):
         with self.assertRaisesRegex(S.SetupError, 'outside every git checkout'):
@@ -218,7 +218,7 @@ class PrivateRoot(unittest.TestCase):
     def test_init_adds_an_empty_leak_list_and_keeps_other_keys(self):
         S.ensure_leak_patterns(self.config)
         self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})
-        self.assertEqual(paths.private_root({}, self.config), (paths.REPO.parent / 'private').resolve())
+        self.assertEqual(paths.private_root({}, self.config), (paths.MAIN.parent / 'private').resolve())
         self.config.write_text(json.dumps({'private': 'p', 'other': 1}))
         S.ensure_leak_patterns(self.config)
         self.assertEqual(json.loads(self.config.read_text()), {'private': 'p', 'other': 1, 'leak_patterns': []})

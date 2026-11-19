@@ -65,7 +65,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from xy_forever import depth, host_write, library_add, usb_proto as P
+from xy_forever import depth, device_lock, host_write, library_add, usb_proto as P
 from xy_forever.library_add import ID_RE
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr
 from xy_forever.transport import SerialPort, TcpPort, device_ports, sim_address
@@ -424,8 +424,10 @@ def log(message):
 def connect(timeout, hello_every=0.5, hello_window=8.0):
     """Waits for a /dev/cu.usbmodem* port and sends HELLO every hello_every seconds on the same open
     port (the device answers only during its ~6 s service window). Every failed port is closed; the
-    whole wait never exceeds timeout."""
+    whole wait never exceeds timeout. The device lock first (xy_forever/device_lock.py; not for the simulator)."""
     deadline = time.monotonic() + timeout
+    if not SIM:
+        device_lock.hold(timeout)
     seen = None
     while time.monotonic() < deadline:
         port = find_port()

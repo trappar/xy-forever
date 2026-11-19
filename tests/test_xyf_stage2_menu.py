@@ -3,7 +3,6 @@ on the host against a scripted stage 1, stage 1's request decisions (same C++
 as the device), the 32-bit ABI layout (cross compiler), and the builder/source
 rules. No device execution."""
 import ctypes as C
-import os
 from pathlib import Path
 import re
 import struct
@@ -199,7 +198,8 @@ class Stage1DecisionTest(unittest.TestCase):
 
 class Stage2MenuRulesTest(unittest.TestCase):
     def test_device_layout_32_bit(self):
-        gxx = Path(os.environ.get('XYF_TOOLCHAIN') or ROOT.parent / 'tools/blackfin') / 'bin/bfin-elf-g++'
+        from xy_forever import toolchain
+        gxx = toolchain.location() / 'bin/bfin-elf-g++'
         if not gxx.exists():
             self.skipTest('Blackfin toolchain absent')
         with tempfile.TemporaryDirectory() as tmp:

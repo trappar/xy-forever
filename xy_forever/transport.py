@@ -11,7 +11,7 @@ import socket
 import termios
 import time
 
-from xy_forever import no_device
+from xy_forever import device_lock, no_device
 
 WRITE_STALL = 2.0      # seconds a write may make no progress before it is a timeout
 OPEN_LIMIT = 3.0       # seconds SerialPort waits for the port to open before it is a timeout
@@ -19,8 +19,10 @@ _opening = {}          # path: the socket of an open that outlived its wait (the
 
 
 def device_ports():
-    """The OP-XY's CDC ports, sorted; a test run is refused before it looks (xy_forever/no_device.py)."""
+    """The OP-XY's CDC ports, sorted; a test run is refused before it looks (xy_forever/no_device.py). Takes the
+    device lock first (xy_forever/device_lock.py)."""
     no_device.refuse('the serial port (/dev/cu.usbmodem*)')
+    device_lock.hold()
     return sorted(glob.glob('/dev/cu.usbmodem*'))
 
 
@@ -106,6 +108,8 @@ class SerialPort:
     def __init__(self, path, timeout=None):
         self.fd = None
         no_device.refuse_tty(path)
+        if not no_device.PTY.match(path):
+            device_lock.hold()
         timeout = OPEN_LIMIT if timeout is None else timeout
         sock = _opening.pop(path, None) or _opener(path)
         ready, _, _ = select.select([sock], [], [], timeout)

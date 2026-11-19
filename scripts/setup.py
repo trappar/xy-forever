@@ -86,15 +86,20 @@ def inside_checkout(path):
 
 # init
 
+def read_config(config):
+    """The local config's values ({} without one)."""
+    try:
+        return json.loads(Path(config).read_text())
+    except FileNotFoundError:
+        return {}
+
+
 def write_config(private, config=paths.LOCAL_CONFIG):
-    """Record the private folder for this clone (xyf.local.json at the repository root)."""
+    """Record the private folder in xyf.local.json (at the main checkout's root)."""
     private = Path(private).expanduser().resolve()
     if inside_checkout(private):
         raise SetupError('the private folder must be outside every git checkout: %s' % private)
-    try:
-        values = json.loads(Path(config).read_text())                  # keep other keys (leak_patterns)
-    except FileNotFoundError:
-        values = {}
+    values = read_config(config)                                      # keep other keys (leak_patterns)
     values['private'] = str(private)
     Path(config).write_text(json.dumps(values, indent=2) + '\n')
     return private
@@ -102,10 +107,7 @@ def write_config(private, config=paths.LOCAL_CONFIG):
 
 def ensure_leak_patterns(config=paths.LOCAL_CONFIG):
     """Give the local config a "leak_patterns" list (empty) for the developer to fill; keep other keys."""
-    try:
-        values = json.loads(Path(config).read_text())
-    except FileNotFoundError:
-        values = {}
+    values = read_config(config)
     if 'leak_patterns' not in values:
         values['leak_patterns'] = []
         Path(config).write_text(json.dumps(values, indent=2) + '\n')
@@ -141,10 +143,7 @@ def cmd_init(args):
 def private_source():
     if os.environ.get('XYF_PRIVATE'):
         return 'XYF_PRIVATE'
-    try:
-        configured = json.loads(paths.LOCAL_CONFIG.read_text()).get('private')
-    except FileNotFoundError:
-        configured = None
+    configured = read_config(paths.LOCAL_CONFIG).get('private')
     return paths.LOCAL_CONFIG.name if configured else 'default ../private'
 
 
@@ -403,7 +402,7 @@ def cmd_fixtures(args):
 def toolchain_hint():
     return ['`python3 scripts/setup.py bootstrap` downloads open-xy\'s toolchain-1 release into %s (darwin-arm64, '
             'windows-x86_64); linux-x86_64: build it (open-xy docs/build.md "On Linux"), then put it there or set '
-            'XYF_TOOLCHAIN.' % (REPO.parent / TOOLCHAIN_DIR)]
+            'XYF_TOOLCHAIN.' % paths.TOOLCHAIN]
 
 
 def doctor():
@@ -570,8 +569,9 @@ class Bootstrap:
     def __init__(self, workspace=None, repo=REPO, config=None, dry_run=False, environ=os.environ,
                  toolchain_archive=None):
         self.repo = Path(repo).resolve()
-        self.workspace = Path(workspace or self.repo.parent).expanduser().resolve()
-        self.config = Path(config) if config else self.repo / paths.LOCAL_CONFIG.name
+        self.main = paths.main_checkout(self.repo)
+        self.workspace = Path(workspace or self.main.parent).expanduser().resolve()
+        self.config = Path(config) if config else self.main / paths.LOCAL_CONFIG.name
         self.dry_run, self.environ, self.actions = dry_run, environ, []
         self.private_root = None
         self.toolchain_archive = Path(toolchain_archive).expanduser().resolve() if toolchain_archive else None
@@ -583,10 +583,7 @@ class Bootstrap:
             action(*args, **kw)
 
     def settings(self):
-        try:
-            return json.loads(self.config.read_text())
-        except FileNotFoundError:
-            return {}
+        return read_config(self.config)
 
     def run(self):
         require_python()
@@ -615,7 +612,7 @@ class Bootstrap:
         if inside_checkout(root):
             raise SetupError('the private folder must be outside every git checkout: %s' % root)
         print('private folder: %s (%s)' % (root, source))
-        if source.startswith('default') and root != (self.repo.parent / 'private').resolve():
+        if source.startswith('default') and root != (self.main.parent / 'private').resolve():
             self.do('record it in %s (it is not next to this clone)' % self.config.name, self.record_private, root)
         wanted = [root / getattr(paths, name).relative_to(paths.PRIVATE_ROOT) for name in LAYOUT]
         if not (root / paths.STOCK_121.relative_to(paths.PRIVATE_ROOT) / PAIR[0]).is_file():
@@ -635,7 +632,7 @@ class Bootstrap:
             paths = importlib.reload(paths)
 
     def local_files(self):
-        status, single = self.repo / STATUS_INDEX, self.repo / 'docs/STATUS.md'
+        status, single = self.main / STATUS_INDEX, self.main / 'docs/STATUS.md'
         print('%s: %s' % (STATUS_INDEX, 'present' if status.exists() else 'missing (local, gitignored)'))
         if not status.exists():
             if single.exists():                         # the older single local file becomes the folder's index
@@ -679,10 +676,10 @@ class Bootstrap:
         self.toolchain_note(folder)
 
     def workspace_guide(self):
-        if self.workspace not in self.repo.parents:
-            print('workspace AGENTS.md: skipped (%s is not inside the workspace %s)' % (self.repo, self.workspace))
+        if self.workspace not in self.main.parents:
+            print('workspace AGENTS.md: skipped (%s is not inside the workspace %s)' % (self.main, self.workspace))
             return
-        repo = self.repo.relative_to(self.workspace).as_posix()
+        repo = self.main.relative_to(self.workspace).as_posix()
         private = (self.private_root.relative_to(self.workspace).as_posix()
                    if self.workspace in self.private_root.parents else str(self.private_root))
         for name, text in (('AGENTS.md', WORKSPACE_GUIDE % {'repo': repo, 'private': private}),
@@ -698,7 +695,7 @@ class Bootstrap:
         if self.environ.get('XYF_TOOLCHAIN'):
             print('  note: XYF_TOOLCHAIN=%s is set and fails its pins; it wins over %s: unset it'
                   % (self.environ['XYF_TOOLCHAIN'], link))
-        elif self.workspace != self.repo.parent:
+        elif self.workspace != self.main.parent:
             print('  note: this clone is not in %s: set XYF_TOOLCHAIN=%s in every shell that builds' % (self.workspace, link))
 
     def npm(self):
@@ -732,8 +729,8 @@ class Bootstrap:
                       'copy /upgrade/firmware/blackfin/bin/os.ldr, bootloader.ldr and /content/op1_factory.json there '
                       'and run import-stock %s)' % (incoming, incoming),
                       'python3 scripts/setup.py fixtures']
-        where = ('%s (or %s)' % (self.workspace, self.repo) if (self.workspace / 'AGENTS.md').is_file()
-                 and self.workspace in self.repo.parents else str(self.repo))
+        where = ('%s (or %s)' % (self.workspace, self.main) if (self.workspace / 'AGENTS.md').is_file()
+                 and self.workspace in self.main.parents else str(self.main))
         steps.append('Open your agent in %s and say "Continue development".' % where)
         print('\nNext:')
         for n, step in enumerate(steps, 1):

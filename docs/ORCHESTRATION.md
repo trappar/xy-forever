@@ -15,14 +15,14 @@ Without delegation, also do the scoped worker's work below.
 
 ### One sitting
 
-1. Run `python3 scripts/plan.py`; read local `docs/status/README.md`. Setup unfinished:
-   [ONBOARDING.md](../ONBOARDING.md) first.
+1. Run `python3 scripts/plan.py` (`--agent NAME` if another agent works here: [two agents](operating/two-agents.md));
+   read local `docs/status/README.md`. Setup unfinished: [ONBOARDING.md](../ONBOARDING.md) first.
 2. Check `python3 xyf_host.py --timeout 5 status`; ready `kind:device` items go first when connected.
    If the developer says the device is absent, skip the check and device items.
 3. Take the first item under "Yours" (interrupted work), else "Next" (milestone order, then issue
    number). Dependencies are "blocked by" links; listed items have their needs met.
-4. Read `gh issue view <N>` (`--comments` only if the body points there). Claim with
-   `gh issue edit <N> --add-assignee @me`; branch from up-to-date `main`: `git switch -c <N>-<slug>`.
+4. Read `gh issue view <N>` (`--comments` only if the body points there). Claim (with `--agent`: `plan.py claim <N>` first)
+   with `gh issue edit <N> --add-assignee @me`; branch from up-to-date `main`: `git switch -c <N>-<slug>`.
 5. Write the brief below. Start **one** agent, or do its scoped work yourself without delegation.
 6. Confirm the check: `python3 scripts/check.py --confirm <branch>` (seconds, no build). A report's
    "tests pass" counts only with a matching receipt, which records the exhaustive suite, the product

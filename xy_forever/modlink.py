@@ -319,8 +319,7 @@ def selections(generation_dir, subsets=False):
 def cross(folder):
     """Compile the linker sources for the Blackfin with the firmware's flags; returns a report."""
     from . import toolchain
-    tools = Path(toolchain.ROOT.parent / 'tools/blackfin/bin') if not __import__('os').environ.get('XYF_TOOLCHAIN') \
-        else Path(__import__('os').environ['XYF_TOOLCHAIN']) / 'bin'
+    tools = toolchain.location() / 'bin'
     report = dict(sources={}, text_rodata=0)
     for name in SOURCES:
         asm, obj = Path(folder) / (name + '.s'), Path(folder) / (name + '.o')

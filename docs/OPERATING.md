@@ -10,3 +10,4 @@ with the developer at the device. The rules in [SAFETY.md](SAFETY.md) are bindin
 - [Host tool](operating/host-tool.md): `xyf_host.py` and its file commands
 - [At the device](operating/at-the-device.md): taking control of the device, timing, reports, the dev menu, working with the developer at the device
 - [Device items](operating/device-items.md): how the orchestrator runs `kind:device` items: NEED lines, evidence, batching, `safe` and `risky`, two strikes
+- [Two agents at once](operating/two-agents.md): two agents on one machine: worktrees, local claims (`plan.py --agent`), the device lock

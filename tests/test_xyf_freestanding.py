@@ -1,6 +1,5 @@
 """XY Forever device modules compile freestanding with no libc/libgcc calls
 (the cold link provides no memcpy, memset or division helpers)."""
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -52,8 +51,8 @@ def code_bytes(gxx, name, flags, tmp):
 
 
 def compiler():
-    root = os.environ.get('XYF_TOOLCHAIN') or str(ROOT.parent / 'tools/blackfin')
-    path = Path(root) / 'bin/bfin-elf-g++'
+    from xy_forever import toolchain
+    path = toolchain.location() / 'bin/bfin-elf-g++'
     return path if path.exists() else None
 
 

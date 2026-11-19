@@ -38,7 +38,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_host as H  # noqa: E402
-from xy_forever import no_device, usb_proto as P  # noqa: E402
+from xy_forever import device_lock, no_device, usb_proto as P  # noqa: E402
 from xy_forever.paths import SESSIONS  # noqa: E402
 
 T_MTP_USB = 0x62                    # diag.mtp_usb (dev, test build only; usb_service.cpp)
@@ -467,6 +467,7 @@ def main():
     if args.marks_only:
         marks_only()
     no_device.refuse('USB (pyusb)')
+    device_lock.hold()
     try:
         import usb.core
         import usb.util

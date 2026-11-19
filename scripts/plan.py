@@ -3,16 +3,23 @@
 
     python3 scripts/plan.py            yours (in progress), next (unblocked, unassigned), decisions waiting
     python3 scripts/plan.py --all      also blocked items, items taken by others, and threads
+    python3 scripts/plan.py --agent NAME            yours split by local claim: NAME's, another agent's, unclaimed
+    python3 scripts/plan.py claim N --agent NAME    claim item N on this machine; release N drops the claim
 
 Order: milestone (its GitHub number, the roadmap's order), then issue number. An item is an issue with a
 `kind:*` label (its kind; `device:safe` or `device:risky` is shown with it); `blocked` stops it, `thread`
 marks a loose end and `decision` a question I have not decided yet. Needs are GitHub "blocked by" dependencies. The issue number is the item's only name.
-Uses the `gh` CLI (authenticated); docs/ORCHESTRATION.md says how the queue is worked.
+Uses the `gh` CLI (authenticated); docs/ORCHESTRATION.md says how the queue is worked. Claims are local files
+(xy_forever/claims.py; docs/operating/two-agents.md) and never reach GitHub. Without --agent, nothing reads them.
 """
 import argparse
 import json
+from pathlib import Path
 import subprocess
 import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from xy_forever import claims as C  # noqa: E402
 
 
 def fetch():
@@ -41,9 +48,15 @@ def line(f, extra=''):
     return '#%d %s %s%s%s' % (f['number'], f['mkey'], f['title'], ' [%s]' % kind if kind else '', extra)
 
 
-def queue(issues, me, everything=False):
+def queue(issues, me, everything=False, agent=None, held=None, stale=lambda claim: False):
+    """The plan's lines. With agent: the items held (local claims: {number: claim}) by agent, by another agent
+    and the rest; stale(claim) marks a claim whose branch has gone quiet."""
     rows = sorted((fields(i) for i in issues), key=lambda f: (f['milestone'], f['number']))
     items = [f for f in rows if f['kinds'] and not f['labels'] & {'thread', 'decision'}]
+    held = held if agent else {}
+    ours = [f for f in items if f['number'] in held and held[f['number']].get('agent') == agent]
+    theirs = [f for f in items if f['number'] in held and f not in ours]
+    items = [f for f in items if f['number'] not in held]
     mine = [f for f in items if me in f['assignees']]
     others = [f for f in items if f['assignees'] and me not in f['assignees']]
     free = [f for f in items if not f['assignees']]
@@ -57,7 +70,17 @@ def queue(issues, me, everything=False):
         out.append('%s (%d)' % (title, len(fs)))
         out.extend('  ' + line(f, extra(f)) for f in fs)
 
-    section('Yours, in progress', mine)
+    def claimed(f):
+        c = held[f['number']]
+        return ' (%s%s)' % (c['agent'] if c['agent'] != agent else c.get('branch') or '-',
+                            ', stale: no commits for 2 days' if stale(c) else '')
+
+    if agent:
+        section('Yours, in progress (claimed by %s)' % agent, ours, claimed)
+        section('Yours, unclaimed: interrupted, claimable', mine)
+        section('Claimed by another agent: leave these', theirs, claimed)
+    else:
+        section('Yours, in progress', mine)
     section('Next: unblocked, unassigned', ready)
     section('Decisions waiting for me', decisions)
     if everything:
@@ -73,9 +96,40 @@ def queue(issues, me, everything=False):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--all', action='store_true', help='also blocked items, items taken by others, threads')
+    ap.add_argument('--agent', help='your agent name (%s): split your items by local claim' % ', '.join(C.AGENTS))
+    sub = ap.add_subparsers(dest='command')
+    c = sub.add_parser('claim', help='claim item N for --agent NAME on this machine (a local file, never on GitHub)')
+    c.add_argument('number', type=int)
+    c.add_argument('--agent', required=True)
+    r = sub.add_parser('release', help="drop the local claim on item N (with --agent: only that agent's)")
+    r.add_argument('number', type=int)
+    r.add_argument('--agent')
     args = ap.parse_args(argv)
-    issues, me = fetch()
-    print('\n'.join(queue(issues, me, args.all)))
+    try:
+        if args.command == 'claim':
+            got = C.claim(args.number, C.check_agent(args.agent))
+            print('#%d claimed by %s (branch %s, %s)' % (args.number, got['agent'], got['branch'] or '-',
+                                                        got['worktree']))
+            return 0
+        if args.command == 'release':
+            got = C.release(args.number, args.agent)
+            print('#%d released (%s)' % (args.number, got['agent']) if got else '#%d was not claimed' % args.number)
+            return 0
+        if args.agent:
+            C.check_agent(args.agent)
+        issues, me = fetch()
+        if args.agent:
+            held = C.load()
+            gone = C.sweep(held, open_issues={i['number'] for i in issues})
+    except C.ClaimError as error:
+        print('refused: %s' % error, file=sys.stderr)
+        return 1
+    if not args.agent:
+        print('\n'.join(queue(issues, me, args.all)))
+        return 0
+    print('\n'.join(queue(issues, me, args.all, args.agent, held, C.stale)))
+    for number, claim, why in gone:
+        print('Released #%d (%s): %s' % (number, claim['agent'], why))
     return 0
 
 
