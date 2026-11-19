@@ -33,7 +33,8 @@ bool put_running() { return uploading(); }
 bool mtp_busy() {                                                        // an operation in flight, or the leave's closes
     if (!mtp_on) return false;
     const U32 stage = mslot().stage;
-    return stage == ms::st_leaving || stage == ms::st_closing || (stage == ms::st_running && mslot().responder.busy());
+    return stage == ms::st_leaving || stage == ms::st_closing ||
+           (stage == ms::st_running && (mslot().responder.busy() || mslot().files.write_fd >= 0));   // #144: a write out
 }
 xyf_core::U32 mtp_prepare(void*) {                                                 // before an operation that needs the files
     ms::Session& m = mslot();
@@ -123,6 +124,7 @@ void mtp_pump() {
             ++m.steps; m.progress_ms = now();
             if (now() - start >= mtp_slice_ms) break;
         }
+        if (!m.responder.busy()) ms::collect(m.files);                 // #144: a write left out, MTP idle
         if (m.responder.busy()) {
             if (writes_due) writes_ms = now();                           // A's window stays while operations run
             if (now() - m.progress_ms > mtp_stall_ms) { m.responder.cancel(); ++m.stalls; m.progress_ms = now(); }
@@ -134,7 +136,7 @@ void mtp_pump() {
         while (i != ms::max_open && m.files.open[i] < 0) ++i;
         const mr::FileOps ops = ms::file_ops(m.files);
         if (i != ms::max_open) ops.close(ops.context, m.files.open[i]);  // one request per pass
-        else { m.stage = ms::st_closing; settle_begin(); }               // op 9 when a change opened the window
+        else { ms::collect(m.files); m.stage = ms::st_closing; settle_begin(); }   // op 9 when a change opened it
     } else if (m.stage == ms::st_closing && !closing) {
         m.stage = ms::st_ended;
         mtp_say(true);

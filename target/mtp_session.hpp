@@ -47,6 +47,8 @@ struct Files {
     uint32_t link, window, writing, last_change_ms, requests;
     uint32_t data_requests, data_bytes; // speed (2026-11-15): read and write requests, the bytes they moved
     Timing timing;                      // #144
+    int write_fd;                       // #144: the file of the write left out (file_client::write_start), -1 none
+    uint32_t write_n;                   //   its bytes
     int open[max_open];                 // files the responder holds (closed when the session ends)
     uint8_t open_write[max_open];
     char upload[45];                    // #4: SendObject's temporary file (file_engine::upload_name)
@@ -54,6 +56,9 @@ struct Files {
 };
 void files_init(Files& f, volatile uint32_t* mounted, uint32_t (*on_change)());
 M::FileOps file_ops(Files& f);          // the adapter (context: &f)
+// #144: A's answer to the write left out (write_start), awaited (bounded: change_ms): 0 when it wrote every byte
+// (none left: 0 too), else the failure (M::f_*). The adapter's next write and close call it first.
+int collect(Files& f);
 struct Session {
     M::Responder responder;
     Files files;

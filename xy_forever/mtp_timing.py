@@ -112,21 +112,20 @@ def lines(t, seconds, label):
             text += '  (longest %.0f us)' % (longest * CYCLE_US)
         out.append(text + ('  ' + note if note else ''))
 
-    data_n, data_units = b['reads'] + b['writes'], b['read_units'] + b['write_units']
+    data_units = b['read_units'] + b['write_units']
     if b['writes']:
-        row('B write requests (round trip)', b['writes'], b['write_units'], b['write_max'],
+        row('B write requests (B waits for A)', b['writes'], b['write_units'], b['write_max'],   # left out (#144)
             '%d B each' % (b['write_bytes'] // b['writes']))
     if b['reads']:
         row('B read requests (round trip)', b['reads'], b['read_units'], b['read_max'],
             '%d B each' % (b['read_bytes'] // b['reads']))
     if a is not None:
-        a_units = (a['write_units'] if b['writes'] else 0) + (a['read_units'] if b['reads'] else 0)
         if a['writes']:
             row('  A write executor (storage)', a['writes'], a['write_units'], a['write_max'])
         if a['reads']:
             row('  A read executor (storage)', a['reads'], a['read_units'], a['read_max'])
-        if data_n:
-            row('  link and queues (round trip - A)', data_n, max(0, data_units - a_units))
+        if b['reads']:                                     # writes overlap A's work (#144): reads only
+            row('  link and queues (round trip - A)', b['reads'], max(0, b['read_units'] - a['read_units']))
         row('A idle between requests (< 20 ms)', a['gaps'], a['gap_units'], a['gap_max'])
         row('A other requests', a['others'], a['other_units'])
         for name, (count, units, longest, checks) in (t.get('a_ops') or {}).items():

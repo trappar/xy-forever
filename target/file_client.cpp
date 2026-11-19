@@ -255,14 +255,26 @@ Reply read(int fd, uint8_t* out, uint32_t count) {
     }
     return r;
 }
-Reply write(int fd, const uint8_t* bytes, uint32_t count) {
+// A write request built and submitted (done), or why not.
+Reply write_out(Stock121PeerSession*& session, int fd, const uint8_t* bytes, uint32_t count) {
     if (!count || count > piece_max) return outcome(refused);
-    Stock121PeerSession* session; Reply why;
+    Reply why;
     U32* request = claim(session, why);
     if (!request) return why;
     for (U32 i = 0; i != count; ++i) data()[i] = bytes[i];
     stock<0x889f8c10u, void>(request, 0x2bu, U32(fd), U32(count), data(), U32(count));   // write class (flushes)
-    return send(*session, 0x2b, bound_ms(0x2b, 0));
+    return submit(*session, 0x2b);
+}
+Reply write(int fd, const uint8_t* bytes, uint32_t count) {
+    Stock121PeerSession* session = 0;
+    const Reply s = write_out(session, fd, bytes, count);
+    return s.outcome ? s : await_answer(*session, bound_ms(0x2b, 0));
+}
+Reply write_start(int fd, const uint8_t* bytes, uint32_t count) {
+    if (left_session) return outcome(busy);
+    Stock121PeerSession* session = 0;
+    const Reply s = write_out(session, fd, bytes, count);
+    return leave(session, s, bound_ms(0x2b, 0));                         // left_poll collects it
 }
 Reply a_timing(uint32_t k) { return path_request("/yaffs2", file_engine::op_stat, 0x21, file_engine::timing_tag | (k & 0xffu)); }
 Reply readdir(uint32_t folder, uint8_t* entry) {

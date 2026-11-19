@@ -41,6 +41,7 @@ void files_init(Files& f, volatile uint32_t* mounted, uint32_t (*on_change)()) {
     f.mounted = mounted; f.on_change = on_change;
     f.link = f.window = f.writing = f.last_change_ms = f.requests = f.data_requests = f.data_bytes = 0;
     f.timing = Timing();
+    f.write_fd = -1; f.write_n = 0;
     for (uint32_t i = 0; i != max_open; ++i) { f.open[i] = -1; f.open_write[i] = 0; }
 }
 #if defined(__bfin__) || defined(XYF_SIM)
@@ -182,18 +183,33 @@ int read(void* c, int fd, xyf_core::Byte* out, xyf_core::U32 n) {
     ++f.data_requests; f.data_bytes += uint32_t(r.value);
     return r.value;
 }
+}
+int collect(Files& f) {
+    if (f.write_fd < 0) return 0;
+    const uint32_t n = f.write_n;
+    f.write_fd = -1; f.write_n = 0;
+    Span span(f);
+    const C::Reply r = C::left_poll(true);
+    span.write(r.outcome ? 0 : r.value);
+    if (r.outcome) return fail(f, r);
+    if (r.value < 0 || uint32_t(r.value) != n) return M::f_storage;
+    ++f.data_requests; f.data_bytes += n;
+    return 0;
+}
+namespace {
+// #144: the piece goes out (op 0x2b) and the call returns: B receives the next one while A writes. A's answer is
+// collected at the next write or the close (collect), whose failure fails the upload (#4: then removed).
 int write(void* c, int fd, const xyf_core::Byte* data, xyf_core::U32 n) {
     Files& f = of(c);
+    const int was = collect(f);
+    if (was < 0) return was;
     if (f.link) return M::f_link;
     if (n > C::piece_max) n = C::piece_max;
     f.last_change_ms = xyf::clock::ms();
-    Span span(f);
-    const C::Reply r = C::write(fd, data, n);                      // op 0x2b
-    span.write(r.outcome ? 0 : r.value);
+    const C::Reply r = C::write_start(fd, data, n);                // op 0x2b, left out
     if (r.outcome) return fail(f, r);
-    if (r.value < 0 || uint32_t(r.value) > n) return M::f_storage;
-    ++f.data_requests; f.data_bytes += uint32_t(r.value);
-    return r.value;
+    f.write_fd = fd; f.write_n = n;
+    return int(n);
 }
 int seek(void* c, int fd, xyf_core::U32 offset) {
     Files& f = of(c);
@@ -204,6 +220,7 @@ int seek(void* c, int fd, xyf_core::U32 offset) {
 }
 int close(void* c, int fd) {
     Files& f = of(c);
+    const int was = collect(f);                                     // the last piece's answer first
     const Call span(f);
     bool wrote = false;
     for (uint32_t i = 0; i != max_open; ++i)
@@ -213,9 +230,9 @@ int close(void* c, int fd) {
         }
     if (wrote) f.last_change_ms = xyf::clock::ms();
     if (f.link) return M::f_link;
-    const C::Reply r = C::close(fd);                               // op 0x2d
+    const C::Reply r = C::close(fd);                               // op 0x2d (also after a failed piece)
     if (r.outcome) return fail(f, r);
-    return r.value ? M::f_storage : 0;
+    return was < 0 ? was : r.value ? M::f_storage : 0;
 }
 int change(void* c, uint32_t op, const char* path) {
     Files& f = of(c);

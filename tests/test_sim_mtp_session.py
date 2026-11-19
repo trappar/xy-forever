@@ -242,6 +242,35 @@ class MtpSessionTests(unittest.TestCase):
         self.assertIn('A read executor', text)
         self.assertNotIn('A write executor', text)
 
+    def test_a_failed_piece_fails_the_upload_at_the_next_write_or_the_close(self):
+        """#144: B leaves each piece's write out and collects A's answer at the next write or the close. A piece that
+        A failed (the first: seen at the second write; the last: seen only at the close) fails SendObject: the old
+        file stays under its name, no upload is left in tmp/, and the next upload and serial commands work."""
+        self.enter()
+        self.opened()
+        user = self.folder('user')
+        (self.root / 'user/keep.bin').write_bytes(b'old contents')
+        names = self.c.named(user)
+        body = random.Random(11).randbytes(3 * 4096 + 100)                  # four pieces of at most 4 KiB
+        for failing in (1, 4):                                              # the first piece, the last
+            self.sim.set('fail_write', failing)
+            code, params, _ = self.c.transaction(0x100C, R.STORAGE, user,
+                                                 data=R.object_info('keep.bin', len(body), parent=user))
+            self.assertEqual(code, R.OK, hex(code))
+            self.assertNotEqual(self.c.transaction(0x100D, data=body)[0], R.OK, failing)
+            self.assertEqual(self.sim.status()['fail_write'], 0, failing)   # the fault was reached
+            self.assertEqual((self.root / 'user/keep.bin').read_bytes(), b'old contents', failing)
+            self.assertEqual(sorted(p.name for p in (self.root / 'xy-forever/tmp').iterdir()), [], failing)
+            self.assertEqual(self.c.state()['busy'], 0)                     # nothing left out
+        self.assertEqual(self.file_command(), P.S_OK)
+        code, params, _ = self.c.transaction(0x100C, R.STORAGE, user, data=R.object_info('keep.bin', len(body),
+                                                                                          parent=user))
+        self.assertEqual(code, R.OK, hex(code))
+        self.assertEqual(self.c.transaction(0x100D, data=body)[0], R.OK)
+        self.assertEqual((self.root / 'user/keep.bin').read_bytes(), body)
+        self.assertIn('keep.bin', names)
+        self.leave()
+
     def test_depth_rule(self):
         """#124: SendObjectInfo makes a file in the 6th folder below /yaffs2 but no folder there (Access_Denied, nothing
         made, as for a file in a 7th folder made by hand); an older deep file still deletes."""

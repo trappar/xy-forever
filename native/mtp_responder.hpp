@@ -35,7 +35,9 @@ static const U32 max_name = 254;                         // UTF-8 bytes of one n
 struct Entry { U32 kind; U32 size; char name[max_name + 2]; };   // kind 0 file, 1 folder, 2 other
 // The storage calls, shaped like processor B's file client (target/file_client.hpp): one page of a
 // folder (entries after skip, each with its stat; more = 1 when the folder goes on), stat, statfs,
-// open/read/write/seek/close (read, write <= chunk bytes), mkdir, unlink, rmdir, rename.
+// open/read/write/seek/close (read, write <= chunk bytes), mkdir, unlink, rmdir, rename. #144: a write may return
+// before the bytes are stored (B's adapter leaves the request out); its failure then comes from the next write or
+// the close, and SendObject fails (the upload removed) when the close fails.
 struct FileOps {
     void* context;
     int (*list)(void* context, const char* folder, U32 skip, Entry* out, U32 room, U32& count, U32& more);

@@ -33,7 +33,12 @@ bool Responder::send_object() {
     }
     if (stage == 2) {
         stage = 3;
-        if (fd >= 0) { ops.close(ops.context, fd); fd = -1; return true; }
+        if (fd >= 0) {                                            // #144: the last piece's answer comes with it
+            const int r = ops.close(ops.context, fd);
+            if (r < 0 && !failed) failed = r == f_refused ? r_access_denied : r_store_full;
+            fd = -1;
+            return true;
+        }
     }
     if (stage == 3 && opened) {                                   // onto its name, or removed
         opened = 0;

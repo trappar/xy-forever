@@ -98,6 +98,9 @@ Reply unmount_poll();
 // answer, kept or as unmount_poll (wait: awaited up to its bound); left_out: one is left.
 Reply left_poll(bool wait);
 bool left_out();
+// #144: write (op 0x2b) left out: B's loop goes on (USB, the next piece) while A writes; left_poll collects A's
+// answer (the next write_start waits for it through its claim). busy while one is left.
+Reply write_start(int fd, const uint8_t* data, uint32_t count);     // count <= piece_max
 // 193: op 0x26 (mkdir; EEXIST is fine) without waiting in it: A's first change opens its read-write window,
 // which after an unclean shutdown may take seconds; unmount_poll (the same slot, bound change_ms) ends it.
 Reply mkdir_start(const char* path);
