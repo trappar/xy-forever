@@ -233,6 +233,8 @@ class Session:
     def collect(self):
         # Complete, strict reachability snapshot first. A malformed/newer list
         # aborts before any deletion; the session prevents concurrent mutation.
+        if self.read(ROOT + "/job.txt", optional=True) is not None or self.read(ROOT + "/job.old", optional=True) is not None:
+            return 0  # unresolved intent retains every content blob until replay or undo completes
         keep = self.references()
         removed = 0
         for kind, _, name in self.entries(BLOBS):

@@ -321,16 +321,8 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.cont(0)
         self.cut(cuts)
         self.assertEqual(self.config()['mods'], '')                        # the record: still all off
-        record = self.record()                                             # switching, or only its .old
-        self.assertTrue(record.startswith('state=switching') if record else
-                        (self.root / 'xy-forever/content-state.old').exists(), record)
-        seen = len(self.lines('menu (home): '))
-        self.sim.control('power plain')                                    # nothing boots: the menu says why
-        self.sim.wait_listening(30.0)
-        self.reconnect()
-        self.assertEqual(self.dev.hello()[0], 0)
-        self.wait_log(lambda: len(self.lines('menu (home): ')) > seen, 'the menu')
-        self.assertIn('content needs repair', self.lines('menu (home): ')[-1])
+        self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'automatic content replay')
+        self.assertTrue(self.record().startswith('state=installed'), self.record())
         self.wait_log(lambda: '(to apply) pending=1' in self.home(), 'the record to apply')
         self.cont(0)                                                       # Save again: the saved one, repaired
         self.assertEqual(self.booted(), self.base)
@@ -348,13 +340,18 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.sim.set('a_slow_ms', 0)
         self.cut(cuts)
         self.assertEqual(self.config()['mods'], 'alpha')                   # the new record, the old default
-        self.assertEqual(self.disk_default(), self.base)
-        self.wait_log(lambda: '(to apply) pending=1' in self.home(), 'the record to apply')
+        self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'journal/default completion')
+        self.assertEqual(self.disk_default(), a)
+        self.wait_log(lambda: 'pending=0' in self.home(), 'the completed saved configuration')
         since = len(self.pages())
-        self.cont(0)
+        self.cont(dialog=False)
         self.assertEqual(self.booted(), a)
         self.assertFalse(self.built_any(since))
-        self.saved_as(a, ['alpha'])
+        self.assertEqual(self.config()['mods'], 'alpha')
+        self.assertEqual(CS.content(self.root), self.expected(a))
+        self.assertTrue(self.record().startswith('state=installed\nentry=%s\n' % a))
+        # The cut was before config.old cleanup. Its surviving old copy is harmless; no config rewrite was needed.
+        self.assertTrue((self.root / 'xy-forever/config.old').exists())
 
     def test_a_selection_that_cannot_be_saved(self):
         self.change(['ext-cap'])                                           # an extension alone

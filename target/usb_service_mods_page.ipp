@@ -1,7 +1,7 @@
 // Part of usb_service.cpp, included there at this point: not compiled alone.
 uint32_t page_serving() { return a_serving() ? uint32_t(P::s_ok) : uint32_t(P::s_link); }
 volatile uint32_t& page_mount() { return mounted; }
-bool page_busy() { stop_idle_gc(); return boot_probe_active() || job_running() || closing XYF_OR_MTP_BUSY; }
+bool page_busy() { stop_idle_gc(); return boot_probe_active() || recovery_pending || job_running() || closing XYF_OR_MTP_BUSY; }
 void save_log_begin() { xl::begin(save_times, xl::k_save, now(), xl::p_list); save_active = 1; }
 void save_log_selection(uint32_t mods, bool expanded, uint32_t added, uint32_t removed) {
     if (!save_active) return;
@@ -53,7 +53,7 @@ uint32_t job_stop() {                                                   // as jo
 #if defined(XYF_CONTENT_SWITCH)
 const char* content_default(uint32_t entry) {                            // the menu's SHIFT+PLAY
     const xyf::catalog::Catalog* catalog = xyf_boot::catalog();
-    if (!catalog || entry >= catalog->count || !(catalog->items[entry].flags & xyf::catalog::flag_content_missing))
+    if (!catalog || entry >= catalog->count || (!(catalog->items[entry].flags & xyf::catalog::flag_content_missing) && !content_pending(catalog->items[entry].id)))
         return 0;
     if (!menu_usb) return "Content switch: needs USB on in the menu.";
     const U32 code = content_begin(catalog->items[entry].id, true);
@@ -95,6 +95,15 @@ uint32_t settings_store() {
 const char* job_target() { return slot().target; }
 const char* content_line() {
     ContentSlot& c = cslot();
+    static U32 offer_shown __attribute__((section(".data"))) = 0;
+    if (!recovery_offer) offer_shown = 0;
+    if (recovery_offer && offer_shown != recovery_offer) {
+        const char* message = recovery_offer == 3 ? "Content journal: newer version; kept unchanged." :
+                              recovery_offer == 2 ? "Content journal invalid; kept unchanged." : "Source missing. Set default to undo: ";
+        content_text(c, message, recovery_offer == 1 ? recovery_record.previous : "");
+        offer_shown = recovery_offer;
+        return c.line;
+    }
     if (job_kind != 1 || c.line_seq == content_line_shown) return 0;
     content_line_shown = c.line_seq;
     return c.line;

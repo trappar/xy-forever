@@ -81,6 +81,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "xyf_blob_gc.hpp"
 #include "xyf_save_log.hpp"           // #27: the save-time log
 #if defined(XYF_CONTENT_SWITCH)
+#include "xyf_job_journal.hpp"
 #include "xyf_content_job.hpp"
 #include "xyf_config.hpp"           // the saved configuration (the config job)
 #include "xyf_settings.hpp"         // #21: settings.txt (through the config job), the confirm gate
@@ -104,6 +105,7 @@ bool boot_probe_active();
 #include "usb_service_mod_job.ipp"          // the mod assembly job on B
 #include "usb_service_save_log.ipp"         // the save-time log
 #include "usb_service_content.ipp"          // the content switch and config jobs
+#include "usb_service_recovery.ipp"         // durable content intent, menu/service startup only
 #include "usb_service_mtp_session.ipp"      // the MTP session (with XYF_SIM it leaves this namespace for one declaration)
 #include "usb_service_mods_apply.ipp"       // MODS_APPLY
 }
@@ -111,6 +113,7 @@ namespace xy_forever { namespace usb_service {      // the Mods page's hooks (us
 #include "usb_service_mods_page.ipp"        // the Mods page's hooks
 } }
 namespace {
+#include "usb_service_reports.ipp"
 #include "usb_service_package_session.ipp"
 #include "usb_service_job_status.ipp"       // JOB_STATUS, JOB_CANCEL
 #include "usb_service_boot_probe.ipp"       // #7: read-only boot-partition diagnostic

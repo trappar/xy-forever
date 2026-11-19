@@ -132,6 +132,7 @@ Reply seek(int fd, int offset);                                     // SEEK_SET
 Reply close(int fd);
 Reply mkdir(const char* path);
 Reply stat(const char* path, uint8_t* record);                      // record_bytes
+Reply free_space(const char* path, uint8_t* bytes);                 // existing query 0x31, eight bytes
 Reply statfs(const char* path, uint8_t* space);                     // space_bytes
 Reply opendir(const char* path);
 Reply readdir(uint32_t folder, uint8_t* entry);                     // entry_bytes
