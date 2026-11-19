@@ -78,9 +78,24 @@ U32 crc(U32 address, U32 count) {
 }
 
 Reply outcome(uint32_t o) { const Reply r = {o, -1, 0}; return r; }
+// #144: the one request the client leaves out for its owner to collect (unmount_start, mkdir_start, write_start):
+// its session, when it left and its bound (left_session 0: none). Any other request's claim collects it first
+// (link_claim waits, bounded, for the slot) and keeps its answer here (left_kept) until the owner asks: the slot
+// and B's copy of the last answer (xyf_boot::link_answer) are reused by the next request.
+Stock121PeerSession* volatile left_session __attribute__((section(".data"))) = 0;
+volatile U32 left_start __attribute__((section(".data"))) = 0;
+volatile U32 left_bound __attribute__((section(".data"))) = 0;
+volatile U32 left_kept __attribute__((section(".data"))) = 0;
+volatile uint32_t left_value __attribute__((section(".data"))) = 0;
+volatile uint32_t left_error __attribute__((section(".data"))) = 0;
 // The session with its slot free and a zeroed request object, or why not.
 U32* claim(Stock121PeerSession*& session, Reply& why) {
-    session = xyf_boot::link_claim();
+    session = xyf_boot::link_claim();                   // an outstanding request first (bounded: answer_ms)
+    if (session && left_session && !left_kept && !session->filing()) {   // the left one answered: kept for its owner
+        uint32_t value, error;
+        xyf_boot::link_answer(value, error);
+        left_value = value; left_error = error; left_kept = 1;
+    }
     U32* request = session ? session->request_slot() : 0;
     if (!request) why = outcome(xyf_boot::link_lost() ? lost : busy);
     return request;
@@ -104,10 +119,9 @@ Reply answer(Stock121PeerSession& session, U32 start, U32 bound) {
     if (!xyf_boot::link_step()) return outcome(lost);
     return outcome(xyf_boot::clock_ms() - start > bound ? link : busy);
 }
-// Wait for A's answer to the request that just left, at most bound ms.
-Reply await_answer(Stock121PeerSession& session, U32 bound) {
+// Wait for A's answer to the request that left at start (default: just now), at most bound ms after it.
+Reply await_answer(Stock121PeerSession& session, U32 bound, U32 start = xyf_boot::clock_ms()) {
     const key_ui::Where where(xyf::where::file_answer);
-    const U32 start = xyf_boot::clock_ms();
     for (;;) {
         const Reply r = answer(session, start, bound);
         if (r.outcome != busy) return r;
@@ -145,9 +159,11 @@ Reply partition(U32 op, U32 a0, U32 a1, U32 a2) {
     const Reply s = partition_out(session, op, a0, a1, a2);
     return s.outcome ? s : await_answer(*session, bound_ms(op, a0));
 }
-// The op 9 left by unmount_start (its session and when it left; 0: none).
-Stock121PeerSession* volatile closing_session __attribute__((section(".data"))) = 0;
-volatile U32 closing_start __attribute__((section(".data"))) = 0;
+// A request built and submitted, left out for its owner (left_poll), or why not (busy: one is left already).
+Reply leave(Stock121PeerSession* session, const Reply& submitted, U32 bound) {
+    if (!submitted.outcome) { left_session = session; left_start = xyf_boot::clock_ms(); left_bound = bound; left_kept = 0; }
+    return submitted;
+}
 // A path-class request (the only call site of its builder, behind the policy check). left: only
 // submitted (*left: its session; the caller polls the answer), else A's answer awaited. sent: the bytes that go
 // instead of path (rename_upload's, file_engine::join_upload; path is its target, checked).
@@ -188,24 +204,29 @@ uint32_t identity() {
 
 Reply mount() { return partition(8, 0, 0, 0); }
 Reply unmount() { return partition(9, 0, 0, 0); }
-Reply unmount_start() {
-    Stock121PeerSession* session = 0;
-    const Reply s = partition_out(session, 9, 0, 0, 0);
-    if (!s.outcome) { closing_session = session; closing_start = xyf_boot::clock_ms(); }
-    return s;
-}
-Reply unmount_poll() {
-    Stock121PeerSession* session = closing_session;
+bool left_out() { return left_session != 0; }
+Reply left_poll(bool wait) {
+    Stock121PeerSession* session = left_session;
     if (!session) return outcome(refused);
-    const Reply r = answer(*session, closing_start, bound_ms(9, 0));
-    if (r.outcome != busy) closing_session = 0;
+    Reply r;
+    if (left_kept) { r.outcome = done; r.value = int32_t(left_value); r.error = left_error; }
+    else if (wait) r = await_answer(*session, left_bound, left_start);
+    else r = answer(*session, left_start, left_bound);
+    if (r.outcome != busy) { left_session = 0; left_kept = 0; }   // past its bound (link): out, no owner now
     return r;
 }
+Reply unmount_start() {
+    if (left_session) return outcome(busy);
+    Stock121PeerSession* session = 0;
+    const Reply s = partition_out(session, 9, 0, 0, 0);
+    return leave(session, s, bound_ms(9, 0));
+}
+Reply unmount_poll() { return left_poll(false); }
 Reply mkdir_start(const char* path) {
+    if (left_session) return outcome(busy);
     Stock121PeerSession* session = 0;
     const Reply s = path_request(path, file_engine::op_mkdir, 0x26, 0, &session);   // as mkdir, not awaited
-    if (!s.outcome) { closing_session = session; closing_start = xyf_boot::clock_ms(); }   // unmount_poll's slot
-    return s;
+    return leave(session, s, bound_ms(9, 0));                            // collected by unmount_poll
 }
 Reply seek(int fd, int offset) { return partition(0x2c, U32(fd), U32(offset), 0); }
 Reply close(int fd) { return partition(0x2d, U32(fd), 0, 0); }

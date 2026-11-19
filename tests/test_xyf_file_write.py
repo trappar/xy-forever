@@ -150,7 +150,8 @@ class FileWriteSourceTest(unittest.TestCase):
         for name in ('Reply send(Stock121PeerSession& session', 'Reply partition(U32 op'):
             body = client[client.index(name):]
             self.assertIn('await_answer(', body[:body.index('\n}\n')])
-        self.assertIn('answer(*session, closing_start, bound_ms(9, 0))', client)
+        self.assertIn('else r = answer(*session, left_start, left_bound);', client)    # unmount_poll (#144: left_poll)
+        self.assertIn('return leave(session, s, bound_ms(9, 0));', client)
 
     def test_b_handler_order_and_the_staged_sha(self):
         h = self.usb[self.usb.index('void file_write(uint8_t seq'):]

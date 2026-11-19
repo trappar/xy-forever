@@ -92,6 +92,12 @@ Reply unmount();
 // the request stays out, as any request past its bound) or lost. refused: none was started.
 Reply unmount_start();
 Reply unmount_poll();
+// #144: the client leaves at most one request out for its owner (unmount_start, mkdir_start: busy while one is
+// left). Every other request collects it first (its claim waits, bounded, for the slot) and keeps its answer
+// for the owner, so neither the slot's reuse nor the next answer can take it. left_poll: the left request's
+// answer, kept or as unmount_poll (wait: awaited up to its bound); left_out: one is left.
+Reply left_poll(bool wait);
+bool left_out();
 // 193: op 0x26 (mkdir; EEXIST is fine) without waiting in it: A's first change opens its read-write window,
 // which after an unclean shutdown may take seconds; unmount_poll (the same slot, bound change_ms) ends it.
 Reply mkdir_start(const char* path);
