@@ -18,6 +18,8 @@ from xy_forever.ldr import parse_ldr, validate_memory
 from xy_forever.stage2_audit import STAGE2_ENTER, STAGE2_LITERALS as S2_LITERALS, STAGE2_WINDOW, \
     check_stage2_image, stage2_enter_sites
 from xy_forever.probe_report import report_only_fixture
+from xy_forever.otp_audit import (function_bodies, referencing_symbols, loaded_values,
+                                  functions_loading, rom_references, check_otp_rules, check_otp_data)
 from xy_forever import release, usb_proto, xyf_stage2 as S2
 
 # Layout names (historical): "reporter" is the small program added to the stock OS
@@ -420,96 +422,6 @@ def functions_referencing(listing, address):
     return names
 
 
-def function_bodies(listing):
-    """{function label: [its lines]} of an objdump listing."""
-    bodies, current = {}, None
-    for line in listing.splitlines():
-        m = re.match(r'^[0-9a-f]{8} <(.+)>:$', line)
-        if m:
-            current = m.group(1)
-            bodies[current] = []
-        elif current is not None:
-            bodies[current].append(line)
-    return bodies
-
-
-def referencing_symbols(listing, part):
-    """Functions that call, jump to or load the address of a function whose label contains part,
-    other than such functions themselves (a branch inside one is not a reference)."""
-    users = set()
-    for name, lines in function_bodies(listing).items():
-        if part in name:
-            continue
-        if any(re.search(r'<[^>]*%s[^>]*>' % re.escape(part), line) for line in lines):
-            users.add(name)
-    return users
-
-
-HALF = re.compile(r'\b([pr][0-7])\.([hl]) = (?:0x)?([0-9a-f]+);')
-ASSIGN = re.compile(r'\b([pr][0-7])(?:\.[hl])? =')
-
-
-def loaded_values(lines):
-    """32-bit constants a function body builds in a register from its two 16-bit halves (in either
-    order, in straight-line code, nothing else written to the register between). objdump's own =0x comment
-    cannot be used: on the first half it shows the register's stale other half, and it drops
-    leading zeros (P2=0x4000048)."""
-    values, halves = set(), {}
-    for line in lines:
-        code = (line.split('\t')[2] if line.count('\t') >= 2 else '').split('/*')[0].lower()
-        if re.search(r'\b(?:jump|call|rts|rti)\b', code):
-            halves = {}                                # halves pair up only in straight-line code
-            continue
-        half = HALF.search(code)
-        if half:
-            reg, which, value = half.group(1), half.group(2), int(half.group(3), 16)
-            known = halves.setdefault(reg, {})
-            known[which] = value & 0xffff
-            if len(known) == 2:
-                values.add(known['h'] << 16 | known['l'])
-            continue
-        for reg in ASSIGN.findall(code):
-            halves.pop(reg, None)
-    return values
-
-
-def functions_loading(listing, address):
-    """Function labels whose bodies build the constant address (loaded_values)."""
-    return {name for name, lines in function_bodies(listing).items() if address in loaded_values(lines)}
-
-
-def rom_references(listing):
-    """Boot-ROM addresses the module builds in a register, as 8-digit hex."""
-    found = set()
-    for lines in function_bodies(listing).values():
-        found |= loaded_values(lines)
-    return {'%08x' % a for a in found if BOOT_ROM[0] <= a < BOOT_ROM[1]}
-
-
-def check_otp_rules(raw, symbols, enabled):
-    """tfw.check's OTP provider: the ROM read and init are each loaded by one stock<> wrapper of
-    target/otp_keys.cpp, those wrappers and the init flag are used only inside otp_keys, and the
-    provider's functions are reached only from the tfw.check handler. Without the feature, none of it."""
-    has = lambda text: any(text in name for name in symbols)                  # noqa: E731
-    if not enabled:
-        require(not rom_references(raw) & OTP_CALLS and not has('otp_keys') and not has('tfw_check'),
-                'OTP provider or tfw.check linked without XYF_TFW_CHECK')
-        return
-    for address in (OTP_READ, OTP_INIT):
-        users = functions_loading(raw, address)
-        require(len(users) == 1, 'ROM OTP entry %08x loaded by %d functions' % (address, len(users)))
-        wrapper = next(iter(users))
-        require('8otp_keys' in wrapper and 'stockILj%dE' % address in wrapper,
-                'ROM OTP entry %08x loaded outside otp_keys stock<>: %s' % (address, wrapper))
-        outside = {u for u in referencing_symbols(raw, wrapper) if '8otp_keys' not in u}
-        require(not outside, 'ROM OTP wrapper reached outside otp_keys: ' + ', '.join(sorted(outside)))
-    flag = functions_loading(raw, OTP_INIT_FLAG)
-    require(flag and all('8otp_keys' in n for n in flag), 'OTP init flag used outside otp_keys: ' + ', '.join(sorted(flag)))
-    callers = referencing_symbols(raw, '8otp_keys')
-    require(callers and all('tfw_check' in c for c in callers),
-            'OTP provider reached outside the tfw.check handler: ' + ', '.join(sorted(callers)))
-
-
 def check_scoped_calls(raw, addresses, wrapper, callers, what):
     """Each stock entry in addresses is loaded only by stock<> wrappers whose (mangled) name contains
     wrapper, and every function referencing such a wrapper has a name containing one of callers."""
@@ -861,6 +773,7 @@ def verify(out, stock, boot):
             'Module uses a boot-ROM entry outside 040201c4/04000048/04000054: ' + ', '.join(sorted(rom - ROM_TARGETS)))
     tfw_check = mode in TFW_CHECK_MODES
     check_otp_rules((out / 'module.asm').read_text(), symbols, tfw_check)
+    check_otp_data(elf32((out / 'module.elf').read_bytes())[0], symbols)
     if tfw_check:
         require(OTP_CALLS <= targets, 'tfw.check lacks its ROM OTP calls')
         for needed in ('tfw_check5check', 'verify_header', 'otp_keys10public_key', 'otp_keys7aes_key'):

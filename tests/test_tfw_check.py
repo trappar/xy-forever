@@ -331,11 +331,37 @@ class BuilderRules(unittest.TestCase):
         other = self.listing(caller='__ZN12_GLOBAL__N_19read_fileEhPKhj')
         with self.assertRaisesRegex(ValueError, 'outside the tfw.check handler'):
             builder.check_otp_rules(other, self.symbols(other), True)
+        for caller in ('__ZN12_GLOBAL__N_116tfw_check_escapeEPKcPh',
+                       '__ZN12_GLOBAL__N_113tfw_check_runEPKcPh_extra'):
+            with self.subTest(caller=caller), self.assertRaisesRegex(ValueError, 'outside the tfw.check handler'):
+                listing = self.listing(caller=caller)
+                builder.check_otp_rules(listing, self.symbols(listing), True)
         twice = self.listing(extra=[line(0x8ab0f908, 'P3.L = 0x48'), line(0x8ab0f90c, 'P3.H = 0x400')])
         with self.assertRaisesRegex(ValueError, 'loaded by 2 functions'):
             builder.check_otp_rules(twice, self.symbols(twice), True)
         plain = '8ab00000 <__ZN12_GLOBAL__N_19read_fileEhPKhj>:\n' + line(0x8ab00000, 'RTS') + '\n'
         builder.check_otp_rules(plain, self.symbols(plain), False)
+
+    def test_old_reader_cannot_be_linked_in_any_mode(self):
+        from xy_forever.otp_audit import OLD_READERS
+        good = self.listing()
+        for name in OLD_READERS:
+            for enabled in (False, True):
+                with self.subTest(name=name, enabled=enabled), self.assertRaisesRegex(ValueError, 'Old update-key'):
+                    builder.check_otp_rules(good, {**self.symbols(good), name: {}}, enabled)
+
+    def test_data_pointers_cannot_bypass_the_instruction_audit(self):
+        symbol = '__ZN10xy_forever8otp_keys10public_keyEPvPh'
+        symbols = {symbol: dict(value=0x8ab0f7ac, size=12, type=2)}
+        for section in ('.data', '.rodata'):
+            def data(*values):
+                return {section: dict(address=0x8ab10000, data=struct.pack('<%dI' % len(values), *values))}
+            for value in (0x04000000, 0x04000048, 0x0400004c, 0x04000050, 0x04000054, 0x040001fc,
+                          0x8ab0f7ac, 0x8ab0f7ae, 0x8ab0f7b7):
+                with self.subTest(section=section, value=hex(value)), self.assertRaises(ValueError):
+                    builder.check_otp_data(data(0, value), symbols)
+            builder.check_otp_data(data(0, 0x03ffffff, 0x04000200, 0x040201c4, 0x8ab0f7ab, 0x8ab0f7b8), symbols)
+        builder.check_otp_data({}, symbols)
 
     def test_sources(self):
         keys = (ROOT / 'target/otp_keys.cpp').read_text()
