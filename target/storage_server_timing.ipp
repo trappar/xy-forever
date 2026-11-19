@@ -26,6 +26,7 @@ bool window_now() { return window_open != 0; }
 #else
 bool window_now() { return false; }
 #endif
+#include "storage_server_tfw_probe.ipp"
 U32 op_slot(U32 op, U32 argument) {                          // file_client's op numbers
     using namespace file_engine;
     switch (op) {
@@ -69,6 +70,7 @@ bool timing_query(U32 request, Stock121PeerSession& session) {
 // The serve hook: serve() timed.
 void timed_serve(void* context, U32 request, Stock121PeerSession& session) {
     const uint64_t start = xyf::clock::cycles();
+    if (tfw_probe_query(context, request, session)) return;
     if (boot_probe_query(request, session)) return;
     if (timing_query(request, session)) return;
     const U32 vtable = word(request), op = byte(request + 5), argument = word(request + 8);

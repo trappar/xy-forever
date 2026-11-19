@@ -27,24 +27,6 @@ int check_read(void* context, U32 offset, uint8_t* out, U32 count) {
     }
     return int(done);
 }
-__attribute__((noinline)) U32 tfw_check_run(const char* path, uint8_t* reply) {
-    CheckFile f = {path, 0, 0};
-    uint32_t got = 0;
-    const U32 code = file_client::read_file(path, 0, true, files, check_window, got, mounted);
-    if (code != P::s_ok) return code;                     // bad_request, refused, not_found, storage
-    f.bytes = got;
-    say("Checking a firmware package...", "Reads the device keys.", "If this stays, power-cycle.");
-    xyf_core::tfw_check::Workspace work;
-    xyf_core::tfw_check::Result r;
-    const xyf_core::tfw_check::File file = {&f, check_read};
-    const xyf_core::tfw_check::Keys keys = {0, otp_keys::public_key, {0, otp_keys::aes_key}};
-    const xyf_core::tfw_check::Reason reason = xyf_core::tfw_check::check(file, keys, work, r);
-    P::put32(reply, reason == xyf_core::tfw_check::Reason::pass ? 0u : 1u);
-    P::put32(reply + 4, U32(reason));
-    for (U32 i = 0; i != 32; ++i) reply[8 + i] = r.public_key_read ? r.public_key_sha256.bytes[i] : 0;
-    say(reason == xyf_core::tfw_check::Reason::pass ? "Package check: pass." : "Package check: fail.");
-    return P::s_ok;
-}
 void tfw_check(uint8_t seq, const uint8_t* payload, U32 length) {
     uint8_t p[4 + 8 + 32];
     for (U32 i = 0; i != sizeof(p); ++i) p[i] = 0;
@@ -53,11 +35,68 @@ void tfw_check(uint8_t seq, const uint8_t* payload, U32 length) {
     U32 code = P::s_ok;
     if (length < 10 || path_bytes + 1 != length || length > storage_server::max_path) code = P::s_bad_request;
     else if (!a_serving()) code = P::s_link;
-    else code = tfw_check_run(reinterpret_cast<const char*>(payload), p + 4);
+    else {
+        CheckFile f = {reinterpret_cast<const char*>(payload), 0, 0};
+        uint32_t got = 0;
+        code = file_client::read_file(f.path, 0, true, files, check_window, got, mounted);
+        f.bytes = got;
+        const xyf_core::tfw_check::File file = {&f, check_read};
+        if (!code) code = tfw_device_check::run(f.path, p + 4, file);
+    }
     P::put32(p, code);
     result.last_status = code;
     send(P::t_tfw_check, seq, p, code == P::s_ok ? sizeof(p) : 4);
 }
+void tfw_check_role(uint8_t seq, const uint8_t* payload, U32 length) {
+    uint8_t reply[52] = {};
+    U32 code = P::s_bad_request;
+    const U32 role = length >= 8 ? P::get32(payload + 4) : ~0u;
+    U32 path_bytes = 8;
+    while (path_bytes < length && payload[path_bytes]) ++path_bytes;
+    if (length >= 8 && P::get32(payload) != tfw_role_probe::version) code = P::s_unsupported;
+    else if (length >= 18 && length <= 248 && role <= 1 && path_bytes + 1 == length) {
+        const char* path = reinterpret_cast<const char*>(payload + 8);
+#if defined(XYF_USB_FILE_WRITE)
+        stop_idle_gc();
+        if (boot_probe_active() || job_running() || uploading() || closing XYF_OR_MTP_BUSY) code = P::s_busy;
+        else if (writes_due) { settle_begin(); code = P::s_busy; }
+        else
+#endif
+        if (!storage_server::valid_path(path)) code = P::s_bad_request;
+        else if (!a_serving()) code = P::s_link;
+        else {
+            // Close B's file handles before A takes exclusive ownership of its read-only session.
+            const file_client::Reply closed = file_client::unmount();
+            code = closed.outcome ? file_client::status(closed.outcome) :
+                   closed.value != 1 && closed.value != 3 ? U32(P::s_storage) : U32(P::s_ok);
+            if (!code) {
+                mounted = 0;
+                const file_client::Reply version = file_client::tfw_probe(path, 0);
+                code = version.outcome ? file_client::status(version.outcome) :
+                       version.value != int32_t(tfw_role_probe::version) || version.error ?
+                       U32(P::s_unsupported) : U32(P::s_ok);
+            }
+            if (!code && !role) {
+                const file_client::Reply checked = file_client::tfw_probe(path, 1);
+                code = checked.outcome ? file_client::status(checked.outcome) :
+                       checked.error != tfw_role_probe::version ? U32(P::s_unsupported) : U32(checked.value);
+                for (U32 k = 0; !code && k != 5; ++k) {
+                    const file_client::Reply word = file_client::tfw_probe(path, 2 + k);
+                    if (word.outcome) code = file_client::status(word.outcome);
+                    else { P::put32(reply + 12 + 8 * k, U32(word.value)); P::put32(reply + 16 + 8 * k, word.error); }
+                }
+            } else if (!code) {
+                CheckFile f = {path, 0, 0};
+                const xyf_core::tfw_check::File file = {&f, check_read};
+                code = tfw_device_check::run(path, reply + 12, file);
+            }
+        }
+    }
+    P::put32(reply, code); P::put32(reply + 4, tfw_role_probe::version); P::put32(reply + 8, role);
+    result.last_status = code;
+    send(P::t_tfw_check_role, seq, reply, code == P::s_ok ? sizeof(reply) : 4);
+}
+
 #endif
 
 // INSTALL / UNINSTALL: payload = 32-byte confirm token = SHA-256 of the

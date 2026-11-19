@@ -86,7 +86,8 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "xyf_settings.hpp"         // #21: settings.txt (through the config job), the confirm gate
 #endif
 #if defined(XYF_TFW_CHECK)
-#include "otp_keys.hpp"
+#include "tfw_device_check.hpp"
+#include "tfw_role_probe.hpp"
 #include "../native/tfw_check.hpp"
 #endif
 extern "C" { extern const xyf_core::Policy* volatile xy_forever_cold_policy; }   // cold.cpp
