@@ -39,6 +39,12 @@ def catalog_blob(files):
     return out + struct.pack('<I', zlib.crc32(out))
 
 
+def with_121(dev):
+    """An opxy-121 entry beside opxy-121-stock: usable, content installed (official): set-default-alt's choice."""
+    dev.files.update({BASE + 'firmware/opxy-121/info.txt': b'name=OP-XY 1.2.1\n', BASE + 'firmware/opxy-121/os.ldr': b'x'})
+    return dev
+
+
 def slot(default, seq):
     body = ('default=%s\nseq=%d\n' % (default, seq)).encode()
     return body + b'crc32=%08x\n' % (zlib.crc32(body) & 0xffffffff)
@@ -413,7 +419,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertEqual(self.keepalive.started, [])
 
     def test_default_stages_in_order_all_pass(self):
-        self.assertEqual(self.run_pass(), dp.EXIT_PASS)
+        self.assertEqual(self.run_pass(dev=with_121(FakeDevice())), dp.EXIT_PASS)
         order = [r['stage'] for r in self.summary['steps']]
         stages = [s for s, _ in dp.STAGES]
         self.assertEqual(sorted(set(order), key=order.index), stages)
@@ -614,6 +620,24 @@ class DevicePassTest(unittest.TestCase):
         self.assertEqual(self.run_pass(['--stage', 'read,writes']), dp.EXIT_PASS)
         self.assertIn('firmware/ lists 1 entries with opxy-121-stock', self.rows()[('read', 'ls-library')]['detail'])
 
+    def test_set_default_alt_only_to_a_listed_entry_with_its_content(self):
+        """The device library: opxy-121-stock (the default) and mods-a, content not installed. No opxy-121
+        listed: no set-default at all (it would fail, or start a content switch on mods-a); both steps SKIP."""
+        dev = FakeDevice()
+        dev.files.update({BASE + 'firmware/mods-a/info.txt': b'name=Mods\ngeneration=1\n',
+                          BASE + 'firmware/mods-a/os.ldr': b'a'})
+        self.assertEqual(self.run_pass(['--stage', 'writes'], dev=dev), dp.EXIT_PASS)
+        rows = self.rows()
+        alt, back = rows[('writes', 'set-default-alt')], rows[('writes', 'set-default-back')]
+        self.assertEqual((alt['result'], back['result']), ('SKIP', 'SKIP'), (alt, back))
+        self.assertIn('the menu lists: mods-a (content not installed), opxy-121-stock, xyf-pass-scratch (unusable)',
+                      alt['detail'])
+        self.assertFalse([c for c in dev.calls if c.startswith('set-default')])
+        # Listed and installed: chosen (ALT_DEFAULTS first), and back.
+        self.assertEqual(self.run_pass(['--stage', 'writes'], dev=with_121(dev)), dp.EXIT_PASS)
+        self.assertIn('opxy-121-stock -> opxy-121', self.rows()[('writes', 'set-default-alt')]['detail'])
+        self.assertEqual(dev.default, 'opxy-121-stock')
+
     def test_file_commands_remove_a_leftover_folder_without_listing_it(self):
         dev = FakeDevice(faults={'empty-ls'})
         for leaf in dp.FILES_LEAVES:
@@ -651,7 +675,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertEqual(self.keepalive.started, [])
 
     def test_table_and_summary(self):
-        self.run_pass(dev=FakeDevice(fail={'set-default opxy-121-stock'}))
+        self.run_pass(dev=with_121(FakeDevice(fail={'set-default opxy-121-stock'})))
         lines = self.out.splitlines()
         self.assertEqual(lines[0].split()[:4], ['step', 'result', 'seconds', 'detail'])
         self.assertEqual(lines[-1], 'folder: %s' % self.folder)
