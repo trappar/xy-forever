@@ -40,7 +40,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
 import xyf_host as H  # noqa: E402
-from xy_forever import usb_proto as P  # noqa: E402
+from xy_forever import no_device, usb_proto as P  # noqa: E402
 from xy_forever.paths import SESSIONS  # noqa: E402
 import mtp_usb_probe as probe  # noqa: E402
 
@@ -183,6 +183,7 @@ def main():
     args = parser.parse_args()
     if args.ops_log:
         ops_log_only()
+    no_device.refuse('USB (pyusb)')
     try:
         import usb.core
         import usb.util

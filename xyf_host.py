@@ -52,7 +52,6 @@ answers; the tool refuses to send any other. A device without `cmds` (pre-v1, bu
 153 and earlier) is assumed to answer every 1.0 command.
 """
 import argparse
-import glob
 import hashlib
 import json
 import os
@@ -69,7 +68,7 @@ sys.path.insert(0, str(ROOT))
 from xy_forever import depth, host_write, library_add, usb_proto as P
 from xy_forever.library_add import ID_RE
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr
-from xy_forever.transport import SerialPort, TcpPort, sim_address
+from xy_forever.transport import SerialPort, TcpPort, device_ports, sim_address
 
 DESCRIPTOR = struct.pack('<II', 0x584c4348, 1)
 MIN_IMAGE = 0x10000
@@ -114,7 +113,7 @@ def sim_listening(address):
 def find_port():
     if SIM:
         return 'sim:' + SIM if sim_listening(SIM) else None
-    ports = sorted(glob.glob('/dev/cu.usbmodem*'))
+    ports = device_ports()
     return ports[0] if ports else None
 
 

@@ -68,3 +68,9 @@ it says what is missing: no receipt, a failed check, or a receipt for an older t
 a rebase or a merge onto a newer main). The orchestrator and merging use the worker's receipt instead of
 rerunning. Host bridges and the simulator are cached per input hash in `../private/xy-forever/sessions/`, so a
 run after a source change is slower. A receipt never stands in for a device test.
+
+Tests never open a real device: `run_tests.py`, `check.py` and any process that loads `unittest` set
+`XYF_NO_DEVICE` for themselves and every process they start, and with it every real-device opener (the serial
+port, USB MTP, pyusb; `xy_forever/no_device.py`) raises "tests may not open a real device" before it looks for
+one. There is no opt-out: a test fakes the opener, or uses the simulator (TCP) or a pty. The browser tests run
+Chrome without Web Serial.
