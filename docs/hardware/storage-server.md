@@ -19,6 +19,11 @@ data body, and B waits for it without a timeout**, so a refusal must have the sa
 There is no rename and no format request. A's slave interrupt answers the link handshake
 (ops 1 and 10) by itself in every mode, so a B that restarts alone talks to the old A.
 
+See [Write bodies and concurrency](write-concurrency.md) for stock write-buffer ownership
+and serialization limits.
+
+### Other stock contracts
+
 - **Restart order (stock boot, read from the listing):**
   - B boots A, not the reverse: early in B's bootloader (`88a1d34c`, before the display reset,
     USB and the link) B sends A `0x03`. A fresh A (boot ROM, `0xff`) gets the bootloader pushed
