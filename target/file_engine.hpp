@@ -52,7 +52,10 @@ static const uint32_t path_buffer = 0x8803f6e0u;
 // builder 889f8d22 on B), told apart from an access by their argument word: rename_from carries the
 // source (A keeps it), rename_to the destination (A renames). A pairs a rename_to only with a
 // rename_from that was the request just before it (source below; 0: none).
+// rename_over (#4) is rename_to that may replace an existing file: its source must be an upload
+// (upload_size below), A checks the source's size against its name and the target is a file or absent.
 static const uint32_t rename_from = 0x52464e52u, rename_to = 0x4f544e52u;   // "RNFR", "RNTO" (LE)
+static const uint32_t rename_over = 0x4f545052u;                          // "RPTO" (LE)
 enum Operation : uint32_t {
     op_read = 1,        // open for reading (flags 0)
     op_list,            // open a folder
@@ -77,6 +80,12 @@ enum Verdict : uint32_t {
 };
 // The path policy. second: op_rename's target, else 0.
 Verdict decide_engine(Operation op, const char* path, const char* second = 0);
+// An upload's temporary file (#4): exactly /yaffs2/xy-forever/tmp/put-SSSSSSSS-TTTTTTTT (8 lowercase hex
+// digits each: S the file's size, T a tag: the CRC-32 for file.write_*, the object handle for MTP). size: S.
+bool upload_size(const char* path, uint32_t& size);
+// Writes the name for size and tag into out (upload_bytes with the NUL).
+static const uint32_t upload_bytes = 45;
+void upload_name(char* out, uint32_t size, uint32_t tag);
 // The names below /yaffs2 in path (a file's folders are this minus one); 0xffffffff when it does not parse.
 uint32_t depth(const char* path);
 
@@ -108,7 +117,8 @@ enum Action : uint32_t {
     refuse_partition,   // a boot partition is selected (install mode): yaffs is not on the chip's
                         // partition register, so nothing may reach storage until it is 0 again
     run_rename_from,    // path 0x21 rename_from (A keeps the source; nothing runs)
-    run_rename_to       // path 0x21 rename_to (A renames source -> this path: a change)
+    run_rename_to,      // path 0x21 rename_to (A renames source -> this path: a change)
+    run_rename_over     // path 0x21 rename_over (#4: an upload replaces this path, or takes it: a change)
 };
 // What a knows when it decides (each nonzero = true). session: a's storage session for this
 // entry is mounted; window: the read-write window is open; partition: install mode has a boot
@@ -117,7 +127,7 @@ struct State { uint32_t on, session, window, fd_known, fd_space, dir_known, dir_
 // Every request: the raw layer first (whatever the state), then a selected boot partition (every
 // request refused, op 8 and op 9 too), then class and op, then the path policy for path
 // requests, then op 8 / op 9, then session, window, handles. argument = word +8
-// (open flags for 0x29, the handle for handle requests, rename_from / rename_to for 0x21). source:
+// (open flags for 0x29, the handle for handle requests, rename_from / rename_to / rename_over for 0x21). source:
 // the armed rename source (op_rename with this path as its target), else 0. Not exposed (refuse_op): truncate 0x36,
 // set times 0x35, fsync 0x34 / 0x28.
 Action decide_request(uint32_t vtable, uint32_t op, uint32_t argument, uint32_t path_pointer, const char* path,

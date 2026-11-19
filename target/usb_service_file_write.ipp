@@ -1,11 +1,14 @@
 // Part of usb_service.cpp, included there at this point: not compiled alone.
-// Before a delete, rmdir or mkdir, as file_write does before its write: a request left past its
-// bound (stale) is closed first (op 9, which must reach a in RPC mode), then A's write entry.
+// Before every change (write, delete, rmdir, mkdir, rename, MTP's first change): a request left past
+// its bound (stale) is closed first (op 9, which must reach a in RPC mode), then A's write entry. #3: A
+// is asked whether it still runs XY Forever (a_serving: a fresh command item, also when an earlier one
+// latched read_enabled) BEFORE op 9 goes out, never after: after a lone restart A's bootloader would
+// take the op 9 (it has no path policy). Not serving: link, nothing sent.
 U32 enter_writes() {
-    if (mounted == file_client::mounted_stale && !read_enabled &&
-        !(read_enabled = menu_link::usb_command(storage_server::command_item)))
-        return P::s_link;
-    if (mounted == file_client::mounted_stale) file_client::release(mounted);
+    if (mounted == file_client::mounted_stale) {
+        if (!a_serving()) return P::s_link;
+        file_client::release(mounted);
+    }
     return menu_link::usb_command(storage_server::file_write_item) ? P::s_ok : P::s_link;
 }
 // Path NUL + 32-byte confirmation (the SHA-256 of the path bytes). The path's length (0: the
@@ -145,12 +148,8 @@ void file_write(uint8_t seq, const uint8_t* payload, U32 length) {
     else if (!result.put_ok || !put_expected) code = P::s_state;
     else if (!sha_equal(payload + path_bytes + 1, put_sha)) code = P::s_sha;
     // Test 066: the mount is shared. A request left past its bound (stale) is closed first
-    // (op 9: A closes b's files and its window); op 9 must reach a in RPC mode (read allowlist).
-    else if (mounted == file_client::mounted_stale && !read_enabled &&
-             !(read_enabled = menu_link::usb_command(storage_server::command_item)))
-        code = P::s_link;
-    else if (mounted == file_client::mounted_stale && (file_client::release(mounted), false)) code = P::s_state;
-    else if (!menu_link::usb_command(storage_server::file_write_item)) code = P::s_link;
+    // (op 9: A closes b's files and its window), after A proved it runs XY Forever (enter_writes).
+    else if ((code = enter_writes()) != P::s_ok) {}
     else {
         storage_used = 1;
         say("Writing a library file...", path, "Do not unplug or power off.");

@@ -16,6 +16,17 @@ unsigned engine_rename_to(const char* source, const char* target, int window) { 
     const State state = {1, 1, unsigned(window), 1, 1, 1, 1, 0};
     return decide_request(path_class, 0x21, rename_to, path_buffer, target, state, source);
 }
+unsigned engine_rename_over(const char* source, const char* target, int window) {   // path 0x21 rename_over (#4)
+    const State state = {1, 1, unsigned(window), 1, 1, 1, 1, 0};
+    return decide_request(path_class, 0x21, rename_over, path_buffer, target, state, source);
+}
+int engine_upload_size(const char* path, unsigned* size) {
+    uint32_t n = 0;
+    const bool ok = upload_size(path, n);
+    *size = n;
+    return ok;
+}
+void engine_upload_name(char* out, unsigned size, unsigned tag) { upload_name(out, size, tag); }
 int engine_raw(unsigned vtable, unsigned op) { return raw_request(vtable, op); }
 unsigned engine_max_path() { return max_path; }
 unsigned engine_depth(const char* path) { return depth(path); }

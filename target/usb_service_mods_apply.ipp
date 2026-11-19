@@ -38,7 +38,7 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
             if (!h.update(payload, at + 4) || !h.finish(d) || !sha_equal(d.bytes, payload + at + 4)) code = P::s_sha;
         }
     }
-    if (code == P::s_ok && put_expected && result.put_received != put_expected) code = P::s_busy;   // an upload
+    if (code == P::s_ok && uploading()) code = P::s_busy;                                      // an upload
     if (code == P::s_ok && !xy_forever_cold_policy) code = P::s_state;
     if (code == P::s_ok && (!join(s.base, job_firmware, field[0]) || !join(s.stock, s.base, "/os.ldr") ||
                             !join(s.official, s.base, "/content.sha256") ||

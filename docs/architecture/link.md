@@ -31,7 +31,9 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
    every request passes `decide_request` and its path policy `decide_engine`, which B also applies
    before it sends. B's timed client (`target/file_client.cpp`) uses the stock builders on
    the session's one slot, never the stock RPC; every wait bounded (5 s, 45 s for a change: then `link`;
-   still out after 60 s: link lost, B stays at the menu: item 6).
+   still out after 60 s: link lost, B stays at the menu: item 6). A request left past its bound is closed
+   with op 9 before the next change, and only after A answered a fresh command item as XY Forever
+   (`enter_writes`, `mtp_prepare`): A's bootloader after a lone restart never gets that op 9.
    Changes share one read-write window: A opens it on the first change; B closes it (op 9)
    8 s after its last write and before install, set default, CONTINUE, REBOOT; A after 10 s idle, before
    other command items, when B is gone; A then rescans, B fetches the catalog. Refused: removing or

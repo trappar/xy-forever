@@ -16,7 +16,8 @@ def path_in(path, area):
 
 def device_guard(spec, kind, payload, test_area):
     """None when a real device may get this request, else why not. Allowed: reads, the screenshot,
-    staging, file.write_staged, file.delete, file.rmdir, file.mkdir, file.rename and file.copy (its target) in the test area (or with a token
+    staging, file.write_staged, file.delete, file.rmdir, file.mkdir, file.rename, file.copy (its target) and
+    file.write_begin (1.18; with file.write_data and file.write_end) in the test area (or with a token
     no staging or path matches), file.list, job.status, a mods.apply or job.cancel the device refuses, every
     restart into the menu, and the requests the device refuses without doing anything (unknown
     types, menu.continue modes it answers link, service.hold values it answers bad_request).
@@ -81,6 +82,15 @@ def device_guard(spec, kind, payload, test_area):
         if path_in(path, test_area) or payload[end + 1:] == UNSAFE_TOKEN:
             return None
         return 'file.write_staged outside the test area %s needs a token no staging matches' % test_area
+    if name == 'file.write_begin':                            # 1.18: data and end only reach what it names
+        end = payload.find(b'\0')
+        if end < 0 or len(payload) != end + 1 + 40:
+            return None                                       # bad_request: the length does not match
+        if path_in(payload[:end].decode('utf-8', 'replace'), test_area):
+            return None
+        return 'file.write_begin outside the test area %s' % test_area
+    if name in ('file.write_data', 'file.write_end'):
+        return None
     if name == 'device.reboot':
         return 'device.reboot to the OS' if value == 1 else None
     if name == 'menu.continue':

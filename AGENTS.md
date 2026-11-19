@@ -51,8 +51,8 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   [Checks and receipts](docs/operating/build-install.md#checks-and-receipts).
 - **Source files stay under 32 KB** (`tests/test_source_budget.py`): to grow a file on its over-cap list,
   first split out the part you touch.
-- **No flashing scripts.** Host tools talk only to XY Forever's own USB service (`xyf_host.py`), and
-  may read files, never write, over the stock dev-menu MTP. `docs/SAFETY.md` rules every device action.
+- **No flashing scripts.** Host tools talk to XY Forever's USB service (`xyf_host.py`) and standard MTP;
+  test files go in a scratch folder, removed after. `docs/SAFETY.md` rules every device action.
 - **Git:** one branch per plan item and one pull request per branch, after claiming the item's
   GitHub issue ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)). Never push to `main`; never take an
   item someone else is assigned. Until the repository has its GitHub remote, commit locally on

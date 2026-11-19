@@ -504,13 +504,21 @@ class OneSessionWriteTest(unittest.TestCase):
         us = unit_text(ROOT / 'target/usb_service.cpp')
         fw = us[us.index('void file_write(uint8_t seq'):]
         fw = fw[:fw.index('\n}\n')]
-        order = ['mounted == file_client::mounted_stale && !read_enabled &&',
-                 '!(read_enabled = menu_link::usb_command(storage_server::command_item))',
-                 'mounted == file_client::mounted_stale && (file_client::release(mounted), false)',
-                 'menu_link::usb_command(storage_server::file_write_item)', 'file_client::write_file(',
-                 'writes_due = 1; writes_ms = now();']
+        order = ['(code = enter_writes()) != P::s_ok', 'file_client::write_file(', 'writes_due = 1; writes_ms = now();']
         at = [fw.index(s) for s in order]
         self.assertEqual(at, sorted(at))
+        # #3: A's XY Forever check (a fresh command item) comes before op 9, whatever read_enabled latched.
+        ew = us[us.index('U32 enter_writes() {'):]
+        ew = ew[:ew.index('\n}\n')]
+        order = ['if (mounted == file_client::mounted_stale) {', 'if (!a_serving()) return P::s_link;',
+                 'file_client::release(mounted);', 'menu_link::usb_command(storage_server::file_write_item)']
+        at = [ew.index(s) for s in order]
+        self.assertEqual(at, sorted(at))
+        self.assertNotIn('read_enabled', ew)
+        prep = us[us.index('xyf_core::U32 mtp_prepare(void*) {'):]
+        prep = prep[:prep.index('\n}\n')]
+        self.assertLess(prep.index('mounted != file_client::mounted_stale &&'), prep.index('a_serving()'))
+        self.assertLess(prep.index('a_serving()'), prep.index('file_client::mount_ready(mounted)'))
         ss = (ROOT / 'target/storage_server.cpp').read_text()
         self.assertIn('if ((used && !adopted) || !mount(storage)) return false;   // v3: the adopted mount is reusable', ss)
         self.assertIn('if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item', ss)

@@ -41,7 +41,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import paths, procgroup  # noqa: E402
+from xy_forever import no_device, paths, procgroup  # noqa: E402
 
 VERSION = 1                                  # receipt format; a reader refuses a newer one
 CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json
@@ -348,6 +348,7 @@ def main(argv=None, root=ROOT, checks=CHECKS):
                         help='also scripts/neutral.py REF (default REF: the merge base with origin/main, else main)')
     parser.add_argument('--npm', action='store_true', help='the web npm steps and the clients/ts node_modules check even when unchanged')
     args = parser.parse_args(argv)
+    no_device.switch_on()                        # every step and its subprocesses: no real device
     try:
         if args.confirm:
             print('\n'.join(describe(confirm(root, args.confirm, checks))))

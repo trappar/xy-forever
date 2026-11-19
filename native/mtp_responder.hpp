@@ -57,6 +57,11 @@ struct FileOps {
     // T2c: log gets the operation's parameters (params[0..2]; nparams of them came with the command).
     U32 (*prepare)(void* context);
     void (*log)(void* context, U32 code, const U32* params, U32 nparams, U32 response, U32 data);
+    // #4 SendObject: upload opens a temporary file for path (size: the announced bytes; tag: the handle) and
+    // returns its handle for write/close, the name untouched; commit (after close) renames it onto path in one
+    // step, replacing a file there (keep), or removes it (!keep). 0 done, else a FileError.
+    int (*upload)(void* context, const char* path, U32 size, U32 tag);
+    int (*commit)(void* context, const char* path, bool keep);
 };
 static const U32 chunk = 1024;                           // bytes per read or write call (file_client::chunk)
 static const U32 buffer_bytes = 4096;                    // largest OUT transfer; IN staging
@@ -150,7 +155,7 @@ private:
     U16 listed[max_handles];
     Entry entries[page];
     char path[max_path];
-    U32 pending_handle, pending_size;                    // SendObjectInfo -> SendObject
+    U32 pending_handle, pending_size, pending_new;       // SendObjectInfo -> SendObject (new: no such name before)
     Object objects[max_handles];
     char names[name_pool];
     U32 names_used;
@@ -172,6 +177,7 @@ private:
     Byte* begin_data(U32 payload);                       // reserves header + payload in out
     void end_data(U32 payload);
     bool stream();                                       // GetObject / GetPartialObject reads
+    bool send_object();                                  // SendObject (mtp_responder_send.ipp)
     U32 prop_value(Byte* p, U32 handle, U32 prop);       // T2c: one property's value at p: bytes (0: unknown)
     bool rename_object(U32 handle, const char* name);    // the table after a rename (false: forgotten)
     U32 error_code(int error) const;

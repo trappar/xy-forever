@@ -123,12 +123,13 @@ class FileWriteSourceTest(unittest.TestCase):
     def test_b_client_sequence(self):
         """B's file client (file_client.cpp), every request bounded."""
         client = (ROOT / 'target/file_client.cpp').read_text()
-        c = client[client.index('uint32_t write_file('):]
-        c = c[:c.index('\n}\n')]
-        order = ['if (mounted == mounted_stale) return xyf::usbp::s_state;', 'const Reply m = mount();',
-                 'mkdir(folder);', 'open(path, storage_server::write_open_flags);', 'write(o.value, bytes + written, n);',
-                 'close(o.value);', 'o = open(path, 0);', 'read(o.value, chunk_bytes, chunk);',
-                 '(total != size || c != crc)) code = xyf::usbp::s_crc;']
+        c = client[client.index('uint32_t make_folders('):]
+        c = c[:c.index('\n}\n', c.index('uint32_t write_file('))]
+        order = ['const U32 root_bytes = storage_server::write_root(path);', 'mkdir(folder);', "folder[k] = '/';",
+                 'if (mounted == mounted_stale) return xyf::usbp::s_state;', 'const Reply m = mount();',
+                 'make_folders(path, mounted);', 'open(path, storage_server::write_open_flags);',
+                 'write(fd, bytes + done, n);', 'close(fd);', 'Reply o = open(path, 0);',
+                 'read(o.value, chunk_bytes, chunk);', '(total != size || readback_crc != crc)) code = xyf::usbp::s_crc;']
         at = [c.index(s) for s in order]
         self.assertEqual(at, sorted(at))
         self.assertNotIn('unmount()', c)                 # the window stays open for the next write
@@ -153,8 +154,7 @@ class FileWriteSourceTest(unittest.TestCase):
         h = self.usb[self.usb.index('void file_write(uint8_t seq'):]
         h = h[:h.index('\n}\n')]
         order = ['!storage_server::valid_write_path(path)', '!result.put_ok || !put_expected',
-                 '!sha_equal(payload + path_bytes + 1, put_sha)', 'file_client::release(mounted)',
-                 'menu_link::usb_command(storage_server::file_write_item)', 'storage_used = 1;',
+                 '!sha_equal(payload + path_bytes + 1, put_sha)', '(code = enter_writes()) != P::s_ok', 'storage_used = 1;',
                  'file_client::write_file(']
         at = [h.index(s) for s in order]
         self.assertEqual(at, sorted(at))

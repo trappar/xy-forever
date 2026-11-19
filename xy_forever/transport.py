@@ -4,15 +4,24 @@ Both are raw byte streams: write(data) sends all of data or raises TimeoutError;
 what arrived within timeout, or b'' (the caller's own deadline decides when to give up).
 """
 import fcntl
+import glob
 import os
 import select
 import socket
 import termios
 import time
 
+from xy_forever import no_device
+
 WRITE_STALL = 2.0      # seconds a write may make no progress before it is a timeout
 OPEN_LIMIT = 3.0       # seconds SerialPort waits for the port to open before it is a timeout
 _opening = {}          # path: the socket of an open that outlived its wait (the next SerialPort waits on it)
+
+
+def device_ports():
+    """The OP-XY's CDC ports, sorted; a test run is refused before it looks (xy_forever/no_device.py)."""
+    no_device.refuse('the serial port (/dev/cu.usbmodem*)')
+    return sorted(glob.glob('/dev/cu.usbmodem*'))
 
 
 def _detached(work, keep):
@@ -40,6 +49,7 @@ def _detached(work, keep):
 
 def _open_tty(path):
     """The port's fd, configured: raw, exclusive (TIOCEXCL), queues flushed."""
+    no_device.refuse_tty(path)
     fd = os.open(path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
     try:
         fcntl.ioctl(fd, termios.TIOCEXCL)
@@ -95,6 +105,7 @@ class SerialPort:
 
     def __init__(self, path, timeout=None):
         self.fd = None
+        no_device.refuse_tty(path)
         timeout = OPEN_LIMIT if timeout is None else timeout
         sock = _opening.pop(path, None) or _opener(path)
         ready, _, _ = select.select([sock], [], [], timeout)

@@ -239,7 +239,8 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
                                             'open) and the catalog fetched' % SETTLE),
                 ('library-change', T_ANSWER + T_WINDOW, 'put-file %s (new name), window closed: the menu catalog '
                                                         '(PEEK) shows it, no restart' % SCRATCH_INFO),
-                ('set-default-alt', 75.0, 'set-default to another entry (xyf_host reads the slots back)'),
+                ('set-default-alt', 75.0, 'set-default to another usable entry, content installed (xyf_host '
+                                          'reads the slots back)'),
                 ('set-default-back', 75.0, 'set-default back to the starting default'),
                 ('scratch-cleanup', 2 * T_ANSWER, 'rm %s and rm --dir its folder; ls firmware/: gone' % SCRATCH_INFO),
                 ('file-commands', T_FILES, 'in %s (created, removed): mkdir; put %d B and 2,500 B; ls sizes; get '
@@ -1279,17 +1280,25 @@ class Pass:
         return 'menu shows %s = %r without a restart (removed again by scratch-cleanup)' % (SCRATCH_ID, label)
 
     def step_set_default_alt(self):
-        default = self.slots('before')[2]['default']
-        alt = [i for i in ((self.opts.alt_default,) if self.opts.alt_default else ALT_DEFAULTS) if i != default]
+        default = self.state['default0'] = self.slots('before')[2]['default']   # after-restart checks it
+        # A listed entry with its content installed: without, set-default starts a content switch; unlisted: fails.
+        items = self.menu_catalog('alt-catalog.bin')['items']
+        ready = [i['id'] for i in items if i['usable'] and not i['content_missing'] and i['id'] != default]
+        alt = sorted((i for i in ready if i == self.opts.alt_default or not self.opts.alt_default),
+                     key=lambda i: i not in ALT_DEFAULTS)
         if not alt:
-            raise StepFail('no other entry to use (pass --alt-default)')
-        self.state['default0'] = default
+            raise StepSkip('no entry but the default %s usable with its content installed%s; the menu lists: %s'
+                           % (default, ' (--alt-default %s)' % self.opts.alt_default if self.opts.alt_default else '',
+                              ', '.join(i['id'] + (' (content not installed)' if i['content_missing'] else
+                                                   '' if i['usable'] else ' (unusable)') for i in items)))
         self.state['saved0'] = self.saved_state('alt-before')       # as found again after set-default-back
         self.ok(['set-default', alt[0], '--yes-write'])
         self.state['alt'] = alt[0]
         return '%s -> %s (slots read back)' % (default, alt[0])
 
     def step_set_default_back(self):
+        if 'alt' not in self.state:
+            raise StepSkip('set-default-alt changed nothing')
         default, alt = self.state['default0'], self.state['alt']
         try:
             self.ok(['set-default', default, '--yes-write'])
@@ -1828,7 +1837,8 @@ class Pass:
             page0 = self.open_mods('config-page0.png')
             for _ in range(position):
                 self.key('plus')
-            chosen = self.seen('config-chosen.png', page0, 'PLUS x%d' % position)
+            # Row 0 is selected as the page opens (no key, no change); either way the row is checked below.
+            chosen = self.seen('config-chosen.png', page0, 'PLUS x%d' % position) if position else page0
             if self.opts.sim:
                 self.sim_wait(lambda p: p.get('selected') == MODS_MACHINE, '%s selected' % MODS_MACHINE)
             else:                             # the bar on the row worked out (sorted; packages only), alone
@@ -2106,7 +2116,8 @@ def parse_args(argv):
                         '%d B stage.data chunks. CAN HANG THE DEVICE (Test 038: a 4 KiB reply hung it; '
                         'a hang needs a power cycle, then later steps SKIP); off by default' % BIG_CHUNK)
     parser.add_argument('--alt-default', metavar='ID', help='entry for the set-default round trip '
-                        '(default: %s, whichever is not the default)' % ' or '.join(ALT_DEFAULTS))
+                        '(default: another usable entry with its content installed, %s first)'
+                        % ' or '.join(ALT_DEFAULTS))
     parser.add_argument('--sim', metavar='HOST:PORT', help='run against the device simulator (xyf_host.py --sim); '
                         'steps it does not host are SKIP')
     parser.add_argument('--sim-log', metavar='FILE', help="with --sim: the simulator's log (its stdout), where the "

@@ -167,8 +167,7 @@ bool mtp_selftest(MtpSelfTest& t, U32 hold_ms, uint8_t* out) {
 }
 U32 mtp_enter() {
     if (storage_server::engine_identity() || file_client::identity()) return P::s_identity;
-    if (mounted && !read_enabled && !(read_enabled = menu_link::usb_command(storage_server::command_item)))
-        return P::s_link;
+    if (mounted && !a_serving()) return P::s_link;    // #3: A is XY Forever before op 9, also when latched
     file_client::release(mounted);
     if (!menu_link::usb_command(storage_server::engine_run_item)) return P::s_link;
     storage_used = 1;                                  // the window opens: CONTINUE needs a REBOOT

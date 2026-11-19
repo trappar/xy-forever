@@ -275,6 +275,20 @@ class FileEngineTest(unittest.TestCase):
         self.assertEqual(to(ok, other), 'run_rename_to')
         self.assertEqual(to(ok, other, window=0), 'refuse_read_only')
         self.assertEqual(to(None, other), 'refuse_op')                       # no rename_from just before
+        # #4: rename_over only from an upload's temporary file (A then checks its size against the name)
+        lib.engine_rename_over.argtypes = [C.c_char_p, C.c_char_p, C.c_int]
+        lib.engine_rename_over.restype = C.c_uint
+        upload = '/yaffs2/xy-forever/tmp/put-0000000a-deadbeef'
+
+        def over(source, target, window=1):
+            return ENGINE_ACTIONS[lib.engine_rename_over(None if source is None else raw(source), raw(target), window) - 0x60]
+        self.assertEqual(over(upload, other), 'run_rename_over')
+        self.assertEqual(over(upload, other, window=0), 'refuse_read_only')
+        self.assertEqual(over(None, other), 'refuse_op')
+        for source in (ok, upload + 'x', upload.replace('put-', 'pot-'), upload.upper(), '/yaffs2/tmp/put-0000000a-deadbeef'):
+            self.assertEqual(over(source, other), 'refuse_tmp_path', source)
+        for path in MARKERS + INBOX + ROOTS:
+            self.assertEqual(over(upload, path), 'refuse_protected_path', path)
         for path in ROOTS:
             self.assertEqual(to(ok, path), 'refuse_protected_path', path)
         for path in MARKERS + INBOX:
@@ -377,11 +391,25 @@ class FileEngineTest(unittest.TestCase):
             self.assertEqual(self.request(PATH, 0x29, 0, BUFFER, '/fat32/x', 1, *state), 'refuse_outside_path')
 
 
+    def test_upload_name_and_size(self):
+        """#4: an upload's temporary file name, tmp/put-<size>-<tag> (8 lowercase hex digits each)."""
+        lib = self.lib
+        out = C.create_string_buffer(64)
+        lib.engine_upload_name(out, 0x12345, 0xdeadbeef)
+        self.assertEqual(out.value, b'/yaffs2/xy-forever/tmp/put-00012345-deadbeef')
+        size = C.c_uint()
+        self.assertTrue(lib.engine_upload_size(out.value, C.byref(size)))
+        self.assertEqual(size.value, 0x12345)
+        for bad in (b'/yaffs2/xy-forever/tmp/put-0001234-deadbeef', b'/yaffs2/xy-forever/tmp/put-00012345_deadbeef',
+                    b'/yaffs2/xy-forever/tmp/put-0001234G-deadbeef', b'/yaffs2/xy-forever/tmp/put-00012345-deadbeef/x'):
+            self.assertFalse(lib.engine_upload_size(bad, C.byref(size)), bad)
+
+
 class FileEngineWiringTest(unittest.TestCase):
     """A applies the engine to every request; B applies its policy before it sends."""
 
     def setUp(self):
-        self.server = (ROOT / 'target/storage_server.cpp').read_text()
+        self.server = ''.join((ROOT / 'target' / n).read_text() for n in ('storage_server.cpp', 'storage_server_marker.ipp'))
         self.usb = unit_text(ROOT / 'target/usb_service.cpp')
 
     def body(self, text, start):
@@ -400,9 +428,11 @@ class FileEngineWiringTest(unittest.TestCase):
         table = [(int(a, 16), int(n, 16)) for a, n in re.findall(r'\{(0x[0-9a-f]+)u, (0x[0-9a-f]+)u', spans)]
         for address in (0x889fa834, 0x889fa604, 0x88a01afa):
             self.assertTrue(any(a <= address < a + n for a, n in table), hex(address))
-        now = self.body(self.server, 'U32 rename_now(char* to) {')
+        now = self.body(self.server, 'U32 rename_now(char* to, bool over) {')
         order = ['if (!valid_rename(from, to) || reaches_protected(rename_source) || reaches_protected(to)) return error_access;', 'if (!stat_into(from, marker_record[1])) return error_noent;',
-                 'if (stat_into(to, marker_record[1])) return error_exist;', 'same_object()', 'a_side::rename_object(from, to)',
+                 'file_engine::upload_size(from, size)', 'marker_record[1][7] != size)) return error_inval;',
+                 'if (stat_into(to, marker_record[1]) && (!over || (marker_record[1][2] & 0xf000u) != 0x8000u))',
+                 'return over ? error_isdir : error_exist;', 'same_object()', 'a_side::rename_object(from, to)',
                  'restore_marker(0x21)']
         at = [now.index(o) for o in order]
         self.assertEqual(at, sorted(at))
@@ -528,11 +558,11 @@ class FileEngineWiringTest(unittest.TestCase):
         self.assertIn('write_root(path) && file_engine::decide_engine(op, path) == file_engine::allow', write)
         self.assertIn('bool valid_write_path(const char* path) { return valid_change_path(path, file_engine::op_write); }',
                       self.server)
-        cw = self.body(client, 'uint32_t write_file(')
+        cw = self.body(client, 'uint32_t open_write(')
         self.assertLess(cw.index('if (!storage_server::valid_write_path(path)'), cw.index('mount()'))
         fw = self.body(self.usb, 'void file_write(uint8_t seq')
         self.assertLess(fw.index('storage_server::valid_write_path(path)) code = P::s_refused;'),
-                        fw.index('menu_link::usb_command('))
+                        fw.index('enter_writes()'))
         self.assertNotIn('stock<0x889f', self.body(self.usb, 'bool mtp_do(U32 n, MtpSelfTest& t, uint8_t* out)'))
 
 if __name__ == '__main__':

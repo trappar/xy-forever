@@ -10,6 +10,7 @@
 #endif
 #if defined(XYF_SERVICE_ON_MARKER_ONLY)
 #include "xyf_boot.hpp"
+#include "xyf_menu.hpp"                     // xyf::menu::storage_ready (the start sweep, #3)
 #endif
 #include "xyf_crc32.hpp"
 #include "knob_input.hpp"      // the knob reader's counters (diag.status block KNB1)
@@ -93,6 +94,7 @@ namespace {
 #include "usb_service_files.ipp"            // READ_FILE, SCREEN, PEEK, the MTP self-test, PUT, SET_DEFAULT, LIBRARY_BOOT
 #if defined(XYF_USB_FILE_WRITE)
 #include "usb_service_file_write.ipp"       // FILE_DELETE/RMDIR/MKDIR/RENAME/COPY/LIST/WRITE
+#include "usb_service_stream.ipp"           // FILE_WRITE_BEGIN/DATA/END (#4)
 #include "usb_service_mod_job.ipp"          // the mod assembly job on B
 #include "usb_service_save_log.ipp"         // the save-time log
 #include "usb_service_content.ipp"          // the content switch and config jobs

@@ -38,6 +38,7 @@ struct Files {
     uint32_t data_requests, data_bytes; // speed (2026-11-15): read and write requests, the bytes they moved
     int open[max_open];                 // files the responder holds (closed when the session ends)
     uint8_t open_write[max_open];
+    char upload[45];                    // #4: SendObject's temporary file (file_engine::upload_name)
     uint8_t page[M::page * (6 + 255)] __attribute__((aligned(4)));   // one list page (file_client::list_entry)
 };
 void files_init(Files& f, volatile uint32_t* mounted, uint32_t (*on_change)());

@@ -82,6 +82,30 @@ Verdict decide_engine(Operation op, const char* path, const char* second) {
     }
 }
 
+bool upload_size(const char* path, uint32_t& size) {
+    static const char head[] = "/yaffs2/xy-forever/tmp/put-";
+    uint32_t i = 0;
+    size = 0;
+    for (; head[i]; ++i) if (!path || path[i] != head[i]) return false;
+    for (uint32_t k = 0; k != 17; ++k) {
+        const char c = path[i + k];
+        if (k == 8) { if (c != '-') return false; continue; }
+        const uint32_t d = c >= '0' && c <= '9' ? uint32_t(c - '0') : c >= 'a' && c <= 'f' ? uint32_t(c - 'a' + 10) : 16;
+        if (d == 16) return false;
+        if (k < 8) size = size << 4 | d;
+    }
+    return !path[i + 17];
+}
+void upload_name(char* out, uint32_t size, uint32_t tag) {
+    static const char head[] = "/yaffs2/xy-forever/tmp/put-", hex[] = "0123456789abcdef";
+    uint32_t i = 0;
+    for (; head[i]; ++i) out[i] = head[i];
+    for (uint32_t k = 0; k != 8; ++k) out[i + k] = hex[(size >> (28 - 4 * k)) & 15];
+    out[i + 8] = '-';
+    for (uint32_t k = 0; k != 8; ++k) out[i + 9 + k] = hex[(tag >> (28 - 4 * k)) & 15];
+    out[i + 17] = 0;
+}
+
 uint32_t depth(const char* path) {
     Parsed p;
     return parse(path, p) == allow ? p.names : 0xffffffffu;
@@ -119,9 +143,11 @@ Action decide_request(uint32_t vtable, uint32_t op, uint32_t argument, uint32_t 
         if (op == 0x29) { run = run_open; operation = argument ? op_write : op_read; }
         else if (op == 0x2e) { run = run_opendir; operation = op_list; }
         else if (op == 0x21 && argument == rename_from) { run = run_rename_from; operation = op_rename; }
-        else if (op == 0x21 && argument == rename_to) {
+        else if (op == 0x21 && (argument == rename_to || argument == rename_over)) {
             if (!source) return refuse_op;       // no rename_from just before it
-            run = run_rename_to; operation = op_rename;
+            uint32_t size;
+            if (argument == rename_over && !upload_size(source, size)) return refuse_tmp_path;
+            run = argument == rename_to ? run_rename_to : run_rename_over; operation = op_rename;
         }
         else if (op == 0x21) { run = run_path; operation = op_stat; }
         else if (op == 0x25) { run = run_path; operation = op_unlink; }
@@ -145,10 +171,10 @@ Action decide_request(uint32_t vtable, uint32_t op, uint32_t argument, uint32_t 
         if (path_pointer != path_buffer) return refuse_bad_path;
         // A rename source is checked as a source and as a name (second: itself), its target with the source.
         const Verdict v = operation != op_rename ? decide_engine(static_cast<Operation>(operation), path) :
-                          decide_engine(op_rename, run == run_rename_to ? source : path, path);
+                          decide_engine(op_rename, run != run_rename_from ? source : path, path);
         if (v != allow) return refusal(v);
         change = operation == op_write || operation == op_mkdir || operation == op_unlink || operation == op_rmdir ||
-                 run == run_rename_to;
+                 run == run_rename_to || run == run_rename_over;
     }
     if (!state.session) return refuse_mount;
     if (change && !state.window) return refuse_read_only;

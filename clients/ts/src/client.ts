@@ -8,6 +8,7 @@ import { Link } from './link.ts';
 import type { Trace } from './link.ts';
 import type { Opener, Transport } from './transport.ts';
 import { SCREEN } from './screen.ts';
+import { writeStream } from './stream.ts';
 import * as v1 from './v1.ts';
 
 type Codecs = typeof v1.codecs;
@@ -306,14 +307,14 @@ export class Client {
   }
 
   /**
-   * Destructive: creates or replaces the file at path (under WRITE_ROOTS; missing folders are
-   * created) by staging data (progress: the staging), then checks the device's count and read-back
-   * CRC. Above info.limits.stage, or empty: `too_large` here; outside WRITE_ROOTS: `refused` here
-   * (status null); nothing sent either way. Show the user what will
-   * be written and ask first.
+   * Destructive: creates or replaces the file at path (under WRITE_ROOTS; missing folders are created)
+   * and checks the device's count and read-back CRC. 1.18: streamed into tmp/ and renamed onto path in
+   * one step, any size (stream.ts); before: staged (progress: the staging; above info.limits.stage, or
+   * empty: `too_large` here). Outside WRITE_ROOTS: `refused` here (status null), nothing sent. Ask first.
    */
   async writeFile(path: string, data: Uint8Array, options: TransferOptions = {}): Promise<{ written: number; readbackCrc: number }> {
     checkChange('file.write_staged', path, path);
+    if (this.infoNow.hello.answers(v1.COMMANDS['file.write_begin'].type)) return writeStream(this, path, data, options);
     const staged = await this.stage(data, options);
     const reply = await this.fileCall('file.write_staged', { path, sha256: staged.sha256 }, path,
       { signal: options.signal, timeoutMs: options.timeoutMs ?? 60_000 + Math.ceil(data.length / 20) });

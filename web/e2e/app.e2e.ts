@@ -20,13 +20,14 @@ const state = process.env['XYF_SIM_STATE'] ?? join(found.sessions ?? '', `web-e2
 let stopSim: (() => Promise<void>) | undefined;
 let server: ViteDevServer | undefined;
 let browser: Browser | undefined;
+const NO_DEVICE = ['--disable-blink-features=Serial'];   // no real Web Serial: tests may not open a real device
 
 beforeAll(async () => {
   if (found.why) return;
   stopSim = (await startAll(state, port, [['web', 0, []]])).stopAll;
   server = await createServer({ configFile: fileURLToPath(new URL('../vite.config.ts', import.meta.url)), server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
-  browser = await chromium.launch({ channel: 'chrome', headless: true });
+  browser = await chromium.launch({ channel: 'chrome', headless: true, args: NO_DEVICE });
 });
 
 afterAll(async () => {
@@ -41,6 +42,7 @@ it.skipIf(found.why !== null)('connects to the simulator and shows the device an
   const httpPort = typeof address === 'object' && address ? address.port : 0;
   const page = await browser!.newPage();
   await page.goto(`http://127.0.0.1:${httpPort}/?sim=${port}`);
+  expect(await page.evaluate(() => 'serial' in navigator)).toBe(false);
   await page.getByRole('button', { name: 'Connect' }).click();
   await expect.poll(() => page.locator('[data-fact=version]').textContent(), { timeout: 20_000 }).toMatch(/^\d+\.\d+\.\d+$/);
   await page.locator('#nav a[data-page=files]').click();

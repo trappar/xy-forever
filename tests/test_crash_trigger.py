@@ -68,7 +68,7 @@ class ModeTest(unittest.TestCase):
         self.assertEqual(re.findall(r'R1 = (\d);', fault), ['1', '3', '4'])          # no kind 2 (misaligned)
         self.assertIn('kind == 2', (ROOT / 'target/usb_service_crash_trigger.ipp').read_text())
         usb = (ROOT / 'target/usb_service_crash_trigger.ipp').read_text()
-        for refusal in ('writes_due', 'closing', 'mounted_stale', 'job_running()', 'put_expected', 'crash_armed_now()'):
+        for refusal in ('writes_due', 'closing', 'mounted_stale', 'job_running()', 'uploading()', 'crash_armed_now()'):
             self.assertIn(refusal, usb)
 
 

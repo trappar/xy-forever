@@ -71,6 +71,7 @@ bool job_blocks(U32 type) {                                             // also 
     return type == P::t_read_file || type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end ||
            type == P::t_file_write || type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir ||
            type == P::t_make_dir || type == P::t_rename_file || type == P::t_copy_file || type == P::t_install ||
+           type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end ||
            type == P::t_uninstall || type == P::t_reboot || type == P::t_continue || type == P::t_library_boot ||
            type == P::t_mods_apply || type == P::t_mtp_test || type == P::t_set_default || type == P::t_tfw_check;
 }
@@ -258,7 +259,7 @@ U32 tree_step(Tree& t, uint8_t* page) {
     return code == P::s_ok ? tree_more : tree_failed;
 }
 // The leftover sweep: tmp/'s entries one per call; a folder named job-* (not keep, the running job's output)
-// is removed by tree_step. False: the sweep ended (nothing left, a failure, or sweep_cap calls).
+// is removed by tree_step, an upload's file put-* (file_engine::upload_size) unlinked. False: the sweep ended (nothing left, a failure, or sweep_cap calls).
 bool sweep_step(Sweep& w, uint8_t* page) {
     if (++w.calls > sweep_cap) return false;
     if (w.removing) {
@@ -274,6 +275,9 @@ bool sweep_step(Sweep& w, uint8_t* page) {
     for (U32 i = 0; i != n; ++i) name[i] = char(page[6 + i]);
     name[n] = 0;
     const bool job = page[0] == 1 && n > 4 && name[0] == 'j' && name[1] == 'o' && name[2] == 'b' && name[3] == '-';
+    uint32_t size;                                                       // #4: an upload's tmp file left behind
+    if (page[0] == 0 && join(path, job_tmp, "/", name) && file_engine::upload_size(path, size))
+        return tree_change(0x25u, path) == P::s_ok;                      // unlink (uploading(): never the open one)
     if (job && join(path, job_tmp, "/", name) && !same_text(path, w.keep) && tree_begin(w.tree, path)) w.removing = 1;
     else ++w.skip;
     return true;
@@ -281,6 +285,30 @@ bool sweep_step(Sweep& w, uint8_t* page) {
 void sweep_begin(Sweep& w, const char* keep) {
     w.removing = w.skip = w.calls = 0;
     join(w.keep, keep, "");
+}
+// #3 (from #24): leftover tmp/job-* folders and (#4) tmp/put-* files (a cut cable, a power cut, a cleanup that failed) are removed
+// when the USB service starts, so a job's own sweep (js_sweep) finds none and its time does not depend on
+// earlier boots. Once the library is ready (A serves), A is asked once (a_serving), then one sweep_step per
+// menu pass while nothing else uses the files (no job, upload, window close or MTP operation); the job
+// slot's sweep and page are free then. A job that starts ends it (its own sweep covers the same folders).
+// Bounded as the job's sweep: sweep_cap calls, the first failure ends it.
+volatile U32 boot_sweep __attribute__((section(".data"))) = 0;          // 0 waiting, 1 running, 2 ended
+void boot_sweep_turn() {
+    if (boot_sweep == 2) return;
+    if (job_running()) { boot_sweep = 2; return; }
+    if (closing || uploading() XYF_OR_MTP_BUSY) return;
+#if defined(XYF_ONE_SESSION)
+    if (!boot_sweep && xyf_boot::storage_view() != xyf::menu::storage_ready) return;
+#else
+    if (!boot_sweep && !read_enabled) return;
+#endif
+    JobSlot& s = slot();
+    if (!boot_sweep) {
+        boot_sweep = a_serving() ? 1u : 2u;
+        sweep_begin(s.leftovers, "");
+        return;
+    }
+    if (!sweep_step(s.leftovers, s.page)) boot_sweep = 2;
 }
 // the mods id that is neither the default nor the boot-once entry; of two, the
 // absent one, else the one not written last this boot (B sees no file times), else mods-a. Reads the

@@ -32,7 +32,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / 'tests'
 sys.path.insert(0, str(ROOT))
-from xy_forever import paths  # noqa: E402
+from xy_forever import no_device, paths  # noqa: E402
 
 TIMES = paths.SESSIONS / ('run-tests-times%s.json' % ('-exhaustive' if os.environ.get('XYF_EXHAUSTIVE') else ''))
 JOBS = max(1, min(16, (os.cpu_count() or 2) * 2 // 3))   # simulator tests start two threads each
@@ -160,6 +160,7 @@ def table(results, top):
 
 
 def main():
+    no_device.switch_on()                        # every test process and what it runs: no real device
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument('names', nargs='*', help='modules or tests (default: every tests/test*.py)')
     parser.add_argument('--jobs', type=int, default=JOBS,

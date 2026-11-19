@@ -366,13 +366,29 @@ void release(volatile uint32_t& mounted) {
 }
 
 #if defined(XYF_USB_FILE_WRITE)
-uint32_t write_file(const char* path, const uint8_t* bytes, uint32_t size, uint32_t crc,
-                    uint32_t& written, uint32_t& readback_crc, volatile uint32_t& mounted) {
-    written = 0; readback_crc = 0;
-    // file_write checks the path first; the rest cannot happen from it (staged data). Size 0 (a copy
-    // of an empty file) opens, writes nothing and closes.
-    if (!storage_server::valid_write_path(path) || !bytes) return xyf::usbp::s_refused;
-    if (mounted == mounted_stale) return xyf::usbp::s_state;            // file_write sends op 9 first
+namespace {
+uint32_t failed(const Reply& r, volatile uint32_t& mounted) { mounted = mounted_stale; return status(r.outcome); }
+}
+uint32_t make_folders(const char* path, volatile uint32_t& mounted) {
+    // Test 050: create the missing folders below the write area's root (mkdir -p; existing ones fail
+    // EEXIST, which is fine: the open after it decides).
+    const U32 root_bytes = storage_server::write_root(path);             // 8: /yaffs2/
+    char folder[file_engine::max_path];
+    for (U32 k = 0; path[k] && k + 1 != file_engine::max_path; ++k) {
+        folder[k] = path[k];
+        if (path[k] != '/' || k < root_bytes) continue;
+        folder[k] = 0;
+        const Reply d = mkdir(folder);                                   // op 0x26, mode 0
+        if (d.outcome == link || d.outcome == busy || d.outcome == lost) return failed(d, mounted);
+        folder[k] = '/';
+    }
+    return xyf::usbp::s_ok;
+}
+
+uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted) {
+    fd = -1;
+    if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;
+    if (mounted == mounted_stale) return xyf::usbp::s_state;            // the caller sends op 9 first
     if (!mounted) {
         const Reply m = mount();                                         // op 8: a's read-only mount
         if (m.outcome) return status(m.outcome);
@@ -382,57 +398,69 @@ uint32_t write_file(const char* path, const uint8_t* bytes, uint32_t size, uint3
     // a opens its read-write window on the first change below and keeps it for the next
     // writes; b closes it (op 9) once no write came for a while (usb_service). Past a request's
     // bound: op 9 before the next file command (a closes b's handles and the window).
-    auto failed = [&mounted](const Reply& r) -> uint32_t { mounted = mounted_stale; return status(r.outcome); };
-    // Test 050: create the missing folders below the write area's root (mkdir -p; existing ones fail
-    // EEXIST, which is fine: the open below decides).
-    const U32 root_bytes = storage_server::write_root(path);             // 8: /yaffs2/
-    char folder[file_engine::max_path];
-    U32 k = 0;
-    for (; path[k]; ++k) {
-        folder[k] = path[k];
-        if (path[k] != '/' || k < root_bytes) continue;
-        folder[k] = 0;
-        const Reply d = mkdir(folder);                                   // op 0x26, mode 0
-        if (d.outcome == link || d.outcome == busy || d.outcome == lost) return failed(d);
-        folder[k] = '/';
+    const U32 made = make_folders(path, mounted);
+    if (made != xyf::usbp::s_ok) return made;
+    const Reply o = open(path, storage_server::write_open_flags);        // op 0x29, "wb"
+    if (o.outcome) return failed(o, mounted);
+    if (o.value < 0) return xyf::usbp::s_storage;
+    fd = o.value;
+    return xyf::usbp::s_ok;
+}
+
+uint32_t write_more(int fd, const uint8_t* bytes, uint32_t size, uint32_t& written, volatile uint32_t& mounted) {
+    for (U32 done = 0; done != size;) {
+        const U32 n = size - done < chunk ? size - done : chunk;
+        const Reply w = write(fd, bytes + done, n);                      // op 0x2b
+        if (w.outcome) return failed(w, mounted);
+        if (w.value != int(n)) return xyf::usbp::s_storage;
+        done += n; written += n;
     }
+    return xyf::usbp::s_ok;
+}
+
+uint32_t close_write(int fd, volatile uint32_t& mounted) {
+    const Reply c = close(fd);                                           // op 0x2d
+    if (c.outcome) return failed(c, mounted);
+    return c.value ? xyf::usbp::s_storage : xyf::usbp::s_ok;
+}
+
+uint32_t read_crc(const char* path, uint32_t size, uint32_t& total, uint32_t& crc, volatile uint32_t& mounted) {
+    total = 0; crc = 0;
+    Reply o = open(path, 0);                                             // op 0x29, read-only
+    if (o.outcome) return failed(o, mounted);
+    if (o.value < 0) return xyf::usbp::s_not_found;
     U32 code = xyf::usbp::s_ok;
-    Reply o = open(path, storage_server::write_open_flags);              // op 0x29, "wb"
-    if (o.outcome) return failed(o);
-    if (o.value < 0) code = xyf::usbp::s_storage;
-    else {
-        while (written != size) {
-            const U32 n = size - written < chunk ? size - written : chunk;
-            const Reply w = write(o.value, bytes + written, n);          // op 0x2b
-            if (w.outcome) return failed(w);
-            if (w.value != int(n)) { code = xyf::usbp::s_storage; break; }
-            written += n;
-        }
-        const Reply c = close(o.value);                                  // op 0x2d
-        if (c.outcome) return failed(c);
-        if (c.value && code == xyf::usbp::s_ok) code = xyf::usbp::s_storage;
+    uint8_t chunk_bytes[chunk];
+    for (U32 guard = 0; guard != (size >> 10) + 4; ++guard) {
+        const Reply g = read(o.value, chunk_bytes, chunk);               // op 0x2a
+        if (g.outcome) return failed(g, mounted);
+        if (g.value < 0) { code = xyf::usbp::s_storage; break; }
+        if (!g.value) break;
+        crc = xyf::crc::update(crc, chunk_bytes, U32(g.value));
+        total += U32(g.value);
     }
-    if (code == xyf::usbp::s_ok) {                                       // read back to EOF (the open window)
-        o = open(path, 0);                                               // op 0x29, read-only
-        if (o.outcome) return failed(o);
-        if (o.value < 0) code = xyf::usbp::s_not_found;
-        else {
-            U32 total = 0, c = 0;
-            uint8_t chunk_bytes[chunk];
-            for (U32 guard = 0; guard != (size >> 10) + 4; ++guard) {
-                const Reply g = read(o.value, chunk_bytes, chunk);       // op 0x2a
-                if (g.outcome) return failed(g);
-                if (g.value < 0) { code = xyf::usbp::s_storage; break; }
-                if (!g.value) break;
-                c = xyf::crc::update(c, chunk_bytes, U32(g.value));
-                total += U32(g.value);
-            }
-            const Reply cl = close(o.value);
-            if (cl.outcome) return failed(cl);
-            readback_crc = c;
-            if (code == xyf::usbp::s_ok && (total != size || c != crc)) code = xyf::usbp::s_crc;
-        }
-    }
+    const Reply cl = close(o.value);
+    if (cl.outcome) return failed(cl, mounted);
+    return code;
+}
+
+uint32_t write_file(const char* path, const uint8_t* bytes, uint32_t size, uint32_t crc,
+                    uint32_t& written, uint32_t& readback_crc, volatile uint32_t& mounted) {
+    written = 0; readback_crc = 0;
+    // file_write checks the path first; the rest cannot happen from it (staged data). Size 0 (a copy
+    // of an empty file) opens, writes nothing and closes.
+    if (!bytes) return xyf::usbp::s_refused;
+    int fd;
+    U32 code = open_write(path, fd, mounted);
+    if (code != xyf::usbp::s_ok) return code;
+    code = write_more(fd, bytes, size, written, mounted);
+    if (mounted == mounted_stale) return code;
+    const U32 closed = close_write(fd, mounted);
+    if (code == xyf::usbp::s_ok) code = closed;
+    if (code != xyf::usbp::s_ok) return code;
+    uint32_t total;                                                         // read back to EOF (the open window)
+    code = read_crc(path, size, total, readback_crc, mounted);
+    if (code == xyf::usbp::s_ok && (total != size || readback_crc != crc)) code = xyf::usbp::s_crc;
     return code;
 }
 
@@ -544,7 +572,7 @@ uint32_t deeper_ok(const char* from, const char* to, volatile uint32_t& mounted)
 }
 }
 
-uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint32_t& mounted) {
+uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint32_t& mounted, bool over) {
     error = 0;
     if (!storage_server::valid_rename(from, to)) return xyf::usbp::s_refused;   // file_rename checks it first
     if (mounted == mounted_stale) return xyf::usbp::s_state;            // the caller sends op 9 first
@@ -552,7 +580,7 @@ uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint
     if (ready != xyf::usbp::s_ok) return ready;
     const uint32_t deep = deeper_ok(from, to, mounted);                  // #124: a folder moved deeper
     if (deep != xyf::usbp::s_ok) return deep;
-    const U32 tags[2] = {file_engine::rename_from, file_engine::rename_to};
+    const U32 tags[2] = {file_engine::rename_from, over ? file_engine::rename_over : file_engine::rename_to};
     const char* paths[2] = {from, to};
     for (U32 i = 0; i != 2; ++i) {                                      // the pair checked above: op_stat here
         const Reply r = path_request(paths[i], file_engine::op_stat, 0x21, tags[i]);   // a opens its window at rename_to

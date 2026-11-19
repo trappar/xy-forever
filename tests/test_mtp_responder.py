@@ -421,6 +421,38 @@ class MtpResponderTests(unittest.TestCase):
         self.assertFalse((self.folder / "xy-forever/half.bin").exists())
         self.assertEqual(c.info(params[2]), INVALID_HANDLE)
         self.assertEqual(self.upload(folder, "whole.bin", b"done")[0], OK)
+        self.assertEqual(self.uploads(), [])
+
+    def uploads(self):
+        tmp = self.folder / "xy-forever/tmp"
+        return sorted(p.name for p in tmp.iterdir()) if tmp.is_dir() else []
+
+    def test_an_upload_replaces_in_one_step_or_leaves_the_old_file(self):
+        """#4: SendObject writes tmp/put-<size>-<handle> and renames it onto the name when every announced byte
+        came; a short transfer or a cancel leaves the old file (and its handle) and removes the upload."""
+        self.open()
+        c = self.client
+        folder = c.named()["xy-forever"]
+        note = self.folder / "xy-forever/note.txt"
+        old = note.read_bytes()
+        code, handle = self.upload(folder, "note.txt", b"new note\n" * 1000)
+        self.assertEqual((code, note.read_bytes(), self.uploads()), (OK, b"new note\n" * 1000, []))
+        self.assertEqual(c.info(handle)["size"], 9000)
+        code, params, _ = c.transaction(0x100C, STORAGE, folder, data=object_info("note.txt", 5000))
+        self.assertEqual(code, OK)
+        c.out(c.command(0x100D))
+        c.send_data(0x100D, bytes(4000))                                  # fewer bytes than announced
+        self.assertEqual(c.answers(c.take())[-1][1], 0x2007)              # Incomplete_Transfer
+        self.assertEqual((note.read_bytes(), self.uploads()), (b"new note\n" * 1000, []))
+        self.assertEqual(c.info(params[2])["size"], 9000)                 # the old file, still listed
+        code, params, _ = c.transaction(0x100C, STORAGE, folder, data=object_info("note.txt", 100000))
+        c.out(c.command(0x100D))
+        c.send_data(0x100D, bytes(100000), stop=3 * 4096)
+        for op in (b"P", b"C", b"P"):
+            c.call(op)
+        self.assertEqual(c.status()[:2], (OK, 0))
+        self.assertEqual((note.read_bytes(), self.uploads()), (b"new note\n" * 1000, []))
+        self.assertNotEqual(old, note.read_bytes())
 
 
 if __name__ == "__main__":

@@ -86,6 +86,27 @@ static int rename_call(void*, const char* a, const char* b) {         // as A's 
     return ::rename(host(a).c_str(), host(b).c_str()) ? fail() : 0;
 }
 
+// #4: SendObject's upload, as B's mtp_session: tmp/put-<size>-<tag>, then a rename that replaces (A checks the size).
+static std::string upload_path;
+static U32 upload_bytes = 0;
+static int upload_call(void*, const char* path, U32 size, U32 tag) {   // one call: open_call counts it
+    char name[64];
+    std::snprintf(name, sizeof name, "/yaffs2/xy-forever/tmp/put-%08x-%08x", unsigned(size), unsigned(tag));
+    upload_path = name; upload_bytes = size;
+    ::mkdir(host(static_cast<const char*>("/yaffs2/xy-forever")).c_str(), 0755);
+    ::mkdir(host(static_cast<const char*>("/yaffs2/xy-forever/tmp")).c_str(), 0755);
+    (void)path;
+    return open_call(nullptr, name, true);
+}
+static int commit_call(void*, const char* path, bool keep) {
+    ++calls;
+    struct stat st;
+    if (!keep) return ::unlink(host(upload_path.c_str()).c_str()) ? fail() : 0;
+    if (::stat(host(upload_path.c_str()).c_str(), &st) || U32(st.st_size) != upload_bytes) return m::f_storage;
+    if (!::stat(host(path).c_str(), &st) && S_ISDIR(st.st_mode)) return m::f_storage;
+    return ::rename(host(upload_path.c_str()).c_str(), host(path).c_str()) ? fail() : 0;
+}
+
 static m::Responder responder;
 static unsigned most = 0;
 static bool step() {
@@ -103,7 +124,7 @@ int main(int argc, char** argv) {
     if (argc != 2) return 2;
     root = argv[1];
     m::FileOps ops = {0, list, stat_call, space, open_call, read_call, write_call, seek_call, close_call,
-                      mkdir_call, unlink_call, rmdir_call, rename_call, nullptr, nullptr};
+                      mkdir_call, unlink_call, rmdir_call, rename_call, nullptr, nullptr, upload_call, commit_call};
     responder.init(ops);
     for (;;) {
         Byte command; U32 n;

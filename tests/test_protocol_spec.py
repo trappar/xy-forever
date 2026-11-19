@@ -278,7 +278,7 @@ class SpecDataTest(unittest.TestCase):
         encodings = {(c['name'], f['name']): f['encoding'] for c in s['commands'] for part in ('request', 'reply')
                      for f in c[part]['fields'] if 'encoding' in f}
         self.assertEqual({k for k, v in encodings.items() if v == 'utf-8'},
-                         {('file.read', 'path'), ('file.write_staged', 'path'), ('tfw.check', 'path'),
+                         {('file.read', 'path'), ('file.write_staged', 'path'), ('file.write_begin', 'path'), ('tfw.check', 'path'),
                           ('file.list', 'path'), ('file.delete', 'path'), ('file.rmdir', 'path'), ('file.mkdir', 'path'),
                           ('file.rename', 'source'), ('file.rename', 'target'), ('file.copy', 'source'), ('file.copy', 'target')})
         fields = ids.COMMANDS[P.READ_FILE]['request']
@@ -379,7 +379,7 @@ class DeviceAgreesTest(unittest.TestCase):
         self.assertIn('    if (path_bytes + 1 + 32 != length) code = P::s_bad_request;\n'
                       '    else if (!storage_server::valid_write_path(path)) code = P::s_refused;\n', us)
         ss = text('target/storage_server.cpp') + text('target/file_client.cpp')
-        self.assertIn('if (!storage_server::valid_write_path(path) || !bytes) return xyf::usbp::s_refused;', ss)
+        self.assertIn('if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;', ss)
         self.assertIn('refused', command(spec(), 'file.write_staged')['errors'])
         self.assertEqual((ids.S_UNSUPPORTED, ids.S_REFUSED, ids.S_BUSY, ids.S_CANCELLED), (2, 14, 15, 16))
         self.assertNotIn('s_busy', ss)                                        # 1.10: only the job's one request slot

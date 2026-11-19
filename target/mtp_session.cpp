@@ -198,19 +198,43 @@ int change(void* c, uint32_t op, const char* path) {
 int mkdir(void* c, const char* path) { return change(c, 0x26u, path); }
 int unlink(void* c, const char* path) { return change(c, 0x25u, path); }
 int rmdir(void* c, const char* path) { return change(c, 0x27u, path); }
-int rename(void* c, const char* from, const char* to) {
+int move(void* c, const char* from, const char* to, bool over) {
     Files& f = of(c);
     if (f.link) return M::f_link;
     if (!may_change(f, from, file_engine::op_rename, to)) return f.link ? M::f_link : M::f_refused;
     uint32_t error = 0;
-    const uint32_t code = C::rename(from, to, error, *f.mounted);
+    const uint32_t code = C::rename(from, to, error, *f.mounted, over);
     if (code == P::s_ok) return 0;
     if (code == P::s_link) { f.link = 1; return M::f_link; }
     return error ? errno_result(error) : from_status(f, code);
 }
+int rename(void* c, const char* from, const char* to) { return move(c, from, to, false); }
+// #4 SendObject: the upload is tmp/put-<size>-<handle> (file_engine::upload_name; its folders made as FILE_WRITE's),
+// renamed onto path with rename_over (A checks its size against the name), or unlinked.
+static_assert(sizeof(Files::upload) == file_engine::upload_bytes, "an upload's name");
+int upload(void* c, const char* path, xyf_core::U32 size, xyf_core::U32 tag) {
+    Files& f = of(c);
+    if (f.link) return M::f_link;
+    uint32_t slot = 0;
+    while (slot != max_open && f.open[slot] >= 0) ++slot;
+    if (slot == max_open) return M::f_storage;
+    file_engine::upload_name(f.upload, size, tag);
+    if (!may_change(f, path, file_engine::op_write) || !may_change(f, f.upload, file_engine::op_write))
+        return f.link ? M::f_link : M::f_refused;
+    int fd = -1;
+    const uint32_t code = C::open_write(f.upload, fd, *f.mounted);   // mkdir -p, op 0x29 "wb"
+    if (code == P::s_link) { f.link = 1; return M::f_link; }
+    if (code != P::s_ok) return from_status(f, code);
+    f.open[slot] = fd; f.open_write[slot] = 1; ++f.writing;
+    return fd;
+}
+int commit(void* c, const char* path, bool keep) {
+    return keep ? move(c, of(c).upload, path, true) : change(c, 0x25u, of(c).upload);
+}
 }
 M::FileOps file_ops(Files& f) {
-    M::FileOps ops = {&f, list, stat, space, open, read, write, seek, close, mkdir, unlink, rmdir, rename, 0, 0};
+    M::FileOps ops = {&f, list, stat, space, open, read, write, seek, close, mkdir, unlink, rmdir, rename, 0, 0,
+                      upload, commit};
     return ops;
 }
 #endif

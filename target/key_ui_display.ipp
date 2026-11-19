@@ -105,3 +105,12 @@ void show(uint32_t screen, const char* status) {
     ui_status = status;
     present();
 }
+// A lost link ends the menu only when nothing can answer (#3): with USB on, B never resets itself; the
+// live menu stays (its status line says so, commands that need A answer link) until a power cycle.
+bool lost_ends_menu() {
+#if defined(XYF_ONE_SESSION)
+    return xy_forever::xyf_boot::link_lost() && !xy_forever::usb_service::home_usb();
+#else
+    return xy_forever::xyf_boot::link_lost();   // both boot built-in
+#endif
+}

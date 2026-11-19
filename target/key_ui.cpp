@@ -413,6 +413,7 @@ extern "C" void xy_forever_key_ui() {
         xy_forever::knob_input::start(!r.identity_mismatch && (r.stages & stage_identity));
 #if defined(XYF_ONE_SESSION)
         menu_screen = 1;                             // key_ui::host_view may redraw from here
+        bool shown_lost = false;                     // the status line already shows the lost link
 #endif
         for (;;) {
             poll();
@@ -441,15 +442,12 @@ extern "C" void xy_forever_key_ui() {
             }
 #endif
 #if defined(XYF_ONE_SESSION)
-            // b never resets itself on a lost link. With USB on, the menu
-            // stays (USB still answers; commands that need a get link) until a power cycle.
-            // Without USB nothing can answer: stop as before.
             const bool lost = xy_forever::xyf_boot::link_lost();
-            if (lost && !xy_forever::usb_service::home_usb()) { r.exit_reason = exit_link; break; }
+            if (lost && !shown_lost) { shown_lost = true; status = " "; dirty = 1; }   // #3: shown at once
 #else
             const bool lost = false;
-            if (xy_forever::xyf_boot::link_lost()) { r.exit_reason = exit_link; break; }   // both boot built-in
 #endif
+            if (lost_ends_menu()) { r.exit_reason = exit_link; break; }
 #if defined(XYF_MODS_PAGE)
             // The Settings page reads the mod packages too (its Mod memory row needs the base's layouts)
             const bool settings_shown = !mods_shown && app.screen == xyf::menu::Screen::settings;
@@ -509,7 +507,7 @@ extern "C" void xy_forever_key_ui() {
                     }
 #endif
                     status = xy_forever::xyf_boot::set_default(app.entry);   // the only write path
-                    if (xy_forever::xyf_boot::link_lost()) { r.exit_reason = exit_link; break; }
+                    if (lost_ends_menu()) { r.exit_reason = exit_link; break; }   // #3: with USB the menu stays
                     app.screen = xyf::menu::Screen::main;      // first row = the (new) default's name
                     continue;
                 }

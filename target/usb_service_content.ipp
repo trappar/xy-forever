@@ -152,7 +152,7 @@ void content_say(ContentSlot& c, bool force) {
     content_text(c, "Installing content ", c.progress);
 }
 U32 content_begin(const char* id, bool menu, bool write_default) {
-    if (job_running() || closing XYF_OR_MTP_BUSY || (put_expected && result.put_received != put_expected)) return P::s_busy;
+    if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
     if (!a_serving()) return P::s_link;
     U32 code = file_client::mount_ready(mounted);
     if (code != P::s_ok) return code;
@@ -265,7 +265,7 @@ ConfigSlot& gslot() { return *reinterpret_cast<ConfigSlot*>(XYF_JOB_REGION_BEGIN
 enum ConfigStep : U32 { cg_open = 0, cg_write, cg_close, cg_stat, cg_unlink_old, cg_away, cg_in, cg_drop, cg_closing, cg_ended };
 U32 config_begin(const char* text, U32 length, const char* id, const char* path = xg::path,
                  const char* old_path = xg::old_path, const char* part_path = xg::part_path) {
-    if (job_running() || closing XYF_OR_MTP_BUSY || (put_expected && result.put_received != put_expected)) return P::s_busy;
+    if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
     if (!a_serving()) return P::s_link;
     if (!length || length > xg::max_text) return P::s_bad_request;
     U32 code = file_client::mount_ready(mounted);
