@@ -115,7 +115,7 @@ U32 content_start(const char* id, bool menu, bool write_default, bool replay) {
     c.stage = file_client::mkdir_start(window_folder).outcome ? cs_switch : cs_opening;   // 193: not sent: the first change opens it
     xj::begin(c.intent_file); c.source.fd = -1;
     c.prepared = 0; c.prepare_step = 0; c.replay = replay ? 1u : 0u; c.cleaning = 0;
-    if (replay) { c.intent = recovery_record; c.stage = cs_validate; xj::source_begin(c.source, id); }
+    if (replay) { c.intent = recovery_record; if (c.stage != cs_opening) c.stage = cs_validate; xj::source_begin(c.source, id); }
     c.menu = menu ? 1u : 0u; c.said_ms = 0; c.said_phase = ~0u; c.write_default = write_default ? 1u : 0u;
     if (save_active) save_lap(xl::p_switch); else xl::begin(save_times, xl::k_switch, now(), xl::p_switch);
     job_kind = 1; job_state = job_busy; job_usb = menu ? 0u : 1u;
@@ -132,8 +132,9 @@ void content_pump() {
         if (r.outcome == file_client::busy) { content_say(c, false); return; }
         if (r.outcome == file_client::link) mounted = file_client::mounted_stale;   // past its bound: still out
         if (r.outcome) c.io.link = 1;                                    // the switch fails (link), then closes
-        c.stage = cs_switch;
+        c.stage = c.replay ? cs_validate : cs_switch;
         content_say(c, true);
+        if (c.stage == cs_validate) return; // consume the opening owner before source IO
     }
     if (c.stage == cs_switch) {
         U32 ph;

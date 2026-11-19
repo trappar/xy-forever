@@ -97,7 +97,7 @@ const char* content_line() {
     ContentSlot& c = cslot();
     static U32 offer_shown __attribute__((section(".data"))) = 0;
     if (!recovery_offer) offer_shown = 0;
-    if (recovery_offer && offer_shown != recovery_offer) {
+    if (recovery_offer && offer_shown != recovery_offer && !job_running() && !closing) {
         const char* message = recovery_offer == 3 ? "Content journal: newer version; kept unchanged." :
                               recovery_offer == 2 ? "Content journal invalid; kept unchanged." : "Source missing. Set default to undo: ";
         content_text(c, message, recovery_offer == 1 ? recovery_record.previous : "");

@@ -181,3 +181,18 @@ class Recovery(Switch, unittest.TestCase):
         self.assertIn('previous=%s\n' % self.base, (self.root / JOURNAL).read_text())
         self.sim.set('a_slow_ms', 0)
         self.repaired(target)
+
+    def test_slow_replay_window_keeps_answering_usb(self):
+        previous = self.default()
+        target = self.build(['alpha'])
+        (self.root / JOURNAL).write_bytes(intent(self.root, target, previous))
+        self.sim.set('rw_mount_ms', 600000)
+        self.restart()
+        self.wait(lambda: self.sim.status()['rw_open'] == 1 or 'read-write mount takes' in (self.dir / 'log.txt').read_text(),
+                  'replay opening storage')
+        code, fields = MS.job_status(self.dev, 0)
+        self.assertEqual(code, 0)
+        self.assertEqual(fields['detail'], 'opening storage for writing')
+        self.assertEqual(self.dev.hello()[0], 0)
+        self.sim.set('rw_mount_ms', 0)
+        self.repaired(target)
