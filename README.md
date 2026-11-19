@@ -1,10 +1,13 @@
 # XY Forever
 
-A boot menu and firmware manager for the OP-XY. Hold PLAY at power-on to pick a
-firmware from a library on the device; with no key held, the default firmware
-boots at close to stock speed. XY Forever is a chain-loaded second-stage `os.ldr`: the
-real 1.2.1 bootloader stays untouched and loads it from the NAND boot partition,
-and the dev menu (hold COM) remains available for recovery.
+A firmware and mod manager for the OP-XY. It runs at power-on, before the OS: pick
+which firmware boots from a library on the device, turn mods on and off, and keep
+everything updated, all without touching the bootloader. With no key held, the default
+firmware boots at close to stock speed; hold PLAY at power-on to open the menu.
+
+XY Forever is a chain-loaded second-stage `os.ldr`, not a bootloader: the real 1.2.1
+bootloader stays untouched and loads it from the NAND boot partition, and the dev menu
+(hold COM) remains available for recovery.
 
 ## Getting started
 

@@ -5,9 +5,10 @@ under development and tested on one device. It is not ready for general use.
 
 ## What it is
 
-XY Forever is a boot menu for the OP-XY. It runs before the OP-XY software starts.
-It keeps a library of firmware files on the device, lets you pick one, and builds
-open-xy mod firmware on the device itself.
+XY Forever is a firmware and mod manager for the OP-XY. It runs when you power on,
+before the OP-XY software starts. It keeps a library of firmware files on the device,
+lets you pick which one starts, and lets you turn open-xy mods on and off, building
+the mod firmware on the device itself.
 
 What it never touches:
 
