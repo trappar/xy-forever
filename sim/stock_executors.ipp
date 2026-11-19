@@ -7,18 +7,12 @@ void executor(uint32_t address, uint32_t request) {
         strncpy(static_cast<char*>(host(0x8803f6e0u)), shared->swap_path, 239);
         log("fault: stock path buffer now holds %s", shared->swap_path);
     }
+    if (a0 == 0x41535447u) ++shared->stage_executor_hits; // quarantined RAM handle must never reach stock
     const char* path = cls == cls_path || cls == cls_query ? static_cast<const char*>(host(r32(request + 0x18))) : 0;
     if (address == 0x889f76cau && cls == cls_partition) {
         if (op == 0x2c) return finish(request, provider() ? seek_file(int(a0), int(r32(request + 0x18)), int(r32(request + 0xc))) : fail(19));
         if (op == 0x2d) return finish(request, close_file(int(a0)));
-        if (op == 0x18) {
-            if (a0 <= 2) shared->partition = int32_t(selected = a0);
-            if (a0 <= 2 && shared->fail_select.load() > 0 && --shared->fail_select == 0) {   // test hook
-                log("fault: select %u switched the partition, then failed", a0);
-                return finish(request, 1);
-            }
-            return finish(request, a0 <= 2 ? 0 : 1);
-        }
+        if (op == 0x18) return finish(request, local_select(a0));
         if (op == 0x14) return finish(request, trim(a0) ? 0 : fail(5));
         if (op == 0x30) return finish(request, close_directory(a0));              // MTP: closedir
         if (op == 0x34 || op == 0x36) return finish(request, handle_of(int(a0)) < 0 ? fail(9) : 0);   // fsync, truncate
@@ -49,8 +43,26 @@ void executor(uint32_t address, uint32_t request) {
                                         uint64_t(fs.f_bavail) * fs.f_frsize : 0;
             w32(a_out_buffer, uint32_t(free_bytes)); w32(a_out_buffer + 4, uint32_t(free_bytes >> 32));
         }
+        int result = op == 0x31 ? 0 : found ? 0 : fail(2);
+        if (op == 0x23 && found) {
+            struct statvfs fs = {};
+            if (shared->statfs_fail || statvfs(where.c_str(), &fs)) result = fail(5);
+            else {
+                const uint32_t block = shared->statfs_override ? uint32_t(shared->statfs_block_bytes.load()) : uint32_t(fs.f_frsize);
+                const int64_t quota = shared->space.load();
+                const uint32_t free = shared->statfs_override ? uint32_t(shared->statfs_free_blocks.load()) :
+                                      quota >= 0 && block ? uint32_t(uint64_t(quota) / block) : uint32_t(fs.f_bavail);
+                w32(a_out_buffer, block); w32(a_out_buffer + 4, shared->statfs_override ? 0xffffffffu : uint32_t(fs.f_blocks));
+                w32(a_out_buffer + 8, free);
+            }
+        }
         w32(request + 0x20, a_out_buffer); w32(request + 0x24, bytes);
-        return finish(request, op == 0x31 ? 0 : found ? 0 : fail(2));
+        // Space queries retain YAFFS errno even on success (#12); model that bug faithfully.
+        if (op == 0x23 || op == 0x31) {
+            w32(request + 0x10, uint32_t(result)); w32(request + 0x14, uint32_t(last_error));
+            a_respond(request); return;
+        }
+        return finish(request, result);
     }
     if (address == 0x889f6cd6u && cls == cls_read && op == 0x2a) {
         // #144: one 0x1000-byte body per run (the builder's chunk). While bytes are left it sends the body and

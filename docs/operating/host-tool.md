@@ -17,6 +17,11 @@ Forever), `key K`, `hold
 on|off`, `uninstall STOCK_OS_LDR --yes-uninstall`.
 
 Commands with `--yes-*` are dry runs without that flag. The file commands below act at once.
+
+`dev-a-rehearsal BUILD` (or `dev-a-rehearsal STOCK_OS_LDR --uninstall`) stages verified input on
+B, transfers it to A's separate RAM, checks it on A and prints the admission digest. This developer
+command writes no storage and never installs or resets. `--deadline-ms` bounds it (1..120000);
+Ctrl-C cancels an intact session. Status remains responsive; a lost link stops without recovery.
 Manual changes may touch `/yaffs2` except the protected marker and updater inbox in SAFETY.md.
 Creating the report folder is a storage write and requires the developer's approval:
 `python3 xyf_host.py put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.

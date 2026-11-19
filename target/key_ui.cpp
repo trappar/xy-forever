@@ -463,6 +463,10 @@ extern "C" void xy_forever_key_ui() {
             // the reason (the changes stay pending).
             if (const uint32_t saved = xy_forever::mods_io::save_state()) {
                 if (saved == xy_forever::mods_io::save_boot) {
+#if defined(XYF_TFW_CHECK)
+                    // A finished Save can still have its boot deferred when a USB rehearsal starts.
+                    if (lost || !xy_forever::xyf_boot::link_idle() || xy_forever::usb_service::page_busy()) continue;
+#endif
                     xy_forever::mods_io::save_done();
                     xy_forever::xyf_boot::choose_default(); r.exit_reason = exit_play; break;
                 }

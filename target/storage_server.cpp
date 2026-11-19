@@ -4,6 +4,11 @@
 #include "cold_heap.hpp"
 #include "xyf_clock.hpp"
 #include "boot_partition_probe.hpp"
+#if defined(XYF_TFW_CHECK)
+#include "a_install_stage.hpp"
+#include "file_boot.hpp"
+#include "file_client.hpp"
+#endif
 #if defined(XYF_USB_SERVICE)
 #include "usb_service.hpp"
 #endif
@@ -484,9 +489,20 @@ void install(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySession
     session.serve(timed_serve, &storage);
 }
 
-void finish(cold_storage::Stock121ReadOnlySession& storage) { close_engine(storage); }   // the window too
+void finish(cold_storage::Stock121ReadOnlySession& storage) {
+#if defined(XYF_TFW_CHECK)
+    a_stage.clear();
+#endif
+    close_engine(storage);
+}   // the window too
+#if defined(XYF_TFW_CHECK)
+bool discard_install_stage() { const bool held = a_stage.active; a_stage.clear(); return held; }
+#endif
 void adopt() { adopted = 1; }
 void close_files(cold_storage::Stock121ReadOnlySession& storage) {
+#if defined(XYF_TFW_CHECK)
+    a_stage.clear();
+#endif
     close_engine(storage);                // the read-write window first (checkpoint), then b's handles
     close_handles();
     mounted = 0;
@@ -499,6 +515,9 @@ uint32_t held_files() {
 }
 #if defined(XYF_USB_FILE_WRITE)
 void tick(cold_storage::Stock121ReadOnlySession& storage, uint32_t now) {
+#if defined(XYF_TFW_CHECK)
+    if (a_stage.expired(xyf::clock::ms())) a_stage.clear();
+#endif
     if (!window_open || engine != entry_write) return;      // the run entry holds its own window (097)
     if (window_touched) { window_touched = 0; window_since = now; return; }
     if (now - window_since < window_idle_ms) return;
@@ -541,6 +560,9 @@ void run_engine(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySess
             }
         }
     }
+#if defined(XYF_TFW_CHECK)
+    a_stage.clear();
+#endif
     close_engine(storage);                // the read-write window first, always
     usb_service::reset_self();            // never returns
 }

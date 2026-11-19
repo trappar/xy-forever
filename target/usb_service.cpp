@@ -87,6 +87,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "xyf_settings.hpp"         // #21: settings.txt (through the config job), the confirm gate
 #endif
 #if defined(XYF_TFW_CHECK)
+#include "a_install_stage.hpp"
 #include "tfw_device_check.hpp"
 #include "tfw_role_probe.hpp"
 #include "../native/tfw_check.hpp"
@@ -94,6 +95,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 extern "C" { extern const xyf_core::Policy* volatile xy_forever_cold_policy; }   // cold.cpp
 namespace {
 bool boot_probe_active();
+bool rehearsal_active();
 #include "usb_service_transport.ipp"        // stock wrappers, transport, PUT state, install log, HELLO, STATUS
 #include "usb_service_stage2.ipp"           // the stage 2 loader
 #include "usb_service_identity.ipp"         // hello version= and image=, the menu's labels
@@ -121,6 +123,7 @@ namespace {
 bool boot_probe_active() { return false; }
 #endif
 
+#include "usb_service_a_stage.ipp"         // product RAM-only A admission rehearsal
 #include "usb_service_install.ipp"          // TFW_CHECK, INSTALL
 }
 

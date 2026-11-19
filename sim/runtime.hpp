@@ -32,6 +32,7 @@ struct Shared {
     // added) instead of cut at 239 bytes.
     std::atomic<int32_t> fail_select, fail_unmount, fail_open, full_path;
     std::atomic<int64_t> space;                  // bytes yaffs may still write (< 0: unlimited)
+    std::atomic<int32_t> statfs_override, statfs_block_bytes, statfs_free_blocks, statfs_fail;
     std::atomic<int32_t> storage_ops, play, cuts;
     std::atomic<int32_t> b_listening;            // the USB CDC endpoint is open (TCP port listening)
     // The chip's partition register as A's last stock select left it (0 user area: yaffs; 1, 2 boot
@@ -41,6 +42,7 @@ struct Shared {
     // yaffs's own record across restarts and power cuts: a read-write mount not yet unmounted (no
     // checkpoint written), and the mounts that found one (on the device: a full scan, a slow boot).
     std::atomic<int32_t> rw_open, unclean_mounts;
+    std::atomic<int32_t> mount_calls, raw_boot_changes, stage_executor_hits, a_stage_corrupt, defer_save_boot;
     std::atomic<int32_t> rw_mounts;              // read-write mounts since the simulator started (window opens)
     // Test hook (control "swap PATH"): the next path or query executor on A finds PATH in the stock
     // path buffer, as if a second request's body had arrived between A's check and the executor.

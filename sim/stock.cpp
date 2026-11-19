@@ -7,6 +7,7 @@
 // the boot partition (a host file: two partitions, the stock writer's commit-last order).
 // A function the simulator does not stand in for ends the processor (crash), never guesses.
 #include "runtime.hpp"
+#include "boot_crypto.hpp"
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
@@ -150,6 +151,7 @@ uint32_t construct(uint32_t name) {
     return device;
 }
 int mount(uint32_t device, int read_only_mount) {
+    ++shared->mount_calls;
     if (device != yaffs_device || r32(device + 0xe4)) return fail(16);
     const int32_t failing = shared->fail_mount;
     if (failing > 0 && (shared->fail_mount = failing - 1) == 0) { log("fault: yaffs mount failed"); return fail(5); }
@@ -213,7 +215,7 @@ void finish(uint32_t request, int result) {
     a_respond(request);
 }
 
-// ---- boot partition (A executors; B's stock writer) -----------------------------------------
+// ---- boot partition (A executors and role-dispatched stock writer) -----------------------------------------
 const uint32_t erase_block = 0x10000u;                 // trim unit (bytes)
 int bootpart() {
     const int fd = open(shared->bootpart, O_RDWR | O_CREAT, 0644);
@@ -221,6 +223,7 @@ int bootpart() {
     return fd;
 }
 bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
+    if (write) ++shared->raw_boot_changes;
     if (selected != 1 && selected != 2) return false;
     const uint64_t at = uint64_t(sector) * 512u, bytes = uint64_t(count) * 512u;
     if (at + bytes > shared->capacity) return false;
@@ -236,6 +239,7 @@ bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
     return n == ssize_t(bytes);
 }
 bool trim(uint32_t block) {
+    ++shared->raw_boot_changes;
     std::vector<uint8_t> zero(erase_block, 0);
     const uint32_t first = block * (erase_block / 512u);
     const uint32_t count = first * 512u < shared->capacity ? (shared->capacity - first * 512u) / 512u : 0;
@@ -254,58 +258,7 @@ void stock_log(const char* text) {
             function<void(int, const char*)>(sink)(3, line);
         }
 }
-uint32_t b_select(uint32_t p) { return b_call(cls_partition, 0x18, p, 0, 0, 0, 0, 0, 0); }
-uint32_t b_read(uint32_t sector, uint8_t* out, uint32_t count) {
-    return b_call(cls_sector, count == 1 ? 0x11 : 0x12, sector, count, 0, 0, 0, out, count * 512u);
-}
-uint32_t b_write(uint32_t sector, const uint8_t* data, uint32_t count) {
-    return b_call(cls_write, sector ? 0x16 : 0x15, sector, count, 0, data, count * 512u, 0, 0);
-}
-bool active(const uint8_t* sector) { uint32_t v; memcpy(&v, sector, 4); return v >= 2 && sector[12]; }
-// 88a06a7e(buf, size, 0) (docs/hardware/usb.md, Boot partition and USB): target the first
-// non-active partition (1, else 2; 2 if both are active), trim, write sectors 1.. in batches of
-// 128, verify, then sector 0 last (the commit), then erase block 0 of the other partition.
-// No encryption (the device's OTP key would encrypt the image in place).
-uint32_t stock_writer(const uint8_t* image, uint32_t size) {
-    char text[96];
-    const uint32_t capacity = b_call(0, 5, 0, 0, 0, 0, 0, 0, 0);
-    if (size + 512 < 10000 || size + 512 > capacity) { stock_log("file too large for boot partition"); return 0; }
-    const uint32_t crc = crc32(image, size);
-    uint8_t sector[512];
-    uint32_t target = 1;
-    if (b_select(1) || b_read(0, sector, 1)) return 0;
-    if (active(sector)) {
-        stock_log("found active firmware, check next boot partition");
-        target = 2;
-        if (b_select(2) || b_read(0, sector, 1)) return 0;
-        if (active(sector)) stock_log("found active firmware here too...overwrite!");
-    }
-    if (b_select(target)) return 0;
-    for (uint32_t b = 0; b * erase_block < size + 512; ++b) {
-        snprintf(text, sizeof(text), "erase block: %u", b); stock_log(text);
-        if (b_call(cls_partition, 0x14, b, 0, 0, 0, 0, 0, 0)) return 0;
-    }
-    const uint32_t sectors = (size + 511) / 512;
-    std::vector<uint8_t> chunk(128 * 512), back(128 * 512);
-    for (uint32_t s = 0; s < sectors; s += 128) {
-        const uint32_t n = sectors - s < 128 ? sectors - s : 128;
-        memset(chunk.data(), 0, n * 512);
-        memcpy(chunk.data(), image + s * 512, size - s * 512 < n * 512 ? size - s * 512 : n * 512);
-        snprintf(text, sizeof(text), "write sectors: %u-%u", 1 + s, s + n); stock_log(text);
-        if (b_write(1 + s, chunk.data(), n)) return 0;
-        if (b_read(1 + s, back.data(), n) || memcmp(back.data(), chunk.data(), n * 512)) { stock_log("verify failed"); return 0; }
-    }
-    memset(sector, 0, sizeof(sector));
-    const uint32_t header[3] = {3, size, crc};
-    memcpy(sector, header, 12); sector[12] = 1; sector[13] = 0;
-    stock_log("finally, write sector 0");
-    uint8_t check[512];
-    if (b_write(0, sector, 1) || b_read(0, check, 1) || memcmp(check, sector, 512)) return 0;
-    stock_log("erase block 0 to disable other boot partition");
-    if (b_select(3 - target) || b_call(cls_partition, 0x14, 0, 0, 0, 0, 0, 0, 0)) return 0;
-    b_select(0);
-    return 1;
-}
+#include "stock_boot.ipp"
 
 #include "stock_executors.ipp"                          // A's stock request executors
 }
@@ -393,7 +346,7 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     }
     case 0x889f8e36u: b_build(p(0), cls_query, u(1), 0, 0, 0, s(2), uint32_t(strlen(s(2)) + 1), p(5), u(6)); return 0;
     case 0x889f6c5cu: b_build(p(0), cls_read, u(1), u(2), 0, u(3), 0, 0, p(4), u(3)); return 0;
-    case 0x889f8c10u: b_build(p(0), cls_write, u(1), u(2), 0, u(3), p(4), u(5), 0, 0); return 0;
+    case 0x889f8c10u: b_build(p(0), cls_write, u(1), u(2), u(3), 0, p(4), u(5), 0, 0); return 0;
     case 0x889f88acu: b_build(p(0), cls_sector, u(1), u(2), 0, 0, 0, 0, p(4), u(5)); return 0;
     case 0x11a0060cu: b_submit(p(1)); return 0;
     case 0x889f6508u: a_respond(u(1)); return 0;
@@ -417,12 +370,14 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     case 0x889f285au:                                   // posix close
         if (role) crash("B called the stock posix close (B uses its own timed file client)");
         return uint64_t(int64_t(close_file(int(u(0)))));
-    // B: boot partition
-    case 0x889f65f0u: return b_call(0, 5, 0, 0, 0, 0, 0, 0, 0);
-    case 0x88a06a7eu: return stock_writer(static_cast<const uint8_t*>(p(0)), u(1));
-    case 0x889f683cu: return b_select(u(0));
-    case 0x889f6a6au: return b_read(u(0), static_cast<uint8_t*>(p(1)), 1);
-    case 0x889f6abeu: return b_read(u(0), static_cast<uint8_t*>(p(1)), u(2));
+    // Role-dispatched stock boot-partition wrappers (A local MMC, B synchronous RPC).
+    case 0x889f65f0u: return boot_capacity();
+    case 0x88a06a7eu:
+        if (u(2)) crash("stock writer callback is not hosted (call with R2=0)");
+        return stock_writer(static_cast<uint8_t*>(p(0)), u(1));
+    case 0x889f683cu: return boot_select(u(0));
+    case 0x889f6a6au: return boot_read(u(0), static_cast<uint8_t*>(p(1)), 1);
+    case 0x889f6abeu: return boot_read(u(0), static_cast<uint8_t*>(p(1)), u(2));
     // A: provider registration, executors
     case 0x889f3910u: register_provider(uintptr_t(a[0]), u(1)); return 0;
     case 0x889f76cau: case 0x889f6feau: case 0x889f6cd6u: case 0x889f6dcau: case 0x889f6b7cu: case 0x889f72e4u:

@@ -37,7 +37,6 @@ OVER = {
     'scripts/protogen.py': 90178,
     'scripts/setup.py': 38062,
     'target/cold_storage.cpp': 33710,
-    'target/file_boot.cpp': 40815,
     'target/peer_services.cpp': 41949,
     'xy_forever/conformance.py': 63763,
     'xy_forever/modkit.py': 64034,

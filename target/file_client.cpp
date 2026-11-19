@@ -332,6 +332,15 @@ Reply readdir(uint32_t folder, uint8_t* entry) {
 }
 
 volatile U32 command_sequence __attribute__((section(".data"))) = 0;
+Reply serving_start(uint32_t& expected_ack) {
+    if (left_session) return outcome(busy);
+    const U32 value = U32(Stock121PeerSession::command_tag) << 16 | (storage_server::command_item & 0xffu) << 8 |
+                      (++command_sequence << 3 & 0xf8u);
+    expected_ack = peer_services::command_ack(value);
+    Stock121PeerSession* session = 0;
+    const Reply s = partition_out(session, 0x18, value, 0, 0);
+    return leave(session, s, request_ms);
+}
 uint32_t serving() {
     // The low three bits stay 0 (A's bootloader's select takes the argument & 7: the user area).
     const U32 value = U32(Stock121PeerSession::command_tag) << 16 | (storage_server::command_item & 0xffu) << 8 |

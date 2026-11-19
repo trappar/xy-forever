@@ -67,19 +67,14 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from xy_forever import depth, device_lock, host_write, library_add, usb_proto as P
 from xy_forever.library_add import ID_RE
+from xy_forever.host_install import DESCRIPTOR, MIN_IMAGE, IMAGE_CAPACITY, USB_MODES, load_build, load_stock
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr
 from xy_forever.transport import SerialPort, TcpPort, device_ports, sim_address
 
-DESCRIPTOR = struct.pack('<II', 0x584c4348, 1)
-MIN_IMAGE = 0x10000
-IMAGE_CAPACITY = 0x700000                         # usb_service.hpp image_capacity (b staging)
 # Test 034: the stock CDC receive ring holds 0x800 bytes and the device drains it
 # 256 bytes per poll; a 4 KiB PUT_DATA frame overflowed it (no reply). One
 # 1 KiB frame (+ 20 bytes framing) is in flight at a time.
 PUT_CHUNK = 1024
-# Build modes that keep this USB service. xyf-usb is the retired Test 031-042 mode: the
-# builder no longer makes it, but the tests' private fixture build was made with it.
-USB_MODES = ('xyf-usb', 'xyf-product', 'xyf-mtp-usb', 'xyf-crash-trigger')   # the device test builds keep the service
 READ_RANGE = 1024              # device read_range_max (Test 038: 4 KiB replies hung)
 INSTALL_TIMEOUT = 900.0         # host bound for one INSTALL (v3 link sessions have no device cap)
 COPY_RATE = 10000.0             # file.copy: the host waits its timeout plus 1 s per this many bytes
@@ -333,51 +328,6 @@ def sample_offsets(size):
     return sorted({0, last, last // 3, 2 * last // 3})
 
 
-def load_build(target):
-    """Returns (image bytes, description lines). Raises ValueError on any doubt."""
-    path = Path(target)
-    notes = []
-    if path.is_dir():
-        manifest = json.loads((path / 'manifest.json').read_text())
-        verification = json.loads((path / 'verification.json').read_text())
-        if not verification.get('passed'):
-            raise ValueError('build verification did not pass')
-        data = (path / 'candidate.ldr').read_bytes()
-        if hashlib.sha256(data).hexdigest() != manifest['candidate_sha256']:
-            raise ValueError('candidate.ldr does not match its manifest SHA-256')
-        if manifest.get('mode') not in USB_MODES:
-            # Installing a build without this USB service would end host access
-            # until a dev-menu install (Test 043: product builds keep it).
-            raise ValueError('build mode %r has no USB service; install it from the dev menu' % manifest.get('mode'))
-        notes.append('build %s (mode %s, verified)' % (path, manifest.get('mode')))
-    else:
-        # docs/SAFETY.md: only builds whose --verify passed.
-        raise ValueError('install needs a build directory whose verification passed, not a bare file: %s' % path)
-    if not MIN_IMAGE <= len(data) <= min(IMAGE_CAPACITY, MAX_IMAGE):
-        raise ValueError('size %d outside %d..%d' % (len(data), MIN_IMAGE, IMAGE_CAPACITY))
-    if DESCRIPTOR not in data:
-        raise ValueError('not an XY Forever build: cold descriptor missing')
-    summary = inspect_ldr(data)
-    notes.append('LDR ok: %d records, entry %s' % (summary['records'], summary['entry']))
-    notes.append('size %d, sha256 %s' % (len(data), hashlib.sha256(data).hexdigest()))
-    return data, notes
-
-
-def load_stock(target):
-    """UNINSTALL image: only the exact stock 1.2.1 os.ldr (the dev-menu restore
-    image). Returns (bytes, notes); raises ValueError on any difference."""
-    path = Path(target)
-    if not path.is_file():
-        raise ValueError('uninstall needs the stock os.ldr file: %s' % path)
-    data = path.read_bytes()
-    sha = hashlib.sha256(data).hexdigest()
-    if len(data) != P.STOCK_OS_LDR_BYTES or sha != P.STOCK_OS_LDR_SHA256:
-        raise ValueError('not the stock 1.2.1 os.ldr (size %d, sha256 %s); refusing' % (len(data), sha))
-    summary = inspect_ldr(data)
-    return data, ['stock 1.2.1 os.ldr %s' % path, 'LDR ok: %d records, entry %s' % (summary['records'], summary['entry']),
-                  'size %d, sha256 %s' % (len(data), sha)]
-
-
 def parse_slot(data):
     """Host copy of xyf::state::parse_slot: (seq, fields) or None."""
     if len(data) < 16 or len(data) > 4096 or not data.endswith(b'\n'):
@@ -534,6 +484,11 @@ def run(argv):
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('wait')
     sub.add_parser('status')
+    from xy_forever import a_rehearsal
+    rehearsal = sub.add_parser('dev-a-rehearsal', help='RAM-only B-to-A transfer and admission; writes nothing')
+    rehearsal.add_argument('input', help='verified XY Forever build directory, or stock os.ldr with --uninstall')
+    rehearsal.add_argument('--uninstall', action='store_true')
+    rehearsal.add_argument('--deadline-ms', type=int, default=120000)
     read = sub.add_parser('read'); read.add_argument('path'); read.add_argument('--out', type=Path)
     read.add_argument('--all', action='store_true', help='any size (ranged reads; needs the Test 038 service)')
     read.add_argument('--offset', type=int, help='one ranged read (up to READ_RANGE bytes) at this offset')
@@ -686,6 +641,11 @@ def run(argv):
         print('DRY RUN: would reboot both processors. Re-run with --yes-reboot.')
         return 0
 
+    if args.command == 'dev-a-rehearsal':
+        data, _ = (load_stock if args.uninstall else load_build)(args.input)
+        if not 1 <= args.deadline_ms <= 120000:
+            raise ValueError('deadline must be 1..120000 ms')
+
     dev, port, text = connect(args.timeout)
     print('connected %s: %s' % (port, text))
     hello = P.Hello(text)
@@ -694,6 +654,10 @@ def run(argv):
         return 2
     if args.command in ('wait', 'status'):
         print(hello.describe())
+    if args.command == 'dev-a-rehearsal':
+        code, state = a_rehearsal.run(dev, data, args.uninstall, args.deadline_ms, stage_progress)
+        print(json.dumps(state, indent=2))
+        return code
     if args.command == 'wait':
         return 0
     if args.command == 'status':

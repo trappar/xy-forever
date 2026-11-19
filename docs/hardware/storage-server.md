@@ -92,3 +92,7 @@ the binding rule in [SAFETY](../SAFETY.md) is unchanged. No device experiment es
 
 The [probe protocol and measured A preconditions](boot-partition-probe.md) cover developer
 command `0x64`, its read-only storage gate, restoration and the design go-ahead for #8.
+
+
+The [RAM-only A staging transport](a-install-staging.md) specifies #8 phase 1: existing owned
+request framing, exclusive RAM ownership and no storage writes.

@@ -33,7 +33,10 @@ std::string command(const std::string& line, bool& quit, int client) {
             if (sscanf(hex + i, "%2x", &byte) != 1) return "{\"ok\": false, \"error\": \"inject: bad hex\"}";
             body.push_back(uint8_t(byte));
         }
-        Message m = {message_magic, k_request, inject_bit | ++inject_count, cls, op, a0, 0, a2, 0, 0,
+        // The existing ARG2 test input is the write count: stock serializes it in RX+8,
+        // reconstructed at request+0x18 by 889f8bca -> 889f87d4, never queue linkage +0xc.
+        Message m = {message_magic, k_request, inject_bit | ++inject_count, cls, op, a0,
+                     cls == cls_write ? a2 : 0, cls == cls_write ? 0 : a2, 0, 0,
                      uint32_t(body.size())};
         injected[m.tag] = {false, 0, 0, 0};
         log("inject: class %08x op %02x arg %08x (%zu body bytes)", cls, op, a0, body.size());
@@ -72,12 +75,13 @@ std::string command(const std::string& line, bool& quit, int client) {
             {"fail_write", &shared->fail_write}, {"vanish_marker", &shared->vanish_marker},
             {"tfw_rpc_version", &shared->tfw_rpc_version}, {"a_otp_fail", &shared->a_otp_fail}, {"a_otp_preinit", &shared->a_otp_preinit},
             {"fail_mount", &shared->fail_mount}, {"otp_fail", &shared->otp_fail}, {"otp_preinit", &shared->otp_preinit},
-            {"fail_select", &shared->fail_select},
+            {"fail_select", &shared->fail_select}, {"statfs_override", &shared->statfs_override},
+            {"statfs_block_bytes", &shared->statfs_block_bytes}, {"statfs_free_blocks", &shared->statfs_free_blocks}, {"statfs_fail", &shared->statfs_fail},
             {"fail_unmount", &shared->fail_unmount}, {"fail_open", &shared->fail_open}, {"full_path", &shared->full_path},
             {"a_boot_ms", &shared->a_boot_ms}, {"b_boot_ms", &shared->b_boot_ms}, {"a_redeliver", &shared->a_redeliver},
             {"a_stall_now", &shared->a_stall_now}, {"b_queue", &shared->b_queue}, {"cut_body", &shared->cut_body},
             {"boot_a_window_ms", &shared->boot_a_window_ms}, {"b_close_stuck", &shared->b_close_stuck},
-            {"unmount_ms", &shared->unmount_ms}, {"mount_ms", &shared->mount_ms}, {"rw_mount_ms", &shared->rw_mount_ms}, {"needs_repair", &shared->needs_repair}, {"rename_fault", &shared->rename_fault},
+            {"defer_save_boot", &shared->defer_save_boot}, {"a_stage_corrupt", &shared->a_stage_corrupt}, {"unmount_ms", &shared->unmount_ms}, {"mount_ms", &shared->mount_ms}, {"rw_mount_ms", &shared->rw_mount_ms}, {"needs_repair", &shared->needs_repair}, {"rename_fault", &shared->rename_fault},
             {"rename_fault_kind", &shared->rename_fault_kind}, {"knob_per_pass", &shared->knob_per_pass},
             {"knob_wrap", &shared->knob_wrap}, {"knob_identity_fail", &shared->knob_identity_fail}};
         for (auto& f : fields) if (!strcmp(f.name, name)) { *f.field = int32_t(value); return "{\"ok\": true}"; }

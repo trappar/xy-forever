@@ -456,7 +456,7 @@ class OneSessionTest(unittest.TestCase):
         # every way out closes the engine (window and handles) before the shared mount ends.
         ss_files = ss[ss.index('void close_files(cold_storage::Stock121ReadOnlySession& storage) {'):]
         self.assertLess(ss_files.index('close_engine(storage);'), ss_files.index('mounted = 0;'))
-        self.assertIn('void finish(cold_storage::Stock121ReadOnlySession& storage) { close_engine(storage); }', ss)
+        # RAM-lease release is covered through the production transport by test_a_install_stage.
 
     def test_b_home(self):
         us = unit_text(ROOT / 'target/usb_service.cpp')

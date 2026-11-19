@@ -82,11 +82,13 @@ class Reports(unittest.TestCase):
                 break
         self.assertEqual(got, text)
         self.assertEqual(self.request(P.ids.STATE_GET, 1, 4, 0)[0], P.ids.S_NOT_FOUND)
-        self.sim.set('space', 0x123456789)
+        self.sim.set('statfs_override', 1)
+        self.sim.set('statfs_block_bytes', 0x80000000)
+        self.sim.set('statfs_free_blocks', 3)
         code, body = self.request(P.ids.STORAGE_SPACE, 1)
         self.assertEqual((code, len(body)), (0, 12))
-        self.assertEqual(struct.unpack('<3I', body), (1, 0x23456789, 1))
-        self.sim.set('space', -1)
+        self.assertEqual(struct.unpack('<3I', body), (1, 0x80000000, 1))
+        self.sim.set('statfs_override', 0)
         for cmd, words in ((P.ids.PACKAGE_LIST, (2, 0, 0, 0)), (P.ids.STATE_GET, (2, 0, 0)), (P.ids.STORAGE_SPACE, (2,))):
             self.assertEqual(self.request(cmd, *words)[0], P.ids.S_UNSUPPORTED)
             self.assertEqual(self.dev.call(cmd, b'')[0], P.ids.S_BAD_REQUEST)
@@ -131,3 +133,23 @@ class Reports(unittest.TestCase):
         target.mkdir(parents=True)
         self.assertEqual(self.request(P.ids.PACKAGE_LIST, 1, 2, 0, 0)[0], P.ids.S_TOO_LARGE)
         self.assertEqual(self.request(P.ids.STATE_GET, 1, 0, 0xffffffff)[0], P.ids.S_RANGE)
+
+    def test_space_statfs_return_value_unsigned_product_and_zero_free(self):
+        # Missing state leaves YAFFS errno set; the following successful statfs must ignore it.
+        self.assertEqual(self.request(P.ids.STATE_GET, 1, 4, 0)[0], P.ids.S_NOT_FOUND)
+        self.assertEqual(self.sim.ask_a(0x11907388, 0x31, body=b'/yaffs2\0'), (0, 2))
+        self.sim.set('statfs_override', 1)
+        for block, free in ((4096, 0), (1, 0xffffffff), (0x80000001, 3), (0xffffffff, 0xffffffff)):
+            self.sim.set('statfs_block_bytes', block)
+            self.sim.set('statfs_free_blocks', free)
+            code, body = self.request(P.ids.STORAGE_SPACE, 1)
+            value = block * free
+            self.assertEqual((code, struct.unpack('<3I', body)), (0, (1, value & 0xffffffff, value >> 32)))
+        self.sim.set('statfs_fail', 1)
+        self.assertEqual(self.request(P.ids.STORAGE_SPACE, 1), (P.ids.S_STORAGE, b''))
+        self.sim.set('statfs_fail', 0)
+        self.sim.set('statfs_block_bytes', 0)
+        self.assertEqual(self.request(P.ids.STORAGE_SPACE, 1), (P.ids.S_STORAGE, b''))
+        self.sim.set('statfs_block_bytes', 4096)
+        self.sim.set('statfs_free_blocks', 4)
+        self.assertEqual(self.request(P.ids.STORAGE_SPACE, 1), (0, struct.pack('<3I', 1, 16384, 0)))

@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
 from xy_forever import xyf_entry, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, modstore, paths, sim   # noqa: E402
 from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
+from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
 import test_modkit as TK                                                  # noqa: E402
 
@@ -85,6 +86,9 @@ class Base:
         self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', log=self.dir / 'log.txt').start()
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
+        # These fixtures begin with an admitted job; boot/recovery observations use later reconnects.
+        wait_startup_ready(self.dev.hello_info.text, lambda remaining: self.dev.call(
+            ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
 
     def tearDown(self):
         self.dev.t.close()

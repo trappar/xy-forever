@@ -5,8 +5,16 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
 ## Boot partition and USB (B)
 
 - **Boot partition:** written only by the stock `mmc_tools` writer `88a06a7e`
-  (commit-last A/B, power-loss safe). XY Forever's INSTALL allows A exactly the
+  (commit-last A/B). Verify failure can still erase the old partition; see [SAFETY](../SAFETY.md).
+  XY Forever's INSTALL allows A exactly the
   Track-5 ops, with read-back verification and a confirm token.
+- **Writer ABI (1.2.1):** `R0` is writable, word-aligned staging with `(size >> 9) + 1` sectors;
+  `R1` is plaintext size; `R2` is an optional callback (XY Forever passes 0). Encryption mutates
+  padded staging in place. Success returns size; mismatch returns 0; initial select failure returns
+  its raw error (`88a06b74`). The later storage operations retry without a bound. Capacity/select/read
+  wrappers `889f65f0`/`889f683c`/`889f6a6a`/`889f6abe` use local MMC on A and synchronous RPC on B
+  (role byte `8807cac4`). The [simulator model](../architecture/simulator.md#stock-boot-writer-model)
+  preserves the failure/commit ordering with explicitly artificial encryption.
 - **Reach audit:** a reach audit of 560 functions found no SPI-flash, metadata,
   updater or companion call.
 - **USB:** CDC serial on B. smxUSBD start `88a35044` / stop `88a34fec`. The stale
