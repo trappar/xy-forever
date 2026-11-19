@@ -57,7 +57,7 @@ U32 content_begin(const char* id, bool menu, bool write_default) {
     ContentSlot& c = cslot(); c.intent.undo = undo ? 1u : 0u;
     if (c.intent.undo != recovery_record.undo) {
         // source validation first, then publication, then the existing content job
-        c.prepared = 0; c.replay = 0; c.prepare_step = 4;
+        c.prepared = 0; c.prepare_step = 4;
         xj::begin(c.intent_file); c.intent_file.n = xj::format(c.intent, c.intent_file.text);
     }
     recovery_offer = 0; return P::s_ok;
@@ -86,7 +86,6 @@ void recovery_turn() {
     const char* id = recovery_record.undo ? recovery_record.previous : recovery_record.target;
     const U32 code = content_start(id, true, recovery_record.undo || recovery_record.write_default, true);
     if (code != P::s_ok) { recovery_offer = 1; return; }
-    cslot().prepared = 1;
 }
 #else
 void recovery_turn() { recovery_pending = 0; }

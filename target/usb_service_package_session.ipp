@@ -16,7 +16,7 @@ void package_session(uint8_t seq, const uint8_t* payload, U32 length) {
     else if (action > 2) code = P::s_bad_request;
     else if (action == 0) {
         stop_idle_gc();
-        if (job_running() || closing || uploading() XYF_OR_MTP_BUSY) code = P::s_busy;
+        if (recovery_pending || job_running() || closing || uploading() XYF_OR_MTP_BUSY) code = P::s_busy;
         else if (!a_serving()) code = P::s_link;
         else {
             for (U32 i = 0; i != 32; ++i) package_token[i] = payload[8 + i];
