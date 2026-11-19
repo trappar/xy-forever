@@ -346,7 +346,7 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     }
     case 0x889f8e36u: b_build(p(0), cls_query, u(1), 0, 0, 0, s(2), uint32_t(strlen(s(2)) + 1), p(5), u(6)); return 0;
     case 0x889f6c5cu: b_build(p(0), cls_read, u(1), u(2), 0, u(3), 0, 0, p(4), u(3)); return 0;
-    case 0x889f8c10u: b_build(p(0), cls_write, u(1), u(2), 0, u(3), p(4), u(5), 0, 0); return 0;
+    case 0x889f8c10u: b_build(p(0), cls_write, u(1), u(2), u(3), 0, p(4), u(5), 0, 0); return 0;
     case 0x889f88acu: b_build(p(0), cls_sector, u(1), u(2), 0, 0, 0, 0, p(4), u(5)); return 0;
     case 0x11a0060cu: b_submit(p(1)); return 0;
     case 0x889f6508u: a_respond(u(1)); return 0;

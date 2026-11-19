@@ -8,9 +8,10 @@
 //    primary + 4 for A's loop (Stock121PeerSession::poll) to take; the answer leaves when
 //    A's loop or a stock executor queues it (889f6508 -> a_respond).
 // Slot layout used by the simulator (the fields storage_server.cpp and peer_services.cpp
-// read are the stock ones): +0 class, +5 op, +8 argument 0, +0xc argument 2, +0x10 result,
-// +0x14 errno, +0x18 argument 1 (path requests: the stock path buffer 0x8803f6e0),
-// +0x1c request body bytes (16 bit), +0x20 body address, +0x24 body bytes.
+// read are the stock ones): +0 class, +5 op, +8 argument 0, +0x10 result,
+// +0x14 errno, +0x18 argument 1 (write count; paths: the stock path buffer 0x8803f6e0),
+// +0x1c request body bytes (16 bit; zero for writes), +0x20 body address, +0x24 body bytes.
+// Write-class +0xc is queue linkage, cleared by 889f652a; other builders retain their model.
 #include "runtime.hpp"
 #include <deque>
 #include <errno.h>
@@ -192,10 +193,12 @@ bool a_service() {
     queue.pop_front();
     const uint32_t slot = driver() + 0x3c + 0x60 * (next_slot++ & 3u);
     memset(host(slot), 0, 0x60);
-    w32(slot, in.m.cls); w8(slot + 5, uint8_t(in.m.op)); w32(slot + 8, in.m.a0); w32(slot + 0xc, in.m.a2);
+    w32(slot, in.m.cls); w8(slot + 5, uint8_t(in.m.op)); w32(slot + 8, in.m.a0);
+    if (in.m.cls != cls_write) w32(slot + 0xc, in.m.a2);
     w32(slot + 0x18, in.m.a1);
     const uint32_t bytes = uint32_t(in.body.size());
-    *static_cast<volatile uint16_t*>(host(slot + 0x1c)) = uint16_t(bytes > 0xffffu ? 0xffffu : bytes);
+    if (in.m.cls != cls_write)
+        *static_cast<volatile uint16_t*>(host(slot + 0x1c)) = uint16_t(bytes > 0xffffu ? 0xffffu : bytes);
     if (bytes && (in.m.cls == cls_path || in.m.cls == cls_query)) {
         if (shared->full_path.exchange(0)) {                 // test hook: 240 bytes, no NUL added
             const uint32_t n = bytes < 240 ? bytes : 240;

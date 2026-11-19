@@ -162,6 +162,19 @@ class AStagingTests(unittest.TestCase):
         self.assertEqual(self.begin(self.stock), (P.S_STATE, 0))  # replay remains burned
         self.assertEqual(self.counters(), before)
 
+    def test_stock_write_count_must_match_body_and_malformed_frames_revoke_owner(self):
+        self.raw_ready()
+        before = self.counters()
+        body = envelope(5)
+        # Actual stock write layout: queue +0xc=0, count +0x18=32, body +0x24=32.
+        self.assertEqual(self.raw(body), (0, 1))
+        for token, count in enumerate((0, len(body) - 1, len(body) + 1), 100):
+            self.assertEqual(self.begin(self.stock, token), (0, 0))
+            self.assertEqual(self.sim.ask_a(T.WRITE_CLASS, 0x2b, HANDLE,
+                                          argument2=count, body=body), (P.S_BAD_REQUEST, 0))
+            self.assertEqual(self.raw(envelope(2, token)), (P.S_STATE, 0))
+        self.assertEqual(self.counters(), before)
+
     def test_crc_order_replay_truncation_oversize_version_digest_and_kind_refuse(self):
         self.raw_ready()
         before = self.counters()

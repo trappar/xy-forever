@@ -27,8 +27,9 @@ bool stage_query(U32 request, Stock121PeerSession& session) {
     if (!sentinel || word(request) != write_class || byte(request + 5) != 0x2b) {
         a_stage.clear(); stage_refuse(request, session); return true;
     }
+    // Stock 889f87f2 stores write count at +0x18; +0xc belongs to the request queue.
     if (word(request + 0x24) < ais::header_bytes || word(request + 0x24) > file_client::piece_max ||
-        word(request + 0xc) != word(request + 0x24) || !word(request + 0x20)) {
+        word(request + 0x18) != word(request + 0x24) || !word(request + 0x20)) {
         a_stage.clear(); session.reply(request, xyf::usbp::s_bad_request, 0); return true;
     }
     const uint8_t* const p = reinterpret_cast<const uint8_t*>(word(request + 0x20));

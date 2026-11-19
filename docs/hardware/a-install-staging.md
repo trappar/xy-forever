@@ -8,6 +8,7 @@ The product's `storage_server_a_stage.ipp` intercepts reserved handle `0x4153544
 probes, engine latching, mounts or stock FD handling, even for inactive or malformed requests.
 Known stock write-class framing (`0x2b`, existing bounded `write_start`/`left_poll`) carries a
 RAM-service envelope; it never reaches a file executor or relaxes `decide_request`/`decide_engine`.
+Stock request count is at `+0x18`, body pointer/length at `+0x20`/`+0x24`; `+0x0c` is queue linkage.
 The existing peer `serve`/`reply` contract owns the pool request and replies without storage.
 
 Each envelope is `{u32 magic=0x31534941, version=1, operation, token, offset, count, crc32, kind}`.

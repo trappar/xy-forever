@@ -33,7 +33,10 @@ std::string command(const std::string& line, bool& quit, int client) {
             if (sscanf(hex + i, "%2x", &byte) != 1) return "{\"ok\": false, \"error\": \"inject: bad hex\"}";
             body.push_back(uint8_t(byte));
         }
-        Message m = {message_magic, k_request, inject_bit | ++inject_count, cls, op, a0, 0, a2, 0, 0,
+        // The existing ARG2 test input is the write count: stock serializes it in RX+8,
+        // reconstructed at request+0x18 by 889f8bca -> 889f87d4, never queue linkage +0xc.
+        Message m = {message_magic, k_request, inject_bit | ++inject_count, cls, op, a0,
+                     cls == cls_write ? a2 : 0, cls == cls_write ? 0 : a2, 0, 0,
                      uint32_t(body.size())};
         injected[m.tag] = {false, 0, 0, 0};
         log("inject: class %08x op %02x arg %08x (%zu body bytes)", cls, op, a0, body.size());
