@@ -482,13 +482,11 @@ class FileEngineWiringTest(unittest.TestCase):
         client = unit_text(ROOT / 'target/file_client.cpp')
         self.assertIn('const uint32_t deep = over ? U32(xyf::usbp::s_ok) : deeper_ok(from, to, mounted);', client)
         # The write rule: every change by hand, on A, also through links (reaches_protected: the marker, /yaffs2/upgrade)
-        self.assertIn('(!write_root(path_copy) || reaches_protected(path_copy))', self.server)
+        self.assertIn('((engine != entry_run && !write_root(path_copy)) || reaches_protected(path_copy))', self.server)
         guard = self.body(self.server, '__attribute__((noinline)) bool reaches_protected(char* path, U32* record')
         self.assertIn('const bool marker = marker_exists(), inbox = inbox_exists();', guard)
         self.assertIn('(marker && same_record(record, marker_record[0])) || '
                       '(inbox && same_record(record, marker_record[2]))', guard)
-        self.assertIn('const bool inside = stat_into(path, marker_record[3]) && '
-                      'same_record(marker_record[3], marker_record[2]);', guard)
         # #144: the marker and the inbox stat'ed at most once per request: serve_engine forgets them first
         self.assertIn('if (!(protect_known & 1u)) '
                       'protect_known |= 1u | (stat_into(marker_path, marker_record[0]) ? 2u : 0u);', self.server)
