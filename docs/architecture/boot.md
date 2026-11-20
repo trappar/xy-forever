@@ -50,8 +50,8 @@ every user-facing decision.
 ## Boot flows (product)
 
 - **Plain power-on:** file-boot session → A checks the default library entry
-  (`info.txt` size/CRC, LDR policy) → serves it → both boot it. No USB, never waits
-  for a computer. A default that can't boot opens the menu with the reason.
+  (`info.txt` size/CRC, LDR policy) and the fingerprint (below) → serves it → both boot it.
+  No USB, never waits for a computer. A default that can't boot opens the menu with the reason.
 - **PLAY at power-on:** the boot menu with USB on.
 - **USB service:** entered after XY Forever's own reboots (reboot marker at SDRAM
   `0x8bfff000`); host commands in [operating/host-tool.md](../operating/host-tool.md).
@@ -60,7 +60,7 @@ every user-facing decision.
 
 | Situation | Behaviour |
 |---|---|
-| Plain power-on | straight to the default OS, as fast as possible; no USB |
+| Plain power-on | straight to the default OS, as fast as possible; no USB; in doubt: converge first (below) |
 | Default can't boot | boot menu (with the reason) |
 | Power-on with PLAY | boot menu with USB on |
 | Agent reboots | to the OS or to the menu only (held, USB-ready); there is no watchdog guard |
@@ -75,6 +75,16 @@ frozen, the image protocol runs. Routing is by "frozen?", never by op number (0x
 install ops). On B the menu is the home loop: screen, keys, and the USB pump with the full command set;
 command items to A go through the current session (`b_send`).
 
+## Converge at power-on (#197)
+
+Every convergence ends by storing `/yaffs2/xy-forever/converged.txt` (`target/xyf_converge.hpp`): the
+SHA-256 of the saved record (`config.txt`, else `config.old`: base, package set, selection, Mod memory,
+safe mode) and the default it converged to. A's check of the default at a plain power-on (`file_boot.cpp`
+`a_converge`) adds a few small reads, never the image again. The same text and no doubt: the default boots
+at once, writing nothing. A different or missing fingerprint, a journal (`job.txt`), a switch unfinished or
+no default: B opens the menu on the progress screen, which runs the existing journal replay, then only
+the operations `plan()` returns, stores the fingerprint and boots. PLAY at power-on only opens the menu.
+
 Code: `target/usb_service.cpp` (`home_*`), `file_boot.cpp` and `key_ui.cpp` (`XYF_ONE_SESSION`),
 `storage_server.cpp`, `peer_services.cpp` (RPC mode), `menu_link.cpp`. Home, reads, dry runs, reboots,
 writes, set default without a reboot, and install from home have run on the device.
@@ -84,7 +94,7 @@ writes, set default without a reboot, and install from home have run on the devi
 Boot state uses power-safe A/B slots (`state-a.txt` / `state-b.txt`).
 Sequence on A: read-only unmount → stock callbacks → read-write mount → write ≤ 4 KiB → read back →
 read-write unmount → gates back → read-only remount. Writes are exact-path checked and happen only on an
-explicit user/host action, never on a normal boot. The boot partition is written only by the stock
+explicit user/host action or a power-on convergence; a power-on whose fingerprint matches writes nothing. The boot partition is written only by the stock
 writer `88a06a7e` (commit-last A/B, power-loss safe).
 
 ### A admission rehearsal (#8, phase 1)

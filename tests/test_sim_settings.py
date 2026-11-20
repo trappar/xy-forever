@@ -24,8 +24,9 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                    # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_mods_page import MINUS, PLAY, PLUS, STOP, PageBase, synthetic_setup   # noqa: E402
+from test_sim_config import MARK, mark_text                               # noqa: E402
 
-MAIN, INFO, SETTINGS, OPTIONS = 0, 2, 6, 7                                 # xyf_menu Screen
+MAIN, INFO, SETTINGS, OPTIONS = 0, 1, 3, 4                                 # xyf_menu Screen (#197)
 SAVED, SAVED_USB = 'menu: line: Settings saved.', 'menu: line: Settings saved: USB mode changes'
 NEWER = 'note=settings.txt is from a newer XY Forever'
 
@@ -37,6 +38,7 @@ class Rows(PageBase):
     @classmethod
     def setUpClass(cls):
         synthetic_setup(cls)
+        (cls.seeded / MARK).write_text(mark_text(cls.seeded, cls.base))   # converged once (#197): plain boots at once
 
     # -- helpers ---------------------------------------------------------------------------------
     def until(self, cond, what, timeout=30.0):
@@ -170,13 +172,13 @@ class SettingsRows(Rows, unittest.TestCase):
         self.press(PLAY)
         self.until(lambda: self.count('pack page 0: 0 entries, more=0'), 'empty installed list')
         self.press(STOP)
-        self.until(lambda: self.count('menu: screen %d row 4 ' % SETTINGS) >= 2, 'back to Settings')
+        self.until(lambda: self.count('menu: screen %d row 3 ' % SETTINGS) >= 2, 'back to Settings')
 
     def test_home_has_no_info_row(self):
         self.until(lambda: self.lines('settings: confirm=0'), 'the settings read')
         self.press(MINUS)                                                  # wraps to the last row: Settings
         self.press(PLAY)
-        self.until(lambda: self.lines('menu: screen %d row 4 ' % SETTINGS), 'Settings, the last of five rows')
+        self.until(lambda: self.lines('menu: screen %d row 3 ' % SETTINGS), 'Settings, the last of four rows')
 
     def test_menu_at_power_on_always_then_play_held(self):
         self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0 newer=0'), 'the settings read')
@@ -212,7 +214,7 @@ class SettingsRows(Rows, unittest.TestCase):
         self.leave(SAVED_USB)
         self.assertEqual(self.record()['usb'], 'mtp_serial')
         self.press(PLAY)                                                   # Settings again (still the home row)
-        for _ in range(2):
+        for _ in range(3):                                                 # #65: Ask before USB control before About
             self.press(PLUS)
         seen = self.count('menu: info image: ')
         self.press(PLUS)                                                   # About

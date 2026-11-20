@@ -113,6 +113,19 @@ class TestEntrySimulator(unittest.TestCase):
             time.sleep(0.01)
         self.fail('the menu did not come back: %s' % self.sim.status())
 
+    def test_ask_before_usb_control_stops_it_first(self):
+        """#65: with Ask before USB control on (HELLO confirm=1), every mode stops before it sends anything else."""
+        (self.root / 'xy-forever/settings.txt').write_bytes(b'format=1\nconfirm=1\n')
+        self.assertTrue(self.sim.control('set ask 1').get('ok'))             # the setting as the file says
+        self.sim.control('power play')                                        # read again at the next start
+        self.wait_listening()
+        before = MP.tree(self.root / 'xy-forever/firmware/loader-test')
+        for mode in ((), ('--boot',), ('--cleanup',)):
+            code, out = self.run_script(*mode)
+            self.assertEqual(code, 1, out)
+            self.assertIn('FAIL: Switch off Settings > Ask before USB control on the device first', out)
+        self.assertEqual(MP.tree(self.root / 'xy-forever/firmware/loader-test'), before)
+
     def test_upload_boot_restore_cleanup(self):
         entry = self.root / 'xy-forever/firmware/loader-test'
         code, out = self.run_script()

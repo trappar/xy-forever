@@ -20,18 +20,21 @@ is disposable and never requests recovery. A cut before initial publication leav
 The content engine keeps its existing switching record, verified copies and catalog-last order.
 
 Only the menu/USB service loop reads and replays intent. It validates the recorded source identity,
-then runs the existing content job in bounded slices. A plain boot does no journal repair and adds
-no journal boot gate; the existing content-state rule still rejects an unusable default.
+then runs the existing content job in bounded slices. A plain power-on that finds a journal converges
+first ([boot.md](../architecture/boot.md#converge-at-power-on-197)): the menu replays it on the progress
+screen, then boots; the content-state rule still rejects an unusable default.
 A missing or changed source, including a file that disappears during replay, leaves the journal and
-shows `Source missing. Set default to undo: <previous>`. Select that previous entry with the menu's
-Set default action, or use `library.set_default`; the undo direction is published before its first
+shows `Source missing. PLAY on the first row undoes: <previous>`. PLAY on the menu's first row then
+makes that previous entry the default (`content_undo`), as `library.set_default` of it does; the undo direction is published before its first
 content change. A cut during replay or undo replays that direction again. Unrelated defaults cannot
 replace unresolved intent. Neither `job.cancel` nor a new repair command is used for content jobs.
 
 The journal remains through default commit and is removed only after success (`job.old`, `.part`,
-then `job.txt`, so cleanup cannot resurrect older intent). Native Save retains intent through its
-configuration/default commit. If power is lost before the configuration is saved, its existing old
-record remains; recovery installs the intended content/default, and Save can reconcile the selection.
+then `job.txt`, so cleanup cannot resurrect older intent). The menu's converge sequence (Boot
+without mods, Restore, the first row's apply; [state.md](state.md#saved-configuration)) retains intent
+through its configuration/default commit: a switch is always followed by the record and the default. If
+power is lost before the configuration is saved, its existing old record remains; recovery installs the
+intended content/default, and the first row then reads (to apply): its PLAY converges to the record.
 Both native and host collectors suspend blob deletion while any authoritative journal remains,
 including a malformed or newer one. Ordinary package publication/removal retains its existing
 rename transaction and disposable-scratch behavior.

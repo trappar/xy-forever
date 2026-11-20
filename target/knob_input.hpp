@@ -44,7 +44,7 @@ extern Result result;
 // The menu opened. identity_ok: the stock identity the key path checked (key_ui's CRC spans) matched.
 void start(bool identity_ok);
 // One menu-loop pass, after the stock poll. selection: the page on screen moves a selection with - / +
-// (not the Uninstall dialog, not a job's screen); otherwise the counts are dropped. Returns the rows to
+// (not a job's screen); otherwise the counts are dropped. Returns the rows to
 // move, -max_moves..max_moves (positive: down, as +).
 int32_t pass(uint32_t now_ms, bool selection);
 } }

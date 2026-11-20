@@ -6,7 +6,8 @@ with the expected tree at each step: official files untouched, the catalog exact
 everything of the mods gone at the end, content/dlc/ and an unknown file left alone. A fault, a power cut and A
 going silent at every rename of a switch: the record says the old state, switching or the new one (never
 absent), nothing is bootable while it says switching, B answers, the window closes, the default stays; a repeat
-repairs. Refusals before any change; boot once refused; a plain power-on never writes and the menu says why.
+repairs. Refusals before any change; boot once refused; a plain power-on with content not usable changes no content,
+record or default (#197: it converges first, nothing to apply with no setup saved) and the menu says why.
 Synthetic packages (test_sim_mod_job.py's kit) always; the published 0.0.6 set when present. Needs clang++ and
 the private stock 1.2.1 images (skipped without them). No device access."""
 import hashlib
@@ -161,35 +162,17 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         self.assertEqual(self.dev.set_default('opxy-121-stock')[0], 0)    # official: no switch
         self.assertEqual(self.dev.call(P.STATUS)[0], 0)
 
-    def test_menu_shift_play_installs_and_sets_the_default(self):
-        a = self.build(['alpha'])
-        found = self.catalog()
-        index = [i['id'] for i in found['items']].index(a)
-        for key, pressed in ((PLUS, 1), (PLUS, 0), (PLAY, 1), (PLAY, 0)):  # Firmware library (row 1)
-            self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
-        for _ in range((index - found['default']) % len(found['items'])):   # from the default's row
-            for pressed in (1, 0):
-                self.dev.call(P.KEY, struct.pack('<II', PLUS, pressed))
-        for key, pressed in ((SHIFT, 1), (PLAY, 1), (PLAY, 0), (SHIFT, 0)):
-            self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
-        self.assertIn('menu: set default %d: Installing content...' % index, (self.dir / 'log.txt').read_text())
-        f = self.finished(0)
-        self.assertEqual((MS.PHASES[f['phase']], f['detail']), ('done', a), f)
-        self.assertEqual(content(self.root), self.expected(a))
-        self.assertEqual(self.default(), a)
-        self.assertIn('menu: line: Default: %s (content installed)' % a, (self.dir / 'log.txt').read_text())
-
     def test_menu_actions_wait_for_a_switch(self):
-        """Continue and Set default pressed during a content switch show the busy line and
-        do nothing; the switch completes."""
+        """Continue pressed during a content switch shows the busy line and does nothing (the safe-mode row,
+        with no setup saved, only its own line); the switch completes."""
         a = self.build(['alpha'])
         self.sim.set('a_slow_ms', 4)
         self.assertEqual(self.dev.set_default(a)[0], ids.S_STARTED)
-        for key, pressed in ((PLAY, 1), (PLAY, 0), (PLUS, 1), (PLUS, 0), (PLAY, 1), (PLAY, 0),
-                             (SHIFT, 1), (PLAY, 1), (PLAY, 0), (SHIFT, 0)):   # Continue; library; Set default
+        for key, pressed in ((PLAY, 1), (PLAY, 0), (PLUS, 1), (PLUS, 0), (PLAY, 1), (PLAY, 0)):   # Continue; the safe row
             self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
         log = (self.dir / 'log.txt').read_text()
-        self.assertEqual(log.count('menu: line: Busy: a build or content change is running.'), 2, log[-2000:])
+        self.assertEqual(log.count('menu: line: Busy: a build or content change is running.'), 1, log[-2000:])
+        self.assertIn('menu: line: No mods are saved', log)
         self.sim.set('a_slow_ms', 0)
         f = self.finished(0)
         self.assertEqual((MS.PHASES[f['phase']], f['detail']), ('done', a), f)
@@ -245,7 +228,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         self.assertEqual((content(self.root), self.default(), self.record()), (before[0], before[1], None))
         self.assertEqual(self.dev.call(ids.JOB_CANCEL, struct.pack('<I', 0))[0], ids.S_STATE)   # a switch: no cancel
 
-    def test_power_on_never_writes_and_the_menu_says_why(self):
+    def test_power_on_with_unusable_content_opens_the_menu_with_why(self):
         a = self.build(['alpha'])
         cases = (('state=switching\ntarget=%s\n' % a, 'content needs repair'),
                  ('state=installed\nentry=%s\n' % a, 'Default opxy-121: content not installed'))
@@ -259,7 +242,10 @@ class SyntheticSwitch(Switch, unittest.TestCase):
                 self.sim.wait_listening(30.0)                              # nothing booted: the menu, USB on
                 self.reconnect()
                 self.assertEqual(self.dev.hello()[0], 0)
-                self.assertIn(reason, log.read_text()[seen:])
+                deadline = time.monotonic() + 30                           # #197: after the power-on converge
+                while reason not in log.read_text()[seen:]:
+                    self.assertLess(time.monotonic(), deadline, reason)
+                    time.sleep(0.05)
                 self.assertEqual((content(self.root), self.record(), self.default()), before)
         (self.root / RECORD).write_text('state=official\n')
         self.sim.control('power plain')

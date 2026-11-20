@@ -22,8 +22,10 @@ What it never touches:
 
 ## Getting into the menu
 
-- **Plain power-on:** the default firmware starts, close to stock speed. Nothing is
-  written to storage on a normal boot (Settings, Menu at power-on, can change that).
+- **Plain power-on:** the default firmware starts, close to stock speed, writing nothing
+  (Settings, Menu at power-on, can open the menu instead). When what you saved is not in
+  place yet (a mod flipped and never applied, a power cut, the first start after an
+  install), the progress screen finishes it first, then the firmware starts.
 - **Power on holding PLAY:** the XY Forever menu opens. Let go of PLAY once you see it.
 - If the default firmware is missing or fails its checks, the menu opens by itself and
   says why, for example "Default opxy-125: file missing" or "content not installed".
@@ -38,43 +40,41 @@ What it never touches:
 | PLAY | Select the row. |
 | STOP | Back. |
 | SHIFT + PLAY | The second action of a row, where there is one (shown in the hint line). |
-| TRACK 1 to 4 | Jump to Continue, Firmware library, MTP mode, Uninstall. |
+| TRACK 1 to 4 | Jump to the four rows. |
 
 The bottom line of each screen lists the keys that work there.
 
 ## The home menu
 
-Five rows, top to bottom: the first row (Continue), Firmware library, Mods,
-Uninstall XY Forever, Settings.
+Four rows, top to bottom: the first row (Continue), Boot without mods, Mods, Settings.
+Nothing asks for confirmation: a change takes effect as soon as it can.
 
 ### The first row (Continue)
 
 It shows what PLAY will boot. Usually that is the default firmware's name. Once you
 have used the Mods page, it reads like "Open-XY - 3 mods - 1.2.1", or the stock
-firmware's name when all mods are off. A word in brackets may follow:
+firmware's name when all mods are off or in safe mode. A word in brackets may follow:
 
-- **(changed):** you changed mod switches on the Mods page and have not saved them.
 - **(rebuild):** the saved mod setup needs its firmware built again (the built copy
   is no longer in the library).
 - **(to apply):** the saved setup is not what will boot yet, for example because its
-  content is not installed. Save will finish the job.
+  content is not installed.
+- **(safe mode):** the stock firmware boots; your mods are kept (below).
 
-With nothing pending, PLAY boots. With something pending, PLAY opens the Save dialog
-(below).
+With nothing pending, PLAY boots. With (rebuild) or (to apply), PLAY applies the saved
+setup first (below). If it cannot be built, the bottom line says why.
 
-### Firmware library
+### Boot without mods (safe mode)
 
-A list of the firmware entries on the device. The default is marked. Each row shows a
-short description. A mod build made on the device shows as "Open-XY" with the detail
-"open-xy, saved setup". A spare mod build slot is hidden.
+With mods saved, PLAY puts the official content back, makes the stock firmware the
+default and boots it. Your mod setup is kept. With
+no mods saved the row is grey and PLAY says why.
 
-- **PLAY:** boot this entry once. The default does not change.
-- **SHIFT + PLAY:** make this entry the default. If it needs different content in
-  `/yaffs2/content/`, the content is installed first, and the default is written only
-  if that worked.
-- An entry marked "content not installed" cannot be booted once. Make it the default
-  instead; that installs its content.
-- STOP goes back.
+In safe mode the row reads "Restore Open-XY (3 mods)". PLAY puts your mod firmware's
+content back, makes it the default and boots it. If the saved build is no longer
+intact, it builds it again first.
+
+Both show the progress screen (below) and never open the Mods page.
 
 ### Mods
 
@@ -89,9 +89,8 @@ The title bar shows the filter and how many of the mods it shows are on, for exa
 - **The memory meter:** a bar along the title bar's edge, and the line under it:
   "Memory N of M KiB, K free" ("S shared" instead: shared services, counted once). M is 2032, or 4080 with
   Mod memory at 4 MiB. Over it the bar and text turn red ("K over"). An estimate from package sizes.
-- **Status (same line, on the right):** "No changes", or for example "3 mods on:
-  applied when you boot", or "All off: applied when you boot". When the choice cannot
-  be built it shows why, in red: "Too large: turn something off", "Turn on at least one
+- **Status (same line, on the right):** for example "3 mods on: saved", or "All off:
+  saving..." just after a change. When the choice cannot be built it shows why, in red: "Too large: turn something off", "Turn on at least one
   machine first.", "At most 64 machines in one build.", "At most 8 extensions in one
   build.". A message (reading, a result, an error) takes the whole line until you next
   turn a mod on or off.
@@ -108,22 +107,15 @@ Keys (the bottom line names the SHIFT ones):
 - **SHIFT + PLAY** or **SHIFT + a knob push:** turns every mod the filter shows on, or
   off if they are all on already.
 - **SHIFT + STOP:** allows a base firmware XY Forever does not recognise, for the next
-  save only ("Unknown mod bases allowed for the next save."); again: refused.
+  build ("Unknown mod bases allowed for the next build."); again: refused.
 
-Turning mods on or off changes nothing on the device yet. The change is kept until
-you save or discard it. STOP goes back to the home menu.
+Turning a mod on or off is saved at once (a moment after your last change, in one
+write). It is built when you next boot from the first row. STOP goes back.
 
-### Continue: the Save dialog
+### Converging before boot
 
-With changes pending, PLAY on the first row asks "Save changes?":
-
-- **Save:** builds Open-XY if needed, installs its content, then boots it.
-- **Discard:** forgets the changes and boots the saved setup.
-- **Back:** returns to the menu; the changes stay.
-
-When the changes cannot be saved, Save is missing and the dialog says why.
-
-What Save does, step by step (the screen says "Saving changes" with a progress bar):
+Every action that boots (the first row, the safe-mode row) runs only the steps that
+differ, on a progress screen, then boots. The steps:
 
 1. **Checking.** If the same mods were already built from the same packages and that
    build is still intact, it is reused and no build runs.
@@ -136,44 +128,39 @@ What Save does, step by step (the screen says "Saving changes" with a progress b
 5. The new firmware boots.
 
 During steps 3 and 4 the footer says "Almost done: it cannot be cancelled now. Keep
-the OP-XY powered." With all mods off, Save skips the build and puts the official
-content back.
+the OP-XY powered." With all mods off it skips the build and puts the official content
+back.
 
 ### After a failure or a power cut
 
 - A failed build leaves the old setup as it was. The Mods page says "Build failed:"
   and a reason.
-- "Installing content failed: Continue and Save again to repair it." Do that: running
-  the same install again repairs it.
+- "Installing content failed: Continue again repairs it." Do that (or Boot without
+  mods or Restore Open-XY again, as it says): the same install repairs it.
 - After a power cut while content was being changed, nothing boots until it is
-  repaired. The menu opens and says "content needs repair". Save again from the Mods
-  page, or make an entry the default in the Firmware library (SHIFT + PLAY). The
-  repair path was tested in the simulator; on a real power cut it is not verified.
+  repaired. The menu opens and says "content needs repair". Do the same again. If the line says "Source missing. PLAY on the first row
+  undoes: ...", PLAY on the first row puts that entry back. The repair path was tested
+  in the simulator; on a real power cut it is not verified.
 - "Saving the settings failed: the previous setup is kept."
 
 ### Going back to stock
 
-- To boot stock firmware once: Firmware library, PLAY on a stock entry.
-- To make stock the default again: turn all mods off and Save, or SHIFT + PLAY on a
-  stock entry. Either way the official content is put back.
+- To boot stock and keep your mods for later: Boot without mods.
+- To leave mods for good: turn all mods off, then PLAY on the first row.
 - The last resort: hold COM at power-on to reach the stock recovery menu, and
   reinstall official 1.2.1 from there.
-
-### Uninstall XY Forever
-
-The row opens a confirmation with Cancel and Uninstall. In this build, choosing
-Uninstall only shows "Uninstall: not available yet." The host tool's `uninstall`
-command (a dry run by default) is meant for developers and is not covered here.
 
 ### Settings
 
 PLAY opens a row. The bottom line shows saves.
 
-- **Mod memory:** "2 MiB" or "4 MiB (experimental)", applied when you boot like the mods (Save
-  rebuilds Open-XY). "Not available with these mod packages": the set has no 4 MiB layout.
+- **Mod memory:** "2 MiB" or "4 MiB (experimental)", saved at once and built when you boot, like
+  the mods. "Not available with these mod packages": the set has no 4 MiB layout.
 - **Menu at power-on:** "PLAY held" (default) or "Always" (the menu opens at every power-on).
 - **USB mode:** "MTP + Serial" (default), "MTP" or "Serial"; applies the next time the menu opens. With
   "MTP", the host tool and web app cannot reach the OP-XY until you change it back here.
+- **Ask before USB control:** "On" (default): a computer's first command asks; PLAY allows it until you
+  unplug or restart, STOP refuses it. MTP never asks.
 - **About:** the version, the real bootloader (1.2.1, never updated), how to open the menu.
 - **Content packs:** SHIFT+PLAY toggles the inbox view.
 
@@ -215,8 +202,8 @@ run on a device.
 
 ## Planned (not in this build)
 
-- A safe mode for a firmware that fails at start-up.
+- Safe mode by itself when a firmware fails at start-up.
 - Choosing which base firmware a mod build uses.
 - Companion chip updates (keyboard and Bluetooth), from official update files.
 - MTP mode: copying files with any MTP app.
-- Uninstall from the menu.
+- Uninstall, from the web app (not the menu).

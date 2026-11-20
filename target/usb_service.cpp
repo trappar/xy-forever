@@ -84,6 +84,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "xyf_job_journal.hpp"
 #include "xyf_content_job.hpp"
 #include "xyf_config.hpp"           // the saved configuration (the config job)
+#include "xyf_converge.hpp"         // #197: its fingerprint (mark_store, the config job)
 #include "xyf_settings.hpp"         // #21: settings.txt (through the config job), the confirm gate
 #endif
 #if defined(XYF_TFW_CHECK)
@@ -132,6 +133,7 @@ namespace xy_forever { namespace usb_service {
 #include "usb_service_entry.ipp"            // the public entry points
 #include "usb_service_composite.ipp"        // serial + MTP as one composite device
 #include "usb_service_crash_trigger.ipp"    // diag.crash (test build xyf-crash-trigger only, #102)
+#include "usb_service_trust.ipp"            // #65: Ask before USB control
 #include "usb_service_home.ipp"             // the home loop
 } }
 #endif

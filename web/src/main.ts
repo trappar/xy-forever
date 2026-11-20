@@ -1,6 +1,6 @@
 // The XY Forever web app: Connect, Device, Mods, Files. Plain DOM; one device action at a time.
 // ?sim=PORT: the device simulator on 127.0.0.1:PORT through the dev server's relay (development and tests).
-import { Client, JobError, applyMods, fileListSource, fileReason, grantedPorts, isXyfError, libraryBases, listPackages, localSet, pushPackages,
+import { ASK_TEXT, Client, JobError, applyMods, fileListSource, fileReason, grantedPorts, isXyfError, libraryBases, listPackages, localSet, pushPackages,
   removePackage, requestPort, webSerial, webSerialOpener } from 'xy-forever-client';
 import type { ApplyRequest, BuiltEntry, DirEntry, HeldGeneration, JobStatus, LocalSet, Opener, PackageSource } from 'xy-forever-client';
 import { webSocketOpener } from 'xy-forever-client/dev';
@@ -102,6 +102,7 @@ async function opener(): Promise<Opener> {
 async function connect(): Promise<void> {
   client = await Client.connect(await opener(), { timeoutMs: 10_000 });
   bugReport.updateStatus(client.info);
+  client.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
   setLink();
   location.hash = '#device';
   busy = false;

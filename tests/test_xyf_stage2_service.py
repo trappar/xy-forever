@@ -84,7 +84,7 @@ class Stage2ServiceTest(unittest.TestCase):
         self.start(data)
         dev = self.connect()
         code, text = dev.hello()
-        self.assertEqual((code, text), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES)))
+        self.assertEqual((code, text), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES, confirm=0)))
         self.assertEqual(self.info(dev), (ids.S_UNSUPPORTED, b''))
         record = self.record(dev)
         self.assertEqual(record['status'], status, record)
@@ -100,7 +100,7 @@ class Stage2ServiceTest(unittest.TestCase):
         self.start(data)
         dev = self.connect()
         code, text = dev.hello()
-        self.assertEqual((code, text), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES, stage2=7)))
+        self.assertEqual((code, text), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES, stage2=7, confirm=0)))
         self.assertTrue(P.Hello(text).answers(ids.STAGE2_INFO) and text.endswith(';stage2=7'))
         turns = []
         for _ in range(2):
@@ -164,7 +164,7 @@ class Stage2ServiceTest(unittest.TestCase):
                 break
         thread.join(30.0)
         code, body = reply['r']
-        self.assertEqual((code, body.decode()), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES)))
+        self.assertEqual((code, body.decode()), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES, confirm=0)))
         self.assertEqual(self.info(dev), (ids.S_UNSUPPORTED, b''))
         record = self.record(dev)
         self.assertEqual((record['status'], record['detail']), ('link', ids.S_LINK), record)

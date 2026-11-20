@@ -193,6 +193,19 @@ describe('calls', () => {
     expect(lines).toEqual(['xyf install step 1']);
   });
 
+  test('#65: waiting is sent again until the device is answered; declined is not allowed', async () => {
+    let waits = 2;
+    const dev = new FakeDevice((f, d) => d.reply(f, waits-- > 0 ? v1.STATUS.waiting : 0, cat(le32(1), le32(1), le32(8))));
+    const client = await connected(dev);
+    expect([client.info.ask, client.info.trust]).toEqual([true, 'none']);
+    const asks: boolean[] = [];
+    client.onAsk((on) => asks.push(on));
+    expect(await client.bootInstall(new Uint8Array(32))).toEqual({ written: 1, partition: 1, sectors: 8 });
+    expect([asks, dev.types().filter((t) => t === v1.TYPE['boot.install']).length]).toEqual([[true, false], 3]);
+    const refused = await connected(new FakeDevice((f, d) => d.reply(f, v1.STATUS.declined)));
+    await expect(refused.bootInstall(new Uint8Array(32))).rejects.toMatchObject({ code: 'declined', message: expect.stringContaining('not allowed') });
+  });
+
   test('staging uses the hello limits: chunk size and capacity', async () => {
     const hello = PRODUCT_HELLO.replace('payload=4160', 'payload=600').replace('stage=7340032', 'stage=5000');
     let received = 0;

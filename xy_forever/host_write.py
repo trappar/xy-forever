@@ -9,6 +9,22 @@ import zlib
 from xy_forever import usb_proto as P
 
 
+# put/rm/mkdir/mv/cp write only here (the device checks again: target/file_engine.hpp; xyf_host.py, clients/ts inWriteArea).
+AREA_TEXT = 'under /yaffs2/, never bootloader.dev or upgrade/'
+WRITE_ROOTS = ('/yaffs2/',)       # since 1.13: all of /yaffs2 but the two below
+
+
+def in_write_area(path):
+    """The device's write area (since 1.13): below /yaffs2/, no empty, '.' or '..' part, never
+    /yaffs2/bootloader.dev nor /yaffs2/upgrade or below it (ASCII case ignored). The device checks again."""
+    root = next((r for r in WRITE_ROOTS if path.startswith(r)), None)
+    rest = path[len(root):].split('/') if root else []
+    if not rest or not all(p and p not in ('.', '..') for p in rest):
+        return False
+    first = rest[0].lower()
+    return first != 'upgrade' and not (len(rest) == 1 and first == 'bootloader.dev')
+
+
 def timeout_of(kind):
     return P.ids.COMMANDS[kind]['timeout_ms'] / 1000.0
 
