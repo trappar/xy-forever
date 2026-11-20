@@ -264,6 +264,7 @@ const char* base_entry() {
     return 0;
 }
 #include "xyf_mods_save.ipp"              // the saved configuration and the converge sequence
+#include "xyf_mods_usb.ipp"               // config.get, config.set (#26)
 }
 
 m::Page& page() { return the_page; }
@@ -306,7 +307,8 @@ bool saving() { return pick.stage == 1; }
 
 uint32_t pump(bool shown) {
     const uint32_t begin = units();
-    shown = shown || sv.stage == sv_reading || sv.stage == sv_listing;   // the sequence reads the list, page hidden
+    shown = shown || sv.stage == sv_reading || sv.stage == sv_listing ||   // the sequence reads the list, page hidden,
+            remote.stage == 1;                                          // as does config.set (#26)
     uint32_t redraw = converge_follow();
     // The saved configuration, once the menu runs (one bounded read; again after a failed sequence).
     uint32_t bytes = 0;
@@ -440,5 +442,11 @@ uint32_t converge_state() {
 const char* converge_reason() { return sv.reason; }
 
 void converge_done() { if (sv.stage == sv_boot || sv.stage == sv_failed) sv.stage = sv_idle; }
+
+uint32_t config_view(ConfigView& v) { return remote_view(v); }
+
+uint32_t config_set(uint32_t flags, const char* mods, uint32_t crc, const char*& reason) {
+    return remote_set(flags, mods, crc, reason);
+}
 } }
 #endif

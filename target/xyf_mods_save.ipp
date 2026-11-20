@@ -23,7 +23,8 @@ uint32_t rec_set XYF_DATA = 0;                   // the record's mods= names: th
 // quiet_ms after the last flip (quick flips: one write), by the config job (the default unchanged). flipped: 1, a flip
 // not written yet; 2, its write failed (the next flip or a converge writes it); since: the last flip; stage 1: the
 // job (job) runs; 2: written, the record not read back yet (rec keeps the old one meanwhile: no pending=0 between).
-struct Pick { uint32_t flipped, since, stage, job; };
+// safe (#26, config.set): 0 safe mode as saved; 1 off, 2 on, until that write is done.
+struct Pick { uint32_t flipped, since, stage, job, safe; };
 Pick pick XYF_DATA = {};
 static const char firmware[] = "/yaffs2/xy-forever/firmware/";
 uint32_t index_of(const char* id) {
@@ -282,6 +283,7 @@ uint32_t pick_step(bool now) {
         if (v.state == 1 && v.id == pick.job) return 1;
         const bool done = v.id == pick.job && v.state == 2 && v.phase == 8;
         pick.stage = done ? 2u : 0u;            // read back (pump, or a converge's check): the saved marks follow
+        if (done) pick.safe = 0;
         if (!done) { if (!pick.flipped) pick.flipped = 2; return 2; }
     }
     if (!pick.flipped) return 0;
@@ -293,7 +295,7 @@ uint32_t pick_step(bool now) {
     if (rec.state != xg::present && rec.state != xg::none && read_record(false, bytes) != s_ok) { pick.flipped = 2; return 2; }
     const char* base = config_base();
     if (!base) { pick.flipped = 2; return 2; }
-    // The selection and the inputs beside it; what is built (built=, slot=, stamp=) and safe mode stay as saved.
+    // The selection and the inputs beside it; what is built (built=, slot=, stamp=) and safe mode (unless pick.safe) stay.
     const bool have = rec.state == xg::present;
     xg::Record r;
     xg::clear(r, xg::present);
@@ -304,7 +306,7 @@ uint32_t pick_step(bool now) {
     r.unverified = p.unknown_ok || (have && rec.unverified && xg::same(rec.base, base)) ? 1u : 0u;
     r.expanded = p.expanded ? 1u : 0u;
     r.count = m::chosen(p, false) + m::chosen(p, true);
-    r.safe = have && rec.safe && r.count && r.slot[0] ? 1u : 0u;
+    r.safe = (pick.safe ? pick.safe == 2 : have && rec.safe) && r.count && r.slot[0] ? 1u : 0u;
     const uint32_t n = record_text(r, m::flag_on);
     const uint32_t code = n ? usb_service::config_store(reinterpret_cast<const char*>(io.buffer), n, "") : 1u;
     if (code == xyf::usbp::s_busy) return 1;
