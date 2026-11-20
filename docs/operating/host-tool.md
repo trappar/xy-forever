@@ -34,6 +34,7 @@ A malformed manifest is reported beside its folder ID.
 
 Place a complete, unpacked sound pack in `/yaffs2/xy-forever/inbox/ID/`. Its `manifest.json` must
 be a JSON object of up to 4,096 bytes and 32 nesting levels. A `folder` property, when present, must match the folder ID exactly.
+A manifest declaring the `xy-forever.package` schema belongs to the native package workflow.
 Run `python3 xyf_host.py packs install ID --yes` to move the folder to `/yaffs2/content/dlc/ID/`.
 An occupied ID stops the install. Use `python3 xyf_host.py packs remove ID --yes` to remove an installed pack.
 Omit `--yes` to see the planned action.

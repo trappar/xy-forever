@@ -146,6 +146,35 @@ class PackChanges(Rows, unittest.TestCase):
         self.until(lambda: self.count('pack result: Invalid manifest or folder ID.'), 'manifest refused')
         self.assertFalse(target.exists())
 
+    def test_native_manifest_is_not_a_sound_pack(self):
+        source = self.seed_pack()
+        manifest = source / 'manifest.json'
+        target = self.root / 'content/dlc/fixture'
+        for metadata in (
+            '{"schema":"xy-forever.package","schema_version":1,"type":"mod"}',
+            '{"schema":"xy-forever.package","schema":"vendor","schema_version":1}',
+            r'{"sch\u0065ma":"xy-forever.pack\u0061ge","schema_version":2,"type":"mod"}',
+        ):
+            manifest.write_text(metadata)
+            code, detail = self.packs('install', 'fixture', '--yes')
+            self.assertNotEqual(code, 0, detail)
+            self.assertIn('native package', detail)
+            self.assertEqual(manifest.read_text(), metadata)
+            self.assertFalse(target.exists())
+        self.settings_page()
+        self.press(MINUS)
+        self.press(PLAY)
+        self.until(lambda: self.count('pack page 0: 0 entries, more=0'), 'installed list')
+        self.switch_pack_list()
+        self.until(lambda: self.count('pack id: fixture'), 'native inbox item')
+        self.confirm_pack()
+        refused = 'pack result: Invalid manifest or folder ID.'
+        installed = 'pack result: Pack installed.'
+        self.until(lambda: self.count(refused) or self.count(installed), 'pack outcome')
+        self.assertTrue(self.count(refused))
+        self.assertEqual(manifest.read_text(), metadata)
+        self.assertFalse(target.exists())
+
     def test_menu_cut_on_detach_resumes_cleanup(self):
         self.seed_pack()
         target = self.root / 'content/dlc/fixture'

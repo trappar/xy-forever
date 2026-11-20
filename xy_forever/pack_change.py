@@ -69,6 +69,7 @@ class ManifestObject(dict):
     def __init__(self, pairs):
         super().__init__(pairs)
         self.folder_count = sum(key == 'folder' for key, _ in pairs)
+        self.native_package = any(key == 'schema' and value == 'xy-forever.package' for key, value in pairs)
 
 
 def nesting(value):
@@ -96,6 +97,8 @@ def manifest(session, source, pack_id):
         raise store.StoreError('pack manifest exceeds 32 nesting levels')
     if not isinstance(value, ManifestObject) or value.folder_count > 1 or value.get('folder', pack_id) != pack_id:
         raise store.StoreError('manifest folder does not match pack ID %s' % pack_id)
+    if value.native_package:
+        raise store.StoreError('native package manifests cannot be installed as sound packs')
 
 
 def change(session, action, pack_id):

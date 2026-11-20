@@ -41,20 +41,23 @@ U32 string_end(const Byte* p, U32 n, U32 i) {   // the closing quote of the stri
     }
     return none;
 }
+__attribute__((noinline)) U32 digits_end(const Byte* p, U32 n, U32 start) {
+    U32 end = start;
+    while (end < n && digit(p[end])) ++end;
+    return end != start ? end : none;
+}
 U32 number_end(const Byte* p, U32 n, U32 i) {   // the last byte of the number at i, or none
-    U32 j = i;
-    if (p[j] == '-') ++j;
-    if (j >= n || !digit(p[j])) return none;
-    if (p[j] == '0') ++j;
-    else while (j < n && digit(p[j])) ++j;
+    if (p[i] == '-' && ++i == n) return none;
+    U32 j = p[i] == '0' ? i + 1 : digits_end(p, n, i);
+    if (j == none) return none;
     if (j < n && p[j] == '.') {
-        if (++j >= n || !digit(p[j])) return none;
-        while (j < n && digit(p[j])) ++j;
+        j = digits_end(p, n, j + 1);
+        if (j == none) return none;
     }
     if (j < n && (p[j] == 'e' || p[j] == 'E')) {
         if (++j < n && (p[j] == '+' || p[j] == '-')) ++j;
-        if (j >= n || !digit(p[j])) return none;
-        while (j < n && digit(p[j])) ++j;
+        j = digits_end(p, n, j);
+        if (j == none) return none;
     }
     return j - 1;
 }
@@ -96,6 +99,7 @@ bool json(const Byte* p, U32 n, const char* const* keys, U32 key_count, ArrayEnd
     int current = -1, array = -1;
     Want want = value;
     bool complete = false, marking = false, folder_value = false, saw_folder = false;
+    bool schema_value = false;
     marked = none;
     for (U32 k = 0; k != key_count; ++k) { ends[k].close = ends[k].last = none; ends[k].found = 0; }
     for (U32 i = 0; i < n;) {
@@ -113,6 +117,7 @@ bool json(const Byte* p, U32 n, const char* const* keys, U32 key_count, ArrayEnd
         } else if (want == key || want == key_or_close) {
             if (c != '"' || (end = string_end(p, n, i)) == none) return false;
             if (depth == 1) {
+                schema_value = pack_id && ascii_string(p, i, end, "schema");
                 if (pack_id && ascii_string(p, i, end, "folder")) {
                     if (saw_folder) return false;
                     folder_value = saw_folder = true;
@@ -132,19 +137,22 @@ bool json(const Byte* p, U32 n, const char* const* keys, U32 key_count, ArrayEnd
             if (c != ':') return false;
             want = value; previous = i++;
             continue;
-        } else if (folder_value) {
-            if (c != '"' || (end = string_end(p, n, i)) == none || !ascii_string(p, i, end, pack_id)) return false;
+        } else if (c == '"') {
+            end = string_end(p, n, i);
+            if (end == none ||
+                (folder_value && !ascii_string(p, i, end, pack_id)) ||
+                (schema_value && ascii_string(p, i, end, "xy-forever.package"))) return false;
             folder_value = false;
-        } else if (c == '{' || c == '[') {
+        } else if (folder_value) return false;
+        else if (c == '{' || c == '[') {
             if (depth == levels) return false;   // levels <= max_depth
-            marking = false;
+            marking = schema_value = false;
             stack[depth++] = c;
             if (c == '[' && depth == 2 && stack[0] == '{') array = current;
             want = c == '{' ? key_or_close : value_or_close;
             previous = i++;
             continue;
-        } else if (c == '"') end = string_end(p, n, i);
-        else if (c == '-' || digit(c)) {
+        } else if (c == '-' || digit(c)) {
             end = number_end(p, n, i);
             if (marking) marked = end;
         } else if (c == 't' || c == 'f' || c == 'n') end = literal_end(p, n, i);
