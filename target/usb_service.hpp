@@ -266,7 +266,7 @@ const char* job_target();
 bool settings_load();
 xyf::settings::Record& settings();
 uint32_t settings_store();
-// #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode): its option
+// #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode, Confirm on device): its option
 // list opened (menu::open_options; 0), or the page's note why not (still reading, a save running, a newer record:
 // never changed). settings_pick, the list's PLAY: B's copy takes the option (nothing written; the row is marked).
 // settings_view, each menu pass: settings_load, the rows' values and marks into the menu state; once the page was
@@ -279,6 +279,12 @@ bool settings_view(xyf::menu::State& state, const char*& line);
 // A key event (key_ui on_key; injected: the host's KEY command). While a confirm prompt is open it takes
 // every key (true: not for the menu); only a real PLAY / STOP answers it (xyf_settings.hpp gate_key).
 bool confirm_key(uint32_t key, uint32_t pressed, bool injected);
+// #65 (usb_service_confirm.ipp): while the device asks about a host request, what it asks (the prompt's line) and
+// its detail (a library id, or ""); 0 when it asks nothing. key_ui draws the prompt in place of the page.
+const char* confirm_prompt();
+const char* confirm_detail();
+// The Confirm on device setting as settings.txt holds it (settings_load first; 1 until it is read): HELLO confirm=.
+uint32_t confirm_on();
 #endif
 #endif
 #if defined(XYF_SERVICE_ON_MARKER_ONLY)

@@ -55,7 +55,10 @@ int main() {
     CHECK(std::strcmp(power_on_text(power_play), "PLAY held") == 0 && std::strcmp(power_on_text(power_always), "Always") == 0);
     CHECK(std::strcmp(usb_text(usb_mtp_serial), "MTP + Serial") == 0 && std::strcmp(usb_text(usb_serial), "Serial") == 0);
     CHECK(std::strcmp(usb_text(usb_mtp_only), "MTP (no web app)") == 0);
-    CHECK(rows == 4 && std::strcmp(label(row_memory), "Mod memory") == 0 && std::strcmp(label(row_about), "About") == 0);
+    CHECK(rows == 5 && std::strcmp(label(row_memory), "Mod memory") == 0 && std::strcmp(label(row_about), "About") == 0);
+    CHECK(std::strcmp(label(row_confirm), "Confirm on device") == 0 && confirm_option_count == 2);   // #65
+    CHECK(std::strcmp(confirm_options[0], "Off") == 0 && std::strcmp(confirm_options[1], "On") == 0);
+    CHECK(std::strcmp(confirm_text(0), "Off") == 0 && std::strcmp(confirm_text(1), "On") == 0);
     CHECK(std::strcmp(memory_text(memory_standard, false), "2 MiB") == 0);
     CHECK(std::strcmp(memory_text(memory_expanded, false), "4 MiB (experimental)") == 0);
     CHECK(std::strcmp(memory_text(memory_expanded, true), "4 MiB (experimental): applied when you boot") == 0);

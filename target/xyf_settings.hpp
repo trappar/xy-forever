@@ -1,7 +1,7 @@
 #ifndef XYF_SETTINGS_HPP
 #define XYF_SETTINGS_HPP
 #include <stdint.h>
-// Device settings (the Settings page) and the "Confirm on device" gate (not built: no prompt opens it yet).
+// Device settings (the Settings page) and the "Confirm on device" gate (#65: usb_service_confirm.ipp asks with it).
 // Freestanding, header only, pure.
 // A sibling of config.txt (xyf_config.hpp), not part of it: config.txt is the pending/saved mod selection
 // written only by Save (its mods= line last), while a setting changes on its own page.
@@ -18,11 +18,11 @@
 // format: 1 (or none: a record before the key) reads; a higher number is a newer XY Forever's record: it reads as
 // the defaults with newer set (the page says so and changes nothing); anything else: the defaults.
 // Replaced as config.txt is: settings.txt.part, settings.txt -> settings.old, .part -> settings.txt, old removed.
-// No record (absent or unreadable): the defaults, confirm=1 (unused until the gate); tests seed confirm=0.
+// No record (absent or unreadable): the defaults, confirm=1 (#56: on); the simulator and tests seed confirm=0.
 // Readers: B's menu (usb_service settings_load, through A) and A at each check of the default (file_boot a_power_on:
 // settings.txt, else settings.old; bounded, read-only), whose answer tells B to open the menu without PLAY.
-// The confirm setting is to change only on the device, never over USB: with its gate, file.write must refuse
-// settings.txt (not done yet: today a host may write it, and the gate is not built).
+// The confirm setting changes only on the device, never over USB: the host's file commands and MTP refuse
+// settings.txt and settings.old (file_engine::settings_record; the device's own save is not a host command).
 namespace xyf { namespace settings {
 static const char path[] = "/yaffs2/xy-forever/settings.txt";
 static const char old_path[] = "/yaffs2/xy-forever/settings.old";
@@ -88,26 +88,32 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
 }
 
 // The Settings page: one row per setting that works, then About; PLAY or a knob push acts on the selected one
-// (xyf_menu.cpp: About opens the About page, once the home menu's Info row). Confirm on device is stored
-// (confirm=) but has no row until its gate is built.
+// (xyf_menu.cpp: About opens the About page, once the home menu's Info row). #65: Confirm on device (confirm=), On or
+// Off; the offline stage-2 modes (XYF_SMALL_CRC: no settings.txt, no USB service) have no such row.
 // #21: PLAY on a setting opens its option list (xyf_menu Screen::options: - / + choose, PLAY picks, STOP leaves it
-// unchanged); a value index is its option's index (memory_options, power_on_options, usb_options). A settings.txt
+// unchanged); a value index is its option's index (memory_options, power_on_options, usb_options, confirm_options). A settings.txt
 // row's pick changes only B's copy (marked on the page, nothing written); the record is written once, when the page
 // is left with a change (usb_service settings_view: the config job, so settings.txt or settings.old always holds a
 // whole record). A power cut before that keeps the record as it was: the change is lost, never half-written.
 // Mod memory, part of the saved configuration (config.txt memory=, xyf_config.hpp), not of this record: like
 // the Mods page's toggles it is pending until boot (Continue asks Save / Discard / Back). xyf_mods_io keeps it and
 // says which of these the row shows (menu::State memory, memory_pending).
+#if !defined(XYF_SMALL_CRC)
+enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_confirm, row_about, rows, row_packs = rows };
+static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "Confirm on device", "About"};
+#else
 enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_about, rows, row_packs = rows };
-enum Memory : uint32_t { memory_reading = 0, memory_unavailable, memory_standard, memory_expanded };
 static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "About"};
+#endif
+enum Memory : uint32_t { memory_reading = 0, memory_unavailable, memory_standard, memory_expanded };
 static inline const char* label(uint32_t row) { return row < rows ? labels[row] : ""; }
-// The options, in value order (Memory - memory_standard; PowerOn; Usb).
+// The options, in value order (Memory - memory_standard; PowerOn; Usb; confirm 0 off, 1 on).
 // Mod memory: the base's reserved region, 2 MiB (reserved_bytes 0x200000, mod_known_bases.inc), or its 4 MiB layout.
 static const char* const memory_options[] = {"2 MiB", "4 MiB (experimental)"};
 static const char* const power_on_options[] = {"PLAY held", "Always"};
 static const char* const usb_options[usb_modes] = {"MTP + Serial", "MTP", "Serial"};
-static const uint32_t power_on_option_count = 2, usb_option_count = usb_modes;
+static const char* const confirm_options[] = {"Off", "On"};
+static const uint32_t power_on_option_count = 2, usb_option_count = usb_modes, confirm_option_count = 2;
 // The row's value (short: the page draws it at the label's size); pending: the Mods page's mark (": applied when
 // you boot"; the simulator's log; the page marks the value instead).
 static inline const char* memory_text(uint32_t memory, bool pending) {
@@ -119,6 +125,7 @@ static inline const char* memory_text(uint32_t memory, bool pending) {
 static inline const char* power_on_text(uint32_t p) { return power_on_options[p == power_always ? 1 : 0]; }
 // MTP alone: the row says what it costs (the host tool and the web app need the serial interface).
 static inline const char* usb_text(uint32_t u) { return u == usb_mtp_only ? "MTP (no web app)" : usb_options[u == usb_serial ? 2 : 0]; }
+static inline const char* confirm_text(uint32_t c) { return confirm_options[c ? 1 : 0]; }
 // The page's notes, and the home menu's lines about the save on leaving.
 static const char note_newer[] = "settings.txt is from a newer XY Forever: kept unchanged.";
 static const char note_loading[] = "Settings are still being read.";
@@ -129,8 +136,9 @@ static const char note_failed[] = "Settings not saved: open Settings and leave i
 static const char note_busy[] = "Settings not saved: a job is running. Open Settings and leave it to try again.";
 static const char note_link[] = "Settings not saved: storage link lost.";
 
-// The confirm gate: "Allow <what>? PLAY = yes, STOP = no", bounded. Only a real key event answers: an injected
-// one (the host's test key command) is ignored, so the host can never approve its own command.
+// The confirm gate (#65, usb_service_confirm.ipp): the device asks about a host request, PLAY = yes, STOP = no,
+// bounded. Only a real key event answers: an injected one (the host's diag.key) is ignored, so the host can never
+// approve its own request.
 static const uint32_t timeout_ms = 30000;
 static const uint32_t key_play = 51, key_stop = 52;     // xyf_menu.hpp Key (KPlay, KStop)
 enum Answer : uint32_t { pending = 0, yes = 1, no = 2, timed_out = 3, idle = 4 };

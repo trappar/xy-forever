@@ -11,7 +11,7 @@ those of firmware/<--like>/info.txt (the device's own Open-XY entry).
 The candidate's xy-forever/loaded/<id>/... files (runtime-loaded objects) go to /yaffs2/xy-forever/loaded/<id>/.
 
 Modes (each a separate run; the first FAIL stops, exit 1; usage exit 2; with --sim the evidence folder is
-removed when the run passed, unless --keep):
+removed when the run passed, unless --keep; each first needs Settings > Confirm on device off: HELLO confirm=0, #65):
   upload (default) completes or replaces firmware/<id>/: info.txt removed first, files the entry does not
                    hold removed, os.ldr kept when its size and the old info.txt's sha256= match, info.txt
                    written last; B's catalog then lists <id> as "content not installed" (expected).
@@ -268,6 +268,8 @@ def main(argv=None, device=None, sleep=time.sleep, folder=None):
     print('test_entry %s firmware/%s (evidence %s)' % (mode, o.id, run.folder), flush=True)
     code = 0
     try:
+        if dp.confirm_on(run.ok(['wait'], dp.T_ANSWER)):              # #65: set-default and boot would wait for PLAY
+            raise StepFail(dp.CONFIRM_ON)
         getattr(run, mode)()
         print('PASS', flush=True)
     except (StepFail, ValueError, OSError) as error:

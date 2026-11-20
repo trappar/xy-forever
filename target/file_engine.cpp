@@ -16,10 +16,11 @@ bool named(const char* s, uint32_t n, const char* name, bool folded) {
 // A path as the policy sees it: names below /yaffs2 ('/' runs are one separator, a trailing
 // '/' ends nothing), whether it is the dev-menu marker, whether it lies inside the engine's
 // tmp folder (/yaffs2/xy-forever/tmp/<name>...), whether it is the stock updater's inbox /yaffs2/upgrade
-// or below it (first name "upgrade", ASCII case ignored: over-refuses, as the marker).
-struct Parsed { uint32_t names; bool marker, tmp, inbox; };
+// or below it (first name "upgrade", ASCII case ignored: over-refuses, as the marker), whether it is the Settings
+// record (#65: /yaffs2/xy-forever/settings.txt or settings.old, ASCII case ignored).
+struct Parsed { uint32_t names; bool marker, tmp, inbox, settings; };
 Verdict parse(const char* path, Parsed& p) {
-    p.names = 0; p.marker = false; p.tmp = false; p.inbox = false;
+    p.names = 0; p.marker = false; p.tmp = false; p.inbox = false; p.settings = false;
     if (!path) return refuse_path;
     uint32_t length = 0;
     for (; length != max_path && path[length]; ++length) {
@@ -31,7 +32,7 @@ Verdict parse(const char* path, Parsed& p) {
     for (uint32_t i = 0; i != sizeof(root) - 1; ++i)
         if (path[i] != root[i]) return refuse_outside;
     if (path[7] && path[7] != '/') return refuse_outside;          // "/yaffs20" is another name
-    bool tmp_folder = false;
+    bool tmp_folder = false, own = false;
     for (uint32_t i = 7; path[i];) {
         if (path[i] == '/') { ++i; continue; }
         const uint32_t start = i;
@@ -44,8 +45,10 @@ Verdict parse(const char* path, Parsed& p) {
             p.marker = named(name, n, "bootloader.dev", true);   // case ignored: over-refuses (.hpp)
             p.inbox = named(name, n, "upgrade", true);
             tmp_folder = named(name, n, "xy-forever", false);
+            own = named(name, n, "xy-forever", true);
         } else {
             p.marker = false;
+            p.settings = p.names == 2 && own && (named(name, n, "settings.txt", true) || named(name, n, "settings.old", true));
             if (p.names == 2) tmp_folder = tmp_folder && named(name, n, "tmp", false);
             else if (tmp_folder) p.tmp = true;
         }
@@ -80,6 +83,11 @@ Verdict decide_engine(Operation op, const char* path, const char* second) {
     default:
         return allow;                                                // read, list, stat
     }
+}
+
+bool settings_record(const char* path) {
+    Parsed p;
+    return parse(path, p) == allow && p.settings;
 }
 
 bool upload_size(const char* path, uint32_t& size) {

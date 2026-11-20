@@ -15,7 +15,13 @@ volatile uint32_t usb_drawn __attribute__((section(".data"))) = 0;
 const char* volatile usb_drawn_line __attribute__((section(".data"))) = 0;
 const char* volatile image_drawn __attribute__((section(".data"))) = 0;
 volatile uint32_t menu_screen __attribute__((section(".data"))) = 0;
+#if defined(XYF_SETTINGS)
+const char* volatile confirm_drawn __attribute__((section(".data"))) = 0;   // #65: the prompt on screen (0: none)
+#endif
 bool usb_view_changed() {
+#if defined(XYF_SETTINGS)
+    if (xy_forever::usb_service::confirm_prompt() != confirm_drawn) return true;
+#endif
     return xy_forever::usb_service::host_marks() != usb_drawn ||
            xy_forever::usb_service::host_activity() != usb_drawn_line ||
            (app.screen == xyf::menu::Screen::info && xy_forever::usb_service::image_label() != image_drawn);
@@ -39,9 +45,21 @@ void draw_screen(uint16_t* fb) {
         draw_message(fb, xyf::crash::message(crash_text, &still));
         return;
     }
+#if defined(XYF_SETTINGS)
+    const char* const asked = confirm_drawn = xy_forever::usb_service::confirm_prompt();
+#endif
     if (ui_screen == 2) {
         const Message bye = {"Starting", {ui_status}, 1, "", &chrome};
         draw_message(fb, bye);
+#if defined(XYF_SETTINGS)
+    } else if (asked) {                              // #65: Confirm on device (the current menu style)
+        const Message ask = {"Allow this USB request?", {"A computer asks to:", asked,
+                             xy_forever::usb_service::confirm_detail(), "",
+                             "STOP, or no answer within 30 s, declines it.",
+                             "Settings > Confirm on device turns these questions off.", "", ""}, 6,
+                             "PLAY  allow      STOP  decline", &chrome};
+        draw_message(fb, ask);
+#endif
 #if defined(XYF_SERVICE_SCREEN)
     } else if (ui_screen == 4) {
         const Message usb = {"USB service", {service_lines[0], service_lines[1], service_lines[2], service_lines[3]}, 4,

@@ -513,7 +513,7 @@ export interface DefaultResult { readonly id: string; readonly switched: boolean
  */
 export async function makeDefault(client: Client, id: string, options: Omit<ApplyOptions, 'signal'> = {}): Promise<DefaultResult> {
   try {
-    await client.setDefault(id, { timeoutMs: 75_000 });
+    await client.setDefault(id);                                  // the spec's timeout (with #65's Confirm wait)
     return { id, switched: false, status: null };
   } catch (error) {
     if (!isXyfError(error, 'started')) throw error;

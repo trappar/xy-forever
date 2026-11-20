@@ -66,6 +66,7 @@ import zlib
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 from xy_forever import depth, device_lock, host_inventory, host_read, host_write, library_add, pack_change, usb_proto as P
+from xy_forever.host_write import AREA_TEXT, in_write_area
 from xy_forever.library_add import ID_RE
 from xy_forever.host_install import DESCRIPTOR, MIN_IMAGE, IMAGE_CAPACITY, USB_MODES, load_build, load_stock
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr
@@ -76,16 +77,13 @@ from xy_forever.transport import SerialPort, TcpPort, device_ports, sim_address
 # 1 KiB frame (+ 20 bytes framing) is in flight at a time.
 PUT_CHUNK = 1024
 READ_RANGE = 1024              # device read_range_max (Test 038: 4 KiB replies hung)
-INSTALL_TIMEOUT = 900.0         # host bound for one INSTALL (v3 link sessions have no device cap)
+INSTALL_TIMEOUT = P.ids.COMMANDS[P.INSTALL]['timeout_ms'] / 1000.0   # with #65's Confirm on device wait
 COPY_RATE = 10000.0             # file.copy: the host waits its timeout plus 1 s per this many bytes
 MTP_TEST_TIMEOUT = 60.0         # host bound for one MTP_TEST, plus its hold time
 # Test 049 put-file: under /yaffs2/xy-forever/, plain names only (the device re-checks).
 WRITE_PATH_RE = re.compile(r'^/yaffs2/xy-forever(/[A-Za-z0-9._-]{1,64}){1,4}$')
 # Test 058: key numbers (xyf_menu.hpp / key_ui.cpp): KPlay 51, KStop 52, -/+ 53/54, shift 55, track1 6.
 KEYS = dict(minus=53, plus=54, play=51, stop=52, shift=55, **{'track%d' % (i + 1): 6 + i for i in range(8)})
-# put/rm/mkdir write only here (the device's write area: target/storage_server.cpp write_root).
-AREA_TEXT = 'under /yaffs2/, never bootloader.dev or upgrade/'
-WRITE_ROOTS = ('/yaffs2/',)       # since 1.13: all of /yaffs2 but the two below
 SLOTS = ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt')
 SCREEN_BYTES, SCREEN_W, SCREEN_H, SCREEN_STRIDE = 0x3c000, 480, 216, 256   # ui_gfx.hpp
 
@@ -205,7 +203,8 @@ class Device:
         return code
 
     def set_default(self, entry_id):
-        code, body = self.call(P.SET_DEFAULT, entry_id.encode('ascii') + b'\0', timeout=75.0)   # b waits for a's write
+        code, body = self.call(P.SET_DEFAULT, entry_id.encode('ascii') + b'\0',
+                               timeout=P.ids.COMMANDS[P.SET_DEFAULT]['timeout_ms'] / 1000.0)   # with the Confirm wait
         sent_hash = struct.unpack_from('<I', body)[0] if len(body) >= 4 else 0
         return code, sent_hash
 
@@ -297,17 +296,6 @@ def device_path(path):
     if path != '/yaffs2' and not path.startswith('/yaffs2/'):
         raise SystemExit('refused: %r is not an absolute device path under /yaffs2' % path)
     return path
-
-
-def in_write_area(path):
-    """The device's write area (since 1.13): below /yaffs2/, no empty, '.' or '..' part, never
-    /yaffs2/bootloader.dev nor /yaffs2/upgrade or below it (ASCII case ignored). The device checks again."""
-    root = next((r for r in WRITE_ROOTS if path.startswith(r)), None)
-    rest = path[len(root):].split('/') if root else []
-    if not rest or not all(p and p not in ('.', '..') for p in rest):
-        return False
-    first = rest[0].lower()
-    return first != 'upgrade' and not (len(rest) == 1 and first == 'bootloader.dev')
 
 
 def split_path(path):

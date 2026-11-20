@@ -9,6 +9,7 @@ import type { Trace } from './link.ts';
 import type { Opener, Transport } from './transport.ts';
 import { SCREEN } from './screen.ts';
 import { writeStream } from './stream.ts';
+import { PROTECTED_NAMES, inWriteArea } from './write-area.ts';
 import * as v1 from './v1.ts';
 
 type Codecs = typeof v1.codecs;
@@ -57,28 +58,6 @@ export interface DeviceInfo {
 export interface DirEntry { readonly name: string; readonly nameBytes: Uint8Array; readonly kind: EntryKind; readonly size: number }
 export type EntryKind = 'file' | 'folder' | 'other';
 const KINDS: readonly EntryKind[] = ['file', 'folder', 'other'];
-
-/**
- * Where the device allows changes (file.write_staged, file.delete, file.rmdir, file.mkdir, file.rename, file.copy's
- * target): since 1.13 all of /yaffs2, except the names in PROTECTED_NAMES.
- */
-export const WRITE_ROOTS = ['/yaffs2/'] as const;
-/** Never changed by hand (any ASCII case): the dev-menu marker, and the stock updater's inbox and all below it. */
-export const PROTECTED_NAMES = ['/yaffs2/bootloader.dev', '/yaffs2/upgrade'] as const;
-
-/**
- * Whether the device's write check can pass path (as xyf_host.py in_write_area): below /yaffs2/, no empty, "."
- * or ".." part, not /yaffs2/bootloader.dev, not /yaffs2/upgrade or below it (ASCII case ignored). The device
- * checks again and stays the authority; this only refuses early what it would refuse.
- */
-export function inWriteArea(path: string): boolean {
-  const root = WRITE_ROOTS.find((r) => path.startsWith(r));
-  if (root === undefined) return false;
-  const parts = path.slice(root.length).split('/');
-  if (!parts.every((p) => p !== '' && p !== '.' && p !== '..')) return false;
-  const first = (parts[0] ?? '').toLowerCase();
-  return first !== 'upgrade' && !(parts.length === 1 && first === 'bootloader.dev');
-}
 
 /** file.copy: the host waits the command's timeout plus 1 s per this many bytes (xyf_host.py COPY_RATE). */
 const COPY_RATE = 10_000;

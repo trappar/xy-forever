@@ -212,7 +212,7 @@ class SettingsRows(Rows, unittest.TestCase):
         self.leave(SAVED_USB)
         self.assertEqual(self.record()['usb'], 'mtp_serial')
         self.press(PLAY)                                                   # Settings again (still the home row)
-        for _ in range(2):
+        for _ in range(3):                                                 # #65: Confirm on device before About
             self.press(PLUS)
         seen = self.count('menu: info image: ')
         self.press(PLUS)                                                   # About

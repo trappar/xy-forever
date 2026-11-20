@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.22",
+    "version": "1.23",
     "intro": [
       "XY Forever is a firmware and mod manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -80,17 +80,17 @@
     {"code": 11, "name": "install", "class": "device", "since": "1.0", "doc": "the boot-partition write or its read-back check failed"},
     {"code": 12, "name": "link", "class": "device", "since": "1.0", "doc": "processor A did not answer a request processor B passed on to it within its bound, or did not answer as XY Forever (B asks before it sends a change; 1.17: also before closing a write window left by an unanswered request); once the link is lost every command that needs A answers `link` at once and B stays at its menu until a power cycle"},
     {"code": 13, "name": "identity", "class": "device", "since": "1.0", "doc": "stock code in the device's memory differs from the checked bootloader image; the command did not run"},
-    {"code": 14, "name": "refused", "class": "policy", "since": "1.1", "doc": "well formed, but forbidden by the device's safety policy (a path the file engine refuses, or, for a change, outside the write area: since 1.13 all of `/yaffs2/` except `/yaffs2/bootloader.dev` and `/yaffs2/upgrade` with all below it; since 1.16 also a folder made, or a file written, copied or moved, more than 6 folders below `/yaffs2`, the stock dev-menu MTP's limit: docs/SAFETY.md)"},
+    {"code": 14, "name": "refused", "class": "policy", "since": "1.1", "doc": "well formed, but forbidden by the device's safety policy (a path the file engine refuses, or, for a change, outside the write area: since 1.13 all of `/yaffs2/` except `/yaffs2/bootloader.dev` and `/yaffs2/upgrade` with all below it; since 1.16 also a folder made, or a file written, copied or moved, more than 6 folders below `/yaffs2`, the stock dev-menu MTP's limit; since 1.23 also `/yaffs2/xy-forever/settings.txt` and `settings.old`: docs/SAFETY.md)"},
     {"code": 15, "name": "busy", "class": "job", "since": "1.10", "doc": "a job (`mods.apply`) is running, or B is still closing A's write window after it ended (seconds); retry later, or `job.cancel` a running job"},
     {"code": 16, "name": "cancelled", "class": "job", "since": "1.1", "doc": "the job was cancelled (not sent by any command yet)"},
     {"code": 17, "name": "no_content", "class": "order", "since": "1.10", "doc": "the library entry's content is not installed in `/yaffs2/content/` (a mod set built on the device, or any entry while another one's content is installed): it is listed but does not boot as it is; make it the default to install its content. Added during 1.10 without a version bump: a build that reports 1.10 to 1.16 may answer another status for such an entry; every 1.17 build sends this one"},
     {"code": 18, "name": "started", "class": "job", "since": "1.10", "doc": "the request started a job (`library.set_default`: the content switch); follow it with `job.status`, whose end is the request's result"},
-    {"code": 19, "name": "declined", "class": "policy", "since": "1.11", "doc": "the user refused the command at the device's Confirm on device prompt, or nobody answered it in time; nothing was done (not sent by any command yet: the prompt is not built)"}
+    {"code": 19, "name": "declined", "class": "policy", "since": "1.11", "doc": "the user refused the command at the device's Confirm on device prompt, or nobody answered it in time; nothing was done (sent since 1.23)"}
   ],
   "common_errors": [
     {"status": "state", "except": ["hello"], "doc": "the device has not answered a `hello` since it started; nothing was done"},
     {"status": "unsupported", "except": ["hello"], "doc": "this build does not answer the type (it is not in `cmds`)"},
-    {"status": "busy", "except": ["hello"], "doc": "a job is running, or its write window is still closing after `job.status` said it ended: every command that needs processor A, the staging or a boot waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `job.cancel` are answered)"}
+    {"status": "busy", "except": ["hello"], "doc": "a job is running, or its write window is still closing after `job.status` said it ended: every command that needs processor A, the staging or a boot waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `job.cancel` are answered); since 1.23 also while the device asks Confirm on device (`diag.status`, `screen.read` and `job.status` are answered)"}
   ],
   "commands": [
     {
@@ -372,7 +372,7 @@
     {
       "type": "0x20", "name": "boot.install", "symbol": "install", "class": "product", "since": "1.0", "switch": null,
       "summary": "install the staged XY Forever build into the boot partition",
-      "timeout_ms": 900000, "destructive": true,
+      "timeout_ms": 930000, "destructive": true,
       "request": {"size": [32, 32], "fields": [
         {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the staged image's SHA-256 again"}
       ]},
@@ -381,13 +381,13 @@
         {"name": "partition", "type": "u32", "doc": "active boot partition read back (1 or 2; 0 = none)"},
         {"name": "sectors", "type": "u32", "doc": "512-byte sectors read back and compared"}
       ]},
-      "errors": ["state", "sha", "image", "link", "too_large", "install"],
-      "doc": "Accepts only a staged XY Forever build (its cold descriptor and a valid LDR structure; `image` otherwise) that fits the boot partition (`too_large`). Writes with the stock bootloader's own A/B boot-partition writer, then reads the partition back and compares every byte (`install` on any difference). Sends `log` events while it runs. A wrong-length request or no complete staging is `state`. Once the writer has run (`ok` or `install`) the staging is used up; a request refused before writing leaves it as it was. Takes minutes; the host waits up to 900 s."
+      "errors": ["state", "sha", "image", "link", "too_large", "install", "declined"],
+      "doc": "Accepts only a staged XY Forever build (its cold descriptor and a valid LDR structure; `image` otherwise) that fits the boot partition (`too_large`). Writes with the stock bootloader's own A/B boot-partition writer, then reads the partition back and compares every byte (`install` on any difference). Sends `log` events while it runs. A wrong-length request or no complete staging is `state`. Once the writer has run (`ok` or `install`) the staging is used up; a request refused before writing leaves it as it was. Takes minutes; the host waits up to 930 s. Confirm on device (1.23, #65): while the device's setting is on (`hello` key `confirm=1`), the device first asks on its screen and waits for a real PLAY (the request then runs) or STOP; STOP, or no answer within 30 s, is `declined` with nothing done. The timeout includes that wait."
     },
     {
       "type": "0x21", "name": "boot.uninstall", "symbol": "uninstall", "class": "product", "since": "1.0", "switch": null,
       "summary": "put the stock 1.2.1 os.ldr back into the boot partition",
-      "timeout_ms": 900000, "destructive": true,
+      "timeout_ms": 930000, "destructive": true,
       "request": {"size": [32, 32], "fields": [
         {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the staged image's SHA-256 again"}
       ]},
@@ -396,8 +396,8 @@
         {"name": "partition", "type": "u32", "doc": "active boot partition read back (1 or 2; 0 = none)"},
         {"name": "sectors", "type": "u32", "doc": "512-byte sectors read back and compared"}
       ]},
-      "errors": ["state", "sha", "image", "link", "too_large", "install"],
-      "doc": "As `boot.install`, but accepts only the exact stock OP-XY 1.2.1 `os.ldr` (2373336 bytes, SHA-256 `60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f`). Afterwards the OP-XY boots stock 1.2.1 and this service is gone; files under `/yaffs2/xy-forever/` stay."
+      "errors": ["state", "sha", "image", "link", "too_large", "install", "declined"],
+      "doc": "As `boot.install`, but accepts only the exact stock OP-XY 1.2.1 `os.ldr` (2373336 bytes, SHA-256 `60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f`). Afterwards the OP-XY boots stock 1.2.1 and this service is gone; files under `/yaffs2/xy-forever/` stay. Asks first, as `boot.install`."
     },
     {
       "type": "0x30", "name": "device.reboot", "symbol": "reboot", "class": "product", "since": "1.0", "switch": null,
@@ -442,20 +442,20 @@
       ]},
       "reply": {"size": [0, 0], "extensible": true, "on_error": "status", "fields": []},
       "errors": ["bad_request"],
-      "doc": "As if the key changed on the OP-XY. A press can close the menu and end USB."
+      "doc": "As if the key changed on the OP-XY. A press can close the menu and end USB. Never answers a Confirm on device prompt (1.23: ignored while the device asks)."
     },
     {
       "type": "0x40", "name": "library.set_default", "symbol": "set_default", "class": "product", "since": "1.0", "switch": "XYF_USB_SET_DEFAULT", "switch_optional": false,
       "summary": "make a library entry the default firmware",
-      "timeout_ms": 75000, "destructive": true,
+      "timeout_ms": 105000, "destructive": true,
       "request": {"size": [2, 32], "fields": [
         {"name": "id", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 32, "doc": "library entry id: 1-31 of `a-z 0-9 _ -`, NUL-terminated (the folder name under `/yaffs2/xy-forever/firmware/`)"}
       ]},
       "reply": {"size": [4, 4], "extensible": true, "on_error": "full", "fields": [
-        {"name": "id_hash", "type": "u32", "doc": "CRC-32 of the id bytes, as sent to processor A (0 for `bad_request`)"}
+        {"name": "id_hash", "type": "u32", "doc": "CRC-32 of the id bytes, as sent to processor A (0 for `bad_request` and `declined`)"}
       ]},
-      "errors": ["bad_request", "link", "storage", "no_content", "started"],
-      "doc": "An entry whose content is not installed (listed as content not installed) first gets its content: B starts the content switch as a job and answers `started` (`job.status`: phase `inputs`, `content` with done/total in files, `finish` while it writes the record and the default; `done` with detail = the id once the default is written; `failed` leaves the default unchanged, `error` 15 with code 1 when `/yaffs2/content/` is not the official set, 2 when the entry would replace an official file; a cut or failure leaves the content state switching, which nothing boots from until this request runs again). A build without the switch answers `no_content` (nothing sent to A). Processor A finds the one entry whose id has this hash and an `os.ldr`, and writes the next of the two state files (`/yaffs2/xy-forever/state-a.txt`, `state-b.txt`). ok means A finished and the menu shows the new default; `storage` means the menu's default did not change. Tools can confirm by reading both state files: the valid one with the higher `seq=` holds `default=ID`."
+      "errors": ["bad_request", "link", "storage", "no_content", "started", "declined"],
+      "doc": "An entry whose content is not installed (listed as content not installed) first gets its content: B starts the content switch as a job and answers `started` (`job.status`: phase `inputs`, `content` with done/total in files, `finish` while it writes the record and the default; `done` with detail = the id once the default is written; `failed` leaves the default unchanged, `error` 15 with code 1 when `/yaffs2/content/` is not the official set, 2 when the entry would replace an official file; a cut or failure leaves the content state switching, which nothing boots from until this request runs again). A build without the switch answers `no_content` (nothing sent to A). Processor A finds the one entry whose id has this hash and an `os.ldr`, and writes the next of the two state files (`/yaffs2/xy-forever/state-a.txt`, `state-b.txt`). ok means A finished and the menu shows the new default; `storage` means the menu's default did not change. Tools can confirm by reading both state files: the valid one with the higher `seq=` holds `default=ID`. Confirm on device (1.23, #65): while the device's setting is on (`hello` key `confirm=1`), the device first asks on its screen and waits for a real PLAY (the request then runs) or STOP; STOP, or no answer within 30 s, is `declined` with nothing done. The timeout includes that wait."
     },
     {
       "type": "0x43", "name": "library.boot", "symbol": "library_boot", "class": "product", "since": "1.7", "switch": null,
@@ -608,7 +608,7 @@
     {
       "type": "0x44", "name": "mods.apply", "symbol": "mods_apply", "class": "product", "since": "1.10", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
       "summary": "start assembling mod firmware on the device (a job)",
-      "timeout_ms": 30000, "destructive": true,
+      "timeout_ms": 60000, "destructive": true,
       "request": {"size": [47, 1460], "fields": [
         {"name": "base", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 32, "doc": "library entry id whose `os.ldr` is the stock image; its `content.sha256` is the firmware's content list"},
         {"name": "profile", "type": "cstr", "encoding": "ascii", "min_bytes": 2, "max_bytes": 32, "doc": "the package set's profile (1-31 of `a-z 0-9 . _ -`, a letter or digit first); until 1.15 the folder `mods/<profile>/`"},
@@ -623,8 +623,8 @@
         {"name": "job", "type": "u32", "doc": "the job's id (0 when refused); its output folder is `/yaffs2/xy-forever/tmp/job-<id>/`"},
         {"name": "missing", "type": "u32", "range": [0, 5], "values": {"0": "none", "1": "the base's `os.ldr`", "2": "the base's `content.sha256`", "3": "`/yaffs2/content/op1_factory.json`", "4": "the generation's `base/info.txt`", "5": "the generation's `store.txt` (1.16; absent: an older layout, push the set again)"}, "doc": "with `not_found`: the input the device lacks; with `unsupported` (1.16), 5: the generation's `store.txt` names a newer store version"}
       ]},
-      "errors": ["bad_request", "sha", "link", "not_found", "state", "storage", "unsupported"],
-      "doc": "Checks the request and that every input exists (`not_found`, `missing` says which), makes the output folder and answers at once; processor B then runs the job in small steps from its menu loop, which stays live (`job.status`, `job.cancel`). Reads only the generation's packages, the base entry, the stock catalog and the output; writes only the output folder: an entry's files as `<name>.part`, read back, renamed, `os.ldr` last. A failed or cancelled job leaves no `os.ldr`; it removes its files and folders (`debris` 1 in `job.status` when it could not). Before the job's first step B removes leftover `tmp/job-*` folders (bounded); since 1.17 also when its USB service starts. A finished entry becomes library entry `mods-a` or `mods-b` (phase `finish`, detail `commit`): never the default or the boot-once entry; the absent one, else the one not written last; the old entry is renamed into `tmp/` first, then the new one into `firmware/`, then the old one removed. It is listed with its content not installed (`no_content`). A staged upload in progress is `busy`; no free job id, or both mods ids are the default and the boot-once entry, `state`."
+      "errors": ["bad_request", "sha", "link", "not_found", "state", "storage", "unsupported", "declined"],
+      "doc": "Checks the request and that every input exists (`not_found`, `missing` says which), makes the output folder and answers at once; processor B then runs the job in small steps from its menu loop, which stays live (`job.status`, `job.cancel`). Reads only the generation's packages, the base entry, the stock catalog and the output; writes only the output folder: an entry's files as `<name>.part`, read back, renamed, `os.ldr` last. A failed or cancelled job leaves no `os.ldr`; it removes its files and folders (`debris` 1 in `job.status` when it could not). Before the job's first step B removes leftover `tmp/job-*` folders (bounded); since 1.17 also when its USB service starts. A finished entry becomes library entry `mods-a` or `mods-b` (phase `finish`, detail `commit`): never the default or the boot-once entry; the absent one, else the one not written last; the old entry is renamed into `tmp/` first, then the new one into `firmware/`, then the old one removed. It is listed with its content not installed (`no_content`). A staged upload in progress is `busy`; no free job id, or both mods ids are the default and the boot-once entry, `state`. Confirm on device (1.23, #65): while the device's setting is on (`hello` key `confirm=1`), the device first asks on its screen and waits for a real PLAY (the request then runs) or STOP; STOP, or no answer within 30 s, is `declined` with nothing done. The timeout includes that wait."
     },
     {
       "type": "0x45", "name": "job.status", "symbol": "job_status", "class": "product", "since": "1.10", "switch": "XYF_USB_FILE_WRITE", "switch_optional": false,
@@ -1082,7 +1082,7 @@
   ],
   "hello": {
     "prefix": "XYF1",
-    "doc": "The `hello` text: `XYF1`, then these keys in this order, each as `;key=value`. A build's text never changes while it runs, except `stage2` and the stage-2 command's bit of `cmds`: both are set before the reply to the first `hello` of a boot when stage 2 loads, and cleared again if stage 2 stops answering as it should. Tools ignore keys they do not know and must not rely on the order.",
+    "doc": "The `hello` text: `XYF1`, then these keys in this order, each as `;key=value`. A build's text never changes while it runs, except `stage2` and the stage-2 command's bit of `cmds`: both are set before the reply to the first `hello` of a boot when stage 2 loads, and cleared again if stage 2 stops answering as it should; and `confirm`, once the device has read its settings and when its Confirm on device setting is saved. Tools ignore keys they do not know and must not rely on the order.",
     "keys": [
       {"name": "service", "since": "1.0", "value": "usb", "doc": "the service that answers"},
       {"name": "role", "since": "1.0", "value": "b", "doc": "the processor that answers"},
@@ -1096,6 +1096,7 @@
       {"name": "stage", "since": "1.1", "constant": "max_stage", "doc": "`max_stage`"},
       {"name": "cmds", "since": "1.1", "source": "cmds", "doc": "the request types this build answers: 32 lowercase hex digits, a 128-bit number written most significant digit first, in which bit t (value 2^t) is set when type t is answered (Python: `int(cmds, 16) >> t & 1`). Derived from each command's build switch when the build is compiled; the stage-2 command's bit is set at run time while stage 2 is loaded"},
       {"name": "dev", "since": "1.1", "source": "dev", "doc": "`1` when the build answers developer commands; absent otherwise"},
+      {"name": "confirm", "since": "1.23", "source": "confirm", "doc": "Confirm on device (Settings, #65): `1` when `boot.install`, `boot.uninstall`, `library.set_default` and `mods.apply` ask on the device first, `0` when they run at once. Changed only on the device; `1` until the device has read its settings (the default when it has none)"},
       {"name": "stage2", "since": "1.6", "source": "stage2", "doc": "the loaded stage 2's version, decimal; `0` when none is loaded (no file, or it failed a check). Always the last key"}
     ]
   },
@@ -1103,7 +1104,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.22;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000001ffb001700031fff00be;dev=1;stage2=0"}, "hex": "58468101c100000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32323b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303031666662303031373030303331666666303062653b6465763d313b7374616765323d309e5713e9"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.23;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000001ffb001700031fff00be;dev=1;confirm=1;stage2=0"}, "hex": "58468101cb00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32333b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303031666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b7374616765323d30ea157bcd"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

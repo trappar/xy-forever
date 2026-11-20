@@ -180,7 +180,9 @@ class SetDefaultWriteTest(unittest.TestCase):
         header = (ROOT / 'target/usb_service.hpp').read_text()
         self.assertIn('static const uint32_t write_patience_ms = 60000;', header)
         src = (ROOT / 'xyf_host.py').read_text()
-        self.assertIn("timeout=75.0)", src)                      # host outlasts b's patience
+        self.assertIn("timeout=P.ids.COMMANDS[P.SET_DEFAULT]['timeout_ms'] / 1000.0)", src)   # the spec's bound
+        from xy_forever import usb_proto as P
+        self.assertGreater(P.ids.COMMANDS[P.SET_DEFAULT]['timeout_ms'], 60000)   # outlasts b's patience (+ #65's wait)
 
     def test_a_write_is_not_idle(self):
         us = unit_text(ROOT / 'target/usb_service.cpp')

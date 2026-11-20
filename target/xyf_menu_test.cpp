@@ -65,17 +65,19 @@ int main() {
     REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::main);   // default = Cancel
     press(s, menu::key_play); press(s, menu::key_plus);
     REQUIRE(s.confirm_accept && press(s, menu::key_play) == Action::uninstall);
-    // #21: Settings: Mod memory, Menu at power-on, USB mode, About. PLAY on a setting is change_setting with its
+    // #21: Settings: Mod memory, Menu at power-on, USB mode, Confirm on device (#65), About. PLAY on a setting is change_setting with its
     // row; About opens the About page (the home menu has no Info row) and returns to Settings.
     menu::start(s, &cat, false); press(s, menu::key_minus);
     REQUIRE(press(s, menu::key_knob1 + 3) == Action::redraw && s.screen == Screen::settings && s.settings_selected == 0);
-    REQUIRE(settings::rows == 4 && !strcmp(settings::label(settings::row_power_on), "Menu at power-on") &&
+    REQUIRE(settings::rows == 5 && !strcmp(settings::label(settings::row_power_on), "Menu at power-on") &&
             !strcmp(settings::label(settings::row_usb), "USB mode") && !strcmp(settings::label(settings::row_about), "About"));
     REQUIRE(press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_memory);
     press(s, menu::key_plus);
     REQUIRE(press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_power_on);
     press(s, menu::key_plus);
     REQUIRE(press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_usb);
+    press(s, menu::key_plus);
+    REQUIRE(press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_confirm);
     press(s, menu::key_plus);
     REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::info);       // About
     REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::settings);
@@ -87,7 +89,7 @@ int main() {
     {
         static const char* const three[] = {"One", "Two", "Three"};
         press(s, menu::key_play);                                       // Settings (still the row), on About
-        press(s, menu::key_minus); press(s, menu::key_minus);
+        press(s, menu::key_minus); press(s, menu::key_minus); press(s, menu::key_minus);
         REQUIRE(press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_power_on);
         menu::open_options(s, three, 3, 1);
         REQUIRE(s.screen == Screen::options && s.option_count == 3 && s.option_current == 1 && s.option_selected == 1);

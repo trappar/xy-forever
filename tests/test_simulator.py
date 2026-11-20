@@ -132,7 +132,7 @@ class SimulatorTest(unittest.TestCase):
             self.assertEqual(dev.call(kind, b'')[0], ids.S_STATE, kind)       # before HELLO: state, nothing done
         code, text = dev.hello()
         self.assertEqual((code, text), (0, P.hello_text(release.VERSION, None, 'product',   # an empty boot partition
-                                                   xyf_build.usb_switches('xyf-product'))))
+                                                   xyf_build.usb_switches('xyf-product'), confirm=0)))   # sim.seed
         self.assertEqual(P.Hello(text).cmds, P.answered(xyf_build.usb_switches('xyf-product')))
         dev.hello_info = None                             # xyf_host refuses types missing from cmds
         self.assertEqual(dev.call(0x5f, b''), (ids.S_UNSUPPORTED, b''))     # not in cmds: status only
@@ -250,7 +250,7 @@ class SimulatorTest(unittest.TestCase):
         code, text = dev.hello()
         image = hashlib.sha256(data).hexdigest()[:8]
         self.assertEqual((code, text), (0, P.hello_text(release.VERSION, image, 'product',
-                                                       xyf_build.usb_switches('xyf-product'))))
+                                                       xyf_build.usb_switches('xyf-product'), confirm=0)))
         self.assertEqual(dev.hello(), (0, text))                                # the same text all boot
         code, body = dev.call(P.STATUS)
         built = host.decode_status(body)['usb_service']['build']
@@ -1664,7 +1664,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual((work / 'g' / 'b.txt').read_bytes(), b'a')
         self.assertEqual(mv(BASE + 'cli/g', '/yaffs2/upgrade/g'), (2, 'refused: mv moves only under /yaffs2/, never '
-                         'bootloader.dev or upgrade/ (file.rename)\n'))
+                         'bootloader.dev, upgrade/, xy-forever/settings.txt or settings.old (file.rename)\n'))
         (work / 'h').mkdir()
         code, out = mv(BASE + 'cli/g', BASE + 'cli/h')
         self.assertEqual(code, ids.S_STATE, out)
@@ -1783,7 +1783,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(cp('-r', BASE + 'cli/f', BASE + 'cli/f/g/x'),
                          (2, 'refused: cp: the target %scli/f/g/x is inside the source %scli/f\n' % (BASE, BASE)))
         self.assertEqual(cp(BASE + 'cli/a.txt', '/yaffs2/upgrade/a.txt'), (2, 'refused: cp writes only under '
-                         '/yaffs2/, never bootloader.dev or upgrade/ (file.copy)\n'))
+                         '/yaffs2/, never bootloader.dev, upgrade/, xy-forever/settings.txt or settings.old (file.copy)\n'))
         code, out = cp(BASE + 'cli/a.txt', BASE + 'cli/z.txt')
         self.assertEqual(code, ids.S_STATE, out)
         self.assertIn('state (error 17)', out)

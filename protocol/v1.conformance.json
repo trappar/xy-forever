@@ -1,7 +1,7 @@
 {
   "$comment": "Conformance suite of the XY Forever serial protocol v1 (spec: protocol/v1.json, protocol/v1.json). The behaviour a v1 device must show, as data: each case is a named exchange that every client runs the same way (Python: scripts/conformance.py; TypeScript: clients/ts/test/conformance.ts) against the simulator or a device. scripts/protogen.py validates this file against the spec (xy_forever/conformance.py) and the coverage rules; `syntax` documents every keyword. Frame-level vectors stay in v1.json (`streams`) and are referenced by name, not copied.",
   "format": "xyf-conformance/1",
-  "protocol": "1.22",
+  "protocol": "1.23",
   "doc": [
     "`protocol/v1.conformance.json` holds the conformance suite: the behaviour a v1 device must show, as data that any client can run. Each case is a named exchange: preconditions (`given`: a fresh boot before `hello`, files in the test area, simulator faults), requests by command name and field values (or raw bytes for malformed input and frame-level tests), and what must come back (status, field values, limits such as the device's `read=`), including reads that show what did not change. Every case says what it does (`effects`: none means read-only; `staging`, `writes_test_area`, `restarts`, `writes_device`, `boots_os`), what it needs (`needs`: simulator control, fixtures) and whether it is safe on a real device (`real_device`, else `why_not`). The keywords are documented in the file's `syntax` object.",
     "A third-party client conforms when it runs every case with its own codec and transport: send the requests in order, one at a time, and check each expectation. Two runners exist: `python3 scripts/conformance.py --sim 127.0.0.1:7341` (or without `--sim` for the OP-XY, where only cases marked safe run and a guard refuses any request that could change more than the test area `/yaffs2/xy-forever/log/conformance/`), and `node clients/ts/test/conformance.ts --sim 127.0.0.1:7341` for the TypeScript module. Both read the same file; `--check` only interprets every case."
@@ -93,6 +93,10 @@
     {"command": "boot.uninstall", "status": "link", "why": "as boot.install"},
     {"command": "boot.uninstall", "status": "too_large", "why": "the stock image always fits the boot partition"},
     {"command": "boot.uninstall", "status": "install", "why": "as boot.install"},
+    {"command": "boot.install", "status": "declined", "why": "the suite runs with Confirm on device off (a real STOP at the device declines); tests/test_sim_confirm.py shows it"},
+    {"command": "boot.uninstall", "status": "declined", "why": "as boot.install"},
+    {"command": "library.set_default", "status": "declined", "why": "as boot.install"},
+    {"command": "mods.apply", "status": "declined", "why": "as boot.install"},
     {"command": "library.set_default", "status": "link", "why": "processor A must fail to answer (as file.read)"},
     {"command": "library.boot", "status": "link", "why": "processor A must fail to answer (as file.read)"},
     {"command": "library.boot", "status": "state", "why": "needs an entry without os.ldr in the menu's catalog, outside the test area; tests/test_simulator.py shows it"},

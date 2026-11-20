@@ -209,7 +209,7 @@ class GoldenFramesTest(unittest.TestCase):
                          ('-DXYF_VERSION="%s"' % release.VERSION, '-DXYF_VERSION_CODE=%#xu' % release.code(),
                           '-DXYF_BUILD_MODE="product"'))
         self.assertLessEqual(len(g['fields']['info']), ids.MAX_HELLO)
-        self.assertEqual(len(g['fields']['info']), 189)                   # 1.15: version=0.1.0;image=<8 hex>
+        self.assertEqual(len(g['fields']['info']), 199)                   # 1.15: version=0.1.0;image=<8 hex>; 1.23: confirm
         self.assertTrue(g['fields']['info'].endswith(';stage2=0'))         # set at run time
         loaded = P.hello_text(info.keys['version'], image, info.keys['mode'], product, stage2=12)
         self.assertTrue(loaded.endswith(';stage2=12') and P.Hello(loaded).answers(P.ids.STAGE2_INFO))
@@ -377,7 +377,8 @@ class DeviceAgreesTest(unittest.TestCase):
         """A write path the check rejects is refused (a wrong length stays bad_request)."""
         us = text('target/usb_service.cpp')
         self.assertIn('    if (path_bytes + 1 + 32 != length) code = P::s_bad_request;\n'
-                      '    else if (!storage_server::valid_write_path(path)) code = P::s_refused;\n', us)
+                      '    else if (!storage_server::valid_write_path(path) || file_engine::settings_record(path)) code = '
+                      'P::s_refused;\n', us)                                  # #65: not the Settings record either
         ss = text('target/storage_server.cpp') + unit_text(ROOT / 'target/file_client.cpp')
         self.assertIn('if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;', ss)
         self.assertIn('refused', command(spec(), 'file.write_staged')['errors'])

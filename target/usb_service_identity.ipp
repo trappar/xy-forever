@@ -64,17 +64,25 @@ void image_hash_some(U32 limit) {
 void image_step() { image_hash_some(image_slice); }
 void image_finish() { image_hash_some(boot_source_max); }
 
-// The hello text with this boot's image: the compiled text says image=unknown (usb_proto_ids.hpp).
+// The hello text with this boot's image and (#65) Confirm on device: the compiled text says image=unknown and
+// confirm=1 (usb_proto_ids.hpp).
 constexpr bool starts(const char* t, const char* k) { return !*k || (*t == *k && starts(t + 1, k + 1)); }
-constexpr U32 image_value(const char* t, U32 i = 0) {      // where image='s value starts; ~0u: no such key
-    return !t[i] ? ~0u : starts(t + i, ";image=") ? i + 7 : image_value(t, i + 1);
+constexpr U32 length(const char* s) { return *s ? 1 + length(s + 1) : 0; }
+constexpr U32 key_value(const char* t, const char* key, U32 i = 0) {   // where key's value starts; ~0u: no such key
+    return !t[i] ? ~0u : starts(t + i, key) ? i + length(key) : key_value(t, key, i + 1);
 }
-const U32 image_at = image_value(XYF_USBP_HELLO_TEXT);
+const U32 image_at = key_value(XYF_USBP_HELLO_TEXT, ";image="), confirm_at = key_value(XYF_USBP_HELLO_TEXT, ";confirm=");
 U32 hello_text(uint8_t* p, U32 n, U32 room) {
     image_finish();
     const char* text = XYF_USBP_HELLO_TEXT;
     const bool known = result.image_state == image_known;
+#if defined(XYF_SETTINGS)
+    const char confirm = xy_forever::usb_service::confirm_on() ? '1' : '0';
+#else
+    const char confirm = '0';                                            // no gate in this build
+#endif
     for (U32 i = 0; text[i] && n != room; ++i) {
+        if (i == confirm_at) { p[n++] = uint8_t(confirm); continue; }
         if (known && i == image_at) {
             for (U32 k = 0; k != 8 && n != room; ++k) p[n++] = uint8_t(image_text[6 + k]);
             i += sizeof("unknown") - 2;                 // the loop's ++i passes the last letter

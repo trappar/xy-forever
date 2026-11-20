@@ -46,7 +46,7 @@ void write_begin(uint8_t seq, const uint8_t* payload, U32 length) {
     const char* path = reinterpret_cast<const char*>(payload);
     U32 code = P::s_ok;
     if (n + 1 + 40 != length || n + 1 > storage_server::max_path) code = P::s_bad_request;
-    else if (!storage_server::valid_write_path(path)) code = P::s_refused;
+    else if (!storage_server::valid_write_path(path) || file_engine::settings_record(path)) code = P::s_refused;   // #65
     else if ((code = enter_writes()) == P::s_ok) {
         storage_used = 1;
         stream_size = P::get32(payload + n + 1); stream_crc = P::get32(payload + n + 5);

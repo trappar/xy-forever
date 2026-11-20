@@ -610,7 +610,7 @@ class InstallLogTest(unittest.TestCase):
         self.assertEqual(dev.install(hashlib.sha256(data).digest())[0], 0)
         self.assertEqual(got, [(1000, 'xyf install step 4 value 0x0035f488'), (1001, '[mmc_tools.cpp:117]: write sectors: 1-128')])
         self.assertEqual(dev.log, got)
-        self.assertEqual(host.INSTALL_TIMEOUT, 900.0)
+        self.assertEqual(host.INSTALL_TIMEOUT, 930.0)                  # #65: with the Confirm wait
 
 
 class SelectConventionTest(unittest.TestCase):
