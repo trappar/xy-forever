@@ -39,7 +39,9 @@ USB timing and host enumeration still require device qualification.
 - One writable driver slot `[0x11803af0]`: register `88a09d5c`, unregister `88a09d44`.
   Register before start `88a35044(0x200)`: bit 9 builds CDC functional descriptors without
   registering a stock class. One composite exposes CDC interfaces 0..1 and MTP interface 2;
-  the stock CDC/MTP combination collides on endpoint numbers. See the
+  the stock CDC/MTP combination collides on endpoint numbers. USB mode "MTP" (#21) registers the
+  same driver with one interface (MTP as interface 0, device class 00, no IAD, no CDC extras: the stock
+  MTP driver's shape) under the same start; not yet seen on the device. See the
   [transport identities](../protocol/transport.md) for current VID:PID and fallback.
 - `ConfigDesc` is **0x18 bytes**, including `n_iads` at +0x10 (at most 4) and the IAD array at +0x14.
   The stack writes driver fields +0x10/+0x14/+0x1c. Layouts and endpoint numbers live beside the

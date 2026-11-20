@@ -8,13 +8,16 @@ using namespace xyf::settings;
 static Record parsed(const char* t) { Record r; parse(t, uint32_t(std::strlen(t)), r); return r; }
 int main() {
     Record r = parsed("");                                         // no record: the product defaults
-    CHECK(r.confirm == 1 && r.power_on == power_play && r.usb == usb_mtp && !r.newer);
+    CHECK(r.confirm == 1 && r.power_on == power_play && r.usb == usb_mtp_serial && !r.newer);
     r = parsed("format=1\nconfirm=0\n");                           // #21: a record before power_on / usb: defaults
-    CHECK(r.confirm == 0 && r.power_on == power_play && r.usb == usb_mtp && !r.newer);
+    CHECK(r.confirm == 0 && r.power_on == power_play && r.usb == usb_mtp_serial && !r.newer);
     r = parsed("format=1\npower_on=always\nusb=serial\n");
     CHECK(r.confirm == 1 && r.power_on == power_always && r.usb == usb_serial);
     r = parsed("power_on=wait\nusb=serial2\n");                    // only exact values count (no "wait": #21)
-    CHECK(r.power_on == power_play && r.usb == usb_mtp);
+    CHECK(r.power_on == power_play && r.usb == usb_mtp_serial);
+    CHECK(parsed("usb=mtp_only\n").usb == usb_mtp_only && parsed("usb=mtp_serial\n").usb == usb_mtp_serial);
+    CHECK(parsed("format=1\nusb=mtp\n").usb == usb_mtp_serial);     // written before MTP alone: the composite
+    CHECK(parsed("usb=MTP\n").usb == usb_mtp_serial && parsed("usb=mtp_only2\n").usb == usb_mtp_serial);
     r = parsed("format=2\nconfirm=0\npower_on=always\n");          // a newer record: the defaults, newer set
     CHECK(r.newer && r.confirm == 1 && r.power_on == power_play);
     r = parsed("format=12\n"); CHECK(r.newer);
@@ -32,11 +35,11 @@ int main() {
     char out[96];
     Record w; defaults(w); w.confirm = 0;
     uint32_t n = format(out, sizeof(out), w);
-    CHECK(n == 41 && std::memcmp(out, "format=1\nconfirm=0\npower_on=play\nusb=mtp\n", n) == 0);
+    CHECK(n == 48 && std::memcmp(out, "format=1\nconfirm=0\npower_on=play\nusb=mtp_serial\n", n) == 0);
     Record back; parse(out, n, back);
-    CHECK(back.confirm == 0 && back.power_on == power_play && back.usb == usb_mtp);   // round trip
+    CHECK(back.confirm == 0 && back.power_on == power_play && back.usb == usb_mtp_serial);   // round trip
     for (uint32_t p = 0; p != 2; ++p)
-        for (uint32_t u = 0; u != 2; ++u) {
+        for (uint32_t u = 0; u != usb_modes; ++u) {
             w.power_on = p; w.usb = u;
             n = format(out, sizeof(out), w);
             parse(out, n, back);
@@ -45,16 +48,18 @@ int main() {
     CHECK(format(out, 10, w) == 0);                                  // does not fit
     // #21: the option lists, in value order (an option's index is the value it picks).
     CHECK(std::strcmp(power_on_options[power_play], "PLAY held") == 0 && std::strcmp(power_on_options[power_always], "Always") == 0);
-    CHECK(std::strcmp(usb_options[usb_mtp], "Serial + MTP") == 0 && std::strcmp(usb_options[usb_serial], "Serial only") == 0);
-    CHECK(std::strcmp(memory_options[memory_standard - memory_standard], "Standard") == 0 &&
+    CHECK(usb_option_count == 3 && std::strcmp(usb_options[usb_mtp_serial], "MTP + Serial") == 0 &&
+          std::strcmp(usb_options[usb_mtp_only], "MTP") == 0 && std::strcmp(usb_options[usb_serial], "Serial") == 0);
+    CHECK(std::strcmp(memory_options[memory_standard - memory_standard], "2 MiB") == 0 &&
           std::strcmp(memory_options[memory_expanded - memory_standard], "4 MiB (experimental)") == 0);
     CHECK(std::strcmp(power_on_text(power_play), "PLAY held") == 0 && std::strcmp(power_on_text(power_always), "Always") == 0);
-    CHECK(std::strcmp(usb_text(usb_mtp), "Serial + MTP") == 0 && std::strcmp(usb_text(usb_serial), "Serial only") == 0);
+    CHECK(std::strcmp(usb_text(usb_mtp_serial), "MTP + Serial") == 0 && std::strcmp(usb_text(usb_serial), "Serial") == 0);
+    CHECK(std::strcmp(usb_text(usb_mtp_only), "MTP (no web app)") == 0);
     CHECK(rows == 4 && std::strcmp(label(row_memory), "Mod memory") == 0 && std::strcmp(label(row_about), "About") == 0);
-    CHECK(std::strcmp(memory_text(memory_standard, false), "Standard") == 0);
+    CHECK(std::strcmp(memory_text(memory_standard, false), "2 MiB") == 0);
     CHECK(std::strcmp(memory_text(memory_expanded, false), "4 MiB (experimental)") == 0);
     CHECK(std::strcmp(memory_text(memory_expanded, true), "4 MiB (experimental): applied when you boot") == 0);
-    CHECK(std::strcmp(memory_text(memory_standard, true), "Standard: applied when you boot") == 0);
+    CHECK(std::strcmp(memory_text(memory_standard, true), "2 MiB: applied when you boot") == 0);
     CHECK(std::strcmp(memory_text(memory_unavailable, false), "Not available") == 0);   // short: the page's 2x text
     CHECK(std::strcmp(memory_text(memory_reading, false), "Checking...") == 0);
     Gate g; gate_clear(g); CHECK(gate_poll(g, 0) == idle);

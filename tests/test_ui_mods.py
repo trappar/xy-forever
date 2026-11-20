@@ -807,7 +807,7 @@ class PublishedPage(Base, unittest.TestCase):
         self.assertEqual((lib.mods_expanded(), lib.mods_changed()), (0, 0))
         lib.mods_set_memory(1, 1)
         toggle(lib, ['fm2op'])
-        self.assertEqual(lib.mods_save_refusal(), b'4 MiB mod memory needs newer mod packages: set it to Standard.')
+        self.assertEqual(lib.mods_save_refusal(), b'4 MiB mod memory needs newer mod packages: set it to 2 MiB.')
         self.assertEqual((lib.mods_memory_row(1), lib.mods_flip_memory(1)), (EXPANDED, b''))
         self.assertEqual((lib.mods_expanded(), lib.mods_changed(), lib.mods_save_refusal()), (0, 1, b''))
         lib.mods_reset()                                                                # nothing read yet

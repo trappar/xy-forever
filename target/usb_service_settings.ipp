@@ -2,11 +2,11 @@
 #if defined(XYF_CONTENT_SWITCH)
 // settings.txt (xyf_settings.hpp; usb_service.hpp).
 namespace xs = xyf::settings;
-xs::Record settings_record __attribute__((section(".data"))) = {1, xs::power_play, xs::usb_mtp, 0};
+xs::Record settings_record __attribute__((section(".data"))) = {1, xs::power_play, xs::usb_mtp_serial, 0};
 U32 settings_loaded __attribute__((section(".data"))) = 0;
 // #21: what settings.txt holds (as read or last saved): the page marks a row whose value differs from it.
 U32 stored_power_on __attribute__((section(".data"))) = xs::power_play;
-U32 stored_usb __attribute__((section(".data"))) = xs::usb_mtp;
+U32 stored_usb __attribute__((section(".data"))) = xs::usb_mtp_serial;
 bool settings_load() {
     if (settings_loaded) return true;
     if (!menu_link::usb_idle()) return false;                           // 191: not while A's catalog is on its way
@@ -47,8 +47,8 @@ const char* settings_open(xyf::menu::State& s, uint32_t row) {
     if (settings_job) return xs::note_saving;                            // the last leaving's write is still running
     const xs::Record& r = settings_record;
     if (r.newer) return xs::note_newer;                                 // a newer record: never rewritten here
-    if (row == xs::row_power_on) xyf::menu::open_options(s, xs::power_on_options, 2, r.power_on);
-    else if (row == xs::row_usb) xyf::menu::open_options(s, xs::usb_options, 2, r.usb);
+    if (row == xs::row_power_on) xyf::menu::open_options(s, xs::power_on_options, xs::power_on_option_count, r.power_on);
+    else if (row == xs::row_usb) xyf::menu::open_options(s, xs::usb_options, xs::usb_option_count, r.usb);
     return 0;
 }
 void settings_pick(const xyf::menu::State& s) {

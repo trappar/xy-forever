@@ -439,7 +439,7 @@ const char* build_refusal(const Page& p) {
     if (!machines) return "Turn on at least one machine first.";
     if (machines > max_machines) return "At most 64 machines in one build.";
     if (extensions > max_extensions) return "At most 8 extensions in one build.";
-    if (p.expanded && !p.expanded_limit) return "4 MiB mod memory needs newer mod packages: set it to Standard.";
+    if (p.expanded && !p.expanded_limit) return "4 MiB mod memory needs newer mod packages: set it to 2 MiB.";
     if (used(p) > memory_limit(p)) return "Too big for the mods memory: turn some mods off.";
     return 0;
 }

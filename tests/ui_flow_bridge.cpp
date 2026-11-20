@@ -39,8 +39,9 @@ void flow_settings_rows(unsigned power_on, unsigned usb, unsigned newer) {
 void flow_settings_marked(unsigned marks) { flow_state.settings_marked = marks; }
 void flow_options(unsigned current) {
     const unsigned row = flow_state.settings_selected;
-    menu::open_options(flow_state, row == settings::row_memory ? settings::memory_options :
-                                   row == settings::row_power_on ? settings::power_on_options : settings::usb_options, 2, current);
+    const bool memory = row == settings::row_memory, power_on = row == settings::row_power_on;
+    menu::open_options(flow_state, memory ? settings::memory_options : power_on ? settings::power_on_options : settings::usb_options,
+                       memory ? 2 : power_on ? settings::power_on_option_count : settings::usb_option_count, current);
 }
 unsigned flow_option() { return flow_state.option_selected; }
 void flow_storage(unsigned view) { flow_state.storage = view; }      // 193: xyf::menu::StorageView

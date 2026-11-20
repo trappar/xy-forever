@@ -93,7 +93,7 @@ class UiFlowTest(unittest.TestCase):
         self.assertEqual(self.lib.flow_key(51), REDRAW)
         self.assertEqual(self.lib.flow_screen(), 6)
         for power_on in range(2):
-            for usb in range(2):
+            for usb in range(3):
                 for newer in (0, 1):
                     self.lib.flow_settings_rows(power_on, usb, newer); self.drawn()
         self.lib.flow_settings_rows(1, 1, 0)
@@ -111,8 +111,8 @@ class UiFlowTest(unittest.TestCase):
         # The option list (PLAY on USB mode: key_ui opens it), its moves, its pick; marked rows draw.
         self.lib.flow_key(53)
         self.assertEqual(self.lib.flow_key(51), CHANGE_SETTING)
-        self.lib.flow_options(1); self.assertEqual(self.lib.flow_screen(), 7); save('options.png')
-        self.assertEqual((self.lib.flow_key(54), self.lib.flow_option()), (REDRAW, 0))
+        self.lib.flow_options(2); self.assertEqual(self.lib.flow_screen(), 7); save('options.png')
+        self.assertEqual((self.lib.flow_key(54), self.lib.flow_option()), (REDRAW, 0))   # + wraps (three options)
         self.assertEqual(self.lib.flow_key(52), REDRAW)               # STOP: back, nothing picked
         self.assertEqual(self.lib.flow_screen(), 6)
         self.lib.flow_key(51); self.lib.flow_options(1); self.lib.flow_key(53)

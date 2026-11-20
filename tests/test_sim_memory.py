@@ -1,7 +1,7 @@
 """Mod memory in the simulator: the Settings page's one row. Part of the saved configuration (config.txt
 memory=), pending until boot like the Mods page's toggles: PLAY opens its options and a pick changes it, Continue
 asks Save / Discard / Back, Save rebuilds Open-XY in the 4 MiB layout (mods.apply flag bit 1); a power-on keeps the mode; no change, no rebuild; back
-to Standard with a selection over 2032 KiB: Save refused with the limit text. The published 0.0.6 set (its base
+to 2 MiB with a selection over 2032 KiB: Save refused with the limit text. The published 0.0.6 set (its base
 has expanded_module_base); the synthetic set (none, as a set from before the 4 MiB option): the row unavailable, PLAY changes
 nothing. Driven by injected keys (tests/test_sim_config.py's helpers). Needs clang++ and the private stock 1.2.1
 images (skipped without them). No device access."""
@@ -19,9 +19,9 @@ from test_sim_mods_page import synthetic_setup, PLAY, STOP, MINUS, PLUS    # noq
 import test_sim_content_switch as CS                                      # noqa: E402
 
 SETTINGS_ROW, SETTINGS = 4, 6                                              # xyf_menu item_settings (188), Screen::settings
-STANDARD, EXPANDED = 'memory=Standard;', 'memory=4 MiB (experimental);'
+STANDARD, EXPANDED = 'memory=2 MiB;', 'memory=4 MiB (experimental);'
 EXPANDED_PENDING = 'memory=4 MiB (experimental): applied when you boot;'
-STANDARD_PENDING = 'memory=Standard: applied when you boot;'
+STANDARD_PENDING = 'memory=2 MiB: applied when you boot;'
 UNAVAILABLE = 'memory=Not available;'
 TOO_BIG = 'note=Too big for the mods memory: turn some mods off.;'
 
@@ -104,7 +104,7 @@ class PublishedMemory(Memory, unittest.TestCase):
         self.menu_again()
         self.home_has(EXPANDED)
         self.settings()
-        self.pick_other()                                                  # back to Standard: does not fit
+        self.pick_other()                                                  # back to 2 MiB: does not fit
         row = self.home_has(TOO_BIG)                                       # once the page's list is read
         self.assertIn('pending=1 blocked=1 ' + STANDARD_PENDING, row)
         self.back_to_continue()

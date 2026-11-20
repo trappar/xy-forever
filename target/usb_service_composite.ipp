@@ -178,6 +178,7 @@ void usb_begin() {
 #if defined(XYF_MTP_USB_TRIAL)
     namespace C = file_client;
     bool trial = false;
+    const bool serial = true;
     if (!a_serving()) probe[p_flag] = flag_a_silent;                     // one bounded request: stock serial
     else {
         uint8_t record[C::record_bytes];
@@ -198,11 +199,13 @@ void usb_begin() {
         if (code == P::s_ok) { mu::mark(mu::mark_flag_deleted); trial = true; }
     }
 #elif defined(XYF_SETTINGS)
-    // 188: the product: every boot; #21: not with USB mode "Serial only" (settings.txt usb=serial): the stock serial
-    // service below, as when the span gate refuses.
+    // 188: the product: every boot; #21: not with USB mode "Serial" (settings.txt usb=serial): the stock serial
+    // service below, as when the span gate refuses. USB mode "MTP" (usb=mtp_only): our driver without its CDC
+    // interfaces (mtp_usb.hpp begin): no serial this boot, so no host tool or web app until the mode changes back.
     const bool trial = settings().usb != xyf::settings::usb_serial;
+    const bool serial = settings().usb != xyf::settings::usb_mtp_only;
 #else
-    const bool trial = true;                                             // 188: the product: every boot
+    const bool trial = true, serial = true;                              // 188: the product: every boot
 #endif
     if (trial) {
         probe[p_gate] = probe_spans();                                   // stock code as checked, before any start
@@ -210,9 +213,9 @@ void usb_begin() {
             result.stock_callback = cdc_callback();                      // unchanged (menu_release restores it)
             probe[p_started] = probe[p_last] = now();
             mu::set_sink_hook(probe_sink);
-            session_enter();                                             // the responder on interface 2
+            session_enter();                                             // the responder on the MTP interface
             mu::set_handler(&mtp_handler);
-            if (mu::begin(mu::stock_port())) {                           // register, start(0x200): marks 3-5 / 14
+            if (mu::begin(mu::stock_port(), serial)) {                   // register, start(0x200): marks 3-5 / 14
                 probe[p_slot] = word(usb_driver_slot);
                 mu::mark(word(stack_attached) == 1u ? mu::mark_attach_ok : mu::mark_attach_failed);
                 composite_on = 1; probe[p_state] = cs_composite;

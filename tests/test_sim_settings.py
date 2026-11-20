@@ -1,11 +1,12 @@
-"""The Settings page's rows in the simulator (#21): Menu at power-on (PLAY held, always), USB mode (Serial + MTP,
-Serial only), About (the About page, back to Settings; the home menu has no Info row). A setting's PLAY opens its
+"""The Settings page's rows in the simulator (#21): Menu at power-on (PLAY held, always), USB mode (MTP + Serial,
+MTP, Serial), About (the About page, back to Settings; the home menu has no Info row). A setting's PLAY opens its
 option list (- / + move, PLAY picks, STOP leaves it unchanged); a pick changes only the page (the row marked), and
 leaving the page with a change writes /yaffs2/xy-forever/settings.txt once through the config job (one read-write
 window, no catalog fetch); the home menu's line says when it is saved; a power-on reads it back. Menu at power-on decides a plain power-on (A reads the record with the default's check): always opens the
 menu without PLAY, PLAY held boots at once. A newer record (format=2) reads as the defaults and no row changes it;
 a broken record reads as the defaults and a plain power-on boots. The simulator has no composite USB device (sim:
-stock serial only), so USB mode is checked as a stored row here and in the product source (tests/test_settings.py).
+stock serial only), so USB mode is checked as a stored row here and in the product source (tests/test_settings.py;
+the driver's MTP alone: target/mtp_usb_test.cpp). On the OP-XY, MTP leaves no serial: the host would not reattach.
 Driven by injected keys. Needs clang++ and the private stock 1.2.1 images (skipped without them). No device
 access."""
 from pathlib import Path
@@ -143,16 +144,16 @@ class SettingsRows(Rows, unittest.TestCase):
     def test_usb_mode_and_about(self):
         self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0'), 'the settings read')
         self.settings_page()
-        self.assertEqual(self.pick(2, 1), 1)                               # Serial + MTP -> Serial only
+        self.assertEqual(self.pick(2, -1), 2)                              # MTP + Serial -> Serial (- wraps)
         self.leave(SAVED_USB)
         self.assertEqual(self.record()['usb'], 'serial')
         self.power(play=True)
         self.reconnect()                                                   # stock serial: the host still attaches
-        self.until(lambda: self.after_power_on('settings: confirm=0 power_on=0 usb=1'), 'USB mode read back')
+        self.until(lambda: self.after_power_on('settings: confirm=0 power_on=0 usb=2'), 'USB mode read back')
         self.settings_page()
-        self.assertEqual(self.pick(2, 1), 0)                               # back to Serial + MTP (wraps)
+        self.assertEqual(self.pick(2, 1), 0)                               # back to MTP + Serial (wraps)
         self.leave(SAVED_USB)
-        self.assertEqual(self.record()['usb'], 'mtp')
+        self.assertEqual(self.record()['usb'], 'mtp_serial')
         self.press(PLAY)                                                   # Settings again (still the home row)
         for _ in range(2):
             self.press(PLUS)
@@ -164,6 +165,22 @@ class SettingsRows(Rows, unittest.TestCase):
         self.press(STOP)                                                   # back to Settings
         self.until(lambda: self.count('menu: screen %d ' % SETTINGS) > screens, 'back to Settings')
 
+
+    def test_usb_mode_mtp_alone(self):
+        """MTP (MTP alone): stored as usb=mtp_only, read back after a power-on, and back to MTP + Serial. (The
+        simulator keeps its stock serial: on the OP-XY only the device's own Settings page changes it back.)"""
+        self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0'), 'the settings read')
+        self.settings_page()
+        self.assertEqual(self.pick(2, 1), 1)                               # MTP + Serial -> MTP
+        self.leave(SAVED_USB)
+        self.assertEqual(self.record()['usb'], 'mtp_only')
+        self.power(play=True)
+        self.reconnect()
+        self.until(lambda: self.after_power_on('settings: confirm=0 power_on=0 usb=1'), 'USB mode read back')
+        self.settings_page()
+        self.assertEqual(self.pick(2, -1), 0)                              # MTP -> MTP + Serial
+        self.leave(SAVED_USB)
+        self.assertEqual(self.record()['usb'], 'mtp_serial')
 
     def test_option_list_and_one_save_on_leaving(self):
         """The list opens on the value in effect; STOP leaves it unchanged; picks write nothing (the rows marked),
@@ -185,8 +202,8 @@ class SettingsRows(Rows, unittest.TestCase):
         self.press(MINUS)
         windows = self.sim.status()['rw_mounts']
         self.assertEqual(self.pick(1, 1), 1)                               # Always
-        self.assertEqual(self.pick(2, -1), 1)                              # Serial only (- wraps)
-        self.until(lambda: self.lines('settings: confirm=0 power_on=1 usb=1 newer=0'), 'both shown at once')
+        self.assertEqual(self.pick(2, -1), 2)                              # Serial (- wraps)
+        self.until(lambda: self.lines('settings: confirm=0 power_on=1 usb=2 newer=0'), 'both shown at once')
         self.assertEqual((self.root / 'xy-forever/settings.txt').read_bytes(), before)   # nothing written yet
         self.assertEqual(self.sim.status()['rw_mounts'], windows)
         self.leave(SAVED_USB)                                              # one write, both values
@@ -200,6 +217,14 @@ class SettingsRows(Rows, unittest.TestCase):
                    'the home menu')
         self.sim.advance(2000)
         self.assertEqual(self.sim.status()['rw_mounts'], windows + 1)       # nothing written
+
+
+@unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
+class EarlierRecord(Rows, unittest.TestCase):
+    settings_text = b'format=1\nconfirm=0\npower_on=play\nusb=mtp\n'        # written before MTP alone existed
+
+    def test_usb_mtp_reads_as_mtp_and_serial(self):
+        self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0 newer=0'), 'the record read: MTP + Serial')
 
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
