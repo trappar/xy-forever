@@ -172,7 +172,7 @@ class SettingsRows(Rows, unittest.TestCase):
         self.press(PLAY)
         self.until(lambda: self.count('pack page 0: 0 entries, more=0'), 'empty installed list')
         self.press(STOP)
-        self.until(lambda: self.count('menu: screen %d row 4 ' % SETTINGS) >= 2, 'back to Settings')
+        self.until(lambda: self.count('menu: screen %d row 3 ' % SETTINGS) >= 2, 'back to Settings')
 
     def test_home_has_no_info_row(self):
         self.until(lambda: self.lines('settings: confirm=0'), 'the settings read')
