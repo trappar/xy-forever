@@ -330,7 +330,7 @@ class SettingsPage(PageBase, unittest.TestCase):
         self.press(PLUS)                                                   # injected: the next row
         self.wait_rows(rows + 2)
         self.assertTrue(self.lines('menu: screen 0 row ')[-1].startswith('2 '), self.lines('menu: screen 0 row ')[-1])
-        self.assertFalse(self.lines('confirm: key '))                      # no prompt: nothing taken
+        self.assertFalse(self.lines('trust: key '))                        # no question: nothing taken
         self.assertFalse(self.sim.control('realkey 54').get('ok'))
 
 
