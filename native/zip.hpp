@@ -25,11 +25,13 @@ struct Archive {
 };
 // No extraction or writes. The entry table is caller-owned, must remain
 // immutable and must outlive Archive. Source bytes must also remain immutable.
+// Pass the source's Work, if any, to propagate cancellation from a reader.
 Status open(const Reader& reader, const Limits& limits, Entry* entries,
-            U32 capacity, Archive& archive);
+            U32 capacity, Archive& archive, Work* work=nullptr);
 // Extracts a single indexed member to a caller sink, or validates with null sink.
 // On any failure all sink output is provisional and must be discarded.
+// Pass the source's Work, if any, as in open().
 Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace,
-               const Sink& sink, Extraction& result);
+               const Sink& sink, Extraction& result, Work* work=nullptr);
 } }
 #endif

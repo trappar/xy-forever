@@ -56,13 +56,18 @@ void sift(U32* v, U32 root, U32 n, const Table& t, Less less) {
         root = child;
     }
 }
-void heapsort(U32* v, U32 n, const Table& t, Less less) {
-    for (U32 i = n / 2; i;) sift(v, --i, n, t, less);
+bool heapsort(U32* v, U32 n, const Table& t, Less less, Work* work) {
+    for (U32 i = n / 2; i;) {
+        if (!checkpoint(work)) return false;
+        sift(v, --i, n, t, less);
+    }
     for (U32 end = n; end > 1;) {
+        if (!checkpoint(work)) return false;
         --end;
         const U32 swap = v[0]; v[0] = v[end]; v[end] = swap;
         sift(v, 0, end, t, less);
     }
+    return true;
 }
 
 struct Copy { Byte* memory; U32 capacity, count; };
@@ -74,7 +79,12 @@ bool copy(void* context, const Byte* bytes, U32 count) {
     return true;
 }
 Status member_status(zip::Status status) {
-    return status == zip::Status::io ? Status::io : status == zip::Status::checksum ? Status::checksum : Status::member;
+    switch (status) {
+    case zip::Status::io: return Status::io;
+    case zip::Status::checksum: return Status::checksum;
+    case zip::Status::cancelled: return Status::cancelled;
+    default: return Status::member;
+    }
 }
 Status container_status(tfw::Status status) {
     switch (status) {
@@ -83,6 +93,7 @@ Status container_status(tfw::Status status) {
     case tfw::Status::ciphertext_hash: return Status::ciphertext_hash;
     case tfw::Status::key: return Status::key;
     case tfw::Status::argument: return Status::argument;
+    case tfw::Status::cancelled: return Status::cancelled;
     default: return Status::container;
     }
 }
@@ -101,13 +112,13 @@ Status locate(const input::Reader& zip, const Table& t, U32 i, Workspace& w, U32
     return Status::ok;
 }
 Status inflate(const input::Reader& zip, const Table& t, U32 i, U32 data, Workspace& w,
-               Copy& out, Result& result) {
+               Copy& out, Result& result, Work* work) {
     const Byte* central = record(t, i);
     const zip::Reader source = {zip.context, zip.size, zip.read};
     const zip::Sink sink = {&out, copy};
     zip::Extraction extracted;
     const zip::Status status = zip::inflate_raw(source, data, le32(central + 20), le32(central + 24),
-                                                w.inflate, sink, extracted);
+                                                w.inflate, sink, extracted, work);
     result.inflate = status;
     if (status != zip::Status::ok) return member_status(status);
     if (extracted.crc32 != le32(central + 16) || out.count != le32(central + 24)) {
@@ -119,9 +130,9 @@ Status inflate(const input::Reader& zip, const Table& t, U32 i, U32 data, Worksp
 
 Status run(const input::Reader& package, const tfw::KeyProvider& keys, const hash::Digest& digest,
            const tfw::HeaderCheck& signature, const Policy& policy, U32 entry_point,
-           const Limits& limits, Workspace& w, const Writer& output, Result& result) {
+           const Limits& limits, Workspace& w, const Writer& output, Result& result, Work* work) {
     tfw::Archive& archive = w.archive;
-    const tfw::Status opened = archive.open_digested(package, keys, digest, signature, w.header);
+    const tfw::Status opened = archive.open_digested(package, keys, digest, signature, w.header, tfw::op_xy_sku, work);
     result.container = opened;
     if (opened != tfw::Status::ok) return container_status(opened);
     for (U32 i = 0; i != 4; ++i) result.package_version.field[i] = archive.header().version.field[i];
@@ -152,6 +163,7 @@ Status run(const input::Reader& package, const tfw::KeyProvider& keys, const has
     U32 cursor = 0, os = absent, version = absent;
     package::Destination destination;
     for (U32 i = 0; i != count; ++i) {
+        if (!checkpoint(work)) return Status::cancelled;
         if (directory_size - cursor < 46) return Status::directory;
         const Byte* h = directory + cursor;
         if (le32(h) != 0x02014b50u) return Status::directory;
@@ -183,12 +195,19 @@ Status run(const input::Reader& package, const tfw::KeyProvider& keys, const has
 
     // Names differ even ignoring case; members tile [0, directory) exactly as declared
     // (no gap, no overlap, nothing hidden), which bounds both wanted members.
-    heapsort(t.order, count, t, by_name);
-    for (U32 k = 1; k < count; ++k) if (!compare_names(t, t.order[k - 1], t.order[k])) return Status::duplicate;
-    for (U32 k = 0; k != count; ++k) t.order[k] = k;
-    heapsort(t.order, count, t, by_start);
+    if (!heapsort(t.order, count, t, by_name, work)) return Status::cancelled;
+    for (U32 k = 1; k < count; ++k) {
+        if (!checkpoint(work)) return Status::cancelled;
+        if (!compare_names(t, t.order[k - 1], t.order[k])) return Status::duplicate;
+    }
+    for (U32 k = 0; k != count; ++k) {
+        if ((k & 31u) == 31u && !checkpoint(work)) return Status::cancelled;
+        t.order[k] = k;
+    }
+    if (!heapsort(t.order, count, t, by_start, work)) return Status::cancelled;
     U32 expected = 0;
     for (U32 k = 0; k != count; ++k) {
+        if ((k & 31u) == 31u && !checkpoint(work)) return Status::cancelled;
         if (t.start[t.order[k]] != expected) return Status::layout;
         expected = t.end[t.order[k]];
     }
@@ -200,7 +219,7 @@ Status run(const input::Reader& package, const tfw::KeyProvider& keys, const has
     if (status != Status::ok) return status;
     if (le32(record(t, version) + 24) > version_bytes) return Status::version;
     Copy text = {w.text, version_bytes, 0};
-    status = inflate(zip, t, version, data, w, text, result);
+    status = inflate(zip, t, version, data, w, text, result, work);
     if (status != Status::ok) return status;
     if (package::parse_version(w.text, text.count, result.os_version) != package::Status::ok) return Status::version;
 
@@ -211,24 +230,32 @@ Status run(const input::Reader& package, const tfw::KeyProvider& keys, const has
     status = locate(zip, t, os, w, data);
     if (status != Status::ok) return status;
     Copy out = {image, size, 0};
-    status = inflate(zip, t, os, data, w, out, result);
+    status = inflate(zip, t, os, data, w, out, result, work);
     if (status != Status::ok) return status;
     Summary summary;
-    result.ldr = inspect(image, size, policy, summary);
+    result.ldr = inspect(image, size, policy, summary, work);
+    if (result.ldr == Error::cancelled) return Status::cancelled;
     if (result.ldr != Error::ok || summary.entry != entry_point) return Status::image;
     hash::Sha256 hasher;
-    if (!hasher.update(image, size) || !hasher.finish(result.sha256)) return Status::image;
+    for (U32 at = 0; at < size;) {
+        if (!checkpoint(work)) return Status::cancelled;
+        const U32 amount = size - at < 4096 ? size - at : 4096;
+        if (!hasher.update(image + at, amount)) return Status::image;
+        at += amount;
+    }
+    if (!hasher.finish(result.sha256)) return Status::image;
     archive.close();
     result.bytes = size; result.crc32 = le32(record(t, os) + 16);
     result.entry = summary.entry; result.records = summary.records;
 
     // Checked: hand the image to the writer.
     for (U32 at = 0; at < size;) {
+        if (!checkpoint(work)) return Status::cancelled;
         const U32 amount = size - at < chunk ? size - at : chunk;
         if (!output.write(output.context, image + at, amount)) return Status::write;
         at += amount; result.written = at;
     }
-    return Status::ok;
+    return checkpoint(work) ? Status::ok : Status::cancelled;
 }
 }
 
@@ -242,7 +269,7 @@ U32 scratch_bytes(const Limits& limits) {
 Status extract(const input::Reader& package, const tfw::KeyProvider& keys,
                const hash::Digest& ciphertext_sha256, const tfw::HeaderCheck& signature,
                const Policy& ram_policy, U32 entry_point, const Limits& limits,
-               Workspace& workspace, const Writer& output, Result& result) {
+               Workspace& workspace, const Writer& output, Result& result, Work* work) {
     result.bytes = 0; result.crc32 = 0; result.entry = 0; result.records = 0; result.written = 0;
     for (U32 i = 0; i != 32; ++i) result.sha256.bytes[i] = 0;
     for (U32 i = 0; i != 4; ++i) { result.os_version.field[i] = 0; result.package_version.field[i] = 0; }
@@ -252,14 +279,14 @@ Status extract(const input::Reader& package, const tfw::KeyProvider& keys,
         (reinterpret_cast<unsigned long>(workspace.scratch) & 3u) || !output.write || !signature.verify ||
         !keys.read) return Status::argument;
     const Status status = run(package, keys, ciphertext_sha256, signature, ram_policy, entry_point, limits,
-                              workspace, output, result);
+                              workspace, output, result, work);
     workspace.archive.close();
     erase(workspace.local, sizeof(workspace.local));
     if (status != Status::ok && status != Status::write) {
         result.bytes = 0; result.crc32 = 0; result.entry = 0; result.records = 0;
         for (U32 i = 0; i != 32; ++i) result.sha256.bytes[i] = 0;
     }
-    return status;
+    return cancelled(work) ? Status::cancelled : status;
 }
 
 U32 version_text(const package::Version& version, char* out, U32 capacity) {
@@ -304,6 +331,7 @@ const char* status_name(Status status) {
     case Status::version: return "version";
     case Status::image: return "image";
     case Status::write: return "write";
+    case Status::cancelled: return "cancelled";
     }
     return "unknown";
 }

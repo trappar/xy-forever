@@ -9,11 +9,12 @@ namespace xyf_core { namespace tfw_os {
 // member (bootloader, companions, content) is known only by its directory record. AES-CBC
 // works in 16-byte blocks: a wanted range is read from the block that holds its first byte,
 // plus the cipher block before it (the chaining value, not decrypted), to the block that
-// holds its last byte. Everything is checked before the first byte reaches the writer;
-// only a writer failure can stop the output part-way. No heap, no library calls.
+// holds its last byte. Everything is checked before the first byte reaches the writer.
+// A writer failure or cancellation can leave partial output for the caller to discard.
+// No heap, no library calls.
 enum class Status {
     ok, argument, capacity, io, container, signature, ciphertext_hash, key, directory,
-    unsupported, name, duplicate, layout, missing, member, checksum, version, image, write
+    unsupported, name, duplicate, layout, missing, member, checksum, version, image, write, cancelled
 };
 // Working-memory and output bounds. scratch_bytes() = image + directory + 16 * entries.
 struct Limits {
@@ -51,7 +52,7 @@ struct Result {
 Status extract(const input::Reader& package, const tfw::KeyProvider& keys,
                const hash::Digest& ciphertext_sha256, const tfw::HeaderCheck& signature,
                const Policy& ram_policy, U32 entry_point, const Limits& limits,
-               Workspace& workspace, const Writer& output, Result& result);
+               Workspace& workspace, const Writer& output, Result& result, Work* work=nullptr);
 // "1.2.5+0"; returns the length (0 when it does not fit, with the terminator).
 U32 version_text(const package::Version& version, char* out, U32 capacity);
 const char* status_name(Status status);
