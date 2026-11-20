@@ -132,6 +132,7 @@ namespace xy_forever { namespace usb_service {
 #include "usb_service_entry.ipp"            // the public entry points
 #include "usb_service_composite.ipp"        // serial + MTP as one composite device
 #include "usb_service_crash_trigger.ipp"    // diag.crash (test build xyf-crash-trigger only, #102)
+#include "usb_service_trust.ipp"            // #65: Ask before USB control
 #include "usb_service_home.ipp"             // the home loop
 } }
 #endif

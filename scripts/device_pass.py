@@ -9,7 +9,8 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
 (SAFETY.md: stop at the first unexpected result). The end stage always runs.
   check    always: HELLO + STATUS within --wait s. No answer: one `NEED:` line,
            exit 3, no session folder, nothing sent but HELLO. (keepalive.sh
-           processes already running are stopped first: they share the port.)
+           processes already running are stopped first: they share the port.) HELLO
+           confirm=1 (#65): FAIL, CONFIRM_ON.
   session  always: hold on.
   read     default: status; state slots; the default entry's info.txt; ls firmware/
            lists the default and ls /yaffs2/xy-forever lists firmware; 8 ranged
@@ -115,7 +116,6 @@ import re
 import shutil
 import signal
 import struct
-import subprocess
 import sys
 import time
 import traceback
@@ -126,6 +126,7 @@ sys.path.insert(0, str(ROOT))
 import xyf_build                                           # noqa: E402
 import xyf_host as host                                    # noqa: E402
 from xy_forever import census, paths, usb_proto as P, usb_proto_ids as ids   # noqa: E402
+from scripts.device_pass_keepalive import Keepalive, keepalive_dir   # noqa: E402,F401
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
 NEED = 'NEED: power off, wait 5 s, then power on holding PLAY; release it at the logo'
@@ -288,9 +289,14 @@ SIM_SKIPS = {
     'keys': 'simulator: the menu screen and keys are not hosted',
     'keepalive': 'simulator: no keepalive.sh (the simulator keeps running without a host)',
 }
-KEEPALIVE_NEED = 'NEED: keepalive.sh pid %d still runs: kill it (its folder %s), then rerun'
-SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
 SIM_NEED = 'NEED: start the simulator (python3 -m xy_forever.sim), then rerun with --sim 127.0.0.1:7341'
+CONFIRM_ON = 'Switch off Settings > Ask before USB control on the device first'
+
+
+def confirm_on(out):
+    """Whether the HELLO in xyf_host's output ("connected PORT: TEXT") says confirm=1."""
+    hello = re.search(r'^connected .*?: (\S+)$', out, re.M)
+    return bool(hello) and P.Hello(hello.group(1)).keys.get('confirm') == '1'
 
 
 def mods_reference(packages, machines, name):
@@ -562,80 +568,6 @@ class HostDevice:
         return False
 
 
-class Keepalive:
-    """scripts/keepalive.sh processes (they share the port with every other host command)."""
-
-    def running(self):
-        try:
-            pids = subprocess.run(['pgrep', '-f', 'keepalive.sh'], capture_output=True, text=True).stdout.split()
-        except OSError:
-            return []
-        mine, pid = set(), os.getpid()
-        while pid > 1 and pid not in mine:              # this script and its ancestors (the shell that ran it)
-            mine.add(pid)
-            pid = int(subprocess.run(['ps', '-o', 'ppid=', '-p', str(pid)], capture_output=True, text=True).stdout
-                      or 0)
-        found = []
-        for pid in set(map(int, pids)) - mine:
-            args = subprocess.run(['ps', '-o', 'args=', '-p', str(pid)], capture_output=True, text=True).stdout.split()
-            statedir = keepalive_dir(args)
-            if statedir:
-                found.append((pid, statedir))
-        return found
-
-    def stop_running(self, wait=8.0):
-        """Stops every keepalive.sh loop: its stop file, then (still running after wait s) SIGTERM to its status
-        call and to it. One that outlives that still holds the port: its NEED line, then SystemExit(EXIT_NEED)."""
-        stopped = []
-        for pid, statedir in self.running():
-            print('[%s] stopping keepalive.sh pid %d (%s)' % (time.strftime('%H:%M:%S'), pid, statedir),
-                  file=sys.stderr, flush=True)
-            with contextlib.suppress(OSError):
-                (Path(statedir) / 'stop-keepalive').touch()
-            deadline = time.monotonic() + wait
-            while time.monotonic() < deadline and alive(pid):
-                time.sleep(0.2)
-            if alive(pid):                       # stuck in a status call (read-only): end it
-                subprocess.run(['pkill', '-TERM', '-P', str(pid)], capture_output=True)
-                with contextlib.suppress(OSError):
-                    os.kill(pid, signal.SIGTERM)
-                deadline = time.monotonic() + 2.0
-                while time.monotonic() < deadline and alive(pid):
-                    time.sleep(0.2)
-            if alive(pid):
-                print(KEEPALIVE_NEED % (pid, statedir), flush=True)
-                raise SystemExit(EXIT_NEED)
-            stopped.append(dict(pid=pid, statedir=statedir))
-        return stopped
-
-    def start(self, folder):
-        log = open(folder / 'keepalive.log', 'ab')
-        proc = subprocess.Popen(['/bin/sh', str(ROOT / 'scripts/keepalive.sh'), str(folder)], cwd=ROOT,
-                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                                start_new_session=True)
-        log.close()
-        (folder / 'keepalive.pid').write_text('%d\n' % proc.pid)
-        return proc.pid
-
-
-def keepalive_dir(args):
-    """STATEDIR when ps args are a keepalive.sh loop (`sh .../keepalive.sh DIR`, as Keepalive.start runs it, or
-    `bash -c .../keepalive.sh DIR`), else None. A command line that only mentions keepalive.sh (a grep filter on
-    this script's output) is none: stopping one killed the script's own pipeline, silently (#50)."""
-    i = (2 if args[1:2] == ['-c'] else 1) if args and Path(args[0]).name.lstrip('-') in SHELLS else 0
-    if len(args) > i + 1 and args[i].endswith('keepalive.sh') and Path(args[i + 1]).is_dir():
-        return args[i + 1]
-    return None
-
-
-def alive(pid):
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
-
-
 def why(code, out, err):
     text = [line.strip() for line in (out + '\n' + err).replace('\r', '\n').splitlines() if line.strip()]
     if code == NO_ANSWER:
@@ -814,6 +746,8 @@ class Pass:
 
     # -- check and session -----------------------------------------------------------------------
     def step_check(self):
+        if confirm_on(self.ok(['wait'], self.opts.wait)):         # HELLO only: nothing asks
+            raise StepFail(CONFIRM_ON)
         decoded, usb = self.status(self.opts.wait)
         if usb.get('version') not in (4, 5) or usb.get('role') != 1:     # 5: the build identity
             raise StepFail('unexpected service: version %s, role %s' % (usb.get('version'), usb.get('role')))
@@ -2174,8 +2108,8 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
                 rows.append(row)
                 if row['result'] == 'FAIL':
                     failed = '%s/%s' % (stage, name)
-    # End of session: always. If the device does not answer, the rest is SKIP.
-    lost = None
+    # End of session: always. No answer (or #65's question on): the rest is SKIP.
+    lost = CONFIRM_ON if check['detail'] == CONFIRM_ON else None
     for name, _, _ in STAGES[-1][1]:
         index += 1
         if lost:

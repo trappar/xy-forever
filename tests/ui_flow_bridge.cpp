@@ -32,6 +32,7 @@ void flow_settings(unsigned memory, unsigned pending, const char* note) {
 // #21: the settings.txt rows (usb_service settings_view): Menu at power-on, USB mode, a newer record.
 void flow_settings_rows(unsigned power_on, unsigned usb, unsigned newer) {
     flow_state.power_on_text = settings::power_on_text(power_on); flow_state.usb_text = settings::usb_text(usb);
+    flow_state.confirm_text = settings::confirm_text(usb & 1);           // #65: On / Off
     if (newer) flow_state.settings_note = settings::note_newer;
 }
 // #21: the rows' marks (settings_view: not saved yet; bit per settings::Row) and the option list key_ui opens on

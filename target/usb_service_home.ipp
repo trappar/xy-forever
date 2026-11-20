@@ -141,6 +141,9 @@ uint32_t home_pump() {
 #if defined(XYF_MTP_USB)
     mtp_burst();                                       // speed: more passes of both while MTP traffic is active
 #endif
+#if defined(XYF_SETTINGS)
+    trust_turn();                                      // #65: the question's answer (the keys came this pass)
+#endif
     const U32 avail = cdc_available();
     if (!avail) {
         // A partial frame followed by idle_reset_ms of silence (nothing left in the receive
@@ -182,6 +185,9 @@ uint32_t home_pump() {
 #endif
         }
         else if (!home_greeted) status_only(type, seq, P::s_state);
+#if defined(XYF_SETTINGS)
+        else if (const U32 refused = trust_refuses(type)) status_only(type, seq, refused);   // #65: asks, or not allowed
+#endif
 #if defined(XYF_MTP_USB)
         else if (type == t_mtp_usb) mtp_usb_command(seq, payload, length);   // the probe (test build only)
 #endif

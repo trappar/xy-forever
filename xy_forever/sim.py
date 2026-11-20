@@ -349,11 +349,13 @@ class Simulator:
     """One running simulator: start() it, talk to 127.0.0.1:port, control() its board."""
 
     def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None,
-                 virtual=True, otp_initialized=False, otp_a=None, a_otp_initialized=False):
+                 virtual=True, otp_initialized=False, otp_a=None, a_otp_initialized=False, ask=False):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
         virtual: device time moves only under the simulator's control (sim/clock.cpp: test runs); False: real
         time (interactive runs). otp_initialized starts B with both its ROM and the stock initialization
-        guard already set, as after the stock bootloader's encrypted-image read."""
+        guard already set, as after the stock bootloader's encrypted-image read. ask: #65's question as on the device
+        (Ask before USB control as settings.txt says); False (tests that are not about it): the setting reads Off,
+        so no serial request waits for an answer nobody gives."""
         self.root, self.bootpart = Path(root), Path(bootpart)
         # B records retain their original framing; bit7 marks independent A selectors.
         a_records = bytearray()
@@ -369,7 +371,7 @@ class Simulator:
         self.port = port or free_port()
         self.control_port = self.port + 1
         self.build_dir = Path(build_dir) if build_dir else build()
-        self.play, self.log, self.capacity = play, log, capacity
+        self.play, self.log, self.capacity, self.ask = play, log, capacity, ask
         self.process = None
 
     @property
@@ -382,9 +384,10 @@ class Simulator:
                 '--control', str(self.control_port), '--capacity', str(self.capacity)] + ([] if self.play else ['--plain']) + \
             (['--otp-stdin'] if self.otp else []) + (['--virtual'] if self.virtual else []) + \
             (['--otp-initialized'] if self.otp_initialized else []) + \
-            (['--a-otp-initialized'] if self.a_otp_initialized else [])
+            (['--a-otp-initialized'] if self.a_otp_initialized else []) + (['--ask'] if self.ask else [])
 
     def start(self, timeout=10.0):
+        os.environ.setdefault('XYF_ASK_LIMIT_S', '30')      # #65: a host here never waits on the question unbounded
         for attempt in range(3):
             log = open(self.log, 'ab') if self.log else subprocess.DEVNULL
             self.process = subprocess.Popen(self.argv(), stdin=subprocess.PIPE if self.otp else subprocess.DEVNULL,
@@ -547,6 +550,8 @@ def main(argv=None):
                         help='the crash trigger test build (#102): diag.crash halts B (no fault, no screen)')
     parser.add_argument('--virtual-clock', action='store_true',
                         help='device time moves only under the simulator\'s control, as in the tests (default: real time)')
+    parser.add_argument('--ask', action='store_true',
+                        help='#65: Ask before USB control as settings.txt says (default: it reads Off)')
     parser.add_argument('--no-otp', action='store_true',
                         help="processor B's OTP answers nothing (default: the private keys, when present)")
     args = parser.parse_args(argv)
@@ -565,7 +570,7 @@ def main(argv=None):
     otp = None if args.no_otp else otp_fields()
     print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
     sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp,
-                    virtual=args.virtual_clock)
+                    virtual=args.virtual_clock, ask=args.ask)
     print('simulator: USB endpoint 127.0.0.1:%d (python3 xyf_host.py --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
           ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root), file=sys.stderr, flush=True)
     # Its own process group (the board and both processors), ended with this process however it ends:

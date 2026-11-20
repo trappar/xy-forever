@@ -36,6 +36,8 @@ struct Shared {
     std::atomic<int32_t> statfs_override, statfs_block_bytes, statfs_free_blocks, statfs_fail;
     std::atomic<int32_t> storage_ops, play, cuts;
     std::atomic<int32_t> b_listening;            // the USB CDC endpoint is open (TCP port listening)
+    std::atomic<uint32_t> usb_bus_resets;        // control "unplug": the cable out and in (#65; B closes its client)
+    std::atomic<int32_t> ask;                    // --ask: #65's setting as settings.txt says (else it reads Off)
     // The chip's partition register as A's last stock select left it (0 user area: yaffs; 1, 2 boot
     // partitions), and the yaffs media changes made while a boot partition was selected (on the
     // device they would land on that boot partition).

@@ -162,7 +162,10 @@ void on_key(uint32_t key, uint32_t pressed) {
         else if (!(play_released || ms > link_ms + 1000u)) return;
     }
 #if defined(XYF_SETTINGS)
-    if (xy_forever::usb_service::confirm_key(key, pressed, key_injected != 0)) return;   // a prompt has the keys
+    if (xy_forever::usb_service::confirm_key(key, pressed, key_injected != 0)) {   // a prompt has the keys
+        if (!pressed) xyf::key_repeat::event(held, key, false, ms);              // a held - / + stops repeating
+        return;
+    }
 #endif
     xyf::key_repeat::event(held, key, pressed != 0, ms);
     dispatch(key, pressed);

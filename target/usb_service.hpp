@@ -266,7 +266,7 @@ const char* job_target();
 bool settings_load();
 xyf::settings::Record& settings();
 uint32_t settings_store();
-// #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode): its option
+// #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode, Ask before USB control): its option
 // list opened (menu::open_options; 0), or the page's note why not (still reading, a save running, a newer record:
 // never changed). settings_pick, the list's PLAY: B's copy takes the option (nothing written; the row is marked).
 // settings_view, each menu pass: settings_load, the rows' values and marks into the menu state; once the page was
@@ -276,9 +276,16 @@ uint32_t settings_store();
 const char* settings_open(xyf::menu::State& state, uint32_t row);
 void settings_pick(const xyf::menu::State& state);
 bool settings_view(xyf::menu::State& state, const char*& line);
-// A key event (key_ui on_key; injected: the host's KEY command). While a confirm prompt is open it takes
-// every key (true: not for the menu); only a real PLAY / STOP answers it (xyf_settings.hpp gate_key).
+// A key event (key_ui on_key; injected: the host's KEY command). While the #65 question is open it takes every key
+// (true: not for the menu); only a real PLAY / STOP answers it (xyf_settings.hpp gate_key). An injected key never
+// opens or picks the Ask before USB control row (settings_open: xyf_settings.hpp note_on_device).
 bool confirm_key(uint32_t key, uint32_t pressed, bool injected);
+// #65 (usb_service_trust.ipp): the device asks "Allow this computer to control your OP-XY?" (key_ui draws it in
+// place of the page). confirm_on: Ask before USB control as settings.txt holds it (settings_load first; 1 until it
+// is read): HELLO confirm=. trust_word: HELLO trust= (none, asking, allowed, refused).
+bool trust_prompt();
+uint32_t confirm_on();
+const char* trust_word();
 #endif
 #endif
 #if defined(XYF_SERVICE_ON_MARKER_ONLY)

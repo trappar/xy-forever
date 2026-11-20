@@ -209,7 +209,7 @@ class GoldenFramesTest(unittest.TestCase):
                          ('-DXYF_VERSION="%s"' % release.VERSION, '-DXYF_VERSION_CODE=%#xu' % release.code(),
                           '-DXYF_BUILD_MODE="product"'))
         self.assertLessEqual(len(g['fields']['info']), ids.MAX_HELLO)
-        self.assertEqual(len(g['fields']['info']), 189)                   # 1.15: version=0.1.0;image=<8 hex>
+        self.assertEqual(len(g['fields']['info']), 210)                   # 1.15: version=0.1.0;image=<8 hex>; 1.23: confirm, trust
         self.assertTrue(g['fields']['info'].endswith(';stage2=0'))         # set at run time
         loaded = P.hello_text(info.keys['version'], image, info.keys['mode'], product, stage2=12)
         self.assertTrue(loaded.endswith(';stage2=12') and P.Hello(loaded).answers(P.ids.STAGE2_INFO))
@@ -292,9 +292,11 @@ class SpecDataTest(unittest.TestCase):
     def test_common_errors(self):
         s = spec()
         self.assertEqual([(e['status'], e['except']) for e in s['common_errors']],
-                         [('state', ['hello']), ('unsupported', ['hello']), ('busy', ['hello'])])
+                         [('state', ['hello']), ('unsupported', ['hello']), ('busy', ['hello']),
+                          ('waiting', ['hello']), ('declined', ['hello'])])                  # 1.23: #65
         self.assertEqual(ids.COMMON_ERRORS, ((ids.S_STATE, ('hello',)), (ids.S_UNSUPPORTED, ('hello',)),
-                                             (ids.S_BUSY, ('hello',))))
+                                             (ids.S_BUSY, ('hello',)), (ids.S_WAITING, ('hello',)),
+                                             (ids.S_DECLINED, ('hello',))))
         # a common status comes alone even where on_error is "full"
         self.assertEqual(P.decode_reply(P.FILE_WRITE, struct.pack('<I', ids.S_STATE)), (ids.S_STATE, None))
 

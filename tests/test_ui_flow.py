@@ -103,13 +103,15 @@ class UiFlowTest(unittest.TestCase):
         self.lib.flow_key(54)
         self.assertEqual(self.lib.flow_key(51), CHANGE_SETTING)       # USB mode
         self.lib.flow_key(54)
+        self.assertEqual(self.lib.flow_key(51), CHANGE_SETTING)       # #65: Ask before USB control
+        self.lib.flow_key(54)
         self.assertEqual(self.lib.flow_key(51), REDRAW)               # About
         self.assertEqual(self.lib.flow_screen(), 2)
         save('about.png')
         self.assertEqual(self.lib.flow_key(52), REDRAW)               # STOP: back to Settings
         self.assertEqual(self.lib.flow_screen(), 6)
         # The option list (PLAY on USB mode: key_ui opens it), its moves, its pick; marked rows draw.
-        self.lib.flow_key(53)
+        self.lib.flow_key(53); self.lib.flow_key(53)
         self.assertEqual(self.lib.flow_key(51), CHANGE_SETTING)
         self.lib.flow_options(2); self.assertEqual(self.lib.flow_screen(), 7); save('options.png')
         self.assertEqual((self.lib.flow_key(54), self.lib.flow_option()), (REDRAW, 0))   # + wraps (three options)
@@ -117,7 +119,7 @@ class UiFlowTest(unittest.TestCase):
         self.assertEqual(self.lib.flow_screen(), 6)
         self.lib.flow_key(51); self.lib.flow_options(1); self.lib.flow_key(53)
         self.assertEqual((self.lib.flow_key(51), self.lib.flow_option(), self.lib.flow_screen()), (PICK_SETTING, 0, 6))
-        for marks in (0, 2, 4, 6, 1, 7):
+        for marks in (0, 2, 4, 6, 1, 7, 8, 15):
             self.lib.flow_settings_marked(marks); self.drawn()
         save('settings-unsaved.png')
 

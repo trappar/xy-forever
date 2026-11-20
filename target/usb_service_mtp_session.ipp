@@ -3,6 +3,7 @@
 #if defined(XYF_SIM)
 }
 namespace xyf_sim { void log(const char* format, ...); }                // the session screen in the log (sim/runtime.hpp)
+namespace xyf_sim { uint32_t usb_bus_resets(); uint32_t ask(); }        // #65: control "unplug", --ask (sim/stock.cpp)
 namespace {
 #endif
 // ---- The MTP session (mtp_session.hpp). Not a job: enabled when the composite starts (the test build)
