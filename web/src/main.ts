@@ -7,18 +7,26 @@ import { webSocketOpener } from 'xy-forever-client/dev';
 import { CONFIG_FILE, CONFIG_OLD, CONTENT_STATE, CONTENT_STATE_OLD, ROOT, WRITE_RULE, changeRefusal, configText, contentText, folderWritable, groupMods,
   human, joinPath, modeText, nameProblem, parentOf, parseConfig } from './model.ts';
 import type { SavedConfig } from './model.ts';
-import { confirmAction, h, notice, promptText } from './ui.ts';
+import { BugReport } from './bug-report.ts';
+import type { Action } from './bug-report.ts';
+import { confirmAction, downloadBlob, h, notice, previewBugReport, promptText } from './ui.ts';
 
 const sim = new URLSearchParams(location.search).get('sim');
 let client: Client | null = null;
 let busy = false;
+const bugReport = new BugReport();
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
 
 // ---- Navigation and actions ---------------------------------------------------------------------------
 
 const PAGES = ['connect', 'device', 'mods', 'files'] as const;
 type Page = (typeof PAGES)[number];
-const loaders: Record<Page, () => Promise<void>> = { connect: async () => renderConnect(), device: loadDevice, mods: loadMods, files: () => browse(cwd) };
+const loaders: Record<Page, () => Promise<void>> = {
+  connect: () => run('show_connect', async () => renderConnect()),
+  device: () => run('refresh_status', loadDevice),
+  mods: () => run('list_packages', loadMods),
+  files: () => run('browse_files', () => browse(cwd)),
+};
 
 function current(): Page { const p = location.hash.slice(1) as Page; return PAGES.includes(p) ? p : 'connect'; }
 
@@ -26,7 +34,7 @@ function route(): void {
   const p = client ? current() : 'connect';
   for (const id of PAGES) page(id).hidden = id !== p;
   for (const a of document.querySelectorAll<HTMLAnchorElement>('#nav a')) a.classList.toggle('active', a.dataset['page'] === p);
-  if (client || p === 'connect') run(loaders[p]);
+  if (client || p === 'connect') void loaders[p]();
 }
 window.addEventListener('hashchange', route);
 
@@ -36,15 +44,21 @@ function setLink(): void {
 }
 
 /** Runs one device action; errors are shown in plain words. A second action waits for the first. */
-async function run(work: () => Promise<void>, label = ''): Promise<void> {
-  if (busy) { notice('Busy: wait for the current action to finish.', 'busy'); return; }
+async function run(action: Action, work: () => Promise<void>, label = ''): Promise<void> {
+  if (busy) {
+    bugReport.record(action, 'blocked');
+    notice('Busy: wait for the current action to finish.', 'busy');
+    return;
+  }
   busy = true;
   notice(label, 'busy');
   if (!label) notice('');
   try {
     await work();
+    bugReport.record(action, 'finished');
     notice('');
   } catch (error) {
+    bugReport.record(action, 'failed', error);
     notice(describe(error), 'error');
     if (client && !client.connected) { client = null; setLink(); route(); }
   } finally {
@@ -71,8 +85,8 @@ function renderConnect(): void {
     h('div', { class: 'card' },
       supported
         ? h('div', { class: 'row' },
-          client ? h('span', {}, `Connected to XY Forever ${client.info.version ?? '?'}.`) : btn('Connect', () => void run(connect, 'Looking for the OP-XY...'), 'primary'),
-          client && btn('Disconnect', () => void run(disconnect)),
+          client ? h('span', {}, `Connected to XY Forever ${client.info.version ?? '?'}.`) : btn('Connect', () => void run('connect', connect, 'Looking for the OP-XY...'), 'primary'),
+          client && btn('Disconnect', () => void run('disconnect', disconnect)),
           h('span', { class: 'muted' }, sim ? `Simulator on 127.0.0.1:${sim} (development)` : 'Web Serial over USB'))
         : h('div', {}, h('h2', {}, 'This browser cannot talk to the OP-XY'),
           h('p', { class: 'muted' }, 'XY Forever needs Web Serial, which only desktop Chrome (and Edge) have. Open this page in Chrome on a computer. Safari, Firefox and phones are not supported.'))),
@@ -87,6 +101,7 @@ async function opener(): Promise<Opener> {
 
 async function connect(): Promise<void> {
   client = await Client.connect(await opener(), { timeoutMs: 10_000 });
+  bugReport.updateStatus(client.info);
   setLink();
   location.hash = '#device';
   busy = false;
@@ -118,6 +133,7 @@ async function savedConfig(): Promise<SavedConfig | null | undefined> {
 async function loadDevice(): Promise<void> {
   const c = client!;
   const info = await c.status();
+  bugReport.updateStatus(info);
   const state = await c.readState();
   let boots = 'No default set: the menu decides at power-on.';
   if (state?.default) {
@@ -137,7 +153,7 @@ async function loadDevice(): Promise<void> {
       h('dt', {}, 'Saved mods'), h('dd', {}, config === undefined ? 'Could not read the saved configuration.' : configText(config)),
       h('dt', {}, 'Content'), h('dd', {}, contentText(content, old)),
       h('dt', {}, 'Protocol'), h('dd', { class: 'muted' }, `${info.proto}${info.dev ? ', developer build' : ''}`))),
-    h('div', { class: 'row' }, btn('Refresh', () => void run(loadDevice))),
+    h('div', { class: 'row' }, btn('Refresh', () => void run('refresh_status', loadDevice))),
   );
 }
 
@@ -169,7 +185,7 @@ async function loadMods(): Promise<void> {
     h('div', { class: 'card' },
       h('div', { class: 'row' }, h('h2', { style: 'margin:0' }, 'Add packages'), h('span', { class: 'spacer' }),
         h('label', { class: 'button' }, 'Choose package folder...', picker),
-        btn('Send to OP-XY', () => void run(send, 'Sending packages...'), 'primary')),
+        btn('Send to OP-XY', () => void run('send_packages', send, 'Sending packages...'), 'primary')),
       h('p', { class: 'muted', id: 'mods-chosen' }, chosen ? chosenText(chosen.set) : 'Choose a generation folder (from modkit split): it holds base/ and one folder per mod.'),
       h('progress', { id: 'mods-progress', value: 0, max: 1, hidden: true })),
     ...(held.length === 0 ? [h('div', { class: 'card muted' }, 'No mod packages on this OP-XY yet.')] : held.map((g) => generationCard(g, config))),
@@ -187,7 +203,7 @@ function generationCard(g: HeldGeneration, config: SavedConfig | null | undefine
     const kind = g.older ? 'older' : 'newer';
     return h('div', { class: 'card' },
       h('div', { class: 'row' }, h('h2', { style: 'margin:0' }, `${g.generation} (${kind} layout)`), h('span', { class: 'spacer' }),
-        btn('Remove all', () => void run(() => remove(g.generation, null, `the ${kind} ${g.generation} folder`)), 'small danger')),
+        btn('Remove all', () => void run('remove_packages', () => remove(g.generation, null, `the ${kind} ${g.generation} folder`)), 'small danger')),
       h('p', { class: 'muted' }, g.older
         ? 'Packages sent by an older XY Forever, in folders too deep for the dev menu\'s file transfer. Remove them, then send the package set again.'
         : 'Packages in a newer layout than this page reads: update it, or remove them and send the package set again.'));
@@ -203,13 +219,13 @@ function generationCard(g: HeldGeneration, config: SavedConfig | null | undefine
         h('td', {}, r.on === null ? h('span', { class: 'tag' }, 'unknown') : h('span', { class: r.on ? 'tag on' : 'tag' }, r.on ? 'on' : 'off'),
           ' ', !r.complete && h('span', { class: 'tag warn', title: 'Sending was interrupted: send it again.' }, 'incomplete')),
         h('td', { class: 'muted hide-narrow' }, human(r.bytes)),
-        h('td', { class: 'actions' }, btn('Remove', () => void run(() => remove(r.folder, g.generation, r.name)), 'small danger'))));
+        h('td', { class: 'actions' }, btn('Remove', () => void run('remove_packages', () => remove(r.folder, g.generation, r.name)), 'small danger'))));
     }
   }
   const baseHeld = g.packages.some((p) => p.name === 'base');
   return h('div', { class: 'card' },
     h('div', { class: 'row' }, h('h2', { style: 'margin:0' }, `${g.profile} ${g.generation}`), !baseHeld && h('span', { class: 'tag warn' }, 'no base package'),
-      h('span', { class: 'spacer' }), btn('Remove all', () => void run(() => remove(g.generation, null, `the whole ${g.generation} package set`)), 'small danger')),
+      h('span', { class: 'spacer' }), btn('Remove all', () => void run('remove_packages', () => remove(g.generation, null, `the whole ${g.generation} package set`)), 'small danger')),
     h('p', { class: 'muted' }, config === undefined ? 'On/off: the saved configuration could not be read.' : sameSet ? 'On/off: as saved on the device.' : 'On/off: this set is not the saved one, so all are off.'),
     h('table', {}, body));
 }
@@ -218,7 +234,7 @@ async function pick(input: HTMLInputElement): Promise<void> {
   const source = fileListSource([...input.files ?? []]);
   input.value = '';
   chosen = null;
-  await run(async () => {
+  await run('choose_packages', async () => {
     chosen = { source, set: await localSet(source) };
     document.getElementById('mods-chosen')!.textContent = chosenText(chosen.set);
   });
@@ -265,7 +281,7 @@ function buildCard(config: SavedConfig | null | undefined): HTMLElement {
   void libraryBases(client!).then((list) => base.replaceChildren(...list.map((b) => h('option', { value: b.id }, `${b.name} (${b.id})${b.contentList ? '' : ': no content list, a build refuses it'}`)))).catch(() => undefined);
   const cancel = btn('Cancel', () => building?.abort(), 'danger');
   cancel.disabled = true;
-  const start = btn('Build on device', () => void run(async () => {
+  const start = btn('Build on device', () => void run('build', async () => {
     const g = gens[Number(gen.value)]!;
     const on = [...checks.querySelectorAll<HTMLInputElement>('input:checked')];
     const request: ApplyRequest = { base: base.value, profile: g.profile, generation: g.generation, name: name.value.trim(),
@@ -296,11 +312,11 @@ async function browse(path: string): Promise<void> {
   const parts = cwd.split('/').filter(Boolean);
   const crumbs = h('div', { class: 'crumbs', id: 'crumbs' }, ...parts.flatMap((p, i) => {
     const here = '/' + parts.slice(0, i + 1).join('/');
-    return [i > 0 ? '/' : '', i === parts.length - 1 ? h('b', {}, p) : btn(p, () => void run(() => browse(here)))];
+    return [i > 0 ? '/' : '', i === parts.length - 1 ? h('b', {}, p) : btn(p, () => void run('browse_files', () => browse(here)))];
   }));
-  const upload = h('input', { type: 'file', multiple: true, onchange: () => void run(() => uploadFiles(upload), 'Uploading...') });
+  const upload = h('input', { type: 'file', multiple: true, onchange: () => void run('upload_files', () => uploadFiles(upload), 'Uploading...') });
   const body = h('tbody', { id: 'files-body' });
-  if (cwd !== ROOT) body.append(h('tr', {}, h('td', { colspan: 3 }, h('button', { type: 'button', class: 'linkish', onclick: () => void run(() => browse(parentOf(cwd))) }, '.. (up)'))));
+  if (cwd !== ROOT) body.append(h('tr', {}, h('td', { colspan: 3 }, h('button', { type: 'button', class: 'linkish', onclick: () => void run('browse_files', () => browse(parentOf(cwd))) }, '.. (up)'))));
   for (const e of entries) body.append(fileRow(e, writable));
   if (entries.length === 0) body.append(h('tr', {}, h('td', { colspan: 3, class: 'muted' }, 'Empty folder.')));
   const progress = h('progress', { id: 'files-progress', value: 0, max: 1, hidden: true });
@@ -311,7 +327,7 @@ async function browse(path: string): Promise<void> {
     h('div', { class: 'card' },
       h('div', { class: 'row' }, crumbs, h('span', { class: 'spacer' }),
         writable && h('label', { class: 'button' }, 'Upload...', upload),
-        writable && btn('New folder', () => void run(newFolder))),
+        writable && btn('New folder', () => void run('new_folder', newFolder))),
       progress,
       h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', { class: 'hide-narrow' }, 'Size'), h('th', {}))), body)),
   );
@@ -320,16 +336,16 @@ async function browse(path: string): Promise<void> {
 function fileRow(e: DirEntry, writable: boolean): HTMLElement {
   const path = joinPath(cwd, e.name);
   const name = e.kind === 'folder'
-    ? h('button', { type: 'button', class: 'linkish', onclick: () => void run(() => browse(path)) }, `${e.name}/`)
+    ? h('button', { type: 'button', class: 'linkish', onclick: () => void run('browse_files', () => browse(path)) }, `${e.name}/`)
     : h('span', {}, e.name);
   return h('tr', { 'data-name': e.name },
     h('td', {}, name),
     h('td', { class: 'muted hide-narrow' }, e.kind === 'file' ? human(e.size) : ''),
     h('td', { class: 'actions' },
-      e.kind === 'file' && btn('Download', () => void run(() => download(path, e.name), 'Downloading...'), 'small'),
-      e.kind !== 'other' && btn('Copy', () => void run(() => copy(path, e)), 'small'),
-      writable && e.kind !== 'other' && btn('Rename/Move', () => void run(() => move(path)), 'small'),
-      writable && e.kind !== 'other' && btn('Delete', () => void run(() => removePath(path, e)), 'small danger')));
+      e.kind === 'file' && btn('Download', () => void run('download_file', () => download(path, e.name), 'Downloading...'), 'small'),
+      e.kind !== 'other' && btn('Copy', () => void run('copy_file', () => copy(path, e)), 'small'),
+      writable && e.kind !== 'other' && btn('Rename/Move', () => void run('move_file', () => move(path)), 'small'),
+      writable && e.kind !== 'other' && btn('Delete', () => void run('delete_file', () => removePath(path, e)), 'small danger')));
 }
 
 function bar(): HTMLProgressElement { const b = document.getElementById('files-progress') as HTMLProgressElement; b.hidden = false; return b; }
@@ -337,9 +353,7 @@ function bar(): HTMLProgressElement { const b = document.getElementById('files-p
 async function download(path: string, name: string): Promise<void> {
   const b = bar();
   const data = await client!.readFile(path, { onProgress: (done) => { b.removeAttribute('value'); b.title = human(done); } });
-  const url = URL.createObjectURL(new Blob([data as BlobPart]));
-  h('a', { href: url, download: name }).click();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  downloadBlob(new Blob([data as BlobPart]), name);
   b.hidden = true;
 }
 
@@ -401,4 +415,7 @@ async function removePath(path: string, e: DirEntry): Promise<void> {
 
 setLink();
 route();
+document.getElementById('bug-report')!.addEventListener('click', () => {
+  previewBugReport(bugReport.snapshot(client?.connected === true));
+});
 (window as Window & { xyfApp?: unknown }).xyfApp = { setBuildOnDevice };

@@ -31,6 +31,11 @@ For development without a device, start the simulator from the repository root
 
 Every destructive action asks first in plain words. Nothing offers to write a bootloader.
 
+**Bug report** previews a JSON bundle and downloads that same snapshot when you choose **Download JSON**.
+It includes the app version, connection status, the last known XY Forever release, image ID, protocol,
+mode and developer-build flag, plus up to 24 recent app actions and their outcomes. The app keeps
+this information in memory for the current tab, so the preview is available even after disconnecting.
+
 ## Test
 
 ```sh
