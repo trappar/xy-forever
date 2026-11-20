@@ -26,6 +26,8 @@ Manual changes may touch `/yaffs2` except the protected marker and updater inbox
 Creating the report folder is a storage write and requires the developer's approval:
 `python3 xyf_host.py put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.
 
+### Sound packs
+
 `python3 xyf_host.py packs list` lists installed sound packs in `/yaffs2/content/dlc/`.
 Each row gives the pack folder ID and the vendor manifest's name, version, author and description when present.
 A malformed manifest is reported beside its folder ID.
@@ -39,6 +41,16 @@ Omit `--yes` to see the planned action.
 On the OP-XY, open Settings > Content packs. SHIFT+PLAY switches between installed and inbox packs.
 Use + and - to select a pack, then PLAY to open its install or remove confirmation. Cancel starts selected.
 Use + then PLAY to confirm, or STOP to go back.
+
+### Factory content inventory
+
+`python3 xyf_host.py content status` reads free space, walks `/yaffs2/content/` and hashes each regular file
+over USB. It compares the paths and SHA-256 digests with each available private
+`xy-forever/content-manifests/<version>/content.sha256` (made with `xyf_package.py content-manifest`).
+The report gives every exact match, which releases match the live catalog hash, and missing, extra and changed files per release.
+`matches_no_official_file` lists files whose path and digest match none of those releases.
+Links and other special entries are reported separately. Keep the content folder unchanged during the scan.
+A full factory set takes about 120 MiB of USB reads. A completed inventory exits successfully even with differences.
 
 ### File commands
 
