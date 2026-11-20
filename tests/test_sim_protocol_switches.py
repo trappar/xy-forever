@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import struct
 import tempfile
+import time
 import unittest
 import xyf_build
 import xyf_host as host
@@ -46,7 +47,13 @@ class ProtocolSwitches(unittest.TestCase):
                         kind = int(c['type'], 16)
                         self.assertFalse(P.Hello(text).answers(kind))
                         dev.hello_info = None                 # xyf_host refuses types missing from cmds
-                        self.assertEqual(dev.call(kind, struct.pack('<I', 0)), (ids.S_UNSUPPORTED, b''))
+                        deadline = time.monotonic() + 30.0    # every unlisted type: s_busy until the startup
+                        while True:                           # recovery scan ends (startup_ready.py)
+                            reply = dev.call(kind, struct.pack('<I', 0))
+                            if reply[0] != ids.S_BUSY or time.monotonic() >= deadline:
+                                break
+                            time.sleep(0.02)
+                        self.assertEqual(reply, (ids.S_UNSUPPORTED, b''))
                     finally:
                         dev.t.close()
 

@@ -11,6 +11,7 @@ cannot be saved. Synthetic packages (test_sim_mod_job's kit). Needs clang++ and 
 (skipped without them). No device access."""
 import hashlib
 from pathlib import Path
+import re
 import sys
 import struct
 import time
@@ -222,6 +223,8 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.saved_as(b, ['alpha', 'gamma', 'ext-cap'])
         self.assertTrue((self.entry(a) / 'os.ldr').is_file())              # the old slot: spare
         self.menu_again()
+        self.wait_log(lambda: re.search(r'open_xy=\d+ hidden=\d+$', self.home()),   # -1 until the mod check ends
+                      'the checked home row')
         self.assertRegex(self.home(), r'open_xy=\d+ hidden=\d+$')         # the spare is not listed
         before, saves = self.snapshot(), len(self.lines('menu: save'))
         self.cont(dialog=False)                                            # no change: boots at once
