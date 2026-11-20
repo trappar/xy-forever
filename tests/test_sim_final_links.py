@@ -41,6 +41,10 @@ class FinalLinks(unittest.TestCase):
         (log / 'long').symlink_to('long-1')                                 # 7 links, then the inbox file
         for i in range(1, 7):
             (log / ('long-%d' % i)).symlink_to('long-%d' % (i + 1) if i < 6 else 'rel')
+        for n in (6, 7):                                                    # n links, then an ordinary file
+            for i in range(n):
+                (log / ('to-song-%d-%d' % (n, i))).symlink_to('to-song-%d-%d' % (n, i + 1) if i < n - 1 else
+                                                              '../../user/song.bin')
         self.connect(startup_ready=True)
         if entry:
             self.write_entry()
@@ -74,6 +78,17 @@ class FinalLinks(unittest.TestCase):
             self.assertFalse((root / 'xy-forever/log' / name).is_symlink(), name)
         self.assertTrue((root / 'user/song.bin').exists())
         self.assertEqual((root / 'upgrade/sub/x.tfw').read_bytes(), b'unchanged')
+
+    def test_the_link_bound_is_stock_six(self):
+        """Stock FollowLink resolves 6 link texts (depth > 5: 889fa1ac): 6 links to a user file still open for
+        writing, 7 are refused. A bound above 6 acts the same: the lookup sets loop on the 7th."""
+        root = self.seed()
+        self.assertEqual(self.open_close(LOG + 'to-song-7-0'), (-1, S.EACCES))
+        self.assertEqual((root / 'user/song.bin').read_bytes(), b'mine')
+        fd, error = self.open_close(LOG + 'to-song-6-0')
+        self.assertEqual(error, 0)
+        self.assertGreaterEqual(fd, 0)
+        self.assertEqual((root / 'user/song.bin').read_bytes(), b'')    # "wb" reached it through 6 links
 
     def test_staged_write_through_a_final_link_is_refused(self):
         """The original reproduction: file.write_staged onto a log name that links to an inbox file."""

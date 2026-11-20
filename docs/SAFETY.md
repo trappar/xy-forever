@@ -57,11 +57,11 @@ needs the highest bar of confidence. These rules are binding and override conven
   updater's inbox): nothing written, created, renamed into or deleted inside it, `upgrade` itself never
   removed or renamed, no folder renamed to it. Both stay readable; both names any ASCII case.
   Enforced by `file_engine::decide_engine` on B before sending and on A for every request, by A's
-  `reaches_protected` (resolved directory ancestry; [limits](hardware/storage-server.md#protected-inbox-paths)),
-  by the MTP responder (`xyf_core::mtp::writable`: ProtectionStatus 1, refusals) and
-  early in the clients (`xyf_host.in_write_area`, `clients/ts inWriteArea`). XY Forever's own jobs keep
-  their narrower rules (the content job: `storage_server::own_area`, never `user/`). Before changing
-  `content/op1_factory.json`, save the device's copy first.
+  `reaches_protected` and `final_link_reaches_inbox` (writable opens)
+  ([how](hardware/storage-server.md#protected-inbox-paths)), by the MTP responder (`xyf_core::mtp::writable`:
+  ProtectionStatus 1, refusals) and early in the clients (`xyf_host.in_write_area`, `clients/ts inWriteArea`).
+  XY Forever's own jobs keep their narrower rules (the content job: `storage_server::own_area`, never
+  `user/`). Before changing `content/op1_factory.json`, save the device's copy first.
 - **Depth** (#124): no file over 6 folders below `/yaffs2`; deeper hangs Track 5 after dev MTP.
   Deletes work at any depth ([details](storage/layout.md)).
 
