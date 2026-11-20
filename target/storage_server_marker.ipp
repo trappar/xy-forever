@@ -101,6 +101,8 @@ bool directory_reaches_inbox(const char* path) {
 const U32 object_parent = 0x1c, object_type = 0x64, object_alias = 0x68, type_link = 2, type_folder = 3;
 const U32 final_links = 6;                 // stock gives up past 6 (depth > 5: 889fa1ac), each at depth 0, 1, ...
 char link_text[max_path] __attribute__((section(".data"))) = {0};
+// noinline: the builder's scope (A_FIND_CALLERS). no-move-loop-invariants: the wrapper's address is loaded beside its
+// call inside the loop, where the builder's straight-line call audit resolves it (hoisted, it was "unresolved").
 __attribute__((noinline, optimize("no-move-loop-invariants"))) bool final_link_reaches_inbox(const char* path) {
     const CheckSpan span;
     if (!spans_match()) return true;                                   // the lookup only while its spans match

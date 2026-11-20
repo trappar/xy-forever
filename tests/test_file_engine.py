@@ -486,7 +486,9 @@ class FileEngineWiringTest(unittest.TestCase):
                       '                   (writing && inbox_exists() && final_link_reaches_inbox(path_copy))))', self.server)
         self.assertIn('const bool writing = action == file_engine::run_open && handle;', self.server)
         # #6: the final-link guard alone calls the admitted lookup, bounded, and refuses what it cannot prove
-        final = self.body(self.server, '__attribute__((noinline)) bool final_link_reaches_inbox(const char* path)')
+        # (its loop keeps the wrapper's address beside the call, as the builder's straight-line call audit needs)
+        final = self.body(self.server, '__attribute__((noinline, optimize("no-move-loop-invariants"))) '
+                                       'bool final_link_reaches_inbox(const char* path)')
         self.assertEqual(self.server.count('stock<0x889fa2beu'), 1)
         self.assertIn('stock<0x889fa2beu', final)
         for line in ('if (!spans_match()) return true;', 'if (loop) return true;',
