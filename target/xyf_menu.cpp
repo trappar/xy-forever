@@ -63,10 +63,13 @@ Action key(State& s, uint32_t k, bool pressed) {
     if (!pressed) return Action::none;
     const bool minus = k == key_minus, plus = k == key_plus, play = k == key_play;
     if (k == key_stop) {                              // back
+#if defined(XYF_SETTING_OPTIONS)
+        if (s.screen == Screen::packs && s.pack_confirm) { s.pack_confirm = false; return Action::redraw; }
+#endif
         const Screen back = s.screen == Screen::info ? s.info_return :
                             s.screen == Screen::home_empty ? Screen::home_empty :
 #if defined(XYF_SETTING_OPTIONS)
-                            s.screen == Screen::options ? Screen::settings :   // #21: nothing picked
+                            (s.screen == Screen::options || s.screen == Screen::packs) ? Screen::settings :   // #21: nothing picked
 #endif
                             Screen::main;
         if (back == s.screen) return Action::none;
@@ -123,19 +126,42 @@ Action key(State& s, uint32_t k, bool pressed) {
         if (s.save_selected == choice_discard) return Action::discard;
         return Action::redraw;
     }
-    case Screen::settings:                        // one row per setting; PLAY (or a knob push): its options
-        if (minus || plus) { s.settings_selected = step(s.settings_selected, settings::rows, plus); s.settings_note = 0; return Action::redraw; }
+    case Screen::settings: {                      // the extra row opens the installed-pack list on the product
+        uint32_t count = settings::rows;
+#if defined(XYF_SETTING_OPTIONS)
+        if (s.pack_names) ++count;
+#endif
+        if (minus || plus) { s.settings_selected = step(s.settings_selected, count, plus); s.settings_note = 0; return Action::redraw; }
         if (!play) return Action::none;
         if (s.settings_selected != settings::row_about) { s.entry = s.settings_selected; return Action::change_setting; }
         s.info_return = Screen::settings; s.screen = Screen::info;   // #21: the About page (once Info on the home menu)
         return Action::redraw;
+    }
 #if defined(XYF_SETTING_OPTIONS)
+    case Screen::packs:
+        if (s.pack_busy || s.pack_execute) return Action::none;
+        if (s.pack_confirm) {
+            if (minus || plus) s.confirm_accept = !s.confirm_accept;
+            else if (play) { s.pack_execute = s.confirm_accept; s.pack_confirm = false; }
+            else return Action::none;
+        } else if (play && s.shift_held) {
+            s.pack_inbox = !s.pack_inbox; s.pack_page = 0; s.pack_ready = false;
+        } else if (!s.pack_ready) return Action::none;
+        else if (play && s.pack_count) { s.pack_confirm = true; s.confirm_accept = false; }
+        else if (plus && s.pack_selected + 1 < s.pack_count) ++s.pack_selected;
+        else if (minus && s.pack_selected) --s.pack_selected;
+        else if (plus && s.pack_more) { ++s.pack_page; s.pack_ready = false; }
+        else if (minus && s.pack_page) { --s.pack_page; s.pack_ready = false; }
+        else return Action::none;
+        s.pack_result = 0;
+        return Action::redraw;
     case Screen::options:                         // #21: - / + choose, PLAY picks (STOP above: back, unchanged)
         if (minus || plus) { s.option_selected = step(s.option_selected, s.option_count, plus); return Action::redraw; }
         if (!play) return Action::none;
         s.screen = Screen::settings;
         return Action::pick_setting;
 #else
+    case Screen::packs:
     case Screen::options: break;                  // never opened here
 #endif
     case Screen::home_empty:

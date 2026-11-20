@@ -20,7 +20,7 @@ static const uint32_t key_turn = 0x100u;
 #if !defined(XYF_SMALL_CRC)
 #define XYF_SETTING_OPTIONS 1
 #endif
-enum class Screen : uint32_t { main, library, info, confirm_uninstall, home_empty, confirm_save, settings, options };
+enum class Screen : uint32_t { main, library, info, confirm_uninstall, home_empty, confirm_save, settings, options, packs };
 enum class Action : uint32_t {
     none,
     redraw,          // state changed: draw again
@@ -83,11 +83,24 @@ struct State {
     // (marked "current") and the selected one. The heading is the label of the Settings row (settings_selected).
     const char* const* options;
     uint32_t option_count, option_current, option_selected;
+    // Content packs: one page of installed or inbox folder IDs, and the current transaction.
+    const char* const* pack_names;
+    const char* pack_note;
+    const char* pack_result;
+    uint32_t pack_page, pack_count, pack_selected;
+    bool pack_ready, pack_more, pack_inbox, pack_confirm, pack_execute, pack_busy;
 #endif
     // 193: StorageView (the caller's, after start() and every pass) and the line a refused row left (0: none).
     uint32_t storage;
     const char* note;
 };
+// Holding + or - moves through lists. Confirm dialogs take one press per choice.
+inline bool repeat_keys(const State& s) {
+#if defined(XYF_SETTING_OPTIONS)
+    if (s.screen == Screen::packs && s.pack_confirm) return false;
+#endif
+    return s.screen != Screen::confirm_uninstall && s.screen != Screen::confirm_save;
+}
 // 193: the row needs the library (shown dimmed, PLAY refused while storage is not ready). Settings never does
 // (its About row; a setting that needs A says so).
 bool needs_storage(const State& state, uint32_t item);
@@ -100,7 +113,7 @@ Action key(State& state, uint32_t key, bool pressed);
 const char* main_label(const State& state, uint32_t item);
 #if defined(XYF_SETTING_OPTIONS)
 // #21: the caller's answer to change_setting: the setting's options (texts[current] in effect, selected first).
-static const uint32_t max_options = 8;
+static const uint32_t max_options = 8, packs_per_page = 7;
 inline void open_options(State& s, const char* const* texts, uint32_t count, uint32_t current) {
     s.options = texts; s.option_count = count < max_options ? count : max_options;
     s.option_current = s.option_selected = current < s.option_count ? current : 0;

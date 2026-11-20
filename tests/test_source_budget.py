@@ -30,7 +30,6 @@ TEST = re.compile(r'(^test_.*\.py|_test\.(cpp|hpp)|\.(test|spec)\.ts)$')
 OVER = {
     'clients/ts/src/client.ts': 33693,
     'host/mod_assemble.cpp': 55310,
-    'native/mod_content.cpp': 33307,
     'native/mod_job.cpp': 47043,
     'native/mod_link.cpp': 65785,
     'scripts/device_pass.py': 128359,

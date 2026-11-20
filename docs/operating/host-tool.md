@@ -26,6 +26,23 @@ Manual changes may touch `/yaffs2` except the protected marker and updater inbox
 Creating the report folder is a storage write and requires the developer's approval:
 `python3 xyf_host.py put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.
 
+### Sound packs
+
+`python3 xyf_host.py packs list` lists installed sound packs in `/yaffs2/content/dlc/`.
+Each row gives the pack folder ID and the vendor manifest's name, version, author and description when present.
+A malformed manifest is reported beside its folder ID.
+
+Place a complete, unpacked sound pack in `/yaffs2/xy-forever/inbox/ID/`. Its `manifest.json` must
+be a JSON object of up to 4,096 bytes and 32 nesting levels. A `folder` property, when present, must match the folder ID exactly.
+A manifest declaring the `xy-forever.package` schema belongs to the native package workflow.
+Run `python3 xyf_host.py packs install ID --yes` to move the folder to `/yaffs2/content/dlc/ID/`.
+An occupied ID stops the install. Use `python3 xyf_host.py packs remove ID --yes` to remove an installed pack.
+Omit `--yes` to see the planned action.
+
+On the OP-XY, open Settings > Content packs. SHIFT+PLAY switches between installed and inbox packs.
+Use + and - to select a pack, then PLAY to open its install or remove confirmation. Cancel starts selected.
+Use + then PLAY to confirm, or STOP to go back.
+
 ### Factory content inventory
 
 `python3 xyf_host.py content status` reads free space, walks `/yaffs2/content/` and hashes each regular file

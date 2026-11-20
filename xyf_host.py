@@ -65,7 +65,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from xy_forever import depth, device_lock, host_inventory, host_write, library_add, usb_proto as P
+from xy_forever import depth, device_lock, host_inventory, host_read, host_write, library_add, pack_change, usb_proto as P
 from xy_forever.library_add import ID_RE
 from xy_forever.host_install import DESCRIPTOR, MIN_IMAGE, IMAGE_CAPACITY, USB_MODES, load_build, load_stock
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr
@@ -482,9 +482,8 @@ def run(argv):
     rehearsal.add_argument('input', help='verified XY Forever build directory, or stock os.ldr with --uninstall')
     rehearsal.add_argument('--uninstall', action='store_true')
     rehearsal.add_argument('--deadline-ms', type=int, default=120000)
-    read = sub.add_parser('read'); read.add_argument('path'); read.add_argument('--out', type=Path)
-    read.add_argument('--all', action='store_true', help='any size (ranged reads; needs the Test 038 service)')
-    read.add_argument('--offset', type=int, help='one ranged read (up to READ_RANGE bytes) at this offset')
+    host_read.configure(sub)
+    pack_change.configure(sub)
     inst = sub.add_parser('install'); inst.add_argument('build'); inst.add_argument('--yes-install', action='store_true')
     reboot = sub.add_parser('reboot'); reboot.add_argument('--yes-reboot', action='store_true')
     reboot.add_argument('--to', choices=('service', 'os', 'menu'), default='service',
@@ -541,6 +540,10 @@ def run(argv):
     if args.sim:
         sim_address(args.sim)
         SIM = args.sim
+    if args.command == 'packs':
+        result = pack_change.plan(args)
+        if result is not None:
+            return result
     if args.command == 'mods':
         if args.mods_command == 'dev':
             from xy_forever import moddev
@@ -665,15 +668,9 @@ def run(argv):
     if args.command == 'content':
         return host_inventory.content_status(dev)
     if args.command == 'read':
-        code, body = (dev.read_all(args.path) if args.all else
-                      dev.read_file(args.path, args.offset) if args.offset is not None else dev.read_file(args.path))
-        if code:
-            print('read failed: %s' % P.status_name(code)); return code
-        if args.out:
-            args.out.write_bytes(body)
-        else:
-            sys.stdout.write(body.decode('utf-8', 'replace'))
-        return 0
+        return host_read.read(dev, args)
+    if args.command == 'packs':
+        return pack_change.command(dev, args)
     if args.command == 'install':
         code = dev.stage(data, stage_progress)
         print()

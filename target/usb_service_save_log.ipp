@@ -112,7 +112,7 @@ void content_pump();
 void config_pump();
 #endif
 void job_pump() {
-    if (package_active || blob_collecting || !job_running()) return;
+    if (menu_pack_active || package_active || blob_collecting || !job_running()) return;
 #if defined(XYF_CONTENT_SWITCH)
     if (job_kind == 2) return config_pump();                             // the config job
     if (job_kind) return content_pump();

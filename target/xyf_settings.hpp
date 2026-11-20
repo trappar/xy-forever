@@ -98,7 +98,7 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
 // Mod memory, part of the saved configuration (config.txt memory=, xyf_config.hpp), not of this record: like
 // the Mods page's toggles it is pending until boot (Continue asks Save / Discard / Back). xyf_mods_io keeps it and
 // says which of these the row shows (menu::State memory, memory_pending).
-enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_about, rows };
+enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_about, rows, row_packs = rows };
 enum Memory : uint32_t { memory_reading = 0, memory_unavailable, memory_standard, memory_expanded };
 static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "About"};
 static inline const char* label(uint32_t row) { return row < rows ? labels[row] : ""; }

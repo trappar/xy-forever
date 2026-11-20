@@ -35,7 +35,7 @@ void job_view(JobView& v) {                                             // as jo
     JobSlot& s = slot();
     mj::Progress g;
     mj::progress(s.job, g);
-    const bool committing = job_running() && s.stage >= js_away && s.stage != js_wipe;
+    const bool committing = job_state == job_busy && s.stage >= js_away && s.stage != js_wipe;
     v.state = job_state; v.id = s.id;
     v.phase = s.commit_error ? U32(mj::Phase::failed) : committing ? U32(mj::Phase::finish) : U32(g.phase);
     v.done = committing ? s.stage - js_away + 1 : g.done; v.total = committing ? 3u : g.total;
@@ -44,7 +44,7 @@ void job_view(JobView& v) {                                             // as jo
     v.debris = s.debris; v.commit = committing ? 1u : 0u;
 }
 uint32_t job_stop() {                                                   // as job.cancel (not in the commit)
-    if (!job_running() || job_kind) return P::s_not_found;              // a content switch is not a mod job
+    if (job_state != job_busy || job_kind) return P::s_not_found;              // a content switch is not a mod job
     if (slot().stage >= js_away) return P::s_state;
     mj::cancel(slot().job);
     job_finish(slot());
