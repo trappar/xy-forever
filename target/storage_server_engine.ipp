@@ -101,16 +101,18 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
     case file_engine::run_unmount: {
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
         const bool had = window_open != 0;
-        const bool closed = close_engine(storage);
+        close_engine(storage);
         // As build 154: failure while the window is still open, and when this close's
         // read-only reopen failed (a's storage is then unmounted).
-        const bool ok = closed && (!had || window_result == U32(cold_storage::Result::ok));
+        const bool ok = !window_open && (!had || window_result == U32(cold_storage::Result::ok));
         if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item
 #else
-        const bool ok = close_engine(storage), had = false;
+        close_engine(storage);
+        const bool ok = true, had = false;
 #endif
         // Stock success is 1 (889f7710); 3 when this op 9 closed a window.
-        session.reply(request, ok ? (had ? 3 : 1) : 0, ok ? 0 : error_access);
+        const bool closed = ok && !tfw_hash_open();
+        session.reply(request, closed ? (had ? 3 : 1) : 0, closed ? 0 : error_access);
         ++r.executed; note(op, action, mounted ? 0xfffeu : 1);
         return;
     }

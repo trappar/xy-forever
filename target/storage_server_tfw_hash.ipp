@@ -125,5 +125,6 @@ __attribute__((noinline)) bool tfw_hash_query(void* context, U32 request, Stock1
     return true;
 }
 #else
+bool tfw_hash_open() { return false; }
 bool tfw_hash_query(void*, U32, Stock121PeerSession&) { return false; }
 #endif

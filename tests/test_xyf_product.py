@@ -526,6 +526,11 @@ class OneSessionWriteTest(unittest.TestCase):
         self.assertIn('if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item', ss)
         # op 9 fails while the window is open or when its read-only reopen failed (as 154).
         self.assertIn('const bool ok = !window_open && (!had || window_result == U32(cold_storage::Result::ok));', ss)
+        # A's own hash reader must also close before op 9 reports success.
+        close = ss[ss.index('void close_engine('):ss.index('void serve_engine(')]
+        self.assertLess(close.index('if (!tfw_hash_clear(storage)) return;'), close.index('close_handles();'))
+        self.assertIn('const bool closed = ok && !tfw_hash_open();', ss)
+        self.assertIn('session.reply(request, closed ? (had ? 3 : 1) : 0, closed ? 0 : error_access);', ss)
         self.assertIn('if (!seen || seen == engine_latched || engine == entry_run) return;', ss)
 
 

@@ -271,10 +271,15 @@ volatile U32 selected_partition __attribute__((section(".data"))) = 0;
 volatile U32 select_attempted __attribute__((section(".data"))) = 0;
 volatile U32 probe_mode __attribute__((section(".data"))) = 0;
 
+bool tfw_hash_open();
 bool serve_install(U32 request, U32 vtable, U32 op, Stock121PeerSession& session) {
     usb_service::Result& u = usb_service::result;
     const InstallAction action = decide_install(vtable, op, word(request + 8), selected_partition);
     if (action == install_none) return false;
+    if (tfw_hash_open()) {
+        session.reply(request, 0xffffffffu, error_busy);
+        return true;
+    }
     const U32 executor = action == install_select || action == install_trim ? 0x889f76cau :
                          action == install_read ? 0x889f6b7cu : action == install_write ? 0x889f6dcau : 0;
     if (!executor || word(vtable + 0x14) != executor) {
@@ -408,12 +413,12 @@ __attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession
 // checkpoint; gates back; the shared read-only mount again), then end the session (end; not
 // when a closes the window between requests). A window that fails to close stays mounted (never
 // hand off read-write).
-__attribute__((noinline)) bool close_engine(cold_storage::Stock121ReadOnlySession& storage, bool end = true) {
+__attribute__((noinline)) void close_engine(cold_storage::Stock121ReadOnlySession& storage, bool end = true) {
 #if defined(XYF_TFW_CHECK)
     // Keep the mount available if stock refused to close the hash job's handle.
-    if (!tfw_hash_clear(storage)) return false;
+    if (!tfw_hash_clear(storage)) return;
 #endif
-    if (!mounted) return true;
+    if (!mounted) return;
     close_handles();
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
     if (window_open) {
@@ -423,11 +428,10 @@ __attribute__((noinline)) bool close_engine(cold_storage::Stock121ReadOnlySessio
             if (adopted) window_result = U32(storage.reopen_read_only());
         }
         note(9, 0x20u, window_result);                       // 0x20: a window close (any trigger)
-        if (window_open) return false;
+        if (window_open) return;
     }
 #endif
     if (end) unmount(storage);
-    return true;
 }
 #if defined(XYF_USB_FILE_WRITE)
 // a closes the window between requests (idle, another command item). A failed close keeps it
@@ -481,15 +485,8 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
 #if defined(XYF_USB_SERVICE)
     // Install mode answers the boot-partition writer's requests (and refuses file requests
     // while a boot partition is selected), except while a writable engine entry is open.
-    if (install_enabled && engine != entry_write && engine != entry_run) {
-#if defined(XYF_TFW_CHECK)
-        if (tfw_hash_open() && decide_install(vtable, op, word(request + 8), selected_partition) != install_none) {
-            session.reply(request, 0xffffffffu, error_busy);
-            return;
-        }
-#endif
-        if (serve_install(request, vtable, op, session)) return;
-    }
+    if (install_enabled && engine != entry_write && engine != entry_run && serve_install(request, vtable, op, session))
+        return;
     }  // !probe_mode
 #endif
     serve_engine(request, vtable, op, storage, session);
