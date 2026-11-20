@@ -29,8 +29,8 @@ CONFIG = 'xy-forever/config.txt'
 SAVE_DIALOG = 5                                                            # xyf_menu Screen::confirm_save
 
 
-@unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
-class Config(PageBase, CS.Switch, unittest.TestCase):
+class ConfigBase(PageBase, CS.Switch):
+    """The helpers (test_sim_safemode uses them too)."""
     base = 'modbase'
     unverified = True
 
@@ -159,6 +159,16 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.saved_as(entry, list(mods))
         return entry
 
+    def cut(self, cuts):
+        """The power cut after `cuts` (read before the fault was armed) and the restart, USB answering."""
+        self.wait_log(lambda: self.sim.status()['cuts'] == cuts + 1 and self.sim.status()['listening'], 'cut, restart')
+        self.reconnect()
+        self.assertEqual(self.dev.hello()[0], 0)
+
+
+
+@unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
+class Config(ConfigBase, unittest.TestCase):
     # -- the tests ---------------------------------------------------------------------------------
     def pending_save_rehearsal(self):
         from xy_forever import a_rehearsal as R, sim
@@ -223,9 +233,8 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.saved_as(b, ['alpha', 'gamma', 'ext-cap'])
         self.assertTrue((self.entry(a) / 'os.ldr').is_file())              # the old slot: spare
         self.menu_again()
-        self.wait_log(lambda: re.search(r'open_xy=\d+ hidden=\d+$', self.home()),   # -1 until the mod check ends
-                      'the checked home row')
-        self.assertRegex(self.home(), r'open_xy=\d+ hidden=\d+$')         # the spare is not listed
+        self.wait_log(lambda: self.home().endswith('safe=Boot without mods'),   # once the record is read
+                      'the safe-mode row')
         before, saves = self.snapshot(), len(self.lines('menu: save'))
         self.cont(dialog=False)                                            # no change: boots at once
         self.assertEqual(self.booted(), b)
@@ -336,12 +345,6 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.cont(0)
         self.assertEqual(self.booted(), a)
         self.saved_as(a, ['alpha'])
-
-    def cut(self, cuts):
-        """The power cut after `cuts` (read before the fault was armed) and the restart, USB answering."""
-        self.wait_log(lambda: self.sim.status()['cuts'] == cuts + 1 and self.sim.status()['listening'], 'cut, restart')
-        self.reconnect()
-        self.assertEqual(self.dev.hello()[0], 0)
 
     def test_power_cut_in_the_build(self):
         self.change(['alpha'])

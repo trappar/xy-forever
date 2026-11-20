@@ -21,7 +21,7 @@ void ui_chrome(const char* version, unsigned usb, const char* activity) {
 void ui_render_logo(uint16_t* fb, int x, int y) { gfx::clear(fb, gfx::black); gfx::logo(fb, x, y, gfx::accent, gfx::white); }
 unsigned ui_framebuffer_halfwords() { return gfx::framebuffer_halfwords; }
 void ui_render_menu(uint16_t* fb, unsigned selected, const char* status) {
-    ui::Menu menu = {{"Continue: OP-XY 1.2.1", "Firmware library", "Mods", "Uninstall XY Forever", "Settings"}, 5,
+    ui::Menu menu = {{"Continue: OP-XY 1.2.1", "Boot without mods", "Mods", "Uninstall XY Forever", "Settings"}, 5,
                      selected, status, "- / +  choose      PLAY  select", &bridge_chrome, 0};
     ui::draw_menu(fb, menu);
 }

@@ -186,15 +186,16 @@ void dispatch(uint32_t key, uint32_t pressed) {
     else if (action != xyf::menu::Action::none) app_action = uint32_t(action);
 }
 
-// Knob turns (knob_input.hpp) move the selection as - / + do: not in the Uninstall dialog (its - / +
-// flip two buttons), not while the Mods page shows its job. On the Mods page with key_turn (SHIFT + turn: its filter).
+// Knob turns (knob_input.hpp) move the selection as - / + do: not in the Uninstall or safe-mode dialog (their
+// - / + flip two buttons), not while the Mods page shows its job. On the Mods page with key_turn (SHIFT + turn: its filter).
 void turn_knobs(uint32_t now_ms) {
 #if defined(XYF_MODS_PAGE)
     const bool page = mods_shown != 0, job = page && xy_forever::mods_io::page().view == xyf::mods::View::building;
 #else
     const bool page = false, job = false;
 #endif
-    const bool selection = !job && (page || app.screen != xyf::menu::Screen::confirm_uninstall);
+    const bool selection = !job && (page || (app.screen != xyf::menu::Screen::confirm_uninstall &&
+                                             app.screen != xyf::menu::Screen::confirm_safe));
     const int32_t rows = xy_forever::knob_input::pass(now_ms, selection);
     const uint32_t step = (rows > 0 ? xyf::menu::key_plus : xyf::menu::key_minus) | (page ? xyf::menu::key_turn : 0u);
     for (int32_t i = rows < 0 ? -rows : rows; i; --i) dispatch(step, 1);   // the Mods page knows a turn
@@ -341,6 +342,7 @@ extern "C" void xy_forever_key_ui() {
 #endif
 #if defined(XYF_CONTENT_SWITCH)
             if (const char* line = xy_forever::usb_service::content_line()) { status = line; dirty = 1; }
+            app.undo_offer = xy_forever::usb_service::content_offer();   // PLAY on the first row undoes
 #endif
 #if defined(XYF_MODS_PAGE)
             // The save sequence ended: boot the saved configuration (the default), or back to the menu with
@@ -365,15 +367,16 @@ extern "C" void xy_forever_key_ui() {
                 using xyf::menu::Action;
                 app_action = 0;
                 dirty = 1;
-                if (lost && (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::boot_once) ||
-                             action == uint32_t(Action::save) || action == uint32_t(Action::discard))) {
+                if (lost && (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::safe_mode) ||
+                             action == uint32_t(Action::restore) || action == uint32_t(Action::save) ||
+                             action == uint32_t(Action::discard))) {
                     app.screen = xyf::menu::Screen::main;
                     status = " ";                          // the status line shows the lost link
                     continue;
                 }
 #if defined(XYF_USB_FILE_WRITE)
                 if (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::discard) ||
-                    action == uint32_t(Action::boot_once) || action == uint32_t(Action::set_default) ||
+                    action == uint32_t(Action::safe_mode) || action == uint32_t(Action::restore) ||
                     action == uint32_t(Action::save)) {       // and Save while a USB job runs
                     if (const char* busy = xy_forever::usb_service::menu_busy()) {
                         status = busy; app.screen = xyf::menu::Screen::main; continue;
@@ -383,20 +386,9 @@ extern "C" void xy_forever_key_ui() {
                 if (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::discard)) {   // Discard
                     xy_forever::xyf_boot::choose_default(); r.exit_reason = exit_play; break;
                 }
-                if (action == uint32_t(Action::boot_once)) {
-                    if (const char* note = content_note(app.entry)) { status = note; continue; }
-                    xy_forever::xyf_boot::choose(app.entry); r.exit_reason = exit_play; break;
-                }
-#if defined(XYF_STATE_WRITE)
-                if (action == uint32_t(Action::set_default)) {
 #if defined(XYF_CONTENT_SWITCH)
-                    if (const char* note = xy_forever::usb_service::content_default(app.entry)) {   // content first
-                        status = note; app.screen = xyf::menu::Screen::main; continue;
-                    }
-#endif
-                    status = xy_forever::xyf_boot::set_default(app.entry);   // the only write path
-                    if (lost_ends_menu()) { r.exit_reason = exit_link; break; }   // #3: with USB the menu stays
-                    app.screen = xyf::menu::Screen::main;      // first row = the (new) default's name
+                if (action == uint32_t(Action::undo)) {       // the source-missing line's offer: the previous entry back
+                    if (const char* line = xy_forever::usb_service::content_undo()) status = line;
                     continue;
                 }
 #endif
@@ -404,6 +396,11 @@ extern "C" void xy_forever_key_ui() {
                 if (action == uint32_t(Action::save)) {       // the page shows the save sequence
                     mods_shown = 1;
                     xy_forever::mods_io::save_begin();
+                    continue;
+                }
+                if (action == uint32_t(Action::safe_mode) || action == uint32_t(Action::restore)) {   // the same page
+                    mods_shown = 1;
+                    xy_forever::mods_io::safe_begin(action == uint32_t(Action::restore));
                     continue;
                 }
 #endif
@@ -441,9 +438,7 @@ extern "C" void xy_forever_key_ui() {
                     continue;
                 }
                 app.screen = xyf::menu::Screen::main;          // show the result line
-                status = action == uint32_t(Action::boot_once) ? "Boot once: not available yet." :
-                         action == uint32_t(Action::set_default) ? "Set default: needs storage writes (not yet)." :
-                         "Uninstall: not available yet.";
+                status = "Uninstall: not available yet.";
             }
 #if defined(XYF_ONE_SESSION)
             if (usb_view_changed()) dirty = 1;     // the USB mark, the activity line or the Info page's image changed

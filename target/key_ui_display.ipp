@@ -113,12 +113,6 @@ void present() {
     if (byte(smc_dma_active)) ++r.presents;
 }
 
-// PLAY (boot once) on an entry whose content is not installed boots nothing: the line says how.
-const char* content_note(uint32_t entry) {
-    const xyf::catalog::Catalog* catalog = xy_forever::xyf_boot::catalog();
-    return catalog && entry < catalog->count && (catalog->items[entry].flags & xyf::catalog::flag_content_missing) ?
-           "Make it the default to install its content." : 0;
-}
 void show(uint32_t screen, const char* status) {
     ui_screen = screen;
     ui_status = status;

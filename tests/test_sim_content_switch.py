@@ -161,35 +161,17 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         self.assertEqual(self.dev.set_default('opxy-121-stock')[0], 0)    # official: no switch
         self.assertEqual(self.dev.call(P.STATUS)[0], 0)
 
-    def test_menu_shift_play_installs_and_sets_the_default(self):
-        a = self.build(['alpha'])
-        found = self.catalog()
-        index = [i['id'] for i in found['items']].index(a)
-        for key, pressed in ((PLUS, 1), (PLUS, 0), (PLAY, 1), (PLAY, 0)):  # Firmware library (row 1)
-            self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
-        for _ in range((index - found['default']) % len(found['items'])):   # from the default's row
-            for pressed in (1, 0):
-                self.dev.call(P.KEY, struct.pack('<II', PLUS, pressed))
-        for key, pressed in ((SHIFT, 1), (PLAY, 1), (PLAY, 0), (SHIFT, 0)):
-            self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
-        self.assertIn('menu: set default %d: Installing content...' % index, (self.dir / 'log.txt').read_text())
-        f = self.finished(0)
-        self.assertEqual((MS.PHASES[f['phase']], f['detail']), ('done', a), f)
-        self.assertEqual(content(self.root), self.expected(a))
-        self.assertEqual(self.default(), a)
-        self.assertIn('menu: line: Default: %s (content installed)' % a, (self.dir / 'log.txt').read_text())
-
     def test_menu_actions_wait_for_a_switch(self):
-        """Continue and Set default pressed during a content switch show the busy line and
-        do nothing; the switch completes."""
+        """Continue pressed during a content switch shows the busy line and does nothing (the safe-mode row,
+        with no setup saved, only its own line); the switch completes."""
         a = self.build(['alpha'])
         self.sim.set('a_slow_ms', 4)
         self.assertEqual(self.dev.set_default(a)[0], ids.S_STARTED)
-        for key, pressed in ((PLAY, 1), (PLAY, 0), (PLUS, 1), (PLUS, 0), (PLAY, 1), (PLAY, 0),
-                             (SHIFT, 1), (PLAY, 1), (PLAY, 0), (SHIFT, 0)):   # Continue; library; Set default
+        for key, pressed in ((PLAY, 1), (PLAY, 0), (PLUS, 1), (PLUS, 0), (PLAY, 1), (PLAY, 0)):   # Continue; the safe row
             self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
         log = (self.dir / 'log.txt').read_text()
-        self.assertEqual(log.count('menu: line: Busy: a build or content change is running.'), 2, log[-2000:])
+        self.assertEqual(log.count('menu: line: Busy: a build or content change is running.'), 1, log[-2000:])
+        self.assertIn('menu: line: No mods are saved', log)
         self.sim.set('a_slow_ms', 0)
         f = self.finished(0)
         self.assertEqual((MS.PHASES[f['phase']], f['detail']), ('done', a), f)

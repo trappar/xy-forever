@@ -529,7 +529,7 @@ void start_refused(Page& p, uint32_t status, uint32_t missing) {
 
 void job_ended(Page& p, uint32_t phase, uint32_t error, uint32_t status, uint32_t debris) {
     if (phase == uint32_t(mj::Phase::done)) {   // committed; an assembled set is never installed
-        say(p, line_done, "Built: ", p.job_name, " is in the Firmware library (content not installed yet).");
+        say(p, line_done, "Built: ", p.job_name, " (content not installed yet).");
         return;
     }
     if (phase == uint32_t(mj::Phase::cancelled)) {

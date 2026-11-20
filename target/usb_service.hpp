@@ -235,15 +235,16 @@ bool page_busy();
 inline const char* menu_busy() { return page_busy() ? "Busy: a build or content change is running." : nullptr; }
 #endif
 #if defined(XYF_USB_FILE_WRITE) && defined(XYF_USB_SET_DEFAULT) && defined(XYF_ONE_SESSION)
-// b: the content switch (xyf_content_job.hpp), a job of B's menu loop. content_default: the menu's
-// SHIFT+PLAY on catalog entry `entry`: 0 when its content is installed (set the default as before), else the
-// status line (the switch started; it writes the default when it succeeded; or why it did not start).
-// content_line: the menu's status line while a switch runs and once it ended; 0 when unchanged.
+// b: the content switch (xyf_content_job.hpp), a job of B's menu loop. content_line: the menu's status line
+// while a switch runs and once it ended; 0 when unchanged. content_offer: that line offers to undo a change whose
+// source is missing (the journal's previous entry); content_undo: the menu's PLAY on the first row then, the
+// switch back to it, the default written when it succeeds (the status line: started, or why not; 0: no offer).
 #define XYF_CONTENT_SWITCH 1
-const char* content_default(uint32_t entry);
 const char* content_line();
+bool content_offer();
+const char* content_undo();
 // b: the save sequence's storage steps (xyf_mods_io; xyf_config.hpp). content_switch: the switch to
-// library entry id as a job, without writing the default (status as content_default's start: s_ok started,
+// library entry id as a job, without writing the default (status as content_undo's start: s_ok started,
 // s_busy, s_link, s_bad_request). config_store: the config job (job_view: phase 0 running, 8 done, 9 failed;
 // error as a switch's): the record written (replaced by renames), A's window closed, then the default set to
 // default_id unless it is that already ("" or 0: not changed). job_target: the entry the last mod job

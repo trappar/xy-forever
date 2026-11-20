@@ -12,8 +12,8 @@
 // job removes its files (mod_job) and folders (wipe_step); debris = 1 when that could not be done. B
 // closes A's write window when the job ends (settle_writes).
 // Before the job's first step B sweeps leftover tmp/job-* folders (js_sweep); after the last, it commits the entry into the library:
-// the target id (job_target, chosen before anything is written) is never the default
-// or the boot-once entry; the old entry is renamed into tmp/job-<id>-old, the new one onto the target, then
+// the target id (job_target, chosen before anything is written) is never the default,
+// the boot-once entry or the saved Open-XY (config.txt slot=); the old entry is renamed into tmp/job-<id>-old, the new one onto the target, then
 // the old tree is removed. One request (or one list page and one change) per loop pass; A rescans the
 // library when B closes the window (settle_begin, as after a put).
 namespace mj = xyf_core::mod_job;
@@ -395,9 +395,22 @@ U32 job_choice(JobSlot& s, xyf::state::Choice& choice) {                // the s
 U32 job_target(JobSlot& s) {
     xyf::state::Choice choice;
     if (const U32 code = job_choice(s, choice)) return code;
+    char saved[8] = {0};                         // the saved Open-XY (config.txt slot=): never built over, safe mode too
+#if defined(XYF_CONTENT_SWITCH)
+    {
+        namespace xg = xyf::config;
+        uint32_t bytes = 0;
+        uint8_t* const text = reinterpret_cast<uint8_t*>(s.state_text);
+        U32 code = file_client::read_file(xg::path, 0, false, text, xyf::store::max_text, bytes, mounted);
+        if (code == P::s_not_found) code = file_client::read_file(xg::old_path, 0, false, text, xyf::store::max_text, bytes, mounted);
+        if (code == P::s_ok) xg::field(s.state_text, bytes, "slot", saved, sizeof(saved));
+        else if (code != P::s_not_found && code != P::s_too_large) return code;
+    }
+#endif
     bool open[2], present[2];
     for (U32 i = 0; i != 2; ++i) {
-        open[i] = !same_text(job_ids_mods[i], choice.state.default_id) && !same_text(job_ids_mods[i], choice.state.once);
+        open[i] = !same_text(job_ids_mods[i], choice.state.default_id) && !same_text(job_ids_mods[i], choice.state.once) &&
+                  !same_text(job_ids_mods[i], saved);
         char path[file_engine::max_path];
         join(path, job_firmware, job_ids_mods[i]);
         uint8_t record[file_client::record_bytes];

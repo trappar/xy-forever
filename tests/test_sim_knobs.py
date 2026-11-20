@@ -3,8 +3,8 @@
 The board hands PSoC frames to B's stock receive queue as the hardware does (control "knob", "knob_raw",
 "knob_jump"; sim/runtime.hpp): the slot written, the write index advanced, the read index following as the
 stock poll would. B's menu loop runs the reader after that point, as key_ui.cpp does after its stock poll,
-and logs one "knob:" line per pass that read or moved anything. Turns move the home menu, the Firmware
-library and the Mods list by one row per N counts, bounded per pass; malformed frames, implausible index
+and logs one "knob:" line per pass that read or moved anything. Turns move the home menu and the Mods list
+by one row per N counts, bounded per pass; malformed frames, implausible index
 steps and a different stock identity move nothing and show in the counters (also in diag.status, block
 KNB1). Needs clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
 from pathlib import Path
@@ -22,7 +22,7 @@ from test_sim_mods_page import MINUS, PLAY, SHIFT, STOP, VIEW_BUILDING, VIEW_LIS
 from test_ui_mods import FILTER_ON, KINDS, display_order                   # noqa: E402
 
 N, MAX_MOVES, MAX_FRAMES, LEFTOVER_MS = 2, 4, 32, 600                      # knob_input.hpp
-HOME, LIBRARY, UNINSTALL, SETTINGS = 0, 1, 3, 6                            # xyf_menu Screen
+HOME, UNINSTALL, SETTINGS = 0, 3, 6                                         # xyf_menu Screen
 PLUS = 54
 
 
@@ -80,7 +80,7 @@ class Knobs(PageBase, unittest.TestCase):
         return k
 
     # -- tests -----------------------------------------------------------------------------------
-    def test_turns_move_home_and_library_n_counts_per_row(self):
+    def test_turns_move_home_n_counts_per_row(self):
         self.turn(1, 1)                                                    # one count, below N: no row
         k = self.until_frames(1)
         self.assertEqual((k['main'], k['moves']), (0, 0), k)
@@ -116,19 +116,19 @@ class Knobs(PageBase, unittest.TestCase):
         self.turn(1, -1)
         k = self.until_frames(14)
         self.assertEqual((k['main'], k['idle'], k['moves']), (1, 2, 5), k)
-        self.press(PLAY)                                                   # into the Firmware library
-        self.until(lambda: self.lines('menu: screen %d ' % LIBRARY), 'the library')
+        self.press(PLAY)                                                   # the safe-mode row: no setup, a line
+        self.until(lambda: self.lines('menu: line: No mods are saved'), 'the line')
         self.turn(1, 1, N)
         k = self.until_frames(14 + N)
-        self.assertEqual((k['screen'], k['library'], k['main']), (LIBRARY, 1, 1), k)
+        self.assertEqual((k['screen'], k['main']), (HOME, 2), k)
         self.turn(2, -1, N)
         k = self.until_frames(14 + 2 * N)
-        self.assertEqual((k['screen'], k['library']), (LIBRARY, 0), k)
+        self.assertEqual((k['screen'], k['main']), (HOME, 1), k)
         c = self.counters()
         self.assertEqual((c['state'], c['frames'], c['dropped'], c['resyncs'], c['moves']), ('on', 14 + 2 * N, 0, 0, 7), c)
         self.assertEqual((c['knob1'], c['knob2'], c['knob3'], c['knob4']), (6 + N, -2 * N, -N, N), c)
         self.assertEqual(c['last'], '41 %02x 45 03 02 ff ff 00' % ((0xc4 + 14 + 2 * N - 1) & 0xff), c)
-        self.press(STOP)                                                   # pushes are still PLAY: Continue
+        self.press(STOP)                                                   # nothing to go back to; pushes are PLAY
         self.turn(1, -1, N)
         self.assertEqual(self.until_frames(14 + 3 * N)['main'], 0)
         self.key(12, 1)                                                    # continue_boot (no change: boots)

@@ -5,13 +5,17 @@ enum SaveStage : uint32_t {
     sv_idle = 0, sv_reading, sv_check, sv_build, sv_stamp, sv_switch, sv_switching, sv_record, sv_recording, sv_boot,
     sv_failed
 };
+// What the sequence does: a save; safe mode (the base with its official content, the record kept with safe=1);
+// a restore (the saved slot's content back, safe=0; a save's build when the slot no longer holds what built= says).
+enum SaveMode : uint32_t { mode_save = 0, mode_safe, mode_restore };
 struct Save {
-    uint32_t stage, job, serial, unverified, count;
+    uint32_t stage, job, serial, unverified, count, mode, length;   // length: safe mode's / a restore's record
     char target[32], base[32], built[100], slot[8], stamp[65], reason[80];
 };
 xg::Record rec XYF_DATA = {};
 Save sv XYF_DATA = {};
 char label[48] XYF_DATA = {};
+char safe_text[32] XYF_DATA = {};                // the safe-mode row
 static const char firmware[] = "/yaffs2/xy-forever/firmware/";
 uint32_t index_of(const char* id) {
     const xyf::catalog::Catalog* c = xyf_boot::catalog();
@@ -162,13 +166,77 @@ uint32_t building() {                           // the mod job into the spare sl
     p.job_phase = v.phase; p.job_done = v.done; p.job_total = v.total; p.job_commit = v.commit;
     return moved(refused || phase);
 }
+// The saved record with safe= flipped (sv.mode) and its mods= line as saved (config.txt read again, else
+// config.old) into io.buffer: bytes, or 0 (io.why: the read's status, 1000: no mods= line or too long).
+uint32_t record_text() {
+    xg::Record r;                               // field by field: a struct copy is a memcpy call on Blackfin
+    xg::clear(r, xg::present);
+    copy(r.base, rec.base, sizeof(r.base)); copy(r.profile, rec.profile, sizeof(r.profile));
+    copy(r.generation, rec.generation, sizeof(r.generation)); copy(r.built, rec.built, sizeof(r.built));
+    copy(r.slot, rec.slot, sizeof(r.slot)); copy(r.stamp, rec.stamp, sizeof(r.stamp));
+    r.unverified = rec.unverified; r.expanded = rec.expanded; r.count = rec.count; r.safe = sv.mode == mode_safe;
+    uint32_t bytes = 0;
+    uint32_t code = fc::mount_ready(usb_service::page_mount());
+    if (code == s_ok) code = fc::read_file(xg::path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
+    if (code == xyf::usbp::s_not_found)
+        code = fc::read_file(xg::old_path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
+    io.why = code;
+    if (code != s_ok) return 0;
+    io.why = 1000;
+    uint32_t n = 0;
+    const char* m = xg::value(reinterpret_cast<const char*>(io.buffer), bytes, "mods", n);
+    if (!m) return 0;
+    char head[400];
+    const uint32_t h = xg::format(head, sizeof(head), r);
+    if (!h || h + n + 1 > xg::max_text) return 0;
+    uint8_t* const b = io.buffer;               // the mods= value moved behind the new head, then the head
+    const uint32_t from = uint32_t(reinterpret_cast<const uint8_t*>(m) - b);
+    if (h > from) for (uint32_t i = n; i; --i) b[h + i - 1] = b[from + i - 1];
+    else for (uint32_t i = 0; i != n; ++i) b[h + i] = b[from + i];
+    for (uint32_t i = 0; i != h; ++i) b[i] = uint8_t(head[i]);
+    b[h + n] = '\n';
+    return h + n + 1;
+}
+// Safe mode and a restore: the switch to sv.target, its record made now and kept in io.buffer until it is
+// stored (the switch's write window does not serve this page's reads).
+uint32_t switch_next() {
+    sv.length = record_text();
+    if (!sv.length) {
+        char d[12];
+        m::decimal(d, io.why);
+        m::say(the_page, m::line_error, "Failed: the settings could not be read (", d, ").");
+        return fail(the_page.text);
+    }
+    sv.stage = sv_switch;
+    return 1;
+}
+// What safe mode and a restore need: the switch (no build unless a restore finds the slot changed).
+uint32_t safe_check() {
+    if (rec.state != xg::present || !rec.count || !rec.slot[0])
+        return fail(sv.mode == mode_safe ? "No Open-XY setup with mods is saved." : "No Open-XY setup to restore.");
+    const char* base = config_base();
+    if (!base) return fail("No stock OP-XY firmware in the library.");
+    copy(sv.base, base, sizeof(sv.base));
+    if (sv.mode == mode_safe) { copy(sv.target, base, sizeof(sv.target)); return switch_next(); }
+    char now[65];
+    now[0] = 0;
+    if (rec.stamp[0] && index_of(rec.slot) != ~0u) {
+        entry_stamp(rec.slot, now);
+        if (io.why == xyf::usbp::s_link) return fail("Restore failed: no answer from storage.");
+    }
+    if (now[0] && xg::same(now, rec.stamp)) { copy(sv.target, rec.slot, sizeof(sv.target)); return switch_next(); }
+    // The slot no longer holds what built= says: the saved selection onto the toggles, then a save (its record: safe=0).
+    if (read_record(true) != s_ok) return fail("Restore failed: the settings could not be read.");
+    sv.mode = mode_save;
+    return check();
+}
 // One step of the save sequence (as pump; every storage request bounded by the file client, jobs in slices).
 uint32_t save_follow() {
     m::Page& p = the_page;
     switch (sv.stage) {
     case sv_reading:                            // the list (and the saved toggles) first
         if (io.step != s_done) return 0;
-        if (p.line == m::line_error) return fail(p.text);
+        if (p.line == m::line_error && sv.mode != mode_safe) return fail(p.text);   // safe mode needs no list
         p.view = m::View::building; p.save = m::save_on; p.save_stage = 0;
         p.job = 0x10000u + sv.serial; p.job_phase = p.job_done = p.job_total = p.job_commit = 0;
         p.bar = p.bar_step = p.bar_since = 0; p.request = m::request_none; p.line = m::line_none;
@@ -177,7 +245,7 @@ uint32_t save_follow() {
         return 1;
     case sv_check:
         if (p.request == m::request_cancel) return fail("Cancelled. Nothing was saved.");
-        return check();
+        return sv.mode != mode_save ? safe_check() : check();
     case sv_build:
         return building();
     case sv_stamp:
@@ -202,7 +270,8 @@ uint32_t save_follow() {
             sv.stage = sv_record;                // its content is installed already
             return 1;
         }
-        if (usb_service::content_switch(sv.target) != s_ok) return fail("Save failed: installing content could not start.");
+        if (usb_service::content_switch(sv.target) != s_ok)
+            return fail(sv.mode != mode_save ? "Installing content could not start." : "Save failed: installing content could not start.");
         usb_service::JobView v;
         usb_service::job_view(v);
         sv.job = v.id; sv.stage = sv_switching;
@@ -218,10 +287,21 @@ uint32_t save_follow() {
             return moved(phase);
         }
         if (v.id == sv.job && v.state == 2 && v.phase == 8) { sv.stage = sv_record; return 1; }
-        return fail("Installing content failed: Continue and Save again to repair it.");
+        return fail(sv.mode == mode_safe ? "Installing content failed: Boot without mods again repairs it." :
+                    sv.mode == mode_restore ? "Installing content failed: Restore Open-XY again repairs it." :
+                    "Installing content failed: Continue and Save again to repair it.");
     }
     case sv_record: {
         if (usb_service::page_busy()) return moved(false);
+        if (sv.mode != mode_save) {              // the record as saved, safe= flipped (switch_next), the default the target
+            if (usb_service::config_store(reinterpret_cast<const char*>(io.buffer), sv.length, sv.target) != s_ok)
+                return fail("Saving the settings failed: storage is busy.");
+            usb_service::JobView v;
+            usb_service::job_view(v);
+            sv.job = v.id; sv.stage = sv_recording;
+            p.save_stage = 2; p.job_done = p.job_total = 0;
+            return 1;
+        }
         xg::Record r;
         xg::clear(r, xg::present);
         copy(r.base, sv.base, sizeof(r.base)); copy(r.profile, p.profile, sizeof(r.profile));
@@ -257,7 +337,11 @@ uint32_t save_follow() {
         usb_service::JobView v;
         usb_service::job_view(v);
         if (v.state == 1 && v.id == sv.job) return moved(false);
-        if (v.id == sv.job && v.state == 2 && v.phase == 8) { sv.stage = sv_boot; return 1; }
+        if (v.id == sv.job && v.state == 2 && v.phase == 8) {
+            sv.stage = sv_boot;
+            rec.safe = sv.mode == mode_safe;     // as written (a save's: safe=0)
+            return 1;
+        }
         return fail("Saving the settings failed: the previous setup is kept.");
     }
     default:

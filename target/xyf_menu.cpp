@@ -7,20 +7,8 @@ uint32_t step(uint32_t value, uint32_t count, bool forward) {
     if (forward) return value + 1 >= count ? 0 : value + 1;
     return value == 0 ? count - 1 : value - 1;
 }
-uint32_t library_count(const State& s) { return s.catalog ? s.catalog->count : 0; }
-// The library's next row, past the hidden (spare mods) entry.
-uint32_t library_step(const State& s, uint32_t value, bool forward) {
-    const uint32_t count = library_count(s);
-    uint32_t next = step(value, count, forward);
-    if (next == s.hidden && count > 1) next = step(next, count, forward);
-    return next;
-}
 bool usable(const State& s, uint32_t i) { return s.catalog && i < s.catalog->count && (s.catalog->items[i].flags & 1); }
-// Listed with its os.ldr but its content not installed: SHIFT+PLAY installs it (set default); PLAY's
-// boot once is answered by stage 1 ("make it the default to install its content").
-bool selectable(const State& s, uint32_t i) {
-    return usable(s, i) || (s.catalog && i < s.catalog->count && (s.catalog->items[i].flags & catalog::flag_content_missing));
-}
+const char no_setup[] = "No mods are saved: the OP-XY already boots without them.";
 bool storage_down(const State& s) { return s.storage != storage_unknown && s.storage != storage_ready; }
 }
 
@@ -31,11 +19,9 @@ bool needs_storage(const State& s, uint32_t item) {
 void start(State& s, const catalog::Catalog* catalog, bool has_builtin) {
     for (uint32_t i = 0; i != sizeof(s); ++i) reinterpret_cast<char*>(&s)[i] = 0;   // 193: storage unknown (the caller sets it)
     s.catalog = catalog;
-    s.open_xy = s.hidden = ~0u;
     bool any = has_builtin;
-    for (uint32_t i = 0; !any && i != library_count(s); ++i) any = usable(s, i);
+    for (uint32_t i = 0; !any && catalog && i != catalog->count; ++i) any = usable(s, i);
     s.screen = any ? Screen::main : Screen::home_empty;
-    if (catalog && catalog->default_index < catalog->count) s.library_selected = catalog->default_index;
 }
 
 const char* main_label(const State& s, uint32_t item) {
@@ -49,12 +35,16 @@ const char* main_label(const State& s, uint32_t item) {
         if (s.catalog && s.catalog->default_index < s.catalog->count) return s.catalog->items[s.catalog->default_index].name;
         if (s.storage == storage_ready) return "Continue (no default firmware set)";
         return "Continue (built-in OP-XY)";                                // offline modes: the embedded stock OS
-    case item_library: return "Firmware library";
+    case item_safe: return s.safe_label ? s.safe_label : "Boot without mods";
     case item_uninstall: return "Uninstall XY Forever";
     case item_mods: return "Mods";
     case item_settings: return "Settings";
     default: return "";
     }
+}
+
+const char* main_note(const State& s) {     // a storage line while storage is down; the safe row's while it stands
+    return s.note && (storage_down(s) || (s.note == no_setup && !s.safe_label)) ? s.note : 0;
 }
 
 Action key(State& s, uint32_t k, bool pressed) {
@@ -89,24 +79,25 @@ Action key(State& s, uint32_t k, bool pressed) {
         s.note = 0;
         switch (s.main_selected) {
         case item_continue:                       // pending changes: the Save dialog first
+            if (s.undo_offer) return Action::undo;   // the status line's offer comes first
             if (!s.pending) return Action::continue_boot;
             s.screen = Screen::confirm_save;
             s.save_selected = s.save_blocked ? uint32_t(choice_discard) : uint32_t(choice_save);
             return Action::redraw;
-        case item_library: s.screen = Screen::library; return Action::redraw;
+        case item_safe:                           // Restore at once; safe mode asks first (Cancel highlighted)
+            if (!s.safe_label) { s.note = no_setup; return Action::redraw; }
+            if (s.safe_restore) return Action::restore;
+            s.screen = Screen::confirm_safe; s.confirm_accept = false;
+            return Action::redraw;
         case item_uninstall: s.screen = Screen::confirm_uninstall; s.confirm_accept = false; return Action::redraw;
         case item_mods: return Action::open_mods;
         default: s.screen = Screen::settings; s.settings_note = 0; return Action::redraw;
         }
-    case Screen::library: {
-        const uint32_t count = library_count(s);
-        if (minus || plus) { s.library_selected = library_step(s, s.library_selected, plus); return Action::redraw; }
+    case Screen::confirm_safe:                    // Cancel / Boot
+        if (minus || plus) { s.confirm_accept = !s.confirm_accept; return Action::redraw; }
         if (!play) return Action::none;
-        if (!count) { s.screen = Screen::main; return Action::redraw; }       // empty list: PLAY goes back
-        if (!selectable(s, s.library_selected)) return Action::none;         // missing os.ldr: nothing to boot
-        s.entry = s.library_selected;
-        return s.shift_held ? Action::set_default : Action::boot_once;
-    }
+        s.screen = Screen::main;
+        return s.confirm_accept ? Action::safe_mode : Action::redraw;
     case Screen::info:
         if (play) { s.screen = s.info_return; return Action::redraw; }
         return Action::none;

@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT))
 import ui_preview as P  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 
-NONE, REDRAW, CONTINUE, BOOT_ONCE, SET_DEFAULT, UNINSTALL = range(6)
+NONE, REDRAW, CONTINUE, SAFE_MODE, RESTORE, UNINSTALL = range(6)
 CHANGE_SETTING, PICK_SETTING = 9, 10                            # xyf_menu Action (build 188: no mtp_mode)
 
 
@@ -32,13 +32,15 @@ class UiFlowTest(unittest.TestCase):
 
     def test_every_screen_draws_and_actions_flow(self):
         self.lib.flow_start(1); self.drawn()
-        self.assertEqual(self.lib.flow_key(54), REDRAW)               # -> library row
-        self.assertEqual(self.lib.flow_key(51), REDRAW); self.drawn()  # library
-        self.assertEqual(self.lib.flow_key(51), BOOT_ONCE)
-        self.lib.flow_hold(55, 1)
-        self.assertEqual(self.lib.flow_key(51), SET_DEFAULT)
-        self.lib.flow_hold(55, 0)
-        self.assertEqual(self.lib.flow_key(52), REDRAW)               # stop: back
+        self.assertEqual(self.lib.flow_key(54), REDRAW)               # -> the safe-mode row
+        self.assertEqual(self.lib.flow_key(51), REDRAW); self.drawn()  # no setup saved: the line says why
+        self.lib.flow_safe(b'Boot without mods', 0)
+        self.assertEqual(self.lib.flow_key(51), REDRAW); self.drawn()  # its dialog
+        self.lib.flow_key(54)
+        self.assertEqual(self.lib.flow_key(51), SAFE_MODE)
+        self.lib.flow_safe(b'Restore Open-XY (2 mods)', 1); self.drawn()
+        self.assertEqual(self.lib.flow_key(51), RESTORE)
+        self.lib.flow_safe(b'', 0)
         for _ in range(2): self.lib.flow_key(54)                       # Mods, Uninstall (188: no MTP row)
         self.assertEqual(self.lib.flow_key(51), REDRAW); self.drawn()  # confirm
         self.lib.flow_key(54)

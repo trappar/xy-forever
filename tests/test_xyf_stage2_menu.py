@@ -100,20 +100,21 @@ class Stage2MenuProgramTest(unittest.TestCase):
         self.assertEqual(p.run(abi=1)[:2], (1, 0))                  # exit_menu: stage 1 keeps its own menu
         self.assertEqual(p.run(abi=3)[:2], (1, 0))
 
-    def test_continue_boot_once_and_set_default_requests(self):
+    def test_continue_uninstall_and_mods_requests(self):
         p = self.fresh()
         exit, frames, _ = p.run(press(PLAY))                       # main row 0: Continue
         self.assertEqual(exit, 0)
         self.assertGreaterEqual(frames, 1)
-        p = self.fresh()                                             # Library -> entry 1 -> PLAY: boot once
-        self.assertEqual(p.run(press(PLUS) + press(PLAY) + press(PLUS) + press(PLAY))[0], 2 | 1 << 8)
-        p = self.fresh()                                             # SHIFT+PLAY on entry 2: set default
-        keys = press(PLUS) + press(PLAY) + press(PLUS) + press(PLUS) + [SHIFT | 1 << 8] + press(PLAY)
-        self.assertEqual(p.run(keys)[0], 3 | 2 << 8)
+        # The safe-mode row (no Firmware library page, no boot once or set default from the menu): no saved setup
+        # here, PLAY (SHIFT too) only shows why; nothing is requested until the idle Continue.
+        exit, frames, ms = self.fresh().run(press(PLUS) + press(PLAY) + [SHIFT | 1 << 8] + press(PLAY))
+        self.assertEqual(exit, 0)
+        self.assertGreaterEqual(frames, 2)
+        self.assertGreater(ms, 60000)
         p = self.fresh()                                             # Uninstall row -> confirm -> accept
         self.assertEqual(p.run(press(MINUS) * 2 + press(PLAY) + press(PLUS) + press(PLAY))[0], 5)   # Uninstall (past Settings)
         p = self.fresh()                                             # Mods -> the stage-1 menu runs the page
-        self.assertEqual(p.run(press(PLUS) * 2 + press(PLAY))[0], 1)  # right below Firmware library
+        self.assertEqual(p.run(press(PLUS) * 2 + press(PLAY))[0], 1)  # right below the safe-mode row
 
     def test_link_loss_and_idle_return_continue(self):
         p = self.fresh()
@@ -123,23 +124,22 @@ class Stage2MenuProgramTest(unittest.TestCase):
         self.assertGreater(ms, 60000)
         self.assertLess(ms, 60100)
 
-    def test_invalid_or_withheld_catalog_means_no_library(self):
+    def test_invalid_or_withheld_catalog_keeps_the_rows(self):
         bad = bytearray(LIBRARY); bad[-1] ^= 1
         keys = press(PLUS) + press(PLAY) + press(PLAY) + press(PLUS) * 2 + press(PLAY) + press(PLUS) + press(PLAY)
         for blob, features in ((bytes(bad), F_CATALOG), (LIBRARY, 0), (None, F_CATALOG), (LIBRARY[:-1], F_CATALOG)):
-            # Empty library: PLAY goes back to main, PLUS twice moves to Uninstall (188: no MTP row), accepted:
-            # request 5 (not a boot of entry 0).
+            # The safe-mode row's PLAY requests nothing, PLUS twice moves to Uninstall (188: no MTP row), accepted:
+            # request 5.
             self.assertEqual(self.fresh().run(keys, blob=blob, features=features | F_UNINSTALL)[0], 5, (features, blob and len(blob)))
-        self.assertEqual(self.fresh().run(press(PLUS) + press(PLAY) + press(PLAY))[0], 2)   # with it: boot once 0
 
-    def test_reentry_keeps_place_shows_note_and_clears_shift(self):
+    def test_reentry_keeps_place_and_shows_note(self):
         p = self.fresh()
-        keys = press(PLUS) + press(PLAY) + press(PLUS) + [SHIFT | 1 << 8] + press(PLAY)
-        self.assertEqual(p.run(keys)[0], 3 | 1 << 8)                # set default 1 (SHIFT left held)
-        # Stage 1 answered with a note: main page, menu row and library row kept,
-        # SHIFT cleared, so PLAY, PLAY now boots entry 1 once.
-        exit, frames, _ = p.run(press(PLAY) + press(PLAY), note='Not available in this build.')
-        self.assertEqual(exit, 2 | 1 << 8)
+        keys = press(MINUS) * 2 + press(PLAY) + press(PLUS) + [SHIFT | 1 << 8] + press(PLAY)
+        self.assertEqual(p.run(keys, features=F_CATALOG | F_UNINSTALL)[0], 5)   # Uninstall (SHIFT left held)
+        # Stage 1 answered with a note: main page, menu row kept, so PLAY, PLUS, PLAY asks again.
+        exit, frames, _ = p.run(press(PLAY) + press(PLUS) + press(PLAY), note='Not available in this build.',
+                                features=F_CATALOG | F_UNINSTALL)
+        self.assertEqual(exit, 5)
         self.assertGreaterEqual(frames, 2)
 
     def test_draws_only_through_services_and_never_writes_outside_the_frame(self):

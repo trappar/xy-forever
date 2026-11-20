@@ -35,13 +35,18 @@ uint32_t pump(bool shown);
 // The longest pump pass this boot (ms).
 uint32_t longest_ms();
 // The saved configuration (xyf_config.hpp; read once the menu runs) and the save sequence. menu_state:
-// the menu's view of it (pending, save_blocked, save_note, continue_label, open_xy, hidden; memory and
-// memory_pending, the Mod memory row); true when the home row's text or the Mod memory row changed. save_begin: the Save dialog's Save (the page then shows the sequence's progress;
+// the menu's view of it (pending, save_blocked, save_note, continue_label, safe_label, safe_restore; memory and
+// memory_pending, the Mod memory row); true when the home row's text, the safe-mode row or the Mod memory row
+// changed. save_begin: the Save dialog's Save (the page then shows the sequence's progress;
 // STOP cancels while the build runs); save_state: save_running, then save_boot (the default is the saved
 // configuration: boot it) or save_failed (save_reason; the changes stay pending); save_done: taken.
+// safe_begin(false): "Boot without mods" (content to the base, the default the base, the record kept with
+// safe=1); safe_begin(true): "Restore Open-XY" (content to the saved slot, a save's build only when it no longer
+// holds what built= says, the default the slot, safe=0). Both end as a save does: save_boot, or save_failed.
 enum SaveState : uint32_t { save_idle = 0, save_running, save_boot, save_failed };
 bool menu_state(xyf::menu::State& app);
 void save_begin();
+void safe_begin(bool restore);
 uint32_t save_state();
 const char* save_reason();
 void save_done();

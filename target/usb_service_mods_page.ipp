@@ -51,12 +51,11 @@ uint32_t job_stop() {                                                   // as jo
     return P::s_ok;
 }
 #if defined(XYF_CONTENT_SWITCH)
-const char* content_default(uint32_t entry) {                            // the menu's SHIFT+PLAY
-    const xyf::catalog::Catalog* catalog = xyf_boot::catalog();
-    if (!catalog || entry >= catalog->count || (!(catalog->items[entry].flags & xyf::catalog::flag_content_missing) && !content_pending(catalog->items[entry].id)))
-        return 0;
+bool content_offer() { return recovery_offer == 1; }
+const char* content_undo() {                                             // the menu's PLAY on the first row
+    if (recovery_offer != 1) return 0;
     if (!menu_usb) return "Content switch: needs USB on in the menu.";
-    const U32 code = content_begin(catalog->items[entry].id, true);
+    const U32 code = content_begin(recovery_record.previous, true);    // the previous entry back, as the default
     return code == P::s_ok ? "Installing content..." : code == P::s_busy ? "Busy: a job is running." :
            code == P::s_link ? "Storage link lost." : "Content switch: could not start.";
 }
@@ -69,7 +68,7 @@ const char* content_line() {
     if (!recovery_offer) offer_shown = 0;
     if (recovery_offer && offer_shown != recovery_offer && !job_running() && !closing) {
         const char* message = recovery_offer == 3 ? "Content journal: newer version; kept unchanged." :
-                              recovery_offer == 2 ? "Content journal invalid; kept unchanged." : "Source missing. Set default to undo: ";
+                              recovery_offer == 2 ? "Content journal invalid; kept unchanged." : "Source missing. PLAY on the first row undoes: ";
         content_text(c, message, recovery_offer == 1 ? recovery_record.previous : "");
         offer_shown = recovery_offer;
         return c.line;

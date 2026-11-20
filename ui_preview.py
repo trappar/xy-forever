@@ -70,8 +70,9 @@ def main():
         lib.ui_render_home(fb, 0); png(out / 'home-empty.png', pixels(fb))
         # Menu flow driven through the device state machine and view.
         lib.flow_start(1); lib.flow_draw(fb, b''); png(out / 'flow-1-main.png', pixels(fb))
-        lib.flow_key(54); lib.flow_key(51); lib.flow_draw(fb, b''); png(out / 'flow-2-library.png', pixels(fb))
-        lib.flow_key(52); lib.flow_key(54); lib.flow_key(54); lib.flow_key(54); lib.flow_key(51)   # Uninstall
+        lib.flow_safe(b'Boot without mods', 0)
+        lib.flow_key(54); lib.flow_key(51); lib.flow_draw(fb, b''); png(out / 'flow-2-safe-mode.png', pixels(fb))
+        lib.flow_key(52); lib.flow_key(54); lib.flow_key(54); lib.flow_key(51)   # Uninstall
         lib.flow_draw(fb, b''); png(out / 'flow-3-confirm.png', pixels(fb))
         # #21: the Settings page (Mod memory, Menu at power-on, USB mode, About) and the About page.
         lib.flow_start(1); lib.flow_settings(2, 0, b''); lib.flow_settings_rows(1, 0, 0)
@@ -97,7 +98,7 @@ def stage2_previews(tmp, out):
     out.mkdir(parents=True, exist_ok=True)
     p = Stage2Program(build_stage2(tmp, 'preview'))
     p.run(lost=0); png(out / 'stage2-1-main.png', pixels(p.fb))
-    p.run(press(PLUS) + press(PLAY) + press(PLUS), lost=6); png(out / 'stage2-2-library.png', pixels(p.fb))
+    p.run(press(PLUS) + press(PLAY), lost=4); png(out / 'stage2-2-safe-row.png', pixels(p.fb))   # nothing saved: why
     p.run(lost=0, note='Not available in this build.'); png(out / 'stage2-3-note.png', pixels(p.fb))
     q = Stage2Program(build_stage2(tmp, 'preview-empty'))
     q.run(lost=0, blob=None); png(out / 'stage2-4-no-library.png', pixels(q.fb))

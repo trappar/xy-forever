@@ -418,8 +418,8 @@ void set_default(uint8_t seq, const uint8_t* payload, U32 length) {
 #endif
 
 // LIBRARY_BOOT: payload = library id NUL + 32-byte confirmation (the SHA-256 of the id
-// bytes). As PLAY on that entry in the Firmware library menu (key_ui.cpp: xyf_boot::choose of its
-// catalog index): no boot over a lost link (link); the entry must be in B's catalog (not_found;
+// bytes). A boot once of that entry (key_ui.cpp: xyf_boot::choose of its catalog index, as home_pump
+// leaves the menu): no boot over a lost link (link); the entry must be in B's catalog (not_found;
 // written entries are fetched first: settle_writes) and usable, i.e. have an os.ldr, as xyf_menu's
 // usable() (state), and its content installed (no_content). Nothing is written: the default and the state slots stay. Returns the catalog
 // index + 1 to boot after the ok reply, else 0.

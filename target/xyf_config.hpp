@@ -17,6 +17,8 @@
 //   stamp=<64 hex>                     that entry's info.txt sha256= (its os.ldr) when it was built
 //   memory=standard|expanded           Mod memory (Settings): expanded, the 4 MiB layout (mods.apply flag
 //                                      bit 1); absent or anything else: standard. built= then ends " expanded".
+//   safe=0|1                           safe mode ("Boot without mods"): the base boots with its official content,
+//                                      the rest is kept for "Restore Open-XY"; absent: 0, also with no slot or mods
 //   mods=<name>,<name>,...             the mods switched on: machine folders, then ext-<id>; empty: none (last)
 // Written as config.txt.part, then (A never renames onto a file) config.txt -> config.old, .part -> config.txt,
 // config.old removed. Read: config.txt, else config.old (a cut between the renames), else no record (no mods;
@@ -28,13 +30,13 @@ static const char part_path[] = "/yaffs2/xy-forever/config.txt.part";
 static const uint32_t max_text = 2048;
 enum State : uint32_t { unread = 0, none = 1, present = 2, failed = 3 };
 struct Record {
-    uint32_t state, count, unverified, expanded;
+    uint32_t state, count, unverified, expanded, safe;
     char base[32], profile[32], generation[32], built[100], slot[8], stamp[65];
 };
 static inline bool same(const char* a, const char* b) { while (*a && *a == *b) ++a, ++b; return *a == *b; }
 static inline bool same_n(const char* a, const char* b, uint32_t n) { uint32_t i = 0; while (i != n && a[i] == b[i]) ++i; return i == n; }
 static inline void clear(Record& r, uint32_t state) {
-    r.state = state; r.count = r.unverified = r.expanded = 0;
+    r.state = state; r.count = r.unverified = r.expanded = r.safe = 0;
     r.base[0] = r.profile[0] = r.generation[0] = r.built[0] = r.slot[0] = r.stamp[0] = 0;
 }
 // The value of key on its own line (key=value), or 0; length in n.
@@ -69,9 +71,12 @@ static inline void parse(const char* t, uint32_t length, Record& r) {
     r.unverified = u && n == 1 && u[0] == '1';
     const char* e = value(t, length, "memory", n);
     r.expanded = e && n == 8 && same_n(e, "expanded", 8);
+    const char* s = value(t, length, "safe", n);
+    r.safe = s && n == 1 && s[0] == '1';
     const char* m = value(t, length, "mods", n);
     for (uint32_t i = 0; m && i != n; ++i) if ((i == 0 || m[i - 1] == ',') && m[i] != ',') ++r.count;
     if (!same(r.slot, "mods-a") && !same(r.slot, "mods-b")) r.slot[0] = r.built[0] = r.stamp[0] = 0;
+    if (!r.slot[0] || !r.count) r.safe = 0;              // nothing to restore
 }
 // Is name (an extension with its "ext-" prefix) in the record's mods= line?
 static inline bool listed(const char* t, uint32_t length, const char* prefix, const char* name) {
@@ -138,7 +143,7 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
     put(o, "\ngeneration="); put(o, r.generation); put(o, r.unverified ? "\nunverified=1" : "\nunverified=0");
     put(o, "\nbuilt="); put(o, r.built); put(o, "\nslot="); put(o, r.slot);
     put(o, "\nstamp="); put(o, r.stamp); put(o, r.expanded ? "\nmemory=expanded" : "\nmemory=standard");
-    put(o, "\nmods=");
+    put(o, r.safe ? "\nsafe=1\nmods=" : "\nsafe=0\nmods=");
     return o.ok ? uint32_t(o.at - out) : 0u;
 }
 } }

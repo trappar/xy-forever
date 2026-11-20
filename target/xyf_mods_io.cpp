@@ -329,7 +329,7 @@ bool menu_state(xyf::menu::State& a) {
     const bool listed = io.step == s_done && p.view == m::View::list, have = rec.state == xg::present;
     const uint32_t def = c ? c->default_index : ~0u, slot = have ? index_of(rec.slot) : ~0u;
     // Applied: the default is usable (its content installed) and is what the record implies (no record: any).
-    const char* implied = have ? (rec.count ? rec.slot : rec.base) : "";
+    const char* implied = have ? (rec.count && !rec.safe ? rec.slot : rec.base) : "";   // safe mode: the base
     const bool any = c && def < c->count;      // no catalog or no default: the built-in copy, nothing to apply
     const bool usable = !any || (c->items[def].flags & xyf::catalog::flag_usable);
     const bool applied = usable && (!have || (any && implied[0] && xg::same(c->items[def].id, implied)));
@@ -337,18 +337,15 @@ bool menu_state(xyf::menu::State& a) {
     a.pending = changes || !applied;
     a.save_note = listed ? m::save_refusal(p) : 0;
     a.save_blocked = a.save_note != 0;
-    a.open_xy = slot; a.hidden = ~0u;
-    if (slot != ~0u) {
-        const uint32_t other = index_of(xg::same(rec.slot, "mods-a") ? "mods-b" : "mods-a");
-        if (other != def) a.hidden = other;
-    }
     char next[sizeof(label)];
     next[0] = 0;
     if (have || changes) {
         const uint32_t n = listed ? m::chosen(p, false) + m::chosen(p, true) : rec.count;
         const uint32_t b = index_of(config_base() ? config_base() : "");
         xg::Out o = {next, next + sizeof(next) - 1, true};
-        if (n) {
+        if (rec.safe && !changes) {
+            xg::put(o, c && b < c->count ? c->items[b].name : "OP-XY"); xg::put(o, " (safe mode)");
+        } else if (n) {
             xg::put(o, "Open-XY - "); xg::put_number(o, n); xg::put(o, n == 1 ? " mod - " : " mods - ");
             xg::put(o, c && b < c->count ? c->items[b].version : "?");
         } else xg::put(o, c && b < c->count ? c->items[b].name : "OP-XY");
@@ -363,17 +360,38 @@ bool menu_state(xyf::menu::State& a) {
     bool same_text = true;
     for (uint32_t i = 0; i != sizeof(label) && same_text; ++i) { same_text = label[i] == next[i]; if (!next[i]) break; }
     if (!same_text) for (uint32_t i = 0; i != sizeof(label); ++i) label[i] = next[i];
-    return !same_text || row_moved;
+    // The safe-mode row while the saved setup has mods: "Boot without mods", or in safe mode the way back.
+    char row[sizeof(safe_text)];
+    row[0] = 0;
+    if (have && rec.count && rec.slot[0]) {
+        xg::Out o = {row, row + sizeof(row) - 1, true};
+        if (rec.safe) { xg::put(o, "Restore Open-XY ("); xg::put_number(o, rec.count); xg::put(o, rec.count == 1 ? " mod)" : " mods)"); }
+        else xg::put(o, "Boot without mods");
+        *o.at = 0;
+    }
+    a.safe_label = row[0] ? safe_text : 0;
+    a.safe_restore = have && rec.safe;
+    bool same_row = true;
+    for (uint32_t i = 0; i != sizeof(safe_text) && same_row; ++i) { same_row = safe_text[i] == row[i]; if (!row[i]) break; }
+    if (!same_row) for (uint32_t i = 0; i != sizeof(safe_text); ++i) safe_text[i] = row[i];
+    return !same_text || !same_row || row_moved;
 }
 
 void save_begin() {
     if (sv.stage != sv_idle) return;
+    sv.mode = mode_save; sv.length = 0;
     ++sv.serial;
     sv.reason[0] = 0;
     sv.stage = sv_reading;
     usb_service::save_log_begin();              // the save-time log starts at the key
     if (io.step == s_done) the_page.line = m::line_none;   // a held list: the last result line no longer applies
     open();                                     // the list and the saved toggles, unless held already
+}
+
+void safe_begin(bool restore) {
+    if (sv.stage != sv_idle) return;
+    save_begin();
+    sv.mode = restore ? mode_restore : mode_safe;
 }
 
 uint32_t save_state() {

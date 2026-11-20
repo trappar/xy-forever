@@ -12,6 +12,7 @@ import test_sim_content_switch as CS
 Switch, UNAVAILABLE, content, LIB = CS.Switch, CS.UNAVAILABLE, CS.content, CS.LIB
 
 JOURNAL = 'xy-forever/job.txt'
+OFFER = 'Source missing. PLAY on the first row undoes: '                   # usb_service content_line
 
 
 def identity(root, entry):
@@ -70,10 +71,26 @@ class Recovery(Switch, unittest.TestCase):
         (self.root / JOURNAL).write_bytes(journal)
         (self.root / LIB / target / 'info.txt').unlink()
         self.restart()
-        self.wait(lambda: 'Set default to undo: ' + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
+        self.wait(lambda: OFFER + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
         self.assertEqual((self.root / JOURNAL).read_bytes(), journal)
         self.assertEqual(self.dev.set_default(previous)[0], P.ids.S_STARTED)
         self.repaired(previous, official=True)
+
+    def test_missing_source_undone_by_play_on_the_first_row(self):
+        """With no Firmware library page, PLAY on the first row (Continue) runs the offered undo while the line
+        stands; it boots nothing."""
+        previous = self.default()
+        target = self.build(['alpha'])
+        self.switched(target)
+        (self.root / JOURNAL).write_bytes(intent(self.root, target, previous))
+        (self.root / LIB / target / 'info.txt').unlink()
+        self.restart()
+        self.wait(lambda: OFFER + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
+        for pressed in (1, 0):
+            self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', 51, pressed))[0], 0)   # PLAY on Continue
+        self.wait(lambda: 'menu: undo: Installing content...' in (self.dir / 'log.txt').read_text(), 'the undo')
+        self.repaired(previous, official=True)
+        self.assertNotIn('menu: continue', (self.dir / 'log.txt').read_text())
 
     def test_missing_source_before_any_live_change_also_undoes(self):
         previous = self.default()
@@ -82,7 +99,7 @@ class Recovery(Switch, unittest.TestCase):
         (self.root / JOURNAL).write_bytes(journal)
         (self.root / LIB / target / 'info.txt').unlink()
         self.restart()
-        self.wait(lambda: 'Set default to undo: ' + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
+        self.wait(lambda: OFFER + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
         self.assertEqual(self.dev.set_default(previous)[0], P.ids.S_STARTED)
         self.repaired(previous, official=True)
 
