@@ -137,6 +137,11 @@ A_MARKER_CALLERS = ('9stat_into', '14restore_marker', '13close_handles')
 # of #4. Changing this list needs the developer's explicit yes (docs/SAFETY.md). Allowed only through a storage_server::a_side wrapper; not
 # called yet. CRC gate: the server spans.
 A_RENAME_CALLS = {'889fa834'}
+# #6: the yaffs lookup 889fa2be find(relative, path, depth, equivalent, &parent, &notdir, &loop) on a, called only
+# from the final-link guard final_link_reaches_inbox (storage_server_marker.ipp). Admitted by the developer's
+# explicit yes (docs/SAFETY.md), that one caller only. CRC gate: the server spans (889f9300+2e00).
+A_FIND_CALLS = {'889fa2be'}
+A_FIND_CALLERS = ('24final_link_reaches_inbox',)
 # B's own timed file client (file_client.cpp; changing this list needs the
 # developer's explicit yes, docs/SAFETY.md) builds its requests with the five stock request builders (path 889f8d22, read
 # 889f6c5c, write 889f8c10, query 889f8e36, readdir 889f88ac; the partition builder 889f87d4 is a
@@ -376,7 +381,7 @@ def check_peer_spans(boot):
 
 
 def check_server_spans(boot):
-    check_spans(boot, server_spans(), 'Server', SERVER_CALLS | A_MARKER_CALLS | A_RENAME_CALLS,
+    check_spans(boot, server_spans(), 'Server', SERVER_CALLS | A_MARKER_CALLS | A_RENAME_CALLS | A_FIND_CALLS,
                 server_spans() + peer_spans())
 
 
@@ -750,7 +755,7 @@ def verify(out, stock, boot):
     targets = call_targets(listing)
     remote_calls = SERVER_CALLS | A_MARKER_CALLS
     allowed_targets = ({'040201c4', '88a346a6', '88a3477a', 'indirect'} | KEY_UI_CALLS | PEER_CALLS | STORAGE_CALLS |
-                       (remote_calls | A_RENAME_CALLS if remote_read else set()) | (USB_CALLS if usb else set()) |
+                       (remote_calls | A_RENAME_CALLS | A_FIND_CALLS if remote_read else set()) | (USB_CALLS if usb else set()) |
                        (FILE_CLIENT_CALLS if usb else set()) |
                        (MTP_CALLS if mtp else set()) |
                        (OTP_CALLS if mode in TFW_CHECK_MODES else set()) |
@@ -807,6 +812,7 @@ def verify(out, stock, boot):
     check_scoped_calls(raw, A_MARKER_CALLS - SERVER_CALLS, '14storage_server6a_side', A_MARKER_CALLERS, 'Marker check')
     check_scoped_calls(raw, {'889f285a'}, '14storage_server6a_side', A_MARKER_CALLERS, 'Leftover close')
     check_scoped_calls(raw, A_RENAME_CALLS, '14storage_server6a_side', ('14storage_server',), 'Rename')
+    check_scoped_calls(raw, A_FIND_CALLS, '14storage_server6a_side', A_FIND_CALLERS, 'Final-link lookup')
     check_scoped_calls(raw, FILE_CLIENT_CALLS, '11file_client', ('11file_client',), 'File client')
     if usb:
         check_client_spans(boot)
@@ -820,6 +826,7 @@ def verify(out, stock, boot):
         check_construct_spans(boot)
         check_server_spans(boot)
         require(remote_calls <= targets, 'Remote read lacks its stock calls: ' + ', '.join(sorted(remote_calls - targets)))
+        require(A_FIND_CALLS <= targets, 'Final-link guard lacks its stock lookup')
         for needed in ('begin_fresh', 'construct_fresh', 'storage_server7install',
                        'Stock121PeerSession5serve', 'Stock121PeerSession5reply'):
             require(has(needed), 'Remote read lacks ' + needed)

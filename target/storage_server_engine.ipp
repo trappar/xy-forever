@@ -67,11 +67,13 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
 #if defined(XYF_USB_FILE_WRITE)
     // B's write area on A too, outside the run entry (diag.engine_test, MTP): open for
     // writing, unlink, mkdir and rmdir only where write_root passes and no link reaches the marker or the inbox
-    // (reaches_protected; rename: rename_now), whatever B checked.
-    const bool change = (action == file_engine::run_open && handle) ||
-                        (action == file_engine::run_path && (op == 0x25u || op == 0x26u || op == 0x27u));
+    // (reaches_protected; rename: rename_now), whatever B checked. A writable open also follows a final link
+    // (final_link_reaches_inbox); unlink, mkdir and rmdir act on the name itself.
+    const bool writing = action == file_engine::run_open && handle;
+    const bool change = writing || (action == file_engine::run_path && (op == 0x25u || op == 0x26u || op == 0x27u));
     // The run entry also enforces object protection: its narrower lexical area can contain directory aliases.
-    if (change && ((engine != entry_run && !write_root(path_copy)) || reaches_protected(path_copy))) {
+    if (change && ((engine != entry_run && !write_root(path_copy)) || reaches_protected(path_copy) ||
+                   (writing && inbox_exists() && final_link_reaches_inbox(path_copy)))) {
         session.reply(request, 0xffffffffu, error_access); ++r.refused; note(op, file_engine::refuse_outside_path, 0xfff6u);
         return;
     }

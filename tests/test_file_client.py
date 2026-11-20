@@ -19,12 +19,15 @@ from xy_forever.paths import STOCK_121  # noqa: E402
 
 APPROVED_B = {'889f8d22', '889f6c5c', '889f8c10', '889f8e36', '889f88ac'}   # changes need the developer's explicit yes
 APPROVED_A = {'889fa834'}
+APPROVED_A_FIND = {'889fa2be'}                 # #6: the final-link guard's lookup, that one caller only
 
 
 class AllowlistTest(unittest.TestCase):
     def test_exactly_the_approved_calls(self):
         self.assertEqual(B.FILE_CLIENT_CALLS, APPROVED_B)
         self.assertEqual(B.A_RENAME_CALLS, APPROVED_A)
+        self.assertEqual((B.A_FIND_CALLS, B.A_FIND_CALLERS), (APPROVED_A_FIND, ('24final_link_reaches_inbox',)))
+        self.assertFalse(APPROVED_A_FIND & B.FORBIDDEN_TARGETS)
         self.assertFalse((APPROVED_A | APPROVED_B) & B.FORBIDDEN_TARGETS)
         self.assertLessEqual({'889f869e', '889f7b12'}, B.FORBIDDEN_TARGETS)   # the unbounded stock RPC
 
@@ -46,6 +49,7 @@ class AllowlistTest(unittest.TestCase):
         src = (ROOT / 'xyf_build.py').read_text()
         for line in ("check_scoped_calls(raw, FILE_CLIENT_CALLS, '11file_client', ('11file_client',), 'File client')",
                      "check_scoped_calls(raw, A_RENAME_CALLS, '14storage_server6a_side', ('14storage_server',), 'Rename')",
+                     "check_scoped_calls(raw, A_FIND_CALLS, '14storage_server6a_side', A_FIND_CALLERS, 'Final-link lookup')",
                      "check_scoped_calls(raw, A_MARKER_CALLS - SERVER_CALLS, '14storage_server6a_side', A_MARKER_CALLERS,"):
             self.assertIn(line, src)
         server = ''.join((ROOT / 'target' / n).read_text() for n in ('storage_server.cpp', 'storage_server_engine.ipp',
