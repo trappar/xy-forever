@@ -108,8 +108,8 @@ enum : U16 {
     r_specification_by_group_unsupported = 0xa807, r_specification_by_depth_unsupported = 0xa808
 };
 enum : U16 { f_undefined = 0x3000, f_association = 0x3001 };
-// The write rule (pure): below /yaffs2/, first name not "upgrade", not the marker /yaffs2/bootloader.dev, not
-// (#65) the Settings record /yaffs2/xy-forever/settings.txt or settings.old (ASCII case ignored).
+// The write rule (pure): below /yaffs2/, first name not "upgrade", not the marker /yaffs2/bootloader.dev
+// (ASCII case ignored).
 bool writable(const char* path);
 // The depth rule (#124, target/file_engine.hpp): a new folder at most 6 names below /yaffs2, a new
 // file at most 7 (deeper hangs the stock dev-menu MTP, then Track 5). SendObjectInfo answers Access_Denied

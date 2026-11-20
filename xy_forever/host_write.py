@@ -10,23 +10,19 @@ from xy_forever import usb_proto as P
 
 
 # put/rm/mkdir/mv/cp write only here (the device checks again: target/file_engine.hpp; xyf_host.py, clients/ts inWriteArea).
-AREA_TEXT = 'under /yaffs2/, never bootloader.dev, upgrade/, xy-forever/settings.txt or settings.old'
-WRITE_ROOTS = ('/yaffs2/',)       # since 1.13: all of /yaffs2 but the names below
-# #65: the Settings record (Confirm on device) is changed only on the device.
-SETTINGS_FILES = ('settings.txt', 'settings.old')
+AREA_TEXT = 'under /yaffs2/, never bootloader.dev or upgrade/'
+WRITE_ROOTS = ('/yaffs2/',)       # since 1.13: all of /yaffs2 but the two below
 
 
 def in_write_area(path):
     """The device's write area (since 1.13): below /yaffs2/, no empty, '.' or '..' part, never
-    /yaffs2/bootloader.dev nor /yaffs2/upgrade or below it, nor (#65) /yaffs2/xy-forever/settings.txt or
-    settings.old (ASCII case ignored). The device checks again."""
+    /yaffs2/bootloader.dev nor /yaffs2/upgrade or below it (ASCII case ignored). The device checks again."""
     root = next((r for r in WRITE_ROOTS if path.startswith(r)), None)
     rest = path[len(root):].split('/') if root else []
     if not rest or not all(p and p not in ('.', '..') for p in rest):
         return False
-    low = [p.lower() for p in rest]
-    settings = len(low) == 2 and low[0] == 'xy-forever' and low[1] in SETTINGS_FILES
-    return low[0] != 'upgrade' and not (len(low) == 1 and low[0] == 'bootloader.dev') and not settings
+    first = rest[0].lower()
+    return first != 'upgrade' and not (len(rest) == 1 and first == 'bootloader.dev')
 
 
 def timeout_of(kind):

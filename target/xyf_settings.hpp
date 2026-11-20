@@ -21,8 +21,8 @@
 // No record (absent or unreadable): the defaults, confirm=1 (#56: on); the simulator and tests seed confirm=0.
 // Readers: B's menu (usb_service settings_load, through A) and A at each check of the default (file_boot a_power_on:
 // settings.txt, else settings.old; bounded, read-only), whose answer tells B to open the menu without PLAY.
-// The confirm setting changes only on the device, never over USB: the host's file commands and MTP refuse
-// settings.txt and settings.old (file_engine::settings_record; the device's own save is not a host command).
+// No USB command changes the confirm setting, only the Settings row. File transfers (MTP, the serial file commands)
+// stay open: they may replace or delete settings.txt like any file (the gate covers commands, not files).
 namespace xyf { namespace settings {
 static const char path[] = "/yaffs2/xy-forever/settings.txt";
 static const char old_path[] = "/yaffs2/xy-forever/settings.old";

@@ -425,19 +425,6 @@ class FileEngineTest(unittest.TestCase):
             self.assertEqual(self.request(PATH, 0x29, 0, BUFFER, '/fat32/x', 1, *state), 'refuse_outside_path')
 
 
-    def test_settings_record(self):
-        """#65: the Settings record (Confirm on device), which the host's file commands and MTP never change; the
-        engine's own policy allows it (the device's Settings save replaces it through the engine)."""
-        record = ['/yaffs2/xy-forever/settings.txt', '/yaffs2/xy-forever/settings.old', '/yaffs2//xy-forever//settings.txt/',
-                  '/yaffs2/XY-Forever/Settings.TXT', '/yaffs2/xy-forever/SETTINGS.OLD']
-        other = ['/yaffs2/xy-forever/settings.txt.part', '/yaffs2/xy-forever', '/yaffs2/settings.txt',
-                 '/yaffs2/xy-forever/settings.txt/x', '/yaffs2/a/xy-forever/settings.txt', '/yaffs2/xy-forever/settings.tx',
-                 '/yaffs2/xy-forever/x/settings.txt', '/yaffs2/xy-forever/../xy-forever/settings.txt', '/fat32/xy-forever/settings.txt']
-        for path in record + other:
-            with self.subTest(path=path):
-                self.assertEqual(bool(self.lib.engine_settings_record(raw(path))), path in record)
-        self.assertEqual(self.decide('write', record[0]), 'allow')
-
     def test_upload_name_and_size(self):
         """#4: an upload's temporary file name, tmp/put-<size>-<tag> (8 lowercase hex digits each)."""
         lib = self.lib
@@ -628,7 +615,7 @@ class FileEngineWiringTest(unittest.TestCase):
         self.assertLess(listing.index('file_engine::decide_engine(file_engine::op_list, path) != file_engine::allow'),
                         listing.index('mount_ready(mounted)'))
         change = self.body(self.usb, 'void file_change(')
-        self.assertLess(change.index('!storage_server::valid_change_path(path, policy) || file_engine::settings_record(path))'),
+        self.assertLess(change.index('!storage_server::valid_change_path(path, policy)) code = P::s_refused;'),
                         change.index('enter_writes()'))                     # the write area, then the policy
         self.assertIn('return xyf::usbp::s_refused;', read[check:check + 200])
         write = self.body(self.server, 'bool valid_change_path(')
@@ -638,7 +625,7 @@ class FileEngineWiringTest(unittest.TestCase):
         cw = self.body(client, 'uint32_t open_write(')
         self.assertLess(cw.index('if (!storage_server::valid_write_path(path)'), cw.index('mount()'))
         fw = self.body(self.usb, 'void file_write(uint8_t seq')
-        self.assertLess(fw.index('valid_write_path(path) || file_engine::settings_record(path)) code = P::s_refused;'),
+        self.assertLess(fw.index('storage_server::valid_write_path(path)) code = P::s_refused;'),
                         fw.index('enter_writes()'))
         self.assertNotIn('stock<0x889f', self.body(self.usb, 'bool mtp_do(U32 n, MtpSelfTest& t, uint8_t* out)'))
 

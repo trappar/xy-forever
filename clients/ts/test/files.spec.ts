@@ -88,8 +88,8 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
   }, 120_000);
 
   test('changes outside the write area: refused here with the reason, nothing sent (nothing staged)', async () => {
-    // Since 1.13 all of /yaffs2 is writable by hand except bootloader.dev, anything in upgrade/ and (#65) xy-forever/settings.* (inWriteArea).
-    const roots = 'the OP-XY changes files only under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade or /yaffs2/xy-forever/settings.txt or /yaffs2/xy-forever/settings.old (or inside it), ' +
+    // Since 1.13 all of /yaffs2 is writable by hand except bootloader.dev and anything in upgrade/ (inWriteArea).
+    const roots = 'the OP-XY changes files only under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade (or inside it), ' +
       'at most 6 folders deep';
     const call = vi.spyOn(client, 'call');
     try {
@@ -98,7 +98,6 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
       expect(write.message).toBe(`file.write_staged /yaffs2/bootloader.dev: ${roots}`);
       await expect(client.writeFile('/yaffs2/BootLoader.DEV', new Uint8Array(16))).rejects.toMatchObject({ code: 'refused' });
       await expect(client.writeFile('/yaffs2/UPGRADE/x.bin', new Uint8Array(16))).rejects.toMatchObject({ code: 'refused' });
-      await expect(client.writeFile('/yaffs2/xy-forever/Settings.txt', new Uint8Array(16))).rejects.toMatchObject({ code: 'refused' });   // #65
       await expect(client.writeFile('/outside.bin', new Uint8Array(16))).rejects.toMatchObject({ code: 'refused' });
       await expect(client.writeFile(`${DIR}/../x.bin`, new Uint8Array(16))).rejects.toMatchObject({ code: 'refused' });
       await expect(client.deleteFile('/yaffs2/bootloader.dev')).rejects.toMatchObject({ code: 'refused', command: 'file.delete', status: null });
@@ -111,7 +110,7 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
       const copy = await failure(client.copyFile(`${DIR}/v.txt`, '/yaffs2/upgrade/v.txt'));
       expect(copy).toMatchObject({ code: 'refused', command: 'file.copy', status: null });
       expect(copy.message).toBe(`file.copy ${DIR}/v.txt -> /yaffs2/upgrade/v.txt: the OP-XY copies only a file it may read, to a path under ` +
-        '/yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade or /yaffs2/xy-forever/settings.txt or /yaffs2/xy-forever/settings.old (or inside it)');
+        '/yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade (or inside it)');
       expect(call).not.toHaveBeenCalled();
     } finally {
       call.mockRestore();

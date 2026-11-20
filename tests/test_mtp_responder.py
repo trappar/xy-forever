@@ -294,7 +294,7 @@ class MtpResponderTests(unittest.TestCase):
         self.assertEqual(c.transaction(0x100D, data=b"x")[0], NO_OBJECT_INFO)
 
     def test_refused_writes_outside_the_write_area(self):
-        """The write rule (since 1.13): only the marker and /yaffs2/upgrade are read only (#65: and the Settings record)."""
+        """The write rule (since 1.13): only the marker and /yaffs2/upgrade are read only."""
         self.open()
         c = self.client
         root = c.named()
@@ -312,12 +312,6 @@ class MtpResponderTests(unittest.TestCase):
         self.assertEqual(c.transaction(0x9804, root["readme.txt"], 0xDC07, data=ptp_string("bootloader.dev"))[0],
                          ACCESS_DENIED)
         self.assertEqual(c.transaction(0x9804, root["upgrade"], 0xDC07, data=ptp_string("u2"))[0], ACCESS_DENIED)
-        # #65: the Settings record (Confirm on device) changes only on the device
-        own = c.named(root["xy-forever"])
-        self.assertEqual(self.upload(root["xy-forever"], "settings.txt", b"format=1\nconfirm=0\n")[0], ACCESS_DENIED)
-        self.assertEqual(self.upload(root["xy-forever"], "Settings.OLD", b"format=1\nconfirm=0\n")[0], ACCESS_DENIED)
-        self.assertEqual(c.transaction(0x9804, own["note.txt"], 0xDC07, data=ptp_string("settings.txt"))[0], ACCESS_DENIED)
-        self.assertFalse((self.folder / "xy-forever/settings.txt").exists())
         self.assertEqual(sorted(os.listdir(self.folder)), before)
         self.assertEqual((self.folder / "bootloader.dev").read_bytes(), b"dev")
         self.assertEqual(os.listdir(self.folder / "upgrade"), ["x.tfw"])

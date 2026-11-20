@@ -377,8 +377,7 @@ class DeviceAgreesTest(unittest.TestCase):
         """A write path the check rejects is refused (a wrong length stays bad_request)."""
         us = text('target/usb_service.cpp')
         self.assertIn('    if (path_bytes + 1 + 32 != length) code = P::s_bad_request;\n'
-                      '    else if (!storage_server::valid_write_path(path) || file_engine::settings_record(path)) code = '
-                      'P::s_refused;\n', us)                                  # #65: not the Settings record either
+                      '    else if (!storage_server::valid_write_path(path)) code = P::s_refused;\n', us)
         ss = text('target/storage_server.cpp') + unit_text(ROOT / 'target/file_client.cpp')
         self.assertIn('if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;', ss)
         self.assertIn('refused', command(spec(), 'file.write_staged')['errors'])

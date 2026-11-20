@@ -1,10 +1,11 @@
 """Confirm on device (#65) in the simulator: with the setting on, boot.install, boot.uninstall, library.set_default
 and mods.apply wait for a real PLAY (control "realkey", the PSoC's keys) before they run; a real STOP or no answer
 within 30 s is `declined` with nothing done; injected keys (diag.key) never answer; other requests are busy
-meanwhile. HELLO reports the setting (confirm=). The setting changes only on the device: the Settings row does it,
-while the host's file commands refuse settings.txt and settings.old. Needs clang++ and the private stock 1.2.1
-images (skipped without them). No device access."""
-import hashlib
+meanwhile. HELLO reports the setting (confirm=). No USB command changes the setting: the Settings row does. File
+transfers stay open (the gate covers commands, not files): MTP and the serial file commands overwrite /yaffs2/os.ldr
+and delete xy-forever/, settings.txt with it, nothing asked. Needs clang++ and the private stock 1.2.1 images
+(skipped without them). No device access."""
+import os
 from pathlib import Path
 import shutil
 import struct
@@ -15,27 +16,19 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                    # noqa: E402
 from xy_forever import host_write, sim, usb_proto as P, usb_proto_ids as ids   # noqa: E402
 from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
+import test_mtp_responder as R                                            # noqa: E402
+from test_sim_mtp_session import TunnelClient                             # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 XYF = '/yaffs2/xy-forever/'
 PLAY, STOP, MINUS = 51, 52, 53                                             # xyf_menu.hpp Key
 ON = b'format=1\nconfirm=1\n'
 ENTRY = b'opxy-121-stock\0'
-
-
-def sha(data):
-    return hashlib.sha256(data).digest()
-
-
-class Host(unittest.TestCase):
-    def test_host_tools_refuse_the_settings_record_early(self):
-        for path in ('/yaffs2/xy-forever/settings.txt', '/yaffs2/xy-forever/Settings.old', '/yaffs2/XY-FOREVER/settings.txt'):
-            self.assertFalse(host_write.in_write_area(path), path)
-        for path in ('/yaffs2/xy-forever/settings.txt.part', '/yaffs2/settings.txt', '/yaffs2/xy-forever/a/settings.txt'):
-            self.assertTrue(host_write.in_write_area(path), path)
+OLD_OS, NEW_OS = b'a stand-in os.ldr', b'another stand-in os.ldr'
 
 
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
@@ -46,6 +39,8 @@ class ConfirmTest(unittest.TestCase):
         cls.out = sim.build()
         cls.seeded = sim.seed(Path(cls.tmp.name) / 'seed')
         (cls.seeded / 'xy-forever/settings.txt').write_bytes(ON)          # the product default: on
+        (cls.seeded / 'xy-forever/settings.old').write_bytes(ON)
+        (cls.seeded / 'os.ldr').write_bytes(OLD_OS)
         cls.runs = 0
 
     @classmethod
@@ -168,20 +163,8 @@ class ConfirmTest(unittest.TestCase):
         self.real(STOP)
         self.assertEqual(self.reply(sent)[0], ids.S_DECLINED)
 
-    def test_setting_changes_only_on_the_device(self):
+    def test_setting_changes_on_the_device(self):
         record = self.root / 'xy-forever/settings.txt'
-        data = b'format=1\nconfirm=0\n'
-        self.assertEqual(self.dev.stage(data), 0)
-        for path in (XYF + 'settings.txt', XYF + 'settings.old', '/yaffs2//xy-forever/Settings.TXT'):
-            self.assertEqual(self.dev.file_write(path, sha(data), timeout=10.0)[0], ids.S_REFUSED, path)
-        self.assertEqual(host_write.write_stream(self.dev, XYF + 'settings.txt', data)[0], ids.S_REFUSED)
-        path = (XYF + 'settings.txt').encode()
-        self.assertEqual(self.dev.call(ids.DELETE_FILE, path + b'\0' + sha(path))[0], ids.S_REFUSED)
-        self.assertEqual(self.dev.file_write(XYF + 'log/s.txt', sha(data), timeout=10.0)[0], 0)
-        pair = (XYF + 'log/s.txt\0' + XYF + 'settings.txt').encode()
-        self.assertEqual(self.dev.call(ids.RENAME_FILE, pair + b'\0' + sha(pair))[0], ids.S_REFUSED)
-        self.assertEqual(self.dev.call(ids.COPY_FILE, pair + b'\0' + sha(pair), timeout=10.0)[0], ids.S_REFUSED)
-        self.assertEqual(record.read_bytes(), ON)
         self.assertEqual(self.confirm_key(), '1')
         # On the device: Settings > Confirm on device > Off, saved when the page is left.
         for key in (MINUS, PLAY, MINUS, MINUS, PLAY, MINUS, PLAY, STOP):   # home: Settings; its row; Off; back
@@ -193,6 +176,39 @@ class ConfirmTest(unittest.TestCase):
         self.assertEqual(self.dev.set_default('opxy-121-stock')[0], 0)    # runs at once
         self.assertFalse(self.lines('confirm: asks: '))
 
+    def test_file_commands_stay_open(self):
+        """The serial file commands, the setting on: os.ldr overwritten, settings.txt replaced, xy-forever/ deleted
+        (file.delete and file.rmdir, deepest first), nothing asked."""
+        self.assertEqual(host_write.write_stream(self.dev, '/yaffs2/os.ldr', NEW_OS)[0], 0)
+        self.assertEqual((self.root / 'os.ldr').read_bytes(), NEW_OS)
+        self.assertEqual(host_write.write_stream(self.dev, XYF + 'settings.txt', b'format=1\nconfirm=0\n')[0], 0)
+        for folder, _, files in os.walk(self.root / 'xy-forever', topdown=False):
+            where = '/yaffs2/' + Path(folder).relative_to(self.root).as_posix()
+            for name in files:
+                self.assertEqual(self.dev.change(ids.DELETE_FILE, where + '/' + name), (0, 0), where + '/' + name)
+            self.assertEqual(self.dev.change(ids.REMOVE_DIR, where), (0, 0), where)
+        self.assertFalse((self.root / 'xy-forever').exists())
+        self.assertFalse(self.lines('confirm: asks: '))
+
+    def test_mtp_stays_open(self):
+        """MTP, the setting on: os.ldr overwritten (SendObject onto its name), xy-forever/ deleted (DeleteObject,
+        deepest first), nothing asked."""
+        c = TunnelClient(self.dev)
+        self.assertEqual(c.tunnel(0)[0], ids.S_OK)                        # diag.mtp op 0: the session (no composite)
+        self.assertEqual(c.transaction(0x1002, 1)[0], R.OK)
+        code, _, _ = c.transaction(0x100C, R.STORAGE, R.ROOT_PARENT, data=R.object_info('os.ldr', len(NEW_OS)))
+        self.assertEqual(code, R.OK, hex(code))
+        self.assertEqual(c.transaction(0x100D, data=NEW_OS)[0], R.OK)
+        self.assertEqual((self.root / 'os.ldr').read_bytes(), NEW_OS)
+
+        def remove(handle):
+            if c.info(handle)['format'] == R.FOLDER:
+                for child in c.handles(handle):
+                    remove(child)
+            self.assertEqual(c.transaction(0x100B, handle)[0], R.OK)
+        remove(c.named()['xy-forever'])
+        self.assertFalse((self.root / 'xy-forever').exists())
+        self.assertFalse(self.lines('confirm: asks: '))
 
 if __name__ == '__main__':
     unittest.main()

@@ -36,8 +36,7 @@ void file_change(uint8_t type, uint8_t seq, const uint8_t* payload, U32 length) 
     uint32_t error = 0;
     U32 code = P::s_ok;
     if (!confirmed_path(payload, length, confirmed)) code = P::s_bad_request;
-    else if (!storage_server::valid_change_path(path, policy) || file_engine::settings_record(path))
-        code = P::s_refused;                                             // the write area (#65: not settings.txt)
+    else if (!storage_server::valid_change_path(path, policy)) code = P::s_refused;   // the write area
     else if (!confirmed) code = P::s_sha;
     else if ((code = enter_writes()) == P::s_ok) {
         storage_used = 1;
@@ -64,8 +63,7 @@ void file_rename(uint8_t seq, const uint8_t* payload, U32 length) {
     xyf_core::hash::Digest d;
     if (a >= length || b + 1 + 32 != length || a + 1 > storage_server::max_path || b - a > storage_server::max_path)
         code = P::s_bad_request;
-    else if (!storage_server::valid_rename(from, to) || file_engine::settings_record(from) || file_engine::settings_record(to))
-        code = P::s_refused;
+    else if (!storage_server::valid_rename(from, to)) code = P::s_refused;
     else if (!h.update(payload, b) || !h.finish(d) || !sha_equal(d.bytes, payload + b + 1)) code = P::s_sha;
     else if ((code = enter_writes()) == P::s_ok) {
         storage_used = 1;
@@ -94,7 +92,7 @@ void file_copy(uint8_t seq, const uint8_t* payload, U32 length) {
     xyf_core::hash::Digest d;
     if (a >= length || b + 1 + 32 != length || a + 1 > storage_server::max_path || b - a > storage_server::max_path)
         code = P::s_bad_request;
-    else if (!storage_server::valid_path(from) || !storage_server::valid_write_path(to) || file_engine::settings_record(to) ||
+    else if (!storage_server::valid_path(from) || !storage_server::valid_write_path(to) ||
              file_engine::decide_engine(file_engine::op_read, from) != file_engine::allow)
         code = P::s_refused;
     else if (!h.update(payload, b) || !h.finish(d) || !sha_equal(d.bytes, payload + b + 1)) code = P::s_sha;
@@ -146,7 +144,7 @@ void file_write(uint8_t seq, const uint8_t* payload, U32 length) {
     while (path_bytes < length && payload[path_bytes]) ++path_bytes;
     const char* path = reinterpret_cast<const char*>(payload);
     if (path_bytes + 1 + 32 != length) code = P::s_bad_request;
-    else if (!storage_server::valid_write_path(path) || file_engine::settings_record(path)) code = P::s_refused;
+    else if (!storage_server::valid_write_path(path)) code = P::s_refused;
     else if (!result.put_ok || !put_expected) code = P::s_state;
     else if (!sha_equal(payload + path_bytes + 1, put_sha)) code = P::s_sha;
     // Test 066: the mount is shared. A request left past its bound (stale) is closed first

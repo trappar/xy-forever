@@ -39,7 +39,7 @@ rely on the order.
 | `stage` | 1.1 | `7340032`: `max_stage` |
 | `cmds` | 1.1 | the request types this build answers: 32 lowercase hex digits, a 128-bit number written most significant digit first, in which bit t (value 2^t) is set when type t is answered (Python: `int(cmds, 16) >> t & 1`). Derived from each command's build switch when the build is compiled; the stage-2 command's bit is set at run time while stage 2 is loaded |
 | `dev` | 1.1 | `1` when the build answers developer commands; absent otherwise |
-| `confirm` | 1.23 | Confirm on device (Settings, #65): `1` when `boot.install`, `boot.uninstall`, `library.set_default` and `mods.apply` ask on the device first, `0` when they run at once. Changed only on the device; `1` until the device has read its settings (the default when it has none) |
+| `confirm` | 1.23 | Confirm on device (Settings, #65): `1` when `boot.install`, `boot.uninstall`, `library.set_default` and `mods.apply` ask on the device first, `0` when they run at once. No USB command changes it, only the device's Settings row; file transfers (MTP, the serial file commands) stay open and can replace or delete `settings.txt` like any file; `1` until the device has read its settings (the default when it has none) |
 | `stage2` | 1.6 | the loaded stage 2's version, decimal; `0` when none is loaded (no file, or it failed a check). Always the last key |
 
 The product build answers (199 bytes):

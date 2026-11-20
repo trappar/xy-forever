@@ -60,7 +60,7 @@ describe.skipIf(!sim)(`the demo page's Files panel against the simulator${sim ? 
     expect(rows().map((r) => r.dataset['name'])).toEqual(['a-folder', 'seed.bin']);
     expect(row('seed.bin')!.cells[1]!.textContent).toBe('2.9 KiB');
     expect(row('a-folder')!.cells[1]!.textContent).toBe('-');
-    expect($('files-hint').textContent).toBe('Changes under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade or /yaffs2/xy-forever/settings.txt or /yaffs2/xy-forever/settings.old.');
+    expect($('files-hint').textContent).toBe('Changes under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade.');
 
     click('seed.bin', 'Download');
     expect(await done()).toBe('');
@@ -131,13 +131,13 @@ describe.skipIf(!sim)(`the demo page's Files panel against the simulator${sim ? 
     await commands.simWrite(sim!.root, '/yaffs2/upgrade/old.bin', btoa('old'));
     [...$('crumbs').querySelectorAll('button')].find((b) => b.textContent === 'yaffs2')!.click();
     expect(await done()).toBe('');
-    expect($('files-hint').textContent).toBe('Changes under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade or /yaffs2/xy-forever/settings.txt or /yaffs2/xy-forever/settings.old.');
+    expect($('files-hint').textContent).toBe('Changes under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade.');
     click('upgrade', 'open');
     expect(await done()).toBe('');
-    expect($('files-hint').textContent).toBe('Changes under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade or /yaffs2/xy-forever/settings.txt or /yaffs2/xy-forever/settings.old: this folder is read-only.');
+    expect($('files-hint').textContent).toBe('Changes under /yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade: this folder is read-only.');
     click('old.bin', 'Delete');
     expect(await done()).toBe('refused: file.delete /yaffs2/upgrade/old.bin: the OP-XY changes files only under ' +
-      '/yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade or /yaffs2/xy-forever/settings.txt or /yaffs2/xy-forever/settings.old (or inside it), at most 6 folders deep');
+      '/yaffs2/, never /yaffs2/bootloader.dev or /yaffs2/upgrade (or inside it), at most 6 folders deep');
     expect(row('old.bin')).toBeDefined();
     expect(status()).toBe('connected');
 

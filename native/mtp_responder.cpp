@@ -109,15 +109,6 @@ bool writable(const char* path) {
         return i == n && !word[i];
     };
     if (named("upgrade")) return false;                             // the stock updater's inbox and below
-    if (named("xy-forever") && name[n] == '/') {                    // #65: the Settings record (Confirm on device)
-        const char* leaf = name + n + 1;
-        auto is = [leaf](const char* word) {
-            U32 i = 0;
-            while (leaf[i] && (leaf[i] | (leaf[i] >= 'A' && leaf[i] <= 'Z' ? 0x20 : 0)) == word[i]) ++i;
-            return !leaf[i] && !word[i];
-        };
-        if (is("settings.txt") || is("settings.old")) return false;
-    }
     return name[n] || !named("bootloader.dev");                    // the marker itself
 }
 

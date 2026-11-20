@@ -51,11 +51,11 @@ needs the highest bar of confidence. These rules are binding and override conven
   fails, the window stays mounted and the restart paths still reset (by design: the next
   mount scans fully); CONTINUE never boots then. A silent B only ends A's session: no restart.
 
-- **What may be changed by hand** (MTP, serial file commands; 1.13): all of
-  `/yaffs2`, `user/` and the root included, except (1) `/yaffs2/bootloader.dev`: never
+- **What may be changed by hand** (MTP and the serial file commands; protocol 1.13): everything on
+  `/yaffs2` is writable, `user/` and the root included, except (1) `/yaffs2/bootloader.dev`: never
   changed, replaced, renamed or deleted, nothing renamed onto it; (2) `/yaffs2/upgrade/` (the stock
   updater's inbox): nothing written, created, renamed into or deleted inside it, `upgrade` itself never
-  removed or renamed, no folder renamed to it; (3) `xy-forever/settings.txt`, `.old` (#65; B and MTP only). All readable, any case.
+  removed or renamed, no folder renamed to it. Both stay readable; both names any ASCII case.
   Enforced by `file_engine::decide_engine` on B before sending and on A for every request, by A's
   `reaches_protected` and `final_link_reaches_inbox` (writable opens)
   ([how](hardware/storage-server.md#protected-inbox-paths)), by the MTP responder (`xyf_core::mtp::writable`:

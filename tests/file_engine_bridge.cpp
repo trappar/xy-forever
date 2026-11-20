@@ -37,7 +37,6 @@ int engine_upload_size(const char* path, unsigned* size) {
 }
 void engine_upload_name(char* out, unsigned size, unsigned tag) { upload_name(out, size, tag); }
 int engine_raw(unsigned vtable, unsigned op) { return raw_request(vtable, op); }
-int engine_settings_record(const char* path) { return settings_record(path); }   // #65
 unsigned engine_max_path() { return max_path; }
 unsigned engine_depth(const char* path) { return depth(path); }
 }

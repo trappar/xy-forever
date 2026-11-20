@@ -100,11 +100,6 @@ enum Verdict : uint32_t {
 };
 // The path policy. second: op_rename's target, else 0.
 Verdict decide_engine(Operation op, const char* path, const char* second = 0);
-// #65: path is the Settings record, /yaffs2/xy-forever/settings.txt or settings.old (ASCII case ignored: over-refuses,
-// as the marker), whose Confirm on device setting changes only on the device. Not in decide_engine (the device's own
-// Settings save replaces it through the engine): the host's file commands on B (usb_service_file_write.ipp,
-// usb_service_stream.ipp) refuse to change it, as MTP does (xyf_core::mtp::writable).
-bool settings_record(const char* path);
 // An upload's temporary file (#4): exactly /yaffs2/xy-forever/tmp/put-SSSSSSSS-TTTTTTTT (8 lowercase hex
 // digits each: S the file's size, T a tag: the CRC-32 for file.write_*, the object handle for MTP). size: S.
 bool upload_size(const char* path, uint32_t& size);
