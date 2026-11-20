@@ -148,7 +148,7 @@ uint32_t clock_ms() { return now(); }
 #endif
 void choose(uint32_t entry) { b_choice = 2; b_entry = entry; }
 #if defined(XYF_MENU_ON_FAILURE)
-bool menu_forced() { return b_failed != 0; }
+bool menu_forced() { return b_failed != 0 || b_power_on != 0; }
 #else
 bool menu_forced() { return false; }
 #endif

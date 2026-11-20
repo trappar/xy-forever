@@ -286,6 +286,22 @@ U32 a_content_reason(const xyf::library::Library& lib, U32& index) {
     return lib.content.kind == xyf::content::switching ? reason_content_repair : reason_content;
 }
 
+// #21: Menu at power-on for B's check of the default: settings.txt, else settings.old (absent: the menu's reader
+// takes .old too), parsed as the menu does (xyf_settings.hpp). Absent, unreadable, too long or a newer record:
+// power_play (the stock-speed boot). The library's bounded read-only text read into the scan scratch, free here
+// (the check's status is built there afterwards: xyf_boot status_buffer).
+U32 a_power_on(cold_storage::Stock121ReadOnlySession& storage, bool mounted) {
+    namespace xs = xyf::settings;
+    if (!mounted || !storage.direct_ready()) return xs::power_play;
+    Byte* text = reinterpret_cast<Byte*>(xyf_boot::scan_buffer);
+    uint32_t length = 0;
+    const char* file = xyf::library::detail::present(storage, xs::path) ? xs::path : xs::old_path;
+    if (!xyf::library::detail::read_text(storage, file, text, xs::max_text, length)) return xs::power_play;
+    xs::Record record;
+    xs::parse(reinterpret_cast<const char*>(text), length, record);
+    return record.newer ? U32(xs::power_play) : record.power_on;
+}
+
 // Read, match against info.txt and admit entry index into staging; storage stays
 // mounted (admission only inspects memory). Records the library fields.
 U32 a_prepare(cold_storage::Stock121ReadOnlySession& storage, bool mounted, const xyf::library::Library& lib,

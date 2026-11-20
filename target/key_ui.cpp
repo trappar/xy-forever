@@ -298,7 +298,7 @@ extern "C" void xy_forever_key_ui() {
             poll();
             ++r.polls;
 #if defined(XYF_SETTINGS)
-            xy_forever::usb_service::settings_load();       // once A serves (one bounded read)
+            if (xy_forever::usb_service::settings_view(app)) dirty = 1;   // once A serves; the rows, a write's note
 #endif
             turn_knobs(ms_since(r.start_cycles));            // after the stock poll
             // A held - / + repeats (not on the Uninstall dialog, whose - / + flips its two buttons).
@@ -404,6 +404,10 @@ extern "C" void xy_forever_key_ui() {
 #endif
 #if defined(XYF_SETTINGS)
                 if (action == uint32_t(Action::change_setting)) {   // Mod memory, pending until boot (as the Mods page)
+                    if (app.entry != xyf::settings::row_memory) {   // #21: the settings.txt rows
+                        app.settings_note = xy_forever::usb_service::settings_change(app.entry);
+                        continue;
+                    }
 #if defined(XYF_MODS_PAGE)
                     app.settings_note = xy_forever::mods_io::memory_flip();
 #else

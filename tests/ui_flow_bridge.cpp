@@ -29,6 +29,11 @@ void flow_settings(unsigned memory, unsigned pending, const char* note) {
     flow_state.memory = memory; flow_state.memory_pending = pending != 0;
     flow_state.settings_note = note && *note ? note : 0;
 }
+// #21: the settings.txt rows (usb_service settings_view): Menu at power-on, USB mode, a newer record.
+void flow_settings_rows(unsigned power_on, unsigned usb, unsigned newer) {
+    flow_state.power_on_text = settings::power_on_text(power_on); flow_state.usb_text = settings::usb_text(usb);
+    if (newer) flow_state.settings_note = settings::note_newer;
+}
 void flow_storage(unsigned view) { flow_state.storage = view; }      // 193: xyf::menu::StorageView
 void flow_draw(uint16_t* fb, const char* status) { menu::draw(fb, flow_state, status, &bridge_chrome); }
 // the saved configuration as xyf_mods_io::menu_state sets it; a library holding Open-XY (mods-a, the default)

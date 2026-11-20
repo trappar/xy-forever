@@ -111,6 +111,11 @@ uint32_t home_pump() {
     image_step();                                      // the image's hash, a slice per pass
     if (!menu_usb) return 0;
 #if defined(XYF_MTP_USB)
+#if defined(XYF_SETTINGS)
+    // #21: USB mode first (settings.txt through A, which serves within a pass or two); a slow storage start (a full
+    // scan) or no answer: the default after usb_settings_ms.
+    if (usb_deferred && !settings_load() && now() - usb_deferred_ms < usb_settings_ms) return 0;
+#endif
     if (usb_deferred) { usb_deferred = 0; usb_begin(); return 0; }   // the flag, then the boot's only start
 #endif
     stage2_turn();

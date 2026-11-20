@@ -21,12 +21,12 @@ void ui_chrome(const char* version, unsigned usb, const char* activity) {
 void ui_render_logo(uint16_t* fb, int x, int y) { gfx::clear(fb, gfx::black); gfx::logo(fb, x, y, gfx::accent, gfx::white); }
 unsigned ui_framebuffer_halfwords() { return gfx::framebuffer_halfwords; }
 void ui_render_menu(uint16_t* fb, unsigned selected, const char* status) {
-    ui::Menu menu = {{"Continue: OP-XY 1.2.1", "Firmware library", "Mods", "Uninstall XY Forever", "Settings",
-                      "Info"}, 6, selected, status, "- / +  choose      PLAY  select", &bridge_chrome, 0};
+    ui::Menu menu = {{"Continue: OP-XY 1.2.1", "Firmware library", "Mods", "Uninstall XY Forever", "Settings"}, 5,
+                     selected, status, "- / +  choose      PLAY  select", &bridge_chrome, 0};
     ui::draw_menu(fb, menu);
 }
 void ui_render_message(uint16_t* fb) {
-    ui::Message message = {"Info", {"XY Forever", "v0.1.0", "image f458e3cc", "Real bootloader: 1.2.1 (never updated)",
+    ui::Message message = {"About", {"XY Forever", "v0.1.0", "image f458e3cc", "Real bootloader: 1.2.1 (never updated)",
                                     "Hold PLAY at power-on to open this menu."},
                            5, "PLAY  back", &bridge_chrome};
     ui::draw_message(fb, message);

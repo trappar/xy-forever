@@ -30,9 +30,9 @@ enum class Action : uint32_t {
 // The Save dialog's buttons.
 enum SaveChoice : uint32_t { choice_save = 0, choice_discard = 1, choice_back = 2 };
 // Main menu rows, in order (Mods right below Firmware library).
-// 188: no MTP mode row (MTP is always on with the composite USB device).
+// 188: no MTP mode row (MTP is always on with the composite USB device). #21: no Info row (Settings' About).
 enum MainItem : uint32_t { item_continue = 0, item_library = 1, item_mods = 2, item_uninstall = 3,
-                           item_settings = 4, item_info = 5, main_items = 6 };   // Settings above Info
+                           item_settings = 4, main_items = 5 };
 // 193: what B knows about A's storage, set by the caller every pass (product: xyf_boot::storage_view).
 // unknown: not reported (the offline modes, whose stock OS is embedded: "Continue (built-in OP-XY)");
 // waiting: the first 400 ms of A's mount (the first row stays blank: a normal library arrives in about
@@ -44,7 +44,7 @@ enum StorageView : uint32_t { storage_unknown = 0, storage_ready, storage_waitin
 // TRACK1..TRACK4 (keys 6..9) jump to the first four rows: Continue, Firmware library, Mods, Uninstall. (Keys 10 and 11, once taken for TRACK5/6, are knob pushes.)
 struct State {
     Screen screen, info_return;       // info_return: screen PLAY goes back to from Info
-    uint32_t main_selected, library_selected, home_selected;
+    uint32_t main_selected, library_selected;   // (the "no firmware" home has one row: no selection)
     bool confirm_accept;              // which button the confirm dialog highlights
     bool shift_held;
     const catalog::Catalog* catalog;  // may be null (library not loaded)
@@ -64,11 +64,16 @@ struct State {
     const char* settings_note;
     uint32_t memory;
     bool memory_pending;
+    // #21: the settings.txt rows' values, set by the caller every pass (usb_service settings_view; xyf_settings.hpp
+    // power_on_text, usb_text); 0: blank. Texts, not values: the offline stage-2 modes have no settings.txt and no
+    // room for its texts. (A newer record's line is settings_note, set there too.)
+    const char *power_on_text, *usb_text;
     // 193: StorageView (the caller's, after start() and every pass) and the line a refused row left (0: none).
     uint32_t storage;
     const char* note;
 };
-// 193: the row needs the library (shown dimmed, PLAY refused while storage is not ready).
+// 193: the row needs the library (shown dimmed, PLAY refused while storage is not ready). Settings never does
+// (its About row; a setting that needs A says so).
 bool needs_storage(const State& state, uint32_t item);
 // Start screen: the main menu, or the "no firmware" home when no catalog
 // entry is usable and there is nothing built in to continue to.

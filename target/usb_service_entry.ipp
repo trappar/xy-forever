@@ -105,6 +105,8 @@ bool menu_requested() { return menu_usb == 1u || menu_usb == 2u; }   // 3: USB k
 volatile U32 usb_off __attribute__((section(".data"))) = 0;   // 097: why the menu has no USB (0 = none)
 #if defined(XYF_MTP_USB)
 volatile U32 usb_deferred __attribute__((section(".data"))) = 0;   // menu_usb 2, USB not started yet
+volatile U32 usb_deferred_ms __attribute__((section(".data"))) = 0;   // #21: since when (USB mode read first)
+const U32 usb_settings_ms = 3000;
 #endif
 void menu_start_usb() {
     if (menu_usb == 3u) { menu_usb = 1; return; }      // Test 062: USB kept from the service
@@ -114,7 +116,7 @@ void menu_start_usb() {
     P::reset(parser, rx);
     result.stock_callback = cdc_callback();
 #if defined(XYF_MTP_USB)
-    usb_deferred = 1;                                  // home_pump's first pass reads the flag, then starts USB
+    usb_deferred = 1; usb_deferred_ms = now();         // home_pump reads USB mode and the flag, then starts USB
 #else
     set_cdc_callback(0);
     usb_start();

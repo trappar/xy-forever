@@ -186,9 +186,9 @@ RANGES = 8
 # x 10..469, its text y 60 + 18 i .. +13 from x 20); ui_pages draw_choice fills the selected button white at y 172..195, the others have grey edges.
 CONFIG_RECORD = '/yaffs2/xy-forever/config.txt'
 CONFIG_OLD = '/yaffs2/xy-forever/config.old'
-# 188: six rows (no MTP mode row): 20 px apart, row i's bar y 60 + 20 i .. +17, its text y 64 + 20 i .. +13.
+# #21: five rows (no MTP mode, no Info row): 20 px apart, row i's bar y 60 + 20 i .. +17, its text y 64 + 20 i .. +13.
 ROW0_BAND = (59, 78)            # the first row's pixels (bar and text), compared before and after
-HOME_ROWS, ROW_TOP, ROW_PITCH = 6, 60, 20   # home rows; the first row's bar top; rows apart (ui_screens draw_menu)
+HOME_ROWS, ROW_TOP, ROW_PITCH = 5, 60, 20   # home rows; the first row's bar top; rows apart (ui_screens draw_menu)
 BAR_X, BAR_RIGHT = 12, 470      # inside a row's bar, left of its text; the bar's right end
 BUTTON_Y = 174                  # a dialog's button row (above the button text)
 T_PAGE = 30                     # the Mods page reads its package list (screenshots 1.5 s apart until two equal)

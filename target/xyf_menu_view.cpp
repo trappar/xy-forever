@@ -58,12 +58,11 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         return;
     }
     case Screen::settings: {                             // the compact title bar, as the library
-        static ui::ListRow rows[settings::rows] XYF_DATA = {};
-        for (uint32_t i = 0; i != settings::rows; ++i) {
-            rows[i].title = settings::label(i);
-            rows[i].detail = settings::memory_text(s.memory, s.memory_pending);   // the one row
-            rows[i].marked = false;
-        }
+        static ui::ListRow rows[settings::rows] XYF_DATA = {       // xyf_settings.hpp Row, labels
+            {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false}, {"About", 0, false}};
+        rows[settings::row_memory].detail = settings::memory_text(s.memory, s.memory_pending);
+        rows[settings::row_power_on].detail = s.power_on_text;     // #21: 0 (blank) without settings.txt
+        rows[settings::row_usb].detail = s.usb_text;               // (About: none; its page has the version)
         const ui::List list = {"Settings", rows, settings::rows, s.settings_selected,
                                s.settings_note ? s.settings_note : "PLAY  change   STOP  back", chrome};
         ui::draw_list(fb, list);
@@ -74,7 +73,7 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         // The release version as the home page shows it (v0.1.0) and the running image (hello image=).
         const char* version = chrome && chrome->version ? chrome->version : "";
         const char* image = chrome && chrome->image ? chrome->image : "";
-        const ui::Message info = {"Info", {"XY Forever", version, image, "Real bootloader: 1.2.1 (never updated)",
+        const ui::Message info = {"About", {"XY Forever", version, image, "Real bootloader: 1.2.1 (never updated)",
                                            "Hold PLAY at power-on to open this menu.", "", "", ""},
                                   5, "PLAY / STOP  back", chrome};
         ui::draw_message(fb, info);
@@ -88,7 +87,7 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         return;
     }
     case Screen::home_empty:
-        ui::draw_home_empty(fb, s.home_selected, chrome);
+        ui::draw_home_empty(fb, chrome);
         return;
     case Screen::confirm_save: {
         const ui::Choice c = {"Save changes?", {s.save_blocked ? "These changes cannot be saved:" :

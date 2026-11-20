@@ -38,6 +38,7 @@ __attribute__((noinline)) void b_load_stage2(Stock121PeerSession& session) {
 #if defined(XYF_MENU_ON_FAILURE)
 // Test 059 (b): menu-on-failure state and helpers.
 volatile U32 b_failed __attribute__((section(".data"))) = 0;   // a check failed: the menu waits (no idle timeout)
+volatile U32 b_power_on __attribute__((section(".data"))) = 0;   // #21: Menu at power-on "always" opened it
 char b_notice[64] __attribute__((section(".data"))) = {0};
 const xyf_boot::CheckStatus& b_status() { return *reinterpret_cast<const xyf_boot::CheckStatus*>(xyf_boot::b_status_buffer); }
 
@@ -200,11 +201,14 @@ bool role1_menu_boot(U32& bytes) {
         usb_service::progress("Checking the default firmware...", "");
 #endif
         const U32 reason = b_check(session, xyf_boot::item_check_default);
-        if (reason == reason_ok) boot_item = xyf_boot::item_boot_default;
+        // #21: Menu at power-on (A read settings.txt with the check): always opens the menu; PLAY held (the
+        // default, and anything else) boots the checked default.
+        if (reason == reason_ok && b_status().power_on == xyf::settings::power_always) { b_power_on = 1; r.menu.play = 1; }
+        else if (reason == reason_ok) boot_item = xyf_boot::item_boot_default;
         else if (!b_lost) { b_failed = 1; b_note(true, reason); r.menu.play = 1; }
 #if defined(XYF_SERVICE_ON_MARKER_ONLY)
         usb_service::progress(reason == reason_ok ? "Default firmware checked." : b_lost ? "Storage link lost." : b_notice,
-                              reason == reason_ok ? "Booting it..." : "Opening the menu...");
+                              boot_item ? "Booting it..." : "Opening the menu...");
 #endif
         r.menu.refused = reason | b_status().index << 8 | (reason == reason_ok ? 0u : 0x10000u);
     }

@@ -428,7 +428,7 @@ class MenuQuality(PageBase, unittest.TestCase):
         self.assertLessEqual(sorted(gaps)[len(gaps) // 2], 90, gaps)        # a steady 80 ms
         moves = self.lines('menu: screen 0 row ')[rows:]
         self.assertEqual(len(moves), 1 + len(repeats))                      # the press, then each repeat
-        self.assertEqual(int(moves[-1].split()[0]), (1 + len(repeats)) % 6)          # 188: 6 home rows (no MTP mode)
+        self.assertEqual(int(moves[-1].split()[0]), (1 + len(repeats)) % 5)          # #21: 5 home rows (no MTP mode, no Info)
         print('\nkey repeat: held %d ms, first after %d ms, %d repeats, gaps %d..%d ms'
               % (up - down, repeats[0] - down, len(repeats), min(gaps), max(gaps)), file=sys.stderr)
         before = len(self.lines('menu: repeat key '))

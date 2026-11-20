@@ -70,8 +70,8 @@ void draw_list(uint16_t* fb, const List& list);
 void draw_choice(uint16_t* fb, const Choice& choice);
 void draw_confirm(uint16_t* fb, const Confirm& confirm);
 void draw_progress(uint16_t* fb, const Progress& progress);
-// No bootable firmware anywhere: explain and offer MTP mode.
-void draw_home_empty(uint16_t* fb, uint32_t selected, const Chrome* chrome);
+// No bootable firmware anywhere: explain, and the one row (About, selected).
+void draw_home_empty(uint16_t* fb, const Chrome* chrome);
 // First visible row for a scrolling list (keeps the selection on screen).
 uint32_t list_first(uint32_t count, uint32_t selected);
 // floor(a * b / c) without a hardware/library divide; c == 0 -> 0.

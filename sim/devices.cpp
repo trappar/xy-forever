@@ -240,6 +240,11 @@ void dispatch(uint32_t key, uint32_t pressed) {
             return;
         }
 #if defined(XYF_SETTINGS)
+        if (action == xyf::menu::Action::change_setting && sim_app.entry != xyf::settings::row_memory) {   // as key_ui
+            sim_app.settings_note = usb_service::settings_change(sim_app.entry);   // #21: the settings.txt rows
+            xyf_sim::log("settings: play on row %u: note=%s", sim_app.entry, sim_app.settings_note ? sim_app.settings_note : "");
+            return;
+        }
         if (action == xyf::menu::Action::change_setting) {             // as key_ui (Mod memory, pending)
             sim_app.settings_note = mods_io::memory_flip();
             xyf_sim::log("settings: play on row %u: note=%s", sim_app.entry, sim_app.settings_note ? sim_app.settings_note : "");
@@ -375,9 +380,13 @@ extern "C" void xy_forever_key_ui() {
 #endif
     for (;;) {
 #if defined(XYF_SETTINGS)
-        if (!settings_logged && usb_service::settings_load()) {           // as key_ui.cpp
+        const bool settings_moved = usb_service::settings_view(sim_app);   // as key_ui.cpp
+        const bool settings_first = !settings_logged && usb_service::settings_load();   // the record read: once
+        if (settings_first || (settings_moved && settings_logged && sim_app.screen == xyf::menu::Screen::settings)) {
+            const xyf::settings::Record& s = usb_service::settings();
+            xyf_sim::log("settings: confirm=%u power_on=%u usb=%u newer=%u; note=%s", s.confirm, s.power_on, s.usb,
+                         s.newer, sim_app.settings_note ? sim_app.settings_note : "");
             settings_logged = true;
-            xyf_sim::log("settings: confirm=%u", usb_service::settings().confirm);
         }
 #endif
         knob_deliver();                                                    // where key_ui's stock poll runs
@@ -396,10 +405,10 @@ extern "C" void xy_forever_key_ui() {
             for (int32_t i = rows < 0 ? -rows : rows; i; --i) dispatch(step, 1);   // as key_ui (the Mods page knows a turn)
             const uint32_t after[] = {k.frames, k.dropped, k.resyncs, k.idle, k.pass_read, k.max_read};
             if (rows || memcmp(before, after, sizeof(before)))
-                xyf_sim::log("knob: rows=%d read=%u screen=%u main=%u library=%u home=%u accept=%u mods=%d frames=%u "
+                xyf_sim::log("knob: rows=%d read=%u screen=%u main=%u library=%u accept=%u mods=%d frames=%u "
                              "dropped=%u resyncs=%u skipped=%u idle=%u moves=%u max_read=%u max_moves=%u ms=%u",
                              rows, k.pass_read, uint32_t(sim_app.screen), sim_app.main_selected, sim_app.library_selected,
-                             sim_app.home_selected, sim_app.confirm_accept ? 1u : 0u, sim_mods ? 1 : 0, k.frames,
+                             sim_app.confirm_accept ? 1u : 0u, sim_mods ? 1 : 0, k.frames,
                              k.dropped, k.resyncs, k.skipped, k.idle, k.moves, k.max_read, k.max_moves, device_ms());
         }
         if (const uint32_t leave = usb_service::home_pump()) {             // as key_ui.cpp

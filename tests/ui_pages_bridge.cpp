@@ -23,7 +23,7 @@ void ui_render_progress(uint16_t* fb, unsigned done, unsigned total) {
                   "Do not power off the OP-XY.", &bridge_chrome};
     draw_progress(fb, p);
 }
-void ui_render_home(uint16_t* fb, unsigned selected) { draw_home_empty(fb, selected, &bridge_chrome); }
+void ui_render_home(uint16_t* fb, unsigned) { draw_home_empty(fb, &bridge_chrome); }   // #21: one row, always selected
 unsigned ui_scale(unsigned a, unsigned b, unsigned c) { return scale(a, b, c); }
 unsigned ui_list_first(unsigned count, unsigned selected) { return list_first(count, selected); }
 }

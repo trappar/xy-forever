@@ -23,11 +23,11 @@ What it never touches:
 ## Getting into the menu
 
 - **Plain power-on:** the default firmware starts, close to stock speed. Nothing is
-  written to storage on a normal boot.
+  written to storage on a normal boot (Settings, Menu at power-on, can change that).
 - **Power on holding PLAY:** the XY Forever menu opens. Let go of PLAY once you see it.
 - If the default firmware is missing or fails its checks, the menu opens by itself and
   says why, for example "Default opxy-125: file missing" or "content not installed".
-- With no bootable firmware at all, "No firmware found" shows two rows: MTP mode, Info.
+- With no bootable firmware at all, "No firmware found" shows one row: About.
 
 ## Keys and knobs
 
@@ -44,8 +44,8 @@ The bottom line of each screen lists the keys that work there.
 
 ## The home menu
 
-Seven rows, top to bottom: the first row (Continue), Firmware library, Mods, MTP mode,
-Uninstall XY Forever, Settings, Info.
+Five rows, top to bottom: the first row (Continue), Firmware library, Mods,
+Uninstall XY Forever, Settings.
 
 ### The first row (Continue)
 
@@ -159,10 +159,6 @@ content back.
 - The last resort: hold COM at power-on to reach the stock recovery menu, and
   reinstall official 1.2.1 from there.
 
-### MTP mode
-
-Not available yet ("MTP mode: not available yet."). Use the host tool below to move files.
-
 ### Uninstall XY Forever
 
 The row opens a confirmation with Cancel and Uninstall. In this build, choosing
@@ -171,12 +167,15 @@ command (a dry run by default) is meant for developers and is not covered here.
 
 ### Settings
 
-Mod memory: "Standard" or "4 MiB (experimental)"; PLAY flips it, applied when you boot like the mods
-(Save rebuilds Open-XY). "Not available with these mod packages": the set has no 4 MiB layout.
+PLAY changes the selected row; the bottom line says when it is saved.
 
-### Info
+- **Mod memory:** "Standard" or "4 MiB (experimental)", applied when you boot like the mods (Save
+  rebuilds Open-XY). "Not available with these mod packages": the set has no 4 MiB layout.
+- **Menu at power-on:** "PLAY held" (default) or "Always" (the menu opens at every power-on).
+- **USB mode:** "Serial + MTP" (default) or "Serial only"; applies the next time the menu opens.
+- **About:** the version, the real bootloader (1.2.1, never updated), how to open the menu.
 
-The XY Forever version, the real bootloader (1.2.1, never updated), how to open the menu.
+A settings file from a newer XY Forever reads as the defaults and is kept unchanged.
 
 ## The host tool: `xyf_host.py`
 

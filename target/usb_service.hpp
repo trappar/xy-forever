@@ -4,6 +4,7 @@
 #include "usb_proto.hpp"
 #include "cold_storage.hpp"
 #include "xyf_settings.hpp"
+namespace xyf { namespace menu { struct State; } }   // xyf_menu.hpp (settings_view)
 // XY Forever USB service (processor b; XYF_USB_SERVICE). Lets the
 // host tool (xyf_host.py) read status/files, stage a build, install it into
 // the NAND boot partition and reboot, without the dev menu or key presses.
@@ -265,6 +266,12 @@ const char* job_target();
 bool settings_load();
 xyf::settings::Record& settings();
 uint32_t settings_store();
+// #21: PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode; 0 for any other): the record
+// changed and its write started (settings_store), or not with the reason; the page's note. A newer record (newer)
+// is never changed. settings_view, each menu pass: settings_load, the
+// rows' values into the menu state, and once the write ended its note (failed: read again); true: draw again.
+const char* settings_change(uint32_t row);
+bool settings_view(xyf::menu::State& state);
 // A key event (key_ui on_key; injected: the host's KEY command). While a confirm prompt is open it takes
 // every key (true: not for the menu); only a real PLAY / STOP answers it (xyf_settings.hpp gate_key).
 bool confirm_key(uint32_t key, uint32_t pressed, bool injected);

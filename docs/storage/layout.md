@@ -24,7 +24,7 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   content-state.txt         what /yaffs2/content/ matches, and what XY Forever installed there (below)
   content-official/         the official op1_factory.json and content.sha256, saved before the first content change
   config.txt                the saved configuration: base, mods on, what Open-XY was built from (below)
-  settings.txt              device settings (#21, the Settings page; target/xyf_settings.hpp): confirm=0|1 stored for Confirm on device (not built); absent or unreadable: the defaults
+  settings.txt              device settings (#21, the Settings page; target/xyf_settings.hpp), format=1: power_on=play|always, usb=mtp|serial, confirm=0|1 (Confirm on device, not built); absent, unreadable or a missing key: the defaults; a newer format: the defaults, never rewritten
 ```
 
 Changes by hand (MTP, serial file commands; protocol 1.13) may touch all of `/yaffs2` except

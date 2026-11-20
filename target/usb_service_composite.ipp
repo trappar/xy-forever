@@ -197,6 +197,10 @@ void usb_begin() {
         mu::mark(mu::mark_flag_found);                                   // written after the delete (see above)
         if (code == P::s_ok) { mu::mark(mu::mark_flag_deleted); trial = true; }
     }
+#elif defined(XYF_SETTINGS)
+    // 188: the product: every boot; #21: not with USB mode "Serial only" (settings.txt usb=serial): the stock serial
+    // service below, as when the span gate refuses.
+    const bool trial = settings().usb != xyf::settings::usb_serial;
 #else
     const bool trial = true;                                             // 188: the product: every boot
 #endif

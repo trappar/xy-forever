@@ -91,7 +91,7 @@ class Knobs(PageBase, unittest.TestCase):
         k = self.until_frames(2 * N)
         self.assertEqual((k['rows'], k['main']), (-1, 0), k)
         self.turn(3, -1, N)                                                # wraps to the last row, as -
-        self.assertEqual(self.until_frames(3 * N)['main'], 5)                  # 188: 6 home rows (no MTP mode)
+        self.assertEqual(self.until_frames(3 * N)['main'], 4)                  # #21: 5 home rows (no MTP mode, no Info)
         self.turn(4, 1, N)                                                 # and back to Continue
         self.assertEqual(self.until_frames(4 * N)['main'], 0)
         # a slow click: one count, the second 400 ms later (within LEFTOVER_MS): one row
@@ -185,7 +185,7 @@ class Knobs(PageBase, unittest.TestCase):
         self.assertTrue(all(q['read'] <= MAX_FRAMES and abs(q['rows']) <= MAX_MOVES for q in passes), passes)
         self.assertLessEqual(k['moves'], 200 // N)
         self.assertEqual((k['max_read'], k['max_moves'], k['resyncs']), (MAX_FRAMES, MAX_MOVES, 0), k)
-        self.assertEqual(k['main'], k['moves'] % 6)                   # 188: 6 home rows (no MTP mode)
+        self.assertEqual(k['main'], k['moves'] % 5)                   # #21: 5 home rows (no MTP mode, no Info)
         print('\nknob burst: 200 frames in %d passes, %d rows, %d counts dropped'
               % (len(passes), k['moves'], k['idle']), file=sys.stderr)
         moves = k['moves']
@@ -296,7 +296,8 @@ class OldKnobRecord(Knobs):
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class SettingsPage(PageBase, unittest.TestCase):
-    """The menu with Settings (home row 5, above Info); its Mod memory row is tests/test_sim_memory.py."""
+    """The menu with Settings (home row 5, the last); its Mod memory row is tests/test_sim_memory.py, its other rows
+    tests/test_sim_settings.py."""
     base = 'modbase'
     unverified = True
 

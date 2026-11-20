@@ -62,36 +62,6 @@ const char* content_default(uint32_t entry) {                            // the 
 }
 uint32_t content_switch(const char* id) { return content_begin(id, true, false); }
 uint32_t config_store(const char* text, uint32_t length, const char* default_id) { return config_begin(text, length, default_id); }
-// settings.txt (xyf_settings.hpp; usb_service.hpp).
-namespace xs = xyf::settings;
-xs::Record settings_record __attribute__((section(".data"))) = {1};
-U32 settings_loaded __attribute__((section(".data"))) = 0;
-bool settings_load() {
-    if (settings_loaded) return true;
-    if (!menu_link::usb_idle()) return false;                           // 191: not while A's catalog is on its way
-    if (!a_serving() || job_running() || closing) return false;         // later: once A serves, the slot is free
-    char text[xs::max_text];
-    uint32_t bytes = 0;
-    U32 code = file_client::mount_ready(mounted);
-    if (code == P::s_ok) code = file_client::read_file(xs::path, 0, false, reinterpret_cast<uint8_t*>(text), sizeof(text), bytes, mounted);
-    if (code == P::s_not_found) code = file_client::read_file(xs::old_path, 0, false, reinterpret_cast<uint8_t*>(text), sizeof(text), bytes, mounted);
-    if (code == P::s_ok) xs::parse(text, bytes, settings_record);
-    else xs::defaults(settings_record);                                 // absent or unreadable: the defaults
-    settings_loaded = 1;                                                // one try: bounded
-    return true;
-}
-xs::Record& settings() { return settings_record; }
-xs::Gate confirm_gate __attribute__((section(".data"))) = {xs::idle, 0, ""};
-bool confirm_key(uint32_t key, uint32_t pressed, bool injected) {
-    if (confirm_gate.state != xs::pending) return false;
-    xs::gate_key(confirm_gate, key, pressed, injected);
-    return true;
-}
-uint32_t settings_store() {
-    char text[xs::max_text];
-    const U32 n = xs::format(text, sizeof(text), settings_record);
-    return config_begin(text, n, "", xs::path, xs::old_path, xs::part_path);
-}
 const char* job_target() { return slot().target; }
 const char* content_line() {
     ContentSlot& c = cslot();

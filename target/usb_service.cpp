@@ -113,6 +113,7 @@ bool rehearsal_active();
 }
 namespace xy_forever { namespace usb_service {      // the Mods page's hooks (usb_service.hpp)
 #include "usb_service_mods_page.ipp"        // the Mods page's hooks
+#include "usb_service_settings.ipp"         // settings.txt, the Settings page's rows (#21)
 } }
 namespace {
 #include "usb_service_reports.ipp"

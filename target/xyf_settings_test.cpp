@@ -8,21 +8,46 @@ using namespace xyf::settings;
 static Record parsed(const char* t) { Record r; parse(t, uint32_t(std::strlen(t)), r); return r; }
 int main() {
     Record r = parsed("");                                         // no record: the product defaults
-    CHECK(r.confirm == 1);
+    CHECK(r.confirm == 1 && r.power_on == power_play && r.usb == usb_mtp && !r.newer);
+    r = parsed("format=1\nconfirm=0\n");                           // #21: a record before power_on / usb: defaults
+    CHECK(r.confirm == 0 && r.power_on == power_play && r.usb == usb_mtp && !r.newer);
+    r = parsed("format=1\npower_on=always\nusb=serial\n");
+    CHECK(r.confirm == 1 && r.power_on == power_always && r.usb == usb_serial);
+    r = parsed("power_on=wait\nusb=serial2\n");                    // only exact values count (no "wait": #21)
+    CHECK(r.power_on == power_play && r.usb == usb_mtp);
+    r = parsed("format=2\nconfirm=0\npower_on=always\n");          // a newer record: the defaults, newer set
+    CHECK(r.newer && r.confirm == 1 && r.power_on == power_play);
+    r = parsed("format=12\n"); CHECK(r.newer);
+    r = parsed("format=0\npower_on=always\n");                     // not a version this reads: the defaults
+    CHECK(!r.newer && r.power_on == power_play);
+    r = parsed("format=x\npower_on=always\n"); CHECK(!r.newer && r.power_on == power_play);
+    r = parsed("format=9999999999\n"); CHECK(!r.newer);             // too long for a version: broken
+    r = parsed("format=1\npower_on=always\n\xff\xfe=\x01garbage"); CHECK(r.power_on == power_always);
     r = parsed("format=1\nconfirm=0\nknob=reversed\n");             // a record with the old knob= loads
     CHECK(r.confirm == 0);
     r = parsed("confirm=00\n");                                     // only exact values count
     CHECK(r.confirm == 1);
     r = parsed("other=1\nconfirm=0");                              // unknown keys, no final LF
     CHECK(r.confirm == 0);
-    char out[64];
-    Record w; w.confirm = 0;
-    const uint32_t n = format(out, sizeof(out), w);
-    CHECK(n && std::memcmp(out, "format=1\nconfirm=0\n", n) == 0);
+    char out[96];
+    Record w; defaults(w); w.confirm = 0;
+    uint32_t n = format(out, sizeof(out), w);
+    CHECK(n == 41 && std::memcmp(out, "format=1\nconfirm=0\npower_on=play\nusb=mtp\n", n) == 0);
     Record back; parse(out, n, back);
-    CHECK(back.confirm == 0);                                        // round trip (a restart reads it back)
+    CHECK(back.confirm == 0 && back.power_on == power_play && back.usb == usb_mtp);   // round trip
+    for (uint32_t p = 0; p != 2; ++p)
+        for (uint32_t u = 0; u != 2; ++u) {
+            w.power_on = p; w.usb = u;
+            n = format(out, sizeof(out), w);
+            parse(out, n, back);
+            CHECK(n && n <= max_text && back.power_on == p && back.usb == u && !back.newer);
+        }
     CHECK(format(out, 10, w) == 0);                                  // does not fit
-    CHECK(rows == 1 && std::strcmp(label(row_memory), "Mod memory") == 0);   // only settings that work
+    CHECK(next_power_on(power_play) == power_always && next_power_on(power_always) == power_play &&
+          next_usb(usb_mtp) == usb_serial && next_usb(usb_serial) == usb_mtp);
+    CHECK(std::strcmp(power_on_text(power_play), "PLAY held") == 0 && std::strcmp(power_on_text(power_always), "Always") == 0);
+    CHECK(std::strcmp(usb_text(usb_mtp), "Serial + MTP") == 0 && std::strcmp(usb_text(usb_serial), "Serial only") == 0);
+    CHECK(rows == 4 && std::strcmp(label(row_memory), "Mod memory") == 0 && std::strcmp(label(row_about), "About") == 0);
     CHECK(std::strcmp(memory_text(memory_standard, false), "Standard") == 0);
     CHECK(std::strcmp(memory_text(memory_expanded, false), "4 MiB (experimental)") == 0);
     CHECK(std::strcmp(memory_text(memory_expanded, true), "4 MiB (experimental): applied when you boot") == 0);
