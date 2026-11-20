@@ -1105,7 +1105,7 @@ def build(out, stock, boot, mode):
     cpp('descriptor', descriptor)
     entry_source = (SOURCE / 'target/storage_probe_entry.s').read_text()
     require('    P0.H = 0x8ab1;\n    P0.L = 0;\n' in entry_source, 'Cold entry stack setup changed')
-    entry_path = out / 'storage_probe_entry.s'      # stack top from the mode's layout (default: unchanged)
+    entry_path = out / 'storage_probe_entry.s'      # stack top from the mode's layout
     entry_path.write_text(entry_source.replace('    P0.H = 0x8ab1;\n    P0.L = 0;\n', '    P0.H = %#x;\n    P0.L = %d;\n'
                                                % (stack_end >> 16, stack_end & 0xffff)))
     assembly('entry', entry_path)
