@@ -864,35 +864,7 @@ def render_conformance(cases):
 # docs/PROTOCOL.md is the index of a tree; its leaves sit in docs/protocol/, each under the docs byte budget
 # (tests/test_docs_budget.py). A command leaf holds the published non-developer commands whose type falls in
 # its range, so a new command lands in a leaf by its number; the budget test says when a leaf must split.
-from protogen_leaves import DOC_DIR, CMD_LEAVES, DOC_LEAVES
-WIDTH = 160                              # longest prose line in a generated page (tables and headings excepted)
-LINE_START = re.compile(r'^([-+*>]|#{1,6}|[0-9]{1,9}[.)])$')   # a word that would start a list or heading
-
-
-def wrap(text):
-    """text with every prose line over WIDTH folded at spaces (a list item's rest indented by two); code blocks,
-    table rows, headings and comments stay whole, and no folded line starts with a list or heading marker."""
-    out, code = [], False
-    for line in text.split('\n'):
-        code ^= line.startswith('```')
-        if code or len(line) <= WIDTH or line.startswith(('|', '#', '<!--', '```')):
-            out.append(line)
-            continue
-        indent = '  ' if line.startswith('- ') else ''
-        row = ''
-        for word in line.split(' '):
-            if row.strip() and len(row) + 1 + len(word) > WIDTH:
-                head, _, last = row.rpartition(' ')
-                if LINE_START.match(word) and head.strip():
-                    out.append(head)
-                    row = indent + last + ' ' + word
-                else:
-                    out.append(row)
-                    row = indent + word
-            else:
-                row = row + ' ' + word if row else word
-        out.append(row)
-    return '\n'.join(out)
+from protogen_leaves import DOC_DIR, CMD_LEAVES, DOC_LEAVES, wrap  # noqa: E402
 
 
 def cmd_leaf(cmd):
@@ -959,6 +931,7 @@ def render_md(spec, cases=None):
                                               e['doc']) for e in spec['common_errors']), '',
           '| Code | Name | Since | Meaning |', '|---|---|---|---|']
     md += ['| %d | `%s` | %s | %s |' % (s['code'], s['name'], s['since'], s['doc']) for s in spec['statuses']]
+    pages['statuses.md'], md = ('status codes', 'every status code, and those any command can answer', md), []
     commands = sorted(spec['commands'], key=lambda c: int(c['type'], 16))
     main = [c for c in commands if c['class'] != 'dev']
     dev = [c for c in commands if c['class'] == 'dev' and published(c)]
@@ -968,8 +941,7 @@ def render_md(spec, cases=None):
     md += ['', 'A typical session: `hello`; then reads (`file.read`, `screen.read`); to write, `stage.begin`, '
            '`stage.data` in order, `stage.end`, then one of `file.write_staged`, `boot.install`, '
            '`boot.uninstall`.']
-    pages['commands.md'] = ('status codes and commands', 'every status code, and the table of commands with a link '
-                            'to each', md)
+    pages['commands.md'] = ('commands', 'the table of commands with a link to each', md)
     for first, last, name, title in CMD_LEAVES:
         md = []
         held = [c for c in main if cmd_leaf(c) == name]

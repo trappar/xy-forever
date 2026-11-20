@@ -26,7 +26,8 @@ class ProtocolSwitches(unittest.TestCase):
                           'file.write_begin': False, 'file.write_data': False, 'file.write_end': False,
                           'file.mkdir': False, 'file.rename': False, 'file.copy': False, 'stage2.info': True,
                           'mods.apply': False, 'job.status': False, 'job.cancel': False, 'package.session': False,
-                          'package.list': False, 'state.get': False, 'storage.space': False})
+                          'package.list': False, 'state.get': False, 'storage.space': False, 'config.get': False,
+                          'config.set': False})
         required = set()
         with tempfile.TemporaryDirectory(prefix='xyf-sim-') as tmp:
             for c in switched:
