@@ -66,7 +66,7 @@ Action key(State& s, uint32_t k, bool pressed) {
         const Screen back = s.screen == Screen::info ? s.info_return :
                             s.screen == Screen::home_empty ? Screen::home_empty :
 #if defined(XYF_SETTING_OPTIONS)
-                            s.screen == Screen::options ? Screen::settings :   // #21: nothing picked
+                            (s.screen == Screen::options || s.screen == Screen::packs) ? Screen::settings :   // #21: nothing picked
 #endif
                             Screen::main;
         if (back == s.screen) return Action::none;
@@ -123,19 +123,30 @@ Action key(State& s, uint32_t k, bool pressed) {
         if (s.save_selected == choice_discard) return Action::discard;
         return Action::redraw;
     }
-    case Screen::settings:                        // one row per setting; PLAY (or a knob push): its options
-        if (minus || plus) { s.settings_selected = step(s.settings_selected, settings::rows, plus); s.settings_note = 0; return Action::redraw; }
+    case Screen::settings: {                      // the extra row opens the installed-pack list on the product
+        uint32_t count = settings::rows;
+#if defined(XYF_SETTING_OPTIONS)
+        if (s.pack_names) ++count;
+#endif
+        if (minus || plus) { s.settings_selected = step(s.settings_selected, count, plus); s.settings_note = 0; return Action::redraw; }
         if (!play) return Action::none;
         if (s.settings_selected != settings::row_about) { s.entry = s.settings_selected; return Action::change_setting; }
         s.info_return = Screen::settings; s.screen = Screen::info;   // #21: the About page (once Info on the home menu)
         return Action::redraw;
+    }
 #if defined(XYF_SETTING_OPTIONS)
+    case Screen::packs:
+        if (!s.pack_ready || !((plus && s.pack_more) || (minus && s.pack_page))) return Action::none;
+        if (plus) ++s.pack_page; else --s.pack_page;
+        s.pack_ready = false;
+        return Action::redraw;
     case Screen::options:                         // #21: - / + choose, PLAY picks (STOP above: back, unchanged)
         if (minus || plus) { s.option_selected = step(s.option_selected, s.option_count, plus); return Action::redraw; }
         if (!play) return Action::none;
         s.screen = Screen::settings;
         return Action::pick_setting;
 #else
+    case Screen::packs:
     case Screen::options: break;                  // never opened here
 #endif
     case Screen::home_empty:

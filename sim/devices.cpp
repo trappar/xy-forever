@@ -132,6 +132,7 @@ xyf::menu::State sim_app;
 bool sim_menu = false, sim_mods = false, sim_leave = false;   // sim_leave: Continue / Discard boots
 xyf::key_repeat::Held sim_held = {xyf::key_repeat::none, 0};        // as key_ui
 int sim_pending = -1;                                               // logged on a change
+#include "settings_page.ipp"
 uint32_t device_ms() { return uint32_t(xyf_sim::device_cycles() / 400000u); }   // B's clock (advance included)
 #if defined(XYF_MODS_PAGE)
 void log_page() {                       // the page's state, for tests (tests/test_sim_mods_page.py)
@@ -350,7 +351,8 @@ void refresh_catalog() {                                               // as key
 #endif
 #if defined(XYF_SETTINGS)
     const xyf::menu::State kept = sim_app;                             // as key_ui (the Settings page, its list stay)
-    const bool keep = kept.screen == xyf::menu::Screen::settings || kept.screen == xyf::menu::Screen::options;
+    const bool keep = kept.screen == xyf::menu::Screen::settings || kept.screen == xyf::menu::Screen::options ||
+                      kept.screen == xyf::menu::Screen::packs;
 #endif
     const uint32_t storage = sim_app.storage;                         // 193: as key_ui.cpp
     xyf::menu::start(sim_app, xyf_boot::catalog(), true);
@@ -362,6 +364,7 @@ void refresh_catalog() {                                               // as key
         sim_app.options = kept.options; sim_app.option_count = kept.option_count;
         sim_app.option_current = kept.option_current; sim_app.option_selected = kept.option_selected;
         xyf_sim::log("menu: rescan kept the settings page");
+        if (kept.screen == xyf::menu::Screen::packs) usb_service::settings_open(sim_app, xyf::settings::row_packs);
     }
 #endif
 #if defined(XYF_MODS_PAGE)
@@ -388,16 +391,7 @@ extern "C" void xy_forever_key_ui() {
 #endif
     for (;;) {
 #if defined(XYF_SETTINGS)
-        const char* settings_line = 0;
-        const bool settings_moved = usb_service::settings_view(sim_app, settings_line);   // as key_ui.cpp
-        if (settings_line) xyf_sim::log("menu: line: %s", settings_line);
-        const bool settings_first = !settings_logged && usb_service::settings_load();   // the record read: once
-        if (settings_first || (settings_moved && settings_logged && sim_app.screen == xyf::menu::Screen::settings)) {
-            const xyf::settings::Record& s = usb_service::settings();
-            xyf_sim::log("settings: confirm=%u power_on=%u usb=%u newer=%u; note=%s", s.confirm, s.power_on, s.usb,
-                         s.newer, sim_app.settings_note ? sim_app.settings_note : "");
-            settings_logged = true;
-        }
+        sim_settings_pass(settings_logged);
 #endif
         knob_deliver();                                                    // where key_ui's stock poll runs
         real_keys_deliver();                                               // the PSoC's key events

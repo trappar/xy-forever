@@ -9,10 +9,14 @@ stock serial only), so USB mode is checked as a stored row here and in the produ
 the driver's MTP alone: target/mtp_usb_test.cpp). On the OP-XY, MTP leaves no serial: the host would not reattach.
 Driven by injected keys. Needs clang++ and the private stock 1.2.1 images (skipped without them). No device
 access."""
+import contextlib
+import io
+import json
 from pathlib import Path
 import sys
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -115,6 +119,58 @@ class Rows(PageBase):
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class SettingsRows(Rows, unittest.TestCase):
+    def packs_command(self):
+        with patch.object(host, 'connect', return_value=(self.dev, 'sim', self.dev.hello_info.text)), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(host.main(['packs', 'list']), 0)
+        return json.loads(out.getvalue().split('\n', 1)[1])
+
+    def test_installed_pack_ids_and_vendor_metadata(self):
+        self.assertEqual(self.packs_command(), [])
+        root = self.root / 'content/dlc'
+        root.mkdir(exist_ok=True)
+        ids = set()
+        for n in range(9):
+            pack = root / ('synth-%d' % n)
+            pack.mkdir()
+            (pack / 'manifest.json').write_text(json.dumps({'name': 'Sounds %d' % n, 'version': '1.0'}))
+            (pack / 'sound.wav').write_bytes(b'RIFF' + bytes([n]))
+            ids.add(pack.name)
+        (root / 'synth-0/manifest.json').write_text('bad')
+        (root / 'stray').mkdir()
+        (root / 'linked').symlink_to(root / 'synth-1', target_is_directory=True)
+        (root / 'stray/manifest.json').symlink_to(root / 'synth-1/manifest.json')
+        rows = {r['id']: r for r in self.packs_command()}
+        self.assertEqual(rows.keys(), ids)
+        self.assertEqual(rows['synth-8'], dict(id='synth-8', name='Sounds 8', version='1.0'))
+        self.assertIn('invalid manifest', rows['synth-0']['error'])
+
+        self.settings_page()
+        self.pick(1, 1)                                                   # changes Menu at power-on
+        saved = self.record()
+        self.press(MINUS)                                                 # last Settings row is Content packs
+        self.press(PLAY)
+        self.until(lambda: self.count('pack page 0: 7 entries, more=1'), 'first seven packs')
+        first = self.lines('pack id: ')[-7:]
+        self.press(PLUS)
+        self.until(lambda: self.count('pack page 1: 2 entries, more=0'), 'last two packs')
+        self.assertEqual(set(first + self.lines('pack id: ')[-2:]), ids)
+        self.press(MINUS)
+        self.until(lambda: self.count('pack page 0: 7 entries, more=1') >= 2, 'back to page one')
+        self.assertEqual(self.lines('pack id: ')[-7:], first)
+        self.press(STOP)
+        self.assertEqual(self.record(), saved)                            # still inside Settings
+        self.leave(SAVED)
+        self.assertEqual(self.record()['power_on'], 'always')
+
+    def test_empty_pack_page(self):
+        self.settings_page()
+        self.press(MINUS)
+        self.press(PLAY)
+        self.until(lambda: self.count('pack page 0: 0 entries, more=0'), 'empty installed list')
+        self.press(STOP)
+        self.until(lambda: self.count('menu: screen %d row 4 ' % SETTINGS) >= 2, 'back to Settings')
+
     def test_home_has_no_info_row(self):
         self.until(lambda: self.lines('settings: confirm=0'), 'the settings read')
         self.press(MINUS)                                                  # wraps to the last row: Settings

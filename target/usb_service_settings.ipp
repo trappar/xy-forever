@@ -2,6 +2,7 @@
 #if defined(XYF_CONTENT_SWITCH)
 // settings.txt (xyf_settings.hpp; usb_service.hpp).
 namespace xs = xyf::settings;
+#include "usb_service_pack_list.ipp"
 xs::Record settings_record __attribute__((section(".data"))) = {1, xs::power_play, xs::usb_mtp_serial, 0};
 U32 settings_loaded __attribute__((section(".data"))) = 0;
 // #21: what settings.txt holds (as read or last saved): the page marks a row whose value differs from it.
@@ -43,6 +44,13 @@ U32 settings_marks() {
     return (r.power_on != stored_power_on ? 1u << xs::row_power_on : 0u) | (r.usb != stored_usb ? 1u << xs::row_usb : 0u);
 }
 const char* settings_open(xyf::menu::State& s, uint32_t row) {
+    if (row == xs::row_packs) {
+        s.screen = xyf::menu::Screen::packs;
+        s.pack_page = 0;
+        packs.page = ~0u;
+        s.pack_ready = false;
+        return 0;
+    }
     if (!settings_loaded) return xs::note_loading;
     if (settings_job) return xs::note_saving;                            // the last leaving's write is still running
     const xs::Record& r = settings_record;
@@ -86,11 +94,13 @@ bool settings_view(xyf::menu::State& s, const char*& line) {
     const char* const usb = xs::usb_text(r.usb);
     const U32 marks = settings_marks();
     bool changed = s.power_on_text != power_on || s.usb_text != usb || s.settings_marked != marks;
+    if (!s.pack_names) { s.pack_names = packs.names; changed = true; }
+    if (s.screen == Screen::packs && pack_list_step(s)) changed = true;
     s.power_on_text = power_on; s.usb_text = usb; s.settings_marked = marks;
     if (r.newer && !s.settings_note) { s.settings_note = xs::note_newer; changed = true; }   // the page says so
     // Left (not the page, its option list or the About page opened from it) with a change: one write, started a
     // pass after the leaving (the home menu is drawn first: the write's first request waits for A's window).
-    const bool on_page = s.screen == Screen::settings || s.screen == Screen::options ||
+    const bool on_page = s.screen == Screen::settings || s.screen == Screen::options || s.screen == Screen::packs ||
                          (s.screen == Screen::info && s.info_return == Screen::settings);
     if (on_page || !marks) settings_left = 0;
     else if (settings_left == 1 && !settings_job) { settings_left = 2; line = settings_save(); }

@@ -58,9 +58,15 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         return;
     }
     case Screen::settings: {                             // the compact title bar, as the library
-        static ui::ListRow rows[settings::rows] XYF_DATA = {       // xyf_settings.hpp Row, labels
-            {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false}, {"About", 0, false}};
+        static ui::ListRow rows[] XYF_DATA = {       // xyf_settings.hpp Row, labels
+            {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false}, {"About", 0, false}
 #if defined(XYF_SETTING_OPTIONS)
+            , {"Content packs", 0, false}
+#endif
+        };
+        uint32_t count = settings::rows;
+#if defined(XYF_SETTING_OPTIONS)
+        if (s.pack_names) ++count;
         rows[settings::row_memory].detail = settings::memory_text(s.memory, false);   // pending: marked
         rows[settings::row_power_on].detail = s.power_on_text;     // #21: 0 (blank) without settings.txt
         rows[settings::row_usb].detail = s.usb_text;               // (About: none; its page has the version)
@@ -73,9 +79,20 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         rows[settings::row_memory].detail = settings::memory_text(s.memory, s.memory_pending);
         const char* const hint = "PLAY  change   STOP  back";
 #endif
-        const ui::List list = {"Settings", rows, settings::rows, s.settings_selected, s.settings_note ? s.settings_note : hint,
+        const ui::List list = {"Settings", rows, count, s.settings_selected, s.settings_note ? s.settings_note : hint,
                                chrome, true};
         ui::draw_list(fb, list);
+        return;
+    }
+    case Screen::packs: {
+#if defined(XYF_SETTING_OPTIONS)
+        static ui::ListRow rows[packs_per_page] XYF_DATA = {};
+        for (uint32_t i = 0; i != s.pack_count; ++i) rows[i].title = s.pack_names[i];
+        const char* hint = s.pack_note ? s.pack_note : s.pack_page && s.pack_more ? "- / +  pages   STOP  back" :
+                           s.pack_more ? "+  next page   STOP  back" : s.pack_page ? "-  previous page   STOP  back" : "STOP  back";
+        const ui::List list = {"Content packs", rows, s.pack_count, 0, hint, chrome, false};
+        ui::draw_list(fb, list);
+#endif
         return;
     }
     case Screen::options: {                              // #21: a setting's options, the one in effect marked

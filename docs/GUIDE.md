@@ -175,6 +175,7 @@ PLAY changes the selected row; the bottom line says when it is saved.
 - **USB mode:** "MTP + Serial" (default), "MTP" or "Serial"; applies the next time the menu opens. With
   "MTP", the host tool and web app cannot reach the OP-XY until you change it back here.
 - **About:** the version, the real bootloader (1.2.1, never updated), how to open the menu.
+- **Content packs** shows pack IDs.
 
 A settings file from a newer XY Forever reads as the defaults and is kept unchanged.
 

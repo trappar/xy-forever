@@ -520,7 +520,8 @@ void refresh_catalog() {
 #if defined(XYF_SETTINGS)
     // A rescan (a USB job's end) keeps the Settings page, its row and line, and an open option list.
     const xyf::menu::Screen kept_screen = app.screen;
-    const bool keep = kept_screen == xyf::menu::Screen::settings || kept_screen == xyf::menu::Screen::options;
+    const bool keep = kept_screen == xyf::menu::Screen::settings || kept_screen == xyf::menu::Screen::options ||
+                      kept_screen == xyf::menu::Screen::packs;
     const uint32_t kept_row = app.main_selected, kept_setting = app.settings_selected, kept_entry = app.entry;
     const char* const kept_note = app.settings_note;
     const char* const* const kept_options = app.options;
@@ -535,6 +536,7 @@ void refresh_catalog() {
         app.settings_selected = kept_setting; app.settings_note = kept_note;
         app.options = kept_options; app.option_count = kept_count; app.option_current = kept_current;
         app.option_selected = kept_option;
+        if (kept_screen == xyf::menu::Screen::packs) xy_forever::usb_service::settings_open(app, xyf::settings::row_packs);
     }
 #endif
 #if defined(XYF_MODS_PAGE)

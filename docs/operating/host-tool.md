@@ -26,6 +26,11 @@ Manual changes may touch `/yaffs2` except the protected marker and updater inbox
 Creating the report folder is a storage write and requires the developer's approval:
 `python3 xyf_host.py put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.
 
+`python3 xyf_host.py packs list` lists installed sound packs in `/yaffs2/content/dlc/`.
+Each row gives the pack folder ID and the vendor manifest's name, version, author and description when present.
+Settings > Content packs shows the same folder IDs on the OP-XY. Use + and - to turn pages and STOP to return.
+A malformed manifest is reported beside its folder ID. The command only lists directories and reads `manifest.json`.
+
 ### File commands
 
 Absolute device paths stay under `/yaffs2`; the device refuses changes to `/yaffs2/bootloader.dev`,

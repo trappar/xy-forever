@@ -20,7 +20,7 @@ static const uint32_t key_turn = 0x100u;
 #if !defined(XYF_SMALL_CRC)
 #define XYF_SETTING_OPTIONS 1
 #endif
-enum class Screen : uint32_t { main, library, info, confirm_uninstall, home_empty, confirm_save, settings, options };
+enum class Screen : uint32_t { main, library, info, confirm_uninstall, home_empty, confirm_save, settings, options, packs };
 enum class Action : uint32_t {
     none,
     redraw,          // state changed: draw again
@@ -83,6 +83,11 @@ struct State {
     // (marked "current") and the selected one. The heading is the label of the Settings row (settings_selected).
     const char* const* options;
     uint32_t option_count, option_current, option_selected;
+    // Installed packs: the product supplies one page of folder ids from content/dlc.
+    const char* const* pack_names;
+    const char* pack_note;
+    uint32_t pack_page, pack_count;
+    bool pack_ready, pack_more;
 #endif
     // 193: StorageView (the caller's, after start() and every pass) and the line a refused row left (0: none).
     uint32_t storage;
@@ -100,7 +105,7 @@ Action key(State& state, uint32_t key, bool pressed);
 const char* main_label(const State& state, uint32_t item);
 #if defined(XYF_SETTING_OPTIONS)
 // #21: the caller's answer to change_setting: the setting's options (texts[current] in effect, selected first).
-static const uint32_t max_options = 8;
+static const uint32_t max_options = 8, packs_per_page = 7;
 inline void open_options(State& s, const char* const* texts, uint32_t count, uint32_t current) {
     s.options = texts; s.option_count = count < max_options ? count : max_options;
     s.option_current = s.option_selected = current < s.option_count ? current : 0;
