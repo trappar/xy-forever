@@ -52,6 +52,10 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   board's (`Simulator.start` moves to another port pair when the answer is not its own simulator's). Tests:
   `tests/test_simulator.py`.
 
+`set hold_mod_verify 1` holds a USB mod build at verification after it writes its output parts.
+The menu loop continues to answer CDC requests, including status and cancel, and cancellation
+still removes the output. `set hold_mod_verify 0` lets verification proceed.
+
 ## Stock boot writer model
 
 `sim/stock_boot.ipp` models `88a06a7e` and the role-dispatched wrappers: A accesses local media;
