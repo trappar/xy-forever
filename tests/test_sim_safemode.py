@@ -2,12 +2,14 @@
 mods" while the saved configuration has mods on: PLAY asks (Cancel first), then the base's official content goes in,
 the base becomes the default, the record keeps the selection, built=, slot= and gains safe=1, and the base boots; a
 plain power-on then boots it without writing. In safe mode the first row reads "<base> (safe mode)" and the second
-"Restore Open-XY (N mods)": PLAY puts the Open-XY content back, makes the slot the default, safe=0, with no rebuild
-while the slot still holds what built= says, and boots it. A mod build never takes the saved slot. A content switch
-failure and a power cut in the switch: the record is the previous one and doing the same again repairs it. With no
-setup saved the row is "Boot without mods" and PLAY only says why. Synthetic packages (test_sim_config). Needs
+"Restore Open-XY (N mods)": PLAY puts the Open-XY content back, makes the slot the default, safe=0, and boots it; a
+slot that no longer holds what built= says fails it (a Save rebuilds). Both run from the home menu: the Mods page is
+never shown, nothing is built, unsaved toggles stay, the progress is the status line. A mod build never takes the
+saved slot. A content switch failure and a power cut in the switch: the record is the previous one and doing the same
+again repairs it. With no setup saved the row is "Boot without mods" and PLAY only says why. Synthetic packages (test_sim_config). Needs
 clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
 from pathlib import Path
+import re
 import sys
 import unittest
 
@@ -16,10 +18,10 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_config import ConfigBase                                    # noqa: E402
-from test_sim_mods_page import PLAY, PLUS                                 # noqa: E402
+from test_sim_mods_page import MINUS, PLAY, PLUS, STOP                   # noqa: E402
 
 CONFIRM_SAFE = 1                                                           # xyf_menu Screen::confirm_safe
-TRACK2 = 7                                                                 # the safe-mode row
+TRACK1, TRACK2 = 6, 7                                                      # the first row, the safe-mode row
 
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
@@ -56,6 +58,16 @@ class SafeMode(ConfigBase, unittest.TestCase):
         c = self.saved_as(self.base, list(mods))                           # official content, the base the default
         self.assertEqual((c['safe'], c['slot']), ('1', a))
         return c
+
+    def slots(self):
+        """The Open-XY library entries' files (a build writes one)."""
+        lib = self.entry('mods-a').parent.relative_to(self.root).as_posix() + '/mods-'
+        return {k: v for k, v in self.snapshot().items() if k.startswith(lib)}
+
+    def home_only(self, pages, slots):
+        """Since `pages` "mods page:" lines: the Mods page was never shown, and nothing was built."""
+        self.assertEqual(self.pages()[pages:], [])
+        self.assertEqual(self.slots(), slots)
 
     def safe_saved(self):
         """alpha saved, then safe mode: the slot."""
@@ -153,6 +165,53 @@ class SafeMode(ConfigBase, unittest.TestCase):
         self.restore()
         self.assertEqual(self.booted(), a)
         self.assertEqual(self.saved_as(a, ['alpha'])['safe'], '0')
+
+    def test_safe_actions_run_on_the_home_menu(self):
+        """Boot without mods and Restore never show the Mods page and never build; their progress is the home
+        menu's status line; an unsaved toggle stays (a failure returns to it unchanged)."""
+        a = self.first_save()
+        self.menu_again()
+        self.change(['gamma'], unknown=False)                              # an unsaved toggle
+        slots, pages = self.slots(), len(self.pages())
+        said = len(self.lines('menu: line: Booting without mods...'))
+        self.sim.set('rename_fault_kind', 1)
+        self.sim.set('rename_fault', 1)                                    # the switch fails: back on the home menu
+        self.safe_mode()
+        self.assertIn('Boot without mods again', self.failed())
+        self.assertEqual(len(self.lines('menu: line: Booting without mods...')), said + 1)
+        self.home_only(pages, slots)
+        self.wait_log(lambda: '(changed) pending=1' in self.home(), 'still changed')
+        self.press(TRACK1)                                                 # Continue, then the Mods row
+        p = self.open_page()
+        self.assertEqual((p['on'], p['changed']), (['alpha', 'gamma'], 1))   # the unsaved toggle kept
+        self.press(STOP)
+        self.wait(lambda p: p['shown'] == 0, 'left', 5.0)
+        self.press(MINUS); self.press(MINUS)                              # back on Continue
+        self.sim.set('rename_fault', 0)
+        pages, saving = len(self.pages()), len(self.lines('menu: line: Saving the settings...'))
+        self.safe_mode()
+        self.assertEqual(self.booted(), self.base)
+        self.in_safe_mode(a)                                               # the saved selection, not the toggles
+        self.home_only(pages, slots)
+        self.assertGreater(len(self.lines('menu: line: Saving the settings...')), saving)
+        self.menu_again()
+        pages, said = len(self.pages()), len(self.lines('menu: line: Restoring Open-XY...'))
+        self.restore()
+        self.assertEqual(self.booted(), a)
+        self.assertEqual(self.saved_as(a, ['alpha'])['safe'], '0')
+        self.home_only(pages, slots)
+        self.assertEqual(len(self.lines('menu: line: Restoring Open-XY...')), said + 1)
+
+    def test_restore_never_builds(self):
+        """The slot no longer holds what built= says: Restore fails, says a Save rebuilds it, and builds nothing."""
+        a = self.safe_saved()
+        info = self.entry(a) / 'info.txt'
+        info.write_text(re.sub(r'sha256=\w+', 'sha256=' + '0' * 64, info.read_text()))
+        slots, pages, record = self.slots(), len(self.pages()), (self.root / 'xy-forever/config.txt').read_bytes()
+        self.restore()
+        self.assertIn('Save on the Mods page rebuilds it', self.failed())
+        self.home_only(pages, slots)
+        self.assertEqual(((self.root / 'xy-forever/config.txt').read_bytes(), self.disk_default()), (record, self.base))
 
 
 if __name__ == '__main__':

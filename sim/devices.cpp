@@ -389,6 +389,7 @@ extern "C" void xy_forever_key_ui() {
         sim_app.undo_offer = usb_service::content_offer();               // as key_ui.cpp
 #endif
 #if defined(XYF_MODS_PAGE)
+        if (const char* line = mods_io::safe_line()) xyf_sim::log("menu: line: %s", line);   // as key_ui.cpp
         if (const uint32_t saved = mods_io::save_state()) {               // as key_ui.cpp
             if (saved == mods_io::save_boot) {
                 // Deterministically hold a REAL completed Save at its pending boot boundary.

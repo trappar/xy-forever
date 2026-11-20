@@ -74,6 +74,10 @@ def main():
         lib.flow_key(54); lib.flow_key(51); lib.flow_draw(fb, b''); png(out / 'flow-2-safe-mode.png', pixels(fb))
         lib.flow_key(52); lib.flow_key(54); lib.flow_key(54); lib.flow_key(51)   # Uninstall
         lib.flow_draw(fb, b''); png(out / 'flow-3-confirm.png', pixels(fb))
+        # #25: Boot without mods accepted: it runs on the home menu, its progress the status line (never the Mods page).
+        lib.flow_start(1); lib.flow_safe(b'Boot without mods', 0)
+        lib.flow_key(54); lib.flow_key(51); lib.flow_key(54); lib.flow_key(51)
+        lib.flow_draw(fb, b'Installing content 2/3'); png(out / 'flow-3b-safe-mode-running.png', pixels(fb))
         # #21: the Settings page (Mod memory, Menu at power-on, USB mode, About) and the About page.
         lib.flow_start(1); lib.flow_settings(2, 0, b''); lib.flow_settings_rows(1, 0, 0)
         lib.flow_key(53); lib.flow_key(51); lib.flow_key(54); lib.flow_draw(fb, b''); png(out / 'flow-4-settings.png', pixels(fb))

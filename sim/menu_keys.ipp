@@ -11,6 +11,11 @@ void dispatch(uint32_t key, uint32_t pressed) {
     }
     if (sim_menu) {
         const xyf::menu::Action action = xyf::menu::key(sim_app, key, pressed != 0);
+        if (action != xyf::menu::Action::none && action != xyf::menu::Action::redraw &&   // as key_ui: safe mode runs
+            mods_io::save_state() == mods_io::save_running) {
+            sim_app.screen = xyf::menu::Screen::main; xyf_sim::log("menu: action %u ignored: safe mode runs", uint32_t(action));
+            return;
+        }
         if (action == xyf::menu::Action::open_mods) { sim_mods = true; mods_io::open(); log_page(); return; }
         if (action == xyf::menu::Action::continue_boot || action == xyf::menu::Action::discard ||   // as key_ui
             action == xyf::menu::Action::safe_mode || action == xyf::menu::Action::restore ||
@@ -50,7 +55,7 @@ void dispatch(uint32_t key, uint32_t pressed) {
         }
         if (action == xyf::menu::Action::safe_mode || action == xyf::menu::Action::restore) {   // as key_ui
             xyf_sim::log("menu: %s", action == xyf::menu::Action::restore ? "restore" : "safe mode");
-            sim_mods = true; mods_io::safe_begin(action == xyf::menu::Action::restore); log_page();
+            mods_io::safe_begin(action == xyf::menu::Action::restore);   // on the home menu, never the page
             return;
         }
 #if defined(XYF_CONTENT_SWITCH)

@@ -70,8 +70,12 @@ back, makes the stock firmware the default and boots it. Your mod setup is kept.
 no mods saved the row is grey and PLAY says why.
 
 In safe mode the row reads "Restore Open-XY (3 mods)". PLAY puts your mod firmware's
-content back, makes it the default and boots it, building it again only if the saved
-build is no longer intact. A Save on the Mods page also leaves safe mode.
+content back, makes it the default and boots it. If the saved build is no longer
+intact, it builds nothing and says so: Save on the Mods page builds it again. A Save
+on the Mods page also leaves safe mode.
+
+Both stay on the home menu, with their progress on the status line. They never open
+the Mods page, and they keep any unsaved mod toggles.
 
 ### Mods
 

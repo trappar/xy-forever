@@ -345,6 +345,7 @@ extern "C" void xy_forever_key_ui() {
             app.undo_offer = xy_forever::usb_service::content_offer();   // PLAY on the first row undoes
 #endif
 #if defined(XYF_MODS_PAGE)
+            if (const char* line = xy_forever::mods_io::safe_line()) { status = line; dirty = 1; }   // safe mode, Restore
             // The save sequence ended: boot the saved configuration (the default), or back to the menu with
             // the reason (the changes stay pending).
             if (const uint32_t saved = xy_forever::mods_io::save_state()) {
@@ -367,6 +368,13 @@ extern "C" void xy_forever_key_ui() {
                 using xyf::menu::Action;
                 app_action = 0;
                 dirty = 1;
+#if defined(XYF_MODS_PAGE)
+                // Boot without mods or Restore runs from here (the save sequence, the page not shown): no other action.
+                if (action != uint32_t(Action::redraw) && xy_forever::mods_io::save_state() == xy_forever::mods_io::save_running) {
+                    app.screen = xyf::menu::Screen::main;
+                    continue;
+                }
+#endif
                 if (lost && (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::safe_mode) ||
                              action == uint32_t(Action::restore) || action == uint32_t(Action::save) ||
                              action == uint32_t(Action::discard))) {
@@ -398,9 +406,8 @@ extern "C" void xy_forever_key_ui() {
                     xy_forever::mods_io::save_begin();
                     continue;
                 }
-                if (action == uint32_t(Action::safe_mode) || action == uint32_t(Action::restore)) {   // the same page
-                    mods_shown = 1;
-                    xy_forever::mods_io::safe_begin(action == uint32_t(Action::restore));
+                if (action == uint32_t(Action::safe_mode) || action == uint32_t(Action::restore)) {   // on the home menu
+                    xy_forever::mods_io::safe_begin(action == uint32_t(Action::restore));   // its line: safe_line
                     continue;
                 }
 #endif

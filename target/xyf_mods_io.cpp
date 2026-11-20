@@ -283,7 +283,7 @@ const char* memory_flip() { return m::flip_memory(the_page, io.step == s_done); 
 
 uint32_t pump(bool shown) {
     const uint32_t begin = units();
-    uint32_t redraw = save_follow();
+    uint32_t redraw = sv.mode == mode_save ? save_follow() : safe_follow();
     // The saved configuration, once the menu runs (one bounded read; again after a failed save).
     if (rec.state == xg::unread && sv.stage == sv_idle && !reading() && !usb_service::page_busy() &&
         usb_service::page_serving() == s_ok && read_record(false) != s_ok)
@@ -388,10 +388,20 @@ void save_begin() {
     open();                                     // the list and the saved toggles, unless held already
 }
 
-void safe_begin(bool restore) {
+void safe_begin(bool restore) {                  // never the page: the list, its toggles and views stay as they are
     if (sv.stage != sv_idle) return;
-    save_begin();
-    sv.mode = restore ? mode_restore : mode_safe;
+    sv.mode = restore ? mode_restore : mode_safe; sv.length = 0;
+    ++sv.serial;
+    sv.reason[0] = 0;
+    sv.stage = sv_check;
+    usb_service::save_log_begin();
+    safe_say(restore ? "Restoring Open-XY..." : "Booting without mods...");
+}
+
+const char* safe_line() {
+    if (sv.shown == sv.said) return 0;
+    sv.shown = sv.said;
+    return sv.status;
 }
 
 uint32_t save_state() {

@@ -41,12 +41,15 @@ uint32_t longest_ms();
 // STOP cancels while the build runs); save_state: save_running, then save_boot (the default is the saved
 // configuration: boot it) or save_failed (save_reason; the changes stay pending); save_done: taken.
 // safe_begin(false): "Boot without mods" (content to the base, the default the base, the record kept with
-// safe=1); safe_begin(true): "Restore Open-XY" (content to the saved slot, a save's build only when it no longer
-// holds what built= says, the default the slot, safe=0). Both end as a save does: save_boot, or save_failed.
+// safe=1); safe_begin(true): "Restore Open-XY" (content to the saved slot, the default the slot, safe=0; it fails,
+// building nothing, when the slot no longer holds what built= says). Both run from the home menu: the Mods page is
+// never shown nor changed (its toggles stay). safe_line: their progress for the home menu's status line when it
+// changed (0: unchanged). Both end as a save does: save_boot, or save_failed.
 enum SaveState : uint32_t { save_idle = 0, save_running, save_boot, save_failed };
 bool menu_state(xyf::menu::State& app);
 void save_begin();
 void safe_begin(bool restore);
+const char* safe_line();
 uint32_t save_state();
 const char* save_reason();
 void save_done();
