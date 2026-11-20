@@ -148,9 +148,15 @@ uint32_t clock_ms() { return now(); }
 #endif
 void choose(uint32_t entry) { b_choice = 2; b_entry = entry; }
 #if defined(XYF_MENU_ON_FAILURE)
-bool menu_forced() { return b_failed != 0 || b_power_on != 0; }
+bool menu_forced() { return b_failed != 0 || b_power_on != 0 || b_doubt != 0; }
+uint32_t take_converge() {
+    if (b_doubt_taken) return 0;
+    b_doubt_taken = 1;
+    return b_doubt;
+}
 #else
 bool menu_forced() { return false; }
+uint32_t take_converge() { return 0; }
 #endif
 #if defined(XYF_STATE_WRITE)
 const char* set_default(uint32_t entry) {

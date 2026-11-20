@@ -72,8 +72,9 @@ struct CheckStatus {
     char id[32];
     TimingInfo timing;
     uint32_t power_on;      // #21: a check of the default: Menu at power-on (xyf_settings.hpp PowerOn; A's read)
+    uint32_t converge;      // #197: a check of the default: why B converges before it boots (xyf_converge.hpp Doubt)
 };
-static_assert(sizeof(CheckStatus) == 120, "CheckStatus layout");
+static_assert(sizeof(CheckStatus) == 124, "CheckStatus layout");
 // b: bound for a's answer to one command. a answers from its own loop, so this covers
 // whatever a is busy with: the mount and scan (5.1 s seen once, normally 0.1 s), an
 // image read, a hash.
@@ -144,6 +145,9 @@ void choose(uint32_t entry);
 // into the broken default (it waits for a choice). #21: also when Menu at power-on is always (the default
 // checked good).
 bool menu_forced();
+// #197: A's doubt at the power-on check of the default (xyf_converge.hpp Doubt; 0: none). The menu then converges first
+// (key_ui: the progress screen, then the default boots) and never times out. take_converge: the doubt, once per boot.
+uint32_t take_converge();
 #if defined(XYF_ONE_SESSION)
 // Test 065 (b): the USB command plumbing on the file boot's session (menu_link delegates).
 bool link_value(uint32_t value);          // one tagged command (raw value), answered by a's loop

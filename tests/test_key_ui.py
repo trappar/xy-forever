@@ -122,12 +122,13 @@ class KeyUiTest(unittest.TestCase):
 
     def test_menu_busy_guard_matches_the_simulator(self):
         """key_ui and the simulator's mirror (sim/devices.cpp) hold the same menu actions
-        while a job owns the write window: Continue, Discard, Boot once, Set default and Save."""
-        expected = {'continue_boot', 'discard', 'boot_once', 'set_default', 'save'}
-        for path in ('target/key_ui.cpp', 'sim/devices.cpp'):
+        while a job owns the write window: Continue, Boot without mods, Restore Open-XY and the first row's apply
+        (#197), the actions that boot (`boots`)."""
+        expected = {'continue_boot', 'safe_mode', 'restore', 'apply'}
+        for path in ('target/key_ui.cpp', 'sim/menu_keys.ipp'):
             text = (ROOT / path).read_text()
             at = text.index('menu_busy()')
-            head = text[text.rindex('if (action ==', 0, at):at]
+            head = text[text.rindex('const bool boots =', 0, at):at]
             self.assertEqual(set(re.findall(r'Action::(\w+)', head)), expected, path)
 
     def test_simulator_mirrors_every_menu_action(self):
@@ -138,6 +139,8 @@ class KeyUiTest(unittest.TestCase):
         actions = {}
         for path in ('target/key_ui.cpp', 'sim/devices.cpp'):
             text = (ROOT / path).read_text()
+            if path == 'sim/devices.cpp':                       # its part: the keys (dispatch)
+                text += (ROOT / 'sim/menu_keys.ipp').read_text()
             actions[path] = set(re.findall(r'Action::(\w+)', text))
             self.assertIn('change_setting', actions[path], path)
             self.assertIn('mods_io::memory_flip()', text, path)

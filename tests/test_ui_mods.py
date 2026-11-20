@@ -56,7 +56,7 @@ def estimate(gen, on):
 
 def build_lib(tmp):
     lib = P.build(tmp, run=hostbuild.run)
-    for name in ('mods_text', 'mods_refusal', 'mods_save_refusal', 'mods_row_id', 'mods_list_id', 'mods_sorted_name',
+    for name in ('mods_text', 'mods_note', 'mods_refusal', 'mods_save_refusal', 'mods_row_id', 'mods_list_id', 'mods_sorted_name',
                  'mods_sorted_id', 'mods_flip_memory'):
         getattr(lib, name).restype = ctypes.c_char_p
     lib.mods_payload.argtypes = [ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p, ctypes.c_uint]
@@ -174,7 +174,7 @@ class Base:
         lib.mods_ended(8, 0, 0, 0)
         self.draw(folder / 'mods-8-done.png')
         self.assertEqual(lib.mods_line(), LINE_DONE)
-        self.assertEqual(self.text(), 'Built: Mods: %d is in the Firmware library (content not installed yet).' % len(few))
+        self.assertEqual(self.text(), 'Built: Mods: %d (content not installed yet).' % len(few))
         lib.mods_refused(3, 5)                                              # state: both mods ids taken
         self.draw(folder / 'mods-8b-slots-in-use.png')
         lib.mods_ended(9, 15, 4, 0)                                         # content, catalog
@@ -306,55 +306,48 @@ CONFIG_PREVIEWS = paths.PREVIEWS / 'mods-config'
 
 
 class SaveModel(Base, unittest.TestCase):
-    """The home row, the Save dialog's keys (Save / Discard / Back; blocked: Discard / Back), the library
-    showing Open-XY (the spare slot hidden), the Mods status row and the save's progress screen; previews kept in
-    <private>/xy-forever/previews/mods-config/ when private/ is there."""
-    CONTINUE, SAVE, DISCARD, REDRAW_ACTION, MAIN, LIBRARY, DIALOG = 2, 7, 8, 1, 0, 1, 5   # 188: no mtp_mode
+    """The home row (#197: no Save dialog: PLAY converges to what is saved; a selection that cannot be built says why on
+    the first row's status line), the safe-mode row (Boot without mods and Restore Open-XY, both at once), the Mods
+    status row and the progress screen; previews kept in <private>/xy-forever/previews/mods-config/ when private/ is
+    there."""
+    CONTINUE, SAFE_MODE, RESTORE, APPLY, MAIN = 2, 3, 4, 9, 0
 
     def keep(self, name):
         if KEEP:
             CONFIG_PREVIEWS.mkdir(parents=True, exist_ok=True)
             P.png(CONFIG_PREVIEWS / name, P.pixels(self.fb))
 
-    def test_dialog_keys(self):
+    def test_first_row_keys(self):
         lib = self.lib
         lib.flow_start(1)
-        lib.flow_config(b'', 0, 0, None)
-        self.assertEqual(lib.flow_key(PLAY), self.CONTINUE)                 # no changes: boots at once
-        lib.flow_start(1)
-        lib.flow_config(b'Open-XY - 7 mods - 1.2.1 (changed)', 1, 0, None)
-        self.assertEqual((lib.flow_key(PLAY), lib.flow_screen(), lib.flow_choice()), (self.REDRAW_ACTION, self.DIALOG, 0))
-        self.assertEqual([lib.flow_key(PLUS) and lib.flow_choice() for _ in range(3)], [1, 2, 0])
-        self.assertEqual([lib.flow_key(MINUS) and lib.flow_choice() for _ in range(2)], [2, 1])
-        self.assertEqual((lib.flow_key(PLAY), lib.flow_screen()), (self.DISCARD, self.MAIN))
-        lib.flow_key(PLAY); lib.flow_key(PLUS); lib.flow_key(PLUS)
-        self.assertEqual((lib.flow_key(PLAY), lib.flow_screen()), (self.REDRAW_ACTION, self.MAIN))   # Back
-        lib.flow_key(PLAY)
-        self.assertEqual((lib.flow_key(STOP), lib.flow_screen()), (self.REDRAW_ACTION, self.MAIN))   # STOP: back
-        lib.flow_key(PLAY)
-        self.assertEqual((lib.flow_key(PLAY), lib.flow_screen()), (self.SAVE, self.MAIN))
-        lib.flow_config(b'Open-XY - 7 mods - 1.2.1 (changed)', 1, 1, b'Too big for the mods memory: turn some mods off.')
-        self.assertEqual((lib.flow_key(PLAY), lib.flow_choice()), (self.REDRAW_ACTION, 1))   # blocked: no Save
-        self.assertEqual([lib.flow_key(PLUS) and lib.flow_choice() for _ in range(3)], [2, 1, 2])
-        self.assertEqual([lib.flow_key(MINUS) and lib.flow_choice() for _ in range(2)], [1, 2])
-        lib.flow_key(MINUS)
-        self.assertEqual(lib.flow_key(PLAY), self.DISCARD)
+        lib.flow_config(b'', 0, None)
+        self.assertEqual(lib.flow_key(PLAY), self.CONTINUE)                 # nothing pending: boots at once
+        for label in (b'Open-XY - 7 mods - 1.2.1 (to apply)', b'Open-XY - 7 mods - 1.2.1 (rebuild)'):
+            lib.flow_start(1)
+            lib.flow_config(label, 1, None)
+            self.assertEqual((lib.flow_key(PLAY), lib.flow_screen()), (self.APPLY, self.MAIN))   # converges, no dialog
+        lib.flow_config(b'Open-XY - 7 mods - 1.2.1 (rebuild)', 1, b'Too big for the mods memory: turn some mods off.')
+        self.assertEqual((lib.flow_key(PLAY), lib.flow_screen()), (self.APPLY, self.MAIN))   # it fails with the reason
+        self.assertEqual((lib.flow_key(STOP), lib.flow_screen()), (0, self.MAIN))
 
-    def test_library_open_xy_and_previews(self):
+    def test_safe_row_and_previews(self):
         lib, fb = self.lib, self.fb
         lib.flow_start(1)
-        lib.flow_config(b'Open-XY - 7 mods - 1.2.1 (changed)', 1, 0, None)
+        lib.flow_config(b'Open-XY - 7 mods - 1.2.1 (rebuild)', 1, None)
         lib.flow_draw(fb, b''); self.keep('home-pending.png')
-        lib.flow_key(PLAY); lib.flow_draw(fb, b''); self.keep('save-dialog.png')
-        lib.flow_config(b'Open-XY - 7 mods - 1.2.1 (changed)', 1, 1, b'Too big for the mods memory: turn some mods off.')
-        lib.flow_draw(fb, b''); self.keep('save-dialog-blocked.png')
-        lib.flow_open_xy()
-        lib.flow_config(b'Open-XY - 7 mods - 1.2.1', 0, 0, None)
+        lib.flow_config(b'Open-XY - 7 mods - 1.2.1 (rebuild)', 1, b'Too big for the mods memory: turn some mods off.')
+        lib.flow_draw(fb, b''); self.keep('home-blocked.png')              # the reason on the first row's line
+        lib.flow_start(1)
+        lib.flow_config(b'Open-XY - 7 mods - 1.2.1', 0, None)
+        lib.flow_draw(fb, b''); self.keep('home-no-setup.png')            # the safe-mode row dimmed
+        lib.flow_safe(b'Boot without mods', 0)
         lib.flow_draw(fb, b''); self.keep('home-open-xy.png')
-        lib.flow_key(PLUS); lib.flow_key(PLAY)
-        self.assertEqual((lib.flow_screen(), lib.flow_library_selected()), (self.LIBRARY, 2))
-        self.assertEqual([lib.flow_key(PLUS) and lib.flow_library_selected() for _ in range(3)], [0, 1, 2])   # mods-b hidden
-        lib.flow_draw(fb, b''); self.keep('library-open-xy.png')
+        lib.flow_key(PLUS)
+        self.assertEqual((lib.flow_key(PLAY), lib.flow_screen()), (self.SAFE_MODE, self.MAIN))   # #197: at once
+        lib.flow_config(b'OP-XY 1.2.1 (safe mode)', 0, None)
+        lib.flow_safe(b'Restore Open-XY (7 mods)', 1)
+        lib.flow_draw(fb, b''); self.keep('home-safe-mode.png')
+        self.assertEqual((lib.flow_key(PLAY), lib.flow_screen()), (self.RESTORE, self.MAIN))
         lib.mods_reset(); lib.mods_ready(b'', b'')
         for name, (build, stage, done, total), ms in (('progress-building', (1, 0, 0, 0), 900),
                                                        ('progress-content', (1, 1, 3, 8), 9400),
@@ -368,6 +361,12 @@ class SaveModel(Base, unittest.TestCase):
                 lib.mods_saving(build, stage, done, total)
             bar = lib.mods_progress(ms)
             self.assertLessEqual(bar, 1000000)
+            self.draw(); self.keep(name + '.png')
+        for name, title in (('progress-safe-mode', b'Booting without mods'), ('progress-restore', b'Restoring Open-XY'),
+                            ('progress-apply', b'Applying changes')):   # #197: the same screen from the home menu
+            lib.mods_reset(); lib.mods_ready(b'', b'')
+            lib.mods_saving(0, 1, 2, 3); lib.mods_progress_title(title)
+            self.assertLessEqual(lib.mods_progress(1200), 1000000)
             self.draw(); self.keep(name + '.png')
 
 
@@ -390,7 +389,7 @@ class SyntheticPage(Base, unittest.TestCase):
         self.assertGreater(c(b'1.2.3.1-a', b'1.2.3-a'), 0)
 
     def test_status_row_previews(self):
-        """The status row: no changes, changes applied when you boot, a selection that cannot be saved."""
+        """The status row: saved, a flip being saved (#197), a selection that cannot be built."""
         lib = self.lib
         load(lib, self.gen)
         self.draw(CONFIG_PREVIEWS / 'mods-status-none.png' if KEEP else None)
@@ -428,7 +427,7 @@ class SyntheticPage(Base, unittest.TestCase):
         self.assertEqual(lib.mods_changed(), 0)
         self.assertEqual(shifted(lib, STOP), REDRAW)                        # SHIFT+STOP: unknown bases
         self.assertEqual((lib.mods_request(), lib.mods_line(), self.text()),
-                         (REQUEST_NONE, LINE_INFO, 'Unknown mod bases allowed for the next save.'))
+                         (REQUEST_NONE, LINE_INFO, 'Unknown mod bases allowed for the next build.'))
         self.assertEqual(shifted(lib, STOP), REDRAW)
         self.assertEqual(self.text(), 'Unknown mod bases refused.')
         self.assertEqual(shifted(lib, STOP), REDRAW)
@@ -471,8 +470,8 @@ class SyntheticPage(Base, unittest.TestCase):
         for key in (PLAY, PLUS, MINUS, SHIFT, 6):
             self.assertEqual(press(lib, key), NONE)
         self.assertEqual(press(lib, STOP), REDRAW)                          # said, not cancelled
-        self.assertEqual((lib.mods_request(), lib.mods_line(), self.text()),
-                         (REQUEST_NONE, LINE_INFO, 'Cannot cancel now: it is being added to the library.'))
+        self.assertEqual((lib.mods_request(), lib.mods_note()),
+                         (REQUEST_NONE, b'Cannot cancel now: it is being added to the library.'))   # its footer
         self.assertEqual(press(lib, STOP), NONE)                            # said once
         self.assertEqual(lib.mods_request(), REQUEST_NONE)
         lib.mods_ended(8, 0, 0, 0)
@@ -507,7 +506,7 @@ class SyntheticPage(Base, unittest.TestCase):
             self.assertEqual((self.text(), lib.mods_line()), (want, LINE_ERROR))
         lib.mods_job(7, 7, 3, 3, b'Mods: 2', 0, 1)
         lib.mods_ended(8, 0, 0, 0)
-        self.assertEqual(self.text(), 'Built: Mods: 2 is in the Firmware library (content not installed yet).')
+        self.assertEqual(self.text(), 'Built: Mods: 2 (content not installed yet).')
         self.assertNotIn('tmp/', self.text())
         ended = [((9, 15, 4), 'Build failed: the content catalog is not the official one.'),
                  ((9, 14, 18), 'Unknown mod base: SHIFT+STOP on the Mods page allows it.'),

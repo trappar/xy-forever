@@ -3,8 +3,8 @@
 The board hands PSoC frames to B's stock receive queue as the hardware does (control "knob", "knob_raw",
 "knob_jump"; sim/runtime.hpp): the slot written, the write index advanced, the read index following as the
 stock poll would. B's menu loop runs the reader after that point, as key_ui.cpp does after its stock poll,
-and logs one "knob:" line per pass that read or moved anything. Turns move the home menu, the Firmware
-library and the Mods list by one row per N counts, bounded per pass; malformed frames, implausible index
+and logs one "knob:" line per pass that read or moved anything. Turns move the home menu and the Mods list
+by one row per N counts, bounded per pass; malformed frames, implausible index
 steps and a different stock identity move nothing and show in the counters (also in diag.status, block
 KNB1). Needs clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
 from pathlib import Path
@@ -18,11 +18,11 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                    # noqa: E402
 from xy_forever import usb_proto as P                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
-from test_sim_mods_page import MINUS, PLAY, SHIFT, STOP, VIEW_BUILDING, VIEW_LIST, PageBase, synthetic_setup  # noqa: E402
+from test_sim_mods_page import MINUS, PLAY, SHIFT, STOP, VIEW_LIST, PageBase, synthetic_setup  # noqa: E402
 from test_ui_mods import FILTER_ON, KINDS, display_order                   # noqa: E402
 
 N, MAX_MOVES, MAX_FRAMES, LEFTOVER_MS = 2, 4, 32, 600                      # knob_input.hpp
-HOME, LIBRARY, UNINSTALL, SETTINGS = 0, 1, 3, 6                            # xyf_menu Screen
+HOME, SETTINGS = 0, 3                                                       # xyf_menu Screen (#197: no dialogs)
 PLUS = 54
 
 
@@ -80,7 +80,7 @@ class Knobs(PageBase, unittest.TestCase):
         return k
 
     # -- tests -----------------------------------------------------------------------------------
-    def test_turns_move_home_and_library_n_counts_per_row(self):
+    def test_turns_move_home_n_counts_per_row(self):
         self.turn(1, 1)                                                    # one count, below N: no row
         k = self.until_frames(1)
         self.assertEqual((k['main'], k['moves']), (0, 0), k)
@@ -91,7 +91,7 @@ class Knobs(PageBase, unittest.TestCase):
         k = self.until_frames(2 * N)
         self.assertEqual((k['rows'], k['main']), (-1, 0), k)
         self.turn(3, -1, N)                                                # wraps to the last row, as -
-        self.assertEqual(self.until_frames(3 * N)['main'], 4)                  # #21: 5 home rows (no MTP mode, no Info)
+        self.assertEqual(self.until_frames(3 * N)['main'], 3)                  # #197: 4 home rows (no Uninstall row)
         self.turn(4, 1, N)                                                 # and back to Continue
         self.assertEqual(self.until_frames(4 * N)['main'], 0)
         # a slow click: one count, the second 400 ms later (within LEFTOVER_MS): one row
@@ -116,19 +116,19 @@ class Knobs(PageBase, unittest.TestCase):
         self.turn(1, -1)
         k = self.until_frames(14)
         self.assertEqual((k['main'], k['idle'], k['moves']), (1, 2, 5), k)
-        self.press(PLAY)                                                   # into the Firmware library
-        self.until(lambda: self.lines('menu: screen %d ' % LIBRARY), 'the library')
+        self.press(PLAY)                                                   # the safe-mode row: no setup, a line
+        self.until(lambda: self.lines('menu: line: No mods are saved'), 'the line')
         self.turn(1, 1, N)
         k = self.until_frames(14 + N)
-        self.assertEqual((k['screen'], k['library'], k['main']), (LIBRARY, 1, 1), k)
+        self.assertEqual((k['screen'], k['main']), (HOME, 2), k)
         self.turn(2, -1, N)
         k = self.until_frames(14 + 2 * N)
-        self.assertEqual((k['screen'], k['library']), (LIBRARY, 0), k)
+        self.assertEqual((k['screen'], k['main']), (HOME, 1), k)
         c = self.counters()
         self.assertEqual((c['state'], c['frames'], c['dropped'], c['resyncs'], c['moves']), ('on', 14 + 2 * N, 0, 0, 7), c)
         self.assertEqual((c['knob1'], c['knob2'], c['knob3'], c['knob4']), (6 + N, -2 * N, -N, N), c)
         self.assertEqual(c['last'], '41 %02x 45 03 02 ff ff 00' % ((0xc4 + 14 + 2 * N - 1) & 0xff), c)
-        self.press(STOP)                                                   # pushes are still PLAY: Continue
+        self.press(STOP)                                                   # nothing to go back to; pushes are PLAY
         self.turn(1, -1, N)
         self.assertEqual(self.until_frames(14 + 3 * N)['main'], 0)
         self.key(12, 1)                                                    # continue_boot (no change: boots)
@@ -185,7 +185,7 @@ class Knobs(PageBase, unittest.TestCase):
         self.assertTrue(all(q['read'] <= MAX_FRAMES and abs(q['rows']) <= MAX_MOVES for q in passes), passes)
         self.assertLessEqual(k['moves'], 200 // N)
         self.assertEqual((k['max_read'], k['max_moves'], k['resyncs']), (MAX_FRAMES, MAX_MOVES, 0), k)
-        self.assertEqual(k['main'], k['moves'] % 5)                   # #21: 5 home rows (no MTP mode, no Info)
+        self.assertEqual(k['main'], k['moves'] % 4)                   # #197: 4 home rows (no Uninstall row)
         print('\nknob burst: 200 frames in %d passes, %d rows, %d counts dropped'
               % (len(passes), k['moves'], k['idle']), file=sys.stderr)
         moves = k['moves']
@@ -233,36 +233,25 @@ class Knobs(PageBase, unittest.TestCase):
         self.assertEqual((k['resyncs'], k['dropped'], k['moves']), (0, 0, 150 // N), k)
         self.assertEqual(self.counters()['write_index'], (25 + 150) % 128)
 
-    def test_no_moves_in_the_uninstall_dialog_or_during_a_job(self):
-        self.turn(1, 1, 3 * N)                                             # row 3: Uninstall (188)
-        self.assertEqual(self.until_frames(3 * N)['main'], 3)
-        self.press(PLAY)
-        self.until(lambda: self.lines('menu: screen %d ' % UNINSTALL), 'the dialog')
-        dialog = len(self.lines('menu: screen '))
-        self.turn(1, 1, 2 * N)
-        self.turn(2, -1, N)
-        k = self.until_frames(6 * N)
-        self.assertEqual((k['screen'], k['accept'], k['moves']), (UNINSTALL, 0, 3), k)
-        self.assertGreater(k['idle'], 0, k)
-        self.assertEqual(len(self.lines('menu: screen ')), dialog)        # nothing redrawn
-        self.press(STOP)
-        self.turn(1, -1, N)                                                # row 2: Mods
-        self.assertEqual(self.until_frames(7 * N)['main'], 2)
+    def test_no_moves_during_a_job(self):
+        self.turn(1, 1, 2 * N)                                             # row 2: Mods
+        self.assertEqual(self.until_frames(2 * N)['main'], 2)
         self.press(PLAY)
         self.wait(lambda p: p['view'] == VIEW_LIST and p['shown'] == 1, 'listed')
         self.key(SHIFT, 1); self.press(STOP); self.key(SHIFT, 0)          # SHIFT + STOP: the unknown base allowed
         self.toggle(['beta'])
         self.sim.set('a_slow_ms', 30)
-        self.press(STOP)                                                   # Continue, Save: the build's view
+        self.press(STOP)                                                   # Continue: the build's progress screen
         self.wait(lambda p: p['shown'] == 0, 'left')
-        self.press(MINUS); self.press(MINUS); self.press(PLAY); self.press(PLAY)
-        self.wait(lambda p: p['view'] == VIEW_BUILDING, 'building')
+        self.press(MINUS); self.press(MINUS); self.press(PLAY)
+        self.wait_progress(lambda p: p['save'] & 2, 'building')          # the progress screen (#197)
         pages = len(self.pages())
         self.turn(3, 1, 3 * N)
-        k = self.until_frames(10 * N)
-        self.assertEqual(k['moves'], 4, k)
-        self.assertTrue(all(q['view'] == VIEW_BUILDING or q['selected'] == 'beta' for q in self.pages()[pages:]),
-                        self.pages()[pages:])
+        k = self.until_frames(5 * N)
+        self.assertEqual(k['moves'], 2, k)
+        self.assertGreater(k['idle'], 0, k)
+        self.assertEqual(self.pages()[pages:], [])                        # the page never shown, nothing moved
+        self.assertEqual({p['row'] for p in self.progress()}, {0})
         self.sim.set('a_slow_ms', 0)
 
     def test_a_different_stock_identity_keeps_the_reader_off(self):

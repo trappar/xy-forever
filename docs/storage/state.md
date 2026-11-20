@@ -41,8 +41,8 @@ If `default` is missing or its entry is unusable, XY Forever opens its menu.
 
 An entry is unusable without `os.ldr`, or when its content is not installed in `/yaffs2/content/`
 (the one rule `xyf::library::content_installed`: the content state below matches it). Such an entry is
-listed ("content not installed", catalog flag 8); PLAY (boot once) and `library.boot` refuse it
-(`no_content`: make it the default to install its content); SHIFT+PLAY and `library.set_default` run the
+listed ("content not installed", catalog flag 8); `library.boot` refuses it
+(`no_content`: make it the default to install its content); `library.set_default` runs the
 content switch first and write the default only when it succeeded (`started`, then `job.status`).
 
 ### Content state
@@ -82,11 +82,19 @@ never `dlc/`, `user/` or a name holding `bootloader` (`xyf::content::allowed`, o
 ### Saved configuration
 
 `config.txt` (`target/xyf_config.hpp`): `base`, `profile`, `generation`, `unverified`, `built=<base> <generation> <set> <count>[ expanded]` (set: sum of the
-names' CRC-32), `slot` (the Open-XY entry), `stamp` (its `info.txt` `sha256=`), `memory=standard|expanded` (Mod memory; anything else: standard), `mods` (last).
-Replaced as `content-state.txt` is; a reader takes `config.old` when the record is missing; no record: no mods. Save builds into the spare slot unless `slot`
-exists, `built` matches and its `sha256=` equals `stamp`; then the content switch (no default), the record, the default (one job, `config_store`).
+names' CRC-32), `slot` (the Open-XY entry), `stamp` (its `info.txt` `sha256=`), `memory=standard|expanded` (Mod memory; anything else: standard),
+`safe=0|1` (safe mode: the base is the default with official content; 0 without a slot or mods), `mods` (last).
+Replaced as `content-state.txt` is; a reader takes `config.old` when the record is missing; no record: no mods.
+The record holds the inputs of the desired state (#197): base, selection (`mods`), Mod memory, `safe`. A Mods page or Mod memory flip is written
+at once (at a quiet moment, quick flips: one write; `built`, `slot`, `stamp`, `safe` kept). Boot without mods (`safe=1`), Restore
+(`safe=0`) and the first row's PLAY with (to apply) or (rebuild) converge to the record (`target/xyf_converge.hpp` `plan`, run by `xyf_mods_save.ipp`):
+only the steps that differ run, in order. A build into the spare slot unless `slot` exists, `built` matches and its `sha256=` equals `stamp` (safe
+mode: none); the content switch to the target (the base in safe mode or with no mods, else `slot`) unless installed; the record and the default
+(one job, `config_store`; always after a switch). Nothing differs: nothing is written. No mod build takes `slot` (`job_target`).
+Each convergence ends by writing `converged.txt` when it differs: a plain power-on whose record and default still match it boots at once,
+else converges first ([boot.md](../architecture/boot.md#converge-at-power-on-197)).
 
 `log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
-Save, USB build or content switch, the last 20; `kind result mods memory added removed total` then each
+menu converge, USB build or content switch, the last 20; `kind result mods memory added removed total` then each
 part's milliseconds and the switch's counts. Written by B in the last write window of the sequence (`.part`,
-the old file removed, renamed); a failed write is ignored, a failed Save writes none.
+the old file removed, renamed); a failed write is ignored, a failed converge writes none.

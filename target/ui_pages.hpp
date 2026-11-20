@@ -45,7 +45,7 @@ struct List {
     bool large;
 };
 struct Confirm {
-    const char* heading;      // e.g. "Uninstall XY Forever?"
+    const char* heading;      // the question
     const char* lines[4];
     uint32_t count;
     const char* cancel;       // left choice
@@ -60,17 +60,7 @@ struct Progress {
     const char* warning;      // e.g. "Do not power off"
     const Chrome* chrome;
 };
-// A dialog of up to three buttons in a row (the Save dialog); buttons[i] 0: not shown.
-struct Choice {
-    const char* heading;
-    const char* lines[4];
-    uint32_t count;
-    const char* buttons[3];
-    uint32_t selected;
-    const Chrome* chrome;
-};
 void draw_list(uint16_t* fb, const List& list);
-void draw_choice(uint16_t* fb, const Choice& choice);
 void draw_confirm(uint16_t* fb, const Confirm& confirm);
 void draw_progress(uint16_t* fb, const Progress& progress);
 // No bootable firmware anywhere: explain, and the one row (About, selected).

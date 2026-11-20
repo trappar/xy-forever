@@ -356,7 +356,7 @@ class MenuOnFailureTest(unittest.TestCase):
         self.assertIn('if (!xy_forever::xyf_boot::menu_forced() && ms_since(r.start_cycles) > last_key_ms + idle_timeout_ms) {', ui)
         hdr = (ROOT / 'target/xyf_boot.hpp').read_text()
         self.assertIn('item_check_default = 0x13, item_check_entry = 0x30;', hdr)
-        self.assertIn('static_assert(sizeof(CheckStatus) == 120, "CheckStatus layout");', hdr)
+        self.assertIn('static_assert(sizeof(CheckStatus) == 124, "CheckStatus layout");', hdr)
         # 0x30..0x3f collides with nothing (entries 0x20..0x2f, set default 0x40.., id bytes 0x60..)
         self.assertIn('item_boot_entry = 0x20', hdr)
         self.assertIn('if (!b_lost && b_notice[0]) return b_notice;', self.fb)
