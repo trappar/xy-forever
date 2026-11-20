@@ -91,6 +91,8 @@ at once (at a quiet moment, quick flips: one write; `built`, `slot`, `stamp`, `s
 only the steps that differ run, in order. A build into the spare slot unless `slot` exists, `built` matches and its `sha256=` equals `stamp` (safe
 mode: none); the content switch to the target (the base in safe mode or with no mods, else `slot`) unless installed; the record and the default
 (one job, `config_store`; always after a switch). Nothing differs: nothing is written. No mod build takes `slot` (`job_target`).
+Each convergence ends by writing `converged.txt` when it differs: a plain power-on whose record and default still match it boots at once,
+else converges first ([boot.md](../architecture/boot.md#converge-at-power-on-197)).
 
 `log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
 menu converge, USB build or content switch, the last 20; `kind result mods memory added removed total` then each

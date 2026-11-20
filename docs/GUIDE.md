@@ -22,8 +22,10 @@ What it never touches:
 
 ## Getting into the menu
 
-- **Plain power-on:** the default firmware starts, close to stock speed. Nothing is
-  written to storage on a normal boot (Settings, Menu at power-on, can change that).
+- **Plain power-on:** the default firmware starts, close to stock speed, writing nothing
+  (Settings, Menu at power-on, can open the menu instead). When what you saved is not in
+  place yet (a mod flipped and never applied, a power cut, the first start after an
+  install), the progress screen finishes it first, then the firmware starts.
 - **Power on holding PLAY:** the XY Forever menu opens. Let go of PLAY once you see it.
 - If the default firmware is missing or fails its checks, the menu opens by itself and
   says why, for example "Default opxy-125: file missing" or "content not installed".

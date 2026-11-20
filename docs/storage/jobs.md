@@ -20,8 +20,9 @@ is disposable and never requests recovery. A cut before initial publication leav
 The content engine keeps its existing switching record, verified copies and catalog-last order.
 
 Only the menu/USB service loop reads and replays intent. It validates the recorded source identity,
-then runs the existing content job in bounded slices. A plain boot does no journal repair and adds
-no journal boot gate; the existing content-state rule still rejects an unusable default.
+then runs the existing content job in bounded slices. A plain power-on that finds a journal converges
+first ([boot.md](../architecture/boot.md#converge-at-power-on-197)): the menu replays it on the progress
+screen, then boots; the content-state rule still rejects an unusable default.
 A missing or changed source, including a file that disappears during replay, leaves the journal and
 shows `Source missing. PLAY on the first row undoes: <previous>`. PLAY on the menu's first row then
 makes that previous entry the default (`content_undo`), as `library.set_default` of it does; the undo direction is published before its first
