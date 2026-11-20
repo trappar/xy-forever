@@ -4,8 +4,8 @@
 // package flagged, Remove (refused once, then confirmed). Build on device: with the set and a base entry
 // in the simulator's storage, choose machines, an extension and the base, Build (the result line, library
 // entry mods-a with an os.ldr, tmp/ empty), an unknown base unconfirmed (the plain reason), Make default
-// (refused once, then confirmed: the content switch, the default written), Cancel mid-build (A slowed;
-// the other panels wait). confirm() is answered by the test.
+// (refused once, then confirmed: the content switch, the default written), and Cancel at verify
+// (the other panels wait). confirm() is answered by the test.
 import { describe, expect, inject, test } from 'vitest';
 import { commands } from 'vitest/browser';
 import { load } from './frame.ts';
@@ -161,10 +161,11 @@ describe.skipIf(!sim)(`the demo page's Mods panel against the simulator${sim ? '
     expect($('build-progress').textContent).toMatch(/^Installing the content of mods-a: done/);
     expect(await commands.simList(sim!.root, '/yaffs2/xy-forever')).toContain('content-state.txt');
 
-    await commands.simControl(sim!.control, 'set a_slow_ms 4');
+    expect(await commands.simControl(sim!.control, 'set hold_mod_verify 1')).toMatchObject({ ok: true });
     try {
       $('build-start').click();
-      await expect.poll(() => $('build-progress').textContent, poll).toMatch(/^Building on the device: job \d+, (?!idle)/);
+      await expect.poll(() => ({ status: $('status').textContent, progress: $('build-progress').textContent }), poll)
+        .toMatchObject({ status: 'working', progress: expect.stringMatching(/^Building on the device: job \d+, verify\b/) });
       expect(($('build-cancel') as HTMLButtonElement).disabled).toBe(false);
       expect(($('files-refresh') as HTMLButtonElement).disabled).toBe(true);   // the other panels wait
       expect(($('mods-refresh') as HTMLButtonElement).disabled).toBe(true);
@@ -173,9 +174,9 @@ describe.skipIf(!sim)(`the demo page's Mods panel against the simulator${sim ? '
       expect($('build-result').textContent).toBe('Cancelled: the OP-XY removed what it wrote');
       expect(($('build-cancel') as HTMLButtonElement).disabled).toBe(true);
     } finally {
-      await commands.simControl(sim!.control, 'set a_slow_ms 0');
+      await commands.simControl(sim!.control, 'set hold_mod_verify 0');
     }
-    expect(await commands.simList(sim!.root, '/yaffs2/xy-forever/tmp')).toEqual([]);
+    await expect.poll(() => commands.simList(sim!.root, '/yaffs2/xy-forever/tmp'), poll).toEqual([]);
     $('files-refresh').click();                                     // storage commands are served again
     expect(await done()).toBe('');
     $('disconnect').click();

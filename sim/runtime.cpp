@@ -29,6 +29,8 @@ Shared* shared = 0;
 int role = -1;
 int link_fd = -1;
 
+bool hold_mod_verify() { return shared->hold_mod_verify.load() != 0; }
+
 // ---- memory -----------------------------------------------------------------------------
 namespace {
 struct Region { uint32_t begin, end; };

@@ -47,3 +47,18 @@ export function notice(text: string, kind: 'error' | 'busy' | 'info' = 'info'): 
   n.className = `notice ${kind}`;
   n.textContent = text;
 }
+
+export function downloadBlob(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  h('a', { href: url, download: name }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+export function previewBugReport(json: string): void {
+  const d = document.getElementById('bug-report-dialog') as HTMLDialogElement;
+  document.getElementById('bug-report-preview')!.textContent = json;
+  document.getElementById('bug-report-download')!.onclick = () => {
+    downloadBlob(new Blob([json], { type: 'application/json' }), 'xy-forever-bug-report.json');
+  };
+  d.showModal();
+}

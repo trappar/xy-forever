@@ -9,6 +9,7 @@
 //  - stock<ADDRESS, R>(args...) and cold_storage's call<F>(ADDRESS)(args...)
 //    reach the host shims in sim/stock.cpp with the same call shapes;
 //  - the Blackfin cycle counter, cache and stack-pointer asm become host calls.
+//  - the tests can hold a USB mod build at verification while B serves requests.
 // Nothing here changes what the device code decides.
 #include <stdint.h>
 #include <stddef.h>
@@ -18,6 +19,7 @@ void* host(uint32_t address);                 // emulated memory (or a fake addr
 uint32_t device(uintptr_t pointer);           // inverse of host()
 void cycles(uint32_t& low, uint32_t& high);    // CYCLES/CYCLES2 at 400 MHz from the host clock
 uint32_t stack_pointer();                     // a fixed address in the emulated module stack
+bool hold_mod_verify();                     // test hook: skip assembly steps at verify, leaving CDC live
 uint64_t stock_call(uint32_t address, const uint64_t* args, unsigned count);
 
 template<class To, class From> inline To cast(From from) {
