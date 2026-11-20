@@ -64,6 +64,8 @@ dialog::backdrop { background: rgb(0 0 0 / .6); }
 dialog p { color: var(--muted); margin: 6px 0 16px; white-space: pre-line; }
 dialog .row { justify-content: flex-end; margin-top: 8px; }
 dialog input[type=text] { width: 100%; margin-bottom: 8px; }
+#bug-report-dialog { width: min(640px, calc(100vw - 32px)); }
+#bug-report-preview { max-height: 50vh; overflow: auto; padding: 12px; border-radius: 7px; background: var(--bg); }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 14px; margin: 8px 0 12px; }
 .checks label { display: flex; gap: 8px; align-items: center; }
 @media (max-width: 760px) {

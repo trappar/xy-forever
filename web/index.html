@@ -17,6 +17,7 @@
         <a href="#mods" data-page="mods">Mods</a>
         <a href="#files" data-page="files">Files</a>
       </nav>
+      <button type="button" id="bug-report">Bug report</button>
       <div class="link" id="link"><span class="dot"></span><span id="link-text">Not connected</span></div>
     </aside>
     <main>
@@ -28,6 +29,15 @@
     </main>
   </div>
   <dialog id="dialog"><form method="dialog" id="dialog-form"></form></dialog>
+  <dialog id="bug-report-dialog" aria-labelledby="bug-report-title">
+    <h2 id="bug-report-title">Bug report preview</h2>
+    <p>Review this JSON before sharing. Device details are from the last successful connection or refresh in this tab.</p>
+    <pre class="mono" id="bug-report-preview" tabindex="0" aria-label="Bug report JSON"></pre>
+    <form method="dialog" class="row">
+      <button type="submit" autofocus>Close</button>
+      <button type="button" class="primary" id="bug-report-download">Download JSON</button>
+    </form>
+  </dialog>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
