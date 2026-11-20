@@ -8,6 +8,8 @@
 #include "a_install_stage.hpp"
 #include "file_boot.hpp"
 #include "file_client.hpp"
+#include "tfw_hash_rpc.hpp"
+#include "../native/tfw.hpp"
 #endif
 #if defined(XYF_USB_SERVICE)
 #include "usb_service.hpp"
@@ -373,6 +375,8 @@ void latch(Stock121PeerSession& session) {
     r.enabled = entry | (engine_refused ? 0x10u : 0u);
 }
 
+#include "storage_server_tfw_hash.ipp"
+
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
 // The read-write window on a's read-only mount (fresh, or the adopted one): op 8 in the run entry;
 // in the write entry the first request that changes storage.
@@ -404,8 +408,12 @@ __attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession
 // checkpoint; gates back; the shared read-only mount again), then end the session (end; not
 // when a closes the window between requests). A window that fails to close stays mounted (never
 // hand off read-write).
-__attribute__((noinline)) void close_engine(cold_storage::Stock121ReadOnlySession& storage, bool end = true) {
-    if (!mounted) return;
+__attribute__((noinline)) bool close_engine(cold_storage::Stock121ReadOnlySession& storage, bool end = true) {
+#if defined(XYF_TFW_CHECK)
+    // Keep the mount available if stock refused to close the hash job's handle.
+    if (!tfw_hash_clear(storage)) return false;
+#endif
+    if (!mounted) return true;
     close_handles();
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
     if (window_open) {
@@ -415,10 +423,11 @@ __attribute__((noinline)) void close_engine(cold_storage::Stock121ReadOnlySessio
             if (adopted) window_result = U32(storage.reopen_read_only());
         }
         note(9, 0x20u, window_result);                       // 0x20: a window close (any trigger)
-        if (window_open) return;
+        if (window_open) return false;
     }
 #endif
     if (end) unmount(storage);
+    return true;
 }
 #if defined(XYF_USB_FILE_WRITE)
 // a closes the window between requests (idle, another command item). A failed close keeps it
@@ -472,9 +481,16 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
 #if defined(XYF_USB_SERVICE)
     // Install mode answers the boot-partition writer's requests (and refuses file requests
     // while a boot partition is selected), except while a writable engine entry is open.
-    if (install_enabled && engine != entry_write && engine != entry_run && serve_install(request, vtable, op, session))
-        return;
+    if (install_enabled && engine != entry_write && engine != entry_run) {
+#if defined(XYF_TFW_CHECK)
+        if (tfw_hash_open() && decide_install(vtable, op, word(request + 8), selected_partition) != install_none) {
+            session.reply(request, 0xffffffffu, error_busy);
+            return;
+        }
+#endif
+        if (serve_install(request, vtable, op, session)) return;
     }
+    }  // !probe_mode
 #endif
     serve_engine(request, vtable, op, storage, session);
 }
@@ -510,13 +526,18 @@ void close_files(cold_storage::Stock121ReadOnlySession& storage) {
 bool ensure_mounted(cold_storage::Stock121ReadOnlySession& storage) { return !boot_selected() && mount(storage); }
 uint32_t held_files() {
     uint32_t n = 0;
+#if defined(XYF_TFW_CHECK)
+    if (tfw_hash_open()) ++n;
+#endif
     for (U32 i = 0; i != max_fds; ++i) n += (fds[i] >= 0 ? 1u : 0u) + (dirs[i] ? 1u : 0u);
     return n;
 }
 #if defined(XYF_USB_FILE_WRITE)
 void tick(cold_storage::Stock121ReadOnlySession& storage, uint32_t now) {
 #if defined(XYF_TFW_CHECK)
-    if (a_stage.expired(xyf::clock::ms())) a_stage.clear();
+    const U32 clock = xyf::clock::ms();
+    if (a_stage.expired(clock)) a_stage.clear();
+    tfw_hash_step(storage, clock);
 #endif
     if (!window_open || engine != entry_write) return;      // the run entry holds its own window (097)
     if (window_touched) { window_touched = 0; window_since = now; return; }
@@ -525,6 +546,9 @@ void tick(cold_storage::Stock121ReadOnlySession& storage, uint32_t now) {
     close_between(storage);
 }
 void end_writes(cold_storage::Stock121ReadOnlySession& storage) {
+#if defined(XYF_TFW_CHECK)
+    tfw_hash_clear(storage);
+#endif
     if (engine != entry_write) return;
     if (window_open) close_between(storage);
     if (!window_open) { engine = entry_read; result.enabled = entry_read; }

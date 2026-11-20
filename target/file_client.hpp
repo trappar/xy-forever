@@ -127,6 +127,11 @@ Reply a_timing(uint32_t k);
 // #7: only the dedicated read-only diagnostic uses these. A gates every raw request independently.
 Reply boot_probe(uint32_t operation);
 Reply tfw_probe(const char* path, uint32_t operation);
+#if defined(XYF_TFW_CHECK)
+// Submit one of tfw_hash_rpc's commands. The owner collects A's reply with left_poll(false)
+// and uses the same immutable path for the whole hash job and the subsequent package read.
+Reply tfw_hash_send(const char* path, uint32_t operation);
+#endif
 Reply boot_select(uint32_t partition);
 Reply boot_sector(uint32_t sector, uint8_t* out);
 Reply seek(int fd, int offset);                                     // SEEK_SET

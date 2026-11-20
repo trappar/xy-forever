@@ -14,7 +14,7 @@ struct KeyProvider { void* context; bool (*read)(void*,U32 index,Byte key32[32])
 // structural checks and before the key is requested or any field is relied on.
 struct HeaderCheck { void* context; bool (*verify)(void*,const Byte* crypto_header,U32 size); };
 // Bytes the caller provides to Archive::open_digested: outer wrapper + crypto header.
-static const U32 header_bytes=0x380, crypto_header_bytes=0x300;
+static const U32 header_bytes=0x380, crypto_header_bytes=0x300, prefix_bytes=320;
 struct Header {
     U32 crypto_offset, ciphertext_offset, ciphertext_size, archive_size, key_index, sku;
     package::Version version;
@@ -62,6 +62,9 @@ private:
 // With a Work, each read and hash update covers at most 512 bytes.
 Status ciphertext_digest(const input::Reader& source,Byte* buffer,U32 capacity,hash::Digest& digest,
                          U32 expected_sku=op_xy_sku,Work* work=nullptr);
+// For sequential readers without a file size. Validates the first prefix_bytes and gives
+// the declared ciphertext span [start, end). The caller verifies end against actual EOF.
+Status ciphertext_span(const Byte* prefix,U32& start,U32& end,U32 expected_sku=op_xy_sku);
 const char* status_name(Status status);
 } }
 #endif
