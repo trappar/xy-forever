@@ -65,9 +65,9 @@ result and time, the test counts, the candidate SHA-256 and size, the build fold
 
 `--confirm [REF]` (default `HEAD`) exits 0 only for a passing receipt of REF's tree, and prints it; otherwise
 it says what is missing: no receipt, a failed check, or a receipt for an older tree of the branch (rerun after
-a rebase or a merge onto a newer main). The orchestrator and merging use the worker's receipt instead of
-rerunning. Host bridges and the simulator are cached per input hash in `../private/xy-forever/sessions/`, so a
-run after a source change is slower. A receipt never stands in for a device test.
+a rebase or a merge onto a newer main). Others (the orchestrator, merging) run `--confirm <branch>` instead of
+rerunning, and rerun only when the receipt is missing or the tree changed. Host bridges and the simulator are
+cached per input hash in `../private/xy-forever/sessions/`, so a run after a source change is slower. A receipt never stands in for a device test.
 
 Tests never open a real device: `run_tests.py`, `check.py` and any process that loads `unittest` set
 `XYF_NO_DEVICE` for themselves and every process they start, and with it every real-device opener (the serial
