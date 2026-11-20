@@ -26,6 +26,16 @@ Manual changes may touch `/yaffs2` except the protected marker and updater inbox
 Creating the report folder is a storage write and requires the developer's approval:
 `python3 xyf_host.py put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.
 
+### Factory content inventory
+
+`python3 xyf_host.py content status` reads free space, walks `/yaffs2/content/` and hashes each regular file
+over USB. It compares the paths and SHA-256 digests with each available private
+`xy-forever/content-manifests/<version>/content.sha256` (made with `xyf_package.py content-manifest`).
+The report gives every exact match, which releases match the live catalog hash, and missing, extra and changed files per release.
+`matches_no_official_file` lists files whose path and digest match none of those releases.
+Links and other special entries are reported separately. Keep the content folder unchanged during the scan.
+A full factory set takes about 120 MiB of USB reads. A completed inventory exits successfully even with differences.
+
 ### File commands
 
 Absolute device paths stay under `/yaffs2`; the device refuses changes to `/yaffs2/bootloader.dev`,
