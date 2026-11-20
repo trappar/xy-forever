@@ -86,11 +86,18 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
     }
     case Screen::packs: {
 #if defined(XYF_SETTING_OPTIONS)
-        const char* action = s.pack_inbox ? "Install" : "Remove";
         if (s.pack_confirm && s.pack_selected < s.pack_count) {
-            const ui::Confirm dialog = {s.pack_inbox ? "Install sound pack?" : "Remove sound pack?",
-                {s.pack_names[s.pack_selected], 0, 0, 0}, 1, "Cancel", action, s.confirm_accept, chrome};
-            ui::draw_confirm(fb, dialog); return;
+            ui::Confirm dialog;                       // assign fields to keep the cold build free of memset
+            dialog.heading = s.pack_inbox ? "Install sound pack?" : "Remove sound pack?";
+            dialog.lines[0] = s.pack_names[s.pack_selected];
+            dialog.lines[1] = dialog.lines[2] = dialog.lines[3] = "";
+            dialog.count = 1;
+            dialog.cancel = "Cancel";
+            dialog.accept = s.pack_inbox ? "Install" : "Remove";
+            dialog.accept_selected = s.confirm_accept;
+            dialog.chrome = chrome;
+            ui::draw_confirm(fb, dialog);
+            return;
         }
         static ui::ListRow rows[packs_per_page] XYF_DATA = {};
         for (uint32_t i = 0; i != s.pack_count; ++i) rows[i].title = s.pack_names[i];

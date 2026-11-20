@@ -54,7 +54,7 @@ class InfoImage(unittest.TestCase):
         return [line[line.find(MARK) + len(MARK):].rsplit(' at ', 1)[0] for line in log.splitlines() if MARK in line]
 
     def test_info_redraws_when_the_hash_settles(self):
-        for key in (MINUS, PLAY, MINUS, PLAY):                             # Settings (the last row), its About (#21)
+        for key in (MINUS, PLAY, MINUS, MINUS, PLAY):                      # Settings, then past Content packs to About
             for pressed in (1, 0):
                 self.assertTrue(self.sim.control('realkey %d %d' % (key, pressed)).get('ok'))
         image = 'image ' + hashlib.sha256(self.data).hexdigest()[:8]

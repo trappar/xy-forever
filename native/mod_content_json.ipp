@@ -1,7 +1,12 @@
 // ------------------------------------------------------------------- JSON (RFC 8259), bounded, iterative
+#if defined(__bfin__)
+// Keep the shared catalog and pack parser compact in the stage-2 image.
+#pragma GCC push_options
+#pragma GCC optimize ("Os")
+#endif
 bool ws(Byte c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
 bool digit(Byte c) { return c >= '0' && c <= '9'; }
-bool hexdigit(Byte c) { return digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }
+bool hexdigit(Byte c) { return digit(c) || ((c | 0x20) >= 'a' && (c | 0x20) <= 'f'); }
 U32 string_end(const Byte* p, U32 n, U32 i) {   // the closing quote of the string at i, or none
     for (U32 j = i + 1; j < n;) {
         const Byte c = p[j];
@@ -14,26 +19,24 @@ U32 string_end(const Byte* p, U32 n, U32 i) {   // the closing quote of the stri
                 if (n - j < 6) return none;
                 for (U32 k = 2; k != 6; ++k) if (!hexdigit(p[j + k])) return none;
                 j += 6;
-            } else if (e == '"' || e == '\\' || e == '/' || e == 'b' || e == 'f' || e == 'n' || e == 'r' || e == 't') {
+            } else {
+                const char* valid = "\"\\/bfnrt";
+                while (*valid && Byte(*valid) != e) ++valid;
+                if (!*valid) return none;
                 j += 2;
-            } else return none;
+            }
             continue;
         }
         if (c < 0x80) { ++j; continue; }
-        U32 more; Byte low = 0x80, high = 0xbf;   // UTF-8 without overlongs or surrogates
-        if (c >= 0xc2 && c <= 0xdf) more = 1;
-        else if (c == 0xe0) { more = 2; low = 0xa0; }
-        else if ((c >= 0xe1 && c <= 0xec) || c == 0xee || c == 0xef) more = 2;
-        else if (c == 0xed) { more = 2; high = 0x9f; }
-        else if (c == 0xf0) { more = 3; low = 0x90; }
-        else if (c >= 0xf1 && c <= 0xf3) more = 3;
-        else if (c == 0xf4) { more = 3; high = 0x8f; }
-        else return none;
+        if (c < 0xc2 || c > 0xf4) return none;
+        const U32 more = c < 0xe0 ? 1 : c < 0xf0 ? 2 : 3;
         if (n - j <= more) return none;
-        for (U32 k = 1; k <= more; ++k) {
-            const Byte x = p[j + k];
-            if (x < (k == 1 ? low : 0x80) || x > (k == 1 ? high : 0xbf)) return none;
-        }
+        // The first continuation excludes overlongs, surrogates and values above U+10FFFF.
+        const Byte low = c == 0xe0 ? 0xa0 : c == 0xf0 ? 0x90 : 0x80;
+        const Byte high = c == 0xed ? 0x9f : c == 0xf4 ? 0x8f : 0xbf;
+        if (p[j + 1] < low || p[j + 1] > high) return none;
+        for (U32 k = 2; k <= more; ++k)
+            if ((p[j + k] & 0xc0) != 0x80) return none;
         j += more + 1;
     }
     return none;
@@ -56,14 +59,10 @@ U32 number_end(const Byte* p, U32 n, U32 i) {   // the last byte of the number a
     return j - 1;
 }
 U32 literal_end(const Byte* p, U32 n, U32 i) {
-    const char* const words[3] = {"true", "false", "null"};
-    for (U32 w = 0; w != 3; ++w) {
-        const U32 len = length(words[w], 8);
-        bool match = n - i >= len;
-        for (U32 k = 0; match && k != len; ++k) match = p[i + k] == Byte(words[w][k]);
-        if (match) return i + len - 1;
-    }
-    return none;
+    const char* tail = p[i] == 't' ? "rue" : p[i] == 'f' ? "alse" : "ull";
+    for (++i; *tail; ++i, ++tail)
+        if (i == n || p[i] != Byte(*tail)) return none;
+    return i - 1;
 }
 // A pack folder ID is printable ASCII. Compare decoded JSON strings so the same
 // ID/key spelled as a Unicode escape still resolves to the same folder.
@@ -103,11 +102,6 @@ bool json(const Byte* p, U32 n, const char* const* keys, U32 key_count, ArrayEnd
         const Byte c = p[i];
         if (ws(c)) { ++i; continue; }
         if (complete) return false;
-        if (folder_value && want == value) {
-            const U32 last = c == '"' ? string_end(p, n, i) : none;
-            if (last == none || !ascii_string(p, i, last, pack_id)) return false;
-            folder_value = false;
-        }
         bool closing = false;
         U32 end = i;
         if (want == key_or_close && c == '}') closing = true;
@@ -138,6 +132,9 @@ bool json(const Byte* p, U32 n, const char* const* keys, U32 key_count, ArrayEnd
             if (c != ':') return false;
             want = value; previous = i++;
             continue;
+        } else if (folder_value) {
+            if (c != '"' || (end = string_end(p, n, i)) == none || !ascii_string(p, i, end, pack_id)) return false;
+            folder_value = false;
         } else if (c == '{' || c == '[') {
             if (depth == levels) return false;   // levels <= max_depth
             marking = false;
@@ -147,10 +144,11 @@ bool json(const Byte* p, U32 n, const char* const* keys, U32 key_count, ArrayEnd
             previous = i++;
             continue;
         } else if (c == '"') end = string_end(p, n, i);
-        else if (c == '-' || digit(c)) end = number_end(p, n, i);
-        else if (c == 't' || c == 'f' || c == 'n') end = literal_end(p, n, i);
+        else if (c == '-' || digit(c)) {
+            end = number_end(p, n, i);
+            if (marking) marked = end;
+        } else if (c == 't' || c == 'f' || c == 'n') end = literal_end(p, n, i);
         else return false;
-        if (marking && !closing && c != '"' && c != 't' && c != 'f' && c != 'n') marked = end;   // a number
         marking = false;
         if (closing) {
             if (c == ']' && depth == 2 && stack[0] == '{' && array >= 0) {
@@ -164,3 +162,6 @@ bool json(const Byte* p, U32 n, const char* const* keys, U32 key_count, ArrayEnd
     }
     return complete;
 }
+#if defined(__bfin__)
+#pragma GCC pop_options
+#endif
