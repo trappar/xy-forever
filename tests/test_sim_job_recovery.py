@@ -103,7 +103,7 @@ class Recovery(Switch, unittest.TestCase):
         self.assertEqual(self.dev.set_default(previous)[0], P.ids.S_STARTED)
         self.repaired(previous, official=True)
 
-    def test_newer_and_malformed_journals_stay_and_plain_boot_does_not_repair(self):
+    def test_newer_and_malformed_journals_stay_and_plain_power_on_replays_a_valid_one(self):
         before = content(self.root)
         previous = self.default()
         target = self.build(['alpha'])
@@ -116,13 +116,14 @@ class Recovery(Switch, unittest.TestCase):
                 self.assertEqual((self.root / JOURNAL).read_bytes(), text)
                 self.assertEqual(content(self.root), before)
         (self.root / JOURNAL).write_bytes(valid)
-        self.restart(plain=True)
+        ons = self.sim.status()['power_ons']
+        self.restart(plain=True)                    # #197: an open journal converges first (the menu's replay), then boots
         end = time.monotonic() + 30
-        while self.sim.status()['a'] != 'os' or self.sim.status()['b'] != 'os':
+        while not (self.sim.status()['power_ons'] > ons and self.sim.status()['a'] == 'os' and self.sim.status()['b'] == 'os'):
             self.assertLess(time.monotonic(), end)
             time.sleep(0.01)
-        self.assertEqual((self.root / JOURNAL).read_bytes(), valid)
-        self.assertEqual(content(self.root), before)
+        self.assertFalse((self.root / JOURNAL).exists())
+        self.assertEqual(content(self.root), self.expected(target))
         self.restart()
         self.repaired(target)
 

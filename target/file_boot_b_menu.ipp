@@ -39,6 +39,8 @@ __attribute__((noinline)) void b_load_stage2(Stock121PeerSession& session) {
 // Test 059 (b): menu-on-failure state and helpers.
 volatile U32 b_failed __attribute__((section(".data"))) = 0;   // a check failed: the menu waits (no idle timeout)
 volatile U32 b_power_on __attribute__((section(".data"))) = 0;   // #21: Menu at power-on "always" opened it
+volatile U32 b_doubt __attribute__((section(".data"))) = 0;      // #197: A's doubt at power-on: converge first
+volatile U32 b_doubt_taken __attribute__((section(".data"))) = 0;
 char b_notice[64] __attribute__((section(".data"))) = {0};
 const xyf_boot::CheckStatus& b_status() { return *reinterpret_cast<const xyf_boot::CheckStatus*>(xyf_boot::b_status_buffer); }
 
@@ -203,7 +205,11 @@ bool role1_menu_boot(U32& bytes) {
         const U32 reason = b_check(session, xyf_boot::item_check_default);
         // #21: Menu at power-on (A read settings.txt with the check): always opens the menu; PLAY held (the
         // default, and anything else) boots the checked default.
+        // #197: A doubts the saved inputs are applied (a fingerprint not matching or missing, the journal, a switch
+        // unfinished, no default): the menu converges on the progress screen first, then boots the default.
+        const U32 doubt = !b_lost && b_status().magic == xyf_boot::check_magic ? b_status().converge : 0u;
         if (reason == reason_ok && b_status().power_on == xyf::settings::power_always) { b_power_on = 1; r.menu.play = 1; }
+        else if (doubt) b_doubt = doubt;
         else if (reason == reason_ok) boot_item = xyf_boot::item_boot_default;
         else if (!b_lost) { b_failed = 1; b_note(true, reason); r.menu.play = 1; }
 #if defined(XYF_SERVICE_ON_MARKER_ONLY)

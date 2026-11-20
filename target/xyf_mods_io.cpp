@@ -418,7 +418,8 @@ void converge_begin(uint32_t why) {               // never the page: the list, i
     m::Progress& r = run;                        // the progress screen from its first frame
     r.job = 0x10000u + sv.serial; r.job_phase = r.job_done = r.job_total = r.job_commit = 0;
     r.bar = r.bar_step = r.bar_since = 0; r.save = m::save_on; r.save_stage = 0; r.cancel = 0;
-    r.title = why == why_safe ? "Booting without mods" : why == why_restore ? "Restoring Open-XY" : "Applying changes";
+    r.title = why == why_safe ? "Booting without mods" : why == why_restore ? "Restoring Open-XY" :
+              why == why_power_on ? "Checking the saved setup" : "Applying changes";
     r.job_name[0] = 0; r.note[0] = 0;
     io.job_units = units();
     usb_service::save_log_begin();              // the save-time log starts at the key

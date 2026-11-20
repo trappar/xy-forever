@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                    # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_mods_page import MINUS, PLAY, PLUS, STOP, PageBase, synthetic_setup   # noqa: E402
+from test_sim_config import MARK, mark_text                               # noqa: E402
 
 MAIN, INFO, SETTINGS, OPTIONS = 0, 1, 3, 4                                 # xyf_menu Screen (#197)
 SAVED, SAVED_USB = 'menu: line: Settings saved.', 'menu: line: Settings saved: USB mode changes'
@@ -37,6 +38,7 @@ class Rows(PageBase):
     @classmethod
     def setUpClass(cls):
         synthetic_setup(cls)
+        (cls.seeded / MARK).write_text(mark_text(cls.seeded, cls.base))   # converged once (#197): plain boots at once
 
     # -- helpers ---------------------------------------------------------------------------------
     def until(self, cond, what, timeout=30.0):

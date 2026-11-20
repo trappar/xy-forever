@@ -153,10 +153,37 @@ void every() {
     }
     CHECK(cases > 10000);
 }
+// The fingerprint (step B): its exact text; the stored text matches only byte for byte (another default, digest,
+// format, a longer or shorter file: no match); a text that does not fit is none.
+void mark() {
+    uint8_t digest[32];
+    for (uint32_t i = 0; i != 32; ++i) digest[i] = uint8_t(i * 9 + 1);
+    char text[xc::mark_max];
+    const uint32_t n = xc::mark_text(text, sizeof(text), digest, "mods-a");
+    char want[xc::mark_max];
+    int w = snprintf(want, sizeof(want), "format=1\ninputs=");
+    for (uint32_t i = 0; i != 32; ++i) w += snprintf(want + w, sizeof(want) - uint32_t(w), "%02x", digest[i]);
+    w += snprintf(want + w, sizeof(want) - uint32_t(w), "\ndefault=mods-a\n");
+    CHECK(n == uint32_t(w) && memcmp(text, want, n) == 0);
+    const uint8_t* same = reinterpret_cast<const uint8_t*>(want);
+    CHECK(xc::mark_same(text, n, same, n));
+    CHECK(!xc::mark_same(text, n, same, n - 1) && !xc::mark_same(text, 0, same, 0));
+    char other[xc::mark_max];
+    CHECK(!xc::mark_same(other, xc::mark_text(other, sizeof(other), digest, "mods-b"), same, n));
+    digest[31] ^= 1;
+    CHECK(!xc::mark_same(other, xc::mark_text(other, sizeof(other), digest, "mods-a"), same, n));
+    char changed[sizeof(want)];
+    memcpy(changed, want, n);
+    changed[0] = 'F';
+    CHECK(!xc::mark_same(text, n, reinterpret_cast<const uint8_t*>(changed), n));
+    CHECK(xc::mark_text(other, 40, digest, "mods-a") == 0);
+    CHECK(xc::mark_text(other, sizeof(other), digest, "") == n - 6);   // no default: "default=" alone
+}
 }
 int main() {
     table();
     every();
+    mark();
     if (failures) return 1;
     puts("converge: ok");
     return 0;

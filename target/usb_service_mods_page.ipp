@@ -61,6 +61,9 @@ const char* content_undo() {                                             // the 
 }
 uint32_t content_switch(const char* id) { return content_begin(id, true, false); }
 uint32_t config_store(const char* text, uint32_t length, const char* default_id) { return config_begin(text, length, default_id); }
+uint32_t mark_store(const char* text, uint32_t length) {
+    return config_begin(text, length, "", xyf::converge::mark_path, xyf::converge::mark_old, xyf::converge::mark_part);
+}
 const char* job_target() { return slot().target; }
 const char* content_line() {
     ContentSlot& c = cslot();

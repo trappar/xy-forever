@@ -258,6 +258,8 @@ void save_log_selection(uint32_t mods, bool expanded, uint32_t added, uint32_t r
 void save_log_lap(uint32_t part);
 void save_log_drop();
 uint32_t config_store(const char* text, uint32_t length, const char* default_id);
+// #197: the fingerprint (xyf_converge.hpp mark_path) replaced as config.txt is, by the config job (no default change).
+uint32_t mark_store(const char* text, uint32_t length);
 const char* job_target();
 // settings.txt (xyf_settings.hpp). settings_load: once A serves, one bounded read (settings.txt, else
 // settings.old; absent or unreadable: the defaults); true when done (call each menu pass until then).

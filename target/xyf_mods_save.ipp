@@ -4,7 +4,7 @@ namespace xg = xyf::config;
 namespace xc = xyf::converge;
 enum SaveStage : uint32_t {
     sv_idle = 0, sv_reading, sv_check, sv_listing, sv_build, sv_stamp, sv_switch, sv_switching, sv_record, sv_recording,
-    sv_boot, sv_failed
+    sv_mark, sv_marking, sv_boot, sv_failed
 };
 // The sequence: why (converge_begin's: which inputs it set, for its texts only), the inputs (count, expanded, safe,
 // unverified, base, built), the plan (ops, target), the slot and stamp the record names (a build's new ones), the
@@ -182,7 +182,7 @@ uint32_t check() {
     sv.ops = plan.ops;
     copy(sv.target, plan.target ? plan.target : "", sizeof(sv.target));
     copy(sv.stamp, have ? rec.stamp : "", sizeof(sv.stamp));   // the record's slot and stamp, unless a build replaces them
-    if (!sv.ops) { sv.stage = sv_boot; return 1; }    // nothing differs: it boots, writing nothing
+    if (!sv.ops) { sv.stage = sv_mark; return 1; }    // nothing differs: it boots (the fingerprint written if it differs)
     if (!(sv.ops & xc::op_build)) { sv.stage = sv_switch; return 1; }
     sv.stage = sv_listing;                      // the saved selection's build needs the package list
     return 1;
@@ -314,6 +314,32 @@ uint32_t pick_step(bool now) {
     pick.job = v.id; pick.stage = 1; pick.flipped = 0;
     return 1;
 }
+// The fingerprint (xyf_converge.hpp, #197 step B): the record's bytes as A reads them at power-on (config.txt, else
+// config.old, else none) hashed, with the default it converged to (sv.target); the config job writes it (quiet: no
+// catalog fetch) only when the stored text differs. Unreadable: nothing stored (the next power-on converges again).
+uint32_t mark() {
+    uint32_t bytes = 0, got = 0, n = 0;
+    uint32_t code = usb_service::page_serving();         // A answers file requests again (the catalog's item ended that)
+    if (code == s_ok) code = fc::mount_ready(usb_service::page_mount());
+    if (code == s_ok) code = fc::read_file(xg::path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
+    if (code == xyf::usbp::s_not_found)
+        code = fc::read_file(xg::old_path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
+    if (code == xyf::usbp::s_not_found) { code = s_ok; bytes = 0; }
+    xyf_core::hash::Sha256 h;
+    xyf_core::hash::Digest d;
+    char want[xc::mark_max];
+    uint8_t stored[xc::mark_max + 1];
+    if (code == s_ok && h.update(io.buffer, bytes) && h.finish(d)) n = xc::mark_text(want, sizeof(want), d.bytes, sv.target);
+    sv.stage = sv_boot;
+    if (!n) return 1;
+    code = fc::read_file(xc::mark_path, 0, false, stored, sizeof(stored), got, usb_service::page_mount());
+    if (code == s_ok && xc::mark_same(want, n, stored, got)) return 1;   // stored already: nothing written
+    if (usb_service::mark_store(want, n) != s_ok) return 1;
+    usb_service::JobView v;
+    usb_service::job_view(v);
+    sv.job = v.id; sv.stage = sv_marking;
+    return 1;
+}
 // One step of the converge sequence (as pump; every storage request bounded by the file client, jobs in slices): the
 // plan's operations in order (build, switch, record with the default), each a job that already skips what is done,
 // on the progress screen, never on the Mods page. Nonzero: draw again (as pump).
@@ -400,11 +426,21 @@ uint32_t converge_follow() {
         usb_service::job_view(v);
         if (v.state == 1 && v.id == sv.job) return moved(false);
         if (v.id == sv.job && v.state == 2 && v.phase == 8) {
-            sv.stage = sv_boot;
+            sv.stage = sv_mark;
             rec.state = xg::unread;              // as written: read again
             return 1;
         }
         return fail("Saving the settings failed: the previous setup is kept.");
+    }
+    case sv_mark:                               // the record's window closed first
+        if (usb_service::page_busy()) return moved(false);
+        return mark();
+    case sv_marking: {                          // written or not, it boots: a fingerprint not stored converges again
+        usb_service::JobView v;
+        usb_service::job_view(v);
+        if (v.state == 1 && v.id == sv.job) return moved(false);
+        sv.stage = sv_boot;
+        return 1;
     }
     default:
         return 0;

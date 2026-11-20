@@ -53,5 +53,31 @@ static inline Plan plan(const Inputs& in, const Actual& a) {
     if (!config::same(a.default_id, p.target)) p.ops |= op_default;
     return p;
 }
+// The fingerprint (step B): after every convergence the sequence stores mark_path, the inputs' SHA-256 (the record's
+// bytes as its reader takes them: config.txt, else config.old, else none; base, profile and generation, mods=, built=,
+// memory=, safe=) and what they converged to (the default). A plain power-on (file_boot.cpp a_converge) boots at once
+// when the stored text is the one these inputs and the library's default make and nothing is in doubt (Doubt), else B
+// converges first. Any other text (missing, another format, malformed) is no match: the sequence writes it again.
+static const char mark_path[] = "/yaffs2/xy-forever/converged.txt";
+static const char mark_old[] = "/yaffs2/xy-forever/converged.old";
+static const char mark_part[] = "/yaffs2/xy-forever/converged.txt.part";
+static const uint32_t mark_max = 160;
+enum Doubt : uint32_t { doubt_mark = 1, doubt_job = 2, doubt_switching = 4, doubt_default = 8 };
+// "format=1\ninputs=<64 hex>\ndefault=<id>\n" into out: bytes, 0 when it does not fit.
+static inline uint32_t mark_text(char* out, uint32_t capacity, const uint8_t* digest, const char* target) {
+    static const char hex[] = "0123456789abcdef";
+    config::Out o = {out, out + capacity, true};
+    config::put(o, "format=1\ninputs=");
+    char d[3];
+    d[2] = 0;
+    for (uint32_t i = 0; i != 32; ++i) { d[0] = hex[digest[i] >> 4]; d[1] = hex[digest[i] & 15u]; config::put(o, d); }
+    config::put(o, "\ndefault="); config::put(o, target); config::put(o, "\n");
+    return o.ok ? uint32_t(o.at - out) : 0u;
+}
+static inline bool mark_same(const char* want, uint32_t n, const uint8_t* stored, uint32_t length) {
+    if (!n || n != length) return false;
+    for (uint32_t i = 0; i != n; ++i) if (uint8_t(want[i]) != stored[i]) return false;
+    return true;
+}
 } }
 #endif

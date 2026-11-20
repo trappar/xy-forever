@@ -6,7 +6,8 @@ with the expected tree at each step: official files untouched, the catalog exact
 everything of the mods gone at the end, content/dlc/ and an unknown file left alone. A fault, a power cut and A
 going silent at every rename of a switch: the record says the old state, switching or the new one (never
 absent), nothing is bootable while it says switching, B answers, the window closes, the default stays; a repeat
-repairs. Refusals before any change; boot once refused; a plain power-on never writes and the menu says why.
+repairs. Refusals before any change; boot once refused; a plain power-on with content not usable changes no content,
+record or default (#197: it converges first, nothing to apply with no setup saved) and the menu says why.
 Synthetic packages (test_sim_mod_job.py's kit) always; the published 0.0.6 set when present. Needs clang++ and
 the private stock 1.2.1 images (skipped without them). No device access."""
 import hashlib
@@ -227,7 +228,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         self.assertEqual((content(self.root), self.default(), self.record()), (before[0], before[1], None))
         self.assertEqual(self.dev.call(ids.JOB_CANCEL, struct.pack('<I', 0))[0], ids.S_STATE)   # a switch: no cancel
 
-    def test_power_on_never_writes_and_the_menu_says_why(self):
+    def test_power_on_with_unusable_content_opens_the_menu_with_why(self):
         a = self.build(['alpha'])
         cases = (('state=switching\ntarget=%s\n' % a, 'content needs repair'),
                  ('state=installed\nentry=%s\n' % a, 'Default opxy-121: content not installed'))
@@ -241,7 +242,10 @@ class SyntheticSwitch(Switch, unittest.TestCase):
                 self.sim.wait_listening(30.0)                              # nothing booted: the menu, USB on
                 self.reconnect()
                 self.assertEqual(self.dev.hello()[0], 0)
-                self.assertIn(reason, log.read_text()[seen:])
+                deadline = time.monotonic() + 30                           # #197: after the power-on converge
+                while reason not in log.read_text()[seen:]:
+                    self.assertLess(time.monotonic(), deadline, reason)
+                    time.sleep(0.05)
                 self.assertEqual((content(self.root), self.record(), self.default()), before)
         (self.root / RECORD).write_text('state=official\n')
         self.sim.control('power plain')

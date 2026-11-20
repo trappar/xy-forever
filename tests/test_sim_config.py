@@ -5,8 +5,8 @@ it. Driven by injected keys; what boots is the simulator's "menu: boots the defa
 the OS, with /yaffs2/content/ compared byte for byte with the entry. Covers: a first save and a plain power-on that
 writes nothing; a rebuild into the other slot; no change boots at once; a saved flip kept over a power cycle; all
 off (official content, the base the default, no build) and the same mods on again (no rebuild: the slot named by
-slot= still holds what built= says); a build failure, a content switch failure and a power cut in the build, the
-switch and the record write (the previous setup still boots, or the menu opens and Continue again repairs it); a
+slot= still holds what built= says); a build failure, a content switch failure and a power cut in the build (the
+next plain power-on converges), the switch and the record write (the menu opens and Continue again repairs it); a
 selection that cannot be built. Synthetic packages (test_sim_mod_job's kit). Needs clang++ and the private stock 1.2.1 images
 (skipped without them). No device access."""
 import hashlib
@@ -26,6 +26,14 @@ import test_sim_mod_job as J                                               # noq
 from test_sim_mods_page import (PageBase, synthetic_setup, PLAY, STOP, MINUS, PLUS, SHIFT, VIEW_LIST)   # noqa: E402
 
 CONFIG = 'xy-forever/config.txt'
+MARK = 'xy-forever/converged.txt'
+
+
+def mark_text(root, default):
+    """converged.txt as a convergence writes it (#197): the saved record's SHA-256 (config.txt, else config.old, else
+    none) and the default it converged to."""
+    record = next((p.read_bytes() for p in (root / CONFIG, root / 'xy-forever/config.old') if p.exists()), b'')
+    return 'format=1\ninputs=%s\ndefault=%s\n' % (hashlib.sha256(record).hexdigest(), default)
 
 
 class ConfigBase(PageBase, CS.Switch):
@@ -346,7 +354,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.assertEqual(self.booted(), a)
         self.saved_as(a, ['alpha'])
 
-    def test_power_cut_in_the_build(self):
+    def test_power_cut_in_the_build_then_power_on_converges(self):
         self.change(['alpha'])
         self.saved(['alpha'])
         self.sim.set('rename_fault_kind', 2)
@@ -355,8 +363,14 @@ class Config(ConfigBase, unittest.TestCase):
         self.cont()
         self.cut(cuts)                                                     # back in the menu (PLAY held)
         self.until_swept()                                                 # its USB start sweeps tmp/job-* (#3)
-        self.assertEqual((self.config()['mods'], self.config()['slot']), ('alpha', ''))   # saved, never built: the
-        self.plain_boots_without_writing(self.base)                       # previous setup boots
+        self.assertEqual((self.config()['mods'], self.config()['slot']), ('alpha', ''))   # saved, never built
+        self.assertEqual(self.disk_default(), self.base)                  # the previous setup is in place
+        self.sim.set('rename_fault', 0)
+        self.mark = len(self.lines('menu: boots the default ')), len(self.lines('menu: save failed: '))
+        self.sim.control('power plain')                                    # #197: the saved inputs converge first
+        a = self.booted()
+        self.saved_as(a, ['alpha'])
+        self.plain_boots_without_writing(a)
 
     def test_power_cut_in_the_switch_then_save_repairs(self):
         a = self.all_off_saved()

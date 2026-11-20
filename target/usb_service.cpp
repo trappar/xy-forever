@@ -84,6 +84,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "xyf_job_journal.hpp"
 #include "xyf_content_job.hpp"
 #include "xyf_config.hpp"           // the saved configuration (the config job)
+#include "xyf_converge.hpp"         // #197: its fingerprint (mark_store, the config job)
 #include "xyf_settings.hpp"         // #21: settings.txt (through the config job), the confirm gate
 #endif
 #if defined(XYF_TFW_CHECK)

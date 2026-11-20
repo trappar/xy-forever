@@ -321,6 +321,12 @@ extern "C" void xy_forever_key_ui() {
     xyf_sim::log("menu (home): %s", xyf_boot::status());
     xyf::menu::start(sim_app, xyf_boot::catalog(), true);
     sim_app.storage = xyf_boot::storage_view();                        // 193: as key_ui.cpp
+#if defined(XYF_MODS_PAGE)
+    if (const uint32_t doubt = xyf_boot::take_converge()) {           // #197: as key_ui.cpp (a plain power-on A doubted)
+        xyf_sim::log("menu: power-on converge: doubt %u", doubt);
+        mods_io::converge_begin(mods_io::why_power_on);
+    }
+#endif
     sim_menu = true; sim_mods = false; sim_leave = false; sim_pending = -1; sim_held.key = xyf::key_repeat::none;
     sim_usb_seen = false; sim_usb_line = 0;                            // nothing drawn yet
     knob_input::start(knob_identity());                                // as key_ui.cpp

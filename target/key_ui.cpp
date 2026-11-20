@@ -294,6 +294,10 @@ extern "C" void xy_forever_key_ui() {
 #if defined(XYF_ONE_SESSION)
         app.storage = xy_forever::xyf_boot::storage_view();   // 193: the first row waits for the library
 #endif
+#if defined(XYF_MODS_PAGE)
+        // #197: A doubted the saved inputs at a plain power-on: the progress screen from the first frame, then the boot
+        if (xy_forever::xyf_boot::take_converge()) xy_forever::mods_io::converge_begin(xy_forever::mods_io::why_power_on);
+#endif
         show(0, status);
         xy_forever::knob_input::start(!r.identity_mismatch && (r.stages & stage_identity));
 #if defined(XYF_ONE_SESSION)

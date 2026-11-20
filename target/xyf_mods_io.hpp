@@ -46,11 +46,13 @@ uint32_t longest_ms();
 // converge_begin(why) converges to the saved inputs and boots (a flip not written yet is written first): why_apply,
 // as they are (PLAY on the first row with "(to apply)" or "(rebuild)"); why_safe, "Boot without mods" (safe=1: the
 // base with its official content, the selection kept); why_restore, "Restore Open-XY" (safe=0: the saved setup back,
-// built again when the slot no longer holds it). Only the operations the plan needs run, on the progress screen
-// (progress(); converging() while it is up), never on the Mods page: its list, its toggles and the home row stay.
+// built again when the slot no longer holds it); why_power_on, as they are (a plain power-on A doubted: xyf_boot
+// take_converge). Only the operations the plan needs run, on the progress screen (progress(); converging() while it
+// is up), never on the Mods page: its list, its toggles and the home row stay. Each success ends by storing the
+// fingerprint (xyf_converge.hpp mark_path) when the stored one differs.
 // progress_key: a key there (STOP cancels a build). converge_state: converge_running, then converge_boot (boot the
 // default: the desired state) or converge_failed (converge_reason; the default unchanged); converge_done: taken.
-enum Why : uint32_t { why_apply = 0, why_safe, why_restore };
+enum Why : uint32_t { why_apply = 0, why_safe, why_restore, why_power_on };
 enum ConvergeState : uint32_t { converge_idle = 0, converge_running, converge_boot, converge_failed };
 bool menu_state(xyf::menu::State& app);
 void converge_begin(uint32_t why);

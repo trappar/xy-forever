@@ -241,12 +241,13 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
             a_prepared = reason == reason_ok ? index : 0xffffffffu;
             // #21: Menu at power-on, read before the status is built (both use the scan scratch)
             const U32 power_on = item == xyf_boot::item_check_default && reason == reason_ok ? a_power_on(storage, mounted) : 0u;
+            const U32 converge = item == xyf_boot::item_check_default ? a_converge(storage, mounted, lib) : 0u;   // #197
             xyf_boot::CheckStatus& s = *reinterpret_cast<xyf_boot::CheckStatus*>(xyf_boot::status_buffer);
             for (U32 i = 0; i != sizeof(s); ++i) reinterpret_cast<volatile Byte*>(&s)[i] = 0;
             s.magic = xyf_boot::check_magic; s.reason = reason; s.index = index;
             s.load_reason = r.load_reason; s.admit_reason = r.admit_reason;
             s.timing = r.timing;
-            s.power_on = power_on;
+            s.power_on = power_on; s.converge = converge;
             if (index < lib.count)
                 for (U32 i = 0; i != 31 && lib.entries[index].id[i]; ++i) s.id[i] = lib.entries[index].id[i];
             session.freeze_blob(reinterpret_cast<const Byte*>(xyf_boot::status_buffer), sizeof(s));
