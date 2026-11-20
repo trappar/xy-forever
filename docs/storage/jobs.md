@@ -23,8 +23,8 @@ Only the menu/USB service loop reads and replays intent. It validates the record
 then runs the existing content job in bounded slices. A plain boot does no journal repair and adds
 no journal boot gate; the existing content-state rule still rejects an unusable default.
 A missing or changed source, including a file that disappears during replay, leaves the journal and
-shows `Source missing. Set default to undo: <previous>`. Select that previous entry with the menu's
-Set default action, or use `library.set_default`; the undo direction is published before its first
+shows `Source missing. PLAY on the first row undoes: <previous>`. PLAY on the menu's first row then
+makes that previous entry the default (`content_undo`), as `library.set_default` of it does; the undo direction is published before its first
 content change. A cut during replay or undo replays that direction again. Unrelated defaults cannot
 replace unresolved intent. Neither `job.cancel` nor a new repair command is used for content jobs.
 

@@ -9,7 +9,8 @@ Part of [XY Forever goals](../GOALS.md).
 2. **A pleasant UI.** It has the XY Forever logo and a clean full-screen menu.
    Hold PLAY at power-on to open it.
 3. **Firmware library.** Several firmware versions and builds are stored on
-   the device. Pick one to boot once, or set it as the default.
+   the device. The host tool and web app boot one once or set the default; the
+   menu's safe mode boots stock without mods and restores them.
 4. **File access over USB.** One file engine on the device (list, read, write,
    delete, make folder) with two doors:
    - **our own MTP responder**: add, update or remove firmware, mods and other

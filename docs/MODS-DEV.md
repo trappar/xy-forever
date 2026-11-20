@@ -90,8 +90,7 @@ python3 xyf_host.py mods apply --base ID --generation opxy-1.2.1/<generation> MA
 ```
 
 This builds into library entry `mods-a` or `mods-b` and stops there. Then make that
-entry the default (SHIFT + PLAY in the Firmware library, or `set-default ID
---yes-write`), which installs its content first. `mods cancel` stops a running build.
+entry the default (`set-default ID --yes-write`), which installs its content first. `mods cancel` stops a running build.
 
 ## Limits
 

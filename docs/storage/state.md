@@ -41,8 +41,8 @@ If `default` is missing or its entry is unusable, XY Forever opens its menu.
 
 An entry is unusable without `os.ldr`, or when its content is not installed in `/yaffs2/content/`
 (the one rule `xyf::library::content_installed`: the content state below matches it). Such an entry is
-listed ("content not installed", catalog flag 8); PLAY (boot once) and `library.boot` refuse it
-(`no_content`: make it the default to install its content); SHIFT+PLAY and `library.set_default` run the
+listed ("content not installed", catalog flag 8); `library.boot` refuses it
+(`no_content`: make it the default to install its content); `library.set_default` runs the
 content switch first and write the default only when it succeeded (`started`, then `job.status`).
 
 ### Content state
@@ -82,9 +82,11 @@ never `dlc/`, `user/` or a name holding `bootloader` (`xyf::content::allowed`, o
 ### Saved configuration
 
 `config.txt` (`target/xyf_config.hpp`): `base`, `profile`, `generation`, `unverified`, `built=<base> <generation> <set> <count>[ expanded]` (set: sum of the
-names' CRC-32), `slot` (the Open-XY entry), `stamp` (its `info.txt` `sha256=`), `memory=standard|expanded` (Mod memory; anything else: standard), `mods` (last).
+names' CRC-32), `slot` (the Open-XY entry), `stamp` (its `info.txt` `sha256=`), `memory=standard|expanded` (Mod memory; anything else: standard),
+`safe=0|1` (safe mode: the base is the default with official content; 0 without a slot or mods), `mods` (last).
 Replaced as `content-state.txt` is; a reader takes `config.old` when the record is missing; no record: no mods. Save builds into the spare slot unless `slot`
 exists, `built` matches and its `sha256=` equals `stamp`; then the content switch (no default), the record, the default (one job, `config_store`).
+No mod build takes `slot` (`job_target`). Safe mode and Restore switch content to the base or `slot` and rewrite the record with `safe=` flipped.
 
 `log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
 Save, USB build or content switch, the last 20; `kind result mods memory added removed total` then each

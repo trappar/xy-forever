@@ -38,43 +38,40 @@ What it never touches:
 | PLAY | Select the row. |
 | STOP | Back. |
 | SHIFT + PLAY | The second action of a row, where there is one (shown in the hint line). |
-| TRACK 1 to 4 | Jump to Continue, Firmware library, MTP mode, Uninstall. |
+| TRACK 1 to 4 | Jump to the first four rows. |
 
 The bottom line of each screen lists the keys that work there.
 
 ## The home menu
 
-Five rows, top to bottom: the first row (Continue), Firmware library, Mods,
+Five rows, top to bottom: the first row (Continue), Boot without mods, Mods,
 Uninstall XY Forever, Settings.
 
 ### The first row (Continue)
 
 It shows what PLAY will boot. Usually that is the default firmware's name. Once you
 have used the Mods page, it reads like "Open-XY - 3 mods - 1.2.1", or the stock
-firmware's name when all mods are off. A word in brackets may follow:
+firmware's name when all mods are off or in safe mode. A word in brackets may follow:
 
 - **(changed):** you changed mod switches on the Mods page and have not saved them.
 - **(rebuild):** the saved mod setup needs its firmware built again (the built copy
   is no longer in the library).
 - **(to apply):** the saved setup is not what will boot yet, for example because its
   content is not installed. Save will finish the job.
+- **(safe mode):** the stock firmware boots; your mods are kept (below).
 
 With nothing pending, PLAY boots. With something pending, PLAY opens the Save dialog
 (below).
 
-### Firmware library
+### Boot without mods (safe mode)
 
-A list of the firmware entries on the device. The default is marked. Each row shows a
-short description. A mod build made on the device shows as "Open-XY" with the detail
-"open-xy, saved setup". A spare mod build slot is hidden.
+With mods saved, PLAY asks first (Cancel or Boot). Boot puts the official content
+back, makes the stock firmware the default and boots it. Your mod setup is kept. With
+no mods saved the row is grey and PLAY says why.
 
-- **PLAY:** boot this entry once. The default does not change.
-- **SHIFT + PLAY:** make this entry the default. If it needs different content in
-  `/yaffs2/content/`, the content is installed first, and the default is written only
-  if that worked.
-- An entry marked "content not installed" cannot be booted once. Make it the default
-  instead; that installs its content.
-- STOP goes back.
+In safe mode the row reads "Restore Open-XY (3 mods)". PLAY puts your mod firmware's
+content back, makes it the default and boots it, building it again only if the saved
+build is no longer intact. A Save on the Mods page also leaves safe mode.
 
 ### Mods
 
@@ -143,19 +140,19 @@ content back.
 
 - A failed build leaves the old setup as it was. The Mods page says "Build failed:"
   and a reason.
-- "Installing content failed: Continue and Save again to repair it." Do that: running
-  the same install again repairs it.
+- "Installing content failed: Continue and Save again to repair it." Do that (or
+  Boot without mods, Restore Open-XY again, as it says): the same install repairs it.
 - After a power cut while content was being changed, nothing boots until it is
-  repaired. The menu opens and says "content needs repair". Save again from the Mods
-  page, or make an entry the default in the Firmware library (SHIFT + PLAY). The
-  repair path was tested in the simulator; on a real power cut it is not verified.
+  repaired. The menu opens and says "content needs repair". Do the same again (Save,
+  or the safe-mode row). If the line says "Source missing. PLAY on the first row
+  undoes: ...", PLAY on the first row puts that entry back. The repair path was tested
+  in the simulator; on a real power cut it is not verified.
 - "Saving the settings failed: the previous setup is kept."
 
 ### Going back to stock
 
-- To boot stock firmware once: Firmware library, PLAY on a stock entry.
-- To make stock the default again: turn all mods off and Save, or SHIFT + PLAY on a
-  stock entry. Either way the official content is put back.
+- To boot stock and keep your mods for later: Boot without mods.
+- To leave mods for good: turn all mods off and Save. The official content is put back.
 - The last resort: hold COM at power-on to reach the stock recovery menu, and
   reinstall official 1.2.1 from there.
 
@@ -217,7 +214,7 @@ run on a device.
 
 ## Planned (not in this build)
 
-- A safe mode for a firmware that fails at start-up.
+- Safe mode by itself when a firmware fails at start-up.
 - Choosing which base firmware a mod build uses.
 - Companion chip updates (keyboard and Bluetooth), from official update files.
 - MTP mode: copying files with any MTP app.
