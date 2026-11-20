@@ -77,6 +77,10 @@ REWRITES = (   # (pattern, replacement, files it must match in: exact count per 
     (re.compile(r'__asm__ volatile\("SSYNC;(?: CSYNC;)?" : : : "memory"\);'), ';',
      {'usb_service_transport.ipp': 1, 'usb_service_stage2.ipp': 1, 'file_client.cpp': 1, 'file_boot.cpp': 2}),
     (re.compile(r'section\("\.text\.entry"\), '), '', {'stage2_main.cpp': 1}),   # no such Mach-O section
+    # Before each assembly step, so the test can stop at verify even when a slice spans several phases.
+    (re.compile(r'(?m)^            p = mj::step\(s\.job\);$'),
+     '            if (job_usb && s.job.phase == mj::Phase::verify && ::xyf_sim::hold_mod_verify()) return;\n'
+     '            p = mj::step(s.job);', {'usb_service_save_log.ipp': 1}),
     # 192: 7 -> 10, the three in repair_fresh (as the write window; changing these counts needs the
     # developer's explicit yes, docs/SAFETY.md).
     (re.compile(r'__asm__ volatile\("ssync;" ::: "memory"\);'), ';', {'cold_storage.cpp': 10}),

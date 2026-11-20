@@ -7,7 +7,7 @@
 // simulator's /yaffs2 folder on the Mac. Building on the device (applyMods): beside the pushed set, a
 // base entry and catalog as tests/test_sim_mod_job.py seeds them (makeModBase); a build becomes library
 // entry mods-a (its os.ldr in firmware/, tmp/job-<id>/ gone), left out of libraryBases, content not installed;
-// makeDefault on it runs the content switch and writes the default; refusals and a failed job in plain words; cancel mid-job (A slowed); a
+// makeDefault on it runs the content switch and writes the default; refusals and a failed job in plain words; cancel at verify; a
 // storage command during the job is the typed busy. Runs in order (one client at a time).
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -228,7 +228,6 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     { timeout: 20_000, interval: 100 });
   beforeEach(served);                                                   // a job's write window outlives the job
   afterAll(async () => {
-    await control(sim!.control, 'set a_slow_ms 0').catch(() => undefined);
     await client?.close();
     rmSync(work, { recursive: true, force: true });
   });
@@ -295,17 +294,20 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
   });
 
   test('during a job storage commands and a second build are busy; cancel removes what it wrote', async () => {
-    await control(sim!.control, 'set a_slow_ms 4');
+    expect(await control(sim!.control, 'set hold_mod_verify 1')).toMatchObject({ ok: true });
     try {
       const stop = new AbortController();
-      const seen: JobStatus[] = [];
-      const build = applyMods(client, request, { pollMs: 20, signal: stop.signal, onProgress: (s) => seen.push(s) });
+      let progress: JobStatus | undefined;
+      const build = applyMods(client, request, { pollMs: 20, signal: stop.signal, onProgress: (s) => { progress = s; } });
       let refused: unknown;
       build.catch((e: unknown) => { refused = e; });
       await vi.waitFor(() => {
         if (refused) throw new Error(`the build ended early: ${String(refused)}`);
-        expect(seen.some((s) => !s.final && s.phase !== 'idle')).toBe(true);
+        expect(progress?.phase).toBe('verify');
       }, { timeout: 10_000, interval: 20 });
+      const job = progress!.job;
+      const output = join(sim!.root, 'xy-forever', 'tmp', `job-${job}`);
+      expect(existsSync(join(output, 'os.ldr.part'))).toBe(true);
       const busy = await client.listDir('/yaffs2').catch((e: unknown) => e);
       expect(isXyfError(busy, 'busy'), String(busy)).toBe(true);
       expect((busy as XyfError).message).toBe('file.list /yaffs2: the OP-XY is building mod firmware (a job is running); try again when it ends, or cancel it');
@@ -313,12 +315,12 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
       stop.abort();
       const error = await build.catch((e: unknown) => e);
       expect(error).toBeInstanceOf(JobError);
-      expect((error as JobError).status).toMatchObject({ phase: 'cancelled', debris: false });
+      expect((error as JobError).status).toMatchObject({ job, phase: 'cancelled', debris: false });
       expect((error as JobError).message).toBe('the build was cancelled');
-      expect(existsSync(join(sim!.root, 'xy-forever', 'tmp', `job-${(error as JobError).status.job}`))).toBe(false);
+      await served();                                                // the final phase can precede removing the output folder
+      expect(existsSync(output)).toBe(false);
     } finally {
-      await control(sim!.control, 'set a_slow_ms 0');
+      await control(sim!.control, 'set hold_mod_verify 0');
     }
-    await served();
   });
 });
