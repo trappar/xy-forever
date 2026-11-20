@@ -77,7 +77,8 @@ bool journal_kept() {
     }
     return false;
 }
-bool job_running() { return job_state == job_busy || package_active || blob_collecting || reporting; }
+volatile U32 menu_pack_active __attribute__((section(".data"))) = 0;
+bool job_running() { return menu_pack_active || job_state == job_busy || package_active || blob_collecting || reporting; }
 #if defined(XYF_MTP_SESSION)
 bool mtp_busy();                                                        // an MTP operation in flight
 #define XYF_OR_MTP_BUSY || mtp_busy()

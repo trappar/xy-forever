@@ -152,7 +152,8 @@ class SettingsRows(Rows, unittest.TestCase):
         self.press(PLAY)
         self.until(lambda: self.count('pack page 0: 7 entries, more=1'), 'first seven packs')
         first = self.lines('pack id: ')[-7:]
-        self.press(PLUS)
+        for _ in range(7):
+            self.press(PLUS)
         self.until(lambda: self.count('pack page 1: 2 entries, more=0'), 'last two packs')
         self.assertEqual(set(first + self.lines('pack id: ')[-2:]), ids)
         self.press(MINUS)

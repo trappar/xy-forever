@@ -13,6 +13,7 @@ void sim_settings_pass(bool& settings_logged) {
         settings_logged = true;
     }
     if (settings_moved && sim_app.screen == xyf::menu::Screen::packs && sim_app.pack_ready) {
+        if (sim_app.pack_result) xyf_sim::log("pack result: %s", sim_app.pack_result);
         for (uint32_t i = 0; i < sim_app.pack_count; ++i) xyf_sim::log("pack id: %s", sim_app.pack_names[i]);
         xyf_sim::log("pack page %u: %u entries, more=%u", sim_app.pack_page, sim_app.pack_count, unsigned(sim_app.pack_more));
     }

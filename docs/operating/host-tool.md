@@ -28,8 +28,17 @@ Creating the report folder is a storage write and requires the developer's appro
 
 `python3 xyf_host.py packs list` lists installed sound packs in `/yaffs2/content/dlc/`.
 Each row gives the pack folder ID and the vendor manifest's name, version, author and description when present.
-Settings > Content packs shows the same folder IDs on the OP-XY. Use + and - to turn pages and STOP to return.
-A malformed manifest is reported beside its folder ID. The command only lists directories and reads `manifest.json`.
+A malformed manifest is reported beside its folder ID.
+
+Place a complete, unpacked sound pack in `/yaffs2/xy-forever/inbox/ID/`. Its `manifest.json` must
+be a JSON object of up to 4,096 bytes and 32 nesting levels. A `folder` property, when present, must match the folder ID exactly.
+Run `python3 xyf_host.py packs install ID --yes` to move the folder to `/yaffs2/content/dlc/ID/`.
+An occupied ID stops the install. Use `python3 xyf_host.py packs remove ID --yes` to remove an installed pack.
+Omit `--yes` to see the planned action.
+
+On the OP-XY, open Settings > Content packs. SHIFT+PLAY switches between installed and inbox packs.
+Use + and - to select a pack, then PLAY to open its install or remove confirmation. Cancel starts selected.
+Use + then PLAY to confirm, or STOP to go back.
 
 ### File commands
 

@@ -2,6 +2,7 @@
 // The folder id is displayed when a direct child is a regular file named manifest.json.
 struct PackList {
     U32 page, outer, inner, skip, next;
+    bool inbox;
     char folder[file_engine::max_path], id[file_client::max_name + 1];
     char ids[xyf::menu::packs_per_page][file_engine::max_path];
     const char* names[xyf::menu::packs_per_page];
@@ -9,19 +10,20 @@ struct PackList {
 static PackList packs __attribute__((section(".data"))) = {};
 static bool pack_list_step(xyf::menu::State& s) {
     const U32 per_page = xyf::menu::packs_per_page;
-    if (packs.page != s.pack_page) {
+    if (packs.page != s.pack_page || packs.inbox != s.pack_inbox) {
         // Forward: resume at the first unshown pack. Backward: count complete packs from the start.
-        const bool forward = packs.page != ~0u && s.pack_page == packs.page + 1;
+        const bool forward = packs.inbox == s.pack_inbox && packs.page != ~0u && s.pack_page == packs.page + 1;
         packs.outer = forward ? packs.next : 0;
         packs.skip = forward ? 0 : s.pack_page * per_page;
+        packs.inbox = s.pack_inbox;
         packs.page = s.pack_page; packs.folder[0] = 0;
-        s.pack_count = 0; s.pack_more = s.pack_ready = false; s.pack_note = "Reading content packs...";
+        s.pack_count = s.pack_selected = 0; s.pack_more = s.pack_ready = false; s.pack_note = "Reading content packs...";
         return true;
     }
     if (s.pack_ready) return false;
     if (!menu_link::usb_idle() || page_busy()) return false;
     if (!a_serving()) { s.pack_ready = true; s.pack_note = "Storage unavailable.   STOP  back"; return true; }
-    static const char root[] = "/yaffs2/content/dlc";
+    const char* root = s.pack_inbox ? "/yaffs2/xy-forever/inbox" : "/yaffs2/content/dlc";
     ContentIo io = {};
     char name[file_client::max_name + 1];
     uint32_t kind = 0;
@@ -30,7 +32,7 @@ static bool pack_list_step(xyf::menu::State& s) {
     if (found < 0) { s.pack_ready = true; s.pack_note = "Cannot read content packs.   STOP  back"; return true; }
     if (!child) {
         if (!found) {
-            s.pack_ready = true; s.pack_note = s.pack_count ? 0 : "No installed content packs.   STOP  back";
+            s.pack_ready = true; s.pack_note = s.pack_count ? 0 : s.pack_inbox ? "Inbox empty. SHIFT+PLAY installed." : "No installed packs. SHIFT+PLAY inbox.";
             return true;
         }
         if (kind == 1 && join(packs.folder, root, "/", name)) {

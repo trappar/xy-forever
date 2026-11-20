@@ -86,11 +86,17 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
     }
     case Screen::packs: {
 #if defined(XYF_SETTING_OPTIONS)
+        const char* action = s.pack_inbox ? "Install" : "Remove";
+        if (s.pack_confirm && s.pack_selected < s.pack_count) {
+            const ui::Confirm dialog = {s.pack_inbox ? "Install sound pack?" : "Remove sound pack?",
+                {s.pack_names[s.pack_selected], 0, 0, 0}, 1, "Cancel", action, s.confirm_accept, chrome};
+            ui::draw_confirm(fb, dialog); return;
+        }
         static ui::ListRow rows[packs_per_page] XYF_DATA = {};
         for (uint32_t i = 0; i != s.pack_count; ++i) rows[i].title = s.pack_names[i];
-        const char* hint = s.pack_note ? s.pack_note : s.pack_page && s.pack_more ? "- / +  pages   STOP  back" :
-                           s.pack_more ? "+  next page   STOP  back" : s.pack_page ? "-  previous page   STOP  back" : "STOP  back";
-        const ui::List list = {"Content packs", rows, s.pack_count, 0, hint, chrome, false};
+        const char* hint = s.pack_busy ? "Working..." : s.pack_result ? s.pack_result : s.pack_note ? s.pack_note :
+                           s.pack_inbox ? "PLAY install  SHIFT+PLAY installed  STOP back" : "PLAY remove  SHIFT+PLAY inbox  STOP back";
+        const ui::List list = {s.pack_inbox ? "Inbox packs" : "Content packs", rows, s.pack_count, s.pack_selected, hint, chrome, false};
         ui::draw_list(fb, list);
 #endif
         return;

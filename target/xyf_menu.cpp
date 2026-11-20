@@ -63,6 +63,9 @@ Action key(State& s, uint32_t k, bool pressed) {
     if (!pressed) return Action::none;
     const bool minus = k == key_minus, plus = k == key_plus, play = k == key_play;
     if (k == key_stop) {                              // back
+#if defined(XYF_SETTING_OPTIONS)
+        if (s.screen == Screen::packs && s.pack_confirm) { s.pack_confirm = false; return Action::redraw; }
+#endif
         const Screen back = s.screen == Screen::info ? s.info_return :
                             s.screen == Screen::home_empty ? Screen::home_empty :
 #if defined(XYF_SETTING_OPTIONS)
@@ -136,9 +139,21 @@ Action key(State& s, uint32_t k, bool pressed) {
     }
 #if defined(XYF_SETTING_OPTIONS)
     case Screen::packs:
-        if (!s.pack_ready || !((plus && s.pack_more) || (minus && s.pack_page))) return Action::none;
-        if (plus) ++s.pack_page; else --s.pack_page;
-        s.pack_ready = false;
+        if (s.pack_busy || s.pack_execute) return Action::none;
+        if (s.pack_confirm) {
+            if (minus || plus) s.confirm_accept = !s.confirm_accept;
+            else if (play) { s.pack_execute = s.confirm_accept; s.pack_confirm = false; }
+            else return Action::none;
+        } else if (play && s.shift_held) {
+            s.pack_inbox = !s.pack_inbox; s.pack_page = 0; s.pack_ready = false;
+        } else if (!s.pack_ready) return Action::none;
+        else if (play && s.pack_count) { s.pack_confirm = true; s.confirm_accept = false; }
+        else if (plus && s.pack_selected + 1 < s.pack_count) ++s.pack_selected;
+        else if (minus && s.pack_selected) --s.pack_selected;
+        else if (plus && s.pack_more) { ++s.pack_page; s.pack_ready = false; }
+        else if (minus && s.pack_page) { --s.pack_page; s.pack_ready = false; }
+        else return Action::none;
+        s.pack_result = 0;
         return Action::redraw;
     case Screen::options:                         // #21: - / + choose, PLAY picks (STOP above: back, unchanged)
         if (minus || plus) { s.option_selected = step(s.option_selected, s.option_count, plus); return Action::redraw; }

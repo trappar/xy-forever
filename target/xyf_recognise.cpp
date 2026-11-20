@@ -62,6 +62,8 @@ bool valid_name(const char* name) {
     return n && name[n - 1] != '.' && name[n - 1] != ' ';   // also refuses "." and ".."
 }
 
+bool pack_name(const char* name) { return valid_name(name) && !bootloader(name) && !companion(name); }
+
 void recognise_file(const char* name, uint32_t size, const uint8_t* p, uint32_t n, Recognition& out) {
     if (!valid_name(name)) return set(out, kind_unknown, reason_bad_name);
     if (refused_name(name, out)) return;

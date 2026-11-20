@@ -305,9 +305,7 @@ extern "C" void xy_forever_key_ui() {
             }
 #endif
             turn_knobs(ms_since(r.start_cycles));            // after the stock poll
-            // A held - / + repeats (not on the Uninstall dialog, whose - / + flips its two buttons).
-            if (xyf::key_repeat::due(held, ms_since(r.start_cycles)) && app.screen != xyf::menu::Screen::confirm_uninstall &&
-                app.screen != xyf::menu::Screen::confirm_save)                // no repeat in dialogs
+            if (xyf::key_repeat::due(held, ms_since(r.start_cycles)) && xyf::menu::repeat_keys(app))
                 dispatch(held.key, 1);
 #if defined(XYF_ONE_SESSION)
             // Test 065: home answers every USB command; CONTINUE leaves home to boot the default.

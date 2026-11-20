@@ -3,6 +3,7 @@
 // settings.txt (xyf_settings.hpp; usb_service.hpp).
 namespace xs = xyf::settings;
 #include "usb_service_pack_list.ipp"
+#include "usb_service_pack_change.ipp"
 xs::Record settings_record __attribute__((section(".data"))) = {1, xs::power_play, xs::usb_mtp_serial, 0};
 U32 settings_loaded __attribute__((section(".data"))) = 0;
 // #21: what settings.txt holds (as read or last saved): the page marks a row whose value differs from it.
@@ -46,7 +47,9 @@ U32 settings_marks() {
 const char* settings_open(xyf::menu::State& s, uint32_t row) {
     if (row == xs::row_packs) {
         s.screen = xyf::menu::Screen::packs;
-        s.pack_page = 0;
+        s.pack_page = s.pack_selected = 0;
+        s.pack_inbox = s.pack_confirm = false;
+        s.pack_result = 0;
         packs.page = ~0u;
         s.pack_ready = false;
         return 0;
@@ -95,7 +98,8 @@ bool settings_view(xyf::menu::State& s, const char*& line) {
     const U32 marks = settings_marks();
     bool changed = s.power_on_text != power_on || s.usb_text != usb || s.settings_marked != marks;
     if (!s.pack_names) { s.pack_names = packs.names; changed = true; }
-    if (s.screen == Screen::packs && pack_list_step(s)) changed = true;
+    if (pack_change_step(s)) changed = true;
+    if (s.screen == Screen::packs && !menu_pack_active && pack_list_step(s)) changed = true;
     s.power_on_text = power_on; s.usb_text = usb; s.settings_marked = marks;
     if (r.newer && !s.settings_note) { s.settings_note = xs::note_newer; changed = true; }   // the page says so
     // Left (not the page, its option list or the About page opened from it) with a change: one write, started a
