@@ -65,7 +65,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from xy_forever import depth, device_lock, host_write, library_add, usb_proto as P
+from xy_forever import depth, device_lock, host_inventory, host_write, library_add, usb_proto as P
 from xy_forever.library_add import ID_RE
 from xy_forever.host_install import DESCRIPTOR, MIN_IMAGE, IMAGE_CAPACITY, USB_MODES, load_build, load_stock
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr
@@ -225,8 +225,10 @@ class Device:
         """One file.list page: (status, entries [(kind, size, name bytes)], more)."""
         code, body = self.call(P.LIST_DIR, path.encode('utf-8') + b'\0' + struct.pack('<I', skip),
                                timeout=P.ids.COMMANDS[P.LIST_DIR]['timeout_ms'] / 1000.0)
-        if code or len(body) < 8:
+        if code:
             return code, [], 0
+        if len(body) < 8:
+            raise IOError('file.list: short reply for %s' % path)
         count, more = struct.unpack_from('<II', body)
         entries = parse_entries(body[8:])
         if len(entries) != count:
@@ -276,9 +278,6 @@ class Device:
         return code, written, partition, sectors
 
 
-KINDS = ('file', 'dir', 'other')
-
-
 def parse_entries(data):
     """file.list entries: [(kind, size, name bytes)] ({u8 kind, u32 size, u8 name bytes, name} each)."""
     out, at = [], 0
@@ -291,12 +290,6 @@ def parse_entries(data):
     if at != len(data):
         raise IOError('file.list: %d bytes after the last entry' % (len(data) - at))
     return out
-
-
-def entry_dict(entry):
-    kind, size, name = entry
-    return dict(name=name.decode('utf-8', 'replace'), type=KINDS[kind] if kind < len(KINDS) else 'kind_%d' % kind,
-                size=size)
 
 
 def device_path(path):
@@ -502,8 +495,7 @@ def run(argv):
     setd = sub.add_parser('set-default'); setd.add_argument('id'); setd.add_argument('--yes-write', action='store_true')
     putf = sub.add_parser('put-file', help='write a file under /yaffs2/xy-forever/ (fresh boot; creates missing folders)')
     putf.add_argument('local', type=Path); putf.add_argument('remote'); putf.add_argument('--yes-write', action='store_true')
-    lsp = sub.add_parser('ls', help='list a device folder: type, size, name (file.list, read-only)')
-    lsp.add_argument('path'); lsp.add_argument('--json', action='store_true')
+    host_inventory.configure(sub)
     getp = sub.add_parser('get', help='copy a device file to the computer (ranged reads; size and ranges checked)')
     getp.add_argument('remote'); getp.add_argument('local', type=Path)
     putp = sub.add_parser('put', help='copy a file onto the OP-XY (streamed into tmp/, read back, renamed onto it)')
@@ -670,6 +662,8 @@ def run(argv):
             print('read failed: %s (no Save logged yet?)' % P.status_name(code)); return code
         print(save_times_table(body.decode('utf-8', 'replace')))
         return 0
+    if args.command == 'content':
+        return host_inventory.content_status(dev)
     if args.command == 'read':
         code, body = (dev.read_all(args.path) if args.all else
                       dev.read_file(args.path, args.offset) if args.offset is not None else dev.read_file(args.path))
@@ -815,16 +809,7 @@ def files_command(dev, hello, args):
                                     depth.move_note(code)))
         return code
     if args.command == 'ls':
-        code, entries = dev.list_dir(args.path)
-        if code:
-            print('ls %s: %s' % (args.path, P.status_name(code))); return code
-        rows = [entry_dict(e) for e in entries]
-        if args.json:
-            print(json.dumps(rows, ensure_ascii=False, indent=1))
-        else:
-            for r in rows:
-                print('%-5s %10s  %s' % (r['type'], r['size'] if r['type'] == 'file' else '-', r['name']))
-        return 0
+        return host_inventory.list_directory(dev, args.path, args.json)
     if args.command in ('rm', 'mkdir'):
         kind = P.ids.MAKE_DIR if args.command == 'mkdir' else P.ids.REMOVE_DIR if args.dir else P.ids.DELETE_FILE
         code, error = dev.change(kind, args.path)
