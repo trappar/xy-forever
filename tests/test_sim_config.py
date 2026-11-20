@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_content_switch as CS                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_mods_page import (PageBase, synthetic_setup, PLAY, STOP, MINUS, PLUS, SHIFT, VIEW_LIST)   # noqa: E402
-from xy_forever import native_json                                       # noqa: E402
+from xy_forever import native_json, package_records                                       # noqa: E402
 
 CONFIG = 'xy-forever/config.json'
 CONFIG_OLD = CONFIG + '.old'
@@ -216,8 +216,7 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         a = self.booted()
         c = self.saved_as(a, ['alpha', 'gamma'])
         self.assertEqual((c['base'], c['slot'], c['unverified']), (self.base, a, '1'))
-        self.assertEqual(c['stamp'], dict(l.split('=', 1) for l in (self.entry(a) / 'info.txt').read_text().splitlines()
-                                          if '=' in l)['sha256'])
+        self.assertEqual(c['stamp'], package_records.read_values(self.entry(a))['sha256'])
         self.plain_boots_without_writing(a)
         self.menu_again()
         self.wait_log(lambda: self.home().startswith('Open-XY - 2 mods - 1.2.1 pending=0'),

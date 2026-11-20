@@ -7,7 +7,7 @@ import struct
 import time
 import unittest
 import zlib
-from xy_forever import modsend as MS, usb_proto as P
+from xy_forever import modsend as MS, package_records, usb_proto as P
 import test_sim_content_switch as CS
 Switch, UNAVAILABLE, content, LIB = CS.Switch, CS.UNAVAILABLE, CS.content, CS.LIB
 
@@ -16,8 +16,10 @@ JOURNAL = 'xy-forever/job.txt'
 
 def identity(root, entry):
     folder = root / LIB / entry
-    return tuple(hashlib.sha256((folder / name).read_bytes()).hexdigest() if (folder / name).exists() else '0' * 64
-                 for name in ('info.txt', 'files.sha256'))
+    metadata = folder / package_records.local_name(folder)
+    listed = folder / 'files.sha256'
+    return (hashlib.sha256(metadata.read_bytes()).hexdigest(),
+            hashlib.sha256(listed.read_bytes()).hexdigest() if listed.exists() else '0' * 64)
 
 
 def intent(root, target, previous, undo=False):
@@ -68,7 +70,8 @@ class Recovery(Switch, unittest.TestCase):
         journal = intent(self.root, target, previous)
         self.switched(target)
         (self.root / JOURNAL).write_bytes(journal)
-        (self.root / LIB / target / 'info.txt').unlink()
+        folder = self.root / LIB / target
+        (folder / package_records.local_name(folder)).unlink()
         self.restart()
         self.wait(lambda: 'Set default to undo: ' + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
         self.assertEqual((self.root / JOURNAL).read_bytes(), journal)
@@ -80,7 +83,8 @@ class Recovery(Switch, unittest.TestCase):
         target = self.build(['alpha'])
         journal = intent(self.root, target, previous)
         (self.root / JOURNAL).write_bytes(journal)
-        (self.root / LIB / target / 'info.txt').unlink()
+        folder = self.root / LIB / target
+        (folder / package_records.local_name(folder)).unlink()
         self.restart()
         self.wait(lambda: 'Set default to undo: ' + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
         self.assertEqual(self.dev.set_default(previous)[0], P.ids.S_STARTED)

@@ -391,6 +391,40 @@ class DevicePassTest(unittest.TestCase):
     def rows(self):
         return {(r['stage'], r['step']): r for r in self.summary['steps']}
 
+    def test_configuration_guard_uses_the_selected_record(self):
+        from scripts.device_pass_library import read_config
+        from xy_forever import native_json
+
+        rig = dp.Pass(FakeDevice(), None, None)
+        names = ['config.json']
+        native = native_json.config_document(dict(base='opxy-121-stock', mods='alpha', safe='1'))
+        with patch.object(rig, 'names', return_value=names), patch.object(rig, 'read', return_value=native) as read:
+            selected = read_config(rig, dp.StepSkip)
+            self.assertEqual((selected['mods'], selected['safe']), ('alpha', '1'))
+            self.assertTrue(read.call_args.args[0].endswith('/config.json'))
+            names.append('config.txt')
+            read.reset_mock(return_value=True)
+            read.return_value = native.replace(b'"schema_version":1', b'"schema_version":2')
+            with self.assertRaisesRegex(dp.StepSkip, 'config.json: unsupported JSON schema version'):
+                read_config(rig, dp.StepSkip)
+            read.assert_called_once_with(dp.config_records.ROOT + '/config.json', 'config-before-config.json', '--all')
+
+    def test_saved_state_compares_all_four_records_as_bytes(self):
+        rig = dp.Pass(FakeDevice(), None, None)
+        raw = {'config.json': b'{}\n', 'config.txt': b'format=1\n', 'config.old': b'# backup\n'}
+        def read(path, *_):
+            return raw.get(path.rsplit('/', 1)[1])
+        with patch.object(rig, 'read', side_effect=read), patch.object(rig, 'names', return_value=['opxy-121']), \
+                patch.object(rig, 'slots', return_value=(None, None, {'default': 'opxy-121'})), \
+                patch.object(rig, 'home_view', return_value={'band': b'home'}):
+            before = rig.saved_state('before')
+            self.assertEqual({name: before[name] for name in dp.config_records.NAMES},
+                             dict(raw, **{'config.json.old': None}))
+            self.assertIn('as found', rig.same_state(before, 'same'))
+            raw['config.json.old'] = b'{}\n'
+            with self.assertRaisesRegex(dp.StepFail, 'config.json.old'):
+                rig.same_state(before, 'changed')
+
     def test_simulator_run_keeps_its_folder_only_on_failure_or_keep(self):
         """--sim: the evidence folder is removed when nothing failed, unless --keep; a FAIL keeps it.
         (A real-device run always keeps it: every other test here.)"""

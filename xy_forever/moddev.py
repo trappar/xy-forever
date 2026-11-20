@@ -20,11 +20,9 @@ from pathlib import Path
 import sys
 import time
 
-from . import modsend as MS, native_json, package_records
+from . import config_records, modsend as MS, package_records
 from . import usb_proto as P
 
-CONFIG_ROOT = '/yaffs2/xy-forever'
-CONFIG_NAMES = ('config.json', 'config.json.old', 'config.txt', 'config.old')
 FIRMWARE = '/yaffs2/xy-forever/firmware'
 STATE_NAME = 'moddev-state.json'
 
@@ -110,29 +108,13 @@ def snapshot(gen, names):
 # -- the device's records ---------------------------------------------------------------------------------
 def config(dev):
     """The selected saved configuration, as a dict (mods: list)."""
-    code, entries = dev.list_dir(CONFIG_ROOT)
-    if code == MS.NOT_FOUND:
+    try:
+        selected = config_records.read(dev)
+    except ValueError as error:
+        raise MS.Refused(str(error)) from error
+    if selected is None:
         return None
-    MS.check(code, 'list saved configuration')
-    names = {raw for _, _, raw in entries}
-    name = next((name for name in CONFIG_NAMES if name.encode('ascii') in names), None)
-    if name is None:
-        return None
-    native = name in CONFIG_NAMES[:2]
-    cap = native_json.DOCUMENT_BYTES if native else 2048
-    code, data = dev.read_all(CONFIG_ROOT + '/' + name, limit=cap + 1)
-    MS.check(code, 'read %s' % name)
-    if len(data) > cap:
-        raise MS.Refused('%s exceeds %d bytes' % (name, cap))
-    if native:
-        try:
-            data = native_json.config_text(data)
-        except ValueError as error:
-            raise MS.Refused('%s: %s' % (name, error)) from error
-    text = data.decode('utf-8', 'replace')
-    if not native and any(line.startswith('format=') and line.removesuffix('\r') != 'format=1' for line in text.split('\n')):
-        raise MS.Refused('%s: unsupported legacy configuration format' % name)
-    f = dict(l.split('=', 1) for l in text.splitlines() if '=' in l)
+    _, _, f = selected
     f['mods'] = [m for m in f.get('mods', '').split(',') if m]
     return f
 

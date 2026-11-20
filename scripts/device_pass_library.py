@@ -1,5 +1,5 @@
 """Library metadata read and legacy scratch-entry check for the device pass."""
-from xy_forever import package_records
+from xy_forever import config_records, package_records
 from xy_forever.xyf_entry import manifest_text
 
 
@@ -39,3 +39,19 @@ def read_metadata(self, folder, artifact, extra, names, parse_info, fail):
         except ValueError as error:
             raise fail('%s: %s' % (path, error)) from error
     return {}
+
+
+
+def read_config(device_pass, skip):
+    """Return the saved selection fields used by the read-only configuration rehearsal."""
+    root = config_records.ROOT
+    name = config_records.record_name(device_pass.names(root))
+    if name is None:
+        return {}
+    data = device_pass.read(root + '/' + name, 'config-before-' + name, '--all')
+    if data is None:
+        raise skip('%s is unreadable' % name)
+    try:
+        return config_records.fields(data, name)
+    except ValueError as error:
+        raise skip(str(error)) from error

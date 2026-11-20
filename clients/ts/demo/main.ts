@@ -10,7 +10,7 @@
 // XY Forever's service (USB_FILTERS: the product build's composite or the stock serial identity).
 import { webSocketOpener } from '../src/dev.ts';
 import { Client, JobError, PROTECTED_NAMES, WRITE_ROOTS, applyMods, decodeScreen, fileListSource, grantedPorts, isXyfError, libraryBases, listPackages, localSet,
-  inWriteArea, makeDefault, pushPackages, removePackage, requestPort, webSerialOpener } from '../src/index.ts';
+  inWriteArea, makeDefault, pushPackages, readModsConfig, removePackage, requestPort, webSerialOpener } from '../src/index.ts';
 import type { DirEntry, EntryKind, HeldGeneration, JobStatus, LocalSet, Opener, PackageSource } from '../src/index.ts';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -316,7 +316,7 @@ el('mods-refresh').addEventListener('click', action(showMods));
 
 // ---- Saved configuration --------------------------------------------------------------------------
 
-/** config.txt's keys (target/xyf_config.hpp: base, profile, generation, unverified, built, slot, stamp, mods). */
+/** Saved configuration fields (target/xyf_config.hpp: base, profile, generation, unverified, built, slot, stamp, mods). */
 export type SavedConfig = Readonly<Record<string, string>>;
 
 /** key=value lines (LF or CRLF; # comments; the last of a duplicate key wins). */
@@ -341,13 +341,9 @@ async function readText(c: Client, path: string): Promise<string | null> {
   }
 }
 
-/**
- * Where the saved configuration comes from: today the record itself (config.txt, else config.old: a cut
- * between the renames), null for no record (no mods). The seam for config.get: assign a function
- * calling it here, and the panel shows what it answers.
- */
+/** The saved record by default. Integration tests can supply a configuration source. */
 export let configSource: (c: Client) => Promise<SavedConfig | null> = async (c) => {
-  const text = await readText(c, '/yaffs2/xy-forever/config.txt') ?? await readText(c, '/yaffs2/xy-forever/config.old');
+  const text = await readModsConfig(c);
   return text === null ? null : parseKeyValues(text);
 };
 export function setConfigSource(source: typeof configSource): void { configSource = source; }

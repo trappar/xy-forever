@@ -5,7 +5,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 
-from xy_forever import moddev, modindex, modkit, modpatch, modsend, native_json, package_records as R, package_store
+from xy_forever import config_records, moddev, modindex, modkit, modpatch, modsend, native_json, package_records as R, package_store
 from xy_forever import usb_proto as P
 from test_modkit import synthetic_kit, finish, CATALOG_BYTES
 
@@ -17,6 +17,7 @@ class PackageRecords(unittest.TestCase):
         native = native_json.config_document(dict(base='stock', mods='alpha,missing', safe='1'))
         legacy = b'base=other\nmods=beta\nsafe=1\n'
         for files, want in (
+            ({'config.json': native}, ['alpha', 'missing']),
             ({'config.json': native, 'config.json.old': b'{', 'config.txt': legacy}, ['alpha', 'missing']),
             ({'config.json.part': b'{', 'config.json.old': native, 'config.txt': legacy}, ['alpha', 'missing']),
             ({'config.json.part': b'{', 'config.old': legacy}, ['beta']),
@@ -26,9 +27,14 @@ class PackageRecords(unittest.TestCase):
             ({'config.txt': b'format=2\n', 'config.old': legacy}, modsend.Refused),
         ):
             with self.subTest(names=list(files)):
+                reads = []
+
                 def read(path, **_):
-                    data = files[path.rsplit('/', 1)[1]]
+                    name = path.rsplit('/', 1)[1]
+                    reads.append(name)
+                    data = files[name]
                     return (P.ids.S_NOT_FOUND, b'') if data is None else (0, data)
+
                 dev = SimpleNamespace(list_dir=lambda _: (0, [(2 if data is None else 0, 0, name.encode())
                                                               for name, data in files.items()]), read_all=read)
                 if want is modsend.Refused:
@@ -39,6 +45,10 @@ class PackageRecords(unittest.TestCase):
                 else:
                     config = moddev.config(dev)
                     self.assertEqual((config['mods'], config['safe']), (want, '1'))
+                name = next((name for name in config_records.NAMES if name in files), None)
+                self.assertEqual(reads, [name] if name else [])
+                if name and want is not modsend.Refused:
+                    self.assertEqual(config_records.read(dev)[:2], (name, files[name]))
 
     def test_shared_selection_and_semantic_admission(self):
         for case in json.loads((ROOT / 'tests/package-records.json').read_text()):
@@ -101,17 +111,14 @@ class PackageRecords(unittest.TestCase):
             expected = modkit.rebuild_kit(root, ['alpha', 'beta'], ['cap', 'flt'], CATALOG_BYTES)
             names = [p.name for p in root.iterdir() if p.is_dir()]
             for name in names:
-                folder = root / name
-                fields = R.read_values(folder)
-                (folder / 'manifest.json').write_bytes(native_json.package_document(fields))
-                (folder / 'info.txt').unlink()
-                (folder / 'files.sha256').write_text(modkit.files_sha256_text(folder))
+                self.assertEqual(R.local_name(root / name), R.NATIVE)
+                self.assertFalse((root / name / R.LEGACY).exists())
             profile, generation, packages = modsend.local_set(root)
             self.assertEqual(set(packages), set(names))
             self.assertTrue(all(files[-2][0] == 'manifest.json' and files[-1][0] == 'files.sha256'
                                 for files in packages.values()))
             self.assertEqual(modkit.rebuild_kit(root, ['alpha', 'beta'], ['cap', 'flt'], CATALOG_BYTES), expected)
-            self.assertEqual(modpatch.info_values(root / 'base/info.txt')['profile'], profile)
+            self.assertEqual(modpatch.info_values(root / 'base' / R.NATIVE)['profile'], profile)
             self.assertEqual(moddev.resolve(root / 'alpha'), (root, ['alpha']))
             index_dir = work / 'index'
             modindex.build(root, index_dir)

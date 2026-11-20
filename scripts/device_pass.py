@@ -70,11 +70,11 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            plus the catalog's hash: the row says which), the entry's files and folders are gone, content/ is
            listed exactly as before; the entry removed. A failure after the first switch still sets the
            previous default back (the row says the device's state). The OS is never booted.
-           writes (set-default), mods and content: before the first change and at the end, config.txt (and
-           config.old), the default, the library and the first home row (STOP, TRACK1, screenshot: no
+           writes (set-default), mods and content: before and after, all saved configuration records,
+           the default, the library and the first home row (STOP, TRACK1, screenshot: no
            "(to apply)" or "(rebuild)" mark) must be as found.
   config   default (keys): only when the device holds the package set (alone), the saved configuration has
-           no mods (no config.txt, or mods= empty and base= the default), the default has its official content (else
+           no saved mods and the saved base, if given, is the default, the default has its official content (else
            SKIP, nothing sent but reads): STOP, TRACK3 (the Mods row seen selected), PLAY: the Mods page;
            PLUS to fm2op (its row from the local set), PLAY: on; STOP, TRACK1: the first row's text longer (the
            pending mark); only then PLAY (Continue): the Save dialog; MINUS: Back seen selected; PLAY: home, the
@@ -125,7 +125,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_build                                           # noqa: E402
 import xyf_host as host                                    # noqa: E402
-from xy_forever import census, package_records, paths, usb_proto as P, usb_proto_ids as ids   # noqa: E402
+from xy_forever import census, config_records, package_records, paths, usb_proto as P, usb_proto_ids as ids   # noqa: E402
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
 NEED = 'NEED: power off, wait 5 s, then power on holding PLAY; release it at the logo'
@@ -180,12 +180,9 @@ SETTLE = 9.0        # B closes the write window 8 s after the last write (storag
 T_WINDOW = 30.0     # ... then op 9 (yaffs checkpoint) and the catalog fetch: polled once a second
 ALT_DEFAULTS = ('opxy-121', 'opxy-121-stock')
 RANGES = 8
-# The saved configuration (target/xyf_config.hpp; read: config.txt, else config.old) and what the
-# home menu's first row shows. Screenshots (xyf_host screen_png: 480 x 216 RGB, filter none): ui_screens
+# The saved configuration (target/xyf_config.hpp) and what the home menu's first row shows. Screenshots (xyf_host screen_png: 480 x 216 RGB, filter none): ui_screens
 # draw_menu puts seven rows 18 px apart from y 60 (build 184: Settings; row i's white bar: y 58 + 18 i .. +16,
 # x 10..469, its text y 60 + 18 i .. +13 from x 20); ui_pages draw_choice fills the selected button white at y 172..195, the others have grey edges.
-CONFIG_RECORD = '/yaffs2/xy-forever/config.txt'
-CONFIG_OLD = '/yaffs2/xy-forever/config.old'
 # #21: five rows (no MTP mode, no Info row): 20 px apart, row i's bar y 60 + 20 i .. +17, its text y 64 + 20 i .. +13.
 ROW0_BAND = (59, 78)            # the first row's pixels (bar and text), compared before and after
 HOME_ROWS, ROW_TOP, ROW_PITCH = 5, 60, 20   # home rows; the first row's bar top; rows apart (ui_screens draw_menu)
@@ -800,19 +797,19 @@ class Pass:
 
     def saved_state(self, tag):
         """What the menu compares (the saved configuration, the default, the library) and the first home row."""
-        return dict(config=self.read(CONFIG_RECORD, tag + '-config.txt', '--all'),
-                    old=self.read(CONFIG_OLD, tag + '-config.old', '--all'),
-                    default=self.slots(tag)[2]['default'], library=sorted(self.names(LIBRARY)),
+        records = {name: self.read(config_records.ROOT + '/' + name, tag + '-' + name, '--all')
+                   for name in config_records.NAMES}
+        return dict(records, default=self.slots(tag)[2]['default'], library=sorted(self.names(LIBRARY)),
                     home=self.home_view(tag + '-home.png'))
 
     def same_state(self, before, tag):
         after = self.saved_state(tag)
-        changed = [k for k in ('config', 'old', 'default', 'library') if after[k] != before[k]]
+        changed = [k for k in (*config_records.NAMES, 'default', 'library') if after[k] != before[k]]
         if before['home'] is not None and after['home']['band'] != before['home']['band']:
             changed.append('the first home row (a mark such as "(to apply)": see %s-home.png)' % tag)
         if changed:
             raise StepFail('not as found: %s' % ', '.join(changed))
-        return 'config.txt, the default, the library%s as found' % (
+        return 'saved configuration, the default, the library%s as found' % (
             '' if before['home'] is None else ' and the first home row')
 
     # -- check and session -----------------------------------------------------------------------
@@ -1475,7 +1472,7 @@ class Pass:
             want = mods_reference(packages, [MODS_MACHINE], MODS_NAME)
         except Exception as error:                                       # noqa: BLE001
             raise StepFail('host reference: %s' % error)
-        as_found = self.saved_state('apply-before')                    # the menu compares these with config.txt
+        as_found = self.saved_state('apply-before')                    # the menu compares these with saved configuration
         start = time.monotonic()
         out = self.ok(['mods', 'apply', '--base', base, '--generation', '%s/%s' % (MODS_PROFILE, packages.name),
                        MODS_MACHINE, '--name', MODS_NAME, '--wait'], T_MODS)
@@ -1602,7 +1599,7 @@ class Pass:
             raise StepSkip('content/ lacks %d official files (%s...)' % (len(missing), missing[0]))
         # The build (as mods/apply, on the default as base).
         expect = 'mods-b' if 'mods-a' in entries else 'mods-a'
-        as_found = self.saved_state('switch-before')                   # the menu compares these with config.txt
+        as_found = self.saved_state('switch-before')                   # the menu compares these with saved configuration
         start = time.monotonic()
         out = self.ok(['mods', 'apply', '--base', previous, '--generation', '%s/%s' % (MODS_PROFILE, packages.name),
                        MODS_MACHINE, '--name', MODS_NAME, '--wait'], T_MODS)
@@ -1721,10 +1718,8 @@ class Pass:
             raise StepSkip('the device holds package sets %s, not %s alone with %s (the page lists the newest)'
                            % (sets, MODS_PACKAGES.name, MODS_MACHINE))
         default = self.slots('config-before')[2]['default']
-        record = self.read(CONFIG_RECORD, 'config0.txt', '--all')
-        if record is None:
-            record = self.read(CONFIG_OLD, 'config0.old', '--all')
-        fields = dict(line.split('=', 1) for line in (record or b'').decode(errors='replace').splitlines() if '=' in line)
+        from scripts.device_pass_library import read_config
+        fields = read_config(self, StepSkip)
         if fields.get('mods') or fields.get('base', default) not in ('', default):
             raise StepSkip('the saved configuration is not "no mods on the default" (mods=%r, base=%r, default %s)'
                            % (fields.get('mods'), fields.get('base'), default))
