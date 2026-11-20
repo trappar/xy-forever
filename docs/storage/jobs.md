@@ -29,9 +29,11 @@ content change. A cut during replay or undo replays that direction again. Unrela
 replace unresolved intent. Neither `job.cancel` nor a new repair command is used for content jobs.
 
 The journal remains through default commit and is removed only after success (`job.old`, `.part`,
-then `job.txt`, so cleanup cannot resurrect older intent). Native Save retains intent through its
-configuration/default commit. If power is lost before the configuration is saved, its existing old
-record remains; recovery installs the intended content/default, and Save can reconcile the selection.
+then `job.txt`, so cleanup cannot resurrect older intent). The menu's converge sequence (Save, Boot
+without mods, Restore, the first row's apply; [state.md](state.md#saved-configuration)) retains intent
+through its configuration/default commit: a switch is always followed by the record and the default. If
+power is lost before the configuration is saved, its existing old record remains; recovery installs the
+intended content/default, and the first row then reads (to apply): its PLAY converges to the record.
 Both native and host collectors suspend blob deletion while any authoritative journal remains,
 including a malformed or newer one. Ordinary package publication/removal retains its existing
 rename transaction and disposable-scratch behavior.

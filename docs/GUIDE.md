@@ -57,11 +57,11 @@ firmware's name when all mods are off or in safe mode. A word in brackets may fo
 - **(rebuild):** the saved mod setup needs its firmware built again (the built copy
   is no longer in the library).
 - **(to apply):** the saved setup is not what will boot yet, for example because its
-  content is not installed. Save will finish the job.
+  content is not installed.
 - **(safe mode):** the stock firmware boots; your mods are kept (below).
 
-With nothing pending, PLAY boots. With something pending, PLAY opens the Save dialog
-(below).
+With nothing pending, PLAY boots. With (changed), PLAY opens the Save dialog (below).
+With (rebuild) or (to apply), PLAY applies it first (below).
 
 ### Boot without mods (safe mode)
 
@@ -71,11 +71,10 @@ no mods saved the row is grey and PLAY says why.
 
 In safe mode the row reads "Restore Open-XY (3 mods)". PLAY puts your mod firmware's
 content back, makes it the default and boots it. If the saved build is no longer
-intact, it builds nothing and says so: Save on the Mods page builds it again. A Save
-on the Mods page also leaves safe mode.
+intact, it builds it again first. A Save on the Mods page also leaves safe mode.
 
-Both stay on the home menu, with their progress on the status line. They never open
-the Mods page, and they keep any unsaved mod toggles.
+Both show the progress screen (below). They never open the Mods page, and they keep
+any unsaved mod toggles.
 
 ### Mods
 
@@ -124,7 +123,8 @@ With changes pending, PLAY on the first row asks "Save changes?":
 
 When the changes cannot be saved, Save is missing and the dialog says why.
 
-What Save does, step by step (the screen says "Saving changes" with a progress bar):
+Every action that boots (Save, Discard, the safe-mode row, PLAY on (to apply)) runs
+only the steps that differ, on a progress screen, then boots. The steps:
 
 1. **Checking.** If the same mods were already built from the same packages and that
    build is still intact, it is reused and no build runs.
@@ -144,8 +144,8 @@ content back.
 
 - A failed build leaves the old setup as it was. The Mods page says "Build failed:"
   and a reason.
-- "Installing content failed: Continue and Save again to repair it." Do that (or
-  Boot without mods, Restore Open-XY again, as it says): the same install repairs it.
+- "Installing content failed: Save again repairs it." Do that (or Boot without mods,
+  Restore Open-XY or Continue again, as it says): the same install repairs it.
 - After a power cut while content was being changed, nothing boots until it is
   repaired. The menu opens and says "content needs repair". Do the same again (Save,
   or the safe-mode row). If the line says "Source missing. PLAY on the first row
