@@ -23,7 +23,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import modsend as MS, modstore, native_json, package_records, sim  # noqa: E402
+from xy_forever import modsend as MS, modstore, package_records, sim  # noqa: E402
 from xy_forever import usb_proto as P                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 import test_sim_content_switch as CS                                      # noqa: E402
@@ -257,6 +257,7 @@ def synthetic_setup(cls, extra=0):
     import tempfile
     from xy_forever import modkit as M, modpatch as MP
     from test_modpatch import CATALOG, OFFICIAL, finish, kit_for, official_text, profile_for, stock
+    from test_modkit import rewrite
     cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-simpage-')
     cls.addClassCleanup(cls.tmp.cleanup)
     cls.work = Path(cls.tmp.name)
@@ -267,8 +268,10 @@ def synthetic_setup(cls, extra=0):
     for i in range(extra):
         folder = gen / ('m%02d' % i)
         shutil.copytree(gen / 'alpha', folder)
-        text = (folder / 'info.txt').read_text().replace('id=alpha', 'id=m%02d' % i)
-        (folder / 'info.txt').write_text(text.replace('name=', 'name=M%02d ' % i, 1))
+        fields = json.loads((folder / package_records.NATIVE).read_bytes())
+        fields['id'] = folder.name
+        fields['name'] = 'M%02d %s' % (i, fields['name'])
+        rewrite(folder, package_records.NATIVE, (json.dumps(fields) + '\n').encode())
     cls.seed_with(gen, MP.info_values(gen / 'base/info.txt')['profile'], data, CATALOG, official_text(OFFICIAL))
     (cls.seeded / 'xy-forever/state-a.txt').write_bytes(sim.slot_text(cls.base, 2))
     cls.folders = sorted(p.name for p in gen.iterdir() if p.is_dir() and p.name != 'base')
@@ -286,15 +289,12 @@ class SyntheticPage(PageBase, unittest.TestCase):
     def test_native_metadata_in_mods_page_and_assembly(self):
         source = self.dir / 'native'
         shutil.copytree(self.gen_dir, source)
-        for name in ('base', 'alpha', 'beta'):
-            folder = source / name
-            raw = native_json.package_document(package_records.read_values(folder))
-            if name == 'beta':
-                raw = raw.replace(b'"schema_version":1', b'"schema_version":2')
-            else:
-                (folder / 'info.txt').unlink()
-            (folder / 'manifest.json').write_bytes(raw)
-            (folder / 'files.sha256').write_text(J.M.files_sha256_text(folder))
+        from test_modkit import legacy_record, rewrite
+        beta = source / 'beta'
+        raw = (beta / package_records.NATIVE).read_bytes()
+        (beta / package_records.LEGACY).write_bytes(package_records.text_view(raw, package_records.NATIVE))
+        rewrite(beta, package_records.NATIVE, raw.replace(b'"schema_version":1', b'"schema_version":2'))
+        legacy_record(source / 'gamma')
         destination = self.root / 'xy-forever/mods' / self.generation
         shutil.rmtree(destination)
         modstore.copy_set(source, destination)

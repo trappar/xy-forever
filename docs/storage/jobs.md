@@ -9,8 +9,8 @@ assembly, configuration saves, package sessions, MTP operations and storage-wind
 Before a content switch changes shared content, B publishes `/yaffs2/xy-forever/job.txt`:
 `version=1`, `target`, `previous`, `default=0|1`, `undo=0|1`, `target_info`, `target_list`,
 `previous_info`, `previous_list`, then `crc32`. The four identity values are lowercase SHA-256
-of the exact `info.txt` and `files.sha256` bytes; a missing list is all zeroes and allowed only
-for an entry without a generation. A missing or empty manifest is never an official target.
+of the exact selected metadata and `files.sha256` bytes. A missing list is all
+zeroes and allowed only for an entry without a generation. A missing or empty manifest is never an official target.
 Canonical key order, LF, valid entry ids and the trailing CRC are required; the file is below 512 bytes.
 A newer version or malformed record stays unchanged and the menu explains why it cannot replay it.
 

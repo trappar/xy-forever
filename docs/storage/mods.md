@@ -5,7 +5,7 @@ Part of the [XY Forever storage layout](../STORAGE.md).
 ## External Open-XY layouts
 
 `layout.json` belongs to Open-XY. XY Forever's firmware does not read, write or require
-it. Leftover copies in existing entries are ignored; `info.txt` supplies the optional
+it. Leftover copies in existing entries are ignored. The package manifest supplies the optional
 native machine count. The editable selection belongs to `config.json`.
 
 Browser onboarding will read an existing layout's `selected`, `extensions`, `profile`
@@ -32,7 +32,7 @@ read by the device linker `native/mod_link` (B runs the assembly job). One flat 
 file. The JSON record takes precedence when present and is checked under its
 own name in the list. `<generation>` is `<kit version>-<12 hex>`: SHA-256
 over the profile, every object's name, hash and tags, the collection, definitions, fixed numbers
-and fallbacks. Tables (`*.txt` other than `info.txt`): `#` header, one record per line, fields
+and fallbacks. Text tables: `#` header, one record per line, fields
 separated by one space, `-` for none.
 
 - **base** (`type=mod-base`, `needs_os` = stock `os.ldr` SHA-256, `profile`, `generation`, `source`, `licence`). Extra keys: `format`, `profile_sha256`,
@@ -61,9 +61,9 @@ separated by one space, `-` for none.
   2 table, 3 text, 4 hook, 5 startup), u8 flags (1 call, 2 profiling-off hook, 4 has `after`), u8
   service (`0xff` none), u8 0, u32 address, u32 file offset, u16 length, u16 symbol string offset
   (`0xffff` none), `before`, then `after` when flagged. Edit names and `events` are not kept.
-- **The linker** asks for whole files in this order: the base's `info.txt`, `services.txt`,
+- **The linker** asks for whole files in this order: the base's metadata view, `services.txt`,
   `machines.txt`, `extensions.txt`, `fixed.txt`, `absent.txt`, `fallbacks.txt`, `definitions.txt`,
-  `objects.txt`, `identities.txt`; each chosen package's `info.txt` and `objects.txt`; every object (pass 1, kit
+  `objects.txt`, `identities.txt`; each chosen package's metadata view and `objects.txt`; every object (pass 1, kit
   order); steps with no file that zero the module (128 KiB each); the linked objects (pass 2, link
   order). It does not read `files.sha256` (the caller
   checks it), `edits.bin` or content. A claim refusal's detail is the first chosen extension's label

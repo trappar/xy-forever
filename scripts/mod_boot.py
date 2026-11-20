@@ -53,7 +53,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
 import device_pass as dp                                    # noqa: E402
 import xyf_host as host                                     # noqa: E402
-from xy_forever import modpatch, paths, xyf_entry           # noqa: E402
+from xy_forever import modpatch, package_records, paths, xyf_entry           # noqa: E402
 from xy_forever.ldr import inspect_ldr, parse_ldr           # noqa: E402
 
 StepFail, StepSkip = dp.StepFail, dp.StepSkip
@@ -153,7 +153,9 @@ class ModBoot(dp.Pass):
             data = Path(o.image).read_bytes()
             problems, report = image_problems(data), None
         else:
-            missing = [str(p) for p in (o.packages / 'base/info.txt', o.stock, o.catalog) if not Path(p).is_file()]
+            missing = [str(p) for p in (o.stock, o.catalog) if not Path(p).is_file()]
+            if not package_records.local_name(o.packages / 'base'):
+                missing.append(str(o.packages / 'base'))
             if missing:
                 raise StepFail('inputs missing: %s' % ', '.join(missing))
             out = self.folder / 'assembled'
@@ -487,13 +489,13 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     if len(o.label) > 47:
         o.label = 'Mods test: %d machines' % len(o.machines)
     o.version = ('image' if o.image else
-                 modpatch.info_values(o.packages / 'base/info.txt').get('generation', 'mods')
-                 if (o.packages / 'base/info.txt').is_file() else 'mods')
+                 package_records.read_values(o.packages / 'base').get('generation', 'mods')
+                 if package_records.local_name(o.packages / 'base') else 'mods')
     try:
         chosen = chosen_stages(o)
         if not xyf_entry.ID.fullmatch(o.id):
             raise ValueError('id must be 1-31 of [a-z0-9_-]')
-        unknown = [m for m in o.machines if not (o.packages / m / 'info.txt').is_file()]
+        unknown = [m for m in o.machines if not package_records.local_name(o.packages / m)]
         if 'assemble' in chosen and not o.image and unknown and (o.packages / 'base').is_dir():
             raise ValueError('no package for %s in %s' % (', '.join(unknown), o.packages))
         if o.sim:

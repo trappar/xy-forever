@@ -59,3 +59,9 @@ def read_values(folder):
 def parse(data, name=LEGACY):
     from .xyf_entry import parse_manifest
     return parse_manifest(text_view(data, name))
+
+
+def document(fields, extra=()):
+    """Encode canonical typed metadata using the existing package field rules and ordering."""
+    from .xyf_entry import manifest_text
+    return native_json.package_document(values(manifest_text(fields, extra).encode('ascii')))

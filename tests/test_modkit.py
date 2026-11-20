@@ -19,7 +19,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import modkit as M, paths, xyf_entry as E  # noqa: E402
+from xy_forever import modkit as M, package_records as R, paths, xyf_entry as E  # noqa: E402
 import test_xyf_manifest as TM  # noqa: E402
 
 SDK_COMMIT = '52c8de911a415e043fd4d1afc396c3869fcd1029'    # open-xy main, release 0.0.6 (the kit's SDK)
@@ -123,6 +123,16 @@ def rewrite(folder, path, data):
     (folder / 'files.sha256').write_text(E.files_sha256_text(folder))
 
 
+def legacy_record(folder):
+    """An editable text metadata fixture for tests of legacy parsing."""
+    native, old = folder / R.NATIVE, folder / R.LEGACY
+    if native.is_file():
+        data = R.text_view(native.read_bytes(), R.NATIVE)
+        native.unlink()
+        rewrite(folder, R.LEGACY, data)
+    return old
+
+
 class Synthetic(unittest.TestCase):
     parse, outcome, listing = TM.ManifestTest.parse, TM.ManifestTest.outcome, TM.ManifestTest.listing
 
@@ -146,7 +156,7 @@ class Synthetic(unittest.TestCase):
         path.write_text(json.dumps(kit))
         with self.assertRaisesRegex(M.KitError, pattern):
             M.split_kit(path, self.work / 'refused', finish=finish)
-        self.assertFalse((self.work / 'refused').exists() and any((self.work / 'refused').rglob('info.txt')))
+        self.assertFalse((self.work / 'refused').exists() and any((self.work / 'refused').rglob(R.NATIVE)))
 
     def copy_generation(self):
         target = self.work / ('copy-%d' % len(list(self.work.glob('copy-*'))))
@@ -169,22 +179,25 @@ class Synthetic(unittest.TestCase):
         sizes = self.report['packages']
         self.assertEqual((sizes['alpha']['code'], sizes['alpha']['data'], sizes['alpha']['state']), (4, 4, 64))
         self.assertEqual(self.report['total_bytes'], sum(p.stat().st_size for p in self.gen.rglob('*') if p.is_file()))
-        alpha = (self.gen / 'alpha/info.txt').read_text()
-        for line in ('code=4', 'data=4', 'state=64', 'order=0', 'engine=-', 'page=-', 'asset=alpha.svg', 'presets=1'):
-            self.assertIn(line + '\n', alpha)
-        self.assertIn('catalog_number=21,28\n', (self.gen / 'beta/info.txt').read_text())   # "id": 0 in catalog.txt
+        alpha = json.loads((self.gen / 'alpha' / R.NATIVE).read_bytes())
+        for key, value in dict(code=4, data=4, state=64, order=0, engine=None, page=None, asset='alpha.svg', presets=1).items():
+            self.assertEqual(alpha[key], value)
+        self.assertEqual(json.loads((self.gen / 'beta' / R.NATIVE).read_bytes())['catalog_number'], [21, 28])
         self.assertEqual((self.gen / 'beta/catalog.txt').read_bytes()[21:28], b'"id": 0')
-        flt = (self.gen / 'ext-flt/info.txt').read_text()
-        for line in ('machine=extension', 'services=extensions,master_filter', 'accessors=hooks,processor,panel',
-                     'processor=master_processor', 'state_id=dj', 'link=5'):
-            self.assertIn(line + '\n', flt)
+        flt = json.loads((self.gen / 'ext-flt' / R.NATIVE).read_bytes())
+        for key, value in dict(machine='extension', services=['extensions', 'master_filter'],
+                               accessors=['hooks', 'processor', 'panel'], processor='master_processor',
+                               state_id='dj', link=5).items():
+            self.assertEqual(flt[key], value)
         self.assertNotIn('artwork', json.loads((self.gen / 'alpha/machine.json').read_text()))   # held by the svg
         self.assertNotIn('wasm', (self.gen / 'alpha/machine.json').read_text())
 
     def test_device_readers_accept_every_package(self):
         for folder in sorted(self.gen.iterdir()):
             with self.subTest(package=folder.name):
-                status, _, _, fields = self.outcome((folder / 'info.txt').read_bytes())
+                raw = (folder / R.NATIVE).read_bytes()
+                self.assertFalse((folder / R.LEGACY).exists())
+                status, _, _, fields = self.outcome(R.text_view(raw, R.NATIVE))
                 self.assertEqual(status, 'ok')
                 self.assertEqual(fields['generation'], self.gen.name)
                 self.assertEqual(fields['profile'], 'opxy-test')
@@ -199,6 +212,7 @@ class Synthetic(unittest.TestCase):
                 paths_ = [p for _, p, _ in entries]
                 self.assertEqual(paths_, sorted(paths_, key=str.encode))
                 self.assertEqual(listed.decode(), E.files_sha256_text(folder))
+                self.assertIn((M.sha256(raw), R.NATIVE), [(sha, p) for sha, p, _ in entries])
 
     def test_edits_binary_round_trip(self):
         services, edits = M.decode_edits((self.gen / 'base/edits.bin').read_bytes())
@@ -303,13 +317,13 @@ class Synthetic(unittest.TestCase):
         self.assertEqual((base / 'identities.txt').read_text().splitlines()[1:],
                          ['engines 64', 'engine_none 10', 'pages 48', 'page_none 20', 'effect_page 21',
                           'stock_engines 2,3', 'sample_pages -', 'effects 1,5', 'players 6'])
-        info = (base / 'info.txt').read_text()
-        for line in ('stock_records=3', 'reserved_bytes=2097152', 'heap_fill_base=0x8d4d0380', 'heap_fill_bytes=4096'):
-            self.assertIn(line + '\n', info)
+        info = json.loads((base / R.NATIVE).read_bytes())
+        for key, value in dict(stock_records=3, reserved_bytes=2097152, heap_fill_base=0x8d4d0380, heap_fill_bytes=4096).items():
+            self.assertEqual(info[key], value)
         rows = (base / 'extensions.txt').read_text().splitlines()
         self.assertIn(' claims=record_double_tap labels=Record%20double-tap ', rows[1])
-        self.assertNotIn('labels', (self.gen / 'ext-cap/info.txt').read_text())   # extension.json holds them
-        for path, old, new in (('identities.txt', 'players 6', 'players 7'), ('info.txt', 'stock_records=3', 'stock_records=4')):
+        self.assertNotIn('labels', json.loads((self.gen / 'ext-cap' / R.NATIVE).read_bytes()))   # extension.json holds them
+        for path, old, new in (('identities.txt', 'players 6', 'players 7'), (R.NATIVE, '"stock_records":3', '"stock_records":4')):
             with self.subTest(path=path):
                 gen = self.copy_generation()
                 rewrite(gen / 'base', path, (base / path).read_text().replace(old, new).encode())
@@ -339,17 +353,18 @@ class Synthetic(unittest.TestCase):
         for change in broken:
             with self.subTest(change=sorted(change)):
                 self.assertIsNone(M.expanded_base(dict(profile, **change)))
-        self.assertNotIn('expanded_module_base', (self.gen / 'base/info.txt').read_text())   # not offered
+        self.assertNotIn('expanded_module_base', (self.gen / 'base' / R.NATIVE).read_text())   # not offered
         gen = self.copy_generation()
-        info = (gen / 'base/info.txt').read_text() + 'expanded_module_base=0x8d0d0380\n'
-        rewrite(gen / 'base', 'info.txt', info.encode())
+        info = json.loads((gen / 'base' / R.NATIVE).read_bytes())
+        info['expanded_module_base'] = 0x8d0d0380
+        rewrite(gen / 'base', R.NATIVE, (json.dumps(info) + '\n').encode())
         with self.assertRaisesRegex(M.KitError, 'expanded_module_base differs'):
             M.rebuild_kit(gen, ['alpha'], [], CATALOG_BYTES)
 
     def test_refuses_mixed_generations(self):
         gen = self.copy_generation()
-        info = (gen / 'beta/info.txt').read_text().replace(self.gen.name, '0.0.8-000000000000')
-        rewrite(gen / 'beta', 'info.txt', info.encode())
+        info = (gen / 'beta' / R.NATIVE).read_text().replace(self.gen.name, '0.0.8-000000000000')
+        rewrite(gen / 'beta', R.NATIVE, info.encode())
         M.rebuild_kit(gen, ['alpha'], [], CATALOG_BYTES)            # beta not chosen: fine
         with self.assertRaisesRegex(M.KitError, 'cannot mix generations'):
             M.rebuild_kit(gen, ['alpha', 'beta'], [], CATALOG_BYTES)

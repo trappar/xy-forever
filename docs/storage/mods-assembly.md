@@ -9,7 +9,7 @@ Part of the [XY Forever storage layout](../STORAGE.md).
   prove-patch`, byte-identical to `core.mjs`). In place in one
   buffer of stock + 16 + `module_bytes` bytes: stock `os.ldr` at 0, the module at `stock_bytes`
   (the linker writes it there); the result is stock with the edits, the module record where FINAL
-  was, the module, FINAL. The patcher's facts come from the base's `info.txt` (`mod_patch::read_profile`;
+  was, the module, FINAL. The patcher's facts come from the base's package manifest (`mod_patch::read_profile`;
   refusal `base` + the key, or `profile`). The entry's content delta:
   `content/op1_factory.json` (the whole file, never a patch), the packages' `content/display/…`
   and `content/presets|aux_presets/…` unchanged (the job copies them), and `files.sha256` beside
@@ -19,12 +19,12 @@ Part of the [XY Forever storage layout](../STORAGE.md).
   (the job pins its SHA-256; while a mod set's content is installed, the saved `content-official/` copy); output `tmp/job-<id>/`.
   An aux preset path two machines carry is listed once, with the later machine's bytes (as `core.mjs`).
 - **The assembled entry** (`native/mod_job`; host reference `modpatch.entry_files`): the job's
-  output folder holds every `content/…` file above, `info.txt`, `files.sha256` and `os.ldr`.
-  `info.txt`: `type=firmware`, `name` (the caller's), `kind=open-xy`, `bytes`, `crc32`,
+  output folder holds every `content/…` file above, `manifest.json`, `files.sha256` and `os.ldr`.
+  `manifest.json`: `type` set to `firmware`, `name` (the caller's), `kind` set to `open-xy`, `bytes`, `crc32`,
   `sha256`, the base's `needs_os`, `generation`, `profile`, and `machines` (the selected
   machine count). Selection and memory choice stay in native `config.json`; no external
   layout is produced. `files.sha256` lists every file of the entry but itself (the sorted
-  `content/…` lines above, then `info.txt`, `os.ldr`); a content switch takes its `content/` lines. Each file is
+  `content/…` lines above, then `manifest.json`, `os.ldr`); a content switch takes its `content/` lines. Each file is
   written as `<name>.part`, read back by SHA-256, `os.ldr` also checked by `start_verify`, then renamed,
   `os.ldr` last: an entry with an `os.ldr` is complete.
 - **Content retention**: before publication, every output content asset and catalog is copied through

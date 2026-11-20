@@ -18,7 +18,7 @@ enum Stage {
 // Outputs in write, read-back and rename order: mod_content's list (content/..., sorted), then these three,
 // os.ldr last.
 const U32 fixed_outputs = 3, none = 0xffffffffu;
-const char* const fixed_names[fixed_outputs] = {"info.txt", "files.sha256", "os.ldr"};
+const char* const fixed_names[fixed_outputs] = {xyf::package_record::native_name, "files.sha256", "os.ldr"};
 const char part[] = ".part";
 const char* const kinds[6] = {"synth", "drum", "sample", "effect", "player", "extension"};
 
@@ -323,7 +323,7 @@ __attribute__((noinline)) Error make_folders(Job& j, U32 i) {
 // Text into a bounded buffer (ok false once it overflows); decimal without division helpers.
 #include "mod_job_text.ipp"
 
-bool valid_name(const char* s) {        // info.txt name
+bool valid_name(const char* s) {       // manifest name
     U32 n = 0;
     for (; s[n] && n != 48; ++n) if (Byte(s[n]) < 0x20 || Byte(s[n]) > 0x7e) return false;
     return n && n <= 47 && !s[n] && s[0] != ' ' && s[n - 1] != ' ';
@@ -369,7 +369,7 @@ Phase step_link(Job& j) {
     }
     Job::Package* p = package_named(j, r.package);
     if (!p) { set_detail(j, r.package, r.path); return fail(j, Error::unlisted); }
-    if (same(r.path, "info.txt")) {      // already in RAM
+    if (same(r.path, "info.txt")) {      // in RAM
         j.work = p->info_bytes;
         const mod_link::Status s = mod_link::step(j.workspace, p->info_bytes ? p->info : 0, p->info_bytes, j.linked);
         ++j.done;
@@ -593,7 +593,7 @@ Phase step(Job& j) {
     }
     case st_link:
         return step_link(j);
-    case st_crc: {                       // os.ldr's CRC-32 (info.txt), crc_slice bytes per step
+    case st_crc: {                       // os.ldr CRC-32, crc_slice bytes per step
         U32 n = j.patcher.total - j.crc_done;
         if (n > crc_slice) n = crc_slice;
         j.crc = zip::crc32_update(j.crc, j.image + j.crc_done, n);

@@ -118,15 +118,15 @@ ListStatus list_end(ListReader& reader);
 // The recogniser: what a dropped file or folder is. It reads only the bytes it is handed.
 enum Kind : uint8_t {
     kind_unknown = 0,
-    kind_firmware_entry,   // folder: os.ldr (+ info.txt without type, or type=firmware)
-    kind_assembled_entry,  // folder: firmware entry whose info.txt has generation + needs_os, native info.txt only
+    kind_firmware_entry,   // folder: os.ldr (optionally with firmware metadata)
+    kind_assembled_entry,  // folder: firmware entry with generation and needs_os
     kind_official_tfw,     // file: the .tfw wrapper and crypto-header magics
     kind_ldr_image,        // file: an LDR stream (custom firmware or an XY Forever stage 1: not told apart)
     kind_xyf_stage2,       // file: an XY Forever stage 2 (XYS2 header)
     kind_zip,              // file: a ZIP (open-xy builder output): host only, refused on the device
-    kind_mod_base,         // folder: info.txt type=mod-base
-    kind_mod,              // folder: info.txt type=mod
-    kind_content_pack,     // folder: a stock pack manifest.json and no info.txt
+    kind_mod_base,         // folder: package record of type=mod-base
+    kind_mod,              // folder: package record of type=mod
+    kind_content_pack,     // folder: a confirmed stock pack manifest.json
     kind_companion,        // refused: type=companion, or a companion image name
     kind_bootloader        // refused: a name that names a bootloader member
 };
@@ -137,12 +137,12 @@ enum Reason : uint8_t {
     reason_unknown,        // no rule matched
     reason_refused,        // kind_companion, kind_bootloader
     reason_host_only,      // kind_zip
-    reason_need_manifest,  // the folder has info.txt but no parsed manifest was given
-    reason_manifest,       // its info.txt did not parse (the manifest's status says why)
+    reason_need_manifest,  // the folder has metadata that must be inspected
+    reason_manifest,       // the selected record did not parse (the manifest's status says why)
     reason_missing_image,  // a firmware entry without os.ldr
     reason_reserved_9,     // retired: kept to preserve reason numbering
     reason_content_set,    // content.sha256 without firmware.version or the reverse
-    reason_ambiguous       // os.ldr and a pack manifest.json with no info.txt
+    reason_ambiguous       // a vendor pack alongside os.ldr or info.txt
 };
 struct Recognition { uint8_t kind, reason; bool accepted, content_set; };
 // Bytes the file rules need at most (the .tfw crypto-header format words).
@@ -152,9 +152,11 @@ bool valid_name(const char* name);
 // size: the whole file's size; prefix: its first prefix_length bytes.
 void recognise_file(const char* name, uint32_t size, const uint8_t* prefix, uint32_t prefix_length,
                     Recognition& out);
-// names: the folder's entries (files and folders, one level); info: its parsed info.txt, or 0.
+// Names are one level deep. Pass the parsed manifest.json whenever that name exists, even
+// if reading or parsing failed. Otherwise pass the parsed info.txt. A caller may mark vendor_pack
+// only after validating vendor metadata; a bare manifest.json name identifies neither schema.
 void recognise_folder(const char* name, const char* const* names, uint32_t count, const Manifest* info,
-                      Recognition& out);
+                      Recognition& out, bool vendor_pack);
 
 // Dependency rules the device checks (010): exact matches only, no ranges, no solver.
 enum Dependency : uint8_t {

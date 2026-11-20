@@ -330,8 +330,8 @@ def fetch(where, to, only=(), generation=None, out=print):
     metadata = package_records.record_name(got['base'])
     info = S.info_values(got['base'][metadata], metadata)
     need((info.get('profile'), info.get('generation')) == (profile, gen['generation']),
-         'base/info.txt names %s/%s, the index %s/%s' % (info.get('profile'), info.get('generation'), profile,
-                                                          gen['generation']))
+         'base/%s names %s/%s, the index %s/%s' % (metadata, info.get('profile'), info.get('generation'),
+                                                    profile, gen['generation']))
     partial = target.with_name(target.name + '.partial')
     shutil.rmtree(partial, ignore_errors=True)
     for pid, files in got.items():

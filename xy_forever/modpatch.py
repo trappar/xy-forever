@@ -19,7 +19,7 @@ name exactly buildAssets's files, the patch must pass its own checks including t
 disk; a selection core.mjs refuses must be refused alike by the native linker. The adapter runs the
 steps as the device job will: whole files in RAM, each checked against its
 files.sha256, stock in the image buffer, the module linked straight into it at stock_bytes. Every
-fact comes from the package files (the base's info.txt and identities.txt included); the job names
+fact comes from the package files (the base's manifest and identities.txt included); the job names
 only the selection and the files. Host only: no device, no network. Outputs go under the private root.
 The real base must be in native/mod_known_bases.inc ("base": "known"); known-base regenerates that table
 from official base folders (a new open-xy release). --official is the firmware's content.sha256.
@@ -33,7 +33,7 @@ import subprocess
 import tempfile
 import zlib
 
-from . import modkit as M, modlink as L, package_records, xyf_entry
+from . import modkit as M, modlink as L, package_records
 
 ROOT = Path(__file__).resolve().parents[1]
 CXX = '/usr/bin/clang++'
@@ -101,7 +101,7 @@ def job_text(generation_dir, machines, extensions, stock, catalog, profiling=Fal
              official=None, unverified=False, name=None, memory='standard'):
     """The adapter's job: the selection, the layout, the stock, catalog and official content list paths
     (official: default_official), unverified (the user confirmed a base that is not known), limits, the
-    stepped job's info.txt name (None: ENTRY_NAME), memory (MEMORY_MODES; expanded: the 4 MiB option)."""
+    stepped job's manifest name (None: ENTRY_NAME), memory (MEMORY_MODES; expanded: the 4 MiB option)."""
     M.check(memory in MEMORY_MODES, 'unknown memory mode %r' % memory)
     root = Path(generation_dir).resolve()
     lines = ['generation %s' % root] + ['machine %s' % m for m in machines] + ['extension %s' % e for e in extensions]
@@ -120,28 +120,28 @@ def job_text(generation_dir, machines, extensions, stock, catalog, profiling=Fal
     return '\n'.join(lines) + '\n'
 
 
-ENTRY_NAME = 'OP-XY mods'               # host/mod_assemble.cpp's default info.txt name for the stepped job
+ENTRY_NAME = 'OP-XY mods'               # host/mod_assemble.cpp's default manifest name for the stepped job
 
 
 def entry_files(generation_dir, assembled, machines, name=ENTRY_NAME):
     """The whole library entry the device job (native/mod_job) writes, from the one-shot assembly's
     {path: bytes} (run: os.ldr, content/..., files.sha256 of the content):
-    the content and os.ldr unchanged, native info.txt (an assembled mod set,
+    the content and os.ldr unchanged, manifest.json (an assembled mod set,
     docs/STORAGE.md) and files.sha256 over every other file."""
     root = Path(generation_dir)
     base = info_values(root / 'base/info.txt')
     files = {p: b for p, b in assembled.items() if p != 'files.sha256'}
     ldr = files['os.ldr']
-    files['info.txt'] = xyf_entry.manifest_text(dict(
+    files[package_records.NATIVE] = package_records.document(dict(
         type='firmware', name=name, kind='open-xy', bytes=len(ldr), crc32='%08x' % (zlib.crc32(ldr) & 0xffffffff),
         sha256=M.sha256(ldr), needs_os=base['needs_os'], generation=base['generation'],
-        profile=base['profile'], machines=len(machines))).encode()
+        profile=base['profile'], machines=len(machines)))
     files['files.sha256'] = list_text(files).encode()
     return files
 
 
 def expanded_reserved(base_info):
-    """The 4 MiB option's reservation from a base info.txt's values (module_base + reserved_bytes keeps its end)."""
+    """The 4 MiB option's reservation from a base manifest's values (module_base + reserved_bytes keeps its end)."""
     return int(base_info['module_base'], 0) + int(base_info['reserved_bytes']) - int(base_info['expanded_module_base'], 0)
 
 

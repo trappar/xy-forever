@@ -36,6 +36,7 @@ import sys
 import tempfile
 from urllib.parse import quote, unquote
 
+from . import package_records
 from .xyf_entry import files_sha256_text, read_files_sha256
 
 KIT_FORMAT = 'opxy-browser-kit/1'
@@ -451,12 +452,6 @@ def analyse(kit):
 
 # ---------------------------------------------------------------- writing packages
 
-def info_text(known, extra):
-    """info.txt: known keys (xyf_entry.MANIFEST_KEYS order) then extra keys; the device reader must accept it."""
-    from .xyf_entry import manifest_text
-    return manifest_text(known, extra).encode('ascii')
-
-
 def licence_of(text):
     for marker, name in (('GNU AFFERO GENERAL PUBLIC LICENSE', 'AGPL-3.0'), ('GNU GENERAL PUBLIC LICENSE', 'GPL-3.0'),
                          ('MIT License', 'MIT'), ('Apache License', 'Apache-2.0'), ('BSD', 'BSD')):
@@ -488,7 +483,7 @@ def run_driver(sdk, jobs, scratch):
 
 
 def write_package(folder, files):
-    """files: {relative path: bytes}; info.txt last, then files.sha256 over everything else."""
+    """files: {relative path: bytes}; files.sha256 covers every file written."""
     folder.mkdir(parents=True)
     for rel, data in sorted(files.items()):
         path = folder / rel
@@ -672,7 +667,7 @@ def write_base(folder, model, common, sdk_source):
     x = expanded_base(profile)
     if x is not None:                    # the 4 MiB option: older readers skip the unknown key
         extra.append(('expanded_module_base', '0x%08x' % x))
-    files['info.txt'] = info_text(known, extra)
+    files[package_records.NATIVE] = package_records.document(known, extra)
     write_package(folder, files)
 
 
@@ -748,7 +743,7 @@ def write_machine(folder, model, m, order, common, assets, notice):
         extra.append(('maintainer', src['maintainer']))
     if isinstance(m.get('cpu'), dict) and m['cpu'].get('peak_percent') is not None:
         extra.append(('cpu_peak_percent', m['cpu']['peak_percent']))
-    files['info.txt'] = info_text(known, extra)
+    files[package_records.NATIVE] = package_records.document(known, extra)
     write_package(folder, files)
 
 
@@ -774,7 +769,7 @@ def write_extension(folder, model, e, order, common, pin):
                                                             if not f.startswith('labels=')]
     if pin:
         extra.append(('maintainer', pin['maintainer']))
-    files['info.txt'] = info_text(known, extra)
+    files[package_records.NATIVE] = package_records.document(known, extra)
     write_package(folder, files)
 
 

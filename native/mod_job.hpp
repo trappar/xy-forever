@@ -11,13 +11,13 @@ namespace xyf_core { namespace mod_job {
 // bytes out.
 //
 // Inputs, each read whole into the region and checked against its package's files.sha256 when it
-// belongs to a package: <generation>/{base,<machine>,ext-<id>}/files.sha256, info.txt, catalog.txt
+// belongs to a package: <generation>/{base,<machine>,ext-<id>}/files.sha256, manifest.json (or info.txt), catalog.txt
 // (machines), the base's edits.bin, every file the linker asks for, every content file the entry needs;
 // the stock os.ldr (read straight into the image buffer; the patch pins its SHA-256), the stock
 // op1_factory.json (the content step pins it) and the firmware's content.sha256.
 // Outputs: one whole library entry in the existing folder `out` (docs/STORAGE.md): every content/...
 // file of mod_content's list (the packages' display and preset files copied, content/op1_factory.json
-// built), info.txt (type=firmware, an assembled mod set: name, kind open-xy,
+// built), manifest.json (type=firmware, an assembled mod set: name, kind open-xy,
 // bytes, crc32, sha256, needs_os, generation, profile, machines), files.sha256 (every file above and os.ldr,
 // sorted), then os.ldr. The job makes the folders under `out` it needs (mkdir). Each output is written
 // as <name>.part and read back and compared by SHA-256; os.ldr is read back whole, its SHA-256 must be the
@@ -56,7 +56,7 @@ struct Input {
     const char* catalog;             // stock content/op1_factory.json
     const char* official;            // the firmware's content.sha256
     const char* out;                 // output folder; it exists (the job makes the folders under it)
-    const char* name;                // info.txt name: 1-47 printable ASCII bytes, no space at either end
+    const char* name;                // manifest name: 1-47 printable ASCII bytes, no space at either end
     const Policy* policy;            // ldr::inspect's policy (the cold LDR policy)
     bool profiling;                  // false: the website's mode
     bool unverified;                 // the user confirmed a base that is not a known one

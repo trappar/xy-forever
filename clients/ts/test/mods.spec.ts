@@ -95,7 +95,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
   beforeAll(() => {
     work = mkdtempSync(join(tmpdir(), 'xyf-ts-mods-'));
     gen = makeModSet(work);
-    ({ profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'info.txt'))));
+    ({ profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'manifest.json')), 'manifest.json'));
     stored = join(sim!.root, 'xy-forever', 'mods', generation);
   });
   afterAll(async () => {
@@ -115,9 +115,9 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     expect(progress.filter(([, , p]) => p === 'send').at(-1)).toEqual([bytes, bytes, 'send']);
     expect(progress.at(-1)).toEqual([bytes, bytes, 'verify']);
     assertStored();
-    // the base's files.sha256 is its last write, after info.txt
+    // the base's files.sha256 is its last write, after manifest.json
     const order = (await localSet(source())).packages.get('base')!.map((f) => f.path);
-    expect(order.slice(-2)).toEqual(['info.txt', 'files.sha256']);
+    expect(order.slice(-2)).toEqual(['manifest.json', 'files.sha256']);
   });
 
   test('a second push sends nothing; nor does xyf_host.py mods push (the same layout)', async () => {
@@ -217,7 +217,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
   beforeAll(async () => {
     work = mkdtempSync(join(tmpdir(), 'xyf-ts-build-'));
     const gen = makeModSet(work);
-    const { profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'info.txt')));
+    const { profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'manifest.json')), 'manifest.json');
     client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
     await pushPackages(client, folderSource(gen));
     makeModBase(sim!.root, 'modbase');
@@ -250,8 +250,8 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     const out = join(sim!.root, 'xy-forever', 'firmware', built.entry);
     expect(readdirSync(out)).toContain('os.ldr');
     expect(readdirSync(out)).not.toContain('layout.json');
-    expect(infoValues(readFileSync(join(out, 'info.txt')))['machines']).toBe('2');
-    expect(infoValues(readFileSync(join(out, 'info.txt')))['name']).toBe('OP-XY mods');
+    expect(infoValues(readFileSync(join(out, 'manifest.json')), 'manifest.json')['machines']).toBe('2');
+    expect(infoValues(readFileSync(join(out, 'manifest.json')), 'manifest.json')['name']).toBe('OP-XY mods');
     await served();
     expect((await libraryBases(client)).map((b) => b.id)).toEqual(['modbase', 'opxy-121', 'opxy-121-stock']);   // not a base
     expect(await jobStatus(client)).toEqual(result);                      // job 0: the last job

@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                              # noqa: E402
-from xy_forever import paths, sim                    # noqa: E402
+from xy_forever import package_records, paths, sim                    # noqa: E402
 from test_ldr import image                           # noqa: E402
 
 spec = importlib.util.spec_from_file_location('mod_boot', ROOT / 'scripts/mod_boot.py')
@@ -139,7 +139,7 @@ class ModBootSimulator(unittest.TestCase):
         self.assertFalse((content / 'display' / 'xyf-test.svg').exists())
 
 
-@unittest.skipUnless((mb.PACKAGES / 'base/info.txt').is_file() and mb.CATALOG.is_file() and sim.STOCK_OS.is_file() and
+@unittest.skipUnless(package_records.local_name(mb.PACKAGES / 'base') and mb.CATALOG.is_file() and sim.STOCK_OS.is_file() and
                      mb.modpatch.default_official(mb.PACKAGES).is_file(),
                      'published-kit packages, stock os.ldr, op1_factory.json or the official content.sha256 absent')
 class ModBootAssemble(unittest.TestCase):

@@ -19,7 +19,7 @@ from test_ldr import image
 from test_tfw import container, KEY
 
 from xy_forever import hostbuild, tfw_extract
-from xy_forever.xyf_entry import info_text
+from xy_forever.xyf_entry import firmware_document
 
 KEYS = bytes([0]) + KEY
 # Synthetic signing key and nonce (derived from fixed labels; nothing to do with the vendor key).
@@ -350,7 +350,7 @@ class ExtractorTests(Extractor):
         report = self.extract(package(), '--fail-write')
         self.assertEqual((report['status'], report['written'], report['output_created']), ('write', 0, False))
 
-    def test_host_entry_writes_os_ldr_and_info_txt(self):
+    def test_host_entry_writes_os_ldr_and_native_manifest(self):
         keys = self.root / 'synthetic-keys.json'
         keys.write_text(json.dumps({'keys': [{'index': 0, 'read_ok': True, 'hex': KEY.hex()}]}))
         vendor = self.root / 'synthetic-public-key.json'
@@ -360,9 +360,9 @@ class ExtractorTests(Extractor):
         out = self.root / 'entry'
         options = dict(keys=keys, public_key_file=vendor, binary=self.binary)
         report = tfw_extract.extract_os(source, out, **options)
-        self.assertEqual(sorted(p.name for p in out.iterdir()), ['info.txt', 'os.ldr'])
+        self.assertEqual(sorted(p.name for p in out.iterdir()), ['manifest.json', 'os.ldr'])
         self.assertEqual((out / 'os.ldr').read_bytes(), GOOD_OS)
-        self.assertEqual((out / 'info.txt').read_text(), info_text('OP-XY 1.2.5', '1.2.5+0', 'official', GOOD_OS))
+        self.assertEqual((out / 'manifest.json').read_bytes(), firmware_document('OP-XY 1.2.5', '1.2.5+0', 'official', GOOD_OS))
         self.assertEqual((report['status'], report['signature']), ('ok', 'verified'))
         with self.assertRaisesRegex(tfw_extract.ExtractError, 'already exists'):
             tfw_extract.extract_os(source, out, **options)
@@ -397,8 +397,8 @@ class ExtractorTests(Extractor):
         report = tfw_extract.extract_os(source, self.root / 'waive', keys=keys, public_key_file=absent,
                                         require_signature=False, binary=self.binary)
         self.assertEqual(report['signature'], 'not checked')
-        self.assertEqual((self.root / 'waive' / 'info.txt').read_text(),
-                         info_text('OP-XY 1.2.5', '1.2.5+0', 'custom', GOOD_OS))
+        self.assertEqual((self.root / 'waive' / 'manifest.json').read_bytes(),
+                         firmware_document('OP-XY 1.2.5', '1.2.5+0', 'custom', GOOD_OS))
 
 
 class SanitizedDamageTests(Extractor):

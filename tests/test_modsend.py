@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                       # noqa: E402
-from xy_forever import hostbuild, modkit as M, modpatch as MP, modsend as S, modstore, paths, sim  # noqa: E402
+from xy_forever import hostbuild, modkit as M, modpatch as MP, modsend as S, modstore, package_records, paths, sim  # noqa: E402
 from xy_forever import usb_proto as P                                         # noqa: E402
 from test_mod_job import run                                                  # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
@@ -309,7 +309,7 @@ class StoredNames(unittest.TestCase):
 
 
 def _published():
-    return ((PACKAGES / 'base/info.txt').is_file() and TK.STOCK.is_file() and TK.CATALOG.is_file() and
+    return (package_records.local_name(PACKAGES / 'base') and TK.STOCK.is_file() and TK.CATALOG.is_file() and
             MP.default_official(PACKAGES).is_file())
 
 
@@ -341,7 +341,7 @@ class PublishedPackages(Harness, unittest.TestCase):
         self.assert_job_identical(fit[:7], ['capture', 'master_dj_filter'])
 
 
-@unittest.skipUnless((PACKAGES / 'base/info.txt').is_file(), 'published-kit packages absent (setup.py fixtures)')
+@unittest.skipUnless(package_records.local_name(PACKAGES / 'base'), 'published-kit packages absent (setup.py fixtures)')
 class RealSetDepth(unittest.TestCase):
     """#124 over the real package set (setup.py doctor: "mod package set"): every device path a push writes sits 4
     folders below /yaffs2 (xy-forever/mods/<generation>/<package>/<stored name>), 2 under the limit of 6 (the stock

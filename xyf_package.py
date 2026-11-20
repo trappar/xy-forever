@@ -9,7 +9,7 @@
     python3 xyf_package.py index verify DIR                      every archive matches index.json
 
 extract-os runs the device's own extractor and signature check (native/tfw_os, tfw_signature,
-p224, compiled for the Mac) and writes DIR/os.ldr and DIR/info.txt (docs/STORAGE.md). It never
+p224, compiled for the Mac) and writes DIR/os.ldr and DIR/manifest.json (docs/STORAGE.md). It never
 reads the bootloader member. The AES key comes from the private area (keys/opxy-update-keys.json,
 or --keys FILE); without one it stops with "no .tfw key". The vendor public key comes from
 keys/opxy-tfw-public-key.json (or --public-key FILE): the header's ECDSA P-224 signature must

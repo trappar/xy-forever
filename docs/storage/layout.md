@@ -10,7 +10,7 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   state-a.txt, state-b.txt  boot state, two power-safe slots (below)
   state.txt                 legacy single slot (read if no A/B slot is valid)
   firmware/<id>/os.ldr      one library entry's firmware image
-  firmware/<id>/info.txt    its description (key=value, below)
+  firmware/<id>/manifest.json   its description (legacy fallback: info.txt)
   firmware/<id>/files.sha256, content.sha256 + firmware.version   optional lists
   mods/<generation>/store.txt, {base,<machine>,ext-<extension>}/<file>   mod packages, flat (below)  [host-made]
   log/                      device reports, prod-a.bin / prod-b.bin, pfile-a.bin / pfile-b.bin

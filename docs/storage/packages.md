@@ -1,22 +1,24 @@
 # XY Forever storage layout: package files
 
-Part of the [XY Forever storage layout](../STORAGE.md). Its files use the [text format](state.md#text-format-state-txt-infotxt).
+Part of the [XY Forever storage layout](../STORAGE.md).
 Jobs, inspection and power-cut recovery: [Content jobs](jobs.md).
 Adding, removing and keeping content by hash: [Package transactions](package-transactions.md).
 
-## `info.txt` (package manifest)
+## Package manifest
 
-Every package folder's manifest. Without `type` it is a firmware
-entry: every `info.txt` written before `type` existed is one, unchanged.
+New packages use `manifest.json` with schema `xy-forever.package` and an independent
+`schema_version`. Readers use legacy [key/value `info.txt`](state.md#text-format-state-txt-infotxt)
+only when `manifest.json` is absent. Legacy metadata without `type` describes
+a firmware entry. See [JSON encoding and typed fields](native-json/schemas.md).
 
 | Key | Value (strict reader) |
 |---|---|
-| `type` | `firmware`, `mod-base`, `mod`; `companion` is read only to be refused; any other value is refused (`.xys2` and content packs have their own manifests: the `XYS2` header, the pack's `manifest.json`) |
+| `type` | `firmware`, `mod-base`, `mod`; `companion` is read only to be refused; any other value is refused (stage 2 and vendor content packs have separate formats) |
 | `name` | display name, at most 47 bytes, such as `OP-XY 1.2.5` |
 | `version` | version text (display and equality only), at most 31 bytes |
 | `kind` | `official`, `open-xy` or `custom` |
-| `bytes` | size of `os.ldr`: decimal, no sign, no leading zero, below 2^32 |
-| `machines` | optional decimal count, 0..65535: selected machines for firmware, catalog machines for a mod-base; absent means unknown |
+| `bytes` | size of `os.ldr`: unsigned integer below 2^32 |
+| `machines` | optional integer count, 0..65535: selected machines for firmware, catalog machines for a mod-base; absent means unknown |
 | `crc32` | CRC-32 of `os.ldr`, 8 lowercase hex digits (checked before boot) |
 | `sha256`, `needs_os` | 64 lowercase hex digits: the `os.ldr` SHA-256; the one this package needs |
 | `content` | the content set's version (`content.sha256` holds the set), at most 31 bytes |
@@ -35,8 +37,8 @@ Any other known key for a type is refused. Dependencies are exact matches, check
 on the device: a base or an assembled set runs only on the entry whose `sha256` is
 its `needs_os`; a mod's `generation` (and `profile`, if given) equals its base's; an
 assembled set's `generation`, `needs_os` and `profile` equal its base's. Host twin:
-`xy_forever/xyf_entry.py` (`parse_manifest`, `manifest_text`); `python3 -m
-xy_forever library-entry` builds an entry; `xyf_host.py library-add` sends one.
+`xy_forever/package_records.py` (`parse`, `document`). The `python3 -m
+xy_forever library-entry` command builds an entry and `xyf_host.py library-add` sends one.
 
 ## `files.sha256`
 
@@ -70,9 +72,12 @@ reaches stage 1 only through the append-only services table. Any failure leaves 
 --xyf-product` as `main.xys2` beside `candidate.ldr`.
 | ZIP | `PK\3\4` or `PK\5\6`: an open-xy builder ZIP, imported by the host only |
 
-Folders, by their names and `info.txt`: `info.txt` decides by `type` (firmware
-entries need `os.ldr`; one with `generation` is an assembled mod set); without it, `manifest.json` is a content pack and `os.ldr` a
-firmware entry. `content.sha256` and `firmware.version` (a content set) come
+Folder recognition uses the selected metadata and package files. Native package
+JSON must declare the XY Forever schema. Its `type` identifies firmware, a mod
+base or a mod. Firmware needs `os.ldr`, and `generation` identifies an assembled
+mod set. A folder with `os.ldr` and no metadata is still a firmware entry.
+Recognition as a vendor content pack requires checking its vendor metadata.
+`content.sha256` and `firmware.version` (a content set) come
 together or not at all. Refused always: a name that is not one safe name (1-127
 printable ASCII bytes, no `/`, `\` or `:`, not ending in `.` or space), any name
 containing `bootloader` (case ignored), the companion images `*.cyacd` and

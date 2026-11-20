@@ -33,7 +33,7 @@ export class PackageError extends Error {
   constructor(message: string) { super(message); this.name = 'PackageError'; }
 }
 
-/** A generation folder: every file's path relative to it, '/'-separated ('base/info.txt'), and its bytes. */
+/** A generation folder: every file's path relative to it, '/'-separated ('base/manifest.json'), and its bytes. */
 export interface PackageSource {
   paths(): Promise<readonly string[]> | readonly string[];
   read(path: string): Promise<Uint8Array>;
@@ -86,11 +86,11 @@ export interface LocalSet {
 export async function localSet(source: PackageSource, only: readonly string[] = []): Promise<LocalSet> {
   const paths = new Set(await source.paths());
   const baseRecord = recordName([...paths].filter((path) => path.startsWith('base/')).map((path) => path.slice(5)));
-  if (baseRecord === undefined) throw new PackageError('no base/info.txt (choose the generation folder modkit split wrote)');
+  if (baseRecord === undefined) throw new PackageError('no base package metadata (choose the generation folder modkit split wrote)');
   const base = parseManifest(await source.read(`base/${baseRecord}`), baseRecord);
   const profile = base['profile'] ?? '', generation = base['generation'] ?? '';
   if (base['type'] !== 'mod-base' || !TOKEN.test(profile) || !TOKEN.test(generation)) {
-    throw new PackageError('base/info.txt: not a mod-base with a profile and generation');
+    throw new PackageError(`base/${baseRecord}: expected a mod-base with a profile and generation`);
   }
   const names = [...paths].filter((p) => p.split('/').length === 2 && p.endsWith(`/${LIST}`)).map((p) => p.split('/')[0]!).sort(order);
   const wanted = only.length ? ['base', ...only.filter((n) => n !== 'base')] : names;

@@ -1,4 +1,5 @@
-"""Library-name check of the device pass; preserves its deliberately legacy manifest."""
+"""Library metadata read and legacy scratch-entry check for the device pass."""
+from xy_forever import package_records
 from xy_forever.xyf_entry import manifest_text
 
 
@@ -20,3 +21,21 @@ def change(self, scratch_info, scratch_id, fail):
             scratch_id, entry[0]['name'] if entry else 'missing', label))
     return 'menu shows %s = %r without a restart (removed again by scratch-cleanup)' % (scratch_id, label)
 
+
+def read_metadata(self, folder, artifact, extra, names, parse_info, fail):
+    candidates = (package_records.NATIVE, package_records.LEGACY) if names is None else (
+        package_records.record_name(names),)
+    for name in candidates:
+        if name is None:
+            break
+        path = folder + '/' + name
+        data = self.read(path, artifact + '-' + name, *extra)
+        if data is None:
+            if names is not None:
+                raise fail('%s not readable' % path)
+            continue
+        try:
+            return parse_info(package_records.text_view(data, name))
+        except ValueError as error:
+            raise fail('%s: %s' % (path, error)) from error
+    return {}

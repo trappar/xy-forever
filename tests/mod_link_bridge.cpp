@@ -9,13 +9,16 @@
 // Output lines: "status <index> <detail>", "step <n>", "sizes ...", "service", "extensions",
 // "object", "number", "name <kind> <value> <name>", "usage ...", "scratch", "largest", "slowest",
 // "work <units> <step>" (the most work units one step took: XYF_WORK, built with -DXYF_MOD_WORK_COUNT).
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
+#include <sys/stat.h>
 #include "../native/mod_internal.hpp"
+#include "../target/xyf_package_record.hpp"
 
 using namespace xyf_core;
 using namespace xyf_core::mod_link;
@@ -31,6 +34,30 @@ static bool load(const char* path, std::vector<Byte>& out) {
     size_t n;
     while ((n = std::fread(buffer, 1, sizeof buffer, f)) > 0) out.insert(out.end(), buffer, buffer + n);
     std::fclose(f);
+    return true;
+}
+
+// A native record supplies the linker's logical info.txt input without changing the package files.
+static bool load_metadata(const std::string& directory, const char* package, std::vector<Byte>& out) {
+    namespace record = xyf::package_record;
+    const std::string native = directory + record::native_name;
+    struct stat st;
+    if (lstat(native.c_str(), &st) != 0) {
+        return errno == ENOENT && load((directory + record::legacy_name).c_str(), out);
+    }
+    if (stat(native.c_str(), &st) != 0 || !S_ISREG(st.st_mode) || st.st_size > json::document_bytes) return false;
+    FILE* f = std::fopen(native.c_str(), "rb");
+    if (!f) return false;
+    char raw[json::document_bytes + 1];
+    const size_t n = std::fread(raw, 1, sizeof raw, f);
+    const bool read_ok = !std::ferror(f) && n < sizeof raw;
+    if (std::fclose(f) || !read_ok) return false;
+    record::Workspace work;
+    uint32_t count = 0;
+    out.resize(xyf::manifest::max_text);
+    const auto type = !std::strcmp(package, "base") ? xyf::manifest::type_mod_base : xyf::manifest::type_mod;
+    if (record::view(raw, uint32_t(n), work, type, reinterpret_cast<char*>(out.data()), count) != json::ok) return false;
+    out.resize(count);
     return true;
 }
 
@@ -185,6 +212,13 @@ int main(int argc, char** argv) {
         std::string path = std::string(argv[1]) + "/" + request.package + "/" + request.path;
         if (std::string(request.package) + "/" + request.path == swap_name && ++swap_requests > 1) path = swap_file;
         if (!*request.path) { file.clear(); ++zero_steps; }      // a zero step: no file
+        else if (!std::strcmp(request.path, xyf::package_record::legacy_name) && path != swap_file) {
+            const std::string directory = std::string(argv[1]) + "/" + request.package + "/";
+            if (!load_metadata(directory, request.package, file)) {
+                std::printf("status %u %s/manifest.json or info.txt\n", unsigned(Status::table), request.package);
+                return 1;
+            }
+        }
         else if (!load(path.c_str(), file)) { std::printf("missing %s/%s\n", request.package, request.path); return 3; }
         if (file.size() > largest) largest = file.size();
         std::string name = std::string(request.package) + "/" + request.path;

@@ -1,6 +1,6 @@
 """`xyf_host.py library-add`: an official os.ldr as library entry ID (docs/storage/layout.md).
 
-Writes firmware/ID/os.ldr and info.txt and, from the user's own extracted official content (--content), the
+Writes firmware/ID/os.ldr and manifest.json and, from the user's own extracted official content (--content), the
 entry's content set: firmware.version, then content.sha256 (docs/storage/packages.md: the two come together or
 not at all; the list goes last, so it is never there without its version). Mod builds (the Mods page's Save,
 `mods apply`) need their base's content.sha256. The list is computed here, at run time, from the files the user
@@ -13,8 +13,8 @@ import zlib
 
 from .content_manifest import LIST, VERSION, ContentError, list_text, read_version, scan
 from .ldr import parse_ldr
-from . import package_store
-from .xyf_entry import ListError, info_text, read_files_sha256
+from . import package_records, package_store
+from .xyf_entry import ListError, firmware_document, read_files_sha256
 
 ID_RE = re.compile(r'^[a-z0-9_-]{1,31}$')
 INFO_TEXT_RE = re.compile(r'^[ -<>-~]{1,47}$')   # printable ASCII except '='
@@ -91,9 +91,9 @@ def plan(args, capacity, out=print):
     if records[-1].target != 0x11a00000 or not data or len(data) > capacity:
         out('refused: entry must be 0x11a00000 and size 1..%d' % capacity); return 2, None
     base = LIBRARY + args.id + '/'
-    info = info_text(args.name, args.version, 'official', data).encode('ascii')
-    files = [(base + 'os.ldr', data), (base + 'info.txt', info)]
-    out('Plan: %sos.ldr (%d bytes, CRC-32 %08x), then info.txt:' % (base, len(data), zlib.crc32(data) & 0xffffffff))
+    info = firmware_document(args.name, args.version, 'official', data)
+    files = [(base + 'os.ldr', data), (base + package_records.NATIVE, info)]
+    out('Plan: %sos.ldr (%d bytes, CRC-32 %08x), then manifest.json:' % (base, len(data), zlib.crc32(data) & 0xffffffff))
     out('      ' + info.decode().strip().replace('\n', '\n      '))
     if args.content is not None:
         try:

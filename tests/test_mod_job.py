@@ -6,7 +6,7 @@ filled with garbage), reading and writing through a file-call table (on the host
 backed by the real files, folders only through the job's mkdir) and leaves one whole library entry. Its
 folder must hold exactly modpatch.entry_files of the one-shot assembler's output (host/mod_assemble.cpp run,
 itself proven against core.mjs by tests/test_modpatch.py): os.ldr and every content file byte-identical,
-plus native info.txt (the strict reader's) and files.sha256 over all of them. Faults (a read or write
+plus manifest.json and files.sha256 over all of them. Faults (a read or write
 failure at every step, cancel at every step, a region one byte short, missing, truncated and short files, a
 missing or damaged content file, an os.ldr that fails start_verify) must end in their error code with no
 output name left and the same Job reusable. Synthetic packages always; the published 0.0.6 package set when
@@ -24,7 +24,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import hostbuild, modkit as M, modpatch as P, native_json, package_records, paths, xyf_entry  # noqa: E402
+from xy_forever import hostbuild, modkit as M, modpatch as P, package_records, paths, xyf_entry  # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
 import test_modkit as TK  # noqa: E402
 from test_xyf_freestanding import code_bytes, compiler  # noqa: E402
@@ -53,10 +53,11 @@ class Harness:
 
     def expected(self, out, machines, exts, memory='standard'):
         """The entry the job must leave: the one-shot assembly of the same job.txt, completed by entry_files."""
-        (out.parent / 'ref').mkdir()
-        report = P.run(self.binary, out.parent / 'job.txt', out.parent / 'ref')
+        ref = out.with_name(out.name + '-ref')
+        ref.mkdir()
+        report = P.run(self.binary, out.parent / 'job.txt', ref)
         self.assertEqual([report[k] for k in ('input', 'patch', 'verify', 'content', 'copy')], ['ok'] * 5, report)
-        return P.entry_files(self.gen, P.tree(out.parent / 'ref'), machines)
+        return P.entry_files(self.gen, P.tree(ref), machines)
 
     def faults(self, machines, exts=(), stride=1, first=1):
         folder = Path(tempfile.mkdtemp(dir=self.work))
@@ -71,9 +72,8 @@ class Harness:
         self.assertEqual(sorted(tree), sorted(want))                  # finals only: no .part left
         for path in want:
             self.assertEqual(tree[path], want[path], path)
-        xyf_entry.parse_manifest(tree['info.txt'])                    # the strict reader accepts it
         self.assertNotIn('layout.json', tree)
-        self.assertEqual(xyf_entry.parse_manifest(tree['info.txt'])['machines'], len(machines))
+        self.assertEqual(package_records.parse(tree[package_records.NATIVE], package_records.NATIVE)['machines'], len(machines))
         listed = {path: digest for digest, path in xyf_entry.read_files_sha256(tree['files.sha256'])}
         self.assertEqual(set(listed), set(tree) - {'files.sha256'})
         self.assertTrue(all(M.sha256(tree[path]) == digest for path, digest in listed.items()))
@@ -121,21 +121,28 @@ class Synthetic(Harness, unittest.TestCase):
                 report, out = self.job(machines, exts, profiling=profiling)
                 self.assert_identical(report, out, machines, exts)
 
+    def test_native_output_escapes_the_entry_name(self):
+        name = '"' + '\\' * 45 + '"'
+        spec = self.job_text(['alpha'], []) + 'name ' + name + '\n'
+        work = Path(tempfile.mkdtemp(dir=self.work))
+        (work / 'job.txt').write_text(spec)
+        out, ref = work / 'out', work / 'ref'
+        out.mkdir()
+        ref.mkdir()
+        result = run(self.binary, 'job', work / 'job.txt', out)
+        self.assertEqual(result['phase'], 'done', result)
+        P.run(self.binary, work / 'job.txt', ref)
+        self.assertEqual(P.tree(out), P.entry_files(self.gen, P.tree(ref), ['alpha'], name=name))
+        fields = package_records.parse((out / package_records.NATIVE).read_bytes(), package_records.NATIVE)
+        self.assertEqual(fields['name'], name)
+
     def test_native_metadata_matches_legacy_inputs(self):
         machines, exts = ['alpha', 'gamma'], ['cap', 'flt']
-        legacy, old = self.job(machines, exts)
-        self.assertEqual(legacy['phase'], 'done', legacy)
+        native, new = self.job(machines, exts)
+        self.assert_identical(native, new, machines, exts)
         work = Path(tempfile.mkdtemp(dir=self.work))
         gen = work / self.gen.name
         shutil.copytree(self.gen, gen)
-        for name in ('base', 'alpha', 'gamma', 'ext-cap', 'ext-flt'):
-            folder = gen / name
-            (folder / 'manifest.json').write_bytes(native_json.package_document(package_records.read_values(folder)))
-            if name == 'gamma':
-                (folder / 'info.txt').write_bytes(b'not a legacy package record\n')
-            else:
-                (folder / 'info.txt').unlink()
-            (folder / 'files.sha256').write_text(M.files_sha256_text(folder))
         spec = work / 'job.txt'
         spec.write_text(P.job_text(gen, machines, exts, self.work / 'os.ldr', self.work / 'op1_factory.json',
                                    official=self.work / 'content.sha256', unverified=True))
@@ -144,13 +151,22 @@ class Synthetic(Harness, unittest.TestCase):
             out.mkdir()
             return run(self.binary, 'job', spec, out)
 
-        out = work / 'native'
-        native = assemble(out)
-        self.assert_identical(native, out, machines, exts)
-        self.assertEqual(P.tree(out), P.tree(old))
+        for name in ('base', 'alpha', 'gamma', 'ext-cap', 'ext-flt'):
+            TK.legacy_record(gen / name)
+        old = work / 'legacy'
+        legacy = assemble(old)
+        self.assert_identical(legacy, old, machines, exts)
+        self.assertEqual(P.tree(new), P.tree(old))
 
+        shutil.rmtree(gen)
+        shutil.copytree(self.gen, gen)
         folder = gen / 'gamma'
-        manifest = folder / 'manifest.json'
+        manifest = folder / package_records.NATIVE
+        (folder / package_records.LEGACY).write_bytes(b'not a legacy package record\n')
+        (folder / 'files.sha256').write_text(M.files_sha256_text(folder))
+        out = work / 'native-with-legacy'
+        self.assert_identical(assemble(out), out, machines, exts)
+        self.assertEqual(P.tree(out), P.tree(new))
         listing = folder / 'files.sha256'
         raw, original_list = manifest.read_bytes(), listing.read_bytes()
         for label, contents, update_list, error in (
@@ -220,7 +236,7 @@ class JobFuzz(unittest.TestCase):
         self.assertGreater(len(report['counts']), 6)
 
 def _published():
-    return ((PACKAGES / 'base/info.txt').is_file() and TK.STOCK.is_file() and TK.CATALOG.is_file() and
+    return (package_records.local_name(PACKAGES / 'base') and TK.STOCK.is_file() and TK.CATALOG.is_file() and
             P.default_official(PACKAGES).is_file())
 
 

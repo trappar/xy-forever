@@ -2,11 +2,8 @@
 
 The native adapters (`native/json.hpp`, `xy_forever/native_json.py`,
 `clients/ts/src/native-json.ts`) define these independently versioned schemas.
-Storage migration is being implemented in issue #95. Host package admission,
-modkit rebuilds, package indexes, client metadata reads, native library/cold boot,
-content switches, journal source validation, package reports, the Mods page and
-mod assembly accept the native package record. Saved Mods configuration uses
-native JSON, with legacy reads. Default package writers still use legacy records.
+New package producers and Mods configuration saves write JSON. Legacy text
+remains readable under the selection rules below.
 
 Every native record has a string `schema` and integer `schema_version` (currently
 1). The package's `version` remains display/equality metadata; it is unrelated to

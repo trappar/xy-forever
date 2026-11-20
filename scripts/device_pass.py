@@ -11,9 +11,9 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            exit 3, no session folder, nothing sent but HELLO. (keepalive.sh
            processes already running are stopped first: they share the port.)
   session  always: hold on.
-  read     default: status; state slots; the default entry's info.txt; ls firmware/
+  read     default: status; state slots; the default entry's package metadata; ls firmware/
            lists the default and ls /yaffs2/xy-forever lists firmware; 8 ranged
-           reads of its os.ldr (compared with the local stock os.ldr when info.txt
+           reads of its os.ldr (compared with the local stock os.ldr when the manifest
            names it); screenshot; peek of the reboot marker (held bit set).
   install  --install BUILD_DIR: `install --yes-install` (xyf_host's build checks;
            the device verifies the partition), REBOOT, fresh boot back home.
@@ -125,7 +125,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_build                                           # noqa: E402
 import xyf_host as host                                    # noqa: E402
-from xy_forever import census, paths, usb_proto as P, usb_proto_ids as ids   # noqa: E402
+from xy_forever import census, package_records, paths, usb_proto as P, usb_proto_ids as ids   # noqa: E402
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
 NEED = 'NEED: power off, wait 5 s, then power on holding PLAY; release it at the logo'
@@ -209,7 +209,7 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
     ('session', (('hold-on', T_ANSWER, 'hold on'),)),
     ('read', (('status', T_ANSWER, 'STATUS: service version 4, role b'),
               ('read-state', T_ANSWER, 'whole reads of state-a.txt/state-b.txt: the default entry'),
-              ('read-info', T_ANSWER, 'whole read of firmware/<default>/info.txt'),
+              ('read-info', T_ANSWER, 'read default package metadata'),
               ('ls-library', T_ANSWER, 'ls firmware/ lists the default entry, ls /yaffs2/xy-forever/ lists '
                                        'firmware (build 165 listed every folder empty)'),
               ('read-ranges', T_ANSWER, '%d ranged reads (1 KiB) of firmware/<default>/os.ldr' % RANGES),
@@ -354,11 +354,14 @@ def mods_row(packages, machine):
     def fold(text):
         return bytes(c + 32 if 65 <= c <= 90 else c for c in text)
     rows = []
-    for info in sorted(Path(packages).glob('*/info.txt')):
-        folder = info.parent.name
-        if folder == 'base' or not (info.parent / 'files.sha256').is_file():
+    for package in sorted(Path(packages).glob('*')):
+        folder = package.name
+        if folder == 'base' or not (package / 'files.sha256').is_file():
             continue                  # the device lists a package only with its files.sha256
-        fields = dict(line.split('=', 1) for line in info.read_text(errors='replace').splitlines() if '=' in line)
+        try:
+            fields = package_records.read_values(package)
+        except (OSError, ValueError):
+            continue
         extension = folder.startswith('ext-')
         kind = fields.get('machine', '')
         if kind not in MODS_KINDS or (kind == 'extension') != extension or \
@@ -837,14 +840,15 @@ class Pass:
         self.state['default'] = fields['default']
         return 'default %s (%s seq %d)' % (fields['default'], Path(path).name, seq)
 
+    def read_metadata(self, folder, artifact, *extra, names=None):
+        from scripts.device_pass_library import read_metadata
+        return read_metadata(self, folder, artifact, extra, names, parse_info, StepFail)
+
     def step_read_info(self):
-        path = '/yaffs2/xy-forever/firmware/%s/info.txt' % self.state['default']
-        data = self.read(path, 'info.txt')
-        if data is None:
-            raise StepFail('%s not found' % path)
-        info = parse_info(data)
+        folder = LIBRARY + '/' + self.state['default']
+        info = self.read_metadata(folder, 'default')
         if not info.get('bytes', '').isdigit():
-            raise StepFail('info.txt has no bytes= (%d B read)' % len(data))
+            raise StepFail('%s metadata has no image size' % folder)
         self.state['info'] = info
         return '%s: %s, %s B, crc32 %s' % (self.state['default'], info.get('name'), info['bytes'], info.get('crc32'))
 
@@ -1439,7 +1443,7 @@ class Pass:
     def step_apply(self):
         """fm2op assembled by the device, its os.ldr compared with the host's reference."""
         packages = MODS_PACKAGES
-        if not (packages / 'base/info.txt').is_file() or not MODS_CATALOG.is_file():
+        if not package_records.local_name(packages / 'base') or not MODS_CATALOG.is_file():
             raise StepSkip('no local package set or stock catalog (%s): the reference needs them' % packages)
         root = '/yaffs2/xy-forever/mods'          # mods/<generation>/ (#124)
         code, out, err = self.host(['ls', '%s/%s' % (root, packages.name), '--json'], T_ANSWER)

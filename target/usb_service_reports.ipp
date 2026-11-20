@@ -35,10 +35,10 @@ bool report_field(PackageReport& r,const char* key,const char* value) {
 void report_finish_item() {
     PackageReport& r=report_slot();char h[65];
     const char* type="unknown";
-    if(r.folder) {
+    if(r.folder && (r.valid || r.legacy || r.manifest.type==xyf::manifest::type_companion)) {
         type=r.manifest.type==xyf::manifest::type_mod_base?"mod-base":r.manifest.type==xyf::manifest::type_mod?"mod":
              r.manifest.type==xyf::manifest::type_companion?"companion":"firmware";
-    } else {
+    } else if(!r.folder) {
         xyf::manifest::Recognition found;
         xyf::manifest::recognise_file(r.name,r.bytes,r.prefix,r.prefix_n,found);
         type=found.kind==xyf::manifest::kind_official_tfw?"tfw":found.kind==xyf::manifest::kind_ldr_image?"firmware":

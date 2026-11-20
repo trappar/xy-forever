@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import modsend as MS, sim                                  # noqa: E402
+from xy_forever import modpatch, modsend as MS, package_store, sim                                  # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 from test_modpatch import OFFICIAL, official_text                         # noqa: E402
 from test_sim_mods_page import synthetic_setup                            # noqa: E402
@@ -60,7 +60,9 @@ class FreshLibrary(J.Base, unittest.TestCase):
         self.assertNotIn('note:', text)
         entry = self.entry(self.base)
         self.assertEqual(sorted(p.name for p in entry.iterdir()),
-                         ['content.sha256', 'files.sha256', 'firmware.version', 'info.txt', 'os.ldr'])
+                         ['content.sha256', 'files.sha256', 'firmware.version', 'manifest.json', 'os.ldr'])
+        fields = package_store.validate(modpatch.tree(entry))
+        self.assertEqual((fields['type'], fields['kind']), ('firmware', 'official'))
         self.assertEqual((entry / 'content.sha256').read_text(), official_text(sorted(OFFICIAL)))
         self.assertEqual((entry / 'firmware.version').read_text(), '1.2.1+0\n')
         self.assemble_and_compare(['alpha'])                                # started and done, no manual step
@@ -71,7 +73,7 @@ class FreshLibrary(J.Base, unittest.TestCase):
         self.assertIn('library-add %s: ok (no content list)' % self.base, text)
         self.assertIn('note: firmware/%s gets no content.sha256 + firmware.version' % self.base, text)
         self.assertIn('Give --content DIR', text)
-        self.assertEqual(sorted(p.name for p in self.entry(self.base).iterdir()), ['files.sha256', 'info.txt', 'os.ldr'])
+        self.assertEqual(sorted(p.name for p in self.entry(self.base).iterdir()), ['files.sha256', 'manifest.json', 'os.ldr'])
         code, text = self.host('mods', 'apply', '--base', self.base, '--generation',
                                '%s/%s' % (self.profile, self.generation), 'alpha', '--unverified')
         self.assertEqual(code, MS.NOT_FOUND, text)

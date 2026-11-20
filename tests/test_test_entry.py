@@ -17,7 +17,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_host as host                              # noqa: E402
-from xy_forever import modpatch as MP, sim, xyf_entry  # noqa: E402
+from xy_forever import modpatch as MP, package_records, sim, xyf_entry  # noqa: E402
 
 spec = importlib.util.spec_from_file_location('test_entry', ROOT / 'scripts/test_entry.py')
 te = importlib.util.module_from_spec(spec)
@@ -49,7 +49,7 @@ class EntryFiles(unittest.TestCase):
         self.assertEqual(mine, ref)
         self.assertEqual([l.split('  ')[1] for l in mine['files.sha256'].decode().splitlines()],
                          ['content/display/fm2op.svg', 'content/op1_factory.json', 'content/presets/fm2op/default.json',
-                          'info.txt', 'os.ldr'])
+                          'manifest.json', 'os.ldr'])
 
     def test_candidate_refuses_files_outside_loaded_id(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -118,7 +118,7 @@ class TestEntrySimulator(unittest.TestCase):
         code, out = self.run_script()
         self.assertEqual(code, 0, out)
         self.assertIn('os.ldr kept', out)
-        self.assertIn('needs_os taken from firmware/mods-a/info.txt', out)
+        self.assertIn('needs_os taken from firmware/mods-a', out)
         stock = sim.STOCK_OS.read_bytes()
         want = te.entry_files(stock, CONTENT, 'Loader test', hashlib.sha256(stock).hexdigest(),
                               GENERATION, PROFILE)
@@ -168,7 +168,7 @@ class TestEntrySimulator(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn('SHA-256 of firmware/opxy-121-stock/os.ldr read back', out)
         needs = hashlib.sha256(sim.STOCK_OS.read_bytes()).hexdigest()
-        self.assertIn(('needs_os=%s' % needs).encode(), (self.root / 'xy-forever/firmware/loader-test/info.txt').read_bytes())
+        self.assertEqual(package_records.read_values(self.root / 'xy-forever/firmware/loader-test')['needs_os'], needs)
 
 
 if __name__ == '__main__':

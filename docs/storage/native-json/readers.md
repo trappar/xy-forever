@@ -38,7 +38,7 @@ adapter. The cold scan needs 19,919 bytes including raw input/alignment, within
 its existing 40,960-byte scratch reservation. The journal source owns 20,596
 bytes in the content slot and hashes the exact selected metadata/list before
 semantic extraction. The content job borrows its own unused list region during
-metadata reading. Reports use 22,820 bytes of their existing 64 KiB slot. The
+metadata reading. Package reports use 22,820 bytes of their existing 64 KiB slot. The
 content slot occupies 26,944 aligned bytes; the content job remains 4916 bytes.
 No caller borrows MTP/GC storage or allocates a JSON workspace on a stack.
 
@@ -50,10 +50,10 @@ calls it. Journal/content caller frames remain 132/260 bytes, the outer boot
 caller 452 and the home pump 284. These are compiler frame sums, not an observed
 peak stack watermark.
 
-The product cold module is 330,784 bytes. The offline
-`stage2` and `stage2-menu` modules are 53,416 and 53,756 bytes. Both fit their
-56 KiB code windows and keep their 16 KiB stacks. All five modes build and
-verify offline. Default package writers remain pending in #95.
+All five modes build and verify offline. Cold module sizes are 330,880 bytes
+for product, 331,552 for MTP USB, 331,136 for crash trigger, 53,416 for
+`stage2` and 53,756 for `stage2-menu`. The last two fit their 56 KiB code
+windows and keep their 16 KiB stacks.
 
 The Mods reader borrows 24,012 bytes of the idle report slot while it has the
 page's storage exclusion. Mod assembly needs the same amount temporarily at the
@@ -61,11 +61,14 @@ workspace's free end. It retains only each validated job input's text view, up
 to 4096 bytes, for the existing linker and patch inputs. The directory scans
 hold one handle and read at most one entry per step.
 
-Blackfin frames are 324 bytes for the assembly step, 84 for the Mods native
+Blackfin frames are 332 bytes for the assembly step, 84 for the Mods native
 read, 24 for the stamp reader and 284 for the directory-name scan. The
 compatibility view adds an 8-byte frame before the existing JSON parser. An
 equivalent synthetic build peaked at 2,972,880 bytes with native input and
-2,972,848 bytes with legacy input in the stepped host harness.
+2,972,848 bytes with legacy input in the stepped host harness. The native
+writer still reserves 1024 bytes for the manifest and 65,536 for the file list.
+The manifest needs at most 490 bytes with worst-case JSON escaping and field
+lengths. The entry writer's Blackfin frame remains 168 bytes.
 
 The device configuration reader and encoder reuse the Mods page scratch. The
 encoder validates its document against the reader's 2048-byte view limit before

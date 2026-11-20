@@ -111,11 +111,11 @@ class Reports(unittest.TestCase):
         self.assertEqual((rows['native']['version'], rows['native']['valid']), ('8', '1'))
         self.assertEqual(rows['native']['identity'], hashlib.sha256(listing).hexdigest())
         self.assertEqual((folder / 'manifest.json').read_bytes(), raw)
-        for bad in (b'', b'{', b'{}', raw.replace(b'"schema_version":1', b'"schema_version":2')):
+        for bad in (b'', b'{', b'{}', b'{"pack":"Sound pack"}', raw.replace(b'"schema_version":1', b'"schema_version":2')):
             with self.subTest(raw=bad):
                 (folder / 'manifest.json').write_bytes(bad)
                 row = {r['id']: r for r in self.packages(1)}['native']
-                self.assertEqual(row['valid'], '0')
+                self.assertEqual((row['type'], row['valid']), ('unknown', '0'))
                 self.assertNotEqual(row['version'], 'legacy')
 
     def test_large_inbox_identity_is_streamed_without_size_cap(self):

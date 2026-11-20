@@ -1,5 +1,5 @@
 #include "xyf_manifest.hpp"
-// The recogniser (xyf_manifest.hpp): magic bytes for files, shape and info.txt type for folders.
+// The recogniser (xyf_manifest.hpp): file magics, folder shape and decoded package metadata.
 // The magics are the ones native/tfw.cpp (wrapper, TESG), native/ldr.cpp (first block) and
 // xyf_stage2.hpp check; this reads at most prefix_bytes and decodes nothing.
 namespace xyf { namespace manifest {
@@ -99,21 +99,25 @@ void recognise_file(const char* name, uint32_t size, const uint8_t* p, uint32_t 
 }
 
 void recognise_folder(const char* name, const char* const* names, uint32_t count, const Manifest* info,
-                      Recognition& out) {
+                      Recognition& out, bool vendor_pack) {
     if (!valid_name(name) || (count && !names)) return set(out, kind_unknown, reason_bad_name);
-    bool has_info = false, has_ldr = false, has_pack = false, has_list = false,
+    bool has_info = false, has_ldr = false, has_json = false, has_list = false,
          has_version = false;
     for (uint32_t i = 0; i != count; ++i) {
         if (!valid_name(names[i])) return set(out, kind_unknown, reason_bad_name);
         if (refused_name(names[i], out)) return;
         has_info |= exact(names[i], "info.txt");
         has_ldr |= exact(names[i], "os.ldr");
-        has_pack |= exact(names[i], "manifest.json");
+        has_json |= exact(names[i], "manifest.json");
         has_list |= exact(names[i], "content.sha256");
         has_version |= exact(names[i], "firmware.version");
     }
     const bool content_set = has_list && has_version;
-    if (has_info) {
+    if (has_json && vendor_pack) {
+        if (has_ldr || has_info) return set(out, kind_unknown, reason_ambiguous);
+        return set(out, kind_content_pack, reason_ok);
+    }
+    if (has_json || has_info) {
         if (!info) return set(out, kind_unknown, reason_need_manifest);
         if (info->status == refused_type) return set(out, kind_companion, reason_refused);
         if (info->status != ok) return set(out, kind_unknown, reason_manifest);
@@ -124,7 +128,6 @@ void recognise_folder(const char* name, const char* const* names, uint32_t count
         if (has_list != has_version) return set(out, kind, reason_content_set);
         return set(out, kind, reason_ok, content_set);
     }
-    if (has_pack) return set(out, has_ldr ? kind_unknown : kind_content_pack, has_ldr ? reason_ambiguous : reason_ok);
     if (has_ldr) {
         if (has_list != has_version) return set(out, kind_firmware_entry, reason_content_set);
         return set(out, kind_firmware_entry, reason_ok, content_set);

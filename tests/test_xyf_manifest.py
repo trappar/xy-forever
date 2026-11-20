@@ -457,13 +457,14 @@ class ManifestTest(unittest.TestCase):
                          prefix, len(prefix), C.byref(out))
         return FILE_KINDS[out.kind], REASONS[out.reason], out.accepted
 
-    def folder(self, names, info=None, name='package'):
+    def folder(self, names, info=None, name='package', vendor_pack=False):
         out = Recognition()
         array = (C.c_char_p * max(1, len(names)))(*[n.encode() for n in names])
         m = None
         if info is not None:
             m = self.parse(info)
-        self.lib.mf_folder(name.encode(), array, len(names), C.byref(m) if m is not None else None, C.byref(out))
+        self.lib.mf_folder(name.encode(), array, len(names), C.byref(m) if m is not None else None,
+                           C.byref(out), C.c_bool(vendor_pack))
         return FILE_KINDS[out.kind], REASONS[out.reason], out.accepted, out.content_set
 
     def test_valid_names(self):
@@ -564,9 +565,11 @@ class ManifestTest(unittest.TestCase):
             (['info.txt', 'os.ldr'], info('assembled.txt'), ('assembled_entry', 'ok', True, False)),
             (['info.txt', 'files.sha256', 'objects'], info('mod-base.txt'), ('mod_base', 'ok', True, False)),
             (['info.txt', 'files.sha256', 'objects', 'svg', 'presets'], info('mod-fm2op.txt'), ('mod', 'ok', True, False)),
-            (['manifest.json', 'presets', 'projects'], None, ('content_pack', 'ok', True, False)),
-            (['manifest.json', 'os.ldr'], None, ('unknown', 'ambiguous', False, False)),
+            (['manifest.json', 'presets', 'projects'], None, ('unknown', 'need_manifest', False, False)),
+            (['manifest.json', 'os.ldr'], None, ('unknown', 'need_manifest', False, False)),
+            (['manifest.json', 'os.ldr'], info('assembled.txt'), ('assembled_entry', 'ok', True, False)),
             (['info.txt', 'manifest.json'], info('mod-fm2op.txt'), ('mod', 'ok', True, False)),
+            (['info.txt', 'manifest.json'], b'type=bad\n', ('unknown', 'manifest', False, False)),
             (['info.txt', 'backplane.bin'], info('companion.txt'), ('companion', 'refused', False, False)),
             (['info.txt', 'os.ldr'], b'name=x\nname=y\n', ('unknown', 'manifest', False, False)),
             (['info.txt', 'os.ldr'], b'type=xyf-stage2\n', ('unknown', 'manifest', False, False)),
@@ -581,6 +584,10 @@ class ManifestTest(unittest.TestCase):
         for names, text, want in cases:
             with self.subTest(names=names, text=text and text[:30]):
                 self.assertEqual(self.folder(names, text), want)
+        self.assertEqual(self.folder(['manifest.json', 'presets'], vendor_pack=True),
+                         ('content_pack', 'ok', True, False))
+        self.assertEqual(self.folder(['manifest.json', 'os.ldr'], vendor_pack=True),
+                         ('unknown', 'ambiguous', False, False))
         self.assertEqual(self.folder(['os.ldr'], name='a/b'), ('unknown', 'bad_name', False, False))
 
     # -- dependencies --------------------------------------------------------------------------

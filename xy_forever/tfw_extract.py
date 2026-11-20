@@ -17,8 +17,8 @@ import subprocess
 import tempfile
 import zlib
 
-from . import paths
-from .xyf_entry import info_text
+from . import package_records, paths
+from .xyf_entry import firmware_document
 
 ROOT = Path(__file__).resolve().parents[1]
 CXX = '/usr/bin/clang++'
@@ -106,7 +106,7 @@ def entry_name(version):
 
 
 def extract_os(package, out, *, keys=None, public_key_file=None, require_signature=True, name=None, binary=None):
-    """Write out/os.ldr and out/info.txt (docs/STORAGE.md) from an official .tfw.
+    """Write out/os.ldr and out/manifest.json (docs/STORAGE.md) from an official .tfw.
 
     The header signature is verified with the vendor public key; without the key this fails
     unless require_signature is False, and then the report says 'not checked' and the entry is
@@ -140,10 +140,10 @@ def extract_os(package, out, *, keys=None, public_key_file=None, require_signatu
             if (len(data), '%08x' % (zlib.crc32(data) & 0xffffffff)) != (report['bytes'], report['crc32']):
                 raise ExtractError('written os.ldr differs from what the extractor checked')
             partial.rename(out / 'os.ldr')
-            (out / 'info.txt').write_text(info_text(name or entry_name(report['version']), report['version'],
-                                                    'official' if vendor else 'custom', data))
+            (out / package_records.NATIVE).write_bytes(firmware_document(
+                name or entry_name(report['version']), report['version'], 'official' if vendor else 'custom', data))
         except BaseException:
-            for path in (partial, out / 'os.ldr', out / 'info.txt'):
+            for path in (partial, out / 'os.ldr', out / package_records.NATIVE):
                 if path.exists():
                     path.unlink()
             out.rmdir()
