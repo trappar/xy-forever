@@ -73,9 +73,8 @@ extern "C" uint32_t xyf_stage2_main(const stage2::Abi* abi) {
             case menu::Action::none: break;
             case menu::Action::redraw: dirty = true; break;
             case menu::Action::continue_boot: return request(stage2::request_continue, 0);
-            case menu::Action::uninstall: return request(stage2::request_uninstall, 0);
             case menu::Action::open_mods: return stage2::exit_menu;     // stage 1 runs the Mods page
-            case menu::Action::save: case menu::Action::discard: case menu::Action::safe_mode: case menu::Action::restore:
+            case menu::Action::safe_mode: case menu::Action::restore:
             case menu::Action::undo: case menu::Action::apply: return stage2::exit_menu;   // stage 1's (never here: no record)
             case menu::Action::change_setting: case menu::Action::pick_setting: break;   // stage 1's Settings (no record here)
             }

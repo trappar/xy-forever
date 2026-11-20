@@ -146,13 +146,14 @@ void draw(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& frame) {
         at = line;
         if (over) { status = "Too large: turn something off"; color = red; }
         else if (why && p.view != View::reading) { status = why; color = red; }
-        else if (!changed(p) || p.view == View::reading) status = "No changes";
-        else {
+        else if (p.view == View::reading) status = "";
+        else {                                    // #197: a flip is saved at once (accent until it is written)
             const uint32_t n = chosen(p, false) + chosen(p, true);
             if (n) { put_number(at, end, n); put(at, end, n == 1 ? " mod on" : " mods on"); }
             else put(at, end, "All off");
-            put(at, end, ": applied when you boot");
-            color = accent;
+            const bool saving = changed(p);
+            put(at, end, saving ? ": saving..." : ": saved");
+            if (saving) color = accent;
         }
         *at = 0;
         text(fb, width - margin - text_width(status, 1), line_y, status, color, 1);

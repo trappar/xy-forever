@@ -1,8 +1,8 @@
 #ifndef XYF_CONFIG_HPP
 #define XYF_CONFIG_HPP
 #include <stdint.h>
-// The saved configuration ("Open-XY", configured like a BIOS: the Mods page changes a pending copy,
-// Continue asks to save and applies it when you boot). Freestanding, header only, pure (host-tested through
+// The saved configuration ("Open-XY", configured like a BIOS: #197, a flip on the Mods page is saved at once,
+// Continue converges to it and boots). Freestanding, header only, pure (host-tested through
 // the simulator; processor B's xyf_mods_io reads and applies it, usb_service's config job writes it).
 // Functions are static: an inline (weak) function is a register call on Blackfin (the builder's call audit).
 //

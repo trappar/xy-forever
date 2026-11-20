@@ -190,17 +190,15 @@ void dispatch(uint32_t key, uint32_t pressed) {
     else if (action != xyf::menu::Action::none) app_action = uint32_t(action);
 }
 
-// Knob turns (knob_input.hpp) move the selection as - / + do: not in the Uninstall or safe-mode dialog (their
-// - / + flip two buttons), not on the progress screen. On the Mods page with key_turn (SHIFT + turn: its filter).
+// Knob turns (knob_input.hpp) move the selection as - / + do, not on the progress screen. On the Mods page with
+// key_turn (SHIFT + turn: its filter).
 void turn_knobs(uint32_t now_ms) {
 #if defined(XYF_MODS_PAGE)
     const bool job = xy_forever::mods_io::converging(), page = mods_shown != 0 && !job;
 #else
     const bool page = false, job = false;
 #endif
-    const bool selection = !job && (page || (app.screen != xyf::menu::Screen::confirm_uninstall &&
-                                             app.screen != xyf::menu::Screen::confirm_safe));
-    const int32_t rows = xy_forever::knob_input::pass(now_ms, selection);
+    const int32_t rows = xy_forever::knob_input::pass(now_ms, !job);
     const uint32_t step = (rows > 0 ? xyf::menu::key_plus : xyf::menu::key_minus) | (page ? xyf::menu::key_turn : 0u);
     for (int32_t i = rows < 0 ? -rows : rows; i; --i) dispatch(step, 1);   // the Mods page knows a turn
 }
@@ -314,7 +312,7 @@ extern "C" void xy_forever_key_ui() {
 #endif
             turn_knobs(ms_since(r.start_cycles));            // after the stock poll
             if (xyf::key_repeat::due(held, ms_since(r.start_cycles)) && xyf::menu::repeat_keys(app))
-                dispatch(held.key, 1);
+                dispatch(held.key, 1);                       // a held - / + repeats
 #if defined(XYF_ONE_SESSION)
             // Test 065: home answers every USB command; CONTINUE leaves home to boot the default.
             if (const uint32_t leave = xy_forever::usb_service::home_pump()) {
@@ -355,7 +353,7 @@ extern "C" void xy_forever_key_ui() {
             if (const uint32_t saved = xy_forever::mods_io::converge_state()) {
                 if (saved == xy_forever::mods_io::converge_boot) {
 #if defined(XYF_TFW_CHECK)
-                    // A finished Save can still have its boot deferred when a USB rehearsal starts.
+                    // A finished converge can still have its boot deferred when a USB rehearsal starts.
                     if (lost || !xy_forever::xyf_boot::link_idle() || xy_forever::usb_service::page_busy()) continue;
 #endif
                     xy_forever::mods_io::converge_done();
@@ -380,15 +378,19 @@ extern "C" void xy_forever_key_ui() {
                 }
 #endif
                 const bool boots = action == uint32_t(Action::continue_boot) || action == uint32_t(Action::safe_mode) ||
-                                   action == uint32_t(Action::restore) || action == uint32_t(Action::save) ||
-                                   action == uint32_t(Action::discard) || action == uint32_t(Action::apply);
+                                   action == uint32_t(Action::restore) || action == uint32_t(Action::apply);
                 if (lost && boots) {
                     app.screen = xyf::menu::Screen::main;
                     status = " ";                          // the status line shows the lost link
                     continue;
                 }
 #if defined(XYF_USB_FILE_WRITE)
-                if (boots) {                                   // and Save while a USB job runs
+#if defined(XYF_MODS_PAGE)
+                const bool own = xy_forever::mods_io::saving();   // the Mods page's own write: converging waits for it
+#else
+                const bool own = false;
+#endif
+                if (boots && !own) {                           // not while a USB job runs
                     if (const char* busy = xy_forever::usb_service::menu_busy()) {
                         status = busy; app.screen = xyf::menu::Screen::main; continue;
                     }
@@ -404,8 +406,8 @@ extern "C" void xy_forever_key_ui() {
 #if defined(XYF_MODS_PAGE)
                 if (boots) {                                   // #197: the inputs set, then converge (the progress screen)
                     using namespace xy_forever::mods_io;
-                    converge_begin(action == uint32_t(Action::save) ? why_save : action == uint32_t(Action::safe_mode) ? why_safe :
-                                   action == uint32_t(Action::restore) ? why_restore : why_apply);   // Discard, apply
+                    converge_begin(action == uint32_t(Action::safe_mode) ? why_safe :
+                                   action == uint32_t(Action::restore) ? why_restore : why_apply);
                     continue;
                 }
 #endif
@@ -443,7 +445,7 @@ extern "C" void xy_forever_key_ui() {
                     continue;
                 }
                 app.screen = xyf::menu::Screen::main;          // show the result line
-                status = "Uninstall: not available yet.";
+                status = "Not available in this build.";
             }
 #if defined(XYF_ONE_SESSION)
             if (usb_view_changed()) dirty = 1;     // the USB mark, the activity line or the Info page's image changed

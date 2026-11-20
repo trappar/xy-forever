@@ -25,7 +25,7 @@ import xyf_host as host                                                    # noq
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_mods_page import MINUS, PLAY, PLUS, STOP, PageBase, synthetic_setup   # noqa: E402
 
-MAIN, INFO, SETTINGS, OPTIONS = 0, 2, 6, 7                                 # xyf_menu Screen
+MAIN, INFO, SETTINGS, OPTIONS = 0, 1, 3, 4                                 # xyf_menu Screen (#197)
 SAVED, SAVED_USB = 'menu: line: Settings saved.', 'menu: line: Settings saved: USB mode changes'
 NEWER = 'note=settings.txt is from a newer XY Forever'
 
@@ -176,7 +176,7 @@ class SettingsRows(Rows, unittest.TestCase):
         self.until(lambda: self.lines('settings: confirm=0'), 'the settings read')
         self.press(MINUS)                                                  # wraps to the last row: Settings
         self.press(PLAY)
-        self.until(lambda: self.lines('menu: screen %d row 4 ' % SETTINGS), 'Settings, the last of five rows')
+        self.until(lambda: self.lines('menu: screen %d row 3 ' % SETTINGS), 'Settings, the last of four rows')
 
     def test_menu_at_power_on_always_then_play_held(self):
         self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0 newer=0'), 'the settings read')

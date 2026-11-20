@@ -122,9 +122,9 @@ class KeyUiTest(unittest.TestCase):
 
     def test_menu_busy_guard_matches_the_simulator(self):
         """key_ui and the simulator's mirror (sim/devices.cpp) hold the same menu actions
-        while a job owns the write window: Continue, Discard, Boot without mods, Restore Open-XY, Save and the first
-        row's apply (#197), the actions that boot (`boots`)."""
-        expected = {'continue_boot', 'discard', 'safe_mode', 'restore', 'save', 'apply'}
+        while a job owns the write window: Continue, Boot without mods, Restore Open-XY and the first row's apply
+        (#197), the actions that boot (`boots`)."""
+        expected = {'continue_boot', 'safe_mode', 'restore', 'apply'}
         for path in ('target/key_ui.cpp', 'sim/menu_keys.ipp'):
             text = (ROOT / path).read_text()
             at = text.index('menu_busy()')

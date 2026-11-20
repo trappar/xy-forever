@@ -192,7 +192,7 @@ Effect key(Page& p, uint32_t k, bool pressed) {
     if (k == key_stop) {
         if (!p.shift) return effect_leave;
         p.unknown_ok = !p.unknown_ok;           // unknown bases (SHIFT+STOP; was the status row)
-        say(p, line_info, p.unknown_ok ? "Unknown mod bases allowed for the next save." : "Unknown mod bases refused.");
+        say(p, line_info, p.unknown_ok ? "Unknown mod bases allowed for the next build." : "Unknown mod bases refused.");
         return effect_redraw;
     }
     if (k == key_minus || k == key_plus) {

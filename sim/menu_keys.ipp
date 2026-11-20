@@ -19,9 +19,9 @@ void dispatch(uint32_t key, uint32_t pressed) {
         const xyf::menu::Action action = xyf::menu::key(sim_app, key, pressed != 0);
         using xyf::menu::Action;
         if (action == xyf::menu::Action::open_mods) { sim_mods = true; mods_io::open(); log_page(); return; }
-        const bool boots = action == Action::continue_boot || action == Action::discard || action == Action::safe_mode ||
-                           action == Action::restore || action == Action::save || action == Action::apply;
-        if (boots) {                                                   // as key_ui (and Save)
+        const bool boots = action == Action::continue_boot || action == Action::safe_mode || action == Action::restore ||
+                           action == Action::apply;
+        if (boots && !mods_io::saving()) {                             // as key_ui (the page's own write: converge waits)
             if (const char* busy = usb_service::menu_busy()) {        // key_ui: the line, back on the home rows
                 sim_app.screen = xyf::menu::Screen::main; xyf_sim::log("menu: line: %s", busy); return;
             }
@@ -51,9 +51,8 @@ void dispatch(uint32_t key, uint32_t pressed) {
         }
 #endif
         if (boots) {                                                   // as key_ui: the inputs set, then converge
-            xyf_sim::log("menu: %s", action == Action::save ? "save" : action == Action::safe_mode ? "safe mode" :
-                                     action == Action::restore ? "restore" : action == Action::discard ? "discard" : "apply");
-            mods_io::converge_begin(action == Action::save ? mods_io::why_save : action == Action::safe_mode ? mods_io::why_safe :
+            xyf_sim::log("menu: %s", action == Action::safe_mode ? "safe mode" : action == Action::restore ? "restore" : "apply");
+            mods_io::converge_begin(action == Action::safe_mode ? mods_io::why_safe :
                                     action == Action::restore ? mods_io::why_restore : mods_io::why_apply);
             log_progress();                                            // the progress screen's first frame
             return;
@@ -69,7 +68,8 @@ void dispatch(uint32_t key, uint32_t pressed) {
         if (action == xyf::menu::Action::redraw && sim_app.note)        // 193: a row refused while storage starts
             xyf_sim::log("menu: line: %s", sim_app.note);
         else if (action == xyf::menu::Action::redraw)
-            xyf_sim::log("menu: screen %u row %u choice %u", uint32_t(sim_app.screen), sim_app.main_selected, sim_app.save_selected);
+            xyf_sim::log("menu: screen %u row %u setting %u", uint32_t(sim_app.screen), sim_app.main_selected,
+                         sim_app.settings_selected);
         else if (action != xyf::menu::Action::none)
             xyf_sim::log("menu: action %u (not simulated: no effect)", uint32_t(action));
         return;

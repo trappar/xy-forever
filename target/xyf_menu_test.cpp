@@ -21,8 +21,10 @@ int main() {
     REQUIRE(s.screen == Screen::main && s.main_selected == 0);
     REQUIRE(!strcmp(menu::main_label(s, menu::item_continue), "OP-XY 1.2.1"));
     REQUIRE(press(s, menu::key_play) == Action::continue_boot);
-    // Navigation wraps both ways; Track keys jump to the first four rows (188: no MTP mode row; #21: five, no Info).
-    REQUIRE(menu::main_items == 5 && menu::item_settings == 4);
+    // Navigation wraps both ways; Track keys jump to the four rows (188: no MTP mode row; #21: no Info; #197: no
+    // Uninstall row: Continue, the safe-mode row, Mods, Settings).
+    REQUIRE(menu::main_items == 4 && menu::item_settings == 3);
+    for (uint32_t i = 0; i != menu::main_items; ++i) REQUIRE(!strstr(menu::main_label(s, i), "Uninstall"));
     REQUIRE(press(s, menu::key_minus) == Action::redraw && s.main_selected == menu::item_settings);
     REQUIRE(press(s, menu::key_plus) == Action::redraw && s.main_selected == 0);
     REQUIRE(press(s, menu::key_track1 + 2) == Action::redraw && s.main_selected == menu::item_mods);
@@ -30,7 +32,7 @@ int main() {
     // below the safe-mode row. Keys 10..13 are the knob pushes: PLAY (no TRACK5/6 jumps).
     REQUIRE(press(s, menu::key_track1 + 1) == Action::redraw && press(s, menu::key_plus) == Action::redraw &&
             s.main_selected == menu::item_mods && menu::item_mods == menu::item_safe + 1);
-    REQUIRE(press(s, menu::key_track1 + 3) == Action::redraw && s.main_selected == menu::item_uninstall);
+    REQUIRE(press(s, menu::key_track1 + 3) == Action::redraw && s.main_selected == menu::item_settings);
     REQUIRE(press(s, menu::key_track1 + 1) == Action::redraw && press(s, menu::key_plus) == Action::redraw &&
             s.main_selected == menu::item_mods);
     REQUIRE(!strcmp(menu::main_label(s, menu::item_mods), "Mods"));
@@ -45,38 +47,33 @@ int main() {
     REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::main && menu::main_note(s) &&
             !strcmp(menu::main_note(s), "No mods are saved: the OP-XY already boots without them."));
     REQUIRE(press(s, menu::key_plus) == Action::redraw && !menu::main_note(s));
-    // With a setup: it asks first (Cancel highlighted, - / + flip, STOP back), then safe_mode; in safe mode it
-    // restores at once.
+    // With a setup: safe_mode at once (#197: no confirmation, the home menu stays); in safe mode it restores at once.
     s.safe_label = "Boot without mods"; press(s, menu::key_track1 + 1);
-    REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::confirm_safe && !s.confirm_accept);
-    REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::main);   // Cancel
-    press(s, menu::key_play);
-    REQUIRE(press(s, menu::key_stop) == Action::redraw && s.screen == Screen::main);
-    press(s, menu::key_play); press(s, menu::key_plus);
-    REQUIRE(s.confirm_accept && press(s, menu::key_play) == Action::safe_mode && s.screen == Screen::main);
+    REQUIRE(press(s, menu::key_play) == Action::safe_mode && s.screen == Screen::main);
+    REQUIRE(press(s, menu::key_stop) == Action::none && s.screen == Screen::main);
     s.safe_label = "Restore Open-XY (2 mods)"; s.safe_restore = true;
     REQUIRE(!strcmp(menu::main_label(s, menu::item_safe), "Restore Open-XY (2 mods)"));
     REQUIRE(press(s, menu::key_play) == Action::restore && s.screen == Screen::main);
     s.safe_label = 0; s.safe_restore = false;
-    // The first row while a content change's source is missing (undo_offer): PLAY undoes it, before the Save dialog.
+    // The first row while a content change's source is missing (undo_offer): PLAY undoes it first.
     press(s, menu::key_track1); s.undo_offer = true; s.pending = true;
     REQUIRE(press(s, menu::key_play) == Action::undo && s.screen == Screen::main);
-    s.undo_offer = false;                         // #197: pending, not changed ("(to apply)"): it applies
+    s.undo_offer = false;                         // #197: pending ("(to apply)", "(rebuild)", a flip): it converges
     REQUIRE(press(s, menu::key_play) == Action::apply && s.screen == Screen::main);
-    s.changed = true;                             // changed: the Save dialog
-    REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::confirm_save);
-    press(s, menu::key_stop); s.pending = s.changed = false;
-    // Uninstall needs an explicit move to the accept button.
-    menu::start(s, &cat, false);
-    press(s, menu::key_track1 + 3);
-    REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::confirm_uninstall && !s.confirm_accept);
-    REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::main);   // default = Cancel
-    press(s, menu::key_play); press(s, menu::key_plus);
-    REQUIRE(s.confirm_accept && press(s, menu::key_play) == Action::uninstall);
+    // #197: the saved selection cannot be built: the first row's status line says why while it is selected (a refused
+    // row's line first); PLAY still converges (it fails with that reason).
+    s.continue_note = "Too big for the mods memory: turn some mods off.";
+    REQUIRE(menu::main_note(s) == s.continue_note && press(s, menu::key_play) == Action::apply);
+    press(s, menu::key_plus); REQUIRE(!menu::main_note(s));
+    press(s, menu::key_play); REQUIRE(!strcmp(menu::main_note(s), "No mods are saved: the OP-XY already boots without them."));
+    press(s, menu::key_minus); REQUIRE(menu::main_note(s) == s.continue_note);
+    s.pending = false; s.continue_note = 0;
     // #21: Settings: Mod memory, Menu at power-on, USB mode, Ask before USB control (#65), About. PLAY on a setting is change_setting with its
     // row; About opens the About page (the home menu has no Info row) and returns to Settings.
     menu::start(s, &cat, false); press(s, menu::key_minus);
     REQUIRE(press(s, menu::key_knob1 + 3) == Action::redraw && s.screen == Screen::settings && s.settings_selected == 0);
+    press(s, menu::key_stop); press(s, menu::key_track1 + 3);       // TRACK4: Settings
+    REQUIRE(s.main_selected == menu::item_settings && press(s, menu::key_play) == Action::redraw && s.screen == Screen::settings);
     REQUIRE(settings::rows == 5 && !strcmp(settings::label(settings::row_power_on), "Menu at power-on") &&
             !strcmp(settings::label(settings::row_usb), "USB mode") && !strcmp(settings::label(settings::row_about), "About"));
     REQUIRE(press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_memory);

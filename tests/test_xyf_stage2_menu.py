@@ -100,7 +100,7 @@ class Stage2MenuProgramTest(unittest.TestCase):
         self.assertEqual(p.run(abi=1)[:2], (1, 0))                  # exit_menu: stage 1 keeps its own menu
         self.assertEqual(p.run(abi=3)[:2], (1, 0))
 
-    def test_continue_uninstall_and_mods_requests(self):
+    def test_continue_and_mods_requests(self):
         p = self.fresh()
         exit, frames, _ = p.run(press(PLAY))                       # main row 0: Continue
         self.assertEqual(exit, 0)
@@ -111,8 +111,8 @@ class Stage2MenuProgramTest(unittest.TestCase):
         self.assertEqual(exit, 0)
         self.assertGreaterEqual(frames, 2)
         self.assertGreater(ms, 60000)
-        p = self.fresh()                                             # Uninstall row -> confirm -> accept
-        self.assertEqual(p.run(press(MINUS) * 2 + press(PLAY) + press(PLUS) + press(PLAY))[0], 5)   # Uninstall (past Settings)
+        # #197: no Uninstall row (four rows: Settings, then Mods above it); nothing here requests an uninstall.
+        self.assertEqual(self.fresh().run(press(MINUS) * 2 + press(PLAY))[0], 1)   # Mods, below Settings's wrap
         p = self.fresh()                                             # Mods -> the stage-1 menu runs the page
         self.assertEqual(p.run(press(PLUS) * 2 + press(PLAY))[0], 1)  # right below the safe-mode row
 
@@ -126,20 +126,19 @@ class Stage2MenuProgramTest(unittest.TestCase):
 
     def test_invalid_or_withheld_catalog_keeps_the_rows(self):
         bad = bytearray(LIBRARY); bad[-1] ^= 1
-        keys = press(PLUS) + press(PLAY) + press(PLAY) + press(PLUS) * 2 + press(PLAY) + press(PLUS) + press(PLAY)
+        keys = press(PLUS) + press(PLAY) + press(PLAY) + press(PLUS) + press(PLAY)
         for blob, features in ((bytes(bad), F_CATALOG), (LIBRARY, 0), (None, F_CATALOG), (LIBRARY[:-1], F_CATALOG)):
-            # The safe-mode row's PLAY requests nothing, PLUS twice moves to Uninstall (188: no MTP row), accepted:
-            # request 5.
-            self.assertEqual(self.fresh().run(keys, blob=blob, features=features | F_UNINSTALL)[0], 5, (features, blob and len(blob)))
+            # The safe-mode row's PLAY requests nothing, PLUS moves to Mods: the stage-1 menu (exit 1).
+            self.assertEqual(self.fresh().run(keys, blob=blob, features=features | F_UNINSTALL)[0], 1, (features, blob and len(blob)))
 
     def test_reentry_keeps_place_and_shows_note(self):
         p = self.fresh()
-        keys = press(MINUS) * 2 + press(PLAY) + press(PLUS) + [SHIFT | 1 << 8] + press(PLAY)
-        self.assertEqual(p.run(keys, features=F_CATALOG | F_UNINSTALL)[0], 5)   # Uninstall (SHIFT left held)
-        # Stage 1 answered with a note: main page, menu row kept, so PLAY, PLUS, PLAY asks again.
-        exit, frames, _ = p.run(press(PLAY) + press(PLUS) + press(PLAY), note='Not available in this build.',
+        keys = press(MINUS) * 2 + [SHIFT | 1 << 8] + press(PLAY)
+        self.assertEqual(p.run(keys, features=F_CATALOG | F_UNINSTALL)[0], 1)   # Mods (SHIFT left held)
+        # Called again with a note: main page, menu row kept, so MINUS, PLUS, PLAY asks again.
+        exit, frames, _ = p.run(press(MINUS) + press(PLUS) + press(PLAY), note='Not available in this build.',
                                 features=F_CATALOG | F_UNINSTALL)
-        self.assertEqual(exit, 5)
+        self.assertEqual(exit, 1)
         self.assertGreaterEqual(frames, 2)
 
     def test_draws_only_through_services_and_never_writes_outside_the_frame(self):

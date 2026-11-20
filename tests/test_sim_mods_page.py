@@ -4,7 +4,7 @@ The simulator hosts B's menu state machine and the page (sim/devices.cpp; the sc
 change of the page is logged as one "mods page:" line, which these tests read. Opening the page from the
 home menu, the list filling while it is read (A slowed), the toggles and the memory estimate, Build (the
 job mods.apply starts: its entry must equal the same selection built through mods.apply byte for byte),
-(the page no longer builds: Continue saves, tests/test_sim_config.py) the result lines (content.sha256 missing, a catalog that is not the official one, an unknown base and its
+(the page no longer builds: a flip is saved at once, Continue builds, tests/test_sim_config.py) the result lines (content.sha256 missing, a catalog that is not the official one, an unknown base and its
 SHIFT confirmation), keys during the job, cancel, and the page staying responsive while it lists 80+
 packages (the longest pump pass is printed). Build 174's commit: a built set becomes library entry
 mods-a or mods-b, listed "content not installed", and the page says so; the commit stage (keys and STOP in
@@ -317,7 +317,26 @@ class SyntheticPage(PageBase, unittest.TestCase):
         self.toggle(['gamma'])                                              # off again
         self.assertEqual(self.page()['used'], estimate(self.gen_dir, ['alpha', 'ext-cap']))
         self.toggle(['gamma'])
-        self.assertEqual((self.page()['changed'], self.progress()), (1, []))   # pending until Continue saves
+        self.assertEqual(self.progress(), [])                               # nothing converges from the page
+
+    def test_a_toggle_is_saved_on_the_page(self):
+        """#197: a flip is saved (config.txt mods=) at a quiet moment without leaving the Mods page, nothing built or
+        booted; quick flips make one write."""
+        self.open_page()
+        self.select('alpha')
+        before = len(self.pages())
+        for _ in range(3):                                                  # on, off, on: quick flips
+            self.press(PLAY)
+        p = self.wait(lambda p: len(self.pages()) >= before + 3 and p['changed'] == 1, 'flipped three times', 10.0)
+        self.assertEqual(p['on'], ['alpha'])
+        self.assertFalse((self.root / 'xy-forever/config.txt').exists())    # not yet: the flips are still coming
+        p = self.wait(lambda p: p['changed'] == 0, 'saved', 30.0)
+        self.assertEqual((p['shown'], p['on']), (1, ['alpha']))             # still on the page
+        config = dict(l.split('=', 1) for l in (self.root / 'xy-forever/config.txt').read_text().splitlines() if '=' in l)
+        self.assertEqual((config['mods'], config['built'], config['slot']), ('alpha', '', ''))
+        self.assertEqual(len(self.lines('mods: saving the selection')), 1)  # one write for the three flips
+        self.assertEqual((self.progress(), self.sim.status()['b']), ([], 'running'))
+        self.assertIn('(rebuild) pending=1', self.lines('menu: home row: ')[-1])
 
     def test_a_set_without_this_store_version_is_not_listed(self):
         """#124: no store.txt (an older layout): the set is skipped; a newer store version is skipped and said;
@@ -383,7 +402,6 @@ class SyntheticPage(PageBase, unittest.TestCase):
         self.wait(lambda p: p['shown'] == 0, 'left')
         n = len(synths) + 1
         self.assertIn('Open-XY - %d mods - ' % n, self.lines('menu: home row: ')[-1])
-        self.assertIn('(changed)', self.lines('menu: home row: ')[-1])
         self.assertIn('pending=1', self.lines('menu: home row: ')[-1])
         self.press(PLAY)                                                    # back on the page: as it was left
         p = self.wait(lambda p: p['shown'] == 1, 'opened again')
@@ -448,7 +466,7 @@ class MenuQuality(PageBase, unittest.TestCase):
         self.assertLessEqual(sorted(gaps)[len(gaps) // 2], 90, gaps)        # a steady 80 ms
         moves = self.lines('menu: screen 0 row ')[rows:]
         self.assertEqual(len(moves), 1 + len(repeats))                      # the press, then each repeat
-        self.assertEqual(int(moves[-1].split()[0]), (1 + len(repeats)) % 5)          # #21: 5 home rows (no MTP mode, no Info)
+        self.assertEqual(int(moves[-1].split()[0]), (1 + len(repeats)) % 4)          # #197: 4 home rows (no Uninstall row)
         print('\nkey repeat: held %d ms, first after %d ms, %d repeats, gaps %d..%d ms'
               % (up - down, repeats[0] - down, len(repeats), min(gaps), max(gaps)), file=sys.stderr)
         before = len(self.lines('menu: repeat key '))

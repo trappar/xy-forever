@@ -129,7 +129,7 @@ uint32_t shared(const Page& page);
 uint32_t memory_limit(const Page& page);
 // Settings' Mod memory row (xyf_settings.hpp Memory): reading until the base is read (read: the reading is
 // over), unavailable when the base offers no 4 MiB layout (unless the choice is expanded: it can go back), else the
-// choice. flip_memory: PLAY on the row: the choice flipped (pending until boot), or why not (nothing changed).
+// choice. flip_memory: PLAY on the row: the choice flipped (saved at once, built at boot), or why not (nothing changed).
 uint32_t memory_row(const Page& page, bool read);
 const char* flip_memory(Page& page, bool read);
 uint32_t chosen(const Page& page, bool extensions);
@@ -137,11 +137,11 @@ uint32_t chosen(const Page& page, bool extensions);
 const char* build_refusal(const Page& page);
 // The toggles differ from the saved configuration (flag_saved, saved_missing; or the memory choice).
 bool changed(const Page& page);
-// Why the toggles cannot be saved (build_refusal when any mod is on), or 0.
+// Why the toggles cannot be built (build_refusal when any mod is on), or 0. #197: they are saved all the same.
 const char* save_refusal(const Page& page);
 // mods.apply's request without its SHA-256: base NUL profile NUL generation NUL machines NUL
 // extensions NUL name NUL u32 flags (bit 0 unverified, bit 1 expanded). The packages whose flags have which:
-// flag_on (the toggles, a Save) or flag_saved (the saved selection, rebuilt). Bytes, 0 when it does not fit. The name
+// flag_on (the toggles) or flag_saved (the saved selection, built). Bytes, 0 when it does not fit. The name
 // is "Mods: <count>".
 uint32_t request(const Page& page, const char* base, bool unverified, bool expanded, uint8_t which, char* name,
                  uint32_t name_capacity,

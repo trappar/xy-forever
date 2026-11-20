@@ -7,13 +7,14 @@
 // under /yaffs2/xy-forever/mods/ through B's timed file client (read-only; one bounded request per step,
 // steps for at most slice_ms per menu-loop pass, so USB and the screen stay live), and starts, follows
 // and cancels the job through the USB service's own mods.apply start (usb_service mods_start). The page
-// writes nothing itself: every write is the job's (under tmp/job-<id>/, then its commit into the library).
+// writes nothing itself: every write is a job's (the build under tmp/job-<id>/, then its commit into the library;
+// the saved selection, config.txt, by the config job).
 // The product build only (one link session and the job); elsewhere the menu says "not available".
 #if defined(XYF_ONE_SESSION) && defined(XYF_USB_FILE_WRITE)
 #define XYF_MODS_PAGE 1
 #endif
 namespace xy_forever { namespace mods_io {
-static const uint32_t slice_ms = 8, redraw_ms = 150, progress_ms = 200, read_bytes = 2048;
+static const uint32_t slice_ms = 8, redraw_ms = 150, progress_ms = 200, quiet_ms = 1000, read_bytes = 2048;
 static const char root[] = "/yaffs2/xy-forever/mods";
 #if defined(__bfin__) && defined(XYF_MODS_PAGE)
 // The page (kept for the whole boot: the toggles stay across visits).
@@ -26,8 +27,11 @@ void open();
 // flipped, or the line saying why not (xyf::mods::flip_memory).
 void prepare();
 const char* memory_flip();
-// A key while the page is shown (xyf::mods::key).
+// A key while the page is shown (xyf::mods::key). #197: a flip (a toggle; memory_flip; unknown bases) is saved at
+// once: config.txt (mods=, the inputs beside it; what is built stays) is written by the config job at a quiet moment,
+// quiet_ms after the last flip, so the menu never waits and quick flips make one write (pump). saving: that write runs.
 xyf::mods::Effect key(uint32_t key, bool pressed);
+bool saving();
 // One slice of the page's work, every menu-loop pass (shown: the page is on screen; when it is not, an
 // open folder is closed and the reading stops; a running job is still followed). Nonzero: draw again
 // (1: the page changed; 2: only the building bar and its numbers moved, every progress_ms while a job runs).
@@ -35,19 +39,18 @@ uint32_t pump(bool shown);
 // The longest pump pass this boot (ms).
 uint32_t longest_ms();
 // The saved configuration (xyf_config.hpp; read once the menu runs) and the converge sequence (#197,
-// xyf_converge.hpp). menu_state: the menu's view of it (pending and changed: the plan of the saved inputs is not empty,
-// or the toggles changed; save_blocked, save_note, continue_label with "(changed)", "(rebuild)" or "(to apply)" from
-// that plan, safe_label, safe_restore; memory and memory_pending, the Mod memory row); true when the home row's text,
-// the safe-mode row or the Mod memory row changed.
-// converge_begin(why) sets the inputs, then converges to them and boots: why_save, the Save dialog's Save (the
-// toggles become the selection, safe mode off); why_safe, "Boot without mods" (safe=1: the base with its official
-// content, the selection kept); why_restore, "Restore Open-XY" (safe=0: the saved setup back, built again when the
-// slot no longer holds it); why_apply, the saved inputs as they are (PLAY on the first row with "(to apply)" or
-// "(rebuild)", the Save dialog's Discard). Only the operations the plan needs run, on the progress screen
+// xyf_converge.hpp). menu_state: the menu's view of it (pending: the plan of the saved inputs is not empty, or a flip
+// is not written yet; continue_note: why the selection cannot be built; continue_label with "(rebuild)" or "(to apply)"
+// from that plan; safe_label, safe_restore; memory and memory_pending, the Mod memory row); true when the home row's
+// text, the safe-mode row or the Mod memory row changed.
+// converge_begin(why) converges to the saved inputs and boots (a flip not written yet is written first): why_apply,
+// as they are (PLAY on the first row with "(to apply)" or "(rebuild)"); why_safe, "Boot without mods" (safe=1: the
+// base with its official content, the selection kept); why_restore, "Restore Open-XY" (safe=0: the saved setup back,
+// built again when the slot no longer holds it). Only the operations the plan needs run, on the progress screen
 // (progress(); converging() while it is up), never on the Mods page: its list, its toggles and the home row stay.
 // progress_key: a key there (STOP cancels a build). converge_state: converge_running, then converge_boot (boot the
-// default: the desired state) or converge_failed (converge_reason; the changes stay pending); converge_done: taken.
-enum Why : uint32_t { why_save = 0, why_safe, why_restore, why_apply };
+// default: the desired state) or converge_failed (converge_reason; the default unchanged); converge_done: taken.
+enum Why : uint32_t { why_apply = 0, why_safe, why_restore };
 enum ConvergeState : uint32_t { converge_idle = 0, converge_running, converge_boot, converge_failed };
 bool menu_state(xyf::menu::State& app);
 void converge_begin(uint32_t why);

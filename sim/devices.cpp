@@ -343,17 +343,14 @@ extern "C" void xy_forever_key_ui() {
 #else
             const bool job = false;
 #endif
-            const bool selection = !job && (sim_mods || (sim_app.screen != xyf::menu::Screen::confirm_uninstall &&
-                                                         sim_app.screen != xyf::menu::Screen::confirm_safe));
-            const int32_t rows = knob_input::pass(device_ms(), selection);
+            const int32_t rows = knob_input::pass(device_ms(), !job);
             const uint32_t step = (rows > 0 ? xyf::menu::key_plus : xyf::menu::key_minus) | (sim_mods && !job ? xyf::menu::key_turn : 0u);
             for (int32_t i = rows < 0 ? -rows : rows; i; --i) dispatch(step, 1);   // as key_ui (the Mods page knows a turn)
             const uint32_t after[] = {k.frames, k.dropped, k.resyncs, k.idle, k.pass_read, k.max_read};
             if (rows || memcmp(before, after, sizeof(before)))
-                xyf_sim::log("knob: rows=%d read=%u screen=%u main=%u accept=%u mods=%d frames=%u "
+                xyf_sim::log("knob: rows=%d read=%u screen=%u main=%u mods=%d frames=%u "
                              "dropped=%u resyncs=%u skipped=%u idle=%u moves=%u max_read=%u max_moves=%u ms=%u",
-                             rows, k.pass_read, uint32_t(sim_app.screen), sim_app.main_selected,
-                             sim_app.confirm_accept ? 1u : 0u, sim_mods ? 1 : 0, k.frames,
+                             rows, k.pass_read, uint32_t(sim_app.screen), sim_app.main_selected, sim_mods ? 1 : 0, k.frames,
                              k.dropped, k.resyncs, k.skipped, k.idle, k.moves, k.max_read, k.max_moves, device_ms());
         }
         if (const uint32_t leave = usb_service::home_pump()) {             // as key_ui.cpp
@@ -383,13 +380,18 @@ extern "C" void xy_forever_key_ui() {
             else if (mods_io::converging()) log_bar();
             else if (sim_mods && redraw == 1) log_page();
         }
-        static const char* sim_note = 0;                                 // and the save note (a list read)
-        if (mods_io::menu_state(sim_app) || storage_moved || int(sim_app.pending) != sim_pending || sim_app.save_note != sim_note) {   // the first row and pending
-            sim_pending = int(sim_app.pending); sim_note = sim_app.save_note;
-            xyf_sim::log("menu: home row: %s pending=%u blocked=%u memory=%s; note=%s; safe=%s",   // memory, the safe row
-                         xyf::menu::main_label(sim_app, 0), sim_app.pending ? 1u : 0u, sim_app.save_blocked ? 1u : 0u,
+        static bool sim_saving = false;                                  // #197: the page's own write of config.txt
+        if (mods_io::saving() != sim_saving) {
+            sim_saving = !sim_saving;
+            xyf_sim::log(sim_saving ? "mods: saving the selection" : "mods: selection written");
+        }
+        static const char* sim_note = 0;                                 // and the first row's note (a list read)
+        if (mods_io::menu_state(sim_app) || storage_moved || int(sim_app.pending) != sim_pending || sim_app.continue_note != sim_note) {   // the first row and pending
+            sim_pending = int(sim_app.pending); sim_note = sim_app.continue_note;
+            xyf_sim::log("menu: home row: %s pending=%u memory=%s; note=%s; safe=%s",   // memory, the safe row
+                         xyf::menu::main_label(sim_app, 0), sim_app.pending ? 1u : 0u,
                          xyf::settings::memory_text(sim_app.memory, sim_app.memory_pending),
-                         sim_app.save_note ? sim_app.save_note : "", sim_app.safe_label ? sim_app.safe_label : "-");
+                         sim_app.continue_note ? sim_app.continue_note : "", sim_app.safe_label ? sim_app.safe_label : "-");
         }
 #endif
 #if defined(XYF_CONTENT_SWITCH)

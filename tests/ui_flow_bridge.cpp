@@ -47,20 +47,15 @@ void flow_options(unsigned current) {
 unsigned flow_option() { return flow_state.option_selected; }
 void flow_storage(unsigned view) { flow_state.storage = view; }      // 193: xyf::menu::StorageView
 void flow_draw(uint16_t* fb, const char* status) { menu::draw(fb, flow_state, status, &bridge_chrome); }
-// the saved configuration as xyf_mods_io::menu_state sets it.
-void flow_config(const char* label, unsigned pending, unsigned blocked, const char* note) {
+// the saved configuration as xyf_mods_io::menu_state sets it (#197: pending, the first row's note).
+void flow_config(const char* label, unsigned pending, const char* note) {
     flow_state.continue_label = label && *label ? label : 0;
-    flow_state.pending = flow_state.changed = pending != 0; flow_state.save_blocked = blocked != 0;
-    flow_state.save_note = note;
-}
-// #197: the saved setup not applied (pending, nothing changed: "(to apply)", "(rebuild)").
-void flow_unapplied(const char* label) {
-    flow_state.continue_label = label; flow_state.pending = true; flow_state.changed = false;
+    flow_state.pending = pending != 0;
+    flow_state.continue_note = note && *note ? note : 0;
 }
 // The safe-mode row as menu_state sets it (label "": no setup with mods saved) and whether it restores.
 void flow_safe(const char* label, unsigned restore) {
     flow_state.safe_label = label && *label ? label : 0; flow_state.safe_restore = restore != 0;
 }
 unsigned flow_screen() { return unsigned(flow_state.screen); }
-unsigned flow_choice() { return flow_state.save_selected; }
 }

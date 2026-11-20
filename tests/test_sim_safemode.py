@@ -1,11 +1,12 @@
 """In the simulator: safe mode. The home menu's second row (where the Firmware library row was) is "Boot without
-mods" while the saved configuration has mods on: PLAY asks (Cancel first), then the base's official content goes in,
+mods" while the saved configuration has mods on: PLAY (at once, #197: no confirmation) puts the base's official content in,
 the base becomes the default, the record keeps the selection, built=, slot= and gains safe=1, and the base boots; a
 plain power-on then boots it without writing. In safe mode the first row reads "<base> (safe mode)" and the second
 "Restore Open-XY (N mods)": PLAY puts the Open-XY content back, makes the slot the default, safe=0, and boots it; a
-slot that no longer holds what built= says is built again first. Each (and Save, and PLAY on a first row "(to apply)")
-is one converge sequence (#197) on the progress screen: the home row never moves, no key is dispatched, the Mods page
-is never shown, unsaved toggles stay, and planning again gives nothing (the next PLAY writes nothing). A mod build never takes the
+slot that no longer holds what built= says is built again first. Each (and PLAY on a first row "(to apply)" or
+"(rebuild)") is one converge sequence (#197) on the progress screen: the home row never moves, no key is dispatched,
+no screen is drawn before it, the Mods page is never shown, and planning again gives nothing (the next PLAY writes
+nothing). A mod build never takes the
 saved slot. A content switch failure and a power cut in the switch: the record is the previous one and doing the same
 again repairs it. With no setup saved the row is "Boot without mods" and PLAY only says why. Synthetic packages (test_sim_config). Needs
 clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
@@ -21,7 +22,6 @@ import test_sim_mod_job as J                                               # noq
 from test_sim_config import ConfigBase                                    # noqa: E402
 from test_sim_mods_page import MINUS, PLAY, PLUS, STOP                   # noqa: E402
 
-CONFIRM_SAFE = 1                                                           # xyf_menu Screen::confirm_safe
 TRACK1, TRACK2 = 6, 7                                                      # the first row, the safe-mode row
 
 
@@ -34,19 +34,17 @@ class SafeMode(ConfigBase, unittest.TestCase):
     def mark_now(self):
         self.mark = len(self.lines('menu: boots the default ')), len(self.lines('menu: save failed: '))
 
-    def safe_mode(self, accept=True):
-        """The second row, PLAY, then Boot (accept) or Cancel."""
+    def safe_mode(self):
+        """The second row, PLAY: it converges at once (#197), no screen drawn in between (no confirmation)."""
         self.wait_log(lambda: self.safe_row() == 'Boot without mods', 'the safe-mode row')
+        selected = len(self.lines('menu: screen 0 row 1 '))
         self.press(TRACK2)
-        before = len(self.lines('menu: screen %d ' % CONFIRM_SAFE))
-        self.press(PLAY)
-        self.wait_log(lambda: len(self.lines('menu: screen %d ' % CONFIRM_SAFE)) > before, 'the confirmation')
+        self.wait_log(lambda: len(self.lines('menu: screen 0 row 1 ')) > selected, 'the safe-mode row selected')
+        screens, runs = len(self.lines('menu: screen ')), len(self.lines('menu: safe mode'))
         self.mark_now()
-        if not accept:
-            self.press(PLAY)
-            return
-        self.press(PLUS)
         self.key(PLAY, 1)                                                  # it boots: no release reaches B
+        self.wait_log(lambda: len(self.lines('menu: safe mode')) > runs, 'Boot without mods')
+        self.assertEqual(len(self.lines('menu: screen ')), screens)       # no confirm screen
 
     def restore(self, mods=1):
         self.wait_log(lambda: self.safe_row() == 'Restore Open-XY (%d mod%s)' % (mods, '' if mods == 1 else 's'),
@@ -88,16 +86,12 @@ class SafeMode(ConfigBase, unittest.TestCase):
         self.press(TRACK2)
         self.press(PLAY)
         self.wait_log(lambda: self.lines('menu: line: No mods are saved'), 'the line')
-        self.assertEqual(self.lines('menu: screen %d ' % CONFIRM_SAFE), [])
+        self.assertEqual(self.lines('menu: safe mode'), [])
         self.assertEqual(self.snapshot(), before)
 
     def test_safe_mode_power_on_and_restore(self):
         a = self.first_save()
         self.menu_again()
-        before = self.snapshot()
-        self.safe_mode(accept=False)                                       # Cancel: nothing changes
-        self.wait_log(lambda: self.lines('menu: screen 0 '), 'home')
-        self.assertEqual(self.snapshot(), before)
         record = self.config()
         self.safe_mode()
         self.assertEqual(self.booted(), self.base)
@@ -108,7 +102,7 @@ class SafeMode(ConfigBase, unittest.TestCase):
         self.wait_log(lambda: self.home().startswith('Base (safe mode) pending=0'), 'the safe-mode home row')
         since = len(self.progress())
         self.restore()
-        self.assertEqual(self.booted(), a)                                 # Restore boots Open-XY, as Save does
+        self.assertEqual(self.booted(), a)                                 # Restore boots Open-XY, as Continue does
         self.assertFalse(self.built_any(since))                            # the slot still holds built=
         c = self.saved_as(a, ['alpha'])
         self.assertEqual(c['safe'], '0')
@@ -168,7 +162,7 @@ class SafeMode(ConfigBase, unittest.TestCase):
         self.assertEqual(self.saved_as(a, ['alpha'])['safe'], '0')
 
     def converged(self, action, row, steady_on=True):
-        """The last `action` ('save', 'safe mode', 'restore', 'apply': its "menu: <action>" line) ran as one converge
+        """The last `action` ('safe mode', 'restore', 'apply': its "menu: <action>" line) ran as one converge
         sequence (#197), up to its boot or failure: the progress screen from the first frame (the next line), the home
         row `row` all along (a job's rescan never moves it), no key reaching the menu or the Mods page (nothing
         dispatched), the Mods page never shown, and (steady_on) the toggles on never changed."""
@@ -192,28 +186,27 @@ class SafeMode(ConfigBase, unittest.TestCase):
         self.menu_again()
         self.wait_log(lambda: ' pending=0 ' in self.home(), 'nothing pending')
         before, sequences = self.snapshot(), len(self.lines('progress: job='))
-        self.cont(dialog=False)
+        self.cont()
         self.assertEqual(self.booted(), entry)
         self.assertEqual((self.snapshot(), len(self.lines('progress: job='))), (before, sequences))
 
-    def test_save_converges_on_the_progress_screen(self):
+    def test_continue_converges_on_the_progress_screen(self):
         self.change(['alpha'])
-        self.cont(0)
+        self.cont()                                                        # the flip written first, if not yet
         a = self.booted()
-        self.converged('save', 0)
+        self.converged('apply', 0)
         self.saved_as(a, ['alpha'])
         self.again_writes_nothing(a)
 
     def test_safe_restore_and_apply_converge_on_the_progress_screen(self):
-        """Boot without mods (an unsaved toggle on), Restore, then PLAY on the first row "(to apply)" after a power cut
-        in a switch: each runs on the progress screen alone, and planning again gives nothing."""
+        """Boot without mods, Restore, then PLAY on the first row "(to apply)" after a power cut in a switch: each runs
+        on the progress screen alone, and planning again gives nothing."""
         a = self.first_save()
         self.menu_again()
-        self.change(['gamma'], unknown=False)                              # an unsaved toggle: it stays
         self.safe_mode()
         self.assertEqual(self.booted(), self.base)
         self.converged('safe mode', 1)
-        self.in_safe_mode(a)                                               # the saved selection, not the toggles
+        self.in_safe_mode(a)
         self.again_writes_nothing(self.base)
         self.menu_again()
         self.restore()
@@ -230,18 +223,17 @@ class SafeMode(ConfigBase, unittest.TestCase):
         self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'automatic content replay')
         self.wait_log(lambda: '(to apply) pending=1' in self.home(), 'the record to apply')
         self.mark_now()
-        self.cont(dialog=False)                                            # PLAY on the first row: it applies
+        self.cont()                                                        # PLAY on the first row: it applies
         self.assertEqual(self.booted(), a)
         self.converged('apply', 0)
         self.assertEqual(self.saved_as(a, ['alpha'])['safe'], '0')
         self.again_writes_nothing(a)
 
-    def test_a_failed_safe_mode_keeps_the_toggles(self):
+    def test_a_failed_safe_mode_changes_nothing(self):
         """A failed Boot without mods returns to the home menu with the reason: the Mods page was never shown, nothing
-        was built, the unsaved toggle stays."""
+        was built, the saved selection and its toggles stay."""
         self.first_save()
         self.menu_again()
-        self.change(['gamma'], unknown=False)                              # an unsaved toggle
         slots, pages = self.slots(), len(self.pages())
         self.sim.set('rename_fault_kind', 1)
         self.sim.set('rename_fault', 1)                                    # the switch fails: back on the home menu
@@ -249,10 +241,10 @@ class SafeMode(ConfigBase, unittest.TestCase):
         self.assertIn('Boot without mods again', self.failed())
         self.converged('safe mode', 1)
         self.home_only(pages, slots)
-        self.wait_log(lambda: '(changed) pending=1' in self.home(), 'still changed')
+        self.assertEqual(self.config()['mods'], 'alpha')
         self.press(TRACK1)                                                 # Continue, then the Mods row
         p = self.open_page()
-        self.assertEqual((p['on'], p['changed']), (['alpha', 'gamma'], 1))   # the unsaved toggle kept
+        self.assertEqual((p['on'], p['changed']), (['alpha'], 0))
 
     def test_restore_builds_when_the_slot_changed(self):
         """The slot no longer holds what built= says: Restore builds the saved selection again (into the spare slot),

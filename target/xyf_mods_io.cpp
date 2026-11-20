@@ -39,6 +39,7 @@ struct Io {
     uint32_t job_units, drawn_bar, drawn_done;    // the job's start; the bar and done of the last redraw
     uint32_t waiting;                             // the reading waits for another job (page_busy)
     uint32_t newer;                               // a candidate's store is newer than this build reads
+    uint32_t incomplete;                          // the reading ended with an error (the list is not all there)
     Candidate candidates[max_candidates];
     char path[240];
     uint8_t entry[fc::entry_bytes + 4];         // the last folder entry (walk_entry: its name at +11)
@@ -57,7 +58,7 @@ inline __attribute__((always_inline)) uint32_t units() {
     return (low >> 10) | (high << 22);
 }
 const uint32_t slice_units = slice_ms * 390u + slice_ms * 5u / 8u, redraw_units = redraw_ms * 390u + redraw_ms * 5u / 8u;
-const uint32_t progress_units = progress_ms * 390u + progress_ms * 5u / 8u;
+const uint32_t progress_units = progress_ms * 390u + progress_ms * 5u / 8u, quiet_units = quiet_ms * 390u + quiet_ms * 5u / 8u;
 // io.path = the parts joined; false when it does not fit (the path is then cut: never used).
 bool path_of(const char* const* parts, uint32_t count) {
     uint32_t n = 0;
@@ -132,6 +133,7 @@ bool read_text(const char* path, uint32_t& bytes) {   // the whole small file in
 void finish(const char* error) {              // the list is final
     if (io.folder) { fc::closedir(io.folder); io.folder = 0; }
     io.step = s_done;
+    io.incomplete = error ? 1u : 0u;
     the_page.view = m::View::list;
     if (error) m::say(the_page, m::line_error, error);
     else the_page.line = m::line_none;
@@ -276,11 +278,31 @@ void open() {
     m::say(p, m::line_info, "Reading mod packages...");
 }
 
-m::Effect key(uint32_t k, bool pressed) { return m::key(the_page, k, pressed); }
+// The page's flips (Pick): each row's toggle, Mod memory and unknown bases, as one number that any flip changes.
+uint32_t toggles() {
+    const m::Page& p = the_page;
+    uint32_t h = (p.expanded ? 1u : 0u) | (p.unknown_ok ? 2u : 0u);
+    for (uint32_t r = 0; r != p.shown; ++r) h = h * 33u + (p.packages[p.rows[r]].flags & m::flag_on);
+    return h;
+}
+void flipped() { pick.flipped = 1; pick.since = units(); }
+
+m::Effect key(uint32_t k, bool pressed) {
+    const uint32_t before = toggles();
+    const m::Effect effect = m::key(the_page, k, pressed);
+    if (toggles() != before) flipped();          // saved at the next quiet moment
+    return effect;
+}
 
 void prepare() { if (io.step == s_idle && sv.stage == sv_idle) open(); }
 
-const char* memory_flip() { return m::flip_memory(the_page, io.step == s_done); }
+const char* memory_flip() {
+    const char* why = m::flip_memory(the_page, io.step == s_done);
+    if (!why) flipped();
+    return why;
+}
+
+bool saving() { return pick.stage == 1; }
 
 uint32_t pump(bool shown) {
     const uint32_t begin = units();
@@ -288,9 +310,12 @@ uint32_t pump(bool shown) {
     uint32_t redraw = converge_follow();
     // The saved configuration, once the menu runs (one bounded read; again after a failed sequence).
     uint32_t bytes = 0;
-    if (rec.state == xg::unread && sv.stage == sv_idle && !reading() && !usb_service::page_busy() &&
-        usb_service::page_serving() == s_ok && read_record(false, bytes) != s_ok)
-        rec.state = xg::failed;
+    if ((rec.state == xg::unread || pick.stage == 2) && sv.stage == sv_idle && !reading() && !usb_service::page_busy() &&
+        usb_service::page_serving() == s_ok) {
+        if (read_record(false, bytes) != s_ok) { rec.state = xg::failed; pick.stage = 0; }
+        else if (shown && io.step == s_done && !redraw) redraw = 1;   // the saved marks moved (the page: "saved")
+    }
+    if (sv.stage == sv_idle) pick_step(false);   // a flip saved once quiet (the reading below may wait for it)
     // While another job owns the slot or its window closes, the reading sends nothing (a request
     // then met a stale folder handle or waited out A's bound). A's handles end with that window: the folder
     // is forgotten, not closed, and the reading starts again from the top once the job is over.
@@ -330,33 +355,34 @@ bool menu_state(xyf::menu::State& a) {
     const m::Page& p = the_page;
     const xyf::catalog::Catalog* c = xyf_boot::catalog();
     const bool listed = io.step == s_done && p.view == m::View::list, have = rec.state == xg::present;
-    // The plan of the saved inputs (xyf_converge.hpp) as far as the catalog tells: the slot's stamp as the record says
-    // while the slot is in the library (the sequence reads it), built= the record's while its base is the base.
+    // The plan of the saved inputs (xyf_converge.hpp) as far as the catalog tells: built= of the saved selection (its
+    // mods= names), the slot's stamp as the record says while the slot is in the library (the sequence reads it).
     const char* base = config_base();
+    char want[sizeof(rec.built)];
+    want[0] = 0;
+    if (have && base) xg::built_text(want, sizeof(want), base, rec.generation, rec_set, rec.count, rec.expanded != 0);
     const uint32_t def = c ? c->default_index : ~0u, slot = have ? index_of(rec.slot) : ~0u;
-    const xc::Inputs in = {base ? base : "", have && base && xg::same(rec.base, base) ? rec.built : "",
-                           have ? rec.count : 0u, have ? rec.expanded : 0u, have ? rec.safe : 0u};
+    const xc::Inputs in = {base ? base : "", want, have ? rec.count : 0u, have ? rec.expanded : 0u, have ? rec.safe : 0u};
     const xc::Actual act = {&rec, slot != ~0u ? rec.stamp : "", c && def < c->count ? c->items[def].id : "",
                             installed(index_of(in.base)), installed(slot)};
     const uint32_t ops = have || rec.state == xg::none ? xc::plan(in, act).ops : 0u;
-    const bool changes = (listed && m::changed(p)) || p.expanded != p.expanded_saved;   // memory any time
-    a.pending = changes || ops; a.changed = changes;
-    a.save_note = listed ? m::save_refusal(p) : 0;
-    a.save_blocked = a.save_note != 0;
+    const bool unsaved = pick.flipped || pick.stage;   // a flip not written yet: PLAY writes it, then converges
+    a.pending = unsaved || ops;
+    a.continue_note = listed ? m::save_refusal(p) : 0;
     char next[sizeof(label)];
     next[0] = 0;
-    if (have || changes) {
+    if (have || unsaved) {
         const uint32_t n = listed ? m::chosen(p, false) + m::chosen(p, true) : rec.count;
         const uint32_t b = index_of(in.base);
         xg::Out o = {next, next + sizeof(next) - 1, true};
-        if (rec.safe && !changes) {
+        if (have && rec.safe) {
             xg::put(o, c && b < c->count ? c->items[b].name : "OP-XY"); xg::put(o, " (safe mode)");
         } else if (n) {
             xg::put(o, "Open-XY - "); xg::put_number(o, n); xg::put(o, n == 1 ? " mod - " : " mods - ");
             xg::put(o, c && b < c->count ? c->items[b].version : "?");
         } else xg::put(o, c && b < c->count ? c->items[b].name : "OP-XY");
-        if (changes) xg::put(o, " (changed)");
-        else if (ops) xg::put(o, ops & xc::op_build ? " (rebuild)" : " (to apply)");
+        if (ops & xc::op_build) xg::put(o, " (rebuild)");
+        else if (ops || unsaved) xg::put(o, " (to apply)");
         *o.at = 0;
     }
     a.continue_label = next[0] ? label : 0;
@@ -388,18 +414,15 @@ void converge_begin(uint32_t why) {               // never the page: the list, i
     sv.why = why; sv.ops = sv.length = 0;
     ++sv.serial;
     sv.reason[0] = 0;
-    sv.stage = why == why_save ? sv_reading : sv_check;
+    sv.stage = sv_check;                         // a flip not written yet is written first (converge_follow)
     m::Progress& r = run;                        // the progress screen from its first frame
     r.job = 0x10000u + sv.serial; r.job_phase = r.job_done = r.job_total = r.job_commit = 0;
     r.bar = r.bar_step = r.bar_since = 0; r.save = m::save_on; r.save_stage = 0; r.cancel = 0;
-    r.title = why == why_save ? "Saving changes" : why == why_safe ? "Booting without mods" :
-              why == why_restore ? "Restoring Open-XY" : "Applying changes";
+    r.title = why == why_safe ? "Booting without mods" : why == why_restore ? "Restoring Open-XY" : "Applying changes";
     r.job_name[0] = 0; r.note[0] = 0;
     io.job_units = units();
     usb_service::save_log_begin();              // the save-time log starts at the key
-    if (why != why_save) return;
-    if (io.step == s_done) the_page.line = m::line_none;   // a held list: the last result line no longer applies
-    open();                                     // the list and the saved toggles, unless held already
+    if (io.step == s_done && !io.incomplete) the_page.line = m::line_none;   // a held list: the last result line goes
 }
 
 bool converging() { return sv.stage != sv_idle && sv.stage != sv_failed; }

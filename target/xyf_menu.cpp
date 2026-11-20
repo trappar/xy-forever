@@ -36,7 +36,6 @@ const char* main_label(const State& s, uint32_t item) {
         if (s.storage == storage_ready) return "Continue (no default firmware set)";
         return "Continue (built-in OP-XY)";                                // offline modes: the embedded stock OS
     case item_safe: return s.safe_label ? s.safe_label : "Boot without mods";
-    case item_uninstall: return "Uninstall XY Forever";
     case item_mods: return "Mods";
     case item_settings: return "Settings";
     default: return "";
@@ -44,7 +43,8 @@ const char* main_label(const State& s, uint32_t item) {
 }
 
 const char* main_note(const State& s) {     // a storage line while storage is down; the safe row's while it stands
-    return s.note && (storage_down(s) || (s.note == no_setup && !s.safe_label)) ? s.note : 0;
+    if (s.note && (storage_down(s) || (s.note == no_setup && !s.safe_label))) return s.note;
+    return s.main_selected == item_continue && !storage_down(s) ? s.continue_note : 0;   // the saved selection's
 }
 
 Action key(State& s, uint32_t k, bool pressed) {
@@ -78,46 +78,18 @@ Action key(State& s, uint32_t k, bool pressed) {
         }
         s.note = 0;
         switch (s.main_selected) {
-        case item_continue:                       // changed: the Save dialog first
+        case item_continue:                       // #197: converge to what is saved, then boot
             if (s.undo_offer) return Action::undo;   // the status line's offer comes first
-            if (!s.pending) return Action::continue_boot;
-            if (!s.changed) return Action::apply;    // "(to apply)", "(rebuild)": converge, then boot
-            s.screen = Screen::confirm_save;
-            s.save_selected = s.save_blocked ? uint32_t(choice_discard) : uint32_t(choice_save);
-            return Action::redraw;
-        case item_safe:                           // Restore at once; safe mode asks first (Cancel highlighted)
+            return s.pending ? Action::apply : Action::continue_boot;
+        case item_safe:                           // at once: Boot without mods, or Restore
             if (!s.safe_label) { s.note = no_setup; return Action::redraw; }
-            if (s.safe_restore) return Action::restore;
-            s.screen = Screen::confirm_safe; s.confirm_accept = false;
-            return Action::redraw;
-        case item_uninstall: s.screen = Screen::confirm_uninstall; s.confirm_accept = false; return Action::redraw;
+            return s.safe_restore ? Action::restore : Action::safe_mode;
         case item_mods: return Action::open_mods;
         default: s.screen = Screen::settings; s.settings_note = 0; return Action::redraw;
         }
-    case Screen::confirm_safe:                    // Cancel / Boot
-        if (minus || plus) { s.confirm_accept = !s.confirm_accept; return Action::redraw; }
-        if (!play) return Action::none;
-        s.screen = Screen::main;
-        return s.confirm_accept ? Action::safe_mode : Action::redraw;
     case Screen::info:
         if (play) { s.screen = s.info_return; return Action::redraw; }
         return Action::none;
-    case Screen::confirm_uninstall:
-        if (minus || plus) { s.confirm_accept = !s.confirm_accept; return Action::redraw; }
-        if (!play) return Action::none;
-        if (s.confirm_accept) return Action::uninstall;
-        s.screen = Screen::main;
-        return Action::redraw;
-    case Screen::confirm_save: {                  // Save / Discard / Back (blocked: Discard / Back)
-        const uint32_t first = s.save_blocked ? uint32_t(choice_discard) : uint32_t(choice_save);
-        if (minus) { s.save_selected = s.save_selected <= first ? uint32_t(choice_back) : s.save_selected - 1; return Action::redraw; }
-        if (plus) { s.save_selected = s.save_selected >= uint32_t(choice_back) ? first : s.save_selected + 1; return Action::redraw; }
-        if (!play) return Action::none;
-        s.screen = Screen::main;
-        if (s.save_selected == choice_save && !s.save_blocked) return Action::save;
-        if (s.save_selected == choice_discard) return Action::discard;
-        return Action::redraw;
-    }
     case Screen::settings: {                      // the extra row opens the installed-pack list on the product
         uint32_t count = settings::rows;
 #if defined(XYF_SETTING_OPTIONS)

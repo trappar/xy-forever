@@ -60,7 +60,7 @@ def main():
         lib = build(tmp)
         fb = framebuffer(lib)
         lib.ui_render_menu(fb, 0, b''); png(out / 'menu.png', pixels(fb))
-        lib.ui_render_menu(fb, 4, b'Uninstall: not available yet.'); png(out / 'menu-status.png', pixels(fb))
+        lib.ui_render_menu(fb, 3, b'Not available in this build.'); png(out / 'menu-status.png', pixels(fb))
         lib.ui_render_message(fb); png(out / 'info.png', pixels(fb))
         lib.ui_render_crash(fb, 0x26, 0x8ab03d14, 0x8ab05a20, 0x00030003); png(out / 'crash.png', pixels(fb))
         lib.ui_render_where(fb, 3); png(out / 'where.png', pixels(fb))   # a wait past 500 ms (#114)
@@ -71,10 +71,8 @@ def main():
         # Menu flow driven through the device state machine and view.
         lib.flow_start(1); lib.flow_draw(fb, b''); png(out / 'flow-1-main.png', pixels(fb))
         lib.flow_safe(b'Boot without mods', 0)
-        lib.flow_key(54); lib.flow_key(51); lib.flow_draw(fb, b''); png(out / 'flow-2-safe-mode.png', pixels(fb))
-        lib.flow_key(52); lib.flow_key(54); lib.flow_key(54); lib.flow_key(51)   # Uninstall
-        lib.flow_draw(fb, b''); png(out / 'flow-3-confirm.png', pixels(fb))
-        # #25, #197: Boot without mods accepted: the progress screen, drawn from the home menu (never the Mods page).
+        lib.flow_key(54); lib.flow_draw(fb, b''); png(out / 'flow-2-safe-mode.png', pixels(fb))
+        # #25, #197: Boot without mods (PLAY, at once): the progress screen, drawn from the home menu (never the Mods page).
         lib.mods_reset(); lib.mods_ready(b'', b''); lib.mods_saving(0, 1, 2, 3)
         lib.mods_progress_title(b'Booting without mods'); lib.mods_progress(1200)
         lib.mods_draw(fb); png(out / 'flow-3b-safe-mode-running.png', pixels(fb))

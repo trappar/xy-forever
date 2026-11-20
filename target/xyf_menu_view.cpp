@@ -108,33 +108,9 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         ui::draw_message(fb, info);
         return;
     }
-    case Screen::confirm_uninstall: {
-        const ui::Confirm c = {"Uninstall XY Forever?", {"Puts back the stock OP-XY os.ldr and deletes",
-                               "xy-forever/ from the device. Your projects stay.", "The real bootloader is not changed.", ""},
-                               3, "Cancel", "Uninstall", s.confirm_accept, chrome};
-        ui::draw_confirm(fb, c);
-        return;
-    }
-    case Screen::confirm_safe: {
-        const ui::Confirm c = {"Boot without mods?", {"Installs the official content of the stock firmware",
-                               "and boots it. Your Open-XY setup is kept:", "\"Restore Open-XY\" here brings it back.", ""},
-                               3, "Cancel", "Boot", s.confirm_accept, chrome};
-        ui::draw_confirm(fb, c);
-        return;
-    }
     case Screen::home_empty:
         ui::draw_home_empty(fb, chrome);
         return;
-    case Screen::confirm_save: {
-        const ui::Choice c = {"Save changes?", {s.save_blocked ? "These changes cannot be saved:" :
-                                                "Save: builds Open-XY if needed, installs its content, then boots it.",
-                                                s.save_blocked ? (s.save_note ? s.save_note : "") :
-                                                "Discard: forgets the changes and boots the saved setup.",
-                                                "Back: returns to the menu; the changes stay.", ""},
-                              3, {s.save_blocked ? 0 : "Save", "Discard", "Back"}, s.save_selected, chrome};
-        ui::draw_choice(fb, c);
-        return;
-    }
     }
 }
 } }
