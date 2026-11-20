@@ -81,10 +81,20 @@ never `dlc/`, `user/` or a name holding `bootloader` (`xyf::content::allowed`, o
 
 ### Saved configuration
 
-`config.txt` (`target/xyf_config.hpp`): `base`, `profile`, `generation`, `unverified`, `built=<base> <generation> <set> <count>[ expanded]` (set: sum of the
-names' CRC-32), `slot` (the Open-XY entry), `stamp` (its `info.txt` `sha256=`), `memory=standard|expanded` (Mod memory; anything else: standard), `mods` (last).
-Replaced as `content-state.txt` is; a reader takes `config.old` when the record is missing; no record: no mods. Save builds into the spare slot unless `slot`
-exists, `built` matches and its `sha256=` equals `stamp`; then the content switch (no default), the record, the default (one job, `config_store`).
+[`config.json`](native-json/schemas.md#configuration-configjson) stores the desired
+selection and the built slot's identity. Readers take the first present name
+among `config.json`, `config.json.old`, `config.txt`, and `config.old`. A selected
+invalid or newer native record blocks Save and reports the error. Legacy records
+may omit `format` or use `format=1`. Other explicit formats also block Save. Boot reads the
+record without rewriting it. Save writes `config.json.part`, renames the prior
+native record to `config.json.old`, then publishes the part by rename. A cut in
+between leaves the backup authoritative. Legacy records remain available for
+reading when both native names are absent.
+
+Save builds into the spare slot unless the saved slot, selection identity and
+firmware stamp still match. Then it installs content, publishes the configuration
+and commits the default via `config_store`. This preserves the content journal
+through the configuration and default commit.
 
 `log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
 Save, USB build or content switch, the last 20; `kind result mods memory added removed total` then each

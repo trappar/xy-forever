@@ -6,7 +6,7 @@ Part of the [XY Forever storage layout](../STORAGE.md).
 
 `layout.json` belongs to Open-XY. XY Forever's firmware does not read, write or require
 it. Leftover copies in existing entries are ignored; `info.txt` supplies the optional
-native machine count. The editable selection belongs to `config.txt`.
+native machine count. The editable selection belongs to `config.json`.
 
 Browser onboarding will read an existing layout's `selected`, `extensions`, `profile`
 and memory choice, match them to native packages, show missing or incompatible mods,

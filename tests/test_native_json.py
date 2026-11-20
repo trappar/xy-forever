@@ -44,6 +44,9 @@ class NativeJson(unittest.TestCase):
                     python = None
                 self.assertEqual(python, expected)
                 self.assertEqual(self.native(source, config), expected)
+                if case.get('canonical'):
+                    fields = dict(line.split('=', 1) for line in case['text'].splitlines())
+                    self.assertEqual(J.config_document(fields), source + b'\n')
 
     def test_document_writers_use_native_types_and_round_trip(self):
         package = J.package_document(dict(type='mod', name='Example "quoted" \\u literal', machine='synth',

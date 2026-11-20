@@ -155,6 +155,10 @@ def config_text(data):
         lines.append('%s=%s\n' % (key, value))
     _need(type(desired.get('unverified')) is bool, 'JSON unverified boolean')
     lines.append('unverified=%d\n' % desired['unverified'])
+    safe = desired.get('safe', False)
+    _need(type(safe) is bool, 'JSON safe boolean')
+    if safe:
+        lines.append('safe=1\n')
     _need('built' in root and (built is None or isinstance(built, dict)), 'JSON built object or null')
     if built is not None:
         for key in ('base', 'generation', 'memory', 'slot', 'sha256'):
@@ -171,7 +175,8 @@ def config_text(data):
     mods = desired.get('mods')
     _need(isinstance(mods, list) and len(mods) <= LIST_COUNT, 'JSON mods list')
     for mod in mods:
-        _need(isinstance(mod, str) and re.fullmatch(r'[a-z0-9_.-]{1,31}', mod), 'JSON mod identifier')
+        _need(isinstance(mod, str) and len(mod) <= (36 if mod.startswith('ext-') else 31)
+              and re.fullmatch(r'[a-z0-9_.-]+', mod), 'JSON mod identifier')
     _need(len(set(mods)) == len(mods), 'duplicate JSON selection')
     lines.append('mods=%s\n' % ','.join(mods))
     result = ''.join(lines).encode('ascii')
@@ -182,8 +187,10 @@ def config_text(data):
 def config_document(fields):
     """Validated legacy/native selection fields -> independent desired/build objects."""
     desired = {key: fields.get(key, '') for key in ('base', 'profile', 'generation')}
-    desired.update(memory=fields.get('memory', 'standard'), unverified=str(fields.get('unverified', '0')) == '1',
-                   mods=fields.get('mods', '').split(',') if fields.get('mods') else [])
+    desired.update(memory=fields.get('memory', 'standard'), unverified=str(fields.get('unverified', '0')) == '1')
+    if str(fields.get('safe', '0')) == '1':
+        desired['safe'] = True
+    desired['mods'] = fields['mods'].split(',') if fields.get('mods') else []
     built = None
     if fields.get('built') and fields.get('slot') in ('mods-a', 'mods-b'):
         parts = fields['built'].split(' ')

@@ -10,20 +10,21 @@ Every phase is printed with its time, then the total. --watch repeats on a chang
 packages used (mtime poll, no dependency). The way back: the default before the first dev run is kept in a
 small state file under the host's cache dir (never on the device); `mods dev --restore` sets it again.
 
-The saved configuration (/yaffs2/xy-forever/config.txt) names the default the menu expects. When it
+The saved configuration names the default the menu expects. When it
 is present a dev run changes the default behind it, and the menu's Continue line then ends in "(to apply)"
 (or "(rebuild)"); mods dev refuses unless --ignore-config, and says what the menu will show. It does not
-rewrite config.txt (that record is the menu's own: Save in the menu writes it again)."""
+rewrite the record (Save in the menu owns it)."""
 import json
 import os
 from pathlib import Path
 import sys
 import time
 
-from . import modsend as MS, package_records
+from . import modsend as MS, native_json, package_records
 from . import usb_proto as P
 
-CONFIG = '/yaffs2/xy-forever/config.txt'
+CONFIG_ROOT = '/yaffs2/xy-forever'
+CONFIG_NAMES = ('config.json', 'config.json.old', 'config.txt', 'config.old')
 FIRMWARE = '/yaffs2/xy-forever/firmware'
 STATE_NAME = 'moddev-state.json'
 
@@ -107,19 +108,30 @@ def snapshot(gen, names):
 
 
 # -- the device's records ---------------------------------------------------------------------------------
-def read_text(dev, path):
-    code, data = dev.read_all(path, limit=1 << 16)
+def config(dev):
+    """The selected saved configuration, as a dict (mods: list)."""
+    code, entries = dev.list_dir(CONFIG_ROOT)
     if code == MS.NOT_FOUND:
         return None
-    MS.check(code, 'file.read %s' % path)
-    return data.decode('utf-8', 'replace')
-
-
-def config(dev):
-    """config.txt as a dict (mods: list), or None when absent (no record: the menu flags nothing)."""
-    text = read_text(dev, CONFIG)
-    if text is None:
+    MS.check(code, 'list saved configuration')
+    names = {raw for _, _, raw in entries}
+    name = next((name for name in CONFIG_NAMES if name.encode('ascii') in names), None)
+    if name is None:
         return None
+    native = name in CONFIG_NAMES[:2]
+    cap = native_json.DOCUMENT_BYTES if native else 2048
+    code, data = dev.read_all(CONFIG_ROOT + '/' + name, limit=cap + 1)
+    MS.check(code, 'read %s' % name)
+    if len(data) > cap:
+        raise MS.Refused('%s exceeds %d bytes' % (name, cap))
+    if native:
+        try:
+            data = native_json.config_text(data)
+        except ValueError as error:
+            raise MS.Refused('%s: %s' % (name, error)) from error
+    text = data.decode('utf-8', 'replace')
+    if not native and any(line.startswith('format=') and line.removesuffix('\r') != 'format=1' for line in text.split('\n')):
+        raise MS.Refused('%s: unsupported legacy configuration format' % name)
     f = dict(l.split('=', 1) for l in text.splitlines() if '=' in l)
     f['mods'] = [m for m in f.get('mods', '').split(',') if m]
     return f
@@ -228,7 +240,7 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
     profile, generation, _ = MS.local_set(gen, names)
     cfg = ph.run('check', lambda: config(dev))
     if cfg is not None and not args.ignore_config:
-        out('mods dev: refused: the device has a saved configuration (config.txt: %s).' % describe_config(cfg))
+        out('mods dev: refused: the device has a saved configuration (%s).' % describe_config(cfg))
         out('  A dev build becomes the default behind it, and the menu\'s Continue line would end in "(to apply)"')
         out('  until Save in the menu or `mods dev --restore`. Re-run with --ignore-config to accept that.')
         return 2, {}
@@ -272,7 +284,7 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
         return 1, summary
     out('default: %s (%s, content installed)' % (entry, ' + '.join(names)))
     if cfg is not None:
-        out('menu: the Continue line now ends in "%s" (config.txt kept: %s)' % (
+        out('menu: the Continue line now ends in "%s" (saved configuration kept: %s)' % (
             menu_after(cfg, entry, library(dev)).strip() or 'nothing', describe_config(cfg)))
     if args.boot:
         code = ph.run('boot', lambda: dev.library_boot(entry))
@@ -303,7 +315,7 @@ def restore(dev, port, slots, current_state, out=print):
     out('restored: default %s (%.2f s); %s forgets it' % (entry, time.monotonic() - t, state_path()))
     cfg = config(dev)
     if cfg is not None:
-        out('menu: the Continue line ends in "%s" (config.txt: %s)' % (
+        out('menu: the Continue line ends in "%s" (saved configuration: %s)' % (
             menu_after(cfg, entry, library(dev)).strip() or 'nothing', describe_config(cfg)))
     return 0
 
@@ -331,13 +343,13 @@ def add_arguments(sub):
                    'with --only ID)')
     d.add_argument('--only', metavar='ID', help='the mod, when PACKAGE_DIR is a generation folder')
     d.add_argument('--with', dest='with_', nargs='+', default=[], metavar='ID', help='more mods in the selection')
-    d.add_argument('--base', metavar='ID', help='library entry holding the stock os.ldr (default: config.txt base=, '
+    d.add_argument('--base', metavar='ID', help='library entry holding the stock os.ldr (default: the saved base, '
                    'else the last dev run\'s)')
     d.add_argument('--name', default=MS.DEFAULT_NAME, help='the entry name (default %(default)r)')
     d.add_argument('--unverified', action='store_true', help='the base is not a known one (you confirmed it)')
     d.add_argument('--boot', action='store_true', help='boot the result (the device leaves XY Forever)')
     d.add_argument('--watch', action='store_true', help='repeat on every file change (not with --boot)')
-    d.add_argument('--ignore-config', action='store_true', help='go ahead although config.txt exists (the menu '
+    d.add_argument('--ignore-config', action='store_true', help='go ahead with a saved configuration present (the menu '
                    'then shows "(to apply)")')
     d.add_argument('--restore', action='store_true', help='set the default from before the first dev run again')
 

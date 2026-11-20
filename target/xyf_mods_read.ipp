@@ -95,10 +95,13 @@ void step() {
         io.dirty = 1;
         return;
     }
-    case s_saved:                                // the saved selection onto the toggles
-        if (read_record(true) == xyf::usbp::s_link) { io.why = xyf::usbp::s_link; lost(); return; }
-        finish(0);
+    case s_saved: {                              // the saved selection onto the toggles
+        const uint32_t code = read_record(true);
+        if (code == xyf::usbp::s_busy) return;
+        if (code == xyf::usbp::s_link) { io.why = code; lost(); return; }
+        finish(io.config_error);
         return;
+    }
     default:
         return;
     }

@@ -5,8 +5,8 @@ The native adapters (`native/json.hpp`, `xy_forever/native_json.py`,
 Storage migration is being implemented in issue #95. Host package admission,
 modkit rebuilds, package indexes, client metadata reads, native library/cold boot,
 content switches, journal source validation, package reports, the Mods page and
-mod assembly accept the native package record. Configuration and default writers
-still use legacy records. This is a partial migration.
+mod assembly accept the native package record. Saved Mods configuration uses
+native JSON, with legacy reads. Default package writers still use legacy records.
 
 Every native record has a string `schema` and integer `schema_version` (currently
 1). The package's `version` remains display/equality metadata; it is unrelated to
@@ -41,9 +41,11 @@ readers still own type-specific required fields, dependency and integrity checks
 Identity: `"schema":"xy-forever.config","schema_version":1`.
 
 `desired` is an object with `base`, `profile`, `generation`, `memory`
-(`standard`/`expanded`), boolean `unverified`, and a `mods` array of package folder
-names (including `ext-` for extensions). The list has no duplicates. A missing
-package remains represented in the saved selection rather than disappearing.
+(`standard`/`expanded`), boolean `unverified`, optional boolean `safe` (default
+`false`), and a `mods` array of package folder names (including `ext-` for
+extensions). The list has no duplicates. Readers and format conversion retain
+missing names. An explicit Save records the selection shown in the menu and
+drops missing names. Legacy `safe=1` is retained when saving native JSON.
 
 `built` is `null` before the first build, or an object with `base`, `generation`,
 unsigned integer `set` (the existing order-independent CRC sum), integer `count`,
@@ -70,7 +72,7 @@ source identity. There is no extra strict JSON syntax validator.
 | container nesting | 4 (root counts as the first) |
 | field name / text value | 31 / 127 printable ASCII bytes |
 | internal package / configuration view | 4096 / 2048 bytes |
-| configuration identifier | 31 bytes |
+| configuration identifier | 31 bytes, or `ext-` plus up to 32 bytes for a selected extension |
 
 The 8448-byte input bound allows JSON escaping overhead while preserving the
 legacy semantic capacities: a 4096-byte text fixture with quoted values becomes

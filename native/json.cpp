@@ -107,7 +107,8 @@ Document parse(const char* source, uint32_t bytes, Workspace& work, const char* 
 namespace {
 struct Out {
     char* data; uint32_t bytes, capacity; bool fits;
-    void text(const char* s) { while (*s) { if (bytes == capacity) fits = false; else data[bytes++] = *s; ++s; } }
+    void byte(char c) { if (bytes == capacity) fits = false; else data[bytes++] = c; }
+    void text(const char* s) { while (*s) byte(*s++); }
     void number(uint32_t n) {
         static const uint32_t powers[] = {1000000000u,100000000u,10000000u,1000000u,100000u,10000u,1000u,100u,10u,1u};
         bool started = false;
@@ -126,6 +127,12 @@ bool word(const char* value, const char* words) {
         if (*p) ++p;
     }
     return false;
+}
+bool mod_char(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.';
+}
+uint32_t mod_name_bytes(const char* name) {
+    return name[0] == 'e' && name[1] == 'x' && name[2] == 't' && name[3] == '-' ? 36 : 31;
 }
 bool key_ok(const char* key) {
     uint32_t n = 0;
@@ -252,6 +259,10 @@ Status config_text(const Document& doc, char* out, uint32_t capacity_, uint32_t&
     bool unverified = false;
     if (!bool_value(get(desired,"unverified"),unverified)) return type;
     o.text(unverified ? "unverified=1\n" : "unverified=0\n");
+    const json_t* safe_field = get(desired, "safe");
+    bool safe = false;
+    if (safe_field && !bool_value(safe_field, safe)) return type;
+    if (safe) o.text("safe=1\n");
     const json_t* built = get(doc.root,"built");
     if (!built || (built->type != JSON_NULL && built->type != JSON_OBJ)) return type;
     if (built->type == JSON_OBJ) {
@@ -280,9 +291,8 @@ Status config_text(const Document& doc, char* out, uint32_t capacity_, uint32_t&
     if (!mods || mods->type != JSON_ARRAY) return type;
     uint32_t count = 0;
     for (const json_t* p = mods->u.c.child; p; p = p->sibling) {
-        if (++count > list_count || !text_value(p,31) || !p->u.value[0]) return value;
-        for (const char* s = p->u.value; *s; ++s)
-            if (!((*s >= 'a' && *s <= 'z') || (*s >= '0' && *s <= '9') || *s == '_' || *s == '-' || *s == '.')) return value;
+        if (++count > list_count || p->type != JSON_TEXT || !text_value(p,mod_name_bytes(p->u.value)) || !p->u.value[0]) return value;
+        for (const char* s = p->u.value; *s; ++s) if (!mod_char(*s)) return value;
         for (const json_t* prior = mods->u.c.child; prior != p; prior = prior->sibling)
             if (same(prior->u.value,p->u.value)) return duplicate;
         if (count != 1) o.text(",");
@@ -290,6 +300,46 @@ Status config_text(const Document& doc, char* out, uint32_t capacity_, uint32_t&
     }
     o.text("\n"); bytes = o.bytes;
     return o.fits ? ok : capacity;
+}
+Status config_document(const Config& c, char* out, uint32_t capacity_, uint32_t& bytes) {
+    bytes = 0;
+    if (!identifier(c.base, true, false) || !identifier(c.profile, false, true) ||
+        !identifier(c.generation, false, true)) return value;
+    Out o = {out, 0, capacity_, true};
+    o.text("{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"");
+    o.text(c.base); o.text("\",\"profile\":\""); o.text(c.profile);
+    o.text("\",\"generation\":\""); o.text(c.generation);
+    o.text(c.expanded ? "\",\"memory\":\"expanded\"" : "\",\"memory\":\"standard\"");
+    o.text(c.unverified ? ",\"unverified\":true" : ",\"unverified\":false");
+    if (c.safe) o.text(",\"safe\":true");
+    o.text(",\"mods\":[");
+    const char* p = c.mods;
+    for (uint32_t n = 0; *p;) {
+        if (++n > list_count) return capacity;
+        o.byte('"');
+        uint32_t length = 0;
+        const uint32_t limit = mod_name_bytes(p);
+        while (*p && *p != ',') {
+            if (!mod_char(*p) || ++length > limit) return value;
+            o.byte(*p++);
+        }
+        if (!length) return value;
+        o.byte('"');
+        if (*p) { o.byte(*p++); if (!*p) return value; }
+    }
+    o.text("]},\"built\":");
+    if (const ConfigBuild* b = c.built) {
+        if (!identifier(b->base, true, false) || !identifier(b->generation, false, false) || b->count > list_count ||
+            !word(b->slot, "mods-a mods-b") || !digest(b->sha256)) return value;
+        o.text("{\"base\":\""); o.text(b->base); o.text("\",\"generation\":\""); o.text(b->generation);
+        o.text("\",\"set\":"); o.number(b->set); o.text(",\"count\":"); o.number(b->count);
+        o.text(b->expanded ? ",\"memory\":\"expanded\"" : ",\"memory\":\"standard\"");
+        o.text(",\"slot\":\""); o.text(b->slot); o.text("\",\"sha256\":\""); o.text(b->sha256); o.text("\"}");
+    } else o.text("null");
+    o.text("}\n");
+    if (!o.fits) return capacity;
+    bytes = o.bytes;
+    return ok;
 }
 const char* message(Status s) {
     switch (s) {

@@ -216,8 +216,8 @@ void content_status(uint8_t seq, U32 want) {
 #endif
 #if defined(XYF_CONTENT_SWITCH)
 // ---- The config job (job_kind 2): the saved configuration's record (xyf_config.hpp), then the default ---
-// The save sequence's last step (xyf_mods_io): config.txt.part written, then config.txt -> config.old (A never
-// renames onto a file), .part -> config.txt, config.old removed; A's window closed; then, after a success, the
+// Save writes config.json.part, then moves config.json to config.json.old,
+// publishes .part as config.json, removes the backup and closes A's window. It then sets the
 // default (default_commit) unless it is that entry already. A failure or cut leaves the old record (or only its
 // .old, which the reader takes) and the old default. One file request per step, as the content switch.
 namespace xg = xyf::config;
@@ -225,9 +225,10 @@ struct ConfigSlot {
     ContentIo io;
     int fd;
     U32 id, step, at, length, error, code, had, started_ms, ended_ms, hash, cleaning;
-    const char *path, *old_path, *part_path;     // config.txt's, or settings.txt's (xyf_settings.hpp)
-    char text[xg::max_text];
+    const char *path, *old_path, *part_path;     // config.json's, or settings.txt's (xyf_settings.hpp)
+    char text[xyf_core::json::document_bytes];
 };
+static_assert(sizeof(ConfigSlot) < 0x10000u, "configuration writer fits below the save-log workspace");
 // In the content switch's work region (one job at a time; the switch has ended when this starts).
 ConfigSlot& gslot() { return *reinterpret_cast<ConfigSlot*>(XYF_JOB_REGION_BEGIN + job_slot_bytes + content_slot_bytes); }
 enum ConfigStep : U32 { cg_open = 0, cg_write, cg_close, cg_stat, cg_unlink_old, cg_away, cg_in, cg_drop, cg_closing, cg_cleanup, cg_clean_close, cg_ended };
@@ -236,7 +237,7 @@ U32 config_begin(const char* text, U32 length, const char* id, const char* path 
     stop_idle_gc();
     if (job_running() || closing XYF_OR_MTP_BUSY || uploading()) return P::s_busy;
     if (!a_serving()) return P::s_link;
-    if (!length || length > xg::max_text) return P::s_bad_request;
+    if (!length || length > (path == xg::path ? xyf_core::json::document_bytes : xg::max_text)) return P::s_bad_request;
     U32 code = file_client::mount_ready(mounted);
     if (code != P::s_ok || (code = enter_writes()) != P::s_ok) return code;
     ConfigSlot& g = gslot();
@@ -272,6 +273,7 @@ void config_step(ConfigSlot& g) {
         uint8_t record[file_client::record_bytes];
         const file_client::Reply r = file_client::stat(g.path, record);
         if (r.outcome) { g.io.fail(r); break; }
+        if (r.value != 0 && r.error != file_client::enoent) break;
         g.had = r.value == 0 ? 1u : 0u;
         g.step = g.had ? cg_unlink_old : cg_in;
         break;

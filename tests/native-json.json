@@ -150,6 +150,38 @@
     "text": null
   },
   {
+    "name": "native safe selection retains missing names",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"memory\":\"expanded\",\"unverified\":true,\"safe\":true,\"mods\":[\"a\",\"ext-missing\"]},\"built\":null}",
+    "text": "format=1\nbase=stock\nprofile=p\ngeneration=v1\nmemory=expanded\nunverified=1\nsafe=1\nmods=a,ext-missing\n",
+    "canonical": true
+  },
+  {
+    "name": "native false safe selection defaults false",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"\",\"generation\":\"\",\"memory\":\"standard\",\"unverified\":false,\"safe\":false,\"mods\":[]},\"built\":null}",
+    "text": "format=1\nbase=stock\nprofile=\ngeneration=\nmemory=standard\nunverified=0\nmods=\n"
+  },
+  {
+    "name": "native numeric safe selection is refused",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"\",\"generation\":\"\",\"memory\":\"standard\",\"unverified\":false,\"safe\":1,\"mods\":[]},\"built\":null}",
+    "text": null
+  },
+  {
+    "name": "native configuration keeps a 31-character extension id",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"memory\":\"standard\",\"unverified\":false,\"mods\":[\"ext-abcdefghijklmnopqrstuvwxyz12345\"]},\"built\":null}",
+    "text": "format=1\nbase=stock\nprofile=p\ngeneration=v1\nmemory=standard\nunverified=0\nmods=ext-abcdefghijklmnopqrstuvwxyz12345\n",
+    "canonical": true
+  },
+  {
+    "name": "native configuration refuses a 33-character extension id",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"memory\":\"standard\",\"unverified\":false,\"mods\":[\"ext-abcdefghijklmnopqrstuvwxyz1234567\"]},\"built\":null}",
+    "text": null
+  },
+  {
     "name": "rounded fraction for integer",
     "kind": "package",
     "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\",\"bytes\":4294967295.0000001}",

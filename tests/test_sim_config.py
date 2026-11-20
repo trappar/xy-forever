@@ -1,5 +1,5 @@
 """In the simulator: one "Open-XY" firmware configured like a BIOS. The Mods page's toggles are a pending copy of
-the saved configuration (/yaffs2/xy-forever/config.txt); Continue with changes asks Save / Discard / Back; Save builds
+the saved configuration (/yaffs2/xy-forever/config.json); Continue with changes asks Save / Discard / Back; Save builds
 the selection into the spare mods slot when needed, installs its content, writes the record and the default, and
 boots it. Driven by injected keys; what boots is the simulator's "menu: boots the default" line and both processors
 in the OS, with /yaffs2/content/ compared byte for byte with the entry. Covers: a first save and a plain power-on
@@ -24,8 +24,13 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_content_switch as CS                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_mods_page import (PageBase, synthetic_setup, PLAY, STOP, MINUS, PLUS, SHIFT, VIEW_LIST)   # noqa: E402
+from xy_forever import native_json                                       # noqa: E402
 
-CONFIG = 'xy-forever/config.txt'
+CONFIG = 'xy-forever/config.json'
+CONFIG_OLD = CONFIG + '.old'
+CONFIG_PART = CONFIG + '.part'
+LEGACY_CONFIG = 'xy-forever/config.txt'
+LEGACY_OLD = 'xy-forever/config.old'
 SAVE_DIALOG = 5                                                            # xyf_menu Screen::confirm_save
 
 
@@ -41,10 +46,16 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
 
     # -- reading the device's files ----------------------------------------------------------------
     def config(self):
-        path = self.root / CONFIG
-        if not path.exists():
-            return None
-        return dict(line.split('=', 1) for line in path.read_text().splitlines() if '=' in line)
+        for name in (CONFIG, CONFIG_OLD, LEGACY_CONFIG, LEGACY_OLD):
+            path = self.root / name
+            if path.exists():
+                data = path.read_bytes()
+                if name in (CONFIG, CONFIG_OLD):
+                    data = native_json.config_text(data)
+                fields = dict.fromkeys(('built', 'slot', 'stamp'), '')
+                fields.update(line.split('=', 1) for line in data.decode().splitlines() if '=' in line)
+                return fields
+        return None
 
     def disk_default(self):
         """The default the state slots on disk name (the newer valid slot), as A's scan picks it."""
@@ -142,8 +153,9 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
             self.assertIn(record, (None, 'state=official\n'))
         else:
             self.assertTrue(record.startswith('state=installed\nentry=%s\n' % entry), record)
-        self.assertFalse((self.root / 'xy-forever/config.old').exists())
-        self.assertFalse((self.root / 'xy-forever/config.txt.part').exists())
+        self.assertFalse((self.root / CONFIG_OLD).exists())
+        self.assertFalse((self.root / CONFIG_PART).exists())
+        self.assertEqual((self.root / CONFIG).read_bytes(), native_json.config_document(c))
         return c
 
     def built_any(self, since):
@@ -231,6 +243,50 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.assertEqual(self.booted(), b)
         self.assertEqual(len(self.lines('menu: save')), saves)
         self.assertEqual(self.snapshot(), before)
+
+    def test_legacy_backup_preserves_safe_and_missing_names_until_save(self):
+        old = self.root / LEGACY_OLD
+        data = ('format=1\nbase=%s\nprofile=%s\ngeneration=%s\nunverified=1\nsafe=1\nmemory=standard\nmods=alpha,missing\n'
+                % (self.base, self.profile, self.generation)).encode()
+        old.write_bytes(data)
+        (self.root / CONFIG_PART).write_bytes(b'{')
+        self.menu_again()
+        self.wait_log(lambda: '2 mods' in self.home(), 'the complete saved selection')
+        before = self.snapshot()
+        self.assertEqual(self.config()['mods'], 'alpha,missing')
+        page = self.open_page()
+        self.assertEqual((page['on'], page['changed']), (['alpha'], 1))
+        self.assertEqual(self.snapshot(), before)
+        self.key(SHIFT, 1); self.press(STOP); self.key(SHIFT, 0)
+        self.press(STOP)
+        self.press(MINUS); self.press(MINUS)
+        self.cont(0)
+        self.assertEqual(self.saved_as(self.booted(), ['alpha'])['safe'], '1')
+        self.assertEqual(old.read_bytes(), data)
+
+    def test_invalid_selected_config_blocks_save_with_no_fallback(self):
+        legacy = 'format=1\nbase=%s\nmods=alpha\n' % self.base
+        (self.root / LEGACY_CONFIG).write_text(legacy)
+        (self.root / LEGACY_OLD).write_text(legacy)
+        source = native_json.config_document(dict(base=self.base, profile=self.profile, generation=self.generation, mods='alpha'))
+        for name, text, message in ((CONFIG, b'{', 'Invalid saved configuration'),
+                                    (CONFIG, None, 'Could not read the saved configuration'),
+                                    (CONFIG_OLD, source.replace(b'"schema_version":1', b'"schema_version":2'), 'newer XY Forever'),
+                                    (LEGACY_CONFIG, b'format=2\n', 'unsupported legacy format')):
+            with self.subTest(name=name):
+                path = self.root / name
+                if text is None:
+                    path.symlink_to('missing.json')
+                else:
+                    path.write_bytes(text)
+                self.menu_again()
+                self.wait_log(lambda: 'Saved configuration unavailable pending=1 blocked=1' in self.home(), 'the blocked Save')
+                before = self.snapshot()
+                page = self.open_page()
+                self.assertEqual(page['on'], [])
+                self.assertIn(message, page['text'])
+                self.assertEqual(self.snapshot(), before)
+                path.unlink()
 
     def test_back_discard_all_off_and_on_again(self):
         a = self.first_save()
@@ -378,7 +434,7 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.wait(lambda p: p.get('stage') == 2, 'saving', 120.0)
         cuts = self.sim.status()['cuts']
         self.sim.set('rename_fault_kind', 2)
-        self.sim.set('rename_fault', 2)                                    # cut after .part -> config.txt
+        self.sim.set('rename_fault', 2)                                    # cut after publishing config.json
         self.sim.set('a_slow_ms', 0)
         self.cut(cuts)
         self.assertEqual(self.config()['mods'], 'alpha')                   # the new record, the old default
@@ -392,8 +448,30 @@ class Config(PageBase, CS.Switch, unittest.TestCase):
         self.assertEqual(self.config()['mods'], 'alpha')
         self.assertEqual(CS.content(self.root), self.expected(a))
         self.assertTrue(self.record().startswith('state=installed\nentry=%s\n' % a))
-        # The cut was before config.old cleanup. Its surviving old copy is harmless; no config rewrite was needed.
-        self.assertTrue((self.root / 'xy-forever/config.old').exists())
+        self.assertTrue((self.root / CONFIG_OLD).exists())
+
+    def test_power_cut_between_config_renames_uses_native_backup(self):
+        self.all_off_saved()
+        before = (self.root / CONFIG).read_bytes()
+        self.change(['alpha'], unknown=False)
+        self.sim.set('a_slow_ms', 150)
+        self.cont(0)
+        self.wait(lambda p: p.get('stage') == 2, 'saving', 120.0)
+        cuts = self.sim.status()['cuts']
+        self.sim.set('rename_fault_kind', 2)
+        self.sim.set('rename_fault', 1)                                    # move current to the rollback name
+        self.sim.set('a_slow_ms', 0)
+        self.cut(cuts)
+        self.assertFalse((self.root / CONFIG).exists())
+        self.assertEqual((self.root / CONFIG_OLD).read_bytes(), before)
+        self.assertTrue((self.root / CONFIG_PART).is_file())
+        self.assertEqual(self.config()['mods'], '')
+        self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'journal/default completion')
+        self.wait_log(lambda: '(to apply) pending=1' in self.home(), 'the saved backup to apply')
+        self.cont(0)
+        self.assertEqual(self.booted(), self.base)
+        self.assertEqual(self.config()['mods'], '')
+        self.assertTrue((self.root / CONFIG).exists())
 
     def test_a_selection_that_cannot_be_saved(self):
         self.change(['ext-cap'])                                           # an extension alone

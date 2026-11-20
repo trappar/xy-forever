@@ -31,6 +31,22 @@ bool text_value(const json_t* property, uint32_t maximum = value_bytes);
 Status package_field_size(const json_t* field, uint32_t& bytes);
 Status package_text(const Document& doc, char* out, uint32_t capacity, uint32_t& bytes);
 Status config_text(const Document& doc, char* out, uint32_t capacity, uint32_t& bytes);
+struct ConfigBuild {
+    char base[32], generation[32];
+    uint32_t set, count;
+    bool expanded;
+    const char* slot;
+    const char* sha256;
+};
+struct Config {
+    const char* base;
+    const char* profile;
+    const char* generation;
+    bool expanded, unverified, safe;
+    const char* mods;                  // comma-separated folder names
+    const ConfigBuild* built;          // null before the first build
+};
+Status config_document(const Config& config, char* out, uint32_t capacity, uint32_t& bytes);
 const char* message(Status status);
 } }
 #endif

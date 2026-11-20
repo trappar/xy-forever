@@ -1,10 +1,10 @@
 // The XY Forever web app: Connect, Device, Mods, Files. Plain DOM; one device action at a time.
 // ?sim=PORT: the device simulator on 127.0.0.1:PORT through the dev server's relay (development and tests).
 import { Client, JobError, applyMods, fileListSource, fileReason, grantedPorts, isXyfError, libraryBases, listPackages, localSet, pushPackages,
-  removePackage, requestPort, webSerial, webSerialOpener } from 'xy-forever-client';
+  readModsConfig, removePackage, requestPort, webSerial, webSerialOpener } from 'xy-forever-client';
 import type { ApplyRequest, BuiltEntry, DirEntry, HeldGeneration, JobStatus, LocalSet, Opener, PackageSource } from 'xy-forever-client';
 import { webSocketOpener } from 'xy-forever-client/dev';
-import { CONFIG_FILE, CONFIG_OLD, CONTENT_STATE, CONTENT_STATE_OLD, ROOT, WRITE_RULE, changeRefusal, configText, contentText, folderWritable, groupMods,
+import { CONTENT_STATE, CONTENT_STATE_OLD, ROOT, WRITE_RULE, changeRefusal, configText, contentText, folderWritable, groupMods,
   human, joinPath, modeText, nameProblem, parentOf, parseConfig } from './model.ts';
 import type { SavedConfig } from './model.ts';
 import { confirmAction, h, notice, promptText } from './ui.ts';
@@ -107,12 +107,13 @@ async function readText(path: string): Promise<string | null> {
   try { return new TextDecoder().decode(await client!.readFile(path)); } catch (e) { if (isXyfError(e, 'not_found')) return null; throw e; }
 }
 
-/** The saved configuration, null: none (no mods); undefined: could not be read. */
-async function savedConfig(): Promise<SavedConfig | null | undefined> {
+async function savedConfig(): Promise<{ config: SavedConfig | null; error?: never } | { config: undefined; error: string }> {
   try {
-    const text = await readText(CONFIG_FILE) ?? await readText(CONFIG_OLD);
-    return text === null ? null : parseConfig(text);
-  } catch { return undefined; }
+    const text = await readModsConfig(client!);
+    return { config: text === null ? null : parseConfig(text) };
+  } catch (error) {
+    return { config: undefined, error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 async function loadDevice(): Promise<void> {
@@ -124,7 +125,7 @@ async function loadDevice(): Promise<void> {
     const entry = await c.libraryEntry(state.default).catch(() => ({} as Record<string, string>));
     boots = `${entry['name'] ?? state.default}${entry['version'] ? ` ${entry['version']}` : ''} (library entry ${state.default})`;
   }
-  const config = await savedConfig();
+  const { config, error: configError } = await savedConfig();
   const content = await readText(CONTENT_STATE);
   const old = content === null && await readText(CONTENT_STATE_OLD) !== null;
   page('device').replaceChildren(
@@ -134,7 +135,7 @@ async function loadDevice(): Promise<void> {
       h('dt', {}, 'Image'), h('dd', { 'data-fact': 'image' }, info.image ?? 'unknown'),
       h('dt', {}, 'Running'), h('dd', {}, modeText(info.mode)),
       h('dt', {}, 'Boots next'), h('dd', { 'data-fact': 'boots' }, boots),
-      h('dt', {}, 'Saved mods'), h('dd', {}, config === undefined ? 'Could not read the saved configuration.' : configText(config)),
+      h('dt', {}, 'Saved mods'), h('dd', {}, config === undefined ? `Could not read the saved configuration (${configError}).` : configText(config)),
       h('dt', {}, 'Content'), h('dd', {}, contentText(content, old)),
       h('dt', {}, 'Protocol'), h('dd', { class: 'muted' }, `${info.proto}${info.dev ? ', developer build' : ''}`))),
     h('div', { class: 'row' }, btn('Refresh', () => void run(loadDevice))),
@@ -160,12 +161,13 @@ export function setBuildOnDevice(f: typeof buildOnDevice): void { buildOnDevice 
 async function loadMods(): Promise<void> {
   const c = client!;
   held = await listPackages(c);
-  const config = await savedConfig();
+  const { config, error: configError } = await savedConfig();
   const root = page('mods');
   const picker = h('input', { type: 'file', webkitdirectory: true, multiple: true, onchange: () => void pick(picker) });
   root.replaceChildren(
     h('h1', {}, 'Mods'),
     h('p', { class: 'lede' }, 'Mod packages stored on the OP-XY. Turning mods on or off and saving is done in the device\'s Mods menu; this page adds and removes packages.'),
+    ...(configError === undefined ? [] : [h('p', { class: 'muted' }, `Could not read the saved configuration (${configError}).`)]),
     h('div', { class: 'card' },
       h('div', { class: 'row' }, h('h2', { style: 'margin:0' }, 'Add packages'), h('span', { class: 'spacer' }),
         h('label', { class: 'button' }, 'Choose package folder...', picker),

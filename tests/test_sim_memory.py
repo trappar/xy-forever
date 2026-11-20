@@ -1,4 +1,4 @@
-"""Mod memory in the simulator: the Settings page's one row. Part of the saved configuration (config.txt
+"""Mod memory in the simulator: the Settings page's one row. Part of the saved configuration (config.json
 memory=), pending until boot like the Mods page's toggles: PLAY opens its options and a pick changes it, Continue
 asks Save / Discard / Back, Save rebuilds Open-XY in the 4 MiB layout (mods.apply flag bit 1); a power-on keeps the mode; no change, no rebuild; back
 to 2 MiB with a selection over 2032 KiB: Save refused with the limit text. The published 0.0.6 set (its base
@@ -73,7 +73,7 @@ class PublishedMemory(Memory, unittest.TestCase):
                     if not f.startswith('ext-')][:32]
         cls.machines = sorted(machines, key=lambda f: int(info(cls.gen_dir / f)['order']))   # build order
         cls.official = CS.content(cls.seeded)                              # what saved_as compares content/ with
-        (cls.seeded / SC.CONFIG).write_text('format=1\nbase=%s\nprofile=%s\ngeneration=%s\nunverified=0\nbuilt=\nslot=\n'
+        (cls.seeded / SC.LEGACY_CONFIG).write_text('format=1\nbase=%s\nprofile=%s\ngeneration=%s\nunverified=0\nbuilt=\nslot=\n'
                                          'stamp=\nmemory=standard\nmods=%s\n' % (cls.base, cls.profile, cls.generation,
                                                                                  ','.join(machines)))
 

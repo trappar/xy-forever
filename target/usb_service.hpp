@@ -263,7 +263,7 @@ uint32_t config_store(const char* text, uint32_t length, const char* default_id)
 const char* job_target();
 // settings.txt (xyf_settings.hpp). settings_load: once A serves, one bounded read (settings.txt, else
 // settings.old; absent or unreadable: the defaults); true when done (call each menu pass until then).
-// settings: the record (the defaults until loaded). settings_store: the record replaced as config.txt is (the
+// settings: the record (the defaults until loaded). settings_store: the record replaced as config.json is (the
 // config job with settings' paths, no default change; status as config_store).
 #define XYF_SETTINGS 1
 bool settings_load();

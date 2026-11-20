@@ -22,7 +22,7 @@ Part of the [XY Forever storage layout](../STORAGE.md).
   output folder holds every `content/…` file above, `info.txt`, `files.sha256` and `os.ldr`.
   `info.txt`: `type=firmware`, `name` (the caller's), `kind=open-xy`, `bytes`, `crc32`,
   `sha256`, the base's `needs_os`, `generation`, `profile`, and `machines` (the selected
-  machine count). Selection and memory choice stay in native `config.txt`; no external
+  machine count). Selection and memory choice stay in native `config.json`; no external
   layout is produced. `files.sha256` lists every file of the entry but itself (the sorted
   `content/…` lines above, then `info.txt`, `os.ldr`); a content switch takes its `content/` lines. Each file is
   written as `<name>.part`, read back by SHA-256, `os.ldr` also checked by `start_verify`, then renamed,

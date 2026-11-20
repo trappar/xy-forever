@@ -50,10 +50,10 @@ calls it. Journal/content caller frames remain 132/260 bytes, the outer boot
 caller 452 and the home pump 284. These are compiler frame sums, not an observed
 peak stack watermark.
 
-The native-reader product cold module is 326,000 bytes. The offline
+The product cold module is 330,784 bytes. The offline
 `stage2` and `stage2-menu` modules are 53,416 and 53,756 bytes. Both fit their
 56 KiB code windows and keep their 16 KiB stacks. All five modes build and
-verify offline. Package writers and configuration remain pending in #95.
+verify offline. Default package writers remain pending in #95.
 
 The Mods reader borrows 24,012 bytes of the idle report slot while it has the
 page's storage exclusion. Mod assembly needs the same amount temporarily at the
@@ -66,3 +66,11 @@ read, 24 for the stamp reader and 284 for the directory-name scan. The
 compatibility view adds an 8-byte frame before the existing JSON parser. An
 equivalent synthetic build peaked at 2,972,880 bytes with native input and
 2,972,848 bytes with legacy input in the stepped host harness.
+
+The device configuration reader and encoder reuse the Mods page scratch. The
+encoder validates its document against the reader's 2048-byte view limit before
+starting the existing configuration job. The job holds up to 8448 serialized
+bytes in its own work region and retains the existing Settings transaction.
+Configuration discovery uses paged directory reads, each closed before the
+menu yields. The Blackfin frames are 100 bytes for the record read, 84 for the
+JSON view, 16 for the encoder and 448 for the enclosing Save step.

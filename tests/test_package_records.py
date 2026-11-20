@@ -13,6 +13,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackageRecords(unittest.TestCase):
+    def test_saved_config_precedence_and_errors(self):
+        native = native_json.config_document(dict(base='stock', mods='alpha,missing', safe='1'))
+        legacy = b'base=other\nmods=beta\nsafe=1\n'
+        for files, want in (
+            ({'config.json': native, 'config.json.old': b'{', 'config.txt': legacy}, ['alpha', 'missing']),
+            ({'config.json.part': b'{', 'config.json.old': native, 'config.txt': legacy}, ['alpha', 'missing']),
+            ({'config.json.part': b'{', 'config.old': legacy}, ['beta']),
+            ({'config.json.part': b'{'}, None),
+            ({'config.json': b'{', 'config.txt': legacy}, modsend.Refused),
+            ({'config.json.old': None, 'config.txt': legacy}, modsend.Refused),
+            ({'config.txt': b'format=2\n', 'config.old': legacy}, modsend.Refused),
+        ):
+            with self.subTest(names=list(files)):
+                def read(path, **_):
+                    data = files[path.rsplit('/', 1)[1]]
+                    return (P.ids.S_NOT_FOUND, b'') if data is None else (0, data)
+                dev = SimpleNamespace(list_dir=lambda _: (0, [(2 if data is None else 0, 0, name.encode())
+                                                              for name, data in files.items()]), read_all=read)
+                if want is modsend.Refused:
+                    with self.assertRaisesRegex(modsend.Refused, r'config\.(json|txt)'):
+                        moddev.config(dev)
+                elif want is None:
+                    self.assertIsNone(moddev.config(dev))
+                else:
+                    config = moddev.config(dev)
+                    self.assertEqual((config['mods'], config['safe']), (want, '1'))
+
     def test_shared_selection_and_semantic_admission(self):
         for case in json.loads((ROOT / 'tests/package-records.json').read_text()):
             with self.subTest(case=case['name']):

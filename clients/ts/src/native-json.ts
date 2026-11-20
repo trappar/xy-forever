@@ -151,6 +151,9 @@ export function nativeConfigText(data: Uint8Array): Uint8Array {
   }
   need(typeof desired['unverified'] === 'boolean', 'JSON unverified boolean');
   lines.push(`unverified=${desired['unverified'] ? 1 : 0}\n`);
+  const safe = desired['safe'] === undefined ? false : desired['safe'];
+  need(typeof safe === 'boolean', 'JSON safe boolean');
+  if (safe) lines.push('safe=1\n');
   need(root['built'] !== undefined, 'JSON built object or null');
   if (root['built'] !== null) {
     const built = object(root['built']);
@@ -164,7 +167,8 @@ export function nativeConfigText(data: Uint8Array): Uint8Array {
   }
   const mods = desired['mods'];
   need(Array.isArray(mods) && mods.length <= LIST_COUNT, 'JSON mods list');
-  for (const mod of mods as unknown[]) need(typeof mod === 'string' && /^[a-z0-9_.-]{1,31}$/.test(mod), 'JSON mod identifier');
+  for (const mod of mods as unknown[])
+    need(typeof mod === 'string' && mod.length <= (mod.startsWith('ext-') ? 36 : 31) && /^[a-z0-9_.-]+$/.test(mod), 'JSON mod identifier');
   need(new Set(mods as string[]).size === (mods as string[]).length, 'duplicate JSON selection');
   lines.push(`mods=${(mods as string[]).join(',')}\n`);
   const result = new TextEncoder().encode(lines.join(''));
@@ -173,7 +177,8 @@ export function nativeConfigText(data: Uint8Array): Uint8Array {
 }
 export function nativeConfigDocument(fields: Record<string, string>): Uint8Array {
   const desired = { base: fields['base'] ?? '', profile: fields['profile'] ?? '', generation: fields['generation'] ?? '',
-    memory: fields['memory'] ?? 'standard', unverified: fields['unverified'] === '1', mods: fields['mods']?.split(',').filter(Boolean) ?? [] };
+    memory: fields['memory'] ?? 'standard', unverified: fields['unverified'] === '1',
+    ...(fields['safe'] === '1' ? { safe: true } : {}), mods: fields['mods'] ? fields['mods'].split(',') : [] };
   let built: ObjectValue | null = null;
   if (fields['built'] && ['mods-a', 'mods-b'].includes(fields['slot'] ?? '')) {
     const parts = fields['built'].split(' ');

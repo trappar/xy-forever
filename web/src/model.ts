@@ -3,8 +3,6 @@
 import { MAX_FOLDERS, PROTECTED_NAMES, WRITE_ROOTS, foldersOf, inWriteArea } from 'xy-forever-client';
 import type { HeldPackage } from 'xy-forever-client';
 
-export const CONFIG_FILE = '/yaffs2/xy-forever/config.txt';
-export const CONFIG_OLD = '/yaffs2/xy-forever/config.old';
 export const CONTENT_STATE = '/yaffs2/xy-forever/content-state.txt';
 export const CONTENT_STATE_OLD = '/yaffs2/xy-forever/content-state.old';
 export { WRITE_ROOTS };
@@ -24,12 +22,13 @@ export function parseKeyValues(text: string): Record<string, string> {
   return out;
 }
 
-/** The saved mod configuration (config.txt: base, profile, generation, unverified, slot, mods, ...). */
+/** The saved Mods selection and build bookkeeping. */
 export interface SavedConfig {
   readonly base: string | null;
   readonly profile: string | null;
   readonly generation: string | null;
   readonly unverified: boolean;
+  readonly safe: boolean;
   /** The library slot the mods were built into, null: not built yet. */
   readonly slot: string | null;
   /** The mod ids that are on. */
@@ -41,7 +40,7 @@ export function parseConfig(text: string): SavedConfig {
   const raw = parseKeyValues(text);
   const opt = (k: string): string | null => (raw[k] ?? '') || null;
   return {
-    base: opt('base'), profile: opt('profile'), generation: opt('generation'), unverified: raw['unverified'] === '1',
+    base: opt('base'), profile: opt('profile'), generation: opt('generation'), unverified: raw['unverified'] === '1', safe: raw['safe'] === '1',
     slot: opt('slot'), mods: (raw['mods'] ?? '').split(',').map((s) => s.trim()).filter(Boolean), raw,
   };
 }
@@ -74,7 +73,7 @@ export const KIND_LABEL: Readonly<Record<Kind, string>> = {
 export interface ModRow {
   /** The folder name on the device (what removePackage takes). */
   readonly folder: string;
-  /** The mod id (config.txt's mods=, mods.apply's machines/extensions). */
+  /** The mod ID in the saved selection and in mods.apply's machines/extensions. */
   readonly id: string;
   readonly name: string;
   readonly kind: Kind;

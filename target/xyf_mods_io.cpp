@@ -40,6 +40,8 @@ struct Io {
     uint32_t waiting;                             // the reading waits for another job (page_busy)
     uint32_t newer, broken;                       // any unreadable native metadata while opening the list
     fc::NameScan metadata_scan;
+    uint32_t config_skip, config_choice;
+    const char* config_error;
     Candidate candidates[max_candidates];
     char path[240];
     uint8_t entry[fc::entry_bytes + 4];         // the last folder entry (walk_entry: its name at +11)
@@ -201,36 +203,8 @@ const char* config_base() {
         return c->items[i].id;
     return base_entry();
 }
-// The record (config.txt, else config.old, else none) into rec; flag_saved on the listed packages it names (and
-// flag_on too: toggles, when the list was just read). A status but s_ok: rec unchanged.
-uint32_t read_record(bool toggles) {
-    uint32_t bytes = 0;
-    uint32_t code = fc::mount_ready(usb_service::page_mount());
-    if (code == s_ok) code = fc::read_file(xg::path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
-    if (code == xyf::usbp::s_not_found)
-        code = fc::read_file(xg::old_path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
-    if (code == xyf::usbp::s_not_found) { xg::clear(rec, xg::none); bytes = 0; }
-    else if (code != s_ok) return code;
-    else xg::parse(reinterpret_cast<const char*>(io.buffer), bytes, rec);
-    m::Page& p = the_page;
-    uint32_t marked = 0;
-    for (uint32_t r = 0; r != p.shown; ++r) {
-        m::Package& k = p.packages[p.rows[r]];
-        const bool on = rec.state == xg::present &&
-                        xg::listed(reinterpret_cast<const char*>(io.buffer), bytes, k.kind == m::kind_extension ? "ext-" : "",
-                                   m::text_at(p, k.id));
-        k.flags = uint8_t((k.flags & ~m::flag_saved) | (on ? m::flag_saved : 0));
-        if (toggles) k.flags = uint8_t((k.flags & ~m::flag_on) | (on ? m::flag_on : 0));
-        marked += on ? 1u : 0u;
-    }
-    p.saved_missing = rec.count > marked ? rec.count - marked : 0u;
-    // The saved memory layout; the pending choice follows it unless the user changed it (Settings may
-    // come before the list is read)
-    const bool kept = p.expanded != p.expanded_saved;
-    p.expanded_saved = rec.state == xg::present && rec.expanded;
-    if (!kept) p.expanded = p.expanded_saved;
-    return s_ok;
-}
+#include "xyf_mods_config.ipp"
+
 // The selected firmware record's stamp into out (65 bytes); "" when it cannot be read.
 void entry_stamp(const char* id, char* out) {
     uint32_t bytes = 0;
@@ -275,6 +249,7 @@ uint32_t moved(bool phase) {
 }
 uint32_t check() {                              // what the save needs: the build, or the slot as it is
     if (usb_service::page_busy()) { io.metadata_scan.folder = 0; return moved(false); }
+    if (io.config_error) return fail(io.config_error);
     m::Page& p = the_page;
     usb_service::save_log_lap(xyf::save_log::p_check);
     if (const char* why = m::save_refusal(p)) return fail(why);
@@ -421,24 +396,14 @@ uint32_t save_follow() {
         copy(r.generation, p.generation, sizeof(r.generation));
         r.unverified = sv.unverified;
         r.expanded = p.expanded ? 1u : 0u;
+        r.safe = rec.safe;
         const bool built = sv.count != 0;       // all off: the Open-XY slot stays as the record had it (spare)
         copy(r.built, built ? sv.built : rec.built, sizeof(r.built));
         copy(r.slot, built ? sv.slot : rec.slot, sizeof(r.slot));
         copy(r.stamp, built ? sv.stamp : rec.stamp, sizeof(r.stamp));
-        char* const text = reinterpret_cast<char*>(io.buffer);
-        uint32_t n = xg::format(text, read_bytes, r);
-        bool first = true, fits = n != 0;
-        for (uint32_t pass = 0; pass != 2; ++pass)
-            for (uint32_t k = 0; k != p.shown; ++k) {
-                const m::Package& q = p.packages[p.rows[k]];
-                if (!(q.flags & m::flag_on) || (q.kind == m::kind_extension) != (pass == 1)) continue;
-                const char* parts[3] = {first ? "" : ",", pass ? "ext-" : "", m::text_at(p, q.id)};
-                for (uint32_t j = 0; j != 3; ++j)
-                    for (const char* t = parts[j]; *t; ++t) { if (n + 2 >= read_bytes) fits = false; else text[n++] = *t; }
-                first = false;
-            }
-        text[n++] = '\n';
-        if (!fits) return fail("Save failed: the settings do not fit.");
+        char* text;
+        const uint32_t n = write_config(r, p, built, text);
+        if (!n) return fail("Save failed: the configuration exceeds its format limits.");
         if (usb_service::config_store(text, n, sv.target) != s_ok) return fail("Save failed: storage is busy.");
         usb_service::JobView v;
         usb_service::job_view(v);
@@ -466,6 +431,7 @@ void open() {
     if (rec.state == xg::failed) rec.state = xg::unread;   // try the record again
     if (p.view == m::View::building || (p.view == m::View::list && p.shown)) return;   // kept for this boot
     if (io.folder) return;                       // (never: pump closes it when the page is left)
+    restart_config_lookup();
     m::reset(p);
     io.step = s_serving; io.candidate_count = io.package_at = io.newer = io.broken = 0; io.dirty = 1; io.waiting = 0;
     m::say(p, m::line_info, "Reading mod packages...");
@@ -481,17 +447,19 @@ uint32_t pump(bool shown) {
     const uint32_t begin = units();
     uint32_t redraw = save_follow();
     // The saved configuration, once the menu runs (one bounded read; again after a failed save).
-    if (rec.state == xg::unread && sv.stage == sv_idle && !reading() && !usb_service::page_busy() &&
-        usb_service::page_serving() == s_ok && read_record(false) != s_ok)
-        rec.state = xg::failed;
+    if (rec.state == xg::unread && sv.stage == sv_idle && !reading()) {
+        if (usb_service::page_busy()) restart_config_lookup();
+        else if (usb_service::page_serving() == s_ok) read_record(false);
+    }
     // While another job owns the slot or its window closes, the reading sends nothing (a request
     // then met a stale folder handle or waited out A's bound). A's handles end with that window: the folder
     // is forgotten, not closed, and the reading starts again from the top once the job is over.
     const bool busy = reading() && usb_service::page_busy();
-    if (busy) { io.folder = 0; io.metadata_scan.folder = 0; }
+    if (busy) { io.folder = io.metadata_scan.folder = 0; restart_config_lookup(); }
     if (!shown && reading()) {                   // left mid-way: close the folder, read again next time
         if (io.folder) { fc::closedir(io.folder); io.folder = 0; }
         fc::close_name_scan(io.metadata_scan, usb_service::page_mount());
+        restart_config_lookup();
         io.step = s_idle;
     }
     if (shown && busy && !io.waiting) {
@@ -531,8 +499,8 @@ bool menu_state(xyf::menu::State& a) {
     const bool usable = !any || (c->items[def].flags & xyf::catalog::flag_usable);
     const bool applied = usable && (!have || (any && implied[0] && xg::same(c->items[def].id, implied)));
     const bool changes = (listed && m::changed(p)) || p.expanded != p.expanded_saved;   // memory any time
-    a.pending = changes || !applied;
-    a.save_note = listed ? m::save_refusal(p) : 0;
+    a.pending = changes || !applied || io.config_error;
+    a.save_note = io.config_error ? io.config_error : listed ? m::save_refusal(p) : nullptr;
     a.save_blocked = a.save_note != 0;
     a.open_xy = slot; a.hidden = ~0u;
     if (slot != ~0u) {
@@ -541,7 +509,8 @@ bool menu_state(xyf::menu::State& a) {
     }
     char next[sizeof(label)];
     next[0] = 0;
-    if (have || changes) {
+    if (io.config_error) copy(next, "Saved configuration unavailable", sizeof(next));
+    else if (have || changes) {
         const uint32_t n = listed ? m::chosen(p, false) + m::chosen(p, true) : rec.count;
         const uint32_t b = index_of(config_base() ? config_base() : "");
         xg::Out o = {next, next + sizeof(next) - 1, true};
