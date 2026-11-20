@@ -517,9 +517,7 @@ bool service_screen(const char* a, const char* b, const char* c, const char* d) 
 void inject_key(uint32_t key, uint32_t pressed) { key_injected = 1; on_key(key, pressed); key_injected = 0; }
 #if defined(XYF_ONE_SESSION)
 void refresh_catalog() {
-#if defined(XYF_MODS_PAGE)
-    const uint32_t row = app.main_selected;
-#endif
+    const uint32_t row = app.main_selected;          // #197: a rescan refreshes the data, never the home row
 #if defined(XYF_SETTINGS)
     // A rescan (a USB job's end) keeps the Settings page, its row and line, and an open option list.
     const xyf::menu::Screen kept_screen = app.screen;
@@ -542,11 +540,7 @@ void refresh_catalog() {
         if (kept_screen == xyf::menu::Screen::packs) xy_forever::usb_service::settings_open(app, xyf::settings::row_packs);
     }
 #endif
-#if defined(XYF_MODS_PAGE)
-    // A build's commit rescans the library while the Mods page is shown: STOP must come back to its
-    // row, not to Continue (whose PLAY would boot the default).
-    if (mods_shown) app.main_selected = row;
-#endif
+    app.main_selected = row;                         // (a job's end, also from the home menu or the Mods page)
     app_action = 0;
     dirty = 1;
 }

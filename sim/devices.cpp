@@ -279,9 +279,7 @@ void where_leave(uint32_t before) {
     sim_where_shown = 0;
 }
 void refresh_catalog() {                                               // as key_ui (the page stays, and its row)
-#if defined(XYF_MODS_PAGE)
-    const uint32_t row = sim_app.main_selected;
-#endif
+    const uint32_t row = sim_app.main_selected;                        // #197: as key_ui, never the home row
 #if defined(XYF_SETTINGS)
     const xyf::menu::State kept = sim_app;                             // as key_ui (the Settings page, its list stay)
     const bool keep = kept.screen == xyf::menu::Screen::settings || kept.screen == xyf::menu::Screen::options ||
@@ -300,9 +298,7 @@ void refresh_catalog() {                                               // as key
         if (kept.screen == xyf::menu::Screen::packs) usb_service::settings_open(sim_app, xyf::settings::row_packs);
     }
 #endif
-#if defined(XYF_MODS_PAGE)
-    if (sim_mods) sim_app.main_selected = row;
-#endif
+    sim_app.main_selected = row;
 }
 } }
 extern "C" void xy_forever_key_ui() {
