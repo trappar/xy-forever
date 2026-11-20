@@ -25,13 +25,13 @@ from test_sim_mtp_session import TunnelClient                             # noqa
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 XYF = '/yaffs2/xy-forever/'
-PLAY, STOP, MINUS = 51, 52, 53                                             # xyf_menu.hpp Key
+PLAY, STOP, MINUS, PLUS = 51, 52, 53, 54                                   # xyf_menu.hpp Key
 ON = b'format=1\nconfirm=1\n'
 ENTRY = b'opxy-121-stock\0'
 OLD_OS, NEW_OS = b'a stand-in os.ldr', b'another stand-in os.ldr'
-# Home: Settings (MINUS wraps to it), its page; up to Ask before USB control (Mod memory, About, it); its options
-# (On); Off; picked; back (saved when the page is left).
-TO_OFF = (MINUS, PLAY, MINUS, MINUS, PLAY, MINUS, PLAY, STOP)
+# Home: Settings (MINUS wraps to it), its page; down to Ask before USB control (past Menu at power-on, USB mode);
+# its options (On); Off; picked; back (saved when the page is left).
+TO_OFF = (MINUS, PLAY, PLUS, PLUS, PLUS, PLAY, MINUS, PLAY, STOP)
 
 
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
@@ -196,7 +196,7 @@ class AskTest(unittest.TestCase):
         self.ask()
         self.real(PLAY)
         self.answered('allowed')
-        self.injected(*TO_OFF[:5])                                         # the host's keys: the row refuses
+        self.injected(*TO_OFF[:6])                                         # the host's keys: the row refuses
         self.until(lambda: self.lines("settings: play on row 3: note=Ask before USB control changes only"), 'the note')
         self.injected(STOP)                                                # home, on Settings
         self.assertEqual(record.read_bytes(), ON)
