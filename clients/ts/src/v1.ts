@@ -27,8 +27,8 @@ export const MAX_STAGE = 7340032;
 export const MAX_LOG_TEXT = 200;
 /** the device drops a partial frame once its receive buffer has been empty for this long */
 export const IDLE_RESET_MS = 250;
-/** largest hello text (200 before 1.15); a build's text is fixed but for its stage-2 parts (190 bytes in the product build without stage 2), checked when it is compiled */
-export const MAX_HELLO = 224;
+/** largest hello text (224 before 1.23, 200 before 1.15); a build's text is fixed but for its run-time parts (211 bytes in the product build without stage 2, nothing asked), checked when it is compiled */
+export const MAX_HELLO = 240;
 export const MAX_FRAME = HEADER_BYTES + MAX_PAYLOAD + TRAILER_BYTES;
 /** A reply has the request type | REPLY; events are 0x80 and above too. */
 export const REPLY = 0x80;
@@ -77,6 +77,7 @@ export const STATUS = {
   no_content: 17,
   started: 18,
   declined: 19,
+  waiting: 20,
 } as const;
 export type StatusName = keyof typeof STATUS;
 export interface StatusInfo { readonly code: number; readonly name: StatusName; readonly class: string; readonly since: string; readonly doc: string }
@@ -100,7 +101,8 @@ export const STATUSES: readonly StatusInfo[] = [
   { code: 16, name: "cancelled", class: "job", since: "1.1", doc: "the job was cancelled (not sent by any command yet)" },
   { code: 17, name: "no_content", class: "order", since: "1.10", doc: "the library entry's content is not installed in `/yaffs2/content/` (a mod set built on the device, or any entry while another one's content is installed): it is listed but does not boot as it is; make it the default to install its content. Added during 1.10 without a version bump: a build that reports 1.10 to 1.16 may answer another status for such an entry; every 1.17 build sends this one" },
   { code: 18, name: "started", class: "job", since: "1.10", doc: "the request started a job (`library.set_default`: the content switch); follow it with `job.status`, whose end is the request's result" },
-  { code: 19, name: "declined", class: "policy", since: "1.11", doc: "the user refused the command at the device's Confirm on device prompt, or nobody answered it in time; nothing was done (sent since 1.23)" },
+  { code: 19, name: "declined", class: "policy", since: "1.11", doc: "not allowed: the user answered Don't allow when the device asked \"Allow this computer to control your OP-XY?\" (Settings > Ask before USB control); nothing was done, and every command but `hello` is refused so until the USB cable is unplugged or the device restarts (sent since 1.23)" },
+  { code: 20, name: "waiting", class: "policy", since: "1.23", doc: "the device asks \"Allow this computer to control your OP-XY?\" (Settings > Ask before USB control) and waits for the user's answer, with no time limit; nothing was done. Show \"Allow on your OP-XY\" and send the request again (every 0.5 s, say): it runs once the user allows; `declined` when the user does not. `hello` answers meanwhile (`trust=asking`)" },
 ];
 /** A status code's name; an unknown code (a newer device) is shown by number and is a failure. */
 export function statusName(code: number): string {
@@ -110,7 +112,9 @@ export function statusName(code: number): string {
 export const COMMON_ERRORS: readonly { readonly status: StatusName; readonly except: readonly CommandName[]; readonly doc: string }[] = [
   { status: "state", except: ["hello"], doc: "the device has not answered a `hello` since it started; nothing was done" },
   { status: "unsupported", except: ["hello"], doc: "this build does not answer the type (it is not in `cmds`)" },
-  { status: "busy", except: ["hello"], doc: "a job is running, or its write window is still closing after `job.status` said it ended: every command that needs processor A, the staging or a boot waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `job.cancel` are answered); since 1.23 also while the device asks Confirm on device (`diag.status`, `screen.read` and `job.status` are answered)" },
+  { status: "busy", except: ["hello"], doc: "a job is running, or its write window is still closing after `job.status` said it ended: every command that needs processor A, the staging or a boot waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `job.cancel` are answered)" },
+  { status: "waiting", except: ["hello"], doc: "since 1.23, with Ask before USB control on: the device asks whether to trust this computer (the first command but `hello` of a connection opens the question); nothing was done, send it again" },
+  { status: "declined", except: ["hello"], doc: "since 1.23, with Ask before USB control on: the user answered Don't allow; every command but `hello` is refused so until the USB cable is unplugged or the device restarts" },
 ];
 
 // ---- message types -----------------------------------------------------------------------------
@@ -517,8 +521,8 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
     switch: null, switchOptional: null, timeoutMs: 5000, destructive: false,
     errors: [],
     request: { size: [0, 0], ignored: true, fields: [] },
-    reply: { size: [1, 224], onError: "status", extensible: false, fields: [
-      { name: "info", type: "text", bytes: null, optional: false, encoding: "ascii", maxBytes: 224, range: null },
+    reply: { size: [1, 240], onError: "status", extensible: false, fields: [
+      { name: "info", type: "text", bytes: null, optional: false, encoding: "ascii", maxBytes: 240, range: null },
     ] },
   },
   "diag.status": {
@@ -730,8 +734,8 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
   "boot.install": {
     type: 0x20, name: "boot.install", class: "product", since: "1.0",
     summary: "install the staged XY Forever build into the boot partition",
-    switch: null, switchOptional: null, timeoutMs: 930000, destructive: true,
-    errors: ["state", "sha", "image", "link", "too_large", "install", "declined"],
+    switch: null, switchOptional: null, timeoutMs: 900000, destructive: true,
+    errors: ["state", "sha", "image", "link", "too_large", "install"],
     request: { size: [32, 32], ignored: false, fields: [
       { name: "sha256", type: "bytes", bytes: 32, optional: false, encoding: null, maxBytes: null, range: null },
     ] },
@@ -744,8 +748,8 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
   "boot.uninstall": {
     type: 0x21, name: "boot.uninstall", class: "product", since: "1.0",
     summary: "put the stock 1.2.1 os.ldr back into the boot partition",
-    switch: null, switchOptional: null, timeoutMs: 930000, destructive: true,
-    errors: ["state", "sha", "image", "link", "too_large", "install", "declined"],
+    switch: null, switchOptional: null, timeoutMs: 900000, destructive: true,
+    errors: ["state", "sha", "image", "link", "too_large", "install"],
     request: { size: [32, 32], ignored: false, fields: [
       { name: "sha256", type: "bytes", bytes: 32, optional: false, encoding: null, maxBytes: null, range: null },
     ] },
@@ -788,8 +792,8 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
   "library.set_default": {
     type: 0x40, name: "library.set_default", class: "product", since: "1.0",
     summary: "make a library entry the default firmware",
-    switch: "XYF_USB_SET_DEFAULT", switchOptional: false, timeoutMs: 105000, destructive: true,
-    errors: ["bad_request", "link", "storage", "no_content", "started", "declined"],
+    switch: "XYF_USB_SET_DEFAULT", switchOptional: false, timeoutMs: 75000, destructive: true,
+    errors: ["bad_request", "link", "storage", "no_content", "started"],
     request: { size: [2, 32], ignored: false, fields: [
       { name: "id", type: "cstr", bytes: null, optional: false, encoding: "ascii", maxBytes: 32, range: null },
     ] },
@@ -825,8 +829,8 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
   "mods.apply": {
     type: 0x44, name: "mods.apply", class: "product", since: "1.10",
     summary: "start assembling mod firmware on the device (a job)",
-    switch: "XYF_USB_FILE_WRITE", switchOptional: false, timeoutMs: 60000, destructive: true,
-    errors: ["bad_request", "sha", "link", "not_found", "state", "storage", "unsupported", "declined"],
+    switch: "XYF_USB_FILE_WRITE", switchOptional: false, timeoutMs: 30000, destructive: true,
+    errors: ["bad_request", "sha", "link", "not_found", "state", "storage", "unsupported"],
     request: { size: [47, 1460], ignored: false, fields: [
       { name: "base", type: "cstr", bytes: null, optional: false, encoding: "ascii", maxBytes: 32, range: null },
       { name: "profile", type: "cstr", bytes: null, optional: false, encoding: "ascii", maxBytes: 32, range: null },
@@ -1632,8 +1636,8 @@ export const GOLDEN: readonly GoldenFrame[] = [
     fields: {},
     hex: "58460101000000004c8d0632" },
   { name: "hello, answered", message: "hello", direction: "reply", seq: 1, status: "ok",
-    fields: {"info": "XYF1;service=usb;role=b;proto=1.23;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000001ffb001700031fff00be;dev=1;confirm=1;stage2=0"},
-    hex: "58468101cb00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32333b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303031666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b7374616765323d30ea157bcd" },
+    fields: {"info": "XYF1;service=usb;role=b;proto=1.23;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000001ffb001700031fff00be;dev=1;confirm=1;trust=none;stage2=0"},
+    hex: "58468101d600000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32333b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303031666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b7374616765323d30de1e9781" },
   { name: "hello, answered by a pre-v1 device", message: "hello", direction: "reply", seq: 1, status: "ok",
     fields: {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"},
     hex: "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5" },

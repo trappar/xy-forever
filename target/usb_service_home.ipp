@@ -142,7 +142,7 @@ uint32_t home_pump() {
     mtp_burst();                                       // speed: more passes of both while MTP traffic is active
 #endif
 #if defined(XYF_SETTINGS)
-    confirm_turn();                                    // #65: a held request's answer (the keys came this pass)
+    trust_turn();                                      // #65: the question's answer (the keys came this pass)
 #endif
     const U32 avail = cdc_available();
     if (!avail) {
@@ -186,7 +186,7 @@ uint32_t home_pump() {
         }
         else if (!home_greeted) status_only(type, seq, P::s_state);
 #if defined(XYF_SETTINGS)
-        else if (confirm_busy(type)) status_only(type, seq, P::s_busy);      // #65: the device is asking
+        else if (const U32 refused = trust_refuses(type)) status_only(type, seq, refused);   // #65: asks, or not allowed
 #endif
 #if defined(XYF_MTP_USB)
         else if (type == t_mtp_usb) mtp_usb_command(seq, payload, length);   // the probe (test build only)
@@ -208,9 +208,6 @@ uint32_t home_pump() {
 #endif
         else if (type == P::t_package_session) package_session(seq, payload, length);
         else if (job_blocks(type)) status_only(type, seq, P::s_busy);   // one request slot
-#if defined(XYF_SETTINGS)
-        else if (confirm_hold(type, seq, payload, length)) {}              // #65: asks first, answered later
-#endif
         else if (type == P::t_package_list) package_list(seq, payload, length);
         else if (type == P::t_state_get) state_get(seq, payload, length);
         else if (type == P::t_storage_space) storage_space(seq, payload, length);

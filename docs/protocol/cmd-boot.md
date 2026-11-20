@@ -8,9 +8,7 @@ Part of the [XY Forever serial protocol 1.23](../PROTOCOL.md).
 Install the staged XY Forever build into the boot partition. Accepts only a staged XY Forever build (its cold descriptor and a valid LDR structure; `image`
 otherwise) that fits the boot partition (`too_large`). Writes with the stock bootloader's own A/B boot-partition writer, then reads the partition back and
 compares every byte (`install` on any difference). Sends `log` events while it runs. A wrong-length request or no complete staging is `state`. Once the writer
-has run (`ok` or `install`) the staging is used up; a request refused before writing leaves it as it was. Takes minutes; the host waits up to 930 s. Confirm on
-device (1.23, #65): while the device's setting is on (`hello` key `confirm=1`), the device first asks on its screen and waits for a real PLAY (the request then
-runs) or STOP; STOP, or no answer within 30 s, is `declined` with nothing done. The timeout includes that wait.
+has run (`ok` or `install`) the staging is used up; a request refused before writing leaves it as it was. Takes minutes; the host waits up to 900 s.
 
 | Request field (32 bytes) | Type | Meaning |
 |---|---|---|
@@ -22,14 +20,14 @@ runs) or STOP; STOP, or no answer within 30 s, is `declined` with nothing done. 
 | `partition` | u32 | active boot partition read back (1 or 2; 0 = none) |
 | `sectors` | u32 | 512-byte sectors read back and compared |
 
-On an error: every field (zero where not reached). Errors: `state`, `sha`, `image`, `link`, `too_large`, `install`, `declined`. Tool timeout: 930 s.
-**Destructive**: ask the user first. Since 1.0.
+On an error: every field (zero where not reached). Errors: `state`, `sha`, `image`, `link`, `too_large`, `install`. Tool timeout: 900 s. **Destructive**: ask
+the user first. Since 1.0.
 
 ### 0x21 `boot.uninstall`
 
 Put the stock 1.2.1 os.ldr back into the boot partition. As `boot.install`, but accepts only the exact stock OP-XY 1.2.1 `os.ldr` (2373336 bytes, SHA-256
 `60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f`). Afterwards the OP-XY boots stock 1.2.1 and this service is gone; files under
-`/yaffs2/xy-forever/` stay. Asks first, as `boot.install`.
+`/yaffs2/xy-forever/` stay.
 
 | Request field (32 bytes) | Type | Meaning |
 |---|---|---|
@@ -41,8 +39,8 @@ Put the stock 1.2.1 os.ldr back into the boot partition. As `boot.install`, but 
 | `partition` | u32 | active boot partition read back (1 or 2; 0 = none) |
 | `sectors` | u32 | 512-byte sectors read back and compared |
 
-On an error: every field (zero where not reached). Errors: `state`, `sha`, `image`, `link`, `too_large`, `install`, `declined`. Tool timeout: 930 s.
-**Destructive**: ask the user first. Since 1.0.
+On an error: every field (zero where not reached). Errors: `state`, `sha`, `image`, `link`, `too_large`, `install`. Tool timeout: 900 s. **Destructive**: ask
+the user first. Since 1.0.
 
 ### 0x30 `device.reboot`
 

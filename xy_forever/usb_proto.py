@@ -32,14 +32,15 @@ def answered(switches):
 STAGE2_LOADED = 'XYF_STAGE2_LOADED'      # the run-time switch of stage2.info
 
 
-def hello_text(version, image, mode, switches, stage2=0, confirm=1):
+def hello_text(version, image, mode, switches, stage2=0, confirm=1, trust='none'):
     """The hello text such a build sends (the device composes it from usb_proto_ids.hpp): version its release
     version, image its 8 hex digits (None: `unknown`, as compiled); stage2: the loaded stage 2's version (0:
-    none; then stage2.info is not in cmds); confirm: Confirm on device (#65; 1 as compiled, the default)."""
+    none; then stage2.info is not in cmds); confirm: Ask before USB control (#65; 1 as compiled, the default); trust:
+    its question's state (none, asking, allowed, refused)."""
     bits = answered(set(switches) | ({STAGE2_LOADED} if stage2 else set()))
     dev = any(bits >> t & 1 for t, c in ids.COMMANDS.items() if c['cls'] == 'dev')
     values = dict(release=version, image=image or 'unknown', mode=mode, cmds='%032x' % bits, dev='1' if dev else None,
-                  stage2=str(stage2), confirm=str(confirm))
+                  stage2=str(stage2), confirm=str(confirm), trust=trust)
     items = [ids.HELLO_PREFIX]
     for name, _, source, text in ids.HELLO_KEYS:
         value = text if source == 'fixed' else values[source]

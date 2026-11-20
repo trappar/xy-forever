@@ -23,7 +23,7 @@ MAX_PATH = 240
 MAX_STAGE = 7340032
 MAX_LOG_TEXT = 200
 IDLE_RESET_MS = 250
-MAX_HELLO = 224
+MAX_HELLO = 240
 REPLY = 0x80
 
 # Request types (replies: type | REPLY).
@@ -89,9 +89,10 @@ S_CANCELLED = 16
 S_NO_CONTENT = 17
 S_STARTED = 18
 S_DECLINED = 19
-STATUS_NAMES = ('ok', 'bad_request', 'unsupported', 'state', 'range', 'crc', 'sha', 'storage', 'not_found', 'too_large', 'image', 'install', 'link', 'identity', 'refused', 'busy', 'cancelled', 'no_content', 'started', 'declined')
+S_WAITING = 20
+STATUS_NAMES = ('ok', 'bad_request', 'unsupported', 'state', 'range', 'crc', 'sha', 'storage', 'not_found', 'too_large', 'image', 'install', 'link', 'identity', 'refused', 'busy', 'cancelled', 'no_content', 'started', 'declined', 'waiting')
 # Statuses any command but the ones excepted can get, as the status alone.
-COMMON_ERRORS = ((S_STATE, ('hello',)), (S_UNSUPPORTED, ('hello',)), (S_BUSY, ('hello',)))
+COMMON_ERRORS = ((S_STATE, ('hello',)), (S_UNSUPPORTED, ('hello',)), (S_BUSY, ('hello',)), (S_WAITING, ('hello',)), (S_DECLINED, ('hello',)))
 
 # Transport facts: name -> (value, verified).
 TRANSPORT = {
@@ -108,7 +109,7 @@ TRANSPORT = {
 }
 
 # hello text: HELLO_PREFIX, then each key as ;name=value. A key is (name, since, source, text):
-# source fixed (text given), or release, image, mode, cmds, dev, confirm, stage2 (docs/protocol: hello).
+# source fixed (text given), or release, image, mode, cmds, dev, confirm, trust, stage2 (docs/protocol: hello).
 HELLO_PREFIX = 'XYF1'
 HELLO_KEYS = (
     ('service', '1.0', 'fixed', 'usb'),
@@ -124,6 +125,7 @@ HELLO_KEYS = (
     ('cmds', '1.1', 'cmds', None),
     ('dev', '1.1', 'dev', None),
     ('confirm', '1.23', 'confirm', None),
+    ('trust', '1.23', 'trust', None),
     ('stage2', '1.6', 'stage2', None),
 )
 
@@ -133,7 +135,7 @@ COMMANDS = {
         destructive=False, timeout_ms=5000, errors=(),
         request_size=(0, 0), request_ignored=True,
         request=(),
-        reply_size=(1, 224), reply_on_error='status', reply_extensible=False,
+        reply_size=(1, 240), reply_on_error='status', reply_extensible=False,
         reply=(('info', 'text', None, False, 'ascii'),)),
     0x02: dict(
         name='diag.status', symbol='status', cls='dev', test_only=False, switch=None,
@@ -263,14 +265,14 @@ COMMANDS = {
         reply=(('written', 'u32', 4, False, None), ('readback_crc', 'u32', 4, False, None), ('error', 'u32', 4, False, None))),
     0x20: dict(
         name='boot.install', symbol='install', cls='product', test_only=False, switch=None,
-        destructive=True, timeout_ms=930000, errors=('state', 'sha', 'image', 'link', 'too_large', 'install', 'declined'),
+        destructive=True, timeout_ms=900000, errors=('state', 'sha', 'image', 'link', 'too_large', 'install'),
         request_size=(32, 32), request_ignored=False,
         request=(('sha256', 'bytes', 32, False, None),),
         reply_size=(12, 12), reply_on_error='full', reply_extensible=True,
         reply=(('written', 'u32', 4, False, None), ('partition', 'u32', 4, False, None), ('sectors', 'u32', 4, False, None))),
     0x21: dict(
         name='boot.uninstall', symbol='uninstall', cls='product', test_only=False, switch=None,
-        destructive=True, timeout_ms=930000, errors=('state', 'sha', 'image', 'link', 'too_large', 'install', 'declined'),
+        destructive=True, timeout_ms=900000, errors=('state', 'sha', 'image', 'link', 'too_large', 'install'),
         request_size=(32, 32), request_ignored=False,
         request=(('sha256', 'bytes', 32, False, None),),
         reply_size=(12, 12), reply_on_error='full', reply_extensible=True,
@@ -305,7 +307,7 @@ COMMANDS = {
         reply=()),
     0x40: dict(
         name='library.set_default', symbol='set_default', cls='product', test_only=False, switch='XYF_USB_SET_DEFAULT',
-        destructive=True, timeout_ms=105000, errors=('bad_request', 'link', 'storage', 'no_content', 'started', 'declined'),
+        destructive=True, timeout_ms=75000, errors=('bad_request', 'link', 'storage', 'no_content', 'started'),
         request_size=(2, 32), request_ignored=False,
         request=(('id', 'cstr', None, False, 'ascii'),),
         reply_size=(4, 4), reply_on_error='full', reply_extensible=True,
@@ -333,7 +335,7 @@ COMMANDS = {
         reply=()),
     0x44: dict(
         name='mods.apply', symbol='mods_apply', cls='product', test_only=False, switch='XYF_USB_FILE_WRITE',
-        destructive=True, timeout_ms=60000, errors=('bad_request', 'sha', 'link', 'not_found', 'state', 'storage', 'unsupported', 'declined'),
+        destructive=True, timeout_ms=30000, errors=('bad_request', 'sha', 'link', 'not_found', 'state', 'storage', 'unsupported'),
         request_size=(47, 1460), request_ignored=False,
         request=(('base', 'cstr', None, False, 'ascii'), ('profile', 'cstr', None, False, 'ascii'), ('generation', 'cstr', None, False, 'ascii'), ('machines', 'cstr', None, False, 'ascii'), ('extensions', 'cstr', None, False, 'ascii'), ('name', 'cstr', None, False, 'ascii'), ('flags', 'u32', 4, False, None), ('sha256', 'bytes', 32, False, None)),
         reply_size=(8, 8), reply_on_error='full', reply_extensible=True,

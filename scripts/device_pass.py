@@ -9,8 +9,8 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
 (SAFETY.md: stop at the first unexpected result). The end stage always runs.
   check    always: HELLO + STATUS within --wait s. No answer: one `NEED:` line,
            exit 3, no session folder, nothing sent but HELLO. (keepalive.sh
-           processes already running are stopped first: they share the port.) Its HELLO
-           with confirm=1 (Confirm on device, #65): FAIL, switch it off on the device first.
+           processes already running are stopped first: they share the port.) HELLO
+           confirm=1 (#65): FAIL, CONFIRM_ON.
   session  always: hold on.
   read     default: status; state slots; the default entry's info.txt; ls firmware/
            lists the default and ls /yaffs2/xy-forever lists firmware; 8 ranged
@@ -290,11 +290,11 @@ SIM_SKIPS = {
     'keepalive': 'simulator: no keepalive.sh (the simulator keeps running without a host)',
 }
 SIM_NEED = 'NEED: start the simulator (python3 -m xy_forever.sim), then rerun with --sim 127.0.0.1:7341'
-CONFIRM_ON = 'Switch off Settings > Confirm on device on the device first'   # #65: each change would wait for PLAY
+CONFIRM_ON = 'Switch off Settings > Ask before USB control on the device first'
 
 
 def confirm_on(out):
-    """Whether the HELLO of an xyf_host run's output ("connected PORT: TEXT") says Confirm on device is on."""
+    """Whether the HELLO in xyf_host's output ("connected PORT: TEXT") says confirm=1."""
     hello = re.search(r'^connected .*?: (\S+)$', out, re.M)
     return bool(hello) and P.Hello(hello.group(1)).keys.get('confirm') == '1'
 
@@ -636,10 +636,7 @@ class Pass:
         return (self.folder or Path('.')) / ('%s-%s' % (self.prefix, suffix))
 
     def status(self, timeout=T_ANSWER):
-        out = self.ok(['status'], timeout)
-        if confirm_on(out):
-            raise StepFail(CONFIRM_ON)
-        decoded = parse_json(out)
+        decoded = parse_json(self.ok(['status'], timeout))
         usb = (decoded or {}).get('usb_service')
         if not usb:
             raise StepFail('status: no USB service block in the reply')
@@ -749,6 +746,8 @@ class Pass:
 
     # -- check and session -----------------------------------------------------------------------
     def step_check(self):
+        if confirm_on(self.ok(['wait'], self.opts.wait)):         # HELLO only: nothing asks
+            raise StepFail(CONFIRM_ON)
         decoded, usb = self.status(self.opts.wait)
         if usb.get('version') not in (4, 5) or usb.get('role') != 1:     # 5: the build identity
             raise StepFail('unexpected service: version %s, role %s' % (usb.get('version'), usb.get('role')))
@@ -2109,8 +2108,8 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
                 rows.append(row)
                 if row['result'] == 'FAIL':
                     failed = '%s/%s' % (stage, name)
-    # End of session: always. If the device does not answer, the rest is SKIP.
-    lost = None
+    # End of session: always. No answer (or #65's question on): the rest is SKIP.
+    lost = CONFIRM_ON if check['detail'] == CONFIRM_ON else None
     for name, _, _ in STAGES[-1][1]:
         index += 1
         if lost:

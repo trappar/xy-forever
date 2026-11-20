@@ -56,7 +56,7 @@ int main() {
     CHECK(std::strcmp(usb_text(usb_mtp_serial), "MTP + Serial") == 0 && std::strcmp(usb_text(usb_serial), "Serial") == 0);
     CHECK(std::strcmp(usb_text(usb_mtp_only), "MTP (no web app)") == 0);
     CHECK(rows == 5 && std::strcmp(label(row_memory), "Mod memory") == 0 && std::strcmp(label(row_about), "About") == 0);
-    CHECK(std::strcmp(label(row_confirm), "Confirm on device") == 0 && confirm_option_count == 2);   // #65
+    CHECK(std::strcmp(label(row_confirm), "Ask before USB control") == 0 && confirm_option_count == 2);   // #65
     CHECK(std::strcmp(confirm_options[0], "Off") == 0 && std::strcmp(confirm_options[1], "On") == 0);
     CHECK(std::strcmp(confirm_text(0), "Off") == 0 && std::strcmp(confirm_text(1), "On") == 0);
     CHECK(std::strcmp(memory_text(memory_standard, false), "2 MiB") == 0);
@@ -65,17 +65,16 @@ int main() {
     CHECK(std::strcmp(memory_text(memory_standard, true), "2 MiB: applied when you boot") == 0);
     CHECK(std::strcmp(memory_text(memory_unavailable, false), "Not available") == 0);   // short: the page's 2x text
     CHECK(std::strcmp(memory_text(memory_reading, false), "Checking...") == 0);
-    Gate g; gate_clear(g); CHECK(gate_poll(g, 0) == idle);
-    gate_open(g, "boot", 1000);
+    Gate g; gate_clear(g); CHECK(g.state == idle);
+    gate_open(g);
     gate_key(g, key_play, 1, true);                                  // injected: ignored
-    CHECK(gate_poll(g, 2000) == pending);
+    CHECK(g.state == pending);
     gate_key(g, key_play, 0, false);                                 // a release: ignored
-    CHECK(gate_poll(g, 2000) == pending);
-    gate_key(g, key_play, 1, false); CHECK(gate_poll(g, 2000) == yes);
-    gate_open(g, "boot", 1000); gate_key(g, key_stop, 1, true); gate_key(g, key_stop, 1, false); CHECK(gate_poll(g, 1001) == no);
-    gate_open(g, "boot", 0xfffff000u); CHECK(gate_poll(g, 0x1000u) == pending);   // wrap-safe
-    CHECK(gate_poll(g, 0xfffff000u + timeout_ms) == timed_out);
-    gate_key(g, key_play, 1, false); CHECK(gate_poll(g, 0) == timed_out);          // too late
+    CHECK(g.state == pending);
+    gate_key(g, key_play, 1, false); CHECK(g.state == yes);
+    gate_key(g, key_stop, 1, false); CHECK(g.state == yes);          // answered: kept
+    gate_open(g); gate_key(g, key_stop, 1, true); gate_key(g, key_stop, 1, false); CHECK(g.state == no);
+    gate_clear(g); gate_key(g, key_play, 1, false); CHECK(g.state == idle);       // nothing asked
     std::printf("%d checks passed\n", checks - failures);
     return failures ? 1 : 0;
 }

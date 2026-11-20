@@ -103,7 +103,7 @@ class UiFlowTest(unittest.TestCase):
         self.lib.flow_key(54)
         self.assertEqual(self.lib.flow_key(51), CHANGE_SETTING)       # USB mode
         self.lib.flow_key(54)
-        self.assertEqual(self.lib.flow_key(51), CHANGE_SETTING)       # #65: Confirm on device
+        self.assertEqual(self.lib.flow_key(51), CHANGE_SETTING)       # #65: Ask before USB control
         self.lib.flow_key(54)
         self.assertEqual(self.lib.flow_key(51), REDRAW)               # About
         self.assertEqual(self.lib.flow_screen(), 2)

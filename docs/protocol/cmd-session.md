@@ -12,9 +12,9 @@ pre-v1 device (see the rules).
 
 Request: empty (the device ignores any payload).
 
-| Reply field, after the status (1 to 224 bytes) | Type | Meaning |
+| Reply field, after the status (1 to 240 bytes) | Type | Meaning |
 |---|---|---|
-| `info` | text ASCII, 1..224 B | ASCII, `XYF1` and then `key=value` items, separated by `;`; no NUL; at most `max_hello` bytes. The keys are listed below; tools ignore keys they do not know. |
+| `info` | text ASCII, 1..240 B | ASCII, `XYF1` and then `key=value` items, separated by `;`; no NUL; at most `max_hello` bytes. The keys are listed below; tools ignore keys they do not know. |
 
 On an error: the status only. Errors: none of its own. The reply never gains fields (it ends in `text`). Tool timeout: 5 s. Since 1.1.
 
@@ -22,8 +22,8 @@ On an error: the status only. Errors: none of its own. The reply never gains fie
 
 The `hello` text: `XYF1`, then these keys in this order, each as `;key=value`. A build's text never changes while it runs, except `stage2` and the stage-2
 command's bit of `cmds`: both are set before the reply to the first `hello` of a boot when stage 2 loads, and cleared again if stage 2 stops answering as it
-should; and `confirm`, once the device has read its settings and when its Confirm on device setting is saved. Tools ignore keys they do not know and must not
-rely on the order.
+should; and (1.23) `confirm`, once the device has read its settings and when Ask before USB control is saved, and `trust`, as the question is asked and
+answered. Tools ignore keys they do not know and must not rely on the order.
 
 | Key | Since | Value |
 |---|---|---|
@@ -39,13 +39,14 @@ rely on the order.
 | `stage` | 1.1 | `7340032`: `max_stage` |
 | `cmds` | 1.1 | the request types this build answers: 32 lowercase hex digits, a 128-bit number written most significant digit first, in which bit t (value 2^t) is set when type t is answered (Python: `int(cmds, 16) >> t & 1`). Derived from each command's build switch when the build is compiled; the stage-2 command's bit is set at run time while stage 2 is loaded |
 | `dev` | 1.1 | `1` when the build answers developer commands; absent otherwise |
-| `confirm` | 1.23 | Confirm on device (Settings, #65): `1` when `boot.install`, `boot.uninstall`, `library.set_default` and `mods.apply` ask on the device first, `0` when they run at once. No USB command changes it, only the device's Settings row; file transfers (MTP, the serial file commands) stay open and can replace or delete `settings.txt` like any file; `1` until the device has read its settings (the default when it has none) |
+| `confirm` | 1.23 | Ask before USB control (Settings): `1` when the first command but `hello` of a connection makes the device ask "Allow this computer to control your OP-XY?" (`trust`), `0` when every command runs at once. No USB command changes it, only the device's Settings row with its own keys; file transfers (MTP, the serial file commands) stay open and can replace or delete `settings.txt` like any file; `1` until the device has read its settings (the default when it has none) |
+| `trust` | 1.23 | the question's state on this connection: `none` (not asked: the setting is off, or no command but `hello` came yet), `asking` (every command but `hello` answers `waiting`), `allowed` (the user allowed: commands run), `refused` (the user did not: every command but `hello` answers `declined`). An answer lasts until the USB cable is unplugged (seen as a USB bus reset; closing and reopening the port keeps it) or the device restarts; with USB mode Serial the device sees no unplug, so until it restarts |
 | `stage2` | 1.6 | the loaded stage 2's version, decimal; `0` when none is loaded (no file, or it failed a check). Always the last key |
 
-The product build answers (199 bytes):
+The product build answers (210 bytes):
 
 ```text
-XYF1;service=usb;role=b;proto=1.23;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000001ffb001700031fff00be;dev=1;confirm=1;stage2=0
+XYF1;service=usb;role=b;proto=1.23;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000001ffb001700031fff00be;dev=1;confirm=1;trust=none;stage2=0
 ```
 
 ### 0x03 `file.read`

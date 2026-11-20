@@ -15,7 +15,7 @@ static const uint32_t max_path = 240;           // largest device path, includin
 static const uint32_t max_stage = 7340032;      // largest staged image (7 MiB)
 static const uint32_t max_log_text = 200;       // largest text of a log event
 static const uint32_t idle_reset_ms = 250;      // the device drops a partial frame once its receive buffer has been empty for this long
-static const uint32_t max_hello = 224;          // largest hello text (200 before 1.15); a build's text is fixed but for its stage-2 parts (190 bytes in the product build without stage 2), checked when it is compiled
+static const uint32_t max_hello = 240;          // largest hello text (224 before 1.23, 200 before 1.15); a build's text is fixed but for its run-time parts (211 bytes in the product build without stage 2, nothing asked), checked when it is compiled
 enum Type : uint8_t {
     t_hello = 0x01,                             // hello (core)
     t_status = 0x02,                            // diag.status (dev)
@@ -78,7 +78,8 @@ enum Status : uint32_t {
     s_cancelled = 16,                           // the job was cancelled (not sent by any command yet)
     s_no_content = 17,                          // the library entry's content is not installed in /yaffs2/content/ (a mod set built on the device, or any entry while another one's content is installed): it is listed but does not boot as it is; make it the default to install its content. Added during 1.10 without a version bump: a build that reports 1.10 to 1.16 may answer another status for such an entry; every 1.17 build sends this one
     s_started = 18,                             // the request started a job (library.set_default: the content switch); follow it with job.status, whose end is the request's result
-    s_declined = 19,                            // the user refused the command at the device's Confirm on device prompt, or nobody answered it in time; nothing was done (sent since 1.23)
+    s_declined = 19,                            // not allowed: the user answered Don't allow when the device asked "Allow this computer to control your OP-XY?" (Settings > Ask before USB control); nothing was done, and every command but hello is refused so until the USB cable is unplugged or the device restarts (sent since 1.23)
+    s_waiting = 20,                             // the device asks "Allow this computer to control your OP-XY?" (Settings > Ask before USB control) and waits for the user's answer, with no time limit; nothing was done. Show "Allow on your OP-XY" and send the request again (every 0.5 s, say): it runs once the user allows; declined when the user does not. hello answers meanwhile (trust=asking)
 };
 } }
 // hello text (docs/protocol/cmd-session.md, hello). The build defines XYF_VERSION and XYF_BUILD_MODE (string literals).
@@ -156,5 +157,5 @@ enum Status : uint32_t {
     ";payload=4160;read=1024;stage=7340032;cmds=" \
     XYF_USBP_CMDS \
     XYF_USBP_HELLO_DEV \
-    ";confirm=1;stage2=0"
+    ";confirm=1;trust=none;stage2=0"
 #endif

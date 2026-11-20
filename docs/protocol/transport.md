@@ -54,4 +54,4 @@ Optional fields come last and are all present or all absent. A reply payload is 
 | `max_stage` | 7340032 | largest staged image (7 MiB) |
 | `max_log_text` | 200 | largest text of a `log` event |
 | `idle_reset_ms` | 250 | the device drops a partial frame once its receive buffer has been empty for this long |
-| `max_hello` | 224 | largest `hello` text (200 before 1.15); a build's text is fixed but for its stage-2 parts (190 bytes in the product build without stage 2), checked when it is compiled |
+| `max_hello` | 240 | largest `hello` text (224 before 1.23, 200 before 1.15); a build's text is fixed but for its run-time parts (211 bytes in the product build without stage 2, nothing asked), checked when it is compiled |

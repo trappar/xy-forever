@@ -53,6 +53,10 @@ std::string command(const std::string& line, bool& quit, int client) {
         resetting(k);
         return "{\"ok\": true}";
     }
+    if (n == 1 && !strcmp(verb, "unplug")) {              // #65: the cable out and in: a bus reset (sim/stock.cpp)
+        shared->usb_bus_resets.fetch_add(1);
+        return "{\"ok\": true}";
+    }
     if (n >= 2 && !strcmp(verb, "swap")) {               // swap PATH: test hook (runtime.hpp)
         snprintf(shared->swap_path, sizeof(shared->swap_path), "%s", line.c_str() + 5);
         shared->swap_armed = 1;
@@ -84,7 +88,8 @@ std::string command(const std::string& line, bool& quit, int client) {
             {"boot_a_window_ms", &shared->boot_a_window_ms}, {"b_close_stuck", &shared->b_close_stuck},
             {"defer_save_boot", &shared->defer_save_boot}, {"a_stage_corrupt", &shared->a_stage_corrupt}, {"unmount_ms", &shared->unmount_ms}, {"mount_ms", &shared->mount_ms}, {"rw_mount_ms", &shared->rw_mount_ms}, {"needs_repair", &shared->needs_repair}, {"rename_fault", &shared->rename_fault},
             {"rename_fault_kind", &shared->rename_fault_kind}, {"knob_per_pass", &shared->knob_per_pass},
-            {"knob_wrap", &shared->knob_wrap}, {"knob_identity_fail", &shared->knob_identity_fail}};
+            {"knob_wrap", &shared->knob_wrap}, {"knob_identity_fail", &shared->knob_identity_fail},
+            {"ask", &shared->ask}};
         for (auto& f : fields) if (!strcmp(f.name, name)) { *f.field = int32_t(value); return "{\"ok\": true}"; }
         if (!strcmp(name, "space")) { shared->space = value; return "{\"ok\": true}"; }
     }

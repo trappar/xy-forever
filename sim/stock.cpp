@@ -78,7 +78,13 @@ void cdc_accept() {
     setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
 }
+// #65: control "unplug" as our composite driver sees it (mtp_usb.cpp on_event 4): the connection ends, the count moves.
+uint32_t cdc_resets_seen = 0;
 int cdc_available() {
+    if (shared->usb_bus_resets.load() != cdc_resets_seen) {
+        cdc_resets_seen = shared->usb_bus_resets.load();
+        cdc_close_client("unplugged (a bus reset)");
+    }
     cdc_accept();
     if (client < 0) return 0;
     int n = 0;
@@ -293,6 +299,8 @@ void a_boot_request(uint32_t request) {
     finish(request, -1);
 }
 
+uint32_t usb_bus_resets() { return shared->usb_bus_resets.load(); }   // #65 (usb_service_trust.ipp usb_connection)
+uint32_t ask() { return shared->ask.load() ? 1u : 0u; }              // #65: --ask (usb_service_trust.ipp confirm_on)
 uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     (void)count;
     host_poll();

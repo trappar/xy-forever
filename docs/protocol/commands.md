@@ -9,8 +9,10 @@ Every reply starts with one. A tool shows a code it does not know by number and 
 come to any command, as the status alone (whatever its `on_error` says): `state`, to any command but `hello`: the device has not answered a `hello` since it
 started; nothing was done. `unsupported`, to any command but `hello`: this build does not answer the type (it is not in `cmds`). `busy`, to any command but
 `hello`: a job is running, or its write window is still closing after `job.status` said it ended: every command that needs processor A, the staging or a boot
-waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `job.cancel` are answered); since 1.23 also while the device asks Confirm on device
-(`diag.status`, `screen.read` and `job.status` are answered).
+waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `job.cancel` are answered). `waiting`, to any command but `hello`: since 1.23, with
+Ask before USB control on: the device asks whether to trust this computer (the first command but `hello` of a connection opens the question); nothing was done,
+send it again. `declined`, to any command but `hello`: since 1.23, with Ask before USB control on: the user answered Don't allow; every command but `hello` is
+refused so until the USB cable is unplugged or the device restarts.
 
 | Code | Name | Since | Meaning |
 |---|---|---|---|
@@ -33,7 +35,8 @@ waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `jo
 | 16 | `cancelled` | 1.1 | the job was cancelled (not sent by any command yet) |
 | 17 | `no_content` | 1.10 | the library entry's content is not installed in `/yaffs2/content/` (a mod set built on the device, or any entry while another one's content is installed): it is listed but does not boot as it is; make it the default to install its content. Added during 1.10 without a version bump: a build that reports 1.10 to 1.16 may answer another status for such an entry; every 1.17 build sends this one |
 | 18 | `started` | 1.10 | the request started a job (`library.set_default`: the content switch); follow it with `job.status`, whose end is the request's result |
-| 19 | `declined` | 1.11 | the user refused the command at the device's Confirm on device prompt, or nobody answered it in time; nothing was done (sent since 1.23) |
+| 19 | `declined` | 1.11 | not allowed: the user answered Don't allow when the device asked "Allow this computer to control your OP-XY?" (Settings > Ask before USB control); nothing was done, and every command but `hello` is refused so until the USB cable is unplugged or the device restarts (sent since 1.23) |
+| 20 | `waiting` | 1.23 | the device asks "Allow this computer to control your OP-XY?" (Settings > Ask before USB control) and waits for the user's answer, with no time limit; nothing was done. Show "Allow on your OP-XY" and send the request again (every 0.5 s, say): it runs once the user allows; `declined` when the user does not. `hello` answers meanwhile (`trust=asking`) |
 
 ## Commands
 

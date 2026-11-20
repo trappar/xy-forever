@@ -55,6 +55,9 @@ USB timing and host enumeration still require device qualification.
   urbs are freed without callbacks; IN completes through `urb_sent` with status 2. Bus reset alone
   does not flush. Free only ring-held urbs; an urb from an old configuration must be freed, never
   recycled. Suspend/resume needs OUT rearming even without another SET_CONFIGURATION.
+- A host resets the bus (event 4, `Stats::resets_bus`) before it addresses a newly attached device, and never
+  for opening or closing the serial port: #65's trust ends on it (`usb_service_trust.ipp`). The stock serial
+  service (USB mode Serial) reports no such event to us. Not yet seen on the device.
 - Stock heap allocation/free is not reentrant with the USB ISR: mask interrupts around every main-loop
   heap call and ring ownership change. Submit IN `88a08f24`, recycle OUT `88a08f08`, allocate `88a092ee`,
   free `88a09418`; the builder scopes these calls and checks their CRC spans.

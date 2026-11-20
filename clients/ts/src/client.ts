@@ -9,7 +9,9 @@ import type { Trace } from './link.ts';
 import type { Opener, Transport } from './transport.ts';
 import { SCREEN } from './screen.ts';
 import { writeStream } from './stream.ts';
-import { PROTECTED_NAMES, inWriteArea } from './write-area.ts';
+import { inWriteArea } from './write-area.ts';
+import { RETRY_MS, type Trust } from './trust.ts';
+import { fileReason } from './file-reason.ts';
 import * as v1 from './v1.ts';
 
 type Codecs = typeof v1.codecs;
@@ -52,6 +54,9 @@ export interface DeviceInfo {
   readonly limits: { readonly payload: number; readonly read: number; readonly stage: number };
   /** The build answers developer commands. */
   readonly dev: boolean;
+  /** From 1.23 (#65): Ask before USB control is on, and its question's state on this connection (else null). */
+  readonly ask: boolean;
+  readonly trust: Trust | null;
 }
 
 /** A folder entry (file.list): the name decoded as UTF-8 (nameBytes: as the device sent it); size 0 for a folder. */
@@ -112,6 +117,7 @@ function deviceInfo(hello: v1.Hello): DeviceInfo {
   const k = hello.keys;
   return {
     hello, proto: hello.proto, version: k['version'] ?? null, image: k['image'] ?? null, mode: k['mode'] ?? null, dev: k['dev'] === '1',
+    ask: k['confirm'] === '1', trust: (k['trust'] as Trust | undefined) ?? null,
     limits: { payload: number(k['payload'], v1.MAX_PAYLOAD), read: number(k['read'], v1.MAX_READ), stage: number(k['stage'], v1.MAX_STAGE) },
   };
 }
@@ -166,13 +172,22 @@ export async function invoke(client: Client, command: v1.Command, codec: AnyCode
       `${command.name}: update XY Forever`, { command: command.name });
   }
   const payload = codec.encodeRequest(request);         // a bad argument throws TypeError/RangeError
-  const reply = await client.link.request(command.type, payload,
-    { timeoutMs: options.timeoutMs ?? command.timeoutMs, signal: options.signal });
-  let decoded: ReturnType<AnyCodec['decodeReply']>;
+  let decoded: ReturnType<AnyCodec['decodeReply']>, asking = false;
   try {
-    decoded = codec.decodeReply(reply);
-  } catch (error) {
-    throw new XyfError('protocol', `${command.name}: unreadable reply: ${(error as Error).message}`, { command: command.name, cause: error });
+    for (;;) {                                           // #65 (trust.ts): sent again while the device asks
+      const reply = await client.link.request(command.type, payload,
+        { timeoutMs: options.timeoutMs ?? command.timeoutMs, signal: options.signal });
+      try {
+        decoded = codec.decodeReply(reply);
+      } catch (error) {
+        throw new XyfError('protocol', `${command.name}: unreadable reply: ${(error as Error).message}`, { command: command.name, cause: error });
+      }
+      if (decoded.ok || decoded.status !== v1.STATUS.waiting || command.name === 'hello') break;
+      if (!asking) client.asking(asking = true);
+      await sleep(RETRY_MS, options.signal);
+    }
+  } finally {
+    if (asking) client.asking(false);
   }
   if (!decoded.ok) throw statusError(command.name, decoded.status, decoded.fields);
   return decoded.fields;
@@ -184,6 +199,7 @@ export class Client {
   private readonly open: Opener;
   private readonly options: ConnectOptions;
   private readonly logListeners = new Set<(event: v1.LogEvent) => void>();
+  private readonly askListeners = new Set<(asking: boolean) => void>();
 
   /** Finds the device and says hello; throws XyfError `update_required` for a pre-1.1 device. */
   static async connect(open: Opener, options: ConnectOptions = {}): Promise<Client> {
@@ -208,6 +224,18 @@ export class Client {
     this.logListeners.add(listener);
     return () => this.logListeners.delete(listener);
   }
+
+  /**
+   * #65: the device asks "Allow this computer to control your OP-XY?" (true: show ASK_TEXT, the call waits for the
+   * answer and sends again) or no longer does for that call (false); returns the unsubscribe function.
+   */
+  onAsk(listener: (asking: boolean) => void): () => void {
+    this.askListeners.add(listener);
+    return () => this.askListeners.delete(listener);
+  }
+
+  /** @internal invoke's news for onAsk listeners. */
+  asking(on: boolean): void { for (const listener of this.askListeners) listener(on); }
 
   /** After a restart: waits up to goneMs for the old link to drop, then finds the device again. */
   async reconnect(options: ConnectOptions & { goneMs?: number } = {}): Promise<DeviceInfo> {
@@ -518,52 +546,6 @@ function parseEntries(data: Uint8Array): DirEntry[] {
   return out;
 }
 
-const CHANGES = new Set(['file.write_staged', 'file.delete', 'file.rmdir', 'file.mkdir', 'file.rename']);
-const FS_ERRORS: Record<number, string> = { 2: 'no such file or folder', 17: 'the name exists already', 20: 'not a folder',
-  21: 'a folder, not a file', 22: 'a folder cannot move into itself', 93: 'the folder is not empty' };
-
-/** A file command's device error in plain words (the status and the file system's error number). */
-export function fileReason(error: XyfError): string {
-  const reason = plainReason(error);
-  return error.command === 'file.copy' && error.fields?.['partial'] === 1 ? `${reason}; a partial target may remain` : reason;
-}
-
-function plainReason(error: XyfError): string {
-  const change = error.command !== null && CHANGES.has(error.command);
-  const errno = typeof error.fields?.['error'] === 'number' ? error.fields['error'] : 0;
-  const roots = `/yaffs2/, never ${PROTECTED_NAMES.join(' or ')} (or inside it)`;
-  switch (error.code) {
-    case 'refused':
-      return change ? `the OP-XY changes files only under ${roots}, at most 6 folders deep`
-        : error.command === 'file.copy' ? `the OP-XY copies only a file it may read, to a path under ${roots}`
-          : 'the OP-XY refuses this path (outside /yaffs2, an empty, "." or ".." part, or a control character)';
-    case 'not_found':
-      return error.command === 'file.mkdir' ? 'the parent folder does not exist'
-        : error.command === 'file.list' || error.command === 'file.rmdir' ? 'no such folder'
-          : error.command === 'file.rename' ? "no such file or folder, or the target's folder does not exist"
-            : error.command === 'file.copy' ? "no such file, or the target's folder does not exist" : 'no such file';
-    case 'state':
-      return error.command === 'file.rmdir' ? 'the folder is not empty: remove what it holds first'
-        : error.command === 'file.rename' || error.command === 'file.copy' ? 'the target exists already (nothing replaced)'
-          : error.command === 'file.write_staged' ? 'nothing complete is staged' : 'the device was not ready (send hello first)';
-    case 'storage':
-      return FS_ERRORS[errno] ?? `the device's file system failed${errno ? ` (error ${errno})` : ''}`;
-    case 'bad_request':
-      return 'a malformed path (too long, or an empty, "." or ".." part)';
-    case 'link':
-      return 'processor A did not answer; try again, or restart the OP-XY';
-    case 'busy':
-      return 'the OP-XY is building mod firmware (a job is running); try again when it ends, or cancel it';
-    case 'crc':
-      return error.command === 'file.copy' ? 'the copy read back differs from the source' : 'the file read back differs from what was sent';
-    case 'too_large':
-      return error.command === 'file.copy' ? 'the file is larger than the OP-XY copies at a time (hello stage=)'
-        : STATUSES_BY_NAME.get(error.code) ?? 'too large';
-    default:
-      return STATUSES_BY_NAME.get(error.code) ?? `the device answered ${error.code}`;
-  }
-}
-
 /** The SHA-256 input of file.rename and file.copy: source, a NUL, target. */
 function pathPair(source: string, target: string): Uint8Array {
   const e = new TextEncoder();
@@ -578,7 +560,6 @@ function checkChange(command: ChangeCommand, path: string, label: string, below 
   throw new XyfError('refused', `${command} ${label}: ${reason}`, { command });
 }
 
-const STATUSES_BY_NAME = new Map<string, string>(v1.STATUSES.map((s) => [s.name, s.doc]));
 
 /** The same error with the path and the plain reason in its message (device errors only). */
 function plainFileError(error: unknown, path: string): unknown {

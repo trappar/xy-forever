@@ -27,8 +27,10 @@ bool settings_load() {
     return true;
 }
 xs::Record& settings() { return settings_record; }
-xs::Gate confirm_gate __attribute__((section(".data"))) = {xs::idle, 0, ""};
+xs::Gate confirm_gate __attribute__((section(".data"))) = {xs::idle};
+U32 key_from_host __attribute__((section(".data"))) = 0;               // the last key event was injected (diag.key)
 bool confirm_key(uint32_t key, uint32_t pressed, bool injected) {
+    key_from_host = injected;
     if (confirm_gate.state != xs::pending) return false;
     xs::gate_key(confirm_gate, key, pressed, injected);
     return true;
@@ -61,6 +63,7 @@ const char* settings_open(xyf::menu::State& s, uint32_t row) {
     if (settings_job) return xs::note_saving;                            // the last leaving's write is still running
     const xs::Record& r = settings_record;
     if (r.newer) return xs::note_newer;                                 // a newer record: never rewritten here
+    if (row == xs::row_confirm && key_from_host) return xs::note_on_device;   // #65: never from the host
     if (row == xs::row_power_on) xyf::menu::open_options(s, xs::power_on_options, xs::power_on_option_count, r.power_on);
     else if (row == xs::row_usb) xyf::menu::open_options(s, xs::usb_options, xs::usb_option_count, r.usb);
     else if (row == xs::row_confirm) xyf::menu::open_options(s, xs::confirm_options, xs::confirm_option_count, r.confirm);
@@ -71,7 +74,7 @@ void settings_pick(const xyf::menu::State& s) {
     if (r.newer || settings_job || s.option_selected >= s.option_count) return;
     if (s.entry == xs::row_power_on) r.power_on = s.option_selected;
     else if (s.entry == xs::row_usb) r.usb = s.option_selected;
-    else if (s.entry == xs::row_confirm) r.confirm = s.option_selected;
+    else if (s.entry == xs::row_confirm && !key_from_host) r.confirm = s.option_selected;
 }
 // The leaving's write (the whole record as the page left it, settings_store): its line, or why it did not start.
 const char* settings_save() {

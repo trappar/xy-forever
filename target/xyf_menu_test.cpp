@@ -65,7 +65,7 @@ int main() {
     REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::main);   // default = Cancel
     press(s, menu::key_play); press(s, menu::key_plus);
     REQUIRE(s.confirm_accept && press(s, menu::key_play) == Action::uninstall);
-    // #21: Settings: Mod memory, Menu at power-on, USB mode, Confirm on device (#65), About. PLAY on a setting is change_setting with its
+    // #21: Settings: Mod memory, Menu at power-on, USB mode, Ask before USB control (#65), About. PLAY on a setting is change_setting with its
     // row; About opens the About page (the home menu has no Info row) and returns to Settings.
     menu::start(s, &cat, false); press(s, menu::key_minus);
     REQUIRE(press(s, menu::key_knob1 + 3) == Action::redraw && s.screen == Screen::settings && s.settings_selected == 0);

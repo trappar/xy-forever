@@ -69,8 +69,8 @@ TRANSPORT_FACTS = ('usb_vendor_id', 'usb_product_id', 'product_usb_ids', 'usb_pr
 RANGE_KINDS = ('dev', 'event', 'retired')
 REQUIRED_CONSTANTS = ('header_bytes', 'trailer_bytes', 'max_payload', 'max_data', 'max_read', 'put_chunk',
                       'max_path', 'max_stage', 'max_log_text', 'max_hello')
-from protogen_hello import (BUILD_MACROS, CMDS_DIGITS, HELLO_SOURCES, IMAGE_DIGITS, IMAGE_UNKNOWN,  # noqa: E402
-                            RUNTIME_SWITCHES, STAGE2_DIGITS, answered, hello_fixed, hello_source, render_cpp_hello)
+from protogen_hello import (BUILD_MACROS, HELLO_SOURCES, RUNTIME_BYTES,  # noqa: E402
+                            RUNTIME_SWITCHES, answered, hello_fixed, hello_source, render_cpp_hello)
 HELLO_TEXT = re.compile(r'^[!-:<>-~]+$')          # printable ASCII without space, ';' and '='
 # object kind -> (required keys, optional keys)
 KEYS = {
@@ -599,8 +599,7 @@ def check_hello(c, spec, constants, messages):
                 continue
             size = k['max_bytes']
         else:
-            size = {'version': len(spec['protocol']['version']), 'cmds': CMDS_DIGITS, 'dev': 1,
-                    'image': max(IMAGE_DIGITS, len(IMAGE_UNKNOWN)), 'stage2': STAGE2_DIGITS, 'confirm': 1}[k['source']]
+            size = dict(RUNTIME_BYTES, version=len(spec['protocol']['version']))[k['source']]
             if k['source'] == 'stage2' and k is not keys[-1]:
                 c.fail(where, 'the stage2 key must be the last key (the device sets it at run time)')
         longest += 2 + len(k['name']) + size
@@ -725,7 +724,7 @@ def render_py(spec):
     out.append('}')
     out.append('')
     out.append('# hello text: HELLO_PREFIX, then each key as ;name=value. A key is (name, since, source, text):')
-    out.append('# source fixed (text given), or release, image, mode, cmds, dev, confirm, stage2 (docs/protocol: hello).')
+    out.append('# source fixed (text given), or release, image, mode, cmds, dev, confirm, trust, stage2 (docs/protocol: hello).')
     out.append('HELLO_PREFIX = %r' % spec['hello']['prefix'])
     out.append('HELLO_KEYS = (')
     for key in spec['hello']['keys']:

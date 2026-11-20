@@ -1,16 +1,17 @@
-"""Confirm on device (#65) in the simulator: with the setting on, boot.install, boot.uninstall, library.set_default
-and mods.apply wait for a real PLAY (control "realkey", the PSoC's keys) before they run; a real STOP or no answer
-within 30 s is `declined` with nothing done; injected keys (diag.key) never answer; other requests are busy
-meanwhile. HELLO reports the setting (confirm=). No USB command changes the setting: the Settings row does. File
-transfers stay open (the gate covers commands, not files): MTP and the serial file commands overwrite /yaffs2/os.ldr
-and delete xy-forever/, settings.txt with it, nothing asked. Needs clang++ and the private stock 1.2.1 images
-(skipped without them). No device access."""
-import os
+"""Ask before USB control (#65) in the simulator: with the setting on, the first serial request but hello of a
+connection makes the device ask "Allow this computer to control your OP-XY?" (no time limit); meanwhile every
+request but hello answers `waiting` at once (nothing held, nothing done) and hello says trust=asking. A real PLAY
+(control "realkey", the PSoC's keys) trusts the computer until the cable is unplugged (control "unplug": a bus reset)
+or the device restarts, across closing and reopening the port; a real STOP refuses every request (`declined`) as
+long. Injected keys (diag.key) never answer, and never change the setting: only the OP-XY's own keys do. MTP stays
+open (the serial tunnel, as its own interface). Needs clang++ and the private stock 1.2.1 images (skipped without
+them). No device access."""
 from pathlib import Path
 import shutil
 import struct
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -18,8 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                    # noqa: E402
-from xy_forever import host_write, sim, usb_proto as P, usb_proto_ids as ids   # noqa: E402
-from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
+from xy_forever import host_trust, sim, usb_proto as P, usb_proto_ids as ids   # noqa: E402
 import test_mtp_responder as R                                            # noqa: E402
 from test_sim_mtp_session import TunnelClient                             # noqa: E402
 
@@ -29,13 +29,16 @@ PLAY, STOP, MINUS = 51, 52, 53                                             # xyf
 ON = b'format=1\nconfirm=1\n'
 ENTRY = b'opxy-121-stock\0'
 OLD_OS, NEW_OS = b'a stand-in os.ldr', b'another stand-in os.ldr'
+# Home: Settings (MINUS wraps to it), its page; up to Ask before USB control (Mod memory, About, it); its options
+# (On); Off; picked; back (saved when the page is left).
+TO_OFF = (MINUS, PLAY, MINUS, MINUS, PLAY, MINUS, PLAY, STOP)
 
 
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
-class ConfirmTest(unittest.TestCase):
+class AskTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-confirm-')
+        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-ask-')
         cls.out = sim.build()
         cls.seeded = sim.seed(Path(cls.tmp.name) / 'seed')
         (cls.seeded / 'xy-forever/settings.txt').write_bytes(ON)          # the product default: on
@@ -52,18 +55,22 @@ class ConfirmTest(unittest.TestCase):
         self.dir = Path(self.tmp.name) / ('run-%d' % self.runs)
         self.root = self.dir / 'yaffs2'
         shutil.copytree(self.seeded, self.root)
-        self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', build_dir=self.out, log=self.dir / 'log.txt').start()
-        self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
-        code, text = self.dev.hello()
-        self.assertEqual(code, 0)
-        wait_startup_ready(text, lambda remaining: self.dev.call(ids.STORAGE_SPACE, struct.pack('<I', 1),
-                                                                 timeout=remaining)[0])
+        self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', build_dir=self.out, log=self.dir / 'log.txt', ask=True).start()
+        self.dev = None
+        self.connect()
 
     def tearDown(self):
         self.dev.t.close()
         self.sim.stop()
 
     # -- helpers ---------------------------------------------------------------------------
+    def connect(self):
+        """The port (re)opened, and hello."""
+        if self.dev:
+            self.dev.t.close()
+        self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
+        self.assertEqual(self.dev.hello()[0], 0)
+
     def lines(self, marker):
         log = (self.dir / 'log.txt').read_text(errors='replace') if (self.dir / 'log.txt').exists() else ''
         return [line[line.index(marker) + len(marker):] for line in log.splitlines() if marker in line]
@@ -74,125 +81,147 @@ class ConfirmTest(unittest.TestCase):
             self.assertLess(time.monotonic(), deadline, 'never ' + what)
             time.sleep(0.01)
 
-    def send(self, kind, payload):
-        """A request without waiting for its reply (the device holds it while it asks)."""
-        self.dev.seq = (self.dev.seq + 1) & 0xff
-        self.dev.t.write(P.encode(kind, self.dev.seq, payload))
-        return kind, self.dev.seq
+    def keys(self):
+        """hello's confirm= and trust=."""
+        keys = P.Hello(self.dev.hello()[1]).keys
+        return keys.get('confirm'), keys.get('trust')
 
-    def reply(self, sent, timeout=30.0):
-        kind, seq = sent
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            for k, s, body in self.dev.parser.feed(self.dev.t.read(0.2)):
-                if k == kind | P.REPLY and s == seq:
-                    return struct.unpack_from('<I', body)[0], body[4:]
-        self.fail('no reply to 0x%02x' % kind)
+    def once(self, kind, payload=b''):
+        """One request, its status (no retry while the device asks)."""
+        return self.dev.once(kind, payload, timeout=15.0)[0]
 
-    def ask(self, kind, payload, what):
-        """Sends a gated request until the device asks about it (busy, as a host retries, while the write
-        window of the start-up reads still closes)."""
-        deadline = time.monotonic() + 30.0
-        while time.monotonic() < deadline:
-            n = len(self.lines('confirm: asks: '))
-            sent = self.send(kind, payload)
-            until = time.monotonic() + 2.0
-            while time.monotonic() < until:
-                if len(self.lines('confirm: asks: ')) > n:
-                    self.assertTrue(self.lines('confirm: asks: ')[-1].startswith(what), self.lines('confirm: asks: ')[-1])
-                    return sent
-                frames = [f for f in self.dev.parser.feed(self.dev.t.read(0.05)) if f[0] == kind | P.REPLY and f[1] == sent[1]]
-                if frames:
-                    self.assertEqual(struct.unpack_from('<I', frames[0][2])[0], ids.S_BUSY)
-                    time.sleep(0.1)
-                    break
-        self.fail('never asked about 0x%02x' % kind)
+    def ask(self):
+        """The first request of the connection opens the question (busy while the settings are still read)."""
+        self.until(lambda: self.once(P.STATUS) == ids.S_WAITING, 'asked')
+        self.assertEqual(self.keys(), ('1', 'asking'))
 
-    def real(self, key):
-        for pressed in (1, 0):
-            self.assertTrue(self.sim.control('realkey %d %d' % (key, pressed)).get('ok'))
+    def real(self, *keys):
+        for key in keys:
+            for pressed in (1, 0):
+                self.assertTrue(self.sim.control('realkey %d %d' % (key, pressed)).get('ok'))
+
+    def injected(self, *keys):
+        for key in keys:
+            for pressed in (1, 0):
+                self.assertEqual(self.once(ids.KEY, struct.pack('<II', key, pressed)), 0)
+
+    def answered(self, trust):
+        self.until(lambda: self.keys()[1] == trust, 'trust=' + trust)
 
     def slots(self):
         return b''.join((self.root / 'xy-forever' / n).read_bytes() for n in ('state-a.txt', 'state-b.txt')
                         if (self.root / 'xy-forever' / n).exists())
 
-    def confirm_key(self):
-        return P.Hello(self.dev.hello()[1]).keys.get('confirm')
-
     # -- tests -----------------------------------------------------------------------------
-    def test_confirmed_runs_the_request(self):
-        self.assertEqual(self.confirm_key(), '1')
-        sent = self.ask(P.SET_DEFAULT, ENTRY, 'Set the default firmware; opxy-121-stock')
-        self.assertNotIn(b'default=opxy-121-stock', self.slots())
+    def test_allowed(self):
+        self.assertEqual(self.keys(), ('1', 'none'))                       # hello alone asks nothing
+        self.assertFalse(self.lines('trust: asks'))
+        self.ask()
         self.real(PLAY)
-        code, body = self.reply(sent)
-        self.assertEqual(code, 0, P.status_name(code))
-        self.assertEqual(self.lines('confirm: answer ')[-1], 'yes')
+        self.answered('allowed')
+        self.assertEqual(self.once(P.STATUS), 0)
+        self.assertEqual(self.dev.set_default('opxy-121-stock')[0], 0)    # runs at once: no question per command
         self.assertIn(b'default=opxy-121-stock', self.slots())
+        self.assertEqual(self.lines('trust: asks'), [''])
 
-    def test_declined_changes_nothing(self):
+    def test_not_allowed(self):
         before = self.slots()
-        sent = self.ask(P.SET_DEFAULT, ENTRY, 'Set the default firmware')
-        self.assertEqual(self.dev.call(P.READ_FILE, (XYF + 'state-a.txt\0').encode())[0], ids.S_BUSY)   # one at a time
+        self.ask()
         self.real(STOP)
-        self.assertEqual(self.reply(sent), (ids.S_DECLINED, bytes(4)))     # id_hash 0
+        self.answered('refused')
+        for kind, payload in ((P.STATUS, b''), (P.SET_DEFAULT, ENTRY), (P.READ_FILE, (XYF + 'state-a.txt\0').encode())):
+            self.assertEqual(self.once(kind, payload), ids.S_DECLINED, kind)
+        with self.assertRaises(host_trust.NotAllowed):                     # xyf_host stops there
+            self.dev.call(P.STATUS)
         self.assertEqual(self.slots(), before)
-        # Each gated command: declined with every reply field 0 (STOP, or nobody within 30 s).
-        for kind, payload, size, what in ((P.INSTALL, bytes(32), 12, 'Install'), (P.UNINSTALL, bytes(32), 12, 'Uninstall'),
-                                          (ids.MODS_APPLY, bytes(47), 8, 'Build mod firmware')):
-            with self.subTest(kind=kind):
-                sent = self.ask(kind, payload, what)
-                if kind == ids.MODS_APPLY:
-                    self.sim.advance(31000)                                 # no answer: declined at the bound
-                else:
-                    self.real(STOP)
-                self.assertEqual(self.reply(sent), (ids.S_DECLINED, bytes(size)))
-        self.assertEqual(self.lines('confirm: answer '), ['no', 'no', 'no', 'timed out'])
-        self.assertEqual(self.dev.read_file(XYF + 'state-a.txt')[0], 0)    # answered again
+        self.connect()                                                     # the port again: still refused
+        self.assertEqual(self.once(P.STATUS), ids.S_DECLINED)
+
+    def test_waiting_while_asking(self):
+        before = self.slots()
+        self.ask()
+        for kind, payload in ((P.STATUS, b''), (P.SET_DEFAULT, ENTRY), (P.READ_FILE, (XYF + 'state-a.txt\0').encode()),
+                              (ids.SCREEN, b''), (ids.WRITE_BEGIN, b'')):
+            start = time.monotonic()
+            self.assertEqual(self.once(kind, payload), ids.S_WAITING, kind)
+            self.assertLess(time.monotonic() - start, 5.0)                # at once: nothing held open
+        self.assertEqual(self.keys(), ('1', 'asking'))
+        self.assertEqual(self.slots(), before)
+        self.assertEqual(self.lines('trust: asks'), [''])                 # asked once
+        self.sim.advance(120000)                                           # no time limit
+        self.assertEqual(self.keys(), ('1', 'asking'))
+        said = []
+        self.dev.on_ask = said.append                                      # xyf_host: says so once, sends again
+        allow = threading.Thread(target=lambda: (self.until(lambda: said, 'the host waiting'), self.real(PLAY)))
+        allow.start()
+        code, _ = self.dev.call(P.STATUS)
+        allow.join(30.0)
+        self.assertEqual((code, said), (0, [host_trust.ASK]))
+
+    def test_trust_kept_across_port_close_and_reopen(self):
+        self.ask()
+        self.real(PLAY)
+        self.answered('allowed')
+        self.connect()
+        self.assertEqual(self.keys(), ('1', 'allowed'))
+        self.assertEqual(self.once(P.STATUS), 0)
+        self.assertEqual(self.lines('trust: asks'), [''])
+
+    def test_trust_ended_by_unplugging(self):
+        for answer, trust in ((PLAY, 'allowed'), (STOP, 'refused')):
+            with self.subTest(trust=trust):
+                self.ask()
+                self.real(answer)
+                self.answered(trust)
+                self.assertTrue(self.sim.control('unplug').get('ok'))
+                self.until(lambda: self.lines('unplugged (a bus reset)'), 'the connection closed')
+                self.connect()
+                self.assertEqual(self.keys(), ('1', 'none'))
+                self.ask()                                                  # asked again
+        self.assertEqual(len(self.lines('trust: asks')), 3)
 
     def test_injected_keys_are_ignored(self):
-        before = self.slots()
-        sent = self.ask(P.SET_DEFAULT, ENTRY, 'Set the default firmware')
+        self.ask()
         for key in (PLAY, STOP):
             for pressed in (1, 0):
-                self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
-        self.until(lambda: len(self.lines('confirm: key ')) >= 4, 'the injected keys')
-        self.assertTrue(all(line.endswith('(injected)') for line in self.lines('confirm: key ')))
-        self.assertFalse(self.lines('confirm: answer '))                   # still asking
-        self.assertEqual(self.slots(), before)
-        self.real(STOP)
-        self.assertEqual(self.reply(sent)[0], ids.S_DECLINED)
+                self.assertEqual(self.once(ids.KEY, struct.pack('<II', key, pressed)), ids.S_WAITING)
+        self.assertFalse(self.lines('trust: answer'))
+        self.assertEqual(self.keys(), ('1', 'asking'))
+        self.real(PLAY)
+        self.answered('allowed')
+        self.assertTrue(all(line.endswith('(real)') for line in self.lines('trust: key ')))
 
-    def test_setting_changes_on_the_device(self):
+    def test_setting_not_changeable_over_usb(self):
         record = self.root / 'xy-forever/settings.txt'
-        self.assertEqual(self.confirm_key(), '1')
-        # On the device: Settings > Confirm on device > Off, saved when the page is left.
-        for key in (MINUS, PLAY, MINUS, MINUS, PLAY, MINUS, PLAY, STOP):   # home: Settings; its row; Off; back
-            self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, 1))[0], 0)
-            self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, 0))[0], 0)
+        self.ask()
+        self.real(PLAY)
+        self.answered('allowed')
+        self.injected(*TO_OFF[:5])                                         # the host's keys: the row refuses
+        self.until(lambda: self.lines("settings: play on row 3: note=Ask before USB control changes only"), 'the note')
+        self.injected(STOP)                                                # home, on Settings
+        self.assertEqual(record.read_bytes(), ON)
+        self.assertEqual(self.keys(), ('1', 'allowed'))
+        self.real(PLAY, PLAY, MINUS, PLAY, STOP)                           # own keys (the page kept its row): Off
         self.until(lambda: self.lines('menu: line: Settings saved.'), 'the save')
         self.assertIn(b'confirm=0\n', record.read_bytes())
-        self.assertEqual(self.confirm_key(), '0')
-        self.assertEqual(self.dev.set_default('opxy-121-stock')[0], 0)    # runs at once
-        self.assertFalse(self.lines('confirm: asks: '))
+        self.assertEqual(self.keys()[0], '0')
 
-    def test_file_commands_stay_open(self):
-        """The serial file commands, the setting on: os.ldr overwritten, settings.txt replaced, xy-forever/ deleted
-        (file.delete and file.rmdir, deepest first), nothing asked."""
-        self.assertEqual(host_write.write_stream(self.dev, '/yaffs2/os.ldr', NEW_OS)[0], 0)
-        self.assertEqual((self.root / 'os.ldr').read_bytes(), NEW_OS)
-        self.assertEqual(host_write.write_stream(self.dev, XYF + 'settings.txt', b'format=1\nconfirm=0\n')[0], 0)
-        for folder, _, files in os.walk(self.root / 'xy-forever', topdown=False):
-            where = '/yaffs2/' + Path(folder).relative_to(self.root).as_posix()
-            for name in files:
-                self.assertEqual(self.dev.change(ids.DELETE_FILE, where + '/' + name), (0, 0), where + '/' + name)
-            self.assertEqual(self.dev.change(ids.REMOVE_DIR, where), (0, 0), where)
-        self.assertFalse((self.root / 'xy-forever').exists())
-        self.assertFalse(self.lines('confirm: asks: '))
+    def test_setting_off_asks_nothing(self):
+        self.ask()
+        self.real(PLAY)
+        self.answered('allowed')
+        self.real(*TO_OFF)
+        self.until(lambda: self.lines('menu: line: Settings saved.'), 'the save')
+        self.assertTrue(self.sim.control('unplug').get('ok'))
+        self.until(lambda: self.lines('unplugged (a bus reset)'), 'the connection closed')
+        self.connect()
+        self.assertEqual(self.keys(), ('0', 'none'))
+        self.assertEqual(self.once(P.STATUS), 0)
+        self.assertEqual(len(self.lines('trust: asks')), 1)
 
     def test_mtp_stays_open(self):
-        """MTP, the setting on: os.ldr overwritten (SendObject onto its name), xy-forever/ deleted (DeleteObject,
-        deepest first), nothing asked."""
+        """MTP (the serial tunnel, as its own interface), the setting on and nothing asked: os.ldr overwritten
+        (SendObject onto its name), xy-forever/ deleted (DeleteObject, deepest first), settings.txt with it."""
         c = TunnelClient(self.dev)
         self.assertEqual(c.tunnel(0)[0], ids.S_OK)                        # diag.mtp op 0: the session (no composite)
         self.assertEqual(c.transaction(0x1002, 1)[0], R.OK)
@@ -208,7 +237,9 @@ class ConfirmTest(unittest.TestCase):
             self.assertEqual(c.transaction(0x100B, handle)[0], R.OK)
         remove(c.named()['xy-forever'])
         self.assertFalse((self.root / 'xy-forever').exists())
-        self.assertFalse(self.lines('confirm: asks: '))
+        self.assertFalse(self.lines('trust: asks'))
+        self.assertEqual(self.keys(), ('1', 'none'))
+
 
 if __name__ == '__main__':
     unittest.main()

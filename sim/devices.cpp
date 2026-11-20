@@ -286,8 +286,8 @@ void dispatch(uint32_t key, uint32_t pressed) {
 // A key from the PSoC (real_keys_deliver) or the host's KEY command (inject_key), as key_ui's on_key.
 void key_event(uint32_t key, uint32_t pressed, bool injected) {
 #if defined(XYF_SETTINGS)
-    if (xy_forever::usb_service::confirm_key(key, pressed, injected)) {   // a prompt has the keys
-        xyf_sim::log("confirm: key %u %s (%s)", key, pressed ? "pressed" : "released", injected ? "injected" : "real");
+    if (xy_forever::usb_service::confirm_key(key, pressed, injected)) {   // #65: the question has the keys
+        xyf_sim::log("trust: key %u %s (%s)", key, pressed ? "pressed" : "released", injected ? "injected" : "real");
         return;
     }
 #endif

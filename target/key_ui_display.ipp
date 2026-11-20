@@ -16,11 +16,11 @@ const char* volatile usb_drawn_line __attribute__((section(".data"))) = 0;
 const char* volatile image_drawn __attribute__((section(".data"))) = 0;
 volatile uint32_t menu_screen __attribute__((section(".data"))) = 0;
 #if defined(XYF_SETTINGS)
-const char* volatile confirm_drawn __attribute__((section(".data"))) = 0;   // #65: the prompt on screen (0: none)
+volatile uint32_t trust_drawn __attribute__((section(".data"))) = 0;      // #65: the question on screen
 #endif
 bool usb_view_changed() {
 #if defined(XYF_SETTINGS)
-    if (xy_forever::usb_service::confirm_prompt() != confirm_drawn) return true;
+    if (xy_forever::usb_service::trust_prompt() != (trust_drawn != 0)) return true;
 #endif
     return xy_forever::usb_service::host_marks() != usb_drawn ||
            xy_forever::usb_service::host_activity() != usb_drawn_line ||
@@ -46,18 +46,19 @@ void draw_screen(uint16_t* fb) {
         return;
     }
 #if defined(XYF_SETTINGS)
-    const char* const asked = confirm_drawn = xy_forever::usb_service::confirm_prompt();
+    const bool asked = xy_forever::usb_service::trust_prompt();
+    trust_drawn = asked;
 #endif
     if (ui_screen == 2) {
         const Message bye = {"Starting", {ui_status}, 1, "", &chrome};
         draw_message(fb, bye);
 #if defined(XYF_SETTINGS)
-    } else if (asked) {                              // #65: Confirm on device (the current menu style)
-        const Message ask = {"Allow this USB request?", {"A computer asks to:", asked,
-                             xy_forever::usb_service::confirm_detail(), "",
-                             "STOP, or no answer within 30 s, declines it.",
-                             "Settings > Confirm on device turns these questions off.", "", ""}, 6,
-                             "PLAY  allow      STOP  decline", &chrome};
+    } else if (asked) {                              // #65: Ask before USB control (the current menu style)
+        const Message ask = {"USB control", {"Allow this computer to control your OP-XY?", "",
+                             "Allow: until you unplug the cable or restart.",
+                             "Don't allow: it is refused until then.",
+                             "Settings > Ask before USB control turns this off.", "", "", ""}, 5,
+                             "PLAY  allow      STOP  don't allow", &chrome};
         draw_message(fb, ask);
 #endif
 #if defined(XYF_SERVICE_SCREEN)

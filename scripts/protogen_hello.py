@@ -3,9 +3,10 @@ the cmds bitmap and the C++ macros."""
 import itertools
 
 # hello key sources besides a fixed value or constant: release and mode from the build (C macros below);
-# set at run time: image (compiled `unknown`), confirm (#65, compiled 1: the default) and stage2 (compiled 0, so
-# the last key).
-HELLO_SOURCES = ('version', 'release', 'image', 'mode', 'cmds', 'dev', 'confirm', 'stage2')
+# set at run time: image (compiled `unknown`), confirm (#65, compiled 1: the default), trust (#65, compiled `none`)
+# and stage2 (compiled 0, so the last key).
+HELLO_SOURCES = ('version', 'release', 'image', 'mode', 'cmds', 'dev', 'confirm', 'trust', 'stage2')
+TRUST_WORDS = ('none', 'asking', 'allowed', 'refused')   # usb_service_trust.ipp trust_word
 STAGE2_DIGITS = 10                                # a u32 in decimal
 # Switches no build defines: the device sets the command's cmds bit at run time (stage2.info: while
 # stage 2 is loaded). The generated #if blocks give the digit without them.
@@ -13,6 +14,9 @@ RUNTIME_SWITCHES = ('XYF_STAGE2_LOADED',)
 BUILD_MACROS = {'release': 'XYF_VERSION', 'mode': 'XYF_BUILD_MODE'}
 IMAGE_DIGITS, IMAGE_UNKNOWN = 8, 'unknown'
 CMDS_DIGITS = 32                                  # request types 0x00..0x7f, four per hex digit
+# The longest value of each source a build sets (protogen.py check_hello: max_hello).
+RUNTIME_BYTES = dict(cmds=CMDS_DIGITS, dev=1, image=max(IMAGE_DIGITS, len(IMAGE_UNKNOWN)), stage2=STAGE2_DIGITS, confirm=1,
+                     trust=max(map(len, TRUST_WORDS)))
 
 
 def answered(spec, switches):
@@ -78,8 +82,8 @@ def render_cpp_hello(spec):
             else:
                 lines.append('#define XYF_USBP_HELLO_DEV ""')
             pieces.append(('macro', 'XYF_USBP_HELLO_DEV'))
-        elif source == 'image':
-            pieces.append(';%s=%s' % (key['name'], IMAGE_UNKNOWN))
+        elif source in ('image', 'trust'):
+            pieces.append(';%s=%s' % (key['name'], IMAGE_UNKNOWN if source == 'image' else TRUST_WORDS[0]))
         elif source in ('stage2', 'confirm'):        # usb_service.cpp: the loaded stage 2's version, the setting
             pieces.append(';%s=%d' % (key['name'], source == 'confirm'))
         else:

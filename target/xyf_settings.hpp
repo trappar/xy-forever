@@ -1,14 +1,15 @@
 #ifndef XYF_SETTINGS_HPP
 #define XYF_SETTINGS_HPP
 #include <stdint.h>
-// Device settings (the Settings page) and the "Confirm on device" gate (#65: usb_service_confirm.ipp asks with it).
+// Device settings (the Settings page) and the "Ask before USB control" question (#65: usb_service_trust.ipp asks it).
 // Freestanding, header only, pure.
 // A sibling of config.txt (xyf_config.hpp), not part of it: config.txt is the pending/saved mod selection
 // written only by Save (its mods= line last), while a setting changes on its own page.
 //
 // The record, /yaffs2/xy-forever/settings.txt (key=value lines, LF; unknown keys ignored, a missing key its default):
 //   format=1
-//   confirm=0|1            Confirm on device: a host command that changes which code runs next waits for PLAY
+//   confirm=0|1            Ask before USB control (#65; the key keeps its first name): the first serial command of a
+//                          connection makes the device ask whether to trust the computer (usb_service_trust.ipp)
 //   power_on=play|always   Menu at power-on (#21): with PLAY held (default) or always
 //   usb=mtp_serial|mtp_only|serial   USB mode in the menu (#21): MTP + serial as one composite device (default), MTP
 //                          alone (the same driver without its CDC interfaces: no host tool, no web app), or the stock
@@ -21,8 +22,9 @@
 // No record (absent or unreadable): the defaults, confirm=1 (#56: on); the simulator and tests seed confirm=0.
 // Readers: B's menu (usb_service settings_load, through A) and A at each check of the default (file_boot a_power_on:
 // settings.txt, else settings.old; bounded, read-only), whose answer tells B to open the menu without PLAY.
-// No USB command changes the confirm setting, only the Settings row. File transfers (MTP, the serial file commands)
-// stay open: they may replace or delete settings.txt like any file (the gate covers commands, not files).
+// No USB command changes the confirm setting, only the Settings row with the OP-XY's own keys (injected keys may not:
+// usb_service settings_open). File transfers (MTP, the serial file commands) stay open: they may replace or delete
+// settings.txt like any file (the question covers serial commands, not files).
 namespace xyf { namespace settings {
 static const char path[] = "/yaffs2/xy-forever/settings.txt";
 static const char old_path[] = "/yaffs2/xy-forever/settings.old";
@@ -88,8 +90,8 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
 }
 
 // The Settings page: one row per setting that works, then About; PLAY or a knob push acts on the selected one
-// (xyf_menu.cpp: About opens the About page, once the home menu's Info row). #65: Confirm on device (confirm=), On or
-// Off; the offline stage-2 modes (XYF_SMALL_CRC: no settings.txt, no USB service) have no such row.
+// (xyf_menu.cpp: About opens the About page, once the home menu's Info row). #65: Ask before USB control (confirm=), On
+// or Off; the offline stage-2 modes (XYF_SMALL_CRC: no settings.txt, no USB service) have no such row.
 // #21: PLAY on a setting opens its option list (xyf_menu Screen::options: - / + choose, PLAY picks, STOP leaves it
 // unchanged); a value index is its option's index (memory_options, power_on_options, usb_options, confirm_options). A settings.txt
 // row's pick changes only B's copy (marked on the page, nothing written); the record is written once, when the page
@@ -100,7 +102,7 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
 // says which of these the row shows (menu::State memory, memory_pending).
 #if !defined(XYF_SMALL_CRC)
 enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_confirm, row_about, rows, row_packs = rows };
-static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "Confirm on device", "About"};
+static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "Ask before USB control", "About"};
 #else
 enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_about, rows, row_packs = rows };
 static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "About"};
@@ -136,24 +138,19 @@ static const char note_failed[] = "Settings not saved: open Settings and leave i
 static const char note_busy[] = "Settings not saved: a job is running. Open Settings and leave it to try again.";
 static const char note_link[] = "Settings not saved: storage link lost.";
 
-// The confirm gate (#65, usb_service_confirm.ipp): the device asks about a host request, PLAY = yes, STOP = no,
-// bounded. Only a real key event answers: an injected one (the host's diag.key) is ignored, so the host can never
-// approve its own request.
-static const uint32_t timeout_ms = 30000;
+// The question (#65, usb_service_trust.ipp): "Allow this computer to control your OP-XY?", PLAY = yes, STOP = no,
+// with no time limit. Only a real key event answers: an injected one (the host's diag.key) is ignored, so the host
+// can never answer for the user.
 static const uint32_t key_play = 51, key_stop = 52;     // xyf_menu.hpp Key (KPlay, KStop)
-enum Answer : uint32_t { pending = 0, yes = 1, no = 2, timed_out = 3, idle = 4 };
-struct Gate { uint32_t state, started_ms; const char* what; };
-static inline void gate_clear(Gate& g) { g.state = idle; g.started_ms = 0; g.what = ""; }
-static inline void gate_open(Gate& g, const char* what, uint32_t now_ms) { g.state = pending; g.started_ms = now_ms; g.what = what; }
+static const char note_on_device[] = "Ask before USB control changes only with the OP-XY's own keys.";
+enum Answer : uint32_t { pending = 0, yes = 1, no = 2, idle = 4 };
+struct Gate { uint32_t state; };
+static inline void gate_clear(Gate& g) { g.state = idle; }
+static inline void gate_open(Gate& g) { g.state = pending; }
 static inline void gate_key(Gate& g, uint32_t key, uint32_t pressed, bool injected) {
     if (g.state != pending || injected || !pressed) return;
     if (key == key_play) g.state = yes;
     else if (key == key_stop) g.state = no;
-}
-// The gate's answer at now_ms: pending until a real PLAY / STOP or the bound (wrap-safe).
-static inline uint32_t gate_poll(Gate& g, uint32_t now_ms) {
-    if (g.state == pending && now_ms - g.started_ms >= timeout_ms) g.state = timed_out;
-    return g.state;
 }
 } }
 #endif

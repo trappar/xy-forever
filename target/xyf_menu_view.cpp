@@ -62,7 +62,7 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
 #if defined(XYF_SETTING_OPTIONS)
         static ui::ListRow rows[settings::rows + 1] XYF_DATA = {       // xyf_settings.hpp Row, labels (+ row_packs)
             {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false},
-            {"Confirm on device", 0, false}, {"About", 0, false}, {"Content packs", 0, false}};
+            {"Ask before USB control", 0, false}, {"About", 0, false}, {"Content packs", 0, false}};
         if (s.pack_names) ++count;
         rows[settings::row_memory].detail = settings::memory_text(s.memory, false);   // pending: marked
         rows[settings::row_power_on].detail = s.power_on_text;     // #21: 0 (blank) without settings.txt

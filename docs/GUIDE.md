@@ -174,6 +174,10 @@ PLAY opens a row. The bottom line shows saves.
 - **Menu at power-on:** "PLAY held" (default) or "Always" (the menu opens at every power-on).
 - **USB mode:** "MTP + Serial" (default), "MTP" or "Serial"; applies the next time the menu opens. With
   "MTP", the host tool and web app cannot reach the OP-XY until you change it back here.
+- **Ask before USB control:** "On" (default) or "Off". On: when a computer first sends the OP-XY a
+  command over USB serial (the host tool, the web app), the OP-XY asks "Allow this computer to control your
+  OP-XY?". PLAY allows it until you unplug the cable or restart; STOP refuses it as long. File transfers
+  (MTP) never ask. Only the OP-XY's own keys change this row.
 - **About:** the version, the real bootloader (1.2.1, never updated), how to open the menu.
 - **Content packs:** SHIFT+PLAY toggles the inbox view.
 
