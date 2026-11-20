@@ -74,13 +74,13 @@ set (without `--yes` it is a dry run).
 ## 3. Build and boot today
 
 The library needs the stock 1.2.1 firmware as an entry, with its `content.sha256`.
-Without it Save stops with "Save failed: no stock OP-XY firmware in the library."
+Without it booting from the first row stops with "Failed: no stock OP-XY firmware in the library."
 `xyf_host.py library-add ... --content DIR` adds both (DIR: the official package's
 `firmware/blackfin/content`).
 
 **On the device (the normal way):** power on holding PLAY, open Mods, turn your
-machines on, STOP, then PLAY on the first row and choose Save. The OP-XY builds,
-installs content, saves the setup and boots it.
+machines on (saved at once), STOP, then PLAY on the first row. The OP-XY builds,
+installs content, sets the default and boots it.
 
 **From the computer:**
 

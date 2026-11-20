@@ -85,13 +85,14 @@ never `dlc/`, `user/` or a name holding `bootloader` (`xyf::content::allowed`, o
 names' CRC-32), `slot` (the Open-XY entry), `stamp` (its `info.txt` `sha256=`), `memory=standard|expanded` (Mod memory; anything else: standard),
 `safe=0|1` (safe mode: the base is the default with official content; 0 without a slot or mods), `mods` (last).
 Replaced as `content-state.txt` is; a reader takes `config.old` when the record is missing; no record: no mods.
-The record holds the inputs of the desired state (#197): base, selection (`built`), Mod memory, `safe`. Save, Boot without mods (`safe=1`), Restore
-(`safe=0`) and the first row's PLAY with (to apply) or (rebuild) set them and converge (`target/xyf_converge.hpp` `plan`, run by `xyf_mods_save.ipp`):
+The record holds the inputs of the desired state (#197): base, selection (`mods`), Mod memory, `safe`. A Mods page or Mod memory flip is written
+at once (at a quiet moment, quick flips: one write; `built`, `slot`, `stamp`, `safe` kept). Boot without mods (`safe=1`), Restore
+(`safe=0`) and the first row's PLAY with (to apply) or (rebuild) converge to the record (`target/xyf_converge.hpp` `plan`, run by `xyf_mods_save.ipp`):
 only the steps that differ run, in order. A build into the spare slot unless `slot` exists, `built` matches and its `sha256=` equals `stamp` (safe
 mode: none); the content switch to the target (the base in safe mode or with no mods, else `slot`) unless installed; the record and the default
 (one job, `config_store`; always after a switch). Nothing differs: nothing is written. No mod build takes `slot` (`job_target`).
 
 `log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
-Save, USB build or content switch, the last 20; `kind result mods memory added removed total` then each
+menu converge, USB build or content switch, the last 20; `kind result mods memory added removed total` then each
 part's milliseconds and the switch's counts. Written by B in the last write window of the sequence (`.part`,
-the old file removed, renamed); a failed write is ignored, a failed Save writes none.
+the old file removed, renamed); a failed write is ignored, a failed converge writes none.

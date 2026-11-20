@@ -59,7 +59,7 @@ test's simulator helpers come from its `test/` folder.
 
 - **Save over USB.** "Build on device" uses the client's low-level `applyMods` (`mods.apply`): it builds the
   library entry mods-a or mods-b with its content not installed and does not change what boots. Turning mods on or
-  off and saving stays in the device's Mods menu until the device offers its Save over USB. The seam is
+  off (saved at once) stays in the device's Mods menu until the device offers saving over USB. The seam is
   `buildOnDevice` / `setBuildOnDevice` in `src/main.ts` (also `window.xyfApp.setBuildOnDevice`).
 - Making a built entry the default (`makeDefault`), firmware library management, firmware and companion install,
   XY Forever self-update, Bluetooth.

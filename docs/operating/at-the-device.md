@@ -74,8 +74,8 @@ an OS reinstall, so crash logs can be fetched from it.
   confirm before building.
 - **Hardware time is limited.** Pack more information into each test, plan boots
   carefully, and leave no junk on the device.
-- **Uninstall must be a real in-menu action.** Users must never need the stock
-  bootloader or dev menu.
+- **Uninstall needs no stock bootloader or dev menu.** It is the web app's (#179,
+  the USB `boot.uninstall` command), not a home menu row (#197).
 - **The developer boots test firmware.** When a test needs a library entry booted (the device
   leaves XY Forever), prepare everything over USB, then name the entry exactly as the menu shows
   it and what to look for; the developer boots it, checks it and power cycles back, and reports in

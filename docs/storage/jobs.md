@@ -29,7 +29,7 @@ content change. A cut during replay or undo replays that direction again. Unrela
 replace unresolved intent. Neither `job.cancel` nor a new repair command is used for content jobs.
 
 The journal remains through default commit and is removed only after success (`job.old`, `.part`,
-then `job.txt`, so cleanup cannot resurrect older intent). The menu's converge sequence (Save, Boot
+then `job.txt`, so cleanup cannot resurrect older intent). The menu's converge sequence (Boot
 without mods, Restore, the first row's apply; [state.md](state.md#saved-configuration)) retains intent
 through its configuration/default commit: a switch is always followed by the record and the default. If
 power is lost before the configuration is saved, its existing old record remains; recovery installs the
