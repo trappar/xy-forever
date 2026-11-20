@@ -354,7 +354,7 @@ uint32_t scan_name(const char* path, NameScan& scan, volatile uint32_t& mounted)
         if (r.outcome) return status(r.outcome);
         if (!r.value || r.value == -1) return change_status(r.error);
         scan.folder = uint32_t(r.value); scan.seen = 0;
-        return P::s_busy;
+        return scan_again;
     }
     uint8_t entry[entry_bytes + 4];
     const Reply r = readdir(scan.folder, entry);
@@ -368,7 +368,7 @@ uint32_t scan_name(const char* path, NameScan& scan, volatile uint32_t& mounted)
             const char* text = reinterpret_cast<const char*>(entry + 11);
             while (*text && *name == *text) { ++text; ++name; }
             if (*text == *name) code = P::s_ok;
-            else if (++scan.seen != 0x10000u) return P::s_busy;
+            else if (++scan.seen != 0x10000u) return scan_again;
         }
     }
     const uint32_t closed = close_name_scan(scan, mounted);

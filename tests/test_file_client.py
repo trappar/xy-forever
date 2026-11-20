@@ -165,8 +165,10 @@ class BoundsTest(unittest.TestCase):
             self.assertEqual(self.lib.fc_readdir_result(value), entry, hex(value))
         self.assertEqual(self.lib.fc_readdir_result(0), end)
         self.assertEqual(self.lib.fc_readdir_result(-1), error)
-        # Every reader uses it: file.list, file.rename's depth walk (#124) and the MTP self-test (proven on the device).
-        self.assertEqual(unit_text(ROOT / 'target/file_client.cpp').count('readdir_result(r.value)'), 2)
+        # All three B file-client walks use it: file.list, rename depth, and native metadata name lookup.
+        client = unit_text(ROOT / 'target/file_client.cpp')
+        self.assertEqual(client.count(' = readdir('), 3)
+        self.assertEqual(client.count('readdir_result(r.value)'), client.count(' = readdir('))
         self.assertIn('C::readdir_result(int32_t(v))', unit_text(ROOT / 'target/usb_service.cpp'))
 
     def test_child_path(self):

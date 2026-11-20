@@ -13,7 +13,7 @@ MetadataWork* load_native_metadata(uint32_t& bytes) {
     namespace P = xyf::usbp;
     auto absent = []() {
         const uint32_t code = fc::scan_name(io.path, io.metadata_scan, usb_service::page_mount());
-        io.why = code == s_ok ? uint32_t(P::s_storage) : code;
+        io.why = code == s_ok ? uint32_t(P::s_storage) : code == fc::scan_again ? uint32_t(P::s_busy) : code;
     };
     if (io.metadata_scan.folder) { absent(); return nullptr; }
     uint8_t stat[fc::record_bytes];

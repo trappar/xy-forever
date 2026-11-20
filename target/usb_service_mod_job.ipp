@@ -197,7 +197,7 @@ int job_probe_metadata(void* c, const char* path) {
         if (result != mj::missing_file) return result;
     }
     const U32 code = file_client::scan_name(path, s.metadata_scan, mounted);
-    if (code == P::s_busy) return mj::probe_again;
+    if (code == file_client::scan_again) return mj::probe_again;
     if (code == P::s_not_found) return mj::missing_file;
     if (code == P::s_link) s.link = 1;
     return -1;       // the native name exists but stat could not read a regular file
