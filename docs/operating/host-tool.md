@@ -76,3 +76,15 @@ python3 xyf_host.py cp [-r] /yaffs2/xy-forever/a /yaffs2/content/b   # <= 7 MiB 
 python3 xyf_host.py mods apply --base opxy-121 --generation opxy-1.2.1/GEN fm2op [--ext ID...] --wait   # B assembles into tmp/job-N/
 python3 xyf_host.py mods cancel                          # stop it (removes what it wrote)
 ```
+
+### The mods the OP-XY runs (#26)
+
+`mods status` prints the saved inputs (`config.get`). `mods set MOD... [--ext ID...] [--memory standard|expanded]
+[--unverified]` saves a selection the way the Mods page does (`config.set`): the device reads its packages again,
+checks that the selection can be built and keeps it, or refuses with the reason. `mods set` with no mods saves none;
+`mods off` is Boot without mods (safe mode, the selection kept), `mods on` its way back. Nothing is built then: the
+next boot of XY Forever converges to what is saved (#197). The web app's Mods page does the same.
+
+Developer path: `mods apply`, `mods dev --boot` and `scripts/test_entry.py --boot` (`set-default`, then `boot`) boot
+a firmware of your choosing once, behind the saved inputs, which they never change. The next plain power-on finds
+the default differs from its fingerprint and converges back to the saved setup (no `set-default` back needed).

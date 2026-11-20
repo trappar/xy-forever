@@ -8,14 +8,15 @@
 // base entry and catalog as tests/test_sim_mod_job.py seeds them (makeModBase); a build becomes library
 // entry mods-a (its os.ldr in firmware/, tmp/job-<id>/ gone), left out of libraryBases, content not installed;
 // makeDefault on it runs the content switch and writes the default; refusals and a failed job in plain words; cancel at verify; a
-// storage command during the job is the typed busy. Runs in order (one client at a time).
+// storage command during the job is the typed busy. The saved inputs (configSet, configGet: #26): saved, never built; a
+// refusal in words, nothing changed. Runs in order (one client at a time).
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, test, vi } from 'vitest';
-import { Client, JobError, PackageError, XyfError, applyMods, cancelJob, folderSource, infoValues, isXyfError, jobFolder, jobStatus, libraryBases, listPackages,
+import { Client, JobError, PackageError, XyfError, applyMods, cancelJob, configGet, configSet, folderSource, infoValues, isXyfError, jobFolder, jobStatus, libraryBases, listPackages,
   listPaths, makeDefault, localSet, pushPackages, removePackage, tcpOpener } from '../src/node.ts';
 import { STORE_FILE, STORE_TEXT, storedName } from '../src/modstore.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
@@ -322,5 +323,22 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     } finally {
       await control(sim!.control, 'set hold_mod_verify 0');
     }
+  });
+
+  test('the saved inputs (#26): a set is saved, never built; a refusal says why and changes nothing', async () => {
+    const config = join(sim!.root, 'xy-forever', 'config.txt');
+    const library = readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort();
+    const saved = await configSet(client, { mods: ['alpha', 'ext-cap'], unverified: true }, { pollMs: 20 });
+    expect(saved).toMatchObject({ saved: true, mods: ['alpha', 'ext-cap'], safe: false, expanded: false, unverified: true, write: 'saved' });
+    expect(await configGet(client)).toEqual(saved);
+    expect(readFileSync(config, 'utf8')).toMatch(/\nslot=\n[^]*\nmods=alpha,ext-cap\n$/);   // nothing built for it
+    expect(readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort()).toEqual(library);
+    const text = readFileSync(config);
+    const refused = await configSet(client, { mods: ['nosuch'], unverified: true }, { pollMs: 20 }).catch((e: unknown) => e);
+    expect(refused).toMatchObject({ code: 'refused', command: 'config.set', message: 'Not in the mod packages: nosuch' });
+    await expect(configSet(client, { mods: ['alpha'], expanded: true, unverified: true }, { pollMs: 20 }))
+      .rejects.toMatchObject({ code: 'refused', message: '4 MiB mod memory needs newer mod packages: set it to 2 MiB.' });
+    expect(readFileSync(config)).toEqual(text);
+    expect((await configGet(client)).mods).toEqual(['alpha', 'ext-cap']);
   });
 });

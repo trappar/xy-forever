@@ -1,0 +1,113 @@
+"""The saved inputs over USB (#26): `xyf_host.py mods status | set | off | on`, through config.get and config.set
+(protocol 1.24).
+
+They change mods the way the device's Mods page does: config.set sends the selection, Mod memory and safe mode, the
+device reads its package list again, checks that the selection can be built and saves it (or refuses, saying why),
+as if the toggles were flipped there. Nothing is built then: the next boot of XY Forever converges to what is saved
+(#197), building the selection when needed. `off` is "Boot without mods" (safe mode: the stock firmware with its
+official content, the selection kept), `on` its way back. The developer commands (`mods apply`, `mods dev`,
+`set-default`, `boot`) change what boots behind the saved inputs, once: the next plain power-on returns to them."""
+import hashlib
+import struct
+import time
+
+from . import usb_proto as P
+
+COMMANDS = ('status', 'set', 'off', 'on')
+EXPANDED, SAFE, UNVERIFIED = 1, 2, 4                    # config.get / config.set flags
+SAVING = ('saved', 'waiting for a quiet moment to be written', 'the last write failed: set it again')
+READ_S = 60.0                                           # s: the device reads its package list for a set
+
+
+def get(dev):
+    """(status, fields or None): config.get, mods as a list."""
+    code, body = dev.call(P.ids.CONFIG_GET, struct.pack('<I', 1),
+                          timeout=P.ids.COMMANDS[P.ids.CONFIG_GET]['timeout_ms'] / 1000.0)
+    _, f = P.decode_reply(P.ids.CONFIG_GET, struct.pack('<I', code) + body)
+    if code or f is None:
+        return code or P.ids.S_BAD_REQUEST, None
+    f['mods'] = f['mods'].split(',') if f['mods'] else []
+    return code, f
+
+
+def request(mods, flags):
+    body = struct.pack('<II', 1, flags) + ','.join(mods).encode('ascii') + b'\0'
+    return body + hashlib.sha256(body).digest()
+
+
+def set_inputs(dev, mods, flags, sleep=time.sleep, clock=time.monotonic, timeout=READ_S):
+    """(status, reason) of config.set, sent again while the device reads its package list (busy)."""
+    start = clock()
+    while True:
+        code, body = dev.call(P.ids.CONFIG_SET, request(mods, flags),
+                              timeout=P.ids.COMMANDS[P.ids.CONFIG_SET]['timeout_ms'] / 1000.0)
+        if code != P.ids.S_BUSY or clock() - start > timeout:
+            return code, body[4:].decode('ascii', 'replace') if len(body) > 4 else ''
+        sleep(0.2)
+
+
+def written(dev, sleep=time.sleep, clock=time.monotonic, timeout=30.0):
+    """config.get once the set is written (saving 0) or its write failed (2); None when neither came in time."""
+    start = clock()
+    while clock() - start <= timeout:
+        code, f = get(dev)
+        if code == 0 and f['saving'] != 1:
+            return f
+        sleep(0.2)
+    return None
+
+
+def describe(f):
+    lines = ['saved: %s' % ('%d mod%s on %s (%s)' % (f['count'], '' if f['count'] == 1 else 's', f['base'] or '?',
+                                                    f['generation'] or '?') if f['record'] else
+                            'none (no mods: %s boots)' % (f['base'] or 'the default'))]
+    if f['mods']:
+        lines.append('mods: %s' % ', '.join(f['mods']))
+    lines.append('Mod memory: %s; safe mode: %s%s' % ('4 MiB' if f['flags'] & EXPANDED else '2 MiB',
+                                                    'on (Boot without mods)' if f['flags'] & SAFE else 'off',
+                                                    '; unknown base allowed' if f['flags'] & UNVERIFIED else ''))
+    lines.append('write: %s' % (SAVING[f['saving']] if f['saving'] < len(SAVING) else f['saving']))
+    return lines
+
+
+def add_arguments(sub):
+    sub.add_parser('status', help='the saved inputs: mods on, Mod memory, safe mode (config.get)')
+    s = sub.add_parser('set', help='save these mods on, as the Mods page does; built at the next boot (config.set)')
+    s.add_argument('mods', nargs='*', metavar='MOD', help='package folder names (none: no mods)')
+    s.add_argument('--ext', nargs='+', default=[], metavar='ID', help='extension ids (without ext-)')
+    s.add_argument('--memory', choices=('standard', 'expanded'), help='Mod memory (default: as saved)')
+    s.add_argument('--unverified', action='store_true', help='allow a base that is not a known one')
+    sub.add_parser('off', help='Boot without mods: safe mode on, the selection kept')
+    sub.add_parser('on', help='safe mode off: the saved selection boots again')
+
+
+def command(dev, args, out=print):
+    """`mods status | set | off | on` on a connected device: the exit code (a status, 0 when saved)."""
+    name = 'mods %s' % args.mods_command
+    code, f = get(dev)
+    if code:
+        out('%s: %s' % (name, P.status_name(code)))
+        return code
+    if args.mods_command == 'status':
+        out('\n'.join(describe(f)))
+        return 0
+    flags = f['flags'] & (EXPANDED | UNVERIFIED)
+    mods = f['mods']
+    if args.mods_command == 'set':
+        mods = list(args.mods) + ['ext-' + e for e in args.ext]
+        if args.memory:
+            flags = (flags & ~EXPANDED) | (EXPANDED if args.memory == 'expanded' else 0)
+        flags |= UNVERIFIED if args.unverified else 0
+    elif args.mods_command == 'off':
+        flags |= SAFE
+    code, reason = set_inputs(dev, mods, flags)
+    if code:
+        out('%s: %s%s' % (name, P.status_name(code), ': ' + reason if reason else ''))
+        return code
+    f = written(dev)
+    if f is None or f['saving']:
+        out('%s: accepted, but %s' % (name, 'not written yet' if f is None else SAVING[2]))
+        return 1
+    out('%s: saved; the next boot of XY Forever builds and installs it as needed' % name)
+    out('\n'.join('  ' + line for line in describe(f)))
+    return 0
