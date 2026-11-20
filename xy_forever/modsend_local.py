@@ -58,4 +58,3 @@ def local_set(package_dir, only=()):
             raise Refused('%s: generation/profile differs from its base' % name)
         packages[name] = files
     return profile, generation, packages
-

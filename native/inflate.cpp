@@ -198,7 +198,7 @@ bool compressed(Bits& bits, Output& output, InflateWorkspace& workspace) {
 // aligned input is read a word at a time (byte table, one data load per 4 bytes).
 static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "word loads assume little-endian");
 #if defined(XYF_SMALL_CRC)
-// Narrow (48 KiB) cold layouts: the 64-byte nibble table instead of the 1 KiB byte table.
+// Narrow offline cold layouts: the 64-byte nibble table instead of the 1 KiB byte table.
 U32 crc32_update(U32 running, const Byte* data, U32 count) {
     return crc::small_update(running, data, count);
 }

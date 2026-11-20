@@ -111,4 +111,3 @@ metadata; index fetch does not normalize or migrate them. Shared host integratio
 cases are in `tests/package-records.json`; adapter cases shared with C++ remain in
 `tests/native-json.json`. Stock content-pack readers keep their own schema and
 text/size rules; the native adapter is used only in native package contexts.
-

@@ -29,7 +29,7 @@ STOCK_HASH = '60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f'
 HEAP_BASE, HEAP_BYTES = 0x8c0d0380, 0x1400000
 REPORTER, CARRY, END = 0x8d4ce380, 0x8d4cf380, 0x8d4d0380
 HOOK = 0x8d506a02
-MODULE, STACK, STACK_END = 0x8ab00000, 0x8ab0c000, 0x8ab10000
+MODULE, STACK, STACK_END = 0x8ab00000, 0x8ab0e000, 0x8ab12000
 # Wide product layout (target/cold_layout.hpp; build 171): a 512 KiB code window
 # 0x8ab00000..0x8ab80000, then the 16 KiB stack to 0x8ab84000. The whole reservation lies in
 # FREE_GAP (check_memory_map). Only WIDE_MODES use it; every other mode keeps the narrow layout.
@@ -948,8 +948,9 @@ def build(out, stock, boot, mode):
     out.mkdir(parents=True)
     commands = []
     flags = compile_core(out, compiler, tools, commands, ('ldr', 'memory', 'trace_slot', 'trace_slot_zero'), split_sections=stage2)
+    flags = [*flags, '-DXYF_STACK_END=%#xu' % stack_end]
     if mode in WIDE_MODES:
-        flags = [*flags, '-DXYF_STACK_END=%#xu' % stack_end, '-DXYF_CENSUS_REGIONS=24']
+        flags = [*flags, '-DXYF_CENSUS_REGIONS=24']
     if mode in USB_SET_DEFAULT_MODES:
         flags = [*flags, '-DXYF_USB_SET_DEFAULT=1']
     if mode in FILE_WRITE_MODES:
@@ -971,7 +972,7 @@ def build(out, stock, boot, mode):
     if mode in NO_EMBEDDED_MODES:
         flags = [*flags, '-DXYF_NO_EMBEDDED=1']
     if mode not in WIDE_MODES:
-        flags = [*flags, '-DXYF_SMALL_CRC=1']        # narrow 48 KiB modules: the nibble CRC table
+        flags = [*flags, '-DXYF_SMALL_CRC=1']        # offline modules: the nibble CRC table
 
     def cpp(name, path, defines=()):
         sections = ['-ffunction-sections', '-fdata-sections'] if name in ('cold_storage', 'boot_services', 'retained_lookup') else []

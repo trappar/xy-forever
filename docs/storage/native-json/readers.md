@@ -42,10 +42,8 @@ calls it. Journal/content caller frames remain 132/260 bytes, the outer boot
 caller 452 and the home pump 284. These are compiler frame sums, not an observed
 peak stack watermark.
 
-The partial native-reader product is 314,116 bytes (module 314,044), 32 bytes
-above the earlier text-adapter implementation. The offline narrow modules are
-53,424/53,764 bytes (`stage2`/`stage2-menu`), exceeding their unchanged 49,152-byte
-reservation by 4272/4612 bytes. Shared narrow CRC and direct semantic extraction
-reclaimed 2556 bytes in each mode; this phase still has no passing all-mode
-check receipt. Assembly/Mods readers, producers and configuration remain pending
-in #95 while that budget blocker is unresolved.
+The product's cold module is 322,500 bytes on the current base. The offline
+`stage2` and `stage2-menu` modules are 53,388 and 53,728 bytes. Both fit their
+56 KiB code windows and keep their 16 KiB stacks. All five modes build and
+verify offline. Assembly and Mods readers, package writers and configuration
+remain pending in #95.

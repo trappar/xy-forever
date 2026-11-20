@@ -118,7 +118,7 @@ void draw_list(uint16_t* fb, const List& list) {
         const Color fg = on ? black : white;
         int x = text(fb, margin + 4, y, row.title, fg, 2);
 #if defined(XYF_SMALL_CRC)
-        const bool large = false;             // the narrow 48 KiB modules: no room (xyf_menu.hpp XYF_SETTING_OPTIONS)
+        const bool large = false;             // the narrow offline modules (xyf_menu.hpp XYF_SETTING_OPTIONS)
 #else
         const bool large = list.large;
 #endif
