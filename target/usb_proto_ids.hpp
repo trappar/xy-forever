@@ -78,8 +78,8 @@ enum Status : uint32_t {
     s_cancelled = 16,                           // the job was cancelled (not sent by any command yet)
     s_no_content = 17,                          // the library entry's content is not installed in /yaffs2/content/ (a mod set built on the device, or any entry while another one's content is installed): it is listed but does not boot as it is; make it the default to install its content. Added during 1.10 without a version bump: a build that reports 1.10 to 1.16 may answer another status for such an entry; every 1.17 build sends this one
     s_started = 18,                             // the request started a job (library.set_default: the content switch); follow it with job.status, whose end is the request's result
-    s_declined = 19,                            // not allowed: the user answered Don't allow when the device asked "Allow this computer to control your OP-XY?" (Settings > Ask before USB control); nothing was done, and every command but hello is refused so until the USB cable is unplugged or the device restarts (sent since 1.23)
-    s_waiting = 20,                             // the device asks "Allow this computer to control your OP-XY?" (Settings > Ask before USB control) and waits for the user's answer, with no time limit; nothing was done. Show "Allow on your OP-XY" and send the request again (every 0.5 s, say): it runs once the user allows; declined when the user does not. hello answers meanwhile (trust=asking)
+    s_declined = 19,                            // not allowed: the user answered Don't allow (Ask before USB control, hello trust); nothing was done (sent since 1.23)
+    s_waiting = 20,                             // the device asks the user to allow this computer (no time limit); nothing done: show "Allow on your OP-XY", retry
 };
 } }
 // hello text (docs/protocol/cmd-session.md, hello). The build defines XYF_VERSION and XYF_BUILD_MODE (string literals).

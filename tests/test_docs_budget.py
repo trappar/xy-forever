@@ -48,7 +48,7 @@ CAPS = {
     'docs/SAFETY.md': 11500,
     'docs/STORAGE.md': 25000,
     'docs/PROTOCOL.md': 56000,      # generated from protocol/v1.json (scripts/protogen.py)
-    'docs/GUIDE.md': 11500,         # for OP-XY owners and mod writers, not agents
+    'docs/GUIDE.md': 11800,         # for OP-XY owners and mod writers, not agents (#65: Ask before USB control)
     'docs/MODS-DEV.md': 5500,
 }
 

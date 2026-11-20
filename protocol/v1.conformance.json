@@ -81,8 +81,6 @@
   "uncovered": [
 
     {"status": "busy", "why": "no build sends it yet (reserved for jobs)"},
-    {"status": "waiting", "why": "the suite runs with Ask before USB control off (the device asks, and only a real key answers); tests/test_sim_confirm.py shows it"},
-    {"status": "declined", "why": "as waiting (a real STOP at the device)"},
     {"command": "file.read", "status": "link", "why": "processor A must fail to answer: the simulator's link faults make B wait without bound (the stock client), not answer link"},
     {"command": "file.read", "status": "storage", "why": "A's mount must fail; no fault hook makes it"},
     {"command": "file.read", "status": "range", "why": "sent only when A's seek fails; a seek past the end succeeds on yaffs and in the simulator (ok, no data)"},
@@ -174,7 +172,9 @@
     {"command":"state.get","status":"range","why":"Offset framing is exercised by test_sim_package_reports.py."},
     {"command": "dev.a_rehearsal", "status": "state", "why": "Requires staged input or a running cooperative transfer; tests/test_a_install_stage.py covers the production transport and injected faults."},
     {"command": "dev.a_rehearsal", "status": "sha", "why": "Requires staged input or a running cooperative transfer; tests/test_a_install_stage.py covers the production transport and injected faults."},
-    {"command": "dev.a_rehearsal", "status": "busy", "why": "Requires staged input or a running cooperative transfer; tests/test_a_install_stage.py covers the production transport and injected faults."}
+    {"command": "dev.a_rehearsal", "status": "busy", "why": "Requires staged input or a running cooperative transfer; tests/test_a_install_stage.py covers the production transport and injected faults."},
+    {"status": "waiting", "why": "the suite runs with Ask before USB control off (the device asks, and only a real key answers); tests/test_sim_confirm.py shows it"},
+    {"status": "declined", "why": "as waiting (a real STOP at the device)"}
   ],
   "cases": [
     {"name": "dev.a_rehearsal/readonly-status-and-version", "effects": [], "real_device": false, "why_not": "Developer A staging is qualified offline before hardware use.", "doc": "Status is read-only; malformed and future versions refuse before starting a transfer.", "steps": [{"send": "dev.a_rehearsal", "fields": {"version": 1, "operation": 1}, "expect": {"status": "ok", "fields": {"version": 1, "phase": 0}}}, {"send": "dev.a_rehearsal", "fields": {"version": 2, "operation": 1}, "expect": {"status": "unsupported", "alone": true}}, {"send": "dev.a_rehearsal", "payload": "", "expect": {"status": "bad_request", "alone": true}}]},

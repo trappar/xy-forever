@@ -85,15 +85,15 @@
     {"code": 16, "name": "cancelled", "class": "job", "since": "1.1", "doc": "the job was cancelled (not sent by any command yet)"},
     {"code": 17, "name": "no_content", "class": "order", "since": "1.10", "doc": "the library entry's content is not installed in `/yaffs2/content/` (a mod set built on the device, or any entry while another one's content is installed): it is listed but does not boot as it is; make it the default to install its content. Added during 1.10 without a version bump: a build that reports 1.10 to 1.16 may answer another status for such an entry; every 1.17 build sends this one"},
     {"code": 18, "name": "started", "class": "job", "since": "1.10", "doc": "the request started a job (`library.set_default`: the content switch); follow it with `job.status`, whose end is the request's result"},
-    {"code": 19, "name": "declined", "class": "policy", "since": "1.11", "doc": "not allowed: the user answered Don't allow when the device asked \"Allow this computer to control your OP-XY?\" (Settings > Ask before USB control); nothing was done, and every command but `hello` is refused so until the USB cable is unplugged or the device restarts (sent since 1.23)"},
-    {"code": 20, "name": "waiting", "class": "policy", "since": "1.23", "doc": "the device asks \"Allow this computer to control your OP-XY?\" (Settings > Ask before USB control) and waits for the user's answer, with no time limit; nothing was done. Show \"Allow on your OP-XY\" and send the request again (every 0.5 s, say): it runs once the user allows; `declined` when the user does not. `hello` answers meanwhile (`trust=asking`)"}
+    {"code": 19, "name": "declined", "class": "policy", "since": "1.11", "doc": "not allowed: the user answered Don't allow (Ask before USB control, `hello` `trust`); nothing was done (sent since 1.23)"},
+    {"code": 20, "name": "waiting", "class": "policy", "since": "1.23", "doc": "the device asks the user to allow this computer (no time limit); nothing done: show \"Allow on your OP-XY\", retry"}
   ],
   "common_errors": [
     {"status": "state", "except": ["hello"], "doc": "the device has not answered a `hello` since it started; nothing was done"},
     {"status": "unsupported", "except": ["hello"], "doc": "this build does not answer the type (it is not in `cmds`)"},
     {"status": "busy", "except": ["hello"], "doc": "a job is running, or its write window is still closing after `job.status` said it ended: every command that needs processor A, the staging or a boot waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `job.cancel` are answered)"},
-    {"status": "waiting", "except": ["hello"], "doc": "since 1.23, with Ask before USB control on: the device asks whether to trust this computer (the first command but `hello` of a connection opens the question); nothing was done, send it again"},
-    {"status": "declined", "except": ["hello"], "doc": "since 1.23, with Ask before USB control on: the user answered Don't allow; every command but `hello` is refused so until the USB cable is unplugged or the device restarts"}
+    {"status": "waiting", "except": ["hello"], "doc": "1.23: the device asks (`trust`); send it again"},
+    {"status": "declined", "except": ["hello"], "doc": "1.23: not allowed until unplugged or restarted"}
   ],
   "commands": [
     {
