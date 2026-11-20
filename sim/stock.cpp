@@ -388,7 +388,7 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     // A: provider registration, executors
     case 0x889f3910u: register_provider(uintptr_t(a[0]), u(1)); return 0;
     case 0x889f76cau: case 0x889f6feau: case 0x889f6cd6u: case 0x889f6dcau: case 0x889f6b7cu: case 0x889f72e4u:
-        executor(address, u(0)); return 0;
+        object_paths.clear(); executor(address, u(0)); return 0;     // lookup objects live for one request
     // A: yaffs device and direct API (cold_storage.cpp)
     case 0x889f963eu: return construct(u(0));
     case 0x889fae2eu: return uint64_t(int64_t(mount(u(0), int(u(2)))));

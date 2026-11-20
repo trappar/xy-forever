@@ -6,7 +6,8 @@
 // the mount root. The final "." / ".." are the folder / its parent. Objects are fake yaffs_obj records in emulated
 // memory, one per host path whose folders hold no link: parent +0x1c (0 at the root), type +0x64 (1 file, 2 link,
 // 3 folder), link text +0x68 (a pointer to it, stored after the record). A host link to an absolute host path in
-// the folder stands for a /yaffs2 link (the tests make them so). Hardlinks look like files on the host.
+// the folder stands for a /yaffs2 link (the tests make them so). Hardlinks look like files on the host. Records live
+// for one request: the table restarts at each stock executor call (stock.cpp), after A's checks for that request.
 const uint32_t objects_base = 0x8aaa0000u, object_bytes = 0x200u, object_text = 0x70u;
 const uint32_t objects_max = (0x8ab00000u - objects_base) / object_bytes;
 std::vector<std::string> object_paths;
