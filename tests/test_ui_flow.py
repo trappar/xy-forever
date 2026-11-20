@@ -10,7 +10,7 @@ import ui_preview as P  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 
 NONE, REDRAW, CONTINUE, BOOT_ONCE, SET_DEFAULT, UNINSTALL = range(6)
-CHANGE_SETTING = 9                                             # xyf_menu Action (build 188: no mtp_mode)
+CHANGE_SETTING, PICK_SETTING = 9, 10                            # xyf_menu Action (build 188: no mtp_mode)
 
 
 class UiFlowTest(unittest.TestCase):
@@ -108,6 +108,18 @@ class UiFlowTest(unittest.TestCase):
         save('about.png')
         self.assertEqual(self.lib.flow_key(52), REDRAW)               # STOP: back to Settings
         self.assertEqual(self.lib.flow_screen(), 6)
+        # The option list (PLAY on USB mode: key_ui opens it), its moves, its pick; marked rows draw.
+        self.lib.flow_key(53)
+        self.assertEqual(self.lib.flow_key(51), CHANGE_SETTING)
+        self.lib.flow_options(1); self.assertEqual(self.lib.flow_screen(), 7); save('options.png')
+        self.assertEqual((self.lib.flow_key(54), self.lib.flow_option()), (REDRAW, 0))
+        self.assertEqual(self.lib.flow_key(52), REDRAW)               # STOP: back, nothing picked
+        self.assertEqual(self.lib.flow_screen(), 6)
+        self.lib.flow_key(51); self.lib.flow_options(1); self.lib.flow_key(53)
+        self.assertEqual((self.lib.flow_key(51), self.lib.flow_option(), self.lib.flow_screen()), (PICK_SETTING, 0, 6))
+        for marks in (0, 2, 4, 6, 1, 7):
+            self.lib.flow_settings_marked(marks); self.drawn()
+        save('settings-unsaved.png')
 
 if __name__ == '__main__':
     unittest.main()

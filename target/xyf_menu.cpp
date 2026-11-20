@@ -64,7 +64,11 @@ Action key(State& s, uint32_t k, bool pressed) {
     const bool minus = k == key_minus, plus = k == key_plus, play = k == key_play;
     if (k == key_stop) {                              // back
         const Screen back = s.screen == Screen::info ? s.info_return :
-                            s.screen == Screen::home_empty ? Screen::home_empty : Screen::main;
+                            s.screen == Screen::home_empty ? Screen::home_empty :
+#if defined(XYF_SETTING_OPTIONS)
+                            s.screen == Screen::options ? Screen::settings :   // #21: nothing picked
+#endif
+                            Screen::main;
         if (back == s.screen) return Action::none;
         s.screen = back;
         return Action::redraw;
@@ -119,12 +123,21 @@ Action key(State& s, uint32_t k, bool pressed) {
         if (s.save_selected == choice_discard) return Action::discard;
         return Action::redraw;
     }
-    case Screen::settings:                        // one row per setting; PLAY (or a knob push) changes one
+    case Screen::settings:                        // one row per setting; PLAY (or a knob push): its options
         if (minus || plus) { s.settings_selected = step(s.settings_selected, settings::rows, plus); s.settings_note = 0; return Action::redraw; }
         if (!play) return Action::none;
         if (s.settings_selected != settings::row_about) { s.entry = s.settings_selected; return Action::change_setting; }
         s.info_return = Screen::settings; s.screen = Screen::info;   // #21: the About page (once Info on the home menu)
         return Action::redraw;
+#if defined(XYF_SETTING_OPTIONS)
+    case Screen::options:                         // #21: - / + choose, PLAY picks (STOP above: back, unchanged)
+        if (minus || plus) { s.option_selected = step(s.option_selected, s.option_count, plus); return Action::redraw; }
+        if (!play) return Action::none;
+        s.screen = Screen::settings;
+        return Action::pick_setting;
+#else
+    case Screen::options: break;                  // never opened here
+#endif
     case Screen::home_empty:
         if (!play) return Action::none;                // 188: one row, About (MTP is always on)
         s.info_return = Screen::home_empty;

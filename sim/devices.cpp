@@ -240,14 +240,21 @@ void dispatch(uint32_t key, uint32_t pressed) {
             return;
         }
 #if defined(XYF_SETTINGS)
-        if (action == xyf::menu::Action::change_setting && sim_app.entry != xyf::settings::row_memory) {   // as key_ui
-            sim_app.settings_note = usb_service::settings_change(sim_app.entry);   // #21: the settings.txt rows
+        using namespace xyf::settings;
+        if (action == xyf::menu::Action::change_setting) {             // as key_ui (#21: the option list)
+            if (sim_app.entry != row_memory) sim_app.settings_note = usb_service::settings_open(sim_app, sim_app.entry);
+            else if (sim_app.memory == memory_standard || sim_app.memory == memory_expanded)
+                xyf::menu::open_options(sim_app, memory_options, 2, sim_app.memory - memory_standard);
+            else sim_app.settings_note = mods_io::memory_flip();       // why not (it changes nothing)
             xyf_sim::log("settings: play on row %u: note=%s", sim_app.entry, sim_app.settings_note ? sim_app.settings_note : "");
+            if (sim_app.screen == xyf::menu::Screen::options) xyf_sim::log("settings: options current %u", sim_app.option_current);
             return;
         }
-        if (action == xyf::menu::Action::change_setting) {             // as key_ui (Mod memory, pending)
-            sim_app.settings_note = mods_io::memory_flip();
-            xyf_sim::log("settings: play on row %u: note=%s", sim_app.entry, sim_app.settings_note ? sim_app.settings_note : "");
+        if (action == xyf::menu::Action::pick_setting) {               // as key_ui
+            sim_app.settings_note = 0;
+            if (sim_app.entry != row_memory) usb_service::settings_pick(sim_app);
+            else if (sim_app.option_selected != sim_app.option_current) sim_app.settings_note = mods_io::memory_flip();
+            xyf_sim::log("settings: pick on row %u: option %u", sim_app.entry, sim_app.option_selected);
             return;
         }
 #endif
@@ -342,17 +349,18 @@ void refresh_catalog() {                                               // as key
     const uint32_t row = sim_app.main_selected;
 #endif
 #if defined(XYF_SETTINGS)
-    const bool keep = sim_app.screen == xyf::menu::Screen::settings;   // as key_ui (the Settings page stays)
-    const uint32_t kept_row = sim_app.main_selected, kept_setting = sim_app.settings_selected;
-    const char* const kept_note = sim_app.settings_note;
+    const xyf::menu::State kept = sim_app;                             // as key_ui (the Settings page, its list stay)
+    const bool keep = kept.screen == xyf::menu::Screen::settings || kept.screen == xyf::menu::Screen::options;
 #endif
     const uint32_t storage = sim_app.storage;                         // 193: as key_ui.cpp
     xyf::menu::start(sim_app, xyf_boot::catalog(), true);
     sim_app.storage = storage;
 #if defined(XYF_SETTINGS)
     if (keep) {
-        sim_app.screen = xyf::menu::Screen::settings; sim_app.main_selected = kept_row;
-        sim_app.settings_selected = kept_setting; sim_app.settings_note = kept_note;
+        sim_app.screen = kept.screen; sim_app.main_selected = kept.main_selected; sim_app.entry = kept.entry;
+        sim_app.settings_selected = kept.settings_selected; sim_app.settings_note = kept.settings_note;
+        sim_app.options = kept.options; sim_app.option_count = kept.option_count;
+        sim_app.option_current = kept.option_current; sim_app.option_selected = kept.option_selected;
         xyf_sim::log("menu: rescan kept the settings page");
     }
 #endif
@@ -380,7 +388,9 @@ extern "C" void xy_forever_key_ui() {
 #endif
     for (;;) {
 #if defined(XYF_SETTINGS)
-        const bool settings_moved = usb_service::settings_view(sim_app);   // as key_ui.cpp
+        const char* settings_line = 0;
+        const bool settings_moved = usb_service::settings_view(sim_app, settings_line);   // as key_ui.cpp
+        if (settings_line) xyf_sim::log("menu: line: %s", settings_line);
         const bool settings_first = !settings_logged && usb_service::settings_load();   // the record read: once
         if (settings_first || (settings_moved && settings_logged && sim_app.screen == xyf::menu::Screen::settings)) {
             const xyf::settings::Record& s = usb_service::settings();

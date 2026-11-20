@@ -298,7 +298,11 @@ extern "C" void xy_forever_key_ui() {
             poll();
             ++r.polls;
 #if defined(XYF_SETTINGS)
-            if (xy_forever::usb_service::settings_view(app)) dirty = 1;   // once A serves; the rows, a write's note
+            {                                                  // once A serves; the rows, marks, the save on leaving
+                const char* line = 0;
+                if (xy_forever::usb_service::settings_view(app, line)) dirty = 1;
+                if (line) { status = line; dirty = 1; }
+            }
 #endif
             turn_knobs(ms_since(r.start_cycles));            // after the stock poll
             // A held - / + repeats (not on the Uninstall dialog, whose - / + flips its two buttons).
@@ -403,15 +407,25 @@ extern "C" void xy_forever_key_ui() {
                 }
 #endif
 #if defined(XYF_SETTINGS)
-                if (action == uint32_t(Action::change_setting)) {   // Mod memory, pending until boot (as the Mods page)
-                    if (app.entry != xyf::settings::row_memory) {   // #21: the settings.txt rows
-                        app.settings_note = xy_forever::usb_service::settings_change(app.entry);
-                        continue;
-                    }
+                // #21: PLAY on a setting opens its option list; the list's PLAY picks (Mod memory pending until
+                // boot, as the Mods page; a settings.txt row saved when the page is left).
+                if (action == uint32_t(Action::change_setting)) {
+                    using namespace xyf::settings;
+                    if (app.entry != row_memory) app.settings_note = xy_forever::usb_service::settings_open(app, app.entry);
 #if defined(XYF_MODS_PAGE)
-                    app.settings_note = xy_forever::mods_io::memory_flip();
+                    else if (app.memory == memory_standard || app.memory == memory_expanded)
+                        xyf::menu::open_options(app, memory_options, 2, app.memory - memory_standard);
+                    else app.settings_note = xy_forever::mods_io::memory_flip();   // why not (it changes nothing)
 #else
-                    app.settings_note = "Mods: not available in this build.";
+                    else app.settings_note = "Mods: not available in this build.";
+#endif
+                    continue;
+                }
+                if (action == uint32_t(Action::pick_setting)) {
+                    app.settings_note = 0;
+                    if (app.entry != xyf::settings::row_memory) xy_forever::usb_service::settings_pick(app);
+#if defined(XYF_MODS_PAGE)
+                    else if (app.option_selected != app.option_current) app.settings_note = xy_forever::mods_io::memory_flip();
 #endif
                     continue;
                 }
@@ -504,17 +518,23 @@ void refresh_catalog() {
     const uint32_t row = app.main_selected;
 #endif
 #if defined(XYF_SETTINGS)
-    const bool keep = app.screen == xyf::menu::Screen::settings;   // a save's rescan keeps the Settings page, its row and line
-    const uint32_t kept_row = app.main_selected, kept_setting = app.settings_selected;
+    // A rescan (a USB job's end) keeps the Settings page, its row and line, and an open option list.
+    const xyf::menu::Screen kept_screen = app.screen;
+    const bool keep = kept_screen == xyf::menu::Screen::settings || kept_screen == xyf::menu::Screen::options;
+    const uint32_t kept_row = app.main_selected, kept_setting = app.settings_selected, kept_entry = app.entry;
     const char* const kept_note = app.settings_note;
+    const char* const* const kept_options = app.options;
+    const uint32_t kept_count = app.option_count, kept_current = app.option_current, kept_option = app.option_selected;
 #endif
     const uint32_t storage = app.storage;          // 193: the view stays (the loop updates it)
     xyf::menu::start(app, xy_forever::xyf_boot::catalog(), true);
     app.storage = storage;
 #if defined(XYF_SETTINGS)
     if (keep) {
-        app.screen = xyf::menu::Screen::settings; app.main_selected = kept_row;
+        app.screen = kept_screen; app.main_selected = kept_row; app.entry = kept_entry;
         app.settings_selected = kept_setting; app.settings_note = kept_note;
+        app.options = kept_options; app.option_count = kept_count; app.option_current = kept_current;
+        app.option_selected = kept_option;
     }
 #endif
 #if defined(XYF_MODS_PAGE)

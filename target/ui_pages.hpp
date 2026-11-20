@@ -33,13 +33,16 @@ void home_header(uint16_t* fb, const Chrome* chrome);
 void home_footer(uint16_t* fb, const char* status, const char* hint, const Chrome* chrome);
 // The bottom line (y): the activity in accent while there is one, else hint (grey; may be null).
 void footer_line(uint16_t* fb, int y, const char* hint, const Chrome* chrome);
-struct ListRow { const char* title; const char* detail; bool marked; };   // marked = default
+struct ListRow { const char* title; const char* detail; bool marked; };   // marked = default (large: the detail in accent)
+// large (#21: the Settings page, an option list): the detail at the title's size (2x, as the home menu's rows),
+// and a marked row's detail in accent instead of "(default)".
 struct List {
     const char* heading;
     const ListRow* rows;
     uint32_t count, selected;
     const char* hint;
     const Chrome* chrome;
+    bool large;
 };
 struct Confirm {
     const char* heading;      // e.g. "Uninstall XY Forever?"

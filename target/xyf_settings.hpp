@@ -86,6 +86,11 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
 // The Settings page: one row per setting that works, then About; PLAY or a knob push acts on the selected one
 // (xyf_menu.cpp: About opens the About page, once the home menu's Info row). Confirm on device is stored
 // (confirm=) but has no row until its gate is built.
+// #21: PLAY on a setting opens its option list (xyf_menu Screen::options: - / + choose, PLAY picks, STOP leaves it
+// unchanged); a value index is its option's index (memory_options, power_on_options, usb_options). A settings.txt
+// row's pick changes only B's copy (marked on the page, nothing written); the record is written once, when the page
+// is left with a change (usb_service settings_view: the config job, so settings.txt or settings.old always holds a
+// whole record). A power cut before that keeps the record as it was: the change is lost, never half-written.
 // Mod memory, part of the saved configuration (config.txt memory=, xyf_config.hpp), not of this record: like
 // the Mods page's toggles it is pending until boot (Continue asks Save / Discard / Back). xyf_mods_io keeps it and
 // says which of these the row shows (menu::State memory, memory_pending).
@@ -93,29 +98,29 @@ enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_about, rows };
 enum Memory : uint32_t { memory_reading = 0, memory_unavailable, memory_standard, memory_expanded };
 static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "About"};
 static inline const char* label(uint32_t row) { return row < rows ? labels[row] : ""; }
-// The row's value; pending: the Mods page's mark (": applied when you boot").
+// The options, in value order (Memory - memory_standard; PowerOn; Usb).
+static const char* const memory_options[] = {"Standard", "4 MiB (experimental)"};
+static const char* const power_on_options[] = {"PLAY held", "Always"};
+static const char* const usb_options[] = {"Serial + MTP", "Serial only"};
+// The row's value (short: the page draws it at the label's size); pending: the Mods page's mark (": applied when
+// you boot"; the simulator's log; the page marks the value instead).
 static inline const char* memory_text(uint32_t memory, bool pending) {
-    if (memory == memory_reading) return "Checking the mod packages...";
-    if (memory == memory_unavailable) return "Not available with these mod packages";
+    if (memory == memory_reading) return "Checking...";
+    if (memory == memory_unavailable) return "Not available";
     if (memory == memory_expanded) return pending ? "4 MiB (experimental): applied when you boot" : "4 MiB (experimental)";
     return pending ? "Standard: applied when you boot" : "Standard";
 }
-static inline const char* power_on_text(uint32_t p) {
-    return p == power_always ? "Always" : "PLAY held";
-}
-static inline const char* usb_text(uint32_t u) { return u == usb_serial ? "Serial only" : "Serial + MTP"; }
-// PLAY on a row: the next value.
-static inline uint32_t next_power_on(uint32_t p) { return p == power_always ? uint32_t(power_play) : uint32_t(power_always); }
-static inline uint32_t next_usb(uint32_t u) { return u == usb_serial ? uint32_t(usb_mtp) : uint32_t(usb_serial); }
-// The page's notes.
+static inline const char* power_on_text(uint32_t p) { return power_on_options[p == power_always ? 1 : 0]; }
+static inline const char* usb_text(uint32_t u) { return usb_options[u == usb_serial ? 1 : 0]; }
+// The page's notes, and the home menu's lines about the save on leaving.
 static const char note_newer[] = "settings.txt is from a newer XY Forever: kept unchanged.";
 static const char note_loading[] = "Settings are still being read.";
-static const char note_saving[] = "Saving...";
-static const char note_saved[] = "Saved.";
-static const char note_saved_usb[] = "Saved: USB mode changes the next time the menu opens.";
-static const char note_failed[] = "Saving failed: the setting is unchanged.";
-static const char note_busy[] = "Busy: a job is running. Try again when it ends.";
-static const char note_link[] = "Storage link lost.";
+static const char note_saving[] = "Saving settings...";
+static const char note_saved[] = "Settings saved.";
+static const char note_saved_usb[] = "Settings saved: USB mode changes the next time the menu opens.";
+static const char note_failed[] = "Settings not saved: open Settings and leave it to try again.";
+static const char note_busy[] = "Settings not saved: a job is running. Open Settings and leave it to try again.";
+static const char note_link[] = "Settings not saved: storage link lost.";
 
 // The confirm gate: "Allow <what>? PLAY = yes, STOP = no", bounded. Only a real key event answers: an injected
 // one (the host's test key command) is ignored, so the host can never approve its own command.

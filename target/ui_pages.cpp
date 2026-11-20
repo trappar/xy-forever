@@ -117,9 +117,16 @@ void draw_list(uint16_t* fb, const List& list) {
         if (on) fill(fb, margin - 6, y - 3, width - 2 * margin + 12, row_height - 2, white);
         const Color fg = on ? black : white;
         int x = text(fb, margin + 4, y, row.title, fg, 2);
-        if (row.marked) text(fb, x + 8, y + 4, "(default)", on ? dark : accent, 1);
+#if defined(XYF_SMALL_CRC)
+        const bool large = false;             // the narrow 48 KiB modules: no room (xyf_menu.hpp XYF_SETTING_OPTIONS)
+#else
+        const bool large = list.large;
+#endif
+        if (row.marked && !large) text(fb, x + 8, y + 4, "(default)", on ? dark : accent, 1);
+        const int size = large ? 2 : 1;
         if (row.detail && *row.detail)
-            text(fb, width - margin - 4 - text_width(row.detail, 1), y + 4, row.detail, on ? dark : grey, 1);
+            text(fb, width - margin - 4 - text_width(row.detail, size), large ? y : y + 4, row.detail,
+                 row.marked && large ? accent : on ? dark : grey, size);
     }
     if (list.count > list_visible) {          // scroll bar on the right edge
         const int track = int(list_visible) * row_height - 4;

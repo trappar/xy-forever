@@ -77,6 +77,13 @@ def main():
         lib.flow_start(1); lib.flow_settings(2, 0, b''); lib.flow_settings_rows(1, 1, 0)
         lib.flow_key(53); lib.flow_key(51); lib.flow_key(54); lib.flow_draw(fb, b''); png(out / 'flow-4-settings.png', pixels(fb))
         lib.flow_key(54); lib.flow_key(54); lib.flow_key(51); lib.flow_draw(fb, b''); png(out / 'flow-5-about.png', pixels(fb))
+        # #21: USB mode's option list (PLAY on the row), then the page with that row changed and not saved yet.
+        lib.flow_key(52); lib.flow_key(53); lib.flow_key(51); lib.flow_options(1); lib.flow_key(53)
+        lib.flow_draw(fb, b''); png(out / 'flow-6-options.png', pixels(fb))
+        lib.flow_key(51); lib.flow_settings_rows(1, 0, 0); lib.flow_settings_marked(1 << 2)
+        lib.flow_draw(fb, b''); png(out / 'flow-7-unsaved.png', pixels(fb))
+        lib.flow_settings_marked(0); lib.flow_settings(3, 1, b''); lib.flow_settings_rows(1, 0, 0); lib.flow_key(53); lib.flow_key(53)
+        lib.flow_draw(fb, b''); png(out / 'flow-8-memory-pending.png', pixels(fb))
         stage2_previews(tmp, out / 'stage2')
     print('\n'.join(str(p) for p in sorted(out.glob('**/*.png'))))
 

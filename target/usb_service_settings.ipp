@@ -4,6 +4,9 @@
 namespace xs = xyf::settings;
 xs::Record settings_record __attribute__((section(".data"))) = {1, xs::power_play, xs::usb_mtp, 0};
 U32 settings_loaded __attribute__((section(".data"))) = 0;
+// #21: what settings.txt holds (as read or last saved): the page marks a row whose value differs from it.
+U32 stored_power_on __attribute__((section(".data"))) = xs::power_play;
+U32 stored_usb __attribute__((section(".data"))) = xs::usb_mtp;
 bool settings_load() {
     if (settings_loaded) return true;
     if (!menu_link::usb_idle()) return false;                           // 191: not while A's catalog is on its way
@@ -15,6 +18,7 @@ bool settings_load() {
     if (code == P::s_not_found) code = file_client::read_file(xs::old_path, 0, false, reinterpret_cast<uint8_t*>(text), sizeof(text), bytes, mounted);
     if (code == P::s_ok) xs::parse(text, bytes, settings_record);
     else xs::defaults(settings_record);                                 // absent or unreadable: the defaults
+    stored_power_on = settings_record.power_on; stored_usb = settings_record.usb;   // nothing marked
     settings_loaded = 1;                                                // one try: bounded
     return true;
 }
@@ -30,26 +34,36 @@ uint32_t settings_store() {
     const U32 n = xs::format(text, sizeof(text), settings_record);
     return config_begin(text, n, "", xs::path, xs::old_path, xs::part_path);
 }
-// #21: the write a row started (its config job id; 0: none) and that row, for the note at its end.
+// The save the page's leaving started (its config job id; 0: none), and whether this leaving was handled (0: on
+// the page, or a change came since: one try per leaving, so a refused save never repeats every pass).
 U32 settings_job __attribute__((section(".data"))) = 0;
-U32 settings_row __attribute__((section(".data"))) = 0;
-const char* settings_change(uint32_t row) {
+U32 settings_left __attribute__((section(".data"))) = 0;
+U32 settings_marks() {
+    const xs::Record& r = settings_record;
+    return (r.power_on != stored_power_on ? 1u << xs::row_power_on : 0u) | (r.usb != stored_usb ? 1u << xs::row_usb : 0u);
+}
+const char* settings_open(xyf::menu::State& s, uint32_t row) {
     if (!settings_loaded) return xs::note_loading;
-    if (settings_job) return xs::note_saving;                            // one write at a time
-    xs::Record& r = settings_record;
+    if (settings_job) return xs::note_saving;                            // the last leaving's write is still running
+    const xs::Record& r = settings_record;
     if (r.newer) return xs::note_newer;                                 // a newer record: never rewritten here
-    const U32 power_on = r.power_on, usb = r.usb, confirm = r.confirm, newer = r.newer;   // field by field: no memcpy
-    if (row == xs::row_power_on) r.power_on = xs::next_power_on(r.power_on);
-    else if (row == xs::row_usb) r.usb = xs::next_usb(r.usb);
-    else return 0;
+    if (row == xs::row_power_on) xyf::menu::open_options(s, xs::power_on_options, 2, r.power_on);
+    else if (row == xs::row_usb) xyf::menu::open_options(s, xs::usb_options, 2, r.usb);
+    return 0;
+}
+void settings_pick(const xyf::menu::State& s) {
+    xs::Record& r = settings_record;
+    if (r.newer || settings_job || s.option_selected >= s.option_count) return;
+    if (s.entry == xs::row_power_on) r.power_on = s.option_selected;
+    else if (s.entry == xs::row_usb) r.usb = s.option_selected;
+}
+// The leaving's write (the whole record as the page left it, settings_store): its line, or why it did not start.
+const char* settings_save() {
     const U32 code = settings_store();
-    if (code != P::s_ok) {
-        r.power_on = power_on; r.usb = usb; r.confirm = confirm; r.newer = newer;
-        return code == P::s_busy ? xs::note_busy : code == P::s_link ? xs::note_link : xs::note_failed;
-    }
+    if (code != P::s_ok) return code == P::s_busy ? xs::note_busy : code == P::s_link ? xs::note_link : xs::note_failed;
     JobView v;
     job_view(v);
-    settings_job = v.id; settings_row = row;
+    settings_job = v.id;
     return xs::note_saving;
 }
 const char* settings_done() {
@@ -59,18 +73,29 @@ const char* settings_done() {
     if (v.id == settings_job && v.state == 1) return 0;                  // still running
     const bool ok = v.id == settings_job && v.state == 2 && v.phase == U32(xc::phase_done);
     settings_job = 0;
-    if (!ok) { settings_loaded = 0; return xs::note_failed; }            // read again: the page shows what is stored
-    return settings_row == xs::row_usb ? xs::note_saved_usb : xs::note_saved;
+    if (!ok) return xs::note_failed;                                    // still marked: the next leaving tries again
+    const bool usb = settings_record.usb != stored_usb;
+    stored_power_on = settings_record.power_on; stored_usb = settings_record.usb;   // as written (no change while it ran)
+    return usb ? xs::note_saved_usb : xs::note_saved;
 }
-bool settings_view(xyf::menu::State& s) {
+bool settings_view(xyf::menu::State& s, const char*& line) {
+    using xyf::menu::Screen;
     settings_load();                                                     // once A serves (one bounded read)
     const xs::Record& r = settings_record;
     const char* const power_on = xs::power_on_text(r.power_on);
     const char* const usb = xs::usb_text(r.usb);
-    bool changed = s.power_on_text != power_on || s.usb_text != usb;
-    s.power_on_text = power_on; s.usb_text = usb;
+    const U32 marks = settings_marks();
+    bool changed = s.power_on_text != power_on || s.usb_text != usb || s.settings_marked != marks;
+    s.power_on_text = power_on; s.usb_text = usb; s.settings_marked = marks;
     if (r.newer && !s.settings_note) { s.settings_note = xs::note_newer; changed = true; }   // the page says so
-    if (const char* note = settings_done()) { s.settings_note = note; changed = true; }
+    // Left (not the page, its option list or the About page opened from it) with a change: one write, started a
+    // pass after the leaving (the home menu is drawn first: the write's first request waits for A's window).
+    const bool on_page = s.screen == Screen::settings || s.screen == Screen::options ||
+                         (s.screen == Screen::info && s.info_return == Screen::settings);
+    if (on_page || !marks) settings_left = 0;
+    else if (settings_left == 1 && !settings_job) { settings_left = 2; line = settings_save(); }
+    else if (!settings_left) { settings_left = 1; line = xs::note_saving; }
+    if (const char* note = settings_done()) { line = note; changed = true; }
     return changed;
 }
 #endif

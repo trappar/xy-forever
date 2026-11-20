@@ -43,8 +43,11 @@ int main() {
             CHECK(n && n <= max_text && back.power_on == p && back.usb == u && !back.newer);
         }
     CHECK(format(out, 10, w) == 0);                                  // does not fit
-    CHECK(next_power_on(power_play) == power_always && next_power_on(power_always) == power_play &&
-          next_usb(usb_mtp) == usb_serial && next_usb(usb_serial) == usb_mtp);
+    // #21: the option lists, in value order (an option's index is the value it picks).
+    CHECK(std::strcmp(power_on_options[power_play], "PLAY held") == 0 && std::strcmp(power_on_options[power_always], "Always") == 0);
+    CHECK(std::strcmp(usb_options[usb_mtp], "Serial + MTP") == 0 && std::strcmp(usb_options[usb_serial], "Serial only") == 0);
+    CHECK(std::strcmp(memory_options[memory_standard - memory_standard], "Standard") == 0 &&
+          std::strcmp(memory_options[memory_expanded - memory_standard], "4 MiB (experimental)") == 0);
     CHECK(std::strcmp(power_on_text(power_play), "PLAY held") == 0 && std::strcmp(power_on_text(power_always), "Always") == 0);
     CHECK(std::strcmp(usb_text(usb_mtp), "Serial + MTP") == 0 && std::strcmp(usb_text(usb_serial), "Serial only") == 0);
     CHECK(rows == 4 && std::strcmp(label(row_memory), "Mod memory") == 0 && std::strcmp(label(row_about), "About") == 0);
@@ -52,7 +55,8 @@ int main() {
     CHECK(std::strcmp(memory_text(memory_expanded, false), "4 MiB (experimental)") == 0);
     CHECK(std::strcmp(memory_text(memory_expanded, true), "4 MiB (experimental): applied when you boot") == 0);
     CHECK(std::strcmp(memory_text(memory_standard, true), "Standard: applied when you boot") == 0);
-    CHECK(std::strcmp(memory_text(memory_unavailable, false), "Not available with these mod packages") == 0);
+    CHECK(std::strcmp(memory_text(memory_unavailable, false), "Not available") == 0);   // short: the page's 2x text
+    CHECK(std::strcmp(memory_text(memory_reading, false), "Checking...") == 0);
     Gate g; gate_clear(g); CHECK(gate_poll(g, 0) == idle);
     gate_open(g, "boot", 1000);
     gate_key(g, key_play, 1, true);                                  // injected: ignored

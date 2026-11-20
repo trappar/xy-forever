@@ -1,6 +1,6 @@
 """Mod memory in the simulator: the Settings page's one row. Part of the saved configuration (config.txt
-memory=), pending until boot like the Mods page's toggles: PLAY flips it, Continue asks Save / Discard / Back, Save
-rebuilds Open-XY in the 4 MiB layout (mods.apply flag bit 1); a power-on keeps the mode; no change, no rebuild; back
+memory=), pending until boot like the Mods page's toggles: PLAY opens its options and a pick changes it, Continue
+asks Save / Discard / Back, Save rebuilds Open-XY in the 4 MiB layout (mods.apply flag bit 1); a power-on keeps the mode; no change, no rebuild; back
 to Standard with a selection over 2032 KiB: Save refused with the limit text. The published 0.0.6 set (its base
 has expanded_module_base); the synthetic set (none, as a set from before the 4 MiB option): the row unavailable, PLAY changes
 nothing. Driven by injected keys (tests/test_sim_config.py's helpers). Needs clang++ and the private stock 1.2.1
@@ -22,7 +22,7 @@ SETTINGS_ROW, SETTINGS = 4, 6                                              # xyf
 STANDARD, EXPANDED = 'memory=Standard;', 'memory=4 MiB (experimental);'
 EXPANDED_PENDING = 'memory=4 MiB (experimental): applied when you boot;'
 STANDARD_PENDING = 'memory=Standard: applied when you boot;'
-UNAVAILABLE = 'memory=Not available with these mod packages;'
+UNAVAILABLE = 'memory=Not available;'
 TOO_BIG = 'note=Too big for the mods memory: turn some mods off.;'
 
 
@@ -35,6 +35,14 @@ class Memory(SC.Config):
             self.press(PLUS)
         self.press(PLAY)
         self.wait_log(lambda: self.lines('menu: screen %d ' % SETTINGS), 'the Settings page', 10.0)
+
+    def pick_other(self):
+        """#21: PLAY opens Mod memory's options (on the value in effect), + moves to the other, PLAY picks it."""
+        opened = len(self.lines('settings: options current'))
+        self.press(PLAY)
+        self.wait_log(lambda: len(self.lines('settings: options current')) > opened, 'the option list', 10.0)
+        self.press(PLUS)
+        self.press(PLAY)
 
     def home_has(self, text, timeout=60.0):
         self.wait_log(lambda: text in self.home(), 'home row with %r: %s' % (text, self.home()), timeout)
@@ -73,7 +81,7 @@ class PublishedMemory(Memory, unittest.TestCase):
         self.settings()
         self.home_has(STANDARD)                                            # "Checking the mod packages..." until the base
         self.home_has(TOO_BIG)                                             # read on the Settings page: over 2032 KiB
-        self.press(PLAY)                                                   # Mod memory -> 4 MiB, pending
+        self.pick_other()                                                  # Mod memory -> 4 MiB, pending
         row = self.home_has(EXPANDED_PENDING)
         self.assertIn('pending=1 blocked=0', row)
         self.assertIn('note=;', row)                                       # fits the 4 MiB layout
@@ -96,7 +104,7 @@ class PublishedMemory(Memory, unittest.TestCase):
         self.menu_again()
         self.home_has(EXPANDED)
         self.settings()
-        self.press(PLAY)                                                   # back to Standard: does not fit
+        self.pick_other()                                                  # back to Standard: does not fit
         row = self.home_has(TOO_BIG)                                       # once the page's list is read
         self.assertIn('pending=1 blocked=1 ' + STANDARD_PENDING, row)
         self.back_to_continue()

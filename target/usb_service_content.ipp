@@ -287,8 +287,9 @@ void config_step(ConfigSlot& g) {
         g.code = g.io.lost() ? P::s_link : P::s_storage;
         g.step = cg_closing;
     }
-    if (g.step == cg_closing) {                                         // op 9: A rescans, B fetches the catalog
+    if (g.step == cg_closing) {                                         // op 9: A rescans, B fetches the catalog (config.txt)
         if (save_active && g.path == xg::path) save_log_write(!g.error && !g.io.link);   // the Save's line
+        if (writes_due && g.path != xg::path) settle_quiet = 1;          // #21: settings.txt: no catalog fetch
         settle_begin();
     }
 }

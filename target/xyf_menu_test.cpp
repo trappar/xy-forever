@@ -82,6 +82,31 @@ int main() {
     press(s, menu::key_play);
     REQUIRE(press(s, menu::key_stop) == Action::redraw && s.screen == Screen::settings);
     REQUIRE(press(s, menu::key_stop) == Action::redraw && s.screen == Screen::main);
+    // #21: the option list the caller opens on change_setting (any number of options): - / + move and wrap, PLAY
+    // picks (pick_setting, back on Settings), STOP leaves it unchanged; the heading's row stays selected.
+    {
+        static const char* const three[] = {"One", "Two", "Three"};
+        press(s, menu::key_play);                                       // Settings (still the row), on About
+        press(s, menu::key_minus); press(s, menu::key_minus);
+        REQUIRE(press(s, menu::key_play) == Action::change_setting && s.entry == settings::row_power_on);
+        menu::open_options(s, three, 3, 1);
+        REQUIRE(s.screen == Screen::options && s.option_count == 3 && s.option_current == 1 && s.option_selected == 1);
+        REQUIRE(press(s, menu::key_plus) == Action::redraw && s.option_selected == 2);
+        REQUIRE(press(s, menu::key_plus) == Action::redraw && s.option_selected == 0);   // wraps
+        REQUIRE(press(s, menu::key_minus) == Action::redraw && s.option_selected == 2);
+        REQUIRE(press(s, menu::key_track1) == Action::none && press(s, menu::key_shift) == Action::none);
+        REQUIRE(press(s, menu::key_stop) == Action::redraw && s.screen == Screen::settings);   // back: nothing picked
+        REQUIRE(s.settings_selected == settings::row_power_on && s.option_current == 1);
+        press(s, menu::key_play); menu::open_options(s, three, 3, 1);
+        press(s, menu::key_minus);
+        REQUIRE(press(s, menu::key_knob1) == Action::pick_setting && s.screen == Screen::settings &&
+                s.entry == settings::row_power_on && s.option_selected == 0);
+        static const char* const ten[] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
+        menu::open_options(s, ten, 10, 9);                               // bounded: max_options, current in range
+        REQUIRE(s.option_count == menu::max_options && s.option_current == 0);
+        press(s, menu::key_stop); press(s, menu::key_stop);
+        REQUIRE(s.screen == Screen::main);
+    }
     // No usable firmware and nothing built in: home screen (188: one row, About).
     cat.items[0].flags = cat.items[2].flags = 0;
     menu::start(s, &cat, false);

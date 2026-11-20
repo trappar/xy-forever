@@ -9,7 +9,7 @@ void ui_render_library(uint16_t* fb, unsigned selected, unsigned count) {
         {"open-xy: granular", "6 machines", false}, {"open-xy: braids", "3 machines", false},
         {"My test build", "custom", false}, {"OP-XY 1.2.4", "official", false}, {"open-xy: karplus", "1 machine", false}};
     List list = {"Firmware library", rows, count > 7 ? 7 : count, selected,
-                 "- / +  choose      PLAY  boot once      SHIFT+PLAY  set default", &bridge_chrome};
+                 "- / +  choose      PLAY  boot once      SHIFT+PLAY  set default", &bridge_chrome, false};
     draw_list(fb, list);
 }
 void ui_render_confirm(uint16_t* fb, unsigned accept) {

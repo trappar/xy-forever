@@ -266,12 +266,16 @@ const char* job_target();
 bool settings_load();
 xyf::settings::Record& settings();
 uint32_t settings_store();
-// #21: PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode; 0 for any other): the record
-// changed and its write started (settings_store), or not with the reason; the page's note. A newer record (newer)
-// is never changed. settings_view, each menu pass: settings_load, the
-// rows' values into the menu state, and once the write ended its note (failed: read again); true: draw again.
-const char* settings_change(uint32_t row);
-bool settings_view(xyf::menu::State& state);
+// #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode): its option
+// list opened (menu::open_options; 0), or the page's note why not (still reading, a save running, a newer record:
+// never changed). settings_pick, the list's PLAY: B's copy takes the option (nothing written; the row is marked).
+// settings_view, each menu pass: settings_load, the rows' values and marks into the menu state; once the page was
+// left with a change, one write of the whole record (settings_store; started the pass after the leaving), and
+// the home menu's line about it in line (0: none). True: draw again. A refused or failed write keeps the rows
+// marked; leaving the page again tries again. A power cut before the write keeps settings.txt as it was.
+const char* settings_open(xyf::menu::State& state, uint32_t row);
+void settings_pick(const xyf::menu::State& state);
+bool settings_view(xyf::menu::State& state, const char*& line);
 // A key event (key_ui on_key; injected: the host's KEY command). While a confirm prompt is open it takes
 // every key (true: not for the menu); only a real PLAY / STOP answers it (xyf_settings.hpp gate_key).
 bool confirm_key(uint32_t key, uint32_t pressed, bool injected);

@@ -21,8 +21,9 @@ xyf::mods::Page& page();
 // The menu opened the page: reads the packages unless a complete list is already held.
 void open();
 // The Settings page is shown (every pass): the reading starts as open() does when it is not running or
-// done (pump(true) then carries it; its base says whether Mod memory can be the 4 MiB layout). memory_flip: PLAY
-// on the Mod memory row: the pending choice flipped, or the line saying why not (xyf::mods::flip_memory).
+// done (pump(true) then carries it; its base says whether Mod memory can be the 4 MiB layout). memory_flip: a pick
+// of the other option in Mod memory's list (#21; or PLAY on the row while it cannot change): the pending choice
+// flipped, or the line saying why not (xyf::mods::flip_memory).
 void prepare();
 const char* memory_flip();
 // A key while the page is shown (xyf::mods::key).

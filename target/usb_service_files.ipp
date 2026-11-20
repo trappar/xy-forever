@@ -292,6 +292,9 @@ volatile U32 writes_due __attribute__((section(".data"))) = 0;
 volatile U32 writes_ms __attribute__((section(".data"))) = 0;
 // 1 while an op 9 started by settle_begin is out (file commands answer busy: job_blocks).
 volatile U32 closing __attribute__((section(".data"))) = 0;
+// #21: the next close ends a settings.txt save: no catalog fetch (the library is unchanged and the menu keeps its
+// row). Taken by that close's settle_end.
+U32 settle_quiet __attribute__((section(".data"))) = 0;
 void settle_end(U32 v, bool catalog);
 void settle_writes(bool catalog = true) {
     if (!writes_due) return;
@@ -329,7 +332,9 @@ void settle_end(U32 v, bool catalog) {
     mounted = v == ~0u ? file_client::mounted_stale : 0;
     s.b_window = v;
     if (v == 3) ++s.b_windows;
-    if (!catalog) return;
+    const bool quiet = settle_quiet != 0;
+    settle_quiet = 0;
+    if (!catalog || quiet) return;
     if (xyf_boot::refresh_catalog()) ++s.b_catalogs;
     key_ui::refresh_catalog();
 }

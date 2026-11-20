@@ -53,19 +53,43 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
             rows[shown].marked = i == s.catalog->default_index;
             ++shown;
         }
-        const ui::List list = {"Firmware library", rows, shown, selected, hint_library, chrome};
+        const ui::List list = {"Firmware library", rows, shown, selected, hint_library, chrome, false};
         ui::draw_list(fb, list);
         return;
     }
     case Screen::settings: {                             // the compact title bar, as the library
         static ui::ListRow rows[settings::rows] XYF_DATA = {       // xyf_settings.hpp Row, labels
             {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false}, {"About", 0, false}};
-        rows[settings::row_memory].detail = settings::memory_text(s.memory, s.memory_pending);
+#if defined(XYF_SETTING_OPTIONS)
+        rows[settings::row_memory].detail = settings::memory_text(s.memory, false);   // pending: marked
         rows[settings::row_power_on].detail = s.power_on_text;     // #21: 0 (blank) without settings.txt
         rows[settings::row_usb].detail = s.usb_text;               // (About: none; its page has the version)
-        const ui::List list = {"Settings", rows, settings::rows, s.settings_selected,
-                               s.settings_note ? s.settings_note : "PLAY  change   STOP  back", chrome};
+        const uint32_t marked = s.settings_marked | (s.memory_pending ? 1u << settings::row_memory : 0u);
+        for (uint32_t i = 0; i != settings::rows; ++i) rows[i].marked = marked >> i & 1u;
+        // The line: a note, else what a marked value (accent) means; a settings.txt row's first (saved when the page is left).
+        const char* hint = marked & ~(1u << settings::row_memory) ? "Changes are saved when you leave this page.   STOP  back" :
+                           marked ? "Mod memory changes apply when you boot.   STOP  back" : "PLAY  change   STOP  back";
+#else
+        rows[settings::row_memory].detail = settings::memory_text(s.memory, s.memory_pending);
+        const char* const hint = "PLAY  change   STOP  back";
+#endif
+        const ui::List list = {"Settings", rows, settings::rows, s.settings_selected, s.settings_note ? s.settings_note : hint,
+                               chrome, true};
         ui::draw_list(fb, list);
+        return;
+    }
+    case Screen::options: {                              // #21: a setting's options, the one in effect marked
+#if defined(XYF_SETTING_OPTIONS)
+        static ui::ListRow rows[max_options] XYF_DATA = {};
+        for (uint32_t i = 0; i != s.option_count; ++i) {
+            rows[i].title = s.options[i];
+            rows[i].detail = i == s.option_current ? "current" : 0;
+            rows[i].marked = false;
+        }
+        const ui::List list = {settings::label(s.settings_selected), rows, s.option_count, s.option_selected,
+                               "- / +  choose   PLAY  pick   STOP  back", chrome, true};
+        ui::draw_list(fb, list);
+#endif
         return;
     }
     case Screen::info: {
