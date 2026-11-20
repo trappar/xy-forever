@@ -117,9 +117,16 @@ void draw_list(uint16_t* fb, const List& list) {
         if (on) fill(fb, margin - 6, y - 3, width - 2 * margin + 12, row_height - 2, white);
         const Color fg = on ? black : white;
         int x = text(fb, margin + 4, y, row.title, fg, 2);
-        if (row.marked) text(fb, x + 8, y + 4, "(default)", on ? dark : accent, 1);
+#if defined(XYF_SMALL_CRC)
+        const bool large = false;             // the narrow 48 KiB modules: no room (xyf_menu.hpp XYF_SETTING_OPTIONS)
+#else
+        const bool large = list.large;
+#endif
+        if (row.marked && !large) text(fb, x + 8, y + 4, "(default)", on ? dark : accent, 1);
+        const int size = large ? 2 : 1;
         if (row.detail && *row.detail)
-            text(fb, width - margin - 4 - text_width(row.detail, 1), y + 4, row.detail, on ? dark : grey, 1);
+            text(fb, width - margin - 4 - text_width(row.detail, size), large ? y : y + 4, row.detail,
+                 row.marked && large ? accent : on ? dark : grey, size);
     }
     if (list.count > list_visible) {          // scroll bar on the right edge
         const int track = int(list_visible) * row_height - 4;
@@ -176,21 +183,17 @@ void draw_progress(uint16_t* fb, const Progress& p) {
     hint_line(fb, "", p.chrome);                      // the activity line only
 }
 
-void draw_home_empty(uint16_t* fb, uint32_t selected, const Chrome* chrome) {
+void draw_home_empty(uint16_t* fb, const Chrome* chrome) {
     home_header(fb, chrome);                          // a home screen: the logo header (as ui_screens)
     int y = home_bar + 8;
     text(fb, margin, y, "No firmware found", white, 2);
     y += 24;
-    text(fb, margin, y, "Connect USB (MTP is always on), then copy an", grey, 1);
+    text(fb, margin, y, "Connect USB (MTP), then copy an", grey, 1);
     text(fb, margin, y + 12, "official .tfw or an open-xy build into", grey, 1);
     text(fb, margin, y + 24, "xy-forever/inbox/ on the OP-XY.", grey, 1);
-    const char* items[] = {"Info"};                    // 188: no MTP mode row (always on)
-    for (uint32_t i = 0; i != 1; ++i) {
-        const int ry = y + 46 + int(i) * 24;
-        const bool on = i == selected;
-        if (on) fill(fb, margin - 6, ry - 3, width - 2 * margin + 12, 22, white);
-        text(fb, margin + 4, ry, items[i], on ? black : white, 2);
-    }
+    // 188: no MTP mode row (always on); #21: one row, About, always selected
+    fill(fb, margin - 6, y + 46 - 3, width - 2 * margin + 12, 22, white);
+    text(fb, margin + 4, y + 46, "About", black, 2);
     home_footer(fb, "", "PLAY  select", chrome);
 }
 } }

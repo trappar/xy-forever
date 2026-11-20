@@ -71,8 +71,9 @@ struct CheckStatus {
     uint32_t magic, reason, index, load_reason, admit_reason;   // reason: file_boot Reason (0 = bootable)
     char id[32];
     TimingInfo timing;
+    uint32_t power_on;      // #21: a check of the default: Menu at power-on (xyf_settings.hpp PowerOn; A's read)
 };
-static_assert(sizeof(CheckStatus) == 116, "CheckStatus layout");
+static_assert(sizeof(CheckStatus) == 120, "CheckStatus layout");
 // b: bound for a's answer to one command. a answers from its own loop, so this covers
 // whatever a is busy with: the mount and scan (5.1 s seen once, normally 0.1 s), an
 // image read, a hash.
@@ -140,7 +141,8 @@ const xyf::catalog::Catalog* catalog();
 void choose_default();
 void choose(uint32_t entry);
 // Test 059: a check failed, so the menu opens without PLAY and never times out
-// into the broken default (it waits for a choice).
+// into the broken default (it waits for a choice). #21: also when Menu at power-on is always (the default
+// checked good).
 bool menu_forced();
 #if defined(XYF_ONE_SESSION)
 // Test 065 (b): the USB command plumbing on the file boot's session (menu_link delegates).

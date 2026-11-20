@@ -19,7 +19,7 @@ from xy_forever.source_text import unit_text  # noqa: E402
 import xyf_build as builder
 from xy_forever import xyf_stage2 as S
 
-KEY_UI = (ROOT / 'target/key_ui.cpp').read_text()
+KEY_UI = unit_text(ROOT / 'target/key_ui.cpp')
 STAGE2_H = (ROOT / 'target/xyf_stage2.hpp').read_text()
 MENU = (ROOT / 'target/stage2_menu.cpp').read_text()
 FILE_BOOT = unit_text(ROOT / 'target/file_boot.cpp')
@@ -111,7 +111,7 @@ class Stage2MenuProgramTest(unittest.TestCase):
         keys = press(PLUS) + press(PLAY) + press(PLUS) + press(PLUS) + [SHIFT | 1 << 8] + press(PLAY)
         self.assertEqual(p.run(keys)[0], 3 | 2 << 8)
         p = self.fresh()                                             # Uninstall row -> confirm -> accept
-        self.assertEqual(p.run(press(MINUS) * 3 + press(PLAY) + press(PLUS) + press(PLAY))[0], 5)   # Uninstall (past Info, Settings)
+        self.assertEqual(p.run(press(MINUS) * 2 + press(PLAY) + press(PLUS) + press(PLAY))[0], 5)   # Uninstall (past Settings)
         p = self.fresh()                                             # Mods -> the stage-1 menu runs the page
         self.assertEqual(p.run(press(PLUS) * 2 + press(PLAY))[0], 1)  # right below Firmware library
 

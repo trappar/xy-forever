@@ -14,7 +14,13 @@ enum Key : uint32_t { key_minus = 53, key_plus = 54, key_play = 51, key_stop = 5
 inline uint32_t as_play(uint32_t k) { return k - key_knob1 < knobs ? uint32_t(key_play) : k; }
 // Or'd into - / + for a knob turn's row (key_ui turn_knobs; the Mods page only: SHIFT + turn = its filter).
 static const uint32_t key_turn = 0x100u;
-enum class Screen : uint32_t { main, library, info, confirm_uninstall, home_empty, confirm_save, settings };
+// options (#21): a setting's option list, opened from the Settings page by the caller (open_options). The offline
+// stage-2 modes build without it (XYF_SETTING_OPTIONS): their narrow 48 KiB stage 1 (XYF_SMALL_CRC, xyf_build.py) has
+// no settings.txt and no room; their Settings page keeps its rows (PLAY answers nothing there).
+#if !defined(XYF_SMALL_CRC)
+#define XYF_SETTING_OPTIONS 1
+#endif
+enum class Screen : uint32_t { main, library, info, confirm_uninstall, home_empty, confirm_save, settings, options };
 enum class Action : uint32_t {
     none,
     redraw,          // state changed: draw again
@@ -25,14 +31,15 @@ enum class Action : uint32_t {
     open_mods,       // open the Mods page (xyf_mods; stage 1 runs it)
     save,            // the Save dialog's Save: apply the pending configuration, then boot it
     discard,         // the Save dialog's Discard: forget the pending changes, boot the saved configuration
-    change_setting   // the Settings page's PLAY on setting `entry` (xyf_settings.hpp Row; Mod memory, pending)
+    change_setting,  // the Settings page's PLAY on setting `entry` (xyf_settings.hpp Row): the caller opens its options
+    pick_setting     // #21: the option list's PLAY: setting `entry` takes option_selected (back on the Settings page)
 };
 // The Save dialog's buttons.
 enum SaveChoice : uint32_t { choice_save = 0, choice_discard = 1, choice_back = 2 };
 // Main menu rows, in order (Mods right below Firmware library).
-// 188: no MTP mode row (MTP is always on with the composite USB device).
+// 188: no MTP mode row (MTP is always on with the composite USB device). #21: no Info row (Settings' About).
 enum MainItem : uint32_t { item_continue = 0, item_library = 1, item_mods = 2, item_uninstall = 3,
-                           item_settings = 4, item_info = 5, main_items = 6 };   // Settings above Info
+                           item_settings = 4, main_items = 5 };
 // 193: what B knows about A's storage, set by the caller every pass (product: xyf_boot::storage_view).
 // unknown: not reported (the offline modes, whose stock OS is embedded: "Continue (built-in OP-XY)");
 // waiting: the first 400 ms of A's mount (the first row stays blank: a normal library arrives in about
@@ -44,7 +51,7 @@ enum StorageView : uint32_t { storage_unknown = 0, storage_ready, storage_waitin
 // TRACK1..TRACK4 (keys 6..9) jump to the first four rows: Continue, Firmware library, Mods, Uninstall. (Keys 10 and 11, once taken for TRACK5/6, are knob pushes.)
 struct State {
     Screen screen, info_return;       // info_return: screen PLAY goes back to from Info
-    uint32_t main_selected, library_selected, home_selected;
+    uint32_t main_selected, library_selected;   // (the "no firmware" home has one row: no selection)
     bool confirm_accept;              // which button the confirm dialog highlights
     bool shift_held;
     const catalog::Catalog* catalog;  // may be null (library not loaded)
@@ -64,11 +71,25 @@ struct State {
     const char* settings_note;
     uint32_t memory;
     bool memory_pending;
+#if defined(XYF_SETTING_OPTIONS)
+    // #21: the settings.txt rows' values, set by the caller every pass (usb_service settings_view; xyf_settings.hpp
+    // power_on_text, usb_text); 0: blank. Texts, not values: the offline stage-2 modes have no settings.txt and no
+    // room for its texts. (A newer record's line is settings_note, set there too.)
+    const char *power_on_text, *usb_text;
+    // #21: rows marked (a bit per xyf_settings.hpp Row; the value in accent): a settings.txt row changed and not saved
+    // yet (saved once, when the page is left), Mod memory pending until boot (memory_pending). Set by the caller.
+    uint32_t settings_marked;
+    // #21: the option list (Screen::options; open_options): the setting's option texts, how many, the one in effect
+    // (marked "current") and the selected one. The heading is the label of the Settings row (settings_selected).
+    const char* const* options;
+    uint32_t option_count, option_current, option_selected;
+#endif
     // 193: StorageView (the caller's, after start() and every pass) and the line a refused row left (0: none).
     uint32_t storage;
     const char* note;
 };
-// 193: the row needs the library (shown dimmed, PLAY refused while storage is not ready).
+// 193: the row needs the library (shown dimmed, PLAY refused while storage is not ready). Settings never does
+// (its About row; a setting that needs A says so).
 bool needs_storage(const State& state, uint32_t item);
 // Start screen: the main menu, or the "no firmware" home when no catalog
 // entry is usable and there is nothing built in to continue to.
@@ -77,5 +98,14 @@ void start(State& state, const catalog::Catalog* catalog, bool has_builtin);
 Action key(State& state, uint32_t key, bool pressed);
 // Label of a main-menu row (e.g. "Continue: OP-XY 1.2.1").
 const char* main_label(const State& state, uint32_t item);
+#if defined(XYF_SETTING_OPTIONS)
+// #21: the caller's answer to change_setting: the setting's options (texts[current] in effect, selected first).
+static const uint32_t max_options = 8;
+inline void open_options(State& s, const char* const* texts, uint32_t count, uint32_t current) {
+    s.options = texts; s.option_count = count < max_options ? count : max_options;
+    s.option_current = s.option_selected = current < s.option_count ? current : 0;
+    s.screen = Screen::options;
+}
+#endif
 } }
 #endif

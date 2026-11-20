@@ -25,7 +25,7 @@ bool storage_down(const State& s) { return s.storage != storage_unknown && s.sto
 }
 
 bool needs_storage(const State& s, uint32_t item) {
-    return storage_down(s) && item != item_info;
+    return storage_down(s) && item != item_settings;
 }
 
 void start(State& s, const catalog::Catalog* catalog, bool has_builtin) {
@@ -53,7 +53,6 @@ const char* main_label(const State& s, uint32_t item) {
     case item_uninstall: return "Uninstall XY Forever";
     case item_mods: return "Mods";
     case item_settings: return "Settings";
-    case item_info: return "Info";
     default: return "";
     }
 }
@@ -65,7 +64,11 @@ Action key(State& s, uint32_t k, bool pressed) {
     const bool minus = k == key_minus, plus = k == key_plus, play = k == key_play;
     if (k == key_stop) {                              // back
         const Screen back = s.screen == Screen::info ? s.info_return :
-                            s.screen == Screen::home_empty ? Screen::home_empty : Screen::main;
+                            s.screen == Screen::home_empty ? Screen::home_empty :
+#if defined(XYF_SETTING_OPTIONS)
+                            s.screen == Screen::options ? Screen::settings :   // #21: nothing picked
+#endif
+                            Screen::main;
         if (back == s.screen) return Action::none;
         s.screen = back;
         return Action::redraw;
@@ -75,7 +78,7 @@ Action key(State& s, uint32_t k, bool pressed) {
         if (minus || plus) { s.note = 0; s.main_selected = step(s.main_selected, main_items, plus); return Action::redraw; }
         if (k - key_track1 < tracks) { s.note = 0; s.main_selected = k - key_track1; return Action::redraw; }
         if (!play) return Action::none;
-        if (needs_storage(s, s.main_selected)) {     // 193: refused with the reason (Info still opens)
+        if (needs_storage(s, s.main_selected)) {     // 193: refused with the reason (Settings still opens)
             s.note = s.storage == storage_unavailable ? "Storage unavailable: the firmware library can't be read." :
                                                         "Storage is still starting.";
             return Action::redraw;
@@ -90,8 +93,7 @@ Action key(State& s, uint32_t k, bool pressed) {
         case item_library: s.screen = Screen::library; return Action::redraw;
         case item_uninstall: s.screen = Screen::confirm_uninstall; s.confirm_accept = false; return Action::redraw;
         case item_mods: return Action::open_mods;
-        case item_settings: s.screen = Screen::settings; s.settings_note = 0; return Action::redraw;
-        default: s.info_return = Screen::main; s.screen = Screen::info; return Action::redraw;
+        default: s.screen = Screen::settings; s.settings_note = 0; return Action::redraw;
         }
     case Screen::library: {
         const uint32_t count = library_count(s);
@@ -121,13 +123,23 @@ Action key(State& s, uint32_t k, bool pressed) {
         if (s.save_selected == choice_discard) return Action::discard;
         return Action::redraw;
     }
-    case Screen::settings:                        // one row per setting; PLAY (or a knob push) flips one
+    case Screen::settings:                        // one row per setting; PLAY (or a knob push): its options
         if (minus || plus) { s.settings_selected = step(s.settings_selected, settings::rows, plus); s.settings_note = 0; return Action::redraw; }
         if (!play) return Action::none;
-        s.entry = s.settings_selected;
-        return Action::change_setting;
+        if (s.settings_selected != settings::row_about) { s.entry = s.settings_selected; return Action::change_setting; }
+        s.info_return = Screen::settings; s.screen = Screen::info;   // #21: the About page (once Info on the home menu)
+        return Action::redraw;
+#if defined(XYF_SETTING_OPTIONS)
+    case Screen::options:                         // #21: - / + choose, PLAY picks (STOP above: back, unchanged)
+        if (minus || plus) { s.option_selected = step(s.option_selected, s.option_count, plus); return Action::redraw; }
+        if (!play) return Action::none;
+        s.screen = Screen::settings;
+        return Action::pick_setting;
+#else
+    case Screen::options: break;                  // never opened here
+#endif
     case Screen::home_empty:
-        if (!play) return Action::none;                // 188: one row, Info (MTP is always on)
+        if (!play) return Action::none;                // 188: one row, About (MTP is always on)
         s.info_return = Screen::home_empty;
         s.screen = Screen::info;
         return Action::redraw;

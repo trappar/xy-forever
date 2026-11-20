@@ -9,7 +9,7 @@ void ui_render_library(uint16_t* fb, unsigned selected, unsigned count) {
         {"open-xy: granular", "6 machines", false}, {"open-xy: braids", "3 machines", false},
         {"My test build", "custom", false}, {"OP-XY 1.2.4", "official", false}, {"open-xy: karplus", "1 machine", false}};
     List list = {"Firmware library", rows, count > 7 ? 7 : count, selected,
-                 "- / +  choose      PLAY  boot once      SHIFT+PLAY  set default", &bridge_chrome};
+                 "- / +  choose      PLAY  boot once      SHIFT+PLAY  set default", &bridge_chrome, false};
     draw_list(fb, list);
 }
 void ui_render_confirm(uint16_t* fb, unsigned accept) {
@@ -23,7 +23,7 @@ void ui_render_progress(uint16_t* fb, unsigned done, unsigned total) {
                   "Do not power off the OP-XY.", &bridge_chrome};
     draw_progress(fb, p);
 }
-void ui_render_home(uint16_t* fb, unsigned selected) { draw_home_empty(fb, selected, &bridge_chrome); }
+void ui_render_home(uint16_t* fb, unsigned) { draw_home_empty(fb, &bridge_chrome); }   // #21: one row, always selected
 unsigned ui_scale(unsigned a, unsigned b, unsigned c) { return scale(a, b, c); }
 unsigned ui_list_first(unsigned count, unsigned selected) { return list_first(count, selected); }
 }
