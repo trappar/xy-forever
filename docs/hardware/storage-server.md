@@ -85,13 +85,14 @@ hiding deeper ancestry, a failed parent stat or a missing mount root refuses the
 the six-folder creation cap: existing deep files remain deletable when ancestry fits that bound.
 The extra stats have not been timed on hardware.
 
-**Remaining gap (#6):** a link directly to an inbox file exposes no parent through stat. The directory
-walk cannot prove that file's containment. Simulator reproduction through the production staged
-`file.write_staged` endpoint: a link under `xy-forever/log/` to `upgrade/sub/x.tfw` lets the write replace
-the protected file's bytes (`usb_service_file_write.ipp`, `file_client::write_file` opens the final path).
-The newer streaming upload and MTP use temporary files and rename; their final-path behavior does not
-establish safety of this older endpoint. Full inbox protection remains an open review requirement;
-the binding rule in [SAFETY](../SAFETY.md) is unchanged. No device experiment establishes this gap.
+**Final links (#6):** stat follows a final link but exposes no parent, and a writable open follows it (stock open
+`889fbbe4`: lookup `889fa2be`, then FollowLink `889fa134`). For writable opens only, A's
+`final_link_reaches_inbox` (the one caller of the admitted lookup `find(relative, path, depth, equivalent, &parent,
+&notdir, &loop)`) repeats that resolution: each link text copied first, relative ones from the link's own parent, at
+most 6 links as stock, then the target's parents by object (`yaffs_obj` parent `+0x1c`, type `+0x64`: 2 link,
+3 folder; link text `+0x68`). A missing target is judged by the folder that would hold it. A loop, a bound reached
+or a span mismatch refuses. Unlink, rmdir and rename act on the link entry, so a link into the inbox can be deleted.
+Hardlinks resolve through `equivalent`; the simulator does not model them.
 
 ## Read-only boot-partition diagnostic (#7)
 

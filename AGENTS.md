@@ -46,8 +46,7 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   approvals stay the developer's.
 - **Checks:** iterate with `python3 scripts/run_tests.py NAMES`. Every change ends, committed, with
   `python3 scripts/check.py` (exhaustive suite, product build, `--verify`; `--neutral` for a behaviour-neutral
-  change): it leaves a receipt for the tree. Others run `--confirm <branch>` instead of rerunning, and rerun
-  only when it is missing or the tree changed. A receipt never stands in for a device test.
+  change): it leaves a receipt for the tree. A receipt never stands in for a device test.
   [Checks and receipts](docs/operating/build-install.md#checks-and-receipts).
 - **Source files stay under 32 KB** (`tests/test_source_budget.py`): to grow a file on its over-cap list,
   first split out the part you touch.

@@ -482,7 +482,18 @@ class FileEngineWiringTest(unittest.TestCase):
         client = unit_text(ROOT / 'target/file_client.cpp')
         self.assertIn('const uint32_t deep = over ? U32(xyf::usbp::s_ok) : deeper_ok(from, to, mounted);', client)
         # The write rule: every change by hand, on A, also through links (reaches_protected: the marker, /yaffs2/upgrade)
-        self.assertIn('((engine != entry_run && !write_root(path_copy)) || reaches_protected(path_copy))', self.server)
+        self.assertIn('((engine != entry_run && !write_root(path_copy)) || reaches_protected(path_copy) ||\n'
+                      '                   (writing && inbox_exists() && final_link_reaches_inbox(path_copy))))', self.server)
+        self.assertIn('const bool writing = action == file_engine::run_open && handle;', self.server)
+        # #6: the final-link guard alone calls the admitted lookup, bounded, and refuses what it cannot prove
+        # (its loop keeps the wrapper's address beside the call, as the builder's straight-line call audit needs)
+        final = self.body(self.server, '__attribute__((noinline, optimize("no-move-loop-invariants"))) '
+                                       'bool final_link_reaches_inbox(const char* path)')
+        self.assertEqual(self.server.count('stock<0x889fa2beu'), 1)
+        self.assertIn('stock<0x889fa2beu', final)
+        for line in ('if (!spans_match()) return true;', 'if (loop) return true;',
+                     'if (link == final_links) return true;', 'for (U32 step = 0; step != protect_parent_steps; ++step)'):
+            self.assertIn(line, final)
         guard = self.body(self.server, '__attribute__((noinline)) bool reaches_protected(char* path, U32* record')
         self.assertIn('const bool marker = marker_exists(), inbox = inbox_exists();', guard)
         self.assertIn('(marker && same_record(record, marker_record[0])) || '

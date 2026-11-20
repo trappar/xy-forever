@@ -11,7 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild  # noqa: E402
-from xyf_build import A_MARKER_CALLS, A_RENAME_CALLS, SERVER_CALLS, WRITE_ENTRIES, peer_spans, server_spans
+from xyf_build import A_FIND_CALLS, A_MARKER_CALLS, A_RENAME_CALLS, SERVER_CALLS, WRITE_ENTRIES, peer_spans, server_spans
 from xy_forever.census import (REMOTE_READ_ACTIONS, REMOTE_READ_BYTES, REMOTE_READ_FIELDS, REMOTE_READ_MAGIC,
                                    STORAGE_DIAGNOSTIC_WORDS, remote_read)
 from xy_forever.paths import STOCK_121
@@ -77,10 +77,11 @@ class RemoteReadTest(unittest.TestCase):
         for address, length, _ in spans:
             self.assertFalse(0x11a00000 <= address < 0x11a0c000)
         covered = [(a, n) for a, n, _ in spans + peer_spans()]
-        for call in SERVER_CALLS | A_MARKER_CALLS | A_RENAME_CALLS:
+        for call in SERVER_CALLS | A_MARKER_CALLS | A_RENAME_CALLS | A_FIND_CALLS:
             self.assertTrue(any(a <= int(call, 16) < a + n for a, n in covered), call)
         # The stock read-write mount path and write entries are never called directly.
-        self.assertFalse({'%08x' % a for a in WRITE_ENTRIES} & (SERVER_CALLS | A_MARKER_CALLS | A_RENAME_CALLS))
+        self.assertFalse({'%08x' % a for a in WRITE_ENTRIES} &
+                         (SERVER_CALLS | A_MARKER_CALLS | A_RENAME_CALLS | A_FIND_CALLS))
         source = ''.join((ROOT / 'target' / n).read_text()
                           for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
         for address in WRITE_ENTRIES:

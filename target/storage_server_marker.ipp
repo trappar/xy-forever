@@ -90,9 +90,57 @@ bool directory_reaches_inbox(const char* path) {
     }
     return true;
 }
+// #6: a writable open follows a final link (stock open 889fbbe4: find 889fa2be, then FollowLink 889fa134), and stat
+// identifies its target but no parent. Only writable opens need this: unlink, rmdir and rename act on the link entry.
+// This adapter is the one caller of the admitted stock lookup (xyf_build.py A_FIND_CALLS): find(relative, path,
+// depth, equivalent, &parent, &notdir, &loop) returns the object a path names, its final link not followed, and the
+// folder holding that name. As stock does, it follows the final links (each text copied here first; relative from the
+// link's own parent), then walks the result's parents by object to the mount root. A missing final target is judged
+// by the folder that would hold it. Every bound reached, a loop, or a missing root refuses. yaffs_obj (1.2.1 listing):
+// parent +0x1c (889fa248), type +0x64 (2 link, 3 folder: 889fa158, 889fa26a), link text +0x68 (889fa15c).
+const U32 object_parent = 0x1c, object_type = 0x64, object_alias = 0x68, type_link = 2, type_folder = 3;
+const U32 final_links = 6;                 // stock gives up past 6 (depth > 5: 889fa1ac), each at depth 0, 1, ...
+char link_text[max_path] __attribute__((section(".data"))) = {0};
+// noinline: the builder's scope (A_FIND_CALLERS). no-move-loop-invariants: the wrapper's address is loaded beside its
+// call inside the loop, where the builder's straight-line call audit resolves it (hoisted, it was "unresolved").
+__attribute__((noinline, optimize("no-move-loop-invariants"))) bool final_link_reaches_inbox(const char* path) {
+    const CheckSpan span;
+    if (!spans_match()) return true;                                   // the lookup only while its spans match
+    const char* const names[3] = {"/yaffs2", inbox_path, path};
+    U32 found[3] = {0, 0, 0};                                          // the root, the inbox, the target
+    for (U32 k = 0; k != 3; ++k) {
+        const char* text = names[k];
+        U32 relative = 0, object = 0, parent = 0;
+        for (U32 link = 0;; ++link) {
+            int notdir = 0, loop = 0;
+            parent = 0;
+            object = stock<0x889fa2beu, U32>(relative, text, int(link ? link - 1 : 0), 1, &parent, &notdir, &loop);
+            if (loop) return true;
+            if (!object || word(object + object_type) != type_link) break;
+            if (link == final_links) return true;
+            const U32 alias = word(object + object_alias);
+            U32 i = 0;
+            while (alias && i != max_path && (link_text[i] = char(byte(alias + i)))) ++i;
+            relative = link_text[0] == '/' ? 0 : word(object + object_parent);
+            if (!alias || i == max_path || (link_text[0] != '/' && !relative)) return true;
+            text = link_text;
+        }
+        found[k] = object ? object : k == 2 ? parent : 0;              // a missing target: the folder for it
+    }
+    if (!found[0] || word(found[0] + object_type) != type_folder) return true;
+    if (!found[1] || !found[2]) return false;                          // no inbox, or nowhere to write
+    U32 object = found[2];
+    for (U32 step = 0; step != protect_parent_steps; ++step) {
+        if (object == found[1]) return true;
+        if (object == found[0]) return false;
+        object = word(object + object_parent);
+        if (!object) return true;
+    }
+    return true;
+}
 // The caller's full-path record is preserved (rename keeps its mode/size). Marker/inbox/root are cached only
 // within this request; no storage operation can run between its ancestry checks and its mutation.
-// A symlink directly to an inbox FILE still needs a resolver: stat identifies the file but exposes no parent.
+// A link directly to an inbox FILE: final_link_reaches_inbox (writable opens) resolves its target's parents.
 __attribute__((noinline)) bool reaches_protected(char* path, U32* record = marker_record[1], bool* found = 0) {
     const bool marker = marker_exists(), inbox = inbox_exists();
     const bool got = (marker || inbox || found) && stat_into(path, record);

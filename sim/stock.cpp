@@ -12,9 +12,11 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <poll.h>
+#include <stdlib.h>
 #include <string.h>
 #include <string>
 #include <sys/ioctl.h>
@@ -129,6 +131,7 @@ void irq_register(uint32_t id, uint32_t handler, uint32_t context) {
 void irq_unregister(uint32_t id) { w8(0x11b00ac4u + id, 0); w32(0x20004800u + id * 8, 0); }
 
 #include "stock_files.ipp"
+#include "stock_find.ipp"                              // A's final-link guard: the yaffs lookup
 
 // yaffs device construction (889f963e): the fresh device shape cold_storage checks, allocated at
 // the stock heap's break and linked into the retained device list (sentinel 0x11907f8c).
@@ -364,6 +367,10 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     case 0x889f44f4u:                                   // posix closedir
         if (role) crash("B called the stock posix closedir (B uses its own timed file client)");
         return uint64_t(int64_t(close_directory(u(0))));
+    case 0x889fa2beu:                                   // yaffs lookup (A's final-link guard)
+        if (role) crash("B called the yaffs lookup (A's only)");
+        return find_object(u(0), s(1), int(u(2)), static_cast<uint32_t*>(p(4)), static_cast<int*>(p(5)),
+                           static_cast<int*>(p(6)));
     case 0x889fa834u:                                   // yaffs rename
         if (role) crash("B called the yaffs rename (A's only)");
         return uint64_t(int64_t(rename_object(s(0), s(1))));
@@ -381,7 +388,7 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     // A: provider registration, executors
     case 0x889f3910u: register_provider(uintptr_t(a[0]), u(1)); return 0;
     case 0x889f76cau: case 0x889f6feau: case 0x889f6cd6u: case 0x889f6dcau: case 0x889f6b7cu: case 0x889f72e4u:
-        executor(address, u(0)); return 0;
+        object_paths.clear(); executor(address, u(0)); return 0;     // lookup objects live for one request
     // A: yaffs device and direct API (cold_storage.cpp)
     case 0x889f963eu: return construct(u(0));
     case 0x889fae2eu: return uint64_t(int64_t(mount(u(0), int(u(2)))));
