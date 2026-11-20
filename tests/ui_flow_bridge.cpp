@@ -50,7 +50,12 @@ void flow_draw(uint16_t* fb, const char* status) { menu::draw(fb, flow_state, st
 // the saved configuration as xyf_mods_io::menu_state sets it.
 void flow_config(const char* label, unsigned pending, unsigned blocked, const char* note) {
     flow_state.continue_label = label && *label ? label : 0;
-    flow_state.pending = pending != 0; flow_state.save_blocked = blocked != 0; flow_state.save_note = note;
+    flow_state.pending = flow_state.changed = pending != 0; flow_state.save_blocked = blocked != 0;
+    flow_state.save_note = note;
+}
+// #197: the saved setup not applied (pending, nothing changed: "(to apply)", "(rebuild)").
+void flow_unapplied(const char* label) {
+    flow_state.continue_label = label; flow_state.pending = true; flow_state.changed = false;
 }
 // The safe-mode row as menu_state sets it (label "": no setup with mods saved) and whether it restores.
 void flow_safe(const char* label, unsigned restore) {

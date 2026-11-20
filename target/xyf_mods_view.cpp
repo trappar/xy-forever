@@ -18,15 +18,15 @@ void box(uint16_t* fb, int x, int y, bool on, Color c) {
     fill(fb, x, y, 12, 1, c); fill(fb, x, y + 11, 12, 1, c); fill(fb, x, y, 1, 12, c); fill(fb, x + 11, y, 1, 12, c);
     if (on) fill(fb, x + 3, y + 3, 6, 6, c);
 }
-// The building screen. full: everything (the title bar clears the screen); else only the parts whose
+// The progress screen. full: everything (the title bar clears the screen); else only the parts whose
 // inputs differ from what frame says is drawn, each over its own background in the same framebuffer.
-void building(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& f) {
+void building(uint16_t* fb, const Progress& p, const ui::Chrome* chrome, Frame& f) {
     const bool full = !f.drawn || f.job != p.job;
     char line[64];
     char* at = line;
     const char* end = line + sizeof(line) - 1;
     if (full) {
-        if (p.save) put(at, end, "Saving changes");     // the save sequence
+        if (p.save) put(at, end, p.title ? p.title : "Saving changes");   // the converge sequence
         else { put(at, end, "Building "); put(at, end, p.job_name); }
         *at = 0;
         ui::compact_header(fb, line, "", chrome);
@@ -36,7 +36,7 @@ void building(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& f) {
     const uint32_t px = ui::scale(uint32_t(bar_w), p.bar, bar_full);
     if (px > f.bar_px) { fill(fb, margin + int(f.bar_px), bar_y, int(px - f.bar_px), bar_h, accent); f.bar_px = px; }
     // The step (step 8 is B's commit into the library).
-    const bool cancelling = p.request == request_cancel;
+    const bool cancelling = p.cancel != 0;
     const uint32_t phase = p.job_phase > 7 ? 7 : p.job_phase;
     const uint32_t step = cancelling ? 0xffffu : p.save && p.save_stage ? 8u + p.save_stage : p.job_commit ? 8u : phase ? phase : 1u;
     if (full || step != f.step) {
@@ -64,11 +64,11 @@ void building(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& f) {
         f.percent = percent; f.done = p.job_done; f.total = p.job_total;
     }
     // The commit cannot be cancelled: its footer says so, and STOP there gets the line (refuse_cancel).
-    const bool said = p.line == line_info && p.text[0];
+    const bool said = p.note[0] != 0;
     const uint32_t footer = said ? 1u : p.job_commit || p.save_stage ? 2u : 3u;
     if (full || footer != f.footer) {
         fill(fb, margin, footer_y, width - 2 * margin, 8, black);
-        text(fb, margin, footer_y, said ? p.text : p.job_commit || p.save_stage ? "Almost done: it cannot be cancelled now.      Keep the OP-XY powered." :
+        text(fb, margin, footer_y, said ? p.note : p.job_commit || p.save_stage ? "Almost done: it cannot be cancelled now.      Keep the OP-XY powered." :
                                                     "STOP  cancel      Keep the OP-XY powered.", accent, 1);
         f.footer = footer;
     }
@@ -93,8 +93,11 @@ uint32_t first_row(uint32_t rows, uint32_t at) {
     return first + visible_rows > rows ? rows - visible_rows : first;
 }
 
+void draw_progress(uint16_t* fb, const Progress& progress, const ui::Chrome* chrome, Frame& frame) {
+    building(fb, progress, chrome, frame);
+}
+
 void draw(uint16_t* fb, const Page& p, const ui::Chrome* chrome, Frame& frame) {
-    if (p.view == View::building) { building(fb, p, chrome, frame); return; }
     frame.drawn = 0;
     char line[96], title[40];
     const char* end = line + sizeof(line) - 1;

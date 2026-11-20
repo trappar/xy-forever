@@ -68,6 +68,9 @@ void draw_screen(uint16_t* fb) {
         draw_message(fb, usb);
 #endif
 #if defined(XYF_MODS_PAGE)
+    } else if (xy_forever::mods_io::converging()) {   // #197: the progress screen, from the home menu
+        xyf::mods::draw_progress(fb, xy_forever::mods_io::progress(), &chrome, mods_frame);
+        return;
     } else if (mods_shown) {
         xyf::mods::draw(fb, xy_forever::mods_io::page(), &chrome, mods_frame);
         return;

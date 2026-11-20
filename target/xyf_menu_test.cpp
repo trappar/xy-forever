@@ -61,9 +61,11 @@ int main() {
     // The first row while a content change's source is missing (undo_offer): PLAY undoes it, before the Save dialog.
     press(s, menu::key_track1); s.undo_offer = true; s.pending = true;
     REQUIRE(press(s, menu::key_play) == Action::undo && s.screen == Screen::main);
-    s.undo_offer = false;
+    s.undo_offer = false;                         // #197: pending, not changed ("(to apply)"): it applies
+    REQUIRE(press(s, menu::key_play) == Action::apply && s.screen == Screen::main);
+    s.changed = true;                             // changed: the Save dialog
     REQUIRE(press(s, menu::key_play) == Action::redraw && s.screen == Screen::confirm_save);
-    press(s, menu::key_stop); s.pending = false;
+    press(s, menu::key_stop); s.pending = s.changed = false;
     // Uninstall needs an explicit move to the accept button.
     menu::start(s, &cat, false);
     press(s, menu::key_track1 + 3);

@@ -170,11 +170,8 @@ void reset(Page& p) {
     p.profile[0] = p.generation[0] = 0;
     p.limit = p.expanded_limit = p.base_bytes = p.service_count = 0;
     p.pool_used = 1; p.pool[0] = 0;              // offset 0: the empty text
-    p.job = p.job_phase = p.job_done = p.job_total = p.job_commit = 0;
-    p.job_name[0] = 0;
-    p.bar = p.bar_step = p.bar_since = 0;
     p.line = line_none; p.text[0] = 0;
-    p.save = p.save_stage = p.saved_missing = 0; p.unknown_ok = false;
+    p.saved_missing = 0; p.unknown_ok = false;
 }
 
 const char* text_at(const Page& p, uint16_t offset) { return offset < pool_bytes ? p.pool + offset : ""; }
@@ -192,17 +189,6 @@ Effect key(Page& p, uint32_t k, bool pressed) {
     k = as_play(k & ~key_turn);                 // a knob push is PLAY
     if (k == key_shift) { p.shift = pressed; return effect_none; }
     if (!pressed) return effect_none;
-    if (p.view == View::building) {             // only STOP acts: cancel (the job's own cleanup runs)
-        if (k != key_stop || p.request == request_cancel) return effect_none;
-        if (p.job_commit || p.save_stage) {     // the library commit cannot be cancelled: said once (and
-                                                // neither can installing content or saving)
-            if (p.line == line_info) return effect_none;
-            refuse_cancel(p);
-            return effect_redraw;
-        }
-        p.request = request_cancel;
-        return effect_redraw;
-    }
     if (k == key_stop) {
         if (!p.shift) return effect_leave;
         p.unknown_ok = !p.unknown_ok;           // unknown bases (SHIFT+STOP; was the status row)
@@ -458,13 +444,15 @@ const char* save_refusal(const Page& p) {
     return chosen(p, false) + chosen(p, true) ? build_refusal(p) : 0;
 }
 
-uint32_t request(const Page& p, const char* base, bool unverified, char* name, uint32_t name_capacity,
-                 uint8_t* out, uint32_t capacity) {
+uint32_t request(const Page& p, const char* base, bool unverified, bool expanded, uint8_t which, char* name,
+                 uint32_t name_capacity, uint8_t* out, uint32_t capacity) {
     {
         char* at = name;
         const char* end = name + name_capacity - 1;
+        uint32_t count = 0;
+        for (uint32_t r = 0; r != p.shown; ++r) count += p.packages[p.rows[r]].flags & which ? 1u : 0u;
         put(at, end, "Mods: ");
-        put_number(at, end, chosen(p, false) + chosen(p, true));
+        put_number(at, end, count);
         *at = 0;
     }
     uint32_t n = 0;
@@ -478,7 +466,7 @@ uint32_t request(const Page& p, const char* base, bool unverified, char* name, u
         bool first = true;
         for (uint32_t r = 0; r != p.shown; ++r) {
             const Package& m = p.packages[p.rows[r]];
-            if (!(m.flags & flag_on) || (m.kind == kind_extension) != (pass == 1)) continue;
+            if (!(m.flags & which) || (m.kind == kind_extension) != (pass == 1)) continue;
             if (!first) add(",");
             add(text_at(p, m.id));
             first = false;
@@ -486,15 +474,29 @@ uint32_t request(const Page& p, const char* base, bool unverified, char* name, u
         end_field();
     }
     add(name); end_field();
-    const uint32_t flags = (unverified ? 1u : 0u) | (p.expanded ? 2u : 0u);
+    const uint32_t flags = (unverified ? 1u : 0u) | (expanded ? 2u : 0u);
     for (uint32_t i = 0; i != 4; ++i) { if (n == capacity) fits = false; else out[n++] = uint8_t(flags >> (8 * i)); }
     return fits ? n : 0;
 }
 
-void refuse_cancel(Page& p) {
-    p.request = request_none;
-    say(p, line_info, p.save_stage == 1 ? "Cannot cancel now: installing content." :
-                      p.save_stage ? "Cannot cancel now: saving." : "Cannot cancel now: it is being added to the library.");
+Effect progress_key(Progress& r, uint32_t k, bool pressed) {
+    if (!pressed || as_play(k & ~key_turn) != key_stop || r.cancel) return effect_none;   // only STOP: cancel (the job's own cleanup runs)
+    if (r.job_commit || r.save_stage) {         // the library commit cannot be cancelled: said once (and
+        if (r.note[0]) return effect_none;      // neither can installing content or saving)
+        refuse_cancel(r);
+        return effect_redraw;
+    }
+    r.cancel = 1;
+    return effect_redraw;
+}
+
+void refuse_cancel(Progress& r) {
+    r.cancel = 0;
+    char* at = r.note;
+    put(at, r.note + sizeof(r.note) - 1, r.save_stage == 1 ? "Cannot cancel now: installing content." :
+                                         r.save_stage ? "Cannot cancel now: saving." :
+                                         "Cannot cancel now: it is being added to the library.");
+    *at = 0;
 }
 
 void reading_line(Page& p, uint32_t at) {
@@ -527,9 +529,9 @@ void start_refused(Page& p, uint32_t status, uint32_t missing) {
     say(p, line_error, "Build failed: status ", d, ".");
 }
 
-void job_ended(Page& p, uint32_t phase, uint32_t error, uint32_t status, uint32_t debris) {
+void job_ended(Page& p, const char* name, uint32_t phase, uint32_t error, uint32_t status, uint32_t debris) {
     if (phase == uint32_t(mj::Phase::done)) {   // committed; an assembled set is never installed
-        say(p, line_done, "Built: ", p.job_name, " (content not installed yet).");
+        say(p, line_done, "Built: ", name, " (content not installed yet).");
         return;
     }
     if (phase == uint32_t(mj::Phase::cancelled)) {
@@ -579,7 +581,7 @@ const uint16_t times[bar_stages] =  {  100,   2400,   1600,   200,   100,   2900
 uint32_t stage_share(uint32_t i) { return i < bar_stages ? shares[i] : 0; }
 uint32_t stage_ms(uint32_t i) { return i < bar_stages ? times[i] : 0; }
 
-uint32_t progress(Page& p, uint32_t ms) {
+uint32_t progress(Progress& p, uint32_t ms) {
     const bool building = !p.save || !p.save_stage;
     const uint32_t stage = !building ? 8u + p.save_stage : p.job_commit ? 8u : p.job_phase > 7 ? 7u : p.job_phase;
     const uint32_t total = p.job_total ? p.job_total : 1u, done = p.job_done > total ? total : p.job_done;

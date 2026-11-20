@@ -147,8 +147,8 @@ class ConfigBase(PageBase, CS.Switch):
         return c
 
     def built_any(self, since):
-        """A save of this log built (its building view had save_build) since log line `since`."""
-        return any(p['save'] & 2 for p in self.pages()[since:] if 'save' in p)
+        """A sequence built (its progress screen had save_build) since progress line `since` (len(self.progress()))."""
+        return any(p['save'] & 2 for p in self.progress()[since:])
 
     def first_save(self, mods=('alpha',)):
         self.change(list(mods))
@@ -256,7 +256,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.menu_again()
         self.change(['alpha'], unknown=False)                              # all off
         self.assertIn('Base (changed)', self.home())                      # the base entry's name (seeded 'Base')
-        since = len(self.pages())
+        since = len(self.progress())
         self.cont(0)
         self.assertEqual(self.booted(), self.base)
         self.assertFalse(self.built_any(since))
@@ -264,7 +264,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.assertEqual(c['slot'], a)                                     # kept as the spare Open-XY
         self.menu_again()
         self.change(['alpha'], unknown=False)                              # the same mods on again: no rebuild
-        since = len(self.pages())
+        since = len(self.progress())
         self.cont(0)
         self.assertEqual(self.booted(), a)
         self.assertFalse(self.built_any(since))
@@ -287,7 +287,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.change(['alpha'])
         self.sim.set('a_slow_ms', 30)
         self.cont(0)
-        self.wait(lambda p: p.get('save', 0) & 2 and p['view'] == 2, 'building', 60.0)
+        self.wait_progress(lambda p: p['save'] & 2, 'building', 60.0)
         self.press(STOP)
         self.assertIn('Cancelled', self.failed())
         self.sim.set('a_slow_ms', 0)
@@ -315,7 +315,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.wait_log(lambda: '(changed) pending=1' in self.home(), 'still pending')
         self.sim.set('a_slow_ms', 30)
         self.cont(0)
-        self.wait(lambda p: p.get('save', 0) & 2 and p['view'] == 2, 'building', 60.0)
+        self.wait_progress(lambda p: p['save'] & 2, 'building', 60.0)
         self.press(PLAY)                                                   # on the save's own progress screen
         self.sim.set('a_slow_ms', 0)
         self.saved_as(self.booted(), ['alpha'])
@@ -369,7 +369,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'automatic content replay')
         self.assertTrue(self.record().startswith('state=installed'), self.record())
         self.wait_log(lambda: '(to apply) pending=1' in self.home(), 'the record to apply')
-        self.cont(0)                                                       # Save again: the saved one, repaired
+        self.cont(dialog=False)                                            # PLAY: the saved one applied (#197), repaired
         self.assertEqual(self.booted(), self.base)
         self.saved_as(self.base, [])
 
@@ -378,7 +378,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.change(['alpha'], unknown=False)
         self.sim.set('a_slow_ms', 150)
         self.cont(0)
-        self.wait(lambda p: p.get('stage') == 2, 'saving', 120.0)
+        self.wait_progress(lambda p: p['stage'] == 2, 'saving', 120.0)
         cuts = self.sim.status()['cuts']
         self.sim.set('rename_fault_kind', 2)
         self.sim.set('rename_fault', 2)                                    # cut after .part -> config.txt
@@ -388,7 +388,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'journal/default completion')
         self.assertEqual(self.disk_default(), a)
         self.wait_log(lambda: 'pending=0' in self.home(), 'the completed saved configuration')
-        since = len(self.pages())
+        since = len(self.progress())
         self.cont(dialog=False)
         self.assertEqual(self.booted(), a)
         self.assertFalse(self.built_any(since))

@@ -31,7 +31,7 @@ from test_ui_mods import FILTER_ON, KINDS, display_order, estimate        # noqa
 
 PLAY, STOP, MINUS, PLUS, SHIFT = 51, 52, 53, 54, 55
 MODS_ROW = 2                                                               # xyf_menu item_mods
-VIEW_READING, VIEW_LIST, VIEW_BUILDING = range(3)
+VIEW_READING, VIEW_LIST = range(2)                                       # (#197: no building view)
 LINE_NONE, LINE_INFO, LINE_ERROR, LINE_DONE = range(4)
 BUILT = 'Built: Mods: %d (content not installed yet).'
 NO_CANCEL = 'Cannot cancel now: it is being added to the library.'
@@ -66,26 +66,46 @@ class PageBase(J.Base):
             out.append(fields)
         return out
 
+    def progress(self):
+        """Every "progress:" line so far (the progress screen's full redraws, #197: the converge sequence after Save,
+        Boot without mods, Restore, or PLAY on the first row), as dicts (note= is the rest of the line)."""
+        out = []
+        for line in self.lines('progress: job='):
+            head, _, note = ('job=' + line).partition(' note=')
+            title = head.partition(' title=')[2]
+            fields = dict(f.split('=', 1) for f in head.partition(' title=')[0].split(' '))
+            fields = {k: int(v) for k, v in fields.items()}
+            fields.update(title=title, note=note)
+            out.append(fields)
+        return out
+
+    def wait_progress(self, cond, what, timeout=60.0):
+        deadline = time.monotonic() + timeout
+        while True:
+            shown = self.progress()
+            if shown and cond(shown[-1]):
+                return shown[-1]
+            self.assertLess(time.monotonic(), deadline, 'progress never %s: %s' % (what, shown[-1:]))
+            time.sleep(0.01)
+
     def lines(self, marker):
         log = (self.dir / 'log.txt').read_text(errors='replace') if (self.dir / 'log.txt').exists() else ''
         return [line[line.find(marker) + len(marker):] for line in log.splitlines() if marker in line]
 
     def bars(self, job):
-        """The building bar of job at every redraw ("mods page:" and "mods bar:" lines, in order), as
+        """The progress bar of job at every redraw ("progress:" and "mods bar:" lines, in order), as
         dicts with ms (B's clock), bar, phase, done, total, commit."""
         out = []
         log = (self.dir / 'log.txt').read_text(errors='replace') if (self.dir / 'log.txt').exists() else ''
         for line in log.splitlines():
-            for marker in ('mods page: ', 'mods bar: '):
+            for marker in ('progress: job=', 'mods bar: '):
                 at = line.find(marker)
                 if at < 0:
                     continue
-                head = line[at + len(marker):].partition(' text=')[0]
+                head = line[at + len(marker) - (4 if marker.endswith('=') else 0):].partition(' title=')[0]
                 f = dict(x.split('=', 1) for x in head.split(' ') if '=' in x)
-                if int(f['job']) == job and (marker == 'mods bar: ' or int(f['view']) == VIEW_BUILDING):
+                if int(f['job']) == job:
                     out.append({k: int(f[k]) for k in ('ms', 'bar', 'phase', 'done', 'total', 'commit')})
-                elif int(f['job']) == job and out and 'end' not in out[0]:
-                    out[0]['end'] = int(f['ms'])                            # the job ended (the list again)
         return out
 
     def steady(self, job, what):
@@ -297,7 +317,7 @@ class SyntheticPage(PageBase, unittest.TestCase):
         self.toggle(['gamma'])                                              # off again
         self.assertEqual(self.page()['used'], estimate(self.gen_dir, ['alpha', 'ext-cap']))
         self.toggle(['gamma'])
-        self.assertEqual((self.page()['changed'], self.page()['job']), (1, 0))   # pending until Continue saves
+        self.assertEqual((self.page()['changed'], self.progress()), (1, []))   # pending until Continue saves
 
     def test_a_set_without_this_store_version_is_not_listed(self):
         """#124: no store.txt (an older layout): the set is skipped; a newer store version is skipped and said;
@@ -358,7 +378,7 @@ class SyntheticPage(PageBase, unittest.TestCase):
         q = self.shifted(PLAY, 'on')                                        # SHIFT + PLAY: every synth on, nothing else touched
         synths = [f for f, k in order if k == synth]
         self.assertEqual(sorted(q['on']), sorted(synths + ['ext-cap']))
-        self.assertEqual((q['used'], q['changed'], q['job']), (estimate(self.gen_dir, synths + ['ext-cap']), 1, 0))
+        self.assertEqual((q['used'], q['changed'], self.progress()), (estimate(self.gen_dir, synths + ['ext-cap']), 1, []))
         self.press(STOP)
         self.wait(lambda p: p['shown'] == 0, 'left')
         n = len(synths) + 1
@@ -569,9 +589,8 @@ class PageAndSwitch(PageBase, CS.Switch, unittest.TestCase):
         self.wait(lambda p: p['shown'] == 1, 'opened again')
         self.assertEqual(self.page()['text'], BUSY_READ)
         self.switch_ended(job, a)
-        p = self.listed_after('a content switch')
-        self.assertEqual(p['job'], 0)
-        self.assertEqual([q for q in self.pages() if q['view'] == VIEW_BUILDING], [])   # never shown as its build
+        self.listed_after('a content switch')
+        self.assertEqual(self.progress(), [])                              # never shown as its build
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class ManyPackages(PageBase, unittest.TestCase):

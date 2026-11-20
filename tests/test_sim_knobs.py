@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                    # noqa: E402
 from xy_forever import usb_proto as P                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
-from test_sim_mods_page import MINUS, PLAY, SHIFT, STOP, VIEW_BUILDING, VIEW_LIST, PageBase, synthetic_setup  # noqa: E402
+from test_sim_mods_page import MINUS, PLAY, SHIFT, STOP, VIEW_LIST, PageBase, synthetic_setup  # noqa: E402
 from test_ui_mods import FILTER_ON, KINDS, display_order                   # noqa: E402
 
 N, MAX_MOVES, MAX_FRAMES, LEFTOVER_MS = 2, 4, 32, 600                      # knob_input.hpp
@@ -256,13 +256,13 @@ class Knobs(PageBase, unittest.TestCase):
         self.press(STOP)                                                   # Continue, Save: the build's view
         self.wait(lambda p: p['shown'] == 0, 'left')
         self.press(MINUS); self.press(MINUS); self.press(PLAY); self.press(PLAY)
-        self.wait(lambda p: p['view'] == VIEW_BUILDING, 'building')
+        self.wait_progress(lambda p: p['save'] & 2, 'building')          # the progress screen (#197)
         pages = len(self.pages())
         self.turn(3, 1, 3 * N)
         k = self.until_frames(10 * N)
         self.assertEqual(k['moves'], 4, k)
-        self.assertTrue(all(q['view'] == VIEW_BUILDING or q['selected'] == 'beta' for q in self.pages()[pages:]),
-                        self.pages()[pages:])
+        self.assertEqual(self.pages()[pages:], [])                        # the page never shown, nothing moved
+        self.assertEqual({p['row'] for p in self.progress()}, {0})
         self.sim.set('a_slow_ms', 0)
 
     def test_a_different_stock_identity_keeps_the_reader_off(self):

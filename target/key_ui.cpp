@@ -174,6 +174,10 @@ void on_key(uint32_t key, uint32_t pressed) {
 // A key to the page on screen: the Mods page or the menu (on_key, and the repeat of a held - / +).
 void dispatch(uint32_t key, uint32_t pressed) {
 #if defined(XYF_MODS_PAGE)
+    if (xy_forever::mods_io::converging()) {         // #197: the progress screen (STOP cancels a build)
+        if (xy_forever::mods_io::progress_key(key, pressed != 0) != xyf::mods::effect_none) dirty = 1;
+        return;
+    }
     if (mods_shown) {                                // the page has the keys (STOP on its list: back)
         const xyf::mods::Effect effect = xy_forever::mods_io::key(key, pressed != 0);
         if (effect == xyf::mods::effect_leave) mods_shown = 0;
@@ -187,10 +191,10 @@ void dispatch(uint32_t key, uint32_t pressed) {
 }
 
 // Knob turns (knob_input.hpp) move the selection as - / + do: not in the Uninstall or safe-mode dialog (their
-// - / + flip two buttons), not while the Mods page shows its job. On the Mods page with key_turn (SHIFT + turn: its filter).
+// - / + flip two buttons), not on the progress screen. On the Mods page with key_turn (SHIFT + turn: its filter).
 void turn_knobs(uint32_t now_ms) {
 #if defined(XYF_MODS_PAGE)
-    const bool page = mods_shown != 0, job = page && xy_forever::mods_io::page().view == xyf::mods::View::building;
+    const bool job = xy_forever::mods_io::converging(), page = mods_shown != 0 && !job;
 #else
     const bool page = false, job = false;
 #endif
@@ -337,7 +341,8 @@ extern "C" void xy_forever_key_ui() {
             // The Settings page reads the mod packages too (its Mod memory row needs the base's layouts)
             const bool settings_shown = !mods_shown && app.screen == xyf::menu::Screen::settings;
             if (settings_shown) xy_forever::mods_io::prepare();
-            if (xy_forever::mods_io::pump(mods_shown || settings_shown) && mods_shown) dirty = 1;   // the page's reading and job
+            if (xy_forever::mods_io::pump(mods_shown || settings_shown) && (mods_shown || xy_forever::mods_io::converging()))
+                dirty = 1;                                     // the page's reading, the progress screen
             if (xy_forever::mods_io::menu_state(app) && !mods_shown) dirty = 1;   // pending, the first row
 #endif
 #if defined(XYF_CONTENT_SWITCH)
@@ -345,22 +350,21 @@ extern "C" void xy_forever_key_ui() {
             app.undo_offer = xy_forever::usb_service::content_offer();   // PLAY on the first row undoes
 #endif
 #if defined(XYF_MODS_PAGE)
-            if (const char* line = xy_forever::mods_io::safe_line()) { status = line; dirty = 1; }   // safe mode, Restore
-            // The save sequence ended: boot the saved configuration (the default), or back to the menu with
+            // The converge sequence ended (#197): boot the default (the desired state), or back to the menu with
             // the reason (the changes stay pending).
-            if (const uint32_t saved = xy_forever::mods_io::save_state()) {
-                if (saved == xy_forever::mods_io::save_boot) {
+            if (const uint32_t saved = xy_forever::mods_io::converge_state()) {
+                if (saved == xy_forever::mods_io::converge_boot) {
 #if defined(XYF_TFW_CHECK)
                     // A finished Save can still have its boot deferred when a USB rehearsal starts.
                     if (lost || !xy_forever::xyf_boot::link_idle() || xy_forever::usb_service::page_busy()) continue;
 #endif
-                    xy_forever::mods_io::save_done();
+                    xy_forever::mods_io::converge_done();
                     xy_forever::xyf_boot::choose_default(); r.exit_reason = exit_play; break;
                 }
-                if (saved == xy_forever::mods_io::save_failed) {
-                    status = xy_forever::mods_io::save_reason();
-                    xy_forever::mods_io::save_done();
-                    mods_shown = 0; app.screen = xyf::menu::Screen::main; dirty = 1;
+                if (saved == xy_forever::mods_io::converge_failed) {
+                    status = xy_forever::mods_io::converge_reason();
+                    xy_forever::mods_io::converge_done();
+                    dirty = 1;
                 }
             }
 #endif
@@ -369,31 +373,28 @@ extern "C" void xy_forever_key_ui() {
                 app_action = 0;
                 dirty = 1;
 #if defined(XYF_MODS_PAGE)
-                // Boot without mods or Restore runs from here (the save sequence, the page not shown): no other action.
-                if (action != uint32_t(Action::redraw) && xy_forever::mods_io::save_state() == xy_forever::mods_io::save_running) {
+                // The converge sequence runs (the progress screen): no other action.
+                if (action != uint32_t(Action::redraw) && xy_forever::mods_io::converging()) {
                     app.screen = xyf::menu::Screen::main;
                     continue;
                 }
 #endif
-                if (lost && (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::safe_mode) ||
-                             action == uint32_t(Action::restore) || action == uint32_t(Action::save) ||
-                             action == uint32_t(Action::discard))) {
+                const bool boots = action == uint32_t(Action::continue_boot) || action == uint32_t(Action::safe_mode) ||
+                                   action == uint32_t(Action::restore) || action == uint32_t(Action::save) ||
+                                   action == uint32_t(Action::discard) || action == uint32_t(Action::apply);
+                if (lost && boots) {
                     app.screen = xyf::menu::Screen::main;
                     status = " ";                          // the status line shows the lost link
                     continue;
                 }
 #if defined(XYF_USB_FILE_WRITE)
-                if (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::discard) ||
-                    action == uint32_t(Action::safe_mode) || action == uint32_t(Action::restore) ||
-                    action == uint32_t(Action::save)) {       // and Save while a USB job runs
+                if (boots) {                                   // and Save while a USB job runs
                     if (const char* busy = xy_forever::usb_service::menu_busy()) {
                         status = busy; app.screen = xyf::menu::Screen::main; continue;
                     }
                 }
 #endif
-                if (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::discard)) {   // Discard
-                    xy_forever::xyf_boot::choose_default(); r.exit_reason = exit_play; break;
-                }
+                if (action == uint32_t(Action::continue_boot)) { xy_forever::xyf_boot::choose_default(); r.exit_reason = exit_play; break; }
 #if defined(XYF_CONTENT_SWITCH)
                 if (action == uint32_t(Action::undo)) {       // the source-missing line's offer: the previous entry back
                     if (const char* line = xy_forever::usb_service::content_undo()) status = line;
@@ -401,13 +402,10 @@ extern "C" void xy_forever_key_ui() {
                 }
 #endif
 #if defined(XYF_MODS_PAGE)
-                if (action == uint32_t(Action::save)) {       // the page shows the save sequence
-                    mods_shown = 1;
-                    xy_forever::mods_io::save_begin();
-                    continue;
-                }
-                if (action == uint32_t(Action::safe_mode) || action == uint32_t(Action::restore)) {   // on the home menu
-                    xy_forever::mods_io::safe_begin(action == uint32_t(Action::restore));   // its line: safe_line
+                if (boots) {                                   // #197: the inputs set, then converge (the progress screen)
+                    using namespace xy_forever::mods_io;
+                    converge_begin(action == uint32_t(Action::save) ? why_save : action == uint32_t(Action::safe_mode) ? why_safe :
+                                   action == uint32_t(Action::restore) ? why_restore : why_apply);   // Discard, apply
                     continue;
                 }
 #endif

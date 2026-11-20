@@ -78,9 +78,10 @@ Action key(State& s, uint32_t k, bool pressed) {
         }
         s.note = 0;
         switch (s.main_selected) {
-        case item_continue:                       // pending changes: the Save dialog first
+        case item_continue:                       // changed: the Save dialog first
             if (s.undo_offer) return Action::undo;   // the status line's offer comes first
             if (!s.pending) return Action::continue_boot;
+            if (!s.changed) return Action::apply;    // "(to apply)", "(rebuild)": converge, then boot
             s.screen = Screen::confirm_save;
             s.save_selected = s.save_blocked ? uint32_t(choice_discard) : uint32_t(choice_save);
             return Action::redraw;

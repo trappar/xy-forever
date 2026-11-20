@@ -34,25 +34,29 @@ xyf::mods::Effect key(uint32_t key, bool pressed);
 uint32_t pump(bool shown);
 // The longest pump pass this boot (ms).
 uint32_t longest_ms();
-// The saved configuration (xyf_config.hpp; read once the menu runs) and the save sequence. menu_state:
-// the menu's view of it (pending, save_blocked, save_note, continue_label, safe_label, safe_restore; memory and
-// memory_pending, the Mod memory row); true when the home row's text, the safe-mode row or the Mod memory row
-// changed. save_begin: the Save dialog's Save (the page then shows the sequence's progress;
-// STOP cancels while the build runs); save_state: save_running, then save_boot (the default is the saved
-// configuration: boot it) or save_failed (save_reason; the changes stay pending); save_done: taken.
-// safe_begin(false): "Boot without mods" (content to the base, the default the base, the record kept with
-// safe=1); safe_begin(true): "Restore Open-XY" (content to the saved slot, the default the slot, safe=0; it fails,
-// building nothing, when the slot no longer holds what built= says). Both run from the home menu: the Mods page is
-// never shown nor changed (its toggles stay). safe_line: their progress for the home menu's status line when it
-// changed (0: unchanged). Both end as a save does: save_boot, or save_failed.
-enum SaveState : uint32_t { save_idle = 0, save_running, save_boot, save_failed };
+// The saved configuration (xyf_config.hpp; read once the menu runs) and the converge sequence (#197,
+// xyf_converge.hpp). menu_state: the menu's view of it (pending and changed: the plan of the saved inputs is not empty,
+// or the toggles changed; save_blocked, save_note, continue_label with "(changed)", "(rebuild)" or "(to apply)" from
+// that plan, safe_label, safe_restore; memory and memory_pending, the Mod memory row); true when the home row's text,
+// the safe-mode row or the Mod memory row changed.
+// converge_begin(why) sets the inputs, then converges to them and boots: why_save, the Save dialog's Save (the
+// toggles become the selection, safe mode off); why_safe, "Boot without mods" (safe=1: the base with its official
+// content, the selection kept); why_restore, "Restore Open-XY" (safe=0: the saved setup back, built again when the
+// slot no longer holds it); why_apply, the saved inputs as they are (PLAY on the first row with "(to apply)" or
+// "(rebuild)", the Save dialog's Discard). Only the operations the plan needs run, on the progress screen
+// (progress(); converging() while it is up), never on the Mods page: its list, its toggles and the home row stay.
+// progress_key: a key there (STOP cancels a build). converge_state: converge_running, then converge_boot (boot the
+// default: the desired state) or converge_failed (converge_reason; the changes stay pending); converge_done: taken.
+enum Why : uint32_t { why_save = 0, why_safe, why_restore, why_apply };
+enum ConvergeState : uint32_t { converge_idle = 0, converge_running, converge_boot, converge_failed };
 bool menu_state(xyf::menu::State& app);
-void save_begin();
-void safe_begin(bool restore);
-const char* safe_line();
-uint32_t save_state();
-const char* save_reason();
-void save_done();
+void converge_begin(uint32_t why);
+bool converging();
+const xyf::mods::Progress& progress();
+xyf::mods::Effect progress_key(uint32_t key, bool pressed);
+uint32_t converge_state();
+const char* converge_reason();
+void converge_done();
 #endif
 } }
 #endif

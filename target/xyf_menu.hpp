@@ -33,7 +33,8 @@ enum class Action : uint32_t {
     discard,         // the Save dialog's Discard: forget the pending changes, boot the saved configuration
     change_setting,  // the Settings page's PLAY on setting `entry` (xyf_settings.hpp Row): the caller opens its options
     pick_setting,    // #21: the option list's PLAY: setting `entry` takes option_selected (back on the Settings page)
-    undo             // the first row while a content change's source is missing (State::undo_offer): undo it
+    undo,            // the first row while a content change's source is missing (State::undo_offer): undo it
+    apply            // the first row while the saved setup is not applied (pending, not changed): converge, then boot
 };
 // The Save dialog's buttons.
 enum SaveChoice : uint32_t { choice_save = 0, choice_discard = 1, choice_back = 2 };
@@ -57,11 +58,12 @@ struct State {
     bool shift_held;
     const catalog::Catalog* catalog;  // may be null (library not loaded)
     uint32_t entry;                   // the setting for change_setting / pick_setting
-    // Set by the caller (xyf_mods_io) every pass: changes are pending (Continue asks to save them first);
-    // save_blocked: they cannot be saved (the dialog offers Discard / Back and says save_note); the first
+    // Set by the caller (xyf_mods_io) every pass: something is pending (#197: the plan of the saved inputs is not
+    // empty, or changed); changed: the toggles changed (Continue asks to save them first, else it applies the saved
+    // setup); save_blocked: they cannot be saved (the dialog offers Discard / Back and says save_note); the first
     // row's text (0: the default's name).
     uint32_t save_selected;
-    bool pending, save_blocked;
+    bool pending, changed, save_blocked;
     const char* continue_label;
     const char* save_note;
     // Set by the caller every pass: the safe-mode row's text, 0 while no setup with mods is saved (the row reads

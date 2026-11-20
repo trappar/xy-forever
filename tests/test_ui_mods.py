@@ -56,7 +56,7 @@ def estimate(gen, on):
 
 def build_lib(tmp):
     lib = P.build(tmp, run=hostbuild.run)
-    for name in ('mods_text', 'mods_refusal', 'mods_save_refusal', 'mods_row_id', 'mods_list_id', 'mods_sorted_name',
+    for name in ('mods_text', 'mods_note', 'mods_refusal', 'mods_save_refusal', 'mods_row_id', 'mods_list_id', 'mods_sorted_name',
                  'mods_sorted_id', 'mods_flip_memory'):
         getattr(lib, name).restype = ctypes.c_char_p
     lib.mods_payload.argtypes = [ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p, ctypes.c_uint]
@@ -309,7 +309,7 @@ class SaveModel(Base, unittest.TestCase):
     """The home row, the Save dialog's keys (Save / Discard / Back; blocked: Discard / Back), the safe-mode row
     (Boot without mods, its dialog, Restore Open-XY), the Mods status row and the save's progress screen; previews kept
     in <private>/xy-forever/previews/mods-config/ when private/ is there."""
-    CONTINUE, SAVE, DISCARD, REDRAW_ACTION, MAIN, CONFIRM_SAFE, DIALOG = 2, 7, 8, 1, 0, 1, 5   # 188: no mtp_mode
+    CONTINUE, SAVE, DISCARD, APPLY, REDRAW_ACTION, MAIN, CONFIRM_SAFE, DIALOG = 2, 7, 8, 12, 1, 0, 1, 5   # 188: no mtp_mode
     SAFE_MODE, RESTORE = 3, 4
 
     def keep(self, name):
@@ -322,6 +322,9 @@ class SaveModel(Base, unittest.TestCase):
         lib.flow_start(1)
         lib.flow_config(b'', 0, 0, None)
         self.assertEqual(lib.flow_key(PLAY), self.CONTINUE)                 # no changes: boots at once
+        lib.flow_start(1)
+        lib.flow_unapplied(b'Open-XY - 7 mods - 1.2.1 (to apply)')
+        self.assertEqual((lib.flow_key(PLAY), lib.flow_screen()), (self.APPLY, self.MAIN))   # #197: it applies, no dialog
         lib.flow_start(1)
         lib.flow_config(b'Open-XY - 7 mods - 1.2.1 (changed)', 1, 0, None)
         self.assertEqual((lib.flow_key(PLAY), lib.flow_screen(), lib.flow_choice()), (self.REDRAW_ACTION, self.DIALOG, 0))
@@ -376,6 +379,12 @@ class SaveModel(Base, unittest.TestCase):
                 lib.mods_saving(build, stage, done, total)
             bar = lib.mods_progress(ms)
             self.assertLessEqual(bar, 1000000)
+            self.draw(); self.keep(name + '.png')
+        for name, title in (('progress-safe-mode', b'Booting without mods'), ('progress-restore', b'Restoring Open-XY'),
+                            ('progress-apply', b'Applying changes')):   # #197: the same screen from the home menu
+            lib.mods_reset(); lib.mods_ready(b'', b'')
+            lib.mods_saving(0, 1, 2, 3); lib.mods_progress_title(title)
+            self.assertLessEqual(lib.mods_progress(1200), 1000000)
             self.draw(); self.keep(name + '.png')
 
 
@@ -479,8 +488,8 @@ class SyntheticPage(Base, unittest.TestCase):
         for key in (PLAY, PLUS, MINUS, SHIFT, 6):
             self.assertEqual(press(lib, key), NONE)
         self.assertEqual(press(lib, STOP), REDRAW)                          # said, not cancelled
-        self.assertEqual((lib.mods_request(), lib.mods_line(), self.text()),
-                         (REQUEST_NONE, LINE_INFO, 'Cannot cancel now: it is being added to the library.'))
+        self.assertEqual((lib.mods_request(), lib.mods_note()),
+                         (REQUEST_NONE, b'Cannot cancel now: it is being added to the library.'))   # its footer
         self.assertEqual(press(lib, STOP), NONE)                            # said once
         self.assertEqual(lib.mods_request(), REQUEST_NONE)
         lib.mods_ended(8, 0, 0, 0)

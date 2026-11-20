@@ -3,6 +3,12 @@
 void dispatch(uint32_t key, uint32_t pressed) {
 #if defined(XYF_MODS_PAGE)
     using namespace xy_forever;
+    if (mods_io::converging()) {                                       // as key_ui: the progress screen has the keys
+        const xyf::mods::Effect effect = mods_io::progress_key(key, pressed != 0);
+        xyf_sim::log("progress: key %u %s: %s", key, pressed ? "pressed" : "released", effect ? "acts" : "nothing");
+        if (effect != xyf::mods::effect_none) log_progress();
+        return;
+    }
     if (sim_mods) {                                                    // as key_ui's on_key
         const xyf::mods::Effect effect = mods_io::key(key, pressed != 0);
         if (effect == xyf::mods::effect_leave) sim_mods = false;
@@ -11,21 +17,17 @@ void dispatch(uint32_t key, uint32_t pressed) {
     }
     if (sim_menu) {
         const xyf::menu::Action action = xyf::menu::key(sim_app, key, pressed != 0);
-        if (action != xyf::menu::Action::none && action != xyf::menu::Action::redraw &&   // as key_ui: safe mode runs
-            mods_io::save_state() == mods_io::save_running) {
-            sim_app.screen = xyf::menu::Screen::main; xyf_sim::log("menu: action %u ignored: safe mode runs", uint32_t(action));
-            return;
-        }
+        using xyf::menu::Action;
         if (action == xyf::menu::Action::open_mods) { sim_mods = true; mods_io::open(); log_page(); return; }
-        if (action == xyf::menu::Action::continue_boot || action == xyf::menu::Action::discard ||   // as key_ui
-            action == xyf::menu::Action::safe_mode || action == xyf::menu::Action::restore ||
-            action == xyf::menu::Action::save) {                       // and Save
+        const bool boots = action == Action::continue_boot || action == Action::discard || action == Action::safe_mode ||
+                           action == Action::restore || action == Action::save || action == Action::apply;
+        if (boots) {                                                   // as key_ui (and Save)
             if (const char* busy = usb_service::menu_busy()) {        // key_ui: the line, back on the home rows
                 sim_app.screen = xyf::menu::Screen::main; xyf_sim::log("menu: line: %s", busy); return;
             }
         }
-        if (action == xyf::menu::Action::continue_boot || action == xyf::menu::Action::discard) {   // as key_ui
-            xyf_sim::log("menu: %s", action == xyf::menu::Action::discard ? "discard" : "continue");
+        if (action == xyf::menu::Action::continue_boot) {             // as key_ui
+            xyf_sim::log("menu: continue");
             sim_leave = true;
             return;
         }
@@ -48,14 +50,12 @@ void dispatch(uint32_t key, uint32_t pressed) {
             return;
         }
 #endif
-        if (action == xyf::menu::Action::save) {                       // as key_ui
-            xyf_sim::log("menu: save");
-            sim_mods = true; mods_io::save_begin(); log_page();
-            return;
-        }
-        if (action == xyf::menu::Action::safe_mode || action == xyf::menu::Action::restore) {   // as key_ui
-            xyf_sim::log("menu: %s", action == xyf::menu::Action::restore ? "restore" : "safe mode");
-            mods_io::safe_begin(action == xyf::menu::Action::restore);   // on the home menu, never the page
+        if (boots) {                                                   // as key_ui: the inputs set, then converge
+            xyf_sim::log("menu: %s", action == Action::save ? "save" : action == Action::safe_mode ? "safe mode" :
+                                     action == Action::restore ? "restore" : action == Action::discard ? "discard" : "apply");
+            mods_io::converge_begin(action == Action::save ? mods_io::why_save : action == Action::safe_mode ? mods_io::why_safe :
+                                    action == Action::restore ? mods_io::why_restore : mods_io::why_apply);
+            log_progress();                                            // the progress screen's first frame
             return;
         }
 #if defined(XYF_CONTENT_SWITCH)

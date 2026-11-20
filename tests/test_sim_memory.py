@@ -93,7 +93,7 @@ class PublishedMemory(Memory, unittest.TestCase):
         self.assertEqual(c['memory'], 'expanded')
         self.assertTrue(c['built'].endswith(' 32 expanded'), c['built'])
         self.assertFalse((self.entry(entry) / 'layout.json').exists())
-        self.assertTrue(any(p['save'] & 2 for p in self.pages() if 'save' in p))   # it built
+        self.assertTrue(any(p['save'] & 2 for p in self.progress()))       # it built
         self.menu_again()                                                  # power-on: the mode kept
         row = self.home_has(EXPANDED)
         self.assertIn('pending=0', row)

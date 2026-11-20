@@ -9,6 +9,7 @@
 #include "usb_proto_ids.hpp"
 #include "../native/hash.hpp"
 #include "xyf_config.hpp"
+#include "xyf_converge.hpp"
 #include "xyf_crc32.hpp"
 #include "xyf_save_log.hpp"
 #include "xyf_mods_store.hpp"
@@ -149,7 +150,7 @@ void next_candidate() {
     }
     io.step = s_store;
 }
-uint32_t read_record(bool toggles);
+uint32_t read_record(bool toggles, uint32_t& bytes);
 // One step of the reading.
 void step() {
     m::Page& p = the_page;
@@ -239,7 +240,7 @@ void step() {
         return;
     }
     case s_saved:                                // the saved selection onto the toggles
-        if (read_record(true) == xyf::usbp::s_link) { io.why = xyf::usbp::s_link; lost(); return; }
+        { uint32_t bytes = 0; if (read_record(true, bytes) == xyf::usbp::s_link) { io.why = xyf::usbp::s_link; lost(); return; } }
         finish(0);
         return;
     default:
@@ -260,7 +261,7 @@ const char* base_entry() {
     for (uint32_t i = 0; i != c->count; ++i) if (fits(i)) return c->items[i].id;
     return 0;
 }
-#include "xyf_mods_save.ipp"              // the saved configuration and the save sequence
+#include "xyf_mods_save.ipp"              // the saved configuration and the converge sequence
 }
 
 m::Page& page() { return the_page; }
@@ -268,7 +269,7 @@ m::Page& page() { return the_page; }
 void open() {
     m::Page& p = the_page;
     if (rec.state == xg::failed) rec.state = xg::unread;   // try the record again
-    if (p.view == m::View::building || (p.view == m::View::list && p.shown)) return;   // kept for this boot
+    if (p.view == m::View::list && p.shown) return;   // kept for this boot
     if (io.folder) return;                       // (never: pump closes it when the page is left)
     m::reset(p);
     io.step = s_serving; io.candidate_count = io.package_at = io.newer = 0; io.dirty = 1; io.waiting = 0;
@@ -283,10 +284,12 @@ const char* memory_flip() { return m::flip_memory(the_page, io.step == s_done); 
 
 uint32_t pump(bool shown) {
     const uint32_t begin = units();
-    uint32_t redraw = sv.mode == mode_save ? save_follow() : safe_follow();
-    // The saved configuration, once the menu runs (one bounded read; again after a failed save).
+    shown = shown || sv.stage == sv_reading || sv.stage == sv_listing;   // the sequence reads the list, page hidden
+    uint32_t redraw = converge_follow();
+    // The saved configuration, once the menu runs (one bounded read; again after a failed sequence).
+    uint32_t bytes = 0;
     if (rec.state == xg::unread && sv.stage == sv_idle && !reading() && !usb_service::page_busy() &&
-        usb_service::page_serving() == s_ok && read_record(false) != s_ok)
+        usb_service::page_serving() == s_ok && read_record(false, bytes) != s_ok)
         rec.state = xg::failed;
     // While another job owns the slot or its window closes, the reading sends nothing (a request
     // then met a stale folder handle or waited out A's bound). A's handles end with that window: the folder
@@ -317,7 +320,7 @@ uint32_t pump(bool shown) {
     } else end = units();
     const uint32_t pass = xyf::clock::ms_from_units(end - begin);
     if (pass > io.longest) io.longest = pass;
-    if (redraw) { io.drawn = end; io.drawn_bar = the_page.bar; io.drawn_done = the_page.job_done; }
+    if (redraw) { io.drawn = end; io.drawn_bar = run.bar; io.drawn_done = run.job_done; }
     return redraw;
 }
 
@@ -327,21 +330,24 @@ bool menu_state(xyf::menu::State& a) {
     const m::Page& p = the_page;
     const xyf::catalog::Catalog* c = xyf_boot::catalog();
     const bool listed = io.step == s_done && p.view == m::View::list, have = rec.state == xg::present;
+    // The plan of the saved inputs (xyf_converge.hpp) as far as the catalog tells: the slot's stamp as the record says
+    // while the slot is in the library (the sequence reads it), built= the record's while its base is the base.
+    const char* base = config_base();
     const uint32_t def = c ? c->default_index : ~0u, slot = have ? index_of(rec.slot) : ~0u;
-    // Applied: the default is usable (its content installed) and is what the record implies (no record: any).
-    const char* implied = have ? (rec.count && !rec.safe ? rec.slot : rec.base) : "";   // safe mode: the base
-    const bool any = c && def < c->count;      // no catalog or no default: the built-in copy, nothing to apply
-    const bool usable = !any || (c->items[def].flags & xyf::catalog::flag_usable);
-    const bool applied = usable && (!have || (any && implied[0] && xg::same(c->items[def].id, implied)));
+    const xc::Inputs in = {base ? base : "", have && base && xg::same(rec.base, base) ? rec.built : "",
+                           have ? rec.count : 0u, have ? rec.expanded : 0u, have ? rec.safe : 0u};
+    const xc::Actual act = {&rec, slot != ~0u ? rec.stamp : "", c && def < c->count ? c->items[def].id : "",
+                            installed(index_of(in.base)), installed(slot)};
+    const uint32_t ops = have || rec.state == xg::none ? xc::plan(in, act).ops : 0u;
     const bool changes = (listed && m::changed(p)) || p.expanded != p.expanded_saved;   // memory any time
-    a.pending = changes || !applied;
+    a.pending = changes || ops; a.changed = changes;
     a.save_note = listed ? m::save_refusal(p) : 0;
     a.save_blocked = a.save_note != 0;
     char next[sizeof(label)];
     next[0] = 0;
     if (have || changes) {
         const uint32_t n = listed ? m::chosen(p, false) + m::chosen(p, true) : rec.count;
-        const uint32_t b = index_of(config_base() ? config_base() : "");
+        const uint32_t b = index_of(in.base);
         xg::Out o = {next, next + sizeof(next) - 1, true};
         if (rec.safe && !changes) {
             xg::put(o, c && b < c->count ? c->items[b].name : "OP-XY"); xg::put(o, " (safe mode)");
@@ -350,7 +356,7 @@ bool menu_state(xyf::menu::State& a) {
             xg::put(o, c && b < c->count ? c->items[b].version : "?");
         } else xg::put(o, c && b < c->count ? c->items[b].name : "OP-XY");
         if (changes) xg::put(o, " (changed)");
-        else if (!applied) xg::put(o, rec.count && slot == ~0u ? " (rebuild)" : " (to apply)");
+        else if (ops) xg::put(o, ops & xc::op_build ? " (rebuild)" : " (to apply)");
         *o.at = 0;
     }
     a.continue_label = next[0] ? label : 0;
@@ -377,40 +383,38 @@ bool menu_state(xyf::menu::State& a) {
     return !same_text || !same_row || row_moved;
 }
 
-void save_begin() {
+void converge_begin(uint32_t why) {               // never the page: the list, its toggles and views stay as they are
     if (sv.stage != sv_idle) return;
-    sv.mode = mode_save; sv.length = 0;
+    sv.why = why; sv.ops = sv.length = 0;
     ++sv.serial;
     sv.reason[0] = 0;
-    sv.stage = sv_reading;
+    sv.stage = why == why_save ? sv_reading : sv_check;
+    m::Progress& r = run;                        // the progress screen from its first frame
+    r.job = 0x10000u + sv.serial; r.job_phase = r.job_done = r.job_total = r.job_commit = 0;
+    r.bar = r.bar_step = r.bar_since = 0; r.save = m::save_on; r.save_stage = 0; r.cancel = 0;
+    r.title = why == why_save ? "Saving changes" : why == why_safe ? "Booting without mods" :
+              why == why_restore ? "Restoring Open-XY" : "Applying changes";
+    r.job_name[0] = 0; r.note[0] = 0;
+    io.job_units = units();
     usb_service::save_log_begin();              // the save-time log starts at the key
+    if (why != why_save) return;
     if (io.step == s_done) the_page.line = m::line_none;   // a held list: the last result line no longer applies
     open();                                     // the list and the saved toggles, unless held already
 }
 
-void safe_begin(bool restore) {                  // never the page: the list, its toggles and views stay as they are
-    if (sv.stage != sv_idle) return;
-    sv.mode = restore ? mode_restore : mode_safe; sv.length = 0;
-    ++sv.serial;
-    sv.reason[0] = 0;
-    sv.stage = sv_check;
-    usb_service::save_log_begin();
-    safe_say(restore ? "Restoring Open-XY..." : "Booting without mods...");
+bool converging() { return sv.stage != sv_idle && sv.stage != sv_failed; }
+
+const m::Progress& progress() { return run; }
+
+m::Effect progress_key(uint32_t k, bool pressed) { return m::progress_key(run, k, pressed); }
+
+uint32_t converge_state() {
+    return sv.stage == sv_idle ? uint32_t(converge_idle) : sv.stage == sv_boot ? uint32_t(converge_boot) :
+           sv.stage == sv_failed ? uint32_t(converge_failed) : uint32_t(converge_running);
 }
 
-const char* safe_line() {
-    if (sv.shown == sv.said) return 0;
-    sv.shown = sv.said;
-    return sv.status;
-}
+const char* converge_reason() { return sv.reason; }
 
-uint32_t save_state() {
-    return sv.stage == sv_idle ? uint32_t(save_idle) : sv.stage == sv_boot ? uint32_t(save_boot) :
-           sv.stage == sv_failed ? uint32_t(save_failed) : uint32_t(save_running);
-}
-
-const char* save_reason() { return sv.reason; }
-
-void save_done() { if (sv.stage == sv_boot || sv.stage == sv_failed) sv.stage = sv_idle; }
+void converge_done() { if (sv.stage == sv_boot || sv.stage == sv_failed) sv.stage = sv_idle; }
 } }
 #endif
