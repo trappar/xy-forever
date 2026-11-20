@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import shutil
 import sys
 import tempfile
 import unittest
@@ -23,7 +24,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import hostbuild, modkit as M, modpatch as P, paths, xyf_entry  # noqa: E402
+from xy_forever import hostbuild, modkit as M, modpatch as P, native_json, package_records, paths, xyf_entry  # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
 import test_modkit as TK  # noqa: E402
 from test_xyf_freestanding import code_bytes, compiler  # noqa: E402
@@ -119,6 +120,60 @@ class Synthetic(Harness, unittest.TestCase):
             with self.subTest(machines=machines, extensions=exts):
                 report, out = self.job(machines, exts, profiling=profiling)
                 self.assert_identical(report, out, machines, exts)
+
+    def test_native_metadata_matches_legacy_inputs(self):
+        machines, exts = ['alpha', 'gamma'], ['cap', 'flt']
+        legacy, old = self.job(machines, exts)
+        self.assertEqual(legacy['phase'], 'done', legacy)
+        work = Path(tempfile.mkdtemp(dir=self.work))
+        gen = work / self.gen.name
+        shutil.copytree(self.gen, gen)
+        for name in ('base', 'alpha', 'gamma', 'ext-cap', 'ext-flt'):
+            folder = gen / name
+            (folder / 'manifest.json').write_bytes(native_json.package_document(package_records.read_values(folder)))
+            if name == 'gamma':
+                (folder / 'info.txt').write_bytes(b'not a legacy package record\n')
+            else:
+                (folder / 'info.txt').unlink()
+            (folder / 'files.sha256').write_text(M.files_sha256_text(folder))
+        spec = work / 'job.txt'
+        spec.write_text(P.job_text(gen, machines, exts, self.work / 'os.ldr', self.work / 'op1_factory.json',
+                                   official=self.work / 'content.sha256', unverified=True))
+
+        def assemble(out):
+            out.mkdir()
+            return run(self.binary, 'job', spec, out)
+
+        out = work / 'native'
+        native = assemble(out)
+        self.assert_identical(native, out, machines, exts)
+        self.assertEqual(P.tree(out), P.tree(old))
+
+        folder = gen / 'gamma'
+        manifest = folder / 'manifest.json'
+        listing = folder / 'files.sha256'
+        raw, original_list = manifest.read_bytes(), listing.read_bytes()
+        for label, contents, update_list, error in (
+            ('tampered', raw + b' ', False, 'sha256'),
+            ('newer', raw.replace(b'"schema_version":1', b'"schema_version":2'), True, 'info'),
+            ('unlisted', raw, False, 'unlisted'),
+            ('absent', None, False, 'open'),
+        ):
+            with self.subTest(label=label):
+                listing.write_bytes(original_list)
+                if contents is None:
+                    manifest.unlink()
+                else:
+                    manifest.write_bytes(contents)
+                if update_list:
+                    listing.write_text(M.files_sha256_text(folder))
+                if label == 'unlisted':
+                    listing.write_bytes(b''.join(line for line in original_list.splitlines(keepends=True)
+                                                 if not line.endswith(b'  manifest.json\n')))
+                refused = assemble(work / label)
+                self.assertEqual((refused['phase'], refused['error'], refused['reference']), ('failed', error, False), refused)
+                self.assertIn('gamma/manifest.json', refused['detail'])
+                self.assertEqual(P.tree(work / label), {})
 
     def test_faults_at_every_step(self):
         report = self.faults(['alpha', 'gamma'], ['cap', 'flt'])

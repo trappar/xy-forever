@@ -3,6 +3,7 @@
 // mod_job.hpp.
 #include "mod_job.hpp"
 #include "inflate.hpp"
+#include "../target/xyf_package_record.hpp"
 namespace xyf_core { namespace mod_job {
 namespace {
 enum Stage {
@@ -177,42 +178,7 @@ int hex(Byte c) {
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     return -1;
 }
-// files.sha256 in place: "<64 hex>  <path>\n" per line, each '\n' turned into the path's NUL. info.txt's
-// line goes last in `files` (not counted in file_count).
-Error parse_list(Job& j, Job::Package& p) {
-    Byte* t = p.list;
-    U32 lines = 0;
-    for (U32 i = 0; i != p.list_bytes; ++i) if (t[i] == '\n') ++lines;
-    if (p.list_bytes && t[p.list_bytes - 1] != '\n') return Error::list;
-    p.files = reinterpret_cast<mod_content::File*>(take(j, lines * U32(sizeof(mod_content::File)), true));
-    if (!p.files && lines) return Error::region;
-    p.file_count = 0; p.info_sha256 = 0;
-    for (U32 s = 0; s != p.list_bytes;) {
-        U32 e = s;
-        while (t[e] != '\n') ++e;
-        if (e - s < 67 || t[s + 64] != ' ' || t[s + 65] != ' ') return Error::list;
-        t[e] = 0;
-        const char* path = reinterpret_cast<const char*>(t + s + 66);
-        const bool info = same(path, "info.txt");
-        mod_content::File& file = p.files[info ? lines - 1 : p.file_count];
-        if (info && p.info_sha256) return Error::list;
-        file.path = path;
-        for (U32 k = 0; k != 32; ++k) {
-            const int hi = hex(t[s + 2 * k]), lo = hex(t[s + 2 * k + 1]);
-            if (hi < 0 || lo < 0) return Error::list;
-            file.sha256.bytes[k] = Byte(hi << 4 | lo);
-        }
-        if (info) p.info_sha256 = &file.sha256;
-        else ++p.file_count;
-        s = e + 1;
-    }
-    return Error::none;
-}
-const hash::Digest* listed(const Job::Package& p, const char* path) {
-    if (same(path, "info.txt")) return p.info_sha256;
-    for (U32 i = 0; i != p.file_count; ++i) if (same(p.files[i].path, path)) return &p.files[i].sha256;
-    return 0;
-}
+#include "mod_job_metadata.ipp"
 Job::Package* package_named(Job& j, const char* name) {
     for (U32 i = 0; i != j.package_count; ++i) if (same(j.packages[i].name, name)) return &j.packages[i];
     return 0;
@@ -435,7 +401,7 @@ Error start(Job& j, const Input& input, const Files& files, Byte* region, U32 re
     j.image = 0; j.image_bytes = 0; j.edits = 0; j.edits_bytes = 0;
     j.stock_catalog = j.official = 0; j.stock_catalog_bytes = j.official_bytes = 0;
     const mod_link::Selection& sel = input.selection;
-    const bool calls = files.size && files.open && files.read && files.write && files.close && files.rename &&
+    const bool calls = files.probe_metadata && files.size && files.open && files.read && files.write && files.close && files.rename &&
                        files.remove && files.mkdir;
     if (!calls || !input.out) { j.error = Error::argument; j.phase = Phase::failed; return j.error; }
     const U32 count = 1 + sel.machine_count + sel.extension_count;
@@ -467,7 +433,8 @@ Error start(Job& j, const Input& input, const Files& files, Byte* region, U32 re
             for (U32 k = 0; k <= n; ++k) name[4 + k] = id[k];
             p.name = name;
         }
-        p.list = 0; p.list_bytes = 0; p.files = 0; p.file_count = 0; p.info_sha256 = 0;
+        p.list = 0; p.list_bytes = 0; p.files = 0; p.file_count = 0;
+        p.info_sha256 = p.native_sha256 = 0; p.metadata = 0;
         p.info = 0; p.info_bytes = 0; p.catalog = 0; p.catalog_bytes = 0;
     }
     return Error::none;
@@ -501,8 +468,9 @@ Phase step(Job& j) {
         return j.phase;
     }
     case st_base_info: {
-        if (!consume(j)) return load_listed(j, base, "info.txt", true);
-        base.info = j.load.data; base.info_bytes = j.load.size;
+        if (!consume(j)) return begin_metadata(j, base);
+        const Error e = finish_metadata(j, base, xyf::manifest::type_mod_base);
+        if (e != Error::none) return fail(j, e);
         char detail[mod_patch::detail_bytes];
         if (mod_patch::read_profile(base.info, base.info_bytes, j.profile, detail) != mod_patch::Status::ok) {
             set_detail_text(j, detail);
@@ -557,8 +525,9 @@ Phase step(Job& j) {
         return j.phase;
     case st_package_info: {
         Job::Package& p = j.packages[j.index];
-        if (!consume(j)) return load_listed(j, p, "info.txt", true);
-        p.info = j.load.data; p.info_bytes = j.load.size;
+        if (!consume(j)) return begin_metadata(j, p);
+        const Error e = finish_metadata(j, p, xyf::manifest::type_mod);
+        if (e != Error::none) return fail(j, e);
         go(j, st_package_catalog);
         return j.phase;
     }

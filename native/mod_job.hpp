@@ -33,9 +33,11 @@ namespace xyf_core { namespace mod_job {
 // output's folders and open, one rename. No heap, no BSS, no library calls.
 
 // File calls. Paths are NUL-terminated, at most path_bytes with the NUL. A handle is >= 0.
+static const int missing_file = -2, probe_again = 1;
 struct Files {
     void* context;
-    int (*size)(void* context, const char* path, U32* bytes);               // 0, or < 0 (absent)
+    int (*probe_metadata)(void* context, const char* path);                // 0, missing_file, probe_again, or error
+    int (*size)(void* context, const char* path, U32* bytes);               // 0, missing_file, or other negative error
     int (*open)(void* context, const char* path, bool write);               // write: create or truncate
     int (*read)(void* context, int handle, Byte* data, U32 bytes);          // bytes read (0: end), or < 0
     int (*write)(void* context, int handle, const Byte* data, U32 bytes);   // bytes written, or < 0
@@ -112,8 +114,9 @@ struct Job {
     struct Package {                 // one package as the job holds it
         const char* name;            // "base", the machine id, "ext-<id>"
         Byte* list; U32 list_bytes;  // files.sha256, each line's end turned into a NUL
-        mod_content::File* files; U32 file_count;   // its lines, info.txt excluded
-        const hash::Digest* info_sha256;   // info.txt's line (0: not listed)
+        mod_content::File* files; U32 file_count;   // its lines, package metadata excluded
+        const hash::Digest *info_sha256, *native_sha256;   // original records' digests (0: not listed)
+        const char* metadata;              // selected on-disk record name
         Byte* info; U32 info_bytes;
         Byte* catalog; U32 catalog_bytes;
     };

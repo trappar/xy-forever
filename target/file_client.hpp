@@ -133,6 +133,11 @@ Reply seek(int fd, int offset);                                     // SEEK_SET
 Reply close(int fd);
 Reply mkdir(const char* path);
 Reply stat(const char* path, uint8_t* record);                      // record_bytes
+// Check a literal directory entry after a stat follows a link and reports ENOENT.
+// A scan is resumable, returns busy between steps, and owns at most one directory.
+struct NameScan { uint32_t folder, seen; };
+uint32_t scan_name(const char* path, NameScan& scan, volatile uint32_t& mounted);
+uint32_t close_name_scan(NameScan& scan, volatile uint32_t& mounted);
 Reply free_space(const char* path, uint8_t* bytes);                 // existing query 0x31, eight bytes
 Reply statfs(const char* path, uint8_t* space);                     // space_bytes
 Reply opendir(const char* path);

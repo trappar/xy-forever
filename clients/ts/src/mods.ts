@@ -18,7 +18,7 @@ import { depthRefusal, readsFlatMods } from './depth.ts';
 import { STORE_FILE, STORE_VERSION, generationVersion, remoteTree, storeRefusal, storedName } from './modstore.ts';
 import { XyfError, isXyfError } from './errors.ts';
 import { parseFileList, parseManifest } from './package-manifest.ts';
-import { packageValues, recordName } from './package-records.ts';
+import { NATIVE_MANIFEST, packageValues, recordName } from './package-records.ts';
 import { packageTransaction } from './package-store.ts';
 import { encodeModsApplyRequest } from './v1.ts';
 
@@ -236,6 +236,7 @@ function flatMods(client: Client, what: string): void {
 export async function listPackages(client: Client, options: CallOptions = {}): Promise<HeldGeneration[]> {
   const tree = await remoteTree(client, MODS_ROOT, options);
   if (!tree) return [];
+  const nonfiles = new Set([...tree.dirs, ...tree.other]);
   const out: HeldGeneration[] = [];
   for (const gen of tree.dirs.filter((d) => !d.includes('/')).sort(order)) {
     const version = await generationVersion(client, `${MODS_ROOT}/${gen}`, tree.files.has(`${gen}/${STORE_FILE}`), options);
@@ -249,11 +250,12 @@ export async function listPackages(client: Client, options: CallOptions = {}): P
       const prefix = `${gen}/${name}/`;
       const mine = new Map([...tree.files].filter(([p]) => p.startsWith(prefix)).map(([p, s]) => [p.slice(prefix.length), s]));
       let info: Record<string, string> = {}, complete = false;
-      const metadata = recordName(mine.keys());
-      if (metadata !== undefined) info = infoValues(await client.readFile(`${MODS_ROOT}/${prefix}${metadata}`, options), metadata);
-      if (mine.has(LIST)) {
+      const metadata = recordName([NATIVE_MANIFEST, INFO].filter((key) => mine.has(key) || nonfiles.has(prefix + key)));
+      if (metadata !== undefined && mine.has(metadata)) info = infoValues(await client.readFile(`${MODS_ROOT}/${prefix}${metadata}`, options), metadata);
+      if (metadata !== undefined && mine.has(LIST)) {
         try {
-          complete = listPaths(await client.readFile(`${MODS_ROOT}/${prefix}${LIST}`, options)).every(([s, p]) => mine.has(storedName(p, s)));
+          const listed = listPaths(await client.readFile(`${MODS_ROOT}/${prefix}${LIST}`, options));
+          complete = listed.some(([, path]) => path === metadata) && listed.every(([s, p]) => mine.has(storedName(p, s)));
         } catch (error) {
           if (!(error instanceof PackageError)) throw error;
         }
@@ -322,7 +324,7 @@ const ERROR_WORDS: Readonly<Record<string, string>> = {
 /** mods.apply `missing` (with not_found) -> plain words. */
 export const MISSING_WORDS = ['', "the base entry has no os.ldr (or there is no such entry)",
   "the base entry has no content.sha256 (the firmware's content list)", 'there is no /yaffs2/content/op1_factory.json (the stock catalog)',
-  "the generation's base/info.txt is not on the device (send the package set first)"] as const;
+  "the generation's base package metadata is not on the device (send the package set first)"] as const;
 /** mods.apply refusals other than not_found -> plain words. */
 const REFUSALS: Readonly<Record<string, string>> = {
   busy: 'the OP-XY is busy: a build is running or an upload is in progress; wait for it, or cancel the build',

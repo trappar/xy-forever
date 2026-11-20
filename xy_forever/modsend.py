@@ -79,7 +79,7 @@ def check(code, what):
         raise Refused('%s: %s' % (what, P.status_name(code)))
 
 
-def remote_tree(dev, folder):
+def remote_tree(dev, folder, other=None):
     """({relative path: size} of every file below folder, [relative folders, parents first]), or None
     when folder does not exist."""
     files, dirs, todo = {}, [], ['']
@@ -96,6 +96,8 @@ def remote_tree(dev, folder):
             elif kind == 1:
                 dirs.append(path)
                 todo.append(path)
+            elif other is not None:
+                other.add(path)
     return files, dirs
 
 
@@ -201,10 +203,12 @@ def holdings(dev):
     mods/<profile>/ folder, or a package tree from before the flat store), NEWER for a newer store version;
     neither lists packages."""
     out = []
-    tree = remote_tree(dev, ROOT)
+    other = set()
+    tree = remote_tree(dev, ROOT, other)
     if not tree:
         return out
     files, dirs = tree
+    nonfiles = other | set(dirs)
     for gen in sorted(d for d in dirs if '/' not in d):
         version = 0
         if '%s/%s' % (gen, modstore.FILE) in files:
@@ -218,14 +222,16 @@ def holdings(dev):
             prefix = '%s/%s/' % (gen, name)
             mine = {p[len(prefix):]: s for p, s in files.items() if p.startswith(prefix)}
             info, complete = {}, False
-            metadata = package_records.record_name(mine)
-            if metadata:
+            metadata = package_records.record_name(key for key in (package_records.NATIVE, INFO)
+                                                   if key in mine or prefix + key in nonfiles)
+            if metadata in mine:
                 code, data = dev.read_all('%s/%s%s' % (ROOT, prefix, metadata), limit=1 << 16)
                 info = info_values(data, metadata) if not code else {}
             if LIST in mine:
                 code, data = dev.read_all('%s/%s%s' % (ROOT, prefix, LIST), limit=1 << 20)
                 try:
-                    complete = not code and modstore.listed_names(list_paths(data)) <= set(mine)
+                    listed = modstore.listed_names(list_paths(data)) if not code else set()
+                    complete = metadata in listed and listed <= set(mine)
                 except Refused:
                     complete = False
             packages.append((name, info, len(mine), sum(mine.values()), complete))
@@ -308,7 +314,7 @@ ERRORS = ('none', 'argument', 'path', 'region', 'open', 'read', 'truncated', 'si
           'info', 'base', 'linker', 'patch', 'content', 'write', 'rename', 'verify', 'cancelled', 'image', 'link')
 MISSING = ('none', "the base's os.ldr", "the base's content.sha256; library-add --content adds it",
            '/yaffs2/content/op1_factory.json',
-           "the generation's base/info.txt", "the generation's store.txt (older layout: remove it, push again)")
+           "the generation's base package metadata", "the generation's store.txt (older layout: remove it, push again)")
 DONE, FAILED, CANCELLED = 8, 9, 10
 TMP = '/yaffs2/xy-forever/tmp'
 LIBRARY = '/yaffs2/xy-forever/firmware'

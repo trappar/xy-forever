@@ -23,7 +23,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import modsend as MS, modstore, sim                        # noqa: E402
+from xy_forever import modsend as MS, modstore, native_json, package_records, sim  # noqa: E402
 from xy_forever import usb_proto as P                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 import test_sim_content_switch as CS                                      # noqa: E402
@@ -282,6 +282,38 @@ class SyntheticPage(PageBase, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         synthetic_setup(cls)
+
+    def test_native_metadata_in_mods_page_and_assembly(self):
+        source = self.dir / 'native'
+        shutil.copytree(self.gen_dir, source)
+        for name in ('base', 'alpha', 'beta'):
+            folder = source / name
+            raw = native_json.package_document(package_records.read_values(folder))
+            if name == 'beta':
+                raw = raw.replace(b'"schema_version":1', b'"schema_version":2')
+            else:
+                (folder / 'info.txt').unlink()
+            (folder / 'manifest.json').write_bytes(raw)
+            (folder / 'files.sha256').write_text(J.M.files_sha256_text(folder))
+        destination = self.root / 'xy-forever/mods' / self.generation
+        shutil.rmtree(destination)
+        modstore.copy_set(source, destination)
+        (destination / 'gamma' / 'manifest.json').symlink_to('missing.json')
+
+        self.open_page()
+        self.assertIn('newer XY Forever', self.page()['text'])
+        rows = self.walk()
+        self.assertIn('alpha', rows)
+        self.assertNotIn('beta', rows)
+        self.assertNotIn('gamma', rows)
+
+        job = self.start(['beta'])
+        self.assert_clean_failure(job, self.finished(job), 'failed', 'info')
+        job = self.start(['gamma'])
+        self.assert_clean_failure(job, self.finished(job), 'failed', 'open')
+        job = self.start(['alpha'])
+        self.assertEqual(self.finished(job)['phase'], MS.DONE)
+        self.assertTrue((self.entry('mods-a') / 'os.ldr').is_file())
 
     def test_toggle_and_meter(self):
         p = self.open_page()

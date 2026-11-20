@@ -37,7 +37,7 @@ from . import modkit as M, modlink as L, package_records, xyf_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 CXX = '/usr/bin/clang++'
-NATIVE = ('mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content', 'mod_job', 'hash', 'ldr', 'inflate')
+NATIVE = ('mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content', 'mod_job', 'hash', 'ldr', 'inflate', 'json')
 PRODUCT_STACK_END = '0x8ab84000u'      # as xy_forever/tfw_extract.py: the product's module + stack
 SLOTS = ('engine', 'effect', 'player')
 KNOWN_BASES = ROOT / 'native/mod_known_bases.inc'
@@ -90,7 +90,8 @@ def build(directory, flags=('-O2',), run=subprocess.run):
     binary = directory / 'mod_assemble'
     command = [CXX, '-std=c++11', *flags, '-Wall', '-Wextra', '-Werror', '-DXYF_STACK_END=' + PRODUCT_STACK_END,
                '-I', str(directory), str(ROOT / 'host/mod_assemble.cpp'),
-               *[str(ROOT / 'native' / (n + '.cpp')) for n in NATIVE], '-o', str(binary)]
+               *[str(ROOT / 'native' / (n + '.cpp')) for n in NATIVE],
+               *[str(ROOT / 'target' / (n + '.cpp')) for n in ('xyf_manifest', 'xyf_package_record')], '-o', str(binary)]
     result = run(command, capture_output=True, text=True)
     M.check(result.returncode == 0, 'host adapter build failed:\n' + (result.stderr or '')[-2000:])
     return binary

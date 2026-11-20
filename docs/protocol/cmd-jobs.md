@@ -28,7 +28,7 @@ no free job id, or both mods ids are the default and the boot-once entry, `state
 | Reply field, after the status (8 bytes) | Type | Meaning |
 |---|---|---|
 | `job` | u32 | the job's id (0 when refused); its output folder is `/yaffs2/xy-forever/tmp/job-<id>/` |
-| `missing` | u32 | 0 = none; 1 = the base's `os.ldr`; 2 = the base's `content.sha256`; 3 = `/yaffs2/content/op1_factory.json`; 4 = the generation's `base/info.txt`; 5 = the generation's `store.txt` (1.16; absent: an older layout, push the set again). With `not_found`: the input the device lacks; with `unsupported` (1.16), 5: the generation's `store.txt` names a newer store version |
+| `missing` | u32 | 0 = none; 1 = the base's `os.ldr`; 2 = the base's `content.sha256`; 3 = `/yaffs2/content/op1_factory.json`; 4 = the generation's base package metadata (`manifest.json` or legacy `info.txt`); 5 = the generation's `store.txt` (1.16; absent: an older layout, push the set again). With `not_found`: the input the device lacks; with `unsupported` (1.16), 5: the generation's `store.txt` names a newer store version |
 
 On an error: every field (zero where not reached). Errors: `bad_request`, `sha`, `link`, `not_found`, `state`, `storage`, `unsupported`. Tool timeout: 30 s.
 **Destructive**: ask the user first. Build switch `XYF_USB_FILE_WRITE`, not optional: the firmware does not build without it. Since 1.10.

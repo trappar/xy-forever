@@ -61,15 +61,19 @@ def resolve(package_dir, only=None, with_=()):
     """(generation folder, [package names: the mod first, then --with]) for a mod package folder (its info.txt
     says type=mod; its parent is the generation folder modkit split wrote) or a generation folder + only."""
     folder = Path(package_dir)
-    if any((folder / 'base' / name).is_file() for name in (package_records.NATIVE, MS.INFO)):
+    try:
+        base_metadata = package_records.local_name(folder / 'base') if folder.is_dir() else None
+        metadata = package_records.local_name(folder) if folder.is_dir() and not base_metadata else None
+    except ValueError as error:
+        raise MS.Refused(str(error)) from error
+    if base_metadata:
         if not only:
             raise MS.Refused('%s is a generation folder: name the mod with --only ID' % folder)
         gen, mod = folder, only
-    elif any((folder / name).is_file() for name in (package_records.NATIVE, MS.INFO)):
-        metadata = package_records.record_name(p.name for p in folder.iterdir() if p.is_file())
+    elif metadata:
         info = MS.info_values((folder / metadata).read_bytes(), metadata)
         if info.get('type') != 'mod':
-            raise MS.Refused('%s/info.txt: type=%s, not a mod package' % (folder, info.get('type', '?')))
+            raise MS.Refused('%s/%s: type=%s, not a mod package' % (folder, metadata, info.get('type', '?')))
         gen, mod = folder.parent, folder.name
     elif (folder / 'kit.json').is_file() or folder.suffix == '.json':
         raise MS.Refused('%s: an Open-XY kit; split it first (modkit split), then give the generation '
@@ -143,14 +147,30 @@ def library(dev):
 
 
 def entry_stamp(dev, entry):
-    for name in (package_records.NATIVE, package_records.LEGACY):
-        code, data = dev.read_all('%s/%s/%s' % (FIRMWARE, entry, name), limit=1 << 16)
+    folder = '%s/%s' % (FIRMWARE, entry)
+    name = package_records.NATIVE
+    code, data = dev.read_all(folder + '/' + name, limit=1 << 16)
+    if code == P.ids.S_NOT_FOUND:
+        result, entries = dev.list_dir(folder)
+        if result == P.ids.S_NOT_FOUND:
+            return ''
+        if result or any(raw == name.encode('ascii') for _, _, raw in entries):
+            raise MS.Refused('could not read %s/%s' % (folder, name))
+        name = package_records.LEGACY
+        code, data = dev.read_all(folder + '/' + name, limit=1 << 16)
         if code == P.ids.S_NOT_FOUND:
-            continue
-        if code:
-            raise MS.Refused('could not read %s: %s' % (name, P.status_name(code)))
+            return ''
+    if code:
+        raise MS.Refused('could not read %s: %s' % (name, P.status_name(code)))
+    if name == package_records.LEGACY:
         return MS.info_values(data, name).get('sha256', '')
-    return ''
+    try:
+        fields = package_records.parse(data, name)
+    except ValueError as error:
+        raise MS.Refused('%s: %s' % (name, error)) from error
+    if fields.get('type') != 'firmware':
+        raise MS.Refused('%s: expected a firmware record' % name)
+    return fields.get('sha256', '')
 
 
 def current_default(dev, slots, current_state):

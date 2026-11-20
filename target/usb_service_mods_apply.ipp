@@ -48,19 +48,26 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
     if (code == P::s_ok && !a_serving()) code = P::s_link;
     if (code == P::s_ok) code = file_client::mount_ready(mounted);
     if (code == P::s_ok) { code = job_target(s); taken = code == P::s_state; }   // the library id it takes
-    // Every input there (one stat each, read-only), before anything is written.
+    // Read-only availability preflight. The job selects and verifies the actual metadata record.
     char probe[file_engine::max_path];
     const char* catalog = job_catalog;
 #if defined(XYF_CONTENT_SWITCH)
     if (code == P::s_ok) catalog = content_job_catalog();               // the saved copy while mods are in
 #endif
     const char* inputs[4] = {s.stock, s.official, catalog, probe};
-    join(probe, s.generation, "/base/info.txt");
+    join(probe, s.generation, "/base/", xyf::package_record::native_name);
     for (U32 k = 0; k != 4 && code == P::s_ok; ++k) {
         uint8_t record[file_client::record_bytes];
-        const file_client::Reply r = file_client::stat(inputs[k], record);
+        file_client::Reply r = file_client::stat(inputs[k], record);
+        if (k == 3 && !r.outcome && r.value != 0 && r.error == file_client::enoent) {
+            join(probe, s.generation, "/base/", xyf::package_record::legacy_name);
+            r = file_client::stat(probe, record);
+        }
         if (r.outcome) { if (r.outcome == file_client::link) mounted = file_client::mounted_stale; code = file_client::status(r.outcome); }
-        else if (r.value != 0) { code = P::s_not_found; missing = k + 1; }
+        else if (r.value != 0) {
+            code = k == 3 ? file_client::change_status(r.error) : uint32_t(P::s_not_found);
+            if (code == P::s_not_found) missing = k + 1;
+        }
     }
     if (code == P::s_ok) {                                               // the store's version (#124, missing 5)
         uint8_t text[16];
@@ -103,7 +110,9 @@ U32 mods_begin(const uint8_t* payload, U32 length, U32& id, U32& missing, U32& t
         s.input.generation = s.generation; s.input.stock = s.stock; s.input.catalog = catalog;
         s.input.official = s.official; s.input.out = s.out; s.input.policy = xy_forever_cold_policy;
         s.input.profiling = false; s.input.unverified = (flags & 1u) != 0; s.input.flat = true;
-        s.calls.context = &s; s.calls.size = job_size; s.calls.open = job_open; s.calls.read = job_read;
+        s.metadata_scan.folder = 0;
+        s.calls.context = &s; s.calls.probe_metadata = job_probe_metadata;
+        s.calls.size = job_size; s.calls.open = job_open; s.calls.read = job_read;
         s.calls.write = job_write; s.calls.close = job_close; s.calls.rename = job_rename; s.calls.remove = job_remove;
         s.calls.mkdir = job_mkdir;
         s.id = id; s.started_ms = s.ended_ms = now(); s.longest_ms = 0; s.link = 0; s.debris = 0;

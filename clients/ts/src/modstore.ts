@@ -26,10 +26,10 @@ export function storeVersion(data: Uint8Array | null): number {
   return m ? Number(m[1]) : 0;
 }
 
-export interface RemoteTree { files: Map<string, number>; dirs: string[] }
+export interface RemoteTree { files: Map<string, number>; dirs: string[]; other: string[] }
 /** Every file below folder with its size, and every folder (parents first), relative; null when folder does not exist. */
 export async function remoteTree(client: Client, folder: string, options: CallOptions): Promise<RemoteTree | null> {
-  const files = new Map<string, number>(), dirs: string[] = [], todo = [''];
+  const files = new Map<string, number>(), dirs: string[] = [], other: string[] = [], todo = [''];
   while (todo.length) {
     const rel = todo.shift()!;
     let entries;
@@ -43,9 +43,10 @@ export async function remoteTree(client: Client, folder: string, options: CallOp
       const path = rel ? `${rel}/${e.name}` : e.name;
       if (e.kind === 'file') files.set(path, e.size);
       else if (e.kind === 'folder') { dirs.push(path); todo.push(path); }
+      else other.push(path);
     }
   }
-  return { files, dirs };
+  return { files, dirs, other };
 }
 
 /** The store version of the generation folder genPath (has: it holds store.txt); 0 without one. */

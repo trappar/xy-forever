@@ -43,6 +43,7 @@ struct JobSlot {
     char line[48];
     U32 id, started_ms, ended_ms, longest_ms, link, debris, said_ms, said_phase;
     uint8_t page[read_range_max];                                        // the tree steps' listing
+    file_client::NameScan metadata_scan;
     // The commit and the sweep.
     char target[8], entry[file_engine::max_path], old[file_engine::max_path];
     U32 stage, had_old, commit_error, commit_code, extra_steps, clean_calls;
@@ -183,9 +184,23 @@ int job_size(void* c, const char* path, xyf_core::U32* bytes) {
     uint8_t record[file_client::record_bytes];
     const file_client::Reply r = file_client::stat(path, record);       // op 0x22
     if (r.outcome) return job_fail(s, r);
-    if (r.value != 0 || (P::get32(record + 8) & 0xf000u) != 0x8000u) return -1;
+    if (r.value != 0) return r.error == file_client::enoent ? mj::missing_file : -1;
+    if ((P::get32(record + 8) & 0xf000u) != 0x8000u) return -1;
     *bytes = P::get32(record + 0x1c);
     return 0;
+}
+int job_probe_metadata(void* c, const char* path) {
+    JobSlot& s = of(c);
+    if (!s.metadata_scan.folder) {
+        xyf_core::U32 size;
+        const int result = job_size(c, path, &size);
+        if (result != mj::missing_file) return result;
+    }
+    const U32 code = file_client::scan_name(path, s.metadata_scan, mounted);
+    if (code == P::s_busy) return mj::probe_again;
+    if (code == P::s_not_found) return mj::missing_file;
+    if (code == P::s_link) s.link = 1;
+    return -1;       // the native name exists but stat could not read a regular file
 }
 int job_open(void* c, const char* path, bool write) {
     JobSlot& s = of(c);

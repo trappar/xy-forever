@@ -11,13 +11,13 @@ def local_set(package_dir, only=()):
     files in send order (listed payloads, selected metadata, then files.sha256), every one checked
     against its files.sha256. only: package names (base is always included)."""
     root = Path(package_dir)
-    metadata = package_records.record_name(p.name for p in (root / 'base').glob('*') if p.is_file())
+    metadata = package_records.local_name(root / 'base')
     if metadata is None:
-        raise Refused('%s: no base/info.txt (give the generation folder modkit split wrote)' % root)
+        raise Refused('%s: no base package metadata (give the generation folder modkit split wrote)' % root)
     base = package_records.parse((root / 'base' / metadata).read_bytes(), metadata)
     profile, generation = base.get('profile', ''), base.get('generation', '')
     if base.get('type') != 'mod-base' or not TOKEN.match(profile) or not TOKEN.match(generation):
-        raise Refused('base/info.txt: not a mod-base with a profile and generation')
+        raise Refused('base/%s: not a mod-base with a profile and generation' % metadata)
     names = sorted(p.name for p in root.iterdir() if p.is_dir() and (p / LIST).is_file())
     wanted = ['base'] + [n for n in only if n != 'base'] if only else names
     unknown = [n for n in wanted if n not in names]
@@ -29,7 +29,7 @@ def local_set(package_dir, only=()):
             raise Refused('unsafe package name: %s' % name)
         folder = root / name
         entries = package_store.read_files_sha256((folder / LIST).read_bytes())
-        metadata = package_records.record_name(p.name for p in folder.iterdir() if p.is_file())
+        metadata = package_records.local_name(folder)
         if metadata is None or metadata not in [p for _, p in entries]:
             raise Refused('%s/%s does not list %s' % (name, LIST, metadata or 'manifest.json or info.txt'))
         files = []

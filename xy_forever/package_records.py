@@ -18,6 +18,21 @@ def record_name(names):
     return NATIVE if NATIVE in names else LEGACY if LEGACY in names else None
 
 
+def local_name(folder):
+    """Select by basename before checking whether the selected record is readable."""
+    folder = Path(folder)
+    for name in (NATIVE, LEGACY):
+        path = folder / name
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            continue
+        if not path.is_file():
+            raise native_json.RecordError('%s: expected a regular package record' % path)
+        return name
+    return None
+
+
 def text_view(data, name=LEGACY):
     if name != NATIVE:
         return data
@@ -35,7 +50,7 @@ def values(data, name=LEGACY):
 
 def read_values(folder):
     folder = Path(folder)
-    name = record_name(p.name for p in folder.iterdir() if p.is_file())
+    name = local_name(folder)
     if name is None:
         raise FileNotFoundError('%s: no manifest.json or info.txt' % folder)
     return values((folder / name).read_bytes(), name)

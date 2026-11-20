@@ -1,9 +1,9 @@
 #include "xyf_package_record.hpp"
 namespace xyf { namespace package_record {
-xyf_core::json::Status parse(const char* raw, uint32_t bytes, Workspace& work) {
+namespace {
+xyf_core::json::Status extract(const xyf_core::json::Document& doc, Workspace& work) {
     using namespace xyf_core::json;
     manifest::begin(work.manifest);
-    const Document doc = xyf_core::json::parse(raw, bytes, work.json, package_schema);
     if (doc.status != ok) return doc.status;
     uint32_t fields = 0, view_bytes = 0;
     for (const json_t* p = doc.root->u.c.child; p; p = p->sibling) {
@@ -39,6 +39,19 @@ xyf_core::json::Status parse(const char* raw, uint32_t bytes, Workspace& work) {
     }
     manifest::finish(work.manifest, key_line, fields);
     return ok;
+}
+}
+xyf_core::json::Status parse(const char* raw, uint32_t bytes, Workspace& work) {
+    return extract(xyf_core::json::parse(raw, bytes, work.json, xyf_core::json::package_schema), work);
+}
+xyf_core::json::Status view(const char* raw, uint32_t bytes, Workspace& work, manifest::Type expected,
+                           char* text, uint32_t& text_bytes) {
+    using namespace xyf_core::json;
+    const Document doc = xyf_core::json::parse(raw, bytes, work.json, package_schema);
+    const Status status = extract(doc, work);
+    if (status != ok) return status;
+    if (work.manifest.status != manifest::ok || work.manifest.type != expected) return value;
+    return package_text(doc, text, manifest::max_text, text_bytes);
 }
 bool info(const char* raw, uint32_t bytes, Workspace& work, store::Info& out) {
     const xyf_core::json::Status status = parse(raw, bytes, work);

@@ -284,7 +284,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
       renameSync(join(work, 'content.sha256'), entry('content.sha256'));
     }
     await refused({ base: 'nosuch' }, 1, 'the base entry has no os.ldr');
-    await refused({ generation: '0.0.0-none' }, 4, "the generation's base/info.txt is not on the device");
+    await refused({ generation: '0.0.0-none' }, 4, "the generation's base package metadata is not on the device");
     await expect(applyMods(client, { ...request, machines: [] })).rejects.toThrow(RangeError);
     const failed = await applyMods(client, { ...request, unverified: false }, { pollMs: 20 }).catch((e: unknown) => e);
     expect(failed).toBeInstanceOf(JobError);

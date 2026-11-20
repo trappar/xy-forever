@@ -28,8 +28,9 @@ On the device a set lives in `mods/<generation>/` as a flat store, every file 4 
 Written on the host by `python3 -m xy_forever.modkit split` from an open-xy kit; local index + archives, `mods fetch`: `xy_forever/modindex.py`;
 read by the device linker `native/mod_link` (B runs the assembly job). One flat folder per package: `base/`, `<machine id>/`,
 `ext-<extension id>/` (`-` is not valid in an id, so names cannot collide). Each holds an
-`info.txt` the strict reader accepts (extra keys below are unknown to it and ignored) and a
-sorted `files.sha256` of every other file. `<generation>` is `<kit version>-<12 hex>`: SHA-256
+`manifest.json` or legacy `info.txt` and a sorted `files.sha256` of every other
+file. The JSON record takes precedence when present and is checked under its
+own name in the list. `<generation>` is `<kit version>-<12 hex>`: SHA-256
 over the profile, every object's name, hash and tags, the collection, definitions, fixed numbers
 and fallbacks. Tables (`*.txt` other than `info.txt`): `#` header, one record per line, fields
 separated by one space, `-` for none.

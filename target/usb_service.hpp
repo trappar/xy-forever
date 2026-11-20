@@ -230,6 +230,9 @@ uint32_t job_stop();
 uint32_t page_serving();
 volatile uint32_t& page_mount();
 bool page_busy();
+// One turn of scratch for the Mods metadata reader, after page_busy() clears.
+void* mods_metadata_work();
+static const uint32_t mods_metadata_bytes = 0x10000u;
 // the menu's Continue, Discard, Boot once and Set default while a job owns the write
 // window: this line instead of the action (null: none runs; injected keys see it too).
 inline const char* menu_busy() { return page_busy() ? "Busy: a build or content change is running." : nullptr; }
