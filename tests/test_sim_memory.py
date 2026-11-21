@@ -107,8 +107,8 @@ class PublishedMemory(Memory, unittest.TestCase):
         self.settings()
         self.pick_other()                                                  # back to 2 MiB: saved, does not fit
         self.memory_saved('standard')
-        row = self.home_has(TOO_BIG)                                       # the first row's line says why
-        self.assertIn('pending=1 ' + STANDARD, row)
+        # A can publish the file before B refreshes the menu's saved memory value.
+        self.home_has('pending=1 ' + STANDARD + ' ' + TOO_BIG)
         self.back_to_continue()
         self.cont()
         self.assertIn('Too big for the mods memory', self.failed())        # converging fails with it: nothing changes
