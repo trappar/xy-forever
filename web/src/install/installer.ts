@@ -6,7 +6,7 @@
 import { Session } from '../vendor/open-xy/ferret.mjs';
 import type { Identity } from '../vendor/open-xy/ferret.mjs';
 import { Device } from '../vendor/open-xy/mtp.mjs';
-import { STOCK_MISSING, STOCK_PATH, bootVerdict, needBytes, sha256Hex, spaceVerdict } from './checks.ts';
+import { STOCK_121, STOCK_MISSING, STOCK_PATH, STOCK_WRONG, bootVerdict, needBytes, sha256Hex, spaceVerdict } from './checks.ts';
 import type { Verdict } from './checks.ts';
 
 export type MidiAccess = (options: { sysex: boolean }) => Promise<unknown>;
@@ -54,7 +54,7 @@ export interface CopyProgress { (text: string, fraction?: number): void }
 
 /**
  * The Mac path, in the dev menu's "mtp file transfer (mac)" mode: checks that the device's own stock os.ldr is there
- * (its size only: XY Forever reads and checks it on the device at its first start) and the free storage, then writes
+ * with the stock 1.2.1 size (its size only: XY Forever reads and checks it on the device at its first start) and the free storage, then writes
  * our os.ldr to the top level and reads it back. Throws InstallStop when a check refuses (nothing copied). Asks the
  * browser for the device (the chooser) first.
  */
@@ -63,7 +63,9 @@ export async function copyOverMtp(usb: unknown, image: Uint8Array, progress: Cop
   try {
     await device.open();
     progress('Checking your OP-XY...');
-    if (await device.size(STOCK_PATH) === null) throw new InstallStop(STOCK_MISSING);
+    const stock = await device.size(STOCK_PATH);
+    if (stock === null) throw new InstallStop(STOCK_MISSING);
+    if (stock !== STOCK_121.bytes) throw new InstallStop(STOCK_WRONG);
     const { free } = await device.space();
     const space = spaceVerdict(free + (await device.size('os.ldr') ?? 0), needBytes(image.length));   // an older /os.ldr is replaced
     if (space.kind !== 'ok') throw new InstallStop(space);

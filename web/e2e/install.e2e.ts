@@ -17,6 +17,8 @@ const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 
 const SHA = createHash('sha256').update(IMAGE).digest('hex');
 const PIN = { schema: 1, version: '0.1.0', image: SHA.slice(0, 8), sha256: SHA, bytes: IMAGE.length };
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
+const STOCK = 'upgrade/firmware/blackfin/bin/os.ldr';
+const STOCK_SIZE = 'size:2373336';                               // a stand-in of the stock 1.2.1 size: the page never reads it
 
 let server: ViteDevServer | undefined;
 let browser: Browser | undefined;
@@ -38,7 +40,7 @@ afterAll(async () => {
   await server?.close();
 });
 
-/** The app with fake devices: te-boot answering with fields, an MTP device holding files (path -> test URL or bytes). */
+/** The app with fake devices: te-boot answering with fields, an MTP device holding files (path -> test URL, size:N or text). */
 async function open(fields: string, files: Record<string, string> = {}, free = 64 * 1024 * 1024): Promise<Page> {
   const address = server!.httpServer!.address();
   const base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}/`;
@@ -51,7 +53,8 @@ async function open(fields: string, files: Record<string, string> = {}, free = 6
     const fields = Object.fromEntries(${JSON.stringify(fields)}.split(';').map((kv) => kv.split(':')));
     const files = {};
     for (const [path, source] of Object.entries(${JSON.stringify(files)})) {
-      files[path] = source.startsWith('/') ? new Uint8Array(await (await fetch(source)).arrayBuffer()) : new TextEncoder().encode(source);
+      files[path] = source.startsWith('/') ? new Uint8Array(await (await fetch(source)).arrayBuffer())
+        : source.startsWith('size:') ? new Uint8Array(Number(source.slice(5))) : new TextEncoder().encode(source);
     }
     const midi = new FakeMidi(fields), usb = new FakeUsb(files, ${free});
     Object.defineProperty(navigator, 'requestMIDIAccess', { value: midi.requestMIDIAccess, configurable: true });
@@ -84,7 +87,7 @@ async function toTransfer(page: Page, computer: 'Mac' | 'Windows'): Promise<void
   await press(page, 'Dev menu is open');
   expect(await page.locator('#page-install').textContent()).toContain(computer === 'Mac' ? '2. mtp file transfer (mac)' : '3. mtp file transfer (windows)');
   await press(page, 'I see "mtp mode active"');
-  if (computer === 'Mac') await press(page, 'They’re closed · Continue');
+  await press(page, computer === 'Mac' ? 'They’re closed · Continue' : 'I see os.ldr, about 2,318 KB');
 }
 
 it.skipIf(why !== null)('refuses a 1.2.5 bootloader and unknown firmware, and guides an older OP-XY to official 1.2.1', async () => {
@@ -135,11 +138,26 @@ it.skipIf(why !== null)('switches the dev menu on, then stops on a missing stock
   expect(await page.getByRole('link', { name: /Download official OS 1\.2\.1/ }).isVisible()).toBe(true);
   await page.close();
 
-  page = await open(OK_121, { 'upgrade/firmware/blackfin/bin/os.ldr': 'not the stock file' }, 1024 * 1024);
+  page = await open(OK_121, { [STOCK]: STOCK_SIZE }, 1024 * 1024);
   await toTransfer(page, 'Mac');
   await press(page, 'Send to OP–XY');
   expect(await refusal(page)).toMatchObject({ kind: 'space', text: expect.stringContaining('Not enough free storage') });
   expect(await sent(page)).not.toContain(0xac);                 // the dev menu was already there: left alone
+  await page.close();
+
+  page = await open(OK_121, { [STOCK]: 'not the stock size' });
+  await toTransfer(page, 'Mac');
+  await press(page, 'Send to OP–XY');
+  expect(await refusal(page)).toMatchObject({ kind: 'reinstall', text: expect.stringContaining('not the size of teenage engineering\'s OS 1.2.1 (2,318 KB)') });
+  expect(await page.evaluate(() => (window as unknown as { fakes: { usb: { find: (p: string) => unknown } } }).fakes.usb.find('os.ldr'))).toBeUndefined();
+  await page.close();
+});
+
+it.skipIf(why !== null)('links to no tool that can switch the dev menu off', async () => {
+  const page = await open(OK_121);
+  await page.locator('#connection-help summary').click();
+  expect(await page.locator('#connection-help').textContent()).toContain('site settings');
+  expect(await page.locator('a[href*="bagofwaffles.github.io"]').count()).toBe(0);   // the hosted Ferret has a disable button
   await page.close();
 });
 
@@ -158,7 +176,7 @@ it.skipIf(why !== null)('offers the fresh start with official 1.2.1 when MTP fai
 });
 
 it.skipIf(why !== null)('copies os.ldr over WebUSB, never reading the stock os.ldr, and ends with Track 5 and a power-on (Mac)', async () => {
-  const page = await open(OK_121, { 'upgrade/firmware/blackfin/bin/os.ldr': 'stand-in: the page never reads it' });
+  const page = await open(OK_121, { [STOCK]: STOCK_SIZE });
   await toTransfer(page, 'Mac');
   await press(page, 'Send to OP–XY');
   await expect.poll(() => page.getByRole('button', { name: 'File sent · Continue' }).isVisible(), { timeout: 30_000 }).toBe(true);
@@ -170,6 +188,13 @@ it.skipIf(why !== null)('copies os.ldr over WebUSB, never reading the stock os.l
   expect(Buffer.from(copied).equals(IMAGE)).toBe(true);
   expect(reads).toEqual(['os.ldr']);                                    // our copy read back; the stock file never
   await press(page, 'File sent · Continue');
+  expect(await stage(page)).toBe('exit-transfer');
+  await press(page, '← Back');                                          // back at transfer: the file can be sent again
+  await expect.poll(() => stage(page)).toBe('transfer');
+  await press(page, 'Send to OP–XY');
+  await expect.poll(() => page.getByRole('button', { name: 'File sent · Continue' }).isVisible(), { timeout: 30_000 }).toBe(true);
+  expect((await fakes()).reads).toEqual(['os.ldr', 'os.ldr']);
+  await press(page, 'File sent · Continue');
   await press(page, 'I’m back at the dev menu');
   expect(await page.locator('#page-install').textContent()).toContain('5. write os to boot partition');
   await press(page, 'I pressed track 5');
@@ -177,13 +202,24 @@ it.skipIf(why !== null)('copies os.ldr over WebUSB, never reading the stock os.l
   expect(await stage(page)).toBe('start');
   const text = (await page.locator('#page-install').textContent()) ?? '';
   expect(text).toContain('Switch your OP–XY off, then on.');
-  expect(text).toContain('hold PLAY while switching on');
+  expect(text.match(/hold PLAY while switching on/g)).toHaveLength(1);     // said once
+  expect(text).toContain('Expect the logo to stay up longer than usual');
   expect(text).not.toMatch(/wait \d+ seconds|5 seconds/i);
   await page.close();
 });
 
-it.skipIf(why !== null)('hands over our os.ldr to copy by hand, with no stock file step (Windows)', async () => {
-  const page = await open(OK_121);
+it.skipIf(why !== null)('asks the owner to find the stock file in Explorer, then hands over our os.ldr to copy by hand (Windows)', async () => {
+  let page = await open(OK_121);
+  await press(page, CHECK);
+  await expect.poll(() => stage(page), { timeout: 15_000 }).toBe('menu');
+  for (const name of ['Yes, I see it', 'Windows', 'Dev menu is open', 'I see "mtp mode active"']) await press(page, name);
+  expect(await stage(page)).toBe('check-stock');
+  expect(await page.locator('#page-install').textContent()).toContain('upgrade › firmware › blackfin › bin. os.ldr must be there, about 2,318 KB');
+  await press(page, 'It’s missing or another size');
+  expect(await refusal(page)).toMatchObject({ kind: 'reinstall', text: expect.stringContaining('missing or not the size') });
+  await page.close();
+
+  page = await open(OK_121);
   await toTransfer(page, 'Windows');
   expect(await stage(page)).toBe('transfer');
   const download = page.waitForEvent('download');
@@ -206,8 +242,11 @@ it.skipIf(why !== null)('keeps the stage and the chosen computer over a reload, 
   await page.reload();
   await expect.poll(() => stage(page)).toBe('transfer');
   await page.goBack();
+  await expect.poll(() => stage(page)).toBe('check-stock');
+  await page.goBack();
   await expect.poll(() => stage(page)).toBe('start-transfer');
   expect(await page.locator('#page-install').textContent()).toContain('3. mtp file transfer (windows)');   // the computer, kept
+  await page.goForward();
   await page.goForward();
   await expect.poll(() => stage(page)).toBe('transfer');
   expect(await page.locator('#serial-find').count()).toBe(0);      // no Web Serial here: nothing to look for

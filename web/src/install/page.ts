@@ -3,18 +3,19 @@
 // builder/index.html, https://github.com/etcetc000/open-xy, staging ca122f4; MIT, see ../vendor/open-xy/LICENSE),
 // adapted only where XY Forever differs: the page checks te-boot's identity first and refuses a 1.2.5 bootloader or
 // unknown firmware; it ships our os.ldr (pinned) instead of an Open-XY build and, on a Mac, checks that the stock
-// os.ldr is there and the free storage before copying; it never switches the dev menu off (Open-XY's disable and
+// os.ldr is there with its 1.2.1 size and the free storage before copying (on Windows the owner looks in Explorer); it never switches the dev menu off (Open-XY's disable and
 // recovery-by-disabling are left out). The install ends with Track 5 and a power-on: XY Forever then sets itself up
 // on the device (finish.ts), and the page never reads or moves the stock OS. #page-install's data-stage names the
 // stage (the tests read it). Each stage is a path, /install/<stage> (../router.ts): a reload keeps it, with the
 // choices made so far kept in sessionStorage; a reload re-checks the device instead of trusting them (te-boot stages
-// ask te-boot again). At every stage, on a serial port appearing, every few seconds at the last stage, and on a
-// click, the page looks for an OP-XY running XY Forever (granted ports only, never the chooser unasked): once its
-// stock entry is the default it hands the owner to the app's Mods page; while it sets up, or when it refuses, the
-// page shows that.
+// ask te-boot again). At the last stage (on reaching it, on a serial port appearing, every few seconds) and on a
+// click, the page looks for an OP-XY running XY Forever (granted ports only, never the chooser unasked); never on
+// its own before that stage, while the OP-XY may be in te-boot or the dev menu's MTP mode, which must get no XY
+// Forever request. Once its stock entry is there and the default names a library entry (the stock one, or one with
+// mods) it hands the owner to the app's Mods page; while it sets up, or when it refuses, the page shows that.
 import type { Client } from 'xy-forever-client';
 import { ASK_TEXT, CHOOSE_TEXT } from 'xy-forever-client';
-import { OFFICIAL_121_TFW, OFFICIAL_UPDATE_GUIDE } from './checks.ts';
+import { OFFICIAL_121_TFW, OFFICIAL_UPDATE_GUIDE, STOCK_KB, STOCK_PATH, STOCK_WRONG } from './checks.ts';
 import type { Computer, Verdict } from './checks.ts';
 import { installState, otherImage } from './finish.ts';
 import { InstallStop, TeBoot, copyOverMtp } from './installer.ts';
@@ -53,7 +54,7 @@ const TE_BOOT = ['menu', 'enable', 'refresh-open', 'refresh-return', 'confirm', 
 const NO_BACK = ['write-os', 'write-result', 'write-help', 'format-drive', 'format-upload', 'stop', 'start'];
 /** How often the last stage looks for XY Forever, and how long a setup that has not started is waited for. */
 const LOOK_MS = 3000, POLL_MS = 700, WAIT_START_MS = 60_000;
-const STARTED = 'Your OP–XY set up OS 1.2.1 and is starting it. To manage mods, switch off, then hold PLAY while switching on.';
+const STARTED = 'Your OP–XY set up OS 1.2.1 and is starting it.';
 
 interface Action { readonly label: string; readonly next: string | null; readonly id?: string }
 type Stage = [title: string, detail: string, actions: Action[], instructions?: string[]];
@@ -93,6 +94,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
       return;
     }
     depth = backDepth();
+    if (want === 'transfer' && stage !== 'transfer' && how !== 'load') delivered = false;   // back at transfer: send again
     if (want !== stage) { stage = want; status = ''; error = false; fraction = null; log = []; }
     save(); render();
     void detect();
@@ -113,9 +115,13 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
     if (verdict.kind !== 'ok') halt(verdict); else say('');
   }
 
-  /** Looks for XY Forever on a granted port (never the chooser); when it answers, follows its setup (follow). */
+  /**
+   * Looks for XY Forever on a granted port (never the chooser); when it answers, follows its setup (follow). Only at
+   * the last stage: before it the OP-XY may be in te-boot (which may show XY Forever's USB ids) or the dev menu's
+   * MTP mode, and no XY Forever request may reach either.
+   */
   function detect(): Promise<void> {
-    if (!deps.find || !release || busy || root.hidden || stage === 'stop') return detecting ?? Promise.resolve();
+    if (!deps.find || !release || busy || root.hidden || stage !== 'start') return detecting ?? Promise.resolve();
     return detecting ??= (async () => {
       try {
         const lease = await deps.find!();
@@ -213,7 +219,9 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
       computer: ['Which computer are you using?', 'The device has a transfer option for each system.', [action('Windows', 'open-dev-menu', 'computer-windows'), action('Mac', 'open-dev-menu', 'computer-mac')]],
       'open-dev-menu': ['Open the dev menu.', 'Press track 3 for "3. dev menu". Your OP–XY calls this screen "factory menu".', [action('Dev menu is open', 'start-transfer')]],
       'start-transfer': ['Start file transfer.', computer === 'mac' ? 'Press track 2 for "2. mtp file transfer (mac)".' : 'Press track 3 for "3. mtp file transfer (windows)".',
-        [action('I see "mtp mode active"', sendsDirectly() ? 'close-field-kit' : 'transfer')]],
+        [action('I see "mtp mode active"', sendsDirectly() ? 'close-field-kit' : 'check-stock')]],
+      'check-stock': ['Check the official OS file.', `In File Explorer, open your OP–XY, then ${STOCK_PATH.split('/').slice(0, -1).join(' › ')}. os.ldr must be there, about ${STOCK_KB}: XY Forever adds that file to its library at its first start. Change nothing there.`,
+        [action(`I see os.ldr, about ${STOCK_KB}`, 'transfer', 'stock-seen'), action('It’s missing or another size', null, 'stock-missing')]],
       'close-field-kit': ['Quit Field Kit and OpenMTP.', 'These apps can hold your OP–XY’s USB connection. Quit Field Kit, OpenMTP and Android File Transfer if any are running, then continue.',
         [action('They’re closed · Continue', 'transfer', 'field-kit-closed')]],
       transfer: sendsDirectly()
@@ -229,7 +237,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
         [action('Return to the write status', 'write-result')]],
       start: ['Start XY Forever.', 'Switch your OP–XY off, then on.',
         deps.serial ? [action(busy ? 'Looking…' : 'Find my OP–XY', null, 'serial-find')] : [],
-        ['On this first start XY Forever sets itself up: it adds your OP–XY’s own OS 1.2.1 to its library ("Adding OS 1.2.1"), makes it the default, then starts it. The logo can stay up to 20 seconds first: that is normal.',
+        ['On this first start XY Forever sets itself up: it adds your OP–XY’s own OS 1.2.1 to its library ("Adding OS 1.2.1"), makes it the default, then starts it. Expect the logo to stay up longer than usual, up to about 20 seconds.',
           'To manage mods: switch off, then hold PLAY while switching on. That opens the XY Forever menu, and this page takes you to your mods.',
           ...(deps.serial ? ['A page that connected before finds your OP–XY by itself; otherwise select Find my OP–XY. ' + CHOOSE_TEXT, 'If your OP–XY asks to allow this computer, press PLAY.']
             : ['This browser has no Web Serial: open this page in Chrome or Edge to continue to your mods.'])]],
@@ -258,6 +266,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
       case 'mtp-send': void act(send); return;
       case 'download': void act(download); return;
       case 'serial-find': void act(findChosen); return;
+      case 'stock-missing': halt(STOCK_WRONG); return;
       case 'recovery-retry': case 'flow-restart':
         formatting = delivered = false; stop = null; go('boot', 0); return;
       case 'format-start': formatting = true; break;
@@ -338,13 +347,12 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
         fraction !== null && h('progress', { value: fraction, max: 1 }),
         startable && h('div', { class: 'row' }, ...actions.map((a, i) =>
           h('button', { type: 'button', class: i === 0 ? 'primary' : '', id: a.id, disabled: busy, onclick: () => click(a) }, a.label))),
-        ['start-transfer', 'close-field-kit', 'transfer'].includes(stage) &&
+        ['start-transfer', 'close-field-kit', 'check-stock', 'transfer'].includes(stage) &&
           h('button', { type: 'button', class: 'mtp-help-button', disabled: busy, onclick: () => advance('mtp-help') }, 'I’m having trouble connecting to MTP'),
         ['mtp-help', 'transfer'].includes(stage) && faq(),
         status && h('p', { class: error ? 'install-status error' : 'install-status', role: 'status' }, status),
         ['boot', 'enable', 'menu-help'].includes(stage) && h('details', { id: 'connection-help' }, h('summary', {}, 'Connection help'),
-          h('p', {}, 'Use a compatible desktop browser, such as Chrome or Edge. Close other MIDI apps. If this page cannot get MIDI permission, use the ',
-            link('https://bagofwaffles.github.io/ferret/op-xy/', 'hosted Ferret tool'), ' to enable the dev menu, then check the menu here again.'),
+          h('p', {}, 'Use a compatible desktop browser, such as Chrome or Edge. Close other MIDI apps. If this page cannot get MIDI permission, allow MIDI for this site in the browser’s site settings, reload the page, then check your OP–XY again.'),
           h('p', { class: 'attribution' }, link('https://github.com/bagofwaffles/ferret', 'Ferret by Bag of Waffles'), ' · MIT license')),
         deps.serial && release && stage !== 'start' && h('p', { class: 'muted' }, 'Already running XY Forever? ',
           h('button', { type: 'button', id: 'serial-find', disabled: busy, onclick: () => click(action('Find my OP–XY', null, 'serial-find')) }, 'Find my OP–XY')),

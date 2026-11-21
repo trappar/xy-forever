@@ -84,7 +84,7 @@ async function open(relay: string, granted: boolean): Promise<Page> {
     import { FakeMidi, FakeUsb } from '/test/fake-devices.ts';
     import { FakeSerial } from '/@fs${FAKE_SERIAL}';
     const fields = Object.fromEntries(${JSON.stringify(OK_121)}.split(';').map((kv) => kv.split(':')));
-    const midi = new FakeMidi(fields), usb = new FakeUsb({ 'upgrade/firmware/blackfin/bin/os.ldr': new Uint8Array(16) }, 64 * 1024 * 1024);
+    const midi = new FakeMidi(fields), usb = new FakeUsb({ 'upgrade/firmware/blackfin/bin/os.ldr': new Uint8Array(2373336) }, 64 * 1024 * 1024);   // the stock size
     const serial = new FakeSerial(${JSON.stringify(relay)}, { identity: { usbVendorId: 0x2367, usbProductId: 0x0021 }, granted: ${granted} });
     Object.defineProperty(navigator, 'requestMIDIAccess', { value: midi.requestMIDIAccess, configurable: true });
     Object.defineProperty(navigator, 'usb', { value: usb, configurable: true });
@@ -110,6 +110,7 @@ async function toStart(page: Page, computer: 'Mac' | 'Windows'): Promise<void> {
     await expect.poll(() => page.getByRole('button', { name: 'File sent · Continue' }).isVisible(), { timeout: 30_000 }).toBe(true);
     await press(page, 'File sent · Continue');
   } else {
+    await press(page, 'I see os.ldr, about 2,318 KB');
     await press(page, 'File copied · Continue');
   }
   for (const name of ['I’m back at the dev menu', 'I pressed track 5', 'I see "firmware written ok!"']) await press(page, name);
@@ -177,15 +178,21 @@ it.skipIf(why !== null)('Windows: copied by hand; the page finds XY Forever by i
   await page.close();
 }, 240_000);
 
-it.skipIf(why !== null)('at any stage: XY Forever found while it sets up shows the setup, then hands off', async () => {
+it.skipIf(why !== null)('before the last stage nothing goes to the port unasked; Find my OP–XY shows the setup, then hands off', async () => {
   image ||= await simImage();
   const sim = await powerOn('stock', false);                            // PLAY at the first start: the menu stays after the setup
-  await control(sim.control, 'set a_slow_ms 2');                         // slow enough to watch
+  await control(sim.control, 'set a_slow_ms 10');                        // slow enough to outlast the wait below
   const page = await open(running!.relay.url, true);
   expect(await stage(page)).toBe('boot');
+  await until('the menu', () => listening(sim));
+  await new Promise((ok) => setTimeout(ok, 6000));                       // longer than the last stage's look (3 s)
+  expect(await page.evaluate(() => (window as unknown as { fakes: { serial: { xyfPorts: { opens: number }[] } } }).fakes.serial.xyfPorts.every((p) => p.opens === 0))).toBe(true);
+  expect(await stage(page)).toBe('boot');                                // te-boot or MTP may be on the cable: no HELLO
+  await press(page, 'Find my OP–XY');                                    // the owner's click
   await expect.poll(async () => (await page.locator('#page-install [role=status]').textContent().catch(() => '')) ?? '', { timeout: 60_000 })
     .toMatch(/adding OS 1\.2\.1|about to add OS 1\.2\.1/);
   expect(await stage(page)).toBe('start');
+  await control(sim.control, 'set a_slow_ms 0');                         // seen: the rest at full speed
   await handedOff(page);
   adopted(sim);
   await page.close();
@@ -193,8 +200,10 @@ it.skipIf(why !== null)('at any stage: XY Forever found while it sets up shows t
 
 it.skipIf(why !== null)('the device refuses a missing stock os.ldr: the page shows its words and the official 1.2.1 download', async () => {
   image ||= await simImage();
-  await powerOn('missing', true);                                       // a plain first start: the menu stays, with USB
+  const sim = await powerOn('missing', true);                           // a plain first start: the menu stays, with USB
   const page = await open(running!.relay.url, true);
+  await until('the menu', () => listening(sim));
+  await press(page, 'Find my OP–XY');
   await expect.poll(() => stage(page), { timeout: 60_000 }).toBe('stop');
   const card = page.locator('[data-verdict]');
   expect(await card.getAttribute('data-verdict')).toBe('reinstall');

@@ -76,6 +76,15 @@ export const STOCK_MISSING: Verdict = { kind: 'reinstall', title: 'The official 
   detail: 'Your OP-XY has no upgrade/firmware/blackfin/bin/os.ldr (a factory reset can remove it). XY Forever needs it: at its first start it ' +
     `adds that file to its library as OS 1.2.1. Reinstall teenage engineering's OS 1.2.1 with its own updater, then start again here. ${NOT_125} ${NOTHING}` };
 
+/** The stock os.ldr as Explorer shows its size (KB, rounded up): "2,318 KB". */
+export const STOCK_KB = `${Math.ceil(STOCK_121.bytes / 1024).toLocaleString('en-US')} KB`;
+
+/** The device's own stock os.ldr is missing or not the size of OS 1.2.1 (the Mac copy checks it; on Windows, the owner). */
+export const STOCK_WRONG: Verdict = { kind: 'reinstall', title: 'The official OS file is missing or different',
+  detail: `Your OP-XY's upgrade/firmware/blackfin/bin/os.ldr is missing or not the size of teenage engineering's OS 1.2.1 (${STOCK_KB}). ` +
+    'XY Forever needs that exact file: at its first start it adds it to its library as OS 1.2.1. Reinstall teenage engineering\'s OS 1.2.1 ' +
+    `with its own updater, then start again here. ${NOT_125} ${NOTHING}` };
+
 /** Free bytes needed: our os.ldr at the top level, the stock entry's copy (made on the device), and HEADROOM. */
 export function needBytes(imageBytes: number): number { return imageBytes + STOCK_121.bytes + HEADROOM; }
 

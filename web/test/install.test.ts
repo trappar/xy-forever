@@ -3,9 +3,9 @@
 // reads the stock os.ldr: XY Forever adopts it on the device (e2e/install-sim.e2e.ts runs that against the simulator).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { RELEASE_FILTERS, XyfError, connectWebSerial } from 'xy-forever-client';
+import { RELEASE_FILTERS, STATUS, XyfError, connectWebSerial } from 'xy-forever-client';
 import type { Client } from 'xy-forever-client';
-import { HEADROOM, OFFICIAL_121_TFW, STOCK_121, STOCK_MISSING, STOCK_PATH, bootVerdict, needBytes, sha256Hex, spaceVerdict } from '../src/install/checks.ts';
+import { HEADROOM, OFFICIAL_121_TFW, STOCK_121, STOCK_KB, STOCK_MISSING, STOCK_PATH, STOCK_WRONG, bootVerdict, needBytes, sha256Hex, spaceVerdict } from '../src/install/checks.ts';
 import type { Verdict } from '../src/install/checks.ts';
 import { ADOPT_DETAIL, ENTRY, installState, otherImage } from '../src/install/finish.ts';
 import { InstallStop, TeBoot, copyOverMtp } from '../src/install/installer.ts';
@@ -123,6 +123,20 @@ describe('te-boot over Web MIDI', () => {
       expect(midi.sent.every((f) => f.type === 0x09)).toBe(true);
     }
   });
+  it('the README names only real routes', () => {
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const page = readFileSync(new URL('../src/install/page.ts', import.meta.url), 'utf8');
+    const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+    const stages = [...readme.matchAll(/`\/install\/([a-z-]+)`/g)].map((m) => m[1]!);
+    expect(stages.length).toBeGreaterThan(0);
+    for (const s of stages) expect(page, s).toMatch(new RegExp(`\\n {6}'?${s}'?: `));
+    const pages = main.match(/const PAGES = \[([^\]]*)\]/)![1]!;
+    for (const m of readme.matchAll(/`\/([a-z]+)`/g)) expect(pages, m[1]).toContain(`'${m[1]}'`);
+  });
+  it('tells the PLAY-at-power-on step once', () => {
+    const source = readFileSync(new URL('../src/install/page.ts', import.meta.url), 'utf8');
+    expect(source.match(/hold PLAY/g)).toHaveLength(1);
+  });
   it('ships no way to switch the dev menu off', () => {
     const source = readFileSync(new URL('../src/vendor/open-xy/ferret.mjs', import.meta.url), 'utf8');
     expect(source).not.toMatch(/function disablePayload|async disable\(|setDevMenu\(false\)/);
@@ -149,6 +163,15 @@ describe('the Mac copy over WebUSB MTP', () => {
     expect((stop as InstallStop).verdict.kind).toBe('reinstall');
     expect(usb.find('os.ldr')).toBeUndefined();
   });
+  it('stops on a stock file of another size before anything is copied', async () => {
+    const usb = new FakeUsb({ [STOCK_PATH]: STOCK.subarray(1) }, ROOMY);
+    const stop = await copyOverMtp(usb, IMAGE).catch((e: unknown) => e);
+    expect((stop as InstallStop).verdict).toBe(STOCK_WRONG);
+    expect(STOCK_WRONG.detail).toContain('(2,318 KB)');
+    expect(STOCK_KB).toBe('2,318 KB');
+    expect(usb.find('os.ldr')).toBeUndefined();
+    expect(usb.reads).toEqual([]);
+  });
   it('stops on low storage', async () => {
     const usb = new FakeUsb({ [STOCK_PATH]: STOCK }, 2 * 1024 * 1024);
     const stop = await copyOverMtp(usb, IMAGE).catch((e: unknown) => e);
@@ -162,8 +185,10 @@ describe('the Mac copy over WebUSB MTP', () => {
  * library entry opxy-121's info.txt, the default; while the job runs, file reads answer busy (the device's job_blocks).
  */
 class FakeClient {
-  job: { phase: number; error: number; done: number; total: number; detail: string } | null = null;
+  job: { phase: number; error: number; code?: number; done: number; total: number; detail: string } | null = null;
   info_txt: string | null = null;
+  /** Other library entries (id -> info.txt), as mods-a after a build. */
+  others: Record<string, string> = {};
   defaultEntry: string | null = null;
   info = { image: 'abcd1234' };
   connected = true;
@@ -173,7 +198,7 @@ class FakeClient {
     if (name !== 'job.status') throw new Error(`unexpected ${name}`);
     if (!this.job) throw new XyfError('not_found', 'job.status: not found', { command: 'job.status', status: 3 });
     const detail = new Uint8Array(32); detail.set(new TextEncoder().encode(this.job.detail));
-    return { job: 1, phase: this.job.phase, done: this.job.done, total: this.job.total, error: this.job.error, code: 0, elapsed_ms: 0,
+    return { job: 1, phase: this.job.phase, done: this.job.done, total: this.job.total, error: this.job.error, code: this.job.code ?? 0, elapsed_ms: 0,
       steps: 0, longest_ms: 0, peak: 0, debris: 0, detail };
   }
   private busy(): void {
@@ -181,8 +206,9 @@ class FakeClient {
   }
   async libraryEntry(entry: string): Promise<Record<string, string>> {
     this.log.push(`entry ${entry}`); this.busy();
-    if (this.info_txt === null) throw new XyfError('not_found', 'no such file', { command: 'file.read', status: 3 });
-    return Object.fromEntries(this.info_txt.trim().split('\n').map((l) => l.split('=') as [string, string]));
+    const text = entry === ENTRY ? this.info_txt : this.others[entry] ?? null;
+    if (text === null) throw new XyfError('not_found', 'no such file', { command: 'file.read', status: 3 });
+    return Object.fromEntries(text.trim().split('\n').map((l) => l.split('=') as [string, string]));
   }
   async readState(): Promise<{ default: string | null }> { this.busy(); return { default: this.defaultEntry }; }
 }
@@ -199,6 +225,12 @@ describe('XY Forever\'s own setup, read over Web Serial', () => {
     expect(await state(c)).toEqual({ kind: 'installed' });
     expect(c.log.every((l) => l === 'job.status' || l.startsWith('entry'))).toBe(true);   // reads only
   });
+  it('installed when the owner runs mods: the stock entry there, the default another library entry (never a reflash)', async () => {
+    const c = new FakeClient(); c.info_txt = INFO; c.defaultEntry = 'mods-a'; c.others = { 'mods-a': 'type=firmware\nname=Open-XY\n' };
+    expect(await state(c)).toEqual({ kind: 'installed' });
+    c.defaultEntry = 'mods-b';                                            // a default naming no entry: not set up
+    expect(await state(c)).toEqual({ kind: 'waiting', other: false });
+  });
   it('adopting while the job runs (its progress), and while reads answer busy', async () => {
     const c = new FakeClient(); c.job = { phase: 5, error: 0, done: 1_000_000, total: STOCK_121.bytes, detail: ADOPT_DETAIL };
     expect(await state(c)).toEqual({ kind: 'adopting', done: 1_000_000, total: STOCK_121.bytes });
@@ -206,15 +238,19 @@ describe('XY Forever\'s own setup, read over Web Serial', () => {
     expect(await state(c)).toEqual({ kind: 'adopting', done: 0, total: 0 });
   });
   it('refused with the device\'s own words: missing, not 1.2.1, an incomplete entry, any other failure', async () => {
-    const refused = async (error: number): Promise<Verdict> => {
-      const c = new FakeClient(); c.job = { phase: 9, error, done: 0, total: 0, detail: ADOPT_DETAIL };
+    const refused = async (error: number, code = 0): Promise<Verdict> => {
+      const c = new FakeClient(); c.job = { phase: 9, error, code, done: 0, total: 0, detail: ADOPT_DETAIL };
       const s = await state(c) as { kind: string; verdict: Verdict };
       expect(s.kind).toBe('refused');
       return s.verdict;
     };
     expect(await refused(4)).toMatchObject({ kind: 'reinstall', detail: expect.stringContaining('"No official OS 1.2.1 found. Reinstall official OS 1.2.1, then start again."') });
     expect(await refused(10)).toMatchObject({ kind: 'reinstall', detail: expect.stringContaining('"OS file is not official 1.2.1. Reinstall official OS 1.2.1, then start again."') });
-    expect(await refused(17)).toMatchObject({ kind: 'refuse', detail: expect.stringContaining('library entry opxy-121 is incomplete: remove it.') });
+    expect(await refused(17, STATUS.state)).toMatchObject({ kind: 'refuse', detail: expect.stringContaining('library entry opxy-121 is incomplete: remove it.') });
+    expect((await refused(17, STATUS.storage)).detail).not.toMatch(/remove/i);   // a failed rename: never "remove the entry"
+    const unread = await refused(8, STATUS.storage);                      // the library could not be read: no removal advice
+    expect(unread).toMatchObject({ kind: 'refuse', title: 'The library could not be read', detail: expect.stringContaining('"Failed: the library could not be read."') });
+    expect(unread.detail).not.toMatch(/remove/i);
     expect(await refused(16)).toMatchObject({ kind: 'refuse', title: 'OS 1.2.1 could not be added to the library' });
     expect((await refused(4)).detail).toContain('Use exactly this 1.2.1 file');
   });
