@@ -60,7 +60,7 @@ class ReleaseImageTest(unittest.TestCase):
         if build is None:
             self.skipTest('no verified product build of this source (scripts/check.py builds one)')
         self.assertEqual(S.shared_runs((build / 'candidate.ldr').read_bytes(), stocks), [])
-        self.assertTrue(S.shared_runs(stocks['os.ldr'][:400_000], stocks))     # the check sees stock bytes
+        self.assertTrue(S.shared_runs(stocks['os.ldr'][:4096], stocks))        # the check sees stock bytes
 
     def test_the_pinned_release_has_no_stock_bytes(self):
         pin = json.loads(web_release.PIN.read_text())
