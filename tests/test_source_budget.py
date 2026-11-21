@@ -28,20 +28,18 @@ TEST = re.compile(r'(^test_.*\.py|_test\.(cpp|hpp)|\.(test|spec)\.ts)$')
 
 # Over the cap today (bytes): may not grow; remove an entry once its file is under the cap.
 OVER = {
-    'clients/ts/src/client.ts': 33693,
     'host/mod_assemble.cpp': 55310,
-    'native/mod_content.cpp': 33307,
     'native/mod_job.cpp': 47043,
     'native/mod_link.cpp': 65785,
-    'scripts/device_pass.py': 128359,
-    'scripts/protogen.py': 90178,
+    'scripts/device_pass.py': 124248,
+    'scripts/protogen.py': 84728,
     'scripts/setup.py': 38062,
     'target/cold_storage.cpp': 33710,
     'target/peer_services.cpp': 41949,
     'xy_forever/conformance.py': 63763,
     'xy_forever/modkit.py': 64034,
     'xyf_build.py': 83047,
-    'xyf_host.py': 50835,
+    'xyf_host.py': 46793,
 }
 
 

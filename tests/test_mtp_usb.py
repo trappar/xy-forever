@@ -137,7 +137,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         header = (ROOT / 'target/mtp_usb.hpp').read_text()
         self.assertIn('kCompositeFlags = 0x200,', header)
         driver = (ROOT / 'target/mtp_usb.cpp').read_text()
-        begin = re.search(r'bool begin\(const Port& port, bool serial\) \{(.*?)\n\}', driver, re.S).group(1)
+        begin = re.search(r'bool begin\(const Port& port\) \{(.*?)\n\}', driver, re.S).group(1)
         self.assertNotIn('stop(', begin)
         self.assertEqual(re.findall(r'port\.start\((\w+)\)', driver), ['kCompositeFlags'])
         self.assertEqual(len(re.findall(r'port\.stop\(kStopKeepTimer\)', driver)), 1)
@@ -146,7 +146,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertNotIn('start_serial', service)
         boot = re.search(r'void usb_begin\(\) \{(.*?)\n\}', service, re.S).group(1)
         order = ['C::stat(flag_path', 'C::unlink(flag_path)', 'mu::mark(mu::mark_flag_found)', 'probe_spans()',
-                 'mu::begin(mu::stock_port(), serial)', 'composite_on = 1', 'usb_start()']
+                 'mu::begin(mu::stock_port())', 'composite_on = 1', 'usb_start()']
         self.assertEqual([boot.index(x) for x in order], sorted(boot.index(x) for x in order))
         self.assertIn('const char flag_path[] = "/yaffs2/xy-forever/tmp/composite.flag";', service)
         end = re.search(r'void fallback_restart\(\) \{(.*?)\n\}', service, re.S).group(1)
@@ -280,7 +280,7 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertIn('gate::refusal<crc_at>(menu_usb == 2u && !usb_off, engine, spans, probe_refusal)', spans)
         self.assertIn('{xyf::mtp_spans::table, xyf::mtp_spans::count}', spans)
         self.assertIn('{xyf::mtp_usb_spans::table, xyf::mtp_usb_spans::count}', spans)
-        self.assertLess(start.index('probe[p_gate] = probe_spans();'), start.index('mu::begin(mu::stock_port(), serial)'))
+        self.assertLess(start.index('probe[p_gate] = probe_spans();'), start.index('mu::begin(mu::stock_port())'))
         self.assertIn('if (probe_spans()) return P::s_identity;', start)
         # Only the test build compiles the gate; menu_start_usb (product) still runs identity() at menu start.
         self.assertIn('usb_off = identity() ? 1u : file_client::identity() ? 2u : 0u;', service)

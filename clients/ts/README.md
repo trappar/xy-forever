@@ -18,6 +18,7 @@ npm run test:browser   # Web Serial, the demo page and its Files and Mods panels
 npm run build     # dist/ (JavaScript + .d.ts)
 node test/conformance.ts --sim 127.0.0.1:7341    # the conformance cases against a running simulator
 node scripts/device-browser-test.ts --out DIR --sim PORT   # the demo driven in Chrome, no human step (--serial: the OP-XY)
+node scripts/device-browser-test.ts --out DIR --sim PORT --reboot   # also restart to the menu, reconnect, and list files
 ```
 
 The repository's Python suite runs `npm test` too (`tests/test_ts_client.py`, when `node_modules` is installed).
@@ -31,6 +32,8 @@ that already holds a grant for the dev server's origin `http://127.0.0.1:5173`. 
   and exits.
 - the Chrome policy `SerialAllowUsbDevicesForUrls` (the vendor and product id of `USB_FILTER`, that origin):
   no pick, but on macOS it is a managed preference and needs admin rights.
+
+Serial runs hold the shared OP-XY device lock. The script prints a `NEED:` line if the granted port or lock is unavailable, or if **Ask before USB control** is on. Add `--reboot` to test reconnection after a restart to the XY Forever menu.
 
 Demo page (`demo/`: Connect, device info, read a file, screenshot, and a Files panel: browse from
 `/yaffs2`, download, upload by picker or drop, delete, new folder, rename/move, copy (a folder:
@@ -52,7 +55,7 @@ simulator tests with the reason when they cannot start. Node 22.18 or later.
 
 ```ts
 import { Client, decodeScreen, isXyfError } from 'xy-forever-client/node';   // browser: 'xy-forever-client'
-import { tcpOpener } from 'xy-forever-client/node';     // browser: webSerialOpener() after requestPort()
+import { tcpOpener } from 'xy-forever-client/node';     // browser: connectWebSerial() from a click (granted port, else the chooser)
 
 const client = await Client.connect(tcpOpener('127.0.0.1:7341'));   // hello; pre-1.1: update_required
 console.log(client.info.build, client.info.limits);
@@ -103,10 +106,13 @@ package-set problem: `XyfError` or `PackageError`.
 Building on the device (`test/mods.spec.ts`), as `xyf_host.py mods apply --wait | cancel`: the OP-XY assembles
 the firmware itself from the packages it holds; the host only starts, watches and cancels the job. The job works in
 `jobFolder(id)` = `/yaffs2/xy-forever/tmp/job-<id>/` and commits the result as library entry `mods-a` or `mods-b`,
-listed with its content not installed (it does not boot until `makeDefault` installs its content).
+listed with its content not installed (it does not boot until `makeDefault` installs its content). `applyMods` and
+`makeDefault` are developer tools: they change what boots behind the saved inputs until the next plain power-on.
 
 | Function | Does |
 |---|---|
+| `configGet(client)` → `{ saved, mods, expanded, unverified, write, base, generation }` | the saved inputs (`config.get`, protocol 1.24): what the next boot of XY Forever converges to |
+| `configSet(client, { mods, expanded, unverified }, { readMs, pollMs })` → as `configGet` | destructive (ask first): `config.set`, the product way to change mods, as the device's Mods page does (safe mode stays as saved: a recovery action on the device only): sent again while the device reads its package list (`busy`), then followed until written; a selection the device cannot build is an `XyfError` `refused` whose message is the device's reason. Builds nothing: the next boot does |
 | `applyMods(client, { base, profile, generation, machines, extensions, name, unverified }, { onProgress, signal, pollMs, stallMs })` → `{ entry, state, status }` | destructive (ask first): `mods.apply`, then `job.status` every `pollMs` (500) until the job ends; `onProgress(status)` each time; resolves with the library entry id (`mods-a` or `mods-b`, the final status's `detail`), `state: 'content not installed'` and the final status (`elapsedMs`, `steps`). `unverified`: the user confirmed a base that is not a known stock firmware. A refusal: `XyfError` with the device's code and a plain reason (`busy`; `not_found` with `fields.missing`, `MISSING_WORDS`); a failed or cancelled job: `JobError` (`status`, the reason in words); aborting `signal` sends `job.cancel` and waits for the clean-up; no step for `stallMs` (90 s): `XyfError` `timeout` (the job keeps running) |
 | `makeDefault(client, id, { onProgress, pollMs, stallMs })` → `{ id, switched, status }` | destructive (ask first): `library.set_default`; an entry whose content is not installed answers `started` and the content switch runs as a job, followed through `job.status` until the default is written (`switched: true`); a failed switch: `JobError` (`what: 'content switch'`, the default unchanged) |
 | `jobStatus(client, job = 0)` → `JobStatus` | `{ job, phase, done, total, error, code, elapsedMs, steps, longestMs, peak, debris, detail, final, folder }`; job 0: the running or last one; when done, `detail` is the library entry id; `folder`: its work folder in `tmp/` (debris of a failed job) |

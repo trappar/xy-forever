@@ -1,11 +1,12 @@
 // Part of usb_service.cpp, included there at this point: not compiled alone.
 // JOB_STATUS: u32 job (0: the running or last). Reply: u32 status, then the job_status fields.
 void job_status(uint8_t seq, const uint8_t* payload, U32 length) {
-    if (package_active) { status_only(P::t_job_status, seq, P::s_busy); return; }
+    if (menu_pack_active || package_active) { status_only(P::t_job_status, seq, P::s_busy); return; }
     JobSlot& s = slot();
     const U32 want = length == 4 ? P::get32(payload) : 0;
 #if defined(XYF_CONTENT_SWITCH)
     if (length == 4 && job_kind == 2) return config_status(seq, want);
+    if (length == 4 && job_kind == 3) return adopt_status(seq, want);
     if (length == 4 && job_kind) return content_status(seq, want);
 #endif
     uint8_t* p = files;
@@ -35,12 +36,12 @@ void job_status(uint8_t seq, const uint8_t* payload, U32 length) {
 // JOB_CANCEL: u32 job (0: the running one). mod_job closes its handle and removes its files,
 // job_finish its folders and the window. Reply: u32 status, u32 debris.
 void job_cancel(uint8_t seq, const uint8_t* payload, U32 length) {
-    if (package_active) { status_only(P::t_job_cancel, seq, P::s_state); return; }
+    if (menu_pack_active || package_active) { status_only(P::t_job_cancel, seq, P::s_state); return; }
     JobSlot& s = slot();
     const U32 want = length == 4 ? P::get32(payload) : 0;
 #if defined(XYF_CONTENT_SWITCH)
     if (length == 4 && job_kind) {                                       // a switch is repaired, not cancelled
-        const U32 code = want && want != cslot().id ? P::s_not_found : P::s_state;
+        const U32 code = want && want != (job_kind == 3 ? aslot().id : cslot().id) ? P::s_not_found : P::s_state;
         uint8_t p[8]; P::put32(p, code); P::put32(p + 4, 0);
         result.last_status = code;
         send(P::t_job_cancel, seq, p, 8);

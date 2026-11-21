@@ -18,13 +18,15 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   inbox/                    MTP drop folder: .tfw, .ldr, open-xy bundles   [planned]
   tmp/job-<id>/             mods.apply's output until the commit; -old: the replaced entry; swept (below)
   tmp/pkg-v1-<token>/       host package transaction; -old: detached old package, both swept
+  tmp/adopt-<id>/           the stock entry's adoption until its rename into firmware/ (#178; jobs.md); swept by the next one
   blobs/<sha256>            verified content named by kept firmware entries (package-transactions.md)
   tmp/put-<size>-<tag>      an upload (file.write_*, MTP SendObject) until A renames it onto its name; swept (below)
   job.txt, job.old           version-1 content intent; menu/service replay or previous-entry undo (jobs.md)
   content-state.txt         what /yaffs2/content/ matches, and what XY Forever installed there (below)
   content-official/         the official op1_factory.json and content.sha256, saved before the first content change
   config.json               the saved configuration: base, mods on, what Open-XY was built from (below)
-  settings.txt              device settings (#21, the Settings page; target/xyf_settings.hpp), format=1: power_on=play|always, usb=mtp_serial|mtp_only|serial (usb=mtp, from before mtp_only: mtp_serial), confirm=0|1 (Confirm on device, not built); absent, unreadable or a missing key: the defaults; a newer format: the defaults, never rewritten
+  converged.txt             format=1, inputs=<SHA-256 of the saved configuration>, default=<id>: the last convergence (#197; state.md)
+  settings.txt              device settings (#21, the Settings page; target/xyf_settings.hpp), format=1: power_on=play|always, usb=mtp_serial|mtp_only|serial (#191: serial or MTP off, live; usb=mtp: mtp_serial), confirm=0|1 (Ask before USB control, #65: no USB command changes it; a file transfer can); absent, unreadable or a missing key: the defaults; a newer format: the defaults, never rewritten
 ```
 
 Changes by hand (MTP, serial file commands; protocol 1.13) may touch all of `/yaffs2` except

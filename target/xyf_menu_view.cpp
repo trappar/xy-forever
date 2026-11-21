@@ -12,7 +12,6 @@ namespace xyf { namespace menu {
 namespace {
 const char* const hint_main = "- / +  choose      PLAY  select";
 const char* const hint_unavailable = "Turn the OP-XY off and on. If it stays, hold COM at power-on.";   // 193
-const char* const hint_library = "- / +  choose   PLAY  boot once   SHIFT+PLAY  default   STOP  back";
 }
 
 void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* chrome) {
@@ -23,59 +22,64 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         m.count = main_items; m.selected = s.main_selected;
         // 193: rows that need storage dimmed while it starts (not in its first 400 ms: no flicker on a normal
         // boot) or is unavailable; a refused row's line in place of the status; the way out when unavailable.
-        m.dimmed = 0;
+        // The safe-mode row dimmed too while no setup with mods is saved.
+        m.dimmed = s.safe_label ? 0u : 1u << item_safe;
         for (uint32_t i = 0; i != main_items; ++i)
             if (s.storage != storage_waiting && needs_storage(s, i)) m.dimmed |= 1u << i;
-        const bool down = needs_storage(s, item_continue);
-        m.status = down && s.note ? s.note : status;
+        const char* note = main_note(s);
+        m.status = note ? note : status;
         m.hint = s.storage == storage_unavailable ? hint_unavailable : hint_main; m.chrome = chrome;
         ui::draw_menu(fb, m);
         return;
     }
-    case Screen::library: {
-        static ui::ListRow rows[catalog::max_entries] XYF_DATA = {};
-        static char details[catalog::max_entries][24] XYF_DATA = {};
-        const uint32_t count = s.catalog ? s.catalog->count : 0;
-        uint32_t shown = 0, selected = 0;
-        for (uint32_t i = 0; i != count; ++i) {
-            if (i == s.hidden) continue;                 // the spare mods entry (the next build's)
-            const catalog::Item& item = s.catalog->items[i];
-            if (i == s.library_selected) selected = shown;
-            catalog::describe(item, details[shown], sizeof(details[shown]));
-            if (i == s.open_xy) {                        // the saved configuration's build: no "content not installed"
-                const char* t = "open-xy, saved setup";
-                uint32_t k = 0;
-                for (; t[k] && k + 1 < sizeof(details[shown]); ++k) details[shown][k] = t[k];
-                details[shown][k] = 0;
-            }
-            rows[shown].title = i == s.open_xy ? "Open-XY" : s.catalog->items[i].name;
-            rows[shown].detail = details[shown];
-            rows[shown].marked = i == s.catalog->default_index;
-            ++shown;
-        }
-        const ui::List list = {"Firmware library", rows, shown, selected, hint_library, chrome, false};
-        ui::draw_list(fb, list);
-        return;
-    }
-    case Screen::settings: {                             // the compact title bar, as the library
-        static ui::ListRow rows[settings::rows] XYF_DATA = {       // xyf_settings.hpp Row, labels
-            {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false}, {"About", 0, false}};
+    case Screen::settings: {                             // the compact title bar
+        uint32_t count = settings::rows;
 #if defined(XYF_SETTING_OPTIONS)
+        static ui::ListRow rows[settings::rows + 1] XYF_DATA = {       // xyf_settings.hpp Row, labels (+ row_packs)
+            {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false},
+            {"Ask before USB control", 0, false}, {"About", 0, false}, {"Content packs", 0, false}};
+        if (s.pack_names) ++count;
         rows[settings::row_memory].detail = settings::memory_text(s.memory, false);   // pending: marked
         rows[settings::row_power_on].detail = s.power_on_text;     // #21: 0 (blank) without settings.txt
         rows[settings::row_usb].detail = s.usb_text;               // (About: none; its page has the version)
+        rows[settings::row_confirm].detail = s.confirm_text;       // #65
         const uint32_t marked = s.settings_marked | (s.memory_pending ? 1u << settings::row_memory : 0u);
         for (uint32_t i = 0; i != settings::rows; ++i) rows[i].marked = marked >> i & 1u;
-        // The line: a note, else what a marked value (accent) means; a settings.txt row's first (saved when the page is left).
-        const char* hint = marked & ~(1u << settings::row_memory) ? "Changes are saved when you leave this page.   STOP  back" :
-                           marked ? "Mod memory changes apply when you boot.   STOP  back" : "PLAY  change   STOP  back";
+        // The line: a note, else what a marked value (accent) means: #191, a pick not written yet (saved on its own).
+        const char* hint = marked ? "Saving...   STOP  back" : "PLAY  change   STOP  back";
 #else
+        static ui::ListRow rows[settings::rows] XYF_DATA = {       // xyf_settings.hpp Row, labels
+            {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false}, {"About", 0, false}};
         rows[settings::row_memory].detail = settings::memory_text(s.memory, s.memory_pending);
         const char* const hint = "PLAY  change   STOP  back";
 #endif
-        const ui::List list = {"Settings", rows, settings::rows, s.settings_selected, s.settings_note ? s.settings_note : hint,
+        const ui::List list = {"Settings", rows, count, s.settings_selected, s.settings_note ? s.settings_note : hint,
                                chrome, true};
         ui::draw_list(fb, list);
+        return;
+    }
+    case Screen::packs: {
+#if defined(XYF_SETTING_OPTIONS)
+        if (s.pack_confirm && s.pack_selected < s.pack_count) {
+            ui::Confirm dialog;                       // assign fields to keep the cold build free of memset
+            dialog.heading = s.pack_inbox ? "Install sound pack?" : "Remove sound pack?";
+            dialog.lines[0] = s.pack_names[s.pack_selected];
+            dialog.lines[1] = dialog.lines[2] = dialog.lines[3] = "";
+            dialog.count = 1;
+            dialog.cancel = "Cancel";
+            dialog.accept = s.pack_inbox ? "Install" : "Remove";
+            dialog.accept_selected = s.confirm_accept;
+            dialog.chrome = chrome;
+            ui::draw_confirm(fb, dialog);
+            return;
+        }
+        static ui::ListRow rows[packs_per_page] XYF_DATA = {};
+        for (uint32_t i = 0; i != s.pack_count; ++i) rows[i].title = s.pack_names[i];
+        const char* hint = s.pack_busy ? "Working..." : s.pack_result ? s.pack_result : s.pack_note ? s.pack_note :
+                           s.pack_inbox ? "PLAY install  SHIFT+PLAY installed  STOP back" : "PLAY remove  SHIFT+PLAY inbox  STOP back";
+        const ui::List list = {s.pack_inbox ? "Inbox packs" : "Content packs", rows, s.pack_count, s.pack_selected, hint, chrome, false};
+        ui::draw_list(fb, list);
+#endif
         return;
     }
     case Screen::options: {                              // #21: a setting's options, the one in effect marked
@@ -103,26 +107,9 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         ui::draw_message(fb, info);
         return;
     }
-    case Screen::confirm_uninstall: {
-        const ui::Confirm c = {"Uninstall XY Forever?", {"Puts back the stock OP-XY os.ldr and deletes",
-                               "xy-forever/ from the device. Your projects stay.", "The real bootloader is not changed.", ""},
-                               3, "Cancel", "Uninstall", s.confirm_accept, chrome};
-        ui::draw_confirm(fb, c);
-        return;
-    }
     case Screen::home_empty:
         ui::draw_home_empty(fb, chrome);
         return;
-    case Screen::confirm_save: {
-        const ui::Choice c = {"Save changes?", {s.save_blocked ? "These changes cannot be saved:" :
-                                                "Save: builds Open-XY if needed, installs its content, then boots it.",
-                                                s.save_blocked ? (s.save_note ? s.save_note : "") :
-                                                "Discard: forgets the changes and boots the saved setup.",
-                                                "Back: returns to the menu; the changes stay.", ""},
-                              3, {s.save_blocked ? 0 : "Save", "Discard", "Back"}, s.save_selected, chrome};
-        ui::draw_choice(fb, c);
-        return;
-    }
     }
 }
 } }

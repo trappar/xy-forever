@@ -7,9 +7,6 @@
 // 0x89, bulk OUT 0x0a, interrupt IN 0x83). Registered before the boot's only start, start(0x200): bit 9
 // registers no stock class but makes the stack build the CDC functional descriptors (from our extras)
 // and the IAD (from the 0x18-byte config record).
-// MTP alone (#21, USB mode "MTP"): the same driver, start and endpoints with one interface, MTP as interface 0 (as
-// the stock MTP driver 88a12534: device class 00/00/00, no IAD, no CDC extras, so bit 9's CDC fill has none to
-// read); no serial interface: the host tool and the web app cannot reach the device.
 // The stock callbacks (USB interrupt) only queue urbs into rings (serial: copy into a RAM ring); all
 // other work runs in B's main loop through pump(). MTP: OpenSession / CloseSession / GetDeviceInfo and
 // three test operations: sink (count N bytes), source (send N pattern bytes) and loopback (echo up to
@@ -96,7 +93,7 @@ enum : uint32_t {
     kCompositeFlags = 0x200,
     kBulkIn = 0x89, kBulkOut = 0x0a, kIntIn = 0x83, kMaxPacket = 512,
     kNotifyIn = 0x81, kSerialOut = 0x08, kSerialIn = 0x8b,   // CDC: interface 0 (notify), 1 (data)
-    kIfaceComm = 0, kIfaceData = 1, kIfaceMtp = 2, kIfaceMtpAlone = 0,
+    kIfaceComm = 0, kIfaceData = 1, kIfaceMtp = 2,
     kSerialOutUrbs = 2, kSerialOutSize = 512,  // one packet per urb: each completes at once (no ZLP question)
     kSerialRing = 8192, kSerialInMax = 16384,  // RAM ring (power of two); one IN urb at most this long
     kOutUrbs = 4, kOutSize = 16384,           // K x S; S a multiple of 512
@@ -149,8 +146,7 @@ void mark(uint32_t step);                      // the hook, unless none is set o
 
 // Register ours, start(0x200): the boot's only start (no stop before: nothing runs yet). false: the
 // slot was taken (register refused): nothing started; the caller starts the stock serial service instead.
-// serial false: MTP alone (no CDC interfaces; serial_write refuses, serial_available stays 0).
-bool begin(const Port& port, bool serial = true);
+bool begin(const Port& port);
 // Before a restart or a boot (menu_release): stop(0), unregister ours, free the urbs we hold. marked: marks
 // around it (none now: the restart's own mark comes first).
 void leave(bool marked = false);

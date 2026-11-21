@@ -162,7 +162,7 @@ void close_files(cold_storage::Stock121ReadOnlySession& storage);
 #endif
 // Role 0: the read-only mount shared by the file server and the state write
 // (one mount per boot); true when mounted; false while install mode has a boot partition
-// selected. held_files(): files and folders b holds open.
+// selected. held_files(): files and folders B holds open, and A's TFW hash reader.
 bool ensure_mounted(cold_storage::Stock121ReadOnlySession& storage);
 uint32_t held_files();
 #if defined(XYF_USB_FILE_WRITE)
@@ -170,6 +170,7 @@ uint32_t held_files();
 // a request (now: a's clock); end_writes closes it and ends the write entry before any other
 // command item (catalog, check, boot, set default, install, dry run, reboot); library_changed is
 // true once after a window that was opened has closed (the caller rescans and re-encodes the catalog).
+// In product builds tick also advances the keyless hash job by one read.
 void tick(cold_storage::Stock121ReadOnlySession& storage, uint32_t now);
 void end_writes(cold_storage::Stock121ReadOnlySession& storage);
 bool library_changed();

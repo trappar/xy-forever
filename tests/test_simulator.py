@@ -132,7 +132,7 @@ class SimulatorTest(unittest.TestCase):
             self.assertEqual(dev.call(kind, b'')[0], ids.S_STATE, kind)       # before HELLO: state, nothing done
         code, text = dev.hello()
         self.assertEqual((code, text), (0, P.hello_text(release.VERSION, None, 'product',   # an empty boot partition
-                                                   xyf_build.usb_switches('xyf-product'))))
+                                                   xyf_build.usb_switches('xyf-product'), confirm=0)))   # sim.seed
         self.assertEqual(P.Hello(text).cmds, P.answered(xyf_build.usb_switches('xyf-product')))
         dev.hello_info = None                             # xyf_host refuses types missing from cmds
         self.assertEqual(dev.call(0x5f, b''), (ids.S_UNSUPPORTED, b''))     # not in cmds: status only
@@ -250,7 +250,7 @@ class SimulatorTest(unittest.TestCase):
         code, text = dev.hello()
         image = hashlib.sha256(data).hexdigest()[:8]
         self.assertEqual((code, text), (0, P.hello_text(release.VERSION, image, 'product',
-                                                       xyf_build.usb_switches('xyf-product'))))
+                                                       xyf_build.usb_switches('xyf-product'), confirm=0)))
         self.assertEqual(dev.hello(), (0, text))                                # the same text all boot
         code, body = dev.call(P.STATUS)
         built = host.decode_status(body)['usb_service']['build']

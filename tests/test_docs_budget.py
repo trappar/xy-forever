@@ -34,6 +34,7 @@ LOCAL_STATUS = 6000                 # docs/status/README.md; its leaves are not 
 TREES = {
     'docs/PROTOCOL.md': 'docs/protocol',
     'docs/ARCHITECTURE.md': 'docs/architecture',
+    'docs/architecture/boot.md': 'docs/architecture/boot',
     'docs/STORAGE.md': 'docs/storage',
     'docs/storage/native-json.md': 'docs/storage/native-json',
     'docs/HARDWARE.md': 'docs/hardware',
@@ -49,7 +50,7 @@ CAPS = {
     'docs/SAFETY.md': 11500,
     'docs/STORAGE.md': 25000,
     'docs/PROTOCOL.md': 56000,      # generated from protocol/v1.json (scripts/protogen.py)
-    'docs/GUIDE.md': 11500,         # for OP-XY owners and mod writers, not agents
+    'docs/GUIDE.md': 11800,         # for OP-XY owners and mod writers, not agents (#65: Ask before USB control)
     'docs/MODS-DEV.md': 5500,
 }
 

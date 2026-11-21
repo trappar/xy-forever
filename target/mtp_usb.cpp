@@ -47,15 +47,10 @@ const IfaceDesc kIfaces[3] = {{kSerialName, 2, 2, 1, 0, 1, &kCommAlt},   // CDC 
                               {kIface, 6, 1, 1, 0, 1, &kAlt}};             // still image, PTP/MTP
 const Iad kIads[1] = {{kSerialName, 2, 2, 1, kIfaceComm, 2, {0, 0, 0}}};
 const ConfigDesc kConfig = {kName, 0xc0, 50, 0, 3, kIfaces, 1, kIads};
-// MTP alone: class per interface (as the stock MTP's DevInfo 0x88a1251c), the MTP interface only, no IAD.
-const DevInfo kDevInfoMtp = {0, 0, 0, 0, 0x2367u, 0x0021u, kMaker, kProduct, kSerial};
-const ConfigDesc kConfigMtp = {kName, 0xc0, 50, 0, 1, &kIfaces[kIfaceMtp], 0, 0};
 Driver g_driver = {kName, &kOps, &kDevInfo, &kConfig, 0, 0, 1, 0};
 
 const Port* g_port = 0;
 volatile State g_state = State::off;
-bool g_serial = true;                           // begin's: the CDC interfaces are part of this start
-uint32_t mtp_iface() { return g_serial ? uint32_t(kIfaceMtp) : uint32_t(kIfaceMtpAlone); }
 Stats g_stats = {};
 SinkHook g_sink_hook = 0;
 
@@ -177,14 +172,14 @@ int on_recv_setup(Urb* ep0) {
     setup_seen = true;
     const uint8_t* s = ep0->setup;
     if ((s[0] & 0x60) != 0x20) return 1;                       // class requests only
-    if (g_serial && s[4] == kIfaceComm) switch (s[1]) {        // CDC ACM by interface (wIndex)
+    if (s[4] == kIfaceComm) switch (s[1]) {                    // CDC ACM by interface (wIndex)
     case 0x20: copy(line_coding, ep0->buf, 7); ++g_stats.line_codings; ep0->wanted = 0; return 0;   // data stage in
     case 0x21: copy(ep0->buf, line_coding, 7); ep0->wanted = 7; return 0;
     case 0x22: g_stats.control_lines = get16(s + 2); ep0->wanted = 0; return 0;
     case 0x23: ep0->wanted = 0; return 0;                      // SEND_BREAK: acknowledged
     default: return 1;
     }
-    if (s[4] != mtp_iface()) return 1;
+    if (s[4] != kIfaceMtp) return 1;
     switch (s[1]) {
     case 0x64: cancel_flag = true; ep0->wanted = 0; return 0;  // Cancel (data stage already in)
     case 0x66: reset_flag = true; ep0->wanted = 0; return 0;   // Device Reset
@@ -247,7 +242,7 @@ void configure() {
         out_urbs[n_out++] = u;
         requeue(u);
     }
-    for (uint32_t i = 0; g_serial && i != kSerialOutUrbs; ++i) {   // the serial's bulk OUT
+    for (uint32_t i = 0; i != kSerialOutUrbs; ++i) {            // the serial's bulk OUT
         const uint32_t mm = g_port->mask();
         Urb* u = g_port->alloc(dev, kSerialOut, kSerialOutSize);
         g_port->unmask(mm);
@@ -438,11 +433,9 @@ void in_step() {
 }
 }  // namespace
 
-bool begin(const Port& port, bool serial) {
+bool begin(const Port& port) {
     if (g_state != State::off) return false;
     g_port = &port;
-    g_serial = serial;
-    g_driver.devinfo = serial ? &kDevInfo : &kDevInfoMtp; g_driver.configs = serial ? &kConfig : &kConfigMtp;
     const uint32_t written = g_stats.marks_written, failed = g_stats.marks_failed;   // set_mark_hook's
     g_stats = Stats();
     g_stats.marks_written = written; g_stats.marks_failed = failed;
@@ -481,7 +474,7 @@ uint32_t serial_read(uint8_t* out, uint32_t n) {
     return n;
 }
 int serial_write(const uint8_t* data, uint32_t n) {
-    if (!g_serial || g_state != State::configured || serial_in_urb || n > kSerialInMax) { ++g_stats.serial_busy; return -1; }
+    if (g_state != State::configured || serial_in_urb || n > kSerialInMax) { ++g_stats.serial_busy; return -1; }
     const uint32_t m = g_port->mask();
     Urb* u = g_port->alloc(g_dev, kSerialIn, n ? n : 1);
     g_port->unmask(m);

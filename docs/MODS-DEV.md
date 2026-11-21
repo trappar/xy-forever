@@ -73,24 +73,19 @@ set (without `--yes` it is a dry run).
 ## 3. Build and boot today
 
 The library needs the stock 1.2.1 firmware as an entry, with its `content.sha256`.
-Without it Save stops with "Save failed: no stock OP-XY firmware in the library."
+Without it booting from the first row stops with "Failed: no stock OP-XY firmware in the library."
 `xyf_host.py library-add ... --content DIR` adds both (DIR: the official package's
 `firmware/blackfin/content`).
 
 **On the device (the normal way):** power on holding PLAY, open Mods, turn your
-machines on, STOP, then PLAY on the first row and choose Save. The OP-XY builds,
-installs content, saves the setup and boots it.
+machines on (saved at once), STOP, then PLAY on the first row. The OP-XY builds,
+installs content, sets the default and boots it.
 
-**From the computer:**
+**From the computer:** `python3 xyf_host.py mods set MACHINE ... [--ext ID ...]` saves the same
+selection (checked, or refused with the reason; none: all off); it is built at the next start.
 
-```sh
-python3 xyf_host.py mods apply --base ID --generation opxy-1.2.1/<generation> MACHINE ... \
-    [--ext ID ...] [--name NAME] [--wait]
-```
-
-This builds into library entry `mods-a` or `mods-b` and stops there. Then make that
-entry the default (SHIFT + PLAY in the Firmware library, or `set-default ID
---yes-write`), which installs its content first. `mods cancel` stops a running build.
+To try your build once without changing what is saved: `mods dev --boot` (or `mods apply`, then
+`set-default` and `boot`). The next plain power-on goes back to the saved setup.
 
 ## Limits
 

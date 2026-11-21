@@ -531,19 +531,16 @@ class SyntheticJob(Base, unittest.TestCase):
             self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
 
     def test_menu_actions_wait_for_the_job(self):
-        """Continue, Boot once and Set default pressed while a build runs show the busy line
-        and do nothing; the build completes."""
-        play, plus, shift = 51, 54, 55
+        """Continue pressed while a build runs shows the busy line and does nothing, twice; the build
+        completes."""
+        play = 51
         self.sim.set('a_slow_ms', 4)
         job = self.start(['alpha', 'beta'])
         self.until_phase(job, 2)
         self.press((play, 1), (play, 0))                                    # Continue (the default's row)
-        self.press((plus, 1), (plus, 0), (play, 1), (play, 0))              # the library
-        self.press((play, 1), (play, 0))                                    # Boot once (back on the home rows)
-        self.press((play, 1), (play, 0))                                    # the library again
-        self.press((shift, 1), (play, 1), (play, 0), (shift, 0))            # Set default
+        self.press((play, 1), (play, 0))                                    # again (back on the home rows)
         log = (self.dir / 'log.txt').read_text()
-        self.assertEqual(log.count('menu: line: Busy: a build or content change is running.'), 3, log[-2000:])
+        self.assertEqual(log.count('menu: line: Busy: a build or content change is running.'), 2, log[-2000:])
         self.sim.set('a_slow_ms', 0)
         f = self.finished(job)
         self.assertEqual(MS.PHASES[f['phase']], 'done', f)

@@ -24,6 +24,7 @@ void attach_sdram(int fd);
 struct Shared {
     std::atomic<int32_t> a_silent, a_slow_ms, drop_request, drop_body, cable_pull, cut_after, fail_write;
     std::atomic<int32_t> fail_mount;              // the Nth yaffs mount from now fails (EIO)
+    std::atomic<int32_t> hold_mod_verify;         // hold a USB mod job after it writes its output parts
     std::atomic<int32_t> a_silenced;              // B's class requests a_silent kept from A, or A's answer to (tests: B waits)
     std::atomic<uint32_t> clock_reads[2];         // device clock reads by A and B (tests: B waits on a request)
     // Test hooks: the Nth stock select on A switches the partition and then answers failure;
@@ -35,6 +36,8 @@ struct Shared {
     std::atomic<int32_t> statfs_override, statfs_block_bytes, statfs_free_blocks, statfs_fail;
     std::atomic<int32_t> storage_ops, play, cuts;
     std::atomic<int32_t> b_listening;            // the USB CDC endpoint is open (TCP port listening)
+    std::atomic<uint32_t> usb_bus_resets;        // control "unplug": the cable out and in (#65; B closes its client)
+    std::atomic<int32_t> ask;                    // --ask: #65's setting as settings.txt says (else it reads Off)
     // The chip's partition register as A's last stock select left it (0 user area: yaffs; 1, 2 boot
     // partitions), and the yaffs media changes made while a boot partition was selected (on the
     // device they would land on that boot partition).
@@ -120,6 +123,8 @@ struct Shared {
     // set rename_fault N, rename_fault_kind K: the Nth yaffs rename on A from now fails with EIO
     // (K 1, nothing renamed), is followed by a power cut (K 2) or leaves A silent from then on (K 3: a_silent).
     std::atomic<int32_t> rename_fault, rename_fault_kind;
+    // set fail_list 1: closing A's listing of xy-forever/firmware fails (EIO) while set: every library scan fails (#178)
+    std::atomic<int32_t> fail_list;
     std::atomic<uint32_t> package_gc; // B: idle collector state, for deterministic foreground/preemption tests
     // Test hooks (control "knob ID DELTA [COUNT]", "knob_raw HEX [COUNT]", "knob_jump N"): PSoC frames for
     // B's stock receive queue, as the stock UART handler stores them. B's menu loop takes them where the stock

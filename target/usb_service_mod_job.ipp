@@ -12,8 +12,8 @@
 // job removes its files (mod_job) and folders (wipe_step); debris = 1 when that could not be done. B
 // closes A's write window when the job ends (settle_writes).
 // Before the job's first step B sweeps leftover tmp/job-* folders (js_sweep); after the last, it commits the entry into the library:
-// the target id (job_target, chosen before anything is written) is never the default
-// or the boot-once entry; the old entry is renamed into tmp/job-<id>-old, the new one onto the target, then
+// the target id (job_target, chosen before anything is written) is never the default,
+// the boot-once entry or the saved Open-XY slot; the old entry is renamed into tmp/job-<id>-old, the new one onto the target, then
 // the old tree is removed. One request (or one list page and one change) per loop pass; A rescans the
 // library when B closes the window (settle_begin, as after a put).
 namespace mj = xyf_core::mod_job;
@@ -57,7 +57,7 @@ static_assert(sizeof(JobSlot) <= job_slot_bytes, "the job's state fits before it
 volatile U32 job_state __attribute__((section(".data"))) = job_none;
 volatile U32 job_counter __attribute__((section(".data"))) = 0;
 volatile U32 job_last_target __attribute__((section(".data"))) = 0;   // 1 mods-a, 2 mods-b (this boot)
-volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 0 mods.apply, 1 content switch, 2 config, 4 MTP session (3 reserved)
+volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 0 mods.apply, 1 content switch, 2 config, 3 adoption, 4 MTP session
 volatile U32 job_usb __attribute__((section(".data"))) = 0;           // the job was started over USB
 JobSlot& slot() { return *reinterpret_cast<JobSlot*>(XYF_JOB_REGION_BEGIN); }
 volatile U32 blob_collecting __attribute__((section(".data"))) = 0;
@@ -78,7 +78,8 @@ bool journal_kept() {
     }
     return false;
 }
-bool job_running() { return job_state == job_busy || package_active || blob_collecting || reporting; }
+volatile U32 menu_pack_active __attribute__((section(".data"))) = 0;
+bool job_running() { return menu_pack_active || job_state == job_busy || package_active || blob_collecting || reporting; }
 #if defined(XYF_MTP_SESSION)
 bool mtp_busy();                                                        // an MTP operation in flight
 #define XYF_OR_MTP_BUSY || mtp_busy()
@@ -406,12 +407,46 @@ U32 job_choice(JobSlot& s, xyf::state::Choice& choice) {                // the s
     }
     return P::s_ok;
 }
+#if defined(XYF_CONTENT_SWITCH)
+U32 saved_mod_slot(char (&saved)[8]) {
+    namespace xg = xyf::config;
+    namespace json = xyf_core::json;
+    struct Work {
+        uint8_t raw[json::document_bytes];
+        json::Workspace parser;
+        char view[xg::max_text];
+    };
+    static_assert(sizeof(Work) <= mods_metadata_bytes, "saved slot lookup fits in the idle report slot");
+    auto& work = *reinterpret_cast<Work*>(job_work_end - mods_metadata_bytes);
+    config_io::Scan scan = {};
+    uint32_t bytes = 0;
+    bool native = false;
+    U32 code = P::s_busy;
+    for (U32 i = 0; i != 8 && code == P::s_busy; ++i)
+        code = config_io::read(scan, work.raw, bytes, native, mounted);
+    if (code != P::s_ok) return code == P::s_not_found ? U32(P::s_ok) : code;
+    const char* text = reinterpret_cast<const char*>(work.raw);
+    if (native) {
+        const auto doc = json::parse(text, bytes, work.parser, json::config_schema);
+        const auto result = json::config_text(doc, work.view, sizeof(work.view), bytes);
+        if (result != json::ok) return result == json::version ? U32(P::s_unsupported) : U32(P::s_refused);
+        text = work.view;
+    } else if (!xg::supported_format(text, bytes)) return P::s_unsupported;
+    xg::field(text, bytes, "slot", saved, sizeof(saved));
+    return P::s_ok;
+}
+#endif
 U32 job_target(JobSlot& s) {
     xyf::state::Choice choice;
     if (const U32 code = job_choice(s, choice)) return code;
+    char saved[8] = {0};                         // the saved Open-XY slot: never built over, safe mode too
+#if defined(XYF_CONTENT_SWITCH)
+    if (const U32 code = saved_mod_slot(saved)) return code;
+#endif
     bool open[2], present[2];
     for (U32 i = 0; i != 2; ++i) {
-        open[i] = !same_text(job_ids_mods[i], choice.state.default_id) && !same_text(job_ids_mods[i], choice.state.once);
+        open[i] = !same_text(job_ids_mods[i], choice.state.default_id) && !same_text(job_ids_mods[i], choice.state.once) &&
+                  !same_text(job_ids_mods[i], saved);
         char path[file_engine::max_path];
         join(path, job_firmware, job_ids_mods[i]);
         uint8_t record[file_client::record_bytes];

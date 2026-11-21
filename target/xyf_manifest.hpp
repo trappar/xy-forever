@@ -149,6 +149,7 @@ struct Recognition { uint8_t kind, reason; bool accepted, content_set; };
 static const uint32_t prefix_bytes = 0x10c;
 // 1-127 bytes of 0x20..0x7e, no '/', '\\' or ':', not "." or "..", not ending in '.' or ' '.
 bool valid_name(const char* name);
+bool pack_name(const char* name);   // also excludes bootloader and companion image names
 // size: the whole file's size; prefix: its first prefix_length bytes.
 void recognise_file(const char* name, uint32_t size, const uint8_t* prefix, uint32_t prefix_length,
                     Recognition& out);

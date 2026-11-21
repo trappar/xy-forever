@@ -83,7 +83,9 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #if defined(XYF_CONTENT_SWITCH)
 #include "xyf_job_journal.hpp"
 #include "xyf_content_job.hpp"
-#include "xyf_config.hpp"           // the saved configuration (the config job)
+#include "xyf_config_io.hpp"           // the saved configuration (the config job)
+#include "xyf_converge.hpp"         // #197: its fingerprint (mark_store, the config job)
+#include "xyf_mods_io.hpp"           // #26: config.get, config.set (the Mods page's)
 #include "xyf_settings.hpp"         // #21: settings.txt (through the config job), the confirm gate
 #endif
 #if defined(XYF_TFW_CHECK)
@@ -107,9 +109,11 @@ bool rehearsal_active();
 #include "usb_service_mod_job.ipp"          // the mod assembly job on B
 #include "usb_service_save_log.ipp"         // the save-time log
 #include "usb_service_content.ipp"          // the content switch and config jobs
+#include "usb_service_adopt.ipp"            // #178: the stock entry's adoption
 #include "usb_service_recovery.ipp"         // durable content intent, menu/service startup only
 #include "usb_service_mtp_session.ipp"      // the MTP session (with XYF_SIM it leaves this namespace for one declaration)
 #include "usb_service_mods_apply.ipp"       // MODS_APPLY
+#include "usb_service_config.ipp"           // CONFIG_GET, CONFIG_SET (#26)
 }
 namespace xy_forever { namespace usb_service {      // the Mods page's hooks (usb_service.hpp)
 #include "usb_service_mods_page.ipp"        // the Mods page's hooks
@@ -132,6 +136,7 @@ namespace xy_forever { namespace usb_service {
 #include "usb_service_entry.ipp"            // the public entry points
 #include "usb_service_composite.ipp"        // serial + MTP as one composite device
 #include "usb_service_crash_trigger.ipp"    // diag.crash (test build xyf-crash-trigger only, #102)
+#include "usb_service_trust.ipp"            // #65: Ask before USB control
 #include "usb_service_home.ipp"             // the home loop
 } }
 #endif

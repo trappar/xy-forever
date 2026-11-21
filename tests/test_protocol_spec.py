@@ -209,7 +209,7 @@ class GoldenFramesTest(unittest.TestCase):
                          ('-DXYF_VERSION="%s"' % release.VERSION, '-DXYF_VERSION_CODE=%#xu' % release.code(),
                           '-DXYF_BUILD_MODE="product"'))
         self.assertLessEqual(len(g['fields']['info']), ids.MAX_HELLO)
-        self.assertEqual(len(g['fields']['info']), 189)                   # 1.15: version=0.1.0;image=<8 hex>
+        self.assertEqual(len(g['fields']['info']), 220)                   # 1.15: version=0.1.0;image=<8 hex>; 1.23: confirm, trust; 1.25: serial
         self.assertTrue(g['fields']['info'].endswith(';stage2=0'))         # set at run time
         loaded = P.hello_text(info.keys['version'], image, info.keys['mode'], product, stage2=12)
         self.assertTrue(loaded.endswith(';stage2=12') and P.Hello(loaded).answers(P.ids.STAGE2_INFO))
@@ -292,9 +292,12 @@ class SpecDataTest(unittest.TestCase):
     def test_common_errors(self):
         s = spec()
         self.assertEqual([(e['status'], e['except']) for e in s['common_errors']],
-                         [('state', ['hello']), ('unsupported', ['hello']), ('busy', ['hello'])])
+                         [('state', ['hello']), ('unsupported', ['hello']), ('busy', ['hello']),
+                          ('waiting', ['hello']), ('declined', ['hello']),                   # 1.23: #65
+                          ('serial_off', ['hello'])])                                         # 1.25: #191
         self.assertEqual(ids.COMMON_ERRORS, ((ids.S_STATE, ('hello',)), (ids.S_UNSUPPORTED, ('hello',)),
-                                             (ids.S_BUSY, ('hello',))))
+                                             (ids.S_BUSY, ('hello',)), (ids.S_WAITING, ('hello',)),
+                                             (ids.S_DECLINED, ('hello',)), (ids.S_SERIAL_OFF, ('hello',))))
         # a common status comes alone even where on_error is "full"
         self.assertEqual(P.decode_reply(P.FILE_WRITE, struct.pack('<I', ids.S_STATE)), (ids.S_STATE, None))
 
@@ -378,14 +381,15 @@ class DeviceAgreesTest(unittest.TestCase):
         us = text('target/usb_service.cpp')
         self.assertIn('    if (path_bytes + 1 + 32 != length) code = P::s_bad_request;\n'
                       '    else if (!storage_server::valid_write_path(path)) code = P::s_refused;\n', us)
-        ss = text('target/storage_server.cpp') + unit_text(ROOT / 'target/file_client.cpp')
-        self.assertIn('if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;', ss)
+        client_write = text('target/file_client_write.ipp')
+        self.assertIn('if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;', client_write)
         self.assertIn('refused', command(spec(), 'file.write_staged')['errors'])
         self.assertEqual((ids.S_UNSUPPORTED, ids.S_REFUSED, ids.S_BUSY, ids.S_CANCELLED), (2, 14, 15, 16))
-        self.assertNotIn('s_busy', ss)                                        # 1.10: only the job's one request slot
+        write_path = client_write + text('target/storage_server_engine.ipp')
+        self.assertNotIn('s_busy', write_path)                 # USB job arbitration happens before file dispatch
         self.assertIn('else if (job_blocks(type)) status_only(type, seq, P::s_busy);', us)
         # The product A rehearsal can be cancelled; the old staged file writer still cannot.
-        self.assertNotIn('s_cancelled', unit_text(ROOT / 'target/usb_service_file_write.ipp') + ss)
+        self.assertNotIn('s_cancelled', text('target/usb_service_file_write.ipp') + write_path)
 
     def test_published_document(self):
         doc = ''.join(text(rel) for rel in protogen.DOC_LEAVES)

@@ -1,8 +1,8 @@
 #ifndef XYF_CONFIG_HPP
 #define XYF_CONFIG_HPP
 #include <stdint.h>
-// The saved configuration ("Open-XY", configured like a BIOS: the Mods page changes a pending copy,
-// Continue asks to save and applies it when you boot). Freestanding, header only, pure (host-tested through
+// The saved configuration ("Open-XY", configured like a BIOS: #197, a flip on the Mods page is saved at once,
+// Continue converges to it and boots). Freestanding, header only, pure (host-tested through
 // the simulator; processor B's xyf_mods_io reads and applies it, usb_service's config job writes it).
 // Functions are static: an inline (weak) function is a register call on Blackfin (the builder's call audit).
 //
@@ -11,13 +11,14 @@
 //   base=<library entry id>           the stock firmware the mods are built on
 //   profile=<p> generation=<g>         the mod package set the selection is from (one line each)
 //   unverified=0|1                     the user allowed an unknown base (SHIFT+PLAY on the Mods status row)
-//   safe=1                             retained safe selection state; absent means false
 //   built=<base> <generation> <set> <count>   what the Open-XY firmware in slot= was made from (set: the sum
 //                                      of the CRC-32 of every name of the selection, 8 hex: order-free)
 //   slot=mods-a|mods-b                 the library entry holding it (empty: never built)
-//   stamp=<64 hex>                     that entry's info.txt sha256= (its os.ldr) when it was built
+//   stamp=<64 hex>                     that entry's manifest SHA-256 (its os.ldr) when it was built
 //   memory=standard|expanded           Mod memory (Settings): expanded, the 4 MiB layout (mods.apply flag
 //                                      bit 1); absent or anything else: standard. built= then ends " expanded".
+//   safe=0|1                           safe mode ("Boot without mods"): the base boots with its official content,
+//                                      the rest is kept for "Restore Open-XY"; absent: 0, also with no slot or mods
 //   mods=<name>,<name>,...             the mods switched on: machine folders, then ext-<id>; empty: none (last)
 // Save replaces config.json with config.json.part and config.json.old. Legacy
 // config.txt and its rollback copy remain readable when both native names are absent.
@@ -27,7 +28,10 @@ static const char old_path[] = "/yaffs2/xy-forever/config.json.old";
 static const char part_path[] = "/yaffs2/xy-forever/config.json.part";
 static const char legacy_path[] = "/yaffs2/xy-forever/config.txt";
 static const char legacy_old_path[] = "/yaffs2/xy-forever/config.old";
-static const uint32_t max_text = 2048;
+static const char* const names[] = {"config.json", "config.json.old", "config.txt", "config.old"};
+static const char* const paths[] = {path, old_path, legacy_path, legacy_old_path};
+static const uint32_t path_count = sizeof(names) / sizeof(names[0]), max_text = 2048;
+static inline bool native_record(uint32_t index) { return index < 2; }
 enum State : uint32_t { unread = 0, none = 1, present = 2, failed = 3 };
 struct Record {
     uint32_t state, count, unverified, expanded, safe;
@@ -80,13 +84,14 @@ static inline void parse(const char* t, uint32_t length, Record& r) {
     uint32_t n = 0;
     const char* u = value(t, length, "unverified", n);
     r.unverified = u && n == 1 && u[0] == '1';
-    const char* s = value(t, length, "safe", n);
-    r.safe = s && n == 1 && s[0] == '1';
     const char* e = value(t, length, "memory", n);
     r.expanded = e && n == 8 && same_n(e, "expanded", 8);
+    const char* s = value(t, length, "safe", n);
+    r.safe = s && n == 1 && s[0] == '1';
     const char* m = value(t, length, "mods", n);
     for (uint32_t i = 0; m && i != n; ++i) if ((i == 0 || m[i - 1] == ',') && m[i] != ',') ++r.count;
     if (!same(r.slot, "mods-a") && !same(r.slot, "mods-b")) r.slot[0] = r.built[0] = r.stamp[0] = 0;
+    if (!r.slot[0] || !r.count) r.safe = 0;              // nothing to restore
 }
 // Is name (an extension with its "ext-" prefix) in the record's mods= line?
 static inline bool listed(const char* t, uint32_t length, const char* prefix, const char* name) {

@@ -359,7 +359,7 @@ class MenuOnFailureTest(unittest.TestCase):
         self.assertIn('if (!xy_forever::xyf_boot::menu_forced() && ms_since(r.start_cycles) > last_key_ms + idle_timeout_ms) {', ui)
         hdr = (ROOT / 'target/xyf_boot.hpp').read_text()
         self.assertIn('item_check_default = 0x13, item_check_entry = 0x30;', hdr)
-        self.assertIn('static_assert(sizeof(CheckStatus) == 120, "CheckStatus layout");', hdr)
+        self.assertIn('static_assert(sizeof(CheckStatus) == 124, "CheckStatus layout");', hdr)
         # 0x30..0x3f collides with nothing (entries 0x20..0x2f, set default 0x40.., id bytes 0x60..)
         self.assertIn('item_boot_entry = 0x20', hdr)
         self.assertIn('if (!b_lost && b_notice[0]) return b_notice;', self.fb)
@@ -529,6 +529,11 @@ class OneSessionWriteTest(unittest.TestCase):
         self.assertIn('if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item', ss)
         # op 9 fails while the window is open or when its read-only reopen failed (as 154).
         self.assertIn('const bool ok = !window_open && (!had || window_result == U32(cold_storage::Result::ok));', ss)
+        # A's own hash reader must also close before op 9 reports success.
+        close = ss[ss.index('void close_engine('):ss.index('void serve_engine(')]
+        self.assertLess(close.index('if (!tfw_hash_clear(storage)) return;'), close.index('close_handles();'))
+        self.assertIn('const bool closed = ok && !tfw_hash_open();', ss)
+        self.assertIn('session.reply(request, closed ? (had ? 3 : 1) : 0, closed ? 0 : error_access);', ss)
         self.assertIn('if (!seen || seen == engine_latched || engine == entry_run) return;', ss)
 
 

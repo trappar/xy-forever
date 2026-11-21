@@ -41,8 +41,8 @@ If `default` is missing or its entry is unusable, XY Forever opens its menu.
 
 An entry is unusable without `os.ldr`, or when its content is not installed in `/yaffs2/content/`
 (the one rule `xyf::library::content_installed`: the content state below matches it). Such an entry is
-listed ("content not installed", catalog flag 8); PLAY (boot once) and `library.boot` refuse it
-(`no_content`: make it the default to install its content); SHIFT+PLAY and `library.set_default` run the
+listed ("content not installed", catalog flag 8); `library.boot` refuses it
+(`no_content`: make it the default to install its content); `library.set_default` runs the
 content switch first and write the default only when it succeeded (`started`, then `job.status`).
 
 ### Content state
@@ -67,7 +67,7 @@ record, `.old` removed; only a `.old` (a cut between) reads as switching, never 
 state; an assembled mod set only when the record is installed for it. A plain power-on never writes: an unusable default opens the menu with the reason
 ("Default <id>: content not installed" or "content needs repair").
 
-The switch (B's job, `target/xyf_content_job.hpp`; one file request per step, USB live): the target's `info.txt` (`generation`: a mod set), the record (or its
+The switch (B's job, `target/xyf_content_job.hpp`; one file request per step, USB live): the target's manifest (`generation`: a mod set), the record (or its
 `.old`); in the official state the live catalog's SHA-256 must equal the `op1_factory.json` line of a library entry's `content.sha256` (else refused: not the
 official set), otherwise the saved list is used; the target's `content/` lines of `files.sha256` (a path the official list names is refused, as is any path the
 rule refuses). Every refusal comes before the first write. Then: the official list and catalog saved under `content-official/` (official state, unless the same
@@ -83,20 +83,23 @@ never `dlc/`, `user/` or a name holding `bootloader` (`xyf::content::allowed`, o
 
 [`config.json`](native-json/schemas.md#configuration-configjson) stores the desired
 selection and the built slot's identity. Readers take the first present name
-among `config.json`, `config.json.old`, `config.txt`, and `config.old`. A selected
-invalid or newer native record blocks Save and reports the error. Legacy records
-may omit `format` or use `format=1`. Other explicit formats also block Save. Boot reads the
-record without rewriting it. Save writes `config.json.part`, renames the prior
-native record to `config.json.old`, then publishes the part by rename. A cut in
-between leaves the backup authoritative. Legacy records remain available for
-reading when both native names are absent.
+among `config.json`, `config.json.old`, `config.txt`, and `config.old`. An unreadable or unsupported
+selected record stops convergence and saving. Legacy records can omit `format` or use `format=1`.
 
-Save builds into the spare slot unless the saved slot, selection identity and
-firmware stamp still match. Then it installs content, publishes the configuration
-and commits the default via `config_store`. This preserves the content journal
-through the configuration and default commit.
+A Mods page or Mod memory flip saves at a quiet moment. The USB `config.set` command saves the same
+inputs. The writer stages `config.json.part`, moves any current record to `config.json.old`, then publishes
+the part. A cut between renames leaves the backup authoritative. Legacy files remain readable. Reading
+a legacy record and booting an already converged setup never migrate it.
+
+Boot without mods, Restore Open-XY and Continue converge to the saved inputs
+(`target/xyf_converge.hpp`, run by `xyf_mods_save.ipp`). The device builds into the spare slot when needed
+and switches content if it differs. After the switch it publishes the record and commits the default via
+`config_store`. Safe mode boots the base with official content and keeps the saved mods and slot.
+
+Convergence writes `converged.txt` when its fingerprint differs. A plain power-on that finds the same
+configuration bytes and default can boot immediately ([boot convergence](../architecture/boot/convergence.md)).
 
 `log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
-Save, USB build or content switch, the last 20; `kind result mods memory added removed total` then each
+menu converge, USB build or content switch, the last 20; `kind result mods memory added removed total` then each
 part's milliseconds and the switch's counts. Written by B in the last write window of the sequence (`.part`,
-the old file removed, renamed); a failed write is ignored, a failed Save writes none.
+the old file removed, renamed); a failed write is ignored, a failed converge writes none.

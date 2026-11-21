@@ -48,7 +48,7 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
 
 ## Memory map (product)
 
-Same on A and B (separate SDRAM). Evidence for the free gap and the hand-off: [architecture/boot.md](../architecture/boot.md#memory-map-product).
+Same on A and B (separate SDRAM). Evidence for the free gap and the hand-off: [architecture/boot.md](../architecture/boot/memory.md).
 
 | Range | Owner, use | Evidence |
 |---|---|---|

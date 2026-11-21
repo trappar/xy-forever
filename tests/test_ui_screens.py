@@ -43,7 +43,7 @@ class UiScreensTest(unittest.TestCase):
 
     def test_menu_selection_bar_moves_and_stays_on_screen(self):
         bars = []
-        for selected in range(5):                                          # #21: five home rows
+        for selected in range(4):                                          # #197: four home rows
             self.lib.ui_render_menu(self.fb, selected, b'')
             lit, hidden = self.visible()
             self.assertEqual(hidden, 0)
@@ -51,7 +51,7 @@ class UiScreensTest(unittest.TestCase):
             white_rows = {y for x, y in lit if x == 12 and self.fb[(P.WIDTH - 1 - x) * P.STRIDE + y] == 0xffff}
             bars.append(min(white_rows))
         self.assertEqual(bars, sorted(bars))
-        self.assertEqual(len(set(bars)), 5)
+        self.assertEqual(len(set(bars)), 4)
 
     def test_info_screen_renders(self):
         self.lib.ui_render_message(self.fb)

@@ -53,6 +53,10 @@ std::string command(const std::string& line, bool& quit, int client) {
         resetting(k);
         return "{\"ok\": true}";
     }
+    if (n == 1 && !strcmp(verb, "unplug")) {              // #65: the cable out and in: a bus reset (sim/stock.cpp)
+        shared->usb_bus_resets.fetch_add(1);
+        return "{\"ok\": true}";
+    }
     if (n >= 2 && !strcmp(verb, "swap")) {               // swap PATH: test hook (runtime.hpp)
         snprintf(shared->swap_path, sizeof(shared->swap_path), "%s", line.c_str() + 5);
         shared->swap_armed = 1;
@@ -75,15 +79,17 @@ std::string command(const std::string& line, bool& quit, int client) {
             {"fail_write", &shared->fail_write}, {"vanish_marker", &shared->vanish_marker},
             {"tfw_rpc_version", &shared->tfw_rpc_version}, {"a_otp_fail", &shared->a_otp_fail}, {"a_otp_preinit", &shared->a_otp_preinit},
             {"fail_mount", &shared->fail_mount}, {"otp_fail", &shared->otp_fail}, {"otp_preinit", &shared->otp_preinit},
+            {"hold_mod_verify", &shared->hold_mod_verify},
             {"fail_select", &shared->fail_select}, {"statfs_override", &shared->statfs_override},
             {"statfs_block_bytes", &shared->statfs_block_bytes}, {"statfs_free_blocks", &shared->statfs_free_blocks}, {"statfs_fail", &shared->statfs_fail},
             {"fail_unmount", &shared->fail_unmount}, {"fail_open", &shared->fail_open}, {"full_path", &shared->full_path},
             {"a_boot_ms", &shared->a_boot_ms}, {"b_boot_ms", &shared->b_boot_ms}, {"a_redeliver", &shared->a_redeliver},
             {"a_stall_now", &shared->a_stall_now}, {"b_queue", &shared->b_queue}, {"cut_body", &shared->cut_body},
             {"boot_a_window_ms", &shared->boot_a_window_ms}, {"b_close_stuck", &shared->b_close_stuck},
-            {"defer_save_boot", &shared->defer_save_boot}, {"a_stage_corrupt", &shared->a_stage_corrupt}, {"unmount_ms", &shared->unmount_ms}, {"mount_ms", &shared->mount_ms}, {"rw_mount_ms", &shared->rw_mount_ms}, {"needs_repair", &shared->needs_repair}, {"rename_fault", &shared->rename_fault},
+            {"defer_save_boot", &shared->defer_save_boot}, {"a_stage_corrupt", &shared->a_stage_corrupt}, {"unmount_ms", &shared->unmount_ms}, {"mount_ms", &shared->mount_ms}, {"rw_mount_ms", &shared->rw_mount_ms}, {"needs_repair", &shared->needs_repair}, {"rename_fault", &shared->rename_fault}, {"fail_list", &shared->fail_list},
             {"rename_fault_kind", &shared->rename_fault_kind}, {"knob_per_pass", &shared->knob_per_pass},
-            {"knob_wrap", &shared->knob_wrap}, {"knob_identity_fail", &shared->knob_identity_fail}};
+            {"knob_wrap", &shared->knob_wrap}, {"knob_identity_fail", &shared->knob_identity_fail},
+            {"ask", &shared->ask}};
         for (auto& f : fields) if (!strcmp(f.name, name)) { *f.field = int32_t(value); return "{\"ok\": true}"; }
         if (!strcmp(name, "space")) { shared->space = value; return "{\"ok\": true}"; }
     }

@@ -16,7 +16,6 @@ It also validates the conformance suite, protocol/v1.conformance.json, against t
 counts go into docs/protocol/examples.md. Stdlib only (Python 3.9).
 """
 import argparse
-import itertools
 import json
 from pathlib import Path
 import re
@@ -70,17 +69,9 @@ TRANSPORT_FACTS = ('usb_vendor_id', 'usb_product_id', 'product_usb_ids', 'usb_pr
 RANGE_KINDS = ('dev', 'event', 'retired')
 REQUIRED_CONSTANTS = ('header_bytes', 'trailer_bytes', 'max_payload', 'max_data', 'max_read', 'put_chunk',
                       'max_path', 'max_stage', 'max_log_text', 'max_hello')
-# hello key sources besides a fixed value or constant: release and mode from the build (C macros below);
-# set at run time: image (compiled `unknown`) and stage2 (compiled 0, so the last key).
-HELLO_SOURCES = ('version', 'release', 'image', 'mode', 'cmds', 'dev', 'stage2')
-STAGE2_DIGITS = 10                                # a u32 in decimal
-# Switches no build defines: the device sets the command's cmds bit at run time (stage2.info: while
-# stage 2 is loaded). The generated #if blocks give the digit without them.
-RUNTIME_SWITCHES = ('XYF_STAGE2_LOADED',)
-BUILD_MACROS = {'release': 'XYF_VERSION', 'mode': 'XYF_BUILD_MODE'}
-IMAGE_DIGITS, IMAGE_UNKNOWN = 8, 'unknown'
+from protogen_hello import (BUILD_MACROS, HELLO_SOURCES, RUNTIME_BYTES,  # noqa: E402
+                            RUNTIME_SWITCHES, answered, hello_fixed, hello_source, render_cpp_hello)
 HELLO_TEXT = re.compile(r'^[!-:<>-~]+$')          # printable ASCII without space, ';' and '='
-CMDS_DIGITS = 32                                  # request types 0x00..0x7f, four per hex digit
 # object kind -> (required keys, optional keys)
 KEYS = {
     'top': ({'$comment', 'protocol', 'transport', 'frame', 'constants', 'rules', 'statuses', 'common_errors',
@@ -608,8 +599,7 @@ def check_hello(c, spec, constants, messages):
                 continue
             size = k['max_bytes']
         else:
-            size = {'version': len(spec['protocol']['version']), 'cmds': CMDS_DIGITS, 'dev': 1,
-                    'image': max(IMAGE_DIGITS, len(IMAGE_UNKNOWN)), 'stage2': STAGE2_DIGITS}[k['source']]
+            size = dict(RUNTIME_BYTES, version=len(spec['protocol']['version']))[k['source']]
             if k['source'] == 'stage2' and k is not keys[-1]:
                 c.fail(where, 'the stage2 key must be the last key (the device sets it at run time)')
         longest += 2 + len(k['name']) + size
@@ -638,24 +628,6 @@ def field_bytes(f):
 
 def published(cmd):
     return not cmd.get('test_only', False)
-
-
-def answered(spec, switches):
-    """The hello cmds bitmap of a build compiled with these build switches."""
-    return sum(1 << int(c['type'], 16) for c in spec['commands'] if c['switch'] is None or c['switch'] in switches)
-
-
-def hello_source(key):
-    return 'fixed' if 'value' in key or 'constant' in key or key['source'] == 'version' else key['source']
-
-
-def hello_fixed(spec, key):
-    """A key's text when it is the same in every build, else None."""
-    if 'value' in key:
-        return key['value']
-    if 'constant' in key:
-        return str(constants(spec)[key['constant']])
-    return spec['protocol']['version'] if key['source'] == 'version' else None
 
 
 def plain(text):
@@ -697,68 +669,6 @@ def render_cpp(spec):
     lines += render_cpp_hello(spec)
     lines += ['#endif', '']
     return '\n'.join(lines)
-
-
-def render_cpp_hello(spec):
-    """Macros for the hello text: string literals and #if blocks only (no table, no code)."""
-    lines = ['// hello text (docs/protocol/cmd-session.md, hello). The build defines %s and %s (string literals).' % (
-                 BUILD_MACROS['release'], BUILD_MACROS['mode']),
-             '// XYF_USBP_CMDS: the cmds bitmap, most significant hex digit first; a digit that a build switch',
-             '// changes is one #if block keyed by the switches of its commands (as home_pump\'s dispatch).',
-             '// %s: never defined by a build; the device sets those bits at run time.' % ', '.join(RUNTIME_SWITCHES)]
-    cmds, run = [], ''
-    for digit in range(CMDS_DIGITS - 1, -1, -1):                   # request types 4*digit .. 4*digit+3
-        here = [c for c in spec['commands'] if int(c['type'], 16) >> 2 == digit]
-        switches = sorted({c['switch'] for c in here if c['switch']})
-        if not switches:
-            run += '%x' % (answered(spec, ()) >> 4 * digit & 15)
-            continue
-        if run:
-            cmds.append('"%s"' % run)
-            run = ''
-        name = 'XYF_USBP_CMDS_%02X' % (4 * digit)
-        combos = list(itertools.product((True, False), repeat=len(switches)))
-        for i, combo in enumerate(combos):
-            condition = ' && '.join(('defined(%s)' if on else '!defined(%s)') % s for s, on in zip(switches, combo))
-            lines.append('#if ' + condition if i == 0 else '#else' if i == len(combos) - 1 else '#elif ' + condition)
-            on = [s for s, b in zip(switches, combo) if b]
-            lines.append('#define %s "%x"' % (name, answered(spec, on) >> 4 * digit & 15))
-        lines.append('#endif')
-        cmds.append(name)
-    if run:
-        cmds.append('"%s"' % run)
-    lines.append('#define XYF_USBP_CMDS ' + ' '.join(cmds))
-    pieces = [spec['hello']['prefix']]                # literal text (str) and macros (('macro', name))
-    for key in spec['hello']['keys']:
-        source = hello_source(key)
-        if source == 'fixed':
-            pieces.append(';%s=%s' % (key['name'], hello_fixed(spec, key)))
-        elif source == 'dev':
-            dev = [c for c in spec['commands'] if c['class'] == 'dev']
-            item = '";%s=1"' % key['name']
-            if any(c['switch'] is None for c in dev):
-                lines.append('#define XYF_USBP_HELLO_DEV ' + item)
-            elif dev:
-                lines += ['#if ' + ' || '.join('defined(%s)' % s for s in sorted({c['switch'] for c in dev})),
-                          '#define XYF_USBP_HELLO_DEV ' + item, '#else', '#define XYF_USBP_HELLO_DEV ""', '#endif']
-            else:
-                lines.append('#define XYF_USBP_HELLO_DEV ""')
-            pieces.append(('macro', 'XYF_USBP_HELLO_DEV'))
-        elif source == 'image':
-            pieces.append(';%s=%s' % (key['name'], IMAGE_UNKNOWN))
-        elif source == 'stage2':
-            pieces.append(';%s=0' % key['name'])      # usb_service.cpp: the loaded stage 2's version
-        else:
-            pieces += [';%s=' % key['name'], ('macro', BUILD_MACROS.get(source, 'XYF_USBP_CMDS'))]
-    merged = []
-    for piece in pieces:
-        if isinstance(piece, str) and merged and isinstance(merged[-1], str):
-            merged[-1] += piece
-        else:
-            merged.append(piece)
-    text = ['"%s"' % p if isinstance(p, str) else p[1] for p in merged]
-    lines.append('#define XYF_USBP_HELLO_TEXT \\\n    ' + ' \\\n    '.join(text))
-    return lines
 
 
 # ---- Python -------------------------------------------------------------------------------
@@ -814,7 +724,7 @@ def render_py(spec):
     out.append('}')
     out.append('')
     out.append('# hello text: HELLO_PREFIX, then each key as ;name=value. A key is (name, since, source, text):')
-    out.append('# source fixed (text given), or release, image, mode, cmds, dev, stage2 (docs/protocol: hello).')
+    out.append('# source fixed (text given), or one of protogen_hello.py HELLO_SOURCES (docs/protocol: hello).')
     out.append('HELLO_PREFIX = %r' % spec['hello']['prefix'])
     out.append('HELLO_KEYS = (')
     for key in spec['hello']['keys']:
@@ -954,35 +864,7 @@ def render_conformance(cases):
 # docs/PROTOCOL.md is the index of a tree; its leaves sit in docs/protocol/, each under the docs byte budget
 # (tests/test_docs_budget.py). A command leaf holds the published non-developer commands whose type falls in
 # its range, so a new command lands in a leaf by its number; the budget test says when a leaf must split.
-from protogen_leaves import DOC_DIR, CMD_LEAVES, DOC_LEAVES
-WIDTH = 160                              # longest prose line in a generated page (tables and headings excepted)
-LINE_START = re.compile(r'^([-+*>]|#{1,6}|[0-9]{1,9}[.)])$')   # a word that would start a list or heading
-
-
-def wrap(text):
-    """text with every prose line over WIDTH folded at spaces (a list item's rest indented by two); code blocks,
-    table rows, headings and comments stay whole, and no folded line starts with a list or heading marker."""
-    out, code = [], False
-    for line in text.split('\n'):
-        code ^= line.startswith('```')
-        if code or len(line) <= WIDTH or line.startswith(('|', '#', '<!--', '```')):
-            out.append(line)
-            continue
-        indent = '  ' if line.startswith('- ') else ''
-        row = ''
-        for word in line.split(' '):
-            if row.strip() and len(row) + 1 + len(word) > WIDTH:
-                head, _, last = row.rpartition(' ')
-                if LINE_START.match(word) and head.strip():
-                    out.append(head)
-                    row = indent + last + ' ' + word
-                else:
-                    out.append(row)
-                    row = indent + word
-            else:
-                row = row + ' ' + word if row else word
-        out.append(row)
-    return '\n'.join(out)
+from protogen_leaves import DOC_DIR, CMD_LEAVES, DOC_LEAVES, wrap  # noqa: E402
 
 
 def cmd_leaf(cmd):
@@ -1049,6 +931,7 @@ def render_md(spec, cases=None):
                                               e['doc']) for e in spec['common_errors']), '',
           '| Code | Name | Since | Meaning |', '|---|---|---|---|']
     md += ['| %d | `%s` | %s | %s |' % (s['code'], s['name'], s['since'], s['doc']) for s in spec['statuses']]
+    pages['statuses.md'], md = ('status codes', 'every status code, and those any command can answer', md), []
     commands = sorted(spec['commands'], key=lambda c: int(c['type'], 16))
     main = [c for c in commands if c['class'] != 'dev']
     dev = [c for c in commands if c['class'] == 'dev' and published(c)]
@@ -1058,8 +941,7 @@ def render_md(spec, cases=None):
     md += ['', 'A typical session: `hello`; then reads (`file.read`, `screen.read`); to write, `stage.begin`, '
            '`stage.data` in order, `stage.end`, then one of `file.write_staged`, `boot.install`, '
            '`boot.uninstall`.']
-    pages['commands.md'] = ('status codes and commands', 'every status code, and the table of commands with a link '
-                            'to each', md)
+    pages['commands.md'] = ('commands', 'the table of commands with a link to each', md)
     for first, last, name, title in CMD_LEAVES:
         md = []
         held = [c for c in main if cmd_leaf(c) == name]

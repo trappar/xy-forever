@@ -11,13 +11,14 @@ firmware/<--like>, the device's own Open-XY entry.
 The candidate's xy-forever/loaded/<id>/... files (runtime-loaded objects) go to /yaffs2/xy-forever/loaded/<id>/.
 
 Modes (each a separate run; the first FAIL stops, exit 1; usage exit 2; with --sim the evidence folder is
-removed when the run passed, unless --keep):
+removed when the run passed, unless --keep; each first needs Settings > Ask before USB control off: HELLO confirm=0, #65):
   upload (default) completes or replaces firmware/<id>/: metadata removed first, files the entry does not
                    hold removed, os.ldr kept when its size and the old metadata's SHA-256 match, manifest.json
                    written last; B's catalog then lists <id> as "content not installed" (expected).
   --boot           set-default <id> (library.set_default: B's content switch makes /yaffs2/content/ match
                    the entry and writes content-state.txt `state=installed entry=<id>`, then default=<id>),
-                   then boot <id> once (library.boot). USB goes.
+                   then boot <id> once (library.boot). USB goes. The saved inputs (config.txt) stay: the next
+                   plain power-on converges back to the saved setup (#197, #26).
   --cleanup        refused while <id> is the default or once, or content-state.txt names it (first:
                    `xyf_host.py set-default <previous default> --yes-write`); removes firmware/<id>/ and
                    loaded/<id>/.
@@ -216,9 +217,9 @@ class TestEntry(dp.Pass):
         self.say('content switch done: content-state.txt installed entry=%s; default=%s' % (o.id, o.id))
         self.ok(['boot', o.id, '--yes-boot'])
         self.gone(dp.T_DRY, 'boot (library.boot)')
-        self.say('library.boot ok; USB gone: %s is booting. Back: hold PLAY at power-on, then '
-                 '`xyf_host.py set-default %s --yes-write` and `scripts/test_entry.py --id %s --cleanup`'
-                 % (o.id, default, o.id))
+        self.say('library.boot ok; USB gone: %s is booting. Back: a plain power-on converges to the saved setup '
+                 '(#197; none saved: hold PLAY at power-on, then `xyf_host.py set-default %s --yes-write`); then '
+                 '`scripts/test_entry.py --id %s --cleanup`' % (o.id, default, o.id))
 
     # -- cleanup -------------------------------------------------------------------------------
     def cleanup(self):
@@ -266,6 +267,8 @@ def main(argv=None, device=None, sleep=time.sleep, folder=None):
     print('test_entry %s firmware/%s (evidence %s)' % (mode, o.id, run.folder), flush=True)
     code = 0
     try:
+        if dp.confirm_on(run.ok(['wait'], dp.T_ANSWER)):              # #65: the device would ask first
+            raise StepFail(dp.CONFIRM_ON)
         getattr(run, mode)()
         print('PASS', flush=True)
     except (StepFail, ValueError, OSError) as error:

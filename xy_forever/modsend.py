@@ -22,7 +22,7 @@ import struct
 import time
 import zlib
 
-from . import depth, modstore, package_records, package_store, usb_proto as P
+from . import depth, modconfig, modstore, package_records, package_store, usb_proto as P
 
 ROOT = '/yaffs2/xy-forever/mods'
 LIST = 'files.sha256'
@@ -503,7 +503,7 @@ def add_arguments(parser):
     r = sub.add_parser('remove', help='delete a generation, or a package from every generation holding it')
     r.add_argument('what', metavar='GENERATION|ID')
     r.add_argument('--yes', action='store_true', help='delete (default: dry run)')
-    a = sub.add_parser('apply', help='assemble mod firmware on the device into library entry mods-a or mods-b')
+    a = sub.add_parser('apply', help='developer: build mod firmware on the device into library entry mods-a or -b')
     a.add_argument('--base', required=True, help='library entry id holding the stock os.ldr (and content.sha256)')
     a.add_argument('--generation', required=True, metavar='[PROFILE/]GENERATION', help='the package set on the device')
     a.add_argument('--profile', default=DEFAULT_PROFILE, help='when --generation names none (default %(default)s)')
@@ -519,6 +519,7 @@ def add_arguments(parser):
     c.add_argument('job', nargs='?', type=int, default=0, help='job id (default: the running job)')
     from . import moddev                                     # mods dev (the edit-build-boot loop)
     moddev.add_arguments(sub)
+    modconfig.add_arguments(sub)
 
 
 def command(args, connect):
@@ -561,6 +562,8 @@ def command(args, connect):
             return 0
         if args.mods_command == 'apply':
             return apply_command(dev, args)
+        if args.mods_command in modconfig.COMMANDS:
+            return modconfig.command(dev, args)
         if args.mods_command == 'cancel':
             code, debris = job_cancel(dev, args.job)
             print('mods cancel: %s%s' % (P.status_name(code), '; leftovers may remain in tmp/' if debris else ''))

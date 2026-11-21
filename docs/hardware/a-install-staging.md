@@ -26,7 +26,7 @@ retained hardware DMA timing and real AES encryption remain outside this no-writ
 
 ## Qualification sequence
 
-Use the checked checkout's host and protocol 1.22; the rehearsal payload version is 1.
+Use the checked checkout's host and protocol 1.23; the rehearsal payload version is 1.
 `test_device_qualification_sequence_and_menu_cleanup` proves this sequence in the simulator,
 including the existing B install/reboot before measurement, both real inputs, cancellation and
 menu cleanup. Simulator assertions require zero deltas in mount calls, read-write mounts,
@@ -63,7 +63,7 @@ stock, _ = host.load_stock(sys.argv[2])
 image = json.loads((Path(sys.argv[1]) / 'manifest.json').read_text())['image']
 dev, _, hello = host.connect(30)
 try:
-    assert ids.VERSION == dev.hello_info.proto == '1.22'
+    assert ids.VERSION == dev.hello_info.proto == '1.23'
     assert dev.hello_info.answers(ids.A_REHEARSAL)
     assert dev.hello_info.keys['image'] == image
     wait_startup_ready(hello, lambda remaining: dev.call(

@@ -96,7 +96,8 @@ void step() {
         return;
     }
     case s_saved: {                              // the saved selection onto the toggles
-        const uint32_t code = read_record(true);
+        uint32_t bytes = 0;
+        const uint32_t code = read_record(true, bytes);
         if (code == xyf::usbp::s_busy) return;
         if (code == xyf::usbp::s_link) { io.why = code; lost(); return; }
         finish(io.config_error);

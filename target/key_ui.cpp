@@ -162,7 +162,10 @@ void on_key(uint32_t key, uint32_t pressed) {
         else if (!(play_released || ms > link_ms + 1000u)) return;
     }
 #if defined(XYF_SETTINGS)
-    if (xy_forever::usb_service::confirm_key(key, pressed, key_injected != 0)) return;   // a prompt has the keys
+    if (xy_forever::usb_service::confirm_key(key, pressed, key_injected != 0)) {   // a prompt has the keys
+        if (!pressed) xyf::key_repeat::event(held, key, false, ms);              // a held - / + stops repeating
+        return;
+    }
 #endif
     xyf::key_repeat::event(held, key, pressed != 0, ms);
     dispatch(key, pressed);
@@ -171,6 +174,10 @@ void on_key(uint32_t key, uint32_t pressed) {
 // A key to the page on screen: the Mods page or the menu (on_key, and the repeat of a held - / +).
 void dispatch(uint32_t key, uint32_t pressed) {
 #if defined(XYF_MODS_PAGE)
+    if (xy_forever::mods_io::converging()) {         // #197: the progress screen (STOP cancels a build)
+        if (xy_forever::mods_io::progress_key(key, pressed != 0) != xyf::mods::effect_none) dirty = 1;
+        return;
+    }
     if (mods_shown) {                                // the page has the keys (STOP on its list: back)
         const xyf::mods::Effect effect = xy_forever::mods_io::key(key, pressed != 0);
         if (effect == xyf::mods::effect_leave) mods_shown = 0;
@@ -183,16 +190,15 @@ void dispatch(uint32_t key, uint32_t pressed) {
     else if (action != xyf::menu::Action::none) app_action = uint32_t(action);
 }
 
-// Knob turns (knob_input.hpp) move the selection as - / + do: not in the Uninstall dialog (its - / +
-// flip two buttons), not while the Mods page shows its job. On the Mods page with key_turn (SHIFT + turn: its filter).
+// Knob turns (knob_input.hpp) move the selection as - / + do, not on the progress screen. On the Mods page with
+// key_turn (SHIFT + turn: its filter).
 void turn_knobs(uint32_t now_ms) {
 #if defined(XYF_MODS_PAGE)
-    const bool page = mods_shown != 0, job = page && xy_forever::mods_io::page().view == xyf::mods::View::building;
+    const bool job = xy_forever::mods_io::converging(), page = mods_shown != 0 && !job;
 #else
     const bool page = false, job = false;
 #endif
-    const bool selection = !job && (page || app.screen != xyf::menu::Screen::confirm_uninstall);
-    const int32_t rows = xy_forever::knob_input::pass(now_ms, selection);
+    const int32_t rows = xy_forever::knob_input::pass(now_ms, !job);
     const uint32_t step = (rows > 0 ? xyf::menu::key_plus : xyf::menu::key_minus) | (page ? xyf::menu::key_turn : 0u);
     for (int32_t i = rows < 0 ? -rows : rows; i; --i) dispatch(step, 1);   // the Mods page knows a turn
 }
@@ -288,6 +294,10 @@ extern "C" void xy_forever_key_ui() {
 #if defined(XYF_ONE_SESSION)
         app.storage = xy_forever::xyf_boot::storage_view();   // 193: the first row waits for the library
 #endif
+#if defined(XYF_MODS_PAGE)
+        // #197: A doubted the saved inputs at a plain power-on: the progress screen from the first frame, then the boot
+        if (xy_forever::xyf_boot::take_converge()) xy_forever::mods_io::converge_begin(xy_forever::mods_io::why_power_on);
+#endif
         show(0, status);
         xy_forever::knob_input::start(!r.identity_mismatch && (r.stages & stage_identity));
 #if defined(XYF_ONE_SESSION)
@@ -305,10 +315,8 @@ extern "C" void xy_forever_key_ui() {
             }
 #endif
             turn_knobs(ms_since(r.start_cycles));            // after the stock poll
-            // A held - / + repeats (not on the Uninstall dialog, whose - / + flips its two buttons).
-            if (xyf::key_repeat::due(held, ms_since(r.start_cycles)) && app.screen != xyf::menu::Screen::confirm_uninstall &&
-                app.screen != xyf::menu::Screen::confirm_save)                // no repeat in dialogs
-                dispatch(held.key, 1);
+            if (xyf::key_repeat::due(held, ms_since(r.start_cycles)) && xyf::menu::repeat_keys(app))
+                dispatch(held.key, 1);                       // a held - / + repeats
 #if defined(XYF_ONE_SESSION)
             // Test 065: home answers every USB command; CONTINUE leaves home to boot the default.
             if (const uint32_t leave = xy_forever::usb_service::home_pump()) {
@@ -335,28 +343,30 @@ extern "C" void xy_forever_key_ui() {
             // The Settings page reads the mod packages too (its Mod memory row needs the base's layouts)
             const bool settings_shown = !mods_shown && app.screen == xyf::menu::Screen::settings;
             if (settings_shown) xy_forever::mods_io::prepare();
-            if (xy_forever::mods_io::pump(mods_shown || settings_shown) && mods_shown) dirty = 1;   // the page's reading and job
+            if (xy_forever::mods_io::pump(mods_shown || settings_shown) && (mods_shown || xy_forever::mods_io::converging()))
+                dirty = 1;                                     // the page's reading, the progress screen
             if (xy_forever::mods_io::menu_state(app) && !mods_shown) dirty = 1;   // pending, the first row
 #endif
 #if defined(XYF_CONTENT_SWITCH)
             if (const char* line = xy_forever::usb_service::content_line()) { status = line; dirty = 1; }
+            app.undo_offer = xy_forever::usb_service::content_offer();   // PLAY on the first row undoes
 #endif
 #if defined(XYF_MODS_PAGE)
-            // The save sequence ended: boot the saved configuration (the default), or back to the menu with
+            // The converge sequence ended (#197): boot the default (the desired state), or back to the menu with
             // the reason (the changes stay pending).
-            if (const uint32_t saved = xy_forever::mods_io::save_state()) {
-                if (saved == xy_forever::mods_io::save_boot) {
+            if (const uint32_t saved = xy_forever::mods_io::converge_state()) {
+                if (saved == xy_forever::mods_io::converge_boot) {
 #if defined(XYF_TFW_CHECK)
-                    // A finished Save can still have its boot deferred when a USB rehearsal starts.
+                    // A finished converge can still have its boot deferred when a USB rehearsal starts.
                     if (lost || !xy_forever::xyf_boot::link_idle() || xy_forever::usb_service::page_busy()) continue;
 #endif
-                    xy_forever::mods_io::save_done();
+                    xy_forever::mods_io::converge_done();
                     xy_forever::xyf_boot::choose_default(); r.exit_reason = exit_play; break;
                 }
-                if (saved == xy_forever::mods_io::save_failed) {
-                    status = xy_forever::mods_io::save_reason();
-                    xy_forever::mods_io::save_done();
-                    mods_shown = 0; app.screen = xyf::menu::Screen::main; dirty = 1;
+                if (saved == xy_forever::mods_io::converge_failed || saved == xy_forever::mods_io::converge_note) {
+                    status = xy_forever::mods_io::converge_reason();
+                    xy_forever::mods_io::converge_done();
+                    dirty = 1;
                 }
             }
 #endif
@@ -364,51 +374,50 @@ extern "C" void xy_forever_key_ui() {
                 using xyf::menu::Action;
                 app_action = 0;
                 dirty = 1;
-                if (lost && (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::boot_once) ||
-                             action == uint32_t(Action::save) || action == uint32_t(Action::discard))) {
+#if defined(XYF_MODS_PAGE)
+                // The converge sequence runs (the progress screen): no other action.
+                if (action != uint32_t(Action::redraw) && xy_forever::mods_io::converging()) {
+                    app.screen = xyf::menu::Screen::main;
+                    continue;
+                }
+#endif
+                const bool boots = action == uint32_t(Action::continue_boot) || action == uint32_t(Action::safe_mode) ||
+                                   action == uint32_t(Action::restore) || action == uint32_t(Action::apply);
+                if (lost && boots) {
                     app.screen = xyf::menu::Screen::main;
                     status = " ";                          // the status line shows the lost link
                     continue;
                 }
 #if defined(XYF_USB_FILE_WRITE)
-                if (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::discard) ||
-                    action == uint32_t(Action::boot_once) || action == uint32_t(Action::set_default) ||
-                    action == uint32_t(Action::save)) {       // and Save while a USB job runs
+#if defined(XYF_MODS_PAGE)
+                const bool own = xy_forever::mods_io::saving();   // the Mods page's own write: converging waits for it
+#else
+                const bool own = false;
+#endif
+                if (boots && !own) {                           // not while a USB job runs
                     if (const char* busy = xy_forever::usb_service::menu_busy()) {
                         status = busy; app.screen = xyf::menu::Screen::main; continue;
                     }
                 }
 #endif
-                if (action == uint32_t(Action::continue_boot) || action == uint32_t(Action::discard)) {   // Discard
-                    xy_forever::xyf_boot::choose_default(); r.exit_reason = exit_play; break;
-                }
-                if (action == uint32_t(Action::boot_once)) {
-                    if (const char* note = content_note(app.entry)) { status = note; continue; }
-                    xy_forever::xyf_boot::choose(app.entry); r.exit_reason = exit_play; break;
-                }
-#if defined(XYF_STATE_WRITE)
-                if (action == uint32_t(Action::set_default)) {
+                if (action == uint32_t(Action::continue_boot)) { xy_forever::xyf_boot::choose_default(); r.exit_reason = exit_play; break; }
 #if defined(XYF_CONTENT_SWITCH)
-                    if (const char* note = xy_forever::usb_service::content_default(app.entry)) {   // content first
-                        status = note; app.screen = xyf::menu::Screen::main; continue;
-                    }
-#endif
-                    status = xy_forever::xyf_boot::set_default(app.entry);   // the only write path
-                    if (lost_ends_menu()) { r.exit_reason = exit_link; break; }   // #3: with USB the menu stays
-                    app.screen = xyf::menu::Screen::main;      // first row = the (new) default's name
+                if (action == uint32_t(Action::undo)) {       // the source-missing line's offer: the previous entry back
+                    if (const char* line = xy_forever::usb_service::content_undo()) status = line;
                     continue;
                 }
 #endif
 #if defined(XYF_MODS_PAGE)
-                if (action == uint32_t(Action::save)) {       // the page shows the save sequence
-                    mods_shown = 1;
-                    xy_forever::mods_io::save_begin();
+                if (boots) {                                   // #197: the inputs set, then converge (the progress screen)
+                    using namespace xy_forever::mods_io;
+                    converge_begin(action == uint32_t(Action::safe_mode) ? why_safe :
+                                   action == uint32_t(Action::restore) ? why_restore : why_apply);
                     continue;
                 }
 #endif
 #if defined(XYF_SETTINGS)
-                // #21: PLAY on a setting opens its option list; the list's PLAY picks (Mod memory pending until
-                // boot, as the Mods page; a settings.txt row saved when the page is left).
+                // #21: PLAY on a setting opens its option list; the list's PLAY picks: #191, in effect at once and
+                // saved on its own at a quiet moment (Mod memory as the Mods page, built at the next boot).
                 if (action == uint32_t(Action::change_setting)) {
                     using namespace xyf::settings;
                     if (app.entry != row_memory) app.settings_note = xy_forever::usb_service::settings_open(app, app.entry);
@@ -440,9 +449,7 @@ extern "C" void xy_forever_key_ui() {
                     continue;
                 }
                 app.screen = xyf::menu::Screen::main;          // show the result line
-                status = action == uint32_t(Action::boot_once) ? "Boot once: not available yet." :
-                         action == uint32_t(Action::set_default) ? "Set default: needs storage writes (not yet)." :
-                         "Uninstall: not available yet.";
+                status = "Not available in this build.";
             }
 #if defined(XYF_ONE_SESSION)
             if (usb_view_changed()) dirty = 1;     // the USB mark, the activity line or the Info page's image changed
@@ -514,13 +521,12 @@ bool service_screen(const char* a, const char* b, const char* c, const char* d) 
 void inject_key(uint32_t key, uint32_t pressed) { key_injected = 1; on_key(key, pressed); key_injected = 0; }
 #if defined(XYF_ONE_SESSION)
 void refresh_catalog() {
-#if defined(XYF_MODS_PAGE)
-    const uint32_t row = app.main_selected;
-#endif
+    const uint32_t row = app.main_selected;          // #197: a rescan refreshes the data, never the home row
 #if defined(XYF_SETTINGS)
     // A rescan (a USB job's end) keeps the Settings page, its row and line, and an open option list.
     const xyf::menu::Screen kept_screen = app.screen;
-    const bool keep = kept_screen == xyf::menu::Screen::settings || kept_screen == xyf::menu::Screen::options;
+    const bool keep = kept_screen == xyf::menu::Screen::settings || kept_screen == xyf::menu::Screen::options ||
+                      kept_screen == xyf::menu::Screen::packs;
     const uint32_t kept_row = app.main_selected, kept_setting = app.settings_selected, kept_entry = app.entry;
     const char* const kept_note = app.settings_note;
     const char* const* const kept_options = app.options;
@@ -535,13 +541,10 @@ void refresh_catalog() {
         app.settings_selected = kept_setting; app.settings_note = kept_note;
         app.options = kept_options; app.option_count = kept_count; app.option_current = kept_current;
         app.option_selected = kept_option;
+        if (kept_screen == xyf::menu::Screen::packs) xy_forever::usb_service::settings_open(app, xyf::settings::row_packs);
     }
 #endif
-#if defined(XYF_MODS_PAGE)
-    // A build's commit rescans the library while the Mods page is shown: STOP must come back to its
-    // row, not to Continue (whose PLAY would boot the default).
-    if (mods_shown) app.main_selected = row;
-#endif
+    app.main_selected = row;                         // (a job's end, also from the home menu or the Mods page)
     app_action = 0;
     dirty = 1;
 }

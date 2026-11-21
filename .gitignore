@@ -6,3 +6,5 @@ xyf.local.json
 # local device and session state (docs/STATUS.md: the older single file; bootstrap moves it into docs/status/)
 docs/status/
 docs/STATUS.md
+# the web app's staged release image (scripts/web_release.py): a build output
+web/public/release/

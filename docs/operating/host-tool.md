@@ -26,6 +26,23 @@ Manual changes may touch `/yaffs2` except the protected marker and updater inbox
 Creating the report folder is a storage write and requires the developer's approval:
 `python3 xyf_host.py put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.
 
+### Sound packs
+
+`python3 xyf_host.py packs list` lists installed sound packs in `/yaffs2/content/dlc/`.
+Each row gives the pack folder ID and the vendor manifest's name, version, author and description when present.
+A malformed manifest is reported beside its folder ID.
+
+Place a complete, unpacked sound pack in `/yaffs2/xy-forever/inbox/ID/`. Its `manifest.json` must
+be a JSON object of up to 4,096 bytes and 32 nesting levels. A `folder` property, when present, must match the folder ID exactly.
+A manifest declaring the `xy-forever.package` schema belongs to the native package workflow.
+Run `python3 xyf_host.py packs install ID --yes` to move the folder to `/yaffs2/content/dlc/ID/`.
+An occupied ID stops the install. Use `python3 xyf_host.py packs remove ID --yes` to remove an installed pack.
+Omit `--yes` to see the planned action.
+
+On the OP-XY, open Settings > Content packs. SHIFT+PLAY switches between installed and inbox packs.
+Use + and - to select a pack, then PLAY to open its install or remove confirmation. Cancel starts selected.
+Use + then PLAY to confirm, or STOP to go back.
+
 ### Factory content inventory
 
 `python3 xyf_host.py content status` reads free space, walks `/yaffs2/content/` and hashes each regular file
@@ -59,3 +76,15 @@ python3 xyf_host.py cp [-r] /yaffs2/xy-forever/a /yaffs2/content/b   # <= 7 MiB 
 python3 xyf_host.py mods apply --base opxy-121 --generation opxy-1.2.1/GEN fm2op [--ext ID...] --wait   # B assembles into tmp/job-N/
 python3 xyf_host.py mods cancel                          # stop it (removes what it wrote)
 ```
+
+### The mods the OP-XY runs (#26)
+
+`mods status` prints the saved inputs (`config.get`). `mods set MOD... [--ext ID...] [--memory standard|expanded]
+[--unverified]` saves a selection the way the Mods page does (`config.set`): the device reads its packages again,
+checks that the selection can be built and keeps it, or refuses with the reason. `mods set` with no mods saves none.
+Nothing is built then: the next boot of XY Forever converges to what is saved (#197). The web app's Mods page does the
+same. Safe mode (Boot without mods) is a recovery action on the device only: a set sends it back as saved.
+
+Developer path: `mods apply`, `mods dev --boot` and `scripts/test_entry.py --boot` (`set-default`, then `boot`) boot
+a firmware of your choosing once, behind the saved inputs, which they never change. The next plain power-on finds
+the default differs from its fingerprint and converges back to the saved setup (no `set-default` back needed).

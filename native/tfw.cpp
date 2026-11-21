@@ -25,9 +25,9 @@ bool read(const Reader& reader,U32 offset,Byte* destination,U32 count) {
 }
 }
 namespace tfw {
-Archive::Archive():ready_(false) {filename_[0]=0;source_={0,0,0};header_={};}
+Archive::Archive():work_(nullptr),ready_(false) {filename_[0]=0;source_={0,0,0};header_={};}
 Archive::~Archive() {close();}
-void Archive::close() {aes_.erase();ready_=false;filename_[0]=0;source_={0,0,0};}
+void Archive::close() {aes_.erase();ready_=false;filename_[0]=0;source_={0,0,0};work_=nullptr;}
 namespace {
 // 0x80 for babecafe + beefcafe, 0x40 for a bare beefcafe preamble, 0 for neither.
 U32 wrapper(const Byte* raw) {
@@ -55,13 +55,24 @@ Status parse(const Byte* raw,U32 source_size,U32 expected_sku,Header& h) {
     return Status::ok;
 }
 bool usable(const input::Reader& source) {
-    return source.read && source.size>=320 && source.size<=256u*1024u*1024u;
+    return source.read && source.size>=prefix_bytes && source.size<=max_package_bytes;
 }
+}
+Status ciphertext_span(const Byte* prefix,U32& start,U32& end,U32 expected_sku) {
+    const U32 base=wrapper(prefix);
+    if (!base) return Status::header;
+    const U32 offset=base+crypto_header_bytes;
+    const U32 size=little32(prefix+base+0x98);
+    if (size>max_package_bytes-offset) return Status::size;
+    Header h;
+    const Status parsed=parse(prefix,offset+size,expected_sku,h);
+    if (parsed==Status::ok) {start=offset;end=offset+size;}
+    return parsed;
 }
 Status Archive::open(const input::Reader& source,const KeyProvider& keys,U32 expected_sku) {
     close();
     if (!usable(source)) return Status::size;
-    Byte raw[320];if (!input::read(source,0,raw,sizeof(raw))) return Status::io;
+    Byte raw[prefix_bytes];if (!input::read(source,0,raw,sizeof(raw))) return Status::io;
     Header h;
     const Status parsed=parse(raw,source.size,expected_sku,h);
     if (parsed!=Status::ok) return parsed;
@@ -79,24 +90,34 @@ Status Archive::open(const input::Reader& source,const KeyProvider& keys,U32 exp
 }
 Status Archive::open_digested(const input::Reader& source,const KeyProvider& keys,
                               const hash::Digest& ciphertext_sha256,const HeaderCheck& signature,
-                              Byte* header,U32 expected_sku) {
+                              Byte* header,U32 expected_sku,Work* work) {
     close();
     if (!header || !signature.verify) return Status::argument;
     if (!usable(source)) return Status::size;
-    if (!input::read(source,0,header,320)) return Status::io;
+    if (!checkpoint(work)) return Status::cancelled;
+    if (!input::read(source,0,header,prefix_bytes)) return Status::io;
     const U32 base=wrapper(header);
     if (!base) return Status::header;
     if (source.size<base+crypto_header_bytes) return Status::size;
-    if (!input::read(source,320,header+320,base+crypto_header_bytes-320)) return Status::io;
+    for (U32 at=prefix_bytes;at<base+crypto_header_bytes;) {
+        if (!checkpoint(work)) return Status::cancelled;
+        U32 amount=base+crypto_header_bytes-at;
+        if (work && amount>512) amount=512;
+        if (!input::read(source,at,header+at,amount)) return Status::io;
+        at+=amount;
+    }
     Header h;
     const Status parsed=parse(header,source.size,expected_sku,h);
     if (parsed!=Status::ok) return parsed;
     if (h.key_index==0xfe) return Status::key;
     // The seam: nothing below this line runs for a header the check refuses.
+    if (!checkpoint(work)) return Status::cancelled;
     if (!verified(signature,header+base,crypto_header_bytes)) return Status::signature;
+    if (!checkpoint(work)) return Status::cancelled;
     if (!hash::equal(ciphertext_sha256,h.ciphertext_hash)) return Status::ciphertext_hash;
-    source_=source;
-    return finish(h,keys);
+    source_=source;work_=work;
+    const Status status=finish(h,keys);
+    return cancelled(work)?Status::cancelled:status;
 }
 Status Archive::finish(const Header& h,const KeyProvider& keys) {
     header_=h;
@@ -122,6 +143,7 @@ Status Archive::finish(const Header& h,const KeyProvider& keys) {
     if (name_size<5 || buffer[name_size-4]!='.' ||
         (buffer[name_size-3]|32)!='z' || (buffer[name_size-2]|32)!='i' ||
         (buffer[name_size-1]|32)!='p') {close();return Status::filename;}
+    if (!checkpoint(work_)) {close();return Status::cancelled;}
     for (U32 i=0;i<name_size;++i) filename_[i]=char(buffer[i]);
     filename_[name_size]=0;ready_=true;return Status::ok;
 }
@@ -132,10 +154,10 @@ bool Archive::raw_read(U32 offset,Byte* destination,U32 count) {
     Byte previous[16],cipher[512],clear[16];
     U32 block=offset&~15u,skip=offset&15;
     if (!block) for (U32 i=0;i<16;++i) previous[i]=header_.iv[i];
-    else if (!input::read(source_,header_.ciphertext_offset+block-16,previous,16)) return false;
+    else if (!checkpoint(work_) || !input::read(source_,header_.ciphertext_offset+block-16,previous,16)) return false;
     while (count) {
         const U32 amount=count+skip>sizeof(cipher)?sizeof(cipher):(count+skip+15)&~15u;
-        if (amount>header_.ciphertext_size-block ||
+        if (!checkpoint(work_) || amount>header_.ciphertext_size-block ||
             !input::read(source_,header_.ciphertext_offset+block,cipher,amount)) return false;
         for (U32 at=0;at<amount;at+=16) {
             if (!aes_.decrypt(cipher+at,clear)) return false;
@@ -156,20 +178,24 @@ input::Reader Archive::reader() {
     return ready_?input::Reader{this,header_.archive_size,zip_read}:input::Reader{0,0,0};
 }
 Status ciphertext_digest(const input::Reader& source,Byte* buffer,U32 capacity,hash::Digest& digest,
-                         U32 expected_sku) {
+                         U32 expected_sku,Work* work) {
     if (!buffer || capacity<header_bytes) return Status::argument;
     if (!usable(source)) return Status::size;
-    if (!input::read(source,0,buffer,320)) return Status::io;
+    if (!checkpoint(work)) return Status::cancelled;
+    if (!input::read(source,0,buffer,prefix_bytes)) return Status::io;
     Header h;
     const Status parsed=parse(buffer,source.size,expected_sku,h);
     if (parsed!=Status::ok) return parsed;
     hash::Sha256 hasher;
+    const U32 chunk=work && capacity>512?512:capacity;
     for (U32 offset=0;offset<h.ciphertext_size;) {
-        const U32 amount=h.ciphertext_size-offset<capacity?h.ciphertext_size-offset:capacity;
+        if (!checkpoint(work)) return Status::cancelled;
+        const U32 amount=h.ciphertext_size-offset<chunk?h.ciphertext_size-offset:chunk;
         if (!input::read(source,h.ciphertext_offset+offset,buffer,amount)) return Status::io;
         if (!hasher.update(buffer,amount)) return Status::size;
         offset+=amount;
     }
+    if (!checkpoint(work)) return Status::cancelled;
     return hasher.finish(digest)?Status::ok:Status::size;
 }
 const char* status_name(Status status) {
@@ -186,6 +212,7 @@ const char* status_name(Status status) {
     case Status::filename: return "filename";
     case Status::signature: return "signature";
     case Status::argument: return "argument";
+    case Status::cancelled: return "cancelled";
     }
     return "unknown";
 }

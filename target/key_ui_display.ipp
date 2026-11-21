@@ -15,7 +15,13 @@ volatile uint32_t usb_drawn __attribute__((section(".data"))) = 0;
 const char* volatile usb_drawn_line __attribute__((section(".data"))) = 0;
 const char* volatile image_drawn __attribute__((section(".data"))) = 0;
 volatile uint32_t menu_screen __attribute__((section(".data"))) = 0;
+#if defined(XYF_SETTINGS)
+volatile uint32_t trust_drawn __attribute__((section(".data"))) = 0;      // #65: the question on screen
+#endif
 bool usb_view_changed() {
+#if defined(XYF_SETTINGS)
+    if (xy_forever::usb_service::trust_prompt() != (trust_drawn != 0)) return true;
+#endif
     return xy_forever::usb_service::host_marks() != usb_drawn ||
            xy_forever::usb_service::host_activity() != usb_drawn_line ||
            (app.screen == xyf::menu::Screen::info && xy_forever::usb_service::image_label() != image_drawn);
@@ -39,9 +45,22 @@ void draw_screen(uint16_t* fb) {
         draw_message(fb, xyf::crash::message(crash_text, &still));
         return;
     }
+#if defined(XYF_SETTINGS)
+    const bool asked = xy_forever::usb_service::trust_prompt();
+    trust_drawn = asked;
+#endif
     if (ui_screen == 2) {
         const Message bye = {"Starting", {ui_status}, 1, "", &chrome};
         draw_message(fb, bye);
+#if defined(XYF_SETTINGS)
+    } else if (asked) {                              // #65: Ask before USB control (the current menu style)
+        const Message ask = {"USB control", {"Allow this computer to control your OP-XY?", "",
+                             "Allow: until you unplug the cable or restart.",
+                             "Don't allow: it is refused until then.",
+                             "Settings > Ask before USB control turns this off.", "", "", ""}, 5,
+                             "PLAY  allow      STOP  don't allow", &chrome};
+        draw_message(fb, ask);
+#endif
 #if defined(XYF_SERVICE_SCREEN)
     } else if (ui_screen == 4) {
         const Message usb = {"USB service", {service_lines[0], service_lines[1], service_lines[2], service_lines[3]}, 4,
@@ -49,6 +68,9 @@ void draw_screen(uint16_t* fb) {
         draw_message(fb, usb);
 #endif
 #if defined(XYF_MODS_PAGE)
+    } else if (xy_forever::mods_io::converging()) {   // #197: the progress screen, from the home menu
+        xyf::mods::draw_progress(fb, xy_forever::mods_io::progress(), &chrome, mods_frame);
+        return;
     } else if (mods_shown) {
         xyf::mods::draw(fb, xy_forever::mods_io::page(), &chrome, mods_frame);
         return;
@@ -94,12 +116,6 @@ void present() {
     if (byte(smc_dma_active)) ++r.presents;
 }
 
-// PLAY (boot once) on an entry whose content is not installed boots nothing: the line says how.
-const char* content_note(uint32_t entry) {
-    const xyf::catalog::Catalog* catalog = xy_forever::xyf_boot::catalog();
-    return catalog && entry < catalog->count && (catalog->items[entry].flags & xyf::catalog::flag_content_missing) ?
-           "Make it the default to install its content." : 0;
-}
 void show(uint32_t screen, const char* status) {
     ui_screen = screen;
     ui_status = status;

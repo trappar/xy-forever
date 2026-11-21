@@ -264,8 +264,9 @@ U32 verify(U32 size, U32 crc) {
         if (read_sector0(0, back) == 0) { lines(readback_buffer, 512, true); if (header_matches(back, size, crc)) active = p; }
     }
     result.verify_partition = active;
-    U32 code = active ? P::s_ok : P::s_install;
+    U32 code = P::s_install;
     if (active && select_partition(active) == 0) {
+        code = P::s_ok;
         const U32 sectors = (size >> 9) + 1;       // as the stock reader 88a07240
         for (U32 s = 0; s < sectors && code == P::s_ok; s += readback_sectors) {
             const U32 count = sectors - s < readback_sectors ? sectors - s : readback_sectors;
@@ -418,8 +419,8 @@ void set_default(uint8_t seq, const uint8_t* payload, U32 length) {
 #endif
 
 // LIBRARY_BOOT: payload = library id NUL + 32-byte confirmation (the SHA-256 of the id
-// bytes). As PLAY on that entry in the Firmware library menu (key_ui.cpp: xyf_boot::choose of its
-// catalog index): no boot over a lost link (link); the entry must be in B's catalog (not_found;
+// bytes). A boot once of that entry (key_ui.cpp: xyf_boot::choose of its catalog index, as home_pump
+// leaves the menu): no boot over a lost link (link); the entry must be in B's catalog (not_found;
 // written entries are fetched first: settle_writes) and usable, i.e. have an os.ldr, as xyf_menu's
 // usable() (state), and its content installed (no_content). Nothing is written: the default and the state slots stay. Returns the catalog
 // index + 1 to boot after the ok reply, else 0.

@@ -1,6 +1,7 @@
 // Typed errors of the call layer: one class, told apart by `code`. A device status keeps its spec
 // name (`refused`, `busy`, `link`, ...); the others come from the client side.
 import { STATUS, statusName } from './v1.ts';
+import { ASK_TEXT, NOT_ALLOWED_TEXT, SERIAL_OFF_TEXT } from './trust.ts';
 import type { CommandName, StatusName, Value } from './v1.ts';
 
 export type ErrorCode =
@@ -38,7 +39,9 @@ const KNOWN = new Set<number>(Object.values(STATUS));
 export function statusError(command: CommandName | null, status: number, fields: Readonly<Record<string, Value>> | null = null): XyfError {
   const name = statusName(status);
   const code: ErrorCode = KNOWN.has(status) ? (name as Exclude<StatusName, 'ok'>) : 'unknown_status';
-  return new XyfError(code, `${command ?? 'request'}: the device answered ${name}`, { command, status, fields });
+  const text = code === 'declined' ? NOT_ALLOWED_TEXT : code === 'waiting' ? ASK_TEXT : code === 'serial_off' ? SERIAL_OFF_TEXT :
+    `the device answered ${name}`;
+  return new XyfError(code, `${command ?? 'request'}: ${text}`, { command, status, fields });
 }
 
 /** True when error is an XyfError (with one of the codes, when given). */

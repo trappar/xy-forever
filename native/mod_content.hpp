@@ -45,6 +45,8 @@ struct Limits {
 };
 // Workspace for the tables: 4-byte aligned, scratch_bytes(limits) bytes (0: limits out of range).
 U32 scratch_bytes(const Limits& limits);
+// A vendor manifest must be a JSON object. If present its folder field must equal the on-disk pack ID.
+bool pack_manifest(const Byte* data, U32 bytes, const char* folder);
 // max_entry, max_entry_depth: the 0.0.6 kit's largest catalog.txt is 154 bytes, 2 levels deep.
 static const U32 max_packages = 1024, max_files = 8192, max_catalog = 1u << 20, max_entry = 512, max_entry_depth = 4,
                  max_path = 160, detail_bytes = 32;

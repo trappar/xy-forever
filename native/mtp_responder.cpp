@@ -119,7 +119,7 @@ void Responder::init(const FileOps& file_ops) {
     data_total = data_got = data_seen = in_len = in_pos = out_len = out_pos = 0;
     fd = -1; left = failed = result = target = skip = more = count = offset = opened = 0;
     pending_handle = pending_size = 0;
-    hits = 0; piece = default_piece;
+    hits = 0; piece = default_piece; refusal = 0;
     clear_objects();
 }
 
@@ -305,6 +305,11 @@ void Responder::start() {
     bool known = code == op_get_object_prop_list;                // answered, not listed (mtp_responder.hpp)
     for (U32 i = 0; i != sizeof(operations) / sizeof(operations[0]); ++i) known |= operations[i] == code;
     if (!known) { respond(r_not_supported); return; }
+    if (refusal && code != op_get_device_info) {                 // #191: refuse()
+        if (session) { session = 0; clear_objects(); }
+        if (data_phase) failed = refusal; else respond(U16(refusal));
+        return;
+    }
     if (!session && code != op_get_device_info && code != op_open_session) {
         if (data_phase) failed = r_session_not_open; else respond(r_session_not_open);
         return;

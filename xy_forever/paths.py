@@ -98,6 +98,7 @@ def private_output(path):
 
 
 IMAGE_NAME = re.compile(r'[0-9a-f]{8}')      # a build folder's name: its image (hello image=)
+CHECK_TEST_BUILDS = 'XYF_CHECK_TEST_BUILDS'   # only the verified build kept for an active check's own suite
 
 
 def build_image(folder):
@@ -130,14 +131,15 @@ def name_by_image(out):
 
 
 def newest_verified_build():
-    """The verified product build tests use when present: of BUILDS/<image> builds made from this checkout's
-    source as it is now (manifest source_sha256 == xyf_build.source_hashes(), the tie --verify requires;
-    a build of another branch or an older commit never counts), the one verified last. None when there is
-    none: scripts/check.py builds one before its suite, `setup.py fixtures` too."""
+    """The latest verified product from this checkout's sources. A check suite uses its private copy.
+
+    The manifest's source hashes must still match, as with --verify. Outside a check run, look in BUILDS.
+    """
     import xyf_build
     source = xyf_build.source_hashes()
     found = []
-    for d in BUILDS.glob('*'):
+    builds = Path(os.environ.get(CHECK_TEST_BUILDS) or BUILDS)
+    for d in builds.glob('*'):
         named = build_image(d)
         if named and named[1].get('source_sha256') == source:
             found.append(((d / 'verification.json').stat().st_mtime, d.name, d))

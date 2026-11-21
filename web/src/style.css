@@ -58,14 +58,33 @@ td.actions button { margin-left: 4px; }
 .notice { border-radius: var(--radius); padding: 10px 14px; margin-bottom: 16px; border: 1px solid var(--line); background: var(--panel); }
 .notice.error { border-color: color-mix(in srgb, var(--danger) 60%, var(--line)); color: #ffb4b4; }
 .notice.busy { color: var(--muted); }
+.notice.installed:not([hidden]) { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
 progress { width: 100%; accent-color: var(--accent); height: 8px; }
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: min(460px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgb(0 0 0 / .6); }
 dialog p { color: var(--muted); margin: 6px 0 16px; white-space: pre-line; }
 dialog .row { justify-content: flex-end; margin-top: 8px; }
 dialog input[type=text] { width: 100%; margin-bottom: 8px; }
+#bug-report-dialog { width: min(640px, calc(100vw - 32px)); }
+#bug-report-preview { max-height: 50vh; overflow: auto; padding: 12px; border-radius: 7px; background: var(--bg); }
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px 14px; margin: 8px 0 12px; }
 .checks label { display: flex; gap: 8px; align-items: center; }
+ol.steps { margin: 0 0 14px; padding-left: 22px; max-width: 62ch; }
+ol.steps li { margin: 4px 0; }
+.drop { display: block; border: 1px dashed var(--line); border-radius: var(--radius); padding: 22px; text-align: center; color: var(--muted); cursor: pointer; margin-bottom: 12px; }
+.drop:hover { border-color: var(--accent); color: var(--text); }
+.refusal { border-color: color-mix(in srgb, var(--danger) 60%, var(--line)); }
+.warn-text { color: var(--warn); }
+.install-status { color: var(--muted); }
+.install-status.error { color: #ffb4b4; }
+.install-reminder { border-left: 3px solid var(--accent); padding: 4px 12px; margin: 0 0 14px; }
+.install-reminder h3 { font-size: 14px; margin: 4px 0; }
+.transfer-log { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.mtp-help-button { margin-top: 12px; }
+.flow-navigation { margin-top: 14px; }
+#mtp-faq, #connection-help { margin-top: 14px; color: var(--muted); }
+#mtp-faq h3 { font-size: 14px; color: var(--text); margin: 12px 0 2px; }
+a { color: var(--accent); }
 @media (max-width: 760px) {
   .shell { grid-template-columns: 1fr; }
   .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px 16px; gap: 12px; }

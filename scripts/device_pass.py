@@ -9,7 +9,8 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
 (SAFETY.md: stop at the first unexpected result). The end stage always runs.
   check    always: HELLO + STATUS within --wait s. No answer: one `NEED:` line,
            exit 3, no session folder, nothing sent but HELLO. (keepalive.sh
-           processes already running are stopped first: they share the port.)
+           processes already running are stopped first: they share the port.) HELLO
+           confirm=1 (#65): FAIL, CONFIRM_ON.
   session  always: hold on.
   read     default: status; state slots; the default entry's package metadata; ls firmware/
            lists the default and ls /yaffs2/xy-forever lists firmware; 8 ranged
@@ -76,11 +77,11 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
   config   default (keys): only when the device holds the package set (alone), the saved configuration has
            no saved mods and the saved base, if given, is the default, the default has its official content (else
            SKIP, nothing sent but reads): STOP, TRACK3 (the Mods row seen selected), PLAY: the Mods page;
-           PLUS to fm2op (its row from the local set), PLAY: on; STOP, TRACK1: the first row's text longer (the
-           pending mark); only then PLAY (Continue): the Save dialog; MINUS: Back seen selected; PLAY: home, the
-           first row unchanged (still pending); the Mods page again, PLAY: fm2op off; home: the first row as at the
-           start. Never Save or Discard (both boot), no PLAY on the first row without the mark. A failure: STOP
-           (up to 3) until the home menu shows; the row says what may be pending (only until a restart).
+           PLUS to fm2op (its row from the local set), PLAY: on, saved at once (#197: saved mods=fm2op, read
+           back while the page is still shown); STOP, TRACK1: the first row's text longer (the "(rebuild)" mark);
+           the Mods page again, PLAY: fm2op off, saved (mods= empty); home: the first row as at the start. Never
+           PLAY on the first row (it would build and boot). A failure: STOP (up to 2) until the home menu shows; the
+           row says what may be saved (fm2op off on the Mods page saves it back).
   mtp      default: mtp-test --hold-ms 2000 (097: processor A's storage executor;
            a hang inside it needs a power cycle), then home answers without a
            restart and a read works.
@@ -115,7 +116,6 @@ import re
 import shutil
 import signal
 import struct
-import subprocess
 import sys
 import time
 import traceback
@@ -126,9 +126,10 @@ sys.path.insert(0, str(ROOT))
 import xyf_build                                           # noqa: E402
 import xyf_host as host                                    # noqa: E402
 from xy_forever import census, config_records, package_records, paths, usb_proto as P, usb_proto_ids as ids   # noqa: E402
+from scripts.device_pass_keepalive import Keepalive, keepalive_dir   # noqa: E402,F401
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
-NEED = 'NEED: power off, wait 5 s, then power on holding PLAY; release it at the logo'
+NEED = 'NEED: power off, then power on holding PLAY; release it at the logo'
 NO_ANSWER, ERROR = 100, 101             # command results: connect failed (no HELLO), exception
 NOT_FOUND = P.STATUS_NAMES.index('not_found')
 SESSIONS = paths.SESSIONS
@@ -182,14 +183,15 @@ ALT_DEFAULTS = ('opxy-121', 'opxy-121-stock')
 RANGES = 8
 # The saved configuration (target/xyf_config.hpp) and what the home menu's first row shows. Screenshots (xyf_host screen_png: 480 x 216 RGB, filter none): ui_screens
 # draw_menu puts seven rows 18 px apart from y 60 (build 184: Settings; row i's white bar: y 58 + 18 i .. +16,
-# x 10..469, its text y 60 + 18 i .. +13 from x 20); ui_pages draw_choice fills the selected button white at y 172..195, the others have grey edges.
-# #21: five rows (no MTP mode, no Info row): 20 px apart, row i's bar y 60 + 20 i .. +17, its text y 64 + 20 i .. +13.
+# x 10..469, its text y 60 + 18 i .. +13 from x 20).
+# #197: four rows (no MTP mode, no Info, no Uninstall row): 22 px apart (row_selected's probe, 20 px apart, stays
+# inside each bar), row i's bar y 56 + 22 i .. +19, its text y 60 + 22 i .. +13.
 ROW0_BAND = (59, 78)            # the first row's pixels (bar and text), compared before and after
-HOME_ROWS, ROW_TOP, ROW_PITCH = 5, 60, 20   # home rows; the first row's bar top; rows apart (ui_screens draw_menu)
+HOME_ROWS, ROW_TOP, ROW_PITCH = 4, 60, 20   # home rows; the first row's probe base; rows apart (row_selected)
 BAR_X, BAR_RIGHT = 12, 470      # inside a row's bar, left of its text; the bar's right end
-BUTTON_Y = 174                  # a dialog's button row (above the button text)
 T_PAGE = 30                     # the Mods page reads its package list (screenshots 1.5 s apart until two equal)
-MARK_GROWTH = 60                # px: "(changed)" lengthens the first row's text by more than this
+T_SAVED = 10                    # s: a flip on the Mods page is written (quiet_ms after it, then the config job)
+MARK_GROWTH = 60                # px: "(rebuild)" lengthens the first row's text by more than this
 # Protocol stage (docs/PROTOCOL.md).
 PRE_V1 = 'pre-v1 device'
 HELLO_ROUNDS = 5
@@ -266,11 +268,11 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
                   'full read is over %g s), its files and folders gone, content/ listed as before; entry removed '
                   '(SKIP without a package set, a stock default with content.sha256 and official content)'
                   % (MODS_MACHINE, FULL_READ)),)),
-    ('config', (('pending', T_ANSWER * 6 + 2 * T_PAGE,
+    ('config', (('pending', T_ANSWER * 6 + 2 * T_PAGE + 2 * T_SAVED,
                  'keys (only with the package set, official content and a saved configuration without mods; '
-                 'else SKIP: reads only, no key): Mods, %s on, home: the first row shows the pending mark; PLAY on it '
-                 '(only then): the Save dialog, MINUS to Back (checked), PLAY: still pending; Mods, %s off, home: '
-                 'the mark gone. Never Save, never Discard, never a boot; on a failure STOP until home'
+                 'else SKIP: reads only, no key): Mods, %s on: saved at once (mods=, the page still '
+                 'shown); home: the first row shows the "(rebuild)" mark; Mods, %s off: saved; home: the mark gone. '
+                 'Never PLAY on the first row, never a boot; on a failure STOP until home'
                  % (MODS_MACHINE, MODS_MACHINE)),)),
     ('mtp', (('mtp-test', T_MTP, 'mtp-test --hold-ms %d --yes-test: all 11 steps' % HOLD_MS),
              ('home-after-mtp', T_ANSWER, 'no restart (frames kept, crash restarts 0), a read works, '
@@ -285,9 +287,14 @@ SIM_SKIPS = {
     'keys': 'simulator: the menu screen and keys are not hosted',
     'keepalive': 'simulator: no keepalive.sh (the simulator keeps running without a host)',
 }
-KEEPALIVE_NEED = 'NEED: keepalive.sh pid %d still runs: kill it (its folder %s), then rerun'
-SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
 SIM_NEED = 'NEED: start the simulator (python3 -m xy_forever.sim), then rerun with --sim 127.0.0.1:7341'
+CONFIRM_ON = 'Switch off Settings > Ask before USB control on the device first'
+
+
+def confirm_on(out):
+    """Whether the HELLO in xyf_host's output ("connected PORT: TEXT") says confirm=1."""
+    hello = re.search(r'^connected .*?: (\S+)$', out, re.M)
+    return bool(hello) and P.Hello(hello.group(1)).keys.get('confirm') == '1'
 
 
 def mods_reference(packages, machines, name):
@@ -562,80 +569,6 @@ class HostDevice:
         return False
 
 
-class Keepalive:
-    """scripts/keepalive.sh processes (they share the port with every other host command)."""
-
-    def running(self):
-        try:
-            pids = subprocess.run(['pgrep', '-f', 'keepalive.sh'], capture_output=True, text=True).stdout.split()
-        except OSError:
-            return []
-        mine, pid = set(), os.getpid()
-        while pid > 1 and pid not in mine:              # this script and its ancestors (the shell that ran it)
-            mine.add(pid)
-            pid = int(subprocess.run(['ps', '-o', 'ppid=', '-p', str(pid)], capture_output=True, text=True).stdout
-                      or 0)
-        found = []
-        for pid in set(map(int, pids)) - mine:
-            args = subprocess.run(['ps', '-o', 'args=', '-p', str(pid)], capture_output=True, text=True).stdout.split()
-            statedir = keepalive_dir(args)
-            if statedir:
-                found.append((pid, statedir))
-        return found
-
-    def stop_running(self, wait=8.0):
-        """Stops every keepalive.sh loop: its stop file, then (still running after wait s) SIGTERM to its status
-        call and to it. One that outlives that still holds the port: its NEED line, then SystemExit(EXIT_NEED)."""
-        stopped = []
-        for pid, statedir in self.running():
-            print('[%s] stopping keepalive.sh pid %d (%s)' % (time.strftime('%H:%M:%S'), pid, statedir),
-                  file=sys.stderr, flush=True)
-            with contextlib.suppress(OSError):
-                (Path(statedir) / 'stop-keepalive').touch()
-            deadline = time.monotonic() + wait
-            while time.monotonic() < deadline and alive(pid):
-                time.sleep(0.2)
-            if alive(pid):                       # stuck in a status call (read-only): end it
-                subprocess.run(['pkill', '-TERM', '-P', str(pid)], capture_output=True)
-                with contextlib.suppress(OSError):
-                    os.kill(pid, signal.SIGTERM)
-                deadline = time.monotonic() + 2.0
-                while time.monotonic() < deadline and alive(pid):
-                    time.sleep(0.2)
-            if alive(pid):
-                print(KEEPALIVE_NEED % (pid, statedir), flush=True)
-                raise SystemExit(EXIT_NEED)
-            stopped.append(dict(pid=pid, statedir=statedir))
-        return stopped
-
-    def start(self, folder):
-        log = open(folder / 'keepalive.log', 'ab')
-        proc = subprocess.Popen(['/bin/sh', str(ROOT / 'scripts/keepalive.sh'), str(folder)], cwd=ROOT,
-                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                                start_new_session=True)
-        log.close()
-        (folder / 'keepalive.pid').write_text('%d\n' % proc.pid)
-        return proc.pid
-
-
-def keepalive_dir(args):
-    """STATEDIR when ps args are a keepalive.sh loop (`sh .../keepalive.sh DIR`, as Keepalive.start runs it, or
-    `bash -c .../keepalive.sh DIR`), else None. A command line that only mentions keepalive.sh (a grep filter on
-    this script's output) is none: stopping one killed the script's own pipeline, silently (#50)."""
-    i = (2 if args[1:2] == ['-c'] else 1) if args and Path(args[0]).name.lstrip('-') in SHELLS else 0
-    if len(args) > i + 1 and args[i].endswith('keepalive.sh') and Path(args[i + 1]).is_dir():
-        return args[i + 1]
-    return None
-
-
-def alive(pid):
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
-
-
 def why(code, out, err):
     text = [line.strip() for line in (out + '\n' + err).replace('\r', '\n').splitlines() if line.strip()]
     if code == NO_ANSWER:
@@ -814,6 +747,8 @@ class Pass:
 
     # -- check and session -----------------------------------------------------------------------
     def step_check(self):
+        if confirm_on(self.ok(['wait'], self.opts.wait)):         # HELLO only: nothing asks
+            raise StepFail(CONFIRM_ON)
         decoded, usb = self.status(self.opts.wait)
         if usb.get('version') not in (4, 5) or usb.get('role') != 1:     # 5: the build identity
             raise StepFail('unexpected service: version %s, role %s' % (usb.get('version'), usb.get('role')))
@@ -1181,7 +1116,7 @@ class Pass:
         return 'home in %.1f s' % self.restart()[0]
 
     def step_keys(self):
-        # 188: TRACK1..4 select the first four rows; TRACK3 is the Mods row (no MTP mode row).
+        # TRACK1..4 select the four rows (#197: Continue, the safe-mode row, Mods, Settings); TRACK3 is the Mods row.
         self.key('stop')
         first, second = self.shot('menu-a.png'), self.shot('menu-b.png')
         if first != second:
@@ -1698,8 +1633,8 @@ class Pass:
             left = '%s not removed (%s)' % (entry, error)
         return 'state: default %s set back (content official by the switch; not re-checked), %s' % (previous, left)
 
-    # The Mods page edits a pending copy of the saved configuration; the pass shows the mark appear
-    # and clear, opens the Save dialog only while the mark is seen, and leaves it by Back. Never Save or Discard.
+    # #197: a flip on the Mods page is saved at once; the pass turns fm2op on, reads the record back while
+    # the page is shown, sees the first row's mark, then turns it off again (saved back). Never PLAY on the first row.
     def config_ready(self):
         """The preconditions (reads only; StepSkip with the reason): fm2op's Mods page row."""
         if self.opts.sim and not self.opts.sim_log:
@@ -1784,33 +1719,21 @@ class Pass:
             last = shot
         raise StepFail('the Mods page did not settle within %d s (still reading?)' % T_PAGE)
 
-    def dialog(self, name, before, back):
-        """The Save dialog: device: the screen changed and one filled button, with back: the last one (no
-        button edge right of it); simulator: screen 5, with back: choice 2."""
-        self.sleep(0.3)
-        if self.opts.sim:
-            rows = self.sim_lines('menu: screen ')
-            if not rows or not rows[-1].startswith('5 ') or (back and not rows[-1].endswith(' choice 2')):
-                raise StepFail('simulator: not the Save dialog%s (%s)' % (' on Back' if back else '', rows[-1:]))
-            return None
-        shot = self.shot(name)
-        if shot == before:
-            raise StepFail('%s: the screen did not change' % name)
-        line = png_pixels(shot)[BUTTON_Y]
-        runs, start = [], None
-        for x in range(host.SCREEN_W + 1):
-            on = x < host.SCREEN_W and line[3 * x:3 * x + 3] == b'\xff\xff\xff'
-            if on and start is None:
-                start = x
-            elif not on and start is not None:
-                runs.append((start, x))
-                start = None
-        filled = [r for r in runs if r[1] - r[0] >= 40]
-        if len(filled) != 1:
-            raise StepFail('%s: %d filled buttons, expected one: not the Save dialog' % (name, len(filled)))
-        if back and (any(line[3 * filled[0][1]:]) or not any(line[:3 * filled[0][0]])):
-            raise StepFail('%s: the selected button is not the last one (Back): PLAY not sent' % name)
-        return shot
+    def saved_mods(self, name, want):
+        """Wait at most T_SAVED seconds for the saved selection to match the flip."""
+        deadline = time.monotonic() + T_SAVED
+        while True:
+            try:
+                record = config_records.record_name(self.names(config_records.ROOT))
+                data = self.read(config_records.ROOT + '/' + record, name, '--all') if record else None
+                fields = config_records.fields(data, record) if data is not None else {}
+            except (StepFail, ValueError):                  # busy while the config job writes it: read again
+                fields = {}
+            if fields.get('mods') == want:
+                return
+            if time.monotonic() > deadline:
+                raise StepFail('saved mods=%r, expected %r, %d s after the flip' % (fields.get('mods'), want, T_SAVED))
+            self.sleep(1.0)
 
     def step_pending(self):
         position, total = self.config_ready()
@@ -1831,30 +1754,20 @@ class Pass:
                 if not all(mods_row_selected(pixels, r) == (r == row) for r in range(MODS_VISIBLE_ROWS)):
                     raise StepFail('after PLUS x%d the selected Mods page row is not visible row %d (of %d rows; '
                                    'config-chosen.png): PLAY not sent' % (position, row, total))
-            stage = '%s may be on in the pending copy (nothing saved)' % MODS_MACHINE
+            stage = '%s may be saved on' % MODS_MACHINE
             self.key('play')
             on = self.seen('config-on.png', chosen, 'PLAY on %s' % MODS_MACHINE)
             if self.opts.sim:
                 self.sim_wait(lambda p: MODS_MACHINE in p['on'], '%s on' % MODS_MACHINE)
+            self.saved_mods('config1.txt', MODS_MACHINE)          # saved, the page still shown
             self.key('stop')
             h1 = self.home_view('config-home1.png')
             if self.opts.sim:
-                if not h1['pending'] or '(changed)' not in h1['label']:
-                    raise StepFail('the first row shows no pending mark: %r (Continue not sent)' % h1['band'])
+                if not h1['pending'] or '(rebuild)' not in h1['label']:
+                    raise StepFail('the first row shows no "(rebuild)" mark: %r' % h1['band'])
             elif h1['band'] == h0['band'] or h1['right'] < h0['right'] + MARK_GROWTH:
-                raise StepFail('the first row did not get the longer "(changed)" text (text end x %d -> %d): Continue '
-                               'not sent' % (h0['right'], h1['right']))
-            self.key('play')                  # Continue: the mark is seen, so the Save dialog (never a boot)
-            stage = 'the Save dialog may be open, %s on in the pending copy (nothing saved)' % MODS_MACHINE
-            shown = self.dialog('config-dialog.png', h1['shot'], False)
-            self.key('minus')
-            self.dialog('config-back.png', shown, True)
-            self.key('play')                  # Back
-            stage = '%s on in the pending copy (nothing saved)' % MODS_MACHINE
-            h2 = self.home_view('config-home2.png')
-            if h2['band'] != h1['band']:
-                raise StepFail('after Back the first row changed: %s' % ('%r' % h2['band'] if self.opts.sim else
-                                                                         'see config-home2.png'))
+                raise StepFail('the first row did not get the longer "(rebuild)" text (text end x %d -> %d)'
+                               % (h0['right'], h1['right']))
             again = self.open_mods('config-page1.png')
             if self.opts.sim:
                 if again.get('selected') != MODS_MACHINE or MODS_MACHINE not in again['on']:
@@ -1865,23 +1778,23 @@ class Pass:
             self.seen('config-off.png', again, 'PLAY on %s' % MODS_MACHINE)
             if self.opts.sim:
                 self.sim_wait(lambda p: MODS_MACHINE not in p['on'], '%s off' % MODS_MACHINE)
+            self.saved_mods('config2.txt', '')
+            stage = '%s off again: saved without mods' % MODS_MACHINE
             self.key('stop')
             h3 = self.home_view('config-home3.png')
             if h3['band'] != h0['band']:
                 raise StepFail('the first row is not as before: %s' % ('%r' % h3['band'] if self.opts.sim else
                                                                        'see config-home0.png, config-home3.png'))
-            stage = '%s off again: nothing pending' % MODS_MACHINE
         except Exception as error:
             raise StepFail('%s; %s' % (error, self.config_recover(stage)))
-        return ('%s on (Mods row %d): the first row showed the pending mark; Continue: the Save dialog, Back: still '
-                'pending; %s off: the mark gone (%s). Nothing saved, no boot'
-                % (MODS_MACHINE, position, MODS_MACHINE, h3['label'] if self.opts.sim else 'screenshots'))
+        return ('%s on (Mods row %d): saved at once, the first row showed the "(rebuild)" mark; %s off: saved, the mark '
+                'gone (%s). No boot' % (MODS_MACHINE, position, MODS_MACHINE, h3['label'] if self.opts.sim else 'screenshots'))
 
     def config_recover(self, stage):
-        """STOP until the home menu shows (STOP: the dialog and the page go back; never PLAY); the state in words."""
+        """STOP until the home menu shows (STOP: the page goes back; never PLAY); the state in words."""
         home = None
         try:
-            for _ in range(3):                  # the dialog -> home, the page -> home, home: nothing
+            for _ in range(2):                  # the page -> home, home: nothing
                 self.key('stop')
                 self.sleep(0.3)
             if not self.opts.sim:
@@ -1889,9 +1802,9 @@ class Pass:
                 home = any(row_selected(rows, r) for r in range(HOME_ROWS))
         except StepFail:
             pass
-        return ('state: %s; STOP sent%s. Pending changes live only until the next restart: python3 xyf_host.py '
-                'reboot --yes-reboot --to menu clears them' % (stage, '' if self.opts.sim else (
-                    ', the home menu shown' if home else ', the home menu NOT seen')))
+        return ('state: %s; STOP sent%s. A saved %s is undone on the Mods page (%s off: saved at once)'
+                % (stage, '' if self.opts.sim else (
+                    ', the home menu shown' if home else ', the home menu NOT seen'), MODS_MACHINE, MODS_MACHINE))
 
     def step_content_scratch(self):
         base, name = CONTENT_SCRATCH.rsplit('/', 1)
@@ -2173,8 +2086,8 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
                 rows.append(row)
                 if row['result'] == 'FAIL':
                     failed = '%s/%s' % (stage, name)
-    # End of session: always. If the device does not answer, the rest is SKIP.
-    lost = None
+    # End of session: always. No answer (or #65's question on): the rest is SKIP.
+    lost = CONFIRM_ON if check['detail'] == CONFIRM_ON else None
     for name, _, _ in STAGES[-1][1]:
         index += 1
         if lost:
@@ -2184,7 +2097,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
         row = run.run_step(index, 'end', name)
         rows.append(row)
         if name == 'end-status' and row['result'] == 'FAIL':
-            lost = ('device not answering: if it stays so, power off, wait 5 s, power on holding PLAY'
+            lost = ('device not answering: if it stays so, power off, then power on holding PLAY'
                     if run.no_answer else 'after FAIL of end/end-status')
     code = EXIT_FAIL if any(r['result'] == 'FAIL' for r in rows) else EXIT_PASS
     summary = dict(format='xyf-device-pass/1', folder=str(run.folder), argv=list(argv or sys.argv[1:]),

@@ -1,6 +1,7 @@
 #ifndef XYF_INFLATE_HPP
 #define XYF_INFLATE_HPP
 #include "ldr.hpp"
+#include "work.hpp"
 
 namespace xyf_core { namespace zip {
 // Readers must fill the requested byte range exactly, or return false. Sinks
@@ -16,7 +17,7 @@ struct Sink {
 };
 enum class Status {
     ok, argument, io, truncated, unsupported, layout, name, duplicate,
-    bounds, capacity, deflate, checksum, sink
+    bounds, capacity, deflate, checksum, sink, cancelled
 };
 struct Extraction { U32 produced, crc32, consumed; };
 struct Huffman {
@@ -33,7 +34,7 @@ struct InflateWorkspace {
 U32 crc32_update(U32 running, const Byte* data, U32 count);
 Status inflate_raw(const Reader& reader, U32 offset, U32 compressed_size,
                    U32 expected_size, InflateWorkspace& workspace,
-                   const Sink& sink, Extraction& result);
+                   const Sink& sink, Extraction& result, Work* work=nullptr);
 const char* status_name(Status status);
 } }
 #endif

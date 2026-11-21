@@ -141,12 +141,12 @@ volatile U32 host_frame_ms __attribute__((section(".data"))) = 0;        // now(
 volatile U32 host_change __attribute__((section(".data"))) = 0;          // the last changing request's line
 volatile U32 host_change_ms __attribute__((section(".data"))) = 0;
 enum HostLine : U32 { line_none = 0, line_stage, line_files, line_install, line_uninstall, line_default, line_build,
-                      line_content };
+                      line_content, line_mods };
 const char* host_line(U32 line) {
     return line == line_stage ? "USB: receiving a file" : line == line_files ? "USB: writing files" :
            line == line_install ? "USB: installing XY Forever" : line == line_uninstall ? "USB: uninstalling XY Forever" :
            line == line_default ? "USB: setting the default" : line == line_build ? "USB: building Open-XY" :
-           line == line_content ? "USB: changing content" : nullptr;
+           line == line_content ? "USB: changing content" : line == line_mods ? "USB: setting the mods" : nullptr;
 }
 U32 change_line(uint8_t type) {                                          // the requests that change something
     if (type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end) return line_stage;
@@ -157,6 +157,7 @@ U32 change_line(uint8_t type) {                                          // the 
     if (type == P::t_uninstall) return line_uninstall;
     if (type == P::t_set_default) return line_default;
     if (type == P::t_mods_apply) return line_build;
+    if (type == P::t_config_set) return line_mods;
     return line_none;
 }
 

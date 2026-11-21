@@ -238,20 +238,24 @@ static const uint32_t mods_metadata_bytes = 0x10000u;
 inline const char* menu_busy() { return page_busy() ? "Busy: a build or content change is running." : nullptr; }
 #endif
 #if defined(XYF_USB_FILE_WRITE) && defined(XYF_USB_SET_DEFAULT) && defined(XYF_ONE_SESSION)
-// b: the content switch (xyf_content_job.hpp), a job of B's menu loop. content_default: the menu's
-// SHIFT+PLAY on catalog entry `entry`: 0 when its content is installed (set the default as before), else the
-// status line (the switch started; it writes the default when it succeeded; or why it did not start).
-// content_line: the menu's status line while a switch runs and once it ended; 0 when unchanged.
+// b: the content switch (xyf_content_job.hpp), a job of B's menu loop. content_line: the menu's status line
+// while a switch runs and once it ended; 0 when unchanged. content_offer: that line offers to undo a change whose
+// source is missing (the journal's previous entry); content_undo: the menu's PLAY on the first row then, the
+// switch back to it, the default written when it succeeds (the status line: started, or why not; 0: no offer).
 #define XYF_CONTENT_SWITCH 1
-const char* content_default(uint32_t entry);
 const char* content_line();
+bool content_offer();
+const char* content_undo();
 // b: the save sequence's storage steps (xyf_mods_io; xyf_config.hpp). content_switch: the switch to
-// library entry id as a job, without writing the default (status as content_default's start: s_ok started,
+// library entry id as a job, without writing the default (status as content_undo's start: s_ok started,
 // s_busy, s_link, s_bad_request). config_store: the config job (job_view: phase 0 running, 8 done, 9 failed;
 // error as a switch's): the record written (replaced by renames), A's window closed, then the default set to
 // default_id unless it is that already ("" or 0: not changed). job_target: the entry the last mod job
 // committed into ("mods-a" / "mods-b").
 uint32_t content_switch(const char* id);
+// #178: library entry id from the stock updater's own os.ldr (usb_service_adopt.ipp; copy false: it is there, only
+// the default), then id as the default; a job (job_view; error as a switch's; status as content_switch's start).
+uint32_t adopt_start(const char* id, bool copy);
 // The save-time log (xyf_save_log.hpp). save_log_begin: the Save key (the times start; the build, the
 // switch and the record add theirs; the record's job writes the line); save_log_selection: what was asked;
 // save_log_lap: the part from now (xyf::save_log::Part); save_log_drop: the Save failed (no line).
@@ -260,6 +264,8 @@ void save_log_selection(uint32_t mods, bool expanded, uint32_t added, uint32_t r
 void save_log_lap(uint32_t part);
 void save_log_drop();
 uint32_t config_store(const char* text, uint32_t length, const char* default_id);
+// #197: the fingerprint (xyf_converge.hpp mark_path) replaced as config.txt is, by the config job (no default change).
+uint32_t mark_store(const char* text, uint32_t length);
 const char* job_target();
 // settings.txt (xyf_settings.hpp). settings_load: once A serves, one bounded read (settings.txt, else
 // settings.old; absent or unreadable: the defaults); true when done (call each menu pass until then).
@@ -269,19 +275,30 @@ const char* job_target();
 bool settings_load();
 xyf::settings::Record& settings();
 uint32_t settings_store();
-// #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode): its option
-// list opened (menu::open_options; 0), or the page's note why not (still reading, a save running, a newer record:
-// never changed). settings_pick, the list's PLAY: B's copy takes the option (nothing written; the row is marked).
-// settings_view, each menu pass: settings_load, the rows' values and marks into the menu state; once the page was
-// left with a change, one write of the whole record (settings_store; started the pass after the leaving), and
-// the home menu's line about it in line (0: none). True: draw again. A refused or failed write keeps the rows
-// marked; leaving the page again tries again. A power cut before the write keeps settings.txt as it was.
+// #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode, Ask before USB control): its option
+// list opened (menu::open_options; 0), or the page's note why not (still reading, a newer record: never changed).
+// settings_pick, the list's PLAY: B's copy takes the option at once (#191; the row marked until written).
+// settings_view, each menu pass: settings_load, the rows' values and marks into the menu state; a pick's write of the
+// whole record (settings_store) at a quiet moment, xyf_settings.hpp quiet_ms after the last pick (quick picks: one
+// write), or the pass after the page is left; the line about its end in line (0: none). True: draw again. A failed
+// write keeps the rows marked; the next pick, or leaving the page, tries again. A power cut before the write loses
+// only that change. serial_off, mtp_off (#191): USB mode as picked (the composite always carries both): "MTP" turns
+// serial off (every request but hello answers serial_off; hello serial=off), "Serial" turns MTP off.
 const char* settings_open(xyf::menu::State& state, uint32_t row);
 void settings_pick(const xyf::menu::State& state);
 bool settings_view(xyf::menu::State& state, const char*& line);
-// A key event (key_ui on_key; injected: the host's KEY command). While a confirm prompt is open it takes
-// every key (true: not for the menu); only a real PLAY / STOP answers it (xyf_settings.hpp gate_key).
+bool serial_off();
+bool mtp_off();
+// A key event (key_ui on_key; injected: the host's KEY command). While the #65 question is open it takes every key
+// (true: not for the menu); only a real PLAY / STOP answers it (xyf_settings.hpp gate_key). An injected key never
+// opens or picks the Ask before USB control row (settings_open: xyf_settings.hpp note_on_device).
 bool confirm_key(uint32_t key, uint32_t pressed, bool injected);
+// #65 (usb_service_trust.ipp): the device asks "Allow this computer to control your OP-XY?" (key_ui draws it in
+// place of the page). confirm_on: Ask before USB control as settings.txt holds it (settings_load first; 1 until it
+// is read): HELLO confirm=. trust_word: HELLO trust= (none, asking, allowed, refused).
+bool trust_prompt();
+uint32_t confirm_on();
+const char* trust_word();
 #endif
 #endif
 #if defined(XYF_SERVICE_ON_MARKER_ONLY)

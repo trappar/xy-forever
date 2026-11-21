@@ -181,6 +181,8 @@ class FakeDevice:
             if key.startswith(f):
                 return 1, 'connected fake\n%s: failed\n' % argv[0], ''
         name = argv[0]
+        if name == 'wait':                                            # HELLO only (#65: the check reads confirm=)
+            return 0, 'connected fake: XYF1\n', ''
         if name == 'status':
             return 0, self.status(), ''
         if name == 'hold':
@@ -441,6 +443,26 @@ class DevicePassTest(unittest.TestCase):
         finally:
             dp.host.SIM = None
 
+    def test_ask_before_usb_control_stops_the_pass(self):
+        """#65: a HELLO with confirm=1 (the device would ask before any other command) FAILs the check with what to
+        switch off, before STATUS; every later step is SKIP."""
+        self.assertTrue(dp.confirm_on('connected 127.0.0.1:7341: XYF1;proto=1.23;confirm=1;stage2=0\n{}'))
+        self.assertFalse(dp.confirm_on('connected fake: XYF1;confirm=0;stage2=0\n'))
+        self.assertFalse(dp.confirm_on('connected fake: XYF1\n'))                 # a build before 1.23: no gate
+
+        class Asking(FakeDevice):
+            def command(self, argv, timeout, **limits):
+                code, out, err = super().command(argv, timeout, **limits)
+                return code, out.replace('connected fake: XYF1\n', 'connected fake: XYF1;confirm=1\n'), err
+        asking = Asking()
+        self.assertEqual(self.run_pass(dev=asking), dp.EXIT_FAIL)
+        check = self.rows()[('check', 'check')]
+        self.assertEqual((check['result'], check['detail']), ('FAIL', dp.CONFIRM_ON))
+        self.assertEqual(dp.CONFIRM_ON, 'Switch off Settings > Ask before USB control on the device first')
+        self.assertEqual(asking.calls, ['wait'])                          # nothing that would ask, the end stage either
+        later = [r for r in self.summary['steps'] if r['stage'] not in ('check', 'end')]
+        self.assertTrue(later and all(r['result'] == 'SKIP' for r in later))
+
     def test_no_answer_prints_one_need_line_and_changes_nothing(self):
         code = self.run_pass(dev=FakeDevice(answer=False))
         self.assertEqual(code, dp.EXIT_NEED)
@@ -448,7 +470,7 @@ class DevicePassTest(unittest.TestCase):
         lines = self.out.splitlines()
         self.assertEqual(len(lines), 1)
         self.assertTrue(lines[0].startswith('NEED: '))
-        self.assertEqual(self.dev.calls, ['status'])
+        self.assertEqual(self.dev.calls, ['wait'])
         self.assertIsNone(self.folder)
         self.assertEqual(self.keepalive.started, [])
 

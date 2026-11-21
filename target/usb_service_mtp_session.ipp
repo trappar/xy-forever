@@ -3,6 +3,7 @@
 #if defined(XYF_SIM)
 }
 namespace xyf_sim { void log(const char* format, ...); }                // the session screen in the log (sim/runtime.hpp)
+namespace xyf_sim { uint32_t usb_bus_resets(); uint32_t ask(); }        // #65: control "unplug", --ask (sim/stock.cpp)
 namespace {
 #endif
 // ---- The MTP session (mtp_session.hpp). Not a job: enabled when the composite starts (the test build)
@@ -120,6 +121,9 @@ void mtp_pump() {
     const U32 start = now();
     if (m.stage == ms::st_running) {
         if (job_running()) m.responder.invalidate();                     // speed: the job changes files (cache)
+#if defined(XYF_SETTINGS)
+        m.responder.refuse(xy_forever::usb_service::mtp_off() ? mr::r_access_denied : 0);   // #191: USB mode Serial
+#endif
         ms::Timing& timing = m.files.timing;
         for (;;) {                                                       // one file request per step
             const uint64_t step_start = xyf::clock::cycles();

@@ -56,7 +56,9 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 4. **Write:** Track 5 writes the OS to the boot partition. Wait for "firmware
    written ok!", then power-cycle.
 
-Copying `/os.ldr` alone installs nothing; the Track 5 step does. Reports can be
+Copying `/os.ldr` alone installs nothing; the Track 5 step does. For a stock OP-XY the web app's Install page
+(#178, `web/README.md`) leads an owner through these steps, switching the dev menu on over Web MIDI first; the first
+power-on after Track 5 then adopts the stock 1.2.1 entry on the device (`docs/storage/jobs.md`). Reports can be
 fetched through dev MTP without the USB service. To do that, create the destination
 folder on the Mac first and copy the report folder (see Reports). `/logs` survives
 an OS reinstall, so crash logs can be fetched from it.
@@ -74,8 +76,8 @@ an OS reinstall, so crash logs can be fetched from it.
   confirm before building.
 - **Hardware time is limited.** Pack more information into each test, plan boots
   carefully, and leave no junk on the device.
-- **Uninstall must be a real in-menu action.** Users must never need the stock
-  bootloader or dev menu.
+- **Uninstall needs no stock bootloader or dev menu.** It is the web app's (#179,
+  the USB `boot.uninstall` command), not a home menu row (#197).
 - **The developer boots test firmware.** When a test needs a library entry booted (the device
   leaves XY Forever), prepare everything over USB, then name the entry exactly as the menu shows
   it and what to look for; the developer boots it, checks it and power cycles back, and reports in

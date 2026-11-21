@@ -65,7 +65,9 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from xy_forever import depth, device_lock, host_inventory, host_write, library_add, usb_proto as P
+from xy_forever import depth, device_lock, host_inventory, host_read, host_trust, host_write, library_add, pack_change, usb_proto as P
+from xy_forever.host_write import AREA_TEXT, in_write_area
+from xy_forever.host_screen import SCREEN_BYTES, SCREEN_H, SCREEN_STRIDE, SCREEN_W, screen_png  # noqa: F401
 from xy_forever.library_add import ID_RE
 from xy_forever.host_install import DESCRIPTOR, MIN_IMAGE, IMAGE_CAPACITY, USB_MODES, load_build, load_stock
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr
@@ -83,11 +85,7 @@ MTP_TEST_TIMEOUT = 60.0         # host bound for one MTP_TEST, plus its hold tim
 WRITE_PATH_RE = re.compile(r'^/yaffs2/xy-forever(/[A-Za-z0-9._-]{1,64}){1,4}$')
 # Test 058: key numbers (xyf_menu.hpp / key_ui.cpp): KPlay 51, KStop 52, -/+ 53/54, shift 55, track1 6.
 KEYS = dict(minus=53, plus=54, play=51, stop=52, shift=55, **{'track%d' % (i + 1): 6 + i for i in range(8)})
-# put/rm/mkdir write only here (the device's write area: target/storage_server.cpp write_root).
-AREA_TEXT = 'under /yaffs2/, never bootloader.dev or upgrade/'
-WRITE_ROOTS = ('/yaffs2/',)       # since 1.13: all of /yaffs2 but the two below
 SLOTS = ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt')
-SCREEN_BYTES, SCREEN_W, SCREEN_H, SCREEN_STRIDE = 0x3c000, 480, 216, 256   # ui_gfx.hpp
 
 
 SIM = os.environ.get('XYF_SIM') or None
@@ -133,6 +131,7 @@ class Device:
         self.on_log = on_log
         self.log = []                # (device ms, text) of every LOG frame received
         self.hello_info = None       # P.Hello of the last HELLO reply (None: not seen, nothing refused)
+        self.on_ask = host_trust.say_ask   # #65: the device asks (waiting): said once per call, sent again
 
     def _log_frame(self, body):
         if len(body) < 8:
@@ -143,6 +142,9 @@ class Device:
             self.on_log(ms, text)
 
     def call(self, kind, payload=b'', timeout=5.0):
+        return host_trust.call(lambda: self.once(kind, payload, timeout), kind, self.on_ask)
+
+    def once(self, kind, payload=b'', timeout=5.0):
         info = self.hello_info
         if kind != P.HELLO and info is not None and not info.answers(kind):
             name = P.ids.COMMANDS[kind]['name'] if kind in P.ids.COMMANDS else '0x%02x' % kind
@@ -299,17 +301,6 @@ def device_path(path):
     return path
 
 
-def in_write_area(path):
-    """The device's write area (since 1.13): below /yaffs2/, no empty, '.' or '..' part, never
-    /yaffs2/bootloader.dev nor /yaffs2/upgrade or below it (ASCII case ignored). The device checks again."""
-    root = next((r for r in WRITE_ROOTS if path.startswith(r)), None)
-    rest = path[len(root):].split('/') if root else []
-    if not rest or not all(p and p not in ('.', '..') for p in rest):
-        return False
-    first = rest[0].lower()
-    return first != 'upgrade' and not (len(rest) == 1 and first == 'bootloader.dev')
-
-
 def split_path(path):
     parent, _, name = path.rstrip('/').rpartition('/')
     return parent or '/yaffs2', name
@@ -445,28 +436,15 @@ def put(dev, data, remote):
     return host_write.put(dev, data, remote, sent_progress)
 
 
-def screen_png(raw):
-    """Framebuffer (480 columns stored right-to-left, 256 RGB565 pixels each) -> PNG bytes."""
-    rows = []
-    for y in range(SCREEN_H):
-        row = bytearray(b'\0')                                  # PNG filter: none
-        for x in range(SCREEN_W):
-            v = struct.unpack_from('<H', raw, ((SCREEN_W - 1 - x) * SCREEN_STRIDE + y) * 2)[0]
-            row += bytes(((v >> 11) << 3 | (v >> 13), ((v >> 5) & 63) << 2 | ((v >> 9) & 3), (v & 31) << 3 | ((v >> 2) & 7)))
-        rows.append(bytes(row))
-
-    def chunk(kind, body):
-        return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', zlib.crc32(kind + body) & 0xffffffff)
-    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', SCREEN_W, SCREEN_H, 8, 2, 0, 0, 0)) +
-            chunk(b'IDAT', zlib.compress(b''.join(rows), 9)) + chunk(b'IEND', b''))
-
-
 def main(argv=None):
     try:
         return run(argv)
     except Unsupported as error:
         print('refused: %s' % error)
         return P.ids.S_UNSUPPORTED
+    except host_trust.NotAllowed as error:
+        print(error)
+        return error.status
 
 
 def run(argv):
@@ -482,9 +460,8 @@ def run(argv):
     rehearsal.add_argument('input', help='verified XY Forever build directory, or stock os.ldr with --uninstall')
     rehearsal.add_argument('--uninstall', action='store_true')
     rehearsal.add_argument('--deadline-ms', type=int, default=120000)
-    read = sub.add_parser('read'); read.add_argument('path'); read.add_argument('--out', type=Path)
-    read.add_argument('--all', action='store_true', help='any size (ranged reads; needs the Test 038 service)')
-    read.add_argument('--offset', type=int, help='one ranged read (up to READ_RANGE bytes) at this offset')
+    host_read.configure(sub)
+    pack_change.configure(sub)
     inst = sub.add_parser('install'); inst.add_argument('build'); inst.add_argument('--yes-install', action='store_true')
     reboot = sub.add_parser('reboot'); reboot.add_argument('--yes-reboot', action='store_true')
     reboot.add_argument('--to', choices=('service', 'os', 'menu'), default='service',
@@ -535,12 +512,17 @@ def run(argv):
     mtpt.add_argument('--hold-ms', type=int, default=5000); mtpt.add_argument('--yes-test', action='store_true')
     uninst = sub.add_parser('uninstall'); uninst.add_argument('stock_os_ldr'); uninst.add_argument('--yes-uninstall', action='store_true')
     from xy_forever import modsend      # mods push|list|remove (xy_forever/modsend.py)
-    modsend.add_arguments(sub.add_parser('mods', help='mod packages on the device: push, list, remove, apply, dev'))
+    modsend.add_arguments(sub.add_parser('mods', help='mod packages: push, list, remove; the saved mods: status, set; '
+                                                     'developer: apply, dev'))
     args = parser.parse_args(argv)
     global SIM
     if args.sim:
         sim_address(args.sim)
         SIM = args.sim
+    if args.command == 'packs':
+        result = pack_change.plan(args)
+        if result is not None:
+            return result
     if args.command == 'mods':
         if args.mods_command == 'dev':
             from xy_forever import moddev
@@ -597,7 +579,7 @@ def run(argv):
             print('refused: id must be 1-31 of [a-z0-9_-]'); return 2
         print('Plan: the device boots firmware/%s once, as PLAY on it in the library menu: the menu closes,' % args.id)
         print('      USB goes away and the OS does not answer this tool. The default and the state files stay.')
-        print('      Back to XY Forever: power off, wait 5 s, power on holding PLAY, release it at the logo.')
+        print('      Back to XY Forever: power off, then power on holding PLAY, release it at the logo.')
         if not args.yes_boot:
             print('DRY RUN: nothing sent. Re-run with --yes-boot to boot.')
             return 0
@@ -665,15 +647,9 @@ def run(argv):
     if args.command == 'content':
         return host_inventory.content_status(dev)
     if args.command == 'read':
-        code, body = (dev.read_all(args.path) if args.all else
-                      dev.read_file(args.path, args.offset) if args.offset is not None else dev.read_file(args.path))
-        if code:
-            print('read failed: %s' % P.status_name(code)); return code
-        if args.out:
-            args.out.write_bytes(body)
-        else:
-            sys.stdout.write(body.decode('utf-8', 'replace'))
-        return 0
+        return host_read.read(dev, args)
+    if args.command == 'packs':
+        return pack_change.command(dev, args)
     if args.command == 'install':
         code = dev.stage(data, stage_progress)
         print()

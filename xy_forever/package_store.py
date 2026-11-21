@@ -70,8 +70,9 @@ def validate(files):
 
 
 class Session:
-    def __init__(self, dev):
+    def __init__(self, dev, sweep=True):
         self.dev = dev
+        self.sweep_on_enter = sweep
         self.token = secrets.token_bytes(32)
 
     def command(self, action):
@@ -86,7 +87,8 @@ class Session:
                 check(code, 'package.session')
                 break
             time.sleep(0.05)
-        self.sweep()
+        if self.sweep_on_enter:
+            self.sweep()
         return self
 
     def __exit__(self, kind, value, traceback):

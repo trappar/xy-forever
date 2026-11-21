@@ -150,19 +150,6 @@ void draw_confirm(uint16_t* fb, const Confirm& c) {
     hint_line(fb, "- / +  choose      PLAY  confirm", c.chrome);
 }
 
-void draw_choice(uint16_t* fb, const Choice& c) {
-    compact_header(fb, c.heading, "", c.chrome);
-    int y = compact_top + 6;
-    for (uint32_t i = 0; i < c.count && i < 4; ++i, y += 12) text(fb, margin, y, c.lines[i], grey, 1);
-    int x = margin;
-    for (uint32_t i = 0; i != 3; ++i) {
-        if (!c.buttons[i]) continue;
-        button(fb, x, height - 44, c.buttons[i], i == c.selected);
-        x += text_width(c.buttons[i], 2) + 36;
-    }
-    hint_line(fb, "- / +  choose      PLAY  confirm      STOP  back", c.chrome);
-}
-
 void draw_progress(uint16_t* fb, const Progress& p) {
     compact_header(fb, p.heading, "", p.chrome);
     const int bar_y = compact_top + 10, bar_w = width - 2 * margin, bar_h = 16;

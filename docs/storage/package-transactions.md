@@ -12,6 +12,13 @@ never a partially admitted package. An absent default opens the menu. State slot
 The native assembly job uses its existing `tmp/job-<id>/` and the same rename-away/rename-in order.
 Standalone stage-2 files use the existing verified `tmp/put-*` upload and atomic file rename.
 
+A plain sound pack is already staged in `xy-forever/inbox/<id>/`. Install checks its manifest, every
+folder and the final path, then renames it to the unoccupied `content/dlc/<id>/`. Both pack roots have
+the same depth. Removal checks the same tree, renames it into `xy-forever/tmp/pkg-v1-*/`, then cleans up.
+A cut before the rename keeps the whole source in place. A cut after removal leaves only disposable scratch.
+The existing startup sweep takes at most 600 steps per pass, so a large interrupted cleanup can span several passes.
+A serial change takes the package session; a menu change holds the storage job exclusion throughout.
+
 Host transactions use `package.session` (protocol 1.19, session ABI 1): an owner token excludes the
 startup sweep, MTP, other jobs and boots while the ordinary file RPCs stage/check/commit. It adds no
 storage operation. A contender cannot renew another owner's token; busy acquisition requests cannot
@@ -23,8 +30,8 @@ file operations. The marker, updater inbox, boot-partition latch and depth rules
 When no job runs, the existing bounded startup sweep removes disposable `tmp/job-*`, `tmp/pkg-*`
 folders and abandoned `tmp/put-*` uploads. It also runs after an abandoned/released package session.
 The collector below follows after eight seconds without host traffic. It re-enters A's file service
-after a window close/catalog refresh, and yields at completed IO boundaries to foreground work. Host transactions sweep their own versioned scratch before
-starting; running output is never swept.
+after a window close/catalog refresh, and yields at completed IO boundaries to foreground work. Library and mod transactions sweep versioned scratch before
+starting. Sound pack changes leave other scratch to the idle sweep.
 
 ## Content retention and collection
 

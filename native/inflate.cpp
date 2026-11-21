@@ -10,19 +10,22 @@ namespace {
 struct Bits {
     const Reader& reader;
     InflateWorkspace& workspace;
+    Work* work;
     U32 start, size, consumed, buffered, cursor, value, count;
     Status status;
-    Bits(const Reader& r, InflateWorkspace& w, U32 offset, U32 length)
-        : reader(r), workspace(w), start(offset), size(length), consumed(0),
+    Bits(const Reader& r, InflateWorkspace& w, U32 offset, U32 length, Work* service)
+        : reader(r), workspace(w), work(service), start(offset), size(length), consumed(0),
           buffered(0), cursor(0), value(0), count(0), status(Status::ok) {}
     bool take(U32 n, U32& result) {
         while (count < n) {
             if (consumed == size) { status = Status::truncated; return false; }
             if (cursor == buffered) {
+                if (!checkpoint(work)) { status = Status::cancelled; return false; }
                 buffered = size - consumed;
                 if (buffered > sizeof(workspace.input)) buffered = sizeof(workspace.input);
                 if (!reader.read(reader.context, start + consumed, workspace.input, buffered)) {
-                    status = Status::io; return false;
+                    status = cancelled(work) ? Status::cancelled : Status::io;
+                    return false;
                 }
                 cursor = 0;
             }
@@ -79,27 +82,28 @@ bool symbol(Bits& bits, const Huffman& tree, U32& result) {
 struct Output {
     InflateWorkspace& workspace;
     const Sink& sink;
+    Work* work;
     U32 expected, produced, crc;
     Status status;
-    Output(InflateWorkspace& w, const Sink& s, U32 size)
-        : workspace(w), sink(s), expected(size), produced(0), crc(0xffffffffu), status(Status::ok) {}
+    Output(InflateWorkspace& w, const Sink& s, U32 size, Work* service)
+        : workspace(w), sink(s), work(service), expected(size), produced(0), crc(0xffffffffu), status(Status::ok) {}
+    bool flush(U32 count) {
+        if (!checkpoint(work)) { status = Status::cancelled; return false; }
+        if (count && sink.write && !sink.write(sink.context, workspace.window, count)) {
+            status = Status::sink; return false;
+        }
+        return true;
+    }
     bool byte(Byte value) {
         if (produced == expected) { status = Status::bounds; return false; }
         workspace.window[produced & 32767u] = value;
         crc = crc32_update(crc, &value, 1);
         ++produced;
-        if (!(produced & 32767u) && sink.write && !sink.write(sink.context, workspace.window, 32768)) {
-            status = Status::sink; return false;
-        }
-        return true;
+        return (produced & 32767u) || flush(32768);
     }
     bool finish() {
         if (produced != expected) { status = Status::bounds; return false; }
-        U32 tail = produced & 32767u;
-        if (tail && sink.write && !sink.write(sink.context, workspace.window, tail)) {
-            status = Status::sink; return false;
-        }
-        return true;
+        return flush(produced & 32767u);
     }
 };
 
@@ -254,14 +258,16 @@ U32 crc32_update(U32 running, const Byte* data, U32 count) {
 
 Status inflate_raw(const Reader& reader, U32 offset, U32 compressed_size,
                    U32 expected_size, InflateWorkspace& workspace,
-                   const Sink& sink, Extraction& result) {
+                   const Sink& sink, Extraction& result, Work* work) {
     result = Extraction{0,0,0};
     if (!reader.read) return Status::argument;
     if (offset > reader.size || compressed_size > reader.size - offset) return Status::bounds;
-    Bits bits(reader, workspace, offset, compressed_size);
-    Output output(workspace, sink, expected_size);
+    if (!checkpoint(work)) return Status::cancelled;
+    Bits bits(reader, workspace, offset, compressed_size, work);
+    Output output(workspace, sink, expected_size, work);
     U32 final = 0;
     while (!final) {
+        if (!checkpoint(work)) return Status::cancelled;
         U32 kind;
         if (!bits.take(1, final) || !bits.take(2, kind)) return bits.status;
         if (!kind) {
@@ -286,6 +292,7 @@ Status inflate_raw(const Reader& reader, U32 offset, U32 compressed_size,
     }
     if (bits.consumed != compressed_size) return Status::deflate;
     if (!output.finish()) return output.status;
+    if (!checkpoint(work)) return Status::cancelled;
     result = Extraction{output.produced, output.crc ^ 0xffffffffu, bits.consumed};
     return Status::ok;
 }
@@ -305,6 +312,7 @@ const char* status_name(Status status) {
     case Status::deflate: return "deflate";
     case Status::checksum: return "checksum";
     case Status::sink: return "sink";
+    case Status::cancelled: return "cancelled";
     }
     return "unknown";
 }

@@ -1,6 +1,6 @@
 // Part of stock.cpp, included inside its anonymous namespace.
 // ---- yaffs: the host folder standing in for /yaffs2 (A) ------------------------------------
-struct Handle { bool used = false, directory = false, written = false; int fd = -1; DIR* dir = 0; };
+struct Handle { bool used = false, directory = false, written = false, library = false; int fd = -1; DIR* dir = 0; };
 const unsigned max_handles = 64;
 Handle handles[max_handles];
 int last_error = 0;
@@ -182,6 +182,8 @@ uint32_t open_directory(const char* path) {
     for (unsigned i = 0; i != max_handles; ++i)
         if (!handles[i].used) {
             handles[i] = Handle(); handles[i].used = true; handles[i].directory = true; handles[i].dir = d;
+            const size_t n = strlen(path);
+            handles[i].library = n >= 20 && !strcmp(path + n - 20, "/xy-forever/firmware");
             return dir_handles + i * 16;
         }
     closedir(d); last_error = 24;
@@ -208,8 +210,10 @@ uint32_t next_entry(uint32_t handle) {                 // yaffs_dirent: type at 
 int close_directory(uint32_t handle) {
     const int i = directory_of(handle);
     if (i < 0) return fail(9);
+    const bool fault = handles[i].library && shared->fail_list;     // fault hook: A's library scan fails
     closedir(handles[i].dir);
     handles[i] = Handle();
+    if (fault) { log("fault: library listing failed"); return fail(5); }
     return 0;
 }
 bool any_open() { for (const Handle& h : handles) if (h.used) return true; return false; }

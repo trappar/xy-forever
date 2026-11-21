@@ -285,11 +285,11 @@ class XyfBootTest(unittest.TestCase):
 
     def test_menu_uses_catalog_and_reports_choice(self):
         self.assertIn('xyf::menu::start(app, xy_forever::xyf_boot::catalog(), true);', KEY_UI)
-        self.assertIn('xy_forever::xyf_boot::choose(app.entry);', KEY_UI)
+        self.assertIn('xy_forever::xyf_boot::choose(leave - 2);', KEY_UI)       # library.boot (no library page)
         self.assertIn('xy_forever::xyf_boot::choose_default();', KEY_UI)
-        # #3: a lost link ends the menu only without USB (lost_ends_menu), also after Set default; with USB
-        # the live menu stays and its status line shows the lost link at once.
-        self.assertEqual(KEY_UI.count('if (lost_ends_menu()) { r.exit_reason = exit_link; break; }'), 2)
+        # #3: a lost link ends the menu only without USB (lost_ends_menu); with USB the live menu stays and its
+        # status line shows the lost link at once.
+        self.assertEqual(KEY_UI.count('if (lost_ends_menu()) { r.exit_reason = exit_link; break; }'), 1)
         self.assertNotIn('link_lost()) { r.exit_reason = exit_link; break; }', KEY_UI)
         self.assertIn('if (lost && !shown_lost) { shown_lost = true; status = " "; dirty = 1; }', KEY_UI)
         display = (ROOT / 'target/key_ui_display.ipp').read_text()

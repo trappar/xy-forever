@@ -20,7 +20,7 @@ from xy_forever.stage2_audit import STAGE2_ENTER, STAGE2_LITERALS as S2_LITERALS
 from xy_forever.probe_report import report_only_fixture
 from xy_forever.otp_audit import (function_bodies, referencing_symbols, loaded_values,
                                   functions_loading, rom_references, check_otp_rules, check_otp_data)
-from xy_forever import release, usb_proto, xyf_stage2 as S2
+from xy_forever import release, stock_bytes, usb_proto, xyf_stage2 as S2
 
 # Layout names (historical): "reporter" is the small program added to the stock OS
 # image that writes the cold report to storage, "carry" the report slot it reads,
@@ -250,7 +250,7 @@ OTP_READ, OTP_INIT, OTP_INIT_FLAG = 0x04000048, 0x04000054, 0x11b01650   # the f
 # tfw.check (XYF_TFW_CHECK): the only feature that reads OTP, and with it the native
 # .tfw check (native/tfw_check and the decoder parts it uses) and the key provider.
 TFW_CHECK_MODES = ('xyf-product',)
-from xy_forever.build_modules import JSON_MODULES, TFW_CHECK_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES, USB_STORAGE_MODULES, compile_tfw
+from xy_forever.build_modules import JSON_MODULES, TFW_CHECK_MODULES, TFW_TARGET_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES, USB_STORAGE_MODULES, compile_tfw
 from xy_forever.build_modules import own_sources as build_sources
 # The mod assembly job (native/mod_job and the linker, patch and content steps) runs on B.
 # The menu's Mods page (target/xyf_mods*: model, view, B's reading and the job's start), product only.
@@ -923,6 +923,8 @@ def verify(out, stock, boot):
     candidate = (out / 'candidate.ldr').read_bytes()
     require(sha(candidate) == manifest['candidate_sha256'], 'Candidate hash differs')
     outer_checks = verify_outer(candidate, module, embedded or None, MODULE)
+    shared = [] if embedded else stock_bytes.shared_runs(candidate, {'os.ldr': stock, 'bootloader.ldr': boot})
+    require(not shared, 'Candidate shares stock bytes (#178): %s' % shared[:3])
     return dict(passed=True, inner=inner_checks, outer=outer_checks, hardware_tested=False,
                 **({'stage2': stage2_info} if stage2_info else {}),
                 same_role_report=True, cold_stack_bytes=0x4000, mode=mode_name,
@@ -1120,7 +1122,7 @@ def build(out, stock, boot, mode):
                        else ()) +
                       ('xyf_crc32',) +
                       links + ('peer_services', 'peer_boot', 'hash', 'inflate') +
-                      (('otp_keys', 'tfw_device_check') + TFW_CHECK_MODULES if tfw_check else ()) +
+                      (TFW_TARGET_MODULES + TFW_CHECK_MODULES if tfw_check else ()) +
                       (MOD_JOB_MODULES if mode in FILE_WRITE_MODES else ()) +
                       (MODS_PAGE_MODULES if mods_page else ()) +
                       (('mtp_usb', 'mtp_usb_stock', 'mtp_session', 'mtp_responder') if mtp_usb else ()))

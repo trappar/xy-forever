@@ -32,6 +32,7 @@ import zlib
 
 from xy_forever import paths, procgroup
 from xy_forever import usb_proto as P
+from xy_forever.sim_sources import DEVICE_PARTS, NATIVE_SOURCES, SIM_SOURCES, TARGET_SOURCES
 
 ROOT = Path(__file__).resolve().parents[1]
 SIM = ROOT / 'sim'
@@ -41,25 +42,6 @@ STOCK_BOOTLOADER = paths.STOCK_121 / 'bootloader.ldr'
 STOCK_OS = paths.STOCK_121 / 'os.ldr'
 STATE = paths.SESSIONS / 'simulator'           # default storage folder, boot partition and build cache
 
-TARGET_SOURCES = ('usb_service', 'usb_proto', 'storage_server', 'file_engine', 'file_client', 'menu_link', 'file_boot',
-                  'cold_storage', 'retained_lookup', 'cold_heap', 'peer_services', 'xyf_library', 'xyf_cold_library',
-                  'xyf_manifest', 'xyf_package_record', 'xyf_recognise', 'xyf_filelist', 'xyf_catalog', 'xyf_state', 'xyf_state_write', 'xyf_store', 'xyf_info', 'xyf_crc32',
-                  'boot_services', 'otp_keys', 'tfw_device_check', 'xyf_stage2', 'stage2_main',
-                  'xyf_menu', 'xyf_mods', 'xyf_mods_io',                 # the menu's state and the Mods page
-                  'ui_pages', 'ui_gfx',                                   # the bar's scale() (nothing is drawn)
-                  'knob_input',                                           # the knob reader
-                  'mtp_session')                                          # the MTP session (XYF_MTP_SESSION)
-NATIVE_SOURCES = ('ldr', 'hash', 'json', 'trace_slot', 'trace_slot_zero', 'memory', 'peer_boot', 'inflate',
-                  'tfw_check', 'tfw', 'tfw_signature', 'p224', 'aes',
-                  'mod_job', 'mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content',   # the job on B
-                  'mtp_responder')                                                                  # the MTP responder
-SIM_SOURCES = ('clock', 'runtime', 'link', 'stock', 'devices', 'boot', 'stage2')
-# Files whose device-only (__bfin__) part the simulator hosts. boot_services.cpp is not one:
-# its device part reads the OTP key and stays out.
-DEVICE_PARTS = ('usb_service.cpp', 'usb_service.hpp', 'storage_server.cpp', 'storage_server.hpp', 'file_client.cpp',
-                'file_client.hpp', 'peer_services.cpp',
-                'cold_storage.cpp', 'retained_lookup.cpp', 'cold_heap.cpp', 'xyf_clock.hpp', 'otp_keys.cpp', 'tfw_device_check.cpp',
-                'xyf_mods_io.cpp', 'xyf_mods_io.hpp', 'mtp_session.cpp')
 STOCK_TEMPLATE = re.compile(r'template<U32 A,\s*class R,\s*class\.\.\. Args>\s*__attribute__\(\(noinline,\s*noclone\)\)\s*'
                             r'R stock\(Args\.\.\. args\)\s*\{\s*return reinterpret_cast<R\(\*\)\(Args\.\.\.\)>\(A\)\(args\.\.\.\);\s*\}')
 REWRITES = (   # (pattern, replacement, files it must match in: exact count per file)
@@ -77,6 +59,10 @@ REWRITES = (   # (pattern, replacement, files it must match in: exact count per 
     (re.compile(r'__asm__ volatile\("SSYNC;(?: CSYNC;)?" : : : "memory"\);'), ';',
      {'usb_service_transport.ipp': 1, 'usb_service_stage2.ipp': 1, 'file_client.cpp': 1, 'file_boot.cpp': 2}),
     (re.compile(r'section\("\.text\.entry"\), '), '', {'stage2_main.cpp': 1}),   # no such Mach-O section
+    # Before each assembly step, so the test can stop at verify even when a slice spans several phases.
+    (re.compile(r'(?m)^            p = mj::step\(s\.job\);$'),
+     '            if (job_usb && s.job.phase == mj::Phase::verify && ::xyf_sim::hold_mod_verify()) return;\n'
+     '            p = mj::step(s.job);', {'usb_service_save_log.ipp': 1}),
     # 192: 7 -> 10, the three in repair_fresh (as the write window; changing these counts needs the
     # developer's explicit yes, docs/SAFETY.md).
     (re.compile(r'__asm__ volatile\("ssync;" ::: "memory"\);'), ';', {'cold_storage.cpp': 10}),
@@ -281,6 +267,9 @@ def info_text(data, name, version):
     return canonical(name, version, 'official', data).encode('ascii')
 
 
+from .sim_fresh import STOCK_UPGRADE, seed_fresh   # noqa: E402,F401 (#178)
+
+
 def seed(root, image=None):
     """A typical library: opxy-121 (the default) and opxy-121-stock, both the stock 1.2.1
     os.ldr (a plain official image), and state-a.txt naming the default; content/ with a stand-in
@@ -346,11 +335,13 @@ class Simulator:
     """One running simulator: start() it, talk to 127.0.0.1:port, control() its board."""
 
     def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None,
-                 virtual=True, otp_initialized=False, otp_a=None, a_otp_initialized=False):
+                 virtual=True, otp_initialized=False, otp_a=None, a_otp_initialized=False, ask=False):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
         virtual: device time moves only under the simulator's control (sim/clock.cpp: test runs); False: real
         time (interactive runs). otp_initialized starts B with both its ROM and the stock initialization
-        guard already set, as after the stock bootloader's encrypted-image read."""
+        guard already set, as after the stock bootloader's encrypted-image read. ask: #65's question as on the device
+        (Ask before USB control as settings.txt says); False (tests that are not about it): the setting reads Off,
+        so no serial request waits for an answer nobody gives."""
         self.root, self.bootpart = Path(root), Path(bootpart)
         # B records retain their original framing; bit7 marks independent A selectors.
         a_records = bytearray()
@@ -366,7 +357,7 @@ class Simulator:
         self.port = port or free_port()
         self.control_port = self.port + 1
         self.build_dir = Path(build_dir) if build_dir else build()
-        self.play, self.log, self.capacity = play, log, capacity
+        self.play, self.log, self.capacity, self.ask = play, log, capacity, ask
         self.process = None
 
     @property
@@ -379,9 +370,10 @@ class Simulator:
                 '--control', str(self.control_port), '--capacity', str(self.capacity)] + ([] if self.play else ['--plain']) + \
             (['--otp-stdin'] if self.otp else []) + (['--virtual'] if self.virtual else []) + \
             (['--otp-initialized'] if self.otp_initialized else []) + \
-            (['--a-otp-initialized'] if self.a_otp_initialized else [])
+            (['--a-otp-initialized'] if self.a_otp_initialized else []) + (['--ask'] if self.ask else [])
 
     def start(self, timeout=10.0):
+        os.environ.setdefault('XYF_ASK_LIMIT_S', '30')      # #65: a host here never waits on the question unbounded
         for attempt in range(3):
             log = open(self.log, 'ab') if self.log else subprocess.DEVNULL
             self.process = subprocess.Popen(self.argv(), stdin=subprocess.PIPE if self.otp else subprocess.DEVNULL,
@@ -544,6 +536,10 @@ def main(argv=None):
                         help='the crash trigger test build (#102): diag.crash halts B (no fault, no screen)')
     parser.add_argument('--virtual-clock', action='store_true',
                         help='device time moves only under the simulator\'s control, as in the tests (default: real time)')
+    parser.add_argument('--ask', action='store_true',
+                        help='#65: Ask before USB control as settings.txt says (default: it reads Off)')
+    parser.add_argument('--fresh', choices=('stock', 'missing', 'wrong'),
+                        help='seed a missing yaffs2/ just after Track 5 (sim_fresh.py, #178)')
     parser.add_argument('--no-otp', action='store_true',
                         help="processor B's OTP answers nothing (default: the private keys, when present)")
     args = parser.parse_args(argv)
@@ -554,7 +550,7 @@ def main(argv=None):
     state = paths.private_output(args.state)
     root = state / 'yaffs2'
     if not root.exists():
-        seed(root)
+        seed_fresh(root, args.fresh) if args.fresh else seed(root)
     hello = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e' if args.pre_v1 else None
     print('building the simulator...', file=sys.stderr, flush=True)
     out = build(state / 'builds', version=args.version, hello=hello,
@@ -562,7 +558,7 @@ def main(argv=None):
     otp = None if args.no_otp else otp_fields()
     print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
     sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp,
-                    virtual=args.virtual_clock)
+                    virtual=args.virtual_clock, ask=args.ask)
     print('simulator: USB endpoint 127.0.0.1:%d (python3 xyf_host.py --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
           ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root), file=sys.stderr, flush=True)
     # Its own process group (the board and both processors), ended with this process however it ends:

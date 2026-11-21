@@ -18,31 +18,39 @@ Error read(const Byte* data, U32 size, U32 offset, Record& r) {
     if (stored > size - offset - 16) return Error::truncated;
     return Error::ok;
 }
-Error memory(const Record& r, const Policy& p) {
+template<bool cooperative>
+Error memory(const Record& r, const Policy& p, Work* work) {
     if (!r.count) return Error::ok;
     bool allowed = false;
     for (U32 i = 0; i < p.allowed_count; ++i) {
+        if (cooperative && (i & 31u) == 31u && !checkpoint(work)) return Error::cancelled;
         const Range& a = p.allowed[i];
         if (a.begin <= r.target && r.target + r.count <= a.end) allowed = true;
     }
     if (!allowed) return Error::range;
     for (U32 i = 0; i < p.protected_count; ++i) {
+        if (cooperative && (i & 31u) == 31u && !checkpoint(work)) return Error::cancelled;
         const Range& a = p.protected_ranges[i];
         if (a.begin < r.target + r.count && r.target < a.end) return Error::protected_range;
     }
     return Error::ok;
 }
-}
-Error inspect(const Byte* data, U32 size, const Policy& p, Summary& result) {
+template<bool cooperative>
+Error inspect_image(const Byte* data, U32 size, const Policy& p, Summary& result, Work* work) {
     result = {0, 0, 0};
     if (!data || size < 32 || size > 16u * 1024u * 1024u) return Error::size;
     if ((p.allowed_count && !p.allowed) || (p.protected_count && !p.protected_ranges)) return Error::range;
-    for (U32 i = 0; i < p.allowed_count; ++i)
+    for (U32 i = 0; i < p.allowed_count; ++i) {
+        if (cooperative && (i & 31u) == 31u && !checkpoint(work)) return Error::cancelled;
         if (p.allowed[i].begin >= p.allowed[i].end) return Error::range;
-    for (U32 i = 0; i < p.protected_count; ++i)
+    }
+    for (U32 i = 0; i < p.protected_count; ++i) {
+        if (cooperative && (i & 31u) == 31u && !checkpoint(work)) return Error::cancelled;
         if (p.protected_ranges[i].begin >= p.protected_ranges[i].end) return Error::range;
+    }
     U32 offset = 0, count = 0, expanded = 0;
     while (offset < size) {
+        if (cooperative && !checkpoint(work)) return Error::cancelled;
         if (++count > 10000) return Error::capacity;
         Record r;
         Error e = read(data, size, offset, r);
@@ -54,6 +62,7 @@ Error inspect(const Byte* data, U32 size, const Policy& p, Summary& result) {
             bool covered[2] = {false, false};
             U32 scan = 16;
             while (scan < offset) {
+                if (cooperative && !checkpoint(work)) return Error::cancelled;
                 Record previous;
                 e = read(data, size, scan, previous);
                 if (e != Error::ok) return e;
@@ -70,12 +79,20 @@ Error inspect(const Byte* data, U32 size, const Policy& p, Summary& result) {
             if (r.flags != 4 && r.flags != 0x104) return Error::flags;
             if (r.count > 256u * 1024u * 1024u - expanded) return Error::expanded;
             expanded += r.count;
-            e = memory(r, p);
+            e = memory<cooperative>(r, p, work);
             if (e != Error::ok) return e;
         }
         offset += 16 + (r.flags == 0x104 ? 0 : r.count);
     }
     return Error::final;
+}
+}
+Error inspect(const Byte* data, U32 size, const Policy& p, Summary& result) {
+    // The cold boot path has no cooperative callback.
+    return inspect_image<false>(data, size, p, result, nullptr);
+}
+Error inspect(const Byte* data, U32 size, const Policy& p, Summary& result, Work* work) {
+    return work ? inspect_image<true>(data, size, p, result, work) : inspect(data, size, p, result);
 }
 Error expand(const Byte* data, U32 size, U32 offset, U32 delta,
              Byte* output, U32 capacity, U32& produced) {
@@ -108,6 +125,7 @@ const char* error_name(Error e) {
     case Error::range: return "range";
     case Error::protected_range: return "protected_range";
     case Error::capacity: return "capacity";
+    case Error::cancelled: return "cancelled";
     }
     return "unknown";
 }

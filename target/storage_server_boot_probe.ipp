@@ -3,6 +3,13 @@
 U32 probe_menu __attribute__((section(".data"))) = 0;
 U32 probe_resume __attribute__((section(".data"))) = 0;
 U32 probe_zero[128] __attribute__((section(".data"), aligned(32))) = {};
+// Keep the cache flush out of the inlined dispatcher for the scoped-call audit.
+__attribute__((noinline)) void probe_zero_body(U32 request) {
+    const U32 address = reinterpret_cast<U32>(probe_zero);
+    stock<0x889f4f10u, void>(address, 512u);
+    word(request + 0x20) = address;
+    word(request + 0x24) = 512u;
+}
 bool boot_probe_query(U32 request, Stock121PeerSession& session) {
     const U32 argument = word(request + 8);
     if (word(request) != path_class || byte(request + 5) != 0x21u ||
@@ -42,8 +49,7 @@ bool serve_boot_probe(U32 request, Stock121PeerSession& session) {
     if (cls == partition_class || cls == write_class || (cls == sector_class && op != 0x2fu)) {
         if (cls == sector_class && op == 0x11u) {
             // The one-sector request always has its 512-byte body, even on refusal.
-            stock<0x889f4f10u, void>(reinterpret_cast<U32>(probe_zero), 512u);
-            word(request + 0x20) = reinterpret_cast<U32>(probe_zero); word(request + 0x24) = 512u;
+            probe_zero_body(request);
         }
         session.reply(request, 0xffffffffu, error_access);
         ++result.refused;

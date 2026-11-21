@@ -7,15 +7,16 @@
 // simulator's /yaffs2 folder on the Mac. Building on the device (applyMods): beside the pushed set, a
 // base entry and catalog as tests/test_sim_mod_job.py seeds them (makeModBase); a build becomes library
 // entry mods-a (its os.ldr in firmware/, tmp/job-<id>/ gone), left out of libraryBases, content not installed;
-// makeDefault on it runs the content switch and writes the default; refusals and a failed job in plain words; cancel mid-job (A slowed); a
-// storage command during the job is the typed busy. Runs in order (one client at a time).
+// makeDefault on it runs the content switch and writes the default; refusals and a failed job in plain words; cancel at verify; a
+// storage command during the job is the typed busy. The saved inputs (configSet, configGet: #26): saved, never built; a
+// refusal in words, nothing changed. Runs in order (one client at a time).
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, test, vi } from 'vitest';
-import { Client, JobError, PackageError, XyfError, applyMods, cancelJob, folderSource, infoValues, isXyfError, jobFolder, jobStatus, libraryBases, listPackages,
+import { Client, JobError, PackageError, XyfError, applyMods, cancelJob, configGet, configSet, folderSource, infoValues, isXyfError, jobFolder, jobStatus, libraryBases, listPackages,
   listPaths, makeDefault, localSet, pushPackages, removePackage, tcpOpener } from '../src/node.ts';
 import { STORE_FILE, STORE_TEXT, storedName } from '../src/modstore.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
@@ -228,7 +229,6 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     { timeout: 20_000, interval: 100 });
   beforeEach(served);                                                   // a job's write window outlives the job
   afterAll(async () => {
-    await control(sim!.control, 'set a_slow_ms 0').catch(() => undefined);
     await client?.close();
     rmSync(work, { recursive: true, force: true });
   });
@@ -295,30 +295,52 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
   });
 
   test('during a job storage commands and a second build are busy; cancel removes what it wrote', async () => {
-    await control(sim!.control, 'set a_slow_ms 4');
+    expect(await control(sim!.control, 'set hold_mod_verify 1')).toMatchObject({ ok: true });
     try {
       const stop = new AbortController();
-      const seen: JobStatus[] = [];
-      const build = applyMods(client, request, { pollMs: 20, signal: stop.signal, onProgress: (s) => seen.push(s) });
+      let progress: JobStatus | undefined;
+      const build = applyMods(client, request, { pollMs: 20, signal: stop.signal, onProgress: (s) => { progress = s; } });
       let refused: unknown;
       build.catch((e: unknown) => { refused = e; });
       await vi.waitFor(() => {
         if (refused) throw new Error(`the build ended early: ${String(refused)}`);
-        expect(seen.some((s) => !s.final && s.phase !== 'idle')).toBe(true);
+        expect(progress?.phase).toBe('verify');
       }, { timeout: 10_000, interval: 20 });
+      const job = progress!.job;
+      const output = join(sim!.root, 'xy-forever', 'tmp', `job-${job}`);
+      expect(existsSync(join(output, 'os.ldr.part'))).toBe(true);
       const busy = await client.listDir('/yaffs2').catch((e: unknown) => e);
       expect(isXyfError(busy, 'busy'), String(busy)).toBe(true);
-      expect((busy as XyfError).message).toBe('file.list /yaffs2: the OP-XY is building mod firmware (a job is running); try again when it ends, or cancel it');
+      expect((busy as XyfError).message).toBe('file.list /yaffs2: the OP-XY is running a job (building mod firmware or changing content); try again when it ends, or cancel it');
       await expect(applyMods(client, request)).rejects.toMatchObject({ code: 'busy', message: expect.stringMatching(/^mods\.apply: the OP-XY is busy/) });
       stop.abort();
       const error = await build.catch((e: unknown) => e);
       expect(error).toBeInstanceOf(JobError);
-      expect((error as JobError).status).toMatchObject({ phase: 'cancelled', debris: false });
+      expect((error as JobError).status).toMatchObject({ job, phase: 'cancelled', debris: false });
       expect((error as JobError).message).toBe('the build was cancelled');
-      expect(existsSync(join(sim!.root, 'xy-forever', 'tmp', `job-${(error as JobError).status.job}`))).toBe(false);
+      await served();                                                // the final phase can precede removing the output folder
+      expect(existsSync(output)).toBe(false);
     } finally {
-      await control(sim!.control, 'set a_slow_ms 0');
+      await control(sim!.control, 'set hold_mod_verify 0');
     }
-    await served();
+  });
+
+  test('the saved inputs (#26): a set is saved, never built; a refusal says why and changes nothing', async () => {
+    const config = join(sim!.root, 'xy-forever', 'config.json');
+    const library = readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort();
+    const saved = await configSet(client, { mods: ['alpha', 'ext-cap'], unverified: true }, { pollMs: 20 });
+    expect(saved).toMatchObject({ saved: true, mods: ['alpha', 'ext-cap'], expanded: false, unverified: true, write: 'saved' });
+    expect(await configGet(client)).toEqual(saved);
+    expect(JSON.parse(readFileSync(config, 'utf8'))).toMatchObject({
+      schema: 'xy-forever.config', schema_version: 1, desired: { mods: ['alpha', 'ext-cap'] }, built: null,
+    });
+    expect(readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort()).toEqual(library);
+    const text = readFileSync(config);
+    const refused = await configSet(client, { mods: ['nosuch'], unverified: true }, { pollMs: 20 }).catch((e: unknown) => e);
+    expect(refused).toMatchObject({ code: 'refused', command: 'config.set', message: 'Not in the mod packages: nosuch' });
+    await expect(configSet(client, { mods: ['alpha'], expanded: true, unverified: true }, { pollMs: 20 }))
+      .rejects.toMatchObject({ code: 'refused', message: '4 MiB mod memory needs newer mod packages: set it to 2 MiB.' });
+    expect(readFileSync(config)).toEqual(text);
+    expect((await configGet(client)).mods).toEqual(['alpha', 'ext-cap']);
   });
 });

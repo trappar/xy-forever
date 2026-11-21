@@ -26,6 +26,7 @@ void job_view(JobView& v) {                                             // as jo
         v.done = g.step; v.total = cg_ended; v.error = g.step == cg_ended ? g.error : 0u; v.status = g.code; v.debris = 0; v.commit = 0;
         return;
     }
+    if (job_kind == 3) return adopt_view(v);                             // #178: the stock entry's adoption
     if (job_kind) {                                                      // a content switch (its own id)
         const ContentSlot& c = cslot();
         v.state = job_state; v.id = c.id; v.phase = content_phase(c); v.done = c.job.done; v.total = c.job.total;
@@ -36,7 +37,7 @@ void job_view(JobView& v) {                                             // as jo
     JobSlot& s = slot();
     mj::Progress g;
     mj::progress(s.job, g);
-    const bool committing = job_running() && s.stage >= js_away && s.stage != js_wipe;
+    const bool committing = job_state == job_busy && s.stage >= js_away && s.stage != js_wipe;
     v.state = job_state; v.id = s.id;
     v.phase = s.commit_error ? U32(mj::Phase::failed) : committing ? U32(mj::Phase::finish) : U32(g.phase);
     v.done = committing ? s.stage - js_away + 1 : g.done; v.total = committing ? 3u : g.total;
@@ -45,24 +46,27 @@ void job_view(JobView& v) {                                             // as jo
     v.debris = s.debris; v.commit = committing ? 1u : 0u;
 }
 uint32_t job_stop() {                                                   // as job.cancel (not in the commit)
-    if (!job_running() || job_kind) return P::s_not_found;              // a content switch is not a mod job
+    if (job_state != job_busy || job_kind) return P::s_not_found;              // a content switch is not a mod job
     if (slot().stage >= js_away) return P::s_state;
     mj::cancel(slot().job);
     job_finish(slot());
     return P::s_ok;
 }
 #if defined(XYF_CONTENT_SWITCH)
-const char* content_default(uint32_t entry) {                            // the menu's SHIFT+PLAY
-    const xyf::catalog::Catalog* catalog = xyf_boot::catalog();
-    if (!catalog || entry >= catalog->count || (!(catalog->items[entry].flags & xyf::catalog::flag_content_missing) && !content_pending(catalog->items[entry].id)))
-        return 0;
+bool content_offer() { return recovery_offer == 1; }
+const char* content_undo() {                                             // the menu's PLAY on the first row
+    if (recovery_offer != 1) return 0;
     if (!menu_usb) return "Content switch: needs USB on in the menu.";
-    const U32 code = content_begin(catalog->items[entry].id, true);
+    const U32 code = content_begin(recovery_record.previous, true);    // the previous entry back, as the default
     return code == P::s_ok ? "Installing content..." : code == P::s_busy ? "Busy: a job is running." :
            code == P::s_link ? "Storage link lost." : "Content switch: could not start.";
 }
 uint32_t content_switch(const char* id) { return content_begin(id, true, false); }
+uint32_t adopt_start(const char* id, bool copy) { return adopt_begin(id, copy); }
 uint32_t config_store(const char* text, uint32_t length, const char* default_id) { return config_begin(text, length, default_id); }
+uint32_t mark_store(const char* text, uint32_t length) {
+    return config_begin(text, length, "", xyf::converge::mark_path, xyf::converge::mark_old, xyf::converge::mark_part);
+}
 const char* job_target() { return slot().target; }
 const char* content_line() {
     ContentSlot& c = cslot();
@@ -70,7 +74,7 @@ const char* content_line() {
     if (!recovery_offer) offer_shown = 0;
     if (recovery_offer && offer_shown != recovery_offer && !job_running() && !closing) {
         const char* message = recovery_offer == 3 ? "Content journal: newer version; kept unchanged." :
-                              recovery_offer == 2 ? "Content journal invalid; kept unchanged." : "Source missing. Set default to undo: ";
+                              recovery_offer == 2 ? "Content journal invalid; kept unchanged." : "Source missing. PLAY on the first row undoes: ";
         content_text(c, message, recovery_offer == 1 ? recovery_record.previous : "");
         offer_shown = recovery_offer;
         return c.line;

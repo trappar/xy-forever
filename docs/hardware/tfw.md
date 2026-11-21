@@ -46,11 +46,20 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   connection leaves their exact paths in the session summary. Success starts keepalive. The simulator
   models independent A/B keys, ROM hang/fault (`a_otp_fail` / `otp_fail` = 5/6), init/guard state
   (`a_otp_initialized` / `otp_initialized`), counters, and stale RPC versions (`tfw_rpc_version`).
+- **A hashes ciphertext in a read-only job (#14).** The input is an immutable path under
+  `/yaffs2/xy-forever/`. The version-1 hash path query returns the declared total file size at start.
+  Each pass of A's menu loop reads at most 4 KiB and hashes only the ciphertext. A verifies the
+  declared end against actual EOF, closes the file, and then returns the digest to matching-path
+  queries. Cancel, engine teardown, or ten seconds without a matching poll release the job.
+  The shared B reader holds the same inbox path under exclusive storage ownership. It checks size
+  and EOF when reopening and exposes the ZIP only after the signed header and A's hash agree.
 - **Companion images:** CYACD has 367 data rows. BLE updates go through a TE
   internal bridge, not the plain Nordic DFU transport.
 - **SPI metadata** (record at SPI `0xc000`, member +0xc at `0x8803d890`): `factory:%u`
-  is a 16-bit field. The dev-menu gate is software state, not OTP, and no
-  retail-to-dev method exists.
+  is a 16-bit field. The dev-menu gate is software state, not OTP: the file `/yaffs2/bootloader.dev`
+  ([storage-server.md](storage-server.md)). On the 1.2.1 bootloader te-boot creates it over Web MIDI (command
+  `0xac` after a 16-byte challenge, Ferret's enabler; the web app's Install page, #178): the retail-to-dev
+  method. The 1.2.5 bootloader dropped `0xac`.
 - **Stock signature check** (`0x88a17f2a`, read from the listing; confirmed on the
   three packages): signature key index `+0x89` = 0 selects the vendor key, 56 B
   from OTP selector 9 via `11a05b22`, Qx || Qy big-endian (1 = per-device key,
