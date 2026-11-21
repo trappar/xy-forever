@@ -1,14 +1,14 @@
 // Install from the web app (#178): every refusal and guidance branch, the release pin, te-boot over a fake Web MIDI,
-// the Mac copy over a fake WebUSB MTP device, and the Web Serial finish over a fake client. No stock bytes: tests
-// that need the stock file to pass give their own judge.
+// the Mac copy over a fake WebUSB MTP device, and reading XY Forever's own setup over a fake client. The page never
+// reads the stock os.ldr: XY Forever adopts it on the device (e2e/install-sim.e2e.ts runs that against the simulator).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { RELEASE_FILTERS, XyfError, connectWebSerial } from 'xy-forever-client';
-import type { Client, DirEntry } from 'xy-forever-client';
-import { HEADROOM, OFFICIAL_121_TFW, STOCK_121, STOCK_PATH, bootVerdict, needBytes, sha256Hex, spaceVerdict, stockVerdict } from '../src/install/checks.ts';
+import type { Client } from 'xy-forever-client';
+import { HEADROOM, OFFICIAL_121_TFW, STOCK_121, STOCK_MISSING, STOCK_PATH, bootVerdict, needBytes, sha256Hex, spaceVerdict } from '../src/install/checks.ts';
 import type { Verdict } from '../src/install/checks.ts';
-import { ENTRY, INFO_TEXT, STOCK_ON_DEVICE, entryFiles, finishInstall, installState } from '../src/install/finish.ts';
-import { InstallStop, TeBoot, checkDroppedStock, copyOverMtp } from '../src/install/installer.ts';
+import { ADOPT_DETAIL, ENTRY, installState, otherImage } from '../src/install/finish.ts';
+import { InstallStop, TeBoot, copyOverMtp } from '../src/install/installer.ts';
 import { fetchRelease, pinned } from '../src/install/release.ts';
 import type { ReleasePin } from '../src/install/release.ts';
 import { FakeMidi, FakeUsb } from './fake-devices.ts';
@@ -50,17 +50,10 @@ describe('te-boot identity', () => {
 });
 
 describe('the stock os.ldr and free storage', () => {
-  it('judges the stock file by its SHA-256', () => {
-    expect(kinds(stockVerdict(STOCK_121.sha256))).toBe('ok');
-    expect(kinds(stockVerdict('0a46d43dbe9258f9a0f79d62e2a709a7b0a3798eea340548d58729630398cc99'))).toBe('update');   // SHA-256 of 1.1.33's
-    expect(kinds(stockVerdict('bed98a0011d2c5cb4f7fbd02fe9c6518ed56886586f975f6fce53c1d2c9d4283'))).toBe('refuse');
-    expect(stockVerdict('ab'.repeat(32)).title).toBe('Unknown firmware');
-  });
   it('asks for an official 1.2.1 reinstall when the stock file is missing', () => {
-    const v = stockVerdict(null);
-    expect(v.kind).toBe('reinstall');
-    expect(v.detail).toMatch(/factory reset/);
-    expect(v.detail).toMatch(/Reinstall teenage engineering's OS 1\.2\.1/);
+    expect(STOCK_MISSING.kind).toBe('reinstall');
+    expect(STOCK_MISSING.detail).toMatch(/factory reset/);
+    expect(STOCK_MISSING.detail).toMatch(/Reinstall teenage engineering's OS 1\.2\.1/);
   });
   it('refuses low storage with both numbers', () => {
     expect(needBytes(300_000)).toBe(300_000 + STOCK_121.bytes + HEADROOM);
@@ -69,13 +62,9 @@ describe('the stock os.ldr and free storage', () => {
     expect(v.detail).toMatch(/1\.0 MB free.*needs 3\.5 MB/);
     expect(kinds(spaceVerdict(needBytes(300_000), needBytes(300_000)))).toBe('ok');
   });
-  it('hashes a dropped file locally', async () => {
-    expect(kinds(await checkDroppedStock(new Blob([new Uint8Array([1, 2, 3])])))).toBe('refuse');
-  });
-  it('pins the same stock hashes as stock.json', () => {
+  it('pins the same stock hash as stock.json', () => {
     const stock = JSON.parse(readFileSync(new URL('../../stock.json', import.meta.url), 'utf8'));
     expect(STOCK_121.sha256).toBe(stock.stock['1.2.1']['os.ldr']);
-    expect(kinds(stockVerdict(stock.stock['1.2.5']['os.ldr']))).toBe('refuse');
   });
 });
 
@@ -142,19 +131,16 @@ describe('te-boot over Web MIDI', () => {
 });
 
 const STOCK = new Uint8Array(STOCK_121.bytes).fill(9);   // the stock size, not its bytes
-const passStock = async (): Promise<(sha: string | null) => Verdict> => {
-  const good = await sha256Hex(STOCK);
-  return (sha) => sha === good ? stockVerdict(STOCK_121.sha256) : stockVerdict(sha);
-};
 const ROOMY = 64 * 1024 * 1024;
 
 describe('the Mac copy over WebUSB MTP', () => {
-  it('checks, copies os.ldr to the top level and reads it back', async () => {
+  it('checks that the stock file is there, copies os.ldr to the top level and reads it back; never reads the stock file', async () => {
     const usb = new FakeUsb({ [STOCK_PATH]: STOCK, 'os.ldr': new Uint8Array(10) }, ROOMY);
     const steps: string[] = [];
-    await copyOverMtp(usb, IMAGE, (text) => steps.push(text), await passStock());
+    await copyOverMtp(usb, IMAGE, (text) => steps.push(text));
     expect(usb.find('os.ldr')!.data).toEqual(IMAGE);
     expect(usb.find(STOCK_PATH)!.data).toEqual(STOCK);
+    expect(usb.reads).toEqual(['os.ldr']);                              // our copy, read back; the stock os.ldr never
     expect(steps).toContain('Checking the copy...');
   });
   it('stops on a missing stock file before anything is copied', async () => {
@@ -165,143 +151,89 @@ describe('the Mac copy over WebUSB MTP', () => {
   });
   it('stops on low storage', async () => {
     const usb = new FakeUsb({ [STOCK_PATH]: STOCK }, 2 * 1024 * 1024);
-    const stop = await copyOverMtp(usb, IMAGE, () => {}, await passStock()).catch((e: unknown) => e);
-    expect((stop as InstallStop).verdict.kind).toBe('space');
-    expect(usb.find('os.ldr')).toBeUndefined();
-  });
-  it('stops on unknown firmware', async () => {
-    const usb = new FakeUsb({ [STOCK_PATH]: STOCK }, ROOMY);
     const stop = await copyOverMtp(usb, IMAGE).catch((e: unknown) => e);
-    expect((stop as InstallStop).verdict.title).toBe('Unknown firmware');
+    expect((stop as InstallStop).verdict.kind).toBe('space');
     expect(usb.find('os.ldr')).toBeUndefined();
   });
 });
 
 /**
- * A fake XY Forever over Web Serial: a file system, the calls finishInstall makes, and what it was asked. As the
- * device's job_blocks: while a package session is open, file.copy (not among the commands it permits) is `busy`.
+ * A fake XY Forever over Web Serial, as its setup leaves it: job.status (the adoption job: target/usb_service_adopt.ipp),
+ * library entry opxy-121's info.txt, the default; while the job runs, file reads answer busy (the device's job_blocks).
  */
 class FakeClient {
-  session = false;
-  files = new Map<string, Uint8Array>();
-  folders = new Set(['/yaffs2', '/yaffs2/upgrade', '/yaffs2/upgrade/firmware', '/yaffs2/upgrade/firmware/blackfin', '/yaffs2/upgrade/firmware/blackfin/bin']);
-  free = ROOMY;
-  log: string[] = [];
+  job: { phase: number; error: number; done: number; total: number; detail: string } | null = null;
+  info_txt: string | null = null;
   defaultEntry: string | null = null;
   info = { image: 'abcd1234' };
   connected = true;
-  private notFound = (path: string): XyfError => new XyfError('not_found', `${path}: no such file`, { command: 'file.list', status: 3 });
-  async call(name: string, request: Record<string, unknown>): Promise<Record<string, number>> {
-    this.log.push(name === 'package.session' ? `${name} ${request['action']}` : name);
-    if (name === 'package.session' && request['action'] !== 1) this.session = request['action'] === 0;
-    if (name === 'storage.space') return { version: 1, free_low: this.free % 2 ** 32, free_high: Math.floor(this.free / 2 ** 32) };
-    return {};
+  log: string[] = [];
+  async call(name: string): Promise<Record<string, unknown>> {
+    this.log.push(name);
+    if (name !== 'job.status') throw new Error(`unexpected ${name}`);
+    if (!this.job) throw new XyfError('not_found', 'job.status: not found', { command: 'job.status', status: 3 });
+    const detail = new Uint8Array(32); detail.set(new TextEncoder().encode(this.job.detail));
+    return { job: 1, phase: this.job.phase, done: this.job.done, total: this.job.total, error: this.job.error, code: 0, elapsed_ms: 0,
+      steps: 0, longest_ms: 0, peak: 0, debris: 0, detail };
   }
-  async listDir(path: string): Promise<DirEntry[]> {
-    if (!this.folders.has(path)) throw this.notFound(path);
-    const kids = (set: Iterable<string>) => [...set].filter((p) => p.slice(0, p.lastIndexOf('/')) === path);
-    return [...kids(this.folders).map((p) => ({ name: p.split('/').at(-1)!, kind: 'folder' as const, size: 0 })),
-      ...kids(this.files.keys()).map((p) => ({ name: p.split('/').at(-1)!, kind: 'file' as const, size: this.files.get(p)!.length }))]
-      .map((e) => ({ ...e, nameBytes: new TextEncoder().encode(e.name) }));
-  }
-  async readFile(path: string): Promise<Uint8Array> { const d = this.files.get(path); if (!d) throw this.notFound(path); return d; }
-  async writeFile(path: string, data: Uint8Array): Promise<void> { this.log.push(`write ${path.split('/').at(-1)}`); this.files.set(path, data.slice()); }
-  async copyFile(source: string, target: string): Promise<{ bytes: number }> {
-    this.log.push(`copy ${source} -> ${target.split('/').at(-1)!.replace(/[0-9a-f]{16}$/, '*')}`);
-    if (this.session) throw new XyfError('busy', 'file.copy: the device answered busy', { command: 'file.copy', status: 15 });
-    const data = this.files.get(source); if (!data) throw this.notFound(source);
-    this.files.set(target, data.slice()); return { bytes: this.files.get(target)!.length };
-  }
-  async makeDir(path: string): Promise<void> { this.folders.add(path); }
-  async deleteFile(path: string): Promise<void> { this.files.delete(path); }
-  async removeDir(path: string): Promise<void> { this.folders.delete(path); }
-  async renamePath(source: string, target: string): Promise<void> {
-    this.log.push(`rename ${source.split('/').at(-1)} -> ${target}`);
-    const file = this.files.get(source);
-    if (file) { this.files.delete(source); this.files.set(target, file); return; }
-    for (const p of [...this.folders]) if (p === source || p.startsWith(source + '/')) { this.folders.delete(p); this.folders.add(target + p.slice(source.length)); }
-    for (const [p, d] of [...this.files]) if (p.startsWith(source + '/')) { this.files.delete(p); this.files.set(target + p.slice(source.length), d); }
+  private busy(): void {
+    if (this.job && this.job.phase < 8) throw new XyfError('busy', 'file.read: busy', { command: 'file.read', status: 15, fields: { busy: 'job' } });
   }
   async libraryEntry(entry: string): Promise<Record<string, string>> {
-    const text = new TextDecoder().decode(await this.readFile(`/yaffs2/xy-forever/firmware/${entry}/info.txt`));
-    return Object.fromEntries(text.trim().split('\n').map((l) => l.split('=') as [string, string]));
+    this.log.push(`entry ${entry}`); this.busy();
+    if (this.info_txt === null) throw new XyfError('not_found', 'no such file', { command: 'file.read', status: 3 });
+    return Object.fromEntries(this.info_txt.trim().split('\n').map((l) => l.split('=') as [string, string]));
   }
-  async setDefault(entry: string): Promise<void> { this.log.push(`default ${entry}`); this.defaultEntry = entry; }
-  async reboot(to: string): Promise<void> { this.log.push(`reboot ${to}`); }
-  async reconnect(): Promise<{ image: string }> { this.log.push('reconnect'); return this.info; }
-  async readState(): Promise<{ default: string | null }> { return { default: this.defaultEntry }; }
-  async continueBoot(): Promise<void> { this.log.push('continue'); }
+  async readState(): Promise<{ default: string | null }> { this.busy(); return { default: this.defaultEntry }; }
 }
 
-describe('the Web Serial finish', () => {
-  const setup = (): FakeClient => { const c = new FakeClient(); c.files.set(STOCK_ON_DEVICE, STOCK); return c; };
-  const finish = async (c: FakeClient, stockChecked = false): Promise<unknown> =>
-    finishInstall(c as unknown as Client, { release: { ...(await pinOf(IMAGE)), image: 'abcd1234' }, stockChecked, judge: await passStock() }).catch((e: unknown) => e);
+const INFO = `type=firmware\nname=OP-XY\nversion=1.2.1\nkind=official\nbytes=${STOCK_121.bytes}\ncrc32=${STOCK_121.crc32}\nsha256=${STOCK_121.sha256}\n`;
 
-  it('copies the stock entry on the device, makes it the default, restarts and starts it', async () => {
-    const c = setup();
-    expect(await finish(c)).toBeUndefined();
-    const entry = '/yaffs2/xy-forever/firmware/opxy-121';
-    expect(c.files.get(`${entry}/os.ldr`)).toEqual(STOCK);
-    expect(new TextDecoder().decode(c.files.get(`${entry}/info.txt`))).toBe(INFO_TEXT);
-    expect(new TextDecoder().decode(c.files.get(`${entry}/files.sha256`))).toBe(new TextDecoder().decode((await entryFiles()).get('files.sha256')));
-    expect(c.log.filter((l) => l.startsWith('copy'))).toEqual([`copy ${STOCK_ON_DEVICE} -> copy-v1-*`]);
-    expect(c.log.findIndex((l) => l.startsWith('copy'))).toBeLessThan(c.log.indexOf('package.session 0'));   // outside the session
-    expect(c.log.some((l) => l === 'write os.ldr')).toBe(false);          // the stock bytes are never sent over USB
-    expect(c.log.slice(c.log.indexOf(`default ${ENTRY}`))).toEqual([`default ${ENTRY}`, 'reboot menu', 'reconnect', 'continue']);
-    expect([...c.files.keys()].filter((p) => p.includes('/tmp/'))).toEqual([]);
+describe('XY Forever\'s own setup, read over Web Serial', () => {
+  const state = async (c: FakeClient): Promise<unknown> => installState(c as unknown as Client, { ...(await pinOf(IMAGE)), image: 'abcd1234' }).catch((e: unknown) => e);
+
+  it('installed once the stock entry is in the library and is the default, whatever image runs', async () => {
+    const c = new FakeClient(); c.info_txt = INFO; c.defaultEntry = ENTRY; c.job = { phase: 8, error: 0, done: 0, total: 0, detail: 'config' };
+    expect(await state(c)).toEqual({ kind: 'installed' });
+    c.info = { image: 'ffffffff' }; c.job = null;
+    expect(await state(c)).toEqual({ kind: 'installed' });
+    expect(c.log.every((l) => l === 'job.status' || l.startsWith('entry'))).toBe(true);   // reads only
   });
-  it('writes the info.txt library-add writes', () => {
-    expect(INFO_TEXT).toBe('type=firmware\nname=OP-XY\nversion=1.2.1\nkind=official\nbytes=2373336\ncrc32=89d08ddd\n' +
-      'sha256=60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f\n');
+  it('adopting while the job runs (its progress), and while reads answer busy', async () => {
+    const c = new FakeClient(); c.job = { phase: 5, error: 0, done: 1_000_000, total: STOCK_121.bytes, detail: ADOPT_DETAIL };
+    expect(await state(c)).toEqual({ kind: 'adopting', done: 1_000_000, total: STOCK_121.bytes });
+    c.job = { phase: 1, error: 0, done: 0, total: 0, detail: 'something else' };    // another job holds the storage
+    expect(await state(c)).toEqual({ kind: 'adopting', done: 0, total: 0 });
   });
-  it('skips the serial hash when the Mac copy already hashed the file', async () => {
-    const c = setup();
-    let reads = 0;
-    const read = c.readFile.bind(c);
-    c.readFile = async (p) => { if (p === STOCK_ON_DEVICE) reads++; return read(p); };
-    await finish(c, true); expect(reads).toBe(0);
-    const again = setup();
-    let fresh = 0;
-    const readAgain = again.readFile.bind(again);
-    again.readFile = async (p) => { if (p === STOCK_ON_DEVICE) fresh++; return readAgain(p); };
-    await finish(again, false); expect(fresh).toBe(1);
+  it('refused with the device\'s own words: missing, not 1.2.1, an incomplete entry, any other failure', async () => {
+    const refused = async (error: number): Promise<Verdict> => {
+      const c = new FakeClient(); c.job = { phase: 9, error, done: 0, total: 0, detail: ADOPT_DETAIL };
+      const s = await state(c) as { kind: string; verdict: Verdict };
+      expect(s.kind).toBe('refused');
+      return s.verdict;
+    };
+    expect(await refused(4)).toMatchObject({ kind: 'reinstall', detail: expect.stringContaining('"No official OS 1.2.1 found. Reinstall official OS 1.2.1, then start again."') });
+    expect(await refused(10)).toMatchObject({ kind: 'reinstall', detail: expect.stringContaining('"OS file is not official 1.2.1. Reinstall official OS 1.2.1, then start again."') });
+    expect(await refused(17)).toMatchObject({ kind: 'refuse', detail: expect.stringContaining('library entry opxy-121 is incomplete: remove it.') });
+    expect(await refused(16)).toMatchObject({ kind: 'refuse', title: 'OS 1.2.1 could not be added to the library' });
+    expect((await refused(4)).detail).toContain('Use exactly this 1.2.1 file');
   });
-  it('refuses another XY Forever image', async () => {
-    const c = setup(); c.info = { image: 'ffffffff' };
-    expect(((await finish(c)) as InstallStop).verdict.title).toBe('Another XY Forever is running');
-    expect(c.log).toEqual([]);
+  it('waiting while the setup has not started, saying whether another image runs (an older one never starts it)', async () => {
+    const c = new FakeClient();
+    expect(await state(c)).toEqual({ kind: 'waiting', other: false });
+    c.info_txt = INFO;                                                    // the entry, not yet the default
+    expect(await state(c)).toEqual({ kind: 'waiting', other: false });
+    c.info = { image: 'ffffffff' };
+    expect(await state(c)).toEqual({ kind: 'waiting', other: true });
+    expect(otherImage('ffffffff', await pinOf(IMAGE)).title).toBe('Another XY Forever is running');
   });
-  it('refuses low storage, a missing and an unknown stock file, changing nothing', async () => {
-    const low = setup(); low.free = 1000;
-    expect(((await finish(low)) as InstallStop).verdict.kind).toBe('space');
-    const missing = new FakeClient();
-    expect(((await finish(missing)) as InstallStop).verdict.kind).toBe('reinstall');
-    const other = setup(); other.files.set(STOCK_ON_DEVICE, new Uint8Array(STOCK_121.bytes).fill(1));
-    expect(((await finish(other)) as InstallStop).verdict.title).toBe('Unknown firmware');
-    for (const c of [low, missing, other]) expect(c.log.filter((l) => !/^(storage\.space)$/.test(l))).toEqual([]);
-  });
-  it('finishes an interrupted install without adding the entry again', async () => {
-    const c = setup();
-    await finish(c);
-    c.log = [];
-    expect(await finish(c)).toBeUndefined();
-    expect(c.log).toEqual([`default ${ENTRY}`, 'reboot menu', 'reconnect', 'continue']);
+  it('an opxy-121 entry holding other firmware stops', async () => {
+    const c = new FakeClient(); c.info_txt = INFO.replace(STOCK_121.sha256, 'ab'.repeat(32));
+    expect(((await state(c)) as InstallStop).verdict.title).toBe('Library entry opxy-121 is not the stock OS 1.2.1');
   });
 });
 
-describe('detecting XY Forever at any stage', () => {
-  const setup = (): FakeClient => { const c = new FakeClient(); c.files.set(STOCK_ON_DEVICE, STOCK); return c; };
-  it('jumps to the finish until the stock entry is the default, then shows done, changing nothing', async () => {
-    const c = setup();
-    expect(await installState(c as unknown as Client)).toBe('finish');               // no entry, no default
-    await finishInstall(c as unknown as Client, { release: { ...(await pinOf(IMAGE)), image: 'abcd1234' }, stockChecked: false, judge: await passStock() });
-    c.defaultEntry = null; c.log = [];
-    expect(await installState(c as unknown as Client)).toBe('finish');               // the entry, no default
-    c.defaultEntry = ENTRY;
-    expect(await installState(c as unknown as Client)).toBe('done');
-    expect(c.log).toEqual([]);
-  });
+describe('looking for XY Forever', () => {
   it('never opens the chooser when no granted port answers', async () => {
     let asked = 0;
     const serial = { getPorts: async () => [], requestPort: async () => { asked++; throw new Error('chooser'); } };

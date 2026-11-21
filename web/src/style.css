@@ -58,6 +58,7 @@ td.actions button { margin-left: 4px; }
 .notice { border-radius: var(--radius); padding: 10px 14px; margin-bottom: 16px; border: 1px solid var(--line); background: var(--panel); }
 .notice.error { border-color: color-mix(in srgb, var(--danger) 60%, var(--line)); color: #ffb4b4; }
 .notice.busy { color: var(--muted); }
+.notice.installed:not([hidden]) { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
 progress { width: 100%; accent-color: var(--accent); height: 8px; }
 dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 22px; width: min(460px, calc(100vw - 32px)); }
 dialog::backdrop { background: rgb(0 0 0 / .6); }

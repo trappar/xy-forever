@@ -2,11 +2,10 @@
 // the copy, against fake te-boot MIDI and a fake dev-menu MTP device (test/fake-devices.ts, installed over
 // navigator.requestMIDIAccess and navigator.usb before the page uses them). No simulator and no real device: Web Serial
 // and WebUSB are switched off in Chrome. The release pin and image are test ones, served in place of release.json and
-// release/os.ldr. The Mac copy runs to the end only with the private stock 1.2.1 os.ldr (the check needs its SHA-256);
-// it is served to the fake device from this machine, never stored. Skipped with the reason when Chrome cannot start.
+// release/os.ldr. The page never reads the stock os.ldr (XY Forever adopts it on the device: install-sim.e2e.ts), so a
+// stand-in file is enough. Skipped with the reason when Chrome cannot start.
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import type { Browser, Page } from 'playwright';
@@ -17,8 +16,6 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
 const SHA = createHash('sha256').update(IMAGE).digest('hex');
 const PIN = { schema: 1, version: '0.1.0', image: SHA.slice(0, 8), sha256: SHA, bytes: IMAGE.length };
-const STOCK_FILE = join(process.env['XYF_PRIVATE'] ?? fileURLToPath(new URL('../../../private', import.meta.url)), 'firmware/stock-1.2.1/os.ldr');
-const STOCK = existsSync(STOCK_FILE) ? readFileSync(STOCK_FILE) : null;
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
 
 let server: ViteDevServer | undefined;
@@ -48,7 +45,6 @@ async function open(fields: string, files: Record<string, string> = {}, free = 6
   const page = await browser!.newPage({ acceptDownloads: true });
   await page.route('**/src/install/release.json*', (route) => route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(PIN)};` }));
   await page.route('**/release/os.ldr', (route) => route.fulfill({ contentType: 'application/octet-stream', body: IMAGE }));
-  if (STOCK) await page.route('**/__test/stock.ldr', (route) => route.fulfill({ body: STOCK }));
   await page.goto(`${base}#connect`);
   await page.addScriptTag({ type: 'module', content: `
     import { FakeMidi, FakeUsb } from '/test/fake-devices.ts';
@@ -161,32 +157,35 @@ it.skipIf(why !== null)('offers the fresh start with official 1.2.1 when MTP fai
   await page.close();
 });
 
-it.skipIf(why !== null || STOCK === null)('copies os.ldr over WebUSB and leads to Track 5 and the PLAY start (Mac)', async () => {
-  const page = await open(OK_121, { 'upgrade/firmware/blackfin/bin/os.ldr': '/__test/stock.ldr' });
+it.skipIf(why !== null)('copies os.ldr over WebUSB, never reading the stock os.ldr, and ends with Track 5 and a power-on (Mac)', async () => {
+  const page = await open(OK_121, { 'upgrade/firmware/blackfin/bin/os.ldr': 'stand-in: the page never reads it' });
   await toTransfer(page, 'Mac');
   await press(page, 'Send to OP–XY');
   await expect.poll(() => page.getByRole('button', { name: 'File sent · Continue' }).isVisible(), { timeout: 30_000 }).toBe(true);
-  const copied = await page.evaluate(() => [...(window as unknown as { fakes: { usb: { find: (p: string) => { data: Uint8Array } } } }).fakes.usb.find('os.ldr').data]);
+  const fakes = (): Promise<{ copied: number[]; reads: string[] }> => page.evaluate(() => {
+    const usb = (window as unknown as { fakes: { usb: { find: (p: string) => { data: Uint8Array }; reads: string[] } } }).fakes.usb;
+    return { copied: [...usb.find('os.ldr').data], reads: usb.reads };
+  });
+  const { copied, reads } = await fakes();
   expect(Buffer.from(copied).equals(IMAGE)).toBe(true);
+  expect(reads).toEqual(['os.ldr']);                                    // our copy read back; the stock file never
   await press(page, 'File sent · Continue');
   await press(page, 'I’m back at the dev menu');
   expect(await page.locator('#page-install').textContent()).toContain('5. write os to boot partition');
   await press(page, 'I pressed track 5');
   await press(page, 'I see "firmware written ok!"');
-  expect(await stage(page)).toBe('finish');
-  expect(await page.locator('#page-install').textContent()).toContain('Hold PLAY while switching on');
+  expect(await stage(page)).toBe('start');
+  const text = (await page.locator('#page-install').textContent()) ?? '';
+  expect(text).toContain('Switch your OP–XY off, then on.');
+  expect(text).toContain('hold PLAY while switching on');
+  expect(text).not.toMatch(/wait \d+ seconds|5 seconds/i);
   await page.close();
 });
 
-it.skipIf(why !== null)('checks a dropped stock file and hands over our os.ldr (Windows)', async () => {
+it.skipIf(why !== null)('hands over our os.ldr to copy by hand, with no stock file step (Windows)', async () => {
   const page = await open(OK_121);
   await toTransfer(page, 'Windows');
-  expect(await stage(page)).toBe('stock');
-  await page.locator('.drop input[type=file]').setInputFiles({ name: 'os.ldr', mimeType: 'application/octet-stream', buffer: Buffer.from('other') });
-  expect(await refusal(page)).toMatchObject({ kind: 'refuse', text: expect.stringContaining('Unknown firmware') });
-  await press(page, 'Start again');
-  await toTransfer(page, 'Windows');
-  await press(page, 'Skip: check it after the first start');
+  expect(await stage(page)).toBe('transfer');
   const download = page.waitForEvent('download');
   await press(page, 'Download os.ldr');
   const file = await download;
@@ -202,15 +201,15 @@ it.skipIf(why !== null)('checks a dropped stock file and hands over our os.ldr (
 it.skipIf(why !== null)('keeps the stage and the chosen computer over a reload, and goes back and forward', async () => {
   const page = await open(OK_121);
   await toTransfer(page, 'Windows');
-  expect(await stage(page)).toBe('stock');
-  expect(new URL(page.url()).pathname).toBe('/install/stock');
+  expect(await stage(page)).toBe('transfer');
+  expect(new URL(page.url()).pathname).toBe('/install/transfer');
   await page.reload();
-  await expect.poll(() => stage(page)).toBe('stock');
+  await expect.poll(() => stage(page)).toBe('transfer');
   await page.goBack();
   await expect.poll(() => stage(page)).toBe('start-transfer');
   expect(await page.locator('#page-install').textContent()).toContain('3. mtp file transfer (windows)');   // the computer, kept
   await page.goForward();
-  await expect.poll(() => stage(page)).toBe('stock');
+  await expect.poll(() => stage(page)).toBe('transfer');
   expect(await page.locator('#serial-find').count()).toBe(0);      // no Web Serial here: nothing to look for
   await page.close();
 });

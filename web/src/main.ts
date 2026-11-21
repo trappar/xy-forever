@@ -108,12 +108,17 @@ async function connectDevice(filters?: typeof RELEASE_FILTERS): Promise<Client> 
   return connectWebSerial({ timeoutMs: 10_000, filters });
 }
 
-async function connect(): Promise<void> {
-  client = await connectDevice();
-  bugReport.updateStatus(client.info);
-  client.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
-  if (!client.info.serial) notice(SERIAL_OFF_TEXT, 'error');                     // #191: hello serial=off
+/** Makes found this app's connection. */
+function use(found: Client): void {
+  client = found;
+  bugReport.updateStatus(found.info);
+  found.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
+  if (!found.info.serial) notice(SERIAL_OFF_TEXT, 'error');                     // #191: hello serial=off
   setLink();
+}
+
+async function connect(): Promise<void> {
+  use(await connectDevice());
   busy = false;
   navigate('/device');
 }
@@ -139,6 +144,11 @@ function installDeps(): Parameters<typeof installPage>[1] {
     serial: sim !== null || webSerial() !== null,
     connect: async () => own() ?? lease(await connectDevice(RELEASE_FILTERS)),
     find: findDevice,
+    handoff: (lease) => {                     // installed: the connection becomes the app's, then the Mods page
+      if (client !== lease.client) use(lease.client);
+      document.getElementById('installed')!.hidden = false;
+      navigate('/mods');
+    },
     onPort: (listener) => nav.serial?.addEventListener?.('connect', listener),
   };
 }
@@ -437,6 +447,7 @@ async function removePath(path: string, e: DirEntry): Promise<void> {
 // ---- Start -------------------------------------------------------------------------------------------
 
 setLink();
+document.getElementById('installed-dismiss')!.addEventListener('click', () => { document.getElementById('installed')!.hidden = true; });
 startRouter((_path, how) => route(how));
 document.getElementById('bug-report')!.addEventListener('click', () => {
   previewBugReport(bugReport.snapshot(client?.connected === true));

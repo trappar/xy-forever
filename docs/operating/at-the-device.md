@@ -57,7 +57,8 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
    written ok!", then power-cycle.
 
 Copying `/os.ldr` alone installs nothing; the Track 5 step does. For a stock OP-XY the web app's Install page
-(#178, `web/README.md`) leads an owner through these steps, switching the dev menu on over Web MIDI first. Reports can be
+(#178, `web/README.md`) leads an owner through these steps, switching the dev menu on over Web MIDI first; the first
+power-on after Track 5 then adopts the stock 1.2.1 entry on the device (`docs/storage/jobs.md`). Reports can be
 fetched through dev MTP without the USB service. To do that, create the destination
 folder on the Mac first and copy the report folder (see Reports). `/logs` survives
 an OS reinstall, so crash logs can be fetched from it.

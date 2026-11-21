@@ -1,7 +1,8 @@
 """The web app in web/ (Vite + TypeScript, on clients/ts): its Vitest unit suite (`npm test` in web/)
 runs here when Node and web/node_modules (`npm ci` in web/) are present, else it is skipped with the
-reason. Of its e2e tests (`npm run test:e2e`, the system Chrome) only the Install page's runs here
-(`e2e/install.e2e.ts`: fake te-boot MIDI and MTP devices, no simulator; it skips itself without Chrome)."""
+reason. Of its e2e tests (`npm run test:e2e`, the system Chrome) only the Install page's run here
+(`e2e/install.e2e.ts`: fake te-boot MIDI and MTP devices, no simulator; `e2e/install-sim.e2e.ts`: the install's end
+against the device simulator through the fake Web Serial port; each skips itself without Chrome or the simulator)."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -35,8 +36,8 @@ class WebAppTest(unittest.TestCase):
         if not (WEB / 'node_modules' / '.bin' / 'vitest').exists():
             self.skipTest('web/node_modules absent: run npm ci in web/')
         try:
-            run = procgroup.run([npm, 'run', 'test:e2e', '--', 'e2e/install.e2e.ts'], cwd=WEB, capture_output=True, text=True,
-                                timeout=240)
+            run = procgroup.run([npm, 'run', 'test:e2e', '--', 'e2e/install.e2e.ts', 'e2e/install-sim.e2e.ts'], cwd=WEB,
+                                capture_output=True, text=True, timeout=240)
         except subprocess.TimeoutExpired as e:
             self.fail('the install browser test took over 240 s: %s' % (e.stdout or b'')[-2000:])
         self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])

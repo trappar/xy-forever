@@ -9,11 +9,6 @@ export const STOCK_121 = {
   bytes: 2373336,
   crc32: '89d08ddd',
 } as const;
-/** Other official os.ldr files, named so the page can say which one it found. */
-export const STOCK_OTHER: Readonly<Record<string, 'older' | '1.2.5'>> = {
-  '0a46d43dbe9258f9a0f79d62e2a709a7b0a3798eea340548d58729630398cc99': 'older',   // SHA-256 of 1.1.33's
-  bed98a0011d2c5cb4f7fbd02fe9c6518ed56886586f975f6fce53c1d2c9d4283: '1.2.5',   // SHA-256 of 1.2.5's
-};
 /** te-boot's bl_version of the 1.2.1 bootloader (also shipped with 1.1.33), and of 1.2.5's (never supported). */
 export const BOOTLOADER_121 = 20;
 export const BOOTLOADER_125 = 23;
@@ -76,24 +71,10 @@ export function bootVerdict(identity: Readonly<Record<string, string>>): Verdict
   return ok('Bootloader 1.2.1 and OS 1.2.1: XY Forever can be installed.');
 }
 
-/** The device's own stock os.ldr, by its SHA-256 (lowercase hex), or null when it is missing. */
-export function stockVerdict(sha256: string | null): Verdict {
-  if (sha256 === null) {
-    return { kind: 'reinstall', title: 'The official OS file is missing',
-      detail: 'Your OP-XY has no upgrade/firmware/blackfin/bin/os.ldr (a factory reset can remove it). XY Forever needs it: it is what your OP-XY keeps starting. ' +
-        `Reinstall teenage engineering's OS 1.2.1 with its own updater, then start again here. ${NOT_125} ${NOTHING}` };
-  }
-  if (sha256 === STOCK_121.sha256) return ok('The official OS 1.2.1 file is on your OP-XY.');
-  if (STOCK_OTHER[sha256] === 'older') {
-    return { kind: 'update', title: 'Update to official OS 1.2.1 first',
-      detail: `Your OP-XY holds an official OS older than 1.2.1. Install teenage engineering's OS 1.2.1 with its own updater, then start again here. ${NOT_125}` };
-  }
-  if (STOCK_OTHER[sha256] === '1.2.5') {
-    return { kind: 'refuse', title: 'This OP-XY holds OS 1.2.5', detail: `XY Forever runs only with OS 1.2.1, and 1.2.5 cannot be undone. ${NOTHING}` };
-  }
-  return { kind: 'refuse', title: 'Unknown firmware',
-    detail: `Your OP-XY's upgrade/firmware/blackfin/bin/os.ldr is not teenage engineering's OS 1.2.1 (SHA-256 ${sha256.slice(0, 12)}...). ${NOTHING}` };
-}
+/** The device's own stock os.ldr is missing (the Mac copy looks for it before writing anything). */
+export const STOCK_MISSING: Verdict = { kind: 'reinstall', title: 'The official OS file is missing',
+  detail: 'Your OP-XY has no upgrade/firmware/blackfin/bin/os.ldr (a factory reset can remove it). XY Forever needs it: at its first start it ' +
+    `adds that file to its library as OS 1.2.1. Reinstall teenage engineering's OS 1.2.1 with its own updater, then start again here. ${NOT_125} ${NOTHING}` };
 
 /** Free bytes needed: our os.ldr at the top level, the stock entry's copy (made on the device), and HEADROOM. */
 export function needBytes(imageBytes: number): number { return imageBytes + STOCK_121.bytes + HEADROOM; }

@@ -46,6 +46,8 @@ export class FakeUsb {
   free: number;
   total = 512 * 1024 * 1024;
   requested = 0;
+  /** The names of the objects read (GetObject), in order: the page never reads the stock os.ldr. */
+  readonly reads: string[] = [];
   private next = 1;
   constructor(files: Record<string, Uint8Array>, free: number) {
     this.free = free;
@@ -118,7 +120,7 @@ export class FakeUsb {
           const name = string(o.name), all = new Uint8Array(52 + name.length);
           all.set(fixed); all.set(name, 52); data(cmd, all); respond(cmd.id); break;
         }
-        case 0x1009: data(cmd, this.objects.get(p0)!.data); respond(cmd.id); break;
+        case 0x1009: this.reads.push(this.objects.get(p0)!.name); data(cmd, this.objects.get(p0)!.data); respond(cmd.id); break;
         case 0x100b: { const o = this.objects.get(p0)!; this.free += o.data.length; this.objects.delete(p0); respond(cmd.id); break; }
         case 0x100c: {
           if (!payload) return;

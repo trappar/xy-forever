@@ -32,17 +32,20 @@ the host). The app lives at the site's root (its paths and `/release/os.ldr` are
   with OS 1.2.1" path are Open-XY's builder flow (`src/install/page.ts`), and its te-boot (Web MIDI) and dev-menu MTP
   (WebUSB) code is Open-XY's `ferret.mjs` and `mtp.mjs` (`src/vendor/open-xy/`, MIT, notices kept; the Ferret copy has
   no disable command). The page reads te-boot's identity and refuses a 1.2.5 bootloader or unknown firmware (older than
-  1.2.1: the official 1.2.1 update, named exactly), switches the dev menu on (never off), checks the stock
-  `upgrade/firmware/blackfin/bin/os.ldr` (SHA-256) and the free storage, then copies our `os.ldr`: over WebUSB on a
-  Mac (read back), or downloaded and dragged into Explorer on Windows. Track 5 and a PLAY start are the owner's; the
-  page finishes over Web Serial: the device's own stock 1.2.1 os.ldr becomes library entry `opxy-121` by `file.copy`
-  (the bytes never leave the OP-XY), the default, then a restart to the menu, a reconnect and the OS
-  (`src/install/finish.ts`). The pure checks: `src/install/checks.ts`. The choices a stage needs (the computer, the
-  stock file checked, the file sent, a refusal) are kept in `sessionStorage` for a reload; a reload at a te-boot stage
-  asks te-boot again, and the finish stage looks for XY Forever again. At every stage (on load, on each stage, when a
-  serial port appears) the page looks for an OP-XY running XY Forever on ports Chrome already granted, never opening
-  the chooser unasked (**Find my OP-XY** opens it): it jumps to the finish, or to **XY Forever is installed** when the
-  stock entry is already the default.
+  1.2.1: the official 1.2.1 update, named exactly), switches the dev menu on (never off), then copies our `os.ldr`:
+  over WebUSB on a Mac (after checking that the stock `upgrade/firmware/blackfin/bin/os.ldr` is there, by its size, and
+  the free storage; read back), or downloaded and dragged into Explorer on Windows. Track 5 and a power-on are the
+  owner's. The page never reads or moves the stock OS: at its first start XY Forever adopts that file on the device
+  (hashed there, copied into library entry `opxy-121`, made the default, then booted; `docs/storage/jobs.md`). The
+  page reads where that setup stands over Web Serial (`src/install/finish.ts`: `job.status`, the entry, the default):
+  while it runs it shows it, a refusal shows the device's own words, and once the entry is the default the page hands
+  the connection to the app and opens **Mods** with a dismissible "XY Forever is installed" notice. The last step tells
+  the owner once that holding PLAY at power-on opens the XY Forever menu (the plain first start boots OS 1.2.1, so the
+  page meets XY Forever there). The pure checks: `src/install/checks.ts`. The choices a stage needs (the computer, the
+  file sent, a refusal) are kept in `sessionStorage` for a reload; a reload at a te-boot stage asks te-boot again. At
+  every stage (on load, on each stage, when a serial port appears, every few seconds at the last stage) the page looks
+  for an OP-XY running XY Forever on ports Chrome already granted, never opening the chooser unasked (**Find my
+  OP-XY** opens it), and follows its setup as above.
 - **Device**: build, what is running, what boots next, the saved mods (`/yaffs2/xy-forever/config.txt`), the content state.
 - **Mods**: packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
   saved on/off state; add packages from a folder (a `modkit split` generation folder); remove a package or a whole set;
@@ -78,9 +81,11 @@ npm run test:e2e     # the app in the system Chrome (headless) against the simul
 state in the private sessions folder (`XYF_PRIVATE` applies; override with `XYF_SIM_STATE`), and removes the state
 afterwards. It is skipped with the reason when the simulator cannot run (no private stock files, no clang++).
 `e2e/install.e2e.ts` needs no simulator: fake te-boot MIDI and a fake dev-menu MTP device (`test/fake-devices.ts`)
-stand in for the OP-XY, with Web Serial and WebUSB switched off in Chrome; its Mac copy runs to the end only with the
-private stock 1.2.1 `os.ldr` (the check needs its SHA-256). The repository's suite runs `npm test` here and the
-install browser test (`tests/test_web.py`) once `npm ci` has run.
+stand in for the OP-XY, with Web Serial and WebUSB switched off in Chrome. `e2e/install-sim.e2e.ts` runs the
+install's end against the simulator (a stock OP-XY just after Track 5: `--fresh`) through the client's fake Web Serial
+port (Chrome's 255-byte default buffer, the chooser, granted ports): the setup on the device, then the hand-off to
+Mods; a missing stock file refused. The repository's suite runs `npm test` here and both install browser tests
+(`tests/test_web.py`) once `npm ci` has run.
 
 ## The client library
 

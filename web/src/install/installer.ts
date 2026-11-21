@@ -1,11 +1,12 @@
 // Install from the web app (#178), the device steps before XY Forever runs: te-boot over Web MIDI (identity, then
-// switching the dev menu on) and the dev menu's Mac MTP over WebUSB (checks, then copying our os.ldr). Both through
+// switching the dev menu on) and the dev menu's Mac MTP over WebUSB (checks, then copying our os.ldr; the stock os.ldr is
+// never read here: XY Forever checks and adopts it on the device). Both through
 // Open-XY's modules (vendor/open-xy, MIT). The dev menu is only ever switched on, never off: nothing here can remove
 // /yaffs2/bootloader.dev (the vendored Ferret copy has no disable command).
 import { Session } from '../vendor/open-xy/ferret.mjs';
 import type { Identity } from '../vendor/open-xy/ferret.mjs';
 import { Device } from '../vendor/open-xy/mtp.mjs';
-import { STOCK_PATH, bootVerdict, needBytes, sha256Hex, spaceVerdict, stockVerdict } from './checks.ts';
+import { STOCK_MISSING, STOCK_PATH, bootVerdict, needBytes, sha256Hex, spaceVerdict } from './checks.ts';
 import type { Verdict } from './checks.ts';
 
 export type MidiAccess = (options: { sysex: boolean }) => Promise<unknown>;
@@ -52,22 +53,20 @@ export class TeBoot {
 export interface CopyProgress { (text: string, fraction?: number): void }
 
 /**
- * The Mac path, in the dev menu's "mtp file transfer (mac)" mode: checks that the device's own stock os.ldr is there,
- * the free storage, the stock os.ldr's SHA-256 (read and hashed in the page), then writes our os.ldr to the top level and reads it back. Throws
- * InstallStop when a check refuses (nothing copied). Asks the browser for the device (the chooser) first.
+ * The Mac path, in the dev menu's "mtp file transfer (mac)" mode: checks that the device's own stock os.ldr is there
+ * (its size only: XY Forever reads and checks it on the device at its first start) and the free storage, then writes
+ * our os.ldr to the top level and reads it back. Throws InstallStop when a check refuses (nothing copied). Asks the
+ * browser for the device (the chooser) first.
  */
-export async function copyOverMtp(usb: unknown, image: Uint8Array, progress: CopyProgress = () => {}, judge = stockVerdict): Promise<void> {
+export async function copyOverMtp(usb: unknown, image: Uint8Array, progress: CopyProgress = () => {}): Promise<void> {
   const device = await Device.request(usb);
   try {
     await device.open();
-    progress('Checking the official OS file on your OP-XY...');
-    const size = await device.size(STOCK_PATH);
-    if (size === null) throw new InstallStop(judge(null));
+    progress('Checking your OP-XY...');
+    if (await device.size(STOCK_PATH) === null) throw new InstallStop(STOCK_MISSING);
     const { free } = await device.space();
     const space = spaceVerdict(free + (await device.size('os.ldr') ?? 0), needBytes(image.length));   // an older /os.ldr is replaced
     if (space.kind !== 'ok') throw new InstallStop(space);
-    const stock = judge(await sha256Hex(await device.read(STOCK_PATH, { onProgress: (f) => progress('Checking the official OS file on your OP-XY...', f) })));
-    if (stock.kind !== 'ok') throw new InstallStop(stock);
     progress('Copying XY Forever to your OP-XY...', 0);
     await device.send('os.ldr', image, { replace: async () => true, onProgress: (f) => progress('Copying XY Forever to your OP-XY...', f) });
     progress('Checking the copy...');
@@ -76,9 +75,4 @@ export async function copyOverMtp(usb: unknown, image: Uint8Array, progress: Cop
   } finally {
     await device.close();
   }
-}
-
-/** Windows: the owner drops (or chooses) the OP-XY's upgrade/firmware/blackfin/bin/os.ldr; hashed here, never sent anywhere. */
-export async function checkDroppedStock(file: Blob): Promise<Verdict> {
-  return stockVerdict(await sha256Hex(new Uint8Array(await file.arrayBuffer())));
 }
