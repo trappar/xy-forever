@@ -38,6 +38,16 @@ export async function grantedPorts(serial: SerialLike | null = webSerial()): Pro
   return serial ? (await serial.getPorts()).filter(isXyForever) : [];
 }
 
+/**
+ * How every port is opened. The device ignores the line settings (docs/protocol/transport.md). bufferSize: Chrome's
+ * default is 255 bytes, and what arrives while that buffer is full is lost, so a 1 KiB file.read reply (or a hello)
+ * would never arrive whole; 64 KiB holds the largest frame many times over.
+ */
+export const SERIAL_OPEN = { baudRate: 115200, bufferSize: 65536 } as const;
+
+/** XY Forever ports this page holds open (WebSerialTransport.open until release). */
+const openHere = new Set<SerialPortLike>();
+
 export class WebSerialTransport implements Transport {
   private readonly port: SerialPortLike;
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
@@ -45,9 +55,17 @@ export class WebSerialTransport implements Transport {
   private sink: TransportSink | null = null;
   private ended = false;
 
-  /** Opens the port raw. The device ignores the baud rate; bufferSize 64 KiB (Chrome's default is small). */
-  static async open(port: SerialPortLike, options: { baudRate?: number; bufferSize?: number } = {}): Promise<WebSerialTransport> {
-    await port.open({ baudRate: options.baudRate ?? 115200, bufferSize: options.bufferSize ?? 65536 });
+  /**
+   * Opens the port the one way every path uses (SERIAL_OPEN), then reads it continuously from start(). Refused with
+   * InvalidStateError while another XY Forever port is open in this page: Chrome on a Mac can list one OP-XY twice
+   * (the cu. and tty. names of its one serial interface), and two open entries would split its replies between two
+   * readers.
+   */
+  static async open(port: SerialPortLike): Promise<WebSerialTransport> {
+    const other = [...openHere].find((p) => p !== port && isXyForever(p) && isXyForever(port));
+    if (other) throw new DOMException('XY Forever is already open in this page under another entry', 'InvalidStateError');
+    await port.open({ ...SERIAL_OPEN });
+    openHere.add(port);
     return new WebSerialTransport(port);
   }
 
@@ -101,6 +119,7 @@ export class WebSerialTransport implements Transport {
    */
   private async release(error?: Error): Promise<void> {
     await this.port.close().catch(() => undefined);
+    openHere.delete(this.port);
     if (this.ended) return;
     this.ended = true;
     this.sink?.closed(error);
@@ -112,10 +131,10 @@ export class WebSerialTransport implements Transport {
  * back as a new port object, without the chooser only if the device has a USB serial number:
  * unverified). Call requestPort() from a click first.
  */
-export function webSerialOpener(options: { baudRate?: number; bufferSize?: number } = {}): Opener {
+export function webSerialOpener(): Opener {
   return async () => {
     const [port] = await grantedPorts();
     if (!port) throw new Error('no XY Forever port granted or attached');
-    return WebSerialTransport.open(port, options);
+    return WebSerialTransport.open(port);
   };
 }
