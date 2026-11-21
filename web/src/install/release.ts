@@ -5,7 +5,7 @@ import pin from './release.json';
 import { sha256Hex } from './checks.ts';
 
 export interface ReleasePin { readonly schema: number; readonly version: string; readonly image: string; readonly sha256: string; readonly bytes: number }
-export const RELEASE_PATH = 'release/os.ldr';
+export const RELEASE_PATH = '/release/os.ldr';   // absolute: the app's paths are nested (router.ts)
 
 /** The pinned release, or null when this app has none yet (install is then unavailable, and says so). */
 export function pinned(value: ReleasePin = pin): ReleasePin | null {

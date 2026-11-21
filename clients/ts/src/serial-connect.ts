@@ -24,6 +24,8 @@ export interface SerialConnectOptions extends ConnectOptions {
   filters?: readonly Filter[] | undefined;
   /** A port that does not answer within this after the first request is passed over; default 1500 ms. */
   probeMs?: number | undefined;
+  /** false: never open the chooser (no click to answer it); no granted port answering throws `disconnected`. */
+  choose?: boolean | undefined;
 }
 
 /**
@@ -43,6 +45,7 @@ export async function connectWebSerial(options: SerialConnectOptions = {}): Prom
       if (error !== picker.none) throw error;
     }
   }
+  if (options.choose === false) throw new XyfError('disconnected', 'no granted XY Forever port answered');
   picker.probing = false;
   picker.preferred = await serial.requestPort({ filters: filters.map((f) => ({ ...f })) });
   picker.silent.delete(picker.preferred);

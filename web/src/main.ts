@@ -11,6 +11,9 @@ import { BugReport } from './bug-report.ts';
 import type { Action } from './bug-report.ts';
 import { confirmAction, downloadBlob, h, notice, previewBugReport, promptText } from './ui.ts';
 import { installPage } from './install/page.ts';
+import type { Lease } from './install/page.ts';
+import { navigate, startRouter } from './router.ts';
+import type { How } from './router.ts';
 
 const sim = new URLSearchParams(location.search).get('sim');
 let client: Client | null = null;
@@ -19,27 +22,28 @@ const bugReport = new BugReport();
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
 
 // ---- Navigation and actions ---------------------------------------------------------------------------
+// One path per page (router.ts): /connect (also /), /install/<stage>, /device, /mods, /files.
 
 const PAGES = ['connect', 'install', 'device', 'mods', 'files'] as const;
 const OPEN_PAGES: readonly Page[] = ['connect', 'install'];   // without a connection
 type Page = (typeof PAGES)[number];
 const loaders: Record<Page, () => Promise<void>> = {
   connect: () => run('show_connect', async () => renderConnect()),
-  install: async () => { install ??= installPage(page('install'), installDeps()); },
+  install: async () => {},       // route() shows its stage
   device: () => run('refresh_status', loadDevice),
   mods: () => run('list_packages', loadMods),
   files: () => run('browse_files', () => browse(cwd)),
 };
 
-function current(): Page { const p = location.hash.slice(1) as Page; return PAGES.includes(p) ? p : 'connect'; }
+function current(): Page { const p = location.pathname.split('/')[1] as Page; return PAGES.includes(p) ? p : 'connect'; }
 
-function route(): void {
+function route(how: How = 'push'): void {
   const p = client || OPEN_PAGES.includes(current()) ? current() : 'connect';
   for (const id of PAGES) page(id).hidden = id !== p;
   for (const a of document.querySelectorAll<HTMLAnchorElement>('#nav a')) a.classList.toggle('active', a.dataset['page'] === p);
-  if (client || OPEN_PAGES.includes(p)) void loaders[p]();
+  if (p === 'install') (install ??= installPage(page('install'), installDeps())).show(location.pathname, how);
+  else if (client || OPEN_PAGES.includes(p)) void loaders[p]();
 }
-window.addEventListener('hashchange', route);
 
 function setLink(): void {
   document.getElementById('link')!.classList.toggle('on', client !== null);
@@ -85,7 +89,7 @@ function renderConnect(): void {
   page('connect').replaceChildren(
     h('h1', {}, 'Connect your OP-XY'),
     h('p', { class: 'lede' }, 'Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the list. ',
-      'Not installed yet? ', h('a', { href: '#install' }, 'Install XY Forever'), '.'),
+      'Not installed yet? ', h('a', { href: '/install' }, 'Install XY Forever'), '.'),
     h('div', { class: 'card' },
       supported
         ? h('div', { class: 'row' },
@@ -110,9 +114,8 @@ async function connect(): Promise<void> {
   client.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
   if (!client.info.serial) notice(SERIAL_OFF_TEXT, 'error');                     // #191: hello serial=off
   setLink();
-  location.hash = '#device';
   busy = false;
-  route();
+  navigate('/device');
 }
 
 async function disconnect(): Promise<void> {
@@ -125,16 +128,28 @@ async function disconnect(): Promise<void> {
 
 // ---- Install (#178) -----------------------------------------------------------------------------------
 
-let install: { render: () => void } | null = null;
+let install: ReturnType<typeof installPage> | null = null;
 
 function installDeps(): Parameters<typeof installPage>[1] {
-  const nav = navigator as Navigator & { requestMIDIAccess?: (o: { sysex: boolean }) => Promise<unknown>; usb?: unknown };
+  const nav = navigator as Navigator & { requestMIDIAccess?: (o: { sysex: boolean }) => Promise<unknown>; usb?: unknown;
+    serial?: { addEventListener?: (type: string, listener: () => void) => void } };
   return {
     midi: nav.requestMIDIAccess ? nav.requestMIDIAccess.bind(nav) : null,
     usb: nav.usb ?? null,
     serial: sim !== null || webSerial() !== null,
     connect: () => connectDevice(RELEASE_FILTERS),
+    find: findDevice,
+    onPort: (listener) => nav.serial?.addEventListener?.('connect', listener),
   };
+}
+
+/** XY Forever without the chooser, for the Install page to detect: this app's connection, else a granted port that
+ * answers (or the simulator); null when none does. */
+async function findDevice(): Promise<Lease | null> {
+  if (client?.connected) return { client, close: async () => {} };
+  if (busy || (!sim && !webSerial())) return null;
+  const found = sim ? await connectDevice() : await connectWebSerial({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false });
+  return { client: found, close: () => found.close() };
 }
 
 // ---- Device ------------------------------------------------------------------------------------------
@@ -417,7 +432,7 @@ async function removePath(path: string, e: DirEntry): Promise<void> {
 // ---- Start -------------------------------------------------------------------------------------------
 
 setLink();
-route();
+startRouter((_path, how) => route(how));
 document.getElementById('bug-report')!.addEventListener('click', () => {
   previewBugReport(bugReport.snapshot(client?.connected === true));
 });

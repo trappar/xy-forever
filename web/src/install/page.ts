@@ -5,16 +5,25 @@
 // unknown firmware; it ships our os.ldr (pinned) instead of an Open-XY build and checks the stock os.ldr and the free
 // storage before copying; it never switches the dev menu off (Open-XY's disable and recovery-by-disabling are left out);
 // and it finishes over Web Serial after a PLAY start. #page-install's data-stage names the stage (the tests read it).
+// Each stage is a path, /install/<stage> (../router.ts): a reload keeps it, with the choices made so far kept in
+// sessionStorage; a reload re-checks the device instead of trusting them (te-boot stages ask te-boot again; the
+// finish stage looks for XY Forever). At every stage, on a serial port appearing and on a click, the page looks for an
+// OP-XY running XY Forever (granted ports only, never the chooser unasked) and jumps to the finish, or to done.
 import type { Client } from 'xy-forever-client';
 import { ASK_TEXT, CHOOSE_TEXT } from 'xy-forever-client';
 import { OFFICIAL_121_TFW, OFFICIAL_UPDATE_GUIDE } from './checks.ts';
 import type { Computer, Verdict } from './checks.ts';
-import { finishInstall } from './finish.ts';
+import { finishInstall, installState } from './finish.ts';
 import { InstallStop, TeBoot, checkDroppedStock, copyOverMtp } from './installer.ts';
 import type { MidiAccess } from './installer.ts';
 import { fetchRelease, pinned } from './release.ts';
 import type { ReleasePin } from './release.ts';
 import { downloadBlob, h } from '../ui.ts';
+import { backDepth, navigate } from '../router.ts';
+import type { How } from '../router.ts';
+
+/** A connection to XY Forever; close releases it (a no-op for the app's own). */
+export interface Lease { readonly client: Client; close(): Promise<void> }
 
 export interface InstallDeps {
   /** navigator.requestMIDIAccess, or null without Web MIDI. */
@@ -25,20 +34,31 @@ export interface InstallDeps {
   readonly serial: boolean;
   /** Connects to XY Forever over Web Serial (the chooser, or the simulator). */
   readonly connect: () => Promise<Client>;
+  /** XY Forever on a port already granted (never the chooser), or null when none answers. */
+  readonly find?: () => Promise<Lease | null>;
+  /** Calls back when a serial port appears (Web Serial's connect event). */
+  readonly onPort?: (listener: () => void) => void;
   readonly release?: ReleasePin | null;
 }
+
+const STORE = 'xyf.install';
+/** The stages that talk to te-boot over MIDI: a reload asks te-boot again. */
+const TE_BOOT = ['menu', 'enable', 'refresh-open', 'refresh-return', 'confirm', 'menu-help', 'computer', 'open-dev-menu'];
+const NO_BACK = ['write-os', 'write-result', 'write-help', 'format-drive', 'format-upload', 'stop', 'done'];
 
 interface Action { readonly label: string; readonly next: string | null; readonly id?: string }
 type Stage = [title: string, detail: string, actions: Action[], instructions?: string[]];
 const action = (label: string, next: string | null, id?: string): Action => (id ? { label, next, id } : { label, next });
 
-export function installPage(root: HTMLElement, deps: InstallDeps): { render: () => void } {
+export function installPage(root: HTMLElement, deps: InstallDeps): { render: () => void; show: (path: string, how: How) => void } {
   const release = deps.release === undefined ? pinned() : deps.release;
-  let stage = 'boot';
-  let history: string[] = [];
-  let computer: Computer | null = null;
-  let stop: Verdict | null = null;
-  let busy = false, delivered = false, stockChecked = false, formatting = false;
+  let stage = 'boot', depth = 0;
+  const kept = ((): Record<string, unknown> => { try { return JSON.parse(sessionStorage.getItem(STORE) ?? '{}'); } catch { return {}; } })();
+  let computer: Computer | null = kept['computer'] === 'mac' || kept['computer'] === 'windows' ? kept['computer'] : null;
+  let stop = (kept['stop'] ?? null) as Verdict | null;
+  let busy = false, delivered = kept['delivered'] === true, stockChecked = kept['stockChecked'] === true, formatting = kept['formatting'] === true;
+  let finished = false;
+  let detecting: Promise<void> | null = null;
   let status = '', error = false, fraction: number | null = null;
   let log: string[] = [];
   let image: Uint8Array | null = null;
@@ -46,12 +66,78 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
   const sendsDirectly = (): boolean => computer === 'mac' && deps.usb !== null;
 
   const say = (text: string, f: number | null = null, isError = false): void => { status = text; fraction = f; error = isError; render(); };
+  /** To a stage: a new history entry (back: the stages behind it in the flow); show() then renders it. */
+  const go = (next: string, back: number): void => navigate(`/install/${next}`, { back });
   function advance(next: string): void {
     if (busy) return;
-    if (stage !== next) history.push(stage);
-    stage = next; status = ''; error = false; fraction = null; log = []; render();
+    go(next, stage === next ? depth : depth + 1);
   }
-  function halt(verdict: Verdict): void { stop = verdict; teBoot?.close(); history = []; stage = 'stop'; status = ''; render(); }
+  function halt(verdict: Verdict): void { stop = verdict; teBoot?.close(); go('stop', 0); }
+  function save(): void {
+    try { sessionStorage.setItem(STORE, JSON.stringify({ computer, delivered, stockChecked, formatting, stop })); } catch { /* private mode: kept in this page only */ }
+  }
+
+  /** Shows the stage a path names (/install/<stage>); an unknown one, or /install, goes to the current stage. */
+  function show(path: string, how: How): void {
+    const want = path.split('/')[2] ?? '';
+    if (!(want in table()) || (want === 'stop' && !stop) || (busy && want !== stage)) {   // back or forward mid-action: stay
+      navigate(`/install/${stage}`, { replace: !busy, back: depth });
+      return;
+    }
+    depth = backDepth();
+    if (want !== stage) { stage = want; status = ''; error = false; fraction = null; log = []; }
+    save(); render();
+    void detect();
+    if (how === 'load' && TE_BOOT.includes(stage)) void act(reverify);
+  }
+
+  /** After a reload at a te-boot stage: te-boot answers again and is still accepted, else back to the start. */
+  async function reverify(): Promise<void> {
+    if (!teBoot) return;
+    say('Checking your OP–XY in te-boot…');
+    let verdict: Verdict;
+    try { ({ verdict } = await teBoot.check()); } catch {
+      busy = false; go('boot', 0);
+      say('Your OP–XY did not answer in te-boot. Start it in te-boot again, then check it.', null, true);
+      return;
+    }
+    busy = false;
+    if (verdict.kind !== 'ok') halt(verdict); else say('');
+  }
+
+  /** Looks for XY Forever on a granted port (never the chooser); when it answers, jumps to the finish or to done. */
+  function detect(): Promise<void> {
+    if (!deps.find || !release || busy || root.hidden || ['stop', 'done'].includes(stage)) return detecting ?? Promise.resolve();
+    return detecting ??= (async () => {
+      try {
+        const lease = await deps.find!();
+        if (!lease) return;
+        try {
+          const state = await installState(lease.client);
+          if (!busy && !root.hidden) jump(state);
+        } finally { await lease.close().catch(() => {}); }
+      } catch (e) {
+        if (e instanceof InstallStop && !busy && !root.hidden) halt(e.verdict);   // other failures: nothing found
+      } finally { detecting = null; }
+    })();
+  }
+  deps.onPort?.(() => { for (const ms of [500, 2000, 5000]) setTimeout(() => void detect(), ms); });   // it may answer only after a moment
+
+  function jump(state: 'finish' | 'done'): void {
+    if (state === 'done') { finished = false; go('done', 0); return; }
+    if (stage !== 'finish') go('finish', 0);
+    say('Your OP–XY is running XY Forever. Select Connect and finish.');
+  }
+
+  /** The owner's click: XY Forever on a granted port, else the browser's chooser. */
+  async function findChosen(): Promise<void> {
+    say('Looking for XY Forever…');
+    await detecting;
+    const client = await deps.connect();
+    let state: 'finish' | 'done';
+    try { state = await installState(client); } finally { await client.close().catch(() => {}); }
+    busy = false; jump(state);
+  }
 
   async function act(work: () => Promise<void>): Promise<void> {
     if (busy) return;
@@ -72,7 +158,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
   const ourImage = async (): Promise<Uint8Array> => (image ??= await fetchRelease(release!));
 
   /** Open-XY's stage table, adapted: [title, detail, actions, instructions]. */
-  function content(): Stage {
+  function table(): Record<string, Stage> {
     const transferSteps = ['Open your OP–XY in File Explorer.', 'Select Download os.ldr below.', 'Drag os.ldr to your OP–XY’s root folder.',
       'Confirm when asked to replace the file.', `Check that os.ldr shows about ${release ? Math.ceil(release.bytes / 1024) : '?'} KB, not 0 KB.`];
     const official = ['Switch off. Hold COM while switching on.', 'Press track 1: “upload firmware”, then connect USB.',
@@ -107,10 +193,10 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
       'exit-transfer': ['Exit file transfer.', 'Once the file has finished copying, press track 2 for "2. exit" to return to the dev menu (titled "factory menu" on your OP–XY).', [action('I’m back at the dev menu', 'write-os')]],
       'write-os': ['Write the OS.', 'Press track 5 for "5. write os to boot partition". Keep your OP–XY connected to power.', [action('I pressed track 5', 'write-result')]],
       'write-result': ['Wait for the write result.', 'Don’t power off while writing. When "firmware written ok!" appears under "looking for /os.ldr", it’s safe to power cycle your OP–XY.',
-        [action('I see "firmware written ok!"', 'restart'), action('I see something else', 'write-help')]],
+        [action('I see "firmware written ok!"', 'finish'), action('I see something else', 'write-help')]],
       'write-help': ['Check the message on your OP–XY.', 'If it stops at "looking for /os.ldr" without "firmware written ok!", os.ldr isn’t at the device’s top level. For any other message, press track 5 again and wait; don’t power off until "firmware written ok!" appears.',
         [action('Return to the write status', 'write-result')]],
-      restart: ['Start XY Forever.', 'Switch off and wait 5 seconds. Hold PLAY while switching on, and release it when the logo appears.',
+      finish: ['Start XY Forever.', 'Switch off and wait 5 seconds. Hold PLAY while switching on, and release it when the logo appears.',
         deps.serial ? [action(busy ? 'Finishing…' : 'Connect and finish', null, 'serial-finish')] : [],
         ['The first start after copying can stay on the logo for up to 20 seconds: that is normal.', 'XY Forever’s menu then says "No firmware found": also expected.',
           'Select Connect and finish once the XY Forever menu shows. A page that connected before finds your OP–XY by itself; otherwise choose it in the browser’s list.',
@@ -128,12 +214,14 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
           'Copy the .tfw file to the removable disk and eject it.', 'Wait for the update to finish before continuing.']],
       stop: [stop?.title ?? '', stop?.detail ?? '', [action('Start again', null, 'flow-restart')],
         stop?.kind === 'update' || stop?.kind === 'reinstall' ? official : []],
-      done: ['XY Forever is installed.', 'Your OP–XY is starting OS 1.2.1 through XY Forever.', [],
+      done: ['XY Forever is installed.', finished ? 'Your OP–XY is starting OS 1.2.1 through XY Forever.'
+        : 'Your OP–XY runs XY Forever, with OS 1.2.1 as the firmware it starts.', [],
         ['Switch on as usual: OS 1.2.1 starts.', 'Hold PLAY while switching on: XY Forever’s menu opens.',
           'Hold COM while switching on: te-boot, with the dev menu still on. It is your way back.']],
     };
-    return stages[stage]!;
+    return stages;
   }
+  const content = (): Stage => table()[stage]!;
 
   function click(a: Action): void {
     if (busy) return;
@@ -143,8 +231,9 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
       case 'mtp-send': void act(send); return;
       case 'download': void act(download); return;
       case 'serial-finish': void act(finish); return;
+      case 'serial-find': void act(findChosen); return;
       case 'recovery-retry': case 'flow-restart':
-        formatting = delivered = stockChecked = false; history = []; stop = null; stage = 'boot'; status = ''; render(); return;
+        formatting = delivered = stockChecked = false; stop = null; go('boot', 0); return;
       case 'format-start': formatting = true; break;
       case 'computer-mac': computer = 'mac'; break;
       case 'computer-windows': computer = 'windows'; break;
@@ -189,6 +278,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
 
   async function finish(): Promise<void> {
     say('Connecting to XY Forever…');
+    await detecting;                 // it holds the port until it is done
     const client = await deps.connect();
     const off = client.onAsk((asking) => say(asking ? `${ASK_TEXT}: your OP–XY asks to allow this computer. Press PLAY to allow it.` : 'Allowed.'));
     try {
@@ -197,7 +287,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
       off();
       await client.close().catch(() => {});
     }
-    busy = false; history = []; advance('done');
+    busy = false; finished = true; go('done', 0);
   }
 
   const link = (href: string, text: string): HTMLAnchorElement => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
@@ -258,17 +348,15 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
           h('p', {}, 'Use a compatible desktop browser, such as Chrome or Edge. Close other MIDI apps. If this page cannot get MIDI permission, use the ',
             link('https://bagofwaffles.github.io/ferret/op-xy/', 'hosted Ferret tool'), ' to enable the dev menu, then check the menu here again.'),
           h('p', { class: 'attribution' }, link('https://github.com/bagofwaffles/ferret', 'Ferret by Bag of Waffles'), ' · MIT license')),
-        history.length > 0 && !['write-os', 'write-result', 'write-help', 'format-drive', 'format-upload', 'stop', 'done'].includes(stage) &&
+        deps.serial && release && !['finish', 'done'].includes(stage) && h('p', { class: 'muted' }, 'Already running XY Forever? ',
+          h('button', { type: 'button', id: 'serial-find', disabled: busy, onclick: () => click(action('Find my OP–XY', null, 'serial-find')) }, 'Find my OP–XY')),
+        depth > 0 && !NO_BACK.includes(stage) &&
           h('div', { class: 'flow-navigation' }, h('button', { type: 'button', disabled: busy, onclick: back }, '← Back'))),
     ];
     root.replaceChildren(...parts.filter((c): c is Node | string => c !== null && c !== false && c !== ''));
   }
 
-  function back(): void {
-    if (busy || !history.length) return;
-    stage = history.pop()!; status = ''; error = false; fraction = null; log = []; render();
-  }
+  function back(): void { if (!busy && depth > 0) history.back(); }
 
-  render();
-  return { render };
+  return { render, show };
 }

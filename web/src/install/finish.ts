@@ -49,6 +49,16 @@ async function entryPresent(client: Client): Promise<boolean> {
 }
 
 /**
+ * Where an install stands on an OP-XY running XY Forever (#178: the page detects it at any stage): 'done' when the
+ * stock entry is in the library and is the default, else 'finish' (finishInstall completes it). Reads only.
+ * InstallStop: an entry of that name holds other firmware.
+ */
+export async function installState(client: Client): Promise<'finish' | 'done'> {
+  if (!await entryPresent(client)) return 'finish';
+  return (await client.readState())?.default === ENTRY ? 'done' : 'finish';
+}
+
+/**
  * Adds the stock entry (checked first: the running image, free storage, the stock file), makes it the default,
  * restarts to the menu and reconnects (the default must hold), then starts the stock OS (the link drops).
  * InstallStop: a check refused, nothing changed.

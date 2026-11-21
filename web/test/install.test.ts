@@ -3,11 +3,11 @@
 // that need the stock file to pass give their own judge.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { XyfError } from 'xy-forever-client';
+import { RELEASE_FILTERS, XyfError, connectWebSerial } from 'xy-forever-client';
 import type { Client, DirEntry } from 'xy-forever-client';
 import { HEADROOM, OFFICIAL_121_TFW, STOCK_121, STOCK_PATH, bootVerdict, needBytes, sha256Hex, spaceVerdict, stockVerdict } from '../src/install/checks.ts';
 import type { Verdict } from '../src/install/checks.ts';
-import { ENTRY, INFO_TEXT, STOCK_ON_DEVICE, entryFiles, finishInstall } from '../src/install/finish.ts';
+import { ENTRY, INFO_TEXT, STOCK_ON_DEVICE, entryFiles, finishInstall, installState } from '../src/install/finish.ts';
 import { InstallStop, TeBoot, checkDroppedStock, copyOverMtp } from '../src/install/installer.ts';
 import { fetchRelease, pinned } from '../src/install/release.ts';
 import type { ReleasePin } from '../src/install/release.ts';
@@ -287,5 +287,26 @@ describe('the Web Serial finish', () => {
     c.log = [];
     expect(await finish(c)).toBeUndefined();
     expect(c.log).toEqual([`default ${ENTRY}`, 'reboot menu', 'reconnect', 'continue']);
+  });
+});
+
+describe('detecting XY Forever at any stage', () => {
+  const setup = (): FakeClient => { const c = new FakeClient(); c.files.set(STOCK_ON_DEVICE, STOCK); return c; };
+  it('jumps to the finish until the stock entry is the default, then shows done, changing nothing', async () => {
+    const c = setup();
+    expect(await installState(c as unknown as Client)).toBe('finish');               // no entry, no default
+    await finishInstall(c as unknown as Client, { release: { ...(await pinOf(IMAGE)), image: 'abcd1234' }, stockChecked: false, judge: await passStock() });
+    c.defaultEntry = null; c.log = [];
+    expect(await installState(c as unknown as Client)).toBe('finish');               // the entry, no default
+    c.defaultEntry = ENTRY;
+    expect(await installState(c as unknown as Client)).toBe('done');
+    expect(c.log).toEqual([]);
+  });
+  it('never opens the chooser when no granted port answers', async () => {
+    let asked = 0;
+    const serial = { getPorts: async () => [], requestPort: async () => { asked++; throw new Error('chooser'); } };
+    const error = await connectWebSerial({ serial, filters: RELEASE_FILTERS, choose: false }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(XyfError);
+    expect(asked).toBe(0);
   });
 });

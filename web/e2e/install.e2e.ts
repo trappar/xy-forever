@@ -173,7 +173,7 @@ it.skipIf(why !== null || STOCK === null)('copies os.ldr over WebUSB and leads t
   expect(await page.locator('#page-install').textContent()).toContain('5. write os to boot partition');
   await press(page, 'I pressed track 5');
   await press(page, 'I see "firmware written ok!"');
-  expect(await stage(page)).toBe('restart');
+  expect(await stage(page)).toBe('finish');
   expect(await page.locator('#page-install').textContent()).toContain('Hold PLAY while switching on');
   await page.close();
 });
@@ -196,5 +196,21 @@ it.skipIf(why !== null)('checks a dropped stock file and hands over our os.ldr (
   await press(page, 'File copied · Continue');
   expect(await stage(page)).toBe('exit-transfer');
   expect(await page.evaluate(() => (window as unknown as { fakes: { usb: { requested: number } } }).fakes.usb.requested)).toBe(0);   // no WebUSB on Windows
+  await page.close();
+});
+
+it.skipIf(why !== null)('keeps the stage and the chosen computer over a reload, and goes back and forward', async () => {
+  const page = await open(OK_121);
+  await toTransfer(page, 'Windows');
+  expect(await stage(page)).toBe('stock');
+  expect(new URL(page.url()).pathname).toBe('/install/stock');
+  await page.reload();
+  await expect.poll(() => stage(page)).toBe('stock');
+  await page.goBack();
+  await expect.poll(() => stage(page)).toBe('start-transfer');
+  expect(await page.locator('#page-install').textContent()).toContain('3. mtp file transfer (windows)');   // the computer, kept
+  await page.goForward();
+  await expect.poll(() => stage(page)).toBe('stock');
+  expect(await page.locator('#serial-find').count()).toBe(0);      // no Web Serial here: nothing to look for
   await page.close();
 });

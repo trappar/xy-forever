@@ -21,6 +21,12 @@ For development without a device, start the simulator from the repository root
 
 ## Pages
 
+Each page has its own path, and each Install stage too (`src/router.ts`, History API): `/connect` (also `/`), `/device`,
+`/mods`, `/files`, and `/install/<stage>` (for example `/install/boot`, `/install/transfer`, `/install/finish`,
+`/install/done`), so a reload keeps the place and back and forward work. Every path must serve `index.html`: Vite's SPA
+fallback does it in `npm run dev` and `npm run preview`, and **production hosting needs the same fallback** (#184 picks
+the host). The app lives at the site's root (its paths and `/release/os.ldr` are absolute).
+
 - **Connect**: Web Serial, or the simulator with `?sim=PORT`; a clear message in browsers without Web Serial.
 - **Install** (#178): installs XY Forever on a stock OP-XY, no other apps. Its flow, wording, MTP FAQ and "start fresh
   with OS 1.2.1" path are Open-XY's builder flow (`src/install/page.ts`), and its te-boot (Web MIDI) and dev-menu MTP
@@ -31,7 +37,12 @@ For development without a device, start the simulator from the repository root
   Mac (read back), or downloaded and dragged into Explorer on Windows. Track 5 and a PLAY start are the owner's; the
   page finishes over Web Serial: the device's own stock 1.2.1 os.ldr becomes library entry `opxy-121` by `file.copy`
   (the bytes never leave the OP-XY), the default, then a restart to the menu, a reconnect and the OS
-  (`src/install/finish.ts`). The pure checks: `src/install/checks.ts`.
+  (`src/install/finish.ts`). The pure checks: `src/install/checks.ts`. The choices a stage needs (the computer, the
+  stock file checked, the file sent, a refusal) are kept in `sessionStorage` for a reload; a reload at a te-boot stage
+  asks te-boot again, and the finish stage looks for XY Forever again. At every stage (on load, on each stage, when a
+  serial port appears) the page looks for an OP-XY running XY Forever on ports Chrome already granted, never opening
+  the chooser unasked (**Find my OP-XY** opens it): it jumps to the finish, or to **XY Forever is installed** when the
+  stock entry is already the default.
 - **Device**: build, what is running, what boots next, the saved mods (`/yaffs2/xy-forever/config.txt`), the content state.
 - **Mods**: packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
   saved on/off state; add packages from a folder (a `modkit split` generation folder); remove a package or a whole set;
