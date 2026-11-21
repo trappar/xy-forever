@@ -115,6 +115,19 @@ class Adopt(unittest.TestCase):
         self.assertEqual((self.root / sim.STOCK_UPGRADE).read_bytes(), self.image)            # the source stays
         self.assertEqual(self.sim.status()['rw_open'], 0)
 
+    def quiet(self, still=1.5):
+        """Storage at rest: A's write window closed and no mutating storage operation for `still` seconds (the
+        converge sequence after an adoption writes its fingerprint; a cut fingerprint is not written again)."""
+        ops = None
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            s = self.sim.status()
+            if s['rw_open'] == 0 and s['storage_ops'] == ops:
+                return
+            ops = s['storage_ops'] if s['rw_open'] == 0 else None
+            time.sleep(still)
+        self.fail('storage never came to rest')
+
     def job(self):
         code, f = MS.job_status(self.dev, 0)
         return (code, f)
@@ -203,6 +216,7 @@ class Adopt(unittest.TestCase):
                 self.sim.set('cut_after', 0)
                 self.connect()                                               # adopted again, or only the fingerprint
                 self.wait(lambda: self.settled() == 'opxy-121', 'adopted after the cut')   # was cut (then nothing to do)
+                self.quiet()                                                 # the sequence ended, before the next rmtree
                 self.adopted()
                 self.assertEqual(self.lines('menu: save failed: '), [])
 
