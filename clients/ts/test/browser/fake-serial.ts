@@ -12,6 +12,9 @@
 // - The relay closing the WebSocket is the device going away: both streams error with
 //   NetworkError, then become null, and 'disconnect' fires at the port and at navigator.serial;
 //   the port stays open until close(). close() refuses while a stream is locked (TypeError).
+// - A stale entry (options.stale, #178: an install's chooser showed two): a port with XY Forever's USB ids that
+//   opens but never answers (bytes written to it are dropped), granted or only attached; listed before the live one.
+//   The chooser takes options.pick ('stale': as if the owner clicked that entry), and records each call's filters.
 // Not modelled: setSignals/getSignals (DTR), the 'connect' event's timing, read errors that leave
 // the port usable (break, framing, parity, overrun), exclusive opening against other programs.
 import { USB_FILTERS } from '../../src/index.ts';
@@ -43,6 +46,8 @@ export class FakePort extends EventTarget {
   private readonly owner: FakeSerial;
   private readonly info: PortInfo;
   private readonly relay: string | null;
+  /** Opens, takes writes and never answers (a stale entry). */
+  private readonly silent: boolean;
   private socket: WebSocket | null = null;
   private state: 'closed' | 'opening' | 'open' = 'closed';
   private rs: ReadableStream<Uint8Array> | null = null;
@@ -51,11 +56,12 @@ export class FakePort extends EventTarget {
   private wc: WritableStreamDefaultController | null = null;
   private held: Uint8Array<ArrayBuffer>[] = [];                    // received while no readable exists
 
-  constructor(owner: FakeSerial, info: PortInfo, relay: string | null) {
+  constructor(owner: FakeSerial, info: PortInfo, relay: string | null, silent = false) {
     super();
     this.owner = owner;
     this.info = info;
     this.relay = relay;
+    this.silent = silent;
   }
 
   getInfo(): PortInfo { return { ...this.info }; }
@@ -68,6 +74,7 @@ export class FakePort extends EventTarget {
     if (!Number.isInteger(options?.baudRate) || options.baudRate <= 0) throw new TypeError('Requested baud rate must be greater than zero.');
     const bufferSize = options.bufferSize ?? 255;
     if (!Number.isInteger(bufferSize) || bufferSize <= 0 || bufferSize > 16 * 1024 * 1024) throw new TypeError('Requested buffer size out of range.');
+    if (this.silent && !this.isLost) { this.state = 'open'; this.opens++; return; }
     if (this.isLost || !this.relay) throw new DOMException('Failed to open serial port.', 'NetworkError');
     this.state = 'opening';
     const socket = new WebSocket(this.relay);
@@ -102,6 +109,7 @@ export class FakePort extends EventTarget {
       start: (c) => { this.wc = c; },
       write: (chunk) => {
         if (!(chunk instanceof ArrayBuffer) && !ArrayBuffer.isView(chunk)) throw new TypeError('Can only write an ArrayBuffer or ArrayBufferView.');
+        if (this.silent) return;
         if (!this.socket) throw lost();
         const view = chunk instanceof ArrayBuffer ? new Uint8Array(chunk) : new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
         this.socket.send(view.slice());
@@ -145,22 +153,31 @@ export class FakePort extends EventTarget {
 }
 
 export class FakeSerial extends EventTarget {
-  /** How many times the chooser was shown. */
+  /** How many times the chooser was shown, and the filters it was given each time. */
   chooser = 0;
+  readonly filtersShown: Filter[][] = [];
+  /** The stale entry (options.stale), else null. */
+  readonly stale: FakePort | null;
+  private staleGranted: boolean;
+  private readonly pick: 'xyf' | 'stale';
   /** Every XY Forever port object handed out, oldest first (a new one after each restart). */
   readonly xyfPorts: FakePort[] = [];
   private readonly relay: string;
   private readonly adapter: FakePort;
-  private grantedXyf = false;
+  private grantedXyf: boolean;
   private readonly requireGesture: boolean;
 
   /** The USB ids XY Forever's port shows: the product build's composite unless a test picks the stock serial identity. */
   private readonly identity: PortInfo;
 
-  constructor(relay: string, options: { requireGesture?: boolean; identity?: PortInfo } = {}) {
+  constructor(relay: string, options: { requireGesture?: boolean; identity?: PortInfo; stale?: 'granted' | 'attached'; pick?: 'xyf' | 'stale' } = {}) {
     super();
     this.relay = relay;
     this.identity = { ...(options.identity ?? USB_FILTERS[0]) };
+    this.stale = options.stale ? new FakePort(this, { ...this.identity }, null, true) : null;
+    this.staleGranted = options.stale === 'granted';
+    this.pick = options.pick ?? 'xyf';
+    this.grantedXyf = options.stale === 'granted';
     this.adapter = new FakePort(this, ADAPTER, null);
     this.requireGesture = options.requireGesture ?? true;
   }
@@ -177,16 +194,19 @@ export class FakeSerial extends EventTarget {
       throw new DOMException("Failed to execute 'requestPort' on 'Serial': Must be handling a user gesture to show a permission request.", 'SecurityError');
     }
     this.chooser++;
+    this.filtersShown.push((options.filters ?? []).map((f) => ({ ...f })));
     const xyf = await this.xyfPort();
-    const port = [xyf, this.adapter].find((p) => p && matches(p.getInfo(), options.filters));
+    const order = this.pick === 'stale' ? [this.stale, xyf, this.adapter] : [xyf, this.stale, this.adapter];
+    const port = order.find((p) => p && matches(p.getInfo(), options.filters));
     if (!port) throw new DOMException('No port selected by the user.', 'NotFoundError');
     if (port === xyf) this.grantedXyf = true;
+    if (port === this.stale) this.staleGranted = true;
     return port;
   }
 
   async getPorts(): Promise<FakePort[]> {
     const xyf = this.grantedXyf ? await this.xyfPort() : null;
-    return xyf ? [this.adapter, xyf] : [this.adapter];
+    return [this.adapter, ...(this.stale && this.staleGranted ? [this.stale] : []), ...(xyf ? [xyf] : [])];
   }
 
   /** XY Forever's port while the simulator's endpoint listens; a new object after it went away. */

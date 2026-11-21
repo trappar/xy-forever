@@ -1,8 +1,8 @@
 // The XY Forever web app: Connect, Install, Device, Mods, Files. Plain DOM; one device action at a time.
 // ?sim=PORT: the device simulator on 127.0.0.1:PORT through the dev server's relay (development and tests).
-import { ASK_TEXT, Client, SERIAL_OFF_TEXT, JobError, configGet, configSet, fileListSource, fileReason, grantedPorts, isXyfError, listPackages, localSet, pushPackages,
-  removePackage, requestPort, webSerial, webSerialOpener } from 'xy-forever-client';
-import type { DirEntry, HeldGeneration, LocalSet, Opener, PackageSource, SavedInputs } from 'xy-forever-client';
+import { ASK_TEXT, Client, RELEASE_FILTERS, SERIAL_OFF_TEXT, JobError, configGet, configSet, connectWebSerial, fileListSource, fileReason, isXyfError,
+  listPackages, localSet, pushPackages, removePackage, webSerial } from 'xy-forever-client';
+import type { DirEntry, HeldGeneration, LocalSet, PackageSource, SavedInputs } from 'xy-forever-client';
 import { webSocketOpener } from 'xy-forever-client/dev';
 import { CONFIG_FILE, CONFIG_OLD, CONTENT_STATE, CONTENT_STATE_OLD, ROOT, WRITE_RULE, changeRefusal, configText, contentText, folderWritable, groupMods,
   human, joinPath, modeText, nameProblem, parentOf, parseConfig } from './model.ts';
@@ -97,14 +97,15 @@ function renderConnect(): void {
   );
 }
 
-async function opener(): Promise<Opener> {
-  if (sim) return webSocketOpener(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/xyf-relay?sim=${encodeURIComponent(sim)}`);
-  if ((await grantedPorts()).length === 0) await requestPort();
-  return webSerialOpener();
+/** The simulator, else Web Serial: a granted port that answers, the chooser only when none does (serial-connect.ts).
+ * filters: the install's release image has only the stock pair (RELEASE_FILTERS). */
+async function connectDevice(filters?: typeof RELEASE_FILTERS): Promise<Client> {
+  if (sim) return Client.connect(webSocketOpener(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/xyf-relay?sim=${encodeURIComponent(sim)}`), { timeoutMs: 10_000 });
+  return connectWebSerial({ timeoutMs: 10_000, filters });
 }
 
 async function connect(): Promise<void> {
-  client = await Client.connect(await opener(), { timeoutMs: 10_000 });
+  client = await connectDevice();
   bugReport.updateStatus(client.info);
   client.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
   if (!client.info.serial) notice(SERIAL_OFF_TEXT, 'error');                     // #191: hello serial=off
@@ -132,7 +133,7 @@ function installDeps(): Parameters<typeof installPage>[1] {
     midi: nav.requestMIDIAccess ? nav.requestMIDIAccess.bind(nav) : null,
     usb: nav.usb ?? null,
     serial: sim !== null || webSerial() !== null,
-    connect: async () => Client.connect(await opener(), { timeoutMs: 10_000 }),
+    connect: () => connectDevice(RELEASE_FILTERS),
   };
 }
 

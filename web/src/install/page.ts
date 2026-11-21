@@ -6,7 +6,7 @@
 // storage before copying; it never switches the dev menu off (Open-XY's disable and recovery-by-disabling are left out);
 // and it finishes over Web Serial after a PLAY start. #page-install's data-stage names the stage (the tests read it).
 import type { Client } from 'xy-forever-client';
-import { ASK_TEXT } from 'xy-forever-client';
+import { ASK_TEXT, CHOOSE_TEXT } from 'xy-forever-client';
 import { OFFICIAL_121_TFW, OFFICIAL_UPDATE_GUIDE } from './checks.ts';
 import type { Computer, Verdict } from './checks.ts';
 import { finishInstall } from './finish.ts';
@@ -113,7 +113,8 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
       restart: ['Start XY Forever.', 'Switch off and wait 5 seconds. Hold PLAY while switching on, and release it when the logo appears.',
         deps.serial ? [action(busy ? 'Finishing…' : 'Connect and finish', null, 'serial-finish')] : [],
         ['The first start after copying can stay on the logo for up to 20 seconds: that is normal.', 'XY Forever’s menu then says "No firmware found": also expected.',
-          'Select Connect and finish, and choose your OP–XY in the browser’s list.', 'If your OP–XY asks to allow this computer, press PLAY.',
+          'Select Connect and finish once the XY Forever menu shows. A page that connected before finds your OP–XY by itself; otherwise choose it in the browser’s list.',
+          CHOOSE_TEXT, 'If your OP–XY asks to allow this computer, press PLAY.',
           ...(deps.serial ? [] : ['This browser has no Web Serial: open this page in Chrome or Edge to finish.'])]],
       'mtp-help': ['Start fresh with OS 1.2.1.', 'Format the drive, reinstall official OS 1.2.1, then continue installing XY Forever.',
         [action('I understand the data loss · Show format steps', 'format-drive', 'format-start')],

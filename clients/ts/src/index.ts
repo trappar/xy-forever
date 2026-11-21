@@ -23,6 +23,8 @@ export type { FetchOptions, IndexFile, IndexGeneration, IndexPackage, ModIndex }
 export type { ErrorCode } from './errors.ts';
 export type { Opener, Transport, TransportSink } from './transport.ts';
 export { WebSerialTransport, grantedPorts, requestPort, webSerial, webSerialOpener } from './webserial.ts';
+export { CHOOSE_TEXT, RELEASE_FILTERS, connectWebSerial } from './serial-connect.ts';
+export type { SerialConnectOptions } from './serial-connect.ts';
 export type { SerialLike, SerialPortLike } from './webserial.ts';
 export { STATUS, TYPE, USB_FILTERS, VERSION, crc32, statusName } from './v1.ts';
 export type { CommandName, LogEvent, StatusName } from './v1.ts';
