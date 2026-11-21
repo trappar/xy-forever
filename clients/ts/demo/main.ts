@@ -14,7 +14,8 @@ import { Client, JobError, PROTECTED_NAMES, WRITE_ROOTS, applyMods, decodeScreen
 import type { DirEntry, EntryKind, HeldGeneration, JobStatus, LocalSet, Opener, PackageSource } from '../src/index.ts';
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
-const sim = new URLSearchParams(location.search).get('sim');
+const query = new URLSearchParams(location.search);
+const sim = query.get('sim');
 const hex = (b: Uint8Array): string => [...b].map((x) => x.toString(16).padStart(2, '0')).join(' ');
 let client: Client | null = null;
 /** The package folder chosen for the Mods panel's Send. */
@@ -83,6 +84,12 @@ el('connect').addEventListener('click', action(async () => {
     return;
   }
   client = await Client.connect(open, { timeoutMs: 10_000 });
+  if (query.has('unattended') && client.info.ask) {
+    await client.close();
+    client = null;
+    el('error').textContent = 'NEED: turn off Ask before USB control in the XY Forever settings for an unattended test.';
+    return;
+  }
   const { version, image, proto, mode } = client.info;
   el('version').textContent = `${version ?? '?'}, image ${image ?? '?'}`;
   el('proto').textContent = proto;
@@ -351,8 +358,18 @@ export let configSource: (c: Client) => Promise<SavedConfig | null> = async (c) 
   return text === null ? null : parseKeyValues(text);
 };
 export function setConfigSource(source: typeof configSource): void { configSource = source; }
+async function rebootAndReconnect(): Promise<string> {
+  const open = client;
+  if (!open?.connected) throw new Error('connect before rebooting');
+  const build = open.info.image;
+  await open.reboot('menu');
+  const info = await open.reconnect({ timeoutMs: 20_000 });
+  if (info.image !== build) throw new Error('a different XY Forever build answered after reboot');
+  const entries = await open.listDir('/yaffs2/xy-forever');
+  return `HELLO ${info.proto} after restart, read ${entries.length} directory entries`;
+}
 /** For tests and the device browser test (scripts/device-browser-test.ts): the seam, reachable from outside the module. */
-(window as Window & { xyfDemo?: unknown }).xyfDemo = { setConfigSource };
+(window as Window & { xyfDemo?: unknown }).xyfDemo = { setConfigSource, rebootAndReconnect };
 
 /** The saved configuration in words. */
 export function configText(config: SavedConfig | null): string {
