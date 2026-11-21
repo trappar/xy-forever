@@ -63,7 +63,7 @@ interface Action { readonly label: string; readonly next: InstallStage | null; r
 type Stage = [title: string, detail: string, actions: Action[], instructions?: string[]];
 const action = (label: string, next: InstallStage | null, id?: string): Action => (id ? { label, next, id } : { label, next });
 
-export function installPage(root: HTMLElement, deps: InstallDeps): { render: () => void; show: (path: string, how: How) => void } {
+export function installPage(root: HTMLElement, deps: InstallDeps): { render: () => void; show: (path: string, how: How) => void; reset: () => void } {
   const release = deps.release === undefined ? pinned() : deps.release;
   let stage: InstallStage = 'boot';
   let depth = 0;
@@ -371,5 +371,12 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
 
   function back(): void { if (!busy && depth > 0) history.back(); }
 
-  return { render, show };
+  function reset(): void {
+    stage = 'boot'; depth = 0; computer = null; stop = null; delivered = false; formatting = false;
+    status = ''; error = false; fraction = null; log = []; image = null;
+    teBoot?.close();
+    save();
+  }
+
+  return { render, show, reset };
 }

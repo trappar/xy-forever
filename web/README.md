@@ -65,6 +65,15 @@ development and `/xy-forever/` for GitHub Pages.
 
 File and package removals ask first in plain words.
 
+## Uninstall
+
+Connect in the web app and choose **Uninstall XY Forever** on the **Device** page (device protocol 1.26 or later).
+This restores official content, writes the exact official OS 1.2.1 image from the protected `upgrade/` folder to the
+boot partition and checks its read-back. It then restores the root `os.ldr`, removes the `xy-forever/` folder with
+the library, mods and settings, and requests a restart. Keep the OP-XY powered and connected until it restarts.
+If cleanup stops after the verified write, retry while the XY Forever menu still runs. A power cycle at that point
+starts stock OS 1.2.1.
+
 ## The release image
 
 Install and Update use the `os.ldr` whose SHA-256 `src/install/release.json` pins, fetched from this site at
@@ -132,7 +141,7 @@ test's simulator helpers come from its `test/` folder.
 ## Not built yet
 
 - Firmware library management, firmware and companion install,
-  Bluetooth, uninstall (#179).
+  Bluetooth.
 - Recursive delete of a non-empty folder, drag and drop upload, upload of folders.
 
 ## Licence

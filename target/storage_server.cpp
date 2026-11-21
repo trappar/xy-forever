@@ -485,7 +485,7 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
 #if defined(XYF_USB_SERVICE)
     // Install mode answers the boot-partition writer's requests (and refuses file requests
     // while a boot partition is selected), except while a writable engine entry is open.
-    if (install_enabled && engine != entry_write && engine != entry_run && serve_install(request, vtable, op, session))
+    if (install_mode && serve_install(request, vtable, op, session))
         return;
     }  // !probe_mode
 #endif

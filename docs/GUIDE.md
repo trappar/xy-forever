@@ -150,6 +150,7 @@ back.
 
 - To boot stock and keep your mods for later: Boot without mods.
 - To leave mods for good: turn all mods off, then PLAY on the first row.
+- To remove XY Forever, see [Uninstall in the web app](../web/README.md#uninstall).
 - The last resort: hold COM at power-on to reach the stock recovery menu, and
   reinstall official 1.2.1 from there.
 
@@ -209,4 +210,3 @@ run on a device.
 - Safe mode by itself when a firmware fails at start-up.
 - Choosing which base firmware a mod build uses.
 - Companion chip updates (keyboard and Bluetooth), from official update files.
-- Uninstall, from the web app (not the menu).

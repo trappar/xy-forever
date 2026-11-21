@@ -516,7 +516,7 @@ class FileEngineWiringTest(unittest.TestCase):
         self.assertEqual(serve.count('serve_engine('), 1)
         self.assertTrue(serve.rstrip().endswith('serve_engine(request, vtable, op, storage, session);'))
         # Only install mode (the boot-partition writer's exact request set) is served otherwise.
-        self.assertIn('if (install_enabled && engine != entry_write && engine != entry_run && serve_install(', serve)
+        self.assertIn('if (install_mode && serve_install(', serve)
         self.assertNotIn('stock<', serve)
         install = self.body(self.server, 'bool serve_install(')
         guard = install.index('if (tfw_hash_open()) {')

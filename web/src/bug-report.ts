@@ -5,7 +5,7 @@ import type { DeviceInfo } from 'xy-forever-client';
 import appPackage from '../package.json';
 
 const ACTIONS = [
-  'show_connect', 'connect', 'disconnect', 'refresh_status', 'update_xy_forever', 'list_packages', 'choose_packages',
+  'show_connect', 'connect', 'disconnect', 'refresh_status', 'update_xy_forever', 'uninstall_xy_forever', 'list_packages', 'choose_packages',
   'send_packages', 'remove_packages', 'build', 'save_mods', 'browse_files', 'download_file', 'upload_files',
   'new_folder', 'copy_file', 'move_file', 'delete_file',
 ] as const;

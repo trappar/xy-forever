@@ -16,6 +16,7 @@ export type { ApplyOptions, ApplyRequest, BaseEntry, HeldGeneration, HeldPackage
   PushOptions, PushSummary, Removed, BuiltEntry, DefaultResult } from './mods.ts';
 export { STORE_FILE, STORE_VERSION, storedName, storeVersion } from './modstore.ts';
 export { readModsConfig } from './mods-config.ts';
+export { withFileSession } from './package-store.ts';
 export { CONFIG_FLAGS, configGet, configSet } from './config.ts';
 export type { InputsRequest, SavedInputs } from './config.ts';
 export { INDEX_FORMAT, checkIndex, fetchPackages, loadIndex } from './modindex.ts';

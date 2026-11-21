@@ -19,10 +19,12 @@ import { siteHref } from './site.ts';
 import type { How } from './router.ts';
 import { pinned } from './install/release.ts';
 import { updateAvailable, updateXyf } from './update.ts';
+import { UNINSTALL_PROTOCOL, uninstallAvailable, uninstallXyf } from './uninstall.ts';
 
 const sim = new URLSearchParams(location.search).get('sim');
 let client: Client | null = null;
 let busy = false;
+let uninstalling = false, stockRestored = false;
 const bugReport = new BugReport();
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
 
@@ -40,6 +42,7 @@ const loaders: Record<Page, () => Promise<void>> = {
 
 function route(path = currentPath(), how: How = 'push'): void {
   const requested = PAGES.find((page) => page === path.split('/')[1]) ?? 'connect';
+  if (uninstalling && requested !== 'device') { navigate('/device', { replace: true }); return; }
   const p = client || OPEN_PAGES.includes(requested) ? requested : 'connect';
   for (const id of PAGES) page(id).hidden = id !== p;
   for (const a of document.querySelectorAll<HTMLAnchorElement>('#nav a')) a.classList.toggle('active', a.dataset['page'] === p);
@@ -90,6 +93,7 @@ function renderConnect(): void {
   const supported = sim !== null || webSerial() !== null;
   page('connect').replaceChildren(
     h('h1', {}, 'Connect your OP-XY'),
+    ...(stockRestored ? [h('p', { class: 'notice info', role: 'status' }, 'Stock OS 1.2.1 was restored and your OP-XY was asked to restart.')] : []),
     h('p', { class: 'lede' }, 'Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the list. ',
       'Not installed yet? ', h('a', { href: siteHref('/install/') }, 'Install XY Forever'), '.'),
     h('div', { class: 'card' },
@@ -113,6 +117,7 @@ async function connectDevice(filters?: typeof RELEASE_FILTERS): Promise<Client> 
 /** Makes found this app's connection. */
 function use(found: Client): void {
   client = found;
+  stockRestored = false;
   bugReport.updateStatus(found.info);
   found.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
   if (!found.info.serial) notice(SERIAL_OFF_TEXT, 'error');                     // #191: hello serial=off
@@ -208,6 +213,41 @@ function updateCard(c: Client): HTMLElement | null {
     release.notes && h('p', {}, release.notes), button, progress);
 }
 
+function uninstallCard(c: Client): HTMLElement {
+  const heading = h('h2', {}, 'Restore stock OS 1.2.1');
+  if (!uninstallAvailable(c.info)) return h('div', { class: 'card' }, heading,
+    h('p', {}, `Update XY Forever to use web uninstall. It requires device protocol ${UNINSTALL_PROTOCOL} or later and the stock restore commands.`));
+  const progress = h('p', { role: 'status' });
+  async function uninstall(): Promise<void> {
+    let finished = false;
+    await run('uninstall_xy_forever', async () => {
+      if (!await confirmAction('Uninstall XY Forever?',
+        'This restores official OS 1.2.1 and its content, removes your XY Forever library, mods and settings, then restarts your OP-XY.',
+        'Uninstall', true)) return;
+      uninstalling = true;
+      button.disabled = true;
+      try {
+        await uninstallXyf(c, (message) => { progress.textContent = message; });
+        finished = true;
+      } finally {
+        uninstalling = false;
+        button.disabled = false;
+        progress.textContent = '';
+      }
+    });
+    if (finished) {
+      client = null;
+      setLink();
+      install?.reset();
+      document.getElementById('installed')!.hidden = true;
+      stockRestored = true;
+      navigate('/connect', { replace: true });
+    }
+  }
+  const button = btn('Uninstall XY Forever', () => { void uninstall(); }, 'danger');
+  return h('div', { class: 'card' }, heading, button, progress);
+}
+
 async function loadDevice(): Promise<void> {
   const c = client!;
   const info = await c.status();
@@ -235,6 +275,7 @@ async function loadDevice(): Promise<void> {
   );
   const update = updateCard(c);
   if (update) page('device').append(update);
+  page('device').append(uninstallCard(c));
 }
 
 // ---- Mods --------------------------------------------------------------------------------------------
