@@ -117,6 +117,14 @@ describe('te-boot over Web MIDI', () => {
     expect([...command.slice(-2)]).toEqual([0xba, 0xa7]);            // the enable selector; 0x00 would switch it off
     te.close();
   });
+  it('accepts exactly what a stock 1.2.1 OP-XY\'s te-boot reported (#178 device finding)', async () => {
+    const reported = { mode: 'bootloader', os_version: '1.2.1', sw_version: '1.2.1', bl_version: '1000.0.20' };
+    expect(bootVerdict(reported).kind).toBe('ok');
+    const midi = new FakeMidi({ product: 'OP-XY', serial: 'X1', ...reported });   // Open-XY's ferret also checks these two
+    const te = new TeBoot(midi.requestMIDIAccess);
+    expect((await te.check()).verdict.kind).toBe('ok');
+    te.close();
+  });
   it('sends nothing but the identity request to a refused device', async () => {
     for (const fields of [id('1000.0.23+0', '1.2.5'), id('1000.0.20+0', '1.1.33'), id('1000.0.20+0', '9.9.9')]) {
       const midi = new FakeMidi(fields);
@@ -169,8 +177,12 @@ describe('the Mac copy over WebUSB MTP', () => {
   });
 });
 
-/** A fake XY Forever over Web Serial: a file system, the calls finishInstall makes, and what it was asked. */
+/**
+ * A fake XY Forever over Web Serial: a file system, the calls finishInstall makes, and what it was asked. As the
+ * device's job_blocks: while a package session is open, file.copy (not among the commands it permits) is `busy`.
+ */
 class FakeClient {
+  session = false;
   files = new Map<string, Uint8Array>();
   folders = new Set(['/yaffs2', '/yaffs2/upgrade', '/yaffs2/upgrade/firmware', '/yaffs2/upgrade/firmware/blackfin', '/yaffs2/upgrade/firmware/blackfin/bin']);
   free = ROOMY;
@@ -181,6 +193,7 @@ class FakeClient {
   private notFound = (path: string): XyfError => new XyfError('not_found', `${path}: no such file`, { command: 'file.list', status: 3 });
   async call(name: string, request: Record<string, unknown>): Promise<Record<string, number>> {
     this.log.push(name === 'package.session' ? `${name} ${request['action']}` : name);
+    if (name === 'package.session' && request['action'] !== 1) this.session = request['action'] === 0;
     if (name === 'storage.space') return { version: 1, free_low: this.free % 2 ** 32, free_high: Math.floor(this.free / 2 ** 32) };
     return {};
   }
@@ -194,7 +207,8 @@ class FakeClient {
   async readFile(path: string): Promise<Uint8Array> { const d = this.files.get(path); if (!d) throw this.notFound(path); return d; }
   async writeFile(path: string, data: Uint8Array): Promise<void> { this.log.push(`write ${path.split('/').at(-1)}`); this.files.set(path, data.slice()); }
   async copyFile(source: string, target: string): Promise<{ bytes: number }> {
-    this.log.push(`copy ${source} -> ${target.split('/').at(-1)}`);
+    this.log.push(`copy ${source} -> ${target.split('/').at(-1)!.replace(/[0-9a-f]{16}$/, '*')}`);
+    if (this.session) throw new XyfError('busy', 'file.copy: the device answered busy', { command: 'file.copy', status: 15 });
     const data = this.files.get(source); if (!data) throw this.notFound(source);
     this.files.set(target, data.slice()); return { bytes: this.files.get(target)!.length };
   }
@@ -203,6 +217,8 @@ class FakeClient {
   async removeDir(path: string): Promise<void> { this.folders.delete(path); }
   async renamePath(source: string, target: string): Promise<void> {
     this.log.push(`rename ${source.split('/').at(-1)} -> ${target}`);
+    const file = this.files.get(source);
+    if (file) { this.files.delete(source); this.files.set(target, file); return; }
     for (const p of [...this.folders]) if (p === source || p.startsWith(source + '/')) { this.folders.delete(p); this.folders.add(target + p.slice(source.length)); }
     for (const [p, d] of [...this.files]) if (p.startsWith(source + '/')) { this.files.delete(p); this.files.set(target + p.slice(source.length), d); }
   }
@@ -229,7 +245,8 @@ describe('the Web Serial finish', () => {
     expect(c.files.get(`${entry}/os.ldr`)).toEqual(STOCK);
     expect(new TextDecoder().decode(c.files.get(`${entry}/info.txt`))).toBe(INFO_TEXT);
     expect(new TextDecoder().decode(c.files.get(`${entry}/files.sha256`))).toBe(new TextDecoder().decode((await entryFiles()).get('files.sha256')));
-    expect(c.log.filter((l) => l.startsWith('copy'))).toEqual([`copy ${STOCK_ON_DEVICE} -> os.ldr`]);
+    expect(c.log.filter((l) => l.startsWith('copy'))).toEqual([`copy ${STOCK_ON_DEVICE} -> copy-v1-*`]);
+    expect(c.log.findIndex((l) => l.startsWith('copy'))).toBeLessThan(c.log.indexOf('package.session 0'));   // outside the session
     expect(c.log.some((l) => l === 'write os.ldr')).toBe(false);          // the stock bytes are never sent over USB
     expect(c.log.slice(c.log.indexOf(`default ${ENTRY}`))).toEqual([`default ${ENTRY}`, 'reboot menu', 'reconnect', 'continue']);
     expect([...c.files.keys()].filter((p) => p.includes('/tmp/'))).toEqual([]);

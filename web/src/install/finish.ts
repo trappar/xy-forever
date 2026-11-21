@@ -82,7 +82,7 @@ export async function finishInstall(client: Client, options: FinishOptions): Pro
       await session.mkdir(LIBRARY_ROOT.slice(0, LIBRARY_ROOT.lastIndexOf('/')));   // a fresh install may have neither folder
       await session.mkdir(LIBRARY_ROOT);
       await session.publish(ENTRY_PATH, files, new Map([['os.ldr', STOCK_ON_DEVICE]]));
-    });
+    }, { copies: [STOCK_ON_DEVICE] });   // file.copy before the session: inside it the OP-XY answers busy
   }
   step('Making OS 1.2.1 the default...');
   await makeDefault(client, ENTRY);

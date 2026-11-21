@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, inject, test, vi } from 'vitest';
-import { Client, crc32, isXyfError, sha256 } from '../src/node.ts';
+import { Client, LIBRARY_ROOT, TMP_ROOT, XyfError, crc32, isXyfError, packageTransaction, sha256 } from '../src/node.ts';
 import { tcpOpener } from '../src/node.ts';
 
 const sims = inject('sims');
@@ -194,6 +194,44 @@ describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped
     expect(missing).toMatchObject({ code: 'not_found', command: 'file.copy' });
     expect(missing.message).toBe(`file.copy ${dir}/none.bin -> ${dir}/none-copy.bin: no such file, or the target's folder does not exist`);
     expect(existsSync(host(`${dir}/none-copy.bin`))).toBe(false);
+  });
+
+  test('#178: a package publishes a file copied on the device; file.copy inside a session is busy, as on the OP-XY', async () => {
+    const source = `${DIR}/pkg/os.ldr`, target = `${LIBRARY_ROOT}/copy-spec`;
+    const data = new Uint8Array(randomBytes(200_000));
+    seed(source, data);
+    const hex = (bytes: Uint8Array): string => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+    const list = new TextEncoder().encode(`${hex(await sha256(data))}  os.ldr\n`);
+    const inside = await failure(packageTransaction(client, {}, () => client.copyFile(source, `${TMP_ROOT}/inside.bin`)));
+    expect(inside).toMatchObject({ code: 'busy', command: 'file.copy', fields: { busy: 'session' } });
+    expect(inside.message).toMatch(/: a package change holds the OP-XY's storage/);
+    await packageTransaction(client, {}, (session) => session.publish(target, new Map([['files.sha256', list]]), new Map([['os.ldr', source]])),
+      { copies: [source] });
+    expect(Buffer.compare(readFileSync(host(`${target}/os.ldr`)), data)).toBe(0);
+    expect(readdirSync(host(TMP_ROOT)).filter((name) => /^(copy|pkg)-v1-/.test(name))).toEqual([]);
+    await packageTransaction(client, {}, (session) => session.remove(target));
+    expect(existsSync(host(target))).toBe(false);
+  });
+
+  test('#178: busy while the write window closes is sent again; busy for a job is not', async () => {
+    const busy = (): XyfError => new XyfError('busy', 'file.list: the device answered busy', { command: 'file.list', status: 15 });
+    const original = client.call.bind(client);
+    let refusals = 2, phase = 9;
+    const call = vi.spyOn(client, 'call').mockImplementation(((name: string, request: unknown, options: unknown) => {
+      if (name === 'file.list' && refusals > 0) { refusals--; return Promise.reject(busy()); }
+      if (name === 'job.status') return Promise.resolve({ phase });
+      return original(name as never, request as never, options as never);
+    }) as typeof client.call);
+    try {
+      expect((await client.listDir('/yaffs2')).length).toBeGreaterThan(0);
+      expect(refusals).toBe(0);
+      refusals = 1; phase = 5;                                             // a mod build in its write phase
+      const job = await failure(client.listDir('/yaffs2'));
+      expect(job).toMatchObject({ code: 'busy', fields: { busy: 'job' } });
+      expect(job.message).toBe('file.list /yaffs2: the OP-XY is running a job (building mod firmware or changing content); try again when it ends, or cancel it');
+    } finally {
+      call.mockRestore();
+    }
   });
 
   test('copyTree: a folder and everything in it; a target inside the source: RangeError, nothing sent', async () => {
