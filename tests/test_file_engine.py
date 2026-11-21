@@ -518,6 +518,10 @@ class FileEngineWiringTest(unittest.TestCase):
         # Only install mode (the boot-partition writer's exact request set) is served otherwise.
         self.assertIn('if (install_enabled && engine != entry_write && engine != entry_run && serve_install(', serve)
         self.assertNotIn('stock<', serve)
+        install = self.body(self.server, 'bool serve_install(')
+        guard = install.index('if (tfw_hash_open()) {')
+        self.assertLess(install.index('if (action == install_none) return false;'), guard)
+        self.assertLess(guard, install.index('stock<'))
         engine = self.body(self.server, 'void serve_engine(')
         first = engine.index('file_engine::decide_request(')
         self.assertLess(first, engine.index('stock<'))

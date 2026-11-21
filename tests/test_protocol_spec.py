@@ -380,14 +380,15 @@ class DeviceAgreesTest(unittest.TestCase):
         us = text('target/usb_service.cpp')
         self.assertIn('    if (path_bytes + 1 + 32 != length) code = P::s_bad_request;\n'
                       '    else if (!storage_server::valid_write_path(path)) code = P::s_refused;\n', us)
-        ss = text('target/storage_server.cpp') + unit_text(ROOT / 'target/file_client.cpp')
-        self.assertIn('if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;', ss)
+        client_write = text('target/file_client_write.ipp')
+        self.assertIn('if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;', client_write)
         self.assertIn('refused', command(spec(), 'file.write_staged')['errors'])
         self.assertEqual((ids.S_UNSUPPORTED, ids.S_REFUSED, ids.S_BUSY, ids.S_CANCELLED), (2, 14, 15, 16))
-        self.assertNotIn('s_busy', ss)                                        # 1.10: only the job's one request slot
+        write_path = client_write + text('target/storage_server_engine.ipp')
+        self.assertNotIn('s_busy', write_path)                 # USB job arbitration happens before file dispatch
         self.assertIn('else if (job_blocks(type)) status_only(type, seq, P::s_busy);', us)
         # The product A rehearsal can be cancelled; the old staged file writer still cannot.
-        self.assertNotIn('s_cancelled', unit_text(ROOT / 'target/usb_service_file_write.ipp') + ss)
+        self.assertNotIn('s_cancelled', text('target/usb_service_file_write.ipp') + write_path)
 
     def test_published_document(self):
         doc = ''.join(text(rel) for rel in protogen.DOC_LEAVES)

@@ -48,9 +48,10 @@ bool safe(const char* name, U32 size, bool directory) {
     }
     return true;
 }
-Status extras(const Reader& reader, U32 offset, U32 count) {
+Status extras(const Reader& reader, U32 offset, U32 count, Work* work) {
     Byte header[4];
     while (count) {
+        if (!checkpoint(work)) return Status::cancelled;
         if (count < 4 || !read(reader, offset, header, 4)) return Status::layout;
         U32 tag = word(header), size = word(header + 2);
         if (size > count - 4) return Status::layout;
@@ -59,7 +60,7 @@ Status extras(const Reader& reader, U32 offset, U32 count) {
     }
     return Status::ok;
 }
-Status local(const Reader& reader, Entry& entry, U32 directory_offset) {
+Status local(const Reader& reader, Entry& entry, U32 directory_offset, Work* work) {
     Byte header[30], name[256];
     if (!read(reader, entry.local_offset, header, 30)) return Status::truncated;
     if (dword(header) != 0x04034b50u) return Status::layout;
@@ -77,7 +78,7 @@ Status local(const Reader& reader, Entry& entry, U32 directory_offset) {
         if (name[i] != static_cast<Byte>(entry.name[i])) return Status::layout;
     U32 extra_offset = name_offset + entry.name_size;
     if (extra_size > directory_offset - extra_offset) return Status::layout;
-    Status status = extras(reader, extra_offset, extra_size);
+    Status status = extras(reader, extra_offset, extra_size, work);
     if (status != Status::ok) return status;
     entry.data_offset = extra_offset + extra_size;
     if (entry.compressed_size > directory_offset - entry.data_offset) return Status::layout;
@@ -96,9 +97,7 @@ Status local(const Reader& reader, Entry& entry, U32 directory_offset) {
     }
     return Status::ok;
 }
-}
-
-Status open(const Reader& reader, const Limits& limits, Entry* entries, U32 capacity, Archive& archive) {
+Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capacity, Archive& archive, Work* work) {
     archive.entries = 0; archive.count = 0; archive.total_bytes = 0; archive.directory_offset = 0;
     if (!reader.read || !entries || !limits.entries || !limits.member_bytes ||
         !limits.total_bytes || !limits.archive_bytes || !limits.expansion_ratio) return Status::argument;
@@ -108,6 +107,7 @@ Status open(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
     U32 offset = reader.size - 22, minimum = reader.size > 65557 ? reader.size - 65557 : 0;
     bool found = false;
     for (;;) {
+        if (!checkpoint(work)) return Status::cancelled;
         if (!read(reader, offset, end, 22)) return Status::io;
         if (dword(end) == 0x06054b50u && word(end + 20) == reader.size - offset - 22) { found = true; break; }
         if (offset == minimum) break;
@@ -122,6 +122,7 @@ Status open(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
     if (directory_offset > offset || directory_size != offset - directory_offset) return Status::layout;
     U32 cursor = directory_offset, total = 0, local_bytes = 0;
     for (U32 index = 0; index != count; ++index) {
+        if (!checkpoint(work)) return Status::cancelled;
         Byte header[46];
         if (cursor > offset || offset - cursor < 46 || !read(reader, cursor, header, 46)) return Status::truncated;
         if (dword(header) != 0x02014b50u) return Status::layout;
@@ -153,15 +154,16 @@ Status open(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
         if (!entry.method && entry.compressed_size != entry.size) return Status::layout;
         if (entry.directory && (entry.size || entry.crc32)) return Status::layout;
         total += entry.size;
-        Status status = extras(reader, cursor + 46 + entry.name_size, extra_size);
+        Status status = extras(reader, cursor + 46 + entry.name_size, extra_size, work);
         if (status != Status::ok) return status;
-        status = local(reader, entry, directory_offset);
+        status = local(reader, entry, directory_offset, work);
         if (status != Status::ok) return status;
         if (entry.local_offset >= entry.local_end) return Status::layout;
         U32 span = entry.local_end - entry.local_offset;
         if (span > directory_offset - local_bytes) return Status::layout;
         local_bytes += span;
         for (U32 previous = 0; previous != index; ++previous) {
+            if ((previous & 31u) == 31u && !checkpoint(work)) return Status::cancelled;
             const Entry& other = entries[previous];
             if (entry.local_offset < other.local_end && other.local_offset < entry.local_end) return Status::layout;
             U32 a = entry.name_size - (entry.directory ? 1 : 0), b = other.name_size - (other.directory ? 1 : 0);
@@ -174,6 +176,7 @@ Status open(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
         cursor += 46 + variable;
     }
     if (cursor != offset || local_bytes != directory_offset) return Status::layout;
+    if (!checkpoint(work)) return Status::cancelled;
     archive.reader = reader;
     // Individual stores avoid the target compiler lowering a Limits aggregate
     // copy to an external memcpy call.
@@ -186,8 +189,15 @@ Status open(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
     archive.count = count; archive.total_bytes = total; archive.directory_offset = directory_offset;
     return Status::ok;
 }
+}
 
-Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace, const Sink& sink, Extraction& result) {
+Status open(const Reader& reader, const Limits& limits, Entry* entries, U32 capacity, Archive& archive, Work* work) {
+    const Status status = scan(reader, limits, entries, capacity, archive, work);
+    return cancelled(work) ? Status::cancelled : status;
+}
+
+Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace, const Sink& sink,
+               Extraction& result, Work* work) {
     result = Extraction{0,0,0};
     if (!archive.entries || index >= archive.count) return Status::argument;
     const Entry& entry = archive.entries[index];
@@ -197,7 +207,7 @@ Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace, c
     Extraction extracted = {0,0,0};
     if (entry.method == 8) {
         Status status = inflate_raw(archive.reader, entry.data_offset, entry.compressed_size,
-                                    entry.size, workspace, sink, extracted);
+                                    entry.size, workspace, sink, extracted, work);
         if (status != Status::ok) return status;
     } else if (entry.method == 0) {
         if (entry.compressed_size != entry.size) return Status::layout;
@@ -205,11 +215,21 @@ Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace, c
         while (offset < entry.size) {
             U32 chunk = entry.size - offset;
             if (chunk > sizeof(workspace.window)) chunk = sizeof(workspace.window);
-            if (!read(archive.reader, entry.data_offset + offset, workspace.window, chunk)) return Status::io;
-            running = crc32_update(running, workspace.window, chunk);
+            for (U32 copied = 0; copied < chunk;) {
+                if (!checkpoint(work)) return Status::cancelled;
+                U32 count = chunk - copied;
+                if (work && count > sizeof(workspace.input)) count = sizeof(workspace.input);
+                Byte* out = workspace.window + copied;
+                if (!read(archive.reader, entry.data_offset + offset + copied, out, count))
+                    return cancelled(work) ? Status::cancelled : Status::io;
+                running = crc32_update(running, out, count);
+                copied += count;
+            }
+            if (!checkpoint(work)) return Status::cancelled;
             if (sink.write && !sink.write(sink.context, workspace.window, chunk)) return Status::sink;
             offset += chunk;
         }
+        if (!checkpoint(work)) return Status::cancelled;
         extracted = Extraction{entry.size, running ^ 0xffffffffu, entry.compressed_size};
     } else return Status::unsupported;
     if (extracted.crc32 != entry.crc32) return Status::checksum;
