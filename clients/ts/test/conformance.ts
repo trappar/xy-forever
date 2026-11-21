@@ -14,6 +14,7 @@ import * as net from 'node:net';
 import { pathToFileURL } from 'node:url';
 import { isXyfError } from '../src/errors.ts';
 import { Link } from '../src/link.ts';
+import { waitStartupReady } from './startup.ts';
 import { TcpTransport } from '../src/tcp.ts';
 import * as v1 from '../src/v1.ts';
 
@@ -51,7 +52,7 @@ const KEYS: Record<string, [string[], string[]]> = {
   expect: [[], ['status', 'alone', 'fields', 'hello', 'save', 'events', 'replies', 'none_within_ms']],
   hello: [[], ['prefix', 'keys', 'lacks', 'answers', 'pre_v1']],
   reply: [['type', 'seq'], ['status']],
-  reconnect: [[], ['hello']],
+  reconnect: [[], ['hello', 'ready']],
   disconnect: [[], []],
   write: [['path', 'data'], []],
   events: [['log'], []],
@@ -359,7 +360,13 @@ function interpret(c: Json, data: Obj, fixtures: Record<string, string>): string
       const w = checkKeys(step['write'], 'write', at);
       resolve(w['path'], 'str', ctx, at);
       stageFrames(resolve(w['data'], 'bytes', ctx, at) as Uint8Array);
-    } else if (action === 'disconnect' || action === 'reconnect') checkKeys(step[action], action, at);
+    } else if (action === 'disconnect' || action === 'reconnect') {
+      const connect = checkKeys(step[action], action, at);
+      if (typeof (connect['hello'] ?? true) !== 'boolean') throw new CaseError(`${at}: hello is true or false`);
+      if (typeof (connect['ready'] ?? false) !== 'boolean' || (connect['ready'] && connect['hello'] === false)) {
+        throw new CaseError(`${at}: ready is a boolean and requires hello`);
+      }
+    }
     else if (action === 'sim' && typeof step['sim'] !== 'string') throw new CaseError(`${at}: sim is a control line`);
     if ('expect' in step) {
       const e = checkKeys(step['expect'], 'expect', at);
@@ -474,13 +481,24 @@ class Runner {
     return !/^[0-9a-f]{32}$/.test(helloKeys(this.helloText ?? '')['cmds'] ?? '');
   }
 
-  async open(hello = true, waitMs = this.timing['back_ms'] as number): Promise<CaseLink> {
+  async open(hello = true, waitMs = this.timing['back_ms'] as number, ready = false): Promise<CaseLink> {
     const deadline = Date.now() + waitMs;
     for (;;) {
       try {
         const link = await CaseLink.open(this.host, this.port, this.lines);
         this.lines.push('# connected');
         if (hello) await this.hello(link).catch(async (error: unknown) => { await link.close(); throw error; });
+        if (ready) {
+          try {
+            await waitStartupReady(this.helloText!, async (remaining) => {
+              const reply = await link.request(v1.TYPE['storage.space'], v1.encodeStorageSpaceRequest({ version: 1 }), remaining);
+              return v1.decodeStorageSpaceReply(reply.payload).status;
+            }, this.capMs);
+          } catch (error) {
+            await link.close();
+            throw error instanceof Fail ? error : new Fail((error as Error).message);
+          }
+        }
         return link;
       } catch (error) {
         if (error instanceof Fail || Date.now() > deadline) throw error instanceof Fail ? error : new Fail(`the port did not come back within ${waitMs} ms`);
@@ -632,7 +650,8 @@ class Runner {
       await this.disconnect(link);
     } else if (action === 'reconnect') {
       await link.close();
-      return this.open((step['reconnect'] as Obj)['hello'] !== false);
+      const connect = step['reconnect'] as Obj;
+      return this.open(connect['hello'] !== false, undefined, connect['ready'] === true);
     } else if (action === 'sim') {
       await link.close();
       await this.control(step['sim'] as string);
