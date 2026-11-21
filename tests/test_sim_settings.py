@@ -1,13 +1,15 @@
 """The Settings page's rows in the simulator (#21): Menu at power-on (PLAY held, always), USB mode (MTP + Serial,
 MTP, Serial), About (the About page, back to Settings; the home menu has no Info row). A setting's PLAY opens its
-option list (- / + move, PLAY picks, STOP leaves it unchanged); a pick changes only the page (the row marked), and
-leaving the page with a change writes /yaffs2/xy-forever/settings.txt once through the config job (one read-write
-window, no catalog fetch); the home menu's line says when it is saved; a power-on reads it back. Menu at power-on decides a plain power-on (A reads the record with the default's check): always opens the
-menu without PLAY, PLAY held boots at once. A newer record (format=2) reads as the defaults and no row changes it;
-a broken record reads as the defaults and a plain power-on boots. The simulator has no composite USB device (sim:
-stock serial only), so USB mode is checked as a stored row here and in the product source (tests/test_settings.py;
-the driver's MTP alone: target/mtp_usb_test.cpp). On the OP-XY, MTP leaves no serial: the host would not reattach.
-Driven by injected keys. Needs clang++ and the private stock 1.2.1 images (skipped without them). No device
+option list (- / + move, PLAY picks, STOP leaves it unchanged). #191: a pick takes effect at once and saves on its
+own, without leaving the page: /yaffs2/xy-forever/settings.txt written once through the config job at a quiet moment
+(quick picks: one write, one read-write window, no catalog fetch); a power-on reads it back. Menu at power-on decides
+a plain power-on (A reads the record with the default's check): always opens the menu without PLAY, PLAY held boots
+at once. USB mode switches live within one boot, never re-enumerating (the same connection throughout): MTP refuses
+every serial request but hello (serial_off; hello serial=off; the MTP tunnel stays), Serial refuses MTP sessions
+(Access_Denied over the tunnel). A newer record (format=2) reads as the defaults and no row changes it; a broken
+record reads as the defaults and a plain power-on boots. The simulator has no composite (its USB is the stock
+serial and the MTP tunnel); the product start is checked in tests/test_settings.py. Driven by injected keys (real
+keys while serial is off). Needs clang++ and the private stock 1.2.1 images (skipped without them). No device
 access."""
 import contextlib
 import io
@@ -25,9 +27,13 @@ import xyf_host as host                                                    # noq
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_mods_page import MINUS, PLAY, PLUS, STOP, PageBase, synthetic_setup   # noqa: E402
 from test_sim_config import MARK, mark_text                               # noqa: E402
+from test_sim_mtp_session import TunnelClient                             # noqa: E402
+from xy_forever import host_trust, usb_proto as P, usb_proto_ids as ids     # noqa: E402
 
 MAIN, INFO, SETTINGS, OPTIONS = 0, 1, 3, 4                                 # xyf_menu Screen (#197)
-SAVED, SAVED_USB = 'menu: line: Settings saved.', 'menu: line: Settings saved: USB mode changes'
+R_OK = 0x2001                                                              # MTP OK
+SAVED = 'menu: line: Settings saved.'
+OPEN_SESSION, GET_DEVICE_INFO, GET_STORAGE_IDS, ACCESS_DENIED = 0x1002, 0x1001, 0x1004, 0x200F
 NEWER = 'note=settings.txt is from a newer XY Forever'
 
 
@@ -40,7 +46,15 @@ class Rows(PageBase):
         synthetic_setup(cls)
         (cls.seeded / MARK).write_text(mark_text(cls.seeded, cls.base))   # converged once (#197): plain boots at once
 
+    real = False                                                           # keys as the OP-XY's own (serial off)
+
     # -- helpers ---------------------------------------------------------------------------------
+    def key(self, key, pressed):
+        if self.real:
+            self.assertTrue(self.sim.control('realkey %d %d' % (key, pressed)).get('ok'))
+        else:
+            super().key(key, pressed)
+
     def until(self, cond, what, timeout=30.0):
         deadline = time.monotonic() + timeout
         while True:
@@ -90,11 +104,17 @@ class Rows(PageBase):
             self.press(MINUS)
         return int(self.lines('settings: pick on row %d: option ' % row)[-1])
 
-    def leave(self, note):
-        """STOP: the page left; until the home menu's line `note` (the save's end)."""
-        seen = self.count(note)
-        self.press(STOP)
-        self.until(lambda: self.count(note) > seen, note)
+    def saved(self, seen):
+        """Until a save's end since `seen` lines; still on the Settings page (nothing left)."""
+        self.until(lambda: self.count(SAVED) > seen, 'the save')
+        self.assertIn(self.lines('menu: screen ')[-1].split()[0], ('%d' % SETTINGS, '%d' % OPTIONS))   # never home
+
+    def pick_saved(self, row, moves):
+        """pick, then its save (on its own, the page kept); the option picked."""
+        seen = self.count(SAVED)
+        option = self.pick(row, moves)
+        self.saved(seen)
+        return option
 
     def power(self, play):
         """A power cycle (PLAY held or not); the 'power on' lines before it."""
@@ -148,8 +168,8 @@ class SettingsRows(Rows, unittest.TestCase):
         self.assertIn('invalid manifest', rows['synth-0']['error'])
 
         self.settings_page()
-        self.pick(1, 1)                                                   # changes Menu at power-on
-        saved = self.record()
+        self.pick_saved(1, 1)                                             # Menu at power-on: saved at once
+        self.assertEqual(self.record()['power_on'], 'always')
         self.press(MINUS)                                                 # last Settings row is Content packs
         self.press(PLAY)
         self.until(lambda: self.count('pack page 0: 7 entries, more=1'), 'first seven packs')
@@ -162,8 +182,6 @@ class SettingsRows(Rows, unittest.TestCase):
         self.until(lambda: self.count('pack page 0: 7 entries, more=1') >= 2, 'back to page one')
         self.assertEqual(self.lines('pack id: ')[-7:], first)
         self.press(STOP)
-        self.assertEqual(self.record(), saved)                            # still inside Settings
-        self.leave(SAVED)
         self.assertEqual(self.record()['power_on'], 'always')
 
     def test_empty_pack_page(self):
@@ -183,8 +201,7 @@ class SettingsRows(Rows, unittest.TestCase):
     def test_menu_at_power_on_always_then_play_held(self):
         self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0 newer=0'), 'the settings read')
         self.settings_page()
-        self.assertEqual(self.pick(1, 1), 1)                               # PLAY held -> Always
-        self.leave(SAVED)
+        self.assertEqual(self.pick_saved(1, 1), 1)                         # PLAY held -> Always
         self.assertEqual(self.record()['power_on'], 'always')
         self.assertEqual(self.record()['format'], '1')
         self.power(play=False)                                             # no PLAY: the menu opens anyway
@@ -193,27 +210,85 @@ class SettingsRows(Rows, unittest.TestCase):
         self.assertFalse(self.in_os())
         self.until(lambda: self.after_power_on('settings: confirm=0 power_on=1'), 'the record read back')
         self.settings_page()
-        self.assertEqual(self.pick(1, -1), 0)                              # Always -> PLAY held
-        self.leave(SAVED)
+        self.assertEqual(self.pick_saved(1, -1), 0)                        # Always -> PLAY held
         self.assertEqual(self.record()['power_on'], 'play')
         self.power(play=False)                                             # PLAY held: a plain power-on boots
         self.until(self.in_os, 'the OS')
         self.assertFalse(self.after_power_on('menu (home)'))
 
-    def test_usb_mode_and_about(self):
+    # -- USB mode (#191) ------------------------------------------------------------------------
+    def status(self):
+        return self.dev.once(P.STATUS, timeout=15.0)[0]
+
+    def hello_serial(self):
+        return P.Hello(self.dev.hello()[1]).keys.get('serial')
+
+    def mtp(self, c, code, *params):
+        return c.transaction(code, *params)[0]
+
+    def test_usb_modes_switch_live_in_one_boot(self):
+        """Each mode applies at its pick, back and forth in one boot, on the same connection (never re-enumerated):
+        MTP + Serial both; Serial: MTP operations refused (OpenSession too; GetDeviceInfo answers), serial works; MTP:
+        every serial request but hello answers serial_off (the host tool says why), hello serial=off, MTP works;
+        back to MTP + Serial: both. Each pick saved on its own; a power-on (PLAY held) reads the last one back."""
         self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0'), 'the settings read')
+        self.assertEqual(self.hello_serial(), 'on')
+        c = TunnelClient(self.dev)
+        self.assertEqual(c.tunnel(0)[0], ids.S_OK)                         # diag.mtp op 0: the session (no composite)
+        self.assertEqual(self.mtp(c, OPEN_SESSION, 1), R_OK)
+        self.assertEqual(self.mtp(c, GET_STORAGE_IDS), R_OK)
         self.settings_page()
         self.assertEqual(self.pick(2, -1), 2)                              # MTP + Serial -> Serial (- wraps)
-        self.leave(SAVED_USB)
-        self.assertEqual(self.record()['usb'], 'serial')
+        self.assertEqual(self.mtp(c, GET_STORAGE_IDS), ACCESS_DENIED)      # at once: the session ended
+        self.assertEqual(self.mtp(c, OPEN_SESSION, 1), ACCESS_DENIED)      # and none opens
+        self.assertEqual(self.mtp(c, GET_DEVICE_INFO), R_OK)
+        self.assertEqual((self.status(), self.hello_serial()), (ids.S_OK, 'on'))
+        self.until(lambda: self.record().get('usb') == 'serial', 'saved')
+        self.real = True                                                   # serial goes off: the OP-XY's own keys
+        self.assertEqual(self.pick(2, -1), 1)                              # Serial -> MTP
+        self.assertEqual(self.status(), ids.S_SERIAL_OFF)                  # at once, nothing done
+        self.assertEqual(self.dev.once(ids.KEY, b'\0' * 8)[0], ids.S_SERIAL_OFF)   # the host's keys too
+        said = []
+        self.dev.on_ask = said.append
+        self.assertEqual(self.hello_serial(), 'off')                       # hello still answers, and says why
+        self.assertEqual(said, [host_trust.SERIAL_OFF])
+        with self.assertRaises(host_trust.SerialOff) as refused:
+            self.dev.call(P.STATUS)
+        self.assertIn('Settings > USB mode', str(refused.exception))
+        self.assertEqual(self.mtp(c, OPEN_SESSION, 1), R_OK)                # MTP is on again (the tunnel stays)
+        self.assertEqual(self.mtp(c, GET_STORAGE_IDS), R_OK)
+        self.until(lambda: self.record().get('usb') == 'mtp_only', 'saved')
+        self.assertEqual(self.pick(2, -1), 0)                              # MTP -> MTP + Serial
+        self.until(lambda: self.status() == ids.S_OK, 'serial on again')
+        self.assertEqual(self.hello_serial(), 'on')
+        self.assertEqual(self.mtp(c, GET_STORAGE_IDS), R_OK)
+        self.assertEqual(self.pick(2, -1), 2)                              # and to Serial once more
+        self.assertEqual(self.mtp(c, GET_STORAGE_IDS), ACCESS_DENIED)
+        self.assertEqual(self.status(), ids.S_OK)
+        self.until(lambda: self.record().get('usb') == 'serial', 'saved')
+        self.assertEqual(self.count('USB on: listening'), 1)               # one USB start, never stopped
+        self.assertFalse(self.lines('USB off') or self.lines('USB host detached') or self.lines('USB host replaced'))
         self.power(play=True)
-        self.reconnect()                                                   # stock serial: the host still attaches
+        self.reconnect()
         self.until(lambda: self.after_power_on('settings: confirm=0 power_on=0 usb=2'), 'USB mode read back')
+
+    def test_mtp_mode_at_power_on(self):
+        """A record with usb=mtp_only: from the first request serial is off (hello says so); the OP-XY's own keys
+        turn it back on without a restart."""
+        (self.root / 'xy-forever/settings.txt').write_text('format=1\nconfirm=0\npower_on=play\nusb=mtp_only\n')
+        self.power(play=True)
+        self.reconnect()
+        self.until(lambda: self.after_power_on('settings: confirm=0 power_on=0 usb=1'), 'the record read')
+        self.assertEqual((self.hello_serial(), self.status()), ('off', ids.S_SERIAL_OFF))
+        self.real = True
         self.settings_page()
-        self.assertEqual(self.pick(2, 1), 0)                               # back to MTP + Serial (wraps)
-        self.leave(SAVED_USB)
-        self.assertEqual(self.record()['usb'], 'mtp_serial')
-        self.press(PLAY)                                                   # Settings again (still the home row)
+        self.assertEqual(self.pick(2, -1), 0)                              # MTP -> MTP + Serial
+        self.until(lambda: self.status() == ids.S_OK, 'serial on')
+        self.assertEqual(self.hello_serial(), 'on')
+
+    def test_about_page(self):
+        self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0'), 'the settings read')
+        self.settings_page()
         for _ in range(3):                                                 # #65: Ask before USB control before About
             self.press(PLUS)
         seen = self.count('menu: info image: ')
@@ -224,29 +299,11 @@ class SettingsRows(Rows, unittest.TestCase):
         self.press(STOP)                                                   # back to Settings
         self.until(lambda: self.count('menu: screen %d ' % SETTINGS) > screens, 'back to Settings')
 
-
-    def test_usb_mode_mtp_alone(self):
-        """MTP (MTP alone): stored as usb=mtp_only, read back after a power-on, and back to MTP + Serial. (The
-        simulator keeps its stock serial: on the OP-XY only the device's own Settings page changes it back.)"""
-        self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0'), 'the settings read')
-        self.settings_page()
-        self.assertEqual(self.pick(2, 1), 1)                               # MTP + Serial -> MTP
-        self.leave(SAVED_USB)
-        self.assertEqual(self.record()['usb'], 'mtp_only')
-        self.power(play=True)
-        self.reconnect()
-        self.until(lambda: self.after_power_on('settings: confirm=0 power_on=0 usb=1'), 'USB mode read back')
-        self.settings_page()
-        self.assertEqual(self.pick(2, -1), 0)                              # MTP -> MTP + Serial
-        self.leave(SAVED_USB)
-        self.assertEqual(self.record()['usb'], 'mtp_serial')
-
-    def test_option_list_and_one_save_on_leaving(self):
-        """The list opens on the value in effect; STOP leaves it unchanged; picks write nothing (the rows marked),
-        leaving writes both at once (one read-write window, no catalog fetch); leaving without a change writes
-        nothing."""
+    def test_option_list_and_quick_picks_one_write(self):
+        """The list opens on the value in effect; STOP leaves it unchanged; quick picks (two rows, well within the
+        quiet moment) make one write of both, on the page (one read-write window, no catalog fetch); leaving
+        afterwards writes nothing more."""
         self.until(lambda: self.lines('settings: confirm=0 power_on=0 usb=0 newer=0'), 'the settings read')
-        before = (self.root / 'xy-forever/settings.txt').read_bytes()
         self.settings_page()
         opened = self.count('settings: options current')
         self.press(PLUS)                                                   # Menu at power-on
@@ -258,24 +315,17 @@ class SettingsRows(Rows, unittest.TestCase):
         self.press(STOP)                                                   # ...but STOP: nothing picked
         self.until(lambda: self.count('menu: screen %d ' % SETTINGS) > screens, 'back on the page')
         self.assertFalse(self.lines('settings: pick on row'))
-        self.press(MINUS)
-        windows = self.sim.status()['rw_mounts']
-        self.assertEqual(self.pick(1, 1), 1)                               # Always
-        self.assertEqual(self.pick(2, -1), 2)                              # Serial (- wraps)
-        self.until(lambda: self.lines('settings: confirm=0 power_on=1 usb=2 newer=0'), 'both shown at once')
-        self.assertEqual((self.root / 'xy-forever/settings.txt').read_bytes(), before)   # nothing written yet
-        self.assertEqual(self.sim.status()['rw_mounts'], windows)
-        self.leave(SAVED_USB)                                              # one write, both values
+        windows, seen = self.sim.status()['rw_mounts'], self.count(SAVED)
+        for k in (PLAY, PLUS, PLAY, PLUS, PLAY, MINUS, PLAY):              # Always; then USB mode: Serial (- wraps)
+            self.press(k)
+        self.saved(seen)
         self.assertEqual((self.record()['power_on'], self.record()['usb'], self.record()['format']), ('always', 'serial', '1'))
-        self.assertEqual(self.sim.status()['rw_mounts'], windows + 1)
-        self.press(PLAY)                                                   # Settings again (no catalog fetch reset the
-                                                                           # home row to Continue), and out: no change
-        self.until(lambda: self.count('menu: screen %d ' % SETTINGS) > screens + 1, 'the page again')
-        self.press(STOP)
-        self.until(lambda: self.count('menu: screen %d ' % MAIN) and self.lines('menu: screen ')[-1].startswith('%d ' % MAIN),
-                   'the home menu')
+        self.assertEqual(self.sim.status()['rw_mounts'], windows + 1)       # one write, both values
+        self.assertEqual(self.count(SAVED), seen + 1)
+        self.press(STOP)                                                   # the home menu: nothing left to write
+        self.until(lambda: self.lines('menu: screen ')[-1].startswith('%d ' % MAIN), 'the home menu')
         self.sim.advance(2000)
-        self.assertEqual(self.sim.status()['rw_mounts'], windows + 1)       # nothing written
+        self.assertEqual(self.sim.status()['rw_mounts'], windows + 1)
 
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)

@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.24",
+    "version": "1.25",
     "intro": [
       "XY Forever is a firmware and mod manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -46,7 +46,7 @@
     {"name": "max_stage", "value": 7340032, "doc": "largest staged image (7 MiB)"},
     {"name": "max_log_text", "value": 200, "doc": "largest text of a `log` event"},
     {"name": "idle_reset_ms", "value": 250, "doc": "the device drops a partial frame once its receive buffer has been empty for this long"},
-    {"name": "max_hello", "value": 240, "doc": "largest `hello` text (224 before 1.23, 200 before 1.15); a build's text is fixed but for its run-time parts (211 bytes in the product build without stage 2, nothing asked), checked when it is compiled"}
+    {"name": "max_hello", "value": 256, "doc": "largest `hello` text (240 before 1.25, 224 before 1.23, 200 before 1.15); a build's text is fixed but for its run-time parts (221 bytes in the product build without stage 2, nothing asked, serial on), checked when it is compiled"}
   ],
   "rules": [
     {"name": "request_types", "text": "Request types are below 0x80. A reply has the request's type plus 0x80 and the request's seq, and its payload starts with a u32 status code (0 = ok); the fields listed under each command follow it."},
@@ -86,14 +86,16 @@
     {"code": 17, "name": "no_content", "class": "order", "since": "1.10", "doc": "the library entry's content is not installed in `/yaffs2/content/` (a mod set built on the device, or any entry while another one's content is installed): it is listed but does not boot as it is; make it the default to install its content. Added during 1.10 without a version bump: a build that reports 1.10 to 1.16 may answer another status for such an entry; every 1.17 build sends this one"},
     {"code": 18, "name": "started", "class": "job", "since": "1.10", "doc": "the request started a job (`library.set_default`: the content switch); follow it with `job.status`, whose end is the request's result"},
     {"code": 19, "name": "declined", "class": "policy", "since": "1.11", "doc": "not allowed: the user answered Don't allow (Ask before USB control, `hello` `trust`); nothing was done (sent since 1.23)"},
-    {"code": 20, "name": "waiting", "class": "policy", "since": "1.23", "doc": "the device asks the user to allow this computer (no time limit); nothing done: show \"Allow on your OP-XY\", retry"}
+    {"code": 20, "name": "waiting", "class": "policy", "since": "1.23", "doc": "the device asks the user to allow this computer (no time limit); nothing done: show \"Allow on your OP-XY\", retry"},
+    {"code": 21, "name": "serial_off", "class": "policy", "since": "1.25", "doc": "serial is off: USB mode on the OP-XY is MTP (Settings, `hello` `serial`); nothing was done. Show \"Serial is off on your OP-XY: Settings > USB mode\""}
   ],
   "common_errors": [
     {"status": "state", "except": ["hello"], "doc": "the device has not answered a `hello` since it started; nothing was done"},
     {"status": "unsupported", "except": ["hello"], "doc": "this build does not answer the type (it is not in `cmds`)"},
     {"status": "busy", "except": ["hello"], "doc": "a job is running, or its write window is still closing after `job.status` said it ended: every command that needs processor A, the staging or a boot waits for it (`diag.status`, `screen.read`, `service.hold`, `job.status` and `job.cancel` are answered)"},
     {"status": "waiting", "except": ["hello"], "doc": "1.23: the device asks (`trust`); send it again"},
-    {"status": "declined", "except": ["hello"], "doc": "1.23: not allowed until unplugged or restarted"}
+    {"status": "declined", "except": ["hello"], "doc": "1.23: not allowed until unplugged or restarted"},
+    {"status": "serial_off", "except": ["hello"], "doc": "1.25: USB mode is MTP (`serial`); answered at once"}
   ],
   "commands": [
     {
@@ -101,8 +103,8 @@
       "summary": "greet the device; required before any other command",
       "timeout_ms": 5000, "destructive": false,
       "request": {"ignored": true, "size": [0, 0], "fields": []},
-      "reply": {"size": [1, 240], "extensible": false, "on_error": "status", "fields": [
-        {"name": "info", "type": "text", "encoding": "ascii", "min_bytes": 1, "max_bytes": 240, "doc": "ASCII, `XYF1` and then `key=value` items, separated by `;`; no NUL; at most `max_hello` bytes. The keys are listed below; tools ignore keys they do not know."}
+      "reply": {"size": [1, 256], "extensible": false, "on_error": "status", "fields": [
+        {"name": "info", "type": "text", "encoding": "ascii", "min_bytes": 1, "max_bytes": 256, "doc": "ASCII, `XYF1` and then `key=value` items, separated by `;`; no NUL; at most `max_hello` bytes. The keys are listed below; tools ignore keys they do not know."}
       ]},
       "errors": [],
       "doc": "Answers in every state. While searching for the device, a tool may send `hello` every 0.5 s on the open port until a reply with status ok arrives. The reply tells the tool what the device supports: the protocol version, the release version and image it runs, the limits and the commands it answers. 1.1 added the keys from `mode` on (and `build`, replaced in 1.15 by `version` and `image`); a device without `cmds` is a pre-v1 device (see the rules)."
@@ -1152,7 +1154,7 @@
   ],
   "hello": {
     "prefix": "XYF1",
-    "doc": "The `hello` text: `XYF1`, then these keys in this order, each as `;key=value`. A build's text never changes while it runs, except `stage2` and the stage-2 command's bit of `cmds`: both are set before the reply to the first `hello` of a boot when stage 2 loads, and cleared again if stage 2 stops answering as it should; and (1.23) `confirm`, once the device has read its settings and when Ask before USB control is saved, and `trust`, as the question is asked and answered. Tools ignore keys they do not know and must not rely on the order.",
+    "doc": "The `hello` text: `XYF1`, then these keys in this order, each as `;key=value`. A build's text never changes while it runs, except `stage2` and the stage-2 command's bit of `cmds`: both are set before the reply to the first `hello` of a boot when stage 2 loads, and cleared again if stage 2 stops answering as it should; and (1.23) `confirm`, once the device has read its settings and when Ask before USB control is saved, and `trust`, as the question is asked and answered; and (1.25) `serial`, as USB mode is picked. Tools ignore keys they do not know and must not rely on the order.",
     "keys": [
       {"name": "service", "since": "1.0", "value": "usb", "doc": "the service that answers"},
       {"name": "role", "since": "1.0", "value": "b", "doc": "the processor that answers"},
@@ -1167,7 +1169,8 @@
       {"name": "cmds", "since": "1.1", "source": "cmds", "doc": "the request types this build answers: 32 lowercase hex digits, a 128-bit number written most significant digit first, in which bit t (value 2^t) is set when type t is answered (Python: `int(cmds, 16) >> t & 1`). Derived from each command's build switch when the build is compiled; the stage-2 command's bit is set at run time while stage 2 is loaded"},
       {"name": "dev", "since": "1.1", "source": "dev", "doc": "`1` when the build answers developer commands; absent otherwise"},
       {"name": "confirm", "since": "1.23", "source": "confirm", "doc": "Ask before USB control (Settings): `1` when the first command but `hello` of a connection makes the device ask \"Allow this computer to control your OP-XY?\" (`trust`), `0` when every command runs at once. No USB command changes it, only the device's Settings row with its own keys; file transfers (MTP, the serial file commands) stay open and can replace or delete `settings.txt` like any file; `1` until the device has read its settings (the default when it has none)"},
-      {"name": "trust", "since": "1.23", "source": "trust", "doc": "the question's state on this connection: `none` (not asked: the setting is off, or no command but `hello` came yet), `asking` (every command but `hello` answers `waiting`), `allowed` (the user allowed: commands run), `refused` (the user did not: every command but `hello` answers `declined`). An answer lasts until the USB cable is unplugged (seen as a USB bus reset; closing and reopening the port keeps it) or the device restarts; with USB mode Serial the device sees no unplug, so until it restarts"},
+      {"name": "trust", "since": "1.23", "source": "trust", "doc": "the question's state on this connection: `none` (not asked: the setting is off, or no command but `hello` came yet), `asking` (every command but `hello` answers `waiting`), `allowed` (the user allowed: commands run), `refused` (the user did not: every command but `hello` answers `declined`). An answer lasts until the USB cable is unplugged (seen as a USB bus reset; closing and reopening the port keeps it) or the device restarts; on the stock serial fallback (no composite) the device sees no unplug, so until it restarts"},
+      {"name": "serial", "since": "1.25", "source": "serial", "doc": "USB mode (Settings) for serial: `on`, or `off` when it is MTP: then every command but `hello` answers `serial_off` and tools show \"Serial is off on your OP-XY: Settings > USB mode\". The USB device always carries both MTP and serial; the mode switches each in place (with Serial, MTP sessions are refused), the moment it is picked, never re-enumerating"},
       {"name": "stage2", "since": "1.6", "source": "stage2", "doc": "the loaded stage 2's version, decimal; `0` when none is loaded (no file, or it failed a check). Always the last key"}
     ]
   },
@@ -1175,7 +1178,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.24;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000007ffb001700031fff00be;dev=1;confirm=1;trust=none;stage2=0"}, "hex": "58468101d600000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32343b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303037666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b7374616765323d30c3f669a4"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.25;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000007ffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32353b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303037666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d301a0475bb"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

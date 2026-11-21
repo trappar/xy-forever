@@ -152,13 +152,14 @@ back.
 
 ### Settings
 
-PLAY opens a row. The bottom line shows saves.
+PLAY opens a row. A picked value applies at once and saves itself a moment after your last change, without
+leaving the page; never a restart.
 
 - **Mod memory:** "2 MiB" or "4 MiB (experimental)", saved at once and built when you boot, like
   the mods. "Not available with these mod packages": the set has no 4 MiB layout.
 - **Menu at power-on:** "PLAY held" (default) or "Always" (the menu opens at every power-on).
-- **USB mode:** "MTP + Serial" (default), "MTP" or "Serial"; applies the next time the menu opens. With
-  "MTP", the host tool and web app cannot reach the OP-XY until you change it back here.
+- **USB mode:** "MTP + Serial" (default), "MTP" or "Serial". The computer always sees both; "MTP" turns
+  serial off (the host tool and web app say so until you change it back here), "Serial" turns MTP off.
 - **Ask before USB control:** "On" (default): a computer's first command asks; PLAY allows it until you
   unplug or restart, STOP refuses it. MTP never asks.
 - **About:** the version, the real bootloader (1.2.1, never updated), how to open the menu.

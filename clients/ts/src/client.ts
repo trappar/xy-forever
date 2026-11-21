@@ -57,6 +57,8 @@ export interface DeviceInfo {
   /** From 1.23 (#65): Ask before USB control is on, and its question's state on this connection (else null). */
   readonly ask: boolean;
   readonly trust: Trust | null;
+  /** From 1.25 (#191): false when USB mode on the OP-XY is MTP (hello serial=off): every command but hello is refused. */
+  readonly serial: boolean;
 }
 
 /** A folder entry (file.list): the name decoded as UTF-8 (nameBytes: as the device sent it); size 0 for a folder. */
@@ -117,7 +119,7 @@ function deviceInfo(hello: v1.Hello): DeviceInfo {
   const k = hello.keys;
   return {
     hello, proto: hello.proto, version: k['version'] ?? null, image: k['image'] ?? null, mode: k['mode'] ?? null, dev: k['dev'] === '1',
-    ask: k['confirm'] === '1', trust: (k['trust'] as Trust | undefined) ?? null,
+    ask: k['confirm'] === '1', trust: (k['trust'] as Trust | undefined) ?? null, serial: k['serial'] !== 'off',
     limits: { payload: number(k['payload'], v1.MAX_PAYLOAD), read: number(k['read'], v1.MAX_READ), stage: number(k['stage'], v1.MAX_STAGE) },
   };
 }

@@ -270,15 +270,19 @@ bool settings_load();
 xyf::settings::Record& settings();
 uint32_t settings_store();
 // #21: settings_open, PLAY on a settings.txt row (xyf_settings.hpp Row: Menu at power-on, USB mode, Ask before USB control): its option
-// list opened (menu::open_options; 0), or the page's note why not (still reading, a save running, a newer record:
-// never changed). settings_pick, the list's PLAY: B's copy takes the option (nothing written; the row is marked).
-// settings_view, each menu pass: settings_load, the rows' values and marks into the menu state; once the page was
-// left with a change, one write of the whole record (settings_store; started the pass after the leaving), and
-// the home menu's line about it in line (0: none). True: draw again. A refused or failed write keeps the rows
-// marked; leaving the page again tries again. A power cut before the write keeps settings.txt as it was.
+// list opened (menu::open_options; 0), or the page's note why not (still reading, a newer record: never changed).
+// settings_pick, the list's PLAY: B's copy takes the option at once (#191; the row marked until written).
+// settings_view, each menu pass: settings_load, the rows' values and marks into the menu state; a pick's write of the
+// whole record (settings_store) at a quiet moment, xyf_settings.hpp quiet_ms after the last pick (quick picks: one
+// write), or the pass after the page is left; the line about its end in line (0: none). True: draw again. A failed
+// write keeps the rows marked; the next pick, or leaving the page, tries again. A power cut before the write loses
+// only that change. serial_off, mtp_off (#191): USB mode as picked (the composite always carries both): "MTP" turns
+// serial off (every request but hello answers serial_off; hello serial=off), "Serial" turns MTP off.
 const char* settings_open(xyf::menu::State& state, uint32_t row);
 void settings_pick(const xyf::menu::State& state);
 bool settings_view(xyf::menu::State& state, const char*& line);
+bool serial_off();
+bool mtp_off();
 // A key event (key_ui on_key; injected: the host's KEY command). While the #65 question is open it takes every key
 // (true: not for the menu); only a real PLAY / STOP answers it (xyf_settings.hpp gate_key). An injected key never
 // opens or picks the Ask before USB control row (settings_open: xyf_settings.hpp note_on_device).

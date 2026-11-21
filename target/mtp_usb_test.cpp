@@ -57,8 +57,6 @@ uint32_t parks, recycles;
 const uintptr_t kDev = 0x1234;
 Urb* active(OutEp& o) { return reinterpret_cast<Urb*>(o.ep.active); }
 Urb* active() { return active(mtp_out); }
-// The CDC interfaces are part of the registered configuration (the composite; not MTP alone).
-bool has_serial() { return slot && slot->configs[0].n_ifaces == 3; }
 OutEp* out_of(uintptr_t ep) { return ep == uintptr_t(&mtp_out.ep) ? &mtp_out : ep == uintptr_t(&ser_out.ep) ? &ser_out : 0; }
 // The stock heap (88a2ec6c..) has no lock and never masks; the USB interrupt mallocs (event 6). Every
 // heap call the driver makes from the main loop "fires the interrupt" inside the call when unmasked:
@@ -84,7 +82,6 @@ void isr_event(uint32_t code) {
     if (code == 6) {                   // 88a08b16 -> 88a09612: flush, then arm one 512-byte stack urb
         flush();
         for (OutEp* o : {&mtp_out, &ser_out}) {
-            if (o == &ser_out && !has_serial()) continue;                // only the configuration's endpoints
             Urb* u = new Urb(); u->buf = new uint8_t[kMaxPacket](); u->size = kMaxPacket; u->dev = kDev;
             u->ep = uintptr_t(&o->ep); live.insert(u); ++stack_urbs;
             if (!o->ep.active) o->ep.active = uintptr_t(u); else o->queue.push_back(u);
@@ -135,7 +132,7 @@ Urb* alloc(uintptr_t dev, uint32_t ep, uint32_t len) {
     Urb* u = new Urb(); u->buf = new uint8_t[len](); u->size = len; u->dev = dev;
     u->ep = ep == kBulkOut ? uintptr_t(&mtp_out.ep) : ep == kSerialOut ? uintptr_t(&ser_out.ep) :
             ep == kSerialIn ? uintptr_t(&ep_ser_in) : uintptr_t(&ep_in);
-    REQUIRE(ep == kBulkOut || ep == kBulkIn || (has_serial() && (ep == kSerialOut || ep == kSerialIn)));
+    REQUIRE(ep == kBulkOut || ep == kSerialOut || ep == kSerialIn || ep == kBulkIn);
     live.insert(u); return u;
 }
 int submit_in(Urb* u) {
@@ -223,21 +220,6 @@ static void enumerate() {
     for (uint32_t k = 0; k != 3; ++k) for (uint32_t e = 0; e != c.ifaces[k].alts[0].n_eps; ++e, ++n_eps)
         numbers.insert(c.ifaces[k].alts[0].eps[e].address & 0x0fu);
     REQUIRE(numbers.size() == n_eps && !numbers.count(5) && !numbers.count(6) && !numbers.count(0));
-    stack::isr_event(4); stack::isr_event(5); stack::isr_event(6);       // reset, address, SET_CONFIGURATION
-}
-
-// MTP alone (#21, USB mode "MTP"): the stock MTP's shape: device class 00, one interface (MTP as interface 0),
-// no IAD, no CDC extras; the same endpoints.
-static void enumerate_alone() {
-    const Driver* d = stack::slot;
-    REQUIRE(d && d->n_configs == 1 && d->devinfo->cls == 0 && d->devinfo->subclass == 0 && d->devinfo->protocol == 0);
-    REQUIRE(d->devinfo->vid == 0x2367u && d->devinfo->pid == 0x0021u);
-    const ConfigDesc& c = d->configs[0];
-    REQUIRE(c.n_ifaces == 1 && c.n_iads == 0 && !c.iads);
-    const IfaceDesc& i = c.ifaces[0];
-    REQUIRE(i.cls == 6 && i.subclass == 1 && i.protocol == 1 && i.n_alts == 1 && i.alts[0].n_extra == 0);
-    const AltDesc& a = i.alts[0];
-    REQUIRE(a.n_eps == 3 && a.eps[0].address == kBulkIn && a.eps[1].address == kBulkOut && a.eps[2].address == kIntIn);
     stack::isr_event(4); stack::isr_event(5); stack::isr_event(6);       // reset, address, SET_CONFIGURATION
 }
 
@@ -417,39 +399,6 @@ static void serial() {
     REQUIRE(get16(resp.data() + 6) == rc_ok);
     REQUIRE(serial_write(reply.data(), 10) == 10);
     stack::service_in();
-}
-
-// MTP alone: no serial urbs, MTP answers, class requests by interface 0, no CDC requests, serial refused;
-// then the composite again on the next begin (a later boot).
-static void mtp_alone() {
-    std::vector<uint8_t> data, resp;
-    stack::boot();
-    REQUIRE(begin(stack::port, false) && state() == State::started && stack::slot == driver());
-    REQUIRE(stack::starts == std::vector<uint32_t>({kCompositeFlags}));
-    enumerate_alone();
-    pass();
-    REQUIRE(state() == State::configured && stack::live.size() == kOutUrbs + 1);   // ours + the stack's one (MTP)
-    REQUIRE(stack::mtp_out.queue.size() == kOutUrbs && !stack::active(stack::ser_out) && stack::ser_out.queue.empty());
-    host_out(container(1, op_get_device_info, 1, {}));
-    run_until_response(data, resp);
-    REQUIRE(get16(resp.data() + 6) == rc_ok && data.size() > 40);
-    Urb ep0 = {}; uint8_t buf[0x280]; ep0.buf = buf;
-    const uint8_t gds[8] = {0xa1, 0x67, 0, 0, kIfaceMtpAlone, 0, 4, 0}; memcpy(ep0.setup, gds, 8);
-    REQUIRE(stack::slot->ops->recv_setup(&ep0) == 0 && ep0.wanted == 4 && get16(buf + 2) == rc_ok);
-    ep0.setup[4] = kIfaceMtp; REQUIRE(stack::slot->ops->recv_setup(&ep0) != 0);    // no interface 2
-    const uint8_t coding[8] = {0xa1, 0x21, 0, 0, 0, 0, 7, 0}; memcpy(ep0.setup, coding, 8);
-    REQUIRE(stack::slot->ops->recv_setup(&ep0) != 0);                     // GET_LINE_CODING: no CDC here
-    const uint32_t busy = stats().serial_busy;
-    REQUIRE(serial_write(reinterpret_cast<const uint8_t*>("x"), 1) == -1 && stats().serial_busy == busy + 1);
-    REQUIRE(serial_available() == 0);
-    leave();
-    REQUIRE(state() == State::off && stack::live.empty() && !stack::slot);
-    stack::boot();
-    REQUIRE(begin(stack::port));                                          // the default: the composite again
-    enumerate();
-    pass();
-    REQUIRE(state() == State::configured && stack::live.size() == kAllOut);
-    leave();
 }
 
 static bool flushed_inside;
@@ -837,7 +786,6 @@ int main(int argc, char** argv) {
     for (uint32_t n = 1; n != 16; ++n) REQUIRE(rx_service_allowed(n) == (n == 0xa || n == 8));
     session();
     session();                                                             // begin and leave twice
-    mtp_alone();
     marks();
 #if XYF_MTP_USB_KICK
     t2b::run();

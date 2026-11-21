@@ -5,7 +5,7 @@ export { Client, STATE_FILES, TFW_REASONS, parseSlot, sha256 } from './client.ts
 export { fileReason } from './file-reason.ts';
 export { PROTECTED_NAMES, WRITE_ROOTS, inWriteArea } from './write-area.ts';
 export { SCREEN, decodeScreen } from './screen.ts';
-export { ASK_TEXT, NOT_ALLOWED_TEXT, RETRY_MS } from './trust.ts';
+export { ASK_TEXT, NOT_ALLOWED_TEXT, RETRY_MS, SERIAL_OFF_TEXT } from './trust.ts';
 export type { Trust } from './trust.ts';
 export { MAX_FOLDERS, depthRefusal, foldersOf, readsFlatMods } from './depth.ts';
 export type { CallOptions, ConnectOptions, DeviceInfo, DirEntry, EntryKind, ProductCommand, ReplyOf, RequestOf, Staged, TransferOptions } from './client.ts';

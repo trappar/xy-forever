@@ -10,9 +10,9 @@
 enum Trust : U32 { trust_none = 0, trust_asking, trust_allowed, trust_refused };
 U32 trust_state __attribute__((section(".data"))) = trust_none;
 U32 trust_bus __attribute__((section(".data"))) = 0;                    // usb_connection() when trust_state was set
-// The USB bus resets so far: on the composite (the product's default USB mode), our driver's count (mtp_usb.cpp
-// on_event 4); the simulator models it (control "unplug"). The stock serial service (USB mode Serial, or the
-// composite's fallback) tells us none: there an answer lasts until the device restarts.
+// The USB bus resets so far: on the composite (every USB mode, #191), our driver's count (mtp_usb.cpp on_event 4);
+// the simulator models it (control "unplug"). The stock serial service (the composite's fallback) tells us none:
+// there an answer lasts until the device restarts.
 U32 usb_connection() {
 #if defined(XYF_MTP_USB)
     if (composite_on) return xyf::mtp_usb::stats().resets_bus;
@@ -81,5 +81,15 @@ void trust_turn() {
 #if defined(XYF_SERVICE_SCREEN)
     key_ui::host_view();                                                 // the page again
 #endif
+}
+// #191 USB mode MTP (serial_off): every request but hello is refused (serial_off), the MTP tunnel aside (diag.mtp: MTP,
+// as on its own interface). Checked per request, so a pick applies to the next one.
+bool serial_refuses(U32 type) {
+#if defined(XYF_USB_FILE_WRITE) && defined(XYF_MTP_SESSION)
+    if (type == t_mtp_tunnel) return false;
+#else
+    (void)type;
+#endif
+    return serial_off();
 }
 #endif

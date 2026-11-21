@@ -724,7 +724,7 @@ def render_py(spec):
     out.append('}')
     out.append('')
     out.append('# hello text: HELLO_PREFIX, then each key as ;name=value. A key is (name, since, source, text):')
-    out.append('# source fixed (text given), or release, image, mode, cmds, dev, confirm, trust, stage2 (docs/protocol: hello).')
+    out.append('# source fixed (text given), or one of protogen_hello.py HELLO_SOURCES (docs/protocol: hello).')
     out.append('HELLO_PREFIX = %r' % spec['hello']['prefix'])
     out.append('HELLO_KEYS = (')
     for key in spec['hello']['keys']:

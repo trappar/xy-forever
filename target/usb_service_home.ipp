@@ -112,8 +112,8 @@ uint32_t home_pump() {
     if (!menu_usb) return 0;
 #if defined(XYF_MTP_USB)
 #if defined(XYF_SETTINGS)
-    // #21: USB mode first (settings.txt through A, which serves within a pass or two); a slow storage start (a full
-    // scan) or no answer: the default after usb_settings_ms.
+    // #21: the settings first (USB mode, #65's question: settings.txt through A, which serves within a pass or two); a
+    // slow storage start (a full scan) or no answer: the defaults after usb_settings_ms. USB starts the same either way.
     if (usb_deferred && !settings_load() && now() - usb_deferred_ms < usb_settings_ms) return 0;
 #endif
     if (usb_deferred) { usb_deferred = 0; usb_begin(); return 0; }   // the flag, then the boot's only start
@@ -166,7 +166,11 @@ uint32_t home_pump() {
         const U32 length = P::frame_length(parser);
         ++r.frames; r.last_type = type;
         host_framed = 1; host_frame_ms = now();                         // the USB mark
-        if (const U32 line = change_line(type)) {
+        bool off = false;                                              // #191: USB mode MTP refuses it
+#if defined(XYF_SETTINGS)
+        off = type != P::t_hello && serial_refuses(type);
+#endif
+        if (const U32 line = off ? 0u : change_line(type)) {
             host_change = line; host_change_ms = host_frame_ms;
 #if defined(XYF_USB_FILE_WRITE) && defined(XYF_MTP_SESSION)
             if (mtp_on) mslot().responder.invalidate();    // speed: MTP's cached object facts (mtp_responder.hpp)
@@ -185,6 +189,7 @@ uint32_t home_pump() {
 #endif
         }
         else if (!home_greeted) status_only(type, seq, P::s_state);
+        else if (off) status_only(type, seq, P::s_serial_off);         // #191: answered at once, nothing done
 #if defined(XYF_SETTINGS)
         else if (const U32 refused = trust_refuses(type)) status_only(type, seq, refused);   // #65: asks, or not allowed
 #endif

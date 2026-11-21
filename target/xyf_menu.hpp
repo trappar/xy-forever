@@ -77,7 +77,7 @@ struct State {
     // settings.txt and no room for its texts. (A newer record's line is settings_note, set there too.)
     const char *power_on_text, *usb_text, *confirm_text;
     // #21: rows marked (a bit per xyf_settings.hpp Row; the value in accent): a settings.txt row changed and not saved
-    // yet (saved once, when the page is left), Mod memory pending until boot (memory_pending). Set by the caller.
+    // yet (#191: saved on its own at a quiet moment), Mod memory likewise (memory_pending). Set by the caller.
     uint32_t settings_marked;
     // #21: the option list (Screen::options; open_options): the setting's option texts, how many, the one in effect
     // (marked "current") and the selected one. The heading is the label of the Settings row (settings_selected).
