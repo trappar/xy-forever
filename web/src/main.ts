@@ -265,13 +265,12 @@ function inputsCard(saved: SavedInputs | null): HTMLElement {
   const checks = h('div', { class: 'checks' }, ...groupMods(g.packages.filter((p) => p.complete), null).flatMap((grp) => grp.rows).map((r) =>
     h('label', {}, h('input', { type: 'checkbox', value: r.folder, checked: saved.mods.includes(r.folder) }), `${r.name}`, h('span', { class: 'muted' }, r.kind))));
   const memory = h('input', { type: 'checkbox', checked: saved.expanded });
-  const safe = h('input', { type: 'checkbox', checked: saved.safe });
   const unknown = h('input', { type: 'checkbox', checked: saved.unverified });
   const status = h('p', { class: 'muted', id: 'inputs-status' }, saved.write === 'failed' ? 'The last change could not be written: save again.' : '');
   const save = btn('Save', () => void run('save_mods', async () => {
     const mods = [...checks.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value);
     try {
-      await configSet(client!, { mods, expanded: memory.checked, safe: safe.checked, unverified: unknown.checked });
+      await configSet(client!, { mods, expanded: memory.checked, unverified: unknown.checked });
       status.textContent = 'Saved. The OP-XY builds and installs it the next time it starts.';
     } catch (error) {
       if (!isXyfError(error, 'refused')) throw error;
@@ -279,7 +278,7 @@ function inputsCard(saved: SavedInputs | null): HTMLElement {
     }
   }, 'Saving on the OP-XY...'), 'primary');
   card.append(checks,
-    h('div', { class: 'row' }, h('label', {}, memory, '4 MiB mod memory'), h('label', {}, safe, 'Boot without mods'), h('label', {}, unknown, 'Allow an unknown base')),
+    h('div', { class: 'row' }, h('label', {}, memory, '4 MiB mod memory'), h('label', {}, unknown, 'Allow an unknown base')),
     h('div', { class: 'row' }, save), status);
   return card;
 }

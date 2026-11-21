@@ -188,13 +188,13 @@ service running. Commands that change what boots are dry runs unless you add the
 | mods push | `python3 xyf_host.py mods push DIR [--only ID ...] [--verify]` (send a package set) |
 | mods list | `python3 xyf_host.py mods list` (package sets and packages on the device, with sizes) |
 | mods remove | `python3 xyf_host.py mods remove GENERATION --yes` (without `--yes`: dry run) |
-| mods set | `python3 xyf_host.py mods set MACHINE ... [--ext ID ...]` (the mods it runs; `mods status`, `off`, `on`) |
+| mods set | `python3 xyf_host.py mods set MACHINE ... [--ext ID ...]` (the mods it runs; `mods status`) |
 | mods apply | `python3 xyf_host.py mods apply --base ID --generation GEN MACHINE ... --wait` (developers) |
 | screenshot | `python3 xyf_host.py screenshot --out screen.png` |
 
 `mods set` saves the mods the OP-XY runs, as turning them on in the Mods page does: the OP-XY
 checks that it can build them and keeps them, or says why not, and builds them the next time it
-starts. `mods off` boots without mods (the selection kept), `mods on` brings them back. For
+starts; `mods set` with no mods turns them all off. Boot without mods stays on the device. For
 developers, `mods apply` only builds into library entry `mods-a` or `mods-b` (`--memory expanded`:
 the 4 MiB layout; `mods cancel` stops it); making it the default boots it until the next plain power-on.
 

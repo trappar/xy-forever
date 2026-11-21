@@ -83,7 +83,7 @@ machines on (saved at once), STOP, then PLAY on the first row. The OP-XY builds,
 installs content, sets the default and boots it.
 
 **From the computer:** `python3 xyf_host.py mods set MACHINE ... [--ext ID ...]` saves the same
-selection (checked, or refused with the reason); it is built at the next start.
+selection (checked, or refused with the reason; none: all off); it is built at the next start.
 
 To try your build once without changing what is saved: `mods dev --boot` (or `mods apply`, then
 `set-default` and `boot`). The next plain power-on goes back to the saved setup.

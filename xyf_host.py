@@ -512,8 +512,8 @@ def run(argv):
     mtpt.add_argument('--hold-ms', type=int, default=5000); mtpt.add_argument('--yes-test', action='store_true')
     uninst = sub.add_parser('uninstall'); uninst.add_argument('stock_os_ldr'); uninst.add_argument('--yes-uninstall', action='store_true')
     from xy_forever import modsend      # mods push|list|remove (xy_forever/modsend.py)
-    modsend.add_arguments(sub.add_parser('mods', help='mod packages: push, list, remove; the saved mods: status, set, '
-                                                     'off, on; developer: apply, dev'))
+    modsend.add_arguments(sub.add_parser('mods', help='mod packages: push, list, remove; the saved mods: status, set; '
+                                                     'developer: apply, dev'))
     args = parser.parse_args(argv)
     global SIM
     if args.sim:

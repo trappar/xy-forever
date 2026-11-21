@@ -14,7 +14,7 @@ The saved configuration (/yaffs2/xy-forever/config.txt) names the default the me
 is present a dev run changes the default behind it, once: the menu's Continue line then ends in "(to apply)"
 (or "(rebuild)") and the next plain power-on converges back to the saved setup (#197); mods dev refuses
 unless --ignore-config, and says what the menu will show. It never rewrites config.txt (the saved inputs:
-the Mods page, `mods set` and `mods off` change them)."""
+the Mods page and `mods set` change them)."""
 import json
 import os
 from pathlib import Path

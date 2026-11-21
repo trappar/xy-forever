@@ -1,10 +1,10 @@
 """In the simulator: the saved inputs over USB (#26, config.get and config.set). A set is a flip on the Mods page: the
 device reads its package list again (busy until then), checks the selection and saves it, or refuses with the reason
-and changes nothing; it never builds, and the next boot converges to it (#197). Safe mode is an input of its own
-(`mods off` / `on`). The developer path (a mod build of my choosing made the default and booted once, behind the
-saved inputs) leaves them as they are: the next plain power-on returns to the saved setup. xyf_host.py mods status /
-set / off / on. Synthetic packages (test_sim_config). Needs clang++ and the private stock 1.2.1 images (skipped
-without them). No device access."""
+and changes nothing; it never builds, and the next boot converges to it (#197). Safe mode is a field of config.set
+(tested here at the protocol); xyf_host.py never sets it and sends it back as saved. The developer path (a mod build
+of my choosing made the default and booted once, behind the saved inputs) leaves them as they are: the next plain
+power-on returns to the saved setup. xyf_host.py mods status / set. Synthetic packages (test_sim_config). Needs
+clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
 import contextlib
 import io
 from pathlib import Path
@@ -42,6 +42,18 @@ class ConfigUsb(ConfigBase, unittest.TestCase):
         self.assertEqual((f['saving'], f['mods']), (0, mods))
         self.assertEqual(self.saved(mods)['mods'], ','.join(mods))
         return f
+
+    def cli(self, *argv):
+        """xyf_host.py mods ARGV against the simulator, on its own connection: (exit code, output)."""
+        self.dev.t.close()
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()), warnings.catch_warnings():
+                warnings.simplefilter('ignore', ResourceWarning)
+                code = host.main(['--sim', self.sim.address, 'mods'] + list(argv))
+        finally:
+            self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
+        return code, out.getvalue()
 
     def plain(self):
         """A plain power-on: the library entry that boots (it converges first when the inputs changed)."""
@@ -100,12 +112,15 @@ class ConfigUsb(ConfigBase, unittest.TestCase):
     def test_safe_mode_off_and_on(self):
         a = self.first_save()
         self.menu_again()
-        self.set(['alpha'], UNKNOWN | MC.SAFE)                             # Boot without mods
+        self.set(['alpha'], UNKNOWN | MC.SAFE)                             # Boot without mods (the protocol's field)
         f = self.written(['alpha'])
         self.assertEqual((f['flags'], self.config()['safe'], self.disk_default()), (UNKNOWN | MC.SAFE, '1', a))
         self.assertEqual(self.plain(), self.base)                          # the next boot: the base, official content
         self.saved_as(self.base, ['alpha'])
         self.menu_again()
+        code, out = self.cli('set', 'alpha')                               # the host tool keeps safe mode as saved
+        self.assertEqual(code, 0, out)
+        self.assertEqual((self.written(['alpha'])['flags'], self.config()['safe']), (UNKNOWN | MC.SAFE, '1'))
         progress = len(self.progress())
         self.set(['alpha'])                                                # safe mode off: the selection again
         self.assertEqual(self.written(['alpha'])['flags'], UNKNOWN)
@@ -136,31 +151,23 @@ class ConfigUsb(ConfigBase, unittest.TestCase):
         self.saved_as(a, ['alpha'])
 
     def test_cli(self):
-        def cli(*argv):
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()), warnings.catch_warnings():
-                warnings.simplefilter('ignore', ResourceWarning)
-                code = host.main(['--sim', self.sim.address, 'mods'] + list(argv))
-            return code, out.getvalue()
         self.wait_log(lambda: 'pending=' in self.home(), 'the home row')
-        self.dev.t.close()
-        code, out = cli('set', 'alpha', '--ext', 'cap', '--unverified')
+        code, out = self.cli('set', 'alpha', '--ext', 'cap', '--unverified')
         self.assertEqual(code, 0, out)
         self.assertIn('mods set: saved', out)
-        code, out = cli('status')
+        code, out = self.cli('status')
         self.assertEqual(code, 0, out)
         self.assertIn('mods: alpha, ext-cap', out)
-        self.assertIn('safe mode: off', out)
-        code, out = cli('set', 'nosuch')
+        self.assertNotIn('safe mode', out)
+        code, out = self.cli('set', 'nosuch')
         self.assertEqual(code, ids.S_REFUSED, out)
         self.assertIn('refused: Not in the mod packages: nosuch', out)
-        code, out = cli('off')                                             # nothing built yet
-        self.assertEqual(code, ids.S_REFUSED, out)
-        code, out = cli('set')                                             # no mods
+        code, out = self.cli('set')                                        # no mods
         self.assertEqual(code, 0, out)
-        self.assertIn('saved: 0 mods on %s' % self.base, cli('status')[1])
-        self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
-
+        self.assertIn('saved: 0 mods on %s' % self.base, self.cli('status')[1])
+        for gone in ('off', 'on'):                                         # safe mode stays on the device
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                host.main(['--sim', self.sim.address, 'mods', gone])
 
 if __name__ == '__main__':
     unittest.main()

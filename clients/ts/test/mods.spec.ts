@@ -329,7 +329,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     const config = join(sim!.root, 'xy-forever', 'config.txt');
     const library = readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort();
     const saved = await configSet(client, { mods: ['alpha', 'ext-cap'], unverified: true }, { pollMs: 20 });
-    expect(saved).toMatchObject({ saved: true, mods: ['alpha', 'ext-cap'], safe: false, expanded: false, unverified: true, write: 'saved' });
+    expect(saved).toMatchObject({ saved: true, mods: ['alpha', 'ext-cap'], expanded: false, unverified: true, write: 'saved' });
     expect(await configGet(client)).toEqual(saved);
     expect(readFileSync(config, 'utf8')).toMatch(/\nslot=\n[^]*\nmods=alpha,ext-cap\n$/);   // nothing built for it
     expect(readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort()).toEqual(library);

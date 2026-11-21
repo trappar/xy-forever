@@ -1,20 +1,20 @@
-"""The saved inputs over USB (#26): `xyf_host.py mods status | set | off | on`, through config.get and config.set
-(protocol 1.24).
+"""The saved inputs over USB (#26): `xyf_host.py mods status | set`, through config.get and config.set (protocol 1.24).
 
-They change mods the way the device's Mods page does: config.set sends the selection, Mod memory and safe mode, the
-device reads its package list again, checks that the selection can be built and saves it (or refuses, saying why),
-as if the toggles were flipped there. Nothing is built then: the next boot of XY Forever converges to what is saved
-(#197), building the selection when needed. `off` is "Boot without mods" (safe mode: the stock firmware with its
-official content, the selection kept), `on` its way back. The developer commands (`mods apply`, `mods dev`,
-`set-default`, `boot`) change what boots behind the saved inputs, once: the next plain power-on returns to them."""
+They change mods the way the device's Mods page does: config.set sends the selection and Mod memory, the device reads
+its package list again, checks that the selection can be built and saves it (or refuses, saying why), as if the
+toggles were flipped there. Nothing is built then: the next boot of XY Forever converges to what is saved (#197).
+`mods set` with no mods saves none. Safe mode (Boot without mods) is a recovery action on the device only: config.set
+carries it, and a set here sends it back as saved, never changing it. The developer commands (`mods apply`,
+`mods dev`, `set-default`, `boot`) change what boots behind the saved inputs, once: the next plain power-on returns
+to them."""
 import hashlib
 import struct
 import time
 
 from . import usb_proto as P
 
-COMMANDS = ('status', 'set', 'off', 'on')
-EXPANDED, SAFE, UNVERIFIED = 1, 2, 4                    # config.get / config.set flags
+COMMANDS = ('status', 'set')
+EXPANDED, SAFE, UNVERIFIED = 1, 2, 4                    # config.get / config.set flags (SAFE: kept as saved)
 SAVING = ('saved', 'waiting for a quiet moment to be written', 'the last write failed: set it again')
 READ_S = 60.0                                           # s: the device reads its package list for a set
 
@@ -63,26 +63,23 @@ def describe(f):
                             'none (no mods: %s boots)' % (f['base'] or 'the default'))]
     if f['mods']:
         lines.append('mods: %s' % ', '.join(f['mods']))
-    lines.append('Mod memory: %s; safe mode: %s%s' % ('4 MiB' if f['flags'] & EXPANDED else '2 MiB',
-                                                    'on (Boot without mods)' if f['flags'] & SAFE else 'off',
-                                                    '; unknown base allowed' if f['flags'] & UNVERIFIED else ''))
+    lines.append('Mod memory: %s%s' % ('4 MiB' if f['flags'] & EXPANDED else '2 MiB',
+                                     '; unknown base allowed' if f['flags'] & UNVERIFIED else ''))
     lines.append('write: %s' % (SAVING[f['saving']] if f['saving'] < len(SAVING) else f['saving']))
     return lines
 
 
 def add_arguments(sub):
-    sub.add_parser('status', help='the saved inputs: mods on, Mod memory, safe mode (config.get)')
+    sub.add_parser('status', help='the saved inputs: mods on, Mod memory (config.get)')
     s = sub.add_parser('set', help='save these mods on, as the Mods page does; built at the next boot (config.set)')
     s.add_argument('mods', nargs='*', metavar='MOD', help='package folder names (none: no mods)')
     s.add_argument('--ext', nargs='+', default=[], metavar='ID', help='extension ids (without ext-)')
     s.add_argument('--memory', choices=('standard', 'expanded'), help='Mod memory (default: as saved)')
     s.add_argument('--unverified', action='store_true', help='allow a base that is not a known one')
-    sub.add_parser('off', help='Boot without mods: safe mode on, the selection kept')
-    sub.add_parser('on', help='safe mode off: the saved selection boots again')
 
 
 def command(dev, args, out=print):
-    """`mods status | set | off | on` on a connected device: the exit code (a status, 0 when saved)."""
+    """`mods status | set` on a connected device: the exit code (a status, 0 when saved)."""
     name = 'mods %s' % args.mods_command
     code, f = get(dev)
     if code:
@@ -91,15 +88,11 @@ def command(dev, args, out=print):
     if args.mods_command == 'status':
         out('\n'.join(describe(f)))
         return 0
-    flags = f['flags'] & (EXPANDED | UNVERIFIED)
-    mods = f['mods']
-    if args.mods_command == 'set':
-        mods = list(args.mods) + ['ext-' + e for e in args.ext]
-        if args.memory:
-            flags = (flags & ~EXPANDED) | (EXPANDED if args.memory == 'expanded' else 0)
-        flags |= UNVERIFIED if args.unverified else 0
-    elif args.mods_command == 'off':
-        flags |= SAFE
+    flags = f['flags'] & (EXPANDED | SAFE | UNVERIFIED)    # safe mode as saved: only the device changes it
+    mods = list(args.mods) + ['ext-' + e for e in args.ext]
+    if args.memory:
+        flags = (flags & ~EXPANDED) | (EXPANDED if args.memory == 'expanded' else 0)
+    flags |= UNVERIFIED if args.unverified else 0
     code, reason = set_inputs(dev, mods, flags)
     if code:
         out('%s: %s%s' % (name, P.status_name(code), ': ' + reason if reason else ''))
