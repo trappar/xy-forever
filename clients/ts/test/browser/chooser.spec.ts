@@ -59,7 +59,7 @@ describe.skipIf(!sim)(`choosing the port${sim ? '' : ` (skipped: ${web.why})`}`,
     expect(serial.stale!.opens).toBe(0);
   });
 
-  test('the stale entry chosen: it says which entry to choose', async () => {
+  test('the stale entry chosen: it says what to choose', async () => {
     const serial = new FakeSerial(sim!.relay, { identity: stock, stale: 'attached', pick: 'stale' });
     const error = await fromClick(() => connectWebSerial({ serial, filters: RELEASE_FILTERS, timeoutMs: 1500, probeMs: 500 })).catch((e: unknown) => e as Error);
     expect(error).toMatchObject({ code: 'timeout' });

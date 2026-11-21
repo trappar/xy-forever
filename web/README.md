@@ -46,10 +46,12 @@ the host). The app lives at the site's root (its paths and `/release/os.ldr` are
   the owner once that holding PLAY at power-on opens the XY Forever menu (the plain first start boots OS 1.2.1, so the
   page meets XY Forever there). The pure checks: `src/install/checks.ts`. The choices a stage needs (the computer, the
   file sent, a refusal) are kept in `sessionStorage` for a reload (going Back to the copy step sends the file again);
-  a reload at a te-boot stage asks te-boot again. At the last stage (on reaching it, when a serial port appears, every
-  few seconds) the page looks for an OP-XY running XY Forever on ports Chrome already granted, never opening the
-  chooser unasked; before it, only **Find my OP-XY** (a click, which may open the chooser) does, since te-boot or the
-  dev menu's MTP may be on the cable. Either way it follows the setup as above.
+  a reload at a te-boot stage asks te-boot again. At every stage (on load, on each stage change, when a serial port
+  appears, and every few seconds at the last stage) the page looks for an OP-XY running XY Forever on ports Chrome
+  already granted, never opening the chooser unasked, and jumps ahead when it answers; **Find my OP-XY** (a click,
+  which may open the chooser) does the same. It never looks while a te-boot check over Web MIDI or the MTP copy is
+  under way, only once that ends (te-boot is MIDI only; the serial "OP_XY Boot" is XY Forever's own fallback service).
+  Either way it follows the setup as above.
 - **Device**: build, what is running, what boots next, the saved mods (`/yaffs2/xy-forever/config.txt`), the content state.
 - **Mods**: packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
   saved on/off state; add packages from a folder (a `modkit split` generation folder); remove a package or a whole set;

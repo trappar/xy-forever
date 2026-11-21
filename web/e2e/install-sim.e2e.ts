@@ -178,32 +178,62 @@ it.skipIf(why !== null)('Windows: copied by hand; the page finds XY Forever by i
   await page.close();
 }, 240_000);
 
-it.skipIf(why !== null)('before the last stage nothing goes to the port unasked; Find my OP–XY shows the setup, then hands off', async () => {
+it.skipIf(why !== null)('at any stage: XY Forever found while it sets up shows the setup, then hands off', async () => {
   image ||= await simImage();
   const sim = await powerOn('stock', false);                            // PLAY at the first start: the menu stays after the setup
-  await control(sim.control, 'set a_slow_ms 10');                        // slow enough to outlast the wait below
-  const page = await open(running!.relay.url, true);
-  expect(await stage(page)).toBe('boot');
+  await control(sim.control, 'set a_slow_ms 10');                        // slow enough to watch
   await until('the menu', () => listening(sim));
-  await new Promise((ok) => setTimeout(ok, 6000));                       // longer than the last stage's look (3 s)
-  expect(await page.evaluate(() => (window as unknown as { fakes: { serial: { xyfPorts: { opens: number }[] } } }).fakes.serial.xyfPorts.every((p) => p.opens === 0))).toBe(true);
-  expect(await stage(page)).toBe('boot');                                // te-boot or MTP may be on the cable: no HELLO
-  await press(page, 'Find my OP–XY');                                    // the owner's click
+  const page = await open(running!.relay.url, true);                     // no click: the page looks on load
   await expect.poll(async () => (await page.locator('#page-install [role=status]').textContent().catch(() => '')) ?? '', { timeout: 60_000 })
     .toMatch(/adding OS 1\.2\.1|about to add OS 1\.2\.1/);
-  expect(await stage(page)).toBe('start');
+  expect(await stage(page)).toBe('start');                               // jumped ahead from the first stage
   await control(sim.control, 'set a_slow_ms 0');                         // seen: the rest at full speed
   await handedOff(page);
   adopted(sim);
   await page.close();
 }, 240_000);
 
+it.skipIf(why !== null)('no look while the MTP copy runs; once it ends, XY Forever found mid-flow hands off', async () => {
+  image ||= await simImage();
+  const sim = await powerOn('stock', true);                             // set up, then the OS: no serial port yet
+  await until('the OS, after the setup', () => inOs(sim));
+  const page = await open(running!.relay.url, true);
+  await page.getByRole('button', { name: /Check my OP/ }).click();
+  await expect.poll(() => stage(page), { timeout: 15_000 }).toBe('menu');
+  for (const name of ['Yes, I see it', 'Mac', 'Dev menu is open', 'I see "mtp mode active"', 'They’re closed · Continue']) await press(page, name);
+  expect(await stage(page)).toBe('transfer');
+  await control(sim.control, 'power play');                              // XY Forever's menu, with its serial port: no look yet
+  await until('the menu', () => listening(sim));                         // (no stage change, no connect event)
+  await page.evaluate(() => {                                            // the copy holds mid-session until released
+    const w = window as unknown as { fakes: { usb: { requestDevice: (o: unknown) => Promise<{ transferOut: (...a: unknown[]) => Promise<unknown> }> } };
+      gate: { held: boolean; release: () => void; open: Promise<void> } };
+    const usb = w.fakes.usb, request = usb.requestDevice;
+    w.gate = { held: false, release: () => {}, open: Promise.resolve() };
+    w.gate.open = new Promise((ok) => { w.gate.release = ok; });
+    usb.requestDevice = async (o) => {
+      const device = await request(o), out = device.transferOut;
+      let n = 0;
+      device.transferOut = async (...a) => { if (n++ === 2) { w.gate.held = true; await w.gate.open; } return out(...a); };
+      return device;
+    };
+  });
+  await press(page, 'Send to OP–XY');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { gate: { held: boolean } }).gate.held), { timeout: 15_000 }).toBe(true);
+  await page.evaluate(() => (window as unknown as { fakes: { serial: EventTarget } }).fakes.serial.dispatchEvent(new Event('connect')));
+  await new Promise((ok) => setTimeout(ok, 6000));                       // the looks after a port appears (5 s); MTP's timeout is 20 s
+  expect(await page.evaluate(() => (window as unknown as { fakes: { serial: { xyfPorts: { opens: number }[] } } }).fakes.serial.xyfPorts.every((p) => p.opens === 0))).toBe(true);
+  expect(await stage(page)).toBe('transfer');
+  await page.evaluate(() => (window as unknown as { gate: { release: () => void } }).gate.release());
+  await handedOff(page);                                                 // the copy ended, then the look found XY Forever
+  expect(await page.evaluate(() => (window as unknown as { fakes: { usb: { reads: string[] } } }).fakes.usb.reads)).toEqual(['os.ldr']);   // read back: the copy finished first
+  await page.close();
+}, 240_000);
+
 it.skipIf(why !== null)('the device refuses a missing stock os.ldr: the page shows its words and the official 1.2.1 download', async () => {
   image ||= await simImage();
   const sim = await powerOn('missing', true);                           // a plain first start: the menu stays, with USB
-  const page = await open(running!.relay.url, true);
   await until('the menu', () => listening(sim));
-  await press(page, 'Find my OP–XY');
+  const page = await open(running!.relay.url, true);                     // no click: the page looks on load
   await expect.poll(() => stage(page), { timeout: 60_000 }).toBe('stop');
   const card = page.locator('[data-verdict]');
   expect(await card.getAttribute('data-verdict')).toBe('reinstall');

@@ -8,10 +8,11 @@
 // on the device (finish.ts), and the page never reads or moves the stock OS. #page-install's data-stage names the
 // stage (the tests read it). Each stage is a path, /install/<stage> (../router.ts): a reload keeps it, with the
 // choices made so far kept in sessionStorage; a reload re-checks the device instead of trusting them (te-boot stages
-// ask te-boot again). At the last stage (on reaching it, on a serial port appearing, every few seconds) and on a
-// click, the page looks for an OP-XY running XY Forever (granted ports only, never the chooser unasked); never on
-// its own before that stage, while the OP-XY may be in te-boot or the dev menu's MTP mode, which must get no XY
-// Forever request. Once its stock entry is there and the default names a library entry (the stock one, or one with
+// ask te-boot again). At every stage (on load, on each stage change, on a serial port appearing, every few seconds at
+// the last stage) and on a click, the page looks for an OP-XY running XY Forever (granted ports only, never the
+// chooser unasked) and jumps ahead when it answers; never while a te-boot check over Web MIDI or a WebUSB MTP copy is
+// under way (it looks once that ends). te-boot itself is MIDI only, and the serial "OP_XY Boot" is XY Forever's own
+// fallback service. Once its stock entry is there and the default names a library entry (the stock one, or one with
 // mods) it hands the owner to the app's Mods page; while it sets up, or when it refuses, the page shows that.
 import type { Client } from 'xy-forever-client';
 import { ASK_TEXT, CHOOSE_TEXT } from 'xy-forever-client';
@@ -67,7 +68,8 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
   let computer: Computer | null = kept['computer'] === 'mac' || kept['computer'] === 'windows' ? kept['computer'] : null;
   let stop = (kept['stop'] ?? null) as Verdict | null;
   let busy = false, delivered = kept['delivered'] === true, formatting = kept['formatting'] === true;
-  let detecting: Promise<void> | null = null;
+  /** A look in progress (the probe, then following the setup); the probe alone; a look asked for while busy. */
+  let detecting: Promise<void> | null = null, probing: Promise<unknown> | null = null, later = false;
   let status = '', error = false, fraction: number | null = null;
   let log: string[] = [];
   let image: Uint8Array | null = null;
@@ -97,8 +99,8 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
     if (want === 'transfer' && stage !== 'transfer' && how !== 'load') delivered = false;   // back at transfer: send again
     if (want !== stage) { stage = want; status = ''; error = false; fraction = null; log = []; }
     save(); render();
+    if (how === 'load' && TE_BOOT.includes(stage)) void act(reverify);   // first: the look waits for it
     void detect();
-    if (how === 'load' && TE_BOOT.includes(stage)) void act(reverify);
   }
 
   /** After a reload at a te-boot stage: te-boot answers again and is still accepted, else back to the start. */
@@ -116,15 +118,15 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
   }
 
   /**
-   * Looks for XY Forever on a granted port (never the chooser); when it answers, follows its setup (follow). Only at
-   * the last stage: before it the OP-XY may be in te-boot (which may show XY Forever's USB ids) or the dev menu's
-   * MTP mode, and no XY Forever request may reach either.
+   * Looks for XY Forever on a granted port (never the chooser); when it answers, follows its setup (follow), which
+   * jumps ahead. At any stage but stop; while an action runs (te-boot over Web MIDI, the MTP copy) it waits for it.
    */
   function detect(): Promise<void> {
-    if (!deps.find || !release || busy || root.hidden || stage !== 'start') return detecting ?? Promise.resolve();
+    if (!deps.find || !release || root.hidden || stage === 'stop') return detecting ?? Promise.resolve();
+    if (busy) { later = true; return detecting ?? Promise.resolve(); }
     return detecting ??= (async () => {
       try {
-        const lease = await deps.find!();
+        const lease = await (probing = deps.find!().finally(() => { probing = null; }));
         if (lease) await follow(lease);
       } catch (e) {
         if (e instanceof InstallStop && !root.hidden) halt(e.verdict);    // other failures: nothing found
@@ -183,6 +185,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
     if (busy) return;
     busy = true; say('');
     try {
+      await probing?.catch(() => {});  // a probe under way ends first: none beside te-boot or MTP
       await work();
     } catch (e) {
       busy = false;
@@ -192,6 +195,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
       say(message, null, true);
     } finally {
       busy = false; render();
+      if (later) { later = false; void detect(); }
     }
   }
 
