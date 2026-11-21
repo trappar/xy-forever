@@ -1,4 +1,4 @@
-// The XY Forever web app: Connect, Device, Mods, Files. Plain DOM; one device action at a time.
+// The XY Forever web app: Connect, Install, Device, Mods, Files. Plain DOM; one device action at a time.
 // ?sim=PORT: the device simulator on 127.0.0.1:PORT through the dev server's relay (development and tests).
 import { ASK_TEXT, Client, SERIAL_OFF_TEXT, JobError, configGet, configSet, fileListSource, fileReason, grantedPorts, isXyfError, listPackages, localSet, pushPackages,
   removePackage, requestPort, webSerial, webSerialOpener } from 'xy-forever-client';
@@ -10,6 +10,7 @@ import type { SavedConfig } from './model.ts';
 import { BugReport } from './bug-report.ts';
 import type { Action } from './bug-report.ts';
 import { confirmAction, downloadBlob, h, notice, previewBugReport, promptText } from './ui.ts';
+import { installPage } from './install/page.ts';
 
 const sim = new URLSearchParams(location.search).get('sim');
 let client: Client | null = null;
@@ -19,10 +20,12 @@ const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!
 
 // ---- Navigation and actions ---------------------------------------------------------------------------
 
-const PAGES = ['connect', 'device', 'mods', 'files'] as const;
+const PAGES = ['connect', 'install', 'device', 'mods', 'files'] as const;
+const OPEN_PAGES: readonly Page[] = ['connect', 'install'];   // without a connection
 type Page = (typeof PAGES)[number];
 const loaders: Record<Page, () => Promise<void>> = {
   connect: () => run('show_connect', async () => renderConnect()),
+  install: async () => { install ??= installPage(page('install'), installDeps()); },
   device: () => run('refresh_status', loadDevice),
   mods: () => run('list_packages', loadMods),
   files: () => run('browse_files', () => browse(cwd)),
@@ -31,10 +34,10 @@ const loaders: Record<Page, () => Promise<void>> = {
 function current(): Page { const p = location.hash.slice(1) as Page; return PAGES.includes(p) ? p : 'connect'; }
 
 function route(): void {
-  const p = client ? current() : 'connect';
+  const p = client || OPEN_PAGES.includes(current()) ? current() : 'connect';
   for (const id of PAGES) page(id).hidden = id !== p;
   for (const a of document.querySelectorAll<HTMLAnchorElement>('#nav a')) a.classList.toggle('active', a.dataset['page'] === p);
-  if (client || p === 'connect') void loaders[p]();
+  if (client || OPEN_PAGES.includes(p)) void loaders[p]();
 }
 window.addEventListener('hashchange', route);
 
@@ -81,7 +84,8 @@ function renderConnect(): void {
   const supported = sim !== null || webSerial() !== null;
   page('connect').replaceChildren(
     h('h1', {}, 'Connect your OP-XY'),
-    h('p', { class: 'lede' }, 'Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the list.'),
+    h('p', { class: 'lede' }, 'Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the list. ',
+      'Not installed yet? ', h('a', { href: '#install' }, 'Install XY Forever'), '.'),
     h('div', { class: 'card' },
       supported
         ? h('div', { class: 'row' },
@@ -116,6 +120,20 @@ async function disconnect(): Promise<void> {
   setLink();
   await c?.close();
   renderConnect();
+}
+
+// ---- Install (#178) -----------------------------------------------------------------------------------
+
+let install: { render: () => void } | null = null;
+
+function installDeps(): Parameters<typeof installPage>[1] {
+  const nav = navigator as Navigator & { requestMIDIAccess?: (o: { sysex: boolean }) => Promise<unknown>; usb?: unknown };
+  return {
+    midi: nav.requestMIDIAccess ? nav.requestMIDIAccess.bind(nav) : null,
+    usb: nav.usb ?? null,
+    serial: sim !== null || webSerial() !== null,
+    connect: async () => Client.connect(await opener(), { timeoutMs: 10_000 }),
+  };
 }
 
 // ---- Device ------------------------------------------------------------------------------------------

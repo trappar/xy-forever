@@ -70,10 +70,15 @@ export class PackageSession {
     }
     await this.command(1); await this.client.removeDir(path, this.options);
   }
-  async publish(target: string, files: ReadonlyMap<string, Uint8Array>): Promise<void> {
+  /**
+   * files: written and read back; copies: name -> a file already on the device, copied there by file.copy (the
+   * bytes never cross USB; the device reads the copy back and compares). files.sha256 among files must list both.
+   */
+  async publish(target: string, files: ReadonlyMap<string, Uint8Array>, copies: ReadonlyMap<string, string> = new Map()): Promise<void> {
     const name = target.split('/').at(-1)!;
     if (!/^[\x20-\x7e]{1,127}$/.test(name) || /[\\:]/.test(name) || /[. ]$/.test(name) || /bootloader/i.test(name)) throw new Error('unsafe package name');
     const scratch = await this.scratch();
+    for (const [copy, source] of copies) { await this.command(1); await this.client.copyFile(source, `${scratch}/${copy}`, this.options); }
     for (const [name, data] of [...files].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)) await this.write(`${scratch}/${name}`, data);
     const existing = await remoteTree(this.client, target, this.options);
     await this.command(1);

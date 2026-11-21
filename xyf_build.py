@@ -20,7 +20,7 @@ from xy_forever.stage2_audit import STAGE2_ENTER, STAGE2_LITERALS as S2_LITERALS
 from xy_forever.probe_report import report_only_fixture
 from xy_forever.otp_audit import (function_bodies, referencing_symbols, loaded_values,
                                   functions_loading, rom_references, check_otp_rules, check_otp_data)
-from xy_forever import release, usb_proto, xyf_stage2 as S2
+from xy_forever import release, stock_bytes, usb_proto, xyf_stage2 as S2
 
 # Layout names (historical): "reporter" is the small program added to the stock OS
 # image that writes the cold report to storage, "carry" the report slot it reads,
@@ -926,6 +926,8 @@ def verify(out, stock, boot):
     candidate = (out / 'candidate.ldr').read_bytes()
     require(sha(candidate) == manifest['candidate_sha256'], 'Candidate hash differs')
     outer_checks = verify_outer(candidate, module, embedded or None, MODULE)
+    shared = [] if embedded else stock_bytes.shared_runs(candidate, {'os.ldr': stock, 'bootloader.ldr': boot})
+    require(not shared, 'Candidate shares stock bytes (#178): %s' % shared[:3])
     return dict(passed=True, inner=inner_checks, outer=outer_checks, hardware_tested=False,
                 **({'stage2': stage2_info} if stage2_info else {}),
                 same_role_report=True, cold_stack_bytes=0x4000, mode=mode_name,

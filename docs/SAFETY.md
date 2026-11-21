@@ -29,9 +29,12 @@ needs the highest bar of confidence. These rules are binding and override conven
   by the 1.2.1 bootloader: unknown, possibly the program entry) are forbidden. Keys read on the
   device need no protection there; they never go into the repository.
 
-- **Never let anything remove `/yaffs2/bootloader.dev`.** The 1.2.1 bootloader enables
-  its dev menu (recovery step 2 below) when this file exists (`88a1d7e6`); no known
-  method recreates it once XY Forever is gone too. The file engine refuses to remove or
+- **XY Forever never removes `/yaffs2/bootloader.dev`.** The 1.2.1 bootloader enables
+  its dev menu (recovery step 2 below) when this file exists (`88a1d7e6`). te-boot re-creates it
+  over Web MIDI on the 1.2.1 bootloader (command `0xac`, Ferret's enabler; the web app's Install page
+  sends it, #178), so the developer may switch the dev menu off for a test (a retail-like start); the
+  1.2.5 bootloader has no such command. No product feature removes it or turns the dev menu off.
+  The file engine refuses to remove or
   rename it away, on A for every request and on B before sending
   (`file_engine::decide_engine`). It is also never written, replaced or
   renamed onto by hand (MTP, serial file commands); only A's own restore below re-creates it. Any future file feature (file
