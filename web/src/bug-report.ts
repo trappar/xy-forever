@@ -6,7 +6,7 @@ import appPackage from '../package.json';
 
 const ACTIONS = [
   'show_connect', 'connect', 'disconnect', 'refresh_status', 'list_packages', 'choose_packages',
-  'send_packages', 'remove_packages', 'build', 'browse_files', 'download_file', 'upload_files',
+  'send_packages', 'remove_packages', 'build', 'save_mods', 'browse_files', 'download_file', 'upload_files',
   'new_folder', 'copy_file', 'move_file', 'delete_file',
 ] as const;
 export type Action = (typeof ACTIONS)[number];

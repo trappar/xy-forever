@@ -1,8 +1,8 @@
 // The XY Forever web app: Connect, Device, Mods, Files. Plain DOM; one device action at a time.
 // ?sim=PORT: the device simulator on 127.0.0.1:PORT through the dev server's relay (development and tests).
-import { ASK_TEXT, Client, JobError, applyMods, fileListSource, fileReason, grantedPorts, isXyfError, libraryBases, listPackages, localSet, pushPackages,
+import { ASK_TEXT, Client, JobError, configGet, configSet, fileListSource, fileReason, grantedPorts, isXyfError, listPackages, localSet, pushPackages,
   removePackage, requestPort, webSerial, webSerialOpener } from 'xy-forever-client';
-import type { ApplyRequest, BuiltEntry, DirEntry, HeldGeneration, JobStatus, LocalSet, Opener, PackageSource } from 'xy-forever-client';
+import type { DirEntry, HeldGeneration, LocalSet, Opener, PackageSource, SavedInputs } from 'xy-forever-client';
 import { webSocketOpener } from 'xy-forever-client/dev';
 import { CONFIG_FILE, CONFIG_OLD, CONTENT_STATE, CONTENT_STATE_OLD, ROOT, WRITE_RULE, changeRefusal, configText, contentText, folderWritable, groupMods,
   human, joinPath, modeText, nameProblem, parentOf, parseConfig } from './model.ts';
@@ -162,27 +162,17 @@ async function loadDevice(): Promise<void> {
 
 let chosen: { source: PackageSource; set: LocalSet } | null = null;
 let held: HeldGeneration[] = [];
-let building: AbortController | null = null;
-
-/**
- * How "Build on device" runs. Today: the low-level mods.apply job (applyMods), which builds the
- * library entry mods-a or mods-b with its content not installed, and changes nothing that boots
- * (makeDefault, which installs content and changes the default, is deliberately not offered yet). Seam: when the device exposes its
- * Save over USB (build + install content + save config, as the menu's Save does), replace this.
- */
-export let buildOnDevice = (c: Client, request: ApplyRequest, onProgress: (s: JobStatus) => void, signal: AbortSignal): Promise<BuiltEntry> =>
-  applyMods(c, request, { onProgress, signal });
-export function setBuildOnDevice(f: typeof buildOnDevice): void { buildOnDevice = f; }
 
 async function loadMods(): Promise<void> {
   const c = client!;
   held = await listPackages(c);
   const config = await savedConfig();
+  const inputs = await configGet(c).catch((error: unknown) => { if (isXyfError(error, 'update_required', 'unsupported')) return null; throw error; });
   const root = page('mods');
   const picker = h('input', { type: 'file', webkitdirectory: true, multiple: true, onchange: () => void pick(picker) });
   root.replaceChildren(
     h('h1', {}, 'Mods'),
-    h('p', { class: 'lede' }, 'Mod packages stored on the OP-XY. Turning mods on or off and saving is done in the device\'s Mods menu; this page adds and removes packages.'),
+    h('p', { class: 'lede' }, 'Mod packages stored on the OP-XY, and the mods it runs.'),
     h('div', { class: 'card' },
       h('div', { class: 'row' }, h('h2', { style: 'margin:0' }, 'Add packages'), h('span', { class: 'spacer' }),
         h('label', { class: 'button' }, 'Choose package folder...', picker),
@@ -190,7 +180,7 @@ async function loadMods(): Promise<void> {
       h('p', { class: 'muted', id: 'mods-chosen' }, chosen ? chosenText(chosen.set) : 'Choose a generation folder (from modkit split): it holds base/ and one folder per mod.'),
       h('progress', { id: 'mods-progress', value: 0, max: 1, hidden: true })),
     ...(held.length === 0 ? [h('div', { class: 'card muted' }, 'No mod packages on this OP-XY yet.')] : held.map((g) => generationCard(g, config))),
-    buildCard(config),
+    inputsCard(inputs),
   );
 }
 
@@ -260,44 +250,36 @@ async function remove(what: string, generation: string | null, label: string): P
   await loadMods();
 }
 
-function buildCard(config: SavedConfig | null | undefined): HTMLElement {
-  const card = h('div', { class: 'card lowlevel', id: 'build' });
+/**
+ * The mods the OP-XY runs (#26): saved as turning them on in the device's Mods menu does (config.set). The device checks
+ * that it can build them and keeps them, or says why not; it builds them the next time XY Forever starts.
+ */
+function inputsCard(saved: SavedInputs | null): HTMLElement {
+  const card = h('div', { class: 'card', id: 'inputs' });
   const gens = held.filter((g) => g.packages.some((p) => p.name === 'base' && p.complete));
-  card.append(h('h2', {}, 'Build on device'),
-    h('p', { class: 'muted' }, 'The OP-XY assembles an Open-XY firmware from the packages it holds into a spare library entry (mods-a or mods-b, replacing the older one). This does not change what boots and does not install content: use Save in the device\'s Mods menu for that. It stays here until the device offers Save over USB.'));
+  card.append(h('h2', {}, 'Mods on the OP-XY'),
+    h('p', { class: 'muted' }, 'Saving works like turning mods on in the device\'s Mods menu: the OP-XY checks that it can build them and keeps them. It builds them the next time it starts.'));
+  if (!saved) { card.append(h('p', {}, 'This OP-XY\'s XY Forever cannot set mods over USB (it needs protocol 1.24): update it first.')); return card; }
   if (gens.length === 0) { card.append(h('p', {}, 'Send a package set with its base first.')); return card; }
-  const gen = h('select', { 'aria-label': 'Package set' }, ...gens.map((g, i) => h('option', { value: String(i) }, `${g.profile} ${g.generation}`)));
-  const base = h('select', { 'aria-label': 'Base firmware' });
-  const name = h('input', { type: 'text', value: 'Open-XY', 'aria-label': 'Name', maxlength: 47 });
-  const checks = h('div', { class: 'checks' });
-  const status = h('p', { class: 'muted' });
-  const bar = h('progress', { value: 0, max: 1, hidden: true });
-  const fill = (): void => {
-    const g = gens[Number(gen.value)]!;
-    checks.replaceChildren(...groupMods(g.packages.filter((p) => p.complete), config).flatMap((grp) => grp.rows).map((r) =>
-      h('label', {}, h('input', { type: 'checkbox', value: r.id, checked: r.on === true, 'data-extension': r.extension ? '1' : '' }), `${r.name}`, h('span', { class: 'muted' }, r.kind))));
-  };
-  gen.addEventListener('change', fill);
-  fill();
-  void libraryBases(client!).then((list) => base.replaceChildren(...list.map((b) => h('option', { value: b.id }, `${b.name} (${b.id})${b.contentList ? '' : ': no content list, a build refuses it'}`)))).catch(() => undefined);
-  const cancel = btn('Cancel', () => building?.abort(), 'danger');
-  cancel.disabled = true;
-  const start = btn('Build on device', () => void run('build', async () => {
-    const g = gens[Number(gen.value)]!;
-    const on = [...checks.querySelectorAll<HTMLInputElement>('input:checked')];
-    const request: ApplyRequest = { base: base.value, profile: g.profile, generation: g.generation, name: name.value.trim(),
-      machines: on.filter((i) => !i.dataset['extension']).map((i) => i.value), extensions: on.filter((i) => i.dataset['extension']).map((i) => i.value) };
-    if (!request.base) throw new Error('Choose a base firmware from the library.');
-    if (request.machines.length === 0) throw new Error('Turn on at least one machine.');
-    if (!await confirmAction('Build on the OP-XY?', `The OP-XY builds "${request.name}" from ${request.machines.length + (request.extensions?.length ?? 0)} mods on ${base.selectedOptions[0]?.textContent ?? request.base}. It replaces the older of the two mod library entries, takes a few minutes, and the device is busy meanwhile. What boots does not change.`, 'Build')) return;
-    building = new AbortController();
-    cancel.disabled = false; bar.hidden = false;
+  const g = gens.find((x) => x.generation === saved.generation) ?? gens[0]!;
+  const checks = h('div', { class: 'checks' }, ...groupMods(g.packages.filter((p) => p.complete), null).flatMap((grp) => grp.rows).map((r) =>
+    h('label', {}, h('input', { type: 'checkbox', value: r.folder, checked: saved.mods.includes(r.folder) }), `${r.name}`, h('span', { class: 'muted' }, r.kind))));
+  const memory = h('input', { type: 'checkbox', checked: saved.expanded });
+  const unknown = h('input', { type: 'checkbox', checked: saved.unverified });
+  const status = h('p', { class: 'muted', id: 'inputs-status' }, saved.write === 'failed' ? 'The last change could not be written: save again.' : '');
+  const save = btn('Save', () => void run('save_mods', async () => {
+    const mods = [...checks.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value);
     try {
-      const done = await buildOnDevice(client!, request, (s) => { bar.max = s.total || 1; bar.value = s.done; status.textContent = `${s.phase}: ${s.done} of ${s.total}`; }, building.signal);
-      status.textContent = `Built in ${(done.status.elapsedMs / 1000).toFixed(1)} s into library entry ${done.entry} (content not installed: it does not boot as it is).`;
-    } finally { building = null; cancel.disabled = true; }
-  }, 'Building on the OP-XY...'), 'primary');
-  card.append(h('div', { class: 'row' }, gen, base, name), checks, h('div', { class: 'row' }, start, cancel), bar, status);
+      await configSet(client!, { mods, expanded: memory.checked, unverified: unknown.checked });
+      status.textContent = 'Saved. The OP-XY builds and installs it the next time it starts.';
+    } catch (error) {
+      if (!isXyfError(error, 'refused')) throw error;
+      status.textContent = `Not saved: ${error.message}`;
+    }
+  }, 'Saving on the OP-XY...'), 'primary');
+  card.append(checks,
+    h('div', { class: 'row' }, h('label', {}, memory, '4 MiB mod memory'), h('label', {}, unknown, 'Allow an unknown base')),
+    h('div', { class: 'row' }, save), status);
   return card;
 }
 
@@ -419,4 +401,3 @@ route();
 document.getElementById('bug-report')!.addEventListener('click', () => {
   previewBugReport(bugReport.snapshot(client?.connected === true));
 });
-(window as Window & { xyfApp?: unknown }).xyfApp = { setBuildOnDevice };

@@ -62,6 +62,22 @@ xyf::mods::Effect progress_key(uint32_t key, bool pressed);
 uint32_t converge_state();
 const char* converge_reason();
 void converge_done();
+// #26, usb_service's config.get and config.set: the saved inputs over USB. config_view reads the record fresh (s_ok;
+// s_busy while the sequence runs or a job holds the storage; else the read's status): record (1: saved), count, flags
+// (bit 0 the 4 MiB layout, bit 1 safe mode, bit 2 an unknown base allowed), saving (1: a flip waits for its quiet
+// moment or is written; 2: its write failed), base, generation, the mods= line (mods, mods_bytes; in the page's buffer
+// until the next pass). config_set: a flip on the page with the toggles, Mod memory and safe mode given (flags as
+// config_view's; mods a comma list of the record's mods= names). It reads the package list again first (s_busy until
+// it is, for the request whose CRC-32 is crc: the same request again), checks the selection can be built (s_refused,
+// reason as the page says it) and sets it (s_ok): written at the next quiet moment (pick_step). Never a build.
+struct ConfigView {
+    uint32_t record, count, flags, saving, mods_bytes;
+    const char* base;
+    const char* generation;
+    const char* mods;
+};
+uint32_t config_view(ConfigView& v);
+uint32_t config_set(uint32_t flags, const char* mods, uint32_t crc, const char*& reason);
 #endif
 } }
 #endif

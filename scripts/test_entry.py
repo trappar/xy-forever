@@ -17,7 +17,8 @@ removed when the run passed, unless --keep; each first needs Settings > Ask befo
                    written last; B's catalog then lists <id> as "content not installed" (expected).
   --boot           set-default <id> (library.set_default: B's content switch makes /yaffs2/content/ match
                    the entry and writes content-state.txt `state=installed entry=<id>`, then default=<id>),
-                   then boot <id> once (library.boot). USB goes.
+                   then boot <id> once (library.boot). USB goes. The saved inputs (config.txt) stay: the next
+                   plain power-on converges back to the saved setup (#197, #26).
   --cleanup        refused while <id> is the default or once, or content-state.txt names it (first:
                    `xyf_host.py set-default <previous default> --yes-write`); removes firmware/<id>/ and
                    loaded/<id>/.
@@ -218,9 +219,9 @@ class TestEntry(dp.Pass):
         self.say('content switch done: content-state.txt installed entry=%s; default=%s' % (o.id, o.id))
         self.ok(['boot', o.id, '--yes-boot'])
         self.gone(dp.T_DRY, 'boot (library.boot)')
-        self.say('library.boot ok; USB gone: %s is booting. Back: hold PLAY at power-on, then '
-                 '`xyf_host.py set-default %s --yes-write` and `scripts/test_entry.py --id %s --cleanup`'
-                 % (o.id, default, o.id))
+        self.say('library.boot ok; USB gone: %s is booting. Back: a plain power-on converges to the saved setup '
+                 '(#197; none saved: hold PLAY at power-on, then `xyf_host.py set-default %s --yes-write`); then '
+                 '`scripts/test_entry.py --id %s --cleanup`' % (o.id, default, o.id))
 
     # -- cleanup -------------------------------------------------------------------------------
     def cleanup(self):

@@ -11,9 +11,10 @@ packages used (mtime poll, no dependency). The way back: the default before the 
 small state file under the host's cache dir (never on the device); `mods dev --restore` sets it again.
 
 The saved configuration (/yaffs2/xy-forever/config.txt) names the default the menu expects. When it
-is present a dev run changes the default behind it, and the menu's Continue line then ends in "(to apply)"
-(or "(rebuild)"); mods dev refuses unless --ignore-config, and says what the menu will show. It does not
-rewrite config.txt (that record is the menu's own: Save in the menu writes it again)."""
+is present a dev run changes the default behind it, once: the menu's Continue line then ends in "(to apply)"
+(or "(rebuild)") and the next plain power-on converges back to the saved setup (#197); mods dev refuses
+unless --ignore-config, and says what the menu will show. It never rewrites config.txt (the saved inputs:
+the Mods page and `mods set` change them)."""
 import json
 import os
 from pathlib import Path
@@ -202,8 +203,8 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
     cfg = ph.run('check', lambda: config(dev))
     if cfg is not None and not args.ignore_config:
         out('mods dev: refused: the device has a saved configuration (config.txt: %s).' % describe_config(cfg))
-        out('  A dev build becomes the default behind it, and the menu\'s Continue line would end in "(to apply)"')
-        out('  until Save in the menu or `mods dev --restore`. Re-run with --ignore-config to accept that.')
+        out('  A dev build becomes the default behind it, once: the menu\'s Continue line ends in "(to apply)", and')
+        out('  the next plain power-on converges back to the saved setup (#197). Re-run with --ignore-config for that.')
         return 2, {}
     state = load_state()
     key = target_key(port)

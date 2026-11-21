@@ -25,7 +25,8 @@ For development without a device, start the simulator from the repository root
 - **Device**: build, what is running, what boots next, the saved mods (`/yaffs2/xy-forever/config.txt`), the content state.
 - **Mods**: packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
   saved on/off state; add packages from a folder (a `modkit split` generation folder); remove a package or a whole set;
-  **Build on device** (marked low-level, see below).
+  **Mods on the OP-XY**: the mods it runs and Mod memory, saved as the device's Mods menu does
+  (`config.set`: checked and kept, or refused with the reason; built the next time XY Forever starts).
 - **Files**: browse `/yaffs2`, download, upload, new folder, rename/move, copy, delete. Changes are allowed only under
   `/yaffs2/xy-forever/` and `/yaffs2/content/`; the page says so and refuses early what the device would refuse.
 
@@ -57,11 +58,7 @@ test's simulator helpers come from its `test/` folder.
 
 ## Not built yet
 
-- **Save over USB.** "Build on device" uses the client's low-level `applyMods` (`mods.apply`): it builds the
-  library entry mods-a or mods-b with its content not installed and does not change what boots. Turning mods on or
-  off (saved at once) stays in the device's Mods menu until the device offers saving over USB. The seam is
-  `buildOnDevice` / `setBuildOnDevice` in `src/main.ts` (also `window.xyfApp.setBuildOnDevice`).
-- Making a built entry the default (`makeDefault`), firmware library management, firmware and companion install,
+- Firmware library management, firmware and companion install,
   XY Forever self-update, Bluetooth.
 - Recursive delete of a non-empty folder, drag and drop upload, upload of folders.
 - Production hosting (it needs a secure context: `https://` or `localhost`).

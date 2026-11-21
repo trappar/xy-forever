@@ -188,13 +188,15 @@ service running. Commands that change what boots are dry runs unless you add the
 | mods push | `python3 xyf_host.py mods push DIR [--only ID ...] [--verify]` (send a package set) |
 | mods list | `python3 xyf_host.py mods list` (package sets and packages on the device, with sizes) |
 | mods remove | `python3 xyf_host.py mods remove GENERATION --yes` (without `--yes`: dry run) |
-| mods apply | `python3 xyf_host.py mods apply --base ID --generation GEN MACHINE ... --wait` |
+| mods set | `python3 xyf_host.py mods set MACHINE ... [--ext ID ...]` (the mods it runs; `mods status`) |
+| mods apply | `python3 xyf_host.py mods apply --base ID --generation GEN MACHINE ... --wait` (developers) |
 | screenshot | `python3 xyf_host.py screenshot --out screen.png` |
 
-`mods apply` builds mod firmware on the device into library entry `mods-a` or
-`mods-b`, the same build the Mods page runs. `--ext ID ...` adds extensions, `--name`
-names the entry, `--memory expanded` uses the 4 MiB layout, and `mods cancel` stops a running build. It
-does not install content or change the default; the Mods page's Save does both.
+`mods set` saves the mods the OP-XY runs, as turning them on in the Mods page does: the OP-XY
+checks that it can build them and keeps them, or says why not, and builds them the next time it
+starts; `mods set` with no mods turns them all off. Boot without mods stays on the device. For
+developers, `mods apply` only builds into library entry `mods-a` or `mods-b` (`--memory expanded`:
+the 4 MiB layout; `mods cancel` stops it); making it the default boots it until the next plain power-on.
 
 `--sim HOST:PORT` talks to the device simulator (`python3 -m xy_forever.sim`) instead
 of the USB port. The examples above were checked against each command's `--help`, not

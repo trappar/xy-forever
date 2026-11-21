@@ -82,15 +82,11 @@ Without it booting from the first row stops with "Failed: no stock OP-XY firmwar
 machines on (saved at once), STOP, then PLAY on the first row. The OP-XY builds,
 installs content, sets the default and boots it.
 
-**From the computer:**
+**From the computer:** `python3 xyf_host.py mods set MACHINE ... [--ext ID ...]` saves the same
+selection (checked, or refused with the reason; none: all off); it is built at the next start.
 
-```sh
-python3 xyf_host.py mods apply --base ID --generation opxy-1.2.1/<generation> MACHINE ... \
-    [--ext ID ...] [--name NAME] [--wait]
-```
-
-This builds into library entry `mods-a` or `mods-b` and stops there. Then make that
-entry the default (`set-default ID --yes-write`), which installs its content first. `mods cancel` stops a running build.
+To try your build once without changing what is saved: `mods dev --boot` (or `mods apply`, then
+`set-default` and `boot`). The next plain power-on goes back to the saved setup.
 
 ## Limits
 

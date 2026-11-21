@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.23",
+    "version": "1.24",
     "intro": [
       "XY Forever is a firmware and mod manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -1069,6 +1069,73 @@
         "busy"
       ],
       "doc": "Developer RAM-only rehearsal. Starts from the current stage.end-verified B input. Transfers contiguous chunks into A-owned staging, checks chunk and full CRC/SHA on A, and applies the existing boot.install or boot.uninstall policy independently on A. Poll status until phase 0; result 0 plus A SHA-256 proves admission. Cancel and deadline abort the transfer. Success collects A proof then releases A ownership. No boot-partition write, filesystem write, read-write mount or reset. A delayed request never blocks USB/status. A link failure stops without reset, retry or fallback; ordinary lost-link behavior is retained. Shipping boot.install and boot.uninstall are unchanged."
+    },
+    {
+      "type": "0x4d",
+      "name": "config.get",
+      "symbol": "config_get",
+      "class": "product",
+      "since": "1.24",
+      "switch": "XYF_USB_FILE_WRITE",
+      "switch_optional": false,
+      "summary": "read the saved inputs: mod selection, safe mode, Mod memory",
+      "timeout_ms": 30000,
+      "destructive": false,
+      "request": {
+        "size": [4, 4],
+        "fields": [
+          {"name": "version", "type": "u32", "doc": "API version: 1; newer is unsupported"}
+        ]
+      },
+      "reply": {
+        "size": [22, 2132],
+        "fields": [
+          {"name": "version", "type": "u32", "doc": "reply format: 1"},
+          {"name": "record", "type": "u32", "range": [0, 1], "doc": "1: `config.txt` (or `config.old`) is saved; 0: none (no mods, the default stock entry boots)"},
+          {"name": "count", "type": "u32", "doc": "mods selected"},
+          {"name": "flags", "type": "u32", "range": [0, 7], "doc": "bit 0: Mod memory is the 4 MiB layout; bit 1: safe mode (the base boots with its official content, the selection kept); bit 2: an unknown base is allowed"},
+          {"name": "saving", "type": "u32", "range": [0, 2], "values": {"0": "saved: the fields are what boots next", "1": "a set (or a Mods-page flip) waits for its quiet moment or is being written", "2": "the last write failed: the next set or flip writes it again"}, "doc": "the write of the latest set"},
+          {"name": "base", "type": "cstr", "encoding": "ascii", "min_bytes": 1, "max_bytes": 32, "doc": "the stock library entry the setup is built on (empty: none in the library)"},
+          {"name": "generation", "type": "cstr", "encoding": "ascii", "min_bytes": 1, "max_bytes": 32, "doc": "the mod package set the selection is from (empty: none saved)"},
+          {"name": "mods", "type": "text", "encoding": "ascii", "max_bytes": 2048, "doc": "the selection as saved: machine folders, then `ext-<id>`, comma-separated (empty: none)"}
+        ],
+        "on_error": "status",
+        "extensible": false
+      },
+      "errors": ["bad_request", "unsupported", "busy", "link", "storage"],
+      "doc": "Reads the saved record (`config.txt`, else `config.old`) fresh from storage; changes nothing. `busy` while the device converges before a boot or a job holds the storage. These are the inputs a plain power-on converges to (builds, installs content, sets the default) before it boots: docs/storage/state.md."
+    },
+    {
+      "type": "0x4e",
+      "name": "config.set",
+      "symbol": "config_set",
+      "class": "product",
+      "since": "1.24",
+      "switch": "XYF_USB_FILE_WRITE",
+      "switch_optional": false,
+      "summary": "save the mod selection, safe mode and Mod memory (built at the next boot)",
+      "timeout_ms": 30000,
+      "destructive": true,
+      "request": {
+        "size": [41, 2088],
+        "fields": [
+          {"name": "version", "type": "u32", "doc": "API version: 1; newer is unsupported"},
+          {"name": "flags", "type": "u32", "range": [0, 7], "doc": "bit 0: the 4 MiB Mod memory layout; bit 1: safe mode on (needs a built selection: the base boots with its official content), off when clear; bit 2: allow an unknown base"},
+          {"name": "mods", "type": "cstr", "encoding": "ascii", "min_bytes": 1, "max_bytes": 2048, "doc": "the selection: package folder names of the newest complete package set (machines; extensions as `ext-<id>`), comma-separated (empty: no mods)"},
+          {"name": "sha256", "type": "bytes[32]", "doc": "confirmation: the SHA-256 of every request byte before it"}
+        ]
+      },
+      "reply": {
+        "size": [4, 84],
+        "fields": [
+          {"name": "version", "type": "u32", "doc": "reply format: 1"},
+          {"name": "reason", "type": "text", "encoding": "ascii", "max_bytes": 80, "doc": "with `refused`: why the selection cannot be built, as the Mods page says it; else empty"}
+        ],
+        "on_error": "full",
+        "extensible": false
+      },
+      "errors": ["bad_request", "unsupported", "sha", "link", "refused"],
+      "doc": "As if the Mods page's toggles were flipped on the device. The first request reads the package list fresh and answers `busy` until that is done: send the same request again. It then checks that the selection can be built (every name a package of the set, within Mod memory, a stock base in the library) and answers `refused` with the reason, changing nothing; or `ok`, and the record is written at the next quiet moment as a flip on the page is (`config.get` `saving`). It never builds and never changes the default: the next boot converges to it (docs/storage/state.md). `busy` also while the device converges, a job runs, or a flip on the page is not written yet."
     }
   ],
   "events": [
@@ -1108,7 +1175,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.23;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000001ffb001700031fff00be;dev=1;confirm=1;trust=none;stage2=0"}, "hex": "58468101d600000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32333b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303031666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b7374616765323d30de1e9781"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.24;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000007ffb001700031fff00be;dev=1;confirm=1;trust=none;stage2=0"}, "hex": "58468101d600000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32343b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303037666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b7374616765323d30c3f669a4"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,
