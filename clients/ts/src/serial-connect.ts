@@ -62,13 +62,21 @@ function matches(port: SerialPortLike, filters: readonly Filter[]): boolean {
   return filters.some((f) => info.usbVendorId === f.usbVendorId && info.usbProductId === f.usbProductId);
 }
 
+/** Chrome's answer to opening a port this page has open already (another link here holds it). */
+function openHere(error: unknown): boolean {
+  return (error as { name?: unknown } | null)?.name === 'InvalidStateError';
+}
+
 /**
  * Opens the preferred port, else the first granted one not found silent. While probing (before the chooser), a port
- * that fails to open is silent too, and none left ends the connect (`none`); after it, all are tried again.
+ * that fails to open is silent too, and none left ends the connect (`none`); after it, all are tried again. A port
+ * this page has open already ends the connect (`held`): another link here owns XY Forever, and the next entry may be
+ * the same OP-XY under another name (Chrome listed two for one), so opening it would put a second reader on its replies.
  */
 class PortPicker {
   readonly silent = new Set<SerialPortLike>();
   readonly none = new XyfError('aborted', 'no granted port answered');   // handshake gives an opener's `aborted` back at once
+  readonly held = new XyfError('aborted', 'XY Forever is already connected in this page: close that connection first');
   preferred: SerialPortLike | null = null;
   probing = true;
   private readonly serial: SerialLike;
@@ -91,6 +99,7 @@ class PortPicker {
       try {
         return new Probe(await WebSerialTransport.open(port), this.probeMs, quiet);
       } catch (error) {
+        if (openHere(error)) throw this.held;
         if (!this.probing) throw error;
         quiet();
       }

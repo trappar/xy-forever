@@ -32,8 +32,9 @@ export interface InstallDeps {
   readonly usb: unknown;
   /** Web Serial (or the simulator) is available. */
   readonly serial: boolean;
-  /** Connects to XY Forever over Web Serial (the chooser, or the simulator). */
-  readonly connect: () => Promise<Client>;
+  /** XY Forever over Web Serial for the finish: this app's connection when it holds one (never a second link on the
+   * port), else a granted port or the chooser (or the simulator). */
+  readonly connect: () => Promise<Lease>;
   /** XY Forever on a port already granted (never the chooser), or null when none answers. */
   readonly find?: () => Promise<Lease | null>;
   /** Calls back when a serial port appears (Web Serial's connect event). */
@@ -133,9 +134,9 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
   async function findChosen(): Promise<void> {
     say('Looking for XY Forever…');
     await detecting;
-    const client = await deps.connect();
+    const lease = await deps.connect();
     let state: 'finish' | 'done';
-    try { state = await installState(client); } finally { await client.close().catch(() => {}); }
+    try { state = await installState(lease.client); } finally { await lease.close().catch(() => {}); }
     busy = false; jump(state);
   }
 
@@ -279,13 +280,13 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
   async function finish(): Promise<void> {
     say('Connecting to XY Forever…');
     await detecting;                 // it holds the port until it is done
-    const client = await deps.connect();
+    const lease = await deps.connect(), client = lease.client;
     const off = client.onAsk((asking) => say(asking ? `${ASK_TEXT}: your OP–XY asks to allow this computer. Press PLAY to allow it.` : 'Allowed.'));
     try {
       await finishInstall(client, { release: release!, stockChecked, step: (text, f) => say(text, f ?? null) });
     } finally {
       off();
-      await client.close().catch(() => {});
+      await lease.close().catch(() => {});
     }
     busy = false; finished = true; go('done', 0);
   }

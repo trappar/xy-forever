@@ -309,4 +309,14 @@ describe('detecting XY Forever at any stage', () => {
     expect(error).toBeInstanceOf(XyfError);
     expect(asked).toBe(0);
   });
+  it('never opens a second link: a port this page holds ends the connect, the other entry stays shut', async () => {
+    const opened: string[] = [];
+    const port = (name: string, fails: boolean) => ({ getInfo: () => ({ ...RELEASE_FILTERS[0] }), close: async () => {}, readable: null, writable: null,
+      open: async () => { opened.push(name); if (fails) throw new DOMException('The port is already open.', 'InvalidStateError'); } });
+    const held = port('held', true), twin = port('twin', false);       // Chrome listed two entries for one OP-XY
+    const serial = { getPorts: async () => [held, twin], requestPort: async () => twin };
+    const error = await connectWebSerial({ serial, filters: RELEASE_FILTERS, timeoutMs: 1000 }).catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: 'aborted', message: expect.stringContaining('already connected') });
+    expect(opened).toEqual(['held']);
+  });
 });

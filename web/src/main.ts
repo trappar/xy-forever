@@ -137,19 +137,24 @@ function installDeps(): Parameters<typeof installPage>[1] {
     midi: nav.requestMIDIAccess ? nav.requestMIDIAccess.bind(nav) : null,
     usb: nav.usb ?? null,
     serial: sim !== null || webSerial() !== null,
-    connect: () => connectDevice(RELEASE_FILTERS),
+    connect: async () => own() ?? lease(await connectDevice(RELEASE_FILTERS)),
     find: findDevice,
     onPort: (listener) => nav.serial?.addEventListener?.('connect', listener),
   };
 }
 
+/** This app's connection, lent (close keeps it): while it holds the port, the Install page uses it and never opens a
+ * second link (two readers on one OP-XY split its replies). */
+function own(): Lease | null { return client?.connected ? { client, close: async () => {} } : null; }
+const lease = (found: Client): Lease => ({ client: found, close: () => found.close() });
+
 /** XY Forever without the chooser, for the Install page to detect: this app's connection, else a granted port that
  * answers (or the simulator); null when none does. */
 async function findDevice(): Promise<Lease | null> {
-  if (client?.connected) return { client, close: async () => {} };
+  const mine = own();
+  if (mine) return mine;
   if (busy || (!sim && !webSerial())) return null;
-  const found = sim ? await connectDevice() : await connectWebSerial({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false });
-  return { client: found, close: () => found.close() };
+  return lease(sim ? await connectDevice() : await connectWebSerial({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false }));
 }
 
 // ---- Device ------------------------------------------------------------------------------------------
