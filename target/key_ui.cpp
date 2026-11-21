@@ -363,7 +363,7 @@ extern "C" void xy_forever_key_ui() {
                     xy_forever::mods_io::converge_done();
                     xy_forever::xyf_boot::choose_default(); r.exit_reason = exit_play; break;
                 }
-                if (saved == xy_forever::mods_io::converge_failed) {
+                if (saved == xy_forever::mods_io::converge_failed || saved == xy_forever::mods_io::converge_note) {
                     status = xy_forever::mods_io::converge_reason();
                     xy_forever::mods_io::converge_done();
                     dirty = 1;

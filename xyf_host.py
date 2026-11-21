@@ -579,7 +579,7 @@ def run(argv):
             print('refused: id must be 1-31 of [a-z0-9_-]'); return 2
         print('Plan: the device boots firmware/%s once, as PLAY on it in the library menu: the menu closes,' % args.id)
         print('      USB goes away and the OS does not answer this tool. The default and the state files stay.')
-        print('      Back to XY Forever: power off, wait 5 s, power on holding PLAY, release it at the logo.')
+        print('      Back to XY Forever: power off, then power on holding PLAY, release it at the logo.')
         if not args.yes_boot:
             print('DRY RUN: nothing sent. Re-run with --yes-boot to boot.')
             return 0

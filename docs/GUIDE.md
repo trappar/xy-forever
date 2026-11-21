@@ -30,6 +30,9 @@ What it never touches:
 - If the default firmware is missing or fails its checks, the menu opens by itself and
   says why, for example "Default opxy-125: file missing" or "content not installed".
 - With no bootable firmware at all, "No firmware found" shows one row: About.
+- The first start after installing adds your OP-XY's own OS 1.2.1 to the library as the
+  default ("Adding OS 1.2.1"). If that file is missing or not official 1.2.1, the menu
+  says so: reinstall official OS 1.2.1, then start again.
 
 ## Keys and knobs
 

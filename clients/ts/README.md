@@ -55,7 +55,7 @@ simulator tests with the reason when they cannot start. Node 22.18 or later.
 
 ```ts
 import { Client, decodeScreen, isXyfError } from 'xy-forever-client/node';   // browser: 'xy-forever-client'
-import { tcpOpener } from 'xy-forever-client/node';     // browser: webSerialOpener() after requestPort()
+import { tcpOpener } from 'xy-forever-client/node';     // browser: connectWebSerial() from a click (granted port, else the chooser)
 
 const client = await Client.connect(tcpOpener('127.0.0.1:7341'));   // hello; pre-1.1: update_required
 console.log(client.info.build, client.info.limits);

@@ -1,8 +1,8 @@
-// The XY Forever web app: Connect, Device, Mods, Files. Plain DOM; one device action at a time.
+// The XY Forever web app: Connect, Install, Device, Mods, Files. Plain DOM; one device action at a time.
 // ?sim=PORT: the device simulator on 127.0.0.1:PORT through the dev server's relay (development and tests).
-import { ASK_TEXT, Client, SERIAL_OFF_TEXT, JobError, configGet, configSet, fileListSource, fileReason, grantedPorts, isXyfError, listPackages, localSet, pushPackages,
-  removePackage, requestPort, webSerial, webSerialOpener } from 'xy-forever-client';
-import type { DirEntry, HeldGeneration, LocalSet, Opener, PackageSource, SavedInputs } from 'xy-forever-client';
+import { ASK_TEXT, Client, RELEASE_FILTERS, SERIAL_OFF_TEXT, JobError, configGet, configSet, connectWebSerial, fileListSource, fileReason, isXyfError,
+  listPackages, localSet, pushPackages, removePackage, webSerial } from 'xy-forever-client';
+import type { DirEntry, HeldGeneration, LocalSet, PackageSource, SavedInputs } from 'xy-forever-client';
 import { webSocketOpener } from 'xy-forever-client/dev';
 import { CONFIG_FILE, CONFIG_OLD, CONTENT_STATE, CONTENT_STATE_OLD, ROOT, WRITE_RULE, changeRefusal, configText, contentText, folderWritable, groupMods,
   human, joinPath, modeText, nameProblem, parentOf, parseConfig } from './model.ts';
@@ -10,6 +10,10 @@ import type { SavedConfig } from './model.ts';
 import { BugReport } from './bug-report.ts';
 import type { Action } from './bug-report.ts';
 import { confirmAction, downloadBlob, h, notice, previewBugReport, promptText } from './ui.ts';
+import { installPage } from './install/page.ts';
+import type { Lease } from './install/page.ts';
+import { navigate, startRouter } from './router.ts';
+import type { How } from './router.ts';
 
 const sim = new URLSearchParams(location.search).get('sim');
 let client: Client | null = null;
@@ -18,25 +22,28 @@ const bugReport = new BugReport();
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
 
 // ---- Navigation and actions ---------------------------------------------------------------------------
+// One path per page (router.ts): /connect (also /), /install/<stage>, /device, /mods, /files.
 
-const PAGES = ['connect', 'device', 'mods', 'files'] as const;
+const PAGES = ['connect', 'install', 'device', 'mods', 'files'] as const;
+const OPEN_PAGES: readonly Page[] = ['connect', 'install'];   // without a connection
 type Page = (typeof PAGES)[number];
 const loaders: Record<Page, () => Promise<void>> = {
   connect: () => run('show_connect', async () => renderConnect()),
+  install: async () => {},       // route() shows its stage
   device: () => run('refresh_status', loadDevice),
   mods: () => run('list_packages', loadMods),
   files: () => run('browse_files', () => browse(cwd)),
 };
 
-function current(): Page { const p = location.hash.slice(1) as Page; return PAGES.includes(p) ? p : 'connect'; }
+function current(): Page { const p = location.pathname.split('/')[1] as Page; return PAGES.includes(p) ? p : 'connect'; }
 
-function route(): void {
-  const p = client ? current() : 'connect';
+function route(how: How = 'push'): void {
+  const p = client || OPEN_PAGES.includes(current()) ? current() : 'connect';
   for (const id of PAGES) page(id).hidden = id !== p;
   for (const a of document.querySelectorAll<HTMLAnchorElement>('#nav a')) a.classList.toggle('active', a.dataset['page'] === p);
-  if (client || p === 'connect') void loaders[p]();
+  if (p === 'install') (install ??= installPage(page('install'), installDeps())).show(location.pathname, how);
+  else if (client || OPEN_PAGES.includes(p)) void loaders[p]();
 }
-window.addEventListener('hashchange', route);
 
 function setLink(): void {
   document.getElementById('link')!.classList.toggle('on', client !== null);
@@ -81,7 +88,8 @@ function renderConnect(): void {
   const supported = sim !== null || webSerial() !== null;
   page('connect').replaceChildren(
     h('h1', {}, 'Connect your OP-XY'),
-    h('p', { class: 'lede' }, 'Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the list.'),
+    h('p', { class: 'lede' }, 'Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the list. ',
+      'Not installed yet? ', h('a', { href: '/install' }, 'Install XY Forever'), '.'),
     h('div', { class: 'card' },
       supported
         ? h('div', { class: 'row' },
@@ -93,21 +101,26 @@ function renderConnect(): void {
   );
 }
 
-async function opener(): Promise<Opener> {
-  if (sim) return webSocketOpener(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/xyf-relay?sim=${encodeURIComponent(sim)}`);
-  if ((await grantedPorts()).length === 0) await requestPort();
-  return webSerialOpener();
+/** The simulator, else Web Serial: a granted port that answers, the chooser only when none does (serial-connect.ts).
+ * filters: the install's release image has only the stock pair (RELEASE_FILTERS). */
+async function connectDevice(filters?: typeof RELEASE_FILTERS): Promise<Client> {
+  if (sim) return Client.connect(webSocketOpener(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/xyf-relay?sim=${encodeURIComponent(sim)}`), { timeoutMs: 10_000 });
+  return connectWebSerial({ timeoutMs: 10_000, filters });
+}
+
+/** Makes found this app's connection. */
+function use(found: Client): void {
+  client = found;
+  bugReport.updateStatus(found.info);
+  found.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
+  if (!found.info.serial) notice(SERIAL_OFF_TEXT, 'error');                     // #191: hello serial=off
+  setLink();
 }
 
 async function connect(): Promise<void> {
-  client = await Client.connect(await opener(), { timeoutMs: 10_000 });
-  bugReport.updateStatus(client.info);
-  client.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
-  if (!client.info.serial) notice(SERIAL_OFF_TEXT, 'error');                     // #191: hello serial=off
-  setLink();
-  location.hash = '#device';
+  use(await connectDevice());
   busy = false;
-  route();
+  navigate('/device');
 }
 
 async function disconnect(): Promise<void> {
@@ -116,6 +129,42 @@ async function disconnect(): Promise<void> {
   setLink();
   await c?.close();
   renderConnect();
+}
+
+// ---- Install (#178) -----------------------------------------------------------------------------------
+
+let install: ReturnType<typeof installPage> | null = null;
+
+function installDeps(): Parameters<typeof installPage>[1] {
+  const nav = navigator as Navigator & { requestMIDIAccess?: (o: { sysex: boolean }) => Promise<unknown>; usb?: unknown;
+    serial?: { addEventListener?: (type: string, listener: () => void) => void } };
+  return {
+    midi: nav.requestMIDIAccess ? nav.requestMIDIAccess.bind(nav) : null,
+    usb: nav.usb ?? null,
+    serial: sim !== null || webSerial() !== null,
+    connect: async () => own() ?? lease(await connectDevice(RELEASE_FILTERS)),
+    find: findDevice,
+    handoff: (lease) => {                     // installed: the connection becomes the app's, then the Mods page
+      if (client !== lease.client) use(lease.client);
+      document.getElementById('installed')!.hidden = false;
+      navigate('/mods');
+    },
+    onPort: (listener) => nav.serial?.addEventListener?.('connect', listener),
+  };
+}
+
+/** This app's connection, lent (close keeps it): while it holds the port, the Install page uses it and never opens a
+ * second link (two readers on one OP-XY split its replies). */
+function own(): Lease | null { return client?.connected ? { client, close: async () => {} } : null; }
+const lease = (found: Client): Lease => ({ client: found, close: () => found.close() });
+
+/** XY Forever without the chooser, for the Install page to detect: this app's connection, else a granted port that
+ * answers (or the simulator); null when none does. */
+async function findDevice(): Promise<Lease | null> {
+  const mine = own();
+  if (mine) return mine;
+  if (busy || (!sim && !webSerial())) return null;
+  return lease(sim ? await connectDevice() : await connectWebSerial({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false }));
 }
 
 // ---- Device ------------------------------------------------------------------------------------------
@@ -398,7 +447,8 @@ async function removePath(path: string, e: DirEntry): Promise<void> {
 // ---- Start -------------------------------------------------------------------------------------------
 
 setLink();
-route();
+document.getElementById('installed-dismiss')!.addEventListener('click', () => { document.getElementById('installed')!.hidden = true; });
+startRouter((_path, how) => route(how));
 document.getElementById('bug-report')!.addEventListener('click', () => {
   previewBugReport(bugReport.snapshot(client?.connected === true));
 });

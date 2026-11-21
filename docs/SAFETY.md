@@ -29,14 +29,13 @@ needs the highest bar of confidence. These rules are binding and override conven
   by the 1.2.1 bootloader: unknown, possibly the program entry) are forbidden. Keys read on the
   device need no protection there; they never go into the repository.
 
-- **Never let anything remove `/yaffs2/bootloader.dev`.** The 1.2.1 bootloader enables
-  its dev menu (recovery step 2 below) when this file exists (`88a1d7e6`); no known
-  method recreates it once XY Forever is gone too. The file engine refuses to remove or
-  rename it away, on A for every request and on B before sending
-  (`file_engine::decide_engine`). It is also never written, replaced or
-  renamed onto by hand (MTP, serial file commands); only A's own restore below re-creates it. Any future file feature (file
-  write, uninstall, cleanup) must keep that rule. Spelling is not enough (yaffs follows
-  links inside a path): A also stats the marker around every unlink and
+- **XY Forever never removes `/yaffs2/bootloader.dev`.** The 1.2.1 bootloader enables its dev menu
+  (recovery step 2) when it exists (`88a1d7e6`). te-boot re-creates it over Web MIDI (`0xac`, 1.2.1
+  bootloader only; [tfw.md](hardware/tfw.md)), so a developer may turn it off for a test.
+  The file engine refuses to remove or rename it away, on A for every request and on B before sending
+  (`file_engine::decide_engine`). It is never written, replaced or renamed onto by hand (MTP, serial
+  file commands); only A's restore below re-creates it. File features keep that rule. Spelling is
+  not enough (yaffs follows links in a path): A also stats the marker around every unlink and
   rmdir, refuses a path that resolves to it, and re-creates (lowercase) a marker that
   existed before the operation and is gone after it; it never creates one that was absent.
 - **Never let storage reach a boot partition by accident.** While install mode has a boot
@@ -159,7 +158,6 @@ Keep a known-good build and its dev-menu kit ready at all times.
   can take tens of seconds after a dev-menu MTP copy; do not assume the fast checkpoint mount.
 - **Module size:** shared code can push another mode past its reservation. Run `scripts/neutral.py`
   (it builds every mode) after shared-code changes.
-- **Fast power cycles** skip the stock USB start. Wait about 5 s after any power-off.
 - **L1 instruction SRAM:** data loads from it stall the boot at the logo; never read it as data.
 - **Never leave the device in the OS** unnecessarily. Booting the OS is one-way; only a power cycle
   at the device returns. End sessions held by keepalive, and use dry runs to test boot paths.

@@ -25,6 +25,7 @@ void job_view(JobView& v) {                                             // as jo
         v.done = g.step; v.total = cg_ended; v.error = g.step == cg_ended ? g.error : 0u; v.status = g.code; v.debris = 0; v.commit = 0;
         return;
     }
+    if (job_kind == 3) return adopt_view(v);                             // #178: the stock entry's adoption
     if (job_kind) {                                                      // a content switch (its own id)
         const ContentSlot& c = cslot();
         v.state = job_state; v.id = c.id; v.phase = content_phase(c); v.done = c.job.done; v.total = c.job.total;
@@ -60,6 +61,7 @@ const char* content_undo() {                                             // the 
            code == P::s_link ? "Storage link lost." : "Content switch: could not start.";
 }
 uint32_t content_switch(const char* id) { return content_begin(id, true, false); }
+uint32_t adopt_start(const char* id, bool copy) { return adopt_begin(id, copy); }
 uint32_t config_store(const char* text, uint32_t length, const char* default_id) { return config_begin(text, length, default_id); }
 uint32_t mark_store(const char* text, uint32_t length) {
     return config_begin(text, length, "", xyf::converge::mark_path, xyf::converge::mark_old, xyf::converge::mark_part);

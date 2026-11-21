@@ -12,6 +12,7 @@ import { writeStream } from './stream.ts';
 import { inWriteArea } from './write-area.ts';
 import { RETRY_MS, type Trust } from './trust.ts';
 import { fileReason } from './file-reason.ts';
+import { retryBusy } from './busy.ts';
 import * as v1 from './v1.ts';
 
 type Codecs = typeof v1.codecs;
@@ -363,10 +364,11 @@ export class Client {
     await this.fileCall(name, { path, sha256: await sha256(new TextEncoder().encode(path)) }, path, options);
   }
 
-  /** A file command whose device errors carry a plain reason (fileReason) and the path in the message. */
+  /** A file command whose device errors carry a plain reason (fileReason) and the path in the message; `busy` while
+   * the write window closes is waited out (busy.ts). */
   private async fileCall<N extends FileCommand>(name: N, request: RequestOf<N>, path: string, options: CallOptions): Promise<ReplyOf<N>> {
     try {
-      return await this.call(name, request, options);
+      return await retryBusy(this, () => this.call(name, request, options), options);
     } catch (error) {
       throw plainFileError(error, path);
     }

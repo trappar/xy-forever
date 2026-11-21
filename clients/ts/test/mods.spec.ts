@@ -311,7 +311,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
       expect(existsSync(join(output, 'os.ldr.part'))).toBe(true);
       const busy = await client.listDir('/yaffs2').catch((e: unknown) => e);
       expect(isXyfError(busy, 'busy'), String(busy)).toBe(true);
-      expect((busy as XyfError).message).toBe('file.list /yaffs2: the OP-XY is building mod firmware (a job is running); try again when it ends, or cancel it');
+      expect((busy as XyfError).message).toBe('file.list /yaffs2: the OP-XY is running a job (building mod firmware or changing content); try again when it ends, or cancel it');
       await expect(applyMods(client, request)).rejects.toMatchObject({ code: 'busy', message: expect.stringMatching(/^mods\.apply: the OP-XY is busy/) });
       stop.abort();
       const error = await build.catch((e: unknown) => e);

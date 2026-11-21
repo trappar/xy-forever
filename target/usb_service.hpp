@@ -250,6 +250,9 @@ const char* content_undo();
 // default_id unless it is that already ("" or 0: not changed). job_target: the entry the last mod job
 // committed into ("mods-a" / "mods-b").
 uint32_t content_switch(const char* id);
+// #178: library entry id from the stock updater's own os.ldr (usb_service_adopt.ipp; copy false: it is there, only
+// the default), then id as the default; a job (job_view; error as a switch's; status as content_switch's start).
+uint32_t adopt_start(const char* id, bool copy);
 // The save-time log (xyf_save_log.hpp). save_log_begin: the Save key (the times start; the build, the
 // switch and the record add theirs; the record's job writes the line); save_log_selection: what was asked;
 // save_log_lap: the part from now (xyf::save_log::Part); save_log_drop: the Save failed (no line).

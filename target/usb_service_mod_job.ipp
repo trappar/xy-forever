@@ -56,7 +56,7 @@ static_assert(sizeof(JobSlot) <= job_slot_bytes, "the job's state fits before it
 volatile U32 job_state __attribute__((section(".data"))) = job_none;
 volatile U32 job_counter __attribute__((section(".data"))) = 0;
 volatile U32 job_last_target __attribute__((section(".data"))) = 0;   // 1 mods-a, 2 mods-b (this boot)
-volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 0 mods.apply, 1 content switch, 2 config, 4 MTP session (3 reserved)
+volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 0 mods.apply, 1 content switch, 2 config, 3 adoption, 4 MTP session
 volatile U32 job_usb __attribute__((section(".data"))) = 0;           // the job was started over USB
 JobSlot& slot() { return *reinterpret_cast<JobSlot*>(XYF_JOB_REGION_BEGIN); }
 volatile U32 blob_collecting __attribute__((section(".data"))) = 0;

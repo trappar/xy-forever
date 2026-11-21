@@ -32,7 +32,7 @@ Steps (every command through xyf_host.py's own main(); diag.crash as a raw frame
   silent    the same wait for every kind: 5 s after the ok, then STATUS, no answer: B stopped (expected; on a
             halted B the attempt itself takes about 60 s: the host's first HELLO write blocks, #118). B still answering
             means no fault: FAIL. Then one `NEED:` line: what to read on the screen, then
-            power off, wait 5 s, power on holding PLAY, and run this again with --after. Exit 3.
+            power off, then power on holding PLAY, and run this again with --after. Exit 3.
             (A FAIL after the check: hold off, as B still answers.)
   --after:  check, identity (crash restarts 0: B was not restarted alone), the screen as read (--screen TEXT,
             recorded), hold off, keepalive.sh (as device_pass).
@@ -308,7 +308,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     (run.folder / ('after.json' if opts.after else 'summary.json')).write_text(json.dumps(summary, indent=1) + '\n')
     print(dp.table(run.rows, dp.settle_folder(run.folder, opts.sim, passed and opts.after, opts.keep)))
     if passed and not opts.after:
-        print('NEED: read the OP-XY screen (kind %s): expect %s. Then power off, wait 5 s, power on holding PLAY '
+        print('NEED: read the OP-XY screen (kind %s): expect %s. Then power off, then power on holding PLAY '
               '(release at the logo), and run: python3 scripts/crash_trigger.py --after --screen "WHAT IT SHOWED"%s'
               % (opts.kind, ' | '.join(lines), ' --sim ' + opts.sim if opts.sim else ''))
     return code
