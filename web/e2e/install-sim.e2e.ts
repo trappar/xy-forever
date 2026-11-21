@@ -148,11 +148,11 @@ async function simImage(): Promise<string> {
 
 it.skipIf(why !== null)('Mac: the first plain power-on sets up OS 1.2.1 on the device and starts it; PLAY then opens the app on Mods', async () => {
   image = await simImage();
-  const sim = await powerOn('stock', true);                             // before the page looks: the stock pair is not on USB yet
+  const sim = await powerOn('stock', true);                             // the first plain power-on: the setup, then the OS
+  await until('the OS, after the setup', () => inOs(sim));                // (before the page walks: it would find XY Forever mid-flow)
   const page = await open(running!.relay.url, false);
   await toStart(page, 'Mac');
   expect(await page.evaluate(() => (window as unknown as { fakes: { usb: { reads: string[] } } }).fakes.usb.reads)).toEqual(['os.ldr']);
-  await until('the OS, after the setup', () => inOs(sim));
   adopted(sim);
   await control(sim.control, 'power play');                              // the owner holds PLAY: the XY Forever menu
   await until('the menu', () => listening(sim));
@@ -167,9 +167,9 @@ it.skipIf(why !== null)('Mac: the first plain power-on sets up OS 1.2.1 on the d
 it.skipIf(why !== null)('Windows: copied by hand; the page finds XY Forever by itself after the setup (a port granted before)', async () => {
   image ||= await simImage();
   const sim = await powerOn('stock', true);
+  await until('the OS, after the setup', () => inOs(sim));                // before the page walks, as above
   const page = await open(running!.relay.url, true);
   await toStart(page, 'Windows');
-  await until('the OS, after the setup', () => inOs(sim));
   adopted(sim);
   expect(await stage(page)).toBe('start');                               // the stock OS has no serial port: nothing to find
   await control(sim.control, 'power play');
