@@ -4,14 +4,14 @@ From an empty workspace folder to working on the plan, for the developer's codin
 the steps in order with the developer. Run every command yourself; ask the developer only for what needs their
 hands (the OP-XY, a file copy over MTP) or their decision, one question at a time, each with your
 recommendation. Stop at the first step that fails, fix what is yours to fix, say plainly what is
-missing, and resume there. Steps 7 and 8 (the device) have not yet been run end to end: report
-where they stall, and fix this file. Budget: 10 KB (10000 bytes).
+missing, and resume there. Record device setup and test results in the local status folder.
+Budget: 10 KB (10000 bytes).
 
 ## 0. What the developer needs
 
 - A host computer: macOS on Apple silicon (the tested host; toolchain pins also exist for Windows
   and Linux x86_64, USB tools untested there). Python 3.9+ (macOS's own `python3` will do), git,
-  `gh` (GitHub CLI, logged in: `gh auth status`; step 1 clones with it, step 9 claims items),
+  `gh` (GitHub CLI, logged in for step 9 to claim issues),
   clang++ (simulator, host bridges), Node 22.18+ or 23.6+ (`clients/ts`, `web/`).
 - An OP-XY still on stock 1.2.1, never updated to 1.2.5: a 1.2.5 device cannot run XY Forever,
   and teenage engineering's built-in updater cannot downgrade it. To tell: the version the OS shows
@@ -30,12 +30,8 @@ Start in the workspace folder (where the coding agent was opened); it ends up as
   tools/blackfin/  open-xy's toolchain-1 release, unpacked by bootstrap (or anywhere with XYF_TOOLCHAIN)
   private/         firmware, builds, device reports, evidence, dev-menu kits: never in git
 ```
-- Run-time loading (#28) lives on the private fork `trappar/open-xy`, branch `runtime-loading`
-  (on upstream `ba943a8`): clone it to `<workspace>/open-xy` only for items that need it. It is not
-  the pinned upstream clone `fixtures` makes for open-xy facts (AGENTS.md).
-
 ```sh
-gh repo clone trappar/xy-forever      # only if xy-forever/ is absent (from the workspace folder)
+git clone https://github.com/trappar/xy-forever.git   # if xy-forever/ is absent
 cd xy-forever
 python3 scripts/setup.py bootstrap    # only what is missing; never deletes; --dry-run: print, change nothing
 ```
@@ -93,11 +89,12 @@ If step 3 fails, its one line says why. Fallback: the developer copies those fil
 ```sh
 python3 scripts/setup.py fixtures     # network: public open-xy and its kit; builds and verifies one product build
 python3 scripts/setup.py bootstrap    # npm ci in clients/ts and web/ if Node came later; else "nothing to do"
-python3 scripts/setup.py doctor       # every row "ok"; exit 0
+python3 scripts/setup.py doctor       # required build inputs present; reports optional fixtures separately
 python3 scripts/run_tests.py          # the full suite; the first run compiles host bridges (slower)
 ```
 
-Done when `doctor` exits 0 and the suite passes (the skips `doctor` lists are expected).
+Done when `doctor` exits 0 and the suite passes. It lists expected skips, including mod-kit checks if
+Open-XY's published kit has moved on from the fixture pinned in `stock.json`.
 
 ## 6. The developer's own approvals
 
@@ -116,7 +113,7 @@ their own device. Ask each separately, with your recommendation; record the answ
 Never standing: anything SAFETY.md lists under "Never", companion chips, 1.2.5, relaxing a
 builder audit, a new kind of storage write. Each is asked for that exact operation.
 
-## 7. First install and recovery kit (not yet run end to end)
+## 7. First install and recovery kit
 
 First the dev-menu kit that undoes the install (SAFETY.md, recovery ladder step 2):
 
@@ -130,12 +127,12 @@ of the build `fixtures` verified (`doctor`, "verified build"), as in [docs/opera
 COM at power-on, Track 3, Track 2 (MTP), copy it to the device as `/os.ldr` (not 0 bytes), Track 2
 (exit), Track 5 ("write os to boot partition"), wait for "firmware written ok!", power cycle.
 
-Then: start `python3 xyf_host.py --timeout 120 status`, and ask the developer to power on holding PLAY and let
-go at the logo. The XY Forever menu opens ([docs/GUIDE.md](docs/GUIDE.md)); with an empty library it says "No
-firmware found". Add the stock OS as the default entry (`library-add`, then `set-default`; check each command's
-`--help`, run it without `--yes-…` first). Undo: `xyf_host.py uninstall`, or the stock kit through the dev menu.
+At first start XY Forever checks the device's stock copy in `/upgrade`, adds OS 1.2.1 to the library, and
+makes it the default. Let the "Adding OS 1.2.1" progress finish. To open the menu on the next power-on,
+start `python3 xyf_host.py --timeout 120 status`, then hold PLAY at power-on and release it at the logo.
+See the [guide](docs/GUIDE.md) for first-start errors. Use the stock kit through the dev menu for recovery.
 
-## 8. Device pass and known-good kit (not yet run end to end)
+## 8. Device pass and known-good kit
 
 Run `python3 scripts/device_pass.py --wait 120` (`--plan` first shows every step), relaying its `NEED:`
 line ([docs/operating/device-pass.md](docs/operating/device-pass.md#device-pass-scriptsdevice_passpy)). When it passes, copy the

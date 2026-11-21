@@ -1,8 +1,8 @@
 # Writing mods for XY Forever
 
 For people who write open-xy mods (machines and extensions) and want to try them on
-an OP-XY that runs XY Forever. This describes the current version (serial protocol
-1.13). The user side of the Mods page is in [GUIDE.md](GUIDE.md).
+an OP-XY that runs XY Forever. See the [serial protocol reference](PROTOCOL.md) and
+the [user guide](GUIDE.md) for the Mods page.
 
 ## How it works
 

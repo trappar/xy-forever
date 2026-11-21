@@ -1,5 +1,8 @@
 # XY Forever
 
+**Source preview.** XY Forever is in development and has been tested on one OP-XY.
+The public firmware release and hosted installer are pending.
+
 A firmware and mod manager for the OP-XY. It runs at power-on, before the OS: pick
 which firmware boots from a library on the device, turn mods on and off, and keep
 everything updated, all without touching the bootloader. With no key held, the default
@@ -9,13 +12,28 @@ XY Forever is a chain-loaded second-stage `os.ldr`, not a bootloader: the real 1
 bootloader stays untouched and loads it from the NAND boot partition, and the dev menu
 (hold COM) remains available for recovery.
 
-## Getting started
+## Try the source
+
+Clone the repository and run a host-only check. These commands need Python 3.9+ and git.
+
+```sh
+git clone https://github.com/trappar/xy-forever.git
+cd xy-forever
+python3 -m unittest discover -s tests -p 'test_setup.py'
+python3 -m unittest discover -s tests -p 'test_protocol_spec.py'
+```
+
+For full development setup, follow [ONBOARDING.md](ONBOARDING.md). It covers the
+Blackfin toolchain, simulator, and stock files from your own OP-XY. Device builds
+support OP-XYs on stock 1.2.1. The built-in updater cannot downgrade a 1.2.5 device.
+The GitHub issues and milestones track work toward the first firmware release.
+
+## Contributing with a coding agent
 
 Make an empty workspace folder, open your coding agent in it and paste this prompt:
 
-> Set me up to develop XY Forever in this folder. Clone the private GitHub repository
-> trappar/xy-forever here with `gh repo clone trappar/xy-forever`, then read xy-forever/AGENTS.md
-> and follow xy-forever/ONBOARDING.md with me from the first step. Run every command yourself; ask
+> Set me up to develop XY Forever in this folder. Clone https://github.com/trappar/xy-forever.git,
+> read xy-forever/AGENTS.md, and follow xy-forever/ONBOARDING.md from the first step. Run each command and ask
 > me only for what needs my hands (the OP-XY) or my decision. When setup is done, tell me how to
 > start the next session.
 
@@ -23,22 +41,6 @@ Later sessions: open your agent in the workspace folder (or `xy-forever/`) and s
 development". `AGENTS.md` is the entry point; if your harness does not load it automatically,
 ask it to read that file first. Bootstrap also writes a workspace `CLAUDE.md` for Claude Code.
 The [workflow](docs/ORCHESTRATION.md) also supports agents without delegation.
-By hand instead (Python 3.9+; the workspace also holds `private/` and `tools/`):
-
-```sh
-mkdir xyf && cd xyf && gh repo clone trappar/xy-forever && cd xy-forever
-python3 scripts/setup.py bootstrap      # private folder, toolchain download, local files, npm; safe to rerun
-```
-
-Step by step, with what bootstrap does and what it leaves to you (the stock files off your
-OP-XY): [ONBOARDING.md](ONBOARDING.md).
-
-Status: under development, installed and tested on one device. Not for general
-use. Roadmap: the GitHub issues and milestones.
-
-Supported devices: an OP-XY still on 1.2.1 only; a device updated to 1.2.5 cannot be
-downgraded with the built-in firmware updater, so XY Forever cannot be installed on it.
-
 For OP-XY owners: [docs/GUIDE.md](docs/GUIDE.md) (the menu, the Mods page, the host
 tool). For mod writers: [docs/MODS-DEV.md](docs/MODS-DEV.md).
 
@@ -74,7 +76,7 @@ docs/             SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORAGE, GOALS,
   distributed. Tests that need them skip when they are absent. `python3 scripts/setup.py`
   creates the folder and imports the stock pair (`bootstrap`, `import-stock --from-device` or `DIR`, `doctor`).
 
-## Quick start
+## Build and verify after onboarding
 
 ```sh
 python3 -m unittest discover -s tests
