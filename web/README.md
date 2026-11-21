@@ -60,8 +60,8 @@ development and `/xy-forever/` for GitHub Pages.
   saved on/off state; add packages from a folder (a `modkit split` generation folder); remove a package or a whole set;
   **Mods on the OP-XY**: the mods it runs and Mod memory, saved as the device's Mods menu does
   (`config.set`: checked and kept, or refused with the reason; built the next time XY Forever starts).
-- **Files**: browse `/yaffs2`, download, upload, new folder, rename/move, copy, delete. Changes are allowed only under
-  `/yaffs2/xy-forever/` and `/yaffs2/content/`; the page says so and refuses early what the device would refuse.
+- **Files**: browse `/yaffs2`, download, upload, new folder, rename/move, copy, delete. Manual transfers can change
+  `user/` and most of the drive. The page and device keep `bootloader.dev` and the stock `upgrade/` inbox read-only.
 
 File and package removals ask first in plain words.
 
@@ -75,7 +75,8 @@ too), writes the pin (committed in a release pull request) and stages the image 
 
 ## GitHub Pages
 
-The launch URL is [trappar.github.io/xy-forever](https://trappar.github.io/xy-forever/).
+The planned launch URL is `https://trappar.github.io/xy-forever/`. Deployment and the public firmware
+asset are pending. A local Install or Update run requires a staged image matching the pin.
 The app and the pinned image share that project path. The project and third-party notices are served at `LICENSES.txt`. Only `web/dist/` goes into the Pages artifact.
 
 From the repository root, stage the `os.ldr` matching the checked-in pin in `web/public/release/`.

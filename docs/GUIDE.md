@@ -1,7 +1,7 @@
 # XY Forever user guide
 
-This guide describes the current version of XY Forever (serial protocol 1.13). It is
-under development and tested on one device. It is not ready for general use.
+This guide describes the XY Forever source preview, which has been tested on one
+device. See the [serial protocol reference](PROTOCOL.md) for the current protocol.
 
 ## What it is
 
@@ -10,15 +10,15 @@ before the OP-XY software starts. It keeps a library of firmware files on the de
 lets you pick which one starts, and lets you turn open-xy mods on and off, building
 the mod firmware on the device itself.
 
-What it never touches:
+What it keeps intact:
 
 - **The real bootloader.** It stays at version 1.2.1 and is never written. Holding COM
   at power-on still opens the stock recovery menu.
 - **The 1.2.5 bootloader.** It is never installed.
 - **The companion chips** (keyboard and Bluetooth). They are never programmed.
-- **Your projects** in `user/`. Its USB file commands refuse that folder.
 - **The file `bootloader.dev`**, which keeps the stock dev menu working. Nothing in
   XY Forever can delete it.
+- **The stock updater inbox** in `/upgrade/`. XY Forever can read it for stock setup.
 
 ## Getting into the menu
 
@@ -172,10 +172,8 @@ A settings file from a newer XY Forever reads as the defaults and is kept unchan
 
 ## The host tool: `xyf_host.py`
 
-Python 3, standard library only. Connect the OP-XY over USB with the XY Forever
-service running. Commands that change what boots are dry runs unless you add their
-`--yes-…` flag. File writes are allowed only under `/yaffs2/xy-forever/` and
-`/yaffs2/content/`.
+Connect over USB with XY Forever running. Boot-changing commands are dry runs without
+their `--yes-…` flag. File commands can change `user/` and most of the drive.
 
 | Command | Example |
 |---|---|
@@ -211,5 +209,4 @@ run on a device.
 - Safe mode by itself when a firmware fails at start-up.
 - Choosing which base firmware a mod build uses.
 - Companion chip updates (keyboard and Bluetooth), from official update files.
-- MTP mode: copying files with any MTP app.
 - Uninstall, from the web app (not the menu).
