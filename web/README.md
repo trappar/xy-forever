@@ -76,7 +76,7 @@ too), writes the pin (committed in a release pull request) and stages the image 
 ## GitHub Pages
 
 The launch URL is [trappar.github.io/xy-forever](https://trappar.github.io/xy-forever/).
-The app and the pinned image share that project path. Only `web/dist/` goes into the Pages artifact.
+The app and the pinned image share that project path. The project and third-party notices are served at `LICENSES.txt`. Only `web/dist/` goes into the Pages artifact.
 
 From the repository root, stage the `os.ldr` matching the checked-in pin in `web/public/release/`.
 Use the locally verified build or download the same asset from the published `v<version>` release.

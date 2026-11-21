@@ -11,7 +11,7 @@ import type { Browser } from 'playwright';
 import { INSTALL_STAGES, PAGES, PAGES_BASE } from '../src/routes.ts';
 
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
-const types: Record<string, string> = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' };
+const types: Record<string, string> = { '.html': 'text/html', '.txt': 'text/plain; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript' };
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://localhost');
   if (!url.pathname.startsWith(PAGES_BASE)) { res.writeHead(404).end(); return; }
@@ -62,6 +62,7 @@ try {
     await page.locator(shown).waitFor();
   }
   assert.equal((await page.request.get(site + 'unknown-page/')).status(), 404);
+  assert((await page.request.get(site + 'LICENSES.txt')).ok(), 'Serve the notices with the web assets');
 
   await page.goto(site + 'connect/?source=smoke');
   const connect = page.locator('a[data-page=connect]');
