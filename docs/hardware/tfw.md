@@ -51,6 +51,8 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   Each pass of A's menu loop reads at most 4 KiB and hashes only the ciphertext. A verifies the
   declared end against actual EOF, closes the file, and then returns the digest to matching-path
   queries. Cancel, engine teardown, or ten seconds without a matching poll release the job.
+  The shared B reader holds the same inbox path under exclusive storage ownership. It checks size
+  and EOF when reopening and exposes the ZIP only after the signed header and A's hash agree.
 - **Companion images:** CYACD has 367 data rows. BLE updates go through a TE
   internal bridge, not the plain Nordic DFU transport.
 - **SPI metadata** (record at SPI `0xc000`, member +0xc at `0x8803d890`): `factory:%u`

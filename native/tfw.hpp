@@ -15,6 +15,7 @@ struct KeyProvider { void* context; bool (*read)(void*,U32 index,Byte key32[32])
 struct HeaderCheck { void* context; bool (*verify)(void*,const Byte* crypto_header,U32 size); };
 // Bytes the caller provides to Archive::open_digested: outer wrapper + crypto header.
 static const U32 header_bytes=0x380, crypto_header_bytes=0x300, prefix_bytes=320;
+static const U32 max_package_bytes=256u*1024u*1024u;
 struct Header {
     U32 crypto_offset, ciphertext_offset, ciphertext_size, archive_size, key_index, sku;
     package::Version version;

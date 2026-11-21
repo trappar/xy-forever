@@ -32,7 +32,7 @@ bool tfw_hash_mode() {
 }
 U32 tfw_hash_begin(cold_storage::Stock121ReadOnlySession& storage, const char* path, U32 now) {
     if (a_tfw_hash.path[0] || !tfw_hash_mode() || held_files()) return tp::s_busy;
-    if (!mount(storage) || !storage.direct_ready()) return tp::s_storage;
+    if (!mount(storage) || !storage.direct_gate() || !storage.ready()) return tp::s_storage;
     const int fd = storage.direct_open(path);
     if (fd < 0) return tp::s_not_found;
     TfwHashJob& job = a_tfw_hash;
@@ -56,7 +56,8 @@ void tfw_hash_stop(cold_storage::Stock121ReadOnlySession& storage, U32 status) {
 void tfw_hash_step(cold_storage::Stock121ReadOnlySession& storage, U32 now) {
     TfwHashJob& job = a_tfw_hash;
     if (!job.path[0]) return;
-    if (now - job.touched >= th::lease_ms || !tfw_hash_mode() || !storage.direct_ready()) {
+    // The two direct_ready checks, with ready() called directly for the call audit.
+    if (now - job.touched >= th::lease_ms || !tfw_hash_mode() || !storage.direct_gate() || !storage.ready()) {
         tfw_hash_clear(storage);
         return;
     }
