@@ -67,6 +67,18 @@ class StockWriterIntegration(unittest.TestCase):
         self.assertEqual(self.sim.status()['partition'], 0)
         self.assertEqual(self.write(dev, b'after', BASE + 'log/after.bin')[:2], (0, 5))
 
+    def test_readback_select_error_after_success_is_refused(self):
+        dev = self.connect()
+        stock = sim.STOCK_OS.read_bytes()
+        digest = hashlib.sha256(stock).digest()
+        self.assertEqual(dev.stage(stock), 0)
+        self.assertEqual(dev.uninstall(digest), (0, len(stock), 1, len(stock) // 512 + 1))
+        self.assertEqual(dev.stage(stock), 0)
+        # The second write uses partition 2. Fail reselecting it after its header was found.
+        self.sim.set('fail_select', 7)
+        self.assertEqual(dev.uninstall(digest), (ids.S_INSTALL, len(stock), 2, 0))
+        self.assertEqual(self.sim.status()['partition'], 0)
+
     def test_encrypted_install_boots_plaintext_for_identity(self):
         if not BUILD:
             self.skipTest('verified product build absent')

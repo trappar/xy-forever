@@ -104,6 +104,8 @@ void tfw_check_role(uint8_t seq, const uint8_t* payload, U32 length) {
 // stock 1.2.1 os.ldr instead of an XY Forever build) and the reply type.
 void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
     U32 code = P::s_ok;
+    result.install_written = result.install_ms = 0;
+    result.verify_partition = result.verify_sectors = result.verify_mismatch = 0;
     log_open = 1;                                   // step lines and the writer's log go to the host
     if (length != 32 || !result.put_ok) code = P::s_state;
     else if (!sha_equal(payload, put_sha)) code = P::s_sha;

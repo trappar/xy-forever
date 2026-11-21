@@ -53,6 +53,9 @@ the host). The app lives at the site's root (its paths and `/release/os.ldr` are
   under way, only once that ends (te-boot is MIDI only; the serial "OP_XY Boot" is XY Forever's own fallback service).
   Either way it follows the setup as above.
 - **Device**: build, what is running, what boots next, the saved mods (`/yaffs2/xy-forever/config.txt`), the content state.
+  When a newer XY Forever release is available, the page shows its changes and an Update button. Clicking Update
+  downloads and verifies the release, installs and reads it back, then restarts straight into the XY Forever menu
+  and checks the running image. USB control uses the usual device trust prompt.
 - **Mods**: packages on the device grouped by kind (synths, drums, samplers, effects, players, extensions) with their
   saved on/off state; add packages from a folder (a `modkit split` generation folder); remove a package or a whole set;
   **Mods on the OP-XY**: the mods it runs and Mod memory, saved as the device's Mods menu does
@@ -60,12 +63,12 @@ the host). The app lives at the site's root (its paths and `/release/os.ldr` are
 - **Files**: browse `/yaffs2`, download, upload, new folder, rename/move, copy, delete. Changes are allowed only under
   `/yaffs2/xy-forever/` and `/yaffs2/content/`; the page says so and refuses early what the device would refuse.
 
-Every destructive action asks first in plain words. Nothing offers to write a bootloader.
+File and package removals ask first in plain words.
 
 ## The release image
 
-The Install page copies only the `os.ldr` whose SHA-256 `src/install/release.json` pins, fetched from this site at
-`release/os.ldr`. `python3 scripts/web_release.py [BUILD]` (from the repository root) takes a verified product
+Install and Update use the `os.ldr` whose SHA-256 `src/install/release.json` pins, fetched from this site at
+`release/os.ldr`. `python3 scripts/web_release.py [BUILD] --notes "What changed"` (from the repository root) takes a verified product
 build, checks it shares no bytes with the stock pair (`xy_forever/stock_bytes.py`; `xyf_build.py --verify` checks it
 too), writes the pin (committed in a release pull request) and stages the image in `public/release/` (gitignored);
 `--check` says whether the staged image matches the pin. Without a pin the page says there is nothing to install.
@@ -102,7 +105,7 @@ test's simulator helpers come from its `test/` folder.
 ## Not built yet
 
 - Firmware library management, firmware and companion install,
-  XY Forever self-update, Bluetooth, uninstall (#179).
+  Bluetooth, uninstall (#179).
 - Recursive delete of a non-empty folder, drag and drop upload, upload of folders.
 - Production hosting (it needs a secure context: `https://` or `localhost`).
 

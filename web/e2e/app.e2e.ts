@@ -3,8 +3,9 @@
 // through the client's simulator helpers, with its state under <private sessions>/web-e2e (the
 // private folder of xy_forever/paths.py, so XYF_PRIVATE applies; override with XYF_SIM_STATE), and
 // removes the state afterwards. Skipped with the reason when the simulator cannot run here.
+import { createHash } from 'node:crypto';
 import { readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import type { Browser } from 'playwright';
@@ -12,6 +13,7 @@ import { createServer } from 'vite';
 import type { ViteDevServer } from 'vite';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { findSimulator, startAll } from '../node_modules/xy-forever-client/test/simulators.ts';
+import * as v1 from '../node_modules/xy-forever-client/src/v1.ts';
 
 const found = findSimulator();
 if (found.why) console.warn(`\nweb e2e skipped: ${found.why}\n`);
@@ -79,6 +81,61 @@ it.skipIf(found.why !== null)('connects to the simulator and shows the device an
     activity: expect.arrayContaining([{ event: 'disconnect', outcome: 'finished' }]),
   });
   await page.close();
+});
+
+const candidate = found.fixtures['xyf_build'];
+it.skipIf(found.why !== null || !candidate)('installs a newer XY Forever and restarts into its menu', async () => {
+  const imagePath = candidate!;
+  const image = readFileSync(imagePath);
+  const sha256 = createHash('sha256').update(image).digest('hex');
+  const { version } = JSON.parse(readFileSync(join(dirname(imagePath), 'manifest.json'), 'utf8')) as { version: string };
+  const release = { schema: 1, version, sha256, image: sha256.slice(0, 8), bytes: image.length, notes: 'Faster updates.' };
+  const page = await browser!.newPage();
+  try {
+    await page.route('**/src/install/release.json*', (route) => route.fulfill({
+      contentType: 'text/javascript', body: `export default ${JSON.stringify(release)};`,
+    }));
+    await page.route('**/release/os.ldr', (route) => route.fulfill({ body: image }));
+    let restart: number | undefined;
+    await page.routeWebSocket('**/xyf-relay?*', (socket) => {
+      const server = socket.connectToServer();
+      const requests = new v1.FrameParser();
+      const replies = new v1.FrameParser();
+      socket.onMessage((message) => {
+        for (const frame of requests.feed(Buffer.from(message))) {
+          if (frame.type === v1.TYPE['device.reboot']) restart = v1.decodeDeviceRebootRequest(frame.payload).target;
+        }
+        server.send(message);
+      });
+      server.onMessage((message) => {
+        // The same simulator executable handles both boots. Give the first boot an older release label.
+        for (const frame of replies.feed(Buffer.from(message))) {
+          let payload = frame.payload;
+          if (restart === undefined && frame.type === (v1.TYPE.hello | v1.REPLY)) {
+            const reply = v1.decodeHelloReply(payload);
+            if (reply.ok) {
+              const info = reply.fields.info.replace(/;version=[^;]+/, ';version=191');
+              payload = v1.encodeHelloReply({ ...reply, fields: { info } });
+            }
+          }
+          socket.send(Buffer.from(v1.encodeFrame(frame.type, frame.seq, payload)));
+        }
+      });
+    });
+    await page.goto(appUrl(`?sim=${port}`));
+    await page.getByRole('button', { name: 'Connect', exact: true }).click();
+    const update = page.getByRole('button', { name: `Update to ${version}`, exact: true });
+    await update.waitFor();
+    expect(await page.getByText(release.notes).isVisible()).toBe(true);
+    await update.click();
+    await expect.poll(() => page.getByRole('status').textContent(), { timeout: 30_000 })
+      .toBe(`XY Forever ${version} is running in the menu.`);
+    expect(restart).toBe(2);
+    expect(await page.locator('[data-fact=image]').textContent()).toBe(release.image);
+    expect(await update.count()).toBe(0);
+  } finally {
+    await page.close();
+  }
 });
 
 it('previews and downloads the same offline snapshot after a connection error', async () => {
