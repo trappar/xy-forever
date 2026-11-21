@@ -25,8 +25,22 @@ def make(builds, data, passed=True, mode='xyf-product', source=SOURCE, name=None
 
 
 class NewestVerifiedBuild(unittest.TestCase):
-    def test_the_last_verified_of_this_source_counts(self):
+    def test_check_uses_its_own_build_after_shared_image_replacement(self):
         with tempfile.TemporaryDirectory() as tmp:
+            shared, check = Path(tmp) / 'shared', Path(tmp) / 'check'
+            shared.mkdir()
+            check.mkdir()
+            want = make(check, b'image')
+            other = make(shared, b'image', source=dict(SOURCE, **{'target/a.cpp': '33'}))
+            self.assertEqual(want.name, other.name)
+            with mock.patch.object(paths, 'BUILDS', shared), mock.patch.object(xyf_build, 'source_hashes', lambda: SOURCE):
+                with mock.patch.dict(os.environ, {paths.CHECK_TEST_BUILDS: str(check)}):
+                    self.assertEqual(paths.newest_verified_build(), want)
+                with mock.patch.dict(os.environ, {paths.CHECK_TEST_BUILDS: ''}):
+                    self.assertIsNone(paths.newest_verified_build())
+
+    def test_the_last_verified_of_this_source_counts(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {paths.CHECK_TEST_BUILDS: ''}):
             builds = Path(tmp)
             make(builds, b'a', when=1000)
             want = make(builds, b'b', when=2000)

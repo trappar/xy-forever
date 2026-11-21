@@ -9,7 +9,8 @@ The standard set, in order, stopping at the first failure:
     then xyf_build.py --verify of it; a verified build moves to builds/<image> (its name: the first 8 hex
     digits of the candidate's SHA-256, hello image=), with check.json naming the tree and commit;
   - the exhaustive unit suite: XYF_EXHAUSTIVE=1 scripts/run_tests.py (every test, never a subset), after
-    the build so the tests that use one (paths.newest_verified_build) get the build of this very source;
+    the build, with a private copy of the verified artifact for the tests so a shared image name can be
+    replaced during the run without affecting them;
   - scripts/neutral.py REF with --neutral (default REF: the merge base with origin/main, else main);
   - npm test and npm run typecheck in web/ when web/ or clients/ts (which it uses) differs from that merge
     base, or with --npm. npm test in clients/ts runs once, inside the suite (NodeSuiteTest); when clients/ts
@@ -125,7 +126,7 @@ def tests_parser(summary):
     return parse
 
 
-def verify_parser(out, tree=None, commit=None):
+def verify_parser(out, tree, commit, test_builds):
     """--verify passed, and the candidate's bytes match the build's manifest. Then the build moves to
     BUILDS/<image>, and check.json there maps it to the tree and commit."""
     def parse(status, text):
@@ -140,8 +141,10 @@ def verify_parser(out, tree=None, commit=None):
             recorded = None
         if recorded != digest:
             return False, {}
+        write_json(out / 'check.json', dict(image=digest[:8], tree=tree, commit=commit))
+        # A second checkout can publish the same image bytes with different source hashes.
+        shutil.copytree(out, test_builds / digest[:8])
         named = paths.name_by_image(out)
-        write_json(named / 'check.json', dict(image=named.name, tree=tree, commit=commit))
         return True, dict(candidate=dict(sha256=digest, image=named.name, bytes=len(data), build=str(named)))
     return parse
 
@@ -181,11 +184,12 @@ def standard_steps(args, root, tree, work):
     npm = npm_steps(args, root)                  # before anything runs: a missing node_modules stops the run
     jobs = ['--jobs', str(args.jobs)] if args.jobs else []
     out = fresh_build_folder(tree)
+    test_builds = Path(work) / 'builds'
     steps = [step('product build', [py, root / 'xyf_build.py', '--xyf-product', '--out', out], root),
              step('verify', [py, root / 'xyf_build.py', '--verify', '--out', out], root,
-                  parse=verify_parser(out, tree, git(root, 'rev-parse', 'HEAD'))),
+                  parse=verify_parser(out, tree, git(root, 'rev-parse', 'HEAD'), test_builds)),
              step('unit tests (exhaustive)', [py, root / 'scripts/run_tests.py', *jobs, '--summary', summary],
-                  root, {'XYF_EXHAUSTIVE': '1'}, tests_parser(summary))]
+                  root, {'XYF_EXHAUSTIVE': '1', paths.CHECK_TEST_BUILDS: str(test_builds)}, tests_parser(summary))]
     if args.neutral is not None:
         ref = args.neutral or merge_base(root)
         if not ref:
@@ -383,7 +387,8 @@ def main(argv=None, root=ROOT, checks=CHECKS):
             return 0
         if not test_run:
             one_run_at_a_time(checks / 'check.lock', root)
-        with tempfile.TemporaryDirectory(prefix='xyf-check-') as work:
+        paths.SESSIONS.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='.xyf-check-', dir=paths.SESSIONS) as work:
             record = check(root, lambda tree: standard_steps(args, root, tree, work), checks)
     except CheckError as e:
         print('check: %s' % e, file=sys.stderr)

@@ -193,8 +193,10 @@ class CheckReceiptTests(unittest.TestCase):
             out = builds / 'check-123'
             out.mkdir()
             (out / 'candidate.ldr').write_bytes(b'candidate')
+            (out / 'verification.json').write_text(json.dumps(dict(passed=True, mode='xyf-product')))
             digest = __import__('hashlib').sha256(b'candidate').hexdigest()
-            parse = C.verify_parser(out, 't' * 40, 'c' * 40)
+            test_builds = builds / 'test-builds'
+            parse = C.verify_parser(out, 't' * 40, 'c' * 40, test_builds)
             (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256='0' * 64, image='00000000')))
             self.assertFalse(parse(0, '{\n  "passed": true\n}\n')[0])      # bytes differ from the manifest
             (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256=digest, image=digest[:8])))
@@ -208,6 +210,10 @@ class CheckReceiptTests(unittest.TestCase):
             self.assertEqual(json.loads((named / 'check.json').read_text()),
                              dict(image=digest[:8], tree='t' * 40, commit='c' * 40))
             self.assertFalse(out.exists())
+            test_build = test_builds / named.name
+            self.assertEqual(C.paths.build_image(test_build), C.paths.build_image(named))
+            self.assertEqual((test_build / 'candidate.ldr').read_bytes(), b'candidate')
+            self.assertEqual((test_build / 'check.json').read_bytes(), (named / 'check.json').read_bytes())
 
 if __name__ == '__main__':
     unittest.main()
