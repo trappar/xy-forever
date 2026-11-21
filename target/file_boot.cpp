@@ -310,7 +310,7 @@ U32 a_power_on(cold_storage::Stock121ReadOnlySession& storage, bool mounted) {
 #if defined(XYF_POWER_ON_CONVERGE)
 // #197: why a plain power-on converges before it boots (xyf_converge.hpp Doubt; 0: it boots at once): the journal
 // (job.txt or job.old), a switch unfinished, no default in the library, or a stored fingerprint that is not the one
-// the saved record (config.txt, else config.old, else none) and the default make. Small reads into the scan scratch,
+// the selected configuration record and the default make. Reads go into the scan scratch,
 // as a_power_on; never the image again. Not mounted: 0 (the check failed; the menu says why).
 // One call site each for the library's file templates: a weak function is a register call, which the build's call
 // audit resolves only beside its address load.
@@ -321,8 +321,29 @@ __attribute__((noinline)) bool a_read(cold_storage::Stock121ReadOnlySession& sto
                                       uint32_t capacity, uint32_t& length) {
     return xyf::library::detail::read_text(storage, file, out, capacity, length);
 }
+// The directory tells us whether name lookup found a record before an open that can follow a link.
+bool a_config(cold_storage::Stock121ReadOnlySession& storage, Byte* text, uint32_t& length) {
+    namespace xg = xyf::config;
+    const U32 dir = storage.direct_opendir(xyf::library::detail::root);
+    if (!dir) return storage.direct_error() == -2;
+    uint32_t index = xg::path_count;
+    bool done = false;
+    for (uint32_t i = 0; i != 256; ++i) {
+        const Byte* entry = storage.direct_readdir(dir);
+        if (!entry) { done = true; break; }
+        const char* name = reinterpret_cast<const char*>(entry + xyf::library::dirent_name);
+        for (uint32_t k = 0; k != index; ++k) {
+            if (xg::same(name, xg::names[k])) { index = k; break; }
+        }
+        if (!index) { done = true; break; }
+    }
+    if (storage.direct_closedir(dir) || !done) return false;
+    if (index == xg::path_count) return true;
+    const uint32_t capacity = xg::native_record(index) ? xyf_core::json::document_bytes : xg::max_text;
+    return a_read(storage, xg::paths[index], text, capacity, length);
+}
 U32 a_converge(cold_storage::Stock121ReadOnlySession& storage, bool mounted, const xyf::library::Library& lib) {
-    namespace xc = xyf::converge; namespace xg = xyf::config;
+    namespace xc = xyf::converge;
     if (!mounted || !storage.direct_ready()) return 0;
     U32 doubt = 0;
     if (a_present(storage, xyf::journal::path) || a_present(storage, xyf::journal::old)) doubt |= xc::doubt_job;
@@ -330,15 +351,11 @@ U32 a_converge(cold_storage::Stock121ReadOnlySession& storage, bool mounted, con
     if (xyf::library::find(lib, lib.state.default_id) < 0) doubt |= xc::doubt_default;
     Byte* text = reinterpret_cast<Byte*>(xyf_boot::scan_buffer);
     uint32_t length = 0;
-    const bool saved = a_present(storage, xg::path);
-    if (!a_read(storage, saved ? xg::path : xg::old_path, text, xg::max_text, length)) {
-        if (saved || a_present(storage, xg::old_path)) return doubt | xc::doubt_mark;   // unreadable or too long
-        length = 0;                                     // no record
-    }
+    if (!a_config(storage, text, length)) return doubt | xc::doubt_mark;
     xyf_core::hash::Sha256 h;
     xyf_core::hash::Digest d;
-    char* want = reinterpret_cast<char*>(text + 0x1000);
-    Byte* stored = text + 0x1100;
+    char* want = reinterpret_cast<char*>(text + xyf_core::json::document_bytes);
+    Byte* stored = text + xyf_core::json::document_bytes + xc::mark_max;
     uint32_t n = 0, got = 0;
     if (h.update(text, length) && h.finish(d)) n = xc::mark_text(want, xc::mark_max, d.bytes, lib.state.default_id);
     if (!n || !a_read(storage, xc::mark_path, stored, xc::mark_max, got) || !xc::mark_same(want, n, stored, got))

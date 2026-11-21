@@ -127,7 +127,7 @@ differ, on a progress screen, then boots. The steps:
    part, "Adding to the library", cannot be cancelled.
 3. **Installing content.** The mod firmware's files are written into
    `/yaffs2/content/`. The original official files are saved first.
-4. **Saving settings.** The choice is written to `config.txt`, and the default is set.
+4. **Saving settings.** The choice is written to `config.json`, and the default is set.
 5. The new firmware boots.
 
 During steps 3 and 4 the footer says "Almost done: it cannot be cancelled now. Keep
@@ -181,7 +181,7 @@ service running. Commands that change what boots are dry runs unless you add the
 |---|---|
 | status | `python3 xyf_host.py status` (protocol, build and device state) |
 | ls | `python3 xyf_host.py ls /yaffs2/xy-forever [--json]` |
-| get | `python3 xyf_host.py get /yaffs2/xy-forever/config.txt config.txt` |
+| get | `python3 xyf_host.py get /yaffs2/xy-forever/config.json config.json` |
 | put | `python3 xyf_host.py put notes.txt /yaffs2/xy-forever/notes.txt` (read back and compared; `--no-verify` skips that) |
 | rm | `python3 xyf_host.py rm /yaffs2/xy-forever/notes.txt` (`--dir` for an empty folder) |
 | mkdir | `python3 xyf_host.py mkdir /yaffs2/xy-forever/log` (the parent must exist) |

@@ -82,7 +82,7 @@ The restrictions in [Package files](packages.md) are retained individually:
 - Unsupported types, especially companion images, have no package handler here and are refused;
   admitting a type does not grant permission to program companions or the bootloader.
 
-All `info.txt` output goes through `manifest_text`: the Python canonical writer (compatibility
-`info_text` wrappers delegate to it), and the native assembled-entry writer of that name in
-`native/mod_job_text.ipp`. Canonical field order and bytes are checked against the Python reference.
-Every written file list is sorted bytewise and uses the same 160-byte relative-path limit.
+New packages write `manifest.json`. The Python `package_records.document`
+writer and the bounded assembled-entry writer in `native/mod_job_text.ipp`
+use the same field order and encoding. File lists are sorted bytewise, hash the
+exact emitted bytes and use the same 160-byte relative-path limit.

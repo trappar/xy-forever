@@ -27,7 +27,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import hostbuild, modkit as M, modlink as L, modpatch as P, paths, xyf_entry as E  # noqa: E402
+from xy_forever import hostbuild, modkit as M, modlink as L, modpatch as P, package_records, paths, xyf_entry as E  # noqa: E402
 from test_ldr import header, image  # noqa: E402
 import test_modkit as TK  # noqa: E402
 
@@ -366,14 +366,14 @@ class Synthetic(unittest.TestCase):
 
     def test_refuses_catalog_offsets_that_do_not_land(self):
         def moved(root):
-            info = root / 'base/info.txt'
+            info = TK.legacy_record(root / 'base')
             info.write_text(info.read_text().replace('catalog_engine_at=%d' % INSERTS['engine_types'],
                                                      'catalog_engine_at=%d' % (INSERTS['engine_types'] - 1)))
             return ['base']
         self.refused(['alpha'], 'content', 'insert', gen=self.variant(moved), detail='engine_types')
 
         def number(root):               # catalog_number one byte off
-            info = root / 'beta/info.txt'
+            info = TK.legacy_record(root / 'beta')
             info.write_text(re.sub(r'catalog_number=(\d+),', lambda m: 'catalog_number=%d,' % (int(m[1]) + 1),
                                    info.read_text()))
             return ['beta']
@@ -387,7 +387,7 @@ class Synthetic(unittest.TestCase):
 
         def info(change):
             def edit(root):
-                path = root / 'base/info.txt'
+                path = TK.legacy_record(root / 'base')
                 path.write_text(change(path.read_text()))
                 return ['base']
             return self.variant(edit)
@@ -543,7 +543,7 @@ class Synthetic(unittest.TestCase):
         def change(root):
             (root / 'gamma/catalog.txt').write_bytes(text)
             m = re.search(rb'"id":\s*\d+', text)
-            info = root / 'gamma/info.txt'
+            info = TK.legacy_record(root / 'gamma')
             info.write_text(re.sub(r'catalog_number=\S+', 'catalog_number=%d,%d' % (m.start(), m.end()),
                                    info.read_text()))
             return ['gamma']
@@ -615,7 +615,7 @@ class Synthetic(unittest.TestCase):
 
 
 def _real_inputs():
-    return (shutil.which('node') and (PACKAGES / 'base/info.txt').is_file() and TK.STOCK.is_file() and
+    return (shutil.which('node') and package_records.local_name(PACKAGES / 'base') and TK.STOCK.is_file() and
             P.default_official(PACKAGES).is_file() and
             TK.CATALOG.is_file() and (TK.OPEN_XY / '.git').exists() and subprocess.run(
                 ['git', '-C', str(TK.OPEN_XY), 'cat-file', '-e', TK.SDK_COMMIT + '^{commit}'],
@@ -718,7 +718,7 @@ class PublishedKitExpanded(unittest.TestCase):
             gen = Path(self.tmp.name) / ('gen-' + name)
             shutil.copytree(PACKAGES, gen, ignore=lambda d, names: [n for n in names if Path(d) == PACKAGES and
                                                                      n not in ('base', 'fm2op')])
-            lines = [l for l in (gen / 'base/info.txt').read_text().splitlines() if not l.startswith('expanded_')]
+            lines = [l for l in TK.legacy_record(gen / 'base').read_text().splitlines() if not l.startswith('expanded_')]
             lines += ['expanded_module_base=' + value] if value else []
             TK.rewrite(gen / 'base', 'info.txt', ('\n'.join(lines) + '\n').encode())
             with self.subTest(base=name):

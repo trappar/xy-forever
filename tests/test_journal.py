@@ -15,5 +15,7 @@ class Journal(unittest.TestCase):
                            '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-I', str(ROOT / 'target'),
                            str(ROOT / 'tests/journal_test.cpp'), str(ROOT / 'target/xyf_store.cpp'),
                            str(ROOT / 'target/xyf_info.cpp'), str(ROOT / 'target/xyf_crc32.cpp'),
+                           str(ROOT / 'native/json.cpp'), str(ROOT / 'target/xyf_manifest.cpp'),
+                           str(ROOT / 'target/xyf_package_record.cpp'),
                            str(ROOT / 'native/hash.cpp'), '-o', str(binary)], check=True, capture_output=True, text=True)
             subprocess.run([str(binary)], check=True, capture_output=True, text=True)

@@ -129,11 +129,13 @@ async function handedOff(page: Page): Promise<void> {
   expect(await page.locator('#installed').isVisible()).toBe(false);
 }
 
-/** The entry XY Forever made on the device: the stock os.ldr, byte for byte, beside its info.txt and files.sha256. */
+/** The entry XY Forever made on the device: the stock os.ldr, byte for byte, beside its manifest.json and files.sha256. */
 function adopted(sim: SimInfo): void {
   const stock = readFileSync(found.fixtures['stock_os_ldr']!);
   expect(readFileSync(join(sim.root, ENTRY, 'os.ldr')).equals(stock)).toBe(true);
-  expect(readFileSync(join(sim.root, ENTRY, 'info.txt'), 'utf8')).toMatch(/^type=firmware\nname=OP-XY\nversion=1\.2\.1\nkind=official\n/);
+  expect(JSON.parse(readFileSync(join(sim.root, ENTRY, 'manifest.json'), 'utf8'))).toMatchObject({
+    schema: 'xy-forever.package', schema_version: 1, type: 'firmware', name: 'OP-XY', version: '1.2.1', kind: 'official',
+  });
   expect(readFileSync(join(sim.root, 'xy-forever/state-a.txt'), 'utf8')).toContain('default=opxy-121\n');
 }
 

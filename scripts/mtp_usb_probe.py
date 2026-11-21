@@ -8,7 +8,7 @@ What it does, each step with a time bound:
      composite. Prints the device's and each interface's descriptors as macOS sees them, whether a
      /dev/cu.usbmodem* node appeared (if not: what ioreg shows of the device's interfaces and their drivers).
   3. serial over the composite: HELLO with xyf_host's normal connect (the device restarts by itself when no valid
-     HELLO arrives within 20 s of its start), status, one file read (config.txt).
+     HELLO arrives within 20 s of its start), status, one saved configuration read.
   4. MTP on interface 2 with the serial port still open: GetDeviceInfo, OpenSession, the 4 MiB test sink (0x9801),
      CloseSession; every container logged raw (hex). Then HELLO and status again over the serial.
   5. The device's account over the serial: op 1 (its words, the driver's counters, the sink's SHA-256), the marks
@@ -38,7 +38,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_host as H  # noqa: E402
-from xy_forever import device_lock, no_device, usb_proto as P  # noqa: E402
+from xy_forever import config_records, device_lock, no_device, usb_proto as P  # noqa: E402
 from xy_forever.paths import SESSIONS  # noqa: E402
 
 T_MTP_USB = 0x62                    # diag.mtp_usb (dev, test build only; usb_service.cpp)
@@ -52,7 +52,6 @@ INTERFACES = {0: ((2, 2, 1), {0x81}), 1: ((0x0a, 0, 0), {0x08, 0x8b}), 2: ((6, 1
 SINK_BYTES = 4 << 20
 OP_GET_DEVICE_INFO, OP_OPEN, OP_CLOSE, OP_SINK = 0x1001, 0x1002, 0x1003, 0x9f01   # the sink moved off 0x9801
 RC_OK = 0x2001
-CONFIG_PATH = '/yaffs2/xy-forever/config.txt'
 PROBE_WORDS = ('state', 'flag', 'delete', 'gate', 'slot', 'started_ms', 'first_byte_ms', 'hello_ms', 'passes',
                'max_gap_ms', 'last_ms', 'sinks', 'mark_first_ms', 'mark_total_ms')
 STATES = ('none', 'deferred', 'stock', 'composite', 'fallback')
@@ -533,9 +532,13 @@ def main():
               '%.2f s after the trial, %s: %s' % (time.monotonic() - t_start, port, hello))
     code, body = dev.call(P.STATUS, b'', 5.0)
     run.check('status over the composite', code == 0, '%s, %d bytes' % (P.status_name(code), len(body)))
-    code, body = dev.read_file(CONFIG_PATH)
-    run.check('file read over the composite (%s)' % CONFIG_PATH, code == 0,
-              '%s, %d bytes' % (P.status_name(code), len(body)))
+    try:
+        selected = config_records.read(dev)
+    except ValueError as error:
+        run.check('saved configuration read over the composite', False, str(error))
+    else:
+        detail = '%s, %d bytes' % (selected[0], len(selected[1])) if selected else 'no saved configuration'
+        run.check('saved configuration read over the composite', selected is not None, detail)
 
     # 4. MTP on interface 2, the serial port still open; then the serial again.
     try:

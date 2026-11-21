@@ -46,9 +46,8 @@ recognises). Run `python3 -m xy_forever.modkit --help` for their options.
 - `<profile>` is the OS the set targets, today `opxy-1.2.1`.
 - `<generation>` is the kit version plus 12 hex digits of a hash over the whole set.
   Packages from different generations never mix.
-- Every package folder holds an `info.txt` (`key=value`) and a `files.sha256` that
-  lists every other file in it. The device checks each file it reads against that
-  list.
+- A new package holds `manifest.json` and `files.sha256`. The device checks
+  listed file hashes and also accepts legacy `info.txt` metadata.
 - A machine package holds its objects, `objects.txt`, `catalog.txt`, and its content
   (`content/display/…`, `content/presets/<id>/…`).
 

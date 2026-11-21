@@ -1,0 +1,94 @@
+# Native package readers
+
+Part of [native JSON records](../native-json.md). Schemas and bounds:
+[schema reference](schemas.md).
+
+The native library selects `manifest.json` first and keeps legacy scanning
+lenient when JSON is absent. An invalid selected JSON record makes the entry
+unavailable, including as the default; scanning writes no migration files.
+Only the stock raw YAFFS not-found error (-2) permits legacy fallback after an
+open failure. Other open/read/close errors leave the native record unavailable.
+Content switches refuse invalid native metadata before any content write.
+
+The Mods page selects base, mod and firmware stamp metadata by the same name
+precedence. Its separate directory scan checks for a dangling native name when
+stat returns not found. An invalid selected native record is unavailable and the
+page reports when records need a newer build. Package discovery reads metadata
+for display. The mod assembly job independently checks the selected record
+against its original `files.sha256` line before decoding it. Neither metadata
+name enters the content file list. Strict host admission still checks every file.
+
+The internal A-to-B catalog is XYC2 (same record sizes), with flag 16 for invalid
+native metadata and a menu detail `invalid manifest.json`. XYC1 remains readable
+with its original flag meanings; unknown catalog versions refuse. Package-session
+and USB protocol versions do not change.
+
+## Caller ownership and measurements
+
+`target/xyf_package_record` extracts typed fields directly through the strict
+manifest reader's shared semantic assignment and final validation. It validates
+all JSON payload fields, including ignored extras, before assigning semantics;
+the 4096-byte internal-view bound still applies without rendering that view.
+Reports accept every supported package type. Library, content and journal source
+readers require firmware metadata, even when a mod folder also contains `os.ldr`.
+Legacy boot metadata remains lenient; scanning writes no migration files.
+
+The package workspace is 11,468 bytes on Blackfin, 4096 below the earlier text
+adapter. The cold scan needs 19,919 bytes including raw input/alignment, within
+its existing 40,960-byte scratch reservation. The journal source owns 20,596
+bytes in the content slot and hashes the exact selected metadata/list before
+semantic extraction. The content job borrows its own unused list region during
+metadata reading. Package reports use 22,820 bytes of their existing 64 KiB slot. The
+content slot occupies 26,944 aligned bytes; the content job remains 4916 bytes.
+No caller borrows MTP/GC storage or allocates a JSON workspace on a stack.
+
+Authenticated Blackfin frame measurements: direct extraction 32 bytes, JSON
+schema parsing 28 and the pinned parser 20. Their deepest nested frame sum is
+80 bytes, before the cold scan's unchanged 312-byte frame and outer callers.
+The strict legacy manifest parser's frame is 152 bytes; native JSON no longer
+calls it. Journal/content caller frames remain 132/260 bytes, the outer boot
+caller 452 and the home pump 284. These are compiler frame sums, not an observed
+peak stack watermark.
+
+All five modes build and verify offline. Compared with the preceding product
+tree (`4643d7a`), the Blackfin module sizes are as follows.
+
+| Mode | Before | With native records |
+| --- | ---: | ---: |
+| product | 339,108 | 359,388 |
+| MTP USB | 339,780 | 360,060 |
+| crash trigger | 339,460 | 359,740 |
+| stage2 | 45,568 | 50,216 |
+| stage2 menu | 45,900 | 50,548 |
+
+The two offline Stage 2 modes fit their 56 KiB code windows and keep their
+16 KiB stacks.
+
+The Mods reader borrows 24,012 bytes of the idle report slot while it has the
+page's storage exclusion. Mod assembly needs the same amount temporarily at the
+workspace's free end. It retains only each validated job input's text view, up
+to 4096 bytes, for the existing linker and patch inputs. The directory scans
+hold one handle and read at most one entry per step.
+
+Blackfin frames are 332 bytes for the assembly step, 84 for the Mods native
+read, 24 for the stamp reader and 284 for the directory-name scan. The
+compatibility view adds an 8-byte frame before the existing JSON parser. An
+equivalent synthetic build peaked at 2,972,880 bytes with native input and
+2,972,848 bytes with legacy input in the stepped host harness. The native
+writer still reserves 1024 bytes for the manifest and 65,536 for the file list.
+The manifest needs at most 490 bytes with worst-case JSON escaping and field
+lengths. The entry writer's Blackfin frame remains 168 bytes.
+
+The configuration reader and encoder use the Mods page scratch. The mod builder
+also borrows 21,508 bytes of the idle report slot while finding the saved slot,
+before allocating the job workspace. No JSON workspace lives on the stack.
+The Mods page holds the prepared record through the content switch, growing its
+I/O state from 2876 to 9300 bytes. The configuration job retains up to 8448 bytes
+in its own region and uses the existing transaction. The encoder checks the
+serialized record against the reader's 2048-byte view limit before publication.
+
+The configuration frames measured by the Blackfin compiler are 32 bytes for
+the record read (previously 24), 152 for source lookup, 84 for the JSON view
+and 124 for encoding, before the parser and writer calls. The page-save step
+remains 332 bytes. The convergence step drops from 888 to 652 bytes. These
+are per-function frames.

@@ -2,6 +2,7 @@
 #define XYF_JOB_JOURNAL_HPP
 #include "xyf_store.hpp"
 #include "xyf_crc32.hpp"
+#include "xyf_package_record.hpp"
 #include "../native/hash.hpp"
 // Durable intent for a content job. Canonical text + CRC; published by rename only after read-back.
 // A .old is authoritative when job.txt is absent. .part is never authoritative.
@@ -65,8 +66,9 @@ static inline int parse(const char* t, uint32_t n, Record& r) {
 // One source identity: info bytes and exact files.sha256 bytes (absent only for legacy/official entries).
 // Never trusts a missing/empty manifest as an official target. One bounded IO per step.
 struct Source {
-    Identity identity; xyf_core::hash::Sha256 sha; uint32_t stage, which, bytes, mods;
-    int fd; char folder[240], name[240]; uint8_t buffer[store::max_text];
+    Identity identity; xyf_core::hash::Sha256 sha; uint32_t stage, which, bytes, mods, legacy;
+    int fd; char folder[240], name[240]; uint8_t buffer[xyf_core::json::document_bytes];
+    package_record::Workspace record; // owned content slot, never the firmware stack
 };
 static inline bool source_begin(Source& s,const char* id) {
     for(uint32_t i=0;i!=sizeof(s);++i)reinterpret_cast<uint8_t*>(&s)[i]=0;
@@ -75,12 +77,16 @@ static inline bool source_begin(Source& s,const char* id) {
 }
 template<class Io> int source_step(Source& s,Io& io) {
     if(s.stage==0) {
-        copy(s.name,s.folder); uint32_t n=0;while(s.name[n])++n;copy(s.name+n,s.which?"/files.sha256":"/info.txt");
-        s.fd=io.open(s.name,false); if(s.fd==-2 && s.which && !s.mods)return 1; if(s.fd<0)return -1;
+        copy(s.name,s.folder); uint32_t n=0;while(s.name[n])++n;
+        copy(s.name+n,s.which?"/files.sha256":s.legacy?"/info.txt":"/manifest.json");
+        s.fd=io.open(s.name,false);
+        if(s.fd==-2 && !s.which && !s.legacy){s.legacy=1;return 0;}
+        if(s.fd==-2 && s.which && !s.mods)return 1;
+        if(s.fd<0)return -1;
         s.sha.reset();s.bytes=0;s.stage=1;return 0;
     }
     if(s.stage==1) {
-        const uint32_t limit=s.which?0x100000u:store::max_text;
+        const uint32_t limit=s.which?0x100000u:s.legacy?store::max_text:xyf_core::json::document_bytes;
         const uint32_t room=limit-s.bytes, want=room<1024?room:1024;
         uint8_t extra; uint8_t* out=s.which?s.buffer:s.buffer+s.bytes;
         const int n=io.read(s.fd,want?out:&extra,want?want:1);
@@ -91,7 +97,14 @@ template<class Io> int source_step(Source& s,Io& io) {
     const int c=io.close(s.fd);s.fd=-1;if(c)return -1;
     xyf_core::hash::Digest d;s.sha.finish(d);uint8_t* to=s.which?s.identity.list:s.identity.info;
     for(uint32_t i=0;i!=32;++i)to[i]=d.bytes[i];
-    if(!s.which) { store::Info info={}; if(!s.bytes || !store::parse_info(reinterpret_cast<const char*>(s.buffer),s.bytes,info))return -1; s.mods=info.has_generation; s.which=1;s.stage=0;return 0; }
+    // The stored document is hashed to completion before its semantic view is made.
+    if(!s.which) {
+        store::Info info={};
+        const bool valid=s.legacy?store::parse_info(reinterpret_cast<const char*>(s.buffer),s.bytes,info):
+            package_record::info(reinterpret_cast<const char*>(s.buffer),s.bytes,s.record,info);
+        if(!s.bytes || !valid)return -1;
+        s.mods=info.has_generation; s.which=1;s.stage=0;return 0;
+    }
     return 1;
 }
 // Small-file reader/writer for intent. A complete read-back precedes every publication rename.

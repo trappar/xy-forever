@@ -67,7 +67,7 @@ void apply_info(Entry& e, const uint8_t* text, uint32_t length) {
 }
 void finish(Library& out, Entry& e) {
     e.machines = e.has_info && e.info.has_machines ? e.info.machines : 0;
-    e.usable = e.image_present && !e.content_missing;
+    e.usable = e.image_present && !e.content_missing && !e.invalid_record;
     if (!e.usable) ++out.skipped;
     if (!e.has_info || !e.info.name[0]) copy(e.info.name, sizeof(e.info.name), e.id);
 }

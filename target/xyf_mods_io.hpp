@@ -8,7 +8,7 @@
 // steps for at most slice_ms per menu-loop pass, so USB and the screen stay live), and starts, follows
 // and cancels the job through the USB service's own mods.apply start (usb_service mods_start). The page
 // writes nothing itself: every write is a job's (the build under tmp/job-<id>/, then its commit into the library;
-// the saved selection, config.txt, by the config job).
+// the saved selection, config.json, by the config job).
 // The product build only (one link session and the job); elsewhere the menu says "not available".
 #if defined(XYF_ONE_SESSION) && defined(XYF_USB_FILE_WRITE)
 #define XYF_MODS_PAGE 1
@@ -28,7 +28,7 @@ void open();
 void prepare();
 const char* memory_flip();
 // A key while the page is shown (xyf::mods::key). #197: a flip (a toggle; memory_flip; unknown bases) is saved at
-// once: config.txt (mods=, the inputs beside it; what is built stays) is written by the config job at a quiet moment,
+// once: config.json (mods=, the inputs beside it; what is built stays) is written by the config job at a quiet moment,
 // quiet_ms after the last flip, so the menu never waits and quick flips make one write (pump). saving: that write runs.
 xyf::mods::Effect key(uint32_t key, bool pressed);
 bool saving();

@@ -49,7 +49,7 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 - Upstream links its module at `0x8d2d0380`; XY Forever runs at `0x8ab00000`. The diagnostic reporter range
   `0x8d4ce380..0x8d4d0380` falls in upstream's relocated-table zone (reported, unchecked).
 - Every selection changes `content/op1_factory.json` (and screens, presets): library switching alone does
-  not activate matching content. A boot writes only through a convergence ([boot.md](boot.md#converge-at-power-on-197)).
+  not activate matching content. A boot writes only through a convergence ([boot convergence](boot/convergence.md)).
 - Project companions need a matching project size and CRC and exclude players; a missing engine falls back
   to Prism, a missing effect to none.
 - A private relocation kernel (resolved fixups only; ELF types 6, 7, 10, 13, 18) matched GNU output on the

@@ -95,6 +95,29 @@ class Reports(unittest.TestCase):
         self.assertEqual(self.request(P.ids.STATE_GET, 1, 5, 0)[0], P.ids.S_BAD_REQUEST)
         self.assertEqual(self.request(P.ids.PACKAGE_LIST, 1, 3, 0, 0)[0], P.ids.S_BAD_REQUEST)
 
+    def test_native_metadata_precedence_and_exact_identity(self):
+        from xy_forever import native_json as J
+        folder = self.root / 'xy-forever/firmware/native'
+        folder.mkdir()
+        image = b'LDR'
+        raw = J.package_document(dict(type='firmware', name='Native', version='8', kind='custom',
+                                     bytes=len(image), crc32='00000000', sha256=hashlib.sha256(image).hexdigest()))
+        (folder / 'manifest.json').write_bytes(raw)
+        (folder / 'info.txt').write_bytes(b'type=firmware\nversion=legacy\n')
+        (folder / 'os.ldr').write_bytes(image)
+        listing = b'raw list identity\n'
+        (folder / 'files.sha256').write_bytes(listing)
+        rows = {r['id']: r for r in self.packages(1)}
+        self.assertEqual((rows['native']['version'], rows['native']['valid']), ('8', '1'))
+        self.assertEqual(rows['native']['identity'], hashlib.sha256(listing).hexdigest())
+        self.assertEqual((folder / 'manifest.json').read_bytes(), raw)
+        for bad in (b'', b'{', b'{}', b'{"pack":"Sound pack"}', raw.replace(b'"schema_version":1', b'"schema_version":2')):
+            with self.subTest(raw=bad):
+                (folder / 'manifest.json').write_bytes(bad)
+                row = {r['id']: r for r in self.packages(1)}['native']
+                self.assertEqual((row['type'], row['valid']), ('unknown', '0'))
+                self.assertNotEqual(row['version'], 'legacy')
+
     def test_large_inbox_identity_is_streamed_without_size_cap(self):
         inbox = self.root / 'xy-forever/inbox'
         inbox.mkdir()

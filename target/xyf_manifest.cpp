@@ -134,11 +134,47 @@ uint32_t first_key(uint16_t bits) {
 }
 }
 
+
+void begin(Manifest& m) {
+    zero(&m, sizeof(m)); m.key = key_unknown; m.status = empty;
+}
+Key find_key(const char* text, uint32_t length) {
+    for (uint32_t k = 0; k != key_count; ++k) if (same(text, length, key_names[k])) return Key(k);
+    return key_unknown;
+}
+Status field(Manifest& m, Key key, const char* value, uint32_t length, uint32_t line) {
+    Status status = !length ? empty_value : length > max_value ? value_too_long : store_value(m, key, value, length);
+    if (status != ok) return fail(m, status, line, key, line);
+    m.keys = uint16_t(m.keys | 1u << key);
+    return ok;
+}
+Status finish(Manifest& m, const uint16_t* key_line, uint32_t line) {
+    if (m.type == type_companion) return fail(m, refused_type, key_line[key_type], key_type, line);
+    const uint16_t allowed = m.type == type_mod_base ? base_keys : m.type == type_mod ? mod_keys : firmware_keys;
+    const uint16_t extra = uint16_t(m.keys & ~(allowed | bit_type));
+    if (extra) {
+        uint32_t worst = key_unknown;
+        for (uint32_t k = 0; k != key_count; ++k)
+            if ((extra >> k & 1u) && (worst == key_unknown || key_line[k] < key_line[worst])) worst = k;
+        return fail(m, key_not_for_type, key_line[worst], worst, line);
+    }
+    uint16_t needs = m.type == type_mod_base ? base_needs : m.type == type_mod ? mod_needs :
+                     m.type == type_firmware ? firmware_needs : 0;
+    if (m.type == type_none || m.type == type_firmware) {  // an assembled entry names both
+        if (has(m, key_generation) || has(m, key_needs_os))
+            needs = uint16_t(needs | 1u << key_generation | 1u << key_needs_os);
+    }
+    const uint16_t missing = uint16_t(needs & ~m.keys);
+    if (missing) return fail(m, missing_key, 0, first_key(missing), line);
+    m.status = ok;
+    m.lines = uint16_t(line);
+    return ok;
+}
+
 bool has(const Manifest& m, Key key) { return key < key_count && (m.keys >> key & 1u); }
 
 Status parse(const char* text, uint32_t length, Manifest& m) {
-    zero(&m, sizeof(m));
-    m.key = key_unknown;
+    begin(m);
     if (length > max_text) return fail(m, too_large, 0, key_unknown, 0);
     if (!length || !text) return fail(m, empty, 0, key_unknown, 0);
     if (text[length - 1] != '\n') {
@@ -177,8 +213,7 @@ Status parse(const char* text, uint32_t length, Manifest& m) {
         while (a < b && space(text[a])) ++a;
         while (b > a && space(text[b - 1])) --b;
         for (uint32_t k = a; k != b; ++k) if (text[k] == '\t') return fail(m, bad_byte, line, key_unknown, line);
-        uint32_t key = key_unknown;
-        for (uint32_t k = 0; k != key_count; ++k) if (same(text + key_start, n, key_names[k])) key = k;
+        const Key key = find_key(text + key_start, n);
         for (uint32_t k = 0; k != count; ++k)
             if (key_length[k] == n) {
                 uint32_t j = 0;
@@ -196,32 +231,12 @@ Status parse(const char* text, uint32_t length, Manifest& m) {
         }
         if (!v) return fail(m, empty_value, line, key, line);
         if (v > max_value) return fail(m, value_too_long, line, key, line);
-        const Status s = store_value(m, key, text + a, v);
-        if (s != ok) return fail(m, s, line, key, line);
-        m.keys = uint16_t(m.keys | 1u << key);
+        const Status s = field(m, key, text + a, v, line);
+        if (s != ok) return s;
         key_line[key] = uint16_t(line);
     }
     if (!count) return fail(m, empty, 0, key_unknown, line);
-    if (m.type == type_companion) return fail(m, refused_type, key_line[key_type], key_type, line);
-    const uint16_t allowed = m.type == type_mod_base ? base_keys : m.type == type_mod ? mod_keys : firmware_keys;
-    const uint16_t extra = uint16_t(m.keys & ~(allowed | bit_type));
-    if (extra) {
-        uint32_t worst = key_unknown;
-        for (uint32_t k = 0; k != key_count; ++k)
-            if ((extra >> k & 1u) && (worst == key_unknown || key_line[k] < key_line[worst])) worst = k;
-        return fail(m, key_not_for_type, key_line[worst], worst, line);
-    }
-    uint16_t needs = m.type == type_mod_base ? base_needs : m.type == type_mod ? mod_needs :
-                     m.type == type_firmware ? firmware_needs : 0;
-    if (m.type == type_none || m.type == type_firmware) {  // an assembled entry names both
-        if (has(m, key_generation) || has(m, key_needs_os))
-            needs = uint16_t(needs | 1u << key_generation | 1u << key_needs_os);
-    }
-    const uint16_t missing = uint16_t(needs & ~m.keys);
-    if (missing) return fail(m, missing_key, 0, first_key(missing), line);
-    m.status = ok;
-    m.lines = uint16_t(line);
-    return ok;
+    return finish(m, key_line, line);
 }
 
 void legacy_info(const Manifest& m, store::Info& info) {

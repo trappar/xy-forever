@@ -6,7 +6,7 @@
 // the simulator; processor B's xyf_mods_io reads and applies it, usb_service's config job writes it).
 // Functions are static: an inline (weak) function is a register call on Blackfin (the builder's call audit).
 //
-// The record, /yaffs2/xy-forever/config.txt (key=value lines, LF; unknown keys ignored):
+// The legacy record and the in-memory view of the JSON record (key=value lines, LF):
 //   format=1
 //   base=<library entry id>           the stock firmware the mods are built on
 //   profile=<p> generation=<g>         the mod package set the selection is from (one line each)
@@ -14,20 +14,24 @@
 //   built=<base> <generation> <set> <count>   what the Open-XY firmware in slot= was made from (set: the sum
 //                                      of the CRC-32 of every name of the selection, 8 hex: order-free)
 //   slot=mods-a|mods-b                 the library entry holding it (empty: never built)
-//   stamp=<64 hex>                     that entry's info.txt sha256= (its os.ldr) when it was built
+//   stamp=<64 hex>                     that entry's manifest SHA-256 (its os.ldr) when it was built
 //   memory=standard|expanded           Mod memory (Settings): expanded, the 4 MiB layout (mods.apply flag
 //                                      bit 1); absent or anything else: standard. built= then ends " expanded".
 //   safe=0|1                           safe mode ("Boot without mods"): the base boots with its official content,
 //                                      the rest is kept for "Restore Open-XY"; absent: 0, also with no slot or mods
 //   mods=<name>,<name>,...             the mods switched on: machine folders, then ext-<id>; empty: none (last)
-// Written as config.txt.part, then (A never renames onto a file) config.txt -> config.old, .part -> config.txt,
-// config.old removed. Read: config.txt, else config.old (a cut between the renames), else no record (no mods;
-// the base is the default stock entry).
+// Save replaces config.json with config.json.part and config.json.old. Legacy
+// config.txt and its rollback copy remain readable when both native names are absent.
 namespace xyf { namespace config {
-static const char path[] = "/yaffs2/xy-forever/config.txt";
-static const char old_path[] = "/yaffs2/xy-forever/config.old";
-static const char part_path[] = "/yaffs2/xy-forever/config.txt.part";
-static const uint32_t max_text = 2048;
+static const char path[] = "/yaffs2/xy-forever/config.json";
+static const char old_path[] = "/yaffs2/xy-forever/config.json.old";
+static const char part_path[] = "/yaffs2/xy-forever/config.json.part";
+static const char legacy_path[] = "/yaffs2/xy-forever/config.txt";
+static const char legacy_old_path[] = "/yaffs2/xy-forever/config.old";
+static const char* const names[] = {"config.json", "config.json.old", "config.txt", "config.old"};
+static const char* const paths[] = {path, old_path, legacy_path, legacy_old_path};
+static const uint32_t path_count = sizeof(names) / sizeof(names[0]), max_text = 2048;
+static inline bool native_record(uint32_t index) { return index < 2; }
 enum State : uint32_t { unread = 0, none = 1, present = 2, failed = 3 };
 struct Record {
     uint32_t state, count, unverified, expanded, safe;
@@ -51,6 +55,17 @@ static inline const char* value(const char* t, uint32_t length, const char* key,
     }
     n = 0;
     return 0;
+}
+static inline bool supported_format(const char* t, uint32_t length) {
+    for (uint32_t at = 0; at < length;) {
+        uint32_t n = 0;
+        const char* f = value(t + at, length - at, "format", n);
+        if (!f) break;
+        at = uint32_t(f - t) + n + 1;
+        if (n && f[n - 1] == '\r') --n;
+        if (n != 1 || f[0] != '1') return false;
+    }
+    return true;
 }
 static inline void field(const char* t, uint32_t length, const char* key, char* out, uint32_t capacity) {
     uint32_t n = 0, k = 0;
@@ -135,16 +150,6 @@ static inline void built_text(char* out, uint32_t capacity, const char* base, co
     if (expanded) put(o, " expanded");
     *o.at = 0;
     if (!o.ok) out[0] = 0;
-}
-// The record up to "mods=" (the caller appends the comma list and LF). Bytes, 0 when it does not fit.
-static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
-    Out o = {out, out + capacity, true};
-    put(o, "format=1\nbase="); put(o, r.base); put(o, "\nprofile="); put(o, r.profile);
-    put(o, "\ngeneration="); put(o, r.generation); put(o, r.unverified ? "\nunverified=1" : "\nunverified=0");
-    put(o, "\nbuilt="); put(o, r.built); put(o, "\nslot="); put(o, r.slot);
-    put(o, "\nstamp="); put(o, r.stamp); put(o, r.expanded ? "\nmemory=expanded" : "\nmemory=standard");
-    put(o, r.safe ? "\nsafe=1\nmods=" : "\nsafe=0\nmods=");
-    return o.ok ? uint32_t(o.at - out) : 0u;
 }
 } }
 #endif

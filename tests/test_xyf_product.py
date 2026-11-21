@@ -17,8 +17,11 @@ class ProductLayoutTest(unittest.TestCase):
     def test_only_the_product_modes_are_wide(self):
         for mode in builder.MODES:
             wide = builder.product_kind(mode) in builder.PRODUCT_MODES     # the MTP USB test build is the product's
-            self.assertEqual(builder.layout(mode), (0x8ab00000, 0x8ab80000 if wide else 0x8ab0c000,
-                                                    0x8ab84000 if wide else 0x8ab10000), mode)
+            if wide:
+                self.assertEqual(builder.layout(mode), (0x8ab00000, 0x8ab80000, 0x8ab84000), mode)
+            else:
+                self.assertIn(mode, ('xyf-stage2', 'xyf-stage2-menu'))
+                self.assertEqual(builder.layout(mode), (0x8ab00000, 0x8ab0e000, 0x8ab12000), mode)
 
     def test_one_product_mode(self):
         # xyf-product-v2 (build 064's two-session flow) was removed.

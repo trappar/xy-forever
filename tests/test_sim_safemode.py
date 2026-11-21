@@ -11,7 +11,7 @@ saved slot. A content switch failure and a power cut in the switch: the record i
 again repairs it. With no setup saved the row is "Boot without mods" and PLAY only says why. Synthetic packages (test_sim_config). Needs
 clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
 from pathlib import Path
-import re
+import json
 import sys
 import unittest
 
@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_mod_job as J                                               # noqa: E402
-from test_sim_config import ConfigBase                                    # noqa: E402
+from test_sim_config import CONFIG, ConfigBase                                    # noqa: E402
 from test_sim_mods_page import MINUS, PLAY, PLUS, STOP                   # noqa: E402
 
 TRACK1, TRACK2 = 6, 7                                                      # the first row, the safe-mode row
@@ -113,21 +113,21 @@ class SafeMode(ConfigBase, unittest.TestCase):
     def test_a_build_never_takes_the_saved_slot(self):
         """In safe mode the default is the base: both mods slots would be free, but builds go to the other one."""
         a = self.safe_saved()
-        stamp = (self.entry(a) / 'info.txt').read_bytes()
+        stamp = (self.entry(a) / 'manifest.json').read_bytes()
         other = {'mods-a': 'mods-b', 'mods-b': 'mods-a'}[a]
         self.assertEqual(self.build(['beta']), other)
         self.assertEqual(self.build(['gamma']), other)
-        self.assertEqual((self.entry(a) / 'info.txt').read_bytes(), stamp)
+        self.assertEqual((self.entry(a) / 'manifest.json').read_bytes(), stamp)
 
     def test_safe_mode_switch_failure_then_again_repairs(self):
         a = self.first_save()
         self.menu_again()
-        record = (self.root / 'xy-forever/config.txt').read_bytes()
+        record = (self.root / CONFIG).read_bytes()
         self.sim.set('rename_fault_kind', 1)
         self.sim.set('rename_fault', 1)                                    # the switch's first rename
         self.safe_mode()
         self.assertIn('Boot without mods again', self.failed())
-        self.assertEqual(((self.root / 'xy-forever/config.txt').read_bytes(), self.disk_default()), (record, a))
+        self.assertEqual(((self.root / CONFIG).read_bytes(), self.disk_default()), (record, a))
         self.sim.set('rename_fault', 0)
         self.safe_mode()
         self.assertEqual(self.booted(), self.base)
@@ -150,12 +150,12 @@ class SafeMode(ConfigBase, unittest.TestCase):
 
     def test_restore_failure_then_again(self):
         a = self.safe_saved()
-        record = (self.root / 'xy-forever/config.txt').read_bytes()
+        record = (self.root / CONFIG).read_bytes()
         self.sim.set('rename_fault_kind', 1)
         self.sim.set('rename_fault', 1)
         self.restore()
         self.assertIn('Restore Open-XY again', self.failed())
-        self.assertEqual(((self.root / 'xy-forever/config.txt').read_bytes(), self.disk_default()), (record, self.base))
+        self.assertEqual(((self.root / CONFIG).read_bytes(), self.disk_default()), (record, self.base))
         self.sim.set('rename_fault', 0)
         self.restore()
         self.assertEqual(self.booted(), a)
@@ -250,8 +250,10 @@ class SafeMode(ConfigBase, unittest.TestCase):
         """The slot no longer holds what built= says: Restore builds the saved selection again (into the spare slot),
         then boots it, still on the progress screen alone."""
         a = self.safe_saved()
-        info = self.entry(a) / 'info.txt'
-        info.write_text(re.sub(r'sha256=\w+', 'sha256=' + '0' * 64, info.read_text()))
+        info = self.entry(a) / 'manifest.json'
+        fields = json.loads(info.read_text())
+        fields['sha256'] = '0' * 64
+        info.write_text(json.dumps(fields))
         since = len(self.progress())
         self.restore()
         b = self.booted()

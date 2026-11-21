@@ -13,7 +13,7 @@
 // closes A's write window when the job ends (settle_writes).
 // Before the job's first step B sweeps leftover tmp/job-* folders (js_sweep); after the last, it commits the entry into the library:
 // the target id (job_target, chosen before anything is written) is never the default,
-// the boot-once entry or the saved Open-XY (config.txt slot=); the old entry is renamed into tmp/job-<id>-old, the new one onto the target, then
+// the boot-once entry or the saved Open-XY slot; the old entry is renamed into tmp/job-<id>-old, the new one onto the target, then
 // the old tree is removed. One request (or one list page and one change) per loop pass; A rescans the
 // library when B closes the window (settle_begin, as after a put).
 namespace mj = xyf_core::mod_job;
@@ -43,6 +43,7 @@ struct JobSlot {
     char line[48];
     U32 id, started_ms, ended_ms, longest_ms, link, debris, said_ms, said_phase;
     uint8_t page[read_range_max];                                        // the tree steps' listing
+    file_client::NameScan metadata_scan;
     // The commit and the sweep.
     char target[8], entry[file_engine::max_path], old[file_engine::max_path];
     U32 stage, had_old, commit_error, commit_code, extra_steps, clean_calls;
@@ -184,9 +185,23 @@ int job_size(void* c, const char* path, xyf_core::U32* bytes) {
     uint8_t record[file_client::record_bytes];
     const file_client::Reply r = file_client::stat(path, record);       // op 0x22
     if (r.outcome) return job_fail(s, r);
-    if (r.value != 0 || (P::get32(record + 8) & 0xf000u) != 0x8000u) return -1;
+    if (r.value != 0) return r.error == file_client::enoent ? mj::missing_file : -1;
+    if ((P::get32(record + 8) & 0xf000u) != 0x8000u) return -1;
     *bytes = P::get32(record + 0x1c);
     return 0;
+}
+int job_probe_metadata(void* c, const char* path) {
+    JobSlot& s = of(c);
+    if (!s.metadata_scan.folder) {
+        xyf_core::U32 size;
+        const int result = job_size(c, path, &size);
+        if (result != mj::missing_file) return result;
+    }
+    const U32 code = file_client::scan_name(path, s.metadata_scan, mounted);
+    if (code == file_client::scan_again) return mj::probe_again;
+    if (code == P::s_not_found) return mj::missing_file;
+    if (code == P::s_link) s.link = 1;
+    return -1;       // the native name exists but stat could not read a regular file
 }
 int job_open(void* c, const char* path, bool write) {
     JobSlot& s = of(c);
@@ -392,20 +407,41 @@ U32 job_choice(JobSlot& s, xyf::state::Choice& choice) {                // the s
     }
     return P::s_ok;
 }
+#if defined(XYF_CONTENT_SWITCH)
+U32 saved_mod_slot(char (&saved)[8]) {
+    namespace xg = xyf::config;
+    namespace json = xyf_core::json;
+    struct Work {
+        uint8_t raw[json::document_bytes];
+        json::Workspace parser;
+        char view[xg::max_text];
+    };
+    static_assert(sizeof(Work) <= mods_metadata_bytes, "saved slot lookup fits in the idle report slot");
+    auto& work = *reinterpret_cast<Work*>(job_work_end - mods_metadata_bytes);
+    config_io::Scan scan = {};
+    uint32_t bytes = 0;
+    bool native = false;
+    U32 code = P::s_busy;
+    for (U32 i = 0; i != 8 && code == P::s_busy; ++i)
+        code = config_io::read(scan, work.raw, bytes, native, mounted);
+    if (code != P::s_ok) return code == P::s_not_found ? U32(P::s_ok) : code;
+    const char* text = reinterpret_cast<const char*>(work.raw);
+    if (native) {
+        const auto doc = json::parse(text, bytes, work.parser, json::config_schema);
+        const auto result = json::config_text(doc, work.view, sizeof(work.view), bytes);
+        if (result != json::ok) return result == json::version ? U32(P::s_unsupported) : U32(P::s_refused);
+        text = work.view;
+    } else if (!xg::supported_format(text, bytes)) return P::s_unsupported;
+    xg::field(text, bytes, "slot", saved, sizeof(saved));
+    return P::s_ok;
+}
+#endif
 U32 job_target(JobSlot& s) {
     xyf::state::Choice choice;
     if (const U32 code = job_choice(s, choice)) return code;
-    char saved[8] = {0};                         // the saved Open-XY (config.txt slot=): never built over, safe mode too
+    char saved[8] = {0};                         // the saved Open-XY slot: never built over, safe mode too
 #if defined(XYF_CONTENT_SWITCH)
-    {
-        namespace xg = xyf::config;
-        uint32_t bytes = 0;
-        uint8_t* const text = reinterpret_cast<uint8_t*>(s.state_text);
-        U32 code = file_client::read_file(xg::path, 0, false, text, xyf::store::max_text, bytes, mounted);
-        if (code == P::s_not_found) code = file_client::read_file(xg::old_path, 0, false, text, xyf::store::max_text, bytes, mounted);
-        if (code == P::s_ok) xg::field(s.state_text, bytes, "slot", saved, sizeof(saved));
-        else if (code != P::s_not_found && code != P::s_too_large) return code;
-    }
+    if (const U32 code = saved_mod_slot(saved)) return code;
 #endif
     bool open[2], present[2];
     for (U32 i = 0; i != 2; ++i) {

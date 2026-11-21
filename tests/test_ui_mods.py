@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import ui_preview as P                                                    # noqa: E402
-from xy_forever import hostbuild, modkit as M, modsend as MS, paths       # noqa: E402
+from xy_forever import hostbuild, modkit as M, modsend as MS, package_records, paths       # noqa: E402
 from test_modpatch import PACKAGES, finish, kit_for, profile_for, stock   # noqa: E402
 
 PLAY, STOP, MINUS, PLUS, SHIFT = 51, 52, 53, 54, 55
@@ -30,8 +30,12 @@ KEEP = paths.XYF.is_dir()                                                  # pre
 
 
 def info(folder):
-    return dict(line.split('=', 1) for line in (folder / 'info.txt').read_text().splitlines()
-                if '=' in line and not line.startswith('#'))
+    return package_records.read_values(folder)
+
+
+def metadata_view(folder):
+    name = package_records.local_name(folder)
+    return package_records.text_view((folder / name).read_bytes(), name)
 
 
 def estimate(gen, on):
@@ -68,12 +72,12 @@ def load(lib, gen, base_text=None):
     """The page as xyf_mods_io leaves it after reading gen (folders in name order; the device's are in
     yaffs order, the rows are sorted the same either way)."""
     lib.mods_reset()
-    b = base_text if base_text is not None else (gen / 'base/info.txt').read_bytes()
+    b = base_text if base_text is not None else metadata_view(gen / 'base')
     s = (gen / 'base/services.txt').read_bytes()
     assert lib.mods_base(b, len(b)) and lib.mods_services(s, len(s))
     for d in sorted(p for p in gen.iterdir() if p.is_dir() and p.name != 'base'):
         if (d / 'files.sha256').is_file():
-            t = (d / 'info.txt').read_bytes()
+            t = metadata_view(d)
             assert lib.mods_package(lib.mods_add(d.name.encode()), t, len(t)), d
     lib.mods_ready(info(gen / 'base')['profile'].encode(), gen.name.encode())
 
@@ -521,7 +525,7 @@ class SyntheticPage(Base, unittest.TestCase):
             self.assertEqual(self.text(), want)
 
     def test_previews(self):
-        base = (self.gen / 'base/info.txt').read_bytes()
+        base = metadata_view(self.gen / 'base')
         over = re.sub(rb'module_bytes=\d+', b'module_bytes=%d' % (estimate(self.gen, ['alpha']) + 1), base)
         self.previews(Path(self.tmp.name) / 'previews', ['alpha', 'beta', 'ext-cap'], over)
 
@@ -578,7 +582,7 @@ class PageOrder(Base, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        if (PACKAGES / 'base/info.txt').is_file():
+        if package_records.local_name(PACKAGES / 'base'):
             cls.gen, cls.real = PACKAGES, True
         else:
             work = Path(cls.tmp.name)
@@ -609,10 +613,10 @@ class PageOrder(Base, unittest.TestCase):
         self.assertEqual(orders, sorted(orders))
         # read in any folder order: the same display order
         lib.mods_reset()
-        b, sv = (self.gen / 'base/info.txt').read_bytes(), (self.gen / 'base/services.txt').read_bytes()
+        b, sv = metadata_view(self.gen / 'base'), (self.gen / 'base/services.txt').read_bytes()
         lib.mods_base(b, len(b)); lib.mods_services(sv, len(sv))
         for d in sorted((p for p in self.gen.iterdir() if p.is_dir() and p.name != 'base'), reverse=True):
-            t = (d / 'info.txt').read_bytes()
+            t = metadata_view(d)
             lib.mods_package(lib.mods_add(d.name.encode()), t, len(t))
         self.assertEqual(listed(lib), [f for f, _ in self.order])
 
@@ -727,7 +731,7 @@ class PageOrder(Base, unittest.TestCase):
         self.keep('on-only')
 
 
-@unittest.skipUnless((PACKAGES / 'base/info.txt').is_file(), 'published 0.0.6 package set absent')
+@unittest.skipUnless(package_records.local_name(PACKAGES / 'base'), 'published 0.0.6 package set absent')
 class PublishedPage(Base, unittest.TestCase):
     """The real 0.0.6 set: 79 machines + 2 extensions; the estimate against the linker's own figures
     (test_modkit) and the 2032 KiB limit; previews kept for review."""
@@ -798,7 +802,7 @@ class PublishedPage(Base, unittest.TestCase):
         lib.mods_set_memory(0, 1)
         self.assertEqual(lib.mods_changed(), 1)                                         # the memory alone
         # an older base (no expanded_module_base): unavailable; PLAY changes nothing; expanded can go back
-        old = b''.join(l + b'\n' for l in (self.gen / 'base/info.txt').read_bytes().splitlines()
+        old = b''.join(l + b'\n' for l in metadata_view(self.gen / 'base').splitlines()
                        if not l.startswith(b'expanded_module_base='))
         load(lib, self.gen, old)
         self.assertEqual((lib.mods_expanded_limit(), lib.mods_memory_row(0)), (0, UNAVAILABLE))
@@ -813,7 +817,7 @@ class PublishedPage(Base, unittest.TestCase):
         self.assertEqual((lib.mods_memory_row(0), lib.mods_memory_row(1)), (READING, UNAVAILABLE))
         self.assertEqual(lib.mods_flip_memory(0), b'Still reading the mod packages.')
         for bad in (b'0x', b'0x8d0d0380a', b'8d0d0380', b'0x8d2d0380', b'0xg0000000'):  # not below module_base, or not hex
-            text = b''.join(l + b'\n' for l in (self.gen / 'base/info.txt').read_bytes().splitlines()
+            text = b''.join(l + b'\n' for l in metadata_view(self.gen / 'base').splitlines()
                             if not l.startswith(b'expanded_module_base=')) + b'expanded_module_base=' + bad + b'\n'
             load(lib, self.gen, text)
             self.assertEqual(lib.mods_expanded_limit(), 0, bad)

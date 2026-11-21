@@ -1,6 +1,17 @@
 #include "xyf_crc32.hpp"
 // Table-driven CRC-32 (IEEE 802.3, reflected 0xedb88320, zlib-compatible).
 // The table is constant data (.rodata): no runtime init, no BSS.
+#if defined(XYF_SMALL_CRC)
+#include "../native/crc32_small.hpp"
+namespace xyf { namespace crc {
+uint32_t update(uint32_t crc, const uint8_t* data, uint32_t count) {
+    return ~xyf_core::crc::small_update(~crc, data, count);
+}
+uint32_t update_volatile(uint32_t crc, const volatile uint8_t* data, uint32_t count) {
+    return ~xyf_core::crc::small_update(~crc, data, count);
+}
+} }
+#else
 namespace xyf { namespace crc {
 namespace {
 const uint32_t table[256] = {
@@ -75,3 +86,5 @@ uint32_t update_volatile(uint32_t crc, const volatile uint8_t* data, uint32_t co
     return ~crc;
 }
 } }
+
+#endif

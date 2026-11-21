@@ -49,8 +49,8 @@ int mf_valid_name(const char* name) { return valid_name(name); }
 void mf_file(const char* name, unsigned size, const unsigned char* prefix, unsigned length, Recognition* out) {
     recognise_file(name, size, prefix, length, *out);
 }
-void mf_folder(const char* name, const char* const* names, unsigned count, const Manifest* info, Recognition* out) {
-    recognise_folder(name, names, count, info, *out);
+void mf_folder(const char* name, const char* const* names, unsigned count, const Manifest* info, Recognition* out, bool vendor_pack) {
+    recognise_folder(name, names, count, info, *out, vendor_pack);
 }
 int mf_check_os(const Manifest* dependent, const Manifest* entry) { return check_os(*dependent, *entry); }
 int mf_check_mod(const Manifest* base, const Manifest* mod) { return check_mod(*base, *mod); }

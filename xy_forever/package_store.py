@@ -12,8 +12,8 @@ import secrets
 import struct
 import time
 
-from . import depth, host_write, usb_proto as P
-from .xyf_entry import parse_manifest, read_files_sha256
+from . import depth, host_write, package_records, usb_proto as P
+from .xyf_entry import read_files_sha256
 
 ROOT = '/yaffs2/xy-forever'
 TMP = ROOT + '/tmp'
@@ -46,13 +46,16 @@ def package_name(name):
 
 def validate(files):
     """Strict admission before any write. The boot/library reader remains lenient."""
-    fields = parse_manifest(files['info.txt'])
     listed = dict((path, sha) for sha, path in read_files_sha256(files['files.sha256']))
     if set(files) != set(listed) | {'files.sha256'}:
         raise StoreError('files.sha256 does not own exactly the staged package')
     for path, sha in listed.items():
         if hashlib.sha256(files[path]).hexdigest() != sha:
             raise StoreError('%s: SHA-256 differs' % path)
+    name = package_records.record_name(files)
+    if name is None:
+        raise StoreError('no manifest.json or info.txt')
+    fields = package_records.parse(files[name], name)
     if fields.get('type') in (None, 'firmware'):
         import zlib
         image = files.get('os.ldr')

@@ -1,0 +1,190 @@
+[
+  {
+    "name": "native mod",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"Synth\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":[\"synth\"],\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[10,11]}",
+    "text": "type=mod\nname=Synth\nmachine=synth\ngeneration=v1\norder=0\nservices=synth\nfeatures=-\nengine=-\npage=2\ncatalog_number=10,11\n"
+  },
+  {
+    "name": "saved expanded configuration",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"unverified\":true,\"memory\":\"expanded\",\"mods\":[\"alpha\",\"ext-beta\"]},\"built\":{\"base\":\"stock\",\"generation\":\"v1\",\"set\":1234,\"count\":2,\"memory\":\"expanded\",\"slot\":\"mods-a\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}",
+    "text": "format=1\nbase=stock\nprofile=p\ngeneration=v1\nmemory=expanded\nunverified=1\nbuilt=stock v1 000004d2 2 expanded\nslot=mods-a\nstamp=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nmods=alpha,ext-beta\n"
+  },
+  {
+    "name": "configuration before first build",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"unverified\":true,\"memory\":\"expanded\",\"mods\":[\"alpha\",\"ext-beta\"]},\"built\":null}",
+    "text": "format=1\nbase=stock\nprofile=p\ngeneration=v1\nmemory=expanded\nunverified=1\nmods=alpha,ext-beta\n"
+  },
+  {
+    "name": "stock content pack is not native",
+    "kind": "package",
+    "source": "{\"name\":\"Factory\",\"version\":1}",
+    "text": null
+  },
+  {
+    "name": "newer schema",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":2,\"type\":\"mod\",\"name\":\"Synth\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":[\"synth\"],\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[10,11]}",
+    "text": null
+  },
+  {
+    "name": "string schema version",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":\"1\",\"type\":\"mod\",\"name\":\"Synth\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":[\"synth\"],\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[10,11]}",
+    "text": null
+  },
+  {
+    "name": "wrong number type",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"Synth\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":\"1\",\"services\":[\"synth\"],\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[10,11]}",
+    "text": null
+  },
+  {
+    "name": "wrong list type",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"Synth\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":\"synth\",\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[10,11]}",
+    "text": null
+  },
+  {
+    "name": "wrong nullable number",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"Synth\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":[\"synth\"],\"features\":[],\"engine\":\"-\",\"page\":2,\"catalog_number\":[10,11]}",
+    "text": null
+  },
+  {
+    "name": "bad pair",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"Synth\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":[\"synth\"],\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[1]}",
+    "text": null
+  },
+  {
+    "name": "oversized scalar",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":[\"synth\"],\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[10,11]}",
+    "text": null
+  },
+  {
+    "name": "duplicate relevant field",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"type\":\"firmware\"}",
+    "text": null
+  },
+  {
+    "name": "duplicate nested configuration field",
+    "kind": "config",
+    "source": "{\"schema\": \"xy-forever.config\", \"schema_version\": 1, \"desired\": {\"base\": \"stock\", \"profile\": \"p\", \"generation\": \"v1\", \"unverified\": true,\"unverified\": false, \"memory\": \"expanded\", \"mods\": [\"alpha\", \"ext-beta\"]}, \"built\": {\"base\": \"stock\", \"generation\": \"v1\", \"set\": 1234, \"count\": 2, \"memory\": \"expanded\", \"slot\": \"mods-a\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}",
+    "text": null
+  },
+  {
+    "name": "duplicate selection",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"unverified\":true,\"memory\":\"expanded\",\"mods\":[\"alpha\",\"alpha\"]},\"built\":{\"base\":\"stock\",\"generation\":\"v1\",\"set\":1234,\"count\":2,\"memory\":\"expanded\",\"slot\":\"mods-a\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}",
+    "text": null
+  },
+  {
+    "name": "numeric boolean is refused",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"unverified\":1,\"memory\":\"expanded\",\"mods\":[\"alpha\",\"ext-beta\"]},\"built\":{\"base\":\"stock\",\"generation\":\"v1\",\"set\":1234,\"count\":2,\"memory\":\"expanded\",\"slot\":\"mods-a\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}",
+    "text": null
+  },
+  {
+    "name": "invalid memory",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"unverified\":true,\"memory\":\"large\",\"mods\":[\"alpha\",\"ext-beta\"]},\"built\":{\"base\":\"stock\",\"generation\":\"v1\",\"set\":1234,\"count\":2,\"memory\":\"expanded\",\"slot\":\"mods-a\",\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}",
+    "text": null
+  },
+  {
+    "name": "missing generated state",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"unverified\":true,\"memory\":\"expanded\",\"mods\":[\"alpha\",\"ext-beta\"]}}",
+    "text": null
+  },
+  {
+    "name": "Unicode escape is refused instead of changing an id",
+    "kind": "package",
+    "source": "{\"schema\": \"xy-forever.package\", \"schema_version\": 1, \"type\": \"mod\", \"name\": \"\\u0053ynth\", \"machine\": \"synth\", \"generation\": \"v1\", \"order\": 0, \"services\": [\"synth\"], \"features\": [], \"engine\": null, \"page\": 2, \"catalog_number\": [10, 11]}",
+    "text": null
+  },
+  {
+    "name": "literal backslash u survives",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"Literal \\\\u0053\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":[\"synth\"],\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[10,11]}",
+    "text": "type=mod\nname=Literal \\u0053\nmachine=synth\ngeneration=v1\norder=0\nservices=synth\nfeatures=-\nengine=-\npage=2\ncatalog_number=10,11\n"
+  },
+  {
+    "name": "escaped quote",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"Synth \\\"quoted\\\"\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":[\"synth\"],\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[10,11]}",
+    "text": "type=mod\nname=Synth \"quoted\"\nmachine=synth\ngeneration=v1\norder=0\nservices=synth\nfeatures=-\nengine=-\npage=2\ncatalog_number=10,11\n"
+  },
+  {
+    "name": "decoded newline is refused",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"mod\",\"name\":\"a\\nb\",\"machine\":\"synth\",\"generation\":\"v1\",\"order\":0,\"services\":[\"synth\"],\"features\":[],\"engine\":null,\"page\":2,\"catalog_number\":[10,11]}",
+    "text": null
+  },
+  {
+    "name": "malformed document",
+    "kind": "package",
+    "source": "{\"schema\":",
+    "text": null
+  },
+  {
+    "name": "fraction syntax for integer",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\",\"bytes\":1.0}",
+    "text": null
+  },
+  {
+    "name": "exponent syntax for integer",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\",\"bytes\":1e0}",
+    "text": null
+  },
+  {
+    "name": "negative zero integer",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\",\"bytes\":-0}",
+    "text": null
+  },
+  {
+    "name": "native safe selection retains missing names",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"memory\":\"expanded\",\"unverified\":true,\"safe\":true,\"mods\":[\"a\",\"ext-missing\"]},\"built\":null}",
+    "text": "format=1\nbase=stock\nprofile=p\ngeneration=v1\nmemory=expanded\nunverified=1\nsafe=1\nmods=a,ext-missing\n",
+    "canonical": true
+  },
+  {
+    "name": "native false safe selection defaults false",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"\",\"generation\":\"\",\"memory\":\"standard\",\"unverified\":false,\"safe\":false,\"mods\":[]},\"built\":null}",
+    "text": "format=1\nbase=stock\nprofile=\ngeneration=\nmemory=standard\nunverified=0\nmods=\n"
+  },
+  {
+    "name": "native numeric safe selection is refused",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"\",\"generation\":\"\",\"memory\":\"standard\",\"unverified\":false,\"safe\":1,\"mods\":[]},\"built\":null}",
+    "text": null
+  },
+  {
+    "name": "native configuration keeps a 31-character extension id",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"memory\":\"standard\",\"unverified\":false,\"mods\":[\"ext-abcdefghijklmnopqrstuvwxyz12345\"]},\"built\":null}",
+    "text": "format=1\nbase=stock\nprofile=p\ngeneration=v1\nmemory=standard\nunverified=0\nmods=ext-abcdefghijklmnopqrstuvwxyz12345\n",
+    "canonical": true
+  },
+  {
+    "name": "native configuration refuses a 33-character extension id",
+    "kind": "config",
+    "source": "{\"schema\":\"xy-forever.config\",\"schema_version\":1,\"desired\":{\"base\":\"stock\",\"profile\":\"p\",\"generation\":\"v1\",\"memory\":\"standard\",\"unverified\":false,\"mods\":[\"ext-abcdefghijklmnopqrstuvwxyz1234567\"]},\"built\":null}",
+    "text": null
+  },
+  {
+    "name": "rounded fraction for integer",
+    "kind": "package",
+    "source": "{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\",\"bytes\":4294967295.0000001}",
+    "text": null
+  }
+]

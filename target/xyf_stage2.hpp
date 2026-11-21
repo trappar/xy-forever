@@ -101,7 +101,7 @@ static_assert(sizeof(void*) != 4 || (sizeof(Services) == 20 && sizeof(Abi) == 32
 // ---- ABI 2: the main XY Forever menu (--xyf-stage2-menu) -------------------
 // Abi2 starts with the ABI-1 struct (abi = 2, bytes = sizeof(Abi2)); the
 // Services table is unchanged. Stage 1 hands over the catalog blob exactly as
-// processor a sent it (XYC1, CRC-checked: stage 2 decodes its own copy) and a
+// processor a sent it (XYC2, CRC-checked; XYC1 still readable) and a
 // note to show (result of the last request, may be 0). Stage 2 returns a
 // request: code | argument << 8. Stage 1 performs every request with its own
 // audited code (decide() below); a request it cannot honour comes back as a
@@ -121,7 +121,7 @@ enum Feature : uint32_t {       // what this stage 1 can do (Abi2::features)
 };
 struct Abi2 {
     Abi v1;                                 // v1.abi = 2, v1.bytes = sizeof(Abi2)
-    const uint8_t* catalog;                 // XYC1 blob from processor a, or 0
+    const uint8_t* catalog;                 // versioned XYC catalog from processor a, or 0
     uint32_t catalog_bytes;
     uint32_t features;                      // Feature bits
     const char* note;                       // one status line for the menu, or 0

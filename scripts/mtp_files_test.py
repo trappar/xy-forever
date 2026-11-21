@@ -5,7 +5,7 @@ With the composite up (--no-trial when it already is; else the trial of scripts/
 (interface 2) and the serial (the composite's CDC), HELLO between the steps:
   1. OpenSession (SessionAlreadyOpen: CloseSession, OpenSession, as go-mtpfs), GetDeviceInfo, GetStorageIDs,
      GetStorageInfo, the root (parent 0xFFFFFFFF), then /yaffs2/xy-forever/ by GetObjectInfo names.
-  2. config.txt over MTP (GetObject) against a serial read of the same file.
+  2. Saved configuration over MTP (GetObject) against a serial read of the same file.
   3. a 3 MiB random file uploaded into xy-forever/tmp/ (SendObjectInfo + SendObject); one serial file read DURING
      the upload (expect busy or success, never a hang); read back over serial, downloaded again over MTP
      (GetObject), both compared; deleted over MTP (DeleteObject), the delete confirmed over serial.
@@ -17,7 +17,7 @@ With the composite up (--no-trial when it already is; else the trial of scripts/
   5c. speed: 200 GetObjectInfo + GetObjectPropValue pairs on the children of
      xy-forever/mods/0.0.6-370a949e96aa (operations per second); 8 MiB up and down (3 MiB in step 3).
   5b. T2c object properties: GetObjectPropsSupported, ObjectSize and ObjectFileName (GetObjectPropValue) of
-     config.txt and tmp/ against serial ls, a file renamed in tmp/ by SetObjectPropValue (serial sees the new name,
+     the saved configuration and tmp/ against serial ls, a file renamed in tmp/ by SetObjectPropValue (serial sees the new name,
      not the old).
   6. CloseSession; the device's counters: the session (diag.mtp op 5), the operations log (op 6), the driver (op 1).
 --ops-log: only HELLO, the session's state and the operations log (after a real client such as OpenMTP).
@@ -40,7 +40,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
 import xyf_host as H  # noqa: E402
-from xy_forever import device_lock, no_device, usb_proto as P  # noqa: E402
+from xy_forever import config_records, device_lock, no_device, usb_proto as P  # noqa: E402
 from xy_forever.paths import SESSIONS  # noqa: E402
 import mtp_usb_probe as probe  # noqa: E402
 
@@ -57,7 +57,6 @@ SPEED_PAIRS = 200
 OK, BUSY, ACCESS_DENIED, WRITE_PROTECTED, ALREADY_OPEN = 0x2001, 0x2019, 0x200F, 0x200D, 0x201E
 STORAGE = 0x00010001
 ROOT_PARENT = 0xFFFFFFFF
-CONFIG_PATH = '/yaffs2/xy-forever/config.txt'
 UPLOAD_NAME, FOLDER_NAME = 't2b-upload.bin', 't2b-folder'
 RENAME_FROM, RENAME_TO = 't2c-rename-a.txt', 't2c-rename-b.txt'
 OBJECT_SIZE, OBJECT_FILE_NAME = 0xDC04, 0xDC07
@@ -257,15 +256,18 @@ def main():
         xyf = root['xy-forever'][0]
         rc, inside = listing(xyf)
         xyf_inside = inside
-        run.check('xy-forever/ listed', rc == OK and 'config.txt' in inside and 'tmp' in inside,
-                  ', '.join(sorted(inside)))
+        selected = config_records.read(dev)
+        if selected is None:
+            raise ValueError('no saved configuration')
+        config_name, serial_config, _ = selected
+        run.check('xy-forever/ listed', rc == OK and config_name in inside and 'tmp' in inside, ', '.join(sorted(inside)))
+        config_path = config_records.ROOT + '/' + config_name
         hello_check('after the walk')
 
-        # 2. config.txt both ways
-        code, serial_config = dev.read_all(CONFIG_PATH)
-        data, rc, _ = m.transact(0x1009, (inside['config.txt'][0],))
-        run.check('config.txt over MTP equals the serial read', rc == OK and code == 0 and data == serial_config,
-                  'MTP %d bytes, serial %d bytes (%s)' % (len(data or b''), len(serial_config), P.status_name(code)))
+        # 2. The selected configuration both ways.
+        data, rc, _ = m.transact(0x1009, (inside[config_name][0],))
+        run.check('%s over MTP equals the serial read' % config_name, rc == OK and data == serial_config,
+                  'MTP %d bytes, serial %d bytes' % (len(data or b''), len(serial_config)))
 
         # 3. 3 MiB up, a serial read during it, back over serial and MTP, delete
         tmp = inside['tmp'][0]
@@ -278,7 +280,7 @@ def main():
             time.sleep(1.0)
             t = time.monotonic()
             try:
-                code, body = dev.read_file(CONFIG_PATH)
+                code, body = dev.read_file(config_path)
                 during.update(code=P.status_name(code), seconds=round(time.monotonic() - t, 3), bytes=len(body))
             except Exception as error:                 # noqa: BLE001
                 during.update(error='%s: %s' % (type(error).__name__, error), seconds=round(time.monotonic() - t, 3))
@@ -398,11 +400,11 @@ def main():
                       ' '.join('0x%04x' % v for v in props))
 
         def config_props():
-            code, body = dev.read_all(CONFIG_PATH)
-            rc1, size = prop(xyf_inside['config.txt'][0], OBJECT_SIZE)
-            rc2, name = prop(xyf_inside['config.txt'][0], OBJECT_FILE_NAME)
-            run.check('config.txt ObjectSize, ObjectFileName (serial)', code == 0 and rc1 == OK and rc2 == OK and
-                      name == 'config.txt' and size == len(body), '0x%04x %s, 0x%04x %r; serial %s, %d bytes' % (
+            code, body = dev.read_all(config_path)
+            rc1, size = prop(xyf_inside[config_name][0], OBJECT_SIZE)
+            rc2, name = prop(xyf_inside[config_name][0], OBJECT_FILE_NAME)
+            run.check('%s ObjectSize, ObjectFileName (serial)' % config_name, code == 0 and rc1 == OK and rc2 == OK and
+                      name == config_name and size == len(body), '0x%04x %s, 0x%04x %r; serial %s, %d bytes' % (
                           rc1, size, rc2, name, P.status_name(code), len(body)))
 
         def tmp_props():
@@ -432,7 +434,7 @@ def main():
                 run.log('renamed file deleted: 0x%04x' % rc)
 
         substep('GetObjectPropsSupported', props_supported)
-        substep('config.txt ObjectSize, ObjectFileName (serial)', config_props)
+        substep('%s ObjectSize, ObjectFileName (serial)' % config_name, config_props)
         substep('tmp/ ObjectSize 0, ObjectFileName (serial ls)', tmp_props)
         substep('rename by SetObjectPropValue (serial sees it)', rename)
 

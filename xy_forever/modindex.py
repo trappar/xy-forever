@@ -41,6 +41,8 @@ import urllib.request
 import zipfile
 import zlib
 
+from . import package_records
+
 from . import modsend as S
 
 FORMAT = 'xyf-mod-index/1'
@@ -98,7 +100,8 @@ def package_files(gen, name):
 
 
 def package_entry(gen, profile, generation, name, files):
-    info = S.info_values(files[S.INFO])
+    metadata = package_records.record_name(files)
+    info = S.info_values(files[metadata], metadata)
     kind = 'base' if info.get('type') == 'mod-base' else 'extension' if name.startswith('ext-') else 'machine'
     memory = {k: number(info.get(k)) for k in ('code', 'data', 'state')}
     memory['total'] = sum(memory.values())
@@ -194,7 +197,7 @@ def check_package(profile, generation, pkg):
         seen.add(f['path'])
         need(isinstance(f.get('size'), int) and 0 < f['size'] <= MAX_FILE, '%s/%s: bad or oversize size' % (pid, f['path']))
         need(isinstance(f.get('sha256'), str) and SHA.match(f['sha256']), '%s/%s: bad sha256' % (pid, f['path']))
-    need(S.LIST in seen and S.INFO in seen, '%s: no %s or %s' % (pid, S.LIST, S.INFO))
+    need(S.LIST in seen and package_records.record_name(seen) is not None, '%s: no %s or %s' % (pid, S.LIST, S.INFO))
     clash = sorted(seen & {'/'.join(p.split('/')[:i]) for p in seen for i in range(1, p.count('/') + 1)})
     need(not clash, '%s: %s is both a file and a folder' % (pid, clash[:1]))
     arc = pkg.get('archive')
@@ -324,10 +327,11 @@ def fetch(where, to, only=(), generation=None, out=print):
         data = get(urllib.parse.urljoin(url, pkg['archive']['name']), pkg['archive']['size'])
         got[pid] = unpack(pkg, data)
         out('%-22s %4d files %10d B' % (pid, len(got[pid]), sum(map(len, got[pid].values()))))
-    info = S.info_values(got['base'][S.INFO])
+    metadata = package_records.record_name(got['base'])
+    info = S.info_values(got['base'][metadata], metadata)
     need((info.get('profile'), info.get('generation')) == (profile, gen['generation']),
-         'base/info.txt names %s/%s, the index %s/%s' % (info.get('profile'), info.get('generation'), profile,
-                                                          gen['generation']))
+         'base/%s names %s/%s, the index %s/%s' % (metadata, info.get('profile'), info.get('generation'),
+                                                    profile, gen['generation']))
     partial = target.with_name(target.name + '.partial')
     shutil.rmtree(partial, ignore_errors=True)
     for pid, files in got.items():

@@ -11,13 +11,13 @@ namespace xyf_core { namespace mod_job {
 // bytes out.
 //
 // Inputs, each read whole into the region and checked against its package's files.sha256 when it
-// belongs to a package: <generation>/{base,<machine>,ext-<id>}/files.sha256, info.txt, catalog.txt
+// belongs to a package: <generation>/{base,<machine>,ext-<id>}/files.sha256, manifest.json (or info.txt), catalog.txt
 // (machines), the base's edits.bin, every file the linker asks for, every content file the entry needs;
 // the stock os.ldr (read straight into the image buffer; the patch pins its SHA-256), the stock
 // op1_factory.json (the content step pins it) and the firmware's content.sha256.
 // Outputs: one whole library entry in the existing folder `out` (docs/STORAGE.md): every content/...
 // file of mod_content's list (the packages' display and preset files copied, content/op1_factory.json
-// built), info.txt (type=firmware, an assembled mod set: name, kind open-xy,
+// built), manifest.json (type=firmware, an assembled mod set: name, kind open-xy,
 // bytes, crc32, sha256, needs_os, generation, profile, machines), files.sha256 (every file above and os.ldr,
 // sorted), then os.ldr. The job makes the folders under `out` it needs (mkdir). Each output is written
 // as <name>.part and read back and compared by SHA-256; os.ldr is read back whole, its SHA-256 must be the
@@ -33,9 +33,11 @@ namespace xyf_core { namespace mod_job {
 // output's folders and open, one rename. No heap, no BSS, no library calls.
 
 // File calls. Paths are NUL-terminated, at most path_bytes with the NUL. A handle is >= 0.
+static const int missing_file = -2, probe_again = 1;
 struct Files {
     void* context;
-    int (*size)(void* context, const char* path, U32* bytes);               // 0, or < 0 (absent)
+    int (*probe_metadata)(void* context, const char* path);                // 0, missing_file, probe_again, or error
+    int (*size)(void* context, const char* path, U32* bytes);               // 0, missing_file, or other negative error
     int (*open)(void* context, const char* path, bool write);               // write: create or truncate
     int (*read)(void* context, int handle, Byte* data, U32 bytes);          // bytes read (0: end), or < 0
     int (*write)(void* context, int handle, const Byte* data, U32 bytes);   // bytes written, or < 0
@@ -54,7 +56,7 @@ struct Input {
     const char* catalog;             // stock content/op1_factory.json
     const char* official;            // the firmware's content.sha256
     const char* out;                 // output folder; it exists (the job makes the folders under it)
-    const char* name;                // info.txt name: 1-47 printable ASCII bytes, no space at either end
+    const char* name;                // manifest name: 1-47 printable ASCII bytes, no space at either end
     const Policy* policy;            // ldr::inspect's policy (the cold LDR policy)
     bool profiling;                  // false: the website's mode
     bool unverified;                 // the user confirmed a base that is not a known one
@@ -112,8 +114,9 @@ struct Job {
     struct Package {                 // one package as the job holds it
         const char* name;            // "base", the machine id, "ext-<id>"
         Byte* list; U32 list_bytes;  // files.sha256, each line's end turned into a NUL
-        mod_content::File* files; U32 file_count;   // its lines, info.txt excluded
-        const hash::Digest* info_sha256;   // info.txt's line (0: not listed)
+        mod_content::File* files; U32 file_count;   // its lines, package metadata excluded
+        const hash::Digest *info_sha256, *native_sha256;   // original records' digests (0: not listed)
+        const char* metadata;              // selected on-disk record name
         Byte* info; U32 info_bytes;
         Byte* catalog; U32 catalog_bytes;
     };

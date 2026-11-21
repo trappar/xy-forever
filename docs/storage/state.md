@@ -67,7 +67,7 @@ record, `.old` removed; only a `.old` (a cut between) reads as switching, never 
 state; an assembled mod set only when the record is installed for it. A plain power-on never writes: an unusable default opens the menu with the reason
 ("Default <id>: content not installed" or "content needs repair").
 
-The switch (B's job, `target/xyf_content_job.hpp`; one file request per step, USB live): the target's `info.txt` (`generation`: a mod set), the record (or its
+The switch (B's job, `target/xyf_content_job.hpp`; one file request per step, USB live): the target's manifest (`generation`: a mod set), the record (or its
 `.old`); in the official state the live catalog's SHA-256 must equal the `op1_factory.json` line of a library entry's `content.sha256` (else refused: not the
 official set), otherwise the saved list is used; the target's `content/` lines of `files.sha256` (a path the official list names is refused, as is any path the
 rule refuses). Every refusal comes before the first write. Then: the official list and catalog saved under `content-official/` (official state, unless the same
@@ -81,19 +81,23 @@ never `dlc/`, `user/` or a name holding `bootloader` (`xyf::content::allowed`, o
 
 ### Saved configuration
 
-`config.txt` (`target/xyf_config.hpp`): `base`, `profile`, `generation`, `unverified`, `built=<base> <generation> <set> <count>[ expanded]` (set: sum of the
-names' CRC-32), `slot` (the Open-XY entry), `stamp` (its `info.txt` `sha256=`), `memory=standard|expanded` (Mod memory; anything else: standard),
-`safe=0|1` (safe mode: the base is the default with official content; 0 without a slot or mods), `mods` (last).
-Replaced as `content-state.txt` is; a reader takes `config.old` when the record is missing; no record: no mods.
-The record holds the inputs of the desired state (#197): base, selection (`mods`), Mod memory, `safe`. A Mods page or Mod memory flip is written
-at once (at a quiet moment, quick flips: one write; `built`, `slot`, `stamp`, `safe` kept); `config.set` (#26) is a flip with `safe`.
-Boot without mods (`safe=1`), Restore (`safe=0`) and the first row's PLAY with (to apply) or (rebuild) converge to the record
-(`target/xyf_converge.hpp` `plan`, run by `xyf_mods_save.ipp`):
-only the steps that differ run, in order. A build into the spare slot unless `slot` exists, `built` matches and its `sha256=` equals `stamp` (safe
-mode: none); the content switch to the target (the base in safe mode or with no mods, else `slot`) unless installed; the record and the default
-(one job, `config_store`; always after a switch). Nothing differs: nothing is written. No mod build takes `slot` (`job_target`).
-Each convergence ends by writing `converged.txt` when it differs: a plain power-on whose record and default still match it boots at once,
-else converges first ([boot.md](../architecture/boot.md#converge-at-power-on-197)).
+[`config.json`](native-json/schemas.md#configuration-configjson) stores the desired
+selection and the built slot's identity. Readers take the first present name
+among `config.json`, `config.json.old`, `config.txt`, and `config.old`. An unreadable or unsupported
+selected record stops convergence and saving. Legacy records can omit `format` or use `format=1`.
+
+A Mods page or Mod memory flip saves at a quiet moment. The USB `config.set` command saves the same
+inputs. The writer stages `config.json.part`, moves any current record to `config.json.old`, then publishes
+the part. A cut between renames leaves the backup authoritative. Legacy files remain readable. Reading
+a legacy record and booting an already converged setup never migrate it.
+
+Boot without mods, Restore Open-XY and Continue converge to the saved inputs
+(`target/xyf_converge.hpp`, run by `xyf_mods_save.ipp`). The device builds into the spare slot when needed
+and switches content if it differs. After the switch it publishes the record and commits the default via
+`config_store`. Safe mode boots the base with official content and keeps the saved mods and slot.
+
+Convergence writes `converged.txt` when its fingerprint differs. A plain power-on that finds the same
+configuration bytes and default can boot immediately ([boot convergence](../architecture/boot/convergence.md)).
 
 `log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
 menu converge, USB build or content switch, the last 20; `kind result mods memory added removed total` then each

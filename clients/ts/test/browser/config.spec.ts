@@ -1,4 +1,4 @@
-// In Chrome: the demo page's Mods panel shows the saved configuration (config.txt, else config.old) and the
+// In Chrome: the demo page's Mods panel shows the saved configuration (native or legacy) and the
 // content state (content-state.txt) against the demo simulator: none, a record, installed, switching, a
 // configSource replaced (the seam for config.get); and Build on device is labelled low-level.
 import { describe, expect, inject, test } from 'vitest';
@@ -10,6 +10,7 @@ const sim = web.demo;
 const poll = { timeout: 30_000, interval: 100 };
 const b64 = (text: string): string => btoa(text);
 const DIR = '/yaffs2/xy-forever';
+const records = ['config.json', 'config.json.old', 'config.txt', 'config.old', 'content-state.txt', 'content-state.old'];
 
 describe.skipIf(!sim)(`the demo page's saved configuration against the simulator${sim ? '' : ` (skipped: ${web.why})`}`, () => {
   test('no record, a record, content installed and switching, the low-level label', async () => {
@@ -19,7 +20,7 @@ describe.skipIf(!sim)(`the demo page's saved configuration against the simulator
     const remove = async (name: string): Promise<void> => {
       if ((await commands.simList(sim!.root, DIR).catch(() => [] as string[])).includes(name)) await commands.simDelete(sim!.root, `${DIR}/${name}`);
     };
-    for (const name of ['config.txt', 'config.old', 'content-state.txt', 'content-state.old']) await remove(name);
+    for (const name of records) await remove(name);
     await expect.poll(() => $('via').textContent, poll).toMatch(/^Simulator on /);
     expect(page.querySelector('#build h3')!.textContent).toBe('Build on device (low-level)');
     expect($('build-hint').textContent).toMatch(/^Low-level action: /);
@@ -29,7 +30,26 @@ describe.skipIf(!sim)(`the demo page's saved configuration against the simulator
       expect($('config-saved').textContent).toBe('No saved configuration: no mods.');
       expect($('config-content').textContent).toBe('Content: official.');
 
+      const native = (version: number): string => b64(JSON.stringify({
+        schema: 'xy-forever.config', schema_version: version,
+        desired: { base: 'opxy-121', profile: 'opxy-1.2.1', generation: 'g1', mods: ['gamma'], memory: 'standard',
+          unverified: false }, built: null,
+      }));
+      await commands.simWrite(sim!.root, `${DIR}/config.json`, native(1));
+      $('mods-refresh').click();
+      expect(await done()).toBe('');
+      expect($('config-saved').textContent).toBe('Base opxy-121 (opxy-1.2.1/g1); mods on: gamma; not built yet.');
+
       await commands.simWrite(sim!.root, `${DIR}/config.old`, b64('format=1\nbase=opxy-121\nprofile=opxy-1.2.1\ngeneration=g1\nunverified=0\nmods=alpha\n'));
+      await commands.simWrite(sim!.root, `${DIR}/config.json.old`, native(1));
+      await commands.simWrite(sim!.root, `${DIR}/config.json`, native(2));
+      $('mods-refresh').click();
+      expect(await done()).toContain('config.json:');
+      await remove('config.json');
+      $('mods-refresh').click();
+      expect(await done()).toBe('');
+      expect($('config-saved').textContent).toBe('Base opxy-121 (opxy-1.2.1/g1); mods on: gamma; not built yet.');
+      await remove('config.json.old');
       $('mods-refresh').click();
       expect(await done()).toBe('');
       expect($('config-saved').textContent).toBe('Base opxy-121 (opxy-1.2.1/g1); mods on: alpha; not built yet.');
@@ -57,7 +77,7 @@ describe.skipIf(!sim)(`the demo page's saved configuration against the simulator
       expect(await done()).toBe('');
       expect($('config-saved').textContent).toBe('-');
     } finally {
-      for (const name of ['config.txt', 'config.old', 'content-state.txt', 'content-state.old']) await remove(name);
+      for (const name of records) await remove(name);
     }
   });
 

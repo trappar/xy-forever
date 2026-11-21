@@ -7,12 +7,12 @@
 // menu. Fixed-size little-endian records with a CRC-32 trailer; decode()
 // rejects anything malformed (magic, counts, unterminated strings, CRC).
 namespace xyf { namespace catalog {
-static const uint32_t magic = 0x31435958u;          // "XYC1"
+static const uint32_t legacy_magic = 0x31435958u, magic = 0x32435958u; // "XYC1" / "XYC2"
 static const uint32_t max_entries = library::max_entries;
-static const uint8_t flag_usable = 1, flag_content_missing = 8;
+static const uint8_t flag_usable = 1, flag_content_missing = 8, flag_invalid_record = 16;
 struct Item {
     char id[32], name[48], version[32];
-    uint8_t kind, flags;                             // flags: 1 usable, 8 content not installed;
+    uint8_t kind, flags;                             // flags: 1 usable, 8 content not installed, 16 bad metadata;
                                                      // legacy layout bits 2/4 accepted but never emitted
     uint16_t machines;
 };

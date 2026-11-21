@@ -1,5 +1,5 @@
 """In the simulator: converging at power-on (#197, step B). Every convergence stores /yaffs2/xy-forever/converged.txt:
-the SHA-256 of the saved record (config.txt) and the default it converged to. A plain power-on whose fingerprint
+the SHA-256 of the selected configuration record and the default it converged to. A plain power-on whose fingerprint
 matches, with nothing in doubt, boots the default with no menu, no progress screen, no USB and no write, as fast as a
 plain boot ever did. Saved inputs changed and then the power lost (a flip saved, never applied), a fingerprint missing
 (the first boot after an install: the converge reads the real state, so a slot that no longer holds what the record
@@ -7,6 +7,7 @@ says is built again) and an open journal each make the plain power-on converge o
 own journal replay included), store the fingerprint and boot. PLAY held at power-on only opens the menu. Synthetic
 packages (test_sim_config). Needs clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
 import hashlib
+import json
 from pathlib import Path
 import sys
 import time
@@ -16,8 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_mod_job as J                                               # noqa: E402
-from test_sim_config import ConfigBase, MARK, mark_text                   # noqa: E402
+from test_sim_config import CONFIG, LEGACY_OLD, ConfigBase, MARK, mark_text                   # noqa: E402
 from test_sim_job_recovery import intent, JOURNAL                          # noqa: E402
+from xy_forever import native_json                                       # noqa: E402
 
 CONVERGE = 'menu: power-on converge: doubt '                               # sim/devices.cpp, as key_ui.cpp
 
@@ -71,6 +73,20 @@ class PowerOn(ConfigBase, unittest.TestCase):
             seen.add(self.messages)
         self.assertEqual(len(seen), 1, seen)
 
+    def test_legacy_backup_with_matching_fingerprint_boots_without_migrating(self):
+        entry = self.first_save()
+        current = self.root / CONFIG
+        (self.root / LEGACY_OLD).write_bytes(native_json.config_text(current.read_bytes()))
+        current.unlink()
+        (self.root / MARK).write_text(mark_text(self.root, entry))
+        before = self.snapshot()
+
+        counts, _ = self.plain()
+
+        self.assertEqual(self.counts(), counts)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.disk_default(), entry)
+
     def test_changed_inputs_converge_at_power_on_then_boot(self):
         a = self.first_save()
         self.menu_again()
@@ -97,10 +113,10 @@ class PowerOn(ConfigBase, unittest.TestCase):
         self.assertEqual(self.snapshot(), snapshot)                        # only the fingerprint written
         # The slot no longer holds what the record says (its stamp differs) and no fingerprint: built again.
         (self.root / MARK).unlink()
-        info = self.entry(a) / 'info.txt'
-        text = info.read_text()
-        stamp = self.config()['stamp']
-        info.write_text(text.replace('sha256=' + stamp, 'sha256=' + stamp[::-1]))
+        info = self.entry(a) / 'manifest.json'
+        fields = json.loads(info.read_text())
+        fields['sha256'] = self.config()['stamp'][::-1]
+        info.write_text(json.dumps(fields))
         before, _ = self.plain()
         b = self.converged(before, 1)
         self.assertNotEqual(b, a)

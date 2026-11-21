@@ -29,7 +29,7 @@ STOCK_HASH = '60358afdaa9b58ed40411602f6d5d4e1e3e02553ff2da7e25038e71dd002b52f'
 HEAP_BASE, HEAP_BYTES = 0x8c0d0380, 0x1400000
 REPORTER, CARRY, END = 0x8d4ce380, 0x8d4cf380, 0x8d4d0380
 HOOK = 0x8d506a02
-MODULE, STACK, STACK_END = 0x8ab00000, 0x8ab0c000, 0x8ab10000
+MODULE, STACK, STACK_END = 0x8ab00000, 0x8ab0e000, 0x8ab12000
 # Wide product layout (target/cold_layout.hpp; build 171): a 512 KiB code window
 # 0x8ab00000..0x8ab80000, then the 16 KiB stack to 0x8ab84000. The whole reservation lies in
 # FREE_GAP (check_memory_map). Only WIDE_MODES use it; every other mode keeps the narrow layout.
@@ -250,7 +250,8 @@ OTP_READ, OTP_INIT, OTP_INIT_FLAG = 0x04000048, 0x04000054, 0x11b01650   # the f
 # tfw.check (XYF_TFW_CHECK): the only feature that reads OTP, and with it the native
 # .tfw check (native/tfw_check and the decoder parts it uses) and the key provider.
 TFW_CHECK_MODES = ('xyf-product',)
-from xy_forever.build_modules import TFW_CHECK_MODULES, TFW_TARGET_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES, USB_STORAGE_MODULES, compile_tfw
+from xy_forever.build_modules import JSON_MODULES, TFW_CHECK_MODULES, TFW_TARGET_MODULES, MOD_JOB_MODULES, MODS_PAGE_MODULES, GC_MODULES, USB_STORAGE_MODULES, compile_tfw
+from xy_forever.build_modules import own_sources as build_sources
 # The mod assembly job (native/mod_job and the linker, patch and content steps) runs on B.
 # The menu's Mods page (target/xyf_mods*: model, view, B's reading and the job's start), product only.
 # The file engine on a (storage_server.cpp; the historical MTP group): the executors
@@ -481,11 +482,7 @@ SOURCE_SUFFIXES = ('.cpp', '.hpp', '.ipp', '.inc', '.s', '.py')   # .ipp: a file
 
 
 def own_sources():
-    """Every file that can affect a build: target/, native/, the Python package, this script, the toolchain pins."""
-    files = [p for d in ('target', 'native', 'xy_forever') for p in (SOURCE / d).iterdir()
-             if p.is_file() and p.suffix in SOURCE_SUFFIXES]
-    files += [SOURCE / 'xyf_build.py', SOURCE / 'toolchains.json']
-    return sorted(str(p.relative_to(SOURCE)) for p in files)
+    return build_sources(SOURCE, SOURCE_SUFFIXES)
 
 
 def branch(site, destination):
@@ -953,8 +950,9 @@ def build(out, stock, boot, mode):
     out.mkdir(parents=True)
     commands = []
     flags = compile_core(out, compiler, tools, commands, ('ldr', 'memory', 'trace_slot', 'trace_slot_zero'), split_sections=stage2)
+    flags = [*flags, '-DXYF_STACK_END=%#xu' % stack_end]
     if mode in WIDE_MODES:
-        flags = [*flags, '-DXYF_STACK_END=%#xu' % stack_end, '-DXYF_CENSUS_REGIONS=24']
+        flags = [*flags, '-DXYF_CENSUS_REGIONS=24']
     if mode in USB_SET_DEFAULT_MODES:
         flags = [*flags, '-DXYF_USB_SET_DEFAULT=1']
     if mode in FILE_WRITE_MODES:
@@ -976,7 +974,7 @@ def build(out, stock, boot, mode):
     if mode in NO_EMBEDDED_MODES:
         flags = [*flags, '-DXYF_NO_EMBEDDED=1']
     if mode not in WIDE_MODES:
-        flags = [*flags, '-DXYF_SMALL_CRC=1']        # narrow 48 KiB modules: the nibble CRC table
+        flags = [*flags, '-DXYF_SMALL_CRC=1']        # offline modules: the nibble CRC table
 
     def cpp(name, path, defines=()):
         sections = ['-ffunction-sections', '-fdata-sections'] if name in ('cold_storage', 'boot_services', 'retained_lookup') else []
@@ -1064,8 +1062,10 @@ def build(out, stock, boot, mode):
         cpp('xyf_stage2', SOURCE / 'target/xyf_stage2.cpp', ('-DXYF_STAGE2_SERVICE=1',))
         assembly('xyf_stage2_enter', SOURCE / 'target/xyf_stage2_enter.s')
     if file_boot:
-        for name in ('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info'):
+        for name in ('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info', 'xyf_manifest', 'xyf_package_record'):
             cpp(name, SOURCE / ('target/' + name + '.cpp'))
+        for name in JSON_MODULES:
+            cpp(name, SOURCE / ('native/' + name + '.cpp'))
     links = (('file_boot',) if file_boot else ()) + (('menu_link',) if menu_link else ())
     names += [*links, 'peer_services']
     cpp('peer_boot', SOURCE / 'native/peer_boot.cpp')
@@ -1107,7 +1107,7 @@ def build(out, stock, boot, mode):
     cpp('descriptor', descriptor)
     entry_source = (SOURCE / 'target/storage_probe_entry.s').read_text()
     require('    P0.H = 0x8ab1;\n    P0.L = 0;\n' in entry_source, 'Cold entry stack setup changed')
-    entry_path = out / 'storage_probe_entry.s'      # stack top from the mode's layout (default: unchanged)
+    entry_path = out / 'storage_probe_entry.s'      # stack top from the mode's layout
     entry_path.write_text(entry_source.replace('    P0.H = 0x8ab1;\n    P0.L = 0;\n', '    P0.H = %#x;\n    P0.L = %d;\n'
                                                % (stack_end >> 16, stack_end & 0xffff)))
     assembly('entry', entry_path)
@@ -1118,7 +1118,7 @@ def build(out, stock, boot, mode):
                       (('storage_server', 'file_engine') if remote_read else ()) +
                       (('usb_service', 'file_client', 'xyf_crc32') + USB_STORAGE_MODULES if usb else ()) +
                       (('xyf_stage2', 'xyf_stage2_enter') if stage2 or stage2_service else ()) +
-                      (('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info') if file_boot
+                      (('xyf_library', 'xyf_state', 'xyf_cold_library', 'xyf_info', 'xyf_manifest', 'xyf_package_record') + JSON_MODULES if file_boot
                        else ()) +
                       ('xyf_crc32',) +
                       links + ('peer_services', 'peer_boot', 'hash', 'inflate') +

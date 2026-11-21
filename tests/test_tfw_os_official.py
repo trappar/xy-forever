@@ -13,7 +13,7 @@ import unittest
 import zipfile
 
 from xy_forever import hostbuild, paths, tfw_extract
-from xy_forever.xyf_entry import info_text
+from xy_forever.xyf_entry import firmware_document
 
 OFFICIAL = paths.FIRMWARE / 'official'
 PACKAGES = (   # package, reference ZIP (directory only), reference os.ldr / os.version folder, firmware label
@@ -57,8 +57,8 @@ class OfficialPackageTests(unittest.TestCase):
                 self.assertEqual((folder / 'os.ldr').read_bytes(), expected)
                 self.assertEqual((report['version'], report['package_version']), (version, label))
                 self.assertEqual((report['bytes'], report['sha256']), (len(expected), hashlib.sha256(expected).hexdigest()))
-                self.assertEqual((folder / 'info.txt').read_text(),
-                                 info_text('OP-XY ' + version.split('+')[0], version, 'official', expected))
+                self.assertEqual((folder / 'manifest.json').read_bytes(),
+                                 firmware_document('OP-XY ' + version.split('+')[0], version, 'official', expected))
                 self.assertEqual(report['entry'], 0x11a00000)
                 self.assertEqual(report['signature'], 'verified' if vendor_key() else 'not checked')
 

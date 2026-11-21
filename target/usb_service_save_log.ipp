@@ -95,6 +95,7 @@ void job_end(JobSlot& s) {
 }
 void job_finish(JobSlot& s) {
     s.ended_ms = now();
+    if (!s.link && file_client::close_name_scan(s.metadata_scan, mounted) == P::s_link) s.link = 1;
     if (s.job.phase == mj::Phase::done && !s.commit_error) return job_end(s);
     if (s.link || !tree_begin(s.tree, s.out)) { s.debris = 1; return job_end(s); }   // nothing sent after a link
     s.stage = js_wipe; s.clean_calls = 0; s.debris = 0; save_lap(xl::p_clean);

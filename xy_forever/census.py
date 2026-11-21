@@ -439,11 +439,11 @@ def file_boot(regions, dump):
 
 # The menu's catalog as B holds it (target/xyf_catalog.hpp; B's copy at xyf_boot catalog_buffer,
 # read with PEEK): None when the bytes are not a whole, CRC-checked catalog.
-CATALOG_MAGIC, CATALOG_ADDRESS, CATALOG_ITEM = 0x31435958, 0x8b810000, 116
+CATALOG_MAGIC, CATALOG_ADDRESS, CATALOG_ITEM = 0x32435958, 0x8b810000, 116
 
 
 def catalog(data):
-    if len(data) < 20 or struct.unpack_from('<I', data)[0] != CATALOG_MAGIC:
+    if len(data) < 20 or struct.unpack_from('<I', data)[0] not in (0x31435958, CATALOG_MAGIC):
         return None
     count, default = struct.unpack_from('<2I', data, 4)
     size = 16 + count * CATALOG_ITEM + 4
@@ -451,7 +451,8 @@ def catalog(data):
         return None
     text = lambda b: b.split(b'\0')[0].decode('utf-8', 'replace')   # noqa: E731
     items = [dict(id=text(data[at:at + 32]), name=text(data[at + 32:at + 80]), version=text(data[at + 80:at + 112]),
-                  usable=bool(data[at + 113] & 1), content_missing=bool(data[at + 113] & 8)) for at in range(16, 16 + count * CATALOG_ITEM, CATALOG_ITEM)]
+                  usable=bool(data[at + 113] & 1), content_missing=bool(data[at + 113] & 8),
+                  invalid_record=bool(data[at + 113] & 16)) for at in range(16, 16 + count * CATALOG_ITEM, CATALOG_ITEM)]
     return dict(count=count, default=None if default == 0xffffffff else default, items=items)
 
 

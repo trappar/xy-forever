@@ -4,26 +4,26 @@ firmware accepts (a TEST path only: the OP-XY assembles mod firmware itself; hos
 
 The entry is what native/mod_job writes (docs/storage/mods-assembly.md, "The assembled entry"; host twin
 modpatch.entry_files): firmware/<id>/ with the candidate's content/... (op1_factory.json, display/, presets/),
-info.txt (type=firmware name kind=open-xy bytes crc32 sha256 needs_os
-generation profile machines), files.sha256 over every other file (sorted bytewise) and os.ldr. needs_os is the sha256=
-of firmware/<--stock-entry>/info.txt (the stock os.ldr the image was built from); generation and profile are
-those of firmware/<--like>/info.txt (the device's own Open-XY entry).
+manifest.json (type=firmware name kind=open-xy bytes crc32 sha256 needs_os
+generation profile machines), files.sha256 over every other file (sorted bytewise) and os.ldr. needs_os is the SHA-256
+of the stock OS from firmware/<--stock-entry>. Generation and profile are taken from the metadata of
+firmware/<--like>, the device's own Open-XY entry.
 The candidate's xy-forever/loaded/<id>/... files (runtime-loaded objects) go to /yaffs2/xy-forever/loaded/<id>/.
 
 Modes (each a separate run; the first FAIL stops, exit 1; usage exit 2; with --sim the evidence folder is
 removed when the run passed, unless --keep; each first needs Settings > Ask before USB control off: HELLO confirm=0, #65):
-  upload (default) completes or replaces firmware/<id>/: info.txt removed first, files the entry does not
-                   hold removed, os.ldr kept when its size and the old info.txt's sha256= match, info.txt
+  upload (default) completes or replaces firmware/<id>/: metadata removed first, files the entry does not
+                   hold removed, os.ldr kept when its size and the old metadata's SHA-256 match, manifest.json
                    written last; B's catalog then lists <id> as "content not installed" (expected).
   --boot           set-default <id> (library.set_default: B's content switch makes /yaffs2/content/ match
                    the entry and writes content-state.txt `state=installed entry=<id>`, then default=<id>),
-                   then boot <id> once (library.boot). USB goes. The saved inputs (config.txt) stay: the next
+                   then boot <id> once (library.boot). USB goes. The saved inputs stay: the next
                    plain power-on converges back to the saved setup (#197, #26).
   --cleanup        refused while <id> is the default or once, or content-state.txt names it (first:
                    `xyf_host.py set-default <previous default> --yes-write`); removes firmware/<id>/ and
                    loaded/<id>/.
 This script writes only firmware/<id>/ and loaded/<id>/; never /yaffs2/content/, content-state.txt,
-config.txt or the state slots (only the device's set-default does, in --boot).
+the saved configuration or the state slots (only the device's set-default does, in --boot).
 """
 import argparse
 import hashlib
@@ -39,7 +39,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
 import device_pass as dp                                    # noqa: E402
 import xyf_host as host                                     # noqa: E402
-from xy_forever import modpatch, xyf_entry                  # noqa: E402
+from xy_forever import modpatch, package_records, xyf_entry                  # noqa: E402
 
 StepFail = dp.StepFail
 XYF = '/yaffs2/xy-forever'
@@ -51,13 +51,13 @@ def entry_files(image, content, name, needs_os, generation, profile, machines=No
     """{path: bytes} of the entry, as modpatch.entry_files (the device job's host twin) builds one."""
     files = {'content/' + p: b for p, b in content.items()}
     files['os.ldr'] = image
-    files['info.txt'] = xyf_entry.manifest_text(dict(
+    files[package_records.NATIVE] = package_records.document(dict(
         type='firmware', name=name, kind='open-xy', bytes=len(image), crc32='%08x' % (zlib.crc32(image) & 0xffffffff),
         sha256=hashlib.sha256(image).hexdigest(), needs_os=needs_os, generation=generation,
-        profile=profile, **({'machines': machines} if machines is not None else {}))).encode()
+        profile=profile, **({'machines': machines} if machines is not None else {})))
     files['files.sha256'] = modpatch.list_text(files).encode()
     xyf_entry.read_files_sha256(files['files.sha256'])
-    xyf_entry.parse_manifest(files['info.txt'])
+    package_records.parse(files[package_records.NATIVE], package_records.NATIVE)
     return files
 
 
@@ -72,10 +72,6 @@ def candidate(folder, entry_id):
     if 'op1_factory.json' not in content:
         raise ValueError('%s/content has no op1_factory.json' % folder)
     return (folder / 'os.ldr').read_bytes(), content, extras
-
-
-def values(text):
-    return dict(l.split('=', 1) for l in text.decode('ascii', 'replace').splitlines() if '=' in l)
 
 
 class TestEntry(dp.Pass):
@@ -121,7 +117,7 @@ class TestEntry(dp.Pass):
 
     def record(self):
         data = self.read(RECORD, 'content-state.txt', '--all')
-        return values(data or b'')
+        return dict(l.split('=', 1) for l in (data or b'').decode('ascii', 'replace').splitlines() if '=' in l)
 
     def put_tree(self, base, files, local):
         """mkdir what is missing, then put each file (in the given order) under base."""
@@ -145,14 +141,14 @@ class TestEntry(dp.Pass):
         default, once = self.default_once()
         if o.id in (default, once):
             raise StepFail('%s is the default or once entry: refused' % o.id)
-        stock = values(self.read('%s/firmware/%s/info.txt' % (XYF, o.stock_entry), 'stock-info.txt', '--all') or b'')
-        like = values(self.read('%s/firmware/%s/info.txt' % (XYF, o.like), 'like-info.txt', '--all') or b'')
+        stock = self.read_metadata('%s/firmware/%s' % (XYF, o.stock_entry), 'stock', '--all')
+        like = self.read_metadata('%s/firmware/%s' % (XYF, o.like), 'like', '--all')
         if not stock or not {'generation', 'profile'} <= set(like):
-            raise StepFail('firmware/%s/info.txt or firmware/%s/info.txt (generation, profile) missing'
+            raise StepFail('firmware/%s or firmware/%s package metadata (generation, profile) missing'
                            % (o.stock_entry, o.like))
         if 'sha256' not in stock and like.get('needs_os'):              # an official entry's info.txt may lack it
             stock['sha256'] = like['needs_os']
-            self.say('note: firmware/%s/info.txt has no sha256=; needs_os taken from firmware/%s/info.txt'
+            self.say('note: firmware/%s metadata has no SHA-256; needs_os taken from firmware/%s metadata'
                      % (o.stock_entry, o.like))
         elif 'sha256' not in stock:
             local = self.artifact('stock-os.ldr')
@@ -170,11 +166,13 @@ class TestEntry(dp.Pass):
         old = self.walk(self.entry())
         keep_os = False
         if old is not None:
-            old_info = values(self.read(self.entry('info.txt'), 'old-info.txt', '--all') or b'')
+            old_info = self.read_metadata(self.entry(), 'old', '--all', names=old[0])
             keep_os = old[0].get('os.ldr') == len(image) and old_info.get('sha256') == hashlib.sha256(image).hexdigest()
-            if 'info.txt' in old[0]:
-                self.remove(self.entry('info.txt'))            # first: never a complete-looking half entry
-            stale = [f for f in old[0] if f not in files and f != 'info.txt']
+            records = (package_records.LEGACY, package_records.NATIVE)
+            for name in records:
+                if name in old[0]:
+                    self.remove(self.entry(name))
+            stale = [f for f in old[0] if f not in files and f not in records]
             for leaf in stale:
                 self.remove(self.entry(leaf))
             for folder in sorted(old[1], key=len, reverse=True):
@@ -182,8 +180,8 @@ class TestEntry(dp.Pass):
                     self.remove('--dir', self.entry(folder))
             self.say('firmware/%s existed (%d files): %d stale removed, os.ldr %s'
                      % (o.id, len(old[0]), len(stale), 'kept (same size and sha256)' if keep_os else 'replaced'))
-        order = sorted(f for f in files if f not in ('os.ldr', 'info.txt')) + ([] if keep_os else ['os.ldr'])
-        self.put_tree(self.entry(), order + ['info.txt'], local)
+        order = sorted(f for f in files if f not in ('os.ldr', package_records.NATIVE)) + ([] if keep_os else ['os.ldr'])
+        self.put_tree(self.entry(), order + [package_records.NATIVE], local)
         if extras:
             for path, data in extras.items():
                 (self.folder / 'extra' / path).parent.mkdir(parents=True, exist_ok=True)
@@ -242,7 +240,7 @@ def parse_args(argv):
     p.add_argument('--id', default='loader-test')
     p.add_argument('--name', default='Loader test', help='display name (at most 47 bytes)')
     p.add_argument('--candidate', type=Path, help='upload: os.ldr, content/, xy-forever/loaded/ (a build folder)')
-    p.add_argument('--stock-entry', default='opxy-121-stock', help='its info.txt sha256= becomes needs_os')
+    p.add_argument('--stock-entry', default='opxy-121-stock', help='its manifest SHA-256 becomes needs_os')
     p.add_argument('--like', default='mods-a', help='the Open-XY entry whose generation and profile are used')
     mode = p.add_mutually_exclusive_group()
     mode.add_argument('--boot', action='store_true', help='set-default <id> (content switch), then boot it once')

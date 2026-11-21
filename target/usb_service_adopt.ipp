@@ -5,7 +5,7 @@
 // sequence (xyf_mods_io check) asks for it. The stock updater's own os.ldr (/yaffs2/upgrade/..., only read) is
 // hashed first, before anything is written: it must be the exact stock 1.2.1 image (stock_os_bytes, stock_os_sha256,
 // as boot.uninstall admits). Then, in A's write window: tmp/adopt-ID/ swept and made, os.ldr copied and read back
-// (SHA-256 again), info.txt and files.sha256 written and read back (as `xyf_host.py library-add` and a package
+// (SHA-256 again), manifest.json and files.sha256 written and read back (as `xyf_host.py library-add` and a package
 // publish write them), the folder renamed in as firmware/ID (one rename: a cut leaves only tmp/, which the next
 // adoption sweeps), A's window closed (A rescans), then the default (default_commit). copy 0: the entry is there,
 // only the default. The same single-job rule as every job (job_blocks answers busy); job.status reports it: phase 1
@@ -17,7 +17,7 @@
 namespace xa {
 const char source[] = "/yaffs2/upgrade/firmware/blackfin/bin/os.ldr";
 const char root[] = "/yaffs2/xy-forever", tmp[] = "/yaffs2/xy-forever/tmp", firmware[] = "/yaffs2/xy-forever/firmware";
-const char* const names[3] = {"os.ldr", "info.txt", "files.sha256"};
+const char* const names[3] = {"os.ldr", "manifest.json", "files.sha256"};
 }
 enum AdoptStep : U32 {
     ad_find = 0, ad_open, ad_hash, ad_window, ad_sweep, ad_rmdir, ad_mkdir, ad_copy_open, ad_copy, ad_copy_close,
@@ -63,7 +63,7 @@ void adopt_fail(AdoptSlot& a, U32 error, U32 code) {
     a.step = ad_closing;
     settle_begin();                                                     // only when a write was due
 }
-// The entry's two texts (xyf_entry.info_text; files.sha256: sorted paths, two spaces) into a.text: bytes.
+// The entry's two texts (xyf_entry package metadata; files.sha256: sorted paths, two spaces) into a.text: bytes.
 U32 adopt_texts(AdoptSlot& a, U32 which) {
     static const char hex[] = "0123456789abcdef";
     xg::Out o = {a.text, a.text + sizeof(a.text) - 1, true};
@@ -75,10 +75,12 @@ U32 adopt_texts(AdoptSlot& a, U32 which) {
         for (U32 i = 0; i != 8; ++i) c[i] = hex[(a.crc >> (28 - 4 * i)) & 15u];
         c[8] = 0;
         decimal_text(b, usb_service::stock_os_bytes);
-        xg::put(o, "type=firmware\nname=OP-XY\nversion=1.2.1\nkind=official\nbytes="); xg::put(o, b);
-        xg::put(o, "\ncrc32="); xg::put(o, c); xg::put(o, "\nsha256="); xg::put(o, h); xg::put(o, "\n");
+        xg::put(o, "{\"schema\":\"xy-forever.package\",\"schema_version\":1,"
+                   "\"type\":\"firmware\",\"name\":\"OP-XY\",\"version\":\"1.2.1\",\"kind\":\"official\",\"bytes\":");
+        xg::put(o, b); xg::put(o, ",\"crc32\":\""); xg::put(o, c);
+        xg::put(o, "\",\"sha256\":\""); xg::put(o, h); xg::put(o, "\"}\n");
     } else {
-        adopt_texts(a, 1);                                              // info.txt's hash first
+        adopt_texts(a, 1);                                              // manifest.json's hash first
         xyf_core::hash::Sha256 s;
         xyf_core::hash::Digest d;
         if (!s.update(reinterpret_cast<const uint8_t*>(a.text), a.text_n) || !s.finish(d)) return 0;
@@ -86,7 +88,7 @@ U32 adopt_texts(AdoptSlot& a, U32 which) {
         i[64] = 0;
         for (U32 k = 0; k != 32; ++k) { i[2 * k] = hex[d.bytes[k] >> 4]; i[2 * k + 1] = hex[d.bytes[k] & 15u]; }
         o.at = a.text;
-        xg::put(o, i); xg::put(o, "  info.txt\n"); xg::put(o, h); xg::put(o, "  os.ldr\n");
+        xg::put(o, i); xg::put(o, "  manifest.json\n"); xg::put(o, h); xg::put(o, "  os.ldr\n");
     }
     return a.text_n = o.ok ? U32(o.at - a.text) : 0u;
 }
@@ -180,7 +182,7 @@ void adopt_step(AdoptSlot& a) {
         a.sha.reset(); a.bytes = 0; a.step = ad_back;
         return;
     }
-    case ad_text: {                                                     // info.txt, files.sha256: written, read back
+    case ad_text: {                                                     // manifest.json, files.sha256: written, read back
         const U32 n = adopt_texts(a, a.sub + 1);
         join(a.path, a.folder, "/", xa::names[a.sub + 1]);
         const int fd = n ? a.io.open(a.path, true) : -1;

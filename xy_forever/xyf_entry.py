@@ -1,11 +1,12 @@
 """Prepare an XY Forever firmware-library entry (docs/STORAGE.md)
-on the host: firmware/<id>/{os.ldr, info.txt}. Offline only."""
+on the host: firmware/<id>/{os.ldr, manifest.json}. Offline only."""
 import json
 import hashlib
 import re
 import zlib
 from pathlib import Path
 
+from . import package_records
 from .ldr import MAX_IMAGE, inspect_ldr
 
 ID = re.compile(r'^[a-z0-9_-]{1,31}$')
@@ -13,10 +14,18 @@ KINDS = ('official', 'open-xy', 'custom')
 
 
 def info_text(name, version, kind, data):
-    """Compatibility entry point; all new firmware descriptions use the canonical writer."""
-    return manifest_text(dict(type='firmware', name=name, version=version or None, kind=kind,
-                              bytes=len(data), crc32='%08x' % (zlib.crc32(data) & 0xffffffff),
-                              sha256=hashlib.sha256(data).hexdigest()))
+    """Write legacy firmware metadata for compatibility fixtures."""
+    return manifest_text(firmware_fields(name, version, kind, data))
+
+
+def firmware_fields(name, version, kind, data):
+    return dict(type='firmware', name=name, version=version or None, kind=kind,
+                bytes=len(data), crc32='%08x' % (zlib.crc32(data) & 0xffffffff),
+                sha256=hashlib.sha256(data).hexdigest())
+
+
+def firmware_document(name, version, kind, data):
+    return package_records.document(firmware_fields(name, version, kind, data))
 
 
 def make_entry(ldr, out_root, entry_id, name, version='', kind='custom'):
@@ -31,9 +40,10 @@ def make_entry(ldr, out_root, entry_id, name, version='', kind='custom'):
     folder = Path(out_root) / 'xy-forever' / 'firmware' / entry_id
     if folder.exists():
         raise ValueError('entry folder already exists: ' + str(folder))
+    metadata = firmware_document(name, version, kind, data)
     folder.mkdir(parents=True)
     (folder / 'os.ldr').write_bytes(data)
-    (folder / 'info.txt').write_text(info_text(name, version, kind, data))
+    (folder / package_records.NATIVE).write_bytes(metadata)
     return dict(folder=str(folder), bytes=len(data), crc32=f'{zlib.crc32(data) & 0xffffffff:08x}',
                 sha256=structure['sha256'], entry=structure['entry'], device_installation=False)
 

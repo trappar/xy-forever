@@ -103,7 +103,9 @@ def build(folder, sanitize=False):
                '-DXYF_MOD_WORK_COUNT',
                *(['-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-sanitize-recover=all']
                  if sanitize else []),
-               str(ROOT / 'tests/mod_link_bridge.cpp'), *[str(ROOT / 'native' / (s + '.cpp')) for s in SOURCES],
+               str(ROOT / 'tests/mod_link_bridge.cpp'),
+               *[str(ROOT / 'native' / (s + '.cpp')) for s in (*SOURCES, 'json')],
+               *[str(ROOT / 'target' / (s + '.cpp')) for s in ('xyf_manifest', 'xyf_package_record')],
                '-o', str(out)]
     run = hostbuild.run(command, capture_output=True, text=True)
     if run.returncode:

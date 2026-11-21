@@ -1,6 +1,6 @@
 """In the simulator: the first start after Track 5 wrote XY Forever onto a stock OP-XY (#178). The library is empty, so
 the device adopts the stock updater's own os.ldr (/yaffs2/upgrade/firmware/blackfin/bin/os.ldr): it hashes it (the
-exact stock 1.2.1 image, else it writes nothing), copies it into tmp/, reads it back, writes info.txt and files.sha256
+exact stock 1.2.1 image, else it writes nothing), copies it into tmp/, reads it back, writes manifest.json and files.sha256
 (as `xyf_host.py library-add` and a package publish), renames the folder in as library entry opxy-121, makes it the
 default and converges (#197). A plain power-on then boots it; PLAY at power-on adopts and stays in the menu, and
 job.status reports the adoption. A missing or wrong file refuses with a plain reason; a power cut mid-copy is redone at
@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import modsend as MS, sim, usb_proto_ids as ids           # noqa: E402
+from xy_forever import modsend as MS, native_json, sim, usb_proto_ids as ids           # noqa: E402
 from test_sim_mod_job import UNAVAILABLE                                  # noqa: E402
 
 ENTRY = 'xy-forever/firmware/opxy-121'
@@ -28,10 +28,12 @@ REINSTALL = ' Reinstall official OS 1.2.1, then start again.'
 
 
 def expected_entry(image):
-    info = ('type=firmware\nname=OP-XY\nversion=1.2.1\nkind=official\nbytes=%d\ncrc32=%08x\nsha256=%s\n' % (
-        len(image), zlib.crc32(image) & 0xffffffff, hashlib.sha256(image).hexdigest())).encode()
-    files = ('%s  info.txt\n%s  os.ldr\n' % (hashlib.sha256(info).hexdigest(), hashlib.sha256(image).hexdigest())).encode()
-    return {'os.ldr': image, 'info.txt': info, 'files.sha256': files}
+    info = native_json.package_document({
+        'type': 'firmware', 'name': 'OP-XY', 'version': '1.2.1', 'kind': 'official', 'bytes': str(len(image)),
+        'crc32': '%08x' % (zlib.crc32(image) & 0xffffffff), 'sha256': hashlib.sha256(image).hexdigest(),
+    })
+    files = ('%s  manifest.json\n%s  os.ldr\n' % (hashlib.sha256(info).hexdigest(), hashlib.sha256(image).hexdigest())).encode()
+    return {'os.ldr': image, 'manifest.json': info, 'files.sha256': files}
 
 
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)

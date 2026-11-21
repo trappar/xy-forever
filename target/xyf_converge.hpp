@@ -4,9 +4,9 @@
 #include "xyf_config.hpp"
 // Converge before boot (#197). The device boots once its actual state is the state its inputs ask for. The inputs:
 // the base, the mod selection (its built= text and count), Mod memory and safe mode. The actual state: the saved
-// record (config.txt), the stamp the record's slot holds now, the library's default and which content is installed.
+// record (config.json), the stamp the record's slot holds now, the library's default and which content is installed.
 // plan() compares the two and returns only the operations still needed, always in this order: build (the selection
-// into the spare slot), switch (the target's content), record (config.txt), default (the target); the boot follows.
+// into the spare slot), switch (the target's content), record (config.json), default (the target); the boot follows.
 // A switch always brings the record and the default after it: the config job ends the switch's journal. Running a
 // plan and planning again returns nothing (tests/converge_test.cpp). xyf_mods_io's converge sequence runs the plan.
 // Pure and header-only: static functions (an inline, weak function is a register call on Blackfin).
@@ -54,7 +54,7 @@ static inline Plan plan(const Inputs& in, const Actual& a) {
     return p;
 }
 // The fingerprint (step B): after every convergence the sequence stores mark_path, the inputs' SHA-256 (the record's
-// bytes as its reader takes them: config.txt, else config.old, else none; base, profile and generation, mods=, built=,
+// bytes selected by the configuration reader; base, profile and generation, mods=, built=,
 // memory=, safe=) and what they converged to (the default). A plain power-on (file_boot.cpp a_converge) boots at once
 // when the stored text is the one these inputs and the library's default make and nothing is in doubt (Doubt), else B
 // converges first. Any other text (missing, another format, malformed) is no match: the sequence writes it again.

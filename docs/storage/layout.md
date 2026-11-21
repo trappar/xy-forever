@@ -10,7 +10,7 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   state-a.txt, state-b.txt  boot state, two power-safe slots (below)
   state.txt                 legacy single slot (read if no A/B slot is valid)
   firmware/<id>/os.ldr      one library entry's firmware image
-  firmware/<id>/info.txt    its description (key=value, below)
+  firmware/<id>/manifest.json   its description (legacy fallback: info.txt)
   firmware/<id>/files.sha256, content.sha256 + firmware.version   optional lists
   mods/<generation>/store.txt, {base,<machine>,ext-<extension>}/<file>   mod packages, flat (below)  [host-made]
   log/                      device reports, prod-a.bin / prod-b.bin, pfile-a.bin / pfile-b.bin
@@ -24,8 +24,8 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   job.txt, job.old           version-1 content intent; menu/service replay or previous-entry undo (jobs.md)
   content-state.txt         what /yaffs2/content/ matches, and what XY Forever installed there (below)
   content-official/         the official op1_factory.json and content.sha256, saved before the first content change
-  config.txt                the saved configuration: base, mods on, what Open-XY was built from (below)
-  converged.txt             format=1, inputs=<SHA-256 of config.txt>, default=<id>: the last convergence (#197; state.md)
+  config.json               the saved configuration: base, mods on, what Open-XY was built from (below)
+  converged.txt             format=1, inputs=<SHA-256 of the saved configuration>, default=<id>: the last convergence (#197; state.md)
   settings.txt              device settings (#21, the Settings page; target/xyf_settings.hpp), format=1: power_on=play|always, usb=mtp_serial|mtp_only|serial (#191: serial or MTP off, live; usb=mtp: mtp_serial), confirm=0|1 (Ask before USB control, #65: no USB command changes it; a file transfer can); absent, unreadable or a missing key: the defaults; a newer format: the defaults, never rewritten
 ```
 

@@ -36,7 +36,8 @@ import sys
 import tempfile
 from urllib.parse import quote, unquote
 
-from .xyf_entry import ManifestError, files_sha256_text, parse_manifest, read_files_sha256
+from . import package_records
+from .xyf_entry import files_sha256_text, read_files_sha256
 
 KIT_FORMAT = 'opxy-browser-kit/1'
 PROFILE_SCHEMA = 1
@@ -54,7 +55,7 @@ RELOCATIONS = (6, 7, 10, 13, 18)   # LUIMM16, HUIMM16, PCREL24, PCREL24_JUMP_L, 
 SHN_ABS, SHN_COMMON = 0xfff1, 0xfff2
 STT_FILE = 4
 # Files a mod package may hold (anything else, e.g. edits or definitions, belongs only to the base).
-MOD_FILES = re.compile(r'info\.txt|files\.sha256|objects\.txt|objects/[A-Za-z0-9_./-]+\.o|catalog\.txt|'
+MOD_FILES = re.compile(r'manifest\.json|info\.txt|files\.sha256|objects\.txt|objects/[A-Za-z0-9_./-]+\.o|catalog\.txt|'
                        r'machine\.json|extension\.json|NOTICE\.txt|content/(display|presets|aux_presets)/[^\n]+')
 PLACEHOLDER_SVG = b'<svg xmlns="http://www.w3.org/2000/svg"/>\n'
 # profile.identities in identities.txt order: scalars, then lists (native/mod_link reads them in this order).
@@ -451,12 +452,6 @@ def analyse(kit):
 
 # ---------------------------------------------------------------- writing packages
 
-def info_text(known, extra):
-    """info.txt: known keys (xyf_entry.MANIFEST_KEYS order) then extra keys; the device reader must accept it."""
-    from .xyf_entry import manifest_text
-    return manifest_text(known, extra).encode('ascii')
-
-
 def licence_of(text):
     for marker, name in (('GNU AFFERO GENERAL PUBLIC LICENSE', 'AGPL-3.0'), ('GNU GENERAL PUBLIC LICENSE', 'GPL-3.0'),
                          ('MIT License', 'MIT'), ('Apache License', 'Apache-2.0'), ('BSD', 'BSD')):
@@ -488,7 +483,7 @@ def run_driver(sdk, jobs, scratch):
 
 
 def write_package(folder, files):
-    """files: {relative path: bytes}; info.txt last, then files.sha256 over everything else."""
+    """files: {relative path: bytes}; files.sha256 covers every file written."""
     folder.mkdir(parents=True)
     for rel, data in sorted(files.items()):
         path = folder / rel
@@ -672,7 +667,7 @@ def write_base(folder, model, common, sdk_source):
     x = expanded_base(profile)
     if x is not None:                    # the 4 MiB option: older readers skip the unknown key
         extra.append(('expanded_module_base', '0x%08x' % x))
-    files['info.txt'] = info_text(known, extra)
+    files[package_records.NATIVE] = package_records.document(known, extra)
     write_package(folder, files)
 
 
@@ -748,7 +743,7 @@ def write_machine(folder, model, m, order, common, assets, notice):
         extra.append(('maintainer', src['maintainer']))
     if isinstance(m.get('cpu'), dict) and m['cpu'].get('peak_percent') is not None:
         extra.append(('cpu_peak_percent', m['cpu']['peak_percent']))
-    files['info.txt'] = info_text(known, extra)
+    files[package_records.NATIVE] = package_records.document(known, extra)
     write_package(folder, files)
 
 
@@ -774,7 +769,7 @@ def write_extension(folder, model, e, order, common, pin):
                                                             if not f.startswith('labels=')]
     if pin:
         extra.append(('maintainer', pin['maintainer']))
-    files['info.txt'] = info_text(known, extra)
+    files[package_records.NATIVE] = package_records.document(known, extra)
     write_package(folder, files)
 
 
@@ -795,30 +790,8 @@ def undash(value, number=False):
 
 
 def read_package(folder, kind):
-    """A package's files after its files.sha256 and info.txt checks: {path: bytes}, manifest fields, extra keys."""
-    folder = Path(folder)
-    check(folder.is_dir(), 'missing package %s' % folder)
-    listed = read_files_sha256((folder / 'files.sha256').read_bytes())
-    present = sorted(p.relative_to(folder).as_posix() for p in folder.rglob('*') if p.is_file())
-    check(present == sorted([p for _, p in listed] + ['files.sha256']),
-          '%s: files differ from files.sha256' % folder.name)
-    files = {}
-    for digest, rel in listed:
-        data = (folder / rel).read_bytes()
-        check(sha256(data) == digest, '%s: %s differs from files.sha256' % (folder.name, rel))
-        files[rel] = data
-    try:
-        manifest = parse_manifest(files['info.txt'])
-    except ManifestError as e:
-        raise KitError('%s/info.txt: %s' % (folder.name, e))
-    check(manifest.get('type') == kind, '%s: expected type=%s' % (folder.name, kind))
-    extra = dict(line.split('=', 1) for line in files['info.txt'].decode().splitlines()
-                 if '=' in line and not line.lstrip().startswith('#'))
-    if kind == 'mod':
-        stray = sorted(p for p in files if not MOD_FILES.fullmatch(p))
-        check(not stray, '%s carries %s: edits, definitions and addresses belong only to the base'
-              % (folder.name, stray))
-    return files, manifest, extra
+    from .modkit_read import read_package as read
+    return read(folder, kind)
 
 
 def object_entry(order, path, data, **tags):
@@ -982,7 +955,7 @@ def selections_for(kit, generation_dir, seed=5):
 def fitting(generation_dir, ids, margin=96 * 1024):
     """Machines in collection order while their sizes still fit beside the base and every service (a sure fit)."""
     root = Path(generation_dir)
-    info = lambda p: dict(l.split('=', 1) for l in (p / 'info.txt').read_text().splitlines() if '=' in l)  # noqa
+    from .package_records import read_values as info
     sizes = lambda f, prefix='': sum(int(f[prefix + k]) for k in ('code', 'data', 'state'))  # noqa: E731
     base = info(root / 'base')
     used = sizes(base) + sizes(base, 'runtime_') + sum(

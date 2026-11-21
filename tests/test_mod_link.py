@@ -22,6 +22,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+import test_modkit as TK  # noqa: E402
 from xy_forever import modkit as M, modlink as L, paths, xyf_entry as E  # noqa: E402
 
 OPEN_XY = paths.OPEN_XY_UPSTREAM                     # a fresh upstream clone (never ../open-xy)
@@ -437,8 +438,8 @@ class Synthetic(unittest.TestCase):
 
     def test_refuses_mixed_generations(self):
         def change(folder):
-            info = (folder / 'beta/info.txt').read_text().replace('generation=', 'generation=0.0.8-')
-            (folder / 'beta/info.txt').write_text(info)
+            info = (TK.legacy_record(folder / 'beta')).read_text().replace('generation=', 'generation=0.0.8-')
+            (TK.legacy_record(folder / 'beta')).write_text(info)
             return ['beta']
         self.refusal(change, ['alpha', 'beta'], ('generation', 'beta'))
 
@@ -659,7 +660,8 @@ class Synthetic(unittest.TestCase):
     def test_refuses_nul_bytes_and_long_info_values(self):
         def append(package, name, data):
             def apply(folder):
-                with open(folder / package / name, 'ab') as f:
+                path = TK.legacy_record(folder / package) if name == 'info.txt' else folder / package / name
+                with path.open('ab') as f:
                     f.write(data)
                 return [package]
             return apply
@@ -670,7 +672,7 @@ class Synthetic(unittest.TestCase):
 
         def replace(old, new):
             def apply(folder):
-                p = folder / 'alpha/info.txt'
+                p = TK.legacy_record(folder / 'alpha')
                 self.assertIn(old, p.read_text())
                 p.write_text(p.read_text().replace(old, new))
                 return ['alpha']
@@ -699,7 +701,7 @@ class Synthetic(unittest.TestCase):
                                  line.split()[1:2] == ['runtime'] or line.split()[1].startswith('service=')))
             p = folder / 'alpha/objects.txt'
             p.write_text(''.join(line for line in p.read_text().splitlines(True) if line.startswith('#')))
-            p, old = folder / 'base/info.txt', 'module_base=0x%08x' % BASE
+            p, old = TK.legacy_record(folder / 'base'), 'module_base=0x%08x' % BASE
             self.assertIn(old, p.read_text())
             p.write_text(p.read_text().replace(old, 'module_base=0x%08x' % (BASE + 1)))
             with open(folder / 'base/definitions.txt', 'a') as f:     # what the aliases need, without sdk/core.o

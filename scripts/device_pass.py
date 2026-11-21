@@ -12,9 +12,9 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            processes already running are stopped first: they share the port.) HELLO
            confirm=1 (#65): FAIL, CONFIRM_ON.
   session  always: hold on.
-  read     default: status; state slots; the default entry's info.txt; ls firmware/
+  read     default: status; state slots; the default entry's package metadata; ls firmware/
            lists the default and ls /yaffs2/xy-forever lists firmware; 8 ranged
-           reads of its os.ldr (compared with the local stock os.ldr when info.txt
+           reads of its os.ldr (compared with the local stock os.ldr when the manifest
            names it); screenshot; peek of the reboot marker (held bit set).
   install  --install BUILD_DIR: `install --yes-install` (xyf_host's build checks;
            the device verifies the partition), REBOOT, fresh boot back home.
@@ -71,13 +71,13 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            plus the catalog's hash: the row says which), the entry's files and folders are gone, content/ is
            listed exactly as before; the entry removed. A failure after the first switch still sets the
            previous default back (the row says the device's state). The OS is never booted.
-           writes (set-default), mods and content: before the first change and at the end, config.txt (and
-           config.old), the default, the library and the first home row (STOP, TRACK1, screenshot: no
+           writes (set-default), mods and content: before and after, all saved configuration records,
+           the default, the library and the first home row (STOP, TRACK1, screenshot: no
            "(to apply)" or "(rebuild)" mark) must be as found.
   config   default (keys): only when the device holds the package set (alone), the saved configuration has
-           no mods (no config.txt, or mods= empty and base= the default), the default has its official content (else
+           no saved mods and the saved base, if given, is the default, the default has its official content (else
            SKIP, nothing sent but reads): STOP, TRACK3 (the Mods row seen selected), PLAY: the Mods page;
-           PLUS to fm2op (its row from the local set), PLAY: on, saved at once (#197: config.txt mods=fm2op, read
+           PLUS to fm2op (its row from the local set), PLAY: on, saved at once (#197: saved mods=fm2op, read
            back while the page is still shown); STOP, TRACK1: the first row's text longer (the "(rebuild)" mark);
            the Mods page again, PLAY: fm2op off, saved (mods= empty); home: the first row as at the start. Never
            PLAY on the first row (it would build and boot). A failure: STOP (up to 2) until the home menu shows; the
@@ -125,7 +125,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_build                                           # noqa: E402
 import xyf_host as host                                    # noqa: E402
-from xy_forever import census, paths, usb_proto as P, usb_proto_ids as ids   # noqa: E402
+from xy_forever import census, config_records, package_records, paths, usb_proto as P, usb_proto_ids as ids   # noqa: E402
 from scripts.device_pass_keepalive import Keepalive, keepalive_dir   # noqa: E402,F401
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
@@ -181,12 +181,9 @@ SETTLE = 9.0        # B closes the write window 8 s after the last write (storag
 T_WINDOW = 30.0     # ... then op 9 (yaffs checkpoint) and the catalog fetch: polled once a second
 ALT_DEFAULTS = ('opxy-121', 'opxy-121-stock')
 RANGES = 8
-# The saved configuration (target/xyf_config.hpp; read: config.txt, else config.old) and what the
-# home menu's first row shows. Screenshots (xyf_host screen_png: 480 x 216 RGB, filter none): ui_screens
+# The saved configuration (target/xyf_config.hpp) and what the home menu's first row shows. Screenshots (xyf_host screen_png: 480 x 216 RGB, filter none): ui_screens
 # draw_menu puts seven rows 18 px apart from y 60 (build 184: Settings; row i's white bar: y 58 + 18 i .. +16,
 # x 10..469, its text y 60 + 18 i .. +13 from x 20).
-CONFIG_RECORD = '/yaffs2/xy-forever/config.txt'
-CONFIG_OLD = '/yaffs2/xy-forever/config.old'
 # #197: four rows (no MTP mode, no Info, no Uninstall row): 22 px apart (row_selected's probe, 20 px apart, stays
 # inside each bar), row i's bar y 56 + 22 i .. +19, its text y 60 + 22 i .. +13.
 ROW0_BAND = (59, 78)            # the first row's pixels (bar and text), compared before and after
@@ -211,7 +208,7 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
     ('session', (('hold-on', T_ANSWER, 'hold on'),)),
     ('read', (('status', T_ANSWER, 'STATUS: service version 4, role b'),
               ('read-state', T_ANSWER, 'whole reads of state-a.txt/state-b.txt: the default entry'),
-              ('read-info', T_ANSWER, 'whole read of firmware/<default>/info.txt'),
+              ('read-info', T_ANSWER, 'read default package metadata'),
               ('ls-library', T_ANSWER, 'ls firmware/ lists the default entry, ls /yaffs2/xy-forever/ lists '
                                        'firmware (build 165 listed every folder empty)'),
               ('read-ranges', T_ANSWER, '%d ranged reads (1 KiB) of firmware/<default>/os.ldr' % RANGES),
@@ -273,7 +270,7 @@ STAGES = (    # (stage, steps: (name, bound in s, what it does))
                   % (MODS_MACHINE, FULL_READ)),)),
     ('config', (('pending', T_ANSWER * 6 + 2 * T_PAGE + 2 * T_SAVED,
                  'keys (only with the package set, official content and a saved configuration without mods; '
-                 'else SKIP: reads only, no key): Mods, %s on: saved at once (config.txt mods=, the page still '
+                 'else SKIP: reads only, no key): Mods, %s on: saved at once (mods=, the page still '
                  'shown); home: the first row shows the "(rebuild)" mark; Mods, %s off: saved; home: the mark gone. '
                  'Never PLAY on the first row, never a boot; on a failure STOP until home'
                  % (MODS_MACHINE, MODS_MACHINE)),)),
@@ -361,11 +358,14 @@ def mods_row(packages, machine):
     def fold(text):
         return bytes(c + 32 if 65 <= c <= 90 else c for c in text)
     rows = []
-    for info in sorted(Path(packages).glob('*/info.txt')):
-        folder = info.parent.name
-        if folder == 'base' or not (info.parent / 'files.sha256').is_file():
+    for package in sorted(Path(packages).glob('*')):
+        folder = package.name
+        if folder == 'base' or not (package / 'files.sha256').is_file():
             continue                  # the device lists a package only with its files.sha256
-        fields = dict(line.split('=', 1) for line in info.read_text(errors='replace').splitlines() if '=' in line)
+        try:
+            fields = package_records.read_values(package)
+        except (OSError, ValueError):
+            continue
         extension = folder.startswith('ext-')
         kind = fields.get('machine', '')
         if kind not in MODS_KINDS or (kind == 'extension') != extension or \
@@ -730,19 +730,19 @@ class Pass:
 
     def saved_state(self, tag):
         """What the menu compares (the saved configuration, the default, the library) and the first home row."""
-        return dict(config=self.read(CONFIG_RECORD, tag + '-config.txt', '--all'),
-                    old=self.read(CONFIG_OLD, tag + '-config.old', '--all'),
-                    default=self.slots(tag)[2]['default'], library=sorted(self.names(LIBRARY)),
+        records = {name: self.read(config_records.ROOT + '/' + name, tag + '-' + name, '--all')
+                   for name in config_records.NAMES}
+        return dict(records, default=self.slots(tag)[2]['default'], library=sorted(self.names(LIBRARY)),
                     home=self.home_view(tag + '-home.png'))
 
     def same_state(self, before, tag):
         after = self.saved_state(tag)
-        changed = [k for k in ('config', 'old', 'default', 'library') if after[k] != before[k]]
+        changed = [k for k in (*config_records.NAMES, 'default', 'library') if after[k] != before[k]]
         if before['home'] is not None and after['home']['band'] != before['home']['band']:
             changed.append('the first home row (a mark such as "(to apply)": see %s-home.png)' % tag)
         if changed:
             raise StepFail('not as found: %s' % ', '.join(changed))
-        return 'config.txt, the default, the library%s as found' % (
+        return 'saved configuration, the default, the library%s as found' % (
             '' if before['home'] is None else ' and the first home row')
 
     # -- check and session -----------------------------------------------------------------------
@@ -772,14 +772,15 @@ class Pass:
         self.state['default'] = fields['default']
         return 'default %s (%s seq %d)' % (fields['default'], Path(path).name, seq)
 
+    def read_metadata(self, folder, artifact, *extra, names=None):
+        from scripts.device_pass_library import read_metadata
+        return read_metadata(self, folder, artifact, extra, names, parse_info, StepFail)
+
     def step_read_info(self):
-        path = '/yaffs2/xy-forever/firmware/%s/info.txt' % self.state['default']
-        data = self.read(path, 'info.txt')
-        if data is None:
-            raise StepFail('%s not found' % path)
-        info = parse_info(data)
+        folder = LIBRARY + '/' + self.state['default']
+        info = self.read_metadata(folder, 'default')
         if not info.get('bytes', '').isdigit():
-            raise StepFail('info.txt has no bytes= (%d B read)' % len(data))
+            raise StepFail('%s metadata has no image size' % folder)
         self.state['info'] = info
         return '%s: %s, %s B, crc32 %s' % (self.state['default'], info.get('name'), info['bytes'], info.get('crc32'))
 
@@ -1374,7 +1375,7 @@ class Pass:
     def step_apply(self):
         """fm2op assembled by the device, its os.ldr compared with the host's reference."""
         packages = MODS_PACKAGES
-        if not (packages / 'base/info.txt').is_file() or not MODS_CATALOG.is_file():
+        if not package_records.local_name(packages / 'base') or not MODS_CATALOG.is_file():
             raise StepSkip('no local package set or stock catalog (%s): the reference needs them' % packages)
         root = '/yaffs2/xy-forever/mods'          # mods/<generation>/ (#124)
         code, out, err = self.host(['ls', '%s/%s' % (root, packages.name), '--json'], T_ANSWER)
@@ -1406,7 +1407,7 @@ class Pass:
             want = mods_reference(packages, [MODS_MACHINE], MODS_NAME)
         except Exception as error:                                       # noqa: BLE001
             raise StepFail('host reference: %s' % error)
-        as_found = self.saved_state('apply-before')                    # the menu compares these with config.txt
+        as_found = self.saved_state('apply-before')                    # the menu compares these with saved configuration
         start = time.monotonic()
         out = self.ok(['mods', 'apply', '--base', base, '--generation', '%s/%s' % (MODS_PROFILE, packages.name),
                        MODS_MACHINE, '--name', MODS_NAME, '--wait'], T_MODS)
@@ -1533,7 +1534,7 @@ class Pass:
             raise StepSkip('content/ lacks %d official files (%s...)' % (len(missing), missing[0]))
         # The build (as mods/apply, on the default as base).
         expect = 'mods-b' if 'mods-a' in entries else 'mods-a'
-        as_found = self.saved_state('switch-before')                   # the menu compares these with config.txt
+        as_found = self.saved_state('switch-before')                   # the menu compares these with saved configuration
         start = time.monotonic()
         out = self.ok(['mods', 'apply', '--base', previous, '--generation', '%s/%s' % (MODS_PROFILE, packages.name),
                        MODS_MACHINE, '--name', MODS_NAME, '--wait'], T_MODS)
@@ -1632,7 +1633,7 @@ class Pass:
             left = '%s not removed (%s)' % (entry, error)
         return 'state: default %s set back (content official by the switch; not re-checked), %s' % (previous, left)
 
-    # #197: a flip on the Mods page is saved at once (config.txt); the pass turns fm2op on, reads the record back while
+    # #197: a flip on the Mods page is saved at once; the pass turns fm2op on, reads the record back while
     # the page is shown, sees the first row's mark, then turns it off again (saved back). Never PLAY on the first row.
     def config_ready(self):
         """The preconditions (reads only; StepSkip with the reason): fm2op's Mods page row."""
@@ -1652,10 +1653,8 @@ class Pass:
             raise StepSkip('the device holds package sets %s, not %s alone with %s (the page lists the newest)'
                            % (sets, MODS_PACKAGES.name, MODS_MACHINE))
         default = self.slots('config-before')[2]['default']
-        record = self.read(CONFIG_RECORD, 'config0.txt', '--all')
-        if record is None:
-            record = self.read(CONFIG_OLD, 'config0.old', '--all')
-        fields = dict(line.split('=', 1) for line in (record or b'').decode(errors='replace').splitlines() if '=' in line)
+        from scripts.device_pass_library import read_config
+        fields = read_config(self, StepSkip)
         if fields.get('mods') or fields.get('base', default) not in ('', default):
             raise StepSkip('the saved configuration is not "no mods on the default" (mods=%r, base=%r, default %s)'
                            % (fields.get('mods'), fields.get('base'), default))
@@ -1721,18 +1720,19 @@ class Pass:
         raise StepFail('the Mods page did not settle within %d s (still reading?)' % T_PAGE)
 
     def saved_mods(self, name, want):
-        """config.txt's mods= is want (a flip saved at a quiet moment): read until it is, at most T_SAVED s."""
+        """Wait at most T_SAVED seconds for the saved selection to match the flip."""
         deadline = time.monotonic() + T_SAVED
         while True:
             try:
-                record = self.read(CONFIG_RECORD, name, '--all') or b''
-            except StepFail:                    # busy while the config job writes it: read again
-                record = b''
-            fields = dict(line.split('=', 1) for line in record.decode(errors='replace').splitlines() if '=' in line)
-            if fields.get('mods', '') == want:
+                record = config_records.record_name(self.names(config_records.ROOT))
+                data = self.read(config_records.ROOT + '/' + record, name, '--all') if record else None
+                fields = config_records.fields(data, record) if data is not None else {}
+            except (StepFail, ValueError):                  # busy while the config job writes it: read again
+                fields = {}
+            if fields.get('mods') == want:
                 return
             if time.monotonic() > deadline:
-                raise StepFail('config.txt mods=%r, not %r, %d s after the flip' % (fields.get('mods'), want, T_SAVED))
+                raise StepFail('saved mods=%r, expected %r, %d s after the flip' % (fields.get('mods'), want, T_SAVED))
             self.sleep(1.0)
 
     def step_pending(self):
@@ -1754,7 +1754,7 @@ class Pass:
                 if not all(mods_row_selected(pixels, r) == (r == row) for r in range(MODS_VISIBLE_ROWS)):
                     raise StepFail('after PLUS x%d the selected Mods page row is not visible row %d (of %d rows; '
                                    'config-chosen.png): PLAY not sent' % (position, row, total))
-            stage = '%s may be saved on (config.txt)' % MODS_MACHINE
+            stage = '%s may be saved on' % MODS_MACHINE
             self.key('play')
             on = self.seen('config-on.png', chosen, 'PLAY on %s' % MODS_MACHINE)
             if self.opts.sim:

@@ -10,10 +10,10 @@ Every phase is printed with its time, then the total. --watch repeats on a chang
 packages used (mtime poll, no dependency). The way back: the default before the first dev run is kept in a
 small state file under the host's cache dir (never on the device); `mods dev --restore` sets it again.
 
-The saved configuration (/yaffs2/xy-forever/config.txt) names the default the menu expects. When it
+The saved configuration names the default the menu expects. When it
 is present a dev run changes the default behind it, once: the menu's Continue line then ends in "(to apply)"
 (or "(rebuild)") and the next plain power-on converges back to the saved setup (#197); mods dev refuses
-unless --ignore-config, and says what the menu will show. It never rewrites config.txt (the saved inputs:
+unless --ignore-config, and says what the menu will show. It never rewrites the record (the saved inputs:
 the Mods page and `mods set` change them)."""
 import json
 import os
@@ -21,10 +21,9 @@ from pathlib import Path
 import sys
 import time
 
-from . import modsend as MS
+from . import config_records, modsend as MS, package_records
 from . import usb_proto as P
 
-CONFIG = '/yaffs2/xy-forever/config.txt'
 FIRMWARE = '/yaffs2/xy-forever/firmware'
 STATE_NAME = 'moddev-state.json'
 
@@ -62,14 +61,19 @@ def resolve(package_dir, only=None, with_=()):
     """(generation folder, [package names: the mod first, then --with]) for a mod package folder (its info.txt
     says type=mod; its parent is the generation folder modkit split wrote) or a generation folder + only."""
     folder = Path(package_dir)
-    if (folder / 'base' / MS.INFO).is_file():
+    try:
+        base_metadata = package_records.local_name(folder / 'base') if folder.is_dir() else None
+        metadata = package_records.local_name(folder) if folder.is_dir() and not base_metadata else None
+    except ValueError as error:
+        raise MS.Refused(str(error)) from error
+    if base_metadata:
         if not only:
             raise MS.Refused('%s is a generation folder: name the mod with --only ID' % folder)
         gen, mod = folder, only
-    elif (folder / MS.INFO).is_file():
-        info = MS.info_values((folder / MS.INFO).read_bytes())
+    elif metadata:
+        info = MS.info_values((folder / metadata).read_bytes(), metadata)
         if info.get('type') != 'mod':
-            raise MS.Refused('%s/info.txt: type=%s, not a mod package' % (folder, info.get('type', '?')))
+            raise MS.Refused('%s/%s: type=%s, not a mod package' % (folder, metadata, info.get('type', '?')))
         gen, mod = folder.parent, folder.name
     elif (folder / 'kit.json').is_file() or folder.suffix == '.json':
         raise MS.Refused('%s: an Open-XY kit; split it first (modkit split), then give the generation '
@@ -103,20 +107,15 @@ def snapshot(gen, names):
 
 
 # -- the device's records ---------------------------------------------------------------------------------
-def read_text(dev, path):
-    code, data = dev.read_all(path, limit=1 << 16)
-    if code == MS.NOT_FOUND:
-        return None
-    MS.check(code, 'file.read %s' % path)
-    return data.decode('utf-8', 'replace')
-
-
 def config(dev):
-    """config.txt as a dict (mods: list), or None when absent (no record: the menu flags nothing)."""
-    text = read_text(dev, CONFIG)
-    if text is None:
+    """The selected saved configuration, as a dict (mods: list)."""
+    try:
+        selected = config_records.read(dev)
+    except ValueError as error:
+        raise MS.Refused(str(error)) from error
+    if selected is None:
         return None
-    f = dict(l.split('=', 1) for l in text.splitlines() if '=' in l)
+    _, _, f = selected
     f['mods'] = [m for m in f.get('mods', '').split(',') if m]
     return f
 
@@ -143,8 +142,30 @@ def library(dev):
 
 
 def entry_stamp(dev, entry):
-    text = read_text(dev, '%s/%s/info.txt' % (FIRMWARE, entry))
-    return MS.info_values(text.encode()).get('sha256', '') if text else ''
+    folder = '%s/%s' % (FIRMWARE, entry)
+    name = package_records.NATIVE
+    code, data = dev.read_all(folder + '/' + name, limit=1 << 16)
+    if code == P.ids.S_NOT_FOUND:
+        result, entries = dev.list_dir(folder)
+        if result == P.ids.S_NOT_FOUND:
+            return ''
+        if result or any(raw == name.encode('ascii') for _, _, raw in entries):
+            raise MS.Refused('could not read %s/%s' % (folder, name))
+        name = package_records.LEGACY
+        code, data = dev.read_all(folder + '/' + name, limit=1 << 16)
+        if code == P.ids.S_NOT_FOUND:
+            return ''
+    if code:
+        raise MS.Refused('could not read %s: %s' % (name, P.status_name(code)))
+    if name == package_records.LEGACY:
+        return MS.info_values(data, name).get('sha256', '')
+    try:
+        fields = package_records.parse(data, name)
+    except ValueError as error:
+        raise MS.Refused('%s: %s' % (name, error)) from error
+    if fields.get('type') != 'firmware':
+        raise MS.Refused('%s: expected a firmware record' % name)
+    return fields.get('sha256', '')
 
 
 def current_default(dev, slots, current_state):
@@ -202,7 +223,7 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
     profile, generation, _ = MS.local_set(gen, names)
     cfg = ph.run('check', lambda: config(dev))
     if cfg is not None and not args.ignore_config:
-        out('mods dev: refused: the device has a saved configuration (config.txt: %s).' % describe_config(cfg))
+        out('mods dev: refused: the device has a saved configuration (%s).' % describe_config(cfg))
         out('  A dev build becomes the default behind it, once: the menu\'s Continue line ends in "(to apply)", and')
         out('  the next plain power-on converges back to the saved setup (#197). Re-run with --ignore-config for that.')
         return 2, {}
@@ -246,7 +267,7 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
         return 1, summary
     out('default: %s (%s, content installed)' % (entry, ' + '.join(names)))
     if cfg is not None:
-        out('menu: the Continue line now ends in "%s" (config.txt kept: %s)' % (
+        out('menu: the Continue line now ends in "%s" (saved configuration kept: %s)' % (
             menu_after(cfg, entry, library(dev)).strip() or 'nothing', describe_config(cfg)))
     if args.boot:
         code = ph.run('boot', lambda: dev.library_boot(entry))
@@ -277,7 +298,7 @@ def restore(dev, port, slots, current_state, out=print):
     out('restored: default %s (%.2f s); %s forgets it' % (entry, time.monotonic() - t, state_path()))
     cfg = config(dev)
     if cfg is not None:
-        out('menu: the Continue line ends in "%s" (config.txt: %s)' % (
+        out('menu: the Continue line ends in "%s" (saved configuration: %s)' % (
             menu_after(cfg, entry, library(dev)).strip() or 'nothing', describe_config(cfg)))
     return 0
 
@@ -305,13 +326,13 @@ def add_arguments(sub):
                    'with --only ID)')
     d.add_argument('--only', metavar='ID', help='the mod, when PACKAGE_DIR is a generation folder')
     d.add_argument('--with', dest='with_', nargs='+', default=[], metavar='ID', help='more mods in the selection')
-    d.add_argument('--base', metavar='ID', help='library entry holding the stock os.ldr (default: config.txt base=, '
+    d.add_argument('--base', metavar='ID', help='library entry holding the stock os.ldr (default: the saved base, '
                    'else the last dev run\'s)')
     d.add_argument('--name', default=MS.DEFAULT_NAME, help='the entry name (default %(default)r)')
     d.add_argument('--unverified', action='store_true', help='the base is not a known one (you confirmed it)')
     d.add_argument('--boot', action='store_true', help='boot the result (the device leaves XY Forever)')
     d.add_argument('--watch', action='store_true', help='repeat on every file change (not with --boot)')
-    d.add_argument('--ignore-config', action='store_true', help='go ahead although config.txt exists (the menu '
+    d.add_argument('--ignore-config', action='store_true', help='go ahead with a saved configuration present (the menu '
                    'then shows "(to apply)")')
     d.add_argument('--restore', action='store_true', help='set the default from before the first dev run again')
 

@@ -1,8 +1,8 @@
 #ifndef XYF_COLD_LAYOUT_HPP
 #define XYF_COLD_LAYOUT_HPP
-// Cold module + stack reservation (xyf_build.py layout()). Every mode
-// uses 0x8ab00000..0x8ab0c000 code + 16 KiB stack to 0x8ab10000, except the
-// wide product layout (--xyf-product), which passes
+// Cold module + stack reservation (xyf_build.py layout()). The offline stage-2
+// modes have a 56 KiB code window from 0x8ab00000 to 0x8ab0e000 and a 16 KiB
+// stack to 0x8ab12000. The wide product layout specifies
 // -DXYF_STACK_END=0x8ab84000u: a 512 KiB code window to 0x8ab80000, stack to
 // 0x8ab84000, below the stage-2 window (0x8ab90000). The whole range lies above
 // the stock allocator arena and below A's job region, where no stock reference,
@@ -17,9 +17,9 @@
 #define XYF_JOB_REGION_END 0x8b800000u
 #ifndef XYF_STACK_END
 #define XYF_STACK_END 0x8ab10000u
-#else
-// The stack watermark (file_boot, key_ui) paints from the module end, but in a
-// passed-in layout no lower than 32 KiB below the stack top (the stack and 16 KiB
+#elif XYF_STACK_END == 0x8ab84000u
+// The stack watermark (file_boot, key_ui) paints from the module end, but in the
+// wide layout no lower than 32 KiB below the stack top (the stack and 16 KiB
 // under it, about what build 170 painted), so a large code window costs no time.
 #define XYF_STACK_PAINT_FLOOR (XYF_STACK_END - 0x8000u)
 #endif

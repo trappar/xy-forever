@@ -30,7 +30,8 @@ class EntryTest(unittest.TestCase):
             result = make_entry(payload, tmp, 'opxy-121', 'OP-XY 1.2.1', '1.2.1+0', 'official')
             folder = Path(result['folder'])
             self.assertEqual((folder / 'os.ldr').read_bytes(), payload.read_bytes())
-            self.assertIn('kind=official\n', (folder / 'info.txt').read_text())
+            self.assertEqual(json.loads((folder / 'manifest.json').read_bytes())['kind'], 'official')
+            self.assertFalse((folder / 'info.txt').exists())
             self.assertFalse((folder / 'layout.json').exists())
             with self.assertRaises(ValueError):
                 make_entry(payload, tmp, 'opxy-121', 'again')      # existing folder

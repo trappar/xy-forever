@@ -42,7 +42,9 @@
 #include "../native/mod_patch.hpp"
 #include "../native/mod_content.hpp"
 #include "../native/mod_job.hpp"
+#include "../target/xyf_package_record.hpp"
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -141,76 +143,7 @@ bool read_job(const char* path, Job& job) {
     return true;
 }
 
-// One package as the job holds it: its files.sha256 listing and every listed file, whole.
-struct Package {
-    std::string name;                         // "base", a machine id, "ext-<id>"
-    std::vector<std::pair<std::string, std::string>> listing;   // sha256 hex, path
-    std::map<std::string, Bytes> files;
-};
-struct Inputs { std::vector<Package> packages; Bytes stock, catalog, official; };   // packages[0]: the base
-
-bool load_package(const std::string& root, const std::string& name, Package& p) {
-    p.name = name;
-    Bytes list;
-    if (!slurp(root + "/" + name + "/files.sha256", list)) return false;
-    std::istringstream in(std::string(list.begin(), list.end()));
-    std::string line;
-    while (std::getline(in, line)) {
-        if (line.size() < 67 || line.compare(64, 2, "  ")) return false;
-        p.listing.push_back({line.substr(0, 64), line.substr(66)});
-        if (!slurp(root + "/" + name + "/" + p.listing.back().second, p.files[p.listing.back().second])) return false;
-    }
-    return true;
-}
-bool load(const Job& job, Inputs& in) {
-    in.packages.assign(1, Package());
-    if (!load_package(job.generation, "base", in.packages[0])) return false;
-    for (auto& m : job.machines) {
-        in.packages.push_back(Package());
-        if (!load_package(job.generation, m, in.packages.back())) return false;
-    }
-    for (auto& e : job.extensions) {
-        in.packages.push_back(Package());
-        if (!load_package(job.generation, "ext-" + e, in.packages.back())) return false;
-    }
-    for (auto& m : job.unlinked) {
-        in.packages.push_back(Package());
-        if (!load_package(job.generation, m, in.packages.back())) return false;
-    }
-    return slurp(job.stock, in.stock) && slurp(job.catalog, in.catalog) && slurp(job.official, in.official);
-}
-const Package* package_named(const Inputs& in, const char* name) {
-    for (auto& p : in.packages) if (p.name == name) return &p;
-    return 0;
-}
-const std::string* listed_sha(const Package& p, const std::string& path) {
-    for (auto& f : p.listing) if (f.second == path) return &f.first;
-    return 0;
-}
-
-// info.txt keys (key=value lines).
-std::map<std::string, std::string> info_of(const Package& p) {
-    std::map<std::string, std::string> out;
-    auto it = p.files.find("info.txt");
-    if (it == p.files.end()) return out;
-    std::istringstream in(std::string(it->second.begin(), it->second.end()));
-    std::string line;
-    while (std::getline(in, line)) {
-        const size_t eq = line.find('=');
-        if (line.empty() || line[0] == '#' || eq == std::string::npos) continue;
-        out[line.substr(0, eq)] = line.substr(eq + 1);
-    }
-    return out;
-}
-bool number_of(const std::map<std::string, std::string>& info, const char* key, U32& value) {
-    auto it = info.find(key);
-    if (it == info.end() || it->second.empty()) return false;
-    char* end = 0;
-    const unsigned long long v = std::strtoull(it->second.c_str(), &end, 0);
-    if (*end || v > 0xffffffffull) return false;
-    value = U32(v);
-    return true;
-}
+#include "mod_assemble_inputs.ipp"
 
 struct Timing { unsigned steps = 0; double longest_ms = 0; };
 template <class F> auto timed(Timing& t, F f) -> decltype(f()) {
@@ -261,8 +194,8 @@ mod_content::Kind kind_of(const std::string& k) {
     return mod_content::Kind(9);
 }
 
-bool check_inputs(const Inputs& in, Assembly& a) {
-    for (auto& p : in.packages)
+bool check_inputs(Inputs& in, Assembly& a) {
+    for (auto& p : in.packages) {
         for (auto& f : p.listing) {
             hash::Digest want;
             auto it = p.files.find(f.second);
@@ -273,11 +206,23 @@ bool check_inputs(const Inputs& in, Assembly& a) {
             }
             a.largest_file = std::max(a.largest_file, U32(it->second.size()));
         }
-    auto it = in.packages[0].files.find("info.txt");
+        if (!listed_sha(p, p.metadata)) {
+            a.input = "missing"; a.input_detail = p.name + "/" + p.metadata;
+            return false;
+        }
+        if (p.metadata == record::native_name) {
+            const auto type = p.name == "base" ? xyf::manifest::type_mod_base : xyf::manifest::type_mod;
+            const auto status = metadata_view(p, type);
+            if (status != json::ok) {
+                a.input = "package"; a.input_detail = p.name + "/" + p.metadata + ": " + json::message(status);
+                return false;
+            }
+        }
+    }
+    const Bytes* metadata = info_data(in.packages[0]);
     char detail[mod_patch::detail_bytes];
-    if (it == in.packages[0].files.end() ||
-        mod_patch::read_profile(it->second.data(), U32(it->second.size()), a.profile, detail) != mod_patch::Status::ok) {
-        a.input = "base"; a.input_detail = it == in.packages[0].files.end() ? "info.txt" : detail;
+    if (!metadata || mod_patch::read_profile(metadata->data(), U32(metadata->size()), a.profile, detail) != mod_patch::Status::ok) {
+        a.input = "base"; a.input_detail = metadata ? detail : in.packages[0].metadata;
         return false;
     }
     const auto info = info_of(in.packages[0]);
@@ -300,7 +245,7 @@ bool content_view(const Inputs& in, Assembly& a) {
         for (auto& f : p.listing) {
             mod_content::File file{f.second.c_str(), {}};
             unhex(f.first, file.sha256);
-            if (f.second != "info.txt") a.files[i].push_back(file);   // files.sha256 lists info.txt too
+            if (f.second != record::legacy_name && f.second != record::native_name) a.files[i].push_back(file);
         }
         mod_content::Package& pkg = a.packages[i];
         a.ids[i] = info.count("id") ? info.at("id") : "";
@@ -312,7 +257,7 @@ bool content_view(const Inputs& in, Assembly& a) {
         const std::string at = info.count("catalog_number") ? info.at("catalog_number") : "-";
         pkg.numbered = at != "-";
         if (pkg.numbered && std::sscanf(at.c_str(), "%u,%u", &pkg.number_start, &pkg.number_end) != 2) {
-            a.input = "package"; a.input_detail = p.name + "/info.txt catalog_number";
+            a.input = "package"; a.input_detail = p.name + "/" + p.metadata + " catalog_number";
             return false;
         }
         number_of(info, "presets", pkg.presets);
@@ -353,7 +298,7 @@ mod_patch::Status verify(const Assembly& a, const Inputs& in, const Bytes& image
 
 // Input checks, then: stock into the image, patch steps to its wait, the link (module at stock_bytes),
 // set_module, patch steps to ok; the content step over the same link.
-void assemble(const Job& job, const Inputs& in, Assembly& a, mod_patch::Patcher& p, mod_content::Builder& b) {
+void assemble(const Job& job, Inputs& in, Assembly& a, mod_patch::Patcher& p, mod_content::Builder& b) {
     if (!check_inputs(in, a)) return;
     a.profile.expanded = job.expanded;
     mod_patch::Profile used;
@@ -395,13 +340,14 @@ void assemble(const Job& job, const Inputs& in, Assembly& a, mod_patch::Patcher&
         U32 bytes = 0;
         if (*request.path) {
             const Package* pk = package_named(in, request.package);
-            auto it = pk ? pk->files.find(request.path) : std::map<std::string, Bytes>::const_iterator();
-            if (!pk || it == pk->files.end()) {
+            const Bytes* file = !pk ? nullptr : std::strcmp(request.path, record::legacy_name) == 0 ?
+                info_data(*pk) : file_data(*pk, request.path);
+            if (!file) {
                 a.input = "missing"; a.input_detail = std::string(request.package) + "/" + request.path;
                 a.link = mod_link::Status::argument;
                 break;
             }
-            data = it->second.empty() ? 0 : it->second.data(); bytes = U32(it->second.size());
+            data = file->empty() ? nullptr : file->data(); bytes = U32(file->size());
         } else ++a.zero_steps;
         a.link = timed(a.lt, [&] { return mod_link::step(a.ws, data, bytes, a.result); });
     }
@@ -634,10 +580,25 @@ struct MemFs {
                    dirs = {"/out"}; now = fail_read = fail_write = 0; injected = false; }
     bool parent_made(const std::string& path) const { return dirs.count(path.substr(0, path.rfind('/'))) != 0; }
     static MemFs& of(void* c) { return *static_cast<MemFs*>(c); }
+    static int probe_metadata(void* c, const char* path) {
+        U32 bytes;
+        return size(c, path, &bytes);
+    }
     static int size(void* c, const char* path, U32* bytes) {
-        const Bytes* d = of(c).find(path);
+        MemFs& fs = of(c);
+        if (fs.missing.count(path)) return mod_job::missing_file;
+        if (!fs.written.count(path) && !fs.replaced.count(path) && !fs.cache.count(path)) {
+            struct stat st;
+            if (lstat(path, &st) != 0) return errno == ENOENT ? mod_job::missing_file : -1;
+            if (!S_ISREG(st.st_mode) && (stat(path, &st) != 0 || !S_ISREG(st.st_mode))) return -1;
+            const auto size = uint64_t(st.st_size) + fs.short_size.count(path);
+            if (size > 0xffffffffu) return -1;
+            *bytes = U32(size);
+            return 0;
+        }
+        const Bytes* d = fs.find(path);
         if (!d) return -1;
-        *bytes = U32(d->size()) + (of(c).short_size.count(path) ? 1 : 0);
+        *bytes = U32(d->size()) + (fs.short_size.count(path) ? 1 : 0);
         return 0;
     }
     static int open(void* c, const char* path, bool write) {
@@ -723,7 +684,7 @@ struct JobSetup {
         in.profiling = job.profiling; in.unverified = job.unverified;
         Bytes store;
         in.flat = slurp(job.generation + "/store.txt", store);   // the device's store (a copy of it)
-        files = {&fs, MemFs::size, MemFs::open, MemFs::read, MemFs::write, MemFs::close, MemFs::rename, MemFs::remove,
+        files = {&fs, MemFs::probe_metadata, MemFs::size, MemFs::open, MemFs::read, MemFs::write, MemFs::close, MemFs::rename, MemFs::remove,
                  MemFs::mkdir};
         region.assign((8u << 20) / 4, 0);
     }

@@ -19,7 +19,7 @@ struct Text {
     }
 
 };
-// [a-z0-9][a-z0-9._-]*, at most 31 bytes (info.txt generation, profile).
+// [a-z0-9][a-z0-9._-]*, at most 31 bytes (manifest generation, profile).
 bool token(const Byte* v, U32 n) {
     if (!n || n > 31) return false;
     for (U32 i = 0; i != n; ++i) {
@@ -33,21 +33,25 @@ bool token(const Byte* v, U32 n) {
 void list_line(Text& t, const hash::Digest& d, const char* path) {
     t.hex(d.bytes, 32); t.text("  "); t.text(path); t.byte('\n');
 }
-// Canonical native info.txt writer, same field order as xyf_entry.manifest_text.
+// Same compact document and field order as package_records.document in the host writer.
 void manifest_text(Text& t, const Job& j, const Byte* generation, U32 generation_bytes,
                    const Byte* profile, U32 profile_bytes) {
-    t.text("type=firmware\nname="); t.text(j.input->name);
-    t.text("\nkind=open-xy\nbytes="); t.number(j.ldr_bytes);
+    t.text("{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\",\"name\":\"");
+    for (const char* p = j.input->name; *p; ++p) {
+        if (*p == '"' || *p == '\\') t.byte('\\');
+        t.byte(Byte(*p));
+    }
+    t.text("\",\"kind\":\"open-xy\",\"bytes\":"); t.number(j.ldr_bytes);
     const Byte crc[4] = {Byte(j.crc >> 24), Byte(j.crc >> 16), Byte(j.crc >> 8), Byte(j.crc)};
-    t.text("\ncrc32="); t.hex(crc, 4);
-    t.text("\nsha256="); t.hex(j.ldr_sha256.bytes, 32);
-    t.text("\nneeds_os="); t.hex(j.profile.stock_sha256.bytes, 32);
-    t.text("\ngeneration="); t.bytes(generation, generation_bytes);
-    t.text("\nprofile="); t.bytes(profile, profile_bytes);
-    t.text("\nmachines="); t.number(j.input->selection.machine_count);
-    t.byte('\n');
+    t.text(",\"crc32\":\""); t.hex(crc, 4);
+    t.text("\",\"sha256\":\""); t.hex(j.ldr_sha256.bytes, 32);
+    t.text("\",\"needs_os\":\""); t.hex(j.profile.stock_sha256.bytes, 32);
+    t.text("\",\"generation\":\""); t.bytes(generation, generation_bytes);
+    t.text("\",\"profile\":\""); t.bytes(profile, profile_bytes);
+    t.text("\",\"machines\":"); t.number(j.input->selection.machine_count);
+    t.text("}\n");
 }
-// The entry's native texts (info.txt, files.sha256 completed) and their SHA-256s; the outputs' table.
+// The entry's manifest, completed files.sha256, their hashes and the output sizes.
 __attribute__((noinline)) Error entry_texts(Job& j) {
     const Job::Package& base = j.packages[0];
     const Byte *generation, *profile; U32 generation_bytes, profile_bytes;
@@ -66,15 +70,14 @@ __attribute__((noinline)) Error entry_texts(Job& j) {
     copy_digest(j.ldr_sha256, j.patcher.sha256);
     Text t = {j.info_out, 0, info_bytes, true};
     manifest_text(t, j, generation, generation_bytes, profile, profile_bytes);
-    if (!t.ok) { set_detail_text(j, "info.txt"); return Error::size; }
+    if (!t.ok) { set_detail_text(j, fixed_names[0]); return Error::size; }
     j.info_size = t.size;
     hash::Sha256 h;
     h.reset(); h.update(j.info_out, j.info_size); h.finish(j.info_sha256);
-    // files.sha256: mod_content's content/... lines, then these (sorted: "content/" < "info.txt" <
-    // "os.ldr"); never itself.
+    // Add the manifest and OS after the sorted content paths. The list omits its own digest.
     Text list = {j.list_out, j.builder.list_bytes, list_bytes, true};
-    list_line(list, j.info_sha256, "info.txt");
-    list_line(list, j.ldr_sha256, "os.ldr");
+    list_line(list, j.info_sha256, fixed_names[0]);
+    list_line(list, j.ldr_sha256, fixed_names[2]);
     if (!list.ok) { set_detail_text(j, "files.sha256"); return Error::size; }
     j.list_size = list.size;
     h.reset(); h.update(j.list_out, j.list_size); h.finish(j.list_sha256);

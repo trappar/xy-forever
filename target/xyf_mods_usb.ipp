@@ -44,8 +44,10 @@ uint32_t remote_set(uint32_t flags, const char* mods, uint32_t crc, const char*&
     if (remote.stage == 1) return xyf::usbp::s_busy;
     if (remote.stage != 2 || remote.crc != crc || units() - remote.since > remote_units) {   // read the list again
         if (io.folder) { fc::closedir(io.folder); io.folder = 0; }
+        fc::close_name_scan(io.metadata_scan, usb_service::page_mount());
+        restart_config_lookup();
         m::reset(p);
-        io.step = s_serving; io.candidate_count = io.package_at = io.newer = 0; io.dirty = 1; io.waiting = 0;
+        io.step = s_serving; io.candidate_count = io.package_at = io.newer = io.broken = 0; io.dirty = 1; io.waiting = 0;
         m::say(p, m::line_info, "Reading mod packages...");
         remote.stage = 1; remote.crc = crc;
         return xyf::usbp::s_busy;

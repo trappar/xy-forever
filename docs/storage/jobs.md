@@ -9,8 +9,8 @@ assembly, configuration saves, package sessions, MTP operations and storage-wind
 Before a content switch changes shared content, B publishes `/yaffs2/xy-forever/job.txt`:
 `version=1`, `target`, `previous`, `default=0|1`, `undo=0|1`, `target_info`, `target_list`,
 `previous_info`, `previous_list`, then `crc32`. The four identity values are lowercase SHA-256
-of the exact `info.txt` and `files.sha256` bytes; a missing list is all zeroes and allowed only
-for an entry without a generation. A missing or empty manifest is never an official target.
+of the exact selected metadata and `files.sha256` bytes. A missing list is all
+zeroes and allowed only for an entry without a generation. A missing or empty manifest is never an official target.
 Canonical key order, LF, valid entry ids and the trailing CRC are required; the file is below 512 bytes.
 A newer version or malformed record stays unchanged and the menu explains why it cannot replay it.
 
@@ -21,7 +21,7 @@ The content engine keeps its existing switching record, verified copies and cata
 
 Only the menu/USB service loop reads and replays intent. It validates the recorded source identity,
 then runs the existing content job in bounded slices. A plain power-on that finds a journal converges
-first ([boot.md](../architecture/boot.md#converge-at-power-on-197)): the menu replays it on the progress
+first ([boot convergence](../architecture/boot/convergence.md)): the menu replays it on the progress
 screen, then boots; the content-state rule still rejects an unusable default.
 A missing or changed source, including a file that disappears during replay, leaves the journal and
 shows `Source missing. PLAY on the first row undoes: <previous>`. PLAY on the menu's first row then
@@ -50,7 +50,7 @@ updater's own `/yaffs2/upgrade/firmware/blackfin/bin/os.ldr` (never changed) and
 stock 1.2.1 image (the size and SHA-256 `boot.uninstall` admits) goes on; a missing or other file ends it with
 nothing written, and the menu says why ("No official OS 1.2.1 found." or "OS file is not official 1.2.1.", then
 "Reinstall official OS 1.2.1, then start again."). In A's write window it sweeps `tmp/adopt-opxy-121/`, copies
-`os.ldr` there and reads it back (SHA-256), writes `info.txt` and `files.sha256` (as `xyf_host.py library-add`
+`os.ldr` there and reads it back (SHA-256), writes `manifest.json` and `files.sha256` (as `xyf_host.py library-add`
 and a package publish) and reads them back, then renames the folder to `firmware/opxy-121`: a cut leaves only
 `tmp/`, and the next start adopts again. After A's rescan it makes the entry the default; the sequence checks
 again and converges (a plain power-on boots it; after PLAY the menu stays: "OS 1.2.1 is in the library and is

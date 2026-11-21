@@ -22,7 +22,7 @@ import struct
 import time
 import zlib
 
-from . import depth, modconfig, modstore, package_store, usb_proto as P
+from . import depth, modconfig, modstore, package_records, package_store, usb_proto as P
 
 ROOT = '/yaffs2/xy-forever/mods'
 LIST = 'files.sha256'
@@ -37,9 +37,11 @@ class Refused(Exception):
     """The package set or the device's answer is not what a push or remove can use."""
 
 
-def info_values(data):
-    return dict(l.split('=', 1) for l in data.decode('utf-8', 'replace').splitlines()
-                if '=' in l and not l.startswith('#'))
+def info_values(data, name=INFO):
+    try:
+        return package_records.values(data, name)
+    except ValueError as error:
+        raise Refused(str(error)) from error
 
 
 def list_paths(data):
@@ -55,55 +57,11 @@ def list_paths(data):
 
 # -- the package set on the host -----------------------------------------------------------------------
 def local_set(package_dir, only=()):
-    """(profile, generation, {package: [(relative path, bytes)]}) for a generation folder: each package's
-    files in the order they are sent (listed files, then info.txt, then files.sha256), every one checked
-    against its files.sha256. only: package names (base is always included)."""
-    root = Path(package_dir)
-    if not (root / 'base' / INFO).is_file():
-        raise Refused('%s: no base/info.txt (give the generation folder modkit split wrote)' % root)
-    base = info_values((root / 'base' / INFO).read_bytes())
-    profile, generation = base.get('profile', ''), base.get('generation', '')
-    if base.get('type') != 'mod-base' or not TOKEN.match(profile) or not TOKEN.match(generation):
-        raise Refused('base/info.txt: not a mod-base with a profile and generation')
-    names = sorted(p.name for p in root.iterdir() if p.is_dir() and (p / LIST).is_file())
-    wanted = ['base'] + [n for n in only if n != 'base'] if only else names
-    unknown = [n for n in wanted if n not in names]
-    if unknown:
-        raise Refused('no such package in %s: %s' % (root, ', '.join(unknown)))
-    packages = {}
-    for name in sorted(set(wanted), key=lambda n: (n != 'base', n)):
-        if not package_store.package_name(name):
-            raise Refused('unsafe package name: %s' % name)
-        folder = root / name
-        entries = package_store.read_files_sha256((folder / LIST).read_bytes())
-        if INFO not in [p for _, p in entries]:
-            raise Refused('%s/%s does not list %s' % (name, LIST, INFO))
-        files = []
-        for sha, rel in entries:
-            device = '%s/%s/%s/%s' % (ROOT, generation, name, modstore.stored_name(rel, sha))
-            parts = rel.split('/')
-            if rel == LIST or any(p in ('', '.', '..') for p in parts) or len(device.encode()) > MAX_PATH:
-                raise Refused('%s: unusable path %r' % (name, rel))
-            if depth.refusal(device):
-                raise Refused('%s: %s' % (name, depth.refusal(device)[len('refused: '):]))
-            data = (folder / rel).read_bytes() if (folder / rel).is_file() else None
-            if data is None or hashlib.sha256(data).hexdigest() != sha:
-                raise Refused('%s/%s: missing or differs from its %s line' % (name, rel, LIST))
-            if not data:
-                raise Refused('%s/%s: empty (the device stages 1 byte or more)' % (name, rel))
-            files.append((rel, data))
-        files.sort(key=lambda f: f[0] == INFO)                # info.txt after the other listed files
-        files.append((LIST, (folder / LIST).read_bytes()))     # files.sha256 last
-        try:
-            modstore.stored_files(name, files)
-        except modstore.Clash as error:
-            raise Refused(str(error))
-        fields = package_store.validate(dict(files))
-        if (fields.get('generation') != generation or fields.get('profile', profile) != profile or
-                fields.get('type') != ('mod-base' if name == 'base' else 'mod')):
-            raise Refused('%s: generation/profile differs from its base' % name)
-        packages[name] = files
-    return profile, generation, packages
+    from .modsend_local import local_set as read
+    try:
+        return read(package_dir, only)
+    except ValueError as error:
+        raise Refused(str(error)) from error
 
 
 # -- the device ----------------------------------------------------------------------------------------
@@ -121,7 +79,7 @@ def check(code, what):
         raise Refused('%s: %s' % (what, P.status_name(code)))
 
 
-def remote_tree(dev, folder):
+def remote_tree(dev, folder, other=None):
     """({relative path: size} of every file below folder, [relative folders, parents first]), or None
     when folder does not exist."""
     files, dirs, todo = {}, [], ['']
@@ -138,6 +96,8 @@ def remote_tree(dev, folder):
             elif kind == 1:
                 dirs.append(path)
                 todo.append(path)
+            elif other is not None:
+                other.add(path)
     return files, dirs
 
 
@@ -243,10 +203,12 @@ def holdings(dev):
     mods/<profile>/ folder, or a package tree from before the flat store), NEWER for a newer store version;
     neither lists packages."""
     out = []
-    tree = remote_tree(dev, ROOT)
+    other = set()
+    tree = remote_tree(dev, ROOT, other)
     if not tree:
         return out
     files, dirs = tree
+    nonfiles = other | set(dirs)
     for gen in sorted(d for d in dirs if '/' not in d):
         version = 0
         if '%s/%s' % (gen, modstore.FILE) in files:
@@ -260,13 +222,16 @@ def holdings(dev):
             prefix = '%s/%s/' % (gen, name)
             mine = {p[len(prefix):]: s for p, s in files.items() if p.startswith(prefix)}
             info, complete = {}, False
-            if INFO in mine:
-                code, data = dev.read_all('%s/%s%s' % (ROOT, prefix, INFO), limit=1 << 16)
-                info = info_values(data) if not code else {}
+            metadata = package_records.record_name(key for key in (package_records.NATIVE, INFO)
+                                                   if key in mine or prefix + key in nonfiles)
+            if metadata in mine:
+                code, data = dev.read_all('%s/%s%s' % (ROOT, prefix, metadata), limit=1 << 16)
+                info = info_values(data, metadata) if not code else {}
             if LIST in mine:
                 code, data = dev.read_all('%s/%s%s' % (ROOT, prefix, LIST), limit=1 << 20)
                 try:
-                    complete = not code and modstore.listed_names(list_paths(data)) <= set(mine)
+                    listed = modstore.listed_names(list_paths(data)) if not code else set()
+                    complete = metadata in listed and listed <= set(mine)
                 except Refused:
                     complete = False
             packages.append((name, info, len(mine), sum(mine.values()), complete))
@@ -349,7 +314,7 @@ ERRORS = ('none', 'argument', 'path', 'region', 'open', 'read', 'truncated', 'si
           'info', 'base', 'linker', 'patch', 'content', 'write', 'rename', 'verify', 'cancelled', 'image', 'link')
 MISSING = ('none', "the base's os.ldr", "the base's content.sha256; library-add --content adds it",
            '/yaffs2/content/op1_factory.json',
-           "the generation's base/info.txt", "the generation's store.txt (older layout: remove it, push again)")
+           "the generation's base package metadata", "the generation's store.txt (older layout: remove it, push again)")
 DONE, FAILED, CANCELLED = 8, 9, 10
 TMP = '/yaffs2/xy-forever/tmp'
 LIBRARY = '/yaffs2/xy-forever/firmware'

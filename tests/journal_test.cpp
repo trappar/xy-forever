@@ -39,5 +39,25 @@ int main(){
     J::source_begin(source,"mods-a");out=0;while(!out)out=J::source_step(source,io);assert(out==1);
     J::Identity first=source.identity;io.files["/yaffs2/xy-forever/firmware/mods-a/files.sha256"]="changed\n";
     J::source_begin(source,"mods-a");out=0;while(!out)out=J::source_step(source,io);assert(out==1&&!J::equal(first,source.identity));
+    // JSON takes precedence and its exact serialized bytes own source identity.
+    const std::string native="{\"schema\":\"xy-forever.package\",\"schema_version\":1,\"type\":\"firmware\","
+        "\"name\":\"Native\",\"bytes\":3,\"crc32\":\"00000000\","
+        "\"sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\","
+        "\"generation\":\"test\",\"needs_os\":\"0000000000000000000000000000000000000000000000000000000000000000\"}";
+    const std::string path="/yaffs2/xy-forever/firmware/mods-a/manifest.json";
+    io.files[path]=native;
+    J::source_begin(source,"mods-a");out=0;while(!out)out=J::source_step(source,io);assert(out==1&&source.mods);
+    xyf_core::hash::Sha256 sha;xyf_core::hash::Digest digest;sha.reset();
+    sha.update(reinterpret_cast<const uint8_t*>(native.data()),uint32_t(native.size()));sha.finish(digest);
+    assert(!memcmp(source.identity.info,digest.bytes,32));assert(io.files[path]==native);
+    first=source.identity;io.files[path]+=" \n";
+    J::source_begin(source,"mods-a");out=0;while(!out)out=J::source_step(source,io);
+    assert(out==1&&!J::equal(first,source.identity));
+    for(const char* bad:{"", "{", "{}", "{\"schema\":\"xy-forever.package\",\"schema_version\":2}"}) {
+        io.files[path]=bad;J::source_begin(source,"mods-a");out=0;
+        while(!out)out=J::source_step(source,io);assert(out<0); // valid legacy never masks JSON
+    }
+    io.files.erase(path);J::source_begin(source,"mods-a");out=0;
+    while(!out)out=J::source_step(source,io);assert(out==1); // absence alone permits the old lenient reader
     puts("journal publication/source checks passed");
 }

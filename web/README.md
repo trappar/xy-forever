@@ -52,7 +52,7 @@ the host). The app lives at the site's root (its paths and `/release/os.ldr` are
   which may open the chooser) does the same. It never looks while a te-boot check over Web MIDI or the MTP copy is
   under way, only once that ends (te-boot is MIDI only; the serial "OP_XY Boot" is XY Forever's own fallback service).
   Either way it follows the setup as above.
-- **Device**: build, what is running, what boots next, the saved mods (`/yaffs2/xy-forever/config.txt`), the content state.
+- **Device**: build, what is running, what boots next, the saved mods (`/yaffs2/xy-forever/config.json`), the content state.
   When a newer XY Forever release is available, the page shows its changes and an Update button. Clicking Update
   downloads and verifies the release, installs and reads it back, then restarts straight into the XY Forever menu
   and checks the running image. USB control uses the usual device trust prompt.

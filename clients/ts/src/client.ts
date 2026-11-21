@@ -7,6 +7,7 @@ import { XyfError, isXyfError, statusError } from './errors.ts';
 import { Link } from './link.ts';
 import type { Trace } from './link.ts';
 import type { Opener, Transport } from './transport.ts';
+import { keyValues, readLibraryEntry } from './package-records.ts';
 import { SCREEN } from './screen.ts';
 import { writeStream } from './stream.ts';
 import { inWriteArea } from './write-area.ts';
@@ -517,10 +518,9 @@ export class Client {
     return best;
   }
 
-  /** A library entry's info.txt (name, version, kind, bytes, crc32). */
+  /** A library entry's metadata, with native JSON taking precedence over legacy text. */
   async libraryEntry(id: string, options: CallOptions = {}): Promise<Record<string, string>> {
-    const text = new TextDecoder().decode(await this.readFile(`/yaffs2/xy-forever/firmware/${id}/info.txt`, options));
-    return keyValues(text);
+    return readLibraryEntry(this, id, options);
   }
 
   private attach(link: Link): void {
@@ -570,16 +570,6 @@ function plainFileError(error: unknown, path: string): unknown {
   if (!isXyfError(error) || error.status === null) return error;
   return new XyfError(error.code, `${error.command ?? 'file'} ${path}: ${fileReason(error)}`,
     { command: error.command, status: error.status, fields: error.fields, cause: error });
-}
-
-function keyValues(text: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    const at = line.indexOf('=');
-    if (line && !line.startsWith('#') && at > 0) out[line.slice(0, at).trim()] = line.slice(at + 1).trim();
-  }
-  return out;
 }
 
 /** A state file (xyf::state::parse_slot): key=value lines, then `crc32=xxxxxxxx` over the lines before it. */

@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import xyf_entry, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, modstore, paths, sim   # noqa: E402
+from xy_forever import xyf_entry, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, modstore, package_records, paths, sim   # noqa: E402
 from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
 from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
@@ -237,7 +237,7 @@ class SyntheticJob(Base, unittest.TestCase):
                 job, f = self.assemble_and_compare(machines, exts)
                 self.assertEqual(f['detail'], want)
                 self.assertNotIn('layout.json', tree(self.entry(want)))
-                self.assertEqual(xyf_entry.parse_manifest(tree(self.entry(want))['info.txt'])['machines'], len(machines))
+                self.assertEqual(package_records.parse(tree(self.entry(want))[package_records.NATIVE], package_records.NATIVE)['machines'], len(machines))
                 self.assertEqual(tree(self.entry('mods-b' if want == 'mods-a' else 'mods-a')), other)
                 self.assertEqual(self.leftovers(), [])                      # the old mods-a removed from tmp/
                 seen.append(f['detail'])
@@ -791,7 +791,7 @@ class SyntheticJob(Base, unittest.TestCase):
 
 
 def _published():
-    return ((PACKAGES / 'base/info.txt').is_file() and TK.STOCK.is_file() and TK.CATALOG.is_file() and
+    return (package_records.local_name(PACKAGES / 'base') and TK.STOCK.is_file() and TK.CATALOG.is_file() and
             MP.default_official(PACKAGES).is_file())
 
 

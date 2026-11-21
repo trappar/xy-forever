@@ -20,7 +20,7 @@ Usage (stdlib only; macOS /dev/cu.usbmodem*):
   python3 xyf_host.py mkdir /yaffs2/PATH       create a folder (its parent must exist)
   python3 xyf_host.py library-add ID OS_LDR --name NAME --version VER [--content DIR]   DRY RUN: plan
   python3 xyf_host.py library-add ID OS_LDR --name NAME --version VER --content DIR --yes-write
-                                               firmware/ID/os.ldr + info.txt, and from DIR (the official
+                                               firmware/ID/{os.ldr,manifest.json}, from DIR (official
                                                content) content.sha256 + firmware.version (reboots between)
   python3 xyf_host.py screenshot --out FILE.png   the display (read-only framebuffer view)
   python3 xyf_host.py tfw-check /yaffs2/PATH   is a .tfw (or a cut) on the device official, and do the

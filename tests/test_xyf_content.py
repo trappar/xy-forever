@@ -18,6 +18,8 @@ class ContentSwitchTest(unittest.TestCase):
             hostbuild.run(['/usr/bin/clang++', '-std=c++14', '-Wall', '-Wextra', '-Werror',
                            '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-I', str(ROOT / 'target'),
                            str(ROOT / 'target/xyf_store.cpp'), str(ROOT / 'target/xyf_info.cpp'), str(ROOT / 'native/hash.cpp'),
+                           str(ROOT / 'native/json.cpp'), str(ROOT / 'target/xyf_manifest.cpp'),
+                           str(ROOT / 'target/xyf_package_record.cpp'),
                            str(ROOT / 'target/xyf_content_test.cpp'), '-o', str(binary)],
                           check=True, capture_output=True, text=True)
             result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)

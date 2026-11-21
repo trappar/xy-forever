@@ -34,7 +34,9 @@ LOCAL_STATUS = 6000                 # docs/status/README.md; its leaves are not 
 TREES = {
     'docs/PROTOCOL.md': 'docs/protocol',
     'docs/ARCHITECTURE.md': 'docs/architecture',
+    'docs/architecture/boot.md': 'docs/architecture/boot',
     'docs/STORAGE.md': 'docs/storage',
+    'docs/storage/native-json.md': 'docs/storage/native-json',
     'docs/HARDWARE.md': 'docs/hardware',
     'docs/GOALS.md': 'docs/goals',
     'docs/OPERATING.md': 'docs/operating',

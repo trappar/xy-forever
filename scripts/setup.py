@@ -38,7 +38,7 @@ import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from xy_forever import mtp_read, node_deps, paths  # noqa: E402
+from xy_forever import mtp_read, node_deps, package_records, paths  # noqa: E402
 
 PINS = json.loads((REPO / 'stock.json').read_text())
 PAIR = ('os.ldr', 'bootloader.ldr')
@@ -337,9 +337,13 @@ def fixture_kit():
     return True
 
 
+def mod_packages():
+    return package_records.local_name(paths.PUBLISHED_MODS / 'base')
+
+
 def fixture_mods():
     ox = PINS['open_xy']
-    if (paths.PUBLISHED_MODS / 'base/info.txt').is_file():
+    if mod_packages():
         print('mod package set: ok')
         return
     if not shutil.which('node'):
@@ -351,7 +355,7 @@ def fixture_mods():
         run([sys.executable, '-m', 'xy_forever.modkit', 'split', str(paths.PUBLISHED_KIT),
              '--sdk', str(paths.OPEN_XY_UPSTREAM), '--sdk-commit', ox['sdk_commit'], '--out', str(paths.MOD_PACKAGES),
              '--sdk-source', '%s@%s' % (ox['repository'], ox['sdk_commit']), '--extension-catalog', str(catalog)])
-    if not (paths.PUBLISHED_MODS / 'base/info.txt').is_file():
+    if not mod_packages():
         raise SetupError('modkit split did not write %s' % paths.PUBLISHED_MODS)
     print('mod package set: %s' % paths.PUBLISHED_MODS)
 
@@ -426,7 +430,7 @@ def doctor():
     catalog = paths.CATALOG_121.is_file() and sha256(paths.CATALOG_121) == ox['catalog_sha256']
     upstream = has_commit(paths.OPEN_XY_UPSTREAM, ox['sdk_commit'])
     kit = paths.PUBLISHED_KIT.is_file()
-    mods = (paths.PUBLISHED_MODS / 'base/info.txt').is_file()
+    mods = bool(mod_packages())
     build = paths.newest_verified_build()
     rows += [('open-xy clone', upstream, ox['sdk_commit'][:7] if upstream else 'missing: run fixtures'),
              ('stock catalog', catalog, 'ok' if catalog else 'missing: run fixtures'),
@@ -559,7 +563,7 @@ def fixtures_missing():
         ('open-xy clone', has_commit(paths.OPEN_XY_UPSTREAM, ox['sdk_commit'])),
         ('stock catalog', paths.CATALOG_121.is_file() and sha256(paths.CATALOG_121) == ox['catalog_sha256']),
         ('published kit', paths.PUBLISHED_KIT.is_file()),
-        ('mod package set', (paths.PUBLISHED_MODS / 'base/info.txt').is_file()),
+        ('mod package set', mod_packages()),
         ('verified build', bool(paths.newest_verified_build()) or toolchain_problem() is not None)) if not ok]
 
 

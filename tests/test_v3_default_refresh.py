@@ -44,12 +44,13 @@ class V3DefaultRefreshTest(unittest.TestCase):
             (out / 'fake_fs.inc').write_text(fs)
             (out / 'default.inc').write_text(bodies)
             binary = out / 'default'
-            sources = ['xyf_store', 'xyf_info', 'xyf_library', 'xyf_state',
+            sources = ['xyf_store', 'xyf_info', 'xyf_library', 'xyf_state', 'xyf_manifest', 'xyf_package_record',
                        'xyf_crc32', 'xyf_state_write', 'xyf_catalog', 'xyf_menu', 'usb_proto']
             hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
                            '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                            '-DXYF_ONE_SESSION=1', '-I', str(out), '-I', str(ROOT / 'target'),
                            *[str(ROOT / 'target' / (name + '.cpp')) for name in sources],
+                           str(ROOT / 'native/json.cpp'),
                            str(ROOT / 'tests/v3_default_refresh.cpp'), '-o', str(binary)],
                           check=True, capture_output=True, text=True)
             result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)

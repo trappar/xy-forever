@@ -26,8 +26,7 @@ const poll = { timeout: 30_000, interval: 100 };
 describe.skipIf(!sim)(`the demo page's Mods panel against the simulator${sim ? '' : ` (skipped: ${web.why})`}`, () => {
   test('choose a package folder, send it, list it, send again, remove a package', async () => {
     const set = await commands.modSet();
-    const info = Object.fromEntries(atob(set.files.find((f) => f.path === 'base/info.txt')!.base64).split('\n')
-      .filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
+    const info = JSON.parse(atob(set.files.find((f) => f.path === 'base/manifest.json')!.base64));
     const gen = `/yaffs2/xy-forever/mods/${info['generation']}`;
     const packages = [...new Set(set.files.map((f) => f.path.split('/')[0]!))].sort();
 
@@ -101,8 +100,7 @@ describe.skipIf(!sim)(`the demo page's Mods panel against the simulator${sim ? '
 
   test('Build on device: choose, build, see the result; a failure in words; cancel', async () => {
     const set = await commands.modSet();
-    const info = Object.fromEntries(atob(set.files.find((f) => f.path === 'base/info.txt')!.base64).split('\n')
-      .filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
+    const info = JSON.parse(atob(set.files.find((f) => f.path === 'base/manifest.json')!.base64));
     const gen = `/yaffs2/xy-forever/mods/${info['generation']}`;
     await commands.simWrite(sim!.root, `${gen}/${STORE_FILE}`, btoa('version=1\n'));
     for (const f of set.files) await commands.simWrite(sim!.root, `${gen}/${storedPath(set, f.path)}`, f.base64);

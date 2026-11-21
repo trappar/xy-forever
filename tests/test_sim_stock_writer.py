@@ -23,7 +23,7 @@ class StockWriterIntegration(unittest.TestCase):
     wait = support.SimulatorTest.wait
 
     def test_install_and_uninstall_write_the_boot_partition(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)                          # this case begins with a staged mutation
         stock = sim.STOCK_OS.read_bytes()
         self.assertEqual(dev.stage(stock), 0)
         code, written, partition, sectors = dev.uninstall(hashlib.sha256(stock).digest())
@@ -45,7 +45,7 @@ class StockWriterIntegration(unittest.TestCase):
 
     def test_transient_writer_error_retries_and_returns_to_user_partition(self):
         """Stock retries the failed trim; B still verifies encrypted staging and restores user media."""
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         stock = sim.STOCK_OS.read_bytes()
         self.assertEqual(dev.stage(stock), 0)
         self.sim.set('fail_write', 1)                      # the writer's first boot-partition write fails
@@ -59,7 +59,7 @@ class StockWriterIntegration(unittest.TestCase):
         self.assertEqual(self.sim.status()['boot_writes'], 0)
 
     def test_initial_select_error_is_nonzero_but_readback_refuses_it(self):
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         stock = sim.STOCK_OS.read_bytes()
         self.assertEqual(dev.stage(stock), 0)
         self.sim.set('fail_select', 1)
@@ -82,7 +82,7 @@ class StockWriterIntegration(unittest.TestCase):
     def test_encrypted_install_boots_plaintext_for_identity(self):
         if not BUILD:
             self.skipTest('verified product build absent')
-        dev = self.connect()
+        dev = self.connect(startup_ready=True)
         data = (BUILD / 'candidate.ldr').read_bytes()
         self.assertEqual(dev.stage(data), 0)
         self.assertEqual(dev.install(hashlib.sha256(data).digest())[:3], (0, len(data), 1))

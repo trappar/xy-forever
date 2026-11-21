@@ -19,7 +19,7 @@ m::Progress run XYF_DATA = {};                   // the progress screen
 char label[48] XYF_DATA = {};
 char safe_text[32] XYF_DATA = {};                // the safe-mode row
 uint32_t rec_set XYF_DATA = 0;                   // the record's mods= names: their order-free CRC-32 sum (built=)
-// The page's own write (#197): a flip (a toggle, Mod memory, unknown bases) is saved to config.txt at a quiet moment,
+// The page's own write (#197): a flip (a toggle, Mod memory, unknown bases) is saved to config.json at a quiet moment,
 // quiet_ms after the last flip (quick flips: one write), by the config job (the default unchanged). flipped: 1, a flip
 // not written yet; 2, its write failed (the next flip or a converge writes it); since: the last flip; stage 1: the
 // job (job) runs; 2: written, the record not read back yet (rec keeps the old one meanwhile: no pending=0 between).
@@ -47,53 +47,30 @@ const char* config_base() {
         return c->items[i].id;
     return base_entry();
 }
-// The record (config.txt, else config.old, else none) into rec, its text left in io.buffer (bytes); flag_saved on the
-// listed packages it names (and flag_on too: toggles, when the list was just read). A status but s_ok: rec unchanged.
-uint32_t read_record(bool toggles, uint32_t& bytes) {
-    bytes = 0;
-    uint32_t code = fc::mount_ready(usb_service::page_mount());
-    if (code == s_ok) code = fc::read_file(xg::path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
-    if (code == xyf::usbp::s_not_found)
-        code = fc::read_file(xg::old_path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
-    if (code == xyf::usbp::s_not_found) { xg::clear(rec, xg::none); bytes = 0; }
-    else if (code != s_ok) return code;
-    else xg::parse(reinterpret_cast<const char*>(io.buffer), bytes, rec);
-    uint32_t n = 0;                             // built= of the saved selection takes its names' CRC-32 sum
-    const char* list = rec.state == xg::present ? xg::value(reinterpret_cast<const char*>(io.buffer), bytes, "mods", n) : 0;
-    rec_set = 0;
-    for (uint32_t at = 0; list && at < n;) {
-        uint32_t end = at;
-        while (end < n && list[end] != ',') ++end;
-        if (end > at) rec_set += xyf::crc::update(0, reinterpret_cast<const uint8_t*>(list + at), end - at);
-        at = end + 1;
-    }
-    m::Page& p = the_page;
-    uint32_t marked = 0;
-    for (uint32_t r = 0; r != p.shown; ++r) {
-        m::Package& k = p.packages[p.rows[r]];
-        const bool on = rec.state == xg::present &&
-                        xg::listed(reinterpret_cast<const char*>(io.buffer), bytes, k.kind == m::kind_extension ? "ext-" : "",
-                                   m::text_at(p, k.id));
-        k.flags = uint8_t((k.flags & ~m::flag_saved) | (on ? m::flag_saved : 0));
-        if (toggles) k.flags = uint8_t((k.flags & ~m::flag_on) | (on ? m::flag_on : 0));
-        marked += on ? 1u : 0u;
-    }
-    p.saved_missing = rec.count > marked ? rec.count - marked : 0u;
-    if (pick.stage == 2) pick.stage = 0;          // the page's write read back
-    // The saved memory layout; the pending choice follows it unless the user changed it (Settings may
-    // come before the list is read)
-    const bool kept = p.expanded != p.expanded_saved;
-    p.expanded_saved = rec.state == xg::present && rec.expanded;
-    if (!kept) p.expanded = p.expanded_saved;
-    return s_ok;
-}
-// The stamp (info.txt sha256=) of library entry id into out (65 bytes); "" when it cannot be read.
+#include "xyf_mods_config.ipp"
+
+// The selected firmware record's stamp into out (65 bytes); "" when it cannot be read.
 void entry_stamp(const char* id, char* out) {
     uint32_t bytes = 0;
-    const char* parts[3] = {firmware, id, "/info.txt"};
+    const char* parts[4] = {firmware, id, "/", record::native_name};
     out[0] = 0;
     if ((io.why = usb_service::page_serving()) != s_ok || (io.why = fc::mount_ready(usb_service::page_mount())) != s_ok) return;
-    if (path_of(parts, 3) && read_text(io.path, bytes)) xg::stamp_of(reinterpret_cast<const char*>(io.buffer), bytes, out);
+    if (!path_of(parts, 4)) return;
+    if (MetadataWork* work = load_native_metadata(bytes)) {
+        const auto status = record::parse(reinterpret_cast<const char*>(work->raw), bytes, work->parse);
+        const auto& manifest = work->parse.manifest;
+        if (status != json::ok || manifest.status != xyf::manifest::ok || manifest.type != xyf::manifest::type_firmware ||
+            !xyf::manifest::has(manifest, xyf::manifest::key_sha256)) { io.why = xyf::usbp::s_refused; return; }
+        const char* digits = "0123456789abcdef";
+        for (uint32_t i = 0; i != sizeof(manifest.sha256); ++i) {
+            out[2 * i] = digits[manifest.sha256[i] >> 4];
+            out[2 * i + 1] = digits[manifest.sha256[i] & 15u];
+        }
+        out[64] = 0;
+    } else if (io.why == xyf::usbp::s_not_found) {
+        parts[3] = record::legacy_name;
+        if (path_of(parts, 4) && read_text(io.path, bytes)) xg::stamp_of(reinterpret_cast<const char*>(io.buffer), bytes, out);
+    }
 }
 // The sequence ends without booting: the reason for the home menu's status line (converge_reason).
 uint32_t fail(const char* a, const char* b = "", const char* c = "") {
@@ -162,6 +139,8 @@ uint32_t check() {
     usb_service::save_log_lap(xyf::save_log::p_check);
     uint32_t bytes = 0;
     const uint32_t code = read_record(false, bytes);
+    if (code == xyf::usbp::s_busy) return moved(false);
+    if (io.config_error) return fail(io.config_error);
     if (code != s_ok) { char d[12]; m::decimal(d, code); return fail("Failed: the settings could not be read (", d, ")."); }
     const bool have = rec.state == xg::present;
     if (sv.why == why_safe && !(have && rec.count && rec.slot[0])) return fail("No Open-XY setup with mods is saved.");
@@ -175,6 +154,7 @@ uint32_t check() {
     copy(sv.slot, have ? rec.slot : "", sizeof(sv.slot)); copy(sv.stamp, "", sizeof(sv.stamp));
     if (have && rec.slot[0] && rec.stamp[0] && index_of(rec.slot) != ~0u) {
         entry_stamp(rec.slot, sv.stamp);
+        if (io.why == xyf::usbp::s_busy) return moved(false);
         if (io.why == xyf::usbp::s_link) return fail(prefix(), "no answer from storage.");
     }
     const xc::Inputs in = {sv.base, sv.built, sv.count, sv.expanded, sv.safe};
@@ -250,28 +230,9 @@ uint32_t building() {                           // the mod job into the spare sl
     run.job_phase = v.phase; run.job_done = v.done; run.job_total = v.total; run.job_commit = v.commit;
     return moved(refused || phase);
 }
-// Record r and the mods= line of the page's packages with which (flag_on: the toggles; flag_saved: the saved marks)
-// into io.buffer: bytes, 0 when it does not fit.
-uint32_t record_text(const xg::Record& r, uint8_t which) {
-    const m::Page& p = the_page;
-    char* const text = reinterpret_cast<char*>(io.buffer);
-    uint32_t n = xg::format(text, read_bytes, r);
-    bool first = true, fits = n != 0;
-    for (uint32_t pass = 0; pass != 2; ++pass)
-        for (uint32_t k = 0; k != p.shown; ++k) {
-            const m::Package& q = p.packages[p.rows[k]];
-            if (!(q.flags & which) || (q.kind == m::kind_extension) != (pass == 1)) continue;
-            const char* parts[3] = {first ? "" : ",", pass ? "ext-" : "", m::text_at(p, q.id)};
-            for (uint32_t j = 0; j != 3; ++j)
-                for (const char* t = parts[j]; *t; ++t) { if (n + 2 >= read_bytes) fits = false; else text[n++] = *t; }
-            first = false;
-        }
-    text[n++] = '\n';
-    return fits ? n : 0u;
-}
 // The record the plan writes, into io.buffer (sv.length bytes; 0: fail said why): the inputs, the slot and stamp (the
 // build's, else the record's), and the mods= line: the saved marks after a build of the saved selection, else as
-// saved (config.txt read again, else config.old).
+// saved (the selected record read again).
 uint32_t compose() {
     const m::Page& p = the_page;
     const bool listed = (sv.ops & xc::op_build) != 0;
@@ -291,25 +252,12 @@ uint32_t compose() {
         return 1;
     }
     uint32_t bytes = 0;
-    uint32_t code = fc::mount_ready(usb_service::page_mount());
-    if (code == s_ok) code = fc::read_file(xg::path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
-    if (code == xyf::usbp::s_not_found)
-        code = fc::read_file(xg::old_path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
-    const char* saved = code == s_ok ? xg::value(text, bytes, "mods", n) : 0;
-    char head[400];
-    const uint32_t h = saved ? xg::format(head, sizeof(head), r) : 0u;
-    if (!h || h + n + 1 > xg::max_text) {
-        char d[12];
-        m::decimal(d, code == s_ok ? 1000u : code);
-        return fail("Failed: the settings could not be read (", d, ").");
-    }
-    uint8_t* const b = io.buffer;               // the mods= value moved behind the new head, then the head
-    const uint32_t from = uint32_t(reinterpret_cast<const uint8_t*>(saved) - b);
-    if (h > from) for (uint32_t i = n; i; --i) b[h + i - 1] = b[from + i - 1];
-    else for (uint32_t i = 0; i != n; ++i) b[h + i] = b[from + i];
-    for (uint32_t i = 0; i != h; ++i) b[i] = uint8_t(head[i]);
-    b[h + n] = '\n';
-    sv.length = h + n + 1;
+    const uint32_t code = read_record(false, bytes);
+    if (code == xyf::usbp::s_busy) return moved(false);
+    if (code != s_ok) return fail(io.config_error ? io.config_error : "Failed: the settings could not be read.");
+    const char* saved = rec.state == xg::present ? xg::value(text, bytes, "mods", n) : 0;
+    if (saved) text[saved - text + n] = 0;
+    if (!saved || !(sv.length = encode_config(r, saved, false))) return fail(prefix(), "the settings do not fit.");
     return 1;
 }
 // One step of the page's own write (Pick). now: without waiting for the quiet moment (a converge writes a flip first).
@@ -328,9 +276,13 @@ uint32_t pick_step(bool now) {
     if (!now && (pick.flipped == 2 || units() - pick.since < quiet_units)) return 1;
     const m::Page& p = the_page;
     if (io.step != s_done || usb_service::page_busy() || usb_service::page_serving() != s_ok) return 1;   // the toggles
-    if (!p.limit || io.incomplete) { pick.flipped = 2; return 2; }   // no complete list: nothing to save from
+    if (!p.limit || io.incomplete || io.config_error) { pick.flipped = 2; return 2; }   // no complete list: nothing to save from
     uint32_t bytes = 0;
-    if (rec.state != xg::present && rec.state != xg::none && read_record(false, bytes) != s_ok) { pick.flipped = 2; return 2; }
+    if (rec.state != xg::present && rec.state != xg::none) {
+        const uint32_t code = read_record(false, bytes);
+        if (code == xyf::usbp::s_busy) return 1;
+        if (code != s_ok) { pick.flipped = 2; return 2; }
+    }
     const char* base = config_base();
     if (!base) { pick.flipped = 2; return 2; }
     // The selection and the inputs beside it; what is built (built=, slot=, stamp=) and safe mode (unless pick.safe) stay.
@@ -354,22 +306,22 @@ uint32_t pick_step(bool now) {
     pick.job = v.id; pick.stage = 1; pick.flipped = 0;
     return 1;
 }
-// The fingerprint (xyf_converge.hpp, #197 step B): the record's bytes as A reads them at power-on (config.txt, else
-// config.old, else none) hashed, with the default it converged to (sv.target); the config job writes it (quiet: no
+// The fingerprint (xyf_converge.hpp): the exact selected record bytes, hashed with the default it converged to
+// (sv.target). The config job writes it (quiet: no
 // catalog fetch) only when the stored text differs. Unreadable: nothing stored (the next power-on converges again).
 uint32_t mark() {
     uint32_t bytes = 0, got = 0, n = 0;
-    uint32_t code = usb_service::page_serving();         // A answers file requests again (the catalog's item ended that)
-    if (code == s_ok) code = fc::mount_ready(usb_service::page_mount());
-    if (code == s_ok) code = fc::read_file(xg::path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
-    if (code == xyf::usbp::s_not_found)
-        code = fc::read_file(xg::old_path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
+    auto& work = *static_cast<MetadataWork*>(usb_service::mods_metadata_work());
+    bool native = false;
+    uint32_t code = usb_service::page_serving();
+    if (code == s_ok) code = config_io::read(io.config_scan, work.raw, bytes, native, usb_service::page_mount());
+    if (code == xyf::usbp::s_busy) return moved(false);
     if (code == xyf::usbp::s_not_found) { code = s_ok; bytes = 0; }
     xyf_core::hash::Sha256 h;
     xyf_core::hash::Digest d;
     char want[xc::mark_max];
     uint8_t stored[xc::mark_max + 1];
-    if (code == s_ok && h.update(io.buffer, bytes) && h.finish(d)) n = xc::mark_text(want, sizeof(want), d.bytes, sv.target);
+    if (code == s_ok && h.update(work.raw, bytes) && h.finish(d)) n = xc::mark_text(want, sizeof(want), d.bytes, sv.target);
     sv.stage = sv_boot;
     if (!n) return 1;
     code = fc::read_file(xc::mark_path, 0, false, stored, sizeof(stored), got, usb_service::page_mount());
@@ -398,7 +350,7 @@ uint32_t converge_follow() {
         if (reading() || usb_service::page_busy()) return moved(false);
         if (usb_service::page_serving() != s_ok) return fail(prefix(), "no answer from storage.");
         const uint32_t write = pick_step(true);  // the page's flip written first: the plan is of what is saved
-        if (write == 2) return fail(prefix(), "the mods could not be saved.");
+        if (write == 2) return fail(io.config_error ? io.config_error : "Failed: the mods could not be saved.");
         return write ? moved(false) : check();
     }
     case sv_listing:                            // the saved selection's build: the package list, page hidden
@@ -419,6 +371,7 @@ uint32_t converge_follow() {
         if (usb_service::page_busy()) return moved(false);   // the commit's window closes
         usb_service::save_log_lap(xyf::save_log::p_stamp);
         entry_stamp(sv.slot, sv.stamp);
+        if (io.why == xyf::usbp::s_busy) return moved(false);
         if (!sv.stamp[0]) {
             char d[12];
             m::decimal(d, io.why);
@@ -429,7 +382,7 @@ uint32_t converge_follow() {
         return 1;
     case sv_switch: {                           // the record made first: the switch's write window serves no reads
         if (usb_service::page_busy()) return moved(false);
-        if (!sv.length) { compose(); if (sv.stage == sv_failed) return 1; }
+        if (!sv.length) { const uint32_t draw = compose(); if (!sv.length) return draw; }
         if (!(sv.ops & xc::op_switch)) { sv.stage = sv_record; return 1; }
         const uint32_t i = index_of(sv.target);
         if (i == ~0u) return fail(prefix(), "the firmware is not in the library.");

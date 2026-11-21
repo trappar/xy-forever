@@ -8,11 +8,12 @@
 #include "usb_service.hpp"
 #include "usb_proto_ids.hpp"
 #include "../native/hash.hpp"
-#include "xyf_config.hpp"
+#include "xyf_config_io.hpp"
 #include "xyf_converge.hpp"
 #include "xyf_crc32.hpp"
 #include "xyf_save_log.hpp"
 #include "xyf_mods_store.hpp"
+#include "xyf_package_record.hpp"
 // See xyf_mods_io.hpp. The reading is a small state machine: one file-client call per step (a folder
 // open, one entry, its close, one stat, or one whole small file), steps while the pass is under
 // slice_ms. An open folder is held across passes and closed when the walk ends, fails or the page is
@@ -26,8 +27,8 @@ using xyf::usbp::s_ok;
 #define XYF_DATA __attribute__((section(".data")))
 #endif
 enum Step : uint32_t {
-    s_idle = 0, s_serving, s_mount, s_generations, s_store, s_base_list, s_base_info, s_services,
-    s_packages, s_package_list, s_package_info, s_saved, s_done
+    s_idle = 0, s_serving, s_mount, s_generations, s_store, s_base_list, s_base_native, s_base_info, s_services,
+    s_packages, s_package_list, s_package_native, s_package_info, s_saved, s_done
 };
 enum Walk : uint32_t { walk_entry, walk_more, walk_done, walk_missing, walk_failed };
 static const uint32_t max_candidates = 8;
@@ -38,12 +39,15 @@ struct Io {
     uint32_t drawn, longest, dirty;               // drawn: units() of the last redraw
     uint32_t job_units, drawn_bar, drawn_done;    // the job's start; the bar and done of the last redraw
     uint32_t waiting;                             // the reading waits for another job (page_busy)
-    uint32_t newer;                               // a candidate's store is newer than this build reads
+    uint32_t newer, broken;                       // any unreadable native metadata while opening the list
+    fc::NameScan metadata_scan;
+    config_io::Scan config_scan;
+    const char* config_error;
     uint32_t incomplete;                          // the reading ended with an error (the list is not all there)
     Candidate candidates[max_candidates];
     char path[240];
     uint8_t entry[fc::entry_bytes + 4];         // the last folder entry (walk_entry: its name at +11)
-    uint8_t buffer[read_bytes];
+    uint8_t buffer[xyf_core::json::document_bytes];
 };
 m::Page the_page XYF_DATA = {};
 Io io XYF_DATA = {};
@@ -130,12 +134,15 @@ bool read_text(const char* path, uint32_t& bytes) {   // the whole small file in
     io.why = fc::read_file(path, 0, false, io.buffer, read_bytes, bytes, usb_service::page_mount());
     return io.why == s_ok;
 }
+#include "xyf_mods_metadata.ipp"
 void finish(const char* error) {              // the list is final
     if (io.folder) { fc::closedir(io.folder); io.folder = 0; }
     io.step = s_done;
     io.incomplete = error ? 1u : 0u;
     the_page.view = m::View::list;
     if (error) m::say(the_page, m::line_error, error);
+    else if (io.newer || io.broken)
+        m::say(the_page, m::line_info, io.newer ? "Some packages need a newer XY Forever." : "Some packages have invalid manifest.json.");
     else the_page.line = m::line_none;
     io.dirty = 1;
 }
@@ -147,108 +154,16 @@ void lost() {
 void next_candidate() {
     ++io.candidate_at;
     if (io.candidate_at >= io.candidate_count) {
-        finish(io.newer ? "The mod packages need a newer XY Forever." : io.candidate_count ? "No complete mod package set found." : 0);
+        finish(io.newer ? "The mod packages need a newer XY Forever." : io.broken ? "The mod packages have invalid manifest.json." :
+               io.candidate_count ? "No complete mod package set found." : 0);
         return;
     }
     io.step = s_store;
 }
 uint32_t read_record(bool toggles, uint32_t& bytes);
 // One step of the reading.
-void step() {
-    m::Page& p = the_page;
-    switch (io.step) {
-    case s_serving:
-        if (usb_service::page_serving() != s_ok) { io.why = xyf::usbp::s_link; lost(); return; }
-        io.step = s_mount;
-        return;
-    case s_mount:
-        if ((io.why = fc::mount_ready(usb_service::page_mount())) != s_ok) { lost(); return; }
-        { const char* parts[1] = {root}; path_of(parts, 1); }
-        io.step = s_generations;
-        return;
-    case s_generations: {                        // mods/<generation>/ (an older mods/<profile>/ has no base/)
-        const Walk w = walk();
-        if (w == walk_entry) { each_generation(entry_name()); return; }
-        if (w == walk_more) return;
-        if (w == walk_failed) { lost(); return; }
-        if (w == walk_missing || !io.candidate_count) { finish(0); return; }   // no mods/ folder: the empty page
-        io.candidate_at = 0;
-        io.step = s_store;
-        return;
-    }
-    case s_store: {                              // store.txt's version (#124); none: an older layout, skipped
-        uint32_t bytes = 0;
-        generation_path("", "", xyf::mods_store::file);
-        if (!read_text(io.path, bytes)) { if (io.why == xyf::usbp::s_link) { lost(); return; } next_candidate(); return; }
-        const uint32_t v = xyf::mods_store::version_of(io.buffer, bytes);
-        io.newer |= v > xyf::mods_store::version ? 1u : 0u;
-        if (v == xyf::mods_store::version) io.step = s_base_list;
-        else next_candidate();
-        return;
-    }
-    case s_base_list:                            // complete: its files.sha256 is there
-        if (!generation_path("", "base", "files.sha256")) { next_candidate(); return; }
-        if (present(io.path)) { io.step = s_base_info; return; }
-        if (io.why != s_ok) { lost(); return; }
-        next_candidate();
-        return;
-    case s_base_info: {
-        uint32_t bytes = 0;
-        generation_path("", "base", "info.txt");
-        if (!read_text(io.path, bytes)) { if (io.why == xyf::usbp::s_link) { lost(); return; } next_candidate(); return; }
-        if (!m::parse_base(p, reinterpret_cast<const char*>(io.buffer), bytes)) { next_candidate(); return; }
-        io.step = s_services;
-        return;
-    }
-    case s_services: {
-        uint32_t bytes = 0;
-        generation_path("", "base", "services.txt");
-        if (!read_text(io.path, bytes)) { if (io.why == xyf::usbp::s_link) { lost(); return; } next_candidate(); return; }
-        if (!m::parse_services(p, reinterpret_cast<const char*>(io.buffer), bytes)) { next_candidate(); return; }
-        const char *g = p.generation, *folder = io.candidates[io.candidate_at].name;   // the same name
-        uint32_t k = 0;
-        while (g[k] && g[k] == folder[k]) ++k;
-        if (g[k] != folder[k]) { next_candidate(); return; }
-        generation_path("", "", "");                 // base/info.txt's profile; its generation names the folder
-        io.step = s_packages;
-        io.dirty = 1;
-        return;
-    }
-    case s_packages: {
-        const Walk w = walk();
-        if (w == walk_entry) { m::add_package(p, entry_name()); return; }
-        if (w == walk_more) return;
-        if (w != walk_done) { lost(); return; }
-        io.package_at = 0;
-        io.step = s_package_list;
-        m::reading_line(p, io.package_at);
-        return;
-    }
-    case s_package_list:
-        if (io.package_at >= p.count) { io.step = s_saved; return; }
-        if (package_path(io.package_at, "files.sha256") && present(io.path)) { io.step = s_package_info; return; }
-        if (io.why != s_ok) { lost(); return; }
-        ++io.package_at;                         // incomplete: not shown
-        return;
-    case s_package_info: {
-        uint32_t bytes = 0;
-        package_path(io.package_at, "info.txt");
-        if (read_text(io.path, bytes)) m::parse_package(p, io.package_at, reinterpret_cast<const char*>(io.buffer), bytes);
-        else if (io.why == xyf::usbp::s_link) { lost(); return; }
-        ++io.package_at;
-        io.step = s_package_list;
-        m::reading_line(p, io.package_at);
-        io.dirty = 1;
-        return;
-    }
-    case s_saved:                                // the saved selection onto the toggles
-        { uint32_t bytes = 0; if (read_record(true, bytes) == xyf::usbp::s_link) { io.why = xyf::usbp::s_link; lost(); return; } }
-        finish(0);
-        return;
-    default:
-        return;
-    }
-}
+#include "xyf_mods_read.ipp"
+
 // Build: the default library entry as base when it is a usable official image, else the first one.
 // An official image whose only lack is the official content (a mod set's content is installed) is
 // a base too: mods.apply then reads the saved official catalog.
@@ -274,8 +189,9 @@ void open() {
     if (rec.state == xg::failed) rec.state = xg::unread;   // try the record again
     if (p.view == m::View::list && p.shown) return;   // kept for this boot
     if (io.folder) return;                       // (never: pump closes it when the page is left)
+    restart_config_lookup();
     m::reset(p);
-    io.step = s_serving; io.candidate_count = io.package_at = io.newer = 0; io.dirty = 1; io.waiting = 0;
+    io.step = s_serving; io.candidate_count = io.package_at = io.newer = io.broken = 0; io.dirty = 1; io.waiting = 0;
     m::say(p, m::line_info, "Reading mod packages...");
 }
 
@@ -319,26 +235,29 @@ uint32_t pump(bool shown) {
         const xyf::catalog::Catalog* c = xyf_boot::catalog();
         if (!config_base() || (rec.state == xg::none && c->default_index >= c->count)) { converge_begin(why_adopt); redraw = 1; }
     }
-    // The saved configuration, once the menu runs (one bounded read; again after a failed sequence).
+    // The saved configuration, once the menu runs and again after a failed sequence.
     uint32_t bytes = 0;
     if ((rec.state == xg::unread || pick.stage == 2) && sv.stage == sv_idle && !reading() && !usb_service::page_busy() &&
         usb_service::page_serving() == s_ok) {
-        if (read_record(false, bytes) != s_ok) { rec.state = xg::failed; pick.stage = 0; }
-        else if (shown && io.step == s_done && !redraw) redraw = 1;   // the saved marks moved (the page: "saved")
+        const uint32_t code = read_record(false, bytes);
+        if (code != s_ok && code != xyf::usbp::s_busy) { rec.state = xg::failed; pick.stage = 0; }
+        else if (code == s_ok && shown && io.step == s_done && !redraw) redraw = 1;   // the saved marks moved (the page: "saved")
     }
     if (sv.stage == sv_idle) pick_step(false);   // a flip saved once quiet (the reading below may wait for it)
     // While another job owns the slot or its window closes, the reading sends nothing (a request
     // then met a stale folder handle or waited out A's bound). A's handles end with that window: the folder
     // is forgotten, not closed, and the reading starts again from the top once the job is over.
     const bool busy = reading() && usb_service::page_busy();
-    if (busy) io.folder = 0;
+    if (busy) { io.folder = io.metadata_scan.folder = 0; restart_config_lookup(); }
     if (!shown && reading()) {                   // left mid-way: close the folder, read again next time
         if (io.folder) { fc::closedir(io.folder); io.folder = 0; }
+        fc::close_name_scan(io.metadata_scan, usb_service::page_mount());
+        restart_config_lookup();
         io.step = s_idle;
     }
     if (shown && busy && !io.waiting) {
         m::reset(the_page);
-        io.step = s_serving; io.candidate_count = io.package_at = io.newer = 0;
+        io.step = s_serving; io.candidate_count = io.package_at = io.newer = io.broken = 0;
         io.waiting = 1; io.dirty = 1;
         m::say(the_page, m::line_info, "Busy: a build or content change is running.");
     } else if (shown && reading() && io.waiting && !busy) {
@@ -378,11 +297,12 @@ bool menu_state(xyf::menu::State& a) {
                             installed(index_of(in.base)), installed(slot)};
     const uint32_t ops = have || rec.state == xg::none ? xc::plan(in, act).ops : 0u;
     const bool unsaved = pick.flipped || pick.stage;   // a flip not written yet: PLAY writes it, then converges
-    a.pending = unsaved || ops;
-    a.continue_note = listed ? m::save_refusal(p) : 0;
+    a.pending = unsaved || ops || io.config_error;
+    a.continue_note = io.config_error ? io.config_error : listed ? m::save_refusal(p) : 0;
     char next[sizeof(label)];
     next[0] = 0;
-    if (have || unsaved) {
+    if (io.config_error) copy(next, "Saved configuration unavailable", sizeof(next));
+    else if (have || unsaved) {
         const uint32_t n = listed ? m::chosen(p, false) + m::chosen(p, true) : rec.count;
         const uint32_t b = index_of(in.base);
         xg::Out o = {next, next + sizeof(next) - 1, true};

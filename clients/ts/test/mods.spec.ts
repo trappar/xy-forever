@@ -96,7 +96,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
   beforeAll(() => {
     work = mkdtempSync(join(tmpdir(), 'xyf-ts-mods-'));
     gen = makeModSet(work);
-    ({ profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'info.txt'))));
+    ({ profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'manifest.json')), 'manifest.json'));
     stored = join(sim!.root, 'xy-forever', 'mods', generation);
   });
   afterAll(async () => {
@@ -116,9 +116,9 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     expect(progress.filter(([, , p]) => p === 'send').at(-1)).toEqual([bytes, bytes, 'send']);
     expect(progress.at(-1)).toEqual([bytes, bytes, 'verify']);
     assertStored();
-    // the base's files.sha256 is its last write, after info.txt
+    // the base's files.sha256 is its last write, after manifest.json
     const order = (await localSet(source())).packages.get('base')!.map((f) => f.path);
-    expect(order.slice(-2)).toEqual(['info.txt', 'files.sha256']);
+    expect(order.slice(-2)).toEqual(['manifest.json', 'files.sha256']);
   });
 
   test('a second push sends nothing; nor does xyf_host.py mods push (the same layout)', async () => {
@@ -218,7 +218,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
   beforeAll(async () => {
     work = mkdtempSync(join(tmpdir(), 'xyf-ts-build-'));
     const gen = makeModSet(work);
-    const { profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'info.txt')));
+    const { profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'manifest.json')), 'manifest.json');
     client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
     await pushPackages(client, folderSource(gen));
     makeModBase(sim!.root, 'modbase');
@@ -250,8 +250,8 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     const out = join(sim!.root, 'xy-forever', 'firmware', built.entry);
     expect(readdirSync(out)).toContain('os.ldr');
     expect(readdirSync(out)).not.toContain('layout.json');
-    expect(infoValues(readFileSync(join(out, 'info.txt')))['machines']).toBe('2');
-    expect(infoValues(readFileSync(join(out, 'info.txt')))['name']).toBe('OP-XY mods');
+    expect(infoValues(readFileSync(join(out, 'manifest.json')), 'manifest.json')['machines']).toBe('2');
+    expect(infoValues(readFileSync(join(out, 'manifest.json')), 'manifest.json')['name']).toBe('OP-XY mods');
     await served();
     expect((await libraryBases(client)).map((b) => b.id)).toEqual(['modbase', 'opxy-121', 'opxy-121-stock']);   // not a base
     expect(await jobStatus(client)).toEqual(result);                      // job 0: the last job
@@ -284,7 +284,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
       renameSync(join(work, 'content.sha256'), entry('content.sha256'));
     }
     await refused({ base: 'nosuch' }, 1, 'the base entry has no os.ldr');
-    await refused({ generation: '0.0.0-none' }, 4, "the generation's base/info.txt is not on the device");
+    await refused({ generation: '0.0.0-none' }, 4, "the generation's base package metadata is not on the device");
     await expect(applyMods(client, { ...request, machines: [] })).rejects.toThrow(RangeError);
     const failed = await applyMods(client, { ...request, unverified: false }, { pollMs: 20 }).catch((e: unknown) => e);
     expect(failed).toBeInstanceOf(JobError);
@@ -326,12 +326,14 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
   });
 
   test('the saved inputs (#26): a set is saved, never built; a refusal says why and changes nothing', async () => {
-    const config = join(sim!.root, 'xy-forever', 'config.txt');
+    const config = join(sim!.root, 'xy-forever', 'config.json');
     const library = readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort();
     const saved = await configSet(client, { mods: ['alpha', 'ext-cap'], unverified: true }, { pollMs: 20 });
     expect(saved).toMatchObject({ saved: true, mods: ['alpha', 'ext-cap'], expanded: false, unverified: true, write: 'saved' });
     expect(await configGet(client)).toEqual(saved);
-    expect(readFileSync(config, 'utf8')).toMatch(/\nslot=\n[^]*\nmods=alpha,ext-cap\n$/);   // nothing built for it
+    expect(JSON.parse(readFileSync(config, 'utf8'))).toMatchObject({
+      schema: 'xy-forever.config', schema_version: 1, desired: { mods: ['alpha', 'ext-cap'] }, built: null,
+    });
     expect(readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort()).toEqual(library);
     const text = readFileSync(config);
     const refused = await configSet(client, { mods: ['nosuch'], unverified: true }, { pollMs: 20 }).catch((e: unknown) => e);

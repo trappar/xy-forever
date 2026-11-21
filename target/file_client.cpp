@@ -345,6 +345,50 @@ Reply readdir(uint32_t folder, uint8_t* entry) {
     return r;
 }
 
+uint32_t close_name_scan(NameScan& scan, volatile uint32_t& mounted) {
+    if (!scan.folder) return xyf::usbp::s_ok;
+    const Reply r = closedir(scan.folder);
+    scan.folder = 0;
+    if (r.outcome == link) mounted = mounted_stale;
+    return r.outcome ? status(r.outcome) : r.value ? xyf::usbp::s_storage : xyf::usbp::s_ok;
+}
+
+uint32_t scan_name(const char* path, NameScan& scan, volatile uint32_t& mounted) {
+    namespace P = xyf::usbp;
+    const char* name = path;
+    for (const char* p = path; *p; ++p) if (*p == '/') name = p + 1;
+    if (name == path || !*name || uint32_t(name - path) > file_engine::max_path) return P::s_bad_request;
+    if (!scan.folder) {
+        char parent[file_engine::max_path];
+        const uint32_t n = uint32_t(name - path) - 1;
+        for (U32 i = 0; i != n; ++i) parent[i] = path[i];
+        parent[n] = 0;
+        const Reply r = opendir(parent);
+        if (r.outcome == link) mounted = mounted_stale;
+        if (r.outcome) return status(r.outcome);
+        if (!r.value || r.value == -1) return change_status(r.error);
+        scan.folder = uint32_t(r.value); scan.seen = 0;
+        return scan_again;
+    }
+    uint8_t entry[entry_bytes + 4];
+    const Reply r = readdir(scan.folder, entry);
+    if (r.outcome == link) { mounted = mounted_stale; scan.folder = 0; return P::s_link; }
+    uint32_t code = r.outcome ? status(r.outcome) : uint32_t(P::s_storage);
+    if (!r.outcome) {
+        const U32 got = readdir_result(r.value);
+        if (got == folder_end) code = P::s_not_found;
+        else if (got == folder_entry) {
+            entry[11 + max_name] = 0;
+            const char* text = reinterpret_cast<const char*>(entry + 11);
+            while (*text && *name == *text) { ++text; ++name; }
+            if (*text == *name) code = P::s_ok;
+            else if (++scan.seen != 0x10000u) return scan_again;
+        }
+    }
+    const uint32_t closed = close_name_scan(scan, mounted);
+    return closed == P::s_ok ? code : closed;
+}
+
 volatile U32 command_sequence __attribute__((section(".data"))) = 0;
 Reply serving_start(uint32_t& expected_ack) {
     if (left_session) return outcome(busy);

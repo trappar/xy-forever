@@ -63,6 +63,7 @@ class WordCrcAlignmentTest(unittest.TestCase):
             small = Path(tmp) / 'crcs.dylib'               # the narrow modes' nibble table (XYF_SMALL_CRC)
             hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
                            '-ffreestanding', '-fno-builtin', '-DXYF_SMALL_CRC=1', str(ROOT / 'native/inflate.cpp'),
+                           str(ROOT / 'target/xyf_crc32.cpp'), str(ROOT / 'tests/xyf_crc32_bridge.cpp'),
                            str(Path(tmp) / 'zip_crc.cpp'), '-o', str(small)], check=True, capture_output=True)
             small_crc = C.CDLL(str(small))
             functions = []
@@ -73,6 +74,14 @@ class WordCrcAlignmentTest(unittest.TestCase):
             functions.append(crc.zip_crc)
             small_crc.zip_crc.restype = C.c_uint32; small_crc.zip_crc.argtypes = [C.c_void_p, C.c_uint32]
             functions.append(small_crc.zip_crc)
+            for name in ('crc_update', 'crc_update_volatile'):
+                f = getattr(small_crc, name); f.restype = C.c_uint32; f.argtypes = [C.c_uint32, C.c_void_p, C.c_uint32]
+                functions.append(lambda p, n, f=f: f(0, p, n))
+                for sample in (b'', b'123456789', bytes(range(256)) * 15):
+                    split = len(sample) // 3
+                    first = C.create_string_buffer(sample[:split])
+                    last = C.create_string_buffer(sample[split:])
+                    self.assertEqual(f(f(0, first, split), last, len(sample) - split), zlib.crc32(sample))
             rng = random.Random(77)
             data = bytes(rng.getrandbits(8) for _ in range(5000))
             buffer = C.create_string_buffer(len(data) + 8)

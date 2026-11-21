@@ -1,4 +1,5 @@
 // Strict package admission, matching xyf_entry/xyf_manifest. Boot reads remain lenient.
+import { LEGACY_MANIFEST, packageText } from './package-records.ts';
 const decoder = new TextDecoder('ascii');
 const keys = ['type', 'name', 'version', 'kind', 'bytes', 'crc32', 'sha256', 'content', 'needs_os',
   'generation', 'profile', 'machine', 'source', 'licence', 'machines'];
@@ -11,7 +12,8 @@ const required: Record<string, readonly string[]> = { '': [], firmware: ['name',
 const capacities: Record<string, number> = { name: 47, version: 31, content: 31, generation: 31, profile: 31, source: 127, licence: 63 };
 const fail = (why: string): never => { throw new Error(`package manifest: ${why}`); };
 
-export function parseManifest(data: Uint8Array): Record<string, string> {
+export function parseManifest(data: Uint8Array, name = LEGACY_MANIFEST): Record<string, string> {
+  data = packageText(data, name);
   if (!data.length || data.length > 4096 || data.at(-1) !== 10) fail('empty, oversized or cut text');
   const fields: Record<string, string> = {}, seen = new Set<string>();
   for (let line of decoder.decode(data).slice(0, -1).split('\n')) {

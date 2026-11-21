@@ -15,7 +15,7 @@ inline uint32_t as_play(uint32_t k) { return k - key_knob1 < knobs ? uint32_t(ke
 // Or'd into - / + for a knob turn's row (key_ui turn_knobs; the Mods page only: SHIFT + turn = its filter).
 static const uint32_t key_turn = 0x100u;
 // options (#21): a setting's option list, opened from the Settings page by the caller (open_options). The offline
-// stage-2 modes build without it (XYF_SETTING_OPTIONS): their narrow 48 KiB stage 1 (XYF_SMALL_CRC, xyf_build.py) has
+// stage-2 modes build without it (XYF_SETTING_OPTIONS): their narrow stage 1 (XYF_SMALL_CRC, xyf_build.py) has
 // no settings.txt and no room; their Settings page keeps its rows (PLAY answers nothing there).
 #if !defined(XYF_SMALL_CRC)
 #define XYF_SETTING_OPTIONS 1
