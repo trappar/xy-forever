@@ -73,7 +73,7 @@ class ModBootSimulator(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual([rows[s] for s in ('boot-once/boot-prepare', 'boot-once/boot')], ['PASS'] * 2, out)
         self.assertRegex((Path(self.tmp.name) / 'log.txt').read_text(), r'library\.boot: catalog entry \d once')
-        self.assertIn('RECOVERY: power off, wait 5 s', out)
+        self.assertIn('RECOVERY: power off, then power on holding PLAY', out)
         self.assertIn('default (opxy-121) is unchanged', out)
         state = sorted(p for p in (self.root / 'xy-forever').glob('state-*.txt'))
         self.assertEqual([host.parse_slot(p.read_bytes())[1].get('once') for p in state], [None] * len(state))

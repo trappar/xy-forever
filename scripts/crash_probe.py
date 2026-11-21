@@ -191,7 +191,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None):
             probe.rows.append(dict(stage='end', step=name, result='SKIP', seconds=0.0, detail=lost))
             continue
         if probe.run('end', name, function)['result'] == 'FAIL' and name == 'end-status':
-            lost = 'device not answering: if it stays so, power off, wait 5 s, power on holding PLAY'
+            lost = 'device not answering: if it stays so, power off, then power on holding PLAY'
     code = dp.EXIT_FAIL if any(r['result'] == 'FAIL' for r in probe.rows) else dp.EXIT_PASS
     summary = dict(format='xyf-crash-probe/1', folder=str(probe.folder), argv=list(argv or sys.argv[1:]),
                    started_utc=started.isoformat(), finished_utc=datetime.now(timezone.utc).isoformat(),

@@ -129,7 +129,7 @@ from xy_forever import census, paths, usb_proto as P, usb_proto_ids as ids   # n
 from scripts.device_pass_keepalive import Keepalive, keepalive_dir   # noqa: E402,F401
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
-NEED = 'NEED: power off, wait 5 s, then power on holding PLAY; release it at the logo'
+NEED = 'NEED: power off, then power on holding PLAY; release it at the logo'
 NO_ANSWER, ERROR = 100, 101             # command results: connect failed (no HELLO), exception
 NOT_FOUND = P.STATUS_NAMES.index('not_found')
 SESSIONS = paths.SESSIONS
@@ -2097,7 +2097,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
         row = run.run_step(index, 'end', name)
         rows.append(row)
         if name == 'end-status' and row['result'] == 'FAIL':
-            lost = ('device not answering: if it stays so, power off, wait 5 s, power on holding PLAY'
+            lost = ('device not answering: if it stays so, power off, then power on holding PLAY'
                     if run.no_answer else 'after FAIL of end/end-status')
     code = EXIT_FAIL if any(r['result'] == 'FAIL' for r in rows) else EXIT_PASS
     summary = dict(format='xyf-device-pass/1', folder=str(run.folder), argv=list(argv or sys.argv[1:]),

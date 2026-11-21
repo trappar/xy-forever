@@ -158,7 +158,6 @@ Keep a known-good build and its dev-menu kit ready at all times.
   can take tens of seconds after a dev-menu MTP copy; do not assume the fast checkpoint mount.
 - **Module size:** shared code can push another mode past its reservation. Run `scripts/neutral.py`
   (it builds every mode) after shared-code changes.
-- **Fast power cycles** skip the stock USB start. Wait about 5 s after any power-off.
 - **L1 instruction SRAM:** data loads from it stall the boot at the logo; never read it as data.
 - **Never leave the device in the OS** unnecessarily. Booting the OS is one-way; only a power cycle
   at the device returns. End sessions held by keepalive, and use dry runs to test boot paths.
