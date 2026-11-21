@@ -52,7 +52,7 @@ describe('te-boot identity', () => {
 describe('the stock os.ldr and free storage', () => {
   it('judges the stock file by its SHA-256', () => {
     expect(kinds(stockVerdict(STOCK_121.sha256))).toBe('ok');
-    expect(kinds(stockVerdict('0a46d43dbe9258f9a0f79d62e2a709a7b0a3798eea340548d58729630398cc99'))).toBe('update');
+    expect(kinds(stockVerdict('0a46d43dbe9258f9a0f79d62e2a709a7b0a3798eea340548d58729630398cc99'))).toBe('update');   // SHA-256 of 1.1.33's
     expect(kinds(stockVerdict('bed98a0011d2c5cb4f7fbd02fe9c6518ed56886586f975f6fce53c1d2c9d4283'))).toBe('refuse');
     expect(stockVerdict('ab'.repeat(32)).title).toBe('Unknown firmware');
   });

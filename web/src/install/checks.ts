@@ -11,8 +11,8 @@ export const STOCK_121 = {
 } as const;
 /** Other official os.ldr files, named so the page can say which one it found. */
 export const STOCK_OTHER: Readonly<Record<string, 'older' | '1.2.5'>> = {
-  '0a46d43dbe9258f9a0f79d62e2a709a7b0a3798eea340548d58729630398cc99': 'older',   // 1.1.33
-  bed98a0011d2c5cb4f7fbd02fe9c6518ed56886586f975f6fce53c1d2c9d4283: '1.2.5',
+  '0a46d43dbe9258f9a0f79d62e2a709a7b0a3798eea340548d58729630398cc99': 'older',   // SHA-256 of 1.1.33's
+  bed98a0011d2c5cb4f7fbd02fe9c6518ed56886586f975f6fce53c1d2c9d4283: '1.2.5',   // SHA-256 of 1.2.5's
 };
 /** te-boot's bl_version of the 1.2.1 bootloader (also shipped with 1.1.33), and of 1.2.5's (never supported). */
 export const BOOTLOADER_121 = 20;
