@@ -416,8 +416,8 @@ extern "C" void xy_forever_key_ui() {
                 }
 #endif
 #if defined(XYF_SETTINGS)
-                // #21: PLAY on a setting opens its option list; the list's PLAY picks (Mod memory pending until
-                // boot, as the Mods page; a settings.txt row saved when the page is left).
+                // #21: PLAY on a setting opens its option list; the list's PLAY picks: #191, in effect at once and
+                // saved on its own at a quiet moment (Mod memory as the Mods page, built at the next boot).
                 if (action == uint32_t(Action::change_setting)) {
                     using namespace xyf::settings;
                     if (app.entry != row_memory) app.settings_note = xy_forever::usb_service::settings_open(app, app.entry);

@@ -11,9 +11,10 @@
 //   confirm=0|1            Ask before USB control (#65; the key keeps its first name): the first serial command of a
 //                          connection makes the device ask whether to trust the computer (usb_service_trust.ipp)
 //   power_on=play|always   Menu at power-on (#21): with PLAY held (default) or always
-//   usb=mtp_serial|mtp_only|serial   USB mode in the menu (#21): MTP + serial as one composite device (default), MTP
-//                          alone (the same driver without its CDC interfaces: no host tool, no web app), or the stock
-//                          serial service only (the composite's own fallback); read when the menu starts USB.
+//   usb=mtp_serial|mtp_only|serial   USB mode in the menu (#21, #191): the menu always starts MTP + serial as one
+//                          composite device and never changes it within a boot; the mode turns each on or off in our own
+//                          code, live: both (default), MTP (every serial request but hello answers serial_off: no host
+//                          tool, no web app) or Serial (MTP operations answer Access_Denied): usb_service_settings.ipp.
 //                          usb=mtp (written before MTP alone existed) reads as mtp_serial; anything else: the default.
 // (The demo "knob=normal|reversed" left; a record that still has it reads as before, the key ignored.)
 // format: 1 (or none: a record before the key) reads; a higher number is a newer XY Forever's record: it reads as
@@ -93,13 +94,14 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
 // (xyf_menu.cpp: About opens the About page, once the home menu's Info row). #65: Ask before USB control (confirm=), On
 // or Off; the offline stage-2 modes (XYF_SMALL_CRC: no settings.txt, no USB service) have no such row.
 // #21: PLAY on a setting opens its option list (xyf_menu Screen::options: - / + choose, PLAY picks, STOP leaves it
-// unchanged); a value index is its option's index (memory_options, power_on_options, usb_options, confirm_options). A settings.txt
-// row's pick changes only B's copy (marked on the page, nothing written); the record is written once, when the page
-// is left with a change (usb_service settings_view: the config job, so settings.txt or settings.old always holds a
-// whole record). A power cut before that keeps the record as it was: the change is lost, never half-written.
-// Mod memory, part of the saved configuration (config.txt memory=, xyf_config.hpp), not of this record: like
-// the Mods page's toggles it is pending until boot (Continue asks Save / Discard / Back). xyf_mods_io keeps it and
-// says which of these the row shows (menu::State memory, memory_pending).
+// unchanged); a value index is its option's index (memory_options, power_on_options, usb_options, confirm_options). #191:
+// a settings.txt row's pick takes effect at once (B's copy; marked until written) and saves on its own at a quiet
+// moment, quiet_ms after the last pick (quick picks: one write), or at once when the page is left (usb_service
+// settings_view: the config job, so settings.txt or settings.old always holds a whole record). A power cut before
+// that loses only that change, never half-written.
+// Mod memory, part of the saved configuration (config.txt memory=, xyf_config.hpp), not of this record: saved the same
+// way as the Mods page's toggles (#197, xyf_mods_io pick_step), and built at the next boot (Continue, or a power-on:
+// the fingerprint hashes memory=). xyf_mods_io says what the row shows (menu::State memory, memory_pending: not saved yet).
 #if !defined(XYF_SMALL_CRC)
 enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_confirm, row_about, rows, row_packs = rows };
 static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "Ask before USB control", "About"};
@@ -128,14 +130,12 @@ static inline const char* power_on_text(uint32_t p) { return power_on_options[p 
 // MTP alone: the row says what it costs (the host tool and the web app need the serial interface).
 static inline const char* usb_text(uint32_t u) { return u == usb_mtp_only ? "MTP (no web app)" : usb_options[u == usb_serial ? 2 : 0]; }
 static inline const char* confirm_text(uint32_t c) { return confirm_options[c ? 1 : 0]; }
-// The page's notes, and the home menu's lines about the save on leaving.
+// The page's notes, and the lines about a save (#191: quiet_ms after the last pick, as xyf_mods_io.hpp quiet_ms).
+static const uint32_t quiet_ms = 1000;
 static const char note_newer[] = "settings.txt is from a newer XY Forever: kept unchanged.";
 static const char note_loading[] = "Settings are still being read.";
-static const char note_saving[] = "Saving settings...";
 static const char note_saved[] = "Settings saved.";
-static const char note_saved_usb[] = "Settings saved: USB mode changes the next time the menu opens.";
-static const char note_failed[] = "Settings not saved: open Settings and leave it to try again.";
-static const char note_busy[] = "Settings not saved: a job is running. Open Settings and leave it to try again.";
+static const char note_failed[] = "Settings not saved: pick the value again, or leave Settings, to try again.";
 static const char note_link[] = "Settings not saved: storage link lost.";
 
 // The question (#65, usb_service_trust.ipp): "Allow this computer to control your OP-XY?", PLAY = yes, STOP = no,

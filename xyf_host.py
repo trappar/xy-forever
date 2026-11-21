@@ -444,7 +444,7 @@ def main(argv=None):
         return P.ids.S_UNSUPPORTED
     except host_trust.NotAllowed as error:
         print(error)
-        return P.ids.S_DECLINED
+        return error.status
 
 
 def run(argv):

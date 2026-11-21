@@ -145,6 +145,9 @@ public:
     void invalidate();
     U32 cache_hits() const { return hits; }
     void set_piece(U32 bytes) { piece = bytes < chunk ? chunk : bytes > buffer_bytes ? buffer_bytes : bytes; }   // #144
+    // #191 (USB mode Serial): nonzero, every operation but GetDeviceInfo answers this response as it starts and an
+    // open session ends; 0 (init): answered as usual.
+    void refuse(U16 response) { refusal = response; }
     U32 piece_bytes() const { return piece; }
 private:
     enum Phase : U32 { p_idle, p_data, p_work, p_close };
@@ -172,6 +175,7 @@ private:
     U32 names_used;
     U32 hits;
     U32 piece;                                           // set_piece (init: default_piece)
+    U32 refusal;                                         // refuse (init: 0)
     bool cached_info();                                  // GetObjectInfo from the table (true: answered)
     void object_info(U32 handle, const char* where);     // the ObjectInfo dataset and the response
 

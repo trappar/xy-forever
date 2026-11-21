@@ -45,9 +45,8 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         rows[settings::row_confirm].detail = s.confirm_text;       // #65
         const uint32_t marked = s.settings_marked | (s.memory_pending ? 1u << settings::row_memory : 0u);
         for (uint32_t i = 0; i != settings::rows; ++i) rows[i].marked = marked >> i & 1u;
-        // The line: a note, else what a marked value (accent) means; a settings.txt row's first (saved when the page is left).
-        const char* hint = marked & ~(1u << settings::row_memory) ? "Changes are saved when you leave this page.   STOP  back" :
-                           marked ? "Mod memory changes apply when you boot.   STOP  back" : "PLAY  change   STOP  back";
+        // The line: a note, else what a marked value (accent) means: #191, a pick not written yet (saved on its own).
+        const char* hint = marked ? "Saving...   STOP  back" : "PLAY  change   STOP  back";
 #else
         static ui::ListRow rows[settings::rows] XYF_DATA = {       // xyf_settings.hpp Row, labels
             {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false}, {"About", 0, false}};
