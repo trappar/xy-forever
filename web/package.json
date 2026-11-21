@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json && vite build",
+    "build:pages": "npm run build -- --mode pages",
+    "smoke:pages": "node scripts/smoke-pages.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:e2e": "vitest run -c vitest.e2e.config.ts"

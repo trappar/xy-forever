@@ -1,35 +1,43 @@
-// The web app's router (#178): one path per page and per install stage (History API), so a reload keeps the place and
-// back and forward work. Every path serves index.html: Vite's SPA fallback in dev and preview; hosting needs the same.
-// The query (?sim=PORT) is kept across paths. history.state.back counts the install stages behind this one in the
-// flow (the Install page's own Back button); 0 elsewhere.
+// The browser keeps the query (including ?sim=PORT) and History state for each app route. The
+// Pages build emits a directory index for each route so a reload reaches the same screen.
+import { PAGES } from './routes.ts';
+import { routePath, SITE_BASE, siteHref } from './site.ts';
 
 export type How = 'load' | 'push' | 'pop';
 type Listener = (path: string, how: How) => void;
 let listener: Listener = () => {};
 
-/** Install stages behind the current entry in this flow. */
+export const currentPath = (): string => routePath(location.pathname) ?? '/';
 export const backDepth = (): number => (history.state as { back?: number } | null)?.back ?? 0;
 
-/** Goes to path (a new history entry, or in place with replace), then routes. */
-export function navigate(path: string, options: { replace?: boolean; back?: number } = {}): void {
-  const url = path.includes('?') ? path : `${path}${location.search}`;
-  const state = { back: options.back ?? 0 };
-  if (options.replace) history.replaceState(state, '', url); else history.pushState(state, '', url);
-  listener(location.pathname, 'push');
+function routeHref(path: string): string {
+  return siteHref(SITE_BASE === '/' || path.endsWith('/') ? path : path + '/');
 }
 
-/** Routes the current path now, on back and forward, and on clicks of in-app links (href starting with /). */
+/** Goes to an app-relative path and preserves the current query when no new query is given. */
+export function navigate(path: string, options: { replace?: boolean; back?: number } = {}): void {
+  const target = new URL(path, location.origin);
+  const query = path.includes('?') ? target.search : location.search;
+  const href = routeHref(target.pathname) + query + target.hash;
+  const state = { back: options.back ?? 0 };
+  if (options.replace) history.replaceState(state, '', href); else history.pushState(state, '', href);
+  listener(currentPath(), 'push');
+}
+
+/** Routes the current URL, history navigation, and unmodified clicks on links to our pages. */
 export function startRouter(onRoute: Listener): void {
   listener = onRoute;
-  addEventListener('popstate', () => listener(location.pathname, 'pop'));
+  addEventListener('popstate', () => listener(currentPath(), 'pop'));
   document.addEventListener('click', (e) => {
-    const a = (e.target as Element | null)?.closest?.('a');
-    const href = a?.getAttribute('href');
-    if (!a || !href?.startsWith('/') || a.target || a.hasAttribute('download') || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = (e.target as Element | null)?.closest?.('a[href]');
+    if (!(a instanceof HTMLAnchorElement) || a.target || a.hasAttribute('download') || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const url = new URL(a.href);
+    const path = url.origin === location.origin ? routePath(url.pathname) : null;
+    if (!path || !PAGES.some((page) => path.split('/')[1] === page)) return;
     e.preventDefault();
-    if (href !== location.pathname) navigate(href);
+    if (path !== currentPath() || url.search || url.hash) navigate(path + url.search + url.hash);
   });
-  const old = location.hash.slice(1);                       // a #page link from before the router
-  if (/^[a-z]+$/.test(old)) history.replaceState({ back: 0 }, '', `/${old}${location.search}`);
-  listener(location.pathname, 'load');
+  const old = PAGES.find((page) => '#' + page === location.hash);  // a page link from before the router
+  if (old) history.replaceState({ back: 0 }, '', routeHref('/' + old) + location.search);
+  listener(currentPath(), 'load');
 }

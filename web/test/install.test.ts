@@ -11,6 +11,7 @@ import { ADOPT_DETAIL, ENTRY, installState, otherImage } from '../src/install/fi
 import { InstallStop, TeBoot, copyOverMtp } from '../src/install/installer.ts';
 import { fetchRelease, pinned } from '../src/install/release.ts';
 import type { ReleasePin } from '../src/install/release.ts';
+import { INSTALL_STAGES, PAGES } from '../src/routes.ts';
 import { FakeMidi, FakeUsb } from './fake-devices.ts';
 
 const T = 'mode:bootloader;product:OP-XY;serial:X1';
@@ -125,13 +126,10 @@ describe('te-boot over Web MIDI', () => {
   });
   it('the README names only real routes', () => {
     const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
-    const page = readFileSync(new URL('../src/install/page.ts', import.meta.url), 'utf8');
-    const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
     const stages = [...readme.matchAll(/`\/install\/([a-z-]+)`/g)].map((m) => m[1]!);
     expect(stages.length).toBeGreaterThan(0);
-    for (const s of stages) expect(page, s).toMatch(new RegExp(`\\n {6}'?${s}'?: `));
-    const pages = main.match(/const PAGES = \[([^\]]*)\]/)![1]!;
-    for (const m of readme.matchAll(/`\/([a-z]+)`/g)) expect(pages, m[1]).toContain(`'${m[1]}'`);
+    for (const stage of stages) expect(INSTALL_STAGES).toContain(stage);
+    for (const match of readme.matchAll(/`\/([a-z]+)`/g)) expect(PAGES).toContain(match[1]);
   });
   it('tells the PLAY-at-power-on step once', () => {
     const source = readFileSync(new URL('../src/install/page.ts', import.meta.url), 'utf8');

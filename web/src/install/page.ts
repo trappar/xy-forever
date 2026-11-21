@@ -26,6 +26,8 @@ import type { ReleasePin } from './release.ts';
 import { downloadBlob, h } from '../ui.ts';
 import { backDepth, navigate } from '../router.ts';
 import type { How } from '../router.ts';
+import { INSTALL_STAGES } from '../routes.ts';
+import type { InstallStage } from '../routes.ts';
 
 /** A connection to XY Forever; close releases it (a no-op for the app's own). */
 export interface Lease { readonly client: Client; close(): Promise<void> }
@@ -57,13 +59,14 @@ const NO_BACK = ['write-os', 'write-result', 'write-help', 'format-drive', 'form
 const LOOK_MS = 3000, POLL_MS = 700, WAIT_START_MS = 60_000;
 const STARTED = 'Your OP–XY set up OS 1.2.1 and is starting it.';
 
-interface Action { readonly label: string; readonly next: string | null; readonly id?: string }
+interface Action { readonly label: string; readonly next: InstallStage | null; readonly id?: string }
 type Stage = [title: string, detail: string, actions: Action[], instructions?: string[]];
-const action = (label: string, next: string | null, id?: string): Action => (id ? { label, next, id } : { label, next });
+const action = (label: string, next: InstallStage | null, id?: string): Action => (id ? { label, next, id } : { label, next });
 
 export function installPage(root: HTMLElement, deps: InstallDeps): { render: () => void; show: (path: string, how: How) => void } {
   const release = deps.release === undefined ? pinned() : deps.release;
-  let stage = 'boot', depth = 0;
+  let stage: InstallStage = 'boot';
+  let depth = 0;
   const kept = ((): Record<string, unknown> => { try { return JSON.parse(sessionStorage.getItem(STORE) ?? '{}'); } catch { return {}; } })();
   let computer: Computer | null = kept['computer'] === 'mac' || kept['computer'] === 'windows' ? kept['computer'] : null;
   let stop = (kept['stop'] ?? null) as Verdict | null;
@@ -78,8 +81,8 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
 
   const say = (text: string, f: number | null = null, isError = false): void => { status = text; fraction = f; error = isError; render(); };
   /** To a stage: a new history entry (back: the stages behind it in the flow); show() then renders it. */
-  const go = (next: string, back: number): void => navigate(`/install/${next}`, { back });
-  function advance(next: string): void {
+  const go = (next: InstallStage, back: number): void => navigate(`/install/${next}`, { back });
+  function advance(next: InstallStage): void {
     if (busy) return;
     go(next, stage === next ? depth : depth + 1);
   }
@@ -90,8 +93,8 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
 
   /** Shows the stage a path names (/install/<stage>); an unknown one, or /install, goes to the current stage. */
   function show(path: string, how: How): void {
-    const want = path.split('/')[2] ?? '';
-    if (!(want in table()) || (want === 'stop' && !stop) || (busy && want !== stage)) {   // back or forward mid-action: stay
+    const want = INSTALL_STAGES.find((key) => key === path.split('/')[2]);
+    if (!want || (want === 'stop' && !stop) || (busy && want !== stage)) {   // back or forward mid-action: stay
       navigate(`/install/${stage}`, { replace: !busy, back: depth });
       return;
     }
@@ -202,12 +205,12 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
   const ourImage = async (): Promise<Uint8Array> => (image ??= await fetchRelease(release!));
 
   /** Open-XY's stage table, adapted: [title, detail, actions, instructions]. */
-  function table(): Record<string, Stage> {
+  function table(): Record<InstallStage, Stage> {
     const transferSteps = ['Open your OP–XY in File Explorer.', 'Select Download os.ldr below.', 'Drag os.ldr to your OP–XY’s root folder.',
       'Confirm when asked to replace the file.', `Check that os.ldr shows about ${release ? Math.ceil(release.bytes / 1024) : '?'} KB, not 0 KB.`];
     const official = ['Switch off. Hold COM while switching on.', 'Press track 1: “upload firmware”, then connect USB.',
       'Copy the downloaded 1.2.1 .tfw to the removable disk, then eject it.', 'Wait for the update to finish, then select Start again.'];
-    const stages: Record<string, Stage> = {
+    const stages: Record<InstallStage, Stage> = {
       boot: ['Start in the te-boot menu.', 'The page first checks that your OP–XY can take XY Forever. It changes nothing until then.',
         [action(busy ? 'Checking…' : 'Connected and at te-boot · Check my OP–XY', null, 'te-check')],
         ['Power off your OP–XY.', 'Hold COM while switching it on.', 'Release COM when the te-boot menu appears.', 'Connect it to this computer with USB.',
@@ -260,7 +263,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
     };
     return stages;
   }
-  const content = (): Stage => table()[stage]!;
+  const content = (): Stage => table()[stage];
 
   function click(a: Action): void {
     if (busy) return;

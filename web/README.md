@@ -21,11 +21,11 @@ For development without a device, start the simulator from the repository root
 
 ## Pages
 
-Each page has its own path, and each Install stage too (`src/router.ts`, History API): `/connect` (also `/`), `/device`,
-`/mods`, `/files`, and `/install/<stage>` (for example `/install/boot`, `/install/transfer`, `/install/start`,
-`/install/stop`; the stage names are `src/install/page.ts`'s), so a reload keeps the place and back and forward work. Every path must serve `index.html`: Vite's SPA
-fallback does it in `npm run dev` and `npm run preview`, and **production hosting needs the same fallback** (#184 picks
-the host). The app lives at the site's root (its paths and `/release/os.ldr` are absolute).
+Each page has its own path (`src/router.ts`, History API). Routes include `/connect` (also `/`),
+`/device`, `/mods`, `/files` and install stages such as `/install/boot`, `/install/transfer`, `/install/start`
+and `/install/stop`. The stage and page registry lives in `src/routes.ts`. The build emits an HTML index
+for each route so direct links and reloads work on static hosting. The routing base is `/` in local
+development and `/xy-forever/` for GitHub Pages.
 
 - **Connect**: Web Serial, or the simulator with `?sim=PORT`; a clear message in browsers without Web Serial.
 - **Install** (#178): installs XY Forever on a stock OP-XY, no other apps. Its flow, wording, MTP FAQ and "start fresh
@@ -73,6 +73,32 @@ build, checks it shares no bytes with the stock pair (`xy_forever/stock_bytes.py
 too), writes the pin (committed in a release pull request) and stages the image in `public/release/` (gitignored);
 `--check` says whether the staged image matches the pin. Without a pin the page says there is nothing to install.
 
+## GitHub Pages
+
+The launch URL is [trappar.github.io/xy-forever](https://trappar.github.io/xy-forever/).
+The app and the pinned image share that project path. Only `web/dist/` goes into the Pages artifact.
+
+From the repository root, stage the `os.ldr` matching the checked-in pin in `web/public/release/`.
+Use the locally verified build or download the same asset from the published `v<version>` release.
+Then run the deployment checks with Chrome installed.
+
+```sh
+python3 scripts/web_release.py --check
+npm --prefix web run build:pages
+npm --prefix web run smoke:pages
+```
+
+The smoke test serves the built files at `/xy-forever/` on localhost without a fallback for missing
+paths. It checks direct links, reloads, back and forward, and the Install page's download of the
+pinned image.
+
+At launch, select [GitHub Actions as the Pages source](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
+Attach the staged `os.ldr` to the GitHub release tagged `v<version>` from `release.json`, then run
+**Deploy web app to GitHub Pages** on `main`. The workflow fetches that one asset, checks it against the
+pin, builds and runs the smoke test before deploying. It uses Node dependencies and the verified
+release asset. After it finishes, open the HTTPS site, reload an install stage and check the
+SHA-256 of `/xy-forever/release/os.ldr` against the release pin.
+
 **Bug report** previews a JSON bundle and downloads that same snapshot when you choose **Download JSON**.
 It includes the app version, connection status, the last known XY Forever release, image ID, protocol,
 mode and developer-build flag, plus up to 24 recent app actions and their outcomes. The app keeps
@@ -107,7 +133,6 @@ test's simulator helpers come from its `test/` folder.
 - Firmware library management, firmware and companion install,
   Bluetooth, uninstall (#179).
 - Recursive delete of a non-empty folder, drag and drop upload, upload of folders.
-- Production hosting (it needs a secure context: `https://` or `localhost`).
 
 ## Licence
 
