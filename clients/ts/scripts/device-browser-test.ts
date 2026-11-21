@@ -1,8 +1,8 @@
 // The demo page driven in the system Chrome by Playwright, with no human step: Connect, HELLO, list
 // /yaffs2/xy-forever, upload a scratch file, download and compare it, delete it, list mod packages,
 // disconnect. PASS/FAIL per step, result.json and a screenshot per step in --out; exit status 1 on any
-// failure. Never boots, never changes the default, never builds; the scratch file is deleted even
-// after a failure (a second connection if the first is gone).
+// failure. The scratch file is deleted even after a failure (a second connection if the first is gone).
+// --reboot adds a restart back into the XY Forever menu and checks the new connection.
 //
 //   node scripts/device-browser-test.ts --out DIR --sim PORT     the simulator through the dev server's relay
 //   node scripts/device-browser-test.ts --out DIR --serial       the OP-XY over Web Serial (see below)
@@ -38,8 +38,9 @@ const out = opt('--out');
 const sim = opt('--sim');
 const grant = args.includes('--grant');
 const serial = args.includes('--serial') || grant;
-if ((!out && !grant) || (!sim && !serial) || (sim && serial) || (grant && args.includes('--serial'))) {
-  console.error('usage: node scripts/device-browser-test.ts (--out DIR (--sim PORT | --serial) | --grant) [--headed] [--profile DIR] [--vite-port N]');
+const reboot = args.includes('--reboot');
+if ((!out && !grant) || (!sim && !serial) || (sim && serial) || (grant && (args.includes('--serial') || reboot))) {
+  console.error('usage: node scripts/device-browser-test.ts (--out DIR (--sim PORT | --serial) | --grant) [--reboot] [--headed] [--profile DIR] [--vite-port N]');
   process.exit(2);
 }
 if (out) mkdirSync(out, { recursive: true });
@@ -103,6 +104,7 @@ const text = async (id: string): Promise<string> => (await page!.locator(`#${id}
 async function settled(): Promise<void> {
   await page!.waitForFunction(() => document.getElementById('status')!.textContent !== 'working', null, { timeout: STEP_MS });
   const error = await text('error');
+  if (error.startsWith('NEED:')) console.log(error);
   if (error) throw new Error(error);
 }
 
@@ -166,6 +168,24 @@ async function grantedHere(p: Page): Promise<{ mine: number; all: number }> {
 const GRANT_MS = 300_000;
 const PICK = "Click Connect, pick the OP-XY in Chrome's list once, then wait: this window closes by itself.";
 
+/** Hold the shared Python flock until Chrome closes. The pipe also closes if this process exits. */
+async function reserveDevice(): Promise<ChildProcess> {
+  const holder = spawn('python3', ['-c', [
+    'import sys',
+    'from xy_forever import device_lock, no_device',
+    'no_device.refuse("Chrome Web Serial")',
+    'device_lock.hold()',
+    'print("locked", flush=True)',
+    'sys.stdin.buffer.read()',
+  ].join('\n'), 'device-browser-test.ts'], { cwd: resolve(here, '../..'), stdio: ['pipe', 'pipe', 'inherit'] });
+  await new Promise<void>((ready, fail) => {
+    holder.on('error', fail);
+    holder.once('exit', (code) => { fail(new Error(`device lock exited with status ${code}`)); });
+    holder.stdout!.once('data', () => { ready(); });
+  });
+  return holder;
+}
+
 /**
  * --grant: the persistent profile headed on the fixed origin, one line telling the person to pick the OP-XY
  * (the demo's Connect opens the chooser), waits up to GRANT_MS for the grant, then closes Chrome, launches the
@@ -186,7 +206,7 @@ async function grantMode(): Promise<number> {
         bar.style.cssText = 'position:sticky;top:0;z-index:9;padding:10px;background:#ffd84d;color:#000;font:bold 16px sans-serif';
         document.body.prepend(bar);
       }, PICK);
-      console.log(PICK);
+      console.log(`NEED: ${PICK}`);
       const until = Date.now() + GRANT_MS;
       while ((await grantedHere(p)).mine === 0) {
         if (Date.now() > until) throw new Error(`no OP-XY picked in ${GRANT_MS / 1000} s`);
@@ -215,7 +235,23 @@ async function grantMode(): Promise<number> {
   }
 }
 
-if (grant) process.exit(await grantMode());
+let deviceLock: ChildProcess | null = null;
+if (serial) {
+  if (process.env['XYF_NO_DEVICE']) {
+    console.error('tests may not open a real device: Chrome Web Serial');
+    process.exit(1);
+  }
+  try {
+    deviceLock = await reserveDevice();
+  } catch (error) {
+    console.error(`NEED: start the serial test with the OP-XY available (${(error as Error).message})`);
+    process.exit(1);
+  }
+}
+if (grant) {
+  const code = await grantMode().finally(() => deviceLock?.stdin?.end());
+  process.exit(code);
+}
 
 let vite: ChildProcess | null = null;
 let context: BrowserContext | null = null;
@@ -234,12 +270,19 @@ try {
       const ok = d.type() === 'confirm' && d.message().includes(scratchName);
       void (ok ? d.accept() : d.dismiss());
     });
-    await page.goto(`http://127.0.0.1:${port}/${sim ? `?sim=${encodeURIComponent(sim)}` : ''}`);
+    await page.goto(`http://127.0.0.1:${port}/?unattended${sim ? `&sim=${encodeURIComponent(sim)}` : ''}`);
     let ready = true;
     if (serial) {
       ready = await step('serial port granted', async () => {
         const { mine, all } = await grantedHere(page!);
-        if (mine === 0) throw new Error(`no granted XY Forever port in profile ${profile} for http://127.0.0.1:${port} (run --grant once: Chrome's chooser cannot be answered by automation)`);
+        if (mine === 0) {
+          console.log('NEED: connect the OP-XY in the XY Forever menu and grant this Chrome profile access with --grant.');
+          throw new Error(`no granted XY Forever port in profile ${profile} for http://127.0.0.1:${port}`);
+        }
+        if (reboot && mine > 1) {
+          console.log('NEED: leave only the OP-XY under test connected for the reboot check.');
+          throw new Error(`multiple granted XY Forever ports (${mine})`);
+        }
         return `${mine} granted port(s), ${all} in all`;
       });
     }
@@ -281,6 +324,13 @@ try {
         const saved = await text('config-saved'), content = await text('config-content');
         return `${generations.length ? generations.join('; ') : (await text('mods-list')).trim()}; ${saved} ${content}`;
       });
+      if (reboot && steps.every((s) => s.ok)) {
+        await step('reboot to menu and reconnect', () => page!.evaluate(() => {
+          const demo = (window as Window & { xyfDemo?: { rebootAndReconnect(): Promise<string> } }).xyfDemo;
+          if (!demo) throw new Error('the demo test interface is unavailable');
+          return demo.rebootAndReconnect();
+        }));
+      }
     }
   }
 } finally {
@@ -291,6 +341,7 @@ try {
   await context?.close().catch(() => undefined);
   await (browser as Browser | null)?.close().catch(() => undefined);
   (vite as ChildProcess | null)?.kill();
+  deviceLock?.stdin?.end();
   const pass = steps.length > 0 && steps.every((s) => s.ok);
   writeFileSync(join(out!, 'result.json'), JSON.stringify({
     pass, started, finished: new Date().toISOString(), transport: sim ? `sim:${sim}` : 'webserial', scratch: `${DIR}/${scratchName}`, steps,

@@ -18,6 +18,7 @@ npm run test:browser   # Web Serial, the demo page and its Files and Mods panels
 npm run build     # dist/ (JavaScript + .d.ts)
 node test/conformance.ts --sim 127.0.0.1:7341    # the conformance cases against a running simulator
 node scripts/device-browser-test.ts --out DIR --sim PORT   # the demo driven in Chrome, no human step (--serial: the OP-XY)
+node scripts/device-browser-test.ts --out DIR --sim PORT --reboot   # also restart to the menu, reconnect, and list files
 ```
 
 The repository's Python suite runs `npm test` too (`tests/test_ts_client.py`, when `node_modules` is installed).
@@ -31,6 +32,8 @@ that already holds a grant for the dev server's origin `http://127.0.0.1:5173`. 
   and exits.
 - the Chrome policy `SerialAllowUsbDevicesForUrls` (the vendor and product id of `USB_FILTER`, that origin):
   no pick, but on macOS it is a managed preference and needs admin rights.
+
+Serial runs hold the shared OP-XY device lock. The script prints a `NEED:` line if the granted port or lock is unavailable, or if **Ask before USB control** is on. Add `--reboot` to test reconnection after a restart to the XY Forever menu.
 
 Demo page (`demo/`: Connect, device info, read a file, screenshot, and a Files panel: browse from
 `/yaffs2`, download, upload by picker or drop, delete, new folder, rename/move, copy (a folder:
