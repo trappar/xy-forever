@@ -8,7 +8,7 @@ uint32_t step(uint32_t value, uint32_t count, bool forward) {
     return value == 0 ? count - 1 : value - 1;
 }
 bool usable(const State& s, uint32_t i) { return s.catalog && i < s.catalog->count && (s.catalog->items[i].flags & 1); }
-const char no_setup[] = "No mods are saved: the OP-XY already boots without them.";
+const char* const no_setup = "No mods are saved: the OP-XY already boots without them.";
 bool storage_down(const State& s) { return s.storage != storage_unknown && s.storage != storage_ready; }
 }
 
