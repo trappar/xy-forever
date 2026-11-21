@@ -71,6 +71,13 @@ class Rows(PageBase):
         path = self.root / 'xy-forever/settings.txt'
         return dict(line.split('=', 1) for line in path.read_text().splitlines() if '=' in line)
 
+    def stored(self, key):
+        """record()[key] while a save may be replacing the file (None in between)."""
+        try:
+            return self.record().get(key)
+        except FileNotFoundError:
+            return None
+
     def settings_page(self):
         """Home (Continue) -> Settings, the last row."""
         seen = self.count('menu: screen %d ' % SETTINGS)
@@ -243,7 +250,7 @@ class SettingsRows(Rows, unittest.TestCase):
         self.assertEqual(self.mtp(c, OPEN_SESSION, 1), ACCESS_DENIED)      # and none opens
         self.assertEqual(self.mtp(c, GET_DEVICE_INFO), R_OK)
         self.assertEqual((self.status(), self.hello_serial()), (ids.S_OK, 'on'))
-        self.until(lambda: self.record().get('usb') == 'serial', 'saved')
+        self.until(lambda: self.stored('usb') == 'serial', 'saved')
         self.real = True                                                   # serial goes off: the OP-XY's own keys
         self.assertEqual(self.pick(2, -1), 1)                              # Serial -> MTP
         self.assertEqual(self.status(), ids.S_SERIAL_OFF)                  # at once, nothing done
@@ -257,7 +264,7 @@ class SettingsRows(Rows, unittest.TestCase):
         self.assertIn('Settings > USB mode', str(refused.exception))
         self.assertEqual(self.mtp(c, OPEN_SESSION, 1), R_OK)                # MTP is on again (the tunnel stays)
         self.assertEqual(self.mtp(c, GET_STORAGE_IDS), R_OK)
-        self.until(lambda: self.record().get('usb') == 'mtp_only', 'saved')
+        self.until(lambda: self.stored('usb') == 'mtp_only', 'saved')
         self.assertEqual(self.pick(2, -1), 0)                              # MTP -> MTP + Serial
         self.until(lambda: self.status() == ids.S_OK, 'serial on again')
         self.assertEqual(self.hello_serial(), 'on')
@@ -265,7 +272,7 @@ class SettingsRows(Rows, unittest.TestCase):
         self.assertEqual(self.pick(2, -1), 2)                              # and to Serial once more
         self.assertEqual(self.mtp(c, GET_STORAGE_IDS), ACCESS_DENIED)
         self.assertEqual(self.status(), ids.S_OK)
-        self.until(lambda: self.record().get('usb') == 'serial', 'saved')
+        self.until(lambda: self.stored('usb') == 'serial', 'saved')
         self.assertEqual(self.count('USB on: listening'), 1)               # one USB start, never stopped
         self.assertFalse(self.lines('USB off') or self.lines('USB host detached') or self.lines('USB host replaced'))
         self.power(play=True)
