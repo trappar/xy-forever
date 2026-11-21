@@ -39,8 +39,11 @@ def check(pin_path=PIN, staged=STAGED):
         return 'no release pinned in %s' % pin_path
     if not staged.is_file():
         return 'nothing staged at %s: run scripts/web_release.py BUILD' % staged
-    if pin_of(staged.read_bytes())['sha256'] != pin['sha256']:
-        return 'the staged image is not the pinned %s' % pin['image']
+    actual = pin_of(staged.read_bytes())
+    if pin['sha256'] != actual['sha256']:
+        return 'the staged image is not the pinned %s' % pin.get('image', 'release')
+    if any(pin.get(key) != actual[key] for key in ('schema', 'image', 'bytes')):
+        return 'the release pin has incorrect schema, image or byte count'
     return None
 
 

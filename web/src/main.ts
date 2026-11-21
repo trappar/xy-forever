@@ -12,7 +12,10 @@ import type { Action } from './bug-report.ts';
 import { confirmAction, downloadBlob, h, notice, previewBugReport, promptText } from './ui.ts';
 import { installPage } from './install/page.ts';
 import type { Lease } from './install/page.ts';
-import { navigate, startRouter } from './router.ts';
+import { currentPath, navigate, startRouter } from './router.ts';
+import { PAGES } from './routes.ts';
+import type { Page } from './routes.ts';
+import { siteHref } from './site.ts';
 import type { How } from './router.ts';
 import { pinned } from './install/release.ts';
 import { updateAvailable, updateXyf } from './update.ts';
@@ -26,9 +29,7 @@ const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!
 // ---- Navigation and actions ---------------------------------------------------------------------------
 // One path per page (router.ts): /connect (also /), /install/<stage>, /device, /mods, /files.
 
-const PAGES = ['connect', 'install', 'device', 'mods', 'files'] as const;
 const OPEN_PAGES: readonly Page[] = ['connect', 'install'];   // without a connection
-type Page = (typeof PAGES)[number];
 const loaders: Record<Page, () => Promise<void>> = {
   connect: () => run('show_connect', async () => renderConnect()),
   install: async () => {},       // route() shows its stage
@@ -37,13 +38,12 @@ const loaders: Record<Page, () => Promise<void>> = {
   files: () => run('browse_files', () => browse(cwd)),
 };
 
-function current(): Page { const p = location.pathname.split('/')[1] as Page; return PAGES.includes(p) ? p : 'connect'; }
-
-function route(how: How = 'push'): void {
-  const p = client || OPEN_PAGES.includes(current()) ? current() : 'connect';
+function route(path = currentPath(), how: How = 'push'): void {
+  const requested = PAGES.find((page) => page === path.split('/')[1]) ?? 'connect';
+  const p = client || OPEN_PAGES.includes(requested) ? requested : 'connect';
   for (const id of PAGES) page(id).hidden = id !== p;
   for (const a of document.querySelectorAll<HTMLAnchorElement>('#nav a')) a.classList.toggle('active', a.dataset['page'] === p);
-  if (p === 'install') (install ??= installPage(page('install'), installDeps())).show(location.pathname, how);
+  if (p === 'install') (install ??= installPage(page('install'), installDeps())).show(path, how);
   else if (client || OPEN_PAGES.includes(p)) void loaders[p]();
 }
 
@@ -91,7 +91,7 @@ function renderConnect(): void {
   page('connect').replaceChildren(
     h('h1', {}, 'Connect your OP-XY'),
     h('p', { class: 'lede' }, 'Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the list. ',
-      'Not installed yet? ', h('a', { href: '/install' }, 'Install XY Forever'), '.'),
+      'Not installed yet? ', h('a', { href: siteHref('/install/') }, 'Install XY Forever'), '.'),
     h('div', { class: 'card' },
       supported
         ? h('div', { class: 'row' },
@@ -478,7 +478,7 @@ async function removePath(path: string, e: DirEntry): Promise<void> {
 
 setLink();
 document.getElementById('installed-dismiss')!.addEventListener('click', () => { document.getElementById('installed')!.hidden = true; });
-startRouter((_path, how) => route(how));
+startRouter(route);
 document.getElementById('bug-report')!.addEventListener('click', () => {
   previewBugReport(bugReport.snapshot(client?.connected === true));
 });

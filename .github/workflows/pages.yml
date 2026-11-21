@@ -1,0 +1,56 @@
+name: Deploy web app to GitHub Pages
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: npm ci
+        working-directory: clients/ts
+      - run: npm ci
+        working-directory: web
+      - name: Get the pinned release image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_version=$(node -p "require('./web/src/install/release.json').version")
+          mkdir -p web/public/release
+          gh release download "v${release_version}" --repo "$GITHUB_REPOSITORY" --pattern os.ldr --output web/public/release/os.ldr
+          python3 scripts/web_release.py --check
+      - run: npm run build:pages
+        working-directory: web
+      - run: npm run smoke:pages
+        working-directory: web
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish the checked web build
+        id: deployment
+        uses: actions/deploy-pages@v4
