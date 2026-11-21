@@ -456,6 +456,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.cont()
         self.wait_progress(lambda p: p['stage'] == 2, 'saving', 120.0)
         cuts = self.sim.status()['cuts']
+        rows = len(self.lines('menu: home row: '))
         self.sim.set('rename_fault_kind', 2)
         self.sim.set('rename_fault', 2)                                    # cut after publishing config.json
         self.sim.set('a_slow_ms', 0)
@@ -463,7 +464,8 @@ class Config(ConfigBase, unittest.TestCase):
         self.assertEqual(self.config()['mods'], 'alpha')                   # the new record, the old default
         self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'journal/default completion')
         self.assertEqual(self.disk_default(), a)
-        self.wait_log(lambda: 'pending=0' in self.home(), 'the completed saved configuration')
+        self.wait_log(lambda: len(self.lines('menu: home row: ')) > rows and
+                      self.home().startswith('Open-XY - 1 mod - 1.2.1 pending=0'), 'the recovered home row')
         since = len(self.progress())
         self.cont()
         self.assertEqual(self.booted(), a)

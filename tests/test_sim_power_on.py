@@ -17,8 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_mod_job as J                                               # noqa: E402
-from test_sim_config import ConfigBase, MARK, mark_text                   # noqa: E402
+from test_sim_config import CONFIG, LEGACY_OLD, ConfigBase, MARK, mark_text                   # noqa: E402
 from test_sim_job_recovery import intent, JOURNAL                          # noqa: E402
+from xy_forever import native_json                                       # noqa: E402
 
 CONVERGE = 'menu: power-on converge: doubt '                               # sim/devices.cpp, as key_ui.cpp
 
@@ -71,6 +72,20 @@ class PowerOn(ConfigBase, unittest.TestCase):
             self.assertLess(took, 200, took)
             seen.add(self.messages)
         self.assertEqual(len(seen), 1, seen)
+
+    def test_legacy_backup_with_matching_fingerprint_boots_without_migrating(self):
+        entry = self.first_save()
+        current = self.root / CONFIG
+        (self.root / LEGACY_OLD).write_bytes(native_json.config_text(current.read_bytes()))
+        current.unlink()
+        (self.root / MARK).write_text(mark_text(self.root, entry))
+        before = self.snapshot()
+
+        counts, _ = self.plain()
+
+        self.assertEqual(self.counts(), counts)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.disk_default(), entry)
 
     def test_changed_inputs_converge_at_power_on_then_boot(self):
         a = self.first_save()

@@ -17,13 +17,13 @@ removed when the run passed, unless --keep; each first needs Settings > Ask befo
                    written last; B's catalog then lists <id> as "content not installed" (expected).
   --boot           set-default <id> (library.set_default: B's content switch makes /yaffs2/content/ match
                    the entry and writes content-state.txt `state=installed entry=<id>`, then default=<id>),
-                   then boot <id> once (library.boot). USB goes. The saved inputs (config.txt) stay: the next
+                   then boot <id> once (library.boot). USB goes. The saved inputs stay: the next
                    plain power-on converges back to the saved setup (#197, #26).
   --cleanup        refused while <id> is the default or once, or content-state.txt names it (first:
                    `xyf_host.py set-default <previous default> --yes-write`); removes firmware/<id>/ and
                    loaded/<id>/.
 This script writes only firmware/<id>/ and loaded/<id>/; never /yaffs2/content/, content-state.txt,
-config.txt or the state slots (only the device's set-default does, in --boot).
+the saved configuration or the state slots (only the device's set-default does, in --boot).
 """
 import argparse
 import hashlib

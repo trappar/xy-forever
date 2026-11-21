@@ -50,10 +50,19 @@ calls it. Journal/content caller frames remain 132/260 bytes, the outer boot
 caller 452 and the home pump 284. These are compiler frame sums, not an observed
 peak stack watermark.
 
-All five modes build and verify offline. Cold module sizes are 330,880 bytes
-for product, 331,552 for MTP USB, 331,136 for crash trigger, 53,416 for
-`stage2` and 53,756 for `stage2-menu`. The last two fit their 56 KiB code
-windows and keep their 16 KiB stacks.
+All five modes build and verify offline. Compared with the preceding product
+tree (`4643d7a`), the Blackfin module sizes are as follows.
+
+| Mode | Before | With native records |
+| --- | ---: | ---: |
+| product | 339,108 | 359,388 |
+| MTP USB | 339,780 | 360,060 |
+| crash trigger | 339,460 | 359,740 |
+| stage2 | 45,568 | 50,216 |
+| stage2 menu | 45,900 | 50,548 |
+
+The two offline Stage 2 modes fit their 56 KiB code windows and keep their
+16 KiB stacks.
 
 The Mods reader borrows 24,012 bytes of the idle report slot while it has the
 page's storage exclusion. Mod assembly needs the same amount temporarily at the
@@ -70,10 +79,16 @@ writer still reserves 1024 bytes for the manifest and 65,536 for the file list.
 The manifest needs at most 490 bytes with worst-case JSON escaping and field
 lengths. The entry writer's Blackfin frame remains 168 bytes.
 
-The device configuration reader and encoder reuse the Mods page scratch. The
-encoder validates its document against the reader's 2048-byte view limit before
-starting the existing configuration job. The job holds up to 8448 serialized
-bytes in its own work region and retains the existing Settings transaction.
-Configuration discovery uses paged directory reads, each closed before the
-menu yields. The Blackfin frames are 100 bytes for the record read, 84 for the
-JSON view, 16 for the encoder and 448 for the enclosing Save step.
+The configuration reader and encoder use the Mods page scratch. The mod builder
+also borrows 21,508 bytes of the idle report slot while finding the saved slot,
+before allocating the job workspace. No JSON workspace lives on the stack.
+The Mods page holds the prepared record through the content switch, growing its
+I/O state from 2876 to 9300 bytes. The configuration job retains up to 8448 bytes
+in its own region and uses the existing transaction. The encoder checks the
+serialized record against the reader's 2048-byte view limit before publication.
+
+The configuration frames measured by the Blackfin compiler are 32 bytes for
+the record read (previously 24), 152 for source lookup, 84 for the JSON view
+and 124 for encoding, before the parser and writer calls. The page-save step
+remains 332 bytes. The convergence step drops from 888 to 652 bytes. These
+are per-function frames.

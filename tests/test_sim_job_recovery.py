@@ -86,7 +86,8 @@ class Recovery(Switch, unittest.TestCase):
         target = self.build(['alpha'])
         self.switched(target)
         (self.root / JOURNAL).write_bytes(intent(self.root, target, previous))
-        (self.root / LIB / target / 'info.txt').unlink()
+        folder = self.root / LIB / target
+        (folder / package_records.local_name(folder)).unlink()
         self.restart()
         self.wait(lambda: OFFER + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
         for pressed in (1, 0):
