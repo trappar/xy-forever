@@ -123,6 +123,8 @@ struct Shared {
     // set rename_fault N, rename_fault_kind K: the Nth yaffs rename on A from now fails with EIO
     // (K 1, nothing renamed), is followed by a power cut (K 2) or leaves A silent from then on (K 3: a_silent).
     std::atomic<int32_t> rename_fault, rename_fault_kind;
+    // set fail_list 1: closing A's listing of xy-forever/firmware fails (EIO) while set: every library scan fails (#178)
+    std::atomic<int32_t> fail_list;
     std::atomic<uint32_t> package_gc; // B: idle collector state, for deterministic foreground/preemption tests
     // Test hooks (control "knob ID DELTA [COUNT]", "knob_raw HEX [COUNT]", "knob_jump N"): PSoC frames for
     // B's stock receive queue, as the stock UART handler stores them. B's menu loop takes them where the stock

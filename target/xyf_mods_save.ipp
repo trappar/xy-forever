@@ -191,14 +191,17 @@ uint32_t check() {
 }
 // #178: no stock entry, or no record and no default (the first start after Track 5): the stock entry adopted from the
 // stock updater's own os.ldr (usb_service adopt_start: hashed, copied, read back, renamed in), or only the stock
-// entry there made the default; then the check again. Once per sequence.
+// entry there made the default; then the check again. Once per sequence (sv.adopted: 2 copied, 1 only the default).
+// No catalog (A's library unread): nothing adopted; the adoption itself refuses a library A could not list (e_list).
 static const char adopt_id[] = "opxy-121", reinstall[] = " Reinstall official OS 1.2.1, then start again.";
+static const char unread_library[] = "Failed: the library could not be read.";
 uint32_t adopt(const char* base) {
     if (sv.adopted) return fail(prefix(), "no stock OP-XY firmware in the library.");
+    if (!xyf_boot::catalog()) return fail(unread_library);
     if (usb_service::adopt_start(base ? base : adopt_id, !base) != s_ok) return fail(prefix(), "OS 1.2.1 could not be added.");
     usb_service::JobView v;
     usb_service::job_view(v);
-    sv.job = v.id; sv.adopted = 1; sv.stage = sv_adopting;
+    sv.job = v.id; sv.adopted = base ? 1 : 2; sv.stage = sv_adopting;
     run.title = "Adding OS 1.2.1"; run.job_done = run.job_total = 0;
     return 1;
 }
@@ -218,6 +221,7 @@ uint32_t adopting() {
     if (v.error == 4) return fail("No official OS 1.2.1 found.", reinstall);
     if (v.error == 10) return fail("OS file is not official 1.2.1.", reinstall);
     if (v.error == 17 && v.status == xyf::usbp::s_state) return fail("Failed: library entry ", adopt_id, " is incomplete: remove it.");
+    if (v.error == 8) return fail(unread_library);                  // firmware/ID there, but not in A's catalog
     char d[12];
     m::decimal(d, v.error);
     return fail("Failed: OS 1.2.1 could not be added to the library (", d, ").");

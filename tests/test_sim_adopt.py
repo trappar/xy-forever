@@ -206,5 +206,39 @@ class Adopt(unittest.TestCase):
                 self.adopted()
                 self.assertEqual(self.lines('menu: save failed: '), [])
 
+    def test_play_start_with_a_record_and_no_default_writes_nothing(self):
+        """check()'s own condition: a record and the stock entry, no default: a PLAY start converges to nothing."""
+        self.start(play=False)
+        self.wait(self.in_os, 'both in the OS')
+        (self.root / 'xy-forever/config.txt').write_text('format=1\nbase=opxy-121\nmods=\n')
+        (self.root / 'xy-forever/state-a.txt').unlink()                     # no default
+        before, ons, lines = self.snapshot(), self.sim.status()['power_ons'], len(self.lines('menu: line: '))
+        self.sim.control('power play')
+        self.wait(lambda: self.sim.status()['power_ons'] > ons, 'the PLAY start')
+        self.connect()
+        self.wait(lambda: self.dev.read_file('/yaffs2/xy-forever/config.txt')[0] == 0, 'the menu serves storage')
+        time.sleep(3)                                                        # the record read, the menu settled
+        self.assertEqual(self.job()[0], ids.S_NOT_FOUND)                    # no job this boot
+        self.assertEqual(self.lines('menu: line: ')[lines:], [])
+        self.assertEqual(self.lines('menu: save failed: '), [])
+        self.assertEqual(self.snapshot(), before)
+
+    def test_an_unreadable_library_is_never_adopted(self):
+        """A's library scan fails (the catalog comes empty): the entry already there is never called incomplete."""
+        self.start(play=False)
+        self.wait(self.in_os, 'both in the OS')
+        before, ons = self.snapshot(), self.sim.status()['power_ons']
+        self.sim.set('fail_list', 1)
+        self.sim.control('power plain')
+        self.wait(lambda: self.sim.status()['power_ons'] > ons and self.lines('menu: save failed: '), 'the refusal')
+        self.assertEqual(self.lines('menu: save failed: '), ['Failed: the library could not be read.'])
+        self.connect()
+        code, f = self.job()
+        self.assertEqual((code, MS.PHASES[f['phase']], f['error'], f['code'], f['detail']),
+                         (0, 'failed', 8, ids.S_STORAGE, 'adopt opxy-121'), f)
+        self.sim.set('fail_list', 0)
+        self.assertEqual(self.snapshot(), before)                            # nothing written, the entry kept
+        self.assertFalse(self.in_os())
+
 if __name__ == '__main__':
     unittest.main()

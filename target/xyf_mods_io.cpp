@@ -310,13 +310,14 @@ uint32_t pump(bool shown) {
     shown = shown || sv.stage == sv_reading || sv.stage == sv_listing ||   // the sequence reads the list, page hidden,
             remote.stage == 1;                                          // as does config.set (#26)
     uint32_t redraw = converge_follow();
-    // #178: once A serves the library: no stock entry or no default (PLAY at the first start after Track 5, or after a
-    // cut adoption) converges as a plain power-on would, adopting the stock entry, and the menu stays
+    // #178: once A serves the library and the record is read: check()'s own condition (no stock entry, or no record and
+    // no default: PLAY at the first start after Track 5, or after a cut adoption) converges as a plain power-on would,
+    // adopting the stock entry, and the menu stays. Anything else: a PLAY start writes nothing.
     if (!sv.looked && sv.stage == sv_idle && !reading() && xyf_boot::catalog() && !usb_service::page_busy() &&
-        usb_service::page_serving() == s_ok) {
+        usb_service::page_serving() == s_ok && (rec.state == xg::none || rec.state == xg::present)) {
         sv.looked = 1;
         const xyf::catalog::Catalog* c = xyf_boot::catalog();
-        if (!config_base() || c->default_index >= c->count) { converge_begin(why_adopt); redraw = 1; }
+        if (!config_base() || (rec.state == xg::none && c->default_index >= c->count)) { converge_begin(why_adopt); redraw = 1; }
     }
     // The saved configuration, once the menu runs (one bounded read; again after a failed sequence).
     uint32_t bytes = 0;
@@ -448,7 +449,10 @@ uint32_t converge_state() {
            sv.stage == sv_failed ? uint32_t(converge_failed) : uint32_t(converge_running);
 }
 
-const char* converge_reason() { return sv.stage == sv_boot ? "OS 1.2.1 is in the library and is the default." : sv.reason; }
+const char* converge_reason() {                  // at sv_boot only why_adopt's line (converge_note): what it did
+    if (sv.stage != sv_boot) return sv.reason;
+    return sv.adopted == 2 ? "OS 1.2.1 is in the library and is the default." : sv.adopted == 1 ? "OS 1.2.1 is the default." : "";
+}
 
 void converge_done() { if (sv.stage == sv_boot || sv.stage == sv_failed) sv.stage = sv_idle; }
 

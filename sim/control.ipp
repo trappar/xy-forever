@@ -86,7 +86,7 @@ std::string command(const std::string& line, bool& quit, int client) {
             {"a_boot_ms", &shared->a_boot_ms}, {"b_boot_ms", &shared->b_boot_ms}, {"a_redeliver", &shared->a_redeliver},
             {"a_stall_now", &shared->a_stall_now}, {"b_queue", &shared->b_queue}, {"cut_body", &shared->cut_body},
             {"boot_a_window_ms", &shared->boot_a_window_ms}, {"b_close_stuck", &shared->b_close_stuck},
-            {"defer_save_boot", &shared->defer_save_boot}, {"a_stage_corrupt", &shared->a_stage_corrupt}, {"unmount_ms", &shared->unmount_ms}, {"mount_ms", &shared->mount_ms}, {"rw_mount_ms", &shared->rw_mount_ms}, {"needs_repair", &shared->needs_repair}, {"rename_fault", &shared->rename_fault},
+            {"defer_save_boot", &shared->defer_save_boot}, {"a_stage_corrupt", &shared->a_stage_corrupt}, {"unmount_ms", &shared->unmount_ms}, {"mount_ms", &shared->mount_ms}, {"rw_mount_ms", &shared->rw_mount_ms}, {"needs_repair", &shared->needs_repair}, {"rename_fault", &shared->rename_fault}, {"fail_list", &shared->fail_list},
             {"rename_fault_kind", &shared->rename_fault_kind}, {"knob_per_pass", &shared->knob_per_pass},
             {"knob_wrap", &shared->knob_wrap}, {"knob_identity_fail", &shared->knob_identity_fail},
             {"ask", &shared->ask}};

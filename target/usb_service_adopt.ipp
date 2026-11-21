@@ -11,7 +11,9 @@
 // only the default. The same single-job rule as every job (job_blocks answers busy); job.status reports it: phase 1
 // hashing, 5 copying, 6 reading back (done/total: bytes), 7 the entry's texts, rename and default; 8 done with detail
 // the id, 9 failed (error 4 the file is missing, 10 not the stock image, 17 firmware/ID is there already, else
-// 16 write, 18 read back, 21 link); detail "adopt ID" while it runs and when it failed.
+// 16 write, 18 read back, 21 link; 8 the library unread: no catalog, or firmware/ID there but not in A's catalog, as
+// after A's scan failed, code storage; 17 with code state only for an entry A listed); detail "adopt ID" while it runs
+// and when it failed.
 namespace xa {
 const char source[] = "/yaffs2/upgrade/firmware/blackfin/bin/os.ldr";
 const char root[] = "/yaffs2/xy-forever", tmp[] = "/yaffs2/xy-forever/tmp", firmware[] = "/yaffs2/xy-forever/firmware";
@@ -95,11 +97,17 @@ bool adopt_stock(AdoptSlot& a) {                                         // a.sh
 void adopt_step(AdoptSlot& a) {
     switch (a.step) {
     case ad_find: {                                                     // firmware/ID there already: not replaced
+        const xyf::catalog::Catalog* c = xyf_boot::catalog();
+        if (!c) return adopt_fail(a, xc::e_list, P::s_storage);        // A's library unread: nothing adopted
         join(a.path, xa::firmware, "/", a.target);
         uint8_t record[file_client::record_bytes];
         const file_client::Reply r = file_client::stat(a.path, record);
         if (r.outcome) { a.io.fail(r); return adopt_fail(a, xc::e_link, P::s_link); }
-        if (r.value == 0) return adopt_fail(a, xc::e_rename, P::s_state);
+        if (r.value == 0) {                     // in A's catalog: an entry unusable (incomplete); else A's scan failed
+            bool listed = false;
+            for (U32 i = 0; !listed && i != c->count; ++i) listed = same_text(c->items[i].id, a.target);
+            return listed ? adopt_fail(a, xc::e_rename, P::s_state) : adopt_fail(a, xc::e_list, P::s_storage);
+        }
         a.step = ad_open;
         return;
     }
@@ -217,7 +225,7 @@ void adopt_view(JobView& v) {
     const AdoptSlot& a = aslot();
     v.state = job_state; v.id = a.id; v.phase = adopt_phase(a);
     v.done = a.step == ad_hash || a.step == ad_copy || a.step == ad_back ? a.bytes : 0u;
-    v.total = v.done ? usb_service::stock_os_bytes : 0u;
+    v.total = v.phase == 1 || v.phase == 5 || v.phase == 6 ? usb_service::stock_os_bytes : 0u;   // bytes, known ahead
     v.error = a.step == ad_ended ? a.error : 0u; v.status = a.code; v.debris = a.step == ad_ended ? a.debris : 0u; v.commit = 0;
 }
 // JOB_STATUS of the adoption: as the mod job's fields (see above).
