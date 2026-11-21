@@ -40,7 +40,9 @@ export async function connectWebSerial(options: SerialConnectOptions = {}): Prom
   const picker = new PortPicker(serial, filters, probeMs);
   if ((await grantedPorts(serial)).some((port) => matches(port, filters))) {
     try {
-      return await Client.connect(picker.opener, options);
+      const client = await Client.connect(picker.opener, options);
+      picker.probing = false;                  // found: reconnect tries every granted port again, as after the chooser
+      return client;
     } catch (error) {
       if (error !== picker.none) throw error;
     }
