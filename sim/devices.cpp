@@ -414,6 +414,10 @@ extern "C" void xy_forever_key_ui() {
                     mods_io::converge_done(); xyf_sim::log("menu: saved"); sim_leave = true;
                 }
             }
+            else if (saved == mods_io::converge_note) {                 // #178: as key_ui.cpp (the stock entry added)
+                xyf_sim::log("menu: line: %s", mods_io::converge_reason());
+                mods_io::converge_done();
+            }
             else if (saved == mods_io::converge_failed) {
                 xyf_sim::log("menu: save failed: %s", mods_io::converge_reason());
                 mods_io::converge_done();

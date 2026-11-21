@@ -285,6 +285,9 @@ def info_text(data, name, version):
     return canonical(name, version, 'official', data).encode('ascii')
 
 
+from .sim_fresh import STOCK_UPGRADE, seed_fresh   # noqa: E402,F401 (#178)
+
+
 def seed(root, image=None):
     """A typical library: opxy-121 (the default) and opxy-121-stock, both the stock 1.2.1
     os.ldr (a plain official image), and state-a.txt naming the default; content/ with a stand-in
@@ -553,6 +556,8 @@ def main(argv=None):
                         help='device time moves only under the simulator\'s control, as in the tests (default: real time)')
     parser.add_argument('--ask', action='store_true',
                         help='#65: Ask before USB control as settings.txt says (default: it reads Off)')
+    parser.add_argument('--fresh', choices=('stock', 'missing', 'wrong'),
+                        help='seed a missing yaffs2/ just after Track 5 (sim_fresh.py, #178)')
     parser.add_argument('--no-otp', action='store_true',
                         help="processor B's OTP answers nothing (default: the private keys, when present)")
     args = parser.parse_args(argv)
@@ -563,7 +568,7 @@ def main(argv=None):
     state = paths.private_output(args.state)
     root = state / 'yaffs2'
     if not root.exists():
-        seed(root)
+        seed_fresh(root, args.fresh) if args.fresh else seed(root)
     hello = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e' if args.pre_v1 else None
     print('building the simulator...', file=sys.stderr, flush=True)
     out = build(state / 'builds', version=args.version, hello=hello,

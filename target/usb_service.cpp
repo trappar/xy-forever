@@ -109,6 +109,7 @@ bool rehearsal_active();
 #include "usb_service_mod_job.ipp"          // the mod assembly job on B
 #include "usb_service_save_log.ipp"         // the save-time log
 #include "usb_service_content.ipp"          // the content switch and config jobs
+#include "usb_service_adopt.ipp"            // #178: the stock entry's adoption
 #include "usb_service_recovery.ipp"         // durable content intent, menu/service startup only
 #include "usb_service_mtp_session.ipp"      // the MTP session (with XYF_SIM it leaves this namespace for one declaration)
 #include "usb_service_mods_apply.ipp"       // MODS_APPLY

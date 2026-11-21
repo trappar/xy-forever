@@ -4,13 +4,13 @@ namespace xg = xyf::config;
 namespace xc = xyf::converge;
 enum SaveStage : uint32_t {
     sv_idle = 0, sv_reading, sv_check, sv_listing, sv_build, sv_stamp, sv_switch, sv_switching, sv_record, sv_recording,
-    sv_mark, sv_marking, sv_boot, sv_failed
+    sv_mark, sv_marking, sv_boot, sv_failed, sv_adopting
 };
 // The sequence: why (converge_begin's: which inputs it set, for its texts only), the inputs (count, expanded, safe,
 // unverified, base, built), the plan (ops, target), the slot and stamp the record names (a build's new ones), the
 // record made for the record step (length bytes in io.buffer).
 struct Save {
-    uint32_t stage, job, serial, why, ops, unverified, count, expanded, safe, length;
+    uint32_t stage, job, serial, why, ops, unverified, count, expanded, safe, length, adopted, looked;
     char target[32], base[32], built[100], slot[8], stamp[65], reason[80];
 };
 xg::Record rec XYF_DATA = {};
@@ -156,6 +156,7 @@ uint32_t start_build(uint8_t which) {
     run.job_phase = run.job_done = run.job_total = run.job_commit = 0;
     return 1;
 }
+uint32_t adopt(const char* base);
 // The inputs (the saved record, with safe= as asked), the actual state, the plan.
 uint32_t check() {
     usb_service::save_log_lap(xyf::save_log::p_check);
@@ -166,7 +167,8 @@ uint32_t check() {
     if (sv.why == why_safe && !(have && rec.count && rec.slot[0])) return fail("No Open-XY setup with mods is saved.");
     if (sv.why == why_restore && !(have && rec.count)) return fail("No Open-XY setup to restore.");
     const char* base = config_base();
-    if (!base) return fail(prefix(), "no stock OP-XY firmware in the library.");
+    const xyf::catalog::Catalog* c = xyf_boot::catalog();
+    if (!base || (!have && !(c && c->default_index < c->count))) return adopt(base);   // #178: nothing to boot yet
     saved_inputs(base);
     copy(sv.base, base, sizeof(sv.base));
     // The actual state: the slot's stamp read now (the record's slot), the default, the installed content.
@@ -175,7 +177,6 @@ uint32_t check() {
         entry_stamp(rec.slot, sv.stamp);
         if (io.why == xyf::usbp::s_link) return fail(prefix(), "no answer from storage.");
     }
-    const xyf::catalog::Catalog* c = xyf_boot::catalog();
     const xc::Inputs in = {sv.base, sv.built, sv.count, sv.expanded, sv.safe};
     const xc::Actual a = {&rec, sv.stamp, c && c->default_index < c->count ? c->items[c->default_index].id : "",
                           installed(index_of(sv.base)), installed(have ? index_of(rec.slot) : ~0u)};
@@ -187,6 +188,39 @@ uint32_t check() {
     if (!(sv.ops & xc::op_build)) { sv.stage = sv_switch; return 1; }
     sv.stage = sv_listing;                      // the saved selection's build needs the package list
     return 1;
+}
+// #178: no stock entry, or no record and no default (the first start after Track 5): the stock entry adopted from the
+// stock updater's own os.ldr (usb_service adopt_start: hashed, copied, read back, renamed in), or only the stock
+// entry there made the default; then the check again. Once per sequence.
+static const char adopt_id[] = "opxy-121", reinstall[] = " Reinstall official OS 1.2.1, then start again.";
+uint32_t adopt(const char* base) {
+    if (sv.adopted) return fail(prefix(), "no stock OP-XY firmware in the library.");
+    if (usb_service::adopt_start(base ? base : adopt_id, !base) != s_ok) return fail(prefix(), "OS 1.2.1 could not be added.");
+    usb_service::JobView v;
+    usb_service::job_view(v);
+    sv.job = v.id; sv.adopted = 1; sv.stage = sv_adopting;
+    run.title = "Adding OS 1.2.1"; run.job_done = run.job_total = 0;
+    return 1;
+}
+uint32_t adopting() {
+    usb_service::JobView v;
+    usb_service::job_view(v);
+    if (v.state == 1 && v.id == sv.job) {
+        const bool phase = v.phase != run.job_phase;
+        run.job_phase = v.phase; run.job_done = v.done; run.job_total = v.total;
+        return moved(phase);
+    }
+    if (v.id == sv.job && v.state == 2 && v.phase == 8) {           // the catalog fetched again: the check
+        if (usb_service::page_busy() || !xyf_boot::catalog()) return moved(false);
+        sv.stage = sv_check;
+        return 1;
+    }
+    if (v.error == 4) return fail("No official OS 1.2.1 found.", reinstall);
+    if (v.error == 10) return fail("OS file is not official 1.2.1.", reinstall);
+    if (v.error == 17 && v.status == xyf::usbp::s_state) return fail("Failed: library entry ", adopt_id, " is incomplete: remove it.");
+    char d[12];
+    m::decimal(d, v.error);
+    return fail("Failed: OS 1.2.1 could not be added to the library (", d, ").");
 }
 uint32_t building() {                           // the mod job into the spare slot (STOP: job.cancel's stop)
     m::Page& p = the_page;
@@ -375,6 +409,8 @@ uint32_t converge_follow() {
         return start_build(m::flag_saved);
     case sv_build:
         return building();
+    case sv_adopting:
+        return adopting();
     case sv_stamp:
         if (usb_service::page_busy()) return moved(false);   // the commit's window closes
         usb_service::save_log_lap(xyf::save_log::p_stamp);

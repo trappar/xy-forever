@@ -52,8 +52,11 @@ uint32_t longest_ms();
 // fingerprint (xyf_converge.hpp mark_path) when the stored one differs.
 // progress_key: a key there (STOP cancels a build). converge_state: converge_running, then converge_boot (boot the
 // default: the desired state) or converge_failed (converge_reason; the default unchanged); converge_done: taken.
-enum Why : uint32_t { why_apply = 0, why_safe, why_restore, why_power_on };
-enum ConvergeState : uint32_t { converge_idle = 0, converge_running, converge_boot, converge_failed };
+// why_adopt (#178): the menu found no stock entry and no default (PLAY at the first start after Track 5): the stock
+// entry adopted (xyf_mods_save.ipp adopt), made the default, the fingerprint stored; it ends in converge_note (no boot:
+// the menu stays, converge_reason its line). Every other why adopts too when the check finds nothing to boot.
+enum Why : uint32_t { why_apply = 0, why_safe, why_restore, why_power_on, why_adopt };
+enum ConvergeState : uint32_t { converge_idle = 0, converge_running, converge_boot, converge_failed, converge_note };
 bool menu_state(xyf::menu::State& app);
 void converge_begin(uint32_t why);
 bool converging();

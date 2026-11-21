@@ -39,6 +39,25 @@ Both native and host collectors suspend blob deletion while any authoritative jo
 including a malformed or newer one. Ordinary package publication/removal retains its existing
 rename transaction and disposable-scratch behavior.
 
+## The stock entry's adoption (#178)
+
+The first start after Track 5 wrote XY Forever onto a stock OP-XY finds no stock library entry and no default.
+The converge sequence's check (`xyf_mods_save.ipp` `adopt`; at a plain power-on A doubts the missing default,
+and PLAY at power-on starts it once the menu reads the library) then runs the adoption, a job of B's menu loop
+(`usb_service_adopt.ipp`, job kind 3: `job.status`, `busy` for file commands, no cancel). It reads the stock
+updater's own `/yaffs2/upgrade/firmware/blackfin/bin/os.ldr` (never changed) and hashes it first: only the exact
+stock 1.2.1 image (the size and SHA-256 `boot.uninstall` admits) goes on; a missing or other file ends it with
+nothing written, and the menu says why ("No official OS 1.2.1 found." or "OS file is not official 1.2.1.", then
+"Reinstall official OS 1.2.1, then start again."). In A's write window it sweeps `tmp/adopt-opxy-121/`, copies
+`os.ldr` there and reads it back (SHA-256), writes `info.txt` and `files.sha256` (as `xyf_host.py library-add`
+and a package publish) and reads them back, then renames the folder to `firmware/opxy-121`: a cut leaves only
+`tmp/`, and the next start adopts again. After A's rescan it makes the entry the default; the sequence checks
+again and converges (a plain power-on boots it; after PLAY the menu stays: "OS 1.2.1 is in the library and is
+the default."). A stock entry there with no record and no default is only made the default. `job.status`:
+phase 1 hashing, 5 copying, 6 reading back (`done`/`total` in bytes), 7 the texts, rename and default; `detail`
+`adopt opxy-121` while it runs or when it failed, `opxy-121` when done; `error` 4 the file is missing, 10 not the
+stock image, 17 with status `state` an `opxy-121` folder is there already, else 16, 18, 21 as other jobs.
+
 ## Inspection
 
 Protocol 1.21 adds `package.list` (one item/page, inbox/library/mod store), `state.get` (paged exact

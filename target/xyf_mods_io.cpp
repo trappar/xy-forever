@@ -310,6 +310,14 @@ uint32_t pump(bool shown) {
     shown = shown || sv.stage == sv_reading || sv.stage == sv_listing ||   // the sequence reads the list, page hidden,
             remote.stage == 1;                                          // as does config.set (#26)
     uint32_t redraw = converge_follow();
+    // #178: once A serves the library: no stock entry or no default (PLAY at the first start after Track 5, or after a
+    // cut adoption) converges as a plain power-on would, adopting the stock entry, and the menu stays
+    if (!sv.looked && sv.stage == sv_idle && !reading() && xyf_boot::catalog() && !usb_service::page_busy() &&
+        usb_service::page_serving() == s_ok) {
+        sv.looked = 1;
+        const xyf::catalog::Catalog* c = xyf_boot::catalog();
+        if (!config_base() || c->default_index >= c->count) { converge_begin(why_adopt); redraw = 1; }
+    }
     // The saved configuration, once the menu runs (one bounded read; again after a failed sequence).
     uint32_t bytes = 0;
     if ((rec.state == xg::unread || pick.stage == 2) && sv.stage == sv_idle && !reading() && !usb_service::page_busy() &&
@@ -413,7 +421,7 @@ bool menu_state(xyf::menu::State& a) {
 
 void converge_begin(uint32_t why) {               // never the page: the list, its toggles and views stay as they are
     if (sv.stage != sv_idle) return;
-    sv.why = why; sv.ops = sv.length = 0;
+    sv.why = why; sv.ops = sv.length = sv.adopted = 0; sv.looked = 1;
     ++sv.serial;
     sv.reason[0] = 0;
     sv.stage = sv_check;                         // a flip not written yet is written first (converge_follow)
@@ -421,7 +429,7 @@ void converge_begin(uint32_t why) {               // never the page: the list, i
     r.job = 0x10000u + sv.serial; r.job_phase = r.job_done = r.job_total = r.job_commit = 0;
     r.bar = r.bar_step = r.bar_since = 0; r.save = m::save_on; r.save_stage = 0; r.cancel = 0;
     r.title = why == why_safe ? "Booting without mods" : why == why_restore ? "Restoring Open-XY" :
-              why == why_power_on ? "Checking the saved setup" : "Applying changes";
+              why == why_power_on ? "Checking the saved setup" : why == why_adopt ? "Adding OS 1.2.1" : "Applying changes";
     r.job_name[0] = 0; r.note[0] = 0;
     io.job_units = units();
     usb_service::save_log_begin();              // the save-time log starts at the key
@@ -435,11 +443,12 @@ const m::Progress& progress() { return run; }
 m::Effect progress_key(uint32_t k, bool pressed) { return m::progress_key(run, k, pressed); }
 
 uint32_t converge_state() {
+    if (sv.stage == sv_boot && sv.why == why_adopt) return converge_note;   // #178: added; the menu stays
     return sv.stage == sv_idle ? uint32_t(converge_idle) : sv.stage == sv_boot ? uint32_t(converge_boot) :
            sv.stage == sv_failed ? uint32_t(converge_failed) : uint32_t(converge_running);
 }
 
-const char* converge_reason() { return sv.reason; }
+const char* converge_reason() { return sv.stage == sv_boot ? "OS 1.2.1 is in the library and is the default." : sv.reason; }
 
 void converge_done() { if (sv.stage == sv_boot || sv.stage == sv_failed) sv.stage = sv_idle; }
 

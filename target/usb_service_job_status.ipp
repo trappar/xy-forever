@@ -6,6 +6,7 @@ void job_status(uint8_t seq, const uint8_t* payload, U32 length) {
     const U32 want = length == 4 ? P::get32(payload) : 0;
 #if defined(XYF_CONTENT_SWITCH)
     if (length == 4 && job_kind == 2) return config_status(seq, want);
+    if (length == 4 && job_kind == 3) return adopt_status(seq, want);
     if (length == 4 && job_kind) return content_status(seq, want);
 #endif
     uint8_t* p = files;
@@ -40,7 +41,7 @@ void job_cancel(uint8_t seq, const uint8_t* payload, U32 length) {
     const U32 want = length == 4 ? P::get32(payload) : 0;
 #if defined(XYF_CONTENT_SWITCH)
     if (length == 4 && job_kind) {                                       // a switch is repaired, not cancelled
-        const U32 code = want && want != cslot().id ? P::s_not_found : P::s_state;
+        const U32 code = want && want != (job_kind == 3 ? aslot().id : cslot().id) ? P::s_not_found : P::s_state;
         uint8_t p[8]; P::put32(p, code); P::put32(p + 4, 0);
         result.last_status = code;
         send(P::t_job_cancel, seq, p, 8);
