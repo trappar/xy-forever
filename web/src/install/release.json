@@ -3,5 +3,6 @@
   "version": "0.1.0",
   "image": "bd484a11",
   "sha256": "bd484a11c43ca6c00d8dd60a3f86f2fef57cde65d53badffe1dbadf1780ee16b",
-  "bytes": 339180
+  "bytes": 339180,
+  "notes": "Build and manage mods on the OP-XY, and manage files over USB."
 }

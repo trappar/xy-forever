@@ -82,7 +82,12 @@ class ReleaseImageTest(unittest.TestCase):
             pin_path, staged = Path(tmp) / 'release.json', Path(tmp) / 'public/release/os.ldr'
             pin_path.write_text('{"schema": 1, "version": "", "image": "", "sha256": "", "bytes": 0}')
             stocks = {'os.ldr': noise(100_000, 3)}
-            pin = web_release.stage(build, stocks, pin_path, staged)
+            with self.assertRaisesRegex(ValueError, 'give --notes'):
+                web_release.stage(build, stocks, pin_path, staged)
+            self.assertFalse(staged.exists())
+            pin = web_release.stage(build, stocks, pin_path, staged, notes='  Faster updates.  ')
+            self.assertEqual(pin['notes'], 'Faster updates.')
+            self.assertEqual(web_release.stage(build, stocks, pin_path, staged), pin)
             self.assertEqual(json.loads(pin_path.read_text()), pin)
             self.assertEqual(staged.read_bytes(), (build / 'candidate.ldr').read_bytes())
             self.assertIsNone(web_release.check(pin_path, staged))

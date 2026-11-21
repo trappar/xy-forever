@@ -14,6 +14,8 @@ import { installPage } from './install/page.ts';
 import type { Lease } from './install/page.ts';
 import { navigate, startRouter } from './router.ts';
 import type { How } from './router.ts';
+import { pinned } from './install/release.ts';
+import { updateAvailable, updateXyf } from './update.ts';
 
 const sim = new URLSearchParams(location.search).get('sim');
 let client: Client | null = null;
@@ -66,8 +68,8 @@ async function run(action: Action, work: () => Promise<void>, label = ''): Promi
     notice('');
   } catch (error) {
     bugReport.record(action, 'failed', error);
-    notice(describe(error), 'error');
     if (client && !client.connected) { client = null; setLink(); route(); }
+    notice(describe(error), 'error');
   } finally {
     busy = false;
   }
@@ -181,6 +183,30 @@ async function savedConfig(): Promise<SavedConfig | null | undefined> {
   } catch { return undefined; }
 }
 
+function updateCard(c: Client): HTMLElement | null {
+  const release = pinned();
+  if (!release || !updateAvailable(c.info, release)) return null;
+  const progress = h('p', { role: 'status' });
+  const button = btn(`Update to ${release.version}`, () => void run('update_xy_forever', async () => {
+    button.disabled = true;
+    try {
+      const info = await updateXyf(c, release, (message) => { progress.textContent = message; });
+      bugReport.updateStatus(info);
+      page('device').querySelector('[data-fact=version]')!.textContent = release.version;
+      page('device').querySelector('[data-fact=image]')!.textContent = release.image;
+      button.remove();
+      progress.textContent = `XY Forever ${release.version} is running in the menu.`;
+    } catch (error) {
+      progress.textContent = '';
+      throw error;
+    } finally {
+      button.disabled = false;
+    }
+  }), 'primary');
+  return h('div', { class: 'card' }, h('h2', {}, `XY Forever ${release.version} is available`),
+    release.notes && h('p', {}, release.notes), button, progress);
+}
+
 async function loadDevice(): Promise<void> {
   const c = client!;
   const info = await c.status();
@@ -206,6 +232,8 @@ async function loadDevice(): Promise<void> {
       h('dt', {}, 'Protocol'), h('dd', { class: 'muted' }, `${info.proto}${info.dev ? ', developer build' : ''}`))),
     h('div', { class: 'row' }, btn('Refresh', () => void run('refresh_status', loadDevice))),
   );
+  const update = updateCard(c);
+  if (update) page('device').append(update);
 }
 
 // ---- Mods --------------------------------------------------------------------------------------------

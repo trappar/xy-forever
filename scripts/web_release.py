@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pin and stage XY Forever's os.ldr for the web app's install page (#178).
 
-    python3 scripts/web_release.py [BUILD]   (default: the newest verified product build of this source)
+    python3 scripts/web_release.py [BUILD] --notes "What changed in this release"
     python3 scripts/web_release.py --check   (the staged image matches the pin; exit 1 when not)
 
 The page installs only the image whose SHA-256 web/src/install/release.json pins, fetched from its own origin at
@@ -44,8 +44,8 @@ def check(pin_path=PIN, staged=STAGED):
     return None
 
 
-def stage(build, stocks, pin_path=PIN, staged=STAGED):
-    """Pins and stages build's candidate; ValueError when it is not a verified product build or shares stock bytes."""
+def stage(build, stocks, pin_path=PIN, staged=STAGED, *, notes=None):
+    """Pins and stages a verified product build with the notes the update page shows."""
     named = paths.build_image(build)
     if not named:
         raise ValueError('%s is not a verified product build folder (builds/<image>/)' % build)
@@ -56,6 +56,13 @@ def stage(build, stocks, pin_path=PIN, staged=STAGED):
     pin = pin_of(data)
     if pin['version'] != named[1].get('version'):
         raise ValueError('the build is release %s, this checkout %s' % (named[1].get('version'), pin['version']))
+    if notes is None and pin_path.is_file():
+        previous = json.loads(pin_path.read_text())
+        if previous.get('version') == pin['version']:
+            notes = previous.get('notes')
+    if not isinstance(notes, str) or not notes.strip():
+        raise ValueError('give --notes describing what changed in this release')
+    pin['notes'] = notes.strip()
     pin_path.write_text(json.dumps(pin, indent=2) + '\n')
     staged.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(Path(build) / 'candidate.ldr', staged)
@@ -64,7 +71,8 @@ def stage(build, stocks, pin_path=PIN, staged=STAGED):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('build', nargs='?', type=Path)
+    parser.add_argument('build', nargs='?', type=Path, help='defaults to the newest verified product build of this source')
+    parser.add_argument('--notes', help='release changes shown on the Device page')
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
     if args.check:
@@ -77,7 +85,7 @@ def main():
         return 1
     stocks = {name: (paths.STOCK_121 / name).read_bytes() for name in ('os.ldr', 'bootloader.ldr')}
     try:
-        pin = stage(build, stocks)
+        pin = stage(build, stocks, notes=args.notes)
     except ValueError as error:
         print('refused: %s' % error)
         return 1
