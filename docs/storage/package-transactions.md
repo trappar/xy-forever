@@ -26,7 +26,8 @@ keep an abandoned owner alive. Owner renewals and file activity renew the ten-se
 an in-flight upload or package-list read keeps it held. Release closes the write window asynchronously. A newer session
 ABI is refused. `file.copy` is not among the permitted commands (the device answers `busy`), so a package
 file copied on the device (the web install's stock `os.ldr`) is copied to `tmp/copy-v1-*` before the session
-and renamed into the scratch folder inside it; the next acquire removes a leftover copy. This is cooperative exclusion for one CDC client, not a security boundary on manual
+and renamed into the scratch folder inside it; the next acquire removes a leftover copy.
+This is cooperative exclusion for one CDC client, not a security boundary on manual
 file operations. The marker, updater inbox, boot-partition latch and depth rules still apply on A.
 
 When no job runs, the existing bounded startup sweep removes disposable `tmp/job-*`, `tmp/pkg-*`
