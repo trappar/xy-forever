@@ -264,8 +264,9 @@ U32 verify(U32 size, U32 crc) {
         if (read_sector0(0, back) == 0) { lines(readback_buffer, 512, true); if (header_matches(back, size, crc)) active = p; }
     }
     result.verify_partition = active;
-    U32 code = active ? P::s_ok : P::s_install;
+    U32 code = P::s_install;
     if (active && select_partition(active) == 0) {
+        code = P::s_ok;
         const U32 sectors = (size >> 9) + 1;       // as the stock reader 88a07240
         for (U32 s = 0; s < sectors && code == P::s_ok; s += readback_sectors) {
             const U32 count = sectors - s < readback_sectors ? sectors - s : readback_sectors;
