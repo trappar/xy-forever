@@ -1,56 +1,37 @@
-"""A small, slow ECDSA P-224 reference written only for the tests.
+"""The ECDSA P-224 reference for the tests, on the `cryptography` package (OpenSSL).
 
-Affine textbook arithmetic over Python integers (SEC 1 v2 section 4.1, FIPS 186-4): it signs
-synthetic headers with synthetic keys, re-derives the RFC 6979 vectors and builds edge cases.
-It is never used to decide anything about a real package: the device's own verifier
-(native/p224.cpp) does that, and this file is the independent check of it.
+It signs synthetic headers with synthetic keys, re-derives the RFC 6979 vectors and builds edge cases.
+It is never used to decide anything about a real package: the device's own verifier (native/p224.cpp)
+does that, and this file is the independent check of it. Signing takes an explicit nonce k (the RFC
+vectors name theirs), so r and s are computed here from k*G as FIPS 186-4 6.4 states them.
 """
 import hashlib
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec, utils
+
+CURVE = ec.SECP224R1()
 # FIPS 186-4 D.1.2.2 (curve P-224); the same values sit in the 1.2.1 bootloader at 0x11b00ea4.
 P = 2 ** 224 - 2 ** 96 + 1
-A = P - 3
 B = 0xb4050a850c04b3abf54132565044b0b7d7bfd8ba270b39432355ffb4
 N = 0xffffffffffffffffffffffffffff16a2e0b8f03e13dd29455c5c2a3d
-G = (0xb70e0cbd6bb4bf7f321390b94a03c1d356c21122343280d6115c1d21,
-     0xbd376388b5f723fb4c22dfe6cd4375a05a07476444d5819985007e34)
 SIZE = 28
+# Prehashed digests by length: the verifier takes a digest of any of these sizes.
+DIGESTS = {h.digest_size: h for h in (hashes.SHA1(), hashes.SHA224(), hashes.SHA256(), hashes.SHA384(),
+                                      hashes.SHA512())}
 
 
 def on_curve(point):
-    if point is None:
+    try:
+        ec.EllipticCurvePublicNumbers(*point, CURVE).public_key()
+    except ValueError:
         return False
-    x, y = point
-    return 0 <= x < P and 0 <= y < P and (y * y - (x * x * x + A * x + B)) % P == 0
-
-
-def add(p1, p2):
-    if p1 is None:
-        return p2
-    if p2 is None:
-        return p1
-    (x1, y1), (x2, y2) = p1, p2
-    if x1 == x2 and (y1 + y2) % P == 0:
-        return None
-    if p1 == p2:
-        slope = (3 * x1 * x1 + A) * pow(2 * y1, -1, P) % P
-    else:
-        slope = (y2 - y1) * pow(x2 - x1, -1, P) % P
-    x3 = (slope * slope - x1 - x2) % P
-    return x3, (slope * (x1 - x3) - y1) % P
-
-
-def multiply(k, point):
-    result = None
-    for bit in bin(k)[2:] if k > 0 else '':
-        result = add(result, result)
-        if bit == '1':
-            result = add(result, point)
-    return result
+    return True
 
 
 def negate(point):
-    return None if point is None else (point[0], (-point[1]) % P)
+    return point[0], (-point[1]) % P
 
 
 def bits2int(digest):
@@ -61,47 +42,28 @@ def bits2int(digest):
 
 
 def public_key(d):
-    return multiply(d, G)
+    """d*G as (x, y), 1 <= d < n."""
+    numbers = ec.derive_private_key(d, CURVE).public_key().public_numbers()
+    return numbers.x, numbers.y
 
 
 def sign(d, digest, k):
-    """(r, s) for nonce k; raises if k gives r == 0 or s == 0."""
-    r = multiply(k, G)[0] % N
+    r = public_key(k)[0] % N
     s = pow(k, -1, N) * (bits2int(digest) + r * d) % N
-    if not r or not s:
-        raise ValueError('degenerate nonce')
+    assert r and s, 'pick another k'
     return r, s
 
 
 def verify(q, digest, r, s):
-    if not on_curve(q) or not (0 < r < N and 0 < s < N):
+    """OpenSSL's ECDSA verify of (r, s) over the digest (length 20, 28, 32, 48 or 64) with key q."""
+    if not (0 < r < N and 0 < s < N):
         return False
-    w = pow(s, -1, N)
-    point = add(multiply(bits2int(digest) * w % N, G), multiply(r * w % N, q))
-    return point is not None and point[0] % N == r
-
-
-def sqrt_mod_p(value):
-    """A square root modulo P (Tonelli-Shanks; P = 1 mod 2^96), or None."""
-    value %= P
-    if value == 0:
-        return 0
-    if pow(value, (P - 1) // 2, P) != 1:
-        return None
-    q, e = P - 1, 0
-    while q % 2 == 0:
-        q, e = q // 2, e + 1
-    z = 2
-    while pow(z, (P - 1) // 2, P) != P - 1:
-        z += 1
-    m, c, t, root = e, pow(z, q, P), pow(value, q, P), pow(value, (q + 1) // 2, P)
-    while t != 1:
-        i, t2 = 0, t
-        while t2 != 1:
-            t2, i = t2 * t2 % P, i + 1
-        b = pow(c, 1 << (m - i - 1), P)
-        m, c, t, root = i, b * b % P, t * b * b % P, root * b % P
-    return root
+    key = ec.EllipticCurvePublicNumbers(*q, CURVE).public_key()
+    try:
+        key.verify(utils.encode_dss_signature(r, s), digest, ec.ECDSA(utils.Prehashed(DIGESTS[len(digest)])))
+    except InvalidSignature:
+        return False
+    return True
 
 
 def encode_point(point):
