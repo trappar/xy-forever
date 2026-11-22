@@ -13,7 +13,6 @@ import zlib
 
 from xy_forever import paths, sim, xyf_entry as E
 
-import xyf_hosttest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -80,6 +79,7 @@ def ldr_first(size, flags=0x5004):
 class ManifestTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        import xyf_hosttest      # here, not at the top: web tests import this file's helpers without hosttest
         cls.lib = xyf_hosttest.module('manifest')
 
     # -- helpers ------------------------------------------------------------------------------
