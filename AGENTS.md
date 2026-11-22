@@ -74,7 +74,7 @@ mise run plan                               # the plan: next items, decisions wa
 mise run test                               # the fast tier (~2 s); test-changed, test-one, test-failed, test-watch
 mise run test-all                           # every tier, simulator included (~1 min; CI runs it)
 mise run check                              # once per PR: the gate (< 30 s)
-mise run build && mise run verify           # product build into ../private/xy-forever/builds/current (check.py: builds/<image>)
+mise run build && mise run verify           # product build into build/product (cached; check copies it to builds/<image>)
 mise run neutral                            # working tree vs HEAD: same candidates?
 uv run xyf_host.py status                   # device over USB
 mise run sim                                # device simulator (127.0.0.1:7341; xyf_host.py --sim)
