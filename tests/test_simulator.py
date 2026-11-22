@@ -1069,7 +1069,6 @@ class SimulatorTest(unittest.TestCase):
         st = self.storage_phase(dev, 'up')
         self.assertEqual((st['a_mount']['attempts'], st['a_mount']['repair']), (1, {'state': 'not needed'}))
 
-    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
     def test_failed_repair_ends_in_library_unavailable(self):
         """The repair's read-write mount fails: library unavailable with the reason, no further mounts or
         asks this boot, the menu keeps answering."""
@@ -1719,7 +1718,6 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual((status['rw_mounts'] - mounts, status['unclean_mounts']), (1, 0))
         print('\nfile.copy 300,196 B in the simulator: %.2f s' % seconds, file=sys.stderr)
 
-    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
     def test_file_copy_refuses_before_a_and_checks_its_request(self):
         """A source file.read refuses or a target file.write_staged refuses is refused on B: not one request
         reaches A. A wrong confirmation is sha; a request without the target's NUL or a byte short is

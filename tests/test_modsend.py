@@ -178,7 +178,6 @@ class Synthetic(Harness, unittest.TestCase):
             with self.subTest(machines=machines, extensions=exts):
                 self.assert_job_identical(machines, exts)
 
-    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
     def test_a_cut_push_never_looks_complete_and_a_second_push_completes_it(self):
         files = len(store_of(self.gen))                                  # store.txt first, then the packages
         for after in (0, 1, 5, files // 2, files - 1):

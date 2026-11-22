@@ -1,6 +1,5 @@
 """Automatic menu/service repair and undo, with repeated power cuts at IO boundaries; no device access."""
 import hashlib
-import os
 from pathlib import Path
 import shutil
 import struct
@@ -151,7 +150,7 @@ class Recovery(Switch, unittest.TestCase):
             self.repaired(previous if undo else target, official=undo)
             total = self.sim.status()['storage_ops']
             self.assertGreater(total, 20)
-            boundaries = range(1, total + 1) if os.environ.get('XYF_EXHAUSTIVE') else sorted(set(range(1, total + 1, max(1, total // 12))) | {total})
+            boundaries = sorted(set(range(1, total + 1, max(1, total // 12))) | {total})   # a sample: the native tests cut at every one
             for at in boundaries:
                 with self.subTest(undo=undo, io=at):
                     self.dev.t.close(); self.sim.stop()

@@ -354,7 +354,6 @@ class SyntheticSwitch(Switch, unittest.TestCase):
     def test_a_power_cut_at_each_step(self):
         self.faults(2)
 
-    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
     def test_a_silent_at_each_step(self):
         self.faults(3)
 
