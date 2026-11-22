@@ -97,16 +97,22 @@ description = "Same firmware as a ref? (reuses the check's product build)"
 usage = 'arg "[ref]" help="the git ref to compare with" default="HEAD"'
 run = 'uv run scripts/neutral.py {{ usage.ref | quote }}'
 
-# Through Turborepo's local cache (scripts/firmware_cache.py, turbo.json): unchanged, both restore in about 0.2 s.
+# Through Turborepo's local cache (scripts/firmware_cache.py, turbo.json); each prints one line.
 [tasks.build]
-description = "Product firmware build into build/product (cached)"
+description = "Product firmware build into build/product (cached: about 1 s; a fresh build about 15 s)"
 usage = 'flag "--force" help="build past the cache"'
+quiet = true
 run = 'uv run scripts/firmware_cache.py build {% if usage.force %}--force{% endif %}'
 
 [tasks.verify]
-description = "Product build, then --verify of it (cached)"
+description = "Product build, then --verify of it (cached: about 1 s; fresh about 20 s)"
 usage = 'flag "--force" help="build and verify past the cache"'
+quiet = true
 run = 'uv run scripts/firmware_cache.py verify {% if usage.force %}--force{% endif %}'
+
+[tasks.firmware-cache-proof]
+description = "Prove the firmware cache's hit and miss cases on a scratch worktree (about 2 min); after changing turbo.json or firmware_cache.py"
+run = 'uv run scripts/firmware_cache_proof.py'
 
 [tasks.sim]
 description = "Device simulator on 127.0.0.1:7341"

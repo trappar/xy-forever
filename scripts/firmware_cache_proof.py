@@ -60,7 +60,9 @@ class Proof:
         return proc.returncode, re.findall(r'^cache (hit|miss)', proc.stdout, re.M), time.monotonic() - start
 
     def cached(self, task, env=None):
-        return self.run('uv', 'run', '--frozen', 'scripts/firmware_cache.py', task, env=env)
+        return self.run(
+            'uv', 'run', '--frozen', 'scripts/firmware_cache.py', task, env=dict(env or {}, XYF_TURBO_LOG='1')
+        )
 
     def dry_status(self, env):
         """The build task's cache status (HIT or MISS) in a dry run under env: nothing is built."""

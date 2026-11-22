@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = paths.PRODUCT  # the task's output (turbo.json outputs), gitignored
 TASKS = {'build': 'firmware-build', 'verify': 'firmware-verify'}
 KEY = 'XYF_BUILD_KEY'
+LOG = 'XYF_TURBO_LOG'  # set: Turborepo's whole output, as on a failure (scripts/firmware_cache_proof.py reads it)
 TURBO = ROOT / 'node_modules' / '.bin' / ('turbo.cmd' if os.name == 'nt' else 'turbo')
 ENV = {'TURBO_TELEMETRY_DISABLED': '1', 'TURBO_NO_UPDATE_NOTIFIER': '1'}
 
@@ -86,7 +87,7 @@ def run_turbo(task, force=False):
     run = subprocess.run(
         turbo_command(task, force), cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
-    if run.returncode:  # Turborepo's banner and the task's log only when it failed
+    if run.returncode or os.environ.get(LOG):  # Turborepo's banner and the task's log: when it failed, or asked
         sys.stdout.write(run.stdout)
     print(summary(task, run.returncode, run.stdout))
     return run.returncode
