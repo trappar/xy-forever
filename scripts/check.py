@@ -1,39 +1,34 @@
 #!/usr/bin/env python3
-"""Run the standard checks once and leave a receipt tied to the exact source tree.
+"""The PR gate: the checks a pull request passes on this machine, in under 30 s, before CI.
 
-    uv run scripts/check.py [--jobs N] [--neutral [REF]] [--js]     (mise run check [FLAGS])
-    uv run scripts/check.py --confirm [REF]      (default REF: HEAD; fast, builds nothing)
+    uv run scripts/check.py [--js] [--force]     (mise run check)
+    uv run scripts/check.py --confirm [REF]      (what the receipt for REF's tree records)
 
-The standard set, in order, stopping at the first failure:
-  - the product build into a fresh private build folder (<private>/xy-forever/builds/check-<tree>),
-    then xyf_build.py --verify of it; a verified build moves to builds/<image> (its name: the first 8 hex
-    digits of the candidate's SHA-256, hello image=), with check.json naming the tree and commit;
-  - the exhaustive unit suite: XYF_EXHAUSTIVE=1 scripts/run_tests.py (every test, never a subset), after
-    the build, with a private copy of the verified artifact for the tests so a shared image name can be
-    replaced during the run without affecting them;
-  - scripts/neutral.py REF with --neutral (default REF: the merge base with origin/main, else main);
-  - pnpm run typecheck in web/ when web/ or clients/ts (which it uses) differs from that merge base, or
-    with --js. The tests of both run once, inside the suite (tests/test_ts_client.py NodeSuiteTest,
-    tests/test_web.py); when a folder differs (or with --js) its node_modules is required so they cannot
-    skip. Refused up front, naming pnpm install, when a needed folder's node_modules is missing.
+The steps, in order, stopping at the first failure:
+  - the product build into a fresh private build folder (<private>/xy-forever/builds/check-<tree>), then
+    xyf_build.py --verify of it; a verified build moves to builds/<image> (its name: the first 8 hex digits of
+    the candidate's SHA-256, hello image=), with check.json naming the tree and commit (scripts/neutral.py
+    reuses it: mise run neutral);
+  - lint and type checks: the generated protocol files match protocol/ (protogen --check), and `pnpm run
+    typecheck` in clients/ts and web when they differ from the merge base with main (or with --js; refused
+    up front, naming pnpm install, when a needed node_modules is missing);
+  - the fast tier and the gate tier of the suite (pytest -m fast, -m gate: tests/conftest.py), the tests given a
+    private copy of the verified build (a shared image name can be replaced during the run).
+Budgets: the whole check STEP_BUDGET_S a step and TOTAL_BUDGET_S in all (about twice the measured times); going
+over fails the check and names the step (XYF_BUDGETS=off only reports it). Each step's hard bound is STEP_S.
 Step output goes to a log under <private>/xy-forever/sessions/<date>-check/; a short summary is printed.
 
-The working tree must be clean (`git status --porcelain` empty: untracked files count, gitignored ones
-do not) when the run starts and when it ends. Only a run on a clean tree where every step passed writes
-the receipt <private>/xy-forever/checks/<tree>.json, keyed to `git rev-parse HEAD^{tree}`: the same
-files give the same key whatever the commit. A run where a step failed writes no receipt: it removes
-that tree's receipt and records the failure in <tree>.failed.json. --confirm exits 0 only when a
-passing receipt matches REF's tree and prints what it records; otherwise it says what is missing (no
-receipt, a failed check, or a receipt for an older tree of the branch). A receipt never stands in for
-a device test. One full run at a time on this machine: a run holds <private>/xy-forever/checks/check.lock
-(xy_forever/device_lock.py) until it exits, and a second one says so and waits (two at once starve the simulator
-timing tests). A single run never waits; a test run, or one with no private folder, takes no lock.
+The receipt is a cache keyed on the tree: a run on a clean tree (`git status --porcelain` empty) where every
+step passed writes <private>/xy-forever/checks/<tree>.json (`git rev-parse HEAD^{tree}`), and a later run on
+the same tree prints it and stops (--force reruns). A failed run writes <tree>.failed.json. A dirty tree is
+refused: commit first. A receipt never stands in for a device test, and CI is the merge check.
 """
 import argparse
 import datetime
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shlex
 import shutil
@@ -44,14 +39,16 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import device_lock, no_device, paths, procgroup  # noqa: E402
+from xy_forever import no_device, paths, procgroup  # noqa: E402
 
 VERSION = 1                                  # receipt format; a reader refuses a newer one
 CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json
 KEEP_BUILDS = 5                              # builds/<image> folders a check made (check.json) kept, ~7 MB each
 RECENT = 15 * 60                             # seconds: a build folder touched since then is never pruned
-STEP_S = 300                                 # seconds: a step past it ends with its process group (#230)
-SUITE_S = 480                                # the exhaustive suite's bound (~2-3 min today)
+STEP_S = 120                                 # seconds: a step past it ends with its process group (#230)
+STEP_BUDGET_S = 15                           # seconds: a step over it fails the check (see the docstring)
+TOTAL_BUDGET_S = 30
+PYTEST = ('-m', 'pytest', '-p', 'no:randomly', '--dist', 'worksteal')
 
 
 class CheckError(Exception):
@@ -119,13 +116,12 @@ def last_json(text):
         return None
 
 
-def tests_parser(summary):
-    def parse(status, _):
-        try:
-            counts = json.loads(Path(summary).read_text())
-        except (OSError, ValueError):
-            return False, {}
-        return status == 0 and counts.get('failed') == 0 and counts.get('run', 0) > 0, dict(tests=counts)
+def tests_parser(tier):
+    """Passed when pytest exits 0; its counts (the summary line) go into the receipt."""
+    def parse(status, text):
+        counts = {k: int(n) for n, k in re.findall(r'(\d+) (passed|failed|skipped|errors?|deselected)\b',
+                                                   text.strip().splitlines()[-1] if text.strip() else '')}
+        return status == 0 and counts.get('passed', 0) > 0, dict(tests={tier: counts})
     return parse
 
 
@@ -182,43 +178,44 @@ def fresh_build_folder(tree, now=None):
 
 
 def standard_steps(args, root, tree, work):
-    """The standard set for this run (work: a temporary folder for the suite's counts)."""
-    py, summary = sys.executable, Path(work) / 'tests.json'
+    """The gate's steps for this run (work: a temporary folder for the tests' copy of the build)."""
+    py = sys.executable
     js = js_steps(args, root)                    # before anything runs: a missing node_modules stops the run
-    jobs = ['--jobs', str(args.jobs)] if args.jobs else []
     out = fresh_build_folder(tree)
     test_builds = Path(work) / 'builds'
-    steps = [step('product build', [py, root / 'xyf_build.py', '--xyf-product', '--out', out], root),
-             step('verify', [py, root / 'xyf_build.py', '--verify', '--out', out], root,
-                  parse=verify_parser(out, tree, git(root, 'rev-parse', 'HEAD'), test_builds)),
-             step('unit tests (exhaustive)', [py, root / 'scripts/run_tests.py', *jobs, '--summary', summary],
-                  root, {'XYF_EXHAUSTIVE': '1', paths.CHECK_TEST_BUILDS: str(test_builds)}, tests_parser(summary),
-                  timeout=SUITE_S)]
-    if args.neutral is not None:
-        ref = args.neutral or merge_base(root)
-        if not ref:
-            raise CheckError('--neutral: no main to compare with; name a REF')
-        steps.append(step('neutral vs %s' % ref[:12], [py, root / 'scripts/neutral.py', ref], root))
-    steps += js
-    return steps
+    env = {paths.CHECK_TEST_BUILDS: str(test_builds)}
+    return [step('product build', [py, root / 'xyf_build.py', '--xyf-product', '--out', out], root),
+            step('verify', [py, root / 'xyf_build.py', '--verify', '--out', out], root,
+                 parse=verify_parser(out, tree, git(root, 'rev-parse', 'HEAD'), test_builds)),
+            step('protocol files', [py, root / 'scripts/protogen.py', '--check'], root),
+            *js,
+            step('fast tier', [py, *PYTEST, '-n', '6', '-m', 'fast'], root, env, tests_parser('fast')),
+            step('gate tier', [py, *PYTEST, '-n', '8', '-m', 'gate'], root, env, tests_parser('gate'))]
 
 
-JS = (('clients/ts', ('clients/ts',), ()),       # folder, what changing reruns it, steps; their tests run in
-      ('web', ('web', 'clients/ts'), (('pnpm run typecheck', ['run', 'typecheck']),)))   # the suite: only required
+JS = (('clients/ts', ('clients/ts',)), ('web', ('web', 'clients/ts')))   # folder, what changing it rechecks
 
 
 def js_steps(args, root):
-    """JS's steps for each folder that changed (or all with --js); CheckError when its node_modules is not
-    installed."""
+    """`pnpm run typecheck` for each folder that changed (or all with --js); CheckError when its node_modules is
+    not installed. Their test suites run in CI (mise run web-test)."""
     steps, pnpm = [], shutil.which('pnpm') or 'pnpm'
-    for rel, watched, commands in JS:
+    for rel, watched in JS:
         folder = root / rel
         if not folder.is_dir() or not (args.js or changed(root, *watched)):
             continue
         if not (folder / 'node_modules').is_dir():
-            raise CheckError('the %s tests need %s/node_modules, which is missing: run `pnpm install`' % (rel, rel))
-        steps += [step('%s (%s)' % (name, rel), [pnpm, *words], folder) for name, words in commands]
+            raise CheckError('the %s type check needs %s/node_modules, which is missing: run `pnpm install`' % (rel, rel))
+        steps.append(step('pnpm run typecheck (%s)' % rel, [pnpm, 'run', 'typecheck'], folder))
     return steps
+
+
+def over_budget(results):
+    """The budget lines for a run whose steps all passed: a step over STEP_BUDGET_S, the whole over TOTAL_BUDGET_S."""
+    lines = ['%s took %.1f s: over the %d s a step' % (r['name'], r['seconds'], STEP_BUDGET_S)
+             for r in results if r['seconds'] > STEP_BUDGET_S]
+    total = sum(r['seconds'] for r in results)
+    return lines + (['the check took %.1f s: over %d s' % (total, TOTAL_BUDGET_S)] if total > TOTAL_BUDGET_S else [])
 
 
 def run_steps(steps, log):
@@ -279,6 +276,10 @@ def check(root, steps_for, checks=CHECKS, log=None):
     if tree_of(root) != tree:
         raise CheckError('HEAD changed during the run: no receipt')
     passed = len(results) == len(steps) and all(r['result'] == 'pass' for r in results)
+    budget = over_budget(results) if passed else []
+    for line in budget:
+        print('BUDGET: ' + line, file=sys.stderr)
+    passed = passed and not (budget and os.environ.get('XYF_BUDGETS') != 'off')
     record = dict(version=VERSION, passed=passed, tree=tree, commit=commit,
                   branch=git(root, 'rev-parse', '--abbrev-ref', 'HEAD'), started=started, finished=now(),
                   steps=results, tests=facts.get('tests'), candidate=facts.get('candidate'), log=str(log))
@@ -286,13 +287,6 @@ def check(root, steps_for, checks=CHECKS, log=None):
     write_json(receipt if passed else failed, record)
     (failed if passed else receipt).unlink(missing_ok=True)
     return record
-
-
-def one_run_at_a_time(lock, root, private=None):
-    """Holds lock (an flock) until this process exits, first waiting, as long as it takes, for another check run
-    holding it, saying so once. None when there is no private folder."""
-    what = 'check.py in %s, branch %s' % (root, git(root, 'rev-parse', '--abbrev-ref', 'HEAD') or '-')
-    return device_lock.lock(lock, None, private, what, 'check: waiting for another check run: %(who)s\n')
 
 
 def load(path):
@@ -367,8 +361,8 @@ def describe(record):
     for s in record['steps']:
         lines.append('  %-4s  %-24s %7.1f s  %s' % (s['result'], s['name'], s['seconds'], s['command']))
     t, c = record.get('tests'), record.get('candidate')
-    if t:
-        lines.append('tests: %d run, %d skipped, %d failed (%s s)' % (t['run'], t['skipped'], t['failed'], t.get('seconds')))
+    for tier, counts in (t or {}).items():
+        lines.append('%s tier: %s' % (tier, ', '.join('%d %s' % (n, k) for k, n in counts.items())))
     if c:
         lines.append('candidate: image %s, sha256 %s, %d bytes, %s' % (c.get('image', c['sha256'][:8]), c['sha256'],
                                                                       c['bytes'], c['build']))
@@ -380,19 +374,21 @@ def main(argv=None, root=ROOT, checks=CHECKS):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--confirm', nargs='?', const='HEAD', metavar='REF',
                         help="exit 0 only when a passing receipt matches REF's tree (default HEAD)")
-    parser.add_argument('--jobs', type=int, help="unit-test processes at a time (default: run_tests.py's)")
-    parser.add_argument('--neutral', nargs='?', const='', metavar='REF',
-                        help='also scripts/neutral.py REF (default REF: the merge base with origin/main, else main)')
-    parser.add_argument('--js', action='store_true', help='the web typecheck and the node_modules checks even when unchanged')
+    parser.add_argument('--js', action='store_true', help='the TypeScript type checks even when unchanged')
+    parser.add_argument('--force', action='store_true', help='run even when a passing receipt matches the tree')
     args = parser.parse_args(argv)
-    test_run = no_device.on()                    # a test run never waits for, nor blocks, a real check run
     no_device.switch_on()                        # every step and its subprocesses: no real device
     try:
         if args.confirm:
             print('\n'.join(describe(confirm(root, args.confirm, checks))))
             return 0
-        if not test_run:
-            one_run_at_a_time(checks / 'check.lock', root)
+        if not args.force:
+            require_clean(root, 'at start')
+            cached = load(checks / (tree_of(root) + '.json'))
+            if cached and cached.get('passed') is True:
+                print('\n'.join(describe(cached)))
+                print('check: this tree already passed (the receipt above); --force reruns')
+                return 0
         paths.SESSIONS.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix='.xyf-check-', dir=paths.SESSIONS) as work:
             record = check(root, lambda tree: standard_steps(args, root, tree, work), checks)

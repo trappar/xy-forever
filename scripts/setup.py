@@ -462,7 +462,8 @@ def cmd_doctor(args):
     print('tests that will skip:')
     for s in skips or ['none of the known private-only groups']:
         print('     ' + s)
-    essential = {'python', 'private folder', 'toolchain', 'stock os.ldr', 'stock bootloader.ldr'}
+    essential = {'python', 'private folder', 'toolchain', 'stock os.ldr', 'stock bootloader.ldr',
+                 'mise', 'tools', 'python deps', 'js deps'}       # must pass: mise run setup fixes them
     return 0 if all(ok for label, ok, _ in rows if label in essential) else 1
 
 
