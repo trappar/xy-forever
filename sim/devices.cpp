@@ -24,7 +24,7 @@
 
 namespace xyf_sim {
 const char* stock_path = 0;
-void cdc_wait(int ms);
+void cdc_wait(int ms, uint64_t event);
 namespace {
 std::vector<uint8_t> stock_image;    // {u32 address, u32 bytes, bytes...} records (xy_forever/sim.py)
 }
@@ -436,7 +436,8 @@ extern "C" void xy_forever_key_ui() {
         if (xyf_boot::link_lost() && !noted) {             // B never resets itself on it
             noted = true; xyf_sim::log("menu: storage link lost: %s (USB still answers)", xyf_boot::status());
         }
-        xyf_sim::cdc_wait(1);
+        // A held key's next repeat is the loop's own event: the clock's steps stop there (sim/clock.cpp).
+        xyf_sim::cdc_wait(1, sim_held.key != xyf::key_repeat::none ? uint64_t(sim_held.due_ms) * 400000u : 0);
     }
 }
 

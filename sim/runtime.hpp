@@ -210,7 +210,7 @@ void link_taken();                               // a link thread took its messa
 // meanwhile. bound: the device_cycles() at which the wait ends by itself (the board steps no further), 0
 // none. rest (B): nothing inside the device ends it (the clock may stand still); else B waits on device time.
 void idle_pause(uint64_t bound, bool rest = false);
-void cdc_wait(int ms);                           // B's menu loop pause, woken by USB data
+void cdc_wait(int ms, uint64_t event = 0);       // B's menu loop pause, woken by USB data (event: its next timer, cycles)
 int cdc_fd();                                    // B: the USB client's socket, else the listener's (-1: USB off)
 uint32_t cdc_connection();                       // B: changes whenever cdc_fd() may name another socket
 int cdc_next_fd();                               // B: the listener while a client is attached (a new host), else -1

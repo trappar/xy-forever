@@ -22,13 +22,13 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   `home_pump`, tick, link check; SCREEN shows a test pattern, KEY does nothing).
 - **Device time** (`sim/clock.cpp`, every run: tests, `python3 -m xy_forever.sim`, the web app, `conformance.py
   --sim`): a clock only the simulator moves, never host time. The board steps it (1 ms after activity, doubling
-  up to 10 ms, never past a known event: a reset delay, a delayed link message, a fault's delay) only while both
+  up to 10 ms, never past a known event: a reset delay, a delayed link message, a fault's delay, a held key's repeat) only while both
   processors are idle (no link message in flight, each main thread in a wait or polling the clock with nothing
   done) and something is due: an `advance`, a board event, B waiting on device time away from its menu loop's
   pause (a delay, a time-out) or a host request B has not answered, or work since the last step (with B at
   rest: only for 1 s past the last USB data or control command, so a device that polls on its own comes to
   rest). Otherwise it stands still and every process blocks with no CPU: an idle device's own timers
-  (keepalives, a deferred save, an idle window's close, a key's repeat) wait for an `advance`, which is how a
+  (keepalives, a deferred save, an idle window's close) wait for an `advance`, which is how a
   host's pause reaches the device (host tools pause with `transport.sim_pause`, tests with `Simulator.advance`,
   `until`, `settle`: until nothing is done). A relayed message and a busy processor's clock reads add their
   own time, so no device time-out depends on host load (sim/clock.cpp has the rule).

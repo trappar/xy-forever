@@ -20,7 +20,7 @@
 //    sim_pause, Simulator.advance; Simulator.settle runs it until nothing is done).
 //  - A step goes no further than the next known event (a processor's bounded wait's end too); it is 1 ms after
 //    any activity and doubles while nothing happens, up to max_step (the device's own timers are not known
-//    events: they fire within max_step).
+//    events, but for a held key's next repeat: they fire within max_step).
 //  - It also moves by a relayed link message's transfer time (link_ns + link_byte_ns per byte) and, while a
 //    processor is busy (just after activity), by read_ns per clock read, so work takes device time.
 // A processor that is busy (computing, or waiting for the other) stops the clock: its slowness on a busy
@@ -41,7 +41,7 @@ namespace {
 const uint32_t idle_reads = 32;             // clock reads with nothing done between them: a polling loop, idle
 const uint64_t read_ns = 1000, link_ns = 20000, link_byte_ns = 200;   // ~5 MB/s link (docs/hardware/devices.md)
 const uint64_t min_step = 1000000, quiet_limit = 60000000000ull;   // 60 s of device time with nothing done: hung
-const uint64_t max_step = 10000000;         // a step's most: the device's own timers (a key's repeat) fire on time
+const uint64_t max_step = 10000000;         // a step's most: the device's own timers fire at most 10 ms late
 const uint64_t rest_limit = 1000000000ull;  // work at rest runs the clock 1 s past the last news from outside
 uint64_t start_ns = 0;                       // this processor's clock at its first read (its counter's zero)
 bool started = false;
@@ -147,10 +147,11 @@ void idle_pause(uint64_t bound, bool rest) {
     publish(shared->work[role].load(), shared->steps.load(), bound ? to_ns(bound) : 0, rest);
     block();
 }
-void cdc_wait(int ms) {                                         // B's menu loop pause, woken by USB data
+void cdc_wait(int ms, uint64_t event) {                         // B's menu loop pause, woken by USB data
     const int fd = cdc_fd();
     pollfd p[2] = {{fd, POLLIN, 0}, {cdc_next_fd(), POLLIN, 0}};
-    // Not a bound for the board's steps: the loop's pause is no device event (key_ui has its own). B is at rest
+    // Not a bound for the board's steps: the loop's pause is no device event; event (a held key's next repeat,
+    // device_cycles()) is one. B is at rest
     // here: the clock stands still unless something is due. A pass that polled the clock (a slice of a job, a
     // wait) counts as work, so the next pass comes 1 ms later.
     static uint32_t reads = 0;
@@ -158,7 +159,7 @@ void cdc_wait(int ms) {                                         // B's menu loop
     const uint32_t seen = usb_news;
     for (const uint64_t until = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < until;) {
         if (fd >= 0 && ::poll(p, 2, 0) > 0 && usb_check(p[0].revents, p[1].revents)) break;   // new, not left unread
-        menu_pause = true; idle_pause(0, true); menu_pause = false;
+        menu_pause = true; idle_pause(event > device_cycles() ? event : 0, true); menu_pause = false;
         if (usb_news != seen) break;                                        // block() saw it arrive
     }
     reads = shared->clock_reads[1].load();
