@@ -140,11 +140,6 @@ def entry_files(generation_dir, assembled, machines, name=ENTRY_NAME):
     return files
 
 
-def expanded_reserved(base_info):
-    """The 4 MiB option's reservation from a base manifest's values (module_base + reserved_bytes keeps its end)."""
-    return int(base_info['module_base'], 0) + int(base_info['reserved_bytes']) - int(base_info['expanded_module_base'], 0)
-
-
 def default_official(generation_dir):
     """The private content-manifests/<version>/content.sha256 for the base's profile (opxy-<version>)."""
     from . import paths

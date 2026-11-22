@@ -146,7 +146,6 @@ void Stock121PeerSession::follow(U32 request) {
     if(!peer_request_)peer_request_=request;
 }
 bool Stock121PeerSession::follow_now(U32 now) const { return peer_restart_&&(peer_request_||now-peer_ms_>=follow_ms); }
-void Stock121PeerSession::hold_touch(U32 now) { if(hold_&&!role())last_activity_=now; }
 bool Stock121PeerSession::blob_done() const { return blob_done_; }
 U32 Stock121PeerSession::blobs() const { return blobs_; }
 Result Stock121PeerSession::freeze_blob(const Byte* data,U32 size) {

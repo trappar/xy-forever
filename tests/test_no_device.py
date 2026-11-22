@@ -16,10 +16,7 @@ import xyf_host as host                     # noqa: E402
 from xy_forever import mtp_read, no_device, transport  # noqa: E402
 from xy_forever.no_device import DeviceRefused  # noqa: E402
 import conformance                           # noqa: E402
-import mtp_files_test                        # noqa: E402
-import mtp_usb_probe                         # noqa: E402
 import setup                                 # noqa: E402
-import throughput                            # noqa: E402
 import usb_alive                             # noqa: E402
 
 REFUSED = r'^tests may not open a real device: '
@@ -115,12 +112,6 @@ class UsbTest(unittest.TestCase):
             with self.assertRaisesRegex(DeviceRefused, REFUSED + r'USB MTP \(libusb\)$'):
                 mtp_read.open_op_xy()
 
-    def test_throughput_mtp_routes_refuse(self):
-        with mock.patch.object(mtp_read, 'load_libusb', reached('libusb')):
-            for route in ('xyf-mtp', 'os-mtp', 'dev-mtp'):
-                with self.assertRaisesRegex(DeviceRefused, REFUSED + r'USB MTP'):
-                    throughput.open_usb_mtp(route, 1000)
-
     def test_setup_import_from_device_refuses(self):
         with mock.patch.object(mtp_read, 'load_libusb', reached('libusb')):
             with self.assertRaisesRegex(DeviceRefused, REFUSED + r'USB MTP'):
@@ -130,18 +121,6 @@ class UsbTest(unittest.TestCase):
         with mock.patch.object(usb_alive, 'load', reached('libusb')):
             with self.assertRaisesRegex(DeviceRefused, REFUSED + r'USB \(libusb\)$'):
                 usb_alive.main(['--seconds', '0'])
-
-    def test_pyusb_scripts_refuse_before_pyusb(self):
-        core = mock.Mock(find=reached('pyusb'))
-        with self.assertRaisesRegex(DeviceRefused, REFUSED + r'USB \(pyusb\)$'):
-            mtp_usb_probe.wait_usb(core, True, 1.0)
-        with mock.patch.dict(sys.modules, {'usb': None, 'usb.core': None, 'usb.util': None}), \
-                mock.patch.object(transport.glob, 'glob', reached('the glob')):
-            for script in (mtp_usb_probe, mtp_files_test):
-                with mock.patch.object(sys, 'argv', [script.__name__]):
-                    with self.assertRaisesRegex(DeviceRefused, REFUSED + r'USB \(pyusb\)$'):
-                        script.main()
-
 
 if __name__ == '__main__':
     unittest.main()

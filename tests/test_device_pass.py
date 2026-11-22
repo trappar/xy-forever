@@ -11,6 +11,7 @@ import unittest
 from unittest.mock import patch
 import zlib
 
+from PIL import Image
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,12 +63,10 @@ def screen_png(screen, row):
             line[0:2] = bytes((screen & 0xff, screen >> 8 & 0xff))
         if row is not None and dp.ROW_TOP + dp.ROW_PITCH * row <= y < dp.ROW_TOP + 17 + dp.ROW_PITCH * row:
             line[30:1410] = b'\xff' * 1380
-        rows.append(b'\0' + bytes(line))
-
-    def chunk(kind, body):
-        return struct.pack('>I', len(body)) + kind + body + struct.pack('>I', zlib.crc32(kind + body) & 0xffffffff)
-    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 480, 216, 8, 2, 0, 0, 0)) +
-            chunk(b'IDAT', zlib.compress(b''.join(rows))) + chunk(b'IEND', b''))
+        rows.append(bytes(line))
+    out = io.BytesIO()
+    Image.frombytes('RGB', (480, 216), b''.join(rows)).save(out, 'PNG')
+    return out.getvalue()
 
 
 class FakeDevice:

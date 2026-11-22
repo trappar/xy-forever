@@ -44,7 +44,6 @@ const char* version_label() { return "v" XYF_VERSION; }
 const char* image_label() {
     return result.image_state == image_known || result.image_state == image_unknown ? image_text : "image ...";
 }
-bool home_hold() { return home != 0 || home_greeted != 0; }
 
 // b, at the start of the file boot: a valid marker (our REBOOT, a dry-run return, or a reset
 // while home) makes this boot go home; at most max_crash_restarts such resets in a row.

@@ -1,7 +1,9 @@
 """Render XY Forever screens on the host (same C++ as the device) to PNG.
 Usage: python3 ui_preview.py [OUTDIR]  (default: private/xy-forever/previews). Offline only."""
-import ctypes as C, struct, subprocess, sys, tempfile, zlib
+import ctypes as C, subprocess, sys, tempfile
 from pathlib import Path
+
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parent
 WIDTH, HEIGHT, STRIDE = 480, 216, 256
@@ -39,16 +41,8 @@ def pixels(fb):
 
 
 def png(path, rows, scale=2):
-    lines = []
-    for r in rows:
-        wide = b''.join(r[x:x + 3] * scale for x in range(0, len(r), 3))
-        lines += [b'\0' + wide] * scale
-    raw = b''.join(lines)
-    def chunk(kind, data):
-        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
-    w, h = WIDTH * scale, HEIGHT * scale
-    Path(path).write_bytes(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
-                           + chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b''))
+    image = Image.frombytes('RGB', (WIDTH, HEIGHT), b''.join(rows))
+    image.resize((WIDTH * scale, HEIGHT * scale), Image.Resampling.NEAREST).save(path, 'PNG')
 
 
 def main():

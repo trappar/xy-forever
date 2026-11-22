@@ -3,8 +3,8 @@
 // Which check refuses an MTP USB probe start (test build xyf-mtp-usb only: usb_service.cpp
 // probe_start; host test target/mtp_usb_gate_test.cpp). The record says why (op 1 sends it after the
 // probe words): the check, its first differing span (index, address, length), that span's CRC as read
-// and how many of its spans differ. The span, not the word: B holds only CRCs
-// (scripts/mtp_span_census.py finds the word). All zero: no refusal.
+// and how many of its spans differ. The span, not the word: B holds only CRCs.
+// All zero: no refusal.
 #include <stdint.h>
 namespace xyf { namespace mtp_usb_gate {
 // usb: the boot-time identity() (usb_spans.hpp, menu_start_usb) had failed; engine: engine_identity()

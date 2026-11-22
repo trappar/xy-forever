@@ -273,7 +273,7 @@ class Synthetic(Harness, unittest.TestCase):
 
     def test_a_changed_package_leaves_no_old_stored_files(self):
         """A stored name is its content's: a push of a changed file writes a new name, then deletes the old one
-        once the new files.sha256 is in place (mods dev pushes by hash)."""
+        once the new files.sha256 is in place."""
         self.push()
         changed = self.dir / 'changed'
         shutil.copytree(self.gen, changed)
@@ -283,7 +283,7 @@ class Synthetic(Harness, unittest.TestCase):
         files = {r: b for r, b in MP.tree(changed / 'alpha').items() if r != S.LIST}
         (changed / 'alpha' / S.LIST).write_text(MP.list_text(files))
         lines = []
-        total = S.push(self.connect(), changed, out=lines.append, by_hash=True)
+        total = S.push(self.connect(), changed, out=lines.append)
         self.assertEqual((total['sent'], total['files'], total['removed']), (1, len(MP.tree(changed / 'alpha')), 1))
         self.assertEqual(MP.tree(self.stored), store_of(changed))
 

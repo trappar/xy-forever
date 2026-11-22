@@ -1,7 +1,7 @@
 """`xyf_host.py mods dev`: an edit-build-boot loop for people who write Open-XY mods, without the
 dev menu. Host tool only; it uses the existing commands:
 
-  push   modsend.push(by_hash=True): only the files whose SHA-256 differs from the device's files.sha256 line
+  push   modsend.push: only the files whose SHA-256 differs from the device's files.sha256 line
   apply  mods.apply + job.status: the device builds the selection (the mod plus --with mods) into mods-a/-b
   set    set-default (the content switch installs the entry's content first, then the default)
   boot   library.boot (--boot only; the device then leaves XY Forever)
@@ -238,7 +238,7 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
         if previous and previous.startswith('mods-'):
             out('  note: %s is a mods slot; a later dev build may replace it (--restore then sets the slot, '
                 'not the old build)' % previous)
-    summary = ph.run('push', lambda: MS.push(dev, gen, names, out=out, by_hash=True))
+    summary = ph.run('push', lambda: MS.push(dev, gen, names, out=out))
     machines, exts = selection(names)
     base = args.base or (cfg or {}).get('base') or state[key].get('base')
     if not base:

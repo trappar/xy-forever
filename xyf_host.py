@@ -89,8 +89,6 @@ SLOTS = ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt')
 
 
 SIM = os.environ.get('XYF_SIM') or None
-# tfw.check reasons (protocol/v1.json; native/tfw_check.hpp Reason).
-TFW_REASONS = ('pass', 'read', 'not_package', 'key_index', 'no_otp', 'public_key', 'signature', 'decrypt', 'directory')
 TFW_CHECK_TIMEOUT = 60.0        # HOST:PORT of the device simulator (--sim)
 
 

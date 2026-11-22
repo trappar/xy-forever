@@ -124,7 +124,7 @@ run = "pnpm run test:e2e"
 
 [tasks.plan]
 description = "Next plan items and decisions waiting (--all: more)"
-usage = 'arg "[args]..." help="plan.py arguments (--all, claim N --agent A, ...)" var=#true'
+usage = 'arg "[args]..." help="plan.py arguments (--all, --agent NAME)" var=#true'
 run = 'uv run scripts/plan.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.preview]

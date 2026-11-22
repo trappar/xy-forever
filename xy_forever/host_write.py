@@ -1,7 +1,7 @@
 """Streamed, replace-safe file writes over XY Forever's serial protocol (1.18: file.write_begin, file.write_data,
 file.write_end; #4). The bytes go straight to a temporary file on the device; the device checks them, reads the file
 back and renames it onto the target in one step, so a cut cable or a power cut leaves the old file or the new one.
-No size limit from the staging buffer. Used by xyf_host.py put, scripts/throughput.py and the tests."""
+No size limit from the staging buffer. Used by xyf_host.py put and the tests."""
 import hashlib
 import struct
 import zlib

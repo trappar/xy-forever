@@ -53,6 +53,26 @@ class Queue(unittest.TestCase):
         self.assertIn('  #44 - Suite race', out)
         self.assertFalse(any(l.startswith('Not shown') for l in out))
 
+    def test_with_agent_the_items_split_by_the_agent_label(self):
+        issues = ISSUES + [issue(21, 'Mine labelled', M2, ['kind:build', 'agent:claude'], ['me']),
+                           issue(22, 'Theirs', M2, ['kind:build', 'agent:codex'], ['me']),
+                           issue(23, 'Free, theirs', M2, ['kind:build', 'agent:codex'])]
+        out = Q.queue(issues, 'me', agent='claude')
+        self.assertEqual(out[:7], [
+            'Yours, in progress (agent:claude) (1)',
+            '  #21 M2 Mine labelled [build]',
+            'Yours, no agent label: interrupted, label it to resume (1)',
+            '  #3 M2 Loose ends [build,device]',
+            "Another agent's: leave these (2)",
+            '  #22 M2 Theirs [build] (agent:codex)',
+            '  #23 M2 Free, theirs [build] (agent:codex)'])
+        self.assertIn('  #4 M2 Atomic replace [build]', out)
+
+    def test_without_agent_a_labelled_item_is_taken(self):
+        issues = ISSUES + [issue(23, 'Free, theirs', M2, ['kind:build', 'agent:codex'])]
+        self.assertEqual(Q.queue(issues, 'me')[:4], Q.queue(ISSUES, 'me')[:4])
+        self.assertIn('  #23 M2 Free, theirs [build] agent:codex', Q.queue(issues, 'me', everything=True))
+
 
 if __name__ == '__main__':
     unittest.main()

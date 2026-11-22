@@ -74,7 +74,6 @@ BUILDS = XYF / 'builds'                         # build outputs (xyf_build.py --
 RECOVERY = XYF / 'recovery'                     # dev-menu kits: known-good build, stock 1.2.1
 FIXTURES = XYF / 'fixtures'                     # files some tests read (they skip when absent)
 REPORTS = XYF / 'reports'                       # device report files (census dumps)
-CLAIMS = XYF / 'claims'                         # local item claims of agents on this machine (scripts/plan.py)
 DEVICE_LOCK = XYF / 'device.lock'               # held while a host tool talks to the OP-XY (xy_forever/device_lock.py)
 ANALYSIS = XYF / 'analysis'                     # reverse-engineering evidence (FINDINGS.md per study)
 LISTING_121 = ANALYSIS / 'bootloader-121-listing'   # 1.2.1 bootloader image + annotated listing

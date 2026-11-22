@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "XY Forever: a firmware and mod manager for the OP-XY (host tools, tests, build)"
 license = "MIT"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "cryptography>=50.0.2",
+    "pillow>=13.0.0",
+    "pyelftools>=0.33",
+    "pyserial>=3.5",
+]
 
 [dependency-groups]
 # Synced by default (`uv sync`): what the scripts beyond the core use.
@@ -15,10 +20,18 @@ dev = [
   "pytest-watcher>=0.6.3",
   "pytest-xdist>=3.8.0",
   "pyusb>=1.3.1",   # scripts/mtp_usb_probe.py and scripts/mtp_files_test.py (with Homebrew libusb)
+  "vulture>=2.16",
 ]
 
 [tool.uv]
 package = false   # not an installable package yet (#234)
+
+[tool.vulture]
+# `uv run vulture`: dead code. The names below are found by pytest and the device pass, not by calls.
+paths = ["xy_forever", "scripts", "tests", "re", "xyf_build.py", "xyf_host.py", "xyf_package.py", "ui_preview.py",
+         "verify.py"]
+ignore_names = ["step_*", "test_*", "setUp*", "tearDown*", "pytest_*", "Test*", "log_message"]
+min_confidence = 61
 
 [tool.pytest]
 # The suite: tests/ (unittest.TestCase classes, run by pytest). tests/conftest.py holds the tiers, the hard

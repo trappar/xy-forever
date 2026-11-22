@@ -4,6 +4,9 @@ from dataclasses import dataclass
 import hashlib
 import struct
 
+from elftools.elf.enums import ENUM_SH_TYPE_BASE, ENUM_ST_INFO_TYPE
+from elftools.elf.structs import ELFStructs
+
 
 def require(condition, message):
     if not condition:
@@ -134,24 +137,33 @@ class Firmware:
         return rows
 
 
+def elf_records(data):
+    """pyelftools' ELF32 little-endian record layouts and the parsed file header (data: 52 bytes or more). Records
+    are parsed one by one, without pyelftools' own section checks: the readers' checks come first and name the
+    problem."""
+    structs = ELFStructs(little_endian=True, elfclass=32)
+    structs.create_basic_structs()
+    header = structs.Elf_Ehdr.parse(data[:52])
+    structs.create_advanced_structs(header['e_type'], header['e_machine'], header['e_ident']['EI_OSABI'])
+    return structs, header
+
+
 def elf32(data, relocations=False):
     """Sections and named symbols of a linked ELF32. relocations=True (a `ld -q` link) also returns its RELA
     entries: {relocated section: [dict(offset, type, target)]}, offset an address, target symbol + addend."""
     require(len(data) >= 52 and data[:7] == b'\x7fELF\x01\x01\x01', 'Expected little-endian ELF32')
-    require(struct.unpack_from('<H', data, 18)[0] == 106, 'Expected Blackfin machine type')
-    offset = struct.unpack_from('<I', data, 32)[0]
-    stride, count, names_index = struct.unpack_from('<3H', data, 46)
-    require(
-        stride == 40 and 0 < count < 4096 and names_index < count and offset + 40 * count <= len(data),
-        'Invalid ELF table',
-    )
-    headers = [struct.unpack_from('<10I', data, offset + 40 * i) for i in range(count)]
+    structs, elf = elf_records(data)
+    require(elf['e_machine'] in ('EM_BLACKFIN', 106), 'Expected Blackfin machine type')
+    offset, count, names_index = elf['e_shoff'], elf['e_shnum'], elf['e_shstrndx']
+    require(elf['e_shentsize'] == 40 and 0 < count < 4096 and names_index < count
+            and offset + 40 * count <= len(data), 'Invalid ELF table')
+    headers = [structs.Elf_Shdr.parse(data[offset + 40 * i:offset + 40 * i + 40]) for i in range(count)]
 
     def contents(h):
-        if h[1] == 8:
+        if h['sh_type'] == 'SHT_NOBITS':
             return b''
-        require(h[4] <= len(data) and h[5] <= len(data) - h[4], 'Truncated ELF section')
-        return data[h[4] : h[4] + h[5]]
+        require(h['sh_offset'] <= len(data) and h['sh_size'] <= len(data) - h['sh_offset'], 'Truncated ELF section')
+        return data[h['sh_offset']:h['sh_offset'] + h['sh_size']]
 
     def string(table, index):
         require(0 <= index < len(table), 'Invalid ELF string offset')
@@ -164,34 +176,43 @@ def elf32(data, relocations=False):
     symbols = {}
     values = {}                                 # symbol table index -> every entry's value, by symbol index
     for index, h in enumerate(headers):
-        name = string(names, h[0])
+        name = string(names, h['sh_name'])
+        kind = number(h['sh_type'], ENUM_SH_TYPE_BASE)
         require(name not in sections, 'Duplicate ELF section')
-        require(not (h[1] in (4, 9) and h[5]) or relocations and h[1] == 4, 'Unresolved ELF relocations')
+        require(not (kind in (4, 9) and h['sh_size']) or relocations and kind == 4, 'Unresolved ELF relocations')
         body = contents(h)
-        sections[name] = dict(type=h[1], flags=h[2], address=h[3], size=h[5], data=body)
-        if h[1] != 2:
+        sections[name] = dict(type=kind, flags=h['sh_flags'], address=h['sh_addr'], size=h['sh_size'], data=body)
+        if kind != 2:
             continue
-        require(h[6] < count and h[9] == 16 and h[5] % 16 == 0, 'Invalid ELF symbols')
-        strings = contents(headers[h[6]])
+        require(h['sh_link'] < count and h['sh_entsize'] == 16 and h['sh_size'] % 16 == 0, 'Invalid ELF symbols')
+        strings = contents(headers[h['sh_link']])
         values[index] = []
         for at in range(0, len(body), 16):
-            n, value, size, info, other, section = struct.unpack_from('<IIIBBH', body, at)
-            values[index].append(value)
-            symbol = string(strings, n)
+            e = structs.Elf_Sym.parse(body[at:at + 16])
+            values[index].append(e['st_value'])
+            symbol = string(strings, e['st_name'])
             if symbol:
-                require(section != 0, 'Undefined ELF symbol: ' + symbol)
-                symbols[symbol] = dict(value=value, size=size, type=info & 15)
+                require(e['st_shndx'] != 'SHN_UNDEF', 'Undefined ELF symbol: ' + symbol)
+                symbols[symbol] = dict(value=e['st_value'], size=e['st_size'],
+                                       type=number(e['st_info']['type'], ENUM_ST_INFO_TYPE))
     if not relocations:
         return sections, symbols
     relocated = {}
     for h in headers:
-        if h[1] != 4 or not h[5]:
+        if h['sh_type'] != 'SHT_RELA' or not h['sh_size']:
             continue
-        require(h[6] in values and h[7] < count and h[9] == 12 and h[5] % 12 == 0, 'Invalid ELF relocations')
-        table, body = values[h[6]], contents(h)
-        entries = relocated.setdefault(string(names, headers[h[7]][0]), [])
+        require(h['sh_link'] in values and h['sh_info'] < count and h['sh_entsize'] == 12 and h['sh_size'] % 12 == 0,
+                'Invalid ELF relocations')
+        table, body = values[h['sh_link']], contents(h)
+        entries = relocated.setdefault(string(names, headers[h['sh_info']]['sh_name']), [])
         for at in range(0, len(body), 12):
-            offset, info, addend = struct.unpack_from('<IIi', body, at)
-            require(info >> 8 < len(table), 'Invalid ELF relocation symbol')
-            entries.append(dict(offset=offset, type=info & 0xff, target=(table[info >> 8] + addend) & 0xffffffff))
+            r = structs.Elf_Rela.parse(body[at:at + 12])
+            require(r['r_info_sym'] < len(table), 'Invalid ELF relocation symbol')
+            entries.append(dict(offset=r['r_offset'], type=r['r_info_type'],
+                                target=(table[r['r_info_sym']] + r['r_addend']) & 0xffffffff))
     return sections, symbols, relocated
+
+
+def number(value, names):
+    """pyelftools names the enum values it knows: the number back."""
+    return names[value] if isinstance(value, str) else value

@@ -3,7 +3,7 @@
 Where each vector comes from:
   - RFC 6979 appendix A.2.4 (P-224 key and its deterministic signatures of "sample" and "test"
     with SHA-1/224/256/384/512): published values, re-derived here from the private key and
-    nonce by tests/p224_reference.py (public key = x*G, r and s recomputed) before use.
+    nonce by tests/p224_reference.py (the cryptography package) (public key = x*G, r and s recomputed) before use.
   - Edge cases in the style of Project Wycheproof's ecdsa_secp224r1_sha256 tests (r or s zero,
     n or above; keys off the curve, on another curve, at infinity, out of range; u1*G + u2*Q at
     infinity; the doubling case; e = 0; e >= n; Q = G and Q = -G; the malleable s): built here
@@ -164,10 +164,8 @@ class VerifierTests(Native):
         _, _, _, r, s = RFC_VECTORS[0]
         x, y = RFC_Q
         # A point on y^2 = x^3 - 3x + (b + 1): an invalid-curve key.
-        for other_x in range(1, 100):
-            other_y = ref.sqrt_mod_p(other_x ** 3 - 3 * other_x + ref.B + 1)
-            if other_y is not None:
-                break
+        other_x, other_y = 2, 0x7c824c6d6eb2bf81e21907f1d8c88d8249493c2165f2e11e3aed2695
+        self.assertEqual((other_y ** 2 - (other_x ** 3 - 3 * other_x + ref.B + 1)) % ref.P, 0)
         cases = {'y + 1': (x, y + 1), 'x + 1': (x + 1, y), 'infinity (all zero)': (0, 0),
                  'x = p': (ref.P, y), 'y = p': (x, ref.P), 'all ones': (2 ** 224 - 1, 2 ** 224 - 1),
                  'other curve': (other_x, other_y)}
@@ -187,12 +185,11 @@ class VerifierTests(Native):
                 self.assertEqual(self.verify(ref.public_key(d), digest, r, (s + 1) % ref.N or 1), MISMATCH)
         d, k = RFC_D, 0x1234567890abcdef1234567890abcdef1234567890abcdef12345678
         q = ref.public_key(d)
-        r = ref.multiply(k, ref.G)[0] % ref.N
-        # u1*G + u2*Q is the point at infinity when e = -r*d (mod n), whatever s is.
+        r = ref.public_key(k)[0] % ref.N
+        # u1*G + u2*Q = (e + r*d)/s * G is the point at infinity when e = -r*d (mod n), whatever s is.
         e = (-r * d) % ref.N
+        self.assertEqual((e + r * d) % ref.N, 0)
         for s in (1, 2, ref.N - 1, rng.randrange(1, ref.N)):
-            self.assertIsNone(ref.add(ref.multiply(e * pow(s, -1, ref.N) % ref.N, ref.G),
-                                      ref.multiply(r * pow(s, -1, ref.N) % ref.N, q)))
             self.assertEqual(self.verify(q, be(e), r, s), MISMATCH)
         # The doubling case: e = r*d makes u1*G = u2*Q; a genuine signature, s = 2rd/k.
         e = r * d % ref.N

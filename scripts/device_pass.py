@@ -121,6 +121,8 @@ import time
 import traceback
 import zlib
 
+from PIL import Image
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_build                                           # noqa: E402
@@ -317,23 +319,16 @@ def mods_reference(packages, machines, name):
 
 
 def png_pixels(data):
-    """xyf_host's screenshot PNG (8-bit RGB, filter none) -> rows of RGB bytes."""
-    at, idat, width, height = 8, b'', 0, 0
-    while at + 8 <= len(data):
-        n, kind = struct.unpack_from('>I4s', data, at)
-        if kind == b'IHDR':
-            width, height = struct.unpack_from('>II', data, at + 8)
-        elif kind == b'IDAT':
-            idat += data[at + 8:at + 8 + n]
-        at += 12 + n
+    """xyf_host's screenshot PNG (8-bit RGB) -> rows of RGB bytes."""
     try:
-        raw = zlib.decompress(idat)
-    except zlib.error:
-        raw = b''
-    stride = 1 + 3 * width
-    if not width or len(raw) != stride * height or any(raw[y * stride] for y in range(height)):
+        image = Image.open(io.BytesIO(data))
+        image.load()
+    except (OSError, SyntaxError, ValueError):
+        image = None
+    if image is None or image.format != 'PNG' or image.mode != 'RGB':
         raise StepFail('the screenshot is not xyf_host\'s plain RGB PNG')
-    return [raw[y * stride + 1:(y + 1) * stride] for y in range(height)]
+    raw, stride = image.tobytes(), 3 * image.width
+    return [raw[y * stride:(y + 1) * stride] for y in range(image.height)]
 
 
 def white(rows, x, y):

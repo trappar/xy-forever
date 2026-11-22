@@ -5,8 +5,8 @@ is checked before its command reaches the transport: the path is below /yaffs2 (
 device path /yaffs2/a/b is MTP path /a/b), never /yaffs2/bootloader.dev nor /yaffs2/upgrade or below it (ASCII
 case ignored), no file more than 6 folders below /yaffs2 (#124, xy_forever/depth.py), and a delete only inside
 the scratch folder named when the Writer is made. The stock OS's MTP shows its /fat32 at the root instead: the
-same checks, stricter than it needs. Works over any mtp_read transport (USB, the simulator's diag.mtp tunnel in
-scripts/throughput.py, a fake in the tests).
+same checks, stricter than it needs. Works over any mtp_read transport (USB, the simulator's diag.mtp tunnel, a fake
+in the tests).
 """
 import struct
 

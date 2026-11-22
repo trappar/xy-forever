@@ -1,14 +1,9 @@
 # Two agents at once
 
 Two agents from different tools may work this repository on one machine at the same time. They cannot message
-each other, so they coordinate through local files under the private folder; GitHub never learns about agents
-(no labels, comments, refs, branch names or PR text). All of it is optional: an agent working alone, or a person,
-never runs `claim`, and `plan.py` without `--agent` is unchanged.
-
-## Agent names
-
-Each agent passes its tool's name as `--agent` from this fixed list: `claude`, `codex`. `plan.py` refuses any
-other (`AGENTS` in `xy_forever/claims.py`; change both together).
+each other, so they coordinate on GitHub: the assignee and an `agent:<name>` label on the item's issue, where
+`<name>` is the tool's name (`claude`, `codex`). An agent working alone, or a person, needs no label, and
+`plan.py` without `--agent` reads a labelled item as taken.
 
 ## Worktrees
 
@@ -18,19 +13,16 @@ A worktree finds the same private folder, toolchain, `xyf.local.json` and local 
 checkout (`main_checkout` in `xy_forever/paths.py`; `XYF_PRIVATE` and `XYF_TOOLCHAIN` still win). Its
 `.venv` and `node_modules` are its own: `uv sync` and `pnpm install` there (or `mise run setup`) before checks. Never `git stash`: the stash is shared.
 
-## Claims
+## Taking an item
 
-- `python3 scripts/plan.py --agent NAME` splits your items: claimed by NAME (yours: resume only these),
-  claimed by another agent (leave them; they leave "Next" too), and unclaimed (interrupted work: claim it
-  before you resume it). It removes claims whose issue is closed or whose pull request is merged or closed,
-  and marks a claim whose branch has had no commits of its own for two days as stale.
-- `python3 scripts/plan.py claim <N> --agent NAME`, in the item's new worktree, before
-  `gh issue edit <N> --add-assignee @me`. The claim is `<private>/xy-forever/claims/<N>.json` (versioned:
-  agent, branch, worktree, time), made by exclusive create: of two agents one wins, and the other is refused
-  with the holder's name. Refused: remove your worktree (`git worktree remove`) and take the next item.
-- `python3 scripts/plan.py release <N> --agent NAME` when you stop an item that has no pull request
-  (blocked, unassigned). A closed issue or a merged or closed pull request releases it by itself. Another
-  agent's stale claim: ask the developer before releasing it (`release <N>` without `--agent`).
+- `mise run plan -- --agent NAME` splits your items: labelled `agent:NAME` (yours: resume only these),
+  labelled for another agent (leave them; they leave "Next" too), and assigned to you with no agent label
+  (interrupted work: label it before you resume it).
+- Take an item with `gh issue edit <N> --add-assignee @me --add-label agent:NAME` (the first time on a
+  repository, `gh label create agent:NAME`). Look again right after: if another `agent:` label is there too,
+  the agent whose label came first keeps it; the other removes its label and takes the next item.
+- Stopping an item that has no pull request (blocked, unassigned): `gh issue edit <N> --remove-label
+  agent:NAME`. Another agent's label on an item that looks abandoned: ask the developer before removing it.
 
 ## The device and builds
 

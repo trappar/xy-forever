@@ -36,7 +36,10 @@ import sys
 import tempfile
 from urllib.parse import quote, unquote
 
+from elftools.elf.enums import ENUM_SH_TYPE_BASE, ENUM_ST_INFO_BIND, ENUM_ST_INFO_TYPE, ENUM_ST_SHNDX
+
 from . import package_records
+from .build_formats import elf_records, number
 from .xyf_entry import files_sha256_text, read_files_sha256
 
 KIT_FORMAT = 'opxy-browser-kit/1'
@@ -52,7 +55,7 @@ EDIT_KEYS = {'kind', 'name', 'address', 'file_offset', 'length', 'before', 'afte
 MACHINE_ID = re.compile(r'[a-z][a-z0-9_]{0,14}')
 EXTENSION_ID = re.compile(r'[a-z][a-z0-9_]{0,31}')
 RELOCATIONS = (6, 7, 10, 13, 18)   # LUIMM16, HUIMM16, PCREL24, PCREL24_JUMP_L, BYTE4_DATA
-SHN_ABS, SHN_COMMON = 0xfff1, 0xfff2
+SHN_ABS = 0xfff1
 STT_FILE = 4
 # Files a mod package may hold (anything else, e.g. edits or definitions, belongs only to the base).
 MOD_FILES = re.compile(r'manifest\.json|info\.txt|files\.sha256|objects\.txt|objects/[A-Za-z0-9_./-]+\.o|catalog\.txt|'
@@ -81,19 +84,21 @@ def sha256(data):
 def read_object(data, name='object'):
     """Sections (name, type, flags, size, group), symbols and relocations of a Blackfin ET_REL object."""
     check(52 <= len(data) <= 1 << 20, name + ': object size outside bounds')
-    u16 = lambda at: struct.unpack_from('<H', data, at)[0]   # noqa: E731
-    u32 = lambda at: struct.unpack_from('<I', data, at)[0]   # noqa: E731
-    check(data[:6] == b'\x7fELF\x01\x01' and u16(16) == 1 and u16(18) == 106,
+    check(data[:6] == b'\x7fELF\x01\x01', name + ': not a Blackfin relocatable object')
+    structs, elf = elf_records(data)
+    check(elf['e_type'] == 'ET_REL' and elf['e_machine'] in ('EM_BLACKFIN', 106),
           name + ': not a Blackfin relocatable object')
-    start, count, names_index = u32(32), u16(48), u16(50)
-    check(u16(46) == 40 and 0 < count < 4096 and names_index < count and start + count * 40 <= len(data),
+    start, count, names_index = elf['e_shoff'], elf['e_shnum'], elf['e_shstrndx']
+    check(elf['e_shentsize'] == 40 and 0 < count < 4096 and names_index < count and start + count * 40 <= len(data),
           name + ': invalid section table')
+    headers = [structs.Elf_Shdr.parse(data[start + i * 40:start + i * 40 + 40]) for i in range(count)]
     sections = []
-    for i in range(count):
-        n, type_, flags, _, offset, size, link, info, align, stride = struct.unpack_from('<10I', data, start + i * 40)
-        check(type_ == 8 or offset + size <= len(data), name + ': section exceeds file')
-        sections.append(dict(index=i, name_offset=n, type=type_, flags=flags, offset=offset, size=size, link=link,
-                             info=info, align=align or 1, stride=stride))
+    for i, h in enumerate(headers):
+        type_ = number(h['sh_type'], ENUM_SH_TYPE_BASE)
+        check(type_ == 8 or h['sh_offset'] + h['sh_size'] <= len(data), name + ': section exceeds file')
+        sections.append(dict(index=i, name_offset=h['sh_name'], type=type_, flags=h['sh_flags'], offset=h['sh_offset'],
+                             size=h['sh_size'], link=h['sh_link'], info=h['sh_info'], align=h['sh_addralign'] or 1,
+                             stride=h['sh_entsize']))
 
     def string(table, at):
         blob = data[table['offset']:table['offset'] + table['size']]
@@ -119,10 +124,12 @@ def read_object(data, name='object'):
     check(table['stride'] == 16 and table['size'] % 16 == 0 and table['link'] < count, name + ': invalid symbol table')
     symbols = []
     for at in range(table['offset'], table['offset'] + table['size'], 16):
-        n, value, size, info, _, shndx = struct.unpack_from('<IIIBBH', data, at)
+        e = structs.Elf_Sym.parse(data[at:at + 16])
+        shndx = number(e['st_shndx'], ENUM_ST_SHNDX)
         check(shndx < count or shndx == SHN_ABS, name + ': COMMON or extended symbol sections are unsupported')
-        symbols.append(dict(name=string(sections[table['link']], n), value=value, size=size, binding=info >> 4,
-                            type=info & 15, section=shndx))
+        symbols.append(dict(name=string(sections[table['link']], e['st_name']), value=e['st_value'],
+                            size=e['st_size'], binding=number(e['st_info']['bind'], ENUM_ST_INFO_BIND),
+                            type=number(e['st_info']['type'], ENUM_ST_INFO_TYPE), section=shndx))
     relocations = []
     for s in sections:
         check(s['type'] != 9, name + ': REL without addends is unsupported')
@@ -131,9 +138,10 @@ def read_object(data, name='object'):
         check(s['link'] == table['index'] and s['info'] < count and s['stride'] == 12 and s['size'] % 12 == 0,
               name + ': invalid relocation table')
         for at in range(s['offset'], s['offset'] + s['size'], 12):
-            offset, info, addend = struct.unpack_from('<IIi', data, at)
-            check(info & 255 in RELOCATIONS and info >> 8 < len(symbols), name + ': unsupported relocation')
-            relocations.append(dict(section=s['info'], offset=offset, type=info & 255, symbol=info >> 8, addend=addend))
+            r = structs.Elf_Rela.parse(data[at:at + 12])
+            check(r['r_info_type'] in RELOCATIONS and r['r_info_sym'] < len(symbols), name + ': unsupported relocation')
+            relocations.append(dict(section=s['info'], offset=r['r_offset'], type=r['r_info_type'],
+                                    symbol=r['r_info_sym'], addend=r['r_addend']))
     return dict(sections=sections, symbols=symbols, relocations=relocations)
 
 
