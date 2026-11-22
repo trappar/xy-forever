@@ -877,7 +877,17 @@ class PublishedKit(unittest.TestCase):
             )
         }
 
-    def test_sampled_selections_are_byte_identical(self):
+    def test_published_kit(self):
+        """One test, so no scheduler splits the class and repeats its setup (modkit prove over the real packages)."""
+        for check in (
+            self.sampled_selections_are_byte_identical,
+            self.known_base_table_is_this_base,
+            self.working_memory_and_steps,
+        ):
+            with self.subTest(check.__name__):
+                check()
+
+    def sampled_selections_are_byte_identical(self):
         self.assertEqual(len(self.rows), 8)
         for name, row in self.rows.items():
             with self.subTest(selection=name):
@@ -889,11 +899,11 @@ class PublishedKit(unittest.TestCase):
         self.assertTrue(any(n.startswith('fits') for n in self.rows))
         self.assertTrue(all(r['base'] == 'known' for n, r in self.rows.items() if 'base' in r))
 
-    def test_known_base_table_is_this_base(self):
+    def known_base_table_is_this_base(self):
         """native/mod_known_bases.inc is what modkit known-base writes for the kept package set."""
         self.assertEqual(P.KNOWN_BASES.read_text(), P.known_bases_text([PACKAGES / 'base'], TK.STOCK, TK.CATALOG))
 
-    def test_working_memory_and_steps(self):
+    def working_memory_and_steps(self):
         row = self.rows['linked']
         self.assertEqual(row['memory']['patch_scratch'], 52224)
         self.assertLess(row['bytes'], 2373336 + 16 + 2080768 + 1)
@@ -958,7 +968,17 @@ class PublishedKitExpanded(unittest.TestCase):
         }
         cls.binary = P.build()
 
-    def test_expanded_is_byte_identical(self):
+    def test_published_kit_expanded(self):
+        """One test, so no scheduler splits the class and repeats its setup (modkit prove in expanded mode)."""
+        for check in (
+            self.expanded_is_byte_identical,
+            self.standard_refuses_what_only_expanded_fits,
+            self.bases_without_or_with_a_wrong_expanded_layout,
+        ):
+            with self.subTest(check.__name__):
+                check()
+
+    def expanded_is_byte_identical(self):
         limit = 4080 * 1024
         for name, row in self.rows.items():
             with self.subTest(selection=name):
@@ -969,7 +989,7 @@ class PublishedKitExpanded(unittest.TestCase):
         self.assertIn('need more than the 4080 KiB available', self.rows['over']['error'])
         self.assertTrue(all(r['base'] == 'known' for r in self.rows.values() if 'base' in r))
 
-    def test_standard_refuses_what_only_expanded_fits(self):
+    def standard_refuses_what_only_expanded_fits(self):
         self.assertTrue(all(P.proven(r) for r in self.standard.values()), self.standard)
         self.assertEqual((self.standard['large']['link'], self.standard['large']['link_detail']), ('capacity', '2032'))
         self.assertEqual(self.standard['one']['ldr_identical'], True)
@@ -980,7 +1000,7 @@ class PublishedKitExpanded(unittest.TestCase):
         (folder / 'job.txt').write_text(P.job_text(gen, ['fm2op'], [], TK.STOCK, TK.CATALOG, memory=memory))
         return P.run(self.binary, folder / 'job.txt', folder / 'out')
 
-    def test_bases_without_or_with_a_wrong_expanded_layout(self):
+    def bases_without_or_with_a_wrong_expanded_layout(self):
         """A base written before the 4 MiB option (no expanded_module_base) stays known for standard and is refused for
         expanded; a base whose expanded_module_base differs from the known one is not known in expanded mode."""
         for name, value in (('old', None), ('moved', '0x8d1d0380'), ('unaligned', '0x8d0d0384')):

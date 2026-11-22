@@ -1156,14 +1156,24 @@ class PublishedPackages(unittest.TestCase):
             )
         }
 
-    def test_sampled_selections_are_identical(self):
+    def test_published_packages(self):
+        """One test, so no scheduler splits the class and repeats its setup (the sampled selections linked twice)."""
+        for check in (
+            self.sampled_selections_are_identical,
+            self.sizes_match_records_008_and_014,
+            self.whole_kit_fits_the_default_limits,
+        ):
+            with self.subTest(check.__name__):
+                check()
+
+    def sampled_selections_are_identical(self):
         self.assertEqual(len(self.rows), 8)
         for name, row in self.rows.items():
             with self.subTest(selection=name):
                 self.assertTrue(row['identical'], row)
                 self.assertEqual(row['status'], 'capacity' if name == 'all' else 'ok')
 
-    def test_sizes_match_records_008_and_014(self):
+    def sizes_match_records_008_and_014(self):
         allocated = {
             n: self.rows[n]['allocated'] for n in ('one', 'one+capture', 'one+master_dj_filter', 'one+all-extensions')
         }
@@ -1172,7 +1182,7 @@ class PublishedPackages(unittest.TestCase):
             {'one': 148120, 'one+capture': 161440, 'one+master_dj_filter': 194484, 'one+all-extensions': 202584},
         )
 
-    def test_whole_kit_fits_the_default_limits(self):
+    def whole_kit_fits_the_default_limits(self):
         usage = self.rows['all']['usage']
         limits = dict(objects=640, sections=4096, names=4608, records=4096, text=128 * 1024, absent=1024)
         for key, bound in limits.items():
