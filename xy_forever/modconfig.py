@@ -11,6 +11,7 @@ import hashlib
 import struct
 import time
 
+from . import transport
 from . import usb_proto as P
 
 COMMANDS = ('status', 'set')
@@ -35,8 +36,10 @@ def request(mods, flags):
     return body + hashlib.sha256(body).digest()
 
 
-def set_inputs(dev, mods, flags, sleep=time.sleep, clock=time.monotonic, timeout=READ_S):
-    """(status, reason) of config.set, sent again while the device reads its package list (busy)."""
+def set_inputs(dev, mods, flags, sleep=None, clock=time.monotonic, timeout=READ_S):
+    """(status, reason) of config.set, sent again while the device reads its package list (busy). sleep: the
+    pause between tries (default: the device's own, transport.pause)."""
+    sleep = sleep or (lambda s: transport.pause(dev.t, s))
     start = clock()
     while True:
         code, body = dev.call(P.ids.CONFIG_SET, request(mods, flags),
@@ -46,8 +49,9 @@ def set_inputs(dev, mods, flags, sleep=time.sleep, clock=time.monotonic, timeout
         sleep(0.2)
 
 
-def written(dev, sleep=time.sleep, clock=time.monotonic, timeout=30.0):
+def written(dev, sleep=None, clock=time.monotonic, timeout=30.0):
     """config.get once the set is written (saving 0) or its write failed (2); None when neither came in time."""
+    sleep = sleep or (lambda s: transport.pause(dev.t, s))
     start = clock()
     while clock() - start <= timeout:
         code, f = get(dev)

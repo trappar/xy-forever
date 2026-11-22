@@ -669,7 +669,13 @@ class Runner {
   async sendBytes(link: CaseLink, chunks: Uint8Array[], separate: boolean, e: Obj): Promise<void> {
     const gap = separate ? 5 : 0;                                         // separate reads on the device side
     if ('none_within_ms' in e) {
-      const early = await link.exchange(chunks, gap, e['none_within_ms'] as number, (fs) => fs.length > 0);
+      // The simulator's clock moves only when told: the bytes, its own time on (advance), then any frame it sent.
+      const ms = e['none_within_ms'] as number;
+      let early = await link.exchange(chunks, gap, 50, (fs) => fs.length > 0);
+      if (!early.length) {
+        await this.control(`advance ${String(ms)}`);
+        early = await link.exchange([], 0, 50, (fs) => fs.length > 0);
+      }
       if (early.length) throw new Fail(`expected no frame within ${String(e['none_within_ms'])} ms, got 0x${early[0]!.type.toString(16)} seq ${early[0]!.seq}`);
       return;
     }

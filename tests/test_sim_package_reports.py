@@ -21,7 +21,7 @@ class Reports(unittest.TestCase):
             if result[0] != P.ids.S_BUSY:
                 return result
             self.assertLess(time.monotonic(), until)
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def packages(self, area):
         outer = inner = 0
@@ -118,7 +118,7 @@ class Reports(unittest.TestCase):
                 self.assertEqual((row['type'], row['valid']), ('unknown', '0'))
                 self.assertNotEqual(row['version'], 'legacy')
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under load (#240)
     def test_large_inbox_identity_is_streamed_without_size_cap(self):
         inbox = self.root / 'xy-forever/inbox'
         inbox.mkdir()
@@ -149,7 +149,7 @@ class Reports(unittest.TestCase):
         self.sim.advance(10000)
         for _ in range(20):
             self.dev.hello()
-            time.sleep(0.01)
+            self.sim.advance(10)
         self.assertEqual(blob.read_bytes(), value)
 
     def test_path_and_offset_bounds(self):

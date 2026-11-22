@@ -52,21 +52,23 @@ struct Shared {
     std::atomic<int32_t> swap_armed;
     // Test hook (set vanish_marker 1): the next unlink or rmdir on A also removes /yaffs2/bootloader.dev.
     std::atomic<int32_t> vanish_marker;
-    // Real time (control "advance MS" or "jump MS"): added to the cycle counter of both processors, so
-    // time-outs the device code measures in cycles (a_alone_ms, say) pass without waiting for them.
-    std::atomic<int64_t> clock_skip_us;
-    // The device clock (sim/clock.cpp). virtual_clock 0: real time (interactive runs), the host's clock plus
-    // clock_skip_us. 1 (--virtual, test runs): clock_ns, which moves only by the board's steps (when both
-    // processors are idle), the link messages it relays and the clock reads of a busy processor. work: what a processor did or was given (a link message, USB data, a control
-    // command); idle_work, idle_steps: the main thread was idle at that work and that step, and its wait
-    // ends by itself at idle_until (clock_ns; 0: no bound). inflight, outflight: link messages to and from
-    // a processor not yet taken. wake: pipes that wake processor A, B and the board.
-    std::atomic<int32_t> virtual_clock;
+    // The device clock (sim/clock.cpp): clock_ns, which moves only by the board's steps (when both processors
+    // are idle and something is due), the link messages it relays and the clock reads of a busy processor.
+    // work: what a processor did or was given (a link message, USB data, a control command); idle_work,
+    // idle_steps: the main thread was idle at that work and that step, and its wait ends by itself at
+    // idle_until (clock_ns; 0: no bound). inflight, outflight: link messages to and from a processor not yet
+    // taken. usb_held: B's last USB write found no room (the host is not reading). outside: news from outside
+    // the device (USB data or a connection, a control command other than status, inject, injected, settle, advance).
+    // wake: pipes that wake processor A, B, the board, and A's and B's link threads.
+    std::atomic<int32_t> usb_held;
+    std::atomic<uint32_t> outside;
+    std::atomic<int32_t> usb_asked;              // B read host bytes and wrote none to the host since (2: then asked A)
     std::atomic<uint64_t> clock_ns;
     std::atomic<uint32_t> steps, work[2], idle_work[2], idle_steps[2];
     std::atomic<uint64_t> idle_until[2];
+    std::atomic<int32_t> idle_rest[2];            // that wait is at rest (A: any; B: 1 its menu loop's pause, 2 a hang)
     std::atomic<int32_t> inflight[2], outflight[2];
-    int wake[3][2];
+    int wake[5][2];
     // Processor B's OTP as its boot-ROM stand-in answers it (sim/stock.cpp: ROM 04000048/04000054):
     // fields by selector, given on the simulator's stdin at start (--otp-stdin; xy_forever/sim.py takes
     // them from the private area), never from a file or the command line. Test hook (set otp_fail N):
@@ -174,6 +176,7 @@ static const uint32_t cls_partition = 0x11907694u, cls_path = 0x119076b4u, cls_r
                       cls_sector = 0x11907348u, cls_write = 0x11907710u, cls_query = 0x11907388u;
 // Link services (sim/link.cpp).
 void link_start();                               // the receiving thread ("interrupt") of this processor
+extern std::atomic<int> a_held;                  // A: class requests its link thread holds until A's slave opens
 // B: send a request and wait for its answer (stock client RPC: unbounded, as 889f7b12).
 uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t a2, const void* body, uint32_t bytes,
                 void* out, uint32_t capacity, uint32_t* error = 0);
@@ -198,22 +201,26 @@ uint32_t driver();
 // Storage (sim/yaffs.cpp): the host folder standing in for /yaffs2, with the mount state.
 void storage_op_done();                          // one mutating storage operation finished (power-cut hook)
 // sim/boot.cpp: the stock bootloader after a lone reset.
-// sim/clock.cpp: the device clock (runtime.hpp: Shared virtual_clock).
+// sim/clock.cpp: the device clock (runtime.hpp: Shared clock_ns).
 uint64_t device_cycles();                        // this processor's CCLK cycle count (advance included)
-bool virtual_clock();
-void kick(int which);                            // work for processor which (its main thread wakes)
+void kick(int which, bool link = true);          // work for processor which (its main thread wakes; link: its link thread too)
 void active();                                   // the main thread did something (it is not idle)
 void link_taken();                               // a link thread took its message (after kick)
 // One pause of a wait on the main thread (B's stock request, a bootloader's wait, a fault's delay): idle
 // meanwhile. bound: the device_cycles() at which the wait ends by itself (the board steps no further), 0
-// none; real time: sleeps real_us.
-void idle_pause(uint64_t bound, uint32_t real_us);
-void cdc_wait(int ms);                           // B's menu loop pause, woken by USB data
+// none. rest (B): nothing inside the device ends it (the clock may stand still); else B waits on device time.
+void idle_pause(uint64_t bound, bool rest = false);
+void cdc_wait(int ms, uint64_t event = 0);       // B's menu loop pause, woken by USB data (event: its next timer, cycles)
 int cdc_fd();                                    // B: the USB client's socket, else the listener's (-1: USB off)
-// Board: one step of the virtual clock when both processors are idle (deadline: the board's own next
-// event, clock_ns; 0 none; woken: its wake pipe had news); returns how long the board may wait for events (ms).
+uint32_t cdc_connection();                       // B: changes whenever cdc_fd() may name another socket
+int cdc_next_fd();                               // B: the listener while a client is attached (a new host), else -1
+// Board: one step of the clock when both processors are idle and something is due (deadline: the board's own
+// next event, clock_ns; 0 none; woken: its wake pipe had news); returns how long the board may wait for events
+// (ms; -1: until one comes).
 int board_clock(const bool running[2], uint64_t deadline_ns, bool woken);
 void board_advance(int client, int64_t ms);      // control "advance MS": answered once the clock is there
+void board_settle(int client);                   // control "settle": answered once the clock stands still
+void board_idle_wall();                          // --idle-wall: idle device time follows the host's (interactive only)
 void board_forget(int client);
 void board_jump(int64_t ms);                     // control "jump MS": both clocks jump at once (a slow pass)
 std::string input_command(const std::string& line, const char* verb);   // sim/devices.cpp: knob*, realkey

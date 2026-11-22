@@ -117,7 +117,7 @@ class ConfigBase(PageBase, CS.Switch):
         deadline = time.monotonic() + timeout
         while not cond():
             self.assertLess(time.monotonic(), deadline, what)
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def booted(self, timeout=bounds.WAIT_S):
         """The menu booted the default: its id; both processors in the OS."""
@@ -142,6 +142,7 @@ class ConfigBase(PageBase, CS.Switch):
         self.reconnect()
         self.assertEqual(self.dev.hello()[0], 0)
         self.wait_log(lambda: len(self.lines('menu: home row: ')) > rows, 'the home row')
+        self.sim.settle()                                                  # its start-up work done, as a host finds it
 
     def plain_boots_without_writing(self, entry):
         before = self.snapshot()
@@ -448,7 +449,6 @@ class Config(ConfigBase, unittest.TestCase):
         self.assertEqual(self.booted(), a)
         self.saved_as(a, ['alpha'])
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_power_cut_in_the_record_write_then_save(self):
         a = self.all_off_saved()
         self.change(['alpha'], unknown=False)

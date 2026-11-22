@@ -87,7 +87,7 @@ class PageBase(J.Base):
             if shown and cond(shown[-1]):
                 return shown[-1]
             self.assertLess(time.monotonic(), deadline, 'progress never %s: %s' % (what, shown[-1:]))
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def lines(self, marker):
         log = (self.dir / 'log.txt').read_text(errors='replace') if (self.dir / 'log.txt').exists() else ''
@@ -141,7 +141,7 @@ class PageBase(J.Base):
             if p is not None and cond(p):
                 return p
             self.assertLess(time.monotonic(), deadline, 'page never %s: %s' % (what, p))
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def open_page(self, timeout=bounds.WAIT_S):
         for _ in range(MODS_ROW):
@@ -232,7 +232,7 @@ class PageBase(J.Base):
         deadline = time.monotonic() + timeout
         while self.sim.status()['rw_open']:
             self.assertLess(time.monotonic(), deadline, 'the write window never closed')
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def committed(self, p):
         """The page said Built for its job: the library entry job.status names (mods-a or mods-b), its files
@@ -484,9 +484,9 @@ class MenuQuality(PageBase, unittest.TestCase):
     def check_repeats(self, down, up, repeats, what):
         self.assertTrue(repeats, what)
         self.assertGreaterEqual(repeats[0] - down, 400, what)
-        # at most two slowed requests late (a_slow_ms 30): the virtual clock's steps put it at either bound (#144:
-        # A's two cycle reads per request moved it from below 460 to 460)
-        self.assertLessEqual(repeats[0] - down, 400 + 60, what)
+        # at most two slowed requests late (a_slow_ms 30) and their transfer on the link (sim/clock.cpp link_ns,
+        # link_byte_ns: a 4 KiB body ~1 ms); where the press lands in the job's slice is up to host timing
+        self.assertLessEqual(repeats[0] - down, 400 + 60 + 10, what)
         gaps = [b - a for a, b in zip(repeats, repeats[1:])]
         self.assertTrue(all(g >= 80 for g in gaps), (what, gaps))         # never a burst
         self.assertTrue(all(r <= up for r in repeats), (what, up, repeats))   # none after the release
@@ -614,7 +614,7 @@ class PageAndSwitch(PageBase, CS.Switch, unittest.TestCase):
     def test_opened_during_a_usb_job_write_phase(self):
         """A USB mods.apply in its write phase (A slowed): the page opened fresh says busy, sends nothing, lists
         when the job is over; the job's result is the same."""
-        self.sim.set('a_slow_ms', 30)
+        self.sim.set('a_slow_ms', 120)                  # the write phase outlasts what the device runs on its own
         job = self.start(['alpha', 'gamma'])
         self.until_phase(job, MS.PHASES.index('write'))
         self.opened_busy('a USB job')
@@ -660,17 +660,18 @@ class ManyPackages(PageBase, unittest.TestCase):
         self.sim.set('a_slow_ms', 2)
         for _ in range(MODS_ROW):
             self.press(PLUS)
-        t = time.monotonic()
+        clock = lambda: self.sim.status()['clock_ms']    # noqa: E731 (device time)
+        t = clock()
         self.press(PLAY)
         first = self.wait(lambda p: p['shown'] == 1, 'opened', 10.0)
-        opened = time.monotonic() - t
+        opened = clock() - t
         self.assertEqual(first['view'], VIEW_READING)                       # at once, reading
-        slowest = 0.0
+        slowest = 0
         while self.page()['view'] == VIEW_READING:
-            s = time.monotonic()
+            s = clock()
             self.assertEqual(self.dev.call(P.STATUS, timeout=5.0)[0], 0)
-            slowest = max(slowest, time.monotonic() - s)
-            time.sleep(0.02)
+            slowest = max(slowest, clock() - s)
+            self.sim.advance(20)
         p = self.page()
         self.sim.set('a_slow_ms', 0)
         partial = [q['shown_rows'] for q in self.pages() if q['view'] == VIEW_READING]
@@ -681,9 +682,9 @@ class ManyPackages(PageBase, unittest.TestCase):
             self.press(PLUS)                                                # the filter and all rows)
         self.press(PLAY)
         self.assertEqual(len(self.page()['on']), 1)
-        print('\nManyPackages: %d packages listed in %.2f s host (A +2 ms a request), page shown after %.3f s, '
-              'longest pump pass %d ms, slowest USB status %.3f s, %d redraws while reading'
-              % (total, time.monotonic() - t, opened, p['longest'], slowest, len(partial)), file=sys.stderr)
+        print('\nManyPackages: %d packages listed in %d ms (A +2 ms a request), page shown after %d ms, '
+              'longest pump pass %d ms, slowest USB status %d ms, %d redraws while reading (device time)'
+              % (total, clock() - t, opened, p['longest'], slowest, len(partial)), file=sys.stderr)
 
 
 def _published():

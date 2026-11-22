@@ -34,7 +34,7 @@ that already holds a grant for the dev server's origin `http://127.0.0.1:5173`. 
 
 Serial runs hold the shared OP-XY device lock. The script prints a `NEED:` line if the granted port or lock is unavailable, or if **Ask before USB control** is on.
 
-The Vitest run starts its own simulators (`python3 -m xy_forever.sim --virtual-clock`, ports 7700-7709 and 7720-7721, state under
+The Vitest run starts its own simulators (`python3 -m xy_forever.sim`, ports 7700-7709 and 7720-7721, state under
 the private sessions folder; `XYF_TS_SIM_PORT`, `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`) and skips the
 simulator tests with the reason when they cannot start. Node 26 (pinned in `mise.toml`).
 

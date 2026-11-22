@@ -560,7 +560,7 @@ class HostDevice:
                 return True
             if not host.SIM and (not self.port or not os.path.exists(self.port)):
                 return True
-            time.sleep(0.05)
+            host.pause(0.05)
         return False
 
 
@@ -596,8 +596,9 @@ def pass_file(name):
 class Pass:
     allow_boot = False             # refuse_os: never library.boot (mod_boot.py sets it)
 
-    def __init__(self, dev, opts, keepalive, sleep=time.sleep):
-        self.dev, self.opts, self.keepalive, self.sleep = dev, opts, keepalive, sleep
+    def __init__(self, dev, opts, keepalive, sleep=None):
+        # sleep: the host's pause on the device (on the simulator its clock moves on: xyf_host.pause)
+        self.dev, self.opts, self.keepalive, self.sleep = dev, opts, keepalive, sleep or host.pause
         self.folder = None
         self.prefix = ''
         self.log = []
@@ -2025,7 +2026,7 @@ def parse_args(argv):
     return parser.parse_args(argv)
 
 
-def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep):
+def main(argv=None, device=None, keepalive=None, sessions=None, sleep=None):
     opts = parse_args(argv)
     try:
         chosen = selected_stages(opts)

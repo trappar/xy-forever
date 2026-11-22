@@ -55,6 +55,10 @@ class Target:
     def present(self):
         return host.sim_listening(self.sim) if self.sim else host.find_port() is not None
 
+    def pause(self, seconds):
+        """The host waits on the device: on the simulator its clock moves on instead (no host time)."""
+        host.transport.sim_pause(self.sim, seconds) if self.sim else time.sleep(seconds)
+
     def open(self):
         self.port = 'sim:' + self.sim if self.sim else host.find_port()
         if not self.port:

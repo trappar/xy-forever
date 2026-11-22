@@ -68,11 +68,13 @@ async function powerOn(stock: 'stock' | 'missing', plain: boolean): Promise<SimI
 }
 
 const status = async (sim: SimInfo): Promise<Record<string, unknown>> => control(sim.control, 'status');
+/** Until cond, the device's clock moved on 100 ms between looks (it moves only when told: xy-forever sim/clock.cpp). */
 async function until(what: string, cond: () => Promise<boolean>, ms = 120_000): Promise<void> {
   const deadline = Date.now() + ms;
   while (!(await cond())) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((ok) => setTimeout(ok, 100));
+    if (running) await control(running.sim.control, 'advance 100');
+    await new Promise((ok) => setTimeout(ok, 20));
   }
 }
 const inOs = async (sim: SimInfo): Promise<boolean> => { const s = await status(sim); return s['a'] === 'os' && s['b'] === 'os'; };
@@ -375,6 +377,8 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     await press(page, 'Connect');
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
+    // The stock os.ldr's 2.3 MB upload, the boot partition write and the reboot: about 25 s of device time, one
+    // simulator step a menu pass (sim/clock.cpp), 7 s of host time alone; a full check beside it takes longer.
     await expect.poll(async () => (await page.locator('[data-testid=notice][data-type=error]').textContent({ timeout: 100 }).catch(() => null)) ??
       new URL(page.url()).pathname, { timeout: 90_000 }).toBe('/connect/');
     expect(reboot).toBe(1);

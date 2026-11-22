@@ -20,20 +20,26 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   last, the other erased even on verify failure; model encryption below), the retained cold state, `cold.cpp` (its policy is extracted; an OS
   start stops both processes: `os`; no image: `halted`) and `key_ui` (the menu loop without screen or keys:
   `home_pump`, tick, link check; SCREEN shows a test pattern, KEY does nothing).
-- **Device time** (`sim/clock.cpp`): interactive runs (`python3 -m xy_forever.sim`, the web app, `conformance.py
-  --sim`) use real time. Test runs (`xy_forever.sim.Simulator`, `--virtual-clock`; the TypeScript and web tests
-  too) use a virtual clock that only the simulator moves: the board steps it (1 ms after activity, doubling to 8
-  ms, never past a known event: a reset delay, a delayed link message, a fault's delay) only while both
-  processors are idle (no link message in flight, each main thread in a wait or polling the clock with nothing
-  done); a relayed message and a busy processor's clock reads add their own time. A processor that is slow
-  on a busy host stops the clock, so no device time-out depends on host load. Idle steps keep pace with host
-  time (at most 1 s behind), so a host's pauses mean what they mean on the OP-XY; `advance` fast-forwards.
+- **Device time** (`sim/clock.cpp`, every run: tests, `python3 -m xy_forever.sim`, the web app, `conformance.py
+  --sim`): a clock only the simulator moves, never host time. The board steps it (1 ms after activity, doubling
+  up to 10 ms, 100 ms with B at rest, never past a known event: a reset delay, a delayed link message, a fault's delay, a held key's
+  repeat) only while both processors are idle (no link message in flight, each main thread in a wait or polling the clock with nothing
+  done) and something is due: an `advance`, a board event, B waiting on device time away from its menu loop's
+  pause (a delay, a time-out) or on A for a host request it passed on, or work since the last step (with B at rest: only while B owes a host request its
+  answer, or for 1 s past the last power-on, USB data or control command, so a device that polls on its own comes
+  to rest). Otherwise it stands still and every process blocks with no CPU: an idle device's own timers
+  (keepalives, a deferred save, an idle window's close, a frame's idle reset) wait for an `advance`, which is how
+  a host's pause reaches the device (host tools pause with `transport.sim_pause`, tests with `Simulator.advance`,
+  `until`, `settle`: until nothing is done). A relayed message and a busy processor's clock reads add their
+  own time, so no device time-out depends on host load (sim/clock.cpp has the rule). Interactive runs pass
+  `--idle-wall` (`mise run sim`): where the clock would stand still it follows the wall instead, so a person sees
+  the device's own timers fire. Tests never pass it: their device time moves only by `advance`, `until`, `settle`.
 - **Resets** (`sim/boot.cpp`): a stock reset always lands in the bootloader stand-in (no WDOG0 model). B's probes A
   first: on only if A reset <= `boot_a_window_ms` (400; device 0.15-1.4 s) before B or later, else waits (`b_waits_a`).
 - **Not hosted:** the menu's screen and keys, os.ldr itself, CDC ring and USB timing, NAND timing, real encryption,
   stage 2; yaffs is a (case-insensitive) host folder.
-- **Run:** `python3 -m xy_forever.sim` (`SESSIONS/simulator/` in the private folder: seeded `yaffs2/`, `bootpart.bin`,
-  `builds/`; `--port`, `--plain`, `--version V`, `--pre-v1`, `--virtual-clock`, `--ask`), then `xyf_host.py --sim 127.0.0.1:7341` (or `XYF_SIM`),
+- **Run:** `mise run sim` (`python3 -m xy_forever.sim --idle-wall`; `SESSIONS/simulator/` in the private folder: seeded `yaffs2/`, `bootpart.bin`,
+  `builds/`; `--port`, `--plain`, `--version V`, `--pre-v1`, `--ask`), then `xyf_host.py --sim 127.0.0.1:7341` (or `XYF_SIM`),
   `scripts/device_pass.py` / `scripts/conformance.py --sim …` (evidence removed when nothing failed, unless `--keep`).
 - **Control** (port + 1, one line, JSON reply): `status` (A's `partition`; `boot_writes`, yaffs changes on a boot
   partition; `rw_open`/`unclean_mounts`, read-write mounts never unmounted; `to_a`/`to_b`, link messages relayed),
@@ -44,14 +50,14 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   (storage operations, then a power cut and a PLAY power-on); `swap PATH` (stock path buffer); `inject CLASS OP ARG0
   ARG2 [HEX]` sends A a raw request past B's checks (class 0: generic), `injected TAG` reads A's answer
   (`Simulator.ask_a`); `advance MS` moves device time ahead, so a device time-out (A's idle window, a held window)
-  passes unwaited (`Simulator.advance`: virtual, in the board's idle steps, answered once there and idle again;
-  real time, one jump); `jump MS` moves it at once whatever runs (a slow pass, `Simulator.jump`); `knob ID DELTA
+  passes unwaited (`Simulator.advance`: in the board's idle steps, answered once there and idle again); `settle`
+  answers once the clock stands still (`Simulator.settle`); `jump MS` moves it at once whatever runs (a slow pass, `Simulator.jump`); `knob ID DELTA
   [COUNT]`, `knob_raw HEX [COUNT]`, `knob_jump N` (after the frames sent before it), `realkey K P`; `unplug` (the cable out and in: the
   connection closes and the bus-reset count that ends #65's trust moves); `set ask 1` (or `--ask`: #65's
   Ask before USB control as settings.txt says; else it reads Off, and hosts here wait on it at most
   `XYF_ASK_LIMIT_S`, 30 s); `reset a|b`,
   `set a_boot_ms|b_boot_ms|a_redeliver|boot_a_window_ms|a_stall_now`; fault delays (`mount_ms`, `rw_mount_ms`,
-  `unmount_ms`, `a_stall_now`) are device time. Status `virtual`, `steps`, `work`, `idle`, `flight`: the clock's state; `pid`: the
+  `unmount_ms`, `a_stall_now`) are device time. Status `held`, `steps`, `work`, `idle`, `flight`: the clock's state; `pid`: the
   board's (`Simulator.start` moves to another port pair when the answer is not its own simulator's). Tests:
   `tests/test_simulator.py`.
 

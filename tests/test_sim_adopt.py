@@ -61,10 +61,12 @@ class Adopt(unittest.TestCase):
         shutil.rmtree(self.dir, ignore_errors=True)
 
     # -- helpers ---------------------------------------------------------------------------------
-    def start(self, stock='stock', play=True):
+    def start(self, stock='stock', play=True, slow_ms=0):
+        """slow_ms: A slowed from the first step on (the start's own job left to run while the test watches)."""
         sim.seed_fresh(self.root, stock, self.image)
         self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', build_dir=self.build_dir, play=play,
-                                 log=self.dir / 'log.txt').start()
+                                 log=self.dir / 'log.txt', faults={'a_slow_ms': slow_ms} if slow_ms else None
+                                 ).start(settle=not slow_ms)
         if play:
             self.connect()
 
@@ -83,7 +85,7 @@ class Adopt(unittest.TestCase):
         deadline = time.monotonic() + timeout
         while not cond():
             self.assertLess(time.monotonic(), deadline, what)
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def in_os(self):
         s = self.sim.status()
@@ -119,15 +121,15 @@ class Adopt(unittest.TestCase):
 
     def quiet(self, still=1.5):
         """Storage at rest: A's write window closed and no mutating storage operation for `still` seconds (the
-        converge sequence after an adoption writes its fingerprint; a cut fingerprint is not written again)."""
+        converge sequence after an adoption writes its fingerprint; a cut fingerprint is not written again), in
+        device time."""
         ops = None
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
+        for _ in range(int(120 / still)):
             s = self.sim.status()
             if s['rw_open'] == 0 and s['storage_ops'] == ops:
                 return
             ops = s['storage_ops'] if s['rw_open'] == 0 else None
-            time.sleep(still)
+            self.sim.advance(int(still * 1000))
         self.fail('storage never came to rest')
 
     def job(self):
@@ -168,13 +170,12 @@ class Adopt(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
     def test_play_start_adopts_and_stays_in_the_menu(self):
-        self.start()
-        self.sim.set('a_slow_ms', 2)                                         # long enough to watch it run
+        self.start(slow_ms=2)                                                # long enough to watch it run
         seen = set()
         while True:
             code, f = self.job()
             if code == ids.S_NOT_FOUND:                                      # not started yet
-                time.sleep(0.01)
+                self.sim.advance(10)
                 continue
             self.assertEqual(code, 0)
             if f['phase'] < 8:
@@ -184,7 +185,7 @@ class Adopt(unittest.TestCase):
                     self.assertEqual(f['total'], len(self.image), f)
                 if f['phase'] in (1, 5):
                     self.assertEqual(self.dev.read_file(STATE_FILE)[0], ids.S_BUSY)   # file commands wait for it
-                time.sleep(0.01)
+                self.sim.advance(10)
                 continue
             break
         self.sim.set('a_slow_ms', 0)
@@ -202,7 +203,7 @@ class Adopt(unittest.TestCase):
     def test_wrong_file_refuses(self):
         self.refused('wrong', 10, 'OS file is not official 1.2.1.' + REINSTALL)
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
     def test_power_cut_mid_copy_is_redone_at_the_next_start(self):
         self.start()
         self.wait(lambda: self.lines('menu: line: OS 1.2.1'), 'the first adoption')
@@ -234,7 +235,7 @@ class Adopt(unittest.TestCase):
         self.wait(lambda: self.sim.status()['power_ons'] > ons, 'the PLAY start')
         self.connect()
         self.wait(lambda: self.dev.read_file('/yaffs2/xy-forever/config.txt')[0] == 0, 'the menu serves storage')
-        time.sleep(3)                                                        # the record read, the menu settled
+        self.sim.advance(3000)                                                        # the record read, the menu settled
         self.assertEqual(self.job()[0], ids.S_NOT_FOUND)                    # no job this boot
         self.assertEqual(self.lines('menu: line: ')[lines:], [])
         self.assertEqual(self.lines('menu: save failed: '), [])

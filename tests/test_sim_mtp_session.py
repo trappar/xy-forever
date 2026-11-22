@@ -46,7 +46,7 @@ class TunnelClient(R.Client):
             if code == P.S_OK:
                 return
             assert code == P.S_BUSY and time.monotonic() < deadline, 'transfer not taken: %d' % code
-            time.sleep(0.002)
+            self.sim.advance(2)
 
     def take(self, most=1 << 30, timeout=30.0):
         stream, deadline = b'', time.monotonic() + timeout
@@ -65,7 +65,7 @@ class TunnelClient(R.Client):
             assert code == P.S_OK, code
             self.zlps += struct.unpack_from('<I', body)[0]
             if len(body) == 4:
-                time.sleep(0.002)
+                self.sim.advance(2)
             stream += body[4:]
 
     def state(self):
@@ -119,7 +119,7 @@ class MtpSessionTests(unittest.TestCase):
         deadline = time.monotonic() + timeout
         while self.log().count(text) < count:
             self.assertLess(time.monotonic(), deadline, 'never logged %r: %s' % (text, self.log()[-3000:]))
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def enter(self, n=1):
         # 188: no MTP mode row (the product enters the session when the composite starts); the sim has no
@@ -132,7 +132,7 @@ class MtpSessionTests(unittest.TestCase):
         deadline = time.monotonic() + 60
         while self.c.state()['busy']:
             self.assertLess(time.monotonic(), deadline, 'the session never ended')
-            time.sleep(0.02)
+            self.sim.advance(20)
         self.assertEqual(self.c.state()['stage'], 4)
 
     def file_command(self):
@@ -267,7 +267,7 @@ class MtpSessionTests(unittest.TestCase):
                     return
                 self.assertLess(time.monotonic(), deadline, 'write window/catalog did not settle')
                 self.sim.advance(100)
-                time.sleep(.01)
+                self.sim.advance(10)
 
         # Exercise all three A-query subcommands as the first file request after a real
         # write-window close and catalog transfer, without a host listing/read to admit them.
@@ -285,7 +285,6 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual(self.file_command(), P.S_OK)
         self.assertEqual(self.sim.status()['rw_open'], 0)
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_timing_does_not_steal_a_pending_file_request(self):
         """A timed-out file request still owns its slot; diagnostics must not cancel or replace it."""
         from xy_forever import mtp_timing as T
@@ -301,7 +300,7 @@ class MtpSessionTests(unittest.TestCase):
         deadline = time.monotonic() + 10
         while self.sim.status()['b_queued']:
             self.assertLess(time.monotonic(), deadline)
-            time.sleep(.01)
+            self.sim.advance(10)
         self.assertEqual(self.file_command(), P.S_OK)
         self.assertTrue(T.clear(self.dev, wait=0))
         self.sim.advance(61000)
@@ -389,7 +388,7 @@ class MtpSessionTests(unittest.TestCase):
         while self.c.state()['device_status'] != R.OK or self.c.state()['busy']:
             self.assertLess(time.monotonic(), deadline, 'still busy after cancel')
             self.c.tunnel(3, struct.pack('<I', 4096))
-            time.sleep(0.01)
+            self.sim.advance(10)
         self.c.tunnel(3, struct.pack('<I', 4096))
         self.assertEqual(self.file_command(), P.S_OK)                    # nothing left out
         code, _, data = self.c.transaction(0x1009, big)
@@ -434,7 +433,7 @@ class MtpSessionTests(unittest.TestCase):
         while self.c.state()['device_status'] != R.OK:
             self.assertLess(time.monotonic(), deadline, 'still busy after cancel')
             self.c.tunnel(3, struct.pack('<I', 4096))
-            time.sleep(0.01)
+            self.sim.advance(10)
         self.c.tunnel(3, struct.pack('<I', 4096))                          # nothing left of the old transfer
         self.assertEqual(self.file_command(), P.S_OK)                    # the cancel freed them
         code, _, data = self.c.transaction(0x1009, names['big.bin'])
@@ -452,7 +451,7 @@ class MtpSessionTests(unittest.TestCase):
         deadline = time.monotonic() + 30.0
         while self.sim.status()['a_silenced'] == before:
             self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.005)
+            self.sim.advance(5)
         for _ in range(3):
             self.sim.advance(6000)                              # past the request's bound
         self.sim.set('a_silent', 0)

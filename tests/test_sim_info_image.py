@@ -60,7 +60,7 @@ class InfoImage(unittest.TestCase):
         image = 'image ' + hashlib.sha256(self.data).hexdigest()[:8]
         deadline = time.monotonic() + 30
         while image not in self.drawn() and time.monotonic() < deadline:
-            time.sleep(0.02)
+            self.sim.advance(20)
         self.assertEqual(self.drawn(), ['image ...', image])              # opened while hashing, then redrawn once
 
 

@@ -142,7 +142,7 @@ class PowerOn(ConfigBase, unittest.TestCase):
         snapshot, before = self.snapshot(), self.counts()
         self.menu_again()
         self.wait_log(lambda: 'pending=1' in self.home(), 'pending after the power cycle')
-        time.sleep(0.5)
+        self.sim.advance(500)
         after = self.counts()
         self.assertEqual((after[CONVERGE], after['progress: job='], after['menu: boots the default ']),
                          (before[CONVERGE], before['progress: job='], before['menu: boots the default ']))

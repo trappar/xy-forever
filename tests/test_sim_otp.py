@@ -82,14 +82,14 @@ class SimulatorOtp(unittest.TestCase):
                     sessions.mkdir()
                     name = tfw_probe.PACKAGES[0]
                     (firmware / name).write_bytes(package())
-                    out, start = io.StringIO(), time.monotonic()
+                    out, start = io.StringIO(), machine.status()['clock_ms']
                     with patch.object(tfw_probe.tfw_extract, 'public_key', return_value=bytes(56)), \
                             contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
                         code = tfw_probe.main(['--sim', machine.address, '--firmware', str(firmware),
                                               '--packages', name, '--check-timeout', '.4'], sessions=sessions)
                     self.assertEqual(code, 1, out.getvalue())
                     self.assertIn('power cycle needed', out.getvalue())
-                    self.assertLess(time.monotonic() - start, 4)
+                    self.assertLess(machine.status()['clock_ms'] - start, 4000)   # device time: no long wait
                     summary = json.loads(next(sessions.glob('*/summary.json')).read_text())
                     self.assertTrue(summary['power_cycle_needed'])
                     self.assertEqual(summary['remaining_cuts'], [tfw_probe.remote(name)])
@@ -101,8 +101,9 @@ class SimulatorOtp(unittest.TestCase):
                     if failure == 6:
                         self.assertIn('CRASH: processor OTP ROM fault', (folder / 'sim.log').read_text())
                         # The hook ran and exited; the board publishes its waitpid result asynchronously.
+                        deadline = time.monotonic() + 10                 # host time: only bounds a hang
                         while state['b'] == 'running':
-                            self.assertLess(time.monotonic() - start, 4, state)
+                            self.assertLess(time.monotonic(), deadline, state)
                             state = machine.status()       # board observer only; never another device command
                         self.assertEqual(state['b'], 'crashed')
                     else:

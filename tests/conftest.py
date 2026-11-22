@@ -31,8 +31,8 @@ os.chdir(ROOT)
 BUDGETS = {
     'fast': (3.0, 0.3),
     'gate': (15.0, 10.0),             # a check step: at most 15 s
-    'sim': (140.0, None),             # TEMPORARY (#240, #233): paced-clock simulator tests, 67 s measured (12 workers), 2x
-}                                     # their measured run; #233 tightens it and folds them into the gate
+    'sim': (90.0, None),              # the simulator tests on device time (#240): 36-48 s measured (12 workers), 2x;
+}                                     # #233 tightens it and folds them into the gate
 TIERS = tuple(BUDGETS)
 
 

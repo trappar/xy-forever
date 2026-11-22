@@ -40,9 +40,11 @@ template<class F> F* function(uint32_t address) { return reinterpret_cast<F*>(ho
 
 // ---- USB CDC endpoint (B): 127.0.0.1:port while the service has USB on ----------------------
 int listener = -1, client = -1;
+uint32_t connections = 0;                                // opens and closes: an fd number may come back
 void cdc_close_client(const char* why) {
     if (client < 0) return;
-    close(client); client = -1;
+    close(client); client = -1; ++connections;
+    shared->usb_held = 0; shared->usb_asked = 0;         // sim/clock.cpp: no reply held up by that host, or owed it
     log("USB host %s", why);
 }
 void cdc_start() {
@@ -55,6 +57,7 @@ void cdc_start() {
     if (bind(listener, reinterpret_cast<sockaddr*>(&a), sizeof(a)) || listen(listener, 4))
         crash("USB endpoint 127.0.0.1:%d: %s", shared->port, strerror(errno));
     fcntl(listener, F_SETFL, O_NONBLOCK);
+    ++connections;
     shared->b_listening = 1;
     log("USB on: listening on 127.0.0.1:%d", shared->port);
 }
@@ -63,7 +66,7 @@ void cdc_stop() {
     // new one is refused until USB is on again (never accepted by a port about to close).
     shared->b_listening = 0;
     const bool on = listener >= 0;
-    if (on) { close(listener); listener = -1; }
+    if (on) { close(listener); listener = -1; ++connections; }
     cdc_close_client("detached (USB off)");
     if (on) log("USB off");
 }
@@ -72,7 +75,7 @@ void cdc_accept() {
     const int c = accept(listener, 0, 0);
     if (c < 0) return;
     cdc_close_client("replaced by a new connection");
-    client = c;
+    client = c; ++connections;
     fcntl(client, F_SETFL, O_NONBLOCK);
     const int one = 1;
     setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
@@ -100,7 +103,7 @@ int cdc_read(uint8_t* out, uint32_t n) {
     if (client < 0) return 0;
     const ssize_t got = recv(client, out, n, MSG_DONTWAIT);
     if (got == 0) { cdc_close_client("closed the port"); return 0; }
-    if (got > 0) xyf_sim::active();
+    if (got > 0) { xyf_sim::active(); shared->usb_asked = 1; }
     return got > 0 ? int(got) : 0;
 }
 int cdc_write(const uint8_t* data, uint32_t n) {
@@ -109,9 +112,9 @@ int cdc_write(const uint8_t* data, uint32_t n) {
     const int32_t pull = shared->cable_pull;
     if (pull > 0 && uint32_t(pull) < allowed) allowed = uint32_t(pull);
     const ssize_t sent = send(client, data, allowed, MSG_DONTWAIT);
-    if (sent > 0) xyf_sim::active();
+    if (sent > 0) { xyf_sim::active(); shared->usb_held = 0; shared->usb_asked = 0; }
     if (sent < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) return -1;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) { shared->usb_held = 1; return -1; }   // until the host reads
         cdc_close_client("went away");
         return int(n);
     }
@@ -168,7 +171,7 @@ int mount(uint32_t device, int read_only_mount) {
     if (const int32_t ms = slow.load()) {                // ends early once the fault is cleared
         log("fault: the %s mount takes %d ms", read_only_mount ? "read-only" : "read-write", ms);
         for (const uint64_t end = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < end && slow.load();)
-            idle_pause(end, 5000);
+            idle_pause(end);
     }
     if (read_only_mount && shared->needs_repair.load()) {   // 192: the scan wants to repair (erase)
         const uint32_t gate = r32(device + 0x88);
@@ -198,7 +201,7 @@ int unmount(uint32_t device) {
         if (const int32_t ms = shared->unmount_ms.load()) {           // ends early once the fault is cleared
             log("fault: the checkpoint takes %d ms", ms);
             for (const uint64_t end = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < end &&
-                 shared->unmount_ms.load();) idle_pause(end, 5000);
+                 shared->unmount_ms.load();) idle_pause(end);
         }
         media_change("read-write unmount (checkpoint)"); shared->rw_open = 0;
         if (shared->needs_repair.exchange(0)) log("yaffs: repaired; the checkpoint is written");
@@ -226,9 +229,10 @@ void finish(uint32_t request, int result) {
 
 // ---- boot partition (A executors and role-dispatched stock writer) -----------------------------------------
 const uint32_t erase_block = 0x10000u;                 // trim unit (bytes)
-int bootpart() {
-    const int fd = open(shared->bootpart, O_RDWR | O_CREAT, 0644);
-    if (fd < 0) crash("boot partition %s: %s", shared->bootpart, strerror(errno));
+int bootpart() {                                       // opened once per processor start (a test rewrites it in place)
+    static int fd = -1;
+    if (fd < 0 && (fd = open(shared->bootpart, O_RDWR | O_CREAT, 0644)) < 0)
+        crash("boot partition %s: %s", shared->bootpart, strerror(errno));
     return fd;
 }
 bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
@@ -240,10 +244,9 @@ bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
     const off_t offset = off_t((selected - 1) * uint64_t(shared->capacity) + at);
     ssize_t n;
     int error = 0;
-    if (write && shared->fail_write > 0 && write_fault(0, error)) { close(fd); return false; }   // fault hook
+    if (write && shared->fail_write > 0 && write_fault(0, error)) return false;   // fault hook
     if (write) n = pwrite(fd, data, bytes, offset);
     else { memset(data, 0, bytes); n = pread(fd, data, bytes, offset); if (n >= 0) n = ssize_t(bytes); }
-    close(fd);
     if (write && n == ssize_t(bytes)) storage_op_done();
     return n == ssize_t(bytes);
 }
@@ -279,12 +282,14 @@ void storage_op_done() {
         log("fault: power cut armed: cutting after this storage operation");
         Message m = {message_magic, k_event, 0, 0, e_cut, 0, 0, 0, 0, 0, 0};
         send_message(link_fd, m, 0);
-        for (;;) idle_pause(0, 1000000);               // the board cuts the power
+        for (;;) idle_pause(0, true);         // the board cuts the power
     }
 }
 #include "stock_otp.ipp"
 
 int cdc_fd() { return client >= 0 ? client : listener; }
+int cdc_next_fd() { return client >= 0 ? listener : -1; }
+uint32_t cdc_connection() { return connections; }
 
 // A's stock bootloader (sim/boot.cpp) after a reset: it serves the boot-partition layer B's
 // bootloader uses through the same stock executors (select, sector reads). Other requests: the

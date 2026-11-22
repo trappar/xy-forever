@@ -191,11 +191,11 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             deadline = time.monotonic() + 10.0
             while self.sim.status()['rw_open'] == 0 and 'read-write mount takes' not in (self.dir / 'log.txt').read_text():
                 self.assertLess(time.monotonic(), deadline, 'the window open never started')
-                time.sleep(0.05)
+                self.sim.advance(50)
             for _ in range(3):
-                started = time.monotonic()
+                started = self.sim.status()['clock_ms']
                 code, f = MS.job_status(self.dev, 0)
-                self.assertLess(time.monotonic() - started, 1.0)
+                self.assertLess(self.sim.status()['clock_ms'] - started, 1000)    # device time: at once
                 self.assertEqual((code, MS.PHASES[f['phase']], f['detail']), (0, 'inputs', 'opening storage for writing'), f)
                 self.assertEqual(self.dev.hello()[0], 0)
                 self.sim.advance(300)
@@ -245,14 +245,14 @@ class SyntheticSwitch(Switch, unittest.TestCase):
                 deadline = time.monotonic() + 30                           # #197: after the power-on converge
                 while reason not in log.read_text()[seen:]:
                     self.assertLess(time.monotonic(), deadline, reason)
-                    time.sleep(0.05)
+                    self.sim.advance(50)
                 self.assertEqual((content(self.root), self.record(), self.default()), before)
         (self.root / RECORD).write_text('state=official\n')
         self.sim.control('power plain')
         deadline = time.monotonic() + 30
         while not (self.sim.status()['a'] == 'os' and self.sim.status()['b'] == 'os'):   # the default boots
             self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.05)
+            self.sim.advance(50)
 
     # -- faults at every rename of a switch (official -> A) ------------------------------------------------
     def renames(self, entry):
@@ -297,7 +297,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             thread.join(10.0)
             code, f = reply['r']
             while code == 0 and f['phase'] < MS.DONE:
-                time.sleep(0.05)
+                self.sim.advance(50)
                 code, f = MS.job_status(self.dev, 0)
             self.assertEqual((code, MS.PHASES[f['phase']], MS.ERRORS[f['error']]), (0, 'failed', 'link'), f)
             self.assertEqual(self.dev.call(P.STATUS, timeout=5.0)[0], 0)  # B answers
@@ -311,7 +311,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             until = time.monotonic() + 30
             while (self.root / 'xy-forever/job.txt').exists() or (self.root / 'xy-forever/job.old').exists():
                 self.assertLess(time.monotonic(), until, 'automatic replay')
-                self.dev.hello(); time.sleep(0.01)
+                self.dev.hello(); self.sim.advance(10)
             self.assertEqual(MS.served(self.dev, out=lambda _: None), 0)
         self.assertEqual(self.sim.status()['rw_open'], 0)
         record = self.record()
@@ -346,7 +346,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             if test(status):
                 return status
             self.assertLess(time.monotonic(), deadline, what)
-            time.sleep(0.05)
+            self.sim.advance(50)
 
     def test_a_failed_rename_at_each_step(self):
         self.faults(1)
@@ -354,7 +354,6 @@ class SyntheticSwitch(Switch, unittest.TestCase):
     def test_a_power_cut_at_each_step(self):
         self.faults(2)
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_a_silent_at_each_step(self):
         self.faults(3)
 

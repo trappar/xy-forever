@@ -25,17 +25,19 @@
 #include <vector>
 
 namespace xyf_sim {
+std::atomic<int> a_held{0};
 // Both sides of a link (the board and each processor).
 bool send_message(int fd, const Message& m, const void* body) {
     static std::mutex lock;
     std::lock_guard<std::mutex> hold(lock);
     if (role == 0 || role == 1) { ++shared->outflight[role]; active(); }   // sim/clock.cpp
+    if (role == 1 && shared->usb_asked.load() == 1) shared->usb_asked = 2;  // B acts on a host request it read
     // Header and body in one writev: the reader wakes once, with the whole message there.
     iovec v[2] = {{const_cast<Message*>(&m), sizeof(m)}, {const_cast<void*>(body), body ? m.body : 0}};
     for (int k = 0, count = v[1].iov_len ? 2 : 1; k != count;) {
         const ssize_t n = writev(fd, v + k, count - k);
         if (n < 0 && errno == EINTR) continue;
-        if (n < 0 && errno == EAGAIN) { pollfd p = {fd, POLLOUT, 0}; ::poll(&p, 1, 100); continue; }
+        if (n < 0 && errno == EAGAIN) { pollfd p = {fd, POLLOUT, 0}; ::poll(&p, 1, -1); continue; }
         if (n <= 0) return false;
         size_t done = size_t(n);
         for (; k != count && done >= v[k].iov_len; ++k) done -= v[k].iov_len;
@@ -63,8 +65,9 @@ std::map<void*, Wait*> session_waits;
 std::deque<void*> held;                                     // b_queue: submitted, not yet serialized
 
 std::vector<uint8_t> link_in;                               // read from the link, not yet a whole message
-// The next message, reading what the link has in one call (no system call while one is buffered).
-bool receive(Message& m, std::vector<uint8_t>& body, int timeout_ms) {
+// The next message, reading what the link has in one call (no system call while one is buffered); false when
+// the link thread's wake pipe fired first (kick(): a control command, or A's slave opened with requests held).
+bool receive(Message& m, std::vector<uint8_t>& body) {
     for (;;) {
         if (link_in.size() >= sizeof(m)) {
             memcpy(&m, link_in.data(), sizeof(m));
@@ -75,8 +78,10 @@ bool receive(Message& m, std::vector<uint8_t>& body, int timeout_ms) {
                 return true;
             }
         }
-        pollfd p = {link_fd, POLLIN, 0};
-        if (::poll(&p, 1, timeout_ms) <= 0) return false;
+        pollfd p[2] = {{link_fd, POLLIN, 0}, {shared->wake[3 + role][0], POLLIN, 0}};
+        if (::poll(p, 2, -1) <= 0) continue;
+        if (p[1].revents) { char b[64]; while (read(p[1].fd, b, sizeof(b)) > 0) {} }
+        if (!(p[0].revents & (POLLIN | POLLHUP | POLLERR))) return false;
         uint8_t chunk[65536];
         const ssize_t n = read(link_fd, chunk, sizeof(chunk));
         if (n < 0 && errno == EINTR) continue;
@@ -258,7 +263,7 @@ void link_start() {
         Message m; std::vector<uint8_t> body;
         std::deque<Incoming> inbox;                          // A: held until its slave is set up
         for (;;) {
-            const bool got = receive(m, body, 2);
+            const bool got = receive(m, body);
             bool work = got;
             if (role == 0) {
                 if (got && m.kind == k_request) inbox.push_back({m, body});
@@ -270,6 +275,7 @@ void link_start() {
                     inbox.pop_front();
                     work = true;
                 }
+                a_held = int(inbox.size());
                 work = a_service() || work;
             } else {
                 if (got && m.kind == k_response) complete(m, body);
@@ -278,7 +284,7 @@ void link_start() {
             }
             // Virtual clock (sim/clock.cpp): the main thread has something to look at before the
             // message counts as taken, so the board never steps the clock in between.
-            if (work) kick(role);
+            if (work) kick(role, false);                     // this thread looks again anyway
             if (got) link_taken();
         }
     }).detach();
@@ -288,12 +294,12 @@ uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t a2
                 void* out, uint32_t capacity, uint32_t* error) {
     Wait w; w.out = out; w.capacity = capacity;
     send(&w, cls, op, a0, a1, a2, body, bytes);
-    const uint64_t start = now_us();
+    const uint64_t start = device_cycles();
     bool noted = false;
     while (!w.done.load(std::memory_order_acquire)) {        // stock 889f7b12: spins until answered
-        idle_pause(0, 50);
+        idle_pause(0);
         host_poll();
-        if (!noted && now_us() - start > 5000000u) {
+        if (!noted && device_cycles() - start > 2000000000u) {     // 5 s of device time
             noted = true;
             log("waiting for A's answer to op %02x (the stock client waits without a bound)", op);
         }

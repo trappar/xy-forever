@@ -117,7 +117,7 @@ class Base:
                     self.assertIn(MS.served(self.dev, out=lambda line: None), (0, ids.S_NOT_FOUND))
                 return f
             self.assertLess(time.monotonic(), deadline, 'job %d did not end: %s' % (job, f))
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def until_phase(self, job, phase, timeout=bounds.WAIT_S):
         deadline = time.monotonic() + timeout
@@ -126,7 +126,7 @@ class Base:
             if f['phase'] >= phase:
                 return f
             self.assertLess(time.monotonic(), deadline, 'job %d never reached phase %d: %s' % (job, phase, f))
-            time.sleep(0.005)
+            self.sim.advance(5)
 
     def output(self, job):
         return self.root / TMP / ('job-%d' % job)
@@ -155,7 +155,7 @@ class Base:
         end = time.monotonic() + timeout
         while [n for n in self.leftovers() if n.startswith('job-')]:
             self.assertLess(time.monotonic(), end, self.leftovers())
-            time.sleep(0.05)
+            self.sim.advance(50)
 
     def leftovers(self):
         tmp = self.root / TMP
@@ -251,7 +251,7 @@ class SyntheticJob(Base, unittest.TestCase):
         code, job, _ = MS.start(self.dev, self.base, self.profile, self.generation, ['alpha'], (), NAME, True)
         self.assertEqual((code, job), (ids.S_BUSY, 0))                      # an upload is in progress
         self.assertEqual(self.dev.stage(b'complete'), 0)
-        self.sim.set('a_slow_ms', 4)
+        self.sim.set('a_slow_ms', 40)                   # each phase longer than the device runs on its own after a poll
         job = self.start(['alpha', 'beta'])
         seen = []
         f = self.until_phase(job, 1)
@@ -265,6 +265,7 @@ class SyntheticJob(Base, unittest.TestCase):
                 self.assertEqual(self.dev.call(P.STATUS)[0], 0)
                 self.assertEqual(self.dev.call(P.SCREEN, (0).to_bytes(4, 'little'))[0], 0)
                 self.assertEqual(MS.job_cancel(self.dev, job + 7)[0], ids.S_NOT_FOUND)
+            self.sim.advance(20)
             f = self.status(job)
         self.sim.set('a_slow_ms', 0)
         self.assertEqual(MS.PHASES[f['phase']], 'done', f)
@@ -287,7 +288,6 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assert_clean_failure(job, self.status(job), 'cancelled', 'cancelled')
         self.assemble_and_compare(['alpha'])                                # the next job works
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_cancel_with_a_large_output_answers_throughout(self):
         """a cancelled job whose output holds a large tree: the removal runs one step per
         loop pass ("cleaning up", storage commands busy); job.cancel, HELLO and status answer throughout (no
@@ -299,20 +299,22 @@ class SyntheticJob(Base, unittest.TestCase):
         extra.mkdir(parents=True, exist_ok=True)
         for i in range(60):                                                 # dozens of loop passes (~0.3 s each)
             (extra / ('%03d' % i)).write_bytes(b'x')
-        begun = t = time.monotonic()
+        clock = lambda: self.sim.status()['clock_ms']    # noqa: E731 (device time)
+        begun = t = clock()
         self.assertEqual(MS.job_cancel(self.dev, job)[0], 0)
-        slowest = time.monotonic() - t
+        slowest = clock() - t
         busy = 0
         while True:
-            t = time.monotonic()
+            t = clock()
             self.assertEqual(self.dev.call(P.STATUS)[0], 0)
             self.assertEqual(self.dev.hello()[0], 0)
             code = self.dev.call(*FILE_COMMAND)[0]
-            slowest = max(slowest, time.monotonic() - t)
+            slowest = max(slowest, clock() - t)
             if code != ids.S_BUSY:
                 break
             busy += 1
-        total = time.monotonic() - begun                                    # (the machine's load sets the scale)
+            self.sim.advance(20)                                            # the host's pause between polls
+        total = clock() - begun
         self.assertGreater(busy, 3)                                         # B answered while it cleaned up
         self.assertLess(slowest, total / 4, (slowest, total, busy))
         self.sim.set('a_slow_ms', 0)
@@ -385,11 +387,11 @@ class SyntheticJob(Base, unittest.TestCase):
         deadline = time.monotonic() + 30.0
         while self.sim.status()['a_silenced'] == before['a_silenced']:     # B waits on a request A leaves unanswered
             self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.005)
+            self.sim.advance(5)
         reads = self.sim.status()['b_clock_reads']
         while self.sim.status()['b_clock_reads'] - reads < 100:             # B waits on it
             self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.005)
+            self.sim.advance(5)
         reply = {}
         thread = threading.Thread(target=lambda: reply.setdefault('r', MS.job_status(self.dev, job)), daemon=True)
         thread.start()                                                      # answered once the job ended
@@ -418,15 +420,16 @@ class SyntheticJob(Base, unittest.TestCase):
         lead: B answered nothing, not even HELLO, until op 9 returned)."""
         self.sim.set('unmount_ms', 5000)
         job = self.start(['alpha', 'beta'])
+        clock = lambda: self.sim.status()['clock_ms']                       # noqa: E731 (device time)
         while True:
-            t = time.monotonic()
+            t = clock()
             f = self.status(job)
-            self.assertLess(time.monotonic() - t, 2.5, 'job.status waited on the window close')
+            self.assertLess(clock() - t, 2500, 'job.status waited on the window close')
             if f['phase'] in (MS.DONE, MS.FAILED):
                 break
-            time.sleep(0.005)
+            self.sim.advance(5)
         self.assertEqual(MS.PHASES[f['phase']], 'done', f)
-        done = time.monotonic()
+        done = clock()
         self.reconnect()                                                    # the CLI's session ended
         self.assertEqual(self.dev.call(P.HELLO, timeout=2.5)[0], 0)
         self.assertEqual(self.dev.call(P.STATUS, timeout=2.5)[0], 0)
@@ -435,9 +438,9 @@ class SyntheticJob(Base, unittest.TestCase):
                          ids.S_BUSY)
         self.assertEqual(self.sim.status()['rw_open'], 1)                   # still closing
         while self.dev.call(*FILE_COMMAND, timeout=2.5)[0] == ids.S_BUSY:
-            self.assertLess(time.monotonic() - done, 15.0)
-            time.sleep(0.05)
-        self.assertGreater(time.monotonic() - done, 3.0)                     # served once the close ended
+            self.assertLess(clock() - done, 15000)
+            self.sim.advance(50)
+        self.assertGreater(clock() - done, 3000)                             # served once the close ended
         self.assertEqual(self.dev.call(*FILE_COMMAND, timeout=1.0)[0], 0)
         self.assertEqual(self.sim.status()['rw_open'], 0)
         self.assertTrue((self.entry(f['detail']) / 'os.ldr').is_file())
@@ -455,7 +458,7 @@ class SyntheticJob(Base, unittest.TestCase):
         deadline = time.monotonic() + 15.0
         while self.dev.call(*FILE_COMMAND, timeout=2.5)[0] == ids.S_BUSY:   # until the close was collected
             self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.05)
+            self.sim.advance(50)
         r = rr()
         self.assertEqual((r['b_window'], r['b_windows'] - before), (3, 1), r)
         self.sim.set('unmount_ms', 0)
@@ -471,7 +474,7 @@ class SyntheticJob(Base, unittest.TestCase):
         deadline = time.monotonic() + 10.0
         while self.dev.call(*FILE_COMMAND, timeout=2.0)[0] == ids.S_BUSY:
             self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.05)
+            self.sim.advance(50)
         self.assertEqual(self.dev.call(*FILE_COMMAND, timeout=2.0)[0], ids.S_LINK)   # the request is still out
         self.assertEqual(self.dev.call(P.HELLO, timeout=1.0)[0], 0)
         self.assertEqual(self.dev.call(P.STATUS, timeout=1.0)[0], 0)
@@ -479,7 +482,7 @@ class SyntheticJob(Base, unittest.TestCase):
         deadline = time.monotonic() + 10.0
         while self.dev.call(*FILE_COMMAND, timeout=6.0)[0] != 0:
             self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.1)
+            self.sim.advance(100)
 
     # -- the commit into the library, "content not installed", the sweep ---------------------
     def slot(self, default='opxy-121', once=''):
@@ -507,7 +510,7 @@ class SyntheticJob(Base, unittest.TestCase):
             if test(status):
                 return status
             self.assertLess(time.monotonic(), deadline, what)
-            time.sleep(0.05)
+            self.sim.advance(50)
 
     def test_default_and_once_mods_entries_are_kept(self):
         """A mods entry that is the default (or the boot-once entry) is never replaced; with both
@@ -729,7 +732,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertNotIn('old.txt', tree(self.entry('mods-b')))
         self.assertEqual([n for n in self.leftovers() if n.startswith('job-')], ['job-2-old'])
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under load (#240)
     def test_sweep_at_job_start_bounded(self):
         """Before its first step the job removes leftover tmp/job-* folders (files, subfolders), nothing else in
         tmp/; a leftover larger than the sweep's cap is cut short and the job still completes."""
@@ -815,7 +818,7 @@ class PublishedJob(Base, unittest.TestCase):
         ids_ = [row[1] for row in M.read_table((PACKAGES / 'base/machines.txt').read_bytes())]
         cls.fit = M.fitting(PACKAGES, ids_)
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under load (#240)
     def test_entries_match_the_reference(self):
         self.assertEqual(self.fit[0], 'fm2op')
         for machines, exts in ((self.fit[:1], []), (self.fit[:7], []), (self.fit[:1], ['capture', 'master_dj_filter'])):

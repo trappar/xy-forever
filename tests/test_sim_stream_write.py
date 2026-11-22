@@ -74,7 +74,7 @@ class StreamWriteTest(unittest.TestCase):
                 self.sim.advance(100)
             else:
                 self.sim.advance(250)
-                time.sleep(0.01)
+                self.sim.advance(10)
         self.fail('%s not reached within %g s' % (what, timeout))
 
     def begin(self, dev, path, data, crc=None, sha=None):
@@ -139,7 +139,7 @@ class StreamWriteTest(unittest.TestCase):
         self.assertTrue(self.local(folder).is_dir())
         self.assertEqual(self.uploads(), [])
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
     def test_larger_than_the_staging_area(self):
         dev = self.connect(startup_ready=True)
         data = bytes(range(251)) * ((P.MAX_STAGE + 4096) // 251 + 1)       # above stage= (7 MiB)

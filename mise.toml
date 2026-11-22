@@ -96,7 +96,7 @@ run = 'uv run scripts/firmware_cache.py verify {% if usage.force %}--force{% end
 
 [tasks.sim]
 description = "Device simulator on 127.0.0.1:7341"
-run = "uv run -m xy_forever.sim"
+run = "uv run -m xy_forever.sim --idle-wall"   # idle device time at the wall's pace: never in tests
 
 [tasks.conformance]
 description = "Protocol conformance cases against the simulator"
