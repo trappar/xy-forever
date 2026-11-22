@@ -72,9 +72,8 @@ python_files = ["test_*.py"]
 python_classes = ["Test"]             # unittest.TestCase subclasses only: a helper named Test* is no test
 python_functions = []
 addopts = ["-q", "-rfE", "--strict-markers"]
-# bounds.TEST_S: past it, HUNG. tests/xyf_bounds.py replaces pytest-timeout's timer with its own thread
-# (pytest_timeout_set_timer), so no timeout_method applies: a hung ctypes call cannot stop it.
-timeout = "60"
+# pytest-timeout's timeout: bounds.TEST_S, set by tests/conftest.py. tests/xyf_bounds.py replaces its timer with its
+# own thread (pytest_timeout_set_timer), so no timeout_method applies: a hung ctypes call cannot stop it.
 
 [tool.ruff]
 # Lint and format (`mise run lint`, `mise run format`; the pre-commit hook runs both on staged files).

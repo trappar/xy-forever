@@ -8,9 +8,10 @@ every other test is `fast`. `mise run test` runs the fast tier (named tests: any
 
 Budgets (BUDGETS), on CPU time: one test's, and the sum of a tier's tests'. A test's CPU time sums its setup,
 call and teardown: this process (every thread) and the child processes it waited for (a simulator it stopped,
-a binary it ran); the host C++ is built before the run (`uv sync`), never in a test. A busy machine stretches wall time, barely CPU time. Every limit scales by probe_s() against PROBE_S:
-slower hardware, or a busy machine at the run's start or end, raises them (never below the table);
-XYF_BUDGETS_SCALE=N fixes the scale instead. --testmon's coverage tracing scales them by TRACING. Going over
+a binary it ran); the host C++ is built before the run (`uv sync`), never in a test. A busy machine stretches wall
+time; CPU time only a little (measured: 1.15-1.25x next to two other full runs). Every limit scales by probe_s()
+against PROBE_S, at most MAX_SCALE: slower hardware raises them (never below the table); XYF_BUDGETS_SCALE=N fixes
+the scale instead. --testmon's coverage tracing scales them by TRACING. Going over
 fails the run, everywhere (CI too), and names the test or tier: make the test faster, or move it to a slower
 tier. Wall time is only reported (the run's, against its tiers' wall figures): the hard bounds (xyf_bounds.py)
 end a hang. XYF_BUDGETS=off only reports.
@@ -31,7 +32,7 @@ import pytest
 import xyf_bounds
 import xyf_select
 
-from xy_forever import no_device, paths
+from xy_forever import bounds, no_device, paths
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,16 +40,18 @@ no_device.switch_on()  # every test and every process it starts: no real device
 os.chdir(ROOT)
 
 # tier: (the CPU seconds of all its tests, one test's CPU seconds, the run's wall seconds: reported only). The
-# sums are about twice what -n auto measured on the reference machine (fast 3.8 s, gate 76 s, sim 9 s, sweep 20 s:
-# a class's setup runs once in each worker that takes one of its tests).
+# limits are about 1.3x what -n auto measured on the reference machine (fast 3.8 s, slowest 0.2; gate 77 s, slowest
+# 5.5; sim 10 s, slowest 1.35; sweep 22 s, slowest 5.2: a class's setup runs once in each worker that takes one
+# of its tests). A fast test's 0.3 s is the tier's definition.
 BUDGETS = {
-    'fast': (8.0, 0.3, 3.0),
-    'gate': (150.0, 10.0, 15.0),
-    'sim': (20.0, 1.5, 5.0),  # the simulator core (#233); hard-killed at bounds.SIM_TEST_S
-    'sweep': (40.0, 10.0, 15.0),  # each a 3-9 s serial chain of simulator restarts: alone, not in a shared run
+    'fast': (5.0, 0.3, 3.0),
+    'gate': (100.0, 7.5, 15.0),
+    'sim': (13.0, 1.8, 5.0),  # the simulator core (#233); hard-killed at bounds.SIM_TEST_S
+    'sweep': (29.0, 7.0, 15.0),  # each a 3-9 s serial chain of simulator restarts: alone, not in a shared run
 }
 TIERS = tuple(BUDGETS)
-PROBE_S = 0.035  # probe_s() on the reference machine (Apple M5 Max), idle: more scales the limits
+PROBE_S = 0.015  # probe_s() on the reference machine (Apple M5 Max): more scales the limits
+MAX_SCALE = 3.0  # CI's Linux runners probe at about 2x
 FAILURES = ROOT / 'build' / 'test-failures.log'  # every run's failures, appended (FailureLog)
 TRACING = 2.5  # --testmon: coverage tracing took 1.6x a test's CPU time (median), 2.2x at worst
 
@@ -67,7 +70,9 @@ def tier_of(item):
     return next((m.name for m in item.iter_markers() if m.name in TIERS), 'fast')
 
 
-def pytest_configure(config):
+def pytest_configure(config):  # a conftest's runs before pytest-timeout's, which reads the setting
+    if config.getoption('timeout') is None:  # --timeout=N wins
+        config.option.timeout = bounds.TEST_S  # past it, HUNG (xyf_bounds.py)
     config.addinivalue_line('markers', 'fast: the fast tier (every test not gate or sim)')
     config.addinivalue_line('markers', 'gate: the gate tier: run by mise run check, not mise run test')
     config.addinivalue_line('markers', 'sim: the simulator core (#233): mise run test-all and CI')
@@ -114,13 +119,17 @@ def cpu_s():
 
 
 def probe_s():
-    """Wall seconds of a fixed workload (Python and hashing, as the fast tests mix them): PROBE_S on the
-    reference machine when idle; more on slower hardware or a busy machine (queued, or on efficiency cores)."""
-    start, total = time.perf_counter(), 0
-    for i in range(100_000):
-        digest = hashlib.sha256(struct.pack('<II', i, total & 0xFFFFFFFF)).digest()
-        total += sum(digest[:8]) + len({i: digest})
-    return time.perf_counter() - start
+    """CPU seconds of a fixed workload (Python and hashing, as the fast tests mix them), the least of three: PROBE_S
+    on the reference machine, more on slower hardware. CPU time, as the budgets: a wall-time probe read a busy
+    machine's queueing as up to 9x, while the tests' CPU time grew 1.25x at most."""
+    times = []
+    for _ in range(3):
+        start, total = time.process_time(), 0
+        for i in range(50_000):
+            digest = hashlib.sha256(struct.pack('<II', i, total & 0xFFFFFFFF)).digest()
+            total += sum(digest[:8]) + len({i: digest})
+        times.append(time.process_time() - start)
+    return min(times)
 
 
 class CpuClock:
@@ -176,7 +185,7 @@ class Budgets:
     def pytest_sessionfinish(self, session):
         wall = time.monotonic() - self.start
         self.probe = max(self.probe, probe_s())
-        scale = (self.fixed or max(1.0, self.probe / PROBE_S)) * self.tracing
+        scale = (self.fixed or min(MAX_SCALE, max(1.0, self.probe / PROBE_S))) * self.tracing
         tiers = {}
         for nodeid, (tier, cpu) in sorted(self.tests.items()):
             tiers.setdefault(tier, []).append((cpu, nodeid))
@@ -194,7 +203,7 @@ class Budgets:
                 % (tier, total, limit, slowest, BUDGETS[tier][1] * scale)
             )
         if shown:
-            self.lines.append('budgets, CPU: ' + '; '.join(shown))
+            self.lines.append('budgets, CPU (x%.2f): ' % scale + '; '.join(shown))
             figure = sum(BUDGETS[t][2] for t in tiers) * scale
             if wall > figure:  # reported, never failed: a busy machine stretches wall time
                 self.lines.append("wall time (reported only): %.1f s, over the tiers' %.1f s" % (wall, figure))
