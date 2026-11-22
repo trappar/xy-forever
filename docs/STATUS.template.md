@@ -13,10 +13,10 @@ Last updated:
 - Connected or not; where it is (XY Forever menu, keepalive, dev menu). Never leave it in the OS.
 - Real bootloader version (must stay 1.2.1, never written).
 
-## Standing approvals
+## Approvals
 
-What you granted for this device (docs/SAFETY.md, "Approvals"), with its scope: host access, routine USB
-installs. A specific yes for one item: one line here (date, issue, what exactly). Everything else is asked each time.
+Host access for this device (docs/SAFETY.md, "Host access"): granted or not, and when. A specific yes for one
+item: one line here (date, issue, what exactly).
 
 ## Installed build
 
@@ -37,8 +37,8 @@ None recorded.
 
 ## Session notes
 
-Handover for the next session: what ran, what is waiting on the device, evidence folders. Short; an older
-note moves to a leaf or goes.
+Handover for the next session: what ran, what is waiting on the device. Short; an older note moves to a leaf
+or goes.
 
 ## Leaves
 

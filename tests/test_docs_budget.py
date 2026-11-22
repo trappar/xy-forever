@@ -18,10 +18,10 @@ INDEX = 4000  # the index of a tree (bytes)
 
 # Read by every agent, or by the orchestrator every sitting (bytes).
 FIRST_READS = {
-    'AGENTS.md': 6500,
+    'AGENTS.md': 5000,
     'ONBOARDING.md': 5000,
-    'docs/ORCHESTRATION.md': 9600,
-    'docs/STATUS.template.md': 2500,
+    'docs/ORCHESTRATION.md': 5000,
+    'docs/STATUS.template.md': 1800,
 }
 
 # A big doc keeps its path as the index of a tree (INDEX); its leaves sit in the folder (LEAF each).
@@ -39,7 +39,7 @@ TREES = {
 # Read on demand (bytes). SAFETY and GUIDE are over LEAF and stay whole on purpose: SAFETY is binding and must be read
 # in full before device work; GUIDE is for OP-XY owners and mod writers, who read it end to end.
 CAPS = {
-    'docs/SAFETY.md': 12600,  # holds the approvals too (one home: ORCHESTRATION and first-install link to it)
+    'docs/SAFETY.md': 10200,  # holds host access too (first-install links to it)
     'docs/GUIDE.md': 11800,  # for OP-XY owners and mod writers, not agents (#65: Ask before USB control)
     'docs/MODS-DEV.md': 5500,
 }

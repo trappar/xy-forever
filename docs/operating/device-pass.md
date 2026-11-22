@@ -6,7 +6,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 
 ## Device pass (`scripts/device_pass.py`)
 
-The regression that proves a build on the device; run by the orchestrator only
+The regression that proves a build on the device; one agent at a time
 (ORCHESTRATION.md, "The device"). `--plan` prints every step and its wait and sends
 nothing; `--sim` runs it against the simulator. There is no guard step anywhere (there is no watchdog).
 The session stage always runs: hold on. Default stages: read, protocol, boot (dry run, restart, keys), writes, mtp;

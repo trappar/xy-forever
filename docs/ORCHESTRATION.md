@@ -10,27 +10,26 @@ current. It delegates implementation when it can, or does the work itself. Read 
 2. `uv run xyf-host --timeout 5 status`: ready `device` items go first when the device is connected.
    If the developer says it is absent, or there was no [first device install](operating/first-install.md) yet,
    skip the check and device items.
-3. Take the first item under "Yours" (interrupted work), else "Next" (milestone order, then issue number).
-4. **Claim** it: read `gh issue view <N>`; `gh issue edit <N> --add-assignee @me`. **Branch** from up-to-date `main`: `git switch -c <N>-<slug>`.
+3. Resume interrupted work (its branch or PR), else take the first item under "Next" (milestone order, then
+   issue number).
+4. Read `gh issue view <N>`. **Branch** from up-to-date `main` in its own worktree ([two agents](operating/two-agents.md)).
 5. Work in small commits; after each change, `mise run test-changed` ([checks](operating/checks.md)).
 6. Once per PR, `mise run check`. Then **PR**: push, `gh pr create`, body "Closes #<N>".
 7. **CI green** (`gh pr checks <n> --watch`) is the merge check; fix failures in the branch. A check never
    stands in for a device test.
-8. Stop when a decision needs the developer, nothing is unblocked, or told to. Close in at most ten lines:
-   done, blocked, waiting on the device, decisions needed.
+8. Stop when a decision needs the developer, nothing is unblocked, or told to.
 
-Progress lives on GitHub (assignee, branch, PR). Comment on unfinished items so the next session can resume.
-Ask one self-contained question at a time, recommendation first, and keep working on independent tasks.
-Deferrable questions become `decision` issues starting "Undecided for now:". GitHub text uses the
-developer's voice ("I", "my explicit yes"). A sub-agent gets the issue, what to read, its constraints and
-the report wanted; it never touches the device.
+Progress lives on GitHub (branch, PR). Comment on unfinished items so the next session can resume.
+Keep working on independent tasks while a question waits; a deferrable one becomes a `decision` issue.
+GitHub text uses the developer's voice ("I", "my"). A sub-agent gets the issue, what to read, its
+constraints and the report wanted.
 
 ## Changing the plan
 
 Each issue stands alone and follows `.github/ISSUE_TEMPLATE/`: Summary, testable Acceptance criteria, linked
 Notes; the milestone it plainly belongs to (none is fine for a loose end). Labels, only when they apply:
-`device` (needs the OP-XY), `device:risky` ([device items](operating/device-items.md)), `blocked` (reason in the
-last comment), `thread` (a loose end, not yet an item), `decision`. Dependencies use "blocked by" links:
+`device` (needs the OP-XY), `device:risky` (adds interrupt code, a new stock call or new reset behaviour),
+`blocked` (reason in the last comment), `thread` (a loose end, not yet an item), `decision`. Dependencies use "blocked by" links:
 `gh api -X POST repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by -F issue_id=<needed issue id>`.
 Findings made while working an item are fixed in its branch and listed in its PR body; a new issue only when
 the fix would take over the PR. `thread` is for findings with no related open work. PR titles are plain.
@@ -53,17 +52,7 @@ tree (an index plus leaves under 8 KB each), never squeezed.
 
 ## The device
 
-Aim: one power-on per sitting, and none for offline work.
+- **One agent talks to the device at a time.** Until the device lease (#269) lands, that is the main agent.
+- **`device:risky` items run only with the developer present.**
 
-- **Sub-agents never touch the device.** They cannot ask the developer to power cycle it or put it in a mode.
-  A build agent writes the device script for its item and proves it against the simulator; the orchestrator
-  runs it for a `device` item.
-- **No guard:** there is no watchdog; a hang needs a manual power cycle. Never send REBOOT after a suspected
-  lone A restart. Stop on a suspected hang and request one ([SAFETY.md](SAFETY.md)). Sessions end in
-  keepalive, never in the OS.
-- **Running device items** (NEED lines, evidence, batching, `device:risky`, two strikes):
-  [operating/device-items.md](operating/device-items.md).
-
-## Approvals
-
-What needs the developer's explicit yes, and what a standing approval covers: [SAFETY.md](SAFETY.md#approvals).
+Everything else about device work: [SAFETY.md](SAFETY.md) (binding) and [OPERATING.md](OPERATING.md).

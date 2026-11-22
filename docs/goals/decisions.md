@@ -26,8 +26,7 @@ Part of [XY Forever goals](../GOALS.md).
   `info.txt` identify the image.
 - **MTP and file features:** allow anything recoverable without external
   hardware ([SAFETY.md](../SAFETY.md)).
-- **Companion chips are deferred** until everything else is stable; every
-  operation on them needs the developer's explicit yes.
+- **Companion chips are deferred** until everything else is stable (a planned feature).
 - **Logo:** a simple XY Forever logo, drawn for the project.
 
 - **Protocol:** the specification is published in this repository; the screenshot

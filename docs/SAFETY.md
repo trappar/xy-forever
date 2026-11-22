@@ -20,14 +20,12 @@ needs the highest bar of confidence. These rules are binding and override conven
   - Only the 1.2.5 `os.ldr` goes into the library.
   - Do not install a full 1.2.5 OS without first proving that the OS can't trigger
     an upgrade, and then only with the developer's explicit yes.
-- **Never program the companion chips** (keyboard/backplane PSoC, BLE).
 - **Never write SPI metadata** (the record at SPI `0xc000`: upgrade marker, `factory`
-  field).
-- **Never write OTP.** XY Forever reads on A or B through boot-ROM read `0x04000048`
-  and init `0x04000054` as stock does (`tfw.check[_role]`, #15). The builder
-  admits no other ROM entry but memcpy `0x040201c4`; `0x0400004c` and `0x04000050` (never called
-  by the 1.2.1 bootloader: unknown, possibly the program entry) are forbidden. Keys read on the
-  device need no protection there; they never go into the repository.
+  field). This one gives way only to the developer's explicit, separate yes for that exact operation.
+
+## Enforced by the firmware
+
+What XY Forever's code guarantees; changing one is a design change.
 
 - **XY Forever never removes `/yaffs2/bootloader.dev`.** The 1.2.1 bootloader enables its dev menu
   (recovery step 2) when it exists (`88a1d7e6`). te-boot re-creates it over Web MIDI (`0xac`, 1.2.1
@@ -64,9 +62,6 @@ needs the highest bar of confidence. These rules are binding and override conven
 - **Depth** (#124): no file over 6 folders below `/yaffs2`; deeper hangs Track 5 after dev MTP.
   Deletes work at any depth ([details](storage/layout.md)).
 
-The "never program the companion chips" and "never write SPI metadata" rules give
-way only to the developer's explicit, separate yes for that exact operation.
-
 ## What MTP mode may do
 
 **Allow anything that can be recovered from without external hardware.** We are not
@@ -84,45 +79,10 @@ the raw partition layer (boot partition; MTP never sends it), the real bootloade
 
 Host tools reach the device via XY Forever's USB service (`uv run xyf-host`), standard MTP (stock OS,
 stock dev menu, XY Forever's MTP mode), and the dev menu by hand (recovery). Over MTP they may
-write under the rules above (protected names, depth); test files go in a scratch folder, removed
-after and [logged](operating/at-the-device.md); nothing else is deleted. Before the grant, only dev-menu
-MTP reads ([first install](operating/first-install.md) step 1). No flashing tools, no official updater, no TE tools. An agent operates a
-developer's OP-XY only after that developer has granted it for their device (step 2 there,
-recorded in their status notes). The grant covers these routes and rules, nothing else.
-
-## Approvals
-
-Approvals belong to one developer and their device, and live in their status notes ("Standing approvals",
-one line for each specific yes), never in git. Two can be given once, for their own device
-([first install](operating/first-install.md) step 2):
-
-1. **Host access:** agents may operate this OP-XY through XY Forever's USB service (`uv run xyf-host` and the
-   scripts built on it), under these rules. Without it, every device item waits for a yes.
-2. **Routine USB installs:** a build that passed `--verify` and the full suite, carrying one understood change,
-   is installed without a separate yes; what is being installed is still said first. New or risky behaviour
-   (storage writes, new every-boot paths, new reset behaviour) is asked each time.
-
-Never standing, asked for that exact operation: anything under "Never", companion chips, 1.2.5, a new kind of
-storage write, relaxing a builder audit (call allowlist, CRC spans, symbol rules; the PR names the exact change).
-
-## Before installing any build over USB
-
-1. It passes `uv run xyf-build --verify`, the full test suite, and every CRC and call
-   audit (the build runs them).
-2. It is an XY Forever `os.ldr` that keeps the hold-COM recovery and the normal
-   boot path intact.
-3. Its install path is the stock commit-last A/B writer (`mmc_tools` `88a06a7e`,
-   Track 5), verified by reading it back.
-4. It carries one understood change, tested offline. Never batch untested risky
-   changes into one install.
-5. Tell the developer at the device before every device-changing action: install, reboot
-   into a new build, storage write. Routine USB installs may run on that developer's
-   standing yes. That grant may cover new storage paths under `/yaffs2/xy-forever/`.
-   Ask first for new risky writes, writes outside the grant and new every-boot paths.
-6. Read the reports afterwards, and stop at the first unexpected result.
-
-If any check is uncertain, do not install. Ask the developer, and prepare a dev-menu kit
-instead.
+write under the rules above (protected names, depth). An agent operates a developer's OP-XY only after that
+developer has granted it for their device ([first install](operating/first-install.md) step 2, recorded in
+their status notes, never in git); before the grant, only dev-menu MTP reads (step 1 there). The grant covers
+these routes and rules, installs through the USB service included.
 
 ## Recovery ladder
 

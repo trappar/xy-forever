@@ -37,7 +37,12 @@ A change that should not alter the firmware (refactor, comments, dead code): run
 builds go to `../private/xy-forever/sessions/neutral/`.
 
 The device pass turns on no watchdog: there is none (protocol 1.14). `--plan` and simulator runs work
-offline. Every hardware qualification still needs the checks and approvals in [SAFETY.md](../SAFETY.md).
+offline.
+
+What protects an install: the build runs every CRC and call audit, `--verify` repeats the build and
+compares it; the USB install writes through the stock commit-last A/B writer (`mmc_tools` `88a06a7e`,
+Track 5) and reads it back; and COM at power-on keeps the dev-menu recovery ([SAFETY.md](../SAFETY.md),
+recovery ladder).
 
 ## Checks
 

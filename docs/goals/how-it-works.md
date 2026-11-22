@@ -38,7 +38,7 @@ Part of [XY Forever goals](../GOALS.md).
   B, then both processors start it.
 - **Official update.** XY Forever opens the official `.tfw` and installs:
   - the OS, as a library entry;
-  - companion firmware only as a deferred goal, subject to the explicit programming ban in SAFETY.md;
+  - companion firmware only as a deferred goal;
   - the content.
 
   It never installs the 1.2.5 bootloader, which has no dev menu. The real
@@ -49,7 +49,7 @@ Part of [XY Forever goals](../GOALS.md).
     is installed.
   - **Firmware and mods.** Each update adds a new library entry. The old one
     stays until you remove it, so you can always go back.
-  - **Companion chips.** Programming is deferred and needs separate explicit approval. Stock
+  - **Companion chips.** Programming is planned, deferred until everything else is stable. Stock
     update routines can reach SPI metadata and are not an approved driver layer.
   - **XY Forever itself.** The product is one image. A future two-part update design would use:
     - **A small, rarely changed starter** sits in the boot area. Its stock
