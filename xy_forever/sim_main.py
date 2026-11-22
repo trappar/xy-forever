@@ -80,16 +80,18 @@ def main(argv=None):
         ask=args.ask,
         deadline_s=None,
     )
-    # The ports' line (a launcher reads it: clients/ts/test/simulators.ts), then the board on them.
+    listener = sim.listen_control()
+    # A launcher reads the control port here (clients/ts/test/simulators.ts); with --port 0, the endpoint's port in B's
+    # "USB on: listening on 127.0.0.1:PORT" line.
+    endpoint = '127.0.0.1:%d' % sim.port if sim.port else '(port 0: B names it when USB comes on)'
     print(
-        'simulator: USB endpoint 127.0.0.1:%d (uv run xyf-host --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
-        ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root),
+        'simulator: USB endpoint %s (uv run xyf-host --sim 127.0.0.1:PORT status), control 127.0.0.1:%d, storage %s;'
+        ' Ctrl-C stops it' % (endpoint, sim.control_port, root),
         file=sys.stderr,
         flush=True,
     )
     # Its own process group (the board and both processors), ended with this process however it ends:
     # Ctrl-C, SIGTERM or SIGHUP, or (tie_to_parent) the process that started this one gone (#133).
-    listener = sim.listen_control()
     argv = sim.argv(listener.fileno()) + (['--idle-wall'] if args.idle_wall else [])
     process = procgroup.popen(argv, stdin=subprocess.PIPE if otp else None, pass_fds=(listener.fileno(),))
     listener.close()

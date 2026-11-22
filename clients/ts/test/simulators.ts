@@ -10,8 +10,8 @@
 //   serial       Web Serial through the fake navigator.serial and a relay (webserial.spec.ts)
 //   chooser      choosing the port (chooser.spec.ts)
 //   buffer       the port's receive buffer (buffer.spec.ts)
-// Each holds two ports the system picks (its USB endpoint and control port) and prints them before it starts
-// (xy_forever/sim_main.py): nothing here picks a port, so parallel runs never race for one. preV1 and the Web
+// Its USB endpoint and control port are ports the system picks, named in its output (xy_forever/sim_main.py, B's
+// "USB on: listening" line): nothing here picks a port, so parallel runs never race for one. preV1 and the Web
 // Serial ones have a relay too (test/relay.ts, a free port). They start at the same time. State under
 // <private sessions>/ts-client-PID (XYF_TS_SIM_STATE), removed afterwards unless XYF_KEEP_SIM=1. Without the private stock images or clang++ (CI), the simulator tests are
 // skipped with the reason; the codec tests still run. Anything else that stops a simulator (no venv, a venv that
@@ -76,8 +76,9 @@ print(json.dumps({
     'xyf_build': str(build / 'candidate.ldr') if build else None}))
 `;
 
-/** sim_main.py's line naming the two ports it holds (before the board starts). */
-const PORTS = /simulator: USB endpoint 127\.0\.0\.1:(\d+) .*control 127\.0\.0\.1:(\d+)/;
+/** xy_forever/sim_main.py's line naming the control port, and B's naming its endpoint's once it listens. */
+const CONTROL = /simulator: USB endpoint .* control 127\.0\.0\.1:(\d+)/;
+const LISTENING = /USB on: listening on 127\.0\.0\.1:(\d+)/;
 
 async function start(name: string, state: string, extra: string[]): Promise<[SimInfo, ChildProcess]> {
   const dir = join(state, name);
@@ -87,8 +88,8 @@ async function start(name: string, state: string, extra: string[]): Promise<[Sim
   // In this process's group (a group kill of the test run reaches it); the wrapper ends its own
   // xyf_sim group when it is terminated or this process is gone (xy_forever/procgroup.py, #133).
   // Device time moves only under the simulator's control, so a loaded host never runs out a device
-  // time-out (sim/clock.cpp). Its output goes to sim.log through here: its ports line names its ports, then B's
-  // "USB on: listening" line says it is up (no polling); then the control port's settle answers once the power-on's work is done and the
+  // time-out (sim/clock.cpp). Its output goes to sim.log through here: its first line names its control port, then
+  // B's "USB on: listening" line its endpoint's and that it is up (no polling); then the control port's settle answers once the power-on's work is done and the
   // device's clock stands still, as a host that comes a moment later finds it.
   const child = spawn(PYTHON, ['-m', 'xy_forever.sim', '--port', '0', '--state', dir, ...extra], {
     cwd: REPO,
@@ -97,10 +98,10 @@ async function start(name: string, state: string, extra: string[]): Promise<[Sim
   live.add(child);
   child.once('exit', () => live.delete(child));
   endWithThisProcess();
-  let info: SimInfo | null = null;
   return new Promise((resolve, reject) => {
     let seen = '',
-      ready = false;
+      ready = false,
+      controlPort = 0;
     const timer = setTimeout(() => fail(`did not listen within 60 s`), 60_000);
     const fail = (why: string): void => {
       clearTimeout(timer);
@@ -113,20 +114,18 @@ async function start(name: string, state: string, extra: string[]): Promise<[Sim
       writeSync(log, data);
       if (ready) return;
       seen = (seen + data.toString()).slice(-4096);
-      const ports = info ? null : PORTS.exec(seen);
-      if (ports) {
-        const port = Number(ports[1]);
-        info = {
-          address: `127.0.0.1:${port}`,
-          host: '127.0.0.1',
-          port,
-          control: Number(ports[2]),
-          root: join(dir, 'yaffs2'),
-        };
-      }
-      if (!info || !/USB on: listening/.test(seen)) return;
+      controlPort ||= Number(CONTROL.exec(seen)?.[1] ?? 0);
+      const listening = controlPort ? LISTENING.exec(seen) : null;
+      if (!listening) return;
+      const port = Number(listening[1]);
+      const started: SimInfo = {
+        address: `127.0.0.1:${port}`,
+        host: '127.0.0.1',
+        port,
+        control: controlPort,
+        root: join(dir, 'yaffs2'),
+      };
       ready = true;
-      const started = info;
       control(started.control, 'settle', 60_000).then(
         () => {
           clearTimeout(timer);

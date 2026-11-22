@@ -314,21 +314,6 @@ def otp_fields(keys=None, public_key_file=None):
     return bytes(out)
 
 
-def reserve(port=0):
-    """A socket bound to 127.0.0.1:port (0: a free port the system picks), not listening: it holds the port for
-    a simulator for as long as it is open. SO_REUSEPORT, so the simulator's own listeners can bind the same port
-    (B's endpoint each time USB comes on, the control port at each start); nobody else can, and with nothing
-    listening a connection is refused, as a detached device's."""
-    s = socket.socket()
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-    try:
-        s.bind(('127.0.0.1', port))
-    except OSError:
-        s.close()
-        raise
-    return s
-
-
 DEADLINE_EXIT = 124  # xyf_sim's exit status at its deadline (sim/runtime.cpp exit_deadline)
 
 
@@ -377,10 +362,11 @@ class Simulator:
         self.otp = (otp or b'') + a_records
         self.a_otp_initialized = a_otp_initialized
         self.otp_initialized = otp_initialized
-        # Held from here to stop(): port None, two ports the system picks (no picking here, so parallel runs never
-        # race for one); port N, N and N + 1. A start() after stop() holds the same two again.
-        self._ports = (reserve(port or 0), reserve(port + 1 if port else 0))
-        self.port, self.control_port = (r.getsockname()[1] for r in self._ports)
+        # port None: no port is picked here (parallel runs raced for picked ones). B's endpoint binds port 0 when USB
+        # first comes on and keeps it (start() reads it from the board's status); the control port is the one
+        # listen_control() gets. port N: N and N + 1.
+        self.port = port
+        self.control_port = port + 1 if port else 0
         self.binary = Path(binary) if binary else build()
         self.play, self.log, self.capacity, self.ask = play, log, capacity, ask
         self.deadline_s = deadline_s
@@ -403,7 +389,7 @@ class Simulator:
                 '--stock',
                 str(stock_mem()),
                 '--port',
-                str(self.port),
+                str(self.port or 0),
             ]
             + (['--control-fd', str(control_fd)] if control_fd is not None else ['--control', str(self.control_port)])
             + ['--capacity', str(self.capacity)]
@@ -417,22 +403,22 @@ class Simulator:
         )
 
     def listen_control(self):
-        """The control port's socket, listening before the simulator starts (control() never waits for it)."""
+        """The control port's socket, listening before the simulator starts (control() never waits for it): port 0
+        the first time (the system picks it), the same port after."""
         listener = socket.socket()
-        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             listener.bind(('127.0.0.1', self.control_port))
             listener.listen(8)
         except OSError:
             listener.close()
             raise
+        self.control_port = listener.getsockname()[1]
         return listener
 
     def start(self, timeout=10.0, settle=True):
         """Starts the board; returns once B's USB endpoint listens and (settle) the device is at rest."""
         os.environ.setdefault('XYF_ASK_LIMIT_S', '30')  # #65: a host here never waits on the question unbounded
-        if self._ports is None:
-            self._ports = (reserve(self.port), reserve(self.control_port))
         log = open(self.log, 'ab') if self.log else subprocess.DEVNULL
         listener = self.listen_control()
         # Its own session: stop() ends its whole group (the board and both processors).
@@ -581,6 +567,8 @@ class Simulator:
             status = self.status()
             if status.get('b') == 'crashed' and status.get('b_boots') == 1:  # the endpoint's bind failed, say
                 raise NotListening('simulator: B crashed at its first boot')
+            if status.get('listening'):
+                self.port = status['port']  # port 0: the one B's endpoint got
             return status.get('listening')
 
         try:
@@ -598,9 +586,6 @@ class Simulator:
             procgroup.kill_group(self.process, grace=1.0)  # whatever is left of its group: SIGKILL
             self._close_control()
             self.process = None
-        for r in self._ports or ():
-            r.close()
-        self._ports = None
 
     def __enter__(self):
         return self.start()

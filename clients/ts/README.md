@@ -31,7 +31,7 @@ with the same fake is `web/e2e/install-sim.e2e.ts`. The web app driven against t
 `web/scripts/device-browser-test.ts` ([web testing](../../web/docs/testing.md)).
 
 The run starts its own simulators at once (`python -m xy_forever.sim` from the project venv, however Vitest is
-started; `--port 0`: each holds two ports the system picks and prints them, so parallel runs never race for one;
+started; `--port 0`: its ports are ones the system picks, read from its output, so parallel runs never race for one;
 state under the private sessions folder; `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`). Without the private stock files or clang++
 (CI) it skips the simulator tests with the reason; a missing venv or a simulator that does not start fails the run. Their transport pauses on the
 simulator's clock (`simOpener`, `Transport.pause`), so polls take no host time. Budgets, enforced on CPU time (the test's
