@@ -188,12 +188,7 @@ def signed_request(dev, operation, name='', busy_s=0.0):
     """busy_s: how long a busy device is asked again (an import right after a change waits for the
     write window to settle, about 8 s)."""
     payload = struct.pack('<II', 1, operation) + name.encode('utf-8') + b'\0'
-    deadline = time.monotonic() + busy_s
-    while True:
-        code, body = dev.call(P.ids.PACKS_MANAGE, payload, timeout=60.0)
-        if code != P.ids.S_BUSY or time.monotonic() >= deadline:
-            break
-        time.sleep(0.5)
+    code, body = store.unless_busy(dev, lambda: dev.call(P.ids.PACKS_MANAGE, payload, timeout=60.0), busy_s, 0.5)
     if code == P.ids.S_REFUSED and operation == OP_ENABLE:
         raise store.StoreError('pack path refused')
     store.check(code, 'signed pack')
@@ -312,7 +307,7 @@ def command(dev, args):
 
 def pack_rows(dev, root, state, rows):
     """Append a row per pack folder of root (one with a manifest.json); 0, or the status that stopped it."""
-    code, children = dev.list_dir(root)
+    code, children = store.unless_busy(dev, lambda: dev.list_dir(root))  # a toggle's window still settling
     if code == P.ids.S_NOT_FOUND:
         children = []
     elif code:
@@ -326,7 +321,7 @@ def pack_rows(dev, root, state, rows):
             print('invalid pack folder in directory listing: %r' % pack)
             return 1
         folder = root + '/' + pack
-        code, entries = dev.list_dir(folder)
+        code, entries = store.unless_busy(dev, lambda: dev.list_dir(folder))
         if code:
             print('list %s: %s' % (folder, P.status_name(code)))
             return code
@@ -334,7 +329,7 @@ def pack_rows(dev, root, state, rows):
         if b'manifest.json' not in names:
             continue
         path = folder + '/manifest.json'
-        code, body = dev.read_all(path, limit=1 << 16)
+        code, body = store.unless_busy(dev, lambda: dev.read_all(path, limit=1 << 16))
         if code and code != P.ids.S_TOO_LARGE:
             print('read %s: %s' % (path, P.status_name(code)))
             return code

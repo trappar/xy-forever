@@ -85,6 +85,17 @@ def validate(files):
     return fields
 
 
+def unless_busy(dev, request, seconds=BUSY_S, every=0.05):
+    """request()'s result (its status first), sent again while the device answers busy (a write window settling
+    after a change, a job's step) for at most seconds, every seconds apart, on the device's clock (the simulator's,
+    in tests)."""
+    for tries in range(int(seconds / every), -1, -1):
+        result = request()
+        if result[0] != P.ids.S_BUSY or not tries:
+            return result
+        pause(getattr(dev, 't', None), every)
+
+
 class Session:
     def __init__(self, dev, sweep=True):
         self.dev = dev
@@ -96,12 +107,9 @@ class Session:
         check(code, 'package.session')
 
     def __enter__(self):
-        for tries in range(BUSY_S * 20, -1, -1):  # 50 ms apart, on the device's clock (the simulator's, in tests)
-            code, _ = self.dev.call(P.ids.PACKAGE_SESSION, struct.pack('<II', 1, 0) + self.token)
-            if code != P.ids.S_BUSY or not tries:
-                check(code, 'package.session')
-                break
-            pause(getattr(self.dev, 't', None), 0.05)
+        request = struct.pack('<II', 1, 0) + self.token
+        code, _ = unless_busy(self.dev, lambda: self.dev.call(P.ids.PACKAGE_SESSION, request))
+        check(code, 'package.session')
         if self.sweep_on_enter:
             self.sweep()
         return self
@@ -116,12 +124,8 @@ class Session:
     def finish(self):
         self.command(2)
         # The close resynchronizes A's library view. USB remains live meanwhile.
-        for tries in range(BUSY_S * 50, -1, -1):  # 20 ms apart, on the device's clock
-            code, _ = self.dev.list_dir(ROOT)
-            if code != P.ids.S_BUSY or not tries:
-                check(code, 'package window close')
-                break
-            pause(getattr(self.dev, 't', None), 0.02)
+        code, _ = unless_busy(self.dev, lambda: self.dev.list_dir(ROOT), every=0.02)
+        check(code, 'package window close')
 
     def read(self, path, optional=False):
         self.command(1)

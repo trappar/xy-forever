@@ -82,15 +82,8 @@ class SignedPackImport(unittest.TestCase):
     def listed(self, pack_id):
         """packs list's rows for pack_id."""
         out = io.StringIO()
-        while True:  # a toggle's window close may still be out: the listing answers busy
-            out.seek(0)
-            out.truncate()
-            with contextlib.redirect_stdout(out):
-                code = packs.list_packs(self.dev)
-            if code != ids.S_BUSY:
-                break
-            self.sim.advance(20)
-        self.assertEqual(code, 0, out.getvalue())
+        with contextlib.redirect_stdout(out):  # right after a toggle: its window close is still out (busy)
+            self.assertEqual(packs.list_packs(self.dev), 0, out.getvalue())
         return [row for row in json.loads(out.getvalue()) if row['id'] == pack_id]
 
     def start(self, name='test.tfw'):
