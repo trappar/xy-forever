@@ -8,55 +8,42 @@ with a 500 ms control transfer. B's USB stack answers it inside the USB interrup
 without any storage call, so the first failure after successes timestamps a freeze. Build 120's watchdog report mode
 puts b's stuck address in those strings.
 macOS caches strings read with the device's langid 0x0409, so this asks with 0x0407.
-Claims no interface (OpenMTP / the CDC port are unaffected). Needs Homebrew libusb.
+Claims no interface (OpenMTP / the CDC port are unaffected). Needs Homebrew libusb (through pyusb).
 """
 
 import argparse
-import ctypes
 import sys
 import time
 
-from mtp_probe import OP_XY_VID, DeviceDescriptor, load
-
-from xy_forever import device_lock, no_device
+from xy_forever import device_lock, mtp_read, no_device
 
 
-def product(lib, ctx):
-    devs = ctypes.POINTER(ctypes.c_void_p)()
-    n = lib.libusb_get_device_list(ctx, ctypes.byref(devs))
+def load():
+    """pyusb's libusb backend, or exit with one line."""
     try:
-        for i in range(n):
-            d = DeviceDescriptor()
-            lib.libusb_get_device_descriptor(ctypes.c_void_p(devs[i]), ctypes.byref(d))
-            if d.idVendor != OP_XY_VID:
-                continue
-            handle = ctypes.c_void_p()
-            if lib.libusb_open(ctypes.c_void_p(devs[i]), ctypes.byref(handle)):
-                return 'open failed'
-            texts = []
-            for index in (d.iManufacturer, d.iProduct):
-                buf = ctypes.create_string_buffer(255)
-                # GET_DESCRIPTOR(string, langid 0x0407), 500 ms: macOS answers 0x0409 (the
-                # device's own language) from its cache; any other langid reaches the device.
-                rc = lib.libusb_control_transfer(
-                    handle,
-                    ctypes.c_uint8(0x80),
-                    ctypes.c_uint8(6),
-                    ctypes.c_uint16(0x0300 | index),
-                    ctypes.c_uint16(0x0407),
-                    buf,
-                    ctypes.c_uint16(255),
-                    ctypes.c_uint(500),
-                )
-                if rc < 2:
-                    lib.libusb_close(handle)
-                    return 'NO ANSWER (%d)' % rc
-                texts.append(buf.raw[2:rc].decode('utf-16-le', 'replace'))
-            lib.libusb_close(handle)
-            return 'ok ' + ' | '.join(texts)
+        return mtp_read.load_libusb()
+    except mtp_read.MtpError as e:
+        sys.exit(str(e))
+
+
+def product(backend):
+    import usb.core
+    import usb.util
+
+    dev = usb.core.find(idVendor=mtp_read.OP_XY_VID, backend=backend)
+    if dev is None:
         return 'absent'
+    dev.default_timeout = 500
+    try:
+        # GET_DESCRIPTOR(string, langid 0x0407), 500 ms: macOS answers 0x0409 (the
+        # device's own language) from its cache; any other langid reaches the device.
+        return 'ok ' + ' | '.join(
+            usb.util.get_string(dev, index, 0x0407) for index in (dev.iManufacturer, dev.iProduct)
+        )
+    except (usb.core.USBError, ValueError) as error:
+        return 'NO ANSWER (%s)' % error
     finally:
-        lib.libusb_free_device_list(devs, 1)
+        usb.util.dispose_resources(dev)
 
 
 def main(argv=None):
@@ -66,14 +53,11 @@ def main(argv=None):
     args = ap.parse_args(argv)
     no_device.refuse('USB (libusb)')
     device_lock.hold()
-    lib = load()
-    ctx = ctypes.c_void_p()
-    if lib.libusb_init(ctypes.byref(ctx)):
-        sys.exit('libusb_init failed')
+    backend = load()
     end = time.time() + args.seconds
     last = None
     while time.time() < end:
-        state = product(lib, ctx)
+        state = product(backend)
         if state != last:
             print('%s %s' % (time.strftime('%T'), state), flush=True)
             last = state
