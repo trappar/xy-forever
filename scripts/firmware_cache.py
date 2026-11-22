@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -82,7 +83,26 @@ def run_turbo(task, force=False):
     if install and subprocess.run(install, cwd=ROOT).returncode:
         return 1
     env = dict(os.environ, **ENV, **{KEY: build_key()})
-    return subprocess.run(turbo_command(task, force), cwd=ROOT, env=env).returncode
+    run = subprocess.run(
+        turbo_command(task, force), cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+    if run.returncode:  # Turborepo's banner and the task's log only when it failed
+        sys.stdout.write(run.stdout)
+    print(summary(task, run.returncode, run.stdout))
+    return run.returncode
+
+
+def summary(task, status, output):
+    """The one line a run prints: where the output went, its image, and whether the cache had it."""
+    if status:
+        return 'firmware %s: FAILED (exit %d; the log above)' % (task, status)
+    try:
+        image = json.loads((OUT / 'manifest.json').read_text())['image']
+    except OSError, ValueError, KeyError:
+        image = '?'
+    hit = re.search(r'Cached:\s+(\d+) cached, (\d+) total', output)
+    how = 'from the cache' if hit and hit.group(1) == hit.group(2) else 'built'
+    return 'firmware %s: %s (image %s, %s)' % (task, os.path.relpath(OUT, os.getcwd()), image, how)
 
 
 def run_task(task):

@@ -51,9 +51,12 @@ or a is starting_with(pat="tests") or a is starting_with(pat="-k") or a is start
 uv run pytest -n auto --dist worksteal {{ tier }}{% for a in usage.args %}{{ a | quote }} {% endfor %}"""
 
 [tasks.test-changed]
-description = "Tests affected by your changes, every tier but the sweeps (testmon: Python, C++, scripts)"
+description = "Tests affected by your changes, every tier but the sweeps (testmon: Python, C++, scripts; Vitest: TypeScript)"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
-run = 'uv run pytest -n auto --dist worksteal -m "not sweep" --testmon-forceselect {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = [
+  'uv run pytest -n auto --dist worksteal -m "not sweep" --testmon-forceselect {% for a in usage.args %}{{ a | quote }} {% endfor %}',
+  { task = "web-test-changed" },
+]
 
 [tasks.test-failed]
 description = "Rerun the tests that failed last time (none failed: nothing runs)"
