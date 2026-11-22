@@ -187,6 +187,11 @@ description = "Web app e2e tests (Chrome, simulator): CI runs them when web/ cha
 dir = "web"
 run = "uv run pnpm run test:e2e"   # uv: syncs the project venv the simulator specs run
 
+[tasks.web-e2e-bounds]
+description = "The e2e rig's hang bound: a nested run of a planted hung page must fail, named, in time (CI: when the rig changes)"
+dir = "web"
+run = "pnpm run test:e2e:bounds"
+
 [tasks.plan]
 description = "Next plan items and decisions waiting (--all: more)"
 usage = 'arg "[args]..." help="plan.py arguments (--all)" var=#true'
