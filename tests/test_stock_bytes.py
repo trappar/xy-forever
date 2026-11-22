@@ -7,6 +7,8 @@ import random
 import tempfile
 import unittest
 
+import pytest
+
 from xy_forever import paths, stock_bytes as S
 import web_release
 
@@ -50,6 +52,7 @@ class ReleaseImageTest(unittest.TestCase):
             self.skipTest('the private stock 1.2.1 pair is absent (setup.py import-stock)')
         return {f.name: f.read_bytes() for f in files}
 
+    @pytest.mark.gate                     # a scan of the whole image: 0.3 s of CPU
     def test_this_sources_product_build_has_no_stock_bytes(self):
         stocks = self.stocks()
         build = paths.newest_verified_build()
@@ -58,6 +61,7 @@ class ReleaseImageTest(unittest.TestCase):
         self.assertEqual(S.shared_runs((build / 'candidate.ldr').read_bytes(), stocks), [])
         self.assertTrue(S.shared_runs(stocks['os.ldr'][:4096], stocks))        # the check sees stock bytes
 
+    @pytest.mark.gate                     # a scan of the whole image: 0.3 s of CPU
     def test_the_pinned_release_has_no_stock_bytes(self):
         pin = json.loads(web_release.PIN.read_text())
         if not pin['sha256']:
