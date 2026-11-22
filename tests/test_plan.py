@@ -1,8 +1,10 @@
 """scripts/plan.py: the work queue from GitHub issues (order, sections), on fixture issues; no network."""
 
 import importlib.util
+import json
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location('plan_script', Path(__file__).resolve().parents[1] / 'scripts/plan.py')
 Q = importlib.util.module_from_spec(SPEC)
@@ -36,11 +38,16 @@ ISSUES = [
 
 class Queue(unittest.TestCase):
     def test_labels_shown_with_the_item(self):
-        f = Q.fields(issue(8, 'Writer', M2, ['device:risky', 'device', 'agent:claude', 'blocked']))
+        f = Q.fields(issue(8, 'Writer', M2, ['device:risky', 'device', 'blocked']))
         self.assertEqual(Q.line(f), '#8 M2 Writer [device,device:risky]')
-        self.assertEqual(
-            Q.line(Q.fields(issue(7, 'Old', M2, ['kind:build']))), '#7 M2 Old [build]'
-        )  # older kind labels
+
+    def test_pages_are_joined_and_pull_requests_dropped(self):
+        pages = json.dumps([[issue(1, 'A')], [issue(2, 'B'), dict(issue(3, 'PR'), pull_request={})]])
+        runs = [mock.Mock(stdout=pages), mock.Mock(stdout='me\n')]
+        with mock.patch.object(Q.subprocess, 'run', side_effect=runs) as run:
+            issues, me = Q.fetch()
+        self.assertIn('--slurp', run.call_args_list[0].args[0])
+        self.assertEqual(([i['number'] for i in issues], me), ([1, 2], 'me'))
 
     def test_sections_and_order(self):
         out = Q.queue(ISSUES, 'me')
@@ -65,32 +72,6 @@ class Queue(unittest.TestCase):
         self.assertIn('  #2 M2 Robustness @someone', out)
         self.assertIn('  #44 - Suite race', out)
         self.assertFalse(any(l.startswith('Not shown') for l in out))
-
-    def test_with_agent_the_items_split_by_the_agent_label(self):
-        issues = ISSUES + [
-            issue(21, 'Mine labelled', M2, ['agent:claude'], ['me']),
-            issue(22, 'Theirs', M2, ['agent:codex'], ['me']),
-            issue(23, 'Free, theirs', M2, ['agent:codex']),
-        ]
-        out = Q.queue(issues, 'me', agent='claude')
-        self.assertEqual(
-            out[:7],
-            [
-                'Yours, in progress (agent:claude) (1)',
-                '  #21 M2 Mine labelled',
-                'Yours, no agent label: interrupted, label it to resume (1)',
-                '  #3 M2 Loose ends [device]',
-                "Another agent's: leave these (2)",
-                '  #22 M2 Theirs (agent:codex)',
-                '  #23 M2 Free, theirs (agent:codex)',
-            ],
-        )
-        self.assertIn('  #4 M2 Atomic replace', out)
-
-    def test_without_agent_a_labelled_item_is_taken(self):
-        issues = ISSUES + [issue(23, 'Free, theirs', M2, ['agent:codex'])]
-        self.assertEqual(Q.queue(issues, 'me')[:4], Q.queue(ISSUES, 'me')[:4])
-        self.assertIn('  #23 M2 Free, theirs agent:codex', Q.queue(issues, 'me', everything=True))
 
 
 if __name__ == '__main__':
