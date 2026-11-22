@@ -1,6 +1,6 @@
 """The suite's budgets (tests/conftest.py): a fast test is held to its CPU time, so one that waits passes and
 one that computes past the limit fails the run, named. The planted run fixes the scale at 1
-(XYF_BUDGETS_SCALE): a busy machine's probe would raise the 0.3 s limit past the planted 0.6 s."""
+(XYF_BUDGETS_SCALE): a busy machine's probe would raise the 0.3 s limit past the planted 0.35 s."""
 
 import os
 import subprocess
@@ -15,10 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 PLANTED = """import time, unittest
 class Planted(unittest.TestCase):
     def test_waits(self):
-        time.sleep(0.6)
+        time.sleep(0.35)
 
     def test_computes(self):
-        end = time.process_time() + 0.6
+        end = time.process_time() + 0.35
         while time.process_time() < end:
             pass
 """
