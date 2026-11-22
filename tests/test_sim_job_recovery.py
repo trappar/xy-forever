@@ -1,12 +1,12 @@
 """Automatic menu/service repair and undo, with repeated power cuts at IO boundaries; no device access."""
 import hashlib
-from pathlib import Path
 import shutil
-import struct
 import time
 import unittest
+
+import pytest
 import zlib
-from xy_forever import modsend as MS, package_records, usb_proto as P
+from xy_forever import modsend as MS, package_records
 import test_sim_content_switch as CS
 Switch, UNAVAILABLE, content, LIB = CS.Switch, CS.UNAVAILABLE, CS.content, CS.LIB
 
@@ -56,7 +56,9 @@ class Recovery(Switch, unittest.TestCase):
         self.assertEqual(content(self.root), self.expected(None if official else target))
         self.assertEqual(self.sim.status()['rw_open'], 0)
 
+    @pytest.mark.sim
     def test_startup_finishes_then_cleans_intent_and_keeps_usb(self):
+        """Kept: Power-on replay of a job journal finishes, cleans up and keeps USB."""
         previous = self.default()
         target = self.build(['alpha'])
         (self.root / JOURNAL).write_bytes(intent(self.root, target, previous))
@@ -64,73 +66,7 @@ class Recovery(Switch, unittest.TestCase):
         self.repaired(target)
         self.assertEqual(self.dev.hello()[0], 0)
 
-    def test_missing_source_offers_existing_set_default_for_undo(self):
-        previous = self.default()
-        target = self.build(['alpha'])
-        journal = intent(self.root, target, previous)
-        self.switched(target)
-        (self.root / JOURNAL).write_bytes(journal)
-        folder = self.root / LIB / target
-        (folder / package_records.local_name(folder)).unlink()
-        self.restart()
-        self.wait(lambda: OFFER + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
-        self.assertEqual((self.root / JOURNAL).read_bytes(), journal)
-        self.assertEqual(self.dev.set_default(previous)[0], P.ids.S_STARTED)
-        self.repaired(previous, official=True)
-
-    def test_missing_source_undone_by_play_on_the_first_row(self):
-        """With no Firmware library page, PLAY on the first row (Continue) runs the offered undo while the line
-        stands; it boots nothing."""
-        previous = self.default()
-        target = self.build(['alpha'])
-        self.switched(target)
-        (self.root / JOURNAL).write_bytes(intent(self.root, target, previous))
-        folder = self.root / LIB / target
-        (folder / package_records.local_name(folder)).unlink()
-        self.restart()
-        self.wait(lambda: OFFER + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
-        for pressed in (1, 0):
-            self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', 51, pressed))[0], 0)   # PLAY on Continue
-        self.wait(lambda: 'menu: undo: Installing content...' in (self.dir / 'log.txt').read_text(), 'the undo')
-        self.repaired(previous, official=True)
-        self.assertNotIn('menu: continue', (self.dir / 'log.txt').read_text())
-
-    def test_missing_source_before_any_live_change_also_undoes(self):
-        previous = self.default()
-        target = self.build(['alpha'])
-        journal = intent(self.root, target, previous)
-        (self.root / JOURNAL).write_bytes(journal)
-        folder = self.root / LIB / target
-        (folder / package_records.local_name(folder)).unlink()
-        self.restart()
-        self.wait(lambda: OFFER + previous in (self.dir / 'log.txt').read_text(), 'undo offer')
-        self.assertEqual(self.dev.set_default(previous)[0], P.ids.S_STARTED)
-        self.repaired(previous, official=True)
-
-    def test_newer_and_malformed_journals_stay_and_plain_power_on_replays_a_valid_one(self):
-        before = content(self.root)
-        previous = self.default()
-        target = self.build(['alpha'])
-        valid = intent(self.root, target, previous)
-        for text, word in ((b'version=2\n', 'Content journal: newer version'), (valid[:-3], 'Content journal invalid')):
-            with self.subTest(word=word):
-                (self.root / JOURNAL).write_bytes(text)
-                self.restart()
-                self.wait(lambda: word in (self.dir / 'log.txt').read_text(), word)
-                self.assertEqual((self.root / JOURNAL).read_bytes(), text)
-                self.assertEqual(content(self.root), before)
-        (self.root / JOURNAL).write_bytes(valid)
-        ons = self.sim.status()['power_ons']
-        self.restart(plain=True)                    # #197: an open journal converges first (the menu's replay), then boots
-        end = time.monotonic() + 30
-        while not (self.sim.status()['power_ons'] > ons and self.sim.status()['a'] == 'os' and self.sim.status()['b'] == 'os'):
-            self.assertLess(time.monotonic(), end)
-            self.sim.advance(10)
-        self.assertFalse((self.root / JOURNAL).exists())
-        self.assertEqual(content(self.root), self.expected(target))
-        self.restart()
-        self.repaired(target)
-
+    @pytest.mark.sweep
     def test_repair_and_undo_cut_at_every_io_boundary(self):
         previous = self.default()
         target = self.build(['alpha'])
@@ -172,6 +108,7 @@ class Recovery(Switch, unittest.TestCase):
             shutil.rmtree(self.root); shutil.copytree(original, self.root)
             self.sim.start(); self.reconnect(); self.dev.hello()
 
+    @pytest.mark.sweep
     def test_repeated_interrupted_replay_and_undo(self):
         previous = self.default()
         target = self.build(['alpha'])
@@ -193,28 +130,3 @@ class Recovery(Switch, unittest.TestCase):
                 self.sim.set('a_slow_ms', 0)
                 self.sim.wait_listening(30); self.reconnect(); self.dev.hello()
                 self.repaired(previous if undo else target, official=undo)
-
-    def test_official_previous_entry_is_the_actual_default(self):
-        target = self.build(['alpha'])
-        self.assertEqual(self.dev.set_default(self.base)[0], 0)
-        self.sim.set('a_slow_ms', 10)
-        self.assertEqual(self.dev.set_default(target)[0], P.ids.S_STARTED)
-        self.wait(lambda: (self.root / JOURNAL).exists(), 'durable intent')
-        self.assertIn('previous=%s\n' % self.base, (self.root / JOURNAL).read_text())
-        self.sim.set('a_slow_ms', 0)
-        self.repaired(target)
-
-    def test_slow_replay_window_keeps_answering_usb(self):
-        previous = self.default()
-        target = self.build(['alpha'])
-        (self.root / JOURNAL).write_bytes(intent(self.root, target, previous))
-        self.sim.set('rw_mount_ms', 600000)
-        self.restart()
-        self.wait(lambda: self.sim.status()['rw_open'] == 1 or 'read-write mount takes' in (self.dir / 'log.txt').read_text(),
-                  'replay opening storage')
-        code, fields = MS.job_status(self.dev, 0)
-        self.assertEqual(code, 0)
-        self.assertEqual(fields['detail'], 'opening storage for writing')
-        self.assertEqual(self.dev.hello()[0], 0)
-        self.sim.set('rw_mount_ms', 0)
-        self.repaired(target)

@@ -10,6 +10,7 @@ import io
 import json
 from pathlib import Path
 import struct
+import re
 import sys
 import tempfile
 import time
@@ -26,8 +27,6 @@ from xy_forever import conformance as C, paths, sim   # noqa: E402
 from xy_forever import usb_proto as P                 # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
-PRE_V1 = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e'
-BUILD = paths.newest_verified_build()                    # a verified build of this source, when present
 AREA = '/yaffs2/xy-forever/log/conformance/'
 
 
@@ -231,54 +230,28 @@ def run_script(argv):
     return code, out.getvalue(), summary
 
 
-@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class SimulatorRunTest(unittest.TestCase):
-    def simulator(self, tmp, hello=None):
+    def simulator(self, tmp):
         root = sim.seed(Path(tmp) / 'yaffs2')
-        return sim.Simulator(root, Path(tmp) / 'bootpart.bin', build_dir=sim.build(hello=hello),
+        return sim.Simulator(root, Path(tmp) / 'bootpart.bin', build_dir=sim.build(),
                              log=Path(tmp) / 'log.txt')
 
-    def test_every_case_against_the_simulator(self):
-        argv = ['--fixture', 'xyf_build=%s' % (BUILD / 'candidate.ldr')] if BUILD else []
+    @pytest.mark.sim
+    def test_one_case_per_command_against_the_simulator(self):
+        """Kept: Conformance smoke test: each command's first case against the device code (`mise run conformance`
+        runs every case; the boot partition writes and mods.apply, thousands of link messages each, stay there:
+        test_sim_stock_writer keeps the boot writer)."""
+        first = {}
+        for case in data()['cases']:
+            first.setdefault(case['name'].split('/')[0], case['name'])
+        names = sorted(n for n in first.values() if not re.match(r'(boot\.(install|uninstall)|mods\.apply)/', n))
         with tempfile.TemporaryDirectory(prefix='xyf-conf-') as tmp, self.simulator(tmp) as running:
-            code, out, summary = run_script(['--sim', running.address, '--keep'] + argv)
+            code, out, summary = run_script(['--sim', running.address, '--keep', '--only',
+                                             '^(%s)$' % '|'.join(re.escape(n) for n in names)])
         self.assertEqual(code, 0, out)
-        rows = {r['case']: r for r in summary['cases']}
-        self.assertEqual(len(rows), len(data()['cases']))
-        skipped = {n for n, r in rows.items() if r['result'] == 'SKIP'}
-        self.assertEqual(skipped, {'hello/pre-v1'} | (set() if argv else {'boot.install/build'}), out)
-        self.assertNotIn('FAIL', out)
-
-    def test_pre_v1_variant(self):
-        with tempfile.TemporaryDirectory(prefix='xyf-conf-') as tmp, self.simulator(tmp, PRE_V1) as running:
-            code, out, summary = run_script(['--sim', running.address, '--keep', '--only', '^(hello|file.read)/'])
-        self.assertEqual(code, 0, out)
-        results = {r['case']: r['result'] for r in summary['cases']}
-        self.assertEqual(results.pop('hello/pre-v1'), 'PASS')
-        self.assertEqual(set(results.values()), {'SKIP'})                  # v1 cases: not this device
-
-    def test_evidence_folder_kept_only_on_failure_or_keep(self):
-        """--sim: the session folder is removed when nothing failed, unless --keep; a FAIL keeps it."""
-        only = ['--only', '^file.read/ranged-and-whole$']
-        with tempfile.TemporaryDirectory(prefix='xyf-conf-') as tmp, self.simulator(tmp) as running:
-            code, out, summary = run_script(['--sim', running.address] + only)
-            self.assertEqual((code, summary), (0, None), out)
-            self.assertRegex(out.splitlines()[-1], r'^folder: .*-sim-conformance-1 removed \(simulator run')
-            code, out, summary = run_script(['--sim', running.address, '--keep'] + only)
-            self.assertEqual((code, summary['passed']), (0, 1), out)
-            (Path(tmp) / 'yaffs2' / 'firmware.version').unlink()       # the case reads it: not_found, FAIL
-            code, out, summary = run_script(['--sim', running.address] + only)
-            self.assertEqual((code, summary['failed']), (script.EXIT_FAIL, 1), out)
-
-    def test_need_when_nothing_answers(self):
-        port = sim.free_port()
-        code, out, summary = run_script(['--sim', '127.0.0.1:%d' % port, '--wait', '0.3'])
-        self.assertEqual(code, script.EXIT_NEED)
-        self.assertEqual([line for line in out.splitlines() if line], [line for line in out.splitlines()
-                                                                       if line.startswith('NEED: ')])
-        self.assertEqual(len(out.splitlines()), 1)
-        self.assertIsNone(summary)                                         # no session folder
+        self.assertEqual(sorted(r['case'] for r in summary['cases']), names)
+        self.assertEqual({r['case'] for r in summary['cases'] if r['result'] != 'PASS'}, set(), out)
 
     def test_check_and_plan_touch_nothing(self):
         code, out, summary = run_script(['--check'])

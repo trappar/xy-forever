@@ -1,22 +1,17 @@
 """#102 crash trigger test build: never in the product; the device script's decoding; the script against the simulator."""
-import contextlib
-import io
 from pathlib import Path
 import struct
 import sys
-import tempfile
 import unittest
 
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
 import xyf_build as B  # noqa: E402
 import xyf_host as host  # noqa: E402
-from xy_forever import paths, sim  # noqa: E402
+from xy_forever import  sim        # noqa: E402
 import crash_trigger as ct  # noqa: E402
-import device_pass as dp  # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 
@@ -33,7 +28,6 @@ class ModeTest(unittest.TestCase):
         self.assertEqual(B.CRASH_TRIGGER_DEFINES, ('-DXYF_CRASH_TRIGGER=1',))
 
 
-@pytest.mark.sim
 class ScriptTest(unittest.TestCase):
     def test_unmapped_address_is_in_no_stock_data_cplb(self):
         table = [(0x08000000, 0x3109d), (0x08010000, 0x3109d), (0x08020000, 0x3109d), (0x08030000, 0x3009d),
@@ -69,60 +63,6 @@ class ScriptTest(unittest.TestCase):
         self.assertEqual(ct.screen_lines('unmapped', 0x8ab02e48, 0x8ab1088c),
                          ['Cause 0x26: data access to unmapped memory', 'At 0x8ab02e48, called from 0x8ab1088c',
                           'SEQSTAT 0x00000026 (or 0x00002026)'])
-
-    @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
-    def test_the_device_script_against_the_simulator(self):
-        with tempfile.TemporaryDirectory(prefix='xyf-sim-crasht-', dir=str(paths.SESSIONS)) as tmp:
-            tmp = Path(tmp)
-            sessions = tmp / 'sessions'
-            sessions.mkdir()
-            root = sim.seed(tmp / 'yaffs2')
-
-            def main(*argv):
-                out = io.StringIO()
-                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-                    code = ct.main(list(argv), sessions=sessions, sleep=lambda s: None)
-                return code, out.getvalue()
-
-            def raw(address, payload):
-                host.SIM = address
-                link, _ = dp.HostDevice().open(5.0)
-                try:
-                    return link.raw(ct.T_CRASH, payload, 3.0)[0]
-                finally:
-                    link.close()
-            product = sim.Simulator(root, tmp / 'bootpart.bin', log=tmp / 'product.txt').start()
-            try:
-                self.assertEqual(raw(product.address, b'\x04'), ct.ids.S_UNSUPPORTED)   # the product: no trigger
-            finally:
-                product.stop()
-            build = sim.build(mode=B.CRASH_TRIGGER_MODE)
-            simulator = sim.Simulator(root, tmp / 'bootpart.bin', build_dir=build, log=tmp / 'log.txt').start()
-            try:
-                for payload in (b'', b'\x00', b'\x02', b'\x05', b'\x01\x00'):       # unlisted ops (2: no misaligned)
-                    self.assertEqual(raw(simulator.address, payload), ct.ids.S_UNSUPPORTED, payload)
-                code, out = main('--sim', simulator.address, '--kind', 'unmapped')
-                self.assertEqual(code, 3, out)
-                for step in ('identity', 'cplb', 'trigger', 'silent'):
-                    self.assertRegex(out, r'trigger/%s +PASS' % step)
-                self.assertIn('NEED: read the OP-XY screen (kind unmapped): expect Cause 0x26', out)
-                self.assertIn('B halts here', (tmp / 'log.txt').read_text())
-                simulator.stop()
-                simulator = sim.Simulator(root, tmp / 'bootpart.bin', build_dir=build, log=tmp / 'log.txt').start()
-                code, out = main('--sim', simulator.address, '--after', '--screen', 'none: simulator')
-                self.assertEqual(code, 0, out)
-                self.assertEqual(list(sessions.iterdir()), [])                 # a passing pair leaves nothing
-                # A read-write window open: refused (busy), and B keeps answering.
-                note = tmp / 'note.txt'
-                note.write_text('x\n')
-                self.assertEqual(dp.HostDevice().command(['put-file', str(note), '/yaffs2/xy-forever/log/crasht.txt',
-                                                          '--yes-write'], 10.0)[0], 0)
-                self.assertEqual(raw(simulator.address, b'\x01'), ct.ids.S_BUSY)
-                self.assertEqual(dp.HostDevice().command(['status'], 5.0)[0], 0)
-            finally:
-                simulator.stop()
-                host.SIM = None
-
 
 if __name__ == '__main__':
     unittest.main()

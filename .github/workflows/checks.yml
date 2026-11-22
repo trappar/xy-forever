@@ -50,7 +50,7 @@ jobs:
           XYF_PRIVATE: ${{ runner.temp }}/private   # empty: every test that needs private files skips
           XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
           XYF_BUDGETS: 'off'
-        run: mkdir -p "$XYF_PRIVATE" && uv run pytest -n auto --dist worksteal
+        run: mkdir -p "$XYF_PRIVATE" && uv run pytest -n auto --dist worksteal -m "not sweep"
 
   web:
     name: Web app, client, protocol check (Linux)

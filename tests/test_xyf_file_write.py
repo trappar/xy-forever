@@ -150,7 +150,7 @@ class LibraryAddTest(unittest.TestCase):
     """Host admission/refusal checks; atomic publication is tested in the simulator."""
 
     # The complete CLI/write path is exercised against the real simulator in
-    # test_sim_library_add and test_sim_package_store (including power cuts).
+    # test_sim_package_store (a parked power-cut sweep).
 
     def test_refusals(self):
         import xyf_host as host

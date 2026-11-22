@@ -1,0 +1,38 @@
+# The web app's browser tests (`mise run web-e2e`: Playwright in the system Chrome), only when the web app or the
+# client it uses changes; they are no part of the routine suite (#233). Without private files the simulator specs
+# skip, so this runs the install page against its fake devices.
+name: Web e2e
+
+on:
+  pull_request:
+    paths: ['web/**', 'clients/ts/**', 'protocol/**', 'pnpm-lock.yaml', '.github/workflows/web-e2e.yml']
+  push:
+    branches: [main]
+    paths: ['web/**', 'clients/ts/**', 'protocol/**', 'pnpm-lock.yaml', '.github/workflows/web-e2e.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Web app e2e (macOS, Chrome)
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@v5
+        with:
+          version: 2026.11.12
+          cache: true
+      - run: uv sync --locked
+      - run: pnpm install --frozen-lockfile
+      - name: Install page and app in Chrome
+        env:
+          XYF_PRIVATE: ${{ runner.temp }}/private   # empty: the simulator specs skip
+        run: mkdir -p "$XYF_PRIVATE" && mise run web-e2e

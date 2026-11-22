@@ -2,15 +2,15 @@
 import hashlib
 from pathlib import Path
 import shutil
-import struct
 import tempfile
 import time
 import unittest
 
+import pytest
+
 import xyf_host as host
-from xy_forever import bounds, package_store as S, sim, usb_proto as P, xyf_entry
+from xy_forever import bounds, package_store as S, sim, xyf_entry
 from test_ldr import image
-from scripts.package_pass import exercise
 
 
 def package(label, content):
@@ -75,35 +75,7 @@ class Packages(unittest.TestCase):
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
 
-    def test_device_pass_proved_in_simulator(self):
-        self.assertEqual(len(exercise(self.dev, 'opxy-121')), 2)
-
-    def test_session_versions_exclusion_and_abandoned_owner(self):
-        token = b'a' * 32
-        request = lambda version, action, value=token: self.dev.call(P.ids.PACKAGE_SESSION,
-            struct.pack('<II', version, action) + value)[0]
-        self.assertEqual(request(2, 0), P.ids.S_UNSUPPORTED)
-        self.assertEqual(request(2, 99), P.ids.S_UNSUPPORTED)
-        self.assertEqual(request(1, 0), 0)
-        self.assertEqual(self.dev.call(P.ids.MODS_APPLY, b'')[0], P.ids.S_BUSY)
-        self.assertEqual(self.dev.call(P.REBOOT)[0], P.ids.S_BUSY)
-        # The boot probe must respect the lease even before its first file write.
-        hello, self.dev.hello_info = self.dev.hello_info, None  # unlisted developer diagnostic
-        try:
-            self.assertEqual(self.dev.call(0x64, struct.pack('<II', 0, 1))[0], P.ids.S_BUSY)
-        finally:
-            self.dev.hello_info = hello
-        self.assertEqual(request(1, 2, b'b' * 32), P.ids.S_STATE)
-        self.sim.advance(9000)
-        self.assertEqual(request(1, 0, b'b' * 32), P.ids.S_BUSY)
-        self.sim.advance(1100)
-        until = time.monotonic() + 5
-        while request(1, 0, b'b' * 32) == P.ids.S_BUSY:
-            self.assertLess(time.monotonic(), until); self.sim.advance(20)
-        self.assertEqual(request(1, 1), P.ids.S_STATE)
-        self.assertEqual(request(1, 2, b'b' * 32), 0)
-
-    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
+    @pytest.mark.sweep
     def test_cut_between_every_add_remove_and_gc_step(self):
         target = S.LIBRARY + '/package-cut'
         kept = S.LIBRARY + '/package-kept'

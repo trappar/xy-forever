@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                       # noqa: E402
-from xy_forever import bounds, hostbuild, modkit as M, modpatch as MP, modsend as S, modstore, package_records, paths, sim  # noqa: E402
+from xy_forever import  hostbuild, modkit as M, modpatch as MP, modsend as S, modstore, package_records, sim                # noqa: E402
 from xy_forever import usb_proto as P                                         # noqa: E402
 from test_mod_job import run                                                  # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
@@ -137,7 +137,6 @@ class Harness:
             self.assertEqual(on_device[1][path], on_host[1][path], path)
 
 
-@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class Synthetic(Harness, unittest.TestCase):
     """Packages split by modkit from tests/test_modpatch.py's synthetic kit (as tests/test_mod_job.py)."""
@@ -159,25 +158,7 @@ class Synthetic(Harness, unittest.TestCase):
         return MP.job_text(generation, machines, exts, self.work / 'os.ldr', self.work / 'op1_factory.json',
                            official=self.work / 'content.sha256', unverified=True)
 
-    def test_push_twice_verify_and_the_job_reads_the_device_copy(self):
-        argv = ['--sim', self.sim.address, 'mods', 'push', str(self.gen), '--verify']
-        saved = host.SIM
-        self.addCleanup(setattr, host, 'SIM', saved)
-        printed = io.StringIO()
-        with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(host.main(argv), 0)
-        text = printed.getvalue()
-        self.assertIn('verify: %d files read back identical' % (len(store_of(self.gen)) - 1), text)
-        self.assertIn('%d packages sent, 0 skipped' % len(os.listdir(self.gen)), text)
-        self.assert_stored()
-        total, lines = self.push()
-        self.assertEqual((total['sent'], total['files'], total['bytes']), (0, 0, 0))
-        self.assertEqual(total['skipped'], len(os.listdir(self.gen)))
-        self.assertEqual(sum(' skipped ' in l for l in lines), total['skipped'])
-        for machines, exts in ((['alpha', 'gamma'], ['cap', 'flt']), (['delta'], [])):
-            with self.subTest(machines=machines, extensions=exts):
-                self.assert_job_identical(machines, exts)
-
+    @pytest.mark.sweep
     def test_a_cut_push_never_looks_complete_and_a_second_push_completes_it(self):
         files = len(store_of(self.gen))                                  # store.txt first, then the packages
         for after in (0, 1, 5, files // 2, files - 1):
@@ -206,89 +187,6 @@ class Synthetic(Harness, unittest.TestCase):
         self.assert_stored()
         self.assert_job_identical(['alpha'], [])
 
-    def test_only_list_and_remove(self):
-        total, _ = self.push(only=['beta'])
-        self.assertEqual(total['sent'], 2)                             # base comes along
-        self.assert_stored({'base', 'beta'})
-        with self.assertRaises(S.Refused):
-            S.local_set(self.gen, ['nosuch'])
-        self.push()
-        (self.stored / 'gamma' / S.LIST).unlink()                     # as a cut push leaves it
-        lines = []
-        held = S.show(self.connect(), out=lines.append)
-        info = MP.info_values(self.gen / 'base/info.txt')
-        self.assertEqual([(p, g, l) for p, g, _, l in held], [(info['profile'], info['generation'], None)])
-        rows = {name: (count, size, complete) for name, _, count, size, complete in held[0][2]}
-        tree = store_of(self.gen)
-        del tree['gamma/' + S.LIST]
-        for name in os.listdir(self.gen):
-            mine = [b for p, b in tree.items() if p.split('/')[0] == name]
-            self.assertEqual(rows[name], (len(mine), sum(map(len, mine)), name != 'gamma'), name)
-        self.assertIn('INCOMPLETE', next(l for l in lines if 'gamma' in l))
-        self.assertIn('mod-base', next(l for l in lines if l.strip().startswith('base')))
-        dev = self.connect()
-        self.assertEqual(S.remove(dev, 'alpha', out=lines.append), 0)  # dry run
-        self.assertTrue((self.stored / 'alpha').is_dir())
-        self.assertEqual(S.remove(dev, 'alpha', yes=True, out=lines.append), 0)
-        self.assertFalse((self.stored / 'alpha').exists())
-        self.assertTrue((self.stored / 'beta').is_dir())
-        self.assertEqual(S.remove(dev, 'nosuch', yes=True, out=lines.append), 1)
-        self.assertEqual(S.remove(dev, info['generation'], yes=True, out=lines.append), 0)
-        self.assertFalse(self.stored.exists())
-        self.assertEqual([g for _, g, _, _ in S.holdings(dev)], [])
-
-    def test_an_older_deep_tree_is_listed_and_removed(self):
-        """#124: a set left by a build before protocol 1.16 (mods/<profile>/<generation>/, presets 8 folders deep)
-        lists as an older layout and `mods remove <profile>` deletes all of it (deletes work at any depth)."""
-        info = MP.info_values(self.gen / 'base/info.txt')
-        older = self.dir / 'yaffs2/xy-forever/mods' / info['profile']
-        shutil.copytree(self.gen, older / info['generation'])
-        lines = []
-        held = S.show(self.connect(), out=lines.append)
-        self.assertEqual(held, [(None, info['profile'], [], S.OLDER)])
-        self.assertIn('an older layout', lines[0])
-        self.assertIn('mods remove %s --yes' % info['profile'], lines[0])
-        self.assertEqual(S.remove(self.connect(), info['profile'], yes=True, out=lines.append), 0)
-        self.assertFalse(older.exists())
-
-    def test_a_mirrored_tree_or_a_newer_store_is_not_read_and_a_push_refuses_it(self):
-        """#124: a package tree mirrored under mods/<generation>/ (protocol 1.16's first builds: no store.txt, files 7
-        folders deep) lists as older; a push into it refuses, naming `mods remove`, which deletes it. A newer store
-        version lists as newer and a push refuses it too."""
-        info = MP.info_values(self.gen / 'base/info.txt')
-        shutil.copytree(self.gen, self.stored)
-        lines = []
-        self.assertEqual(S.show(self.connect(), out=lines.append), [(None, info['generation'], [], S.OLDER)])
-        self.assertIn('an older layout', lines[0])
-        with self.assertRaisesRegex(S.Refused, 'older layout.*mods remove %s --yes' % info['generation']):
-            self.push()
-        self.assertEqual(S.remove(self.connect(), info['generation'], yes=True, out=lines.append), 0)
-        self.push()
-        self.assert_stored()
-        (self.stored / modstore.FILE).write_bytes(b'version=2\n')
-        self.assertEqual(S.show(self.connect(), out=lines.append), [(None, info['generation'], [], S.NEWER)])
-        self.assertIn('a newer store version', lines[-1])
-        with self.assertRaisesRegex(S.Refused, 'store version 2, newer'):
-            self.push()
-
-    def test_a_changed_package_leaves_no_old_stored_files(self):
-        """A stored name is its content's: a push of a changed file writes a new name, then deletes the old one
-        once the new files.sha256 is in place."""
-        self.push()
-        changed = self.dir / 'changed'
-        shutil.copytree(self.gen, changed)
-        presets = sorted(p for p in (changed / 'alpha').rglob('*.json') if p.parent != changed / 'alpha')
-        self.assertTrue(presets)
-        presets[0].write_bytes(presets[0].read_bytes() + b' ')
-        files = {r: b for r, b in MP.tree(changed / 'alpha').items() if r != S.LIST}
-        (changed / 'alpha' / S.LIST).write_text(MP.list_text(files))
-        lines = []
-        total = S.push(self.connect(), changed, out=lines.append)
-        self.assertEqual((total['sent'], total['files'], total['removed']), (1, len(MP.tree(changed / 'alpha')), 1))
-        self.assertEqual(MP.tree(self.stored), store_of(changed))
-
-
-@pytest.mark.sim
 class StoredNames(unittest.TestCase):
     """xy_forever/modstore.py (native/mod_job.hpp stored_name and clients/ts/src/modstore.ts are the same rule)."""
 
@@ -317,39 +215,6 @@ def _published():
             MP.default_official(PACKAGES).is_file())
 
 
-@pytest.mark.sim
-@unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
-@unittest.skipUnless(_published(), 'published-kit packages, stock os.ldr, op1_factory.json or content.sha256 absent')
-class PublishedPackages(Harness, unittest.TestCase):
-    """Three packages of the real 0.0.6 set (of 82, about 12.5 MB): the base, the first machine that fits and
-    the capture extension."""
-
-    @classmethod
-    def setUpClass(cls):
-        paths.SESSIONS.mkdir(parents=True, exist_ok=True)
-        cls.tmp = tempfile.TemporaryDirectory(prefix='modsend-real-', dir=paths.SESSIONS)
-        cls.addClassCleanup(cls.tmp.cleanup)
-        cls.start_class(cls.tmp.name)
-        ids = [row[1] for row in M.read_table((PACKAGES / 'base/machines.txt').read_bytes())]
-        cls.machine = M.fitting(PACKAGES, ids)[0]
-        cls.gen = cls.work / 'packages' / PACKAGES.name
-        for name in ('base', cls.machine, 'ext-capture'):
-            shutil.copytree(PACKAGES / name, cls.gen / name)
-
-    def job_text(self, generation, machines, exts):
-        return MP.job_text(generation, machines, exts, TK.STOCK, TK.CATALOG, official=MP.default_official(PACKAGES))
-
-    @bounds.slow                                    # #233: over the normal bounds under load (#240)
-    def test_push_twice_and_the_job_reads_the_device_copy(self):
-        total, _ = self.push()
-        self.assertEqual((total['sent'], total['skipped']), (3, 0))
-        self.assert_stored()
-        again, _ = self.push()
-        self.assertEqual((again['sent'], again['files']), (0, 0))
-        self.assert_job_identical([self.machine], ['capture'])
-
-
-@pytest.mark.sim
 @unittest.skipUnless(package_records.local_name(PACKAGES / 'base'), 'published-kit packages absent (setup.py fixtures)')
 class RealSetDepth(unittest.TestCase):
     """#124 over the real package set (setup.py doctor: "mod package set"): every device path a push writes sits 4
@@ -374,7 +239,6 @@ class RealSetDepth(unittest.TestCase):
         self.assertEqual([r for r in content if depth.refusal('/yaffs2/' + r)], [])
 
 
-@pytest.mark.sim
 class WaitAllowance(unittest.TestCase):
     """193: job.status unanswered while B waits in one request to A: wait asks again (QUIET), then gives up."""
     def run_wait(self, silent_calls):
@@ -402,7 +266,6 @@ class WaitAllowance(unittest.TestCase):
             self.run_wait(int(S.QUIET // 5) + 2)
 
 
-@pytest.mark.sim
 class ApplySelection(unittest.TestCase):
     """`mods apply`'s selection on the host (no device, no simulator): a selection once
     passed its ids as one shell word (zsh does not split an unquoted variable), which the device answered

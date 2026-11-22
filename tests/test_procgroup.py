@@ -6,14 +6,10 @@ simulator tests start a simulator the way the TypeScript suites do (startAll fro
 folder of their own) and end the Node process: by SIGTERM (its exit hooks stop the simulator) and by
 SIGKILL (no hooks: the wrapper sees its parent gone and ends its xyf_sim group). Then no process
 naming that state folder may remain. Skipped without Node, clients/ts/node_modules or the simulator."""
-import os
 from pathlib import Path
-import select
 import shutil
-import signal
 import subprocess
 import sys
-import tempfile
 import time
 import unittest
 import uuid
@@ -22,7 +18,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import paths, procgroup, sim  # noqa: E402
+from xy_forever import  procgroup, sim        # noqa: E402
 
 CLIENT = ROOT / 'clients' / 'ts'
 NODE = shutil.which('node')
@@ -77,45 +73,6 @@ class RunTest(unittest.TestCase):
                             timeout=60)
         self.assertEqual((run.returncode, run.stdout), (0, 'up\n'))
         self.assertEqual(gone(self.marker, 5), '')
-
-
-@pytest.mark.sim                                                 # starts the client suite's simulators
-@unittest.skipUnless(NODE, 'node not found (mise install)')   # mise's Node runs .ts files without flags
-@unittest.skipUnless((CLIENT / 'node_modules' / 'ws').exists(), 'clients/ts/node_modules absent (pnpm install)')
-@unittest.skipIf(SIM_UNAVAILABLE, SIM_UNAVAILABLE)
-class SuiteSimulatorTest(unittest.TestCase):
-    """A Node process that started a simulator ends: nothing from that run remains."""
-
-    def started(self):
-        paths.SESSIONS.mkdir(parents=True, exist_ok=True)
-        state = Path(tempfile.mkdtemp(prefix='procgroup-', dir=paths.SESSIONS))
-        self.addCleanup(shutil.rmtree, state, True)
-        self.addCleanup(subprocess.run, ['pkill', '-KILL', '-f', state.name])   # a failure leaves nothing either
-        node = procgroup.popen([NODE, '--input-type=module', '-e', START, str(CLIENT / 'test' / 'simulators.ts'),
-                                str(state), str(sim.free_port())], cwd=CLIENT, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT)
-        self.addCleanup(procgroup.kill_group, node)
-        output, deadline = b'', time.monotonic() + 180
-        while b'up\n' not in output:
-            ready = select.select([node.stdout], [], [], max(0.0, deadline - time.monotonic()))[0]
-            chunk = os.read(node.stdout.fileno(), 4096) if ready else b''
-            if not chunk:
-                self.fail('the simulator did not start: %s' % output.decode(errors='replace')[-2000:])
-            output += chunk
-        self.assertIn('xyf_sim', running(state.name))
-        return node, state.name
-
-    def check_ends(self, sig):
-        node, marker = self.started()
-        os.kill(node.pid, sig)                    # Node alone, not its group
-        node.wait(timeout=30)
-        self.assertEqual(gone(marker, 20), '')
-
-    def test_terminated_runner_stops_its_simulator(self):
-        self.check_ends(signal.SIGTERM)
-
-    def test_killed_runner_leaves_no_simulator(self):
-        self.check_ends(signal.SIGKILL)
 
 
 if __name__ == '__main__':

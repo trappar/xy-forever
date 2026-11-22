@@ -47,14 +47,16 @@ mise run test-changed            # after each change: the tests it affects, any 
 mise run test-one TARGET         # one file, class or test (tests/test_aes.py::NativeAesTests)
 mise run test-failed             # what failed last time
 mise run check                   # once per PR: the gate, under 30 s
-mise run test-all                # every tier, the simulator's included; CI runs it on every PR
+mise run test-all                # every tier but the parked sweeps, the simulator core included; CI runs it
 ```
 
 The suite runs under pytest (config: `pyproject.toml`; tiers, budgets and plugins: `tests/conftest.py`). Each
-test is in a tier: `fast` (the default), `gate` (slower: sanitizer builds, fuzzing, the published kit) or `sim`
-(today's paced-clock simulator tests; temporary until #233). Budgets are enforced: the fast tier 3 s and 0.3 s a
-test, the gate tier 15 s and 10 s a test; going over fails the run and names the test or tier (make it faster or
-move it a tier). Every test is bounded (`timeout`, `bounds.TEST_S`; `@bounds.slow`: `SLOW_S`): past it the run
+test is in a tier: `fast` (the default), `gate` (slower: sanitizer builds, fuzzing, the published kit), `sim`
+(the simulator core: about 50 tests, each saying in its docstring why it is kept) or `sweep` (power-cut and fault
+sweeps on the simulator, parked until they move to native tests: `mise run test-sweeps`, in no routine run).
+Budgets are enforced: the fast tier 3 s and 0.3 s a test, the gate tier 15 s and 10 s a test, the sim tier 5 s
+and 1.5 s a test; going over fails the run and names the test or tier (make it faster or move it
+a tier). Every test is bounded (`timeout`, `bounds.TEST_S`; a simulator core test `SIM_TEST_S`, a parked sweep `SLOW_S`): past it the run
 prints HUNG with every thread's traceback and its worker's process group ends. `test-changed` adds to testmon's
 Python tracking the C++ each test compiled (`hostbuild`'s `clang -M` record) and the files a test runs as a
 subprocess (`@pytest.mark.uses('scripts/x.py')`); its first run runs everything.

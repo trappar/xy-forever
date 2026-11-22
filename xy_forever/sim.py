@@ -15,6 +15,7 @@ the build. The stock 1.2.1 bootloader image (private) is loaded into each proces
 so every CRC identity check runs against the real bytes.
 """
 import concurrent.futures
+import fcntl
 import hashlib
 import json
 import os
@@ -157,10 +158,21 @@ def available():
 KEEP_BUILDS = 12          # the most recently used builds kept in a cache folder (others: a day unused)
 
 
+_built = {}             # (cache, defines) -> folder: build() hashes its inputs once a process (sources do not change mid-run)
+
+
 def build(cache=None, **options):
     """Builds the simulator (cached by the hash of every input: sources, defines, the compiler,
     the stock image) and returns its folder. The tests share the default cache."""
     defines = product_defines(**options)
+    key = (str(cache), json.dumps(defines))
+    if key in _built and (_built[key] / 'xyf_sim').is_file():
+        return _built[key]
+    _built[key] = out = _build(cache, defines)
+    return out
+
+
+def _build(cache, defines):
     inputs = hashlib.sha256(json.dumps(defines).encode())
     inputs.update(procgroup.run([CXX, '--version'], capture_output=True, timeout=bounds.COMPILE_S).stdout)
     here = Path(__file__).parent
@@ -176,6 +188,14 @@ def build(cache=None, **options):
         os.utime(out)                                  # recently used: kept by prune()
         return out
     cache.mkdir(parents=True, exist_ok=True)
+    with open(cache / 'build.lock', 'w') as lock:      # one build at a time: test jobs wait for it, never compile it again
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if binary.is_file():
+            return out
+        return _compile_build(cache, out, defines)
+
+
+def _compile_build(cache, out, defines):
     work = Path(tempfile.mkdtemp(prefix='build-', dir=cache))
     try:
         compile_into(work, defines)
@@ -348,7 +368,7 @@ class Simulator:
         (Ask before USB control as settings.txt says); False (tests that are not about it): the setting reads Off,
         so no serial request waits for an answer nobody gives. deadline_s: the board stops on its own that
         long after it started (#230; None: never, interactive runs); default bounds.sim_deadline_s(): 10 s,
-        or SLOW_S in a test marked @bounds.slow (#233). faults: {name: value} armed before the power-on (control set)."""
+        or SLOW_S in a parked sweep (#233). faults: {name: value} armed before the power-on (control set)."""
         self.root, self.bootpart = Path(root), Path(bootpart)
         # B records retain their original framing; bit7 marks independent A selectors.
         a_records = bytearray()
@@ -455,7 +475,7 @@ class Simulator:
             self._close_control()
             if self.process is not None and self.process.wait(timeout=2.0) == 124:
                 raise DeadlinePassed('simulator: stopped at its %g s deadline (--deadline-s; a test that needs '
-                                     'longer: @bounds.slow, #233)' % self.deadline_s)
+                                     'longer: it is not a simulator core test, #233)' % self.deadline_s)
             raise
 
     def _close_control(self):

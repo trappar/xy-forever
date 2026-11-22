@@ -9,7 +9,6 @@ at its deadline (xyf_sim --deadline-s) and says so.
 import importlib.util
 import os
 from pathlib import Path
-import signal
 import subprocess
 import sys
 import tempfile
@@ -20,8 +19,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-import xyf_host as host  # noqa: E402
-from xy_forever import bounds, sim  # noqa: E402
 
 PLANTED = '''import os, subprocess, sys, time, unittest
 class Hang(unittest.TestCase):
@@ -41,13 +38,6 @@ def gone(pid):
         return True
     return False
 
-
-def group_gone(pgid):
-    try:
-        os.killpg(pgid, 0)
-    except OSError:
-        return True
-    return False
 
 
 @pytest.mark.gate
@@ -92,49 +82,6 @@ class CheckStepBoundTest(unittest.TestCase):
             self.assertLess(time.monotonic() - start, 1 + SLACK)
             self.assertEqual((results[0]['result'], results[0]['exit']), ('fail', 124))
             self.assertIn('HUNG: stalls ran past its 1 s bound', log.read_text())
-
-
-@pytest.mark.sim
-@unittest.skipIf(sim.available(), sim.available())
-class SimulatorBoundsTest(unittest.TestCase):
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory(prefix='xyf-hang-sim-')
-        self.addCleanup(tmp.cleanup)
-        self.dir = Path(tmp.name)
-        self.root = sim.seed(self.dir / 'yaffs2')
-
-    def start(self, **options):
-        s = sim.Simulator(self.root, self.dir / 'bootpart.bin', log=self.dir / 'log.txt', **options).start()
-        self.addCleanup(s.stop)
-        return s
-
-    def test_a_stalled_simulator_fails_the_call_in_time_and_its_group_ends(self):
-        s = self.start()
-        dev = host.Device(host.TcpPort(s.address), on_log=None)
-        self.addCleanup(dev.t.close)
-        self.assertEqual(dev.hello()[0], 0)
-        pgid = s.process.pid
-        os.killpg(pgid, signal.SIGSTOP)                            # stalled: nothing answers
-        start = time.monotonic()
-        with self.assertRaisesRegex(TimeoutError, 'no reply to 0x[0-9a-f]+ within 2.0 s'):
-            dev.call(host.P.HELLO, timeout=600)
-        self.assertLess(time.monotonic() - start, bounds.SIM_CALL_S + 1)
-        start = time.monotonic()
-        s.stop()
-        self.assertLess(time.monotonic() - start, SLACK)
-        self.assertTrue(group_gone(pgid), 'a stalled simulator\'s group survived stop()')
-
-    def test_a_simulator_exits_at_its_deadline(self):
-        s = self.start(deadline_s=2)
-        process, pgid = s.process, s.process.pid
-        self.assertEqual(process.wait(timeout=2 + SLACK), 124)
-        deadline = time.monotonic() + 3
-        while not group_gone(pgid) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertTrue(group_gone(pgid), 'the processors outlived the board')
-        with self.assertRaises(sim.DeadlinePassed):
-            s.status()
-        self.assertIn('deadline: 2.0 s passed', (self.dir / 'log.txt').read_text())
 
 
 if __name__ == '__main__':

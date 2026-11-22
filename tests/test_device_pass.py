@@ -340,7 +340,6 @@ class FakeKeepalive:
         return 4242
 
 
-@pytest.mark.sim
 class ModsRowTest(unittest.TestCase):
     """The Mods page row of a package: kind, then name (A-Z folded), then folder (packages only)."""
     def test_sorted_order(self):
@@ -370,7 +369,6 @@ class ModsRowTest(unittest.TestCase):
         self.assertEqual(dp.mods_screen_row(80, 81), 8)
 
 
-@pytest.mark.sim
 class DevicePassTest(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
@@ -791,6 +789,7 @@ class DevicePassTest(unittest.TestCase):
                                      keepalive=FakeKeepalive(), sessions=self.sessions), dp.EXIT_USAGE)
         self.assertEqual(list(self.sessions.iterdir()), [])
 
+    @pytest.mark.gate
     def test_host_device_closes_ports_and_reports_no_answer(self):
         dev = dp.HostDevice()
         with patch.object(dp.host, 'find_port', return_value=None):
@@ -996,7 +995,6 @@ class DevicePassTest(unittest.TestCase):
             link.call(0x5f, b'', 1.0)
 
 
-@pytest.mark.sim
 class SilentExitTest(unittest.TestCase):
     """#50: a run never stops without saying why."""
 

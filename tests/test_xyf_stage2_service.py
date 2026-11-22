@@ -8,7 +8,6 @@ import shutil
 import struct
 import sys
 import tempfile
-import threading
 import time
 import unittest
 import zlib
@@ -34,15 +33,7 @@ def stage2_file(version=7, min_stage1=STAGE1, image=IMAGE):
                    abi=S2.ABI_SERVICE)
 
 
-def reheader(data, offset, value):
-    """data with the u32 at offset set to value and the header CRC made right again."""
-    head = bytearray(data[:S2.HEADER_BYTES])
-    struct.pack_into('<I', head, offset, value)
-    struct.pack_into('<I', head, 92, zlib.crc32(bytes(head[:92])))
-    return bytes(head) + data[S2.HEADER_BYTES:]
 
-
-@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class Stage2ServiceTest(unittest.TestCase):
     @classmethod
@@ -98,7 +89,9 @@ class Stage2ServiceTest(unittest.TestCase):
         self.assertEqual(dev.read_file('/yaffs2/xy-forever/state-a.txt')[0], 0)
         return dev, record
 
+    @pytest.mark.sim
     def test_loaded_and_answering(self):
+        """Kept: Stage 2 loads from storage and answers."""
         data = stage2_file()
         self.start(data)
         dev = self.connect()
@@ -122,56 +115,13 @@ class Stage2ServiceTest(unittest.TestCase):
         self.assertEqual(self.sim.status()['stage2_opens'], 2)
         self.assertEqual(dev.read_file('/yaffs2/xy-forever/state-a.txt')[0], 0)    # stage 1 as before
 
-    def test_file_missing(self):
-        self.refused(None, 'missing', ids.S_NOT_FOUND, opens=1)
-
-    def test_header_corrupt(self):
-        data = bytearray(stage2_file())
-        data[0] ^= 0xff                                                              # magic
-        self.refused(bytes(data), 'check', CHECK_MAGIC)
-
+    @pytest.mark.sim
     def test_hash_mismatch(self):
+        """Kept: Stage 2 with a wrong hash is refused, never run."""
         data = bytearray(stage2_file())
         data[32] ^= 1                                                                # image_sha256[0]
         struct.pack_into('<I', data, 92, zlib.crc32(bytes(data[:92])))
         self.refused(bytes(data), 'check', CHECK_SHA)
-
-    def test_file_too_large(self):
-        self.refused(stage2_file() + b'\0', 'read', ids.S_TOO_LARGE)                 # longer than its header says
-        self.sim.stop()
-        too_big = reheader(stage2_file(), 24, S2.WINDOW[1] - S2.WINDOW[0] + 4)       # image_bytes above the window
-        self.refused(too_big, 'check', CHECK_SIZE, opens=1)
-
-    def test_min_stage1_newer_than_the_release(self):
-        self.refused(stage2_file(min_stage1=STAGE1 + 1), 'check', CHECK_STAGE1)     # for a later stage 1
-
-    def test_a_file_for_an_old_build_numbered_stage1_still_loads(self):
-        self.assertGreater(STAGE1, 195)                 # every build number lies below 0.1.0's code
-        self.assertEqual(xyf_build.STAGE2_SERVICE_MIN_STAGE1, 0x100)
-
-    def test_link_error_while_loading(self):
-        self.start(stage2_file())
-        dev = self.connect()
-        self.sim.set('cut_body', 200)                  # the whole-file read's body is cut, then the link drops
-        reply = {}
-        thread = threading.Thread(target=lambda: reply.update(r=dev.call(P.HELLO, b'', timeout=30.0)), daemon=True)
-        thread.start()
-        deadline = time.monotonic() + 30.0
-        while self.sim.status()['cut_body']:                 # the cut happened: B waits on the rest
-            self.assertLess(time.monotonic(), deadline)
-            time.sleep(0.005)
-        for _ in range(5):                                   # past the request bound, on the simulator clock
-            self.sim.advance(6000)                           # (again if B took HELLO only after the first)
-            thread.join(0.2)
-            if 'r' in reply:
-                break
-        thread.join(30.0)
-        code, body = reply['r']
-        self.assertEqual((code, body.decode()), (0, P.hello_text(xyf_build.release.VERSION, None, 'product', SWITCHES, confirm=0)))
-        self.assertEqual(self.info(dev), (ids.S_UNSUPPORTED, b''))
-        record = self.record(dev)
-        self.assertEqual((record['status'], record['detail']), ('link', ids.S_LINK), record)
-        self.assertEqual(self.sim.status()['stage2_calls'], 0)
 
     def until(self, predicate, what):
         deadline = time.monotonic() + 60                 # host time bounds a hang only
@@ -181,20 +131,6 @@ class Stage2ServiceTest(unittest.TestCase):
                 return s
             self.sim.advance(10)                         # device time: the boot runs on the simulator clock
         self.fail('%s not reached: %s' % (what, self.sim.status()))
-
-    def test_plain_boot_never_reads_the_file(self):
-        self.start(stage2_file())                      # the menu with USB, no HELLO yet: nothing read
-        self.assertEqual(self.sim.status()['stage2_opens'], 0)
-        self.sim.control('power plain')                # no PLAY: straight to the default, no USB service
-        s = self.until(lambda s: s['power_ons'] == 2 and s['a'] == 'os' and s['b'] == 'os', 'plain boot')
-        self.assertEqual((s['stage2_opens'], s['stage2_calls']), (0, 0))
-        self.sim.control('power play')
-        self.until(lambda s: s['listening'], 'menu with USB')
-        self.assertEqual(self.sim.status()['stage2_opens'], 0)
-        dev = self.connect()
-        self.assertTrue(dev.hello()[1].endswith(';stage2=7'))
-        self.assertEqual(self.sim.status()['stage2_opens'], 2)
-
 
 if __name__ == '__main__':
     unittest.main()

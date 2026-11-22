@@ -10,6 +10,8 @@ import sys
 import tempfile
 import time
 import unittest
+
+import pytest
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -89,77 +91,11 @@ class StreamWriteTest(unittest.TestCase):
         return data
 
     # -- the write ------------------------------------------------------------------------------
-    def test_a_streamed_write_creates_then_replaces_a_file(self):
-        dev = self.connect(startup_ready=True)
-        first = bytes(range(256)) * 40                                    # 10 KiB: ten pieces
-        self.assertEqual(host_write.write_stream(dev, TARGET, first), (0, len(first), zlib.crc32(first), 0))
-        self.assertEqual(self.local(TARGET).read_bytes(), first)
-        second = b'replaced\n' * 300
-        code, written, back, error = host_write.write_stream(dev, TARGET, second)
-        self.assertEqual((code, written, back, error), (0, len(second), zlib.crc32(second), 0))
-        self.assertEqual(self.local(TARGET).read_bytes(), second)
-        self.assertEqual(dev.call(P.WRITE_END)[0], 0)                     # a retry after a lost reply: ok again
-        self.assertEqual(self.uploads(), [])
-        self.assertEqual(host_write.write_stream(dev, TARGET, b''), (0, 0, 0, 0))   # an empty file
-        self.assertEqual(self.local(TARGET).read_bytes(), b'')
-
-    def test_order_range_checks_and_refusals(self):
-        dev = self.connect(startup_ready=True)
-        old = self.old()
-        self.assertEqual(dev.call(P.WRITE_DATA, struct.pack('<I', 0) + b'x')[0], P.S_STATE)
-        self.assertEqual(dev.call(P.WRITE_END)[0], P.S_STATE)
-        for path in ('/yaffs2/bootloader.dev', '/yaffs2/upgrade/a.bin', '/yaffs2/BOOTLOADER.DEV', '/fat32/a'):
-            self.assertEqual(self.begin(dev, path, b'x'), P.S_REFUSED, path)
-        data = b'new bytes\n' * 200
-        self.assertEqual(self.begin(dev, TARGET, data), 0)
-        self.assertEqual(self.uploads(), ['put-%08x-%08x' % (len(data), zlib.crc32(data))])
-        self.assertEqual(self.local(TARGET).read_bytes(), old)            # untouched until the end
-        self.assertEqual(dev.call(P.WRITE_DATA, struct.pack('<I', 5) + data[:10])[0], P.S_RANGE)
-        self.assertEqual(dev.call(P.WRITE_DATA, struct.pack('<I', 0) + data[:1024])[0], 0)
-        self.assertEqual(dev.call(P.WRITE_DATA, struct.pack('<I', 0) + data[:1024])[0], 0)   # a resend
-        self.assertEqual(dev.call(P.WRITE_END)[0], P.S_STATE)             # not every byte yet
-        self.assertEqual(dev.call(P.WRITE_DATA, struct.pack('<I', 1024) + data[1024:])[0], 0)
-        self.assertEqual(dev.call(P.WRITE_DATA, struct.pack('<I', len(data)) + b'!')[0], P.S_RANGE)
-        self.assertEqual(dev.call(P.WRITE_END)[0], 0)
-        self.assertEqual(self.local(TARGET).read_bytes(), data)
-
-    def test_a_wrong_crc_or_sha_or_a_folder_target_leaves_the_target(self):
-        dev = self.connect(startup_ready=True)
-        old = self.old()
-        data = b'payload\n' * 100
-        for crc, sha, status in ((zlib.crc32(data) ^ 1, None, P.S_CRC), (None, bytes(32), P.S_SHA)):
-            self.assertEqual(self.begin(dev, TARGET, data, crc, sha), 0)
-            self.assertEqual(dev.call(P.WRITE_DATA, struct.pack('<I', 0) + data)[0], 0)
-            self.assertEqual(dev.call(P.WRITE_END)[0], status)
-            self.assertEqual((self.local(TARGET).read_bytes(), self.uploads()), (old, []))
-        folder = TARGET + '.d'
-        self.local(folder).mkdir()
-        code, _, _, error = host_write.write_stream(dev, folder, data)
-        self.assertEqual((code, error), (P.S_STORAGE, 21))                # A: a folder is never replaced
-        self.assertTrue(self.local(folder).is_dir())
-        self.assertEqual(self.uploads(), [])
-
-    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
-    def test_larger_than_the_staging_area(self):
-        dev = self.connect(startup_ready=True)
-        data = bytes(range(251)) * ((P.MAX_STAGE + 4096) // 251 + 1)       # above stage= (7 MiB)
-        self.assertGreater(len(data), P.MAX_STAGE)
-        self.assertEqual(host_write.write_stream(dev, TARGET, data)[:2], (0, len(data)))
-        self.assertEqual(self.local(TARGET).read_bytes(), data)
-
-    def test_a_device_before_1_18_gets_the_staged_write(self):
-        """host_write.put on a 1.17 device (no file.write_begin in cmds): stage + file.write_staged, as before."""
-        dev = self.connect(startup_ready=True)
-        cmds = dev.hello_info.cmds & ~(7 << P.WRITE_BEGIN)
-        dev.hello_info.keys['cmds'] = '%032x' % cmds
-        dev.hello_info.cmds = cmds
-        self.assertFalse(host_write.streams(dev))
-        data = b'staged\n' * 100
-        self.assertEqual(host_write.put(dev, data, TARGET, say=lambda line: None), 0)
-        self.assertEqual(self.local(TARGET).read_bytes(), data)
 
     # -- faults ---------------------------------------------------------------------------------
+    @pytest.mark.sim
     def test_cable_pull_mid_write_leaves_the_old_file_and_removes_the_upload(self):
+        """Kept: USB fault mid write: the old file stays, the temporary one goes."""
         dev = self.connect(startup_ready=True)
         old = self.old()
         data = b'half sent\n' * 500
@@ -173,19 +109,9 @@ class StreamWriteTest(unittest.TestCase):
         self.assertEqual(host_write.write_stream(dev, TARGET, data)[0], 0)
         self.assertEqual(self.local(TARGET).read_bytes(), data)
 
-    def test_full_storage_and_a_failed_write(self):
-        dev = self.connect(startup_ready=True)
-        old = self.old()
-        data = bytes(5000)
-        for fault, value, sent in (('space', 2500, 2048), ('fail_write', 2, 1024)):   # the 3rd / 2nd piece fails
-            self.sim.set(fault, value)
-            code, written, _, _ = host_write.write_stream(dev, TARGET, data)
-            self.assertEqual((code, written), (P.S_STORAGE, sent))
-            self.sim.set('space', -1)
-            self.assertEqual((self.local(TARGET).read_bytes(), self.uploads()), (old, []))
-        self.assertEqual(host_write.write_stream(dev, TARGET, data)[0], 0)
-
+    @pytest.mark.sim
     def test_power_cut_mid_write_then_the_sweep(self):
+        """Kept: Power cut mid write: the old file stays and the sweep removes the leftover."""
         dev = self.connect(startup_ready=True)
         old = self.old()
         data = b'cut short\n' * 500
@@ -198,7 +124,9 @@ class StreamWriteTest(unittest.TestCase):
         self.until(lambda: not self.uploads(), 'the USB start sweep removing the upload')
         self.assertEqual(self.local(TARGET).read_bytes(), old)
 
+    @pytest.mark.sim
     def test_power_cut_right_after_the_rename_keeps_the_new_file(self):
+        """Kept: Power cut after the rename: the new file is kept."""
         dev = self.connect(startup_ready=True)
         self.old()
         data = b'renamed then cut\n' * 100

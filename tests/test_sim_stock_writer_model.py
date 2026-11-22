@@ -9,6 +9,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild
@@ -27,6 +29,7 @@ class StockWriterModel(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
+    @pytest.mark.gate
     def test_both_roles_match_stock_failure_and_commit_paths(self):
         for role in (0, 1):
             for case in ('success', 'multichunk', 'invalid', 'initial', 'retry', 'body', 'header', 'early', 'aligned',

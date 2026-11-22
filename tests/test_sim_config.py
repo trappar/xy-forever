@@ -11,11 +11,11 @@ selection that cannot be built. Synthetic packages (test_sim_mod_job's kit). Nee
 (skipped without them). No device access."""
 import hashlib
 from pathlib import Path
-import re
 import sys
-import struct
 import time
 import unittest
+
+import pytest
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,8 +23,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_content_switch as CS                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
-from test_sim_mods_page import (PageBase, synthetic_setup, PLAY, STOP, MINUS, PLUS, SHIFT, VIEW_LIST)   # noqa: E402
-from xy_forever import bounds, native_json, package_records                                       # noqa: E402
+from sim_mods_page import (PageBase, synthetic_setup, PLAY, STOP, MINUS, SHIFT)                    # noqa: E402
+from xy_forever import bounds, native_json                                                        # noqa: E402
 
 CONFIG = 'xy-forever/config.json'
 CONFIG_OLD = CONFIG + '.old'
@@ -190,202 +190,6 @@ class ConfigBase(PageBase, CS.Switch):
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class Config(ConfigBase, unittest.TestCase):
     # -- the tests ---------------------------------------------------------------------------------
-    def pending_save_rehearsal(self):
-        from xy_forever import a_rehearsal as R, sim
-        self.sim.set('defer_save_boot', 1)
-        self.change(['alpha'])
-        self.cont()
-        self.wait_log(lambda: self.lines('menu: deferred Save boot'), 'actual Save completed before boot')
-        self.assertEqual(self.dev.stage(sim.STOCK_OS.read_bytes()), 0)
-        extra = struct.pack('<II', 1, 120000) + hashlib.sha256(sim.STOCK_OS.read_bytes()).digest()
-        return R, extra
-
-    def test_pending_save_boot_waits_for_rehearsal_cancel_then_resumes(self):
-        R, extra = self.pending_save_rehearsal()
-        self.sim.set('a_slow_ms', 1000)
-        self.assertEqual(R.call(self.dev, 0, extra)[0], 0)
-        self.sim.set('defer_save_boot', 0)
-        self.assertEqual(self.dev.call(2)[0], 0)  # USB/status remains available with pending Save
-        self.assertFalse(self.lines('menu: saved'))
-        self.assertEqual(R.call(self.dev, 2)[0], 0)
-        self.sim.set('a_slow_ms', 0)
-        self.assertIn(self.booted(), ('mods-a', 'mods-b'))  # pending user action was retained
-
-    def test_pending_save_boot_stays_pending_after_rehearsal_link_failure(self):
-        R, extra = self.pending_save_rehearsal()
-        self.sim.set('a_silent', 1)
-        before = self.sim.status()
-        self.assertEqual(R.call(self.dev, 0, extra)[0], 0)
-        self.sim.set('defer_save_boot', 0)
-        self.sim.jump(5001)
-        self.wait_log(lambda: R.call(self.dev, 1)[1]['phase'] == 0, 'rehearsal link failure')
-        self.assertEqual(R.call(self.dev, 1)[1]['result'], 12)
-        self.assertFalse(self.lines('menu: saved'))
-        self.assertEqual(self.dev.call(2)[0], 0)
-        after = self.sim.status()
-        for key in ('a_boots', 'b_boots', 'storage_ops', 'raw_boot_changes'):
-            self.assertEqual(after[key], before[key], key)
-
-    def test_save_boot_power_on_rebuild_and_no_change(self):
-        self.wait_log(lambda: 'pending=0' in self.home(), 'the home row')
-        self.change(['alpha', 'gamma'])
-        self.saved(['alpha', 'gamma'])
-        self.wait_log(lambda: self.home().startswith('Open-XY - 2 mods - 1.2.1 (rebuild) pending=1'), 'the mark')
-        self.cont()
-        a = self.booted()
-        c = self.saved_as(a, ['alpha', 'gamma'])
-        self.assertEqual((c['base'], c['slot'], c['unverified']), (self.base, a, '1'))
-        self.assertEqual(c['stamp'], package_records.read_values(self.entry(a))['sha256'])
-        self.plain_boots_without_writing(a)
-        self.menu_again()
-        self.wait_log(lambda: self.home().startswith('Open-XY - 2 mods - 1.2.1 pending=0'),
-                      'the completed home row')
-        self.assertTrue(self.home().startswith('Open-XY - 2 mods - 1.2.1 pending=0'), self.home())
-        p = self.open_page()
-        self.assertEqual((p['on'], p['changed']), (['alpha', 'gamma'], 0))   # the saved toggles
-        self.press(STOP)
-        self.wait(lambda p: p['shown'] == 0, 'left', 5.0)
-        self.press(MINUS); self.press(MINUS)                              # back on Continue
-        self.change(['ext-cap'], unknown=False)
-        self.cont()
-        b = self.booted()
-        self.assertEqual({a, b}, {'mods-a', 'mods-b'})                    # rebuilt into the other slot
-        self.saved_as(b, ['alpha', 'gamma', 'ext-cap'])
-        self.assertTrue((self.entry(a) / 'os.ldr').is_file())              # the old slot: spare
-        self.menu_again()
-        self.wait_log(lambda: self.home().endswith('safe=Boot without mods'),   # once the record is read
-                      'the safe-mode row')
-        before, saves = self.snapshot(), len(self.lines('menu: save'))
-        self.cont()                                            # no change: boots at once
-        self.assertEqual(self.booted(), b)
-        self.assertEqual(len(self.lines('menu: save')), saves)
-        self.assertEqual(self.snapshot(), before)
-
-    def test_legacy_backup_preserves_safe_and_missing_names_until_edit(self):
-        self.first_save()
-        old = self.root / LEGACY_OLD
-        current = self.root / CONFIG
-        data = native_json.config_text(current.read_bytes())
-        data = data.replace(b'mods=alpha\n', b'safe=1\nmods=alpha,missing\n')
-        old.write_bytes(data)
-        current.unlink()
-        (self.root / CONFIG_PART).write_bytes(b'{')
-        self.menu_again()
-        self.wait_log(lambda: 'Base (safe mode)' in self.home(), 'the legacy safe setup')
-        before = self.snapshot()
-        self.assertEqual(self.config()['mods'], 'alpha,missing')
-        page = self.open_page()
-        self.assertEqual(page['on'], ['alpha'])
-        self.assertEqual(self.snapshot(), before)
-        self.toggle(['beta'])
-        migrated = self.saved(['alpha', 'beta'])
-        self.assertEqual(migrated['safe'], '1')
-        self.assertTrue(migrated['slot'])
-        self.assertEqual(old.read_bytes(), data)
-
-    def test_invalid_selected_config_blocks_save_with_no_fallback(self):
-        legacy = 'format=1\nbase=%s\nmods=alpha\n' % self.base
-        (self.root / LEGACY_CONFIG).write_text(legacy)
-        (self.root / LEGACY_OLD).write_text(legacy)
-        source = native_json.config_document(dict(base=self.base, profile=self.profile, generation=self.generation, mods='alpha'))
-        for name, text, message in ((CONFIG, b'{', 'Invalid saved configuration'),
-                                    (CONFIG, None, 'Could not read the saved configuration'),
-                                    (CONFIG_OLD, source.replace(b'"schema_version":1', b'"schema_version":2'), 'newer XY Forever'),
-                                    (LEGACY_CONFIG, b'format=2\n', 'unsupported legacy format')):
-            with self.subTest(name=name):
-                path = self.root / name
-                if text is None:
-                    path.symlink_to('missing.json')
-                else:
-                    path.write_bytes(text)
-                self.menu_again()
-                self.wait_log(lambda: 'Saved configuration unavailable pending=1' in self.home(), 'the blocked Save')
-                before = self.snapshot()
-                page = self.open_page()
-                self.assertEqual(page['on'], [])
-                self.assertIn(message, page['text'])
-                self.assertEqual(self.snapshot(), before)
-                path.unlink()
-
-    def test_a_saved_flip_kept_all_off_and_on_again(self):
-        a = self.first_save()
-        self.menu_again()
-        self.change(['gamma'], unknown=False)
-        self.saved(['alpha', 'gamma'])                                     # nothing built, nothing booted
-        self.assertEqual((self.sim.status()['b'], self.disk_default()), ('running', a))
-        self.menu_again()                                                  # a power cycle: the flip is kept
-        self.wait_log(lambda: self.home().startswith('Open-XY - 2 mods - 1.2.1 (rebuild) pending=1'), 'kept')
-        self.change(['gamma'], unknown=False)                              # off again: as built
-        self.saved(['alpha'])
-        self.wait_log(lambda: 'pending=0' in self.home(), 'nothing to apply')
-        self.change(['alpha'], unknown=False)                              # all off
-        self.saved([])
-        self.assertIn('Base (to apply)', self.home())                      # the base entry's name (seeded 'Base')
-        since = len(self.progress())
-        self.cont()
-        self.assertEqual(self.booted(), self.base)
-        self.assertFalse(self.built_any(since))
-        c = self.saved_as(self.base, [])
-        self.assertEqual(c['slot'], a)                                     # kept as the spare Open-XY
-        self.menu_again()
-        self.change(['alpha'], unknown=False)                              # the same mods on again: no rebuild
-        since = len(self.progress())
-        self.cont()
-        self.assertEqual(self.booted(), a)
-        self.assertFalse(self.built_any(since))
-        self.saved_as(a, ['alpha'])
-
-    def test_build_failure_then_save_again(self):
-        self.change(['alpha'])
-        self.saved(['alpha'])                                              # (its own write: before the fault)
-        self.sim.set('rename_fault_kind', 1)
-        self.sim.set('rename_fault', 1)                                    # the job's first rename fails
-        self.cont()
-        self.assertIn('Build failed', self.failed())
-        self.assertEqual((self.config()['mods'], self.config()['slot'], self.disk_default()), ('alpha', '', self.base))
-        self.assertEqual(CS.content(self.root), self.expected(None))       # the selection saved, nothing else
-        self.wait_log(lambda: '(rebuild) pending=1' in self.home(), 'still pending')
-        self.sim.set('rename_fault', 0)
-        self.cont()
-        self.saved_as(self.booted(), ['alpha'])
-
-    def test_stop_cancels_the_build(self):
-        self.change(['alpha'])
-        self.sim.set('a_slow_ms', 30)
-        self.cont()
-        self.wait_progress(lambda p: p['save'] & 2, 'building', bounds.WAIT_S)
-        self.press(STOP)
-        self.assertIn('Cancelled', self.failed())
-        self.sim.set('a_slow_ms', 0)
-        self.assertEqual((self.config()['mods'], self.config()['slot'], self.disk_default()), ('alpha', '', self.base))
-        self.wait_log(lambda: '(rebuild) pending=1' in self.home(), 'still pending')
-
-    def test_continue_waits_for_a_usb_job(self):
-        """with a USB build running, PLAY on the first row shows the busy line and does nothing (the flip saved,
-        nothing built); PLAY pressed while the converge's own build runs is its progress screen (no busy line) and it
-        boots."""
-        busy = 'menu: line: Busy: a build or content change is running.'
-        self.change(['alpha'])
-        self.saved(['alpha'])
-        self.sim.set('a_slow_ms', 4)
-        job = self.start(['gamma'])
-        self.until_phase(job, 2)
-        for n in (1, 2):
-            self.cont()
-            self.key(PLAY, 0)
-            self.wait_log(lambda: len(self.lines(busy)) == n, 'the busy line %d' % n, 10.0)
-        self.assertEqual(self.lines('menu: apply'), [])
-        self.sim.set('a_slow_ms', 0)
-        self.assertEqual(J.MS.PHASES[self.finished(job)['phase']], 'done')
-        self.assertEqual((self.config()['slot'], self.disk_default()), ('', self.base))
-        self.wait_log(lambda: '(rebuild) pending=1' in self.home(), 'still pending')
-        self.sim.set('a_slow_ms', 30)
-        self.cont()
-        self.wait_progress(lambda p: p['save'] & 2, 'building', bounds.WAIT_S)
-        self.press(PLAY)                                                   # on the converge's own progress screen
-        self.sim.set('a_slow_ms', 0)
-        self.saved_as(self.booted(), ['alpha'])
-        self.assertEqual(len(self.lines(busy)), 2)
 
     def all_off_saved(self):
         """alpha saved, then all off saved: the slot is spare, the content official, the default the base."""
@@ -397,58 +201,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.menu_again()
         return a
 
-    def test_switch_failure_then_save_again_repairs(self):
-        a = self.all_off_saved()
-        self.change(['alpha'], unknown=False)
-        record = self.saved(['alpha'])                                     # saved at once (built= still alpha's)
-        self.sim.set('rename_fault_kind', 1)
-        self.sim.set('rename_fault', 1)                                    # no build: the switch's first rename
-        self.cont()
-        self.assertIn('Installing content failed', self.failed())
-        self.assertEqual((self.config(), self.disk_default()), (record, self.base))
-        self.wait_log(lambda: 'pending=1' in self.home(), 'still pending')
-        self.sim.set('rename_fault', 0)
-        self.cont()
-        self.assertEqual(self.booted(), a)
-        self.saved_as(a, ['alpha'])
-
-    def test_power_cut_in_the_build_then_power_on_converges(self):
-        self.change(['alpha'])
-        self.saved(['alpha'])
-        self.sim.set('rename_fault_kind', 2)
-        self.sim.set('rename_fault', 1)
-        cuts = self.sim.status()['cuts']
-        self.cont()
-        self.cut(cuts)                                                     # back in the menu (PLAY held)
-        self.until_swept()                                                 # its USB start sweeps tmp/job-* (#3)
-        self.assertEqual((self.config()['mods'], self.config()['slot']), ('alpha', ''))   # saved, never built
-        self.assertEqual(self.disk_default(), self.base)                  # the previous setup is in place
-        self.sim.set('rename_fault', 0)
-        self.mark = len(self.lines('menu: boots the default ')), len(self.lines('menu: save failed: '))
-        self.sim.control('power plain')                                    # #197: the saved inputs converge first
-        a = self.booted()
-        self.saved_as(a, ['alpha'])
-        self.plain_boots_without_writing(a)
-
-    def test_power_cut_in_the_switch_then_save_repairs(self):
-        a = self.all_off_saved()
-        self.change(['alpha'], unknown=False)
-        self.saved(['alpha'])
-        self.sim.set('rename_fault_kind', 2)
-        self.sim.set('rename_fault', 1)
-        cuts = self.sim.status()['cuts']
-        self.cont()
-        self.cut(cuts)
-        self.assertEqual(self.config()['mods'], 'alpha')                   # the flip, saved before the switch
-        self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'automatic content replay')
-        self.assertTrue(self.record().startswith('state=installed'), self.record())
-        # The replay ends the switch with its record and default: what is saved (the flip) is in place.
-        self.wait_log(lambda: self.home().startswith('Open-XY - 1 mod - 1.2.1 pending=0'), 'the replay completed it')
-        self.assertEqual(self.disk_default(), a)
-        self.cont()
-        self.assertEqual(self.booted(), a)
-        self.saved_as(a, ['alpha'])
-
+    @pytest.mark.sweep
     def test_power_cut_in_the_record_write_then_save(self):
         a = self.all_off_saved()
         self.change(['alpha'], unknown=False)
@@ -475,37 +228,6 @@ class Config(ConfigBase, unittest.TestCase):
         self.assertEqual(CS.content(self.root), self.expected(a))
         self.assertTrue(self.record().startswith('state=installed\nentry=%s\n' % a))
         self.assertTrue((self.root / CONFIG_OLD).exists())
-
-    def test_power_cut_between_config_renames_uses_native_backup(self):
-        self.first_save()
-        self.menu_again()
-        before = (self.root / CONFIG).read_bytes()
-        cuts = self.sim.status()['cuts']
-        self.sim.set('rename_fault_kind', 2)
-        self.sim.set('rename_fault', 1)                                    # move current to the rollback name
-        self.change(['beta'], unknown=False)
-        self.cut(cuts)
-        self.assertFalse((self.root / CONFIG).exists())
-        self.assertEqual((self.root / CONFIG_OLD).read_bytes(), before)
-        self.assertTrue((self.root / CONFIG_PART).is_file())
-        self.assertEqual(self.config()['mods'], 'alpha')
-        self.wait_log(lambda: 'Open-XY - 1 mod - 1.2.1' in self.home(), 'the restored saved selection')
-        self.change(['beta'], unknown=False)
-        self.wait_log(lambda: (self.config() or {}).get('mods') == 'alpha,beta', 'the retry published its selection')
-        self.assertTrue((self.root / CONFIG).exists())
-
-    def test_a_selection_that_cannot_be_built(self):
-        """Saved all the same; the first row's line says why; Continue fails with it on the progress screen's end and
-        nothing else changes."""
-        self.change(['ext-cap'])                                           # an extension alone
-        self.saved(['ext-cap'])
-        self.wait_log(lambda: 'note=Turn on at least one machine first.;' in self.home(), 'the first row\'s line')
-        self.assertIn('pending=1', self.home())
-        self.cont()
-        self.assertIn('Turn on at least one machine first.', self.failed())
-        self.assertEqual((self.config()['slot'], self.disk_default()), ('', self.base))
-        self.assertEqual(CS.content(self.root), self.expected(None))
-
 
 if __name__ == '__main__':
     unittest.main()

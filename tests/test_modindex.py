@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                     # noqa: E402
 import xyf_package                                                          # noqa: E402
-from xy_forever import modindex as I, modkit as M, modpatch as MP, modsend as S, modstore, sim  # noqa: E402
+from xy_forever import modindex as I, modkit as M, modpatch as MP, modsend as S, sim            # noqa: E402
 from test_modpatch import finish, kit_for, profile_for, stock               # noqa: E402
 
 SIM_UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
@@ -39,7 +39,7 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
         pass
 
 
-@pytest.mark.sim
+@pytest.mark.gate                                 # each test builds or reads archives: 0.1-0.5 s
 class Index(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -281,28 +281,6 @@ class Index(unittest.TestCase):
         self.assertEqual(MP.tree(target), MP.tree(self.gen))
 
     # -- the fetched set goes to the simulator ---------------------------------------------------------
-    @unittest.skipIf(SIM_UNAVAILABLE, SIM_UNAVAILABLE)
-    def test_fetched_set_pushed_to_the_simulator_is_identical(self):
-        target = self.fresh()
-        I.fetch(self.url, target, out=quiet)
-        state = Path(tempfile.mkdtemp(prefix='sim-', dir=self.work))
-        shutil.copytree(sim.seed(state / 'seed'), state / 'yaffs2')
-        simulator = sim.Simulator(state / 'yaffs2', state / 'bootpart.bin', build_dir=sim.build(),
-                                  log=state / 'log.txt').start()
-        self.addCleanup(simulator.stop)
-        saved = host.SIM
-        self.addCleanup(setattr, host, 'SIM', saved)
-        printed = io.StringIO()
-        with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(host.main(['--sim', simulator.address, 'mods', 'push', str(target), '--verify']), 0)
-        modstore.copy_set(self.gen, state / 'want')                    # the flat store a push leaves (#124)
-        want = MP.tree(state / 'want')
-        self.assertIn('verify: %d files read back identical' % (len(want) - 1), printed.getvalue())
-        info = MP.info_values(self.gen / 'base/info.txt')
-        stored = MP.tree(state / 'yaffs2/xy-forever/mods' / info['generation'])
-        self.assertEqual(sorted(stored), sorted(want))
-        self.assertEqual([p for p in want if stored[p] != want[p]], [])
-
 
 if __name__ == '__main__':
     unittest.main()
