@@ -100,7 +100,7 @@ class SerialPort:
     macOS does not lock a /dev/cu.* port: a second process (scripts/keepalive.sh's status call every
     2 s) could open it during a transfer, flush its input on open, send its own HELLO and take replies.
     Both processes then wake on the same input and one finds nothing to read (EAGAIN). TIOCEXCL makes
-    any other open fail with EBUSY until this one closes (connect() in xyf_host.py retries an open).
+    any other open fail with EBUSY until this one closes (connect() in xyf-host retries an open).
 
     A device that stops answering USB (a halted B) can hold the open, its settings and the last close
     inside the kernel for about 60 s, whatever O_NONBLOCK says (issue #118). So the open runs in a
@@ -223,7 +223,7 @@ def pause(port, seconds):
 
 
 class TcpPort:
-    """The device simulator's USB endpoint (python3 -m xy_forever.sim): the same raw byte stream
+    """The device simulator's USB endpoint (uv run -m xy_forever.sim): the same raw byte stream
     on a local TCP port. Only loopback addresses: the simulator never listens elsewhere."""
 
     def __init__(self, address):

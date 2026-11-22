@@ -20,7 +20,7 @@ removed when the run passed, unless --keep; each first needs Settings > Ask befo
                    then boot <id> once (library.boot). USB goes. The saved inputs stay: the next
                    plain power-on converges back to the saved setup (#197, #26).
   --cleanup        refused while <id> is the default or once, or content-state.txt names it (first:
-                   `xyf_host.py set-default <previous default> --yes-write`); removes firmware/<id>/ and
+                   `uv run xyf-host set-default <previous default> --yes-write`); removes firmware/<id>/ and
                    loaded/<id>/.
 This script writes only firmware/<id>/ and loaded/<id>/; never /yaffs2/content/, content-state.txt,
 the saved configuration or the state slots (only the device's set-default does, in --boot).
@@ -248,7 +248,7 @@ class TestEntry(dp.Pass):
         self.gone(dp.T_DRY, 'boot (library.boot)')
         self.say(
             'library.boot ok; USB gone: %s is booting. Back: a plain power-on converges to the saved setup '
-            '(#197; none saved: hold PLAY at power-on, then `xyf_host.py set-default %s --yes-write`); then '
+            '(#197; none saved: hold PLAY at power-on, then `uv run xyf-host set-default %s --yes-write`); then '
             '`scripts/test_entry.py --id %s --cleanup`' % (o.id, default, o.id)
         )
 

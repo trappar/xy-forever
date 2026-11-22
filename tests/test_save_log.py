@@ -1,4 +1,4 @@
-"""The save-time log: xyf_host.py save-times' table over target/xyf_save_log.hpp's lines (the laps, line and merge:
+"""The save-time log: xyf-host save-times' table over target/xyf_save_log.hpp's lines (the laps, line and merge:
 tests/native/save_log_test.cpp)."""
 
 import re

@@ -1,7 +1,7 @@
 """In the simulator: the first start after Track 5 wrote XY Forever onto a stock OP-XY (#178). The library is empty, so
 the device adopts the stock updater's own os.ldr (/yaffs2/upgrade/firmware/blackfin/bin/os.ldr): it hashes it (the
 exact stock 1.2.1 image, else it writes nothing), copies it into tmp/, reads it back, writes manifest.json and files.sha256
-(as `xyf_host.py library-add` and a package publish), renames the folder in as library entry opxy-121, makes it the
+(as `uv run xyf-host library-add` and a package publish), renames the folder in as library entry opxy-121, makes it the
 default and converges (#197). A plain power-on then boots it; PLAY at power-on adopts and stays in the menu, and
 job.status reports the adoption. A missing or wrong file refuses with a plain reason; a power cut mid-copy is redone at
 the next start; a second start writes nothing. Needs clang++ and the private stock 1.2.1 images (skipped without

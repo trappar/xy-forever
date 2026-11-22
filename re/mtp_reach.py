@@ -1,6 +1,6 @@
 """Reachability from stock MTP code (1.2.1 bootloader listing) and the forbidden-target check.
 
-    python3 re/mtp_reach.py
+    uv run re/mtp_reach.py
 
 Function starts: LINK instructions, CALL targets, and the first line after an address gap.
 """

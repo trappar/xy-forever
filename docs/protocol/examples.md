@@ -45,7 +45,7 @@ needs (`needs`: simulator control, fixtures) and whether it is safe on a real de
 `syntax` object.
 
 A third-party client conforms when it runs every case with its own codec and transport: send the requests in order, one at a time, and check each expectation.
-Two runners exist: `python3 scripts/conformance.py --sim 127.0.0.1:7341` (or without `--sim` for the OP-XY, where only cases marked safe run and a guard refuses
+Two runners exist: `uv run scripts/conformance.py --sim 127.0.0.1:7341` (or without `--sim` for the OP-XY, where only cases marked safe run and a guard refuses
 any request that could change more than the test area `/yaffs2/xy-forever/log/conformance/`), and `node clients/ts/test/conformance.ts --sim 127.0.0.1:7341` for
 the TypeScript module. Both read the same file; `--check` only interprets every case.
 

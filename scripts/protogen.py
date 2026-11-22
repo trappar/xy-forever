@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Generate the serial protocol's code and documentation from its spec.
 
-    python3 scripts/protogen.py            validate protocol/v1.json, write the generated files
-    python3 scripts/protogen.py --check    validate; exit 1 if a generated file differs from disk
+    uv run scripts/protogen.py            validate protocol/v1.json, write the generated files
+    uv run scripts/protogen.py --check    validate; exit 1 if a generated file differs from disk
 
 The spec (protocol/v1.json) is the single source. Generated, never
 edited by hand:
@@ -1984,7 +1984,7 @@ def main(argv=None):
     differ = stale(out)
     if args.check:
         for rel in differ:
-            print('stale: %s (run python3 scripts/protogen.py)' % rel, file=sys.stderr)
+            print('stale: %s (run uv run scripts/protogen.py)' % rel, file=sys.stderr)
         return 1 if differ else 0
     for rel in differ:
         if rel not in out:

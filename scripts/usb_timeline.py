@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Log when OP-XY USB devices appear and disappear (host clock, ~20 ms resolution).
 
-    python3 scripts/usb_timeline.py [--seconds N] > timeline.txt
+    uv run scripts/usb_timeline.py [--seconds N] > timeline.txt
 
 Used for boot timing without touching the device: with the OP-XY off but on USB
 power, the stock bootloader shows its charging-loop mass-storage device ("OP-XY

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Crash trigger (#102): a fault on purpose on B while its menu has the screen, to see the crash screen on real
-faults. RISKY STEP (device:risky; the developer at the device). Test build only: `xyf_build.py --xyf-crash-trigger`
+faults. RISKY STEP (device:risky; the developer at the device). Test build only: `uv run xyf-build --xyf-crash-trigger`
 (the product plus diag.crash; never the product, whose builder audit refuses it). One fault per boot: B halts on
 the crash screen until a power cycle; no reset, no storage write. The trigger is refused (busy) while A's
 read-write window may be open (target/usb_service_crash_trigger.ipp) and (state) when the vector is not armed.
@@ -37,7 +37,7 @@ Steps (every command through xyf_host.py's own main(); diag.crash as a raw frame
   --after:  check, identity (crash restarts 0: B was not restarted alone), the screen as read (--screen TEXT,
             recorded), hold off, keepalive.sh (as device_pass).
 Evidence: ../private/xy-forever/sessions/<date>-crash-trigger-<n>/ (--after: the day's last trigger folder without
-an after result, else a new one); summary.json, after.json, one log per step. A simulator run (python3 -m
+an after result, else a new one); summary.json, after.json, one log per step. A simulator run (uv run -m
 xy_forever.sim --crash-trigger: diag.crash halts B there, no fault, no screen) uses sim-crash-trigger, removed when
 nothing failed unless --keep. Exit codes: 0 passed, 1 a step failed, 2 bad arguments, 3 NEED.
 """
@@ -244,7 +244,7 @@ def parse_args(argv):
     parser.add_argument('--install', metavar='BUILD_DIR', help='install this verified crash-trigger build first')
     parser.add_argument('--build', metavar='BUILD_DIR', help='the installed crash-trigger build (expected addresses)')
     parser.add_argument('--screen', metavar='TEXT', help='with --after: what the screen showed (recorded)')
-    parser.add_argument('--sim', metavar='HOST:PORT', help='run against the device simulator (xyf_host.py --sim)')
+    parser.add_argument('--sim', metavar='HOST:PORT', help='run against the device simulator (xyf-host --sim)')
     parser.add_argument('--wait', type=float, default=dp.T_ANSWER, help='seconds the check waits for the device')
     parser.add_argument('--keep', action='store_true', help='with --sim: keep the evidence folder when nothing failed')
     return parser.parse_args(argv)
@@ -348,7 +348,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     if passed and not opts.after:
         print(
             'NEED: read the OP-XY screen (kind %s): expect %s. Then power off, then power on holding PLAY '
-            '(release at the logo), and run: python3 scripts/crash_trigger.py --after --screen "WHAT IT SHOWED"%s'
+            '(release at the logo), and run: uv run scripts/crash_trigger.py --after --screen "WHAT IT SHOWED"%s'
             % (opts.kind, ' | '.join(lines), ' --sim ' + opts.sim if opts.sim else '')
         )
     return code

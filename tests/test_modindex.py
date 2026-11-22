@@ -1,5 +1,5 @@
-"""The local mod package index (xy_forever/modindex.py, `xyf_package.py index build | verify`,
-`xyf_host.py mods fetch`), on the synthetic package set of tests/test_modsend.py. A build is
+"""The local mod package index (xy_forever/modindex.py, `uv run xyf-package index build | verify`,
+`uv run xyf-host mods fetch`), on the synthetic package set of tests/test_modsend.py. A build is
 deterministic (same bytes twice); verify passes and catches a changed archive; a fetch over http (a local
 http.server), file:// and a plain folder rebuilds the generation folder byte for byte, and `mods push` of
 the fetched folder leaves the simulator's copy identical to the original. Every refusal has a case.

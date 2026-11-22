@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Build and verify XY Forever candidates (os.ldr) for the NAND boot partition.
 
-Modes: --xyf-product (the product, boot model v3) and the offline-only
---xyf-stage2 and --xyf-stage2-menu builds that the product will absorb.
+    uv run xyf-build --xyf-product --out DIR    build a mode into DIR (a fresh folder)
+    uv run xyf-build --verify --out DIR         re-check a build (its mode from the manifest)
+
+Modes: --xyf-product (the product, boot model v3, its stage 2 ABI 3); the device tests --xyf-mtp-usb and
+--xyf-crash-trigger; the offline stage-2 demos --xyf-stage2 (ABI 1 "hello") and --xyf-stage2-menu (ABI 2 menu).
 """
 
 import argparse
@@ -1725,7 +1728,9 @@ def build(out, stock, boot, mode):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        prog='uv run xyf-build', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument('--out', required=True, type=private_output)
     parser.add_argument('--stock', type=private_output, default=STOCK_121 / 'os.ldr')
     parser.add_argument('--bootloader', type=private_output, default=STOCK_121 / 'bootloader.ldr')
@@ -1760,14 +1765,14 @@ def main():
         dest='mode',
         action='store_const',
         const='xyf-stage2',
-        help='Offline (Test032): menu boot + read-only "hello" stage 2 (PLAY: load, check, run, return)',
+        help='Offline demo: menu boot + read-only "hello" stage 2, ABI 1 (PLAY: load, check, run, return)',
     )
     modes.add_argument(
         '--xyf-stage2-menu',
         dest='mode',
         action='store_const',
         const='xyf-stage2-menu',
-        help='Offline (Test034): --xyf-stage2 stage 1 with ABI 2; main.xys2 runs the XY Forever menu',
+        help='Offline demo: --xyf-stage2 stage 1 with a stage 2 of ABI 2; main.xys2 runs the menu',
     )
     args = parser.parse_args()
     require(args.verify or args.mode, 'Choose a build mode (normally --xyf-product)')

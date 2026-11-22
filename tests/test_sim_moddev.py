@@ -1,4 +1,4 @@
-"""5.6 in the simulator: `xyf_host.py mods dev`, the mod developers' loop (push what changed by SHA-256, build on
+"""5.6 in the simulator: `uv run xyf-host mods dev`, the mod developers' loop (push what changed by SHA-256, build on
 the device, make it the default with its content, --restore). Synthetic packages (test_sim_mod_job's kit),
 nothing on the device's mods/ at first. Needs clang++ and the private stock 1.2.1 images (skipped without
 them). No device access."""

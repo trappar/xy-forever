@@ -1,43 +1,53 @@
 """XY Forever host tool: talk to the XY Forever USB service (CDC serial).
 
 Usage (macOS /dev/cu.usbmodem*):
-  python3 xyf_host.py wait                     wait for the service, send HELLO (prints protocol and build)
-  python3 xyf_host.py status                   protocol, version, image and decoded result blocks
-  python3 xyf_host.py read /yaffs2/firmware.version [--out FILE]
-  python3 xyf_host.py read /yaffs2/xy-forever/log/prod-069-b.bin --all --out FILE   (any size, 4 KiB ranges)
-  python3 xyf_host.py install BUILD_DIR        DRY RUN: checks and prints the plan
-  python3 xyf_host.py install BUILD_DIR --yes-install
-  python3 xyf_host.py reboot --yes-reboot [--to service|os|menu]
-  python3 xyf_host.py set-default ID           DRY RUN: prints the plan
-  python3 xyf_host.py set-default ID --yes-write   processor a writes the next state slot
-  python3 xyf_host.py put-file LOCAL /yaffs2/xy-forever/PATH   DRY RUN: prints the plan
-  python3 xyf_host.py put-file LOCAL /yaffs2/xy-forever/PATH --yes-write   processor a writes it
-  python3 xyf_host.py ls /yaffs2/xy-forever [--json]   list a folder: type, size, name
-  python3 xyf_host.py get /yaffs2/PATH LOCAL   copy a file to the computer (any size; size and ranges checked)
-  python3 xyf_host.py put LOCAL /yaffs2/xy-forever/PATH   copy a file to the OP-XY (up to the staging limit,
+  uv run xyf-host wait                         wait for the service, send HELLO (prints protocol and build)
+  uv run xyf-host status                       protocol, version, image and decoded result blocks
+  uv run xyf-host read /yaffs2/firmware.version [--out FILE]
+  uv run xyf-host read /yaffs2/xy-forever/log/prod-069-b.bin --all --out FILE   (any size, 4 KiB ranges)
+  uv run xyf-host install BUILD_DIR            DRY RUN: checks and prints the plan
+  uv run xyf-host install BUILD_DIR --yes-install
+  uv run xyf-host reboot --yes-reboot [--to service|os|menu]
+  uv run xyf-host set-default ID               DRY RUN: prints the plan
+  uv run xyf-host set-default ID --yes-write   processor a writes the next state slot
+  uv run xyf-host put-file LOCAL /yaffs2/xy-forever/PATH   DRY RUN: prints the plan
+  uv run xyf-host put-file LOCAL /yaffs2/xy-forever/PATH --yes-write   processor a writes it
+  uv run xyf-host ls /yaffs2/xy-forever [--json]   list a folder: type, size, name
+  uv run xyf-host get /yaffs2/PATH LOCAL       copy a file to the computer (any size; size and ranges checked)
+  uv run xyf-host put LOCAL /yaffs2/xy-forever/PATH   copy a file to the OP-XY (up to the staging limit,
                                                read back and compared; --no-verify skips the read-back)
-  python3 xyf_host.py rm /yaffs2/PATH          delete a file (or an empty folder with --dir)
-  python3 xyf_host.py mkdir /yaffs2/PATH       create a folder (its parent must exist)
-  python3 xyf_host.py library-add ID OS_LDR --name NAME --version VER [--content DIR]   DRY RUN: plan
-  python3 xyf_host.py library-add ID OS_LDR --name NAME --version VER --content DIR --yes-write
+  uv run xyf-host rm /yaffs2/PATH              delete a file (or an empty folder with --dir)
+  uv run xyf-host mkdir /yaffs2/PATH           create a folder (its parent must exist)
+  uv run xyf-host mv /yaffs2/xy-forever/a.txt /yaffs2/xy-forever/b.txt   move or rename
+  uv run xyf-host cp -r /yaffs2/xy-forever/firmware/a /yaffs2/xy-forever/firmware/b   copy (-r: a folder)
+  uv run xyf-host library-add ID OS_LDR --name NAME --version VER [--content DIR]   DRY RUN: plan
+  uv run xyf-host library-add ID OS_LDR --name NAME --version VER --content DIR --yes-write
                                                firmware/ID/{os.ldr,manifest.json}, from DIR (official
                                                content) content.sha256 + firmware.version (reboots between)
-  python3 xyf_host.py screenshot --out FILE.png   the display (read-only framebuffer view)
-  python3 xyf_host.py tfw-check /yaffs2/PATH   is a .tfw (or a cut) on the device official, and do the
+  uv run xyf-host library-remove ID --yes-write   remove library entry ID (library-gc: unused blobs)
+  uv run xyf-host screenshot --out FILE.png    the display (read-only framebuffer view)
+  uv run xyf-host packs list                   sound packs (packs install|remove ID --yes)
+  uv run xyf-host content status               factory content against the private content manifests
+  uv run xyf-host tfw-check /yaffs2/PATH       is a .tfw (or a cut) on the device official, and do the
                                                device's own OTP keys open it? JSON; writes nothing
-  python3 xyf_host.py key NAME [--hold]        menu over USB: minus plus play stop shift track1..track8
-  python3 xyf_host.py continue                 leave the service, normal boot
-  python3 xyf_host.py boot ID --yes-boot       boot library entry ID once (leaves XY Forever)
-  python3 xyf_host.py continue --dry-run       the whole boot path without starting the OS, then back
-  python3 xyf_host.py hold on|off              stay in the service across reboots
-  python3 xyf_host.py uninstall STOCK_OS_LDR   DRY RUN: only the exact stock 1.2.1 os.ldr
-  python3 xyf_host.py uninstall STOCK_OS_LDR --yes-uninstall
-  python3 xyf_host.py mods dev PKG_DIR [--with ID...] [--base ID] [--boot | --watch]
+  uv run xyf-host key NAME [--hold]            menu over USB: minus plus play stop shift track1..track8
+  uv run xyf-host continue                     leave the service, normal boot
+  uv run xyf-host boot ID --yes-boot           boot library entry ID once (leaves XY Forever)
+  uv run xyf-host continue --dry-run           the whole boot path without starting the OS, then back
+  uv run xyf-host hold on|off                  stay in the service across reboots
+  uv run xyf-host uninstall STOCK_OS_LDR       DRY RUN: only the exact stock 1.2.1 os.ldr
+  uv run xyf-host uninstall STOCK_OS_LDR --yes-uninstall
+  uv run xyf-host mods push DIR [--only ID ...] [--verify]   send a package set
+  uv run xyf-host mods list                    package sets and packages on the device, with sizes
+  uv run xyf-host mods remove GENERATION --yes   DRY RUN without --yes
+  uv run xyf-host mods set MACHINE ... [--ext ID ...]   the mods it runs (mods status: what is saved)
+  uv run xyf-host mods apply --base ID --generation GEN MACHINE ... --wait   developers: build into mods-a|b
+  uv run xyf-host mods dev PKG_DIR [--with ID...] [--base ID] [--boot | --watch]
                                                mod developers: push only changed files (SHA-256), build
                                                the mod on the device, make it the default (content
                                                installed), optionally boot; each phase timed
-  python3 xyf_host.py mods dev --restore       the default from before the first dev run, again
-  python3 xyf_host.py --sim 127.0.0.1:7341 status   the device simulator instead of the USB port
+  uv run xyf-host mods dev --restore           the default from before the first dev run, again
+  uv run xyf-host --sim 127.0.0.1:7341 status   the device simulator instead of the USB port
                                                (or XYF_SIM=127.0.0.1:7341; same commands, same checks)
 
 Safety (docs/SAFETY.md, binding): install refuses anything that
@@ -499,7 +509,9 @@ def main(argv=None):
 
 
 def run(argv):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        prog='uv run xyf-host', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument('--timeout', type=float, default=30.0)
     parser.add_argument(
         '--sim',
@@ -740,7 +752,9 @@ def run(argv):
     print('connected %s: %s' % (port, text))
     hello = P.Hello(text)
     if hello.major != '1':
-        print('refused: the device speaks protocol %s; this tool speaks 1.x (update xyf_host.py)' % hello.proto)
+        print(
+            'refused: the device speaks protocol %s; this tool speaks 1.x (update the XY Forever tools)' % hello.proto
+        )
         return 2
     if args.command in ('wait', 'status'):
         print(hello.describe())

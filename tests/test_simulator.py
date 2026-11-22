@@ -1016,7 +1016,7 @@ class SimulatorTest(unittest.TestCase):
 
     @pytest.mark.sim
     def test_xyf_host_cp(self):
-        """Kept: Client smoke test: the xyf_host.py CLI copies a file end to end. xyf_host.py cp SRC DST --sim: a file; cp -r a folder with a subfolder (mkdir + file.copy per
+        """Kept: Client smoke test: the xyf_host.py CLI copies a file end to end. xyf-host cp SRC DST --sim: a file; cp -r a folder with a subfolder (mkdir + file.copy per
         file); a folder without -r, a target outside the write area or inside the source refused before
         any copy; an existing target is state."""
         work = self.dir / 'yaffs2' / 'xy-forever' / 'cli'
@@ -1061,7 +1061,7 @@ class SimulatorTest(unittest.TestCase):
         """Kept: Protected paths: the depth rule holds on every write command. No folder more than 6 below /yaffs2 and no file in one: file.mkdir, file.write_staged, file.copy and
         file.rename are refused at the limit + 1 (nothing reaches A) and done at the limit; a folder moved deeper
         is walked (refused when a folder inside it would sit too deep). Reads, listing and deletes of an older
-        deep tree still work. xyf_host.py says why before it connects, and cp -r checks the whole tree."""
+        deep tree still work. xyf-host says why before it connects, and cp -r checks the whole tree."""
         root = self.dir / 'yaffs2'
         W = BASE + 'wt/'  # 2 folders
         six = W + 'a/b/c/d'  # 6 folders

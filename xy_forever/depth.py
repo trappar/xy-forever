@@ -55,7 +55,7 @@ def command_refusal(args):
 
 
 def move_note(code):
-    """xyf_host.py mv: why the device refused a move (the folder walk of file.rename), appended to its result line."""
+    """xyf-host mv: why the device refused a move (the folder walk of file.rename), appended to its result line."""
     if code != P.STATUS_NAMES.index('refused'):
         return ''
     return (

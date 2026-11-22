@@ -139,7 +139,9 @@ def content_status(dev):
         root = paths.XYF / 'content-manifests'
         official = {p.parent.name: content_manifest.load(p) for p in sorted(root.glob('*/content.sha256'))}
         if not official:
-            raise ValueError('no official manifests under %s. Create them with xyf_package.py content-manifest.' % root)
+            raise ValueError(
+                'no official manifests under %s. Create them with uv run xyf-package content-manifest.' % root
+            )
         free = free_bytes(dev)
         print('Storage free: %d bytes. Reading /yaffs2/content.' % free, file=sys.stderr, flush=True)
         files, special = read_inventory(dev)

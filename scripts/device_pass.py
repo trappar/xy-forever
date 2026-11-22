@@ -90,7 +90,7 @@ Stages, in order. The first FAIL stops its stage; every later step is SKIP
            started on the session folder. No step anywhere turns a watchdog on: there is none.
 
 Simulator (--sim HOST:PORT, docs/architecture/simulator.md "Simulator"): the same steps through
-xyf_host.py --sim; steps the simulator does not host are SKIP with the reason (SIM_SKIPS).
+xyf-host --sim; steps the simulator does not host are SKIP with the reason (SIM_SKIPS).
 
 End state: the XY Forever boot menu (home) with USB, hold off, crash count 0,
 polled by keepalive.sh (a host stays attached). Not in the OS. Hold is off
@@ -397,7 +397,7 @@ SIM_SKIPS = {
     'keys': 'simulator: the menu screen and keys are not hosted',
     'keepalive': 'simulator: no keepalive.sh (the simulator keeps running without a host)',
 }
-SIM_NEED = 'NEED: start the simulator (python3 -m xy_forever.sim), then rerun with --sim 127.0.0.1:7341'
+SIM_NEED = 'NEED: start the simulator (uv run -m xy_forever.sim), then rerun with --sim 127.0.0.1:7341'
 CONFIRM_ON = 'Switch off Settings > Ask before USB control on the device first'
 
 
@@ -738,7 +738,7 @@ class Pass:
         start = time.monotonic()
         code, out, err = self.dev.command(argv, timeout, **limits)
         self.log.append(
-            '$ xyf_host.py --timeout %g %s\nexit %d after %.2f s\n--- stdout\n%s\n--- stderr\n%s\n'
+            '$ uv run xyf-host --timeout %g %s\nexit %d after %.2f s\n--- stdout\n%s\n--- stderr\n%s\n'
             % (timeout, ' '.join(argv), code, time.monotonic() - start, out, err)
         )
         return code, out, err
@@ -1443,7 +1443,7 @@ class Pass:
             self.ok(['set-default', default, '--yes-write'])
         except StepFail as error:
             raise StepFail(
-                '%s; default may still be %s: python3 xyf_host.py set-default %s --yes-write' % (error, alt, default)
+                '%s; default may still be %s: uv run xyf-host set-default %s --yes-write' % (error, alt, default)
             )
         return '%s -> %s (slots read back); %s' % (alt, default, self.same_state(self.state['saved0'], 'alt-after'))
 
@@ -1618,7 +1618,7 @@ class Pass:
             held = []
         if 'base' not in held or MODS_MACHINE not in held:
             raise StepSkip(
-                'the device holds no package set %s/%s with %s (xyf_host.py mods push %s)'
+                'the device holds no package set %s/%s with %s (uv run xyf-host mods push %s)'
                 % (root, packages.name, MODS_MACHINE, packages)
             )
         library = '/yaffs2/xy-forever/firmware'
@@ -1935,7 +1935,7 @@ class Pass:
             if code:
                 return (
                     "state: set-default %s FAILED again (%s): the content may be %s's or mid-switch (the menu "
-                    'says "content needs repair"); %s kept; repair: python3 xyf_host.py set-default %s --yes-write'
+                    'says "content needs repair"); %s kept; repair: uv run xyf-host set-default %s --yes-write'
                     % (previous, why(code, out, err), entry, entry, previous)
                 )
         try:
@@ -2384,7 +2384,7 @@ def parse_args(argv):
     parser.add_argument(
         '--sim',
         metavar='HOST:PORT',
-        help='run against the device simulator (xyf_host.py --sim); steps it does not host are SKIP',
+        help='run against the device simulator (xyf-host --sim); steps it does not host are SKIP',
     )
     parser.add_argument(
         '--sim-log',

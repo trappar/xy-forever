@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Watch whether the OP-XY's USB interrupt still answers (host only, read-only).
 
-usage: python3 scripts/usb_alive.py [--seconds N] [--every S]
+usage: uv run scripts/usb_alive.py [--seconds N] [--every S]
 
 Every S seconds, reads the manufacturer and product string descriptors of the first OP-XY (VID 0x2367)
 with a 500 ms control transfer. B's USB stack answers it inside the USB interrupt

@@ -7,7 +7,7 @@ its adapter: no Python decoder. The .tfw key and the vendor public key come from
 on a pipe; they are never printed, logged or written.
 
 The signature is required by default: without the public key extraction stops ("no .tfw public
-key"). require_signature=False (xyf_package.py --allow-unverified) extracts anyway, reports the
+key"). require_signature=False (xyf-package --allow-unverified) extracts anyway, reports the
 signature as not checked and labels the entry kind=custom, not official.
 """
 
@@ -28,7 +28,7 @@ PUBLIC_KEY = paths.PRIVATE_ROOT / 'keys' / 'opxy-tfw-public-key.json'
 NATIVE = ('tfw_os', 'tfw', 'tfw_check', 'tfw_signature', 'p224', 'aes', 'hash', 'inflate', 'ldr', 'package_policy')
 VERIFIED = 'verified'
 # The policy file boot admits images with: cold.cpp's ranges, with the product's wider
-# module + stack reservation (xyf_build.py --xyf-product).
+# module + stack reservation (xyf-build --xyf-product).
 PRODUCT_STACK_END = '0x8ab84000u'
 
 
@@ -93,7 +93,7 @@ def public_key(path=None):
     if not path.is_file():
         raise ExtractError(
             'no .tfw public key: %s is missing, so the package signature cannot be checked '
-            '(xyf_package.py extract-os --allow-unverified extracts it unchecked)' % path
+            '(uv run xyf-package extract-os --allow-unverified extracts it unchecked)' % path
         )
     try:
         data = json.loads(path.read_text())

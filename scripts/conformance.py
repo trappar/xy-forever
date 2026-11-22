@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Conformance suite: run protocol/v1.conformance.json against the simulator or the OP-XY.
 
-    python3 scripts/conformance.py --sim 127.0.0.1:7341     every case, against a running simulator
-    python3 scripts/conformance.py                          the OP-XY over USB: cases marked real_device
-    python3 scripts/conformance.py --check                  interpret every case; no device, no session
-    python3 scripts/conformance.py --plan                   list the cases and what each does
+    uv run scripts/conformance.py --sim 127.0.0.1:7341     every case, against a running simulator
+    uv run scripts/conformance.py                          the OP-XY over USB: cases marked real_device
+    uv run scripts/conformance.py --check                  interpret every case; no device, no session
+    uv run scripts/conformance.py --plan                   list the cases and what each does
 
 The cases are data (xy_forever/conformance.py loads, validates and runs them; the TypeScript runner
 clients/ts/test/conformance.ts runs the same file). One way to run the suite: this script. It is
@@ -100,7 +100,7 @@ def table(rows, folder):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--sim', metavar='HOST:PORT', help='the device simulator (xyf_host.py --sim) instead of USB')
+    parser.add_argument('--sim', metavar='HOST:PORT', help='the device simulator (xyf-host --sim) instead of USB')
     parser.add_argument('--check', action='store_true', help='interpret every case and exit; touches nothing')
     parser.add_argument('--plan', action='store_true', help='list the cases and exit; touches nothing')
     parser.add_argument('--only', metavar='REGEX', help='run only the cases whose name matches')

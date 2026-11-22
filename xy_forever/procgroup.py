@@ -4,7 +4,7 @@ Each child runs in its own session (so its own process group), and the whole gro
 run() is subprocess.run for node, pnpm and the like (on a timeout, a failure or a normal end the
 group gets SIGTERM, then SIGKILL after GRACE seconds), so a test runner's children (simulators
 among them) end with the command. tie_to_parent() makes a long-running wrapper process
-(`python3 -m xy_forever.sim`) end, through SIGTERM, when the process that started it is gone,
+(`uv run -m xy_forever.sim`) end, through SIGTERM, when the process that started it is gone,
 even when that one was killed outright; its own cleanup then ends its group (kill_group).
 """
 

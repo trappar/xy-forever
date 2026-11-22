@@ -46,7 +46,7 @@ def build(source, out, env):
     if out.exists():
         shutil.rmtree(out)
     run = subprocess.run(
-        [sys.executable, str(source / 'xyf_build.py'), '--' + mode, '--out', str(out)],
+        [sys.executable, '-m', 'xy_forever.xyf_build', '--' + mode, '--out', str(out)],  # cwd: source's package first
         cwd=source,
         env=env,
         capture_output=True,

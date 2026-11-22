@@ -1,6 +1,6 @@
 """Merge reachable 1.2.1 functions into CRC spans for target/*_spans.hpp.
 
-    python3 re/spans.py REACH.txt... > spans.txt
+    uv run re/spans.py REACH.txt... > spans.txt
 
 REACH files come from re/reach.py or re/mtp_reach.py. Words that differ from the
 image in any cold census report (REPORTS/test-0*/**/*.bin, Tests 017-024) are

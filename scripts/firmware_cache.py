@@ -2,7 +2,7 @@
 """The product build and its --verify through Turborepo's local cache (mise run build, verify; check.py).
 
     uv run scripts/firmware_cache.py build [--force]     the product build into build/product (gitignored)
-    uv run scripts/firmware_cache.py verify [--force]    the build, then xyf_build.py --verify of it
+    uv run scripts/firmware_cache.py verify [--force]    the build, then xyf-build --verify of it
     uv run scripts/firmware_cache.py key                 the outside-the-checkout part of the cache key
 
 Turborepo (turbo.json: //#firmware-build, //#firmware-verify) hashes the files the build reads in the checkout
@@ -92,7 +92,7 @@ def run_task(task):
         args = ['--xyf-product', '--out', OUT]
     else:
         args = ['--verify', '--out', OUT]
-    return subprocess.run([sys.executable, str(ROOT / 'xyf_build.py'), *map(str, args)], cwd=ROOT).returncode
+    return subprocess.run([sys.executable, '-m', 'xy_forever.xyf_build', *map(str, args)], cwd=ROOT).returncode
 
 
 def main(argv=None):

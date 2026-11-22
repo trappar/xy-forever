@@ -189,7 +189,7 @@ def main(argv):
     import json
 
     parser = argparse.ArgumentParser(
-        prog='xyf_package.py content-manifest|content-compare',
+        prog='uv run xyf-package content-manifest|content-compare',
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
