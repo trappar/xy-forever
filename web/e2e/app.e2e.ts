@@ -10,6 +10,7 @@ import { expect, test } from '@playwright/test';
 import type { Browser, Locator, Page } from '@playwright/test';
 import { findSimulator, startAll } from 'xy-forever-client/test/simulators.ts';
 import { protocol as v1 } from 'xy-forever-client';
+import { verifiedBuild } from './needs.ts';
 
 const nav = (page: Page, name: string): Locator =>
   page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
@@ -80,10 +81,8 @@ test('connects to the simulator and shows the device and its files', async () =>
   await page.close();
 });
 
-const candidate = found.fixtures['xyf_build'];
 test('installs a newer XY Forever and restarts into its menu', async () => {
-  test.skip(found.why !== null || !candidate, 'skipped: see the warning above');
-  const imagePath = candidate!;
+  const imagePath = verifiedBuild(found);
   const image = readFileSync(imagePath);
   const sha256 = createHash('sha256').update(image).digest('hex');
   const { version } = JSON.parse(readFileSync(join(dirname(imagePath), 'manifest.json'), 'utf8')) as {

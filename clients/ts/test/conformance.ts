@@ -588,8 +588,11 @@ class Runner {
     return !/^[0-9a-f]{32}$/.test(helloKeys(this.helloText ?? '')['cmds'] ?? '');
   }
 
+  /** A link to the device. While its port is not back (a restart), the simulator's clock moves on (control advance,
+   * doubling steps) between tries, up to waitMs of device time: no host time waited. */
   async open(hello = true, waitMs = this.timing['back_ms'] as number, ready = false): Promise<CaseLink> {
-    const deadline = Date.now() + waitMs;
+    let spent = 0,
+      step = 1;
     for (;;) {
       try {
         const link = await CaseLink.open(this.host, this.port, this.lines);
@@ -620,9 +623,11 @@ class Runner {
         }
         return link;
       } catch (error) {
-        if (error instanceof Fail || Date.now() > deadline)
-          throw error instanceof Fail ? error : new Fail(`the port did not come back within ${waitMs} ms`);
-        await new Promise((ok) => setTimeout(ok, 50));
+        if (error instanceof Fail) throw error;
+        if (spent >= waitMs) throw new Fail(`the port did not come back within ${waitMs} ms of device time`);
+        await this.control(`advance ${String(step)}`, false);
+        spent += step;
+        step = Math.min(step * 2, 1000);
       }
     }
   }
@@ -634,7 +639,7 @@ class Runner {
     return reply.fields.info;
   }
 
-  async control(line: string): Promise<void> {
+  async control(line: string, logged = true): Promise<void> {
     const reply = await new Promise<string>((ok, fail) => {
       const sock = net.createConnection({ host: this.host, port: this.port + 1 });
       let text = '';
@@ -651,7 +656,7 @@ class Runner {
     });
     const parsed = JSON.parse(reply || '{}') as Obj;
     if (parsed['ok'] === false) throw new Fail(`simulator control ${line}: ${reply}`);
-    this.lines.push(`# sim ${line}`);
+    if (logged) this.lines.push(`# sim ${line}`);
   }
 
   whySkip(c: Obj): string | null {

@@ -5,8 +5,11 @@ The tests of the web app ([the web app](../README.md)); the client library's own
 
 ## Unit tests and type check
 
-`mise run web-test` runs the client's Vitest run, then this app's (`pnpm test`: `test/*.test.ts` in Node, under
-1 s) and its type check (`pnpm run typecheck`). One file or test: `pnpm exec vitest run test/install.test.ts -t 'Mac'`.
+`mise run web-test` runs the client's Vitest run, then this app's (`pnpm test`: `test/*.test.ts` in Node), then both
+type checks (`pnpm run typecheck`: tsc once each; the build does not run it). `mise run web-test-changed` runs only the
+tests of both packages that your uncommitted changes affect (Vitest `--changed`), or that import the files given
+(`vitest related`). One file or test: `pnpm exec vitest run test/install.test.ts -t 'Mac'`. Budgets: as the client's
+([its README](../../clients/ts/README.md)).
 
 ## Browser tests
 
@@ -26,7 +29,11 @@ drives the app in the system Chrome, headless, never a downloaded browser:
   folder (`XYF_PRIVATE` applies; `XYF_SIM_STATE` overrides app.e2e.ts's), removed afterwards; skipped with the
   reason when it cannot run (no private stock files, no clang++). Device time moves only when a test moves it; the
   page's own timers run on Playwright's clock.
-- **Budgets.** 15 s a test, 90 s the run (`globalTimeout`); the run takes about 15 s.
+- **Budgets** (`e2e/budgets.ts`, enforced): each test's, by project, and the run's, about twice an unloaded run's and
+  scaled on a busy or slower machine (the client's `test/load-scale.ts`); over one fails the run and names the test.
+  The hang bounds stay the outer limit: each test (`timeout`) and the run (`globalTimeout`).
+- **The verified build.** The specs that install it (`e2e/needs.ts`) skip and say why when there is none, and fail
+  when this checkout's verified build exists but is not found.
 - **Targeted runs.** `pnpm exec playwright test --project install`, `pnpm exec playwright test e2e/app.e2e.ts -g
   'offline'` (from `web/`, under `uv run` for the simulator specs).
 

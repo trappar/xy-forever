@@ -7,7 +7,7 @@
   "description": "XY Forever web app: a mod package manager and file manager for the OP-XY, over Web Serial (Chrome)",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build",
+    "build": "vite build",
     "build:pages": "pnpm run build --mode pages",
     "smoke:pages": "node scripts/smoke-pages.ts",
     "typecheck": "tsc -p tsconfig.json",

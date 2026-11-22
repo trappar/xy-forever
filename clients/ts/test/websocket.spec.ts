@@ -30,17 +30,26 @@ function closeServer(server: net.Server | undefined): Promise<void> {
     server.close(() => done());
   });
 }
-function sinkOf(t: WebSocketTransport): { bytes: number[]; closed: Promise<Error | undefined> } {
+/** What the transport delivers; got(n): once n bytes have arrived (on the data event, no polling). */
+function sinkOf(t: WebSocketTransport): {
+  bytes: number[];
+  got: (n: number) => Promise<void>;
+  closed: Promise<Error | undefined>;
+} {
   const bytes: number[] = [];
+  const waiting: { n: number; ok: () => void }[] = [];
   const closed = new Promise<Error | undefined>((resolve) =>
-    t.start({ data: (b) => bytes.push(...b), closed: resolve }),
+    t.start({
+      data: (b) => {
+        bytes.push(...b);
+        for (const w of waiting.filter((w) => bytes.length >= w.n)) w.ok();
+      },
+      closed: resolve,
+    }),
   );
-  return { bytes, closed };
-}
-async function until(check: () => boolean, ms = 5000): Promise<void> {
-  for (const end = Date.now() + ms; !check(); await new Promise((ok) => setTimeout(ok, 10))) {
-    if (Date.now() > end) throw new Error('condition not met in time');
-  }
+  const got = (n: number): Promise<void> =>
+    bytes.length >= n ? Promise.resolve() : new Promise((ok) => waiting.push({ n, ok }));
+  return { bytes, got, closed };
 }
 
 describe('the relay, against a TCP stand-in for the simulator', () => {
@@ -48,10 +57,14 @@ describe('the relay, against a TCP stand-in for the simulator', () => {
   let target: net.Server;
   let controlServer: net.Server;
   let peers: net.Socket[] = [];
+  let peerArrived: (() => void) | undefined;
   let listening = 1;
+  /** The stand-in's next connection (on its connection event). */
+  const nextPeer = (): Promise<void> => new Promise((ok) => (peerArrived = ok));
   beforeAll(async () => {
     target = await listen(0, (s) => {
       peers.push(s);
+      peerArrived?.();
       s.on('data', (d) => s.write(Buffer.from([...(d as Buffer)].reverse())));
     });
     controlServer = await listen(0, (s) => s.on('data', () => s.end(JSON.stringify({ listening }) + '\n')));
@@ -66,9 +79,9 @@ describe('the relay, against a TCP stand-in for the simulator', () => {
   test('bytes both ways; the page closing ends the TCP connection', async () => {
     peers = [];
     const t = await WebSocketTransport.open(relay.url);
-    const { bytes, closed } = sinkOf(t);
+    const { bytes, got, closed } = sinkOf(t);
     await t.write(new Uint8Array([1, 2, 3]));
-    await until(() => bytes.length === 3);
+    await got(3);
     expect(bytes).toEqual([3, 2, 1]);
     const peerGone = new Promise((ok) => peers[0]!.once('close', ok));
     await t.close();
@@ -79,9 +92,10 @@ describe('the relay, against a TCP stand-in for the simulator', () => {
 
   test('the simulator closing the port closes the WebSocket cleanly', async () => {
     peers = [];
+    const peer = nextPeer();
     const t = await WebSocketTransport.open(relay.url);
     const { closed } = sinkOf(t);
-    await until(() => peers.length === 1);
+    await peer;
     peers[0]!.end();
     expect(await closed).toBeUndefined();
   });
