@@ -149,7 +149,7 @@ class Reports(unittest.TestCase):
         self.sim.advance(10000)
         for _ in range(20):
             self.dev.hello()
-            time.sleep(0.01)
+            self.sim.advance(10)
         self.assertEqual(blob.read_bytes(), value)
 
     def test_path_and_offset_bounds(self):

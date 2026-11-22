@@ -558,7 +558,8 @@ int main(int argc, char** argv) {
             while ((eol = client_in[i].find('\n')) != std::string::npos) {
                 const std::string line = client_in[i].substr(0, eol), reply = command(line, quit, clients[i]);
                 client_in[i].erase(0, eol + 1);
-                if (line.compare(0, 6, "status") && line.compare(0, 8, "injected") && line != "settle") { kick(0); kick(1); }   // a fault, a key
+                if (line.compare(0, 6, "status") && line.compare(0, 8, "injected") && line != "settle" &&
+                    line.compare(0, 7, "advance")) { ++shared->outside; kick(0); kick(1); }   // a fault, a key
                 if (!reply.empty() && write(clients[i], (reply + "\n").data(), reply.size() + 1) < 0) break;
             }
             ++i;

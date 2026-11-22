@@ -6,16 +6,21 @@
 //    a fault's delay) or has read the clock idle_reads times running with nothing done in between (the
 //    device's polling loops).
 //  - Even then, only while something is due: a control "advance MS" not yet answered (answered once the
-//    clock is there and both processors are idle again), work done since the last step (a link message, USB
-//    data, a control command, a menu pass that polled the clock), an event the simulator knows of (a bounded
-//    wait's end, a reset delay, a delayed link message), or B waiting on device time away from rest (a delay,
-//    a time-out, a slice: anywhere but its menu loop's pause or a hang, and not held up by a host that does
-//    not read its reply), for at most quiet_limit with nothing done. Otherwise device time stands still and
-//    every process blocks, with no CPU, until the host or a control command brings something: an idle
-//    device's own timers (keepalives, a deferred save, an idle window's close) wait for an advance, which is
-//    how a host's pause reaches the device (xy_forever/transport.py sim_pause, Simulator.advance).
-//  - A step goes no further than the next known event; it is 1 ms after any activity and doubles while
-//    nothing happens, with no cap.
+//    clock is there and both processors are idle again), a board event (a reset delay, a delayed link
+//    message), B waiting on device time away from rest (a delay, a time-out, a slice: anywhere but its menu
+//    loop's pause or a hang) or a host request B read and has not answered (not in a hang), unless a host
+//    that does not read holds B's reply up, for at most quiet_limit with nothing done; or work done since the
+//    last step (a link message, USB data, a control command, a menu pass that polled the clock), which with
+//    B at rest counts only for rest_limit past the last news from outside (USB data or a connection, a
+//    control command other than status, injected, settle and advance): a device that polls on its own
+//    comes to rest. A processor's bounded wait does not run the clock by itself. Otherwise device time
+//    stands still and every process blocks, with no CPU, until the host or a control command brings
+//    something: an idle device's own timers (keepalives, a deferred save, an idle window's close, a key's
+//    repeat) wait for an advance, which is how a host's pause reaches the device (xy_forever/transport.py
+//    sim_pause, Simulator.advance; Simulator.settle runs it until nothing is done).
+//  - A step goes no further than the next known event (a processor's bounded wait's end too); it is 1 ms after
+//    any activity and doubles while nothing happens, up to max_step (the device's own timers are not known
+//    events: they fire within max_step).
 //  - It also moves by a relayed link message's transfer time (link_ns + link_byte_ns per byte) and, while a
 //    processor is busy (just after activity), by read_ns per clock read, so work takes device time.
 // A processor that is busy (computing, or waiting for the other) stops the clock: its slowness on a busy
@@ -36,6 +41,8 @@ namespace {
 const uint32_t idle_reads = 32;             // clock reads with nothing done between them: a polling loop, idle
 const uint64_t read_ns = 1000, link_ns = 20000, link_byte_ns = 200;   // ~5 MB/s link (docs/hardware/devices.md)
 const uint64_t min_step = 1000000, quiet_limit = 60000000000ull;   // 60 s of device time with nothing done: hung
+const uint64_t max_step = 10000000;         // a step's most: the device's own timers (a key's repeat) fire on time
+const uint64_t rest_limit = 1000000000ull;  // work at rest runs the clock 1 s past the last news from outside
 uint64_t start_ns = 0;                       // this processor's clock at its first read (its counter's zero)
 bool started = false;
 uint32_t seen_work = 0, seen_steps = 0, spin = 0;
@@ -57,8 +64,10 @@ bool in_flight() {
 }
 // The board steps only with no message in flight; while one is, whoever takes it last wakes the board
 // (its own loop for outflight, link_taken() for inflight), so an idle processor need not.
+bool menu_pause = false;                    // B: inside cdc_wait (at rest there: its menu loop; elsewhere: a hang)
 void publish(uint32_t work, uint32_t steps, uint64_t until, bool rest) {
-    shared->idle_rest[role] = rest || role == 0;        // A idle is at rest (its loop); B only where it says so
+    // A idle is at rest (its loop); B only where it says so: 1 its menu loop's pause, 2 a hang (it never answers).
+    shared->idle_rest[role] = role == 0 ? 1 : !rest ? 0 : menu_pause ? 1 : 2;
     shared->idle_until[role] = until; shared->idle_steps[role] = steps; shared->idle_work[role] = work;
     if (!in_flight()) wake(2);
 }
@@ -75,7 +84,7 @@ bool usb_check(bool readable, bool next = false) {
     if (bytes != usb_bytes) { news = bytes > usb_bytes; usb_bytes = bytes; usb_ready = false; }
     if (readable && !usb_ready) { usb_ready = true; news = true; }
     if (next && !next_ready) { next_ready = true; news = true; }
-    if (news) { ++shared->work[1]; ++usb_news; }
+    if (news) { ++shared->work[1]; ++shared->outside; ++usb_news; }
     return news;
 }
 // Until a step, work, new USB data or (B) room for a reply the host had not read yet: no time limit.
@@ -149,7 +158,7 @@ void cdc_wait(int ms) {                                         // B's menu loop
     const uint32_t seen = usb_news;
     for (const uint64_t until = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < until;) {
         if (fd >= 0 && ::poll(p, 2, 0) > 0 && usb_check(p[0].revents, p[1].revents)) break;   // new, not left unread
-        idle_pause(0, true);
+        menu_pause = true; idle_pause(0, true); menu_pause = false;
         if (usb_news != seen) break;                                        // block() saw it arrive
     }
     reads = shared->clock_reads[1].load();
@@ -161,7 +170,9 @@ struct Advance { int client; uint64_t until; };
 std::vector<Advance> advances;              // control "advance" lines not answered yet
 std::vector<int> settles;                   // control "settle" lines not answered yet
 uint64_t step_ns = min_step, quiet_ns = 0;   // quiet_ns: device time stepped since the last work
-uint32_t stepped_work = 0;
+uint64_t outside_ns = 0;                    // clock_ns at the last news from outside (outside_any: there was one)
+bool outside_any = false;
+uint32_t stepped_work = 0, seen_outside = 0;
 bool hung = false;
 bool quiescent(const bool running[2]) {
     for (int k = 0; k != 2; ++k) if (shared->inflight[k] || shared->outflight[k]) return false;
@@ -177,7 +188,7 @@ bool quiescent(const bool running[2]) {
 void board_link_cost(uint32_t bytes) { shared->clock_ns += link_ns + link_byte_ns * bytes; }
 void board_reset_flight(int which) {
     shared->inflight[which] = 0; shared->outflight[which] = 0;
-    if (which == 1) shared->usb_held = 0;              // B's held reply went with it
+    if (which == 1) { shared->usb_held = 0; shared->usb_asked = 0; }   // B's held reply went with it, and the request
 }
 void board_jump(int64_t ms) {
     shared->clock_ns += uint64_t(ms) * 1000000u;
@@ -203,30 +214,38 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
         } else { if (!due || advances[i].until < due) due = advances[i].until; ++i; }
     }
     if (deadline_ns > now && (!due || deadline_ns < due)) due = deadline_ns;
+    uint64_t bound = due;                                       // a step goes no further: also a processor's wait's end
     for (int k = 0; k != 2; ++k) {
         const uint64_t until = running[k] ? shared->idle_until[k].load() : 0;
-        if (until > now && (!due || until < due)) due = until;
+        if (until > now && (!bound || until < bound)) bound = until;
     }
+    const uint32_t outside = shared->outside.load();
+    if (outside != seen_outside) { seen_outside = outside; outside_ns = now; outside_any = true; }
     const uint32_t work = shared->work[0].load() + shared->work[1].load();
     const bool worked = work != stepped_work;
     if (worked) { quiet_ns = 0; hung = false; }
-    // Waited on: B waiting on device time away from rest (a delay, a time-out, a slice), unless a host that does
-    // not read holds its reply up. Up to quiet_limit with nothing done: then nothing will be (a hung
+    // Waited on: B waiting on device time away from rest (a delay, a time-out, a slice), or a host request B has
+    // not answered yet (not in a hang: nothing answers it), unless a host that does not read holds its reply up. Up to quiet_limit with nothing done: then nothing will be (a hung
     // processor), and the clock stands still until something comes.
-    const bool waited = running[1] && !shared->idle_rest[1].load() && !shared->usb_held.load();
+    const int32_t rest = shared->idle_rest[1].load();
+    const bool waited = running[1] && !shared->usb_held.load() && (!rest || (rest == 1 && shared->usb_asked.load()));
     if (waited && !worked && quiet_ns >= quiet_limit && !hung) {
         hung = true;
         log("board: %llu s of device time with nothing done while B waits: the clock stands still",
             (unsigned long long)(quiet_limit / 1000000000u));
     }
-    if (!due && !worked && (!waited || hung)) {                 // nothing is due: the clock stands still
+    // Work with B at rest (its menu loop's passes, a job's slices) runs the clock only up to rest_limit past the
+    // last news from outside: a device that polls on its own (a pass that asks A something every time) would
+    // otherwise never come to rest. A host that waits for more moves the clock on (advance: its pause).
+    const bool working = worked && (waited || (outside_any && now - outside_ns < rest_limit));
+    if (!due && !working && (!waited || hung)) {                // nothing is due: the clock stands still
         for (int client : settles) if (write(client, "{\"ok\": true}\n", 13) < 0) {}
         settles.clear();
         return -1;
     }
     uint64_t step = worked ? min_step : step_ns;
-    if (due && due - now < step) step = due - now;
-    step_ns = worked ? 2 * min_step : (step_ns >> 40 ? step_ns : step_ns * 2);
+    if (bound && bound - now < step) step = bound - now;
+    step_ns = worked ? 2 * min_step : (step_ns * 2 < max_step ? step_ns * 2 : max_step);
     quiet_ns += step;
     stepped_work = work;
     shared->clock_ns += step;

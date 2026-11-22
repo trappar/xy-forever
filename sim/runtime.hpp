@@ -57,13 +57,16 @@ struct Shared {
     // work: what a processor did or was given (a link message, USB data, a control command); idle_work,
     // idle_steps: the main thread was idle at that work and that step, and its wait ends by itself at
     // idle_until (clock_ns; 0: no bound). inflight, outflight: link messages to and from a processor not yet
-    // taken. usb_held: B's last USB write found no room (the host is not reading). wake: pipes that wake
-    // processor A, B, the board, and A's and B's link threads.
+    // taken. usb_held: B's last USB write found no room (the host is not reading). outside: news from outside
+    // the device (USB data or a connection, a control command other than status, injected, settle, advance).
+    // wake: pipes that wake processor A, B, the board, and A's and B's link threads.
     std::atomic<int32_t> usb_held;
+    std::atomic<uint32_t> outside;
+    std::atomic<int32_t> usb_asked;              // B read host bytes and has not written to the host since
     std::atomic<uint64_t> clock_ns;
     std::atomic<uint32_t> steps, work[2], idle_work[2], idle_steps[2];
     std::atomic<uint64_t> idle_until[2];
-    std::atomic<int32_t> idle_rest[2];            // that wait is at rest (A: any; B: its menu loop's pause, a hang)
+    std::atomic<int32_t> idle_rest[2];            // that wait is at rest (A: any; B: 1 its menu loop's pause, 2 a hang)
     std::atomic<int32_t> inflight[2], outflight[2];
     int wake[5][2];
     // Processor B's OTP as its boot-ROM stand-in answers it (sim/stock.cpp: ROM 04000048/04000054):

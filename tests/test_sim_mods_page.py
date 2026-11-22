@@ -660,17 +660,18 @@ class ManyPackages(PageBase, unittest.TestCase):
         self.sim.set('a_slow_ms', 2)
         for _ in range(MODS_ROW):
             self.press(PLUS)
-        t = time.monotonic()
+        clock = lambda: self.sim.status()['clock_ms']    # noqa: E731 (device time)
+        t = clock()
         self.press(PLAY)
         first = self.wait(lambda p: p['shown'] == 1, 'opened', 10.0)
-        opened = time.monotonic() - t
+        opened = clock() - t
         self.assertEqual(first['view'], VIEW_READING)                       # at once, reading
-        slowest = 0.0
+        slowest = 0
         while self.page()['view'] == VIEW_READING:
-            s = time.monotonic()
+            s = clock()
             self.assertEqual(self.dev.call(P.STATUS, timeout=5.0)[0], 0)
-            slowest = max(slowest, time.monotonic() - s)
-            time.sleep(0.02)
+            slowest = max(slowest, clock() - s)
+            self.sim.advance(20)
         p = self.page()
         self.sim.set('a_slow_ms', 0)
         partial = [q['shown_rows'] for q in self.pages() if q['view'] == VIEW_READING]
@@ -681,9 +682,9 @@ class ManyPackages(PageBase, unittest.TestCase):
             self.press(PLUS)                                                # the filter and all rows)
         self.press(PLAY)
         self.assertEqual(len(self.page()['on']), 1)
-        print('\nManyPackages: %d packages listed in %.2f s host (A +2 ms a request), page shown after %.3f s, '
-              'longest pump pass %d ms, slowest USB status %.3f s, %d redraws while reading'
-              % (total, time.monotonic() - t, opened, p['longest'], slowest, len(partial)), file=sys.stderr)
+        print('\nManyPackages: %d packages listed in %d ms (A +2 ms a request), page shown after %d ms, '
+              'longest pump pass %d ms, slowest USB status %d ms, %d redraws while reading (device time)'
+              % (total, clock() - t, opened, p['longest'], slowest, len(partial)), file=sys.stderr)
 
 
 def _published():

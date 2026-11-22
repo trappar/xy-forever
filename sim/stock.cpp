@@ -44,7 +44,7 @@ uint32_t connections = 0;                                // opens and closes: an
 void cdc_close_client(const char* why) {
     if (client < 0) return;
     close(client); client = -1; ++connections;
-    shared->usb_held = 0;                                // sim/clock.cpp: no reply held up by that host
+    shared->usb_held = 0; shared->usb_asked = 0;         // sim/clock.cpp: no reply held up by that host, or owed it
     log("USB host %s", why);
 }
 void cdc_start() {
@@ -103,7 +103,7 @@ int cdc_read(uint8_t* out, uint32_t n) {
     if (client < 0) return 0;
     const ssize_t got = recv(client, out, n, MSG_DONTWAIT);
     if (got == 0) { cdc_close_client("closed the port"); return 0; }
-    if (got > 0) xyf_sim::active();
+    if (got > 0) { xyf_sim::active(); shared->usb_asked = 1; }
     return got > 0 ? int(got) : 0;
 }
 int cdc_write(const uint8_t* data, uint32_t n) {
@@ -112,7 +112,7 @@ int cdc_write(const uint8_t* data, uint32_t n) {
     const int32_t pull = shared->cable_pull;
     if (pull > 0 && uint32_t(pull) < allowed) allowed = uint32_t(pull);
     const ssize_t sent = send(client, data, allowed, MSG_DONTWAIT);
-    if (sent > 0) { xyf_sim::active(); shared->usb_held = 0; }
+    if (sent > 0) { xyf_sim::active(); shared->usb_held = 0; shared->usb_asked = 0; }
     if (sent < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) { shared->usb_held = 1; return -1; }   // until the host reads
         cdc_close_client("went away");

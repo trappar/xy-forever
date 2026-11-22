@@ -399,7 +399,8 @@ class Simulator:
                 self.port = free_port()
                 self.control_port = self.port + 1
 
-    def start(self, timeout=10.0):
+    def start(self, timeout=10.0, settle=True):
+        """Starts the board; returns once B's USB endpoint listens and (settle) the device is at rest."""
         os.environ.setdefault('XYF_ASK_LIMIT_S', '30')      # #65: a host here never waits on the question unbounded
         for attempt in range(3):
             log = open(self.log, 'ab') if self.log else subprocess.DEVNULL
@@ -417,7 +418,8 @@ class Simulator:
                 log.close()
             try:
                 self.wait_listening(timeout)
-                self.settle()
+                if settle:
+                    self.settle()
                 return self
             except PortTaken:
                 # Another process took the endpoint's port between free_port() and B's bind (tests running in
@@ -475,8 +477,16 @@ class Simulator:
         if not self.control('advance %d' % ms, timeout=bounds.WAIT_S).get('ok'):
             raise ValueError('simulator: advance %r refused' % ms)
 
-    def settle(self):
-        """Returns once the device is at rest: its clock stands still, nothing due (sim/clock.cpp)."""
+    def settle(self, limit_ms=2000):
+        """Returns once the device is at rest, as a host that comes a moment later finds it: device time moves on
+        until 10 ms pass with nothing done (at most limit_ms: a device that polls on its own never comes to rest),
+        then until its clock stands still, nothing due (sim/clock.cpp)."""
+        work = self.status()['work']
+        for _ in range(limit_ms // 10):
+            self.advance(10)
+            work, before = self.status()['work'], work
+            if work == before:
+                break
         self.control('settle', timeout=bounds.WAIT_S)
 
     def jump(self, ms):
@@ -561,53 +571,9 @@ class Simulator:
 
 
 def main(argv=None):
-    import argparse
-    parser = argparse.ArgumentParser(description='Run the XY Forever device simulator in the foreground.')
-    parser.add_argument('--port', type=int, default=DEFAULT_PORT, help='USB endpoint port (control: port + 1)')
-    parser.add_argument('--state', type=Path, default=STATE,
-                        help='folder for yaffs2/ (seeded when missing), bootpart.bin and builds (default %(default)s)')
-    parser.add_argument('--plain', action='store_true', help='power on without PLAY (boots the default: no USB)')
-    parser.add_argument('--version', help='hello version= (default: this checkout\'s release version)')
-    parser.add_argument('--pre-v1', action='store_true', help='serve the pre-v1 hello text (builds 153 and earlier)')
-    parser.add_argument('--crash-trigger', action='store_true',
-                        help='the crash trigger test build (#102): diag.crash halts B (no fault, no screen)')
-    parser.add_argument('--ask', action='store_true',
-                        help='#65: Ask before USB control as settings.txt says (default: it reads Off)')
-    parser.add_argument('--fresh', choices=('stock', 'missing', 'wrong'),
-                        help='seed a missing yaffs2/ just after Track 5 (sim_fresh.py, #178)')
-    parser.add_argument('--no-otp', action='store_true',
-                        help="processor B's OTP answers nothing (default: the private keys, when present)")
-    args = parser.parse_args(argv)
-    why = available()
-    if why:
-        print('simulator unavailable: %s' % why, file=sys.stderr)
-        return 2
-    state = paths.private_output(args.state)
-    root = state / 'yaffs2'
-    if not root.exists():
-        seed_fresh(root, args.fresh) if args.fresh else seed(root)
-    hello = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e' if args.pre_v1 else None
-    print('building the simulator...', file=sys.stderr, flush=True)
-    out = build(state / 'builds', version=args.version, hello=hello,
-                mode='xyf-crash-trigger' if args.crash_trigger else 'xyf-product')
-    otp = None if args.no_otp else otp_fields()
-    print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
-    sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp,
-                    ask=args.ask, deadline_s=None)
-    print('simulator: USB endpoint 127.0.0.1:%d (python3 xyf_host.py --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
-          ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root), file=sys.stderr, flush=True)
-    # Its own process group (the board and both processors), ended with this process however it ends:
-    # Ctrl-C, SIGTERM or SIGHUP, or (tie_to_parent) the process that started this one gone (#133).
-    process = procgroup.popen(sim.argv(), stdin=subprocess.PIPE if otp else None)
-    try:
-        if otp:
-            process.stdin.write(otp)
-            process.stdin.close()
-        return process.wait()
-    except KeyboardInterrupt:
-        return 0
-    finally:
-        procgroup.kill_group(process)
+    """python3 -m xy_forever.sim: the simulator in the foreground (xy_forever/sim_main.py)."""
+    from .sim_main import main as run
+    return run(argv)
 
 
 if __name__ == '__main__':

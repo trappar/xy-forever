@@ -299,20 +299,22 @@ class SyntheticJob(Base, unittest.TestCase):
         extra.mkdir(parents=True, exist_ok=True)
         for i in range(60):                                                 # dozens of loop passes (~0.3 s each)
             (extra / ('%03d' % i)).write_bytes(b'x')
-        begun = t = time.monotonic()
+        clock = lambda: self.sim.status()['clock_ms']    # noqa: E731 (device time)
+        begun = t = clock()
         self.assertEqual(MS.job_cancel(self.dev, job)[0], 0)
-        slowest = time.monotonic() - t
+        slowest = clock() - t
         busy = 0
         while True:
-            t = time.monotonic()
+            t = clock()
             self.assertEqual(self.dev.call(P.STATUS)[0], 0)
             self.assertEqual(self.dev.hello()[0], 0)
             code = self.dev.call(*FILE_COMMAND)[0]
-            slowest = max(slowest, time.monotonic() - t)
+            slowest = max(slowest, clock() - t)
             if code != ids.S_BUSY:
                 break
             busy += 1
-        total = time.monotonic() - begun                                    # (the machine's load sets the scale)
+            self.sim.advance(20)                                            # the host's pause between polls
+        total = clock() - begun
         self.assertGreater(busy, 3)                                         # B answered while it cleaned up
         self.assertLess(slowest, total / 4, (slowest, total, busy))
         self.sim.set('a_slow_ms', 0)

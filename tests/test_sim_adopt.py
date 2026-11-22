@@ -61,10 +61,13 @@ class Adopt(unittest.TestCase):
         shutil.rmtree(self.dir, ignore_errors=True)
 
     # -- helpers ---------------------------------------------------------------------------------
-    def start(self, stock='stock', play=True):
+    def start(self, stock='stock', play=True, slow_ms=0):
+        """slow_ms: A slowed from the first step on (the start's own job left to run while the test watches)."""
         sim.seed_fresh(self.root, stock, self.image)
         self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', build_dir=self.build_dir, play=play,
-                                 log=self.dir / 'log.txt').start()
+                                 log=self.dir / 'log.txt').start(settle=not slow_ms)
+        if slow_ms:
+            self.sim.set('a_slow_ms', slow_ms)
         if play:
             self.connect()
 
@@ -119,15 +122,15 @@ class Adopt(unittest.TestCase):
 
     def quiet(self, still=1.5):
         """Storage at rest: A's write window closed and no mutating storage operation for `still` seconds (the
-        converge sequence after an adoption writes its fingerprint; a cut fingerprint is not written again)."""
+        converge sequence after an adoption writes its fingerprint; a cut fingerprint is not written again), in
+        device time."""
         ops = None
-        deadline = time.monotonic() + 120
-        while time.monotonic() < deadline:
+        for _ in range(int(120 / still)):
             s = self.sim.status()
             if s['rw_open'] == 0 and s['storage_ops'] == ops:
                 return
             ops = s['storage_ops'] if s['rw_open'] == 0 else None
-            time.sleep(still)
+            self.sim.advance(int(still * 1000))
         self.fail('storage never came to rest')
 
     def job(self):
@@ -168,8 +171,7 @@ class Adopt(unittest.TestCase):
         self.assertEqual(self.snapshot(), before)
 
     def test_play_start_adopts_and_stays_in_the_menu(self):
-        self.start()
-        self.sim.set('a_slow_ms', 2)                                         # long enough to watch it run
+        self.start(slow_ms=2)                                                # long enough to watch it run
         seen = set()
         while True:
             code, f = self.job()
