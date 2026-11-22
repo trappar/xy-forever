@@ -61,7 +61,7 @@ struct Shared {
     // the device (USB data or a connection, a control command other than status, inject, injected, settle, advance).
     // wake: pipes that wake processor A, B, the board, and A's and B's link threads.
     std::atomic<int32_t> usb_held;
-    std::atomic<uint32_t> outside, file_requests;   // file_requests: A served a file request (not a partition one)
+    std::atomic<uint32_t> outside;
     std::atomic<int32_t> usb_asked;              // B read host bytes and has not written to the host since
     std::atomic<uint64_t> clock_ns;
     std::atomic<uint32_t> steps, work[2], idle_work[2], idle_steps[2];

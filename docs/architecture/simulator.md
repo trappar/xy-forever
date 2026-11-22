@@ -26,8 +26,8 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   repeat) only while both processors are idle (no link message in flight, each main thread in a wait or polling the clock with nothing
   done) and something is due: an `advance`, a board event, B waiting on device time away from its menu loop's
   pause (a delay, a time-out), or work since the last step (with B at rest: only while B owes a host request its
-  answer, or for 1 s past the last power-on, file request to A, USB data or control command, so a device that
-  polls on its own comes to rest). Otherwise it stands still and every process blocks with no CPU: an idle device's own timers
+  answer, or for 1 s past the last power-on, USB data or control command, so a device that polls on its own comes
+  to rest). Otherwise it stands still and every process blocks with no CPU: an idle device's own timers
   (keepalives, a deferred save, an idle window's close, a frame's idle reset) wait for an `advance`, which is how
   a host's pause reaches the device (host tools pause with `transport.sim_pause`, tests with `Simulator.advance`,
   `until`, `settle`: until nothing is done). A relayed message and a busy processor's clock reads add their
