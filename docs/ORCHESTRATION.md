@@ -6,9 +6,10 @@ current. It delegates implementation when it can, or does the work itself. Read 
 ## One item
 
 1. `mise run plan` (`-- --agent NAME` if another agent works here: [two agents](operating/two-agents.md)); read
-   local `docs/status/README.md`. Setup unfinished: [ONBOARDING.md](../ONBOARDING.md) first.
-2. `uv run xyf_host.py --timeout 5 status`: ready `kind:device` items go first when the device is connected.
-   If the developer says it is absent, skip the check and device items.
+   your status notes (`<private>/xy-forever/status/README.md`). Setup unfinished: [ONBOARDING.md](../ONBOARDING.md) first.
+2. `uv run xyf_host.py --timeout 5 status`: ready `device` items go first when the device is connected.
+   If the developer says it is absent, or there was no [first device install](operating/first-install.md) yet,
+   skip the check and device items.
 3. Take the first item under "Yours" (interrupted work), else "Next" (milestone order, then issue number).
 4. **Claim** it: read `gh issue view <N>`; `gh issue edit <N> --add-assignee @me` (with `--agent`, also
    `--add-label agent:NAME`). **Branch** from up-to-date `main`: `git switch -c <N>-<slug>`.
@@ -30,8 +31,9 @@ the report wanted; it never touches the device.
 ## Changing the plan
 
 Each issue stands alone and follows `.github/ISSUE_TEMPLATE/`: Summary, testable Acceptance criteria, linked
-Notes; a milestone like "M4. Packages"; `kind:build|research|device|review` (+ `device:safe|risky`).
-Dependencies use "blocked by" links:
+Notes; the milestone it plainly belongs to (none is fine for a loose end). Labels, only when they apply:
+`device` (needs the OP-XY), `device:risky` ([device items](operating/device-items.md)), `blocked` (reason in the
+last comment), `thread` (a loose end, not yet an item), `decision`. Dependencies use "blocked by" links:
 `gh api -X POST repos/{owner}/{repo}/issues/<N>/dependencies/blocked_by -F issue_id=<needed issue id>`.
 Findings made while working an item are fixed in its branch and listed in its PR body; a new issue only when
 the fix would take over the PR. `thread` is for findings with no related open work. PR titles are plain.
@@ -43,14 +45,14 @@ Prefer work that reaches a device test soonest: byte matches and simulation cann
 | Thing | Place |
 |---|---|
 | What to do next, loose ends, questions for the developer | GitHub issues: items, `thread`, `decision` (`mise run plan`) |
-| Device state, installed build, open device problems, session notes | your local `docs/status/README.md` (gitignored; detail in leaf files beside it) |
+| Device state, installed build, open device problems, session notes, approvals | your status notes: `<private>/xy-forever/status/README.md` (outside the repository; detail in leaf files beside it) |
 | Research findings, decisions, rejected options, evidence and follow-ups | the relevant GitHub issue |
 | Current facts developers need (addresses, formats, design, safety) | the reference doc or code comment that owns them |
 | Logs, dumps, probe output, screenshots, scratch scripts | `../private/xy-forever/sessions/<date>-<topic>/`, never the repository |
 
-No research reports, numbered decision records, ADRs or archive indexes in the source tree, and no other new
-files in `docs/`. `tests/test_docs_budget.py` budgets docs in bytes and checks their links: a doc past its
-budget is split into a tree (an index plus leaves under 8 KB each), never squeezed.
+A new doc is fine when it holds current reference facts; findings and history stay in the issue.
+`tests/test_docs_budget.py` budgets docs in bytes and checks their links: a doc past its budget is split into a
+tree (an index plus leaves under 8 KB each), never squeezed.
 
 ## The device
 
@@ -62,13 +64,13 @@ Aim: one power-on per sitting, and none for offline work.
 - **No guard:** there is no watchdog; a hang needs a manual power cycle. Never send REBOOT after a suspected
   lone A restart. Stop on a suspected hang and request one ([SAFETY.md](SAFETY.md)). Sessions end in
   keepalive, never in the OS.
-- **Running device items** (NEED lines, evidence, batching, `safe` and `risky`, two strikes):
+- **Running device items** (NEED lines, evidence, batching, `device:risky`, two strikes):
   [operating/device-items.md](operating/device-items.md).
 
 ## Approvals
 
 Approvals belong to one developer and their device. Needs their explicit yes: relaxing a builder audit (call
 allowlist, CRC spans, symbol rules), a new kind of storage write, companion chips, 1.2.5, anything SAFETY.md
-lists; every allowlist or span change gets a **review** item first. Standing approvals (ONBOARDING step 6, in
-the local `docs/status/README.md`; specific ones in its `approvals/`) cover routine work only, such as a USB
+lists; the PR names the exact allowlist or span change. Standing approvals ([first install](operating/first-install.md),
+step 2, in your status notes, with one line for each specific yes) cover routine work only, such as a USB
 install of a verified build with one understood change, said first.

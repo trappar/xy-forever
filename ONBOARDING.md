@@ -1,149 +1,60 @@
 # Onboarding
 
-From an empty workspace folder to working on the plan, for the developer's coding agent: follow
-the steps in order with the developer. Run every command yourself; ask the developer only for what needs their
-hands (the OP-XY, a file copy over MTP) or their decision, one question at a time, each with your
-recommendation. Stop at the first step that fails, fix what is yours to fix, say plainly what is
-missing, and resume there. Record device setup and test results in the local status folder.
-Budget: 10 KB (10000 bytes).
+From an empty workspace folder to working on the plan, for the developer's coding agent. Run every command
+yourself; ask the developer only for what needs their hands or their decision, one question at a time, with
+your recommendation. Stop at the first step that fails, fix what is yours to fix, say plainly what is missing,
+and resume there.
 
-## 0. What the developer needs
+Two parts: **setup without a device** (below; enough for host code, the web app, docs and tests) and the
+**[first device install](docs/operating/first-install.md)**, only when there is an OP-XY on stock 1.2.1 to work with.
 
-- A host computer: macOS on Apple silicon (the tested host; toolchain pins also exist for Windows
-  and Linux x86_64, USB tools untested there) with git and clang++ (macOS: `xcode-select --install`) and
-  [mise](https://mise.jdx.dev/installing-mise.html): it installs the pinned Python, uv, Node, pnpm and `gh`
-  (`mise.toml`); `gh auth login` once (step 9 claims issues).
-- An OP-XY still on stock 1.2.1, never updated to 1.2.5: a 1.2.5 device cannot run XY Forever,
-  and teenage engineering's built-in updater cannot downgrade it. To tell: the version the OS shows
-  is 1.2.1, te-boot (hold COM while switching on) shows "3. dev menu" (1.2.5 has none; on 1.2.1,
-  Open-XY's browser builder can enable it: open-xy `docs/builder.md`), and step 4 confirms it.
-- A USB cable, libusb (macOS: `brew install libusb`) and an MTP client: OpenMTP on macOS (quit Field Kit
-  first), File Explorer on Windows, the file manager on Linux.
+## Setup without a device
 
-## 1. Bootstrap the workspace
-
-Start in the workspace folder (where the coding agent was opened); it ends up as:
-```text
-<workspace>/
-  AGENTS.md, CLAUDE.md  the workspace guide (bootstrap writes them if absent; never overwritten)
-  xy-forever/      this checkout
-  tools/blackfin/  open-xy's toolchain-1 release, unpacked by bootstrap (or anywhere with XYF_TOOLCHAIN)
-  private/         firmware, builds, device reports, evidence, dev-menu kits: never in git
-```
-```sh
-git clone https://github.com/trappar/xy-forever.git   # if xy-forever/ is absent
-cd xy-forever
-mise trust && mise install            # the pinned tools (mise.toml, mise.lock)
-mise run setup                        # bootstrap: only what is missing; never deletes; --dry-run: print, change nothing
-gh auth status || gh auth login       # the developer logs in, once
-```
-
-Rerun it even if the developer already did (README). Each step acts only when its result is missing:
-
-- **Private folder:** `private/`'s layout (`xy_forever/paths.py`) and `private/incoming/` (step 4).
-  Elsewhere: `XYF_PRIVATE`, or `setup.py init --private DIR` first (recorded in `xyf.local.json`).
-- **Workspace guide** (`AGENTS.md`, `CLAUDE.md`), **toolchain** (step 2), **local files** (step 3),
-  **`uv sync`**, **`pnpm install`** (skipped without mise), with the stock pair `fixtures` (step 5).
-- It asks for nothing and ends with `doctor` and a "Next:" list (steps 4, 5). It stops with a message
-  (a rerun carries on) when the download fails or `tools/blackfin` fails its pins (move it aside).
-
-## 2. Toolchain
-
-Open-XY publishes the pinned toolchain (`toolchain-1`) for macOS arm64 and Windows x86_64. Unless
-`doctor`'s toolchain row is ok, bootstrap downloads this host's release zip, checks its SHA-256
-(`stock.json`), unpacks it into `tools/blackfin` and checks every file against `toolchains.json`.
-Linux x86_64: it points at open-xy `docs/build.md`, "On Linux" (Docker); put the result there yourself.
-
-- No download (proxy, certificates): get the zip from the `toolchain-1` release page in a browser and
-  run `mise run setup --toolchain-archive <zip>`. Never edit the pins.
-- Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/`
-  ([docs/hardware/tools.md](docs/hardware/tools.md)).
-
-## 3. Local files and leak patterns
-
-Bootstrap copies `docs/STATUS.template.md` to `docs/status/README.md`, the index of a gitignored folder
-for device and session state, and gives `xyf.local.json` an empty `"leak_patterns"` list. Ask the developer for their name,
-email addresses and host name; add them there as regexes, which the leak test refuses in tracked files
-without them entering the repository. Case-sensitive: `(?i)` first matches any case (`"(?i)jane ?doe"`).
-
-## 4. Stock files from the developer's OP-XY
-
-XY Forever builds on the stock 1.2.1 `os.ldr` and `bootloader.ldr`. They are not distributed;
-they come off the developer's own device. Give these steps one at a time:
-
-1. Switch the OP-XY off. Hold **COM** while switching it on: te-boot shows "3. dev menu".
-2. Press **Track 3** ("3. dev menu"), then **Track 2** ("2. mtp file transfer (mac)"; Track 3 is
-   the Windows and Linux mode). Wait for "mtp mode active".
-3. Run `python3 scripts/setup.py import-stock --from-device` yourself. It only reads: the pair from
-   `/upgrade/firmware/blackfin/bin/` and `/content/op1_factory.json` (teenage engineering's catalog;
-   `fixtures` downloads it only if missing or modified) into `private/incoming/`, then checks the pins (`stock.json`).
-4. Press **Track 2** ("2. exit"), then switch the OP-XY off.
-
-If step 3 fails, its one line says why. Fallback: the developer copies those files with an MTP client
-(OpenMTP) into `private/incoming/`; then run `python3 scripts/setup.py import-stock ../private/incoming`.
-
-- **1.2.5 files: stop.** This device is on 1.2.5 and cannot run XY Forever: the 1.2.5 bootloader
-  has no dev menu, and the built-in updater cannot downgrade it (SAFETY.md, "Never").
-- Official `.tfw` packages and update keys are never distributed or made from the stock pair: their tests skip (`doctor`).
-
-## 5. Fixtures, doctor, tests
+A macOS host on Apple silicon with Homebrew (the tested one; toolchain pins also exist for Windows and Linux
+x86_64, USB tools untested there: install mise as https://mise.jdx.dev/installing-mise.html shows). Start in the
+workspace folder, where the coding agent was opened:
 
 ```sh
-python3 scripts/setup.py fixtures     # network: public open-xy and its kit; builds and verifies one product build
-mise run doctor                       # required build inputs present; reports optional fixtures separately
-mise run test-all                     # every tier; the first run compiles host bridges (slower)
+xcode-select --install                 # git and clang++ (host tests)
+brew install mise libusb               # mise (then `mise activate` in your shell profile); libusb for USB tools
+git clone https://github.com/trappar/xy-forever.git && cd xy-forever && mise trust && mise install
+mise run setup                         # private folder, toolchain, Python and JS dependencies (rerun: safe)
+gh auth login                          # once: issues and pull requests
 ```
 
-Done when `doctor` exits 0 and the suite passes. It lists expected skips, including mod-kit checks if
-Open-XY's published kit has moved on from the fixture pinned in `stock.json`.
+Skip what is already there (`gh auth status`, `xcode-select -p`, `mise --version`). `mise install` gets the
+pinned Python, uv, Node, pnpm and gh (`mise.toml`); in a shell without `mise activate`, prefix commands with
+`mise exec --`. `mise run setup` (`--dry-run`: print, change nothing)
+acts only on what is missing and never deletes:
 
-## 6. The developer's own approvals
+- **Private folder:** `../private/` (layout: `xy_forever/paths.py`): builds, sessions and your status notes
+  (`xy-forever/status/README.md`, from `docs/STATUS.template.md`). Elsewhere: `XYF_PRIVATE`, or
+  `uv run scripts/setup.py init --private DIR` first (recorded in `xyf.local.json`).
+- **Workspace guide** (`AGENTS.md`, `CLAUDE.md` beside the clone; never overwritten).
+- **Toolchain:** Open-XY's `toolchain-1` release for this host, checked against `stock.json` and every file
+  against `toolchains.json`, into `../tools/blackfin`. No download (proxy, certificates): get the zip from the
+  release page in a browser, then `mise run setup --toolchain-archive <zip>`. Linux: build it with Docker
+  (open-xy `docs/build.md`, "On Linux"). Never edit the pins.
+- **Dependencies:** `uv sync`, `pnpm install`.
+- It ends with `doctor` and a "Next:" list.
 
-Read [docs/SAFETY.md](docs/SAFETY.md) first: it binds all device work. Device work needs the developer's
-explicit yes (SAFETY.md, ORCHESTRATION.md "Approvals"); two kinds can be given once, as standing approvals for
-their own device. Ask each separately, with your recommendation; record the answer and its scope in the local
-`docs/status/README.md` ("Standing approvals"), never in git: approvals belong to one developer and one device.
-
-1. **Host access:** agents may operate this OP-XY through XY Forever's own USB service
-   (`xyf_host.py` and the scripts built on it), under SAFETY.md. Recommend yes: every device item
-   needs it. Without it, device items wait for a yes each time.
-2. **Routine USB installs:** a build that passed `--verify` and the full suite, carrying one understood change,
-   is installed without a separate yes; what is being installed is still said first. New or risky behaviour
-   (storage writes, new every-boot paths, new reset behaviour) is asked each time. Recommend yes.
-
-Never standing: anything SAFETY.md lists under "Never", companion chips, 1.2.5, relaxing a
-builder audit, a new kind of storage write. Each is asked for that exact operation.
-
-## 7. First install and recovery kit
-
-First the dev-menu kit that undoes the install (SAFETY.md, recovery ladder step 2):
+Then:
 
 ```sh
-mkdir -p ../private/xy-forever/recovery/stock-1.2.1
-cp ../private/firmware/stock-1.2.1/os.ldr ../private/xy-forever/recovery/stock-1.2.1/os.ldr
+mise run doctor                        # exit 0: setup is done; the stock pair rows wait for the first device install
+mise run test                          # the fast tier; tests that need the stock pair or fixtures skip, with the reason
 ```
 
-The first install goes through the dev menu (no XY Forever service yet). Install the `candidate.ldr`
-of the build `fixtures` verified (`doctor`, "verified build"), as in [docs/operating/at-the-device.md](docs/operating/at-the-device.md#dev-menu):
-COM at power-on, Track 3, Track 2 (MTP), copy it to the device as `/os.ldr` (not 0 bytes), Track 2
-(exit), Track 5 ("write os to boot partition"), wait for "firmware written ok!", power cycle.
+**Leak patterns:** ask the developer for their name, email addresses and host name, and add them as regexes to
+`"leak_patterns"` in `xyf.local.json` (setup creates the empty list). The leak test refuses them in tracked
+files without them entering the repository. Case-sensitive: `(?i)` first matches any case (`"(?i)jane ?doe"`).
 
-At first start XY Forever checks the device's stock copy in `/upgrade`, adds OS 1.2.1 to the library, and
-makes it the default. Let the "Adding OS 1.2.1" progress finish. To open the menu on the next power-on,
-start `python3 xyf_host.py --timeout 120 status`, then hold PLAY at power-on and release it at the logo.
-See the [guide](docs/GUIDE.md) for first-start errors. Use the stock kit through the dev menu for recovery.
+Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor) are for research items only, under
+`../tools/` ([docs/hardware/tools.md](docs/hardware/tools.md)).
 
-## 8. Device pass and known-good kit
+## Continue development
 
-Run `python3 scripts/device_pass.py --wait 120` (`--plan` first shows every step), relaying its `NEED:`
-line ([docs/operating/device-pass.md](docs/operating/device-pass.md#device-pass-scriptsdevice_passpy)). When it passes, copy the
-build's `candidate.ldr` to `../private/xy-forever/recovery/known-good-<image>/os.ldr` and fill in `docs/status/README.md`: device
-state, installed build, known-good build and kit. End the session in keepalive, never in the OS.
-No device at hand: say so; device items wait and the orchestrator skips them.
-
-## 9. Continue development
-
-Open your coding agent in the workspace folder (or `xy-forever/`) and say "Continue development".
-Ask it to read `AGENTS.md` first if the harness does not load it; `CLAUDE.md` imports it for Claude Code.
-Follow [ORCHESTRATION.md](docs/ORCHESTRATION.md), with or without delegation: claim an issue, then
-one branch and PR per item. Without a GitHub remote (`git remote` prints nothing), use local `main`.
+Open your coding agent in the workspace folder (or `xy-forever/`) and say "Continue development". Ask it to
+read `AGENTS.md` first if the harness does not load it; `CLAUDE.md` imports it for Claude Code. It follows
+[ORCHESTRATION.md](docs/ORCHESTRATION.md): claim an issue, then one branch and PR per item. Device items wait
+until the [first device install](docs/operating/first-install.md) is done.

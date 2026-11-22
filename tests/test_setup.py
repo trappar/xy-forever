@@ -325,7 +325,7 @@ class Bootstrap(unittest.TestCase):
         for name in S.LAYOUT:
             self.assertTrue((self.ws / 'private' / getattr(paths, name).relative_to(paths.PRIVATE_ROOT)).is_dir())
         self.assertTrue((self.ws / 'private/incoming').is_dir())
-        self.assertEqual((self.repo / 'docs/status/README.md').read_text(), '# status\n')
+        self.assertEqual((self.ws / 'private/xy-forever/status/README.md').read_text(), '# status\n')
         self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})   # ../private: nothing recorded
         tools = self.ws / 'tools/blackfin'
         self.assertFalse(tools.is_symlink())
@@ -347,12 +347,28 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual((b.actions, self.calls, self.tree()), ([], [], before))
         self.assertIn('nothing to do: the workspace is already set up; nothing changed', out)
 
-    def test_an_older_single_status_file_becomes_the_folder_index(self):
-        (self.repo / 'docs/STATUS.md').write_text('# mine\n')
+    def test_status_notes_in_the_checkout_move_to_the_private_folder_once(self):
+        (self.repo / 'docs/status/approvals').mkdir(parents=True)
+        (self.repo / 'docs/status/README.md').write_text('# mine\n')
+        (self.repo / 'docs/status/approvals/a.md').write_text('yes\n')
         b, out = self.bootstrap()
-        self.assertEqual((self.repo / 'docs/status/README.md').read_text(), '# mine\n')
-        self.assertFalse((self.repo / 'docs/STATUS.md').exists())
-        self.assertIn('move docs/STATUS.md to docs/status/README.md', out)
+        status = self.ws / 'private/xy-forever/status'
+        self.assertEqual(((status / 'README.md').read_text(), (status / 'approvals/a.md').read_text()), ('# mine\n', 'yes\n'))
+        self.assertFalse((self.repo / 'docs/status').exists())
+        self.assertIn('move %s to %s' % (self.repo / 'docs/status', status), out)
+        b, out = self.bootstrap()
+        self.assertNotIn('move', ' '.join(b.actions))
+        self.assertEqual((status / 'README.md').read_text(), '# mine\n')
+
+    def test_status_notes_already_moved_leave_a_second_copy_alone(self):
+        (self.ws / 'private/xy-forever/status').mkdir(parents=True)
+        (self.ws / 'private/xy-forever/status/README.md').write_text('# moved\n')
+        (self.repo / 'docs/status').mkdir()
+        (self.repo / 'docs/status/README.md').write_text('# old\n')
+        b, out = self.bootstrap()
+        self.assertEqual((self.ws / 'private/xy-forever/status/README.md').read_text(), '# moved\n')
+        self.assertEqual((self.repo / 'docs/status/README.md').read_text(), '# old\n')
+        self.assertIn('merge it by hand', out)
 
     @unittest.skipIf(sys.platform == 'win32', 'no unix permission bits')
     def test_executable_bits_come_back_from_the_zip(self):
@@ -366,7 +382,7 @@ class Bootstrap(unittest.TestCase):
         before = self.tree()
         b, out = self.bootstrap(dry_run=True)
         self.assertEqual((self.calls, self.tree()), ([], before))
-        for what in ('create 12 folders', 'copy docs/STATUS.template.md to docs/status/README.md', '"leak_patterns"',
+        for what in ('create 12 folders', 'copy docs/STATUS.template.md to %s' % (self.ws / 'private/xy-forever/status/README.md'), '"leak_patterns"',
                      'write %s' % (self.ws / 'AGENTS.md'), 'write %s' % (self.ws / 'CLAUDE.md'),
                      'download %s, check its SHA-256' % self.record['url'], 'mise install', 'uv sync --locked',
                      'pnpm install --frozen-lockfile'):
@@ -378,7 +394,7 @@ class Bootstrap(unittest.TestCase):
         with self.assertRaisesRegex(S.SetupError, 'toolchain archive hash mismatch: .* the pin \\(stock.json\\) is %s'
                                     % self.record['sha256']):
             self.bootstrap()
-        self.assertTrue((self.repo / 'docs/status/README.md').exists())   # what came before stays done
+        self.assertTrue((self.ws / 'private/xy-forever/status/README.md').exists())   # what came before stays done
         self.assertEqual(list((self.ws / 'tools').iterdir()), [])
 
     def test_a_given_archive_is_used_without_a_download(self):
@@ -489,6 +505,9 @@ class DevToolRows(unittest.TestCase):
         with mock.patch.object(S, 'doctor', return_value=(fine + [('verified build', False, 'none')], [])), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(S.cmd_doctor(None), 0)              # a missing build or fixture only skips tests
+        no_stock = [(l, not l.startswith('stock'), d) for l, _, d in fine]
+        with mock.patch.object(S, 'doctor', return_value=(no_stock, [])), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(S.cmd_doctor(None), 0)              # no OP-XY yet: setup without a device is done
 
     def test_tools_missing(self):
         with mock.patch.object(dev_tools, 'mise', lambda: None):

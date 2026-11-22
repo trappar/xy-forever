@@ -4,8 +4,8 @@ Part of [XY Forever goals](../GOALS.md).
 
 ## Roadmap
 
-The roadmap is the repository's GitHub issues, in milestones (`python3 scripts/plan.py`); your device's
-state is in your local `docs/status/`; current safety lessons are in [SAFETY.md](../SAFETY.md).
+The roadmap is the repository's GitHub issues, in milestones (`mise run plan`); your device's
+state is in your status notes (`<private>/xy-forever/status/`); current safety lessons are in [SAFETY.md](../SAFETY.md).
 
 ### Shape (decided with the developer; the orchestrator may not change it)
 

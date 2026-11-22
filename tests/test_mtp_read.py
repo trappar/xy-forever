@@ -144,7 +144,7 @@ class Fetch(unittest.TestCase):
         tree = dict(STOCK_TREE)
         del tree['/upgrade/firmware/blackfin/bin/bootloader.ldr']
         with self.assertRaisesRegex(S.SetupError, r'^/upgrade/firmware/blackfin/bin/bootloader\.ldr: not on the '
-                                    r'OP-XY .*copy the files by hand instead \(ONBOARDING\.md step 4\)$'):
+                                    r'OP-XY .*copy the files by hand instead \(docs/operating/first-install\.md\)$'):
             self.from_device(tree)
         self.assertFalse(self.dest.exists())
 
@@ -167,7 +167,7 @@ class Fetch(unittest.TestCase):
         def refuse(*_):
             raise M.MtpError('no OP-XY (VID 0x2367) on USB')
         with mock.patch.object(S.mtp_read, 'open_op_xy', refuse), \
-                self.assertRaisesRegex(S.SetupError, r'^no OP-XY .*\(ONBOARDING\.md step 4\)$'):
+                self.assertRaisesRegex(S.SetupError, r'^no OP-XY .*\(docs/operating/first-install\.md\)$'):
             S.import_from_device(self.incoming, self.dest, PINS)
         err = io.StringIO()
         with mock.patch.object(S.mtp_read, 'open_op_xy', refuse), contextlib.redirect_stderr(err):

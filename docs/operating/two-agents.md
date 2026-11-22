@@ -2,14 +2,14 @@
 
 Two agents from different tools may work this repository on one machine at the same time. They cannot message
 each other, so they coordinate on GitHub: the assignee and an `agent:<name>` label on the item's issue, where
-`<name>` is the tool's name (`claude`, `codex`). An agent working alone, or a person, needs no label, and
+`<name>` is a short name for the tool. An agent working alone, or a person, needs no label, and
 `plan.py` without `--agent` reads a labelled item as taken.
 
 ## Worktrees
 
 Each agent works in its own `git worktree` of the main checkout, one per item:
 `git worktree add ../xy-forever-<N> -b <N>-<slug> origin/main`. Two agents never share a working tree.
-A worktree finds the same private folder, toolchain, `xyf.local.json` and local `docs/status/` as the main
+A worktree finds the same private folder (status notes included), toolchain and `xyf.local.json` as the main
 checkout (`main_checkout` in `xy_forever/paths.py`; `XYF_PRIVATE` and `XYF_TOOLCHAIN` still win). Its
 `.venv` and `node_modules` are its own: `uv sync` and `pnpm install` there (or `mise run setup`) before checks. Never `git stash`: the stash is shared.
 

@@ -8,17 +8,17 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 
 ```sh
 cd xy-forever        # toolchain: ../tools/blackfin (or set XYF_TOOLCHAIN)
-python3 scripts/setup.py doctor   # stock pair + fixtures in place? (first: bootstrap, import-stock DIR)
-python3 scripts/check.py             # build, --verify, fast and gate tiers: the build lands in builds/<image>
-python3 scripts/check.py --confirm   # this commit's check receipt, with its image
-python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/repeat   # by hand: same candidate SHA
-python3 xyf_build.py --verify --out ../private/xy-forever/builds/repeat        # {"passed": true}
-python3 scripts/device_pass.py --plan --install ../private/xy-forever/builds/IMAGE  # inspect the qualification plan
+mise run doctor                  # stock pair + fixtures in place? (first: operating/first-install.md)
+mise run check                   # build, --verify, fast and gate tiers: the build lands in builds/<image>
+mise run check --confirm         # this commit's check receipt, with its image
+uv run xyf_build.py --xyf-product --out ../private/xy-forever/builds/repeat   # by hand: same candidate SHA
+uv run xyf_build.py --verify --out ../private/xy-forever/builds/repeat        # {"passed": true}
+uv run scripts/device_pass.py --plan --install ../private/xy-forever/builds/IMAGE  # inspect the qualification plan
 ```
 
 `--xyf-product` is the product (boot model v3) and the only installable mode (the
 v2 two-session flow was removed); a device test build (`--xyf-crash-trigger`) installs only for its own test.
-Local `docs/status/` names the installed and known-good builds. Builds are deterministic, but `--verify` from a later checkout
+Your status notes name the installed and known-good builds. Builds are deterministic, but `--verify` from a later checkout
 fails with "Source changed since build": re-verify an old build from its own commit.
 Only the install's verify reply proves an install; a later successful boot does not.
 
@@ -32,7 +32,7 @@ its commit and tree. Delete the repeat build once its SHA matches. Prepare a dev
 itself on the device.
 
 A change that should not alter the firmware (refactor, comments, dead code): run
-`python3 scripts/neutral.py [REF]` instead. It builds every mode from `REF`
+`mise run neutral [REF]` instead. It builds every mode from `REF`
 (default `HEAD`) and from the working tree and compares the candidates. Its
 builds go to `../private/xy-forever/sessions/neutral/`.
 

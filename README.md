@@ -24,12 +24,11 @@ mise trust && mise install
 mise run test tests/test_setup.py tests/test_protocol_spec.py
 ```
 
-Full setup, about six steps: `xcode-select --install`, install mise, `brew install libusb`, clone and
-`mise trust && mise install`, `mise run setup`, `gh auth login`. `mise tasks` lists the commands.
-
-For full development setup, follow [ONBOARDING.md](ONBOARDING.md). It covers the
-Blackfin toolchain, simulator, and stock files from your own OP-XY. Device builds
-support OP-XYs on stock 1.2.1. The built-in updater cannot downgrade a 1.2.5 device.
+Full development setup needs no OP-XY, about six commands: `xcode-select --install`,
+`brew install mise libusb`, clone and `mise trust && mise install`, `mise run setup`, `gh auth login`
+([ONBOARDING.md](ONBOARDING.md)). `mise tasks` lists the commands. Firmware builds and device work
+need the stock files from your own OP-XY on stock 1.2.1
+([first device install](docs/operating/first-install.md)); the built-in updater cannot downgrade a 1.2.5 device.
 The GitHub issues and milestones track work toward the first firmware release.
 
 ## Contributing with a coding agent
@@ -37,9 +36,9 @@ The GitHub issues and milestones track work toward the first firmware release.
 Make an empty workspace folder, open your coding agent in it and paste this prompt:
 
 > Set me up to develop XY Forever in this folder. Clone https://github.com/trappar/xy-forever.git,
-> read xy-forever/AGENTS.md, and follow xy-forever/ONBOARDING.md from the first step. Run each command and ask
-> me only for what needs my hands (the OP-XY) or my decision. When setup is done, tell me how to
-> start the next session.
+> read xy-forever/AGENTS.md, and follow xy-forever/ONBOARDING.md. Run each command and ask
+> me only for what needs my hands or my decision. When setup is done, tell me how to
+> start the next session, and whether to do the first device install now.
 
 Later sessions: open your agent in the workspace folder (or `xy-forever/`) and say "Continue
 development". `AGENTS.md` is the entry point; if your harness does not load it automatically,
@@ -78,16 +77,16 @@ docs/             SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORAGE, GOALS,
   checked against `stock.json` and every file against `toolchains.json`.
 - Private inputs outside the repo (`../private/` or `$XYF_PRIVATE`): the stock 1.2.1
   `os.ldr` and `bootloader.ldr`, and the decrypted official packages. They are not
-  distributed. Tests that need them skip when they are absent. `python3 scripts/setup.py`
-  creates the folder and imports the stock pair (`bootstrap`, `import-stock --from-device` or `DIR`, `doctor`).
+  distributed. Tests that need them skip when they are absent. `mise run setup` creates the folder;
+  `uv run scripts/setup.py import-stock --from-device` imports the stock pair.
 
-## Build and verify after onboarding
+## Build and verify after the first device install
 
 ```sh
-python3 -m unittest discover -s tests
-python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/my-build
-python3 xyf_build.py --verify --out ../private/xy-forever/builds/my-build
-python3 scripts/neutral.py        # after a refactor: every build mode's candidate is unchanged
+mise run test                     # the fast tier; test-changed, test-all
+mise run build && mise run verify # the product build and its audits
+mise run check                    # once per PR: build, verify, type checks, fast and gate tiers
+mise run neutral                  # after a refactor: every build mode's candidate is unchanged
 ```
 
 Installing on a device: [docs/operating/build-install.md](docs/operating/build-install.md), under the rules in

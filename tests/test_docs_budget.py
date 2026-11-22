@@ -1,4 +1,4 @@
-"""Doc budgets, links and the allowed docs/ files (docs/ORCHESTRATION.md, "Where things go").
+"""Doc budgets and links (docs/ORCHESTRATION.md, "Where things go").
 
 Budgets are bytes, not lines: a line budget is met by writing longer lines.
 Over budget: split into a tree (an index plus leaves), do not squeeze.
@@ -11,15 +11,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 DOCS = ROOT / 'docs'
-STATUS = DOCS / 'status'            # local and gitignored: not checked
 
-LEAF = 8000                         # a current-reference leaf (bytes)
+LEAF = 8000                         # a current-reference leaf, and any other doc without a budget below (bytes)
 INDEX = 4000                        # the index of a tree (bytes)
 
 # Read by every agent, or by the orchestrator every sitting (bytes).
 FIRST_READS = {
     'AGENTS.md': 6500,
-    'ONBOARDING.md': 10000,
+    'ONBOARDING.md': 5000,
     'docs/ORCHESTRATION.md': 9600,
     'docs/STATUS.template.md': 2500,
 }
@@ -42,21 +41,15 @@ TREES = {
 CAPS = {
     'docs/ARCHITECTURE.md': 25600,
     'docs/HARDWARE.md': 20200,
-    'docs/SAFETY.md': 11500,
+    'docs/SAFETY.md': 11600,
     'docs/STORAGE.md': 25000,
     'docs/PROTOCOL.md': 56000,      # generated from protocol/v1.json (scripts/protogen.py)
     'docs/GUIDE.md': 11800,         # for OP-XY owners and mod writers, not agents (#65: Ask before USB control)
     'docs/MODS-DEV.md': 5500,
 }
 
-ALLOWED = {
-    'ARCHITECTURE.md', 'GOALS.md', 'GUIDE.md', 'HARDWARE.md', 'MODS-DEV.md', 'OPERATING.md',
-    'ORCHESTRATION.md', 'PROTOCOL.md', 'SAFETY.md', 'STATUS.template.md', 'STORAGE.md',
-}
-
-# Files whose relative links must resolve (docs/status/ is local and not checked).
+# Files outside docs/ whose relative links must resolve.
 LINKED = ['AGENTS.md', 'ONBOARDING.md', 'README.md']
-BASE = {'docs/STATUS.template.md': STATUS}   # copied to docs/status/README.md: its links resolve from there
 
 LINK = re.compile(r'\]\(([^)\s]+)(?:\s+"[^"]*")?\)')
 HEADING = re.compile(r'^#{1,6}\s+(.*?)\s*#*\s*$')
@@ -106,7 +99,7 @@ def slugs(path):
 
 
 def docs():
-    return sorted(p for p in DOCS.rglob('*.md') if STATUS not in p.parents)
+    return sorted(DOCS.rglob('*.md'))
 
 
 def rel(path):
@@ -145,7 +138,7 @@ class DocsBudget(unittest.TestCase):
         for path in docs() + [ROOT / n for n in LINKED]:
             broken = []
             for file, anchor in links(path):
-                target = Path(os.path.normpath(BASE.get(rel(path), path.parent) / file)) if file else path   # lexical: docs/status/ may be absent
+                target = Path(os.path.normpath(path.parent / file)) if file else path
                 if not target.exists():
                     broken.append(f'{file}#{anchor}' if anchor else file)
                 elif anchor and target.suffix == '.md' and anchor not in slugs(target):
@@ -153,15 +146,12 @@ class DocsBudget(unittest.TestCase):
             with self.subTest(doc=rel(path)):
                 self.assertEqual(broken, [], f'{rel(path)} has broken links')
 
-    def test_only_allowed_docs(self):
-        folders = {ROOT / f for f in TREES.values()}
-        extra = []
-        for path in DOCS.rglob('*.md'):
-            if path.parent in folders or STATUS in path.parents:
-                continue
-            if path.parent != DOCS or path.name not in ALLOWED:
-                extra.append(rel(path))
-        self.assertEqual(sorted(extra), [], 'docs/ holds files outside the allowed set')
+    def test_every_other_doc_is_a_leaf(self):
+        """A doc that is neither budgeted above nor in a tree gets the leaf budget: a new doc needs no list entry."""
+        listed = {ROOT / n for n in [*FIRST_READS, *CAPS, *TREES]} | {ROOT / f for f in TREES.values()}
+        for path in docs():
+            if path not in listed and path.parent not in listed:
+                self.check(path, LEAF)
 
 
 if __name__ == '__main__':

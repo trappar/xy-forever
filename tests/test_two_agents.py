@@ -68,7 +68,7 @@ class Workspace(unittest.TestCase):
     def test_a_plain_clone_resolves_as_before(self):
         got = self.show(self.repo)
         self.assertEqual(got, dict(main=self.repo, config=self.repo / 'xyf.local.json', private=self.ws / 'private',
-                                   toolchain=self.ws / 'tools/blackfin', status=self.repo / 'docs/status'))
+                                   toolchain=self.ws / 'tools/blackfin', status=self.ws / 'private/xy-forever/status'))
         self.assertEqual(paths.main_checkout(self.repo), self.repo)
         self.assertEqual(paths.main_checkout(self.ws), self.ws)            # no git at all
 
@@ -90,12 +90,14 @@ class Workspace(unittest.TestCase):
         b = SETUP.Bootstrap(repo=self.wt, dry_run=True, environ={})
         self.assertEqual((b.main, b.workspace, b.config), (self.repo, self.ws, self.repo / 'xyf.local.json'))
         with contextlib.redirect_stdout(io.StringIO()):
+            b.private()
             b.local_files()
+        self.assertFalse((self.ws / 'private').exists())
         b.dry_run = False
         with contextlib.redirect_stdout(io.StringIO()):
+            b.private()
             b.local_files()
-        self.assertEqual((self.repo / 'docs/status/README.md').read_text(), '# status\n')
-        self.assertFalse((self.wt / 'docs/status').exists())
+        self.assertEqual((self.ws / 'private/xy-forever/status/README.md').read_text(), '# status\n')
         plain = SETUP.Bootstrap(repo=self.repo, environ={})
         self.assertEqual((plain.main, plain.workspace), (self.repo, self.ws))
 

@@ -5,9 +5,10 @@
     python3 scripts/plan.py --all      also blocked items, items taken by others, and threads
     python3 scripts/plan.py --agent NAME   yours split by the `agent:<name>` label: NAME's, another agent's, unlabelled
 
-Order: milestone (its GitHub number, the roadmap's order), then issue number. An item is an issue with a
-`kind:*` label (its kind; `device:safe` or `device:risky` is shown with it); `blocked` stops it, `thread`
-marks a loose end and `decision` a question I have not decided yet. Needs are GitHub "blocked by" dependencies. The issue number is the item's only name.
+Order: milestone (its GitHub number, the roadmap's order), then issue number. Every open issue is an item but
+a `thread` (a loose end) or a `decision` (a question I have not decided yet); its other labels are shown with it
+(`device`: needs the OP-XY; `device:risky`), and `blocked` stops it. Needs are GitHub "blocked by" dependencies.
+The issue number is the item's only name.
 Uses the `gh` CLI (authenticated); docs/ORCHESTRATION.md says how the queue is worked. An agent takes an item with
 the assignee and an `agent:<name>` label (docs/operating/two-agents.md); an item with such a label is taken.
 """
@@ -17,6 +18,7 @@ import subprocess
 import sys
 
 AGENT = 'agent:'
+NOT_SHOWN = {'blocked', 'thread', 'decision'}
 
 
 def fetch():
@@ -33,7 +35,7 @@ def fields(issue):
     milestone = issue.get('milestone') or {}
     return dict(
         number=issue['number'], title=issue['title'],
-        kinds=[l[5:] for l in labels if l.startswith('kind:')] + [l for l in labels if l.startswith('device:')],
+        kinds=sorted(l.removeprefix('kind:') for l in labels if not l.startswith(AGENT) and l not in NOT_SHOWN),
         labels=set(labels),
         milestone=milestone.get('number', 10 ** 6), mkey=(milestone.get('title') or '-').split('.')[0],
         assignees=[a['login'] for a in issue.get('assignees') or []],
@@ -50,7 +52,7 @@ def queue(issues, me, everything=False, agent=None):
     """The plan's lines. With agent: the items labelled agent:<agent>, those another agent's label holds, and
     the rest. Without: an item with an agent label counts as taken."""
     rows = sorted((fields(i) for i in issues), key=lambda f: (f['milestone'], f['number']))
-    items = [f for f in rows if f['kinds'] and not f['labels'] & {'thread', 'decision'}]
+    items = [f for f in rows if not f['labels'] & {'thread', 'decision'}]
     ours = [f for f in items if agent in f['agents']] if agent else []
     theirs = [f for f in items if f['agents'] and f not in ours] if agent else []
     items = [f for f in items if not f['agents']] if agent else items

@@ -6,7 +6,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 
 ## Taking control of the device (no dev menu needed)
 
-1. Start a listener first: `python3 xyf_host.py --timeout 3600 status` (or a session
+1. Start a listener first: `uv run xyf_host.py --timeout 3600 status` (or a session
    script). Only then ask the developer to **power on holding PLAY and let go when the
    logo appears** (holding it longer is fine).
 2. The PLAY boot opens the boot menu (home) with USB; it answers the tool's HELLO and,
@@ -38,8 +38,8 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
   next boot overwrites them. Inside, B's USB service block names the release version and image
   (as HELLO `version=` and `image=`) that wrote them; builds before #107 wrote `prod-NNN-{a,b}.bin`.
 - **Fetch:** `xyf_host.py read PATH --all --out FILE`, or dev MTP (below).
-- **Decode:** `python3 -m xy_forever.census FILE.bin`.
-- **Dry-run summary:** `python3 scripts/dryshow.py STATUS.json`.
+- **Decode:** `uv run -m xy_forever.census FILE.bin`.
+- **Dry-run summary:** `uv run scripts/dryshow.py STATUS.json`.
 - **Evidence capture:** `scripts/capture_session.py --out DIR --state --report prod`
   prints a plan; add `--capture` to run it (HELLO, STATUS and the chosen reads only;
   HELLO marks a host as present, so not for host-free menu tests).
@@ -65,13 +65,12 @@ an OS reinstall, so crash logs can be fetched from it.
 
 ## Working with the developer at the device
 
-- Give brief, simple hardware instructions. Ask only whether it booted or what
-  the screen shows, and read the reports yourself. Don't ask them to read files back
-  by hand, and never ask them to repeat a crash.
+- Give brief, simple hardware instructions: at most three simple steps per request, and ask first
+  whether they have time. Ask only whether it booted or what the screen shows, and read the reports
+  yourself. Don't ask them to read files back by hand, and never ask them to repeat a crash.
 - After stopping keepalive, wait 2 s before the next host operation.
-- **Power cycles:** start the listener first, then just say "power cycle it". To
-  take control, they power on holding PLAY and release at the logo. Ask for a pause
-  of about 5 s on power cycles.
+- **Power cycles:** start the listener first, then just say "power cycle it" (no pause needed). To
+  take control, they power on holding PLAY and release at the logo; PLAY is only for reaching the menu.
 - **Ambiguous requirements:** restate them as a situation → behaviour table and
   confirm before building.
 - **Hardware time is limited.** Pack more information into each test, plan boots
@@ -89,11 +88,12 @@ an OS reinstall, so crash logs can be fetched from it.
   plus a few seconds (a probe answers within 3 s; a freeze shows within seconds), polled rather
   than one long wait. Report the moment the result is clear ("frozen: power cycle it"); never
   leave the developer waiting out a long timeout.
-- **Browser tests run by automation** (Playwright on the system Chrome: `pnpm run test:browser`
-  in `clients/ts`), against the real device too. Never ask the developer to click through a page.
-  Chrome's serial port chooser is the one step page automation cannot click: verify a way past
-  it (DevTools device-prompt handling, or a managed policy granting the device) before relying
-  on it. The developer is needed only for physical actions (power, keys, the OP-XY's own screen).
+- **Browser tests run by automation.** On the OP-XY: `node scripts/device-browser-test.ts --out DIR
+  --serial` in `clients/ts` drives the web app in the system Chrome (Playwright), no human step;
+  `mise run web-e2e` and `pnpm run test:browser` cover the simulator. Chrome's serial port chooser
+  cannot be clicked by automation: a Chrome profile holding a grant gets past it, made once by hand with
+  `--grant` (`clients/ts/README.md`). Never ask the developer to click through a page; they are needed
+  only for physical actions (power, keys, the OP-XY's own screen).
 - **Cleanups are logged.** Removing files from the device or the private folder writes
   `../private/archive/cleanup-<date>-<topic>.json` first: what, where from, why, and how to
   restore it.
