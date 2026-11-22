@@ -18,7 +18,7 @@ describe.skipIf(!sim)(`pre-v1 device${sim ? '' : ` (skipped: ${sims.why})`}`, ()
 
   test('the conformance cases for a pre-v1 device', async () => {
     const data = loadCases(undefined, sims.fixtures);
-    const rows = await runCases(data, sim!.host, sim!.port, sims.fixtures);
+    const rows = await runCases(data, sim!, sims.fixtures);
     expect(rows).not.toBeNull();
     const ran = rows!.filter((r) => r.result !== 'SKIP');
     expect(ran.map((r) => r.name)).toEqual(['hello/pre-v1']);

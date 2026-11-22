@@ -15,7 +15,7 @@ import { expect, test } from './cpu.ts';
 import type { Browser, Page, Locator } from '@playwright/test';
 import { startRelay } from 'xy-forever-client/test/relay.ts';
 import type { Relay } from 'xy-forever-client/test/relay.ts';
-import { control, findSimulator, randomBase, startAll, until as simUntil } from 'xy-forever-client/test/simulators.ts';
+import { control, findSimulator, startAll, until as simUntil } from 'xy-forever-client/test/simulators.ts';
 import type { SimInfo } from 'xy-forever-client/test/simulators.ts';
 import { Client, tcpOpener } from 'xy-forever-client/node';
 import { verifiedBuild } from './needs.ts';
@@ -25,8 +25,6 @@ const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
 const FAKE_SERIAL = fileURLToPath(import.meta.resolve('xy-forever-client/test/fake-serial.ts'));
 const ENTRY = 'xy-forever/firmware/opxy-121';
-// A random base (simulator, control; the relay on a free port) and state folder: another checkout may run this test at the same time.
-const BASE = parseInt(process.env['XYF_WEB_SIM_PORT'] ?? String(randomBase()), 10);
 // The install page's timers (src/install/flow.ts): its look every LOOK_MS at the last stage, its poll while the device sets up.
 const LOOK_MS = 3000,
   POLL_MS = 700;
@@ -35,6 +33,9 @@ const nav = (page: Page, name: string): Locator =>
   page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
 
 const found = findSimulator();
+// This worker's state folder: other workers and checkouts may run this test at the same time (the simulator and relay
+// hold ports the system picks).
+const STATE = join(found.sessions, `web-install-${process.pid}`);
 const why: string | null = found.why;
 let browser: Browser | undefined; // the project's Chrome (playwright.config.ts: no real Web Serial or WebUSB)
 
@@ -54,13 +55,12 @@ test.afterEach(async () => {
   running = null;
 });
 test.afterAll(async () => {
-  if (!why) rmSync(join(found.sessions!, `web-install-${BASE}`), { recursive: true, force: true });
+  if (!why) rmSync(STATE, { recursive: true, force: true });
 });
 
 /** A fresh simulator: a stock OP-XY just after Track 5 (stock: its updater's os.ldr; plain: no PLAY at power-on). */
 async function powerOn(stock: 'stock' | 'missing', plain: boolean): Promise<SimInfo> {
-  const state = join(found.sessions!, `web-install-${BASE}`);
-  const started = await startAll(state, BASE, [['sim', 0, ['--fresh', stock, ...(plain ? ['--plain'] : [])]]]);
+  const started = await startAll(STATE, [['sim', ['--fresh', stock, ...(plain ? ['--plain'] : [])]]]);
   const sim = started.infos['sim']!;
   const relay = await startRelay({ target: sim.port, control: sim.control });
   running = {

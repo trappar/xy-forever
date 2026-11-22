@@ -23,7 +23,7 @@ pnpm exec vitest run test/files.spec.ts -t 'rename'   # one file, one test
 node test/conformance.ts --sim 127.0.0.1:7341         # the conformance cases against a running simulator
 ```
 
-`mise run web-test` and CI's web job run `pnpm test` (`mise run web-test-changed`: only the tests your changes
+`mise run web-test` and CI's checks job run `pnpm test` (`mise run web-test-changed`: only the tests your changes
 affect); the repository's Python suite does not. One runner, Vitest, in
 Node: the Web Serial specs (`webserial`, `chooser`, `buffer`) drive the real transport through the fake
 `navigator.serial` of `test/fake-serial.ts` (Chrome's receive buffer, the chooser, granted ports); the app in Chrome
@@ -31,8 +31,8 @@ with the same fake is `web/e2e/install-sim.e2e.ts`. The web app driven against t
 `web/scripts/device-browser-test.ts` ([web testing](../../web/docs/testing.md)).
 
 The run starts its own simulators at once (`python -m xy_forever.sim` from the project venv, however Vitest is
-started; from a random base port so that parallel runs do not collide, state under the private sessions folder;
-`XYF_TS_SIM_PORT` fixes the base, `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`). Without the private stock files or clang++
+started; `--port 0`: each holds two ports the system picks and prints them, so parallel runs never race for one;
+state under the private sessions folder; `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`). Without the private stock files or clang++
 (CI) it skips the simulator tests with the reason; a missing venv or a simulator that does not start fails the run. Their transport pauses on the
 simulator's clock (`simOpener`, `Transport.pause`), so polls take no host time. Budgets, enforced on CPU time (the test's
 process and its simulator's: `test/cpu.ts`): each test's and the sum of the run's, about twice an unloaded run's and
