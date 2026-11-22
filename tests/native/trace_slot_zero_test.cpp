@@ -1,4 +1,3 @@
-// tier: gate
 // native/trace_slot.hpp locate_zero: the large zero diagnostic slot lookup (census dump transport), sanitized.
 #include <cstring>
 #include <string>

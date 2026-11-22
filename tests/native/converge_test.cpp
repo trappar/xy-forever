@@ -1,4 +1,3 @@
-// tier: gate
 // target/xyf_converge.hpp (#197): the plan table, then every combination of inputs and actual state run through a
 // model of the operations and planned again (nothing left).
 #include "doctest.h"

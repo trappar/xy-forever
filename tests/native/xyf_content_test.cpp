@@ -1,4 +1,3 @@
-// tier: gate
 // target/xyf_content_job.hpp: the content switch: the path rule, the record's head, and the job over an in-memory
 // file system with a fault, a power cut or A going silent at every request.
 #include "doctest.h"

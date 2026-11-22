@@ -1,4 +1,3 @@
-// tier: gate
 // native/json.hpp under the sanitizers: every prefix of each shared fixture (tests/native-json.json), as a
 // package and a configuration, and each byte of it with its top bit flipped, never reads out of bounds nor
 // changes the source.

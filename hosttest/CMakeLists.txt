@@ -91,7 +91,7 @@ target_include_directories(_native PRIVATE ${ROOT} ${CMAKE_CURRENT_BINARY_DIR})
 install(TARGETS _native LIBRARY DESTINATION xyf_hosttest)
 
 # The doctest binary: every C++ unit test (tests/native/NAME_test.cpp), with address and undefined-behaviour
-# sanitizers; tests/test_doctest.py runs its cases per file. xyf_doctest_sources(SOURCES...): the repository
+# sanitizers; tests/test_doctest.py runs every case. xyf_doctest_sources(SOURCES...): the repository
 # sources the cases link, compiled once each (gnu++11, sanitized).
 set(SANITIZE -fsanitize=address,undefined -fno-omit-frame-pointer)
 set(DOCTEST_FIRMWARE)

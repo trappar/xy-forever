@@ -4,7 +4,6 @@ import unittest
 
 from xy_forever.ldr import parse_ldr, replay
 
-import xyf_hosttest
 
 def header(flags, target, count, argument=0):
     raw = bytearray(struct.pack('<4I', 0xad000000 | flags, target, count, argument))
@@ -23,6 +22,7 @@ def image(records, entry=0x1000):
 class Native:
     """native/ldr.hpp through the host extension (hosttest/bind/ldr.cpp)."""
     def __init__(self):
+        import xyf_hosttest      # here, not at the top: web tests import this file's helpers without hosttest
         self.native = xyf_hosttest.module('ldr')
 
     def inspect(self, data, allowed=((0x1000, 0x10000),), protected=()):

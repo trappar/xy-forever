@@ -64,7 +64,7 @@ Python tracking the C++ each test used (a `hosttest/` module or doctest file and
 `hostbuild` compile's `clang -M` record) and the files a test runs as a subprocess (`@pytest.mark.uses('scripts/x.py')`); its first run runs everything.
 
 The tests' native code is `hosttest/`: one nanobind extension (`xyf_hosttest.module(NAME)`, a submodule per
-`hosttest/bind/NAME.cpp`) and one doctest binary (the C++ unit tests in `tests/native/`, sanitized, run per file by
+`hosttest/bind/NAME.cpp`) and one doctest binary (the C++ unit tests in `tests/native/`, sanitized, run as one gate-tier test by
 `tests/test_doctest.py`). `uv sync` builds both once, in `build/hosttest`, and rebuilds only what a C++ edit
 touched (`uv run` syncs first).
 

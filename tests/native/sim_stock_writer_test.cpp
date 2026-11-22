@@ -1,4 +1,3 @@
-// tier: gate
 // sim/stock_boot.ipp: the simulator's real stock writer shim with observable local media/RPC stand-ins: both role
 // routes, ABI, retries and commit/cut ordering. Synthetic media only: the XOR representation tests buffer ownership
 // and ciphertext readback; it supplies no cryptographic evidence about the real bootloader. Then B's INSTALL read-back
