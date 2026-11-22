@@ -1,8 +1,6 @@
-/* Tailwind 4 with the shadcn/ui theme tokens (dark only). style.css: the pages not moved to React yet. */
-@layer theme, base, legacy, components, utilities;
+/* Tailwind 4 with the shadcn/ui theme tokens (dark only). */
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "./style.css" layer(legacy);
 
 @theme {
   --color-background: #0e1013;

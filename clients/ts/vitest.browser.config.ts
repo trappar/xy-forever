@@ -1,16 +1,14 @@
 // The browser suite (npm run test:browser, through test/browser.ts): test/browser/*.spec.ts in the
 // system Chrome (Playwright's channel 'chrome': no browser download), headless, in a throwaway
-// profile. One file at a time: each simulator serves one client. xyfRelay: the demo page's relay.
+// profile. One file at a time: each simulator serves one client.
 // No real Web Serial (--disable-blink-features=Serial): tests may not open a real device; the specs
 // install the fake navigator.serial (test/browser/fake-serial.ts).
 import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
 import { commands } from './test/browser/commands.ts';
-import { xyfRelay } from './test/relay.ts';
 
 export default defineConfig({
   server: { host: '127.0.0.1' },
-  plugins: [xyfRelay()],
   test: {
     include: ['test/browser/**/*.spec.ts'],
     globalSetup: ['test/browser/setup.ts'],

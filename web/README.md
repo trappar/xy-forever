@@ -21,9 +21,14 @@ For development without a device, start the simulator from the repository root
 
 ## Pages
 
-Each page has its own path (`src/router.ts`, History API). Routes include `/connect` (also `/`),
+React 19, Tailwind 4 and shadcn/ui (`src/components/ui`), one component per page in `src/pages`. The connection lives
+in a Zustand store outside React (`src/connection.ts`); device data comes through TanStack Query, and every device
+action is a mutation in one shared scope, so the OP-XY gets one at a time (`src/device.ts`). The port opens only
+from a click.
+
+Each page has its own path (TanStack Router, `src/routing.ts`). Routes include `/connect` (also `/`),
 `/device`, `/mods`, `/files` and install stages such as `/install/boot`, `/install/transfer`, `/install/start`
-and `/install/stop`. The stage and page registry lives in `src/routes.ts`. The build emits an HTML index
+and `/install/stop`. The install stages are listed in `src/install/stages.ts`. The build emits an HTML index
 for each route so direct links and reloads work on static hosting. The routing base is `/` in local
 development and `/xy-forever/` for GitHub Pages.
 
