@@ -3,8 +3,9 @@
 // environment), so a cold dependency cache is optimized once. Files run in parallel, tests in a file in order (but
 // install-sim.e2e.ts, parallel). Projects: app (Web Serial off) and install (Web Serial and WebUSB off: the pages use
 // the fakes); bounds runs the planted hang (planted-hang.ts) in a nested run, the only place it runs (XYF_E2E_PLANTED).
-// Budgets (e2e/budgets.ts, enforced: about twice a busy Mac's times): each test's, by project, and the run's. The hang
-// bounds are the outer limit: each test (timeout) and the run (globalTimeout); a hung page fails its test by name.
+// Budgets (e2e/budgets.ts, enforced; about twice an unloaded run's times, scaled on a busy or slower machine): each
+// test's, by project, and the run's. The hang bounds stay the outer limit: each test (timeout) and the run
+// (globalTimeout); a hung page fails its test by name within its bound.
 import { createServer } from 'node:net';
 import { defineConfig } from '@playwright/test';
 import type { PlaywrightTestOptions, PlaywrightWorkerOptions } from '@playwright/test';
@@ -38,7 +39,7 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   reporter: planted
     ? 'list'
-    : [['list'], ['./e2e/budgets.ts', { runMs: 30_000, tests: { app: 5_000, install: 12_000, bounds: 15_000 } }]],
+    : [['list'], ['./e2e/budgets.ts', { runMs: 28_000, tests: { app: 2_500, install: 11_000, bounds: 14_000 } }]],
   outputDir: 'node_modules/.cache/playwright',
   workers: 3,
   forbidOnly: true,

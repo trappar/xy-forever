@@ -1,5 +1,6 @@
-// pnpm test: every spec in Node, the simulators started once for the run (test/simulators.ts). Budgets: each test
-// and hook, and the whole run (test/run-budget.ts); the run takes about 3.5 s.
+// pnpm test: every spec in Node, the simulators started once for the run (test/simulators.ts). Budgets (enforced,
+// test/run-budget.ts): each test's and the run's, about twice an unloaded run's; the hang bounds: each test and hook
+// (testTimeout, hookTimeout) and the run (hangMs).
 import { defineConfig } from 'vitest/config';
 import RunBudget from './test/run-budget.ts';
 

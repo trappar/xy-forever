@@ -1,5 +1,5 @@
-// pnpm test: the app's unit tests in Node (test/). Budgets: each test and hook, and the whole run (the client's
-// run-budget reporter); the run takes under 1 s.
+// pnpm test: the app's unit tests in Node (test/). Budgets (enforced, the client's test/run-budget.ts): each test's
+// and the run's, about twice an unloaded run's; the hang bounds: each test and hook, and the run (hangMs).
 import { defineConfig } from 'vitest/config';
 import RunBudget from 'xy-forever-client/test/run-budget.ts';
 import { alias } from './vite.config.ts';
