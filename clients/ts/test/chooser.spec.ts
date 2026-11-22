@@ -8,9 +8,10 @@ import { expire, fakeTime, timersUntil } from './clock.ts';
 import { FakeSerial } from './fake-serial.ts';
 import type { FakePort } from './fake-serial.ts';
 import { fromClick } from './gesture.ts';
+import { countSim } from './cpu-setup.ts';
 
 const sims = inject('sims');
-const sim = sims.chooser;
+const sim = countSim(sims.chooser);
 /** The stale entry probed, then closed (its probeMs ran out). */
 const passedOver = (stale: FakePort, times = 1): boolean => stale.opens === times && !stale.isOpen;
 

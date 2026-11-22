@@ -4,9 +4,10 @@ import { describe, expect, inject, test } from 'vitest';
 import { Client, XyfError } from '../src/index.ts';
 import { tcpOpener } from '../src/tcp.ts';
 import { loadCases, runCases } from './conformance.ts';
+import { countSim } from './cpu-setup.ts';
 
 const sims = inject('sims');
-const sim = sims.preV1;
+const sim = countSim(sims.preV1);
 
 describe.skipIf(!sim)(`pre-v1 device${sim ? '' : ` (skipped: ${sims.why})`}`, () => {
   test('connect: update XY Forever', async () => {

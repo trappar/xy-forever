@@ -15,9 +15,10 @@ import { expire, fakeTime, timersUntil } from './clock.ts';
 import { FakeSerial } from './fake-serial.ts';
 import { simWrite } from './gesture.ts';
 import type { FakePort } from './fake-serial.ts';
+import { countSim } from './cpu-setup.ts';
 
 const sims = inject('sims');
-const sim = sims.buffer;
+const sim = countSim(sims.buffer);
 const PATH = '/yaffs2/xy-forever/log/web/buffer.bin';
 
 /** A port opened with only a baud rate, as a page that leaves Chrome's defaults would, and read continuously. */

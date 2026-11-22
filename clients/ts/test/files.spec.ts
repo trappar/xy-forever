@@ -9,9 +9,10 @@ import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, inject, test, vi } from 'vitest';
 import { Client, XyfError, crc32, isXyfError, sha256 } from '../src/node.ts';
 import { simOpener } from './simulators.ts';
+import { countSim } from './cpu-setup.ts';
 
 const sims = inject('sims');
-const sim = sims.files;
+const sim = countSim(sims.files);
 const DIR = '/yaffs2/content/files-spec';
 
 const host = (path: string): string => join(sim!.root, path.slice('/yaffs2/'.length));

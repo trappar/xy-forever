@@ -29,9 +29,11 @@ drives the app in the system Chrome, headless, never a downloaded browser:
   folder (`XYF_PRIVATE` applies; `XYF_SIM_STATE` overrides app.e2e.ts's), removed afterwards; skipped with the
   reason when it cannot run (no private stock files, no clang++). Device time moves only when a test moves it; the
   page's own timers run on Playwright's clock.
-- **Budgets** (`e2e/budgets.ts`, enforced): each test's, by project, and the run's, about twice an unloaded run's and
-  scaled on a busy or slower machine (the client's `test/load-scale.ts`); over one fails the run and names the test.
-  The hang bounds stay the outer limit: each test (`timeout`) and the run (`globalTimeout`).
+- **Budgets** (`e2e/budgets.ts`, enforced on CPU time: the worker's, Chrome's and the simulators', `e2e/cpu.ts`):
+  each test's, by project, and the sum of the run's, about twice an unloaded run's and scaled on slower hardware
+  (the client's `test/cpu.ts`); over one fails the run and names the test. Wall time is only reported. The hang
+  bounds, on wall time, stay the outer limit: each test (`timeout`) and the run (`globalTimeout`). New specs import
+  `test` and `expect` from `e2e/cpu.ts`.
 - **The verified build.** The specs that install it (`e2e/needs.ts`) skip and say why when there is none, and fail
   when this checkout's verified build exists but is not found.
 - **Targeted runs.** `pnpm exec playwright test --project install`, `pnpm exec playwright test e2e/app.e2e.ts -g

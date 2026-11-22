@@ -114,11 +114,13 @@ class SimulatorTest(unittest.TestCase):
     def file(self, path):
         return (self.dir / 'yaffs2' / path[len('/yaffs2/') :]).read_bytes()
 
-    def wait(self, predicate, timeout=10.0, what='simulator state'):
-        """Until predicate(status). A processor's restart delay (its bootloader's start time) runs on
-        the board clock and is passed with advance, not waited for; host time only bounds a hang."""
-        deadline = time.monotonic() + max(timeout, bounds.WAIT_S)
-        while time.monotonic() < deadline:
+    def wait(self, predicate, what='simulator state'):
+        """Until predicate(status), the board clock advanced between tries: a processor's restart delay
+        (its bootloader's start time) is passed with advance, never waited for. The wall-clock deadline
+        (bounds.WAIT_S) is a hang bound only, never a budget: the test's CPU budget (tests/conftest.py)
+        holds its time."""
+        hang_deadline = time.monotonic() + bounds.WAIT_S
+        while time.monotonic() < hang_deadline:
             status = self.sim.status()
             if predicate(status):
                 return status
@@ -126,7 +128,7 @@ class SimulatorTest(unittest.TestCase):
                 self.sim.advance(100)
             else:
                 self.sim.advance(10)
-        self.fail('%s not reached within %g s: %s' % (what, timeout, self.sim.status()))
+        self.fail('%s not reached within the %g s hang bound: %s' % (what, bounds.WAIT_S, self.sim.status()))
 
     def restarted(self, boots):
         """Until B booted again after a restart and its endpoint listens (home, USB on)."""
@@ -527,7 +529,7 @@ class SimulatorTest(unittest.TestCase):
         status = self.sim.status()
         self.assertEqual((status['a_boots'], status['a'], status['rw_open']), (1, 'running', 1))
         self.sim.advance(4000)
-        status = self.wait(lambda s: s['a'] != 'running', timeout=5.0, what='A out of its session')
+        status = self.wait(lambda s: s['a'] != 'running', what='A out of its session')
         self.assertEqual(status['a_boots'], 1)
         self.sim.set('a_silent', 0)
         self.assertEqual((status['rw_open'], status['unclean_mounts']), (0, 0))

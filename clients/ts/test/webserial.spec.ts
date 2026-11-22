@@ -18,9 +18,10 @@ import { FakeSerial } from './fake-serial.ts';
 import { fromClick, simRead, simWrite } from './gesture.ts';
 import { control } from './simulators.ts';
 import type { FakePort } from './fake-serial.ts';
+import { countSim } from './cpu-setup.ts';
 
 const sims = inject('sims');
-const sim = sims.serial;
+const sim = countSim(sims.serial);
 const text = (b: Uint8Array): string => new TextDecoder().decode(b);
 
 function randomBytes(n: number): Uint8Array {
@@ -120,13 +121,11 @@ describe.skipIf(!sim)(`Web Serial against the simulator${sim ? '' : ` (skipped: 
     expect(text(await client.readFile('/yaffs2/firmware.version'))).toMatch(/^1\.2\.1/);
   });
 
-  test('cable pulled mid-read: a typed error within the timeout, then reconnect', async () => {
+  test('cable pulled mid-read: disconnected, not timed out, then reconnect', async () => {
     await simWrite(sim!.root, '/yaffs2/xy-forever/log/web/pull.bin', randomBytes(8000));
     await control(sim!.control, 'set cable_pull 10'); // 10 bytes of the next reply, then the cable goes
-    const started = performance.now();
     const error = await client.readFile('/yaffs2/xy-forever/log/web/pull.bin').catch((e: unknown) => e);
-    expect(isXyfError(error, 'disconnected')).toBe(true);
-    expect(performance.now() - started).toBeLessThan(15_000); // file.read's timeout
+    expect(isXyfError(error, 'disconnected')).toBe(true); // the link closed, not file.read's time-out ('timeout')
     await client.reconnect({ timeoutMs: 20_000 });
     expect((await client.readFile('/yaffs2/xy-forever/log/web/pull.bin')).length).toBe(8000);
     await client.close();
@@ -144,6 +143,7 @@ describe.skipIf(!sim)(`Web Serial against the simulator${sim ? '' : ` (skipped: 
 });
 
 describe.skipIf(!sims.preV1)(`a pre-1.1 device over Web Serial${sims.preV1 ? '' : ` (skipped: ${sims.why})`}`, () => {
+  countSim(sims.preV1);
   test('connect: update XY Forever', async () => {
     const uninstall = new FakeSerial(sims.preV1!.relay).install();
     try {

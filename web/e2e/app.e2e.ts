@@ -6,7 +6,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './cpu.ts';
 import type { Browser, Locator, Page } from '@playwright/test';
 import { findSimulator, startAll } from 'xy-forever-client/test/simulators.ts';
 import { protocol as v1 } from 'xy-forever-client';
