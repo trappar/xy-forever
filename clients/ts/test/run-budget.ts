@@ -5,9 +5,12 @@
 // Wall time is only reported. Every run prints one line: the run's CPU and its slowest test against their budgets.
 // Hang bounds stay the outer limit, on wall time: Vitest's per-test and per-hook time-outs, and hangMs for the run
 // (Vitest has none): past it, it names the tests still running, fails the run and cancels it; if the cancel does not
-// end it, it exits (this process's exit stops the simulators: test/simulators.ts). XYF_RUN_BUDGET_MS overrides
+// end it within 5 s (a test spinning in a busy loop), it ends the pool's workers and exits (this process's exit stops
+// the simulators: test/simulators.ts). A worker whose event loop is held does not report the test it started, so a
+// file still running is named with its unfinished tests, the one holding it among them. XYF_RUN_BUDGET_MS overrides
 // hangMs (a planted check: XYF_RUN_BUDGET_MS=1 fails the run at once and says so). Used by vitest.config.ts here and
 // in web/, with test/cpu-setup.ts in setupFiles.
+import { spawnSync } from 'node:child_process';
 import type { Reporter, TestCase, TestModule, Vitest } from 'vitest/node';
 import { budgetScale } from './cpu.ts';
 
@@ -35,6 +38,7 @@ export default class RunBudget implements Reporter {
   private readonly budgets: Budgets;
   private readonly enforced = process.env['XYF_BUDGETS'] !== 'off';
   private readonly running = new Set<TestCase>();
+  private readonly modules = new Set<TestModule>();
   private readonly times: [number, TestCase][] = [];
   private scale: () => number = () => 1;
   private start = 0;
@@ -48,15 +52,35 @@ export default class RunBudget implements Reporter {
     this.scale = budgetScale();
     this.start = performance.now();
     this.timer = setTimeout(() => {
-      const names = [...this.running].map(nameOf);
-      console.error(
-        `\nrun bound: the run passed ${this.budgets.hangMs} ms; still running: ${names.join('; ') || 'no test (setup or teardown)'}\n`,
-      );
+      console.error(`\nrun bound: the run passed ${this.budgets.hangMs} ms; still running: ${this.stillRunning()}\n`);
       process.exitCode = 1;
       void vitest.cancelCurrentRun('test-failure');
-      setTimeout(() => process.exit(1), 5_000).unref();
+      setTimeout(() => {
+        spawnSync('pkill', ['-TERM', '-P', String(process.pid)]); // the pool's workers (and the simulators, as exit would)
+        process.exit(1);
+      }, 5_000).unref();
     }, this.budgets.hangMs);
     this.timer.unref();
+  }
+
+  /** Each file still running: its tests reported running, else its unfinished tests (the one holding it among them). */
+  private stillRunning(): string {
+    const files = [...this.modules].map((m) => {
+      const running = [...this.running].filter((t) => t.module === m);
+      if (running.length) return running.map(nameOf).join('; ');
+      const left = [...m.children.allTests()].filter((t) => t.result().state === 'pending').map((t) => t.fullName);
+      const shown = left.slice(0, 3).join('; ') + (left.length > 3 ? `; and ${left.length - 3} more` : '');
+      return `${m.moduleId.split('/').slice(-2).join('/')}${left.length ? ` (unfinished: ${shown})` : ''}`;
+    });
+    return files.join('; ') || 'no test (setup or teardown)';
+  }
+
+  onTestModuleStart(module: TestModule): void {
+    this.modules.add(module);
+  }
+
+  onTestModuleEnd(module: TestModule): void {
+    this.modules.delete(module);
   }
 
   onTestCaseReady(test: TestCase): void {
