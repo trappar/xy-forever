@@ -42,7 +42,7 @@ website).
 ## Commands that are not mise tasks
 
 ```sh
-uv run xyf-host status                      # the device over USB (--sim 127.0.0.1:7341: the simulator)
+uv run xyf-host status                      # the device over USB (--sim 127.0.0.1:7341,7342: the simulator)
 uv run -m xy_forever.census REPORT.bin      # decode a device report
 uv run scripts/setup.py import-stock --from-device   # the stock pair off the OP-XY (first device install)
 ```

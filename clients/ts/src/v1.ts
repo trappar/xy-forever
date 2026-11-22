@@ -44,7 +44,7 @@ export const TRANSPORT = {
   lineSettings: { value: "ignored", verified: true, doc: "baud rate, parity, stop bits and flow control do not matter (an API that needs a baud rate may pass any); open the port raw (no echo, no line editing)" },
   controlLines: { value: "unknown", verified: false, doc: "whether the device needs DTR or RTS set: `uv run xyf-host` leaves them as macOS sets them on open" },
   usbSerialNumber: { value: "unknown", verified: false, doc: "macOS names the port `cu.usbmodem<string>1`, which suggests a serial-number string; a browser may need one to find the port again after a restart without asking the user" },
-  simulatorPort: { value: 7341, verified: true, doc: "default TCP port of the device simulator (`uv run -m xy_forever.sim`, 127.0.0.1 only; control on the next port), one client at a time" },
+  simulatorPort: { value: 7341, verified: true, doc: "default TCP port of the device simulator (`uv run -m xy_forever.sim`, 127.0.0.1 only; its control port is a separate setting, 7342 by default), one client at a time" },
 } as const;
 /** The USB ids XY Forever's service may have, in the shape Web Serial's requestPort filters take: the
  * composite of product builds 188 to 189-001 (pid.codes' test pair), then the stock pair: the composite

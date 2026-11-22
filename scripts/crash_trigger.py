@@ -244,7 +244,7 @@ def parse_args(argv):
     parser.add_argument('--install', metavar='BUILD_DIR', help='install this verified crash-trigger build first')
     parser.add_argument('--build', metavar='BUILD_DIR', help='the installed crash-trigger build (expected addresses)')
     parser.add_argument('--screen', metavar='TEXT', help='with --after: what the screen showed (recorded)')
-    parser.add_argument('--sim', metavar='HOST:PORT', help='run against the device simulator (xyf-host --sim)')
+    parser.add_argument('--sim', metavar='HOST:PORT,CONTROL', help='run against the device simulator (xyf-host --sim)')
     parser.add_argument('--wait', type=float, default=dp.T_ANSWER, help='seconds the check waits for the device')
     parser.add_argument('--keep', action='store_true', help='with --sim: keep the evidence folder when nothing failed')
     return parser.parse_args(argv)

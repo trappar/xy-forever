@@ -19,7 +19,7 @@ from unittest import mock
 
 import pytest
 
-from xy_forever import dev_tools, modlink, outer, paths, usb_proto
+from xy_forever import dev_tools, modlink, outer, paths, toolchain, usb_proto
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -422,6 +422,20 @@ class Bootstrap(unittest.TestCase):
             again = S.Bootstrap(self.ws, self.repo, self.config, False, {}, None, private=chosen)
             again.run()
         self.assertEqual(again.actions, [])
+
+    def test_toolchain_given_is_recorded_and_used_by_the_closing_doctor(self):
+        chosen = self.ws / 'chosen-toolchain'
+        (chosen / 'bin').mkdir(parents=True)
+        (chosen / 'bin/bfin-elf-as').write_bytes(b'as')
+        seen = []
+        with (
+            mock.patch.object(paths, 'LOCAL_CONFIG', self.config),
+            mock.patch.object(S, 'cmd_doctor', lambda args: seen.append(toolchain.location({}))),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            S.Bootstrap(self.ws, self.repo, self.config, False, {}, None, toolchain=chosen).run()
+        self.assertEqual(json.loads(self.config.read_text())['toolchain'], str(chosen))
+        self.assertEqual(seen, [chosen])  # the folder just recorded, not the one read when setup started
 
     def test_status_notes_in_the_checkout_move_to_the_private_folder_once(self):
         (self.repo / 'docs/status/approvals').mkdir(parents=True)

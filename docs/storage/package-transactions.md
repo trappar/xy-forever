@@ -61,7 +61,7 @@ stops collection before deletion. A cut during deletion can leave extra blobs, n
 reference; a later idle collection resumes by deriving reachability again.
 
 `library-remove ID --yes-write` detaches an entry and collects; `library-gc --yes-write` collects alone.
-`scripts/package_pass.py --sim HOST:PORT --base ID --yes-write` proves the concrete storage test before
+`scripts/package_pass.py --sim HOST:PORT,CONTROL --base ID --yes-write` proves the concrete storage test before
 the same script is used over USB: two fresh entries, shared/last-reference GC, unchanged state slots,
 then removal of its scratch entries. It never boots, resets or writes live content.
 

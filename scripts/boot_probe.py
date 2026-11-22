@@ -133,7 +133,7 @@ def run(dev, folder):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--sim', metavar='HOST:PORT')
+    parser.add_argument('--sim', metavar='HOST:PORT,CONTROL')
     parser.add_argument('--out', type=Path)
     parser.add_argument('--finish', action='store_true', help='only restore partition 0 and end an existing probe')
     args = parser.parse_args(argv)

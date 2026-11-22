@@ -1130,11 +1130,11 @@ class SimulatorTest(unittest.TestCase):
 
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class SimulatorVariantTest(unittest.TestCase):
-    def test_sim_address_is_loopback_only(self):
-        for bad in ('10.0.0.2:7341', 'example.com:7341', '127.0.0.1'):
+    def test_sim_address_is_loopback_and_names_both_ports(self):
+        for bad in ('10.0.0.2:7341,7342', 'example.com:7341,7342', '127.0.0.1', '127.0.0.1:7341'):
             with self.assertRaises(ValueError):
                 host.sim_address(bad)
-        self.assertEqual(host.sim_address('127.0.0.1:7341'), ('127.0.0.1', 7341))
+        self.assertEqual(host.sim_address('127.0.0.1:7341,7342'), ('127.0.0.1', 7341, 7342))
 
 
 if __name__ == '__main__':

@@ -554,7 +554,7 @@ int main(int argc, char** argv) {
     // boundary lies between 0.15 s and 1.4 s [U]; 400 ms sits in that range.
     shared->boot_a_window_ms = 400;
     board_start_us = now_us();
-    int control_port = 0, control_listener = -1;
+    int control_port = 7342, control_listener = -1; // the usage's defaults: two fixed ports, each its own
     bool play = true, otp = false;
     uint64_t deadline_us = 0;
     std::vector<std::string> faults; // --set NAME=VALUE: a fault armed before the power-on
@@ -599,7 +599,6 @@ int main(int argc, char** argv) {
         ++i;
     }
     if (!shared->root[0] || !shared->bootpart[0] || !stock_path) return usage();
-    if (!control_port && shared->port) control_port = shared->port + 1; // --port 0: --control-fd or --control
     if (otp && !load_otp()) {
         wipe_otp();
         fprintf(stderr, "xyf_sim: bad OTP records on stdin\n");

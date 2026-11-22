@@ -5,7 +5,8 @@
 // test/pre-v1.spec.ts runs its pre-v1 cases under Vitest; this file also runs alone under Node.
 //
 //   node test/conformance.ts --check                  interpret every case (no simulator)
-//   node test/conformance.ts --sim 127.0.0.1:7341     run every case against a running simulator
+//   node test/conformance.ts --sim 127.0.0.1:7341,7342   run every case against a running simulator
+//                                                      (its USB endpoint and control port, as it prints them)
 // Options: --only REGEX, --fixture NAME=PATH, --cases FILE. Exit: 0 nothing failed, 1 a case failed,
 // 2 bad arguments or case data, 3 NEED (no simulator). Node 22.18+/23.6+ (type stripping).
 import { createHash } from 'node:crypto';
@@ -1054,15 +1055,16 @@ async function main(argv: string[]): Promise<number> {
     console.log(`ok ${(data['cases'] as Json[]).length} cases interpreted`);
     return 0;
   }
-  const m = /^(127\.0\.0\.1|localhost|::1):([0-9]+)$/.exec(opts['sim'] ?? '');
+  const m = /^(127\.0\.0\.1|localhost|::1):([0-9]+),([0-9]+)$/.exec(opts['sim'] ?? '');
   if (!m) {
-    console.error('conformance: --sim 127.0.0.1:PORT (the simulator; this runner has no USB transport)');
+    console.error(
+      "conformance: --sim 127.0.0.1:PORT,CONTROL (the simulator's USB endpoint and control port; this runner has no USB transport)",
+    );
     return 2;
   }
-  const port = parseInt(m[2]!, 10);
   const rows = await runCases(
     data,
-    { host: m[1]!, port, control: port + 1 }, // uv run -m xy_forever.sim --port N: control N + 1
+    { host: m[1]!, port: parseInt(m[2]!, 10), control: parseInt(m[3]!, 10) },
     fixtures,
     opts['only'] ? new RegExp(opts['only']) : null,
     (row) => {

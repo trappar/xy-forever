@@ -9,9 +9,9 @@ Two parts: **setup without a device** (below; enough for host code, the web app,
 
 ## Setup without a device
 
-A macOS host on Apple silicon with Homebrew: the tested one (CI runs the suite there). The Blackfin toolchain is
-pinned for Windows x86_64 (downloaded) and Linux x86_64 (built with Docker) too; the rest is untested there
-(install mise as https://mise.jdx.dev/installing-mise.html shows). Start in the workspace folder, where the
+A macOS host on Apple silicon with Homebrew: the tested one (CI runs the suite on Linux, ubuntu-24.04, and on macOS
+only in a manual run). The Blackfin toolchain is pinned for Windows x86_64 (downloaded) and Linux x86_64 (built with
+Docker) too; the rest of the setup is untested there (install mise as https://mise.jdx.dev/installing-mise.html shows). Start in the workspace folder, where the
 coding agent was opened:
 
 ```sh

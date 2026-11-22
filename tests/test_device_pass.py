@@ -505,7 +505,7 @@ class DevicePassTest(unittest.TestCase):
     def test_simulator_run_keeps_its_folder_only_on_failure_or_keep(self):
         """--sim: the evidence folder is removed when nothing failed, unless --keep; a FAIL keeps it.
         (A real-device run always keeps it: every other test here.)"""
-        sim = ['--sim', '127.0.0.1:7341']
+        sim = ['--sim', '127.0.0.1:7341,7342']
         try:
             self.assertEqual(self.run_pass(sim), dp.EXIT_PASS)
             self.assertIsNone(self.folder)

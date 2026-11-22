@@ -6,7 +6,17 @@ import sys
 from pathlib import Path
 
 from xy_forever import paths, procgroup
-from xy_forever.sim import DEFAULT_PORT, PRE_V1_HELLO, STATE, Simulator, available, build, otp_fields, seed
+from xy_forever.sim import (
+    DEFAULT_CONTROL_PORT,
+    DEFAULT_PORT,
+    PRE_V1_HELLO,
+    STATE,
+    Simulator,
+    available,
+    build,
+    otp_fields,
+    seed,
+)
 from xy_forever.sim_fresh import seed_fresh
 
 
@@ -18,7 +28,12 @@ def main(argv=None):
         '--port',
         type=int,
         default=DEFAULT_PORT,
-        help='USB endpoint port (control: port + 1); 0: two free ports, printed',
+        help='USB endpoint port (default %(default)s); 0: a free port, named once USB comes on',
+    )
+    parser.add_argument(
+        '--control',
+        type=int,
+        help='control port (default %d; with --port 0: a free port, printed)' % DEFAULT_CONTROL_PORT,
     )
     parser.add_argument(
         '--state',
@@ -79,14 +94,15 @@ def main(argv=None):
         otp=otp,
         ask=args.ask,
         deadline_s=None,
+        control_port=(0 if args.port == 0 else DEFAULT_CONTROL_PORT) if args.control is None else args.control,
     )
     listener = sim.listen_control()
     # A launcher reads the control port here (clients/ts/test/simulators.ts); with --port 0, the endpoint's port in B's
     # "USB on: listening on 127.0.0.1:PORT" line.
     endpoint = '127.0.0.1:%d' % sim.port if sim.port else '(port 0: B names it when USB comes on)'
     print(
-        'simulator: USB endpoint %s (uv run xyf-host --sim 127.0.0.1:PORT status), control 127.0.0.1:%d, storage %s;'
-        ' Ctrl-C stops it' % (endpoint, sim.control_port, root),
+        'simulator: USB endpoint %s, control 127.0.0.1:%d (uv run xyf-host --sim 127.0.0.1:%s,%d status), storage %s;'
+        ' Ctrl-C stops it' % (endpoint, sim.control_port, sim.port or 'PORT', sim.control_port, root),
         file=sys.stderr,
         flush=True,
     )

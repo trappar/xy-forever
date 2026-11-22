@@ -47,8 +47,9 @@ Usage (macOS /dev/cu.usbmodem*):
                                                the mod on the device, make it the default (content
                                                installed), optionally boot; each phase timed
   uv run xyf-host mods dev --restore           the default from before the first dev run, again
-  uv run xyf-host --sim 127.0.0.1:7341 status   the device simulator instead of the USB port
-                                               (or XYF_SIM=127.0.0.1:7341; same commands, same checks)
+  uv run xyf-host --sim 127.0.0.1:7341,7342 status   the device simulator instead of the USB port: its USB
+                                               endpoint and control port, as it prints them
+                                               (or XYF_SIM=127.0.0.1:7341,7342; same commands, same checks)
 
 Safety (docs/SAFETY.md, binding): install refuses anything that
 is not a verified XY Forever build (build manifest + verification passed,
@@ -116,14 +117,14 @@ KEYS = dict(minus=53, plus=54, play=51, stop=52, shift=55, **{'track%d' % (i + 1
 SLOTS = ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt')
 
 
-SIM = os.environ.get('XYF_SIM') or None
-TFW_CHECK_TIMEOUT = 60.0  # HOST:PORT of the device simulator (--sim)
+SIM = os.environ.get('XYF_SIM') or None  # HOST:PORT,CONTROL of the device simulator (--sim)
+TFW_CHECK_TIMEOUT = 60.0
 
 
 def sim_listening(address):
     """True when the simulator's USB endpoint accepts a connection (the device's port exists)."""
     try:
-        socket.create_connection(sim_address(address), timeout=0.5).close()
+        socket.create_connection(sim_address(address)[:2], timeout=0.5).close()
         return True
     except OSError:
         return False
@@ -460,9 +461,13 @@ def connect(timeout, hello_every=0.5, hello_window=8.0):
 
 
 def pause(seconds):
-    """The host waits on the device: on the simulator its clock moves on instead (transport.sim_pause)."""
+    """The host waits on the device: on the simulator its clock moves on instead (transport.sim_pause); a simulator
+    that is not there ends the command, as no port would."""
     if SIM:
-        transport.sim_pause(SIM, seconds)
+        try:
+            transport.sim_pause(SIM, seconds)
+        except ConnectionRefusedError as error:
+            raise SystemExit('%s: is the simulator running (mise run sim)? --sim %s' % (error, SIM)) from error
     else:
         time.sleep(seconds)
 
@@ -515,8 +520,9 @@ def run(argv):
     parser.add_argument('--timeout', type=float, default=30.0)
     parser.add_argument(
         '--sim',
-        metavar='HOST:PORT',
-        help='talk to the device simulator (loopback TCP) instead of the USB port; default: $XYF_SIM',
+        metavar='HOST:PORT,CONTROL',
+        help='talk to the device simulator (loopback TCP: its USB endpoint and control port, as it prints them) '
+        'instead of the USB port; default: $XYF_SIM',
     )
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('wait')

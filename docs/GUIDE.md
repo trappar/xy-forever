@@ -183,7 +183,7 @@ starts; `mods set` with no mods turns them all off. Boot without mods stays on t
 developers, `mods apply` only builds into library entry `mods-a` or `mods-b` (`--memory expanded`:
 the 4 MiB layout; `mods cancel` stops it); making it the default boots it until the next plain power-on.
 
-`--sim HOST:PORT` talks to the device simulator (`mise run sim`) instead of the USB port.
+`--sim HOST:PORT,CONTROL` talks to the device simulator (`mise run sim`: `--sim 127.0.0.1:7341,7342`, its USB endpoint and control port) instead of the USB port.
 
 ## Planned (not in this build)
 

@@ -22,7 +22,7 @@ export interface RelayOptions {
   port?: number;
   /** The simulator's endpoint port on 127.0.0.1. */
   target: number;
-  /** The simulator's control port, for GET /status (default target + 1). */
+  /** The simulator's control port, for GET /status (none: 404, never a port inferred from target). */
   control?: number;
   /** Makes each connection's Tap; Relay.tap changes it later. */
   tap?: () => Tap;
@@ -189,7 +189,6 @@ function upgrade(
 }
 
 export function startRelay(options: RelayOptions): Promise<Relay> {
-  const controlPort = options.control ?? options.target + 1;
   const wss = newServer();
   const server = createServer((req, res) => {
     const origin = req.headers.origin;
@@ -202,7 +201,8 @@ export function startRelay(options: RelayOptions): Promise<Relay> {
       headers['access-control-allow-origin'] = origin;
       headers['vary'] = 'Origin';
     }
-    if (req.method !== 'GET' || req.url !== '/status') {
+    const controlPort = options.control;
+    if (req.method !== 'GET' || req.url !== '/status' || controlPort === undefined) {
       res.writeHead(404, headers).end('{}');
       return;
     }

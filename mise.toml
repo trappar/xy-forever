@@ -78,7 +78,7 @@ description = "Rerun affected tests on every save (every tier but the sweeps)"
 run = 'uv run ptw --now . -n auto --dist worksteal -m "not sweep" --testmon-forceselect'
 
 [tasks.test-all]
-description = "Every tier but the sweeps, the simulator core included (about 12 s; 20 s on a busy machine); check and CI run it"
+description = "Every tier but the sweeps, the simulator core included (about 10 s; 35 s beside two other test-all runs); check and CI run it"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
 run = 'uv run pytest -n auto --dist worksteal -m "not sweep" {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
@@ -120,12 +120,12 @@ description = "Prove the firmware cache's hit and miss cases on a scratch worktr
 run = 'uv run scripts/firmware_cache_proof.py'
 
 [tasks.sim]
-description = "Device simulator on 127.0.0.1:7341"
+description = "Device simulator: USB endpoint 127.0.0.1:7341, control port 7342"
 run = "uv run -m xy_forever.sim --idle-wall"   # idle device time at the wall's pace: never in tests
 
 [tasks.conformance]
 description = "Protocol conformance cases against the simulator"
-usage = 'arg "[address]" help="the simulator HOST:PORT" default="127.0.0.1:7341"'
+usage = 'arg "[address]" help="the simulator HOST:PORT,CONTROL (endpoint, control port)" default="127.0.0.1:7341,7342"'
 run = 'uv run scripts/conformance.py --sim {{ usage.address | quote }}'
 
 [tasks.protogen]

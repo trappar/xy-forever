@@ -20,7 +20,7 @@ pnpm install      # from the repository root (one workspace with web/): TypeScri
 pnpm test         # Vitest: codec, call layer, Web Serial, end to end, relay, files, mods
 pnpm typecheck    # tsc (mise run web-test runs it once, after the tests)
 pnpm exec vitest run test/files.spec.ts -t 'rename'   # one file, one test
-node test/conformance.ts --sim 127.0.0.1:7341         # the conformance cases against a running simulator
+node test/conformance.ts --sim 127.0.0.1:7341,7342    # the conformance cases against a running simulator
 ```
 
 `mise run web-test` and CI's checks job run `pnpm test` (`mise run web-test-changed`: only the tests your changes

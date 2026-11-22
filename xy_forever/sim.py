@@ -33,7 +33,8 @@ from xy_forever.sim_sources import DEVICE_PARTS, TARGET_SOURCES
 ROOT = Path(__file__).resolve().parents[1]
 SIM = ROOT / 'sim'
 CXX = '/usr/bin/clang++'
-DEFAULT_PORT = 7341
+DEFAULT_PORT = 7341  # mise run sim: the USB endpoint
+DEFAULT_CONTROL_PORT = 7342  # and the control port (each its own setting: never derived from the other)
 STOCK_BOOTLOADER = paths.STOCK_121 / 'bootloader.ldr'
 STOCK_OS = paths.STOCK_121 / 'os.ldr'
 STATE = paths.SESSIONS / 'simulator'  # default storage folder, boot partition and build cache
@@ -344,6 +345,7 @@ class Simulator:
         ask=False,
         deadline_s=bounds.SIM_DEADLINE_S,
         faults=None,
+        control_port=0,
     ):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
         Device time moves only under the simulator's control (sim/clock.cpp). otp_initialized starts B with both its ROM and the stock initialization
@@ -363,10 +365,10 @@ class Simulator:
         self.a_otp_initialized = a_otp_initialized
         self.otp_initialized = otp_initialized
         # port None: no port is picked here (parallel runs raced for picked ones). B's endpoint binds port 0 when USB
-        # first comes on and keeps it (start() reads it from the board's status); the control port is the one
-        # listen_control() gets. port N: N and N + 1.
+        # first comes on and keeps it (start() reads it from the board's status). control_port 0: the one
+        # listen_control() gets. Two independent ports: a host names both (address).
         self.port = port
-        self.control_port = port + 1 if port else 0
+        self.control_port = control_port
         self.binary = Path(binary) if binary else build()
         self.play, self.log, self.capacity, self.ask = play, log, capacity, ask
         self.deadline_s = deadline_s
@@ -375,7 +377,8 @@ class Simulator:
 
     @property
     def address(self):
-        return '127.0.0.1:%d' % self.port
+        """The host's --sim value: the USB endpoint and the control port (transport.sim_address)."""
+        return '127.0.0.1:%d,%d' % (self.port, self.control_port)
 
     def argv(self, control_fd=None):
         """control_fd: the control port's listening socket, made here and inherited (else xyf_sim binds it)."""

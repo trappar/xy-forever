@@ -178,32 +178,35 @@ class SerialPort:
 
 
 def sim_address(address):
-    host, _, port = address.rpartition(':')
-    if host not in ('127.0.0.1', 'localhost', '::1') or not port.isdigit():
-        raise ValueError('--sim needs a loopback HOST:PORT, e.g. 127.0.0.1:7341 (got %r)' % address)
-    return host, int(port)
+    """--sim HOST:PORT,CONTROL: the simulator's USB endpoint and its control port, two independent ports (uv run -m
+    xy_forever.sim prints the value; a test's Simulator.address). Returns (host, port, control)."""
+    host, _, ports = address.rpartition(':')
+    port, _, control = ports.partition(',')
+    if host not in ('127.0.0.1', 'localhost', '::1') or not port.isdigit() or not control.isdigit():
+        raise ValueError(
+            '--sim needs a loopback HOST:PORT,CONTROL (the USB endpoint and the control port the simulator prints), '
+            'e.g. 127.0.0.1:7341,7342 (got %r)' % address
+        )
+    return host, int(port), int(control)
 
 
 _SIM_CONTROL = {}  # (host, control port) -> [socket, lock]: one kept connection each (no TIME_WAIT per pause)
 
 
 def sim_pause(address, seconds):
-    """A host's pause against the simulator: its device clock moves on that long (control "advance MS" on port + 1,
-    answered once it is there), in no host time. The device sees the pause as on the OP-XY (sim/clock.cpp: device
-    time stands still while nothing is due). One kept control connection per simulator: a pause each few
-    milliseconds of host time would otherwise use up the local ports."""
-    host, port = sim_address(address)
-    entry = _SIM_CONTROL.setdefault((host, port + 1), [None, threading.Lock()])
+    """A host's pause against the simulator: its device clock moves on that long (control "advance MS" on the control
+    port address names, answered once it is there), in no host time. The device sees the pause as on the OP-XY
+    (sim/clock.cpp: device time stands still while nothing is due). A simulator that cannot be reached is an error,
+    never a wall-clock wait. One kept control connection per simulator: a pause each few milliseconds of host time
+    would otherwise use up the local ports."""
+    host, _, control = sim_address(address)
+    entry = _SIM_CONTROL.setdefault((host, control), [None, threading.Lock()])
     line = b'advance %d\n' % max(1, round(seconds * 1000))
     with entry[1]:
         for attempt in (0, 1):
             try:
                 if entry[0] is None:
-                    try:
-                        entry[0] = socket.create_connection((host, port + 1), timeout=10.0)
-                    except ConnectionRefusedError:  # no simulator there (yet): no device clock
-                        time.sleep(seconds)
-                        return
+                    entry[0] = socket.create_connection((host, control), timeout=10.0)
                 entry[0].sendall(line)
                 reply = b''
                 while not reply.endswith(b'\n'):
@@ -216,6 +219,8 @@ def sim_pause(address, seconds):
                 if entry[0] is not None:
                     entry[0].close()
                 entry[0] = None
+                if isinstance(error, ConnectionRefusedError):
+                    raise ConnectionRefusedError('no simulator control port at %s:%d' % (host, control)) from error
                 if attempt or isinstance(error, socket.timeout):  # sent: never advance twice
                     raise
 
@@ -230,8 +235,8 @@ class TcpPort:
     on a local TCP port. Only loopback addresses: the simulator never listens elsewhere."""
 
     def __init__(self, address):
-        host, port = sim_address(address)
-        self.address = '%s:%d' % (host, port)
+        host, port, control = sim_address(address)
+        self.address = '%s:%d,%d' % (host, port, control)  # sim_pause: this simulator's own control port
         self.sock = socket.create_connection((host, port), timeout=2.0)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.fd = self.sock.fileno()
