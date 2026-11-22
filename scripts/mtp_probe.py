@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal MTP/PTP probe of the OP-XY over libusb (read-only; host only).
+"""Minimal MTP/PTP probe of the OP-XY over USB (read-only; host only).
 
 usage: uv run scripts/mtp_probe.py [--timeout-ms N] [--list [--names [--get NAME]]]
 
@@ -8,7 +8,7 @@ endpoints, then sends OpenSession, GetDeviceInfo, GetStorageIDs,
 GetStorageInfo and (with --list) GetObjectHandles for the root, printing each
 phase as it arrives so a missing answer names the request. Nothing is written
 to the device's storage. Quit OpenMTP / Image Capture first: only one program
-can claim the interface. Needs Homebrew libusb (ctypes, no Python packages).
+can claim the interface. Needs Homebrew libusb (through pyusb).
 The session and transport are xy_forever/mtp_read.py's (shared with setup.py
 import-stock --from-device), which refuses every operation that is not a read.
 """
@@ -19,16 +19,8 @@ import sys
 import zlib
 
 from xy_forever import mtp_read
-from xy_forever.mtp_read import OP_XY_VID, DeviceDescriptor, MtpError, ptp_string  # noqa: F401
 from xy_forever.mtp_read import READ_ONLY as NAMES
-
-
-def load():
-    """libusb, or exit with one line (scripts/usb_alive.py uses it too)."""
-    try:
-        return mtp_read.load_libusb()
-    except MtpError as e:
-        sys.exit(str(e))
+from xy_forever.mtp_read import MtpError, ptp_string
 
 
 def main(argv=None):

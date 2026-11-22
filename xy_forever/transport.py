@@ -5,7 +5,6 @@ what arrived within timeout, or b'' (the caller's own deadline decides when to g
 """
 
 import fcntl
-import glob
 import os
 import select
 import socket
@@ -15,7 +14,10 @@ import termios
 import threading
 import time
 
+from serial.tools import list_ports
+
 from xy_forever import device_lock, no_device
+from xy_forever.mtp_read import OP_XY_VID
 
 WRITE_STALL = 2.0  # seconds a write may make no progress before it is a timeout
 OPEN_LIMIT = 3.0  # seconds SerialPort waits for the port to open before it is a timeout
@@ -25,11 +27,11 @@ _opening = {}  # path: the socket of an open that outlived its wait (the next Se
 
 
 def device_ports():
-    """The OP-XY's CDC ports, sorted; a test run is refused before it looks (xy_forever/no_device.py). Takes the
-    device lock first (xy_forever/device_lock.py)."""
+    """The OP-XY's CDC ports (USB vendor 0x2367, pyserial's list_ports), sorted; a test run is refused before it
+    looks (xy_forever/no_device.py). Takes the device lock first (xy_forever/device_lock.py)."""
     no_device.refuse('the serial port (/dev/cu.usbmodem*)')
     device_lock.hold()
-    return sorted(glob.glob('/dev/cu.usbmodem*'))
+    return sorted(p.device for p in list_ports.comports() if p.vid == OP_XY_VID)
 
 
 def _detached(keep, *args):
@@ -95,7 +97,8 @@ def _final_close(fd, parent_done):
 
 
 class SerialPort:
-    """Raw termios transport on a CDC tty, opened for this process only.
+    """Raw termios transport on a CDC tty, opened for this process only. Not pyserial's Serial: its exclusive
+    open is flock (other programs still open the port), and the detached open below would need its private fields.
 
     macOS does not lock a /dev/cu.* port: a second process (scripts/keepalive.sh's status call every
     2 s) could open it during a transfer, flush its input on open, send its own HELLO and take replies.
@@ -191,7 +194,7 @@ def sim_pause(address, seconds):
     milliseconds of host time would otherwise use up the local ports."""
     host, port = sim_address(address)
     entry = _SIM_CONTROL.setdefault((host, port + 1), [None, threading.Lock()])
-    line = b'advance %d\n' % max(1, int(round(seconds * 1000)))
+    line = b'advance %d\n' % max(1, round(seconds * 1000))
     with entry[1]:
         for attempt in (0, 1):
             try:

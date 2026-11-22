@@ -14,6 +14,9 @@ _.primary_state, _.released, _.driver_phase, _.rx_pending
 # Called from C++ through the nanobind binding (hosttest/bind/content.cpp).
 _.read_target, _.read_staged
 
+# Read by pyusb: a device's timeout for control transfers that pass none (usb.util.get_string; usb_alive.py).
+_.default_timeout
+
 # Fields of parsed records (companions.py): the whole format, read or not.
 _.file_checksum, _.checksum_type
 

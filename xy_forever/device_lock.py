@@ -1,7 +1,7 @@
 """One host process at a time talks to the OP-XY: an OS file lock (fcntl.flock) on <private>/xy-forever/device.lock.
 
 Every opener of the real device takes it before it looks for one: xyf_host.connect (with its timeout) and the serial
-port (xy_forever/transport.py) and USB MTP (mtp_read.open_op_xy, scripts/usb_alive.py). It is held until the process exits: the kernel drops it then,
+port (xy_forever/transport.py) and USB (mtp_read.open_op_xy, scripts/usb_alive.py). It is held until the process exits: the kernel drops it then,
 even on a crash or a kill, so a lock is never left behind. A second process waits up to its timeout, then stops with
 "device busy" naming the holder, never a collision on the port. The simulator (TCP) and pseudo-terminals take no lock.
 With no private folder (nothing set up), there is nothing to coordinate and no lock is taken; nor in a test run

@@ -82,6 +82,6 @@ deleting `.turbo/` clears it. `scripts/firmware_cache_proof.py` re-proves the hi
 
 Tests never open a real device: `tests/conftest.py`, `check.py` and any process that loads `unittest` set
 `XYF_NO_DEVICE` for themselves and every process they start, and with it every real-device opener (the serial
-port, USB MTP, pyusb; `xy_forever/no_device.py`) raises "tests may not open a real device" before it looks for
+port, USB; `xy_forever/no_device.py`) raises "tests may not open a real device" before it looks for
 one. There is no opt-out: a test fakes the opener, or uses the simulator (TCP) or a pty. The browser tests run
 Chrome without Web Serial.

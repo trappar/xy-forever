@@ -81,7 +81,6 @@ class FakeOpXy:
         if payload is not None:
             self.out.append(container(2, code, tid, payload))
         self.out.append(container(3, rcode, tid))
-        return 0
 
     def answer(self, code, params):
         if code == 0x1002:
@@ -114,12 +113,12 @@ class FakeOpXy:
 
     def read(self, size):
         if not self.out:
-            return -7, b''  # LIBUSB_ERROR_TIMEOUT
+            raise TimeoutError(60, 'Operation timed out')  # as usb.core.USBTimeoutError (an OSError)
         head = self.out[0]
         self.out[0] = head[size:]
         if not self.out[0]:
             self.out.pop(0)
-        return 0, head[:size]
+        return head[:size]
 
     def close(self):
         self.closed = True
@@ -259,9 +258,12 @@ class UsbMessages(unittest.TestCase):
         self.assertEqual(M.usb_problem('claim interface 0', -4), 'claim interface 0 failed (libusb -4)')
 
     def test_missing_libusb(self):
+        import usb.backend.libusb1
+
         with (
             mock.patch.object(M.subprocess, 'run', side_effect=OSError),
             mock.patch.object(M.ctypes.util, 'find_library', return_value=None),
+            mock.patch.object(usb.backend.libusb1, '_lib', None),
             self.assertRaisesRegex(M.MtpError, r'^libusb-1\.0 not found \(brew install libusb\)$'),
         ):
             M.load_libusb()
