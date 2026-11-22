@@ -32,7 +32,6 @@ OPEN_XY = paths.OPEN_XY_UPSTREAM  # a fresh upstream clone (never ../open-xy)
 REAL = Path(os.environ.get('XYF_MOD_PACKAGES', paths.PUBLISHED_MODS))
 GLOBAL, WEAK, LOCAL = 1, 2, 0
 FUNC, OBJ, SECTION = 2, 1, 3
-ABS = M.SHN_ABS
 CATALOG = b'{"engine_types": [], "fx_types": [], "seq_types": []}\n'
 TEMPLATE = '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="220"><rect/></svg>'
 BASE = 0x8D2D0380

@@ -204,7 +204,6 @@ class Parser:
 
     def __init__(self):
         self.buffer = bytearray()
-        self.dropped = 0
         self.bad_crc = 0
 
     def _settle(self):
@@ -212,18 +211,15 @@ class Parser:
         while True:
             if len(b) >= 1 and b[0] != 0x58:
                 del b[0]
-                self.dropped += 1
                 continue
             if len(b) >= 2 and b[1] != 0x46:
                 del b[0]
-                self.dropped += 1
                 continue
             if len(b) < 8:
                 return None
             length = struct.unpack_from('<I', b, 4)[0]
             if length > MAX_PAYLOAD:
                 del b[0]
-                self.dropped += 1
                 continue
             total = 12 + length
             if len(b) < total:

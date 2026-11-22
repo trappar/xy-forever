@@ -22,7 +22,6 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 TUNNEL = 0x61
 PLAY, STOP, PLUS = 51, 52, 54
 PASS_BOUND_MS = 250  # one request per pass (sim timing)
-STREAM_MAX = 8192  # file_client.hpp stream_max (#144)
 
 
 class TunnelClient(R.Client):

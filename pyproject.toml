@@ -53,10 +53,13 @@ no-build-isolation-package = ["xyf-hosttest"]    # `uv sync` installs xy_forever
 xyf-hosttest = { path = "hosttest" }
 
 [tool.vulture]
-# `uv run vulture`: dead code. The names below are found by pytest and the device pass, not by calls.
-paths = ["xy_forever", "scripts", "tests", "re"]
-ignore_names = ["step_*", "test_*", "setUp*", "tearDown*", "pytest_*", "Test*", "log_message"]
-min_confidence = 61
+# `uv run vulture`: dead code. Its false positives: tests/vulture_whitelist.py. The names below are found by pytest
+# and the device pass, not by calls; "[A-Z][a-z]*" is a test class (pytest finds unittest classes by type, not by name).
+# usb_proto_ids.py is generated from protocol/v1.json: it lists the whole protocol, used or not.
+paths = ["xy_forever", "scripts", "tests", "re", "hosttest"]
+exclude = ["xy_forever/usb_proto_ids.py"]
+ignore_names = ["step_*", "test_*", "setUp*", "tearDown*", "pytest_*", "Test*", "[A-Z][a-z]*", "log_message"]
+min_confidence = 60
 
 [tool.pytest]
 # The suite: tests/ (unittest.TestCase classes, run by pytest). tests/conftest.py holds the tiers, the hard

@@ -71,8 +71,6 @@ A_OPS = (
     'other',
     'window open (+ its request)',
 )
-PIECES = (1024, 4096)  # the transfer piece: chunk .. the responder's buffer
-DEFAULT_PIECE = 4096  # the device's default (mtp_responder.hpp default_piece)
 
 
 class TimingError(Exception):

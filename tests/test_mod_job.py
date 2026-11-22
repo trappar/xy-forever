@@ -33,7 +33,6 @@ from xy_forever import package_records, paths, xyf_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 
-REGION = 8 << 20
 DEVICE_REGION = (8 << 20) - (64 << 10)  # B's job region less the job's state (usb_service.cpp job_slot_bytes)
 CHUNK = 64 * 1024
 SLICE = 128 * 1024

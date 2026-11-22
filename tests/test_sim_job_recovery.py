@@ -15,7 +15,6 @@ from xy_forever import package_records
 Switch, UNAVAILABLE, content, LIB = CS.Switch, CS.UNAVAILABLE, CS.content, CS.LIB
 
 JOURNAL = 'xy-forever/job.txt'
-OFFER = 'Source missing. PLAY on the first row undoes: '  # usb_service content_line
 
 
 def identity(root, entry):

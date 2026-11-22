@@ -36,7 +36,6 @@ SPEC = json.loads((ROOT / 'protocol' / 'v1.json').read_text())
 
 
 PARTITION_CLASS, PATH_CLASS, SECTOR_CLASS, WRITE_CLASS = 0x11907694, 0x119076B4, 0x11907348, 0x11907710
-READ_CLASS = 0x11907368
 EACCES, EBADF, EROFS, EBUSY, EMFILE = 13, 9, 30, 16, 24
 COMMAND_TAG = 0x434D  # peer_services.hpp: a command item's argument tag
 INSTALL_ITEM, USB_MODE_ITEM, FILE_WRITE_ITEM = 4, 7, 10  # storage_server.hpp
