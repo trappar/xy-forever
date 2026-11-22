@@ -4,9 +4,8 @@
 namespace xyf_core { namespace p224 {
 // ECDSA signature verification over NIST P-224 (FIPS 186-4 sections 6.4 and D.1.2.2; SEC 1 v2
 // section 4.1.4), for the .tfw header check (tfw::verify_header). Verification only:
-// public inputs, no secrets, no signing. Written to be read: textbook Jacobian formulas over
-// plain field elements, one generic modular multiply (Montgomery, 16-bit digits, so every
-// product and sum fits a U32), inverses by Fermat. No heap, no library calls, no recursion.
+// public inputs, no secrets, no signing. micro-ecc does the arithmetic (native/p224.cpp,
+// third_party/micro-ecc). No heap, no library calls, no recursion.
 static const U32 scalar_bytes = 28, public_key_bytes = 56;
 // key: a coordinate >= p, or the point is not on the curve (the all-zero encoding of the point
 // at infinity is not on it); range: r or s outside [1, n-1]; mismatch: u1*G + u2*Q is the

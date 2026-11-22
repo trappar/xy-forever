@@ -104,7 +104,6 @@ ignore = [
 # Held pull requests rewrite these files (#253); their findings are fixed there, then these lines go.
 "xy_forever/mtp_read.py" = ["B007"]
 "xy_forever/transport.py" = ["RUF046"]
-"tests/test_p224.py" = ["RUF021"]   # #249
 
 [tool.ruff.format]
 quote-style = "single"   # the repository's style
