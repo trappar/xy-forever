@@ -56,6 +56,8 @@ jobs:
     name: Web app, client, protocol check (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      UV_NO_SYNC: "1"   # uv run keeps the sync below: no hosttest build (no Python suite here)
     steps:
       - uses: actions/checkout@v7
         with:
