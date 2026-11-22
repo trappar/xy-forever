@@ -12,12 +12,11 @@ const char* const no_setup = "No mods are saved: the OP-XY already boots without
 bool storage_down(const State& s) { return s.storage != storage_unknown && s.storage != storage_ready; }
 }
 
-bool needs_storage(const State& s, uint32_t item) {
-    return storage_down(s) && item != item_settings;
-}
+bool needs_storage(const State& s, uint32_t item) { return storage_down(s) && item != item_settings; }
 
 void start(State& s, const catalog::Catalog* catalog, bool has_builtin) {
-    for (uint32_t i = 0; i != sizeof(s); ++i) reinterpret_cast<char*>(&s)[i] = 0;   // 193: storage unknown (the caller sets it)
+    for (uint32_t i = 0; i != sizeof(s); ++i)
+        reinterpret_cast<char*>(&s)[i] = 0;   // 193: storage unknown (the caller sets it)
     s.catalog = catalog;
     bool any = has_builtin;
     for (uint32_t i = 0; !any && catalog && i != catalog->count; ++i) any = usable(s, i);
@@ -32,7 +31,8 @@ const char* main_label(const State& s, uint32_t item) {
         if (s.storage == storage_unavailable) return "Storage unavailable";
         if (storage_down(s)) return "Starting storage...";
         if (s.continue_label) return s.continue_label;
-        if (s.catalog && s.catalog->default_index < s.catalog->count) return s.catalog->items[s.catalog->default_index].name;
+        if (s.catalog && s.catalog->default_index < s.catalog->count)
+            return s.catalog->items[s.catalog->default_index].name;
         if (s.storage == storage_ready) return "Continue (no default firmware set)";
         return "Continue (built-in OP-XY)";                                // offline modes: the embedded stock OS
     case item_safe: return s.safe_label ? s.safe_label : "Boot without mods";
@@ -49,12 +49,18 @@ const char* main_note(const State& s) {     // a storage line while storage is d
 
 Action key(State& s, uint32_t k, bool pressed) {
     k = as_play(k);
-    if (k == key_shift) { s.shift_held = pressed; return Action::none; }
+    if (k == key_shift) {
+        s.shift_held = pressed;
+        return Action::none;
+    }
     if (!pressed) return Action::none;
     const bool minus = k == key_minus, plus = k == key_plus, play = k == key_play;
     if (k == key_stop) {                              // back
 #if defined(XYF_SETTING_OPTIONS)
-        if (s.screen == Screen::packs && s.pack_confirm) { s.pack_confirm = false; return Action::redraw; }
+        if (s.screen == Screen::packs && s.pack_confirm) {
+            s.pack_confirm = false;
+            return Action::redraw;
+        }
 #endif
         const Screen back = s.screen == Screen::info ? s.info_return :
                             s.screen == Screen::home_empty ? Screen::home_empty :
@@ -68,8 +74,16 @@ Action key(State& s, uint32_t k, bool pressed) {
     }
     switch (s.screen) {
     case Screen::main:
-        if (minus || plus) { s.note = 0; s.main_selected = step(s.main_selected, main_items, plus); return Action::redraw; }
-        if (k - key_track1 < tracks) { s.note = 0; s.main_selected = k - key_track1; return Action::redraw; }
+        if (minus || plus) {
+            s.note = 0;
+            s.main_selected = step(s.main_selected, main_items, plus);
+            return Action::redraw;
+        }
+        if (k - key_track1 < tracks) {
+            s.note = 0;
+            s.main_selected = k - key_track1;
+            return Action::redraw;
+        }
         if (!play) return Action::none;
         if (needs_storage(s, s.main_selected)) {     // 193: refused with the reason (Settings still opens)
             s.note = s.storage == storage_unavailable ? "Storage unavailable: the firmware library can't be read." :
@@ -82,23 +96,40 @@ Action key(State& s, uint32_t k, bool pressed) {
             if (s.undo_offer) return Action::undo;   // the status line's offer comes first
             return s.pending ? Action::apply : Action::continue_boot;
         case item_safe:                           // at once: Boot without mods, or Restore
-            if (!s.safe_label) { s.note = no_setup; return Action::redraw; }
+            if (!s.safe_label) {
+                s.note = no_setup;
+                return Action::redraw;
+            }
             return s.safe_restore ? Action::restore : Action::safe_mode;
         case item_mods: return Action::open_mods;
-        default: s.screen = Screen::settings; s.settings_note = 0; return Action::redraw;
+        default:
+            s.screen = Screen::settings;
+            s.settings_note = 0;
+            return Action::redraw;
         }
     case Screen::info:
-        if (play) { s.screen = s.info_return; return Action::redraw; }
+        if (play) {
+            s.screen = s.info_return;
+            return Action::redraw;
+        }
         return Action::none;
     case Screen::settings: {                      // the extra row opens the installed-pack list on the product
         uint32_t count = settings::rows;
 #if defined(XYF_SETTING_OPTIONS)
         if (s.pack_names) ++count;
 #endif
-        if (minus || plus) { s.settings_selected = step(s.settings_selected, count, plus); s.settings_note = 0; return Action::redraw; }
+        if (minus || plus) {
+            s.settings_selected = step(s.settings_selected, count, plus);
+            s.settings_note = 0;
+            return Action::redraw;
+        }
         if (!play) return Action::none;
-        if (s.settings_selected != settings::row_about) { s.entry = s.settings_selected; return Action::change_setting; }
-        s.info_return = Screen::settings; s.screen = Screen::info;   // #21: the About page (once Info on the home menu)
+        if (s.settings_selected != settings::row_about) {
+            s.entry = s.settings_selected;
+            return Action::change_setting;
+        }
+        s.info_return = Screen::settings;
+        s.screen = Screen::info;   // #21: the About page (once Info on the home menu)
         return Action::redraw;
     }
 #if defined(XYF_SETTING_OPTIONS)
@@ -106,21 +137,34 @@ Action key(State& s, uint32_t k, bool pressed) {
         if (s.pack_busy || s.pack_execute) return Action::none;
         if (s.pack_confirm) {
             if (minus || plus) s.confirm_accept = !s.confirm_accept;
-            else if (play) { s.pack_execute = s.confirm_accept; s.pack_confirm = false; }
-            else return Action::none;
+            else if (play) {
+                s.pack_execute = s.confirm_accept;
+                s.pack_confirm = false;
+            } else return Action::none;
         } else if (play && s.shift_held) {
-            s.pack_inbox = !s.pack_inbox; s.pack_page = 0; s.pack_ready = false;
+            s.pack_inbox = !s.pack_inbox;
+            s.pack_page = 0;
+            s.pack_ready = false;
         } else if (!s.pack_ready) return Action::none;
-        else if (play && s.pack_count) { s.pack_confirm = true; s.confirm_accept = false; }
-        else if (plus && s.pack_selected + 1 < s.pack_count) ++s.pack_selected;
+        else if (play && s.pack_count) {
+            s.pack_confirm = true;
+            s.confirm_accept = false;
+        } else if (plus && s.pack_selected + 1 < s.pack_count) ++s.pack_selected;
         else if (minus && s.pack_selected) --s.pack_selected;
-        else if (plus && s.pack_more) { ++s.pack_page; s.pack_ready = false; }
-        else if (minus && s.pack_page) { --s.pack_page; s.pack_ready = false; }
-        else return Action::none;
+        else if (plus && s.pack_more) {
+            ++s.pack_page;
+            s.pack_ready = false;
+        } else if (minus && s.pack_page) {
+            --s.pack_page;
+            s.pack_ready = false;
+        } else return Action::none;
         s.pack_result = 0;
         return Action::redraw;
     case Screen::options:                         // #21: - / + choose, PLAY picks (STOP above: back, unchanged)
-        if (minus || plus) { s.option_selected = step(s.option_selected, s.option_count, plus); return Action::redraw; }
+        if (minus || plus) {
+            s.option_selected = step(s.option_selected, s.option_count, plus);
+            return Action::redraw;
+        }
         if (!play) return Action::none;
         s.screen = Screen::settings;
         return Action::pick_setting;
@@ -136,4 +180,4 @@ Action key(State& s, uint32_t k, bool pressed) {
     }
     return Action::none;
 }
-} }
+}}

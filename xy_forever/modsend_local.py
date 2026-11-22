@@ -1,9 +1,10 @@
 """Read and verify a host package set before publication (modsend.local_set)."""
+
 import hashlib
 from pathlib import Path
 
 from . import depth, modstore, package_records, package_store
-from .modsend import ROOT, LIST, TOKEN, MAX_PATH, Refused
+from .modsend import LIST, MAX_PATH, ROOT, TOKEN, Refused
 
 
 def local_set(package_dir, only=()):
@@ -39,22 +40,25 @@ def local_set(package_dir, only=()):
             if rel == LIST or any(p in ('', '.', '..') for p in parts) or len(device.encode()) > MAX_PATH:
                 raise Refused('%s: unusable path %r' % (name, rel))
             if depth.refusal(device):
-                raise Refused('%s: %s' % (name, depth.refusal(device)[len('refused: '):]))
+                raise Refused('%s: %s' % (name, depth.refusal(device)[len('refused: ') :]))
             data = (folder / rel).read_bytes() if (folder / rel).is_file() else None
             if data is None or hashlib.sha256(data).hexdigest() != sha:
                 raise Refused('%s/%s: missing or differs from its %s line' % (name, rel, LIST))
             if not data:
                 raise Refused('%s/%s: empty (the device stages 1 byte or more)' % (name, rel))
             files.append((rel, data))
-        files.sort(key=lambda f: f[0] == metadata)            # selected metadata after payloads
-        files.append((LIST, (folder / LIST).read_bytes()))     # files.sha256 last
+        files.sort(key=lambda f: f[0] == metadata)  # selected metadata after payloads
+        files.append((LIST, (folder / LIST).read_bytes()))  # files.sha256 last
         try:
             modstore.stored_files(name, files)
         except modstore.Clash as error:
             raise Refused(str(error))
         fields = package_store.validate(dict(files))
-        if (fields.get('generation') != generation or fields.get('profile', profile) != profile or
-                fields.get('type') != ('mod-base' if name == 'base' else 'mod')):
+        if (
+            fields.get('generation') != generation
+            or fields.get('profile', profile) != profile
+            or fields.get('type') != ('mod-base' if name == 'base' else 'mod')
+        ):
             raise Refused('%s: generation/profile differs from its base' % name)
         packages[name] = files
     return profile, generation, packages

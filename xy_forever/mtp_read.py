@@ -6,21 +6,30 @@ before anything reaches the transport; no data phase is ever sent to the device 
 a subclass with its own checks). A transport is any object with write(bytes) -> libusb rc,
 read(size) -> (rc, bytes) and close() (UsbTransport, or a fake in the tests).
 """
+
 import ctypes
 import ctypes.util
-from pathlib import Path
 import struct
 import subprocess
+from pathlib import Path
 
 from xy_forever import device_lock, no_device
 
 OP_XY_VID = 0x2367
-READ_ONLY = {0x1001: 'GetDeviceInfo', 0x1002: 'OpenSession', 0x1003: 'CloseSession', 0x1004: 'GetStorageIDs',
-             0x1005: 'GetStorageInfo', 0x1007: 'GetObjectHandles', 0x1008: 'GetObjectInfo', 0x1009: 'GetObject'}
-MTP_CLASSES = (6, 255)          # still image (PTP), vendor class (the OP-XY's MTP, docs/HARDWARE.md)
-ROOT = 0xFFFFFFFF               # GetObjectHandles parent: the storage root
+READ_ONLY = {
+    0x1001: 'GetDeviceInfo',
+    0x1002: 'OpenSession',
+    0x1003: 'CloseSession',
+    0x1004: 'GetStorageIDs',
+    0x1005: 'GetStorageInfo',
+    0x1007: 'GetObjectHandles',
+    0x1008: 'GetObjectInfo',
+    0x1009: 'GetObject',
+}
+MTP_CLASSES = (6, 255)  # still image (PTP), vendor class (the OP-XY's MTP, docs/HARDWARE.md)
+ROOT = 0xFFFFFFFF  # GetObjectHandles parent: the storage root
 OK, SESSION_ALREADY_OPEN = 0x2001, 0x201E
-FOLDER = 0x3001                 # ObjectFormat Association
+FOLDER = 0x3001  # ObjectFormat Association
 LIBUSB_ERROR_ACCESS, LIBUSB_ERROR_BUSY = -3, -6
 CHUNK = 0x10000
 
@@ -35,10 +44,11 @@ class Refused(MtpError):
 
 def ptp_string(data, at):
     n = data[at]
-    return data[at + 1:at + 1 + 2 * n].decode('utf-16-le', 'replace').rstrip('\0'), at + 1 + 2 * n
+    return data[at + 1 : at + 1 + 2 * n].decode('utf-16-le', 'replace').rstrip('\0'), at + 1 + 2 * n
 
 
 # the session (pure Python over any transport)
+
 
 class Session:
     def __init__(self, transport):
@@ -54,8 +64,9 @@ class Session:
 
     def _command(self, name, code, params):
         self.tid += 1
-        cmd = struct.pack('<IHHI', 12 + 4 * len(params), 1, code, self.tid) + b''.join(struct.pack('<I', p)
-                                                                                       for p in params)
+        cmd = struct.pack('<IHHI', 12 + 4 * len(params), 1, code, self.tid) + b''.join(
+            struct.pack('<I', p) for p in params
+        )
         rc = self.transport.write(cmd)
         if rc:
             raise MtpError('%s: command not sent (libusb %d)' % (name, rc))
@@ -68,12 +79,12 @@ class Session:
             if len(got) < 12:
                 raise MtpError('%s: short container (%d bytes)' % (name, len(got)))
             length, kind, rcode, _ = struct.unpack_from('<IHHI', got)
-            if kind == 2:                                       # data phase (device to host)
+            if kind == 2:  # data phase (device to host)
                 data = bytearray(got[12:])
                 while len(data) < length - 12:
                     data += self.read(name, 'data stopped at %d/%d bytes' % (len(data), length - 12))
-                payload, pending = bytes(data[:length - 12]), bytes(data[length - 12:])
-            elif kind == 3:                                     # response
+                payload, pending = bytes(data[: length - 12]), bytes(data[length - 12 :])
+            elif kind == 3:  # response
                 n = max(0, min(length, len(got)) - 12) // 4
                 self.answer = struct.unpack_from('<%dI' % n, got, 12)
                 return rcode, payload
@@ -81,7 +92,7 @@ class Session:
                 raise MtpError('%s: unexpected container type %d' % (name, kind))
 
     def read(self, name, what='no answer'):
-        for _ in range(3):                                      # a zero-length packet ends a data phase
+        for _ in range(3):  # a zero-length packet ends a data phase
             rc, got = self.transport.read(CHUNK)
             if rc:
                 raise MtpError('%s: %s (libusb %d)' % (name, what, rc))
@@ -97,7 +108,7 @@ class Session:
 
     def open(self):
         rcode, _ = self.transact(0x1002, 1)
-        if rcode == SESSION_ALREADY_OPEN:                       # as go-mtpfs: close it, open again
+        if rcode == SESSION_ALREADY_OPEN:  # as go-mtpfs: close it, open again
             self.transact(0x1003)
             rcode, _ = self.transact(0x1002, 1)
         if rcode != OK:
@@ -121,8 +132,14 @@ class Session:
         for h in struct.unpack_from('<%dI' % count, handles, 4):
             info = self.check(0x1008, h)
             if len(info) >= 53:
-                out.append((h, ptp_string(info, 52)[0], struct.unpack_from('<H', info, 4)[0],
-                            struct.unpack_from('<I', info, 8)[0]))
+                out.append(
+                    (
+                        h,
+                        ptp_string(info, 52)[0],
+                        struct.unpack_from('<H', info, 4)[0],
+                        struct.unpack_from('<I', info, 8)[0],
+                    )
+                )
         return out
 
     def find(self, path):
@@ -167,6 +184,7 @@ def fetch(files, folder, transport, log=print):
 
 # libusb (ctypes)
 
+
 def load_libusb():
     try:
         prefix = subprocess.run(['brew', '--prefix', 'libusb'], capture_output=True, text=True).stdout.strip()
@@ -182,29 +200,54 @@ def load_libusb():
 
 
 class DeviceDescriptor(ctypes.Structure):
-    _fields_ = [('bLength', ctypes.c_uint8), ('bDescriptorType', ctypes.c_uint8), ('bcdUSB', ctypes.c_uint16),
-                ('bDeviceClass', ctypes.c_uint8), ('bDeviceSubClass', ctypes.c_uint8),
-                ('bDeviceProtocol', ctypes.c_uint8), ('bMaxPacketSize0', ctypes.c_uint8),
-                ('idVendor', ctypes.c_uint16), ('idProduct', ctypes.c_uint16), ('bcdDevice', ctypes.c_uint16),
-                ('iManufacturer', ctypes.c_uint8), ('iProduct', ctypes.c_uint8),
-                ('iSerialNumber', ctypes.c_uint8), ('bNumConfigurations', ctypes.c_uint8)]
+    _fields_ = [
+        ('bLength', ctypes.c_uint8),
+        ('bDescriptorType', ctypes.c_uint8),
+        ('bcdUSB', ctypes.c_uint16),
+        ('bDeviceClass', ctypes.c_uint8),
+        ('bDeviceSubClass', ctypes.c_uint8),
+        ('bDeviceProtocol', ctypes.c_uint8),
+        ('bMaxPacketSize0', ctypes.c_uint8),
+        ('idVendor', ctypes.c_uint16),
+        ('idProduct', ctypes.c_uint16),
+        ('bcdDevice', ctypes.c_uint16),
+        ('iManufacturer', ctypes.c_uint8),
+        ('iProduct', ctypes.c_uint8),
+        ('iSerialNumber', ctypes.c_uint8),
+        ('bNumConfigurations', ctypes.c_uint8),
+    ]
 
 
 class Endpoint(ctypes.Structure):
-    _fields_ = [('bLength', ctypes.c_uint8), ('bDescriptorType', ctypes.c_uint8),
-                ('bEndpointAddress', ctypes.c_uint8), ('bmAttributes', ctypes.c_uint8),
-                ('wMaxPacketSize', ctypes.c_uint16), ('bInterval', ctypes.c_uint8),
-                ('bRefresh', ctypes.c_uint8), ('bSynchAddress', ctypes.c_uint8),
-                ('extra', ctypes.c_void_p), ('extra_length', ctypes.c_int)]
+    _fields_ = [
+        ('bLength', ctypes.c_uint8),
+        ('bDescriptorType', ctypes.c_uint8),
+        ('bEndpointAddress', ctypes.c_uint8),
+        ('bmAttributes', ctypes.c_uint8),
+        ('wMaxPacketSize', ctypes.c_uint16),
+        ('bInterval', ctypes.c_uint8),
+        ('bRefresh', ctypes.c_uint8),
+        ('bSynchAddress', ctypes.c_uint8),
+        ('extra', ctypes.c_void_p),
+        ('extra_length', ctypes.c_int),
+    ]
 
 
 class AltSetting(ctypes.Structure):
-    _fields_ = [('bLength', ctypes.c_uint8), ('bDescriptorType', ctypes.c_uint8),
-                ('bInterfaceNumber', ctypes.c_uint8), ('bAlternateSetting', ctypes.c_uint8),
-                ('bNumEndpoints', ctypes.c_uint8), ('bInterfaceClass', ctypes.c_uint8),
-                ('bInterfaceSubClass', ctypes.c_uint8), ('bInterfaceProtocol', ctypes.c_uint8),
-                ('iInterface', ctypes.c_uint8), ('endpoint', ctypes.POINTER(Endpoint)),
-                ('extra', ctypes.c_void_p), ('extra_length', ctypes.c_int)]
+    _fields_ = [
+        ('bLength', ctypes.c_uint8),
+        ('bDescriptorType', ctypes.c_uint8),
+        ('bInterfaceNumber', ctypes.c_uint8),
+        ('bAlternateSetting', ctypes.c_uint8),
+        ('bNumEndpoints', ctypes.c_uint8),
+        ('bInterfaceClass', ctypes.c_uint8),
+        ('bInterfaceSubClass', ctypes.c_uint8),
+        ('bInterfaceProtocol', ctypes.c_uint8),
+        ('iInterface', ctypes.c_uint8),
+        ('endpoint', ctypes.POINTER(Endpoint)),
+        ('extra', ctypes.c_void_p),
+        ('extra_length', ctypes.c_int),
+    ]
 
 
 class Interface(ctypes.Structure):
@@ -212,11 +255,19 @@ class Interface(ctypes.Structure):
 
 
 class Config(ctypes.Structure):
-    _fields_ = [('bLength', ctypes.c_uint8), ('bDescriptorType', ctypes.c_uint8),
-                ('wTotalLength', ctypes.c_uint16), ('bNumInterfaces', ctypes.c_uint8),
-                ('bConfigurationValue', ctypes.c_uint8), ('iConfiguration', ctypes.c_uint8),
-                ('bmAttributes', ctypes.c_uint8), ('MaxPower', ctypes.c_uint8),
-                ('interface', ctypes.POINTER(Interface)), ('extra', ctypes.c_void_p), ('extra_length', ctypes.c_int)]
+    _fields_ = [
+        ('bLength', ctypes.c_uint8),
+        ('bDescriptorType', ctypes.c_uint8),
+        ('wTotalLength', ctypes.c_uint16),
+        ('bNumInterfaces', ctypes.c_uint8),
+        ('bConfigurationValue', ctypes.c_uint8),
+        ('iConfiguration', ctypes.c_uint8),
+        ('bmAttributes', ctypes.c_uint8),
+        ('MaxPower', ctypes.c_uint8),
+        ('interface', ctypes.POINTER(Interface)),
+        ('extra', ctypes.c_void_p),
+        ('extra_length', ctypes.c_int),
+    ]
 
 
 def interfaces(lib, dev):
@@ -227,10 +278,16 @@ def interfaces(lib, dev):
     out = []
     for i in range(cfg.contents.bNumInterfaces):
         alt = cfg.contents.interface[i].altsetting[0]
-        out.append({'number': alt.bInterfaceNumber,
-                    'cls': (alt.bInterfaceClass, alt.bInterfaceSubClass, alt.bInterfaceProtocol),
-                    'endpoints': [(e.bEndpointAddress, e.bmAttributes & 3, e.wMaxPacketSize)
-                                  for e in (alt.endpoint[k] for k in range(alt.bNumEndpoints))]})
+        out.append(
+            {
+                'number': alt.bInterfaceNumber,
+                'cls': (alt.bInterfaceClass, alt.bInterfaceSubClass, alt.bInterfaceProtocol),
+                'endpoints': [
+                    (e.bEndpointAddress, e.bmAttributes & 3, e.wMaxPacketSize)
+                    for e in (alt.endpoint[k] for k in range(alt.bNumEndpoints))
+                ],
+            }
+        )
     lib.libusb_free_config_descriptor(cfg)
     return out
 
@@ -254,14 +311,18 @@ def choose(devices):
         picked = mtp_interface(found)
         if picked:
             return dev, ids, picked
-    raise MtpError('the OP-XY is on USB but not in MTP mode (no MTP interface): start the dev menu\'s MTP '
-                   '(COM held while switching on, Track 3, Track 2)')
+    raise MtpError(
+        "the OP-XY is on USB but not in MTP mode (no MTP interface): start the dev menu's MTP "
+        '(COM held while switching on, Track 3, Track 2)'
+    )
 
 
 def usb_problem(step, rc):
     if rc in (LIBUSB_ERROR_ACCESS, LIBUSB_ERROR_BUSY):
-        return ('the OP-XY\'s MTP interface is held by another program: quit OpenMTP, Image Capture and Android '
-                'File Transfer, then retry')
+        return (
+            "the OP-XY's MTP interface is held by another program: quit OpenMTP, Image Capture and Android "
+            'File Transfer, then retry'
+        )
     return '%s failed (libusb %d)' % (step, rc)
 
 
@@ -272,9 +333,10 @@ class UsbTransport:
 
     def transfer(self, ep, buf):
         moved = ctypes.c_int()
-        rc = self.lib.libusb_bulk_transfer(self.handle, ctypes.c_uint8(ep), buf, len(buf.raw), ctypes.byref(moved),
-                                           ctypes.c_uint(self.timeout_ms))
-        return rc, buf.raw[:moved.value]
+        rc = self.lib.libusb_bulk_transfer(
+            self.handle, ctypes.c_uint8(ep), buf, len(buf.raw), ctypes.byref(moved), ctypes.c_uint(self.timeout_ms)
+        )
+        return rc, buf.raw[: moved.value]
 
     def write(self, data):
         return self.transfer(self.ep_out, ctypes.create_string_buffer(data, len(data)))[0]
@@ -312,8 +374,10 @@ def open_op_xy(timeout_ms=5000, log=None):
                 if log:
                     log('device %04x:%04x' % (d.idVendor, d.idProduct))
                     for f in found:
-                        log('interface %d class %d/%d/%d endpoints %s' % ((f['number'],) + f['cls'] + (
-                            ', '.join('%02x/%d/%d' % e for e in f['endpoints']),)))
+                        log(
+                            'interface %d class %d/%d/%d endpoints %s'
+                            % ((f['number'],) + f['cls'] + (', '.join('%02x/%d/%d' % e for e in f['endpoints']),))
+                        )
                 devices.append((dev, (d.idVendor, d.idProduct), found))
         dev, _, (number, ep_in, ep_out) = choose(devices)
         rc = lib.libusb_open(dev, ctypes.byref(handle))

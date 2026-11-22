@@ -62,7 +62,7 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
     return xyf::usbp::get32(sector) >= 2 && xyf::usbp::get32(sector + 4) == size &&
            xyf::usbp::get32(sector + 8) == crc && sector[12] != 0 && sector[13] <= 1;
 }
-} }
+}}
 
 #if defined(__bfin__)
 #include "menu_link.hpp"
@@ -94,49 +94,51 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "tfw_role_probe.hpp"
 #include "../native/tfw_check.hpp"
 #endif
-extern "C" { extern const xyf_core::Policy* volatile xy_forever_cold_policy; }   // cold.cpp
+extern "C" {
+extern const xyf_core::Policy* volatile xy_forever_cold_policy;
+}   // cold.cpp
 namespace {
 bool boot_probe_active();
 bool rehearsal_active();
 #include "usb_service_transport.ipp"        // stock wrappers, transport, PUT state, install log, HELLO, STATUS
 #include "usb_service_stage2.ipp"           // the stage 2 loader
 #include "usb_service_identity.ipp"         // hello version= and image=, the menu's labels
-#include "usb_service_files.ipp"            // READ_FILE, SCREEN, PEEK, the MTP self-test, PUT, SET_DEFAULT, LIBRARY_BOOT
+#include "usb_service_files.ipp" // READ_FILE, SCREEN, PEEK, the MTP self-test, PUT, SET_DEFAULT, LIBRARY_BOOT
 #if defined(XYF_USB_FILE_WRITE)
-#include "usb_service_file_write.ipp"       // FILE_DELETE/RMDIR/MKDIR/RENAME/COPY/LIST/WRITE
-#include "usb_service_stream.ipp"           // FILE_WRITE_BEGIN/DATA/END (#4)
+#include "usb_service_file_write.ipp" // FILE_DELETE/RMDIR/MKDIR/RENAME/COPY/LIST/WRITE
+#include "usb_service_stream.ipp" // FILE_WRITE_BEGIN/DATA/END (#4)
 #include "usb_service_storage_io.ipp"
-#include "usb_service_mod_job.ipp"          // the mod assembly job on B
-#include "usb_service_save_log.ipp"         // the save-time log
-#include "usb_service_content.ipp"          // the content switch and config jobs
-#include "usb_service_adopt.ipp"            // #178: the stock entry's adoption
-#include "usb_service_recovery.ipp"         // durable content intent, menu/service startup only
-#include "usb_service_mtp_session.ipp"      // the MTP session (with XYF_SIM it leaves this namespace for one declaration)
-#include "usb_service_mods_apply.ipp"       // MODS_APPLY
-#include "usb_service_config.ipp"           // CONFIG_GET, CONFIG_SET (#26)
+#include "usb_service_mod_job.ipp" // the mod assembly job on B
+#include "usb_service_save_log.ipp" // the save-time log
+#include "usb_service_content.ipp" // the content switch and config jobs
+#include "usb_service_adopt.ipp" // #178: the stock entry's adoption
+#include "usb_service_recovery.ipp" // durable content intent, menu/service startup only
+#include "usb_service_mtp_session.ipp" // the MTP session (with XYF_SIM it leaves this namespace for one declaration)
+#include "usb_service_mods_apply.ipp" // MODS_APPLY
+#include "usb_service_config.ipp" // CONFIG_GET, CONFIG_SET (#26)
 }
-namespace xy_forever { namespace usb_service {      // the Mods page's hooks (usb_service.hpp)
-#include "usb_service_mods_page.ipp"        // the Mods page's hooks
-#include "usb_service_settings.ipp"         // settings.txt, the Settings page's rows (#21)
-} }
+namespace xy_forever { namespace usb_service { // the Mods page's hooks (usb_service.hpp)
+#include "usb_service_mods_page.ipp" // the Mods page's hooks
+#include "usb_service_settings.ipp" // settings.txt, the Settings page's rows (#21)
+}}
 namespace {
 #include "usb_service_reports.ipp"
 #include "usb_service_package_session.ipp"
-#include "usb_service_job_status.ipp"       // JOB_STATUS, JOB_CANCEL
-#include "usb_service_boot_probe.ipp"       // #7: read-only boot-partition diagnostic
+#include "usb_service_job_status.ipp" // JOB_STATUS, JOB_CANCEL
+#include "usb_service_boot_probe.ipp" // #7: read-only boot-partition diagnostic
 #else
 bool boot_probe_active() { return false; }
 #endif
 
-#include "usb_service_a_stage.ipp"         // product RAM-only A admission rehearsal
-#include "usb_service_install.ipp"          // TFW_CHECK, INSTALL
+#include "usb_service_a_stage.ipp" // product RAM-only A admission rehearsal
+#include "usb_service_install.ipp" // TFW_CHECK, INSTALL
 }
 
 namespace xy_forever { namespace usb_service {
-#include "usb_service_entry.ipp"            // the public entry points
-#include "usb_service_composite.ipp"        // serial + MTP as one composite device
-#include "usb_service_crash_trigger.ipp"    // diag.crash (test build xyf-crash-trigger only, #102)
-#include "usb_service_trust.ipp"            // #65: Ask before USB control
-#include "usb_service_home.ipp"             // the home loop
-} }
+#include "usb_service_entry.ipp" // the public entry points
+#include "usb_service_composite.ipp" // serial + MTP as one composite device
+#include "usb_service_crash_trigger.ipp" // diag.crash (test build xyf-crash-trigger only, #102)
+#include "usb_service_trust.ipp" // #65: Ask before USB control
+#include "usb_service_home.ipp" // the home loop
+}}
 #endif

@@ -40,7 +40,7 @@ struct Client {
 };
 
 // Runs encode into a copy of out (its first capacity bytes the output): (status, produced, out after).
-template <class Encode> std::tuple<int, U32, nb::bytes> into(nb::bytes out, unsigned capacity, Encode encode) {
+template<class Encode> std::tuple<int, U32, nb::bytes> into(nb::bytes out, unsigned capacity, Encode encode) {
     if (capacity > out.size()) throw nb::value_error("capacity past the buffer");
     std::vector<Byte> buffer(bytes_of(out), bytes_of(out) + out.size());
     U32 produced = 0xffffffffu;
@@ -60,7 +60,8 @@ void bind_peer_boot(nb::module_ m) {
     m.def("decode_command", [](nb::bytes in) {
         peer::Request r = {0, 0, 0};
         U32 sequence = 0;
-        const int status = static_cast<int>(peer::decode_command(bytes_of(in), static_cast<U32>(in.size()), r, sequence));
+        const int status =
+            static_cast<int>(peer::decode_command(bytes_of(in), static_cast<U32>(in.size()), r, sequence));
         return std::make_tuple(status, r.operation, r.argument0, r.argument1, sequence);
     });
     // encode_result(operation, sequence, result, out, capacity) -> (status, produced, out after).
@@ -71,58 +72,69 @@ void bind_peer_boot(nb::module_ m) {
     // decode_result(bytes, operation, sequence) -> (status, result).
     m.def("decode_result", [](nb::bytes in, U32 operation, U32 sequence) {
         U32 result = 0;
-        const int status =
-            static_cast<int>(peer::decode_result(bytes_of(in), static_cast<U32>(in.size()), operation, sequence, result));
+        const int status = static_cast<int>(
+            peer::decode_result(bytes_of(in), static_cast<U32>(in.size()), operation, sequence, result));
         return std::make_tuple(status, result);
     });
 
     nb::class_<Server>(m, "Server")
         .def(nb::init<>())
         .def("begin", [](Server& s) { s.server.begin(); })
-        .def("freeze", [](Server& s, nb::bytearray image, unsigned size, nb::bytes digest) {
-            return static_cast<int>(s.server.freeze(s.hold(image, size), size, digest_of(digest)));
-        })
+        .def("freeze",
+             [](Server& s, nb::bytearray image, unsigned size, nb::bytes digest) {
+                 return static_cast<int>(s.server.freeze(s.hold(image, size), size, digest_of(digest)));
+             })
         // freeze_hashing(image, size) -> (status, the digest it wrote).
-        .def("freeze_hashing", [](Server& s, nb::bytearray image, unsigned size) {
-            hash::Digest digest;
-            std::memset(digest.bytes, 0, 32);
-            const int status = static_cast<int>(s.server.freeze_hashing(s.hold(image, size), size, digest));
-            return std::make_tuple(status, as_bytes(digest.bytes, 32));
-        })
-        .def("freeze_unhashed", [](Server& s, nb::bytearray image, unsigned size, U32 crc) {
-            return static_cast<int>(s.server.freeze_unhashed(s.hold(image, size), size, crc));
-        })
+        .def("freeze_hashing",
+             [](Server& s, nb::bytearray image, unsigned size) {
+                 hash::Digest digest;
+                 std::memset(digest.bytes, 0, 32);
+                 const int status = static_cast<int>(s.server.freeze_hashing(s.hold(image, size), size, digest));
+                 return std::make_tuple(status, as_bytes(digest.bytes, 32));
+             })
+        .def("freeze_unhashed",
+             [](Server& s, nb::bytearray image, unsigned size, U32 crc) {
+                 return static_cast<int>(s.server.freeze_unhashed(s.hold(image, size), size, crc));
+             })
         // process(operation, a, b, capacity) -> (status, produced, guarded): guarded is the output with 16 bytes
         // of 0xA5 on each side, all 0xA5 before the call.
-        .def("process", [](Server& s, U32 operation, U32 a, U32 b, unsigned capacity) {
-            std::vector<Byte> guard(capacity + 32, 0xA5);
-            const peer::Request r = {operation, a, b};
-            U32 produced = 0xffffffffu;
-            const int status = static_cast<int>(s.server.process(r, guard.data() + 16, capacity, produced));
-            return std::make_tuple(status, produced, as_bytes(guard.data(), guard.size()));
-        })
+        .def("process",
+             [](Server& s, U32 operation, U32 a, U32 b, unsigned capacity) {
+                 std::vector<Byte> guard(capacity + 32, 0xA5);
+                 const peer::Request r = {operation, a, b};
+                 U32 produced = 0xffffffffu;
+                 const int status = static_cast<int>(s.server.process(r, guard.data() + 16, capacity, produced));
+                 return std::make_tuple(status, produced, as_bytes(guard.data(), guard.size()));
+             })
         .def("phase", [](Server& s) { return static_cast<int>(s.server.phase()); })
         .def("ready", [](Server& s) { return s.server.ready(); });
 
     nb::class_<Client>(m, "Client")
         .def(nb::init<>())
-        .def("init", [](Client& c, nb::bytearray destination, unsigned capacity, bool hashed) {
-            if (capacity > destination.size()) throw nb::value_error("capacity past the destination");
-            c.destination = destination;
-            return static_cast<int>(c.client.initialize(bytes_of(destination), capacity, hashed));
-        }, nb::arg("destination"), nb::arg("capacity"), nb::arg("hashed") = true)
+        .def(
+            "init",
+            [](Client& c, nb::bytearray destination, unsigned capacity, bool hashed) {
+                if (capacity > destination.size()) throw nb::value_error("capacity past the destination");
+                c.destination = destination;
+                return static_cast<int>(c.client.initialize(bytes_of(destination), capacity, hashed));
+            },
+            nb::arg("destination"), nb::arg("capacity"), nb::arg("hashed") = true)
         // request() -> (status, operation, a, b).
-        .def("request", [](Client& c) {
-            peer::Request r = {0, 0, 0};
-            const int status = static_cast<int>(c.client.request(r));
-            return std::make_tuple(status, r.operation, r.argument0, r.argument1);
-        })
+        .def("request",
+             [](Client& c) {
+                 peer::Request r = {0, 0, 0};
+                 const int status = static_cast<int>(c.client.request(r));
+                 return std::make_tuple(status, r.operation, r.argument0, r.argument1);
+             })
         // accept(device result, data or None).
-        .def("accept", [](Client& c, U32 result, nb::object data) {
-            if (data.is_none()) return static_cast<int>(c.client.accept(result, nullptr, 0));
-            nb::bytes b = nb::cast<nb::bytes>(data);
-            return static_cast<int>(c.client.accept(result, bytes_of(b), static_cast<U32>(b.size())));
-        }, nb::arg("result"), nb::arg("data").none())
+        .def(
+            "accept",
+            [](Client& c, U32 result, nb::object data) {
+                if (data.is_none()) return static_cast<int>(c.client.accept(result, nullptr, 0));
+                nb::bytes b = nb::cast<nb::bytes>(data);
+                return static_cast<int>(c.client.accept(result, bytes_of(b), static_cast<U32>(b.size())));
+            },
+            nb::arg("result"), nb::arg("data").none())
         .def("admit", [](Client& c, nb::bytes digest) { return static_cast<int>(c.client.admit(digest_of(digest))); })
         .def("phase", [](Client& c) { return static_cast<int>(c.client.phase()); })
         .def("ready", [](Client& c) { return c.client.ready(); })

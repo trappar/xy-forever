@@ -33,7 +33,9 @@ struct Bridge {
     U32 left = 0;                                 // take_packets: of the container at the head
     std::unique_ptr<m::Responder> responder{new m::Responder};
 
-    std::string host(const char* path) const { return root + (std::strncmp(path, "/yaffs2", 7) == 0 ? path + 7 : "/<bad>"); }
+    std::string host(const char* path) const {
+        return root + (std::strncmp(path, "/yaffs2", 7) == 0 ? path + 7 : "/<bad>");
+    }
     bool step() {
         calls = 0;
         const bool r = responder->step();
@@ -47,7 +49,8 @@ Bridge& of(void* context) { return *static_cast<Bridge*>(context); }
 int fail() {
     switch (errno) {
     case ENOENT: return m::f_not_found;
-    case EACCES: case EPERM: return m::f_refused;
+    case EACCES:
+    case EPERM: return m::f_refused;
     case EEXIST: return m::f_exists;
     case ENOTEMPTY: return m::f_not_empty;
     default: return m::f_storage;
@@ -66,7 +69,8 @@ int list(void* c, const char* folder, U32 skip, m::Entry* out, U32 room, U32& co
     DIR* d = opendir(b.host(folder).c_str());
     if (!d) return fail();
     std::vector<std::string> names;
-    while (dirent* e = readdir(d)) if (std::strcmp(e->d_name, ".") && std::strcmp(e->d_name, "..")) names.push_back(e->d_name);
+    while (dirent* e = readdir(d))
+        if (std::strcmp(e->d_name, ".") && std::strcmp(e->d_name, "..")) names.push_back(e->d_name);
     closedir(d);
     std::sort(names.begin(), names.end());
     count = 0;
@@ -77,12 +81,17 @@ int list(void* c, const char* folder, U32 skip, m::Entry* out, U32 room, U32& co
     more = skip + count < names.size();
     return 0;
 }
-int stat_call(void* c, const char* path, m::Entry& e) { ++of(c).calls; return stat_entry(of(c).host(path), e); }
+int stat_call(void* c, const char* path, m::Entry& e) {
+    ++of(c).calls;
+    return stat_entry(of(c).host(path), e);
+}
 int space(void* c, const char* path, U32& block, U32& blocks, U32& free_blocks) {
     ++of(c).calls;
     struct statvfs s;
     if (statvfs(of(c).host(path).c_str(), &s) != 0) return fail();
-    block = 4096; blocks = 65536; free_blocks = 32768;              // fixed: the test checks the fields
+    block = 4096;
+    blocks = 65536;
+    free_blocks = 32768;              // fixed: the test checks the fields
     return 0;
 }
 int open_call(void* c, const char* path, bool write) {
@@ -104,11 +113,27 @@ int write_call(void* c, int fd, const Byte* data, U32 n) {
     ssize_t r = ::write(fd, data, n);
     return r < 0 ? fail() : int(r);
 }
-int seek_call(void* c, int fd, U32 offset) { ++of(c).calls; return lseek(fd, offset, SEEK_SET) < 0 ? fail() : 0; }
-int close_call(void* c, int fd) { ++of(c).calls; --of(c).open_files; return ::close(fd) ? fail() : 0; }
-int mkdir_call(void* c, const char* p) { ++of(c).calls; return ::mkdir(of(c).host(p).c_str(), 0755) ? fail() : 0; }
-int unlink_call(void* c, const char* p) { ++of(c).calls; return ::unlink(of(c).host(p).c_str()) ? fail() : 0; }
-int rmdir_call(void* c, const char* p) { ++of(c).calls; return ::rmdir(of(c).host(p).c_str()) ? fail() : 0; }
+int seek_call(void* c, int fd, U32 offset) {
+    ++of(c).calls;
+    return lseek(fd, offset, SEEK_SET) < 0 ? fail() : 0;
+}
+int close_call(void* c, int fd) {
+    ++of(c).calls;
+    --of(c).open_files;
+    return ::close(fd) ? fail() : 0;
+}
+int mkdir_call(void* c, const char* p) {
+    ++of(c).calls;
+    return ::mkdir(of(c).host(p).c_str(), 0755) ? fail() : 0;
+}
+int unlink_call(void* c, const char* p) {
+    ++of(c).calls;
+    return ::unlink(of(c).host(p).c_str()) ? fail() : 0;
+}
+int rmdir_call(void* c, const char* p) {
+    ++of(c).calls;
+    return ::rmdir(of(c).host(p).c_str()) ? fail() : 0;
+}
 int rename_call(void* c, const char* a, const char* b) {             // as A's rename_now: never over a name
     ++of(c).calls;
     struct stat st;
@@ -141,61 +166,72 @@ int commit_call(void* c, const char* path, bool keep) {
 void bind_mtp_responder(nb::module_ mod) {
     nb::class_<Bridge>(mod, "Responder")
         // Responder(folder): the folder stands for /yaffs2.
-        .def("__init__", [](Bridge* b, const std::string& folder) {
-            new (b) Bridge();
-            b->root = folder;
-            const m::FileOps ops = {b, list, stat_call, space, open_call, read_call, write_call, seek_call, close_call,
-                                    mkdir_call, unlink_call, rmdir_call, rename_call, nullptr, nullptr, upload_call,
-                                    commit_call, nullptr};
-            b->responder->init(ops);
-        })
+        .def("__init__",
+             [](Bridge* b, const std::string& folder) {
+                 new (b) Bridge();
+                 b->root = folder;
+                 const m::FileOps ops = {b,           list,      stat_call,  space,       open_call,   read_call,
+                                         write_call,  seek_call, close_call, mkdir_call,  unlink_call, rmdir_call,
+                                         rename_call, nullptr,   nullptr,    upload_call, commit_call, nullptr};
+                 b->responder->init(ops);
+             })
         // receive(transfer) -> taken: hands one bulk-OUT transfer, step()ing until it is taken.
-        .def("receive", [](Bridge& b, nb::bytes transfer) {
-            const Byte* data = reinterpret_cast<const Byte*>(transfer.c_str());
-            for (unsigned spins = 0; spins < 1000000; ++spins) {
-                if (b.responder->receive(data, static_cast<U32>(transfer.size()))) return true;
-                if (!b.step()) break;
-            }
-            return false;
-        })
+        .def("receive",
+             [](Bridge& b, nb::bytes transfer) {
+                 const Byte* data = reinterpret_cast<const Byte*>(transfer.c_str());
+                 for (unsigned spins = 0; spins < 1000000; ++spins) {
+                     if (b.responder->receive(data, static_cast<U32>(transfer.size()))) return true;
+                     if (!b.step()) break;
+                 }
+                 return false;
+             })
         // take(most): bulk-IN bytes, step()ing, until most or nothing is left.
-        .def("take", [](Bridge& b, U32 most) {
-            std::string got;
-            Byte buffer[m::buffer_bytes];
-            while (got.size() < most) {
-                const U32 room = std::min<U32>(sizeof(buffer), most - U32(got.size()));
-                const U32 k = b.responder->take(buffer, room);
-                got.append(reinterpret_cast<const char*>(buffer), k);
-                if (!k && !b.step() && !b.responder->pending()) break;
-            }
-            return nb::bytes(got.data(), got.size());
-        })
+        .def("take",
+             [](Bridge& b, U32 most) {
+                 std::string got;
+                 Byte buffer[m::buffer_bytes];
+                 while (got.size() < most) {
+                     const U32 room = std::min<U32>(sizeof(buffer), most - U32(got.size()));
+                     const U32 k = b.responder->take(buffer, room);
+                     got.append(reinterpret_cast<const char*>(buffer), k);
+                     if (!k && !b.step() && !b.responder->pending()) break;
+                 }
+                 return nb::bytes(got.data(), got.size());
+             })
         // take_packets(most): as take, but taken as the USB driver takes them (#144): whole 512-byte packets, or the
         // rest of the container at the head; stops when nothing can be taken and nothing is left to do.
-        .def("take_packets", [](Bridge& b, U32 most) {
-            std::string got;
-            Byte buffer[m::buffer_bytes];
-            while (got.size() < most) {
-                U32 k = 0;
-                const U32 pending = b.responder->pending();
-                if (pending && !b.left) b.left = b.responder->staged_length();
-                if (pending && b.left >= 12) {
-                    const U32 n = pending >= b.left ? b.left : pending & ~511u;
-                    if (n) { k = b.responder->take(buffer, n); b.left -= k; }
-                }
-                got.append(reinterpret_cast<const char*>(buffer), k);
-                if (!k && !b.step()) break;
-            }
-            return nb::bytes(got.data(), got.size());
-        })
+        .def("take_packets",
+             [](Bridge& b, U32 most) {
+                 std::string got;
+                 Byte buffer[m::buffer_bytes];
+                 while (got.size() < most) {
+                     U32 k = 0;
+                     const U32 pending = b.responder->pending();
+                     if (pending && !b.left) b.left = b.responder->staged_length();
+                     if (pending && b.left >= 12) {
+                         const U32 n = pending >= b.left ? b.left : pending & ~511u;
+                         if (n) {
+                             k = b.responder->take(buffer, n);
+                             b.left -= k;
+                         }
+                     }
+                     got.append(reinterpret_cast<const char*>(buffer), k);
+                     if (!k && !b.step()) break;
+                 }
+                 return nb::bytes(got.data(), got.size());
+             })
         // set_piece(bytes) -> the piece the responder took (#144).
-        .def("set_piece", [](Bridge& b, U32 bytes) {
-            b.responder->set_piece(bytes);
-            return b.piece_limit = b.responder->piece_bytes();
-        })
+        .def("set_piece",
+             [](Bridge& b, U32 bytes) {
+                 b.responder->set_piece(bytes);
+                 return b.piece_limit = b.responder->piece_bytes();
+             })
         .def("cancel", [](Bridge& b) { b.responder->cancel(); })               // class request
         .def("invalidate", [](Bridge& b) { b.responder->invalidate(); })       // a change outside MTP
-        .def("run", [](Bridge& b) { while (b.step()) {} })                     // step() until there is nothing to do
+        .def("run",
+             [](Bridge& b) {
+                 while (b.step()) {}
+             })                     // step() until there is nothing to do
         // status() -> (device status, open files, handles, most file calls in one step, cache hits, file calls in all).
         .def("status", [](Bridge& b) {
             return std::make_tuple(static_cast<unsigned>(b.responder->device_status()), b.open_files,

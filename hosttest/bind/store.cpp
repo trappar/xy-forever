@@ -14,8 +14,8 @@ using namespace xyf::store;
 
 namespace {
 
-template <size_t N> nb::bytes field(const char (&s)[N]) { return nb::bytes(s, strnlen(s, N)); }
-template <size_t N> void set(char (&out)[N], const nb::bytes& value) {
+template<size_t N> nb::bytes field(const char (&s)[N]) { return nb::bytes(s, strnlen(s, N)); }
+template<size_t N> void set(char (&out)[N], const nb::bytes& value) {
     if (value.size() >= N) throw nb::value_error("field too long");
     std::memcpy(out, value.data(), value.size());
 }
@@ -41,8 +41,10 @@ void bind_store(nb::module_ m) {
     m.def("write_state", [](const StateTuple& t, unsigned capacity) {
         State s;
         std::memset(&s, 0, sizeof(s));
-        set(s.default_id, std::get<0>(t)); set(s.once, std::get<1>(t));
-        set(s.stage2, std::get<2>(t)); set(s.stage2_previous, std::get<3>(t));
+        set(s.default_id, std::get<0>(t));
+        set(s.once, std::get<1>(t));
+        set(s.stage2, std::get<2>(t));
+        set(s.stage2_previous, std::get<3>(t));
         s.stage2_tries = std::get<4>(t);
         std::vector<char> out(capacity + 1);
         const uint32_t n = write_state(s, out.data(), capacity);

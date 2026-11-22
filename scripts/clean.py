@@ -11,18 +11,19 @@ verified build of this source (tests use it), and anything touched in the last R
 session or check; it counts among the newest). Only sessions/ and builds/ are looked at: recovery/, checks/,
 fixtures and every other private folder stay as they are. Symbolic links are removed as links, never followed.
 """
+
 import argparse
-from pathlib import Path
 import re
 import shutil
 import sys
 import time
+from pathlib import Path
 
 from xy_forever import paths
 
 KEEP = 10
-PROTECTED = {'2a96c724'}           # builds/: the known-good image installed on the device (never deleted)
-RECENT = 60 * 60                   # seconds: an entry touched since then is in use
+PROTECTED = {'2a96c724'}  # builds/: the known-good image installed on the device (never deleted)
+RECENT = 60 * 60  # seconds: an entry touched since then is in use
 
 
 def newest_mtime(path):
@@ -63,7 +64,7 @@ def plan(folder, keep, protected, now=None):
         return [], []
     entries = sorted(folder.iterdir(), key=newest_mtime, reverse=True)
     kept, removed, counted = [], [], 0
-    for entry in entries:                    # a protected entry takes none of the `keep` places
+    for entry in entries:  # a protected entry takes none of the `keep` places
         counted += entry.name not in protected
         spare = entry.name in protected or counted <= keep or now - newest_mtime(entry) < RECENT
         (kept if spare else removed).append(entry)
@@ -93,16 +94,30 @@ def main(argv=None, xyf=None, status=None):
     freed = 0
     for name in ('sessions', 'builds'):
         kept, removed = plan(xyf / name, args.keep, protected)
-        print('%s/: %d entries, keeping %d, %s %d' % (xyf / name, len(kept) + len(removed), len(kept),
-                                                     'removing' if args.yes else 'would remove', len(removed)))
+        print(
+            '%s/: %d entries, keeping %d, %s %d'
+            % (
+                xyf / name,
+                len(kept) + len(removed),
+                len(kept),
+                'removing' if args.yes else 'would remove',
+                len(removed),
+            )
+        )
         for entry in removed:
             n = size(entry)
             freed += n
             print('  %s %-50s %8.1f MB' % ('-' if args.yes else '?', entry.name, n / 1e6))
             if args.yes:
                 remove(entry)
-    print('%s %.1f GB%s' % ('freed' if args.yes else 'would free', freed / 1e9,
-                            '' if args.yes else ' (dry run: nothing changed; --yes deletes)'))
+    print(
+        '%s %.1f GB%s'
+        % (
+            'freed' if args.yes else 'would free',
+            freed / 1e9,
+            '' if args.yes else ' (dry run: nothing changed; --yes deletes)',
+        )
+    )
     return 0
 
 

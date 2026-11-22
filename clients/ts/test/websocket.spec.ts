@@ -17,16 +17,24 @@ function listen(port: number, onSocket: (s: net.Socket) => void): Promise<net.Se
   return new Promise((resolve, reject) => {
     const server = net.createServer(onSocket);
     server.once('error', reject);
-    server.listen(port, '127.0.0.1', () => resolve(server));   // 0: a free port (portOf)
+    server.listen(port, '127.0.0.1', () => resolve(server)); // 0: a free port (portOf)
   });
 }
 const portOf = (server: net.Server): number => (server.address() as net.AddressInfo).port;
 function closeServer(server: net.Server | undefined): Promise<void> {
-  return new Promise((done) => { if (!server) { done(); return; } server.close(() => done()); });
+  return new Promise((done) => {
+    if (!server) {
+      done();
+      return;
+    }
+    server.close(() => done());
+  });
 }
 function sinkOf(t: WebSocketTransport): { bytes: number[]; closed: Promise<Error | undefined> } {
   const bytes: number[] = [];
-  const closed = new Promise<Error | undefined>((resolve) => t.start({ data: (b) => bytes.push(...b), closed: resolve }));
+  const closed = new Promise<Error | undefined>((resolve) =>
+    t.start({ data: (b) => bytes.push(...b), closed: resolve }),
+  );
   return { bytes, closed };
 }
 async function until(check: () => boolean, ms = 5000): Promise<void> {
@@ -42,7 +50,10 @@ describe('the relay, against a TCP stand-in for the simulator', () => {
   let peers: net.Socket[] = [];
   let listening = 1;
   beforeAll(async () => {
-    target = await listen(0, (s) => { peers.push(s); s.on('data', (d) => s.write(Buffer.from([...(d as Buffer)].reverse()))); });
+    target = await listen(0, (s) => {
+      peers.push(s);
+      s.on('data', (d) => s.write(Buffer.from([...(d as Buffer)].reverse())));
+    });
     controlServer = await listen(0, (s) => s.on('data', () => s.end(JSON.stringify({ listening }) + '\n')));
     relay = await startRelay({ target: portOf(target), control: portOf(controlServer) });
   });
@@ -88,7 +99,7 @@ describe('the relay, against a TCP stand-in for the simulator', () => {
     const free = await listen(0, () => undefined);
     const nothing = portOf(free);
     await closeServer(free);
-    const away = await startRelay({ target: nothing });   // nothing listens there
+    const away = await startRelay({ target: nothing }); // nothing listens there
     try {
       await expect(WebSocketTransport.open(away.url)).rejects.toThrow(/could not connect|closed/);
     } finally {

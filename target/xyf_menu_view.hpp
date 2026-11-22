@@ -7,5 +7,5 @@
 // activity line and the build (ui_pages.hpp); may be null.
 namespace xyf { namespace menu {
 void draw(uint16_t* fb, const State& state, const char* status, const ui::Chrome* chrome);
-} }
+}}
 #endif

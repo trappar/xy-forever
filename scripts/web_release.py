@@ -11,12 +11,13 @@ release pull request) and copies candidate.ldr to web/public/release/os.ldr, whi
 dist/ (gitignored: a build output, never committed). Builds are deterministic, so the pinned image can be rebuilt
 from its commit by anyone with their own device's stock files.
 """
+
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import shutil
 import sys
+from pathlib import Path
 
 from xy_forever import paths, release, stock_bytes
 
@@ -74,7 +75,9 @@ def stage(build, stocks, pin_path=PIN, staged=STAGED, *, notes=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('build', nargs='?', type=Path, help='defaults to the newest verified product build of this source')
+    parser.add_argument(
+        'build', nargs='?', type=Path, help='defaults to the newest verified product build of this source'
+    )
     parser.add_argument('--notes', help='release changes shown on the Device page')
     parser.add_argument('--check', action='store_true')
     args = parser.parse_args()
@@ -92,8 +95,10 @@ def main():
     except ValueError as error:
         print('refused: %s' % error)
         return 1
-    print('pinned %s (%s, %d bytes) in %s; staged %s' % (pin['image'], pin['version'], pin['bytes'],
-                                                        PIN.relative_to(ROOT), STAGED.relative_to(ROOT)))
+    print(
+        'pinned %s (%s, %d bytes) in %s; staged %s'
+        % (pin['image'], pin['version'], pin['bytes'], PIN.relative_to(ROOT), STAGED.relative_to(ROOT))
+    )
     return 0
 
 

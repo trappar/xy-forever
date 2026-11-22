@@ -50,7 +50,10 @@ try {
     try {
       const path = join(served, decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname));
       res.end(readFileSync(path));
-    } catch { res.statusCode = 404; res.end(); }
+    } catch {
+      res.statusCode = 404;
+      res.end();
+    }
   });
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
@@ -60,26 +63,48 @@ try {
     return JSON.parse(readFileSync(join(served, 'index.json'), 'utf-8'));
   };
   const save = (index: unknown): void => writeFileSync(join(served, 'index.json'), JSON.stringify(index));
-  const pkg = (index: any, id = 'alpha'): any => index.profiles[0].generations[0].packages.find((p: any) => p.id === id);
+  const pkg = (index: any, id = 'alpha'): any =>
+    index.profiles[0].generations[0].packages.find((p: any) => p.id === id);
   async function refused(text: string, ids: string[] = []): Promise<void> {
-    await assert.rejects(async () => fetchPackages(await loadIndex(url), ids), (e: unknown) =>
-      e instanceof PackageError && e.message.includes(text) ? true : assert.fail(`${String(e)} lacks ${text}`));
+    await assert.rejects(
+      async () => fetchPackages(await loadIndex(url), ids),
+      (e: unknown) =>
+        e instanceof PackageError && e.message.includes(text) ? true : assert.fail(`${String(e)} lacks ${text}`),
+    );
     checks++;
   }
   /** A STORED (or deflated) zip of members, written over pkg's archive with the index's size and hash updated. */
   function rearchive(index: any, members: [string, Uint8Array][], deflate = false): void {
-    const locals: Buffer[] = []; const central: Buffer[] = []; let at = 0;
+    const locals: Buffer[] = [];
+    const central: Buffer[] = [];
+    let at = 0;
     for (const [name, body] of members) {
-      const n = Buffer.from(name); const data = deflate ? deflateRawSync(body) : Buffer.from(body);
-      const head = Buffer.alloc(30); head.writeUInt32LE(0x04034b50, 0); head.writeUInt16LE(deflate ? 8 : 0, 8);
-      head.writeUInt32LE(data.length, 18); head.writeUInt32LE(body.length, 22); head.writeUInt16LE(n.length, 26);
-      const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(deflate ? 8 : 0, 10);
-      c.writeUInt32LE(data.length, 20); c.writeUInt32LE(body.length, 24); c.writeUInt16LE(n.length, 28); c.writeUInt32LE(at, 42);
-      locals.push(head, n, data); central.push(c, n); at += 30 + n.length + data.length;
+      const n = Buffer.from(name);
+      const data = deflate ? deflateRawSync(body) : Buffer.from(body);
+      const head = Buffer.alloc(30);
+      head.writeUInt32LE(0x04034b50, 0);
+      head.writeUInt16LE(deflate ? 8 : 0, 8);
+      head.writeUInt32LE(data.length, 18);
+      head.writeUInt32LE(body.length, 22);
+      head.writeUInt16LE(n.length, 26);
+      const c = Buffer.alloc(46);
+      c.writeUInt32LE(0x02014b50, 0);
+      c.writeUInt16LE(deflate ? 8 : 0, 10);
+      c.writeUInt32LE(data.length, 20);
+      c.writeUInt32LE(body.length, 24);
+      c.writeUInt16LE(n.length, 28);
+      c.writeUInt32LE(at, 42);
+      locals.push(head, n, data);
+      central.push(c, n);
+      at += 30 + n.length + data.length;
     }
-    const cd = Buffer.concat(central); const end = Buffer.alloc(22);
-    end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(members.length, 8); end.writeUInt16LE(members.length, 10);
-    end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(at, 16);
+    const cd = Buffer.concat(central);
+    const end = Buffer.alloc(22);
+    end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(members.length, 8);
+    end.writeUInt16LE(members.length, 10);
+    end.writeUInt32LE(cd.length, 12);
+    end.writeUInt32LE(at, 16);
     const zip = Buffer.concat([...locals, cd, end]);
     const p = pkg(index);
     writeFileSync(join(served, p.archive.name), zip);
@@ -95,7 +120,7 @@ try {
   const index = await loadIndex(url);
   for (const ids of [[], ['beta']]) {
     const source = await fetchPackages(index, ids);
-    const paths = [...await source.paths()].sort();
+    const paths = [...(await source.paths())].sort();
     const expect = [...want.keys()].filter((p) => !ids.length || ['base', ...ids].includes(p.split('/')[0]!)).sort();
     assert.deepEqual(paths, expect);
     for (const p of paths) assert.deepEqual(Buffer.from(await source.read(p)), want.get(p), p);
@@ -103,25 +128,42 @@ try {
     assert.equal(set.packages.size, ids.length ? 2 : readdirSync(gen).length);
     checks++;
   }
-  assert.equal((await fetchPackages(await loadIndex(`${url}index.json`), ['gamma'])).generation, index.profiles[0]!.generations[0]!.generation);
+  assert.equal(
+    (await fetchPackages(await loadIndex(`${url}index.json`), ['gamma'])).generation,
+    index.profiles[0]!.generations[0]!.generation,
+  );
 
-  let spoilt = reset(); pkg(spoilt).archive.sha256 = '0'.repeat(64); save(spoilt);
+  let spoilt = reset();
+  pkg(spoilt).archive.sha256 = '0'.repeat(64);
+  save(spoilt);
   await refused('archive differs from the index');
-  spoilt = reset(); pkg(spoilt).files[0].path = '../escape'; save(spoilt);
+  spoilt = reset();
+  pkg(spoilt).files[0].path = '../escape';
+  save(spoilt);
   await refused('unusable path');
-  spoilt = reset(); pkg(spoilt).files[0].path = '/etc/passwd'; save(spoilt);
+  spoilt = reset();
+  pkg(spoilt).files[0].path = '/etc/passwd';
+  save(spoilt);
   await refused('unusable path');
-  spoilt = reset(); pkg(spoilt).files[0].path = 'n/'.repeat(120) + 'x'; save(spoilt);
+  spoilt = reset();
+  pkg(spoilt).files[0].path = 'n/'.repeat(120) + 'x';
+  save(spoilt);
   await refused('path too long');
-  spoilt = reset(); rearchive(spoilt, [...alpha(), ['../evil', new Uint8Array([1])]]);
+  spoilt = reset();
+  rearchive(spoilt, [...alpha(), ['../evil', new Uint8Array([1])]]);
   await refused('members not in the index: ../evil');
-  spoilt = reset(); rearchive(spoilt, alpha(), true);
+  spoilt = reset();
+  rearchive(spoilt, alpha(), true);
   await refused('compressed member');
-  spoilt = reset(); pkg(spoilt).files[0].size = (32 << 20) + 1; save(spoilt);
+  spoilt = reset();
+  pkg(spoilt).files[0].size = (32 << 20) + 1;
+  save(spoilt);
   await refused('oversize size');
   reset();
   await refused('not in the index: nosuch', ['nosuch']);
-  spoilt = reset(); spoilt['format'] = 'xyf-mod-index/9'; save(spoilt);
+  spoilt = reset();
+  spoilt['format'] = 'xyf-mod-index/9';
+  save(spoilt);
   await refused('not a xyf-mod-index/1 index');
   server.close();
 } finally {

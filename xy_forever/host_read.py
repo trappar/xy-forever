@@ -1,6 +1,7 @@
 """Read a file through existing read-only serial commands."""
-from pathlib import Path
+
 import sys
+from pathlib import Path
 
 from . import usb_proto as P
 
@@ -14,8 +15,13 @@ def configure(sub):
 
 
 def read(dev, args):
-    code, body = (dev.read_all(args.path) if args.all else
-                  dev.read_file(args.path, args.offset) if args.offset is not None else dev.read_file(args.path))
+    code, body = (
+        dev.read_all(args.path)
+        if args.all
+        else dev.read_file(args.path, args.offset)
+        if args.offset is not None
+        else dev.read_file(args.path)
+    )
     if code:
         print('read failed: %s' % P.status_name(code))
         return code

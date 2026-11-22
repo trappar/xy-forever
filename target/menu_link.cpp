@@ -4,7 +4,7 @@
 namespace xy_forever { namespace menu_link {
 // Initialized data, not BSS: the cold link has no zero-initialization.
 Result result __attribute__((section(".data"))) = {magic};
-} }
+}}
 
 namespace {
 using namespace xy_forever;
@@ -30,4 +30,4 @@ bool usb_command(uint32_t item) {
 }
 bool usb_command_value(uint32_t value) { return xyf_boot::link_value(value); }
 #endif
-} }
+}}

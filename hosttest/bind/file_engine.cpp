@@ -20,26 +20,26 @@ void bind_file_engine(nb::module_ m) {
     m.def("decide", [](uint32_t op, xyf_glue::CStr path, xyf_glue::CStr second) {
         return unsigned(decide_engine(static_cast<Operation>(op), path, second));
     });
-    m.def("request", [](uint32_t vtable, uint32_t op, uint32_t argument, uint32_t pointer, xyf_glue::CStr path, unsigned on,
-                        unsigned session, unsigned window, unsigned fd_known, unsigned fd_space, unsigned dir_known,
-                        unsigned dir_space, unsigned partition) {
+    m.def("request", [](uint32_t vtable, uint32_t op, uint32_t argument, uint32_t pointer, xyf_glue::CStr path,
+                        unsigned on, unsigned session, unsigned window, unsigned fd_known, unsigned fd_space,
+                        unsigned dir_known, unsigned dir_space, unsigned partition) {
         const State state = {on, session, window, fd_known, fd_space, dir_known, dir_space, partition};
         return unsigned(decide_request(vtable, op, argument, pointer, path, state));
     });
     // path 0x21 rename_to / rename_over with the armed source (None: none armed)
     m.def("rename_to", [](xyf_glue::CStr source, xyf_glue::CStr target, unsigned window) {
-        return unsigned(decide_request(path_class, 0x21, rename_to, path_buffer, target, open_window(window),
-                                       source));
+        return unsigned(decide_request(path_class, 0x21, rename_to, path_buffer, target, open_window(window), source));
     });
     m.def("rename_over", [](xyf_glue::CStr source, xyf_glue::CStr target, unsigned window) {
-        return unsigned(decide_request(path_class, 0x21, rename_over, path_buffer, target, open_window(window),
-                                       source));
+        return unsigned(
+            decide_request(path_class, 0x21, rename_over, path_buffer, target, open_window(window), source));
     });
     // path 0x21 rename_upload (#144), as A splits it
     m.def("rename_upload", [](xyf_glue::CStr path, unsigned window) {
         char target[max_path], source[max_path];
         const char* p = path;
-        for (unsigned i = 0; i != max_path; ++i) if (!(target[i] = p[i])) break;
+        for (unsigned i = 0; i != max_path; ++i)
+            if (!(target[i] = p[i])) break;
         const bool split = split_upload(target, source);
         return unsigned(decide_request(path_class, 0x21, rename_upload, path_buffer, target, open_window(window),
                                        split ? source : 0));

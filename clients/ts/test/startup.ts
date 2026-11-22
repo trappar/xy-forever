@@ -1,8 +1,12 @@
 // Opt-in clean-startup fixture: HELLO alone does not finish background recovery.
 import * as v1 from '../src/v1.ts';
 
-export async function waitStartupReady(hello: string, probe: (remainingMs: number) => Promise<number>,
-  timeoutMs = 5000, now = Date.now): Promise<void> {
+export async function waitStartupReady(
+  hello: string,
+  probe: (remainingMs: number) => Promise<number>,
+  timeoutMs = 5000,
+  now = Date.now,
+): Promise<void> {
   const peer = v1.parseHello(hello);
   // Older peers retain the original exchange and assertions, without this optional probe.
   if (peer.preV1 || !peer.answers(v1.TYPE['storage.space'])) return;

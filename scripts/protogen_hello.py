@@ -1,23 +1,31 @@
 """The `hello` text's generated parts (split out of scripts/protogen.py, which imports them): its key sources,
 the cmds bitmap and the C++ macros."""
+
 import itertools
 
 # hello key sources besides a fixed value or constant: release and mode from the build (C macros below);
 # set at run time: image (compiled `unknown`), confirm (#65, compiled 1: the default), trust (#65, compiled `none`),
 # serial (#191, compiled `on`) and stage2 (compiled 0, so the last key).
 HELLO_SOURCES = ('version', 'release', 'image', 'mode', 'cmds', 'dev', 'confirm', 'trust', 'serial', 'stage2')
-TRUST_WORDS = ('none', 'asking', 'allowed', 'refused')   # usb_service_trust.ipp trust_word
-SERIAL_WORDS = ('on', 'off')                      # usb_service_identity.ipp hello_text
-STAGE2_DIGITS = 10                                # a u32 in decimal
+TRUST_WORDS = ('none', 'asking', 'allowed', 'refused')  # usb_service_trust.ipp trust_word
+SERIAL_WORDS = ('on', 'off')  # usb_service_identity.ipp hello_text
+STAGE2_DIGITS = 10  # a u32 in decimal
 # Switches no build defines: the device sets the command's cmds bit at run time (stage2.info: while
 # stage 2 is loaded). The generated #if blocks give the digit without them.
 RUNTIME_SWITCHES = ('XYF_STAGE2_LOADED',)
 BUILD_MACROS = {'release': 'XYF_VERSION', 'mode': 'XYF_BUILD_MODE'}
 IMAGE_DIGITS, IMAGE_UNKNOWN = 8, 'unknown'
-CMDS_DIGITS = 32                                  # request types 0x00..0x7f, four per hex digit
+CMDS_DIGITS = 32  # request types 0x00..0x7f, four per hex digit
 # The longest value of each source a build sets (protogen.py check_hello: max_hello).
-RUNTIME_BYTES = dict(cmds=CMDS_DIGITS, dev=1, image=max(IMAGE_DIGITS, len(IMAGE_UNKNOWN)), stage2=STAGE2_DIGITS, confirm=1,
-                     trust=max(map(len, TRUST_WORDS)), serial=max(map(len, SERIAL_WORDS)))
+RUNTIME_BYTES = dict(
+    cmds=CMDS_DIGITS,
+    dev=1,
+    image=max(IMAGE_DIGITS, len(IMAGE_UNKNOWN)),
+    stage2=STAGE2_DIGITS,
+    confirm=1,
+    trust=max(map(len, TRUST_WORDS)),
+    serial=max(map(len, SERIAL_WORDS)),
+)
 
 
 def answered(spec, switches):
@@ -40,13 +48,15 @@ def hello_fixed(spec, key):
 
 def render_cpp_hello(spec):
     """Macros for the hello text: string literals and #if blocks only (no table, no code)."""
-    lines = ['// hello text (docs/protocol/cmd-session.md, hello). The build defines %s and %s (string literals).' % (
-                 BUILD_MACROS['release'], BUILD_MACROS['mode']),
-             '// XYF_USBP_CMDS: the cmds bitmap, most significant hex digit first; a digit that a build switch',
-             '// changes is one #if block keyed by the switches of its commands (as home_pump\'s dispatch).',
-             '// %s: never defined by a build; the device sets those bits at run time.' % ', '.join(RUNTIME_SWITCHES)]
+    lines = [
+        '// hello text (docs/protocol/cmd-session.md, hello). The build defines %s and %s (string literals).'
+        % (BUILD_MACROS['release'], BUILD_MACROS['mode']),
+        '// XYF_USBP_CMDS: the cmds bitmap, most significant hex digit first; a digit that a build switch',
+        "// changes is one #if block keyed by the switches of its commands (as home_pump's dispatch).",
+        '// %s: never defined by a build; the device sets those bits at run time.' % ', '.join(RUNTIME_SWITCHES),
+    ]
     cmds, run = [], ''
-    for digit in range(CMDS_DIGITS - 1, -1, -1):                   # request types 4*digit .. 4*digit+3
+    for digit in range(CMDS_DIGITS - 1, -1, -1):  # request types 4*digit .. 4*digit+3
         here = [c for c in spec['commands'] if int(c['type'], 16) >> 2 == digit]
         switches = sorted({c['switch'] for c in here if c['switch']})
         if not switches:
@@ -67,7 +77,7 @@ def render_cpp_hello(spec):
     if run:
         cmds.append('"%s"' % run)
     lines.append('#define XYF_USBP_CMDS ' + ' '.join(cmds))
-    pieces = [spec['hello']['prefix']]                # literal text (str) and macros (('macro', name))
+    pieces = [spec['hello']['prefix']]  # literal text (str) and macros (('macro', name))
     for key in spec['hello']['keys']:
         source = hello_source(key)
         if source == 'fixed':
@@ -78,15 +88,20 @@ def render_cpp_hello(spec):
             if any(c['switch'] is None for c in dev):
                 lines.append('#define XYF_USBP_HELLO_DEV ' + item)
             elif dev:
-                lines += ['#if ' + ' || '.join('defined(%s)' % s for s in sorted({c['switch'] for c in dev})),
-                          '#define XYF_USBP_HELLO_DEV ' + item, '#else', '#define XYF_USBP_HELLO_DEV ""', '#endif']
+                lines += [
+                    '#if ' + ' || '.join('defined(%s)' % s for s in sorted({c['switch'] for c in dev})),
+                    '#define XYF_USBP_HELLO_DEV ' + item,
+                    '#else',
+                    '#define XYF_USBP_HELLO_DEV ""',
+                    '#endif',
+                ]
             else:
                 lines.append('#define XYF_USBP_HELLO_DEV ""')
             pieces.append(('macro', 'XYF_USBP_HELLO_DEV'))
         elif source in ('image', 'trust', 'serial'):
             word = dict(image=IMAGE_UNKNOWN, trust=TRUST_WORDS[0], serial=SERIAL_WORDS[0])[source]
             pieces.append(';%s=%s' % (key['name'], word))
-        elif source in ('stage2', 'confirm'):        # usb_service.cpp: the loaded stage 2's version, the setting
+        elif source in ('stage2', 'confirm'):  # usb_service.cpp: the loaded stage 2's version, the setting
             pieces.append(';%s=%d' % (key['name'], source == 'confirm'))
         else:
             pieces += [';%s=' % key['name'], ('macro', BUILD_MACROS.get(source, 'XYF_USBP_CMDS'))]

@@ -33,7 +33,8 @@ void draw_screen(uint16_t* fb) {
 #if defined(XYF_ONE_SESSION)
     const uint32_t marks = xy_forever::usb_service::host_marks();   // 188: bit 0 USB, bit 1 MTP
     const char* const activity = xy_forever::usb_service::host_activity();
-    usb_drawn = marks; usb_drawn_line = activity;
+    usb_drawn = marks;
+    usb_drawn_line = activity;
     namespace U = xy_forever::usb_service;
     const Chrome chrome = {U::version_label(), (marks & 1u) != 0, activity, (marks & 2u) != 0, U::image_label()};
     image_drawn = chrome.image;
@@ -54,17 +55,22 @@ void draw_screen(uint16_t* fb) {
         draw_message(fb, bye);
 #if defined(XYF_SETTINGS)
     } else if (asked) {                              // #65: Ask before USB control (the current menu style)
-        const Message ask = {"USB control", {"Allow this computer to control your OP-XY?", "",
-                             "Allow: until you unplug the cable or restart.",
-                             "Don't allow: it is refused until then.",
-                             "Settings > Ask before USB control turns this off.", "", "", ""}, 5,
-                             "PLAY  allow      STOP  don't allow", &chrome};
+        const Message ask = {"USB control",
+                             {"Allow this computer to control your OP-XY?", "",
+                              "Allow: until you unplug the cable or restart.", "Don't allow: it is refused until then.",
+                              "Settings > Ask before USB control turns this off.", "", "", ""},
+                             5,
+                             "PLAY  allow      STOP  don't allow",
+                             &chrome};
         draw_message(fb, ask);
 #endif
 #if defined(XYF_SERVICE_SCREEN)
     } else if (ui_screen == 4) {
-        const Message usb = {"USB service", {service_lines[0], service_lines[1], service_lines[2], service_lines[3]}, 4,
-                             "Connected to a computer (xyf_host.py)", &chrome};
+        const Message usb = {"USB service",
+                             {service_lines[0], service_lines[1], service_lines[2], service_lines[3]},
+                             4,
+                             "Connected to a computer (xyf_host.py)",
+                             &chrome};
         draw_message(fb, usb);
 #endif
 #if defined(XYF_MODS_PAGE)
@@ -103,7 +109,10 @@ bool dma_idle(uint32_t limit_ms) {
 // then draw the screen and start the transfer directly.
 void present() {
     Result& r = result;
-    if (!dma_idle(100)) { ++r.present_skips; return; }
+    if (!dma_idle(100)) {
+        ++r.present_skips;
+        return;
+    }
     wait_dma();
     if (byte(smc_dma_active)) {     // DMA idle without a done bit: flag is stale
         *reinterpret_cast<volatile uint8_t*>(smc_dma_active) = 0;

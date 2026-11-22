@@ -21,16 +21,26 @@ export function pinned(value: ReleasePin = pin): ReleasePin | null {
 }
 
 /** Fetches our os.ldr from this origin and returns it only when its size and SHA-256 equal the pin. */
-export async function fetchRelease(release: ReleasePin, get: (url: string) => Promise<Response> = (url) => fetch(url, { cache: 'no-store' }),
-  url = RELEASE_PATH): Promise<Uint8Array> {
+export async function fetchRelease(
+  release: ReleasePin,
+  get: (url: string) => Promise<Response> = (url) => fetch(url, { cache: 'no-store' }),
+  url = RELEASE_PATH,
+): Promise<Uint8Array> {
   let response: Response;
-  try { response = await get(url); } catch { throw new Error('Could not download XY Forever from this site. Check your connection and try again.'); }
-  if (!response.ok) throw new Error(`Could not download XY Forever from this site (HTTP ${response.status}). Try again later.`);
+  try {
+    response = await get(url);
+  } catch {
+    throw new Error('Could not download XY Forever from this site. Check your connection and try again.');
+  }
+  if (!response.ok)
+    throw new Error(`Could not download XY Forever from this site (HTTP ${response.status}). Try again later.`);
   const data = new Uint8Array(await response.arrayBuffer());
   const digest = await sha256Hex(data);
   if (data.length !== release.bytes || digest !== release.sha256) {
-    throw new Error(`The XY Forever file this site sent is not release ${release.version} (image ${release.image}): its SHA-256 is ${digest.slice(0, 12)}..., ` +
-      'not the pinned one. Nothing was copied. Reload the page and try again.');
+    throw new Error(
+      `The XY Forever file this site sent is not release ${release.version} (image ${release.image}): its SHA-256 is ${digest.slice(0, 12)}..., ` +
+        'not the pinned one. Nothing was copied. Reload the page and try again.',
+    );
   }
   return data;
 }

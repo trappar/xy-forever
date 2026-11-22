@@ -36,8 +36,11 @@ export interface Tap {
    * device.exchange: the tap's own talk with the simulator first (data sent, then each message back given to until,
    * not to the page, until it returns true).
    */
-  up?(data: Buffer, page: { send(data: Uint8Array): void; close(): void },
-    device: { exchange(data: Uint8Array, until: (reply: Buffer) => boolean): Promise<void> }): boolean | void | Promise<boolean | void>;
+  up?(
+    data: Buffer,
+    page: { send(data: Uint8Array): void; close(): void },
+    device: { exchange(data: Uint8Array, until: (reply: Buffer) => boolean): Promise<void> },
+  ): boolean | void | Promise<boolean | void>;
   /** Each message from the simulator, before it goes to the page; awaited in order with up. */
   down?(data: Buffer): void | Promise<void>;
 }
@@ -64,13 +67,26 @@ export function control(port: number, line: string, timeoutMs = 3000): Promise<R
   return new Promise((resolve, reject) => {
     const sock = net.createConnection({ host: '127.0.0.1', port });
     let text = '';
-    const timer = setTimeout(() => { sock.destroy(); reject(new Error(`control ${line}: no answer`)); }, timeoutMs);
+    const timer = setTimeout(() => {
+      sock.destroy();
+      reject(new Error(`control ${line}: no answer`));
+    }, timeoutMs);
     sock.on('connect', () => sock.write(line + '\n'));
-    sock.on('data', (d: Buffer) => { text += d.toString(); if (text.endsWith('\n')) sock.end(); });
-    sock.on('error', (e) => { clearTimeout(timer); reject(e); });
+    sock.on('data', (d: Buffer) => {
+      text += d.toString();
+      if (text.endsWith('\n')) sock.end();
+    });
+    sock.on('error', (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
     sock.on('close', () => {
       clearTimeout(timer);
-      try { resolve(JSON.parse(text) as Record<string, unknown>); } catch { reject(new Error(`control ${line}: ${text}`)); }
+      try {
+        resolve(JSON.parse(text) as Record<string, unknown>);
+      } catch {
+        reject(new Error(`control ${line}: ${text}`));
+      }
     });
   });
 }
@@ -81,32 +97,65 @@ function refuse(socket: Duplex, status: string): void {
 
 /** Pairs one WebSocket with one TCP connection until either closes; a tap sees each message on the way. */
 function pair(ws: WebSocket, tcp: net.Socket, tap: Tap | null = null, errors: unknown[] = []): void {
-  const toPage = (data: Uint8Array): void => { if (ws.readyState === WebSocket.OPEN) ws.send(data, { binary: true }); };
-  const page = { send: toPage, close: () => { if (ws.readyState === WebSocket.OPEN) ws.close(1000, 'the device closed the port'); } };
-  let order = Promise.resolve();                        // a tap's messages: one at a time, in order
-  let own: ((data: Buffer) => void) | null = null;      // the tap's device.exchange under way: its replies
+  const toPage = (data: Uint8Array): void => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(data, { binary: true });
+  };
+  const page = {
+    send: toPage,
+    close: () => {
+      if (ws.readyState === WebSocket.OPEN) ws.close(1000, 'the device closed the port');
+    },
+  };
+  let order = Promise.resolve(); // a tap's messages: one at a time, in order
+  let own: ((data: Buffer) => void) | null = null; // the tap's device.exchange under way: its replies
   const device = {
-    exchange: (data: Uint8Array, until: (reply: Buffer) => boolean): Promise<void> => new Promise((done) => {
-      own = (reply) => { if (until(reply)) { own = null; done(); } };
-      tcp.write(data);
-    }),
+    exchange: (data: Uint8Array, until: (reply: Buffer) => boolean): Promise<void> =>
+      new Promise((done) => {
+        own = (reply) => {
+          if (until(reply)) {
+            own = null;
+            done();
+          }
+        };
+        tcp.write(data);
+      }),
   };
   const tapped = (work: () => Promise<void> | void): void => {
-    order = order.then(work).catch((error: unknown) => { errors.push(error); ws.close(1011, 'the tap failed'); });
+    order = order.then(work).catch((error: unknown) => {
+      errors.push(error);
+      ws.close(1011, 'the tap failed');
+    });
   };
   tcp.on('data', (data: Buffer) => {
-    if (own) { own(data); return; }
-    if (!tap?.down) { toPage(data); return; }
-    tapped(async () => { await tap.down!(data); toPage(data); });
+    if (own) {
+      own(data);
+      return;
+    }
+    if (!tap?.down) {
+      toPage(data);
+      return;
+    }
+    tapped(async () => {
+      await tap.down!(data);
+      toPage(data);
+    });
   });
-  tcp.on('error', () => undefined);                     // 'close' follows
-  tcp.on('close', () => tap ? tapped(page.close) : page.close());   // after the tapped messages before it
+  tcp.on('error', () => undefined); // 'close' follows
+  tcp.on('close', () => (tap ? tapped(page.close) : page.close())); // after the tapped messages before it
   ws.on('message', (data: Buffer, isBinary: boolean) => {
-    if (!isBinary) { ws.close(1003, 'binary frames only'); return; }
-    if (!tap?.up) { tcp.write(data); return; }
-    tapped(async () => { if (await tap.up!(data, page, device) !== false && !tcp.destroyed) tcp.write(data); });
+    if (!isBinary) {
+      ws.close(1003, 'binary frames only');
+      return;
+    }
+    if (!tap?.up) {
+      tcp.write(data);
+      return;
+    }
+    tapped(async () => {
+      if ((await tap.up!(data, page, device)) !== false && !tcp.destroyed) tcp.write(data);
+    });
   });
-  ws.on('error', () => undefined);                      // 'close' follows
+  ws.on('error', () => undefined); // 'close' follows
   ws.on('close', () => tcp.destroy());
 }
 
@@ -115,13 +164,23 @@ function newServer(): WebSocketServer {
 }
 
 /** Answers the upgrade once a TCP connection to the simulator on target is up, then pairs the two. */
-function upgrade(wss: WebSocketServer, req: IncomingMessage, socket: Duplex, head: Buffer, target: number,
-  tap: (() => Tap) | null = null, errors: unknown[] = []): void {
+function upgrade(
+  wss: WebSocketServer,
+  req: IncomingMessage,
+  socket: Duplex,
+  head: Buffer,
+  target: number,
+  tap: (() => Tap) | null = null,
+  errors: unknown[] = [],
+): void {
   socket.on('error', () => undefined);
-  if (!allowed(req.headers.origin)) { refuse(socket, '403 Forbidden'); return; }
+  if (!allowed(req.headers.origin)) {
+    refuse(socket, '403 Forbidden');
+    return;
+  }
   const tcp = net.createConnection({ host: '127.0.0.1', port: target });
-  socket.once('close', () => tcp.destroy());           // the page gave up, or the pair ended
-  tcp.once('error', () => refuse(socket, '502 Bad Gateway'));     // the simulator does not listen
+  socket.once('close', () => tcp.destroy()); // the page gave up, or the pair ended
+  tcp.once('error', () => refuse(socket, '502 Bad Gateway')); // the simulator does not listen
   tcp.once('connect', () => {
     tcp.removeAllListeners('error');
     tcp.setNoDelay(true);
@@ -134,30 +193,46 @@ export function startRelay(options: RelayOptions): Promise<Relay> {
   const wss = newServer();
   const server = createServer((req, res) => {
     const origin = req.headers.origin;
-    if (!allowed(origin)) { res.writeHead(403).end(); return; }
+    if (!allowed(origin)) {
+      res.writeHead(403).end();
+      return;
+    }
     const headers: Record<string, string> = { 'content-type': 'application/json', 'cache-control': 'no-store' };
-    if (origin) { headers['access-control-allow-origin'] = origin; headers['vary'] = 'Origin'; }
-    if (req.method !== 'GET' || req.url !== '/status') { res.writeHead(404, headers).end('{}'); return; }
+    if (origin) {
+      headers['access-control-allow-origin'] = origin;
+      headers['vary'] = 'Origin';
+    }
+    if (req.method !== 'GET' || req.url !== '/status') {
+      res.writeHead(404, headers).end('{}');
+      return;
+    }
     control(controlPort, 'status', 2000)
-      .then((s) => s['listening'] === 1, () => false)
+      .then(
+        (s) => s['listening'] === 1,
+        () => false,
+      )
       .then((attached) => res.writeHead(200, headers).end(JSON.stringify({ attached })));
   });
   const relay = { tap: options.tap ?? null, tapErrors: [] as unknown[] };
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) =>
-    upgrade(wss, req, socket, head, options.target, relay.tap, relay.tapErrors));
+    upgrade(wss, req, socket, head, options.target, relay.tap, relay.tapErrors),
+  );
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(options.port ?? 0, '127.0.0.1', () => {
       server.off('error', reject);
-      resolve(Object.assign(relay, {
-        url: `ws://127.0.0.1:${(server.address() as net.AddressInfo).port}`,
-        close: () => new Promise<void>((done) => {
-          for (const ws of wss.clients) ws.terminate();
-          wss.close();
-          server.close(() => done());
-          server.closeAllConnections();
+      resolve(
+        Object.assign(relay, {
+          url: `ws://127.0.0.1:${(server.address() as net.AddressInfo).port}`,
+          close: () =>
+            new Promise<void>((done) => {
+              for (const ws of wss.clients) ws.terminate();
+              wss.close();
+              server.close(() => done());
+              server.closeAllConnections();
+            }),
         }),
-      }));
+      );
     });
   });
 }
@@ -176,7 +251,7 @@ export function xyfRelay(): Plugin {
     apply: 'serve',
     configureServer(server) {
       const http = server.httpServer as HttpServer | null;
-      if (!http) return;                                   // middleware mode: no server of its own
+      if (!http) return; // middleware mode: no server of its own
       const wss = newServer();
       http.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
         const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -189,7 +264,10 @@ export function xyfRelay(): Plugin {
         }
         upgrade(wss, req, socket, head, sim);
       });
-      http.once('close', () => { for (const ws of wss.clients) ws.terminate(); wss.close(); });
+      http.once('close', () => {
+        for (const ws of wss.clients) ws.terminate();
+        wss.close();
+      });
     },
   };
 }

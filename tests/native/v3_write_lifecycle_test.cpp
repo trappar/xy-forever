@@ -9,7 +9,9 @@
 namespace {
 // Pointer-sized words let the actual callback assignments run on a 64-bit host.
 using U32 = uintptr_t;
-namespace services { using U32 = ::U32; }
+namespace services {
+using U32 = ::U32;
+}
 std::map<U32, U32> memory;
 U32& word(U32 address) { return memory[address]; }
 const U32 slots[5] = {0x90, 0x94, 0x98, 0x9c, 0xa8};
@@ -41,7 +43,11 @@ int y_unmount(U32 device) {
 namespace cold_storage {
 enum class Result { ok, lifecycle, write_refused, identity, unmount, mount, remount };
 enum class Stage { mounted, failed };
-struct Diagnostic { Stage stage = Stage::mounted; U32 handles = 0; Result result = Result::ok; };
+struct Diagnostic {
+    Stage stage = Stage::mounted;
+    U32 handles = 0;
+    Result result = Result::ok;
+};
 struct Stock121ReadOnlySession {
     Diagnostic diagnostic_;
     U32 device_ = 0x1000, saved_[5] = {1, 2, 3, 4, 5};
@@ -52,10 +58,14 @@ struct Stock121ReadOnlySession {
         for (U32 slot : slots) word(device_ + slot) = reinterpret_cast<U32>(&deny_media_change);
     }
     bool ready() const {
-        return mounted_ && guarded_ && diagnostic_.stage == Stage::mounted &&
-            !denied && word(device_ + 0xe4) == 1 && word(device_ + 0xe8) == 1 && media_guarded(device_);
+        return mounted_ && guarded_ && diagnostic_.stage == Stage::mounted && !denied && word(device_ + 0xe4) == 1 &&
+               word(device_ + 0xe8) == 1 && media_guarded(device_);
     }
-    Result fail(Result r) { diagnostic_.stage = Stage::failed; diagnostic_.result = r; return r; }
+    Result fail(Result r) {
+        diagnostic_.stage = Stage::failed;
+        diagnostic_.result = r;
+        return r;
+    }
     Result open_write_window(U32& step);
     Result close_write_window();
     Result reopen_read_only();
@@ -63,11 +73,16 @@ struct Stock121ReadOnlySession {
 }
 const U32 max_fds = 4;
 [[maybe_unused]] int fds[max_fds] = {-1, -1, -1, -1};   // the cut code may not use them
-struct { U32 open_fds = 0; } result;
+struct {
+    U32 open_fds = 0;
+} result;
 U32 mounted = 0, adopted = 1, used = 0, window_open = 0, window_step = 0, window_result = 0;
 const U32 entry_write = 2, entry_run = 3;
 U32 engine = entry_write, handles_closed = 0;
-void close_handles() { ++handles_closed; result.open_fds = 0; }
+void close_handles() {
+    ++handles_closed;
+    result.open_fds = 0;
+}
 U32 window_touched = 0, library_dirty = 0;                   // the idle timer and the rescan flag
 void note(U32, U32, U32) {}
 bool mount(cold_storage::Stock121ReadOnlySession& storage) {
@@ -83,17 +98,20 @@ U32 held = 0;                                              // files and folders 
 U32 held_files() { return held; }
 #include "lifecycle.inc"
 void reset() {
-    memory.clear(); mounts.clear(); denied = 0;
+    memory.clear();
+    mounts.clear();
+    denied = 0;
     identities = true;
     fail_rw = fail_ro = partial_ro = fail_unmount = false;
     mounted = used = window_open = window_step = window_result = selected = held = 0;
-    engine = entry_write; handles_closed = 0;
+    engine = entry_write;
+    handles_closed = 0;
 }
 }  // namespace
 
 TEST_CASE("write window: success and fault paths") {
-    using cold_storage::Stock121ReadOnlySession;
     using cold_storage::Result;
+    using cold_storage::Stock121ReadOnlySession;
     reset();
     Stock121ReadOnlySession good;
     for (int i = 0; i < 2; ++i) {
@@ -161,7 +179,8 @@ TEST_CASE("write window: success and fault paths") {
         reset();
         Stock121ReadOnlySession remount_failed;
         REQUIRE(open_window(remount_failed));
-        fail_ro = true; partial_ro = partial;
+        fail_ro = true;
+        partial_ro = partial;
         close_engine(remount_failed);
         REQUIRE((!window_open && !mounted && window_result == U32(Result::remount)));
         REQUIRE((!remount_failed.ready() && media_guarded(remount_failed.device_)));

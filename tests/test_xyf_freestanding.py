@@ -1,26 +1,65 @@
 """XY Forever device modules compile freestanding with no libc/libgcc calls
 (the cold link provides no memcpy, memset or division helpers)."""
-from pathlib import Path
+
 import re
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = ('xyf_store', 'xyf_info', 'xyf_manifest', 'xyf_filelist', 'xyf_recognise', 'xyf_library', 'xyf_catalog', 'xyf_menu', 'xyf_menu_view', 'xyf_crc32', 'xyf_state', 'xyf_state_write', 'xyf_state_write_library', 'xyf_stage2', 'stage2_menu', 'stage2_hello', 'usb_proto', 'ui_gfx', 'ui_screens', 'ui_pages', 'file_engine')
-FLAGS = ['-mcpu=bf707', '-std=gnu++11', '-ffreestanding', '-fno-exceptions', '-fno-rtti', '-fno-threadsafe-statics',
-         '-fno-use-cxa-atexit', '-fno-asynchronous-unwind-tables', '-fno-unwind-tables', '-fno-common',
-         '-fno-tree-loop-distribute-patterns', '-fomit-frame-pointer', '-nostdinc++', '-Wall', '-Werror',
-         '-Wno-unused-variable', '-Os', '-fstack-usage']
+MODULES = (
+    'xyf_store',
+    'xyf_info',
+    'xyf_manifest',
+    'xyf_filelist',
+    'xyf_recognise',
+    'xyf_library',
+    'xyf_catalog',
+    'xyf_menu',
+    'xyf_menu_view',
+    'xyf_crc32',
+    'xyf_state',
+    'xyf_state_write',
+    'xyf_state_write_library',
+    'xyf_stage2',
+    'stage2_menu',
+    'stage2_hello',
+    'usb_proto',
+    'ui_gfx',
+    'ui_screens',
+    'ui_pages',
+    'file_engine',
+)
+FLAGS = [
+    '-mcpu=bf707',
+    '-std=gnu++11',
+    '-ffreestanding',
+    '-fno-exceptions',
+    '-fno-rtti',
+    '-fno-threadsafe-statics',
+    '-fno-use-cxa-atexit',
+    '-fno-asynchronous-unwind-tables',
+    '-fno-unwind-tables',
+    '-fno-common',
+    '-fno-tree-loop-distribute-patterns',
+    '-fomit-frame-pointer',
+    '-nostdinc++',
+    '-Wall',
+    '-Werror',
+    '-Wno-unused-variable',
+    '-Os',
+    '-fstack-usage',
+]
 # The OS-only .tfw extractor, tfw.check's verdict and the native codecs they
 # use. The codecs' aggregate copies (and tfw_check's zeroed View) call memcpy/memset, which
 # native/memory.cpp supplies; the extractor itself calls nothing outside xyf_core. tfw::Archive::open hashes into a 1 KiB stack buffer; the extractor
 # uses open_digested instead.
 EXTRACTOR = ('tfw_os', 'tfw', 'tfw_check', 'tfw_signature', 'p224', 'aes', 'hash', 'inflate', 'ldr', 'package_policy')
 SUPPLIED = {'_memcpy', '_memset'}
-SELF_CONTAINED = {'tfw_os', 'tfw_signature', 'p224'}      # no calls outside xyf_core at all
+SELF_CONTAINED = {'tfw_os', 'tfw_signature', 'p224'}  # no calls outside xyf_core at all
 LARGE_FRAMES = ('xyf_core::tfw::Archive::open(',)
 # The signature check: its whole call tree, and the bound on its stack.
 SIGNATURE = ('tfw_signature', 'p224', 'hash')
@@ -34,6 +73,7 @@ MOD_ASSEMBLY_STACK = 2048
 
 def compiler():
     from xy_forever import toolchain
+
     path = toolchain.location() / 'bin/bfin-elf-g++'
     return path if path.exists() else None
 
@@ -47,8 +87,21 @@ class FreestandingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='xyf-free-') as tmp:
             for name in MODULES:
                 out = Path(tmp) / (name + '.s')
-                subprocess.run([str(gxx), *FLAGS, '-I', str(ROOT / 'target'), '-S', str(ROOT / 'target' / (name + '.cpp')),
-                                '-o', str(out)], check=True, capture_output=True, cwd=tmp)
+                subprocess.run(
+                    [
+                        str(gxx),
+                        *FLAGS,
+                        '-I',
+                        str(ROOT / 'target'),
+                        '-S',
+                        str(ROOT / 'target' / (name + '.cpp')),
+                        '-o',
+                        str(out),
+                    ],
+                    check=True,
+                    capture_output=True,
+                    cwd=tmp,
+                )
                 calls = set(re.findall(r'\bcall\s+(_[A-Za-z0-9_.]+)', out.read_text()))
                 external = {c for c in calls if not c.startswith('__Z')}
                 self.assertEqual(external, set(), name)
@@ -65,8 +118,12 @@ class FreestandingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='xyf-free-native-') as tmp:
             for name in EXTRACTOR:
                 out = Path(tmp) / (name + '.s')
-                subprocess.run([str(gxx), *FLAGS, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
-                               check=True, capture_output=True, cwd=tmp)
+                subprocess.run(
+                    [str(gxx), *FLAGS, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
+                    check=True,
+                    capture_output=True,
+                    cwd=tmp,
+                )
                 text = out.read_text()
                 calls = set(re.findall(r'\bcall\s+(_[A-Za-z0-9_.]+)', text))
                 external = {c for c in calls if not c.startswith('__Z')}
@@ -76,7 +133,6 @@ class FreestandingTest(unittest.TestCase):
                     function, size = line.split('\t')[:2]
                     if not any(f in function for f in LARGE_FRAMES):
                         self.assertLess(int(size), 1024, function)
-
 
     def test_signature_check_stack_is_bounded(self):
         """No recursion anywhere in the signature check's modules, so the sum of all their
@@ -88,8 +144,12 @@ class FreestandingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='xyf-free-signature-') as tmp:
             for name in SIGNATURE:
                 out = Path(tmp) / (name + '.s')
-                subprocess.run([str(gxx), *FLAGS, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
-                               check=True, capture_output=True, cwd=tmp)
+                subprocess.run(
+                    [str(gxx), *FLAGS, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
+                    check=True,
+                    capture_output=True,
+                    cwd=tmp,
+                )
                 function = None
                 for line in out.read_text().splitlines():
                     label = re.match(r'(_[A-Za-z0-9_.]+):$', line)
@@ -111,10 +171,10 @@ class FreestandingTest(unittest.TestCase):
             for callee in graph.get(function, ()):
                 visit(callee, path + [function])
             state[function] = 'done'
+
         for function in graph:
             visit(function, [])
         self.assertLess(total, SIGNATURE_STACK)
-
 
     def test_mod_assembly_is_freestanding(self):
         """Cross-compile check (compile and assemble only; nothing is linked into a firmware build)."""
@@ -126,8 +186,12 @@ class FreestandingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='xyf-free-mods-') as tmp:
             for name in MOD_ASSEMBLY_TREE:
                 out = Path(tmp) / (name + '.s')
-                subprocess.run([str(gxx), *FLAGS, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
-                               check=True, capture_output=True, cwd=tmp)
+                subprocess.run(
+                    [str(gxx), *FLAGS, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
+                    check=True,
+                    capture_output=True,
+                    cwd=tmp,
+                )
                 text = out.read_text()
                 function = None
                 for line in text.splitlines():
@@ -146,10 +210,17 @@ class FreestandingTest(unittest.TestCase):
                 self.assertEqual({c for c in calls if not c.startswith('__Z')}, set(), name)
                 self.assertNotRegex(text, r'\.(bss|lcomm|comm)\b', name + ' uses BSS')
                 self.assertLess(max(frames), 1024, name)
-                subprocess.run([str(tools / 'bfin-elf-as'), '-mcpu=bf707', '-o', str(out.with_suffix('.o')), str(out)],
-                               check=True, capture_output=True)
-                sections = subprocess.run([str(tools / 'bfin-elf-objdump'), '-h', str(out.with_suffix('.o'))],
-                                          check=True, capture_output=True, text=True).stdout
+                subprocess.run(
+                    [str(tools / 'bfin-elf-as'), '-mcpu=bf707', '-o', str(out.with_suffix('.o')), str(out)],
+                    check=True,
+                    capture_output=True,
+                )
+                sections = subprocess.run(
+                    [str(tools / 'bfin-elf-objdump'), '-h', str(out.with_suffix('.o'))],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout
                 for row in sections.splitlines():
                     f = row.split()
                     if len(f) > 2 and f[1].startswith(('.data', '.bss')):
@@ -164,6 +235,7 @@ class FreestandingTest(unittest.TestCase):
             for callee in graph.get(function, ()):
                 visit(callee, path + [function])
             state[function] = 'done'
+
         for function in graph:
             visit(function, [])
         self.assertLess(total, MOD_ASSEMBLY_STACK)

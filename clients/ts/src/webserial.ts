@@ -63,7 +63,8 @@ export class WebSerialTransport implements Transport {
    */
   static async open(port: SerialPortLike): Promise<WebSerialTransport> {
     const other = [...openHere].find((p) => p !== port && isXyForever(p) && isXyForever(port));
-    if (other) throw new DOMException('XY Forever is already open in this page under another entry', 'InvalidStateError');
+    if (other)
+      throw new DOMException('XY Forever is already open in this page under another entry', 'InvalidStateError');
     await port.open({ ...SERIAL_OPEN });
     openHere.add(port);
     return new WebSerialTransport(port);
@@ -76,7 +77,10 @@ export class WebSerialTransport implements Transport {
   start(sink: TransportSink): void {
     this.sink = sink;
     const readable = this.port.readable;
-    if (!readable) { this.done = this.release(new Error('the port has no readable stream')); return; }
+    if (!readable) {
+      this.done = this.release(new Error('the port has no readable stream'));
+      return;
+    }
     const reader = readable.getReader();
     this.reader = reader;
     this.done = (async () => {
@@ -88,7 +92,7 @@ export class WebSerialTransport implements Transport {
           if (value) sink.data(value);
         }
       } catch (e) {
-        error = e as Error;                             // NetworkError: the device went away (restart, cable)
+        error = e as Error; // NetworkError: the device went away (restart, cable)
       } finally {
         reader.releaseLock();
       }

@@ -41,28 +41,34 @@ an after result, else a new one); summary.json, after.json, one log per step. A 
 xy_forever.sim --crash-trigger: diag.crash halts B there, no fault, no screen) uses sim-crash-trigger, removed when
 nothing failed unless --keep. Exit codes: 0 passed, 1 a step failed, 2 bad arguments, 3 NEED.
 """
+
 import argparse
-from datetime import datetime, timezone
 import json
-from pathlib import Path
 import re
 import struct
 import sys
 import time
+from datetime import UTC, datetime
+from pathlib import Path
 
 import device_pass as dp
+
+from xy_forever import usb_proto as P
+from xy_forever import usb_proto_ids as ids
 from xy_forever import xyf_build
 from xy_forever import xyf_host as host
-from xy_forever import usb_proto as P, usb_proto_ids as ids
 
-T_CRASH = 0x63                    # diag.crash (dev, test build only; usb_service_crash_trigger.ipp)
-KINDS = {'excpt': (1, 0x01, 'software exception (EXCPT)', 2),
-         'illegal': (3, 0x21, 'undefined instruction', 0), 'unmapped': (4, 0x26, 'data access to unmapped memory', 0)}
+T_CRASH = 0x63  # diag.crash (dev, test build only; usb_service_crash_trigger.ipp)
+KINDS = {
+    'excpt': (1, 0x01, 'software exception (EXCPT)', 2),
+    'illegal': (3, 0x21, 'undefined instruction', 0),
+    'unmapped': (4, 0x26, 'data access to unmapped memory', 0),
+}
 UNMAPPED = 0x90000000
-CPLB_TABLE, CPLB_BYTES = 0x0803c0b4, 0x78  # stock data CPLB descriptors {address, data}, -1 ends (inside PEEK's L2)
+CPLB_TABLE, CPLB_BYTES = 0x0803C0B4, 0x78  # stock data CPLB descriptors {address, data}, -1 ends (inside PEEK's L2)
 T_SILENT = 6.0
-T_SETTLE = 5.0                    # silent: B's time to fault after the ok (the same for every kind)
-MODE = xyf_build.CRASH_TRIGGER_MODE[len('xyf-'):]
+T_SETTLE = 5.0  # silent: B's time to fault after the ok (the same for every kind)
+MODE = xyf_build.CRASH_TRIGGER_MODE[len('xyf-') :]
 
 
 def cplb_entries(data):
@@ -70,7 +76,7 @@ def cplb_entries(data):
     out = []
     for at in range(0, len(data) - 3, 8):
         start = struct.unpack_from('<I', data, at)[0]
-        if start == 0xffffffff or at + 8 > len(data):
+        if start == 0xFFFFFFFF or at + 8 > len(data):
             break
         size = 1024 << 2 * (struct.unpack_from('<I', data, at + 4)[0] >> 16 & 15)
         out.append((start, start + size))
@@ -82,9 +88,12 @@ def expected(asm_text, kind):
     labels = {m.group(2): int(m.group(1), 16) for m in re.finditer(r'^([0-9a-f]{8}) <([^>]+)>:$', asm_text, re.M)}
     at = labels['xyf_crash_at_' + kind] + KINDS[kind][3]
     target, rets = 'xyf_crash_fault', None
-    for _ in range(4):                     # follow tail jumps back to the CALL that sets RETS
-        site = re.search(r'^([0-9a-f]{8}):\s+((?:[0-9a-f]{2} )+)\s*(CALL|JUMP\.L) 0x[0-9a-f]+ <%s>;' % re.escape(target),
-                         asm_text, re.M)
+    for _ in range(4):  # follow tail jumps back to the CALL that sets RETS
+        site = re.search(
+            r'^([0-9a-f]{8}):\s+((?:[0-9a-f]{2} )+)\s*(CALL|JUMP\.L) 0x[0-9a-f]+ <%s>;' % re.escape(target),
+            asm_text,
+            re.M,
+        )
         if not site:
             break
         if site.group(3) == 'CALL':
@@ -97,8 +106,11 @@ def expected(asm_text, kind):
 
 def screen_lines(kind, at, rets):
     _, cause, name, _ = KINDS[kind]
-    where = 'At 0x%08x, called from %s' % (at, '0x%08x' % rets if rets is not None else '(see module.asm)') \
-        if at is not None else 'At <xyf_crash_at_%s in module.asm>' % kind
+    where = (
+        'At 0x%08x, called from %s' % (at, '0x%08x' % rets if rets is not None else '(see module.asm)')
+        if at is not None
+        else 'At <xyf_crash_at_%s in module.asm>' % kind
+    )
     return ['Cause 0x%02x: %s' % (cause, name), where, 'SEQSTAT 0x0000%04x (or 0x0000%04x)' % (cause, 0x2000 | cause)]
 
 
@@ -132,8 +144,9 @@ class Run(dp.Pass):
             wrong.append('crash restarts %s' % usb['crash_restarts'])
         if wrong:
             raise dp.StepFail('; '.join(wrong))
-        self.state['identity'] = dict(mode=hello.keys.get('mode'), image=hello.keys.get('image'),
-                                      crash_restarts=usb.get('crash_restarts'))
+        self.state['identity'] = dict(
+            mode=hello.keys.get('mode'), image=hello.keys.get('image'), crash_restarts=usb.get('crash_restarts')
+        )
         return 'image %s (%s), crash restarts %s' % (hello.keys.get('image'), MODE, usb.get('crash_restarts'))
 
     def step_cplb(self):
@@ -161,19 +174,22 @@ class Run(dp.Pass):
         if code == ids.S_BUSY:
             raise dp.StepFail('busy: a read-write window may be open (or a job, MTP, an upload); wait 15 s, rerun')
         if code != ids.S_OK:
-            raise dp.StepFail('diag.crash answered %s (unsupported: not the crash trigger test build; state: the '
-                              'vector is not armed)' % P.status_name(code))
-        self.state['sent_utc'] = datetime.now(timezone.utc).isoformat()
+            raise dp.StepFail(
+                'diag.crash answered %s (unsupported: not the crash trigger test build; state: the '
+                'vector is not armed)' % P.status_name(code)
+            )
+        self.state['sent_utc'] = datetime.now(UTC).isoformat()
         return 'diag.crash %s (kind %d): ok' % (self.opts.kind, KINDS[self.opts.kind][0])
 
     def step_silent(self):
         self.sleep(T_SETTLE)
         code, out, err = self.host(['status'], T_SILENT)
         if code == 0:
-            raise dp.StepFail('B still answers %g s after the trigger: no fault (%s)'
-                              % (T_SETTLE, (out.splitlines() or [''])[0][:100]))
-        return 'no answer %g s after the trigger (B stopped, as expected): %s' % (T_SETTLE,
-                                                                                 dp.why(code, out, err)[:80])
+            raise dp.StepFail(
+                'B still answers %g s after the trigger: no fault (%s)'
+                % (T_SETTLE, (out.splitlines() or [''])[0][:100])
+            )
+        return 'no answer %g s after the trigger (B stopped, as expected): %s' % (T_SETTLE, dp.why(code, out, err)[:80])
 
     def step_screen(self):
         self.state['screen'] = self.opts.screen
@@ -195,7 +211,7 @@ class Run(dp.Pass):
             detail, result = function(), 'PASS'
         except dp.StepFail as error:
             detail, result = str(error), 'FAIL'
-        except Exception as error:           # a bug or a local file problem: still a FAIL row (#50)
+        except Exception as error:  # a bug or a local file problem: still a FAIL row (#50)
             detail, result = '%s: %s' % (type(error).__name__, error), 'FAIL'
         row = dict(stage=stage, step=name, result=result, seconds=time.monotonic() - start, detail=detail)
         if self.folder:
@@ -208,8 +224,14 @@ class Run(dp.Pass):
 def after_folder(sessions, kind):
     """The day's last trigger folder without an after result, else a new folder."""
     day = datetime.now().strftime('%Y-%m-%d')
-    found = sorted((p for p in sessions.glob('%s-%s-*' % (day, kind)) if (p / 'summary.json').is_file()
-                    and not (p / 'after.json').is_file()), key=lambda p: int(p.name.rsplit('-', 1)[1]))
+    found = sorted(
+        (
+            p
+            for p in sessions.glob('%s-%s-*' % (day, kind))
+            if (p / 'summary.json').is_file() and not (p / 'after.json').is_file()
+        ),
+        key=lambda p: int(p.name.rsplit('-', 1)[1]),
+    )
     if found:
         dp.EVIDENCE.append(found[-1])
     return found[-1] if found else dp.new_folder(sessions, kind)
@@ -235,7 +257,7 @@ def build_facts(opts):
     if not build:
         return
     if opts.install:
-        host.load_build(opts.install)               # verified, with the USB service (else ValueError)
+        host.load_build(opts.install)  # verified, with the USB service (else ValueError)
     image, _, mode, _ = dp.build_identity(build)
     if mode != xyf_build.CRASH_TRIGGER_MODE:
         raise ValueError('%s is a %s build, not %s' % (build, mode, xyf_build.CRASH_TRIGGER_MODE))
@@ -257,13 +279,14 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     opts.build_sha = None
     if opts.install:
         import hashlib
+
         opts.build_sha = hashlib.sha256((Path(opts.install) / 'candidate.ldr').read_bytes()).hexdigest()
     keepalive = keepalive or dp.Keepalive()
     run = Run(device or dp.HostDevice(), opts, keepalive, sleep)
     run.rows = []
     if not opts.sim:
         keepalive.stop_running()
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     check = run.run('check', 'check', run.step_check)
     if check['result'] == 'FAIL' and run.no_answer:
         print(dp.SIM_NEED if opts.sim else dp.NEED)
@@ -272,14 +295,20 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     kind = 'sim-crash-trigger' if opts.sim else 'crash-trigger'
     run.folder = after_folder(sessions, kind) if opts.after else dp.new_folder(sessions, kind)
     if opts.after:
-        steps = [('after', 'identity', run.step_identity), ('after', 'screen', run.step_screen),
-                 ('after', 'hold-off', run.step_hold_off), ('after', 'keepalive', run.step_keepalive)]
+        steps = [
+            ('after', 'identity', run.step_identity),
+            ('after', 'screen', run.step_screen),
+            ('after', 'hold-off', run.step_hold_off),
+            ('after', 'keepalive', run.step_keepalive),
+        ]
     else:
-        steps = [('session', 'hold-on', run.step_hold_on)] + \
-            ([('install', 'install', run.step_install)] if opts.install else []) + \
-            [('trigger', 'identity', run.step_identity)] + \
-            ([('trigger', 'cplb', run.step_cplb)] if opts.kind == 'unmapped' else []) + \
-            [('trigger', 'trigger', run.step_trigger), ('trigger', 'silent', run.step_silent)]
+        steps = (
+            [('session', 'hold-on', run.step_hold_on)]
+            + ([('install', 'install', run.step_install)] if opts.install else [])
+            + [('trigger', 'identity', run.step_identity)]
+            + ([('trigger', 'cplb', run.step_cplb)] if opts.kind == 'unmapped' else [])
+            + [('trigger', 'trigger', run.step_trigger), ('trigger', 'silent', run.step_silent)]
+        )
     failed = None if check['result'] == 'PASS' else 'check'
     for stage, name, function in steps:
         if failed:
@@ -289,25 +318,39 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
         if run.run(stage, name, function)['result'] == 'FAIL':
             failed = '%s/%s' % (stage, name)
     if failed and failed != 'check' and not opts.after:
-        run.run('end', 'hold-off', run.step_hold_off)        # B still answers: no hold left behind
+        run.run('end', 'hold-off', run.step_hold_off)  # B still answers: no hold left behind
     passed = not any(r['result'] == 'FAIL' for r in run.rows)
     lines = None
     if opts.kind:
         at, rets = expected(opts.asm, opts.kind) if opts.asm else (None, None)
         lines = screen_lines(opts.kind, at, rets)
     code = dp.EXIT_FAIL if not passed else dp.EXIT_PASS if opts.after else dp.EXIT_NEED
-    summary = dict(format='xyf-crash-trigger/1', step='after' if opts.after else 'trigger', kind=opts.kind,
-                   folder=str(run.folder), argv=list(argv if argv is not None else sys.argv[1:]),
-                   started_utc=started.isoformat(), finished_utc=datetime.now(timezone.utc).isoformat(),
-                   hello=run.state.get('hello'), identity=run.state.get('identity'), cplb=run.state.get('cplb'),
-                   sent_utc=run.state.get('sent_utc'), expected_screen=lines, screen=run.state.get('screen'),
-                   build=opts.install or opts.build, steps=run.rows, exit_code=code)
+    summary = dict(
+        format='xyf-crash-trigger/1',
+        step='after' if opts.after else 'trigger',
+        kind=opts.kind,
+        folder=str(run.folder),
+        argv=list(argv if argv is not None else sys.argv[1:]),
+        started_utc=started.isoformat(),
+        finished_utc=datetime.now(UTC).isoformat(),
+        hello=run.state.get('hello'),
+        identity=run.state.get('identity'),
+        cplb=run.state.get('cplb'),
+        sent_utc=run.state.get('sent_utc'),
+        expected_screen=lines,
+        screen=run.state.get('screen'),
+        build=opts.install or opts.build,
+        steps=run.rows,
+        exit_code=code,
+    )
     (run.folder / ('after.json' if opts.after else 'summary.json')).write_text(json.dumps(summary, indent=1) + '\n')
     print(dp.table(run.rows, dp.settle_folder(run.folder, opts.sim, passed and opts.after, opts.keep)))
     if passed and not opts.after:
-        print('NEED: read the OP-XY screen (kind %s): expect %s. Then power off, then power on holding PLAY '
-              '(release at the logo), and run: python3 scripts/crash_trigger.py --after --screen "WHAT IT SHOWED"%s'
-              % (opts.kind, ' | '.join(lines), ' --sim ' + opts.sim if opts.sim else ''))
+        print(
+            'NEED: read the OP-XY screen (kind %s): expect %s. Then power off, then power on holding PLAY '
+            '(release at the logo), and run: python3 scripts/crash_trigger.py --after --screen "WHAT IT SHOWED"%s'
+            % (opts.kind, ' | '.join(lines), ' --sim ' + opts.sim if opts.sim else '')
+        )
     return code
 
 

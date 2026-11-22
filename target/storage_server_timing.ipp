@@ -33,9 +33,10 @@ U32 op_slot(U32 op, U32 argument) {                          // file_client's op
     switch (op) {
     case 0x08: return t_mount;
     case 0x09: return t_unmount;
-    case 0x21: return argument == rename_from ? t_rename_from :
-                      argument == rename_to || argument == rename_over || argument == rename_upload ? t_rename_to :
-                      t_access;
+    case 0x21:
+        return argument == rename_from                                                       ? t_rename_from :
+               argument == rename_to || argument == rename_over || argument == rename_upload ? t_rename_to :
+                                                                                               t_access;
     case 0x22: return t_stat;
     case 0x23: return t_statfs;
     case 0x25: return t_unlink;
@@ -62,7 +63,8 @@ bool timing_query(U32 request, Stock121PeerSession& session) {
     const U32 k = argument & 0xffu;
     if (k == file_engine::timing_clear) {
         for (U32 i = 0; i != file_engine::timing_words; ++i) w[i] = 0;
-        a_last_end = 0; a_checks.count = 0;
+        a_last_end = 0;
+        a_checks.count = 0;
         session.reply(request, 0, 0);
     } else if (2 * k + 1 < file_engine::timing_words) session.reply(request, w[2 * k], w[2 * k + 1]);
     else session.reply(request, 0xffffffffu, error_access);
@@ -83,18 +85,28 @@ void timed_serve(void* context, U32 request, Stock121PeerSession& session) {
     const uint64_t end = xyf::clock::cycles(), took = end - start;
     ATiming& t = a_timing;
     if (a_last_end && start - a_last_end < gap_bound) {
-        ++t.gaps; t.gap_units += units(start - a_last_end); t.gap_max = longest(t.gap_max, start - a_last_end);
+        ++t.gaps;
+        t.gap_units += units(start - a_last_end);
+        t.gap_max = longest(t.gap_max, start - a_last_end);
     }
     a_last_end = end;
     if (vtable == file_engine::read_class && op == 0x2au) {
-        ++t.reads; t.read_units += units(took); t.read_max = longest(t.read_max, took);
+        ++t.reads;
+        t.read_units += units(took);
+        t.read_max = longest(t.read_max, took);
     } else if (vtable == file_engine::write_class && op == 0x2bu) {
-        ++t.writes; t.write_units += units(took); t.write_max = longest(t.write_max, took);
+        ++t.writes;
+        t.write_units += units(took);
+        t.write_max = longest(t.write_max, took);
     } else {
-        ++t.others; t.other_units += units(took);
+        ++t.others;
+        t.other_units += units(took);
         const bool opened = !had_window && window_now();
         U32* s = t.ops[opened ? U32(file_engine::t_window_open) : op_slot(op, argument)];
-        ++s[0]; s[1] += units(took); s[2] = longest(s[2], took); s[3] += units(a_checks.cycles - checked);
+        ++s[0];
+        s[1] += units(took);
+        s[2] = longest(s[2], took);
+        s[3] += units(a_checks.cycles - checked);
     }
     t.checks = a_checks.count;
 }
@@ -119,5 +131,5 @@ bool spans_match() {
     spans_matched_at = now;
     return spans_matched != 0;
 }
-} }
+}}
 #endif

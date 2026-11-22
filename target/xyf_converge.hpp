@@ -19,21 +19,23 @@ struct Inputs {
 };
 struct Actual {
     const config::Record* record;       // the saved record (state present; else no setup is saved)
-    const char* stamp;                  // the record's slot's info.txt sha256= now ("": not in the library, unreadable)
-    const char* default_id;             // the library's default entry ("": none)
-    uint32_t base_installed, slot_installed;   // the base's / the record's slot's content is installed
+    const char* stamp; // the record's slot's info.txt sha256= now ("": not in the library, unreadable)
+    const char* default_id; // the library's default entry ("": none)
+    uint32_t base_installed, slot_installed; // the base's / the record's slot's content is installed
 };
 struct Plan {
-    uint32_t ops;                       // Op bits
-    const char* target;                 // the entry that boots: the base or the record's slot (0: the slot a build makes)
+    uint32_t ops; // Op bits
+    const char* target; // the entry that boots: the base or the record's slot (0: the slot a build makes)
 };
 // Safe mode as a record keeps it (config::parse: it needs mods and a slot).
-static inline uint32_t safe_kept(const Inputs& in, const config::Record& r) { return in.safe && in.count && r.slot[0] ? 1u : 0u; }
+static inline uint32_t safe_kept(const Inputs& in, const config::Record& r) {
+    return in.safe && in.count && r.slot[0] ? 1u : 0u;
+}
 // The record already says these inputs, as a record written for them would. No record: no mods, standard memory.
 static inline bool recorded(const Inputs& in, const config::Record& r) {
     if (r.state != config::present) return !in.count && !in.expanded;
-    return config::same(r.base, in.base) && r.count == in.count && r.expanded == in.expanded && r.safe == safe_kept(in, r) &&
-           (!in.count || in.safe || config::same(r.built, in.built));
+    return config::same(r.base, in.base) && r.count == in.count && r.expanded == in.expanded &&
+           r.safe == safe_kept(in, r) && (!in.count || in.safe || config::same(r.built, in.built));
 }
 // The record's slot still holds the selection's build: built= the same and its stamp unchanged.
 static inline bool built(const Inputs& in, const Actual& a) {
@@ -44,9 +46,13 @@ static inline bool built(const Inputs& in, const Actual& a) {
 static inline Plan plan(const Inputs& in, const Actual& a) {
     const config::Record& r = *a.record;
     Plan p = {0, a.default_id};
-    if (r.state != config::present && !in.count && !in.expanded) return p;   // no setup: the default boots as it is
-    const bool mods = in.count && !in.safe;                 // safe mode: the base with its official content
-    if (mods && !built(in, a)) { p.ops = op_build | op_switch | op_record | op_default; p.target = 0; return p; }
+    if (r.state != config::present && !in.count && !in.expanded) return p; // no setup: the default boots as it is
+    const bool mods = in.count && !in.safe; // safe mode: the base with its official content
+    if (mods && !built(in, a)) {
+        p.ops = op_build | op_switch | op_record | op_default;
+        p.target = 0;
+        return p;
+    }
     p.target = mods ? r.slot : in.base;
     if (!(mods ? a.slot_installed : a.base_installed)) p.ops |= op_switch | op_record | op_default;
     if (!recorded(in, r)) p.ops |= op_record;
@@ -70,14 +76,21 @@ static inline uint32_t mark_text(char* out, uint32_t capacity, const uint8_t* di
     config::put(o, "format=1\ninputs=");
     char d[3];
     d[2] = 0;
-    for (uint32_t i = 0; i != 32; ++i) { d[0] = hex[digest[i] >> 4]; d[1] = hex[digest[i] & 15u]; config::put(o, d); }
-    config::put(o, "\ndefault="); config::put(o, target); config::put(o, "\n");
+    for (uint32_t i = 0; i != 32; ++i) {
+        d[0] = hex[digest[i] >> 4];
+        d[1] = hex[digest[i] & 15u];
+        config::put(o, d);
+    }
+    config::put(o, "\ndefault=");
+    config::put(o, target);
+    config::put(o, "\n");
     return o.ok ? uint32_t(o.at - out) : 0u;
 }
 static inline bool mark_same(const char* want, uint32_t n, const uint8_t* stored, uint32_t length) {
     if (!n || n != length) return false;
-    for (uint32_t i = 0; i != n; ++i) if (uint8_t(want[i]) != stored[i]) return false;
+    for (uint32_t i = 0; i != n; ++i)
+        if (uint8_t(want[i]) != stored[i]) return false;
     return true;
 }
-} }
+}}
 #endif

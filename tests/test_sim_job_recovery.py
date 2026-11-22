@@ -1,32 +1,40 @@
 """Automatic menu/service repair and undo, with repeated power cuts at IO boundaries; no device access."""
+
 import hashlib
 import shutil
 import time
 import unittest
+import zlib
 
 import pytest
-import zlib
-from xy_forever import modsend as MS, package_records
 import test_sim_content_switch as CS
+
+from xy_forever import modsend as MS
+from xy_forever import package_records
+
 Switch, UNAVAILABLE, content, LIB = CS.Switch, CS.UNAVAILABLE, CS.content, CS.LIB
 
 JOURNAL = 'xy-forever/job.txt'
-OFFER = 'Source missing. PLAY on the first row undoes: '                   # usb_service content_line
+OFFER = 'Source missing. PLAY on the first row undoes: '  # usb_service content_line
 
 
 def identity(root, entry):
     folder = root / LIB / entry
     metadata = folder / package_records.local_name(folder)
     listed = folder / 'files.sha256'
-    return (hashlib.sha256(metadata.read_bytes()).hexdigest(),
-            hashlib.sha256(listed.read_bytes()).hexdigest() if listed.exists() else '0' * 64)
+    return (
+        hashlib.sha256(metadata.read_bytes()).hexdigest(),
+        hashlib.sha256(listed.read_bytes()).hexdigest() if listed.exists() else '0' * 64,
+    )
 
 
 def intent(root, target, previous, undo=False):
     a, b = identity(root, target), identity(root, previous)
-    text = ('version=1\ntarget=%s\nprevious=%s\ndefault=1\nundo=%d\ntarget_info=%s\ntarget_list=%s\n'
-            'previous_info=%s\nprevious_list=%s\n' % (target, previous, undo, *a, *b)).encode()
-    return text + ('crc32=%08x\n' % (zlib.crc32(text) & 0xffffffff)).encode()
+    text = (
+        'version=1\ntarget=%s\nprevious=%s\ndefault=1\nundo=%d\ntarget_info=%s\ntarget_list=%s\n'
+        'previous_info=%s\nprevious_list=%s\n' % (target, previous, undo, *a, *b)
+    ).encode()
+    return text + ('crc32=%08x\n' % (zlib.crc32(text) & 0xFFFFFFFF)).encode()
 
 
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
@@ -50,7 +58,10 @@ class Recovery(Switch, unittest.TestCase):
             self.assertEqual(self.dev.hello()[0], 0)
 
     def repaired(self, target, official=False):
-        self.wait(lambda: not (self.root / JOURNAL).exists() and not (self.root / 'xy-forever/job.old').exists(), 'repair cleanup')
+        self.wait(
+            lambda: not (self.root / JOURNAL).exists() and not (self.root / 'xy-forever/job.old').exists(),
+            'repair cleanup',
+        )
         self.assertEqual(MS.served(self.dev, out=lambda _: None), 0)
         self.assertEqual(self.default(), target)
         self.assertEqual(content(self.root), self.expected(None if official else target))
@@ -80,20 +91,31 @@ class Recovery(Switch, unittest.TestCase):
             shutil.copytree(self.root, snapshot)
             (snapshot / JOURNAL).write_bytes(journal)
             # Measure the complete automatic repair. Every mutating A-side operation is a cut boundary (native tests also cut every read/close).
-            self.dev.t.close(); self.sim.stop()
-            shutil.rmtree(self.root); shutil.copytree(snapshot, self.root)
-            self.sim.start(); self.reconnect(); self.dev.hello()
+            self.dev.t.close()
+            self.sim.stop()
+            shutil.rmtree(self.root)
+            shutil.copytree(snapshot, self.root)
+            self.sim.start()
+            self.reconnect()
+            self.dev.hello()
             self.repaired(previous if undo else target, official=undo)
             total = self.sim.status()['storage_ops']
             self.assertGreater(total, 20)
-            boundaries = sorted(set(range(1, total + 1, max(1, total // 12))) | {total})   # a sample: the native tests cut at every one
+            boundaries = sorted(
+                set(range(1, total + 1, max(1, total // 12))) | {total}
+            )  # a sample: the native tests cut at every one
             for at in boundaries:
                 with self.subTest(undo=undo, io=at):
-                    self.dev.t.close(); self.sim.stop()
-                    shutil.rmtree(self.root); shutil.copytree(snapshot, self.root)
-                    self.sim.start(); self.reconnect(); self.dev.hello()
+                    self.dev.t.close()
+                    self.sim.stop()
+                    shutil.rmtree(self.root)
+                    shutil.copytree(snapshot, self.root)
+                    self.sim.start()
+                    self.reconnect()
+                    self.dev.hello()
                     self.repaired(previous if undo else target, official=undo)
-                    shutil.rmtree(self.root); shutil.copytree(snapshot, self.root)
+                    shutil.rmtree(self.root)
+                    shutil.copytree(snapshot, self.root)
                     # A new power-on now sees the exact snapshot and the armed IO boundary.
                     cuts = self.sim.status()['cuts']
                     self.sim.set('cut_after', at)
@@ -102,11 +124,17 @@ class Recovery(Switch, unittest.TestCase):
                     while self.sim.status()['cuts'] == cuts:
                         self.assertLess(time.monotonic(), end, 'the armed mutation boundary')
                         self.sim.advance(10)
-                    self.sim.wait_listening(30); self.reconnect(); self.dev.hello()
+                    self.sim.wait_listening(30)
+                    self.reconnect()
+                    self.dev.hello()
                     self.repaired(previous if undo else target, official=undo)
-            self.dev.t.close(); self.sim.stop()
-            shutil.rmtree(self.root); shutil.copytree(original, self.root)
-            self.sim.start(); self.reconnect(); self.dev.hello()
+            self.dev.t.close()
+            self.sim.stop()
+            shutil.rmtree(self.root)
+            shutil.copytree(original, self.root)
+            self.sim.start()
+            self.reconnect()
+            self.dev.hello()
 
     @pytest.mark.sweep
     def test_repeated_interrupted_replay_and_undo(self):
@@ -128,5 +156,7 @@ class Recovery(Switch, unittest.TestCase):
                     self.assertLess(time.monotonic(), end, 'replay interrupted again')
                     self.sim.advance(5)
                 self.sim.set('a_slow_ms', 0)
-                self.sim.wait_listening(30); self.reconnect(); self.dev.hello()
+                self.sim.wait_listening(30)
+                self.reconnect()
+                self.dev.hello()
                 self.repaired(previous if undo else target, official=undo)

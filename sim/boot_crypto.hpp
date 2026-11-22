@@ -9,7 +9,10 @@ namespace xyf_sim {
 inline void boot_crypt(uint8_t* data, uint32_t bytes, uint32_t offset = 0) {
     for (uint32_t i = 0; i != bytes; ++i) data[i] ^= uint8_t(0xa5u + (offset + i) * 29u);
 }
-inline void boot_crypto_mark(uint8_t* header) { header[13] = 1; memcpy(header + 14, "XYFSIM01", 8); }
+inline void boot_crypto_mark(uint8_t* header) {
+    header[13] = 1;
+    memcpy(header + 14, "XYFSIM01", 8);
+}
 inline bool boot_crypto_model(const uint8_t* header) {
     return header[13] == 1 && memcmp(header + 14, "XYFSIM01", 8) == 0;
 }

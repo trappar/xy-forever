@@ -3,6 +3,7 @@
 Both are raw byte streams: write(data) sends all of data or raises TimeoutError; read(timeout) returns
 what arrived within timeout, or b'' (the caller's own deadline decides when to give up).
 """
+
 import fcntl
 import glob
 import os
@@ -14,9 +15,9 @@ import time
 
 from xy_forever import device_lock, no_device
 
-WRITE_STALL = 2.0      # seconds a write may make no progress before it is a timeout
-OPEN_LIMIT = 3.0       # seconds SerialPort waits for the port to open before it is a timeout
-_opening = {}          # path: the socket of an open that outlived its wait (the next SerialPort waits on it)
+WRITE_STALL = 2.0  # seconds a write may make no progress before it is a timeout
+OPEN_LIMIT = 3.0  # seconds SerialPort waits for the port to open before it is a timeout
+_opening = {}  # path: the socket of an open that outlived its wait (the next SerialPort waits on it)
 
 
 def device_ports():
@@ -32,7 +33,7 @@ def _detached(work, keep):
     nothing waits for it, so a system call the kernel holds there holds no caller (issue #118)."""
     pid = os.fork()
     if pid:
-        os.waitpid(pid, 0)                       # the middle child exits at once: no zombie is left
+        os.waitpid(pid, 0)  # the middle child exits at once: no zombie is left
         return
     try:
         os.setsid()
@@ -44,7 +45,7 @@ def _detached(work, keep):
                 try:
                     os.close(fd)
                 except OSError:
-                    pass                         # listdir's own, already closed
+                    pass  # listdir's own, already closed
             work()
     finally:
         os._exit(0)
@@ -80,6 +81,7 @@ def _opener(path):
             theirs.sendall(('%d %s' % (error.errno or 0, error.strerror or error)).encode())
         else:
             socket.send_fds(theirs, [b'ok'], [fd])
+
     try:
         _detached(work, (theirs.fileno(),))
     finally:
@@ -88,7 +90,7 @@ def _opener(path):
 
 
 def _final_close(fd, parent_done):
-    os.read(parent_done, 1)                      # EOF: the caller has dropped its copy of fd
+    os.read(parent_done, 1)  # EOF: the caller has dropped its copy of fd
     os.close(fd)
 
 
@@ -135,7 +137,7 @@ class SerialPort:
                 raise TimeoutError('write timeout')
             try:
                 n = os.write(self.fd, view)
-            except (BlockingIOError, InterruptedError):
+            except BlockingIOError, InterruptedError:
                 n = 0
             if n:
                 view = view[n:]
@@ -154,13 +156,13 @@ class SerialPort:
                 return b''
             try:
                 return os.read(self.fd, 65536)
-            except (BlockingIOError, InterruptedError):
+            except BlockingIOError, InterruptedError:
                 if left <= 0:
                     return b''
 
     def close(self):
         """Never waits for the device: a detached process makes the last close (the kernel may hold it)."""
-        fd, self.fd = self.fd, None              # idempotent (scripts/device_pass.py closes every port)
+        fd, self.fd = self.fd, None  # idempotent (scripts/device_pass.py closes every port)
         if fd is None:
             return
         done, hold = os.pipe()
@@ -179,7 +181,7 @@ def sim_address(address):
     return host, int(port)
 
 
-_SIM_CONTROL = {}           # (host, control port) -> [socket, lock]: one kept connection each (no TIME_WAIT per pause)
+_SIM_CONTROL = {}  # (host, control port) -> [socket, lock]: one kept connection each (no TIME_WAIT per pause)
 
 
 def sim_pause(address, seconds):
@@ -196,7 +198,7 @@ def sim_pause(address, seconds):
                 if entry[0] is None:
                     try:
                         entry[0] = socket.create_connection((host, port + 1), timeout=10.0)
-                    except ConnectionRefusedError:               # no simulator there (yet): no device clock
+                    except ConnectionRefusedError:  # no simulator there (yet): no device clock
                         time.sleep(seconds)
                         return
                 entry[0].sendall(line)
@@ -211,7 +213,7 @@ def sim_pause(address, seconds):
                 if entry[0] is not None:
                     entry[0].close()
                 entry[0] = None
-                if attempt or isinstance(error, socket.timeout):     # sent: never advance twice
+                if attempt or isinstance(error, socket.timeout):  # sent: never advance twice
                     raise
 
 

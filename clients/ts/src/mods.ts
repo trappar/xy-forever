@@ -25,12 +25,15 @@ import { encodeModsApplyRequest } from './v1.ts';
 export const MODS_ROOT = '/yaffs2/xy-forever/mods';
 const LIST = 'files.sha256';
 const INFO = 'info.txt';
-const TOKEN = /^[a-z0-9][a-z0-9._-]{0,30}$/;                 // info.txt generation, profile
-const MAX_PATH = 239;                                          // max_path 240 with the NUL
+const TOKEN = /^[a-z0-9][a-z0-9._-]{0,30}$/; // info.txt generation, profile
+const MAX_PATH = 239; // max_path 240 with the NUL
 
 /** The package set or the device's answer is not what a push or remove can use (modsend.py Refused). */
 export class PackageError extends Error {
-  constructor(message: string) { super(message); this.name = 'PackageError'; }
+  constructor(message: string) {
+    super(message);
+    this.name = 'PackageError';
+  }
 }
 
 /** A generation folder: every file's path relative to it, '/'-separated ('base/manifest.json'), and its bytes. */
@@ -66,11 +69,19 @@ export function infoValues(data: Uint8Array, name = INFO): Record<string, string
 
 /** files.sha256 -> [sha256 hex, path] in file order. */
 export function listPaths(data: Uint8Array): [string, string][] {
-  try { return parseFileList(data); } catch (error) { throw new PackageError((error as Error).message); }
+  try {
+    return parseFileList(data);
+  } catch (error) {
+    throw new PackageError((error as Error).message);
+  }
 }
 
 /** stored: its name in the device's store (modstore.ts). */
-export interface LocalFile { readonly path: string; readonly data: Uint8Array; readonly stored: string }
+export interface LocalFile {
+  readonly path: string;
+  readonly data: Uint8Array;
+  readonly stored: string;
+}
 export interface LocalSet {
   readonly profile: string;
   readonly generation: string;
@@ -86,13 +97,18 @@ export interface LocalSet {
 export async function localSet(source: PackageSource, only: readonly string[] = []): Promise<LocalSet> {
   const paths = new Set(await source.paths());
   const baseRecord = recordName([...paths].filter((path) => path.startsWith('base/')).map((path) => path.slice(5)));
-  if (baseRecord === undefined) throw new PackageError('no base package metadata (choose the generation folder modkit split wrote)');
+  if (baseRecord === undefined)
+    throw new PackageError('no base package metadata (choose the generation folder modkit split wrote)');
   const base = parseManifest(await source.read(`base/${baseRecord}`), baseRecord);
-  const profile = base['profile'] ?? '', generation = base['generation'] ?? '';
+  const profile = base['profile'] ?? '',
+    generation = base['generation'] ?? '';
   if (base['type'] !== 'mod-base' || !TOKEN.test(profile) || !TOKEN.test(generation)) {
     throw new PackageError(`base/${baseRecord}: expected a mod-base with a profile and generation`);
   }
-  const names = [...paths].filter((p) => p.split('/').length === 2 && p.endsWith(`/${LIST}`)).map((p) => p.split('/')[0]!).sort(order);
+  const names = [...paths]
+    .filter((p) => p.split('/').length === 2 && p.endsWith(`/${LIST}`))
+    .map((p) => p.split('/')[0]!)
+    .sort(order);
   const wanted = only.length ? ['base', ...only.filter((n) => n !== 'base')] : names;
   const unknown = wanted.filter((n) => !names.includes(n));
   if (unknown.length) throw new PackageError(`no such package: ${unknown.join(', ')}`);
@@ -100,29 +116,44 @@ export async function localSet(source: PackageSource, only: readonly string[] = 
   for (const name of [...new Set(wanted)].sort((a, b) => Number(a !== 'base') - Number(b !== 'base') || order(a, b))) {
     const listed = await source.read(`${name}/${LIST}`);
     const entries = listPaths(listed);
-    const metadata = recordName([...paths].filter((path) => path.startsWith(`${name}/`)).map((path) => path.slice(name.length + 1)));
-    if (metadata === undefined || !entries.some(([, path]) => path === metadata)) throw new PackageError(`${name}/${LIST} does not list ${metadata ?? 'manifest.json or info.txt'}`);
-    const files: LocalFile[] = [], shas = new Map<string, string>();
+    const metadata = recordName(
+      [...paths].filter((path) => path.startsWith(`${name}/`)).map((path) => path.slice(name.length + 1)),
+    );
+    if (metadata === undefined || !entries.some(([, path]) => path === metadata))
+      throw new PackageError(`${name}/${LIST} does not list ${metadata ?? 'manifest.json or info.txt'}`);
+    const files: LocalFile[] = [],
+      shas = new Map<string, string>();
     for (const [sha, path] of entries) {
-      const stored = storedName(path, sha), device = `${MODS_ROOT}/${generation}/${name}/${stored}`;
-      if (path === LIST || path.split('/').some((p) => p === '' || p === '.' || p === '..') || new TextEncoder().encode(device).length > MAX_PATH) {
+      const stored = storedName(path, sha),
+        device = `${MODS_ROOT}/${generation}/${name}/${stored}`;
+      if (
+        path === LIST ||
+        path.split('/').some((p) => p === '' || p === '.' || p === '..') ||
+        new TextEncoder().encode(device).length > MAX_PATH
+      ) {
         throw new PackageError(`${name}: unusable path ${JSON.stringify(path)}`);
       }
       const deep = depthRefusal(device);
       if (deep) throw new PackageError(`${name}: ${deep}`);
       const data = paths.has(`${name}/${path}`) ? await source.read(`${name}/${path}`) : null;
-      if (data === null || hex(await sha256(data)) !== sha) throw new PackageError(`${name}/${path}: missing or differs from its ${LIST} line`);
+      if (data === null || hex(await sha256(data)) !== sha)
+        throw new PackageError(`${name}/${path}: missing or differs from its ${LIST} line`);
       if (data.length === 0) throw new PackageError(`${name}/${path}: empty (the device stages 1 byte or more)`);
-      if (shas.has(stored) && shas.get(stored) !== sha) throw new PackageError(`${name}: ${path} and another file share the stored name ${stored}`);
+      if (shas.has(stored) && shas.get(stored) !== sha)
+        throw new PackageError(`${name}: ${path} and another file share the stored name ${stored}`);
       if (!shas.has(stored)) files.push({ path, data, stored });
       shas.set(stored, sha);
     }
     if (shas.has(LIST)) throw new PackageError(`${name}: a file shares the stored name ${LIST}`);
-    files.sort((a, b) => Number(a.path === metadata) - Number(b.path === metadata));   // selected metadata after payloads
-    files.push({ path: LIST, data: listed, stored: LIST });                      // files.sha256 last
+    files.sort((a, b) => Number(a.path === metadata) - Number(b.path === metadata)); // selected metadata after payloads
+    files.push({ path: LIST, data: listed, stored: LIST }); // files.sha256 last
     const fields = parseManifest(files.find((file) => file.path === metadata)!.data, metadata);
-    if (fields['generation'] !== generation || (fields['profile'] ?? profile) !== profile ||
-        fields['type'] !== (name === 'base' ? 'mod-base' : 'mod')) throw new PackageError(`${name}: package dependencies or type differ`);
+    if (
+      fields['generation'] !== generation ||
+      (fields['profile'] ?? profile) !== profile ||
+      fields['type'] !== (name === 'base' ? 'mod-base' : 'mod')
+    )
+      throw new PackageError(`${name}: package dependencies or type differ`);
     packages.set(name, files);
   }
   return { profile, generation, packages };
@@ -167,7 +198,11 @@ export interface PushOptions extends CallOptions {
  * Destructive: puts the package set on the device (modsend.py push). Stops at the first failure: what
  * was written stays, and pushing again completes it. Show the user what goes where and ask first.
  */
-export async function pushPackages(client: Client, source: PackageSource, options: PushOptions = {}): Promise<PushSummary> {
+export async function pushPackages(
+  client: Client,
+  source: PackageSource,
+  options: PushOptions = {},
+): Promise<PushSummary> {
   const call: CallOptions = { signal: options.signal, timeoutMs: options.timeoutMs };
   const { profile, generation, packages } = await localSet(source, options.only);
   flatMods(client, 'mods push');
@@ -178,34 +213,59 @@ export async function pushPackages(client: Client, source: PackageSource, option
     const refused = await storeRefusal(client, genPath, tree, call);
     if (refused) throw new PackageError(refused);
     const results: PackageResult[] = [];
-    let done = 0, verified = 0;
-    const total = [...packages.values()].reduce((size, files) => size + files.reduce((sum, file) => sum + file.data.length, 0), 0);
+    let done = 0,
+      verified = 0;
+    const total = [...packages.values()].reduce(
+      (size, files) => size + files.reduce((sum, file) => sum + file.data.length, 0),
+      0,
+    );
     for (const [name, files] of packages) {
-      const t0 = performance.now(), folder = `${genPath}/${name}`;
+      const t0 = performance.now(),
+        folder = `${genPath}/${name}`;
       const existing = await remoteTree(client, folder, call);
       let same = existing !== null && existing.files.size === files.length;
-      if (same) for (const file of files) {
-        await session.command(1);
-        const back = await client.readFile(`${folder}/${file.stored}`, call);
-        if (back.length !== file.data.length || back.some((byte, index) => byte !== file.data[index])) { same = false; break; }
-      }
-      const stale = existing ? [...existing.files.keys()].filter((path) => !files.some((file) => file.stored === path)).length : 0;
+      if (same)
+        for (const file of files) {
+          await session.command(1);
+          const back = await client.readFile(`${folder}/${file.stored}`, call);
+          if (back.length !== file.data.length || back.some((byte, index) => byte !== file.data[index])) {
+            same = false;
+            break;
+          }
+        }
+      const stale = existing
+        ? [...existing.files.keys()].filter((path) => !files.some((file) => file.stored === path)).length
+        : 0;
       if (!same) {
         await session.publish(folder, new Map(files.map((file) => [file.stored, file.data])));
         done += files.reduce((sum, file) => sum + file.data.length, 0);
         options.onProgress?.(done, total, 'send');
       }
       if (options.verify) verified += files.length;
-      const result: PackageResult = { name, state: same ? 'skipped' : 'sent', files: same ? 0 : files.length,
-        of: files.length, bytes: same ? 0 : files.reduce((sum, file) => sum + file.data.length, 0),
-        seconds: (performance.now() - t0) / 1000, removed: stale };
-      results.push(result); options.onPackage?.(result);
+      const result: PackageResult = {
+        name,
+        state: same ? 'skipped' : 'sent',
+        files: same ? 0 : files.length,
+        of: files.length,
+        bytes: same ? 0 : files.reduce((sum, file) => sum + file.data.length, 0),
+        seconds: (performance.now() - t0) / 1000,
+        removed: stale,
+      };
+      results.push(result);
+      options.onPackage?.(result);
     }
     if (options.verify) options.onProgress?.(total, total, 'verify');
-    return { profile, generation, sent: results.filter((result) => result.state === 'sent').length,
+    return {
+      profile,
+      generation,
+      sent: results.filter((result) => result.state === 'sent').length,
       skipped: results.filter((result) => result.state === 'skipped').length,
-      files: results.reduce((sum, result) => sum + result.files, 0), bytes: done,
-      seconds: (performance.now() - start) / 1000, packages: results, verified };
+      files: results.reduce((sum, result) => sum + result.files, 0),
+      bytes: done,
+      seconds: (performance.now() - start) / 1000,
+      packages: results,
+      verified,
+    };
   });
 }
 
@@ -221,14 +281,20 @@ export interface HeldPackage {
 /** older: a folder without store.txt (mods/<profile>/ from before protocol 1.16, or a package tree from before the flat
  * store), newer: a newer store version; either has profile '' and no packages; removePackage(generation) deletes it. */
 export interface HeldGeneration {
-  readonly profile: string; readonly generation: string; readonly packages: readonly HeldPackage[]; readonly older: boolean;
+  readonly profile: string;
+  readonly generation: string;
+  readonly packages: readonly HeldPackage[];
+  readonly older: boolean;
   readonly newer: boolean;
 }
 
 /** A device before protocol 1.16 reads mods/<profile>/<generation>/: refused, nothing sent. */
 function flatMods(client: Client, what: string): void {
   if (!readsFlatMods(client.info.proto)) {
-    throw new XyfError('update_required', `${what}: this OP-XY's XY Forever (protocol ${client.info.proto}) reads an older mod package layout: update it first`);
+    throw new XyfError(
+      'update_required',
+      `${what}: this OP-XY's XY Forever (protocol ${client.info.proto}) reads an older mod package layout: update it first`,
+    );
   }
 }
 
@@ -239,23 +305,42 @@ export async function listPackages(client: Client, options: CallOptions = {}): P
   const nonfiles = new Set([...tree.dirs, ...tree.other]);
   const out: HeldGeneration[] = [];
   for (const gen of tree.dirs.filter((d) => !d.includes('/')).sort(order)) {
-    const version = await generationVersion(client, `${MODS_ROOT}/${gen}`, tree.files.has(`${gen}/${STORE_FILE}`), options);
+    const version = await generationVersion(
+      client,
+      `${MODS_ROOT}/${gen}`,
+      tree.files.has(`${gen}/${STORE_FILE}`),
+      options,
+    );
     if (version !== STORE_VERSION) {
-      out.push({ profile: '', generation: gen, packages: [], older: version < STORE_VERSION, newer: version > STORE_VERSION });
+      out.push({
+        profile: '',
+        generation: gen,
+        packages: [],
+        older: version < STORE_VERSION,
+        newer: version > STORE_VERSION,
+      });
       continue;
     }
     const packages: HeldPackage[] = [];
-    const names = tree.dirs.filter((d) => d.startsWith(`${gen}/`) && d.split('/').length === 2).map((d) => d.split('/')[1]!).sort(order);
+    const names = tree.dirs
+      .filter((d) => d.startsWith(`${gen}/`) && d.split('/').length === 2)
+      .map((d) => d.split('/')[1]!)
+      .sort(order);
     for (const name of names) {
       const prefix = `${gen}/${name}/`;
-      const mine = new Map([...tree.files].filter(([p]) => p.startsWith(prefix)).map(([p, s]) => [p.slice(prefix.length), s]));
-      let info: Record<string, string> = {}, complete = false;
+      const mine = new Map(
+        [...tree.files].filter(([p]) => p.startsWith(prefix)).map(([p, s]) => [p.slice(prefix.length), s]),
+      );
+      let info: Record<string, string> = {},
+        complete = false;
       const metadata = recordName([NATIVE_MANIFEST, INFO].filter((key) => mine.has(key) || nonfiles.has(prefix + key)));
-      if (metadata !== undefined && mine.has(metadata)) info = infoValues(await client.readFile(`${MODS_ROOT}/${prefix}${metadata}`, options), metadata);
+      if (metadata !== undefined && mine.has(metadata))
+        info = infoValues(await client.readFile(`${MODS_ROOT}/${prefix}${metadata}`, options), metadata);
       if (metadata !== undefined && mine.has(LIST)) {
         try {
           const listed = listPaths(await client.readFile(`${MODS_ROOT}/${prefix}${LIST}`, options));
-          complete = listed.some(([, path]) => path === metadata) && listed.every(([s, p]) => mine.has(storedName(p, s)));
+          complete =
+            listed.some(([, path]) => path === metadata) && listed.every(([s, p]) => mine.has(storedName(p, s)));
         } catch (error) {
           if (!(error instanceof PackageError)) throw error;
         }
@@ -268,7 +353,11 @@ export async function listPackages(client: Client, options: CallOptions = {}): P
   return out;
 }
 
-export interface Removed { readonly path: string; readonly files: number; readonly bytes: number }
+export interface Removed {
+  readonly path: string;
+  readonly files: number;
+  readonly bytes: number;
+}
 
 /**
  * Destructive: deletes a generation folder (what names a generation) or the package what from every
@@ -276,21 +365,30 @@ export interface Removed { readonly path: string; readonly files: number; readon
  * each files.sha256 first, then the files, then the folders, deepest first. dryRun: only what would
  * go (for the confirmation). Returns the folders ([] when nothing is named what). Ask first.
  */
-export async function removePackage(client: Client, what: string, options: CallOptions & { generation?: string | undefined; dryRun?: boolean | undefined } = {}): Promise<Removed[]> {
+export async function removePackage(
+  client: Client,
+  what: string,
+  options: CallOptions & { generation?: string | undefined; dryRun?: boolean | undefined } = {},
+): Promise<Removed[]> {
   const call: CallOptions = { signal: options.signal, timeoutMs: options.timeoutMs };
-  if (!options.dryRun) return packageTransaction(client, call, async (session) => {
-    const targets = await removePackage(client, what, { ...options, dryRun: true });
-    for (const target of targets) await session.remove(target.path);
-    return targets;
-  });
+  if (!options.dryRun)
+    return packageTransaction(client, call, async (session) => {
+      const targets = await removePackage(client, what, { ...options, dryRun: true });
+      for (const target of targets) await session.remove(target.path);
+      return targets;
+    });
   const tree = await remoteTree(client, MODS_ROOT, call);
   const dirs = tree?.dirs ?? [];
-  const inGeneration = (d: string): boolean => options.generation === undefined || d.split('/')[0] === options.generation;
+  const inGeneration = (d: string): boolean =>
+    options.generation === undefined || d.split('/')[0] === options.generation;
   let found = dirs.filter((d) => d === what && inGeneration(d));
-  if (!found.length) found = dirs.filter((d) => d.split('/').length === 2 && d.split('/')[1] === what && inGeneration(d));
+  if (!found.length)
+    found = dirs.filter((d) => d.split('/').length === 2 && d.split('/')[1] === what && inGeneration(d));
   const out: Removed[] = [];
   for (const rel of found) {
-    const files = [...tree!.files].filter(([p]) => p.startsWith(`${rel}/`)).map(([p, s]) => [p.slice(rel.length + 1), s] as const);
+    const files = [...tree!.files]
+      .filter(([p]) => p.startsWith(`${rel}/`))
+      .map(([p, s]) => [p.slice(rel.length + 1), s] as const);
     const folder = `${MODS_ROOT}/${rel}`;
     out.push({ path: folder, files: files.length, bytes: files.reduce((n, [, s]) => n + s, 0) });
   }
@@ -304,32 +402,83 @@ export const LIBRARY_ROOT = '/yaffs2/xy-forever/firmware';
 /** A job's work folder (a finished build is committed from it into the library; a failed one's debris stays here). */
 export const jobFolder = (job: number): string => `${TMP_ROOT}/job-${job}`;
 
-export const JOB_PHASES = ['idle', 'inputs', 'link', 'patch', 'content', 'write', 'verify', 'finish', 'done', 'failed', 'cancelled'] as const;
+export const JOB_PHASES = [
+  'idle',
+  'inputs',
+  'link',
+  'patch',
+  'content',
+  'write',
+  'verify',
+  'finish',
+  'done',
+  'failed',
+  'cancelled',
+] as const;
 export type JobPhase = (typeof JOB_PHASES)[number] | `phase ${number}`;
-export const JOB_ERRORS = ['none', 'argument', 'path', 'region', 'open', 'read', 'truncated', 'size', 'list', 'unlisted', 'sha256',
-  'info', 'base', 'linker', 'patch', 'content', 'write', 'rename', 'verify', 'cancelled', 'image', 'link'] as const;
+export const JOB_ERRORS = [
+  'none',
+  'argument',
+  'path',
+  'region',
+  'open',
+  'read',
+  'truncated',
+  'size',
+  'list',
+  'unlisted',
+  'sha256',
+  'info',
+  'base',
+  'linker',
+  'patch',
+  'content',
+  'write',
+  'rename',
+  'verify',
+  'cancelled',
+  'image',
+  'link',
+] as const;
 /** job.status error -> plain words. */
 const ERROR_WORDS: Readonly<Record<string, string>> = {
-  argument: 'the request was not usable', path: 'a path was not usable', region: 'the work area was too small',
-  open: 'a file could not be opened (is every chosen package on the device?)', read: 'a file could not be read',
-  truncated: 'a file was shorter than it should be', size: 'a file had the wrong size',
-  list: "a package's files.sha256 could not be read", unlisted: "a file is not in its package's files.sha256",
-  sha256: "a file differs from its package's files.sha256 (send the package again)", info: "a package's info.txt is not usable",
+  argument: 'the request was not usable',
+  path: 'a path was not usable',
+  region: 'the work area was too small',
+  open: 'a file could not be opened (is every chosen package on the device?)',
+  read: 'a file could not be read',
+  truncated: 'a file was shorter than it should be',
+  size: 'a file had the wrong size',
+  list: "a package's files.sha256 could not be read",
+  unlisted: "a file is not in its package's files.sha256",
+  sha256: "a file differs from its package's files.sha256 (send the package again)",
+  info: "a package's info.txt is not usable",
   base: 'the base is not a known stock firmware (confirm an unknown base to build anyway)',
-  linker: 'the machines could not be linked into the firmware', patch: 'the firmware could not be patched',
-  content: 'the content could not be put together', write: 'writing the result failed', rename: 'renaming a written file failed',
-  verify: 'a written file read back differently', cancelled: 'it was cancelled', image: "the base's os.ldr is not a usable firmware image",
+  linker: 'the machines could not be linked into the firmware',
+  patch: 'the firmware could not be patched',
+  content: 'the content could not be put together',
+  write: 'writing the result failed',
+  rename: 'renaming a written file failed',
+  verify: 'a written file read back differently',
+  cancelled: 'it was cancelled',
+  image: "the base's os.ldr is not a usable firmware image",
   link: 'processor A stopped answering',
 };
 /** mods.apply `missing` (with not_found) -> plain words. */
-export const MISSING_WORDS = ['', "the base entry has no os.ldr (or there is no such entry)",
-  "the base entry has no content.sha256 (the firmware's content list)", 'there is no /yaffs2/content/op1_factory.json (the stock catalog)',
-  "the generation's base package metadata is not on the device (send the package set first)"] as const;
+export const MISSING_WORDS = [
+  '',
+  'the base entry has no os.ldr (or there is no such entry)',
+  "the base entry has no content.sha256 (the firmware's content list)",
+  'there is no /yaffs2/content/op1_factory.json (the stock catalog)',
+  "the generation's base package metadata is not on the device (send the package set first)",
+] as const;
 /** mods.apply refusals other than not_found -> plain words. */
 const REFUSALS: Readonly<Record<string, string>> = {
   busy: 'the OP-XY is busy: a build is running or an upload is in progress; wait for it, or cancel the build',
-  state: 'the OP-XY has no free job id (restart it)', storage: 'the OP-XY could not make the output folder',
-  bad_request: 'an id, the profile, the generation or the name is not in the allowed form', sha: 'the request was damaged on the way; try again',
+  state: 'the OP-XY has no free job id (restart it)',
+  storage: 'the OP-XY could not make the output folder',
+  bad_request: 'an id, the profile, the generation or the name is not in the allowed form',
+  sha: 'the request was damaged on the way; try again',
   link: 'processor A did not answer; try again, or restart the OP-XY',
 };
 
@@ -360,10 +509,22 @@ export interface JobStatus {
 
 function jobStatusOf(f: ReplyOf<'job.status'>): JobStatus {
   const nul = f.detail.indexOf(0);
-  return { job: f.job, phase: JOB_PHASES[f.phase] ?? `phase ${f.phase}`, done: f.done, total: f.total,
-    error: JOB_ERRORS[f.error] ?? `error ${f.error}`, code: f.code, elapsedMs: f.elapsed_ms, steps: f.steps, longestMs: f.longest_ms,
-    peak: f.peak, debris: f.debris !== 0, detail: String.fromCharCode(...(nul < 0 ? f.detail : f.detail.subarray(0, nul))),
-    final: f.phase >= 8 && f.phase <= 10, folder: jobFolder(f.job) };
+  return {
+    job: f.job,
+    phase: JOB_PHASES[f.phase] ?? `phase ${f.phase}`,
+    done: f.done,
+    total: f.total,
+    error: JOB_ERRORS[f.error] ?? `error ${f.error}`,
+    code: f.code,
+    elapsedMs: f.elapsed_ms,
+    steps: f.steps,
+    longestMs: f.longest_ms,
+    peak: f.peak,
+    debris: f.debris !== 0,
+    detail: String.fromCharCode(...(nul < 0 ? f.detail : f.detail.subarray(0, nul))),
+    final: f.phase >= 8 && f.phase <= 10,
+    folder: jobFolder(f.job),
+  };
 }
 
 /**
@@ -375,9 +536,12 @@ export class JobError extends Error {
   readonly what: 'build' | 'content switch';
   constructor(status: JobStatus, what: 'build' | 'content switch' = 'build') {
     const left = status.debris ? `; files may remain in ${status.folder}/` : '';
-    super(status.phase === 'cancelled' ? `the ${what} was cancelled${left}`
-      : `the ${what} failed: ${ERROR_WORDS[status.error === 'patch' && status.detail === 'base' ? 'base' : status.error] ?? status.error} (${status.error}${status.code ? ` ${status.code}` : ''}` +
-        `${status.detail ? `: ${status.detail}` : ''})${left}`);
+    super(
+      status.phase === 'cancelled'
+        ? `the ${what} was cancelled${left}`
+        : `the ${what} failed: ${ERROR_WORDS[status.error === 'patch' && status.detail === 'base' ? 'base' : status.error] ?? status.error} (${status.error}${status.code ? ` ${status.code}` : ''}` +
+            `${status.detail ? `: ${status.detail}` : ''})${left}`,
+    );
     this.name = 'JobError';
     this.status = status;
     this.what = what;
@@ -422,11 +586,16 @@ export interface ApplyOptions {
   stallMs?: number | undefined;
 }
 
-const pause = (ms: number, signal: AbortSignal | undefined): Promise<void> => new Promise((ok) => {
-  const done = (): void => { clearTimeout(timer); signal?.removeEventListener('abort', done); ok(); };
-  const timer = setTimeout(done, ms);
-  signal?.addEventListener('abort', done, { once: true });
-});
+const pause = (ms: number, signal: AbortSignal | undefined): Promise<void> =>
+  new Promise((ok) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      ok();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done, { once: true });
+  });
 
 /** A finished build (applyMods): the library entry it became. */
 export interface BuiltEntry {
@@ -446,15 +615,28 @@ export interface BuiltEntry {
  * (busy, not_found with fields.missing, ...) and the reason in plain words; a failed or cancelled job
  * is a JobError. While it runs, other commands that need storage answer `busy`. Ask the user first.
  */
-export async function applyMods(client: Client, request: ApplyRequest, options: ApplyOptions = {}): Promise<BuiltEntry> {
+export async function applyMods(
+  client: Client,
+  request: ApplyRequest,
+  options: ApplyOptions = {},
+): Promise<BuiltEntry> {
   const extensions = request.extensions ?? [];
-  if (request.machines.length < 1 || request.machines.length > 64) throw new RangeError('mods.apply: choose 1 to 64 machines');
+  if (request.machines.length < 1 || request.machines.length > 64)
+    throw new RangeError('mods.apply: choose 1 to 64 machines');
   if (extensions.length > 8) throw new RangeError('mods.apply: at most 8 extensions');
   flatMods(client, 'mods.apply');
-  const fields = { base: request.base, profile: request.profile, generation: request.generation, machines: request.machines.join(','),
-    extensions: extensions.join(','), name: request.name, flags: request.unverified ? 1 : 0 };
+  const fields = {
+    base: request.base,
+    profile: request.profile,
+    generation: request.generation,
+    machines: request.machines.join(','),
+    extensions: extensions.join(','),
+    name: request.name,
+    flags: request.unverified ? 1 : 0,
+  };
   const signal = options.signal;
-  if (signal?.aborted) throw new XyfError('aborted', 'mods.apply: cancelled before it started', { command: 'mods.apply' });
+  if (signal?.aborted)
+    throw new XyfError('aborted', 'mods.apply: cancelled before it started', { command: 'mods.apply' });
   const body = encodeModsApplyRequest({ ...fields, sha256: new Uint8Array(32) }).subarray(0, -32);
   let job: number;
   try {
@@ -462,42 +644,68 @@ export async function applyMods(client: Client, request: ApplyRequest, options: 
   } catch (error) {
     if (!isXyfError(error) || error.status === null) throw error;
     const missing = Number(error.fields?.['missing'] ?? 0);
-    const reason = error.code === 'not_found' ? MISSING_WORDS[missing] || 'an input is missing' : REFUSALS[error.code] ?? error.message;
-    throw new XyfError(error.code, `mods.apply: ${reason}`, { command: error.command, status: error.status, fields: error.fields, cause: error });
+    const reason =
+      error.code === 'not_found'
+        ? MISSING_WORDS[missing] || 'an input is missing'
+        : (REFUSALS[error.code] ?? error.message);
+    throw new XyfError(error.code, `mods.apply: ${reason}`, {
+      command: error.command,
+      status: error.status,
+      fields: error.fields,
+      cause: error,
+    });
   }
   const status = await follow(client, job, 'build', options);
   return { entry: status.detail, state: 'content not installed', status };
 }
 
 /** Polls job.status until job ends; done: its status, failed or cancelled: JobError. signal: job.cancel (a build only). */
-async function follow(client: Client, job: number, what: 'build' | 'content switch', options: ApplyOptions): Promise<JobStatus> {
+async function follow(
+  client: Client,
+  job: number,
+  what: 'build' | 'content switch',
+  options: ApplyOptions,
+): Promise<JobStatus> {
   const signal = options.signal;
   const stallMs = options.stallMs ?? 90_000;
-  let steps = -1, moved = Date.now(), cancelled = false;
+  let steps = -1,
+    moved = Date.now(),
+    cancelled = false;
   for (;;) {
     if (signal?.aborted && !cancelled && what === 'build') {
       cancelled = true;
       try {
         await cancelJob(client, job);
       } catch (error) {
-        if (!isXyfError(error, 'state')) throw error;          // it ended first, or is committing: its status says how
+        if (!isXyfError(error, 'state')) throw error; // it ended first, or is committing: its status says how
       }
     }
     const status = await jobStatus(client, job);
     options.onProgress?.(status);
     if (status.phase === 'done') return status;
     if (status.final) throw new JobError(status, what);
-    if (status.steps !== steps) { steps = status.steps; moved = Date.now(); }
+    if (status.steps !== steps) {
+      steps = status.steps;
+      moved = Date.now();
+    }
     if (Date.now() - moved > stallMs) {
-      throw new XyfError('timeout', `job ${job}: no progress for ${Math.round(stallMs / 1000)} s (${steps} steps); stopped waiting ` +
-        '(cancelJob stops it)', { command: 'job.status' });
+      throw new XyfError(
+        'timeout',
+        `job ${job}: no progress for ${Math.round(stallMs / 1000)} s (${steps} steps); stopped waiting ` +
+          '(cancelJob stops it)',
+        { command: 'job.status' },
+      );
     }
     if (!cancelled) await pause(options.pollMs ?? 500, what === 'build' ? signal : undefined);
   }
 }
 
 /** What makeDefault did: switched: the entry's content was installed first (status: the switch's final job.status). */
-export interface DefaultResult { readonly id: string; readonly switched: boolean; readonly status: JobStatus | null }
+export interface DefaultResult {
+  readonly id: string;
+  readonly switched: boolean;
+  readonly status: JobStatus | null;
+}
 
 /**
  * Destructive: makes library entry id the default firmware (library.set_default). An entry whose content is not
@@ -506,7 +714,11 @@ export interface DefaultResult { readonly id: string; readonly switched: boolean
  * until it writes the default (done) or fails (JobError, what 'content switch'; the default is unchanged). It
  * cannot be cancelled. Ask the user first: it rewrites files in /yaffs2/content/.
  */
-export async function makeDefault(client: Client, id: string, options: Omit<ApplyOptions, 'signal'> = {}): Promise<DefaultResult> {
+export async function makeDefault(
+  client: Client,
+  id: string,
+  options: Omit<ApplyOptions, 'signal'> = {},
+): Promise<DefaultResult> {
   try {
     await client.setDefault(id, { timeoutMs: 75_000 });
     return { id, switched: false, status: null };
@@ -518,7 +730,11 @@ export async function makeDefault(client: Client, id: string, options: Omit<Appl
 }
 
 /** contentList: the entry has content.sha256, which a build needs of its base (`xyf_host.py library-add --content` writes it). */
-export interface BaseEntry { readonly id: string; readonly name: string; readonly contentList: boolean }
+export interface BaseEntry {
+  readonly id: string;
+  readonly name: string;
+  readonly contentList: boolean;
+}
 
 /**
  * Firmware library entries that hold an os.ldr and are not assembled mod sets (no `generation` in info.txt: a
@@ -537,8 +753,11 @@ export async function libraryBases(client: Client, options: CallOptions = {}): P
     const files = await client.listDir(`${LIBRARY_ROOT}/${e.name}`, options);
     if (!files.some((f) => f.kind === 'file' && f.name === 'os.ldr')) continue;
     const metadata = recordName(files.map((file) => file.name));
-    const info = metadata !== undefined ? infoValues(await client.readFile(`${LIBRARY_ROOT}/${e.name}/${metadata}`, options), metadata) : {};
-    if (info['generation']) continue;                         // an assembled mod set, not a stock base
+    const info =
+      metadata !== undefined
+        ? infoValues(await client.readFile(`${LIBRARY_ROOT}/${e.name}/${metadata}`, options), metadata)
+        : {};
+    if (info['generation']) continue; // an assembled mod set, not a stock base
     const contentList = files.some((f) => f.kind === 'file' && f.name === 'content.sha256');
     out.push({ id: e.name, name: info['name'] || e.name, contentList });
   }

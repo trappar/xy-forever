@@ -40,7 +40,9 @@ export interface Sims {
   fixtures: Record<string, string>;
 }
 declare module 'vitest' {
-  export interface ProvidedContext { sims: Sims }
+  export interface ProvidedContext {
+    sims: Sims;
+  }
 }
 
 export const REPO = fileURLToPath(new URL('../../..', import.meta.url));
@@ -58,13 +60,17 @@ print(json.dumps({
 function portBusy(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const sock = net.createConnection({ host: '127.0.0.1', port });
-    sock.on('connect', () => { sock.destroy(); resolve(true); });
+    sock.on('connect', () => {
+      sock.destroy();
+      resolve(true);
+    });
     sock.on('error', () => resolve(false));
   });
 }
 
 async function start(name: string, port: number, state: string, extra: string[]): Promise<[SimInfo, ChildProcess]> {
-  for (const p of [port, port + 1]) if (await portBusy(p)) throw new Error(`port ${p} is in use (XYF_TS_SIM_PORT picks others)`);
+  for (const p of [port, port + 1])
+    if (await portBusy(p)) throw new Error(`port ${p} is in use (XYF_TS_SIM_PORT picks others)`);
   const dir = join(state, name);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
@@ -75,16 +81,29 @@ async function start(name: string, port: number, state: string, extra: string[])
   // time-out (sim/clock.cpp). Its output goes to sim.log through here: B's "USB on: listening" line
   // says it is up (no polling); then the control port's settle answers once the power-on's work is done and the
   // device's clock stands still, as a host that comes a moment later finds it.
-  const child = spawn('python3', ['-m', 'xy_forever.sim', '--port', String(port), '--state', dir, ...extra],
-    { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn('python3', ['-m', 'xy_forever.sim', '--port', String(port), '--state', dir, ...extra], {
+    cwd: REPO,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   live.add(child);
   child.once('exit', () => live.delete(child));
   endWithThisProcess();
-  const info: SimInfo = { address: `127.0.0.1:${port}`, host: '127.0.0.1', port, control: port + 1, root: join(dir, 'yaffs2') };
+  const info: SimInfo = {
+    address: `127.0.0.1:${port}`,
+    host: '127.0.0.1',
+    port,
+    control: port + 1,
+    root: join(dir, 'yaffs2'),
+  };
   return new Promise((resolve, reject) => {
-    let seen = '', ready = false;
+    let seen = '',
+      ready = false;
     const timer = setTimeout(() => fail(`did not listen within 60 s`), 60_000);
-    const fail = (why: string): void => { clearTimeout(timer); stopChild(child); reject(new Error(`the ${name} simulator ${why}; see ${dir}/sim.log`)); };
+    const fail = (why: string): void => {
+      clearTimeout(timer);
+      stopChild(child);
+      reject(new Error(`the ${name} simulator ${why}; see ${dir}/sim.log`));
+    };
     const exited = (code: number | null): void => fail(`exited (${code})`);
     child.once('exit', exited);
     const output = (data: Buffer): void => {
@@ -93,11 +112,14 @@ async function start(name: string, port: number, state: string, extra: string[])
       seen = (seen + data.toString()).slice(-4096);
       if (!/USB on: listening/.test(seen)) return;
       ready = true;
-      control(info.control, 'settle', 60_000).then(() => {
-        clearTimeout(timer);
-        child.off('exit', exited);
-        resolve([info, child]);
-      }, (error: Error) => fail(`did not settle (${error.message})`));
+      control(info.control, 'settle', 60_000).then(
+        () => {
+          clearTimeout(timer);
+          child.off('exit', exited);
+          resolve([info, child]);
+        },
+        (error: Error) => fail(`did not settle (${error.message})`),
+      );
     };
     child.stdout!.on('data', output);
     child.stderr!.on('data', output);
@@ -115,11 +137,13 @@ let hooked = false;
 function endWithThisProcess(): void {
   if (hooked) return;
   hooked = true;
-  process.once('exit', () => { for (const child of live) stopChild(child); });
+  process.once('exit', () => {
+    for (const child of live) stopChild(child);
+  });
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
     process.once(signal, () => {
       for (const child of live) stopChild(child);
-      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);   // its default: end
+      if (process.listenerCount(signal) === 0) process.kill(process.pid, signal); // its default: end
     });
   }
 }
@@ -186,7 +210,10 @@ for path, blob in body.items():
  * not a known one: apply it with unverified.
  */
 export function makeModBase(root: string, base: string): void {
-  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MOD_BASE, root, base], { cwd: REPO, encoding: 'utf-8' });
+  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MOD_BASE, root, base], {
+    cwd: REPO,
+    encoding: 'utf-8',
+  });
   if (run.status !== 0) throw new Error(`the synthetic mod base: ${run.stderr.trim()}`);
 }
 
@@ -200,13 +227,23 @@ export function randomBase(): number {
  * cond()'s value once truthy, the simulator's clock moved on between tries (advance 1 ms, doubling to 1 s): no host
  * time waited (xy_forever/sim.py Simulator.until). An Error past limitMs of device time.
  */
-export async function until<T>(controlPort: number, what: string, cond: () => T | Promise<T>, limitMs = 60_000): Promise<T> {
-  let spent = 0, step = 1;
+export async function until<T>(
+  controlPort: number,
+  what: string,
+  cond: () => T | Promise<T>,
+  limitMs = 60_000,
+): Promise<T> {
+  let spent = 0,
+    step = 1;
   for (;;) {
     const value = await cond();
     if (value) return value;
-    if (spent >= limitMs) throw new Error(`${what} not reached within ${limitMs} ms of device time: ${JSON.stringify(await control(controlPort, 'status'))}`);
-    if ((await control(controlPort, `advance ${step}`, 60_000))['ok'] !== true) throw new Error(`advance ${step} refused`);
+    if (spent >= limitMs)
+      throw new Error(
+        `${what} not reached within ${limitMs} ms of device time: ${JSON.stringify(await control(controlPort, 'status'))}`,
+      );
+    if ((await control(controlPort, `advance ${step}`, 60_000))['ok'] !== true)
+      throw new Error(`advance ${step} refused`);
     spent += step;
     step = Math.min(step * 2, 1000);
   }
@@ -224,10 +261,20 @@ export interface Found {
 export function findSimulator(): Found {
   const query = spawnSync('python3', ['-c', QUERY], { cwd: REPO, encoding: 'utf-8' });
   if (query.error || query.status !== 0) {
-    return { why: query.error ? 'python3 not found' : `python3 could not load xy_forever: ${query.stderr.trim().split('\n').pop()}`,
-      sessions: null, fixtures: {} };
+    return {
+      why: query.error
+        ? 'python3 not found'
+        : `python3 could not load xy_forever: ${query.stderr.trim().split('\n').pop()}`,
+      sessions: null,
+      fixtures: {},
+    };
   }
-  const found = JSON.parse(query.stdout) as { why: string | null; sessions: string; stock_os_ldr: string | null; xyf_build: string | null };
+  const found = JSON.parse(query.stdout) as {
+    why: string | null;
+    sessions: string;
+    stock_os_ldr: string | null;
+    xyf_build: string | null;
+  };
   const fixtures: Record<string, string> = {};
   if (found.stock_os_ldr) fixtures['stock_os_ldr'] = found.stock_os_ldr;
   if (found.xyf_build) fixtures['xyf_build'] = found.xyf_build;
@@ -235,10 +282,14 @@ export function findSimulator(): Found {
 }
 
 /** Starts the simulators of plan (name, port offset from base, extra arguments) in order; all or none. */
-export async function startAll(state: string, base: number, plan: readonly (readonly [string, number, readonly string[]])[]):
-  Promise<{ infos: Record<string, SimInfo>; stopAll(): Promise<void> }> {
+export async function startAll(
+  state: string,
+  base: number,
+  plan: readonly (readonly [string, number, readonly string[]])[],
+): Promise<{ infos: Record<string, SimInfo>; stopAll(): Promise<void> }> {
   const running: [SimInfo, ChildProcess][] = [];
-  const stopAll = (): Promise<void> => Promise.all(running.map(([info, child]) => stop(info, child))).then(() => undefined);
+  const stopAll = (): Promise<void> =>
+    Promise.all(running.map(([info, child]) => stop(info, child))).then(() => undefined);
   const infos: Record<string, SimInfo> = {};
   try {
     for (const [name, offset, extra] of plan) {
@@ -255,13 +306,27 @@ export async function startAll(state: string, base: number, plan: readonly (read
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
   const found = findSimulator();
-  const sims: Sims = { why: found.why, preV1: null, e2e: null, ws: null, files: null, mods: null, fixtures: found.fixtures };
+  const sims: Sims = {
+    why: found.why,
+    preV1: null,
+    e2e: null,
+    ws: null,
+    files: null,
+    mods: null,
+    fixtures: found.fixtures,
+  };
   const base = parseInt(process.env['XYF_TS_SIM_PORT'] ?? String(randomBase()), 10);
-  const state = found.sessions ? process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, `ts-client-${base}`) : null;
+  const state = found.sessions ? (process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, `ts-client-${base}`)) : null;
   let stopAll = async (): Promise<void> => undefined;
   if (!sims.why && state) {
     try {
-      const started = await startAll(state, base, [['preV1', 2, ['--pre-v1']], ['e2e', 4, []], ['ws', 6, []], ['files', 8, []], ['mods', 20, []]]);
+      const started = await startAll(state, base, [
+        ['preV1', 2, ['--pre-v1']],
+        ['e2e', 4, []],
+        ['ws', 6, []],
+        ['files', 8, []],
+        ['mods', 20, []],
+      ]);
       Object.assign(sims, started.infos);
       stopAll = started.stopAll;
     } catch (error) {

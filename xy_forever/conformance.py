@@ -8,16 +8,18 @@ TypeScript runner of the same file. On a real device only cases marked real_devi
 device_guard() refuses every frame that could change more than the test area: the same function
 checks the data (validate) and every frame the runner sends. Stdlib only.
 """
+
 import hashlib
 import json
-from pathlib import Path
 import re
 import struct
 import time
 import zlib
+from pathlib import Path
 
 from xy_forever.conformance_connection import ConformanceConnection
-from xy_forever.device_guard import REPLY_BIT, UNSAFE_TOKEN, device_guard, path_in as _path_in  # noqa: F401
+from xy_forever.device_guard import REPLY_BIT, UNSAFE_TOKEN, device_guard  # noqa: F401
+from xy_forever.device_guard import path_in as _path_in
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / 'protocol' / 'v1.conformance.json'
@@ -25,14 +27,15 @@ SPEC = ROOT / 'protocol' / 'v1.json'
 FORMAT = 'xyf-conformance/1'
 
 EFFECTS = ('staging', 'writes_test_area', 'restarts', 'writes_device', 'boots_os')
-DEVICE_EFFECTS = ('staging', 'writes_test_area', 'restarts')          # what a real-device case may do
-NEEDS = ('sim_control', 'sim_library')                               # plus fixture:NAME
+DEVICE_EFFECTS = ('staging', 'writes_test_area', 'restarts')  # what a real-device case may do
+NEEDS = ('sim_control', 'sim_library')  # plus fixture:NAME
 FIXTURES = ('stock_os_ldr', 'xyf_build')
-ACTIONS = ('send', 'send_type', 'send_bytes', 'stream', 'each_type', 'stage', 'write', 'disconnect', 'reconnect',
-           'sim')
-KEYS = {   # object kind -> (required, optional)
-    'top': ({'$comment', 'format', 'protocol', 'doc', 'test_area', 'timing', 'syntax', 'blobs', 'uncovered', 'cases'},
-            set()),
+ACTIONS = ('send', 'send_type', 'send_bytes', 'stream', 'each_type', 'stage', 'write', 'disconnect', 'reconnect', 'sim')
+KEYS = {  # object kind -> (required, optional)
+    'top': (
+        {'$comment', 'format', 'protocol', 'doc', 'test_area', 'timing', 'syntax', 'blobs', 'uncovered', 'cases'},
+        set(),
+    ),
     'timing': ({'gone_ms', 'back_ms', 'silence_ms'}, set()),
     'case': ({'name', 'doc', 'effects', 'real_device', 'steps'}, {'rules', 'variant', 'needs', 'why_not', 'given'}),
     'given': (set(), {'boot', 'hello', 'files', 'faults'}),
@@ -50,20 +53,32 @@ KEYS = {   # object kind -> (required, optional)
     'frame': ({'type', 'seq'}, {'payload'}),
 }
 STEP_COMMON = {'expect', 'repeat', 'seq', 'doc', 'fields', 'payload'}
-EXPECTS = {   # action -> expect keys it may use
+EXPECTS = {  # action -> expect keys it may use
     'send': {'status', 'alone', 'fields', 'hello', 'save', 'events'},
     'send_type': {'status', 'alone'},
     'each_type': {'status', 'alone'},
     'send_bytes': {'replies', 'none_within_ms'},
 }
 # Value forms: primary key -> every key the form may have.
-FORMS = (('prefix', {'prefix', 'fill', 'length'}), ('text', {'text'}), ('hex', {'hex'}), ('fill', {'fill', 'count'}),
-         ('ramp', {'ramp'}), ('blob', {'blob', 'from', 'length'}), ('size', {'size', 'plus'}), ('crc32', {'crc32'}),
-         ('sha256', {'sha256'}), ('const', {'const', 'plus'}), ('hello', {'hello', 'plus'}), ('var', {'var', 'plus'}),
-         ('frame', {'frame', 'from', 'length'}), ('concat', {'concat'}))
+FORMS = (
+    ('prefix', {'prefix', 'fill', 'length'}),
+    ('text', {'text'}),
+    ('hex', {'hex'}),
+    ('fill', {'fill', 'count'}),
+    ('ramp', {'ramp'}),
+    ('blob', {'blob', 'from', 'length'}),
+    ('size', {'size', 'plus'}),
+    ('crc32', {'crc32'}),
+    ('sha256', {'sha256'}),
+    ('const', {'const', 'plus'}),
+    ('hello', {'hello', 'plus'}),
+    ('var', {'var', 'plus'}),
+    ('frame', {'frame', 'from', 'length'}),
+    ('concat', {'concat'}),
+)
 BLOB_FORMS = ('text', 'hex', 'fill', 'ramp', 'fixture')
 CONSTRAINTS = {'len', 'len_min', 'len_max', 'min', 'max', 'matches', 'one_of'}
-EVENT_LOG = 0xd0
+EVENT_LOG = 0xD0
 
 
 class CaseError(ValueError):
@@ -101,6 +116,7 @@ def load_spec(path=SPEC):
 
 # ---- the spec, indexed ----------------------------------------------------------------------
 
+
 class Spec:
     def __init__(self, spec):
         self.raw = spec
@@ -133,6 +149,7 @@ def field_kind(f):
 
 
 # ---- values -----------------------------------------------------------------------------------
+
 
 class Dry:
     """Stands for a value known only while running (a var, a hello key) during check()."""
@@ -191,7 +208,7 @@ def _bytes_form(v, where):
     if 'ramp' in v and set(v) == {'ramp'}:
         if not _int(v['ramp']) or v['ramp'] < 0:
             raise CaseError('%s: ramp is a number' % where)
-        return bytes(i & 0xff for i in range(v['ramp']))
+        return bytes(i & 0xFF for i in range(v['ramp']))
     raise CaseError('%s: not a blob form' % where)
 
 
@@ -284,7 +301,7 @@ def _form(v, form, ctx, where):
     if form == 'size':
         return len(ctx.blob(v['size'])) + plus
     if form == 'crc32':
-        return zlib.crc32(ctx.blob(v['crc32'])) & 0xffffffff
+        return zlib.crc32(ctx.blob(v['crc32'])) & 0xFFFFFFFF
     if form == 'sha256':
         return hashlib.sha256(ctx.blob(v['sha256'])).digest()
     if form == 'const':
@@ -324,6 +341,7 @@ def _form(v, form, ctx, where):
 
 def encode(kind, seq, payload):
     from xy_forever import usb_proto as P
+
     return P.encode(kind, seq, payload)
 
 
@@ -333,12 +351,25 @@ def check_keys(obj, kind, where):
     required, optional = KEYS[kind]
     missing, unknown = required - set(obj), set(obj) - required - optional
     if missing or unknown:
-        raise CaseError('%s: %s' % (where, '; '.join(filter(None, (
-            missing and 'missing %s' % ', '.join(sorted(missing)),
-            unknown and 'unknown key(s) %s' % ', '.join(sorted(unknown)))))))
+        raise CaseError(
+            '%s: %s'
+            % (
+                where,
+                '; '.join(
+                    filter(
+                        None,
+                        (
+                            missing and 'missing %s' % ', '.join(sorted(missing)),
+                            unknown and 'unknown key(s) %s' % ', '.join(sorted(unknown)),
+                        ),
+                    )
+                ),
+            )
+        )
 
 
 # ---- requests ---------------------------------------------------------------------------------
+
 
 def request_payload(step, ctx, where):
     """(type, payload, command or None) of a send/send_type step."""
@@ -365,25 +396,41 @@ def request_payload(step, ctx, where):
 
 def pack(layout, given, ctx, where):
     from xy_forever import usb_proto as P
+
     if not isinstance(given, dict):
         raise CaseError('%s: fields must be an object' % where)
     names = [f['name'] for f in layout]
     unknown = set(given) - set(names)
     if unknown:
         raise CaseError('%s: unknown field(s) %s' % (where, ', '.join(sorted(unknown))))
-    values = {f['name']: resolve(given[f['name']], field_kind(f), ctx, '%s.%s' % (where, f['name']))
-              for f in layout if f['name'] in given}
+    values = {
+        f['name']: resolve(given[f['name']], field_kind(f), ctx, '%s.%s' % (where, f['name']))
+        for f in layout
+        if f['name'] in given
+    }
     for f in layout:
         if not f.get('optional') and f['name'] not in values:
             raise CaseError('%s: field %s missing' % (where, f['name']))
         value = values.get(f['name'])
-        size = len(value.encode(f['encoding']) + (b'\0' if f['type'] == 'cstr' else b'')) if isinstance(value, str) \
-            else len(value) if isinstance(value, bytes) else 0
-        if 'max_bytes' in f and size > f['max_bytes']:      # as the TypeScript codec: send it as a payload
+        size = (
+            len(value.encode(f['encoding']) + (b'\0' if f['type'] == 'cstr' else b''))
+            if isinstance(value, str)
+            else len(value)
+            if isinstance(value, bytes)
+            else 0
+        )
+        if 'max_bytes' in f and size > f['max_bytes']:  # as the TypeScript codec: send it as a payload
             raise CaseError('%s: %s above %d bytes' % (where, f['name'], f['max_bytes']))
-    table = tuple((f['name'], 'bytes' if f['type'].startswith('bytes') else f['type'],
-                   int(f['type'][6:-1]) if f['type'].startswith('bytes[') else None, bool(f.get('optional')),
-                   f.get('encoding')) for f in layout)
+    table = tuple(
+        (
+            f['name'],
+            'bytes' if f['type'].startswith('bytes') else f['type'],
+            int(f['type'][6:-1]) if f['type'].startswith('bytes[') else None,
+            bool(f.get('optional')),
+            f.get('encoding'),
+        )
+        for f in layout
+    )
     try:
         return P.pack(table, values)
     except (ValueError, KeyError, UnicodeEncodeError, struct.error) as error:
@@ -393,6 +440,7 @@ def pack(layout, given, ctx, where):
 def decode_fields(command, payload):
     """{name: value} of a reply after its status, by the reply layout (lenient); None: status alone."""
     from xy_forever import usb_proto as P
+
     reply = command['reply']
     status = struct.unpack_from('<I', payload)[0]
     body = payload[4:]
@@ -402,9 +450,16 @@ def decode_fields(command, payload):
             return None
         if reply['on_error'] != 'full':
             fields = [f for f in fields if f['name'] in reply['on_error']]
-    table = tuple((f['name'], 'bytes' if f['type'].startswith('bytes') else f['type'],
-                   int(f['type'][6:-1]) if f['type'].startswith('bytes[') else None, bool(f.get('optional')),
-                   f.get('encoding')) for f in fields)
+    table = tuple(
+        (
+            f['name'],
+            'bytes' if f['type'].startswith('bytes') else f['type'],
+            int(f['type'][6:-1]) if f['type'].startswith('bytes[') else None,
+            bool(f.get('optional')),
+            f.get('encoding'),
+        )
+        for f in fields
+    )
     try:
         return P.unpack(table, body, exact=False)
     except (ValueError, UnicodeDecodeError) as error:
@@ -413,9 +468,11 @@ def decode_fields(command, payload):
 
 # ---- validation (scripts/protogen.py) ---------------------------------------------------------
 
+
 def walk_frames(spec, case, ctx):
     """Every (type, payload) a case sends, resolved without a device (vars and hello keys dry)."""
     from xy_forever import usb_proto as P
+
     where, given, out = case['name'], case.get('given', {}), []
     if given.get('boot') == 'fresh':
         out += [(spec.type_of('hello'), b''), (spec.type_of('device.reboot'), struct.pack('<I', 2))]
@@ -425,8 +482,11 @@ def walk_frames(spec, case, ctx):
         if action in ('send', 'send_type'):
             out.append(request_payload(step, ctx, where)[:2])
         elif action in ('send_bytes', 'stream'):
-            data = resolve(step['send_bytes'], 'bytes', ctx, where) if action == 'send_bytes' else \
-                b''.join(bytes.fromhex(c) for c in spec.streams[step['stream']]['chunks'])
+            data = (
+                resolve(step['send_bytes'], 'bytes', ctx, where)
+                if action == 'send_bytes'
+                else b''.join(bytes.fromhex(c) for c in spec.streams[step['stream']]['chunks'])
+            )
             out += [(k, p) for k, _, p in P.Parser().feed(data)]
         elif action == 'stage':
             out += stage_frames(spec, resolve(step['stage'], 'bytes', ctx, where))
@@ -449,10 +509,15 @@ def write_payload(path, body):
 
 def stage_frames(spec, body):
     chunk = spec.constants['put_chunk']
-    out = [(spec.type_of('stage.begin'), struct.pack('<II', len(body), zlib.crc32(body) & 0xffffffff) +
-            hashlib.sha256(body).digest())]
-    out += [(spec.type_of('stage.data'), struct.pack('<I', at) + body[at:at + chunk])
-            for at in range(0, len(body), chunk)]
+    out = [
+        (
+            spec.type_of('stage.begin'),
+            struct.pack('<II', len(body), zlib.crc32(body) & 0xFFFFFFFF) + hashlib.sha256(body).digest(),
+        )
+    ]
+    out += [
+        (spec.type_of('stage.data'), struct.pack('<I', at) + body[at : at + chunk]) for at in range(0, len(body), chunk)
+    ]
     out.append((spec.type_of('stage.end'), b''))
     return out
 
@@ -487,10 +552,13 @@ def derived(spec, case, test_area=None):
 
     def wrote(step):
         fields = step.get('fields', {})
-        names = ('target',) if step.get('send') == 'file.copy' else ('path', 'source', 'target')   # copy reads its source
+        names = (
+            ('target',) if step.get('send') == 'file.copy' else ('path', 'source', 'target')
+        )  # copy reads its source
         paths = [p for p in (fields.get(n) for n in names) if isinstance(p, str)]
         outside = test_area and any(not _path_in(p, test_area) for p in paths)
         effects.add('writes_device' if outside else 'writes_test_area')
+
     given = case.get('given', {})
     if given.get('files'):
         effects |= {'staging', 'writes_test_area'}
@@ -502,18 +570,22 @@ def derived(spec, case, test_area=None):
         name = step.get('send')
         if action in ('stage', 'write') or (name == 'stage.begin' and status == 'ok'):
             effects.add('staging')
-        if action == 'write' or (name == 'file.write_staged' and status in ('ok', 'storage')):   # storage: maybe part
+        if action == 'write' or (name == 'file.write_staged' and status in ('ok', 'storage')):  # storage: maybe part
             wrote(step)
-        if name in ('file.delete', 'file.rmdir', 'file.mkdir', 'file.rename', 'file.copy') and \
-                'ok' in (status if isinstance(status, list) else [status]):
+        if name in ('file.delete', 'file.rmdir', 'file.mkdir', 'file.rename', 'file.copy') and 'ok' in (
+            status if isinstance(status, list) else [status]
+        ):
             wrote(step)
         if name == 'file.copy' and status in ('ok', 'storage', 'crc', 'not_found', 'too_large'):
-            effects.add('staging')                            # 1.9: the copy takes the staging buffer
+            effects.add('staging')  # 1.9: the copy takes the staging buffer
         if name in ('boot.install', 'boot.uninstall', 'library.set_default') and status == 'ok':
             effects.add('writes_device')
         fields = step.get('fields', {})
-        if status == 'ok' and ((name == 'menu.continue' and fields.get('mode', 0) == 0 and 'payload' not in step) or
-                               (name == 'device.reboot' and fields.get('target') == 1) or name == 'library.boot'):
+        if status == 'ok' and (
+            (name == 'menu.continue' and fields.get('mode', 0) == 0 and 'payload' not in step)
+            or (name == 'device.reboot' and fields.get('target') == 1)
+            or name == 'library.boot'
+        ):
             effects.add('boots_os')
         if action == 'sim':
             needs.add('sim_control')
@@ -526,8 +598,12 @@ def derived(spec, case, test_area=None):
 def fixtures_used(data, value, out):
     if isinstance(value, dict):
         for k, v in value.items():
-            if k in ('blob', 'size', 'crc32', 'sha256') and isinstance(v, str) and v in data['blobs'] and \
-                    'fixture' in data['blobs'][v]:
+            if (
+                k in ('blob', 'size', 'crc32', 'sha256')
+                and isinstance(v, str)
+                and v in data['blobs']
+                and 'fixture' in data['blobs'][v]
+            ):
                 out.add('fixture:' + data['blobs'][v]['fixture'])
             fixtures_used(data, v, out)
     elif isinstance(value, list):
@@ -558,6 +634,7 @@ def validate(spec_json, data):
 
     def fail(where, message):
         errors.append('%s: %s' % (where, message))
+
     try:
         check_keys(data, 'top', 'conformance')
         check_keys(data['timing'], 'timing', 'timing')
@@ -729,7 +806,8 @@ def check_step(spec, data, case, step, where, ctx):
         if not isinstance(step[action].get('hello', True), bool):
             raise CaseError('%s: hello is true or false' % where)
         if not isinstance(step[action].get('ready', False), bool) or (
-                step[action].get('ready') and not step[action].get('hello', True)):
+            step[action].get('ready') and not step[action].get('hello', True)
+        ):
             raise CaseError('%s: ready is a boolean and requires hello' % where)
     elif action == 'sim':
         if not isinstance(step['sim'], str) or not re.fullmatch(r'[a-z]+( [a-z_]+)*( -?[0-9]+)?', step['sim']):
@@ -754,7 +832,7 @@ def check_expect(spec, step, action, command, where, ctx):
         if name not in reply_fields:
             raise CaseError('%s: the reply has no field %r' % (where, name))
         check_expected(value, field_kind(reply_fields[name]), ctx, '%s %s' % (where, name))
-    for var, name in e.get('save', {}).items():
+    for _var, name in e.get('save', {}).items():
         if name not in reply_fields:
             raise CaseError('%s: save from unknown field %r' % (where, name))
     if 'hello' in e:
@@ -768,8 +846,10 @@ def check_expect(spec, step, action, command, where, ctx):
             if name not in spec.published:
                 raise CaseError('%s: answers lists %r, not a published command' % (where, name))
         if h.get('answers') and set(h['answers']) != spec.in_every_build():
-            raise CaseError('%s: answers must list every command each build answers: %s' % (
-                where, ', '.join(sorted(spec.in_every_build()))))
+            raise CaseError(
+                '%s: answers must list every command each build answers: %s'
+                % (where, ', '.join(sorted(spec.in_every_build())))
+            )
     if 'events' in e:
         check_keys(e['events'], 'events', where)
         check_keys(e['events']['log'], 'count', where)
@@ -812,11 +892,13 @@ def check(spec_json, data, fixtures=None):
 
 # ---- running ----------------------------------------------------------------------------------
 
+
 class Link:
     """One open port: frames out (through the device guard on a real device), replies in."""
 
     def __init__(self, transport, spec, log, guard_area=None):
         from xy_forever import usb_proto as P
+
         self.t, self.spec, self.log, self.guard_area = transport, spec, log, guard_area
         self.parser = P.Parser()
         self.seq = 0
@@ -825,6 +907,7 @@ class Link:
     def write(self, data):
         if self.guard_area is not None:
             from xy_forever import usb_proto as P
+
             for kind, _, payload in P.Parser().feed(data):
                 why = device_guard(self.spec, kind, payload, self.guard_area)
                 if why:
@@ -851,6 +934,7 @@ class Link:
     def request(self, kind, payload, timeout, seq=None):
         """(reply payload, log events) of one request; stale frames are dropped."""
         from xy_forever import usb_proto as P
+
         seq = self.next_seq() if seq is None else seq
         self.write(P.encode(kind, seq, payload))
         events, deadline = 0, time.monotonic() + timeout
@@ -943,7 +1027,7 @@ class Runner(ConformanceConnection):
                     continue
                 try:
                     return self.greet(link, True, deadline)
-                except (Fail, OSError):
+                except Fail, OSError:
                     pass
                 finally:
                     link.close()
@@ -1010,7 +1094,7 @@ class Runner(ConformanceConnection):
                 for name in given['faults']:
                     try:
                         self.control('set %s %d' % (name, -1 if name == 'space' else 0))
-                    except (Fail, OSError):
+                    except Fail, OSError:
                         pass
 
     def control(self, line):
@@ -1035,12 +1119,15 @@ class Runner(ConformanceConnection):
 
     def stage(self, link, body):
         chunk = self.spec.constants['put_chunk']
-        self.expect_ok(link, 'stage.begin', struct.pack('<II', len(body), zlib.crc32(body) & 0xffffffff) +
-                       hashlib.sha256(body).digest())
+        self.expect_ok(
+            link,
+            'stage.begin',
+            struct.pack('<II', len(body), zlib.crc32(body) & 0xFFFFFFFF) + hashlib.sha256(body).digest(),
+        )
         for at in range(0, len(body), chunk):
-            reply = self.expect_ok(link, 'stage.data', struct.pack('<I', at) + body[at:at + chunk])
+            reply = self.expect_ok(link, 'stage.data', struct.pack('<I', at) + body[at : at + chunk])
             received = struct.unpack_from('<I', reply, 4)[0] if len(reply) >= 8 else None
-            if received != at + len(body[at:at + chunk]):
+            if received != at + len(body[at : at + chunk]):
                 raise Fail('stage.data at %d: received %s' % (at, received))
         self.expect_ok(link, 'stage.end', b'')
 
@@ -1048,7 +1135,7 @@ class Runner(ConformanceConnection):
         self.stage(link, body)
         reply = self.expect_ok(link, 'file.write_staged', write_payload(path, body))
         written, crc = struct.unpack_from('<II', reply, 4)
-        if (written, crc) != (len(body), zlib.crc32(body) & 0xffffffff):
+        if (written, crc) != (len(body), zlib.crc32(body) & 0xFFFFFFFF):
             raise Fail('file.write_staged %s: written %d, read-back CRC %08x' % (path, written, crc))
 
     def expect_ok(self, link, name, payload):
@@ -1086,14 +1173,16 @@ class Runner(ConformanceConnection):
             self.send_bytes(link, resolve(step['send_bytes'], 'bytes', self.ctx), [], step['expect'])
         elif action == 'stream':
             st = self.spec.streams[step['stream']]
-            expect = dict(replies=[dict(type='0x%02x' % (int(f['type'], 16) | REPLY_BIT), seq=f['seq'])
-                                   for f in st['frames']])
+            expect = dict(
+                replies=[dict(type='0x%02x' % (int(f['type'], 16) | REPLY_BIT), seq=f['seq']) for f in st['frames']]
+            )
             self.send_bytes(link, None, [bytes.fromhex(c) for c in st['chunks']], expect)
         elif action == 'stage':
             self.stage(link, resolve(step['stage'], 'bytes', self.ctx))
         elif action == 'write':
-            self.write(link, resolve(step['write']['path'], 'str', self.ctx),
-                       resolve(step['write']['data'], 'bytes', self.ctx))
+            self.write(
+                link, resolve(step['write']['path'], 'str', self.ctx), resolve(step['write']['data'], 'bytes', self.ctx)
+            )
         elif action == 'disconnect':
             self.disconnect(link)
         elif action == 'reconnect':
@@ -1112,19 +1201,22 @@ class Runner(ConformanceConnection):
 
     def send_bytes(self, link, data, chunks, expect):
         from xy_forever import usb_proto as P
+
         if data is not None:
             link.write(data)
         for chunk in chunks:
             link.write(chunk)
-            getattr(self.target, 'pause', time.sleep)(0.005)                       # separate reads on the device side
+            getattr(self.target, 'pause', time.sleep)(0.005)  # separate reads on the device side
         if 'none_within_ms' in expect:
             pause = getattr(self.target, 'pause', None)
-            if pause:                                                          # the simulator: its own time passes
+            if pause:  # the simulator: its own time passes
                 pause(expect['none_within_ms'] / 1000.0)
             got = link.quiet(50 if pause else expect['none_within_ms'])
             if got:
-                raise Fail('expected no frame within %d ms, got %s' % (
-                    expect['none_within_ms'], ', '.join('0x%02x seq %d' % (k, s) for k, s, _ in got)))
+                raise Fail(
+                    'expected no frame within %d ms, got %s'
+                    % (expect['none_within_ms'], ', '.join('0x%02x seq %d' % (k, s) for k, s, _ in got))
+                )
             return
         # A hello with a fresh seq after the bytes: every reply before its reply must be expected.
         barrier = 200 + link.next_seq() % 50
@@ -1135,13 +1227,20 @@ class Runner(ConformanceConnection):
         if not got or got[-1][:2] != (0x81, barrier):
             raise Fail('no reply to the hello sent after the bytes')
         want = [(int(r['type'], 16), r['seq'], r.get('status')) for r in expect['replies']]
-        have = [(k, s, self.spec.status_name(struct.unpack_from('<I', b)[0]) if len(b) >= 4 else None)
-                for k, s, b in got[:-1]]
-        if [(k, s) for k, s, _ in have] != [(k, s) for k, s, _ in want] or \
-                any(w[2] and w[2] != h[2] for w, h in zip(want, have)):
-            raise Fail('replies %s, expected %s' % (
-                ', '.join('0x%02x seq %d %s' % h for h in have) or 'none',
-                ', '.join('0x%02x seq %d %s' % (k, s, st or 'any') for k, s, st in want) or 'none'))
+        have = [
+            (k, s, self.spec.status_name(struct.unpack_from('<I', b)[0]) if len(b) >= 4 else None)
+            for k, s, b in got[:-1]
+        ]
+        if [(k, s) for k, s, _ in have] != [(k, s) for k, s, _ in want] or any(
+            w[2] and w[2] != h[2] for w, h in zip(want, have)
+        ):
+            raise Fail(
+                'replies %s, expected %s'
+                % (
+                    ', '.join('0x%02x seq %d %s' % h for h in have) or 'none',
+                    ', '.join('0x%02x seq %d %s' % (k, s, st or 'any') for k, s, st in want) or 'none',
+                )
+            )
 
     def check_reply(self, e, command, body, events=0):
         status = struct.unpack_from('<I', body)[0]
@@ -1152,8 +1251,9 @@ class Runner(ConformanceConnection):
                 raise Fail('%s, expected %s' % (name, ' or '.join(want)))
         if e.get('alone') and len(body) != 4:
             raise Fail('%s with %d bytes after the status, expected the status alone' % (name, len(body) - 4))
-        values = decode_fields(command, body) if command and (e.get('fields') or e.get('save') or e.get('hello')) \
-            else None
+        values = (
+            decode_fields(command, body) if command and (e.get('fields') or e.get('save') or e.get('hello')) else None
+        )
         for field, expected in e.get('fields', {}).items():
             if values is None or field not in values:
                 raise Fail('%s: the reply has no field %s' % (name, field))
@@ -1210,6 +1310,7 @@ class Runner(ConformanceConnection):
             return
         want = resolve(expected, kind, self.ctx, what)
         if actual != want:
-            shown = (lambda x: x[:32].hex() + ('... (%d B)' % len(x) if len(x) > 32 else '')) if kind == 'bytes' \
-                else repr
+            shown = (
+                (lambda x: x[:32].hex() + ('... (%d B)' % len(x) if len(x) > 32 else '')) if kind == 'bytes' else repr
+            )
             raise Fail('%s: %s, expected %s' % (what, shown(actual), shown(want)))

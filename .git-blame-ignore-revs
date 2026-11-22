@@ -1,0 +1,5 @@
+# Commits git blame skips: mass formatting with no change in behaviour. GitHub reads this file; locally:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Format the repository: ruff format, Prettier, clang-format (#234)
+ed123238d954651a74ce1ddaa121bca35cec7da7

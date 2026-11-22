@@ -1,23 +1,26 @@
 """Helpers for the simulator tests and sweeps that drive the menu's Mods page by injected keys (the page's own
 tests went in #233): PageBase, synthetic_setup and the key constants."""
-from pathlib import Path
+
 import shutil
 import struct
 import time
+from pathlib import Path
 
-from xy_forever import bounds, modsend as MS, package_records, sim
-from xy_forever import usb_proto as P
 import test_sim_mod_job as J
 from test_ui_mods import FILTER_ON
 
+from xy_forever import bounds, package_records, sim
+from xy_forever import modsend as MS
+from xy_forever import usb_proto as P
+
 PLAY, STOP, MINUS, PLUS, SHIFT = 51, 52, 53, 54, 55
-MODS_ROW = 2                                                               # xyf_menu item_mods
-VIEW_READING, VIEW_LIST = range(2)                                       # (#197: no building view)
+MODS_ROW = 2  # xyf_menu item_mods
+VIEW_READING, VIEW_LIST = range(2)  # (#197: no building view)
 LINE_NONE, LINE_INFO, LINE_ERROR, LINE_DONE = range(4)
 BUILT = 'Built: Mods: %d (content not installed yet).'
 NO_CANCEL = 'Cannot cancel now: it is being added to the library.'
 BUSY = 'Build failed: busy (a job, an upload or a save is running): try again.'
-BUSY_READ = 'Busy: a build or content change is running.'                 # the page waits for a job
+BUSY_READ = 'Busy: a build or content change is running.'  # the page waits for a job
 
 
 class PageBase(J.Base):
@@ -38,7 +41,7 @@ class PageBase(J.Base):
             at = line.find('mods page: ')
             if at < 0:
                 continue
-            body = line[at + len('mods page: '):]
+            body = line[at + len('mods page: ') :]
             head, _, text = body.partition(' text=')
             fields = dict(f.split('=', 1) for f in head.split(' '))
             fields = {k: (int(v) if v.isdigit() else v) for k, v in fields.items()}
@@ -71,7 +74,7 @@ class PageBase(J.Base):
 
     def lines(self, marker):
         log = (self.dir / 'log.txt').read_text(errors='replace') if (self.dir / 'log.txt').exists() else ''
-        return [line[line.find(marker) + len(marker):] for line in log.splitlines() if marker in line]
+        return [line[line.find(marker) + len(marker) :] for line in log.splitlines() if marker in line]
 
     def bars(self, job):
         """The progress bar of job at every redraw ("progress:" and "mods bar:" lines, in order), as
@@ -83,12 +86,11 @@ class PageBase(J.Base):
                 at = line.find(marker)
                 if at < 0:
                     continue
-                head = line[at + len(marker) - (4 if marker.endswith('=') else 0):].partition(' title=')[0]
+                head = line[at + len(marker) - (4 if marker.endswith('=') else 0) :].partition(' title=')[0]
                 f = dict(x.split('=', 1) for x in head.split(' ') if '=' in x)
                 if int(f['job']) == job:
                     out.append({k: int(f[k]) for k in ('ms', 'bar', 'phase', 'done', 'total', 'commit')})
         return out
-
 
     def page(self):
         pages = self.pages()
@@ -136,8 +138,9 @@ class PageBase(J.Base):
         self.key(SHIFT, 1)
         self.press(key)
         self.key(SHIFT, 0)
-        return self.wait(lambda p: len(self.pages()) > before and (not field or p[field] != was),
-                         'answered SHIFT + %d' % key)
+        return self.wait(
+            lambda p: len(self.pages()) > before and (not field or p[field] != was), 'answered SHIFT + %d' % key
+        )
 
     def spin(self, clicks, knob=1):
         """Knob turns as the PSoC reports them (the simulator's knob frames): clicks clockwise (< 0:
@@ -184,8 +187,11 @@ class PageBase(J.Base):
             self.wait(lambda p: len(self.pages()) > before, 'toggled')
 
     def ended(self, timeout=bounds.WAIT_S):
-        return self.wait(lambda p: p['view'] == VIEW_LIST and p['line'] in (LINE_INFO, LINE_ERROR, LINE_DONE) and
-                         p['job'], 'ended', timeout)
+        return self.wait(
+            lambda p: p['view'] == VIEW_LIST and p['line'] in (LINE_INFO, LINE_ERROR, LINE_DONE) and p['job'],
+            'ended',
+            timeout,
+        )
 
     def closed(self, timeout=30.0):
         """A's write window closed after the job (B closes it without waiting: settle_begin)."""
@@ -204,11 +210,13 @@ class PageBase(J.Base):
         self.assertIn(f['detail'], ('mods-a', 'mods-b'), f)
         self.assertFalse(self.output(p['job']).exists())
         self.assertTrue((self.entry(f['detail']) / 'os.ldr').is_file())
-        self.assertIn(MS.served(self.dev, out=lambda line: None), (0, J.ids.S_NOT_FOUND))   # A rescanned
+        self.assertIn(MS.served(self.dev, out=lambda line: None), (0, J.ids.S_NOT_FOUND))  # A rescanned
         self.closed()
         self.assertEqual(self.leftovers(), [])
         item = self.listed(f['detail'])
-        self.assertEqual((item['name'], item['usable'], item['content_missing']), ('Mods: %d' % len(p['on']), False, True))
+        self.assertEqual(
+            (item['name'], item['usable'], item['content_missing']), ('Mods: %d' % len(p['on']), False, True)
+        )
         return f['detail']
 
 
@@ -217,16 +225,23 @@ def synthetic_setup(cls, extra=0):
     (copies of alpha, listing only: they cannot be built)."""
     import json
     import tempfile
-    from xy_forever import modkit as M, modpatch as MP
-    from test_modpatch import CATALOG, OFFICIAL, finish, kit_for, official_text, profile_for, stock
+
     from test_modkit import rewrite
+    from test_modpatch import CATALOG, OFFICIAL, finish, kit_for, official_text, profile_for, stock
+
+    from xy_forever import modkit as M
+    from xy_forever import modpatch as MP
+
     cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-simpage-')
     cls.addClassCleanup(cls.tmp.cleanup)
     cls.work = Path(cls.tmp.name)
     data = stock()
     (cls.work / 'kit.json').write_text(json.dumps(kit_for(profile_for(data))))
-    gen = Path(M.split_kit(cls.work / 'kit.json', cls.work / 'packages', finish=finish,
-                           sdk_source='https://github.com/example/sdk@abc')['root'])
+    gen = Path(
+        M.split_kit(
+            cls.work / 'kit.json', cls.work / 'packages', finish=finish, sdk_source='https://github.com/example/sdk@abc'
+        )['root']
+    )
     for i in range(extra):
         folder = gen / ('m%02d' % i)
         shutil.copytree(gen / 'alpha', folder)
@@ -237,12 +252,3 @@ def synthetic_setup(cls, extra=0):
     cls.seed_with(gen, MP.info_values(gen / 'base/info.txt')['profile'], data, CATALOG, official_text(OFFICIAL))
     (cls.seeded / 'xy-forever/state-a.txt').write_bytes(sim.slot_text(cls.base, 2))
     cls.folders = sorted(p.name for p in gen.iterdir() if p.is_dir() and p.name != 'base')
-
-
-
-
-
-
-
-
-

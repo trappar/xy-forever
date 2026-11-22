@@ -28,13 +28,10 @@ extern "C" void xy_forever_storage_report() {
     if (!file) return;
     reinterpret_cast<Write*>(0x8fed0780u)(&report, 1, sizeof(report), file);
     const U32 census = report.marker_size <= XYF_CENSUS_BYTES ? report.marker_size : 0;
-    if (census)
-        reinterpret_cast<Write*>(0x8fed0780u)(
-            reinterpret_cast<const void*>(XYF_CENSUS_BASE), 1, census, file);
+    if (census) reinterpret_cast<Write*>(0x8fed0780u)(reinterpret_cast<const void*>(XYF_CENSUS_BASE), 1, census, file);
     reinterpret_cast<Close*>(0x8fed00aeu)(file);
 #else
-    void* file = reinterpret_cast<Open*>(0x8fed0348u)(
-        XYF_REPORT_PATH, "wb");
+    void* file = reinterpret_cast<Open*>(0x8fed0348u)(XYF_REPORT_PATH, "wb");
     if (!file) return;
     reinterpret_cast<Write*>(0x8fed0780u)(&report, 1, sizeof(report), file);
     reinterpret_cast<Close*>(0x8fed00aeu)(file);

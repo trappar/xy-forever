@@ -6,19 +6,21 @@ partitions only while A independently refuses writes and file operations; end re
 Results and the raw image stay under the private folder. On a lost answer stop: no speculative reset.
 Use --finish to retry restoration after a responsive diagnostic failure. End state: menu with keepalive.
 """
+
 import argparse
-from datetime import datetime
 import hashlib
 import json
-from pathlib import Path
 import struct
 import sys
 import time
 import zlib
+from datetime import datetime
+from pathlib import Path
 
-from xy_forever import xyf_host as host
-from xy_forever import paths
 from device_pass import Keepalive
+
+from xy_forever import paths
+from xy_forever import xyf_host as host
 
 COMMAND, VERSION, MAX_BYTES = 0x64, 1, 0x700000
 BEGIN, HEADER, SECTOR, END = range(4)
@@ -50,15 +52,22 @@ def header(data, partition):
     if len(data) != 512:
         raise ProbeError('short header for partition %d' % partition)
     version, size, crc, valid, encrypted = struct.unpack_from('<IIIBB', data)
-    return dict(partition=partition, version=version, bytes=size, crc32='%08x' % crc,
-                valid=version >= 2 and 0 < size <= MAX_BYTES and valid != 0 and encrypted <= 1,
-                valid_byte=valid, encrypted=encrypted)
+    return dict(
+        partition=partition,
+        version=version,
+        bytes=size,
+        crc32='%08x' % crc,
+        valid=version >= 2 and 0 < size <= MAX_BYTES and valid != 0 and encrypted <= 1,
+        valid_byte=valid,
+        encrypted=encrypted,
+    )
 
 
 def run(dev, folder):
     """Only this diagnostic, no filesystem command or reboot. Always attempt end after responsive errors."""
-    result = dict(format='xyf-boot-probe/1', headers=[], restored=False, go=False,
-                  recommendation='no-go: probe incomplete')
+    result = dict(
+        format='xyf-boot-probe/1', headers=[], restored=False, go=False, recommendation='no-go: probe incomplete'
+    )
     opened, lost = False, False
     try:
         deadline = time.monotonic() + 10
@@ -70,7 +79,7 @@ def run(dev, folder):
             except ProbeError as error:
                 if 'busy' not in str(error) or time.monotonic() >= deadline:
                     raise
-                time.sleep(.1)
+                time.sleep(0.1)
         if len(flags) != 8:
             raise ProbeError('short A precondition snapshot')
         result['menu_pointer'], result['upgrade_resume'] = struct.unpack('<II', flags)
@@ -88,8 +97,11 @@ def run(dev, folder):
                 data = call(dev, SECTOR, active['partition'], at)
                 if len(data) != 512:
                     raise ProbeError('short image sector %d' % at)
-                data = data[:min(512, active['bytes'] - count)]
-                output.write(data); sha.update(data); crc = zlib.crc32(data, crc); count += len(data)
+                data = data[: min(512, active['bytes'] - count)]
+                output.write(data)
+                sha.update(data)
+                crc = zlib.crc32(data, crc)
+                count += len(data)
         result.update(image_bytes=count, image_sha256=sha.hexdigest(), image_crc32='%08x' % crc)
         result['go'] = result['menu_pointer'] == 0 and result['upgrade_resume'] == 0
     except (ConnectionError, TimeoutError) as error:
@@ -108,9 +120,13 @@ def run(dev, folder):
                 if isinstance(error, (OSError, TimeoutError)):
                     result['link_lost'] = True
         result['go'] = result['go'] and result['restored'] and 'error' not in result
-        result['recommendation'] = ('go for #8 design; no boot write authorized' if result['go'] else
-                                    'no-go: A writer preconditions are nonzero' if result['restored'] and
-                                    'error' not in result else 'no-go: probe incomplete or partition restoration failed')
+        result['recommendation'] = (
+            'go for #8 design; no boot write authorized'
+            if result['go']
+            else 'no-go: A writer preconditions are nonzero'
+            if result['restored'] and 'error' not in result
+            else 'no-go: probe incomplete or partition restoration failed'
+        )
         (folder / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
     return result
 
@@ -125,7 +141,8 @@ def main(argv=None):
     folder = paths.private_output(folder)
     keep = Keepalive()
     if not args.sim:
-        keep.stop_running(); time.sleep(2)
+        keep.stop_running()
+        time.sleep(2)
     if args.sim:
         host.SIM = args.sim
     try:

@@ -6,28 +6,29 @@ the run fails naming the test. scripts/check.py: a step past its bound fails. Th
 (SIGSTOP) fails a host call within SIM_CALL_S and stop() ends its whole group; an idle one exits on its own
 at its deadline (xyf_sim --deadline-s) and says so.
 """
+
 import importlib.util
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-PLANTED = '''import os, subprocess, sys, time, unittest
+PLANTED = """import os, subprocess, sys, time, unittest
 class Hang(unittest.TestCase):
     def test_sleeps(self):
         child = subprocess.Popen(['sleep', '300'])
         with open(os.environ['XYF_PLANTED_PID'], 'w') as f:
             f.write(str(child.pid))
         time.sleep(300)
-'''
-SLACK = 8.0             # s: interpreter starts, SIGTERM's grace (procgroup.GRACE), a loaded host
+"""
+SLACK = 8.0  # s: interpreter starts, SIGTERM's grace (procgroup.GRACE), a loaded host
 
 
 def gone(pid):
@@ -38,33 +39,49 @@ def gone(pid):
     return False
 
 
-
 @pytest.mark.gate
 class RunnerBoundsTest(unittest.TestCase):
     @pytest.mark.uses('tests/xyf_bounds.py')
     def test_a_test_past_its_bound(self):
-        bound = 0.3                 # past it, HUNG: the planted test sleeps 300 s, so less waiting proves the same
+        bound = 0.3  # past it, HUNG: the planted test sleeps 300 s, so less waiting proves the same
         with tempfile.TemporaryDirectory(prefix='xyf-hang-') as tmp:
             (Path(tmp) / 'test_planted_hang.py').write_text(PLANTED)
             (Path(tmp) / 'pytest.ini').write_text('[pytest]\n')
             pid_file = Path(tmp) / 'pid'
-            env = dict(os.environ, PYTHONPATH=str(ROOT / 'tests'),
-                       XYF_PLANTED_PID=str(pid_file))
+            env = dict(os.environ, PYTHONPATH=str(ROOT / 'tests'), XYF_PLANTED_PID=str(pid_file))
             start = time.monotonic()
-            run = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'xyf_bounds', '-p', 'no:cacheprovider', '-n', '1',
-                                  '-o', 'timeout=%g' % bound, 'test_planted_hang.py'], cwd=tmp, env=env,
-                                 capture_output=True, text=True, timeout=60)
+            run = subprocess.run(
+                [
+                    sys.executable,
+                    '-m',
+                    'pytest',
+                    '-p',
+                    'xyf_bounds',
+                    '-p',
+                    'no:cacheprovider',
+                    '-n',
+                    '1',
+                    '-o',
+                    'timeout=%g' % bound,
+                    'test_planted_hang.py',
+                ],
+                cwd=tmp,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
             seconds, output = time.monotonic() - start, run.stdout + run.stderr
             self.assertEqual(run.returncode, 1, output)
             child = int(pid_file.read_text())
         self.assertIn('HUNG: test_planted_hang.py::Hang::test_sleeps', output)
-        self.assertIn('in test_sleeps', output)                     # the hung test's traceback
+        self.assertIn('in test_sleeps', output)  # the hung test's traceback
         self.assertIn("crashed while running 'test_planted_hang.py::Hang::test_sleeps'", output)
         self.assertLess(seconds, bound + SLACK, output)
         deadline = time.monotonic() + 3
         while not gone(child) and time.monotonic() < deadline:
             time.sleep(0.05)
-        self.assertTrue(gone(child), 'the hung test\'s child survived')
+        self.assertTrue(gone(child), "the hung test's child survived")
 
 
 @pytest.mark.gate

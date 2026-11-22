@@ -17,21 +17,22 @@ Teenage Engineering-derived bytes. --force runs the tasks past the cache; deleti
 
 run-build and run-verify are the task commands turbo runs (package.json scripts).
 """
+
 import hashlib
-from importlib import metadata
 import json
 import os
-from pathlib import Path
 import platform
 import shutil
 import subprocess
 import sys
+from importlib import metadata
+from pathlib import Path
 
 from xy_forever import dev_tools, paths, toolchain
 
 ROOT = Path(__file__).resolve().parents[1]
 
-OUT = paths.BUILD / 'product'                 # the task's output (turbo.json outputs), gitignored
+OUT = paths.BUILD / 'product'  # the task's output (turbo.json outputs), gitignored
 TASKS = {'build': 'firmware-build', 'verify': 'firmware-verify'}
 KEY = 'XYF_BUILD_KEY'
 TURBO = ROOT / 'node_modules' / '.bin' / ('turbo.cmd' if os.name == 'nt' else 'turbo')
@@ -54,20 +55,30 @@ def build_key(environ=os.environ):
     """A SHA-256 of what the build reads from outside the checkout (the toolchain by its location and pins: the
     build refuses any other bytes there) and of the interpreter that runs it."""
     pins = json.loads((ROOT / 'toolchains.json').read_text())['hosts'].get(host())
-    key = dict(stock={name: file_sha(paths.STOCK_121 / name) for name in ('os.ldr', 'bootloader.ldr')},
-               toolchain=dict(root=str(toolchain.location(environ).expanduser().resolve()), host=host(), pins=pins),
-               python=sys.version, pyelftools=metadata.version('pyelftools'), checkout=str(ROOT))
+    key = dict(
+        stock={name: file_sha(paths.STOCK_121 / name) for name in ('os.ldr', 'bootloader.ldr')},
+        toolchain=dict(root=str(toolchain.location(environ).expanduser().resolve()), host=host(), pins=pins),
+        python=sys.version,
+        pyelftools=metadata.version('pyelftools'),
+        checkout=str(ROOT),
+    )
     return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()
 
 
 def turbo_command(task, force=False):
     """Local cache only (no remote, whatever TURBO_CACHE says); --force writes it without reading it."""
-    return [str(TURBO), 'run', TASKS[task], '--cache=local:' + ('w' if force else 'rw'), '--ui=stream',
-            '--log-prefix=none']
+    return [
+        str(TURBO),
+        'run',
+        TASKS[task],
+        '--cache=local:' + ('w' if force else 'rw'),
+        '--ui=stream',
+        '--log-prefix=none',
+    ]
 
 
 def run_turbo(task, force=False):
-    install = dev_tools.js_install(ROOT)        # a fresh worktree: Turborepo is a root devDependency
+    install = dev_tools.js_install(ROOT)  # a fresh worktree: Turborepo is a root devDependency
     if install and subprocess.run(install, cwd=ROOT).returncode:
         return 1
     env = dict(os.environ, **ENV, **{KEY: build_key()})
@@ -77,7 +88,7 @@ def run_turbo(task, force=False):
 def run_task(task):
     """The task itself (turbo runs it on a miss): a fresh build into OUT, or --verify of OUT."""
     if task == 'build':
-        shutil.rmtree(OUT, ignore_errors=True)       # xyf_build.py builds only into a fresh folder
+        shutil.rmtree(OUT, ignore_errors=True)  # xyf_build.py builds only into a fresh folder
         args = ['--xyf-product', '--out', OUT]
     else:
         args = ['--verify', '--out', OUT]

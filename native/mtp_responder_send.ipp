@@ -11,7 +11,10 @@ bool Responder::send_object() {
         if (!failed) {
             const int r = ops.upload(ops.context, path, pending_size, pending_handle);
             if (r < 0) failed = r == f_refused ? U32(r_access_denied) : error_code(r);
-            else { fd = r; opened = 1; }
+            else {
+                fd = r;
+                opened = 1;
+            }
             return true;
         }
     }
@@ -57,7 +60,8 @@ bool Responder::send_object() {
     }
     objects[pending_handle - 1].size = data_total;
     objects[pending_handle - 1].fresh = 1;
-    pending_handle = 0; opened = 0;
+    pending_handle = 0;
+    opened = 0;
     respond(r_ok);
     return true;
 }

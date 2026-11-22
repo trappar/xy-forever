@@ -13,7 +13,9 @@ void copy(char* out, uint32_t capacity, const char* in) {
     for (; in[i] && i + 1 < capacity; ++i) out[i] = in[i];
     out[i] = 0;
 }
-void zero(void* p, uint32_t n) { for (uint32_t i = 0; i != n; ++i) static_cast<char*>(p)[i] = 0; }
+void zero(void* p, uint32_t n) {
+    for (uint32_t i = 0; i != n; ++i) static_cast<char*>(p)[i] = 0;
+}
 // Decimal (no sign) or 8 lowercase hex digits for crc32; false on overflow/junk.
 bool decimal(const char* s, uint32_t& out) {
     if (!*s) return false;
@@ -29,7 +31,8 @@ bool decimal(const char* s, uint32_t& out) {
 
 bool valid_id(const char* id) {
     uint32_t n = 0;
-    for (; id[n]; ++n) if (n == max_id || !id_char(id[n])) return false;
+    for (; id[n]; ++n)
+        if (n == max_id || !id_char(id[n])) return false;
     return n != 0;
 }
 
@@ -48,7 +51,13 @@ int parse_key_values(const char* text, uint32_t length, Visit visit, void* conte
         char key[max_key + 1], value[max_value + 1];
         uint32_t k = 0;
         bool ok = true;
-        while (a < b && key_char(text[a])) { if (k == max_key) { ok = false; break; } key[k++] = text[a++]; }
+        while (a < b && key_char(text[a])) {
+            if (k == max_key) {
+                ok = false;
+                break;
+            }
+            key[k++] = text[a++];
+        }
         key[k] = 0;
         while (ok && a < b && space(text[a])) ++a;
         if (!ok || !k || a == b || text[a] != '=') continue;
@@ -72,13 +81,33 @@ void state_visit(void* context, const char* key, const char* value) {
     else if (equal(key, "once")) copy(s.once, sizeof(s.once), valid_id(value) ? value : "");
     else if (equal(key, "stage2")) copy(s.stage2, sizeof(s.stage2), value);
     else if (equal(key, "stage2_previous")) copy(s.stage2_previous, sizeof(s.stage2_previous), value);
-    else if (equal(key, "stage2_tries")) { uint32_t v; if (decimal(value, v)) s.stage2_tries = v; }
+    else if (equal(key, "stage2_tries")) {
+        uint32_t v;
+        if (decimal(value, v)) s.stage2_tries = v;
+    }
 }
 
 struct Writer {
-    char* out; uint32_t capacity, at; bool ok;
-    void put(const char* s) { for (; *s; ++s) { if (at + 1 >= capacity) { ok = false; return; } out[at++] = *s; } }
-    void field(const char* key, const char* value) { if (*value) { put(key); put("="); put(value); put("\n"); } }
+    char* out;
+    uint32_t capacity, at;
+    bool ok;
+    void put(const char* s) {
+        for (; *s; ++s) {
+            if (at + 1 >= capacity) {
+                ok = false;
+                return;
+            }
+            out[at++] = *s;
+        }
+    }
+    void field(const char* key, const char* value) {
+        if (*value) {
+            put(key);
+            put("=");
+            put(value);
+            put("\n");
+        }
+    }
 };
 }
 
@@ -96,11 +125,15 @@ uint32_t write_state(const State& s, char* out, uint32_t capacity) {
     if (s.stage2_tries) {
         // Decimal without division (no libgcc helpers in the cold build).
         static const uint32_t powers[10] = {1000000000u, 100000000u, 10000000u, 1000000u, 100000u,
-                                            10000u, 1000u, 100u, 10u, 1u};
-        char digits[11]; uint32_t v = s.stage2_tries, n = 0;
+                                            10000u,      1000u,      100u,      10u,      1u};
+        char digits[11];
+        uint32_t v = s.stage2_tries, n = 0;
         for (uint32_t p = 0; p != 10; ++p) {
             char d = '0';
-            while (v >= powers[p]) { v -= powers[p]; ++d; }
+            while (v >= powers[p]) {
+                v -= powers[p];
+                ++d;
+            }
             if (n || d != '0' || p == 9) digits[n++] = d;
         }
         digits[n] = 0;
@@ -111,6 +144,4 @@ uint32_t write_state(const State& s, char* out, uint32_t capacity) {
     return w.at;
 }
 
-
-
-} }
+}}

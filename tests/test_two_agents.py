@@ -1,12 +1,12 @@
 """Two agents on one machine (docs/operating/two-agents.md): paths from the main checkout in a worktree and a plain
 clone, the device lock, safe build pruning. Every case also runs with nothing set up: no xyf.local.json, no XYF_*
 variables."""
+
 import contextlib
 import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import shutil
 import signal
 import subprocess
@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -32,14 +33,21 @@ def script(name):
 
 CHECK, SETUP = script('check'), script('setup')
 CLEAN_ENV = {k: v for k, v in os.environ.items() if not k.startswith('XYF_') or k == 'XYF_NO_DEVICE'}
-SHOW = ('from xy_forever import paths, toolchain; import json; print(json.dumps({k: str(v) for k, v in dict('
-        'main=paths.MAIN, config=paths.LOCAL_CONFIG, private=paths.PRIVATE_ROOT, toolchain=toolchain.location(), '
-        'status=paths.STATUS).items()}))')
+SHOW = (
+    'from xy_forever import paths, toolchain; import json; print(json.dumps({k: str(v) for k, v in dict('
+    'main=paths.MAIN, config=paths.LOCAL_CONFIG, private=paths.PRIVATE_ROOT, toolchain=toolchain.location(), '
+    'status=paths.STATUS).items()}))'
+)
 
 
 def git(cwd, *args):
-    return subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@example.com', *args], cwd=str(cwd),
-                          check=True, capture_output=True, text=True).stdout.strip()
+    return subprocess.run(
+        ['git', '-c', 'user.name=t', '-c', 'user.email=t@example.com', *args],
+        cwd=str(cwd),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
 
 @pytest.mark.gate
@@ -52,8 +60,11 @@ class Workspace(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         base = Path(tmp.name).resolve()
         self.ws, self.repo, self.wt = base / 'ws', base / 'ws/xy-forever', base / 'elsewhere/wt'
-        shutil.copytree(ROOT / 'xy_forever', self.repo / 'xy_forever',
-                        ignore=lambda d, names: [n for n in names if n != '__init__.py' and not n.endswith('.py')])
+        shutil.copytree(
+            ROOT / 'xy_forever',
+            self.repo / 'xy_forever',
+            ignore=lambda d, names: [n for n in names if n != '__init__.py' and not n.endswith('.py')],
+        )
         shutil.copy(ROOT / 'toolchains.json', self.repo)
         git(self.repo, 'init', '-q', '-b', 'main')
         git(self.repo, 'add', '-A')
@@ -61,16 +72,30 @@ class Workspace(unittest.TestCase):
         git(self.repo, 'worktree', 'add', '-q', '-b', '7-item', str(self.wt))
 
     def show(self, where, env=None):
-        run = subprocess.run([sys.executable, '-c', SHOW], cwd=str(where), capture_output=True, text=True,
-                             env=dict(CLEAN_ENV, **(env or {})), check=True)
+        run = subprocess.run(
+            [sys.executable, '-c', SHOW],
+            cwd=str(where),
+            capture_output=True,
+            text=True,
+            env=dict(CLEAN_ENV, **(env or {})),
+            check=True,
+        )
         return {k: Path(v) for k, v in json.loads(run.stdout).items()}
 
     def test_a_plain_clone_resolves_as_before(self):
         got = self.show(self.repo)
-        self.assertEqual(got, dict(main=self.repo, config=self.repo / 'xyf.local.json', private=self.ws / 'private',
-                                   toolchain=self.ws / 'tools/blackfin', status=self.ws / 'private/xy-forever/status'))
+        self.assertEqual(
+            got,
+            dict(
+                main=self.repo,
+                config=self.repo / 'xyf.local.json',
+                private=self.ws / 'private',
+                toolchain=self.ws / 'tools/blackfin',
+                status=self.ws / 'private/xy-forever/status',
+            ),
+        )
         self.assertEqual(paths.main_checkout(self.repo), self.repo)
-        self.assertEqual(paths.main_checkout(self.ws), self.ws)            # no git at all
+        self.assertEqual(paths.main_checkout(self.ws), self.ws)  # no git at all
 
     def test_a_worktree_resolves_from_the_main_checkout(self):
         self.assertEqual(self.show(self.wt), self.show(self.repo))
@@ -102,10 +127,11 @@ class Workspace(unittest.TestCase):
         self.assertEqual((plain.main, plain.workspace), (self.repo, self.ws))
 
 
-
-HOLD = ('import sys, time; from xy_forever import device_lock; '
-        'device_lock.hold(float(sys.argv[3]), sys.argv[1], sys.argv[2]); print("held", flush=True); '
-        'time.sleep(float(sys.argv[4]))')
+HOLD = (
+    'import sys, time; from xy_forever import device_lock; '
+    'device_lock.hold(float(sys.argv[3]), sys.argv[1], sys.argv[2]); print("held", flush=True); '
+    'time.sleep(float(sys.argv[4]))'
+)
 
 
 @pytest.mark.gate
@@ -117,16 +143,20 @@ class DeviceLock(unittest.TestCase):
         self.lock = self.root / 'xy-forever/device.lock'
 
     def holder(self, seconds=30):
-        proc = subprocess.Popen([sys.executable, '-c', HOLD, str(self.lock), str(self.root), '0', str(seconds)],
-                                stdout=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(
+            [sys.executable, '-c', HOLD, str(self.lock), str(self.root), '0', str(seconds)],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
         self.addCleanup(proc.stdout.close)
-        self.addCleanup(lambda: proc.poll() is None and proc.kill() or proc.wait())
+        self.addCleanup(lambda: (proc.poll() is None and proc.kill()) or proc.wait())
         self.assertEqual(proc.stdout.readline().strip(), 'held')
         return proc
 
     def second(self, wait=0.0):
-        return subprocess.run([sys.executable, '-c', HOLD, str(self.lock), str(self.root), str(wait), '0'],
-                              capture_output=True, text=True)
+        return subprocess.run(
+            [sys.executable, '-c', HOLD, str(self.lock), str(self.root), str(wait), '0'], capture_output=True, text=True
+        )
 
     def test_a_second_process_is_told_the_device_is_busy(self):
         proc = self.holder()
@@ -155,19 +185,28 @@ class DeviceLock(unittest.TestCase):
         self.assertIsNone(device_lock.hold(path=self.lock, root=self.root / 'absent'))
         self.assertFalse(self.lock.exists())
         with mock.patch.object(paths, 'DEVICE_LOCK', self.lock), mock.patch.object(paths, 'PRIVATE_ROOT', self.root):
-            self.assertIsNone(device_lock.hold())                     # XYF_NO_DEVICE: a test takes no real lock
+            self.assertIsNone(device_lock.hold())  # XYF_NO_DEVICE: a test takes no real lock
         self.assertFalse(self.lock.exists())
 
     def test_the_simulator_takes_no_lock(self):
         from xy_forever import xyf_host
-        with mock.patch.object(xyf_host, 'SIM', '127.0.0.1:1'), mock.patch.object(xyf_host, 'find_port', lambda: None), \
-                mock.patch.object(device_lock, 'hold') as hold, contextlib.redirect_stderr(io.StringIO()), \
-                self.assertRaisesRegex(SystemExit, 'not found'):
+
+        with (
+            mock.patch.object(xyf_host, 'SIM', '127.0.0.1:1'),
+            mock.patch.object(xyf_host, 'find_port', lambda: None),
+            mock.patch.object(device_lock, 'hold') as hold,
+            contextlib.redirect_stderr(io.StringIO()),
+            self.assertRaisesRegex(SystemExit, 'not found'),
+        ):
             xyf_host.connect(0.05)
         hold.assert_not_called()
-        with mock.patch.object(xyf_host, 'SIM', None), mock.patch.object(xyf_host, 'find_port', lambda: None), \
-                mock.patch.object(device_lock, 'hold') as hold, contextlib.redirect_stderr(io.StringIO()), \
-                self.assertRaisesRegex(SystemExit, 'not found'):
+        with (
+            mock.patch.object(xyf_host, 'SIM', None),
+            mock.patch.object(xyf_host, 'find_port', lambda: None),
+            mock.patch.object(device_lock, 'hold') as hold,
+            contextlib.redirect_stderr(io.StringIO()),
+            self.assertRaisesRegex(SystemExit, 'not found'),
+        ):
             xyf_host.connect(0.05)
         hold.assert_called_once_with(0.05)
 
@@ -181,19 +220,20 @@ class Pruning(unittest.TestCase):
                 (builds / name).mkdir()
                 (builds / name / 'part.o').write_bytes(b'x')
             images = ['%08x' % n for n in range(7)]
-            for n, image in enumerate(images):
+            for image in images:
                 (builds / image).mkdir()
                 (builds / image / 'check.json').write_text('{}')
             old = now - CHECK.RECENT - 60
             for path in builds.rglob('*'):
                 os.utime(path, (old, old))
-            for n, image in enumerate(images):                           # newest last: check.json order
+            for n, image in enumerate(images):  # newest last: check.json order
                 os.utime(builds / image / 'check.json', (old + n, old + n))
-            os.utime(builds / images[1], (now, now))                     # another run is reading it
-            os.utime(builds / 'check-bbbbbbbbbbbb' / 'part.o', (now, now))   # another run is building it
+            os.utime(builds / images[1], (now, now))  # another run is reading it
+            os.utime(builds / 'check-bbbbbbbbbbbb' / 'part.o', (now, now))  # another run is building it
             CHECK.prune_builds(now)
-            self.assertEqual(sorted(p.name for p in builds.iterdir()),
-                             [images[1]] + images[3:] + ['check-bbbbbbbbbbbb'])
+            self.assertEqual(
+                sorted(p.name for p in builds.iterdir()), [images[1]] + images[3:] + ['check-bbbbbbbbbbbb']
+            )
 
 
 if __name__ == '__main__':

@@ -1,0 +1,27 @@
+# The pre-commit hook (lefthook; `mise run setup` installs it): `mise run lint`'s tools on the staged files only, in
+# parallel, about a second. Formatters fix the layout and the fix is staged; a lint finding stops the commit
+# (`mise run lint-fix` applies the safe fixes). Unstaged changes in a staged file are hidden while it runs.
+# By hand: `lefthook run pre-commit` (staged files) or `lefthook run pre-commit --all-files`.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: python
+      glob: "*.py"
+      stage_fixed: true
+      run: >-
+        uv run --no-sync ruff check --force-exclude --fix --quiet {staged_files} &&
+        uv run --no-sync ruff format --force-exclude --quiet {staged_files}
+    - name: typescript
+      glob:
+        - "web/**/*"
+        - "clients/ts/**/*"
+        - "scripts/*.mjs"
+        - "eslint.config.mjs"
+      stage_fixed: true
+      run: >-
+        node_modules/.bin/prettier --write --ignore-unknown --log-level warn {staged_files} &&
+        node_modules/.bin/eslint --max-warnings 0 --no-warn-ignored --no-error-on-unmatched-pattern {staged_files}
+    - name: c++
+      glob: "*.{cpp,hpp,ipp,h}"
+      stage_fixed: true
+      run: uv run --no-sync clang-format -i {staged_files}

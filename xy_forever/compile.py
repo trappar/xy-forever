@@ -1,7 +1,8 @@
 """Run the authenticated Blackfin toolchain (xy_forever/toolchain.py)."""
+
 import hashlib
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 from .toolchain import CXX_FLAGS, authenticate
 
@@ -31,8 +32,10 @@ def compile_core(out, compiler, tools, commands, names=('ldr',), subdirectory='n
     if split_sections:
         flags += ['-ffunction-sections', '-fdata-sections']
     for name in names:
-        invoke([compiler['cxx'], *flags, '-S', SOURCE / subdirectory / (name + '.cpp'),
-                '-o', out / (name + '.s')], commands)
+        invoke(
+            [compiler['cxx'], *flags, '-S', SOURCE / subdirectory / (name + '.cpp'), '-o', out / (name + '.s')],
+            commands,
+        )
         invoke([tools['as'], '-mcpu=bf707', '-o', out / (name + '.o'), out / (name + '.s')], commands)
         (out / (name + '.asm')).write_text(invoke([tools['objdump'], '-dr', out / (name + '.o')], commands))
     return flags

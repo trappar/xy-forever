@@ -22,8 +22,8 @@ void bind_stage2(nb::module_ m) {
     });
     m.def("constant", [](unsigned which) {
         using namespace stage2;
-        const unsigned values[] = {window_begin, window_end, max_image, header_bytes, abi, this_stage1,
-                                   exit_continue, exit_menu, event_key, event_link_lost};
+        const unsigned values[] = {window_begin, window_end,    max_image, header_bytes, abi,
+                                   this_stage1,  exit_continue, exit_menu, event_key,    event_link_lost};
         return which < sizeof(values) / sizeof(values[0]) ? values[which] : 0xdeadbeefu;
     });
     m.def("path", [] { return nb::bytes(stage2::path); });

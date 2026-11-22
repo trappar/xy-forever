@@ -32,7 +32,10 @@ xyf_core::json::Status extract(const xyf_core::json::Document& doc, Workspace& w
         // legacy adapter's edge-space trimming, but never serialize/reparse JSON.
         const char* text = p->u.value;
         while (text[value_length]) ++value_length;
-        while (value_length && *text == ' ') { ++text; --value_length; }
+        while (value_length && *text == ' ') {
+            ++text;
+            --value_length;
+        }
         while (value_length && text[value_length - 1] == ' ') --value_length;
         if (manifest::field(work.manifest, key, text, value_length, fields) != manifest::ok) return ok;
         key_line[key] = uint16_t(fields);
@@ -44,8 +47,8 @@ xyf_core::json::Status extract(const xyf_core::json::Document& doc, Workspace& w
 xyf_core::json::Status parse(const char* raw, uint32_t bytes, Workspace& work) {
     return extract(xyf_core::json::parse(raw, bytes, work.json, xyf_core::json::package_schema), work);
 }
-xyf_core::json::Status view(const char* raw, uint32_t bytes, Workspace& work, manifest::Type expected,
-                           char* text, uint32_t& text_bytes) {
+xyf_core::json::Status view(const char* raw, uint32_t bytes, Workspace& work, manifest::Type expected, char* text,
+                            uint32_t& text_bytes) {
     using namespace xyf_core::json;
     const Document doc = xyf_core::json::parse(raw, bytes, work.json, package_schema);
     const Status status = extract(doc, work);
@@ -59,4 +62,4 @@ bool info(const char* raw, uint32_t bytes, Workspace& work, store::Info& out) {
     return status == xyf_core::json::ok && work.manifest.status == manifest::ok &&
            work.manifest.type == manifest::type_firmware;
 }
-} }
+}}

@@ -1,7 +1,8 @@
 """Compose bounded structural checks before host staging."""
-from collections import Counter
+
 import hashlib
 import zipfile
+from collections import Counter
 
 from .companions import CyacdImage, NordicApplication
 from .ldr import inspect_ldr
@@ -10,10 +11,14 @@ from .packages import inspect_package
 
 def validate_package(path):
     plan = inspect_package(path)
-    report = dict(archive_sha256=plan.archive_sha256, members=len(plan.members),
-                  roles=dict(Counter(m.role for m in plan.members)),
-                  excluded=[m.source for m in plan.members if m.destination is None],
-                  hardware_tested=False, vendor_signature_verified=False)
+    report = dict(
+        archive_sha256=plan.archive_sha256,
+        members=len(plan.members),
+        roles=dict(Counter(m.role for m in plan.members)),
+        excluded=[m.source for m in plan.members if m.destination is None],
+        hardware_tested=False,
+        vendor_signature_verified=False,
+    )
     with zipfile.ZipFile(path) as archive:
         for member in plan.members:
             if member.role not in ('os', 'backplane', 'ble'):
@@ -27,10 +32,8 @@ def validate_package(path):
             elif member.role == 'backplane':
                 image = CyacdImage.parse(data)
                 image.require_opxy_layout()
-                report['backplane'] = dict(sha256=image.sha256, rows=len(image.rows),
-                                          silicon_id=hex(image.silicon_id))
+                report['backplane'] = dict(sha256=image.sha256, rows=len(image.rows), silicon_id=hex(image.silicon_id))
             elif member.role == 'ble':
                 image = NordicApplication.parse(data)
-                report['ble'] = dict(sha256=image.sha256, bytes=len(image.data),
-                                    crc16=image.checksum)
+                report['ble'] = dict(sha256=image.sha256, bytes=len(image.data), crc16=image.checksum)
     return plan, report

@@ -27,12 +27,27 @@ using xyf::usbp::s_ok;
 #define XYF_DATA __attribute__((section(".data")))
 #endif
 enum Step : uint32_t {
-    s_idle = 0, s_serving, s_mount, s_generations, s_store, s_base_list, s_base_native, s_base_info, s_services,
-    s_packages, s_package_list, s_package_native, s_package_info, s_saved, s_done
+    s_idle = 0,
+    s_serving,
+    s_mount,
+    s_generations,
+    s_store,
+    s_base_list,
+    s_base_native,
+    s_base_info,
+    s_services,
+    s_packages,
+    s_package_list,
+    s_package_native,
+    s_package_info,
+    s_saved,
+    s_done
 };
 enum Walk : uint32_t { walk_entry, walk_more, walk_done, walk_missing, walk_failed };
 static const uint32_t max_candidates = 8;
-struct Candidate { char name[32]; };
+struct Candidate {
+    char name[32];
+};
 struct Io {
     uint32_t step, folder, why;                 // why: the status of a failed step
     uint32_t candidate_count, candidate_at, package_at;
@@ -61,18 +76,33 @@ inline __attribute__((always_inline)) uint32_t units() {
     __asm__ volatile("%0 = CYCLES; %1 = CYCLES2;" : "=d"(low), "=d"(high));
     return (low >> 10) | (high << 22);
 }
-const uint32_t slice_units = slice_ms * 390u + slice_ms * 5u / 8u, redraw_units = redraw_ms * 390u + redraw_ms * 5u / 8u;
-const uint32_t progress_units = progress_ms * 390u + progress_ms * 5u / 8u, quiet_units = quiet_ms * 390u + quiet_ms * 5u / 8u;
+const uint32_t slice_units = slice_ms * 390u + slice_ms * 5u / 8u,
+               redraw_units = redraw_ms * 390u + redraw_ms * 5u / 8u;
+const uint32_t progress_units = progress_ms * 390u + progress_ms * 5u / 8u,
+               quiet_units = quiet_ms * 390u + quiet_ms * 5u / 8u;
 // io.path = the parts joined; false when it does not fit (the path is then cut: never used).
 bool path_of(const char* const* parts, uint32_t count) {
     uint32_t n = 0;
     bool fits = true;
     for (uint32_t k = 0; k != count; ++k)
-        for (const char* s = parts[k]; *s; ++s) { if (n + 1 >= sizeof(io.path)) { fits = false; break; } io.path[n++] = *s; }
+        for (const char* s = parts[k]; *s; ++s) {
+            if (n + 1 >= sizeof(io.path)) {
+                fits = false;
+                break;
+            }
+            io.path[n++] = *s;
+        }
     io.path[n] = 0;
     return fits;
 }
-void copy(char* out, const char* s, uint32_t room) { uint32_t n = 0; while (s[n] && n + 1 < room) { out[n] = s[n]; ++n; } out[n] = 0; }
+void copy(char* out, const char* s, uint32_t room) {
+    uint32_t n = 0;
+    while (s[n] && n + 1 < room) {
+        out[n] = s[n];
+        ++n;
+    }
+    out[n] = 0;
+}
 uint32_t failed(const fc::Reply& r) {
     if (r.outcome == fc::link) usb_service::page_mount() = fc::mounted_stale;
     return fc::status(r.outcome);
@@ -81,14 +111,24 @@ uint32_t failed(const fc::Reply& r) {
 Walk walk() {
     if (!io.folder) {
         const fc::Reply r = fc::opendir(io.path);                         // op 0x2e
-        if (r.outcome) { io.why = failed(r); return walk_failed; }
-        if (!r.value || r.value == -1) { io.why = xyf::usbp::s_not_found; return walk_missing; }
+        if (r.outcome) {
+            io.why = failed(r);
+            return walk_failed;
+        }
+        if (!r.value || r.value == -1) {
+            io.why = xyf::usbp::s_not_found;
+            return walk_missing;
+        }
         io.folder = uint32_t(r.value);
         return walk_more;
     }
     uint8_t* const entry = io.entry;
     const fc::Reply r = fc::readdir(io.folder, entry);                    // op 0x2f
-    if (r.outcome) { io.folder = 0; io.why = failed(r); return walk_failed; }   // op 9 closes it at A
+    if (r.outcome) {
+        io.folder = 0;
+        io.why = failed(r);
+        return walk_failed;
+    }   // op 9 closes it at A
     const uint32_t got = fc::readdir_result(r.value);
     if (got == fc::folder_entry) {
         entry[11 + fc::max_name] = 0;
@@ -96,7 +136,10 @@ Walk walk() {
     }
     const fc::Reply c = fc::closedir(io.folder);                          // op 0x30
     io.folder = 0;
-    if (c.outcome) { io.why = failed(c); return walk_failed; }
+    if (c.outcome) {
+        io.why = failed(c);
+        return walk_failed;
+    }
     if (got == fc::folder_end) return walk_done;
     io.why = xyf::usbp::s_storage;
     return walk_failed;
@@ -108,7 +151,10 @@ void each_generation(const char* name) {
         if (m::compare_generation(name, io.candidates[at - 1].name) <= 0) return;
         --at;
     } else ++io.candidate_count;
-    while (at && m::compare_generation(name, io.candidates[at - 1].name) > 0) { io.candidates[at] = io.candidates[at - 1]; --at; }
+    while (at && m::compare_generation(name, io.candidates[at - 1].name) > 0) {
+        io.candidates[at] = io.candidates[at - 1];
+        --at;
+    }
     copy(io.candidates[at].name, name, 32);
 }
 const char* entry_name() { return reinterpret_cast<const char*>(io.entry + 11); }
@@ -125,7 +171,10 @@ bool package_path(uint32_t index, const char* file) {
 bool present(const char* path) {              // one stat; io.why set when A did not answer
     uint8_t record[fc::record_bytes];
     const fc::Reply r = fc::stat(path, record);                           // op 0x22
-    if (r.outcome) { io.why = failed(r); return false; }
+    if (r.outcome) {
+        io.why = failed(r);
+        return false;
+    }
     io.why = s_ok;
     return r.value == 0;
 }
@@ -136,26 +185,32 @@ bool read_text(const char* path, uint32_t& bytes) {   // the whole small file in
 }
 #include "xyf_mods_metadata.ipp"
 void finish(const char* error) {              // the list is final
-    if (io.folder) { fc::closedir(io.folder); io.folder = 0; }
+    if (io.folder) {
+        fc::closedir(io.folder);
+        io.folder = 0;
+    }
     io.step = s_done;
     io.incomplete = error ? 1u : 0u;
     the_page.view = m::View::list;
     if (error) m::say(the_page, m::line_error, error);
     else if (io.newer || io.broken)
-        m::say(the_page, m::line_info, io.newer ? "Some packages need a newer XY Forever." : "Some packages have invalid manifest.json.");
+        m::say(the_page, m::line_info,
+               io.newer ? "Some packages need a newer XY Forever." : "Some packages have invalid manifest.json.");
     else the_page.line = m::line_none;
     io.dirty = 1;
 }
 void lost() {
     finish(io.why == xyf::usbp::s_storage ? "Could not read the mod packages (storage error)." :
-           "Could not read the mod packages: no answer from storage.");
+                                            "Could not read the mod packages: no answer from storage.");
 }
 // The next base candidate, or the end.
 void next_candidate() {
     ++io.candidate_at;
     if (io.candidate_at >= io.candidate_count) {
-        finish(io.newer ? "The mod packages need a newer XY Forever." : io.broken ? "The mod packages have invalid manifest.json." :
-               io.candidate_count ? "No complete mod package set found." : 0);
+        finish(io.newer           ? "The mod packages need a newer XY Forever." :
+               io.broken          ? "The mod packages have invalid manifest.json." :
+               io.candidate_count ? "No complete mod package set found." :
+                                    0);
         return;
     }
     io.step = s_store;
@@ -175,7 +230,8 @@ const char* base_entry() {
                c->items[i].kind == xyf::store::kind_official;
     };
     if (fits(c->default_index)) return c->items[c->default_index].id;
-    for (uint32_t i = 0; i != c->count; ++i) if (fits(i)) return c->items[i].id;
+    for (uint32_t i = 0; i != c->count; ++i)
+        if (fits(i)) return c->items[i].id;
     return 0;
 }
 #include "xyf_mods_save.ipp"              // the saved configuration and the converge sequence
@@ -191,7 +247,10 @@ void open() {
     if (io.folder) return;                       // (never: pump closes it when the page is left)
     restart_config_lookup();
     m::reset(p);
-    io.step = s_serving; io.candidate_count = io.package_at = io.newer = io.broken = 0; io.dirty = 1; io.waiting = 0;
+    io.step = s_serving;
+    io.candidate_count = io.package_at = io.newer = io.broken = 0;
+    io.dirty = 1;
+    io.waiting = 0;
     m::say(p, m::line_info, "Reading mod packages...");
 }
 
@@ -202,7 +261,10 @@ uint32_t toggles() {
     for (uint32_t r = 0; r != p.shown; ++r) h = h * 33u + (p.packages[p.rows[r]].flags & m::flag_on);
     return h;
 }
-void flipped() { pick.flipped = 1; pick.since = units(); }
+void flipped() {
+    pick.flipped = 1;
+    pick.since = units();
+}
 
 m::Effect key(uint32_t k, bool pressed) {
     const uint32_t before = toggles();
@@ -211,7 +273,9 @@ m::Effect key(uint32_t k, bool pressed) {
     return effect;
 }
 
-void prepare() { if (io.step == s_idle && sv.stage == sv_idle) open(); }
+void prepare() {
+    if (io.step == s_idle && sv.stage == sv_idle) open();
+}
 
 const char* memory_flip() {
     const char* why = m::flip_memory(the_page, io.step == s_done);
@@ -223,8 +287,8 @@ bool saving() { return pick.stage == 1; }
 
 uint32_t pump(bool shown) {
     const uint32_t begin = units();
-    shown = shown || sv.stage == sv_reading || sv.stage == sv_listing ||   // the sequence reads the list, page hidden,
-            remote.stage == 1;                                          // as does config.set (#26)
+    shown = shown || sv.stage == sv_reading || sv.stage == sv_listing || // the sequence reads the list, page hidden,
+            remote.stage == 1; // as does config.set (#26)
     uint32_t redraw = converge_follow();
     // #178: once A serves the library and the record is read: check()'s own condition (no stock entry, or no record and
     // no default: PLAY at the first start after Track 5, or after a cut adoption) converges as a plain power-on would,
@@ -233,49 +297,76 @@ uint32_t pump(bool shown) {
         usb_service::page_serving() == s_ok && (rec.state == xg::none || rec.state == xg::present)) {
         sv.looked = 1;
         const xyf::catalog::Catalog* c = xyf_boot::catalog();
-        if (!config_base() || (rec.state == xg::none && c->default_index >= c->count)) { converge_begin(why_adopt); redraw = 1; }
+        if (!config_base() || (rec.state == xg::none && c->default_index >= c->count)) {
+            converge_begin(why_adopt);
+            redraw = 1;
+        }
     }
     // The saved configuration, once the menu runs and again after a failed sequence.
     uint32_t bytes = 0;
-    if ((rec.state == xg::unread || pick.stage == 2) && sv.stage == sv_idle && !reading() && !usb_service::page_busy() &&
-        usb_service::page_serving() == s_ok) {
+    if ((rec.state == xg::unread || pick.stage == 2) && sv.stage == sv_idle && !reading() &&
+        !usb_service::page_busy() && usb_service::page_serving() == s_ok) {
         const uint32_t code = read_record(false, bytes);
-        if (code != s_ok && code != xyf::usbp::s_busy) { rec.state = xg::failed; pick.stage = 0; }
-        else if (code == s_ok && shown && io.step == s_done && !redraw) redraw = 1;   // the saved marks moved (the page: "saved")
+        if (code != s_ok && code != xyf::usbp::s_busy) {
+            rec.state = xg::failed;
+            pick.stage = 0;
+        } else if (code == s_ok && shown && io.step == s_done && !redraw)
+            redraw = 1; // the saved marks moved (the page: "saved")
     }
-    if (sv.stage == sv_idle) pick_step(false);   // a flip saved once quiet (the reading below may wait for it)
+    if (sv.stage == sv_idle) pick_step(false); // a flip saved once quiet (the reading below may wait for it)
     // While another job owns the slot or its window closes, the reading sends nothing (a request
     // then met a stale folder handle or waited out A's bound). A's handles end with that window: the folder
     // is forgotten, not closed, and the reading starts again from the top once the job is over.
     const bool busy = reading() && usb_service::page_busy();
-    if (busy) { io.folder = io.metadata_scan.folder = 0; restart_config_lookup(); }
-    if (!shown && reading()) {                   // left mid-way: close the folder, read again next time
-        if (io.folder) { fc::closedir(io.folder); io.folder = 0; }
+    if (busy) {
+        io.folder = io.metadata_scan.folder = 0;
+        restart_config_lookup();
+    }
+    if (!shown && reading()) { // left mid-way: close the folder, read again next time
+        if (io.folder) {
+            fc::closedir(io.folder);
+            io.folder = 0;
+        }
         fc::close_name_scan(io.metadata_scan, usb_service::page_mount());
         restart_config_lookup();
         io.step = s_idle;
     }
     if (shown && busy && !io.waiting) {
         m::reset(the_page);
-        io.step = s_serving; io.candidate_count = io.package_at = io.newer = io.broken = 0;
-        io.waiting = 1; io.dirty = 1;
+        io.step = s_serving;
+        io.candidate_count = io.package_at = io.newer = io.broken = 0;
+        io.waiting = 1;
+        io.dirty = 1;
         m::say(the_page, m::line_info, "Busy: a build or content change is running.");
     } else if (shown && reading() && io.waiting && !busy) {
-        io.waiting = 0; io.dirty = 1;
+        io.waiting = 0;
+        io.dirty = 1;
         m::say(the_page, m::line_info, "Reading mod packages...");
     }
     uint32_t end = begin;
     if (shown && busy) {
         end = units();
-        if (io.dirty) { io.dirty = 0; redraw = 1; }
+        if (io.dirty) {
+            io.dirty = 0;
+            redraw = 1;
+        }
     } else if (shown && reading()) {
-        do { step(); end = units(); }
-        while (reading() && end - begin < slice_units);
-        if (io.dirty && (!reading() || end - io.drawn >= redraw_units)) { io.dirty = 0; redraw = 1; }
+        do {
+            step();
+            end = units();
+        } while (reading() && end - begin < slice_units);
+        if (io.dirty && (!reading() || end - io.drawn >= redraw_units)) {
+            io.dirty = 0;
+            redraw = 1;
+        }
     } else end = units();
     const uint32_t pass = xyf::clock::ms_from_units(end - begin);
     if (pass > io.longest) io.longest = pass;
-    if (redraw) { io.drawn = end; io.drawn_bar = run.bar; io.drawn_done = run.job_done; }
+    if (redraw) {
+        io.drawn = end;
+        io.drawn_bar = run.bar;
+        io.drawn_done = run.job_done;
+    }
     return redraw;
 }
 
@@ -292,11 +383,12 @@ bool menu_state(xyf::menu::State& a) {
     want[0] = 0;
     if (have && base) xg::built_text(want, sizeof(want), base, rec.generation, rec_set, rec.count, rec.expanded != 0);
     const uint32_t def = c ? c->default_index : ~0u, slot = have ? index_of(rec.slot) : ~0u;
-    const xc::Inputs in = {base ? base : "", want, have ? rec.count : 0u, have ? rec.expanded : 0u, have ? rec.safe : 0u};
+    const xc::Inputs in = {base ? base : "", want, have ? rec.count : 0u, have ? rec.expanded : 0u,
+                           have ? rec.safe : 0u};
     const xc::Actual act = {&rec, slot != ~0u ? rec.stamp : "", c && def < c->count ? c->items[def].id : "",
                             installed(index_of(in.base)), installed(slot)};
     const uint32_t ops = have || rec.state == xg::none ? xc::plan(in, act).ops : 0u;
-    const bool unsaved = pick.flipped || pick.stage;   // a flip not written yet: PLAY writes it, then converges
+    const bool unsaved = pick.flipped || pick.stage; // a flip not written yet: PLAY writes it, then converges
     a.pending = unsaved || ops || io.config_error;
     a.continue_note = io.config_error ? io.config_error : listed ? m::save_refusal(p) : 0;
     char next[sizeof(label)];
@@ -307,9 +399,12 @@ bool menu_state(xyf::menu::State& a) {
         const uint32_t b = index_of(in.base);
         xg::Out o = {next, next + sizeof(next) - 1, true};
         if (have && rec.safe) {
-            xg::put(o, c && b < c->count ? c->items[b].name : "OP-XY"); xg::put(o, " (safe mode)");
+            xg::put(o, c && b < c->count ? c->items[b].name : "OP-XY");
+            xg::put(o, " (safe mode)");
         } else if (n) {
-            xg::put(o, "Open-XY - "); xg::put_number(o, n); xg::put(o, n == 1 ? " mod - " : " mods - ");
+            xg::put(o, "Open-XY - ");
+            xg::put_number(o, n);
+            xg::put(o, n == 1 ? " mod - " : " mods - ");
             xg::put(o, c && b < c->count ? c->items[b].version : "?");
         } else xg::put(o, c && b < c->count ? c->items[b].name : "OP-XY");
         if (ops & xc::op_build) xg::put(o, " (rebuild)");
@@ -317,44 +412,67 @@ bool menu_state(xyf::menu::State& a) {
         *o.at = 0;
     }
     a.continue_label = next[0] ? label : 0;
-    const uint32_t memory = m::memory_row(p, io.step == s_done);   // the Settings row
-    const bool memory_pending = p.expanded != p.expanded_saved, row_moved = memory != a.memory || memory_pending != a.memory_pending;
-    a.memory = memory; a.memory_pending = memory_pending;
+    const uint32_t memory = m::memory_row(p, io.step == s_done); // the Settings row
+    const bool memory_pending = p.expanded != p.expanded_saved,
+               row_moved = memory != a.memory || memory_pending != a.memory_pending;
+    a.memory = memory;
+    a.memory_pending = memory_pending;
     bool same_text = true;
-    for (uint32_t i = 0; i != sizeof(label) && same_text; ++i) { same_text = label[i] == next[i]; if (!next[i]) break; }
-    if (!same_text) for (uint32_t i = 0; i != sizeof(label); ++i) label[i] = next[i];
+    for (uint32_t i = 0; i != sizeof(label) && same_text; ++i) {
+        same_text = label[i] == next[i];
+        if (!next[i]) break;
+    }
+    if (!same_text)
+        for (uint32_t i = 0; i != sizeof(label); ++i) label[i] = next[i];
     // The safe-mode row while the saved setup has mods: "Boot without mods", or in safe mode the way back.
     char row[sizeof(safe_text)];
     row[0] = 0;
     if (have && rec.count && rec.slot[0]) {
         xg::Out o = {row, row + sizeof(row) - 1, true};
-        if (rec.safe) { xg::put(o, "Restore Open-XY ("); xg::put_number(o, rec.count); xg::put(o, rec.count == 1 ? " mod)" : " mods)"); }
-        else xg::put(o, "Boot without mods");
+        if (rec.safe) {
+            xg::put(o, "Restore Open-XY (");
+            xg::put_number(o, rec.count);
+            xg::put(o, rec.count == 1 ? " mod)" : " mods)");
+        } else xg::put(o, "Boot without mods");
         *o.at = 0;
     }
     a.safe_label = row[0] ? safe_text : 0;
     a.safe_restore = have && rec.safe;
     bool same_row = true;
-    for (uint32_t i = 0; i != sizeof(safe_text) && same_row; ++i) { same_row = safe_text[i] == row[i]; if (!row[i]) break; }
-    if (!same_row) for (uint32_t i = 0; i != sizeof(safe_text); ++i) safe_text[i] = row[i];
+    for (uint32_t i = 0; i != sizeof(safe_text) && same_row; ++i) {
+        same_row = safe_text[i] == row[i];
+        if (!row[i]) break;
+    }
+    if (!same_row)
+        for (uint32_t i = 0; i != sizeof(safe_text); ++i) safe_text[i] = row[i];
     return !same_text || !same_row || row_moved;
 }
 
-void converge_begin(uint32_t why) {               // never the page: the list, its toggles and views stay as they are
+void converge_begin(uint32_t why) { // never the page: the list, its toggles and views stay as they are
     if (sv.stage != sv_idle) return;
-    sv.why = why; sv.ops = sv.length = sv.adopted = 0; sv.looked = 1;
+    sv.why = why;
+    sv.ops = sv.length = sv.adopted = 0;
+    sv.looked = 1;
     ++sv.serial;
     sv.reason[0] = 0;
-    sv.stage = sv_check;                         // a flip not written yet is written first (converge_follow)
-    m::Progress& r = run;                        // the progress screen from its first frame
-    r.job = 0x10000u + sv.serial; r.job_phase = r.job_done = r.job_total = r.job_commit = 0;
-    r.bar = r.bar_step = r.bar_since = 0; r.save = m::save_on; r.save_stage = 0; r.cancel = 0;
-    r.title = why == why_safe ? "Booting without mods" : why == why_restore ? "Restoring Open-XY" :
-              why == why_power_on ? "Checking the saved setup" : why == why_adopt ? "Adding OS 1.2.1" : "Applying changes";
-    r.job_name[0] = 0; r.note[0] = 0;
+    sv.stage = sv_check; // a flip not written yet is written first (converge_follow)
+    m::Progress& r = run; // the progress screen from its first frame
+    r.job = 0x10000u + sv.serial;
+    r.job_phase = r.job_done = r.job_total = r.job_commit = 0;
+    r.bar = r.bar_step = r.bar_since = 0;
+    r.save = m::save_on;
+    r.save_stage = 0;
+    r.cancel = 0;
+    r.title = why == why_safe     ? "Booting without mods" :
+              why == why_restore  ? "Restoring Open-XY" :
+              why == why_power_on ? "Checking the saved setup" :
+              why == why_adopt    ? "Adding OS 1.2.1" :
+                                    "Applying changes";
+    r.job_name[0] = 0;
+    r.note[0] = 0;
     io.job_units = units();
-    usb_service::save_log_begin();              // the save-time log starts at the key
-    if (io.step == s_done && !io.incomplete) the_page.line = m::line_none;   // a held list: the last result line goes
+    usb_service::save_log_begin(); // the save-time log starts at the key
+    if (io.step == s_done && !io.incomplete) the_page.line = m::line_none; // a held list: the last result line goes
 }
 
 bool converging() { return sv.stage != sv_idle && sv.stage != sv_failed; }
@@ -364,22 +482,28 @@ const m::Progress& progress() { return run; }
 m::Effect progress_key(uint32_t k, bool pressed) { return m::progress_key(run, k, pressed); }
 
 uint32_t converge_state() {
-    if (sv.stage == sv_boot && sv.why == why_adopt) return converge_note;   // #178: added; the menu stays
-    return sv.stage == sv_idle ? uint32_t(converge_idle) : sv.stage == sv_boot ? uint32_t(converge_boot) :
-           sv.stage == sv_failed ? uint32_t(converge_failed) : uint32_t(converge_running);
+    if (sv.stage == sv_boot && sv.why == why_adopt) return converge_note; // #178: added; the menu stays
+    return sv.stage == sv_idle   ? uint32_t(converge_idle) :
+           sv.stage == sv_boot   ? uint32_t(converge_boot) :
+           sv.stage == sv_failed ? uint32_t(converge_failed) :
+                                   uint32_t(converge_running);
 }
 
-const char* converge_reason() {                  // at sv_boot only why_adopt's line (converge_note): what it did
+const char* converge_reason() { // at sv_boot only why_adopt's line (converge_note): what it did
     if (sv.stage != sv_boot) return sv.reason;
-    return sv.adopted == 2 ? "OS 1.2.1 is in the library and is the default." : sv.adopted == 1 ? "OS 1.2.1 is the default." : "";
+    return sv.adopted == 2 ? "OS 1.2.1 is in the library and is the default." :
+           sv.adopted == 1 ? "OS 1.2.1 is the default." :
+                             "";
 }
 
-void converge_done() { if (sv.stage == sv_boot || sv.stage == sv_failed) sv.stage = sv_idle; }
+void converge_done() {
+    if (sv.stage == sv_boot || sv.stage == sv_failed) sv.stage = sv_idle;
+}
 
 uint32_t config_view(ConfigView& v) { return remote_view(v); }
 
 uint32_t config_set(uint32_t flags, const char* mods, uint32_t crc, const char*& reason) {
     return remote_set(flags, mods, crc, reason);
 }
-} }
+}}
 #endif

@@ -15,10 +15,13 @@
 // redrawn alone when only they changed; the build is not shown here.
 namespace xyf { namespace mods {
 static const uint32_t visible_rows = 9;
-struct Frame { uint32_t drawn, job, bar_px, step, percent, done, total, footer, usb; const char* activity; };
+struct Frame {
+    uint32_t drawn, job, bar_px, step, percent, done, total, footer, usb;
+    const char* activity;
+};
 void draw(uint16_t* fb, const Page& page, const ui::Chrome* chrome, Frame& frame);
 void draw_progress(uint16_t* fb, const Progress& progress, const ui::Chrome* chrome, Frame& frame);
 // First visible row (of the listed rows) keeping the selection on screen.
 uint32_t first_row(uint32_t rows, uint32_t at);
-} }
+}}
 #endif

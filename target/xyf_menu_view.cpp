@@ -19,7 +19,8 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
     case Screen::main: {
         ui::Menu m;                                   // field by field: no memset in the cold build
         for (uint32_t i = 0; i != ui::max_items; ++i) m.items[i] = i < main_items ? main_label(s, i) : "";
-        m.count = main_items; m.selected = s.main_selected;
+        m.count = main_items;
+        m.selected = s.main_selected;
         // 193: rows that need storage dimmed while it starts (not in its first 400 ms: no flicker on a normal
         // boot) or is unavailable; a refused row's line in place of the status; the way out when unavailable.
         // The safe-mode row dimmed too while no setup with mods is saved.
@@ -28,16 +29,19 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
             if (s.storage != storage_waiting && needs_storage(s, i)) m.dimmed |= 1u << i;
         const char* note = main_note(s);
         m.status = note ? note : status;
-        m.hint = s.storage == storage_unavailable ? hint_unavailable : hint_main; m.chrome = chrome;
+        m.hint = s.storage == storage_unavailable ? hint_unavailable : hint_main;
+        m.chrome = chrome;
         ui::draw_menu(fb, m);
         return;
     }
     case Screen::settings: {                             // the compact title bar
         uint32_t count = settings::rows;
 #if defined(XYF_SETTING_OPTIONS)
-        static ui::ListRow rows[settings::rows + 1] XYF_DATA = {       // xyf_settings.hpp Row, labels (+ row_packs)
-            {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false},
-            {"Ask before USB control", 0, false}, {"About", 0, false}, {"Content packs", 0, false}};
+        static ui::ListRow rows[settings::rows + 1] XYF_DATA = {
+            // xyf_settings.hpp Row, labels (+ row_packs)
+            {"Mod memory", 0, false}, {"Menu at power-on", 0, false},
+            {"USB mode", 0, false},   {"Ask before USB control", 0, false},
+            {"About", 0, false},      {"Content packs", 0, false}};
         if (s.pack_names) ++count;
         rows[settings::row_memory].detail = settings::memory_text(s.memory, false);   // pending: marked
         rows[settings::row_power_on].detail = s.power_on_text;     // #21: 0 (blank) without settings.txt
@@ -49,12 +53,15 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         const char* hint = marked ? "Saving...   STOP  back" : "PLAY  change   STOP  back";
 #else
         static ui::ListRow rows[settings::rows] XYF_DATA = {       // xyf_settings.hpp Row, labels
-            {"Mod memory", 0, false}, {"Menu at power-on", 0, false}, {"USB mode", 0, false}, {"About", 0, false}};
+                                                            {"Mod memory", 0, false},
+                                                            {"Menu at power-on", 0, false},
+                                                            {"USB mode", 0, false},
+                                                            {"About", 0, false}};
         rows[settings::row_memory].detail = settings::memory_text(s.memory, s.memory_pending);
         const char* const hint = "PLAY  change   STOP  back";
 #endif
         const ui::List list = {"Settings", rows, count, s.settings_selected, s.settings_note ? s.settings_note : hint,
-                               chrome, true};
+                               chrome,     true};
         ui::draw_list(fb, list);
         return;
     }
@@ -75,9 +82,13 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         }
         static ui::ListRow rows[packs_per_page] XYF_DATA = {};
         for (uint32_t i = 0; i != s.pack_count; ++i) rows[i].title = s.pack_names[i];
-        const char* hint = s.pack_busy ? "Working..." : s.pack_result ? s.pack_result : s.pack_note ? s.pack_note :
-                           s.pack_inbox ? "PLAY install  SHIFT+PLAY installed  STOP back" : "PLAY remove  SHIFT+PLAY inbox  STOP back";
-        const ui::List list = {s.pack_inbox ? "Inbox packs" : "Content packs", rows, s.pack_count, s.pack_selected, hint, chrome, false};
+        const char* hint = s.pack_busy   ? "Working..." :
+                           s.pack_result ? s.pack_result :
+                           s.pack_note   ? s.pack_note :
+                           s.pack_inbox  ? "PLAY install  SHIFT+PLAY installed  STOP back" :
+                                           "PLAY remove  SHIFT+PLAY inbox  STOP back";
+        const ui::List list = {
+            s.pack_inbox ? "Inbox packs" : "Content packs", rows, s.pack_count, s.pack_selected, hint, chrome, false};
         ui::draw_list(fb, list);
 #endif
         return;
@@ -90,8 +101,13 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
             rows[i].detail = i == s.option_current ? "current" : 0;
             rows[i].marked = false;
         }
-        const ui::List list = {settings::label(s.settings_selected), rows, s.option_count, s.option_selected,
-                               "- / +  choose   PLAY  pick   STOP  back", chrome, true};
+        const ui::List list = {settings::label(s.settings_selected),
+                               rows,
+                               s.option_count,
+                               s.option_selected,
+                               "- / +  choose   PLAY  pick   STOP  back",
+                               chrome,
+                               true};
         ui::draw_list(fb, list);
 #endif
         return;
@@ -101,15 +117,16 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         // The release version as the home page shows it (v0.1.0) and the running image (hello image=).
         const char* version = chrome && chrome->version ? chrome->version : "";
         const char* image = chrome && chrome->image ? chrome->image : "";
-        const ui::Message info = {"About", {"XY Forever", version, image, "Real bootloader: 1.2.1 (never updated)",
-                                           "Hold PLAY at power-on to open this menu.", "", "", ""},
-                                  5, "PLAY / STOP  back", chrome};
+        const ui::Message info = {"About",
+                                  {"XY Forever", version, image, "Real bootloader: 1.2.1 (never updated)",
+                                   "Hold PLAY at power-on to open this menu.", "", "", ""},
+                                  5,
+                                  "PLAY / STOP  back",
+                                  chrome};
         ui::draw_message(fb, info);
         return;
     }
-    case Screen::home_empty:
-        ui::draw_home_empty(fb, chrome);
-        return;
+    case Screen::home_empty: ui::draw_home_empty(fb, chrome); return;
     }
 }
-} }
+}}

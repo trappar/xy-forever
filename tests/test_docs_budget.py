@@ -3,6 +3,7 @@
 Budgets are bytes, not lines: a line budget is met by writing longer lines.
 Over budget: split into a tree (an index plus leaves), do not squeeze.
 """
+
 import os
 import re
 import unittest
@@ -12,8 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DOCS = ROOT / 'docs'
 
-LEAF = 8000                         # a current-reference leaf, and any other doc without a budget below (bytes)
-INDEX = 4000                        # the index of a tree (bytes)
+LEAF = 8000  # a current-reference leaf, and any other doc without a budget below (bytes)
+INDEX = 4000  # the index of a tree (bytes)
 
 # Read by every agent, or by the orchestrator every sitting (bytes).
 FIRST_READS = {
@@ -43,8 +44,8 @@ CAPS = {
     'docs/HARDWARE.md': 20200,
     'docs/SAFETY.md': 11600,
     'docs/STORAGE.md': 25000,
-    'docs/PROTOCOL.md': 56000,      # generated from protocol/v1.json (scripts/protogen.py)
-    'docs/GUIDE.md': 11800,         # for OP-XY owners and mod writers, not agents (#65: Ask before USB control)
+    'docs/PROTOCOL.md': 56000,  # generated from protocol/v1.json (scripts/protogen.py)
+    'docs/GUIDE.md': 11800,  # for OP-XY owners and mod writers, not agents (#65: Ask before USB control)
     'docs/MODS-DEV.md': 5500,
 }
 

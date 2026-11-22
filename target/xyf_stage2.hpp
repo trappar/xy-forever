@@ -50,8 +50,20 @@ struct Header {
     uint32_t header_crc32;                                  // over the first 92 bytes
 };
 static_assert(sizeof(Header) == header_bytes, "Header layout");
-enum class Check : uint32_t { ok, size, magic, abi, header_crc, flags, window, entry, image_crc, stage1, build_id,
-                              image_sha };
+enum class Check : uint32_t {
+    ok,
+    size,
+    magic,
+    abi,
+    header_crc,
+    flags,
+    window,
+    entry,
+    image_crc,
+    stage1,
+    build_id,
+    image_sha
+};
 // Validates a whole file (header + image) for this stage-1 version. SHA-256
 // is checked separately by the caller (agreement with processor b).
 Check validate(const uint8_t* file, uint32_t length, uint32_t stage1_version, Header& out);
@@ -117,7 +129,10 @@ enum Request : uint32_t {
     request_uninstall = 5       // not available yet
 };
 enum Feature : uint32_t {       // what this stage 1 can do (Abi2::features)
-    feature_catalog = 1u, feature_set_default = 2u, feature_mtp = 4u, feature_uninstall = 8u
+    feature_catalog = 1u,
+    feature_set_default = 2u,
+    feature_mtp = 4u,
+    feature_uninstall = 8u
 };
 struct Abi2 {
     Abi v1;                                 // v1.abi = 2, v1.bytes = sizeof(Abi2)
@@ -129,8 +144,16 @@ struct Abi2 {
 static_assert(sizeof(void*) != 4 || sizeof(Abi2) == 48, "ABI 2 layout (32-bit target)");
 static const uint32_t max_rounds = 32;      // stage-1 calls per boot (each one is a user request)
 // Stage 1's reading of a request (host-tested). entry: the checked argument.
-enum class Do : uint32_t { boot_default, boot_entry, menu, boot_builtin, set_default, mtp, note_unavailable,
-                           note_no_entry };
+enum class Do : uint32_t {
+    boot_default,
+    boot_entry,
+    menu,
+    boot_builtin,
+    set_default,
+    mtp,
+    note_unavailable,
+    note_no_entry
+};
 Do decide(uint32_t exit, bool link_lost, uint32_t catalog_count, uint32_t features, uint32_t& entry);
 
 // ---- ABI 3: stage 2 in the product's USB service (XYF_STAGE2_SERVICE) ----------
@@ -168,5 +191,5 @@ struct Call {
     uint32_t type, seq, length;                     // op_command: the request
     const uint8_t* payload;
 };
-} }
+}}
 #endif

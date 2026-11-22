@@ -1,16 +1,45 @@
 import { describe, expect, it } from 'vitest';
 import type { HeldPackage } from 'xy-forever-client';
-import { changeRefusal, configText, contentText, folderWritable, groupMods, joinPath, nameProblem, parentOf, parseConfig, parseKeyValues } from '../src/model.ts';
+import {
+  changeRefusal,
+  configText,
+  contentText,
+  folderWritable,
+  groupMods,
+  joinPath,
+  nameProblem,
+  parentOf,
+  parseConfig,
+  parseKeyValues,
+} from '../src/model.ts';
 
-const pkg = (name: string, info: Record<string, string>, complete = true): HeldPackage => ({ name, info, files: 3, bytes: 4096, complete });
+const pkg = (name: string, info: Record<string, string>, complete = true): HeldPackage => ({
+  name,
+  info,
+  files: 3,
+  bytes: 4096,
+  complete,
+});
 
 describe('config parsing', () => {
   it('reads key=value lines with CRLF, comments and duplicates', () => {
-    expect(parseKeyValues('# note\r\nbase = fw1\r\nmods=a\nmods=b,c\njunk\n=x\n')).toEqual({ base: 'fw1', mods: 'b,c' });
+    expect(parseKeyValues('# note\r\nbase = fw1\r\nmods=a\nmods=b,c\njunk\n=x\n')).toEqual({
+      base: 'fw1',
+      mods: 'b,c',
+    });
   });
   it('parses the saved configuration', () => {
-    const c = parseConfig('base=stock-1\nprofile=opxy\ngeneration=1.1.0\nunverified=1\nslot=lib3\nmods=drift, , tape\n');
-    expect(c).toMatchObject({ base: 'stock-1', profile: 'opxy', generation: '1.1.0', unverified: true, slot: 'lib3', mods: ['drift', 'tape'] });
+    const c = parseConfig(
+      'base=stock-1\nprofile=opxy\ngeneration=1.1.0\nunverified=1\nslot=lib3\nmods=drift, , tape\n',
+    );
+    expect(c).toMatchObject({
+      base: 'stock-1',
+      profile: 'opxy',
+      generation: '1.1.0',
+      unverified: true,
+      slot: 'lib3',
+      mods: ['drift', 'tape'],
+    });
     expect(configText(c)).toBe('2 mods on (drift, tape), built into library entry lib3.');
   });
   it('treats empty values as missing', () => {
@@ -39,7 +68,10 @@ describe('grouping', () => {
   it('groups by kind in menu order, then by name, without the base', () => {
     const groups = groupMods(held, parseConfig('mods=zeta,seq'));
     expect(groups.map((g) => g.label)).toEqual(['Synths', 'Effects', 'Extensions', 'Other']);
-    expect(groups[0]!.rows.map((r) => [r.name, r.on, r.complete])).toEqual([['Alpha', false, false], ['Zeta', true, true]]);
+    expect(groups[0]!.rows.map((r) => [r.name, r.on, r.complete])).toEqual([
+      ['Alpha', false, false],
+      ['Zeta', true, true],
+    ]);
     expect(groups[2]!.rows[0]).toMatchObject({ id: 'seq', folder: 'ext-seq', extension: true, on: true });
   });
   it('leaves on/off unknown when the configuration could not be read', () => {
@@ -59,7 +91,7 @@ describe('path rules', () => {
     expect(changeRefusal('/yaffs2/BootLoader.dev')).toMatch(/never changed by hand/);
     expect(changeRefusal('/yaffs2/upgrade/x.tfw')).toMatch(/never changed by hand/);
     expect(changeRefusal('/yaffs2/UPGRADE')).toMatch(/never changed by hand/);
-    expect(changeRefusal('/yaffs2/xy-forever/wt/a/b/c/d/x.txt')).toBeNull();                    // #124: 6 folders
+    expect(changeRefusal('/yaffs2/xy-forever/wt/a/b/c/d/x.txt')).toBeNull(); // #124: 6 folders
     expect(changeRefusal('/yaffs2/xy-forever/wt/a/b/c/d/e/x.txt')).toMatch(/more than 6 folders/);
     expect(changeRefusal('/yaffs2/xy-forever/wt/a/b/c/d', true)).toBeNull();
     expect(changeRefusal('/yaffs2/xy-forever/wt/a/b/c/d/e', true)).toMatch(/more than 6 folders/);

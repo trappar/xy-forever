@@ -1,16 +1,17 @@
 """The host compares live file bytes and free space using only read requests."""
+
 import contextlib
 import hashlib
 import io
 import json
-from pathlib import Path
 import struct
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from xy_forever import xyf_host
-from xy_forever import host_inventory, usb_proto as P
+from xy_forever import host_inventory, xyf_host
+from xy_forever import usb_proto as P
 
 
 class ReadOnlyDevice:
@@ -22,18 +23,18 @@ class ReadOnlyDevice:
 
     def list_dir(self, remote):
         assert remote.startswith('/yaffs2/content')
-        folder = remote[len('/yaffs2/content'):].strip('/')
+        folder = remote[len('/yaffs2/content') :].strip('/')
         prefix = folder + '/' if folder else ''
         entries = set()
         for path, data in self.contents.items():
             if path.startswith(prefix):
-                name, slash, _ = path[len(prefix):].partition('/')
+                name, slash, _ = path[len(prefix) :].partition('/')
                 entries.add((1 if slash else 0, 0 if slash else len(data), name.encode()))
         return 0, sorted(entries)
 
     def read_file(self, remote, offset):
-        data = self.contents[remote[len('/yaffs2/content/'):]]
-        return 0, data[offset:offset + P.ids.MAX_READ]
+        data = self.contents[remote[len('/yaffs2/content/') :]]
+        return 0, data[offset : offset + P.ids.MAX_READ]
 
 
 class HostInventoryTest(unittest.TestCase):
@@ -43,25 +44,34 @@ class HostInventoryTest(unittest.TestCase):
             for ver, files in [('v1', dev.contents), ('v2', dev.contents), ('v3', {'presets/a': b'b', 'b': b'x'})]:
                 out = Path(folder, 'content-manifests', ver)
                 out.mkdir(parents=True)
-                (out / 'content.sha256').write_text(''.join(
-                    '%s  %s\n' % (hashlib.sha256(data).hexdigest(), rel) for rel, data in sorted(files.items())))
-            with patch.object(xyf_host, 'connect', return_value=(dev, 'fake', 'XYF1;proto=1.21')), \
-                    contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
+                (out / 'content.sha256').write_text(
+                    ''.join('%s  %s\n' % (hashlib.sha256(data).hexdigest(), rel) for rel, data in sorted(files.items()))
+                )
+            with (
+                patch.object(xyf_host, 'connect', return_value=(dev, 'fake', 'XYF1;proto=1.21')),
+                contextlib.redirect_stdout(io.StringIO()) as out,
+                contextlib.redirect_stderr(io.StringIO()),
+            ):
                 self.assertEqual(xyf_host.main(['content', 'status']), 0)
             report = json.loads(out.getvalue().split('\n', 1)[1])
         self.assertEqual(report['exact_matches'], ['v1', 'v2'])
         self.assertEqual(report['catalog_sha256'], hashlib.sha256(b'catalog').hexdigest())
         self.assertEqual(report['catalog_matches'], ['v1', 'v2'])
         self.assertEqual(report['free_bytes'], 2**33)
-        self.assertEqual(report['differences']['v3'], dict(changed=['presets/a'], extra_files=['empty', 'op1_factory.json'],
-                                                           missing=['b']))
+        self.assertEqual(
+            report['differences']['v3'],
+            dict(changed=['presets/a'], extra_files=['empty', 'op1_factory.json'], missing=['b']),
+        )
         self.assertEqual(report['matches_no_official_file'], [])
 
     def test_unknown_catalog_and_leftovers_include_special_entries(self):
         dev = ReadOnlyDevice()
         listing = dev.list_dir
-        with patch.object(dev, 'list_dir', side_effect=lambda p: (0, listing(p)[1] + [(2, 0, b'link')])
-                          if p == '/yaffs2/content' else listing(p)):
+        with patch.object(
+            dev,
+            'list_dir',
+            side_effect=lambda p: (0, listing(p)[1] + [(2, 0, b'link')]) if p == '/yaffs2/content' else listing(p),
+        ):
             files, special = host_inventory.read_inventory(dev)
         report = host_inventory.compare_sets(files, special, {'v1': {'op1_factory.json': ('other hash', 7)}})
         self.assertEqual(report['matches_no_official_file'], ['empty', 'op1_factory.json', 'presets/a'])
@@ -84,6 +94,8 @@ class HostInventoryTest(unittest.TestCase):
             host_inventory.read_inventory(dev)
 
     def test_newer_space_reply_is_refused(self):
-        with patch.object(ReadOnlyDevice, 'call', return_value=(0, struct.pack('<IQ', 2, 10))), \
-                self.assertRaisesRegex(ValueError, 'unsupported storage.space reply version 2'):
+        with (
+            patch.object(ReadOnlyDevice, 'call', return_value=(0, struct.pack('<IQ', 2, 10))),
+            self.assertRaisesRegex(ValueError, 'unsupported storage.space reply version 2'),
+        ):
             host_inventory.free_bytes(ReadOnlyDevice())

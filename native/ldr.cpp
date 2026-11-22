@@ -1,25 +1,23 @@
 #include "ldr.hpp"
 namespace xyf_core {
 namespace {
-struct Record { U32 offset, flags, target, count, argument; };
-U32 word(const Byte* p) {
-    return U32(p[0]) | U32(p[1]) << 8 | U32(p[2]) << 16 | U32(p[3]) << 24;
-}
+struct Record {
+    U32 offset, flags, target, count, argument;
+};
+U32 word(const Byte* p) { return U32(p[0]) | U32(p[1]) << 8 | U32(p[2]) << 16 | U32(p[3]) << 24; }
 Error read(const Byte* data, U32 size, U32 offset, Record& r) {
     if (offset > size || size - offset < 16) return Error::truncated;
     Byte sum = 0;
     for (U32 i = 0; i < 16; ++i) sum ^= data[offset + i];
     const U32 code = word(data + offset);
     if (sum || code >> 24 != 0xad) return Error::header;
-    r = {offset, code & 65535, word(data + offset + 4),
-         word(data + offset + 8), word(data + offset + 12)};
+    r = {offset, code & 65535, word(data + offset + 4), word(data + offset + 8), word(data + offset + 12)};
     if (r.count > 0xffffffffu - r.target) return Error::overflow;
     const U32 stored = r.flags == 0x104 ? 0 : r.count;
     if (stored > size - offset - 16) return Error::truncated;
     return Error::ok;
 }
-template<bool cooperative>
-Error memory(const Record& r, const Policy& p, Work* work) {
+template<bool cooperative> Error memory(const Record& r, const Policy& p, Work* work) {
     if (!r.count) return Error::ok;
     bool allowed = false;
     for (U32 i = 0; i < p.allowed_count; ++i) {
@@ -67,8 +65,7 @@ Error inspect_image(const Byte* data, U32 size, const Policy& p, Summary& result
                 e = read(data, size, scan, previous);
                 if (e != Error::ok) return e;
                 for (U32 byte = 0; byte < 2; ++byte)
-                    if (previous.target <= r.target + byte &&
-                        r.target + byte - previous.target < previous.count)
+                    if (previous.target <= r.target + byte && r.target + byte - previous.target < previous.count)
                         covered[byte] = previous.flags == 4;
                 scan += 16 + (previous.flags == 0x104 ? 0 : previous.count);
             }
@@ -94,8 +91,7 @@ Error inspect(const Byte* data, U32 size, const Policy& p, Summary& result) {
 Error inspect(const Byte* data, U32 size, const Policy& p, Summary& result, Work* work) {
     return work ? inspect_image<true>(data, size, p, result, work) : inspect(data, size, p, result);
 }
-Error expand(const Byte* data, U32 size, U32 offset, U32 delta,
-             Byte* output, U32 capacity, U32& produced) {
+Error expand(const Byte* data, U32 size, U32 offset, U32 delta, Byte* output, U32 capacity, U32& produced) {
     produced = 0;
     if (!data || !output || !capacity) return Error::capacity;
     Record r;
@@ -105,8 +101,7 @@ Error expand(const Byte* data, U32 size, U32 offset, U32 delta,
     if (delta > r.count) return Error::range;
     const U32 amount = capacity < r.count - delta ? capacity : r.count - delta;
     for (U32 i = 0; i < amount; ++i)
-        output[i] = r.flags == 0x104 ? Byte(r.argument >> (((delta + i) & 3) * 8)) :
-                    data[offset + 16 + delta + i];
+        output[i] = r.flags == 0x104 ? Byte(r.argument >> (((delta + i) & 3) * 8)) : data[offset + 16 + delta + i];
     produced = amount;
     return Error::ok;
 }

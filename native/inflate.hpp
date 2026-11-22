@@ -16,10 +16,24 @@ struct Sink {
     bool (*write)(void*, const Byte*, U32 count); // null discards validated output
 };
 enum class Status {
-    ok, argument, io, truncated, unsupported, layout, name, duplicate,
-    bounds, capacity, deflate, checksum, sink, cancelled
+    ok,
+    argument,
+    io,
+    truncated,
+    unsupported,
+    layout,
+    name,
+    duplicate,
+    bounds,
+    capacity,
+    deflate,
+    checksum,
+    sink,
+    cancelled
 };
-struct Extraction { U32 produced, crc32, consumed; };
+struct Extraction {
+    U32 produced, crc32, consumed;
+};
 struct Huffman {
     U32 count[16], first[16], offset[16], symbols[288];
 };
@@ -32,9 +46,8 @@ struct InflateWorkspace {
     Huffman literal, distance, code;
 };
 U32 crc32_update(U32 running, const Byte* data, U32 count);
-Status inflate_raw(const Reader& reader, U32 offset, U32 compressed_size,
-                   U32 expected_size, InflateWorkspace& workspace,
-                   const Sink& sink, Extraction& result, Work* work=nullptr);
+Status inflate_raw(const Reader& reader, U32 offset, U32 compressed_size, U32 expected_size,
+                   InflateWorkspace& workspace, const Sink& sink, Extraction& result, Work* work = nullptr);
 const char* status_name(Status status);
-} }
+}}
 #endif

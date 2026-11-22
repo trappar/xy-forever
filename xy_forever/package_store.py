@@ -5,6 +5,7 @@ package. Removal commits by moving it out of the published tree. A session holds
 the device's existing job exclusion so MTP, sweep and content jobs cannot race
 validation or the reachability snapshot used by blob collection.
 """
+
 import contextlib
 import hashlib
 import re
@@ -12,7 +13,8 @@ import secrets
 import struct
 import time
 
-from . import depth, host_write, package_records, usb_proto as P
+from . import depth, host_write, package_records
+from . import usb_proto as P
 from .xyf_entry import read_files_sha256
 
 ROOT = '/yaffs2/xy-forever'
@@ -33,20 +35,25 @@ def check(code, operation):
 
 
 def list_text(files):
-    text = ''.join('%s  %s\n' % (hashlib.sha256(data).hexdigest(), path)
-                   for path, data in sorted(files.items())).encode('ascii')
+    text = ''.join(
+        '%s  %s\n' % (hashlib.sha256(data).hexdigest(), path) for path, data in sorted(files.items())
+    ).encode('ascii')
     read_files_sha256(text)
     return text
 
 
 def package_name(name):
-    return (1 <= len(name) <= 127 and name[-1] not in '. ' and 'bootloader' not in name.lower() and
-            all(0x20 <= ord(c) <= 0x7e and c not in '/\\:' for c in name))
+    return (
+        1 <= len(name) <= 127
+        and name[-1] not in '. '
+        and 'bootloader' not in name.lower()
+        and all(0x20 <= ord(c) <= 0x7E and c not in '/\\:' for c in name)
+    )
 
 
 def validate(files):
     """Strict admission before any write. The boot/library reader remains lenient."""
-    listed = dict((path, sha) for sha, path in read_files_sha256(files['files.sha256']))
+    listed = {path: sha for sha, path in read_files_sha256(files['files.sha256'])}
     if set(files) != set(listed) | {'files.sha256'}:
         raise StoreError('files.sha256 does not own exactly the staged package')
     for path, sha in listed.items():
@@ -58,9 +65,14 @@ def validate(files):
     fields = package_records.parse(files[name], name)
     if fields.get('type') in (None, 'firmware'):
         import zlib
+
         image = files.get('os.ldr')
-        if image is None or fields.get('bytes') != len(image) or fields.get('sha256') != hashlib.sha256(image).hexdigest() or \
-                fields.get('crc32') != '%08x' % (zlib.crc32(image) & 0xffffffff):
+        if (
+            image is None
+            or fields.get('bytes') != len(image)
+            or fields.get('sha256') != hashlib.sha256(image).hexdigest()
+            or fields.get('crc32') != '%08x' % (zlib.crc32(image) & 0xFFFFFFFF)
+        ):
             raise StoreError('firmware integrity fields differ from os.ldr')
     if ('content.sha256' in files) != ('firmware.version' in files):
         raise StoreError('content.sha256 and firmware.version must come together')
@@ -238,7 +250,10 @@ class Session:
     def collect(self):
         # Complete, strict reachability snapshot first. A malformed/newer list
         # aborts before any deletion; the session prevents concurrent mutation.
-        if self.read(ROOT + "/job.txt", optional=True) is not None or self.read(ROOT + "/job.old", optional=True) is not None:
+        if (
+            self.read(ROOT + '/job.txt', optional=True) is not None
+            or self.read(ROOT + '/job.old', optional=True) is not None
+        ):
             return 0  # unresolved intent retains every content blob until replay or undo completes
         keep = self.references()
         removed = 0

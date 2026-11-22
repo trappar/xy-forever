@@ -5,7 +5,11 @@
 namespace xyf { namespace manifest {
 namespace {
 char lower(char c) { return c >= 'A' && c <= 'Z' ? char(c + 'a' - 'A') : c; }
-uint32_t length(const char* s) { uint32_t n = 0; while (s[n]) ++n; return n; }
+uint32_t length(const char* s) {
+    uint32_t n = 0;
+    while (s[n]) ++n;
+    return n;
+}
 bool same(const char* a, const char* b) {             // ASCII case ignored
     while (*a && lower(*a) == lower(*b)) ++a, ++b;
     return lower(*a) == lower(*b);
@@ -29,7 +33,9 @@ bool bootloader(const char* s) {
 }
 // The companion images by the names the official packages give them (package_policy rules).
 bool companion(const char* s) { return ends(s, ".cyacd") || same(s, "ble.bin"); }
-uint32_t word(const uint8_t* p) { return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24; }
+uint32_t word(const uint8_t* p) {
+    return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24;
+}
 uint32_t half(const uint8_t* p) { return uint32_t(p[0]) | uint32_t(p[1]) << 8; }
 bool magic(const uint8_t* p, uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
     return p[0] == a && p[1] == b && p[2] == c && p[3] == d;
@@ -46,8 +52,14 @@ void set(Recognition& out, uint8_t kind, uint8_t reason, bool content_set = fals
     out.content_set = content_set;
 }
 bool refused_name(const char* name, Recognition& out) {
-    if (bootloader(name)) { set(out, kind_bootloader, reason_refused); return true; }
-    if (companion(name)) { set(out, kind_companion, reason_refused); return true; }
+    if (bootloader(name)) {
+        set(out, kind_bootloader, reason_refused);
+        return true;
+    }
+    if (companion(name)) {
+        set(out, kind_companion, reason_refused);
+        return true;
+    }
     return false;
 }
 }
@@ -103,8 +115,7 @@ void recognise_file(const char* name, uint32_t size, const uint8_t* p, uint32_t 
 void recognise_folder(const char* name, const char* const* names, uint32_t count, const Manifest* info,
                       Recognition& out, bool vendor_pack) {
     if (!valid_name(name) || (count && !names)) return set(out, kind_unknown, reason_bad_name);
-    bool has_info = false, has_ldr = false, has_json = false, has_list = false,
-         has_version = false;
+    bool has_info = false, has_ldr = false, has_json = false, has_list = false, has_version = false;
     for (uint32_t i = 0; i != count; ++i) {
         if (!valid_name(names[i])) return set(out, kind_unknown, reason_bad_name);
         if (refused_name(names[i], out)) return;
@@ -136,4 +147,4 @@ void recognise_folder(const char* name, const char* const* names, uint32_t count
     }
     set(out, kind_unknown, reason_unknown);
 }
-} }
+}}

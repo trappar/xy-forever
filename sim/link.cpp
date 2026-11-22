@@ -30,18 +30,28 @@ std::atomic<int> a_held{0};
 bool send_message(int fd, const Message& m, const void* body) {
     static std::mutex lock;
     std::lock_guard<std::mutex> hold(lock);
-    if (role == 0 || role == 1) { ++shared->outflight[role]; active(); }   // sim/clock.cpp
+    if (role == 0 || role == 1) {
+        ++shared->outflight[role];
+        active();
+    }   // sim/clock.cpp
     if (role == 1 && shared->usb_asked.load() == 1) shared->usb_asked = 2;  // B acts on a host request it read
     // Header and body in one writev: the reader wakes once, with the whole message there.
     iovec v[2] = {{const_cast<Message*>(&m), sizeof(m)}, {const_cast<void*>(body), body ? m.body : 0}};
     for (int k = 0, count = v[1].iov_len ? 2 : 1; k != count;) {
         const ssize_t n = writev(fd, v + k, count - k);
         if (n < 0 && errno == EINTR) continue;
-        if (n < 0 && errno == EAGAIN) { pollfd p = {fd, POLLOUT, 0}; ::poll(&p, 1, -1); continue; }
+        if (n < 0 && errno == EAGAIN) {
+            pollfd p = {fd, POLLOUT, 0};
+            ::poll(&p, 1, -1);
+            continue;
+        }
         if (n <= 0) return false;
         size_t done = size_t(n);
         for (; k != count && done >= v[k].iov_len; ++k) done -= v[k].iov_len;
-        if (k != count) { v[k].iov_base = static_cast<uint8_t*>(v[k].iov_base) + done; v[k].iov_len -= done; }
+        if (k != count) {
+            v[k].iov_base = static_cast<uint8_t*>(v[k].iov_base) + done;
+            v[k].iov_len -= done;
+        }
     }
     return true;
 }
@@ -50,7 +60,8 @@ namespace {
 struct Wait {
     std::atomic<int> done{0};
     uint32_t result = 0, error = 0;
-    void* out = 0; uint32_t capacity = 0, got = 0;   // got: the bytes of a streamed answer placed so far
+    void* out = 0;
+    uint32_t capacity = 0, got = 0;   // got: the bytes of a streamed answer placed so far
     uint32_t* session = 0;          // a session request_ array: done byte +4, result +0x10
     bool queued = false;            // held by the b_queue hook (counted in b_queued until answered)
 };
@@ -59,7 +70,13 @@ std::map<uint32_t, Wait*> waits;
 // Tags differ per processor start, so a late answer to the previous B (a lone reset) never
 // completes a request of the new one.
 uint32_t next_tag = (uint32_t(now_us()) & 0x7fff0000u) | 1u;
-struct Built { uint32_t cls, op, a0, a1, a2; const void* body; uint32_t bytes; void* out; uint32_t capacity; };
+struct Built {
+    uint32_t cls, op, a0, a1, a2;
+    const void* body;
+    uint32_t bytes;
+    void* out;
+    uint32_t capacity;
+};
 std::map<void*, Built> built;
 std::map<void*, Wait*> session_waits;
 std::deque<void*> held;                                     // b_queue: submitted, not yet serialized
@@ -80,7 +97,10 @@ bool receive(Message& m, std::vector<uint8_t>& body) {
         }
         pollfd p[2] = {{link_fd, POLLIN, 0}, {shared->wake[3 + role][0], POLLIN, 0}};
         if (::poll(p, 2, -1) <= 0) continue;
-        if (p[1].revents) { char b[64]; while (read(p[1].fd, b, sizeof(b)) > 0) {} }
+        if (p[1].revents) {
+            char b[64];
+            while (read(p[1].fd, b, sizeof(b)) > 0) {}
+        }
         if (!(p[0].revents & (POLLIN | POLLHUP | POLLERR))) return false;
         uint8_t chunk[65536];
         const ssize_t n = read(link_fd, chunk, sizeof(chunk));
@@ -110,14 +130,19 @@ void complete(const Message& m, const std::vector<uint8_t>& body) {
     Wait* w = it->second;
     waits.erase(it);
     place(w, body);
-    w->result = m.result; w->error = m.error;
+    w->result = m.result;
+    w->error = m.error;
     if (w->queued) --shared->b_queued;
     if (w->session) {
-        w->session[4] = m.result; w->session[5] = m.error;
+        w->session[4] = m.result;
+        w->session[5] = m.error;
         std::atomic_thread_fence(std::memory_order_release);
         reinterpret_cast<volatile uint8_t*>(w->session)[4] = 1;
         for (auto s = session_waits.begin(); s != session_waits.end(); ++s)
-            if (s->second == w) { session_waits.erase(s); break; }
+            if (s->second == w) {
+                session_waits.erase(s);
+                break;
+            }
         delete w;
         return;
     }
@@ -145,18 +170,23 @@ void serialize(void* request, Wait* w) {
         if (it == built.end()) crash("submit of a request no builder made");
         b = it->second;
     }
-    if (b.body && (b.cls == cls_path || b.cls == cls_query)) b.bytes = uint32_t(strlen(static_cast<const char*>(b.body)) + 1);
-    if (w->queued) log("B's SPI driver sends a held request: op %02x%s%s", b.op, b.cls == cls_path || b.cls == cls_query ?
-                       " path " : "", b.cls == cls_path || b.cls == cls_query ? static_cast<const char*>(b.body) : "");
+    if (b.body && (b.cls == cls_path || b.cls == cls_query))
+        b.bytes = uint32_t(strlen(static_cast<const char*>(b.body)) + 1);
+    if (w->queued)
+        log("B's SPI driver sends a held request: op %02x%s%s", b.op,
+            b.cls == cls_path || b.cls == cls_query ? " path " : "",
+            b.cls == cls_path || b.cls == cls_query ? static_cast<const char*>(b.body) : "");
     send(w, b.cls, b.op, b.a0, b.a1, b.a2, b.body, b.bytes);
 }
 void release_held() {                                       // b_queue cleared: the driver sends what it held
     for (;;) {
-        void* request = 0; Wait* w = 0;
+        void* request = 0;
+        Wait* w = 0;
         {
             std::lock_guard<std::mutex> hold(lock);
             if (held.empty()) return;
-            request = held.front(); held.pop_front();
+            request = held.front();
+            held.pop_front();
             auto it = session_waits.find(request);
             if (it == session_waits.end()) continue;
             w = it->second;
@@ -166,7 +196,10 @@ void release_held() {                                       // b_queue cleared: 
 }
 
 // ---- A -----------------------------------------------------------------------------------------
-struct Incoming { Message m; std::vector<uint8_t> body; };
+struct Incoming {
+    Message m;
+    std::vector<uint8_t> body;
+};
 std::deque<Incoming> queue;
 std::mutex a_lock;
 bool in_service = false;
@@ -180,11 +213,16 @@ void generic(const Message& m) {                            // the stock slave I
     switch (m.op) {
     case 1: answer(m, 0xfedebedau); return;
     case 10:
-        w32(0x11b000c0u, 10u | (++header_seq & 0xffu) << 8); w32(0x11b000c4u, m.a0); w32(0x11b000c8u, m.a1);
+        w32(0x11b000c0u, 10u | (++header_seq & 0xffu) << 8);
+        w32(0x11b000c4u, m.a0);
+        w32(0x11b000c8u, m.a1);
         if (m.a0 == 0x12345678u) w8(driver() + 0x34, 1);    // handshake done: protocol state 1
         answer(m, ~m.a0);
         return;
-    case 7: w8(primary, 1); answer(m, 0); return;           // release: the ISR acknowledges it itself
+    case 7:
+        w8(primary, 1);
+        answer(m, 0);
+        return;           // release: the ISR acknowledges it itself
     case 5: answer(m, shared->capacity); return;            // boot partition capacity (88a086c0)
     default: answer(m, 0xffffffffu); return;
     }
@@ -198,7 +236,9 @@ bool a_service() {
     queue.pop_front();
     const uint32_t slot = driver() + 0x3c + 0x60 * (next_slot++ & 3u);
     memset(host(slot), 0, 0x60);
-    w32(slot, in.m.cls); w8(slot + 5, uint8_t(in.m.op)); w32(slot + 8, in.m.a0);
+    w32(slot, in.m.cls);
+    w8(slot + 5, uint8_t(in.m.op));
+    w32(slot + 8, in.m.a0);
     if (in.m.cls != cls_write) w32(slot + 0xc, in.m.a2);
     w32(slot + 0x18, in.m.a1);
     const uint32_t bytes = uint32_t(in.body.size());
@@ -210,14 +250,15 @@ bool a_service() {
             memcpy(host(0x8803f6e0u), in.body.data(), n);
             log("fault: a %u-byte path body reached the path buffer whole", n);
         } else {
-        const uint32_t n = bytes < 239 ? bytes : 239;
-        memcpy(host(0x8803f6e0u), in.body.data(), n);
-        w8(0x8803f6e0u + n, 0);
+            const uint32_t n = bytes < 239 ? bytes : 239;
+            memcpy(host(0x8803f6e0u), in.body.data(), n);
+            w8(0x8803f6e0u + n, 0);
         }
         w32(slot + 0x18, 0x8803f6e0u);
     } else if (bytes) {
         memcpy(host(a_in_buffer), in.body.data(), bytes < a_buffer_bytes ? bytes : a_buffer_bytes);
-        w32(slot + 0x20, a_in_buffer); w32(slot + 0x24, bytes);
+        w32(slot + 0x20, a_in_buffer);
+        w32(slot + 0x24, bytes);
     }
     // A-only RAM corruption, after every chunk crossed the real transport. B's identical
     // numeric address belongs to its separate SDRAM object and must remain untouched.
@@ -225,7 +266,11 @@ bool a_service() {
         w8(0x8b820000u, r8(0x8b820000u) ^ 1u);
         log("fault: corrupted A staging after transfer, before local admission");
     }
-    in_service = true; service_slot = slot; service_tag = in.m.tag; service_cls = in.m.cls; service_op = in.m.op;
+    in_service = true;
+    service_slot = slot;
+    service_tag = in.m.tag;
+    service_cls = in.m.cls;
+    service_op = in.m.op;
     std::atomic_thread_fence(std::memory_order_release);
     w32(primary + 4, slot);                                 // pending request for A's loop
     return true;
@@ -235,8 +280,13 @@ void a_respond(uint32_t request) {
     Message m = {message_magic, k_response, 0, 0, 0, 0, 0, 0, r32(request + 0x10), r32(request + 0x14), 0};
     {
         std::lock_guard<std::mutex> hold(a_lock);
-        if (!in_service || request != service_slot) { log("answer for a request not in service (%08x)", request); return; }
-        m.tag = service_tag; m.cls = service_cls; m.op = service_op;
+        if (!in_service || request != service_slot) {
+            log("answer for a request not in service (%08x)", request);
+            return;
+        }
+        m.tag = service_tag;
+        m.cls = service_cls;
+        m.op = service_op;
         in_service = false;
     }
     const bool data = (m.cls == cls_sector && (m.op == 0x11 || m.op == 0x12 || m.op == 0x2f)) ||
@@ -251,8 +301,13 @@ void a_stream(uint32_t request) {
     Message m = {message_magic, k_body, 0, 0, 0, 0, 0, 0, 0, 0, r32(request + 0x24)};
     {
         std::lock_guard<std::mutex> hold(a_lock);
-        if (!in_service || request != service_slot) { log("a body for a request not in service (%08x)", request); return; }
-        m.tag = service_tag; m.cls = service_cls; m.op = service_op;
+        if (!in_service || request != service_slot) {
+            log("a body for a request not in service (%08x)", request);
+            return;
+        }
+        m.tag = service_tag;
+        m.cls = service_cls;
+        m.op = service_op;
     }
     send_message(link_fd, m, m.body ? host(r32(request + 0x20)) : 0);
     w32(primary + 4, request);                                          // re-posted: A's loop serves it again
@@ -260,7 +315,8 @@ void a_stream(uint32_t request) {
 
 void link_start() {
     std::thread([] {
-        Message m; std::vector<uint8_t> body;
+        Message m;
+        std::vector<uint8_t> body;
         std::deque<Incoming> inbox;                          // A: held until its slave is set up
         for (;;) {
             const bool got = receive(m, body);
@@ -271,7 +327,10 @@ void link_start() {
                 // SPI0 control bit 13; the close clears it); before that B's request waits.
                 while (!inbox.empty() && (r32(0x20057004u) & 0x2000u)) {
                     if (!inbox.front().m.cls) generic(inbox.front().m);
-                    else { std::lock_guard<std::mutex> hold(a_lock); queue.push_back(std::move(inbox.front())); }
+                    else {
+                        std::lock_guard<std::mutex> hold(a_lock);
+                        queue.push_back(std::move(inbox.front()));
+                    }
                     inbox.pop_front();
                     work = true;
                 }
@@ -292,7 +351,9 @@ void link_start() {
 
 uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t a2, const void* body, uint32_t bytes,
                 void* out, uint32_t capacity, uint32_t* error) {
-    Wait w; w.out = out; w.capacity = capacity;
+    Wait w;
+    w.out = out;
+    w.capacity = capacity;
     send(&w, cls, op, a0, a1, a2, body, bytes);
     const uint64_t start = device_cycles();
     bool noted = false;
@@ -340,10 +401,15 @@ void b_submit(void* request) {
             if (n > 1) shared->b_queue = n - 1;
             w->queued = n == 1;
         }
-        w->out = it->second.out; w->capacity = it->second.capacity;
+        w->out = it->second.out;
+        w->capacity = it->second.capacity;
         auto old = session_waits.find(request);              // a request object reused before its answer
         if (old != session_waits.end()) {
-            for (auto it = waits.begin(); it != waits.end(); ++it) if (it->second == old->second) { waits.erase(it); break; }
+            for (auto it = waits.begin(); it != waits.end(); ++it)
+                if (it->second == old->second) {
+                    waits.erase(it);
+                    break;
+                }
             if (old->second->queued) --shared->b_queued;
             delete old->second;
             session_waits.erase(old);

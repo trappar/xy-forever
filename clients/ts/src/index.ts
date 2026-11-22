@@ -8,12 +8,60 @@ export { SCREEN, decodeScreen } from './screen.ts';
 export { ASK_TEXT, NOT_ALLOWED_TEXT, RETRY_MS, SERIAL_OFF_TEXT } from './trust.ts';
 export type { Trust } from './trust.ts';
 export { MAX_FOLDERS, depthRefusal, foldersOf, readsFlatMods } from './depth.ts';
-export type { CallOptions, ConnectOptions, DeviceInfo, DirEntry, EntryKind, ProductCommand, ReplyOf, RequestOf, Staged, TransferOptions } from './client.ts';
+export type {
+  CallOptions,
+  ConnectOptions,
+  DeviceInfo,
+  DirEntry,
+  EntryKind,
+  ProductCommand,
+  ReplyOf,
+  RequestOf,
+  Staged,
+  TransferOptions,
+} from './client.ts';
 export { XyfError, isXyfError } from './errors.ts';
-export { JOB_ERRORS, JOB_PHASES, JobError, LIBRARY_ROOT, MISSING_WORDS, MODS_ROOT, PackageError, TMP_ROOT, applyMods, cancelJob, fileListSource, infoValues,
-  jobFolder, jobStatus, libraryBases, makeDefault, listPackages, listPaths, localSet, pushPackages, removePackage } from './mods.ts';
-export type { ApplyOptions, ApplyRequest, BaseEntry, HeldGeneration, HeldPackage, JobPhase, JobStatus, LocalFile, LocalSet, PackageResult, PackageSource,
-  PushOptions, PushSummary, Removed, BuiltEntry, DefaultResult } from './mods.ts';
+export {
+  JOB_ERRORS,
+  JOB_PHASES,
+  JobError,
+  LIBRARY_ROOT,
+  MISSING_WORDS,
+  MODS_ROOT,
+  PackageError,
+  TMP_ROOT,
+  applyMods,
+  cancelJob,
+  fileListSource,
+  infoValues,
+  jobFolder,
+  jobStatus,
+  libraryBases,
+  makeDefault,
+  listPackages,
+  listPaths,
+  localSet,
+  pushPackages,
+  removePackage,
+} from './mods.ts';
+export type {
+  ApplyOptions,
+  ApplyRequest,
+  BaseEntry,
+  HeldGeneration,
+  HeldPackage,
+  JobPhase,
+  JobStatus,
+  LocalFile,
+  LocalSet,
+  PackageResult,
+  PackageSource,
+  PushOptions,
+  PushSummary,
+  Removed,
+  BuiltEntry,
+  DefaultResult,
+} from './mods.ts';
 export { STORE_FILE, STORE_VERSION, storedName, storeVersion } from './modstore.ts';
 export { readModsConfig } from './mods-config.ts';
 export { withFileSession } from './package-store.ts';

@@ -19,8 +19,8 @@ static_assert(sizeof(Workspace) == 11468, "measure native package caller workspa
 // JSON errors retain their specific status; semantic failures remain in work.manifest.
 xyf_core::json::Status parse(const char* raw, uint32_t bytes, Workspace& work);
 // For Mods and assembly consumers that still use key/value metadata in memory.
-xyf_core::json::Status view(const char* raw, uint32_t bytes, Workspace& work, manifest::Type expected,
-                           char* text, uint32_t& text_bytes);
+xyf_core::json::Status view(const char* raw, uint32_t bytes, Workspace& work, manifest::Type expected, char* text,
+                            uint32_t& text_bytes);
 bool info(const char* raw, uint32_t bytes, Workspace& work, store::Info& out);
-} }
+}}
 #endif

@@ -51,34 +51,54 @@ Protocol (docs/PROTOCOL.md): the HELLO reply's `cmds` lists the commands the dev
 answers; the tool refuses to send any other. A device without `cmds` (pre-v1, build
 153 and earlier) is assumed to answer every 1.0 command.
 """
+
 import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import socket
 import struct
 import sys
 import time
 import zlib
+from pathlib import Path
 
-from xy_forever import bounds, depth, device_lock, host_inventory, host_read, host_trust, host_write, library_add, pack_change, transport, usb_proto as P
-from xy_forever.host_write import AREA_TEXT, in_write_area
+from xy_forever import (
+    bounds,
+    depth,
+    device_lock,
+    host_inventory,
+    host_read,
+    host_trust,
+    host_write,
+    library_add,
+    pack_change,
+    transport,
+)
+from xy_forever import usb_proto as P
+from xy_forever.host_install import (  # noqa: F401 (re-exported: scripts and tests use host.load_build, ...)
+    DESCRIPTOR,
+    IMAGE_CAPACITY,
+    MIN_IMAGE,
+    USB_MODES,
+    load_build,
+    load_stock,
+)
 from xy_forever.host_screen import SCREEN_BYTES, SCREEN_H, SCREEN_STRIDE, SCREEN_W, screen_png  # noqa: F401
+from xy_forever.host_write import AREA_TEXT, in_write_area
+from xy_forever.ldr import MAX_IMAGE, inspect_ldr  # noqa: F401
 from xy_forever.library_add import ID_RE
-from xy_forever.host_install import DESCRIPTOR, MIN_IMAGE, IMAGE_CAPACITY, USB_MODES, load_build, load_stock
-from xy_forever.ldr import MAX_IMAGE, inspect_ldr
 from xy_forever.transport import SerialPort, TcpPort, device_ports, sim_address
 
 # Test 034: the stock CDC receive ring holds 0x800 bytes and the device drains it
 # 256 bytes per poll; a 4 KiB PUT_DATA frame overflowed it (no reply). One
 # 1 KiB frame (+ 20 bytes framing) is in flight at a time.
 PUT_CHUNK = 1024
-READ_RANGE = 1024              # device read_range_max (Test 038: 4 KiB replies hung)
-INSTALL_TIMEOUT = 900.0         # host bound for one INSTALL (v3 link sessions have no device cap)
-COPY_RATE = 10000.0             # file.copy: the host waits its timeout plus 1 s per this many bytes
-MTP_TEST_TIMEOUT = 60.0         # host bound for one MTP_TEST, plus its hold time
+READ_RANGE = 1024  # device read_range_max (Test 038: 4 KiB replies hung)
+INSTALL_TIMEOUT = 900.0  # host bound for one INSTALL (v3 link sessions have no device cap)
+COPY_RATE = 10000.0  # file.copy: the host waits its timeout plus 1 s per this many bytes
+MTP_TEST_TIMEOUT = 60.0  # host bound for one MTP_TEST, plus its hold time
 # Test 049 put-file: under /yaffs2/xy-forever/, plain names only (the device re-checks).
 WRITE_PATH_RE = re.compile(r'^/yaffs2/xy-forever(/[A-Za-z0-9._-]{1,64}){1,4}$')
 # Test 058: key numbers (xyf_menu.hpp / key_ui.cpp): KPlay 51, KStop 52, -/+ 53/54, shift 55, track1 6.
@@ -87,7 +107,7 @@ SLOTS = ('/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt')
 
 
 SIM = os.environ.get('XYF_SIM') or None
-TFW_CHECK_TIMEOUT = 60.0        # HOST:PORT of the device simulator (--sim)
+TFW_CHECK_TIMEOUT = 60.0  # HOST:PORT of the device simulator (--sim)
 
 
 def sim_listening(address):
@@ -107,7 +127,7 @@ def find_port():
 
 
 def open_port(port):
-    return TcpPort(port[len('sim:'):]) if port.startswith('sim:') else SerialPort(port)
+    return TcpPort(port[len('sim:') :]) if port.startswith('sim:') else SerialPort(port)
 
 
 def print_log(ms, text):
@@ -125,9 +145,9 @@ class Device:
         self.parser = P.Parser()
         self.seq = 0
         self.on_log = on_log
-        self.log = []                # (device ms, text) of every LOG frame received
-        self.hello_info = None       # P.Hello of the last HELLO reply (None: not seen, nothing refused)
-        self.on_ask = host_trust.say_ask   # #65: the device asks (waiting): said once per call, sent again
+        self.log = []  # (device ms, text) of every LOG frame received
+        self.hello_info = None  # P.Hello of the last HELLO reply (None: not seen, nothing refused)
+        self.on_ask = host_trust.say_ask  # #65: the device asks (waiting): said once per call, sent again
         # #230: the simulator answers at once, so a whole call to it (asks included) ends within this
         self.sim_call_s = bounds.sim_call_s() if isinstance(transport, TcpPort) else None
 
@@ -141,16 +161,22 @@ class Device:
 
     def call(self, kind, payload=b'', timeout=5.0):
         end = time.monotonic() + (self.sim_call_s or 0)
-        return host_trust.call(lambda: self.once(kind, payload, timeout if not self.sim_call_s else
-                                                 min(timeout, max(0.0, end - time.monotonic()))), kind, self.on_ask)
+        return host_trust.call(
+            lambda: self.once(
+                kind, payload, timeout if not self.sim_call_s else min(timeout, max(0.0, end - time.monotonic()))
+            ),
+            kind,
+            self.on_ask,
+        )
 
     def once(self, kind, payload=b'', timeout=5.0):
         info = self.hello_info
         if kind != P.HELLO and info is not None and not info.answers(kind):
             name = P.ids.COMMANDS[kind]['name'] if kind in P.ids.COMMANDS else '0x%02x' % kind
-            raise Unsupported('the device (%s) does not answer %s (0x%02x); update XY Forever' %
-                              (info.describe(), name, kind))
-        self.seq = (self.seq + 1) & 0xff
+            raise Unsupported(
+                'the device (%s) does not answer %s (0x%02x); update XY Forever' % (info.describe(), name, kind)
+            )
+        self.seq = (self.seq + 1) & 0xFF
         self.t.write(P.encode(kind, self.seq, payload))
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -160,7 +186,7 @@ class Device:
                     continue
                 if k == kind | P.REPLY and seq == self.seq:
                     if len(body) < 4:
-                        raise IOError('short reply')
+                        raise OSError('short reply')
                     return struct.unpack_from('<I', body)[0], body[4:]
         raise TimeoutError('no reply to 0x%02x within %.1f s' % (kind, timeout))
 
@@ -193,11 +219,11 @@ class Device:
 
     def stage(self, data, progress=None):
         sha = hashlib.sha256(data).digest()
-        code, _ = self.call(P.PUT_BEGIN, struct.pack('<II', len(data), zlib.crc32(data) & 0xffffffff) + sha)
+        code, _ = self.call(P.PUT_BEGIN, struct.pack('<II', len(data), zlib.crc32(data) & 0xFFFFFFFF) + sha)
         if code:
             return code
         for offset in range(0, len(data), PUT_CHUNK):
-            chunk = data[offset:offset + PUT_CHUNK]
+            chunk = data[offset : offset + PUT_CHUNK]
             code, body = self.call(P.PUT_DATA, struct.pack('<I', offset) + chunk)
             if code:
                 return code
@@ -207,15 +233,18 @@ class Device:
         return code
 
     def set_default(self, entry_id):
-        code, body = self.call(P.SET_DEFAULT, entry_id.encode('ascii') + b'\0', timeout=75.0)   # b waits for a's write
+        code, body = self.call(P.SET_DEFAULT, entry_id.encode('ascii') + b'\0', timeout=75.0)  # b waits for a's write
         sent_hash = struct.unpack_from('<I', body)[0] if len(body) >= 4 else 0
         return code, sent_hash
 
     def library_boot(self, entry_id):
         """library.boot (1.7): boot entry_id once; ok means the device leaves the menu and USB goes away."""
         raw = entry_id.encode('ascii')
-        code, _ = self.call(P.ids.LIBRARY_BOOT, raw + b'\0' + hashlib.sha256(raw).digest(),
-                            timeout=P.ids.COMMANDS[P.ids.LIBRARY_BOOT]['timeout_ms'] / 1000.0)
+        code, _ = self.call(
+            P.ids.LIBRARY_BOOT,
+            raw + b'\0' + hashlib.sha256(raw).digest(),
+            timeout=P.ids.COMMANDS[P.ids.LIBRARY_BOOT]['timeout_ms'] / 1000.0,
+        )
         return code
 
     def file_write(self, path, sha, timeout):
@@ -225,16 +254,19 @@ class Device:
 
     def list_page(self, path, skip=0):
         """One file.list page: (status, entries [(kind, size, name bytes)], more)."""
-        code, body = self.call(P.LIST_DIR, path.encode('utf-8') + b'\0' + struct.pack('<I', skip),
-                               timeout=P.ids.COMMANDS[P.LIST_DIR]['timeout_ms'] / 1000.0)
+        code, body = self.call(
+            P.LIST_DIR,
+            path.encode('utf-8') + b'\0' + struct.pack('<I', skip),
+            timeout=P.ids.COMMANDS[P.LIST_DIR]['timeout_ms'] / 1000.0,
+        )
         if code:
             return code, [], 0
         if len(body) < 8:
-            raise IOError('file.list: short reply for %s' % path)
+            raise OSError('file.list: short reply for %s' % path)
         count, more = struct.unpack_from('<II', body)
         entries = parse_entries(body[8:])
         if len(entries) != count:
-            raise IOError('file.list: %d entries announced, %d decoded' % (count, len(entries)))
+            raise OSError('file.list: %d entries announced, %d decoded' % (count, len(entries)))
         return code, entries, more
 
     def list_dir(self, path):
@@ -251,22 +283,29 @@ class Device:
     def change(self, kind, path):
         """file.delete, file.rmdir or file.mkdir, bound to the path's SHA-256: (status, error number)."""
         raw = path.encode('utf-8')
-        code, body = self.call(kind, raw + b'\0' + hashlib.sha256(raw).digest(),
-                               timeout=P.ids.COMMANDS[kind]['timeout_ms'] / 1000.0)
+        code, body = self.call(
+            kind, raw + b'\0' + hashlib.sha256(raw).digest(), timeout=P.ids.COMMANDS[kind]['timeout_ms'] / 1000.0
+        )
         return code, struct.unpack_from('<I', body)[0] if len(body) >= 4 else 0
 
     def rename(self, source, target):
         """file.rename, bound to the SHA-256 of source NUL target: (status, error number)."""
         pair = source.encode('utf-8') + b'\0' + target.encode('utf-8')
-        code, body = self.call(P.RENAME_FILE, pair + b'\0' + hashlib.sha256(pair).digest(),
-                               timeout=P.ids.COMMANDS[P.RENAME_FILE]['timeout_ms'] / 1000.0)
+        code, body = self.call(
+            P.RENAME_FILE,
+            pair + b'\0' + hashlib.sha256(pair).digest(),
+            timeout=P.ids.COMMANDS[P.RENAME_FILE]['timeout_ms'] / 1000.0,
+        )
         return code, struct.unpack_from('<I', body)[0] if len(body) >= 4 else 0
 
     def copy(self, source, target, size=0):
         """file.copy, bound to the SHA-256 of source NUL target: (status, bytes, error number, partial)."""
         pair = source.encode('utf-8') + b'\0' + target.encode('utf-8')
-        code, body = self.call(P.COPY_FILE, pair + b'\0' + hashlib.sha256(pair).digest(),
-                               timeout=P.ids.COMMANDS[P.COPY_FILE]['timeout_ms'] / 1000.0 + size / COPY_RATE)
+        code, body = self.call(
+            P.COPY_FILE,
+            pair + b'\0' + hashlib.sha256(pair).digest(),
+            timeout=P.ids.COMMANDS[P.COPY_FILE]['timeout_ms'] / 1000.0 + size / COPY_RATE,
+        )
         return (code,) + (struct.unpack_from('<III', body) if len(body) >= 12 else (0, 0, 0))
 
     def install(self, sha):
@@ -286,11 +325,11 @@ def parse_entries(data):
     while at + 6 <= len(data):
         kind, size, n = struct.unpack_from('<BIB', data, at)
         if at + 6 + n > len(data):
-            raise IOError('file.list: an entry runs past the reply')
-        out.append((kind, size, bytes(data[at + 6:at + 6 + n])))
+            raise OSError('file.list: an entry runs past the reply')
+        out.append((kind, size, bytes(data[at + 6 : at + 6 + n])))
         at += 6 + n
     if at != len(data):
-        raise IOError('file.list: %d bytes after the last entry' % (len(data) - at))
+        raise OSError('file.list: %d bytes after the last entry' % (len(data) - at))
     return out
 
 
@@ -317,13 +356,16 @@ def parse_slot(data):
     if len(data) < 16 or len(data) > 4096 or not data.endswith(b'\n'):
         return None
     line = len(data) - 15
-    if data[line:line + 6] != b'crc32=' or (line and data[line - 1:line] != b'\n'):
+    if data[line : line + 6] != b'crc32=' or (line and data[line - 1 : line] != b'\n'):
         return None
     try:
-        expected = int(data[line + 6:line + 14].decode('ascii'), 16)
+        expected = int(data[line + 6 : line + 14].decode('ascii'), 16)
     except ValueError:
         return None
-    if data[line + 6:line + 14] != data[line + 6:line + 14].lower() or zlib.crc32(data[:line]) & 0xffffffff != expected:
+    if (
+        data[line + 6 : line + 14] != data[line + 6 : line + 14].lower()
+        or zlib.crc32(data[:line]) & 0xFFFFFFFF != expected
+    ):
         return None
     fields = {}
     for raw in data[:line].decode('utf-8', 'replace').splitlines():
@@ -381,7 +423,7 @@ def connect(timeout, hello_every=0.5, hello_window=8.0):
         window = min(deadline, time.monotonic() + hello_window)
         try:
             while time.monotonic() < window:
-                dev.seq = (dev.seq + 1) & 0xff
+                dev.seq = (dev.seq + 1) & 0xFF
                 transport.write(P.encode(P.HELLO, dev.seq, b''))
                 sent += 1
                 until = time.monotonic() + hello_every
@@ -396,7 +438,7 @@ def connect(timeout, hello_every=0.5, hello_window=8.0):
                                 text = body[4:].decode('ascii', 'replace')
                                 dev.hello_info = P.Hello(text)
                                 return dev, port, text
-        except (OSError, TimeoutError, IOError) as error:
+        except (OSError, TimeoutError) as error:
             log('%s: %s' % (port, error))
         log('no HELLO reply on %s: %d sent, %d bytes received' % (port, sent, received))
         try:
@@ -430,7 +472,8 @@ def fresh(dev, timeout):
     FILE_WRITE and CONTINUE need (Tests 046/049)."""
     code, _ = dev.call(P.REBOOT)
     if code:
-        print('reboot: %s' % P.status_name(code)); return None
+        print('reboot: %s' % P.status_name(code))
+        return None
     dev.t.close()
     pause(1.0)
     dev, port, text = connect(timeout)
@@ -458,70 +501,120 @@ def main(argv=None):
 def run(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--timeout', type=float, default=30.0)
-    parser.add_argument('--sim', metavar='HOST:PORT', help='talk to the device simulator (loopback TCP) instead of '
-                        'the USB port; default: $XYF_SIM')
+    parser.add_argument(
+        '--sim',
+        metavar='HOST:PORT',
+        help='talk to the device simulator (loopback TCP) instead of the USB port; default: $XYF_SIM',
+    )
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('wait')
     sub.add_parser('status')
     from xy_forever import a_rehearsal
+
     rehearsal = sub.add_parser('dev-a-rehearsal', help='RAM-only B-to-A transfer and admission; writes nothing')
     rehearsal.add_argument('input', help='verified XY Forever build directory, or stock os.ldr with --uninstall')
     rehearsal.add_argument('--uninstall', action='store_true')
     rehearsal.add_argument('--deadline-ms', type=int, default=120000)
     host_read.configure(sub)
     pack_change.configure(sub)
-    inst = sub.add_parser('install'); inst.add_argument('build'); inst.add_argument('--yes-install', action='store_true')
-    reboot = sub.add_parser('reboot'); reboot.add_argument('--yes-reboot', action='store_true')
-    reboot.add_argument('--to', choices=('service', 'os', 'menu'), default='service',
-                        help='Test 064: where the device goes (works from the service and from the menu)')
-    bootp = sub.add_parser('boot', help='boot library entry ID once, as PLAY on it in the library menu (leaves '
-                           'XY Forever: a power cycle with PLAY held comes back)')
-    bootp.add_argument('id'); bootp.add_argument('--yes-boot', action='store_true')
-    setd = sub.add_parser('set-default'); setd.add_argument('id'); setd.add_argument('--yes-write', action='store_true')
-    putf = sub.add_parser('put-file', help='write a file under /yaffs2/xy-forever/ (fresh boot; creates missing folders)')
-    putf.add_argument('local', type=Path); putf.add_argument('remote'); putf.add_argument('--yes-write', action='store_true')
+    inst = sub.add_parser('install')
+    inst.add_argument('build')
+    inst.add_argument('--yes-install', action='store_true')
+    reboot = sub.add_parser('reboot')
+    reboot.add_argument('--yes-reboot', action='store_true')
+    reboot.add_argument(
+        '--to',
+        choices=('service', 'os', 'menu'),
+        default='service',
+        help='Test 064: where the device goes (works from the service and from the menu)',
+    )
+    bootp = sub.add_parser(
+        'boot',
+        help='boot library entry ID once, as PLAY on it in the library menu (leaves '
+        'XY Forever: a power cycle with PLAY held comes back)',
+    )
+    bootp.add_argument('id')
+    bootp.add_argument('--yes-boot', action='store_true')
+    setd = sub.add_parser('set-default')
+    setd.add_argument('id')
+    setd.add_argument('--yes-write', action='store_true')
+    putf = sub.add_parser(
+        'put-file', help='write a file under /yaffs2/xy-forever/ (fresh boot; creates missing folders)'
+    )
+    putf.add_argument('local', type=Path)
+    putf.add_argument('remote')
+    putf.add_argument('--yes-write', action='store_true')
     host_inventory.configure(sub)
     getp = sub.add_parser('get', help='copy a device file to the computer (ranged reads; size and ranges checked)')
-    getp.add_argument('remote'); getp.add_argument('local', type=Path)
+    getp.add_argument('remote')
+    getp.add_argument('local', type=Path)
     putp = sub.add_parser('put', help='copy a file onto the OP-XY (streamed into tmp/, read back, renamed onto it)')
-    putp.add_argument('local', type=Path); putp.add_argument('remote')
-    putp.add_argument('--no-verify', action='store_true', help='skip the read-back over USB (the device still '
-                      'compares the CRC-32 it reads back)')
+    putp.add_argument('local', type=Path)
+    putp.add_argument('remote')
+    putp.add_argument(
+        '--no-verify',
+        action='store_true',
+        help='skip the read-back over USB (the device still compares the CRC-32 it reads back)',
+    )
     rmp = sub.add_parser('rm', help='delete a device file (--dir: an empty folder)')
-    rmp.add_argument('path'); rmp.add_argument('--dir', action='store_true')
+    rmp.add_argument('path')
+    rmp.add_argument('--dir', action='store_true')
     mkd = sub.add_parser('mkdir', help='create a device folder (its parent must exist)')
     mkd.add_argument('path')
-    mvp = sub.add_parser('mv', help='rename or move a device file or folder (both under /yaffs2/xy-forever/ or '
-                         '/yaffs2/content/; the target must not exist)')
-    mvp.add_argument('source'); mvp.add_argument('target')
-    cpp = sub.add_parser('cp', help='copy a device file on the device (-r: a folder); the target must not exist and '
-                         'be under /yaffs2/xy-forever/ or /yaffs2/content/')
-    cpp.add_argument('source'); cpp.add_argument('target')
+    mvp = sub.add_parser(
+        'mv',
+        help='rename or move a device file or folder (both under /yaffs2/xy-forever/ or '
+        '/yaffs2/content/; the target must not exist)',
+    )
+    mvp.add_argument('source')
+    mvp.add_argument('target')
+    cpp = sub.add_parser(
+        'cp',
+        help='copy a device file on the device (-r: a folder); the target must not exist and '
+        'be under /yaffs2/xy-forever/ or /yaffs2/content/',
+    )
+    cpp.add_argument('source')
+    cpp.add_argument('target')
     cpp.add_argument('-r', dest='recursive', action='store_true', help='copy a folder and everything in it')
     shot = sub.add_parser('screenshot', help='save the display as PNG (read-only)')
     peek = sub.add_parser('peek', help='read stock DDR/L2/L1-data memory or SEC/core registers (read-only)')
-    peek.add_argument('address', type=lambda s: int(s, 0)); peek.add_argument('bytes', type=lambda s: int(s, 0))
+    peek.add_argument('address', type=lambda s: int(s, 0))
+    peek.add_argument('bytes', type=lambda s: int(s, 0))
     peek.add_argument('--out', type=Path, required=True)
     shot.add_argument('--out', type=Path, required=True)
     from xy_forever import tfw_check_cli
+
     tfw_check_cli.configure(sub)
     library_add.configure(sub)
-    sub.add_parser('save-times', help='print the save-time log (/yaffs2/xy-forever/log/save-times.txt) as a '
-                   'table: one row per Save, USB build or content switch, milliseconds per part (read-only)')
+    sub.add_parser(
+        'save-times',
+        help='print the save-time log (/yaffs2/xy-forever/log/save-times.txt) as a '
+        'table: one row per Save, USB build or content switch, milliseconds per part (read-only)',
+    )
     cont = sub.add_parser('continue')
-    cont.add_argument('--dry-run', action='store_true',
-                      help='product build: run the whole boot path, then come back to the service')
+    cont.add_argument(
+        '--dry-run', action='store_true', help='product build: run the whole boot path, then come back to the service'
+    )
     keyp = sub.add_parser('key', help='menu over USB: press (and release) a key')
     keyp.add_argument('name', help='minus plus play stop shift track1..track8, or a key number')
     keyp.add_argument('--hold', action='store_true', help='press only (no release)')
     hold = sub.add_parser('hold', help='device stays in the service across reboots (until continue/power-off/unplug)')
     hold.add_argument('state', choices=('on', 'off'))
-    mtpt = sub.add_parser('mtp-test', help="097: MTP's storage calls from b's main loop (a opens its read-write window), then home")
-    mtpt.add_argument('--hold-ms', type=int, default=5000); mtpt.add_argument('--yes-test', action='store_true')
-    uninst = sub.add_parser('uninstall'); uninst.add_argument('stock_os_ldr'); uninst.add_argument('--yes-uninstall', action='store_true')
-    from xy_forever import modsend      # mods push|list|remove (xy_forever/modsend.py)
-    modsend.add_arguments(sub.add_parser('mods', help='mod packages: push, list, remove; the saved mods: status, set; '
-                                                     'developer: apply, dev'))
+    mtpt = sub.add_parser(
+        'mtp-test', help="097: MTP's storage calls from b's main loop (a opens its read-write window), then home"
+    )
+    mtpt.add_argument('--hold-ms', type=int, default=5000)
+    mtpt.add_argument('--yes-test', action='store_true')
+    uninst = sub.add_parser('uninstall')
+    uninst.add_argument('stock_os_ldr')
+    uninst.add_argument('--yes-uninstall', action='store_true')
+    from xy_forever import modsend  # mods push|list|remove (xy_forever/modsend.py)
+
+    modsend.add_arguments(
+        sub.add_parser(
+            'mods', help='mod packages: push, list, remove; the saved mods: status, set; developer: apply, dev'
+        )
+    )
     args = parser.parse_args(argv)
     global SIM
     if args.sim:
@@ -534,6 +627,7 @@ def run(argv):
     if args.command == 'mods':
         if args.mods_command == 'dev':
             from xy_forever import moddev
+
             return moddev.command(args, connect, SLOTS, current_state)
         return modsend.command(args, connect)
 
@@ -550,29 +644,38 @@ def run(argv):
         device_path(args.path if args.command != 'get' else args.remote)
     deep = depth.command_refusal(args)
     if deep:
-        print(deep); return 2
+        print(deep)
+        return 2
     if args.command == 'mv' and not (in_write_area(args.source.rstrip('/')) and in_write_area(args.target.rstrip('/'))):
-        print('refused: mv moves only %s (file.rename)' % AREA_TEXT); return 2
+        print('refused: mv moves only %s (file.rename)' % AREA_TEXT)
+        return 2
     if args.command == 'cp':
         source, target = device_path(args.source).rstrip('/'), args.target.rstrip('/')
         if not in_write_area(target):
-            print('refused: cp writes only %s (file.copy)' % AREA_TEXT); return 2
+            print('refused: cp writes only %s (file.copy)' % AREA_TEXT)
+            return 2
         if target == source or target.startswith(source + '/'):
-            print('refused: cp: the target %s is inside the source %s' % (target, source)); return 2
+            print('refused: cp: the target %s is inside the source %s' % (target, source))
+            return 2
     if args.command == 'put':
         if not in_write_area(args.remote) or args.remote.endswith('/'):
-            print('refused: put writes only files %s (file.write_staged)' % AREA_TEXT); return 2
+            print('refused: put writes only files %s (file.write_staged)' % AREA_TEXT)
+            return 2
         if not args.local.is_file():
-            print('refused: %s is not a file' % args.local); return 2
+            print('refused: %s is not a file' % args.local)
+            return 2
     if args.command == 'put-file':
         if not WRITE_PATH_RE.match(args.remote) or '/../' in args.remote + '/' or '/./' in args.remote + '/':
             print('refused: remote path must be /yaffs2/xy-forever/<name>[/<name>...] ([A-Za-z0-9._-] names)')
             return 2
         data = args.local.read_bytes()
         if not data:
-            print('refused: %s is empty' % args.local); return 2
-        print('Plan: stream %d bytes (CRC-32 %08x, SHA-256) into /yaffs2/xy-forever/tmp/; processor b reads them' %
-              (len(data), zlib.crc32(data) & 0xffffffff))
+            print('refused: %s is empty' % args.local)
+            return 2
+        print(
+            'Plan: stream %d bytes (CRC-32 %08x, SHA-256) into /yaffs2/xy-forever/tmp/; processor b reads them'
+            % (len(data), zlib.crc32(data) & 0xFFFFFFFF)
+        )
         print('      back and compares, then processor a renames the file onto %s in one step' % args.remote)
         print('      (replacing it). Missing folders are created first (mkdir, Test 050).')
         if not args.yes_write:
@@ -584,7 +687,8 @@ def run(argv):
             return code
     if args.command == 'boot':
         if not ID_RE.match(args.id):
-            print('refused: id must be 1-31 of [a-z0-9_-]'); return 2
+            print('refused: id must be 1-31 of [a-z0-9_-]')
+            return 2
         print('Plan: the device boots firmware/%s once, as PLAY on it in the library menu: the menu closes,' % args.id)
         print('      USB goes away and the OS does not answer this tool. The default and the state files stay.')
         print('      Back to XY Forever: power off, then power on holding PLAY, release it at the logo.')
@@ -593,12 +697,15 @@ def run(argv):
             return 0
     if args.command == 'set-default':
         if not ID_RE.match(args.id):
-            print('refused: id must be 1-31 of [a-z0-9_-]'); return 2
+            print('refused: id must be 1-31 of [a-z0-9_-]')
+            return 2
         print('Plan: processor a writes the next A/B state slot (/yaffs2/xy-forever/state-a.txt or -b.txt)')
         print('      with default=%s, reads it back, then remounts read-only. Nothing else is written;' % args.id)
         print('      the entry must exist and have an os.ldr. Verified here by reading both slots back.')
         print('      An entry whose content is not installed gets it first: B rewrites /yaffs2/content/')
-        print('      (the catalog, the mods\' files; official files, dlc/ and user/ are never touched), then the default.')
+        print(
+            "      (the catalog, the mods' files; official files, dlc/ and user/ are never touched), then the default."
+        )
         if not args.yes_write:
             print('DRY RUN: nothing sent. Re-run with --yes-write to write.')
             return 0
@@ -606,7 +713,8 @@ def run(argv):
         try:
             data, notes = load_stock(args.stock_os_ldr)
         except ValueError as error:
-            print('refused: %s' % error); return 2
+            print('refused: %s' % error)
+            return 2
         print('\n'.join(notes))
         print('Plan: stage the stock 1.2.1 os.ldr on processor b, then the device checks its exact size and')
         print('      SHA-256, writes the NAND boot partition with the stock commit-last writer (88a06a7e, as')
@@ -616,7 +724,7 @@ def run(argv):
             print('DRY RUN: nothing sent. Re-run with --yes-uninstall to uninstall.')
             return 0
     if args.command == 'mtp-test' and not args.yes_test:
-        print('DRY RUN: would put a into MTP mode (read-write window open, reads only), run MTP\'s storage calls')
+        print("DRY RUN: would put a into MTP mode (read-write window open, reads only), run MTP's storage calls")
         print('from b, unmount and return home. A hang needs a power cycle. Re-run with --yes-test.')
         return 0
     if args.command == 'reboot' and not args.yes_reboot:
@@ -649,7 +757,8 @@ def run(argv):
     if args.command == 'save-times':
         code, body = dev.read_all(SAVE_TIMES)
         if code:
-            print('read failed: %s (no Save logged yet?)' % P.status_name(code)); return code
+            print('read failed: %s (no Save logged yet?)' % P.status_name(code))
+            return code
         print(save_times_table(body.decode('utf-8', 'replace')))
         return 0
     if args.command == 'content':
@@ -662,19 +771,25 @@ def run(argv):
         code = dev.stage(data, stage_progress)
         print()
         if code:
-            print('stage failed: %s (nothing installed)' % P.status_name(code)); return code
+            print('stage failed: %s (nothing installed)' % P.status_name(code))
+            return code
         code, written, partition, sectors = dev.install(hashlib.sha256(data).digest())
-        print('install: %s, written %d, active partition %d, verified sectors %d' %
-              (P.status_name(code), written, partition, sectors))
+        print(
+            'install: %s, written %d, active partition %d, verified sectors %d'
+            % (P.status_name(code), written, partition, sectors)
+        )
         return code
     if args.command == 'uninstall':
         code = dev.stage(data, stage_progress)
         print()
         if code:
-            print('stage failed: %s (nothing written)' % P.status_name(code)); return code
+            print('stage failed: %s (nothing written)' % P.status_name(code))
+            return code
         code, written, partition, sectors = dev.uninstall(hashlib.sha256(data).digest())
-        print('uninstall: %s, written %d, active partition %d, verified sectors %d' %
-              (P.status_name(code), written, partition, sectors))
+        print(
+            'uninstall: %s, written %d, active partition %d, verified sectors %d'
+            % (P.status_name(code), written, partition, sectors)
+        )
         if code == 0:
             print('Power-cycle the OP-XY: it now boots stock 1.2.1.')
         return code
@@ -684,17 +799,20 @@ def run(argv):
         return files_command(dev, hello, args)
     if args.command == 'cp':
         from xy_forever import filecopy
+
         return filecopy.copy_command(dev, args.source.rstrip('/'), args.target.rstrip('/'), args.recursive)
     if args.command == 'tfw-check':
         from xy_forever import tfw_check_cli
+
         return tfw_check_cli.command(dev, args, TFW_CHECK_TIMEOUT)
     if args.command == 'peek':
         data = bytearray()
         while len(data) < args.bytes:
             n = min(1024, args.bytes - len(data))
             code, body = dev.call(P.PEEK, struct.pack('<II', args.address + len(data), n))
-            if code or len(body) != 4 + n:                       # call() strips the status word
-                print('peek: %s at 0x%08x' % (P.status_name(code), args.address + len(data))); return code or 1
+            if code or len(body) != 4 + n:  # call() strips the status word
+                print('peek: %s at 0x%08x' % (P.status_name(code), args.address + len(data)))
+                return code or 1
             data += body[4:]
         args.out.write_bytes(bytes(data))
         print('peek: %d bytes from 0x%08x -> %s' % (len(data), args.address, args.out))
@@ -704,7 +822,8 @@ def run(argv):
         while len(raw) < SCREEN_BYTES:
             code, body = dev.call(P.SCREEN, struct.pack('<I', len(raw)))
             if code or len(body) < 5:
-                print('screenshot: %s at offset %d' % (P.status_name(code), len(raw))); return code or 1
+                print('screenshot: %s at offset %d' % (P.status_name(code), len(raw)))
+                return code or 1
             raw += body[4:]
         args.out.write_bytes(screen_png(bytes(raw[:SCREEN_BYTES])))
         print('screenshot: framebuffer %08x -> %s' % (struct.unpack_from('<I', body)[0], args.out))
@@ -714,8 +833,9 @@ def run(argv):
     if args.command == 'set-default':
         code, sent_hash = dev.set_default(args.id)
         print('set-default sent: %s (id hash %08x)' % (P.status_name(code), sent_hash))
-        if code == P.ids.S_STARTED:                    # the content switch runs first, then the default
+        if code == P.ids.S_STARTED:  # the content switch runs first, then the default
             from xy_forever import modsend
+
             f = modsend.wait(dev, 0)
             if f is None or f['phase'] != modsend.DONE:
                 return 1
@@ -728,21 +848,26 @@ def run(argv):
         for path in SLOTS:
             rc, body = dev.read_file(path)
             slots[path] = body if rc == 0 else None
-            if rc and rc != 8:                               # 8 = not found (a slot may not exist yet)
+            if rc and rc != 8:  # 8 = not found (a slot may not exist yet)
                 print('  read %s: %s' % (path, P.status_name(rc)))
         best = current_state(slots)
         if best and best[2].get('default') == args.id:
-            print('verified: %s seq %d has default=%s' % (best[0], best[1], args.id)); return 0
-        print('NOT verified: newest valid slot %s' % (best,)); return 1
+            print('verified: %s seq %d has default=%s' % (best[0], best[1], args.id))
+            return 0
+        print('NOT verified: newest valid slot %s' % (best,))
+        return 1
     if args.command == 'boot':
         code = dev.library_boot(args.id)
-        print('boot %s: %s%s' % (args.id, P.status_name(code), ' (the device leaves the menu and boots it once)'
-                                 if code == 0 else ''))
+        print(
+            'boot %s: %s%s'
+            % (args.id, P.status_name(code), ' (the device leaves the menu and boots it once)' if code == 0 else '')
+        )
         return code
     if args.command == 'reboot':
         target = {'service': 0, 'os': 1, 'menu': 2}[args.to]
         code, _ = dev.call(P.REBOOT, struct.pack('<I', target) if target else b'')
-        print('reboot: %s' % P.status_name(code)); return code
+        print('reboot: %s' % P.status_name(code))
+        return code
     if args.command == 'continue':
         # No --menu (CONTINUE modes 2/3, Test 058): on boot model v3 the menu is home (docs/PROTOCOL.md).
         payload = struct.pack('<I', 1) if args.dry_run else b''
@@ -755,13 +880,15 @@ def run(argv):
             if dev is None:
                 return 11
             code, _ = dev.call(P.CONTINUE, payload)
-        print('continue%s: %s' % (' (dry run)' if args.dry_run else '', P.status_name(code))); return code
+        print('continue%s: %s' % (' (dry run)' if args.dry_run else '', P.status_name(code)))
+        return code
     if args.command == 'key':
         key = KEYS.get(args.name, None)
         if key is None:
             key = int(args.name) if args.name.isdigit() else None
         if key is None or not 0 <= key < 64:
-            print('refused: unknown key %r' % args.name); return 2
+            print('refused: unknown key %r' % args.name)
+            return 2
         code, _ = dev.call(P.KEY, struct.pack('<II', key, 1))
         if code == 0 and not args.hold:
             pause(0.15)
@@ -769,18 +896,46 @@ def run(argv):
                 code, _ = dev.call(P.KEY, struct.pack('<II', key, 0))
             except OSError:
                 # The press ended the menu (e.g. PLAY boots an entry) and released USB first.
-                print('key %s (%d): pressed; the menu closed and released USB' % (args.name, key)); return 0
-        print('key %s (%d): %s' % (args.name, key, P.status_name(code))); return code
+                print('key %s (%d): pressed; the menu closed and released USB' % (args.name, key))
+                return 0
+        print('key %s (%d): %s' % (args.name, key, P.status_name(code)))
+        return code
     if args.command == 'hold':
         code, _ = dev.call(P.HOLD, struct.pack('<I', 1 if args.state == 'on' else 0))
-        print('hold %s: %s' % (args.state, P.status_name(code))); return code
+        print('hold %s: %s' % (args.state, P.status_name(code)))
+        return code
     if args.command == 'mtp-test':
-        names = ('step', 'mounted', 'space', 'stat', 'dir', 'entries', 'closedir', 'fd', 'read', 'closed',
-                 'wait_ms', 'stat2', 'space2', 'unmounted', 'entry_bytes', 'reserved')
-        code, body = dev.call(P.MTP_TEST, struct.pack('<I', args.hold_ms), timeout=MTP_TEST_TIMEOUT + args.hold_ms / 1000.0)
+        names = (
+            'step',
+            'mounted',
+            'space',
+            'stat',
+            'dir',
+            'entries',
+            'closedir',
+            'fd',
+            'read',
+            'closed',
+            'wait_ms',
+            'stat2',
+            'space2',
+            'unmounted',
+            'entry_bytes',
+            'reserved',
+        )
+        code, body = dev.call(
+            P.MTP_TEST, struct.pack('<I', args.hold_ms), timeout=MTP_TEST_TIMEOUT + args.hold_ms / 1000.0
+        )
         values = struct.unpack('<16I', body[:64]) if len(body) >= 64 else ()
-        print(json.dumps(dict(status=P.status_name(code), **{n: (v if v < 0x80000000 else v - (1 << 32))
-                                                              for n, v in zip(names, values)}), indent=1))
+        print(
+            json.dumps(
+                dict(
+                    status=P.status_name(code),
+                    **{n: (v if v < 0x80000000 else v - (1 << 32)) for n, v in zip(names, values)},
+                ),
+                indent=1,
+            )
+        )
         return code
     return 0
 
@@ -789,8 +944,16 @@ def files_command(dev, hello, args):
     """ls, get, put, rm, mkdir, mv."""
     if args.command == 'mv':
         code, error = dev.rename(args.source.rstrip('/'), args.target.rstrip('/'))
-        print('mv %s %s: %s%s%s' % (args.source, args.target, P.status_name(code), ' (error %d)' % error if error else '',
-                                    depth.move_note(code)))
+        print(
+            'mv %s %s: %s%s%s'
+            % (
+                args.source,
+                args.target,
+                P.status_name(code),
+                ' (error %d)' % error if error else '',
+                depth.move_note(code),
+            )
+        )
         return code
     if args.command == 'ls':
         return host_inventory.list_directory(dev, args.path, args.json)
@@ -803,25 +966,37 @@ def files_command(dev, hello, args):
         start = time.monotonic()
         code, data = dev.read_all(args.remote, limit=1 << 40)
         if code:
-            print('get %s: %s' % (args.remote, P.status_name(code))); return code
+            print('get %s: %s' % (args.remote, P.status_name(code)))
+            return code
         seconds = time.monotonic() - start
         parent, name = split_path(args.remote)
         code, entries = dev.list_dir(parent)
         size = [s for k, s, n in entries if n == name.encode('utf-8') and k == 0]
         if code or len(size) != 1 or size[0] != len(data):
-            print('get %s: NOT verified: %d B read, listing says %s' % (args.remote, len(data),
-                                                                       size or P.status_name(code))); return 1
+            print(
+                'get %s: NOT verified: %d B read, listing says %s'
+                % (args.remote, len(data), size or P.status_name(code))
+            )
+            return 1
         for offset in sample_offsets(len(data)):
             code, body = dev.read_file(args.remote, offset)
-            if code or body != data[offset:offset + READ_RANGE]:
+            if code or body != data[offset : offset + READ_RANGE]:
                 print('get %s: NOT verified: the range at %d differs on a second read' % (args.remote, offset))
                 return code or 1
         args.local.write_bytes(data)
-        print('get %s -> %s: %d B in %.2f s (%.1f KiB/s); size matches file.list, %d ranges read twice' % (
-            args.remote, args.local, len(data), seconds, len(data) / 1024.0 / max(seconds, 1e-6),
-            len(sample_offsets(len(data)))))
+        print(
+            'get %s -> %s: %d B in %.2f s (%.1f KiB/s); size matches file.list, %d ranges read twice'
+            % (
+                args.remote,
+                args.local,
+                len(data),
+                seconds,
+                len(data) / 1024.0 / max(seconds, 1e-6),
+                len(sample_offsets(len(data))),
+            )
+        )
         return 0
-    data = args.local.read_bytes()                                   # put
+    data = args.local.read_bytes()  # put
     start = time.monotonic()
     code = put(dev, data, args.remote)
     if code:
@@ -832,13 +1007,20 @@ def files_command(dev, hello, args):
         if code or back != data:
             print('put %s: NOT verified: read back %s, %d B' % (args.remote, P.status_name(code), len(back)))
             return code or 1
-    print('put %s: %d B in %.2f s (%.1f KiB/s)%s' % (args.remote, len(data), seconds,
-                                                   len(data) / 1024.0 / max(seconds, 1e-6),
-                                                   '' if args.no_verify else '; read back identical'))
+    print(
+        'put %s: %d B in %.2f s (%.1f KiB/s)%s'
+        % (
+            args.remote,
+            len(data),
+            seconds,
+            len(data) / 1024.0 / max(seconds, 1e-6),
+            '' if args.no_verify else '; read back identical',
+        )
+    )
     return 0
 
 
-SAVE_TIMES = '/yaffs2/xy-forever/log/save-times.txt'   # target/xyf_save_log.hpp
+SAVE_TIMES = '/yaffs2/xy-forever/log/save-times.txt'  # target/xyf_save_log.hpp
 
 
 def save_times_table(text):
@@ -854,30 +1036,38 @@ def save_times_table(text):
     keys = []
     for r in records:
         keys += [k for k in r if k not in keys]
-    rows = [[k] + [r.get(k, '') for r in records] for k in keys
-            if any(r.get(k, '0') not in ('0', '') for r in records) or k in ('kind', 'total')]
+    rows = [
+        [k] + [r.get(k, '') for r in records]
+        for k in keys
+        if any(r.get(k, '0') not in ('0', '') for r in records) or k in ('kind', 'total')
+    ]
     widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
-    return '\n'.join('  '.join(c.rjust(w) if i else c.ljust(w) for i, (c, w) in enumerate(zip(row, widths)))
-                     for row in rows)
+    return '\n'.join(
+        '  '.join(c.rjust(w) if i else c.ljust(w) for i, (c, w) in enumerate(zip(row, widths))) for row in rows
+    )
 
 
 def decode_status(body):
     from xy_forever import census
+
     blocks, at = [], 0
     while at + 8 <= len(body):
         magic, size = struct.unpack_from('<II', body, at)
-        blocks.append((magic, body[at + 8:at + 8 + size]))
+        blocks.append((magic, body[at + 8 : at + 8 + size]))
         at += 8 + size
     regions, dump = [], b''
     for _, data in blocks:
         regions.append(dict(address=0, bytes=len(data), offset=len(dump)))
         dump += data
-    return dict(usb_service=census.usb_service(regions, dump), remote_read=census.remote_read(regions, dump),
-                boot_timing=census.boot_timing(regions, dump),
-                storage_start=census.storage_start(regions, dump),     # 191
-                dry_run_file_boot=census.file_boot(regions, dump),
-                knob_input=next((k for k in map(census.knob_summary, (d for _, d in blocks)) if k), None),
-                blocks=['0x%08x:%d' % (m, len(d)) for m, d in blocks])
+    return dict(
+        usb_service=census.usb_service(regions, dump),
+        remote_read=census.remote_read(regions, dump),
+        boot_timing=census.boot_timing(regions, dump),
+        storage_start=census.storage_start(regions, dump),  # 191
+        dry_run_file_boot=census.file_boot(regions, dump),
+        knob_input=next((k for k in map(census.knob_summary, (d for _, d in blocks)) if k), None),
+        blocks=['0x%08x:%d' % (m, len(d)) for m, d in blocks],
+    )
 
 
 if __name__ == '__main__':

@@ -18,12 +18,19 @@ using namespace xyf::manifest;
 namespace {
 
 // A char array's text up to its first NUL.
-template <size_t N> nb::bytes text(const char (&field)[N]) { return nb::bytes(field, strnlen(field, N)); }
-template <size_t N> nb::bytes raw(const uint8_t (&field)[N]) { return nb::bytes(reinterpret_cast<const char*>(field), N); }
-template <class T> nb::bytes raw_of(const T& value) { return nb::bytes(reinterpret_cast<const char*>(&value), sizeof value); }
+template<size_t N> nb::bytes text(const char (&field)[N]) { return nb::bytes(field, strnlen(field, N)); }
+template<size_t N> nb::bytes raw(const uint8_t (&field)[N]) {
+    return nb::bytes(reinterpret_cast<const char*>(field), N);
+}
+template<class T> nb::bytes raw_of(const T& value) {
+    return nb::bytes(reinterpret_cast<const char*>(&value), sizeof value);
+}
 
 // Each visited entry as: 32 digest bytes, 1 binary byte, the path, NUL; refuses entry stop_at.
-struct Collect { std::string out; uint32_t stop_at; };
+struct Collect {
+    std::string out;
+    uint32_t stop_at;
+};
 bool collect(void* context, const FileEntry& e) {
     Collect& c = *static_cast<Collect*>(context);
     if (e.index == c.stop_at) return false;
@@ -41,8 +48,10 @@ Recognised recognised(const Recognition& r) { return Recognised(r.kind, r.reason
 
 void bind_manifest(nb::module_ m) {
     m.def("sizes", [](unsigned which) {
-        return which == 0 ? sizeof(Manifest) : which == 1 ? sizeof(ListReader) : which == 2 ? sizeof(Recognition)
-                          : sizeof(xyf::store::Info);
+        return which == 0 ? sizeof(Manifest) :
+               which == 1 ? sizeof(ListReader) :
+               which == 2 ? sizeof(Recognition) :
+                            sizeof(xyf::store::Info);
     });
 
     nb::class_<Manifest>(m, "Manifest")
@@ -125,23 +134,27 @@ void bind_manifest(nb::module_ m) {
         return recognised(out);
     });
     // folder(name, names, manifest or None, vendor_pack) -> (kind, reason, accepted, content_set).
-    m.def("folder", [](nb::bytes name, const std::vector<nb::bytes>& names, const Manifest* info, bool vendor_pack) {
-        std::vector<const char*> array(names.size() ? names.size() : 1, nullptr);
-        for (size_t i = 0; i < names.size(); ++i) array[i] = names[i].c_str();
-        Recognition out = {};
-        recognise_folder(name.c_str(), array.data(), static_cast<uint32_t>(names.size()), info, out, vendor_pack);
-        return recognised(out);
-    }, nb::arg("name"), nb::arg("names"), nb::arg("info").none(), nb::arg("vendor_pack"));
+    m.def(
+        "folder",
+        [](nb::bytes name, const std::vector<nb::bytes>& names, const Manifest* info, bool vendor_pack) {
+            std::vector<const char*> array(names.size() ? names.size() : 1, nullptr);
+            for (size_t i = 0; i < names.size(); ++i) array[i] = names[i].c_str();
+            Recognition out = {};
+            recognise_folder(name.c_str(), array.data(), static_cast<uint32_t>(names.size()), info, out, vendor_pack);
+            return recognised(out);
+        },
+        nb::arg("name"), nb::arg("names"), nb::arg("info").none(), nb::arg("vendor_pack"));
     m.def("check_os", [](const Manifest& a, const Manifest& b) { return static_cast<int>(check_os(a, b)); });
     m.def("check_mod", [](const Manifest& a, const Manifest& b) { return static_cast<int>(check_mod(a, b)); });
-    m.def("check_assembled", [](const Manifest& a, const Manifest& b) { return static_cast<int>(check_assembled(a, b)); });
+    m.def("check_assembled",
+          [](const Manifest& a, const Manifest& b) { return static_cast<int>(check_assembled(a, b)); });
     // check_apply(entry, base, mods, count) -> (dependency, the failing mod's index).
-    m.def("check_apply", [](const Manifest& entry, const Manifest& base, const std::vector<const Manifest*>& mods,
-                            uint32_t count) {
-        if (count > mods.size()) throw nb::value_error("count past the mods");
-        uint32_t failed = 0;
-        const int d = static_cast<int>(check_apply(entry, base, mods.data(), count, failed));
-        return std::make_tuple(d, failed);
-    });
+    m.def("check_apply",
+          [](const Manifest& entry, const Manifest& base, const std::vector<const Manifest*>& mods, uint32_t count) {
+              if (count > mods.size()) throw nb::value_error("count past the mods");
+              uint32_t failed = 0;
+              const int d = static_cast<int>(check_apply(entry, base, mods.data(), count, failed));
+              return std::make_tuple(d, failed);
+          });
     m.def("needs", [](const Manifest& a, const Manifest& b) { return needs(a, b); });
 }

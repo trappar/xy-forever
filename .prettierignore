@@ -1,0 +1,8 @@
+# Prettier formats the TypeScript side (web/, clients/ts, scripts/*.mjs: mise.toml's format task); these keep their
+# own layout: generated files (their checks compare bytes), vendored code, build outputs, docs.
+clients/ts/src/v1.ts
+web/src/vendor/
+web/src/install/release.json
+web/dist/
+web/public/
+**/*.md

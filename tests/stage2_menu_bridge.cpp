@@ -28,24 +28,38 @@ unsigned s2_run(uint16_t* fb, const unsigned* keys, unsigned count, unsigned los
                 unsigned* ms_out) {
     static uint32_t scripted[256];
     for (unsigned i = 0; i != count && i != 256; ++i) scripted[i] = keys[i] | xyf::stage2::event_key;
-    fb_ptr = fb; events = scripted; event_count = count > 256 ? 256 : count; event_at = 0;
-    lost_at = lost; frames = 0; time_ms = 0; polls = 0;
+    fb_ptr = fb;
+    events = scripted;
+    event_count = count > 256 ? 256 : count;
+    event_at = 0;
+    lost_at = lost;
+    frames = 0;
+    time_ms = 0;
+    polls = 0;
     xyf::stage2::Abi2 abi2;
-    abi2.v1.abi = abi_version; abi2.v1.bytes = sizeof(abi2); abi2.v1.role = 1; abi2.v1.stage1_version = 2;
+    abi2.v1.abi = abi_version;
+    abi2.v1.bytes = sizeof(abi2);
+    abi2.v1.role = 1;
+    abi2.v1.stage1_version = 2;
     abi2.v1.key_bitmap[0] = abi2.v1.key_bitmap[1] = abi2.v1.key_bitmap[2] = 0;
     abi2.v1.services = &services;
-    abi2.catalog = blob; abi2.catalog_bytes = blob_bytes; abi2.features = features; abi2.note = note;
+    abi2.catalog = blob;
+    abi2.catalog_bytes = blob_bytes;
+    abi2.features = features;
+    abi2.note = note;
     const unsigned exit = xyf_stage2_main(&abi2.v1);
-    *frames_out = frames; *ms_out = time_ms;
+    *frames_out = frames;
+    *ms_out = time_ms;
     return exit;
 }
 // ABI-2 layout facts for the test (host pointers are 8 bytes: offsets differ
 // from the 32-bit device; the device layout is checked by the cross compiler).
 unsigned s2_constant(unsigned which) {
     using namespace xyf::stage2;
-    const unsigned values[] = {abi_hello, abi_menu, request_continue, request_menu, request_boot_once,
-                               request_set_default, request_mtp, request_uninstall, feature_catalog,
-                               feature_set_default, feature_mtp, feature_uninstall, max_rounds};
+    const unsigned values[] = {
+        abi_hello,           abi_menu,          request_continue,  request_menu,    request_boot_once,
+        request_set_default, request_mtp,       request_uninstall, feature_catalog, feature_set_default,
+        feature_mtp,         feature_uninstall, max_rounds};
     return which < sizeof(values) / sizeof(values[0]) ? values[which] : 0xdeadbeefu;
 }
 }

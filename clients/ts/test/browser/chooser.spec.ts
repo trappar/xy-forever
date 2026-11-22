@@ -16,7 +16,10 @@ async function fromClick<T>(work: () => Promise<T>): Promise<T> {
   button.textContent = 'Connect and finish';
   document.body.append(button);
   let result!: Promise<T>;
-  button.addEventListener('click', () => { result = work(); result.catch(() => undefined); });
+  button.addEventListener('click', () => {
+    result = work();
+    result.catch(() => undefined);
+  });
   try {
     await userEvent.click(button);
     return await result;
@@ -28,15 +31,18 @@ async function fromClick<T>(work: () => Promise<T>): Promise<T> {
 describe.skipIf(!sim)(`choosing the port${sim ? '' : ` (skipped: ${web.why})`}`, () => {
   const stock = USB_FILTERS[1];
   let client: Client | null = null;
-  afterEach(async () => { await client?.close(); client = null; });
+  afterEach(async () => {
+    await client?.close();
+    client = null;
+  });
 
   test('two granted entries: the stale one is passed over, the live one used, no chooser', async () => {
     const serial = new FakeSerial(sim!.relay, { identity: stock, stale: 'granted' });
     expect((await serial.getPorts()).filter((p) => p.getInfo().usbVendorId === stock.usbVendorId)).toHaveLength(2);
-    client = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800 });   // no click: a chooser would throw
+    client = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800 }); // no click: a chooser would throw
     expect(client.info.proto).toMatch(/^1\./);
     expect(serial.chooser).toBe(0);
-    expect(serial.stale!.opens).toBe(1);                                  // probed once, then passed over
+    expect(serial.stale!.opens).toBe(1); // probed once, then passed over
     expect(serial.xyfPorts.at(-1)!.isOpen).toBe(true);
   });
 
@@ -61,7 +67,9 @@ describe.skipIf(!sim)(`choosing the port${sim ? '' : ` (skipped: ${web.why})`}`,
 
   test('the stale entry chosen: it says what to choose', async () => {
     const serial = new FakeSerial(sim!.relay, { identity: stock, stale: 'attached', pick: 'stale' });
-    const error = await fromClick(() => connectWebSerial({ serial, filters: RELEASE_FILTERS, timeoutMs: 1500, probeMs: 500 })).catch((e: unknown) => e as Error);
+    const error = await fromClick(() =>
+      connectWebSerial({ serial, filters: RELEASE_FILTERS, timeoutMs: 1500, probeMs: 500 }),
+    ).catch((e: unknown) => e as Error);
     expect(error).toMatchObject({ code: 'timeout' });
     expect((error as Error).message).toContain(CHOOSE_TEXT);
     expect(serial.chooser).toBe(1);

@@ -4,6 +4,7 @@ RETRY_S, with no time limit (the device has none), unless XYF_ASK_LIMIT_S is set
 sets 30 for the tests): then a TimeoutError after that long. After Don't allow every request answers `declined`:
 NotAllowed. #191: with USB mode MTP, hello says serial=off (said once per hello) and every other request answers
 `serial_off`: SerialOff."""
+
 import os
 import sys
 import time
@@ -11,19 +12,22 @@ import time
 from xy_forever import usb_proto_ids as ids
 
 ASK = 'Allow on your OP-XY: it asks "Allow this computer to control your OP-XY?" (PLAY allows)'
-NOT_ALLOWED = ('not allowed: Don\'t allow was chosen on the OP-XY; unplug the USB cable and plug it in again '
-               'to be asked again')
+NOT_ALLOWED = (
+    "not allowed: Don't allow was chosen on the OP-XY; unplug the USB cable and plug it in again to be asked again"
+)
 SERIAL_OFF = 'Serial is off on your OP-XY: its USB mode is MTP. Pick MTP + Serial in Settings > USB mode on the OP-XY.'
 RETRY_S = 0.5
 
 
 class NotAllowed(Exception):
     """The device refuses this computer (status declined) until the cable is unplugged or it restarts."""
+
     status = ids.S_DECLINED
 
 
 class SerialOff(NotAllowed):
     """USB mode MTP: serial is off until USB mode changes on the device (status serial_off)."""
+
     status = ids.S_SERIAL_OFF
 
 

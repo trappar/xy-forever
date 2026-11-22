@@ -5,11 +5,11 @@ LISTING_121/linear121.ann.asm (see private/xy-forever/analysis/bootloader-121-li
 
     python3 re/bootloader.py ADDR... [-d DEPTH] [-a]   summarize functions (-a: full asm)
 """
+
 import bisect
 import re
 import sys
 from functools import lru_cache
-from pathlib import Path
 
 from xy_forever.paths import LISTING_121
 
@@ -27,7 +27,7 @@ def read(a, n):
     if i < 0:
         return None
     s, d = blocks[i]
-    return d[a - s:a - s + n] if a - s < len(d) else None
+    return d[a - s : a - s + n] if a - s < len(d) else None
 
 
 def u32(a):
@@ -62,8 +62,11 @@ def body(a):
     out = []
     for j in range(i, min(i + 3000, len(lines))):
         out.append(lines[j])
-        if j > i and ('Linkage LINK' in lines[j + 1] if j + 1 < len(lines) else True) and \
-           ('RTS' in lines[j] or 'JUMP' in lines[j] or 'RTI' in lines[j] or 'NOP' in lines[j]):
+        if (
+            j > i
+            and ('Linkage LINK' in lines[j + 1] if j + 1 < len(lines) else True)
+            and ('RTS' in lines[j] or 'JUMP' in lines[j] or 'RTI' in lines[j] or 'NOP' in lines[j])
+        ):
             break
     return out
 
@@ -80,16 +83,19 @@ def calls_of(b):
 def summary(a, depth=0, seen=None, indent='', out=print):
     seen = set() if seen is None else seen
     if a in seen:
-        out(f'{indent}{a:08x} (seen)'); return
+        out(f'{indent}{a:08x} (seen)')
+        return
     seen.add(a)
     b = body(a)
     if not b:
-        out(f'{indent}{a:08x} (not in listing)'); return
+        out(f'{indent}{a:08x} (not in listing)')
+        return
     strs = [line.split('; ', 1)[1] for line in b if '; "' in line]
     calls = calls_of(b)
-    mem = sorted({m for line in b for m in re.findall(r'\[(0x[0-9a-f]{8})\]', line)} |
-                 {m for line in b if '; "' not in line
-                  for m in re.findall(r'= (0x(?:88|80|11|20|1f|08)[0-9a-f]{6})\b', line)})
+    mem = sorted(
+        {m for line in b for m in re.findall(r'\[(0x[0-9a-f]{8})\]', line)}
+        | {m for line in b if '; "' not in line for m in re.findall(r'= (0x(?:88|80|11|20|1f|08)[0-9a-f]{6})\b', line)}
+    )
     out(f'{indent}{a:08x} len {len(b)} end {b[-1].split()[0]}  strs {strs[:6]}')
     if mem:
         out(f'{indent}   mem {" ".join(mem[:16])}')

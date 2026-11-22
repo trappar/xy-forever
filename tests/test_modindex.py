@@ -4,24 +4,28 @@ deterministic (same bytes twice); verify passes and catches a changed archive; a
 http.server), file:// and a plain folder rebuilds the generation folder byte for byte, and `mods push` of
 the fetched folder leaves the simulator's copy identical to the original. Every refusal has a case.
 Nothing is published and nothing from the real package set is used. No device access."""
+
 import contextlib
 import functools
 import http.server
 import io
 import json
-from pathlib import Path
 import shutil
 import tempfile
 import threading
 import unittest
 import zipfile
+from pathlib import Path
 
 import pytest
-
-from xy_forever import xyf_host as host
-from xy_forever import xyf_package
-from xy_forever import modindex as I, modkit as M, modpatch as MP, modsend as S, sim
 from test_modpatch import finish, kit_for, profile_for, stock
+
+from xy_forever import modindex as I
+from xy_forever import modkit as M
+from xy_forever import modpatch as MP
+from xy_forever import modsend as S
+from xy_forever import sim, xyf_package
+from xy_forever import xyf_host as host
 
 SIM_UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 
@@ -35,7 +39,7 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
         pass
 
 
-@pytest.mark.gate                                 # each test builds or reads archives: 0.1-0.5 s
+@pytest.mark.gate  # each test builds or reads archives: 0.1-0.5 s
 class Index(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -43,8 +47,14 @@ class Index(unittest.TestCase):
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.work = Path(cls.tmp.name)
         (cls.work / 'kit.json').write_text(json.dumps(kit_for(profile_for(stock()))))
-        cls.gen = Path(M.split_kit(cls.work / 'kit.json', cls.work / 'packages', finish=finish,
-                                   sdk_source='https://github.com/example/sdk@abc')['root'])
+        cls.gen = Path(
+            M.split_kit(
+                cls.work / 'kit.json',
+                cls.work / 'packages',
+                finish=finish,
+                sdk_source='https://github.com/example/sdk@abc',
+            )['root']
+        )
         cls.index = cls.work / 'index'
         with contextlib.redirect_stdout(io.StringIO()):
             assert xyf_package.main(['index', 'build', str(cls.gen), '--out', str(cls.index)]) == 0
@@ -117,12 +127,15 @@ class Index(unittest.TestCase):
                 self.assertEqual((files[rel]['size'], files[rel]['sha256']), (len(body), I.sha256(body)))
             self.assertEqual(pkg['content_bytes'], sum(map(len, mine_.values())))
             self.assertEqual(pkg['memory']['total'], sum(pkg['memory'][k] for k in ('code', 'data', 'state')))
-            self.assertEqual(pkg['kind'], 'base' if pkg['id'] == 'base' else
-                             'extension' if pkg['id'].startswith('ext-') else 'machine')
+            self.assertEqual(
+                pkg['kind'],
+                'base' if pkg['id'] == 'base' else 'extension' if pkg['id'].startswith('ext-') else 'machine',
+            )
             with zipfile.ZipFile(self.index / pkg['archive']['name']) as z:
                 self.assertEqual(z.namelist(), sorted(mine_, key=str.encode))
-                self.assertTrue(all(i.date_time == I.STAMP and i.compress_type == zipfile.ZIP_STORED
-                                    for i in z.infolist()))
+                self.assertTrue(
+                    all(i.date_time == I.STAMP and i.compress_type == zipfile.ZIP_STORED for i in z.infolist())
+                )
 
     def test_verify_and_a_changed_archive(self):
         self.assertEqual(I.verify(self.index, out=quiet), len(list(self.gen.iterdir())))
@@ -163,7 +176,7 @@ class Index(unittest.TestCase):
         self.assertEqual(sorted(d.name for d in target.iterdir()), ['base', 'beta'])
         want = {p: b for p, b in MP.tree(self.gen).items() if p.split('/')[0] in ('base', 'beta')}
         self.assertEqual(MP.tree(target), want)
-        S.local_set(target)                                     # what mods push checks
+        S.local_set(target)  # what mods push checks
         with contextlib.redirect_stdout(io.StringIO()) as printed:
             self.assertEqual(host.main(['mods', 'fetch', self.url, '--only', 'nosuch', '--to', str(self.fresh())]), 2)
         self.assertIn('not in the index: nosuch', printed.getvalue())
@@ -180,9 +193,16 @@ class Index(unittest.TestCase):
         self.refused(self.url + 'nosuch/', 'cannot read')
 
     def test_refuses_unusable_paths(self):
-        cases = {'../escape': 'unusable path', '/etc/passwd': 'unusable path', 'a/../../b': 'unusable path',
-                 'a//b': 'unusable path', 'a\\b': 'unusable path', 'C:/x': 'unusable path', 'x\nb': 'unusable path',
-                 'n/' * 120 + 'x': 'path too long'}
+        cases = {
+            '../escape': 'unusable path',
+            '/etc/passwd': 'unusable path',
+            'a/../../b': 'unusable path',
+            'a//b': 'unusable path',
+            'a\\b': 'unusable path',
+            'C:/x': 'unusable path',
+            'x\nb': 'unusable path',
+            'n/' * 120 + 'x': 'path too long',
+        }
         for bad, text in cases.items():
             with self.subTest(path=bad[:20]):
                 folder, index = self.copy()
@@ -203,12 +223,12 @@ class Index(unittest.TestCase):
         self.package(index)['archive']['sha256'] = '0' * 64
         self.save(folder, index)
         self.refused(folder, 'archive differs from the index')
-        folder, index = self.copy()                             # the archive matches, a file does not
+        folder, index = self.copy()  # the archive matches, a file does not
         members = self.members(folder, index)
         members['catalog.txt'] = b'!' * len(members['catalog.txt'])
         self.rearchive(folder, index, 'alpha', members)
         self.refused(folder, 'catalog.txt: differs from the index')
-        folder, index = self.copy()                             # files.sha256 inside disagrees with the index
+        folder, index = self.copy()  # files.sha256 inside disagrees with the index
         pkg = self.package(index)
         listed = next(f for f in pkg['files'] if f['path'] == 'catalog.txt')
         members = self.members(folder, index)
@@ -228,7 +248,7 @@ class Index(unittest.TestCase):
         del members['catalog.txt']
         self.rearchive(folder, index, 'alpha', members)
         self.refused(folder, 'archive lacks catalog.txt')
-        folder, index = self.copy()                             # a bomb: small archive, huge member
+        folder, index = self.copy()  # a bomb: small archive, huge member
         bomb = next(f for f in self.package(index)['files'] if f['path'] == 'catalog.txt')
         members = self.members(folder, index)
         members['catalog.txt'] = b'\0' * (8 << 20)
@@ -243,12 +263,12 @@ class Index(unittest.TestCase):
         self.package(index)['archive']['size'] = I.MAX_ARCHIVE + 1
         self.save(folder, index)
         self.refused(folder, 'oversize archive')
-        folder, index = self.copy()                             # the server sends more than the index says
+        folder, index = self.copy()  # the server sends more than the index says
         pkg = self.package(index)
         pkg['archive']['size'] -= 1
         self.save(folder, index)
         self.refused(folder, 'larger than')
-        folder, index = self.copy()                             # a member's header lies about its size
+        folder, index = self.copy()  # a member's header lies about its size
         pkg = self.package(index)
         f = next(f for f in pkg['files'] if f['path'] == 'catalog.txt')
         f['size'] += 1
@@ -266,8 +286,9 @@ class Index(unittest.TestCase):
         twin = json.loads(json.dumps(index['profiles'][0]['generations'][0]))
         twin['generation'] = 'other-1'
         for pkg in twin['packages']:
-            pkg['archive']['name'] = pkg['archive']['name'].replace(index['profiles'][0]['generations'][0]['generation'],
-                                                                    'other-1')
+            pkg['archive']['name'] = pkg['archive']['name'].replace(
+                index['profiles'][0]['generations'][0]['generation'], 'other-1'
+            )
         index['profiles'][0]['generations'].append(twin)
         self.save(folder, index)
         self.refused(folder, 'choose one generation')
@@ -277,6 +298,7 @@ class Index(unittest.TestCase):
         self.assertEqual(MP.tree(target), MP.tree(self.gen))
 
     # -- the fetched set goes to the simulator ---------------------------------------------------------
+
 
 if __name__ == '__main__':
     unittest.main()

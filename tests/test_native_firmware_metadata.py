@@ -1,4 +1,5 @@
 """Native firmware counts share strict/lenient readers; no external layout parser is involved."""
+
 import unittest
 
 import test_xyf_manifest as M

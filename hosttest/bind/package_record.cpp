@@ -26,6 +26,7 @@ void bind_package_record(nb::module_ m) {
             status = xyf_core::json::package_text(doc, text, sizeof(text), length);
             if (!status) xyf::manifest::parse(text, length, work->manifest);
         }
-        return std::make_tuple(status, nb::bytes(reinterpret_cast<const char*>(&work->manifest), sizeof work->manifest));
+        return std::make_tuple(status,
+                               nb::bytes(reinterpret_cast<const char*>(&work->manifest), sizeof work->manifest));
     });
 }

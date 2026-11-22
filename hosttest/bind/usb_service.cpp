@@ -37,7 +37,8 @@ void bind_usb_service(nb::module_ m) {
         for (size_t i = 0; i != data.size(); ++i) {
             if (!feed(parser, p[i])) continue;
             ++frames;
-            type = frame_type(parser); seq = frame_seq(parser);
+            type = frame_type(parser);
+            seq = frame_seq(parser);
             payload.assign(frame_payload(parser), frame_payload(parser) + frame_length(parser));
             next(parser);
         }

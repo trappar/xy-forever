@@ -32,4 +32,4 @@ void draw_message(uint16_t* fb, const Message& message) {
         text(fb, margin, y, message.lines[i], item_text, 1);
     footer(fb, message.hint, message.chrome);
 }
-} }
+}}

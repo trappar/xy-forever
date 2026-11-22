@@ -53,7 +53,7 @@ jobs:
         run: mkdir -p "$XYF_PRIVATE" && uv run pytest -n auto --dist worksteal -m "not sweep"
 
   web:
-    name: Web app, client, protocol check (Linux)
+    name: Lint, web app, client, protocol check (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -68,6 +68,8 @@ jobs:
           cache: true
       - run: uv sync --locked --no-group native   # no Python suite here: skip building hosttest/
       - run: pnpm install --frozen-lockfile
+      - name: Lint and format checks (ruff, ESLint, Prettier, clang-format)
+        run: mise run lint
       - name: The generated protocol files match protocol/v1.json
         run: mise run protogen
       - name: Client tests, web tests, web type check

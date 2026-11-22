@@ -144,8 +144,7 @@ const char* save_refusal(const Page& page);
 // flag_on (the toggles) or flag_saved (the saved selection, built). Bytes, 0 when it does not fit. The name
 // is "Mods: <count>".
 uint32_t request(const Page& page, const char* base, bool unverified, bool expanded, uint8_t which, char* name,
-                 uint32_t name_capacity,
-                 uint8_t* out, uint32_t capacity);
+                 uint32_t name_capacity, uint8_t* out, uint32_t capacity);
 // The result line of a start refusal (mods.apply status and missing input, or missing_ids_taken) or of an
 // ended job (phase done 8, failed 9, cancelled 10; error and status as job.status; done: the job committed
 // library entry name, its content not installed). out: page.text.
@@ -172,5 +171,5 @@ uint32_t stage_ms(uint32_t stage);
 uint32_t decimal(char* out, uint32_t v);
 const char* kind_name(uint32_t kind);
 const char* phase_text(uint32_t phase);
-} }
+}}
 #endif

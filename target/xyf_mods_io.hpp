@@ -83,5 +83,5 @@ struct ConfigView {
 uint32_t config_view(ConfigView& v);
 uint32_t config_set(uint32_t flags, const char* mods, uint32_t crc, const char*& reason);
 #endif
-} }
+}}
 #endif

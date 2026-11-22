@@ -18,5 +18,5 @@ enum class Status { valid, argument, key, range, mismatch };
 // (all of it when shorter), as FIPS 186-4 6.4 specifies.
 Status verify(const Byte* public_key, const Byte* digest, U32 digest_bytes, const Byte* r, const Byte* s);
 const char* status_name(Status status);
-} }
+}}
 #endif

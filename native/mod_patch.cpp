@@ -9,34 +9,50 @@ const Byte no_service = 0xff;
 const unsigned short no_symbol = 0xffff;
 __attribute__((noinline)) U32 le16(const Byte* p) { return U32(p[0]) | U32(p[1]) << 8; }
 U32 le32(const Byte* p) { return le16(p) | le16(p + 2) << 16; }
-__attribute__((noinline)) void put16(Byte* p, U32 v) { p[0] = Byte(v); p[1] = Byte(v >> 8); }
-void put32(Byte* p, U32 v) { put16(p, v); put16(p + 2, v >> 16); }
+__attribute__((noinline)) void put16(Byte* p, U32 v) {
+    p[0] = Byte(v);
+    p[1] = Byte(v >> 8);
+}
+void put32(Byte* p, U32 v) {
+    put16(p, v);
+    put16(p + 2, v >> 16);
+}
 U32 round4(U32 n) { return (n + 3u) & ~3u; }
 // Official open-xy bases (docs/storage/mods-assembly.md, "Trust"), laid out as Profile's first 96 bytes (stock and
 // catalog SHA-256, then stock_bytes, stock_records, module_base, reserved_bytes, module_bytes,
 // heap_fill_base, heap_fill_bytes, expanded_base), then edits.bin's SHA-256. The first 92 bytes and the edits
 // make a base known; its expanded_base must match too only when the larger layout is used, so a base
 // written before that key (expanded_base 0) stays known for the standard layout.
-struct KnownBase { Byte stock[32], catalog[32]; U32 numbers[8]; Byte edits[32]; };
+struct KnownBase {
+    Byte stock[32], catalog[32];
+    U32 numbers[8];
+    Byte edits[32];
+};
 const U32 known_bytes = 92;
 typedef char profile_facts_are_92_bytes[__builtin_offsetof(Profile, expanded_base) == known_bytes ? 1 : -1];
 const KnownBase known_bases[] = {
 #include "mod_known_bases.inc"
 };
 bool same_bytes(const Byte* a, const Byte* b, U32 n) {
-    for (U32 i = 0; i != n; ++i) if (a[i] != b[i]) return false;
+    for (U32 i = 0; i != n; ++i)
+        if (a[i] != b[i]) return false;
     return true;
 }
 bool known_base(const Profile& f, const hash::Digest& edits) {
     for (U32 k = 0; k != sizeof(known_bases) / sizeof(known_bases[0]); ++k)
-        if (same_bytes(reinterpret_cast<const Byte*>(&known_bases[k]), reinterpret_cast<const Byte*>(&f), known_bytes) &&
+        if (same_bytes(reinterpret_cast<const Byte*>(&known_bases[k]), reinterpret_cast<const Byte*>(&f),
+                       known_bytes) &&
             same_bytes(known_bases[k].edits, edits.bytes, 32) &&
-            (!f.expanded || known_bases[k].numbers[7] == f.expanded_base)) return true;
+            (!f.expanded || known_bases[k].numbers[7] == f.expanded_base))
+            return true;
     return false;
 }
 // core.mjs header(): a loader record with its XOR checksum in byte 2.
 void header(Byte* out, U32 flags, U32 target, U32 count, U32 argument) {
-    put32(out, 0xad000000u | flags); put32(out + 4, target); put32(out + 8, count); put32(out + 12, argument);
+    put32(out, 0xad000000u | flags);
+    put32(out + 4, target);
+    put32(out + 8, count);
+    put32(out + 12, argument);
     Byte sum = 0;
     for (U32 i = 0; i != 16; ++i) sum ^= out[i];
     out[2] = sum;
@@ -53,14 +69,23 @@ bool inside(U32 a, U32 a_count, U32 b, U32 b_count) {   // [a, a+a_count) within
 Status refuse(Patcher& p, Status status, const char* what, U32 number = 0xffffffffu) {
     static const U32 powers[10] = {1000000000u, 100000000u, 10000000u, 1000000u, 100000u, 10000u, 1000u, 100u, 10u, 1u};
     U32 n = 0;
-    while (what[n] && n < detail_bytes - 12) { p.detail[n] = what[n]; ++n; }
+    while (what[n] && n < detail_bytes - 12) {
+        p.detail[n] = what[n];
+        ++n;
+    }
     if (number != 0xffffffffu) {
         p.detail[n++] = ' ';
         bool started = false;
         for (U32 k = 0; k != 10; ++k) {
             char d = '0';
-            while (number >= powers[k]) { number -= powers[k]; ++d; }
-            if (d != '0' || started || k == 9) { p.detail[n++] = d; started = true; }
+            while (number >= powers[k]) {
+                number -= powers[k];
+                ++d;
+            }
+            if (d != '0' || started || k == 9) {
+                p.detail[n++] = d;
+                started = true;
+            }
         }
     }
     p.detail[n] = 0;
@@ -74,11 +99,14 @@ Status parse_edits(Patcher& p) {
     const U32 size = p.edits_bytes;
     p.edit_count = p.service_count = 0;
     if (size < 12 || size > max_edits_file || data[0] != 'X' || data[1] != 'Y' || data[2] != 'F' || data[3] != 'E' ||
-        le16(data + 4) != 1) return refuse(p, Status::edits, "header");
+        le16(data + 4) != 1)
+        return refuse(p, Status::edits, "header");
     const U32 count = le16(data + 6), services = le16(data + 8), string_bytes = le16(data + 10);
     if (count > p.limit_edits || services > max_services || 12 + 2 * services > size ||
-        string_bytes > size - 12 - 2 * services) return refuse(p, Status::edits, "counts");
-    p.strings = 12 + 2 * services; p.string_bytes = string_bytes;
+        string_bytes > size - 12 - 2 * services)
+        return refuse(p, Status::edits, "counts");
+    p.strings = 12 + 2 * services;
+    p.string_bytes = string_bytes;
     const Byte* strings = data + p.strings;
     if (string_bytes && strings[string_bytes - 1]) return refuse(p, Status::edits, "strings");
     for (U32 i = 0; i != services; ++i) {
@@ -92,18 +120,25 @@ Status parse_edits(Patcher& p) {
         if (size - at < 16) return refuse(p, Status::edits, "edit", i);
         const Byte* r = data + at;
         Edit& e = p.table[i];
-        e.kind = r[0]; e.flags = r[1]; e.service = r[2]; e.active = 0;
-        e.address = le32(r + 4); e.offset = le32(r + 8);
-        e.length = (unsigned short)le16(r + 12); e.symbol = (unsigned short)le16(r + 14);
+        e.kind = r[0];
+        e.flags = r[1];
+        e.service = r[2];
+        e.active = 0;
+        e.address = le32(r + 4);
+        e.offset = le32(r + 8);
+        e.length = (unsigned short)le16(r + 12);
+        e.symbol = (unsigned short)le16(r + 14);
         const bool fixed = e.kind == heap || e.kind == table || e.kind == text;
         if (r[3] || e.kind < heap || e.kind > startup || (e.flags & ~7u) || !e.length || e.length > max_edit_bytes ||
             (e.service != no_service && e.service >= services) || (e.symbol != no_symbol && e.symbol >= string_bytes) ||
             fixed != bool(e.flags & has_after) || ((e.flags & (call | profiling_off)) && e.kind != hook) ||
-            (e.service != no_service && e.kind != hook && e.kind != text)) return refuse(p, Status::edits, "edit", i);
+            (e.service != no_service && e.kind != hook && e.kind != text))
+            return refuse(p, Status::edits, "edit", i);
         at += 16;
         const U32 stored = (e.flags & has_after) ? 2u * e.length : e.length;
         if (size - at < stored) return refuse(p, Status::edits, "edit", i);
-        e.before = at; e.after = (e.flags & has_after) ? at + e.length : 0;
+        e.before = at;
+        e.after = (e.flags & has_after) ? at + e.length : 0;
         at += stored;
     }
     if (at != size) return refuse(p, Status::edits, "trailing");
@@ -125,7 +160,10 @@ Status parse_records(Patcher& p, U32 size, Status status) {
         if (sum || code >> 24 != 0xad || (target && count > 0u - target) || stored > size - at - 16)
             return refuse(p, status, "record", p.record_count);
         Record& r = p.records[p.record_count++];
-        r.offset = at; r.target = target; r.count = count; r.code = code;
+        r.offset = at;
+        r.target = target;
+        r.count = count;
+        r.code = code;
         at += 16 + stored;
         if (code & 0x8000) return at == size ? Status::ok : refuse(p, status, "after final");
     }
@@ -138,7 +176,9 @@ void sift(unsigned short* v, U32 root, U32 n, const Edit* e) {
         if (child >= n) return;
         if (child + 1 < n && e[v[child]].offset < e[v[child + 1]].offset) ++child;
         if (!(e[v[root]].offset < e[v[child]].offset)) return;
-        const unsigned short t = v[root]; v[root] = v[child]; v[child] = t;
+        const unsigned short t = v[root];
+        v[root] = v[child];
+        v[child] = t;
         root = child;
     }
 }
@@ -149,12 +189,17 @@ bool sort_edits(Patcher& p, U32& at) {
     for (U32 i = n / 2; i;) sift(p.order, --i, n, p.table);
     for (U32 end = n; end > 1;) {
         --end;
-        const unsigned short t = p.order[0]; p.order[0] = p.order[end]; p.order[end] = t;
+        const unsigned short t = p.order[0];
+        p.order[0] = p.order[end];
+        p.order[end] = t;
         sift(p.order, 0, end, p.table);
     }
     for (U32 i = 1; i < n; ++i) {
         const Edit& a = p.table[p.order[i - 1]];
-        if (p.table[p.order[i]].offset - a.offset < a.length) { at = p.order[i]; return false; }
+        if (p.table[p.order[i]].offset - a.offset < a.length) {
+            at = p.order[i];
+            return false;
+        }
     }
     return true;
 }
@@ -165,14 +210,17 @@ bool redirect(Edit& e, U32 destination) {
     if (destination & 1) return false;
     if (e.kind == startup) {
         if (e.length != 10) return false;
-        put16(e.redirect, 0xdc00); put16(e.redirect + 2, destination >> 16); put16(e.redirect + 4, destination & 0xffff);
+        put16(e.redirect, 0xdc00);
+        put16(e.redirect + 2, destination >> 16);
+        put16(e.redirect + 4, destination & 0xffff);
         return true;
     }
     const bool is_call = e.flags & call;
     if (e.length == 8 || e.length == 12) {
         if (!is_call && e.length != 8) return false;
         put16(e.redirect, is_call ? 0xde00 : 0xdc00);
-        put16(e.redirect + 2, destination >> 16); put16(e.redirect + 4, destination & 0xffff);
+        put16(e.redirect + 2, destination >> 16);
+        put16(e.redirect + 4, destination & 0xffff);
         return true;
     }
     const U32 delta = destination - e.address;   // two's complement, even, within +-16 MiB
@@ -184,8 +232,8 @@ bool redirect(Edit& e, U32 destination) {
 }
 const Byte* replacement(const Patcher& p, const Edit& e) {
     if (!e.active) return p.edits + e.before;
-    return (e.kind == hook || e.kind == startup || (e.kind == heap && p.layout.expanded)) ? e.redirect
-                                                                                           : p.edits + e.after;
+    return (e.kind == hook || e.kind == startup || (e.kind == heap && p.layout.expanded)) ? e.redirect :
+                                                                                            p.edits + e.after;
 }
 // A Blackfin+ Dreg/Preg = imm32 load (core.mjs heapLoad): its opcode and value, or false.
 bool heap_load(const Byte* b, U32 length, U32& opcode, U32& value) {
@@ -200,8 +248,9 @@ bool profile_ok(const Profile& f) {
            f.module_bytes <= (16u << 20) - 16 - f.stock_bytes;
 }
 const U32 profile_key_count = 10, required_keys = 9;
-const char* const profile_keys[profile_key_count] = {"needs_os", "catalog_sha256", "stock_bytes", "stock_records",
-    "module_base", "reserved_bytes", "module_bytes", "heap_fill_base", "heap_fill_bytes", "expanded_module_base"};
+const char* const profile_keys[profile_key_count] = {
+    "needs_os",       "catalog_sha256", "stock_bytes",    "stock_records",   "module_base",
+    "reserved_bytes", "module_bytes",   "heap_fill_base", "heap_fill_bytes", "expanded_module_base"};
 U32 hex_digit(Byte c) {
     c = Byte(c | 0x20u);
     return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10u : 16u;
@@ -241,15 +290,26 @@ bool same_key(const Byte* s, U32 n, const char* key) {
 }
 __attribute__((noinline)) Status profile_refusal(char (&detail)[detail_bytes], const char* what) {
     U32 n = 0;
-    while (what[n] && n + 1 < detail_bytes) { detail[n] = what[n]; ++n; }
+    while (what[n] && n + 1 < detail_bytes) {
+        detail[n] = what[n];
+        ++n;
+    }
     detail[n] = 0;
     return Status::base;
 }
 Status setup(Patcher& p, const Profile& profile, const Byte* edits, U32 edits_bytes, Byte* image, U32 capacity,
              const Policy& policy, const Limits& limits, Byte* scratch, U32 scratch_capacity) {
-    p.phase = failed; p.failure = Status::argument; p.detail[0] = 0;
-    p.profile = &profile; p.policy = &policy; p.link = 0; p.linked = 0;
-    p.edits = edits; p.edits_bytes = edits_bytes; p.image = image; p.capacity = capacity;
+    p.phase = failed;
+    p.failure = Status::argument;
+    p.detail[0] = 0;
+    p.profile = &profile;
+    p.policy = &policy;
+    p.link = 0;
+    p.linked = 0;
+    p.edits = edits;
+    p.edits_bytes = edits_bytes;
+    p.image = image;
+    p.capacity = capacity;
     p.edit_count = p.record_count = p.service_count = p.cursor = p.module_bytes = p.total = p.applied = 0;
     p.ldr.records = p.ldr.expanded_bytes = p.ldr.entry = 0;
     p.profiling = p.known = false;
@@ -259,9 +319,13 @@ Status setup(Patcher& p, const Profile& profile, const Byte* edits, U32 edits_by
         return refuse(p, Status::argument, "arguments");
     p.table = reinterpret_cast<Edit*>(scratch);
     p.records = reinterpret_cast<Record*>(scratch + limits.edits * sizeof(Edit));
-    p.order = reinterpret_cast<unsigned short*>(scratch + limits.edits * sizeof(Edit) + limits.records * sizeof(Record));
-    p.limit_edits = limits.edits; p.limit_records = limits.records; p.slice_bytes = limits.slice_bytes;
-    p.whole.reset(); p.restored.reset();
+    p.order =
+        reinterpret_cast<unsigned short*>(scratch + limits.edits * sizeof(Edit) + limits.records * sizeof(Record));
+    p.limit_edits = limits.edits;
+    p.limit_records = limits.records;
+    p.slice_bytes = limits.slice_bytes;
+    p.whole.reset();
+    p.restored.reset();
     return Status::ok;
 }
 // The base before any byte of edits.bin is used: known (or confirmed unverified), edits.bin's hash, then
@@ -274,7 +338,9 @@ Status admit(Patcher& p, const hash::Digest& edits_sha256, bool unverified_confi
     p.known = known_base(f, edits_sha256);
     if (!p.known && !unverified_confirmed) return refuse(p, Status::unverified, "base");
     hash::Digest d;
-    p.whole.update(p.edits, p.edits_bytes); p.whole.finish(d); p.whole.reset();
+    p.whole.update(p.edits, p.edits_bytes);
+    p.whole.finish(d);
+    p.whole.reset();
     if (!hash::equal(d, edits_sha256)) return refuse(p, Status::edits, "sha256");
     const Status s = parse_edits(p);
     if (s != Status::ok) return s;
@@ -291,7 +357,9 @@ Status admit(Patcher& p, const hash::Digest& edits_sha256, bool unverified_confi
             before != f.heap_fill_bytes || after != f.module_base - f.heap_fill_base)
             return refuse(p, Status::base, "expanded edit", i);
         const U32 value = p.layout.module_base - f.heap_fill_base;
-        put16(e.redirect, op_after); put16(e.redirect + 2, value >> 16); put16(e.redirect + 4, value);
+        put16(e.redirect, op_after);
+        put16(e.redirect + 2, value >> 16);
+        put16(e.redirect + 4, value);
         put16(e.redirect + 6, 0);
     }
     return heaps == 2 ? Status::ok : refuse(p, Status::base, "expanded edits");
@@ -302,10 +370,14 @@ Status check_mapping(Patcher& p, U32 count) {
         const Edit& e = p.table[i];
         U32 covering = 0, at = 0;
         for (U32 r = 0; r != count; ++r)
-            if (overlaps(p.records[r].target, p.records[r].count, e.address, e.length)) { ++covering; at = r; }
+            if (overlaps(p.records[r].target, p.records[r].count, e.address, e.length)) {
+                ++covering;
+                at = r;
+            }
         const Record& c = p.records[at];
         if (covering != 1 || (c.code & 256) || !inside(e.address, e.length, c.target, c.count) ||
-            c.offset + 16 + (e.address - c.target) != e.offset) return refuse(p, Status::mapping, "edit", i);
+            c.offset + 16 + (e.address - c.target) != e.offset)
+            return refuse(p, Status::mapping, "edit", i);
     }
     return Status::ok;
 }
@@ -316,7 +388,10 @@ void hash_restored(Patcher& p, U32 from, U32 to) {
         const Edit& e = p.table[p.order[i]];
         if (e.offset + e.length <= at) continue;
         if (e.offset >= to) break;
-        if (e.offset > at) { p.restored.update(p.image + at, e.offset - at); at = e.offset; }
+        if (e.offset > at) {
+            p.restored.update(p.image + at, e.offset - at);
+            at = e.offset;
+        }
         const U32 end = e.offset + e.length < to ? e.offset + e.length : to;
         p.restored.update(p.edits + e.before + (at - e.offset), end - at);
         at = end;
@@ -331,10 +406,14 @@ Status check_stock_layout(Patcher& p) {
     const Record& first = p.records[0];
     const Record& final = p.records[p.record_count - 1];
     if (p.record_count != f.stock_records || first.count || (first.code & 0xffff) != 0x5004 || final.count ||
-        (final.code & 0xffff) != 0x8004) return refuse(p, Status::layout, "stock records");
+        (final.code & 0xffff) != 0x8004)
+        return refuse(p, Status::layout, "stock records");
     U32 overlapping = 0, fill = 0;
     for (U32 i = 0; i != p.record_count; ++i)
-        if (overlaps(p.records[i].target, p.records[i].count, f.module_base, f.reserved_bytes)) { ++overlapping; fill = i; }
+        if (overlaps(p.records[i].target, p.records[i].count, f.module_base, f.reserved_bytes)) {
+            ++overlapping;
+            fill = i;
+        }
     const Record& z = p.records[fill];
     if (overlapping != 1 || !(z.code & 256) || le32(p.image + z.offset + 12) || z.target != f.heap_fill_base ||
         z.count != f.heap_fill_bytes || !inside(f.module_base, f.reserved_bytes, z.target, z.count))
@@ -352,7 +431,8 @@ Status check_stock_layout(Patcher& p) {
 
 // Whether services.txt row `name` (an edits.bin string) is one of the link's active services.
 bool service_active(const Patcher& p, U32 name) {
-    const char* text; U32 length;
+    const char* text;
+    U32 length;
     for (U32 i = 0; i != 32 && mod_link::service_at(*p.link, i, text, length); ++i) {
         if (!((p.linked->services >> i) & 1u) || name + length >= p.string_bytes) continue;
         bool same = !p.edits[p.strings + name + length];
@@ -373,14 +453,19 @@ Status resolve_edits(Patcher& p) {
         if (active && (e.kind == hook || e.kind == startup)) {
             // linked.globals.get(symbol): edits.bin's strings are NUL-terminated (parse_edits)
             U32 destination = 0;
-            const bool found = e.symbol != no_symbol &&
+            const bool found =
+                e.symbol != no_symbol &&
                 mod_link::global(*p.link, reinterpret_cast<const char*>(strings + e.symbol), destination);
             if (!found || destination < f.module_base || destination - f.module_base >= p.module_bytes)
                 return refuse(p, Status::destination, "edit", i);
             if (!redirect(e, destination)) return refuse(p, Status::branch, "edit", i);
         }
         const Byte* after = replacement(p, e);
-        for (U32 b = 0; b != e.length; ++b) if (after[b] != p.edits[e.before + b]) { ++p.applied; break; }
+        for (U32 b = 0; b != e.length; ++b)
+            if (after[b] != p.edits[e.before + b]) {
+                ++p.applied;
+                break;
+            }
     }
     return Status::ok;
 }
@@ -451,8 +536,10 @@ Status set_module(Patcher& p, const mod_link::Workspace& link, const mod_link::R
     if (!module_bytes || module_bytes > linked.sizes.allocated || linked.sizes.allocated > f.module_bytes)
         return refuse(p, Status::module, "allocated", linked.sizes.allocated);
     if (module_bytes > p.capacity - f.stock_bytes - 16) return refuse(p, Status::capacity, "image");
-    p.link = &link; p.linked = &linked;
-    const char* name; U32 length;
+    p.link = &link;
+    p.linked = &linked;
+    const char* name;
+    U32 length;
     for (U32 i = 0; i != 32; ++i) {          // every active service is the profile's
         if (!((linked.services >> i) & 1u)) continue;
         if (!mod_link::service_at(link, i, name, length)) return refuse(p, Status::service, "service", i);
@@ -521,8 +608,8 @@ Status start_verify(Patcher& p, const Profile& profile, const Byte* edits, U32 e
     header(want, 4, f.module_base, p.module_bytes, 0);
     if (p.record_count != f.stock_records + 1 || p.records[p.record_count - 2].offset != stock - 16 ||
         !same_bytes(image + stock - 16, want, 16) || (first.code & 0xffff) != 0x5004 || first.count ||
-        le32(image + 12) != size - 16 ||
-        (final.code & 0xffff) != 0x8004 || final.count || final.offset != stock + p.module_bytes)
+        le32(image + 12) != size - 16 || (final.code & 0xffff) != 0x8004 || final.count ||
+        final.offset != stock + p.module_bytes)
         return refuse(p, Status::verify, "records");
     // Stock's records are the image's before the module record (which sits where FINAL was).
     if (check_mapping(p, p.record_count - 2) != Status::ok) return p.failure;
@@ -533,10 +620,19 @@ Status start_verify(Patcher& p, const Profile& profile, const Byte* edits, U32 e
 }
 
 bool layout(const Profile& f, Profile& out) {
-    for (U32 i = 0; i != 32; ++i) { out.stock_sha256.bytes[i] = f.stock_sha256.bytes[i]; out.catalog_sha256.bytes[i] = f.catalog_sha256.bytes[i]; }
-    out.stock_bytes = f.stock_bytes; out.stock_records = f.stock_records; out.module_base = f.module_base;
-    out.reserved_bytes = f.reserved_bytes; out.module_bytes = f.module_bytes; out.heap_fill_base = f.heap_fill_base;
-    out.heap_fill_bytes = f.heap_fill_bytes; out.expanded_base = f.expanded_base; out.expanded = f.expanded;
+    for (U32 i = 0; i != 32; ++i) {
+        out.stock_sha256.bytes[i] = f.stock_sha256.bytes[i];
+        out.catalog_sha256.bytes[i] = f.catalog_sha256.bytes[i];
+    }
+    out.stock_bytes = f.stock_bytes;
+    out.stock_records = f.stock_records;
+    out.module_base = f.module_base;
+    out.reserved_bytes = f.reserved_bytes;
+    out.module_bytes = f.module_bytes;
+    out.heap_fill_base = f.heap_fill_base;
+    out.heap_fill_bytes = f.heap_fill_bytes;
+    out.expanded_base = f.expanded_base;
+    out.expanded = f.expanded;
     if (!f.expanded) return true;
     // core.mjs offersExpandedMemory's size rules: whole MiB, larger, the same end, above the heap's start
     const U32 x = f.expanded_base, end = f.module_base + f.reserved_bytes, mib = (1u << 20) - 1;
@@ -552,10 +648,11 @@ bool layout(const Profile& f, Profile& out) {
 }
 
 Status read_profile(const Byte* info, U32 bytes, Profile& f, char (&detail)[detail_bytes]) {
-    U32* numbers[profile_key_count - 2] = {&f.stock_bytes, &f.stock_records, &f.module_base, &f.reserved_bytes,
+    U32* numbers[profile_key_count - 2] = {&f.stock_bytes,  &f.stock_records,  &f.module_base,     &f.reserved_bytes,
                                            &f.module_bytes, &f.heap_fill_base, &f.heap_fill_bytes, &f.expanded_base};
     U32 seen = 0;
-    f.expanded_base = 0; f.expanded = false;
+    f.expanded_base = 0;
+    f.expanded = false;
     detail[0] = 0;
     if (!info) bytes = 0;
     for (U32 at = 0; at < bytes;) {
@@ -573,7 +670,7 @@ Status read_profile(const Byte* info, U32 bytes, Profile& f, char (&detail)[deta
         const Byte* value = line + eq + 1;
         const U32 vn = n - eq - 1;
         if (((seen >> k) & 1u) || !(k > 1 ? parse_number(value, vn, *numbers[k - 2]) :
-                                     parse_digest(value, vn, k ? f.catalog_sha256 : f.stock_sha256)))
+                                            parse_digest(value, vn, k ? f.catalog_sha256 : f.stock_sha256)))
             return profile_refusal(detail, profile_keys[k]);
         seen |= 1u << k;
     }
@@ -606,4 +703,4 @@ const char* status_name(Status s) {
     }
     return "unknown";
 }
-} }
+}}

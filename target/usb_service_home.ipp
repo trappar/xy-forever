@@ -16,7 +16,11 @@ uint32_t menu_pause_us() {
 }
 void drawn(uint64_t start) {
 #if defined(XYF_MTP_USB)
-    if (loop_from && mtp_live()) { ms::Timing& t = mslot().files.timing; ++t.draws; t.draw_units += units_since(start); }
+    if (loop_from && mtp_live()) {
+        ms::Timing& t = mslot().files.timing;
+        ++t.draws;
+        t.draw_units += units_since(start);
+    }
 #else
     (void)start;
 #endif
@@ -49,7 +53,8 @@ const char* image_label() {
 // while home) makes this boot go home; at most max_crash_restarts such resets in a row.
 bool home_begin() {
     Result& r = result;
-    r.version = 5; r.role = 1;
+    r.version = 5;
+    r.role = 1;
     r.start_cycles = cycles_div1024();
     start_ms = xyf::clock::ms();
     r.power_status = word(power_status_address);
@@ -61,9 +66,11 @@ bool home_begin() {
     marker_clear();
     // No reset loop: at most max_crash_restarts in a row.
     if (r.crash_restarts >= max_crash_restarts) {
-        r.present = 0; return false;
+        r.present = 0;
+        return false;
     }
-    home = 1; held = 1;
+    home = 1;
+    held = 1;
     r.present |= 1u << 4;
     return true;
 }
@@ -89,12 +96,15 @@ void home_reboot(U32 target) {
     reset_self();
 }
 
-
 #if defined(XYF_MTP_USB)
 // #144: one home_pump pass: the menu loop since the last one counted (MTP traffic active then), its end marked.
 struct LoopMark {
     LoopMark() {
-        if (loop_from && mtp_live()) { ms::Timing& t = mslot().files.timing; ++t.loops; t.loop_units += units_since(loop_from); }
+        if (loop_from && mtp_live()) {
+            ms::Timing& t = mslot().files.timing;
+            ++t.loops;
+            t.loop_units += units_since(loop_from);
+        }
         loop_from = 0;
     }
     ~LoopMark() { loop_from = mtp_traffic() ? xyf::clock::cycles() | 1u : 0u; }
@@ -115,20 +125,25 @@ uint32_t home_pump() {
     // slow storage start (a full scan) or no answer: the defaults after usb_settings_ms. USB starts the same either way.
     if (usb_deferred && !settings_load() && now() - usb_deferred_ms < usb_settings_ms) return 0;
 #endif
-    if (usb_deferred) { usb_deferred = 0; usb_begin(); return 0; }   // the flag, then the boot's only start
+    if (usb_deferred) {
+        usb_deferred = 0;
+        usb_begin();
+        return 0;
+    }   // the flag, then the boot's only start
 #endif
     stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
     rehearsal_pump();
     if (!boot_probe_active() && !rehearsal_active()) {
-    recovery_turn();
-    report_turn();
-    package_turn();
-    job_pump();                                        // a slice of the mod job
-    boot_sweep_turn();                                 // #3: leftover tmp/job-* folders, a step per pass
-    stream_turn();                                     // #4: a streamed write left without data
-    settle_turn();                                     // a window close still out
-    if (writes_due && !job_running() XYF_AND_NOT_MTP_BUSY && now() - writes_ms > storage_server::window_settle_ms) settle_writes();
+        recovery_turn();
+        report_turn();
+        package_turn();
+        job_pump();                                        // a slice of the mod job
+        boot_sweep_turn();                                 // #3: leftover tmp/job-* folders, a step per pass
+        stream_turn();                                     // #4: a streamed write left without data
+        settle_turn();                                     // a window close still out
+        if (writes_due && !job_running() XYF_AND_NOT_MTP_BUSY && now() - writes_ms > storage_server::window_settle_ms)
+            settle_writes();
     }
 #endif
 #if defined(XYF_MTP_USB)
@@ -148,13 +163,16 @@ uint32_t home_pump() {
         // A partial frame followed by idle_reset_ms of silence (nothing left in the receive
         // ring) is dropped, so it cannot swallow the start of the next request.
         if (parser.have && now() - rx_quiet_from > P::idle_reset_ms) {
-            parser.dropped += parser.have; parser.have = 0; r.dropped = parser.dropped;
+            parser.dropped += parser.have;
+            parser.have = 0;
+            r.dropped = parser.dropped;
         }
         return 0;
     }
     uint8_t* const chunk = reinterpret_cast<uint8_t*>(rx_chunk);
     const U32 got = cdc_read(chunk, avail < rx_chunk_bytes ? avail : rx_chunk_bytes);
-    ++r.rx_events; r.rx_bytes += got;
+    ++r.rx_events;
+    r.rx_bytes += got;
 #if defined(XYF_MTP_USB)
     if (got) composite_byte();                         // mark 10 once
 #endif
@@ -163,14 +181,17 @@ uint32_t home_pump() {
         const uint8_t type = P::frame_type(parser), seq = P::frame_seq(parser);
         const uint8_t* payload = P::frame_payload(parser);
         const U32 length = P::frame_length(parser);
-        ++r.frames; r.last_type = type;
-        host_framed = 1; host_frame_ms = now();                         // the USB mark
+        ++r.frames;
+        r.last_type = type;
+        host_framed = 1;
+        host_frame_ms = now();                         // the USB mark
         bool off = false;                                              // #191: USB mode MTP refuses it
 #if defined(XYF_SETTINGS)
         off = type != P::t_hello && serial_refuses(type);
 #endif
         if (const U32 line = off ? 0u : change_line(type)) {
-            host_change = line; host_change_ms = host_frame_ms;
+            host_change = line;
+            host_change_ms = host_frame_ms;
 #if defined(XYF_USB_FILE_WRITE) && defined(XYF_MTP_SESSION)
             if (mtp_on) mslot().responder.invalidate();    // speed: MTP's cached object facts (mtp_responder.hpp)
 #endif
@@ -180,23 +201,25 @@ uint32_t home_pump() {
 #endif
         U32 leave = 0;
         if (type == P::t_hello) {
-            if (!home_greeted) { home_greeted = 1; if (!r.hello_at_ms) r.hello_at_ms = now(); }
+            if (!home_greeted) {
+                home_greeted = 1;
+                if (!r.hello_at_ms) r.hello_at_ms = now();
+            }
             if (!s2_tried) stage2_load();                  // once per boot, before the reply
             hello(seq);
 #if defined(XYF_MTP_USB)
             composite_hello();                         // the composite stays this boot; mark 11, marks end
 #endif
-        }
-        else if (!home_greeted) status_only(type, seq, P::s_state);
+        } else if (!home_greeted) status_only(type, seq, P::s_state);
         else if (off) status_only(type, seq, P::s_serial_off);         // #191: answered at once, nothing done
 #if defined(XYF_SETTINGS)
-        else if (const U32 refused = trust_refuses(type)) status_only(type, seq, refused);   // #65: asks, or not allowed
+        else if (const U32 refused = trust_refuses(type)) status_only(type, seq, refused); // #65: asks, or not allowed
 #endif
 #if defined(XYF_MTP_USB)
-        else if (type == t_mtp_usb) mtp_usb_command(seq, payload, length);   // the probe (test build only)
+        else if (type == t_mtp_usb) mtp_usb_command(seq, payload, length); // the probe (test build only)
 #endif
 #if defined(XYF_CRASH_TRIGGER) && defined(XYF_USB_FILE_WRITE)
-        else if (type == t_crash) crash_command(seq, payload, length);       // a fault on purpose (test build only)
+        else if (type == t_crash) crash_command(seq, payload, length); // a fault on purpose (test build only)
 #endif
 #if defined(XYF_USB_FILE_WRITE)
 #if defined(XYF_TFW_CHECK)
@@ -208,10 +231,10 @@ uint32_t home_pump() {
         else if (boot_probe_active() && type != P::t_status && type != P::t_screen && type != P::t_peek)
             status_only(type, seq, P::s_busy);
 #if defined(XYF_MTP_SESSION)
-        else if (type == t_mtp_tunnel) mtp_tunnel(seq, payload, length);   // the test transport
+        else if (type == t_mtp_tunnel) mtp_tunnel(seq, payload, length); // the test transport
 #endif
         else if (type == P::t_package_session) package_session(seq, payload, length);
-        else if (job_blocks(type)) status_only(type, seq, P::s_busy);   // one request slot
+        else if (job_blocks(type)) status_only(type, seq, P::s_busy); // one request slot
         else if (type == P::t_package_list) package_list(seq, payload, length);
         else if (type == P::t_state_get) state_get(seq, payload, length);
         else if (type == P::t_storage_space) storage_space(seq, payload, length);
@@ -255,63 +278,87 @@ uint32_t home_pump() {
             const bool ok = length == 8 && P::get32(payload) < 64u && P::get32(payload + 4) <= 1u;
             if (ok) key_ui::inject_key(P::get32(payload), P::get32(payload + 4));
             status_only(type, seq, ok ? P::s_ok : P::s_bad_request);
-        }
-        else if (type == P::t_library_boot) {         // boot a named entry once (as PLAY on it)
+        } else if (type == P::t_library_boot) { // boot a named entry once (as PLAY on it)
             const U32 chosen = library_boot(seq, payload, length);
-            if (chosen) { dry_run = 0; carried_flags = flags(); held = 0; leave = 1 + chosen; }
-        }
-        else if (type == P::t_continue) {              // payload u32: 0 boot the default, 1 dry run
+            if (chosen) {
+                dry_run = 0;
+                carried_flags = flags();
+                held = 0;
+                leave = 1 + chosen;
+            }
+        } else if (type == P::t_continue) { // payload u32: 0 boot the default, 1 dry run
             const U32 mode = length == 4 ? P::get32(payload) : 0;
             bool ok = length == 0 || (length == 4 && mode <= 1);
-            if (ok && !menu_link::usb_link_up()) ok = false;   // no boot over a lost link (menu stays)
-            if (ok) settle_writes(false);                  // A's window closed before the boot
+            if (ok && !menu_link::usb_link_up()) ok = false; // no boot over a lost link (menu stays)
+            if (ok) settle_writes(false); // A's window closed before the boot
             if (ok && mode == 1) ok = menu_link::usb_command(storage_server::dry_run_item);
-            if (ok) { dry_run = mode; carried_flags = flags(); held = 0; leave = 1; }
+            if (ok) {
+                dry_run = mode;
+                carried_flags = flags();
+                held = 0;
+                leave = 1;
+            }
             status_only(type, seq, ok ? P::s_ok : P::s_link);
-        }
-        else if (type == P::t_hold) {
+        } else if (type == P::t_hold) {
             const U32 on = length == 4 ? P::get32(payload) : 2;
             if (on <= 1) {
-                held = on; home = on;
+                held = on;
+                home = on;
                 if (home) marker_write(marker_active | marker_menu | flags(), r.crash_restarts);
             }
             status_only(type, seq, on <= 1 ? P::s_ok : P::s_bad_request);
-        }
-        else if (type == P::t_reboot) {
+        } else if (type == P::t_reboot) {
             const U32 target = length == 4 ? P::get32(payload) : reboot_menu;
             if (target > reboot_menu) status_only(type, seq, P::s_bad_request);
-            else { status_only(type, seq, P::s_ok); settle_writes(false); const U32 t = now(); while (now() - t < 50u) {} home_reboot(target); }
-        }
-        else if (stage2_command(type, seq, payload, length)) {}   // stage 2's types (stage2.info)
-        else status_only(type, seq, P::s_unsupported);
+            else {
+                status_only(type, seq, P::s_ok);
+                settle_writes(false);
+                const U32 t = now();
+                while (now() - t < 50u) {}
+                home_reboot(target);
+            }
+        } else if (stage2_command(type, seq, payload, length)) {
+        } // stage 2's types (stage2.info)
+        else
+            status_only(type, seq, P::s_unsupported);
 #if defined(XYF_USB_FILE_WRITE)
-        if (package_file) { package_ms = now(); package_file = 0; }
+        if (package_file) {
+            package_ms = now();
+            package_file = 0;
+        }
 #endif
         P::next(parser);
-        if (leave) { r.exit = exit_continue; return leave; }
+        if (leave) {
+            r.exit = exit_continue;
+            return leave;
+        }
     }
-    r.bad_crc = parser.bad_crc; r.dropped = parser.dropped;
-    rx_quiet_from = now();                             // after any command: its run time is not silence
+    r.bad_crc = parser.bad_crc;
+    r.dropped = parser.dropped;
+    rx_quiet_from = now(); // after any command: its run time is not silence
     return 0;
 }
 void menu_release() {
     if (!menu_usb) return;
     menu_usb = 0;
 #if defined(XYF_MTP_USB)
-    if (usb_deferred) { usb_deferred = 0; return; }    // USB never started this boot: nothing to stop
-    if (composite_on) {                                // our driver leaves (stop(0), unregister, frees)
+    if (usb_deferred) {
+        usb_deferred = 0;
+        return;
+    } // USB never started this boot: nothing to stop
+    if (composite_on) { // our driver leaves (stop(0), unregister, frees)
         composite_on = 0;
         mu::leave();
         mu::set_mark_hook(0);
-    }                                                  // then stop(1) as every boot (teardown skipped: flag 0)
+    } // then stop(1) as every boot (teardown skipped: flag 0)
 #endif
     usb_stop();
     set_cdc_callback(result.stock_callback);
 }
 
 void reset_self() {
-    key_ui::crash_disarm();                            // the stock exception vector, before the reset
-    stock<0x11a03518u, void>(U32(*reinterpret_cast<volatile uint16_t*>(0x88a35938u)), 0u);   // stock "6. reset"
+    key_ui::crash_disarm(); // the stock exception vector, before the reset
+    stock<0x11a03518u, void>(U32(*reinterpret_cast<volatile uint16_t*>(0x88a35938u)), 0u); // stock "6. reset"
     for (;;) {}
 }
 

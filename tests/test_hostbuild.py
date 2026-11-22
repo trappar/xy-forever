@@ -1,12 +1,13 @@
 """xy_forever/hostbuild.py, the tests' compile cache: an output is reused only for the same command
 line, compiler and file contents (sources and every header the compile read), never for a failure."""
+
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -45,19 +46,34 @@ class HostBuildTest(unittest.TestCase):
             if '-o' in argv:
                 compiles.append(argv)
             return compile(argv, *args, **kwargs)
+
         with mock.patch.object(hostbuild.procgroup, 'run', counting):
-            hostbuild.run([CXX, '-std=c++11', '-Wall', '-Werror', *extra, '-I', str(folder),
-                           str(folder / 'main.cpp'), '-o', str(out)], check=True, capture_output=True)
+            hostbuild.run(
+                [
+                    CXX,
+                    '-std=c++11',
+                    '-Wall',
+                    '-Werror',
+                    *extra,
+                    '-I',
+                    str(folder),
+                    str(folder / 'main.cpp'),
+                    '-o',
+                    str(out),
+                ],
+                check=True,
+                capture_output=True,
+            )
         return real([str(out)], capture_output=True, text=True, check=True).stdout, len(compiles)
 
     def test_reuse_only_for_the_same_inputs(self):
         src = self.source('src', 1)
         self.assertEqual(self.build(src), ('1', 1))
-        self.assertEqual(self.build(src), ('1', 0))                    # reused
-        (src / 'value.hpp').write_text('#define VALUE 2\n')           # a header the compile read
+        self.assertEqual(self.build(src), ('1', 0))  # reused
+        (src / 'value.hpp').write_text('#define VALUE 2\n')  # a header the compile read
         self.assertEqual(self.build(src), ('2', 1))
-        self.assertEqual(self.build(src, extra=['-DUNUSED=1']), ('2', 1))   # another command line
-        moved = self.source('elsewhere', 2)                           # the same files in a new folder
+        self.assertEqual(self.build(src, extra=['-DUNUSED=1']), ('2', 1))  # another command line
+        moved = self.source('elsewhere', 2)  # the same files in a new folder
         self.assertEqual(self.build(moved), ('2', 0))
 
     def test_a_failure_is_not_kept_and_a_hit_writes_a_new_file(self):
@@ -69,7 +85,7 @@ class HostBuildTest(unittest.TestCase):
         out = self.dir / 'program'
         self.assertEqual(self.build(src, out), ('3', 1))
         inode = out.stat().st_ino
-        self.assertEqual(self.build(src, out), ('3', 0))               # ran again: not rewritten in place
+        self.assertEqual(self.build(src, out), ('3', 0))  # ran again: not rewritten in place
         self.assertNotEqual(out.stat().st_ino, inode)
 
     def test_no_cache_without_one_output(self):
@@ -115,8 +131,9 @@ class CacheRaceTest(unittest.TestCase):
 
         def racing(path, *args, **kwargs):
             if path == gone and os.path.isdir(gone):
-                shutil.rmtree(gone)                    # another process pruned it between listing and stat
+                shutil.rmtree(gone)  # another process pruned it between listing and stat
             return real(path, *args, **kwargs)
+
         with mock.patch.object(Path, 'stat', racing):
             hostbuild.prune(self.root, keep=2)
         self.assertEqual(len(list(self.root.iterdir())), 2)

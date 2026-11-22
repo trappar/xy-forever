@@ -5,7 +5,10 @@
 // buffer, and the device's keys from b's OTP (otp_keys). Reply: u32 status, then (ok) u32 verdict
 // (0 pass, 1 fail), u32 reason (tfw_check::Reason), the SHA-256 of the 56-byte public key read
 // (zero when none was read); nothing derived from the AES key. Nothing is written or extracted.
-struct CheckFile { const char* path; U32 base, bytes; };
+struct CheckFile {
+    const char* path;
+    U32 base, bytes;
+};
 const U32 check_window = 0x4000u;
 int check_read(void* context, U32 offset, uint8_t* out, U32 count) {
     CheckFile& f = *static_cast<CheckFile*>(context);
@@ -15,9 +18,9 @@ int check_read(void* context, U32 offset, uint8_t* out, U32 count) {
         if (at < f.base || at - f.base >= f.bytes) {
             tick();
             uint32_t got = 0;
-            f.base = at & ~0x1ffu; f.bytes = 0;
-            if (file_client::read_file(f.path, f.base, true, files, check_window, got, mounted) != P::s_ok)
-                return -1;
+            f.base = at & ~0x1ffu;
+            f.bytes = 0;
+            if (file_client::read_file(f.path, f.base, true, files, check_window, got, mounted) != P::s_ok) return -1;
             f.bytes = got;
             if (at - f.base >= f.bytes) break;            // the end of the file
         }
@@ -58,32 +61,41 @@ void tfw_check_role(uint8_t seq, const uint8_t* payload, U32 length) {
         const char* path = reinterpret_cast<const char*>(payload + 8);
 #if defined(XYF_USB_FILE_WRITE)
         stop_idle_gc();
-        if (boot_probe_active() || rehearsal_active() || job_running() || uploading() || closing XYF_OR_MTP_BUSY) code = P::s_busy;
-        else if (writes_due) { settle_begin(); code = P::s_busy; }
-        else
+        if (boot_probe_active() || rehearsal_active() || job_running() || uploading() || closing XYF_OR_MTP_BUSY)
+            code = P::s_busy;
+        else if (writes_due) {
+            settle_begin();
+            code = P::s_busy;
+        } else
 #endif
-        if (!storage_server::valid_path(path)) code = P::s_bad_request;
+            if (!storage_server::valid_path(path))
+            code = P::s_bad_request;
         else if (!a_serving()) code = P::s_link;
         else {
             // Close B's file handles before A takes exclusive ownership of its read-only session.
             const file_client::Reply closed = file_client::unmount();
-            code = closed.outcome ? file_client::status(closed.outcome) :
-                   closed.value != 1 && closed.value != 3 ? U32(P::s_storage) : U32(P::s_ok);
+            code = closed.outcome                         ? file_client::status(closed.outcome) :
+                   closed.value != 1 && closed.value != 3 ? U32(P::s_storage) :
+                                                            U32(P::s_ok);
             if (!code) {
                 mounted = 0;
                 const file_client::Reply version = file_client::tfw_probe(path, 0);
                 code = version.outcome ? file_client::status(version.outcome) :
-                       version.value != int32_t(tfw_role_probe::version) || version.error ?
-                       U32(P::s_unsupported) : U32(P::s_ok);
+                       version.value != int32_t(tfw_role_probe::version) || version.error ? U32(P::s_unsupported) :
+                                                                                            U32(P::s_ok);
             }
             if (!code && !role) {
                 const file_client::Reply checked = file_client::tfw_probe(path, 1);
-                code = checked.outcome ? file_client::status(checked.outcome) :
-                       checked.error != tfw_role_probe::version ? U32(P::s_unsupported) : U32(checked.value);
+                code = checked.outcome                          ? file_client::status(checked.outcome) :
+                       checked.error != tfw_role_probe::version ? U32(P::s_unsupported) :
+                                                                  U32(checked.value);
                 for (U32 k = 0; !code && k != 5; ++k) {
                     const file_client::Reply word = file_client::tfw_probe(path, 2 + k);
                     if (word.outcome) code = file_client::status(word.outcome);
-                    else { P::put32(reply + 12 + 8 * k, U32(word.value)); P::put32(reply + 16 + 8 * k, word.error); }
+                    else {
+                        P::put32(reply + 12 + 8 * k, U32(word.value));
+                        P::put32(reply + 16 + 8 * k, word.error);
+                    }
                 }
             } else if (!code) {
                 CheckFile f = {path, 0, 0};
@@ -92,7 +104,9 @@ void tfw_check_role(uint8_t seq, const uint8_t* payload, U32 length) {
             }
         }
     }
-    P::put32(reply, code); P::put32(reply + 4, tfw_role_probe::version); P::put32(reply + 8, role);
+    P::put32(reply, code);
+    P::put32(reply + 4, tfw_role_probe::version);
+    P::put32(reply + 8, role);
     result.last_status = code;
     send(P::t_tfw_check_role, seq, reply, code == P::s_ok ? sizeof(reply) : 4);
 }
@@ -136,7 +150,8 @@ void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
         code = result.install_written ? verify(put_expected, result.put_crc) : P::s_install;
         // A failed writer stops before its own select 0 (verify ends with one): back to the
         // user partition here, or a's engine refuses all storage until a restarts.
-        if (!result.install_written) for (U32 tries = 0; tries != 8 && select_partition(0) != 0; ++tries) {}
+        if (!result.install_written)
+            for (U32 tries = 0; tries != 8 && select_partition(0) != 0; ++tries) {}
         say(code == P::s_ok ? "Install finished and verified." : "Install FAILED.",
             code == P::s_ok ? "Restart to use it." : "Use the dev menu to recover if needed.");
         put_expected = 0;
@@ -148,8 +163,10 @@ void install(uint8_t seq, const uint8_t* payload, U32 length, bool uninstall) {
     if (a_install) menu_link::usb_command(storage_server::command_item);
     result.install_status = code;
     uint8_t p[16];
-    P::put32(p, code); P::put32(p + 4, result.install_written);
-    P::put32(p + 8, result.verify_partition); P::put32(p + 12, result.verify_sectors);
+    P::put32(p, code);
+    P::put32(p + 4, result.install_written);
+    P::put32(p + 8, result.verify_partition);
+    P::put32(p + 12, result.verify_sectors);
     result.last_status = code;
     send(uninstall ? P::t_uninstall : P::t_install, seq, p, 16);
 }

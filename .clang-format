@@ -1,0 +1,28 @@
+# clang-format (`mise run format`; the pre-commit hook): first-party C++ only (native/, target/, sim/, host/,
+# hosttest/, tests/). third_party/ and the generated .inc tables keep their own layout (mise.toml's format task).
+# Close to the existing style: 4 spaces, 120 columns, attached braces, short bodies kept on one line.
+BasedOnStyle: LLVM
+Standard: Latest
+IndentWidth: 4
+ColumnLimit: 120
+PointerAlignment: Left
+AccessModifierOffset: -4
+IndentCaseLabels: false
+NamespaceIndentation: None
+CompactNamespaces: true
+FixNamespaceComments: false
+AllowShortBlocksOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortLambdasOnASingleLine: All
+AllowShortEnumsOnASingleLine: true
+BreakBeforeTernaryOperators: false
+AlignTrailingComments:
+  Kind: Leave
+ReflowComments: Never
+SpaceAfterTemplateKeyword: false
+BreakStringLiterals: false # strings stay whole (greppable; some are checked as text)
+SortIncludes: Never        # include order stays as written: the firmware may depend on it
+IncludeBlocks: Preserve

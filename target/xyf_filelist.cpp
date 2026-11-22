@@ -32,7 +32,10 @@ bool valid_path(const char* p, uint32_t n) {
     }
     return true;
 }
-ListStatus fail(ListReader& r, ListStatus s) { r.status = s; return s; }
+ListStatus fail(ListReader& r, ListStatus s) {
+    r.status = s;
+    return s;
+}
 // The line without its LF is r.line[0..r.length).
 template<class Visit> ListStatus line(ListReader& r, Visit visit) {
     ++r.lines;
@@ -84,23 +87,29 @@ template<class Visit> ListStatus feed(ListReader& r, const char* data, uint32_t 
             r.length = 0;
             continue;
         }
-        if (r.length == list_line) { ++r.lines; return fail(r, list_line_too_long); }
+        if (r.length == list_line) {
+            ++r.lines;
+            return fail(r, list_line_too_long);
+        }
         r.line[r.length++] = data[i];
     }
     return list_ok;
 }
 
 struct Callback {
-    FileVisit visit; void* context;
+    FileVisit visit;
+    void* context;
     bool operator()(const FileEntry& e) const { return !visit || visit(context, e); }
 };
 struct Index {
-    HashIndex* index; bool content_only;
+    HashIndex* index;
+    bool content_only;
     bool operator()(const FileEntry& e) const {
         static const char prefix[] = "content/";
         if (content_only) {
             if (e.length < sizeof(prefix)) return true;
-            for (uint32_t i = 0; i != sizeof(prefix) - 1; ++i) if (e.path[i] != prefix[i]) return true;
+            for (uint32_t i = 0; i != sizeof(prefix) - 1; ++i)
+                if (e.path[i] != prefix[i]) return true;
         }
         if (index->count == index->capacity) return false;
         for (uint32_t i = 0; i != 32; ++i) index->data[index->count * 32u + i] = e.sha256[i];
@@ -121,8 +130,11 @@ ListStatus list_index_feed(ListReader& r, const char* data, uint32_t length, Has
 
 ListStatus list_end(ListReader& r) {
     if (r.status) return ListStatus(r.status);
-    if (r.length) { ++r.lines; return fail(r, list_no_newline); }
+    if (r.length) {
+        ++r.lines;
+        return fail(r, list_no_newline);
+    }
     if (!r.count) return fail(r, list_empty);
     return list_ok;
 }
-} }
+}}

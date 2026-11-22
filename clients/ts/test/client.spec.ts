@@ -15,7 +15,10 @@ function le32(n: number): Uint8Array {
 function cat(...parts: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let at = 0;
-  for (const p of parts) { out.set(p, at); at += p.length; }
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
   return out;
 }
 function withoutCommand(text: string, type: number): string {
@@ -42,7 +45,9 @@ class FakeDevice implements Transport {
     this.hello = hello;
   }
 
-  start(sink: TransportSink): void { this.sink = sink; }
+  start(sink: TransportSink): void {
+    this.sink = sink;
+  }
 
   async write(data: Uint8Array): Promise<void> {
     if (this.ended) throw new Error('closed');
@@ -50,12 +55,15 @@ class FakeDevice implements Transport {
       this.sent.push(f);
       this.outstanding++;
       this.mostOutstanding = Math.max(this.mostOutstanding, this.outstanding);
-      if (f.type === v1.TYPE.hello) { if (this.hello !== null) this.reply(f, 0, new TextEncoder().encode(this.hello)); }
-      else this.handler(f, this);
+      if (f.type === v1.TYPE.hello) {
+        if (this.hello !== null) this.reply(f, 0, new TextEncoder().encode(this.hello));
+      } else this.handler(f, this);
     }
   }
 
-  async close(): Promise<void> { this.end(); }
+  async close(): Promise<void> {
+    this.end();
+  }
 
   end(): void {
     if (this.ended) return;
@@ -104,14 +112,22 @@ describe('connect', () => {
 
   test('another protocol major: update this app', async () => {
     const dev = new FakeDevice(() => undefined, PRODUCT_HELLO.replace(/proto=1\.[0-9]+/, 'proto=2.0'));
-    await expect(connected(dev)).rejects.toMatchObject({ code: 'protocol', message: expect.stringMatching(/update this app/) });
+    await expect(connected(dev)).rejects.toMatchObject({
+      code: 'protocol',
+      message: expect.stringMatching(/update this app/),
+    });
   });
 
   test('a port that never answers: timeout, opened again meanwhile', async () => {
     let opens = 0;
-    const silent = async (): Promise<Transport> => { opens++; return new FakeDevice(() => undefined, null); };
+    const silent = async (): Promise<Transport> => {
+      opens++;
+      return new FakeDevice(() => undefined, null);
+    };
     const start = Date.now();
-    await expect(Client.connect(silent, { timeoutMs: 600, helloEveryMs: 100 })).rejects.toMatchObject({ code: 'timeout' });
+    await expect(Client.connect(silent, { timeoutMs: 600, helloEveryMs: 100 })).rejects.toMatchObject({
+      code: 'timeout',
+    });
     expect(Date.now() - start).toBeLessThan(1500);
     expect(opens).toBeGreaterThanOrEqual(1);
   });
@@ -121,12 +137,21 @@ describe('calls', () => {
   test('a command missing from cmds is refused before sending', async () => {
     const dev = new FakeDevice(() => undefined, withoutCommand(PRODUCT_HELLO, v1.TYPE['tfw.check']));
     const client = await connected(dev);
-    await expect(client.tfwCheck('/yaffs2/x.tfw')).rejects.toMatchObject({ code: 'update_required', command: 'tfw.check' });
+    await expect(client.tfwCheck('/yaffs2/x.tfw')).rejects.toMatchObject({
+      code: 'update_required',
+      command: 'tfw.check',
+    });
     expect(dev.types()).not.toContain(v1.TYPE['tfw.check']);
   });
 
   test.each([
-    ['refused', 14], ['busy', 15], ['cancelled', 16], ['unsupported', 2], ['link', 12], ['not_found', 8], ['unknown_status', 99],
+    ['refused', 14],
+    ['busy', 15],
+    ['cancelled', 16],
+    ['unsupported', 2],
+    ['link', 12],
+    ['not_found', 8],
+    ['unknown_status', 99],
   ] as const)('status %s becomes a typed error', async (code, status) => {
     const client = await connected(new FakeDevice((f, dev) => dev.reply(f, status)));
     await expect(client.readRange('/yaffs2/a', 0, 16)).rejects.toMatchObject({ code, status, command: 'file.read' });
@@ -134,18 +159,19 @@ describe('calls', () => {
 
   test('an error reply keeps its on_error fields', async () => {
     const client = await connected(new FakeDevice((f, dev) => dev.reply(f, 14, cat(le32(0), le32(0)))));
-    await expect(client.call('file.write_staged', { path: '/yaffs2/x', sha256: new Uint8Array(32) }))
-      .rejects.toMatchObject({ code: 'refused', fields: { written: 0, readback_crc: 0 } });
+    await expect(
+      client.call('file.write_staged', { path: '/yaffs2/x', sha256: new Uint8Array(32) }),
+    ).rejects.toMatchObject({ code: 'refused', fields: { written: 0, readback_crc: 0 } });
   });
 
-  test('no reply: timeout within the call\'s timeout; the late reply is dropped', async () => {
+  test("no reply: timeout within the call's timeout; the late reply is dropped", async () => {
     let n = 0;
     const dev = new FakeDevice((f, d) => d.reply(f, 0, Uint8Array.of(n++), n === 1 ? 300 : 0));
     const client = await connected(dev);
     const start = Date.now();
     await expect(client.readRange('/yaffs2/a', 0, 1, { timeoutMs: 100 })).rejects.toMatchObject({ code: 'timeout' });
     expect(Date.now() - start).toBeLessThan(250);
-    await new Promise((ok) => setTimeout(ok, 300));                // the late reply arrives now
+    await new Promise((ok) => setTimeout(ok, 300)); // the late reply arrives now
     expect(await client.readRange('/yaffs2/a', 0, 1)).toEqual(Uint8Array.of(1));
     expect(client.link.dropped).toBe(1);
   });
@@ -163,13 +189,18 @@ describe('calls', () => {
     const client = await connected(dev);
     const inFlight = new AbortController();
     setTimeout(() => inFlight.abort(), 10);
-    await expect(client.readRange('/yaffs2/a', 0, 1024, { signal: inFlight.signal })).rejects.toMatchObject({ code: 'aborted' });
+    await expect(client.readRange('/yaffs2/a', 0, 1024, { signal: inFlight.signal })).rejects.toMatchObject({
+      code: 'aborted',
+    });
     const before = dev.sent.length;
-    await expect(client.readRange('/yaffs2/a', 0, 1024, { signal: AbortSignal.abort() })).rejects.toMatchObject({ code: 'aborted' });
+    await expect(client.readRange('/yaffs2/a', 0, 1024, { signal: AbortSignal.abort() })).rejects.toMatchObject({
+      code: 'aborted',
+    });
     expect(dev.sent.length).toBe(before);
     const between = new AbortController();
-    await expect(client.readFile('/yaffs2/a', { signal: between.signal, onProgress: () => between.abort() }))
-      .rejects.toMatchObject({ code: 'aborted' });
+    await expect(
+      client.readFile('/yaffs2/a', { signal: between.signal, onProgress: () => between.abort() }),
+    ).rejects.toMatchObject({ code: 'aborted' });
     expect(dev.sent.length).toBe(before + 1);
   });
 
@@ -195,7 +226,9 @@ describe('calls', () => {
 
   test('#65: waiting is sent again until the device is answered; declined is not allowed', async () => {
     let waits = 2;
-    const dev = new FakeDevice((f, d) => d.reply(f, waits-- > 0 ? v1.STATUS.waiting : 0, cat(le32(1), le32(1), le32(8))));
+    const dev = new FakeDevice((f, d) =>
+      d.reply(f, waits-- > 0 ? v1.STATUS.waiting : 0, cat(le32(1), le32(1), le32(8))),
+    );
     const client = await connected(dev);
     expect([client.info.ask, client.info.trust]).toEqual([true, 'none']);
     const asks: boolean[] = [];
@@ -203,14 +236,20 @@ describe('calls', () => {
     expect(await client.bootInstall(new Uint8Array(32))).toEqual({ written: 1, partition: 1, sectors: 8 });
     expect([asks, dev.types().filter((t) => t === v1.TYPE['boot.install']).length]).toEqual([[true, false], 3]);
     const refused = await connected(new FakeDevice((f, d) => d.reply(f, v1.STATUS.declined)));
-    await expect(refused.bootInstall(new Uint8Array(32))).rejects.toMatchObject({ code: 'declined', message: expect.stringContaining('not allowed') });
+    await expect(refused.bootInstall(new Uint8Array(32))).rejects.toMatchObject({
+      code: 'declined',
+      message: expect.stringContaining('not allowed'),
+    });
   });
 
   test('staging uses the hello limits: chunk size and capacity', async () => {
     const hello = PRODUCT_HELLO.replace('payload=4160', 'payload=600').replace('stage=7340032', 'stage=5000');
     let received = 0;
     const dev = new FakeDevice((f, d) => {
-      if (f.type === v1.TYPE['stage.data']) { received += f.payload.length - 4; d.reply(f, 0, le32(received)); } else d.reply(f, 0);
+      if (f.type === v1.TYPE['stage.data']) {
+        received += f.payload.length - 4;
+        d.reply(f, 0, le32(received));
+      } else d.reply(f, 0);
     }, hello);
     const client = await connected(dev);
     const data = Uint8Array.from({ length: 2000 }, (_, i) => i & 0xff);
@@ -227,8 +266,9 @@ describe('calls', () => {
 describe('helpers', () => {
   test('decodeScreen: columns right to left, RGB565 to RGBA', () => {
     const raw = new Uint8Array(SCREEN.bytes);
-    const at = ((SCREEN.width - 1 - 3) * SCREEN.stride + 5) * 2;     // pixel x 3, y 5
-    raw[at] = 0x04; raw[at + 1] = 0x21;                              // 0x2104
+    const at = ((SCREEN.width - 1 - 3) * SCREEN.stride + 5) * 2; // pixel x 3, y 5
+    raw[at] = 0x04;
+    raw[at + 1] = 0x21; // 0x2104
     const { width, height, rgba } = decodeScreen(raw);
     const o = (5 * width + 3) * 4;
     expect([width, height]).toEqual([480, 216]);

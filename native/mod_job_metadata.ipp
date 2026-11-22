@@ -4,7 +4,8 @@ namespace record = xyf::package_record;
 Error parse_list(Job& j, Job::Package& p) {
     Byte* t = p.list;
     U32 lines = 0;
-    for (U32 i = 0; i != p.list_bytes; ++i) if (t[i] == '\n') ++lines;
+    for (U32 i = 0; i != p.list_bytes; ++i)
+        if (t[i] == '\n') ++lines;
     if (p.list_bytes && t[p.list_bytes - 1] != '\n') return Error::list;
     p.files = reinterpret_cast<mod_content::File*>(take(j, lines * U32(sizeof(mod_content::File)), true));
     if (!p.files && lines) return Error::region;
@@ -17,7 +18,8 @@ Error parse_list(Job& j, Job::Package& p) {
         t[e] = 0;
         const char* path = reinterpret_cast<const char*>(t + s + 66);
         const hash::Digest** metadata = same(path, record::native_name) ? &p.native_sha256 :
-                                        same(path, record::legacy_name) ? &p.info_sha256 : 0;
+                                        same(path, record::legacy_name) ? &p.info_sha256 :
+                                                                          0;
         if (metadata && *metadata) return Error::list;
         mod_content::File& file = p.files[metadata ? --metadata_at : p.file_count++];
         file.path = path;
@@ -32,7 +34,8 @@ Error parse_list(Job& j, Job::Package& p) {
     return Error::none;
 }
 const hash::Digest* listed(const Job::Package& p, const char* path) {
-    for (U32 i = 0; i != p.file_count; ++i) if (same(p.files[i].path, path)) return &p.files[i].sha256;
+    for (U32 i = 0; i != p.file_count; ++i)
+        if (same(p.files[i].path, path)) return &p.files[i].sha256;
     return 0;
 }
 
@@ -66,20 +69,22 @@ Phase begin_metadata(Job& j, Job::Package& p) {
 
 Error finish_metadata(Job& j, Job::Package& p, xyf::manifest::Type expected) {
     if (p.metadata == record::legacy_name) {
-        p.info = j.load.data; p.info_bytes = j.load.size;
+        p.info = j.load.data;
+        p.info_bytes = j.load.size;
         return Error::none;
     }
     auto* scratch = reinterpret_cast<MetadataScratch*>(j.load.data);
     uint32_t bytes = 0;
-    const json::Status status = record::view(reinterpret_cast<const char*>(scratch->raw), j.load.size,
-                                             scratch->parse, expected, scratch->view, bytes);
+    const json::Status status = record::view(reinterpret_cast<const char*>(scratch->raw), j.load.size, scratch->parse,
+                                             expected, scratch->view, bytes);
     if (status != json::ok) {
         set_detail(j, p.name, p.metadata, json::message(status));
         return Error::info;
     }
     // The raw bytes have passed their hash check. Retain just the view, at the
     // start of the same workspace and separate from the source of this copy.
-    p.info = take(j, bytes, true); p.info_bytes = bytes;
+    p.info = take(j, bytes, true);
+    p.info_bytes = bytes;
     if (!p.info) return Error::region;
     for (U32 i = 0; i != bytes; ++i) p.info[i] = Byte(scratch->view[i]);
     return Error::none;

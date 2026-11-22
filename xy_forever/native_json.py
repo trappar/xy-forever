@@ -4,6 +4,7 @@ The text views are internal adapters for the existing semantic readers. They are
 never written as competing native records. JSON identity is independent of the
 package's display version and of other on-device formats (state/jobs/settings).
 """
+
 import json
 import re
 
@@ -11,9 +12,11 @@ PACKAGE_SCHEMA = 'xy-forever.package'
 CONFIG_SCHEMA = 'xy-forever.config'
 DOCUMENT_BYTES, PROPERTY_COUNT, FIELD_COUNT, LIST_COUNT, MAX_DEPTH = 8448, 128, 32, 96, 4
 VALUE_BYTES, KEY_BYTES = 127, 31
-NUMBERS = frozenset('bytes machines module_base module_bytes stock_bytes edits objects extensions code data '
-                    'state runtime_code runtime_data runtime_state catalog_engine_at catalog_fx_at catalog_seq_at '
-                    'stock_records reserved_bytes heap_fill_base heap_fill_bytes expanded_module_base order link presets'.split())
+NUMBERS = frozenset(
+    'bytes machines module_base module_bytes stock_bytes edits objects extensions code data '
+    'state runtime_code runtime_data runtime_state catalog_engine_at catalog_fx_at catalog_seq_at '
+    'stock_records reserved_bytes heap_fill_base heap_fill_bytes expanded_module_base order link presets'.split()
+)
 ADDRESSES = frozenset(('module_base', 'heap_fill_base', 'expanded_module_base'))
 OPTIONAL_NUMBERS = frozenset(('engine', 'effect', 'player', 'page'))
 LISTS = frozenset(('services', 'features', 'claims', 'accessors'))
@@ -29,13 +32,15 @@ def _need(condition, message):
 
 
 def _uint(value):
-    _need(type(value) is int and 0 <= value <= 0xffffffff, 'JSON field type or integer range')
+    _need(type(value) is int and 0 <= value <= 0xFFFFFFFF, 'JSON field type or integer range')
     return value
 
 
 def _text(value, maximum=VALUE_BYTES):
-    _need(isinstance(value, str) and len(value) <= maximum and
-          all(0x20 <= ord(c) <= 0x7e for c in value), 'JSON field text')
+    _need(
+        isinstance(value, str) and len(value) <= maximum and all(0x20 <= ord(c) <= 0x7E for c in value),
+        'JSON field text',
+    )
     return value
 
 
@@ -58,9 +63,12 @@ def parse(data, schema):
         _need(not (escaped and c == ord('u')), 'Unicode escapes unsupported in native JSON')
         escaped = not escaped and c == ord('\\')
     try:
-        root = json.loads(data, object_pairs_hook=_pairs,
-                          parse_int=lambda number: -0.0 if number == '-0' else int(number),
-                          parse_constant=lambda _: (_ for _ in ()).throw(RecordError('JSON number')))
+        root = json.loads(
+            data,
+            object_pairs_hook=_pairs,
+            parse_int=lambda number: -0.0 if number == '-0' else int(number),
+            parse_constant=lambda _: (_ for _ in ()).throw(RecordError('JSON number')),
+        )
     except (ValueError, UnicodeError, RecursionError) as error:
         raise RecordError(str(error)) from error
     _need(isinstance(root, dict), 'JSON object required')
@@ -78,8 +86,7 @@ def parse(data, schema):
                 _need(all(len(key) <= KEY_BYTES for key in value), 'JSON field name limit')
             pending.extend((v, depth + 1) for v in (value.values() if isinstance(value, dict) else value))
     _need(root.get('schema') == schema, 'unsupported JSON schema')
-    _need(type(root.get('schema_version')) is int and root['schema_version'] == 1,
-          'unsupported JSON schema version')
+    _need(type(root.get('schema_version')) is int and root['schema_version'] == 1, 'unsupported JSON schema version')
     return root
 
 
@@ -128,7 +135,9 @@ def package_document(fields):
         if value is None:
             continue
         if key in NUMBERS | OPTIONAL_NUMBERS:
-            value = None if value == '-' and key in OPTIONAL_NUMBERS else int(str(value), 16 if key in ADDRESSES else 10)
+            value = (
+                None if value == '-' and key in OPTIONAL_NUMBERS else int(str(value), 16 if key in ADDRESSES else 10)
+            )
         elif key in LISTS:
             value = [] if value in ('', '-') else str(value).split(',')
         elif key == 'catalog_number':
@@ -149,8 +158,10 @@ def config_text(data):
     for key in ('base', 'profile', 'generation', 'memory'):
         value = _text(desired.get(key), 31)
         if key != 'memory':
-            _need(re.fullmatch(r'[a-z0-9_-]+' if key == 'base' else r'(?:[a-z0-9][a-z0-9._-]*)?', value),
-                  'JSON configuration identifier')
+            _need(
+                re.fullmatch(r'[a-z0-9_-]+' if key == 'base' else r'(?:[a-z0-9][a-z0-9._-]*)?', value),
+                'JSON configuration identifier',
+            )
         _need(key != 'memory' or value in ('standard', 'expanded'), 'JSON memory choice')
         lines.append('%s=%s\n' % (key, value))
     _need(type(desired.get('unverified')) is bool, 'JSON unverified boolean')
@@ -164,19 +175,35 @@ def config_text(data):
         for key in ('base', 'generation', 'memory', 'slot', 'sha256'):
             _text(built.get(key), 64 if key == 'sha256' else 31)
         _need(built['memory'] in ('standard', 'expanded') and built['slot'] in ('mods-a', 'mods-b'), 'JSON built state')
-        _need(re.fullmatch(r'[a-z0-9_-]+', built['base']) and
-              re.fullmatch(r'[a-z0-9][a-z0-9._-]*', built['generation']) and
-              re.fullmatch(r'[0-9a-f]{64}', built['sha256']), 'JSON generated build identity')
+        _need(
+            re.fullmatch(r'[a-z0-9_-]+', built['base'])
+            and re.fullmatch(r'[a-z0-9][a-z0-9._-]*', built['generation'])
+            and re.fullmatch(r'[0-9a-f]{64}', built['sha256']),
+            'JSON generated build identity',
+        )
         count, selected = _uint(built.get('count')), _uint(built.get('set'))
         _need(count <= LIST_COUNT, 'JSON build selection count')
-        lines.append('built=%s %s %08x %d%s\nslot=%s\nstamp=%s\n' %
-                     (built['base'], built['generation'], selected, count,
-                      ' expanded' if built['memory'] == 'expanded' else '', built['slot'], built['sha256']))
+        lines.append(
+            'built=%s %s %08x %d%s\nslot=%s\nstamp=%s\n'
+            % (
+                built['base'],
+                built['generation'],
+                selected,
+                count,
+                ' expanded' if built['memory'] == 'expanded' else '',
+                built['slot'],
+                built['sha256'],
+            )
+        )
     mods = desired.get('mods')
     _need(isinstance(mods, list) and len(mods) <= LIST_COUNT, 'JSON mods list')
     for mod in mods:
-        _need(isinstance(mod, str) and len(mod) <= (36 if mod.startswith('ext-') else 31)
-              and re.fullmatch(r'[a-z0-9_.-]+', mod), 'JSON mod identifier')
+        _need(
+            isinstance(mod, str)
+            and len(mod) <= (36 if mod.startswith('ext-') else 31)
+            and re.fullmatch(r'[a-z0-9_.-]+', mod),
+            'JSON mod identifier',
+        )
     _need(len(set(mods)) == len(mods), 'duplicate JSON selection')
     lines.append('mods=%s\n' % ','.join(mods))
     result = ''.join(lines).encode('ascii')
@@ -195,10 +222,23 @@ def config_document(fields):
     if fields.get('built') and fields.get('slot') in ('mods-a', 'mods-b'):
         parts = fields['built'].split(' ')
         _need(len(parts) in (4, 5), 'legacy built state')
-        built = dict(base=parts[0], generation=parts[1], set=int(parts[2], 16), count=int(parts[3]),
-                     memory='expanded' if len(parts) == 5 and parts[4] == 'expanded' else 'standard',
-                     slot=fields['slot'], sha256=fields.get('stamp', ''))
-    data = (json.dumps(dict(schema=CONFIG_SCHEMA, schema_version=1, desired=desired, built=built),
-                       separators=(',', ':'), ensure_ascii=False, allow_nan=False) + '\n').encode()
+        built = dict(
+            base=parts[0],
+            generation=parts[1],
+            set=int(parts[2], 16),
+            count=int(parts[3]),
+            memory='expanded' if len(parts) == 5 and parts[4] == 'expanded' else 'standard',
+            slot=fields['slot'],
+            sha256=fields.get('stamp', ''),
+        )
+    data = (
+        json.dumps(
+            dict(schema=CONFIG_SCHEMA, schema_version=1, desired=desired, built=built),
+            separators=(',', ':'),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + '\n'
+    ).encode()
     config_text(data)
     return data

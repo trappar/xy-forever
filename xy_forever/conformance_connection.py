@@ -4,6 +4,7 @@ HELLO establishes the protocol session, not completion of background recovery. O
 that require clean startup call this barrier, before their measured requests. Older peers
 without storage.space keep their original exchanges. Split from conformance.py (source budget).
 """
+
 import struct
 import time
 
@@ -14,6 +15,7 @@ from xy_forever.startup_ready import StartupNotReady, wait_startup_ready
 class ConformanceConnection:
     def open(self, hello=True, wait=None, ready=False):
         from xy_forever.conformance import Fail, Link
+
         wait = self.timing['back_ms'] / 1000.0 if wait is None else wait
         deadline = time.monotonic() + wait
         while True:
@@ -46,9 +48,11 @@ class ConformanceConnection:
                 getattr(self.target, 'pause', time.sleep)(0.1)
                 continue
             if ready:
+
                 def probe(remaining):
                     body, _ = link.request(ids.STORAGE_SPACE, struct.pack('<I', 1), remaining)
                     return struct.unpack_from('<I', body)[0]
+
                 try:
                     wait_startup_ready(self.hello_text, probe, self.reply_cap)
                 except Exception as error:

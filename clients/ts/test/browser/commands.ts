@@ -1,6 +1,15 @@
 // Browser commands (run by Node, called from the page through `commands` of 'vitest/browser'): the
 // simulator's control port, and its /yaffs2 folder on the Mac, which a page cannot reach itself.
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import type { BrowserCommand } from 'vitest/node';
@@ -13,14 +22,16 @@ function onMac(root: string, path: string): string {
 }
 
 const simControl: BrowserCommand<[port: number, line: string]> = (_ctx, port, line) => control(port, line);
-const simRead: BrowserCommand<[root: string, path: string]> = (_ctx, root, path) => readFileSync(onMac(root, path)).toString('base64');
+const simRead: BrowserCommand<[root: string, path: string]> = (_ctx, root, path) =>
+  readFileSync(onMac(root, path)).toString('base64');
 const simWrite: BrowserCommand<[root: string, path: string, base64: string]> = (_ctx, root, path, base64) => {
   const file = onMac(root, path);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, Buffer.from(base64, 'base64'));
 };
 
-const simList: BrowserCommand<[root: string, path: string]> = (_ctx, root, path) => readdirSync(onMac(root, path)).sort();
+const simList: BrowserCommand<[root: string, path: string]> = (_ctx, root, path) =>
+  readdirSync(onMac(root, path)).sort();
 
 const simDelete: BrowserCommand<[root: string, path: string]> = (_ctx, root, path) => unlinkSync(onMac(root, path));
 
@@ -29,8 +40,12 @@ const modSet: BrowserCommand<[]> = () => {
   const work = mkdtempSync(join(tmpdir(), 'xyf-web-mods-'));
   try {
     const gen = makeModSet(work);
-    const files = (readdirSync(gen, { recursive: true }) as string[]).filter((p) => statSync(join(gen, p)).isFile())
-      .map((p) => ({ path: relative(gen, join(gen, p)).split(sep).join('/'), base64: readFileSync(join(gen, p)).toString('base64') }));
+    const files = (readdirSync(gen, { recursive: true }) as string[])
+      .filter((p) => statSync(join(gen, p)).isFile())
+      .map((p) => ({
+        path: relative(gen, join(gen, p)).split(sep).join('/'),
+        base64: readFileSync(join(gen, p)).toString('base64'),
+      }));
     return { name: basename(gen), files };
   } finally {
     rmSync(work, { recursive: true, force: true });

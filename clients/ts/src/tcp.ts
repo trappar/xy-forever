@@ -9,25 +9,44 @@ export class TcpTransport implements Transport {
   private ended = false;
   private error: Error | undefined;
 
-  static connect(host: string, port: number, options: { timeoutMs?: number; signal?: AbortSignal | undefined } = {}): Promise<TcpTransport> {
+  static connect(
+    host: string,
+    port: number,
+    options: { timeoutMs?: number; signal?: AbortSignal | undefined } = {},
+  ): Promise<TcpTransport> {
     return new Promise((resolve, reject) => {
       const socket = net.createConnection({ host, port, signal: options.signal });
-      const timer = setTimeout(() => { socket.destroy(); reject(new Error(`connect ${host}:${port}: timed out`)); }, options.timeoutMs ?? 2000);
-      socket.once('connect', () => { clearTimeout(timer); socket.removeAllListeners('error'); resolve(new TcpTransport(socket)); });
-      socket.once('error', (error) => { clearTimeout(timer); reject(error); });
+      const timer = setTimeout(() => {
+        socket.destroy();
+        reject(new Error(`connect ${host}:${port}: timed out`));
+      }, options.timeoutMs ?? 2000);
+      socket.once('connect', () => {
+        clearTimeout(timer);
+        socket.removeAllListeners('error');
+        resolve(new TcpTransport(socket));
+      });
+      socket.once('error', (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
     });
   }
 
   private constructor(socket: net.Socket) {
     this.socket = socket;
     socket.setNoDelay(true);
-    socket.on('error', (error) => { this.error = error; });
+    socket.on('error', (error) => {
+      this.error = error;
+    });
     socket.on('close', () => this.finish());
   }
 
   start(sink: TransportSink): void {
     this.sink = sink;
-    if (this.ended) { sink.closed(this.error); return; }
+    if (this.ended) {
+      sink.closed(this.error);
+      return;
+    }
     this.socket.on('data', (chunk: Buffer) => sink.data(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.length)));
   }
 
@@ -38,7 +57,10 @@ export class TcpTransport implements Transport {
 
   close(): Promise<void> {
     if (this.ended) return Promise.resolve();
-    return new Promise((resolve) => { this.socket.once('close', () => resolve()); this.socket.destroy(); });
+    return new Promise((resolve) => {
+      this.socket.once('close', () => resolve());
+      this.socket.destroy();
+    });
   }
 
   private finish(): void {

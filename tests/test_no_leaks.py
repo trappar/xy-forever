@@ -16,12 +16,13 @@ Scans every file `git ls-files` lists (binaries skipped) and fails, naming file:
 
 A line ending in a `leak-ok` comment is exempt from every rule; use it only with a reason on the same line.
 """
+
 import json
-from pathlib import Path
 import re
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 import pytest
 
@@ -31,15 +32,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 MARKER = 'leak-ok'
 EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}')
-EMAILS_OK = {'noreply@anthropic.com', 'git@github.com'}   # commit attribution; GitHub's SSH clone user
+EMAILS_OK = {'noreply@anthropic.com', 'git@github.com'}  # commit attribution; GitHub's SSH clone user
 EXAMPLE_DOMAINS = re.compile(r'@(.+\.)?example\.(com|org|net)$', re.I)
 HOME = re.compile(r'(?:/Users|/home)/(?!<|Shared\b)[A-Za-z0-9._-]+|[A-Za-z]:\\+Users\\+(?!<)[A-Za-z0-9._-]+')
 EVIDENCE = re.compile(r'xy-forever/(sessions|analysis|reports)/([^\s/`\'"<>)]+)')
-TOOL_FOLDERS = {'host-builds',                            # xy_forever/hostbuild.py's cache
-                'neutral',                                # scripts/neutral.py's worktrees
-                'bootloader-121-listing'}                 # paths.LISTING_121, the re/ tools' input
+TOOL_FOLDERS = {
+    'host-builds',  # xy_forever/hostbuild.py's cache
+    'neutral',  # scripts/neutral.py's worktrees
+    'bootloader-121-listing',
+}  # paths.LISTING_121, the re/ tools' input
 KEY_FILE = re.compile(r'\bkeys/([A-Za-z0-9._-]+\.[A-Za-z0-9]+)')
-KEY_FILES = {'opxy-update-keys.json', 'opxy-tfw-public-key.json'}   # read by tfw_extract, xyf_package, sim
+KEY_FILES = {'opxy-update-keys.json', 'opxy-tfw-public-key.json'}  # read by tfw_extract, xyf_package, sim
 HEX = re.compile(r'(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{64}|[0-9A-Fa-f]{32})(?![0-9A-Fa-f])')
 DIGEST_LABEL = re.compile(r'sha-?(1|256|512)|crc|digest|hash|vector|checksum|md5', re.I)
 PIN_FILES = ('stock.json', 'toolchains.json')
@@ -52,7 +55,7 @@ def tracked_texts(root=ROOT):
     for name in filter(None, names.decode().split('\0')):
         try:
             data = (Path(root) / name).read_bytes()
-        except OSError:                                   # deleted in the working tree
+        except OSError:  # deleted in the working tree
             continue
         if b'\0' in data:
             continue
@@ -89,11 +92,13 @@ def find_leaks(texts, private_patterns=()):
             if MARKER in line:
                 continue
             found = []
-            found += [('email', m.group(0)) for m in EMAIL.finditer(line)
-                      if m.group(0) not in EMAILS_OK and not EXAMPLE_DOMAINS.search(m.group(0))]
+            found += [
+                ('email', m.group(0))
+                for m in EMAIL.finditer(line)
+                if m.group(0) not in EMAILS_OK and not EXAMPLE_DOMAINS.search(m.group(0))
+            ]
             found += [('home path', m.group(0)) for m in HOME.finditer(line)]
-            found += [('evidence path', m.group(0)) for m in EVIDENCE.finditer(line)
-                      if m.group(2) not in TOOL_FOLDERS]
+            found += [('evidence path', m.group(0)) for m in EVIDENCE.finditer(line) if m.group(2) not in TOOL_FOLDERS]
             found += [('key file', m.group(0)) for m in KEY_FILE.finditer(line) if m.group(1) not in KEY_FILES]
             found += [('key-shaped hex', h) for h in HEX.findall(line) if h.lower() not in known]
             found += [('private pattern', m.group(0)) for p in private for m in p.finditer(line)]
@@ -106,7 +111,7 @@ class NoLeaksTest(unittest.TestCase):
     def test_tracked_files_have_no_personal_data(self):
         try:
             texts = tracked_texts()
-        except (OSError, subprocess.CalledProcessError):
+        except OSError, subprocess.CalledProcessError:
             self.skipTest('not a git checkout')
         self.assertGreater(len(texts), 100)
         hits = find_leaks(texts, paths.leak_patterns())
@@ -123,19 +128,20 @@ class NoLeaksTest(unittest.TestCase):
             'keys: ../private/keys/opxy-update-keys.json; B = screen/keys/USB/PSoC',
             'pin: ' + 'ab' * 32,
             'SHA-256 `' + 'cd' * 32 + '`',
-            'needs_os=' + 'cd' * 32,                       # labelled on the line above
-            'git commit ' + 'e' * 40,                     # 40 hex: a commit, not key-shaped
+            'needs_os=' + 'cd' * 32,  # labelled on the line above
+            'git commit ' + 'e' * 40,  # 40 hex: a commit, not key-shaped
             'secret = "%s"  # leak-ok: synthetic test key' % ('5a' * 16),
         ]
         self.assertEqual(find_leaks(dict(base, **{'a.txt': '\n'.join(clean)})), [])
-        dirty = [                                          # planted inputs, each line marked for the scan
-            ('someone@gmail.com', 'email'),                                              # leak-ok
-            ('/Users/someone/x', 'home path'), ('/home/someone/x', 'home path'),         # leak-ok
-            ('C:\\Users\\someone\\x', 'home path'),                                       # leak-ok
+        dirty = [  # planted inputs, each line marked for the scan
+            ('someone@gmail.com', 'email'),  # leak-ok
+            ('/Users/someone/x', 'home path'),  # leak-ok
+            ('/home/someone/x', 'home path'),  # leak-ok
+            ('C:\\Users\\someone\\x', 'home path'),  # leak-ok
             ('private/xy-forever/sessions/2026-11-16-audit/AUDIT.md', 'evidence path'),  # leak-ok
-            ('private/xy-forever/analysis/xy-forever-usb-001', 'evidence path'),         # leak-ok
-            ('private/xy-forever/reports/test-031/', 'evidence path'),                   # leak-ok
-            ('private/keys/other-key.json', 'key file'),                                 # leak-ok
+            ('private/xy-forever/analysis/xy-forever-usb-001', 'evidence path'),  # leak-ok
+            ('private/xy-forever/reports/test-031/', 'evidence path'),  # leak-ok
+            ('private/keys/other-key.json', 'key file'),  # leak-ok
             ('key = ' + '0123456789abcdef' * 2, 'key-shaped hex'),
             ('key = ' + '0123456789ABCDEF' * 4, 'key-shaped hex'),
             ('signed by Jane Q. Hacker', 'private pattern'),

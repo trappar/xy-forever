@@ -25,24 +25,34 @@
 // the port usable (break, framing, parity, overrun), exclusive opening against other programs.
 import { USB_FILTERS } from '../../src/index.ts';
 
-export interface PortInfo { usbVendorId?: number; usbProductId?: number }
+export interface PortInfo {
+  usbVendorId?: number;
+  usbProductId?: number;
+}
 type Filter = { usbVendorId?: number; usbProductId?: number };
 
-const ADAPTER: PortInfo = { usbVendorId: 0x0403, usbProductId: 0x6001 };       // an FTDI USB serial adapter
+const ADAPTER: PortInfo = { usbVendorId: 0x0403, usbProductId: 0x6001 }; // an FTDI USB serial adapter
 const lost = (): DOMException => new DOMException('The device has been lost.', 'NetworkError');
 
 function checkFilters(filters: Filter[] | undefined): void {
   for (const f of filters ?? []) {
     if (f.usbVendorId === undefined && f.usbProductId !== undefined) {
-      throw new TypeError("Failed to execute 'requestPort' on 'Serial': A filter containing a usbProductId must also specify a usbVendorId.");
+      throw new TypeError(
+        "Failed to execute 'requestPort' on 'Serial': A filter containing a usbProductId must also specify a usbVendorId.",
+      );
     }
-    if (f.usbVendorId === undefined) throw new TypeError("Failed to execute 'requestPort' on 'Serial': A filter must provide a property to filter by.");
+    if (f.usbVendorId === undefined)
+      throw new TypeError(
+        "Failed to execute 'requestPort' on 'Serial': A filter must provide a property to filter by.",
+      );
   }
 }
 
 function matches(info: PortInfo, filters: Filter[] | undefined): boolean {
   if (!filters || filters.length === 0) return true;
-  return filters.some((f) => f.usbVendorId === info.usbVendorId && (f.usbProductId === undefined || f.usbProductId === info.usbProductId));
+  return filters.some(
+    (f) => f.usbVendorId === info.usbVendorId && (f.usbProductId === undefined || f.usbProductId === info.usbProductId),
+  );
 }
 
 export class FakePort extends EventTarget {
@@ -70,7 +80,7 @@ export class FakePort extends EventTarget {
   private rc: ReadableByteStreamController | null = null;
   private ws: WritableStream<Uint8Array> | null = null;
   private wc: WritableStreamDefaultController | null = null;
-  private held: Uint8Array<ArrayBuffer>[] = [];                    // received while no readable exists
+  private held: Uint8Array<ArrayBuffer>[] = []; // received while no readable exists
 
   constructor(owner: FakeSerial, info: PortInfo, relay: string | null, silent = false) {
     super();
@@ -80,22 +90,36 @@ export class FakePort extends EventTarget {
     this.silent = silent;
   }
 
-  getInfo(): PortInfo { return { ...this.info }; }
+  getInfo(): PortInfo {
+    return { ...this.info };
+  }
 
   /** Opened and not yet closed (a lost port stays open until close(), as in Chrome). */
-  get isOpen(): boolean { return this.state !== 'closed'; }
+  get isOpen(): boolean {
+    return this.state !== 'closed';
+  }
 
   async open(options: { baudRate: number; bufferSize?: number }): Promise<void> {
     if (this.state !== 'closed') throw new DOMException('The port is already open.', 'InvalidStateError');
-    if (!Number.isInteger(options?.baudRate) || options.baudRate <= 0) throw new TypeError('Requested baud rate must be greater than zero.');
+    if (!Number.isInteger(options?.baudRate) || options.baudRate <= 0)
+      throw new TypeError('Requested baud rate must be greater than zero.');
     const bufferSize = options.bufferSize ?? 255;
-    if (!Number.isInteger(bufferSize) || bufferSize <= 0 || bufferSize > 16 * 1024 * 1024) throw new TypeError('Requested buffer size out of range.');
+    if (!Number.isInteger(bufferSize) || bufferSize <= 0 || bufferSize > 16 * 1024 * 1024)
+      throw new TypeError('Requested buffer size out of range.');
     this.bufferSize = bufferSize;
-    if (this.silent && !this.isLost) { this.state = 'open'; this.opens++; return; }
+    if (this.silent && !this.isLost) {
+      this.state = 'open';
+      this.opens++;
+      return;
+    }
     if (this.isLost || !this.relay) throw new DOMException('Failed to open serial port.', 'NetworkError');
     const other = this.partner();
-    if (other?.socket && other.state === 'open') {                      // the same tty, already open: share its stream
-      this.host = other; other.guest = this; this.state = 'open'; this.opens++;
+    if (other?.socket && other.state === 'open') {
+      // the same tty, already open: share its stream
+      this.host = other;
+      other.guest = this;
+      this.state = 'open';
+      this.opens++;
       return;
     }
     this.state = 'opening';
@@ -105,21 +129,33 @@ export class FakePort extends EventTarget {
       socket.onopen = () => resolve(true);
       socket.onclose = () => resolve(false);
     });
-    if (!opened) { this.state = 'closed'; throw new DOMException('Failed to open serial port.', 'NetworkError'); }
+    if (!opened) {
+      this.state = 'closed';
+      throw new DOMException('Failed to open serial port.', 'NetworkError');
+    }
     this.socket = socket;
     this.state = 'open';
     this.opens++;
     socket.onmessage = (e: MessageEvent) => this.received(new Uint8Array(e.data as ArrayBuffer));
-    socket.onclose = () => { if (this.socket === socket) this.lose(); };
+    socket.onclose = () => {
+      if (this.socket === socket) this.lose();
+    };
   }
 
   get readable(): ReadableStream<Uint8Array> | null {
     if (this.rs || this.state !== 'open' || this.isLost) return this.rs;
-    const stream: ReadableStream<Uint8Array> = new ReadableStream({
-      type: 'bytes',
-      start: (c) => { this.rc = c; },
-      cancel: () => { if (this.rs === stream) this.rs = this.rc = null; },
-    }, { highWaterMark: this.bufferSize });
+    const stream: ReadableStream<Uint8Array> = new ReadableStream(
+      {
+        type: 'bytes',
+        start: (c) => {
+          this.rc = c;
+        },
+        cancel: () => {
+          if (this.rs === stream) this.rs = this.rc = null;
+        },
+      },
+      { highWaterMark: this.bufferSize },
+    );
     this.rs = stream;
     const held = this.held.splice(0);
     this.heldBytes = 0;
@@ -130,17 +166,27 @@ export class FakePort extends EventTarget {
   get writable(): WritableStream<Uint8Array> | null {
     if (this.ws || this.state !== 'open' || this.isLost) return this.ws;
     const stream: WritableStream<Uint8Array> = new WritableStream<Uint8Array>({
-      start: (c) => { this.wc = c; },
+      start: (c) => {
+        this.wc = c;
+      },
       write: (chunk) => {
-        if (!(chunk instanceof ArrayBuffer) && !ArrayBuffer.isView(chunk)) throw new TypeError('Can only write an ArrayBuffer or ArrayBufferView.');
+        if (!(chunk instanceof ArrayBuffer) && !ArrayBuffer.isView(chunk))
+          throw new TypeError('Can only write an ArrayBuffer or ArrayBufferView.');
         if (this.silent) return;
         const socket = this.host ? this.host.socket : this.socket;
         if (!socket) throw lost();
-        const view = chunk instanceof ArrayBuffer ? new Uint8Array(chunk) : new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+        const view =
+          chunk instanceof ArrayBuffer
+            ? new Uint8Array(chunk)
+            : new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
         socket.send(view.slice());
       },
-      close: () => { if (this.ws === stream) this.ws = this.wc = null; },
-      abort: () => { if (this.ws === stream) this.ws = this.wc = null; },
+      close: () => {
+        if (this.ws === stream) this.ws = this.wc = null;
+      },
+      abort: () => {
+        if (this.ws === stream) this.ws = this.wc = null;
+      },
     });
     this.ws = stream;
     return stream;
@@ -148,16 +194,21 @@ export class FakePort extends EventTarget {
 
   async close(): Promise<void> {
     if (this.state !== 'open') throw new DOMException('The port is already closed.', 'InvalidStateError');
-    if (this.rs?.locked || this.ws?.locked) throw new TypeError("Failed to execute 'close' on 'SerialPort': Cannot cancel a locked stream");
+    if (this.rs?.locked || this.ws?.locked)
+      throw new TypeError("Failed to execute 'close' on 'SerialPort': Cannot cancel a locked stream");
     await this.rs?.cancel();
     await this.ws?.close();
     const socket = this.socket;
     this.socket = null;
     socket?.close(1000);
-    if (this.host) { this.host.guest = null; this.host = null; }
-    this.guest?.lose();                                                   // the shared link is gone
+    if (this.host) {
+      this.host.guest = null;
+      this.host = null;
+    }
+    this.guest?.lose(); // the shared link is gone
     this.rs = this.rc = this.ws = this.wc = null;
-    this.held = []; this.heldBytes = 0;
+    this.held = [];
+    this.heldBytes = 0;
     this.state = 'closed';
   }
 
@@ -169,8 +220,12 @@ export class FakePort extends EventTarget {
     this.rc?.error(lost());
     this.wc?.error(lost());
     this.rs = this.rc = this.ws = this.wc = null;
-    this.held = []; this.heldBytes = 0;
-    if (this.host) { this.host.guest = null; this.host = null; }
+    this.held = [];
+    this.heldBytes = 0;
+    if (this.host) {
+      this.host.guest = null;
+      this.host = null;
+    }
     this.guest?.lose();
     this.dispatchEvent(new Event('disconnect'));
     this.owner.dispatchEvent(new Event('disconnect'));
@@ -178,17 +233,24 @@ export class FakePort extends EventTarget {
 
   /** One burst from the device: with a twin open too, it reaches only one of the two entries. */
   private received(bytes: Uint8Array<ArrayBuffer>): void {
-    if (this.guest?.state === 'open' && (this.turn = !this.turn)) { this.guest.accept(bytes); return; }
+    if (this.guest?.state === 'open' && (this.turn = !this.turn)) {
+      this.guest.accept(bytes);
+      return;
+    }
     this.accept(bytes);
   }
 
   /** Into the port's buffer: what does not fit in bufferSize (less what the reader has not taken yet) is lost. */
   private accept(bytes: Uint8Array<ArrayBuffer>): void {
-    const room = Math.max(0, this.rc ? this.rc.desiredSize ?? 0 : this.bufferSize - this.heldBytes);
+    const room = Math.max(0, this.rc ? (this.rc.desiredSize ?? 0) : this.bufferSize - this.heldBytes);
     const kept = bytes.length > room ? bytes.slice(0, room) : bytes;
     this.dropped += bytes.length - kept.length;
     if (kept.length === 0) return;
-    if (this.rc) this.rc.enqueue(kept); else { this.held.push(kept); this.heldBytes += kept.length; }
+    if (this.rc) this.rc.enqueue(kept);
+    else {
+      this.held.push(kept);
+      this.heldBytes += kept.length;
+    }
   }
 }
 
@@ -213,8 +275,17 @@ export class FakeSerial extends EventTarget {
   /** The USB ids XY Forever's port shows: the product build's composite unless a test picks the stock serial identity. */
   private readonly identity: PortInfo;
 
-  constructor(relay: string, options: { requireGesture?: boolean; identity?: PortInfo; stale?: 'granted' | 'attached';
-    twin?: 'granted' | 'attached'; pick?: 'xyf' | 'stale' | 'twin'; granted?: boolean } = {}) {
+  constructor(
+    relay: string,
+    options: {
+      requireGesture?: boolean;
+      identity?: PortInfo;
+      stale?: 'granted' | 'attached';
+      twin?: 'granted' | 'attached';
+      pick?: 'xyf' | 'stale' | 'twin';
+      granted?: boolean;
+    } = {},
+  ) {
     super();
     this.relay = relay;
     this.identity = { ...(options.identity ?? USB_FILTERS[0]) };
@@ -232,19 +303,28 @@ export class FakeSerial extends EventTarget {
   /** Makes this navigator.serial for the page; returns the function that undoes it. */
   install(): () => void {
     Object.defineProperty(navigator, 'serial', { value: this, configurable: true });
-    return () => { delete (navigator as { serial?: unknown }).serial; };
+    return () => {
+      delete (navigator as { serial?: unknown }).serial;
+    };
   }
 
   async requestPort(options: { filters?: Filter[] } = {}): Promise<FakePort> {
     checkFilters(options.filters);
     if (this.requireGesture && !navigator.userActivation.isActive) {
-      throw new DOMException("Failed to execute 'requestPort' on 'Serial': Must be handling a user gesture to show a permission request.", 'SecurityError');
+      throw new DOMException(
+        "Failed to execute 'requestPort' on 'Serial': Must be handling a user gesture to show a permission request.",
+        'SecurityError',
+      );
     }
     this.chooser++;
     this.filtersShown.push((options.filters ?? []).map((f) => ({ ...f })));
     const xyf = await this.xyfPort();
-    const order = this.pick === 'stale' ? [this.stale, xyf, this.adapter] : this.pick === 'twin' ? [this.twin, xyf, this.adapter]
-      : [xyf, this.stale, this.twin, this.adapter];
+    const order =
+      this.pick === 'stale'
+        ? [this.stale, xyf, this.adapter]
+        : this.pick === 'twin'
+          ? [this.twin, xyf, this.adapter]
+          : [xyf, this.stale, this.twin, this.adapter];
     const port = order.find((p) => p && matches(p.getInfo(), options.filters));
     if (!port) throw new DOMException('No port selected by the user.', 'NotFoundError');
     if (port === xyf) this.grantedXyf = true;
@@ -255,7 +335,7 @@ export class FakeSerial extends EventTarget {
 
   async getPorts(): Promise<FakePort[]> {
     const xyf = this.grantedXyf ? await this.xyfPort() : null;
-    const twin = xyf && this.twin && this.twinGranted ? [this.twin] : [];   // listed while its device is attached
+    const twin = xyf && this.twin && this.twinGranted ? [this.twin] : []; // listed while its device is attached
     return [this.adapter, ...(this.stale && this.staleGranted ? [this.stale] : []), ...(xyf ? [xyf] : []), ...twin];
   }
 
@@ -264,10 +344,15 @@ export class FakeSerial extends EventTarget {
     let attached = false;
     try {
       const res = await fetch(this.relay.replace(/^ws/, 'http') + '/status', { cache: 'no-store' });
-      attached = (await res.json() as { attached?: boolean }).attached === true;
-    } catch { /* the relay is gone: not attached */ }
+      attached = ((await res.json()) as { attached?: boolean }).attached === true;
+    } catch {
+      /* the relay is gone: not attached */
+    }
     let port = this.xyfPorts.at(-1);
-    if (!attached) { port?.lose(); return null; }
+    if (!attached) {
+      port?.lose();
+      return null;
+    }
     if (!port || port.isLost) {
       port = new FakePort(this, { ...this.identity }, this.relay);
       port.partner = () => this.twin;

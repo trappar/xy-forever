@@ -5,9 +5,23 @@ import type { DeviceInfo } from 'xy-forever-client';
 import appPackage from '../package.json';
 
 const ACTIONS = [
-  'connect', 'disconnect', 'refresh_status', 'update_xy_forever', 'uninstall_xy_forever', 'list_packages', 'choose_packages',
-  'send_packages', 'remove_packages', 'save_mods', 'browse_files', 'download_file', 'upload_files',
-  'new_folder', 'copy_file', 'move_file', 'delete_file',
+  'connect',
+  'disconnect',
+  'refresh_status',
+  'update_xy_forever',
+  'uninstall_xy_forever',
+  'list_packages',
+  'choose_packages',
+  'send_packages',
+  'remove_packages',
+  'save_mods',
+  'browse_files',
+  'download_file',
+  'upload_files',
+  'new_folder',
+  'copy_file',
+  'move_file',
+  'delete_file',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 const OUTCOMES = ['finished', 'failed'] as const;
@@ -15,7 +29,12 @@ type Outcome = (typeof OUTCOMES)[number];
 const ACTIVITY_LIMIT = 24;
 const ERROR_CODES = new Set([
   ...Object.keys(STATUS).filter((code) => code !== 'ok'),
-  'unknown_status', 'timeout', 'disconnected', 'aborted', 'update_required', 'protocol',
+  'unknown_status',
+  'timeout',
+  'disconnected',
+  'aborted',
+  'update_required',
+  'protocol',
 ]);
 
 // The protocol specifies numeric releases and protocol versions. Bound each component so
@@ -64,13 +83,19 @@ export class BugReport {
   }
 
   snapshot(connected: boolean): string {
-    return JSON.stringify({
-      bundleVersion: 1,
-      appVersion: matchingText(appPackage.version, RELEASE),
-      connected: connected === true,
-      device: this.#device,
-      activity: this.#activity,
-    }, null, 2) + '\n';
+    return (
+      JSON.stringify(
+        {
+          bundleVersion: 1,
+          appVersion: matchingText(appPackage.version, RELEASE),
+          connected: connected === true,
+          device: this.#device,
+          activity: this.#activity,
+        },
+        null,
+        2,
+      ) + '\n'
+    );
   }
 }
 

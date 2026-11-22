@@ -1,21 +1,23 @@
 """Probe sequencing and actual tfw.check timeout propagation, without private fixtures or a device."""
+
 import contextlib
 import hashlib
 import io
 import json
-from pathlib import Path
-from types import SimpleNamespace
 import struct
 import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import tfw_probe as probe
 import device_pass as dp
-from xy_forever import xyf_host as host
-from xy_forever import usb_proto as P
+import tfw_probe as probe
 
-PUBLIC = bytes(range(56))                         # synthetic bytes; no key fixture is opened
+from xy_forever import usb_proto as P
+from xy_forever import xyf_host as host
+
+PUBLIC = bytes(range(56))  # synthetic bytes; no key fixture is opened
 HELLO = P.hello_text('0.1.0', '12345678', 'product', {'XYF_TFW_CHECK'})
 
 
@@ -58,12 +60,16 @@ class FakeDevice:
                 return (dp.ERROR if self.failure == 'timeout' else dp.NO_ANSWER), '', 'device lost'
             if not control and self.failure == 'link':
                 return P.ids.S_LINK, json.dumps(dict(status='link')), ''
-            verdict, reason, digest = ('fail', 'not_package', '00' * 32) if control else \
-                ('pass', 'pass', hashlib.sha256(PUBLIC).hexdigest())
+            verdict, reason, digest = (
+                ('fail', 'not_package', '00' * 32) if control else ('pass', 'pass', hashlib.sha256(PUBLIC).hexdigest())
+            )
             if not control and self.failure == 'verdict':
                 verdict, reason = 'fail', 'signature'
-            return (verdict != 'pass'), json.dumps(dict(status='ok', verdict=verdict, reason=reason,
-                                                        public_key_sha256=digest)), ''
+            return (
+                (verdict != 'pass'),
+                json.dumps(dict(status='ok', verdict=verdict, reason=reason, public_key_sha256=digest)),
+                '',
+            )
         raise AssertionError('unexpected command: %r' % argv)
 
 
@@ -80,19 +86,28 @@ class ProbeSequence(unittest.TestCase):
 
     def run_probe(self, failure=None, extra=()):
         device, keepalive, output = FakeDevice(self.archive, failure), FakeKeepalive(), io.StringIO()
-        with patch.object(probe.tfw_extract, 'public_key', return_value=PUBLIC), \
-                patch.object(probe.tfw_extract, 'cut', return_value=b'synthetic cut'), \
-                contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
-            code = probe.main(['--firmware', str(self.firmware), '--check-timeout', '.25', *extra],
-                              device=device, keepalive=keepalive, sessions=self.sessions, cleanup_dir=self.archive)
+        with (
+            patch.object(probe.tfw_extract, 'public_key', return_value=PUBLIC),
+            patch.object(probe.tfw_extract, 'cut', return_value=b'synthetic cut'),
+            contextlib.redirect_stdout(output),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            code = probe.main(
+                ['--firmware', str(self.firmware), '--check-timeout', '.25', *extra],
+                device=device,
+                keepalive=keepalive,
+                sessions=self.sessions,
+                cleanup_dir=self.archive,
+            )
         return code, device, keepalive, output.getvalue()
 
     def test_success_removes_only_attempted_cuts_without_hold_or_guard(self):
         code, device, keepalive, out = self.run_probe()
         self.assertEqual(code, 0, out)
         commands = [a[0] for a, _ in device.calls]
-        self.assertEqual(commands, ['status', 'tfw-check', 'put-file', 'tfw-check',
-                                    'put-file', 'tfw-check', 'rm', 'rm'])
+        self.assertEqual(
+            commands, ['status', 'tfw-check', 'put-file', 'tfw-check', 'put-file', 'tfw-check', 'rm', 'rm']
+        )
         self.assertEqual([a[1] for a, _ in device.calls if a[0] == 'rm'], list(map(probe.remote, probe.PACKAGES)))
         self.assertEqual(device.files, {})
         self.assertEqual((keepalive.stops, len(keepalive.starts)), (1, 1))
@@ -136,7 +151,7 @@ class ProbeSequence(unittest.TestCase):
 class CheckTimeout(unittest.TestCase):
     def run_check(self, wire):
         wire.t = SimpleNamespace(close=Mock())
-        p = probe.Probe(dp.HostDevice(), SimpleNamespace(check_timeout=.125), FakeKeepalive())
+        p = probe.Probe(dp.HostDevice(), SimpleNamespace(check_timeout=0.125), FakeKeepalive())
         with patch.object(host, 'connect', return_value=(wire, 'fake', HELLO)):
             return p.check_file(probe.CONTROL)
 
@@ -144,7 +159,7 @@ class CheckTimeout(unittest.TestCase):
         original = host.TFW_CHECK_TIMEOUT
         wire = SimpleNamespace(call=Mock(return_value=(0, struct.pack('<II', 1, 2) + bytes(32))))
         self.assertEqual(self.run_check(wire)['reason'], 'not_package')
-        wire.call.assert_called_once_with(P.ids.TFW_CHECK, probe.CONTROL.encode() + b'\0', timeout=.125)
+        wire.call.assert_called_once_with(P.ids.TFW_CHECK, probe.CONTROL.encode() + b'\0', timeout=0.125)
         self.assertEqual(host.TFW_CHECK_TIMEOUT, original)
 
     def test_timeout_exception_reports_loss_and_restores_host_setting(self):

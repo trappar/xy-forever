@@ -18,7 +18,10 @@ volatile U32 image_done __attribute__((section(".data"))) = 0;
 char image_text[16] __attribute__((section(".data"))) = "image ...";         // the Info page's line, once settled
 
 void image_label_set(const char* tail) {
-    for (U32 i = 0; i != sizeof(image_text) - 6; ++i) { image_text[6 + i] = *tail; if (*tail) ++tail; }
+    for (U32 i = 0; i != sizeof(image_text) - 6; ++i) {
+        image_text[6 + i] = *tail;
+        if (*tail) ++tail;
+    }
     image_text[sizeof(image_text) - 1] = 0;
 }
 void image_begin() {
@@ -37,7 +40,8 @@ void image_begin() {
         return;
     }
     image_hash().reset();
-    image_bytes = bytes; image_done = 0;
+    image_bytes = bytes;
+    image_done = 0;
     r.image_state = image_hashing;
 }
 // Hashes up to limit bytes; at the end the result words and the label.
@@ -52,7 +56,12 @@ void image_hash_some(U32 limit) {
     r.image_kcycles += cycles_div1024() - start;
     if (image_done != image_bytes) return;
     xyf_core::hash::Digest digest;
-    if (!image_hash().finish(digest)) { r.image_state = image_unknown; r.image_ms = 0; image_label_set("unknown"); return; }
+    if (!image_hash().finish(digest)) {
+        r.image_state = image_unknown;
+        r.image_ms = 0;
+        image_label_set("unknown");
+        return;
+    }
     r.image = U32(digest.bytes[0]) << 24 | U32(digest.bytes[1]) << 16 | U32(digest.bytes[2]) << 8 | digest.bytes[3];
     char hex[9];
     for (U32 i = 0; i != 8; ++i) hex[i] = "0123456789abcdef"[r.image >> (28 - 4 * i) & 15u];
@@ -71,7 +80,8 @@ constexpr U32 length(const char* s) { return *s ? 1 + length(s + 1) : 0; }
 constexpr U32 key_value(const char* t, const char* key, U32 i = 0) {   // where key's value starts; ~0u: no such key
     return !t[i] ? ~0u : starts(t + i, key) ? i + length(key) : key_value(t, key, i + 1);
 }
-const U32 image_at = key_value(XYF_USBP_HELLO_TEXT, ";image="), confirm_at = key_value(XYF_USBP_HELLO_TEXT, ";confirm="),
+const U32 image_at = key_value(XYF_USBP_HELLO_TEXT, ";image="),
+          confirm_at = key_value(XYF_USBP_HELLO_TEXT, ";confirm="),
           trust_at = key_value(XYF_USBP_HELLO_TEXT, ";trust="), serial_at = key_value(XYF_USBP_HELLO_TEXT, ";serial=");
 U32 hello_text(uint8_t* p, U32 n, U32 room) {
     image_finish();
@@ -82,10 +92,13 @@ U32 hello_text(uint8_t* p, U32 n, U32 room) {
     const char* const trust = xy_forever::usb_service::trust_word();
     const char* const serial = xy_forever::usb_service::serial_off() ? "off" : "on";
 #else
-    const char confirm = '0', * const trust = "none", * const serial = "on";   // no question, no USB mode
+    const char confirm = '0', *const trust = "none", *const serial = "on";   // no question, no USB mode
 #endif
     for (U32 i = 0; text[i] && n != room; ++i) {
-        if (i == confirm_at) { p[n++] = uint8_t(confirm); continue; }
+        if (i == confirm_at) {
+            p[n++] = uint8_t(confirm);
+            continue;
+        }
         if (i == trust_at || i == serial_at) {
             for (const char* w = i == trust_at ? trust : serial; *w && n != room; ++w) p[n++] = uint8_t(*w);
             i += i == trust_at ? sizeof("none") - 2 : sizeof("on") - 2;   // the loop's ++i passes the last letter

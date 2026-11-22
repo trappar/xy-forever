@@ -8,22 +8,32 @@ const U32 absent = 0xffffffffu, chunk = 32768;
 U32 le16(const Byte* p) { return U32(p[0]) | U32(p[1]) << 8; }
 U32 le32(const Byte* p) { return le16(p) | le16(p + 2) << 16; }
 Byte lower(Byte c) { return c >= 'A' && c <= 'Z' ? Byte(c + 32) : c; }
-U32 length(const char* text) { U32 n = 0; while (text[n]) ++n; return n; }
+U32 length(const char* text) {
+    U32 n = 0;
+    while (text[n]) ++n;
+    return n;
+}
 bool same(const Byte* name, U32 size, const char* text) {
     if (size != length(text)) return false;
-    for (U32 i = 0; i != size; ++i) if (name[i] != Byte(text[i])) return false;
+    for (U32 i = 0; i != size; ++i)
+        if (name[i] != Byte(text[i])) return false;
     return true;
 }
 // Case-insensitive: a decoy such as content/OS.LDR is refused, not ignored.
 bool basename_is(const Byte* name, U32 size, const char* base) {
     U32 start = 0;
-    for (U32 i = 0; i != size; ++i) if (name[i] == '/') start = i + 1;
+    for (U32 i = 0; i != size; ++i)
+        if (name[i] == '/') start = i + 1;
     const U32 n = length(base);
     if (size - start != n) return false;
-    for (U32 i = 0; i != n; ++i) if (lower(name[start + i]) != Byte(base[i])) return false;
+    for (U32 i = 0; i != n; ++i)
+        if (lower(name[start + i]) != Byte(base[i])) return false;
     return true;
 }
-void erase(Byte* p, U32 count) { volatile Byte* wipe = p; for (U32 i = 0; i != count; ++i) wipe[i] = 0; }
+void erase(Byte* p, U32 count) {
+    volatile Byte* wipe = p;
+    for (U32 i = 0; i != count; ++i) wipe[i] = 0;
+}
 U32 round4(U32 n) { return (n + 3u) & ~3u; }
 
 // The decrypted central directory and four per-entry columns in scratch.
@@ -52,7 +62,9 @@ void sift(U32* v, U32 root, U32 n, const Table& t, Less less) {
         if (child >= n) return;
         if (child + 1 < n && less(t, v[child], v[child + 1])) ++child;
         if (!less(t, v[root], v[child])) return;
-        const U32 swap = v[root]; v[root] = v[child]; v[child] = swap;
+        const U32 swap = v[root];
+        v[root] = v[child];
+        v[child] = swap;
         root = child;
     }
 }
@@ -64,13 +76,18 @@ bool heapsort(U32* v, U32 n, const Table& t, Less less, Work* work) {
     for (U32 end = n; end > 1;) {
         if (!checkpoint(work)) return false;
         --end;
-        const U32 swap = v[0]; v[0] = v[end]; v[end] = swap;
+        const U32 swap = v[0];
+        v[0] = v[end];
+        v[end] = swap;
         sift(v, 0, end, t, less);
     }
     return true;
 }
 
-struct Copy { Byte* memory; U32 capacity, count; };
+struct Copy {
+    Byte* memory;
+    U32 capacity, count;
+};
 bool copy(void* context, const Byte* bytes, U32 count) {
     Copy& out = *static_cast<Copy*>(context);
     if (count > out.capacity - out.count) return false;
@@ -106,19 +123,21 @@ Status locate(const input::Reader& zip, const Table& t, U32 i, Workspace& w, U32
     const Byte* local = w.local;
     if (le32(local) != 0x04034b50u || le16(local + 4) > 20 || le16(local + 6) || le16(local + 8) != 8 ||
         le32(local + 14) != le32(central + 16) || le32(local + 18) != le32(central + 20) ||
-        le32(local + 22) != le32(central + 24) || le16(local + 26) != n || le16(local + 28)) return Status::layout;
-    for (U32 k = 0; k != n; ++k) if (local[30 + k] != name(t, i)[k]) return Status::layout;
+        le32(local + 22) != le32(central + 24) || le16(local + 26) != n || le16(local + 28))
+        return Status::layout;
+    for (U32 k = 0; k != n; ++k)
+        if (local[30 + k] != name(t, i)[k]) return Status::layout;
     data = t.start[i] + 30 + n;
     return Status::ok;
 }
-Status inflate(const input::Reader& zip, const Table& t, U32 i, U32 data, Workspace& w,
-               Copy& out, Result& result, Work* work) {
+Status inflate(const input::Reader& zip, const Table& t, U32 i, U32 data, Workspace& w, Copy& out, Result& result,
+               Work* work) {
     const Byte* central = record(t, i);
     const zip::Reader source = {zip.context, zip.size, zip.read};
     const zip::Sink sink = {&out, copy};
     zip::Extraction extracted;
-    const zip::Status status = zip::inflate_raw(source, data, le32(central + 20), le32(central + 24),
-                                                w.inflate, sink, extracted, work);
+    const zip::Status status =
+        zip::inflate_raw(source, data, le32(central + 20), le32(central + 24), w.inflate, sink, extracted, work);
     result.inflate = status;
     if (status != zip::Status::ok) return member_status(status);
     if (extracted.crc32 != le32(central + 16) || out.count != le32(central + 24)) {
@@ -129,8 +148,8 @@ Status inflate(const input::Reader& zip, const Table& t, U32 i, U32 data, Worksp
 }
 
 Status run(const input::Reader& package, const tfw::KeyProvider& keys, const hash::Digest& digest,
-           const tfw::HeaderCheck& signature, const Policy& policy, U32 entry_point,
-           const Limits& limits, Workspace& w, const Writer& output, Result& result, Work* work) {
+           const tfw::HeaderCheck& signature, const Policy& policy, U32 entry_point, const Limits& limits, Workspace& w,
+           const Writer& output, Result& result, Work* work) {
     tfw::Archive& archive = w.archive;
     const tfw::Status opened = archive.open_digested(package, keys, digest, signature, w.header, tfw::op_xy_sku, work);
     result.container = opened;
@@ -168,9 +187,9 @@ Status run(const input::Reader& package, const tfw::KeyProvider& keys, const has
         const Byte* h = directory + cursor;
         if (le32(h) != 0x02014b50u) return Status::directory;
         const U32 n = le16(h + 28);
-        if (le16(h + 6) > 20 || le16(h + 8) || le16(h + 10) != 8 || le16(h + 30) || le16(h + 32) ||
-            le16(h + 34) || le32(h + 20) == 0xffffffffu || le32(h + 24) == 0xffffffffu ||
-            le32(h + 42) == 0xffffffffu) return Status::unsupported;
+        if (le16(h + 6) > 20 || le16(h + 8) || le16(h + 10) != 8 || le16(h + 30) || le16(h + 32) || le16(h + 34) ||
+            le32(h + 20) == 0xffffffffu || le32(h + 24) == 0xffffffffu || le32(h + 42) == 0xffffffffu)
+            return Status::unsupported;
         if ((le16(h + 4) >> 8) == 3 && (le32(h + 38) >> 16 & 0170000u) != 0100000u) return Status::unsupported;
         if (!n || n > 255) return Status::name;
         if (n > directory_size - cursor - 46) return Status::directory;
@@ -186,8 +205,12 @@ Status run(const input::Reader& package, const tfw::KeyProvider& keys, const has
         } else if (basename_is(text, n, "os.ldr") || basename_is(text, n, "os.version")) return Status::name;
         const U32 local = le32(h + 42), compressed = le32(h + 20);
         if (local > directory_offset || 30 + n > directory_offset - local ||
-            compressed > directory_offset - local - 30 - n) return Status::layout;
-        t.at[i] = cursor; t.start[i] = local; t.end[i] = local + 30 + n + compressed; t.order[i] = i;
+            compressed > directory_offset - local - 30 - n)
+            return Status::layout;
+        t.at[i] = cursor;
+        t.start[i] = local;
+        t.end[i] = local + 30 + n + compressed;
+        t.order[i] = i;
         cursor += 46 + n;
     }
     if (cursor != directory_size) return Status::directory;
@@ -245,15 +268,18 @@ Status run(const input::Reader& package, const tfw::KeyProvider& keys, const has
     }
     if (!hasher.finish(result.sha256)) return Status::image;
     archive.close();
-    result.bytes = size; result.crc32 = le32(record(t, os) + 16);
-    result.entry = summary.entry; result.records = summary.records;
+    result.bytes = size;
+    result.crc32 = le32(record(t, os) + 16);
+    result.entry = summary.entry;
+    result.records = summary.records;
 
     // Checked: hand the image to the writer.
     for (U32 at = 0; at < size;) {
         if (!checkpoint(work)) return Status::cancelled;
         const U32 amount = size - at < chunk ? size - at : chunk;
         if (!output.write(output.context, image + at, amount)) return Status::write;
-        at += amount; result.written = at;
+        at += amount;
+        result.written = at;
     }
     return checkpoint(work) ? Status::ok : Status::cancelled;
 }
@@ -261,29 +287,41 @@ Status run(const input::Reader& package, const tfw::KeyProvider& keys, const has
 
 U32 scratch_bytes(const Limits& limits) {
     if (!limits.image_bytes || limits.image_bytes > max_limit_bytes || (limits.image_bytes & 3u) ||
-        !limits.directory_bytes || limits.directory_bytes > max_limit_bytes ||
-        !limits.entries || limits.entries > max_entries) return 0;
+        !limits.directory_bytes || limits.directory_bytes > max_limit_bytes || !limits.entries ||
+        limits.entries > max_entries)
+        return 0;
     return limits.image_bytes + round4(limits.directory_bytes) + 16u * limits.entries;
 }
 
-Status extract(const input::Reader& package, const tfw::KeyProvider& keys,
-               const hash::Digest& ciphertext_sha256, const tfw::HeaderCheck& signature,
-               const Policy& ram_policy, U32 entry_point, const Limits& limits,
+Status extract(const input::Reader& package, const tfw::KeyProvider& keys, const hash::Digest& ciphertext_sha256,
+               const tfw::HeaderCheck& signature, const Policy& ram_policy, U32 entry_point, const Limits& limits,
                Workspace& workspace, const Writer& output, Result& result, Work* work) {
-    result.bytes = 0; result.crc32 = 0; result.entry = 0; result.records = 0; result.written = 0;
+    result.bytes = 0;
+    result.crc32 = 0;
+    result.entry = 0;
+    result.records = 0;
+    result.written = 0;
     for (U32 i = 0; i != 32; ++i) result.sha256.bytes[i] = 0;
-    for (U32 i = 0; i != 4; ++i) { result.os_version.field[i] = 0; result.package_version.field[i] = 0; }
-    result.container = tfw::Status::ok; result.inflate = zip::Status::ok; result.ldr = Error::ok;
+    for (U32 i = 0; i != 4; ++i) {
+        result.os_version.field[i] = 0;
+        result.package_version.field[i] = 0;
+    }
+    result.container = tfw::Status::ok;
+    result.inflate = zip::Status::ok;
+    result.ldr = Error::ok;
     const U32 needed = scratch_bytes(limits);
     if (!needed || !workspace.scratch || workspace.capacity < needed ||
-        (reinterpret_cast<unsigned long>(workspace.scratch) & 3u) || !output.write || !signature.verify ||
-        !keys.read) return Status::argument;
-    const Status status = run(package, keys, ciphertext_sha256, signature, ram_policy, entry_point, limits,
-                              workspace, output, result, work);
+        (reinterpret_cast<unsigned long>(workspace.scratch) & 3u) || !output.write || !signature.verify || !keys.read)
+        return Status::argument;
+    const Status status = run(package, keys, ciphertext_sha256, signature, ram_policy, entry_point, limits, workspace,
+                              output, result, work);
     workspace.archive.close();
     erase(workspace.local, sizeof(workspace.local));
     if (status != Status::ok && status != Status::write) {
-        result.bytes = 0; result.crc32 = 0; result.entry = 0; result.records = 0;
+        result.bytes = 0;
+        result.crc32 = 0;
+        result.entry = 0;
+        result.records = 0;
         for (U32 i = 0; i != 32; ++i) result.sha256.bytes[i] = 0;
     }
     return cancelled(work) ? Status::cancelled : status;
@@ -295,14 +333,21 @@ U32 version_text(const package::Version& version, char* out, U32 capacity) {
     for (U32 f = 0; f != 4; ++f) {
         U32 value = version.field[f];
         if (value > 65535) return 0;
-        if (f) { if (n + 1 >= capacity) return 0; out[n++] = f == 3 ? '+' : '.'; }
+        if (f) {
+            if (n + 1 >= capacity) return 0;
+            out[n++] = f == 3 ? '+' : '.';
+        }
         bool started = false;
         for (U32 p = 0; p != 5; ++p) {
             U32 digit = 0;
-            while (value >= powers[p]) { value -= powers[p]; ++digit; }
+            while (value >= powers[p]) {
+                value -= powers[p];
+                ++digit;
+            }
             if (!digit && !started && p != 4) continue;
             if (n + 1 >= capacity) return 0;
-            out[n++] = char('0' + digit); started = true;
+            out[n++] = char('0' + digit);
+            started = true;
         }
     }
     if (n >= capacity) return 0;
@@ -335,4 +380,4 @@ const char* status_name(Status status) {
     }
     return "unknown";
 }
-} }
+}}

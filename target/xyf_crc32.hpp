@@ -7,5 +7,5 @@
 namespace xyf { namespace crc {
 uint32_t update(uint32_t crc, const uint8_t* data, uint32_t count);
 uint32_t update_volatile(uint32_t crc, const volatile uint8_t* data, uint32_t count);
-} }
+}}
 #endif

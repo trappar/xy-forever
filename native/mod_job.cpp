@@ -7,13 +7,31 @@
 namespace xyf_core { namespace mod_job {
 namespace {
 enum Stage {
-    st_base_list, st_base_info, st_alloc, st_edits,
-    st_package_list, st_package_info, st_package_catalog, st_catalog, st_official, st_stock,  // inputs
-    st_patch_start, st_patch_wait,              // patch up to the module
-    st_link_begin, st_link,                     // link
-    st_set_module, st_patch, st_crc,            // patch, os.ldr's CRC-32
-    st_content_start, st_content, st_entry,     // content, entry texts
-    st_write, st_verify, st_check_start, st_check, st_finish
+    st_base_list,
+    st_base_info,
+    st_alloc,
+    st_edits,
+    st_package_list,
+    st_package_info,
+    st_package_catalog,
+    st_catalog,
+    st_official,
+    st_stock,  // inputs
+    st_patch_start,
+    st_patch_wait,              // patch up to the module
+    st_link_begin,
+    st_link,                     // link
+    st_set_module,
+    st_patch,
+    st_crc,            // patch, os.ldr's CRC-32
+    st_content_start,
+    st_content,
+    st_entry,     // content, entry texts
+    st_write,
+    st_verify,
+    st_check_start,
+    st_check,
+    st_finish
 };
 // Outputs in write, read-back and rename order: mod_content's list (content/..., sorted), then these three,
 // os.ldr last.
@@ -23,18 +41,25 @@ const char part[] = ".part";
 const char* const kinds[6] = {"synth", "drum", "sample", "effect", "player", "extension"};
 
 __attribute__((noinline)) bool same(const char* a, const char* b) {
-    while (*a && *a == *b) { ++a; ++b; }
+    while (*a && *a == *b) {
+        ++a;
+        ++b;
+    }
     return *a == *b;
 }
 bool same_bytes(const Byte* a, U32 n, const char* b) {
-    for (U32 i = 0; i != n; ++i) if (!b[i] || Byte(b[i]) != a[i]) return false;
+    for (U32 i = 0; i != n; ++i)
+        if (!b[i] || Byte(b[i]) != a[i]) return false;
     return !b[n];
 }
 bool starts(const char* s, const char* prefix) {
-    for (U32 i = 0; prefix[i]; ++i) if (s[i] != prefix[i]) return false;
+    for (U32 i = 0; prefix[i]; ++i)
+        if (s[i] != prefix[i]) return false;
     return true;
 }
-void copy_digest(hash::Digest& to, const hash::Digest& from) { for (U32 i = 0; i != 32; ++i) to.bytes[i] = from.bytes[i]; }
+void copy_digest(hash::Digest& to, const hash::Digest& from) {
+    for (U32 i = 0; i != 32; ++i) to.bytes[i] = from.bytes[i];
+}
 
 // Detail: up to three parts joined by '/', cut at detail_bytes - 1.
 void set_detail(Job& j, const char* a, const char* b = 0, const char* c = 0) {
@@ -58,8 +83,14 @@ bool compose(Job& j, const char* a, const char* b, const char* c, const char* su
     U32 n = 0;
     for (U32 k = 0; k != 4; ++k) {
         if (!parts[k]) continue;
-        if (k && k != 3) { if (n == path_bytes - 1) return false; j.path[n++] = '/'; }
-        for (const char* s = parts[k]; *s; ++s) { if (n == path_bytes - 1) return false; j.path[n++] = *s; }
+        if (k && k != 3) {
+            if (n == path_bytes - 1) return false;
+            j.path[n++] = '/';
+        }
+        for (const char* s = parts[k]; *s; ++s) {
+            if (n == path_bytes - 1) return false;
+            j.path[n++] = *s;
+        }
     }
     j.path[n] = 0;
     return true;
@@ -71,7 +102,9 @@ bool compose(Job& j, const char* a, const char* b, const char* c, const char* su
 void cleanup(Job& j) {
     const Files& f = *j.files;
     if (j.load.active && j.load.handle >= 0) f.close(f.context, j.load.handle);
-    j.load.active = false; j.load.ready = false; j.load.handle = -1;
+    j.load.active = false;
+    j.load.ready = false;
+    j.load.handle = -1;
     if (j.out_handle >= 0) f.close(f.context, j.out_handle);
     j.out_handle = -1;
     const U32 listed = j.out_count ? j.out_count - fixed_outputs : 0;
@@ -84,7 +117,8 @@ void cleanup(Job& j) {
     j.out_written = 0;
 }
 __attribute__((noinline)) Phase fail(Job& j, Error error, U32 status = 0) {
-    j.error = error; j.status = status;
+    j.error = error;
+    j.status = status;
     cleanup(j);
     j.phase = Phase::failed;
     return j.phase;
@@ -100,8 +134,12 @@ Phase phase_of(U32 stage) {
 }
 __attribute__((noinline)) void go(Job& j, U32 stage, U32 total = 0) {
     const Phase next = phase_of(stage);
-    if (next != j.phase) { j.done = 0; j.total = total; }
-    j.stage = stage; j.phase = next;
+    if (next != j.phase) {
+        j.done = 0;
+        j.total = total;
+    }
+    j.stage = stage;
+    j.phase = next;
 }
 // region[low...) for `bytes`; kept (low advances) when keep. 0: it does not fit.
 __attribute__((noinline)) Byte* take(Job& j, U32 bytes, bool keep) {
@@ -135,9 +173,16 @@ Error begin_load(Job& j, const hash::Digest* want, Byte* dest, U32 capacity, boo
     const int handle = f.open(f.context, j.path, false);
     if (handle < 0) return back ? Error::verify : Error::open;
     Job::Load& l = j.load;
-    l.handle = handle; l.data = dest; l.size = size; l.done = 0; l.want = want;
+    l.handle = handle;
+    l.data = dest;
+    l.size = size;
+    l.done = 0;
+    l.want = want;
     l.sha.reset();
-    l.active = true; l.ready = false; l.stream = stream; l.back = back;
+    l.active = true;
+    l.ready = false;
+    l.stream = stream;
+    l.back = back;
     return Error::none;
 }
 __attribute__((noinline)) Error load_step(Job& j) {
@@ -151,12 +196,14 @@ __attribute__((noinline)) Error load_step(Job& j) {
         if (r < 0 || U32(r) > n) return Error::read;
         if (!r) return Error::truncated;
         if (l.want) l.sha.update(at, U32(r));
-        l.done += U32(r); j.work = U32(r);
+        l.done += U32(r);
+        j.work = U32(r);
         if (j.phase == Phase::inputs) j.done += U32(r);
         if (l.done != l.size) return Error::none;
     }
     const int closed = f.close(f.context, l.handle);
-    l.handle = -1; l.active = false;
+    l.handle = -1;
+    l.active = false;
     if (closed < 0) return Error::read;
     if (l.want) {
         hash::Digest d;
@@ -180,7 +227,8 @@ int hex(Byte c) {
 }
 #include "mod_job_metadata.ipp"
 Job::Package* package_named(Job& j, const char* name) {
-    for (U32 i = 0; i != j.package_count; ++i) if (same(j.packages[i].name, name)) return &j.packages[i];
+    for (U32 i = 0; i != j.package_count; ++i)
+        if (same(j.packages[i].name, name)) return &j.packages[i];
     return 0;
 }
 
@@ -193,7 +241,9 @@ bool value_of(const Byte* info, U32 bytes, const char* key, const Byte*& value, 
         U32 eq = s;
         while (eq != e && info[eq] != '=') ++eq;
         if (e != s && info[s] != '#' && eq != e && same_bytes(info + s, eq - s, key)) {
-            value = info + eq + 1; length = e - eq - 1; found = true;
+            value = info + eq + 1;
+            length = e - eq - 1;
+            found = true;
         }
         s = e + 1;
     }
@@ -203,9 +253,14 @@ bool value_of(const Byte* info, U32 bytes, const char* key, const Byte*& value, 
 bool number(const Byte* v, U32 n, U32& out) {
     if (!n) return false;
     U32 base = 10, i = 0;
-    if (n > 2 && v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) { base = 16; i = 2; }
-    else if (n > 1 && v[0] == '0') { base = 8; i = 1; }
-    const U32 most = base == 16 ? 0x0fffffffu : base == 8 ? 0x1fffffffu : 429496729u;   // no 64-bit or division helpers
+    if (n > 2 && v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) {
+        base = 16;
+        i = 2;
+    } else if (n > 1 && v[0] == '0') {
+        base = 8;
+        i = 1;
+    }
+    const U32 most = base == 16 ? 0x0fffffffu : base == 8 ? 0x1fffffffu : 429496729u; // no 64-bit or division helpers
     U32 value = 0;
     for (; i != n; ++i) {
         const int d = hex(v[i]);
@@ -216,7 +271,8 @@ bool number(const Byte* v, U32 n, U32& out) {
     return true;
 }
 bool number_of(const Byte* info, U32 bytes, const char* key, U32& out) {
-    const Byte* v; U32 n;
+    const Byte* v;
+    U32 n;
     return value_of(info, bytes, key, v, n) && number(v, n, out);
 }
 const char* text_copy(Job& j, const Byte* v, U32 n) {
@@ -231,7 +287,10 @@ bool pair(const Byte* v, U32 n, U32& a, U32& b) {
     U32 i = 0, k = 0;
     U32* out[2] = {&a, &b};
     for (; k != 2; ++k) {
-        if (k) { if (i == n || v[i] != ',') return false; ++i; }
+        if (k) {
+            if (i == n || v[i] != ',') return false;
+            ++i;
+        }
         if (i == n || v[i] < '0' || v[i] > '9') return false;
         U32 x = 0;
         while (i != n && v[i] >= '0' && v[i] <= '9') x = x * 10 + U32(v[i++] - '0');
@@ -243,24 +302,37 @@ bool pair(const Byte* v, U32 n, U32& a, U32& b) {
 Error content_view(Job& j, U32 i) {
     const Job::Package& p = j.packages[i];
     mod_content::Package& c = j.content_packages[i - 1];
-    const Byte* v; U32 n;
+    const Byte* v;
+    U32 n;
     c.id = value_of(p.info, p.info_bytes, "id", v, n) ? text_copy(j, v, n) : "";
     c.kind = mod_content::Kind(9);
     if (value_of(p.info, p.info_bytes, "machine", v, n))
-        for (U32 k = 0; k != 6; ++k) if (same_bytes(v, n, kinds[k])) c.kind = mod_content::Kind(k);
-    c.order = 0; number_of(p.info, p.info_bytes, "order", c.order);
+        for (U32 k = 0; k != 6; ++k)
+            if (same_bytes(v, n, kinds[k])) c.kind = mod_content::Kind(k);
+    c.order = 0;
+    number_of(p.info, p.info_bytes, "order", c.order);
     c.asset = 0;
     const bool asset = value_of(p.info, p.info_bytes, "asset", v, n) && n && !same_bytes(v, n, "-");
     if (asset) c.asset = text_copy(j, v, n);
-    c.numbered = false; c.number_start = c.number_end = 0;
+    c.numbered = false;
+    c.number_start = c.number_end = 0;
     if (value_of(p.info, p.info_bytes, "catalog_number", v, n) && !same_bytes(v, n, "-")) {
         c.numbered = true;
-        if (!pair(v, n, c.number_start, c.number_end)) { set_detail(j, p.name, "info.txt catalog_number"); return Error::info; }
+        if (!pair(v, n, c.number_start, c.number_end)) {
+            set_detail(j, p.name, "info.txt catalog_number");
+            return Error::info;
+        }
     }
-    c.presets = 0; number_of(p.info, p.info_bytes, "presets", c.presets);
-    c.files = p.files; c.file_count = p.file_count;
-    c.catalog_text = p.catalog; c.catalog_bytes = p.catalog_bytes;
-    if (!c.id || (asset && !c.asset)) { set_detail(j, p.name, "info.txt"); return Error::region; }
+    c.presets = 0;
+    number_of(p.info, p.info_bytes, "presets", c.presets);
+    c.files = p.files;
+    c.file_count = p.file_count;
+    c.catalog_text = p.catalog;
+    c.catalog_bytes = p.catalog_bytes;
+    if (!c.id || (asset && !c.asset)) {
+        set_detail(j, p.name, "info.txt");
+        return Error::region;
+    }
     return Error::none;
 }
 
@@ -269,7 +341,7 @@ Phase load_listed(Job& j, Job::Package& p, const char* path, bool keep) {
     set_detail(j, p.name, path);
     const hash::Digest* want = listed(p, path);
     if (!want) return fail(j, Error::unlisted);
-    char stored[24];                             // flat: mod_job.hpp
+    char stored[24]; // flat: mod_job.hpp
     if (j.input->flat) stored_name(path, *want, stored);
     if (!compose(j, j.input->generation, p.name, j.input->flat ? stored : path, 0)) return fail(j, Error::path);
     const Error e = begin_load(j, want, 0, 0, keep);
@@ -307,7 +379,7 @@ __attribute__((noinline)) Error make_folders(Job& j, U32 i) {
     if (!compose(j, j.input->out, path, 0, 0)) return Error::path;
     U32 at = 0;
     while (j.input->out[at]) ++at;
-    ++at;                                // after "<out>/"
+    ++at; // after "<out>/"
     bool same = true;
     for (U32 k = 0; path[k]; ++k) {
         same = same && prev[k] == path[k];
@@ -323,9 +395,10 @@ __attribute__((noinline)) Error make_folders(Job& j, U32 i) {
 // Text into a bounded buffer (ok false once it overflows); decimal without division helpers.
 #include "mod_job_text.ipp"
 
-bool valid_name(const char* s) {       // manifest name
+bool valid_name(const char* s) { // manifest name
     U32 n = 0;
-    for (; s[n] && n != 48; ++n) if (Byte(s[n]) < 0x20 || Byte(s[n]) > 0x7e) return false;
+    for (; s[n] && n != 48; ++n)
+        if (Byte(s[n]) < 0x20 || Byte(s[n]) > 0x7e) return false;
     return n && n <= 47 && !s[n] && s[0] != ' ' && s[n - 1] != ' ';
 }
 bool valid_id(const char* id) {
@@ -338,7 +411,7 @@ bool valid_id(const char* id) {
 }
 
 Phase step_link(Job& j) {
-    if (consume(j)) {                    // the requested file is in RAM
+    if (consume(j)) { // the requested file is in RAM
         const Job::Load& l = j.load;
         if (j.check_object) {
             const mod_content::Status s = mod_content::check_object(l.data, l.size);
@@ -347,7 +420,10 @@ Phase step_link(Job& j) {
         j.work = l.size;
         const mod_link::Status s = mod_link::step(j.workspace, l.size ? l.data : 0, l.size, j.linked);
         ++j.done;
-        if (s != mod_link::Status::ok) { set_detail_text(j, j.linked.detail); return fail(j, Error::link, U32(s)); }
+        if (s != mod_link::Status::ok) {
+            set_detail_text(j, j.linked.detail);
+            return fail(j, Error::link, U32(s));
+        }
         return j.phase;
     }
     mod_link::Request r;
@@ -360,20 +436,29 @@ Phase step_link(Job& j) {
         return j.phase;
     }
     j.link_pass = !*r.path ? 2u : j.linked.sizes.initialized ? 3u : 1u;
-    if (!*r.path) {                      // a zero slice of the module
+    if (!*r.path) { // a zero slice of the module
         j.work = mod_link::zero_slice;
         const mod_link::Status s = mod_link::step(j.workspace, 0, 0, j.linked);
         ++j.done;
-        if (s != mod_link::Status::ok) { set_detail_text(j, j.linked.detail); return fail(j, Error::link, U32(s)); }
+        if (s != mod_link::Status::ok) {
+            set_detail_text(j, j.linked.detail);
+            return fail(j, Error::link, U32(s));
+        }
         return j.phase;
     }
     Job::Package* p = package_named(j, r.package);
-    if (!p) { set_detail(j, r.package, r.path); return fail(j, Error::unlisted); }
-    if (same(r.path, "info.txt")) {      // in RAM
+    if (!p) {
+        set_detail(j, r.package, r.path);
+        return fail(j, Error::unlisted);
+    }
+    if (same(r.path, "info.txt")) { // in RAM
         j.work = p->info_bytes;
         const mod_link::Status s = mod_link::step(j.workspace, p->info_bytes ? p->info : 0, p->info_bytes, j.linked);
         ++j.done;
-        if (s != mod_link::Status::ok) { set_detail_text(j, j.linked.detail); return fail(j, Error::link, U32(s)); }
+        if (s != mod_link::Status::ok) {
+            set_detail_text(j, j.linked.detail);
+            return fail(j, Error::link, U32(s));
+        }
         return j.phase;
     }
     j.check_object = p != j.packages && starts(r.path, "objects/");
@@ -381,8 +466,10 @@ Phase step_link(Job& j) {
     // is the last thing kept; the larger layout's image leaves too little room above it for the largest
     // objects): from the module's start before the zero steps (initialized is 0 until pass 1 ends), after its
     // initialized part in pass 2 (the linker writes only below that).
-    const U32 used = (j.linked.sizes.initialized + 7u) & ~7u, at = U32(j.image - j.region) + j.profile.stock_bytes + used;
-    j.spare = j.region + at; j.spare_bytes = at < j.region_bytes ? j.region_bytes - at : 0;
+    const U32 used = (j.linked.sizes.initialized + 7u) & ~7u,
+              at = U32(j.image - j.region) + j.profile.stock_bytes + used;
+    j.spare = j.region + at;
+    j.spare_bytes = at < j.region_bytes ? j.region_bytes - at : 0;
     const Phase next = load_listed(j, *p, r.path, false);
     j.spare_bytes = 0;
     return next;
@@ -390,34 +477,76 @@ Phase step_link(Job& j) {
 }
 
 Error start(Job& j, const Input& input, const Files& files, Byte* region, U32 region_bytes) {
-    j.input = &input; j.files = &files;
-    j.region = region; j.region_bytes = region_bytes; j.low = 0; j.peak = 0;
-    j.phase = Phase::idle; j.error = Error::none; j.status = 0; j.detail[0] = 0;
-    j.stage = st_base_list; j.index = 0; j.steps = 0; j.work = 0; j.done = 0; j.total = 0; j.link_pass = 0;
-    j.packages = 0; j.package_count = 0; j.content_packages = 0;
-    j.load.handle = -1; j.load.active = false; j.load.ready = false; j.load.stream = false;
-    j.out_handle = -1; j.out_index = 0; j.out_done = 0; j.out_count = 0; j.out_written = 0; j.out_sizes = 0;
-    j.source = 0; j.check_object = false; j.spare = 0; j.spare_bytes = 0;
-    j.image = 0; j.image_bytes = 0; j.edits = 0; j.edits_bytes = 0;
-    j.stock_catalog = j.official = 0; j.stock_catalog_bytes = j.official_bytes = 0;
+    j.input = &input;
+    j.files = &files;
+    j.region = region;
+    j.region_bytes = region_bytes;
+    j.low = 0;
+    j.peak = 0;
+    j.phase = Phase::idle;
+    j.error = Error::none;
+    j.status = 0;
+    j.detail[0] = 0;
+    j.stage = st_base_list;
+    j.index = 0;
+    j.steps = 0;
+    j.work = 0;
+    j.done = 0;
+    j.total = 0;
+    j.link_pass = 0;
+    j.packages = 0;
+    j.package_count = 0;
+    j.content_packages = 0;
+    j.load.handle = -1;
+    j.load.active = false;
+    j.load.ready = false;
+    j.load.stream = false;
+    j.out_handle = -1;
+    j.out_index = 0;
+    j.out_done = 0;
+    j.out_count = 0;
+    j.out_written = 0;
+    j.out_sizes = 0;
+    j.source = 0;
+    j.check_object = false;
+    j.spare = 0;
+    j.spare_bytes = 0;
+    j.image = 0;
+    j.image_bytes = 0;
+    j.edits = 0;
+    j.edits_bytes = 0;
+    j.stock_catalog = j.official = 0;
+    j.stock_catalog_bytes = j.official_bytes = 0;
     const mod_link::Selection& sel = input.selection;
-    const bool calls = files.probe_metadata && files.size && files.open && files.read && files.write && files.close && files.rename &&
-                       files.remove && files.mkdir;
-    if (!calls || !input.out) { j.error = Error::argument; j.phase = Phase::failed; return j.error; }
+    const bool calls = files.probe_metadata && files.size && files.open && files.read && files.write && files.close &&
+                       files.rename && files.remove && files.mkdir;
+    if (!calls || !input.out) {
+        j.error = Error::argument;
+        j.phase = Phase::failed;
+        return j.error;
+    }
     const U32 count = 1 + sel.machine_count + sel.extension_count;
     bool ok = input.generation && input.stock && input.catalog && input.official && input.policy && region &&
-              input.name && valid_name(input.name) &&
-              !(reinterpret_cast<unsigned long>(region) & 3) && (sel.machines || !sel.machine_count) &&
-              (sel.extensions || !sel.extension_count) && sel.machine_count <= mod_content::max_packages &&
-              sel.extension_count <= mod_content::max_packages && count - 1 <= mod_content::Limits().packages;
+              input.name && valid_name(input.name) && !(reinterpret_cast<unsigned long>(region) & 3) &&
+              (sel.machines || !sel.machine_count) && (sel.extensions || !sel.extension_count) &&
+              sel.machine_count <= mod_content::max_packages && sel.extension_count <= mod_content::max_packages &&
+              count - 1 <= mod_content::Limits().packages;
     for (U32 i = 0; ok && i != sel.machine_count; ++i) ok = sel.machines[i] && valid_id(sel.machines[i]);
     for (U32 i = 0; ok && i != sel.extension_count; ++i) ok = sel.extensions[i] && valid_id(sel.extensions[i]);
-    if (!ok) { set_detail_text(j, "input"); fail(j, Error::argument); return j.error; }
+    if (!ok) {
+        set_detail_text(j, "input");
+        fail(j, Error::argument);
+        return j.error;
+    }
     j.phase = Phase::inputs;
     j.packages = reinterpret_cast<Job::Package*>(take(j, count * U32(sizeof(Job::Package)), true));
-    j.content_packages = reinterpret_cast<mod_content::Package*>(
-        take(j, (count - 1) * U32(sizeof(mod_content::Package)), true));
-    if (!j.packages || !j.content_packages) { set_detail_text(j, "packages"); fail(j, Error::region); return j.error; }
+    j.content_packages =
+        reinterpret_cast<mod_content::Package*>(take(j, (count - 1) * U32(sizeof(mod_content::Package)), true));
+    if (!j.packages || !j.content_packages) {
+        set_detail_text(j, "packages");
+        fail(j, Error::region);
+        return j.error;
+    }
     j.package_count = count;
     for (U32 i = 0; i != count; ++i) {
         Job::Package& p = j.packages[i];
@@ -428,14 +557,28 @@ Error start(Job& j, const Input& input, const Files& files, Byte* region, U32 re
             U32 n = 0;
             while (id[n]) ++n;
             char* name = reinterpret_cast<char*>(take(j, n + 5, true));
-            if (!name) { set_detail_text(j, "packages"); fail(j, Error::region); return j.error; }
-            name[0] = 'e'; name[1] = 'x'; name[2] = 't'; name[3] = '-';
+            if (!name) {
+                set_detail_text(j, "packages");
+                fail(j, Error::region);
+                return j.error;
+            }
+            name[0] = 'e';
+            name[1] = 'x';
+            name[2] = 't';
+            name[3] = '-';
             for (U32 k = 0; k <= n; ++k) name[4 + k] = id[k];
             p.name = name;
         }
-        p.list = 0; p.list_bytes = 0; p.files = 0; p.file_count = 0;
-        p.info_sha256 = p.native_sha256 = 0; p.metadata = 0;
-        p.info = 0; p.info_bytes = 0; p.catalog = 0; p.catalog_bytes = 0;
+        p.list = 0;
+        p.list_bytes = 0;
+        p.files = 0;
+        p.file_count = 0;
+        p.info_sha256 = p.native_sha256 = 0;
+        p.metadata = 0;
+        p.info = 0;
+        p.info_bytes = 0;
+        p.catalog = 0;
+        p.catalog_bytes = 0;
     }
     return Error::none;
 }
@@ -443,7 +586,8 @@ Error start(Job& j, const Input& input, const Files& files, Byte* region, U32 re
 Phase step(Job& j) {
     if (j.phase == Phase::idle || j.phase == Phase::done || j.phase == Phase::failed || j.phase == Phase::cancelled)
         return j.phase;
-    ++j.steps; j.work = 0;
+    ++j.steps;
+    j.work = 0;
     if (j.load.active) {
         const Error e = load_step(j);
         return e == Error::none ? j.phase : fail(j, e);
@@ -461,7 +605,8 @@ Phase step(Job& j) {
             const Error e = begin_load(j, 0, 0, 0, true);
             return e == Error::none ? j.phase : fail(j, e);
         }
-        p.list = j.load.data; p.list_bytes = j.load.size;
+        p.list = j.load.data;
+        p.list_bytes = j.load.size;
         const Error e = parse_list(j, p);
         if (e != Error::none) return fail(j, e);
         go(j, j.stage == st_base_list ? st_base_info : st_package_info);
@@ -479,13 +624,23 @@ Phase step(Job& j) {
         const char* keys[3] = {"catalog_engine_at", "catalog_fx_at", "catalog_seq_at"};
         U32* fields[3] = {&j.pins.engine_at, &j.pins.fx_at, &j.pins.seq_at};
         for (U32 k = 0; k != 3; ++k)
-            if (!number_of(base.info, base.info_bytes, keys[k], *fields[k])) { set_detail_text(j, keys[k]); return fail(j, Error::base); }
+            if (!number_of(base.info, base.info_bytes, keys[k], *fields[k])) {
+                set_detail_text(j, keys[k]);
+                return fail(j, Error::base);
+            }
         copy_digest(j.pins.sha256, j.profile.catalog_sha256);
-        if (!listed(base, "edits.bin")) { set_detail_text(j, "edits.bin"); return fail(j, Error::base); }
+        if (!listed(base, "edits.bin")) {
+            set_detail_text(j, "edits.bin");
+            return fail(j, Error::base);
+        }
         j.profile.expanded = in.selection.expanded;
-        mod_patch::Profile used;             // the layout the link and patch use (maybe the larger one)
-        if (!mod_patch::layout(j.profile, used)) { set_detail_text(j, "expanded_module_base"); return fail(j, Error::base); }
-        j.module_limit = used.module_bytes; j.reserved_bytes = used.reserved_bytes;
+        mod_patch::Profile used; // the layout the link and patch use (maybe the larger one)
+        if (!mod_patch::layout(j.profile, used)) {
+            set_detail_text(j, "expanded_module_base");
+            return fail(j, Error::base);
+        }
+        j.module_limit = used.module_bytes;
+        j.reserved_bytes = used.reserved_bytes;
         if (j.module_limit > 0xffffffffu - 16u - j.profile.stock_bytes) {
             set_detail_text(j, "image size");
             return fail(j, Error::base);
@@ -493,8 +648,10 @@ Phase step(Job& j) {
         go(j, st_alloc);
         return j.phase;
     }
-    case st_alloc: {                     // the work areas (the image buffer comes last: st_official)
-        const mod_link::Limits llimits; const mod_patch::Limits plimits; const mod_content::Limits climits;
+    case st_alloc: { // the work areas (the image buffer comes last: st_official)
+        const mod_link::Limits llimits;
+        const mod_patch::Limits plimits;
+        const mod_content::Limits climits;
         const U32 lbytes = mod_link::scratch_bytes(llimits), pbytes = mod_patch::scratch_bytes(plimits),
                   cbytes = mod_content::scratch_bytes(climits);
         j.link_scratch = take(j, lbytes, true);
@@ -502,12 +659,16 @@ Phase step(Job& j) {
         j.content_scratch = j.patch_scratch ? take(j, cbytes, true) : 0;
         j.catalog_out = j.content_scratch ? take(j, catalog_bytes, true) : 0;
         j.list_out = j.catalog_out ? take(j, list_bytes, true) : 0;
-        if (!j.list_out) { set_detail_text(j, "work areas"); return fail(j, Error::region); }
-        j.workspace.scratch = j.link_scratch; j.workspace.capacity = lbytes;
+        if (!j.list_out) {
+            set_detail_text(j, "work areas");
+            return fail(j, Error::region);
+        }
+        j.workspace.scratch = j.link_scratch;
+        j.workspace.capacity = lbytes;
         go(j, st_edits);
         return j.phase;
     }
-    case st_stock: {                     // straight into the image buffer
+    case st_stock: { // straight into the image buffer
         if (!consume(j)) {
             set_detail_text(j, "stock");
             if (!compose(j, in.stock, 0, 0, 0)) return fail(j, Error::path);
@@ -519,7 +680,8 @@ Phase step(Job& j) {
     }
     case st_edits:
         if (!consume(j)) return load_listed(j, base, "edits.bin", true);
-        j.edits = j.load.data; j.edits_bytes = j.load.size;
+        j.edits = j.load.data;
+        j.edits_bytes = j.load.size;
         j.index = 1;
         go(j, j.package_count > 1 ? st_package_list : st_catalog);
         return j.phase;
@@ -536,7 +698,8 @@ Phase step(Job& j) {
         if (!consume(j)) {
             if (listed(p, "catalog.txt") && !p.catalog) return load_listed(j, p, "catalog.txt", true);
         } else {
-            p.catalog = j.load.data; p.catalog_bytes = j.load.size;
+            p.catalog = j.load.data;
+            p.catalog_bytes = j.load.size;
         }
         const Error e = content_view(j, j.index);
         if (e != Error::none) return fail(j, e);
@@ -546,17 +709,22 @@ Phase step(Job& j) {
     }
     case st_catalog:
         if (!consume(j)) return load_input(j, "catalog", in.catalog);
-        j.stock_catalog = j.load.data; j.stock_catalog_bytes = j.load.size;
+        j.stock_catalog = j.load.data;
+        j.stock_catalog_bytes = j.load.size;
         go(j, st_official);
         return j.phase;
     case st_official:
         if (!consume(j)) return load_input(j, "official", in.official);
-        j.official = j.load.data; j.official_bytes = j.load.size;
+        j.official = j.load.data;
+        j.official_bytes = j.load.size;
         // The image buffer, the last thing kept: the module's unused part then runs on into the free region,
         // where the link's files go (step_link).
         j.image_bytes = j.profile.stock_bytes + 16u + j.module_limit;
         j.image = take(j, j.image_bytes, true);
-        if (!j.image) { set_detail_text(j, "work areas"); return fail(j, Error::region); }
+        if (!j.image) {
+            set_detail_text(j, "work areas");
+            return fail(j, Error::region);
+        }
         go(j, st_stock);
         return j.phase;
     case st_patch_start:
@@ -570,7 +738,10 @@ Phase step(Job& j) {
                                  j.image_bytes, in.profiling, in.unverified, *in.policy, plimits, j.patch_scratch,
                                  mod_patch::scratch_bytes(plimits));
         else if (j.stage == st_set_module) s = mod_patch::set_module(j.patcher, j.workspace, j.linked);
-        else { s = mod_patch::step(j.patcher); j.work = j.patcher.slice_bytes; }
+        else {
+            s = mod_patch::step(j.patcher);
+            j.work = j.patcher.slice_bytes;
+        }
         ++j.done;
         if (s == mod_patch::Status::more) {
             if (j.stage == st_patch_start) go(j, st_patch_wait);
@@ -578,27 +749,43 @@ Phase step(Job& j) {
             return j.phase;
         }
         const bool before = j.stage == st_patch_start || j.stage == st_patch_wait;
-        if (before && s == mod_patch::Status::wait) { go(j, st_link_begin); return j.phase; }
-        if (!before && s == mod_patch::Status::ok) { j.crc = 0xffffffffu; j.crc_done = 0; go(j, st_crc); return j.phase; }
+        if (before && s == mod_patch::Status::wait) {
+            go(j, st_link_begin);
+            return j.phase;
+        }
+        if (!before && s == mod_patch::Status::ok) {
+            j.crc = 0xffffffffu;
+            j.crc_done = 0;
+            go(j, st_crc);
+            return j.phase;
+        }
         set_detail_text(j, j.patcher.detail);
-        return fail(j, s == mod_patch::Status::unverified ? Error::base : Error::patch, U32(s));   // an unknown base: base
+        return fail(j, s == mod_patch::Status::unverified ? Error::base : Error::patch,
+                    U32(s)); // an unknown base: base
     }
     case st_link_begin: {
         const mod_link::Limits llimits;
         const mod_link::Status s = mod_link::begin(in.selection, llimits, j.workspace, j.image + j.profile.stock_bytes,
                                                    j.image_bytes - j.profile.stock_bytes, j.linked);
-        if (s != mod_link::Status::ok) { set_detail_text(j, j.linked.detail); return fail(j, Error::link, U32(s)); }
+        if (s != mod_link::Status::ok) {
+            set_detail_text(j, j.linked.detail);
+            return fail(j, Error::link, U32(s));
+        }
         go(j, st_link);
         return j.phase;
     }
-    case st_link:
-        return step_link(j);
-    case st_crc: {                       // os.ldr CRC-32, crc_slice bytes per step
+    case st_link: return step_link(j);
+    case st_crc: { // os.ldr CRC-32, crc_slice bytes per step
         U32 n = j.patcher.total - j.crc_done;
         if (n > crc_slice) n = crc_slice;
         j.crc = zip::crc32_update(j.crc, j.image + j.crc_done, n);
-        j.crc_done += n; j.work = n; ++j.done;
-        if (j.crc_done == j.patcher.total) { j.crc ^= 0xffffffffu; go(j, st_content_start, j.package_count - 1); }
+        j.crc_done += n;
+        j.work = n;
+        ++j.done;
+        if (j.crc_done == j.patcher.total) {
+            j.crc ^= 0xffffffffu;
+            go(j, st_content_start, j.package_count - 1);
+        }
         return j.phase;
     }
     case st_content_start:
@@ -606,30 +793,42 @@ Phase step(Job& j) {
         const mod_content::Limits climits;
         mod_content::Status s;
         if (j.stage == st_content_start)
-            s = mod_content::start(j.builder, j.pins, j.stock_catalog, j.stock_catalog_bytes, j.official, j.official_bytes,
-                                   j.content_packages, j.package_count - 1, in.selection, j.workspace, j.linked,
-                                   j.catalog_out, catalog_bytes, j.list_out, list_bytes, climits, j.content_scratch,
-                                   mod_content::scratch_bytes(climits));
-        else { s = mod_content::step(j.builder); ++j.done; }
-        if (s == mod_content::Status::more) { go(j, st_content); return j.phase; }
-        if (s != mod_content::Status::ok) { set_detail_text(j, j.builder.detail); return fail(j, Error::content, U32(s)); }
+            s = mod_content::start(j.builder, j.pins, j.stock_catalog, j.stock_catalog_bytes, j.official,
+                                   j.official_bytes, j.content_packages, j.package_count - 1, in.selection, j.workspace,
+                                   j.linked, j.catalog_out, catalog_bytes, j.list_out, list_bytes, climits,
+                                   j.content_scratch, mod_content::scratch_bytes(climits));
+        else {
+            s = mod_content::step(j.builder);
+            ++j.done;
+        }
+        if (s == mod_content::Status::more) {
+            go(j, st_content);
+            return j.phase;
+        }
+        if (s != mod_content::Status::ok) {
+            set_detail_text(j, j.builder.detail);
+            return fail(j, Error::content, U32(s));
+        }
         go(j, st_entry);
         return j.phase;
     }
     case st_entry: {
         const Error e = entry_texts(j);
         if (e != Error::none) return fail(j, e);
-        j.out_index = 0; j.out_done = 0; j.out_written = 0;
+        j.out_index = 0;
+        j.out_done = 0;
+        j.out_written = 0;
         go(j, st_write, j.out_count);
         return j.phase;
     }
-    case st_write: {                     // <name>.part: a content file loaded first, folders, open; one write call per step
+    case st_write: { // <name>.part: a content file loaded first, folders, open; one write call per step
         const U32 i = j.out_index, listed = j.out_count - fixed_outputs;
         if (j.out_handle < 0) {
             if (i < listed && j.builder.listed[i].package != none) {
                 const mod_content::Listed& l = j.builder.listed[i];
                 if (!consume(j)) return load_listed(j, j.packages[l.package + 1], l.path, false);
-                j.source = j.load.data; j.out_sizes[i] = j.load.size;
+                j.source = j.load.data;
+                j.out_sizes[i] = j.load.size;
             }
             set_detail_text(j, out_name(j, i));
             if (i < listed) {
@@ -649,17 +848,21 @@ Phase step(Job& j) {
         if (n) {
             const int r = f.write(f.context, j.out_handle, out_data(j, i) + j.out_done, n);
             if (r <= 0 || U32(r) > n) return fail(j, Error::write);
-            j.out_done += U32(r); j.work = U32(r);
+            j.out_done += U32(r);
+            j.work = U32(r);
             if (j.out_done != bytes) return j.phase;
         }
         const int closed = f.close(f.context, j.out_handle);
         j.out_handle = -1;
         if (closed < 0) return fail(j, Error::write);
         ++j.done;
-        if (++j.out_index == j.out_count) { j.out_index = 0; go(j, st_verify, j.out_count); }
+        if (++j.out_index == j.out_count) {
+            j.out_index = 0;
+            go(j, st_verify, j.out_count);
+        }
         return j.phase;
     }
-    case st_verify: {                    // each part read back and its SHA-256 compared; os.ldr whole, into the image buffer
+    case st_verify: { // each part read back and its SHA-256 compared; os.ldr whole, into the image buffer
         const U32 i = j.out_index;
         const bool ldr = i == j.out_count - 1;
         if (!consume(j)) {
@@ -667,46 +870,63 @@ Phase step(Job& j) {
             if (!compose(j, in.out, out_name(j, i), 0, part)) return fail(j, Error::path);
             Byte* buffer = ldr ? j.image : take(j, chunk_bytes, false);
             if (!buffer) return fail(j, Error::region);
-            const Error e = begin_load(j, &out_digest(j, i), buffer, ldr ? j.image_bytes : chunk_bytes, false, true, !ldr,
-                                       j.out_sizes[i]);
+            const Error e = begin_load(j, &out_digest(j, i), buffer, ldr ? j.image_bytes : chunk_bytes, false, true,
+                                       !ldr, j.out_sizes[i]);
             return e == Error::none ? j.phase : fail(j, e);
         }
-        if (ldr) { go(j, st_check_start); return j.phase; }
-        ++j.done; ++j.out_index;
+        if (ldr) {
+            go(j, st_check_start);
+            return j.phase;
+        }
+        ++j.done;
+        ++j.out_index;
         return j.phase;
     }
-    case st_check_start:                 // os.ldr as read back: its layout and the policy; st_verify proved its
-                                         // SHA-256 equal to the image patch pass 2 checked whole (190: not hashed again)
+    case st_check_start: // os.ldr as read back: its layout and the policy; st_verify proved its
+        // SHA-256 equal to the image patch pass 2 checked whole (190: not hashed again)
     case st_check: {
         const mod_patch::Limits plimits;
         mod_patch::Status s;
         if (j.stage == st_check_start) {
-            s = mod_patch::start_verify(j.patcher, j.profile, j.edits, j.edits_bytes, *listed(base, "edits.bin"), j.image,
-                                        j.ldr_bytes, in.unverified, *in.policy, plimits, j.patch_scratch,
+            s = mod_patch::start_verify(j.patcher, j.profile, j.edits, j.edits_bytes, *listed(base, "edits.bin"),
+                                        j.image, j.ldr_bytes, in.unverified, *in.policy, plimits, j.patch_scratch,
                                         mod_patch::scratch_bytes(plimits), true);
             go(j, st_check);
-        } else { s = mod_patch::step(j.patcher); j.work = j.patcher.slice_bytes; }
+        } else {
+            s = mod_patch::step(j.patcher);
+            j.work = j.patcher.slice_bytes;
+        }
         if (s == mod_patch::Status::more) return j.phase;
-        if (s != mod_patch::Status::ok) { set_detail_text(j, j.patcher.detail); return fail(j, Error::image, U32(s)); }
-        if (!hash::equal(j.patcher.sha256, j.ldr_sha256)) {   // the patch's own hash (kept: `hashed`), as recorded
+        if (s != mod_patch::Status::ok) {
+            set_detail_text(j, j.patcher.detail);
+            return fail(j, Error::image, U32(s));
+        }
+        if (!hash::equal(j.patcher.sha256, j.ldr_sha256)) { // the patch's own hash (kept: `hashed`), as recorded
             set_detail_text(j, "image sha256");
             return fail(j, Error::image, U32(mod_patch::Status::verify));
         }
-        ++j.done; j.out_index = 0;
+        ++j.done;
+        j.out_index = 0;
         go(j, st_finish, j.out_count);
         return j.phase;
     }
-    case st_finish: {                    // every part onto its name, os.ldr last
+    case st_finish: { // every part onto its name, os.ldr last
         const char* name = out_name(j, j.out_index);
         set_detail_text(j, name);
         if (!compose(j, in.out, name, 0, 0)) return fail(j, Error::path);
         f.remove(f.context, j.path);
         char final_path[path_bytes];
-        for (U32 k = 0; k != path_bytes; ++k) { final_path[k] = j.path[k]; if (!j.path[k]) break; }
+        for (U32 k = 0; k != path_bytes; ++k) {
+            final_path[k] = j.path[k];
+            if (!j.path[k]) break;
+        }
         if (!compose(j, in.out, name, 0, part)) return fail(j, Error::path);
         if (f.rename(f.context, j.path, final_path) < 0) return fail(j, Error::rename);
         ++j.done;
-        if (++j.out_index == j.out_count) { j.phase = Phase::done; j.detail[0] = 0; }
+        if (++j.out_index == j.out_count) {
+            j.phase = Phase::done;
+            j.detail[0] = 0;
+        }
         return j.phase;
     }
     }
@@ -716,13 +936,18 @@ Phase step(Job& j) {
 void cancel(Job& j) {
     if (j.phase == Phase::idle || j.phase == Phase::done || j.phase == Phase::failed || j.phase == Phase::cancelled)
         return;
-    j.error = Error::cancelled; j.status = 0;
+    j.error = Error::cancelled;
+    j.status = 0;
     cleanup(j);
     j.phase = Phase::cancelled;
 }
 
 void progress(const Job& j, Progress& out) {
-    out.phase = j.phase; out.error = j.error; out.status = j.status; out.done = j.done; out.total = j.total;
+    out.phase = j.phase;
+    out.error = j.error;
+    out.status = j.status;
+    out.done = j.done;
+    out.total = j.total;
 }
 
 const char* error_name(Error e) {
@@ -753,19 +978,30 @@ const char* error_name(Error e) {
 }
 U32 timing_part(const Job& j) {
     switch (j.stage) {
-    case st_base_list: case st_base_info: case st_alloc: case st_edits: return tp_base;
-    case st_package_list: case st_package_info: case st_package_catalog: return tp_packages;
-    case st_catalog: case st_official: return tp_catalog;
+    case st_base_list:
+    case st_base_info:
+    case st_alloc:
+    case st_edits: return tp_base;
+    case st_package_list:
+    case st_package_info:
+    case st_package_catalog: return tp_packages;
+    case st_catalog:
+    case st_official: return tp_catalog;
     case st_stock: return tp_stock;
-    case st_patch_start: case st_patch_wait: return tp_patch1;
-    case st_link_begin: case st_link: return j.link_pass == 2 ? tp_zero : j.link_pass == 3 ? tp_link2 : tp_link1;
+    case st_patch_start:
+    case st_patch_wait: return tp_patch1;
+    case st_link_begin:
+    case st_link: return j.link_pass == 2 ? tp_zero : j.link_pass == 3 ? tp_link2 : tp_link1;
     case st_set_module: return tp_set_module;
     case st_patch: return tp_patch2;
     case st_crc: return tp_crc;
-    case st_content_start: case st_content: case st_entry: return tp_content;
+    case st_content_start:
+    case st_content:
+    case st_entry: return tp_content;
     case st_write: return tp_write;
     case st_verify: return tp_verify;
-    case st_check_start: case st_check: return tp_check;
+    case st_check_start:
+    case st_check: return tp_check;
     default: return tp_finish;
     }
 }
@@ -785,4 +1021,4 @@ const char* phase_name(Phase p) {
     }
     return "?";
 }
-} }
+}}

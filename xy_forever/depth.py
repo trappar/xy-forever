@@ -6,15 +6,18 @@ read or delete the file; 9: it crashes). XY Forever's file service refuses deepe
 (target/file_engine.hpp, file_client::rename for a folder moved deeper); the host tools check first so that
 they say why. Reads, listing and removals work at any depth, so an older deep tree can still be deleted.
 """
+
 from xy_forever import usb_proto as P
 
 MAX_FOLDERS = 6
-TEXT = 'more than %d folders below /yaffs2 (deeper hangs the dev menu\'s MTP, then Track 5: docs/SAFETY.md)' % MAX_FOLDERS
+TEXT = (
+    "more than %d folders below /yaffs2 (deeper hangs the dev menu's MTP, then Track 5: docs/SAFETY.md)" % MAX_FOLDERS
+)
 
 
 def folders(path, folder=False):
     """The folders below /yaffs2 that a device path sits in (a folder: counting itself)."""
-    names = [n for n in path[len('/yaffs2'):].split('/') if n]
+    names = [n for n in path[len('/yaffs2') :].split('/') if n]
     return len(names) - (0 if folder else 1)
 
 
@@ -55,7 +58,9 @@ def move_note(code):
     """xyf_host.py mv: why the device refused a move (the folder walk of file.rename), appended to its result line."""
     if code != P.STATUS_NAMES.index('refused'):
         return ''
-    return '\n  (a folder moved deeper must keep every folder in it within %d below /yaffs2: docs/SAFETY.md)' % MAX_FOLDERS
+    return (
+        '\n  (a folder moved deeper must keep every folder in it within %d below /yaffs2: docs/SAFETY.md)' % MAX_FOLDERS
+    )
 
 
 def copy_refusal(list_dir, source, target):

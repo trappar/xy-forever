@@ -15,7 +15,8 @@ void crash_command(uint8_t seq, const uint8_t* payload, U32 length) {
     U32 code = P::s_ok;
     if (kind < 1 || kind == 2 || kind > 4) code = P::s_unsupported;
     else if (writes_due || closing || mounted == file_client::mounted_stale || job_running() XYF_OR_MTP_BUSY ||
-             uploading()) code = P::s_busy;
+             uploading())
+        code = P::s_busy;
     else if (!key_ui::crash_armed_now()) code = P::s_state;
     status_only(t_crash, seq, code);
     if (code != P::s_ok) return;

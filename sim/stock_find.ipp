@@ -56,7 +56,8 @@ uint32_t object_at(const std::string& where) {
 }
 std::string object_path(uint32_t at) {
     const uint32_t i = (at - objects_base) / object_bytes;
-    if (at < objects_base || i >= object_paths.size() || (at - objects_base) % object_bytes) crash("not a yaffs object");
+    if (at < objects_base || i >= object_paths.size() || (at - objects_base) % object_bytes)
+        crash("not a yaffs object");
     return object_paths[i];
 }
 std::string find_path(const std::string& relative, const char* path, int depth, std::string* parent, int* loop);
@@ -70,12 +71,16 @@ std::string follow(std::string where, int depth, int* loop) {
 }
 std::string find_path(const std::string& relative, const char* path, int depth, std::string* parent, int* loop) {
     if (parent) parent->clear();
-    if (depth > 5) { if (loop) *loop = 1; return std::string(); }
+    if (depth > 5) {
+        if (loop) *loop = 1;
+        return std::string();
+    }
     std::string dir = relative;
     const char* rest = path;
     if (dir.empty()) {
         if (!mounted() || strncmp(path, "/yaffs2", 7) || (path[7] && path[7] != '/')) return std::string();
-        dir = shared->root; rest = path + 7;
+        dir = shared->root;
+        rest = path + 7;
     }
     for (;;) {
         while (*rest == '/') ++rest;

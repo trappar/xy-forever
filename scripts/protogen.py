@@ -15,11 +15,12 @@ It also validates the conformance suite, protocol/v1.conformance.json, against t
 (xy_forever/conformance.py: keys, values, coverage, real-device safety); its text and case
 counts go into docs/protocol/examples.md.
 """
+
 import argparse
 import json
-from pathlib import Path
 import re
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = ROOT / 'protocol' / 'v1.json'
@@ -64,18 +65,63 @@ DIRECTIONS = ('request', 'reply', 'event')
 ON_ERROR = ('status', 'full')
 ENCODINGS = ('ascii', 'utf-8')
 STREAM_DIRECTIONS = ('to_device', 'to_host')
-TRANSPORT_FACTS = ('usb_vendor_id', 'usb_product_id', 'product_usb_ids', 'usb_product', 'interface_classes', 'stream', 'line_settings',
-                   'control_lines', 'usb_serial_number', 'simulator_port')
+TRANSPORT_FACTS = (
+    'usb_vendor_id',
+    'usb_product_id',
+    'product_usb_ids',
+    'usb_product',
+    'interface_classes',
+    'stream',
+    'line_settings',
+    'control_lines',
+    'usb_serial_number',
+    'simulator_port',
+)
 RANGE_KINDS = ('dev', 'event', 'retired')
-REQUIRED_CONSTANTS = ('header_bytes', 'trailer_bytes', 'max_payload', 'max_data', 'max_read', 'put_chunk',
-                      'max_path', 'max_stage', 'max_log_text', 'max_hello')
-from protogen_hello import (BUILD_MACROS, HELLO_SOURCES, RUNTIME_BYTES,  # noqa: E402
-                            RUNTIME_SWITCHES, answered, hello_fixed, hello_source, render_cpp_hello)
-HELLO_TEXT = re.compile(r'^[!-:<>-~]+$')          # printable ASCII without space, ';' and '='
+REQUIRED_CONSTANTS = (
+    'header_bytes',
+    'trailer_bytes',
+    'max_payload',
+    'max_data',
+    'max_read',
+    'put_chunk',
+    'max_path',
+    'max_stage',
+    'max_log_text',
+    'max_hello',
+)
+from protogen_hello import (  # noqa: E402
+    BUILD_MACROS,
+    HELLO_SOURCES,
+    RUNTIME_BYTES,
+    RUNTIME_SWITCHES,
+    hello_fixed,
+    hello_source,
+    render_cpp_hello,
+)
+
+HELLO_TEXT = re.compile(r'^[!-:<>-~]+$')  # printable ASCII without space, ';' and '='
 # object kind -> (required keys, optional keys)
 KEYS = {
-    'top': ({'$comment', 'protocol', 'transport', 'frame', 'constants', 'rules', 'statuses', 'common_errors',
-             'commands', 'events', 'hello', 'golden', 'streams', 'reserved'}, set()),
+    'top': (
+        {
+            '$comment',
+            'protocol',
+            'transport',
+            'frame',
+            'constants',
+            'rules',
+            'statuses',
+            'common_errors',
+            'commands',
+            'events',
+            'hello',
+            'golden',
+            'streams',
+            'reserved',
+        },
+        set(),
+    ),
     'protocol': ({'name', 'version', 'intro'}, set()),
     'transport': ({'doc'} | set(TRANSPORT_FACTS), set()),
     'fact': ({'value', 'verified', 'doc'}, set()),
@@ -85,8 +131,24 @@ KEYS = {
     'constant': ({'name', 'value', 'doc'}, set()),
     'rule': ({'name', 'text'}, set()),
     'status': ({'code', 'name', 'class', 'since', 'doc'}, set()),
-    'command': ({'type', 'name', 'symbol', 'class', 'since', 'switch', 'summary', 'timeout_ms', 'destructive',
-                 'request', 'reply', 'errors', 'doc'}, {'test_only', 'switch_optional'}),
+    'command': (
+        {
+            'type',
+            'name',
+            'symbol',
+            'class',
+            'since',
+            'switch',
+            'summary',
+            'timeout_ms',
+            'destructive',
+            'request',
+            'reply',
+            'errors',
+            'doc',
+        },
+        {'test_only', 'switch_optional'},
+    ),
     'request': ({'size', 'fields'}, {'ignored', 'optional_fields'}),
     'reply': ({'size', 'fields', 'on_error', 'extensible'}, {'optional_fields'}),
     'payload': ({'size', 'fields', 'extensible'}, {'optional_fields'}),
@@ -124,7 +186,7 @@ class Checker:
         return required <= set(value)
 
     def typed(self, value, kinds, where):
-        if isinstance(value, bool) and bool not in kinds or not isinstance(value, kinds):
+        if (isinstance(value, bool) and bool not in kinds) or not isinstance(value, kinds):
             self.fail(where, 'must be %s' % '/'.join(k.__name__ for k in kinds))
             return False
         return True
@@ -176,8 +238,12 @@ def check_field(c, f, where, last):
         lo, hi = 0, top
         if 'range' in f:
             r = f['range']
-            if not (isinstance(r, list) and len(r) == 2 and all(isinstance(x, int) and not isinstance(x, bool)
-                                                                 for x in r) and 0 <= r[0] <= r[1] <= top):
+            if not (
+                isinstance(r, list)
+                and len(r) == 2
+                and all(isinstance(x, int) and not isinstance(x, bool) for x in r)
+                and 0 <= r[0] <= r[1] <= top
+            ):
                 c.fail(where, 'range must be [low, high] within the type')
             else:
                 lo, hi = r
@@ -205,8 +271,10 @@ def check_field(c, f, where, last):
         return None
     low = f.get('min_bytes', 1 if kind == 'cstr' else 0)
     high = f['max_bytes']
-    if not all(isinstance(x, int) and not isinstance(x, bool) for x in (low, high)) or not \
-            (1 if kind == 'cstr' else 0) <= low <= high:
+    if (
+        not all(isinstance(x, int) and not isinstance(x, bool) for x in (low, high))
+        or not (1 if kind == 'cstr' else 0) <= low <= high
+    ):
         c.fail(where, 'min_bytes/max_bytes out of order')
         return None
     if kind in ('text', 'rest'):
@@ -337,8 +405,8 @@ def validate(spec):
     if statuses.get('ok') != 0:
         c.fail('statuses', 'code 0 must be ok')
 
-    messages = {}             # name -> (kind, layouts)
-    types = {}                # wire type -> name (commands, their replies, events)
+    messages = {}  # name -> (kind, layouts)
+    types = {}  # wire type -> name (commands, their replies, events)
     symbols = []
     for i, cmd in enumerate(spec['commands']):
         where = 'commands[%d]' % i
@@ -396,8 +464,8 @@ def validate(spec):
                 c.fail(where, 'event types are 0x80 or above')
             elif t in types:
                 c.fail(where, 'type 0x%02x already used by %s' % (t, types[t]))
-            elif t & 0x7f in types:
-                c.fail(where, 'type 0x%02x (enum value) already used by %s' % (t & 0x7f, types[t & 0x7f]))
+            elif t & 0x7F in types:
+                c.fail(where, 'type 0x%02x (enum value) already used by %s' % (t & 0x7F, types[t & 0x7F]))
             types[t] = ev['name']
         if not isinstance(ev['name'], str) or not NAME.match(ev['name']):
             c.fail(where, 'bad name')
@@ -514,11 +582,14 @@ def check_transport(c, t):
             c.text(fact['doc'], where + '.doc')
     for name in ('usb_vendor_id', 'usb_product_id', 'simulator_port'):
         value = t[name].get('value') if isinstance(t[name], dict) else None
-        if not isinstance(value, int) or isinstance(value, bool) or not 0 < value <= 0xffff:
+        if not isinstance(value, int) or isinstance(value, bool) or not 0 < value <= 0xFFFF:
             c.fail('transport.' + name, 'value must be a 16-bit number')
     ids = t['product_usb_ids'].get('value') if isinstance(t['product_usb_ids'], dict) else None
-    if not (isinstance(ids, list) and len(ids) == 2 and
-            all(isinstance(v, int) and not isinstance(v, bool) and 0 < v <= 0xffff for v in ids)):
+    if not (
+        isinstance(ids, list)
+        and len(ids) == 2
+        and all(isinstance(v, int) and not isinstance(v, bool) and 0 < v <= 0xFFFF for v in ids)
+    ):
         c.fail('transport.product_usb_ids', 'value must be [vendor id, product id], 16-bit numbers')
 
 
@@ -531,8 +602,11 @@ def check_streams(c, streams, max_payload):
         c.text(st['doc'], where + '.doc')
         if st['direction'] not in STREAM_DIRECTIONS:
             c.fail(where, 'direction must be one of %s' % ', '.join(STREAM_DIRECTIONS))
-        if not isinstance(st['chunks'], list) or not st['chunks'] or \
-                not all(isinstance(h, str) and h and HEX.match(h) for h in st['chunks']):
+        if (
+            not isinstance(st['chunks'], list)
+            or not st['chunks']
+            or not all(isinstance(h, str) and h and HEX.match(h) for h in st['chunks'])
+        ):
             c.fail(where, 'chunks must be non-empty lowercase hex strings')
         if not isinstance(st['frames'], list):
             c.fail(where, 'frames must be a list')
@@ -546,7 +620,11 @@ def check_streams(c, streams, max_payload):
                 c.fail(fw, 'requests go to the device, replies and events to the host')
             if not isinstance(fr['seq'], int) or isinstance(fr['seq'], bool) or not 0 <= fr['seq'] <= 255:
                 c.fail(fw, 'seq must be 0..255')
-            if not isinstance(fr['payload'], str) or not HEX.match(fr['payload']) or len(fr['payload']) > 2 * max_payload:
+            if (
+                not isinstance(fr['payload'], str)
+                or not HEX.match(fr['payload'])
+                or len(fr['payload']) > 2 * max_payload
+            ):
                 c.fail(fw, 'payload must be lowercase hex of at most max_payload bytes')
     c.unique([st.get('name') for st in streams if isinstance(st, dict)], 'streams', 'name')
 
@@ -616,6 +694,7 @@ def check_hello(c, spec, constants, messages):
 
 # ---- shared helpers -----------------------------------------------------------------------
 
+
 def constants(spec):
     return {k['name']: k['value'] for k in spec['constants']}
 
@@ -637,14 +716,19 @@ def plain(text):
 
 # ---- C++ ----------------------------------------------------------------------------------
 
+
 def render_cpp(spec):
     k = spec['constants']
-    lines = ['// ' + NOTICE,
-             '// %s %s (docs/PROTOCOL.md): constants, message types, status codes and the hello' % (
-                 spec['protocol']['name'], spec['protocol']['version']),
-             '// text macros. Freestanding: integers, enums and string-literal macros; no tables, no storage.',
-             '#ifndef XYF_USB_PROTO_IDS_HPP', '#define XYF_USB_PROTO_IDS_HPP', '#include <stdint.h>',
-             'namespace xyf { namespace usbp {']
+    lines = [
+        '// ' + NOTICE,
+        '// %s %s (docs/PROTOCOL.md): constants, message types, status codes and the hello'
+        % (spec['protocol']['name'], spec['protocol']['version']),
+        '// text macros. Freestanding: integers, enums and string-literal macros; no tables, no storage.',
+        '#ifndef XYF_USB_PROTO_IDS_HPP',
+        '#define XYF_USB_PROTO_IDS_HPP',
+        '#include <stdint.h>',
+        'namespace xyf { namespace usbp {',
+    ]
     for c in k:
         lines.append(('static const uint32_t %s = %d;' % (c['name'], c['value'])).ljust(48) + '// ' + plain(c['doc']))
     lines.append('enum Type : uint8_t {')
@@ -656,8 +740,9 @@ def render_cpp(spec):
         entries.append((int(cmd['type'], 16), cmd['symbol'], note))
     for ev in spec['events']:
         t = int(ev['type'], 16)
-        entries.append((t & 0x7f, ev['symbol'], 'event %s, sent as 0x%02x (t_%s | t_reply), seq 0' % (
-            ev['name'], t, ev['symbol'])))
+        entries.append(
+            (t & 0x7F, ev['symbol'], 'event %s, sent as 0x%02x (t_%s | t_reply), seq 0' % (ev['name'], t, ev['symbol']))
+        )
     entries.append((int(spec['frame']['reply_bit'], 16), 'reply', 'a reply is the request type | t_reply'))
     for t, symbol, note in sorted(entries):
         lines.append(('    t_%s = 0x%02x,' % (symbol, t)).ljust(48) + '// ' + note)
@@ -673,29 +758,36 @@ def render_cpp(spec):
 
 # ---- Python -------------------------------------------------------------------------------
 
+
 def field_kind(f):
     return 'bytes' if f['type'].startswith('bytes[') else f['type']
 
 
 def py_fields(layout):
-    return tuple((f['name'], field_kind(f), field_bytes(f), bool(f.get('optional')), f.get('encoding'))
-                 for f in layout['fields'])
+    return tuple(
+        (f['name'], field_kind(f), field_bytes(f), bool(f.get('optional')), f.get('encoding')) for f in layout['fields']
+    )
 
 
 def render_py(spec):
-    out = ['"""%s' % NOTICE, '',
-           '%s %s (docs/PROTOCOL.md): constants, message types, status codes and' % (
-               spec['protocol']['name'], spec['protocol']['version']),
-           'field tables. A field is (name, type, bytes, optional, encoding): type u8/u16/u32/bytes/cstr/',
-           'text/rest, bytes the size of a fixed field (None for cstr/text/rest), encoding ascii/utf-8 for',
-           'cstr/text (None otherwise); optional fields come last, all present or none. Reply fields follow',
-           'the u32 status; with an error status the reply holds reply_on_error: "status" (no fields),',
-           '"full" (every field) or the fields named; a common status (COMMON_ERRORS) sent as such comes',
-           'alone, but a command that lists it among its own errors may send its fields with it.',
-           'Replies and events are decoded leniently (bytes after the known fields are ignored); an',
-           'extensible=False layout ends in rest/text and never gains fields.', '"""', '',
-           'VERSION = %r' % spec['protocol']['version'],
-           'MAGIC = %r' % spec['frame']['magic'].encode('ascii')]
+    out = [
+        '"""%s' % NOTICE,
+        '',
+        '%s %s (docs/PROTOCOL.md): constants, message types, status codes and'
+        % (spec['protocol']['name'], spec['protocol']['version']),
+        'field tables. A field is (name, type, bytes, optional, encoding): type u8/u16/u32/bytes/cstr/',
+        'text/rest, bytes the size of a fixed field (None for cstr/text/rest), encoding ascii/utf-8 for',
+        'cstr/text (None otherwise); optional fields come last, all present or none. Reply fields follow',
+        'the u32 status; with an error status the reply holds reply_on_error: "status" (no fields),',
+        '"full" (every field) or the fields named; a common status (COMMON_ERRORS) sent as such comes',
+        'alone, but a command that lists it among its own errors may send its fields with it.',
+        'Replies and events are decoded leniently (bytes after the known fields are ignored); an',
+        'extensible=False layout ends in rest/text and never gains fields.',
+        '"""',
+        '',
+        'VERSION = %r' % spec['protocol']['version'],
+        'MAGIC = %r' % spec['frame']['magic'].encode('ascii'),
+    ]
     for c in spec['constants']:
         out.append('%s = %d' % (c['name'].upper(), c['value']))
     out.append('REPLY = %s' % spec['frame']['reply_bit'])
@@ -705,15 +797,21 @@ def render_py(spec):
         out.append(('%s = %s' % (cmd['symbol'].upper(), cmd['type'])).ljust(24) + '# ' + cmd['name'])
     out.append('# Events: type & 0x7f, as sent: type | REPLY (seq 0).')
     for ev in spec['events']:
-        out.append(('%s = 0x%02x' % (ev['symbol'].upper(), int(ev['type'], 16) & 0x7f)).ljust(24) + '# event ' + ev['name'])
+        out.append(
+            ('%s = 0x%02x' % (ev['symbol'].upper(), int(ev['type'], 16) & 0x7F)).ljust(24) + '# event ' + ev['name']
+        )
     out.append('')
     out.append('# Status codes.')
     for s in spec['statuses']:
         out.append('S_%s = %d' % (s['name'].upper(), s['code']))
     out.append('STATUS_NAMES = (%s)' % ', '.join(repr(s['name']) for s in spec['statuses']))
     out.append('# Statuses any command but the ones excepted can get, as the status alone.')
-    out.append('COMMON_ERRORS = (%s)' % ''.join('(S_%s, %r), ' % (e['status'].upper(), tuple(e['except']))
-                                               for e in spec['common_errors']).rstrip(', '))
+    out.append(
+        'COMMON_ERRORS = (%s)'
+        % ''.join('(S_%s, %r), ' % (e['status'].upper(), tuple(e['except'])) for e in spec['common_errors']).rstrip(
+            ', '
+        )
+    )
     out.append('')
     out.append('# Transport facts: name -> (value, verified).')
     out.append('TRANSPORT = {')
@@ -734,22 +832,32 @@ def render_py(spec):
     out.append('COMMANDS = {')
     for cmd in sorted(spec['commands'], key=lambda c: int(c['type'], 16)):
         out.append('    %s: dict(' % cmd['type'])
-        out.append('        name=%r, symbol=%r, cls=%r, test_only=%r, switch=%r,' % (
-            cmd['name'], cmd['symbol'], cmd['class'], bool(cmd.get('test_only')), cmd['switch']))
-        out.append('        destructive=%r, timeout_ms=%d, errors=%r,' % (
-            cmd['destructive'], cmd['timeout_ms'], tuple(cmd['errors'])))
-        out.append('        request_size=%r, request_ignored=%r,' % (
-            tuple(cmd['request']['size']), bool(cmd['request'].get('ignored'))))
+        out.append(
+            '        name=%r, symbol=%r, cls=%r, test_only=%r, switch=%r,'
+            % (cmd['name'], cmd['symbol'], cmd['class'], bool(cmd.get('test_only')), cmd['switch'])
+        )
+        out.append(
+            '        destructive=%r, timeout_ms=%d, errors=%r,'
+            % (cmd['destructive'], cmd['timeout_ms'], tuple(cmd['errors']))
+        )
+        out.append(
+            '        request_size=%r, request_ignored=%r,'
+            % (tuple(cmd['request']['size']), bool(cmd['request'].get('ignored')))
+        )
         out.append('        request=%r,' % (py_fields(cmd['request']),))
         e = cmd['reply']['on_error']
-        out.append('        reply_size=%r, reply_on_error=%r, reply_extensible=%r,' % (
-            tuple(cmd['reply']['size']), tuple(e) if isinstance(e, list) else e, cmd['reply']['extensible']))
+        out.append(
+            '        reply_size=%r, reply_on_error=%r, reply_extensible=%r,'
+            % (tuple(cmd['reply']['size']), tuple(e) if isinstance(e, list) else e, cmd['reply']['extensible'])
+        )
         out.append('        reply=%r),' % (py_fields(cmd['reply']),))
     out.append('}')
     out.append('EVENTS = {')
     for ev in spec['events']:
-        out.append('    %s: dict(name=%r, symbol=%r, size=%r, extensible=%r,' % (
-            ev['type'], ev['name'], ev['symbol'], tuple(ev['payload']['size']), ev['payload']['extensible']))
+        out.append(
+            '    %s: dict(name=%r, symbol=%r, size=%r, extensible=%r,'
+            % (ev['type'], ev['name'], ev['symbol'], tuple(ev['payload']['size']), ev['payload']['extensible'])
+        )
         out.append('             payload=%r),' % (py_fields(ev['payload']),))
     out.append('}')
     out.append('')
@@ -757,6 +865,7 @@ def render_py(spec):
 
 
 # ---- Markdown -----------------------------------------------------------------------------
+
 
 def seconds(ms):
     return ('%d s' % (ms // 1000)) if ms % 1000 == 0 else ('%.1f s' % (ms / 1000.0))
@@ -793,12 +902,16 @@ def field_table(fields, title='Field'):
 
 
 def frame_hex(text):
-    return ' '.join(text[i:i + 2] for i in range(0, len(text), 2))
+    return ' '.join(text[i : i + 2] for i in range(0, len(text), 2))
 
 
 def render_command(cmd, md):
-    md += ['', '### %s `%s`' % (cmd['type'], cmd['name']), '',
-           ' '.join([cmd['summary'][0].upper() + cmd['summary'][1:] + '.'] + ([cmd['doc']] if cmd['doc'] else []))]
+    md += [
+        '',
+        '### %s `%s`' % (cmd['type'], cmd['name']),
+        '',
+        ' '.join([cmd['summary'][0].upper() + cmd['summary'][1:] + '.'] + ([cmd['doc']] if cmd['doc'] else [])),
+    ]
     req = cmd['request']
     md.append('')
     if req.get('ignored'):
@@ -806,7 +919,7 @@ def render_command(cmd, md):
     elif not req['fields']:
         md.append('Request: empty.')
     else:
-        md += field_table(req['fields'], 'Request field (%s)' % size_text(req['size']))   # 1.10: the size in the head
+        md += field_table(req['fields'], 'Request field (%s)' % size_text(req['size']))  # 1.10: the size in the head
     rep = cmd['reply']
     md.append('')
     facts = []
@@ -815,8 +928,16 @@ def render_command(cmd, md):
     else:
         md += field_table(rep['fields'], 'Reply field, after the status (%s)' % size_text(rep['size']))
         e = rep['on_error']
-        facts.append('On an error: ' + ('the status only.' if e == 'status' else 'every field (zero where not reached).'
-                                        if e == 'full' else 'the status and %s.' % ', '.join('`%s`' % n for n in e)))
+        facts.append(
+            'On an error: '
+            + (
+                'the status only.'
+                if e == 'status'
+                else 'every field (zero where not reached).'
+                if e == 'full'
+                else 'the status and %s.' % ', '.join('`%s`' % n for n in e)
+            )
+        )
     facts.append('Errors: %s.' % (', '.join('`%s`' % e for e in cmd['errors']) if cmd['errors'] else 'none of its own'))
     if rep['fields'] and not rep['extensible']:
         facts.append('The reply never gains fields (it ends in `%s`).' % rep['fields'][-1]['type'])
@@ -840,8 +961,14 @@ def render_hello(spec, md):
         fixed = hello_fixed(spec, key)
         md.append('| `%s` | %s | %s%s |' % (key['name'], key['since'], ('`%s`: ' % fixed) if fixed else '', key['doc']))
     example = next(g for g in spec['golden'] if g['message'] == 'hello' and g['direction'] == 'reply')
-    md += ['', 'The product build answers (%d bytes):' % len(example['fields']['info']), '',
-           '```text', example['fields']['info'], '```']
+    md += [
+        '',
+        'The product build answers (%d bytes):' % len(example['fields']['info']),
+        '',
+        '```text',
+        example['fields']['info'],
+        '```',
+    ]
 
 
 def render_conformance(cases):
@@ -849,22 +976,31 @@ def render_conformance(cases):
     if cases is None:
         return []
     every = cases['cases']
-    count = lambda effect: sum(effect in c['effects'] for c in every)   # noqa: E731
+    count = lambda effect: sum(effect in c['effects'] for c in every)
     md = ['', '## Conformance suite', '']
     for para in cases['doc']:
         md += [para, '']
-    md.append('%d cases: %d safe on a real device; %d read-only, %d use the staging, %d write the test area, %d '
-              'restart the device, %d change stored state outside it and %d boot the OS (simulator only).' % (
-                  len(every), sum(c['real_device'] for c in every), sum(not c['effects'] for c in every),
-                  count('staging'), count('writes_test_area'), count('restarts'), count('writes_device'),
-                  count('boots_os')))
+    md.append(
+        '%d cases: %d safe on a real device; %d read-only, %d use the staging, %d write the test area, %d '
+        'restart the device, %d change stored state outside it and %d boot the OS (simulator only).'
+        % (
+            len(every),
+            sum(c['real_device'] for c in every),
+            sum(not c['effects'] for c in every),
+            count('staging'),
+            count('writes_test_area'),
+            count('restarts'),
+            count('writes_device'),
+            count('boots_os'),
+        )
+    )
     return md
 
 
 # docs/PROTOCOL.md is the index of a tree; its leaves sit in docs/protocol/, each under the docs byte budget
 # (tests/test_docs_budget.py). A command leaf holds the published non-developer commands whose type falls in
 # its range, so a new command lands in a leaf by its number; the budget test says when a leaf must split.
-from protogen_leaves import DOC_DIR, CMD_LEAVES, DOC_LEAVES, wrap  # noqa: E402
+from protogen_leaves import CMD_LEAVES, DOC_DIR, DOC_LEAVES, wrap  # noqa: E402
 
 
 def cmd_leaf(cmd):
@@ -886,20 +1022,34 @@ def anchor(cmd, here=None):
 
 def render_md(spec, cases=None):
     """{repository-relative path: text} of the specification: the index docs/PROTOCOL.md and every leaf."""
-    p, k = spec['protocol'], constants(spec)
-    pages = {}                           # leaf file name: (title, what it holds, body lines)
+    p = spec['protocol']
+    pages = {}  # leaf file name: (title, what it holds, body lines)
     t = spec['transport']
     md = ['', '## Transport', '', t['doc'], '', '| Fact | Value | Verified | Notes |', '|---|---|---|---|']
     for name in TRANSPORT_FACTS:
         value = t[name]['value']
-        shown = ('0x%04x' % value if name in ('usb_vendor_id', 'usb_product_id') else
-                 '%04x:%04x' % tuple(value) if name == 'product_usb_ids' else
-                 ', '.join('0x%02x' % v for v in value) if isinstance(value, list) else str(value))
-        md.append('| %s | `%s` | %s | %s |' % (name.replace('_', ' '), shown, 'yes' if t[name]['verified'] else 'no',
-                                              t[name]['doc']))
+        shown = (
+            '0x%04x' % value
+            if name in ('usb_vendor_id', 'usb_product_id')
+            else '%04x:%04x' % tuple(value)
+            if name == 'product_usb_ids'
+            else ', '.join('0x%02x' % v for v in value)
+            if isinstance(value, list)
+            else str(value)
+        )
+        md.append(
+            '| %s | `%s` | %s | %s |'
+            % (name.replace('_', ' '), shown, 'yes' if t[name]['verified'] else 'no', t[name]['doc'])
+        )
     md.append('')
-    md += ['## Frames', '', 'Every message, in both directions, is one frame:', '',
-           '| Offset | Field | Type | Meaning |', '|---|---|---|---|']
+    md += [
+        '## Frames',
+        '',
+        'Every message, in both directions, is one frame:',
+        '',
+        '| Offset | Field | Type | Meaning |',
+        '|---|---|---|---|',
+    ]
     offset = '0'
     for f in spec['frame']['fields']:
         md.append('| %s | `%s` | %s | %s |' % (offset, f['name'], f['type'], f['doc']))
@@ -908,28 +1058,47 @@ def render_md(spec, cases=None):
         elif offset.isdigit():
             offset = str(int(offset) + field_bytes(f))
     hello = next(g for g in spec['golden'] if g['message'] == 'hello' and g['direction'] == 'request')
-    md += ['', 'The CRC is the %s.' % spec['frame']['crc'],
-           'Example, `hello` with seq 1: `%s`.' % frame_hex(hello['hex']), '',
-           'Payload fields are packed without gaps. Types: `u8`, `u16`, `u32` unsigned little-endian; '
-           '`bytes[N]` exactly N bytes; `cstr` text ending in one NUL; `text` text to the end of the payload, '
-           'no NUL; `rest` raw bytes to the end of the payload. Each text field names its encoding (ASCII or '
-           'UTF-8; see the [rules](rules.md)). Optional fields come last and are all present or all absent. A reply '
-           'payload is a `u32` status followed by the fields listed for it.']
+    md += [
+        '',
+        'The CRC is the %s.' % spec['frame']['crc'],
+        'Example, `hello` with seq 1: `%s`.' % frame_hex(hello['hex']),
+        '',
+        'Payload fields are packed without gaps. Types: `u8`, `u16`, `u32` unsigned little-endian; '
+        '`bytes[N]` exactly N bytes; `cstr` text ending in one NUL; `text` text to the end of the payload, '
+        'no NUL; `rest` raw bytes to the end of the payload. Each text field names its encoding (ASCII or '
+        'UTF-8; see the [rules](rules.md)). Optional fields come last and are all present or all absent. A reply '
+        'payload is a `u32` status followed by the fields listed for it.',
+    ]
     md += ['', '## Constants', '', '| Name | Value | Meaning |', '|---|---|---|']
     md += ['| `%s` | %d | %s |' % (c['name'], c['value'], c['doc']) for c in spec['constants']]
-    pages['transport.md'] = ('transport, frames and constants',
-                             'how a tool reaches the device, the frame layout and CRC, payload types, the limits', md)
+    pages['transport.md'] = (
+        'transport, frames and constants',
+        'how a tool reaches the device, the frame layout and CRC, payload types, the limits',
+        md,
+    )
     md = ['', '## Rules', '']
     md += ['- %s' % r['text'] for r in spec['rules']]
-    pages['rules.md'] = ('rules', 'sequence numbers, timeouts, encodings, compatibility: what every tool must follow',
-                         md)
-    md = ['', '## Status codes', '',
-          'Every reply starts with one. A tool shows a code it does not know by number and treats it as a failure. '
-          'Besides the errors listed under each command, these can come to any command, as the status alone '
-          '(whatever its `on_error` says): %s' % ' '.join(
-              '`%s`, to any command%s: %s.' % (e['status'], ' but `%s`' % '`, `'.join(e['except']) if e['except'] else '',
-                                              e['doc']) for e in spec['common_errors']), '',
-          '| Code | Name | Since | Meaning |', '|---|---|---|---|']
+    pages['rules.md'] = (
+        'rules',
+        'sequence numbers, timeouts, encodings, compatibility: what every tool must follow',
+        md,
+    )
+    md = [
+        '',
+        '## Status codes',
+        '',
+        'Every reply starts with one. A tool shows a code it does not know by number and treats it as a failure. '
+        'Besides the errors listed under each command, these can come to any command, as the status alone '
+        '(whatever its `on_error` says): %s'
+        % ' '.join(
+            '`%s`, to any command%s: %s.'
+            % (e['status'], ' but `%s`' % '`, `'.join(e['except']) if e['except'] else '', e['doc'])
+            for e in spec['common_errors']
+        ),
+        '',
+        '| Code | Name | Since | Meaning |',
+        '|---|---|---|---|',
+    ]
     md += ['| %d | `%s` | %s | %s |' % (s['code'], s['name'], s['since'], s['doc']) for s in spec['statuses']]
     pages['statuses.md'], md = ('status codes', 'every status code, and those any command can answer', md), []
     commands = sorted(spec['commands'], key=lambda c: int(c['type'], 16))
@@ -938,73 +1107,121 @@ def render_md(spec, cases=None):
     hidden = [c for c in commands if not published(c)]
     md += ['', '## Commands', '', '| Type | Name | What it does |', '|---|---|---|']
     md += ['| %s | [`%s`](%s) | %s |' % (c['type'], c['name'], anchor(c, 'commands.md'), c['summary']) for c in main]
-    md += ['', 'A typical session: `hello`; then reads (`file.read`, `screen.read`); to write, `stage.begin`, '
-           '`stage.data` in order, `stage.end`, then one of `file.write_staged`, `boot.install`, '
-           '`boot.uninstall`.']
+    md += [
+        '',
+        'A typical session: `hello`; then reads (`file.read`, `screen.read`); to write, `stage.begin`, '
+        '`stage.data` in order, `stage.end`, then one of `file.write_staged`, `boot.install`, '
+        '`boot.uninstall`.',
+    ]
     pages['commands.md'] = ('commands', 'the table of commands with a link to each', md)
-    for first, last, name, title in CMD_LEAVES:
+    for _first, _last, name, title in CMD_LEAVES:
         md = []
         held = [c for c in main if cmd_leaf(c) == name]
         for c in held:
             render_command(c, md)
             if c['name'] == 'hello':
                 render_hello(spec, md)
-        pages[name] = (title, ', '.join('`%s`' % c['name'] + (' and its keys' if c['name'] == 'hello' else '')
-                                        for c in held), md)
-    md = ['', '## Examples', '', 'Whole frames in hex, as the device and the host tool encode them '
-          '(checked by `tests/test_protocol_spec.py`). The spec file also holds byte streams (`streams`) with the '
-          'frames a correct parser finds in each: %s.' % '; '.join(st['name'] for st in spec['streams']), '']
+        pages[name] = (
+            title,
+            ', '.join('`%s`' % c['name'] + (' and its keys' if c['name'] == 'hello' else '') for c in held),
+            md,
+        )
+    md = [
+        '',
+        '## Examples',
+        '',
+        'Whole frames in hex, as the device and the host tool encode them '
+        '(checked by `tests/test_protocol_spec.py`). The spec file also holds byte streams (`streams`) with the '
+        'frames a correct parser finds in each: %s.' % '; '.join(st['name'] for st in spec['streams']),
+        '',
+    ]
     shown = {c['name'] for c in main + dev} | {e['name'] for e in spec['events']}
     answers = next(g for g in spec['golden'] if g['message'] == 'hello' and g['direction'] == 'reply')['fields']['info']
     for g in spec['golden']:
         if g['message'] not in shown:
             continue
         values = ', '.join('`%s` = %s' % (n, json.dumps(v)) for n, v in g['fields'].items())
-        if g['message'] == 'hello' and g['fields'].get('info') == answers:     # one word too wide for a line
-            values = '`info` = the product build\'s text in [`hello` keys](%s#hello-keys)' % cmd_leaf(
-                next(c for c in main if c['name'] == 'hello'))
+        if g['message'] == 'hello' and g['fields'].get('info') == answers:  # one word too wide for a line
+            values = "`info` = the product build's text in [`hello` keys](%s#hello-keys)" % cmd_leaf(
+                next(c for c in main if c['name'] == 'hello')
+            )
         head = '`%s` %s, seq %d' % (g['message'], g['direction'], g['seq'])
         if 'status' in g:
             head += ', status `%s`' % g['status']
-        md.append('- %s (%s)%s: `%s`' % (g['name'][0].upper() + g['name'][1:], head, ('; ' + values) if values else '',
-                                         frame_hex(g['hex'])))
+        md.append(
+            '- %s (%s)%s: `%s`'
+            % (g['name'][0].upper() + g['name'][1:], head, ('; ' + values) if values else '', frame_hex(g['hex']))
+        )
     md += render_conformance(cases)
     pages['examples.md'] = ('examples and conformance', 'whole frames in hex, and the conformance suite', md)
     md = ['', '## Events']
     for ev in spec['events']:
-        md += ['', '### %s `%s`' % (ev['type'], ev['name']), '', ev['summary'][0].upper() + ev['summary'][1:] + '.',
-               '', ev['doc'], '', 'Payload (%s):' % size_text(ev['payload']['size']), '']
+        md += [
+            '',
+            '### %s `%s`' % (ev['type'], ev['name']),
+            '',
+            ev['summary'][0].upper() + ev['summary'][1:] + '.',
+            '',
+            ev['doc'],
+            '',
+            'Payload (%s):' % size_text(ev['payload']['size']),
+            '',
+        ]
         md += field_table(ev['payload']['fields'])
-    md += ['', '## Appendix: developer commands', '',
-           'Unstable: they may change or disappear in any version, outside the compatibility rules.']
+    md += [
+        '',
+        '## Appendix: developer commands',
+        '',
+        'Unstable: they may change or disappear in any version, outside the compatibility rules.',
+    ]
     for c in dev:
         render_command(c, md)
-    md += ['', 'Types %s are internal test commands, described only in the spec file; tools must not send them.' %
-           ', '.join(c['type'] for c in hidden)]
+    md += [
+        '',
+        'Types %s are internal test commands, described only in the spec file; tools must not send them.'
+        % ', '.join(c['type'] for c in hidden),
+    ]
     r = spec['reserved']
-    items = (['Status %d `%s`: %s (item %s).' % (s['code'], s['name'], s['doc'], s['item']) for s in r['statuses']] +
-             ['Status %d is to be renamed `%s` (now `%s`; item %s).' % (n['status'], n['to'], n['from'], n['item'])
-              for n in r['renames']] +
-             ['Types %s..%s: %s.' % (t['first'], t['last'], t['doc']) for t in r['types']])
+    items = (
+        ['Status %d `%s`: %s (item %s).' % (s['code'], s['name'], s['doc'], s['item']) for s in r['statuses']]
+        + [
+            'Status %d is to be renamed `%s` (now `%s`; item %s).' % (n['status'], n['to'], n['from'], n['item'])
+            for n in r['renames']
+        ]
+        + ['Types %s..%s: %s.' % (t['first'], t['last'], t['doc']) for t in r['types']]
+    )
     md += ['', '## Reserved for later versions', '', ' '.join([r['doc']] + items)]
-    pages['events-dev.md'] = ('events, developer commands, reserved',
-                              'device events, unstable developer commands, numbers reserved for later versions', md)
+    pages['events-dev.md'] = (
+        'events, developer commands, reserved',
+        'device events, unstable developer commands, numbers reserved for later versions',
+        md,
+    )
     assert sorted('%s/%s' % (DOC_DIR, n) for n in pages) == sorted(DOC_LEAVES)
     head = '%s %s' % (p['name'], p['version'])
     index = ['<!-- %s -->' % NOTICE, '# ' + head, '']
     for para in p['intro']:
         index += [para, '']
-    index += ['The machine-readable specification is [`protocol/v1.json`](../protocol/v1.json); these pages, the '
-              'firmware header, the host module and the TypeScript module (`clients/ts/src/v1.ts`) are generated from '
-              'it. Version %s describes the device as it is today. "Since" names the version that introduced an '
-              'entry\'s current form.' % p['version'], '', '## Contents', '']
+    index += [
+        'The machine-readable specification is [`protocol/v1.json`](../protocol/v1.json); these pages, the '
+        'firmware header, the host module and the TypeScript module (`clients/ts/src/v1.ts`) are generated from '
+        'it. Version %s describes the device as it is today. "Since" names the version that introduced an '
+        "entry's current form." % p['version'],
+        '',
+        '## Contents',
+        '',
+    ]
     out = {}
     for rel in DOC_LEAVES:
         name = rel.rsplit('/', 1)[1]
         title, holds, body = pages[name]
         index.append('- [%s](protocol/%s): %s' % (title[0].upper() + title[1:], name, holds))
-        out[rel] = wrap('\n'.join(['<!-- %s -->' % NOTICE, '# %s: %s' % (head, title), '',
-                                   'Part of the [%s](../PROTOCOL.md).' % head] + body + ['']))
+        out[rel] = wrap(
+            '\n'.join(
+                ['<!-- %s -->' % NOTICE, '# %s: %s' % (head, title), '', 'Part of the [%s](../PROTOCOL.md).' % head]
+                + body
+                + ['']
+            )
+        )
     out[DOC] = wrap('\n'.join(index + ['']))
     return out
 
@@ -1015,7 +1232,7 @@ def render_md(spec, cases=None):
 # xy_forever/usb_proto.py. Plain TypeScript with erasable syntax only (no enums, namespaces or
 # parameter properties), so Node runs it by type stripping; ES2020 (BigInt), no dependencies.
 
-TS_RUNTIME = r'''
+TS_RUNTIME = r"""
 // ---- values and field tables ---------------------------------------------------------------
 
 export type Value = number | string | Uint8Array;
@@ -1368,7 +1585,7 @@ export function toHex(bytes: Uint8Array): string {
   for (const b of bytes) hex += b.toString(16).padStart(2, '0');
   return hex;
 }
-'''
+"""
 
 
 def ts_name(name):
@@ -1382,21 +1599,30 @@ def ts_comment(text, indent=''):
 
 def ts_value_type(f):
     return {'u8': 'number', 'u16': 'number', 'u32': 'number', 'cstr': 'string', 'text': 'string'}.get(
-        field_kind(f), 'Uint8Array')
+        field_kind(f), 'Uint8Array'
+    )
 
 
 def ts_field(f):
     rng = '[%d, %d]' % tuple(f['range']) if 'range' in f else 'null'
-    return ('{ name: %s, type: %s, bytes: %s, optional: %s, encoding: %s, maxBytes: %s, range: %s }' % (
-        json.dumps(f['name']), json.dumps(field_kind(f)), 'null' if field_bytes(f) is None else field_bytes(f),
-        'true' if f.get('optional') else 'false', json.dumps(f['encoding']) if 'encoding' in f else 'null',
-        f['max_bytes'] if 'max_bytes' in f else 'null', rng))
+    return '{ name: %s, type: %s, bytes: %s, optional: %s, encoding: %s, maxBytes: %s, range: %s }' % (
+        json.dumps(f['name']),
+        json.dumps(field_kind(f)),
+        'null' if field_bytes(f) is None else field_bytes(f),
+        'true' if f.get('optional') else 'false',
+        json.dumps(f['encoding']) if 'encoding' in f else 'null',
+        f['max_bytes'] if 'max_bytes' in f else 'null',
+        rng,
+    )
 
 
 def ts_layout(layout, extra=()):
     fields = ''.join('\n      %s,' % ts_field(f) for f in layout['fields'])
-    items = ['size: [%d, %d]' % tuple(layout['size'])] + list(extra) + ['fields: [%s%s]' % (
-        fields, '\n    ' if fields else '')]
+    items = (
+        ['size: [%d, %d]' % tuple(layout['size'])]
+        + list(extra)
+        + ['fields: [%s%s]' % (fields, '\n    ' if fields else '')]
+    )
     return '{ ' + ', '.join(items) + ' }'
 
 
@@ -1431,10 +1657,18 @@ def ts_error_type(cmd, ok):
 
 def ts_command(cmd, out):
     n, key = ts_name(cmd['name']), json.dumps(cmd['name'])
-    exported = '' if cmd['class'] == 'dev' else 'export '          # dev functions: only through `dev`
+    exported = '' if cmd['class'] == 'dev' else 'export '  # dev functions: only through `dev`
     req, rep = cmd['request'], cmd['reply']
-    out += ['', '// ---- %s %s: %s %s' % (cmd['type'], cmd['name'], plain(cmd['summary']), '-' * max(
-        4, 80 - len(cmd['type']) - len(cmd['name']) - len(cmd['summary']) - 12))]
+    out += [
+        '',
+        '// ---- %s %s: %s %s'
+        % (
+            cmd['type'],
+            cmd['name'],
+            plain(cmd['summary']),
+            '-' * max(4, 80 - len(cmd['type']) - len(cmd['name']) - len(cmd['summary']) - 12),
+        ),
+    ]
     out.append('export type %sRequest = %s;' % (n, ts_request_type(req)))
     out.append('export type %sReplyFields = %s;' % (n, ts_object_type(rep['fields'])))
     out.append('export type %sReply = Reply<%sReplyFields, %s>;' % (n, n, ts_error_type(cmd, '%sReplyFields' % n)))
@@ -1444,160 +1678,273 @@ def ts_command(cmd, out):
     else:
         out.append('%sfunction encode%sRequest(): Uint8Array {' % (exported, n))
         out.append('  return new Uint8Array(0);')
-    out += ['}', '%sfunction decode%sRequest(payload: Uint8Array): %sRequest {' % (exported, n, n),
-            '  return decodeRequest(COMMANDS[%s], payload) as %sRequest;' % (key, n), '}',
-            '%sfunction encode%sReply(reply: %sReply): Uint8Array {' % (exported, n, n),
-            '  return encodeReply(COMMANDS[%s], reply);' % key, '}',
-            '%sfunction decode%sReply(payload: Uint8Array): %sReply {' % (exported, n, n),
-            '  return decodeReply(COMMANDS[%s], payload) as %sReply;' % (key, n), '}']
+    out += [
+        '}',
+        '%sfunction decode%sRequest(payload: Uint8Array): %sRequest {' % (exported, n, n),
+        '  return decodeRequest(COMMANDS[%s], payload) as %sRequest;' % (key, n),
+        '}',
+        '%sfunction encode%sReply(reply: %sReply): Uint8Array {' % (exported, n, n),
+        '  return encodeReply(COMMANDS[%s], reply);' % key,
+        '}',
+        '%sfunction decode%sReply(payload: Uint8Array): %sReply {' % (exported, n, n),
+        '  return decodeReply(COMMANDS[%s], payload) as %sReply;' % (key, n),
+        '}',
+    ]
 
 
 def render_ts(spec):
-    k, p, t = constants(spec), spec['protocol'], spec['transport']
+    p, t = spec['protocol'], spec['transport']
     commands = [c for c in sorted(spec['commands'], key=lambda c: int(c['type'], 16)) if published(c)]
     names = {c['name'] for c in commands}
-    out = ['// ' + NOTICE,
-           '// %s %s (docs/PROTOCOL.md) for TypeScript: constants, statuses, the command table, typed' % (
-               p['name'], p['version']),
-           '// codecs, the frame encoder and resynchronising parser, hello parsing, and the spec\'s golden frames',
-           '// and stream test vectors. Strict TypeScript, ES2020, erasable syntax only (Node runs it by type',
-           '// stripping), no dependencies and no I/O: transports (Web Serial, TCP) and the call layer are',
-           '// written by hand on top of it. Developer commands are only in the `dev` export; test-only',
-           '// commands are left out.', '',
-           'export const VERSION = %s;' % json.dumps(p['version'])]
+    out = [
+        '// ' + NOTICE,
+        '// %s %s (docs/PROTOCOL.md) for TypeScript: constants, statuses, the command table, typed'
+        % (p['name'], p['version']),
+        "// codecs, the frame encoder and resynchronising parser, hello parsing, and the spec's golden frames",
+        '// and stream test vectors. Strict TypeScript, ES2020, erasable syntax only (Node runs it by type',
+        '// stripping), no dependencies and no I/O: transports (Web Serial, TCP) and the call layer are',
+        '// written by hand on top of it. Developer commands are only in the `dev` export; test-only',
+        '// commands are left out.',
+        '',
+        'export const VERSION = %s;' % json.dumps(p['version']),
+    ]
     for c in spec['constants']:
         out.append(ts_comment(c['doc']))
         out.append('export const %s = %d;' % (c['name'].upper(), c['value']))
-    out += ['export const MAX_FRAME = HEADER_BYTES + MAX_PAYLOAD + TRAILER_BYTES;',
-            '/** A reply has the request type | REPLY; events are 0x80 and above too. */',
-            'export const REPLY = %s;' % spec['frame']['reply_bit'], '']
+    out += [
+        'export const MAX_FRAME = HEADER_BYTES + MAX_PAYLOAD + TRAILER_BYTES;',
+        '/** A reply has the request type | REPLY; events are 0x80 and above too. */',
+        'export const REPLY = %s;' % spec['frame']['reply_bit'],
+        '',
+    ]
     out.append(ts_comment('Transport facts (docs/protocol/transport.md, Transport). ' + t['doc']))
     out.append('export const TRANSPORT = {')
     for name in TRANSPORT_FACTS:
         fact = t[name]
-        out.append('  %s: { value: %s, verified: %s, doc: %s },' % (
-            re.sub(r'_(\w)', lambda m: m.group(1).upper(), name), json.dumps(fact['value']),
-            'true' if fact['verified'] else 'false', json.dumps(fact['doc'])))
+        out.append(
+            '  %s: { value: %s, verified: %s, doc: %s },'
+            % (
+                re.sub(r'_(\w)', lambda m: m.group(1).upper(), name),
+                json.dumps(fact['value']),
+                'true' if fact['verified'] else 'false',
+                json.dumps(fact['doc']),
+            )
+        )
     out.append('} as const;')
-    out.append('/** The USB ids XY Forever\'s service may have, in the shape Web Serial\'s requestPort filters take: the')
-    out.append(' * composite of product builds 188 to 189-001 (pid.codes\' test pair), then the stock pair: the composite')
+    out.append("/** The USB ids XY Forever's service may have, in the shape Web Serial's requestPort filters take: the")
+    out.append(
+        " * composite of product builds 188 to 189-001 (pid.codes' test pair), then the stock pair: the composite"
+    )
     out.append(' * from 189-002 (`product_usb_ids`) and the serial identity every build falls back to. Accept both. */')
     out.append('export const USB_FILTERS = [')
     out.append('  { usbVendorId: 0x1209, usbProductId: 0x0001 },   // builds 188 to 189-001: pid.codes test pair')
     stock = (t['usb_vendor_id']['value'], t['usb_product_id']['value'])
     if tuple(t['product_usb_ids']['value']) not in ((0x1209, 0x0001), stock):
-        out.append('  { usbVendorId: 0x%04x, usbProductId: 0x%04x },   // the product composite' % tuple(
-            t['product_usb_ids']['value']))
-    out.append('  { usbVendorId: 0x%04x, usbProductId: 0x%04x },   // stock pair: the composite (189-002 on), the serial' % stock)
+        out.append(
+            '  { usbVendorId: 0x%04x, usbProductId: 0x%04x },   // the product composite'
+            % tuple(t['product_usb_ids']['value'])
+        )
+    out.append(
+        '  { usbVendorId: 0x%04x, usbProductId: 0x%04x },   // stock pair: the composite (189-002 on), the serial'
+        % stock
+    )
     out.append('] as const;')
-    out += ['', '// ---- statuses ----------------------------------------------------------------------------------', '']
+    out += [
+        '',
+        '// ---- statuses ----------------------------------------------------------------------------------',
+        '',
+    ]
     out.append('export const STATUS = {')
     out += ['  %s: %d,' % (s['name'], s['code']) for s in spec['statuses']]
-    out += ['} as const;', 'export type StatusName = keyof typeof STATUS;',
-            'export interface StatusInfo { readonly code: number; readonly name: StatusName; readonly class: string; '
-            'readonly since: string; readonly doc: string }',
-            'export const STATUSES: readonly StatusInfo[] = [']
-    out += ['  { code: %d, name: %s, class: %s, since: %s, doc: %s },' % (
-        s['code'], json.dumps(s['name']), json.dumps(s['class']), json.dumps(s['since']), json.dumps(s['doc']))
-        for s in spec['statuses']]
-    out += ['];', '/** A status code\'s name; an unknown code (a newer device) is shown by number and is a failure. */',
-            'export function statusName(code: number): string {',
-            '  return STATUSES[code]?.name ?? `status_${code}`;', '}',
-            '/** Statuses any command but those excepted can get, as the status alone. */',
-            'export const COMMON_ERRORS: readonly { readonly status: StatusName; readonly except: readonly CommandName[]; '
-            'readonly doc: string }[] = [']
-    out += ['  { status: %s, except: %s, doc: %s },' % (json.dumps(e['status']), json.dumps(e['except']),
-                                                         json.dumps(e['doc'])) for e in spec['common_errors']]
-    out += ['];', '', '// ---- message types -----------------------------------------------------------------------------', '']
+    out += [
+        '} as const;',
+        'export type StatusName = keyof typeof STATUS;',
+        'export interface StatusInfo { readonly code: number; readonly name: StatusName; readonly class: string; '
+        'readonly since: string; readonly doc: string }',
+        'export const STATUSES: readonly StatusInfo[] = [',
+    ]
+    out += [
+        '  { code: %d, name: %s, class: %s, since: %s, doc: %s },'
+        % (s['code'], json.dumps(s['name']), json.dumps(s['class']), json.dumps(s['since']), json.dumps(s['doc']))
+        for s in spec['statuses']
+    ]
+    out += [
+        '];',
+        "/** A status code's name; an unknown code (a newer device) is shown by number and is a failure. */",
+        'export function statusName(code: number): string {',
+        '  return STATUSES[code]?.name ?? `status_${code}`;',
+        '}',
+        '/** Statuses any command but those excepted can get, as the status alone. */',
+        'export const COMMON_ERRORS: readonly { readonly status: StatusName; readonly except: readonly CommandName[]; '
+        'readonly doc: string }[] = [',
+    ]
+    out += [
+        '  { status: %s, except: %s, doc: %s },'
+        % (json.dumps(e['status']), json.dumps(e['except']), json.dumps(e['doc']))
+        for e in spec['common_errors']
+    ]
+    out += [
+        '];',
+        '',
+        '// ---- message types -----------------------------------------------------------------------------',
+        '',
+    ]
     out.append('export const TYPE = {')
     out += ['  %s: %s,' % (json.dumps(c['name']), c['type']) for c in commands]
     out += ['  %s: %s,' % (json.dumps(e['name']), e['type']) for e in spec['events']]
-    out += ['} as const;', 'export type CommandName = %s;' % ' | '.join(json.dumps(c['name']) for c in commands),
-            'export type EventName = %s;' % ' | '.join(json.dumps(e['name']) for e in spec['events'])]
+    out += [
+        '} as const;',
+        'export type CommandName = %s;' % ' | '.join(json.dumps(c['name']) for c in commands),
+        'export type EventName = %s;' % ' | '.join(json.dumps(e['name']) for e in spec['events']),
+    ]
     out.append('')
     out.append(TS_RUNTIME.strip('\n'))
-    out += ['', '// ---- commands ----------------------------------------------------------------------------------', '',
-            'export const COMMANDS: Readonly<Record<CommandName, Command>> = {']
+    out += [
+        '',
+        '// ---- commands ----------------------------------------------------------------------------------',
+        '',
+        'export const COMMANDS: Readonly<Record<CommandName, Command>> = {',
+    ]
     for c in commands:
         e = c['reply']['on_error']
         out.append('  %s: {' % json.dumps(c['name']))
-        out.append('    type: %s, name: %s, class: %s, since: %s,' % (
-            c['type'], json.dumps(c['name']), json.dumps(c['class']), json.dumps(c['since'])))
+        out.append(
+            '    type: %s, name: %s, class: %s, since: %s,'
+            % (c['type'], json.dumps(c['name']), json.dumps(c['class']), json.dumps(c['since']))
+        )
         out.append('    summary: %s,' % json.dumps(c['summary']))
-        out.append('    switch: %s, switchOptional: %s, timeoutMs: %d, destructive: %s,' % (
-            json.dumps(c['switch']), json.dumps(c.get('switch_optional')), c['timeout_ms'],
-            'true' if c['destructive'] else 'false'))
+        out.append(
+            '    switch: %s, switchOptional: %s, timeoutMs: %d, destructive: %s,'
+            % (
+                json.dumps(c['switch']),
+                json.dumps(c.get('switch_optional')),
+                c['timeout_ms'],
+                'true' if c['destructive'] else 'false',
+            )
+        )
         out.append('    errors: %s,' % json.dumps(c['errors']))
-        out.append('    request: %s,' % ts_layout(c['request'], ['ignored: %s' % (
-            'true' if c['request'].get('ignored') else 'false')]))
-        out.append('    reply: %s,' % ts_layout(c['reply'], ['onError: %s' % json.dumps(e),
-                                                             'extensible: %s' % json.dumps(c['reply']['extensible'])]))
+        out.append(
+            '    request: %s,'
+            % ts_layout(c['request'], ['ignored: %s' % ('true' if c['request'].get('ignored') else 'false')])
+        )
+        out.append(
+            '    reply: %s,'
+            % ts_layout(
+                c['reply'], ['onError: %s' % json.dumps(e), 'extensible: %s' % json.dumps(c['reply']['extensible'])]
+            )
+        )
         out.append('  },')
     out += ['};', '', 'export const EVENTS: Readonly<Record<EventName, EventInfo>> = {']
     for ev in spec['events']:
-        out.append('  %s: { type: %s, name: %s, since: %s, summary: %s,' % (
-            json.dumps(ev['name']), ev['type'], json.dumps(ev['name']), json.dumps(ev['since']),
-            json.dumps(ev['summary'])))
-        out.append('    payload: %s },' % ts_layout(ev['payload'], ['extensible: %s' % json.dumps(
-            ev['payload']['extensible'])]))
+        out.append(
+            '  %s: { type: %s, name: %s, since: %s, summary: %s,'
+            % (
+                json.dumps(ev['name']),
+                ev['type'],
+                json.dumps(ev['name']),
+                json.dumps(ev['since']),
+                json.dumps(ev['summary']),
+            )
+        )
+        out.append(
+            '    payload: %s },'
+            % ts_layout(ev['payload'], ['extensible: %s' % json.dumps(ev['payload']['extensible'])])
+        )
     out.append('};')
     for c in commands:
         ts_command(c, out)
     for ev in spec['events']:
         n = ts_name(ev['name'])
-        out += ['', '// ---- event %s %s: %s' % (ev['type'], ev['name'], plain(ev['summary'])),
-                'export type %sEvent = %s;' % (n, ts_object_type(ev['payload']['fields'])),
-                'export function encode%sEvent(event: %sEvent): Uint8Array {' % (n, n),
-                '  return pack(EVENTS[%s].payload, event);' % json.dumps(ev['name']), '}',
-                'export function decode%sEvent(payload: Uint8Array): %sEvent {' % (n, n),
-                '  return unpack(EVENTS[%s].payload, payload, false) as %sEvent;' % (json.dumps(ev['name']), n), '}']
-    out += ['', '// ---- codecs by name ---------------------------------------------------------------------------', '']
+        out += [
+            '',
+            '// ---- event %s %s: %s' % (ev['type'], ev['name'], plain(ev['summary'])),
+            'export type %sEvent = %s;' % (n, ts_object_type(ev['payload']['fields'])),
+            'export function encode%sEvent(event: %sEvent): Uint8Array {' % (n, n),
+            '  return pack(EVENTS[%s].payload, event);' % json.dumps(ev['name']),
+            '}',
+            'export function decode%sEvent(payload: Uint8Array): %sEvent {' % (n, n),
+            '  return unpack(EVENTS[%s].payload, payload, false) as %sEvent;' % (json.dumps(ev['name']), n),
+            '}',
+        ]
+    out += [
+        '',
+        '// ---- codecs by name ---------------------------------------------------------------------------',
+        '',
+    ]
     for group, keep in (('codecs', lambda c: c['class'] != 'dev'), ('dev', lambda c: c['class'] == 'dev')):
-        out.append('%sexport const %s = {' % (
-            '/** Developer commands: unstable, outside the compatibility rules; not for an app\'s UI. */\n'
-            if group == 'dev' else '', group))
+        out.append(
+            '%sexport const %s = {'
+            % (
+                "/** Developer commands: unstable, outside the compatibility rules; not for an app's UI. */\n"
+                if group == 'dev'
+                else '',
+                group,
+            )
+        )
         for c in commands:
             if keep(c):
                 n = ts_name(c['name'])
-                out.append('  %s: { encodeRequest: encode%sRequest, decodeRequest: decode%sRequest, '
-                           'encodeReply: encode%sReply, decodeReply: decode%sReply },' % (json.dumps(c['name']), n, n, n, n))
+                out.append(
+                    '  %s: { encodeRequest: encode%sRequest, decodeRequest: decode%sRequest, '
+                    'encodeReply: encode%sReply, decodeReply: decode%sReply },' % (json.dumps(c['name']), n, n, n, n)
+                )
         out.append('} as const;')
     out.append('export const events = {')
     for ev in spec['events']:
         n = ts_name(ev['name'])
         out.append('  %s: { encode: encode%sEvent, decode: decode%sEvent },' % (json.dumps(ev['name']), n, n))
     out.append('} as const;')
-    out += ['', '// ---- test data (protocol/v1.json) -------------------------------------------------------------', '',
-            '/** Whole frames in hex; `fields` hold bytes/rest values as hex. */',
-            'export interface GoldenFrame { readonly name: string; readonly message: string; '
-            'readonly direction: \'request\' | \'reply\' | \'event\'; readonly seq: number; '
-            'readonly status: StatusName | null; readonly fields: Readonly<Record<string, string | number>>; '
-            'readonly hex: string }',
-            'export const GOLDEN: readonly GoldenFrame[] = [']
+    out += [
+        '',
+        '// ---- test data (protocol/v1.json) -------------------------------------------------------------',
+        '',
+        '/** Whole frames in hex; `fields` hold bytes/rest values as hex. */',
+        'export interface GoldenFrame { readonly name: string; readonly message: string; '
+        "readonly direction: 'request' | 'reply' | 'event'; readonly seq: number; "
+        'readonly status: StatusName | null; readonly fields: Readonly<Record<string, string | number>>; '
+        'readonly hex: string }',
+        'export const GOLDEN: readonly GoldenFrame[] = [',
+    ]
     events = {e['name'] for e in spec['events']}
     for g in spec['golden']:
         if g['message'] in names or g['message'] in events:
-            out.append('  { name: %s, message: %s, direction: %s, seq: %d, status: %s,' % (
-                json.dumps(g['name']), json.dumps(g['message']), json.dumps(g['direction']), g['seq'],
-                json.dumps(g.get('status'))))
+            out.append(
+                '  { name: %s, message: %s, direction: %s, seq: %d, status: %s,'
+                % (
+                    json.dumps(g['name']),
+                    json.dumps(g['message']),
+                    json.dumps(g['direction']),
+                    g['seq'],
+                    json.dumps(g.get('status')),
+                )
+            )
             out.append('    fields: %s,' % json.dumps(g['fields']))
             out.append('    hex: %s },' % json.dumps(g['hex']))
-    out += ['];', '/** Byte streams (chunks: one read each, hex) and the frames a correct parser finds in them. */',
-            'export interface StreamVector { readonly name: string; readonly direction: \'to_device\' | \'to_host\'; '
-            'readonly chunks: readonly string[]; readonly frames: readonly { readonly type: number; '
-            'readonly seq: number; readonly payload: string }[]; readonly doc: string }',
-            'export const STREAMS: readonly StreamVector[] = [']
+    out += [
+        '];',
+        '/** Byte streams (chunks: one read each, hex) and the frames a correct parser finds in them. */',
+        "export interface StreamVector { readonly name: string; readonly direction: 'to_device' | 'to_host'; "
+        'readonly chunks: readonly string[]; readonly frames: readonly { readonly type: number; '
+        'readonly seq: number; readonly payload: string }[]; readonly doc: string }',
+        'export const STREAMS: readonly StreamVector[] = [',
+    ]
     for st in spec['streams']:
         out.append('  { name: %s, direction: %s,' % (json.dumps(st['name']), json.dumps(st['direction'])))
         out.append('    chunks: %s,' % json.dumps(st['chunks']))
-        out.append('    frames: [%s],' % ', '.join('{ type: %s, seq: %d, payload: %s }' % (
-            f['type'], f['seq'], json.dumps(f['payload'])) for f in st['frames']))
+        out.append(
+            '    frames: [%s],'
+            % ', '.join(
+                '{ type: %s, seq: %d, payload: %s }' % (f['type'], f['seq'], json.dumps(f['payload']))
+                for f in st['frames']
+            )
+        )
         out.append('    doc: %s },' % json.dumps(st['doc']))
     out += ['];', '']
     return '\n'.join(out)
 
 
 # ---- driver -------------------------------------------------------------------------------
+
 
 def generate(spec, cases=None):
     """{repository-relative path: text} of every generated file. cases: the conformance suite
@@ -1606,6 +1953,7 @@ def generate(spec, cases=None):
     if cases is None:
         cases = load(CONFORMANCE)
     from xy_forever import conformance
+
     try:
         conformance.validate(spec, cases)
     except conformance.CaseError as error:
@@ -1616,9 +1964,11 @@ def generate(spec, cases=None):
 def stale(out, root=ROOT):
     """Paths of generated files whose text on disk differs from out, then files in DOC_DIR that out does not hold."""
     extra = sorted(str(path.relative_to(root)) for path in (root / DOC_DIR).glob('*') if path.is_file())
-    return ([rel for rel, text in out.items()
-             if not (root / rel).is_file() or (root / rel).read_text(encoding='utf-8') != text] +
-            [rel for rel in extra if rel not in out])
+    return [
+        rel
+        for rel, text in out.items()
+        if not (root / rel).is_file() or (root / rel).read_text(encoding='utf-8') != text
+    ] + [rel for rel in extra if rel not in out]
 
 
 def main(argv=None):

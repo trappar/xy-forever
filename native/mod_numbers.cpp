@@ -8,18 +8,29 @@ namespace {
 const U32 slot_page = 3, slots = 4, table_size = max_rule_number;
 const char* const slot_names[slots] = {"engine", "effect", "player", "page"};
 
-struct Over { U32 slot; int number; U32 holder; };
-struct Fresh { U32 index, kind, slots; Identity identity; };   // slots: bit per slot code
+struct Over {
+    U32 slot;
+    int number;
+    U32 holder;
+};
+struct Fresh {
+    U32 index, kind, slots;
+    Identity identity;
+};   // slots: bit per slot code
 struct Work {
     U16* table;                  // [slots][table_size]: holder + 1, 0 = free
-    Over* over; U32 over_count, over_capacity;
-    U16* pool[slots]; U32 pool_length[slots];
-    Fresh* fresh; U32 fresh_count;
+    Over* over;
+    U32 over_count, over_capacity;
+    U16* pool[slots];
+    U32 pool_length[slots];
+    Fresh* fresh;
+    U32 fresh_count;
     U16* order;
 };
 
 bool listed(const U32* list, U32 count, int value) {
-    for (U32 i = 0; i != count; ++i) if (int(list[i]) == value) return true;
+    for (U32 i = 0; i != count; ++i)
+        if (int(list[i]) == value) return true;
     return false;
 }
 U32 remainder(U32 value, U32 divisor) {           // value % divisor, without a library call
@@ -55,7 +66,7 @@ bool owns_page(const Rules& r, U32 kind, const Identity& id) {
 }
 bool same_numbers(const Identity& a, const Identity& b) {
     return a.slot == b.slot && a.has_number == b.has_number && a.has_page == b.has_page &&
-        (!a.has_number || a.number == b.number) && (!a.has_page || a.page == b.page);
+           (!a.has_number || a.number == b.number) && (!a.has_page || a.page == b.page);
 }
 U32 get(const Work& w, U32 slot, int number) {
     if (number >= 0 && U32(number) < table_size) return w.table[slot * table_size + U32(number)];
@@ -64,11 +75,19 @@ U32 get(const Work& w, U32 slot, int number) {
     return 0;
 }
 bool set(Work& w, U32 slot, int number, U32 holder) {
-    if (number >= 0 && U32(number) < table_size) { w.table[slot * table_size + U32(number)] = U16(holder); return true; }
+    if (number >= 0 && U32(number) < table_size) {
+        w.table[slot * table_size + U32(number)] = U16(holder);
+        return true;
+    }
     for (U32 i = 0; i != w.over_count; ++i)
-        if (w.over[i].slot == slot && w.over[i].number == number) { w.over[i].holder = holder; return true; }
+        if (w.over[i].slot == slot && w.over[i].number == number) {
+            w.over[i].holder = holder;
+            return true;
+        }
     if (w.over_count == w.over_capacity) return false;
-    w.over[w.over_count].slot = slot; w.over[w.over_count].number = number; w.over[w.over_count].holder = holder;
+    w.over[w.over_count].slot = slot;
+    w.over[w.over_count].number = number;
+    w.over[w.over_count].holder = holder;
     ++w.over_count;
     return true;
 }
@@ -81,39 +100,66 @@ void drop_pages(Work& w, U32 holder) {
 // occupied(rules, identity) as (slot, number) pairs; returns the count (at most 3).
 U32 occupied(const Rules& r, const Identity& id, U32* key_slot, int* key_number) {
     U32 n = 0;
-    key_slot[n] = id.slot; key_number[n++] = id.number;
-    if (id.slot == slot_effect) { key_slot[n] = slot_engine; key_number[n++] = id.number; }
+    key_slot[n] = id.slot;
+    key_number[n++] = id.number;
+    if (id.slot == slot_effect) {
+        key_slot[n] = slot_engine;
+        key_number[n++] = id.number;
+    }
     if (!listed(r.sample_pages, r.sample_page_count, id.page) && id.page != int(r.effect_page)) {
-        key_slot[n] = slot_page; key_number[n++] = id.page;
+        key_slot[n] = slot_page;
+        key_number[n++] = id.page;
     }
     return n;
 }
-void key_text(Text& t, U32 slot, int number) { t.add(slot_names[slot]); t.add(" "); t.add_number(number); }
+void key_text(Text& t, U32 slot, int number) {
+    t.add(slot_names[slot]);
+    t.add(" ");
+    t.add_number(number);
+}
 
 struct Layout {
-    const Rules& rules; Work& w; Number* out; U32 capacity; U32& count; Text& message;
+    const Rules& rules;
+    Work& w;
+    Number* out;
+    U32 capacity;
+    U32& count;
+    Text& message;
     int find(const char* id) const {
-        for (U32 i = 0; i != count; ++i) if (same_id(out[i].id, id)) return int(i);
+        for (U32 i = 0; i != count; ++i)
+            if (same_id(out[i].id, id)) return int(i);
         return -1;
     }
     Status insert(const char* id, const Identity& identity, U32& index) {
-        if (count == capacity) { message.add("numbers"); return Status::limit; }
-        copy_id(out[count].id, id); out[count].identity = identity; index = count++;
+        if (count == capacity) {
+            message.add("numbers");
+            return Status::limit;
+        }
+        copy_id(out[count].id, id);
+        out[count].identity = identity;
+        index = count++;
         return Status::ok;
     }
     // hold(name, identity): its keys are free or already its own.
     Status hold(U32 index, const Identity& identity) {
-        U32 key_slot[3]; int key_number[3];
+        U32 key_slot[3];
+        int key_number[3];
         U32 keys = occupied(rules, identity, key_slot, key_number);
         for (U32 k = 0; k != keys; ++k) {
             U32 holder = get(w, key_slot[k], key_number[k]);
             if (!holder) {
-                if (!set(w, key_slot[k], key_number[k], index + 1)) { message.add("held numbers"); return Status::limit; }
+                if (!set(w, key_slot[k], key_number[k], index + 1)) {
+                    message.add("held numbers");
+                    return Status::limit;
+                }
                 holder = index + 1;
             }
             if (holder != index + 1) {
-                message.add(out[index].id); message.add(" and "); message.add(out[holder - 1].id);
-                message.add(" both hold "); key_text(message, key_slot[k], key_number[k]);
+                message.add(out[index].id);
+                message.add(" and ");
+                message.add(out[holder - 1].id);
+                message.add(" both hold ");
+                key_text(message, key_slot[k], key_number[k]);
                 return Status::both_hold;
             }
         }
@@ -128,8 +174,13 @@ struct Layout {
         return !(slot == slot_page && number == int(rules.pages) - 1) && !held(slot, number);
     }
     bool take(U32 index, Identity& identity, U32 slot, int number) {
-        if (slot == slot_page) { identity.page = number; identity.has_page = true; }
-        else { identity.number = number; identity.has_number = true; }
+        if (slot == slot_page) {
+            identity.page = number;
+            identity.has_page = true;
+        } else {
+            identity.number = number;
+            identity.has_number = true;
+        }
         if (!set(w, slot, number, index + 1)) return false;
         return slot != slot_effect || set(w, slot_engine, number, index + 1);
     }
@@ -145,14 +196,18 @@ U32 fnv1a(const Byte* text, U32 length) {
 U32 slot_of(U32 kind) { return kind == player ? slot_player : kind == effect ? slot_effect : slot_engine; }
 
 bool valid_rules(const Rules& r) {
-    if (r.engines > table_size || r.pages > table_size || r.engine_none >= table_size ||
-        r.page_none >= table_size || r.effect_page >= table_size ||
-        r.stock_engine_count > max_rule_list || r.sample_page_count > max_rule_list ||
-        r.effect_count > max_rule_list || r.player_count > max_rule_list) return false;
-    for (U32 i = 0; i != r.stock_engine_count; ++i) if (r.stock_engines[i] >= table_size) return false;
-    for (U32 i = 0; i != r.sample_page_count; ++i) if (r.sample_pages[i] >= table_size) return false;
-    for (U32 i = 0; i != r.effect_count; ++i) if (r.effects[i] >= table_size) return false;
-    for (U32 i = 0; i != r.player_count; ++i) if (r.players[i] >= table_size) return false;
+    if (r.engines > table_size || r.pages > table_size || r.engine_none >= table_size || r.page_none >= table_size ||
+        r.effect_page >= table_size || r.stock_engine_count > max_rule_list || r.sample_page_count > max_rule_list ||
+        r.effect_count > max_rule_list || r.player_count > max_rule_list)
+        return false;
+    for (U32 i = 0; i != r.stock_engine_count; ++i)
+        if (r.stock_engines[i] >= table_size) return false;
+    for (U32 i = 0; i != r.sample_page_count; ++i)
+        if (r.sample_pages[i] >= table_size) return false;
+    for (U32 i = 0; i != r.effect_count; ++i)
+        if (r.effects[i] >= table_size) return false;
+    for (U32 i = 0; i != r.player_count; ++i)
+        if (r.players[i] >= table_size) return false;
     return true;
 }
 
@@ -164,7 +219,8 @@ static bool valid_identity(const Rules& r, U32 kind, const Identity& id) {
     if (kind == effect) return listed(r.effects, r.effect_count, n) && (page == int(r.effect_page) || own_page);
     if (!(n > 0 && n < int(r.engines) && n != int(r.engine_none) && !listed(r.stock_engines, r.stock_engine_count, n)))
         return false;
-    if (kind == sample) return n > int(r.engine_none) && (listed(r.sample_pages, r.sample_page_count, page) || own_page);
+    if (kind == sample)
+        return n > int(r.engine_none) && (listed(r.sample_pages, r.sample_page_count, page) || own_page);
     return (kind == synth || kind == drum) && own_page;
 }
 
@@ -177,37 +233,42 @@ bool valid_request(const Rules& r, U32 kind, const Identity& id) {
 }
 
 bool fits(const Identity& requested, const Identity& numbers) {
-    if (requested.has_number && !(numbers.slot == requested.slot && numbers.has_number &&
-                                  numbers.number == requested.number)) return false;
+    if (requested.has_number &&
+        !(numbers.slot == requested.slot && numbers.has_number && numbers.number == requested.number))
+        return false;
     return !requested.has_page || (numbers.has_page && numbers.page == requested.page);
 }
 
 U32 work_bytes(U32 capacity) {
     if (capacity > 4096) return 0;
-    return slots * table_size * 2 + 4 * capacity * sizeof(Over) + slots * table_size * 2 +
-        capacity * sizeof(Fresh) + ((capacity * 2 + 3) & ~3u) + 16;
+    return slots * table_size * 2 + 4 * capacity * sizeof(Over) + slots * table_size * 2 + capacity * sizeof(Fresh) +
+           ((capacity * 2 + 3) & ~3u) + 16;
 }
 
-Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Number* saved,
-              U32 saved_count, const Machine* machines, U32 machine_count, Byte* area,
-              Number* out, U32 capacity, U32& count, Text& message) {
+Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Number* saved, U32 saved_count,
+              const Machine* machines, U32 machine_count, Byte* area, Number* out, U32 capacity, U32& count,
+              Text& message) {
     count = 0;
     if (!valid_rules(rules) || capacity > 4096 || machine_count > capacity) return Status::argument;
     Work w;
     w.table = reinterpret_cast<U16*>(area);
     Byte* at = area + slots * table_size * 2;
-    w.over = reinterpret_cast<Over*>(at); w.over_count = 0; w.over_capacity = 4 * capacity;
+    w.over = reinterpret_cast<Over*>(at);
+    w.over_count = 0;
+    w.over_capacity = 4 * capacity;
     at += 4 * capacity * sizeof(Over);
     for (U32 s = 0; s != slots; ++s) w.pool[s] = reinterpret_cast<U16*>(at + s * table_size * 2);
     at += slots * table_size * 2;
-    w.fresh = reinterpret_cast<Fresh*>(at); w.fresh_count = 0;
+    w.fresh = reinterpret_cast<Fresh*>(at);
+    w.fresh_count = 0;
     at += capacity * sizeof(Fresh);
     w.order = reinterpret_cast<U16*>(at);
     for (U32 i = 0; i != slots * table_size; ++i) w.table[i] = 0;
     // numberPools(rules)
     w.pool_length[slot_engine] = 0;
     for (U32 n = rules.engine_none + 1; n < rules.engines; ++n)
-        if (!listed(rules.stock_engines, rules.stock_engine_count, int(n))) w.pool[slot_engine][w.pool_length[slot_engine]++] = U16(n);
+        if (!listed(rules.stock_engines, rules.stock_engine_count, int(n)))
+            w.pool[slot_engine][w.pool_length[slot_engine]++] = U16(n);
     w.pool_length[slot_page] = 0;
     for (U32 n = rules.page_none + 1; n < rules.pages; ++n) w.pool[slot_page][w.pool_length[slot_page]++] = U16(n);
     w.pool_length[slot_effect] = rules.effect_count;
@@ -245,7 +306,10 @@ Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Nu
     // Machines by id (insertion sort: at most `capacity`).
     for (U32 i = 0; i != machine_count; ++i) {
         U32 j = i;
-        while (j && before(machines[i].id, machines[w.order[j - 1]].id)) { w.order[j] = w.order[j - 1]; --j; }
+        while (j && before(machines[i].id, machines[w.order[j - 1]].id)) {
+            w.order[j] = w.order[j - 1];
+            --j;
+        }
         w.order[j] = U16(i);
     }
     for (U32 o = 0; o != machine_count; ++o) {
@@ -265,8 +329,12 @@ Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Nu
             drop_pages(w, U32(found) + 1);
             if (own_page) {
                 Fresh& f = w.fresh[w.fresh_count++];
-                f.index = U32(found); f.kind = m.kind; f.slots = 1u << slot_page;
-                f.identity = had; f.identity.has_page = false; f.identity.page = 0;
+                f.index = U32(found);
+                f.kind = m.kind;
+                f.slots = 1u << slot_page;
+                f.identity = had;
+                f.identity.has_page = false;
+                f.identity.page = 0;
             } else {
                 out[found].identity.has_page = m.requested.has_page;
                 out[found].identity.page = m.requested.page;
@@ -277,7 +345,8 @@ Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Nu
                 return Status::layout_invalid;
             }
             if (m.kind == sample && !own_page &&
-                !(out[found].identity.has_page == m.requested.has_page && out[found].identity.page == m.requested.page)) {
+                !(out[found].identity.has_page == m.requested.has_page &&
+                  out[found].identity.page == m.requested.page)) {
                 message.add(m.id);
                 return Status::forks;
             }
@@ -286,8 +355,11 @@ Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Nu
             Identity placeholder = m.requested;
             if ((status = l.insert(m.id, placeholder, index)) != Status::ok) return status;
             Fresh& f = w.fresh[w.fresh_count++];
-            f.index = index; f.kind = m.kind; f.identity = m.requested;
-            f.slots = (1u << slot) | ((m.kind == synth || m.kind == drum || m.kind == player || own_page) ? 1u << slot_page : 0);
+            f.index = index;
+            f.kind = m.kind;
+            f.identity = m.requested;
+            f.slots = (1u << slot) |
+                      ((m.kind == synth || m.kind == drum || m.kind == player || own_page) ? 1u << slot_page : 0);
         }
     }
     // Requested numbers first, so no machine's preferred place takes one another asks for.
@@ -297,11 +369,13 @@ Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Nu
             if (!(f.slots & (1u << s))) continue;
             bool has = s == slot_page ? f.identity.has_page : f.identity.has_number;
             int n = s == slot_page ? f.identity.page : f.identity.number;
-            if (s == slot_page) f.identity.has_page = false; else f.identity.has_number = false;
+            if (s == slot_page) f.identity.has_page = false;
+            else f.identity.has_number = false;
             bool pooled = false;
             for (U32 k = 0; has && k != w.pool_length[s] && !pooled; ++k) pooled = int(w.pool[s][k]) == n;
             if (pooled && l.free(s, n) && !l.take(f.index, f.identity, s, n)) {
-                message.add("held numbers"); return Status::limit;
+                message.add("held numbers");
+                return Status::limit;
             }
         }
     }
@@ -325,10 +399,15 @@ Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Nu
                 }
             }
             if (found_at == length) {
-                message.add(slot_names[s]); message.add(" number for "); message.add(id);
+                message.add(slot_names[s]);
+                message.add(" number for ");
+                message.add(id);
                 return Status::no_free;
             }
-            if (!l.take(f.index, f.identity, s, int(w.pool[s][found_at]))) { message.add("held numbers"); return Status::limit; }
+            if (!l.take(f.index, f.identity, s, int(w.pool[s][found_at]))) {
+                message.add("held numbers");
+                return Status::limit;
+            }
         }
         if (!valid_identity(rules, f.kind, f.identity)) {
             message.add(id);
@@ -338,4 +417,4 @@ Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Nu
     }
     return Status::ok;
 }
-} } }
+}}}

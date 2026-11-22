@@ -7,11 +7,12 @@ the OS reads as `/yaffs2/content/`. Its manifest is `content.sha256`: the files.
 same lines in the same order) so a compare can give byte totals, and a copy of the package's
 `firmware.version`. Offline only; never opens a device.
 """
+
 import hashlib
 import os
-from pathlib import Path
 import stat
 import sys
+from pathlib import Path
 
 from .xyf_entry import LIST_LIMITS, ListError, _list_path_ok, read_files_sha256
 
@@ -28,7 +29,7 @@ def path_problem(rel):
     """Why the device list reader refuses this relative path (bytes), or None."""
     if not 0 < len(rel) <= LIST_LIMITS['path']:
         return 'longer than %d bytes' % LIST_LIMITS['path'] if rel else 'empty path'
-    if any(not 0x20 <= c <= 0x7e or c in b'\\:' for c in rel):
+    if any(not 0x20 <= c <= 0x7E or c in b'\\:' for c in rel):
         return 'a byte outside printable ASCII, or \\ or :'
     if not _list_path_ok(rel):
         return 'an empty, "." or ".." name, or a name ending in "." or space'
@@ -109,14 +110,18 @@ def read_version(folder, version_file=None):
         raise ContentError('no version file: %s (give --version-file)' % path)
     raw = path.read_bytes()
     text = raw.strip()
-    if not 0 < len(text) <= 31 or any(not 0x21 <= c <= 0x7e for c in text):
+    if not 0 < len(text) <= 31 or any(not 0x21 <= c <= 0x7E for c in text):
         raise ContentError('version file is not one printable token of 1-31 bytes: %s' % path)
     return raw, text.decode()
 
 
 def summary_line(version, entries, data):
     return 'version=%s files=%d bytes=%d list_sha256=%s' % (
-        version, len(entries), sum(n for _, n, _ in entries), hashlib.sha256(data).hexdigest())
+        version,
+        len(entries),
+        sum(n for _, n, _ in entries),
+        hashlib.sha256(data).hexdigest(),
+    )
 
 
 def outside_checkouts(path):
@@ -163,23 +168,31 @@ def load(source):
 def compare(a, b):
     """Two load() results -> {'only_a', 'only_b', 'differ'}: each {count, bytes / bytes_a+bytes_b,
     paths}; a byte total is None when a size is unknown (a list without content.sizes)."""
+
     def total(paths, side, index=1):
         sizes = [side[p][index] for p in paths]
         return None if None in sizes else sum(sizes)
+
     only_a = sorted(set(a) - set(b), key=str.encode)
     only_b = sorted(set(b) - set(a), key=str.encode)
     differ = sorted((p for p in set(a) & set(b) if a[p][0] != b[p][0]), key=str.encode)
-    return dict(only_a=dict(count=len(only_a), bytes=total(only_a, a), paths=only_a),
-                only_b=dict(count=len(only_b), bytes=total(only_b, b), paths=only_b),
-                differ=dict(count=len(differ), bytes_a=total(differ, a), bytes_b=total(differ, b), paths=differ),
-                identical=not (only_a or only_b or differ))
+    return dict(
+        only_a=dict(count=len(only_a), bytes=total(only_a, a), paths=only_a),
+        only_b=dict(count=len(only_b), bytes=total(only_b, b), paths=only_b),
+        differ=dict(count=len(differ), bytes_a=total(differ, a), bytes_b=total(differ, b), paths=differ),
+        identical=not (only_a or only_b or differ),
+    )
 
 
 def main(argv):
     import argparse
     import json
-    parser = argparse.ArgumentParser(prog='xyf_package.py content-manifest|content-compare', description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser = argparse.ArgumentParser(
+        prog='xyf_package.py content-manifest|content-compare',
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     commands = parser.add_subparsers(dest='command', required=True)
     make = commands.add_parser('content-manifest', help='write a content set manifest')
     make.add_argument('content', type=Path, help='extracted official content folder (firmware/blackfin/content)')

@@ -4,6 +4,7 @@ Legacy text remains lenient for library/display reads. Strict package admission
 uses xyf_entry.parse_manifest after the bounded JSON adapter. Keep the original
 bytes for files.sha256 and journal source checks before requesting this view.
 """
+
 from pathlib import Path
 
 from . import native_json
@@ -44,8 +45,11 @@ def text_view(data, name=LEGACY):
 
 def values(data, name=LEGACY):
     """All fields, including the link/patch extras; legacy last-key-wins retained."""
-    return dict(line.split('=', 1) for line in text_view(data, name).decode('utf-8', 'replace').splitlines()
-                if '=' in line and not line.startswith('#'))
+    return dict(
+        line.split('=', 1)
+        for line in text_view(data, name).decode('utf-8', 'replace').splitlines()
+        if '=' in line and not line.startswith('#')
+    )
 
 
 def read_values(folder):
@@ -58,10 +62,12 @@ def read_values(folder):
 
 def parse(data, name=LEGACY):
     from .xyf_entry import parse_manifest
+
     return parse_manifest(text_view(data, name))
 
 
 def document(fields, extra=()):
     """Encode canonical typed metadata using the existing package field rules and ordering."""
     from .xyf_entry import manifest_text
+
     return native_json.package_document(values(manifest_text(fields, extra).encode('ascii')))

@@ -3,9 +3,11 @@
 HELLO establishes a protocol session. It does not promise completion of recovery scans.
 Keep startup/fault observations on raw connections; this probe is not a global idle lease.
 """
+
 import time
 
-from xy_forever import usb_proto as P, usb_proto_ids as ids
+from xy_forever import usb_proto as P
+from xy_forever import usb_proto_ids as ids
 
 
 class StartupNotReady(RuntimeError):
@@ -31,4 +33,3 @@ def wait_startup_ready(hello, probe, timeout=5.0, clock=time.monotonic):
             return
         if status != ids.S_BUSY:
             raise StartupNotReady('startup readiness: storage.space: %s' % P.status_name(status))
-

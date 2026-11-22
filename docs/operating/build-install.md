@@ -48,7 +48,11 @@ mise run test-one TARGET         # one file, class or test (tests/test_aes.py::N
 mise run test-failed             # what failed last time
 mise run check                   # once per PR: the gate, under 30 s
 mise run test-all                # every tier but the parked sweeps, the simulator core included; CI runs it
+mise run lint                    # ruff, ESLint, Prettier, clang-format (CI runs it); format, lint-fix: apply
 ```
+
+The pre-commit hook (`lefthook.yml`, installed by `mise run setup`) formats and lints the staged files (about a
+second); a finding stops the commit.
 
 The suite runs under pytest (config: `pyproject.toml`; tiers, budgets and plugins: `tests/conftest.py`). Each
 test is in a tier: `fast` (the default), `gate` (slower: sanitizer builds, fuzzing, the published kit), `sim`

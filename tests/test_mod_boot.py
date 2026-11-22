@@ -2,13 +2,14 @@
 scratch entry (read back, catalog, default unchanged), the content delta (catalog saved first, put back
 byte-identical by --cleanup), the boot once through library.boot and the cleanup. Synthetic image;
 skipped without the simulator. The real kit's assembly runs when its packages are present."""
+
 import contextlib
 import importlib.util
 import io
-from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 
 import pytest
 
@@ -23,9 +24,13 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 ENTRY = '/yaffs2/xy-forever/firmware/xyf-mods-test'
 
 
-@unittest.skipUnless(package_records.local_name(mb.PACKAGES / 'base') and mb.CATALOG.is_file() and sim.STOCK_OS.is_file() and
-                     mb.modpatch.default_official(mb.PACKAGES).is_file(),
-                     'published-kit packages, stock os.ldr, op1_factory.json or the official content.sha256 absent')
+@unittest.skipUnless(
+    package_records.local_name(mb.PACKAGES / 'base')
+    and mb.CATALOG.is_file()
+    and sim.STOCK_OS.is_file()
+    and mb.modpatch.default_official(mb.PACKAGES).is_file(),
+    'published-kit packages, stock os.ldr, op1_factory.json or the official content.sha256 absent',
+)
 @pytest.mark.gate
 class ModBootAssemble(unittest.TestCase):
     def test_fm2op_assembles_and_passes_the_checks(self):

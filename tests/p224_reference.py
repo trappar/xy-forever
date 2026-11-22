@@ -5,6 +5,7 @@ It is never used to decide anything about a real package: the device's own verif
 does that, and this file is the independent check of it. Signing takes an explicit nonce k (the RFC
 vectors name theirs), so r and s are computed here from k*G as FIPS 186-4 6.4 states them.
 """
+
 import hashlib
 
 from cryptography.exceptions import InvalidSignature
@@ -13,13 +14,14 @@ from cryptography.hazmat.primitives.asymmetric import ec, utils
 
 CURVE = ec.SECP224R1()
 # FIPS 186-4 D.1.2.2 (curve P-224); the same values sit in the 1.2.1 bootloader at 0x11b00ea4.
-P = 2 ** 224 - 2 ** 96 + 1
-B = 0xb4050a850c04b3abf54132565044b0b7d7bfd8ba270b39432355ffb4
-N = 0xffffffffffffffffffffffffffff16a2e0b8f03e13dd29455c5c2a3d
+P = 2**224 - 2**96 + 1
+B = 0xB4050A850C04B3ABF54132565044B0B7D7BFD8BA270B39432355FFB4
+N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFF16A2E0B8F03E13DD29455C5C2A3D
 SIZE = 28
 # Prehashed digests by length: the verifier takes a digest of any of these sizes.
-DIGESTS = {h.digest_size: h for h in (hashes.SHA1(), hashes.SHA224(), hashes.SHA256(), hashes.SHA384(),
-                                      hashes.SHA512())}
+DIGESTS = {
+    h.digest_size: h for h in (hashes.SHA1(), hashes.SHA224(), hashes.SHA256(), hashes.SHA384(), hashes.SHA512())
+}
 
 
 def on_curve(point):
@@ -72,7 +74,7 @@ def encode_point(point):
 
 
 def decode_point(data):
-    return int.from_bytes(data[:SIZE], 'big'), int.from_bytes(data[SIZE:2 * SIZE], 'big')
+    return int.from_bytes(data[:SIZE], 'big'), int.from_bytes(data[SIZE : 2 * SIZE], 'big')
 
 
 # The signed message of a .tfw crypto header (stock 88a17f2a): the 0x300 bytes with +0x10..+0x50
@@ -82,18 +84,18 @@ HEADER_BYTES, SIGNED_HOLE, R_AT, S_AT = 0x300, (0x10, 0x50), 0x14, 0x34
 
 def header_digest(header):
     header = bytearray(header[:HEADER_BYTES])
-    header[SIGNED_HOLE[0]:SIGNED_HOLE[1]] = bytes(SIGNED_HOLE[1] - SIGNED_HOLE[0])
+    header[SIGNED_HOLE[0] : SIGNED_HOLE[1]] = bytes(SIGNED_HOLE[1] - SIGNED_HOLE[0])
     return hashlib.sha256(bytes(header)).digest()
 
 
 def header_signature(header):
-    return (int.from_bytes(header[R_AT:R_AT + SIZE], 'big'), int.from_bytes(header[S_AT:S_AT + SIZE], 'big'))
+    return (int.from_bytes(header[R_AT : R_AT + SIZE], 'big'), int.from_bytes(header[S_AT : S_AT + SIZE], 'big'))
 
 
 def sign_header(header, d, k):
     """The header with r and s written in place (the rest of +0x10..+0x50 left as it was)."""
     r, s = sign(d, header_digest(header), k)
     signed = bytearray(header)
-    signed[R_AT:R_AT + SIZE] = r.to_bytes(SIZE, 'big')
-    signed[S_AT:S_AT + SIZE] = s.to_bytes(SIZE, 'big')
+    signed[R_AT : R_AT + SIZE] = r.to_bytes(SIZE, 'big')
+    signed[S_AT : S_AT + SIZE] = s.to_bytes(SIZE, 'big')
     return bytes(signed)

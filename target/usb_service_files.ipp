@@ -7,17 +7,25 @@ void read_file(uint8_t seq, const uint8_t* payload, U32 length) {
     while (path_bytes != length && payload[path_bytes]) ++path_bytes;
     const bool ranged = path_bytes + 9 == length;                  // NUL + u32 offset + u32 length
     if (length < 9 || path_bytes + 1 > storage_server::max_path || (path_bytes + 1 != length && !ranged)) {
-        status_only(P::t_read_file, seq, P::s_bad_request); return;
+        status_only(P::t_read_file, seq, P::s_bad_request);
+        return;
     }
     const U32 offset = ranged ? P::get32(payload + path_bytes + 1) : 0;
     const U32 want = ranged ? P::get32(payload + path_bytes + 5) : P::max_data;
-    if (!want || want > (ranged ? read_range_max : P::max_data)) { status_only(P::t_read_file, seq, P::s_bad_request); return; }
-    if (!a_serving()) { status_only(P::t_read_file, seq, P::s_link); return; }
+    if (!want || want > (ranged ? read_range_max : P::max_data)) {
+        status_only(P::t_read_file, seq, P::s_bad_request);
+        return;
+    }
+    if (!a_serving()) {
+        status_only(P::t_read_file, seq, P::s_link);
+        return;
+    }
     uint32_t bytes = 0;
     file_client::Open left;
     const U32 code = file_client::read_file(reinterpret_cast<const char*>(payload), offset, ranged, files + 4, want,
                                             bytes, mounted, &left);
-    ++result.reads; result.read_bytes += bytes;
+    ++result.reads;
+    result.read_bytes += bytes;
     P::put32(files, code);
     result.last_status = code;
     send(P::t_read_file, seq, files, 4 + (code == P::s_ok ? bytes : 0));
@@ -37,7 +45,10 @@ void say(const char* a, const char* b = "", const char* c = "", const char* d = 
 #if defined(XYF_SERVICE_SCREEN)
     if (screen_on) key_ui::service_screen(a, b, c, d);
 #else
-    (void)a; (void)b; (void)c; (void)d;
+    (void)a;
+    (void)b;
+    (void)c;
+    (void)d;
 #endif
 }
 
@@ -47,12 +58,16 @@ void screen(uint8_t seq, const uint8_t* payload, U32 length) {
     const U32 fb = word(screen_pointer);
     const U32 offset = length == 4 ? P::get32(payload) : screen_bytes;
     if (fb < 0x80000000u || fb > 0x90000000u - screen_bytes || (fb & 1u) || offset >= screen_bytes) {
-        uint8_t p[8]; P::put32(p, P::s_range); P::put32(p + 4, fb);
-        send(P::t_screen, seq, p, 8); return;
+        uint8_t p[8];
+        P::put32(p, P::s_range);
+        P::put32(p + 4, fb);
+        send(P::t_screen, seq, p, 8);
+        return;
     }
     const U32 n = screen_bytes - offset < read_range_max ? screen_bytes - offset : read_range_max;
     lines(fb + offset, n, true);                       // the display path writes it by DMA/cache
-    P::put32(files, P::s_ok); P::put32(files + 4, fb);
+    P::put32(files, P::s_ok);
+    P::put32(files + 4, fb);
     for (U32 i = 0; i != n; ++i) files[8 + i] = byte(fb + offset + i);
     send(P::t_screen, seq, files, 8 + n);
 }
@@ -63,8 +78,7 @@ void screen(uint8_t seq, const uint8_t* payload, U32 length) {
 bool within(U32 address, U32 bytes, U32 start, U32 end) { return address >= start && address <= end - bytes; }
 bool peek_allowed(U32 address, U32 bytes) {
     return bytes && bytes <= read_range_max &&
-           (within(address, bytes, 0x88000000u, 0x88b00000u) ||
-            within(address, bytes, 0x08000000u, 0x08040000u) ||
+           (within(address, bytes, 0x88000000u, 0x88b00000u) || within(address, bytes, 0x08000000u, 0x08040000u) ||
             within(address, bytes, 0x11b00000u, 0x11b02000u) ||  // L1 data: stock IRQ/driver tables
             within(address, bytes, 0x8bfff000u, 0x8bfff800u) ||  // 111: the reboot-marker page
             within(address, bytes, 0x8b810000u, 0x8b811000u));   // the menu's catalog (xyf_boot catalog_buffer)
@@ -82,15 +96,22 @@ bool mmr_allowed(U32 address, U32 bytes) {
             // 101: RCU0 registers the stock reset 11a03518 writes: CTL/STAT, 0x1c, 0x68
             within(address, bytes, 0x20000000u, 0x20000008u) || within(address, bytes, 0x2000001cu, 0x20000020u) ||
             within(address, bytes, 0x20000068u, 0x2000006cu) ||
-            within(address, bytes, 0x20046000u, 0x2004600cu));   // 106: WDOG0 CTL/CNT/STAT only (105 allowed +0xc: a read hung b)
+            within(address, bytes, 0x20046000u,
+                   0x2004600cu));   // 106: WDOG0 CTL/CNT/STAT only (105 allowed +0xc: a read hung b)
 }
 void peek(uint8_t seq, const uint8_t* payload, U32 length) {
     const U32 address = length == 8 ? P::get32(payload) : 0, bytes = length == 8 ? P::get32(payload + 4) : 0;
     const bool mmr = mmr_allowed(address, bytes);
-    if (!mmr && !peek_allowed(address, bytes)) { status_only(P::t_peek, seq, P::s_range); return; }
-    P::put32(files, P::s_ok); P::put32(files + 4, address);
-    if (mmr) for (U32 i = 0; i != bytes; i += 4) P::put32(files + 8 + i, word(address + i));
-    else for (U32 i = 0; i != bytes; ++i) files[8 + i] = byte(address + i);
+    if (!mmr && !peek_allowed(address, bytes)) {
+        status_only(P::t_peek, seq, P::s_range);
+        return;
+    }
+    P::put32(files, P::s_ok);
+    P::put32(files + 4, address);
+    if (mmr)
+        for (U32 i = 0; i != bytes; i += 4) P::put32(files + 8 + i, word(address + i));
+    else
+        for (U32 i = 0; i != bytes; ++i) files[8 + i] = byte(address + i);
     send(P::t_peek, seq, files, 8 + bytes);
 }
 
@@ -99,18 +120,31 @@ void peek(uint8_t seq, const uint8_t* payload, U32 length) {
 // engine's run entry), each step on the screen first. Through B's file client (every request
 // bounded; a link error ends the test with link).
 void mtp_step(uint32_t n) {
-    static const char* const names[] = {"", "1 mount (op 8)", "2 storage info (0x23)", "3 object info (0x22)",
-        "4 open folder (0x2e)", "5 list folder (0x2f)", "6 close folder (0x30)", "7 open/read/close file",
-        "8 idle with the window open", "9 info again (0x22, 0x23)", "10 unmount (op 9)"};
+    static const char* const names[] = {"",
+                                        "1 mount (op 8)",
+                                        "2 storage info (0x23)",
+                                        "3 object info (0x22)",
+                                        "4 open folder (0x2e)",
+                                        "5 list folder (0x2f)",
+                                        "6 close folder (0x30)",
+                                        "7 open/read/close file",
+                                        "8 idle with the window open",
+                                        "9 info again (0x22, 0x23)",
+                                        "10 unmount (op 9)"};
     say("MTP self-test: running step", n < 11 ? names[n] : "?", "If this stays, power-cycle", "and report the step.");
 }
 // Results, in the reply's order.
-struct MtpSelfTest { U32 step, mounted, space, stat, dir, entries, closedir, fd, read, closed,
-                     wait_ms, stat2, space2, unmounted, entry_bytes, reserved; };
+struct MtpSelfTest {
+    U32 step, mounted, space, stat, dir, entries, closedir, fd, read, closed, wait_ms, stat2, space2, unmounted,
+        entry_bytes, reserved;
+};
 // The value of one client request into a result word; false when a did not answer (the test ends:
 // link). A path the engine's policy refuses is not sent: its result is -1 (no folder: 0).
 bool mtp_value(const file_client::Reply& r, U32& out, U32 refused = ~0u) {
-    if (r.outcome == file_client::refused) { out = refused; return true; }
+    if (r.outcome == file_client::refused) {
+        out = refused;
+        return true;
+    }
     out = U32(r.value);
     return r.outcome == file_client::done;
 }
@@ -157,25 +191,28 @@ bool mtp_selftest(MtpSelfTest& t, U32 hold_ms, uint8_t* out) {
         if (!mtp_do(n, t, out)) return false;
         if (n == 1 && !t.mounted) return true;
     }
-    mtp_step(8);                                                          // window open, a idle (as MTP between requests)
+    mtp_step(8); // window open, a idle (as MTP between requests)
     const U32 start = now();
     while (now() - start < hold_ms) {}
     t.wait_ms = now() - start;
-    for (U32 n = 9; n != 11; ++n) { mtp_step(n); if (!mtp_do(n, t, out)) return false; }
+    for (U32 n = 9; n != 11; ++n) {
+        mtp_step(n);
+        if (!mtp_do(n, t, out)) return false;
+    }
     t.step = 11;
     return true;
 }
 U32 mtp_enter() {
     if (storage_server::engine_identity() || file_client::identity()) return P::s_identity;
-    if (mounted && !a_serving()) return P::s_link;    // #3: A is XY Forever before op 9, also when latched
+    if (mounted && !a_serving()) return P::s_link; // #3: A is XY Forever before op 9, also when latched
     file_client::release(mounted);
     if (!menu_link::usb_command(storage_server::engine_run_item)) return P::s_link;
-    storage_used = 1;                                  // the window opens: CONTINUE needs a REBOOT
+    storage_used = 1; // the window opens: CONTINUE needs a REBOOT
     return P::s_ok;
 }
 U32 mtp_leave(MtpSelfTest& t) {
     if (t.mounted && !t.unmounted) mtp_do(10, t, files + 0x1000);
-    read_enabled = 0;                                  // the next read latches read mode again
+    read_enabled = 0; // the next read latches read mode again
     return menu_link::usb_command(storage_server::engine_leave_item) ? P::s_ok : P::s_link;
 }
 void mtp_test(uint8_t seq, const uint8_t* payload, U32 length) {
@@ -199,11 +236,23 @@ void mtp_test(uint8_t seq, const uint8_t* payload, U32 length) {
 void put_begin(uint8_t seq, const uint8_t* payload, U32 length) {
     // Any stage.begin, refused or not, forgets the earlier staging: no stage.data after a
     // refused one writes into the old announcement or continues its hashes.
-    put_expected = 0; result.put_ok = 0; result.put_received = 0; result.put_size = 0; result.put_crc = 0;
-    if (length != 4 + 4 + 32) { status_only(P::t_put_begin, seq, P::s_bad_request); return; }
+    put_expected = 0;
+    result.put_ok = 0;
+    result.put_received = 0;
+    result.put_size = 0;
+    result.put_crc = 0;
+    if (length != 4 + 4 + 32) {
+        status_only(P::t_put_begin, seq, P::s_bad_request);
+        return;
+    }
     const U32 size = P::get32(payload);
-    if (!size || size > image_capacity) { status_only(P::t_put_begin, seq, P::s_too_large); return; }   // Test 049: any size
-    put_expected = size; result.put_size = size; result.put_crc = P::get32(payload + 4);
+    if (!size || size > image_capacity) {
+        status_only(P::t_put_begin, seq, P::s_too_large);
+        return;
+    } // Test 049: any size
+    put_expected = size;
+    result.put_size = size;
+    result.put_crc = P::get32(payload + 4);
     for (U32 i = 0; i != 32; ++i) put_sha[i] = payload[8 + i];
     put_running_crc = 0;
     put_hash().reset();
@@ -211,30 +260,51 @@ void put_begin(uint8_t seq, const uint8_t* payload, U32 length) {
 }
 
 void put_data(uint8_t seq, const uint8_t* payload, U32 length) {
-    if (!put_expected || length < 5) { status_only(P::t_put_data, seq, P::s_state); return; }
+    if (!put_expected || length < 5) {
+        status_only(P::t_put_data, seq, P::s_state);
+        return;
+    }
     const U32 offset = P::get32(payload), n = length - 4;
     // A resend of bytes already received unchanged (the host's retry after a lost reply) is
     // ok with the count unchanged; it neither stores nor hashes them again.
     bool again = offset < result.put_received && offset + n <= result.put_received;
     for (U32 i = 0; again && i != n; ++i) again = staged[offset + i] == payload[4 + i];
-    if (again) { uint8_t p[8]; P::put32(p, P::s_ok); P::put32(p + 4, result.put_received); send(P::t_put_data, seq, p, 8); return; }
-    if (offset != result.put_received || offset + n > put_expected) { status_only(P::t_put_data, seq, P::s_range); return; }
+    if (again) {
+        uint8_t p[8];
+        P::put32(p, P::s_ok);
+        P::put32(p + 4, result.put_received);
+        send(P::t_put_data, seq, p, 8);
+        return;
+    }
+    if (offset != result.put_received || offset + n > put_expected) {
+        status_only(P::t_put_data, seq, P::s_range);
+        return;
+    }
     for (U32 i = 0; i != n; ++i) staged[offset + i] = payload[4 + i];
     put_running_crc = xyf::crc::update(put_running_crc, payload + 4, n);
     put_hash().update(payload + 4, n);
     result.put_received = offset + n;
-    uint8_t p[8]; P::put32(p, P::s_ok); P::put32(p + 4, result.put_received);
+    uint8_t p[8];
+    P::put32(p, P::s_ok);
+    P::put32(p + 4, result.put_received);
     send(P::t_put_data, seq, p, 8);
 }
 
-bool sha_equal(const uint8_t* a, const uint8_t* b) { U32 d = 0; for (U32 i = 0; i != 32; ++i) d |= a[i] ^ b[i]; return !d; }
+bool sha_equal(const uint8_t* a, const uint8_t* b) {
+    U32 d = 0;
+    for (U32 i = 0; i != 32; ++i) d |= a[i] ^ b[i];
+    return !d;
+}
 
 void put_end(uint8_t seq) {
     U32 code = P::s_ok;
     xyf_core::hash::Digest digest;
     // A repeated stage.end (the host's retry after a lost reply) answers ok again and keeps
     // the staging; the hashes were checked once and finish() must not run twice.
-    if (result.put_ok && put_expected && result.put_received == put_expected) { status_only(P::t_put_end, seq, P::s_ok); return; }
+    if (result.put_ok && put_expected && result.put_received == put_expected) {
+        status_only(P::t_put_end, seq, P::s_ok);
+        return;
+    }
     if (!put_expected || result.put_received != put_expected) code = P::s_state;
     else if (put_running_crc != result.put_crc) code = P::s_crc;
     else if (!put_hash().finish(digest) || !sha_equal(digest.bytes, put_sha)) code = P::s_sha;
@@ -246,8 +316,8 @@ void put_end(uint8_t seq) {
 // Structural checks before anything is written (refuse on any doubt).
 U32 validate_image(U32 size, bool uninstall) {
     if (!accept_image(uninstall, has_descriptor(staged, size), size, put_sha)) return P::s_image;
-    static const xyf_core::Range allowed[] = {{0x08000000u, 0x08100000u}, {0x11800000u, 0x11c00000u},
-                                              {0x80000000u, 0x90000000u}};
+    static const xyf_core::Range allowed[] = {
+        {0x08000000u, 0x08100000u}, {0x11800000u, 0x11c00000u}, {0x80000000u, 0x90000000u}};
     const xyf_core::Policy policy = {allowed, 3, 0, 0};
     xyf_core::Summary summary;
     if (xyf_core::inspect(staged, size, policy, summary) != xyf_core::Error::ok) return P::s_image;
@@ -261,25 +331,36 @@ U32 verify(U32 size, U32 crc) {
     for (U32 p = 1; p <= 2 && !active; ++p) {
         if (select_partition(p) != 0) continue;
         lines(readback_buffer, 512, true);
-        if (read_sector0(0, back) == 0) { lines(readback_buffer, 512, true); if (header_matches(back, size, crc)) active = p; }
+        if (read_sector0(0, back) == 0) {
+            lines(readback_buffer, 512, true);
+            if (header_matches(back, size, crc)) active = p;
+        }
     }
     result.verify_partition = active;
     U32 code = P::s_install;
     if (active && select_partition(active) == 0) {
         code = P::s_ok;
-        const U32 sectors = (size >> 9) + 1;       // as the stock reader 88a07240
+        const U32 sectors = (size >> 9) + 1; // as the stock reader 88a07240
         for (U32 s = 0; s < sectors && code == P::s_ok; s += readback_sectors) {
             const U32 count = sectors - s < readback_sectors ? sectors - s : readback_sectors;
             lines(readback_buffer, count * 512, true);
-            if (read_sectors(1 + s, back, count)) { code = P::s_install; break; }
+            if (read_sectors(1 + s, back, count)) {
+                code = P::s_install;
+                break;
+            }
             lines(readback_buffer, count * 512, true);
             const U32 base = s * 512, limit = size - base < count * 512 ? size - base : count * 512;
-            for (U32 i = 0; i != limit; ++i) if (back[i] != staged[base + i]) { ++result.verify_mismatch; code = P::s_install; break; }
+            for (U32 i = 0; i != limit; ++i)
+                if (back[i] != staged[base + i]) {
+                    ++result.verify_mismatch;
+                    code = P::s_install;
+                    break;
+                }
             result.verify_sectors = s + count;
             tick();
         }
     }
-    for (U32 tries = 0; tries != 8 && select_partition(0) != 0; ++tries) {}   // back to the user partition
+    for (U32 tries = 0; tries != 8 && select_partition(0) != 0; ++tries) {} // back to the user partition
     return code;
 }
 
@@ -301,9 +382,9 @@ void settle_writes(bool catalog = true) {
     if (!writes_due) return;
     writes_due = 0;
     U32 v = ~0u;
-    if (menu_link::usb_command(storage_server::command_item)) {        // A in RPC mode for op 9
+    if (menu_link::usb_command(storage_server::command_item)) { // A in RPC mode for op 9
         read_enabled = 1;
-        const file_client::Reply u = file_client::unmount();             // op 9: 1, or 3 = closed the window
+        const file_client::Reply u = file_client::unmount(); // op 9: 1, or 3 = closed the window
         if (!u.outcome) v = U32(u.value);
     }
     settle_end(v, catalog);
@@ -315,9 +396,12 @@ void settle_writes(bool catalog = true) {
 void settle_begin() {
     if (!writes_due) return;
     writes_due = 0;
-    if (menu_link::usb_command(storage_server::command_item)) {        // A in RPC mode for op 9
+    if (menu_link::usb_command(storage_server::command_item)) { // A in RPC mode for op 9
         read_enabled = 1;
-        if (!file_client::unmount_start().outcome) { closing = 1; return; }
+        if (!file_client::unmount_start().outcome) {
+            closing = 1;
+            return;
+        }
     }
     settle_end(~0u, true);
 }
@@ -326,7 +410,7 @@ void settle_turn() {
     const file_client::Reply u = file_client::unmount_poll();
     if (u.outcome == file_client::busy) return;
     closing = 0;
-    settle_end(u.outcome ? ~0u : U32(u.value), !u.outcome);              // past its bound: no catalog request
+    settle_end(u.outcome ? ~0u : U32(u.value), !u.outcome); // past its bound: no catalog request
 }
 void settle_end(U32 v, bool catalog) {
     storage_server::Result& s = storage_server::result;
@@ -389,7 +473,8 @@ U32 default_commit(U32 hash) {
         key_ui::refresh_catalog();
         const xyf::catalog::Catalog* catalog = xyf_boot::catalog();
         if (code == P::s_ok && (!catalog || catalog->default_index >= catalog->count ||
-            xyf::state_write::id_hash(catalog->items[catalog->default_index].id) != hash)) code = P::s_storage;
+                                xyf::state_write::id_hash(catalog->items[catalog->default_index].id) != hash))
+            code = P::s_storage;
     }
     return code;
 }
@@ -412,7 +497,9 @@ void set_default(uint8_t seq, const uint8_t* payload, U32 length) {
 #endif
     }
     if (code == P::s_ok) code = default_commit(hash);
-    uint8_t p[8]; P::put32(p, code); P::put32(p + 4, hash);
+    uint8_t p[8];
+    P::put32(p, code);
+    P::put32(p + 4, hash);
     result.last_status = code;
     send(P::t_set_default, seq, p, 8);
 }
@@ -435,15 +522,18 @@ U32 library_boot(uint8_t seq, const uint8_t* payload, U32 length) {
     else if (!h.update(payload, n) || !h.finish(d) || !sha_equal(d.bytes, payload + n + 1)) code = P::s_sha;
     else if (!menu_link::usb_link_up()) code = P::s_link;
     if (code == P::s_ok) {
-        settle_writes();                               // A's window closed, the catalog fetched again
+        settle_writes(); // A's window closed, the catalog fetched again
         const xyf::catalog::Item* item = catalog_item(id, n);
-        code = !menu_link::usb_link_up() ? P::s_link : !item ? P::s_not_found : (item->flags & 1u) ? P::s_ok :
-               (item->flags & xyf::catalog::flag_content_missing) ? P::s_no_content : P::s_state;
+        code = !menu_link::usb_link_up()                          ? P::s_link :
+               !item                                              ? P::s_not_found :
+               (item->flags & 1u)                                 ? P::s_ok :
+               (item->flags & xyf::catalog::flag_content_missing) ? P::s_no_content :
+                                                                    P::s_state;
         if (item) chosen = U32(item - xyf_boot::catalog()->items) + 1;
-        if (code == P::s_no_content) say("Its content is not installed:", "make it the default to install its content.");
+        if (code == P::s_no_content)
+            say("Its content is not installed:", "make it the default to install its content.");
     }
     result.last_status = code;
     status_only(P::t_library_boot, seq, code);
     return code == P::s_ok ? chosen : 0;
 }
-

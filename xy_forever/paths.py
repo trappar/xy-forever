@@ -6,11 +6,12 @@ builds and device reports never enter git. The main checkout is this checkout in
 `git worktree` it is the checkout that holds the shared .git (main_checkout), so a worktree anywhere finds
 the same private root, toolchain and xyf.local.json as the main checkout.
 """
+
 import json
-import re
 import os
-from pathlib import Path
+import re
 import subprocess
+from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -23,17 +24,18 @@ def main_checkout(repo=REPO):
     if not (repo / '.git').is_file():
         return repo
     try:
-        common = subprocess.run(['git', 'rev-parse', '--git-common-dir'], cwd=str(repo), capture_output=True,
-                                text=True, check=True).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
+        common = subprocess.run(
+            ['git', 'rev-parse', '--git-common-dir'], cwd=str(repo), capture_output=True, text=True, check=True
+        ).stdout.strip()
+    except OSError, subprocess.CalledProcessError:
         return repo
     common = (repo / common).resolve()
     return common.parent if common.name == '.git' and common.is_dir() else repo
 
 
-MAIN = main_checkout()                          # REPO in a plain clone
-LOCAL_CONFIG = MAIN / 'xyf.local.json'          # the main checkout's settings (gitignored): {"private": DIR}
-TOOLCHAIN = MAIN.parent / 'tools/blackfin'      # the Blackfin toolchain unless XYF_TOOLCHAIN (toolchain.location)
+MAIN = main_checkout()  # REPO in a plain clone
+LOCAL_CONFIG = MAIN / 'xyf.local.json'  # the main checkout's settings (gitignored): {"private": DIR}
+TOOLCHAIN = MAIN.parent / 'tools/blackfin'  # the Blackfin toolchain unless XYF_TOOLCHAIN (toolchain.location)
 
 
 def private_root(environ=os.environ, config=LOCAL_CONFIG, main=MAIN):
@@ -62,31 +64,40 @@ def leak_patterns(config=LOCAL_CONFIG):
 PRIVATE_ROOT = private_root()
 
 FIRMWARE = PRIVATE_ROOT / 'firmware'
-STOCK_121 = FIRMWARE / 'stock-1.2.1'            # os.ldr + bootloader.ldr: build and test inputs
-DECRYPTED = FIRMWARE / 'decrypted'              # decrypted official packages (1.1.33, 1.2.1, 1.2.5)
+STOCK_121 = FIRMWARE / 'stock-1.2.1'  # os.ldr + bootloader.ldr: build and test inputs
+DECRYPTED = FIRMWARE / 'decrypted'  # decrypted official packages (1.1.33, 1.2.1, 1.2.5)
 # stock content/op1_factory.json of 1.2.1: from a decrypted package, else the copy `setup.py fixtures`
 # takes from public open-xy (the same bytes, checked)
-CATALOG_121 = next((p for p in (DECRYPTED / 'opxy_firmware_1_2_1/extracted/firmware/blackfin/content/op1_factory.json',
-                                STOCK_121 / 'op1_factory.json') if p.is_file()), STOCK_121 / 'op1_factory.json')
+CATALOG_121 = next(
+    (
+        p
+        for p in (
+            DECRYPTED / 'opxy_firmware_1_2_1/extracted/firmware/blackfin/content/op1_factory.json',
+            STOCK_121 / 'op1_factory.json',
+        )
+        if p.is_file()
+    ),
+    STOCK_121 / 'op1_factory.json',
+)
 XYF = PRIVATE_ROOT / 'xy-forever'
-STATUS = XYF / 'status'                         # your local status notes (index README.md: docs/STATUS.template.md)
-BUILDS = XYF / 'builds'                         # build outputs (xyf_build.py --out BUILDS/<name>)
-RECOVERY = XYF / 'recovery'                     # dev-menu kits: known-good build, stock 1.2.1
-FIXTURES = XYF / 'fixtures'                     # files some tests read (they skip when absent)
-REPORTS = XYF / 'reports'                       # device report files (census dumps)
-DEVICE_LOCK = XYF / 'device.lock'               # held while a host tool talks to the OP-XY (xy_forever/device_lock.py)
-ANALYSIS = XYF / 'analysis'                     # reverse-engineering evidence (FINDINGS.md per study)
-LISTING_121 = ANALYSIS / 'bootloader-121-listing'   # 1.2.1 bootloader image + annotated listing
-PREVIEWS = XYF / 'previews'                     # ui_preview.py output
-SESSIONS = XYF / 'sessions'                     # scratch state of device sessions (scripts/)
-OPEN_XY_UPSTREAM = XYF / 'open-xy-upstream'     # a fresh clone of upstream open-xy (never ../open-xy); its users
-                                                # need the pinned SDK commit in it and skip without it
-MOD_PACKAGES = XYF / 'mod-packages'             # `modkit split --out`: mods/<profile>/<generation>/<package>/
-PUBLISHED_MODS = MOD_PACKAGES / 'mods' / 'opxy-1.2.1' / '0.0.6-370a949e96aa'   # the published 0.0.6 set, split
-PUBLISHED_KIT = FIXTURES / 'open-xy-kit-0.0.6.json'   # open-xy's published plugin kit 0.0.6 (the set's source)
+STATUS = XYF / 'status'  # your local status notes (index README.md: docs/STATUS.template.md)
+BUILDS = XYF / 'builds'  # build outputs (xyf_build.py --out BUILDS/<name>)
+RECOVERY = XYF / 'recovery'  # dev-menu kits: known-good build, stock 1.2.1
+FIXTURES = XYF / 'fixtures'  # files some tests read (they skip when absent)
+REPORTS = XYF / 'reports'  # device report files (census dumps)
+DEVICE_LOCK = XYF / 'device.lock'  # held while a host tool talks to the OP-XY (xy_forever/device_lock.py)
+ANALYSIS = XYF / 'analysis'  # reverse-engineering evidence (FINDINGS.md per study)
+LISTING_121 = ANALYSIS / 'bootloader-121-listing'  # 1.2.1 bootloader image + annotated listing
+PREVIEWS = XYF / 'previews'  # ui_preview.py output
+SESSIONS = XYF / 'sessions'  # scratch state of device sessions (scripts/)
+OPEN_XY_UPSTREAM = XYF / 'open-xy-upstream'  # a fresh clone of upstream open-xy (never ../open-xy); its users
+# need the pinned SDK commit in it and skip without it
+MOD_PACKAGES = XYF / 'mod-packages'  # `modkit split --out`: mods/<profile>/<generation>/<package>/
+PUBLISHED_MODS = MOD_PACKAGES / 'mods' / 'opxy-1.2.1' / '0.0.6-370a949e96aa'  # the published 0.0.6 set, split
+PUBLISHED_KIT = FIXTURES / 'open-xy-kit-0.0.6.json'  # open-xy's published plugin kit 0.0.6 (the set's source)
 
 
-BUILD = REPO / 'build'                          # a checkout's own firmware output (gitignored: never committed)
+BUILD = REPO / 'build'  # a checkout's own firmware output (gitignored: never committed)
 
 
 def private_output(path):
@@ -97,8 +108,8 @@ def private_output(path):
     return path
 
 
-IMAGE_NAME = re.compile(r'[0-9a-f]{8}')      # a build folder's name: its image (hello image=)
-CHECK_TEST_BUILDS = 'XYF_CHECK_TEST_BUILDS'   # only the verified build kept for an active check's own suite
+IMAGE_NAME = re.compile(r'[0-9a-f]{8}')  # a build folder's name: its image (hello image=)
+CHECK_TEST_BUILDS = 'XYF_CHECK_TEST_BUILDS'  # only the verified build kept for an active check's own suite
 
 
 def build_image(folder):
@@ -108,11 +119,16 @@ def build_image(folder):
     try:
         v = json.loads((folder / 'verification.json').read_text())
         m = json.loads((folder / 'manifest.json').read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
-    if not (IMAGE_NAME.fullmatch(folder.name) and v.get('passed') is True and v.get('mode') == 'xyf-product' and
-            m.get('image') == folder.name and str(m.get('candidate_sha256', '')).startswith(folder.name) and
-            (folder / 'candidate.ldr').is_file()):
+    if not (
+        IMAGE_NAME.fullmatch(folder.name)
+        and v.get('passed') is True
+        and v.get('mode') == 'xyf-product'
+        and m.get('image') == folder.name
+        and str(m.get('candidate_sha256', '')).startswith(folder.name)
+        and (folder / 'candidate.ldr').is_file()
+    ):
         return None
     return folder.name, m
 
@@ -125,6 +141,7 @@ def name_by_image(out):
     if Path(out).resolve() != target.resolve():
         if target.exists():
             import shutil
+
             shutil.rmtree(target)
         Path(out).rename(target)
     return target
@@ -136,6 +153,7 @@ def newest_verified_build():
     The manifest's source hashes must still match, as with --verify. Outside a check run, look in BUILDS.
     """
     from xy_forever import xyf_build
+
     source = xyf_build.source_hashes()
     found = []
     builds = Path(os.environ.get(CHECK_TEST_BUILDS) or BUILDS)

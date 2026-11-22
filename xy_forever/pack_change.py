@@ -1,8 +1,11 @@
 """Publish or detach an inbox sound pack with one directory rename."""
+
 import json
 import secrets
 
-from . import depth, package_store as store, usb_proto as P
+from . import depth
+from . import package_store as store
+from . import usb_proto as P
 
 DLC = '/yaffs2/content/dlc'
 INBOX = store.ROOT + '/inbox'

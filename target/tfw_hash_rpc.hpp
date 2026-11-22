@@ -9,5 +9,5 @@ static const uint32_t lease_ms = 10000;
 // All replies carry a status in value. On success start and status return the exact
 // package size in error, busy status returns bytes read, and digest+n returns word n
 // of SHA-256 (little-endian). An unsupported version returns A's version in error.
-} }
+}}
 #endif

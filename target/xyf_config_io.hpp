@@ -11,7 +11,9 @@ namespace fc = file_client;
 namespace xg = xyf::config;
 namespace P = xyf::usbp;
 namespace json = xyf_core::json;
-struct Scan { uint32_t skip, choice; };
+struct Scan {
+    uint32_t skip, choice;
+};
 
 static uint32_t transport(const fc::Reply& r, volatile uint32_t& mount) {
     if (r.outcome == fc::link) mount = fc::mounted_stale;
@@ -79,5 +81,5 @@ static uint32_t read(Scan& scan, uint8_t* raw, uint32_t& bytes, bool& native, vo
     return status == P::s_not_found ? P::s_storage : status;
 }
 
-} }
+}}
 #endif

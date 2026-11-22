@@ -22,14 +22,18 @@ bool write_fails = false, remount_fails = false, transfer_fails = false, barrier
 struct TestFs : FakeFs {
     bool readable = true;
     bool direct_ready() { return readable; }
-    cold_storage::Result write_state_slot(const char* path, const Byte* data, services::U32 size,
-                                          Byte*, services::U32& step) {
+    cold_storage::Result write_state_slot(const char* path, const Byte* data, services::U32 size, Byte*,
+                                          services::U32& step) {
         step = 6;
         if (write_fails) return cold_storage::Result::write_failed;
         const int slot = !strcmp(path, state_write::slot_a_path) ? 0 : 1;
-        memcpy(slots[slot], data, size); slots[slot][size] = 0;
+        memcpy(slots[slot], data, size);
+        slots[slot][size] = 0;
         step = 9;
-        if (remount_fails) { readable = false; return cold_storage::Result::remount; }
+        if (remount_fails) {
+            readable = false;
+            return cold_storage::Result::remount;
+        }
         return cold_storage::Result::ok;
     }
 } storage;
@@ -39,15 +43,28 @@ Byte scan_data[library::scratch_needed], catalog_data[catalog::max_bytes], readb
 state_write::Plan test_plan;
 library::Library lib;
 state_write::Collector a_collector;
-struct { struct { U32 scan_error, catalog_bytes; } menu; struct { U32 count, skipped; } library; } r;
-struct { U32 a_state_write, last_status; } result;
+struct {
+    struct {
+        U32 scan_error, catalog_bytes;
+    } menu;
+    struct {
+        U32 count, skipped;
+    } library;
+} r;
+struct {
+    U32 a_state_write, last_status;
+} result;
 U32 b_catalog_ok = 0, b_lost = 0, b_fetching = 0;   // 191: no catalog request in flight here
 #define XYF_A_STORAGE_WORD 0u                          // 191: A's storage word (file_boot.cpp)
 catalog::Catalog cached;
-struct Stock121PeerSession {} session;
+struct Stock121PeerSession {
+} session;
 Stock121PeerSession* b_session = &session;
 bool b_fetch_catalog(Stock121PeerSession&) {
-    if (transfer_fails) { b_lost = 1; return false; }
+    if (transfer_fails) {
+        b_lost = 1;
+        return false;
+    }
     b_catalog_ok = catalog::decode(catalog_data, catalog_bytes, cached);
     return b_catalog_ok;
 }
@@ -59,7 +76,9 @@ const U32 catalog_capacity = sizeof(catalog_data);
 const catalog::Catalog* catalog() { return b_catalog_ok ? &cached : nullptr; }
 }
 // Match the namespace spelling used by key_ui's production function.
-namespace xy_forever { namespace xyf_boot { const catalog::Catalog* catalog() { return ::xyf_boot::catalog(); } } }
+namespace xy_forever { namespace xyf_boot {
+const catalog::Catalog* catalog() { return ::xyf_boot::catalog(); }
+}}
 namespace storage_server {
 const U32 usb_mode_item = 7;
 bool ensure_mounted(TestFs&) { return true; }
@@ -67,13 +86,19 @@ bool held_files() { return false; }
 }
 void a_commit();
 namespace menu_link {
-bool usb_command_value(U32 command) { state_write::collect(a_collector, command); return true; }
+bool usb_command_value(U32 command) {
+    state_write::collect(a_collector, command);
+    return true;
+}
 bool usb_command(U32 item) {
     if (item == state_write::item_set_default_by_id) {
         REQUIRE(state_write::collect(a_collector, 0x434d0000u | item << 8));
         a_commit();
     }
-    if (item == storage_server::usb_mode_item && barrier_fails) { b_lost = 1; return false; }
+    if (item == storage_server::usb_mode_item && barrier_fails) {
+        b_lost = 1;
+        return false;
+    }
     return true;
 }
 void usb_patience(U32) {}
@@ -85,7 +110,8 @@ void send(uint8_t, uint8_t, const uint8_t* bytes, U32) { reply = P::get32(bytes)
 #include "default.inc"
 void initialize() {
     storage = TestFs{};
-    strcpy(slots[0], ""); strcpy(slots[1], "");
+    strcpy(slots[0], "");
+    strcpy(slots[1], "");
     state::Choice choice = {};
     REQUIRE(state_write::plan_default_id(choice, "stock", test_plan));
     strcpy(slots[0], test_plan.text);
@@ -97,7 +123,10 @@ void initialize() {
     storage.dirs[0] = {"/yaffs2/xy-forever/firmware", {"stock", "alt"}, {false, false}, 2};
     storage.dir_count = 1;
     write_fails = remount_fails = transfer_fails = barrier_fails = false;
-    mounted = true; b_lost = 0; a_prepared = 1; dirty = 0;
+    mounted = true;
+    b_lost = 0;
+    a_prepared = 1;
+    dirty = 0;
     a_collector = {};
     REQUIRE(library::scan_direct(storage, lib, scan_data, sizeof(scan_data)) == library::Error::ok);
     catalog_bytes = catalog::encode(lib, catalog_data, sizeof(catalog_data));
@@ -120,26 +149,32 @@ TEST_CASE("same-session default and failure paths") {
     REQUIRE((reply == P::s_ok && a_prepared == 0xffffffffu && dirty && !app_action));
     expect_default("alt");
     change("stock");
-    REQUIRE(reply == P::s_ok); expect_default("stock");
+    REQUIRE(reply == P::s_ok);
+    expect_default("stock");
 
-    initialize(); write_fails = true;
+    initialize();
+    write_fails = true;
     change("alt");
     REQUIRE((reply == P::s_storage && a_prepared == 0xffffffffu));
     expect_default("stock");
 
-    initialize(); remount_fails = true;
+    initialize();
+    remount_fails = true;
     change("alt");
     REQUIRE((reply == P::s_storage && !lib.count && !cached.count));
 
-    initialize(); storage.fail_closedir = true;
+    initialize();
+    storage.fail_closedir = true;
     change("alt");
     REQUIRE((reply == P::s_storage && !lib.count && !cached.count));
 
-    initialize(); transfer_fails = true;
+    initialize();
+    transfer_fails = true;
     change("alt");
     REQUIRE((reply == P::s_link && !b_catalog_ok && !app.catalog));
 
-    initialize(); barrier_fails = true;
+    initialize();
+    barrier_fails = true;
     change("alt");
     REQUIRE((reply == P::s_link && !b_catalog_ok && !app.catalog));
 }

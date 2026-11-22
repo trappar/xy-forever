@@ -31,7 +31,9 @@ using namespace xyf_core;
 namespace {
 #include "cold_policy.inc"
 
-struct Range64 { unsigned long long lo, hi; };
+struct Range64 {
+    unsigned long long lo, hi;
+};
 struct Source {
     std::FILE* file;
     U32 size;
@@ -45,25 +47,42 @@ bool read_file(void* context, U32 offset, Byte* out, U32 count) {
         bool inside = false;
         for (const Range64& r : s.allowed)
             if (r.lo <= offset && (unsigned long long)offset + count <= r.hi) inside = true;
-        if (!inside) { ++s.refused; return false; }
+        if (!inside) {
+            ++s.refused;
+            return false;
+        }
     }
     return std::fseek(s.file, long(offset), SEEK_SET) == 0 && std::fread(out, 1, count, s.file) == count;
 }
 
-struct Keys { Byte records[8][33]; U32 count, calls; };
+struct Keys {
+    Byte records[8][33];
+    U32 count, calls;
+};
 bool read_key(void* context, U32 index, Byte key[32]) {
     Keys& k = *static_cast<Keys*>(context);
     ++k.calls;
     for (U32 i = 0; i != k.count; ++i)
-        if (k.records[i][0] == index) { std::memcpy(key, k.records[i] + 1, 32); return true; }
+        if (k.records[i][0] == index) {
+            std::memcpy(key, k.records[i] + 1, 32);
+            return true;
+        }
     return false;
 }
-void scrub(Keys& k) { volatile Byte* p = &k.records[0][0]; for (U32 i = 0; i != sizeof(k.records); ++i) p[i] = 0; }
+void scrub(Keys& k) {
+    volatile Byte* p = &k.records[0][0];
+    for (U32 i = 0; i != sizeof(k.records); ++i) p[i] = 0;
+}
 
 // The header check: the device's own HeaderCheck (tfw::signature_check), with the reason of a
 // refusal kept for the report.
 enum class Mode { none, verify, unverified, reject };
-struct Signature { Mode mode; Byte key[tfw::signature_public_key_bytes]; bool called; tfw::Signature result; };
+struct Signature {
+    Mode mode;
+    Byte key[tfw::signature_public_key_bytes];
+    bool called;
+    tfw::Signature result;
+};
 bool check_header(void* context, const Byte* header, U32 size) {
     Signature& s = *static_cast<Signature*>(context);
     s.called = true;
@@ -83,7 +102,11 @@ const char* signature_text(const Signature& s) {
     }
 }
 
-struct Output { const char* path; std::FILE* file; bool fail; };
+struct Output {
+    const char* path;
+    std::FILE* file;
+    bool fail;
+};
 bool write_out(void* context, const Byte* bytes, U32 count) {
     Output& o = *static_cast<Output*>(context);
     if (o.fail) return false;
@@ -106,7 +129,10 @@ bool parse_hex(const char* text, Byte* out, U32 count) {
 long long ms_since(std::chrono::steady_clock::time_point t) {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t).count();
 }
-int fail(const char* message) { std::printf("{\"status\":\"usage\",\"detail\":\"%s\"}\n", message); return 2; }
+int fail(const char* message) {
+    std::printf("{\"status\":\"usage\",\"detail\":\"%s\"}\n", message);
+    return 2;
+}
 
 // check: the file as the device's read path serves it (short at the end), and the device's keys.
 int read_some(void* context, U32 offset, Byte* out, U32 count) {
@@ -115,11 +141,18 @@ int read_some(void* context, U32 offset, Byte* out, U32 count) {
     bool inside = s.allowed.empty();
     for (const Range64& r : s.allowed)
         if (r.lo <= offset && (unsigned long long)offset + count <= r.hi) inside = true;
-    if (!inside) { ++s.refused; return -1; }
+    if (!inside) {
+        ++s.refused;
+        return -1;
+    }
     if (std::fseek(s.file, long(offset), SEEK_SET)) return -1;
     return int(std::fread(out, 1, count, s.file));
 }
-struct DeviceKeys { Byte public_key[tfw::signature_public_key_bytes]; bool has_public; U32 public_calls; };
+struct DeviceKeys {
+    Byte public_key[tfw::signature_public_key_bytes];
+    bool has_public;
+    U32 public_calls;
+};
 bool read_public(void* context, Byte out[56]) {
     DeviceKeys& k = *static_cast<DeviceKeys*>(context);
     ++k.public_calls;
@@ -137,7 +170,8 @@ int check_main(Source& source, int argc, char** argv) {
             source.allowed.push_back(r);
         } else return fail("unknown option");
     }
-    if (device.has_public && std::fread(device.public_key, 1, sizeof(device.public_key), stdin) != sizeof(device.public_key))
+    if (device.has_public &&
+        std::fread(device.public_key, 1, sizeof(device.public_key), stdin) != sizeof(device.public_key))
         return fail("public key expected on stdin");
     Keys keys = {};
     while (keys.count < 8 && std::fread(keys.records[keys.count], 1, 33, stdin) == 33) ++keys.count;
@@ -192,8 +226,10 @@ int main(int argc, char** argv) {
             Range64 r;
             if (std::sscanf(argv[++i], "%llu:%llu", &r.lo, &r.hi) != 2 || r.lo > r.hi) return fail("allow");
             source.allowed.push_back(r);
-        } else if (!std::strcmp(argv[i], "--image-limit") && more) limits.image_bytes = U32(std::strtoul(argv[++i], 0, 0));
-        else if (!std::strcmp(argv[i], "--directory-limit") && more) limits.directory_bytes = U32(std::strtoul(argv[++i], 0, 0));
+        } else if (!std::strcmp(argv[i], "--image-limit") && more)
+            limits.image_bytes = U32(std::strtoul(argv[++i], 0, 0));
+        else if (!std::strcmp(argv[i], "--directory-limit") && more)
+            limits.directory_bytes = U32(std::strtoul(argv[++i], 0, 0));
         else if (!std::strcmp(argv[i], "--entries") && more) limits.entries = U32(std::strtoul(argv[++i], 0, 0));
         else if (!std::strcmp(argv[i], "--fail-write")) output.fail = true;
         else if (!std::strcmp(argv[i], "--reject-signature")) signature.mode = Mode::reject;
@@ -223,22 +259,24 @@ int main(int argc, char** argv) {
         return digest_status == tfw::Status::ok ? 0 : 1;
     }
     Keys keys = {};
-    if (signature.mode == Mode::verify && std::fread(signature.key, 1, sizeof(signature.key), stdin) != sizeof(signature.key))
+    if (signature.mode == Mode::verify &&
+        std::fread(signature.key, 1, sizeof(signature.key), stdin) != sizeof(signature.key))
         return fail("public key expected on stdin");
     while (keys.count < 8 && std::fread(keys.records[keys.count], 1, 33, stdin) == 33) ++keys.count;
     static Byte scratch[4u << 20];
     static tfw_os::Workspace workspace;
-    workspace.scratch = scratch; workspace.capacity = sizeof(scratch);
-    const Policy policy = {allowed, sizeof(allowed) / sizeof(allowed[0]),
-                           protected_ranges, sizeof(protected_ranges) / sizeof(protected_ranges[0])};
+    workspace.scratch = scratch;
+    workspace.capacity = sizeof(scratch);
+    const Policy policy = {allowed, sizeof(allowed) / sizeof(allowed[0]), protected_ranges,
+                           sizeof(protected_ranges) / sizeof(protected_ranges[0])};
     tfw_os::Result result = {};
     tfw_os::Status status = tfw_os::Status::container;
     result.container = digest_status;
     source.reads = 0;
     const auto extract_started = std::chrono::steady_clock::now();
     if (digest_status == tfw::Status::ok)
-        status = tfw_os::extract(reader, {&keys, read_key}, digest, check, policy, 0x11a00000u,
-                                 limits, workspace, {&output, write_out}, result);
+        status = tfw_os::extract(reader, {&keys, read_key}, digest, check, policy, 0x11a00000u, limits, workspace,
+                                 {&output, write_out}, result);
     const long long extract_ms = ms_since(extract_started);
     scrub(keys);
     const bool closed = !output.file || std::fclose(output.file) == 0;
@@ -255,11 +293,10 @@ int main(int argc, char** argv) {
                 "\"signature\":\"%s\",\"scratch_bytes\":%u,\"workspace_bytes\":%u,"
                 "\"digest_ms\":%lld,\"extract_ms\":%lld}\n",
                 closed ? tfw_os::status_name(status) : "write", digest_status == tfw::Status::ok ? "extract" : "digest",
-                tfw::status_name(result.container),
-                zip::status_name(result.inflate), error_name(result.ldr), result.bytes, result.crc32, sha,
-                result.entry, result.records, version, package_version, result.written,
+                tfw::status_name(result.container), zip::status_name(result.inflate), error_name(result.ldr),
+                result.bytes, result.crc32, sha, result.entry, result.records, version, package_version, result.written,
                 output.file ? "true" : "false", keys.calls, source.reads, source.refused, digest_hex,
-                signature_text(signature),
-                tfw_os::scratch_bytes(limits), U32(sizeof(tfw_os::Workspace)), digest_ms, extract_ms);
+                signature_text(signature), tfw_os::scratch_bytes(limits), U32(sizeof(tfw_os::Workspace)), digest_ms,
+                extract_ms);
     return ok ? 0 : 1;
 }

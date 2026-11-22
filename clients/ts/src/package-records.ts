@@ -4,7 +4,8 @@ import { nativePackageText } from './native-json.ts';
 import { isXyfError } from './errors.ts';
 import type { CallOptions, Client } from './client.ts';
 
-export const NATIVE_MANIFEST = 'manifest.json', LEGACY_MANIFEST = 'info.txt';
+export const NATIVE_MANIFEST = 'manifest.json',
+  LEGACY_MANIFEST = 'info.txt';
 export function recordName(names: Iterable<string>): string | undefined {
   const found = new Set(names);
   return found.has(NATIVE_MANIFEST) ? NATIVE_MANIFEST : found.has(LEGACY_MANIFEST) ? LEGACY_MANIFEST : undefined;
@@ -31,11 +32,16 @@ export function keyValues(text: string): Record<string, string> {
   return out;
 }
 
-export async function readLibraryEntry(client: Client, id: string, options: CallOptions): Promise<Record<string, string>> {
+export async function readLibraryEntry(
+  client: Client,
+  id: string,
+  options: CallOptions,
+): Promise<Record<string, string>> {
   const root = `/yaffs2/xy-forever/firmware/${id}`;
   let data: Uint8Array;
-  try { data = await client.readFile(`${root}/${NATIVE_MANIFEST}`, options); }
-  catch (error) {
+  try {
+    data = await client.readFile(`${root}/${NATIVE_MANIFEST}`, options);
+  } catch (error) {
     if (!isXyfError(error, 'not_found')) throw error;
     return keyValues(new TextDecoder().decode(await client.readFile(`${root}/${LEGACY_MANIFEST}`, options)));
   }

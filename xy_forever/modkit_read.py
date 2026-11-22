@@ -1,4 +1,5 @@
 """Verified package input for modkit rebuilds; the raw file map is retained."""
+
 from pathlib import Path
 
 from . import package_records
@@ -7,7 +8,8 @@ from .xyf_entry import read_files_sha256
 
 def read_package(folder, kind):
     """Verified raw files, manifest fields and link/patch extras, without changing source bytes."""
-    from .modkit import check, sha256, KitError, MOD_FILES
+    from .modkit import MOD_FILES, KitError, check, sha256
+
     folder = Path(folder)
     check(folder.is_dir(), 'missing package %s' % folder)
     try:
@@ -16,8 +18,9 @@ def read_package(folder, kind):
         raise KitError(str(error)) from error
     listed = read_files_sha256((folder / 'files.sha256').read_bytes())
     present = sorted(p.relative_to(folder).as_posix() for p in folder.rglob('*') if p.is_file())
-    check(present == sorted([p for _, p in listed] + ['files.sha256']),
-          '%s: files differ from files.sha256' % folder.name)
+    check(
+        present == sorted([p for _, p in listed] + ['files.sha256']), '%s: files differ from files.sha256' % folder.name
+    )
     files = {}
     for digest, rel in listed:
         data = (folder / rel).read_bytes()
@@ -32,6 +35,7 @@ def read_package(folder, kind):
     extra = package_records.values(files[metadata], metadata)
     if kind == 'mod':
         stray = sorted(p for p in files if not MOD_FILES.fullmatch(p))
-        check(not stray, '%s carries %s: edits, definitions and addresses belong only to the base'
-              % (folder.name, stray))
+        check(
+            not stray, '%s carries %s: edits, definitions and addresses belong only to the base' % (folder.name, stray)
+        )
     return files, manifest, extra

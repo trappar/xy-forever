@@ -4,7 +4,9 @@
 #include "usb_proto.hpp"
 #include "cold_storage.hpp"
 #include "xyf_settings.hpp"
-namespace xyf { namespace menu { struct State; } }   // xyf_menu.hpp (settings_view)
+namespace xyf { namespace menu {
+struct State;
+}}   // xyf_menu.hpp (settings_view)
 // XY Forever USB service (processor b; XYF_USB_SERVICE). Lets the
 // host tool (xyf_host.py) read status/files, stage a build, install it into
 // the NAND boot partition and reboot, without the dev menu or key presses.
@@ -33,7 +35,7 @@ static const uint32_t magic = 0x31425355u;          // "USB1"
 // b SDRAM (hold-mode b never uses its session scratch 0x8b800000..0x8b810000
 // except the remote-read tail): frame buffers, file buffer, read-back buffer.
 static const uint32_t rx_frame = 0x8b800000u, tx_frame = 0x8b802000u, file_buffer = 0x8b804000u;
-static const uint32_t rx_chunk = 0x8b80c000u, rx_chunk_bytes = 0x800u;   // CDC reads (Test 038: was 256 B on the stack)
+static const uint32_t rx_chunk = 0x8b80c000u, rx_chunk_bytes = 0x800u; // CDC reads (Test 038: was 256 B on the stack)
 // Test 038: a 4 KiB READ_FILE reply hung b (the 1.6 KB STATUS reply never
 // has); ranged reads return at most 1 KiB until that is understood.
 static const uint32_t read_range_max = 1024;
@@ -50,7 +52,7 @@ static const uint32_t power_status_address = 0x88a1cdb4u, power_status_usb = 0x1
 // next cold entry sees it, clears it and runs the service even though the stock
 // bootloader did not start USB. Above the staging/read-back buffers; no LDR
 // record of an XY Forever build or the stock OS loads it.
-static const uint32_t reboot_marker = 0x8bfff000u, reboot_magic = 0x52465859u;   // "YXFR"
+static const uint32_t reboot_marker = 0x8bfff000u, reboot_magic = 0x52465859u; // "YXFR"
 // Marker words: magic, ~magic, reason, crash restarts. Reason active = the service
 // was running (set once it starts, cleared on every clean exit): a reset of b
 // therefore comes back into the service, at most max_crash_restarts times
@@ -60,7 +62,7 @@ static const uint32_t marker_reboot = 1, marker_active = 2, max_crash_restarts =
 // host bus-reset flag at host_flag/host_stamp) was removed after Test 060; its
 // constants stay for report decoding. present = 4 meant "probe found a host".
 static const uint32_t probe_ms = 1500, probe_present = 4;
-static const uint32_t play_present = 5;   // Test 063: service entered with PLAY at power-on
+static const uint32_t play_present = 5; // Test 063: service entered with PLAY at power-on
 static const uint32_t host_flag = 0x88a35929u, host_stamp = 0x88a3592cu;
 // HOLD (Test 041; v3: home_pump): payload u32 1 keeps home (the menu), 0 leaves it
 // to the menu's own rules; the marker reason flag carries it across REBOOT.
@@ -73,8 +75,8 @@ static const uint32_t marker_menu = 0x400u;
 static const uint32_t reboot_service = 0, reboot_os = 1, reboot_menu = 2;
 // SET_DEFAULT (Test 048): b waits up to this long for a's state write to finish.
 static const uint32_t write_patience_ms = 60000;
-static const uint32_t image = 0x8b820000u, image_capacity = 0x700000u;   // staging (b)
-static const uint32_t readback_buffer = 0x8bf20000u, readback_sectors = 128;   // 64 KiB, end of staging
+static const uint32_t image = 0x8b820000u, image_capacity = 0x700000u; // staging (b)
+static const uint32_t readback_buffer = 0x8bf20000u, readback_sectors = 128; // 64 KiB, end of staging
 // Install log (Test 035, version 3): while the stock writer runs, b's stock log
 // level [0x11b00074] is raised to 3 and the four stock log sinks (0x8803d06c,
 // muted by the peer session) hold only log_sink; each line goes to the host as
@@ -83,11 +85,19 @@ static const uint32_t readback_buffer = 0x8bf20000u, readback_sectors = 128;   /
 // (IPEND) and never after the first line the host did not take.
 static const uint32_t log_frame = 0x8b80e000u, log_text_max = 200;
 static const uint32_t log_level_address = 0x11b00074u, log_sinks = 0x8803d06cu, log_level = 3;
-static const uint32_t log_time_bytes = 4;          // 11a01d96 line prefix (binary)
-static const uint32_t descriptor_magic = 0x584c4348u;  // cold descriptor "HCLX" (xyf_build.py)
+static const uint32_t log_time_bytes = 4; // 11a01d96 line prefix (binary)
+static const uint32_t descriptor_magic = 0x584c4348u; // cold descriptor "HCLX" (xyf_build.py)
 enum Exit : uint32_t {
-    exit_none = 0, exit_not_present, exit_identity, exit_not_configured, exit_no_hello, exit_continue,
-    exit_idle, exit_cap, exit_reboot, exit_link
+    exit_none = 0,
+    exit_not_present,
+    exit_identity,
+    exit_not_configured,
+    exit_no_hello,
+    exit_continue,
+    exit_idle,
+    exit_cap,
+    exit_reboot,
+    exit_link
 };
 struct Result {
     uint32_t magic, version, role, present;
@@ -102,37 +112,60 @@ struct Result {
     // partition | 1 << 8 while a boot-partition select was attempted
     uint32_t a_identity, a_install_enabled, a_selects, a_trims;
     uint32_t a_reads, a_writes, a_refused, a_selected;
-    uint32_t a_last_refused, a_reboot, stack_used, a_state_write;   // status | result << 8 | step << 16 | seq << 24
+    uint32_t a_last_refused, a_reboot, stack_used, a_state_write; // status | result << 8 | step << 16 | seq << 24
     // Version 2 (Test 031 found 0 bytes received after the host opened the
     // port): CDC receive counters and read-only USB snapshots (diag_layout).
-    uint32_t rx_events, rx_bytes, diag_count, stock_callback;   // CDC receive callback found at start (cleared while serving)
-    uint32_t stage2[8];                     // stage-2 load record (s2w_* words below; was diag[0][0..7])
+    uint32_t rx_events, rx_bytes, diag_count,
+        stock_callback; // CDC receive callback found at start (cleared while serving)
+    uint32_t stage2[8]; // stage-2 load record (s2w_* words below; was diag[0][0..7])
     // Version 5 (#107), in the first unused diag words: the build identity (usb_service_identity.ipp).
     // release: XYF_VERSION_CODE; image: the first 4 bytes of the running image's SHA-256 (hello image=);
     // image_state: ImageState (0 not started: no menu this boot); image_ms: menu start to known (ms);
     // image_kcycles: the hashing's own time, CYCLES / 1024.
     uint32_t release, image, image_state, image_ms, image_kcycles;
-    uint32_t diag[59];                      // unused since Test 041 (diag_count 0)
+    uint32_t diag[59]; // unused since Test 041 (diag_count 0)
     // Version 3 (Test 034 INSTALL gave no reply): install log forwarding.
     uint32_t log_lines, log_sent, log_skipped, log_level_before;
     uint32_t log_sink_before, install_step, install_step_ms, session_cap;
     // Version 4 (Test 038: REBOOT / fast power cycle skipped the service):
     // present = 1 stock USB running, 2 USB power only (service started anyway).
-    uint32_t power_status, boot_reason, crash_restarts, retired_kicks;   // present: presence() | held << 4; retired_kicks: always 0 (was the removed guard's count)
+    uint32_t power_status, boot_reason, crash_restarts,
+        retired_kicks; // present: presence() | held << 4; retired_kicks: always 0 (was the removed guard's count)
 };
 static_assert(sizeof(Result) == 132 * 4, "Result layout");
 // stage2[] (usb_service.cpp stage2_load): words, and the status word's values. detail: the
 // file client's status (missing, link, read), the xyf::stage2::Check (check), or stage 2's answer
 // (init, hook). reads: stage-2 file reads this boot (a plain boot: none).
 enum Stage2Word : uint32_t {
-    s2w_status = 0, s2w_detail, s2w_version, s2w_bytes, s2w_load_ms, s2w_trace_code, s2w_trace_value, s2w_reads
+    s2w_status = 0,
+    s2w_detail,
+    s2w_version,
+    s2w_bytes,
+    s2w_load_ms,
+    s2w_trace_code,
+    s2w_trace_value,
+    s2w_reads
 };
 enum Stage2Status : uint32_t {
-    s2_none = 0, s2_loaded, s2_missing, s2_link, s2_read, s2_check, s2_copy, s2_init, s2_hook
+    s2_none = 0,
+    s2_loaded,
+    s2_missing,
+    s2_link,
+    s2_read,
+    s2_check,
+    s2_copy,
+    s2_init,
+    s2_hook
 };
 // install_step: last step INSTALL reached (also sent as a log line).
 enum InstallStep : uint32_t {
-    step_none = 0, step_checked, step_a_install, step_capacity, step_writer, step_writer_done, step_verify_done
+    step_none = 0,
+    step_checked,
+    step_a_install,
+    step_capacity,
+    step_writer,
+    step_writer_done,
+    step_verify_done
 };
 // One snapshot (all reads are side-effect free: no MUSB interrupt-status or
 // FIFO registers, which clear or pop on read):
@@ -148,7 +181,7 @@ extern Result result;
 // folded into 32 bits). 0 = identical to the authenticated bootloader.
 uint32_t identity();
 #if defined(__bfin__)
-uint32_t presence();     // 0 none, 1 stock USB running, 3 after an XY Forever REBOOT
+uint32_t presence(); // 0 none, 1 stock USB running, 3 after an XY Forever REBOOT
 // Role 0: set the library default to the entry whose id hashes to hash (the
 // only write; xyf::state_write + cold_storage write_state_slot). Records
 // result.a_state_write. Uses the file server's read-only mount (one per boot).
@@ -161,10 +194,10 @@ void a_set_default(cold_storage::Stock121ReadOnlySession& storage, uint32_t hash
 // its file_boot result at dry_run_area {magic, bytes, block} and both reset;
 // b's reboot marker brings the service back and STATUS returns the block.
 // No OS runs and nothing is written to storage.
-static const uint32_t dry_run_item = 9, dry_run_area = 0x8bffe000u, dry_run_magic = 0x59524458u;   // "XDRY"
+static const uint32_t dry_run_item = 9, dry_run_area = 0x8bffe000u, dry_run_magic = 0x59524458u; // "XDRY"
 static const uint32_t dry_run_max_bytes = 0x800u;
 bool dry_run_requested();
-void a_dry_run();        // role 0: b sent dry_run_item
+void a_dry_run(); // role 0: b sent dry_run_item
 // Saves block (b only), sets b's reboot marker, resets. Never returns.
 void dry_run_finish(const void* block, uint32_t bytes);
 // Test 058 (b): the menu has USB (menu_start_usb); menu_release() stops USB before any boot.
@@ -173,7 +206,7 @@ void menu_release();
 // Test 062 (b): progress lines on the service screen (drawn only if a host said HELLO this boot).
 void progress(const char* a, const char* b);
 #if defined(XYF_USB_SERVICE)
-void stack_watch(uint32_t painted_begin);   // b's painted stack floor; STATUS reports stack_used live
+void stack_watch(uint32_t painted_begin); // b's painted stack floor; STATUS reports stack_used live
 #else
 inline void stack_watch(uint32_t) {}        // no USB status in builds without the service
 #endif
@@ -222,7 +255,9 @@ const char* image_label();
 // a job owns the slot (mods.apply or a content switch) or its write window is closing: the page
 // sends no storage request then (no request; A's handles are gone after the window).
 static const uint32_t mods_ids_taken = 5;
-struct JobView { uint32_t state, id, phase, done, total, error, status, debris, commit; };
+struct JobView {
+    uint32_t state, id, phase, done, total, error, status, debris, commit;
+};
 uint32_t mods_start(const uint8_t* payload, uint32_t length, uint32_t& job, uint32_t& missing);
 void job_view(JobView& view);
 uint32_t job_stop();
@@ -318,9 +353,9 @@ bool has_descriptor(const uint8_t* data, uint32_t size);
 // written exactly as dev-menu Track 5 writes it (88a1f24a: 88a06a7e(buf,
 // size, 0)). The real 1.2.1 SPI bootloader is not touched either way.
 static const uint32_t stock_os_bytes = 2373336u;
-static const uint8_t stock_os_sha256[32] = {
-    0x60, 0x35, 0x8a, 0xfd, 0xaa, 0x9b, 0x58, 0xed, 0x40, 0x41, 0x16, 0x02, 0xf6, 0xd5, 0xd4, 0xe1,
-    0xe3, 0xe0, 0x25, 0x53, 0xff, 0x2d, 0xa7, 0xe2, 0x50, 0x38, 0xe7, 0x1d, 0xd0, 0x02, 0xb5, 0x2f};
+static const uint8_t stock_os_sha256[32] = {0x60, 0x35, 0x8a, 0xfd, 0xaa, 0x9b, 0x58, 0xed, 0x40, 0x41, 0x16,
+                                            0x02, 0xf6, 0xd5, 0xd4, 0xe1, 0xe3, 0xe0, 0x25, 0x53, 0xff, 0x2d,
+                                            0xa7, 0xe2, 0x50, 0x38, 0xe7, 0x1d, 0xd0, 0x02, 0xb5, 0x2f};
 // Image acceptance before anything is written. INSTALL: the XY Forever cold
 // descriptor must be present (unchanged). UNINSTALL: size and SHA-256 (of the
 // staged, PUT_END-verified image) must equal the stock constants exactly; no
@@ -334,5 +369,5 @@ bool accept_image(bool uninstall, bool descriptor, uint32_t size, const uint8_t*
 // is ciphertext afterwards (read-back compares ciphertext; no second INSTALL
 // of the same staging).
 bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc);
-} }
+}}
 #endif

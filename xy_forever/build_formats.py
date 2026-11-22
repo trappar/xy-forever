@@ -1,8 +1,9 @@
 """Standalone bounded ELF32 and BF70x loader inspection for build verification."""
 
-from dataclasses import dataclass
 import hashlib
+import itertools
 import struct
+from dataclasses import dataclass
 
 from elftools.elf.enums import ENUM_SH_TYPE_BASE, ENUM_ST_INFO_TYPE
 from elftools.elf.structs import ELFStructs
@@ -15,10 +16,10 @@ def require(condition, message):
 
 def header(flags, target, count, argument):
     require(
-        0 <= flags <= 65535 and all(0 <= v <= 0xffffffff for v in (target, count, argument)),
+        0 <= flags <= 65535 and all(0 <= v <= 0xFFFFFFFF for v in (target, count, argument)),
         'Loader header field overflow',
     )
-    raw = bytearray(struct.pack('<4I', 0xad000000 | flags, target, count, argument))
+    raw = bytearray(struct.pack('<4I', 0xAD000000 | flags, target, count, argument))
     checksum = 0
     for byte in raw:
         checksum ^= byte
@@ -55,7 +56,7 @@ def parse_stream(data):
         checksum = 0
         for byte in raw:
             checksum ^= byte
-        require(code >> 24 == 0xad and checksum == 0, 'Invalid loader header')
+        require(code >> 24 == 0xAD and checksum == 0, 'Invalid loader header')
         require(address + length <= 0x100000000, 'Loader address overflow')
         record = Record(len(records) + 1, offset, code & 65535, address, length, argument)
         stored = 0 if record.fill else length
@@ -82,7 +83,7 @@ class Firmware:
         require(not any(r.flags & 0x400 for r in writes), 'Callback/compressed streams cannot be flattened')
         boundaries = sorted({edge for r in writes for edge in (r.address, r.address + r.length)})
         self.segments = []
-        for lo, hi in zip(boundaries, boundaries[1:]):
+        for lo, hi in itertools.pairwise(boundaries):
             record = next((r for r in reversed(writes) if r.address <= lo and hi <= r.address + r.length), None)
             if record is None:
                 continue
@@ -155,15 +156,17 @@ def elf32(data, relocations=False):
     structs, elf = elf_records(data)
     require(elf['e_machine'] in ('EM_BLACKFIN', 106), 'Expected Blackfin machine type')
     offset, count, names_index = elf['e_shoff'], elf['e_shnum'], elf['e_shstrndx']
-    require(elf['e_shentsize'] == 40 and 0 < count < 4096 and names_index < count
-            and offset + 40 * count <= len(data), 'Invalid ELF table')
-    headers = [structs.Elf_Shdr.parse(data[offset + 40 * i:offset + 40 * i + 40]) for i in range(count)]
+    require(
+        elf['e_shentsize'] == 40 and 0 < count < 4096 and names_index < count and offset + 40 * count <= len(data),
+        'Invalid ELF table',
+    )
+    headers = [structs.Elf_Shdr.parse(data[offset + 40 * i : offset + 40 * i + 40]) for i in range(count)]
 
     def contents(h):
         if h['sh_type'] == 'SHT_NOBITS':
             return b''
         require(h['sh_offset'] <= len(data) and h['sh_size'] <= len(data) - h['sh_offset'], 'Truncated ELF section')
-        return data[h['sh_offset']:h['sh_offset'] + h['sh_size']]
+        return data[h['sh_offset'] : h['sh_offset'] + h['sh_size']]
 
     def string(table, index):
         require(0 <= index < len(table), 'Invalid ELF string offset')
@@ -174,12 +177,12 @@ def elf32(data, relocations=False):
     names = contents(headers[names_index])
     sections = {}
     symbols = {}
-    values = {}                                 # symbol table index -> every entry's value, by symbol index
+    values = {}  # symbol table index -> every entry's value, by symbol index
     for index, h in enumerate(headers):
         name = string(names, h['sh_name'])
         kind = number(h['sh_type'], ENUM_SH_TYPE_BASE)
         require(name not in sections, 'Duplicate ELF section')
-        require(not (kind in (4, 9) and h['sh_size']) or relocations and kind == 4, 'Unresolved ELF relocations')
+        require(not (kind in (4, 9) and h['sh_size']) or (relocations and kind == 4), 'Unresolved ELF relocations')
         body = contents(h)
         sections[name] = dict(type=kind, flags=h['sh_flags'], address=h['sh_addr'], size=h['sh_size'], data=body)
         if kind != 2:
@@ -188,28 +191,36 @@ def elf32(data, relocations=False):
         strings = contents(headers[h['sh_link']])
         values[index] = []
         for at in range(0, len(body), 16):
-            e = structs.Elf_Sym.parse(body[at:at + 16])
+            e = structs.Elf_Sym.parse(body[at : at + 16])
             values[index].append(e['st_value'])
             symbol = string(strings, e['st_name'])
             if symbol:
                 require(e['st_shndx'] != 'SHN_UNDEF', 'Undefined ELF symbol: ' + symbol)
-                symbols[symbol] = dict(value=e['st_value'], size=e['st_size'],
-                                       type=number(e['st_info']['type'], ENUM_ST_INFO_TYPE))
+                symbols[symbol] = dict(
+                    value=e['st_value'], size=e['st_size'], type=number(e['st_info']['type'], ENUM_ST_INFO_TYPE)
+                )
     if not relocations:
         return sections, symbols
     relocated = {}
     for h in headers:
         if h['sh_type'] != 'SHT_RELA' or not h['sh_size']:
             continue
-        require(h['sh_link'] in values and h['sh_info'] < count and h['sh_entsize'] == 12 and h['sh_size'] % 12 == 0,
-                'Invalid ELF relocations')
+        require(
+            h['sh_link'] in values and h['sh_info'] < count and h['sh_entsize'] == 12 and h['sh_size'] % 12 == 0,
+            'Invalid ELF relocations',
+        )
         table, body = values[h['sh_link']], contents(h)
         entries = relocated.setdefault(string(names, headers[h['sh_info']]['sh_name']), [])
         for at in range(0, len(body), 12):
-            r = structs.Elf_Rela.parse(body[at:at + 12])
+            r = structs.Elf_Rela.parse(body[at : at + 12])
             require(r['r_info_sym'] < len(table), 'Invalid ELF relocation symbol')
-            entries.append(dict(offset=r['r_offset'], type=r['r_info_type'],
-                                target=(table[r['r_info_sym']] + r['r_addend']) & 0xffffffff))
+            entries.append(
+                dict(
+                    offset=r['r_offset'],
+                    type=r['r_info_type'],
+                    target=(table[r['r_info_sym']] + r['r_addend']) & 0xFFFFFFFF,
+                )
+            )
     return sections, symbols, relocated
 
 

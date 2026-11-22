@@ -33,8 +33,15 @@ static const char part_path[] = "/yaffs2/xy-forever/settings.txt.part";
 static const uint32_t max_text = 256, version = 1;
 enum PowerOn : uint32_t { power_play = 0, power_always = 1 };
 enum Usb : uint32_t { usb_mtp_serial = 0, usb_mtp_only = 1, usb_serial = 2, usb_modes };
-struct Record { uint32_t confirm, power_on, usb, newer; };
-static inline void defaults(Record& r) { r.confirm = 1; r.power_on = power_play; r.usb = usb_mtp_serial; r.newer = 0; }
+struct Record {
+    uint32_t confirm, power_on, usb, newer;
+};
+static inline void defaults(Record& r) {
+    r.confirm = 1;
+    r.power_on = power_play;
+    r.usb = usb_mtp_serial;
+    r.newer = 0;
+}
 static inline bool equal(const char* v, uint32_t n, const char* s) {
     uint32_t i = 0;
     for (; i != n && s[i] && v[i] == s[i]; ++i) {}
@@ -47,7 +54,10 @@ static inline const char* value(const char* t, uint32_t length, const char* key,
         while (key[k] && at + k < length && t[at + k] == key[k]) ++k;
         uint32_t end = at;
         while (end < length && t[end] != '\n') ++end;
-        if (!key[k] && at + k < length && t[at + k] == '=') { n = end - at - k - 1; return t + at + k + 1; }
+        if (!key[k] && at + k < length && t[at + k] == '=') {
+            n = end - at - k - 1;
+            return t + at + k + 1;
+        }
         at = end + 1;
     }
     n = 0;
@@ -69,7 +79,10 @@ static inline void parse(const char* t, uint32_t length, Record& r) {
     defaults(r);
     uint32_t n = 0;
     const char* v = value(t, length, "format", n);
-    if (v && !equal(v, n, "1")) { r.newer = newer_format(v, n) ? 1u : 0u; return; }
+    if (v && !equal(v, n, "1")) {
+        r.newer = newer_format(v, n) ? 1u : 0u;
+        return;
+    }
     v = value(t, length, "confirm", n);
     if (v && equal(v, n, "0")) r.confirm = 0;
     v = value(t, length, "power_on", n);
@@ -78,15 +91,24 @@ static inline void parse(const char* t, uint32_t length, Record& r) {
     if (v && equal(v, n, "serial")) r.usb = usb_serial;
     else if (v && equal(v, n, "mtp_only")) r.usb = usb_mtp_only;
 }
-static inline const char* usb_value(uint32_t u) { return u == usb_serial ? "serial" : u == usb_mtp_only ? "mtp_only" : "mtp_serial"; }
+static inline const char* usb_value(uint32_t u) {
+    return u == usb_serial ? "serial" : u == usb_mtp_only ? "mtp_only" : "mtp_serial";
+}
 // The whole record; bytes, 0 when it does not fit.
 static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
-    const char* parts[] = {"format=1\nconfirm=", r.confirm ? "1" : "0", "\npower_on=",
+    const char* parts[] = {"format=1\nconfirm=",
+                           r.confirm ? "1" : "0",
+                           "\npower_on=",
                            r.power_on == power_always ? "always" : "play",
-                           "\nusb=", usb_value(r.usb), "\n"};
+                           "\nusb=",
+                           usb_value(r.usb),
+                           "\n"};
     uint32_t n = 0;
     for (uint32_t p = 0; p != sizeof(parts) / sizeof(parts[0]); ++p)
-        for (const char* s = parts[p]; *s; ++s) { if (n == capacity) return 0; out[n++] = *s; }
+        for (const char* s = parts[p]; *s; ++s) {
+            if (n == capacity) return 0;
+            out[n++] = *s;
+        }
     return n;
 }
 
@@ -104,7 +126,8 @@ static inline uint32_t format(char* out, uint32_t capacity, const Record& r) {
 // the fingerprint hashes memory=). xyf_mods_io says what the row shows (menu::State memory, memory_pending: not saved yet).
 #if !defined(XYF_SMALL_CRC)
 enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_confirm, row_about, rows, row_packs = rows };
-static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "Ask before USB control", "About"};
+static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "Ask before USB control",
+                                         "About"};
 #else
 enum Row : uint32_t { row_memory = 0, row_power_on, row_usb, row_about, rows, row_packs = rows };
 static const char* const labels[rows] = {"Mod memory", "Menu at power-on", "USB mode", "About"};
@@ -123,12 +146,15 @@ static const uint32_t power_on_option_count = 2, usb_option_count = usb_modes, c
 static inline const char* memory_text(uint32_t memory, bool pending) {
     if (memory == memory_reading) return "Checking...";
     if (memory == memory_unavailable) return "Not available";
-    if (memory == memory_expanded) return pending ? "4 MiB (experimental): applied when you boot" : "4 MiB (experimental)";
+    if (memory == memory_expanded)
+        return pending ? "4 MiB (experimental): applied when you boot" : "4 MiB (experimental)";
     return pending ? "2 MiB: applied when you boot" : "2 MiB";
 }
 static inline const char* power_on_text(uint32_t p) { return power_on_options[p == power_always ? 1 : 0]; }
 // MTP alone: the row says what it costs (the host tool and the web app need the serial interface).
-static inline const char* usb_text(uint32_t u) { return u == usb_mtp_only ? "MTP (no web app)" : usb_options[u == usb_serial ? 2 : 0]; }
+static inline const char* usb_text(uint32_t u) {
+    return u == usb_mtp_only ? "MTP (no web app)" : usb_options[u == usb_serial ? 2 : 0];
+}
 static inline const char* confirm_text(uint32_t c) { return confirm_options[c ? 1 : 0]; }
 // The page's notes, and the lines about a save (#191: quiet_ms after the last pick, as xyf_mods_io.hpp quiet_ms).
 static const uint32_t quiet_ms = 1000;
@@ -144,7 +170,9 @@ static const char note_link[] = "Settings not saved: storage link lost.";
 static const uint32_t key_play = 51, key_stop = 52;     // xyf_menu.hpp Key (KPlay, KStop)
 static const char note_on_device[] = "Ask before USB control changes only with the OP-XY's own keys.";
 enum Answer : uint32_t { pending = 0, yes = 1, no = 2, idle = 4 };
-struct Gate { uint32_t state; };
+struct Gate {
+    uint32_t state;
+};
 static inline void gate_clear(Gate& g) { g.state = idle; }
 static inline void gate_open(Gate& g) { g.state = pending; }
 static inline void gate_key(Gate& g, uint32_t key, uint32_t pressed, bool injected) {
@@ -152,5 +180,5 @@ static inline void gate_key(Gate& g, uint32_t key, uint32_t pressed, bool inject
     if (key == key_play) g.state = yes;
     else if (key == key_stop) g.state = no;
 }
-} }
+}}
 #endif

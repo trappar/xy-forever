@@ -7,8 +7,8 @@
 #include "xyf_stage2.hpp"
 #include "ui_gfx.hpp"
 
-extern "C" uint32_t xyf_stage2_main(const xyf::stage2::Abi* abi)
-    __asm__("xyf_stage2_main") __attribute__((section(".text.entry"), used));
+extern "C" uint32_t xyf_stage2_main(const xyf::stage2::Abi* abi) __asm__("xyf_stage2_main")
+    __attribute__((section(".text.entry"), used));
 
 namespace {
 using namespace xyf;
@@ -35,7 +35,11 @@ extern "C" uint32_t xyf_stage2_main(const stage2::Abi* abi) {
     for (uint32_t tries = 0;;) {
         if (!drawn && tries < frame_tries) {
             ++tries;
-            if (uint16_t* fb = s.begin_frame()) { draw(fb); s.end_frame(); drawn = true; }
+            if (uint16_t* fb = s.begin_frame()) {
+                draw(fb);
+                s.end_frame();
+                drawn = true;
+            }
         }
         const uint32_t event = s.next_event();
         if (event == stage2::event_link_lost) return stage2::exit_continue;

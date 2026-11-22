@@ -45,7 +45,11 @@ enum Outcome : uint32_t {
     busy,           // an earlier request is still out
     lost            // the link is lost (until a reboot)
 };
-struct Reply { uint32_t outcome; int32_t value; uint32_t error; };
+struct Reply {
+    uint32_t outcome;
+    int32_t value;
+    uint32_t error;
+};
 // The bound of one request (pure; host-tested): partition class op, or path op with its argument.
 uint32_t bound_ms(uint32_t op, uint32_t argument);
 // The USB status for an outcome other than done (refused, else link).
@@ -141,7 +145,9 @@ Reply stat(const char* path, uint8_t* record);                      // record_by
 // Check a literal directory entry after a stat follows a link and reports ENOENT.
 // A scan owns at most one directory. scan_again asks the caller for another step.
 static const uint32_t scan_again = 0xffffffffu;
-struct NameScan { uint32_t folder, seen; };
+struct NameScan {
+    uint32_t folder, seen;
+};
 uint32_t scan_name(const char* path, NameScan& scan, volatile uint32_t& mounted);
 uint32_t close_name_scan(NameScan& scan, volatile uint32_t& mounted);
 Reply statfs(const char* path, uint8_t* space);                     // space_bytes
@@ -163,9 +169,12 @@ uint32_t serving();
 // left: the end of the read is the caller's, after its USB reply, so A's last requests overlap
 // the host's next request (this pays for the usb_service per-command check): the file read_file
 // opened (fd -1: none) and whether a ranged read's 1-byte probe is still due before the close.
-struct Open { int fd; bool probe; };
-uint32_t read_file(const char* path, uint32_t offset, bool ranged, uint8_t* out, uint32_t capacity,
-                   uint32_t& bytes, volatile uint32_t& mounted, Open* left = 0);
+struct Open {
+    int fd;
+    bool probe;
+};
+uint32_t read_file(const char* path, uint32_t offset, bool ranged, uint8_t* out, uint32_t capacity, uint32_t& bytes,
+                   volatile uint32_t& mounted, Open* left = 0);
 void finish_read(const Open& left, volatile uint32_t& mounted);     // probe, close; link: mounted_stale
 // LIST: one page of a folder (opendir, readdir past skip entries, then entries with a stat
 // each while they fit capacity and max_page, closedir); more = 1 when the page ended before the
@@ -181,8 +190,8 @@ uint32_t mount_ready(volatile uint32_t& mounted);
 // FILE_WRITE (Test 049/050): op 8 (A opens the read-write window), mkdir for every folder below
 // /yaffs2/xy-forever/, open "wb", chunk writes, close, read back to EOF with CRC-32, close, op 9.
 // mounted must be 0. s_crc when the read-back differs from crc.
-uint32_t write_file(const char* path, const uint8_t* data, uint32_t size, uint32_t crc,
-                    uint32_t& written, uint32_t& readback_crc, volatile uint32_t& mounted);
+uint32_t write_file(const char* path, const uint8_t* data, uint32_t size, uint32_t crc, uint32_t& written,
+                    uint32_t& readback_crc, volatile uint32_t& mounted);
 // DELETE / RMDIR / MKDIR: op 8 when needed, then the one change (op 0x25, 0x27 or 0x26; A opens
 // its read-write window for it, as for FILE_WRITE). mounted must not be stale (s_state; the caller
 // sends op 9 first). error: A's error number when it failed (change_status).
@@ -211,5 +220,5 @@ uint32_t copy_target(const char* path, uint32_t& error, volatile uint32_t& mount
 // a partial target may remain (also when mounted is stale: nothing is sent), else 0.
 uint32_t remove_partial(const char* path, volatile uint32_t& mounted);
 #endif
-} }
+}}
 #endif

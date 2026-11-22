@@ -13,12 +13,21 @@ bool utf8(const Byte* p, U32 n) {
     U32 i = 0;
     while (i < n) {
         U32 c = p[i];
-        if (c < 0x80) { ++i; continue; }
+        if (c < 0x80) {
+            ++i;
+            continue;
+        }
         U32 need, low = 0x80, high = 0xbf;
         if (c >= 0xc2 && c <= 0xdf) need = 1;
-        else if (c >= 0xe0 && c <= 0xef) { need = 2; if (c == 0xe0) low = 0xa0; if (c == 0xed) high = 0x9f; }
-        else if (c >= 0xf0 && c <= 0xf4) { need = 3; if (c == 0xf0) low = 0x90; if (c == 0xf4) high = 0x8f; }
-        else return false;
+        else if (c >= 0xe0 && c <= 0xef) {
+            need = 2;
+            if (c == 0xe0) low = 0xa0;
+            if (c == 0xed) high = 0x9f;
+        } else if (c >= 0xf0 && c <= 0xf4) {
+            need = 3;
+            if (c == 0xf0) low = 0x90;
+            if (c == 0xf4) high = 0x8f;
+        } else return false;
         if (need > n - i - 1) return false;
         for (U32 k = 1; k <= need; ++k) {
             U32 b = p[i + k];
@@ -40,8 +49,12 @@ Status string(const Byte* data, const Section& table, U32 at, const Byte*& text,
     if (end - at > max_name) return Status::name_length;
     if (end == size) return Status::string_end;
     if (!utf8(base + at, end - at)) return Status::utf8;
-    text = base + at; length = end - at;
-    if (length >= 3 && text[0] == 0xef && text[1] == 0xbb && text[2] == 0xbf) { text += 3; length -= 3; }
+    text = base + at;
+    length = end - at;
+    if (length >= 3 && text[0] == 0xef && text[1] == 0xbb && text[2] == 0xbf) {
+        text += 3;
+        length -= 3;
+    }
     return Status::ok;
 }
 
@@ -50,7 +63,8 @@ bool prefix(const Byte* text, U32 length, const char* word) {
     U32 count = 0;
     while (word[count]) ++count;
     if (length < count) return false;
-    for (U32 i = 0; i != count; ++i) if (text[i] != Byte(word[i])) return false;
+    for (U32 i = 0; i != count; ++i)
+        if (text[i] != Byte(word[i])) return false;
     return length == count || text[count] == '.';
 }
 U32 group_of(const Byte* n, U32 length) {
@@ -67,25 +81,38 @@ bool supported(U32 type) { return type == 6 || type == 7 || type == 10 || type =
 void section(const Byte* data, const Header& header, U32 index, Section& s) {
     const Byte* p = data + header.start + index * 40;
     XYF_WORK(1);
-    s.name = u32(p); s.type = u32(p + 4); s.flags = u32(p + 8); s.offset = u32(p + 16);
-    s.size = u32(p + 20); s.link = u32(p + 24); s.info = u32(p + 28);
-    s.alignment = u32(p + 32) ? u32(p + 32) : 1; s.stride = u32(p + 36);
+    s.name = u32(p);
+    s.type = u32(p + 4);
+    s.flags = u32(p + 8);
+    s.offset = u32(p + 16);
+    s.size = u32(p + 20);
+    s.link = u32(p + 24);
+    s.info = u32(p + 28);
+    s.alignment = u32(p + 32) ? u32(p + 32) : 1;
+    s.stride = u32(p + 36);
 }
 U32 symbol_count(const Byte* data, const Header& header) {
-    Section table; section(data, header, header.symtab, table);
+    Section table;
+    section(data, header, header.symtab, table);
     return table.size >> 4;
 }
 void symbol(const Byte* data, const Header& header, U32 index, Symbol& s) {
-    Section table; section(data, header, header.symtab, table);
+    Section table;
+    section(data, header, header.symtab, table);
     const Byte* p = data + table.offset + index * 16;
-    s.name = u32(p); s.value = u32(p + 4); s.size = u32(p + 8);
-    s.binding = p[12] >> 4; s.type = p[12] & 15; s.section = u16(p + 14);
+    s.name = u32(p);
+    s.value = u32(p + 4);
+    s.size = u32(p + 8);
+    s.binding = p[12] >> 4;
+    s.type = p[12] & 15;
+    s.section = u16(p + 14);
 }
 void symbol_name(const Byte* data, const Header& header, const Symbol& s, const Byte*& text, U32& length) {
     Section table, strings;
     section(data, header, header.symtab, table);
     section(data, header, table.link, strings);
-    text = 0; length = 0;
+    text = 0;
+    length = 0;
     string(data, strings, s.name, text, length);
 }
 U32 group(const Byte* data, const Header& header, U32 index) {
@@ -93,7 +120,8 @@ U32 group(const Byte* data, const Header& header, U32 index) {
     section(data, header, index, s);
     if (!(s.flags & 2)) return none;
     section(data, header, header.names, names);
-    const Byte* text = 0; U32 length = 0;
+    const Byte* text = 0;
+    U32 length = 0;
     if (string(data, names, s.name, text, length) != Status::ok) return none;
     return group_of(text, length);
 }
@@ -102,54 +130,70 @@ void relocation(const Byte* data, const Section& table, U32 index, Relocation& r
     const Byte* p = data + table.offset + index * 12;
     XYF_WORK(1);
     U32 info = u32(p + 4);
-    r.offset = u32(p); r.type = info & 255; r.symbol = info >> 8; r.addend = int(u32(p + 8));
+    r.offset = u32(p);
+    r.type = info & 255;
+    r.symbol = info >> 8;
+    r.addend = int(u32(p + 8));
 }
 
-Status check(const Byte* d, U32 size, Byte* work, U32 work_size, Header& h, const Byte*& name,
-             U32& name_length) {
-    name = 0; name_length = 0;
+Status check(const Byte* d, U32 size, Byte* work, U32 work_size, Header& h, const Byte*& name, U32& name_length) {
+    name = 0;
+    name_length = 0;
     if (!d || size < 52 || size > max_bytes) return Status::object_size;
-    if (d[0] != 0x7f || d[1] != 'E' || d[2] != 'L' || d[3] != 'F' || d[4] != 1 || d[5] != 1 ||
-        u16(d + 16) != 1 || u16(d + 18) != 106) return Status::object_type;
-    h.start = u32(d + 32); h.count = u16(d + 48); h.names = u16(d + 50); h.symtab = 0;
+    if (d[0] != 0x7f || d[1] != 'E' || d[2] != 'L' || d[3] != 'F' || d[4] != 1 || d[5] != 1 || u16(d + 16) != 1 ||
+        u16(d + 18) != 106)
+        return Status::object_type;
+    h.start = u32(d + 32);
+    h.count = u16(d + 48);
+    h.names = u16(d + 50);
+    h.symtab = 0;
     if (u16(d + 46) != 40 || !h.count || h.count >= max_sections || h.names >= h.count ||
-        !fits_in(h.start, h.count * 40, size)) return Status::section_table;
+        !fits_in(h.start, h.count * 40, size))
+        return Status::section_table;
     Section s, t;
     for (U32 i = 0; i != h.count; ++i) {
         section(d, h, i, s);
-        if (s.size > max_bytes || s.alignment > 4096 || (s.alignment & (s.alignment - 1)))
-            return Status::section_size;
+        if (s.size > max_bytes || s.alignment > 4096 || (s.alignment & (s.alignment - 1))) return Status::section_size;
         if (s.type != sht_nobits && !fits_in(s.offset, s.size, size)) return Status::section_file;
     }
-    Section names; section(d, h, h.names, names);
+    Section names;
+    section(d, h, h.names, names);
     for (U32 i = 0; i != h.count; ++i) {
         section(d, h, i, s);
-        const Byte* text = 0; U32 length = 0;
+        const Byte* text = 0;
+        U32 length = 0;
         Status status = string(d, names, s.name, text, length);
         if (status != Status::ok) return status;
         if (!(s.flags & 2)) continue;
         if (s.flags & ~7u) return Status::section_flags;
         U32 g = group_of(text, length);
         if (g == none || s.type != (g == bss ? sht_nobits : 1u)) {
-            name = text; name_length = length;
+            name = text;
+            name_length = length;
             return Status::section_kind;
         }
     }
     U32 tables = 0;
     for (U32 i = 0; i != h.count; ++i) {
         section(d, h, i, s);
-        if (s.type == sht_symtab) { ++tables; h.symtab = i; }
+        if (s.type == sht_symtab) {
+            ++tables;
+            h.symtab = i;
+        }
     }
     if (tables != 1) return Status::symbol_tables;
-    Section table; section(d, h, h.symtab, table);
+    Section table;
+    section(d, h, h.symtab, table);
     if (table.stride != 16 || (table.size & 15) || table.link >= h.count) return Status::symbol_table;
-    Section strings; section(d, h, table.link, strings);
+    Section strings;
+    section(d, h, table.link, strings);
     U32 symbols = table.size >> 4;
     for (U32 i = 0; i != symbols; ++i) {
         const Byte* p = d + table.offset + i * 16;
         U32 shndx = u16(p + 14);
         if (shndx >= h.count && shndx != shn_abs) return Status::symbol_section;
-        const Byte* text = 0; U32 length = 0;
+        const Byte* text = 0;
+        U32 length = 0;
         Status status = string(d, strings, u32(p), text, length);
         if (status != Status::ok) return status;
     }
@@ -160,20 +204,32 @@ Status check(const Byte* d, U32 size, Byte* work, U32 work_size, Header& h, cons
     Status failure = Status::ok;
     for (U32 i = 0; i != h.count && failure == Status::ok; ++i) {
         section(d, h, i, s);
-        if (s.type == sht_rel) { failure = Status::rel; break; }
+        if (s.type == sht_rel) {
+            failure = Status::rel;
+            break;
+        }
         if (s.type != sht_rela) continue;
         if (s.link != h.symtab || s.info >= h.count || s.stride != 12 || s.size % 12u) {
-            failure = Status::relocation_table; break;
+            failure = Status::relocation_table;
+            break;
         }
         section(d, h, s.info, t);
-        if (group(d, h, s.info) == none || t.type == sht_nobits) { failure = Status::relocation_target; break; }
+        if (group(d, h, s.info) == none || t.type == sht_nobits) {
+            failure = Status::relocation_target;
+            break;
+        }
         U32 count = entries(s);
         for (U32 k = 0; k != count; ++k) {
-            Relocation r; relocation(d, s, k, r);
-            if (!supported(r.type) || r.symbol >= symbols) { failure = Status::relocation_type; break; }
+            Relocation r;
+            relocation(d, s, k, r);
+            if (!supported(r.type) || r.symbol >= symbols) {
+                failure = Status::relocation_type;
+                break;
+            }
             U32 width = r.type == 18 ? 4 : 2;
             if ((r.offset & 1) || !fits_in(r.offset, width, t.size) || (relative(r.type) && r.offset < 2)) {
-                failure = Status::relocation_range; break;
+                failure = Status::relocation_range;
+                break;
             }
             ++passed;
         }
@@ -195,7 +251,8 @@ Status check(const Byte* d, U32 size, Byte* work, U32 work_size, Header& h, cons
     for (U32 i = 0; i != h.count && seen < passed; ++i) {
         section(d, h, i, s);
         if (s.type != sht_rela) continue;
-        start[i] = seen; next[i] = U16(end);
+        start[i] = seen;
+        next[i] = U16(end);
         if (last[s.info] != end) next[last[s.info]] = U16(i);
         last[s.info] = U16(i);
         U32 count = entries(s);
@@ -213,7 +270,8 @@ Status check(const Byte* d, U32 size, Byte* work, U32 work_size, Header& h, cons
                 U32 count = entries(t);
                 if (count > passed - start[j]) count = passed - start[j];
                 for (U32 k = 0; k != count && (clear || start[j] + k < first); ++k) {
-                    Relocation r; relocation(d, t, k, r);
+                    Relocation r;
+                    relocation(d, t, k, r);
                     U32 from = relative(r.type) ? r.offset - 2 : r.offset, to = r.offset + (r.type == 18 ? 4 : 2);
                     bool overlap = false;
                     for (U32 b = from; b != to; ++b) {
@@ -221,10 +279,13 @@ Status check(const Byte* d, U32 size, Byte* work, U32 work_size, Header& h, cons
                         if (bits[b >> 3] & bit) overlap = true;
                         bits[b >> 3] = clear ? Byte(0) : Byte(bits[b >> 3] | bit);
                     }
-                    if (overlap && !clear) { first = start[j] + k; break; }
+                    if (overlap && !clear) {
+                        first = start[j] + k;
+                        break;
+                    }
                 }
             }
     }
     return first < passed ? Status::relocation_overlap : failure;
 }
-} } }
+}}}

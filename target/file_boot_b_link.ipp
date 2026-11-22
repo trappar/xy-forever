@@ -37,7 +37,10 @@ SessionResult b_poll(Stock121PeerSession& session) {
 #if defined(XYF_ONE_SESSION)
     const bool filing = session.filing();
     const SessionResult status = session.poll(now());
-    if (filing && !session.filing()) { b_answer[0] = session.request_value(); b_answer[1] = session.request_error(); }
+    if (filing && !session.filing()) {
+        b_answer[0] = session.request_value();
+        b_answer[1] = session.request_error();
+    }
     return status;
 #else
     return session.poll(now());
@@ -58,7 +61,10 @@ bool b_step(Stock121PeerSession& session) {
 bool b_settle(Stock121PeerSession& session) {
     const key_ui::Where where(xyf::where::link_settle);
     const U32 start = now();
-    while (session.busy() && !b_lost && now() - start < answer_ms) { b_step(session); where.wait(); }
+    while (session.busy() && !b_lost && now() - start < answer_ms) {
+        b_step(session);
+        where.wait();
+    }
     if (session.busy() && !session.filing()) b_lost = 1;
     return !b_lost && !session.busy();
 }
@@ -73,7 +79,10 @@ bool b_ask(Stock121PeerSession& session, U32 value, U32 wait_ms) {
     if (!result.storage_ms && wait_ms < xyf_boot::start_ms) wait_ms = xyf_boot::start_ms;
 #endif
     const U32 before = session.echoes();
-    if (session.ask(value) != SessionResult::waiting) { b_lost = 1; return false; }
+    if (session.ask(value) != SessionResult::waiting) {
+        b_lost = 1;
+        return false;
+    }
     ++result.menu.commands;
     const key_ui::Where where(xyf::where::command);
     const U32 start = now();

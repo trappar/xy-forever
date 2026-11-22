@@ -2,12 +2,14 @@
 
 mise installs the tools mise.toml pins (Python, uv, Node, pnpm, gh; checksums in mise.lock), `uv sync` the
 Python dependencies (pyproject.toml, uv.lock, into .venv), `pnpm install` the JS ones (one pnpm-lock.yaml for
-the workspace: web/ and clients/ts). Every call keeps the contributor's global mise config out (IGNORE)."""
+the workspace: web/ and clients/ts), `lefthook install` the git pre-commit hook (lefthook.yml). Every call keeps
+the contributor's global mise config out (IGNORE)."""
+
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MISE_URL = 'https://mise.jdx.dev/installing-mise.html'
@@ -77,14 +79,27 @@ def js_install(root=ROOT):
     return [shutil.which('pnpm') or 'pnpm', 'install', '--frozen-lockfile'] if js_deps_stale(root) else None
 
 
+def hook_missing(root=ROOT):
+    """None when the pre-commit hook runs lefthook (or root is no git checkout: nothing to install), else what to run."""
+    run = quiet(['git', 'rev-parse', '--git-path', 'hooks/pre-commit'], root)
+    if run.returncode:
+        return None
+    hook = Path(root) / run.stdout.strip()
+    installed = hook.is_file() and 'lefthook' in hook.read_text(errors='replace')
+    return None if installed else 'run `lefthook install`'
+
+
 def doctor_rows(root=ROOT):
     """[(label, ok, detail)]: the tools, then the Python and JS dependencies."""
     m = mise()
     version = quiet([m, '--version'], root).stdout.split()[:1] if m else []
     rows = [('mise', bool(m), version[0] if version else 'not found: %s' % MISE_URL)]
-    for label, problem, fine in (('tools', tools_missing(root), 'mise.toml pins installed'),
-                                 ('python deps', python_deps_stale(root), '.venv matches uv.lock'),
-                                 ('js deps', js_deps_stale(root), 'node_modules matches pnpm-lock.yaml')):
+    for label, problem, fine in (
+        ('tools', tools_missing(root), 'mise.toml pins installed'),
+        ('python deps', python_deps_stale(root), '.venv matches uv.lock'),
+        ('js deps', js_deps_stale(root), 'node_modules matches pnpm-lock.yaml'),
+        ('git hook', hook_missing(root), 'pre-commit runs lefthook (lefthook.yml)'),
+    ):
         rows.append((label, problem is None, problem or fine))
     return rows
 
@@ -100,9 +115,12 @@ def bootstrap_steps(do, run, root=ROOT):
     if problem and 'run `mise install`' in problem:
         do('mise install (the pins of mise.toml)', run, [mise(), 'install'], cwd=root, env=env())
     elif problem:
-        return                                             # untrusted or broken: the message says what to do
-    for label, stale, cmd in (('python deps', python_deps_stale, ['uv', 'sync', '--locked']),
-                              ('js deps', js_deps_stale, ['pnpm', 'install', '--frozen-lockfile'])):
+        return  # untrusted or broken: the message says what to do
+    for label, stale, cmd in (
+        ('python deps', python_deps_stale, ['uv', 'sync', '--locked']),
+        ('js deps', js_deps_stale, ['pnpm', 'install', '--frozen-lockfile']),
+        ('git hook', hook_missing, ['lefthook', 'install']),
+    ):
         why = stale(root)
         print('%s: %s' % (label, why or 'ok'))
         if why:

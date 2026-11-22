@@ -5,7 +5,8 @@ struct MetadataWork {
     record::Workspace parse;
     char text[xyf::manifest::max_text];
 };
-static_assert(sizeof(MetadataWork) <= usb_service::mods_metadata_bytes, "Mods metadata work fits in the idle report slot");
+static_assert(sizeof(MetadataWork) <= usb_service::mods_metadata_bytes,
+              "Mods metadata work fits in the idle report slot");
 
 uint32_t read_selected(const char* path, uint8_t* buffer, uint32_t capacity, uint32_t& bytes) {
     namespace P = xyf::usbp;
@@ -45,7 +46,8 @@ const char* metadata(bool native, xyf::manifest::Type expected, uint32_t& bytes)
     if (!native) return read_text(io.path, bytes) ? reinterpret_cast<const char*>(io.buffer) : nullptr;
     MetadataWork* const work = load_native_metadata(bytes);
     if (!work) return nullptr;
-    const json::Status status = record::view(reinterpret_cast<const char*>(work->raw), bytes, work->parse, expected, work->text, bytes);
+    const json::Status status =
+        record::view(reinterpret_cast<const char*>(work->raw), bytes, work->parse, expected, work->text, bytes);
     io.newer |= status == json::version;
     io.why = status == json::ok ? s_ok : xyf::usbp::s_refused;
     return status == json::ok ? work->text : nullptr;

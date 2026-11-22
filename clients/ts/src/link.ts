@@ -78,13 +78,16 @@ export class Link {
       const reply = new Promise<Uint8Array>((resolve, reject) => {
         this.pending = { type, seq, resolve, reject };
         timer = setTimeout(() => {
-          this.parser.reset();                          // a late reply then cannot complete a frame
+          this.parser.reset(); // a late reply then cannot complete a frame
           reject(new XyfError('timeout', `no reply to request 0x${type.toString(16)} within ${timeoutMs} ms`));
         }, timeoutMs);
-        onAbort = () => { this.parser.reset(); reject(aborted(signal)); };
+        onAbort = () => {
+          this.parser.reset();
+          reject(aborted(signal));
+        };
         signal?.addEventListener('abort', onAbort, { once: true });
       });
-      reply.catch(() => undefined);                     // settled below, or abandoned when send fails
+      reply.catch(() => undefined); // settled below, or abandoned when send fails
       try {
         await this.send(encodeFrame(type, seq, payload));
         return await reply;
@@ -100,7 +103,10 @@ export class Link {
    * Raw bytes for the frame layer (conformance): sends each chunk (gapMs apart), then collects
    * every frame that is not an event until until(frames) holds or timeoutMs passes.
    */
-  exchange(chunks: readonly Uint8Array[], options: { timeoutMs: number; gapMs?: number; until(frames: readonly Frame[]): boolean }): Promise<Frame[]> {
+  exchange(
+    chunks: readonly Uint8Array[],
+    options: { timeoutMs: number; gapMs?: number; until(frames: readonly Frame[]): boolean },
+  ): Promise<Frame[]> {
     return this.serial(undefined, async () => {
       const frames: Frame[] = [];
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -126,8 +132,15 @@ export class Link {
   waitClosed(ms: number): Promise<boolean> {
     if (this.isClosed) return Promise.resolve(true);
     return new Promise((resolve) => {
-      const wake = (): void => { clearTimeout(timer); this.closeWaiters.delete(wake); resolve(true); };
-      const timer = setTimeout(() => { this.closeWaiters.delete(wake); resolve(this.isClosed); }, ms);
+      const wake = (): void => {
+        clearTimeout(timer);
+        this.closeWaiters.delete(wake);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        this.closeWaiters.delete(wake);
+        resolve(this.isClosed);
+      }, ms);
       this.closeWaiters.add(wake);
     });
   }
@@ -177,7 +190,7 @@ export class Link {
         this.collector.frames.push(f);
         if (this.collector.until(this.collector.frames)) this.collector.done();
       } else {
-        this.dropped++;                                 // a stale reply (old seq) or a frame nobody waits for
+        this.dropped++; // a stale reply (old seq) or a frame nobody waits for
       }
     }
   }

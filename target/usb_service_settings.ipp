@@ -17,11 +17,16 @@ bool settings_load() {
     char text[xs::max_text];
     uint32_t bytes = 0;
     U32 code = file_client::mount_ready(mounted);
-    if (code == P::s_ok) code = file_client::read_file(xs::path, 0, false, reinterpret_cast<uint8_t*>(text), sizeof(text), bytes, mounted);
-    if (code == P::s_not_found) code = file_client::read_file(xs::old_path, 0, false, reinterpret_cast<uint8_t*>(text), sizeof(text), bytes, mounted);
+    if (code == P::s_ok)
+        code =
+            file_client::read_file(xs::path, 0, false, reinterpret_cast<uint8_t*>(text), sizeof(text), bytes, mounted);
+    if (code == P::s_not_found)
+        code = file_client::read_file(xs::old_path, 0, false, reinterpret_cast<uint8_t*>(text), sizeof(text), bytes,
+                                      mounted);
     if (code == P::s_ok) xs::parse(text, bytes, settings_record);
     else xs::defaults(settings_record);                                 // absent or unreadable: the defaults
-    stored_power_on = settings_record.power_on; stored_usb = settings_record.usb;   // nothing marked
+    stored_power_on = settings_record.power_on;
+    stored_usb = settings_record.usb;   // nothing marked
     stored_confirm = settings_record.confirm;
     settings_loaded = 1;                                                // one try: bounded
     return true;
@@ -53,8 +58,8 @@ uint32_t settings_store() {
 }
 U32 settings_marks() {
     const xs::Record& r = settings_record;
-    return (r.power_on != stored_power_on ? 1u << xs::row_power_on : 0u) | (r.usb != stored_usb ? 1u << xs::row_usb : 0u) |
-           (r.confirm != stored_confirm ? 1u << xs::row_confirm : 0u);
+    return (r.power_on != stored_power_on ? 1u << xs::row_power_on : 0u) |
+           (r.usb != stored_usb ? 1u << xs::row_usb : 0u) | (r.confirm != stored_confirm ? 1u << xs::row_confirm : 0u);
 }
 // #191: USB mode as B's copy holds it: a pick applies at once (usb_service.hpp serial_off, mtp_off).
 bool serial_off() { return settings_record.usb == xs::usb_mtp_only; }
@@ -73,9 +78,11 @@ const char* settings_open(xyf::menu::State& s, uint32_t row) {
     const xs::Record& r = settings_record;
     if (r.newer) return xs::note_newer;                                 // a newer record: never rewritten here
     if (row == xs::row_confirm && key_from_host) return xs::note_on_device;   // #65: never from the host
-    if (row == xs::row_power_on) xyf::menu::open_options(s, xs::power_on_options, xs::power_on_option_count, r.power_on);
+    if (row == xs::row_power_on)
+        xyf::menu::open_options(s, xs::power_on_options, xs::power_on_option_count, r.power_on);
     else if (row == xs::row_usb) xyf::menu::open_options(s, xs::usb_options, xs::usb_option_count, r.usb);
-    else if (row == xs::row_confirm) xyf::menu::open_options(s, xs::confirm_options, xs::confirm_option_count, r.confirm);
+    else if (row == xs::row_confirm)
+        xyf::menu::open_options(s, xs::confirm_options, xs::confirm_option_count, r.confirm);
     return 0;
 }
 void settings_pick(const xyf::menu::State& s) {
@@ -85,7 +92,8 @@ void settings_pick(const xyf::menu::State& s) {
     else if (s.entry == xs::row_usb) r.usb = s.option_selected;
     else if (s.entry == xs::row_confirm && !key_from_host) r.confirm = s.option_selected;
     else return;
-    settings_due = 1; settings_since = now();                           // saved once quiet
+    settings_due = 1;
+    settings_since = now();                           // saved once quiet
 }
 // The write once due (now: the page was left), or the end of the one running: a line about it, or 0.
 const char* settings_step(bool now_due) {
@@ -95,34 +103,51 @@ const char* settings_step(bool now_due) {
         if (v.id == settings_job && v.state == 1) return 0;              // still running
         const bool ok = v.id == settings_job && v.state == 2 && v.phase == U32(xc::phase_done);
         settings_job = 0;
-        if (!ok) { if (!settings_due) settings_due = 2; return xs::note_failed; }   // still marked
-        stored_power_on = settings_written.power_on; stored_usb = settings_written.usb;
+        if (!ok) {
+            if (!settings_due) settings_due = 2;
+            return xs::note_failed;
+        }   // still marked
+        stored_power_on = settings_written.power_on;
+        stored_usb = settings_written.usb;
         stored_confirm = settings_written.confirm;
         return xs::note_saved;
     }
     if (!settings_due) return 0;
-    if (!settings_marks()) { settings_due = 0; return 0; }               // picked back to what is saved
+    if (!settings_marks()) {
+        settings_due = 0;
+        return 0;
+    }               // picked back to what is saved
     if (!now_due && (settings_due == 2 || now() - settings_since < xs::quiet_ms)) return 0;
     const U32 code = settings_store();
-    if (code == P::s_busy) return 0;                                     // a job (or the Mods page's write): next pass
-    if (code != P::s_ok) { settings_due = 2; return code == P::s_link ? xs::note_link : xs::note_failed; }
+    if (code == P::s_busy) return 0; // a job (or the Mods page's write): next pass
+    if (code != P::s_ok) {
+        settings_due = 2;
+        return code == P::s_link ? xs::note_link : xs::note_failed;
+    }
     JobView v;
     job_view(v);
-    settings_job = v.id; settings_due = 0;
+    settings_job = v.id;
+    settings_due = 0;
     return 0;
 }
 bool settings_view(xyf::menu::State& s, const char*& line) {
     using xyf::menu::Screen;
-    settings_load();                                                     // once A serves (one bounded read)
+    settings_load(); // once A serves (one bounded read)
     const xs::Record& r = settings_record;
     const char* const power_on = xs::power_on_text(r.power_on);
     const char* const usb = xs::usb_text(r.usb);
     const char* const confirm = xs::confirm_text(r.confirm);
     bool changed = false;
-    if (!s.pack_names) { s.pack_names = packs.names; changed = true; }
+    if (!s.pack_names) {
+        s.pack_names = packs.names;
+        changed = true;
+    }
     if (pack_change_step(s)) changed = true;
     if (s.screen == Screen::packs && !menu_pack_active && pack_list_step(s)) changed = true;
-    if (r.newer && !s.settings_note) { s.settings_note = xs::note_newer; changed = true; }   // the page says so
+    if (r.newer && !s.settings_note) {
+        s.settings_note = xs::note_newer;
+        changed = true;
+    } // the page says so
     // Left (not the page, its option list or the About page opened from it): a waiting write starts the pass after
     // (the home menu is drawn first: the write's first request waits for A's window).
     const bool on_page = s.screen == Screen::settings || s.screen == Screen::options || s.screen == Screen::packs ||
@@ -130,12 +155,17 @@ bool settings_view(xyf::menu::State& s, const char*& line) {
     const bool now_due = settings_left == 1;
     settings_left = on_page ? 0u : settings_left ? 2u : 1u;
     if (const char* note = settings_step(now_due)) {
-        line = note; changed = true;
-        if (note != xs::note_saved && s.screen == Screen::settings) s.settings_note = note;   // on the page too
+        line = note;
+        changed = true;
+        if (note != xs::note_saved && s.screen == Screen::settings) s.settings_note = note; // on the page too
     }
     const U32 marks = settings_marks();
-    if (s.power_on_text != power_on || s.usb_text != usb || s.confirm_text != confirm || s.settings_marked != marks) changed = true;
-    s.power_on_text = power_on; s.usb_text = usb; s.confirm_text = confirm; s.settings_marked = marks;
+    if (s.power_on_text != power_on || s.usb_text != usb || s.confirm_text != confirm || s.settings_marked != marks)
+        changed = true;
+    s.power_on_text = power_on;
+    s.usb_text = usb;
+    s.confirm_text = confirm;
+    s.settings_marked = marks;
     return changed;
 }
 #endif

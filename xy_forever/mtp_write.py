@@ -8,16 +8,17 @@ the scratch folder named when the Writer is made. The stock OS's MTP shows its /
 same checks, stricter than it needs. Works over any mtp_read transport (USB, the simulator's diag.mtp tunnel, a fake
 in the tests).
 """
+
 import struct
 
 from xy_forever import depth
 from xy_forever.mtp_read import FOLDER, OK, ROOT, MtpError, Refused, Session
 
 WRITES = {0x100B: 'DeleteObject', 0x100C: 'SendObjectInfo', 0x100D: 'SendObject'}
-FILE = 0x3000                   # ObjectFormat Undefined
-GENERIC_FOLDER = 1              # AssociationType
-PACKET = 512                    # high-speed bulk packet: a data phase of a multiple of it ends with a ZLP
-OUT_CHUNK = 0x10000             # bytes per bulk-OUT transfer (a multiple of PACKET)
+FILE = 0x3000  # ObjectFormat Undefined
+GENERIC_FOLDER = 1  # AssociationType
+PACKET = 512  # high-speed bulk packet: a data phase of a multiple of it ends with a ZLP
+OUT_CHUNK = 0x10000  # bytes per bulk-OUT transfer (a multiple of PACKET)
 STORAGE_ROOT = '/yaffs2'
 
 
@@ -25,14 +26,14 @@ def problem(path, folder=False, deep=True):
     """None when a device path may be written (made, replaced; deep False: deleted), else why not."""
     if not path.startswith(STORAGE_ROOT + '/'):
         return '%s is not below %s (the MTP storage)' % (path, STORAGE_ROOT)
-    parts = path[len(STORAGE_ROOT) + 1:].split('/')
+    parts = path[len(STORAGE_ROOT) + 1 :].split('/')
     if not all(p and p not in ('.', '..') for p in parts):
         return '%s: an empty, "." or ".." name' % path
     first = parts[0].lower()
     if first == 'upgrade' or (len(parts) == 1 and first == 'bootloader.dev'):
         return '%s is protected (/yaffs2/bootloader.dev and /yaffs2/upgrade/ are never changed)' % path
     why = depth.refusal(path, folder) if deep else None
-    return why and why[len('refused: '):]
+    return why and why[len('refused: ') :]
 
 
 def ptp_string(text):
@@ -44,9 +45,28 @@ def ptp_string(text):
 
 def object_info(name, size, folder):
     """The ObjectInfo dataset of SendObjectInfo (storage and parent 0: they travel as the command's params)."""
-    return (struct.pack('<IHHIHIIIIIIIHII', 0, FOLDER if folder else FILE, 0, 0 if folder else size,
-                        0, 0, 0, 0, 0, 0, 0, 0, GENERIC_FOLDER if folder else 0, 0, 0)
-            + ptp_string(name) + b'\0\0\0')
+    return (
+        struct.pack(
+            '<IHHIHIIIIIIIHII',
+            0,
+            FOLDER if folder else FILE,
+            0,
+            0 if folder else size,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            GENERIC_FOLDER if folder else 0,
+            0,
+            0,
+        )
+        + ptp_string(name)
+        + b'\0\0\0'
+    )
 
 
 class Writer(Session):
@@ -73,7 +93,7 @@ class Writer(Session):
             return storages[0], ROOT
         for storage in storages:
             parent = ROOT
-            for part in path[len(STORAGE_ROOT) + 1:].split('/'):
+            for part in path[len(STORAGE_ROOT) + 1 :].split('/'):
                 match = [c for c in self.children(storage, parent) if c[1] == part]
                 if not match:
                     break
@@ -89,7 +109,7 @@ class Writer(Session):
         if data is not None:
             stream = memoryview(struct.pack('<IHHI', 12 + len(data), 2, code, self.tid) + data)
             for at in range(0, len(stream), OUT_CHUNK):
-                rc = self.transport.write(bytes(stream[at:at + OUT_CHUNK]))
+                rc = self.transport.write(bytes(stream[at : at + OUT_CHUNK]))
                 if rc:
                     raise MtpError('%s: data stopped at %d/%d bytes (libusb %d)' % (name, at, len(stream), rc))
             if len(stream) % PACKET == 0:
@@ -121,7 +141,7 @@ class Writer(Session):
         path = path.rstrip('/')
         self.refuse(path, folder=True)
         made, where = STORAGE_ROOT, None
-        for part in path[len(STORAGE_ROOT) + 1:].split('/'):
+        for part in path[len(STORAGE_ROOT) + 1 :].split('/'):
             made += '/' + part
             where = self.locate(made) or self.create(made)
         return where

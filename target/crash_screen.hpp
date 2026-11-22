@@ -8,20 +8,35 @@
 namespace xyf { namespace crash {
 // Written by the vector: taken = 1 once it ran; SEQSTAT (EXCAUSE in bits 0-5); RETX, the instruction
 // that faulted; RETS, where the function that faulted was called from.
-struct Record { uint32_t taken, seqstat, retx, rets; };
+struct Record {
+    uint32_t taken, seqstat, retx, rets;
+};
 static const uint32_t line_bytes = 64;      // 63 characters at most: the 1x font fits 74 across
-struct Text { char cause[line_bytes], at[line_bytes], seqstat[line_bytes], where[line_bytes]; };
+struct Text {
+    char cause[line_bytes], at[line_bytes], seqstat[line_bytes], where[line_bytes];
+};
 
-struct Cause { uint32_t code; const char* name; };
+struct Cause {
+    uint32_t code;
+    const char* name;
+};
 // The Blackfin EXCAUSE values (a table, not a switch: no jump table in the call audit).
 static const Cause causes[] = {
-    {0x10, "single step"}, {0x11, "trace buffer full"}, {0x21, "undefined instruction"},
-    {0x22, "illegal instruction combination"}, {0x23, "data access protection violation"},
-    {0x24, "misaligned data access"}, {0x25, "unrecoverable event"},
-    {0x26, "data access to unmapped memory"}, {0x27, "data access matches two CPLBs"},
-    {0x28, "emulation watchpoint"}, {0x2a, "misaligned instruction fetch"},
-    {0x2b, "instruction fetch protection violation"}, {0x2c, "instruction fetch from unmapped memory"},
-    {0x2d, "instruction fetch matches two CPLBs"}, {0x2e, "supervisor resource in user mode"},
+    {0x10, "single step"},
+    {0x11, "trace buffer full"},
+    {0x21, "undefined instruction"},
+    {0x22, "illegal instruction combination"},
+    {0x23, "data access protection violation"},
+    {0x24, "misaligned data access"},
+    {0x25, "unrecoverable event"},
+    {0x26, "data access to unmapped memory"},
+    {0x27, "data access matches two CPLBs"},
+    {0x28, "emulation watchpoint"},
+    {0x2a, "misaligned instruction fetch"},
+    {0x2b, "instruction fetch protection violation"},
+    {0x2c, "instruction fetch from unmapped memory"},
+    {0x2d, "instruction fetch matches two CPLBs"},
+    {0x2e, "supervisor resource in user mode"},
 };
 inline __attribute__((always_inline)) const char* cause_name(uint32_t excause) {
     for (uint32_t i = 0; i != sizeof(causes) / sizeof(causes[0]); ++i)
@@ -55,10 +70,13 @@ inline void describe(const Record& r, uint32_t where, Text& t) {
 }
 inline ui::Message message(const Text& t, const ui::Chrome* chrome) {
     const char* image = chrome && chrome->image ? chrome->image : "";   // whose build the addresses belong to
-    const ui::Message m = {"Crashed", {"XY Forever stopped on an exception (processor B).", t.cause, t.at, t.seqstat,
-                                       t.where, image, "", "Turn the OP-XY off and on again."}, 8,
-                           "The addresses map to this image's build (module.asm).", chrome};
+    const ui::Message m = {"Crashed",
+                           {"XY Forever stopped on an exception (processor B).", t.cause, t.at, t.seqstat, t.where,
+                            image, "", "Turn the OP-XY off and on again."},
+                           8,
+                           "The addresses map to this image's build (module.asm).",
+                           chrome};
     return m;
 }
-} }
+}}
 #endif

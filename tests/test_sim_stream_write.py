@@ -2,19 +2,21 @@
 simulator: the bytes go into /yaffs2/xy-forever/tmp/put-<size>-<crc>, are read back, and A renames the file onto its
 target in one step. A cut cable, a full storage and a power cut leave the target old or new, never partial, and the
 temporary file goes away. Needs clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
+
 import hashlib
-from pathlib import Path
 import shutil
 import struct
 import tempfile
 import time
 import unittest
+import zlib
+from pathlib import Path
 
 import pytest
-import zlib
 
+from xy_forever import bounds, host_write, sim
+from xy_forever import usb_proto_ids as P
 from xy_forever import xyf_host as host
-from xy_forever import bounds, host_write, sim, usb_proto_ids as P
 from xy_forever.startup_ready import wait_startup_ready
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
@@ -38,8 +40,9 @@ class StreamWriteTest(unittest.TestCase):
         type(self).runs += 1
         self.dir = Path(self.tmp.name) / ('run-%d' % self.runs)
         shutil.copytree(self.seeded, self.dir / 'yaffs2')
-        self.sim = sim.Simulator(self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out,
-                                 log=self.dir / 'log.txt').start()
+        self.sim = sim.Simulator(
+            self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out, log=self.dir / 'log.txt'
+        ).start()
         self.links = []
 
     def tearDown(self):
@@ -52,12 +55,14 @@ class StreamWriteTest(unittest.TestCase):
         self.links.append(dev)
         self.assertEqual(dev.hello()[0], 0)
         if startup_ready:
-            wait_startup_ready(dev.hello_info.text, lambda remaining: dev.call(
-                P.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
+            wait_startup_ready(
+                dev.hello_info.text,
+                lambda remaining: dev.call(P.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0],
+            )
         return dev
 
     def local(self, path):
-        return self.dir / 'yaffs2' / path[len('/yaffs2/'):]
+        return self.dir / 'yaffs2' / path[len('/yaffs2/') :]
 
     def uploads(self):
         tmp = self.local('/yaffs2/xy-forever/tmp')
@@ -77,9 +82,11 @@ class StreamWriteTest(unittest.TestCase):
         self.fail('%s not reached within %g s' % (what, timeout))
 
     def begin(self, dev, path, data, crc=None, sha=None):
-        crc = zlib.crc32(data) & 0xffffffff if crc is None else crc
+        crc = zlib.crc32(data) & 0xFFFFFFFF if crc is None else crc
         sha = hashlib.sha256(data).digest() if sha is None else sha
-        return dev.call(P.WRITE_BEGIN, path.encode() + b'\0' + struct.pack('<II', len(data), crc) + sha, timeout=30.0)[0]
+        return dev.call(P.WRITE_BEGIN, path.encode() + b'\0' + struct.pack('<II', len(data), crc) + sha, timeout=30.0)[
+            0
+        ]
 
     def old(self, data=b'old file\n'):
         path = self.local(TARGET)
@@ -102,7 +109,7 @@ class StreamWriteTest(unittest.TestCase):
         self.links.remove(dev)
         self.until(lambda: not self.uploads(), 'the abandoned upload removed')
         self.assertEqual(self.local(TARGET).read_bytes(), old)
-        dev = self.connect()                                              # the service goes on
+        dev = self.connect()  # the service goes on
         self.assertEqual(host_write.write_stream(dev, TARGET, data)[0], 0)
         self.assertEqual(self.local(TARGET).read_bytes(), data)
 
@@ -113,7 +120,7 @@ class StreamWriteTest(unittest.TestCase):
         old = self.old()
         data = b'cut short\n' * 500
         self.assertEqual(self.begin(dev, TARGET, data), 0)
-        self.sim.set('cut_after', 2)                                      # the second piece's write
+        self.sim.set('cut_after', 2)  # the second piece's write
         with self.assertRaises((OSError, TimeoutError)):
             host_write.write_stream(dev, TARGET, data)
         self.until(lambda: self.sim.status()['cuts'] == 1 and self.sim.status()['listening'], 'power cut, restart')

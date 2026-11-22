@@ -12,12 +12,12 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
     // this session (RPC mode) on the same storage session the library scan and boot use.
     cold_storage::Stock121ReadOnlySession storage(r.storage);
     storage_server::install(session, storage);
-    SessionResult status = session.begin(services::Phase::cold_after_teardown,
-        reinterpret_cast<Byte*>(scratch), scratch_bytes, 0, 0, now(), xyf_boot::role0_cap_ms);
+    SessionResult status = session.begin(services::Phase::cold_after_teardown, reinterpret_cast<Byte*>(scratch),
+                                         scratch_bytes, 0, 0, now(), xyf_boot::role0_cap_ms);
     r.begin_result = U32(status);
 #else
-    SessionResult status = session.begin(services::Phase::cold_after_teardown,
-        reinterpret_cast<Byte*>(scratch), scratch_bytes, 0, 0, now(), xyf_boot::role0_cap_ms);
+    SessionResult status = session.begin(services::Phase::cold_after_teardown, reinterpret_cast<Byte*>(scratch),
+                                         scratch_bytes, 0, 0, now(), xyf_boot::role0_cap_ms);
     r.begin_result = U32(status);
     // Storage nests inside the link session: it unmounts before the session closes.
     cold_storage::Stock121ReadOnlySession storage(r.storage);
@@ -48,12 +48,13 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
 #endif
         const bool ready = mounted && storage.direct_ready();
         if (ready) {
-            const xyf::library::Error error = xyf::library::scan_direct(storage, lib,
-                reinterpret_cast<Byte*>(xyf_boot::scan_buffer), xyf_boot::scan_capacity);
+            const xyf::library::Error error = xyf::library::scan_direct(
+                storage, lib, reinterpret_cast<Byte*>(xyf_boot::scan_buffer), xyf_boot::scan_capacity);
             r.menu.scan_error = U32(error);
             if (error != xyf::library::Error::ok) xyf::library::detail::reset(lib);
         } else r.menu.scan_error = 0xffu;
-        r.library.count = lib.count; r.library.skipped = lib.skipped;
+        r.library.count = lib.count;
+        r.library.skipped = lib.skipped;
         catalog_bytes = xyf::catalog::encode(lib, reinterpret_cast<Byte*>(xyf_boot::catalog_buffer),
                                              xyf_boot::catalog_capacity, XYF_A_STORAGE_WORD);
         r.menu.catalog_bytes = catalog_bytes;
@@ -84,10 +85,17 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         // The write window closes after its idle time; a library it changed is scanned again
         // (b fetches the new catalog after it closed the window itself, or at its next catalog item).
         storage_server::tick(storage, now());
-        if (storage_server::library_changed()) { catalog_bytes = a_rescan(storage, mounted, lib); session.touch(now()); }
+        if (storage_server::library_changed()) {
+            catalog_bytes = a_rescan(storage, mounted, lib);
+            session.touch(now());
+        }
 #endif
         if (session.agreed()) {                         // unmount first, then let it close
-            if (mounted) { a_close_files(storage); r.storage_end = U32(storage.end()); mounted = false; }
+            if (mounted) {
+                a_close_files(storage);
+                r.storage_end = U32(storage.end());
+                mounted = false;
+            }
             session.allow_close();
         }
         status = session.poll(now());
@@ -96,7 +104,8 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         if (!running(status) || session.commands_seen() == handled) continue;
         handled = session.commands_seen();
         const U32 command = session.last_command(), item = (command >> 8) & 0xffu;
-        r.menu.commands_seen = handled; r.menu.last_command = command;
+        r.menu.commands_seen = handled;
+        r.menu.last_command = command;
 #if defined(XYF_TFW_CHECK)
         // A staging can never become a normal BOOT/default prepared image. Every new
         // command revokes its ownership before any rescan, default plan or engine use.
@@ -116,7 +125,10 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         // read / install / write modes from the same items); transfer items switch back.
         if (item == storage_server::file_write_item) a_prepared = 0xffffffffu;
         if (item == storage_server::command_item || item == storage_server::install_item ||
-            item == storage_server::file_write_item) { session.set_rpc(true); continue; }
+            item == storage_server::file_write_item) {
+            session.set_rpc(true);
+            continue;
+        }
         if (item == xyf_boot::item_catalog || item == xyf_boot::item_check_default ||
             item == xyf_boot::item_boot_default ||
             (item >= xyf_boot::item_check_entry && item < xyf_boot::item_check_entry + xyf::library::max_entries) ||
@@ -126,10 +138,17 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         if (item == storage_server::reboot_item) {
             a_answer_out(session);
             storage_server::finish(storage);
-            if (mounted) { a_close_files(storage); r.storage_end = U32(storage.end()); mounted = false; }
+            if (mounted) {
+                a_close_files(storage);
+                r.storage_end = U32(storage.end());
+                mounted = false;
+            }
             usb_service::reset_self();
         }
-        if (item == storage_server::dry_run_item) { usb_service::a_dry_run(); continue; }
+        if (item == storage_server::dry_run_item) {
+            usb_service::a_dry_run();
+            continue;
+        }
 #if defined(XYF_MTP)
         if (item == storage_server::engine_run_item) {  // the engine's run entry until b's leave item (097)
             a_prepared = 0xffffffffu;
@@ -151,12 +170,13 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
             xyf::library::detail::reset(lib);
             r.menu.scan_error = 0xffu;
             if (mounted && storage.direct_ready()) {
-                const xyf::library::Error error = xyf::library::scan_direct(storage, lib,
-                    reinterpret_cast<Byte*>(xyf_boot::scan_buffer), xyf_boot::scan_capacity);
+                const xyf::library::Error error = xyf::library::scan_direct(
+                    storage, lib, reinterpret_cast<Byte*>(xyf_boot::scan_buffer), xyf_boot::scan_capacity);
                 r.menu.scan_error = U32(error);
                 if (error != xyf::library::Error::ok) xyf::library::detail::reset(lib);
             }
-            r.library.count = lib.count; r.library.skipped = lib.skipped;
+            r.library.count = lib.count;
+            r.library.skipped = lib.skipped;
             catalog_bytes = xyf::catalog::encode(lib, reinterpret_cast<Byte*>(xyf_boot::catalog_buffer),
                                                  xyf_boot::catalog_capacity, XYF_A_STORAGE_WORD);
             r.menu.catalog_bytes = catalog_bytes;
@@ -175,7 +195,8 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
             }
 #endif
             if (session.freeze_blob(reinterpret_cast<const Byte*>(xyf_boot::catalog_buffer), catalog_bytes) ==
-                SessionResult::ok) r.menu.catalog_ok = 1;
+                SessionResult::ok)
+                r.menu.catalog_ok = 1;
 #if defined(XYF_ONE_SESSION)
             if (!mounted) a_failure_served = 1;
 #endif
@@ -201,15 +222,15 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
                 if (!plan_default(lib, item - item_set_default, plan)) status = status_plan;
                 else {
                     seq = plan.seq;
-                    const cold_storage::Result w = storage.write_state_slot(plan.path,
-                        reinterpret_cast<const Byte*>(plan.text), plan.length,
-                        reinterpret_cast<Byte*>(xyf_boot::readback_buffer), step);
+                    const cold_storage::Result w =
+                        storage.write_state_slot(plan.path, reinterpret_cast<const Byte*>(plan.text), plan.length,
+                                                 reinterpret_cast<Byte*>(xyf_boot::readback_buffer), step);
                     write_result = U32(w);
                     status = w == cold_storage::Result::ok ? status_ok : status_storage;
                 }
                 if (storage.direct_ready()) {
-                    const xyf::library::Error error = xyf::library::scan_direct(storage, lib,
-                        reinterpret_cast<Byte*>(xyf_boot::scan_buffer), xyf_boot::scan_capacity);
+                    const xyf::library::Error error = xyf::library::scan_direct(
+                        storage, lib, reinterpret_cast<Byte*>(xyf_boot::scan_buffer), xyf_boot::scan_capacity);
                     if (error != xyf::library::Error::ok) xyf::library::detail::reset(lib);
                     catalog_bytes = xyf::catalog::encode(lib, reinterpret_cast<Byte*>(xyf_boot::catalog_buffer),
                                                          xyf_boot::catalog_capacity);
@@ -225,14 +246,19 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         // storage stays mounted, and answers with a status blob; the following BOOT of the
         // same index unmounts and serves the staged image. A failed check leaves the
         // session and the mount open, so b can show the menu and try another entry.
-        const bool check = item == xyf_boot::item_check_default ||
+        const bool check =
+            item == xyf_boot::item_check_default ||
             (item >= xyf_boot::item_check_entry && item < xyf_boot::item_check_entry + xyf::library::max_entries);
-        const bool boot = item == xyf_boot::item_boot_default ||
+        const bool boot =
+            item == xyf_boot::item_boot_default ||
             (item >= xyf_boot::item_boot_entry && item < xyf_boot::item_boot_entry + xyf::library::max_entries);
         if (!check && !boot) continue;
         // Test 061: a blob (catalog / check status) still being restored must finish
         // before the next freeze (bounded; harmless when nothing is pending).
-        { const U32 t = now(); while (session.blob_pending() && now() - t < 2000u) session.poll(now()); }
+        {
+            const U32 t = now();
+            while (session.blob_pending() && now() - t < 2000u) session.poll(now());
+        }
         U32 index = check ? item - xyf_boot::item_check_entry : item - xyf_boot::item_boot_entry;
         if (item == xyf_boot::item_check_default || item == xyf_boot::item_boot_default) index = a_default_index(lib);
         if (check) {
@@ -240,14 +266,19 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
             if (reason == reason_no_library) reason = a_content_reason(lib, index);   // the menu says why
             a_prepared = reason == reason_ok ? index : 0xffffffffu;
             // #21: Menu at power-on, read before the status is built (both use the scan scratch)
-            const U32 power_on = item == xyf_boot::item_check_default && reason == reason_ok ? a_power_on(storage, mounted) : 0u;
-            const U32 converge = item == xyf_boot::item_check_default ? a_converge(storage, mounted, lib) : 0u;   // #197
+            const U32 power_on =
+                item == xyf_boot::item_check_default && reason == reason_ok ? a_power_on(storage, mounted) : 0u;
+            const U32 converge = item == xyf_boot::item_check_default ? a_converge(storage, mounted, lib) : 0u; // #197
             xyf_boot::CheckStatus& s = *reinterpret_cast<xyf_boot::CheckStatus*>(xyf_boot::status_buffer);
             for (U32 i = 0; i != sizeof(s); ++i) reinterpret_cast<volatile Byte*>(&s)[i] = 0;
-            s.magic = xyf_boot::check_magic; s.reason = reason; s.index = index;
-            s.load_reason = r.load_reason; s.admit_reason = r.admit_reason;
+            s.magic = xyf_boot::check_magic;
+            s.reason = reason;
+            s.index = index;
+            s.load_reason = r.load_reason;
+            s.admit_reason = r.admit_reason;
             s.timing = r.timing;
-            s.power_on = power_on; s.converge = converge;
+            s.power_on = power_on;
+            s.converge = converge;
             if (index < lib.count)
                 for (U32 i = 0; i != 31 && lib.entries[index].id[i]; ++i) s.id[i] = lib.entries[index].id[i];
             session.freeze_blob(reinterpret_cast<const Byte*>(xyf_boot::status_buffer), sizeof(s));
@@ -256,7 +287,11 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         }
         U32 reason = a_prepared == index ? U32(reason_ok) : a_prepare(storage, mounted, lib, index, bytes, crc);
         a_prepared = 0xffffffffu;
-        if (mounted) { a_close_files(storage); r.storage_end = U32(storage.end()); mounted = false; }
+        if (mounted) {
+            a_close_files(storage);
+            r.storage_end = U32(storage.end());
+            mounted = false;
+        }
         r.storage_safe = storage.safe_to_handoff() && r.storage_end == U32(cold_storage::Result::ok);
         if (reason == reason_ok && !r.storage_safe) reason = reason_unmount;
         r.load_reason = reason == reason_ok ? r.load_reason : reason;
@@ -265,18 +300,22 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         if (reason == reason_ok) {
             // crc: a_prepare's CRC of exactly these staged bytes (checked against info.txt).
             const U32 freeze_start = now();
-            serve = session.freeze_image(reinterpret_cast<const Byte*>(staging), bytes, crc, digest) == SessionResult::ok;
-            r.timing.a_freeze_ms = now() - freeze_start; r.timing.valid |= xyf_boot::timing_freeze;
+            serve =
+                session.freeze_image(reinterpret_cast<const Byte*>(staging), bytes, crc, digest) == SessionResult::ok;
+            r.timing.a_freeze_ms = now() - freeze_start;
+            r.timing.valid |= xyf_boot::timing_freeze;
             if (serve) {
                 for (U32 i = 0; i != 8; ++i)
                     r.digest[i] = digest.bytes[4 * i] | U32(digest.bytes[4 * i + 1]) << 8 |
                                   U32(digest.bytes[4 * i + 2]) << 16 | U32(digest.bytes[4 * i + 3]) << 24;
-                r.image_bytes = bytes; r.image_crc = crc;
+                r.image_bytes = bytes;
+                r.image_crc = crc;
             }
         }
 #else
         if (item != xyf_boot::item_boot_default &&
-            (item < xyf_boot::item_boot_entry || item >= xyf_boot::item_boot_entry + xyf::library::max_entries)) continue;
+            (item < xyf_boot::item_boot_entry || item >= xyf_boot::item_boot_entry + xyf::library::max_entries))
+            continue;
         // Boot: pick, read, check against info.txt, unmount, admit, hash, freeze.
         U32 index = item - xyf_boot::item_boot_entry;
         if (item == xyf_boot::item_boot_default) {
@@ -290,7 +329,8 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         if (mounted && storage.direct_ready() && entry_selection(lib, index, selection)) {
             const char* id = lib.entries[index].id;
             for (U32 i = 0; i != 31 && id[i]; ++i) r.library.id[i] = id[i];
-            r.library.expected_bytes = selection.bytes; r.library.expected_crc = selection.crc32;
+            r.library.expected_bytes = selection.bytes;
+            r.library.expected_crc = selection.crc32;
             r.library.flags = (selection.has_bytes ? 1u : 0u) | (selection.has_crc32 ? 2u : 0u);
             reason = read_image(storage, selection.path, bytes);
             if (reason == reason_ok) {
@@ -300,7 +340,11 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
                 if (!matched) reason = reason_mismatch;
             }
         }
-        if (mounted) { a_close_files(storage); r.storage_end = U32(storage.end()); mounted = false; }
+        if (mounted) {
+            a_close_files(storage);
+            r.storage_end = U32(storage.end());
+            mounted = false;
+        }
         r.storage_safe = storage.safe_to_handoff() && r.storage_end == U32(cold_storage::Result::ok);
         if (reason == reason_ok && !r.storage_safe) reason = reason_unmount;
         r.load_reason = reason;
@@ -309,28 +353,36 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
         if (reason == reason_ok) {
             r.admit_reason = admit(reinterpret_cast<Byte*>(staging), bytes);
             if (r.admit_reason == reason_ok) {
-                serve = session.freeze_image(reinterpret_cast<const Byte*>(staging), bytes, crc, digest) == SessionResult::ok;
+                serve = session.freeze_image(reinterpret_cast<const Byte*>(staging), bytes, crc, digest) ==
+                        SessionResult::ok;
                 if (serve) {
                     for (U32 i = 0; i != 8; ++i)
                         r.digest[i] = digest.bytes[4 * i] | U32(digest.bytes[4 * i + 1]) << 8 |
                                       U32(digest.bytes[4 * i + 2]) << 16 | U32(digest.bytes[4 * i + 3]) << 24;
-                    r.image_bytes = bytes; r.image_crc = crc;
+                    r.image_bytes = bytes;
+                    r.image_crc = crc;
                 }
             }
         }
 #endif
-        if (!serve) { session.refuse(); r.menu.refused = 1; }
+        if (!serve) {
+            session.refuse();
+            r.menu.refused = 1;
+        }
         r.hash_ms = now();
         session.touch(now());
     }
 #if defined(XYF_TFW_CHECK)
     storage_server::discard_install_stage(); // session end, including failed/unmounted storage
 #endif
-    if (mounted) { a_close_files(storage); r.storage_end = U32(storage.end()); mounted = false; }
+    if (mounted) {
+        a_close_files(storage);
+        r.storage_end = U32(storage.end());
+        mounted = false;
+    }
     r.poll_result = U32(status);
     if (status != SessionResult::ready) r.end_result = U32(session.end());
     r.declined = session.declined();
     r.menu.blobs = session.blobs();
     return session.committed();
 }
-

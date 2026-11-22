@@ -48,8 +48,8 @@ struct Library {
     content::State content;    // what /yaffs2/content/ matches (the content state record's head)
 };
 // scratch: raw selected metadata and aligned caller-owned package adapter.
-static const uint32_t scratch_needed = xyf_core::json::document_bytes + alignof(package_record::Workspace) - 1 +
-                                      sizeof(package_record::Workspace);
+static const uint32_t scratch_needed =
+    xyf_core::json::document_bytes + alignof(package_record::Workspace) - 1 + sizeof(package_record::Workspace);
 enum class Choice { menu, once, by_default };
 // once (if usable) > default (if usable) > menu ("XY Forever is home").
 Choice boot_choice(const Library& library, uint32_t& index);
@@ -76,8 +76,8 @@ void apply_info(Entry& e, const uint8_t* text, uint32_t length);
 void finish(Library& out, Entry& e);
 extern const char root[];
 
-template <class Fs> bool read_text(Fs& fs, const char* file, uint8_t* buffer, uint32_t capacity, uint32_t& length,
-                                  bool* exists = 0) {
+template<class Fs>
+bool read_text(Fs& fs, const char* file, uint8_t* buffer, uint32_t capacity, uint32_t& length, bool* exists = 0) {
     const int fd = fs.direct_open(file);
     // Only ENOENT authorizes legacy fallback. An unreadable native record must
     // not be mistaken for an absent one (the stock error is negative).
@@ -93,20 +93,26 @@ template <class Fs> bool read_text(Fs& fs, const char* file, uint8_t* buffer, ui
             break;
         }
         const int got = fs.direct_read(fd, buffer + length, room);
-        if (got < 0 || uint32_t(got) > room) { ok = false; break; }
+        if (got < 0 || uint32_t(got) > room) {
+            ok = false;
+            break;
+        }
         if (!got) break;
         length += uint32_t(got);
     }
     return fs.direct_close(fd) == 0 && ok;
 }
-template <class Fs> bool present(Fs& fs, const char* file) {
+template<class Fs> bool present(Fs& fs, const char* file) {
     const int fd = fs.direct_open(file);
     return fd >= 0 && fs.direct_close(fd) == 0;
 }
 // Lists subdirectories; false on a close error. missing: no such directory.
-template <class Fs> bool list(Fs& fs, const char* directory, Library& out, bool& missing) {
+template<class Fs> bool list(Fs& fs, const char* directory, Library& out, bool& missing) {
     const uint32_t dir = fs.direct_opendir(directory);
-    if (!dir) { missing = true; return true; }
+    if (!dir) {
+        missing = true;
+        return true;
+    }
     for (uint32_t guard = 0; guard != 256; ++guard) {
         const uint8_t* entry = fs.direct_readdir(dir);
         if (!entry) break;
@@ -120,7 +126,7 @@ template <class Fs> bool list(Fs& fs, const char* directory, Library& out, bool&
 }
 }
 
-template <class Fs> Error scan_direct(Fs& fs, Library& out, uint8_t* scratch, uint32_t scratch_bytes) {
+template<class Fs> Error scan_direct(Fs& fs, Library& out, uint8_t* scratch, uint32_t scratch_bytes) {
     using namespace detail;
     reset(out);
     if (!scratch || scratch_bytes < scratch_needed) return Error::capacity;
@@ -135,14 +141,17 @@ template <class Fs> Error scan_direct(Fs& fs, Library& out, uint8_t* scratch, ui
     content::read_state(fs, out.content);           // before the entries (content_installed)
     if (!path(p, root, "/firmware")) return Error::path;
     bool missing = false;
-    if (!list(fs, p, out, missing)) { out.count = 0; return Error::directory; }
+    if (!list(fs, p, out, missing)) {
+        out.count = 0;
+        return Error::directory;
+    }
     if (missing) return Error::ok;                 // no firmware folder yet: empty library
     sort(out);
     for (uint32_t i = 0; i != out.count; ++i) {
         Entry& e = out.entries[i];
         bool native = false;
         const bool loaded = path(p, root, "/firmware/", e.id, "/manifest.json") &&
-            read_text(fs, p, scratch, xyf_core::json::document_bytes, length, &native);
+                            read_text(fs, p, scratch, xyf_core::json::document_bytes, length, &native);
         if (native) {
             const uintptr_t align = alignof(package_record::Workspace);
             package_record::Workspace& work = *reinterpret_cast<package_record::Workspace*>(
@@ -158,5 +167,5 @@ template <class Fs> Error scan_direct(Fs& fs, Library& out, uint8_t* scratch, ui
     }
     return Error::ok;
 }
-} }
+}}
 #endif

@@ -9,24 +9,49 @@
 // a specific status. xyf_package_record adapts native JSON through this semantic reader.
 // Library fallback still reads legacy info.txt leniently with xyf_store::parse_info;
 // legacy_info() gives the same fields from a manifest this reader accepted.
-namespace xyf { namespace store { struct Info; } }
+namespace xyf { namespace store {
+struct Info;
+}}
 namespace xyf { namespace manifest {
 // info.txt bounds. Text values hold at most capacity - 1 bytes.
 static const uint32_t max_text = 4096, max_line = 255, max_keys = 32, max_key = 31, max_value = 127;
 
 enum Type : uint8_t {
     type_none = 0,         // no type= key: a firmware entry (every info.txt written before type= existed)
-    type_firmware, type_mod_base, type_mod,
+    type_firmware,
+    type_mod_base,
+    type_mod,
     type_companion         // parsed only to be refused (Status refused_type)
 };
 // Known keys, as bit numbers of Manifest::keys (and Manifest::key on an error).
 enum Key : uint8_t {
-    key_type, key_name, key_version, key_kind, key_bytes, key_crc32, key_sha256, key_content,
-    key_needs_os, key_generation, key_profile, key_machine, key_source, key_licence, key_machines, key_count,
+    key_type,
+    key_name,
+    key_version,
+    key_kind,
+    key_bytes,
+    key_crc32,
+    key_sha256,
+    key_content,
+    key_needs_os,
+    key_generation,
+    key_profile,
+    key_machine,
+    key_source,
+    key_licence,
+    key_machines,
+    key_count,
     key_unknown = 0xff
 };
-enum Machine : uint8_t { machine_none, machine_synth, machine_drum, machine_sample, machine_effect,
-                         machine_player, machine_extension };
+enum Machine : uint8_t {
+    machine_none,
+    machine_synth,
+    machine_drum,
+    machine_sample,
+    machine_effect,
+    machine_player,
+    machine_extension
+};
 enum Status : uint8_t {
     ok = 0,
     too_large,             // more than max_text bytes
@@ -110,7 +135,10 @@ void list_begin(ListReader& reader);
 // After an error every call returns it again (line: reader.lines).
 ListStatus list_feed(ListReader& reader, const char* data, uint32_t length, FileVisit visit, void* context);
 // Streaming reference index, without an indirect visitor (the product's bounded blob GC).
-struct HashIndex { uint8_t* data; uint32_t count, capacity; };
+struct HashIndex {
+    uint8_t* data;
+    uint32_t count, capacity;
+};
 ListStatus list_index_feed(ListReader& reader, const char* data, uint32_t length, HashIndex& index, bool content_only);
 // After the last piece: refuses an unterminated last line and an empty list.
 ListStatus list_end(ListReader& reader);
@@ -144,15 +172,17 @@ enum Reason : uint8_t {
     reason_content_set,    // content.sha256 without firmware.version or the reverse
     reason_ambiguous       // a vendor pack alongside os.ldr or info.txt
 };
-struct Recognition { uint8_t kind, reason; bool accepted, content_set; };
+struct Recognition {
+    uint8_t kind, reason;
+    bool accepted, content_set;
+};
 // Bytes the file rules need at most (the .tfw crypto-header format words).
 static const uint32_t prefix_bytes = 0x10c;
 // 1-127 bytes of 0x20..0x7e, no '/', '\\' or ':', not "." or "..", not ending in '.' or ' '.
 bool valid_name(const char* name);
 bool pack_name(const char* name);   // also excludes bootloader and companion image names
 // size: the whole file's size; prefix: its first prefix_length bytes.
-void recognise_file(const char* name, uint32_t size, const uint8_t* prefix, uint32_t prefix_length,
-                    Recognition& out);
+void recognise_file(const char* name, uint32_t size, const uint8_t* prefix, uint32_t prefix_length, Recognition& out);
 // Names are one level deep. Pass the parsed manifest.json whenever that name exists, even
 // if reading or parsing failed. Otherwise pass the parsed info.txt. A caller may mark vendor_pack
 // only after validating vendor metadata; a bare manifest.json name identifies neither schema.
@@ -184,5 +214,5 @@ Dependency check_apply(const Manifest& entry, const Manifest& base, const Manife
                        uint32_t& failed);
 // For remove (010 rule 5: list, do not refuse): does `dependent` name `entry`'s sha256?
 bool needs(const Manifest& dependent, const Manifest& entry);
-} }
+}}
 #endif

@@ -1,8 +1,8 @@
 """A refuses mutations reached through aliases into inbox descendants (issue #6). Simulator only."""
+
 import unittest
 
 import pytest
-
 import test_simulator as S
 
 
@@ -34,8 +34,8 @@ class ProtectedPaths(unittest.TestCase):
         return root
 
     def pair(self, source, target):
-        self.assertEqual(self.a_request(S.PATH_CLASS, 0x21, 0x52464e52, path=source), (0, 0))
-        return self.a_request(S.PATH_CLASS, 0x21, 0x4f544e52, path=target)
+        self.assertEqual(self.a_request(S.PATH_CLASS, 0x21, 0x52464E52, path=source), (0, 0))
+        return self.a_request(S.PATH_CLASS, 0x21, 0x4F544E52, path=target)
 
     @pytest.mark.sim
     def test_mutations_to_descendant_directory_aliases_are_refused(self):
@@ -43,10 +43,18 @@ class ProtectedPaths(unittest.TestCase):
         root = self.aliases()
         for alias in ('alias-sub/deep', 'nested', 'up-down'):
             base = '/yaffs2/' + alias
-            for op, flags, suffix in ((0x29, 0x8301, '/x.tfw'), (0x29, 0x8301, '/new.tfw'),
-                                      (0x25, 0, '/x.tfw'), (0x26, 0, '/new-dir'), (0x27, 0, '/empty')):
-                self.assertEqual(self.a_request(S.PATH_CLASS, op, flags, path=base + suffix), (-1, S.EACCES),
-                                 (alias, hex(op), suffix))
+            for op, flags, suffix in (
+                (0x29, 0x8301, '/x.tfw'),
+                (0x29, 0x8301, '/new.tfw'),
+                (0x25, 0, '/x.tfw'),
+                (0x26, 0, '/new-dir'),
+                (0x27, 0, '/empty'),
+            ):
+                self.assertEqual(
+                    self.a_request(S.PATH_CLASS, op, flags, path=base + suffix),
+                    (-1, S.EACCES),
+                    (alias, hex(op), suffix),
+                )
             self.assertEqual(self.pair(base + '/x.tfw', S.BASE + 'log/out.tfw'), (-1, S.EACCES))
             self.assertEqual(self.pair(S.BASE + 'log/move.txt', base + '/move.txt'), (-1, S.EACCES))
         self.assertEqual((root / 'upgrade/sub/deep/x.tfw').read_bytes(), b'unchanged')
@@ -56,7 +64,7 @@ class ProtectedPaths(unittest.TestCase):
         fd, error = self.a_request(S.PATH_CLASS, 0x29, path='/yaffs2/nested/x.tfw')
         self.assertEqual(error, 0)
         self.assertGreaterEqual(fd, 0)
-        self.assertEqual(self.a_request(S.PARTITION_CLASS, 0x2d, fd), (0, 0))
+        self.assertEqual(self.a_request(S.PARTITION_CLASS, 0x2D, fd), (0, 0))
 
     @pytest.mark.sim
     def test_serial_delete_refuses_the_original_alias_reproduction(self):

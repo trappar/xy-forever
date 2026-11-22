@@ -7,13 +7,18 @@ namespace xyf { namespace mtp_usb {
 namespace {
 
 void copy(void* to, const void* from, uint32_t n) {   // freestanding: no string.h
-    uint8_t* t = static_cast<uint8_t*>(to); const uint8_t* f = static_cast<const uint8_t*>(from);
+    uint8_t* t = static_cast<uint8_t*>(to);
+    const uint8_t* f = static_cast<const uint8_t*>(from);
     for (uint32_t i = 0; i != n; ++i) t[i] = f[i];
 }
-uint32_t length(const char* s) { uint32_t n = 0; while (s[n]) ++n; return n; }
+uint32_t length(const char* s) {
+    uint32_t n = 0;
+    while (s[n]) ++n;
+    return n;
+}
 
-const char kName[] = "XY Forever", kMaker[] = "XY Forever", kProduct[] = "OP-XY (XY Forever)",
-           kSerial[] = "XYF0001", kIface[] = "MTP", kSerialName[] = "XY Forever Serial", kDataName[] = "XY Forever Data";
+const char kName[] = "XY Forever", kMaker[] = "XY Forever", kProduct[] = "OP-XY (XY Forever)", kSerial[] = "XYF0001",
+           kIface[] = "MTP", kSerialName[] = "XY Forever Serial", kDataName[] = "XY Forever Data";
 int on_event(uintptr_t dev, uint32_t code);
 int on_urb_sent(Urb* urb);
 int on_recv_urb(Urb* urb);
@@ -38,8 +43,10 @@ const EpDesc kDataEps[2] = {{uint8_t(kSerialOut), 2, uint16_t(kMaxPacket), 0, 0,
                             {uint8_t(kSerialIn), 2, uint16_t(kMaxPacket), 0, 0x80, 0}};
 // The stock CDC's order (0x88a13370): header, union (master 0, slave 1), call management (caps 0, data 1),
 // ACM (caps 0x02: line coding and serial state requests). Writable: the stack's fill only reads them.
-CdcExtra g_cdc_extras[4] = {{0x24, 0x00, {0, 0}, {0}}, {0x24, 0x06, {0, 0}, {kIfaceComm, kIfaceData}},
-                            {0x24, 0x01, {0, 0}, {0, kIfaceData}}, {0x24, 0x02, {0, 0}, {0x02}}};
+CdcExtra g_cdc_extras[4] = {{0x24, 0x00, {0, 0}, {0}},
+                            {0x24, 0x06, {0, 0}, {kIfaceComm, kIfaceData}},
+                            {0x24, 0x01, {0, 0}, {0, kIfaceData}},
+                            {0x24, 0x02, {0, 0}, {0x02}}};
 const AltDesc kCommAlt = {kSerialName, 0, 4, g_cdc_extras, 1, kNotifyEp};
 const AltDesc kDataAlt = {kDataName, 0, 0, 0, 2, kDataEps};
 const IfaceDesc kIfaces[3] = {{kSerialName, 2, 2, 1, 0, 1, &kCommAlt},   // CDC comm, ACM, AT (as stock)
@@ -86,10 +93,21 @@ Urb* serial_out[kSerialOutUrbs] = {};
 MarkHook g_mark_hook = 0;
 bool marks_off = false;
 bool marked_setup = false, marked_config = false, marked_command = false;
-const char* const kMarkNames[mark_count] = {
-    "?", "flag-found", "flag-deleted", "registered", "before-start-0x200", "after-start-0x200",
-    "attach-ok", "attach-failed", "first-setup", "configured", "first-serial-byte", "first-hello",
-    "first-mtp-command", "fallback-restart", "register-refused"};
+const char* const kMarkNames[mark_count] = {"?",
+                                            "flag-found",
+                                            "flag-deleted",
+                                            "registered",
+                                            "before-start-0x200",
+                                            "after-start-0x200",
+                                            "attach-ok",
+                                            "attach-failed",
+                                            "first-setup",
+                                            "configured",
+                                            "first-serial-byte",
+                                            "first-hello",
+                                            "first-mtp-command",
+                                            "fallback-restart",
+                                            "register-refused"};
 
 // Main-loop state.
 uint32_t main_gen = 0;                              // generation our queued urbs belong to
@@ -116,8 +134,14 @@ uint32_t resp_code = 0, resp_param[2] = {}, resp_nparam = 0;
 const Handler* g_handler = 0;
 uint32_t rx_off = 0, h_left = 0;
 
-void put16(uint8_t* p, uint32_t v) { p[0] = uint8_t(v); p[1] = uint8_t(v >> 8); }
-void put32(uint8_t* p, uint32_t v) { put16(p, v); put16(p + 2, v >> 16); }
+void put16(uint8_t* p, uint32_t v) {
+    p[0] = uint8_t(v);
+    p[1] = uint8_t(v >> 8);
+}
+void put32(uint8_t* p, uint32_t v) {
+    put16(p, v);
+    put16(p + 2, v >> 16);
+}
 uint32_t get16(const uint8_t* p) { return p[0] | uint32_t(p[1]) << 8; }
 uint32_t get32(const uint8_t* p) { return get16(p) | get16(p + 2) << 16; }
 uint8_t pattern(uint64_t i) { return uint8_t(i * 7u + (i >> 9)); }
@@ -130,12 +154,27 @@ int on_event(uintptr_t dev, uint32_t code) {
     // them. Either way the queued ones are never ours to free; only urbs taken from the ring are.
     // SET_INTERFACE (7) flushes as 6 does: the same reconfigure.
     // A resume (0xc) after a suspend's 0xa brings no SET_CONFIGURATION: re-arm bulk OUT as one.
-    if (code == 6 || code == 7) { g_dev = dev; ++config_gen; want_config = true; configured_bus = true;
-                                  suspended = false; setup_seen = true; }
-    else if (code == 0xa) { ++config_gen; want_config = false; suspended = configured_bus; }
-    else if (code == 0xc && suspended && g_dev) { ++config_gen; want_config = true; suspended = false; }
-    else if (code == 4) { ++config_gen; want_config = false; configured_bus = suspended = false; ++g_stats.resets_bus; }
-    else if (code == 5) setup_seen = true;
+    if (code == 6 || code == 7) {
+        g_dev = dev;
+        ++config_gen;
+        want_config = true;
+        configured_bus = true;
+        suspended = false;
+        setup_seen = true;
+    } else if (code == 0xa) {
+        ++config_gen;
+        want_config = false;
+        suspended = configured_bus;
+    } else if (code == 0xc && suspended && g_dev) {
+        ++config_gen;
+        want_config = true;
+        suspended = false;
+    } else if (code == 4) {
+        ++config_gen;
+        want_config = false;
+        configured_bus = suspended = false;
+        ++g_stats.resets_bus;
+    } else if (code == 5) setup_seen = true;
     return 0;
 }
 int on_urb_sent(Urb* urb) {                                    // the stack frees the IN urb
@@ -152,8 +191,14 @@ void serial_copy_in(const Urb* u) {                            // interrupt, or 
     g_stats.serial_rx += u->done;
 }
 int serial_received(Urb* u) {
-    if (held_head == held_tail && serial_room() >= u->done) { serial_copy_in(u); return 1; }   // the stack re-queues it
-    if (held_head - held_tail >= kHeld) { ++g_stats.urbs_dropped; return 1; }   // cannot happen: kHeld > urbs
+    if (held_head == held_tail && serial_room() >= u->done) {
+        serial_copy_in(u);
+        return 1;
+    }   // the stack re-queues it
+    if (held_head - held_tail >= kHeld) {
+        ++g_stats.urbs_dropped;
+        return 1;
+    }   // cannot happen: kHeld > urbs
     held[held_head % kHeld] = u;
     held_head = held_head + 1;
     ++g_stats.serial_held;
@@ -163,7 +208,10 @@ int on_recv_urb(Urb* urb) {
     const Endpoint* ep = reinterpret_cast<const Endpoint*>(urb->ep);
     if (ep && (ep->address & 0x0fu) == (kSerialOut & 0x0fu)) return serial_received(urb);
     const uint32_t h = ring_head;
-    if (h - ring_tail >= kRing) { ++g_stats.urbs_dropped; return 0; }   // cannot happen: kOutUrbs < kRing
+    if (h - ring_tail >= kRing) {
+        ++g_stats.urbs_dropped;
+        return 0;
+    }   // cannot happen: kOutUrbs < kRing
     ring[h % kRing] = urb;
     ring_head = h + 1;
     return 0;                                                  // ours until pump() recycles it
@@ -173,21 +221,39 @@ int on_recv_setup(Urb* ep0) {
     const uint8_t* s = ep0->setup;
     if ((s[0] & 0x60) != 0x20) return 1;                       // class requests only
     if (s[4] == kIfaceComm) switch (s[1]) {                    // CDC ACM by interface (wIndex)
-    case 0x20: copy(line_coding, ep0->buf, 7); ++g_stats.line_codings; ep0->wanted = 0; return 0;   // data stage in
-    case 0x21: copy(ep0->buf, line_coding, 7); ep0->wanted = 7; return 0;
-    case 0x22: g_stats.control_lines = get16(s + 2); ep0->wanted = 0; return 0;
-    case 0x23: ep0->wanted = 0; return 0;                      // SEND_BREAK: acknowledged
-    default: return 1;
-    }
+        case 0x20:
+            copy(line_coding, ep0->buf, 7);
+            ++g_stats.line_codings;
+            ep0->wanted = 0;
+            return 0;   // data stage in
+        case 0x21:
+            copy(ep0->buf, line_coding, 7);
+            ep0->wanted = 7;
+            return 0;
+        case 0x22:
+            g_stats.control_lines = get16(s + 2);
+            ep0->wanted = 0;
+            return 0;
+        case 0x23: ep0->wanted = 0; return 0;                      // SEND_BREAK: acknowledged
+        default: return 1;
+        }
     if (s[4] != kIfaceMtp) return 1;
     switch (s[1]) {
-    case 0x64: cancel_flag = true; ep0->wanted = 0; return 0;  // Cancel (data stage already in)
-    case 0x66: reset_flag = true; ep0->wanted = 0; return 0;   // Device Reset
+    case 0x64:
+        cancel_flag = true;
+        ep0->wanted = 0;
+        return 0;  // Cancel (data stage already in)
+    case 0x66:
+        reset_flag = true;
+        ep0->wanted = 0;
+        return 0;   // Device Reset
     case 0x67:                                                 // Get Device Status
         put16(ep0->buf, 4);
         put16(ep0->buf + 2, g_handler && phase == Phase::command && src == Src::none ? uint32_t(g_handler->status()) :
-                            (in_inflight && sent_count == in_inflight_seen) || phase != Phase::command ? 0x2019u : rc_ok);
-        ep0->wanted = 4; return 0;
+                            (in_inflight && sent_count == in_inflight_seen) || phase != Phase::command ? 0x2019u :
+                                                                                                         rc_ok);
+        ep0->wanted = 4;
+        return 0;
     }
     return 1;
 }
@@ -202,10 +268,14 @@ void free_ours() {                       // urbs pump() still holds (taken from 
     ring_tail = ring_head;
     for (uint32_t t = held_tail; t != held_head; ++t) g_port->free_urb(held[t % kHeld]);
     held_tail = held_head;
-    if (serial_in_urb) { serial_stale = serial_in_urb; serial_in_urb = 0; }   // still the stack's (bus reset): not MTP's
+    if (serial_in_urb) {
+        serial_stale = serial_in_urb;
+        serial_in_urb = 0;
+    }   // still the stack's (bus reset): not MTP's
     g_port->unmask(m);
     n_out = 0;
-    in_inflight = false; src = Src::none;
+    in_inflight = false;
+    src = Src::none;
     phase = Phase::command;
     rx_off = h_left = 0;
     if (g_handler) g_handler->cancel(true);            // the transfer is gone with the configuration
@@ -222,18 +292,30 @@ void requeue(Urb* urb) {                 // recycle (append to the stack's queue
     // Off by default: the two kicks run interrupt-path stack code from the main loop
     // admitted separately (MTP_USB_KICK_CALLS), each needs the developer's explicit yes.
     Endpoint* ep = reinterpret_cast<Endpoint*>(urb->ep);
-    if (ep && !ep->active) { g_port->kick(ep); ++g_stats.kicks;
+    if (ep && !ep->active) {
+        g_port->kick(ep);
+        ++g_stats.kicks;
         const uint32_t n = ep->address & 0x0f;
-        if (ep->active && g_port->rx_parked(n)) { g_port->kick_rx(n); ++g_stats.kick_rx; } }
+        if (ep->active && g_port->rx_parked(n)) {
+            g_port->kick_rx(n);
+            ++g_stats.kick_rx;
+        }
+    }
 #endif
     g_port->unmask(m);
 }
 void configure() {
     const uint32_t m = g_port->mask();
-    want_config = false; const uint32_t gen = config_gen; const uintptr_t dev = g_dev;
+    want_config = false;
+    const uint32_t gen = config_gen;
+    const uintptr_t dev = g_dev;
     g_port->unmask(m);
     // Queued urbs: freed by the stack's flush; held ones: freed by free_ours() just before this.
-    n_out = 0; main_gen = gen; phase = Phase::command; in_inflight = false; src = Src::none;
+    n_out = 0;
+    main_gen = gen;
+    phase = Phase::command;
+    in_inflight = false;
+    src = Src::none;
     for (uint32_t i = 0; i != kOutUrbs; ++i) {
         const uint32_t mm = g_port->mask();
         Urb* u = g_port->alloc(dev, kBulkOut, kOutSize);
@@ -253,7 +335,10 @@ void configure() {
     g_state = State::configured;
 }
 void respond(uint32_t code, uint32_t n = 0, uint32_t p0 = 0, uint32_t p1 = 0) {
-    resp_code = code; resp_nparam = n; resp_param[0] = p0; resp_param[1] = p1;
+    resp_code = code;
+    resp_nparam = n;
+    resp_param[0] = p0;
+    resp_param[1] = p1;
     if (src == Src::none) phase = Phase::response;
 }
 uint32_t string_at(uint8_t* p, const char* s) {               // MTP string: count incl. NUL, UTF-16LE
@@ -264,44 +349,83 @@ uint32_t string_at(uint8_t* p, const char* s) {               // MTP string: cou
     return 1 + 2 * (n + 1);
 }
 uint32_t array16_at(uint8_t* p, const uint16_t* v, uint32_t n) {
-    put32(p, n); for (uint32_t i = 0; i != n; ++i) put16(p + 4 + 2 * i, v[i]); return 4 + 2 * n;
+    put32(p, n);
+    for (uint32_t i = 0; i != n; ++i) put16(p + 4 + 2 * i, v[i]);
+    return 4 + 2 * n;
 }
 void device_info() {
-    static const uint16_t ops[] = {op_get_device_info, op_open_session, op_close_session,
+    static const uint16_t ops[] = {op_get_device_info,     op_open_session,          op_close_session,
                                    uint16_t(op_test_sink), uint16_t(op_test_source), uint16_t(op_test_loopback)};
     uint8_t* p = tx_buf + 12;
-    put16(p, 100); put32(p + 2, 6); put16(p + 6, 100); p += 8;    // standard 1.00, MTP extension 1.00
+    put16(p, 100);
+    put32(p + 2, 6);
+    put16(p + 6, 100);
+    p += 8;    // standard 1.00, MTP extension 1.00
     p += string_at(p, "");
-    put16(p, 0); p += 2;                                          // functional mode
+    put16(p, 0);
+    p += 2;                                          // functional mode
     p += array16_at(p, ops, sizeof(ops) / 2);
-    p += array16_at(p, 0, 0); p += array16_at(p, 0, 0);           // events, device properties
-    p += array16_at(p, 0, 0); p += array16_at(p, 0, 0);           // capture, playback formats
-    p += string_at(p, kMaker); p += string_at(p, kProduct); p += string_at(p, "3.2"); p += string_at(p, kSerial);
+    p += array16_at(p, 0, 0);
+    p += array16_at(p, 0, 0);           // events, device properties
+    p += array16_at(p, 0, 0);
+    p += array16_at(p, 0, 0);           // capture, playback formats
+    p += string_at(p, kMaker);
+    p += string_at(p, kProduct);
+    p += string_at(p, "3.2");
+    p += string_at(p, kSerial);
     const uint32_t len = uint32_t(p - tx_buf);
-    put32(tx_buf, len); put16(tx_buf + 4, 2); put16(tx_buf + 6, op_get_device_info); put32(tx_buf + 8, cur_tx);
-    src = Src::buffer; src_data = tx_buf; src_len = len; src_off = 0; phase = Phase::data_in;
+    put32(tx_buf, len);
+    put16(tx_buf + 4, 2);
+    put16(tx_buf + 6, op_get_device_info);
+    put32(tx_buf + 8, cur_tx);
+    src = Src::buffer;
+    src_data = tx_buf;
+    src_len = len;
+    src_off = 0;
+    phase = Phase::data_in;
 }
 void command(const uint8_t* c, uint32_t len) {
     if (len < 12 || get16(c + 4) != 1) return;                    // not a command: ignore
     const uint32_t np = (len - 12) / 4, p0 = np > 0 ? get32(c + 12) : 0;
-    cur_op = get16(c + 6); cur_tx = get32(c + 8);
+    cur_op = get16(c + 6);
+    cur_tx = get32(c + 8);
     ++g_stats.mtp_commands;
-    if (!marked_command) { marked_command = true; mark(mark_first_command); }
+    if (!marked_command) {
+        marked_command = true;
+        mark(mark_first_command);
+    }
     switch (cur_op) {
     case op_open_session:
         if (g_session_open) return respond(rc_session_already_open, 1, session_id);
-        g_session_open = true; session_id = p0; ++g_stats.sessions_opened; return respond(rc_ok);
+        g_session_open = true;
+        session_id = p0;
+        ++g_stats.sessions_opened;
+        return respond(rc_ok);
     case op_close_session:
         if (!g_session_open) return respond(rc_session_not_open);
-        g_session_open = false; ++g_stats.sessions_closed; return respond(rc_ok);
+        g_session_open = false;
+        ++g_stats.sessions_closed;
+        return respond(rc_ok);
     case op_get_device_info: ++g_stats.device_infos; return device_info();
-    case op_test_sink: case op_test_loopback:
-        g_stats.sink_bytes = 0; g_stats.sink_sum = 0; out_left = 0; out_seen = 0; loop_len = 0;
+    case op_test_sink:
+    case op_test_loopback:
+        g_stats.sink_bytes = 0;
+        g_stats.sink_sum = 0;
+        out_left = 0;
+        out_seen = 0;
+        loop_len = 0;
         if (cur_op == op_test_sink && g_sink_hook) g_sink_hook(0, 0, true);
-        phase = Phase::data_out; return;
+        phase = Phase::data_out;
+        return;
     case op_test_source: {
-        src = Src::pattern; src_len = 12 + p0; src_off = 0; phase = Phase::data_in;
-        put32(tx_buf, src_len); put16(tx_buf + 4, 2); put16(tx_buf + 6, cur_op); put32(tx_buf + 8, cur_tx);
+        src = Src::pattern;
+        src_len = 12 + p0;
+        src_off = 0;
+        phase = Phase::data_in;
+        put32(tx_buf, src_len);
+        put16(tx_buf + 4, 2);
+        put16(tx_buf + 6, cur_op);
+        put32(tx_buf + 8, cur_tx);
         return;
     }
     }
@@ -310,8 +434,12 @@ void command(const uint8_t* c, uint32_t len) {
 void data_out(const uint8_t* d, uint32_t len) {
     uint32_t skip = 0;
     if (!out_seen) {                                              // first urb: the data container header
-        if (len < 12 || get16(d + 4) != 2) { phase = Phase::command; return respond(rc_general_error); }
-        out_left = get32(d) - 12; skip = 12;
+        if (len < 12 || get16(d + 4) != 2) {
+            phase = Phase::command;
+            return respond(rc_general_error);
+        }
+        out_left = get32(d) - 12;
+        skip = 12;
     }
     out_seen += len;
     uint32_t body = len - skip;
@@ -319,19 +447,30 @@ void data_out(const uint8_t* d, uint32_t len) {
     const uint8_t* b = d + skip;
     if (cur_op == op_test_loopback) {
         const uint32_t room = kLoopMax - loop_len, n = body < room ? body : room;
-        copy(loop_buf + 12 + loop_len, b, n); loop_len += n;
+        copy(loop_buf + 12 + loop_len, b, n);
+        loop_len += n;
     } else {
         uint32_t s = g_stats.sink_sum;
         for (uint32_t i = 0; i != body; ++i) s += b[i];
         g_stats.sink_sum = s;
         if (g_sink_hook && body) g_sink_hook(b, body, false);
     }
-    g_stats.sink_bytes += body; out_left -= body;
+    g_stats.sink_bytes += body;
+    out_left -= body;
     if (out_left) return;
     if (cur_op == op_test_loopback) {
-        put32(loop_buf, 12 + loop_len); put16(loop_buf + 4, 2); put16(loop_buf + 6, cur_op); put32(loop_buf + 8, cur_tx);
-        src = Src::buffer; src_data = loop_buf; src_len = 12 + loop_len; src_off = 0; phase = Phase::data_in;
-        resp_code = rc_ok; resp_nparam = 1; resp_param[0] = loop_len;
+        put32(loop_buf, 12 + loop_len);
+        put16(loop_buf + 4, 2);
+        put16(loop_buf + 6, cur_op);
+        put32(loop_buf + 8, cur_tx);
+        src = Src::buffer;
+        src_data = loop_buf;
+        src_len = 12 + loop_len;
+        src_off = 0;
+        phase = Phase::data_in;
+        resp_code = rc_ok;
+        resp_nparam = 1;
+        resp_param[0] = loop_len;
         return;
     }
     phase = Phase::command;
@@ -345,8 +484,14 @@ bool test_command(const uint8_t* c, uint32_t len) {
 // true: the urb is done (requeue it); false: the handler said not now (rx_off keeps the progress).
 bool received(Urb* u) {
     const uint32_t len = u->done;
-    if (phase == Phase::data_out) { data_out(u->buf, len); return true; }
-    if (!g_handler) { if (len && phase == Phase::command) command(u->buf, len); return true; }  // a ZLP: ignored
+    if (phase == Phase::data_out) {
+        data_out(u->buf, len);
+        return true;
+    }
+    if (!g_handler) {
+        if (len && phase == Phase::command) command(u->buf, len);
+        return true;
+    }  // a ZLP: ignored
     if (!len) return true;                                        // a ZLP after a 512-multiple data phase
     if (!rx_off && phase == Phase::command && src == Src::none && g_handler->idle() && test_command(u->buf, len)) {
         command(u->buf, len);                                     // the driver's test operations (the sink)
@@ -354,13 +499,20 @@ bool received(Urb* u) {
     }
     if (!rx_off && g_handler->idle() && len >= 12 && get16(u->buf + 4) == 1) {   // a command: the MTP mark
         ++g_stats.mtp_commands;
-        if (!marked_command) { marked_command = true; mark(mark_first_command); }
+        if (!marked_command) {
+            marked_command = true;
+            mark(mark_first_command);
+        }
     }
     while (rx_off != len) {
         uint32_t n = len - rx_off;
         if (n > kHandlerPiece) n = kHandlerPiece;
-        if (!g_handler->deliver(u->buf + rx_off, n)) { ++g_stats.handler_held; return false; }
-        rx_off += n; g_stats.handler_in += n;
+        if (!g_handler->deliver(u->buf + rx_off, n)) {
+            ++g_stats.handler_held;
+            return false;
+        }
+        rx_off += n;
+        g_stats.handler_in += n;
     }
     rx_off = 0;
     return true;
@@ -369,86 +521,140 @@ bool received(Urb* u) {
 void handler_in() {
     const uint32_t pending = g_handler->pending();
     if (!pending) return;
-    if (!h_left) { h_left = g_handler->length(); if (h_left < 12) { h_left = 0; return; } }
+    if (!h_left) {
+        h_left = g_handler->length();
+        if (h_left < 12) {
+            h_left = 0;
+            return;
+        }
+    }
     uint32_t n = pending;
     bool last = false;
-    if (n >= h_left) { n = h_left; last = true; }
-    else { n &= ~(uint32_t(kMaxPacket) - 1); if (!n) return; }
-    if (n > kInChunk) { n = kInChunk; last = false; }           // kInChunk: whole packets
+    if (n >= h_left) {
+        n = h_left;
+        last = true;
+    } else {
+        n &= ~(uint32_t(kMaxPacket) - 1);
+        if (!n) return;
+    }
+    if (n > kInChunk) {
+        n = kInChunk;
+        last = false;
+    }           // kInChunk: whole packets
     const uint32_t m = g_port->mask();
     Urb* u = g_port->alloc(g_dev, kBulkIn, n);
     g_port->unmask(m);
     if (!u) return;
     const uint32_t got = g_handler->take(u->buf, n);             // n <= pending: all of it
-    u->wanted = got; u->zlp = last && got % kMaxPacket == 0 ? 1 : 0;
+    u->wanted = got;
+    u->zlp = last && got % kMaxPacket == 0 ? 1 : 0;
     const uint32_t mm = g_port->mask();
     in_inflight_seen = sent_count;
     const int r = got == n ? g_port->submit_in(u) : -1;
     if (r) g_port->free_urb(u);
     g_port->unmask(mm);
-    if (r) { h_left = 0; return; }                               // lost: the host's next command recovers
-    in_inflight = true; ++g_stats.in_sent; ++g_stats.handler_urbs_in; g_stats.handler_out += got;
+    if (r) {
+        h_left = 0;
+        return;
+    }                               // lost: the host's next command recovers
+    in_inflight = true;
+    ++g_stats.in_sent;
+    ++g_stats.handler_urbs_in;
+    g_stats.handler_out += got;
     h_left -= n;
 }
-bool send(const uint8_t* data, uint32_t len, bool last, uint32_t pat = 0) {   // data 0: source container from offset pat
+bool send(const uint8_t* data, uint32_t len, bool last, uint32_t pat = 0) { // data 0: source container from offset pat
     const uint32_t m = g_port->mask();
     Urb* u = g_port->alloc(g_dev, kBulkIn, len ? len : 1);
     g_port->unmask(m);
     if (!u) return false;
     if (data) copy(u->buf, data, len);
-    else for (uint32_t i = 0; i != len; ++i) { const uint32_t g = pat + i; u->buf[i] = g < 12 ? tx_buf[g] : pattern(g - 12); }
-    u->wanted = len; u->zlp = last && len % kMaxPacket == 0 ? 1 : 0;
+    else
+        for (uint32_t i = 0; i != len; ++i) {
+            const uint32_t g = pat + i;
+            u->buf[i] = g < 12 ? tx_buf[g] : pattern(g - 12);
+        }
+    u->wanted = len;
+    u->zlp = last && len % kMaxPacket == 0 ? 1 : 0;
     const uint32_t mm = g_port->mask();
     in_inflight_seen = sent_count;
     const int r = g_port->submit_in(u);
-    if (r) g_port->free_urb(u);                                   // not queued: ours; heap call masked
+    if (r) g_port->free_urb(u); // not queued: ours; heap call masked
     g_port->unmask(mm);
     if (r) return false;
-    in_inflight = true; ++g_stats.in_sent;
+    in_inflight = true;
+    ++g_stats.in_sent;
     return true;
 }
 void in_step() {
-    if (in_inflight) { if (sent_count == in_inflight_seen) return; in_inflight = false; }
+    if (in_inflight) {
+        if (sent_count == in_inflight_seen) return;
+        in_inflight = false;
+    }
     if (src != Src::none) {
-        uint32_t n = src_len - src_off; if (n > kInChunk) n = kInChunk;
+        uint32_t n = src_len - src_off;
+        if (n > kInChunk) n = kInChunk;
         const bool last = src_off + n == src_len;
         bool ok;
         if (src == Src::buffer) ok = send(src_data + src_off, n, last);
-        else ok = send(0, n, last, src_off);                     // pattern: header from tx_buf, then data
-        if (!ok) return;                                          // try again next pass
+        else ok = send(0, n, last, src_off); // pattern: header from tx_buf, then data
+        if (!ok) return; // try again next pass
         if (src == Src::pattern) g_stats.source_bytes += n;
         src_off += n;
-        if (last) { src = Src::none; if (phase == Phase::data_in) phase = Phase::response;
-                    if (cur_op != op_test_loopback) { resp_code = rc_ok; resp_nparam = 0; } }
+        if (last) {
+            src = Src::none;
+            if (phase == Phase::data_in) phase = Phase::response;
+            if (cur_op != op_test_loopback) {
+                resp_code = rc_ok;
+                resp_nparam = 0;
+            }
+        }
         return;
     }
     if (phase == Phase::response) {
-        uint8_t r[20]; const uint32_t len = 12 + 4 * resp_nparam;
-        put32(r, len); put16(r + 4, 3); put16(r + 6, resp_code); put32(r + 8, cur_tx);
+        uint8_t r[20];
+        const uint32_t len = 12 + 4 * resp_nparam;
+        put32(r, len);
+        put16(r + 4, 3);
+        put16(r + 6, resp_code);
+        put32(r + 8, cur_tx);
         for (uint32_t i = 0; i != resp_nparam; ++i) put32(r + 12 + 4 * i, resp_param[i]);
         if (send(r, len, true)) phase = Phase::command;
         return;
     }
     if (g_handler && phase == Phase::command) handler_in();
 }
-}  // namespace
+} // namespace
 
 bool begin(const Port& port) {
     if (g_state != State::off) return false;
     g_port = &port;
-    const uint32_t written = g_stats.marks_written, failed = g_stats.marks_failed;   // set_mark_hook's
+    const uint32_t written = g_stats.marks_written, failed = g_stats.marks_failed; // set_mark_hook's
     g_stats = Stats();
-    g_stats.marks_written = written; g_stats.marks_failed = failed;
-    ring_head = ring_tail = 0; sent_count = 0; want_config = cancel_flag = reset_flag = false;
-    sring_head = sring_tail = 0; held_head = held_tail = 0; serial_in_urb = serial_stale = 0;
+    g_stats.marks_written = written;
+    g_stats.marks_failed = failed;
+    ring_head = ring_tail = 0;
+    sent_count = 0;
+    want_config = cancel_flag = reset_flag = false;
+    sring_head = sring_tail = 0;
+    held_head = held_tail = 0;
+    serial_in_urb = serial_stale = 0;
     copy(line_coding, kLineCoding, 7);
     configured_bus = suspended = setup_seen = false;
     marked_setup = marked_config = marked_command = false;
-    n_out = 0; g_session_open = false; phase = Phase::command; src = Src::none; in_inflight = false;
-    if (port.register_driver(&g_driver)) { g_port = 0; mark(mark_register_refused); return false; }
+    n_out = 0;
+    g_session_open = false;
+    phase = Phase::command;
+    src = Src::none;
+    in_inflight = false;
+    if (port.register_driver(&g_driver)) {
+        g_port = 0;
+        mark(mark_register_refused);
+        return false;
+    }
     mark(mark_registered);
     mark(mark_before_start);
-    port.start(kCompositeFlags);          // the boot's only start (its own teardown finds nothing running)
+    port.start(kCompositeFlags); // the boot's only start (its own teardown finds nothing running)
     g_state = State::started;
     mark(mark_after_start);
     return true;
@@ -457,9 +663,9 @@ bool begin(const Port& port) {
 void leave(bool) {
     if (g_state == State::off) return;
     const Port& port = *g_port;
-    port.stop(kStopKeepTimer);            // teardown through our driver; flags 0x200: no class unregister
+    port.stop(kStopKeepTimer); // teardown through our driver; flags 0x200: no class unregister
     port.unregister_driver(&g_driver);
-    free_ours();                          // the urbs we hold (taken from the ring, not requeued)
+    free_ours(); // the urbs we hold (taken from the ring, not requeued)
     g_state = State::off;
     g_port = 0;
 }
@@ -474,17 +680,27 @@ uint32_t serial_read(uint8_t* out, uint32_t n) {
     return n;
 }
 int serial_write(const uint8_t* data, uint32_t n) {
-    if (g_state != State::configured || serial_in_urb || n > kSerialInMax) { ++g_stats.serial_busy; return -1; }
+    if (g_state != State::configured || serial_in_urb || n > kSerialInMax) {
+        ++g_stats.serial_busy;
+        return -1;
+    }
     const uint32_t m = g_port->mask();
     Urb* u = g_port->alloc(g_dev, kSerialIn, n ? n : 1);
     g_port->unmask(m);
-    if (!u) { ++g_stats.serial_busy; return -1; }
+    if (!u) {
+        ++g_stats.serial_busy;
+        return -1;
+    }
     copy(u->buf, data, n);
-    u->wanted = n; u->zlp = n % kMaxPacket == 0 ? 1 : 0;
+    u->wanted = n;
+    u->zlp = n % kMaxPacket == 0 ? 1 : 0;
     const uint32_t mm = g_port->mask();
     serial_in_urb = u;
     const int r = g_port->submit_in(u);
-    if (r) { serial_in_urb = 0; g_port->free_urb(u); }      // not queued: ours; heap call masked
+    if (r) {
+        serial_in_urb = 0;
+        g_port->free_urb(u);
+    } // not queued: ours; heap call masked
     g_port->unmask(mm);
     if (r) return -1;
     g_stats.serial_tx += n;
@@ -497,16 +713,28 @@ uint32_t pump() {
     ++g_stats.passes;
     if (reset_flag || cancel_flag) {
         const bool reset = reset_flag;
-        if (reset_flag) { ++g_stats.resets; g_session_open = false; } else ++g_stats.cancels;
-        reset_flag = cancel_flag = false; src = Src::none; phase = Phase::command;
-        if (g_handler) {                                          // what the ring holds belongs to the old transfer
+        if (reset_flag) {
+            ++g_stats.resets;
+            g_session_open = false;
+        } else ++g_stats.cancels;
+        reset_flag = cancel_flag = false;
+        src = Src::none;
+        phase = Phase::command;
+        if (g_handler) { // what the ring holds belongs to the old transfer
             g_handler->cancel(reset);
             if (g_state == State::configured)
-                while (ring_tail != ring_head) { Urb* u = ring[ring_tail % kRing]; ring_tail = ring_tail + 1; requeue(u); }
+                while (ring_tail != ring_head) {
+                    Urb* u = ring[ring_tail % kRing];
+                    ring_tail = ring_tail + 1;
+                    requeue(u);
+                }
             rx_off = h_left = 0;
         }
     }
-    if (setup_seen && !marked_setup) { marked_setup = true; mark(mark_first_setup); }
+    if (setup_seen && !marked_setup) {
+        marked_setup = true;
+        mark(mark_first_setup);
+    }
     if (config_gen != main_gen || want_config) {
         // Deconfigured or reconfigured: the stack forgot our queued urbs; free the held ones.
         if (g_state == State::configured) ++g_stats.deconfigures;
@@ -515,13 +743,19 @@ uint32_t pump() {
         main_gen = config_gen;
         if (want_config) {
             configure();
-            if (!marked_config) { marked_config = true; mark(mark_configured); }
+            if (!marked_config) {
+                marked_config = true;
+                mark(mark_configured);
+            }
         }
         return 0;
     }
-    for (;;) {                                                     // held serial urbs, in order, as room frees
+    for (;;) { // held serial urbs, in order, as room frees
         const uint32_t m = g_port->mask();
-        if (held_tail == held_head || serial_room() < held[held_tail % kHeld]->done) { g_port->unmask(m); break; }
+        if (held_tail == held_head || serial_room() < held[held_tail % kHeld]->done) {
+            g_port->unmask(m);
+            break;
+        }
         Urb* u = held[held_tail % kHeld];
         serial_copy_in(u);
         held_tail = held_tail + 1;
@@ -531,10 +765,11 @@ uint32_t pump() {
     uint32_t urbs = 0, bytes = 0;
     while (urbs != kOutUrbs && ring_tail != ring_head) {
         Urb* u = ring[ring_tail % kRing];
-        if (!received(u)) break;                                   // held for the handler
+        if (!received(u)) break; // held for the handler
         bytes += u->done;
         ring_tail = ring_tail + 1;
-        ++urbs; ++g_stats.urbs_received;
+        ++urbs;
+        ++g_stats.urbs_received;
         requeue(u);
     }
     in_step();
@@ -544,12 +779,22 @@ uint32_t pump() {
 }
 
 void set_sink_hook(SinkHook hook) { g_sink_hook = hook; }
-void set_handler(const Handler* handler) { g_handler = handler; rx_off = h_left = 0; }
-void set_mark_hook(MarkHook hook) { g_mark_hook = hook; marks_off = false; g_stats.marks_written = g_stats.marks_failed = 0; }
+void set_handler(const Handler* handler) {
+    g_handler = handler;
+    rx_off = h_left = 0;
+}
+void set_mark_hook(MarkHook hook) {
+    g_mark_hook = hook;
+    marks_off = false;
+    g_stats.marks_written = g_stats.marks_failed = 0;
+}
 void mark(uint32_t step) {
     if (!g_mark_hook || marks_off) return;
     if (g_mark_hook(step)) ++g_stats.marks_written;
-    else { marks_off = true; ++g_stats.marks_failed; }   // a failed mark never stops the probe
+    else {
+        marks_off = true;
+        ++g_stats.marks_failed;
+    } // a failed mark never stops the probe
 }
 const char* mark_name(uint32_t step) { return step && step < mark_count ? kMarkNames[step] : kMarkNames[0]; }
 State state() { return g_state; }

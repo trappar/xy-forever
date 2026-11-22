@@ -64,7 +64,12 @@ export interface DeviceInfo {
 }
 
 /** A folder entry (file.list): the name decoded as UTF-8 (nameBytes: as the device sent it); size 0 for a folder. */
-export interface DirEntry { readonly name: string; readonly nameBytes: Uint8Array; readonly kind: EntryKind; readonly size: number }
+export interface DirEntry {
+  readonly name: string;
+  readonly nameBytes: Uint8Array;
+  readonly kind: EntryKind;
+  readonly size: number;
+}
 export type EntryKind = 'file' | 'folder' | 'other';
 const KINDS: readonly EntryKind[] = ['file', 'folder', 'other'];
 
@@ -74,22 +79,39 @@ const COPY_RATE = 10_000;
 type ChangeCommand = 'file.write_staged' | 'file.delete' | 'file.rmdir' | 'file.mkdir' | 'file.rename' | 'file.copy';
 type FileCommand = 'file.read' | 'file.list' | ChangeCommand;
 
-export interface Staged { readonly size: number; readonly crc32: number; readonly sha256: Uint8Array }
-
+export interface Staged {
+  readonly size: number;
+  readonly crc32: number;
+  readonly sha256: Uint8Array;
+}
 
 export const STATE_FILES = ['/yaffs2/xy-forever/state-a.txt', '/yaffs2/xy-forever/state-b.txt'] as const;
 
 /** tfw.check reasons (protocol/v1.json). */
-export const TFW_REASONS = ['pass', 'a read failed', 'not a package, or its sizes differ from the file',
-  'an AES key index other than 0', 'no key in the OTP', 'the public key is not on the curve',
-  'the signature does not verify', "the device's key does not decrypt the package", 'the ZIP directory is malformed'] as const;
+export const TFW_REASONS = [
+  'pass',
+  'a read failed',
+  'not a package, or its sizes differ from the file',
+  'an AES key index other than 0',
+  'no key in the OTP',
+  'the public key is not on the curve',
+  'the signature does not verify',
+  "the device's key does not decrypt the package",
+  'the ZIP directory is malformed',
+] as const;
 
 const EMPTY = new Uint8Array(0);
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { signal?.removeEventListener('abort', stop); resolve(); }, ms);
-    const stop = (): void => { clearTimeout(timer); reject(new XyfError('aborted', 'cancelled', { cause: signal?.reason })); };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', stop);
+      resolve();
+    }, ms);
+    const stop = (): void => {
+      clearTimeout(timer);
+      reject(new XyfError('aborted', 'cancelled', { cause: signal?.reason }));
+    };
     signal?.addEventListener('abort', stop, { once: true });
   });
 }
@@ -97,7 +119,10 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 function concat(parts: readonly Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let at = 0;
-  for (const p of parts) { out.set(p, at); at += p.length; }
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
   return out;
 }
 
@@ -112,23 +137,41 @@ function number(text: string | undefined, fallback: number): number {
 /** Accepts protocol 1.1 and later 1.x; anything else is an error naming what to update. */
 function deviceInfo(hello: v1.Hello): DeviceInfo {
   if (hello.major !== '1') {
-    throw new XyfError('protocol', `the device speaks protocol ${hello.proto}; this client speaks 1.x: update this app`);
+    throw new XyfError(
+      'protocol',
+      `the device speaks protocol ${hello.proto}; this client speaks 1.x: update this app`,
+    );
   }
   if (hello.preV1 || number(hello.proto.split('.')[1], 0) < 1) {
-    throw new XyfError('update_required',
-      `this OP-XY runs an old XY Forever (protocol ${hello.proto}, build 153 or earlier): update XY Forever to use this app`);
+    throw new XyfError(
+      'update_required',
+      `this OP-XY runs an old XY Forever (protocol ${hello.proto}, build 153 or earlier): update XY Forever to use this app`,
+    );
   }
   const k = hello.keys;
   return {
-    hello, proto: hello.proto, version: k['version'] ?? null, image: k['image'] ?? null, mode: k['mode'] ?? null, dev: k['dev'] === '1',
-    ask: k['confirm'] === '1', trust: (k['trust'] as Trust | undefined) ?? null, serial: k['serial'] !== 'off',
-    limits: { payload: number(k['payload'], v1.MAX_PAYLOAD), read: number(k['read'], v1.MAX_READ), stage: number(k['stage'], v1.MAX_STAGE) },
+    hello,
+    proto: hello.proto,
+    version: k['version'] ?? null,
+    image: k['image'] ?? null,
+    mode: k['mode'] ?? null,
+    dev: k['dev'] === '1',
+    ask: k['confirm'] === '1',
+    trust: (k['trust'] as Trust | undefined) ?? null,
+    serial: k['serial'] !== 'off',
+    limits: {
+      payload: number(k['payload'], v1.MAX_PAYLOAD),
+      read: number(k['read'], v1.MAX_READ),
+      stage: number(k['stage'], v1.MAX_STAGE),
+    },
   };
 }
 
 /** Opens the transport and sends hello every helloEveryMs until the device answers. */
 async function handshake(open: Opener, options: ConnectOptions): Promise<[Link, DeviceInfo]> {
-  const timeoutMs = options.timeoutMs ?? 10_000, every = options.helloEveryMs ?? 500, signal = options.signal;
+  const timeoutMs = options.timeoutMs ?? 10_000,
+    every = options.helloEveryMs ?? 500,
+    signal = options.signal;
   const deadline = Date.now() + timeoutMs;
   let last: unknown;
   while (Date.now() < deadline) {
@@ -138,7 +181,7 @@ async function handshake(open: Opener, options: ConnectOptions): Promise<[Link, 
       transport = await open(signal);
     } catch (error) {
       if (isXyfError(error, 'aborted')) throw error;
-      last = error;                                     // not there yet (restarting, port not back)
+      last = error; // not there yet (restarting, port not back)
       await sleep(Math.max(0, Math.min(100, deadline - Date.now())), signal);
       continue;
     }
@@ -147,8 +190,12 @@ async function handshake(open: Opener, options: ConnectOptions): Promise<[Link, 
       while (!link.closed && Date.now() < deadline) {
         let reply: v1.HelloReply;
         try {
-          reply = v1.decodeHelloReply(await link.request(v1.TYPE.hello, EMPTY,
-            { timeoutMs: Math.max(1, Math.min(every, deadline - Date.now())), signal }));
+          reply = v1.decodeHelloReply(
+            await link.request(v1.TYPE.hello, EMPTY, {
+              timeoutMs: Math.max(1, Math.min(every, deadline - Date.now())),
+              signal,
+            }),
+          );
         } catch (error) {
           if (!isXyfError(error, 'timeout', 'disconnected')) throw error;
           last = error;
@@ -165,29 +212,49 @@ async function handshake(open: Opener, options: ConnectOptions): Promise<[Link, 
     }
     await link.close();
   }
-  throw new XyfError('timeout', `XY Forever did not answer within ${timeoutMs} ms: is the OP-XY in the XY Forever menu?`, { cause: last });
+  throw new XyfError(
+    'timeout',
+    `XY Forever did not answer within ${timeoutMs} ms: is the OP-XY in the XY Forever menu?`,
+    { cause: last },
+  );
 }
 
 /** Sends one command after the cmds check; resolves with its ok fields, or throws XyfError. */
-export async function invoke(client: Client, command: v1.Command, codec: AnyCodec, request: unknown,
-  options: CallOptions = {}): Promise<Record<string, v1.Value>> {
+export async function invoke(
+  client: Client,
+  command: v1.Command,
+  codec: AnyCodec,
+  request: unknown,
+  options: CallOptions = {},
+): Promise<Record<string, v1.Value>> {
   if (command.name !== 'hello' && !client.info.hello.answers(command.type)) {
-    throw new XyfError('update_required', `this OP-XY's XY Forever (${client.info.version ?? 'old'}) does not answer ` +
-      `${command.name}: update XY Forever`, { command: command.name });
+    throw new XyfError(
+      'update_required',
+      `this OP-XY's XY Forever (${client.info.version ?? 'old'}) does not answer ` +
+        `${command.name}: update XY Forever`,
+      { command: command.name },
+    );
   }
-  const payload = codec.encodeRequest(request);         // a bad argument throws TypeError/RangeError
-  let decoded: ReturnType<AnyCodec['decodeReply']>, asking = false;
+  const payload = codec.encodeRequest(request); // a bad argument throws TypeError/RangeError
+  let decoded: ReturnType<AnyCodec['decodeReply']>,
+    asking = false;
   try {
-    for (;;) {                                           // #65 (trust.ts): sent again while the device asks
-      const reply = await client.link.request(command.type, payload,
-        { timeoutMs: options.timeoutMs ?? command.timeoutMs, signal: options.signal });
+    for (;;) {
+      // #65 (trust.ts): sent again while the device asks
+      const reply = await client.link.request(command.type, payload, {
+        timeoutMs: options.timeoutMs ?? command.timeoutMs,
+        signal: options.signal,
+      });
       try {
         decoded = codec.decodeReply(reply);
       } catch (error) {
-        throw new XyfError('protocol', `${command.name}: unreadable reply: ${(error as Error).message}`, { command: command.name, cause: error });
+        throw new XyfError('protocol', `${command.name}: unreadable reply: ${(error as Error).message}`, {
+          command: command.name,
+          cause: error,
+        });
       }
       if (decoded.ok || decoded.status !== v1.STATUS.waiting || command.name === 'hello') break;
-      if (!asking) client.asking(asking = true);
+      if (!asking) client.asking((asking = true));
       await sleep(RETRY_MS, options.signal);
     }
   } finally {
@@ -219,9 +286,15 @@ export class Client {
     this.attach(link);
   }
 
-  get info(): DeviceInfo { return this.infoNow; }
-  get link(): Link { return this.current; }
-  get connected(): boolean { return !this.current.closed; }
+  get info(): DeviceInfo {
+    return this.infoNow;
+  }
+  get link(): Link {
+    return this.current;
+  }
+  get connected(): boolean {
+    return !this.current.closed;
+  }
 
   /** log events (install progress lines); returns the unsubscribe function. */
   onLog(listener: (event: v1.LogEvent) => void): () => void {
@@ -239,7 +312,9 @@ export class Client {
   }
 
   /** @internal invoke's news for onAsk listeners. */
-  asking(on: boolean): void { for (const listener of this.askListeners) listener(on); }
+  asking(on: boolean): void {
+    for (const listener of this.askListeners) listener(on);
+  }
 
   /** After a restart: waits up to goneMs for the old link to drop, then finds the device again. */
   async reconnect(options: ConnectOptions & { goneMs?: number } = {}): Promise<DeviceInfo> {
@@ -252,11 +327,19 @@ export class Client {
     return info;
   }
 
-  close(): Promise<void> { return this.current.close(); }
+  close(): Promise<void> {
+    return this.current.close();
+  }
 
   /** Any product command by name, typed from the spec. */
   async call<N extends ProductCommand>(name: N, request: RequestOf<N>, options: CallOptions = {}): Promise<ReplyOf<N>> {
-    return await invoke(this, v1.COMMANDS[name], v1.codecs[name] as unknown as AnyCodec, request, options) as ReplyOf<N>;
+    return (await invoke(
+      this,
+      v1.COMMANDS[name],
+      v1.codecs[name] as unknown as AnyCodec,
+      request,
+      options,
+    )) as ReplyOf<N>;
   }
 
   /** hello again: a liveness check that also refreshes info. */
@@ -288,7 +371,8 @@ export class Client {
     const out = new Uint8Array(SCREEN.bytes);
     for (let done = 0; done < SCREEN.bytes;) {
       const { pixels } = await this.call('screen.read', { offset: done }, options);
-      if (pixels.length === 0) throw new XyfError('protocol', `screen.read at ${done}: no data`, { command: 'screen.read' });
+      if (pixels.length === 0)
+        throw new XyfError('protocol', `screen.read at ${done}: no data`, { command: 'screen.read' });
       out.set(pixels.subarray(0, SCREEN.bytes - done), done);
       done += pixels.length;
       options.onProgress?.(Math.min(done, SCREEN.bytes), SCREEN.bytes);
@@ -300,7 +384,11 @@ export class Client {
   async stage(data: Uint8Array, options: TransferOptions = {}): Promise<Staged> {
     const limit = this.infoNow.limits.stage;
     if (data.length === 0 || data.length > limit) {
-      throw new XyfError('too_large', `stage: ${data.length} bytes; this OP-XY takes 1 to ${limit} bytes at a time (hello stage=)`, { command: 'stage.begin' });
+      throw new XyfError(
+        'too_large',
+        `stage: ${data.length} bytes; this OP-XY takes 1 to ${limit} bytes at a time (hello stage=)`,
+        { command: 'stage.begin' },
+      );
     }
     const staged: Staged = { size: data.length, crc32: v1.crc32(data), sha256: await sha256(data) };
     await this.call('stage.begin', staged, options);
@@ -309,7 +397,9 @@ export class Client {
       const piece = data.subarray(at, at + chunk);
       const { received } = await this.call('stage.data', { offset: at, data: piece }, options);
       if (received !== at + piece.length) {
-        throw new XyfError('protocol', `stage.data: the device has ${received} bytes, expected ${at + piece.length}`, { command: 'stage.data' });
+        throw new XyfError('protocol', `stage.data: the device has ${received} bytes, expected ${at + piece.length}`, {
+          command: 'stage.data',
+        });
       }
       options.onProgress?.(at + piece.length, data.length);
     }
@@ -323,15 +413,25 @@ export class Client {
    * one step, any size (stream.ts); before: staged (progress: the staging; above info.limits.stage, or
    * empty: `too_large` here). Outside WRITE_ROOTS: `refused` here (status null), nothing sent. Ask first.
    */
-  async writeFile(path: string, data: Uint8Array, options: TransferOptions = {}): Promise<{ written: number; readbackCrc: number }> {
+  async writeFile(
+    path: string,
+    data: Uint8Array,
+    options: TransferOptions = {},
+  ): Promise<{ written: number; readbackCrc: number }> {
     checkChange('file.write_staged', path, path);
     if (this.infoNow.hello.answers(v1.COMMANDS['file.write_begin'].type)) return writeStream(this, path, data, options);
     const staged = await this.stage(data, options);
-    const reply = await this.fileCall('file.write_staged', { path, sha256: staged.sha256 }, path,
-      { signal: options.signal, timeoutMs: options.timeoutMs ?? 60_000 + Math.ceil(data.length / 20) });
+    const reply = await this.fileCall('file.write_staged', { path, sha256: staged.sha256 }, path, {
+      signal: options.signal,
+      timeoutMs: options.timeoutMs ?? 60_000 + Math.ceil(data.length / 20),
+    });
     if (reply.written !== data.length || reply.readback_crc !== staged.crc32) {
-      throw new XyfError('crc', `file.write_staged ${path}: ${reply.written} of ${data.length} bytes written, read-back CRC ` +
-        `${reply.readback_crc.toString(16)}, expected ${staged.crc32.toString(16)}`, { command: 'file.write_staged' });
+      throw new XyfError(
+        'crc',
+        `file.write_staged ${path}: ${reply.written} of ${data.length} bytes written, read-back CRC ` +
+          `${reply.readback_crc.toString(16)}, expected ${staged.crc32.toString(16)}`,
+        { command: 'file.write_staged' },
+      );
     }
     return { written: reply.written, readbackCrc: reply.readback_crc };
   }
@@ -343,7 +443,11 @@ export class Client {
       const page = await this.fileCall('file.list', { path, skip: out.length }, path, options);
       const entries = parseEntries(page.entries);
       if (entries.length !== page.count) {
-        throw new XyfError('protocol', `file.list ${path}: ${page.count} entries announced, ${entries.length} decoded`, { command: 'file.list' });
+        throw new XyfError(
+          'protocol',
+          `file.list ${path}: ${page.count} entries announced, ${entries.length} decoded`,
+          { command: 'file.list' },
+        );
       }
       out.push(...entries);
       if (!page.more) return out;
@@ -351,23 +455,38 @@ export class Client {
   }
 
   /** Destructive: deletes one file (under WRITE_ROOTS). Show the user the path and ask first. */
-  async deleteFile(path: string, options: CallOptions = {}): Promise<void> { await this.changePath('file.delete', path, options); }
+  async deleteFile(path: string, options: CallOptions = {}): Promise<void> {
+    await this.changePath('file.delete', path, options);
+  }
 
   /** Destructive: removes one empty folder (under WRITE_ROOTS); one with entries is `state`. Ask first. */
-  async removeDir(path: string, options: CallOptions = {}): Promise<void> { await this.changePath('file.rmdir', path, options); }
+  async removeDir(path: string, options: CallOptions = {}): Promise<void> {
+    await this.changePath('file.rmdir', path, options);
+  }
 
   /** Destructive: creates one folder (under WRITE_ROOTS); its parent must exist (`not_found`), the name must not (`storage`). */
-  async makeDir(path: string, options: CallOptions = {}): Promise<void> { await this.changePath('file.mkdir', path, options); }
+  async makeDir(path: string, options: CallOptions = {}): Promise<void> {
+    await this.changePath('file.mkdir', path, options);
+  }
 
   /** file.delete, file.rmdir or file.mkdir of path, bound to the path's SHA-256; outside WRITE_ROOTS: `refused` here. */
-  private async changePath(name: 'file.delete' | 'file.rmdir' | 'file.mkdir', path: string, options: CallOptions): Promise<void> {
+  private async changePath(
+    name: 'file.delete' | 'file.rmdir' | 'file.mkdir',
+    path: string,
+    options: CallOptions,
+  ): Promise<void> {
     checkChange(name, path, path);
     await this.fileCall(name, { path, sha256: await sha256(new TextEncoder().encode(path)) }, path, options);
   }
 
   /** A file command whose device errors carry a plain reason (fileReason) and the path in the message; `busy` while
    * the write window closes is waited out (busy.ts). */
-  private async fileCall<N extends FileCommand>(name: N, request: RequestOf<N>, path: string, options: CallOptions): Promise<ReplyOf<N>> {
+  private async fileCall<N extends FileCommand>(
+    name: N,
+    request: RequestOf<N>,
+    path: string,
+    options: CallOptions,
+  ): Promise<ReplyOf<N>> {
     try {
       return await retryBusy(this, () => this.call(name, request, options), options);
     } catch (error) {
@@ -384,7 +503,12 @@ export class Client {
     const label = `${source} -> ${target}`;
     checkChange('file.rename', source, label);
     checkChange('file.rename', target, label);
-    await this.fileCall('file.rename', { source, target, sha256: await sha256(pathPair(source, target)) }, label, options);
+    await this.fileCall(
+      'file.rename',
+      { source, target, sha256: await sha256(pathPair(source, target)) },
+      label,
+      options,
+    );
   }
 
   /**
@@ -394,16 +518,24 @@ export class Client {
    * plus 1 s per 10000 bytes of size (default: the source's size from its folder's listing).
    * The copy discards anything staged before. Ask first.
    */
-  async copyFile(source: string, target: string, options: CallOptions & { size?: number } = {}): Promise<{ bytes: number }> {
+  async copyFile(
+    source: string,
+    target: string,
+    options: CallOptions & { size?: number } = {},
+  ): Promise<{ bytes: number }> {
     const label = `${source} -> ${target}`;
     checkChange('file.copy', target, label);
     let timeoutMs = options.timeoutMs;
     if (timeoutMs === undefined) {
       const size = options.size ?? (await this.entryOf(source, options))?.size ?? 0;
-      timeoutMs = v1.COMMANDS['file.copy'].timeoutMs + Math.ceil(size * 1000 / COPY_RATE);
+      timeoutMs = v1.COMMANDS['file.copy'].timeoutMs + Math.ceil((size * 1000) / COPY_RATE);
     }
-    const reply = await this.fileCall('file.copy', { source, target, sha256: await sha256(pathPair(source, target)) }, label,
-      { signal: options.signal, timeoutMs });
+    const reply = await this.fileCall(
+      'file.copy',
+      { source, target, sha256: await sha256(pathPair(source, target)) },
+      label,
+      { signal: options.signal, timeoutMs },
+    );
     return { bytes: reply.bytes };
   }
 
@@ -414,20 +546,32 @@ export class Client {
    * RangeError, nothing sent. Stops at the first failure (what was copied stays). Progress: bytes
    * copied so far. Ask first.
    */
-  async copyTree(source: string, target: string, options: TransferOptions = {}): Promise<{ files: number; bytes: number }> {
+  async copyTree(
+    source: string,
+    target: string,
+    options: TransferOptions = {},
+  ): Promise<{ files: number; bytes: number }> {
     source = source.replace(/\/+$/, '');
     target = target.replace(/\/+$/, '');
-    if (target === source || target.startsWith(source + '/')) throw new RangeError(`copyTree: the target ${target} is inside the source ${source}`);
+    if (target === source || target.startsWith(source + '/'))
+      throw new RangeError(`copyTree: the target ${target} is inside the source ${source}`);
     const entry = await this.entryOf(source, options);
-    if (entry === null) throw new XyfError('not_found', `file.list ${source}: no such file or folder`, { command: 'file.list' });
-    if (entry.kind === 'folder') checkChange('file.mkdir', target, target, await foldersBelow((p) => this.listDir(p, options), source));
+    if (entry === null)
+      throw new XyfError('not_found', `file.list ${source}: no such file or folder`, { command: 'file.list' });
+    if (entry.kind === 'folder')
+      checkChange('file.mkdir', target, target, await foldersBelow((p) => this.listDir(p, options), source));
     const done = { files: 0, bytes: 0 };
     await this.copyEntry(source, target, entry, done, options);
     return done;
   }
 
-  private async copyEntry(source: string, target: string, entry: DirEntry, done: { files: number; bytes: number },
-    options: TransferOptions): Promise<void> {
+  private async copyEntry(
+    source: string,
+    target: string,
+    entry: DirEntry,
+    done: { files: number; bytes: number },
+    options: TransferOptions,
+  ): Promise<void> {
     const call: CallOptions = { signal: options.signal, timeoutMs: options.timeoutMs };
     if (entry.kind === 'file') {
       done.bytes += (await this.copyFile(source, target, { ...call, size: entry.size })).bytes;
@@ -444,7 +588,8 @@ export class Client {
   /** The entry for path in its folder's listing, or null when the folder does not hold it. */
   private async entryOf(path: string, options: CallOptions): Promise<DirEntry | null> {
     const at = path.lastIndexOf('/');
-    const parent = path.slice(0, at) || '/yaffs2', name = path.slice(at + 1);
+    const parent = path.slice(0, at) || '/yaffs2',
+      name = path.slice(at + 1);
     const call: CallOptions = { signal: options.signal, timeoutMs: options.timeoutMs };
     return (await this.listDir(parent, call)).find((e) => e.name === name) ?? null;
   }
@@ -477,7 +622,8 @@ export class Client {
    * be true (as the host tool's --yes-boot); without it nothing is sent.
    */
   async libraryBoot(id: string, options: CallOptions & { confirm: true; goneMs?: number }): Promise<void> {
-    if (options?.confirm !== true) throw new TypeError('libraryBoot: pass { confirm: true } to boot (the device leaves XY Forever)');
+    if (options?.confirm !== true)
+      throw new TypeError('libraryBoot: pass { confirm: true } to boot (the device leaves XY Forever)');
     await this.call('library.boot', { id, sha256: await sha256(new TextEncoder().encode(id)) }, options);
     if (!(await this.current.waitClosed(options.goneMs ?? 5000))) await this.current.close();
   }
@@ -491,18 +637,30 @@ export class Client {
   async setDefault(id: string, options: CallOptions = {}): Promise<void> {
     const { id_hash } = await this.call('library.set_default', { id }, options);
     if (id_hash !== v1.crc32(new TextEncoder().encode(id))) {
-      throw new XyfError('protocol', `library.set_default: the device hashed another id (${id_hash.toString(16)})`, { command: 'library.set_default' });
+      throw new XyfError('protocol', `library.set_default: the device hashed another id (${id_hash.toString(16)})`, {
+        command: 'library.set_default',
+      });
     }
   }
 
   /** Is the .tfw at path official, and do the device's own keys open it? Reads only. */
-  async tfwCheck(path: string, options: CallOptions = {}): Promise<{ pass: boolean; reason: number; why: string; publicKeySha256: Uint8Array }> {
+  async tfwCheck(
+    path: string,
+    options: CallOptions = {},
+  ): Promise<{ pass: boolean; reason: number; why: string; publicKeySha256: Uint8Array }> {
     const r = await this.call('tfw.check', { path }, options);
-    return { pass: r.verdict === 0, reason: r.reason, why: TFW_REASONS[r.reason] ?? `reason ${r.reason}`, publicKeySha256: r.public_key_sha256 };
+    return {
+      pass: r.verdict === 0,
+      reason: r.reason,
+      why: TFW_REASONS[r.reason] ?? `reason ${r.reason}`,
+      publicKeySha256: r.public_key_sha256,
+    };
   }
 
   /** The default firmware: the valid state file with the higher seq (null: none valid). */
-  async readState(options: CallOptions = {}): Promise<{ file: string; seq: number; default: string | null; fields: Record<string, string> } | null> {
+  async readState(
+    options: CallOptions = {},
+  ): Promise<{ file: string; seq: number; default: string | null; fields: Record<string, string> } | null> {
     let best: { file: string; seq: number; default: string | null; fields: Record<string, string> } | null = null;
     for (const file of STATE_FILES) {
       let data: Uint8Array;
@@ -513,7 +671,8 @@ export class Client {
         throw error;
       }
       const slot = parseSlot(data);
-      if (slot && (best === null || slot.seq > best.seq)) best = { file, ...slot, default: slot.fields['default'] ?? null };
+      if (slot && (best === null || slot.seq > best.seq))
+        best = { file, ...slot, default: slot.fields['default'] ?? null };
     }
     return best;
   }
@@ -525,9 +684,13 @@ export class Client {
 
   private attach(link: Link): void {
     link.onEvent((f) => {
-      if (f.type !== v1.TYPE.log) return;               // unknown events are ignored
+      if (f.type !== v1.TYPE.log) return; // unknown events are ignored
       let event: v1.LogEvent;
-      try { event = v1.decodeLogEvent(f.payload); } catch { return; }
+      try {
+        event = v1.decodeLogEvent(f.payload);
+      } catch {
+        return;
+      }
       for (const listener of this.logListeners) listener(event);
     });
   }
@@ -540,13 +703,18 @@ function parseEntries(data: Uint8Array): DirEntry[] {
   const utf8 = new TextDecoder();
   let at = 0;
   while (at + 6 <= data.length) {
-    const kind = view.getUint8(at), size = view.getUint32(at + 1, true), n = view.getUint8(at + 5);
+    const kind = view.getUint8(at),
+      size = view.getUint32(at + 1, true),
+      n = view.getUint8(at + 5);
     if (at + 6 + n > data.length) break;
     const nameBytes = data.slice(at + 6, at + 6 + n);
     out.push({ name: utf8.decode(nameBytes), nameBytes, kind: KINDS[kind] ?? 'other', size });
     at += 6 + n;
   }
-  if (at !== data.length) throw new XyfError('protocol', `file.list: ${data.length - at} bytes after the last whole entry`, { command: 'file.list' });
+  if (at !== data.length)
+    throw new XyfError('protocol', `file.list: ${data.length - at} bytes after the last whole entry`, {
+      command: 'file.list',
+    });
   return out;
 }
 
@@ -558,18 +726,22 @@ function pathPair(source: string, target: string): Uint8Array {
 
 /** Before anything is sent: a change outside the write area is `refused` here (status null), as the device would answer. */
 function checkChange(command: ChangeCommand, path: string, label: string, below = 0): void {
-  const deep = command === 'file.delete' || command === 'file.rmdir' ? null : depthRefusal(path, command === 'file.mkdir', below);
+  const deep =
+    command === 'file.delete' || command === 'file.rmdir' ? null : depthRefusal(path, command === 'file.mkdir', below);
   if (inWriteArea(path) && !deep) return;
   const reason = deep ?? fileReason(new XyfError('refused', '', { command }));
   throw new XyfError('refused', `${command} ${label}: ${reason}`, { command });
 }
 
-
 /** The same error with the path and the plain reason in its message (device errors only). */
 function plainFileError(error: unknown, path: string): unknown {
   if (!isXyfError(error) || error.status === null) return error;
-  return new XyfError(error.code, `${error.command ?? 'file'} ${path}: ${fileReason(error)}`,
-    { command: error.command, status: error.status, fields: error.fields, cause: error });
+  return new XyfError(error.code, `${error.command ?? 'file'} ${path}: ${fileReason(error)}`, {
+    command: error.command,
+    status: error.status,
+    fields: error.fields,
+    cause: error,
+  });
 }
 
 /** A state file (xyf::state::parse_slot): key=value lines, then `crc32=xxxxxxxx` over the lines before it. */

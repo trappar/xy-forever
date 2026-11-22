@@ -25,7 +25,10 @@ namespace xy_forever { namespace mtp_session {
 namespace M = xyf_core::mtp;
 static const uint32_t packet_bytes = 512, max_open = 4, idle_ms = 2000, log_entries = 128;
 // The IN side's phase tracking (pure): each container starts with its u32 length.
-struct InPhase { uint32_t length, sent; uint8_t head[4]; };
+struct InPhase {
+    uint32_t length, sent;
+    uint8_t head[4];
+};
 // How many bytes the next fetch may take so that it never crosses a container's end (one container per IN
 // phase): the rest of the header (4 bytes) first, then the rest of the container.
 uint32_t phase_room(const InPhase& p, uint32_t room);
@@ -57,18 +60,18 @@ struct Files {
     // 0 none). Ends at the file's close or seek, and at collect.
     int ahead_fd;
     uint32_t ahead_left, ahead_half, ahead_at, ahead_end, ahead_asked;
-    int open[max_open];                 // files the responder holds (closed when the session ends)
+    int open[max_open]; // files the responder holds (closed when the session ends)
     uint8_t open_write[max_open];
-    char upload[45];                    // #4: SendObject's temporary file (file_engine::upload_name)
-    uint8_t page[M::page * (6 + 255)] __attribute__((aligned(4)));   // one list page (file_client::list_entry)
+    char upload[45]; // #4: SendObject's temporary file (file_engine::upload_name)
+    uint8_t page[M::page * (6 + 255)] __attribute__((aligned(4))); // one list page (file_client::list_entry)
 };
 void files_init(Files& f, volatile uint32_t* mounted, uint32_t (*on_change)());
-M::FileOps file_ops(Files& f);          // the adapter (context: &f)
+M::FileOps file_ops(Files& f); // the adapter (context: &f)
 // #144: A's answer to the write left out (write_start), awaited (bounded: change_ms): 0 when it wrote every byte
 // (none left: 0 too), else the failure (M::f_*). The adapter's next write and close call it first. A read-ahead
 // still out is collected and dropped first.
 int collect(Files& f);
-void drop_ahead(Files& f);              // #144: the read-ahead ended (its request out collected, bounded)
+void drop_ahead(Files& f); // #144: the read-ahead ended (its request out collected, bounded)
 struct Session {
     M::Responder responder;
     Files files;
@@ -84,5 +87,5 @@ struct Session {
     uint32_t hist[4], command_ms, served_ms;
 };
 enum Stage : uint32_t { st_none = 0, st_running, st_leaving, st_closing, st_ended };
-} }
+}}
 #endif

@@ -39,32 +39,47 @@ import type { Browser, BrowserContext, Page } from 'playwright';
 const here = fileURLToPath(new URL('..', import.meta.url));
 const web = resolve(here, '../../web');
 const args = process.argv.slice(2);
-const opt = (name: string): string | undefined => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+const opt = (name: string): string | undefined => {
+  const i = args.indexOf(name);
+  return i >= 0 ? args[i + 1] : undefined;
+};
 const out = opt('--out');
 const sim = opt('--sim');
 const grant = args.includes('--grant');
 const serial = args.includes('--serial') || grant;
 if ((!out && !grant) || (!sim && !serial) || (sim && serial) || (grant && args.includes('--serial'))) {
-  console.error('usage: node scripts/device-browser-test.ts (--out DIR (--sim PORT | --serial) | --grant) [--headed] [--profile DIR] [--vite-port N]');
+  console.error(
+    'usage: node scripts/device-browser-test.ts (--out DIR (--sim PORT | --serial) | --grant) [--headed] [--profile DIR] [--vite-port N]',
+  );
   process.exit(2);
 }
 if (out) mkdirSync(out, { recursive: true });
-const privateRoot = resolve(process.env['XYF_PRIVATE'] ?? join(here, '../../../private'));   // as xy_forever/paths.py
+const privateRoot = resolve(process.env['XYF_PRIVATE'] ?? join(here, '../../../private')); // as xy_forever/paths.py
 const profile = resolve(opt('--profile') ?? join(privateRoot, 'xy-forever/chrome-device-test'));
 const DIR = '/yaffs2/xy-forever';
 const scratchName = `xyf-browser-test-${Date.now()}.txt`;
 const scratchData = `XY Forever browser test scratch file, ${new Date().toISOString()}\n`;
 const STEP_MS = 30_000;
 
-interface Step { name: string; ok: boolean; ms: number; detail: string; screenshot?: string }
+interface Step {
+  name: string;
+  ok: boolean;
+  ms: number;
+  detail: string;
+  screenshot?: string;
+}
 const steps: Step[] = [];
 let page: Page | null = null;
 
 async function step(name: string, work: () => Promise<string>): Promise<boolean> {
   const start = Date.now();
-  let ok = false, detail = '';
+  let ok = false,
+    detail: string;
   try {
-    detail = await Promise.race([work(), new Promise<string>((_, no) => setTimeout(() => no(new Error(`no result in ${STEP_MS / 1000} s`)), STEP_MS))]);
+    detail = await Promise.race([
+      work(),
+      new Promise<string>((_, no) => setTimeout(() => no(new Error(`no result in ${STEP_MS / 1000} s`)), STEP_MS)),
+    ]);
     ok = true;
   } catch (error) {
     detail = (error as Error).message.split('\n')[0] ?? String(error);
@@ -72,7 +87,12 @@ async function step(name: string, work: () => Promise<string>): Promise<boolean>
   const s: Step = { name, ok, ms: Date.now() - start, detail };
   if (page) {
     const file = `${String(steps.length + 1).padStart(2, '0')}-${name.replace(/[^a-z0-9]+/gi, '-')}.png`;
-    try { await page.screenshot({ path: join(out!, file), fullPage: true }); s.screenshot = file; } catch { /* the page is gone */ }
+    try {
+      await page.screenshot({ path: join(out!, file), fullPage: true });
+      s.screenshot = file;
+    } catch {
+      /* the page is gone */
+    }
   }
   steps.push(s);
   console.log(`${ok ? 'PASS' : 'FAIL'} ${name}: ${detail}`);
@@ -83,32 +103,50 @@ function freePort(): Promise<number> {
   return new Promise((done, fail) => {
     const srv = createServer();
     srv.once('error', fail);
-    srv.listen(0, '127.0.0.1', () => { const p = (srv.address() as { port: number }).port; srv.close(() => done(p)); });
+    srv.listen(0, '127.0.0.1', () => {
+      const p = (srv.address() as { port: number }).port;
+      srv.close(() => done(p));
+    });
   });
 }
 
 /** The web app's dev server (pnpm run dev in web/) on 127.0.0.1:port; resolves once it answers. */
 async function startVite(port: number): Promise<ChildProcess> {
-  const vite = spawn(process.execPath, [join(web, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort'],
-    { cwd: web, stdio: ['ignore', 'pipe', 'pipe'] });
+  const vite = spawn(
+    process.execPath,
+    [join(web, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort'],
+    { cwd: web, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
   let log = '';
-  vite.stdout!.on('data', (d: Buffer) => { log += d.toString(); });
-  vite.stderr!.on('data', (d: Buffer) => { log += d.toString(); });
+  vite.stdout!.on('data', (d: Buffer) => {
+    log += d.toString();
+  });
+  vite.stderr!.on('data', (d: Buffer) => {
+    log += d.toString();
+  });
   for (const until = Date.now() + 30_000; Date.now() < until;) {
     if (vite.exitCode !== null) throw new Error(`the dev server stopped: ${log.trim()}`);
-    try { if ((await fetch(`http://127.0.0.1:${port}/`)).ok) return vite; } catch { /* not yet */ }
+    try {
+      if ((await fetch(`http://127.0.0.1:${port}/`)).ok) return vite;
+    } catch {
+      /* not yet */
+    }
     await new Promise((r) => setTimeout(r, 200));
   }
   vite.kill();
   throw new Error(`the dev server did not answer in 30 s: ${log.trim()}`);
 }
 
-const nav = (name: string): Promise<void> => page!.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true }).click();
+const nav = (name: string): Promise<void> =>
+  page!.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true }).click();
 
 /** Waits until done() holds; throws with the app's error notice when one shows first. */
 async function settled(done: () => Promise<boolean>): Promise<void> {
   for (const until = Date.now() + STEP_MS; Date.now() < until; await new Promise((r) => setTimeout(r, 100))) {
-    const error = await page!.locator('[data-testid=notice][data-type=error]').textContent({ timeout: 100 }).catch(() => null);
+    const error = await page!
+      .locator('[data-testid=notice][data-type=error]')
+      .textContent({ timeout: 100 })
+      .catch(() => null);
     if (error) throw new Error(error);
     if (await done()) return;
   }
@@ -116,13 +154,20 @@ async function settled(done: () => Promise<boolean>): Promise<void> {
 }
 
 /** The Files page's rows: name, kind, size. */
-const rows = (): Promise<{ name: string; kind: string; size: number }[]> => page!.$$eval('#files-body tr[data-name]',
-  (trs) => trs.map((tr) => ({ name: (tr as HTMLElement).dataset['name'] ?? '', kind: (tr as HTMLElement).dataset['kind'] ?? '', size: Number((tr as HTMLElement).dataset['size']) })));
-const connected = async (): Promise<boolean> => ((await page!.getByTestId('link').textContent()) ?? '').startsWith('Connected');
+const rows = (): Promise<{ name: string; kind: string; size: number }[]> =>
+  page!.$$eval('#files-body tr[data-name]', (trs) =>
+    trs.map((tr) => ({
+      name: (tr as HTMLElement).dataset['name'] ?? '',
+      kind: (tr as HTMLElement).dataset['kind'] ?? '',
+      size: Number((tr as HTMLElement).dataset['size']),
+    })),
+  );
+const connected = async (): Promise<boolean> =>
+  ((await page!.getByTestId('link').textContent()) ?? '').startsWith('Connected');
 /** The Files page's folder, or '' on another page. */
 async function folder(): Promise<string> {
   const crumbs = page!.getByRole('navigation', { name: 'Folder' });
-  return await crumbs.count() ? ((await crumbs.textContent()) ?? '').replace(/\s/g, '') : '';
+  return (await crumbs.count()) ? ((await crumbs.textContent()) ?? '').replace(/\s/g, '') : '';
 }
 
 async function connect(): Promise<string> {
@@ -135,14 +180,14 @@ async function openDir(): Promise<string> {
   await nav('Files');
   await settled(async () => (await rows()).some((r) => r.name === 'xy-forever'));
   await page!.locator('#files-body tr[data-name="xy-forever"]').getByRole('button', { name: 'xy-forever/' }).click();
-  await settled(async () => await folder() === 'yaffs2/xy-forever');
-  return (await rows()).map((r) => r.kind === 'folder' ? `${r.name}/` : r.name).join(' ') || '(empty)';
+  await settled(async () => (await folder()) === 'yaffs2/xy-forever');
+  return (await rows()).map((r) => (r.kind === 'folder' ? `${r.name}/` : r.name)).join(' ') || '(empty)';
 }
 
 async function disconnect(): Promise<string> {
   await nav('Connect');
   await page!.getByRole('button', { name: 'Disconnect', exact: true }).click();
-  await settled(async () => !await connected());
+  await settled(async () => !(await connected()));
   return (await page!.getByTestId('link').textContent()) ?? '';
 }
 
@@ -158,12 +203,12 @@ async function deleteScratch(): Promise<void> {
 
 /** Deletes the scratch file through the Files page (connecting again when needed); true when it is gone. */
 async function cleanup(): Promise<string> {
-  if (!await connected()) {
+  if (!(await connected())) {
     await page!.reload();
     await nav('Connect');
     await connect();
   }
-  if (await folder() !== 'yaffs2/xy-forever') await openDir();
+  if ((await folder()) !== 'yaffs2/xy-forever') await openDir();
   if (!(await rows()).some((r) => r.name === scratchName)) return 'nothing left';
   await deleteScratch();
   return `deleted ${DIR}/${scratchName}`;
@@ -172,7 +217,11 @@ async function cleanup(): Promise<string> {
 /** XY Forever ports the page's origin holds a grant for (getPorts, no chooser), and all ports. */
 async function grantedHere(p: Page): Promise<{ mine: number; all: number }> {
   const ports = await p.evaluate(async () => {
-    const s = (navigator as Navigator & { serial?: { getPorts(): Promise<{ getInfo(): { usbVendorId?: number; usbProductId?: number } }[]> } }).serial;
+    const s = (
+      navigator as Navigator & {
+        serial?: { getPorts(): Promise<{ getInfo(): { usbVendorId?: number; usbProductId?: number } }[]> };
+      }
+    ).serial;
     if (!s) throw new Error('this Chrome has no Web Serial');
     return (await s.getPorts()).map((x) => x.getInfo());
   });
@@ -187,18 +236,30 @@ const PICK = "Click Connect, pick the OP-XY in Chrome's list once, then wait: th
 
 /** Hold the shared Python flock until Chrome closes. The pipe also closes if this process exits. */
 async function reserveDevice(): Promise<ChildProcess> {
-  const holder = spawn('python3', ['-c', [
-    'import sys',
-    'from xy_forever import device_lock, no_device',
-    'no_device.refuse("Chrome Web Serial")',
-    'device_lock.hold()',
-    'print("locked", flush=True)',
-    'sys.stdin.buffer.read()',
-  ].join('\n'), 'device-browser-test.ts'], { cwd: resolve(here, '../..'), stdio: ['pipe', 'pipe', 'inherit'] });
+  const holder = spawn(
+    'python3',
+    [
+      '-c',
+      [
+        'import sys',
+        'from xy_forever import device_lock, no_device',
+        'no_device.refuse("Chrome Web Serial")',
+        'device_lock.hold()',
+        'print("locked", flush=True)',
+        'sys.stdin.buffer.read()',
+      ].join('\n'),
+      'device-browser-test.ts',
+    ],
+    { cwd: resolve(here, '../..'), stdio: ['pipe', 'pipe', 'inherit'] },
+  );
   await new Promise<void>((ready, fail) => {
     holder.on('error', fail);
-    holder.once('exit', (code) => { fail(new Error(`device lock exited with status ${code}`)); });
-    holder.stdout!.once('data', () => { ready(); });
+    holder.once('exit', (code) => {
+      fail(new Error(`device lock exited with status ${code}`));
+    });
+    holder.stdout!.once('data', () => {
+      ready();
+    });
   });
   return holder;
 }
@@ -215,12 +276,13 @@ async function grantMode(): Promise<number> {
   let ctx: BrowserContext | null = null;
   try {
     ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false });
-    let p = ctx.pages()[0] ?? await ctx.newPage();
+    let p = ctx.pages()[0] ?? (await ctx.newPage());
     await p.goto(origin);
     if ((await grantedHere(p)).mine === 0) {
       await p.evaluate((line) => {
         const bar = Object.assign(document.createElement('div'), { id: 'grant-line', textContent: line });
-        bar.style.cssText = 'position:sticky;top:0;z-index:9;padding:10px;background:#ffd84d;color:#000;font:bold 16px sans-serif';
+        bar.style.cssText =
+          'position:sticky;top:0;z-index:9;padding:10px;background:#ffd84d;color:#000;font:bold 16px sans-serif';
         document.body.prepend(bar);
       }, PICK);
       console.log(`NEED: ${PICK}`);
@@ -233,12 +295,12 @@ async function grantMode(): Promise<number> {
     } else {
       console.log(`already granted: ${origin} in profile ${profile}`);
     }
-    await ctx.close();                                             // the grant must outlive this Chrome
+    await ctx.close(); // the grant must outlive this Chrome
     ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: true });
-    page = p = ctx.pages()[0] ?? await ctx.newPage();
+    page = p = ctx.pages()[0] ?? (await ctx.newPage());
     await p.goto(origin);
     if ((await grantedHere(p)).mine === 0) throw new Error('the grant did not persist in the profile');
-    const hello = await connect();                                 // no chooser: a granted port answers
+    const hello = await connect(); // no chooser: a granted port answers
     await disconnect();
     console.log(`PASS grant persists: connected without a chooser (${hello})`);
     return 0;
@@ -272,46 +334,62 @@ if (grant) {
 let vite: ChildProcess | null = null;
 let context: BrowserContext | null = null;
 let browser: Browser | null = null;
-let uploaded = false, deleted = false;
+let uploaded = false,
+  deleted = false;
 const started = new Date().toISOString();
 try {
-  const port = opt('--vite-port') ? Number(opt('--vite-port')) : serial ? 5173 : await freePort();   // a grant is per origin: serial keeps one
-  await step('dev server', async () => { vite = await startVite(port); return `http://127.0.0.1:${port}/`; });
+  const port = opt('--vite-port') ? Number(opt('--vite-port')) : serial ? 5173 : await freePort(); // a grant is per origin: serial keeps one
+  await step('dev server', async () => {
+    vite = await startVite(port);
+    return `http://127.0.0.1:${port}/`;
+  });
   if (vite) {
     const launch = { channel: 'chrome', headless: !args.includes('--headed'), acceptDownloads: true };
     if (serial) context = await chromium.launchPersistentContext(profile, launch);
     else context = await (browser = await chromium.launch(launch)).newContext({ acceptDownloads: true });
-    page = context.pages()[0] ?? await context.newPage();
+    page = context.pages()[0] ?? (await context.newPage());
     await page.goto(`http://127.0.0.1:${port}/${sim ? `?sim=${encodeURIComponent(sim)}` : ''}`);
     let ready = true;
     if (serial) {
       ready = await step('serial port granted', async () => {
         const { mine, all } = await grantedHere(page!);
         if (mine === 0) {
-          console.log('NEED: connect the OP-XY in the XY Forever menu and grant this Chrome profile access with --grant.');
+          console.log(
+            'NEED: connect the OP-XY in the XY Forever menu and grant this Chrome profile access with --grant.',
+          );
           throw new Error(`no granted XY Forever port in profile ${profile} for http://127.0.0.1:${port}`);
         }
         return `${mine} granted port(s), ${all} in all`;
       });
     }
-    if (ready && await step('connect and HELLO', connect)) {
+    if (ready && (await step('connect and HELLO', connect))) {
       if (await step(`list ${DIR}`, openDir)) {
         const ok = await step('upload scratch file', async () => {
-          await page!.locator('input[type=file]').setInputFiles({ name: scratchName, mimeType: 'text/plain', buffer: Buffer.from(scratchData) });
+          await page!
+            .locator('input[type=file]')
+            .setInputFiles({ name: scratchName, mimeType: 'text/plain', buffer: Buffer.from(scratchData) });
           uploaded = true;
           await settled(async () => (await rows()).some((r) => r.name === scratchName));
           const row = (await rows()).find((r) => r.name === scratchName)!;
-          if (row.size !== Buffer.byteLength(scratchData)) throw new Error(`listed with ${row.size} bytes, sent ${Buffer.byteLength(scratchData)}`);
+          if (row.size !== Buffer.byteLength(scratchData))
+            throw new Error(`listed with ${row.size} bytes, sent ${Buffer.byteLength(scratchData)}`);
           return `${DIR}/${scratchName}, ${row.size} bytes`;
         });
-        if (ok && args.includes('--fail-after-upload')) await step('forced failure (--fail-after-upload)', async () => { throw new Error('as asked'); });
+        if (ok && args.includes('--fail-after-upload'))
+          await step('forced failure (--fail-after-upload)', async () => {
+            throw new Error('as asked');
+          });
         else if (ok) {
           await step('download and compare', async () => {
-            const [download] = await Promise.all([page!.waitForEvent('download', { timeout: STEP_MS }), rowButton(scratchName, 'Download')]);
+            const [download] = await Promise.all([
+              page!.waitForEvent('download', { timeout: STEP_MS }),
+              rowButton(scratchName, 'Download'),
+            ]);
             const file = join(out!, 'downloaded-scratch.txt');
             await download.saveAs(file);
             const got = readFileSync(file, 'utf8');
-            if (got !== scratchData) throw new Error(`downloaded ${got.length} bytes that differ from the ${scratchData.length} sent`);
+            if (got !== scratchData)
+              throw new Error(`downloaded ${got.length} bytes that differ from the ${scratchData.length} sent`);
             return `${got.length} bytes, identical`;
           });
           await step('delete scratch file', async () => {
@@ -330,15 +408,29 @@ try {
   }
 } finally {
   if (uploaded && !deleted && page) await step('cleanup: delete scratch file', cleanup);
-  if (page && await connected().catch(() => false)) await step('disconnect', disconnect);
+  if (page && (await connected().catch(() => false))) await step('disconnect', disconnect);
   await context?.close().catch(() => undefined);
   await (browser as Browser | null)?.close().catch(() => undefined);
   (vite as ChildProcess | null)?.kill();
   deviceLock?.stdin?.end();
   const pass = steps.length > 0 && steps.every((s) => s.ok);
-  writeFileSync(join(out!, 'result.json'), JSON.stringify({
-    pass, started, finished: new Date().toISOString(), transport: sim ? `sim:${sim}` : 'webserial', scratch: `${DIR}/${scratchName}`, steps,
-  }, null, 2) + '\n');
-  console.log(`${pass ? 'PASS' : 'FAIL'}: ${steps.filter((s) => s.ok).length}/${steps.length} steps; ${join(out!, 'result.json')}`);
+  writeFileSync(
+    join(out!, 'result.json'),
+    JSON.stringify(
+      {
+        pass,
+        started,
+        finished: new Date().toISOString(),
+        transport: sim ? `sim:${sim}` : 'webserial',
+        scratch: `${DIR}/${scratchName}`,
+        steps,
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+  console.log(
+    `${pass ? 'PASS' : 'FAIL'}: ${steps.filter((s) => s.ok).length}/${steps.length} steps; ${join(out!, 'result.json')}`,
+  );
   process.exitCode = pass ? 0 : 1;
 }

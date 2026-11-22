@@ -4,7 +4,9 @@
 namespace xyf_core { namespace peer {
 // Storage RPCs observed in bootloader 1.2.1. The codecs below cover its staged
 // command/result headers, not SPI DMA transactions or the data-body handshake.
-struct Request { U32 operation, argument0, argument1; };
+struct Request {
+    U32 operation, argument0, argument1;
+};
 enum class Status { ok, waiting, argument, capacity, protocol, identity, stopped };
 enum class Phase { stopped, waiting, select, metadata, data, admit, restore, release, ready };
 static const U32 sector_bytes = 512;
@@ -36,9 +38,13 @@ public:
     void stop();
     bool ready() const;
     Phase phase() const;
+
 private:
-    const Byte* image_; U32 size_, crc_, sectors_, next_sector_;
-    hash::Digest digest_; Phase phase_; bool metadata_read_, recheck_;
+    const Byte* image_;
+    U32 size_, crc_, sectors_, next_sector_;
+    hash::Digest digest_;
+    Phase phase_;
+    bool metadata_read_, recheck_;
 };
 // Loader-owned metadata extension carries the selected SHA-256. The first
 // fourteen bytes retain stock v3 clear boot-partition semantics. The extension
@@ -63,8 +69,11 @@ public:
     const hash::Digest& digest() const;
     U32 crc() const;                 // the metadata CRC-32, checked over the received bytes
 private:
-    Byte* destination_; U32 capacity_, size_, crc_, sectors_, next_sector_, running_;
-    hash::Digest digest_; Phase phase_; bool hashed_;
+    Byte* destination_;
+    U32 capacity_, size_, crc_, sectors_, next_sector_, running_;
+    hash::Digest digest_;
+    Phase phase_;
+    bool hashed_;
 };
-} }
+}}
 #endif

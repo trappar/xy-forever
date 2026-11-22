@@ -15,14 +15,18 @@ Check validate(const uint8_t* file, uint32_t length, uint32_t stage1_version, He
     if (crc::update(0, file, header_bytes - 4) != get32(file + header_bytes - 4)) return Check::header_crc;
     if (out.flags || out.reserved) return Check::flags;
     if (!out.image_bytes || out.image_bytes > max_image || length != header_bytes + out.image_bytes) return Check::size;
-    if (out.load_address < window_begin || out.load_address & 3u ||
-        out.load_address > window_end - out.image_bytes) return Check::window;
+    if (out.load_address < window_begin || out.load_address & 3u || out.load_address > window_end - out.image_bytes)
+        return Check::window;
     if (out.entry < out.load_address || out.entry >= out.load_address + out.image_bytes || (out.entry & 1u))
         return Check::entry;
     if (crc::update(0, file + header_bytes, out.image_bytes) != out.image_crc32) return Check::image_crc;
     if (out.min_stage1 > stage1_version) return Check::stage1;
     bool terminated = false;
-    for (uint32_t i = 0; i != sizeof(out.build_id); ++i) if (!out.build_id[i]) { terminated = true; break; }
+    for (uint32_t i = 0; i != sizeof(out.build_id); ++i)
+        if (!out.build_id[i]) {
+            terminated = true;
+            break;
+        }
     if (!terminated) return Check::build_id;
     return Check::ok;
 }
@@ -74,4 +78,4 @@ Do decide(uint32_t exit, bool link_lost, uint32_t catalog_count, uint32_t featur
     }
 }
 #endif
-} }
+}}

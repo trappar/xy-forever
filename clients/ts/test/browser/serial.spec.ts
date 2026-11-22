@@ -4,7 +4,16 @@
 import { afterAll, beforeAll, describe, expect, inject, test } from 'vitest';
 import { commands, userEvent } from 'vitest/browser';
 import { webSocketOpener } from '../../src/dev.ts';
-import { Client, USB_FILTERS, VERSION, decodeScreen, grantedPorts, isXyfError, requestPort, webSerialOpener } from '../../src/index.ts';
+import {
+  Client,
+  USB_FILTERS,
+  VERSION,
+  decodeScreen,
+  grantedPorts,
+  isXyfError,
+  requestPort,
+  webSerialOpener,
+} from '../../src/index.ts';
 import type { SerialPortLike } from '../../src/index.ts';
 import { FakeSerial } from './fake-serial.ts';
 import type { FakePort } from './fake-serial.ts';
@@ -23,7 +32,7 @@ async function fromClick<T>(work: () => Promise<T>): Promise<T> {
   let result!: Promise<T>;
   button.addEventListener('click', () => {
     result = work();
-    result.catch(() => undefined);   // handled below; a chooser cancelled before the click resolves is not an unhandled rejection
+    result.catch(() => undefined); // handled below; a chooser cancelled before the click resolves is not an unhandled rejection
   });
   try {
     await userEvent.click(button);
@@ -47,16 +56,24 @@ describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` 
   const serial = new FakeSerial(sim?.relay ?? '');
   let uninstall = (): void => undefined;
   let client: Client;
-  beforeAll(() => { uninstall = serial.install(); });
-  afterAll(async () => { await client?.close(); uninstall(); });
+  beforeAll(() => {
+    uninstall = serial.install();
+  });
+  afterAll(async () => {
+    await client?.close();
+    uninstall();
+  });
 
   test('the chooser needs a click and offers only XY Forever', async () => {
-    expect(await grantedPorts()).toEqual([]);                       // only the other adapter is granted
+    expect(await grantedPorts()).toEqual([]); // only the other adapter is granted
     await expect(requestPort()).rejects.toMatchObject({ name: 'SecurityError' });
-    await expect(fromClick(() => (navigator as unknown as { serial: FakeSerial }).serial.requestPort({ filters: [{ usbVendorId: 0x1234 }] })))
-      .rejects.toMatchObject({ name: 'NotFoundError' });
+    await expect(
+      fromClick(() =>
+        (navigator as unknown as { serial: FakeSerial }).serial.requestPort({ filters: [{ usbVendorId: 0x1234 }] }),
+      ),
+    ).rejects.toMatchObject({ name: 'NotFoundError' });
     const port: SerialPortLike = await fromClick(() => requestPort());
-    expect(port.getInfo()).toEqual({ ...USB_FILTERS[0] });       // the product build's composite
+    expect(port.getInfo()).toEqual({ ...USB_FILTERS[0] }); // the product build's composite
     expect(await grantedPorts()).toEqual([port]);
   });
 
@@ -123,7 +140,7 @@ describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` 
     await client.reboot('menu');
     expect(client.connected).toBe(false);
     expect(disconnects).toBe(1);
-    expect(before.isOpen).toBe(false);                              // the transport closed the lost port
+    expect(before.isOpen).toBe(false); // the transport closed the lost port
     await expect(client.readFile('/yaffs2/firmware.version')).rejects.toMatchObject({ code: 'disconnected' });
     expect((await client.reconnect({ timeoutMs: 20_000 })).proto).toBe(VERSION);
     const after = serial.xyfPorts.at(-1)!;
@@ -135,11 +152,11 @@ describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` 
 
   test('cable pulled mid-read: a typed error within the timeout, then reconnect', async () => {
     await commands.simWrite(sim!.root, '/yaffs2/xy-forever/log/web/pull.bin', toBase64(randomBytes(8000)));
-    await commands.simControl(sim!.control, 'set cable_pull 10');   // 10 bytes of the next reply, then the cable goes
+    await commands.simControl(sim!.control, 'set cable_pull 10'); // 10 bytes of the next reply, then the cable goes
     const started = performance.now();
     const error = await client.readFile('/yaffs2/xy-forever/log/web/pull.bin').catch((e: unknown) => e);
     expect(isXyfError(error, 'disconnected')).toBe(true);
-    expect(performance.now() - started).toBeLessThan(15_000);       // file.read's timeout
+    expect(performance.now() - started).toBeLessThan(15_000); // file.read's timeout
     await client.reconnect({ timeoutMs: 20_000 });
     expect((await client.readFile('/yaffs2/xy-forever/log/web/pull.bin')).length).toBe(8000);
     await client.close();

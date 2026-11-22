@@ -21,10 +21,26 @@ namespace xyf_core { namespace mod_content {
 // and max_entry_depth levels whose rewritten number is its top-level "id" key's value.
 // Inputs are whole files in RAM. Steps of one package (step(): Status::more). No heap, no BSS, no
 // library calls, no recursion, every loop bounded.
-enum class Status { ok, more, argument, capacity, catalog, insert, entry, number, package, missing, duplicate,
-                    official, unlinked };
+enum class Status {
+    ok,
+    more,
+    argument,
+    capacity,
+    catalog,
+    insert,
+    entry,
+    number,
+    package,
+    missing,
+    duplicate,
+    official,
+    unlinked
+};
 enum class Kind : Byte { synth, drum, sample, effect, player, extension };
-struct File { const char* path; hash::Digest sha256; };   // one files.sha256 line
+struct File {
+    const char* path;
+    hash::Digest sha256;
+};   // one files.sha256 line
 // One selected package, from its info.txt and files.sha256 (docs/storage/mods.md, "Mod packages").
 struct Package {
     const char* id;                 // id=
@@ -34,11 +50,16 @@ struct Package {
     bool numbered;                  // catalog_number=<start>,<end>
     U32 number_start, number_end;
     U32 presets;                    // presets= (machines)
-    const File* files; U32 file_count;
-    const Byte* catalog_text; U32 catalog_bytes;   // catalog.txt in RAM (0 when the package has none)
+    const File* files;
+    U32 file_count;
+    const Byte* catalog_text;
+    U32 catalog_bytes;   // catalog.txt in RAM (0 when the package has none)
 };
 // The base's catalog_sha256 and catalog_engine_at / _fx_at / _seq_at.
-struct Catalog { hash::Digest sha256; U32 engine_at, fx_at, seq_at; };
+struct Catalog {
+    hash::Digest sha256;
+    U32 engine_at, fx_at, seq_at;
+};
 struct Limits {
     U32 packages, files;            // selected packages, files listed
     Limits() : packages(128), files(1024) {}
@@ -50,15 +71,26 @@ bool pack_manifest(const Byte* data, U32 bytes, const char* folder);
 // max_entry, max_entry_depth: the 0.0.6 kit's largest catalog.txt is 154 bytes, 2 levels deep.
 static const U32 max_packages = 1024, max_files = 8192, max_catalog = 1u << 20, max_entry = 512, max_entry_depth = 4,
                  max_path = 160, detail_bytes = 32;
-struct Listed { const char* path; U32 package; const hash::Digest* sha256; };   // package ~0u: the catalog
+struct Listed {
+    const char* path;
+    U32 package;
+    const hash::Digest* sha256;
+};   // package ~0u: the catalog
 // Caller-owned state of one run; the inputs passed to start() must stay alive until it ends.
 struct Builder {
-    const Catalog* pins; const Byte* catalog; const Package* packages; const Byte* official;
+    const Catalog* pins;
+    const Byte* catalog;
+    const Package* packages;
+    const Byte* official;
     const mod_link::Selection* selection;
-    const mod_link::Workspace* link; const mod_link::Result* linked;          // the linker's (mod_link.hpp)
-    Byte* out; Byte* list;
+    const mod_link::Workspace* link;
+    const mod_link::Result* linked;          // the linker's (mod_link.hpp)
+    Byte* out;
+    Byte* list;
     U32 catalog_size, official_bytes, count, out_capacity, list_capacity, limit_packages, limit_files;
-    Listed* listed; unsigned short* machines; U32* entry_bytes;
+    Listed* listed;
+    unsigned short* machines;
+    U32* entry_bytes;
     U32 phase, cursor, listed_count, machine_count, extension_count, aux, aux_folders;
     U32 catalog_bytes, list_bytes;  // after ok: out[0, catalog_bytes) and list[0, list_bytes)
     const char* folders[16];
@@ -72,12 +104,12 @@ struct Builder {
 // link, linked: the selection the link began with and the linker's finished link.
 Status start(Builder& b, const Catalog& pins, const Byte* catalog, U32 catalog_size, const Byte* official,
              U32 official_bytes, const Package* packages, U32 count, const mod_link::Selection& selection,
-             const mod_link::Workspace& link, const mod_link::Result& linked, Byte* out, U32 out_capacity,
-             Byte* list, U32 list_capacity, const Limits& limits, Byte* scratch, U32 scratch_capacity);
+             const mod_link::Workspace& link, const mod_link::Result& linked, Byte* out, U32 out_capacity, Byte* list,
+             U32 list_capacity, const Limits& limits, Byte* scratch, U32 scratch_capacity);
 Status step(Builder& b);
 // One mod package object (whole, in RAM): no absolute symbols (SHN_ABS, named, not STT_FILE), which
 // only the base may define. Status::package when it has one or is not a Blackfin ET_REL object.
 Status check_object(const Byte* object, U32 size);
 const char* status_name(Status status);
-} }
+}}
 #endif

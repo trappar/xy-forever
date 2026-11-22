@@ -23,8 +23,14 @@ static const uint32_t a_plan = 0x8b820000u, a_readback = 0x8b822000u;
 static const char slot_a_path[] = "/yaffs2/xy-forever/state-a.txt";
 static const char slot_b_path[] = "/yaffs2/xy-forever/state-b.txt";
 enum Status : uint32_t {
-    status_none = 0, status_ok = 1, status_bad_entry = 2, status_unusable = 3, status_plan = 4,
-    status_not_mounted = 5, status_storage = 6, status_hash = 7     // storage: low byte cold_storage::Result
+    status_none = 0,
+    status_ok = 1,
+    status_bad_entry = 2,
+    status_unusable = 3,
+    status_plan = 4,
+    status_not_mounted = 5,
+    status_storage = 6,
+    status_hash = 7     // storage: low byte cold_storage::Result
 };
 struct Plan {
     const char* path;          // slot_a_path or slot_b_path
@@ -40,10 +46,12 @@ uint32_t id_hash(const char* id);                            // zlib CRC-32 of t
 // Unique usable entry with this id hash, -1 if none, -2 if ambiguous.
 int32_t find_by_hash(const library::Library& library, uint32_t hash);
 // USB: collects the eight hash nibbles; returns true on a commit with all eight.
-struct Collector { uint32_t mask, hash; };
+struct Collector {
+    uint32_t mask, hash;
+};
 bool collect(Collector& collector, uint32_t command);
 // b side: the nine command values for an id (seq values for the commit/index
 // commands are supplied by the caller's sequence counter).
 uint32_t id_nibble_command(uint32_t hash, uint32_t k);   // k = 0..7
-} }
+}}
 #endif

@@ -17,8 +17,8 @@
 
 namespace nb = nanobind;
 using namespace xyf;
-using xyf_glue::CStr;
 using xyf_glue::bytes_or_none;
+using xyf_glue::CStr;
 
 namespace {
 
@@ -63,7 +63,8 @@ void bind_screens(nb::module_ m) {
         for (i = 0; activity.p && activity.p[i] && i + 1 < sizeof(bridge_activity); ++i)
             bridge_activity[i] = activity.p[i];
         bridge_activity[i] = 0;
-        bridge_chrome.version = bridge_version; bridge_chrome.usb = (usb & 1u) != 0;
+        bridge_chrome.version = bridge_version;
+        bridge_chrome.usb = (usb & 1u) != 0;
         bridge_chrome.mtp = (usb & 2u) != 0;   // 188: bit 1 MTP
         bridge_chrome.activity = bridge_activity[0] ? bridge_activity : nullptr;
     });
@@ -74,15 +75,22 @@ void bind_screens(nb::module_ m) {
     });
     m.def("ui_framebuffer_halfwords", [] { return unsigned(gfx::framebuffer_halfwords); });
     m.def("ui_render_menu", [](nb::handle fb, unsigned selected, CStr status) {
-        ui::Menu menu = {{"Continue: OP-XY 1.2.1", "Boot without mods", "Mods", "Settings"}, 4,
-                         selected, status, "- / +  choose      PLAY  select", &bridge_chrome, 0};
+        ui::Menu menu = {{"Continue: OP-XY 1.2.1", "Boot without mods", "Mods", "Settings"},
+                         4,
+                         selected,
+                         status,
+                         "- / +  choose      PLAY  select",
+                         &bridge_chrome,
+                         0};
         ui::draw_menu(Frame(fb), menu);
     });
     m.def("ui_render_message", [](nb::handle fb) {
-        ui::Message message = {"About", {"XY Forever", "v0.1.0", "image f458e3cc",
-                                         "Real bootloader: 1.2.1 (never updated)",
-                                         "Hold PLAY at power-on to open this menu."},
-                               5, "PLAY  back", &bridge_chrome};
+        ui::Message message = {"About",
+                               {"XY Forever", "v0.1.0", "image f458e3cc", "Real bootloader: 1.2.1 (never updated)",
+                                "Hold PLAY at power-on to open this menu."},
+                               5,
+                               "PLAY  back",
+                               &bridge_chrome};
         ui::draw_message(Frame(fb), message);
     });
     // B's crash screen (target/key_ui_crash.ipp) for a recorded SEQSTAT, RETX and RETS, and B's where word (#114).
@@ -96,8 +104,13 @@ void bind_screens(nb::module_ m) {
     // The menu with a long wait's code in the corner (key_ui present: the screen, then where::draw).
     m.def("ui_render_where", [](nb::handle fb, unsigned code) {
         Frame f(fb);
-        ui::Menu menu = {{"Continue: OP-XY 1.2.1", "Boot without mods", "Mods", "Settings"}, 4,
-                         0, "", "- / +  choose      PLAY  select", &bridge_chrome, 0};
+        ui::Menu menu = {{"Continue: OP-XY 1.2.1", "Boot without mods", "Mods", "Settings"},
+                         4,
+                         0,
+                         "",
+                         "- / +  choose      PLAY  select",
+                         &bridge_chrome,
+                         0};
         ui::draw_menu(f, menu);
         where::draw(f, code);
     });
@@ -109,23 +122,37 @@ void bind_screens(nb::module_ m) {
     // The pages (ui_pages.hpp).
     m.def("ui_render_library", [](nb::handle fb, unsigned selected, unsigned count) {
         static const ui::ListRow rows[] = {
-            {"OP-XY 1.2.1", "official", true}, {"OP-XY 1.2.5", "official", false},
+            {"OP-XY 1.2.1", "official", true},          {"OP-XY 1.2.5", "official", false},
             {"open-xy: granular", "6 machines", false}, {"open-xy: braids", "3 machines", false},
-            {"My test build", "custom", false}, {"OP-XY 1.2.4", "official", false},
+            {"My test build", "custom", false},         {"OP-XY 1.2.4", "official", false},
             {"open-xy: karplus", "1 machine", false}};
-        ui::List list = {"Firmware library", rows, count > 7 ? 7 : count, selected,
-                         "- / +  choose      PLAY  boot once      SHIFT+PLAY  set default", &bridge_chrome, false};
+        ui::List list = {"Firmware library",
+                         rows,
+                         count > 7 ? 7 : count,
+                         selected,
+                         "- / +  choose      PLAY  boot once      SHIFT+PLAY  set default",
+                         &bridge_chrome,
+                         false};
         ui::draw_list(Frame(fb), list);
     });
     m.def("ui_render_confirm", [](nb::handle fb, unsigned accept) {
-        ui::Confirm c = {"Uninstall XY Forever?", {"Puts back the stock OP-XY 1.2.1 os.ldr and deletes",
-                         "xy-forever/ from the device. Your projects stay.", "The real bootloader is not changed."},
-                         3, "Cancel", "Uninstall", accept != 0, &bridge_chrome};
+        ui::Confirm c = {"Uninstall XY Forever?",
+                         {"Puts back the stock OP-XY 1.2.1 os.ldr and deletes",
+                          "xy-forever/ from the device. Your projects stay.", "The real bootloader is not changed."},
+                         3,
+                         "Cancel",
+                         "Uninstall",
+                         accept != 0,
+                         &bridge_chrome};
         ui::draw_confirm(Frame(fb), c);
     });
     m.def("ui_render_progress", [](nb::handle fb, unsigned done, unsigned total) {
-        ui::Progress p = {"Installing OP-XY 1.2.5", "Keyboard firmware (2 of 4)", done, total,
-                          "Do not power off the OP-XY.", &bridge_chrome};
+        ui::Progress p = {"Installing OP-XY 1.2.5",
+                          "Keyboard firmware (2 of 4)",
+                          done,
+                          total,
+                          "Do not power off the OP-XY.",
+                          &bridge_chrome};
         ui::draw_progress(Frame(fb), p);
     });
     // #21: one row, always selected
@@ -138,13 +165,16 @@ void bind_flow(nb::module_ m) {
     // mode: 0 = built-in copy only, 1 = library + built-in, 2 = nothing bootable.
     m.def("flow_start", [](unsigned mode) {
         std::memset(&cat, 0, sizeof(cat));
-        cat.count = 4; cat.default_index = 1;
+        cat.count = 4;
+        cat.default_index = 1;
         const char* ids[] = {"granular", "opxy-121", "opxy-125", "noimage"};
         const char* names[] = {"open-xy: granular", "OP-XY 1.2.1", "OP-XY 1.2.5", "My test build"};
         const uint8_t kinds[] = {2, 1, 1, 3}, flags[] = {7, 1, 1, 0};
         for (unsigned i = 0; i != 4; ++i) {
-            std::strcpy(cat.items[i].id, ids[i]); std::strcpy(cat.items[i].name, names[i]);
-            cat.items[i].kind = kinds[i]; cat.items[i].flags = flags[i];
+            std::strcpy(cat.items[i].id, ids[i]);
+            std::strcpy(cat.items[i].name, names[i]);
+            cat.items[i].kind = kinds[i];
+            cat.items[i].flags = flags[i];
         }
         cat.items[0].machines = 6;
         menu::start(flow_state, mode == 1 ? &cat : 0, mode != 2);
@@ -158,12 +188,14 @@ void bind_flow(nb::module_ m) {
     // the Settings page's line; its Mod memory row (settings::Memory) and pending mark, as key_ui and
     // xyf_mods_io menu_state set them.
     m.def("flow_settings", [](unsigned memory, unsigned pending, CStr note) {
-        flow_state.memory = memory; flow_state.memory_pending = pending != 0;
+        flow_state.memory = memory;
+        flow_state.memory_pending = pending != 0;
         flow_state.settings_note = kept(flow_note, note, false);
     });
     // #21: the settings.txt rows (usb_service settings_view): Menu at power-on, USB mode, a newer record.
     m.def("flow_settings_rows", [](unsigned power_on, unsigned usb, unsigned newer) {
-        flow_state.power_on_text = settings::power_on_text(power_on); flow_state.usb_text = settings::usb_text(usb);
+        flow_state.power_on_text = settings::power_on_text(power_on);
+        flow_state.usb_text = settings::usb_text(usb);
         flow_state.confirm_text = settings::confirm_text(usb & 1);           // #65: On / Off
         if (newer) flow_state.settings_note = settings::note_newer;
     });
@@ -173,9 +205,13 @@ void bind_flow(nb::module_ m) {
     m.def("flow_options", [](unsigned current) {
         const unsigned row = flow_state.settings_selected;
         const bool memory = row == settings::row_memory, power_on = row == settings::row_power_on;
-        menu::open_options(flow_state, memory ? settings::memory_options : power_on ? settings::power_on_options :
-                                       settings::usb_options,
-                           memory ? 2 : power_on ? settings::power_on_option_count : settings::usb_option_count,
+        menu::open_options(flow_state,
+                           memory   ? settings::memory_options :
+                           power_on ? settings::power_on_options :
+                                      settings::usb_options,
+                           memory   ? 2 :
+                           power_on ? settings::power_on_option_count :
+                                      settings::usb_option_count,
                            current);
     });
     m.def("flow_option", [] { return unsigned(flow_state.option_selected); });
@@ -204,7 +240,9 @@ nb::object text_or_empty(const char* s) { return nb::bytes(s ? s : ""); }
 
 void bind_mods(nb::module_ m) {
     m.def("mods_reset", [] {
-        std::memset(&page, 0, sizeof(page)); std::memset(&run, 0, sizeof(run)); progress_shown = false;
+        std::memset(&page, 0, sizeof(page));
+        std::memset(&run, 0, sizeof(run));
+        progress_shown = false;
         mods::reset(page);
     });
     m.def("mods_base", [](nb::bytes text) {
@@ -232,7 +270,8 @@ void bind_mods(nb::module_ m) {
     });
     // as key_ui: the progress screen has the keys while shown
     m.def("mods_key", [](unsigned key, unsigned pressed) {
-        return unsigned(progress_shown ? mods::progress_key(run, key, pressed != 0) : mods::key(page, key, pressed != 0));
+        return unsigned(progress_shown ? mods::progress_key(run, key, pressed != 0) :
+                                         mods::key(page, key, pressed != 0));
     });
     m.def("mods_used", [] { return unsigned(mods::used(page)); });
     m.def("mods_limit", [] { return unsigned(page.limit); });
@@ -240,7 +279,8 @@ void bind_mods(nb::module_ m) {
     // the Settings row and its PLAY.
     m.def("mods_expanded_limit", [] { return unsigned(page.expanded_limit); });
     m.def("mods_set_memory", [](unsigned expanded, unsigned saved) {
-        page.expanded = expanded != 0; page.expanded_saved = saved != 0;
+        page.expanded = expanded != 0;
+        page.expanded_saved = saved != 0;
     });
     m.def("mods_expanded", [] { return unsigned(page.expanded); });
     m.def("mods_memory_limit", [] { return unsigned(mods::memory_limit(page)); });
@@ -252,7 +292,9 @@ void bind_mods(nb::module_ m) {
     m.def("mods_position", [] { return unsigned(mods::position(page)); });
     m.def("mods_request", [] {
         if (run.cancel) return unsigned(mods::request_cancel);
-        const unsigned r = page.request; page.request = mods::request_none; return r;
+        const unsigned r = page.request;
+        page.request = mods::request_none;
+        return r;
     });
     m.def("mods_note", [] { return bytes_or_none(run.note); });
     // after mods_saving (#197: from the home menu)
@@ -270,37 +312,40 @@ void bind_mods(nb::module_ m) {
     m.def("mods_saving", [](unsigned build, unsigned stage, unsigned done, unsigned total) {
         if (!progress_shown) run.bar = run.bar_step = run.bar_since = 0;
         if (!progress_shown) run.title = "Saving changes";
-        progress_shown = true; run.job = 0x10001; run.note[0] = 0;
-        run.save = mods::save_on | (build ? mods::save_build : 0); run.save_stage = stage;
-        if (stage) { run.job_done = done; run.job_total = total; run.job_commit = 0; }
+        progress_shown = true;
+        run.job = 0x10001;
+        run.note[0] = 0;
+        run.save = mods::save_on | (build ? mods::save_build : 0);
+        run.save_stage = stage;
+        if (stage) {
+            run.job_done = done;
+            run.job_total = total;
+            run.job_commit = 0;
+        }
     });
     m.def("mods_text", [] { return bytes_or_none(page.text); });
     m.def("mods_line", [] { return unsigned(page.line); });
-    m.def("mods_row_id", [](unsigned row) {
-        return bytes_or_none(mods::text_at(page, page.packages[page.rows[row]].id));
-    });
+    m.def("mods_row_id",
+          [](unsigned row) { return bytes_or_none(mods::text_at(page, page.packages[page.rows[row]].id)); });
     // the display: the filter, the rows it lists (id, kind, name), every row in display order.
     m.def("mods_filter", [] { return unsigned(page.filter); });
     m.def("mods_all_on", [] { return unsigned(mods::all_on(page)); });
     m.def("mods_listed", [] { return unsigned(page.listed); });
-    m.def("mods_list_id", [](unsigned row) {
-        return bytes_or_none(mods::text_at(page, page.packages[page.list[row]].id));
-    });
+    m.def("mods_list_id",
+          [](unsigned row) { return bytes_or_none(mods::text_at(page, page.packages[page.list[row]].id)); });
     m.def("mods_list_kind", [](unsigned row) { return unsigned(page.packages[page.list[row]].kind); });
     m.def("mods_list_on", [](unsigned row) { return unsigned(page.packages[page.list[row]].flags & mods::flag_on); });
-    m.def("mods_sorted_name", [](unsigned row) {
-        return bytes_or_none(mods::text_at(page, page.packages[page.sorted[row]].name));
-    });
+    m.def("mods_sorted_name",
+          [](unsigned row) { return bytes_or_none(mods::text_at(page, page.packages[page.sorted[row]].name)); });
     m.def("mods_sorted_kind", [](unsigned row) { return unsigned(page.packages[page.sorted[row]].kind); });
-    m.def("mods_sorted_id", [](unsigned row) {
-        return bytes_or_none(mods::text_at(page, page.packages[page.sorted[row]].id));
-    });
+    m.def("mods_sorted_id",
+          [](unsigned row) { return bytes_or_none(mods::text_at(page, page.packages[page.sorted[row]].id)); });
     // mods_payload(base, unverified, capacity) -> mods.apply's request bytes (b'': it does not fit)
     m.def("mods_payload", [](CStr base, unsigned unverified, unsigned capacity) {
         char name[16];
         std::vector<unsigned char> out(capacity ? capacity : 1);
-        const unsigned n = mods::request(page, base, unverified != 0, page.expanded, mods::flag_on, name,
-                                         sizeof(name), out.data(), capacity);
+        const unsigned n = mods::request(page, base, unverified != 0, page.expanded, mods::flag_on, name, sizeof(name),
+                                         out.data(), capacity);
         return nb::bytes(reinterpret_cast<const char*>(out.data()), n);
     });
     m.def("mods_job", [](unsigned job, unsigned phase, unsigned done, unsigned total, CStr name, unsigned cancelling,
@@ -308,7 +353,11 @@ void bind_mods(nb::module_ m) {
         if (!progress_shown) run.note[0] = 0;               // as xyf_mods_io start
         if (!progress_shown || run.job != job) run.bar = run.bar_step = run.bar_since = 0;
         progress_shown = true;
-        run.job = job; run.job_phase = phase; run.job_done = done; run.job_total = total; run.job_commit = commit;
+        run.job = job;
+        run.job_phase = phase;
+        run.job_done = done;
+        run.job_total = total;
+        run.job_commit = commit;
         std::strncpy(run.job_name, name, sizeof(run.job_name) - 1);
         run.cancel = cancelling ? 1 : 0;
     });
@@ -322,7 +371,10 @@ void bind_mods(nb::module_ m) {
     m.def("mods_compare", [](CStr a, CStr b) { return int(mods::compare_generation(a, b)); });
     // A full repaint (as after any other screen), or an incremental update of what the framebuffer holds.
     m.def("mods_update", [](nb::handle fb) { mods_update(Frame(fb)); });
-    m.def("mods_draw", [](nb::handle fb) { frame.drawn = 0; mods_update(Frame(fb)); });
+    m.def("mods_draw", [](nb::handle fb) {
+        frame.drawn = 0;
+        mods_update(Frame(fb));
+    });
     m.def("mods_progress", [](unsigned ms) { return unsigned(mods::progress(run, ms)); });
     m.def("mods_set_bar", [](unsigned bar) { run.bar = bar; });
     m.def("mods_stage_share", [](unsigned i) { return unsigned(mods::stage_share(i)); });

@@ -1,15 +1,16 @@
 """scripts/check.py: the receipt key, the clean-tree and failed-step refusals, the version refusal and
 --confirm, in a temporary git repository with stubbed steps (nothing is built)."""
+
 import contextlib
 import importlib.util
 import io
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -20,8 +21,15 @@ SPEC = importlib.util.spec_from_file_location('check_script', Path(__file__).res
 C = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(C)
 
-ENV = dict(os.environ, GIT_AUTHOR_NAME='test', GIT_AUTHOR_EMAIL='test@example.com', GIT_COMMITTER_NAME='test',
-           GIT_COMMITTER_EMAIL='test@example.com', GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1')
+ENV = dict(
+    os.environ,
+    GIT_AUTHOR_NAME='test',
+    GIT_AUTHOR_EMAIL='test@example.com',
+    GIT_COMMITTER_NAME='test',
+    GIT_COMMITTER_EMAIL='test@example.com',
+    GIT_CONFIG_GLOBAL=os.devnull,
+    GIT_CONFIG_NOSYSTEM='1',
+)
 
 
 def ok(name='ok'):
@@ -45,8 +53,9 @@ class CheckReceiptTests(unittest.TestCase):
         self.commit('a.txt', 'one')
 
     def git(self, *args):
-        return subprocess.run(['git', *args], cwd=self.root, env=ENV, check=True, capture_output=True,
-                              text=True).stdout.strip()
+        return subprocess.run(
+            ['git', *args], cwd=self.root, env=ENV, check=True, capture_output=True, text=True
+        ).stdout.strip()
 
     def commit(self, name, text):
         (self.root / name).parent.mkdir(parents=True, exist_ok=True)
@@ -69,7 +78,7 @@ class CheckReceiptTests(unittest.TestCase):
         self.assertTrue((self.checks / (record['tree'] + '.json')).is_file())
         self.assertEqual(record['version'], C.VERSION)
         self.assertEqual([s['result'] for s in record['steps']], ['pass'])
-        self.git('commit', '-q', '--allow-empty', '-m', 'same files')     # another commit, the same tree
+        self.git('commit', '-q', '--allow-empty', '-m', 'same files')  # another commit, the same tree
         self.assertEqual(self.confirm()[0], 0)
 
     def test_dirty_tree_refused(self):
@@ -95,7 +104,7 @@ class CheckReceiptTests(unittest.TestCase):
         record = self.run_check(ok(), fails(), ok('never run'))
         self.assertFalse(record['passed'])
         self.assertEqual([s['result'] for s in record['steps']], ['pass', 'fail'])
-        self.assertFalse((self.checks / (tree + '.json')).exists())        # the older pass is gone too
+        self.assertFalse((self.checks / (tree + '.json')).exists())  # the older pass is gone too
         status, text = self.confirm()
         self.assertEqual(status, 1)
         self.assertIn('failed at bad', text)
@@ -129,15 +138,24 @@ class CheckReceiptTests(unittest.TestCase):
         self.git('switch', '-q', 'main')
         self.commit('c.txt', 'newer main')
         self.git('switch', '-q', '7-topic')
-        self.git('rebase', '-q', 'main')                    # the same change on a newer main: another tree
+        self.git('rebase', '-q', 'main')  # the same change on a newer main: another tree
         status, text = self.confirm('7-topic')
         self.assertEqual(status, 1)
         self.assertIn('tree differs', text)
 
     def test_confirm_prints_the_record(self):
-        facts = C.step('facts', [sys.executable, '-c', 'pass'], '.', parse=lambda status, text: (True, dict(
-            tests=dict(fast=dict(passed=12, skipped=1)),
-            candidate=dict(sha256='ab' * 32, bytes=1234, build='/private/builds/check-x'))))
+        facts = C.step(
+            'facts',
+            [sys.executable, '-c', 'pass'],
+            '.',
+            parse=lambda status, text: (
+                True,
+                dict(
+                    tests=dict(fast=dict(passed=12, skipped=1)),
+                    candidate=dict(sha256='ab' * 32, bytes=1234, build='/private/builds/check-x'),
+                ),
+            ),
+        )
         self.run_check(facts)
         status, text = self.confirm()
         self.assertEqual(status, 0)
@@ -149,13 +167,13 @@ class CheckReceiptTests(unittest.TestCase):
         self.commit('clients/ts/a.ts', 'merged on main')
         self.git('update-ref', 'refs/remotes/origin/main', 'HEAD')
         self.git('switch', '-q', '-c', '7-topic')
-        self.git('branch', '-q', '-f', 'main', stale)       # local main behind origin/main
+        self.git('branch', '-q', '-f', 'main', stale)  # local main behind origin/main
         self.commit('b.txt', 'two')
         self.assertEqual(C.merge_base(self.root), self.git('rev-parse', 'origin/main'))
         self.assertFalse(C.changed(self.root, 'clients/ts'))
         self.assertFalse(C.changed(self.root, 'web'))
         self.git('update-ref', '-d', 'refs/remotes/origin/main')
-        self.assertEqual(C.merge_base(self.root), stale)    # no origin/main: the local main
+        self.assertEqual(C.merge_base(self.root), stale)  # no origin/main: the local main
         self.assertTrue(C.changed(self.root, 'clients/ts'))
 
     def test_js_steps_follow_the_folders(self):
@@ -163,7 +181,7 @@ class CheckReceiptTests(unittest.TestCase):
         self.assertEqual(C.js_steps(args, self.root), [])  # no clients/ts: nothing to test
         (self.root / 'clients/ts').mkdir(parents=True)
         self.assertEqual([s['name'] for s in C.js_steps(args, self.root)], ['pnpm run typecheck (clients/ts)'])
-        self.assertEqual(C.js_steps(C.argparse.Namespace(js=False), self.root), [])   # unchanged on main
+        self.assertEqual(C.js_steps(C.argparse.Namespace(js=False), self.root), [])  # unchanged on main
         (self.root / 'web').mkdir()
         steps = C.js_steps(args, self.root)
         self.assertEqual([s['name'] for s in steps], ['pnpm run typecheck (clients/ts)', 'pnpm run typecheck (web)'])
@@ -172,20 +190,20 @@ class CheckReceiptTests(unittest.TestCase):
 
     def test_a_fresh_worktree_installs_node_modules_first(self):
         (self.root / 'pnpm-lock.yaml').write_text('lockfileVersion: 9\n')
-        self.assertEqual(dev_tools.js_install(self.root)[1:], ['install', '--frozen-lockfile'])   # none installed
+        self.assertEqual(dev_tools.js_install(self.root)[1:], ['install', '--frozen-lockfile'])  # none installed
         for rel in ('node_modules', 'web/node_modules', 'clients/ts/node_modules'):
             (self.root / rel).mkdir(parents=True)
         (self.root / 'node_modules/.modules.yaml').write_text('')
-        self.assertIsNone(dev_tools.js_install(self.root))                                          # current
+        self.assertIsNone(dev_tools.js_install(self.root))  # current
         later = (self.root / 'node_modules/.modules.yaml').stat().st_mtime + 10
         os.utime(self.root / 'pnpm-lock.yaml', (later, later))
-        self.assertIsNotNone(dev_tools.js_install(self.root))                                       # lock changed
+        self.assertIsNotNone(dev_tools.js_install(self.root))  # lock changed
 
     def test_web_steps_follow_web_and_clients(self):
         for rel in ('clients/ts/node_modules', 'web/node_modules'):
             (self.root / rel).mkdir(parents=True)
         self.git('switch', '-q', '-c', '8-topic')
-        names = lambda: [s['name'] for s in C.js_steps(C.argparse.Namespace(js=False), self.root)]  # noqa: E731
+        names = lambda: [s['name'] for s in C.js_steps(C.argparse.Namespace(js=False), self.root)]
         self.assertEqual(names(), [])
         self.commit('web/a.ts', 'web only')
         self.assertEqual(names(), ['pnpm run typecheck (web)'])
@@ -195,12 +213,16 @@ class CheckReceiptTests(unittest.TestCase):
     def test_failing_web_step_fails_the_check(self):
         tsc = C.step('pnpm run typecheck (web)', [sys.executable, '-c', 'raise SystemExit(2)'], '.')
         results, _ = C.run_steps([ok(), tsc, ok('after')], self.log)
-        self.assertEqual([(r['name'], r['result']) for r in results], [('ok', 'pass'), ('pnpm run typecheck (web)', 'fail')])
+        self.assertEqual(
+            [(r['name'], r['result']) for r in results], [('ok', 'pass'), ('pnpm run typecheck (web)', 'fail')]
+        )
 
     def test_budgets_name_the_step_and_the_total(self):
         self.assertEqual(C.over_budget([dict(name='a', seconds=10.0), dict(name='b', seconds=12.0)]), [])
-        self.assertEqual(C.over_budget([dict(name='a', seconds=16.0), dict(name='b', seconds=15.0)]),
-                         ['a took 16.0 s: over the 15 s a step', 'the check took 31.0 s: over 30 s'])
+        self.assertEqual(
+            C.over_budget([dict(name='a', seconds=16.0), dict(name='b', seconds=15.0)]),
+            ['a took 16.0 s: over the 15 s a step', 'the check took 31.0 s: over 30 s'],
+        )
 
     def test_verify_parser(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -213,23 +235,25 @@ class CheckReceiptTests(unittest.TestCase):
             test_builds = builds / 'test-builds'
             parse = C.verify_parser(out, 't' * 40, 'c' * 40, test_builds)
             (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256='0' * 64, image='00000000')))
-            self.assertFalse(parse(0, '{\n  "passed": true\n}\n')[0])      # bytes differ from the manifest
+            self.assertFalse(parse(0, '{\n  "passed": true\n}\n')[0])  # bytes differ from the manifest
             (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256=digest, image=digest[:8])))
             self.assertFalse(parse(0, '{\n  "passed": false\n}\n')[0])
             self.assertFalse(parse(1, '{\n  "passed": true\n}\n')[0])
             with mock.patch.object(C.paths, 'BUILDS', builds):
                 passed, facts = parse(0, 'log line\n{\n  "passed": true\n}\n')
             self.assertTrue(passed)
-            named = builds / digest[:8]                          # copied to builds/<image>
+            named = builds / digest[:8]  # copied to builds/<image>
             self.assertEqual(facts['candidate'], dict(sha256=digest, image=digest[:8], bytes=9, build=str(named)))
-            self.assertEqual(json.loads((named / 'check.json').read_text()),
-                             dict(image=digest[:8], tree='t' * 40, commit='c' * 40))
-            self.assertEqual((out / 'candidate.ldr').read_bytes(), b'candidate')   # the cache's output stays as built
+            self.assertEqual(
+                json.loads((named / 'check.json').read_text()), dict(image=digest[:8], tree='t' * 40, commit='c' * 40)
+            )
+            self.assertEqual((out / 'candidate.ldr').read_bytes(), b'candidate')  # the cache's output stays as built
             self.assertFalse((out / 'check.json').exists())
             test_build = test_builds / named.name
             self.assertEqual(C.paths.build_image(test_build), C.paths.build_image(named))
             self.assertEqual((test_build / 'candidate.ldr').read_bytes(), b'candidate')
             self.assertEqual((test_build / 'check.json').read_bytes(), (named / 'check.json').read_bytes())
+
 
 if __name__ == '__main__':
     unittest.main()

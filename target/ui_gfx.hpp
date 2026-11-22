@@ -22,5 +22,5 @@ int text_width(const char* s, int scale);
 // "FOREVER" beside it, logo_height px tall from y, left edge at x. Returns the logo width in pixels.
 static const int logo_height = 35, logo_gap = 10;
 int logo(uint16_t* fb, int x, int y, Color mark, Color word);
-} }
+}}
 #endif

@@ -11,14 +11,22 @@ void copy(char* out, uint32_t capacity, const char* in) {
     out[i] = 0;
 }
 bool append(char* out, uint32_t& at, const char* s) {
-    for (; *s; ++s) { if (at + 1 >= detail::path_capacity) return false; out[at++] = *s; }
+    for (; *s; ++s) {
+        if (at + 1 >= detail::path_capacity) return false;
+        out[at++] = *s;
+    }
     out[at] = 0;
     return true;
 }
 // Byte-wise swap: a struct assignment would compile to memcpy (not linked cold).
 void swap(void* a, void* b, uint32_t n) {
-    char* x = static_cast<char*>(a); char* y = static_cast<char*>(b);
-    for (uint32_t i = 0; i != n; ++i) { const char t = x[i]; x[i] = y[i]; y[i] = t; }
+    char* x = static_cast<char*>(a);
+    char* y = static_cast<char*>(b);
+    for (uint32_t i = 0; i != n; ++i) {
+        const char t = x[i];
+        x[i] = y[i];
+        y[i] = t;
+    }
 }
 }
 
@@ -35,8 +43,15 @@ bool path(char* out, const char* a, const char* b, const char* c, const char* d)
 }
 void add_entry(Library& out, const char* name) {
     if (!compare(name, ".") || !compare(name, "..")) return;
-    if (!store::valid_id(name) || out.count == max_entries) { ++out.skipped; return; }
-    for (uint32_t i = 0; i != out.count; ++i) if (!compare(out.entries[i].id, name)) { ++out.skipped; return; }
+    if (!store::valid_id(name) || out.count == max_entries) {
+        ++out.skipped;
+        return;
+    }
+    for (uint32_t i = 0; i != out.count; ++i)
+        if (!compare(out.entries[i].id, name)) {
+            ++out.skipped;
+            return;
+        }
     copy(out.entries[out.count].id, sizeof(out.entries[0].id), name);
     ++out.count;
 }
@@ -75,16 +90,23 @@ void finish(Library& out, Entry& e) {
 
 int32_t find(const Library& library, const char* id) {
     if (!id || !*id) return -1;
-    for (uint32_t i = 0; i != library.count; ++i) if (!compare(library.entries[i].id, id)) return int32_t(i);
+    for (uint32_t i = 0; i != library.count; ++i)
+        if (!compare(library.entries[i].id, id)) return int32_t(i);
     return -1;
 }
 
 Choice boot_choice(const Library& library, uint32_t& index) {
     const int32_t once = find(library, library.state.once);
-    if (once >= 0 && library.entries[once].usable) { index = uint32_t(once); return Choice::once; }
+    if (once >= 0 && library.entries[once].usable) {
+        index = uint32_t(once);
+        return Choice::once;
+    }
     const int32_t fallback = find(library, library.state.default_id);
-    if (fallback >= 0 && library.entries[fallback].usable) { index = uint32_t(fallback); return Choice::by_default; }
+    if (fallback >= 0 && library.entries[fallback].usable) {
+        index = uint32_t(fallback);
+        return Choice::by_default;
+    }
     index = 0;
     return Choice::menu;
 }
-} }
+}}

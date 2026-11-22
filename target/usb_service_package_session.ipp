@@ -5,7 +5,9 @@
 // next idle sweep removes pkg-* scratch folders, never anything published.
 void package_turn() {
     if (package_active && now() - package_ms > 10000u && !uploading()) {
-        package_active = 0; boot_sweep = 0; settle_begin();
+        package_active = 0;
+        boot_sweep = 0;
+        settle_begin();
     }
 }
 void package_session(uint8_t seq, const uint8_t* payload, U32 length) {
@@ -20,12 +22,19 @@ void package_session(uint8_t seq, const uint8_t* payload, U32 length) {
         else if (!a_serving()) code = P::s_link;
         else {
             for (U32 i = 0; i != 32; ++i) package_token[i] = payload[8 + i];
-            package_active = 1; package_ms = now(); boot_sweep = 2; job_usb = 0;
+            package_active = 1;
+            package_ms = now();
+            boot_sweep = 2;
+            job_usb = 0;
         }
     } else if (!package_active || !sha_equal(package_token, payload + 8)) code = P::s_state;
     else if (action == 2) {
         if (uploading()) code = P::s_busy;
-        else { package_active = 0; boot_sweep = 0; settle_begin(); }
+        else {
+            package_active = 0;
+            boot_sweep = 0;
+            settle_begin();
+        }
     }
     if (code == P::s_ok && package_active) package_ms = now();
     status_only(P::t_package_session, seq, code);

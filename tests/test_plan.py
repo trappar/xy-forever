@@ -1,4 +1,5 @@
 """scripts/plan.py: the work queue from GitHub issues (order, sections), on fixture issues; no network."""
+
 import importlib.util
 import unittest
 from pathlib import Path
@@ -9,10 +10,15 @@ SPEC.loader.exec_module(Q)
 
 
 def issue(number, title, milestone=None, labels=(), assignees=(), blocked_by=0):
-    return {'number': number, 'title': title, 'body': '## Acceptance criteria\n- [ ] x',
-            'labels': [{'name': l} for l in labels], 'assignees': [{'login': a} for a in assignees],
-            'milestone': {'number': milestone[0], 'title': milestone[1]} if milestone else None,
-            'issue_dependencies_summary': {'blocked_by': blocked_by}}
+    return {
+        'number': number,
+        'title': title,
+        'body': '## Acceptance criteria\n- [ ] x',
+        'labels': [{'name': l} for l in labels],
+        'assignees': [{'login': a} for a in assignees],
+        'milestone': {'number': milestone[0], 'title': milestone[1]} if milestone else None,
+        'issue_dependencies_summary': {'blocked_by': blocked_by},
+    }
 
 
 M2, M4 = (4, 'M2. File engine'), (6, 'M4. Packages')
@@ -32,19 +38,25 @@ class Queue(unittest.TestCase):
     def test_labels_shown_with_the_item(self):
         f = Q.fields(issue(8, 'Writer', M2, ['device:risky', 'device', 'agent:claude', 'blocked']))
         self.assertEqual(Q.line(f), '#8 M2 Writer [device,device:risky]')
-        self.assertEqual(Q.line(Q.fields(issue(7, 'Old', M2, ['kind:build']))), '#7 M2 Old [build]')   # older kind labels
+        self.assertEqual(
+            Q.line(Q.fields(issue(7, 'Old', M2, ['kind:build']))), '#7 M2 Old [build]'
+        )  # older kind labels
 
     def test_sections_and_order(self):
         out = Q.queue(ISSUES, 'me')
-        self.assertEqual(out, [
-            'Yours, in progress (1)',
-            '  #3 M2 Loose ends [device]',
-            'Next: unblocked, unassigned (2)',
-            '  #4 M2 Atomic replace',          # milestone order first, then issue number
-            '  #13 M4 Fixes',
-            'Decisions waiting for me (1)',
-            '  #56 M4 Default of the confirm gate',
-            'Not shown: 2 blocked, 1 taken by others, 1 threads (--all)'])
+        self.assertEqual(
+            out,
+            [
+                'Yours, in progress (1)',
+                '  #3 M2 Loose ends [device]',
+                'Next: unblocked, unassigned (2)',
+                '  #4 M2 Atomic replace',  # milestone order first, then issue number
+                '  #13 M4 Fixes',
+                'Decisions waiting for me (1)',
+                '  #56 M4 Default of the confirm gate',
+                'Not shown: 2 blocked, 1 taken by others, 1 threads (--all)',
+            ],
+        )
 
     def test_all_lists_blocked_others_and_threads(self):
         out = Q.queue(ISSUES, 'me', everything=True)
@@ -55,18 +67,24 @@ class Queue(unittest.TestCase):
         self.assertFalse(any(l.startswith('Not shown') for l in out))
 
     def test_with_agent_the_items_split_by_the_agent_label(self):
-        issues = ISSUES + [issue(21, 'Mine labelled', M2, ['agent:claude'], ['me']),
-                           issue(22, 'Theirs', M2, ['agent:codex'], ['me']),
-                           issue(23, 'Free, theirs', M2, ['agent:codex'])]
+        issues = ISSUES + [
+            issue(21, 'Mine labelled', M2, ['agent:claude'], ['me']),
+            issue(22, 'Theirs', M2, ['agent:codex'], ['me']),
+            issue(23, 'Free, theirs', M2, ['agent:codex']),
+        ]
         out = Q.queue(issues, 'me', agent='claude')
-        self.assertEqual(out[:7], [
-            'Yours, in progress (agent:claude) (1)',
-            '  #21 M2 Mine labelled',
-            'Yours, no agent label: interrupted, label it to resume (1)',
-            '  #3 M2 Loose ends [device]',
-            "Another agent's: leave these (2)",
-            '  #22 M2 Theirs (agent:codex)',
-            '  #23 M2 Free, theirs (agent:codex)'])
+        self.assertEqual(
+            out[:7],
+            [
+                'Yours, in progress (agent:claude) (1)',
+                '  #21 M2 Mine labelled',
+                'Yours, no agent label: interrupted, label it to resume (1)',
+                '  #3 M2 Loose ends [device]',
+                "Another agent's: leave these (2)",
+                '  #22 M2 Theirs (agent:codex)',
+                '  #23 M2 Free, theirs (agent:codex)',
+            ],
+        )
         self.assertIn('  #4 M2 Atomic replace', out)
 
     def test_without_agent_a_labelled_item_is_taken(self):

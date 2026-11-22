@@ -2,18 +2,20 @@
 refusal, unknown files, a copied /upgrade/ tree as input, and where the private folder comes from
 (XYF_PRIVATE > xyf.local.json > ../private), the Python check (3.14+), and `bootstrap` in a temporary workspace
 with the toolchain download (a synthetic zip) and the tool steps (mise, uv, pnpm) stubbed (no network)."""
+
 import contextlib
 import hashlib
-import io
-import re
 import importlib.util
+import io
 import json
-from pathlib import Path
+import re
+import subprocess
 import sys
 import tempfile
 import unittest
-from unittest import mock
 import zipfile
+from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -25,8 +27,12 @@ spec = importlib.util.spec_from_file_location('xyf_setup', ROOT / 'scripts/setup
 S = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(S)
 
-FILES = {('1.2.1', 'os.ldr'): b'os 1.2.1', ('1.2.1', 'bootloader.ldr'): b'boot 1.2.1',
-         ('1.2.5', 'os.ldr'): b'os 1.2.5', ('1.2.5', 'bootloader.ldr'): b'boot 1.2.5'}
+FILES = {
+    ('1.2.1', 'os.ldr'): b'os 1.2.1',
+    ('1.2.1', 'bootloader.ldr'): b'boot 1.2.1',
+    ('1.2.5', 'os.ldr'): b'os 1.2.5',
+    ('1.2.5', 'bootloader.ldr'): b'boot 1.2.5',
+}
 PINS = {}
 for (version, name), data in FILES.items():
     PINS.setdefault(version, {})[name] = hashlib.sha256(data).hexdigest()
@@ -52,7 +58,7 @@ class ImportStock(unittest.TestCase):
         self.imported(self.pair(self.work / 'copy'))
         for name in S.PAIR:
             self.assertEqual((self.dest / name).read_bytes(), FILES['1.2.1', name])
-        self.imported(self.work / 'copy')                        # again: unchanged, no error
+        self.imported(self.work / 'copy')  # again: unchanged, no error
         self.assertEqual(sorted(p.name for p in self.dest.iterdir()), sorted(S.PAIR))
 
     def test_upgrade_tree_as_copied_or_its_parent(self):
@@ -80,8 +86,10 @@ class ImportStock(unittest.TestCase):
                 self.assertFalse(self.dest.exists())
 
     def test_unknown_or_swapped_file_is_refused(self):
-        for label, folder in (('changed', self.pair(self.work / 'a', os_bytes=b'os 1.2.1 patched')),
-                              ('swapped', self.pair(self.work / 'b', os_bytes=FILES['1.2.1', 'bootloader.ldr']))):
+        for label, folder in (
+            ('changed', self.pair(self.work / 'a', os_bytes=b'os 1.2.1 patched')),
+            ('swapped', self.pair(self.work / 'b', os_bytes=FILES['1.2.1', 'bootloader.ldr'])),
+        ):
             with self.subTest(label), self.assertRaisesRegex(S.SetupError, 'os.ldr: not a known stock file'):
                 self.imported(folder)
         self.assertFalse(self.dest.exists())
@@ -140,10 +148,12 @@ class StockCatalog(unittest.TestCase):
     def fixture_catalog(self, served):
         shown = []
         out = io.StringIO()
-        with mock.patch.object(S.paths, 'STOCK_121', self.dest), \
-                mock.patch.object(S.paths, 'CATALOG_121', self.dest / 'op1_factory.json'), \
-                mock.patch.object(S, 'git_show', lambda path: shown.append(path) or served), \
-                contextlib.redirect_stdout(out):
+        with (
+            mock.patch.object(S.paths, 'STOCK_121', self.dest),
+            mock.patch.object(S.paths, 'CATALOG_121', self.dest / 'op1_factory.json'),
+            mock.patch.object(S, 'git_show', lambda path: shown.append(path) or served),
+            contextlib.redirect_stdout(out),
+        ):
             S.fixture_catalog()
         return shown, out.getvalue()
 
@@ -169,8 +179,9 @@ class StockCatalog(unittest.TestCase):
 
 class Pins(unittest.TestCase):
     def test_stock_pins_agree_with_the_code(self):
-        self.assertEqual(S.PINS['stock']['1.2.1'], {'os.ldr': usb_proto.STOCK_OS_LDR_SHA256,
-                                                    'bootloader.ldr': outer.BOOT_HASH})
+        self.assertEqual(
+            S.PINS['stock']['1.2.1'], {'os.ldr': usb_proto.STOCK_OS_LDR_SHA256, 'bootloader.ldr': outer.BOOT_HASH}
+        )
         self.assertEqual(S.identify('os.ldr', usb_proto.STOCK_OS_LDR_SHA256), '1.2.1')
         self.assertEqual(S.identify('bootloader.ldr', usb_proto.STOCK_OS_LDR_SHA256), None)
         self.assertEqual(set(S.PINS['stock']), {'1.2.1', '1.2.5'})
@@ -241,9 +252,14 @@ def toolchain_zip(entries):
 
 
 FOLDER = 'open-xy-toolchain-darwin-arm64'
-GOOD_ZIP = toolchain_zip({FOLDER + '/': (b'', 0o40755), FOLDER + '/SOURCES.md': (b'sources\n', 0o100644),
-                          FOLDER + '/bin/bfin-elf-as': (b'as', 0o100755),
-                          FOLDER + '/lib/gcc/bfin-elf/8.0.0/libgcc.a': (b'lib', 0o100644)})
+GOOD_ZIP = toolchain_zip(
+    {
+        FOLDER + '/': (b'', 0o40755),
+        FOLDER + '/SOURCES.md': (b'sources\n', 0o100644),
+        FOLDER + '/bin/bfin-elf-as': (b'as', 0o100755),
+        FOLDER + '/lib/gcc/bfin-elf/8.0.0/libgcc.a': (b'lib', 0o100644),
+    }
+)
 
 
 class ToolchainPins(unittest.TestCase):
@@ -252,8 +268,9 @@ class ToolchainPins(unittest.TestCase):
         hosts = json.loads((ROOT / 'toolchains.json').read_text())['hosts']
         self.assertEqual(set(pins['archives']), set(hosts) - {'linux-x86_64'})
         for host, record in pins['archives'].items():
-            self.assertEqual(record['url'], '%s/open-xy-toolchain-%s.zip'
-                             % (pins['release'].replace('/tag/', '/download/'), host))
+            self.assertEqual(
+                record['url'], '%s/open-xy-toolchain-%s.zip' % (pins['release'].replace('/tag/', '/download/'), host)
+            )
             self.assertEqual(record['folder'], 'open-xy-toolchain-' + host)
             self.assertRegex(record['sha256'], r'^[0-9a-f]{64}$')
 
@@ -271,27 +288,47 @@ class Bootstrap(unittest.TestCase):
         (self.repo / 'docs/STATUS.template.md').write_text('# status\n')
         self.config = self.repo / 'xyf.local.json'
         self.calls, self.stock, self.which, self.served, self.done = [], False, {'mise'}, GOOD_ZIP, set()
-        self.record = {'url': 'https://example.invalid/%s.zip' % FOLDER, 'folder': FOLDER,
-                       'sha256': hashlib.sha256(GOOD_ZIP).hexdigest()}
-        for name, value in (('run', self.fake_run), ('toolchain_problem', self.fake_toolchain),
-                            ('stock_present', lambda: self.stock), ('cmd_doctor', lambda args: 1),
-                            ('cmd_fixtures', lambda args: self.calls.append('fixtures')),
-                            ('fixtures_missing', lambda: ['verified build']), ('host_name', lambda: 'darwin-arm64'),
-                            ('download', self.fake_download)):
+        self.record = {
+            'url': 'https://example.invalid/%s.zip' % FOLDER,
+            'folder': FOLDER,
+            'sha256': hashlib.sha256(GOOD_ZIP).hexdigest(),
+        }
+        for name, value in (
+            ('run', self.fake_run),
+            ('toolchain_problem', self.fake_toolchain),
+            ('stock_present', lambda: self.stock),
+            ('cmd_doctor', lambda args: 1),
+            ('cmd_fixtures', lambda args: self.calls.append('fixtures')),
+            ('fixtures_missing', lambda: ['verified build']),
+            ('host_name', lambda: 'darwin-arm64'),
+            ('download', self.fake_download),
+        ):
             patcher = mock.patch.object(S, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
-        stale = lambda name, why: lambda root=None: None if name in self.done else why  # noqa: E731
-        for name, value in (('mise', lambda: '/bin/mise' if 'mise' in self.which else None),
-                            ('tools_missing', lambda root=None: 'mise not found: install it' if 'mise' not in self.which
-                             else stale('mise', 'missing python: run `mise install`')()),
-                            ('python_deps_stale', stale('uv', 'run `uv sync`')),
-                            ('js_deps_stale', stale('pnpm', 'run `pnpm install`')), ('tool', lambda name: ['/bin/' + name])):
+        stale = lambda name, why: lambda root=None: None if name in self.done else why
+        for name, value in (
+            ('mise', lambda: '/bin/mise' if 'mise' in self.which else None),
+            (
+                'tools_missing',
+                lambda root=None: (
+                    'mise not found: install it'
+                    if 'mise' not in self.which
+                    else stale('mise', 'missing python: run `mise install`')()
+                ),
+            ),
+            ('python_deps_stale', stale('uv', 'run `uv sync`')),
+            ('js_deps_stale', stale('pnpm', 'run `pnpm install`')),
+            ('hook_missing', stale('lefthook', 'run `lefthook install`')),
+            ('tool', lambda name: ['/bin/' + name]),
+        ):
             patcher = mock.patch.object(S.dev_tools, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
-        for patcher in (mock.patch.object(S.shutil, 'which', self.fake_which),
-                        mock.patch.dict(S.PINS, {'toolchain': {'archives': {'darwin-arm64': self.record}}})):
+        for patcher in (
+            mock.patch.object(S.shutil, 'which', self.fake_which),
+            mock.patch.dict(S.PINS, {'toolchain': {'archives': {'darwin-arm64': self.record}}}),
+        ):
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -306,7 +343,7 @@ class Bootstrap(unittest.TestCase):
     def fake_which(self, name):
         return '/bin/' + name if name in self.which else None
 
-    def fake_toolchain(self, directory=None):        # stands in for the per-file check against toolchains.json
+    def fake_toolchain(self, directory=None):  # stands in for the per-file check against toolchains.json
         return None if directory and (Path(directory) / 'bin/bfin-elf-as').is_file() else 'missing'
 
     def bootstrap(self, dry_run=False, workspace=None, environ=None, archive=None):
@@ -317,8 +354,10 @@ class Bootstrap(unittest.TestCase):
         return b, out.getvalue()
 
     def tree(self):
-        return sorted((str(p.relative_to(self.ws)), p.is_symlink(), p.read_bytes() if p.is_file() else None)
-                      for p in self.ws.rglob('*'))
+        return sorted(
+            (str(p.relative_to(self.ws)), p.is_symlink(), p.read_bytes() if p.is_file() else None)
+            for p in self.ws.rglob('*')
+        )
 
     def test_fresh_workspace_then_a_second_run_changes_nothing(self):
         b, out = self.bootstrap()
@@ -326,20 +365,32 @@ class Bootstrap(unittest.TestCase):
             self.assertTrue((self.ws / 'private' / getattr(paths, name).relative_to(paths.PRIVATE_ROOT)).is_dir())
         self.assertTrue((self.ws / 'private/incoming').is_dir())
         self.assertEqual((self.ws / 'private/xy-forever/status/README.md').read_text(), '# status\n')
-        self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})   # ../private: nothing recorded
+        self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})  # ../private: nothing recorded
         tools = self.ws / 'tools/blackfin'
         self.assertFalse(tools.is_symlink())
         self.assertEqual((tools / 'bin/bfin-elf-as').read_bytes(), b'as')
-        self.assertEqual(sorted(p.name for p in (self.ws / 'tools').iterdir()), ['blackfin'])   # no temporary left
-        self.assertEqual(self.calls, ['/bin/mise install', '/bin/uv sync', '/bin/pnpm install', 'download ' + self.record['url']])
+        self.assertEqual(sorted(p.name for p in (self.ws / 'tools').iterdir()), ['blackfin'])  # no temporary left
+        self.assertEqual(
+            self.calls,
+            [
+                '/bin/mise install',
+                '/bin/uv sync',
+                '/bin/pnpm install',
+                '/bin/lefthook install',
+                'download ' + self.record['url'],
+            ],
+        )
         self.assertEqual((self.ws / 'CLAUDE.md').read_text(), '@AGENTS.md\n')
         guide = (self.ws / 'AGENTS.md').read_text()
         self.assertIn('Read `xy-forever/AGENTS.md` first and follow it', guide)
         self.assertIn('"Continue development" works from here', guide)
         self.assertTrue(10 <= len(guide.splitlines()) <= 15)
-        self.assertRegex(out, r'Next:\n  1\. Put your OP-XY .* in MTP mode: hold COM .*\n  2\. python3 scripts/setup\.py '
-                         r'import-stock --from-device +\(reads them into %s.*/upgrade/firmware/blackfin/bin/os\.ldr'
-                         % (self.ws / 'private/incoming'))
+        self.assertRegex(
+            out,
+            r'Next:\n  1\. Put your OP-XY .* in MTP mode: hold COM .*\n  2\. python3 scripts/setup\.py '
+            r'import-stock --from-device +\(reads them into %s.*/upgrade/firmware/blackfin/bin/os\.ldr'
+            % (self.ws / 'private/incoming'),
+        )
         self.assertIn('import-stock %s' % (self.ws / 'private/incoming'), out)
         self.assertIn('4. Open your agent in %s (or %s) and say "Continue development"' % (self.ws, self.repo), out)
         before, self.calls = self.tree(), []
@@ -353,7 +404,9 @@ class Bootstrap(unittest.TestCase):
         (self.repo / 'docs/status/approvals/a.md').write_text('yes\n')
         b, out = self.bootstrap()
         status = self.ws / 'private/xy-forever/status'
-        self.assertEqual(((status / 'README.md').read_text(), (status / 'approvals/a.md').read_text()), ('# mine\n', 'yes\n'))
+        self.assertEqual(
+            ((status / 'README.md').read_text(), (status / 'approvals/a.md').read_text()), ('# mine\n', 'yes\n')
+        )
         self.assertFalse((self.repo / 'docs/status').exists())
         self.assertIn('move %s to %s' % (self.repo / 'docs/status', status), out)
         b, out = self.bootstrap()
@@ -382,19 +435,28 @@ class Bootstrap(unittest.TestCase):
         before = self.tree()
         b, out = self.bootstrap(dry_run=True)
         self.assertEqual((self.calls, self.tree()), ([], before))
-        for what in ('create 12 folders', 'copy docs/STATUS.template.md to %s' % (self.ws / 'private/xy-forever/status/README.md'), '"leak_patterns"',
-                     'write %s' % (self.ws / 'AGENTS.md'), 'write %s' % (self.ws / 'CLAUDE.md'),
-                     'download %s, check its SHA-256' % self.record['url'], 'mise install', 'uv sync --locked',
-                     'pnpm install --frozen-lockfile'):
+        for what in (
+            'create 12 folders',
+            'copy docs/STATUS.template.md to %s' % (self.ws / 'private/xy-forever/status/README.md'),
+            '"leak_patterns"',
+            'write %s' % (self.ws / 'AGENTS.md'),
+            'write %s' % (self.ws / 'CLAUDE.md'),
+            'download %s, check its SHA-256' % self.record['url'],
+            'mise install',
+            'uv sync --locked',
+            'pnpm install --frozen-lockfile',
+            'lefthook install',
+        ):
             self.assertRegex(out, r'  would .*' + re.escape(what))
-        self.assertIn('dry run: the 9 actions above would run; nothing changed', out)
+        self.assertIn('dry run: the 10 actions above would run; nothing changed', out)
 
     def test_an_archive_with_the_wrong_hash_is_refused_and_nothing_stays(self):
         self.served = GOOD_ZIP + b'tampered'
-        with self.assertRaisesRegex(S.SetupError, 'toolchain archive hash mismatch: .* the pin \\(stock.json\\) is %s'
-                                    % self.record['sha256']):
+        with self.assertRaisesRegex(
+            S.SetupError, 'toolchain archive hash mismatch: .* the pin \\(stock.json\\) is %s' % self.record['sha256']
+        ):
             self.bootstrap()
-        self.assertTrue((self.ws / 'private/xy-forever/status/README.md').exists())   # what came before stays done
+        self.assertTrue((self.ws / 'private/xy-forever/status/README.md').exists())  # what came before stays done
         self.assertEqual(list((self.ws / 'tools').iterdir()), [])
 
     def test_a_given_archive_is_used_without_a_download(self):
@@ -404,11 +466,13 @@ class Bootstrap(unittest.TestCase):
         self.assertNotIn('download', ' '.join(self.calls))
         self.assertIn('%s (given), check its SHA-256' % archive, out)
         self.assertTrue((self.ws / 'tools/blackfin/bin/bfin-elf-as').is_file())
-        self.assertTrue(archive.is_file())                              # the developer's file is kept
+        self.assertTrue(archive.is_file())  # the developer's file is kept
 
     def test_an_unpacked_toolchain_failing_its_pins_or_an_escaping_entry_is_refused(self):
-        for entries, message in (({FOLDER + '/SOURCES.md': (b'x', 0o100644)}, 'fails its pins \\(toolchains.json\\)'),
-                                 ({FOLDER + '/../evil': (b'x', 0o100644)}, 'unexpected entry')):
+        for entries, message in (
+            ({FOLDER + '/SOURCES.md': (b'x', 0o100644)}, 'fails its pins \\(toolchains.json\\)'),
+            ({FOLDER + '/../evil': (b'x', 0o100644)}, 'unexpected entry'),
+        ):
             self.served = toolchain_zip(entries)
             self.record['sha256'] = hashlib.sha256(self.served).hexdigest()
             with self.assertRaisesRegex(S.SetupError, message):
@@ -419,15 +483,20 @@ class Bootstrap(unittest.TestCase):
     def test_a_failed_download_names_the_manual_route(self):
         def offline(url, path):
             raise S.urllib.error.URLError('no network')
-        with mock.patch.object(S, 'download', offline), self.assertRaisesRegex(
-                S.SetupError, 'could not download .*in a browser, then run .*--toolchain-archive'):
+
+        with (
+            mock.patch.object(S, 'download', offline),
+            self.assertRaisesRegex(S.SetupError, 'could not download .*in a browser, then run .*--toolchain-archive'),
+        ):
             self.bootstrap()
 
     def test_toolchain_already_set_up_or_linux_is_not_fetched(self):
         with mock.patch.object(S, 'toolchain_problem', lambda directory=None: None):
             b, out = self.bootstrap()
         self.assertIn('toolchain: ok', out)
-        self.assertEqual(self.calls, ['/bin/mise install', '/bin/uv sync', '/bin/pnpm install'])
+        self.assertEqual(
+            self.calls, ['/bin/mise install', '/bin/uv sync', '/bin/pnpm install', '/bin/lefthook install']
+        )
         self.calls = []
         with mock.patch.object(S, 'host_name', lambda: 'linux-x86_64'):
             b, out = self.bootstrap()
@@ -444,7 +513,9 @@ class Bootstrap(unittest.TestCase):
         other = self.ws.parent / 'other'
         with mock.patch.object(S, 'host_name', lambda: 'linux-x86_64'):
             b, out = self.bootstrap(workspace=other)
-            self.assertEqual(json.loads(self.config.read_text()), {'private': str(other / 'private'), 'leak_patterns': []})
+            self.assertEqual(
+                json.loads(self.config.read_text()), {'private': str(other / 'private'), 'leak_patterns': []}
+            )
             self.assertTrue((other / 'private/firmware/stock-1.2.1').is_dir())
             self.assertIn('workspace AGENTS.md: skipped', out)
             self.assertFalse((other / 'AGENTS.md').exists())
@@ -490,33 +561,52 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual((self.ws / 'CLAUDE.md').read_text(), '@AGENTS.md\n')
 
 
-
 @pytest.mark.gate
 class DevToolRows(unittest.TestCase):
     """doctor's tool rows (xy_forever/dev_tools.py): mise, its pins, the Python and the JS dependencies."""
 
     def test_tool_and_dependency_rows_must_pass(self):
-        fine = [(label, True, 'ok') for label in ('python', 'private folder', 'toolchain', 'stock os.ldr',
-                                                  'stock bootloader.ldr', 'mise', 'tools', 'python deps', 'js deps')]
-        for label in ('mise', 'tools', 'python deps', 'js deps', 'toolchain'):
+        fine = [
+            (label, True, 'ok')
+            for label in (
+                'python',
+                'private folder',
+                'toolchain',
+                'stock os.ldr',
+                'stock bootloader.ldr',
+                'mise',
+                'tools',
+                'python deps',
+                'js deps',
+                'git hook',
+            )
+        ]
+        for label in ('mise', 'tools', 'python deps', 'js deps', 'git hook', 'toolchain'):
             rows = [(l, l != label, d) for l, _, d in fine] + [('verified build', False, 'none')]
             with mock.patch.object(S, 'doctor', return_value=(rows, [])), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(S.cmd_doctor(None), 1, label)
-        with mock.patch.object(S, 'doctor', return_value=(fine + [('verified build', False, 'none')], [])), \
-                contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(S.cmd_doctor(None), 0)              # a missing build or fixture only skips tests
+        with (
+            mock.patch.object(S, 'doctor', return_value=(fine + [('verified build', False, 'none')], [])),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(S.cmd_doctor(None), 0)  # a missing build or fixture only skips tests
         no_stock = [(l, not l.startswith('stock'), d) for l, _, d in fine]
         with mock.patch.object(S, 'doctor', return_value=(no_stock, [])), contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(S.cmd_doctor(None), 0)              # no OP-XY yet: setup without a device is done
+            self.assertEqual(S.cmd_doctor(None), 0)  # no OP-XY yet: setup without a device is done
 
     def test_tools_missing(self):
         with mock.patch.object(dev_tools, 'mise', lambda: None):
             self.assertRegex(dev_tools.tools_missing(), '^mise not found: install it')
-        for out, rc, err, want in (('{}', 0, '', None), ('{"node": []}', 0, '', 'missing node: run `mise install`'),
-                                   ('', 1, 'mise.toml is not trusted\n', 'mise.toml is not trusted (`mise trust` here')):
+        for out, rc, err, want in (
+            ('{}', 0, '', None),
+            ('{"node": []}', 0, '', 'missing node: run `mise install`'),
+            ('', 1, 'mise.toml is not trusted\n', 'mise.toml is not trusted (`mise trust` here'),
+        ):
             done = mock.Mock(returncode=rc, stdout=out, stderr=err)
-            with mock.patch.object(dev_tools, 'mise', lambda: '/bin/mise'), \
-                    mock.patch.object(dev_tools, 'quiet', return_value=done):
+            with (
+                mock.patch.object(dev_tools, 'mise', lambda: '/bin/mise'),
+                mock.patch.object(dev_tools, 'quiet', return_value=done),
+            ):
                 problem = dev_tools.tools_missing()
             self.assertEqual(problem, want) if want is None else self.assertIn(want, problem)
 
@@ -533,13 +623,24 @@ class DevToolRows(unittest.TestCase):
             dev_tools.os.utime(root / 'pnpm-lock.yaml', (later, later))
             self.assertIn('pnpm-lock.yaml changed', dev_tools.js_deps_stale(root))
 
+    def test_hook_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertIsNone(dev_tools.hook_missing(root))  # no git checkout: nothing to install
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            self.assertEqual(dev_tools.hook_missing(root), 'run `lefthook install`')
+            (root / '.git/hooks/pre-commit').write_text('#!/bin/sh\nlefthook run pre-commit "$@"\n')
+            self.assertIsNone(dev_tools.hook_missing(root))
+
     def test_global_mise_config_is_kept_out(self):
         self.assertEqual(dev_tools.env({})['MISE_IGNORED_CONFIG_PATHS'], str(Path.home() / '.config/mise'))
 
     def test_doctor_reports_them(self):
         labels = [r[0] for r in S.doctor()[0]]
-        self.assertEqual([x for x in labels if x in ('mise', 'tools', 'python deps', 'js deps')],
-                         ['mise', 'tools', 'python deps', 'js deps'])
+        self.assertEqual(
+            [x for x in labels if x in ('mise', 'tools', 'python deps', 'js deps')],
+            ['mise', 'tools', 'python deps', 'js deps'],
+        )
 
 
 if __name__ == '__main__':

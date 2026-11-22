@@ -4,16 +4,16 @@
 // reader and the recogniser are in their own objects so a build links only what it uses.
 namespace xyf { namespace manifest {
 namespace {
-const char* const key_names[key_count] = {
-    "type", "name", "version", "kind", "bytes", "crc32", "sha256", "content",
-    "needs_os", "generation", "profile", "machine", "source", "licence", "machines"};
+const char* const key_names[key_count] = {"type",    "name",    "version", "kind",     "bytes",
+                                          "crc32",   "sha256",  "content", "needs_os", "generation",
+                                          "profile", "machine", "source",  "licence",  "machines"};
 const char* const machine_names[] = {"synth", "drum", "sample", "effect", "player", "extension"};
 const uint16_t bit_type = 1u << key_type;
 // Keys each type takes and needs (010: the firmware and mod examples, the base line).
-const uint16_t firmware_keys = uint16_t(
-    1u << key_name | 1u << key_version | 1u << key_kind | 1u << key_bytes | 1u << key_crc32 | 1u << key_sha256 |
-    1u << key_content | 1u << key_needs_os | 1u << key_generation | 1u << key_profile | 1u << key_source |
-    1u << key_licence | 1u << key_machines);
+const uint16_t firmware_keys =
+    uint16_t(1u << key_name | 1u << key_version | 1u << key_kind | 1u << key_bytes | 1u << key_crc32 |
+             1u << key_sha256 | 1u << key_content | 1u << key_needs_os | 1u << key_generation | 1u << key_profile |
+             1u << key_source | 1u << key_licence | 1u << key_machines);
 const uint16_t base_keys = uint16_t(1u << key_name | 1u << key_version | 1u << key_profile | 1u << key_generation |
                                     1u << key_needs_os | 1u << key_source | 1u << key_licence | 1u << key_machines);
 const uint16_t mod_keys = uint16_t(1u << key_name | 1u << key_version | 1u << key_machine | 1u << key_generation |
@@ -25,11 +25,14 @@ const uint16_t mod_needs = uint16_t(1u << key_name | 1u << key_machine | 1u << k
 bool space(char c) { return c == ' ' || c == '\t'; }
 bool key_char(char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; }
 bool token_char(char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-'; }
-void zero(void* p, uint32_t n) { for (uint32_t i = 0; i != n; ++i) static_cast<char*>(p)[i] = 0; }
+void zero(void* p, uint32_t n) {
+    for (uint32_t i = 0; i != n; ++i) static_cast<char*>(p)[i] = 0;
+}
 // a[0..n) equals the NUL-terminated word.
 bool same(const char* a, uint32_t n, const char* word) {
     uint32_t i = 0;
-    for (; i != n; ++i) if (!word[i] || word[i] != a[i]) return false;
+    for (; i != n; ++i)
+        if (!word[i] || word[i] != a[i]) return false;
     return !word[i];
 }
 bool equal(const char* a, const char* b) {
@@ -37,7 +40,8 @@ bool equal(const char* a, const char* b) {
     return *a == *b;
 }
 bool equal32(const uint8_t* a, const uint8_t* b) {
-    for (uint32_t i = 0; i != 32; ++i) if (a[i] != b[i]) return false;
+    for (uint32_t i = 0; i != 32; ++i)
+        if (a[i] != b[i]) return false;
     return true;
 }
 uint32_t nibble(char c) {
@@ -93,7 +97,10 @@ Status store_value(Manifest& m, uint32_t key, const char* v, uint32_t n) {
         return ok;
     case key_machine:
         for (uint32_t i = 0; i != sizeof(machine_names) / sizeof(machine_names[0]); ++i)
-            if (same(v, n, machine_names[i])) { m.machine = uint8_t(machine_synth + i); return ok; }
+            if (same(v, n, machine_names[i])) {
+                m.machine = uint8_t(machine_synth + i);
+                return ok;
+            }
         return bad_value;
     case key_machines: return number(v, n, m.machines) && m.machines <= 65535u ? ok : bad_number;
     case key_bytes: return number(v, n, m.bytes) ? ok : bad_number;
@@ -112,7 +119,8 @@ Status store_value(Manifest& m, uint32_t key, const char* v, uint32_t n) {
     if (n >= capacity) return value_too_long;
     if (key == key_generation || key == key_profile) {     // path names under mods/ (010): tokens
         if (v[0] == '.' || v[0] == '-' || v[0] == '_') return bad_value;
-        for (uint32_t i = 0; i != n; ++i) if (!token_char(v[i])) return bad_value;
+        for (uint32_t i = 0; i != n; ++i)
+            if (!token_char(v[i])) return bad_value;
     }
     for (uint32_t i = 0; i != n; ++i) out[i] = v[i];
     out[n] = 0;
@@ -129,17 +137,20 @@ Status fail(Manifest& m, Status status, uint32_t line, uint32_t key, uint32_t li
     return status;
 }
 uint32_t first_key(uint16_t bits) {
-    for (uint32_t k = 0; k != key_count; ++k) if (bits >> k & 1u) return k;
+    for (uint32_t k = 0; k != key_count; ++k)
+        if (bits >> k & 1u) return k;
     return key_unknown;
 }
 }
 
-
 void begin(Manifest& m) {
-    zero(&m, sizeof(m)); m.key = key_unknown; m.status = empty;
+    zero(&m, sizeof(m));
+    m.key = key_unknown;
+    m.status = empty;
 }
 Key find_key(const char* text, uint32_t length) {
-    for (uint32_t k = 0; k != key_count; ++k) if (same(text, length, key_names[k])) return Key(k);
+    for (uint32_t k = 0; k != key_count; ++k)
+        if (same(text, length, key_names[k])) return Key(k);
     return key_unknown;
 }
 Status field(Manifest& m, Key key, const char* value, uint32_t length, uint32_t line) {
@@ -158,8 +169,10 @@ Status finish(Manifest& m, const uint16_t* key_line, uint32_t line) {
             if ((extra >> k & 1u) && (worst == key_unknown || key_line[k] < key_line[worst])) worst = k;
         return fail(m, key_not_for_type, key_line[worst], worst, line);
     }
-    uint16_t needs = m.type == type_mod_base ? base_needs : m.type == type_mod ? mod_needs :
-                     m.type == type_firmware ? firmware_needs : 0;
+    uint16_t needs = m.type == type_mod_base ? base_needs :
+                     m.type == type_mod      ? mod_needs :
+                     m.type == type_firmware ? firmware_needs :
+                                               0;
     if (m.type == type_none || m.type == type_firmware) {  // an assembled entry names both
         if (has(m, key_generation) || has(m, key_needs_os))
             needs = uint16_t(needs | 1u << key_generation | 1u << key_needs_os);
@@ -207,12 +220,12 @@ Status parse(const char* text, uint32_t length, Manifest& m) {
         if (!n || n > max_key) return fail(m, bad_key, line, key_unknown, line);
         const bool spaced = a < b && space(text[a]);
         while (a < b && space(text[a])) ++a;
-        if (a == b || text[a] != '=')
-            return fail(m, a == b || spaced ? syntax : bad_key, line, key_unknown, line);
+        if (a == b || text[a] != '=') return fail(m, a == b || spaced ? syntax : bad_key, line, key_unknown, line);
         ++a;
         while (a < b && space(text[a])) ++a;
         while (b > a && space(text[b - 1])) --b;
-        for (uint32_t k = a; k != b; ++k) if (text[k] == '\t') return fail(m, bad_byte, line, key_unknown, line);
+        for (uint32_t k = a; k != b; ++k)
+            if (text[k] == '\t') return fail(m, bad_byte, line, key_unknown, line);
         const Key key = find_key(text + key_start, n);
         for (uint32_t k = 0; k != count; ++k)
             if (key_length[k] == n) {
@@ -297,10 +310,13 @@ Dependency check_apply(const Manifest& entry, const Manifest& base, const Manife
     if (d != dep_ok) return d;
     for (uint32_t i = 0; i != count; ++i) {
         d = mods && mods[i] ? check_mod(base, *mods[i]) : dep_invalid;
-        if (d != dep_ok) { failed = i; return d; }
+        if (d != dep_ok) {
+            failed = i;
+            return d;
+        }
     }
     return dep_ok;
 }
 
 bool needs(const Manifest& dependent, const Manifest& entry) { return check_os(dependent, entry) == dep_ok; }
-} }
+}}

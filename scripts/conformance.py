@@ -25,22 +25,25 @@ With --sim, cases that need the control port (HOST:PORT+1: faults, power) run to
 (--fixture stock_os_ldr=PATH, xyf_build=PATH) default to the private stock 1.2.1 os.ldr when present.
 Exit codes: 0 nothing failed, 1 a case failed, 2 bad arguments or case data, 3 NEED.
 """
+
 import argparse
-from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 import re
 import socket
 import sys
 import time
+from datetime import UTC, datetime
+from pathlib import Path
 
 import device_pass  # (NEED, session folders, keepalive)
+
+from xy_forever import bounds, paths
+from xy_forever import conformance as C
 from xy_forever import xyf_host as host
-from xy_forever import bounds, conformance as C, paths
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
-REPLY_CAP = {'sim': bounds.SIM_CALL_S, 'device': 20.0}   # longest wait for one reply (spec timeouts: longer)
+REPLY_CAP = {'sim': bounds.SIM_CALL_S, 'device': 20.0}  # longest wait for one reply (spec timeouts: longer)
 
 
 class Target:
@@ -101,13 +104,25 @@ def parse_args(argv):
     parser.add_argument('--check', action='store_true', help='interpret every case and exit; touches nothing')
     parser.add_argument('--plan', action='store_true', help='list the cases and exit; touches nothing')
     parser.add_argument('--only', metavar='REGEX', help='run only the cases whose name matches')
-    parser.add_argument('--fixture', action='append', default=[], metavar='NAME=PATH',
-                        help='a local file for cases that need fixture:NAME (%s)' % ', '.join(C.FIXTURES))
-    parser.add_argument('--wait', type=float, default=device_pass.T_ANSWER,
-                        help='seconds to wait for the device to answer HELLO (default %(default)g)')
-    parser.add_argument('--keep', action='store_true',
-                        help='with --sim: keep the evidence folder when nothing failed (removed otherwise; '
-                        'a real-device run always keeps it)')
+    parser.add_argument(
+        '--fixture',
+        action='append',
+        default=[],
+        metavar='NAME=PATH',
+        help='a local file for cases that need fixture:NAME (%s)' % ', '.join(C.FIXTURES),
+    )
+    parser.add_argument(
+        '--wait',
+        type=float,
+        default=device_pass.T_ANSWER,
+        help='seconds to wait for the device to answer HELLO (default %(default)g)',
+    )
+    parser.add_argument(
+        '--keep',
+        action='store_true',
+        help='with --sim: keep the evidence folder when nothing failed (removed otherwise; '
+        'a real-device run always keeps it)',
+    )
     parser.add_argument('--cases', type=Path, default=C.CASES, help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
@@ -133,7 +148,7 @@ def main(argv=None, sessions=None):
         spec, data = C.load_spec(), C.load(opts.cases)
         count = C.check(spec, data, fixtures)
         pattern = re.compile(opts.only) if opts.only else None
-    except (ValueError, OSError, re.error) as error:          # CaseError is a ValueError
+    except (ValueError, OSError, re.error) as error:  # CaseError is a ValueError
         print('conformance: %s' % error, file=sys.stderr)
         return EXIT_USAGE
     cases = [c for c in data['cases'] if not pattern or pattern.search(c['name'])]
@@ -142,40 +157,73 @@ def main(argv=None, sessions=None):
         return EXIT_PASS
     if opts.plan:
         for c in cases:
-            print('%-40s %-8s %-36s %s' % (c['name'], 'device' if c['real_device'] else 'sim', ','.join(c['effects'])
-                                         or 'read-only', ','.join(c.get('needs', []))))
+            print(
+                '%-40s %-8s %-36s %s'
+                % (
+                    c['name'],
+                    'device' if c['real_device'] else 'sim',
+                    ','.join(c['effects']) or 'read-only',
+                    ','.join(c.get('needs', [])),
+                )
+            )
         return EXIT_PASS
     real = not opts.sim
     host.SIM = opts.sim
     keepalive = device_pass.Keepalive()
     stopped = keepalive.stop_running() if real else []
-    runner = C.Runner(spec, data, Target(opts.sim), real, fixtures, sim_control=bool(opts.sim),
-                      reply_cap=REPLY_CAP['device' if real else 'sim'])
+    runner = C.Runner(
+        spec,
+        data,
+        Target(opts.sim),
+        real,
+        fixtures,
+        sim_control=bool(opts.sim),
+        reply_cap=REPLY_CAP['device' if real else 'sim'],
+    )
     hello = runner.start(opts.wait)
     if hello is None:
         print(device_pass.SIM_NEED if opts.sim else device_pass.NEED)
         return EXIT_NEED
     folder = device_pass.new_folder(Path(sessions or paths.SESSIONS), 'sim-conformance' if opts.sim else 'conformance')
-    started, rows = datetime.now(timezone.utc), []
+    started, rows = datetime.now(UTC), []
     for n, case in enumerate(cases, 1):
         print('[%s] %s' % (time.strftime('%H:%M:%S'), case['name']), file=sys.stderr, flush=True)
         start = time.monotonic()
         result, detail = runner.run_case(case)
         seconds = time.monotonic() - start
         name = '%02d-%s.txt' % (n, re.sub(r'[^a-z0-9_.-]+', '-', case['name']))
-        (folder / name).write_text('# %s: %s\n# %s\n%s\n= %s %.2f s: %s\n' % (
-            case['name'], case['doc'], 'effects: %s' % (', '.join(case['effects']) or 'read-only'),
-            '\n'.join(runner.lines), result, seconds, detail))
+        (folder / name).write_text(
+            '# %s: %s\n# %s\n%s\n= %s %.2f s: %s\n'
+            % (
+                case['name'],
+                case['doc'],
+                'effects: %s' % (', '.join(case['effects']) or 'read-only'),
+                '\n'.join(runner.lines),
+                result,
+                seconds,
+                detail,
+            )
+        )
         rows.append(dict(case=case['name'], result=result, seconds=round(seconds, 2), detail=detail, file=name))
     if real:
         pid = keepalive.start(folder)
         print('keepalive.sh pid %d polls the menu; stop it: touch %s/stop-keepalive' % (pid, folder), file=sys.stderr)
     code = EXIT_FAIL if any(r['result'] == 'FAIL' for r in rows) else EXIT_PASS
-    summary = dict(format='xyf-conformance-run/1', folder=str(folder), argv=list(argv or sys.argv[1:]),
-                   target=opts.sim or 'usb', hello=hello, started_utc=started.isoformat(),
-                   finished_utc=datetime.now(timezone.utc).isoformat(), keepalives_stopped=stopped, cases=rows,
-                   exit_code=code, passed=sum(r['result'] == 'PASS' for r in rows),
-                   failed=sum(r['result'] == 'FAIL' for r in rows), skipped=sum(r['result'] == 'SKIP' for r in rows))
+    summary = dict(
+        format='xyf-conformance-run/1',
+        folder=str(folder),
+        argv=list(argv or sys.argv[1:]),
+        target=opts.sim or 'usb',
+        hello=hello,
+        started_utc=started.isoformat(),
+        finished_utc=datetime.now(UTC).isoformat(),
+        keepalives_stopped=stopped,
+        cases=rows,
+        exit_code=code,
+        passed=sum(r['result'] == 'PASS' for r in rows),
+        failed=sum(r['result'] == 'FAIL' for r in rows),
+        skipped=sum(r['result'] == 'SKIP' for r in rows),
+    )
     (folder / 'summary.json').write_text(json.dumps(summary, indent=1) + '\n')
     print(table(rows, device_pass.settle_folder(folder, opts.sim, code == EXIT_PASS, opts.keep)))
     return code

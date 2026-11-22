@@ -12,12 +12,45 @@
 // refusal in words, nothing changed. Runs in order (one client at a time).
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  truncateSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, test, vi } from 'vitest';
-import { Client, JobError, PackageError, XyfError, applyMods, cancelJob, configGet, configSet, folderSource, infoValues, isXyfError, jobFolder, jobStatus, libraryBases, listPackages,
-  listPaths, makeDefault, localSet, pushPackages, removePackage, tcpOpener } from '../src/node.ts';
+import {
+  Client,
+  JobError,
+  PackageError,
+  XyfError,
+  applyMods,
+  cancelJob,
+  configGet,
+  configSet,
+  folderSource,
+  infoValues,
+  isXyfError,
+  jobFolder,
+  jobStatus,
+  libraryBases,
+  listPackages,
+  listPaths,
+  makeDefault,
+  localSet,
+  pushPackages,
+  removePackage,
+  tcpOpener,
+} from '../src/node.ts';
 import { STORE_FILE, STORE_TEXT, storedName } from '../src/modstore.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
 import { REPO, control, makeModBase, makeModSet } from './simulators.ts';
@@ -48,7 +81,11 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
   /** One push on its own connection, closed afterwards. */
   const push = async (options: Parameters<typeof pushPackages>[2] = {}) => {
     const client = await connect();
-    try { return await pushPackages(client, source(), options); } finally { await client.close(); }
+    try {
+      return await pushPackages(client, source(), options);
+    } finally {
+      await client.close();
+    }
   };
   /** A push whose connection drops before write number after + 1 (the device keeps what it wrote). */
   const cutPush = async (after: number): Promise<void> => {
@@ -56,7 +93,10 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     let left = after;
     const write = client.writeFile.bind(client);
     vi.spyOn(client, 'writeFile').mockImplementation(async (...args) => {
-      if (left-- <= 0) { await client.close(); throw new Error('cut'); }
+      if (left-- <= 0) {
+        await client.close();
+        throw new Error('cut');
+      }
       return write(...args);
     });
     await expect(pushPackages(client, source())).rejects.toThrow('cut');
@@ -67,13 +107,18 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     const out = new Map<string, Buffer>([[STORE_FILE, Buffer.from(STORE_TEXT)]]);
     for (const name of readdirSync(gen)) {
       const list = readFileSync(join(gen, name, 'files.sha256'));
-      for (const [sha, rel] of listPaths(list)) out.set(`${name}/${storedName(rel, sha)}`, readFileSync(join(gen, name, rel)));
+      for (const [sha, rel] of listPaths(list))
+        out.set(`${name}/${storedName(rel, sha)}`, readFileSync(join(gen, name, rel)));
       out.set(`${name}/files.sha256`, list);
     }
     return out;
   };
   /** The package files of host() (store.txt is no package's). */
-  const packageFiles = (): Map<string, Buffer> => { const m = host(); m.delete(STORE_FILE); return m; };
+  const packageFiles = (): Map<string, Buffer> => {
+    const m = host();
+    m.delete(STORE_FILE);
+    return m;
+  };
   const assertStored = (names?: readonly string[]): void => {
     const want = [...host()].filter(([p]) => !names || p === STORE_FILE || names.includes(p.split('/')[0]!));
     const have = tree(stored);
@@ -105,12 +150,25 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
   });
 
   test('push with verify: byte-identical on the device, progress per package and in bytes', async () => {
-    const files = packageFiles(), names = readdirSync(gen).sort();
+    const files = packageFiles(),
+      names = readdirSync(gen).sort();
     const bytes = [...files.values()].reduce((n, b) => n + b.length, 0);
     const seen: PackageResult[] = [];
     const progress: [number, number, string][] = [];
-    const summary = await push({ verify: true, onPackage: (r) => seen.push(r), onProgress: (d, t, phase) => progress.push([d, t, phase]) });
-    expect(summary).toMatchObject({ profile, generation, sent: names.length, skipped: 0, files: files.size, bytes, verified: files.size });
+    const summary = await push({
+      verify: true,
+      onPackage: (r) => seen.push(r),
+      onProgress: (d, t, phase) => progress.push([d, t, phase]),
+    });
+    expect(summary).toMatchObject({
+      profile,
+      generation,
+      sent: names.length,
+      skipped: 0,
+      files: files.size,
+      bytes,
+      verified: files.size,
+    });
     expect(seen.map((r) => r.name)).toEqual(['base', ...names.filter((n) => n !== 'base')]);
     expect(seen.every((r) => r.state === 'sent' && r.files === r.of)).toBe(true);
     expect(progress.filter(([, , p]) => p === 'send').at(-1)).toEqual([bytes, bytes, 'send']);
@@ -126,14 +184,18 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     const again = await push();
     expect(again).toMatchObject({ sent: 0, skipped: names.length, files: 0, bytes: 0 });
     expect(again.packages.every((r) => r.state === 'skipped' && r.files === 0)).toBe(true);
-    const run = spawnSync('python3', ['xyf_host.py', '--sim', sim!.address, 'mods', 'push', gen], { cwd: REPO, encoding: 'utf-8', timeout: 60_000 });
+    const run = spawnSync('python3', ['xyf_host.py', '--sim', sim!.address, 'mods', 'push', gen], {
+      cwd: REPO,
+      encoding: 'utf-8',
+      timeout: 60_000,
+    });
     expect(run.status, run.stdout + run.stderr).toBe(0);
     expect(run.stdout).toContain(`${profile}/${generation}: 0 packages sent, ${names.length} skipped; 0 files, 0 B`);
     assertStored();
   });
 
   test('a cut push never looks complete, and the next push sends exactly the rest', async () => {
-    const files = host().size;                                          // store.txt first, then the packages
+    const files = host().size; // store.txt first, then the packages
     for (const after of [0, 1, 5, Math.floor(files / 2), files - 1]) {
       rmSync(stored, { recursive: true, force: true });
       await cutPush(after);
@@ -148,7 +210,10 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     truncateSync(victim, 5);
     await cutPush(0);
     expect(existsSync(join(stored, 'alpha', 'files.sha256'))).toBe(true);
-    expect(await push()).toMatchObject({ sent: 1, files: [...packageFiles().keys()].filter((path) => path.startsWith('alpha/')).length });
+    expect(await push()).toMatchObject({
+      sent: 1,
+      files: [...packageFiles().keys()].filter((path) => path.startsWith('alpha/')).length,
+    });
     assertStored();
   });
 
@@ -168,7 +233,9 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     rmSync(stored, { recursive: true, force: true });
     cpSync(gen, stored, { recursive: true });
     const client = await connect();
-    expect((await listPackages(client)).map((g) => [g.generation, g.older, g.newer, g.packages.length])).toEqual([[generation, true, false, 0]]);
+    expect((await listPackages(client)).map((g) => [g.generation, g.older, g.newer, g.packages.length])).toEqual([
+      [generation, true, false, 0],
+    ]);
     await expect(pushPackages(client, source())).rejects.toThrow(/older layout/);
     await removePackage(client, generation);
     await pushPackages(client, source());
@@ -182,7 +249,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
 
   test('list (an interrupted package flagged), then remove a package and a generation', async () => {
     await push();
-    unlinkSync(join(stored, 'gamma', 'files.sha256'));                 // as a cut push leaves it
+    unlinkSync(join(stored, 'gamma', 'files.sha256')); // as a cut push leaves it
     const client = await connect();
     const held = await listPackages(client);
     expect(held.map((g) => [g.profile, g.generation, g.older, g.newer])).toEqual([[profile, generation, false, false]]);
@@ -191,20 +258,31 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     for (const name of readdirSync(gen)) {
       const mine = [...files].filter(([p]) => p.split('/')[0] === name).map(([, b]) => b.length);
       const row = held[0]!.packages.find((p) => p.name === name)!;
-      expect([row.files, row.bytes, row.complete], name).toEqual([mine.length, mine.reduce((n, s) => n + s, 0), name !== 'gamma']);
+      expect([row.files, row.bytes, row.complete], name).toEqual([
+        mine.length,
+        mine.reduce((n, s) => n + s, 0),
+        name !== 'gamma',
+      ]);
     }
     expect(held[0]!.packages.find((p) => p.name === 'base')!.info['type']).toBe('mod-base');
 
     const dry = await removePackage(client, 'alpha', { dryRun: true });
-    expect(dry).toEqual([{ path: `/yaffs2/xy-forever/mods/${generation}/alpha`, files: tree(join(stored, 'alpha')).size,
-      bytes: [...tree(join(stored, 'alpha')).values()].reduce((n, b) => n + b.length, 0) }]);
+    expect(dry).toEqual([
+      {
+        path: `/yaffs2/xy-forever/mods/${generation}/alpha`,
+        files: tree(join(stored, 'alpha')).size,
+        bytes: [...tree(join(stored, 'alpha')).values()].reduce((n, b) => n + b.length, 0),
+      },
+    ]);
     expect(existsSync(join(stored, 'alpha'))).toBe(true);
     expect(await removePackage(client, 'alpha', { generation: 'other-gen' })).toEqual([]);
     expect(await removePackage(client, 'alpha')).toEqual(dry);
     expect(existsSync(join(stored, 'alpha'))).toBe(false);
     expect(existsSync(join(stored, 'beta'))).toBe(true);
     expect(await removePackage(client, 'nosuch')).toEqual([]);
-    expect((await removePackage(client, generation)).map((r) => r.path)).toEqual([`/yaffs2/xy-forever/mods/${generation}`]);
+    expect((await removePackage(client, generation)).map((r) => r.path)).toEqual([
+      `/yaffs2/xy-forever/mods/${generation}`,
+    ]);
     expect(existsSync(stored)).toBe(false);
     expect((await listPackages(client)).flatMap((g) => g.packages)).toEqual([]);
     await client.close();
@@ -218,16 +296,30 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
   beforeAll(async () => {
     work = mkdtempSync(join(tmpdir(), 'xyf-ts-build-'));
     const gen = makeModSet(work);
-    const { profile = '', generation = '' } = infoValues(readFileSync(join(gen, 'base', 'manifest.json')), 'manifest.json');
+    const { profile = '', generation = '' } = infoValues(
+      readFileSync(join(gen, 'base', 'manifest.json')),
+      'manifest.json',
+    );
     client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
     await pushPackages(client, folderSource(gen));
     makeModBase(sim!.root, 'modbase');
-    request = { base: 'modbase', profile, generation, machines: ['alpha', 'gamma'], extensions: ['cap'], name: 'OP-XY mods', unverified: true };
+    request = {
+      base: 'modbase',
+      profile,
+      generation,
+      machines: ['alpha', 'gamma'],
+      extensions: ['cap'],
+      name: 'OP-XY mods',
+      unverified: true,
+    };
   });
   /** Storage is served again once the last job's processor B closes (A's write window). */
-  const served = () => vi.waitFor(async () => expect((await client.listDir('/yaffs2')).length).toBeGreaterThan(0),
-    { timeout: 20_000, interval: 100 });
-  beforeEach(served);                                                   // a job's write window outlives the job
+  const served = () =>
+    vi.waitFor(async () => expect((await client.listDir('/yaffs2')).length).toBeGreaterThan(0), {
+      timeout: 20_000,
+      interval: 100,
+    });
+  beforeEach(served); // a job's write window outlives the job
   afterAll(async () => {
     await client?.close();
     rmSync(work, { recursive: true, force: true });
@@ -237,37 +329,48 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     const bases = await libraryBases(client);
     expect(bases.map((b) => b.id)).toEqual(['modbase', 'opxy-121', 'opxy-121-stock']);
     expect(bases[0]!.name).toBe('Mod base');
-    expect(bases.map((b) => b.contentList)).toEqual([true, false, false]);   // the seed's stock entries have no content list
+    expect(bases.map((b) => b.contentList)).toEqual([true, false, false]); // the seed's stock entries have no content list
     const seen: JobStatus[] = [];
     const built = await applyMods(client, request, { pollMs: 20, onProgress: (s) => seen.push(s) });
     const result = built.status;
     expect(built).toMatchObject({ entry: 'mods-a', state: 'content not installed' });
-    expect(result).toMatchObject({ phase: 'done', error: 'none', debris: false, final: true, detail: 'mods-a', folder: jobFolder(result.job) });
+    expect(result).toMatchObject({
+      phase: 'done',
+      error: 'none',
+      debris: false,
+      final: true,
+      detail: 'mods-a',
+      folder: jobFolder(result.job),
+    });
     expect(result.job).toBeGreaterThan(0);
     expect(result.steps).toBeGreaterThan(0);
     expect(seen.at(-1)).toEqual(result);
-    expect(existsSync(join(sim!.root, 'xy-forever', 'tmp', `job-${result.job}`))).toBe(false);   // committed, not left in tmp/
+    expect(existsSync(join(sim!.root, 'xy-forever', 'tmp', `job-${result.job}`))).toBe(false); // committed, not left in tmp/
     const out = join(sim!.root, 'xy-forever', 'firmware', built.entry);
     expect(readdirSync(out)).toContain('os.ldr');
     expect(readdirSync(out)).not.toContain('layout.json');
     expect(infoValues(readFileSync(join(out, 'manifest.json')), 'manifest.json')['machines']).toBe('2');
     expect(infoValues(readFileSync(join(out, 'manifest.json')), 'manifest.json')['name']).toBe('OP-XY mods');
     await served();
-    expect((await libraryBases(client)).map((b) => b.id)).toEqual(['modbase', 'opxy-121', 'opxy-121-stock']);   // not a base
-    expect(await jobStatus(client)).toEqual(result);                      // job 0: the last job
-    await expect(cancelJob(client, result.job)).rejects.toMatchObject({ code: 'state' });   // it ended
+    expect((await libraryBases(client)).map((b) => b.id)).toEqual(['modbase', 'opxy-121', 'opxy-121-stock']); // not a base
+    expect(await jobStatus(client)).toEqual(result); // job 0: the last job
+    await expect(cancelJob(client, result.job)).rejects.toMatchObject({ code: 'state' }); // it ended
     const boot = await client.libraryBoot(built.entry, { confirm: true }).catch((e: unknown) => e);
-    expect(isXyfError(boot, 'no_content'), String(boot)).toBe(true);    // listed, not bootable as it is
+    expect(isXyfError(boot, 'no_content'), String(boot)).toBe(true); // listed, not bootable as it is
   });
 
   test('makeDefault on the built entry runs the content switch, then writes the default', async () => {
     const seen: JobStatus[] = [];
     const made = await makeDefault(client, 'mods-a', { pollMs: 20, onProgress: (s) => seen.push(s) });
-    expect(made).toMatchObject({ id: 'mods-a', switched: true, status: { phase: 'done', detail: 'mods-a', error: 'none' } });
-    expect(seen.at(-1)).toEqual(made.status);                           // followed to its end (a fast switch may show no middle phase)
+    expect(made).toMatchObject({
+      id: 'mods-a',
+      switched: true,
+      status: { phase: 'done', detail: 'mods-a', error: 'none' },
+    });
+    expect(seen.at(-1)).toEqual(made.status); // followed to its end (a fast switch may show no middle phase)
     await served();
     expect((await client.readState())?.default).toBe('mods-a');
-    expect(await makeDefault(client, 'mods-a')).toEqual({ id: 'mods-a', switched: false, status: null });   // installed already
+    expect(await makeDefault(client, 'mods-a')).toEqual({ id: 'mods-a', switched: false, status: null }); // installed already
   });
 
   test('refusals in plain words: missing inputs; a failed job with its error', async () => {
@@ -288,10 +391,12 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     await expect(applyMods(client, { ...request, machines: [] })).rejects.toThrow(RangeError);
     const failed = await applyMods(client, { ...request, unverified: false }, { pollMs: 20 }).catch((e: unknown) => e);
     expect(failed).toBeInstanceOf(JobError);
-    expect((failed as JobError).status).toMatchObject({ phase: 'failed', error: 'base', code: 18 });   // an unknown base, not confirmed
+    expect((failed as JobError).status).toMatchObject({ phase: 'failed', error: 'base', code: 18 }); // an unknown base, not confirmed
     expect((failed as JobError).message).toMatch(/^the build failed: the base is not a known stock firmware/);
-    expect(existsSync(join(sim!.root, 'xy-forever', 'tmp', `job-${(failed as JobError).status.job}`, 'os.ldr'))).toBe(false);
-    expect(existsSync(join(sim!.root, 'xy-forever', 'firmware', 'mods-b'))).toBe(false);   // a failed build commits nothing
+    expect(existsSync(join(sim!.root, 'xy-forever', 'tmp', `job-${(failed as JobError).status.job}`, 'os.ldr'))).toBe(
+      false,
+    );
+    expect(existsSync(join(sim!.root, 'xy-forever', 'firmware', 'mods-b'))).toBe(false); // a failed build commits nothing
   });
 
   test('during a job storage commands and a second build are busy; cancel removes what it wrote', async () => {
@@ -299,26 +404,42 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     try {
       const stop = new AbortController();
       let progress: JobStatus | undefined;
-      const build = applyMods(client, request, { pollMs: 20, signal: stop.signal, onProgress: (s) => { progress = s; } });
+      const build = applyMods(client, request, {
+        pollMs: 20,
+        signal: stop.signal,
+        onProgress: (s) => {
+          progress = s;
+        },
+      });
       let refused: unknown;
-      build.catch((e: unknown) => { refused = e; });
-      await vi.waitFor(() => {
-        if (refused) throw new Error(`the build ended early: ${String(refused)}`);
-        expect(progress?.phase).toBe('verify');
-      }, { timeout: 10_000, interval: 20 });
+      build.catch((e: unknown) => {
+        refused = e;
+      });
+      await vi.waitFor(
+        () => {
+          if (refused) throw new Error(`the build ended early: ${String(refused)}`);
+          expect(progress?.phase).toBe('verify');
+        },
+        { timeout: 10_000, interval: 20 },
+      );
       const job = progress!.job;
       const output = join(sim!.root, 'xy-forever', 'tmp', `job-${job}`);
       expect(existsSync(join(output, 'os.ldr.part'))).toBe(true);
       const busy = await client.listDir('/yaffs2').catch((e: unknown) => e);
       expect(isXyfError(busy, 'busy'), String(busy)).toBe(true);
-      expect((busy as XyfError).message).toBe('file.list /yaffs2: the OP-XY is running a job (building mod firmware or changing content); try again when it ends, or cancel it');
-      await expect(applyMods(client, request)).rejects.toMatchObject({ code: 'busy', message: expect.stringMatching(/^mods\.apply: the OP-XY is busy/) });
+      expect((busy as XyfError).message).toBe(
+        'file.list /yaffs2: the OP-XY is running a job (building mod firmware or changing content); try again when it ends, or cancel it',
+      );
+      await expect(applyMods(client, request)).rejects.toMatchObject({
+        code: 'busy',
+        message: expect.stringMatching(/^mods\.apply: the OP-XY is busy/),
+      });
       stop.abort();
       const error = await build.catch((e: unknown) => e);
       expect(error).toBeInstanceOf(JobError);
       expect((error as JobError).status).toMatchObject({ job, phase: 'cancelled', debris: false });
       expect((error as JobError).message).toBe('the build was cancelled');
-      await served();                                                // the final phase can precede removing the output folder
+      await served(); // the final phase can precede removing the output folder
       expect(existsSync(output)).toBe(false);
     } finally {
       await control(sim!.control, 'set hold_mod_verify 0');
@@ -329,17 +450,36 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
     const config = join(sim!.root, 'xy-forever', 'config.json');
     const library = readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort();
     const saved = await configSet(client, { mods: ['alpha', 'ext-cap'], unverified: true }, { pollMs: 20 });
-    expect(saved).toMatchObject({ saved: true, mods: ['alpha', 'ext-cap'], expanded: false, unverified: true, write: 'saved' });
+    expect(saved).toMatchObject({
+      saved: true,
+      mods: ['alpha', 'ext-cap'],
+      expanded: false,
+      unverified: true,
+      write: 'saved',
+    });
     expect(await configGet(client)).toEqual(saved);
     expect(JSON.parse(readFileSync(config, 'utf8'))).toMatchObject({
-      schema: 'xy-forever.config', schema_version: 1, desired: { mods: ['alpha', 'ext-cap'] }, built: null,
+      schema: 'xy-forever.config',
+      schema_version: 1,
+      desired: { mods: ['alpha', 'ext-cap'] },
+      built: null,
     });
     expect(readdirSync(join(sim!.root, 'xy-forever', 'firmware')).sort()).toEqual(library);
     const text = readFileSync(config);
-    const refused = await configSet(client, { mods: ['nosuch'], unverified: true }, { pollMs: 20 }).catch((e: unknown) => e);
-    expect(refused).toMatchObject({ code: 'refused', command: 'config.set', message: 'Not in the mod packages: nosuch' });
-    await expect(configSet(client, { mods: ['alpha'], expanded: true, unverified: true }, { pollMs: 20 }))
-      .rejects.toMatchObject({ code: 'refused', message: '4 MiB mod memory needs newer mod packages: set it to 2 MiB.' });
+    const refused = await configSet(client, { mods: ['nosuch'], unverified: true }, { pollMs: 20 }).catch(
+      (e: unknown) => e,
+    );
+    expect(refused).toMatchObject({
+      code: 'refused',
+      command: 'config.set',
+      message: 'Not in the mod packages: nosuch',
+    });
+    await expect(
+      configSet(client, { mods: ['alpha'], expanded: true, unverified: true }, { pollMs: 20 }),
+    ).rejects.toMatchObject({
+      code: 'refused',
+      message: '4 MiB mod memory needs newer mod packages: set it to 2 MiB.',
+    });
     expect(readFileSync(config)).toEqual(text);
     expect((await configGet(client)).mods).toEqual(['alpha', 'ext-cap']);
   });

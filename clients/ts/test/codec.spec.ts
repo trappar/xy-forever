@@ -5,18 +5,22 @@ import { describe, expect, test } from 'vitest';
 import * as v1 from '../src/v1.ts';
 
 const hex = v1.fromHex;
-const frame = (type: number, seq: number, payload: Uint8Array = new Uint8Array(0)): Uint8Array => v1.encodeFrame(type, seq, payload);
+const frame = (type: number, seq: number, payload: Uint8Array = new Uint8Array(0)): Uint8Array =>
+  v1.encodeFrame(type, seq, payload);
 const cat = (...parts: Uint8Array[]): Uint8Array => {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let at = 0;
-  for (const p of parts) { out.set(p, at); at += p.length; }
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
   return out;
 };
 const ramp = (n: number): Uint8Array => Uint8Array.from({ length: n }, (_, i) => (i * 7 + 3) & 0xff);
 const types = (frames: v1.Frame[]): [number, number, number][] => frames.map((f) => [f.type, f.seq, f.payload.length]);
 
 describe('frame codec', () => {
-  test('CRC-32 is zlib\'s', () => {
+  test("CRC-32 is zlib's", () => {
     expect(v1.crc32(new TextEncoder().encode('123456789'))).toBe(0xcbf43926);
     expect(v1.crc32(new TextEncoder().encode('6789'), v1.crc32(new TextEncoder().encode('12345')))).toBe(0xcbf43926);
   });
@@ -55,7 +59,12 @@ describe('frame codec', () => {
 
   test('back-to-back frames in one read, and across reads', () => {
     const stream = cat(frame(0x81, 1, ramp(3)), frame(0xd0, 0, ramp(20)), frame(0x83, 2), frame(0x84, 3, ramp(1028)));
-    expect(types(new v1.FrameParser().feed(stream))).toEqual([[0x81, 1, 3], [0xd0, 0, 20], [0x83, 2, 0], [0x84, 3, 1028]]);
+    expect(types(new v1.FrameParser().feed(stream))).toEqual([
+      [0x81, 1, 3],
+      [0xd0, 0, 20],
+      [0x83, 2, 0],
+      [0x84, 3, 1028],
+    ]);
     const parser = new v1.FrameParser();
     const got: v1.Frame[] = [];
     for (let at = 0; at < stream.length; at += 37) got.push(...parser.feed(stream.subarray(at, at + 37)));
@@ -71,7 +80,7 @@ describe('frame codec', () => {
   });
 
   test('an oversized length is noise: the next frame is not swallowed', () => {
-    const header = Uint8Array.from([0x58, 0x46, 0x81, 0x06, 0x41, 0x10, 0x00, 0x00]);   // length 4161
+    const header = Uint8Array.from([0x58, 0x46, 0x81, 0x06, 0x41, 0x10, 0x00, 0x00]); // length 4161
     const parser = new v1.FrameParser();
     expect(types(parser.feed(cat(header, frame(0x81, 7, ramp(4)))))).toEqual([[0x81, 7, 4]]);
   });

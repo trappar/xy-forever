@@ -15,7 +15,8 @@ export const STORE_TEXT = new TextEncoder().encode(`version=${STORE_VERSION}\n`)
 export function storedName(path: string, sha: string): string {
   const slash = path.lastIndexOf('/');
   if (slash < 0) return path;
-  const last = path.slice(slash + 1), dot = last.lastIndexOf('.');
+  const last = path.slice(slash + 1),
+    dot = last.lastIndexOf('.');
   const ext = dot > 0 && /^\.[A-Za-z0-9]{1,7}$/.test(last.slice(dot)) ? last.slice(dot) : '';
   return sha.slice(0, 12).toLowerCase() + ext;
 }
@@ -26,10 +27,17 @@ export function storeVersion(data: Uint8Array | null): number {
   return m ? Number(m[1]) : 0;
 }
 
-export interface RemoteTree { files: Map<string, number>; dirs: string[]; other: string[] }
+export interface RemoteTree {
+  files: Map<string, number>;
+  dirs: string[];
+  other: string[];
+}
 /** Every file below folder with its size, and every folder (parents first), relative; null when folder does not exist. */
 export async function remoteTree(client: Client, folder: string, options: CallOptions): Promise<RemoteTree | null> {
-  const files = new Map<string, number>(), dirs: string[] = [], other: string[] = [], todo = [''];
+  const files = new Map<string, number>(),
+    dirs: string[] = [],
+    other: string[] = [],
+    todo = [''];
   while (todo.length) {
     const rel = todo.shift()!;
     let entries;
@@ -42,20 +50,32 @@ export async function remoteTree(client: Client, folder: string, options: CallOp
     for (const e of entries) {
       const path = rel ? `${rel}/${e.name}` : e.name;
       if (e.kind === 'file') files.set(path, e.size);
-      else if (e.kind === 'folder') { dirs.push(path); todo.push(path); }
-      else other.push(path);
+      else if (e.kind === 'folder') {
+        dirs.push(path);
+        todo.push(path);
+      } else other.push(path);
     }
   }
   return { files, dirs, other };
 }
 
 /** The store version of the generation folder genPath (has: it holds store.txt); 0 without one. */
-export async function generationVersion(client: Client, genPath: string, has: boolean, options: CallOptions): Promise<number> {
+export async function generationVersion(
+  client: Client,
+  genPath: string,
+  has: boolean,
+  options: CallOptions,
+): Promise<number> {
   return has ? storeVersion(await client.readFile(`${genPath}/${STORE_FILE}`, options)) : 0;
 }
 
 /** Why a push into genPath (tree: its remoteTree) is refused (another layout), or null; writes store.txt into a new folder. */
-export async function storeRefusal(client: Client, genPath: string, tree: RemoteTree | null, options: CallOptions): Promise<string | null> {
+export async function storeRefusal(
+  client: Client,
+  genPath: string,
+  tree: RemoteTree | null,
+  options: CallOptions,
+): Promise<string | null> {
   const version = await generationVersion(client, genPath, !!tree?.files.has(STORE_FILE), options);
   if (version === STORE_VERSION) return null;
   if (version > STORE_VERSION) return `${genPath}: store version ${version}, newer than this client writes: update it`;

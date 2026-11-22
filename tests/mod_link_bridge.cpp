@@ -23,7 +23,9 @@
 using namespace xyf_core;
 using namespace xyf_core::mod_link;
 
-namespace xyf_core { namespace mod_link { unsigned long long xyf_mod_work = 0; } }
+namespace xyf_core { namespace mod_link {
+unsigned long long xyf_mod_work = 0;
+}}
 static const U32 max_steps = 100000;       // a link that never finishes is reported, not waited for
 
 static bool load(const char* path, std::vector<Byte>& out) {
@@ -56,7 +58,8 @@ static bool load_metadata(const std::string& directory, const char* package, std
     uint32_t count = 0;
     out.resize(xyf::manifest::max_text);
     const auto type = !std::strcmp(package, "base") ? xyf::manifest::type_mod_base : xyf::manifest::type_mod;
-    if (record::view(raw, uint32_t(n), work, type, reinterpret_cast<char*>(out.data()), count) != json::ok) return false;
+    if (record::view(raw, uint32_t(n), work, type, reinterpret_cast<char*>(out.data()), count) != json::ok)
+        return false;
     out.resize(count);
     return true;
 }
@@ -109,7 +112,8 @@ static int numbers_only(const char* rules_path, const char* case_path) {
     unsigned kind, slot;
     ids.reserve(4096);
     while (std::fscanf(f, "%15s %63s %u %u %31s %31s", role, id, &kind, &slot, n, page) == 6) {
-        Number e; std::memset(&e, 0, sizeof e);
+        Number e;
+        std::memset(&e, 0, sizeof e);
         std::strncpy(e.id, id, id_bytes - 1);
         e.identity.slot = slot;
         optional(n, e.identity.has_number, e.identity.number);
@@ -118,7 +122,10 @@ static int numbers_only(const char* rules_path, const char* case_path) {
         else if (!std::strcmp(role, "layout")) layout.push_back(e);
         else {
             ids.push_back(id);
-            numbers::Machine m; m.id = 0; m.kind = kind; m.requested = e.identity;
+            numbers::Machine m;
+            m.id = 0;
+            m.kind = kind;
+            m.requested = e.identity;
             machines.push_back(m);
         }
     }
@@ -130,12 +137,13 @@ static int numbers_only(const char* rules_path, const char* case_path) {
     char detail[detail_bytes] = {0};
     Text text = {detail, detail_bytes, 0};
     U32 count = 0;
-    Status status = numbers::layout(rules, fixed.data(), U32(fixed.size()), layout.data(), U32(layout.size()),
-                                    machines.data(), U32(machines.size()), reinterpret_cast<Byte*>(work.data()),
-                                    out.data(), capacity, count, text);
+    Status status =
+        numbers::layout(rules, fixed.data(), U32(fixed.size()), layout.data(), U32(layout.size()), machines.data(),
+                        U32(machines.size()), reinterpret_cast<Byte*>(work.data()), out.data(), capacity, count, text);
     std::printf("status %u %s\n", unsigned(status), detail);
     for (U32 i = 0; i != count && status == Status::ok; ++i)
-        std::printf("number %s %u %d %d\n", out[i].id, out[i].identity.slot, out[i].identity.number, out[i].identity.page);
+        std::printf("number %s %u %d %d\n", out[i].id, out[i].identity.slot, out[i].identity.number,
+                    out[i].identity.page);
     return status == Status::ok ? 0 : 1;
 }
 
@@ -145,8 +153,10 @@ static int objects_only(int count, char** files) {
     for (int i = 0; i != count; ++i) {
         if (!load(files[i], data)) return 2;
         elf::Header h;
-        const Byte* name = 0; U32 length = 0;
-        Status status = elf::check(data.empty() ? 0 : data.data(), U32(data.size()), work.data(), U32(work.size()), h, name, length);
+        const Byte* name = 0;
+        U32 length = 0;
+        Status status = elf::check(data.empty() ? 0 : data.data(), U32(data.size()), work.data(), U32(work.size()), h,
+                                   name, length);
         std::printf("status %u %.*s\n", unsigned(status), int(length), reinterpret_cast<const char*>(name));
     }
     return 0;
@@ -156,11 +166,15 @@ int main(int argc, char** argv) {
     if (argc == 4 && !std::strcmp(argv[1], "--numbers")) return numbers_only(argv[2], argv[3]);
     if (argc >= 2 && !std::strcmp(argv[1], "--objects")) return objects_only(argc - 2, argv + 2);
     if (argc == 3 && !std::strcmp(argv[1], "--records")) {    // scratch_bytes with that records limit
-        Limits limits; limits.records = U32(std::strtoul(argv[2], 0, 10));
+        Limits limits;
+        limits.records = U32(std::strtoul(argv[2], 0, 10));
         std::printf("%u\n", scratch_bytes(limits));
         return 0;
     }
-    if (argc < 3) { std::fprintf(stderr, "usage\n"); return 2; }
+    if (argc < 3) {
+        std::fprintf(stderr, "usage\n");
+        return 2;
+    }
     std::vector<const char*> machines, extensions;
     std::vector<Number> layout;
     bool has_layout = false;
@@ -172,26 +186,34 @@ int main(int argc, char** argv) {
         else if (!std::strcmp(argv[i], "-2") && std::strchr(argv[i + 1], '=')) {
             swap_name.assign(argv[i + 1], std::strchr(argv[i + 1], '='));
             swap_file = std::strchr(argv[i + 1], '=') + 1;
-        }
-        else if (!std::strcmp(argv[i], "-l")) {
+        } else if (!std::strcmp(argv[i], "-l")) {
             has_layout = true;
             FILE* f = std::fopen(argv[i + 1], "r");
             if (!f) return 2;
-            char id[64]; unsigned slot; int number, page;
+            char id[64];
+            unsigned slot;
+            int number, page;
             while (std::fscanf(f, "%63s %u %d %d", id, &slot, &number, &page) == 4) {
-                Number n; std::memset(&n, 0, sizeof n);
+                Number n;
+                std::memset(&n, 0, sizeof n);
                 std::strncpy(n.id, id, id_bytes - 1);
-                n.identity.slot = slot; n.identity.has_number = n.identity.has_page = true;
-                n.identity.number = number; n.identity.page = page;
+                n.identity.slot = slot;
+                n.identity.has_number = n.identity.has_page = true;
+                n.identity.number = number;
+                n.identity.page = page;
                 layout.push_back(n);
             }
             std::fclose(f);
         }
     }
     Selection sel;
-    sel.machines = machines.data(); sel.machine_count = U32(machines.size());
-    sel.extensions = extensions.data(); sel.extension_count = U32(extensions.size());
-    sel.layout = layout.data(); sel.layout_count = U32(layout.size()); sel.has_layout = has_layout;
+    sel.machines = machines.data();
+    sel.machine_count = U32(machines.size());
+    sel.extensions = extensions.data();
+    sel.extension_count = U32(extensions.size());
+    sel.layout = layout.data();
+    sel.layout_count = U32(layout.size());
+    sel.has_layout = has_layout;
     Limits limits;
     U32 bytes = scratch_bytes(limits);
     std::vector<U32> scratch(bytes / 4 + 1);
@@ -208,26 +230,40 @@ int main(int argc, char** argv) {
     U32 zero_steps = 0, steps = 0, work_step = 0;
     unsigned long long work = 0;
     while (status == Status::ok && next(ws, request)) {
-        if (++steps > max_steps) { std::printf("runaway %u\n", steps); return 4; }
+        if (++steps > max_steps) {
+            std::printf("runaway %u\n", steps);
+            return 4;
+        }
         std::string path = std::string(argv[1]) + "/" + request.package + "/" + request.path;
         if (std::string(request.package) + "/" + request.path == swap_name && ++swap_requests > 1) path = swap_file;
-        if (!*request.path) { file.clear(); ++zero_steps; }      // a zero step: no file
+        if (!*request.path) {
+            file.clear();
+            ++zero_steps;
+        }      // a zero step: no file
         else if (!std::strcmp(request.path, xyf::package_record::legacy_name) && path != swap_file) {
             const std::string directory = std::string(argv[1]) + "/" + request.package + "/";
             if (!load_metadata(directory, request.package, file)) {
                 std::printf("status %u %s/manifest.json or info.txt\n", unsigned(Status::table), request.package);
                 return 1;
             }
+        } else if (!load(path.c_str(), file)) {
+            std::printf("missing %s/%s\n", request.package, request.path);
+            return 3;
         }
-        else if (!load(path.c_str(), file)) { std::printf("missing %s/%s\n", request.package, request.path); return 3; }
         if (file.size() > largest) largest = file.size();
         std::string name = std::string(request.package) + "/" + request.path;
         auto start = std::chrono::steady_clock::now();
         xyf_mod_work = 0;
         status = step(ws, file.empty() ? 0 : file.data(), U32(file.size()), result);
-        if (xyf_mod_work > work) { work = xyf_mod_work; work_step = result.step; }
+        if (xyf_mod_work > work) {
+            work = xyf_mod_work;
+            work_step = result.step;
+        }
         double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
-        if (us > slowest) { slowest = us; slowest_file = name; }
+        if (us > slowest) {
+            slowest = us;
+            slowest_file = name;
+        }
     }
     std::printf("status %u %s\n", unsigned(result.status), result.detail);
     std::printf("step %u\n", result.step);
@@ -235,13 +271,16 @@ int main(int argc, char** argv) {
     std::printf("scratch %u\nlargest %zu\nobject_bytes %u\n", bytes, largest, result.object_bytes);
     std::printf("slowest %.0f %s\n", slowest, slowest_file.c_str());
     std::printf("work %llu %u\n", work, work_step);
-    Usage u; std::memset(&u, 0, sizeof u);
+    Usage u;
+    std::memset(&u, 0, sizeof u);
     usage(ws, u);
     std::printf("usage objects=%u sections=%u names=%u records=%u text=%u absent=%u fallbacks=%u numbers=%u\n",
                 u.objects, u.sections, u.names, u.records, u.text_bytes, u.absent, u.fallbacks, u.numbers);
     if (result.status != Status::ok) return 1;
-    std::printf("sizes %u %u %u %u\n", result.sizes.initialized, result.sizes.bss, result.sizes.allocated, result.sizes.available);
-    const char* name; U32 length, value, kind;
+    std::printf("sizes %u %u %u %u\n", result.sizes.initialized, result.sizes.bss, result.sizes.allocated,
+                result.sizes.available);
+    const char* name;
+    U32 length, value, kind;
     for (U32 i = 0; service_at(ws, i, name, length); ++i)
         if (result.services & (1u << i)) std::printf("service %.*s\n", int(length), name);
     std::printf("extensions %u\n", result.extensions);

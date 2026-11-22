@@ -33,5 +33,5 @@ inline uint32_t reserved(const uint8_t* data) {
 }
 // Detail text for a menu row ("official", "open-xy, 6 machines", ...), at most 23 chars.
 void describe(const Item& item, char* out, uint32_t capacity);
-} }
+}}
 #endif

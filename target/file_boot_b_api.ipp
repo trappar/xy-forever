@@ -1,7 +1,8 @@
 // Part of file_boot.cpp: B's xyf_boot functions (xyf_boot.hpp: the link hooks for key_ui, the file client and
 // the USB service; the menu's status and choices), included in place.
 namespace xy_forever { namespace xyf_boot {
-StorageStart storage_start __attribute__((section(".data"))) = {start_magic, 2, 0, 0, 0, 0, 0, 0};   // 192: version 2 (repair)
+StorageStart storage_start
+    __attribute__((section(".data"))) = {start_magic, 2, 0, 0, 0, 0, 0, 0};   // 192: version 2 (repair)
 #if defined(XYF_ONE_SESSION)
 // 191: a link user (a USB file command, a menu command) while the catalog request is out: its end
 // first (A's answer is normally milliseconds away), at most fetch_wait_ms. True when none is out.
@@ -39,7 +40,9 @@ bool tick() {
 #if defined(XYF_ONE_SESSION)
             // A file request left at link_sent(); it may stay out up to lost_ms.
             if (t - b_last_send > (session->filing() ? xyf_boot::lost_ms :
-                                   b_patience_ms ? b_patience_ms : 2 * answer_ms)) b_lost = 1;
+                                   b_patience_ms     ? b_patience_ms :
+                                                       2 * answer_ms))
+                b_lost = 1;
 #else
             if (t - b_last_send > 2 * answer_ms) b_lost = 1;
 #endif
@@ -57,7 +60,8 @@ bool tick() {
 #if defined(XYF_ONE_SESSION)
 bool link_value(uint32_t value) {
     Stock121PeerSession* session = b_session;
-    return session && !b_lost && fetch_wait() && b_ask(*session, value, b_patience_ms ? b_patience_ms : xyf_boot::command_ms);
+    return session && !b_lost && fetch_wait() &&
+           b_ask(*session, value, b_patience_ms ? b_patience_ms : xyf_boot::command_ms);
 }
 bool link_up() { return b_session && !b_lost; }
 Stock121PeerSession* link_claim() {
@@ -69,7 +73,10 @@ bool link_step() {
     return session && b_step(*session);
 }
 void link_sent() { b_last_send = now(); }
-void link_answer(uint32_t& value, uint32_t& error) { value = b_answer[0]; error = b_answer[1]; }
+void link_answer(uint32_t& value, uint32_t& error) {
+    value = b_answer[0];
+    error = b_answer[1];
+}
 // before any stock reset of b. A request still open is polled until
 // answered or close_ms passes (wait: false: the request is not waited for);
 // then the session ends: the stock master close 889f562e turns SPI and both DMA channels off and
@@ -110,8 +117,9 @@ uint32_t storage_view() {
     if (b_lost || st.phase == 4) return m::storage_unavailable;
     if (st.phase == 3) {                                   // A's mount failed: B asks again, or repairs
         const uint32_t repair = storage_repair(st.a_word);
-        return repair == repair_failed ? m::storage_unavailable : repair == repair_pending ? m::storage_repairing :
-                                         m::storage_starting;
+        return repair == repair_failed  ? m::storage_unavailable :
+               repair == repair_pending ? m::storage_repairing :
+                                          m::storage_starting;
     }
     if (b_catalog_ok || st.answered_ms) return m::storage_ready;
     const U32 waited = b_fetching ? now() - b_fetch_at : 0u;
@@ -137,7 +145,8 @@ const char* status() {
     }
 #endif
     return b_lost ? "Storage link lost: starting the built-in OP-XY." :   // nothing when storage is OK
-           b_catalog_ok ? "" : "Storage link: OK (library unavailable)";
+               b_catalog_ok ? "" :
+                              "Storage link: OK (library unavailable)";
 }
 const char* command(uint32_t) { return "Not available yet."; }
 bool link_lost() { return b_lost != 0; }
@@ -146,7 +155,10 @@ void choose_default() { b_choice = 1; }
 #if defined(XYF_ONE_SESSION)
 uint32_t clock_ms() { return now(); }
 #endif
-void choose(uint32_t entry) { b_choice = 2; b_entry = entry; }
+void choose(uint32_t entry) {
+    b_choice = 2;
+    b_entry = entry;
+}
 #if defined(XYF_MENU_ON_FAILURE)
 bool menu_forced() { return b_failed != 0 || b_power_on != 0 || b_doubt != 0; }
 uint32_t take_converge() {
@@ -167,13 +179,19 @@ const char* set_default(uint32_t entry) {
     // a writes, remounts and rescans before it answers this catalog command.
     if (!b_send(*session, xyf_boot::item_catalog, xyf_boot::write_ms) ||
         session->transfer(reinterpret_cast<Byte*>(xyf_boot::catalog_buffer), xyf_boot::catalog_capacity, true) !=
-            SessionResult::waiting) { b_lost = 1; return "Storage link lost."; }
+            SessionResult::waiting) {
+        b_lost = 1;
+        return "Storage link lost.";
+    }
     const U32 start = now();
     while (!session->blob_done() && now() - start < xyf_boot::write_ms && b_step(*session)) {}
-    if (!session->blob_done()) { b_lost = 1; return "Storage link lost."; }
+    if (!session->blob_done()) {
+        b_lost = 1;
+        return "Storage link lost.";
+    }
     b_last_send = now();
-    b_catalog_ok = xyf::catalog::decode(reinterpret_cast<const Byte*>(xyf_boot::catalog_buffer),
-                                        session->image_size(), b_catalog());
+    b_catalog_ok = xyf::catalog::decode(reinterpret_cast<const Byte*>(xyf_boot::catalog_buffer), session->image_size(),
+                                        b_catalog());
     result.menu.catalog_entries = b_catalog_ok ? b_catalog().count : 0;
     if (!b_catalog_ok) return "Library unavailable after the write.";
     return b_catalog().default_index == entry ? "Default saved." : "Could not save the default.";
@@ -181,7 +199,10 @@ const char* set_default(uint32_t entry) {
 #endif
 #if defined(XYF_STAGE2)
 uint32_t stage2_entry() { return b_lost ? 0 : b_stage2_entry; }
-void stage2_done(uint32_t exit, uint32_t run_ms) { result.stage2.exit = exit; result.stage2.run_ms = run_ms; }
+void stage2_done(uint32_t exit, uint32_t run_ms) {
+    result.stage2.exit = exit;
+    result.stage2.run_ms = run_ms;
+}
 #if defined(XYF_STAGE2_MENU)
 const uint8_t* catalog_blob(uint32_t& bytes) {
     bytes = b_catalog_ok ? result.menu.catalog_bytes : 0;
@@ -189,4 +210,4 @@ const uint8_t* catalog_blob(uint32_t& bytes) {
 }
 #endif
 #endif
-} }
+}}

@@ -11,8 +11,18 @@ const release: ReleasePin = { schema: 1, version: '0.2.0', image: sha256.slice(0
 const commands = protocol.parseHello('XYF1;service=usb;role=b;proto=1.15;install=stock-88a06a7e');
 
 function device(version: string | null, imageId = 'abcde123'): DeviceInfo {
-  return { hello: commands, version, image: imageId, proto: '1.15', mode: 'product',
-    limits: { stage: 512 * 1024, payload: 4160, read: 1024 }, dev: false, ask: false, trust: null, serial: true };
+  return {
+    hello: commands,
+    version,
+    image: imageId,
+    proto: '1.15',
+    mode: 'product',
+    limits: { stage: 512 * 1024, payload: 4160, read: 1024 },
+    dev: false,
+    ask: false,
+    trust: null,
+    serial: true,
+  };
 }
 
 function fixture() {
@@ -21,10 +31,21 @@ function fixture() {
   const digest = Uint8Array.from(sha256.match(/../g)!, (part) => parseInt(part, 16));
   const client = {
     info: device('0.1.0'),
-    stage: vi.fn(async () => { events.push('stage'); return { size: image.length, crc32: 0, sha256: digest }; }),
-    bootInstall: vi.fn(async () => { events.push('install'); return { written: image.length, partition: 2, sectors: 3 }; }),
-    reboot: vi.fn(async () => { events.push('reboot'); }),
-    reconnect: vi.fn(async () => { events.push('reconnect'); return running; }),
+    stage: vi.fn(async () => {
+      events.push('stage');
+      return { size: image.length, crc32: 0, sha256: digest };
+    }),
+    bootInstall: vi.fn(async () => {
+      events.push('install');
+      return { written: image.length, partition: 2, sectors: 3 };
+    }),
+    reboot: vi.fn(async () => {
+      events.push('reboot');
+    }),
+    reconnect: vi.fn(async () => {
+      events.push('reconnect');
+      return running;
+    }),
   };
   const get = vi.fn(async () => new Response(image.slice()));
   return { client, events, running, digest, get };
@@ -51,8 +72,14 @@ describe('web update', () => {
 
   it('stops before staging when the download differs from the pin', async () => {
     const { client } = fixture();
-    await expect(updateXyf(client, release, () => {}, async () => new Response(new Uint8Array(image.length))))
-      .rejects.toThrow(/SHA-256/);
+    await expect(
+      updateXyf(
+        client,
+        release,
+        () => {},
+        async () => new Response(new Uint8Array(image.length)),
+      ),
+    ).rejects.toThrow(/SHA-256/);
     expect(client.stage).not.toHaveBeenCalled();
   });
 

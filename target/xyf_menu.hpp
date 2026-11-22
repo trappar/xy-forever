@@ -8,8 +8,17 @@ namespace xyf { namespace menu {
 // Key enum indices from the stock bootloader table (KLeft/KRight are the
 // physical "-" / "+" keys). Stop = back on every screen. A push of any of the four knobs
 // (KEncClick1..4 = key_knob1..+3) is PLAY everywhere (SHIFT + push = SHIFT + PLAY); the turns are not keys here.
-enum Key : uint32_t { key_minus = 53, key_plus = 54, key_play = 51, key_stop = 52, key_shift = 55, key_track1 = 6,
-                      key_knob1 = 10, knobs = 4, tracks = 4 };
+enum Key : uint32_t {
+    key_minus = 53,
+    key_plus = 54,
+    key_play = 51,
+    key_stop = 52,
+    key_shift = 55,
+    key_track1 = 6,
+    key_knob1 = 10,
+    knobs = 4,
+    tracks = 4
+};
 // A knob push as PLAY; any other key unchanged.
 inline uint32_t as_play(uint32_t k) { return k - key_knob1 < knobs ? uint32_t(key_play) : k; }
 // Or'd into - / + for a knob turn's row (key_ui turn_knobs; the Mods page only: SHIFT + turn = its filter).
@@ -28,10 +37,10 @@ enum class Action : uint32_t {
     safe_mode,       // "Boot without mods" (at once): the base with its official content, booted (the setup is kept)
     restore,         // "Restore Open-XY": the saved Open-XY back as the default, booted
     open_mods,       // open the Mods page (xyf_mods; stage 1 runs it)
-    change_setting,  // the Settings page's PLAY on setting `entry` (xyf_settings.hpp Row): the caller opens its options
-    pick_setting,    // #21: the option list's PLAY: setting `entry` takes option_selected (back on the Settings page)
-    undo,            // the first row while a content change's source is missing (State::undo_offer): undo it
-    apply            // the first row while the saved setup is not applied (pending): converge to it, then boot
+    change_setting, // the Settings page's PLAY on setting `entry` (xyf_settings.hpp Row): the caller opens its options
+    pick_setting, // #21: the option list's PLAY: setting `entry` takes option_selected (back on the Settings page)
+    undo, // the first row while a content change's source is missing (State::undo_offer): undo it
+    apply // the first row while the saved setup is not applied (pending): converge to it, then boot
 };
 // Main menu rows, in order. 188: no MTP mode row (MTP is always on with the composite USB device). #21: no Info
 // row (Settings' About). The safe-mode row (State::safe_label) sits where the Firmware library row was. #197: no
@@ -43,15 +52,22 @@ enum MainItem : uint32_t { item_continue = 0, item_safe = 1, item_mods = 2, item
 // 250 ms); starting / checking (a long mount: the full scan after an unclean shutdown) / repairing: the
 // first row says "Starting storage...", nothing that needs the library opens; unavailable: the library
 // cannot be read this boot (nothing can boot), the first row says so. ready: the library is known.
-enum StorageView : uint32_t { storage_unknown = 0, storage_ready, storage_waiting, storage_starting, storage_checking,
-                              storage_repairing, storage_unavailable };
+enum StorageView : uint32_t {
+    storage_unknown = 0,
+    storage_ready,
+    storage_waiting,
+    storage_starting,
+    storage_checking,
+    storage_repairing,
+    storage_unavailable
+};
 // TRACK1..TRACK4 (keys 6..9) jump to the four rows: Continue, the safe-mode row, Mods, Settings. (Keys 10 and 11, once taken for TRACK5/6, are knob pushes.)
 struct State {
-    Screen screen, info_return;       // info_return: screen PLAY goes back to from Info
-    uint32_t main_selected;           // (the "no firmware" home has one row: no selection)
+    Screen screen, info_return; // info_return: screen PLAY goes back to from Info
+    uint32_t main_selected; // (the "no firmware" home has one row: no selection)
     bool shift_held;
-    const catalog::Catalog* catalog;  // may be null (library not loaded)
-    uint32_t entry;                   // the setting for change_setting / pick_setting
+    const catalog::Catalog* catalog; // may be null (library not loaded)
+    uint32_t entry; // the setting for change_setting / pick_setting
     // Set by the caller (xyf_mods_io) every pass. pending: the plan of the saved inputs is not empty (#197; or a
     // toggle flipped is not written yet): PLAY on the first row converges, then boots. continue_label: the first
     // row's text (0: the default's name). continue_note: why the saved selection cannot be built (the first row's
@@ -89,7 +105,7 @@ struct State {
     const char* pack_result;
     uint32_t pack_page, pack_count, pack_selected;
     bool pack_ready, pack_more, pack_inbox, pack_confirm, pack_execute, pack_busy;
-    bool confirm_accept;              // which button the pack dialog highlights
+    bool confirm_accept; // which button the pack dialog highlights
 #endif
     // 193: StorageView (the caller's, after start() and every pass) and the line a refused row left (0: none).
     uint32_t storage;
@@ -121,10 +137,11 @@ const char* main_note(const State& state);
 // #21: the caller's answer to change_setting: the setting's options (texts[current] in effect, selected first).
 static const uint32_t max_options = 8, packs_per_page = 7;
 inline void open_options(State& s, const char* const* texts, uint32_t count, uint32_t current) {
-    s.options = texts; s.option_count = count < max_options ? count : max_options;
+    s.options = texts;
+    s.option_count = count < max_options ? count : max_options;
     s.option_current = s.option_selected = current < s.option_count ? current : 0;
     s.screen = Screen::options;
 }
 #endif
-} }
+}}
 #endif

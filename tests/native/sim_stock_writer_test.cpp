@@ -16,11 +16,16 @@
 namespace {
 using xyf_sim::boot_crypt;
 using xyf_sim::boot_crypto_mark;
-struct State { uint32_t capacity = 0x40000; std::atomic<int32_t> partition{0}, fail_select{0}; } state, *shared = &state;
+struct State {
+    uint32_t capacity = 0x40000;
+    std::atomic<int32_t> partition{0}, fail_select{0};
+} state, *shared = &state;
 uint32_t selected = 0, role = 0;
 const uint32_t erase_block = 0x10000, cls_partition = 1, cls_sector = 2, cls_write = 3;
 std::vector<uint8_t> media[2];
-struct Op { uint32_t partition, sector, count; };
+struct Op {
+    uint32_t partition, sector, count;
+};
 std::vector<Op> writes;
 int rpc = 0, failed_write = 0, fail_read = 0, corrupt_sector = -1, cut = 0;
 bool stuck = false;
@@ -46,8 +51,14 @@ bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
         if (++stuck_attempts == 1000) throw Stuck{};  // stop observing retries; no production timeout
         return false;
     }
-    if (write && failed_write) { --failed_write; return false; }
-    if (!write && fail_read) { --fail_read; return false; }
+    if (write && failed_write) {
+        --failed_write;
+        return false;
+    }
+    if (!write && fail_read) {
+        --fail_read;
+        return false;
+    }
     auto* at = media[selected - 1].data() + sector * 512;
     if (write) {
         memcpy(at, data, count * 512);
@@ -57,7 +68,8 @@ bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
         if (selected == 2 && sector && !writes.empty()) {
             ++body_reads;
             uint32_t body_writes = 0;
-            for (const auto& w : writes) if (w.partition == 2 && w.sector % 128 == 1) ++body_writes;
+            for (const auto& w : writes)
+                if (w.partition == 2 && w.sector % 128 == 1) ++body_writes;
             REQUIRE(body_writes == wanted_body_writes); // ALL chunks written before first verify read
         }
         memcpy(data, at, count * 512);
@@ -70,10 +82,13 @@ bool trim(uint32_t block) {
     return sectors_io(true, block * 128, 128, zero.data());
 }
 uint32_t local_select(uint32_t);
-uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t,
-                const void* body, uint32_t bytes, void* out, uint32_t) {
+uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t, const void* body, uint32_t bytes,
+                void* out, uint32_t) {
     ++rpc;
-    if (!cls) { REQUIRE(op == 5); return shared->capacity; }
+    if (!cls) {
+        REQUIRE(op == 5);
+        return shared->capacity;
+    }
     if (cls == cls_partition) return op == 0x18 ? local_select(a0) : trim(a0) ? 0 : uint32_t(-1);
     if (cls == cls_sector) return sectors_io(false, a0, a1, static_cast<uint8_t*>(out)) ? 0 : uint32_t(-1);
     REQUIRE((cls == cls_write && bytes == a1 * 512));
@@ -83,19 +98,27 @@ uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t,
 
 // The state a fresh process had (each case ran in its own process before).
 void reset(uint32_t r) {
-    state.capacity = 0x40000; state.partition = 0; state.fail_select = 0;
-    selected = 0; role = r;
+    state.capacity = 0x40000;
+    state.partition = 0;
+    state.fail_select = 0;
+    selected = 0;
+    role = r;
     for (auto& m : media) m.clear();
     writes.clear();
-    rpc = failed_write = fail_read = 0; corrupt_sector = -1; cut = 0;
-    stuck = false; stuck_attempts = body_reads = io_calls = fail_io_at = 0; wanted_body_writes = 1;
+    rpc = failed_write = fail_read = 0;
+    corrupt_sector = -1;
+    cut = 0;
+    stuck = false;
+    stuck_attempts = body_reads = io_calls = fail_io_at = 0;
+    wanted_body_writes = 1;
 }
 
 void run(uint32_t r, const std::string& test) {
     reset(r);
     for (auto& p : media) p.resize(shared->capacity);
     // An active old image. Its header version deliberately differs: writer tests active byte only.
-    media[0][12] = 1; media[0][512] = 77;
+    media[0][12] = 1;
+    media[0][512] = 77;
     const uint32_t size = test == "multichunk" ? 100001 : test == "aligned" ? 10240 : 10001;
     wanted_body_writes = test == "multichunk" ? 2 : 1;
     std::vector<uint8_t> image(((size >> 9) + 1) * 512, 0x7b), plain;
@@ -110,7 +133,10 @@ void run(uint32_t r, const std::string& test) {
         return;
     }
     if (test == "initial") shared->fail_select = 1;
-    if (test == "retry") { failed_write = 3; fail_read = 2; }
+    if (test == "retry") {
+        failed_write = 3;
+        fail_read = 2;
+    }
     if (test == "body") corrupt_sector = 1 + (size >> 9);
     if (test == "early" || test == "aligned") corrupt_sector = 1;
     if (test == "header") corrupt_sector = 0;
@@ -119,8 +145,9 @@ void run(uint32_t r, const std::string& test) {
     if (test == "cutcommit") cut = 3;                // committed new header, old still active
     if (test == "cutold") cut = 4;                   // old erased after commit
     uint32_t result = 0;
-    try { result = stock_writer(image.data(), size); }
-    catch (const Cut&) {
+    try {
+        result = stock_writer(image.data(), size);
+    } catch (const Cut&) {
         REQUIRE((cut && int(writes.size()) == cut));
         REQUIRE(bool(media[0][12]) == (cut < 4));
         REQUIRE(bool(media[1][12]) == (cut >= 3));
@@ -152,7 +179,8 @@ void run(uint32_t r, const std::string& test) {
     } else {
         REQUIRE(result == (test == "header" ? 0 : size));
         REQUIRE((media[1][12] && xyf_sim::boot_crypto_model(media[1].data())));
-        uint32_t header[3]; memcpy(header, media[1].data(), 12);
+        uint32_t header[3];
+        memcpy(header, media[1].data(), 12);
         REQUIRE((header[0] == 3 && header[1] == size && header[2] == crc32(plain.data(), size)));
         const unsigned commit = test == "multichunk" ? 4 : 2;
         REQUIRE((writes.size() == commit + 2 && writes[commit].partition == 2 && writes[commit].sector == 0));
@@ -167,7 +195,9 @@ uint8_t readback_area[128 * 512];
 const uintptr_t readback_buffer = uintptr_t(readback_area);
 const U32 readback_sectors = 128;
 uint8_t* staged = nullptr;
-struct Result { U32 verify_partition, verify_sectors, verify_mismatch; } result;
+struct Result {
+    U32 verify_partition, verify_sectors, verify_mismatch;
+} result;
 U32 select_partition(U32 p) { return boot_select(p); }
 U32 read_sector0(U32 sector, uint8_t* out) { return boot_read(sector, out, 1); }
 U32 read_sectors(U32 sector, uint8_t* out, U32 count) { return boot_read(sector, out, count); }
@@ -185,18 +215,24 @@ int writer_io = 0;
 b_install::U32 install(uint32_t r, bool old_active, int32_t select_at, int io_at, uint32_t& written) {
     reset(r);
     for (auto& m : media) m.resize(shared->capacity);
-    if (old_active) { media[0][12] = 1; media[0][512] = 77; }
+    if (old_active) {
+        media[0][12] = 1;
+        media[0][512] = 77;
+    }
     install_image.assign(install_sectors * 512, 0x7b);
     for (uint32_t i = 0; i != install_size; ++i) install_image[i] = uint8_t(i * 7);
     const uint32_t crc = crc32(install_image.data(), install_size);
     b_install::staged = install_image.data();
     b_install::result = b_install::Result();
-    shared->fail_select = select_at; fail_io_at = io_at;
+    shared->fail_select = select_at;
+    fail_io_at = io_at;
     written = stock_writer(install_image.data(), install_size);
-    writer_selects = select_at - shared->fail_select; writer_io = io_calls;
+    writer_selects = select_at - shared->fail_select;
+    writer_io = io_calls;
     b_install::U32 code = b_install::P::s_install;
     if (written) code = b_install::verify(install_size, crc);
-    else for (uint32_t tries = 0; tries != 8 && b_install::select_partition(0) != 0; ++tries) {}
+    else
+        for (uint32_t tries = 0; tries != 8 && b_install::select_partition(0) != 0; ++tries) {}
     all_selects = select_at - shared->fail_select;
     return code;
 }
@@ -209,7 +245,8 @@ void installed(b_install::U32 code, uint32_t written, bool old_active) {
     REQUIRE((shared->partition == 0 && selected == 0));
     if (code != P::s_ok) return;
     const b_install::Result& r = b_install::result;
-    REQUIRE((written == install_size && r.verify_partition == target && r.verify_sectors == install_sectors && !r.verify_mismatch));
+    REQUIRE((written == install_size && r.verify_partition == target && r.verify_sectors == install_sectors &&
+             !r.verify_mismatch));
     REQUIRE((media[target - 1][12] && !media[2 - target][12]));
     REQUIRE(!memcmp(media[target - 1].data() + 512, install_image.data(), install_size));
 }

@@ -15,13 +15,15 @@ is present a dev run changes the default behind it, once: the menu's Continue li
 (or "(rebuild)") and the next plain power-on converges back to the saved setup (#197); mods dev refuses
 unless --ignore-config, and says what the menu will show. It never rewrites the record (the saved inputs:
 the Mods page and `mods set` change them)."""
+
 import json
 import os
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
-from . import config_records, modsend as MS, package_records
+from . import config_records, package_records
+from . import modsend as MS
 from . import usb_proto as P
 
 FIRMWARE = '/yaffs2/xy-forever/firmware'
@@ -44,7 +46,7 @@ def state_path():
 def load_state():
     try:
         return json.loads(state_path().read_text())
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return {}
 
 
@@ -76,8 +78,10 @@ def resolve(package_dir, only=None, with_=()):
             raise MS.Refused('%s/%s: type=%s, not a mod package' % (folder, metadata, info.get('type', '?')))
         gen, mod = folder.parent, folder.name
     elif (folder / 'kit.json').is_file() or folder.suffix == '.json':
-        raise MS.Refused('%s: an Open-XY kit; split it first (modkit split), then give the generation '
-                         'folder with --only ID or one package folder' % folder)
+        raise MS.Refused(
+            '%s: an Open-XY kit; split it first (modkit split), then give the generation '
+            'folder with --only ID or one package folder' % folder
+        )
     else:
         raise MS.Refused('%s: neither a mod package folder (info.txt) nor a generation folder (base/)' % folder)
     names = []
@@ -132,8 +136,11 @@ def menu_after(cfg, default, library):
 
 
 def describe_config(cfg):
-    return 'base %s, %s%s' % (cfg.get('base', '?'), ('mods on: %s' % ','.join(cfg['mods'])) if cfg['mods']
-                              else 'no mods on', (', built into %s' % cfg['slot']) if cfg.get('slot') else '')
+    return 'base %s, %s%s' % (
+        cfg.get('base', '?'),
+        ('mods on: %s' % ','.join(cfg['mods'])) if cfg['mods'] else 'no mods on',
+        (', built into %s' % cfg['slot']) if cfg.get('slot') else '',
+    )
 
 
 def library(dev):
@@ -209,8 +216,7 @@ class Phases:
         return result
 
     def total(self):
-        self.out('total %.2f s (%s)' % (time.monotonic() - self.start,
-                                        ', '.join('%s %.2f' % t for t in self.times)))
+        self.out('total %.2f s (%s)' % (time.monotonic() - self.start, ', '.join('%s %.2f' % t for t in self.times)))
 
 
 def target_key(port):
@@ -231,13 +237,18 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
     key = target_key(port)
     if key not in state:
         previous = current_default(dev, slots, current_state)
-        state[key] = dict(default=previous, stamp=entry_stamp(dev, previous) if previous else '',
-                          saved=time.strftime('%Y-%m-%d %H:%M:%S'))
+        state[key] = dict(
+            default=previous,
+            stamp=entry_stamp(dev, previous) if previous else '',
+            saved=time.strftime('%Y-%m-%d %H:%M:%S'),
+        )
         save_state(state)
         out('previous default %s remembered in %s (mods dev --restore sets it again)' % (previous, state_path()))
         if previous and previous.startswith('mods-'):
-            out('  note: %s is a mods slot; a later dev build may replace it (--restore then sets the slot, '
-                'not the old build)' % previous)
+            out(
+                '  note: %s is a mods slot; a later dev build may replace it (--restore then sets the slot, '
+                'not the old build)' % previous
+            )
     summary = ph.run('push', lambda: MS.push(dev, gen, names, out=out))
     machines, exts = selection(names)
     base = args.base or (cfg or {}).get('base') or state[key].get('base')
@@ -248,14 +259,20 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
     def build():
         code, job, missing = MS.start(dev, base, profile, generation, machines, exts, args.name, args.unverified)
         if code:
-            out('apply: %s%s' % (P.status_name(code),
-                                 ' (missing %s)' % MS.MISSING[missing] if missing and code == MS.NOT_FOUND else ''))
+            out(
+                'apply: %s%s'
+                % (
+                    P.status_name(code),
+                    ' (missing %s)' % MS.MISSING[missing] if missing and code == MS.NOT_FOUND else '',
+                )
+            )
             return None
         f = MS.wait(dev, job, out)
         if f is None:
             return None
         MS.served(dev, out)
         return f['detail'] if f['phase'] == MS.DONE else None
+
     entry = ph.run('apply', build)
     if not entry:
         ph.total()
@@ -267,8 +284,10 @@ def dev_once(dev, port, args, gen, names, slots, current_state, out=print):
         return 1, summary
     out('default: %s (%s, content installed)' % (entry, ' + '.join(names)))
     if cfg is not None:
-        out('menu: the Continue line now ends in "%s" (saved configuration kept: %s)' % (
-            menu_after(cfg, entry, library(dev)).strip() or 'nothing', describe_config(cfg)))
+        out(
+            'menu: the Continue line now ends in "%s" (saved configuration kept: %s)'
+            % (menu_after(cfg, entry, library(dev)).strip() or 'nothing', describe_config(cfg))
+        )
     if args.boot:
         code = ph.run('boot', lambda: dev.library_boot(entry))
         out('boot %s: %s' % (entry, P.status_name(code)))
@@ -298,8 +317,10 @@ def restore(dev, port, slots, current_state, out=print):
     out('restored: default %s (%.2f s); %s forgets it' % (entry, time.monotonic() - t, state_path()))
     cfg = config(dev)
     if cfg is not None:
-        out('menu: the Continue line ends in "%s" (saved configuration: %s)' % (
-            menu_after(cfg, entry, library(dev)).strip() or 'nothing', describe_config(cfg)))
+        out(
+            'menu: the Continue line ends in "%s" (saved configuration: %s)'
+            % (menu_after(cfg, entry, library(dev)).strip() or 'nothing', describe_config(cfg))
+        )
     return 0
 
 
@@ -315,25 +336,36 @@ def watch(dev, port, args, gen, names, slots, current_state, out=print, poll=0.5
         out('watching %s (%s) for changes; Ctrl-C stops' % (gen, ', '.join(names)))
         while snapshot(gen, names) == seen:
             sleep(poll)
-        sleep(poll)                                        # let the build finish writing files.sha256
+        sleep(poll)  # let the build finish writing files.sha256
 
 
 def add_arguments(sub):
-    d = sub.add_parser('dev', help='mod developers: push what changed, build the mod (+ --with) on the device, '
-                       'make it the default, --boot it; --watch repeats; --restore puts the old default back',
-                       description=__doc__, formatter_class=__import__('argparse').RawDescriptionHelpFormatter)
-    d.add_argument('package_dir', type=Path, nargs='?', help="one mod's package folder (or a generation folder "
-                   'with --only ID)')
+    d = sub.add_parser(
+        'dev',
+        help='mod developers: push what changed, build the mod (+ --with) on the device, '
+        'make it the default, --boot it; --watch repeats; --restore puts the old default back',
+        description=__doc__,
+        formatter_class=__import__('argparse').RawDescriptionHelpFormatter,
+    )
+    d.add_argument(
+        'package_dir', type=Path, nargs='?', help="one mod's package folder (or a generation folder with --only ID)"
+    )
     d.add_argument('--only', metavar='ID', help='the mod, when PACKAGE_DIR is a generation folder')
     d.add_argument('--with', dest='with_', nargs='+', default=[], metavar='ID', help='more mods in the selection')
-    d.add_argument('--base', metavar='ID', help='library entry holding the stock os.ldr (default: the saved base, '
-                   'else the last dev run\'s)')
+    d.add_argument(
+        '--base',
+        metavar='ID',
+        help="library entry holding the stock os.ldr (default: the saved base, else the last dev run's)",
+    )
     d.add_argument('--name', default=MS.DEFAULT_NAME, help='the entry name (default %(default)r)')
     d.add_argument('--unverified', action='store_true', help='the base is not a known one (you confirmed it)')
     d.add_argument('--boot', action='store_true', help='boot the result (the device leaves XY Forever)')
     d.add_argument('--watch', action='store_true', help='repeat on every file change (not with --boot)')
-    d.add_argument('--ignore-config', action='store_true', help='go ahead with a saved configuration present (the menu '
-                   'then shows "(to apply)")')
+    d.add_argument(
+        '--ignore-config',
+        action='store_true',
+        help='go ahead with a saved configuration present (the menu then shows "(to apply)")',
+    )
     d.add_argument('--restore', action='store_true', help='set the default from before the first dev run again')
 
 
@@ -357,8 +389,10 @@ def command(args, connect, slots, current_state, out=print):
         out('refused: the device speaks protocol %s; this tool speaks 1.x' % P.Hello(text).proto)
         return 2
     if not args.restore and not MS.layout_ok(P.Hello(text).proto):
-        out('refused: this XY Forever (protocol %s) reads mods/<profile>/<generation>/; install a build with '
-            'protocol 1.16 or later first (#124)' % P.Hello(text).proto)
+        out(
+            'refused: this XY Forever (protocol %s) reads mods/<profile>/<generation>/; install a build with '
+            'protocol 1.16 or later first (#124)' % P.Hello(text).proto
+        )
         return 2
     try:
         if args.restore:

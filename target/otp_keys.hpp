@@ -16,5 +16,5 @@ bool public_key(void* context, xyf_core::Byte out[56]);
 // The package AES key: index 0 only, selectors 3 and 4 (16 bytes each), as stock 11a05c9c reads
 // it. Index 1 (selectors 5/6) is refused unread. false: refused or no answer (out is all zero).
 bool aes_key(void* context, xyf_core::U32 index, xyf_core::Byte out[32]);
-} }
+}}
 #endif
