@@ -38,11 +38,11 @@ def digest(path):
 
 
 def location(environ=os.environ):
-    """Where the toolchain is looked for: XYF_TOOLCHAIN, else paths.TOOLCHAIN (xyf.local.json's "toolchain", else
+    """Where the toolchain is looked for: XYF_TOOLCHAIN, else paths.toolchain() (xyf.local.json's "toolchain", else
     tools/blackfin beside the main checkout: ../tools/blackfin in a plain clone, the same folder from any worktree)."""
     from . import paths
 
-    return Path(environ['XYF_TOOLCHAIN']) if environ.get('XYF_TOOLCHAIN') else paths.TOOLCHAIN
+    return Path(environ['XYF_TOOLCHAIN']) if environ.get('XYF_TOOLCHAIN') else paths.toolchain()
 
 
 def authenticate(directory=None):

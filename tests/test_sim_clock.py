@@ -85,6 +85,26 @@ class EventClock(unittest.TestCase):
             read(0.2)
         self.assertEqual(replies, {1: (P.ids.STORAGE_SPACE | P.REPLY, P.ids.S_LINK), 2: (P.HELLO | P.REPLY, 0)})
 
+    @pytest.mark.sim
+    def test_a_host_pause_reaches_its_own_simulator_only(self):
+        """Kept: #229 round 7, every host pause (xyf_host, conformance, device_pass) goes this way. Two simulators at
+        once, each with a client: a pause through one's transport moves that one's clock by the pause and leaves
+        the other's clock and client alone (a control port inferred from the endpoint's reached no simulator, a
+        wall-clock sleep, or another's endpoint, which dropped that one's client)."""
+        sim.seed(self.dir / 'other')
+        other = sim.Simulator(self.dir / 'other', self.dir / 'other.bin', binary=self.sim.binary).start()
+        try:
+            them = host.Device(host.TcpPort(other.address), on_log=None)
+            self.sim.settle()
+            mine, theirs = self.clock(), other.status()['clock_ms']
+            self.dev.t.pause(5.0)
+            self.assertGreaterEqual(self.clock() - mine, 5000)
+            self.assertEqual(other.status()['clock_ms'], theirs)
+            self.assertEqual(them.hello()[0], 0)
+            them.t.close()
+        finally:
+            other.stop()
+
 
 if __name__ == '__main__':
     unittest.main()

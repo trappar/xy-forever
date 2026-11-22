@@ -320,7 +320,7 @@ class SimulatorRunTest(unittest.TestCase):
     def test_check_and_plan_touch_nothing(self):
         code, out, summary = run_script(['--check'])
         self.assertEqual((code, out.strip(), summary), (0, 'ok %d cases interpreted' % len(data()['cases']), None))
-        code, out, _ = run_script(['--plan', '--sim', '127.0.0.1:1'])
+        code, out, _ = run_script(['--plan', '--sim', '127.0.0.1:1,2'])
         self.assertEqual(code, 0)
         self.assertEqual(len(out.splitlines()), len(data()['cases']))
 

@@ -506,7 +506,7 @@ def toolchain_hint():
     return [
         "`mise run setup` downloads open-xy's toolchain-1 release into %s (darwin-arm64, windows-x86_64); "
         'linux-x86_64: build it (open-xy docs/build.md "On Linux"), then put it there or record its folder: '
-        '`uv run scripts/setup.py init --toolchain DIR`.' % paths.TOOLCHAIN
+        '`uv run scripts/setup.py init --toolchain DIR`.' % paths.toolchain()
     ]
 
 

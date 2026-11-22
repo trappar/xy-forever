@@ -107,7 +107,7 @@ class SerialTest(unittest.TestCase):
         server.bind(('127.0.0.1', 0))
         server.listen(4)
         self.addCleanup(server.close)
-        sim = '127.0.0.1:%d' % server.getsockname()[1]
+        sim = '127.0.0.1:%d,1' % server.getsockname()[1]
         with (
             mock.patch.object(host, 'SIM', sim),
             mock.patch.object(transport.list_ports, 'comports', reached('the port list')),

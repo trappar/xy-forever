@@ -397,7 +397,7 @@ SIM_SKIPS = {
     'keys': 'simulator: the menu screen and keys are not hosted',
     'keepalive': 'simulator: no keepalive.sh (the simulator keeps running without a host)',
 }
-SIM_NEED = 'NEED: start the simulator (uv run -m xy_forever.sim), then rerun with --sim 127.0.0.1:7341'
+SIM_NEED = 'NEED: start the simulator (uv run -m xy_forever.sim), then rerun with --sim 127.0.0.1:7341,7342'
 CONFIRM_ON = 'Switch off Settings > Ask before USB control on the device first'
 
 
@@ -2382,7 +2382,7 @@ def parse_args(argv):
     )
     parser.add_argument(
         '--sim',
-        metavar='HOST:PORT',
+        metavar='HOST:PORT,CONTROL',
         help='run against the device simulator (xyf-host --sim); steps it does not host are SKIP',
     )
     parser.add_argument(

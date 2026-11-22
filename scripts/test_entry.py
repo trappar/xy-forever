@@ -278,7 +278,7 @@ def parse_args(argv):
     mode = p.add_mutually_exclusive_group()
     mode.add_argument('--boot', action='store_true', help='set-default <id> (content switch), then boot it once')
     mode.add_argument('--cleanup', action='store_true', help='remove the entry (not while default or installed)')
-    p.add_argument('--sim', metavar='HOST:PORT')
+    p.add_argument('--sim', metavar='HOST:PORT,CONTROL')
     p.add_argument('--keep', action='store_true', help='with --sim: keep the evidence folder when it passed')
     o = p.parse_args(argv)
     if not xyf_entry.ID.fullmatch(o.id) or len(o.name.encode()) > 47:

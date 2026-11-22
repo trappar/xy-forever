@@ -18,7 +18,7 @@ How a tool reaches the protocol. `verified` is true for facts read from device s
 | line settings | `ignored` | yes | baud rate, parity, stop bits and flow control do not matter (an API that needs a baud rate may pass any); open the port raw (no echo, no line editing) |
 | control lines | `unknown` | no | whether the device needs DTR or RTS set: `uv run xyf-host` leaves them as macOS sets them on open |
 | usb serial number | `unknown` | no | macOS names the port `cu.usbmodem<string>1`, which suggests a serial-number string; a browser may need one to find the port again after a restart without asking the user |
-| simulator port | `7341` | yes | default TCP port of the device simulator (`uv run -m xy_forever.sim`, 127.0.0.1 only; control on the next port), one client at a time |
+| simulator port | `7341` | yes | default TCP port of the device simulator (`uv run -m xy_forever.sim`, 127.0.0.1 only; its control port is a separate setting, 7342 by default), one client at a time |
 
 ## Frames
 

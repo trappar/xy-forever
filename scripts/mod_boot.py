@@ -6,7 +6,7 @@ Superseded since the content switch: its entry has no content of its own, so the
 in with scripts/test_entry.py (an assembled entry the device's content switch installs).
 
 Same conventions as scripts/device_pass.py (whose Pass helpers it reuses): every device command
-goes through xyf_host.py's main(); `--sim HOST:PORT`; `--plan`; a PASS/FAIL/SKIP table; the first
+goes through xyf_host.py's main(); `--sim HOST:PORT,CONTROL`; `--plan`; a PASS/FAIL/SKIP table; the first
 FAIL stops; no answer: one `NEED:` line, exit 3, no folder. It writes only firmware/<id>/ (the
 scratch entry) and, with --content, the content delta under content/; never user/, other entries,
 the state slots or the default.
@@ -528,7 +528,7 @@ def recorded_default(sessions, sim):
 def parse_args(argv):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--plan', action='store_true', help='print the steps and exit; touches nothing')
-    p.add_argument('--sim', metavar='HOST:PORT', help='the device simulator (keys not hosted: boot steps SKIP)')
+    p.add_argument('--sim', metavar='HOST:PORT,CONTROL', help='the device simulator (keys not hosted: boot steps SKIP)')
     p.add_argument('--stages', help='comma list of assemble,upload,accept (default: all three)')
     p.add_argument('--mods', default='fm2op', help='comma list of machine ids (default fm2op)')
     p.add_argument('--image', type=Path, help='an os.ldr assembled earlier instead of the assemble step')

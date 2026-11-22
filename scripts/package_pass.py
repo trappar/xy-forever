@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise #11's package commits and shared-blob GC through the normal USB service.
 
-First prove against a simulator: --sim HOST:PORT --base opxy-121 --yes-write.
+First prove against a simulator: --sim HOST:PORT,CONTROL --base opxy-121 --yes-write.
 Without --sim the same plan uses USB. No boot, reset, live-content or state write;
 the existing base image is read over USB and copied into two temporary entries.
 """

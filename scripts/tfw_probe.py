@@ -217,7 +217,7 @@ class Probe:
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--sim', metavar='HOST:PORT', help='run against the device simulator (xyf-host --sim)')
+    parser.add_argument('--sim', metavar='HOST:PORT,CONTROL', help='run against the device simulator (xyf-host --sim)')
     parser.add_argument(
         '--roles', help='comma-separated a,b for versioned per-processor evidence; default: legacy B probe'
     )

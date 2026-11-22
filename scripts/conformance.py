@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Conformance suite: run protocol/v1.conformance.json against the simulator or the OP-XY.
 
-    uv run scripts/conformance.py --sim 127.0.0.1:7341     every case, against a running simulator
+    uv run scripts/conformance.py --sim 127.0.0.1:7341,7342   every case, against a running simulator
     uv run scripts/conformance.py                          the OP-XY over USB: cases marked real_device
     uv run scripts/conformance.py --check                  interpret every case; no device, no session
     uv run scripts/conformance.py --plan                   list the cases and what each does
@@ -21,7 +21,7 @@ refuses without acting; never boot.install, boot.uninstall, library.set_default,
 command. keepalive.sh processes are stopped first (they share the port) and one is started on the
 session folder at the end, as the device pass ends (stop it: touch FOLDER/stop-keepalive).
 
-With --sim, cases that need the control port (HOST:PORT+1: faults, power) run too; fixtures
+With --sim, cases that need the control port (--sim HOST:PORT,CONTROL: faults, power) run too; fixtures
 (--fixture stock_os_ldr=PATH, xyf_build=PATH) default to the private stock 1.2.1 os.ldr when present.
 Exit codes: 0 nothing failed, 1 a case failed, 2 bad arguments or case data, 3 NEED.
 """
@@ -79,8 +79,8 @@ class Target:
         return False
 
     def control(self, line):
-        host_name, port = host.sim_address(self.sim)
-        with socket.create_connection((host_name, port + 1), timeout=5.0) as s:
+        host_name, _, control = host.sim_address(self.sim)
+        with socket.create_connection((host_name, control), timeout=5.0) as s:
             s.sendall(line.encode() + b'\n')
             data = b''
             while not data.endswith(b'\n'):
@@ -101,7 +101,9 @@ def table(rows, folder):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--sim', metavar='HOST:PORT', help='the device simulator (xyf-host --sim) instead of USB')
+    parser.add_argument(
+        '--sim', metavar='HOST:PORT,CONTROL', help='the device simulator (xyf-host --sim) instead of USB'
+    )
     parser.add_argument('--check', action='store_true', help='interpret every case and exit; touches nothing')
     parser.add_argument('--plan', action='store_true', help='list the cases and exit; touches nothing')
     parser.add_argument('--only', metavar='REGEX', help='run only the cases whose name matches')

@@ -2,7 +2,7 @@
 
 Part of [XY Forever architecture](../ARCHITECTURE.md); the simulator itself: [simulator](simulator.md).
 
-The control port (the simulator's port + 1; with `--port 0`, or a test's `Simulator`, a port the system picks) takes one line in and gives a JSON reply out. Tests: `tests/test_simulator.py`.
+The control port (its own setting, never derived from the endpoint's: `--control`, 7342 by default; with `--port 0`, or a test's `Simulator`, a port the system picks; a host names both, `--sim HOST:PORT,CONTROL`) takes one line in and gives a JSON reply out. Tests: `tests/test_simulator.py`.
 
 ## Status
 

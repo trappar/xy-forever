@@ -38,8 +38,9 @@ MAIN = main_checkout()  # REPO in a plain clone
 LOCAL_CONFIG = MAIN / 'xyf.local.json'  # the main checkout's settings (gitignored): {"private": DIR, "toolchain": DIR}
 
 
-def configured(key, config=LOCAL_CONFIG):
+def configured(key, config=None):
     """A folder recorded in the local config (`scripts/setup.py init --private/--toolchain DIR`), or None."""
+    config = LOCAL_CONFIG if config is None else config
     try:
         value = json.loads(Path(config).read_text()).get(key)
     except FileNotFoundError:
@@ -47,9 +48,10 @@ def configured(key, config=LOCAL_CONFIG):
     return Path(value).expanduser().resolve() if value else None
 
 
-# The Blackfin toolchain unless XYF_TOOLCHAIN (toolchain.location): the local config's "toolchain", else
-# tools/blackfin beside the main checkout.
-TOOLCHAIN = configured('toolchain') or MAIN.parent / 'tools/blackfin'
+def toolchain():
+    """The Blackfin toolchain unless XYF_TOOLCHAIN (toolchain.location): the local config's "toolchain", else
+    tools/blackfin beside the main checkout. Read on each call: setup records it, then its doctor reads it."""
+    return configured('toolchain') or MAIN.parent / 'tools/blackfin'
 
 
 def private_root(environ=os.environ, config=LOCAL_CONFIG, main=MAIN):
