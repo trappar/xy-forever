@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './cpu.ts';
 import type { Browser, Page, Locator } from '@playwright/test';
 import { startRelay } from 'xy-forever-client/test/relay.ts';
 import type { Relay } from 'xy-forever-client/test/relay.ts';

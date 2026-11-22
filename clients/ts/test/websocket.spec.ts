@@ -9,9 +9,10 @@ import { control, startRelay } from './relay.ts';
 import type { Relay } from './relay.ts';
 import { WebSocketTransport, webSocketOpener } from '../src/dev.ts';
 import { Client, VERSION, isXyfError } from '../src/index.ts';
+import { countSim } from './cpu-setup.ts';
 
 const sims = inject('sims');
-const sim = sims.ws;
+const sim = countSim(sims.ws);
 
 function listen(port: number, onSocket: (s: net.Socket) => void): Promise<net.Server> {
   return new Promise((resolve, reject) => {

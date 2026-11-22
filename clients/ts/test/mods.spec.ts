@@ -53,9 +53,10 @@ import {
 import { STORE_FILE, STORE_TEXT, storedName } from '../src/modstore.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
 import { REPO, control, makeModBase, makeModSet, simOpener } from './simulators.ts';
+import { countSim } from './cpu-setup.ts';
 
 const sims = inject('sims');
-const sim = sims.mods;
+const sim = countSim(sims.mods);
 
 /** Every file below dir: relative path -> bytes. */
 function tree(dir: string): Map<string, Buffer> {

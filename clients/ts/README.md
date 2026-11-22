@@ -33,10 +33,10 @@ with the same fake is `web/e2e/install-sim.e2e.ts`. The web app driven against t
 The run starts its own simulators at once (`python3 -m xy_forever.sim`, from a random base port so that parallel runs do
 not collide, state under the private sessions folder; `XYF_TS_SIM_PORT` fixes the base, `XYF_TS_SIM_STATE`,
 `XYF_KEEP_SIM=1`) and skips the simulator tests with the reason when they cannot start. Their transport pauses on the
-simulator's clock (`simOpener`, `Transport.pause`), so polls take no host time. Budgets, enforced: each test's and the
-run's, about twice an unloaded run's and scaled on a busy or slower machine (`test/run-budget.ts`,
-`test/load-scale.ts`: over one fails the run and names the test); Vitest's time-outs and the run's hang bound stay
-the outer limit. Node 26 (pinned in `mise.toml`).
+simulator's clock (`simOpener`, `Transport.pause`), so polls take no host time. Budgets, enforced on CPU time (the test's
+process and its simulator's: `test/cpu.ts`): each test's and the sum of the run's, about twice an unloaded run's and
+scaled on slower hardware (`test/run-budget.ts`: over one fails the run and names the test); wall time is only
+reported. Vitest's time-outs and the run's hang bound, on wall time, stay the outer limit. Node 26 (pinned in `mise.toml`).
 
 ## Use
 

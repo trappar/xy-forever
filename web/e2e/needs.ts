@@ -1,5 +1,5 @@
 // What a simulator spec needs beyond the simulator: the verified build of this checkout's sources.
-import { test } from '@playwright/test';
+import { test } from './cpu.ts';
 import type { Found } from 'xy-forever-client/test/simulators.ts';
 
 /** The verified build's candidate.ldr. Without one the test skips and says why (paths.verified_build()). */

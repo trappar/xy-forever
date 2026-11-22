@@ -2,7 +2,7 @@
 // 2 s test timeout) fails, names that test, and ends, its Chrome closed, well within its bound.
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './cpu.ts';
 
 const WEB = fileURLToPath(new URL('..', import.meta.url));
 const BOUND_MS = 15_000; // the planted test's 2 s, the nested run's start and Chrome's

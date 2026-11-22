@@ -33,10 +33,12 @@ Budgets are enforced on CPU time everywhere, CI too: one test's and each tier's 
 processes it waited for (a simulator it stopped); the host C++ is built before the run, never in a test. Going
 over fails the run, naming the test or tier: make it faster or move it a tier. A busy machine stretches wall
 time, not CPU time; a probe raises the limits on slower hardware, and `--testmon` by its tracing. Wall time is
-only reported. Every test is also bounded, to end a hang, never a slow run (`xy_forever/bounds.py`): past it
-the run prints HUNG with every thread's traceback and its worker's process group ends. `test-changed` adds to
-testmon's Python tracking the C++ each test used (a `hosttest/` module, doctest file or program and its
-includes) and files it runs as a subprocess (`@pytest.mark.uses('scripts/x.py')`).
+only reported. The TS suites' budgets (Vitest, Playwright) are on CPU time too: a test's process plus, sampled, the
+simulator and Chrome processes it drives (`clients/ts/test/cpu.ts`). Every test is also bounded, to end a hang,
+never a slow run (`xy_forever/bounds.py`): past it the run prints HUNG with every thread's traceback and its
+worker's process group ends. `test-changed` adds to testmon's Python tracking the C++ each test used (a
+`hosttest/` module, doctest file or program and its includes) and files it runs as a subprocess
+(`@pytest.mark.uses('scripts/x.py')`).
 
 All host C++ (the tests', the host tools', the simulator's) is one CMake build: [host C++](host-build.md).
 

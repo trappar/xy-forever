@@ -628,7 +628,9 @@ This folder is an XY Forever development workspace, set up by `mise run setup` i
 | `tools/` | the Blackfin toolchain (`tools/blackfin`): local only, never committed |
 
 "Continue development" works from here: treat `%(repo)s/` as the repository for every command (run
-them there, as its docs show), and keep everything else in this folder out of git.
+them there, as its docs show), and keep everything else in this folder out of git. Extra git worktrees (a
+second agent: `%(repo)s/docs/operating/two-agents.md`) go outside this folder, in `../%(workspace)s-worktrees/`:
+an editor opened on this folder watches every checkout inside it.
 """
 
 
@@ -874,7 +876,7 @@ class Bootstrap:
             else str(self.private_root)
         )
         for name, text in (
-            ('AGENTS.md', WORKSPACE_GUIDE % {'repo': repo, 'private': private}),
+            ('AGENTS.md', WORKSPACE_GUIDE % {'repo': repo, 'private': private, 'workspace': self.workspace.name}),
             ('CLAUDE.md', '@AGENTS.md\n'),
         ):
             path = self.workspace / name

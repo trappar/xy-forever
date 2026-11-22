@@ -6,7 +6,7 @@
 // stand-in file is enough.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './cpu.ts';
 import type { Browser, Page, Locator } from '@playwright/test';
 
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
