@@ -3,6 +3,8 @@
 testmon selects a test when Python it executed changed. A test also depends on:
   - the C++ sources and headers of every host build it used (xy_forever/hostbuild.py records them with
     clang -M; its observer reports them here, cache hits included);
+  - the C++ of the hosttest modules and doctest files it used (xyf_hosttest.observer: a bind/NAME.cpp or a
+    *_test.cpp), with what they include and, for each header, the .cpp beside it (includes());
   - the files named by its `uses` marker: @pytest.mark.uses('scripts/x.py', 'sim/') (a folder: every
     file in it). Tests of the simulator tier use sim/ (its build caches itself, outside hostbuild).
 Each run records, per test that ran, those files' hashes (pytest's cache, key xyf/deps). With --testmon,
@@ -12,14 +14,44 @@ class (a setUpClass compile is recorded by the class's first test).
 import hashlib
 import os
 from pathlib import Path
+import re
 
 import pytest
 
 from xy_forever import hostbuild
+import xyf_hosttest
 
 ROOT = Path(__file__).resolve().parents[1]
 KEY = 'xyf/deps'
 _hashes = {}
+_includes = {}
+INCLUDE = re.compile(rb'^\s*#\s*include\s*"([^"]+)"', re.M)
+SEARCH = ('', 'native', 'target', 'third_party/doctest')    # hosttest/CMakeLists.txt's include folders
+
+
+def includes(rel):
+    """rel (a repository path) and the repository files it includes, transitively, each header with the .cpp
+    beside it (its implementation, linked into the same binary)."""
+    if rel in _includes:
+        return _includes[rel]
+    seen, todo = set(), [rel]
+    while todo:
+        name = todo.pop()
+        if name in seen or not (ROOT / name).is_file():
+            continue
+        seen.add(name)
+        stem, ext = os.path.splitext(name)
+        if ext in ('.hpp', '.h') and (ROOT / (stem + '.cpp')).is_file():
+            todo.append(stem + '.cpp')
+        here = os.path.dirname(name)
+        for found in INCLUDE.findall((ROOT / name).read_bytes()):
+            for base in (here, *SEARCH):
+                candidate = os.path.normpath(os.path.join(base, found.decode()))
+                if (ROOT / candidate).is_file():
+                    todo.append(candidate)
+                    break
+    _includes[rel] = seen
+    return seen
 
 
 def digest(rel):
@@ -42,6 +74,11 @@ class Recorder:
     def __init__(self):
         self.files, self.compile_s, self.compile_cpu_s = set(), 0.0, 0.0
         hostbuild.observer = self.compiled
+        xyf_hosttest.observer = self.used
+
+    def used(self, paths):
+        for rel in paths:
+            self.files.update(includes(rel))
 
     def compiled(self, files, seconds, cpu_s):
         for f in files:
