@@ -18,7 +18,6 @@ so every CRC identity check runs against the real bytes.
 import hashlib
 import json
 import os
-import random
 import re
 import socket
 import struct
@@ -315,21 +314,19 @@ def otp_fields(keys=None, public_key_file=None):
     return bytes(out)
 
 
-def free_port():
-    """A free pair of local TCP ports (endpoint, control), picked at random below every system's
-    ephemeral range (macOS 49152-, Linux 32768-): there the OS hands ports to every outgoing
-    connection and bind to 0, and under parallel tests one often took the pair between the check
-    here and the simulator's bind."""
-    for _ in range(50):
-        port = random.randrange(20000, 32000, 2)
-        with socket.socket() as a, socket.socket() as b:
-            try:
-                a.bind(('127.0.0.1', port))
-                b.bind(('127.0.0.1', port + 1))
-            except OSError:
-                continue
-            return port
-    raise RuntimeError('no free local port pair')
+def reserve(port=0):
+    """A socket bound to 127.0.0.1:port (0: a free port the system picks), not listening: it holds the port for
+    a simulator for as long as it is open. SO_REUSEPORT, so the simulator's own listeners can bind the same port
+    (B's endpoint each time USB comes on, the control port at each start); nobody else can, and with nothing
+    listening a connection is refused, as a detached device's."""
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    try:
+        s.bind(('127.0.0.1', port))
+    except OSError:
+        s.close()
+        raise
+    return s
 
 
 DEADLINE_EXIT = 124  # xyf_sim's exit status at its deadline (sim/runtime.cpp exit_deadline)
@@ -339,8 +336,8 @@ class DeadlinePassed(TimeoutError):
     """The simulator stopped on its own at its deadline (xyf_sim --deadline-s, #230)."""
 
 
-class PortTaken(RuntimeError):
-    """The simulator stopped before its endpoint listened (a port already in use, most likely)."""
+class NotListening(RuntimeError):
+    """The simulator stopped before its endpoint listened."""
 
 
 class Simulator:
@@ -380,9 +377,10 @@ class Simulator:
         self.otp = (otp or b'') + a_records
         self.a_otp_initialized = a_otp_initialized
         self.otp_initialized = otp_initialized
-        self.chosen = port is None  # a free pair picked here: start() may pick again
-        self.port = port or free_port()
-        self.control_port = self.port + 1
+        # Held from here to stop(): port None, two ports the system picks (no picking here, so parallel runs never
+        # race for one); port N, N and N + 1. A start() after stop() holds the same two again.
+        self._ports = (reserve(port or 0), reserve(port + 1 if port else 0))
+        self.port, self.control_port = (r.getsockname()[1] for r in self._ports)
         self.binary = Path(binary) if binary else build()
         self.play, self.log, self.capacity, self.ask = play, log, capacity, ask
         self.deadline_s = deadline_s
@@ -420,57 +418,43 @@ class Simulator:
 
     def listen_control(self):
         """The control port's socket, listening before the simulator starts (control() never waits for it)."""
-        for attempt in range(20):
-            listener = socket.socket()
-            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            try:
-                listener.bind(('127.0.0.1', self.control_port))
-                listener.listen(8)
-                return listener
-            except OSError:
-                listener.close()
-                if not self.chosen or attempt == 19:
-                    raise
-                self.port = free_port()
-                self.control_port = self.port + 1
+        listener = socket.socket()
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        try:
+            listener.bind(('127.0.0.1', self.control_port))
+            listener.listen(8)
+        except OSError:
+            listener.close()
+            raise
+        return listener
 
     def start(self, timeout=10.0, settle=True):
         """Starts the board; returns once B's USB endpoint listens and (settle) the device is at rest."""
         os.environ.setdefault('XYF_ASK_LIMIT_S', '30')  # #65: a host here never waits on the question unbounded
-        for attempt in range(3):
-            log = open(self.log, 'ab') if self.log else subprocess.DEVNULL
-            listener = self.listen_control()
-            # Its own session: stop() ends its whole group (the board and both processors).
-            try:
-                self.process = procgroup.popen(
-                    self.argv(listener.fileno()),
-                    stdin=subprocess.PIPE if self.otp else subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=log,
-                    pass_fds=(listener.fileno(),),
-                )
-            finally:
-                listener.close()  # the simulator's copy only: gone with it
-            if self.otp:  # on a pipe: never on disk or the command line
-                self.process.stdin.write(self.otp)
-                self.process.stdin.close()
-            if self.log:
-                log.close()
-            try:
-                self.wait_listening(timeout)
-                if settle:
-                    self.settle()
-                return self
-            except PortTaken:
-                # Another process took the endpoint's port between free_port() and B's bind (tests running in
-                # parallel): a new pair, when the pair was picked here.
-                self._close_control()
-                procgroup.kill_group(self.process, grace=1.0)
-                self.process = None
-                if not self.chosen or attempt == 2:
-                    raise
-                self.port = free_port()
-                self.control_port = self.port + 1
+        if self._ports is None:
+            self._ports = (reserve(self.port), reserve(self.control_port))
+        log = open(self.log, 'ab') if self.log else subprocess.DEVNULL
+        listener = self.listen_control()
+        # Its own session: stop() ends its whole group (the board and both processors).
+        try:
+            self.process = procgroup.popen(
+                self.argv(listener.fileno()),
+                stdin=subprocess.PIPE if self.otp else subprocess.DEVNULL,
+                stdout=log,
+                stderr=log,
+                pass_fds=(listener.fileno(),),
+            )
+        finally:
+            listener.close()  # the simulator's copy only: gone with it
+        if self.otp:  # on a pipe: never on disk or the command line
+            self.process.stdin.write(self.otp)
+            self.process.stdin.close()
+        if self.log:
+            log.close()
+        self.wait_listening(timeout)
+        if settle:
+            self.settle()
+        return self
 
     def control(self, line, timeout=5.0):
         """One control line on one kept connection (the board serves many lines per client), so a test
@@ -593,10 +577,10 @@ class Simulator:
 
         def listening():
             if self.process and self.process.poll() is not None:  # the board ended
-                raise PortTaken('simulator exited with %s' % self.process.returncode)
+                raise NotListening('simulator exited with %s' % self.process.returncode)
             status = self.status()
             if status.get('b') == 'crashed' and status.get('b_boots') == 1:  # the endpoint's bind failed, say
-                raise PortTaken('simulator: B crashed at its first boot')
+                raise NotListening('simulator: B crashed at its first boot')
             return status.get('listening')
 
         try:
@@ -605,16 +589,18 @@ class Simulator:
             raise TimeoutError(str(e))
 
     def stop(self):
-        if not self.process:
-            return
-        try:
-            self.control('quit', timeout=2.0)
-            self.process.wait(timeout=5.0)
-        except Exception:
-            pass
-        procgroup.kill_group(self.process, grace=1.0)  # whatever is left of its group: SIGKILL
-        self._close_control()
-        self.process = None
+        if self.process:
+            try:
+                self.control('quit', timeout=2.0)
+                self.process.wait(timeout=5.0)
+            except Exception:
+                pass
+            procgroup.kill_group(self.process, grace=1.0)  # whatever is left of its group: SIGKILL
+            self._close_control()
+            self.process = None
+        for r in self._ports or ():
+            r.close()
+        self._ports = None
 
     def __enter__(self):
         return self.start()

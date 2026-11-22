@@ -14,7 +14,12 @@ def main(argv=None):
     import argparse
 
     parser = argparse.ArgumentParser(description='Run the XY Forever device simulator in the foreground.')
-    parser.add_argument('--port', type=int, default=DEFAULT_PORT, help='USB endpoint port (control: port + 1)')
+    parser.add_argument(
+        '--port',
+        type=int,
+        default=DEFAULT_PORT,
+        help='USB endpoint port (control: port + 1); 0: two free ports, printed',
+    )
     parser.add_argument(
         '--state',
         type=Path,
@@ -75,6 +80,7 @@ def main(argv=None):
         ask=args.ask,
         deadline_s=None,
     )
+    # The ports' line (a launcher reads it: clients/ts/test/simulators.ts), then the board on them.
     print(
         'simulator: USB endpoint 127.0.0.1:%d (uv run xyf-host --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
         ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root),
@@ -83,8 +89,10 @@ def main(argv=None):
     )
     # Its own process group (the board and both processors), ended with this process however it ends:
     # Ctrl-C, SIGTERM or SIGHUP, or (tie_to_parent) the process that started this one gone (#133).
-    argv = sim.argv() + (['--idle-wall'] if args.idle_wall else [])
-    process = procgroup.popen(argv, stdin=subprocess.PIPE if otp else None)
+    listener = sim.listen_control()
+    argv = sim.argv(listener.fileno()) + (['--idle-wall'] if args.idle_wall else [])
+    process = procgroup.popen(argv, stdin=subprocess.PIPE if otp else None, pass_fds=(listener.fileno(),))
+    listener.close()
     try:
         if otp:
             process.stdin.write(otp)

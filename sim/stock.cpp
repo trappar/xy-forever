@@ -55,6 +55,9 @@ void cdc_start() {
     listener = socket(AF_INET, SOCK_STREAM, 0);
     const int one = 1;
     setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    // The launcher holds the port, bound but not listening, with SO_REUSEPORT (xy_forever/sim.py reserve()): only
+    // a socket with it set too may bind it, and while USB is off nothing listens, so a host is refused.
+    setsockopt(listener, SOL_SOCKET, SO_REUSEPORT, &one, sizeof(one));
     sockaddr_in a = {};
     a.sin_family = AF_INET;
     a.sin_port = htons(uint16_t(shared->port));
