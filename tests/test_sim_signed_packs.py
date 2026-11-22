@@ -7,13 +7,14 @@ import time
 import unittest
 from pathlib import Path
 
+import pytest
+import test_simulator as S
 from test_native_package import package
 from test_tfw import KEY, container
 from test_tfw_os import PUBLIC_KEY, signed
 
-import xyf_host as host
+from xy_forever import bounds, package_store, sim
 from xy_forever import pack_change as packs
-from xy_forever import package_store, sim
 from xy_forever.usb_proto import ids
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock os.ldr absent')
@@ -35,8 +36,12 @@ def fixture():
     )
 
 
+@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class SignedPackImport(unittest.TestCase):
+    connect = S.SimulatorTest.connect
+    wait = S.SimulatorTest.wait
+
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix='xyf-signed-pack-')
         self.addCleanup(tmp.cleanup)
@@ -47,11 +52,11 @@ class SignedPackImport(unittest.TestCase):
         self.data = fixture()
         (self.inbox / 'test.tfw').write_bytes(self.data)
         otp = bytes((9, 56)) + PUBLIC_KEY + bytes((3, 16)) + KEY[:16] + bytes((4, 16)) + KEY[16:]
-        self.machine = machine = sim.Simulator(self.root, path / 'bootpart.bin', otp=otp, log=path / 'log.txt').start()
+        self.sim = machine = sim.Simulator(self.root, path / 'bootpart.bin', otp=otp, log=path / 'log.txt').start()
         self.addCleanup(machine.stop)
-        self.dev = host.Device(host.TcpPort(machine.address), on_log=None)
-        self.addCleanup(self.dev.t.close)
-        self.assertEqual(self.dev.hello()[0], 0)
+        self.links = []
+        self.addCleanup(lambda: [link.t.close() for link in self.links])
+        self.dev = self.connect()
         for folder, name in (('/yaffs2', b'xy-forever'), ('/yaffs2/xy-forever', b'inbox'), (packs.INBOX, b'test.tfw')):
             code, entries = self.dev.list_dir(folder)
             self.assertEqual(code, 0, folder)
@@ -65,25 +70,27 @@ class SignedPackImport(unittest.TestCase):
         return self.dev.call(ids.PACKS_MANAGE, struct.pack('<II', version, op) + name.encode() + b'\0')
 
     def start(self, name='test.tfw'):
-        deadline = time.monotonic() + 15
+        """packs.manage import, sent again while it answers busy (the write window settling)."""
+        hang_deadline = time.monotonic() + bounds.WAIT_S
         while True:
             code, body = self.call(packs.OP_IMPORT, name)
-            if code != ids.S_BUSY or time.monotonic() >= deadline:
+            if code != ids.S_BUSY or time.monotonic() >= hang_deadline:
                 return code, body
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def finish(self):
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
+        hang_deadline = time.monotonic() + bounds.WAIT_S
+        while time.monotonic() < hang_deadline:
             code, body = self.call(packs.OP_STATUS)
             self.assertEqual(code, ids.S_OK)
             phase, done, total, error, self.site, self.detail = struct.unpack('<6I', body)
             if phase in (3, 4):
                 return phase, done, total, error
-            time.sleep(0.02)
+            self.sim.advance(20)
         self.fail('signed import did not finish')
 
     def test_signed_import_retains_one_tree_and_refuses_unknown_compatibility(self):
+        """Kept: #195's import end to end: one retained tree of hardlinked blobs, its record, and enable refused while compatibility is unknown."""
         catalog = self.root / 'content/op1_factory.json'
         original = catalog.read_bytes()
         self.assertEqual(self.start()[0], ids.S_OK)
@@ -110,6 +117,7 @@ class SignedPackImport(unittest.TestCase):
         self.assertEqual((self.inbox / 'test.tfw').read_bytes(), self.data)
 
     def test_corrupt_source_never_publishes(self):
+        """Kept: a request or archive that fails authentication publishes nothing."""
         self.assertEqual(self.call(packs.OP_STATUS, version=2)[0], ids.S_UNSUPPORTED)
         self.assertEqual(self.call(packs.OP_IMPORT, '../test.tfw')[0], ids.S_BAD_REQUEST)
         self.assertEqual(self.start('missing.tfw')[0], ids.S_NOT_FOUND)
@@ -121,7 +129,8 @@ class SignedPackImport(unittest.TestCase):
         self.assertFalse(self.live.exists())
 
     def test_failed_member_write_reports_its_site_and_removes_scratch(self):
-        self.machine.set('fail_write', 1)  # A's first data write: EIO
+        """Kept: a failed member write names its step and member (the device's storage error 7) and removes the scratch."""
+        self.sim.set('fail_write', 1)  # A's first data write: EIO
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_STORAGE)
         self.assertEqual(self.site & 0xFFFF, 3 << 8 | 3)  # extract step, the member's write
@@ -133,9 +142,10 @@ class SignedPackImport(unittest.TestCase):
         self.assertEqual(list((self.root / 'xy-forever/tmp').glob('pkg-v1-*')), [])
 
     def test_preflight_refuses_insufficient_space_before_writes(self):
-        self.machine.set('statfs_block_bytes', 4096)
-        self.machine.set('statfs_free_blocks', 1)
-        self.machine.set('statfs_override', 1)
+        """Kept: the free-space preflight refuses before any write."""
+        self.sim.set('statfs_block_bytes', 4096)
+        self.sim.set('statfs_free_blocks', 1)
+        self.sim.set('statfs_override', 1)
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_TOO_LARGE)
         self.assertFalse(self.retained.parent.exists())
@@ -143,24 +153,17 @@ class SignedPackImport(unittest.TestCase):
         self.assertFalse((self.root / 'xy-forever/blobs').exists())
 
     def test_seed_cut_leaves_no_partial_pack_and_retry_recovers(self):
-        self.machine.set('rename_fault_kind', 2)
-        self.machine.set('rename_fault', 1)
-        before = self.machine.status()['cuts']
+        """Kept: a power cut mid-import leaves no partial pack, and a retry completes."""
+        self.sim.set('rename_fault_kind', 2)
+        self.sim.set('rename_fault', 1)
+        before = self.sim.status()['cuts']
         self.assertEqual(self.start()[0], ids.S_OK)
-        deadline = time.monotonic() + 20
-        while time.monotonic() < deadline:
-            status = self.machine.status()
-            if status['cuts'] == before + 1 and status['listening']:
-                break
-            time.sleep(0.02)
-        else:
-            self.fail('simulator did not restart after the rename')
+        self.wait(lambda s: s['cuts'] == before + 1 and s['listening'], what='the restart after the cut rename')
         self.assertFalse(self.retained.exists())
         self.assertFalse(self.live.exists())
-        self.dev.t.close()
-        self.dev = host.Device(host.TcpPort(self.machine.address), on_log=None)
-        self.addCleanup(self.dev.t.close)
-        self.assertEqual(self.dev.hello()[0], 0)
+        self.dev = self.connect(startup_ready=True)
+        # The menu's own window after the cut closes before the retry (an import that settles it halts A here).
+        self.wait(lambda s: not s['rw_open'], what="the menu's startup window closed")
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_OK)
         sample = self.retained / 'samples/hand.wav'

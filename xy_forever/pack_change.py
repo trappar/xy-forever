@@ -11,7 +11,6 @@ from . import usb_proto as P
 
 DLC = '/yaffs2/content/dlc'
 INBOX = store.ROOT + '/inbox'
-RETAINED = store.ROOT + '/packs'
 SIGNED_RECORD = b'xyf-pack.txt'
 OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE = range(5)
 SIGNED_OPERATIONS = {'import': OP_IMPORT, 'enable': OP_ENABLE, 'disable': OP_DISABLE}
