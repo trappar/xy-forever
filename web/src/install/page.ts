@@ -6,7 +6,7 @@
 // os.ldr is there with its 1.2.1 size and the free storage before copying (on Windows the owner looks in Explorer); it never switches the dev menu off (Open-XY's disable and
 // recovery-by-disabling are left out). The install ends with Track 5 and a power-on: XY Forever then sets itself up
 // on the device (finish.ts), and the page never reads or moves the stock OS. #page-install's data-stage names the
-// stage (the tests read it). Each stage is a path, /install/<stage> (../router.ts): a reload keeps it, with the
+// stage (the tests read it). Each stage is a path, /install/<stage> (../routing.ts): a reload keeps it, with the
 // choices made so far kept in sessionStorage; a reload re-checks the device instead of trusting them (te-boot stages
 // ask te-boot again). At every stage (on load, on each stage change, on a serial port appearing, every few seconds at
 // the last stage) and on a click, the page looks for an OP-XY running XY Forever (granted ports only, never the
@@ -23,11 +23,13 @@ import { InstallStop, TeBoot, copyOverMtp } from './installer.ts';
 import type { MidiAccess } from './installer.ts';
 import { fetchRelease, pinned } from './release.ts';
 import type { ReleasePin } from './release.ts';
-import { downloadBlob, h } from '../ui.ts';
-import { backDepth, navigate } from '../router.ts';
-import type { How } from '../router.ts';
-import { INSTALL_STAGES } from '../routes.ts';
-import type { InstallStage } from '../routes.ts';
+import { h } from '../ui.ts';
+import { downloadBlob } from '../lib/download.ts';
+import { backDepth, navigatePath as navigate } from '../routing.ts';
+import { INSTALL_STAGES } from './stages.ts';
+import type { InstallStage } from './stages.ts';
+
+type How = 'load' | 'push';
 
 /** A connection to XY Forever; close releases it (a no-op for the app's own). */
 export interface Lease { readonly client: Client; close(): Promise<void> }
@@ -315,7 +317,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
   const link = (href: string, text: string): HTMLAnchorElement => h('a', { href, target: '_blank', rel: 'noopener noreferrer' }, text);
 
   /** Open-XY's MTP troubleshooting FAQ, adapted to one file and to XY Forever's recovery (the dev menu stays on). */
-  const faq = (): HTMLElement => h('details', { id: 'mtp-faq', open: stage === 'mtp-help' }, h('summary', {}, 'MTP troubleshooting FAQ'),
+  const faq = (): HTMLElement => h('details', { 'data-testid': 'mtp-faq', open: stage === 'mtp-help' }, h('summary', {}, 'MTP troubleshooting FAQ'),
     h('h3', {}, 'Did installing soundpacks cause this?'),
     h('p', {}, 'We don’t know. Persistent failures were reported with soundpacks installed, but that does not establish a cause. Removing soundpacks has not been verified as a fix.'),
     h('h3', {}, 'The copy keeps failing. What next?'),
@@ -358,7 +360,7 @@ export function installPage(root: HTMLElement, deps: InstallDeps): { render: () 
           h('button', { type: 'button', class: 'mtp-help-button', disabled: busy, onclick: () => advance('mtp-help') }, 'I’m having trouble connecting to MTP'),
         ['mtp-help', 'transfer'].includes(stage) && faq(),
         status && h('p', { class: error ? 'install-status error' : 'install-status', role: 'status' }, status),
-        ['boot', 'enable', 'menu-help'].includes(stage) && h('details', { id: 'connection-help' }, h('summary', {}, 'Connection help'),
+        ['boot', 'enable', 'menu-help'].includes(stage) && h('details', { 'data-testid': 'connection-help' }, h('summary', {}, 'Connection help'),
           h('p', {}, 'Use a compatible desktop browser, such as Chrome or Edge. Close other MIDI apps. If this page cannot get MIDI permission, allow MIDI for this site in the browser’s site settings, reload the page, then check your OP–XY again.'),
           h('p', { class: 'attribution' }, link('https://github.com/bagofwaffles/ferret', 'Ferret by Bag of Waffles'), ' · MIT license')),
         deps.serial && release && stage !== 'start' && h('p', { class: 'muted' }, 'Already running XY Forever? ',

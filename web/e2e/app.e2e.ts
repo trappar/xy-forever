@@ -7,13 +7,14 @@ import { createHash } from 'node:crypto';
 import { readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
-import type { Browser } from 'playwright';
+import { chromium, expect, test } from '@playwright/test';
+import type { Browser, Locator, Page } from '@playwright/test';
 import { createServer } from 'vite';
 import type { ViteDevServer } from 'vite';
-import { afterAll, beforeAll, expect, it } from 'vitest';
 import { findSimulator, startAll } from '../node_modules/xy-forever-client/test/simulators.ts';
 import * as v1 from '../node_modules/xy-forever-client/src/v1.ts';
+
+const nav = (page: Page, name: string): Locator => page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
 
 const found = findSimulator();
 if (found.why) console.warn(`\nweb e2e skipped: ${found.why}\n`);
@@ -24,14 +25,14 @@ let server: ViteDevServer | undefined;
 let browser: Browser | undefined;
 const NO_DEVICE = ['--disable-blink-features=Serial'];   // no real Web Serial: tests may not open a real device
 
-beforeAll(async () => {
+test.beforeAll(async () => {
   if (!found.why) stopSim = (await startAll(state, port, [['web', 0, []]])).stopAll;
   server = await createServer({ configFile: fileURLToPath(new URL('../vite.config.ts', import.meta.url)), server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
   browser = await chromium.launch({ channel: 'chrome', headless: true, args: NO_DEVICE });
 });
 
-afterAll(async () => {
+test.afterAll(async () => {
   await browser?.close();
   await server?.close();
   await stopSim?.();
@@ -44,7 +45,8 @@ function appUrl(query = ''): string {
   return `http://127.0.0.1:${httpPort}/${query}`;
 }
 
-it.skipIf(found.why !== null)('connects to the simulator and shows the device and its files', async () => {
+test('connects to the simulator and shows the device and its files', async () => {
+  test.skip(found.why !== null, 'skipped: see the warning above');
   const page = await browser!.newPage();
   let deviceRequests = 0;
   page.on('websocket', (socket) => {
@@ -66,11 +68,11 @@ it.skipIf(found.why !== null)('connects to the simulator and shows the device an
   });
   await preview.getByRole('button', { name: 'Close' }).click();
   expect(deviceRequests).toBe(requestsBeforeReport);
-  await page.locator('#nav a[data-page=files]').click();
-  await expect.poll(() => page.locator('#crumbs').textContent(), { timeout: 10_000 }).toContain('yaffs2');
-  await expect.poll(() => page.locator('#files-rules').textContent()).toContain('never /yaffs2/bootloader.dev or /yaffs2/upgrade');
-  await page.locator('#nav a[data-page=mods]').click();
-  await expect.poll(() => page.locator('#page-mods h1').textContent(), { timeout: 10_000 }).toBe('Mods');
+  await nav(page, 'Files').click();
+  await expect.poll(() => page.getByRole('navigation', { name: 'Folder' }).textContent(), { timeout: 10_000 }).toContain('yaffs2');
+  await expect.poll(() => page.getByTestId('files-rules').textContent()).toContain('never /yaffs2/bootloader.dev or /yaffs2/upgrade');
+  await nav(page, 'Mods').click();
+  await expect.poll(() => page.getByRole('heading', { level: 1, name: 'Mods' }).textContent(), { timeout: 10_000 }).toBe('Mods');
   await page.getByRole('link', { name: 'Connect' }).click();
   await page.getByRole('button', { name: 'Disconnect' }).click();
   await expect.poll(() => page.getByRole('button', { name: 'Connect', exact: true }).isVisible()).toBe(true);
@@ -84,7 +86,8 @@ it.skipIf(found.why !== null)('connects to the simulator and shows the device an
 });
 
 const candidate = found.fixtures['xyf_build'];
-it.skipIf(found.why !== null || !candidate)('installs a newer XY Forever and restarts into its menu', async () => {
+test('installs a newer XY Forever and restarts into its menu', async () => {
+  test.skip(found.why !== null || !candidate, 'skipped: see the warning above');
   const imagePath = candidate!;
   const image = readFileSync(imagePath);
   const sha256 = createHash('sha256').update(image).digest('hex');
@@ -128,7 +131,7 @@ it.skipIf(found.why !== null || !candidate)('installs a newer XY Forever and res
     await update.waitFor();
     expect(await page.getByText(release.notes).isVisible()).toBe(true);
     await update.click();
-    await expect.poll(() => page.getByRole('status').textContent(), { timeout: 30_000 })
+    await expect.poll(() => page.getByTestId('update-status').textContent(), { timeout: 30_000 })
       .toBe(`XY Forever ${version} is running in the menu.`);
     expect(restart).toBe(2);
     expect(await page.locator('[data-fact=image]').textContent()).toBe(release.image);
@@ -138,7 +141,7 @@ it.skipIf(found.why !== null || !candidate)('installs a newer XY Forever and res
   }
 });
 
-it('previews and downloads the same offline snapshot after a connection error', async () => {
+test('previews and downloads the same offline snapshot after a connection error', async () => {
   const page = await browser!.newPage();
   const failure = 'synthetic port selection error with unit serial XY-DISCONNECTED-TEST';
   await page.addInitScript((message) => {
@@ -154,7 +157,7 @@ it('previews and downloads the same offline snapshot after a connection error', 
   await preview.getByRole('button', { name: 'Close' }).click();
 
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  await expect.poll(() => page.locator('#notice').textContent()).toBe(failure);
+  await expect.poll(() => page.getByTestId('notice').textContent()).toBe(failure);
   await report.click();
   const json = (await preview.locator('pre').textContent())!;
   expect(JSON.parse(json)).toMatchObject({

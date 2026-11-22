@@ -6,9 +6,11 @@ import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
-import type { Browser } from 'playwright';
-import { INSTALL_STAGES, PAGES, PAGES_BASE } from '../src/routes.ts';
+import { chromium } from '@playwright/test';
+import type { Browser } from '@playwright/test';
+import { staticPaths } from '../src/routing.ts';
+
+const PAGES_BASE = '/xy-forever/';
 
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
 const types: Record<string, string> = { '.html': 'text/html', '.txt': 'text/plain; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript' };
@@ -52,11 +54,11 @@ try {
     }
   });
 
-  for (const path of ['', ...PAGES, ...INSTALL_STAGES.map((stage) => `install/${stage}`)]) {
+  for (const path of ['', ...staticPaths()]) {
     assert((await page.goto(site + path))?.ok(), `Direct navigation must serve ${path || 'the home page'}`);
     const stage = path.split('/')[1] ?? 'boot';
     // Fresh connections are required to show Device, Mods and Files.
-    const shown = path.startsWith('install') ? `#page-install[data-stage="${stage}"]:visible` : '#page-connect h1:visible';
+    const shown = path.startsWith('install') ? `[data-stage="${stage}"]:visible` : 'h1:text-is("Connect your OP-XY"):visible';
     await page.locator(shown).waitFor();
     assert((await page.reload())?.ok(), `Reload must serve ${path || 'the home page'}`);
     await page.locator(shown).waitFor();
@@ -67,8 +69,8 @@ try {
   await page.goto(site + 'connect/?source=smoke');
   const connect = page.locator('a[data-page=connect]');
   const install = page.locator('a[data-page=install]');
-  assert.equal(await connect.getAttribute('href'), PAGES_BASE + 'connect/');
-  assert.equal(await install.getAttribute('href'), PAGES_BASE + 'install/');
+  assert.equal(await connect.getAttribute('href'), PAGES_BASE + 'connect/?source=smoke');   // the query is kept
+  assert.equal(await install.getAttribute('href'), PAGES_BASE + 'install/?source=smoke');
   await page.getByRole('link', { name: 'Install XY Forever', exact: true }).click();
   await page.waitForURL(site + 'install/boot/?source=smoke');
   await page.goBack();

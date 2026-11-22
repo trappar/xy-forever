@@ -1,0 +1,39 @@
+/* Tailwind 4 with the shadcn/ui theme tokens (dark only). style.css: the pages not moved to React yet. */
+@layer theme, base, legacy, components, utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./style.css" layer(legacy);
+
+@theme {
+  --color-background: #0e1013;
+  --color-foreground: #e6e9ee;
+  --color-card: #161a1f;
+  --color-card-foreground: #e6e9ee;
+  --color-popover: #161a1f;
+  --color-popover-foreground: #e6e9ee;
+  --color-primary: #f2c14e;
+  --color-primary-foreground: #1a1505;
+  --color-secondary: #1c2127;
+  --color-secondary-foreground: #e6e9ee;
+  --color-muted: #1c2127;
+  --color-muted-foreground: #8d96a3;
+  --color-accent: #1c2127;
+  --color-accent-foreground: #e6e9ee;
+  --color-destructive: #ef5b5b;
+  --color-border: #2a3038;
+  --color-input: #2a3038;
+  --color-ring: #f2c14e;
+  --color-ok: #5ad19a;
+  --color-warn: #f2994a;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  * { @apply border-border; }
+  html { color-scheme: dark; font-size: 15px; }
+  body { @apply min-h-screen bg-background font-sans leading-normal text-foreground; }
+}

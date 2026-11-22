@@ -7,14 +7,13 @@
 // a fresh simulator: a stock OP-XY just after Track 5 (`--fresh`). Skipped with the reason when Chrome or the
 // simulator cannot run here.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
-import type { Browser, Page } from 'playwright';
+import { chromium, expect, test } from '@playwright/test';
+import type { Browser, Page, Locator } from '@playwright/test';
 import { createServer } from 'vite';
 import type { ViteDevServer } from 'vite';
-import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 import { startRelay } from '../node_modules/xy-forever-client/test/relay.ts';
 import type { Relay } from '../node_modules/xy-forever-client/test/relay.ts';
 import { control, findSimulator, startAll } from '../node_modules/xy-forever-client/test/simulators.ts';
@@ -26,7 +25,10 @@ const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
 const FAKE_SERIAL = fileURLToPath(new URL('../node_modules/xy-forever-client/test/browser/fake-serial.ts', import.meta.url));
 const ENTRY = 'xy-forever/firmware/opxy-121';
-const BASE = parseInt(process.env['XYF_WEB_SIM_PORT'] ?? '7860', 10);
+// A random base (simulator, control, relay at +10) and state folder: another checkout may run this test at the same time.
+const BASE = parseInt(process.env['XYF_WEB_SIM_PORT'] ?? String(22000 + 20 * Math.floor(Math.random() * 400)), 10);
+
+const nav = (page: Page, name: string): Locator => page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
 
 const found = findSimulator();
 let why: string | null = found.why;
@@ -41,20 +43,23 @@ if (!why) {
 if (why) console.warn(`\ninstall simulator test skipped: ${why}\n`);
 
 let server: ViteDevServer | undefined;
-let image = '';                                                          // the pin's image: the simulator's hello image=
+// The pin's image. Only a setup that never starts compares it (finish.ts), so any name will do; the uninstall test pins its build.
+let image = 'test-pin';
 let running: { sim: SimInfo; relay: Relay; stop: () => Promise<void> } | null = null;
 
-beforeAll(async () => {
+test.describe.configure({ timeout: 240_000 });
+
+test.beforeAll(async () => {
   if (why) return;
   server = await createServer({ configFile: fileURLToPath(new URL('../vite.config.ts', import.meta.url)), server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
   await server.listen();
 });
-afterEach(async () => { await running?.stop(); running = null; });
-afterAll(async () => { await browser?.close(); await server?.close(); });
+test.afterEach(async () => { await running?.stop(); running = null; });
+test.afterAll(async () => { await browser?.close(); await server?.close(); if (!why) rmSync(join(found.sessions!, `web-install-${BASE}`), { recursive: true, force: true }); });
 
 /** A fresh simulator: a stock OP-XY just after Track 5 (stock: its updater's os.ldr; plain: no PLAY at power-on). */
 async function powerOn(stock: 'stock' | 'missing', plain: boolean): Promise<SimInfo> {
-  const state = join(found.sessions!, 'web-install');
+  const state = join(found.sessions!, `web-install-${BASE}`);
   const started = await startAll(state, BASE, [['sim', 0, ['--fresh', stock, ...(plain ? ['--plain'] : [])]]]);
   const sim = started.infos['sim']!;
   const relay = await startRelay({ port: BASE + 10, target: sim.port, control: sim.control });
@@ -82,7 +87,7 @@ async function open(relay: string, granted: boolean, bytes = IMAGE, prepare?: (p
   await page.route('**/src/install/release.json*', (route) => route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(pin)};` }));
   await page.route('**/release/os.ldr', (route) => route.fulfill({ contentType: 'application/octet-stream', body: bytes }));
   await prepare?.(page);
-  await page.goto(`${base}/connect`);
+  await page.goto(`${base}/connect/`);
   await page.addScriptTag({ type: 'module', content: `
     import { FakeMidi, FakeUsb } from '/test/fake-devices.ts';
     import { FakeSerial } from '/@fs${FAKE_SERIAL}';
@@ -95,11 +100,11 @@ async function open(relay: string, granted: boolean, bytes = IMAGE, prepare?: (p
     window.fakes = { midi, usb, serial };
     document.body.dataset.fakes = 'ready';` });
   await page.waitForSelector('body[data-fakes=ready]');
-  await page.locator('#nav a[data-page=install]').click();
+  await nav(page, 'Install').click();
   return page;
 }
 
-const stage = (page: Page): Promise<string | null> => page.locator('#page-install').getAttribute('data-stage');
+const stage = (page: Page): Promise<string | null> => page.locator('[data-stage]').getAttribute('data-stage');
 const press = (page: Page, name: string): Promise<void> => page.getByRole('button', { name, exact: true }).click();
 
 /** te-boot to Track 5's "firmware written ok!": the last stage, "Switch your OP–XY off, then on." */
@@ -118,18 +123,18 @@ async function toStart(page: Page, computer: 'Mac' | 'Windows'): Promise<void> {
   }
   for (const name of ['I’m back at the dev menu', 'I pressed track 5', 'I see "firmware written ok!"']) await press(page, name);
   expect(await stage(page)).toBe('start');
-  expect(await page.locator('#page-install').textContent()).toContain('Switch your OP–XY off, then on.');
+  expect(await page.locator('[data-stage]').textContent()).toContain('Switch your OP–XY off, then on.');
 }
 
 /** The page handed the owner to the app: the Mods page, connected, the installed notice once. */
 async function handedOff(page: Page): Promise<void> {
-  await expect.poll(() => new URL(page.url()).pathname, { timeout: 60_000 }).toBe('/mods');
-  expect(await page.locator('#installed').isVisible()).toBe(true);
-  expect(await page.locator('#installed').textContent()).toContain('XY Forever is installed');
-  expect(await page.locator('#link-text').textContent()).toMatch(/^Connected/);
-  await page.locator('#page-mods h1').waitFor({ state: 'visible' });
-  await page.locator('#installed-dismiss').click();
-  expect(await page.locator('#installed').isVisible()).toBe(false);
+  await expect.poll(() => new URL(page.url()).pathname, { timeout: 60_000 }).toBe('/mods/');
+  expect(await page.getByTestId('installed').isVisible()).toBe(true);
+  expect(await page.getByTestId('installed').textContent()).toContain('XY Forever is installed');
+  expect(await page.getByTestId('link').textContent()).toMatch(/^Connected/);
+  await page.getByRole('heading', { level: 1, name: 'Mods' }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Dismiss' }).click();
+  expect(await page.getByTestId('installed').isVisible()).toBe(false);
 }
 
 /** The entry XY Forever made on the device: the stock os.ldr, byte for byte, beside its manifest.json and files.sha256. */
@@ -142,18 +147,8 @@ function adopted(sim: SimInfo): void {
   expect(readFileSync(join(sim.root, 'xy-forever/state-a.txt'), 'utf8')).toContain('default=opxy-121\n');
 }
 
-/** The simulator's hello image= (the page's pin names it, as the release would name the image Track 5 wrote). */
-async function simImage(): Promise<string> {
-  const sim = await powerOn('missing', false);                           // PLAY, refuses at once: nothing written that matters
-  const { Client, tcpOpener } = await import('../node_modules/xy-forever-client/src/node.ts');
-  const client = await Client.connect(tcpOpener(sim.address), { timeoutMs: 30_000 });
-  const id = client.info.image ?? 'unknown';
-  await client.close(); await running!.stop(); running = null;
-  return id;
-}
-
-it.skipIf(why !== null)('Mac: the first plain power-on sets up OS 1.2.1 on the device and starts it; PLAY then opens the app on Mods', async () => {
-  image = await simImage();
+test('Mac: the first plain power-on sets up OS 1.2.1 on the device and starts it; PLAY then opens the app on Mods', async () => {
+  test.skip(why !== null, 'skipped: see the warning above');
   const sim = await powerOn('stock', true);                             // the first plain power-on: the setup, then the OS
   await until('the OS, after the setup', () => inOs(sim));                // (before the page walks: it would find XY Forever mid-flow)
   const page = await open(running!.relay.url, false);
@@ -168,10 +163,10 @@ it.skipIf(why !== null)('Mac: the first plain power-on sets up OS 1.2.1 on the d
     .toMatchObject({ chooser: 1 });
   expect(await page.evaluate(() => (window as unknown as { fakes: { serial: { xyfPorts: { dropped: number }[] } } }).fakes.serial.xyfPorts.every((p) => p.dropped === 0))).toBe(true);
   await page.close();
-}, 240_000);
+});
 
-it.skipIf(why !== null)('Windows: copied by hand; the page finds XY Forever by itself after the setup (a port granted before)', async () => {
-  image ||= await simImage();
+test('Windows: copied by hand; the page finds XY Forever by itself after the setup (a port granted before)', async () => {
+  test.skip(why !== null, 'skipped: see the warning above');
   const sim = await powerOn('stock', true);
   await until('the OS, after the setup', () => inOs(sim));                // before the page walks, as above
   const page = await open(running!.relay.url, true);
@@ -181,28 +176,28 @@ it.skipIf(why !== null)('Windows: copied by hand; the page finds XY Forever by i
   await control(sim.control, 'power play');
   await handedOff(page);                                                 // no click: the last stage looks every few seconds
   await page.close();
-}, 240_000);
+});
 
-it.skipIf(why !== null)('at any stage: XY Forever found while it sets up shows the setup, then hands off', async () => {
-  image ||= await simImage();
+test('at any stage: XY Forever found while it sets up shows the setup, then hands off', async () => {
+  test.skip(why !== null, 'skipped: see the warning above');
   const sim = await powerOn('stock', false);                            // PLAY at the first start: the menu stays after the setup
   await control(sim.control, 'set a_slow_ms 10');                        // slow enough to watch
   await until('the menu', () => listening(sim));
   const page = await open(running!.relay.url, true);                     // no click: the page looks on load
-  await expect.poll(async () => (await page.locator('#page-install [role=status]').textContent().catch(() => '')) ?? '', { timeout: 60_000 })
+  await expect.poll(async () => (await page.locator('[data-stage] [role=status]').textContent().catch(() => '')) ?? '', { timeout: 60_000 })
     .toMatch(/adding OS 1\.2\.1|about to add OS 1\.2\.1/);
   expect(await stage(page)).toBe('start');                               // jumped ahead from the first stage
   await control(sim.control, 'set a_slow_ms 0');                         // seen: the rest at full speed
   await handedOff(page);
   adopted(sim);
   await page.close();
-}, 240_000);
+});
 
-it.skipIf(why !== null)('no look while the MTP copy runs; once it ends, XY Forever found mid-flow hands off', async () => {
-  image ||= await simImage();
+test('no look while the MTP copy runs; once it ends, XY Forever found mid-flow hands off', async () => {
+  test.skip(why !== null, 'skipped: see the warning above');
   const sim = await powerOn('stock', true);                             // set up, then the OS: no serial port yet
   await until('the OS, after the setup', () => inOs(sim));
-  const page = await open(running!.relay.url, true);
+  const page = await open(running!.relay.url, true, IMAGE, (tab) => tab.clock.install());   // the looks' timers run on demand
   await page.getByRole('button', { name: /Check my OP/ }).click();
   await expect.poll(() => stage(page), { timeout: 15_000 }).toBe('menu');
   for (const name of ['Yes, I see it', 'Mac', 'Dev menu is open', 'I see "mtp mode active"', 'They’re closed · Continue']) await press(page, name);
@@ -225,17 +220,17 @@ it.skipIf(why !== null)('no look while the MTP copy runs; once it ends, XY Forev
   await press(page, 'Send to OP–XY');
   await expect.poll(() => page.evaluate(() => (window as unknown as { gate: { held: boolean } }).gate.held), { timeout: 15_000 }).toBe(true);
   await page.evaluate(() => (window as unknown as { fakes: { serial: EventTarget } }).fakes.serial.dispatchEvent(new Event('connect')));
-  await new Promise((ok) => setTimeout(ok, 6000));                       // the looks after a port appears (5 s); MTP's timeout is 20 s
+  await page.clock.runFor(6_000);                                        // the looks after a port appears (5 s); MTP's timeout is 20 s
   expect(await page.evaluate(() => (window as unknown as { fakes: { serial: { xyfPorts: { opens: number }[] } } }).fakes.serial.xyfPorts.every((p) => p.opens === 0))).toBe(true);
   expect(await stage(page)).toBe('transfer');
   await page.evaluate(() => (window as unknown as { gate: { release: () => void } }).gate.release());
   await handedOff(page);                                                 // the copy ended, then the look found XY Forever
   expect(await page.evaluate(() => (window as unknown as { fakes: { usb: { reads: string[] } } }).fakes.usb.reads)).toEqual(['os.ldr']);   // read back: the copy finished first
   await page.close();
-}, 240_000);
+});
 
-it.skipIf(why !== null)('the device refuses a missing stock os.ldr: the page shows its words and the official 1.2.1 download', async () => {
-  image ||= await simImage();
+test('the device refuses a missing stock os.ldr: the page shows its words and the official 1.2.1 download', async () => {
+  test.skip(why !== null, 'skipped: see the warning above');
   const sim = await powerOn('missing', true);                           // a plain first start: the menu stays, with USB
   await until('the menu', () => listening(sim));
   const page = await open(running!.relay.url, true);                     // no click: the page looks on load
@@ -244,9 +239,9 @@ it.skipIf(why !== null)('the device refuses a missing stock os.ldr: the page sho
   expect(await card.getAttribute('data-verdict')).toBe('reinstall');
   expect(await card.textContent()).toContain('No official OS 1.2.1 found. Reinstall official OS 1.2.1, then start again.');
   expect(await page.getByRole('link', { name: /Download official OS 1\.2\.1/ }).isVisible()).toBe(true);
-  expect(new URL(page.url()).pathname).toBe('/install/stop');
+  expect(new URL(page.url()).pathname).toBe('/install/stop/');
   await page.close();
-}, 240_000);
+});
 
 const UPGRADE = 'upgrade/firmware/blackfin/bin/os.ldr';
 const CATALOG = 'content/op1_factory.json';
@@ -277,7 +272,8 @@ async function simulatedTrack5(sim: SimInfo, bytes: Uint8Array): Promise<void> {
   expectActive(sim, bytes);
 }
 
-it.skipIf(why !== null || !asset)('uninstalls to a verified stock partition, then installs again from the same browser', async () => {
+test('uninstalls to a verified stock partition, then installs again from the same browser', async () => {
+  test.skip(why !== null || !asset, 'skipped: see the warning above');
   const candidate = readFileSync(asset!);
   const stock = readFileSync(found.fixtures['stock_os_ldr']!);
   image = digestOf(candidate).slice(0, 8);
@@ -357,7 +353,7 @@ it.skipIf(why !== null || !asset)('uninstalls to a verified stock partition, the
   });
   try {
     await handedOff(page);
-    await page.locator('#nav a[data-page=device]').click();
+    await nav(page, 'Device').click();
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Cancel');
     expect(bootWrites).toBe(0);
@@ -365,22 +361,22 @@ it.skipIf(why !== null || !asset)('uninstalls to a verified stock partition, the
 
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
-    await expect.poll(() => page.locator('#notice').textContent(), { timeout: 90_000 }).toMatch(/boot\.uninstall|read-back/i);
+    await expect.poll(() => page.getByTestId('notice').textContent(), { timeout: 90_000 }).toMatch(/boot\.uninstall|read-back/i);
     expect(bootWrites).toBe(1);
     expectActive(sim, candidate);
     expect(existsSync(file('xy-forever/firmware'))).toBe(true);
     expect(readFileSync(file('os.ldr')).equals(candidate)).toBe(true);
 
     // At this boundary the old XY Forever partition is still active. Bring its menu back after the failed select.
-    await page.locator('#nav a[data-page=connect]').click();
+    await nav(page, 'Connect').click();
     await press(page, 'Disconnect');
     await control(sim.control, 'power play');
     await until('the original XY Forever menu after the interruption', () => listening(sim));
     await press(page, 'Connect');
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
-    await expect.poll(async () => (await page.locator('#notice.error').textContent({ timeout: 100 }).catch(() => null)) ??
-      new URL(page.url()).pathname, { timeout: 20_000 }).toBe('/connect');
+    await expect.poll(async () => (await page.locator('[data-testid=notice][data-type=error]').textContent({ timeout: 100 }).catch(() => null)) ??
+      new URL(page.url()).pathname, { timeout: 90_000 }).toBe('/connect/');
     expect(reboot).toBe(1);
     expect(await page.getByRole('status').textContent()).toContain('Stock OS 1.2.1 was restored');
     expect(readdirSync(sim.root).sort()).toEqual(['bootloader.dev', 'content', 'firmware.version', 'os.ldr', 'upgrade', 'user']);
@@ -402,4 +398,4 @@ it.skipIf(why !== null || !asset)('uninstalls to a verified stock partition, the
     adopted(sim);
     expect(readFileSync(file('user/project.xy'), 'utf8')).toBe('owner project');
   } finally { await page.close(); }
-}, 240_000);
+});
