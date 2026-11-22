@@ -5,7 +5,7 @@
 // slowest test against their budgets. The hang bounds (playwright.config.ts: timeout, globalTimeout) stay the outer
 // limit. Used by playwright.config.ts.
 import type { FullResult, Reporter, TestCase, TestResult } from '@playwright/test/reporter';
-import { loadScale } from 'xy-forever-client/test/load-scale.ts';
+import { loadMeter } from 'xy-forever-client/test/load-scale.ts';
 
 export interface Budgets {
   /** The whole run's budget, ms. */
@@ -18,14 +18,14 @@ export default class E2eBudgets implements Reporter {
   private readonly budgets: Budgets;
   private readonly enforced = process.env['XYF_BUDGETS'] !== 'off';
   private readonly times: [number, string, TestCase][] = [];
-  private scale = 1;
+  private scale: () => number = () => 1;
 
   constructor(budgets: Budgets) {
     this.budgets = budgets;
   }
 
   onBegin(): void {
-    this.scale = loadScale();
+    this.scale = loadMeter();
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
@@ -35,7 +35,7 @@ export default class E2eBudgets implements Reporter {
 
   async onEnd(result: FullResult): Promise<{ status?: FullResult['status'] } | undefined> {
     const run = Math.round(result.duration);
-    const scale = Math.max(this.scale, loadScale());
+    const scale = this.scale();
     const limit = (ms: number | undefined): number => Math.round((ms ?? Infinity) * scale);
     const over = this.times
       .filter(([ms, project]) => ms > limit(this.budgets.tests[project]))

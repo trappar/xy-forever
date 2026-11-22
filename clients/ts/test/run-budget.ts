@@ -7,7 +7,7 @@
 // simulators: test/simulators.ts). XYF_RUN_BUDGET_MS overrides hangMs (a planted check: XYF_RUN_BUDGET_MS=1 fails the
 // run at once and says so). Used by vitest.config.ts here and in web/.
 import type { Reporter, TestCase, TestModule, Vitest } from 'vitest/node';
-import { loadScale } from './load-scale.ts';
+import { loadMeter } from './load-scale.ts';
 
 export interface Budgets {
   /** The whole run's budget, ms. */
@@ -25,7 +25,7 @@ export default class RunBudget implements Reporter {
   private readonly enforced = process.env['XYF_BUDGETS'] !== 'off';
   private readonly running = new Set<TestCase>();
   private readonly times: [number, TestCase][] = [];
-  private scale = 1;
+  private scale: () => number = () => 1;
   private start = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -34,7 +34,7 @@ export default class RunBudget implements Reporter {
   }
 
   onInit(vitest: Vitest): void {
-    this.scale = loadScale();
+    this.scale = loadMeter();
     this.start = performance.now();
     this.timer = setTimeout(() => {
       const names = [...this.running].map(nameOf);
@@ -61,7 +61,7 @@ export default class RunBudget implements Reporter {
     clearTimeout(this.timer);
     if (!modules.length || !this.times.length) return; // nothing ran (vitest --changed with no change, a filter that matches nothing)
     const run = performance.now() - this.start;
-    const scale = Math.max(this.scale, loadScale());
+    const scale = this.scale();
     const runMs = Math.round(this.budgets.runMs * scale),
       testMs = Math.round(this.budgets.testMs * scale);
     const over = this.times
