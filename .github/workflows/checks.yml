@@ -21,8 +21,6 @@ jobs:
     name: Python suite (macOS, no private files)
     runs-on: macos-15
     timeout-minutes: 20
-    env:
-      XYF_PRIVATE: ${{ runner.temp }}/private
     steps:
       - uses: actions/checkout@v7
         with:
@@ -34,6 +32,8 @@ jobs:
       - run: uv sync --locked
       - run: pnpm install --frozen-lockfile
       - name: Unit tests (the TypeScript client's and the web app's suites run inside)
+        env:
+          XYF_PRIVATE: ${{ runner.temp }}/private   # empty: every test that needs private files skips
         run: mkdir -p "$XYF_PRIVATE" && uv run scripts/run_tests.py --jobs 4
 
   web:
