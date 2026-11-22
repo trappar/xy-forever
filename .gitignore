@@ -9,3 +9,8 @@ docs/STATUS.md
 # the web app's staged release image (scripts/web_release.py): a build output
 web/public/release/
 .venv/
+# firmware output inside the checkout (xy_forever/paths.py BUILD): Teenage Engineering bytes, never committed
+/build/
+# pytest and testmon state
+.pytest_cache/
+.testmondata*

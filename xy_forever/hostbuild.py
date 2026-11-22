@@ -11,6 +11,9 @@ The cache is ../private/xy-forever/sessions/host-builds/ (never the repository; 
 moves it, XYF_HOST_BUILDS=off turns it off). The KEEP most recently used entries stay. Entries are
 published whole by a rename, and pruning tolerates entries other processes remove meanwhile.
 
+observer, when set (tests/xyf_select.py), is told of every cached compile: observer(files, seconds), the
+absolute paths the compile read and the seconds spent compiling (0 on a hit).
+
 Every compile (and its -M listing) runs in its own process group, ended past bounds.COMPILE_S (#230):
 subprocess.TimeoutExpired, as subprocess.run raises.
 """
@@ -21,10 +24,12 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 
 from . import bounds, paths, procgroup
 
 KEEP = 300
+observer = None    # observer(files, seconds) after each cached compile (see above)
 _hashes = {}       # (path, size, mtime_ns) -> sha256, within one process
 _compilers = {}
 
@@ -130,18 +135,23 @@ def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs)
             shutil.copymode(entry / 'output', partial)
             os.replace(partial, target)
             os.utime(entry)
+            if observer:
+                observer([_local(e, roots) for e, _ in manifest['deps']], 0.0)
             out_text, err_text = manifest['stdout'], manifest['stderr']
             return subprocess.CompletedProcess(argv, 0, *((out_text, err_text) if text else
                                                          (out_text.encode(), err_text.encode()))
                                                if capture_output else (None, None))
     except (OSError, ValueError, KeyError):
         pass
+    start = time.monotonic()
     result = procgroup.run(argv, capture_output=True, cwd=cwd, timeout=bounds.COMPILE_S)
     if not capture_output:                                     # as subprocess.run would have shown them
         os.write(1, result.stdout)
         os.write(2, result.stderr)
     if result.returncode == 0:
-        _store(root, entry, deps_argv, cwd, roots, target, result)
+        files = _store(root, entry, deps_argv, cwd, roots, target, result)
+        if observer and files:
+            observer(files, time.monotonic() - start)
     stdout, stderr = ((result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace')) if text
                       else (result.stdout, result.stderr))
     done = subprocess.CompletedProcess(argv, result.returncode, *((stdout, stderr) if capture_output else (None, None)))
@@ -151,9 +161,10 @@ def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs)
 
 
 def _store(root, entry, deps_argv, cwd, roots, target, result):
+    """Publishes the entry; returns the files the compile read (None when they could not be listed)."""
     listing = procgroup.run(deps_argv, capture_output=True, text=True, cwd=cwd, timeout=bounds.COMPILE_S)
     if listing.returncode:
-        return
+        return None
     names = listing.stdout.replace('\\\n', ' ').split()
     files = sorted({os.path.abspath(os.path.join(cwd or os.getcwd(), n)) for n in names if not n.endswith(':')})
     try:
@@ -166,8 +177,9 @@ def _store(root, entry, deps_argv, cwd, roots, target, result):
         (work / 'manifest.json').write_text(json.dumps(manifest))
         _publish(root, work, entry)
     except OSError:
-        return
+        return files
     prune(root)
+    return files
 
 
 def _publish(root, work, entry):
