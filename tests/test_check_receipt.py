@@ -213,11 +213,12 @@ class CheckReceiptTests(unittest.TestCase):
             with mock.patch.object(C.paths, 'BUILDS', builds):
                 passed, facts = parse(0, 'log line\n{\n  "passed": true\n}\n')
             self.assertTrue(passed)
-            named = builds / digest[:8]                          # moved to builds/<image>
+            named = builds / digest[:8]                          # copied to builds/<image>
             self.assertEqual(facts['candidate'], dict(sha256=digest, image=digest[:8], bytes=9, build=str(named)))
             self.assertEqual(json.loads((named / 'check.json').read_text()),
                              dict(image=digest[:8], tree='t' * 40, commit='c' * 40))
-            self.assertFalse(out.exists())
+            self.assertEqual((out / 'candidate.ldr').read_bytes(), b'candidate')   # the cache's output stays as built
+            self.assertFalse((out / 'check.json').exists())
             test_build = test_builds / named.name
             self.assertEqual(C.paths.build_image(test_build), C.paths.build_image(named))
             self.assertEqual((test_build / 'candidate.ldr').read_bytes(), b'candidate')
