@@ -103,6 +103,10 @@ class Selector:
         select = self.config.pluginmanager.get_plugin('TestmonSelect')
         if select is None:
             return
+        # Only a test testmon knows and would skip: a renamed or deleted test's record goes (it never runs again,
+        # so its stale hashes would rerun its class every time); a test testmon selects records afresh.
+        known = set(select.deselected_tests)
+        self.recorded = {test: files for test, files in self.recorded.items() if test in known}
         changed = {test for test, files in self.recorded.items() if any(digest(f) != h for f, h in files.items())}
         classes = tuple(t.rsplit('::', 1)[0] + '::' for t in changed)  # a class fixture's compile: its first test
         select.deselected_tests = [t for t in select.deselected_tests if not t.startswith(classes)]
