@@ -9,7 +9,7 @@ export const WRITE_ROOTS = ['/yaffs2/'] as const;
 export const PROTECTED_NAMES = ['/yaffs2/bootloader.dev', '/yaffs2/upgrade'] as const;
 
 /**
- * Whether the device's write check can pass path (as xyf_host.py in_write_area): below /yaffs2/, no empty, "."
+ * Whether the device's write check can pass path (as xy_forever/xyf_host.py in_write_area): below /yaffs2/, no empty, "."
  * or ".." part, not /yaffs2/bootloader.dev, not /yaffs2/upgrade or below it (ASCII case ignored). The device
  * checks again and stays the authority; this only refuses early what it would refuse.
  */

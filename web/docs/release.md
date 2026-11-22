@@ -5,7 +5,7 @@ The image the web app installs, and its deployment ([the web app](../README.md))
 ## The release image
 
 Install and Update use the `os.ldr` whose SHA-256 `src/install/release.json` pins, fetched from this site at
-`release/os.ldr`. `python3 scripts/web_release.py [BUILD] --notes "What changed"` (from the repository root) takes a verified product
+`release/os.ldr`. `uv run scripts/web_release.py [BUILD] --notes "What changed"` (from the repository root) takes a verified product
 build, checks it shares no bytes with the stock pair (`xy_forever/stock_bytes.py`; `xyf_build.py --verify` checks it
 too), writes the pin (committed in a release pull request) and stages the image in `public/release/` (gitignored);
 `--check` says whether the staged image matches the pin. Without a pin the page says there is nothing to install.
@@ -21,7 +21,7 @@ Use the locally verified build or download the same asset from the published `v<
 Then run the deployment checks with Chrome installed.
 
 ```sh
-python3 scripts/web_release.py --check
+uv run scripts/web_release.py --check
 pnpm --filter xy-forever-web run build:pages
 pnpm --filter xy-forever-web run smoke:pages
 ```

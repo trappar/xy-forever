@@ -150,7 +150,6 @@ class DocsBudget(unittest.TestCase):
             with self.subTest(doc=rel(path)):
                 self.assertEqual(broken, [], f'{rel(path)} has broken links')
 
-    @unittest.expectedFailure  # both over budget until #229's round 2 item D splits them; then drop this line
     def test_package_readmes(self):
         for name in PACKAGE_READMES:
             self.check(ROOT / name, LEAF)

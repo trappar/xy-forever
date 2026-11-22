@@ -2,7 +2,7 @@
 
 Mod packages and the builds on the device (`src/mods.ts`, `src/config.ts`; [the client](../README.md)).
 
-Mod packages (`src/mods.ts`, `test/mods.spec.ts`), as `xyf_host.py mods push | list | remove`: the host
+Mod packages (`src/mods.ts`, `test/mods.spec.ts`), as `uv run xyf-host mods push | list | remove`: the host
 only puts packages on the OP-XY (the device assembles mod firmware itself). A package set is one
 generation folder from `modkit split`; it goes to `MODS_ROOT/<generation>/<package>/<stored name>`, the flat
 store (`src/modstore.ts`, docs/storage/mods.md: `store.txt`, a file with a folder in its path under its
@@ -20,7 +20,7 @@ package-set problem: `XyfError` or `PackageError`.
 | `fileListSource(files)` / `folderSource(dir)` (`./node`) | the `source`: a folder chosen with `<input type="file" webkitdirectory>` (the generation folder), or a folder on disk |
 | `localSet(source, only)` | the checked package set, in send order, without the device |
 
-Building on the device (`test/mods.spec.ts`), as `xyf_host.py mods apply --wait | cancel`: the OP-XY assembles
+Building on the device (`test/mods.spec.ts`), as `uv run xyf-host mods apply --wait | cancel`: the OP-XY assembles
 the firmware itself from the packages it holds; the host only starts, watches and cancels the job. The job works in
 `jobFolder(id)` = `/yaffs2/xy-forever/tmp/job-<id>/` and commits the result as library entry `mods-a` or `mods-b`,
 listed with its content not installed (it does not boot until `makeDefault` installs its content). `applyMods` and
