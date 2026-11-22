@@ -142,6 +142,7 @@ class ConfigBase(PageBase, CS.Switch):
         self.reconnect()
         self.assertEqual(self.dev.hello()[0], 0)
         self.wait_log(lambda: len(self.lines('menu: home row: ')) > rows, 'the home row')
+        self.sim.settle()                                                  # its start-up work done, as a host finds it
 
     def plain_boots_without_writing(self, entry):
         before = self.snapshot()

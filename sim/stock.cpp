@@ -40,9 +40,10 @@ template<class F> F* function(uint32_t address) { return reinterpret_cast<F*>(ho
 
 // ---- USB CDC endpoint (B): 127.0.0.1:port while the service has USB on ----------------------
 int listener = -1, client = -1;
+uint32_t connections = 0;                                // opens and closes: an fd number may come back
 void cdc_close_client(const char* why) {
     if (client < 0) return;
-    close(client); client = -1;
+    close(client); client = -1; ++connections;
     shared->usb_held = 0;                                // sim/clock.cpp: no reply held up by that host
     log("USB host %s", why);
 }
@@ -56,6 +57,7 @@ void cdc_start() {
     if (bind(listener, reinterpret_cast<sockaddr*>(&a), sizeof(a)) || listen(listener, 4))
         crash("USB endpoint 127.0.0.1:%d: %s", shared->port, strerror(errno));
     fcntl(listener, F_SETFL, O_NONBLOCK);
+    ++connections;
     shared->b_listening = 1;
     log("USB on: listening on 127.0.0.1:%d", shared->port);
 }
@@ -64,7 +66,7 @@ void cdc_stop() {
     // new one is refused until USB is on again (never accepted by a port about to close).
     shared->b_listening = 0;
     const bool on = listener >= 0;
-    if (on) { close(listener); listener = -1; }
+    if (on) { close(listener); listener = -1; ++connections; }
     cdc_close_client("detached (USB off)");
     if (on) log("USB off");
 }
@@ -73,7 +75,7 @@ void cdc_accept() {
     const int c = accept(listener, 0, 0);
     if (c < 0) return;
     cdc_close_client("replaced by a new connection");
-    client = c;
+    client = c; ++connections;
     fcntl(client, F_SETFL, O_NONBLOCK);
     const int one = 1;
     setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
@@ -286,6 +288,8 @@ void storage_op_done() {
 #include "stock_otp.ipp"
 
 int cdc_fd() { return client >= 0 ? client : listener; }
+int cdc_next_fd() { return client >= 0 ? listener : -1; }
+uint32_t cdc_connection() { return connections; }
 
 // A's stock bootloader (sim/boot.cpp) after a reset: it serves the boot-partition layer B's
 // bootloader uses through the same stock executors (select, sector reads). Other requests: the

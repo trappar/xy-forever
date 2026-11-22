@@ -209,6 +209,8 @@ void link_taken();                               // a link thread took its messa
 void idle_pause(uint64_t bound, bool rest = false);
 void cdc_wait(int ms);                           // B's menu loop pause, woken by USB data
 int cdc_fd();                                    // B: the USB client's socket, else the listener's (-1: USB off)
+uint32_t cdc_connection();                       // B: changes whenever cdc_fd() may name another socket
+int cdc_next_fd();                               // B: the listener while a client is attached (a new host), else -1
 // Board: one step of the clock when both processors are idle and something is due (deadline: the board's own
 // next event, clock_ns; 0 none; woken: its wake pipe had news); returns how long the board may wait for events
 // (ms; -1: until one comes).

@@ -41,7 +41,8 @@ bool started = false;
 uint32_t seen_work = 0, seen_steps = 0, spin = 0;
 bool charging = false;
 int usb_fd = -1, usb_bytes = 0;
-bool usb_ready = false;
+uint32_t usb_conn = 0;
+bool usb_ready = false, next_ready = false;    // next_ready: a new host's connection seen on the listener
 uint32_t usb_news = 0;                      // usb_check()s that found news (cdc_wait: one seen inside block())
 
 void wake(int which) { const char b = 1; if (write(shared->wake[which][1], &b, 1) < 0) {} }
@@ -62,30 +63,36 @@ void publish(uint32_t work, uint32_t steps, uint64_t until, bool rest) {
     if (!in_flight()) wake(2);
 }
 // B: USB bytes or a connection that arrived since the main thread last looked count as activity, once
-// (B may leave them unread for a while: that is no reason to stop the clock).
-bool usb_check(bool readable) {
+// (B may leave them unread for a while: that is no reason to stop the clock). next: a new host connects
+// while another is attached (B takes it at its next look and drops the old one).
+bool usb_check(bool readable, bool next = false) {
     const int fd = cdc_fd();
     int bytes = 0;
     if (fd < 0 || ioctl(fd, FIONREAD, &bytes) || bytes < 0) bytes = 0;
     bool news = false;
-    if (fd != usb_fd || bytes != usb_bytes) { news = bytes > usb_bytes; usb_fd = fd; usb_bytes = bytes; usb_ready = false; }
+    const uint32_t conn = cdc_connection();
+    if (fd != usb_fd || conn != usb_conn) { next_ready = false; usb_ready = false; usb_bytes = 0; usb_fd = fd; usb_conn = conn; }
+    if (bytes != usb_bytes) { news = bytes > usb_bytes; usb_bytes = bytes; usb_ready = false; }
     if (readable && !usb_ready) { usb_ready = true; news = true; }
+    if (next && !next_ready) { next_ready = true; news = true; }
     if (news) { ++shared->work[1]; ++usb_news; }
     return news;
 }
 // Until a step, work, new USB data or (B) room for a reply the host had not read yet: no time limit.
 void block() {
     if (role == 0 && a_held.load()) wake(3);            // the slave may be open now: the link thread looks again
-    pollfd p[3] = {{shared->wake[role][0], POLLIN, 0}, {-1, POLLIN, 0}, {-1, POLLOUT, 0}};
+    pollfd p[4] = {{shared->wake[role][0], POLLIN, 0}, {-1, POLLIN, 0}, {-1, POLLOUT, 0}, {-1, POLLIN, 0}};
     if (role == 1) {
         if (usb_check(false)) return;
         if (usb_fd >= 0 && !usb_ready) p[1].fd = usb_fd;
         if (shared->usb_held.load()) p[2].fd = cdc_fd();
+        if (!next_ready) p[3].fd = cdc_next_fd();
     }
-    while (::poll(p, 3, -1) < 0 && errno == EINTR) {}
+    while (::poll(p, 4, -1) < 0 && errno == EINTR) {}
     if (p[0].revents) drain_wake(role);
     if (p[1].revents) usb_check(true);
     if (p[2].revents) ++shared->work[1];
+    if (p[3].revents) usb_check(false, true);
 }
 uint64_t to_ns(uint64_t cycles) { return start_ns + (cycles - 400000000u) * 5 / 2; }
 }
@@ -133,7 +140,7 @@ void idle_pause(uint64_t bound, bool rest) {
 }
 void cdc_wait(int ms) {                                         // B's menu loop pause, woken by USB data
     const int fd = cdc_fd();
-    pollfd p = {fd, POLLIN, 0};
+    pollfd p[2] = {{fd, POLLIN, 0}, {cdc_next_fd(), POLLIN, 0}};
     // Not a bound for the board's steps: the loop's pause is no device event (key_ui has its own). B is at rest
     // here: the clock stands still unless something is due. A pass that polled the clock (a slice of a job, a
     // wait) counts as work, so the next pass comes 1 ms later.
@@ -141,7 +148,7 @@ void cdc_wait(int ms) {                                         // B's menu loop
     if (shared->clock_reads[1].load() - reads >= idle_reads) active();
     const uint32_t seen = usb_news;
     for (const uint64_t until = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < until;) {
-        if (fd >= 0 && ::poll(&p, 1, 0) > 0 && usb_check(true)) break;      // new data, not data B left unread
+        if (fd >= 0 && ::poll(p, 2, 0) > 0 && usb_check(p[0].revents, p[1].revents)) break;   // new, not left unread
         idle_pause(0, true);
         if (usb_news != seen) break;                                        // block() saw it arrive
     }
