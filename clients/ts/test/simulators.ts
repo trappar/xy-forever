@@ -138,7 +138,7 @@ print(M.split_kit(out / 'kit.json', out / 'packages', finish=finish, sdk_source=
  * kit) written under out (which must not hold one yet); returns its generation folder.
  */
 export function makeModSet(out: string): string {
-  const run = spawnSync('python3', ['-c', MOD_SET, out], { cwd: REPO, encoding: 'utf-8' });
+  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MOD_SET, out], { cwd: REPO, encoding: 'utf-8' });
   if (run.status !== 0) throw new Error(`the synthetic mod package set: ${run.stderr.trim()}`);
   return run.stdout.trim();
 }
@@ -173,7 +173,7 @@ for path, blob in body.items():
  * not a known one: apply it with unverified.
  */
 export function makeModBase(root: string, base: string): void {
-  const run = spawnSync('python3', ['-c', MOD_BASE, root, base], { cwd: REPO, encoding: 'utf-8' });
+  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MOD_BASE, root, base], { cwd: REPO, encoding: 'utf-8' });
   if (run.status !== 0) throw new Error(`the synthetic mod base: ${run.stderr.trim()}`);
 }
 
