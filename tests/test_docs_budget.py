@@ -24,8 +24,7 @@ FIRST_READS = {
     'docs/STATUS.template.md': 2500,
 }
 
-# A big doc keeps its path as the index of a tree; its leaves sit in the folder. Until the folder exists,
-# the doc's cap in CAPS applies.
+# A big doc keeps its path as the index of a tree (INDEX); its leaves sit in the folder (LEAF each).
 TREES = {
     'docs/PROTOCOL.md': 'docs/protocol',
     'docs/ARCHITECTURE.md': 'docs/architecture',
@@ -40,11 +39,7 @@ TREES = {
 # Read on demand (bytes). SAFETY and GUIDE are over LEAF and stay whole on purpose: SAFETY is binding and must be read
 # in full before device work; GUIDE is for OP-XY owners and mod writers, who read it end to end.
 CAPS = {
-    'docs/ARCHITECTURE.md': 25600,
-    'docs/HARDWARE.md': 20200,
     'docs/SAFETY.md': 12600,  # holds the approvals too (one home: ORCHESTRATION and first-install link to it)
-    'docs/STORAGE.md': 25000,
-    'docs/PROTOCOL.md': 56000,  # generated from protocol/v1.json (scripts/protogen.py)
     'docs/GUIDE.md': 11800,  # for OP-XY owners and mod writers, not agents (#65: Ask before USB control)
     'docs/MODS-DEV.md': 5500,
 }
@@ -121,14 +116,12 @@ class DocsBudget(unittest.TestCase):
 
     def test_caps(self):
         for name, cap in CAPS.items():
-            if name not in TREES or not (ROOT / TREES[name]).is_dir():
-                self.check(ROOT / name, cap)
+            self.check(ROOT / name, cap)
 
     def test_trees(self):
         for name, folder in TREES.items():
             index, folder = ROOT / name, ROOT / folder
-            if not folder.is_dir():
-                continue
+            self.assertTrue(folder.is_dir(), f'{name}: its leaves belong in {rel(folder)}')
             self.check(index, INDEX)
             leaves = sorted(folder.glob('*.md'))
             for leaf in leaves:

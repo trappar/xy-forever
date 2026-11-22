@@ -13,5 +13,6 @@ GitHub assignee and the working tree say who has what.
   `<private>/xy-forever/device.lock` (`xy_forever/device_lock.py`) until they exit, even on a crash. A second
   one waits up to its `--timeout`, then stops with "device busy" naming the holder. The simulator takes no lock.
   Device items still need the developer: work one agent's at a time.
-- `mise run check` runs side by side: its pruning skips build folders touched in the last 15 minutes, and
-  receipts are keyed by tree (`--confirm` works from any worktree).
+- `mise run check` runs side by side: pruning (`scripts/clean.py`) skips build folders touched in the last
+  hour and keeps each worktree's newest verified build, and receipts are keyed by tree (`--confirm` works from
+  any worktree).

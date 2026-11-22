@@ -6,6 +6,14 @@
   },
   "noUpdateNotifier": true,
   "cacheMaxSize": "1GB",
+  "globalEnv": [
+    "XYF_BUILD_KEY"
+  ],
+  "globalPassThroughEnv": [
+    "XYF_PRIVATE",
+    "XYF_TOOLCHAIN",
+    "UV_*"
+  ],
   "tasks": {
     "//#firmware-build": {
       "inputs": [
@@ -31,14 +39,6 @@
         "third_party/**",
         "scripts/firmware_cache.py"
       ],
-      "env": [
-        "XYF_BUILD_KEY"
-      ],
-      "passThroughEnv": [
-        "XYF_PRIVATE",
-        "XYF_TOOLCHAIN",
-        "UV_*"
-      ],
       "outputs": [
         "build/product/**"
       ]
@@ -48,35 +48,7 @@
         "//#firmware-build"
       ],
       "inputs": [
-        "target/*.cpp",
-        "target/*.hpp",
-        "target/*.ipp",
-        "target/*.inc",
-        "target/*.s",
-        "target/*.py",
-        "native/*.cpp",
-        "native/*.hpp",
-        "native/*.ipp",
-        "native/*.inc",
-        "native/*.s",
-        "native/*.py",
-        "xy_forever/*.cpp",
-        "xy_forever/*.hpp",
-        "xy_forever/*.ipp",
-        "xy_forever/*.inc",
-        "xy_forever/*.s",
-        "xy_forever/*.py",
-        "toolchains.json",
-        "third_party/**",
         "scripts/firmware_cache.py"
-      ],
-      "env": [
-        "XYF_BUILD_KEY"
-      ],
-      "passThroughEnv": [
-        "XYF_PRIVATE",
-        "XYF_TOOLCHAIN",
-        "UV_*"
       ],
       "outputs": []
     }

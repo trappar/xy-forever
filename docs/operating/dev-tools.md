@@ -10,10 +10,15 @@ Part of [Operating the device](../OPERATING.md). Setting a workspace up: [ONBOAR
 - **Python** runs via `uv run` (`uv.lock`; `xy_forever` is installed in `.venv`, no `sys.path` edits): the
   tools as `uv run xyf-host`, `uv run xyf-build`, `uv run xyf-package` (each with `--help`), scripts as
   `uv run scripts/NAME.py`, modules as `uv run -m xy_forever.NAME`.
-- **JS:** pnpm, one workspace (`web/`, `clients/ts`; `pnpm-lock.yaml`).
+- **JS:** pnpm, one workspace (`web/`, `clients/ts`; `pnpm-lock.yaml`). The packages use TypeScript 7; the
+  root pins `typescript` to the 6.0 alias (`npm:@typescript/typescript6`) because typescript-eslint needs
+  TypeScript's JavaScript API, which 7 (the native compiler) does not have yet.
+- **TypeScript work** (`web/`, `clients/ts`): after each change `mise run web-test-changed` (the Vitest tests
+  your changes affect); `mise run test-changed` runs those too, beside the Python and C++ ones. `mise run
+  web-test` runs them all, `mise run web-e2e` the browser tests.
 - **Lint and format:** `mise run lint`, `mise run format`; the pre-commit hook (`lefthook.yml`) runs them on
   staged files.
-- **Checks:** [build-install.md](build-install.md#checks).
+- **Checks:** [checks.md](checks.md).
 
 ## Folders outside the checkout
 

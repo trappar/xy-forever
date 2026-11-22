@@ -24,7 +24,7 @@ gh auth login                          # once: issues and pull requests
 ```
 
 Skip what is already there (`gh auth status`, `xcode-select -p`, `mise --version`). `mise install` gets the
-pinned Python, uv, Node, pnpm and gh (`mise.toml`), and also the tools of your global mise config
+pinned Python, uv, Node, pnpm, gh and lefthook (`mise.toml`), and also the tools of your global mise config
 (`MISE_IGNORED_CONFIG_PATHS=~/.config/mise mise install` skips those); in a shell without `mise activate`, prefix
 commands with `mise exec --`. `mise run setup` (`--dry-run`: print, change nothing)
 acts only on what is missing and never deletes:
@@ -32,7 +32,8 @@ acts only on what is missing and never deletes:
 - **Private folder:** `../private/` (layout: `xy_forever/paths.py`): builds, sessions and your status notes
   (`xy-forever/status/README.md`, from `docs/STATUS.template.md`). Elsewhere: `uv run scripts/setup.py init
   --private DIR` first (recorded in `xyf.local.json`), or `XYF_PRIVATE`.
-- **Workspace guide** (`AGENTS.md`, `CLAUDE.md` beside the clone; never overwritten).
+- **Workspace guide** (`AGENTS.md`, `CLAUDE.md` beside the clone; never overwritten). The workspace is the
+  clone's parent folder; another: `mise run setup --workspace DIR`.
 - **Toolchain:** Open-XY's `toolchain-1` release for this host, checked against `stock.json` and every file
   against `toolchains.json`, into `../tools/blackfin`. No download (proxy, certificates): get the zip from the
   release page in a browser, then `mise run setup --toolchain-archive <zip>`. Linux: build it with Docker
@@ -40,7 +41,7 @@ acts only on what is missing and never deletes:
   `xyf.local.json`). Never edit the pins.
 - **Dependencies:** `uv sync`, `pnpm install`, the git hook. Setup starts on mise's Python and continues under
   `uv run` once `uv sync` is done.
-- It ends with `doctor` and a "Next:" list.
+- It ends with `doctor` and a "Next:" list (the leak patterns, below, until you add them).
 
 Then:
 

@@ -1,5 +1,5 @@
 # The pre-commit hook (lefthook; `mise run setup` installs it): `mise run lint`'s tools on the staged files only, in
-# parallel, about a second. Formatters fix the layout and the fix is staged; a lint finding stops the commit
+# parallel. Formatters fix the layout and the fix is staged; a lint finding stops the commit
 # (`mise run lint-fix` applies the safe fixes). Unstaged changes in a staged file are hidden while it runs.
 # By hand: `lefthook run pre-commit` (staged files) or `lefthook run pre-commit --all-files`.
 pre-commit:
