@@ -6,7 +6,7 @@
 In <private>/xy-forever/sessions/ and builds/ it keeps the newest N entries of each (default 10; newest by
 the latest mtime of the entry or its direct children) and lists the rest with their sizes; --yes deletes them.
 Never deleted, whatever their age: PROTECTED (the build the device runs today), any entry named in a local
-status file (docs/status/*.md of the main checkout: what it records as installed or known-good), the newest
+status note (<private>/xy-forever/status/*.md: what it records as installed or known-good), the newest
 verified build of this source (tests use it), and anything touched in the last RECENT seconds (a running
 session or check; it counts among the newest). Only sessions/ and builds/ are looked at: recovery/, checks/,
 fixtures and every other private folder stay as they are. Symbolic links are removed as links, never followed.

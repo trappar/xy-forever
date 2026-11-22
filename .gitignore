@@ -3,7 +3,7 @@ __pycache__/
 .DS_Store
 node_modules/
 xyf.local.json
-# local device and session state (docs/STATUS.md: the older single file; bootstrap moves it into docs/status/)
+# local status notes from before #237 (now <private>/xy-forever/status/; bootstrap moves them there)
 docs/status/
 docs/STATUS.md
 # the web app's staged release image (scripts/web_release.py): a build output

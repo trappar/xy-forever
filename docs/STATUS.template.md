@@ -1,10 +1,10 @@
 # XY Forever status
 
-Your own device and session state: the index of your local, gitignored `docs/status/` folder (bootstrap copies
-`docs/STATUS.template.md` here); nobody else reads it. It holds only what is true now, under 6 KB (checked by
-`tests/test_docs_budget.py`); anything longer is a leaf file in this folder, one line under "Leaves". Keep it
-current whenever a build is installed or tested, or the device state changes. Work runs from the GitHub
-issues (`scripts/plan.py`) under [ORCHESTRATION.md](../ORCHESTRATION.md); lessons: [SAFETY.md](../SAFETY.md).
+Your own device and session state: the index of your status notes, `<private>/xy-forever/status/` (bootstrap
+copies `docs/STATUS.template.md` there; outside the repository, nobody else reads it). Only what is true now;
+anything longer is a leaf file in this folder, one line under "Leaves". Update it whenever a build is installed
+or tested, or the device state changes. Work runs from the GitHub issues (`mise run plan`) under
+`docs/ORCHESTRATION.md`; device rules: `docs/SAFETY.md`.
 
 Last updated:
 
@@ -15,9 +15,8 @@ Last updated:
 
 ## Standing approvals
 
-What you granted for this device (ONBOARDING step 6), with its scope: host access, routine USB installs.
-A specific yes for one item: `approvals/<date>-<topic>.md`, one file each, one line each in
-`approvals/README.md`. Everything else is asked each time.
+What you granted for this device (docs/operating/first-install.md), with its scope: host access, routine USB
+installs. A specific yes for one item: one line here (date, issue, what exactly). Everything else is asked each time.
 
 ## Installed build
 
@@ -43,4 +42,4 @@ note moves to a leaf or goes.
 
 ## Leaves
 
-- `approvals/`: specific approvals, one file each (index: its README.md).
+None yet.

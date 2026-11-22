@@ -86,9 +86,9 @@ Host tools reach the device via XY Forever's USB service (`xyf_host.py`), standa
 stock dev menu, XY Forever's MTP mode), and the dev menu by hand (recovery). Over MTP they may
 write under the rules above (protected names, depth); test files go in a scratch folder, removed
 after and [logged](operating/at-the-device.md); nothing else is deleted. Before the grant, only dev-menu
-MTP reads (ONBOARDING step 4). No flashing tools, no official updater, no TE tools. An agent operates a
-developer's OP-XY only after that developer has granted it for their device (ONBOARDING step 6,
-recorded in their `docs/status/`). The grant covers these routes and rules, nothing else.
+MTP reads ([first install](operating/first-install.md) step 1). No flashing tools, no official updater, no TE tools. An agent operates a
+developer's OP-XY only after that developer has granted it for their device (step 2 there,
+recorded in their status notes). The grant covers these routes and rules, nothing else.
 
 ## Before installing any build over USB
 

@@ -14,7 +14,7 @@
     python3 scripts/setup.py bootstrap [--workspace DIR] [--dry-run] [--toolchain-archive ZIP]
                                                    all of the above that needs no OP-XY, plus the toolchain
                                                    (open-xy's toolchain-1 release, or ZIP already downloaded),
-                                                   docs/status/README.md, the pinned tools (mise install),
+                                                   your status notes (private xy-forever/status/), the pinned tools (mise install),
                                                    uv sync and pnpm install; safe to rerun
 
 The stock pair comes from your own OP-XY on stock 1.2.1, in the stock dev menu's MTP: --from-device reads
@@ -232,7 +232,7 @@ def import_from_device(incoming=None, dest=None, pins=None, transport=None):
     """Read DEVICE_FILES off the OP-XY over the dev menu's MTP (read only) into incoming (private/incoming/), then
     import_stock them. A missing pair file is an error; a missing catalog is left to fixtures, as import_stock does."""
     incoming = Path(incoming or paths.PRIVATE_ROOT / 'incoming')
-    manual = '; copy the files by hand instead (ONBOARDING.md step 4)'
+    manual = '; copy the files by hand instead (docs/operating/first-install.md)'
     try:
         missing = mtp_read.fetch(DEVICE_FILES, incoming, transport or mtp_read.open_op_xy())
     except mtp_read.MtpError as e:
@@ -462,15 +462,16 @@ def cmd_doctor(args):
     print('tests that will skip:')
     for s in skips or ['none of the known private-only groups']:
         print('     ' + s)
-    essential = {'python', 'private folder', 'toolchain', 'stock os.ldr', 'stock bootloader.ldr',
-                 'mise', 'tools', 'python deps', 'js deps'}       # must pass: mise run setup fixes them
+    # must pass: mise run setup fixes them. The stock pair needs the OP-XY (docs/operating/first-install.md):
+    # without it the firmware build and the tests that need it skip.
+    essential = {'python', 'private folder', 'toolchain', 'mise', 'tools', 'python deps', 'js deps'}
     return 0 if all(ok for label, ok, _ in rows if label in essential) else 1
 
 
 # bootstrap
 
 TOOLCHAIN_DIR = 'tools/blackfin'        # <workspace>/tools/blackfin: open-xy's toolchain-1 release, unpacked
-STATUS_INDEX = 'docs/status/README.md'  # the local, gitignored status folder's index (from docs/STATUS.template.md)
+OLD_STATUS = 'docs/status'             # where the status notes lived in the main checkout before #237 (moved once)
 
 
 def copy_into(source, target):
@@ -478,9 +479,15 @@ def copy_into(source, target):
     shutil.copyfile(source, target)
 
 
-def move_into(source, target):
-    target.parent.mkdir(parents=True, exist_ok=True)
-    source.rename(target)
+def move_children(source, target):
+    """Every entry of source into target (made if absent; an entry already there stays and so does its
+    source), then source itself if it is empty."""
+    target.mkdir(parents=True, exist_ok=True)
+    for entry in sorted(source.iterdir()):
+        if not (target / entry.name).exists():
+            shutil.move(str(entry), str(target / entry.name))
+    if not any(source.iterdir()):
+        source.rmdir()
 WORKSPACE_GUIDE = """# XY Forever workspace
 
 This folder is an XY Forever development workspace, set up by `%(repo)s/scripts/setup.py bootstrap`.
@@ -637,14 +644,15 @@ class Bootstrap:
             paths = importlib.reload(paths)
 
     def local_files(self):
-        status, single = self.main / STATUS_INDEX, self.main / 'docs/STATUS.md'
-        print('%s: %s' % (STATUS_INDEX, 'present' if status.exists() else 'missing (local, gitignored)'))
-        if not status.exists():
-            if single.exists():                         # the older single local file becomes the folder's index
-                self.do('move docs/STATUS.md to %s' % STATUS_INDEX, move_into, single, status)
-            else:
-                self.do('copy docs/STATUS.template.md to %s' % STATUS_INDEX, copy_into,
-                        self.repo / 'docs/STATUS.template.md', status)
+        status, old = self.private_root / paths.STATUS.relative_to(paths.PRIVATE_ROOT), self.main / OLD_STATUS
+        index = status / 'README.md'
+        print('status notes: %s' % ('%s' % index if index.exists() else 'missing'))
+        if old.is_dir() and not index.exists():         # once: the notes leave the checkout (#237)
+            self.do('move %s to %s' % (old, status), move_children, old, status)
+        elif old.is_dir():
+            print('  note: %s is still there beside %s: merge it by hand, then delete it' % (old, status))
+        elif not index.exists():
+            self.do('copy docs/STATUS.template.md to %s' % index, copy_into, self.repo / 'docs/STATUS.template.md', index)
         leaks = self.settings().get('leak_patterns')
         print('%s: %s' % (self.config.name, 'no "leak_patterns" list' if leaks is None else
                           '%d leak patterns' % len(leaks)))
@@ -720,7 +728,7 @@ class Bootstrap:
         steps = []
         if not stock_present():
             steps += ['Put your OP-XY (stock 1.2.1) in MTP mode: hold COM while switching it on, Track 3 (dev menu), '
-                      'Track 2 (MTP) (ONBOARDING.md step 4).',
+                      'Track 2 (MTP) (docs/operating/first-install.md).',
                       'python3 scripts/setup.py import-stock --from-device   (reads them into %s; if that fails, '
                       'copy /upgrade/firmware/blackfin/bin/os.ldr, bootloader.ldr and /content/op1_factory.json there '
                       'and run import-stock %s)' % (incoming, incoming),

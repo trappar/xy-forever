@@ -49,8 +49,8 @@ Part of [XY Forever goals](../GOALS.md).
 - **Mod trust:** known official base packages assemble normally; an unrecognised base
   only after an on-device confirmation. A mod set is built only on an OS image XY
   Forever verified itself from an official `.tfw`.
-- **open-xy facts** come from a fresh copy of upstream, with its commit cited, never
-  from a local working checkout.
+- **open-xy facts** come from a fresh copy of upstream, with its commit cited; a fork or
+  working checkout shows only what that fork does.
 - **One image, not two stages:** one larger image now; stage 2 only if needed later
   (then: 2 tries, the previous stage 1 kept, escape key PLAY + STOP).
 - **Content:** XY Forever acts as a package manager for `content/`: it installs the

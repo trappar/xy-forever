@@ -4,7 +4,7 @@ The private root is, in order: XYF_PRIVATE; "private" in the main checkout's git
 (written by `scripts/setup.py init --private DIR`); ../private next to the main checkout. Firmware, keys,
 builds and device reports never enter git. The main checkout is this checkout in a plain clone; in a
 `git worktree` it is the checkout that holds the shared .git (main_checkout), so a worktree anywhere finds
-the same private root, toolchain, xyf.local.json and local docs/status/ as the main checkout.
+the same private root, toolchain and xyf.local.json as the main checkout.
 """
 import json
 import re
@@ -34,7 +34,6 @@ def main_checkout(repo=REPO):
 MAIN = main_checkout()                          # REPO in a plain clone
 LOCAL_CONFIG = MAIN / 'xyf.local.json'          # the main checkout's settings (gitignored): {"private": DIR}
 TOOLCHAIN = MAIN.parent / 'tools/blackfin'      # the Blackfin toolchain unless XYF_TOOLCHAIN (toolchain.location)
-STATUS = MAIN / 'docs/status'                   # the local, gitignored status folder (docs/STATUS.template.md)
 
 
 def private_root(environ=os.environ, config=LOCAL_CONFIG, main=MAIN):
@@ -70,6 +69,7 @@ DECRYPTED = FIRMWARE / 'decrypted'              # decrypted official packages (1
 CATALOG_121 = next((p for p in (DECRYPTED / 'opxy_firmware_1_2_1/extracted/firmware/blackfin/content/op1_factory.json',
                                 STOCK_121 / 'op1_factory.json') if p.is_file()), STOCK_121 / 'op1_factory.json')
 XYF = PRIVATE_ROOT / 'xy-forever'
+STATUS = XYF / 'status'                         # your local status notes (index README.md: docs/STATUS.template.md)
 BUILDS = XYF / 'builds'                         # build outputs (xyf_build.py --out BUILDS/<name>)
 RECOVERY = XYF / 'recovery'                     # dev-menu kits: known-good build, stock 1.2.1
 FIXTURES = XYF / 'fixtures'                     # files some tests read (they skip when absent)

@@ -16,7 +16,7 @@ mise run web         # pnpm run dev in web/: http://127.0.0.1:5173/
 
 Open it in Chrome, start the OP-XY into the XY Forever menu, connect USB, press Connect.
 For development without a device, start the simulator from the repository root
-(`python3 -m xy_forever.sim`, port 7341; it needs the private stock files, see `../ONBOARDING.md`) and open
+(`python3 -m xy_forever.sim`, port 7341; it needs the private stock files, see `../docs/operating/first-install.md`) and open
 `http://127.0.0.1:5173/?sim=7341` (the dev server relays a WebSocket to the simulator's TCP port).
 
 ## Pages
