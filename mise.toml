@@ -28,11 +28,15 @@ usage = '''
 flag "--dry-run" help="print every action without doing it"
 flag "--workspace <dir>" help="the folder that holds this clone, private/ and tools/"
 flag "--toolchain-archive <zip>" help="open-xy's toolchain-1 release zip, already downloaded"
+flag "--private <dir>" help="the private folder, when not ../private (recorded in xyf.local.json)"
+flag "--toolchain <dir>" help="an installed Blackfin toolchain, when not ../tools/blackfin (recorded in xyf.local.json)"
 '''
 run = '''
 python scripts/setup.py bootstrap {% if usage.dry_run %}--dry-run{% endif %} \
   {% if usage.workspace %}--workspace {{ usage.workspace | quote }}{% endif %} \
-  {% if usage.toolchain_archive %}--toolchain-archive {{ usage.toolchain_archive | quote }}{% endif %}
+  {% if usage.toolchain_archive %}--toolchain-archive {{ usage.toolchain_archive | quote }}{% endif %} \
+  {% if usage.private %}--private {{ usage.private | quote }}{% endif %} \
+  {% if usage.toolchain %}--toolchain {{ usage.toolchain | quote }}{% endif %}
 '''
 
 [tasks.doctor]
@@ -48,7 +52,8 @@ usage = 'arg "[args]..." help="pytest arguments (files, node ids, -k EXPR or -m 
 run = """{% set tier = "-m fast " %}{% for a in usage.args %}{% if a is ending_with(pat=".py") or "::" in a \
 or a is starting_with(pat="tests") or a is starting_with(pat="-k") or a is starting_with(pat="-m") %}\
 {% set_global tier = "" %}{% endif %}{% endfor %}\
-uv run pytest -n auto --dist worksteal {{ tier }}{% for a in usage.args %}{{ a | quote }} {% endfor %}"""
+uv run pytest -n auto --dist worksteal {{ tier }}{% for a in usage.args %}{{ a | quote }} {% endfor %}\
+|| { s=$?; [ $s = 5 ] && echo 'no test matched: a bare word is a path to pytest; a test name: mise run test -k WORD' >&2; exit $s; }"""
 
 [tasks.test-changed]
 description = "Tests affected by your changes, every tier but the sweeps (testmon: Python, C++, scripts; Vitest: TypeScript)"
@@ -90,7 +95,7 @@ run = 'uv run pytest -n auto --dist worksteal -m "not sweep" --durations=25 {% f
 [tasks.check]
 description = "PR gate: build, verify (cached), lint, the TS suites when web/ or clients/ts changed, every tier but the sweeps (about 18 s, 25 s with the TS suites; 30-40 s on a busy machine)"
 usage = 'arg "[args]..." help="check.py flags (--js, --force, --confirm [REF])" var=#true'
-run = 'uv run scripts/check.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = 'uv run --quiet scripts/check.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.neutral]
 description = "Same firmware as a ref? (reuses the check's product build)"

@@ -39,7 +39,6 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
   (as HELLO `version=` and `image=`) that wrote them; builds before #107 wrote `prod-NNN-{a,b}.bin`.
 - **Fetch:** `uv run xyf-host read PATH --all --out FILE`, or dev MTP (below).
 - **Decode:** `uv run -m xy_forever.census FILE.bin`.
-- **Dry-run summary:** `uv run scripts/dryshow.py STATUS.json`.
 - **Evidence capture:** `scripts/capture_session.py --out DIR --state --report prod`
   prints a plan; add `--capture` to run it (HELLO, STATUS and the chosen reads only;
   HELLO marks a host as present, so not for host-free menu tests).

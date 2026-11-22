@@ -411,6 +411,18 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual((b.actions, self.calls, self.tree()), ([], [], before))
         self.assertIn('nothing to do: the workspace is already set up; nothing changed', out)
 
+    def test_private_given_is_recorded_once_and_used(self):
+        chosen = self.ws / 'elsewhere'
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            S.Bootstrap(self.ws, self.repo, self.config, False, {}, None, private=chosen).run()
+        self.assertEqual(json.loads(self.config.read_text())['private'], str(chosen))
+        self.assertTrue((chosen / 'incoming').is_dir())
+        with contextlib.redirect_stdout(io.StringIO()):
+            again = S.Bootstrap(self.ws, self.repo, self.config, False, {}, None, private=chosen)
+            again.run()
+        self.assertEqual(again.actions, [])
+
     def test_status_notes_in_the_checkout_move_to_the_private_folder_once(self):
         (self.repo / 'docs/status/approvals').mkdir(parents=True)
         (self.repo / 'docs/status/README.md').write_text('# mine\n')
