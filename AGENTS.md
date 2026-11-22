@@ -40,8 +40,8 @@ file or output that answers the question. A doc over its budget is split into a 
   Never change the toolchain pins (`toolchains.json`).
 - **Open-XY facts come from upstream**, never from a workspace fork, and name the commit used
   ([dev tools](docs/operating/dev-tools.md#open-xy-upstream)).
-- **Checks:** after each change, `mise run test-changed`; once per PR, `mise run check` (lint, the build,
-  every tier but the sweeps); CI is the merge check. None stands in for a device test ([checks](docs/operating/checks.md)).
+- **Checks:** after each change, `mise run test-changed`; once per PR, `mise run check` on a committed tree (lint, the
+  build, every tier but the sweeps); CI is the merge check. None stands in for a device test ([checks](docs/operating/checks.md)).
 - **The device:** one agent talks to it at a time; `device:risky` items run only with the developer present
   ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md#the-device)). `docs/SAFETY.md` rules every device action.
 - **Git:** one branch per plan item and one pull request per branch ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)),

@@ -9,11 +9,16 @@ mise run test                    # the fast tier; a file, node id, -k or -m: any
 mise run test-changed            # after each change: the tests it affects (testmon), sweeps aside
 mise run test-one TARGET         # one file, class or test (tests/test_aes.py::NativeAesTests)
 mise run test-failed             # what failed last time (nothing failed: nothing runs)
-mise run check                   # once per PR: the gate
+mise run check                   # once per PR, on a committed tree: the gate
 mise run test-all                # every tier but the sweeps; check and CI run it
 mise run test-sweeps             # the long simulator sweeps
 mise run lint                    # ruff, vulture, ESLint, Prettier, knip, clang-format; format, lint-fix: apply
 ```
+
+"Changed" differs by tool: testmon's (`test-changed`) is what changed since its last run, so the first run in a
+fresh clone runs everything; Vitest's (`web-test-changed`, which `test-changed` runs too) is uncommitted changes
+against HEAD. A failed test, with its output, is also appended to `build/test-failures.log`, so an intermittent
+failure names its test.
 
 How long each takes lives in one place: `mise tasks` (the task descriptions, measured). The docs never
 repeat those figures.
@@ -44,7 +49,8 @@ All host C++ (the tests', the host tools', the simulator's) is one CMake build: 
 
 ## The PR gate
 
-`mise run check` (`scripts/check.py`) is the PR gate on a clean, committed tree: the product build into
+`mise run check` (`scripts/check.py`) is the PR gate on a clean, committed tree (commit first: a dirty tree is
+refused): the product build into
 `build/product` plus `--verify` (cached, below; a verified build is copied to
 `../private/xy-forever/builds/<image>`), `protogen --check`, `mise run lint`, the TypeScript checks in
 `clients/ts` and `web` when they differ from the merge base with `origin/main` (or with `--js`), then one
@@ -61,9 +67,10 @@ hour.
 
 `mise run neutral [REF]` (opt-in) compares every build mode with REF: a clean tree against HEAD is "same" at
 once; the working tree's product build comes through the firmware cache, its other modes are cached per clean
-tree, REF's per commit. CI (`.github/workflows/checks.yml`, on Linux: `mise run test-all` without private files
-or the Blackfin toolchain, whose tests only `check` or a manual macOS run cover; lint, the web and client suites;
-the browser tests when the web app changes) is the merge check; a merge to main runs the Python suite again.
+tree, REF's per commit. CI (`.github/workflows/checks.yml`, on Linux, one job whose steps run by what changed: lint; the web and
+client suites; `mise run test-all` without private files or the Blackfin toolchain, whose tests only `check` or a
+manual macOS run cover; `e2e.yml`: the browser tests when the web app changes) is the merge check; a merge to
+main runs the Python suite again.
 Firmware may also be built into the checkout's gitignored `build/` folder; TE bytes are never committed or
 uploaded.
 
