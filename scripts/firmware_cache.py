@@ -32,7 +32,7 @@ from xy_forever import dev_tools, paths, toolchain
 
 ROOT = Path(__file__).resolve().parents[1]
 
-OUT = paths.BUILD / 'product'  # the task's output (turbo.json outputs), gitignored
+OUT = paths.PRODUCT  # the task's output (turbo.json outputs), gitignored
 TASKS = {'build': 'firmware-build', 'verify': 'firmware-verify'}
 KEY = 'XYF_BUILD_KEY'
 TURBO = ROOT / 'node_modules' / '.bin' / ('turbo.cmd' if os.name == 'nt' else 'turbo')

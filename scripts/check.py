@@ -8,13 +8,13 @@ The steps, in order, stopping at the first failure:
   - the product build into the checkout's gitignored build/product, then xyf_build.py --verify of it, both through
     Turborepo's local cache (scripts/firmware_cache.py: an unchanged build and its verify restore in about 0.2 s);
     a verified build is copied to <private>/xy-forever/builds/<image> (its name: the first 8 hex digits of the
-    candidate's SHA-256, hello image=), with check.json naming the tree and commit (scripts/neutral.py reuses it:
-    mise run neutral);
-  - lint and type checks: the generated protocol files match protocol/ (protogen --check), `mise run lint`, and
-    `pnpm run typecheck` in clients/ts and web when they differ from the merge base with main (or with --js);
+    candidate's SHA-256, hello image=; installs take it from there), with check.json naming the tree and commit;
+  - lint and type checks: the generated protocol files match protocol/ (protogen --check), `mise run lint`;
+  - the TypeScript suites and type checks (`mise run web-test`) when clients/ts or web differ from the merge base
+    with main (or with --js);
   - every tier but the sweeps in one pytest run (-m 'not sweep': tests/conftest.py, which enforces the CPU
-    budgets), the tests given a private copy of the verified build (a shared image name can be replaced during
-    the run).
+    budgets). The tests read this checkout's own build/product (paths.verified_build()), which no other checkout
+    writes; XYF_REQUIRE_BUILD fails a test that finds no usable build instead of skipping it.
 First, when node_modules is missing or older than pnpm-lock.yaml (a fresh worktree), `pnpm install --frozen-lockfile`
 (Turborepo and the type checks need it).
 Wall time: a step over STEP_WALL_S or the whole over TOTAL_WALL_S is reported, never failed (a busy machine
@@ -49,8 +49,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 VERSION = 1  # receipt format; a reader refuses a newer one
 CHECKS = paths.XYF / 'checks'  # receipts: <tree>.json (passed), <tree>.failed.json
-KEEP_BUILDS = 5  # builds/<image> folders a check made (check.json) kept, ~7 MB each
-RECENT = 15 * 60  # seconds: a build folder touched since then is never pruned
 STEP_S = 120  # seconds: a step past it ends with its process group (#230)
 STEP_WALL_S = 15  # seconds: a step over it is reported (see the docstring)
 TOTAL_WALL_S = 30
@@ -143,7 +141,7 @@ def tests_parser(tier):
     return parse
 
 
-def verify_parser(out, tree, commit, test_builds):
+def verify_parser(out, tree, commit):
     """--verify passed, and the candidate's bytes match the build's manifest. Then a copy of the build goes to
     BUILDS/<image> (out itself stays: it is the cache's output), and check.json there maps it to the tree and
     commit."""
@@ -164,51 +162,17 @@ def verify_parser(out, tree, commit, test_builds):
         shutil.rmtree(staged, ignore_errors=True)
         shutil.copytree(out, staged)
         write_json(staged / 'check.json', dict(image=digest[:8], tree=tree, commit=commit))
-        # A second checkout can publish the same image bytes with different source hashes.
-        shutil.copytree(staged, test_builds / digest[:8])
         named = paths.name_by_image(staged)
         return True, dict(candidate=dict(sha256=digest, image=named.name, bytes=len(data), build=str(named)))
 
     return parse
 
 
-def touched(folder):
-    """When folder or anything in it last changed (its newest mtime; 0 when it is gone)."""
-    newest = 0
-    for top, _dirs, files in os.walk(folder):
-        for name in [''] + files:
-            try:
-                newest = max(newest, os.stat(os.path.join(top, name)).st_mtime)
-            except OSError:
-                pass
-    return newest
-
-
-def prune_builds(now=None):
-    """Of the builds/<image> folders a check made, those beyond the KEEP_BUILDS - 1 newest are removed, with any
-    check-* build folder an older check.py left. A folder touched in the last RECENT seconds stays: another run (a
-    check in another worktree) may still be copying it or reading it."""
-    now = time.time() if now is None else now
-    for folder in paths.BUILDS.glob('check-*'):
-        if now - touched(folder) > RECENT:
-            shutil.rmtree(folder, ignore_errors=True)
-    made = sorted(
-        (p for p in paths.BUILDS.glob('*/check.json') if paths.IMAGE_NAME.fullmatch(p.parent.name)),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    for marker in made[KEEP_BUILDS - 1 :]:
-        if now - touched(marker.parent) > RECENT:
-            shutil.rmtree(marker.parent, ignore_errors=True)
-
-
-def standard_steps(args, root, tree, work):
-    """The gate's steps for this run (work: a temporary folder for the tests' copy of the build)."""
+def standard_steps(args, root, tree):
+    """The gate's steps for this run."""
     py = sys.executable
-    js = js_steps(args, root)  # before anything runs: a missing node_modules stops the run
-    prune_builds()
-    test_builds = Path(work) / 'builds'
-    env = {paths.CHECK_TEST_BUILDS: str(test_builds)}
+    js = js_steps(args, root)
+    env = {paths.REQUIRE_BUILD: '1'}  # verify has just made this checkout's build: a test that cannot use it fails
     cached = root / 'scripts/firmware_cache.py'
     install = dev_tools.js_install(root)
     return [
@@ -218,7 +182,7 @@ def standard_steps(args, root, tree, work):
             'verify',
             [py, cached, 'verify'],
             root,
-            parse=verify_parser(firmware_cache.OUT, tree, git(root, 'rev-parse', 'HEAD'), test_builds),
+            parse=verify_parser(firmware_cache.OUT, tree, git(root, 'rev-parse', 'HEAD')),
         ),
         step('protocol files', [py, root / 'scripts/protogen.py', '--check'], root),
         step('lint', [shutil.which('mise') or 'mise', 'run', '--quiet', 'lint'], root),
@@ -227,19 +191,14 @@ def standard_steps(args, root, tree, work):
     ]
 
 
-JS = (('clients/ts', ('clients/ts',)), ('web', ('web', 'clients/ts')))  # folder, what changing it rechecks
+JS = ('clients/ts', 'web')  # a change in either runs `mise run web-test` (the suites and type checks of both)
 
 
 def js_steps(args, root):
-    """`pnpm run typecheck` for each folder that changed (or all with --js). Their test suites run in CI (mise run
-    web-test)."""
-    steps, pnpm = [], shutil.which('pnpm') or 'pnpm'
-    for rel, watched in JS:
-        folder = root / rel
-        if not folder.is_dir() or not (args.js or changed(root, *watched)):
-            continue
-        steps.append(step('pnpm run typecheck (%s)' % rel, [pnpm, 'run', 'typecheck'], folder))
-    return steps
+    """`mise run web-test` when clients/ts or web changed (or with --js)."""
+    if not any((root / rel).is_dir() for rel in JS) or not (args.js or changed(root, *JS)):
+        return []
+    return [step('web-test', [shutil.which('mise') or 'mise', 'run', '--quiet', 'web-test'], root)]
 
 
 def over_wall(results):
@@ -434,8 +393,8 @@ def confirm(root, ref='HEAD', checks=CHECKS):
     raise CheckError('no receipt for %s (tree %s): run mise run check on a clean checkout of it' % (ref, tree[:12]))
 
 
-def describe(record):
-    """What a receipt records, as printed lines."""
+def describe(record, steps=True):
+    """What a receipt records, as printed lines (steps: the step table too; a run has printed it already)."""
     lines = [
         '%s: tree %s, commit %s (%s), %s'
         % (
@@ -446,7 +405,7 @@ def describe(record):
             record.get('finished'),
         )
     ]
-    for s in record['steps']:
+    for s in record['steps'] if steps else []:
         lines.append('  %-4s  %-24s %7.1f s  %s' % (s['result'], s['name'], s['seconds'], s['command']))
     t, c = record.get('tests'), record.get('candidate')
     for tier, counts in (t or {}).items():
@@ -469,7 +428,7 @@ def main(argv=None, root=ROOT, checks=CHECKS):
         metavar='REF',
         help="exit 0 only when a passing receipt matches REF's tree (default HEAD)",
     )
-    parser.add_argument('--js', action='store_true', help='the TypeScript type checks even when unchanged')
+    parser.add_argument('--js', action='store_true', help='the TypeScript suites and type checks even when unchanged')
     parser.add_argument('--force', action='store_true', help='run even when a passing receipt matches the tree')
     args = parser.parse_args(argv)
     no_device.switch_on()  # every step and its subprocesses: no real device
@@ -484,13 +443,11 @@ def main(argv=None, root=ROOT, checks=CHECKS):
                 print('\n'.join(describe(cached)))
                 print('check: this tree already passed (the receipt above); --force reruns')
                 return 0
-        paths.SESSIONS.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix='.xyf-check-', dir=paths.SESSIONS) as work:
-            record = check(root, lambda tree: standard_steps(args, root, tree, work), checks)
+        record = check(root, lambda tree: standard_steps(args, root, tree), checks)
     except CheckError as e:
         print('check: %s' % e, file=sys.stderr)
         return 1
-    print('\n'.join(describe(record)))
+    print('\n'.join(describe(record, steps=False)))
     print(
         '%s: %s'
         % (
