@@ -546,7 +546,7 @@ def cmd_doctor(args):
         print('     ' + s)
     # must pass: mise run setup fixes them. The stock pair needs the OP-XY (docs/operating/first-install.md):
     # without it the firmware build and the tests that need it skip.
-    essential = {'python', 'private folder', 'toolchain', 'mise', 'tools', 'python deps', 'js deps'}
+    essential = {'python', 'private folder', 'toolchain', 'mise', 'tools', 'python deps', 'js deps', 'git hook'}
     return 0 if all(ok for label, ok, _ in rows if label in essential) else 1
 
 

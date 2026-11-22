@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -305,7 +306,7 @@ class Bootstrap(unittest.TestCase):
             patcher = mock.patch.object(S, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
-        stale = lambda name, why: lambda root=None: None if name in self.done else why  # noqa: E731
+        stale = lambda name, why: lambda root=None: None if name in self.done else why
         for name, value in (
             ('mise', lambda: '/bin/mise' if 'mise' in self.which else None),
             (
@@ -318,6 +319,7 @@ class Bootstrap(unittest.TestCase):
             ),
             ('python_deps_stale', stale('uv', 'run `uv sync`')),
             ('js_deps_stale', stale('pnpm', 'run `pnpm install`')),
+            ('hook_missing', stale('lefthook', 'run `lefthook install`')),
             ('tool', lambda name: ['/bin/' + name]),
         ):
             patcher = mock.patch.object(S.dev_tools, name, value)
@@ -369,7 +371,14 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual((tools / 'bin/bfin-elf-as').read_bytes(), b'as')
         self.assertEqual(sorted(p.name for p in (self.ws / 'tools').iterdir()), ['blackfin'])  # no temporary left
         self.assertEqual(
-            self.calls, ['/bin/mise install', '/bin/uv sync', '/bin/pnpm install', 'download ' + self.record['url']]
+            self.calls,
+            [
+                '/bin/mise install',
+                '/bin/uv sync',
+                '/bin/pnpm install',
+                '/bin/lefthook install',
+                'download ' + self.record['url'],
+            ],
         )
         self.assertEqual((self.ws / 'CLAUDE.md').read_text(), '@AGENTS.md\n')
         guide = (self.ws / 'AGENTS.md').read_text()
@@ -436,9 +445,10 @@ class Bootstrap(unittest.TestCase):
             'mise install',
             'uv sync --locked',
             'pnpm install --frozen-lockfile',
+            'lefthook install',
         ):
             self.assertRegex(out, r'  would .*' + re.escape(what))
-        self.assertIn('dry run: the 9 actions above would run; nothing changed', out)
+        self.assertIn('dry run: the 10 actions above would run; nothing changed', out)
 
     def test_an_archive_with_the_wrong_hash_is_refused_and_nothing_stays(self):
         self.served = GOOD_ZIP + b'tampered'
@@ -484,7 +494,9 @@ class Bootstrap(unittest.TestCase):
         with mock.patch.object(S, 'toolchain_problem', lambda directory=None: None):
             b, out = self.bootstrap()
         self.assertIn('toolchain: ok', out)
-        self.assertEqual(self.calls, ['/bin/mise install', '/bin/uv sync', '/bin/pnpm install'])
+        self.assertEqual(
+            self.calls, ['/bin/mise install', '/bin/uv sync', '/bin/pnpm install', '/bin/lefthook install']
+        )
         self.calls = []
         with mock.patch.object(S, 'host_name', lambda: 'linux-x86_64'):
             b, out = self.bootstrap()
@@ -566,9 +578,10 @@ class DevToolRows(unittest.TestCase):
                 'tools',
                 'python deps',
                 'js deps',
+                'git hook',
             )
         ]
-        for label in ('mise', 'tools', 'python deps', 'js deps', 'toolchain'):
+        for label in ('mise', 'tools', 'python deps', 'js deps', 'git hook', 'toolchain'):
             rows = [(l, l != label, d) for l, _, d in fine] + [('verified build', False, 'none')]
             with mock.patch.object(S, 'doctor', return_value=(rows, [])), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(S.cmd_doctor(None), 1, label)
@@ -609,6 +622,15 @@ class DevToolRows(unittest.TestCase):
             later = (root / 'node_modules/.modules.yaml').stat().st_mtime + 10
             dev_tools.os.utime(root / 'pnpm-lock.yaml', (later, later))
             self.assertIn('pnpm-lock.yaml changed', dev_tools.js_deps_stale(root))
+
+    def test_hook_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertIsNone(dev_tools.hook_missing(root))  # no git checkout: nothing to install
+            subprocess.run(['git', 'init', '-q', str(root)], check=True)
+            self.assertEqual(dev_tools.hook_missing(root), 'run `lefthook install`')
+            (root / '.git/hooks/pre-commit').write_text('#!/bin/sh\nlefthook run pre-commit "$@"\n')
+            self.assertIsNone(dev_tools.hook_missing(root))
 
     def test_global_mise_config_is_kept_out(self):
         self.assertEqual(dev_tools.env({})['MISE_IGNORED_CONFIG_PATHS'], str(Path.home() / '.config/mise'))
