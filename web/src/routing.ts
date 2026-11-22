@@ -26,10 +26,10 @@ const root = createRootRoute({
 
 /** Device, Mods and Files need a connection: without one, Connect. */
 const connected = (): void => { if (!useConnection.getState().client) throw redirect({ to: '/connect/', replace: true }); };
-const legacy = (page: Exclude<Page, 'install'>) => lazyRouteComponent(() => import('./legacy-page.tsx').then((m) => ({ default: () => createElement(m.LegacyPage, { page }) })));
+const legacy = (page: 'device' | 'mods' | 'files') => lazyRouteComponent(() => import('./legacy-page.tsx').then((m) => ({ default: () => createElement(m.LegacyPage, { page }) })));
 
 const home = createRoute({ getParentRoute: () => root, path: '/', beforeLoad: () => { throw redirect({ to: '/connect/', replace: true }); } });
-const connect = createRoute({ getParentRoute: () => root, path: 'connect', component: legacy('connect') });
+const connect = createRoute({ getParentRoute: () => root, path: 'connect', component: lazyRouteComponent(() => import('./pages/connect.tsx')) });
 const device = createRoute({ getParentRoute: () => root, path: 'device', beforeLoad: connected, component: legacy('device') });
 const mods = createRoute({ getParentRoute: () => root, path: 'mods', beforeLoad: connected, component: legacy('mods') });
 const files = createRoute({ getParentRoute: () => root, path: 'files', beforeLoad: connected, component: legacy('files') });

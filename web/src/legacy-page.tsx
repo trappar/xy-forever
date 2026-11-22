@@ -2,9 +2,9 @@
 import { useEffect, useRef } from 'react';
 import { useParams } from '@tanstack/react-router';
 import { installSection, showInstall, showPage } from './legacy.ts';
-import type { Page } from './routing.ts';
+import type { LegacyPage as Legacy } from './legacy.ts';
 
-export function LegacyPage({ page }: { page: Exclude<Page, 'install'> }) {
+export function LegacyPage({ page }: { page: Legacy }) {
   const ref = useRef<HTMLElement>(null);
   const shown = useRef(false);
   useEffect(() => {

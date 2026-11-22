@@ -10,32 +10,30 @@ import { h } from './ui.ts';
 import { confirmAction, promptText } from './ask.tsx';
 import { notice } from './notice.ts';
 import { useConnection } from './connection.ts';
-import { adopt, canConnect, deviceBusy, disconnect as close, openDevice, runAction as run } from './device.ts';
+import { adopt, canConnect, deviceBusy, openDevice, runAction as run } from './device.ts';
 import { bugReport } from './bug-report.ts';
 import { downloadBlob } from './lib/download.ts';
 import { installPage } from './install/page.ts';
 import type { Lease } from './install/page.ts';
-import { navigatePath as navigate, simPort } from './routing.ts';
-import type { Page } from './routing.ts';
+import { navigatePath as navigate } from './routing.ts';
+export type LegacyPage = 'device' | 'mods' | 'files';
 import { pinned } from './install/release.ts';
 import { updateAvailable, updateXyf } from './update.ts';
 import { UNINSTALL_PROTOCOL, uninstallAvailable, uninstallXyf } from './uninstall.ts';
 
-const sim = (): string | null => simPort();
 const dev = (): Client => useConnection.getState().client!;
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
 
 // ---- Pages and actions -------------------------------------------------------------------------------
 
-const loaders: Record<Exclude<Page, 'install'>, () => Promise<void>> = {
-  connect: () => run('show_connect', async () => renderConnect()),
+const loaders: Record<LegacyPage, () => Promise<void>> = {
   device: () => run('refresh_status', loadDevice),
   mods: () => run('list_packages', loadMods),
   files: () => run('browse_files', () => browse(cwd)),
 };
 
 /** Renders a page into its section (the router mounts it). */
-export function showPage(p: Exclude<Page, 'install'>): void { loadedOther = true; void loaders[p](); }
+export function showPage(p: LegacyPage): void { loadedOther = true; void loaders[p](); }
 
 let shownInstall = false;
 /** The install flow's one section, kept across its stages. */
@@ -54,37 +52,6 @@ export function showInstall(stage: string | undefined): void {
 let loadedOther = false;
 
 const btn = (label: string, onclick: () => void, cls = ''): HTMLButtonElement => h('button', { type: 'button', class: cls, onclick }, label);
-
-// ---- Connect -----------------------------------------------------------------------------------------
-
-function renderConnect(): void {
-  const supported = canConnect();
-  const { client, stockRestored } = useConnection.getState();
-  page('connect').replaceChildren(
-    h('h1', {}, 'Connect your OP-XY'),
-    ...(stockRestored ? [h('p', { class: 'notice info', role: 'status' }, 'Stock OS 1.2.1 was restored and your OP-XY was asked to restart.')] : []),
-    h('p', { class: 'lede' }, 'Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the list. ',
-      'Not installed yet? ', h('a', { href: `${import.meta.env.BASE_URL}install/`, onclick: (e: MouseEvent) => { e.preventDefault(); navigate('/install'); } }, 'Install XY Forever'), '.'),
-    h('div', { class: 'card' },
-      supported
-        ? h('div', { class: 'row' },
-          client ? h('span', {}, `Connected to XY Forever ${client.info.version ?? '?'}.`) : btn('Connect', () => void run('connect', connect, 'Looking for the OP-XY...'), 'primary'),
-          client && btn('Disconnect', () => void run('disconnect', disconnect)),
-          h('span', { class: 'muted' }, sim() ? `Simulator on 127.0.0.1:${sim()} (development)` : 'Web Serial over USB'))
-        : h('div', {}, h('h2', {}, 'This browser cannot talk to the OP-XY'),
-          h('p', { class: 'muted' }, 'XY Forever needs Web Serial, which only desktop Chrome (and Edge) have. Open this page in Chrome on a computer. Safari, Firefox and phones are not supported.'))),
-  );
-}
-
-async function connect(): Promise<void> {
-  adopt(await openDevice());
-  navigate('/device');
-}
-
-async function disconnect(): Promise<void> {
-  await close();
-  renderConnect();
-}
 
 // ---- Install (#178) -----------------------------------------------------------------------------------
 
