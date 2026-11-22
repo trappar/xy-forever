@@ -111,7 +111,7 @@ quiet = true
 run = 'uv run scripts/firmware_cache.py verify {% if usage.force %}--force{% endif %}'
 
 [tasks.firmware-cache-proof]
-description = "Prove the firmware cache's hit and miss cases on a scratch worktree (about 2 min); after changing turbo.json or firmware_cache.py"
+description = "Prove the firmware cache's hit and miss cases on a scratch worktree (under 2 min); after changing turbo.json or firmware_cache.py"
 run = 'uv run scripts/firmware_cache_proof.py'
 
 [tasks.sim]
