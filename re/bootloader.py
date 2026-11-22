@@ -3,7 +3,7 @@
 Inputs (private, never in git): LISTING_121/image121/{index.tsv,<start>.bin} and
 LISTING_121/linear121.ann.asm (see private/xy-forever/analysis/bootloader-121-listing/FINDINGS.md).
 
-    python3 re/bootloader.py ADDR... [-d DEPTH] [-a]   summarize functions (-a: full asm)
+    uv run re/bootloader.py ADDR... [-d DEPTH] [-a]   summarize functions (-a: full asm)
 """
 
 import bisect

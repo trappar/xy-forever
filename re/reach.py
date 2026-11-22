@@ -1,6 +1,6 @@
 """Reachable DDR functions of the 1.2.1 bootloader from entry points (direct calls).
 
-    python3 re/reach.py ADDR... > reach.txt      lines "<start> <end>", then "external ..."
+    uv run re/reach.py ADDR... > reach.txt      lines "<start> <end>", then "external ..."
 Output feeds re/spans.py.
 """
 

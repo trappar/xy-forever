@@ -11,14 +11,14 @@ How a tool reaches the protocol. `verified` is true for facts read from device s
 |---|---|---|---|
 | usb vendor id | `0x2367` | yes | teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), used as fallback when a boot-time check fails |
 | usb product id | `0x0021` | yes | the stock OS uses the same id with no serial interface (MTP, vendor class 0xFF; another mode is 0x8021, class 0x01), so a filter on both ids finds only XY Forever's service on the stock identity; a tool must accept this pair and `product_usb_ids` |
-| product usb ids | `2367:0021` | yes | the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (`xyf_build.py` MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. XY Forever keeps this pair for good (#58) |
+| product usb ids | `2367:0021` | yes | the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (xyf_build.py MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. XY Forever keeps this pair for good (#58) |
 | usb product | `OP_XY Boot` | yes | the product string as macOS reports it in the session logs (two log lines show `OP-XY Boot`); informational: filter on the ids |
 | interface classes | `0x02, 0x0a` | yes | USB CDC: communications (0x02) and data (0x0A); on macOS the port is `/dev/cu.usbmodem*` |
 | stream | `frames` | yes | the CDC data interface carries exactly the frame stream described here, in both directions, with no other framing; the simulator's TCP port carries the same bytes |
 | line settings | `ignored` | yes | baud rate, parity, stop bits and flow control do not matter (an API that needs a baud rate may pass any); open the port raw (no echo, no line editing) |
-| control lines | `unknown` | no | whether the device needs DTR or RTS set: `xyf_host.py` leaves them as macOS sets them on open |
+| control lines | `unknown` | no | whether the device needs DTR or RTS set: `uv run xyf-host` leaves them as macOS sets them on open |
 | usb serial number | `unknown` | no | macOS names the port `cu.usbmodem<string>1`, which suggests a serial-number string; a browser may need one to find the port again after a restart without asking the user |
-| simulator port | `7341` | yes | default TCP port of the device simulator (`python3 -m xy_forever.sim`, 127.0.0.1 only; control on the next port), one client at a time |
+| simulator port | `7341` | yes | default TCP port of the device simulator (`uv run -m xy_forever.sim`, 127.0.0.1 only; control on the next port), one client at a time |
 
 ## Frames
 

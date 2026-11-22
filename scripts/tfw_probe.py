@@ -59,7 +59,7 @@ CONTROL = '/yaffs2/firmware.version'
 T_ANSWER = dp.T_ANSWER
 T_PUT = 30.0  # 263 KB staged in 1 KiB chunks, written and read back
 T_CHECK = 5.0  # internal header/directory reads and one P-224 verify, plus a few seconds
-NEED_BUILD = 'NEED: install a build with tfw.check (157 or later) first: python3 scripts/device_pass.py --install BUILD'
+NEED_BUILD = 'NEED: install a build with tfw.check (157 or later) first: uv run scripts/device_pass.py --install BUILD'
 
 
 def remote(name):
@@ -84,7 +84,7 @@ class Probe:
         finally:
             host.TFW_CHECK_TIMEOUT = saved
         self.log.append(
-            '$ xyf_host.py --timeout %g %s\nexit %d after %.2f s\n--- stdout\n%s\n--- stderr\n%s\n'
+            '$ uv run xyf-host --timeout %g %s\nexit %d after %.2f s\n--- stdout\n%s\n--- stderr\n%s\n'
             % (timeout, ' '.join(argv), code, time.monotonic() - start, out, err)
         )
         if code in (dp.NO_ANSWER, dp.ERROR, P.ids.S_LINK):  # either processor lost: never probe again
@@ -217,7 +217,7 @@ class Probe:
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--sim', metavar='HOST:PORT', help='run against the device simulator (xyf_host.py --sim)')
+    parser.add_argument('--sim', metavar='HOST:PORT', help='run against the device simulator (xyf-host --sim)')
     parser.add_argument(
         '--roles', help='comma-separated a,b for versioned per-processor evidence; default: legacy B probe'
     )

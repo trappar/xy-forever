@@ -1,4 +1,4 @@
-"""xyf_host.py cp: copy a file or folder on the device with file.copy and file.mkdir."""
+"""xyf-host cp: copy a file or folder on the device with file.copy and file.mkdir."""
 
 import time
 

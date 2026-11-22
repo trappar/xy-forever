@@ -1,4 +1,4 @@
-"""Mod packages on the device: `xyf_host.py mods push | list | remove`, `mods apply | cancel`.
+"""Mod packages on the device: `uv run xyf-host mods push | list | remove`, `mods apply | cancel`.
 
 The host only puts packages on the OP-XY; the device assembles mod firmware from them (native/mod_job).
 A package set is one generation folder as `modkit split` writes it (docs/STORAGE.md): base/, <machine>/,
@@ -222,13 +222,13 @@ def show(dev, out=print):
         if layout == OLDER:
             out(
                 "%s: an older layout (no %s; its files may sit too deep for the dev menu's MTP: #124); "
-                'xyf_host.py mods remove %s --yes deletes it, then push the set again'
+                'uv run xyf-host mods remove %s --yes deletes it, then push the set again'
                 % (generation, modstore.FILE, generation)
             )
             continue
         if layout == NEWER:
             out(
-                "%s: a newer store version than these tools read; update XY Forever's tools (xyf_host.py mods remove "
+                "%s: a newer store version than these tools read; update XY Forever's tools (uv run xyf-host mods remove "
                 '%s --yes deletes it)' % (generation, generation)
             )
             continue
@@ -515,7 +515,7 @@ def apply_command(dev, args, out=print):
     return 1
 
 
-# -- xyf_host.py hook ----------------------------------------------------------------------------------
+# -- xyf-host hook ----------------------------------------------------------------------------------
 def add_arguments(parser):
     sub = parser.add_subparsers(dest='mods_command', required=True)
     p = sub.add_parser('push', help='put a package set (a generation folder from modkit split) on the device')

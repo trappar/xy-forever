@@ -702,7 +702,7 @@ class Simulator:
 
 
 def main(argv=None):
-    """python3 -m xy_forever.sim: the simulator in the foreground (xy_forever/sim_main.py)."""
+    """uv run -m xy_forever.sim: the simulator in the foreground (xy_forever/sim_main.py)."""
     from .sim_main import main as run
 
     return run(argv)

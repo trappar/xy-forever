@@ -1,9 +1,9 @@
 """The native mod linker on the host (native/mod_link.hpp; docs/storage/mods.md).
 
-    python3 -m xy_forever.modlink prove GENERATION_DIR --sdk OPEN_XY [--sdk-commit C]
+    uv run -m xy_forever.modlink prove GENERATION_DIR --sdk OPEN_XY [--sdk-commit C]
                                   [--catalog op1_factory.json] [--subsets] [--scratch DIR]
-    python3 -m xy_forever.modlink link GENERATION_DIR --machine ID ... [--extension ID ...] --out module.bin
-    python3 -m xy_forever.modlink cross
+    uv run -m xy_forever.modlink link GENERATION_DIR --machine ID ... [--extension ID ...] --out module.bin
+    uv run -m xy_forever.modlink cross
 
 prove links every selection modkit prove uses (plus, with --subsets, every subset of the kit's
 linked machines) twice: with native/mod_link compiled for the host, fed file by file from the
@@ -470,7 +470,7 @@ def cross(folder):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog='python3 -m xy_forever.modlink', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog='uv run -m xy_forever.modlink', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('prove')

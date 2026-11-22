@@ -26,7 +26,7 @@ class EntryTest(unittest.TestCase):
     def test_make_entry_with_real_ldr(self):
         payload = STOCK_121 / 'os.ldr'  # the stock 1.2.1 OS (setup.py import-stock)
         if not payload.exists():
-            self.skipTest('stock 1.2.1 os.ldr absent (run scripts/setup.py import-stock)')
+            self.skipTest('stock 1.2.1 os.ldr absent (run uv run scripts/setup.py import-stock)')
         with tempfile.TemporaryDirectory() as tmp:
             result = make_entry(payload, tmp, 'opxy-121', 'OP-XY 1.2.1', '1.2.1+0', 'official')
             folder = Path(result['folder'])

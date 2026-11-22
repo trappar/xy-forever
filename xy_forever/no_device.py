@@ -1,8 +1,8 @@
 """Tests never open a real OP-XY (docs/operating/build-install.md, "Checks").
 
 With XYF_NO_DEVICE set, every opener of a real device raises DeviceRefused before it looks for one: the serial
-port (xyf_host.find_port's glob, transport.SerialPort), USB MTP (mtp_read.open_op_xy, scripts/usb_alive.py) and
-pyusb (scripts/mtp_usb_probe.py, scripts/mtp_files_test.py). The simulator (TCP) and pseudo-terminals stay open.
+port (xyf_host.find_port's glob, transport.SerialPort) and USB MTP (mtp_read.open_op_xy, scripts/usb_alive.py).
+The simulator (TCP) and pseudo-terminals stay open.
 tests/conftest.py and scripts/check.py set it, and so does importing xy_forever in a process that has loaded
 unittest, so every test and every script a test runs as a subprocess inherits it. There is no way to turn it off
 in a test: a test fakes the opener instead.

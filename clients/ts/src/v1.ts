@@ -37,14 +37,14 @@ export const REPLY = 0x80;
 export const TRANSPORT = {
   usbVendorId: { value: 9063, verified: true, doc: "teenage engineering: the stock serial identity (`scripts/usb_timeline.py`), used as fallback when a boot-time check fails" },
   usbProductId: { value: 33, verified: true, doc: "the stock OS uses the same id with no serial interface (MTP, vendor class 0xFF; another mode is 0x8021, class 0x01), so a filter on both ids finds only XY Forever's service on the stock identity; a tool must accept this pair and `product_usb_ids`" },
-  productUsbIds: { value: [9063, 33], verified: true, doc: "the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (`xyf_build.py` MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. XY Forever keeps this pair for good (#58)" },
+  productUsbIds: { value: [9063, 33], verified: true, doc: "the composite (this CDC serial interface, MTP on interface 2) uses 2367:0021 (xyf_build.py MTP_USB_IDS); its device class 0xEF (IAD) distinguishes it from stock OS MTP and the stock serial fallback. XY Forever keeps this pair for good (#58)" },
   usbProduct: { value: "OP_XY Boot", verified: true, doc: "the product string as macOS reports it in the session logs (two log lines show `OP-XY Boot`); informational: filter on the ids" },
   interfaceClasses: { value: [2, 10], verified: true, doc: "USB CDC: communications (0x02) and data (0x0A); on macOS the port is `/dev/cu.usbmodem*`" },
   stream: { value: "frames", verified: true, doc: "the CDC data interface carries exactly the frame stream described here, in both directions, with no other framing; the simulator's TCP port carries the same bytes" },
   lineSettings: { value: "ignored", verified: true, doc: "baud rate, parity, stop bits and flow control do not matter (an API that needs a baud rate may pass any); open the port raw (no echo, no line editing)" },
-  controlLines: { value: "unknown", verified: false, doc: "whether the device needs DTR or RTS set: `xyf_host.py` leaves them as macOS sets them on open" },
+  controlLines: { value: "unknown", verified: false, doc: "whether the device needs DTR or RTS set: `uv run xyf-host` leaves them as macOS sets them on open" },
   usbSerialNumber: { value: "unknown", verified: false, doc: "macOS names the port `cu.usbmodem<string>1`, which suggests a serial-number string; a browser may need one to find the port again after a restart without asking the user" },
-  simulatorPort: { value: 7341, verified: true, doc: "default TCP port of the device simulator (`python3 -m xy_forever.sim`, 127.0.0.1 only; control on the next port), one client at a time" },
+  simulatorPort: { value: 7341, verified: true, doc: "default TCP port of the device simulator (`uv run -m xy_forever.sim`, 127.0.0.1 only; control on the next port), one client at a time" },
 } as const;
 /** The USB ids XY Forever's service may have, in the shape Web Serial's requestPort filters take: the
  * composite of product builds 188 to 189-001 (pid.codes' test pair), then the stock pair: the composite

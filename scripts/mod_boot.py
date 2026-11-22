@@ -72,7 +72,7 @@ CONTENT = '/yaffs2/content'
 CATALOG_LEAF = 'op1_factory.json'
 RECOVERY = (
     "RECOVERY: power off, then power on holding PLAY, release at the logo: XY Forever's menu returns "
-    'and the default (%s) is unchanged. Then: python3 scripts/mod_boot.py --cleanup'
+    'and the default (%s) is unchanged. Then: uv run scripts/mod_boot.py --cleanup'
 )
 
 STAGES = (

@@ -1,5 +1,5 @@
-"""A local package index for mod packages: `xyf_package.py index build | verify`,
-`xyf_host.py mods fetch`.
+"""A local package index for mod packages: `uv run xyf-package index build | verify`,
+`uv run xyf-host mods fetch`.
 
 `index build GENERATION_DIR --out DIR` turns one generation folder (as `modkit split` writes it, checked
 like `mods push` checks it) into DIR/index.json plus one archive per package at
@@ -48,7 +48,7 @@ from . import package_records
 FORMAT = 'xyf-mod-index/1'
 PLACEHOLDER = 'NOT DECIDED (no licence or redistribution decision for a hosted index; local use only)'
 NOTICE = (
-    'Built locally by xyf_package.py index build. Not for publication: the licence and redistribution '
+    'Built locally by xyf-package index build. Not for publication: the licence and redistribution '
     'decision for a hosted index is not made.'
 )
 ID = re.compile(r'^[a-z0-9][a-z0-9._-]{0,30}$')  # package folder names (modkit: base, <machine>, ext-<id>)

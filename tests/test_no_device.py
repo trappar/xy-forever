@@ -1,5 +1,5 @@
 """xy_forever/no_device.py: no test opens a real OP-XY. Every opener refuses before it looks for a device: each
-test here replaces what the opener would touch next (the glob, the open, libusb, pyusb) with a call that fails
+test here replaces what the opener would touch next (the glob, the open, libusb) with a call that fails
 the test, so none of them can reach a device even when the guard is broken."""
 
 import os

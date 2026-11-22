@@ -1,4 +1,4 @@
-"""`xyf_host.py mods dev`: an edit-build-boot loop for people who write Open-XY mods, without the
+"""`uv run xyf-host mods dev`: an edit-build-boot loop for people who write Open-XY mods, without the
 dev menu. Host tool only; it uses the existing commands:
 
   push   modsend.push: only the files whose SHA-256 differs from the device's files.sha256 line
@@ -185,7 +185,7 @@ def current_default(dev, slots, current_state):
 
 
 def set_default(dev, entry, slots, current_state, out=print):
-    """set-default with the content switch (as xyf_host.py set-default --yes-write); True when verified."""
+    """set-default with the content switch (as xyf-host set-default --yes-write); True when verified."""
     code, _ = dev.set_default(entry)
     if code == P.ids.S_STARTED:
         f = MS.wait(dev, 0, out)

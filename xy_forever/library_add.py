@@ -1,4 +1,4 @@
-"""`xyf_host.py library-add`: an official os.ldr as library entry ID (docs/storage/layout.md).
+"""`uv run xyf-host library-add`: an official os.ldr as library entry ID (docs/storage/layout.md).
 
 Writes firmware/ID/os.ldr and manifest.json and, from the user's own extracted official content (--content), the
 entry's content set: firmware.version, then content.sha256 (docs/storage/packages.md: the two come together or
@@ -23,7 +23,7 @@ LIBRARY = '/yaffs2/xy-forever/firmware/'
 HOW = (
     "Give --content DIR: the official package's extracted content folder (firmware/blackfin/content, its "
     'firmware.version two folders up, or --version-file FILE), or a folder holding content.sha256 + '
-    'firmware.version (`xyf_package.py content-manifest CONTENT --out DIR` writes one).'
+    'firmware.version (`uv run xyf-package content-manifest CONTENT --out DIR` writes one).'
 )
 
 

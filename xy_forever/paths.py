@@ -1,7 +1,8 @@
 """Where XY Forever's private inputs and outputs live (outside every checkout).
 
 The private root is, in order: XYF_PRIVATE; "private" in the main checkout's gitignored xyf.local.json
-(written by `scripts/setup.py init --private DIR`); ../private next to the main checkout. Firmware, keys,
+(written by `scripts/setup.py init --private DIR`); ../private next to the main checkout. The toolchain likewise:
+XYF_TOOLCHAIN; "toolchain" (`init --toolchain DIR`); ../tools/blackfin. Firmware, keys,
 builds and device reports never enter git. The main checkout is this checkout in a plain clone; in a
 `git worktree` it is the checkout that holds the shared .git (main_checkout), so a worktree anywhere finds
 the same private root, toolchain and xyf.local.json as the main checkout.
@@ -34,19 +35,28 @@ def main_checkout(repo=REPO):
 
 
 MAIN = main_checkout()  # REPO in a plain clone
-LOCAL_CONFIG = MAIN / 'xyf.local.json'  # the main checkout's settings (gitignored): {"private": DIR}
-TOOLCHAIN = MAIN.parent / 'tools/blackfin'  # the Blackfin toolchain unless XYF_TOOLCHAIN (toolchain.location)
+LOCAL_CONFIG = MAIN / 'xyf.local.json'  # the main checkout's settings (gitignored): {"private": DIR, "toolchain": DIR}
+
+
+def configured(key, config=LOCAL_CONFIG):
+    """A folder recorded in the local config (`scripts/setup.py init --private/--toolchain DIR`), or None."""
+    try:
+        value = json.loads(Path(config).read_text()).get(key)
+    except FileNotFoundError:
+        return None
+    return Path(value).expanduser().resolve() if value else None
+
+
+# The Blackfin toolchain unless XYF_TOOLCHAIN (toolchain.location): the local config's "toolchain", else
+# tools/blackfin beside the main checkout.
+TOOLCHAIN = configured('toolchain') or MAIN.parent / 'tools/blackfin'
 
 
 def private_root(environ=os.environ, config=LOCAL_CONFIG, main=MAIN):
     """XYF_PRIVATE, else the local config's "private", else ../private next to the main checkout."""
     if environ.get('XYF_PRIVATE'):
         return Path(environ['XYF_PRIVATE']).expanduser().resolve()
-    try:
-        configured = json.loads(Path(config).read_text()).get('private')
-    except FileNotFoundError:
-        configured = None
-    return Path(configured or Path(main).parent / 'private').expanduser().resolve()
+    return configured('private', config) or (Path(main).parent / 'private').resolve()
 
 
 def leak_patterns(config=LOCAL_CONFIG):
@@ -81,7 +91,7 @@ CATALOG_121 = next(
 )
 XYF = PRIVATE_ROOT / 'xy-forever'
 STATUS = XYF / 'status'  # your local status notes (index README.md: docs/STATUS.template.md)
-BUILDS = XYF / 'builds'  # build outputs (xyf_build.py --out BUILDS/<name>)
+BUILDS = XYF / 'builds'  # build outputs (xyf-build --out BUILDS/<name>)
 RECOVERY = XYF / 'recovery'  # dev-menu kits: known-good build, stock 1.2.1
 FIXTURES = XYF / 'fixtures'  # files some tests read (they skip when absent)
 REPORTS = XYF / 'reports'  # device report files (census dumps)

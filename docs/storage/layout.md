@@ -36,7 +36,7 @@ deleted, nothing written into or renamed onto either. Details and XY Forever's o
 
 The reporter never creates `log/` (create it over USB first). Report names carry no build: the next
 boot of any build overwrites them. B's USB service block inside says which release version and image
-wrote it (`python3 -m xy_forever.census`: `usb_service.build`; the image only when the menu ran that boot).
+wrote it (`uv run -m xy_forever.census`: `usb_service.build`; the image only when the menu ran that boot).
 Builds before #107 wrote `prod-NNN-{a,b}.bin`.
 
 `<id>`: 1–31 characters, lowercase letters, digits, `-` and `_`; also the folder name.
@@ -49,7 +49,7 @@ deleted, 9 crashes dev MTP at start. XY Forever refuses a deeper folder,
 write, copy or move (`file_engine::decide_engine`; `file_client::rename` walks a folder moved deeper; the MTP
 responder's `within_depth`; status `refused`); the host tools check first (`xy_forever/depth.py`,
 `clients/ts/src/depth.ts`). Reads, listing and deletes work at any depth: delete an older deeper tree through
-XY Forever's file service (`xyf_host.py rm`, `mods remove`), never through dev MTP. The deepest paths XY
+XY Forever's file service (`uv run xyf-host rm`, `mods remove`), never through dev MTP. The deepest paths XY
 Forever makes: an entry's content, `tmp/job-<id>-old/content/presets/<id>/<file>` and
 `firmware/<id>/content/presets/<id>/<file>` (6, the OS's own layout below the entry); mod packages sit flat,
 `mods/<generation>/<package>/<file>` (4: [the store](mods-store.md)).

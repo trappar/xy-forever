@@ -50,7 +50,7 @@ updater's own `/yaffs2/upgrade/firmware/blackfin/bin/os.ldr` (never changed) and
 stock 1.2.1 image (the size and SHA-256 `boot.uninstall` admits) goes on; a missing or other file ends it with
 nothing written, and the menu says why ("No official OS 1.2.1 found." or "OS file is not official 1.2.1.", then
 "Reinstall official OS 1.2.1, then start again."). In A's write window it sweeps `tmp/adopt-opxy-121/`, copies
-`os.ldr` there and reads it back (SHA-256), writes `manifest.json` and `files.sha256` (as `xyf_host.py library-add`
+`os.ldr` there and reads it back (SHA-256), writes `manifest.json` and `files.sha256` (as `uv run xyf-host library-add`
 and a package publish) and reads them back, then renames the folder to `firmware/opxy-121`: a cut leaves only
 `tmp/`, and the next start adopts again. After A's rescan it makes the entry the default; the sequence checks
 again and converges (a plain power-on boots it; after PLAY the menu stays: "OS 1.2.1 is in the library and is

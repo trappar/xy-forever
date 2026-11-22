@@ -9,8 +9,8 @@ waits pass SLOW_S where they need it.
 TEST_S = 60.0  # one test with the fixtures before it (pytest's timeout ini, tests/xyf_bounds.py: HUNG)
 SIM_TEST_S = 5.0  # one simulator core test (the `sim` tier, #233): hard-killed past it
 SIM_DEADLINE_S = 5.0  # a test's simulator exits on its own this long after it started (xyf_sim --deadline-s)
-SIM_CALL_S = 2.0  # one host call to the simulator, wall time (xyf_host.py --sim, conformance.py --sim)
-SIM_CONNECT_S = 5.0  # finding the simulator's endpoint and its HELLO (xyf_host.py connect --sim)
+SIM_CALL_S = 2.0  # one host call to the simulator, wall time (xyf-host --sim, conformance.py --sim)
+SIM_CONNECT_S = 5.0  # finding the simulator's endpoint and its HELLO (xyf-host connect --sim)
 WAIT_S = 10.0  # a test's wait for the simulator to reach a state
 COMPILE_S = 120.0  # one host compile or link (xy_forever/hostbuild.py)
 SLOW_S = 120.0  # a parked simulator sweep (the `sweep` tier, #233)

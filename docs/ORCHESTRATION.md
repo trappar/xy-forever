@@ -5,18 +5,15 @@ current. It delegates implementation when it can, or does the work itself. Read 
 
 ## One item
 
-1. `mise run plan` (`-- --agent NAME` if another agent works here: [two agents](operating/two-agents.md)); read
+1. `mise run plan` (another agent works here too: [two agents](operating/two-agents.md)); read
    your status notes (`<private>/xy-forever/status/README.md`). Setup unfinished: [ONBOARDING.md](../ONBOARDING.md) first.
 2. `uv run xyf-host --timeout 5 status`: ready `device` items go first when the device is connected.
    If the developer says it is absent, or there was no [first device install](operating/first-install.md) yet,
    skip the check and device items.
 3. Take the first item under "Yours" (interrupted work), else "Next" (milestone order, then issue number).
-4. **Claim** it: read `gh issue view <N>`; `gh issue edit <N> --add-assignee @me` (with `--agent`, also
-   `--add-label agent:NAME`). **Branch** from up-to-date `main`: `git switch -c <N>-<slug>`.
-5. Work in small commits. After each change run the tests it affects (`mise run test-changed`, or
-   `mise run test-one TARGET`); `mise run test` (the fast tier) at any time.
-6. Once per PR, `mise run check` (the PR gate: build, verify, type checks, the fast and gate tiers, under
-   30 s; [checks](operating/build-install.md#checks)). Then **PR**: push, `gh pr create`, body "Closes #<N>".
+4. **Claim** it: read `gh issue view <N>`; `gh issue edit <N> --add-assignee @me`. **Branch** from up-to-date `main`: `git switch -c <N>-<slug>`.
+5. Work in small commits; after each change, `mise run test-changed` ([checks](operating/build-install.md#checks)).
+6. Once per PR, `mise run check`. Then **PR**: push, `gh pr create`, body "Closes #<N>".
 7. **CI green** (`gh pr checks <n> --watch`) is the merge check; fix failures in the branch. A check never
    stands in for a device test.
 8. Stop when a decision needs the developer, nothing is unblocked, or told to. Close in at most ten lines:
@@ -69,8 +66,4 @@ Aim: one power-on per sitting, and none for offline work.
 
 ## Approvals
 
-Approvals belong to one developer and their device. Needs their explicit yes: relaxing a builder audit (call
-allowlist, CRC spans, symbol rules), a new kind of storage write, companion chips, 1.2.5, anything SAFETY.md
-lists; the PR names the exact allowlist or span change. Standing approvals ([first install](operating/first-install.md),
-step 2, in your status notes, with one line for each specific yes) cover routine work only, such as a USB
-install of a verified build with one understood change, said first.
+What needs the developer's explicit yes, and what a standing approval covers: [SAFETY.md](SAFETY.md#approvals).

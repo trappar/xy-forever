@@ -228,6 +228,18 @@ class PrivateRoot(unittest.TestCase):
             S.write_config(ROOT / 'private', self.config)
         self.assertFalse(self.config.exists())
 
+    def test_init_records_a_toolchain_only_when_it_passes_its_pins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config, folder = Path(tmp) / 'xyf.local.json', Path(tmp) / 'tc'
+            config.write_text('{"private": "/p"}')
+            with mock.patch.object(S, 'toolchain_problem', lambda d: 'Toolchain hash mismatch: bin/x'):
+                with self.assertRaisesRegex(S.SetupError, 'fails the toolchain pins'):
+                    S.record_toolchain(folder, config)
+            with mock.patch.object(S, 'toolchain_problem', lambda d: None):
+                S.record_toolchain(folder, config)
+            self.assertEqual(json.loads(config.read_text()), {'private': '/p', 'toolchain': str(folder.resolve())})
+            self.assertEqual(paths.configured('toolchain', config), folder.resolve())
+
     def test_init_adds_an_empty_leak_list_and_keeps_other_keys(self):
         S.ensure_leak_patterns(self.config)
         self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': []})
@@ -387,7 +399,7 @@ class Bootstrap(unittest.TestCase):
         self.assertTrue(10 <= len(guide.splitlines()) <= 15)
         self.assertRegex(
             out,
-            r'Next:\n  1\. Put your OP-XY .* in MTP mode: hold COM .*\n  2\. python3 scripts/setup\.py '
+            r'Next:\n  1\. Put your OP-XY .* in MTP mode: hold COM .*\n  2\. uv run scripts/setup\.py '
             r'import-stock --from-device +\(reads them into %s.*/upgrade/firmware/blackfin/bin/os\.ldr'
             % (self.ws / 'private/incoming'),
         )
@@ -559,6 +571,42 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual((self.ws / 'AGENTS.md').read_text(), 'mine\n')
         self.assertIn('workspace AGENTS.md: present (left as it is; bootstrap never overwrites it)', out)
         self.assertEqual((self.ws / 'CLAUDE.md').read_text(), '@AGENTS.md\n')
+
+
+@pytest.mark.gate
+class BareInterpreter(unittest.TestCase):
+    """`mise run setup` starts on mise's Python, without the project environment (#229): doctor and a dry run work
+    there, on the standard library only (-S: no site-packages), with a private folder of their own."""
+
+    def setup(self, *args, path=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {k: v for k, v in S.os.environ.items() if not k.startswith(('VIRTUAL_ENV', 'PYTHON', 'UV_'))}
+            env['XYF_PRIVATE'] = str(Path(tmp) / 'private')
+            if path is not None:
+                env['PATH'] = path
+            bare = getattr(sys, '_base_executable', sys.executable)
+            cmd = [bare, '-S', str(ROOT / 'scripts/setup.py'), *args]
+            run = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True, timeout=120)
+            self.assertFalse(list(Path(tmp).iterdir()), 'a dry run or doctor changed nothing')
+        self.assertNotIn('Traceback', run.stderr)
+        return run
+
+    def test_doctor_reports_the_build_as_unknown(self):
+        run = self.setup('doctor')
+        self.assertRegex(run.stdout, r'-- +verified build +%s' % re.escape(S.NO_ENV))
+
+    def test_dry_run_without_uv_stays_on_the_standard_library(self):
+        run = self.setup('bootstrap', '--dry-run', path='/usr/bin:/bin')
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertNotIn('continuing under uv run', run.stdout)
+        self.assertIn('dry run: the ', run.stdout)
+
+    def test_dry_run_continues_under_uv_once_the_dependencies_are_synced(self):
+        run = self.setup('bootstrap', '--dry-run')
+        self.assertEqual(run.returncode, 0, run.stderr)
+        synced = dev_tools.python_deps_stale() is None
+        self.assertEqual('continuing under uv run' in run.stdout, synced)
+        self.assertIn('dry run: the ', run.stdout)
 
 
 @pytest.mark.gate

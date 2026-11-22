@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Minimal MTP/PTP probe of the OP-XY over libusb (read-only; host only).
 
-usage: python3 scripts/mtp_probe.py [--timeout-ms N] [--list [--names [--get NAME]]]
+usage: uv run scripts/mtp_probe.py [--timeout-ms N] [--list [--names [--get NAME]]]
 
 Opens the first OP-XY (VID 0x2367) interface of class 255 or 6 with bulk IN/OUT
 endpoints, then sends OpenSession, GetDeviceInfo, GetStorageIDs,

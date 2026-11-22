@@ -1,15 +1,15 @@
 """Mod packages from an open-xy kit (docs/storage/mods.md; docs/STORAGE.md).
 
-    python3 -m xy_forever.modkit split KIT.json --sdk OPEN_XY [--sdk-commit C] --out DIR
+    uv run -m xy_forever.modkit split KIT.json --sdk OPEN_XY [--sdk-commit C] --out DIR
                                  [--sdk-source URL@COMMIT] [--extension-catalog extensions.json]
-    python3 -m xy_forever.modkit rebuild GENERATION_DIR --machine ID ... [--extension ID ...]
+    uv run -m xy_forever.modkit rebuild GENERATION_DIR --machine ID ... [--extension ID ...]
                                  --catalog op1_factory.json --out KIT.json
-    python3 -m xy_forever.modkit prove KIT.json GENERATION_DIR --sdk OPEN_XY [--sdk-commit C]
+    uv run -m xy_forever.modkit prove KIT.json GENERATION_DIR --sdk OPEN_XY [--sdk-commit C]
                                  --catalog op1_factory.json [--stock os.ldr] [--scratch DIR]
-    python3 -m xy_forever.modkit prove-patch GENERATION_DIR --sdk OPEN_XY [--sdk-commit C]
+    uv run -m xy_forever.modkit prove-patch GENERATION_DIR --sdk OPEN_XY [--sdk-commit C]
                                  --catalog op1_factory.json --stock os.ldr [--scratch DIR] [--keep DIR]
                                  [--official content.sha256] [--memory standard|expanded]
-    python3 -m xy_forever.modkit known-base BASE_DIR... [--stock os.ldr] [--catalog JSON] [--write]
+    uv run -m xy_forever.modkit known-base BASE_DIR... [--stock os.ldr] [--catalog JSON] [--write]
 
 split reads a published kit (opxy-browser-kit/1) and writes one mod-base package for the kit
 generation, one mod package per machine and one per extension under DIR/mods/<profile>/<generation>/.
@@ -1375,7 +1375,7 @@ def content_matches(generation_dir, machines, exts, result):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog='python3 -m xy_forever.modkit', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog='uv run -m xy_forever.modkit', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     sub = parser.add_subparsers(dest='command', required=True)
     s = sub.add_parser('split')

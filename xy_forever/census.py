@@ -1,5 +1,5 @@
-"""Decode a Test017-022 census file: 360-byte report + cold memory census
-(+ Test018 key UI result region). Offline only."""
+"""Decode a census file (a device report: `uv run -m xy_forever.census REPORT.bin`): the 360-byte report, the
+cold memory census and the result blocks after it (key UI, link probe, file boot). Offline only."""
 
 import argparse
 import json

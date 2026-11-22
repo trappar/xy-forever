@@ -5,7 +5,7 @@ Part of the [XY Forever storage layout](../STORAGE.md).
 ## Assembly after the link
 
 - **Assembly after the link** (`native/mod_patch`, `native/mod_content`, reading the linker's
-  result through `native/mod_link.hpp`; host end to end, link included: `python3 -m xy_forever.modkit
+  result through `native/mod_link.hpp`; host end to end, link included: `uv run -m xy_forever.modkit
   prove-patch`, byte-identical to `core.mjs`). In place in one
   buffer of stock + 16 + `module_bytes` bytes: stock `os.ldr` at 0, the module at `stock_bytes`
   (the linker writes it there); the result is stock with the edits, the module record where FINAL
@@ -43,7 +43,7 @@ Part of the [XY Forever storage layout](../STORAGE.md).
   per sweep.
 - **Trust** (packages are unsigned). A base is *known* when its stock, catalog and `edits.bin`
   SHA-256 and patcher numbers match an entry of `native/mod_known_bases.inc` (official open-xy bases;
-  regenerate: `python3 -m xy_forever.modkit known-base BASE... --write`; `expanded_module_base` counts only when expanded); any other base is refused
+  regenerate: `uv run -m xy_forever.modkit known-base BASE... --write`; `expanded_module_base` counts only when expanded); any other base is refused
   (`unverified`) unless the user confirmed it on the device, and the result says known or unverified.
   `start_verify` checks the base the same way, maps every edit into a stock record's payload and returns
   the image SHA-256, which the caller must compare with the hash recorded at assembly. The content step

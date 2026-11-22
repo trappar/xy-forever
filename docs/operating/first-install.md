@@ -38,18 +38,9 @@ product build). `mise run doctor` shows the stock and fixture rows ok.
 
 ## 2. Approvals for this device
 
-Device work needs the developer's explicit yes (SAFETY.md, [ORCHESTRATION.md](../ORCHESTRATION.md)
-"Approvals"). Two kinds can be given once, for their own device; ask both in one question, recommending yes,
-and record the answer and its scope in the status notes ("Standing approvals"), never in git:
-
-1. **Host access:** agents may operate this OP-XY through XY Forever's own USB service (`xyf_host.py` and the
-   scripts built on it), under SAFETY.md. Without it, every device item waits for a yes.
-2. **Routine USB installs:** a build that passed `--verify` and the full suite, carrying one understood change,
-   is installed without a separate yes; what is being installed is still said first. New or risky behaviour
-   (storage writes, new every-boot paths, new reset behaviour) is asked each time.
-
-Never standing: anything SAFETY.md lists under "Never", companion chips, 1.2.5, relaxing a builder audit, a new
-kind of storage write. Each is asked for that exact operation.
+Device work needs the developer's explicit yes. Ask for the two standing approvals of
+[SAFETY.md](../SAFETY.md#approvals) (host access, routine USB installs) in one question, recommending yes, and
+record the answer and its scope in the status notes ("Standing approvals"), never in git.
 
 ## 3. First install and recovery kit
 

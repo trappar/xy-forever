@@ -7,7 +7,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 ## Build, verify, install (every build)
 
 ```sh
-cd xy-forever        # toolchain: ../tools/blackfin (or set XYF_TOOLCHAIN)
+cd xy-forever        # toolchain: ../tools/blackfin (elsewhere: docs/operating/dev-tools.md)
 mise run doctor                  # stock pair + fixtures in place? (first: operating/first-install.md)
 mise run check                   # build, --verify, fast and gate tiers: the build lands in builds/<image>
 mise run check --confirm         # this commit's check receipt, with its image

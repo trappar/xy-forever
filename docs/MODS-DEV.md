@@ -17,7 +17,7 @@ content, and boots the result.
 and writes one package set:
 
 ```sh
-python3 -m xy_forever.modkit split KIT.json --sdk OPEN_XY --out DIR \
+uv run -m xy_forever.modkit split KIT.json --sdk OPEN_XY --out DIR \
     [--sdk-commit C] [--sdk-source URL@COMMIT] [--extension-catalog extensions.json]
 ```
 
@@ -30,7 +30,7 @@ python3 -m xy_forever.modkit split KIT.json --sdk OPEN_XY --out DIR \
 Other subcommands are for checking the device's assembly against open-xy:
 `rebuild` (packages back into a kit), `prove` and `prove-patch` (byte-for-byte
 comparisons with `core.mjs`), and `known-base` (the list of stock bases the device
-recognises). Run `python3 -m xy_forever.modkit --help` for their options.
+recognises). Run `uv run -m xy_forever.modkit --help` for their options.
 
 ## What a package set looks like
 
@@ -74,7 +74,7 @@ set (without `--yes` it is a dry run).
 
 The library needs the stock 1.2.1 firmware as an entry, with its `content.sha256`.
 Without it booting from the first row stops with "Failed: no stock OP-XY firmware in the library."
-`xyf_host.py library-add ... --content DIR` adds both (DIR: the official package's
+`uv run xyf-host library-add ... --content DIR` adds both (DIR: the official package's
 `firmware/blackfin/content`).
 
 **On the device (the normal way):** power on holding PLAY, open Mods, turn your

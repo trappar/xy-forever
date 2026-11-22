@@ -51,7 +51,7 @@ class SpecTest(unittest.TestCase):
     @pytest.mark.uses('scripts/protogen.py')
     def test_generated_files_are_current(self):
         self.assertEqual(
-            protogen.stale(protogen.generate(spec())), [], 'generated files are stale: run python3 scripts/protogen.py'
+            protogen.stale(protogen.generate(spec())), [], 'generated files are stale: run uv run scripts/protogen.py'
         )
         run = subprocess.run([sys.executable, str(ROOT / 'scripts/protogen.py'), '--check'], capture_output=True)
         self.assertEqual(run.returncode, 0, run.stderr)

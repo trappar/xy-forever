@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Pin and stage XY Forever's os.ldr for the web app's install page (#178).
 
-    python3 scripts/web_release.py [BUILD] --notes "What changed in this release"
-    python3 scripts/web_release.py --check   (the staged image matches the pin; exit 1 when not)
+    uv run scripts/web_release.py [BUILD] --notes "What changed in this release"
+    uv run scripts/web_release.py --check   (the staged image matches the pin; exit 1 when not)
 
 The page installs only the image whose SHA-256 web/src/install/release.json pins, fetched from its own origin at
-release/os.ldr. This script takes a verified product build (builds/<image>/, `xyf_build.py --verify` passed),
+release/os.ldr. This script takes a verified product build (builds/<image>/, `uv run xyf-build --verify` passed),
 checks again that it shares no bytes with the stock pair (xy_forever/stock_bytes.py), writes the pin (commit it in a
 release pull request) and copies candidate.ldr to web/public/release/os.ldr, which Vite serves and builds into
 dist/ (gitignored: a build output, never committed). Builds are deterministic, so the pinned image can be rebuilt
@@ -39,7 +39,7 @@ def check(pin_path=PIN, staged=STAGED):
     if not pin.get('sha256'):
         return 'no release pinned in %s' % pin_path
     if not staged.is_file():
-        return 'nothing staged at %s: run scripts/web_release.py BUILD' % staged
+        return 'nothing staged at %s: run uv run scripts/web_release.py BUILD' % staged
     actual = pin_of(staged.read_bytes())
     if pin['sha256'] != actual['sha256']:
         return 'the staged image is not the pinned %s' % pin.get('image', 'release')
@@ -87,7 +87,7 @@ def main():
         return 1 if why else 0
     build = args.build or paths.newest_verified_build()
     if build is None:
-        print('no verified product build of this source: run scripts/check.py (or xyf_build.py) first')
+        print('no verified product build of this source: run `mise run check` first')
         return 1
     stocks = {name: (paths.STOCK_121 / name).read_bytes() for name in ('os.ldr', 'bootloader.ldr')}
     try:

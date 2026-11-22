@@ -1,5 +1,5 @@
 """No test leaves a process running (#133): xy_forever/procgroup.py, the simulator wrapper
-(`python3 -m xy_forever.sim`) and the TypeScript suites' simulator helper (clients/ts/test/simulators.ts).
+(`uv run -m xy_forever.sim`) and the TypeScript suites' simulator helper (clients/ts/test/simulators.ts).
 
 procgroup.run() ends the command's whole process group on a timeout and on a normal end. The
 simulator tests start a simulator the way the TypeScript suites do (startAll from Node, a state

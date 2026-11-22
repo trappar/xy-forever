@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Offline official-package tools on the host; never opens a device.
 
-    python3 xyf_package.py ZIP [--baseline ZIP] [--stage DIR]   review / stage a decrypted vendor ZIP
-    python3 xyf_package.py extract-os PACKAGE.tfw --out DIR     OS-only library entry from an official .tfw
-    python3 xyf_package.py content-manifest CONTENT --out DIR   content.sha256 of an extracted content set
-    python3 xyf_package.py content-compare A B [--paths]        two lists or folders; exit 0 when identical
-    python3 xyf_package.py index build GENERATION_DIR --out DIR  local mod package index + archives
-    python3 xyf_package.py index verify DIR                      every archive matches index.json
+    uv run xyf-package ZIP [--baseline ZIP] [--stage DIR]   review / stage a decrypted vendor ZIP
+    uv run xyf-package extract-os PACKAGE.tfw --out DIR     OS-only library entry from an official .tfw
+    uv run xyf-package content-manifest CONTENT --out DIR   content.sha256 of an extracted content set
+    uv run xyf-package content-compare A B [--paths]        two lists or folders; exit 0 when identical
+    uv run xyf-package index build GENERATION_DIR --out DIR  local mod package index + archives
+    uv run xyf-package index verify DIR                      every archive matches index.json
 
 extract-os runs the device's own extractor and signature check (native/tfw_os, tfw_signature,
 p224, compiled for the Mac) and writes DIR/os.ldr and DIR/manifest.json (docs/STORAGE.md). It never
@@ -32,7 +32,7 @@ def extract_os(argv):
     from xy_forever.tfw_extract import extract_os as extract
 
     parser = argparse.ArgumentParser(
-        prog='xyf_package.py extract-os', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog='uv run xyf-package extract-os', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument('package', type=Path, help='official .tfw package (encrypted, as distributed)')
     parser.add_argument('--out', required=True, type=Path, help='new entry folder under private/ (must not exist)')
@@ -74,7 +74,9 @@ def index_command(argv):
     from xy_forever import modindex
 
     parser = argparse.ArgumentParser(
-        prog='xyf_package.py index', description=modindex.__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        prog='uv run xyf-package index',
+        description=modindex.__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest='index_command', required=True)
     b = sub.add_parser('build', help='index.json + one archive per package of a generation folder (local only)')
@@ -111,7 +113,9 @@ def main(argv=None):
         from xy_forever.content_manifest import main as content_main
 
         return content_main(argv)
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        prog='uv run xyf-package', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument('archive', type=Path, help='decrypted official firmware ZIP (not the encrypted .tfw)')
     parser.add_argument('--baseline', type=Path, help='previous vendor ZIP; does not establish installed device state')
     parser.add_argument(

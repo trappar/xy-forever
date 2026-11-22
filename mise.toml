@@ -169,7 +169,7 @@ run = "uv run pnpm run test:e2e"   # uv: the simulator specs start python3 -m xy
 
 [tasks.plan]
 description = "Next plan items and decisions waiting (--all: more)"
-usage = 'arg "[args]..." help="plan.py arguments (--all, --agent NAME)" var=#true'
+usage = 'arg "[args]..." help="plan.py arguments (--all)" var=#true'
 run = 'uv run scripts/plan.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.preview]

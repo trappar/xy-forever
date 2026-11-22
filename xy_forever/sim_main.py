@@ -1,4 +1,4 @@
-"""python3 -m xy_forever.sim: the device simulator in the foreground, for a host tool or the web app
+"""uv run -m xy_forever.sim: the device simulator in the foreground, for a host tool or the web app
 (xy_forever/sim.py has the simulator itself)."""
 
 import subprocess
@@ -77,7 +77,7 @@ def main(argv=None):
         deadline_s=None,
     )
     print(
-        'simulator: USB endpoint 127.0.0.1:%d (python3 xyf_host.py --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
+        'simulator: USB endpoint 127.0.0.1:%d (uv run xyf-host --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
         ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root),
         file=sys.stderr,
         flush=True,

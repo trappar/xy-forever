@@ -1,4 +1,4 @@
-"""The device's screen for host tools (xyf_host.py screenshot): the framebuffer as diag.screen reads it, as a PNG."""
+"""The device's screen for host tools (xyf-host screenshot): the framebuffer as diag.screen reads it, as a PNG."""
 
 import io
 import struct

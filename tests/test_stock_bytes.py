@@ -59,7 +59,7 @@ class ReleaseImageTest(unittest.TestCase):
         stocks = self.stocks()
         build = paths.newest_verified_build()
         if build is None:
-            self.skipTest('no verified product build of this source (scripts/check.py builds one)')
+            self.skipTest('no verified product build of this source (mise run check builds one)')
         self.assertEqual(S.shared_runs((build / 'candidate.ldr').read_bytes(), stocks), [])
         self.assertTrue(S.shared_runs(stocks['os.ldr'][:4096], stocks))  # the check sees stock bytes
 

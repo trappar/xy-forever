@@ -164,7 +164,7 @@ def build_zip(members, *, comment=b'', eocd=None, gap_after=None):
 
 @pytest.mark.gate
 class Extractor(unittest.TestCase):
-    """Builds the host extractor once per class (the same build xyf_package.py uses)."""
+    """Builds the host extractor once per class (the same build xyf-package uses)."""
 
     flags = ('-O2',)
 

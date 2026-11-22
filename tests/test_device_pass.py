@@ -845,7 +845,7 @@ class DevicePassTest(unittest.TestCase):
         self.assertEqual(back['result'], 'FAIL')
         self.assertIn('set-default opxy-121-stock --yes-write', back['detail'])
         log = (self.folder / back['file']).read_text()
-        self.assertIn('$ xyf_host.py --timeout 5 set-default opxy-121-stock --yes-write', log)
+        self.assertIn('$ uv run xyf-host --timeout 5 set-default opxy-121-stock --yes-write', log)
         self.assertEqual((self.summary['exit_code'], self.summary['failed']), (dp.EXIT_FAIL, 1))
         self.assertEqual(self.summary['default_at_start'], 'opxy-121-stock')
         self.assertEqual(self.summary['keepalive_pid'], 4242)

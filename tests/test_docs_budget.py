@@ -42,7 +42,7 @@ TREES = {
 CAPS = {
     'docs/ARCHITECTURE.md': 25600,
     'docs/HARDWARE.md': 20200,
-    'docs/SAFETY.md': 11600,
+    'docs/SAFETY.md': 12600,  # holds the approvals too (one home: ORCHESTRATION and first-install link to it)
     'docs/STORAGE.md': 25000,
     'docs/PROTOCOL.md': 56000,  # generated from protocol/v1.json (scripts/protogen.py)
     'docs/GUIDE.md': 11800,  # for OP-XY owners and mod writers, not agents (#65: Ask before USB control)
@@ -50,7 +50,10 @@ CAPS = {
 }
 
 # Files outside docs/ whose relative links must resolve.
-LINKED = ['AGENTS.md', 'ONBOARDING.md', 'README.md']
+LINKED = ['AGENTS.md', 'ONBOARDING.md', 'README.md', 'web/README.md', 'clients/ts/README.md']
+
+# The packages' READMEs: the leaf budget, as any other doc.
+PACKAGE_READMES = ['web/README.md', 'clients/ts/README.md']
 
 LINK = re.compile(r'\]\(([^)\s]+)(?:\s+"[^"]*")?\)')
 HEADING = re.compile(r'^#{1,6}\s+(.*?)\s*#*\s*$')
@@ -146,6 +149,11 @@ class DocsBudget(unittest.TestCase):
                     broken.append(f'{file}#{anchor}')
             with self.subTest(doc=rel(path)):
                 self.assertEqual(broken, [], f'{rel(path)} has broken links')
+
+    @unittest.expectedFailure  # both over budget until #229's round 2 item D splits them; then drop this line
+    def test_package_readmes(self):
+        for name in PACKAGE_READMES:
+            self.check(ROOT / name, LEAF)
 
     def test_every_other_doc_is_a_leaf(self):
         """A doc that is neither budgeted above nor in a tree gets the leaf budget: a new doc needs no list entry."""

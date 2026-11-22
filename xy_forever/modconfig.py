@@ -1,4 +1,4 @@
-"""The saved inputs over USB (#26): `xyf_host.py mods status | set`, through config.get and config.set (protocol 1.24).
+"""The saved inputs over USB (#26): `uv run xyf-host mods status | set`, through config.get and config.set (protocol 1.24).
 
 They change mods the way the device's Mods page does: config.set sends the selection and Mod memory, the device reads
 its package list again, checks that the selection can be built and saves it (or refuses, saying why), as if the

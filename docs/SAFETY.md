@@ -82,7 +82,7 @@ the raw partition layer (boot partition; MTP never sends it), the real bootloade
 
 ## Host access
 
-Host tools reach the device via XY Forever's USB service (`xyf_host.py`), standard MTP (stock OS,
+Host tools reach the device via XY Forever's USB service (`uv run xyf-host`), standard MTP (stock OS,
 stock dev menu, XY Forever's MTP mode), and the dev menu by hand (recovery). Over MTP they may
 write under the rules above (protected names, depth); test files go in a scratch folder, removed
 after and [logged](operating/at-the-device.md); nothing else is deleted. Before the grant, only dev-menu
@@ -90,9 +90,24 @@ MTP reads ([first install](operating/first-install.md) step 1). No flashing tool
 developer's OP-XY only after that developer has granted it for their device (step 2 there,
 recorded in their status notes). The grant covers these routes and rules, nothing else.
 
+## Approvals
+
+Approvals belong to one developer and their device, and live in their status notes ("Standing approvals",
+one line for each specific yes), never in git. Two can be given once, for their own device
+([first install](operating/first-install.md) step 2):
+
+1. **Host access:** agents may operate this OP-XY through XY Forever's USB service (`uv run xyf-host` and the
+   scripts built on it), under these rules. Without it, every device item waits for a yes.
+2. **Routine USB installs:** a build that passed `--verify` and the full suite, carrying one understood change,
+   is installed without a separate yes; what is being installed is still said first. New or risky behaviour
+   (storage writes, new every-boot paths, new reset behaviour) is asked each time.
+
+Never standing, asked for that exact operation: anything under "Never", companion chips, 1.2.5, a new kind of
+storage write, relaxing a builder audit (call allowlist, CRC spans, symbol rules; the PR names the exact change).
+
 ## Before installing any build over USB
 
-1. It passes `xyf_build.py --verify`, the full test suite, and every CRC and call
+1. It passes `uv run xyf-build --verify`, the full test suite, and every CRC and call
    audit (the build runs them).
 2. It is an XY Forever `os.ldr` that keeps the hold-COM recovery and the normal
    boot path intact.
@@ -156,7 +171,7 @@ Keep a known-good build and its dev-menu kit ready at all times.
   a real boot and a PLAY power-on before making it the known-good kit.
 - **Timing:** use `xyf_clock.hpp` for wrap-safe timing. Size boot waits for a full yaffs scan, which
   can take tens of seconds after a dev-menu MTP copy; do not assume the fast checkpoint mount.
-- **Module size:** shared code can push another mode past its reservation. Run `scripts/neutral.py`
+- **Module size:** shared code can push another mode past its reservation. Run `mise run neutral`
   (it builds every mode) after shared-code changes.
 - **L1 instruction SRAM:** data loads from it stall the boot at the logo; never read it as data.
 - **Never leave the device in the OS** unnecessarily. Booting the OS is one-way; only a power cycle

@@ -6,7 +6,7 @@ MIN_RUN or more bytes with the stock 1.2.1 os.ldr or bootloader.ldr. Two kinds o
   computed here and blanked in the image before the comparison;
 - near-constant filler: a run is found through 32-byte anchors holding at least 8 different byte values, so long
   stretches of zeros or 0xff (padding both have) never start one.
-`xyf_build.py --verify` requires shared_runs() == [] for the product (the mode with no embedded OS), and
+`uv run xyf-build --verify` requires shared_runs() == [] for the product (the mode with no embedded OS), and
 `scripts/web_release.py` checks it again before it pins and stages an image for the web app.
 """
 

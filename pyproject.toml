@@ -19,7 +19,6 @@ dev = [
   "pytest-timeout>=2.4.0",
   "pytest-watcher>=0.6.3",
   "pytest-xdist>=3.8.0",
-  "pyusb>=1.3.1",   # scripts/mtp_usb_probe.py and scripts/mtp_files_test.py (with Homebrew libusb)
   "vulture>=2.16",
   # Lint and format (mise run lint, format; the pre-commit hook): exact pins, so every machine formats alike.
   "ruff==0.17.6",
@@ -30,8 +29,7 @@ dev = [
 native = ["xyf-hosttest", "scikit-build-core>=0.11", "nanobind>=2.9", "cmake>=3.20", "ninja>=1.11"]
 
 [project.scripts]
-# `uv run xyf-host status` (or `uv run xyf_host.py status`: the root files are shims). scripts/ stays scripts:
-# `uv run scripts/NAME.py`, which import the installed package.
+# `uv run xyf-host status`. scripts/ stays scripts: `uv run scripts/NAME.py`, which import the installed package.
 xyf-host = "xy_forever.xyf_host:main"
 xyf-build = "xy_forever.xyf_build:main"
 xyf-package = "xy_forever.xyf_package:main"

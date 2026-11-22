@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Show B's stock heap through XY Forever's PEEK (host only, read-only).
 
-usage: python3 scripts/heap.py [--timeout S]
+usage: uv run scripts/heap.py [--timeout S]
 
 Prints the allocator's break (it never decreases), the free-list length and the free
 bytes. Run it before and after a feature (an MTP session, a USB restart) to see whether
