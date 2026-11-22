@@ -194,7 +194,11 @@ def sim_pause(address, seconds):
         for attempt in (0, 1):
             try:
                 if entry[0] is None:
-                    entry[0] = socket.create_connection((host, port + 1), timeout=10.0)
+                    try:
+                        entry[0] = socket.create_connection((host, port + 1), timeout=10.0)
+                    except ConnectionRefusedError:               # no simulator there (yet): no device clock
+                        time.sleep(seconds)
+                        return
                 entry[0].sendall(line)
                 reply = b''
                 while not reply.endswith(b'\n'):

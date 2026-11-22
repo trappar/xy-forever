@@ -106,29 +106,16 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
     expect((await client.readFile('/yaffs2/xy-forever/log/web/pull.bin')).length).toBe(8000);
   });
 
-  test('processor A silent: a short timeout ends as timeout; the device then answers link', async () => {
+  test('processor A silent: the device gives up on A on its own clock and answers link', async () => {
     const path = '/yaffs2/firmware.version';
     await client.readFile(path);
     await control(sim!.control, 'set a_silent 1');
     try {
-      const [timeout, ms] = await timed(client.readRange(path, 0, 64, { timeoutMs: 1000 }));
-      expect(isXyfError(timeout, 'timeout')).toBe(true);
-      expect(ms).toBeLessThan(1500);
-      // The device gives up on A after 5 s of its own clock: move it on instead of waiting, again
-      // until the request ends (a loaded machine may start B's wait after the first move). Its late
-      // answer to the timed-out request is dropped (old seq).
-      let ended = false;
-      const pending = timed(client.readRange(path, 0, 64)).finally(() => { ended = true; });
-      const nudge = (async () => {
-        while (!ended) {
-          await new Promise((r) => setTimeout(r, 300));
-          if (!ended) await control(sim!.control, 'advance 6000');
-        }
-      })();
-      const [link, ms2] = await pending;
-      await nudge;
+      // B gives up on A after 5 s of its own clock. B waiting on A runs that clock on, in no host time
+      // (sim/clock.cpp): the answer comes well before 5 s here.
+      const [link, ms] = await timed(client.readRange(path, 0, 64));
       expect(isXyfError(link, 'link')).toBe(true);
-      expect(ms2).toBeLessThan(15_000);                             // file.read's timeout
+      expect(ms).toBeLessThan(5000);
     } finally {
       await control(sim!.control, 'set a_silent 0');
       await control(sim!.control, 'advance 6000');

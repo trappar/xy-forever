@@ -559,7 +559,10 @@ int main(int argc, char** argv) {
                 const std::string line = client_in[i].substr(0, eol), reply = command(line, quit, clients[i]);
                 client_in[i].erase(0, eol + 1);
                 if (line.compare(0, 6, "status") && line.compare(0, 8, "injected") && line != "settle" &&
-                    line.compare(0, 7, "advance")) { ++shared->outside; kick(0); kick(1); }   // a fault, a key
+                    line.compare(0, 7, "advance")) {           // a fault, a key, an injected request: look again
+                    if (line.compare(0, 6, "inject")) ++shared->outside;   // news from outside (not the board's own link end)
+                    kick(0); kick(1);
+                }
                 if (!reply.empty() && write(clients[i], (reply + "\n").data(), reply.size() + 1) < 0) break;
             }
             ++i;

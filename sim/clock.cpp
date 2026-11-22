@@ -6,18 +6,19 @@
 //    a fault's delay) or has read the clock idle_reads times running with nothing done in between (the
 //    device's polling loops).
 //  - Even then, only while something is due: a control "advance MS" not yet answered (answered once the
-//    clock is there and both processors are idle again), a board event (a reset delay, a delayed link
-//    message), B waiting on device time away from rest (a delay, a time-out, a slice: anywhere but its menu
-//    loop's pause or a hang) or a host request B read and has not answered (not in a hang), unless a host
-//    that does not read holds B's reply up, for at most quiet_limit with nothing done; or work done since the
-//    last step (a link message, USB data, a control command, a menu pass that polled the clock), which with
-//    B at rest counts only for rest_limit past the last news from outside (USB data or a connection, a
-//    control command other than status, injected, settle and advance): a device that polls on its own
-//    comes to rest. A processor's bounded wait does not run the clock by itself. Otherwise device time
-//    stands still and every process blocks, with no CPU, until the host or a control command brings
-//    something: an idle device's own timers (keepalives, a deferred save, an idle window's close, a key's
-//    repeat) wait for an advance, which is how a host's pause reaches the device (xy_forever/transport.py
-//    sim_pause, Simulator.advance; Simulator.settle runs it until nothing is done).
+//    clock is there and both processors are idle again); a board event (a reset delay, a delayed link
+//    message); B waiting on device time away from rest (a delay, a time-out, a slice: anywhere but its menu
+//    loop's pause or a hang), unless a host that does not read holds B's reply up, for at most quiet_limit
+//    with nothing done; or work done since the last step (a link message, USB data, a control command, a menu
+//    pass that polled the clock). With B at rest, work counts only while B owes a host request its answer (it
+//    read host bytes and wrote none since: a reply that takes many passes) or for rest_limit past the last
+//    news from outside (USB data or a connection, a control command other than status, inject, injected,
+//    settle and advance): a device that polls on its own comes to rest, and a frame B has not read whole
+//    waits for its rest. A processor's bounded wait does not run the clock by itself (A's long mount behind
+//    B's menu). Otherwise device time stands still and every process blocks, with no CPU, until the host or a
+//    control command brings something: an idle device's own timers (keepalives, a deferred save, an idle
+//    window's close, a frame's idle reset) wait for an advance, which is how a host's pause reaches the device
+//    (xy_forever/transport.py sim_pause, Simulator.advance; Simulator.settle runs it until nothing is done).
 //  - A step goes no further than the next known event (a processor's bounded wait's end too); it is 1 ms after
 //    any activity and doubles while nothing happens, up to max_step (the device's own timers are not known
 //    events, but for a held key's next repeat: they fire within max_step).
@@ -226,20 +227,24 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
     const uint32_t work = shared->work[0].load() + shared->work[1].load();
     const bool worked = work != stepped_work;
     if (worked) { quiet_ns = 0; hung = false; }
-    // Waited on: B waiting on device time away from rest (a delay, a time-out, a slice), or a host request B has
-    // not answered yet (not in a hang: nothing answers it), unless a host that does not read holds its reply up. Up to quiet_limit with nothing done: then nothing will be (a hung
-    // processor), and the clock stands still until something comes.
+    // Waited on: B waiting on device time away from rest (a delay, a time-out, a slice), unless a host that does
+    // not read holds its reply up. Up to quiet_limit with nothing done: then nothing will be (a hung processor),
+    // and the clock stands still until something comes.
     const int32_t rest = shared->idle_rest[1].load();
-    const bool waited = running[1] && !shared->usb_held.load() && (!rest || (rest == 1 && shared->usb_asked.load()));
+    const bool held = shared->usb_held.load() != 0;
+    const bool waited = running[1] && !rest && !held;
     if (waited && !worked && quiet_ns >= quiet_limit && !hung) {
         hung = true;
         log("board: %llu s of device time with nothing done while B waits: the clock stands still",
             (unsigned long long)(quiet_limit / 1000000000u));
     }
-    // Work with B at rest (its menu loop's passes, a job's slices) runs the clock only up to rest_limit past the
-    // last news from outside: a device that polls on its own (a pass that asks A something every time) would
-    // otherwise never come to rest. A host that waits for more moves the clock on (advance: its pause).
-    const bool working = worked && (waited || (outside_any && now - outside_ns < rest_limit));
+    // Work with B at rest (its menu loop's passes, a job's slices) runs the clock while B owes a host request its
+    // answer (B read host bytes and wrote none since; not in a hang), else only up to rest_limit past the last news
+    // from outside: a device that polls on its own (a pass that asks A something every time) would otherwise never
+    // come to rest. A host that waits for more moves the clock on (advance: its pause). A request B has not read
+    // whole (a frame split across host writes) is no work: B's idle frame time-out waits for the rest as on the device.
+    const bool asked = running[1] && rest == 1 && !held && shared->usb_asked.load();
+    const bool working = worked && (waited || asked || (outside_any && now - outside_ns < rest_limit));
     if (!due && !working && (!waited || hung)) {                // nothing is due: the clock stands still
         for (int client : settles) if (write(client, "{\"ok\": true}\n", 13) < 0) {}
         settles.clear();

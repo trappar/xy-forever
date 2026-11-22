@@ -1118,7 +1118,10 @@ class Runner(ConformanceConnection):
             link.write(chunk)
             getattr(self.target, 'pause', time.sleep)(0.005)                       # separate reads on the device side
         if 'none_within_ms' in expect:
-            got = link.quiet(expect['none_within_ms'])
+            pause = getattr(self.target, 'pause', None)
+            if pause:                                                          # the simulator: its own time passes
+                pause(expect['none_within_ms'] / 1000.0)
+            got = link.quiet(50 if pause else expect['none_within_ms'])
             if got:
                 raise Fail('expected no frame within %d ms, got %s' % (
                     expect['none_within_ms'], ', '.join('0x%02x seq %d' % (k, s) for k, s, _ in got)))

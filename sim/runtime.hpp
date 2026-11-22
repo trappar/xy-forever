@@ -58,7 +58,7 @@ struct Shared {
     // idle_steps: the main thread was idle at that work and that step, and its wait ends by itself at
     // idle_until (clock_ns; 0: no bound). inflight, outflight: link messages to and from a processor not yet
     // taken. usb_held: B's last USB write found no room (the host is not reading). outside: news from outside
-    // the device (USB data or a connection, a control command other than status, injected, settle, advance).
+    // the device (USB data or a connection, a control command other than status, inject, injected, settle, advance).
     // wake: pipes that wake processor A, B, the board, and A's and B's link threads.
     std::atomic<int32_t> usb_held;
     std::atomic<uint32_t> outside;

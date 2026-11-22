@@ -251,7 +251,7 @@ class SyntheticJob(Base, unittest.TestCase):
         code, job, _ = MS.start(self.dev, self.base, self.profile, self.generation, ['alpha'], (), NAME, True)
         self.assertEqual((code, job), (ids.S_BUSY, 0))                      # an upload is in progress
         self.assertEqual(self.dev.stage(b'complete'), 0)
-        self.sim.set('a_slow_ms', 4)
+        self.sim.set('a_slow_ms', 40)                   # each phase longer than the device runs on its own after a poll
         job = self.start(['alpha', 'beta'])
         seen = []
         f = self.until_phase(job, 1)
@@ -265,6 +265,7 @@ class SyntheticJob(Base, unittest.TestCase):
                 self.assertEqual(self.dev.call(P.STATUS)[0], 0)
                 self.assertEqual(self.dev.call(P.SCREEN, (0).to_bytes(4, 'little'))[0], 0)
                 self.assertEqual(MS.job_cancel(self.dev, job + 7)[0], ids.S_NOT_FOUND)
+            self.sim.advance(20)
             f = self.status(job)
         self.sim.set('a_slow_ms', 0)
         self.assertEqual(MS.PHASES[f['phase']], 'done', f)
