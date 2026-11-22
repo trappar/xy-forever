@@ -2,12 +2,15 @@
 flags, the host tool and builder wiring, the library add plan and the SCREEN PNG. No device
 execution."""
 import ctypes as C
+import io
 from pathlib import Path
 import struct
 import sys
 import tempfile
 import unittest
 import zlib
+
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -208,13 +211,9 @@ class ScreenTest(unittest.TestCase):
         def put(x, y, v):
             struct.pack_into('<H', raw, ((479 - x) * 256 + y) * 2, v)
         put(0, 0, 0xffff); put(479, 215, 0xf800); put(10, 5, 0x07e0)
-        png = host.screen_png(bytes(raw))
-        self.assertTrue(png.startswith(b'\x89PNG\r\n\x1a\n'))
-        w, h = struct.unpack('>II', png[16:24])
-        self.assertEqual((w, h), (480, 216))
-        idat = png[png.index(b'IDAT') + 4:png.index(b'IEND') - 8]
-        rows = zlib.decompress(idat)
-        px = lambda x, y: rows[y * (1 + 480 * 3) + 1 + x * 3:y * (1 + 480 * 3) + 4 + x * 3]
+        image = Image.open(io.BytesIO(host.screen_png(bytes(raw))))
+        self.assertEqual((image.format, image.mode, image.size), ('PNG', 'RGB', (480, 216)))
+        px = lambda x, y: bytes(image.getpixel((x, y)))
         self.assertEqual(px(0, 0), b'\xff\xff\xff')
         self.assertEqual(px(479, 215), b'\xff\x00\x00')
         self.assertEqual(px(10, 5), b'\x00\xff\x00')
