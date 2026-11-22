@@ -26,7 +26,7 @@ dev = [
 ]
 # The C++ built for the host for the tests (hosttest/: a nanobind extension and the doctest binary). Synced by
 # default; a machine that runs no Python suite (CI's Linux job) can skip it: uv sync --no-group native.
-native = ["xyf-hosttest", "scikit-build-core>=0.11", "nanobind>=2.9", "cmake>=3.20", "ninja>=1.11"]
+native = ["xyf-hosttest", "scikit-build-core>=1.0", "nanobind>=3.0", "cmake>=3.20", "ninja>=1.11"]
 
 [project.scripts]
 # `uv run xyf-host status`. scripts/ stays scripts: `uv run scripts/NAME.py`, which import the installed package.
@@ -71,8 +71,9 @@ python_files = ["test_*.py"]
 python_classes = ["Test"]             # unittest.TestCase subclasses only: a helper named Test* is no test
 python_functions = []
 addopts = ["-q", "-rfE", "--strict-markers"]
-timeout = "60"                        # bounds.TEST_S: past it, HUNG (tests/xyf_bounds.py)
-timeout_method = "thread"            # the signal method cannot interrupt a hung ctypes call
+# bounds.TEST_S: past it, HUNG. tests/xyf_bounds.py replaces pytest-timeout's timer with its own thread
+# (pytest_timeout_set_timer), so no timeout_method applies: a hung ctypes call cannot stop it.
+timeout = "60"
 
 [tool.ruff]
 # Lint and format (`mise run lint`, `mise run format`; the pre-commit hook runs both on staged files).

@@ -6,7 +6,7 @@ license = "MIT"
 requires-python = ">=3.14"
 
 [build-system]
-requires = ["scikit-build-core>=0.11", "nanobind>=2.9"]
+requires = ["scikit-build-core>=1.0", "nanobind>=3.0"]
 build-backend = "scikit_build_core.build"
 
 [tool.scikit-build]
