@@ -1,0 +1,11 @@
+# mise at the one version CI pins (every workflow uses this action, never jdx/mise-action directly), with the
+# tools of mise.toml installed and cached.
+name: mise
+description: Install the pinned mise and mise.toml's tools
+runs:
+  using: composite
+  steps:
+    - uses: jdx/mise-action@v5
+      with:
+        version: 2026.11.12
+        cache: true

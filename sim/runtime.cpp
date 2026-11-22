@@ -522,8 +522,9 @@ int usage() {
 }
 }
 
-// --deadline-s (#230): the board stops on its own S seconds of host time after it started (tests: 10 s), and
-// exits 124; past S + 2 s, in case the board itself is stuck, SIGALRM ends both processors and the board.
+// --deadline-s (#230): the board stops on its own S seconds of host time after it started (tests: SIM_DEADLINE_S in
+// xy_forever/bounds.py), and exits 124; past S + 2 s, in case the board itself is stuck, SIGALRM ends both processors
+// and the board.
 const int exit_deadline = 124;
 void deadline_passed(int) {
     for (int k = 0; k != 2; ++k)

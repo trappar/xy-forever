@@ -916,6 +916,11 @@ class Bootstrap:
     def next_steps(self):
         incoming = self.private_root / 'incoming'
         steps = []
+        if not self.settings().get('leak_patterns'):
+            steps.append(
+                'Add your name, emails and host name as regexes to "leak_patterns" in %s (case-sensitive; "(?i)" '
+                'first matches any case): the leak test refuses them in tracked files.' % self.config
+            )
         if not stock_present():
             steps += [
                 'Put your OP-XY (stock 1.2.1) in MTP mode: hold COM while switching it on, Track 3 (dev menu), '
