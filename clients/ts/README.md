@@ -15,10 +15,9 @@ simulator's TCP port). Strict TypeScript, ES modules, no runtime dependencies.
 ```sh
 pnpm install      # from the repository root (one workspace with web/): TypeScript, Vitest, @types/node (dev only)
 pnpm test         # type-check, test/v1.test.ts, then Vitest: codec, call layer, conformance, end to end, relay, files, mods (push, build)
-pnpm run test:browser  # Web Serial, the demo page and its Files and Mods panels in the system Chrome (headless): simulators 7710-7715, relays 7750-7751 and 7754
+pnpm run test:browser  # Web Serial in the system Chrome (headless): simulators 7710-7713, relays 7750-7751
 node test/conformance.ts --sim 127.0.0.1:7341    # the conformance cases against a running simulator
-node scripts/device-browser-test.ts --out DIR --sim PORT   # the demo driven in Chrome, no human step (--serial: the OP-XY)
-node scripts/device-browser-test.ts --out DIR --sim PORT --reboot   # also restart to the menu, reconnect, and list files
+node scripts/device-browser-test.ts --out DIR --sim PORT   # the web app (../../web) driven in Chrome, no human step (--serial: the OP-XY)
 ```
 
 The repository's Python suite runs `pnpm test` too (`tests/test_ts_client.py`, when `node_modules` is installed).
@@ -33,19 +32,7 @@ that already holds a grant for the dev server's origin `http://127.0.0.1:5173`. 
 - the Chrome policy `SerialAllowUsbDevicesForUrls` (the vendor and product id of `USB_FILTER`, that origin):
   no pick, but on macOS it is a managed preference and needs admin rights.
 
-Serial runs hold the shared OP-XY device lock. The script prints a `NEED:` line if the granted port or lock is unavailable, or if **Ask before USB control** is on. Add `--reboot` to test reconnection after a restart to the XY Forever menu.
-
-Demo page (`demo/`: Connect, device info, read a file, screenshot, and a Files panel: browse from
-`/yaffs2`, download, upload by picker or drop, delete, new folder, rename/move, copy (a folder:
-`copyTree`), a hint naming the folders that accept changes; and a Mods panel: what the device holds
-per generation, an interrupted package flagged, choose a package folder and Send, Remove a package; and Build
-on device: a generation's machines and extensions as a checklist, a base entry, a name, Build with live progress
-and Cancel, then where the result is and how long it took, or why it failed; the other panels wait meanwhile):
-`pnpm run dev` serves it on
-http://127.0.0.1:5173/. Simulator: start `python3 -m xy_forever.sim` (port 7341), then open
-`/?sim=7341` (through the dev server's relay, `xyfRelay` in `test/relay.ts`). OP-XY: open `/` in
-Chrome; Connect shows the port chooser (XY Forever only). Tested by `test/browser/demo.spec.ts`,
-`files.spec.ts` and `mods.spec.ts`.
+Serial runs hold the shared OP-XY device lock. The script prints a `NEED:` line if the granted port or lock is unavailable, or if **Ask before USB control** is on.
 
 The Vitest run starts its own simulators (`python3 -m xy_forever.sim --virtual-clock`, ports 7700-7709 and 7720-7721, state under
 the private sessions folder; `XYF_TS_SIM_PORT`, `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`) and skips the

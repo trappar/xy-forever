@@ -1,10 +1,9 @@
-// The demo page driven in the system Chrome by Playwright, with no human step: Connect, HELLO, list
-// /yaffs2/xy-forever, upload a scratch file, download and compare it, delete it, list mod packages,
+// The web app (../../web) driven in the system Chrome by Playwright, with no human step: Connect, the Device
+// page, list /yaffs2/xy-forever, upload a scratch file, download and compare it, delete it, list mod packages,
 // disconnect. PASS/FAIL per step, result.json and a screenshot per step in --out; exit status 1 on any
 // failure. The scratch file is deleted even after a failure (a second connection if the first is gone).
-// --reboot adds a restart back into the XY Forever menu and checks the new connection.
 //
-//   node scripts/device-browser-test.ts --out DIR --sim PORT     the simulator through the dev server's relay
+//   node scripts/device-browser-test.ts --out DIR --sim PORT     the simulator through the web dev server's relay
 //   node scripts/device-browser-test.ts --out DIR --serial       the OP-XY over Web Serial (see below)
 //   node scripts/device-browser-test.ts --grant                  once, headed: the person picks the OP-XY in Chrome's chooser;
 //                                                                waits for the grant, checks it persists (a new launch connects
@@ -18,7 +17,7 @@
 // navigator.serial.requestPort (it covers Bluetooth only), headless or headed; Chrome has no
 // auto-select switch for serial ports (its switches: tab/screen/desktop capture and certificates only).
 // So --serial uses a persistent Chrome profile: the page connects without the chooser when that profile
-// holds a grant for the dev server's origin (getPorts(), src/webserial.ts grantedPorts). Without one the
+// holds a grant for the dev server's origin (getPorts(), src/serial-connect.ts). Without one the
 // grant step fails at once with the reason; it never waits for a click. A grant comes from --grant (one
 // pick by a person in that same profile, on the same origin) or from the enterprise policy SerialAllowUsbDevicesForUrls (vendor/product ids of USB_FILTERS, origin
 // http://127.0.0.1:<vite-port>), which needs a managed preference on macOS (an admin step).
@@ -32,15 +31,15 @@ import { chromium } from 'playwright';
 import type { Browser, BrowserContext, Page } from 'playwright';
 
 const here = fileURLToPath(new URL('..', import.meta.url));
+const web = resolve(here, '../../web');
 const args = process.argv.slice(2);
 const opt = (name: string): string | undefined => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const out = opt('--out');
 const sim = opt('--sim');
 const grant = args.includes('--grant');
 const serial = args.includes('--serial') || grant;
-const reboot = args.includes('--reboot');
-if ((!out && !grant) || (!sim && !serial) || (sim && serial) || (grant && (args.includes('--serial') || reboot))) {
-  console.error('usage: node scripts/device-browser-test.ts (--out DIR (--sim PORT | --serial) | --grant) [--reboot] [--headed] [--profile DIR] [--vite-port N]');
+if ((!out && !grant) || (!sim && !serial) || (sim && serial) || (grant && args.includes('--serial'))) {
+  console.error('usage: node scripts/device-browser-test.ts (--out DIR (--sim PORT | --serial) | --grant) [--headed] [--profile DIR] [--vite-port N]');
   process.exit(2);
 }
 if (out) mkdirSync(out, { recursive: true });
@@ -82,10 +81,10 @@ function freePort(): Promise<number> {
   });
 }
 
-/** npm run dev's server (vite demo) on 127.0.0.1:port; resolves once it answers. */
+/** The web app's dev server (pnpm run dev in web/) on 127.0.0.1:port; resolves once it answers. */
 async function startVite(port: number): Promise<ChildProcess> {
-  const vite = spawn(process.execPath, [join(here, 'node_modules/vite/bin/vite.js'), 'demo', '--port', String(port), '--strictPort'],
-    { cwd: here, stdio: ['ignore', 'pipe', 'pipe'] });
+  const vite = spawn(process.execPath, [join(web, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort'],
+    { cwd: web, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
   vite.stdout!.on('data', (d: Buffer) => { log += d.toString(); });
   vite.stderr!.on('data', (d: Buffer) => { log += d.toString(); });
@@ -98,57 +97,69 @@ async function startVite(port: number): Promise<ChildProcess> {
   throw new Error(`the dev server did not answer in 30 s: ${log.trim()}`);
 }
 
-const text = async (id: string): Promise<string> => (await page!.locator(`#${id}`).first().textContent()) ?? '';   // two #build: the first is HELLO's
+const nav = (name: string): Promise<void> => page!.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true }).click();
 
-/** Waits for the page's current action to end; throws with the page's error line. */
-async function settled(): Promise<void> {
-  await page!.waitForFunction(() => document.getElementById('status')!.textContent !== 'working', null, { timeout: STEP_MS });
-  const error = await text('error');
-  if (error.startsWith('NEED:')) console.log(error);
-  if (error) throw new Error(error);
+/** Waits until done() holds; throws with the app's error notice when one shows first. */
+async function settled(done: () => Promise<boolean>): Promise<void> {
+  for (const until = Date.now() + STEP_MS; Date.now() < until; await new Promise((r) => setTimeout(r, 100))) {
+    const error = await page!.locator('[data-testid=notice][data-type=error]').textContent({ timeout: 100 }).catch(() => null);
+    if (error) throw new Error(error);
+    if (await done()) return;
+  }
+  throw new Error(`no result in ${STEP_MS / 1000} s`);
 }
 
-/** The Files panel's rows: name, kind, size. */
-const rows = (): Promise<{ name: string; kind: string; size: number }[]> => page!.$$eval('#files-list tbody tr',
+/** The Files page's rows: name, kind, size. */
+const rows = (): Promise<{ name: string; kind: string; size: number }[]> => page!.$$eval('#files-body tr[data-name]',
   (trs) => trs.map((tr) => ({ name: (tr as HTMLElement).dataset['name'] ?? '', kind: (tr as HTMLElement).dataset['kind'] ?? '', size: Number((tr as HTMLElement).dataset['size']) })));
+const connected = async (): Promise<boolean> => ((await page!.getByTestId('link').textContent()) ?? '').startsWith('Connected');
+/** The Files page's folder, or '' on another page. */
+async function folder(): Promise<string> {
+  const crumbs = page!.getByRole('navigation', { name: 'Folder' });
+  return await crumbs.count() ? ((await crumbs.textContent()) ?? '').replace(/\s/g, '') : '';
+}
 
 async function connect(): Promise<string> {
-  await page!.click('#connect');
-  await settled();
-  if ((await text('status')) !== 'connected') throw new Error(`status ${await text('status')}`);
-  return `version ${await text('version')}, protocol ${await text('proto')}, mode ${await text('mode')}`;
+  await page!.getByRole('button', { name: 'Connect', exact: true }).click();
+  await settled(async () => (await page!.locator('[data-fact=version]').count()) > 0);
+  return (await page!.locator('#device-facts').innerText()).replace(/\s*\n\s*/g, '; ');
 }
 
 async function openDir(): Promise<string> {
-  await page!.locator('#files-list button.open', { hasText: /^xy-forever\/$/ }).click();
-  await settled();
-  const crumbs = await text('crumbs');
-  if (crumbs.replace(/\s/g, '') !== 'yaffs2/xy-forever') throw new Error(`in ${crumbs}`);
+  await nav('Files');
+  await settled(async () => (await rows()).some((r) => r.name === 'xy-forever'));
+  await page!.locator('#files-body tr[data-name="xy-forever"]').getByRole('button', { name: 'xy-forever/' }).click();
+  await settled(async () => await folder() === 'yaffs2/xy-forever');
   return (await rows()).map((r) => r.kind === 'folder' ? `${r.name}/` : r.name).join(' ') || '(empty)';
 }
 
-async function rowButton(name: string, label: string): Promise<void> {
-  await page!.locator(`#files-list tbody tr[data-name="${name}"] button`, { hasText: label }).click();
+async function disconnect(): Promise<string> {
+  await nav('Connect');
+  await page!.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await settled(async () => !await connected());
+  return (await page!.getByTestId('link').textContent()) ?? '';
 }
 
-/** Deletes the scratch file through the Files panel (connecting again when needed); true when it is gone. */
+async function rowButton(name: string, label: string): Promise<void> {
+  await page!.locator(`#files-body tr[data-name="${name}"]`).getByRole('button', { name: label, exact: true }).click();
+}
+
+async function deleteScratch(): Promise<void> {
+  await rowButton(scratchName, 'Delete');
+  await page!.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click();
+  await settled(async () => !(await rows()).some((r) => r.name === scratchName));
+}
+
+/** Deletes the scratch file through the Files page (connecting again when needed); true when it is gone. */
 async function cleanup(): Promise<string> {
-  if (!(await page!.locator('#disconnect').isEnabled())) {
+  if (!await connected()) {
     await page!.reload();
+    await nav('Connect');
     await connect();
   }
-  if ((await text('crumbs')).replace(/\s/g, '') !== 'yaffs2/xy-forever') {
-    await page!.locator('#crumbs button', { hasText: 'yaffs2' }).click().catch(() => undefined);
-    await settled();
-    await openDir();
-  } else {
-    await page!.click('#files-refresh');
-    await settled();
-  }
+  if (await folder() !== 'yaffs2/xy-forever') await openDir();
   if (!(await rows()).some((r) => r.name === scratchName)) return 'nothing left';
-  await rowButton(scratchName, 'Delete');
-  await settled();
-  if ((await rows()).some((r) => r.name === scratchName)) throw new Error(`${scratchName} is still there`);
+  await deleteScratch();
   return `deleted ${DIR}/${scratchName}`;
 }
 
@@ -188,7 +199,7 @@ async function reserveDevice(): Promise<ChildProcess> {
 
 /**
  * --grant: the persistent profile headed on the fixed origin, one line telling the person to pick the OP-XY
- * (the demo's Connect opens the chooser), waits up to GRANT_MS for the grant, then closes Chrome, launches the
+ * (the web app's Connect opens the chooser), waits up to GRANT_MS for the grant, then closes Chrome, launches the
  * profile again headless and connects without a chooser (HELLO, then disconnect): the grant persisted.
  */
 async function grantMode(): Promise<number> {
@@ -221,9 +232,8 @@ async function grantMode(): Promise<number> {
     page = p = ctx.pages()[0] ?? await ctx.newPage();
     await p.goto(origin);
     if ((await grantedHere(p)).mine === 0) throw new Error('the grant did not persist in the profile');
-    const hello = await connect();                                 // no chooser: grantedPorts() finds it
-    await p.click('#disconnect');
-    await settled();
+    const hello = await connect();                                 // no chooser: a granted port answers
+    await disconnect();
     console.log(`PASS grant persists: connected without a chooser (${hello})`);
     return 0;
   } catch (error) {
@@ -266,11 +276,7 @@ try {
     if (serial) context = await chromium.launchPersistentContext(profile, launch);
     else context = await (browser = await chromium.launch(launch)).newContext({ acceptDownloads: true });
     page = context.pages()[0] ?? await context.newPage();
-    page.on('dialog', (d) => {                                   // confirm(): yes only for the scratch file
-      const ok = d.type() === 'confirm' && d.message().includes(scratchName);
-      void (ok ? d.accept() : d.dismiss());
-    });
-    await page.goto(`http://127.0.0.1:${port}/?unattended${sim ? `&sim=${encodeURIComponent(sim)}` : ''}`);
+    await page.goto(`http://127.0.0.1:${port}/${sim ? `?sim=${encodeURIComponent(sim)}` : ''}`);
     let ready = true;
     if (serial) {
       ready = await step('serial port granted', async () => {
@@ -279,21 +285,16 @@ try {
           console.log('NEED: connect the OP-XY in the XY Forever menu and grant this Chrome profile access with --grant.');
           throw new Error(`no granted XY Forever port in profile ${profile} for http://127.0.0.1:${port}`);
         }
-        if (reboot && mine > 1) {
-          console.log('NEED: leave only the OP-XY under test connected for the reboot check.');
-          throw new Error(`multiple granted XY Forever ports (${mine})`);
-        }
         return `${mine} granted port(s), ${all} in all`;
       });
     }
     if (ready && await step('connect and HELLO', connect)) {
       if (await step(`list ${DIR}`, openDir)) {
         const ok = await step('upload scratch file', async () => {
-          await page!.setInputFiles('#files-upload', { name: scratchName, mimeType: 'text/plain', buffer: Buffer.from(scratchData) });
+          await page!.locator('input[type=file]').setInputFiles({ name: scratchName, mimeType: 'text/plain', buffer: Buffer.from(scratchData) });
           uploaded = true;
-          await settled();
-          const row = (await rows()).find((r) => r.name === scratchName);
-          if (!row) throw new Error(`${scratchName} not listed after the upload`);
+          await settled(async () => (await rows()).some((r) => r.name === scratchName));
+          const row = (await rows()).find((r) => r.name === scratchName)!;
           if (row.size !== Buffer.byteLength(scratchData)) throw new Error(`listed with ${row.size} bytes, sent ${Buffer.byteLength(scratchData)}`);
           return `${DIR}/${scratchName}, ${row.size} bytes`;
         });
@@ -301,7 +302,6 @@ try {
         else if (ok) {
           await step('download and compare', async () => {
             const [download] = await Promise.all([page!.waitForEvent('download', { timeout: STEP_MS }), rowButton(scratchName, 'Download')]);
-            await settled();
             const file = join(out!, 'downloaded-scratch.txt');
             await download.saveAs(file);
             const got = readFileSync(file, 'utf8');
@@ -309,35 +309,22 @@ try {
             return `${got.length} bytes, identical`;
           });
           await step('delete scratch file', async () => {
-            await rowButton(scratchName, 'Delete');
-            await settled();
-            if ((await rows()).some((r) => r.name === scratchName)) throw new Error('still listed');
+            await deleteScratch();
             deleted = true;
             return `${DIR}/${scratchName} gone`;
           });
         }
       }
       await step('list mod packages', async () => {
-        await page!.click('#mods-refresh');
-        await settled();
-        const generations = await page!.$$eval('#mods-list tr.generation', (trs) => trs.map((t) => t.textContent ?? ''));
-        const saved = await text('config-saved'), content = await text('config-content');
-        return `${generations.length ? generations.join('; ') : (await text('mods-list')).trim()}; ${saved} ${content}`;
+        await nav('Mods');
+        await settled(async () => (await page!.locator('#inputs').count()) > 0);
+        return (await page!.locator('main h2').allTextContents()).join('; ');
       });
-      if (reboot && steps.every((s) => s.ok)) {
-        await step('reboot to menu and reconnect', () => page!.evaluate(() => {
-          const demo = (window as Window & { xyfDemo?: { rebootAndReconnect(): Promise<string> } }).xyfDemo;
-          if (!demo) throw new Error('the demo test interface is unavailable');
-          return demo.rebootAndReconnect();
-        }));
-      }
     }
   }
 } finally {
   if (uploaded && !deleted && page) await step('cleanup: delete scratch file', cleanup);
-  if (page && await page.locator('#disconnect').isEnabled().catch(() => false)) {
-    await step('disconnect', async () => { await page!.click('#disconnect'); await settled(); return await text('status'); });
-  }
+  if (page && await connected().catch(() => false)) await step('disconnect', disconnect);
   await context?.close().catch(() => undefined);
   await (browser as Browser | null)?.close().catch(() => undefined);
   (vite as ChildProcess | null)?.kill();

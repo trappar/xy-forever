@@ -135,7 +135,7 @@ describe('te-boot over Web MIDI', () => {
     for (const match of readme.matchAll(/`\/([a-z]+)`/g)) expect(PAGES).toContain(match[1]);
   });
   it('tells the PLAY-at-power-on step once', () => {
-    const source = readFileSync(new URL('../src/install/page.ts', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../src/install/content.ts', import.meta.url), 'utf8');
     expect(source.match(/hold PLAY/g)).toHaveLength(1);
   });
   it('ships no way to switch the dev menu off', () => {

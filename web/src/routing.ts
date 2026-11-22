@@ -2,7 +2,6 @@
 // (/ in development, /xy-forever/ for GitHub Pages), always with a trailing slash so that each is a directory index on
 // static hosting. The query (?sim=PORT among it) is kept across navigation. Components load lazily: vite.config.ts
 // reads the paths it emits from this router in Node (staticPaths).
-import { createElement } from 'react';
 import { createRootRoute, createRoute, createRouter, lazyRouteComponent, redirect, retainSearchParams } from '@tanstack/react-router';
 import { useConnection } from './connection.ts';
 import { INSTALL_STAGES, isInstallStage } from './install/stages.ts';
@@ -26,22 +25,21 @@ const root = createRootRoute({
 
 /** Device, Mods and Files need a connection: without one, Connect. */
 const connected = (): void => { if (!useConnection.getState().client) throw redirect({ to: '/connect/', replace: true }); };
-const legacy = (page: Exclude<Page, 'install'>) => lazyRouteComponent(() => import('./legacy-page.tsx').then((m) => ({ default: () => createElement(m.LegacyPage, { page }) })));
 
 const home = createRoute({ getParentRoute: () => root, path: '/', beforeLoad: () => { throw redirect({ to: '/connect/', replace: true }); } });
-const connect = createRoute({ getParentRoute: () => root, path: 'connect', component: legacy('connect') });
-const device = createRoute({ getParentRoute: () => root, path: 'device', beforeLoad: connected, component: legacy('device') });
-const mods = createRoute({ getParentRoute: () => root, path: 'mods', beforeLoad: connected, component: legacy('mods') });
-const files = createRoute({ getParentRoute: () => root, path: 'files', beforeLoad: connected, component: legacy('files') });
+const connect = createRoute({ getParentRoute: () => root, path: 'connect', component: lazyRouteComponent(() => import('./pages/connect.tsx')) });
+const device = createRoute({ getParentRoute: () => root, path: 'device', beforeLoad: connected, component: lazyRouteComponent(() => import('./pages/device.tsx')) });
+const mods = createRoute({ getParentRoute: () => root, path: 'mods', beforeLoad: connected, component: lazyRouteComponent(() => import('./pages/mods.tsx')) });
+const files = createRoute({ getParentRoute: () => root, path: 'files', beforeLoad: connected, component: lazyRouteComponent(() => import('./pages/files.tsx')) });
 const install = createRoute({ getParentRoute: () => root, path: 'install' });
-const installIndex = createRoute({ getParentRoute: () => install, path: '/', component: lazyRouteComponent(() => import('./legacy-page.tsx'), 'LegacyInstall') });
+const installIndex = createRoute({ getParentRoute: () => install, path: '/', component: lazyRouteComponent(() => import('./pages/install.tsx')) });
 const installStage = createRoute({
   getParentRoute: () => install, path: '$stage',
   params: {
     parse: ({ stage }): { stage: InstallStage } => { if (!isInstallStage(stage)) throw redirect({ to: '/install/' }); return { stage }; },
     stringify: ({ stage }) => ({ stage }),
   },
-  component: lazyRouteComponent(() => import('./legacy-page.tsx'), 'LegacyInstall'),
+  component: lazyRouteComponent(() => import('./pages/install.tsx')),
 });
 
 const routeTree = root.addChildren([home, connect, device, mods, files, install.addChildren([installIndex, installStage])]);
@@ -67,6 +65,9 @@ export function simPort(): string | null {
   const { sim } = router.state.location.search;
   return typeof sim === 'string' ? sim : null;
 }
+
+/** The path this document was loaded at. */
+export const loadPath = typeof location === 'undefined' ? '' : location.pathname;
 
 /** How many stages lie behind this one in the install flow (the history entry's state). */
 export const backDepth = (): number => router.state.location.state.back ?? 0;
