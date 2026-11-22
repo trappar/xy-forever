@@ -17,12 +17,14 @@ Guides: [files](docs/files.md) (the file methods and their errors), [mod package
 
 ```sh
 pnpm install      # from the repository root (one workspace with web/): TypeScript, Vitest, @types/node (dev only)
-pnpm test         # type-check, then Vitest (about 5 s): codec, call layer, Web Serial, end to end, relay, files, mods
+pnpm test         # Vitest: codec, call layer, Web Serial, end to end, relay, files, mods
+pnpm typecheck    # tsc (mise run web-test runs it once, after the tests)
 pnpm exec vitest run test/files.spec.ts -t 'rename'   # one file, one test
 node test/conformance.ts --sim 127.0.0.1:7341         # the conformance cases against a running simulator
 ```
 
-`mise run web-test` and CI's web job run `pnpm test`; the repository's Python suite does not. One runner, Vitest, in
+`mise run web-test` and CI's web job run `pnpm test` (`mise run web-test-changed`: only the tests your changes
+affect); the repository's Python suite does not. One runner, Vitest, in
 Node: the Web Serial specs (`webserial`, `chooser`, `buffer`) drive the real transport through the fake
 `navigator.serial` of `test/fake-serial.ts` (Chrome's receive buffer, the chooser, granted ports); the app in Chrome
 with the same fake is `web/e2e/install-sim.e2e.ts`. The web app driven against the OP-XY itself:
@@ -31,8 +33,10 @@ with the same fake is `web/e2e/install-sim.e2e.ts`. The web app driven against t
 The run starts its own simulators at once (`python3 -m xy_forever.sim`, from a random base port so that parallel runs do
 not collide, state under the private sessions folder; `XYF_TS_SIM_PORT` fixes the base, `XYF_TS_SIM_STATE`,
 `XYF_KEEP_SIM=1`) and skips the simulator tests with the reason when they cannot start. Their transport pauses on the
-simulator's clock (`simOpener`, `Transport.pause`), so polls take no host time. Budgets: 10 s a test, 30 s the run
-(`test/run-budget.ts` names what still runs). Node 26 (pinned in `mise.toml`).
+simulator's clock (`simOpener`, `Transport.pause`), so polls take no host time. Budgets, enforced: each test's and the
+run's, about twice an unloaded run's and scaled on a busy or slower machine (`test/run-budget.ts`,
+`test/load-scale.ts`: over one fails the run and names the test); Vitest's time-outs and the run's hang bound stay
+the outer limit. Node 26 (pinned in `mise.toml`).
 
 ## Use
 
