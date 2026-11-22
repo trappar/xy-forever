@@ -53,7 +53,7 @@ uv run pytest -n auto --dist worksteal {{ tier }}{% for a in usage.args %}{{ a |
 [tasks.test-changed]
 description = "Tests affected by your changes, every tier but the sweeps (testmon: Python, C++, scripts)"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
-run = 'uv run pytest -n auto --dist worksteal -m "not sweep" --testmon {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = 'uv run pytest -n auto --dist worksteal -m "not sweep" --testmon-forceselect {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.test-failed]
 description = "Rerun the tests that failed last time (none failed: nothing runs)"
@@ -67,7 +67,7 @@ run = 'uv run pytest -p no:xdist {{ usage.target | quote }}'
 
 [tasks.test-watch]
 description = "Rerun affected tests on every save (every tier but the sweeps)"
-run = 'uv run ptw --now . -n auto --dist worksteal -m "not sweep" --testmon'
+run = 'uv run ptw --now . -n auto --dist worksteal -m "not sweep" --testmon-forceselect'
 
 [tasks.test-all]
 description = "Every tier but the sweeps, the simulator core included (about 13 s); check and CI run it"

@@ -147,7 +147,9 @@ class Budgets:
         if self.mode not in ('on', 'off'):
             raise pytest.UsageError('XYF_BUDGETS=%s: on (the default) or off' % self.mode)
         self.fixed = float(os.environ['XYF_BUDGETS_SCALE']) if os.environ.get('XYF_BUDGETS_SCALE') else None
-        self.tracing = TRACING if config.getoption('testmon', False) else 1.0
+        self.tracing = (
+            TRACING if config.getoption('testmon', False) or config.getoption('testmon_forceselect', False) else 1.0
+        )
         self.probe = probe_s()  # before the workers start, and again after they end
         self.start, self.tests, self.lines, self.failed = time.monotonic(), {}, [], False
 
