@@ -14,6 +14,9 @@ needs the highest bar of confidence. These rules are binding and override conven
   - Bootloader downgrade is rejected (`0x88a28e12`, status 7). It cannot be undone:
     teenage engineering's built-in updater cannot downgrade a 1.2.5 device either, so
     XY Forever does not support devices on 1.2.5.
+- **Never write OTP.** It holds TE's firmware-signature key and the `.tfw` AES key; a write can
+  never be undone and could stop the real bootloader accepting any firmware, beyond any recovery.
+  XY Forever only reads OTP ([how](architecture/code-rules.md)).
 - **Never run the official updater or TE tools near the device.** An unmodified
   official OS in the library keeps its own updater, which can stage a bootloader
   flash.
