@@ -1062,7 +1062,7 @@ def save_times_table(text):
 
 
 def decode_status(body):
-    from xy_forever import census
+    from xy_forever import census, census_usb
 
     blocks, at = [], 0
     while at + 8 <= len(body):
@@ -1074,7 +1074,7 @@ def decode_status(body):
         regions.append(dict(address=0, bytes=len(data), offset=len(dump)))
         dump += data
     return dict(
-        usb_service=census.usb_service(regions, dump),
+        usb_service=census_usb.usb_service(regions, dump),
         remote_read=census.remote_read(regions, dump),
         boot_timing=census.boot_timing(regions, dump),
         storage_start=census.storage_start(regions, dump),  # 191

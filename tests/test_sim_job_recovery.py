@@ -15,7 +15,6 @@ from xy_forever import package_records
 Switch, UNAVAILABLE, content, LIB = CS.Switch, CS.UNAVAILABLE, CS.content, CS.LIB
 
 JOURNAL = 'xy-forever/job.txt'
-OFFER = 'Source missing. PLAY on the first row undoes: '  # usb_service content_line
 
 
 def identity(root, entry):
@@ -77,64 +76,51 @@ class Recovery(Switch, unittest.TestCase):
         self.repaired(target)
         self.assertEqual(self.dev.hello()[0], 0)
 
-    @pytest.mark.sweep  # parked: a serial chain of simulator restarts, the run's critical path
-    def test_repair_and_undo_cut_at_every_io_boundary(self):
+    def cut_at_sampled_io_boundaries(self, undo):
+        """The automatic repair (undo: of an undo), measured once uncut, then cut at a sample of its IO
+        boundaries (every mutating A-side operation is one; the native tests cut at every read and close too):
+        each cut run powers on the exact snapshot with the boundary armed, and the next power-on repairs."""
         previous = self.default()
         target = self.build(['alpha'])
-        original = self.dir / 'before-repair'
-        shutil.copytree(self.root, original)
-        for undo in (False, True):
-            if undo:
-                self.switched(target)
-            journal = intent(self.root, target, previous, undo)
-            snapshot = self.dir / ('undo' if undo else 'replay')
-            shutil.copytree(self.root, snapshot)
-            (snapshot / JOURNAL).write_bytes(journal)
-            # Measure the complete automatic repair. Every mutating A-side operation is a cut boundary (native tests also cut every read/close).
-            self.dev.t.close()
-            self.sim.stop()
+        if undo:
+            self.switched(target)
+        snapshot = self.dir / 'snapshot'
+        shutil.copytree(self.root, snapshot)
+        (snapshot / JOURNAL).write_bytes(intent(self.root, target, previous, undo))
+        want = dict(target=previous, official=True) if undo else dict(target=target)
+
+        def power_on_snapshot(cut_after=None):
             shutil.rmtree(self.root)
             shutil.copytree(snapshot, self.root)
-            self.sim.start()
+            cuts = self.sim.status()['cuts']
+            if cut_after:
+                self.sim.set('cut_after', cut_after)
+            self.sim.control('power play')
+            end = time.monotonic() + 30
+            while cut_after and self.sim.status()['cuts'] == cuts:
+                self.assertLess(time.monotonic(), end, 'the armed mutation boundary')
+                self.sim.advance(10)
+            self.sim.wait_listening(30)
             self.reconnect()
             self.dev.hello()
-            self.repaired(previous if undo else target, official=undo)
-            total = self.sim.status()['storage_ops']
-            self.assertGreater(total, 20)
-            boundaries = sorted(
-                set(range(1, total + 1, max(1, total // 12))) | {total}
-            )  # a sample: the native tests cut at every one
-            for at in boundaries:
-                with self.subTest(undo=undo, io=at):
-                    self.dev.t.close()
-                    self.sim.stop()
-                    shutil.rmtree(self.root)
-                    shutil.copytree(snapshot, self.root)
-                    self.sim.start()
-                    self.reconnect()
-                    self.dev.hello()
-                    self.repaired(previous if undo else target, official=undo)
-                    shutil.rmtree(self.root)
-                    shutil.copytree(snapshot, self.root)
-                    # A new power-on now sees the exact snapshot and the armed IO boundary.
-                    cuts = self.sim.status()['cuts']
-                    self.sim.set('cut_after', at)
-                    self.sim.control('power play')
-                    end = time.monotonic() + 30
-                    while self.sim.status()['cuts'] == cuts:
-                        self.assertLess(time.monotonic(), end, 'the armed mutation boundary')
-                        self.sim.advance(10)
-                    self.sim.wait_listening(30)
-                    self.reconnect()
-                    self.dev.hello()
-                    self.repaired(previous if undo else target, official=undo)
-            self.dev.t.close()
-            self.sim.stop()
-            shutil.rmtree(self.root)
-            shutil.copytree(original, self.root)
-            self.sim.start()
-            self.reconnect()
-            self.dev.hello()
+            self.repaired(**want)
+
+        before = self.sim.status()['storage_ops']
+        power_on_snapshot()
+        total = self.sim.status()['storage_ops'] - before
+        self.assertGreater(total, 20)
+        # A sample of 13: power cycles of one board (no simulator restart between cuts) keep it cheap, #229.
+        for at in sorted(set(range(1, total + 1, max(1, total // 12))) | {total}):
+            with self.subTest(io=at):
+                power_on_snapshot(at)
+
+    @pytest.mark.sweep  # parked: a serial chain of simulator power cycles, the run's critical path
+    def test_repair_cut_at_sampled_io_boundaries(self):
+        self.cut_at_sampled_io_boundaries(undo=False)
+
+    @pytest.mark.sweep  # parked: a serial chain of simulator power cycles, the run's critical path
+    def test_undo_cut_at_sampled_io_boundaries(self):
+        self.cut_at_sampled_io_boundaries(undo=True)
 
     @pytest.mark.gate  # a simulator sweep
     @pytest.mark.uses('sim/')

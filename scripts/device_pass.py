@@ -124,7 +124,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from scripts.device_pass_keepalive import Keepalive, keepalive_dir  # noqa: F401
+from scripts.device_pass_keepalive import Keepalive
 from xy_forever import census, config_records, package_records, paths, xyf_build
 from xy_forever import usb_proto as P
 from xy_forever import usb_proto_ids as ids

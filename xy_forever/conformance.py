@@ -18,8 +18,9 @@ import zlib
 from pathlib import Path
 
 from xy_forever.conformance_connection import ConformanceConnection
-from xy_forever.device_guard import REPLY_BIT, UNSAFE_TOKEN, device_guard  # noqa: F401
+from xy_forever.device_guard import REPLY_BIT, device_guard
 from xy_forever.device_guard import path_in as _path_in
+from xy_forever.transport import pause
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES = ROOT / 'protocol' / 'v1.conformance.json'
@@ -1023,7 +1024,7 @@ class Runner(ConformanceConnection):
                 try:
                     link = Link(self.target.open(), self.spec, self.log)
                 except OSError:
-                    getattr(self.target, 'pause', time.sleep)(0.2)
+                    pause(self.target, 0.2)
                     continue
                 try:
                     return self.greet(link, True, deadline)
@@ -1031,7 +1032,7 @@ class Runner(ConformanceConnection):
                     pass
                 finally:
                     link.close()
-            getattr(self.target, 'pause', time.sleep)(0.2)
+            pause(self.target, 0.2)
         return None
 
     @property
@@ -1206,12 +1207,12 @@ class Runner(ConformanceConnection):
             link.write(data)
         for chunk in chunks:
             link.write(chunk)
-            getattr(self.target, 'pause', time.sleep)(0.005)  # separate reads on the device side
+            pause(self.target, 0.005)  # separate reads on the device side
         if 'none_within_ms' in expect:
-            pause = getattr(self.target, 'pause', None)
-            if pause:  # the simulator: its own time passes
-                pause(expect['none_within_ms'] / 1000.0)
-            got = link.quiet(50 if pause else expect['none_within_ms'])
+            on_sim = hasattr(self.target, 'pause')
+            if on_sim:  # the simulator: its own time passes
+                pause(self.target, expect['none_within_ms'] / 1000.0)
+            got = link.quiet(50 if on_sim else expect['none_within_ms'])
             if got:
                 raise Fail(
                     'expected no frame within %d ms, got %s'

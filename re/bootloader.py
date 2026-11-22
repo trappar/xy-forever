@@ -35,17 +35,6 @@ def u32(a):
     return int.from_bytes(b, 'little') if b and len(b) == 4 else None
 
 
-def cstr(a, minlen=3):
-    b = read(a, 200)
-    if not b:
-        return None
-    e = b.find(b'\0')
-    if e < minlen:
-        return None
-    s = b[:e]
-    return s.decode() if all(32 <= c < 127 or c in (9, 10) for c in s) else None
-
-
 # ---- annotated listing
 @lru_cache(maxsize=1)
 def listing():

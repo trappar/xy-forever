@@ -39,11 +39,11 @@ python scripts/setup.py bootstrap {% if usage.dry_run %}--dry-run{% endif %} \
 description = "What is set up and which tests will skip"
 run = "uv run scripts/setup.py doctor"
 
-# The suite (pytest; tiers, budgets: tests/conftest.py; docs/operating/build-install.md#checks). Arguments pass
+# The suite (pytest; tiers, budgets: tests/conftest.py; docs/operating/checks.md). Arguments pass
 # through to pytest. A selection (a file, a node id, a folder, -k or -m) runs whatever its tier; otherwise
 # `test` runs the fast tier. Every run uses one worker per core (-n auto).
 [tasks.test]
-description = "Fast tier of the suite (about 2 s), or the selected tests, any tier"
+description = "Fast tier of the suite (about 2 s; 4 s on a busy machine), or the selected tests, any tier"
 usage = 'arg "[args]..." help="pytest arguments (files, node ids, -k EXPR or -m EXPR: any tier; -x, ...)" var=#true'
 run = """{% set tier = "-m fast " %}{% for a in usage.args %}{% if a is ending_with(pat=".py") or "::" in a \
 or a is starting_with(pat="tests") or a is starting_with(pat="-k") or a is starting_with(pat="-m") %}\
@@ -51,9 +51,12 @@ or a is starting_with(pat="tests") or a is starting_with(pat="-k") or a is start
 uv run pytest -n auto --dist worksteal {{ tier }}{% for a in usage.args %}{{ a | quote }} {% endfor %}"""
 
 [tasks.test-changed]
-description = "Tests affected by your changes, every tier but the sweeps (testmon: Python, C++, scripts)"
+description = "Tests affected by your changes, every tier but the sweeps (testmon: Python, C++, scripts; Vitest: TypeScript)"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
-run = 'uv run pytest -n auto --dist worksteal -m "not sweep" --testmon-forceselect {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = [
+  'uv run pytest -n auto --dist worksteal -m "not sweep" --testmon-forceselect {% for a in usage.args %}{{ a | quote }} {% endfor %}',
+  { task = "web-test-changed" },
+]
 
 [tasks.test-failed]
 description = "Rerun the tests that failed last time (none failed: nothing runs)"
@@ -70,12 +73,12 @@ description = "Rerun affected tests on every save (every tier but the sweeps)"
 run = 'uv run ptw --now . -n auto --dist worksteal -m "not sweep" --testmon-forceselect'
 
 [tasks.test-all]
-description = "Every tier but the sweeps, the simulator core included (about 13 s); check and CI run it"
+description = "Every tier but the sweeps, the simulator core included (about 12 s; 20 s on a busy machine); check and CI run it"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
 run = 'uv run pytest -n auto --dist worksteal -m "not sweep" {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.test-sweeps]
-description = "The long simulator sweeps (about 25 s of CPU), in no shared run"
+description = "The long simulator sweeps (about 6 s; 15 s on a busy machine), in no shared run"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
 run = 'uv run pytest -n auto --dist worksteal -m sweep {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
@@ -85,7 +88,7 @@ usage = 'arg "[args]..." help="pytest arguments (-m fast: one tier)" var=#true'
 run = 'uv run pytest -n auto --dist worksteal -m "not sweep" --durations=25 {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.check]
-description = "PR gate: build, verify (cached), lint and type checks, every tier but the sweeps (under 30 s)"
+description = "PR gate: build, verify (cached), lint, the TS suites when web/ or clients/ts changed, every tier but the sweeps (about 18 s, 25 s with the TS suites; 30-40 s on a busy machine)"
 usage = 'arg "[args]..." help="check.py flags (--js, --force, --confirm [REF])" var=#true'
 run = 'uv run scripts/check.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
@@ -94,16 +97,22 @@ description = "Same firmware as a ref? (reuses the check's product build)"
 usage = 'arg "[ref]" help="the git ref to compare with" default="HEAD"'
 run = 'uv run scripts/neutral.py {{ usage.ref | quote }}'
 
-# Through Turborepo's local cache (scripts/firmware_cache.py, turbo.json): unchanged, both restore in about 0.2 s.
+# Through Turborepo's local cache (scripts/firmware_cache.py, turbo.json); each prints one line.
 [tasks.build]
-description = "Product firmware build into build/product (cached)"
+description = "Product firmware build into build/product (cached: about 1 s; a fresh build 10-20 s)"
 usage = 'flag "--force" help="build past the cache"'
+quiet = true
 run = 'uv run scripts/firmware_cache.py build {% if usage.force %}--force{% endif %}'
 
 [tasks.verify]
-description = "Product build, then --verify of it (cached)"
+description = "Product build, then --verify of it (cached: about 1 s; fresh 15-25 s)"
 usage = 'flag "--force" help="build and verify past the cache"'
+quiet = true
 run = 'uv run scripts/firmware_cache.py verify {% if usage.force %}--force{% endif %}'
+
+[tasks.firmware-cache-proof]
+description = "Prove the firmware cache's hit and miss cases on a scratch worktree (under 2 min); after changing turbo.json or firmware_cache.py"
+run = 'uv run scripts/firmware_cache_proof.py'
 
 [tasks.sim]
 description = "Device simulator on 127.0.0.1:7341"
@@ -123,7 +132,7 @@ run = 'uv run scripts/protogen.py {% if usage.write %}{% else %}--check{% endif 
 # files, exports and dependencies), clang-format (first-party C++; .clang-format-ignore keeps third_party/ and generated headers out). Configs: pyproject.toml [tool.ruff],
 # eslint.config.mjs, .prettierrc.json, knip.json, .clang-format. The pre-commit hook (lefthook.yml) runs the same on staged files.
 [tasks.lint]
-description = "Lint and format checks, all languages (CI runs it; about 3 s)"
+description = "Lint and format checks, all languages (CI runs it; about 4 s; 7 s on a busy machine)"
 depends = ["lint:python", "lint:ts", "lint:cpp"]
 
 [tasks."lint:python"]

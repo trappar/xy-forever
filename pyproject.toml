@@ -26,7 +26,7 @@ dev = [
 ]
 # The C++ built for the host for the tests (hosttest/: a nanobind extension and the doctest binary). Synced by
 # default; a machine that runs no Python suite (CI's Linux job) can skip it: uv sync --no-group native.
-native = ["xyf-hosttest", "scikit-build-core>=0.11", "nanobind>=2.9", "cmake>=3.20", "ninja>=1.11"]
+native = ["xyf-hosttest", "scikit-build-core>=1.0", "nanobind>=3.0", "cmake>=3.20", "ninja>=1.11"]
 
 [project.scripts]
 # `uv run xyf-host status`. scripts/ stays scripts: `uv run scripts/NAME.py`, which import the installed package.
@@ -53,10 +53,13 @@ no-build-isolation-package = ["xyf-hosttest"]    # `uv sync` installs xy_forever
 xyf-hosttest = { path = "hosttest" }
 
 [tool.vulture]
-# `uv run vulture`: dead code. The names below are found by pytest and the device pass, not by calls.
-paths = ["xy_forever", "scripts", "tests", "re"]
-ignore_names = ["step_*", "test_*", "setUp*", "tearDown*", "pytest_*", "Test*", "log_message"]
-min_confidence = 61
+# `uv run vulture`: dead code. Its false positives: tests/vulture_whitelist.py. The names below are found by pytest
+# and the device pass, not by calls; "[A-Z][a-z]*" is a test class (pytest finds unittest classes by type, not by name).
+# usb_proto_ids.py is generated from protocol/v1.json: it lists the whole protocol, used or not.
+paths = ["xy_forever", "scripts", "tests", "re", "hosttest"]
+exclude = ["xy_forever/usb_proto_ids.py"]
+ignore_names = ["step_*", "test_*", "setUp*", "tearDown*", "pytest_*", "Test*", "[A-Z][a-z]*", "log_message"]
+min_confidence = 60
 
 [tool.pytest]
 # The suite: tests/ (unittest.TestCase classes, run by pytest). tests/conftest.py holds the tiers, the hard
@@ -68,8 +71,9 @@ python_files = ["test_*.py"]
 python_classes = ["Test"]             # unittest.TestCase subclasses only: a helper named Test* is no test
 python_functions = []
 addopts = ["-q", "-rfE", "--strict-markers"]
-timeout = "60"                        # bounds.TEST_S: past it, HUNG (tests/xyf_bounds.py)
-timeout_method = "thread"            # the signal method cannot interrupt a hung ctypes call
+# bounds.TEST_S: past it, HUNG. tests/xyf_bounds.py replaces pytest-timeout's timer with its own thread
+# (pytest_timeout_set_timer), so no timeout_method applies: a hung ctypes call cannot stop it.
+timeout = "60"
 
 [tool.ruff]
 # Lint and format (`mise run lint`, `mise run format`; the pre-commit hook runs both on staged files).

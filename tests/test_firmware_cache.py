@@ -2,8 +2,12 @@
 cache stays local (scripts/firmware_cache.py; the hit, miss and failure cases: scripts/firmware_cache_proof.py)."""
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import firmware_cache
 
 from xy_forever import xyf_build
 
@@ -34,6 +38,16 @@ class FirmwareCache(unittest.TestCase):
         ignored = (ROOT / '.gitignore').read_text().splitlines()
         self.assertIn('.turbo/', ignored)
         self.assertIn('/build/', ignored)
+
+    def test_a_run_prints_one_line_saying_where_the_output_went(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(firmware_cache, 'OUT', Path(tmp)):
+            (Path(tmp) / 'manifest.json').write_text(json.dumps({'image': 'bfe69f9c'}))
+            hit = 'Tasks:    1 successful, 1 total\nCached:    1 cached, 1 total\n'
+            line = firmware_cache.summary('build', 0, hit)
+            self.assertRegex(line, r'^firmware build: .+ \(image bfe69f9c, from the cache\)$')
+            self.assertIn(tmp.split('/')[-1], line)
+            self.assertTrue(firmware_cache.summary('verify', 0, 'Cached:    1 cached, 2 total').endswith(', built)'))
+            self.assertEqual(firmware_cache.summary('build', 1, ''), 'firmware build: FAILED (exit 1; the log above)')
 
 
 if __name__ == '__main__':

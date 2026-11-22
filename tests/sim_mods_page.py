@@ -18,9 +18,7 @@ MODS_ROW = 2  # xyf_menu item_mods
 VIEW_READING, VIEW_LIST = range(2)  # (#197: no building view)
 LINE_NONE, LINE_INFO, LINE_ERROR, LINE_DONE = range(4)
 BUILT = 'Built: Mods: %d (content not installed yet).'
-NO_CANCEL = 'Cannot cancel now: it is being added to the library.'
 BUSY = 'Build failed: busy (a job, an upload or a save is running): try again.'
-BUSY_READ = 'Busy: a build or content change is running.'  # the page waits for a job
 
 
 class PageBase(J.Base):

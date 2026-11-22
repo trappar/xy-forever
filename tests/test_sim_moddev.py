@@ -11,8 +11,6 @@ from unittest import mock
 
 from xy_forever import moddev
 
-PRESET = 'content/presets/alpha/default.json'
-
 
 class Watch(unittest.TestCase):
     """--watch: a pass, then another after a file changes (device calls replaced)."""

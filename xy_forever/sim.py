@@ -332,6 +332,9 @@ def free_port():
     raise RuntimeError('no free local port pair')
 
 
+DEADLINE_EXIT = 124  # xyf_sim's exit status at its deadline (sim/runtime.cpp exit_deadline)
+
+
 class DeadlinePassed(TimeoutError):
     """The simulator stopped on its own at its deadline (xyf_sim --deadline-s, #230)."""
 
@@ -471,7 +474,9 @@ class Simulator:
 
     def control(self, line, timeout=5.0):
         """One control line on one kept connection (the board serves many lines per client), so a test
-        polling status does not leave a closed socket per call (TIME_WAIT exhausts local ports)."""
+        polling status does not leave a closed socket per call (TIME_WAIT exhausts local ports). Any failure
+        (a timeout too) closes the connection: a reply that comes late must never answer the next line. A board
+        gone at its deadline raises DeadlinePassed."""
         try:
             if getattr(self, '_control', None) is None:
                 self._control = socket.create_connection(('127.0.0.1', self.control_port), timeout=timeout)
@@ -486,14 +491,26 @@ class Simulator:
                 self._control_in += chunk
             reply, self._control_in = self._control_in.split(b'\n', 1)
             return json.loads(reply.decode())
-        except ConnectionRefusedError, ConnectionResetError, BrokenPipeError:
+        except BaseException as e:
             self._close_control()
-            if self.process is not None and self.process.wait(timeout=2.0) == 124:
+            if (
+                isinstance(e, (ConnectionRefusedError, ConnectionResetError, BrokenPipeError))
+                and self.deadline_passed()
+            ):
                 raise DeadlinePassed(
                     'simulator: stopped at its %g s deadline (--deadline-s; a test that needs '
                     'longer: it is not a simulator core test, #233)' % self.deadline_s
-                )
+                ) from e
             raise
+
+    def deadline_passed(self, wait=2.0):
+        """Whether the board ended at its deadline (exit 124): waits up to wait s for it to end."""
+        if self.process is None:
+            return False
+        try:
+            return self.process.wait(timeout=wait) == DEADLINE_EXIT
+        except subprocess.TimeoutExpired:
+            return False
 
     def _close_control(self):
         if getattr(self, '_control', None) is not None:
@@ -527,11 +544,6 @@ class Simulator:
             if work == before:
                 break
         self.control('settle', timeout=bounds.WAIT_S)
-
-    def jump(self, ms):
-        """Moves device time ms ahead at once, whatever the processors are doing (a pass that took that long)."""
-        if not self.control('jump %d' % ms).get('ok'):
-            raise ValueError('simulator: jump %r refused' % ms)
 
     def reset(self, which):
         """Resets processor 'a' or 'b' alone (no handler runs, the other keeps running); after the

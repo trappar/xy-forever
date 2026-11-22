@@ -22,6 +22,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -32,9 +33,10 @@ from xy_forever import dev_tools, paths, toolchain
 
 ROOT = Path(__file__).resolve().parents[1]
 
-OUT = paths.BUILD / 'product'  # the task's output (turbo.json outputs), gitignored
+OUT = paths.PRODUCT  # the task's output (turbo.json outputs), gitignored
 TASKS = {'build': 'firmware-build', 'verify': 'firmware-verify'}
 KEY = 'XYF_BUILD_KEY'
+LOG = 'XYF_TURBO_LOG'  # set: Turborepo's whole output, as on a failure (scripts/firmware_cache_proof.py reads it)
 TURBO = ROOT / 'node_modules' / '.bin' / ('turbo.cmd' if os.name == 'nt' else 'turbo')
 ENV = {'TURBO_TELEMETRY_DISABLED': '1', 'TURBO_NO_UPDATE_NOTIFIER': '1'}
 
@@ -82,7 +84,26 @@ def run_turbo(task, force=False):
     if install and subprocess.run(install, cwd=ROOT).returncode:
         return 1
     env = dict(os.environ, **ENV, **{KEY: build_key()})
-    return subprocess.run(turbo_command(task, force), cwd=ROOT, env=env).returncode
+    run = subprocess.run(
+        turbo_command(task, force), cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+    if run.returncode or os.environ.get(LOG):  # Turborepo's banner and the task's log: when it failed, or asked
+        sys.stdout.write(run.stdout)
+    print(summary(task, run.returncode, run.stdout))
+    return run.returncode
+
+
+def summary(task, status, output):
+    """The one line a run prints: where the output went, its image, and whether the cache had it."""
+    if status:
+        return 'firmware %s: FAILED (exit %d; the log above)' % (task, status)
+    try:
+        image = json.loads((OUT / 'manifest.json').read_text())['image']
+    except OSError, ValueError, KeyError:
+        image = '?'
+    hit = re.search(r'Cached:\s+(\d+) cached, (\d+) total', output)
+    how = 'from the cache' if hit and hit.group(1) == hit.group(2) else 'built'
+    return 'firmware %s: %s (image %s, %s)' % (task, os.path.relpath(OUT, os.getcwd()), image, how)
 
 
 def run_task(task):

@@ -16,10 +16,10 @@ from pathlib import Path
 
 import pytest
 import xyf_hosttest
+from conftest import verified_build
 
-from xy_forever import paths
 from xy_forever import usb_proto as P
-from xy_forever.census import (
+from xy_forever.census_usb import (
     USB_SERVICE_FIELDS,
     USB_SERVICE_V2_WORDS,
     USB_SERVICE_V3_WORDS,
@@ -381,9 +381,7 @@ class HostToolTest(unittest.TestCase):
         return d
 
     def test_real_build_validates_and_installs_on_fake_device(self):
-        build = paths.newest_verified_build()
-        if build is None:
-            self.skipTest('no verified build of this source (mise run check or mise run setup makes one)')
+        build = verified_build(self)
         data, notes = self.host.load_build(build)
         self.assertTrue(any('verified' in n for n in notes))
         fake = FakeDevice({'/yaffs2/firmware.version': b'1.2.1+0@abc\n'})
@@ -571,9 +569,7 @@ class HostToolTest(unittest.TestCase):
             dev.call(0x06)
 
     def test_install_and_reboot_default_to_dry_run(self):
-        build = paths.newest_verified_build()
-        if build is None:
-            self.skipTest('no verified build of this source (mise run check or mise run setup makes one)')
+        build = verified_build(self)
         called = []
         original = self.host.connect
         self.host.connect = lambda timeout: called.append(1)

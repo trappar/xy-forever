@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from xy_forever import bounds, census, paths, release, sim, xyf_build
+from xy_forever import bounds, census, release, sim, xyf_build
 from xy_forever import usb_proto as P
 from xy_forever import usb_proto_ids as ids
 from xy_forever import xyf_host as host
@@ -33,11 +33,9 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 BASE = '/yaffs2/xy-forever/'
 PRE_V1 = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e'
 SPEC = json.loads((ROOT / 'protocol' / 'v1.json').read_text())
-BUILD = paths.newest_verified_build()  # a verified build of this source, when present
 
 
 PARTITION_CLASS, PATH_CLASS, SECTOR_CLASS, WRITE_CLASS = 0x11907694, 0x119076B4, 0x11907348, 0x11907710
-READ_CLASS = 0x11907368
 EACCES, EBADF, EROFS, EBUSY, EMFILE = 13, 9, 30, 16, 24
 COMMAND_TAG = 0x434D  # peer_services.hpp: a command item's argument tag
 INSTALL_ITEM, USB_MODE_ITEM, FILE_WRITE_ITEM = 4, 7, 10  # storage_server.hpp

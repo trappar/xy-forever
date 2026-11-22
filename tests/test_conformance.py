@@ -23,6 +23,7 @@ from xy_forever import conformance as C
 from xy_forever import paths, sim
 from xy_forever import usb_proto as P
 from xy_forever import xyf_host as host
+from xy_forever.device_guard import UNSAFE_TOKEN, device_guard
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 AREA = '/yaffs2/xy-forever/log/conformance/'
@@ -138,7 +139,7 @@ class DeviceGuardTest(unittest.TestCase):
     def guard(self, name, payload):
         s = C.Spec(spec())
         kind = s.type_of(name) if isinstance(name, str) else name
-        return C.device_guard(s, kind, payload, AREA)
+        return device_guard(s, kind, payload, AREA)
 
     def test_allows_reads_staging_area_writes_and_menu_restarts(self):
         u32 = lambda v: struct.pack('<I', v)
@@ -162,7 +163,7 @@ class DeviceGuardTest(unittest.TestCase):
             (0x33, b''),
             (0x60, b''),  # retired types: empty, every build refuses
             ('file.write_staged', (AREA + 'a/b.txt\0').encode() + bytes(32)),
-            ('file.write_staged', b'/yaffs2/x\0' + C.UNSAFE_TOKEN),
+            ('file.write_staged', b'/yaffs2/x\0' + UNSAFE_TOKEN),
             ('file.write_staged', b'/yaffs2/xy-forever/state-a.txt\0' + bytes(31)),
         ):
             self.assertIsNone(self.guard(name, payload), (name, payload))

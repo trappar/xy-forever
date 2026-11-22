@@ -1,5 +1,5 @@
 """The suite under pytest: tiers, enforced CPU budgets, hard bounds (xyf_bounds.py), --testmon's C++ and
-script selection (xyf_select.py). The commands and the policy: docs/operating/build-install.md#checks.
+script selection (xyf_select.py). The commands and the policy: docs/operating/checks.md.
 
 Tiers, each a marker on a test (the closest marker wins): `gate`, `sim` (the simulator core, #233: each kept
 test says why in its docstring) and `sweep` (simulator sweeps too long to share a run: `mise run test-sweeps`);
@@ -31,7 +31,7 @@ import pytest
 import xyf_bounds
 import xyf_select
 
-from xy_forever import no_device
+from xy_forever import no_device, paths
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,6 +50,16 @@ BUDGETS = {
 TIERS = tuple(BUDGETS)
 PROBE_S = 0.035  # probe_s() on the reference machine (Apple M5 Max), idle: more scales the limits
 TRACING = 2.5  # --testmon: coverage tracing took 1.6x a test's CPU time (median), 2.2x at worst
+
+
+def verified_build(test):
+    """The verified product build of this checkout's sources (paths.verified_build()). Without one, test is
+    skipped naming why, or failed when XYF_REQUIRE_BUILD is set (mise run check sets it: its verify step has
+    just made one, so a build it cannot use is a bug)."""
+    build, why = paths.verified_build()
+    if build is None:
+        (test.fail if os.environ.get(paths.REQUIRE_BUILD) else test.skipTest)(why)
+    return build
 
 
 def tier_of(item):

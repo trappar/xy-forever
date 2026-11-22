@@ -50,16 +50,16 @@ def check(pin_path=PIN, staged=STAGED):
 
 def stage(build, stocks, pin_path=PIN, staged=STAGED, *, notes=None):
     """Pins and stages a verified product build with the notes the update page shows."""
-    named = paths.build_image(build)
-    if not named:
-        raise ValueError('%s is not a verified product build folder (builds/<image>/)' % build)
+    manifest = paths.verified(build)  # builds/<image>/ or a checkout's build/product
+    if not manifest:
+        raise ValueError('%s is not a verified product build folder' % build)
     data = (Path(build) / 'candidate.ldr').read_bytes()
     shared = stock_bytes.shared_runs(data, stocks)
     if shared:
-        raise ValueError('%s shares stock bytes: %s' % (named[0], shared[:3]))
+        raise ValueError('%s shares stock bytes: %s' % (manifest['image'], shared[:3]))
     pin = pin_of(data)
-    if pin['version'] != named[1].get('version'):
-        raise ValueError('the build is release %s, this checkout %s' % (named[1].get('version'), pin['version']))
+    if pin['version'] != manifest.get('version'):
+        raise ValueError('the build is release %s, this checkout %s' % (manifest.get('version'), pin['version']))
     if notes is None and pin_path.is_file():
         previous = json.loads(pin_path.read_text())
         if previous.get('version') == pin['version']:
@@ -87,7 +87,7 @@ def main():
         return 1 if why else 0
     build = args.build or paths.newest_verified_build()
     if build is None:
-        print('no verified product build of this source: run `mise run check` first')
+        print(paths.verified_build()[1])
         return 1
     stocks = {name: (paths.STOCK_121 / name).read_bytes() for name in ('os.ldr', 'bootloader.ldr')}
     try:

@@ -1,8 +1,25 @@
+import hashlib
 import random
 import struct
 import unittest
 
-from xy_forever.ldr import parse_ldr, replay
+import pytest
+
+from xy_forever.build_formats import Firmware
+from xy_forever.ldr import inspect_ldr, parse_ldr, replay
+from xy_forever.outer import ALLOWED, PROTECTED
+from xy_forever.paths import DECRYPTED, STOCK_121
+from xy_forever.validation import validate_package
+
+# The official OS images (private): the stock 1.2.1 pair's os.ldr and, when decrypted, 1.2.5's; each with its package.
+OFFICIAL = (
+    ('1.2.1', STOCK_121 / 'os.ldr', DECRYPTED / 'opxy_firmware_1_2_1/firmware_secure.zip'),
+    (
+        '1.2.5',
+        DECRYPTED / 'opxy_firmware_1_2_5/firmware/blackfin/bin/os.ldr',
+        DECRYPTED / 'opxy_firmware_1_2_5/opxy_firmware_1_2_5.zip',
+    ),
+)
 
 
 def header(flags, target, count, argument=0):
@@ -121,6 +138,40 @@ class LdrTests(unittest.TestCase):
         self.assertNotEqual(self.native.inspect(data, allowed=())[0], 0)
         self.assertNotEqual(self.native.inspect(data, allowed=((0x2000, 0x1000),))[0], 0)
         self.assertNotEqual(self.native.inspect(data, protected=((0x1000, 0x1000),))[0], 0)
+
+
+@pytest.mark.gate  # two whole official images expanded natively and their packages read: about 1 s of CPU
+class OfficialImages(unittest.TestCase):
+    """The native LDR parser against the independent mapper (build_formats.Firmware) on the official OS images: the
+    same records, expanded bytes and entry, and the same final memory; the image matches its package's OS."""
+
+    def test_native_expansion_matches_the_independent_mapper(self):
+        native = Native()
+        for version, path, package in OFFICIAL:
+            with self.subTest(version):
+                if not path.is_file():
+                    self.skipTest('%s absent (setup.py import-stock; decrypted packages)' % path)
+                data = path.read_bytes()
+                report = inspect_ldr(data)
+                error, summary = native.inspect(data, ALLOWED, PROTECTED)
+                self.assertEqual(error, 0)
+                self.assertEqual(summary, (report['records'], report['expanded_write_bytes'], int(report['entry'], 16)))
+                independent = Firmware(data)
+                memory = [(lo, hi, bytearray(hi - lo)) for lo, hi, _ in independent.segments]
+                for record in parse_ldr(data)[1:-1]:
+                    for delta in range(0, record.count, 65536):
+                        chunk = native.expand(data, record.offset, delta, min(65536, record.count - delta))
+                        at, end = record.target + delta, record.target + delta + len(chunk)
+                        for lo, hi, destination in memory:
+                            left, right = max(lo, at), min(hi, end)
+                            if left < right:
+                                destination[left - lo : right - lo] = chunk[left - at : right - at]
+                golden = independent.memory_manifest()
+                self.assertEqual(len(memory), len(golden))
+                for (lo, hi, destination), row in zip(memory, golden):
+                    self.assertEqual(hashlib.sha256(destination).hexdigest(), row['sha256'], '%#x..%#x' % (lo, hi))
+                if package.is_file():
+                    self.assertEqual(validate_package(package)[1]['os']['sha256'], report['sha256'])
 
 
 if __name__ == '__main__':

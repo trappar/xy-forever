@@ -178,15 +178,12 @@ class CheckReceiptTests(unittest.TestCase):
 
     def test_js_steps_follow_the_folders(self):
         args = C.argparse.Namespace(js=True)
-        self.assertEqual(C.js_steps(args, self.root), [])  # no clients/ts: nothing to test
+        self.assertEqual(C.js_steps(args, self.root), [])  # no clients/ts or web: nothing to test
         (self.root / 'clients/ts').mkdir(parents=True)
-        self.assertEqual([s['name'] for s in C.js_steps(args, self.root)], ['pnpm run typecheck (clients/ts)'])
-        self.assertEqual(C.js_steps(C.argparse.Namespace(js=False), self.root), [])  # unchanged on main
-        (self.root / 'web').mkdir()
         steps = C.js_steps(args, self.root)
-        self.assertEqual([s['name'] for s in steps], ['pnpm run typecheck (clients/ts)', 'pnpm run typecheck (web)'])
-        self.assertEqual([s['cmd'][1:] for s in steps], [['run', 'typecheck']] * 2)
-        self.assertEqual(steps[-1]['cwd'], self.root / 'web')
+        self.assertEqual([s['name'] for s in steps], ['web-test'])
+        self.assertEqual(steps[0]['cmd'][1:], ['run', '--quiet', 'web-test'])
+        self.assertEqual(C.js_steps(C.argparse.Namespace(js=False), self.root), [])  # unchanged on main
 
     def test_a_fresh_worktree_installs_node_modules_first(self):
         (self.root / 'pnpm-lock.yaml').write_text('lockfileVersion: 9\n')
@@ -199,23 +196,34 @@ class CheckReceiptTests(unittest.TestCase):
         os.utime(self.root / 'pnpm-lock.yaml', (later, later))
         self.assertIsNotNone(dev_tools.js_install(self.root))  # lock changed
 
-    def test_web_steps_follow_web_and_clients(self):
-        for rel in ('clients/ts/node_modules', 'web/node_modules'):
+    def test_web_test_runs_when_web_or_clients_change(self):
+        """#229: a TS change runs the TS suites in check, not only in CI."""
+        for rel in ('clients/ts', 'web'):
             (self.root / rel).mkdir(parents=True)
         self.git('switch', '-q', '-c', '8-topic')
         names = lambda: [s['name'] for s in C.js_steps(C.argparse.Namespace(js=False), self.root)]
         self.assertEqual(names(), [])
         self.commit('web/a.ts', 'web only')
-        self.assertEqual(names(), ['pnpm run typecheck (web)'])
+        self.assertEqual(names(), ['web-test'])
+        self.git('switch', '-q', '-c', '9-topic', 'main')
         self.commit('clients/ts/a.ts', 'the client web uses')
-        self.assertEqual(names(), ['pnpm run typecheck (clients/ts)', 'pnpm run typecheck (web)'])
+        self.assertEqual(names(), ['web-test'])
 
-    def test_failing_web_step_fails_the_check(self):
-        tsc = C.step('pnpm run typecheck (web)', [sys.executable, '-c', 'raise SystemExit(2)'], '.')
-        results, _ = C.run_steps([ok(), tsc, ok('after')], self.log)
-        self.assertEqual(
-            [(r['name'], r['result']) for r in results], [('ok', 'pass'), ('pnpm run typecheck (web)', 'fail')]
-        )
+    def test_failing_web_test_fails_the_check(self):
+        web = C.step('web-test', [sys.executable, '-c', 'raise SystemExit(2)'], '.')
+        results, _ = C.run_steps([ok(), web, ok('after')], self.log)
+        self.assertEqual([(r['name'], r['result']) for r in results], [('ok', 'pass'), ('web-test', 'fail')])
+
+    def test_the_step_table_prints_once(self):
+        with (
+            mock.patch.object(C, 'standard_steps', lambda args, root, tree: [ok('only-step')]),
+            mock.patch.object(C.clean, 'prune_builds') as prune,
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            self.assertEqual(C.main(['--force'], self.root, self.checks), 0)
+        self.assertEqual(out.getvalue().count('only-step'), 1)
+        prune.assert_called_once_with()  # after the receipt: scripts/clean.py is the one pruning
+        self.assertIn('receipt: ', out.getvalue())
 
     def test_wall_time_lines_name_the_step_and_the_total(self):
         self.assertEqual(C.over_wall([dict(name='a', seconds=10.0), dict(name='b', seconds=12.0)]), [])
@@ -232,15 +240,16 @@ class CheckReceiptTests(unittest.TestCase):
             (out / 'candidate.ldr').write_bytes(b'candidate')
             (out / 'verification.json').write_text(json.dumps(dict(passed=True, mode='xyf-product')))
             digest = __import__('hashlib').sha256(b'candidate').hexdigest()
-            test_builds = builds / 'test-builds'
-            parse = C.verify_parser(out, 't' * 40, 'c' * 40, test_builds)
+            parse = C.verify_parser(out, 't' * 40, 'c' * 40)
             (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256='0' * 64, image='00000000')))
-            self.assertFalse(parse(0, '{\n  "passed": true\n}\n')[0])  # bytes differ from the manifest
+            self.assertFalse(parse(0, '')[0])  # bytes differ from the manifest
             (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256=digest, image=digest[:8])))
-            self.assertFalse(parse(0, '{\n  "passed": false\n}\n')[0])
-            self.assertFalse(parse(1, '{\n  "passed": true\n}\n')[0])
+            self.assertFalse(parse(1, '')[0])
+            (out / 'verification.json').write_text(json.dumps(dict(passed=False, mode='xyf-product')))
+            self.assertFalse(parse(0, '')[0])
+            (out / 'verification.json').write_text(json.dumps(dict(passed=True, mode='xyf-product')))
             with mock.patch.object(C.paths, 'BUILDS', builds):
-                passed, facts = parse(0, 'log line\n{\n  "passed": true\n}\n')
+                passed, facts = parse(0, 'firmware verify: build/product (image %s, built)\n' % digest[:8])
             self.assertTrue(passed)
             named = builds / digest[:8]  # copied to builds/<image>
             self.assertEqual(facts['candidate'], dict(sha256=digest, image=digest[:8], bytes=9, build=str(named)))
@@ -249,10 +258,6 @@ class CheckReceiptTests(unittest.TestCase):
             )
             self.assertEqual((out / 'candidate.ldr').read_bytes(), b'candidate')  # the cache's output stays as built
             self.assertFalse((out / 'check.json').exists())
-            test_build = test_builds / named.name
-            self.assertEqual(C.paths.build_image(test_build), C.paths.build_image(named))
-            self.assertEqual((test_build / 'candidate.ldr').read_bytes(), b'candidate')
-            self.assertEqual((test_build / 'check.json').read_bytes(), (named / 'check.json').read_bytes())
 
 
 if __name__ == '__main__':

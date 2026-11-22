@@ -18,7 +18,7 @@ import pytest
 from test_tfw import KEY, container
 from test_tfw_os import BOOTLOADER, KEYS, OS, PUBLIC_KEY, SIGNING_KEY, Extractor, build_zip, package, signed, standard
 
-from xy_forever import bounds, paths, sim, tfw_extract
+from xy_forever import bounds, otp_audit, paths, sim, tfw_extract
 from xy_forever import usb_proto_ids as ids
 from xy_forever import xyf_build as builder
 from xy_forever import xyf_host as host
@@ -298,7 +298,7 @@ class BuilderRules(unittest.TestCase):
             line(12, 'P0 = [P1]'),
             line(14, 'P0.H = 0x400'),
         ]
-        self.assertEqual(builder.loaded_values(lines), {0x04000048, 0x04000054})
+        self.assertEqual(otp_audit.loaded_values(lines), {0x04000048, 0x04000054})
         stale = [
             line(0, 'P2.H = 0x8ab0'),
             line(2, 'P2.L = 0xb764'),
@@ -307,7 +307,7 @@ class BuilderRules(unittest.TestCase):
             line(8, 'P2.L = 0x1c4'),
             line(10, 'CALL (P2)'),
         ]
-        self.assertEqual(builder.loaded_values(stale), {0x8AB0B764, 0x040201C4})  # not 0x0402b764
+        self.assertEqual(otp_audit.loaded_values(stale), {0x8AB0B764, 0x040201C4})  # not 0x0402b764
         listing = self.listing(extra=[line(0x8AB0F908, 'P3.L = 0x4c'), line(0x8AB0F90C, 'P3.H = 0x400')])
         self.assertEqual(builder.rom_references(listing), {'04000048', '04000054', '0400004c'})
 

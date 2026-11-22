@@ -119,12 +119,12 @@ def private_output(path):
 
 
 IMAGE_NAME = re.compile(r'[0-9a-f]{8}')  # a build folder's name: its image (hello image=)
-CHECK_TEST_BUILDS = 'XYF_CHECK_TEST_BUILDS'  # only the verified build kept for an active check's own suite
+PRODUCT = BUILD / 'product'  # this checkout's own product build and --verify (scripts/firmware_cache.py: cached)
+REQUIRE_BUILD = 'XYF_REQUIRE_BUILD'  # set (check.py's suite): a test that needs a verified build fails without one
 
 
-def build_image(folder):
-    """(image, manifest) of a verified product build folder named by its image (the first 8 hex digits of its
-    candidate's SHA-256, xyf_build.py image_name), else None."""
+def verified(folder):
+    """The manifest of a product build folder that passed --verify (verification.json), else None."""
     folder = Path(folder)
     try:
         v = json.loads((folder / 'verification.json').read_text())
@@ -132,15 +132,21 @@ def build_image(folder):
     except OSError, ValueError:
         return None
     if not (
-        IMAGE_NAME.fullmatch(folder.name)
-        and v.get('passed') is True
+        v.get('passed') is True
         and v.get('mode') == 'xyf-product'
-        and m.get('image') == folder.name
-        and str(m.get('candidate_sha256', '')).startswith(folder.name)
+        and str(m.get('candidate_sha256', '')).startswith(str(m.get('image')))
         and (folder / 'candidate.ldr').is_file()
     ):
         return None
-    return folder.name, m
+    return m
+
+
+def build_image(folder):
+    """(image, manifest) of a verified product build folder named by its image (the first 8 hex digits of its
+    candidate's SHA-256, xyf_build.py image_name), else None."""
+    folder = Path(folder)
+    m = verified(folder) if IMAGE_NAME.fullmatch(folder.name) else None
+    return (folder.name, m) if m and m.get('image') == folder.name else None
 
 
 def name_by_image(out):
@@ -157,18 +163,34 @@ def name_by_image(out):
     return target
 
 
-def newest_verified_build():
-    """The latest verified product from this checkout's sources. A check suite uses its private copy.
+def verified_build():
+    """(folder, None) for the verified product build of this checkout's sources, else (None, why).
 
-    The manifest's source hashes must still match, as with --verify. Outside a check run, look in BUILDS.
-    """
+    This checkout's own build/product comes first: no other checkout writes it, so a worktree that builds the same
+    image from other sources (and replaces BUILDS/<image>) cannot take it away. Else the newest BUILDS/<image>
+    of these sources (a setup.py build). The manifest's source hashes must still match, as with --verify."""
     from xy_forever import xyf_build
 
     source = xyf_build.source_hashes()
+    own = verified(PRODUCT)
+    if own and own.get('source_sha256') == source:
+        return PRODUCT, None
     found = []
-    builds = Path(os.environ.get(CHECK_TEST_BUILDS) or BUILDS)
-    for d in builds.glob('*'):
+    for d in BUILDS.glob('*'):
         named = build_image(d)
         if named and named[1].get('source_sha256') == source:
             found.append(((d / 'verification.json').stat().st_mtime, d.name, d))
-    return max(found)[2] if found else None
+    if found:
+        return max(found)[2], None
+    if own:
+        why = '%s is of other sources (changed since it was built)' % PRODUCT
+    elif PRODUCT.exists():
+        why = '%s did not pass --verify' % PRODUCT
+    else:
+        why = 'no %s' % PRODUCT
+    return None, "no verified product build of this checkout's sources: %s; mise run verify makes one" % why
+
+
+def newest_verified_build():
+    """The verified product build of this checkout's sources (verified_build()), else None."""
+    return verified_build()[0]

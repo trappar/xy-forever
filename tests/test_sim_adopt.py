@@ -24,7 +24,6 @@ from xy_forever import xyf_host as host
 
 ENTRY = 'xy-forever/firmware/opxy-121'
 STATE_FILE = '/yaffs2/xy-forever/state-a.txt'
-REINSTALL = ' Reinstall official OS 1.2.1, then start again.'
 
 
 def expected_entry(image):

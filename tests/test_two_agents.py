@@ -1,5 +1,5 @@
 """Two agents on one machine (docs/operating/two-agents.md): paths from the main checkout in a worktree and a plain
-clone, the device lock, safe build pruning. Every case also runs with nothing set up: no xyf.local.json, no XYF_*
+clone, the device lock. Every case also runs with nothing set up: no xyf.local.json, no XYF_*
 variables."""
 
 import contextlib
@@ -12,7 +12,6 @@ import signal
 import subprocess
 import sys
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -31,7 +30,7 @@ def script(name):
     return module
 
 
-CHECK, SETUP = script('check'), script('setup')
+SETUP = script('setup')
 CLEAN_ENV = {k: v for k, v in os.environ.items() if not k.startswith('XYF_') or k == 'XYF_NO_DEVICE'}
 SHOW = (
     'from xy_forever import paths, toolchain; import json; print(json.dumps({k: str(v) for k, v in dict('
@@ -211,31 +210,6 @@ class DeviceLock(unittest.TestCase):
         ):
             xyf_host.connect(0.05)
         hold.assert_called_once_with(0.05)
-
-
-@pytest.mark.gate
-class Pruning(unittest.TestCase):
-    def test_recent_folders_stay(self):
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(CHECK.paths, 'BUILDS', Path(tmp)):
-            builds, now = Path(tmp), time.time()
-            for name in ('check-aaaaaaaaaaaa', 'check-bbbbbbbbbbbb', 'check-cccccccccccc'):
-                (builds / name).mkdir()
-                (builds / name / 'part.o').write_bytes(b'x')
-            images = ['%08x' % n for n in range(7)]
-            for image in images:
-                (builds / image).mkdir()
-                (builds / image / 'check.json').write_text('{}')
-            old = now - CHECK.RECENT - 60
-            for path in builds.rglob('*'):
-                os.utime(path, (old, old))
-            for n, image in enumerate(images):  # newest last: check.json order
-                os.utime(builds / image / 'check.json', (old + n, old + n))
-            os.utime(builds / images[1], (now, now))  # another run is reading it
-            os.utime(builds / 'check-bbbbbbbbbbbb' / 'part.o', (now, now))  # another run is building it
-            CHECK.prune_builds(now)
-            self.assertEqual(
-                sorted(p.name for p in builds.iterdir()), [images[1]] + images[3:] + ['check-bbbbbbbbbbbb']
-            )
 
 
 if __name__ == '__main__':

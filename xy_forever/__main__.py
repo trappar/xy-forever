@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from .ldr import MAX_IMAGE, inspect_ldr
-from .paths import PRIVATE_ROOT, private_output  # noqa: F401 (re-exported)
+from .paths import private_output
 from .validation import validate_package
 from .xyf_entry import make_entry
 

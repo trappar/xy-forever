@@ -630,9 +630,9 @@ dev = [
 ]
 native = [
     { name = "cmake", specifier = ">=3.20" },
-    { name = "nanobind", specifier = ">=2.9" },
+    { name = "nanobind", specifier = ">=3.0" },
     { name = "ninja", specifier = ">=1.11" },
-    { name = "scikit-build-core", specifier = ">=0.11" },
+    { name = "scikit-build-core", specifier = ">=1.0" },
     { name = "xyf-hosttest", directory = "hosttest" },
 ]
 

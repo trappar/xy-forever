@@ -55,14 +55,14 @@ class StateWriteHostTest(unittest.TestCase):
                 self.assertIn('DRY RUN', out.getvalue())
 
     def test_census_decodes_state_write_record(self):
-        from xy_forever import census
+        from xy_forever import census, census_usb
 
         word = 1 | 0 << 8 | 10 << 16 | 2 << 24  # ok, storage ok, step 10, seq 2
         self.assertEqual(census.state_write_summary(word), dict(status='ok', storage='ok', step=10, seq=2))
         word = 6 | census.STORAGE_RESULTS.index('verify_failed') << 8 | 7 << 16
         self.assertEqual(census.state_write_summary(word)['storage'], 'verify_failed')
         self.assertIsNone(census.state_write_summary(0))
-        self.assertEqual(census.USB_SERVICE_FIELDS[-1], 'a_state_write')
+        self.assertEqual(census_usb.USB_SERVICE_FIELDS[-1], 'a_state_write')
         self.assertEqual(census.FILE_BOOT_MENU_FIELDS[-1], 'state_write')
         # cold_storage::Result order matches the decoder (new values appended).
         hpp = (ROOT / 'target/cold_storage.hpp').read_text()

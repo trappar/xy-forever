@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 import web_release
+from conftest import verified_build
 
 from xy_forever import paths
 from xy_forever import stock_bytes as S
@@ -57,9 +58,7 @@ class ReleaseImageTest(unittest.TestCase):
     @pytest.mark.gate  # a scan of the whole image: 0.3 s of CPU
     def test_this_sources_product_build_has_no_stock_bytes(self):
         stocks = self.stocks()
-        build = paths.newest_verified_build()
-        if build is None:
-            self.skipTest('no verified product build of this source (mise run check builds one)')
+        build = verified_build(self)
         self.assertEqual(S.shared_runs((build / 'candidate.ldr').read_bytes(), stocks), [])
         self.assertTrue(S.shared_runs(stocks['os.ldr'][:4096], stocks))  # the check sees stock bytes
 
@@ -77,9 +76,7 @@ class ReleaseImageTest(unittest.TestCase):
         self.assertEqual(S.shared_runs(data, self.stocks()), [])
 
     def test_stage_pins_and_copies_a_verified_build(self):
-        build = paths.newest_verified_build()
-        if build is None:
-            self.skipTest('no verified product build of this source')
+        build = verified_build(self)
         with tempfile.TemporaryDirectory() as tmp:
             pin_path, staged = Path(tmp) / 'release.json', Path(tmp) / 'public/release/os.ldr'
             pin_path.write_text('{"schema": 1, "version": "", "image": "", "sha256": "", "bytes": 0}')

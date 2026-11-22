@@ -38,7 +38,6 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 NAME = 'OP-XY mods'
 TMP = 'xy-forever/tmp'
 LIB = 'xy-forever/firmware'
-FILE_COMMAND = (P.READ_FILE, b'/yaffs2/xy-forever/state-a.txt\0')
 
 
 def tree(folder):

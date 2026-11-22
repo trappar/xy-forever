@@ -10,9 +10,8 @@ from test_sim_config import MARK, mark_text
 from xy_forever import xyf_host as host
 
 MAIN, INFO, SETTINGS, OPTIONS = 0, 1, 3, 4  # xyf_menu Screen (#197)
-R_OK = 0x2001  # MTP OK
 SAVED = 'menu: line: Settings saved.'
-OPEN_SESSION, GET_DEVICE_INFO, GET_STORAGE_IDS, ACCESS_DENIED = 0x1002, 0x1001, 0x1004, 0x200F
+ACCESS_DENIED = 0x200F
 NEWER = 'note=settings.txt is from a newer XY Forever'
 
 
