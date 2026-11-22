@@ -22,5 +22,5 @@ library::Error select(xy_forever::cold_storage::Stock121ReadOnlySession& session
                       uint8_t* scratch, uint32_t scratch_bytes, Selection& out);
 // After loading: does the image match info.txt (when it gave size/CRC)?
 bool matches(const Selection& selection, uint32_t bytes, uint32_t crc32);
-} }
+}}
 #endif

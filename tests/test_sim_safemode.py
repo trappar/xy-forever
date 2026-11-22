@@ -10,15 +10,15 @@ nothing). A mod build never takes the
 saved slot. A content switch failure and a power cut in the switch: the record is the previous one and doing the same
 again repairs it. With no setup saved the row is "Boot without mods" and PLAY only says why. Synthetic packages (test_sim_config). Needs
 clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
+
 import unittest
 
 import pytest
-
 import test_sim_mod_job as J
-from test_sim_config import  ConfigBase
-from sim_mods_page import  PLAY
+from sim_mods_page import PLAY
+from test_sim_config import ConfigBase
 
-TRACK1, TRACK2 = 6, 7                                                      # the first row, the safe-mode row
+TRACK1, TRACK2 = 6, 7  # the first row, the safe-mode row
 
 
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
@@ -38,19 +38,21 @@ class SafeMode(ConfigBase, unittest.TestCase):
         self.wait_log(lambda: len(self.lines('menu: screen 0 row 1 ')) > selected, 'the safe-mode row selected')
         screens, runs = len(self.lines('menu: screen ')), len(self.lines('menu: safe mode'))
         self.mark_now()
-        self.key(PLAY, 1)                                                  # it boots: no release reaches B
+        self.key(PLAY, 1)  # it boots: no release reaches B
         self.wait_log(lambda: len(self.lines('menu: safe mode')) > runs, 'Boot without mods')
-        self.assertEqual(len(self.lines('menu: screen ')), screens)       # no confirm screen
+        self.assertEqual(len(self.lines('menu: screen ')), screens)  # no confirm screen
 
     def restore(self, mods=1):
-        self.wait_log(lambda: self.safe_row() == 'Restore Open-XY (%d mod%s)' % (mods, '' if mods == 1 else 's'),
-                      'the restore row')
+        self.wait_log(
+            lambda: self.safe_row() == 'Restore Open-XY (%d mod%s)' % (mods, '' if mods == 1 else 's'),
+            'the restore row',
+        )
         self.press(TRACK2)
         self.mark_now()
         self.key(PLAY, 1)
 
     def in_safe_mode(self, a, mods=('alpha',)):
-        c = self.saved_as(self.base, list(mods))                           # official content, the base the default
+        c = self.saved_as(self.base, list(mods))  # official content, the base the default
         self.assertEqual((c['safe'], c['slot']), ('1', a))
         return c
 
@@ -58,7 +60,6 @@ class SafeMode(ConfigBase, unittest.TestCase):
         """The Open-XY library entries' files (a build writes one)."""
         lib = self.entry('mods-a').parent.relative_to(self.root).as_posix() + '/mods-'
         return {k: v for k, v in self.snapshot().items() if k.startswith(lib)}
-
 
     # -- the tests ---------------------------------------------------------------------------------
 
@@ -71,10 +72,10 @@ class SafeMode(ConfigBase, unittest.TestCase):
         cuts = self.sim.status()['cuts']
         self.safe_mode()
         self.cut(cuts)
-        self.assertEqual((self.config()['safe'], self.config()['mods']), ('0', 'alpha'))   # the record: as it was
+        self.assertEqual((self.config()['safe'], self.config()['mods']), ('0', 'alpha'))  # the record: as it was
         self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'automatic content replay')
         self.wait_log(lambda: '(to apply) pending=1' in self.home(), 'the record to apply')
-        self.safe_mode()                                                   # again: repaired
+        self.safe_mode()  # again: repaired
         self.assertEqual(self.booted(), self.base)
         self.in_safe_mode(a)
 
@@ -86,13 +87,18 @@ class SafeMode(ConfigBase, unittest.TestCase):
         log = (self.dir / 'log.txt').read_text(errors='replace').splitlines()
         at = max(i for i, line in enumerate(log) if line.endswith('menu: ' + action))
         run = log[at:]
-        end = next(i for i, line in enumerate(run) if 'menu: save failed: ' in line or 'menu: boots the default ' in line)
-        run = run[:end + 1]
+        end = next(
+            i for i, line in enumerate(run) if 'menu: save failed: ' in line or 'menu: boots the default ' in line
+        )
+        run = run[: end + 1]
         self.assertIn('progress: job=', run[1])
         for marker in ('menu: screen ', 'menu: action ', 'menu: repeat key', 'progress: key ', 'mods page: '):
             self.assertEqual([line for line in run if marker in line], [], marker)
-        shown = [dict(f.split('=', 1) for f in line[line.find('progress: job=') + 10:].partition(' title=')[0].split(' '))
-                 for line in run if 'progress: job=' in line]
+        shown = [
+            dict(f.split('=', 1) for f in line[line.find('progress: job=') + 10 :].partition(' title=')[0].split(' '))
+            for line in run
+            if 'progress: job=' in line
+        ]
         self.assertEqual({(f['row'], f['screen'], f['mods']) for f in shown}, {(str(row), '0', '0')})
         if steady_on:
             self.assertEqual(len({f['on'] for f in shown}), 1, shown)

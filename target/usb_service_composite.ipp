@@ -31,8 +31,22 @@ const U32 probe_words = 14;
 // state, flag, delete (status of the unlink), gate (0 passed), slot (driver slot after begin), started_ms,
 // first_byte_ms, hello_ms, passes, max_gap_ms, last_ms, sinks, mark_first_ms, mark_total_ms
 U32 probe[probe_words] __attribute__((section(".data"))) = {0};
-enum : U32 { p_state, p_flag, p_delete, p_gate, p_slot, p_started, p_first_byte, p_hello, p_passes, p_max_gap,
-             p_last, p_sinks, p_mark_first, p_mark_total };
+enum : U32 {
+    p_state,
+    p_flag,
+    p_delete,
+    p_gate,
+    p_slot,
+    p_started,
+    p_first_byte,
+    p_hello,
+    p_passes,
+    p_max_gap,
+    p_last,
+    p_sinks,
+    p_mark_first,
+    p_mark_total
+};
 U32 last_commands __attribute__((section(".data"))) = 0;
 U32 mtp_ms __attribute__((section(".data"))) = 0;                     // now() at the last MTP command
 uint8_t probe_digest[32] __attribute__((section(".data"))) = {0};
@@ -40,7 +54,12 @@ U32 probe_hash_storage[(sizeof(xyf_core::hash::Sha256) + 3) / 4] __attribute__((
 xyf_core::hash::Sha256& probe_hash() { return *reinterpret_cast<xyf_core::hash::Sha256*>(probe_hash_storage); }
 U32 hash_open __attribute__((section(".data"))) = 0;                   // a sink's hash not finished yet
 void probe_sink(const uint8_t* data, uint32_t n, bool first) {          // main loop (pump): the sink's data, in order
-    if (first) { probe_hash().reset(); hash_open = 1; ++probe[p_sinks]; return; }
+    if (first) {
+        probe_hash().reset();
+        hash_open = 1;
+        ++probe[p_sinks];
+        return;
+    }
     probe_hash().update(data, n);
 }
 namespace gate = xyf::mtp_usb_gate;
@@ -80,13 +99,21 @@ U32 marks_append(const char* text) {
 }
 U32 writes_open() {                                                      // A's write window, open from here on
     namespace C = file_client;
-    if (writes_due) { writes_ms = now(); return P::s_ok; }               // still open: the settle waits again
+    if (writes_due) {
+        writes_ms = now();
+        return P::s_ok;
+    }               // still open: the settle waits again
     U32 code = enter_writes();                                           // A's write entry (stale mount closed)
     if (code == P::s_ok) code = C::mount_ready(mounted);                 // op 8
     if (code != P::s_ok) return code;
-    writes_due = 1; writes_ms = now(); storage_used = 1;                 // the normal settle closes it
+    writes_due = 1;
+    writes_ms = now();
+    storage_used = 1;                 // the normal settle closes it
     const C::Reply d = C::mkdir(marks_folder);                          // op 0x26; EEXIST is fine
-    if (d.outcome) { if (d.outcome == C::link) mounted = C::mounted_stale; return C::status(d.outcome); }
+    if (d.outcome) {
+        if (d.outcome == C::link) mounted = C::mounted_stale;
+        return C::status(d.outcome);
+    }
     return P::s_ok;
 }
 U32 file_put(const char* path, const char* text, U32 length) {         // the whole file: open "wb", write, close
@@ -94,12 +121,21 @@ U32 file_put(const char* path, const char* text, U32 length) {         // the wh
     const U32 entry = writes_open();
     if (entry != P::s_ok) return entry;
     const C::Reply o = C::open(path, storage_server::write_open_flags);   // op 0x29 "wb"
-    if (o.outcome) { if (o.outcome == C::link) mounted = C::mounted_stale; return C::status(o.outcome); }
+    if (o.outcome) {
+        if (o.outcome == C::link) mounted = C::mounted_stale;
+        return C::status(o.outcome);
+    }
     if (o.value < 0) return P::s_storage;
     const C::Reply w = C::write(o.value, reinterpret_cast<const uint8_t*>(text), length);   // op 0x2b
-    if (w.outcome) { if (w.outcome == C::link) mounted = C::mounted_stale; return C::status(w.outcome); }
+    if (w.outcome) {
+        if (w.outcome == C::link) mounted = C::mounted_stale;
+        return C::status(w.outcome);
+    }
     const C::Reply c = C::close(o.value);                               // op 0x2d
-    if (c.outcome) { if (c.outcome == C::link) mounted = C::mounted_stale; return C::status(c.outcome); }
+    if (c.outcome) {
+        if (c.outcome == C::link) mounted = C::mounted_stale;
+        return C::status(c.outcome);
+    }
     writes_ms = now();
     return w.value == int(length) && !c.value ? P::s_ok : P::s_storage;
 }
@@ -107,9 +143,12 @@ U32 marks_write() { return file_put(marks_path, marks_text, marks_length); }
 bool probe_mark(uint32_t step) {
     const U32 t0 = now();
     char line[24];
-    line[0] = step >= 10 ? '1' : '0'; line[1] = char('0' + (step >= 10 ? step - 10 : step)); line[2] = ' ';   // < 20
+    line[0] = step >= 10 ? '1' : '0';
+    line[1] = char('0' + (step >= 10 ? step - 10 : step));
+    line[2] = ' ';   // < 20
     U32 n = 3 + decimal_text(line + 3, t0);
-    line[n++] = ' '; line[n] = 0;
+    line[n++] = ' ';
+    line[n] = 0;
     if (!marks_append(line) || !marks_append(mu::mark_name(step)) || !marks_append("\n")) return false;
     const bool ok = marks_write() == P::s_ok;
     const U32 cost = now() - t0;
@@ -130,29 +169,41 @@ const U32 stack_attached = 0x88a137a0u;      // 88a13714 sets it to 1 only when 
 const U32 n_driver_words = 32;
 void driver_words(U32* w) {
     const mu::Stats& st = mu::stats();
-    const U32 driver[] = {st.passes, st.longest_pass_urbs, st.longest_pass_bytes, st.urbs_received, st.urbs_dropped,
-                          st.in_sent, st.kicks, st.kick_rx, st.deconfigures, st.resets, st.cancels, st.resets_bus,
-                          U32(st.sink_bytes), U32(st.source_bytes), st.sink_sum, st.device_infos, st.sessions_opened,
-                          st.sessions_closed, U32(mu::state()), st.marks_written, st.marks_failed, st.mtp_commands,
-                          st.serial_rx, st.serial_tx, st.serial_held, st.serial_busy, st.line_codings, st.control_lines,
-                          st.handler_in, st.handler_out, st.handler_held, st.handler_urbs_in};
+    const U32 driver[] = {st.passes,          st.longest_pass_urbs, st.longest_pass_bytes,
+                          st.urbs_received,   st.urbs_dropped,      st.in_sent,
+                          st.kicks,           st.kick_rx,           st.deconfigures,
+                          st.resets,          st.cancels,           st.resets_bus,
+                          U32(st.sink_bytes), U32(st.source_bytes), st.sink_sum,
+                          st.device_infos,    st.sessions_opened,   st.sessions_closed,
+                          U32(mu::state()),   st.marks_written,     st.marks_failed,
+                          st.mtp_commands,    st.serial_rx,         st.serial_tx,
+                          st.serial_held,     st.serial_busy,       st.line_codings,
+                          st.control_lines,   st.handler_in,        st.handler_out,
+                          st.handler_held,    st.handler_urbs_in};
     static_assert(sizeof(driver) / sizeof(driver[0]) == n_driver_words, "op 1 layout");
     for (U32 i = 0; i != n_driver_words; ++i) w[i] = driver[i];
 }
-U32 text_put(char* t, U32 n, const char* s) { while (*s) t[n++] = *s++; return n; }
+U32 text_put(char* t, U32 n, const char* s) {
+    while (*s) t[n++] = *s++;
+    return n;
+}
 U32 text_hex(char* t, U32 n, U32 v, U32 digits) {
     for (U32 i = 0; i != digits; ++i) t[n++] = "0123456789abcdef"[(v >> (4 * (digits - 1 - i))) & 15u];
     return n;
 }
 U32 text_words(char* t, U32 n, const char* label, const U32* w, U32 count) {
     n = text_put(t, n, label);
-    for (U32 i = 0; i != count; ++i) { t[n++] = ' '; n = text_hex(t, n, w[i], 8); }
+    for (U32 i = 0; i != count; ++i) {
+        t[n++] = ' ';
+        n = text_hex(t, n, w[i], 8);
+    }
     t[n++] = '\n';
     return n;
 }
 void sink_digest() {                                                     // after the sink's response (the host asks)
     xyf_core::hash::Digest d;
-    if (hash_open && probe_hash().finish(d)) for (U32 i = 0; i != 32; ++i) probe_digest[i] = d.bytes[i];
+    if (hash_open && probe_hash().finish(d))
+        for (U32 i = 0; i != 32; ++i) probe_digest[i] = d.bytes[i];
     hash_open = 0;
 }
 U32 result_text(char* t) {                   // <= 1024 (one write): about 700 bytes
@@ -195,7 +246,10 @@ void usb_begin() {
         probe[p_delete] = code;
         marks_begin();
         mu::mark(mu::mark_flag_found);                                   // written after the delete (see above)
-        if (code == P::s_ok) { mu::mark(mu::mark_flag_deleted); trial = true; }
+        if (code == P::s_ok) {
+            mu::mark(mu::mark_flag_deleted);
+            trial = true;
+        }
     }
 #else
     // 188: the product: every boot, whatever USB mode says (#191: the mode turns serial or MTP off in our own code,
@@ -213,11 +267,13 @@ void usb_begin() {
             if (mu::begin(mu::stock_port())) {                           // register, start(0x200): marks 3-5 / 14
                 probe[p_slot] = word(usb_driver_slot);
                 mu::mark(word(stack_attached) == 1u ? mu::mark_attach_ok : mu::mark_attach_failed);
-                composite_on = 1; probe[p_state] = cs_composite;
+                composite_on = 1;
+                probe[p_state] = cs_composite;
                 return;
             }
             mu::set_sink_hook(0);
-            mu::set_handler(0); mtp_on = 0;
+            mu::set_handler(0);
+            mtp_on = 0;
         }
         marks_end();
     }
@@ -247,7 +303,11 @@ void fallback_restart() {
 void timed_pump() {
     const uint64_t start = xyf::clock::cycles();
     mu::pump();
-    if (mtp_live()) { ms::Timing& t = mslot().files.timing; ++t.pumps; t.pump_units += units_since(start); }
+    if (mtp_live()) {
+        ms::Timing& t = mslot().files.timing;
+        ++t.pumps;
+        t.pump_units += units_since(start);
+    }
 }
 // Every pass of home_pump with the composite up: the driver's pass, the MTP mark's clock, the HELLO bound.
 void composite_turn() {
@@ -256,9 +316,13 @@ void composite_turn() {
     const U32 gap = t - probe[p_last];                                   // one pass of the menu loop
     if (gap > probe[p_max_gap]) probe[p_max_gap] = gap;
     mtp_pass_ms = probe[p_max_gap];
-    probe[p_last] = t; ++probe[p_passes];
+    probe[p_last] = t;
+    ++probe[p_passes];
     timed_pump();
-    if (mu::stats().mtp_commands != last_commands) { last_commands = mu::stats().mtp_commands; mtp_ms = now(); }
+    if (mu::stats().mtp_commands != last_commands) {
+        last_commands = mu::stats().mtp_commands;
+        mtp_ms = now();
+    }
 #if defined(XYF_MTP_USB_TRIAL)
     if (!probe[p_hello] && now() - probe[p_started] >= composite_hello_ms) fallback_restart();
 #endif
@@ -283,7 +347,10 @@ void mtp_burst() {
     while (now() - start < mtp_burst_ms) {
         const U32 before = m.bytes_in + m.bytes_out + m.steps;
         timed_pump();
-        if (mu::stats().mtp_commands != last_commands) { last_commands = mu::stats().mtp_commands; mtp_ms = now(); }
+        if (mu::stats().mtp_commands != last_commands) {
+            last_commands = mu::stats().mtp_commands;
+            mtp_ms = now();
+        }
         mtp_pump();
         if (m.bytes_in + m.bytes_out + m.steps != before) moved = now();
         else if (now() - moved >= mtp_quiet_ms) break;
@@ -339,8 +406,7 @@ void mtp_usb_command(uint8_t seq, const uint8_t* payload, U32 length) {
         const U32 t = now();
         while (now() - t < 50u) {}
         home_reboot(reboot_menu);
-    }
-    else if (op == 1 && length == 1) probe_result(seq);
+    } else if (op == 1 && length == 1) probe_result(seq);
     else status_only(t_mtp_usb, seq, xyf::unlisted_op::status(payload, length, 1));   // test only: never listed
 }
 #endif

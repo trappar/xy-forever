@@ -13,8 +13,26 @@ namespace xyf_core { namespace tfw_os {
 // A writer failure or cancellation can leave partial output for the caller to discard.
 // No heap, no library calls.
 enum class Status {
-    ok, argument, capacity, io, container, signature, ciphertext_hash, key, directory,
-    unsupported, name, duplicate, layout, missing, member, checksum, version, image, write, cancelled
+    ok,
+    argument,
+    capacity,
+    io,
+    container,
+    signature,
+    ciphertext_hash,
+    key,
+    directory,
+    unsupported,
+    name,
+    duplicate,
+    layout,
+    missing,
+    member,
+    checksum,
+    version,
+    image,
+    write,
+    cancelled
 };
 // Working-memory and output bounds. scratch_bytes() = image + directory + 16 * entries.
 struct Limits {
@@ -35,7 +53,10 @@ struct Workspace {
     Byte* scratch;
     U32 capacity;
 };
-struct Writer { void* context; bool (*write)(void*, const Byte*, U32 count); };
+struct Writer {
+    void* context;
+    bool (*write)(void*, const Byte*, U32 count);
+};
 struct Result {
     U32 bytes, crc32, entry, records, written;  // os.ldr facts; written = bytes given to the writer
     hash::Digest sha256;                        // of os.ldr
@@ -49,12 +70,11 @@ struct Result {
 // key (tfw::ciphertext_digest; on the device A's hash job). `signature`: tfw::signature_check;
 // the key is requested only after it accepts the header. `ram_policy` and `entry_point`:
 // the LDR policy file boot admits images with (cold.cpp's ranges, entry 0x11a00000).
-Status extract(const input::Reader& package, const tfw::KeyProvider& keys,
-               const hash::Digest& ciphertext_sha256, const tfw::HeaderCheck& signature,
-               const Policy& ram_policy, U32 entry_point, const Limits& limits,
-               Workspace& workspace, const Writer& output, Result& result, Work* work=nullptr);
+Status extract(const input::Reader& package, const tfw::KeyProvider& keys, const hash::Digest& ciphertext_sha256,
+               const tfw::HeaderCheck& signature, const Policy& ram_policy, U32 entry_point, const Limits& limits,
+               Workspace& workspace, const Writer& output, Result& result, Work* work = nullptr);
 // "1.2.5+0"; returns the length (0 when it does not fit, with the terminator).
 U32 version_text(const package::Version& version, char* out, U32 capacity);
 const char* status_name(Status status);
-} }
+}}
 #endif

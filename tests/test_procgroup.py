@@ -6,17 +6,18 @@ simulator tests start a simulator the way the TypeScript suites do (startAll fro
 folder of their own) and end the Node process: by SIGTERM (its exit hooks stop the simulator) and by
 SIGKILL (no hooks: the wrapper sees its parent gone and ends its xyf_sim group). Then no process
 naming that state folder may remain. Skipped without Node, clients/ts/node_modules or the simulator."""
-from pathlib import Path
+
 import shutil
 import subprocess
 import sys
 import time
 import unittest
 import uuid
+from pathlib import Path
 
 import pytest
 
-from xy_forever import  procgroup, sim
+from xy_forever import procgroup, sim
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -25,17 +26,19 @@ NODE = shutil.which('node')
 SIM_UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 
 # A child that starts a grandchild naming the marker (argv[1]), then waits: run() must end both.
-TREE = ('import subprocess, sys, time; subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)", '
-        'sys.argv[1]]); print("up", flush=True); time.sleep(300 if sys.argv[2] == "wait" else 0)')
+TREE = (
+    'import subprocess, sys, time; subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)", '
+    'sys.argv[1]]); print("up", flush=True); time.sleep(300 if sys.argv[2] == "wait" else 0)'
+)
 # One simulator through the suites' own helper, as their global setup starts it.
-START = '''
+START = """
 import { pathToFileURL } from 'node:url';
 const [helper, state, port] = process.argv.slice(1);
 const { startAll } = await import(pathToFileURL(helper).href);
 await startAll(state, Number(port), [['orphan', 0, []]]);
 console.log('up');
 setInterval(() => undefined, 1000);
-'''
+"""
 
 
 def running(marker):
@@ -57,11 +60,12 @@ class RunTest(unittest.TestCase):
         self.addCleanup(subprocess.run, ['pkill', '-KILL', '-f', self.marker])
 
     def test_timeout_ends_the_whole_group(self):
-        for timeout in (0.05, 0.2, 1.0, 5.0):          # longer only when the tree was not up yet (a busy machine)
+        for timeout in (0.05, 0.2, 1.0, 5.0):  # longer only when the tree was not up yet (a busy machine)
             start = time.monotonic()
             with self.assertRaises(subprocess.TimeoutExpired) as caught:
-                procgroup.run([sys.executable, '-c', TREE, self.marker, 'wait'], capture_output=True, text=True,
-                              timeout=timeout)
+                procgroup.run(
+                    [sys.executable, '-c', TREE, self.marker, 'wait'], capture_output=True, text=True, timeout=timeout
+                )
             self.assertLess(time.monotonic() - start, timeout + 25)
             if 'up' in (caught.exception.stdout or ''):
                 break
@@ -69,8 +73,9 @@ class RunTest(unittest.TestCase):
         self.assertEqual(gone(self.marker, 5), '')
 
     def test_normal_end_ends_what_the_command_left(self):
-        run = procgroup.run([sys.executable, '-c', TREE, self.marker, 'end'], capture_output=True, text=True,
-                            timeout=60)
+        run = procgroup.run(
+            [sys.executable, '-c', TREE, self.marker, 'end'], capture_output=True, text=True, timeout=60
+        )
         self.assertEqual((run.returncode, run.stdout), (0, 'up\n'))
         self.assertEqual(gone(self.marker, 5), '')
 

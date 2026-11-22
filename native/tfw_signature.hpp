@@ -22,5 +22,5 @@ void signed_digest(const Byte* crypto_header, hash::Digest& digest);
 // A HeaderCheck that runs verify_header with `public_key` (56 bytes, kept by the caller).
 HeaderCheck signature_check(const Byte* public_key);
 const char* signature_name(Signature result);
-} }
+}}
 #endif

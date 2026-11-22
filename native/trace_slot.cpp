@@ -3,12 +3,8 @@
 
 namespace xyf_core { namespace trace_slot {
 namespace {
-U32 word(const Byte* p) {
-    return U32(p[0]) | U32(p[1]) << 8 | U32(p[2]) << 16 | U32(p[3]) << 24;
-}
-Result refused(Status status, Error error = Error::ok) {
-    return {status, no_offset, error};
-}
+U32 word(const Byte* p) { return U32(p[0]) | U32(p[1]) << 8 | U32(p[2]) << 16 | U32(p[3]) << 24; }
+Result refused(Status status, Error error = Error::ok) { return {status, no_offset, error}; }
 bool aliases(const Byte* a, U32 a_bytes, const Byte* b, U32 b_bytes) {
     const uintptr_t aa = reinterpret_cast<uintptr_t>(a);
     const uintptr_t bb = reinterpret_cast<uintptr_t>(b);
@@ -16,16 +12,14 @@ bool aliases(const Byte* a, U32 a_bytes, const Byte* b, U32 b_bytes) {
     return aa <= bb ? bb - aa < a_bytes : aa - bb < b_bytes;
 }
 }
-Result replace(Byte* image, U32 image_bytes, const Policy& policy, U32 target,
-               const Byte* expected, const Byte* replacement, U32 slot_bytes) {
-    if (!image || !expected || !replacement || !slot_bytes || slot_bytes > 4096 ||
-        slot_bytes > 0xffffffffu - target)
+Result replace(Byte* image, U32 image_bytes, const Policy& policy, U32 target, const Byte* expected,
+               const Byte* replacement, U32 slot_bytes) {
+    if (!image || !expected || !replacement || !slot_bytes || slot_bytes > 4096 || slot_bytes > 0xffffffffu - target)
         return refused(Status::invalid_argument);
     Summary summary;
     const Error validation = inspect(image, image_bytes, policy, summary);
     if (validation != Error::ok) return refused(Status::invalid_image, validation);
-    if (aliases(image, image_bytes, replacement, slot_bytes))
-        return refused(Status::replacement_alias);
+    if (aliases(image, image_bytes, replacement, slot_bytes)) return refused(Status::replacement_alias);
 
     U32 slot = no_offset, matches = 0;
     bool overlap = false;
@@ -39,8 +33,7 @@ Result replace(Byte* image, U32 image_bytes, const Policy& policy, U32 target,
         if (flags == 4 && address == target && bytes == slot_bytes) {
             ++matches;
             slot = offset + 16;
-        } else if ((flags == 4 || flags == 0x104) && bytes &&
-                   address < end && target < address + bytes) {
+        } else if ((flags == 4 || flags == 0x104) && bytes && address < end && target < address + bytes) {
             overlap = true;
         }
         offset += 16 + (flags == 0x104 ? 0 : bytes);
@@ -70,4 +63,4 @@ const char* status_name(Status status) {
     }
     return "unknown";
 }
-} }
+}}

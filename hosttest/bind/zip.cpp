@@ -18,7 +18,10 @@ namespace z = xyf_core::zip;
 
 namespace {
 
-struct Input { const Byte* data; U32 size, fail_at; };
+struct Input {
+    const Byte* data;
+    U32 size, fail_at;
+};
 bool reader(void* context, U32 offset, Byte* output, U32 count) {
     const Input& input = *static_cast<Input*>(context);
     if (offset > input.fail_at || count > input.fail_at - offset) return false;
@@ -33,7 +36,10 @@ bool writer(void* context, const Byte* data, U32 count) {
 bool refused(void*, const Byte*, U32) { return false; }
 U32 number(const std::string& text) { return static_cast<U32>(std::strtoul(text.c_str(), 0, 10)); }
 
-struct Result { int code; std::string out, err; };
+struct Result {
+    int code;
+    std::string out, err;
+};
 Result failed(Result& r, z::Status status) {
     r.code = 1;
     r.err = std::string(z::status_name(status)) + "\n";

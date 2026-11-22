@@ -1,12 +1,15 @@
 """xy_forever/mtp_write.py against a fake OP-XY that also takes writes (test_mtp_read's fake plus SendObjectInfo,
 SendObject and their data phase): folders, uploads, read back, the scratch-only deletes, and refusals that never
 reach the transport (protected names in any case, the depth rule, paths outside /yaffs2). No device access."""
-from pathlib import Path
+
 import struct
 import unittest
+from pathlib import Path
 
-from xy_forever import mtp_read as M, mtp_write as W
 import test_mtp_read as R
+
+from xy_forever import mtp_read as M
+from xy_forever import mtp_write as W
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -63,6 +66,7 @@ class WritableFake(R.FakeOpXy):
         def path(h):
             parent, name, _ = self.objects[h]
             return ('' if parent == M.ROOT else path(parent)) + '/' + name
+
         return {path(h): o[2] for h, o in self.objects.items()}
 
 
@@ -78,29 +82,39 @@ class Writes(unittest.TestCase):
         device, w = writer()
         where = w.mkdir('/yaffs2/scratch/run/small')
         self.assertEqual(device.tree()['/scratch/run/small'], None)
-        big = bytes(range(256)) * 800                                    # 204 800 bytes: four OUT transfers
+        big = bytes(range(256)) * 800  # 204 800 bytes: four OUT transfers
         _, h = w.put('/yaffs2/scratch/run/big.bin', big)
         self.assertEqual(w.get(h), big)
         self.assertEqual(w.create('/yaffs2/scratch/run/small/a.bin', b'a' * 500, where)[1], max(device.objects))
-        self.assertEqual(device.zlps, 1)                                 # 12 + 500 bytes: a ZLP ends the phase
+        self.assertEqual(device.zlps, 1)  # 12 + 500 bytes: a ZLP ends the phase
         w.put('/yaffs2/scratch/run/small/empty.bin', b'')
-        w.put('/yaffs2/scratch/run/big.bin', b'again')                   # replaced inside the scratch folder
+        w.put('/yaffs2/scratch/run/big.bin', b'again')  # replaced inside the scratch folder
         self.assertEqual(device.tree()['/scratch/run/big.bin'], b'again')
         removed = w.remove_tree()
         self.assertEqual(removed[-1], '/yaffs2/scratch')
-        self.assertEqual(set(removed), {'/yaffs2/scratch', '/yaffs2/scratch/run', '/yaffs2/scratch/run/big.bin',
-                                        '/yaffs2/scratch/run/small', '/yaffs2/scratch/run/small/a.bin',
-                                        '/yaffs2/scratch/run/small/empty.bin'})
-        self.assertEqual(set(device.tree()), set(WritableFake(R.STOCK_TREE).tree()))    # the rest untouched
-        self.assertEqual(w.remove_tree(), [])                                           # already gone
+        self.assertEqual(
+            set(removed),
+            {
+                '/yaffs2/scratch',
+                '/yaffs2/scratch/run',
+                '/yaffs2/scratch/run/big.bin',
+                '/yaffs2/scratch/run/small',
+                '/yaffs2/scratch/run/small/a.bin',
+                '/yaffs2/scratch/run/small/empty.bin',
+            },
+        )
+        self.assertEqual(set(device.tree()), set(WritableFake(R.STOCK_TREE).tree()))  # the rest untouched
+        self.assertEqual(w.remove_tree(), [])  # already gone
 
     def test_the_depth_rule(self):
         device, w = writer()
-        w.mkdir('/yaffs2/scratch/a/b/c/d/e')                             # the 6th folder below /yaffs2
-        w.put('/yaffs2/scratch/a/b/c/d/e/f.bin', b'x')                   # a file in it: the deepest allowed
+        w.mkdir('/yaffs2/scratch/a/b/c/d/e')  # the 6th folder below /yaffs2
+        w.put('/yaffs2/scratch/a/b/c/d/e/f.bin', b'x')  # a file in it: the deepest allowed
         sent = len(device.sent)
-        for refused in (lambda: w.mkdir('/yaffs2/scratch/a/b/c/d/e/g'),
-                        lambda: w.put('/yaffs2/scratch/a/b/c/d/e/g/f.bin', b'x')):
+        for refused in (
+            lambda: w.mkdir('/yaffs2/scratch/a/b/c/d/e/g'),
+            lambda: w.put('/yaffs2/scratch/a/b/c/d/e/g/f.bin', b'x'),
+        ):
             self.assertRaisesRegex(M.Refused, 'folders below /yaffs2', refused)
         self.assertEqual(len(device.sent), sent)
         self.assertIn('/yaffs2/scratch/a/b/c/d/e/f.bin', w.remove_tree())
@@ -108,13 +122,27 @@ class Writes(unittest.TestCase):
     def test_refusals_never_reach_the_transport(self):
         device, w = writer()
         device.sent.clear()
-        for path in ('/upgrade/x', '/yaffs2', '/yaffs2/upgrade/x', '/yaffs2/UPGRADE/x', '/yaffs2/Upgrade',
-                     '/yaffs2/bootloader.dev', '/yaffs2/BootLoader.DEV', '/yaffs2/scratch/../upgrade/x',
-                     '/yaffs2//x', '/content/x'):
+        for path in (
+            '/upgrade/x',
+            '/yaffs2',
+            '/yaffs2/upgrade/x',
+            '/yaffs2/UPGRADE/x',
+            '/yaffs2/Upgrade',
+            '/yaffs2/bootloader.dev',
+            '/yaffs2/BootLoader.DEV',
+            '/yaffs2/scratch/../upgrade/x',
+            '/yaffs2//x',
+            '/content/x',
+        ):
             self.assertRaises(M.Refused, w.put, path, b'x')
             self.assertRaises(M.Refused, w.mkdir, path)
-        for path in ('/yaffs2/content/op1_factory.json', '/yaffs2/scratch2/x', '/yaffs2', '/yaffs2/upgrade',
-                     '/yaffs2/scratch/../content/op1_factory.json'):
+        for path in (
+            '/yaffs2/content/op1_factory.json',
+            '/yaffs2/scratch2/x',
+            '/yaffs2',
+            '/yaffs2/upgrade',
+            '/yaffs2/scratch/../content/op1_factory.json',
+        ):
             self.assertRaises(M.Refused, w.delete, path)
             self.assertRaises(M.Refused, w.remove_tree, path)
         self.assertEqual(device.sent, [])
@@ -126,14 +154,15 @@ class Writes(unittest.TestCase):
         self.assertRaisesRegex(M.Refused, 'outside the scratch', w.put, '/yaffs2/content/display/x.svg', b'x')
         self.assertFalse(WRITE_OPS & set(device.codes))
         self.assertEqual(device.tree()['/content/display/x.svg'], b'<svg/>')
-        w.mkdir('/yaffs2/content/new')                                   # a new folder elsewhere is a write
+        w.mkdir('/yaffs2/content/new')  # a new folder elsewhere is a write
         self.assertIn('/content/new', device.tree())
 
     def test_device_refusals_are_one_line_errors(self):
         device, w = writer(deny={'no.bin'})
         w.mkdir('/yaffs2/scratch')
-        self.assertRaisesRegex(M.MtpError, 'SendObjectInfo /yaffs2/scratch/no.bin: response 0x200f',
-                               w.put, '/yaffs2/scratch/no.bin', b'x')
+        self.assertRaisesRegex(
+            M.MtpError, 'SendObjectInfo /yaffs2/scratch/no.bin: response 0x200f', w.put, '/yaffs2/scratch/no.bin', b'x'
+        )
         self.assertRaisesRegex(M.MtpError, 'no folder', w.put, '/yaffs2/missing/x.bin', b'x')
 
     def test_the_read_session_still_refuses_writes(self):
@@ -145,7 +174,7 @@ class Writes(unittest.TestCase):
     def test_object_info_dataset(self):
         info = W.object_info('kits', 0, True)
         self.assertEqual(struct.unpack_from('<H', info, 4)[0], M.FOLDER)
-        self.assertEqual(struct.unpack_from('<H', info, 42)[0], 1)       # AssociationType: generic folder
+        self.assertEqual(struct.unpack_from('<H', info, 42)[0], 1)  # AssociationType: generic folder
         self.assertEqual(M.ptp_string(info, 52)[0], 'kits')
         info = W.object_info('a.bin', 7, False)
         self.assertEqual(struct.unpack_from('<HHI', info, 4), (W.FILE, 0, 7))

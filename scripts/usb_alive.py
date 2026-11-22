@@ -10,12 +10,14 @@ puts b's stuck address in those strings.
 macOS caches strings read with the device's langid 0x0409, so this asks with 0x0407.
 Claims no interface (OpenMTP / the CDC port are unaffected). Needs Homebrew libusb.
 """
+
 import argparse
 import ctypes
 import sys
 import time
 
-from mtp_probe import DeviceDescriptor, OP_XY_VID, load
+from mtp_probe import OP_XY_VID, DeviceDescriptor, load
+
 from xy_forever import device_lock, no_device
 
 
@@ -36,9 +38,16 @@ def product(lib, ctx):
                 buf = ctypes.create_string_buffer(255)
                 # GET_DESCRIPTOR(string, langid 0x0407), 500 ms: macOS answers 0x0409 (the
                 # device's own language) from its cache; any other langid reaches the device.
-                rc = lib.libusb_control_transfer(handle, ctypes.c_uint8(0x80), ctypes.c_uint8(6),
-                                                 ctypes.c_uint16(0x0300 | index), ctypes.c_uint16(0x0407),
-                                                 buf, ctypes.c_uint16(255), ctypes.c_uint(500))
+                rc = lib.libusb_control_transfer(
+                    handle,
+                    ctypes.c_uint8(0x80),
+                    ctypes.c_uint8(6),
+                    ctypes.c_uint16(0x0300 | index),
+                    ctypes.c_uint16(0x0407),
+                    buf,
+                    ctypes.c_uint16(255),
+                    ctypes.c_uint(500),
+                )
                 if rc < 2:
                     lib.libusb_close(handle)
                     return 'NO ANSWER (%d)' % rc

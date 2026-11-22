@@ -8,17 +8,19 @@
 // A job with expanded: true links, patches and builds assets with the 4 MiB option (core.memoryKit).
 // Host only: no device, no network.
 //   node scripts/modkit_core.mjs --core OPEN_XY/builder/core.mjs --jobs jobs.json --out results.json
-import {readFileSync, writeFileSync, mkdirSync} from 'node:fs';
-import {dirname, join} from 'node:path';
-import {pathToFileURL} from 'node:url';
-import {createHash} from 'node:crypto';
-import {parseArgs} from 'node:util';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
+import { parseArgs } from 'node:util';
 
-const {values} = parseArgs({options: {core: {type: 'string'}, jobs: {type: 'string'}, out: {type: 'string'}}});
+const { values } = parseArgs({
+  options: { core: { type: 'string' }, jobs: { type: 'string' }, out: { type: 'string' } },
+});
 const core = await import(pathToFileURL(values.core).href);
-const digest = bytes => createHash('sha256').update(bytes).digest('hex');
-const text = value => digest(Buffer.from(JSON.stringify(value)));
-const sorted = map => [...map].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const text = (value) => digest(Buffer.from(JSON.stringify(value)));
+const sorted = (map) => [...map].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 const opened = new Map();
 
 async function open(path) {
@@ -30,7 +32,7 @@ async function run(job) {
   // expanded: the website's "Use 4 MiB for machines" option, core.memoryKit(kit, true).
   const kit = job.expanded ? core.memoryKit(await open(job.kit), true) : await open(job.kit);
   const catalog = core.decode64(kit.stockCatalog);
-  const result = {name: job.name};
+  const result = { name: job.name };
   let numbers;
   if (job.assets_only) {
     numbers = core.assignNumbers(kit, job.machines, null);
@@ -38,21 +40,33 @@ async function run(job) {
     const linked = core.linkKit(kit, job.machines, null, job.extensions);
     numbers = linked.numbers;
     Object.assign(result, {
-      module_sha256: digest(linked.module), module_bytes: linked.module.length,
-      globals_sha256: text(sorted(linked.globals)), aliases_sha256: text(sorted(linked.aliases)),
-      objects: linked.objects.map(o => o.name), services: [...linked.services].sort(),
-      extensions: linked.extensions, numbers, sizes: linked.sizes,
+      module_sha256: digest(linked.module),
+      module_bytes: linked.module.length,
+      globals_sha256: text(sorted(linked.globals)),
+      aliases_sha256: text(sorted(linked.aliases)),
+      objects: linked.objects.map((o) => o.name),
+      services: [...linked.services].sort(),
+      extensions: linked.extensions,
+      numbers,
+      sizes: linked.sizes,
       segments_sha256: text(linked.segments),
     });
     if (job.link_out) {
-      mkdirSync(job.link_out, {recursive: true});
+      mkdirSync(job.link_out, { recursive: true });
       writeFileSync(join(job.link_out, 'module.bin'), linked.module);
-      writeFileSync(join(job.link_out, 'link.json'), JSON.stringify({
-        globals: sorted(linked.globals), services: [...linked.services].sort(), extensions: linked.extensions,
-        numbers: linked.numbers, sizes: linked.sizes}));
+      writeFileSync(
+        join(job.link_out, 'link.json'),
+        JSON.stringify({
+          globals: sorted(linked.globals),
+          services: [...linked.services].sort(),
+          extensions: linked.extensions,
+          numbers: linked.numbers,
+          sizes: linked.sizes,
+        }),
+      );
     }
     if (job.stock) {
-      const os = await core.patchFirmware(kit, linked, new Uint8Array(readFileSync(job.stock)), {profiling: false});
+      const os = await core.patchFirmware(kit, linked, new Uint8Array(readFileSync(job.stock)), { profiling: false });
       result.ldr_sha256 = digest(os);
       result.ldr_bytes = os.length;
       if (job.link_out) writeFileSync(join(job.link_out, 'os.ldr'), os);
@@ -61,11 +75,12 @@ async function run(job) {
   const files = await core.buildAssets(kit, job.machines, catalog, numbers, {}, job.extensions);
   result.files = Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, digest(bytes)]));
   result.file_order = Object.keys(files);
-  if (job.write) for (const [path, bytes] of Object.entries(files)) {
-    const target = join(job.write, path);
-    mkdirSync(dirname(target), {recursive: true});
-    writeFileSync(target, bytes);
-  }
+  if (job.write)
+    for (const [path, bytes] of Object.entries(files)) {
+      const target = join(job.write, path);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, bytes);
+    }
   return result;
 }
 
@@ -74,7 +89,7 @@ for (const job of JSON.parse(readFileSync(values.jobs, 'utf8'))) {
   try {
     results.push(await run(job));
   } catch (error) {
-    results.push({name: job.name, error: String(error.message)});
+    results.push({ name: job.name, error: String(error.message) });
   }
 }
 writeFileSync(values.out, JSON.stringify(results));

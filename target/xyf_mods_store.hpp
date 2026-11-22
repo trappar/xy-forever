@@ -12,10 +12,11 @@ static const char file[] = "store.txt";
 inline __attribute__((always_inline)) uint32_t version_of(const uint8_t* text, uint32_t bytes) {
     const char* key = "version=";
     uint32_t i = 0, n = 0, digits = 0;
-    for (; key[i]; ++i) if (i >= bytes || text[i] != uint8_t(key[i])) return 0;
+    for (; key[i]; ++i)
+        if (i >= bytes || text[i] != uint8_t(key[i])) return 0;
     for (; i < bytes && text[i] >= '0' && text[i] <= '9' && digits < 9; ++i, ++digits) n = n * 10 + (text[i] - '0');
     const bool ends = i == bytes || text[i] == '\n' || text[i] == '\r';
     return digits && ends ? n : 0;
 }
-} }
+}}
 #endif

@@ -24,5 +24,5 @@ struct Message {
 };
 void draw_menu(uint16_t* fb, const Menu& menu);
 void draw_message(uint16_t* fb, const Message& message);
-} }
+}}
 #endif

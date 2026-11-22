@@ -47,4 +47,4 @@ const char* signature_name(Signature result) {
     }
     return "unknown";
 }
-} }
+}}

@@ -9,6 +9,7 @@ MIN_RUN or more bytes with the stock 1.2.1 os.ldr or bootloader.ldr. Two kinds o
 `xyf_build.py --verify` requires shared_runs() == [] for the product (the mode with no embedded OS), and
 `scripts/web_release.py` checks it again before it pins and stages an image for the web app.
 """
+
 import struct
 
 MIN_RUN = 64
@@ -34,12 +35,12 @@ def sha256_constants():
         n += 1
     out = []
     for p in primes:
-        lo, hi = 0, 1 << 40                               # integer cube root of p << 96: 32 fraction bits
+        lo, hi = 0, 1 << 40  # integer cube root of p << 96: 32 fraction bits
         target = p << 96
         while lo < hi:
             mid = (lo + hi + 1) // 2
-            lo, hi = (mid, hi) if mid ** 3 <= target else (lo, mid - 1)
-        out.append(lo & 0xffffffff)
+            lo, hi = (mid, hi) if mid**3 <= target else (lo, mid - 1)
+        out.append(lo & 0xFFFFFFFF)
     return out
 
 
@@ -58,7 +59,7 @@ def blank_public(image):
     for table in public_tables():
         at = out.find(table)
         while at >= 0:
-            out[at:at + len(table)] = bytes((i * 151 + 77) & 0xff ^ 0x5a for i in range(len(table)))
+            out[at : at + len(table)] = bytes((i * 151 + 77) & 0xFF ^ 0x5A for i in range(len(table)))
             at = out.find(table, at + len(table))
     return bytes(out)
 
@@ -71,12 +72,12 @@ def shared_runs(image, stocks, min_run=MIN_RUN):
     for name, stock in stocks.items():
         anchors = {}
         for at in range(0, len(stock) - ANCHOR + 1, ANCHOR):
-            window = stock[at:at + ANCHOR]
+            window = stock[at : at + ANCHOR]
             if len(set(window)) >= DIVERSE:
                 anchors.setdefault(window, []).append(at)
         i = 0
         while i <= len(image) - ANCHOR:
-            spots = anchors.get(image[i:i + ANCHOR])
+            spots = anchors.get(image[i : i + ANCHOR])
             if not spots:
                 i += 1
                 continue

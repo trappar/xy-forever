@@ -29,10 +29,20 @@
 namespace xyf_core { namespace mtp {
 typedef unsigned short U16;
 // FileOps results: >= 0 done (open: a handle; read/write: bytes), else one of these.
-enum FileError : int { f_not_found = -2, f_storage = -5, f_refused = -13, f_exists = -17,
-                       f_not_empty = -93, f_link = -110 };
+enum FileError : int {
+    f_not_found = -2,
+    f_storage = -5,
+    f_refused = -13,
+    f_exists = -17,
+    f_not_empty = -93,
+    f_link = -110
+};
 static const U32 max_name = 254;                         // UTF-8 bytes of one name
-struct Entry { U32 kind; U32 size; char name[max_name + 2]; };   // kind 0 file, 1 folder, 2 other
+struct Entry {
+    U32 kind;
+    U32 size;
+    char name[max_name + 2];
+};   // kind 0 file, 1 folder, 2 other
 // The storage calls, shaped like processor B's file client (target/file_client.hpp): one page of a
 // folder (entries after skip, each with its stat; more = 1 when the folder goes on), stat, statfs,
 // open/read/write/seek/close (read, write <= chunk bytes), mkdir, unlink, rmdir, rename. #144: a write may return
@@ -80,32 +90,64 @@ static const U32 storage_id = 0x00010001u;
 // Container types, operation and response codes (PTP 1.1 / MTP 1.1).
 enum : U16 { t_command = 1, t_data = 2, t_response = 3 };
 enum : U16 {
-    op_get_device_info = 0x1001, op_open_session = 0x1002, op_close_session = 0x1003,
-    op_get_storage_ids = 0x1004, op_get_storage_info = 0x1005, op_get_object_handles = 0x1007,
-    op_get_object_info = 0x1008, op_get_object = 0x1009, op_delete_object = 0x100b,
-    op_send_object_info = 0x100c, op_send_object = 0x100d, op_get_device_prop_desc = 0x1014,
-    op_get_device_prop_value = 0x1015, op_get_partial_object = 0x101b,
-    op_get_object_props_supported = 0x9801, op_get_object_prop_desc = 0x9802, op_get_object_prop_value = 0x9803,
-    op_set_object_prop_value = 0x9804, op_get_object_prop_list = 0x9805
+    op_get_device_info = 0x1001,
+    op_open_session = 0x1002,
+    op_close_session = 0x1003,
+    op_get_storage_ids = 0x1004,
+    op_get_storage_info = 0x1005,
+    op_get_object_handles = 0x1007,
+    op_get_object_info = 0x1008,
+    op_get_object = 0x1009,
+    op_delete_object = 0x100b,
+    op_send_object_info = 0x100c,
+    op_send_object = 0x100d,
+    op_get_device_prop_desc = 0x1014,
+    op_get_device_prop_value = 0x1015,
+    op_get_partial_object = 0x101b,
+    op_get_object_props_supported = 0x9801,
+    op_get_object_prop_desc = 0x9802,
+    op_get_object_prop_value = 0x9803,
+    op_set_object_prop_value = 0x9804,
+    op_get_object_prop_list = 0x9805
 };
 // T2c: object property codes and data types.
 enum : U16 {
-    p_storage_id = 0xdc01, p_object_format = 0xdc02, p_protection_status = 0xdc03, p_object_size = 0xdc04,
-    p_object_file_name = 0xdc07, p_date_modified = 0xdc09, p_parent_object = 0xdc0b, p_puoid = 0xdc41, p_name = 0xdc44
+    p_storage_id = 0xdc01,
+    p_object_format = 0xdc02,
+    p_protection_status = 0xdc03,
+    p_object_size = 0xdc04,
+    p_object_file_name = 0xdc07,
+    p_date_modified = 0xdc09,
+    p_parent_object = 0xdc0b,
+    p_puoid = 0xdc41,
+    p_name = 0xdc44
 };
 enum : U16 { d_u16 = 0x0004, d_u32 = 0x0006, d_u64 = 0x0008, d_u128 = 0x000a, d_string = 0xffff };
 static const char fixed_date[] = "20250101T000000";      // DateModified, ObjectInfo's dates
 static const U32 prop_friendly_name = 0xd402;            // the only device property (a string, read-only)
 enum : U16 {
-    r_ok = 0x2001, r_general_error = 0x2002, r_session_not_open = 0x2003, r_not_supported = 0x2005,
-    r_incomplete_transfer = 0x2007, r_invalid_storage_id = 0x2008, r_invalid_object_handle = 0x2009,
-    r_store_full = 0x200c, r_object_write_protected = 0x200d, r_access_denied = 0x200f,
-    r_partial_deletion = 0x2012, r_no_valid_object_info = 0x2015, r_device_busy = 0x2019,
+    r_ok = 0x2001,
+    r_general_error = 0x2002,
+    r_session_not_open = 0x2003,
+    r_not_supported = 0x2005,
+    r_incomplete_transfer = 0x2007,
+    r_invalid_storage_id = 0x2008,
+    r_invalid_object_handle = 0x2009,
+    r_store_full = 0x200c,
+    r_object_write_protected = 0x200d,
+    r_access_denied = 0x200f,
+    r_partial_deletion = 0x2012,
+    r_no_valid_object_info = 0x2015,
+    r_device_busy = 0x2019,
     r_device_prop_not_supported = 0x200a,
-    r_invalid_parent = 0x201a, r_invalid_parameter = 0x201d, r_session_already_open = 0x201e,
+    r_invalid_parent = 0x201a,
+    r_invalid_parameter = 0x201d,
+    r_session_already_open = 0x201e,
     r_invalid_dataset = 0x2023,
-    r_invalid_object_prop_code = 0xa801, r_invalid_object_prop_value = 0xa803,
-    r_specification_by_group_unsupported = 0xa807, r_specification_by_depth_unsupported = 0xa808
+    r_invalid_object_prop_code = 0xa801,
+    r_invalid_object_prop_value = 0xa803,
+    r_specification_by_group_unsupported = 0xa807,
+    r_specification_by_depth_unsupported = 0xa808
 };
 enum : U16 { f_undefined = 0x3000, f_association = 0x3001 };
 // The write rule (pure): below /yaffs2/, first name not "upgrade", not the marker /yaffs2/bootloader.dev
@@ -116,7 +158,8 @@ bool writable(const char* path);
 // past it; B's policy refuses the same when the folder is made or the file opened.
 inline bool within_depth(const char* path, bool folder) {
     U32 names = 0;
-    for (U32 i = 7; path[i]; ++i) if (path[i] != '/' && path[i - 1] == '/') ++names;
+    for (U32 i = 7; path[i]; ++i)
+        if (path[i] != '/' && path[i - 1] == '/') ++names;
     return names <= 6u + (folder ? 0u : 1u);
 }
 
@@ -131,7 +174,10 @@ public:
     // One bounded piece of work (at most one file call). false: nothing to do until the host acts.
     bool step();
     void cancel() { cancelling = 1; }                    // class request Cancel (may come from an interrupt)
-    void reset() { resetting = 1; cancelling = 1; }      // Device Reset, bus reset: cancel, then no session
+    void reset() {
+        resetting = 1;
+        cancelling = 1;
+    }      // Device Reset, bus reset: cancel, then no session
     // An operation is in flight (it may hold a file): other users of the file client must wait.
     bool busy() const { return cancelling || phase != p_idle || fd >= 0; }
     U32 staged_length() const;                           // the length of the container at the IN head (0: < 4 bytes)
@@ -144,14 +190,20 @@ public:
     // MTP (serial file commands, jobs). A listing marks its folder's children stale first, then fresh as listed.
     void invalidate();
     U32 cache_hits() const { return hits; }
-    void set_piece(U32 bytes) { piece = bytes < chunk ? chunk : bytes > buffer_bytes ? buffer_bytes : bytes; }   // #144
+    void set_piece(U32 bytes) { piece = bytes < chunk ? chunk : bytes > buffer_bytes ? buffer_bytes : bytes; } // #144
     // #191 (USB mode Serial): nonzero, every operation but GetDeviceInfo answers this response as it starts and an
     // open session ends; 0 (init): answered as usual.
     void refuse(U16 response) { refusal = response; }
     U32 piece_bytes() const { return piece; }
+
 private:
     enum Phase : U32 { p_idle, p_data, p_work, p_close };
-    struct Object { U16 parent; U16 name_at; Byte name_len, kind, used, fresh; U32 size; };   // fresh: kind, size known
+    struct Object {
+        U16 parent;
+        U16 name_at;
+        Byte name_len, kind, used, fresh;
+        U32 size;
+    }; // fresh: kind, size known
     FileOps ops;
     volatile U32 cancelling, resetting;
     U32 data_flag;
@@ -169,15 +221,15 @@ private:
     U16 listed[max_handles];
     Entry entries[page];
     char path[max_path];
-    U32 pending_handle, pending_size, pending_new;       // SendObjectInfo -> SendObject (new: no such name before)
+    U32 pending_handle, pending_size, pending_new; // SendObjectInfo -> SendObject (new: no such name before)
     Object objects[max_handles];
     char names[name_pool];
     U32 names_used;
     U32 hits;
-    U32 piece;                                           // set_piece (init: default_piece)
-    U32 refusal;                                         // refuse (init: 0)
-    bool cached_info();                                  // GetObjectInfo from the table (true: answered)
-    void object_info(U32 handle, const char* where);     // the ObjectInfo dataset and the response
+    U32 piece; // set_piece (init: default_piece)
+    U32 refusal; // refuse (init: 0)
+    bool cached_info(); // GetObjectInfo from the table (true: answered)
+    void object_info(U32 handle, const char* where); // the ObjectInfo dataset and the response
 
     void clear_objects();
     void respond(U16 code, U32 n = 0, U32 a = 0, U32 b = 0, U32 c = 0);
@@ -187,16 +239,16 @@ private:
     bool path_of(U32 handle, char* out) const;
     U32 find(U32 parent, const char* name) const;
     U32 add(U32 parent, const char* name, U32 kind, U32 size);
-    void forget(U32 handle);                             // a deleted object (and what was below it)
+    void forget(U32 handle); // a deleted object (and what was below it)
     bool valid(U32 handle) const { return handle && handle <= max_handles && objects[handle - 1].used; }
     bool parent_of(U32 param, U32& parent) const;
-    Byte* begin_data(U32 payload);                       // reserves header + payload in out
+    Byte* begin_data(U32 payload); // reserves header + payload in out
     void end_data(U32 payload);
-    bool stream();                                       // GetObject / GetPartialObject reads
-    bool send_object();                                  // SendObject (mtp_responder_send.ipp)
-    U32 prop_value(Byte* p, U32 handle, U32 prop);       // T2c: one property's value at p: bytes (0: unknown)
-    bool rename_object(U32 handle, const char* name);    // the table after a rename (false: forgotten)
+    bool stream(); // GetObject / GetPartialObject reads
+    bool send_object(); // SendObject (mtp_responder_send.ipp)
+    U32 prop_value(Byte* p, U32 handle, U32 prop); // T2c: one property's value at p: bytes (0: unknown)
+    bool rename_object(U32 handle, const char* name); // the table after a rename (false: forgotten)
     U32 error_code(int error) const;
 };
-} }
+}}
 #endif

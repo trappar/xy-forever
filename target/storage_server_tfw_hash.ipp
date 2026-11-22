@@ -27,9 +27,7 @@ bool tfw_hash_clear(cold_storage::Stock121ReadOnlySession& storage) {
     a_tfw_hash.path[0] = 0;
     return true;
 }
-bool tfw_hash_mode() {
-    return !boot_selected() && !window_open && engine == entry_read && !engine_refused;
-}
+bool tfw_hash_mode() { return !boot_selected() && !window_open && engine == entry_read && !engine_refused; }
 U32 tfw_hash_begin(cold_storage::Stock121ReadOnlySession& storage, const char* path, U32 now) {
     if (a_tfw_hash.path[0] || !tfw_hash_mode() || held_files()) return tp::s_busy;
     if (!mount(storage) || !storage.direct_gate() || !storage.ready()) return tp::s_storage;
@@ -38,7 +36,8 @@ U32 tfw_hash_begin(cold_storage::Stock121ReadOnlySession& storage, const char* p
     TfwHashJob& job = a_tfw_hash;
     job.fd = fd;
     job.touched = now;
-    for (U32 i = 0; i != max_path; ++i) if (!(job.path[i] = path[i])) break;
+    for (U32 i = 0; i != max_path; ++i)
+        if (!(job.path[i] = path[i])) break;
     uint8_t prefix[tfw::prefix_bytes];
     const int got = storage.direct_read(fd, prefix, sizeof(prefix));
     if (got != int(sizeof(prefix)) || tfw::ciphertext_span(prefix, job.start, job.end) != tfw::Status::ok) {
@@ -80,7 +79,8 @@ void tfw_hash_step(cold_storage::Stock121ReadOnlySession& storage, U32 now) {
 __attribute__((noinline)) bool tfw_hash_query(void* context, U32 request, Stock121PeerSession& session) {
     const U32 argument = word(request + 8), op = argument & 0xffu;
     if (word(request) != path_class || byte(request + 5) != 0x21u ||
-        (argument & th::tag_mask) != (th::tag & th::tag_mask)) return false;
+        (argument & th::tag_mask) != (th::tag & th::tag_mask))
+        return false;
     rename_armed = 0;                                  // breaks the adjacency of rename requests
     if (argument >> 24 != th::version) {
         session.reply(request, tp::s_unsupported, th::version);
@@ -90,7 +90,8 @@ __attribute__((noinline)) bool tfw_hash_query(void* context, U32 request, Stock1
         session.reply(request, tp::s_bad_request, 0);
         return true;
     }
-    for (U32 i = 0; i != max_path; ++i) if (!(path_copy[i] = char(byte(path_buffer + i)))) break;
+    for (U32 i = 0; i != max_path; ++i)
+        if (!(path_copy[i] = char(byte(path_buffer + i)))) break;
     if (file_engine::decide_engine(file_engine::op_read, path_copy) != file_engine::allow ||
         !services::loader_path(path_copy)) {
         session.reply(request, tp::s_bad_request, 0);

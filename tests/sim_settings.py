@@ -1,14 +1,16 @@
 """Helpers for the parked sweeps that drive the Settings page in the simulator (the tests that were here went in
 #233): Rows, its row and key constants."""
+
 import time
 import unittest
 
-from xy_forever import xyf_host as host
 from sim_mods_page import MINUS, PLAY, PLUS, PageBase, synthetic_setup
 from test_sim_config import MARK, mark_text
 
-MAIN, INFO, SETTINGS, OPTIONS = 0, 1, 3, 4                                 # xyf_menu Screen (#197)
-R_OK = 0x2001                                                              # MTP OK
+from xy_forever import xyf_host as host
+
+MAIN, INFO, SETTINGS, OPTIONS = 0, 1, 3, 4  # xyf_menu Screen (#197)
+R_OK = 0x2001  # MTP OK
 SAVED = 'menu: line: Settings saved.'
 OPEN_SESSION, GET_DEVICE_INFO, GET_STORAGE_IDS, ACCESS_DENIED = 0x1002, 0x1001, 0x1004, 0x200F
 NEWER = 'note=settings.txt is from a newer XY Forever'
@@ -21,9 +23,9 @@ class Rows(PageBase):
     @classmethod
     def setUpClass(cls):
         synthetic_setup(cls)
-        (cls.seeded / MARK).write_text(mark_text(cls.seeded, cls.base))   # converged once (#197): plain boots at once
+        (cls.seeded / MARK).write_text(mark_text(cls.seeded, cls.base))  # converged once (#197): plain boots at once
 
-    real = False                                                           # keys as the OP-XY's own (serial off)
+    real = False  # keys as the OP-XY's own (serial off)
 
     # -- helpers ---------------------------------------------------------------------------------
     def key(self, key, pressed):
@@ -62,7 +64,6 @@ class Rows(PageBase):
         self.press(PLAY)
         self.until(lambda: self.count('menu: screen %d ' % SETTINGS) > seen, 'the Settings page')
 
-
     def pick(self, row, moves):
         """Settings row `row` (from row 0): PLAY opens its options, `moves` x + (- when negative), PLAY picks; back
         to row 0. The option picked."""
@@ -82,8 +83,7 @@ class Rows(PageBase):
     def saved(self, seen):
         """Until a save's end since `seen` lines; still on the Settings page (nothing left)."""
         self.until(lambda: self.count(SAVED) > seen, 'the save')
-        self.assertIn(self.lines('menu: screen ')[-1].split()[0], ('%d' % SETTINGS, '%d' % OPTIONS))   # never home
-
+        self.assertIn(self.lines('menu: screen ')[-1].split()[0], ('%d' % SETTINGS, '%d' % OPTIONS))  # never home
 
     def in_os(self):
         return self.sim.status()['a'] == 'os' and self.sim.status()['b'] == 'os'
@@ -93,14 +93,6 @@ class Rows(PageBase):
         self.sim.wait_listening(30.0)
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
-
-
-
-
-
-
-
-
 
 
 if __name__ == '__main__':

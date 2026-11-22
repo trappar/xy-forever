@@ -8,6 +8,7 @@ even on a crash or a kill, so a lock is never left behind. A second process wait
 With no private folder (nothing set up), there is nothing to coordinate and no lock is taken; nor in a test run
 (xy_forever/no_device.py), unless the test names its own lock file.
 """
+
 import datetime
 import fcntl
 import os
@@ -16,7 +17,7 @@ import time
 
 from xy_forever import no_device, paths
 
-_held = {}                      # lock path: the open file holding the lock (kept for the life of the process)
+_held = {}  # lock path: the open file holding the lock (kept for the life of the process)
 
 
 class DeviceBusy(SystemExit):
@@ -41,8 +42,13 @@ def hold(wait=0.0, path=None, root=None):
     return lock(path or paths.DEVICE_LOCK, wait, root)
 
 
-def lock(path, wait=0.0, root=None, what=None,
-         waiting='device busy: %(who)s is talking to the OP-XY; waiting up to %(wait)g s\n'):
+def lock(
+    path,
+    wait=0.0,
+    root=None,
+    what=None,
+    waiting='device busy: %(who)s is talking to the OP-XY; waiting up to %(wait)g s\n',
+):
     """An flock on path, held until this process exits (taken again: nothing to do); also scripts/check.py's lock.
     Waits up to wait seconds (None: as long as it takes) for another holder, writing waiting once on stderr; then
     raises DeviceBusy. The file records this process: its pid, what (default: its command) and the time. Returns

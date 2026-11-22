@@ -25,7 +25,8 @@ struct Rules {
 
 // Error text, truncated at the buffer's end (always NUL-terminated).
 struct Text {
-    char* buffer; U32 capacity, length;
+    char* buffer;
+    U32 capacity, length;
     void add(const char* text);
     void add(const Byte* text, U32 count);
     void add_number(int value);
@@ -38,17 +39,26 @@ inline U32 u32(const Byte* p) { return u16(p) | (u16(p + 2) << 16); }
 enum Group { none = 0, text = 1, rodata = 2, data = 3, bss = 4 };
 // max_name: the longest name (section, symbol, table) accepted; core.mjs has no limit.
 static const U32 shn_abs = 0xfff1, max_bytes = 1u << 20, max_sections = 4096, max_name = 255;
-struct Header { U32 start, count, names, symtab; };
-struct Section { U32 name, type, flags, offset, size, link, info, alignment, stride; };
-struct Symbol { U32 name, value, size, binding, type, section; };
-struct Relocation { U32 offset, type, symbol; int addend; };
+struct Header {
+    U32 start, count, names, symtab;
+};
+struct Section {
+    U32 name, type, flags, offset, size, link, info, alignment, stride;
+};
+struct Symbol {
+    U32 name, value, size, binding, type, section;
+};
+struct Relocation {
+    U32 offset, type, symbol;
+    int addend;
+};
 // Bytes check() needs beside the object (4-byte aligned): per section a list link, a list end and
 // a first entry (the relocation tables of each target), plus one bit per byte of the object.
 inline U32 work_bytes(U32 object_bytes) { return 8u * max_sections + (object_bytes >> 3) + 8; }
 // readObject's checks, in its order, on the whole object. On failure `name`/`name_length` hold
 // the section name core.mjs names (section_kind). Afterwards the accessors below are safe.
-Status check(const Byte* data, U32 size, Byte* work, U32 work_size, Header& header,
-             const Byte*& name, U32& name_length);
+Status check(const Byte* data, U32 size, Byte* work, U32 work_size, Header& header, const Byte*& name,
+             U32& name_length);
 void section(const Byte* data, const Header& header, U32 index, Section& out);
 void symbol(const Byte* data, const Header& header, U32 index, Symbol& out);
 U32 symbol_count(const Byte* data, const Header& header);
@@ -63,17 +73,21 @@ void relocation(const Byte* data, const Section& table, U32 index, Relocation& o
 namespace numbers {
 // numberLayout over fixed numbers, an optional layout and the machines to number; `out` holds the
 // layout after (fixed, layout, then new machines by id). The work area is work_bytes(capacity).
-struct Machine { const char* id; U32 kind; Identity requested; };
+struct Machine {
+    const char* id;
+    U32 kind;
+    Identity requested;
+};
 enum Kind { synth = 0, drum = 1, sample = 2, effect = 3, player = 4, other = 5 };
 U32 work_bytes(U32 capacity);
 bool valid_rules(const Rules& rules);
 bool valid_request(const Rules& rules, U32 kind, const Identity& identity);
 bool fits(const Identity& requested, const Identity& numbers);
 U32 slot_of(U32 kind);
-Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Number* layout,
-              U32 layout_count, const Machine* machines, U32 machine_count, Byte* work,
-              Number* out, U32 capacity, U32& count, Text& message);
+Status layout(const Rules& rules, const Number* fixed, U32 fixed_count, const Number* layout, U32 layout_count,
+              const Machine* machines, U32 machine_count, Byte* work, Number* out, U32 capacity, U32& count,
+              Text& message);
 U32 fnv1a(const Byte* text, U32 length);
 }
-} }
+}}
 #endif

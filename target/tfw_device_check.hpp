@@ -14,5 +14,5 @@ struct Authentication {
     xyf_core::Work* work;
 };
 xyf_core::tfw::Status authenticate(const char* path, const Authentication& request);
-} }
+}}
 #endif

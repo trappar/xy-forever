@@ -18,14 +18,25 @@ const safe = { version: '0.1.0', proto: '1.22', image: 'c801e67a', mode: 'produc
 
 it('round-trips only allowed fields and passes the repository leak scanner', () => {
   const raw = {
-    ...safe, serial, report, filename, hostPath, email, aes, publicKey,
+    ...safe,
+    serial,
+    report,
+    filename,
+    hostPath,
+    email,
+    aes,
+    publicKey,
     hello: { text: `XYF1;serial=${serial};future=${aes}` },
     rawLog: `opened ${hostPath}`,
   };
   const bugReport = new BugReport();
   bugReport.updateStatus(raw);
   bugReport.record('connect', 'finished');
-  bugReport.record('upload_files', 'failed', new XyfError('refused', hostPath, { fields: { filename, aes }, cause: raw }));
+  bugReport.record(
+    'upload_files',
+    'failed',
+    new XyfError('refused', hostPath, { fields: { filename, aes }, cause: raw }),
+  );
   bugReport.record('save_mods', 'failed', new Error(publicKey));
   const snapshot = bugReport.snapshot(true);
   expect(JSON.parse(snapshot)).toEqual({
@@ -33,7 +44,11 @@ it('round-trips only allowed fields and passes the repository leak scanner', () 
     appVersion: appPackage.version,
     connected: true,
     device: {
-      firmwareVersion: '0.1.0', protocolVersion: '1.22', image: 'c801e67a', mode: 'product', developerBuild: false,
+      firmwareVersion: '0.1.0',
+      protocolVersion: '1.22',
+      image: 'c801e67a',
+      mode: 'product',
+      developerBuild: false,
     },
     activity: [
       { event: 'connect', outcome: 'finished' },
@@ -43,7 +58,14 @@ it('round-trips only allowed fields and passes the repository leak scanner', () 
   });
 
   // Run the same scanner as the repository on both the rejected inputs and the actual export.
-  const scan = spawnSync('uv', ['run', '--quiet', 'python', '-c', `
+  const scan = spawnSync(
+    'uv',
+    [
+      'run',
+      '--quiet',
+      'python',
+      '-c',
+      `
 import json, sys
 sys.path.insert(0, 'tests')
 from test_no_leaks import find_leaks
@@ -53,11 +75,15 @@ print(json.dumps({
     'raw_rules': sorted({hit.split(': ', 2)[1] for hit in raw}),
     'bundle_hits': find_leaks({'bundle.json': texts['snapshot']}, [texts['serial']]),
 }))
-`], {
-    cwd: fileURLToPath(new URL('../..', import.meta.url)),
-    input: JSON.stringify({ raw: JSON.stringify(raw), serial, snapshot }),
-    encoding: 'utf8', timeout: 10_000,
-  });
+`,
+    ],
+    {
+      cwd: fileURLToPath(new URL('../..', import.meta.url)),
+      input: JSON.stringify({ raw: JSON.stringify(raw), serial, snapshot }),
+      encoding: 'utf8',
+      timeout: 10_000,
+    },
+  );
   expect(scan.error).toBeUndefined();
   expect(scan.status, scan.stderr).toBe(0);
   expect(JSON.parse(scan.stdout)).toEqual({

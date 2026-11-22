@@ -1,14 +1,15 @@
 """xy_forever/mtp_read.py and `setup.py import-stock --from-device` against a fake OP-XY: a bulk transport that
 answers PTP containers from an in-memory tree (synthetic bytes, never the stock files; the pins patched as
 test_setup.py does). Covers the fetch + import, a missing file, the read-only choke point and the USB messages."""
+
 import contextlib
 import hashlib
 import importlib.util
 import io
-from pathlib import Path
 import struct
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from xy_forever import mtp_read as M
@@ -21,12 +22,27 @@ spec.loader.exec_module(S)
 
 OS, BOOT, CATALOG = b'os 1.2.1' * 20000, b'boot 1.2.1', b'{"synthetic": "stock catalog"}'
 PINS = {'1.2.1': {'os.ldr': hashlib.sha256(OS).hexdigest(), 'bootloader.ldr': hashlib.sha256(BOOT).hexdigest()}}
-STOCK_TREE = {'/upgrade/firmware/blackfin/bin/os.ldr': OS, '/upgrade/firmware/blackfin/bin/bootloader.ldr': BOOT,
-              '/upgrade/firmware/blackfin/bin/readme.txt': b'other', '/content/op1_factory.json': CATALOG,
-              '/content/display/x.svg': b'<svg/>'}
-WRITES = {0x100C: 'SendObjectInfo', 0x100D: 'SendObject', 0x100B: 'DeleteObject', 0x9804: 'SetObjectPropValue',
-          0x100F: 'FormatStore', 0x1019: 'MoveObject', 0x101A: 'CopyObject', 0x9803: 'GetObjectPropValue',
-          0x1010: 'ResetDevice', 0x101B: 'GetPartialObject', 0x9810: 'SetObjectReferences', 0xFFFF: 'unknown'}
+STOCK_TREE = {
+    '/upgrade/firmware/blackfin/bin/os.ldr': OS,
+    '/upgrade/firmware/blackfin/bin/bootloader.ldr': BOOT,
+    '/upgrade/firmware/blackfin/bin/readme.txt': b'other',
+    '/content/op1_factory.json': CATALOG,
+    '/content/display/x.svg': b'<svg/>',
+}
+WRITES = {
+    0x100C: 'SendObjectInfo',
+    0x100D: 'SendObject',
+    0x100B: 'DeleteObject',
+    0x9804: 'SetObjectPropValue',
+    0x100F: 'FormatStore',
+    0x1019: 'MoveObject',
+    0x101A: 'CopyObject',
+    0x9803: 'GetObjectPropValue',
+    0x1010: 'ResetDevice',
+    0x101B: 'GetPartialObject',
+    0x9810: 'SetObjectReferences',
+    0xFFFF: 'unknown',
+}
 STORAGE = 0x00010001
 
 
@@ -44,7 +60,7 @@ class FakeOpXy:
     It would carry out any operation it is sent, so a refused one must never reach it."""
 
     def __init__(self, tree):
-        self.objects = {}                       # handle -> (parent, name, data or None for a folder)
+        self.objects = {}  # handle -> (parent, name, data or None for a folder)
         for path, data in tree.items():
             parent = M.ROOT
             parts = path.strip('/').split('/')
@@ -83,18 +99,22 @@ class FakeOpXy:
             return M.OK, struct.pack('<%dI' % (len(kids) + 1), len(kids), *kids)
         if code == 0x1008:
             parent, name, data = self.objects[params[0]]
-            return M.OK, (struct.pack('<IHHI', STORAGE, M.FOLDER if data is None else 0x3000, 0, len(data or b''))
-                          + bytes(40) + ptp_str(name) + b'\0\0\0')
+            return M.OK, (
+                struct.pack('<IHHI', STORAGE, M.FOLDER if data is None else 0x3000, 0, len(data or b''))
+                + bytes(40)
+                + ptp_str(name)
+                + b'\0\0\0'
+            )
         if code == 0x1009:
             return M.OK, self.objects[params[0]][2]
-        if code == 0x100B:                      # what the client must never send
+        if code == 0x100B:  # what the client must never send
             del self.objects[params[0]]
             return M.OK, None
-        return 0x2005, None                     # OperationNotSupported
+        return 0x2005, None  # OperationNotSupported
 
     def read(self, size):
         if not self.out:
-            return -7, b''                      # LIBUSB_ERROR_TIMEOUT
+            return -7, b''  # LIBUSB_ERROR_TIMEOUT
         head = self.out[0]
         self.out[0] = head[size:]
         if not self.out[0]:
@@ -123,7 +143,7 @@ class Fetch(unittest.TestCase):
 
     def test_the_three_files_are_read_then_imported(self):
         device, out = self.from_device(STOCK_TREE)
-        self.assertEqual((self.dest / 'os.ldr').read_bytes(), OS)          # 160 000 bytes: several transfers
+        self.assertEqual((self.dest / 'os.ldr').read_bytes(), OS)  # 160 000 bytes: several transfers
         self.assertEqual((self.dest / 'bootloader.ldr').read_bytes(), BOOT)
         self.assertEqual((self.dest / 'op1_factory.json').read_bytes(), CATALOG)
         self.assertEqual(sorted(p.name for p in self.incoming.iterdir()), sorted(S.DEVICE_FILES.values()))
@@ -142,8 +162,11 @@ class Fetch(unittest.TestCase):
     def test_a_missing_pair_file_is_one_line_pointing_at_the_manual_copy(self):
         tree = dict(STOCK_TREE)
         del tree['/upgrade/firmware/blackfin/bin/bootloader.ldr']
-        with self.assertRaisesRegex(S.SetupError, r'^/upgrade/firmware/blackfin/bin/bootloader\.ldr: not on the '
-                                    r'OP-XY .*copy the files by hand instead \(docs/operating/first-install\.md\)$'):
+        with self.assertRaisesRegex(
+            S.SetupError,
+            r'^/upgrade/firmware/blackfin/bin/bootloader\.ldr: not on the '
+            r'OP-XY .*copy the files by hand instead \(docs/operating/first-install\.md\)$',
+        ):
             self.from_device(tree)
         self.assertFalse(self.dest.exists())
 
@@ -159,14 +182,21 @@ class Fetch(unittest.TestCase):
                     self.incoming, self.dest = Path(tmp) / 'incoming', Path(tmp) / 'stock'
                     _, out = self.from_device(tree)
                     self.assertEqual(sorted(p.name for p in self.dest.iterdir()), sorted(S.PAIR))
-                self.assertRegex(out, 'not on the OP-XY; fixtures downloads it' if catalog is None
-                                 else r'ignored, not the stock 1\.2\.1 file')
+                self.assertRegex(
+                    out,
+                    'not on the OP-XY; fixtures downloads it'
+                    if catalog is None
+                    else r'ignored, not the stock 1\.2\.1 file',
+                )
 
     def test_usb_failures_become_one_line_setup_errors(self):
         def refuse(*_):
             raise M.MtpError('no OP-XY (VID 0x2367) on USB')
-        with mock.patch.object(S.mtp_read, 'open_op_xy', refuse), \
-                self.assertRaisesRegex(S.SetupError, r'^no OP-XY .*\(docs/operating/first-install\.md\)$'):
+
+        with (
+            mock.patch.object(S.mtp_read, 'open_op_xy', refuse),
+            self.assertRaisesRegex(S.SetupError, r'^no OP-XY .*\(docs/operating/first-install\.md\)$'),
+        ):
             S.import_from_device(self.incoming, self.dest, PINS)
         err = io.StringIO()
         with mock.patch.object(S.mtp_read, 'open_op_xy', refuse), contextlib.redirect_stderr(err):
@@ -210,9 +240,11 @@ class UsbMessages(unittest.TestCase):
 
     def test_no_op_xy_or_not_in_mtp_mode(self):
         with self.assertRaisesRegex(M.MtpError, r'^no OP-XY \(VID 0x2367\) on USB$'):
-            M.choose([('d', (0x05ac, 1), [self.MTP])])
-        cdc = [{'number': 0, 'cls': (2, 2, 1), 'endpoints': [(0x83, 3, 8)]},
-               {'number': 1, 'cls': (10, 0, 0), 'endpoints': [(0x81, 2, 512), (0x01, 2, 512)]}]
+            M.choose([('d', (0x05AC, 1), [self.MTP])])
+        cdc = [
+            {'number': 0, 'cls': (2, 2, 1), 'endpoints': [(0x83, 3, 8)]},
+            {'number': 1, 'cls': (10, 0, 0), 'endpoints': [(0x81, 2, 512), (0x01, 2, 512)]},
+        ]
         for label, found in (('serial', cdc), ('audio', [{'number': 0, 'cls': (1, 1, 0), 'endpoints': []}])):
             with self.subTest(label), self.assertRaisesRegex(M.MtpError, 'on USB but not in MTP mode'):
                 M.choose([('d', (M.OP_XY_VID, 0x21), found)])
@@ -220,14 +252,18 @@ class UsbMessages(unittest.TestCase):
 
     def test_a_held_interface_names_the_programs_to_quit(self):
         for rc in (M.LIBUSB_ERROR_ACCESS, M.LIBUSB_ERROR_BUSY):
-            self.assertRegex(M.usb_problem('claim interface 0', rc), 'held by another program: quit OpenMTP, '
-                             'Image Capture and Android File Transfer')
+            self.assertRegex(
+                M.usb_problem('claim interface 0', rc),
+                'held by another program: quit OpenMTP, Image Capture and Android File Transfer',
+            )
         self.assertEqual(M.usb_problem('claim interface 0', -4), 'claim interface 0 failed (libusb -4)')
 
     def test_missing_libusb(self):
-        with mock.patch.object(M.subprocess, 'run', side_effect=OSError), \
-                mock.patch.object(M.ctypes.util, 'find_library', return_value=None), \
-                self.assertRaisesRegex(M.MtpError, r'^libusb-1\.0 not found \(brew install libusb\)$'):
+        with (
+            mock.patch.object(M.subprocess, 'run', side_effect=OSError),
+            mock.patch.object(M.ctypes.util, 'find_library', return_value=None),
+            self.assertRaisesRegex(M.MtpError, r'^libusb-1\.0 not found \(brew install libusb\)$'),
+        ):
             M.load_libusb()
 
 

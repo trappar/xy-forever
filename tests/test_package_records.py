@@ -1,13 +1,16 @@
 """Native metadata precedence through host admission, rebuild and package indexing."""
-import json
-from pathlib import Path
-import tempfile
-from types import SimpleNamespace
-import unittest
 
-from xy_forever import config_records, moddev, modindex, modkit, modpatch, modsend, native_json, package_records as R, package_store
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+
+from test_modkit import CATALOG_BYTES, finish, synthetic_kit
+
+from xy_forever import config_records, moddev, modindex, modkit, modpatch, modsend, native_json, package_store
+from xy_forever import package_records as R
 from xy_forever import usb_proto as P
-from test_modkit import synthetic_kit, finish, CATALOG_BYTES
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,8 +38,13 @@ class PackageRecords(unittest.TestCase):
                     data = files[name]
                     return (P.ids.S_NOT_FOUND, b'') if data is None else (0, data)
 
-                dev = SimpleNamespace(list_dir=lambda _: (0, [(2 if data is None else 0, 0, name.encode())
-                                                              for name, data in files.items()]), read_all=read)
+                dev = SimpleNamespace(
+                    list_dir=lambda _: (
+                        0,
+                        [(2 if data is None else 0, 0, name.encode()) for name, data in files.items()],
+                    ),
+                    read_all=read,
+                )
                 if want is modsend.Refused:
                     with self.assertRaisesRegex(modsend.Refused, r'config\.(json|txt)'):
                         moddev.config(dev)
@@ -82,14 +90,22 @@ class PackageRecords(unittest.TestCase):
             package_store.validate(files)
 
     def test_moddev_entry_stamp_falls_back_only_on_absence(self):
-        native = native_json.package_document(dict(type='firmware', name='New', bytes=1, crc32='00000000', sha256='a' * 64))
-        for response, expected in (((P.ids.S_NOT_FOUND, b''), 'b' * 64), ((0, native), 'a' * 64),
-                                   ((0, b'{'), None), ((P.ids.S_STORAGE, b''), None)):
+        native = native_json.package_document(
+            dict(type='firmware', name='New', bytes=1, crc32='00000000', sha256='a' * 64)
+        )
+        for response, expected in (
+            ((P.ids.S_NOT_FOUND, b''), 'b' * 64),
+            ((0, native), 'a' * 64),
+            ((0, b'{'), None),
+            ((P.ids.S_STORAGE, b''), None),
+        ):
             with self.subTest(response=response):
                 calls = []
+
                 def read(path, **_):
                     calls.append(path)
                     return response if path.endswith('manifest.json') else (0, ('sha256=%s\n' % ('b' * 64)).encode())
+
                 device = SimpleNamespace(read_all=read, list_dir=lambda _: (0, [(0, 64, b'info.txt')]))
                 if expected is None:
                     with self.assertRaises(modsend.Refused):
@@ -97,8 +113,10 @@ class PackageRecords(unittest.TestCase):
                 else:
                     self.assertEqual(moddev.entry_stamp(device, 'entry'), expected)
                 self.assertEqual(len(calls), 2 if response[0] == P.ids.S_NOT_FOUND else 1)
-        link = SimpleNamespace(read_all=lambda *_args, **_kw: (P.ids.S_NOT_FOUND, b''),
-                               list_dir=lambda _: (0, [(2, 0, b'manifest.json'), (0, 64, b'info.txt')]))
+        link = SimpleNamespace(
+            read_all=lambda *_args, **_kw: (P.ids.S_NOT_FOUND, b''),
+            list_dir=lambda _: (0, [(2, 0, b'manifest.json'), (0, 64, b'info.txt')]),
+        )
         with self.assertRaisesRegex(modsend.Refused, 'manifest.json'):
             moddev.entry_stamp(link, 'entry')
 
@@ -115,8 +133,9 @@ class PackageRecords(unittest.TestCase):
                 self.assertFalse((root / name / R.LEGACY).exists())
             profile, generation, packages = modsend.local_set(root)
             self.assertEqual(set(packages), set(names))
-            self.assertTrue(all(files[-2][0] == 'manifest.json' and files[-1][0] == 'files.sha256'
-                                for files in packages.values()))
+            self.assertTrue(
+                all(files[-2][0] == 'manifest.json' and files[-1][0] == 'files.sha256' for files in packages.values())
+            )
             self.assertEqual(modkit.rebuild_kit(root, ['alpha', 'beta'], ['cap', 'flt'], CATALOG_BYTES), expected)
             self.assertEqual(modpatch.info_values(root / 'base' / R.NATIVE)['profile'], profile)
             self.assertEqual(moddev.resolve(root / 'alpha'), (root, ['alpha']))
@@ -125,8 +144,10 @@ class PackageRecords(unittest.TestCase):
             fetched = work / 'fetched'
             modindex.fetch(index_dir, fetched, out=lambda *_: None)
             self.assertEqual(modsend.local_set(fetched)[:2], (profile, generation))
-            self.assertEqual({p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob('*') if p.is_file()},
-                             {p.relative_to(fetched).as_posix(): p.read_bytes() for p in fetched.rglob('*') if p.is_file()})
+            self.assertEqual(
+                {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob('*') if p.is_file()},
+                {p.relative_to(fetched).as_posix(): p.read_bytes() for p in fetched.rglob('*') if p.is_file()},
+            )
             # A present newer schema refuses through user-facing command boundaries.
             base_record = root / 'base/manifest.json'
             good_base = base_record.read_bytes()

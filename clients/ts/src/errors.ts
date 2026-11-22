@@ -5,13 +5,13 @@ import { ASK_TEXT, NOT_ALLOWED_TEXT, SERIAL_OFF_TEXT } from './trust.ts';
 import type { CommandName, StatusName, Value } from './v1.ts';
 
 export type ErrorCode =
-  | Exclude<StatusName, 'ok'>   // the device answered with this status
-  | 'unknown_status'            // a status this client does not know (a newer device): a failure
-  | 'timeout'                   // no reply within the call's timeout
-  | 'disconnected'              // the link closed: cable pulled, device restarted, port closed
-  | 'aborted'                   // the caller cancelled (AbortSignal)
-  | 'update_required'           // the device's XY Forever is too old for this client or command
-  | 'protocol';                 // a reply this client cannot read, or another protocol major
+  | Exclude<StatusName, 'ok'> // the device answered with this status
+  | 'unknown_status' // a status this client does not know (a newer device): a failure
+  | 'timeout' // no reply within the call's timeout
+  | 'disconnected' // the link closed: cable pulled, device restarted, port closed
+  | 'aborted' // the caller cancelled (AbortSignal)
+  | 'update_required' // the device's XY Forever is too old for this client or command
+  | 'protocol'; // a reply this client cannot read, or another protocol major
 
 export class XyfError extends Error {
   readonly code: ErrorCode;
@@ -21,9 +21,16 @@ export class XyfError extends Error {
   /** The fields an error reply carries (the command's `on_error`), else null. */
   readonly fields: Readonly<Record<string, Value>> | null;
 
-  constructor(code: ErrorCode, message: string, more: {
-    command?: CommandName | null; status?: number | null; fields?: Readonly<Record<string, Value>> | null; cause?: unknown;
-  } = {}) {
+  constructor(
+    code: ErrorCode,
+    message: string,
+    more: {
+      command?: CommandName | null;
+      status?: number | null;
+      fields?: Readonly<Record<string, Value>> | null;
+      cause?: unknown;
+    } = {},
+  ) {
     super(message, more.cause === undefined ? undefined : { cause: more.cause });
     this.name = 'XyfError';
     this.code = code;
@@ -36,11 +43,21 @@ export class XyfError extends Error {
 const KNOWN = new Set<number>(Object.values(STATUS));
 
 /** The error for a reply whose status is not ok. */
-export function statusError(command: CommandName | null, status: number, fields: Readonly<Record<string, Value>> | null = null): XyfError {
+export function statusError(
+  command: CommandName | null,
+  status: number,
+  fields: Readonly<Record<string, Value>> | null = null,
+): XyfError {
   const name = statusName(status);
   const code: ErrorCode = KNOWN.has(status) ? (name as Exclude<StatusName, 'ok'>) : 'unknown_status';
-  const text = code === 'declined' ? NOT_ALLOWED_TEXT : code === 'waiting' ? ASK_TEXT : code === 'serial_off' ? SERIAL_OFF_TEXT :
-    `the device answered ${name}`;
+  const text =
+    code === 'declined'
+      ? NOT_ALLOWED_TEXT
+      : code === 'waiting'
+        ? ASK_TEXT
+        : code === 'serial_off'
+          ? SERIAL_OFF_TEXT
+          : `the device answered ${name}`;
   return new XyfError(code, `${command ?? 'request'}: ${text}`, { command, status, fields });
 }
 

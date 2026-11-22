@@ -31,7 +31,8 @@ xc::Actual actual_for(const World& w, const xc::Inputs& in) {
 // Runs plan p's operations on w as the converge sequence does (xyf_mods_save.ipp).
 void run(const xc::Plan& p, const xc::Inputs& in, World& w) {
     char slot[8], stamp[65];
-    set(slot, sizeof(slot), w.rec.slot); set(stamp, sizeof(stamp), w.rec.stamp);
+    set(slot, sizeof(slot), w.rec.slot);
+    set(stamp, sizeof(stamp), w.rec.stamp);
     if (p.ops & xc::op_build) {                         // the spare slot: never the record's
         const uint32_t spare = slot_index(w.rec.slot) == 0 ? 1u : 0u;
         set(slot, sizeof(slot), slot_name(spare));
@@ -46,10 +47,12 @@ void run(const xc::Plan& p, const xc::Inputs& in, World& w) {
         xg::Record& r = w.rec;
         const bool built = (p.ops & xc::op_build) != 0;
         if (built) set(r.built, sizeof(r.built), in.built);
-        set(r.slot, sizeof(r.slot), slot); set(r.stamp, sizeof(r.stamp), stamp);
+        set(r.slot, sizeof(r.slot), slot);
+        set(r.stamp, sizeof(r.stamp), stamp);
         r.state = xg::present;
         set(r.base, sizeof(r.base), in.base);
-        r.count = in.count; r.expanded = in.expanded;
+        r.count = in.count;
+        r.expanded = in.expanded;
         r.safe = xc::safe_kept(in, r);
     }
     if (p.ops & xc::op_default) set(w.def, sizeof(w.def), kept);
@@ -58,11 +61,13 @@ World world(uint32_t state, uint32_t count, uint32_t slot, const char* built, ui
             uint32_t expanded, const char* rec_base, const char* def, const char* installed) {
     World w;
     memset(&w, 0, sizeof(w));
-    snprintf(w.stamp[0], 65, "%064u", 7u); snprintf(w.stamp[1], 65, "%064u", 8u);
+    snprintf(w.stamp[0], 65, "%064u", 7u);
+    snprintf(w.stamp[1], 65, "%064u", 8u);
     xg::clear(w.rec, state ? xg::present : xg::none);
     if (state) {
         set(w.rec.base, sizeof(w.rec.base), rec_base);
-        w.rec.count = count; w.rec.expanded = expanded;
+        w.rec.count = count;
+        w.rec.expanded = expanded;
         if (slot < 2) {
             set(w.rec.slot, sizeof(w.rec.slot), slot_name(slot));
             set(w.rec.built, sizeof(w.rec.built), built);
@@ -70,7 +75,8 @@ World world(uint32_t state, uint32_t count, uint32_t slot, const char* built, ui
         }
         w.rec.safe = safe && count && slot < 2;           // as config::parse reads it
     }
-    set(w.def, sizeof(w.def), def); set(w.installed, sizeof(w.installed), installed);
+    set(w.def, sizeof(w.def), def);
+    set(w.installed, sizeof(w.installed), installed);
     w.builds = 100;
     return w;
 }
@@ -115,33 +121,47 @@ void every() {
     const char* const entries[] = {base, "mods-a", "mods-b", other_base, ""};
     uint32_t cases = 0;
     for (uint32_t state = 0; state != 2; ++state)
-    for (uint32_t rc = 0; rc != 2; ++rc)
-    for (uint32_t slot = 0; slot != 3; ++slot)
-    for (uint32_t rb = 1; rb != 3; ++rb)
-    for (uint32_t ok = 0; ok != 2; ++ok)
-    for (uint32_t rs = 0; rs != 2; ++rs)
-    for (uint32_t re = 0; re != 2; ++re)
-    for (uint32_t rbase = 0; rbase != 2; ++rbase)
-    for (uint32_t d = 0; d != 5; ++d)
-    for (uint32_t i = 0; i != 4; ++i)
-    for (uint32_t ic = 0; ic != 2; ++ic)
-    for (uint32_t ib = 0; ib != 3; ++ib)
-    for (uint32_t ie = 0; ie != 2; ++ie)
-    for (uint32_t is = 0; is != 2; ++is)
-    for (uint32_t ibase = 0; ibase != 2; ++ibase) {
-        if (!state && (rc || slot != 2 || rb != 1 || ok || rs || re || rbase)) continue;   // no record: one row
-        if (ic && !ib) continue;                                  // "" (unknown) is the menu's: a sequence computes it
-        World w = world(state, rc * 2, slot, builts[rb], ok, rs, re, rbase ? other_base : base, entries[d], entries[i]);
-        const xc::Inputs in = {ibase ? other_base : base, ic ? builts[ib] : "", ic * 2u, ie, is};
-        const xc::Plan p = xc::plan(in, actual_for(w, in));
-        CHECK((!(p.ops & B) || (p.ops & S)));                       // a build is switched to
-        CHECK((!(p.ops & S) || ((p.ops & R) && (p.ops & D))));      // a switch: the record and default after it
-        CHECK((p.target == 0) == ((p.ops & B) != 0));
-        run(p, in, w);
-        const xc::Plan again = xc::plan(in, actual_for(w, in));
-        CHECK_MESSAGE(again.ops == 0, "case " << cases << ": ops " << p.ops << " then " << again.ops);
-        ++cases;
-    }
+        for (uint32_t rc = 0; rc != 2; ++rc)
+            for (uint32_t slot = 0; slot != 3; ++slot)
+                for (uint32_t rb = 1; rb != 3; ++rb)
+                    for (uint32_t ok = 0; ok != 2; ++ok)
+                        for (uint32_t rs = 0; rs != 2; ++rs)
+                            for (uint32_t re = 0; re != 2; ++re)
+                                for (uint32_t rbase = 0; rbase != 2; ++rbase)
+                                    for (uint32_t d = 0; d != 5; ++d)
+                                        for (uint32_t i = 0; i != 4; ++i)
+                                            for (uint32_t ic = 0; ic != 2; ++ic)
+                                                for (uint32_t ib = 0; ib != 3; ++ib)
+                                                    for (uint32_t ie = 0; ie != 2; ++ie)
+                                                        for (uint32_t is = 0; is != 2; ++is)
+                                                            for (uint32_t ibase = 0; ibase != 2; ++ibase) {
+                                                                if (!state && (rc || slot != 2 || rb != 1 || ok || rs ||
+                                                                               re || rbase))
+                                                                    continue;   // no record: one row
+                                                                if (ic && !ib)
+                                                                    continue; // "" (unknown) is the menu's: a sequence computes it
+                                                                World w = world(state, rc * 2, slot, builts[rb], ok, rs,
+                                                                                re, rbase ? other_base : base,
+                                                                                entries[d], entries[i]);
+                                                                const xc::Inputs in = {ibase ? other_base : base,
+                                                                                       ic ? builts[ib] : "", ic * 2u,
+                                                                                       ie, is};
+                                                                const xc::Plan p = xc::plan(in, actual_for(w, in));
+                                                                CHECK((!(p.ops & B) ||
+                                                                       (p.ops & S))); // a build is switched to
+                                                                CHECK((
+                                                                    !(p.ops & S) ||
+                                                                    ((p.ops & R) &&
+                                                                     (p.ops &
+                                                                      D)))); // a switch: the record and default after it
+                                                                CHECK((p.target == 0) == ((p.ops & B) != 0));
+                                                                run(p, in, w);
+                                                                const xc::Plan again = xc::plan(in, actual_for(w, in));
+                                                                CHECK_MESSAGE(again.ops == 0,
+                                                                              "case " << cases << ": ops " << p.ops
+                                                                                      << " then " << again.ops);
+                                                                ++cases;
+                                                            }
     CHECK(cases > 10000);
 }
 // The fingerprint (step B): its exact text; the stored text matches only byte for byte (another default, digest,
@@ -168,9 +188,9 @@ void mark() {
     changed[0] = 'F';
     CHECK(!xc::mark_same(text, n, reinterpret_cast<const uint8_t*>(changed), n));
     CHECK(xc::mark_text(other, 40, digest, "mods-a") == 0);
-    CHECK(xc::mark_text(other, sizeof(other), digest, "") == n - 6);   // no default: "default=" alone
+    CHECK(xc::mark_text(other, sizeof(other), digest, "") == n - 6); // no default: "default=" alone
 }
-}  // namespace
+} // namespace
 
 TEST_CASE("converge: the plan table") { table(); }
 TEST_CASE("converge: every combination, planned again, gives nothing") { every(); }

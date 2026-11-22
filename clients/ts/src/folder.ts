@@ -6,9 +6,15 @@ import type { PackageSource } from './mods.ts';
 
 export function folderSource(dir: string): PackageSource {
   return {
-    paths: async () => (await readdir(dir, { recursive: true, withFileTypes: true }))
-      .filter((e) => e.isFile())
-      .map((e) => `${e.parentPath}${sep}${e.name}`.slice(dir.replace(/[\\/]+$/, '').length + 1).split(sep).join('/')),
+    paths: async () =>
+      (await readdir(dir, { recursive: true, withFileTypes: true }))
+        .filter((e) => e.isFile())
+        .map((e) =>
+          `${e.parentPath}${sep}${e.name}`
+            .slice(dir.replace(/[\\/]+$/, '').length + 1)
+            .split(sep)
+            .join('/'),
+        ),
     read: async (path) => new Uint8Array(await readFile(`${dir}/${path}`)),
   };
 }

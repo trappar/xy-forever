@@ -7,13 +7,13 @@ namespace xyf_core {
 // A false answer is terminal for this Work instance.
 class Work {
 public:
-    Work(void* context, bool (*keep_going)(void*))
-        : context_(context), keep_going_(keep_going), cancelled_(false) {}
+    Work(void* context, bool (*keep_going)(void*)) : context_(context), keep_going_(keep_going), cancelled_(false) {}
     __attribute__((always_inline)) bool checkpoint() {
         if (!cancelled_ && keep_going_) cancelled_ = !keep_going_(context_);
         return !cancelled_;
     }
     bool cancelled() const { return cancelled_; }
+
 private:
     void* context_;
     bool (*keep_going_)(void*);

@@ -2,12 +2,11 @@ import struct
 import unittest
 
 import pytest
-
 import xyf_hosttest
 
 
 def header(flags, address, count, argument=0):
-    data = bytearray(struct.pack('<4I', 0xad000000 | flags, address, count, argument))
+    data = bytearray(struct.pack('<4I', 0xAD000000 | flags, address, count, argument))
     checksum = 0
     for byte in data:
         checksum ^= byte
@@ -33,22 +32,23 @@ class TraceSlotTests(unittest.TestCase):
     def setUpClass(cls):
         cls.native = xyf_hosttest.module('trace_slot')
 
-    def edit(self, source, expected=b'old!', replacement=b'new!', target=0x2000,
-             count=None, mode='normal', status='ok'):
+    def edit(
+        self, source, expected=b'old!', replacement=b'new!', target=0x2000, count=None, mode='normal', status='ok'
+    ):
         actual, offset, validation, output = self.native.replace(
-            source, expected, replacement, target, len(expected) if count is None else count, mode)
+            source, expected, replacement, target, len(expected) if count is None else count, mode
+        )
         self.assertEqual(actual, status)
         if status != 'ok':
             self.assertEqual(output, source)
-            self.assertEqual(offset, 0xffffffff)
+            self.assertEqual(offset, 0xFFFFFFFF)
         return output, offset, validation
 
     def test_only_exact_slot_bytes_change_and_headers_remain_identical(self):
-        source = image([data_record(0x1800, b'before'), data_record(0x2000, b'old!'),
-                        data_record(0x3000, b'after')])
+        source = image([data_record(0x1800, b'before'), data_record(0x2000, b'old!'), data_record(0x3000, b'after')])
         output, offset, validation = self.edit(source)
-        self.assertEqual(output, source[:offset] + b'new!' + source[offset + 4:])
-        self.assertEqual(output[offset - 16:offset], header(4, 0x2000, 4))
+        self.assertEqual(output, source[:offset] + b'new!' + source[offset + 4 :])
+        self.assertEqual(output[offset - 16 : offset], header(4, 0x2000, 4))
         self.assertEqual(validation, 'ok')
 
     def test_minimum_maximum_and_unaligned_slots(self):
@@ -58,7 +58,7 @@ class TraceSlotTests(unittest.TestCase):
                 replacement = bytes(255 - i % 251 for i in range(size))
                 source = image([data_record(0x2001, expected)])
                 output, offset, _ = self.edit(source, expected, replacement, target=0x2001)
-                self.assertEqual(output, source[:offset] + replacement + source[offset + size:])
+                self.assertEqual(output, source[:offset] + replacement + source[offset + size :])
 
     def test_whole_preimage_checked_before_first_write(self):
         source = image([data_record(0x2000, b'old!')])
@@ -85,8 +85,7 @@ class TraceSlotTests(unittest.TestCase):
         self.edit(image([data_record(0x10000, b'old!')]), target=0x10000, status='invalid_image')
 
     def test_missing_exact_slot_and_fill_only(self):
-        for records in ([], [data_record(0x2000, b'old!!')],
-                        [(0x104, 0x2000, 4, 0x21646c6f, b'')]):
+        for records in ([], [data_record(0x2000, b'old!!')], [(0x104, 0x2000, 4, 0x21646C6F, b'')]):
             with self.subTest(records=records):
                 self.edit(image(records), status='missing_slot')
 
@@ -97,20 +96,25 @@ class TraceSlotTests(unittest.TestCase):
     def test_other_data_and_fill_overlays_before_and_after_slot(self):
         exact = data_record(0x2000, b'old!')
         for flags in (4, 0x104):
-            for address, size in ((0x1fff, 2), (0x2003, 2), (0x1fff, 8), (0x2001, 1)):
+            for address, size in ((0x1FFF, 2), (0x2003, 2), (0x1FFF, 8), (0x2001, 1)):
                 overlay = (flags, address, size, 0, b'x' * size if flags == 4 else b'')
                 for records in ([exact, overlay], [overlay, exact]):
                     with self.subTest(flags=flags, address=address, size=size, records=records):
                         self.edit(image(records), status='overlapping_record')
 
     def test_adjacent_records_and_zero_length_records_are_allowed(self):
-        source = image([data_record(0x1fff, b'x'), data_record(0x2000, b'old!'),
-                        (0x104, 0x2004, 4, 0, b''), data_record(0x2001, b'')])
+        source = image(
+            [
+                data_record(0x1FFF, b'x'),
+                data_record(0x2000, b'old!'),
+                (0x104, 0x2004, 4, 0, b''),
+                data_record(0x2001, b''),
+            ]
+        )
         self.edit(source)
 
     def test_entry_first_or_second_byte_overlap_refused(self):
-        self.edit(image(), expected=b'boot', replacement=b'xxxx', target=0x1000,
-                  status='entry_overlap')
+        self.edit(image(), expected=b'boot', replacement=b'xxxx', target=0x1000, status='entry_overlap')
         # The final entry halfword straddles two DATA records; the selected
         # one-byte slot owns only its second byte.
         source = image([data_record(0x3000, b'a'), data_record(0x3001, b'b')], entry=0x3000)
@@ -130,7 +134,7 @@ class TraceSlotTests(unittest.TestCase):
                 self.edit(source, mode=mode, status='invalid_argument')
         self.edit(source, count=0, status='invalid_argument')
         self.edit(source, expected=b'x' * 4097, replacement=b'y' * 4097, status='invalid_argument')
-        self.edit(source, target=0xfffffffe, status='invalid_argument')
+        self.edit(source, target=0xFFFFFFFE, status='invalid_argument')
 
     def test_stale_preimage_retry_is_refused(self):
         source = image([data_record(0x2000, b'old!')])

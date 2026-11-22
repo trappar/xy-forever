@@ -14,7 +14,7 @@ export interface Connection {
   stockRestored: boolean;
 }
 
-const store = () => create<Connection>(() => ({ client: null, installed: false, uninstalling: false, stockRestored: false }));
+const store = () =>
+  create<Connection>(() => ({ client: null, installed: false, uninstalling: false, stockRestored: false }));
 export const useConnection: ReturnType<typeof store> = import.meta.hot?.data.connection ?? store();
 if (import.meta.hot) import.meta.hot.data.connection = useConnection;
-

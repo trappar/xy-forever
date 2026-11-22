@@ -13,13 +13,25 @@ namespace xy_forever { namespace key_ui {
 static const uint32_t magic = 0x3149554bu;     // "KUI1"
 static const uint32_t max_events = 20;           // 24 in versions 1-2
 enum Exit : uint32_t {
-    exit_none = 0, exit_play = 1, exit_timeout = 2, exit_link = 3, exit_identity = 4,
-    exit_role = 5, exit_no_play = 6, exit_snapshot = 7
+    exit_none = 0,
+    exit_play = 1,
+    exit_timeout = 2,
+    exit_link = 3,
+    exit_identity = 4,
+    exit_role = 5,
+    exit_no_play = 6,
+    exit_snapshot = 7
 };
 // Stage bits, set in order reached.
 enum Stage : uint32_t {
-    stage_snapshot = 1, stage_play = 2, stage_identity = 4, stage_display = 8,
-    stage_displayed = 16, stage_link = 32, stage_greeted = 64, stage_closed = 128
+    stage_snapshot = 1,
+    stage_play = 2,
+    stage_identity = 4,
+    stage_display = 8,
+    stage_displayed = 16,
+    stage_link = 32,
+    stage_greeted = 64,
+    stage_closed = 128
 };
 struct Result {
     uint32_t magic, version, role, stages;
@@ -56,6 +68,7 @@ public:
     __attribute__((always_inline)) explicit Where(uint32_t code) : before_(where_enter(code)) {}
     __attribute__((always_inline)) ~Where() { where_leave(before_); }
     __attribute__((always_inline)) void wait() const { where_wait(); }
+
 private:
     Where(const Where&);
     Where& operator=(const Where&);
@@ -85,7 +98,7 @@ void refresh_catalog();                 // return to the main menu and redraw th
 void host_view();
 #endif
 #endif
-} }
+}}
 // Pre-copy hook; always returns (never stops the boot).
 extern "C" void xy_forever_key_ui();
 #endif

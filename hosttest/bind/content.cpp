@@ -73,8 +73,8 @@ void bind_content(nb::module_ m) {
     // run(desired, previous, remove_old, disk) -> (status, kept, installed, removed); items are (path, size,
     // digest) and disk has size, read_target, read_staged, replace and remove (tests/test_content.py: Disk).
     m.def("run", [](const std::vector<std::tuple<std::string, unsigned, nb::bytes>>& desired,
-                    const std::vector<std::tuple<std::string, unsigned, nb::bytes>>& previous,
-                    bool remove_old, nb::object d) {
+                    const std::vector<std::tuple<std::string, unsigned, nb::bytes>>& previous, bool remove_old,
+                    nb::object d) {
         std::vector<package::Item> want = items(desired), had = items(previous);
         package::Manifest manifest = {};
         manifest.items = want.data();
@@ -83,8 +83,8 @@ void bind_content(nb::module_ m) {
         content::Plan plan;
         content::Report report = {0, 0, 0};
         const content::IO io = io_for(d);
-        content::Status status = content::plan(manifest, had.data(), static_cast<U32>(had.size()), remove_old, io,
-                                               operations, 64, plan);
+        content::Status status =
+            content::plan(manifest, had.data(), static_cast<U32>(had.size()), remove_old, io, operations, 64, plan);
         if (status == content::Status::ok) status = content::apply(plan, io, report);
         return std::make_tuple(static_cast<int>(status), report.kept, report.installed, report.removed);
     });

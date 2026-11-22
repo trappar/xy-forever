@@ -12,7 +12,10 @@ void config_get(uint8_t seq, const uint8_t* payload, U32 length) {
     if (code == P::s_ok) code = P::s_unsupported;
 #endif
     result.last_status = code;
-    if (code != P::s_ok) { status_only(P::t_config_get, seq, code); return; }
+    if (code != P::s_ok) {
+        status_only(P::t_config_get, seq, code);
+        return;
+    }
 #if defined(XYF_MODS_PAGE)
     uint8_t* const p = files;
     const U32 words[6] = {code, 1, v.record, v.count, v.flags, v.saving};
@@ -28,8 +31,10 @@ void config_get(uint8_t seq, const uint8_t* payload, U32 length) {
 #endif
 }
 void config_set(uint8_t seq, const uint8_t* payload, U32 length) {
-    U32 code = length < 41 || length > 2088 ? P::s_bad_request : P::get32(payload) != 1 ? P::s_unsupported :
-               P::get32(payload + 4) > 7 ? P::s_bad_request : P::s_ok;
+    U32 code = length < 41 || length > 2088 ? P::s_bad_request :
+               P::get32(payload) != 1       ? P::s_unsupported :
+               P::get32(payload + 4) > 7    ? P::s_bad_request :
+                                              P::s_ok;
     U32 end = 8;
     if (code == P::s_ok) {
         while (end < length && payload[end] && payload[end] < 0x80) ++end;
@@ -49,9 +54,13 @@ void config_set(uint8_t seq, const uint8_t* payload, U32 length) {
     if (code == P::s_ok) code = P::s_unsupported;
 #endif
     result.last_status = code;
-    if (code == P::s_busy) { status_only(P::t_config_set, seq, code); return; }   // as any command's busy
+    if (code == P::s_busy) {
+        status_only(P::t_config_set, seq, code);
+        return;
+    }   // as any command's busy
     uint8_t* const p = files;
-    P::put32(p, code); P::put32(p + 4, 1);
+    P::put32(p, code);
+    P::put32(p + 4, 1);
     U32 at = 8;
     for (U32 i = 0; reason[i] && i != 80; ++i) p[at++] = uint8_t(reason[i]);
     send(P::t_config_set, seq, p, at);

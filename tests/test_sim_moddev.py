@@ -2,10 +2,11 @@
 the device, make it the default with its content, --restore). Synthetic packages (test_sim_mod_job's kit),
 nothing on the device's mods/ at first. Needs clang++ and the private stock 1.2.1 images (skipped without
 them). No device access."""
-from pathlib import Path
+
 import shutil
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from xy_forever import moddev
@@ -31,9 +32,11 @@ class Watch(unittest.TestCase):
         def sleep(_):
             if len(runs) == 1:
                 (work / 'alpha' / 'x').write_bytes(b'22')
+
         with mock.patch.object(moddev, 'dev_once', once):
-            code = moddev.watch(None, 'p', None, work, ['alpha'], (), None, out=lambda line: None, sleep=sleep,
-                                rounds=2)
+            code = moddev.watch(
+                None, 'p', None, work, ['alpha'], (), None, out=lambda line: None, sleep=sleep, rounds=2
+            )
         self.assertEqual((code, len(runs)), (0, 2))
 
 

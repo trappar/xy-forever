@@ -8,11 +8,39 @@ namespace xy_forever { namespace peer_services {
 static const uint32_t no_cap = 0xffffffffu;
 using xyf_core::Byte;
 using xyf_core::U32;
-enum class Result { ok, waiting, choose_image, admit_image, ready, unavailable,
-    identity, role, lifecycle, irq, bounds, protocol, timeout, drain, close };
-enum class Stage { stopped, captured, opening, handshake1, handshake10,
-    serving, receiving, admission, draining, closed, failed };
-struct Interrupt { U32 id, index, handler, context, control; };
+enum class Result {
+    ok,
+    waiting,
+    choose_image,
+    admit_image,
+    ready,
+    unavailable,
+    identity,
+    role,
+    lifecycle,
+    irq,
+    bounds,
+    protocol,
+    timeout,
+    drain,
+    close
+};
+enum class Stage {
+    stopped,
+    captured,
+    opening,
+    handshake1,
+    handshake10,
+    serving,
+    receiving,
+    admission,
+    draining,
+    closed,
+    failed
+};
+struct Interrupt {
+    U32 id, index, handler, context, control;
+};
 struct Snapshot {
     U32 role, gpio_role, driver, vtable, spi, tx_dma, rx_dma;
     U32 interrupt_mask, spi_control, spi_status, spi_count, tx_config, rx_config;
@@ -23,7 +51,9 @@ struct Snapshot {
     Interrupt interrupts[6];
 };
 struct Diagnostic {
-    U32 magic, version; Stage stage; Result result;
+    U32 magic, version;
+    Stage stage;
+    Result result;
     U32 requests, responses, last_operation, last_device_result, started_ms, elapsed_ms;
     U32 link_initialized;
     Snapshot before, after;
@@ -69,12 +99,11 @@ static const U32 handshake_value = 0x12345678u;        // the stock link open's 
 class Stock121PeerSession {
 public:
     explicit Stock121PeerSession(Diagnostic& diagnostic);
-    Result begin(services::Phase phase, Byte* scratch, U32 scratch_capacity,
-                 Byte* destination, U32 destination_capacity,
-                 U32 now_ms, U32 timeout_ms);
+    Result begin(services::Phase phase, Byte* scratch, U32 scratch_capacity, Byte* destination,
+                 U32 destination_capacity, U32 now_ms, U32 timeout_ms);
     Result freeze(const Byte* image, U32 size, const xyf_core::hash::Digest& admitted);
     // As freeze(), without SHA-256: identified by size and CRC-32; digest is zeroed.
-    Result freeze_image(const Byte* image, U32 size, U32 crc, xyf_core::hash::Digest& digest);   // crc: of these bytes
+    Result freeze_image(const Byte* image, U32 size, U32 crc, xyf_core::hash::Digest& digest); // crc: of these bytes
     Result admit(const xyf_core::hash::Digest& admitted);
     // Handshake-only probes may hold both roles here. Image reception starts
     // only after this explicit call on role1; role0 may freeze earlier.
@@ -106,7 +135,7 @@ public:
     // Role0: answer a served request with result/errno and no data body (the
     // stock executors' own reply shape: +0x10, +0x14, then 889f6508).
     void reply(U32 request, U32 result, U32 error);
-    U32 served() const;            // role0 requests handed to serve()
+    U32 served() const; // role0 requests handed to serve()
     // File boot (XY Forever, Test025): image transfer with an explicit outcome.
     // Role0 without an image calls decline() before begin(): it answers role1's
     // first partition select (stock 0x18, no data body) with result 1, then
@@ -127,7 +156,7 @@ public:
     // digest the owner announced; the caller passes it to admit() after its
     // own LDR admission instead of hashing the image a third time.
     const xyf_core::hash::Digest& received_digest() const { return client_.digest(); }
-    U32 received_crc() const { return client_.crc(); }   // checked over the received bytes
+    U32 received_crc() const { return client_.crc(); } // checked over the received bytes
     // XY Forever menu boot (both roles, call before begin): a held session
     // (keepalives/commands as hold()) that can also carry transfers. Role0
     // freezes on command: freeze_blob() for small non-LDR data (the library
@@ -145,19 +174,19 @@ public:
     void touch(U32 now_ms);
     Result transfer(Byte* destination, U32 capacity, bool blob);
     bool blob_done() const;
-    bool blob_pending() const { return blob_; }   // Test 061: role0, a frozen blob not yet restored
+    bool blob_pending() const { return blob_; } // Test 061: role0, a frozen blob not yet restored
     // Test 065 (one link session): role0 staged session with a serve hook. While RPC mode
     // is on and nothing is frozen, b's stock storage requests go to the serve hook (storage
     // server); otherwise the image protocol. The owner switches modes from b's command items.
     void set_rpc(bool on) { rpc_ = on; }
     bool rpc() const { return rpc_; }
-    U32 blobs() const;             // blobs completed (role0 served / role1 received)
+    U32 blobs() const; // blobs completed (role0 served / role1 received)
     // Role0 staged: after agreement the session waits for allow_close() before
     // draining and closing, so storage nested inside it can unmount first
     // (logger guards are restored last-in, first-out).
     bool agreed() const;
     void allow_close();
-    Result command(U32 value);     // role1, held, link ready and idle
+    Result command(U32 value); // role1, held, link ready and idle
     // Staged sessions (role1, link ready and idle): one command to role0 as a request.
     // An op-10 command() is echoed by role0's stock ISR and only sampled by role0's
     // poll: it is lost when another header follows before role0 polls again (role0
@@ -181,7 +210,7 @@ public:
     // code sends it. A caller about to reset the processor waits (bounded) for false:
     // the stock reset disables interrupts at once.
     bool answering() const;
-    Result release();              // role1, held, link ready and idle
+    Result release(); // role1, held, link ready and idle
     // Role1, staged, link ready and idle: B's own file request (file_client.cpp) on this
     // session's one request slot. request_slot() is the zeroed request object for a stock request
     // builder, or 0 while the slot is taken (a keepalive, command, transfer or file request) or the
@@ -195,14 +224,14 @@ public:
     bool filing() const { return filing_; }
     U32 request_value() const { return request_[4]; }
     U32 request_error() const { return request_[5]; }
-    bool busy() const;             // role1 request outstanding
-    U32 echoes() const;            // role1 verified op-10 echoes and command answers after the handshake
-    U32 activity() const;          // role0 RX header changes seen
-    U32 commands_seen() const;     // role0 commands: op-10 arguments tagged command_tag, or ask() requests
-    U32 last_command() const;      // role0 last such argument
-    U32 last_argument() const;     // role0 last op-10 argument of any kind
-    U32 max_gap() const;           // role0 longest gap between activity (ms)
-    static const U32 command_tag = 0x434du;   // "CM" in argument bits 31..16
+    bool busy() const; // role1 request outstanding
+    U32 echoes() const; // role1 verified op-10 echoes and command answers after the handshake
+    U32 activity() const; // role0 RX header changes seen
+    U32 commands_seen() const; // role0 commands: op-10 arguments tagged command_tag, or ask() requests
+    U32 last_command() const; // role0 last such argument
+    U32 last_argument() const; // role0 last op-10 argument of any kind
+    U32 max_gap() const; // role0 longest gap between activity (ms)
+    static const U32 command_tag = 0x434du; // "CM" in argument bits 31..16
     // Caller supplies a real monotonic millisecond clock; timeout is for the
     // complete selection+transfer session and may not exceed ten minutes.
     // Retained interrupt helpers have not been fault-injection qualified.
@@ -221,32 +250,37 @@ public:
     // Role1 at cold entry (Tests 017-020): the stock master's deferred list
     // still names one stale node (head == tail, no next). The master setup
     // resets that list; capture() reports it here instead of as open work.
-    static U32 stale_deferred();       // first stale node seen (0 if none)
-    static U32 stale_deferred_last();  // latest stale node seen
+    static U32 stale_deferred(); // first stale node seen (0 if none)
+    static U32 stale_deferred_last(); // latest stale node seen
 private:
     Stock121PeerSession(const Stock121PeerSession&);
     Stock121PeerSession& operator=(const Stock121PeerSession&);
     Diagnostic& diagnostic_;
     xyf_core::peer::Server server_;
     xyf_core::peer::Client client_;
-    Byte* scratch_; U32 scratch_capacity_, driver_, primary_, timeout_, pending_;
+    Byte* scratch_;
+    U32 scratch_capacity_, driver_, primary_, timeout_, pending_;
     U32 saved_logs_[4], request_[12], expected_bytes_, frozen_size_;
     bool opened_, guarded_, active_, failed_, agreed_, transferring_, handshake_only_, hold_;
     bool decline_, declined_, committed_, watch_, staged_, blob_, blob_done_, defer_close_;
     U32 blobs_;
     U32 idle_ms_, handshake_ms_, last_activity_, header_[3], expected_echo_;
     U32 echoes_, activity_, commands_seen_, last_command_, last_argument_, max_gap_;
-    Serve serve_; void* serve_context_; U32 served_; bool served_activity_; bool rpc_;
-    bool asking_;                  // role1: the outstanding request is an ask()
-    bool filing_;                  // role1: the outstanding request is a file request
+    Serve serve_;
+    void* serve_context_;
+    U32 served_;
+    bool served_activity_;
+    bool rpc_;
+    bool asking_; // role1: the outstanding request is an ask()
+    bool filing_; // role1: the outstanding request is a file request
     U32 identity_ms_;
-    bool peer_restart_;            // role0: b's bootloader seen
-    U32 peer_request_, peer_ms_;   // role0: the boot request held unanswered; when b's restart was seen
-    static bool capture_state(Snapshot& snapshot);   // capture() without the identity CRC
+    bool peer_restart_; // role0: b's bootloader seen
+    U32 peer_request_, peer_ms_; // role0: the boot request held unanswered; when b's restart was seen
+    static bool capture_state(Snapshot& snapshot); // capture() without the identity CRC
     void observe(U32 now);
     Result fail(Result result);
     Result submit(const xyf_core::peer::Request& request);
     void respond(U32 result);
 };
-} }
+}}
 #endif

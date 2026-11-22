@@ -2,20 +2,20 @@
 poll followed by EAGAIN is no data yet (issue #128), writes survive EAGAIN and partial writes, and a whole
 stage completes with its data intact. The call's own timeout still applies. On a pty: a port that does
 not open, drain or answer costs no more than the caller's timeout, and a close never waits (issue #118)."""
+
 import os
 import random
 import select
 import struct
 import time
 import unittest
-from unittest import mock
 import zlib
+from unittest import mock
 
 import pytest
 
-from xy_forever import transport
+from xy_forever import transport, xyf_host
 from xy_forever import usb_proto as P
-from xy_forever import xyf_host
 
 
 class FakeDevice:
@@ -36,9 +36,9 @@ class FakeDevice:
                 self.staged = bytearray(size)
             elif kind == P.PUT_DATA:
                 offset = struct.unpack_from('<I', body)[0]
-                self.staged[offset:offset + len(body) - 4] = body[4:]
+                self.staged[offset : offset + len(body) - 4] = body[4:]
             elif kind == P.PUT_END:
-                self.ended = zlib.crc32(self.staged) & 0xffffffff == self.crc
+                self.ended = zlib.crc32(self.staged) & 0xFFFFFFFF == self.crc
                 code = 0 if self.ended else 1
             self.replies += P.encode(kind | P.REPLY, seq, struct.pack('<I', code))
 
@@ -47,6 +47,7 @@ class FakeTty:
     """os and select for one non-blocking tty fd: select always reports ready (the readiness macOS gave
     while another process shared the port); read raises EAGAIN every read_eagain-th call, and when nothing
     is queued; write raises EAGAIN every write_eagain-th call and otherwise takes at most write_max bytes."""
+
     FD = 1000
 
     def __init__(self, device, read_eagain=0, write_eagain=0, write_max=1 << 20):
@@ -120,7 +121,7 @@ class SerialTransportTest(unittest.TestCase):
         self.stage(FakeTty(FakeDevice(), read_eagain=2, write_eagain=3, write_max=97), 64 * 1024)
 
     def test_read_keeps_its_timeout(self):
-        port = FakeTty(None).patch(self)               # always ready, never data
+        port = FakeTty(None).patch(self)  # always ready, never data
         start = time.monotonic()
         self.assertEqual(port.read(0.05), b'')
         self.assertLess(time.monotonic() - start, 1.0)
@@ -144,8 +145,9 @@ class SerialTransportTest(unittest.TestCase):
         self.addCleanup(os.close, slave)
         calls = []
         real = transport.fcntl.ioctl
-        with mock.patch.object(transport.fcntl, 'ioctl', side_effect=lambda fd, op, *a: calls.append(op) or
-                               real(fd, op, *a)):
+        with mock.patch.object(
+            transport.fcntl, 'ioctl', side_effect=lambda fd, op, *a: calls.append(op) or real(fd, op, *a)
+        ):
             os.close(transport._open_tty(os.ttyname(slave)))
         self.assertEqual(calls, [transport.termios.TIOCEXCL])
 
@@ -159,7 +161,7 @@ class SilentDeviceTest(unittest.TestCase):
     def setUp(self):
         self.master, slave = os.openpty()
         self.path = os.ttyname(slave)
-        os.close(slave)                          # the port's only opener is SerialPort
+        os.close(slave)  # the port's only opener is SerialPort
         self.addCleanup(os.close, self.master)
         self.addCleanup(lambda: transport._opening.pop(self.path, mock.Mock()).close())
 
@@ -173,7 +175,7 @@ class SilentDeviceTest(unittest.TestCase):
         self.assertQuick(start, 0.5)
         with self.assertRaises(OSError):
             os.fstat(fd)
-        ready, _, _ = select.select([self.master], [], [], 2.0)    # the last close ends the pty's slave
+        ready, _, _ = select.select([self.master], [], [], 2.0)  # the last close ends the pty's slave
         self.assertTrue(ready)
 
     def test_open_write_read_close(self):
@@ -187,8 +189,10 @@ class SilentDeviceTest(unittest.TestCase):
             transport.SerialPort(self.path + '-gone')
 
     def test_open_that_hangs_times_out_and_is_not_started_twice(self):
-        with mock.patch.object(transport, '_open_tty', lambda path: time.sleep(1.5)), \
-                mock.patch.object(transport, '_opener', wraps=transport._opener) as opener:
+        with (
+            mock.patch.object(transport, '_open_tty', lambda path: time.sleep(1.5)),
+            mock.patch.object(transport, '_opener', wraps=transport._opener) as opener,
+        ):
             for _ in range(2):
                 start = time.monotonic()
                 with self.assertRaises(TimeoutError):
@@ -210,7 +214,7 @@ class SilentDeviceTest(unittest.TestCase):
         port = transport.SerialPort(self.path)
         start = time.monotonic()
         with mock.patch.object(transport, 'WRITE_STALL', 0.05), self.assertRaises(TimeoutError):
-            port.write(b'x' * (1 << 20))         # nobody reads the pty: its queue fills and stays full
+            port.write(b'x' * (1 << 20))  # nobody reads the pty: its queue fills and stays full
         self.assertQuick(start, 1.0)
         self.assertClosedByDetachedProcess(port)
 
@@ -223,9 +227,12 @@ class SilentDeviceTest(unittest.TestCase):
 
     def connect(self, timeout):
         start = time.monotonic()
-        with mock.patch.object(xyf_host, 'SIM', None), mock.patch.object(xyf_host, 'log'), \
-                mock.patch.object(xyf_host, 'find_port', return_value=self.path), \
-                self.assertRaises(SystemExit):
+        with (
+            mock.patch.object(xyf_host, 'SIM', None),
+            mock.patch.object(xyf_host, 'log'),
+            mock.patch.object(xyf_host, 'find_port', return_value=self.path),
+            self.assertRaises(SystemExit),
+        ):
             xyf_host.connect(timeout, hello_every=0.05)
         return time.monotonic() - start
 
@@ -233,8 +240,10 @@ class SilentDeviceTest(unittest.TestCase):
         self.assertLess(self.connect(0.05), 0.05 + 1.0)
 
     def test_connect_to_a_port_that_never_opens_keeps_its_timeout(self):
-        with mock.patch.object(transport, '_open_tty', lambda path: time.sleep(3.0)), \
-                mock.patch.object(transport, 'OPEN_LIMIT', 0.05):
+        with (
+            mock.patch.object(transport, '_open_tty', lambda path: time.sleep(3.0)),
+            mock.patch.object(transport, 'OPEN_LIMIT', 0.05),
+        ):
             self.assertLess(self.connect(0.05), 0.05 + 0.05 + 1.0)
 
 

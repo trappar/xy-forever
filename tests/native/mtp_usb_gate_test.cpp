@@ -25,7 +25,10 @@ uint8_t byte_at(uint32_t a, bool image) {
 }
 uint32_t crc_of(uint32_t address, uint32_t length, bool image) {
     uint32_t c = 0;
-    for (uint32_t i = 0; i != length; ++i) { const uint8_t b = byte_at(address + i, image); c = xyf::crc::update(c, &b, 1); }
+    for (uint32_t i = 0; i != length; ++i) {
+        const uint8_t b = byte_at(address + i, image);
+        c = xyf::crc::update(c, &b, 1);
+    }
     return c;
 }
 uint32_t crc_now(uint32_t address, uint32_t length) { return crc_of(address, length, false); }
@@ -36,9 +39,12 @@ struct Table {
     Table(const uint32_t (*real)[3], uint32_t count) {
         REQUIRE_MESSAGE(count <= 128, "table fits");
         for (uint32_t i = 0; i != count; ++i) {
-            rows[i][0] = real[i][0]; rows[i][1] = real[i][1]; rows[i][2] = crc_of(real[i][0], real[i][1], true);
+            rows[i][0] = real[i][0];
+            rows[i][1] = real[i][1];
+            rows[i][2] = crc_of(real[i][0], real[i][1], true);
         }
-        spans.table = rows; spans.count = count;
+        spans.table = rows;
+        spans.count = count;
     }
 };
 void set_changes(const uint32_t* words, uint32_t n) {
@@ -64,8 +70,9 @@ TEST_CASE("the start gate against the span model") {
     // the MTP checks still pass, and the boot-time check passed: start.
     set_changes(census, 5);
     REQUIRE_MESSAGE(g::first_bad<crc_now>(g::check_usb, usb.spans, scratch), "census: usb spans differ");
-    REQUIRE_MESSAGE((scratch[g::r_index] == 65 && scratch[g::r_address] == 0x88a13460u && scratch[g::r_length] == 0x344u &&
-          scratch[g::r_failing] == 2), "census: usb #65 first, two spans");
+    REQUIRE_MESSAGE((scratch[g::r_index] == 65 && scratch[g::r_address] == 0x88a13460u &&
+                     scratch[g::r_length] == 0x344u && scratch[g::r_failing] == 2),
+                    "census: usb #65 first, two spans");
     for (uint32_t i = 0; i != g::record_words; ++i) record[i] = 0xdeadbeefu;
     REQUIRE_MESSAGE(g::refusal<crc_now>(true, engine.spans, probe.spans, record) == g::check_none, "census: start");
     for (uint32_t i = 0; i != g::record_words; ++i) REQUIRE_MESSAGE(record[i] == 0, "census: record cleared");
@@ -78,12 +85,15 @@ TEST_CASE("the start gate against the span model") {
     REQUIRE_MESSAGE(record[g::r_check] == g::check_engine, "engine: check named");
     uint32_t expect = 0;                                   // the first engine span holding a changed word
     while (expect != xyf::mtp_spans::count &&
-           crc_now(engine.rows[expect][0], engine.rows[expect][1]) == engine.rows[expect][2]) ++expect;
+           crc_now(engine.rows[expect][0], engine.rows[expect][1]) == engine.rows[expect][2])
+        ++expect;
     REQUIRE_MESSAGE((expect <= e && record[g::r_index] == expect), "engine: first differing span");
     REQUIRE_MESSAGE((record[g::r_address] == xyf::mtp_spans::table[expect][0] &&
-          record[g::r_length] == xyf::mtp_spans::table[expect][1]), "engine: span address and length");
+                     record[g::r_length] == xyf::mtp_spans::table[expect][1]),
+                    "engine: span address and length");
     REQUIRE_MESSAGE((record[g::r_crc] == crc_now(engine.rows[expect][0], engine.rows[expect][1]) &&
-          record[g::r_crc] != engine.rows[expect][2]), "engine: CRC as read");
+                     record[g::r_crc] != engine.rows[expect][2]),
+                    "engine: CRC as read");
     REQUIRE_MESSAGE(record[g::r_failing] >= 1, "engine: count");
 
     // (b) The probe span differs: refused, naming probe_spans() and span 0.
@@ -92,16 +102,19 @@ TEST_CASE("the start gate against the span model") {
     set_changes(with_probe, 6);
     REQUIRE_MESSAGE(!g::first_bad<crc_now>(g::check_engine, engine.spans, scratch), "probe: outside every engine span");
     REQUIRE_MESSAGE((g::refusal<crc_now>(true, engine.spans, probe.spans, record) == g::check_probe &&
-          record[g::r_check] == g::check_probe), "probe: refused, check named");
+                     record[g::r_check] == g::check_probe),
+                    "probe: refused, check named");
     REQUIRE_MESSAGE((record[g::r_index] == 0 && record[g::r_address] == 0x88a0c0b0u && record[g::r_length] == 0x80u &&
-          record[g::r_crc] != probe.rows[0][2] && record[g::r_failing] == 1), "probe: span named");
+                     record[g::r_crc] != probe.rows[0][2] && record[g::r_failing] == 1),
+                    "probe: span named");
 
     // (c) The boot-time identity() had failed: refused before any scan, even with nothing changed now.
     set_changes(0, 0);
-    REQUIRE_MESSAGE(g::refusal<crc_now>(false, engine.spans, probe.spans, record) == g::check_usb, "boot failed: refused");
+    REQUIRE_MESSAGE(g::refusal<crc_now>(false, engine.spans, probe.spans, record) == g::check_usb,
+                    "boot failed: refused");
     REQUIRE_MESSAGE((record[g::r_check] == g::check_usb && record[g::r_index] == 0 && record[g::r_failing] == 0),
-          "boot failed: usb check named");
+                    "boot failed: usb check named");
     set_changes(census, 5);
-    REQUIRE_MESSAGE(g::refusal<crc_now>(false, engine.spans, probe.spans, record) == g::check_usb, "boot failed, census: refused");
-
+    REQUIRE_MESSAGE(g::refusal<crc_now>(false, engine.spans, probe.spans, record) == g::check_usb,
+                    "boot failed, census: refused");
 }

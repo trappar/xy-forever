@@ -89,8 +89,10 @@ std::string hex(const hash::Digest& d) {
     return std::string(out, 64);
 }
 hash::Digest digest(const Byte* p, size_t n) {
-    hash::Sha256 h; hash::Digest d;
-    h.update(p, U32(n)); h.finish(d);
+    hash::Sha256 h;
+    hash::Digest d;
+    h.update(p, U32(n));
+    h.finish(d);
     return d;
 }
 
@@ -109,13 +111,18 @@ bool read_job(const char* path, Job& job) {
         std::istringstream in(line);
         std::string key;
         if (!(in >> key)) continue;
-        auto rest = [&]() { std::string r; std::getline(in >> std::ws, r); return r; };
+        auto rest = [&]() {
+            std::string r;
+            std::getline(in >> std::ws, r);
+            return r;
+        };
         if (key == "generation") job.generation = rest();
         else if (key == "machine") job.machines.push_back(rest());
         else if (key == "extension") job.extensions.push_back(rest());
         else if (key == "unlinked") job.unlinked.push_back(rest());
         else if (key == "layout") {
-            mod_link::Number n; std::memset(&n, 0, sizeof n);
+            mod_link::Number n;
+            std::memset(&n, 0, sizeof n);
             std::string id;
             in >> id >> n.identity.slot >> n.identity.number >> n.identity.page;
             std::strncpy(n.id, id.c_str(), mod_link::id_bytes - 1);
@@ -126,15 +133,22 @@ bool read_job(const char* path, Job& job) {
         else if (key == "catalog") job.catalog = rest();
         else if (key == "official") job.official = rest();
         else if (key == "name") job.name = rest();
-        else if (key == "profiling") { int v = 0; in >> v; job.profiling = v; }
-        else if (key == "unverified") { int v = 0; in >> v; job.unverified = v; }
-        else if (key == "memory") {          // standard, or expanded (the 4 MiB option)
+        else if (key == "profiling") {
+            int v = 0;
+            in >> v;
+            job.profiling = v;
+        } else if (key == "unverified") {
+            int v = 0;
+            in >> v;
+            job.unverified = v;
+        } else if (key == "memory") {          // standard, or expanded (the 4 MiB option)
             const std::string m = rest();
             if (m != "standard" && m != "expanded") return false;
             job.expanded = m == "expanded";
-        }
-        else if (key == "limit") {
-            std::string what; U32 v = 0; in >> what >> v;
+        } else if (key == "limit") {
+            std::string what;
+            U32 v = 0;
+            in >> what >> v;
             if (what == "image") job.image_limit = v;
             else if (what == "catalog") job.catalog_limit = v;
             else if (what == "list") job.list_limit = v;
@@ -145,12 +159,16 @@ bool read_job(const char* path, Job& job) {
 
 #include "mod_assemble_inputs.ipp"
 
-struct Timing { unsigned steps = 0; double longest_ms = 0; };
-template <class F> auto timed(Timing& t, F f) -> decltype(f()) {
+struct Timing {
+    unsigned steps = 0;
+    double longest_ms = 0;
+};
+template<class F> auto timed(Timing& t, F f) -> decltype(f()) {
     const auto a = std::chrono::steady_clock::now();
     auto r = f();
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - a).count();
-    ++t.steps; if (ms > t.longest_ms) t.longest_ms = ms;
+    ++t.steps;
+    if (ms > t.longest_ms) t.longest_ms = ms;
     return r;
 }
 
@@ -162,7 +180,10 @@ std::string quoted(const char* s) {
 std::string hex_text(const char* s) {
     std::string r;
     char two[3];
-    for (; *s; ++s) { std::snprintf(two, 3, "%02x", Byte(*s)); r += two; }
+    for (; *s; ++s) {
+        std::snprintf(two, 3, "%02x", Byte(*s));
+        r += two;
+    }
     return r;
 }
 
@@ -190,7 +211,8 @@ struct Assembly {
 };
 mod_content::Kind kind_of(const std::string& k) {
     const char* names[] = {"synth", "drum", "sample", "effect", "player", "extension"};
-    for (int i = 0; i != 6; ++i) if (k == names[i]) return mod_content::Kind(i);
+    for (int i = 0; i != 6; ++i)
+        if (k == names[i]) return mod_content::Kind(i);
     return mod_content::Kind(9);
 }
 
@@ -201,44 +223,60 @@ bool check_inputs(Inputs& in, Assembly& a) {
             auto it = p.files.find(f.second);
             if (it == p.files.end() || !unhex(f.first, want) ||
                 !hash::equal(digest(it->second.data(), it->second.size()), want)) {
-                a.input = "sha256"; a.input_detail = p.name + "/" + f.second;
+                a.input = "sha256";
+                a.input_detail = p.name + "/" + f.second;
                 return false;
             }
             a.largest_file = std::max(a.largest_file, U32(it->second.size()));
         }
         if (!listed_sha(p, p.metadata)) {
-            a.input = "missing"; a.input_detail = p.name + "/" + p.metadata;
+            a.input = "missing";
+            a.input_detail = p.name + "/" + p.metadata;
             return false;
         }
         if (p.metadata == record::native_name) {
             const auto type = p.name == "base" ? xyf::manifest::type_mod_base : xyf::manifest::type_mod;
             const auto status = metadata_view(p, type);
             if (status != json::ok) {
-                a.input = "package"; a.input_detail = p.name + "/" + p.metadata + ": " + json::message(status);
+                a.input = "package";
+                a.input_detail = p.name + "/" + p.metadata + ": " + json::message(status);
                 return false;
             }
         }
     }
     const Bytes* metadata = info_data(in.packages[0]);
     char detail[mod_patch::detail_bytes];
-    if (!metadata || mod_patch::read_profile(metadata->data(), U32(metadata->size()), a.profile, detail) != mod_patch::Status::ok) {
-        a.input = "base"; a.input_detail = metadata ? detail : in.packages[0].metadata;
+    if (!metadata ||
+        mod_patch::read_profile(metadata->data(), U32(metadata->size()), a.profile, detail) != mod_patch::Status::ok) {
+        a.input = "base";
+        a.input_detail = metadata ? detail : in.packages[0].metadata;
         return false;
     }
     const auto info = info_of(in.packages[0]);
     const char* keys[] = {"catalog_engine_at", "catalog_fx_at", "catalog_seq_at"};
     U32* fields[] = {&a.pins.engine_at, &a.pins.fx_at, &a.pins.seq_at};
     for (int k = 0; k != 3; ++k)
-        if (!number_of(info, keys[k], *fields[k])) { a.input = "base"; a.input_detail = keys[k]; return false; }
+        if (!number_of(info, keys[k], *fields[k])) {
+            a.input = "base";
+            a.input_detail = keys[k];
+            return false;
+        }
     a.pins.sha256 = a.profile.catalog_sha256;   // checked against the known bases by the patch
-    if (!listed_sha(in.packages[0], "edits.bin")) { a.input = "base"; a.input_detail = "edits.bin"; return false; }
+    if (!listed_sha(in.packages[0], "edits.bin")) {
+        a.input = "base";
+        a.input_detail = "edits.bin";
+        return false;
+    }
     return true;
 }
 
 // The content step's view of each chosen package (info.txt, files.sha256, catalog.txt).
 bool content_view(const Inputs& in, Assembly& a) {
     const size_t n = in.packages.size() - 1;
-    a.files.assign(n, {}); a.packages.assign(n, mod_content::Package()); a.ids.assign(n, ""); a.assets.assign(n, "");
+    a.files.assign(n, {});
+    a.packages.assign(n, mod_content::Package());
+    a.ids.assign(n, "");
+    a.assets.assign(n, "");
     for (size_t i = 0; i != n; ++i) {
         const Package& p = in.packages[i + 1];
         const auto info = info_of(p);
@@ -257,17 +295,23 @@ bool content_view(const Inputs& in, Assembly& a) {
         const std::string at = info.count("catalog_number") ? info.at("catalog_number") : "-";
         pkg.numbered = at != "-";
         if (pkg.numbered && std::sscanf(at.c_str(), "%u,%u", &pkg.number_start, &pkg.number_end) != 2) {
-            a.input = "package"; a.input_detail = p.name + "/" + p.metadata + " catalog_number";
+            a.input = "package";
+            a.input_detail = p.name + "/" + p.metadata + " catalog_number";
             return false;
         }
         number_of(info, "presets", pkg.presets);
-        pkg.files = a.files[i].data(); pkg.file_count = U32(a.files[i].size());
+        pkg.files = a.files[i].data();
+        pkg.file_count = U32(a.files[i].size());
         auto it = p.files.find("catalog.txt");
-        if (it != p.files.end()) { pkg.catalog_text = it->second.data(); pkg.catalog_bytes = U32(it->second.size()); }
+        if (it != p.files.end()) {
+            pkg.catalog_text = it->second.data();
+            pkg.catalog_bytes = U32(it->second.size());
+        }
         for (auto& f : p.files)   // each mod object, as the job loads it
             if (!f.first.compare(0, 8, "objects/") &&
                 mod_content::check_object(f.second.data(), U32(f.second.size())) != mod_content::Status::ok) {
-                a.content = mod_content::Status::package; a.content_object = p.name + "/" + f.first;
+                a.content = mod_content::Status::package;
+                a.content_object = p.name + "/" + f.first;
                 return false;
             }
     }
@@ -285,9 +329,9 @@ mod_patch::Status verify(const Assembly& a, const Inputs& in, const Bytes& image
     const mod_patch::Limits limits;
     Bytes scratch(mod_patch::scratch_bytes(limits) + 4);
     const Bytes& edits = in.packages[0].files.at("edits.bin");
-    mod_patch::Status s = mod_patch::start_verify(v, a.profile, edits.data(), U32(edits.size()), edits_sha256(in),
-                                                  image.data(), U32(image.size()), unverified, cold, limits,
-                                                  scratch.data(), U32(scratch.size()));
+    mod_patch::Status s =
+        mod_patch::start_verify(v, a.profile, edits.data(), U32(edits.size()), edits_sha256(in), image.data(),
+                                U32(image.size()), unverified, cold, limits, scratch.data(), U32(scratch.size()));
     while (s == mod_patch::Status::more) s = timed(t, [&] { return mod_patch::step(v); });
     if (s == mod_patch::Status::ok && want && !hash::equal(*want, v.sha256)) {
         std::snprintf(v.detail, sizeof v.detail, "image sha256");
@@ -302,12 +346,20 @@ void assemble(const Job& job, Inputs& in, Assembly& a, mod_patch::Patcher& p, mo
     if (!check_inputs(in, a)) return;
     a.profile.expanded = job.expanded;
     mod_patch::Profile used;
-    if (!mod_patch::layout(a.profile, used)) { a.input = "base"; a.input_detail = "expanded_module_base"; return; }
+    if (!mod_patch::layout(a.profile, used)) {
+        a.input = "base";
+        a.input_detail = "expanded_module_base";
+        return;
+    }
     const Bytes& edits = in.packages[0].files.at("edits.bin");
     const hash::Digest edits_sha = edits_sha256(in);
-    const unsigned long long size = job.image_limit ? job.image_limit :
-        (unsigned long long)used.stock_bytes + 16 + used.module_bytes;
-    if (size > (64u << 20) || size < a.profile.stock_bytes) { a.input = "base"; a.input_detail = "image size"; return; }
+    const unsigned long long size =
+        job.image_limit ? job.image_limit : (unsigned long long)used.stock_bytes + 16 + used.module_bytes;
+    if (size > (64u << 20) || size < a.profile.stock_bytes) {
+        a.input = "base";
+        a.input_detail = "image size";
+        return;
+    }
     a.image.resize(size_t(size));                 // zeroed with memset: a fuzz round reuses the allocation
     std::memset(a.image.data(), 0, a.image.size());
     std::memcpy(a.image.data(), in.stock.data(), std::min(in.stock.size(), a.image.size()));
@@ -315,24 +367,28 @@ void assemble(const Job& job, Inputs& in, Assembly& a, mod_patch::Patcher& p, mo
     static Bytes pscratch;
     pscratch.assign(mod_patch::scratch_bytes(plimits) + 4, 0);
     a.patched = true;
-    a.patch = mod_patch::start(p, a.profile, edits.data(), U32(edits.size()), edits_sha, a.image.data(),
-                               U32(a.image.size()), job.profiling, job.unverified, cold, plimits, pscratch.data(),
-                               U32(pscratch.size()));
+    a.patch =
+        mod_patch::start(p, a.profile, edits.data(), U32(edits.size()), edits_sha, a.image.data(), U32(a.image.size()),
+                         job.profiling, job.unverified, cold, plimits, pscratch.data(), U32(pscratch.size()));
     while (a.patch == mod_patch::Status::more) a.patch = timed(a.pt, [&] { return mod_patch::step(p); });
 
     // The link, file by file from RAM.
     for (auto& m : job.machines) a.machine_ids.push_back(m.c_str());
     for (auto& e : job.extensions) a.extension_ids.push_back(e.c_str());
-    a.selection.machines = a.machine_ids.data(); a.selection.machine_count = U32(a.machine_ids.size());
-    a.selection.extensions = a.extension_ids.data(); a.selection.extension_count = U32(a.extension_ids.size());
-    a.selection.layout = job.layout.data(); a.selection.layout_count = U32(job.layout.size());
+    a.selection.machines = a.machine_ids.data();
+    a.selection.machine_count = U32(a.machine_ids.size());
+    a.selection.extensions = a.extension_ids.data();
+    a.selection.extension_count = U32(a.extension_ids.size());
+    a.selection.layout = job.layout.data();
+    a.selection.layout_count = U32(job.layout.size());
     a.selection.has_layout = job.has_layout;
     a.selection.expanded = job.expanded;
     const mod_link::Limits llimits;
     const U32 lbytes = mod_link::scratch_bytes(llimits);
     a.link_scratch.resize(lbytes / 4 + 1);
     std::memset(a.link_scratch.data(), 0, a.link_scratch.size() * sizeof(U32));
-    a.ws.scratch = reinterpret_cast<Byte*>(a.link_scratch.data()); a.ws.capacity = lbytes;
+    a.ws.scratch = reinterpret_cast<Byte*>(a.link_scratch.data());
+    a.ws.capacity = lbytes;
     const U32 stock = std::min<U32>(a.profile.stock_bytes, U32(a.image.size()));
     a.linked = true;
     a.link = mod_link::begin(a.selection, llimits, a.ws, a.image.data() + stock, U32(a.image.size()) - stock, a.result);
@@ -342,14 +398,17 @@ void assemble(const Job& job, Inputs& in, Assembly& a, mod_patch::Patcher& p, mo
         U32 bytes = 0;
         if (*request.path) {
             const Package* pk = package_named(in, request.package);
-            const Bytes* file = !pk ? nullptr : std::strcmp(request.path, record::legacy_name) == 0 ?
-                info_data(*pk) : file_data(*pk, request.path);
+            const Bytes* file = !pk                                                 ? nullptr :
+                                std::strcmp(request.path, record::legacy_name) == 0 ? info_data(*pk) :
+                                                                                      file_data(*pk, request.path);
             if (!file) {
-                a.input = "missing"; a.input_detail = std::string(request.package) + "/" + request.path;
+                a.input = "missing";
+                a.input_detail = std::string(request.package) + "/" + request.path;
                 a.link = mod_link::Status::argument;
                 break;
             }
-            data = file->empty() ? nullptr : file->data(); bytes = U32(file->size());
+            data = file->empty() ? nullptr : file->data();
+            bytes = U32(file->size());
         } else ++a.zero_steps;
         a.link = timed(a.lt, [&] { return mod_link::step(a.ws, data, bytes, a.result); });
     }
@@ -359,7 +418,10 @@ void assemble(const Job& job, Inputs& in, Assembly& a, mod_patch::Patcher& p, mo
         while (a.patch == mod_patch::Status::more) a.patch = timed(a.pt, [&] { return mod_patch::step(p); });
     }
     // Content.
-    if (!content_view(in, a)) { a.contented = a.content == mod_content::Status::package; return; }
+    if (!content_view(in, a)) {
+        a.contented = a.content == mod_content::Status::package;
+        return;
+    }
     const mod_content::Limits climits;
     static Bytes cscratch;
     cscratch.assign(mod_content::scratch_bytes(climits) + 4, 0);
@@ -368,13 +430,14 @@ void assemble(const Job& job, Inputs& in, Assembly& a, mod_patch::Patcher& p, mo
     a.contented = true;
     a.content = mod_content::start(b, a.pins, in.catalog.data(), U32(in.catalog.size()), in.official.data(),
                                    U32(in.official.size()), a.packages.data(), U32(a.packages.size()), a.selection,
-                                   a.ws, a.result, a.out.data(), U32(a.out.size()),
-                                   a.list.data(), U32(a.list.size()), climits, cscratch.data(), U32(cscratch.size()));
+                                   a.ws, a.result, a.out.data(), U32(a.out.size()), a.list.data(), U32(a.list.size()),
+                                   climits, cscratch.data(), U32(cscratch.size()));
     while (a.content == mod_content::Status::more) a.content = timed(a.ct, [&] { return mod_content::step(b); });
 }
 
 bool write_file(const std::string& path, const Byte* p, size_t n, std::vector<std::string>& written) {
-    for (size_t i = 1; i < path.size(); ++i) if (path[i] == '/') mkdir(path.substr(0, i).c_str(), 0755);
+    for (size_t i = 1; i < path.size(); ++i)
+        if (path[i] == '/') mkdir(path.substr(0, i).c_str(), 0755);
     std::FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) return false;
     written.push_back(path);
@@ -384,7 +447,10 @@ bool write_file(const std::string& path, const Byte* p, size_t n, std::vector<st
 
 int run(const Job& job, const std::string& outdir) {
     Inputs in;
-    if (!load(job, in)) { std::printf("{\"error\": \"input missing\"}\n"); return 2; }
+    if (!load(job, in)) {
+        std::printf("{\"error\": \"input missing\"}\n");
+        return 2;
+    }
     static Assembly a;
     static mod_patch::Patcher p, v;
     static mod_content::Builder b;
@@ -394,7 +460,8 @@ int run(const Job& job, const std::string& outdir) {
     const bool patch_ok = a.patched && a.patch == mod_patch::Status::ok;
     if (patch_ok) {
         Bytes back;
-        if (!write_file(outdir + "/os.ldr", a.image.data(), p.total, written) || !slurp(outdir + "/os.ldr", back)) return 2;
+        if (!write_file(outdir + "/os.ldr", a.image.data(), p.total, written) || !slurp(outdir + "/os.ldr", back))
+            return 2;
         a.verify = verify(a, in, back, v, a.vt, job.unverified, &p.sha256);   // the written file, read back
     }
     const char* copy = "ok";
@@ -405,13 +472,17 @@ int run(const Job& job, const std::string& outdir) {
             const mod_content::Listed& l = b.listed[i];
             if (l.package == 0xffffffffu) continue;
             const Bytes& data = in.packages[l.package + 1].files.at(l.path);
-            if (!hash::equal(digest(data.data(), data.size()), *l.sha256)) { copy = "sha256"; break; }
+            if (!hash::equal(digest(data.data(), data.size()), *l.sha256)) {
+                copy = "sha256";
+                break;
+            }
             write_file(outdir + "/" + l.path, data.data(), data.size(), written);
         }
         write_file(outdir + "/files.sha256", a.list.data(), b.list_bytes, written);
     }
     const bool link_ok = a.linked && a.link == mod_link::Status::ok;
-    if (a.input != "ok" || !link_ok || !patch_ok || a.verify != mod_patch::Status::ok || !content_ok || strcmp(copy, "ok"))
+    if (a.input != "ok" || !link_ok || !patch_ok || a.verify != mod_patch::Status::ok || !content_ok ||
+        strcmp(copy, "ok"))
         for (auto& w : written) unlink(w.c_str());
     std::string numbers = "[";
     mod_link::Number n;
@@ -423,30 +494,32 @@ int run(const Job& job, const std::string& outdir) {
         numbers += row;
     }
     numbers += "]";
-    std::printf("{\"base\": \"%s\", \"input\": \"%s\", \"input_detail\": %s, \"link\": %d, \"link_detail_hex\": \"%s\", "
-                "\"link_ran\": %s, \"numbers\": %s, \"initialized\": %u, \"allocated\": %u, "
-                "\"patch\": \"%s\", \"patch_detail\": %s, \"verify\": \"%s\", \"verify_detail\": %s, "
-                "\"entry\": %u, \"records\": %u, \"bytes\": %u, \"applied\": %u, \"edits\": %u, \"sha256\": \"%s\", "
-                "\"content\": \"%s\", \"content_detail\": %s, \"copy\": \"%s\", \"files\": %u, \"catalog_bytes\": %u, "
-                "\"list_bytes\": %u, \"link_scratch\": %u, \"patch_scratch\": %u, \"patch_state\": %zu, "
-                "\"content_scratch\": %u, \"content_state\": %zu, \"image_bytes\": %zu, \"catalog_limit\": %u, "
-                "\"list_limit\": %u, \"largest_file\": %u, \"link_steps\": %u, \"zero_steps\": %u, "
-                "\"link_longest_ms\": %.3f, \"patch_steps\": %u, \"patch_longest_ms\": %.3f, \"verify_longest_ms\": %.3f, "
-                "\"content_steps\": %u, \"content_longest_ms\": %.3f}\n",
-                !a.patched ? skipped : p.known ? "known" : "unverified", a.input.c_str(),
-                quoted(a.input_detail.c_str()).c_str(), a.linked ? int(a.link) : -1,
-                hex_text(a.result.detail).c_str(), a.linked ? "true" : "false", numbers.c_str(),
-                a.result.sizes.initialized, a.result.sizes.allocated,
-                a.patched ? mod_patch::status_name(a.patch) : skipped, quoted(p.detail).c_str(),
-                patch_ok ? mod_patch::status_name(a.verify) : skipped, quoted(v.detail).c_str(),
-                p.ldr.entry, p.ldr.records, p.total, p.applied, p.edit_count, hex(p.sha256).c_str(),
-                a.contented ? mod_content::status_name(a.content) : skipped,
-                quoted(a.content_object.empty() ? b.detail : a.content_object.c_str()).c_str(),
-                copy, b.listed_count, b.catalog_bytes, b.list_bytes, mod_link::scratch_bytes(mod_link::Limits()),
-                mod_patch::scratch_bytes(mod_patch::Limits()), sizeof(mod_patch::Patcher),
-                mod_content::scratch_bytes(mod_content::Limits()), sizeof(mod_content::Builder), a.image.size(),
-                job.catalog_limit, job.list_limit, a.largest_file, a.lt.steps, a.zero_steps, a.lt.longest_ms,
-                a.pt.steps, a.pt.longest_ms, a.vt.longest_ms, a.ct.steps, a.ct.longest_ms);
+    std::printf(
+        "{\"base\": \"%s\", \"input\": \"%s\", \"input_detail\": %s, \"link\": %d, \"link_detail_hex\": \"%s\", "
+        "\"link_ran\": %s, \"numbers\": %s, \"initialized\": %u, \"allocated\": %u, "
+        "\"patch\": \"%s\", \"patch_detail\": %s, \"verify\": \"%s\", \"verify_detail\": %s, "
+        "\"entry\": %u, \"records\": %u, \"bytes\": %u, \"applied\": %u, \"edits\": %u, \"sha256\": \"%s\", "
+        "\"content\": \"%s\", \"content_detail\": %s, \"copy\": \"%s\", \"files\": %u, \"catalog_bytes\": %u, "
+        "\"list_bytes\": %u, \"link_scratch\": %u, \"patch_scratch\": %u, \"patch_state\": %zu, "
+        "\"content_scratch\": %u, \"content_state\": %zu, \"image_bytes\": %zu, \"catalog_limit\": %u, "
+        "\"list_limit\": %u, \"largest_file\": %u, \"link_steps\": %u, \"zero_steps\": %u, "
+        "\"link_longest_ms\": %.3f, \"patch_steps\": %u, \"patch_longest_ms\": %.3f, \"verify_longest_ms\": %.3f, "
+        "\"content_steps\": %u, \"content_longest_ms\": %.3f}\n",
+        !a.patched ? skipped :
+        p.known    ? "known" :
+                     "unverified",
+        a.input.c_str(), quoted(a.input_detail.c_str()).c_str(), a.linked ? int(a.link) : -1,
+        hex_text(a.result.detail).c_str(), a.linked ? "true" : "false", numbers.c_str(), a.result.sizes.initialized,
+        a.result.sizes.allocated, a.patched ? mod_patch::status_name(a.patch) : skipped, quoted(p.detail).c_str(),
+        patch_ok ? mod_patch::status_name(a.verify) : skipped, quoted(v.detail).c_str(), p.ldr.entry, p.ldr.records,
+        p.total, p.applied, p.edit_count, hex(p.sha256).c_str(),
+        a.contented ? mod_content::status_name(a.content) : skipped,
+        quoted(a.content_object.empty() ? b.detail : a.content_object.c_str()).c_str(), copy, b.listed_count,
+        b.catalog_bytes, b.list_bytes, mod_link::scratch_bytes(mod_link::Limits()),
+        mod_patch::scratch_bytes(mod_patch::Limits()), sizeof(mod_patch::Patcher),
+        mod_content::scratch_bytes(mod_content::Limits()), sizeof(mod_content::Builder), a.image.size(),
+        job.catalog_limit, job.list_limit, a.largest_file, a.lt.steps, a.zero_steps, a.lt.longest_ms, a.pt.steps,
+        a.pt.longest_ms, a.vt.longest_ms, a.ct.steps, a.ct.longest_ms);
     return 0;
 }
 
@@ -456,7 +529,10 @@ int verify_file(const Job& job, const char* path) {
     if (!load(job, in) || !slurp(path, image)) return 2;
     static Assembly a;
     static mod_patch::Patcher v;
-    if (!check_inputs(in, a)) { std::printf("{\"verify\": \"input\", \"detail\": %s}\n", quoted(a.input_detail.c_str()).c_str()); return 0; }
+    if (!check_inputs(in, a)) {
+        std::printf("{\"verify\": \"input\", \"detail\": %s}\n", quoted(a.input_detail.c_str()).c_str());
+        return 0;
+    }
     a.profile.expanded = job.expanded;
     const mod_patch::Status s = verify(a, in, image, v, a.vt, job.unverified, 0);
     std::printf("{\"verify\": \"%s\", \"detail\": %s, \"base\": \"%s\", \"sha256\": \"%s\"}\n",
@@ -467,13 +543,22 @@ int verify_file(const Job& job, const char* path) {
 
 void damage(Bytes& b, std::mt19937& rng) {
     const int how = rng() % 6;
-    if (b.empty()) { b.push_back(Byte(rng())); return; }
+    if (b.empty()) {
+        b.push_back(Byte(rng()));
+        return;
+    }
     if (how == 0) b.resize(rng() % b.size());
     else if (how == 1) b.insert(b.begin() + rng() % b.size(), 1 + rng() % 8, Byte(rng()));
-    else if (how == 2) for (int i = 0, k = 1 + rng() % 4; i != k; ++i) b[rng() % b.size()] ^= Byte(1u << (rng() % 8));
+    else if (how == 2)
+        for (int i = 0, k = 1 + rng() % 4; i != k; ++i) b[rng() % b.size()] ^= Byte(1u << (rng() % 8));
     else if (how == 3) b[rng() % b.size()] = Byte(rng());
-    else if (how == 4) { const size_t at = rng() % b.size(); for (size_t i = at; i < b.size() && i < at + 16; ++i) b[i] = 0xff; }
-    else { const size_t at = rng() % b.size(); b[at] = Byte("{}[],:\"\\0 x=-\n"[rng() % 14]); }
+    else if (how == 4) {
+        const size_t at = rng() % b.size();
+        for (size_t i = at; i < b.size() && i < at + 16; ++i) b[i] = 0xff;
+    } else {
+        const size_t at = rng() % b.size();
+        b[at] = Byte("{}[],:\"\\0 x=-\n"[rng() % 14]);
+    }
 }
 void rehash(Package& p, const std::string& path) {
     for (auto& f : p.listing)
@@ -485,7 +570,8 @@ void set_info(Package& base, const std::string& key, const std::string& value) {
     std::string text(info.begin(), info.end()), out;
     std::istringstream in(text);
     std::string line;
-    while (std::getline(in, line)) out += (line.compare(0, key.size() + 1, key + "=") ? line : key + "=" + value) + "\n";
+    while (std::getline(in, line))
+        out += (line.compare(0, key.size() + 1, key + "=") ? line : key + "=" + value) + "\n";
     info.assign(out.begin(), out.end());
     rehash(base, "info.txt");
 }
@@ -508,15 +594,17 @@ int fuzz(const Job& job, unsigned seed, unsigned count) {
             damage(in.catalog, rng);
             if (refresh) set_info(in.packages[0], "catalog_sha256", hex(digest(in.catalog.data(), in.catalog.size())));
         } else if (target <= 4) {   // any file of the base (2) or of a package (3, 4)
-            Package& pk = in.packages[target == 2 || in.packages.size() == 1 ? 0 : 1 + rng() % (in.packages.size() - 1)];
+            Package& pk =
+                in.packages[target == 2 || in.packages.size() == 1 ? 0 : 1 + rng() % (in.packages.size() - 1)];
             if (!pk.listing.empty()) {
                 const std::string path = pk.listing[rng() % pk.listing.size()].second;
                 damage(pk.files[path], rng);
                 if (refresh) rehash(pk, path);
             }
         } else if (target == 5) {   // a base fact
-            const char* keys[] = {"stock_bytes", "module_base", "module_bytes", "catalog_engine_at", "catalog_fx_at",
-                                  "catalog_seq_at", "stock_records", "reserved_bytes", "heap_fill_base", "heap_fill_bytes"};
+            const char* keys[] = {"stock_bytes",    "module_base",    "module_bytes",  "catalog_engine_at",
+                                  "catalog_fx_at",  "catalog_seq_at", "stock_records", "reserved_bytes",
+                                  "heap_fill_base", "heap_fill_bytes"};
             const auto info = info_of(in.packages[0]);
             const char* key = keys[rng() % 10];
             U32 x = 0;
@@ -546,14 +634,20 @@ int fuzz(const Job& job, unsigned seed, unsigned count) {
             if (target == 7) damage(image, rng);
             const mod_patch::Status vs = verify(a, in, image, v, a.vt, job.unverified, &p.sha256);
             key += std::string(" verify=") + mod_patch::status_name(vs);
-            if (target != 7 && vs != mod_patch::Status::ok) { std::printf("{\"error\": \"verify refused a patch\"}\n"); return 1; }
+            if (target != 7 && vs != mod_patch::Status::ok) {
+                std::printf("{\"error\": \"verify refused a patch\"}\n");
+                return 1;
+            }
         }
         if (a.contented) key += std::string(" content=") + mod_content::status_name(a.content);
         ++counts[key];
     }
     std::printf("{");
     bool first = true;
-    for (auto& c : counts) { std::printf("%s\"%s\": %u", first ? "" : ", ", c.first.c_str(), c.second); first = false; }
+    for (auto& c : counts) {
+        std::printf("%s\"%s\": %u", first ? "" : ", ", c.first.c_str(), c.second);
+        first = false;
+    }
     std::printf("}\n");
     return 0;
 }
@@ -566,7 +660,11 @@ struct MemFs {
     std::map<std::string, Bytes> cache, replaced, written;
     std::set<std::string> missing, short_size;   // short_size: size() reports one byte more
     std::set<std::string> dirs{"/out"};          // folders: the output folder, then what mkdir made
-    struct Handle { std::string path; size_t pos; bool write, open; };
+    struct Handle {
+        std::string path;
+        size_t pos;
+        bool write, open;
+    };
     std::vector<Handle> handles;
     unsigned now = 0, fail_read = 0, fail_write = 0;   // step numbers (1-based; 0: never)
     bool injected = false;
@@ -582,8 +680,16 @@ struct MemFs {
         if (path.compare(0, 5, "/out/") == 0 || !slurp(path, data)) return 0;
         return &(cache[path] = data);
     }
-    void reset() { written.clear(); replaced.clear(); missing.clear(); short_size.clear(); handles.clear();
-                   dirs = {"/out"}; now = fail_read = fail_write = 0; injected = false; }
+    void reset() {
+        written.clear();
+        replaced.clear();
+        missing.clear();
+        short_size.clear();
+        handles.clear();
+        dirs = {"/out"};
+        now = fail_read = fail_write = 0;
+        injected = false;
+    }
     bool parent_made(const std::string& path) const { return dirs.count(path.substr(0, path.rfind('/'))) != 0; }
     static MemFs& of(void* c) { return *static_cast<MemFs*>(c); }
     static int probe_metadata(void* c, const char* path) {
@@ -618,7 +724,10 @@ struct MemFs {
     }
     static int read(void* c, int h, Byte* data, U32 bytes) {
         MemFs& fs = of(c);
-        if (fs.fail_read && fs.now == fs.fail_read) { fs.injected = true; return -5; }
+        if (fs.fail_read && fs.now == fs.fail_read) {
+            fs.injected = true;
+            return -5;
+        }
         if (h < 0 || size_t(h) >= fs.handles.size() || !fs.handles[h].open || fs.handles[h].write) return -9;
         const Bytes* d = fs.find(fs.handles[h].path);
         if (!d) return -2;
@@ -629,7 +738,10 @@ struct MemFs {
     }
     static int write(void* c, int h, const Byte* data, U32 bytes) {
         MemFs& fs = of(c);
-        if (fs.fail_write && fs.now == fs.fail_write) { fs.injected = true; return -5; }
+        if (fs.fail_write && fs.now == fs.fail_write) {
+            fs.injected = true;
+            return -5;
+        }
         if (h < 0 || size_t(h) >= fs.handles.size() || !fs.handles[h].open || !fs.handles[h].write) return -9;
         Bytes& d = fs.written[fs.handles[h].path];
         d.insert(d.end(), data, data + bytes);
@@ -654,12 +766,19 @@ struct MemFs {
     static int remove(void* c, const char* path) { return of(c).written.erase(path) ? 0 : -1; }
     static int mkdir(void* c, const char* path) {   // a write fault fails it too
         MemFs& fs = of(c);
-        if (fs.fail_write && fs.now == fs.fail_write) { fs.injected = true; return -5; }
+        if (fs.fail_write && fs.now == fs.fail_write) {
+            fs.injected = true;
+            return -5;
+        }
         if (!fs.parent_made(path)) return -1;
         fs.dirs.insert(path);
         return 0;
     }
-    unsigned open_handles() const { unsigned n = 0; for (auto& h : handles) n += h.open; return n; }
+    unsigned open_handles() const {
+        unsigned n = 0;
+        for (auto& h : handles) n += h.open;
+        return n;
+    }
 };
 const char* const job_outputs[] = {"/out/os.ldr", "/out/content/op1_factory.json", "/out/files.sha256"};
 
@@ -680,18 +799,27 @@ struct JobSetup {
     JobSetup(const Job& job, MemFs& fs) {
         for (auto& m : job.machines) machines.push_back(m.c_str());
         for (auto& e : job.extensions) extensions.push_back(e.c_str());
-        in.selection.machines = machines.data(); in.selection.machine_count = U32(machines.size());
-        in.selection.extensions = extensions.data(); in.selection.extension_count = U32(extensions.size());
-        in.selection.layout = job.layout.data(); in.selection.layout_count = U32(job.layout.size());
+        in.selection.machines = machines.data();
+        in.selection.machine_count = U32(machines.size());
+        in.selection.extensions = extensions.data();
+        in.selection.extension_count = U32(extensions.size());
+        in.selection.layout = job.layout.data();
+        in.selection.layout_count = U32(job.layout.size());
         in.selection.has_layout = job.has_layout;
         in.selection.expanded = job.expanded;
-        in.generation = job.generation.c_str(); in.stock = job.stock.c_str(); in.catalog = job.catalog.c_str();
-        in.official = job.official.c_str(); in.out = "/out"; in.name = job.name.c_str(); in.policy = &cold;
-        in.profiling = job.profiling; in.unverified = job.unverified;
+        in.generation = job.generation.c_str();
+        in.stock = job.stock.c_str();
+        in.catalog = job.catalog.c_str();
+        in.official = job.official.c_str();
+        in.out = "/out";
+        in.name = job.name.c_str();
+        in.policy = &cold;
+        in.profiling = job.profiling;
+        in.unverified = job.unverified;
         Bytes store;
         in.flat = slurp(job.generation + "/store.txt", store);   // the device's store (a copy of it)
-        files = {&fs, MemFs::probe_metadata, MemFs::size, MemFs::open, MemFs::read, MemFs::write, MemFs::close, MemFs::rename, MemFs::remove,
-                 MemFs::mkdir};
+        files = {&fs,          MemFs::probe_metadata, MemFs::size,   MemFs::open,   MemFs::read,
+                 MemFs::write, MemFs::close,          MemFs::rename, MemFs::remove, MemFs::mkdir};
         region.assign((8u << 20) / 4, 0);
     }
 };
@@ -704,7 +832,10 @@ JobRun run_job(JobSetup& s, MemFs& fs, mod_job::Job& job, U32 region_bytes, unsi
     r.error = mod_job::start(job, s.in, s.files, reinterpret_cast<Byte*>(s.region.data()), region_bytes);
     if (r.error == mod_job::Error::none) {
         for (;;) {
-            if (cancel_after && job.steps == cancel_after) { mod_job::cancel(job); break; }
+            if (cancel_after && job.steps == cancel_after) {
+                mod_job::cancel(job);
+                break;
+            }
             if (hook) hook(job);
             const std::string phase = mod_job::phase_name(job.phase);
             fs.now = job.steps + 1;
@@ -717,11 +848,15 @@ JobRun run_job(JobSetup& s, MemFs& fs, mod_job::Job& job, U32 region_bytes, unsi
         }
         r.error = job.error;
     }
-    r.phase = job.phase; r.steps = job.steps; r.peak = job.peak; r.status = job.status; r.detail = job.detail;
+    r.phase = job.phase;
+    r.steps = job.steps;
+    r.peak = job.peak;
+    r.status = job.status;
+    r.detail = job.detail;
     return r;
 }
 
-template <class M> std::string json_map(const M& m, const char* format) {
+template<class M> std::string json_map(const M& m, const char* format) {
     std::string out = "{";
     char row[96];
     for (auto& kv : m) {
@@ -738,8 +873,8 @@ int job_run(const Job& job, const std::string& outdir) {
     static mod_content::Builder b;
     const bool loaded = load(job, in);                 // the one-shot reference (absent on a refusal test)
     if (loaded) assemble(job, in, a, p, b);
-    const bool reference = loaded && a.input == "ok" && a.link == mod_link::Status::ok && a.patch == mod_patch::Status::ok &&
-                           a.content == mod_content::Status::ok;
+    const bool reference = loaded && a.input == "ok" && a.link == mod_link::Status::ok &&
+                           a.patch == mod_patch::Status::ok && a.content == mod_content::Status::ok;
     static MemFs fs;
     JobSetup s(job, fs);
     static mod_job::Job mj;
@@ -761,9 +896,9 @@ int job_run(const Job& job, const std::string& outdir) {
                 "\"largest\": %s, \"longest_ms\": %s, \"open_handles\": %u}\n",
                 mod_job::error_name(r.error), mod_job::phase_name(r.phase), r.status, quoted(r.detail.c_str()).c_str(),
                 reference ? "true" : "false", ldr ? "true" : "false", catalog ? "true" : "false",
-                list ? "true" : "false", fs.written.size(), r.steps, r.peak, s.region.size() * 4,
-                sizeof(mod_job::Job), p.total, json_map(r.largest, "%s\"%s\": %u").c_str(),
-                json_map(r.longest_ms, "%s\"%s\": %.3f").c_str(), fs.open_handles());
+                list ? "true" : "false", fs.written.size(), r.steps, r.peak, s.region.size() * 4, sizeof(mod_job::Job),
+                p.total, json_map(r.largest, "%s\"%s\": %u").c_str(), json_map(r.longest_ms, "%s\"%s\": %.3f").c_str(),
+                fs.open_handles());
     return 0;
 }
 
@@ -786,7 +921,8 @@ int job_faults(const Job& job, unsigned stride, unsigned k0) {
         if (r.phase != (expect == mod_job::Error::cancelled ? mod_job::Phase::cancelled : mod_job::Phase::failed) ||
             r.error != expect || left || fs.open_handles())
             violations.push_back(what + ": " + mod_job::error_name(r.error) + " " + mod_job::phase_name(r.phase) +
-                                 (left ? " output left" : "") + (fs.open_handles() ? " handle open" : "") + " " + r.detail);
+                                 (left ? " output left" : "") + (fs.open_handles() ? " handle open" : "") + " " +
+                                 r.detail);
     };
     auto identical = [&](const std::string& what, const JobRun& r) {
         if (r.phase != mod_job::Phase::done || fs.written != want || fs.open_handles())
@@ -798,12 +934,17 @@ int job_faults(const Job& job, unsigned stride, unsigned k0) {
             (mode ? fs.fail_write : fs.fail_read) = k;
             const JobRun r = run_job(s, fs, mj, full);
             const std::string what = std::string(mode ? "write" : "read") + " fault at step " + std::to_string(k);
-            if (fs.injected) { clean(what, r, mode ? mod_job::Error::write : mod_job::Error::read); ++counts[mode ? "write" : "read"]; }
-            else identical(what, r);
+            if (fs.injected) {
+                clean(what, r, mode ? mod_job::Error::write : mod_job::Error::read);
+                ++counts[mode ? "write" : "read"];
+            } else identical(what, r);
         }
         fs.reset();
         const JobRun r = run_job(s, fs, mj, full, k);
-        if (k < base.steps) { clean("cancel after step " + std::to_string(k), r, mod_job::Error::cancelled); ++counts["cancel"]; }
+        if (k < base.steps) {
+            clean("cancel after step " + std::to_string(k), r, mod_job::Error::cancelled);
+            ++counts["cancel"];
+        }
     }
     // A region one byte short of the peak, and the peak itself.
     fs.reset();
@@ -821,23 +962,49 @@ int job_faults(const Job& job, unsigned stride, unsigned k0) {
         std::istringstream lines(std::string(list.begin(), list.end()));
         std::string line;
         while (std::getline(lines, line)) {
-            if (object.empty() && line.size() > 66 && !line.compare(66, 8, "objects/")) object = first + line.substr(66);
-            if (content.empty() && line.size() > 66 && !line.compare(66, 8, "content/")) content = first + line.substr(66);
+            if (object.empty() && line.size() > 66 && !line.compare(66, 8, "objects/"))
+                object = first + line.substr(66);
+            if (content.empty() && line.size() > 66 && !line.compare(66, 8, "content/"))
+                content = first + line.substr(66);
         }
     }
-    struct Case { const char* name; std::function<void()> change; mod_job::Error expect; };
+    struct Case {
+        const char* name;
+        std::function<void()> change;
+        mod_job::Error expect;
+    };
     std::vector<Case> cases = {
         {"missing object", [&] { fs.missing.insert(object); }, mod_job::Error::open},
         {"missing package", [&] { fs.missing.insert(first + "files.sha256"); }, mod_job::Error::open},
-        {"missing base edits.bin", [&] { fs.missing.insert(job.generation + "/base/edits.bin"); }, mod_job::Error::open},
+        {"missing base edits.bin", [&] { fs.missing.insert(job.generation + "/base/edits.bin"); },
+         mod_job::Error::open},
         {"missing stock", [&] { fs.missing.insert(job.stock); }, mod_job::Error::open},
-        {"truncated object", [&] { Bytes d; slurp(object, d); d.resize(d.size() / 2); fs.replaced[object] = d; }, mod_job::Error::sha256},
-        {"truncated files.sha256", [&] { Bytes d = list; d.resize(d.size() - 10); fs.replaced[first + "files.sha256"] = d; }, mod_job::Error::list},
+        {"truncated object",
+         [&] {
+             Bytes d;
+             slurp(object, d);
+             d.resize(d.size() / 2);
+             fs.replaced[object] = d;
+         },
+         mod_job::Error::sha256},
+        {"truncated files.sha256",
+         [&] {
+             Bytes d = list;
+             d.resize(d.size() - 10);
+             fs.replaced[first + "files.sha256"] = d;
+         },
+         mod_job::Error::list},
         {"object shorter than its size", [&] { fs.short_size.insert(object); }, mod_job::Error::truncated},
     };
     if (!content.empty()) {                            // a content file the entry copies
         cases.push_back({"missing content file", [&] { fs.missing.insert(content); }, mod_job::Error::open});
-        cases.push_back({"truncated content file", [&] { Bytes d; slurp(content, d); d.resize(d.size() / 2); fs.replaced[content] = d; },
+        cases.push_back({"truncated content file",
+                         [&] {
+                             Bytes d;
+                             slurp(content, d);
+                             d.resize(d.size() / 2);
+                             fs.replaced[content] = d;
+                         },
                          mod_job::Error::sha256});
     }
     for (auto& c : cases) {
@@ -853,7 +1020,9 @@ int job_faults(const Job& job, unsigned stride, unsigned k0) {
     fs.reset();
     bool tampered = false;
     const JobRun image = run_job(s, fs, mj, full, 0, [&](mod_job::Job& j) {
-        if (tampered || j.phase != mod_job::Phase::verify || j.out_index != j.out_count - 1 || j.load.active || j.load.ready) return;
+        if (tampered || j.phase != mod_job::Phase::verify || j.out_index != j.out_count - 1 || j.load.active ||
+            j.load.ready)
+            return;
         Bytes& ldr = fs.written["/out/os.ldr.part"];
         ldr[ldr.size() / 4] ^= 0x40;
         j.ldr_sha256 = digest(ldr.data(), ldr.size());
@@ -866,8 +1035,8 @@ int job_faults(const Job& job, unsigned stride, unsigned k0) {
     identical("reuse after every fault", run_job(s, fs, mj, full));
     std::string v = "[";
     for (auto& x : violations) v += (v.size() > 1 ? ", " : "") + quoted(x.c_str());
-    std::printf("{\"steps\": %u, \"stride\": %u, \"peak\": %u, \"counts\": %s, \"violations\": %s}\n", base.steps, stride,
-                base.peak, json_map(counts, "%s\"%s\": %u").c_str(), (v + "]").c_str());
+    std::printf("{\"steps\": %u, \"stride\": %u, \"peak\": %u, \"counts\": %s, \"violations\": %s}\n", base.steps,
+                stride, base.peak, json_map(counts, "%s\"%s\": %u").c_str(), (v + "]").c_str());
     return 0;
 }
 
@@ -902,8 +1071,10 @@ void repin(MemFs& fs, const std::string& info, const char* key, const Bytes& dat
     std::string text(old->begin(), old->end()), out, line;
     std::istringstream lines(text);
     while (std::getline(lines, line))
-        out += (line.compare(0, std::strlen(key) + 1, std::string(key) + "=") ? line
-                : std::string(key) + "=" + hex(digest(data.data(), data.size()))) + "\n";
+        out += (line.compare(0, std::strlen(key) + 1, std::string(key) + "=") ?
+                    line :
+                    std::string(key) + "=" + hex(digest(data.data(), data.size()))) +
+               "\n";
     fs.replaced[info] = Bytes(out.begin(), out.end());
     relist(fs, info, fs.replaced[info]);
 }
@@ -943,20 +1114,24 @@ int job_fuzz(const Job& job, unsigned seed, unsigned count, double seconds) {
         std::string what = path.substr(path.rfind('/') + 1);
         bool over = false;
         const JobRun r = run_job(s, fs, mj, full, 0, [&](mod_job::Job& j) {
-            if (j.steps > cap && !over) { over = true; mod_job::cancel(j); }
+            if (j.steps > cap && !over) {
+                over = true;
+                mod_job::cancel(j);
+            }
         });
         for (auto& l : r.largest) largest = std::max(largest, l.second);
         bool left = false;
-        for (auto& w : fs.written) left = left || (r.phase != mod_job::Phase::done && w.first.compare(0, 5, "/out/") == 0);
-        if (over || left || fs.open_handles() ||
-            (r.phase != mod_job::Phase::done && r.phase != mod_job::Phase::failed))
+        for (auto& w : fs.written)
+            left = left || (r.phase != mod_job::Phase::done && w.first.compare(0, 5, "/out/") == 0);
+        if (over || left || fs.open_handles() || (r.phase != mod_job::Phase::done && r.phase != mod_job::Phase::failed))
             violations.push_back("round " + std::to_string(rounds) + " " + what + ": " + mod_job::phase_name(r.phase) +
                                  " " + mod_job::error_name(r.error) + (over ? " step cap" : "") +
                                  (left ? " output left" : "") + (fs.open_handles() ? " handle open" : ""));
         ++counts[std::string(mod_job::phase_name(r.phase)) + " " + mod_job::error_name(r.error)];
     }
     std::string v = "[";
-    for (size_t i = 0; i < violations.size() && i < 20; ++i) v += (v.size() > 1 ? ", " : "") + quoted(violations[i].c_str());
+    for (size_t i = 0; i < violations.size() && i < 20; ++i)
+        v += (v.size() > 1 ? ", " : "") + quoted(violations[i].c_str());
     std::printf("{\"rounds\": %u, \"files\": %zu, \"largest\": %u, \"counts\": %s, \"violations\": %s}\n", rounds,
                 paths.size(), largest, json_map(counts, "%s\"%s\": %u").c_str(), (v + "]").c_str());
     return 0;
@@ -976,6 +1151,8 @@ int main(int argc, char** argv) {
     if (argc >= 3 && !std::strcmp(argv[1], "faults") && read_job(argv[2], job))
         return job_faults(job, argc > 3 ? std::max(1ul, std::strtoul(argv[3], 0, 10)) : 1,
                           argc > 4 ? std::max(1ul, std::strtoul(argv[4], 0, 10)) : 1);
-    std::fprintf(stderr, "usage: mod_assemble run JOB OUT | verify JOB IMAGE | fuzz JOB SEED N | job JOB OUT | faults JOB [STRIDE [K]] | jobfuzz JOB SEED N SECONDS\n");
+    std::fprintf(
+        stderr,
+        "usage: mod_assemble run JOB OUT | verify JOB IMAGE | fuzz JOB SEED N | job JOB OUT | faults JOB [STRIDE [K]] | jobfuzz JOB SEED N SECONDS\n");
     return 2;
 }

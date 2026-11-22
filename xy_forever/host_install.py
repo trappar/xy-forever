@@ -1,13 +1,14 @@
 """Read and validate install/rehearsal input on the host (no device access)."""
+
 import hashlib
 import json
-from pathlib import Path
 import struct
+from pathlib import Path
 
 from xy_forever import usb_proto as P
 from xy_forever.ldr import MAX_IMAGE, inspect_ldr
 
-DESCRIPTOR = struct.pack('<II', 0x584c4348, 1)
+DESCRIPTOR = struct.pack('<II', 0x584C4348, 1)
 MIN_IMAGE, IMAGE_CAPACITY = 0x10000, 0x700000
 # Keep the historical USB fixture mode and the supported product/device-test modes.
 USB_MODES = ('xyf-usb', 'xyf-product', 'xyf-mtp-usb', 'xyf-crash-trigger')
@@ -54,7 +55,8 @@ def load_stock(target):
     if len(data) != P.STOCK_OS_LDR_BYTES or sha != P.STOCK_OS_LDR_SHA256:
         raise ValueError('not the stock 1.2.1 os.ldr (size %d, sha256 %s); refusing' % (len(data), sha))
     summary = inspect_ldr(data)
-    return data, ['stock 1.2.1 os.ldr %s' % path, 'LDR ok: %d records, entry %s' % (summary['records'], summary['entry']),
-                  'size %d, sha256 %s' % (len(data), sha)]
-
-
+    return data, [
+        'stock 1.2.1 os.ldr %s' % path,
+        'LDR ok: %d records, entry %s' % (summary['records'], summary['entry']),
+        'size %d, sha256 %s' % (len(data), sha),
+    ]

@@ -5,7 +5,8 @@ namespace xy_forever { namespace services {
 namespace {
 bool length(const char* text, U32 capacity, U32& count) {
     if (!text) return false;
-    for (count = 0; count != capacity; ++count) if (!text[count]) return true;
+    for (count = 0; count != capacity; ++count)
+        if (!text[count]) return true;
     return false;
 }
 }
@@ -25,7 +26,8 @@ bool loader_path(const char* path) {
         if (c == '/' || !c) {
             const U32 n = i - component;
             if (!n || (n == 1 && path[component] == '.') ||
-                (n == 2 && path[component] == '.' && path[component + 1] == '.')) return false;
+                (n == 2 && path[component] == '.' && path[component + 1] == '.'))
+                return false;
             component = i + 1;
         } else if (c < 0x20 || c > 0x7e || c == '\\' || c == ':') return false;
     }
@@ -41,18 +43,21 @@ bool read_update_key(const OtpIO& io, U32 index, Byte key32[32]) {
     // inside a larger automatic object instead of requesting unsupported8-byte
     // stack alignment from that compiler.
     Byte storage[520];
-    Byte* scratch = reinterpret_cast<Byte*>((reinterpret_cast<uintptr_t>(storage) + 7u) &
-                                            ~static_cast<uintptr_t>(7u));
+    Byte* scratch = reinterpret_cast<Byte*>((reinterpret_cast<uintptr_t>(storage) + 7u) & ~static_cast<uintptr_t>(7u));
     volatile Byte* clear = scratch;
     bool success = true;
     for (U32 part = 0; part != 2; ++part) {
         for (U32 i = 0; i != 512; ++i) clear[i] = 0;
         const U32 status = io.read_selector(io.user, 3 + index * 2 + part, scratch, 512);
-        if (status != 1) { success = false; break; }
+        if (status != 1) {
+            success = false;
+            break;
+        }
         for (U32 i = 0; i != 16; ++i) key[part * 16 + i] = scratch[i];
     }
     for (U32 i = 0; i != 512; ++i) clear[i] = 0;
-    if (!success) for (U32 i = 0; i != 32; ++i) key[i] = 0;
+    if (!success)
+        for (U32 i = 0; i != 32; ++i) key[i] = 0;
     return success;
 }
 #if defined(__bfin__)
@@ -63,8 +68,7 @@ U32 crc32(U32 address, U32 count) {
     U32 crc = 0xffffffffu;
     for (U32 i = 0; i != count; ++i) {
         crc ^= bytes[i];
-        for (U32 bit = 0; bit != 8; ++bit)
-            crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
+        for (U32 bit = 0; bit != 8; ++bit) crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
     }
     return ~crc;
 }
@@ -83,17 +87,23 @@ U32 stock_otp_read(void*, U32 selector, Byte* scratch, U32 capacity) {
 // (docs/SAFETY.md). Check that wrapper another way first.
 bool stock_key_provider(void*, xyf_core::U32 index, xyf_core::Byte key[32]) {
     if (crc32(0x11a05a1eu, 0x42) != 0x113c6900u) {
-        if (key) { volatile Byte* clear = key; for (U32 i = 0; i != 32; ++i) clear[i] = 0; }
+        if (key) {
+            volatile Byte* clear = key;
+            for (U32 i = 0; i != 32; ++i) clear[i] = 0;
+        }
         return false;
     }
     OtpIO io;
-    io.user = 0; io.prepare = stock_otp_prepare; io.read_selector = stock_otp_read;
+    io.user = 0;
+    io.prepare = stock_otp_prepare;
+    io.read_selector = stock_otp_read;
     return read_update_key(io, index, key);
 }
 }
 #endif
 bool stock121_otp_provider(Phase phase, xyf_core::tfw::KeyProvider& output) {
-    output.context = 0; output.read = 0;
+    output.context = 0;
+    output.read = 0;
     if (phase != Phase::live_bootloader && phase != Phase::cold_after_teardown) return false;
 #if defined(__bfin__)
     if (crc32(0x11a05a1eu, 0x42) != 0x113c6900u) return false;
@@ -103,4 +113,4 @@ bool stock121_otp_provider(Phase phase, xyf_core::tfw::KeyProvider& output) {
     return false;
 #endif
 }
-} }
+}}

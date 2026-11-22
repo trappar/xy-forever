@@ -7,15 +7,20 @@ struct Package {
     std::map<std::string, Bytes> files;
     Bytes metadata_view;
 };
-struct Inputs { std::vector<Package> packages; Bytes stock, catalog, official; };   // packages[0]: the base
+struct Inputs {
+    std::vector<Package> packages;
+    Bytes stock, catalog, official;
+};   // packages[0]: the base
 
 bool load_package(const std::string& root, const std::string& name, Package& p) {
     p.name = name;
     const std::string folder = root + "/" + name + "/";
     struct stat st;
     if (lstat((folder + record::native_name).c_str(), &st) == 0) {
-        if ((!S_ISREG(st.st_mode) && (stat((folder + record::native_name).c_str(), &st) != 0 || !S_ISREG(st.st_mode))) ||
-            st.st_size > json::document_bytes) return false;
+        if ((!S_ISREG(st.st_mode) &&
+             (stat((folder + record::native_name).c_str(), &st) != 0 || !S_ISREG(st.st_mode))) ||
+            st.st_size > json::document_bytes)
+            return false;
         p.metadata = record::native_name;
     } else if (errno == ENOENT) p.metadata = record::legacy_name;
     else return false;
@@ -49,11 +54,13 @@ bool load(const Job& job, Inputs& in) {
     return slurp(job.stock, in.stock) && slurp(job.catalog, in.catalog) && slurp(job.official, in.official);
 }
 const Package* package_named(const Inputs& in, const char* name) {
-    for (auto& p : in.packages) if (p.name == name) return &p;
+    for (auto& p : in.packages)
+        if (p.name == name) return &p;
     return 0;
 }
 const std::string* listed_sha(const Package& p, const std::string& path) {
-    for (auto& f : p.listing) if (f.second == path) return &f.first;
+    for (auto& f : p.listing)
+        if (f.second == path) return &f.first;
     return 0;
 }
 

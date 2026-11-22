@@ -7,9 +7,14 @@ const U32 none = 0xffffffffu, max_depth = 32;
 const char catalog_path[] = "content/op1_factory.json";
 const char* const group_keys[3] = {"engine_types", "fx_types", "seq_types"};
 
-__attribute__((noinline)) U32 length(const char* s, U32 limit) { U32 n = 0; while (n != limit && s[n]) ++n; return n; }
+__attribute__((noinline)) U32 length(const char* s, U32 limit) {
+    U32 n = 0;
+    while (n != limit && s[n]) ++n;
+    return n;
+}
 __attribute__((noinline)) bool starts(const char* s, const char* prefix) {
-    for (U32 i = 0; prefix[i]; ++i) if (s[i] != prefix[i]) return false;
+    for (U32 i = 0; prefix[i]; ++i)
+        if (s[i] != prefix[i]) return false;
     return true;
 }
 __attribute__((noinline)) int compare(const char* a, const char* b) {
@@ -35,13 +40,15 @@ __attribute__((noinline)) bool lower_or_digit(char c) { return (c >= 'a' && c <=
 bool valid_id(const char* id, U32 max) {   // [a-z][a-z0-9_]{0,max-1}
     if (!id || !(id[0] >= 'a' && id[0] <= 'z')) return false;
     U32 n = 1;
-    for (; n <= max && id[n]; ++n) if (!lower_or_digit(id[n]) && id[n] != '_') return false;
+    for (; n <= max && id[n]; ++n)
+        if (!lower_or_digit(id[n]) && id[n] != '_') return false;
     return n <= max;
 }
 bool valid_asset(const char* a) {          // [a-z][a-z0-9_]*\.svg
     const U32 n = length(a, 65);
     if (n < 5 || n > 64 || !(a[0] >= 'a' && a[0] <= 'z') || !same(a + n - 4, ".svg")) return false;
-    for (U32 i = 1; i + 4 < n; ++i) if (!lower_or_digit(a[i]) && a[i] != '_') return false;
+    for (U32 i = 1; i + 4 < n; ++i)
+        if (!lower_or_digit(a[i]) && a[i] != '_') return false;
     return true;
 }
 bool preset_name(const char* s, const char* extra, U32 max) {   // [a-z0-9][a-z0-9 extra]{0,max-1}\.json
@@ -56,7 +63,8 @@ bool preset_name(const char* s, const char* extra, U32 max) {   // [a-z0-9][a-z0
 }
 const char* after_folder(const char* s, const char* folder) {   // "<folder>/rest" -> rest
     const U32 n = length(folder, 64);
-    for (U32 i = 0; i != n; ++i) if (s[i] != folder[i]) return 0;
+    for (U32 i = 0; i != n; ++i)
+        if (s[i] != folder[i]) return 0;
     return s[n] == '/' ? s + n + 1 : 0;
 }
 bool list_path_ok(const char* p) {         // docs/storage/packages.md files.sha256 path rules
@@ -84,14 +92,16 @@ bool object_path(const char* p) {          // objects/[A-Za-z0-9_./-]+\.o, no ".
     return true;
 }
 const File* find(const Package& p, const char* path) {
-    for (U32 i = 0; i != p.file_count; ++i) if (p.files[i].path && same(p.files[i].path, path)) return &p.files[i];
+    for (U32 i = 0; i != p.file_count; ++i)
+        if (p.files[i].path && same(p.files[i].path, path)) return &p.files[i];
     return 0;
 }
 __attribute__((noinline)) bool is_machine(Kind k) { return k != Kind::extension; }
 bool instrument(Kind k) { return k == Kind::synth || k == Kind::drum || k == Kind::sample; }
 // What a package may carry (modkit MOD_FILES, narrowed to what buildAssets reads per kind).
 bool allowed(const Package& p, const char* path, bool listed) {
-    if (same(path, "info.txt") || same(path, "objects.txt") || same(path, "NOTICE.txt") || object_path(path)) return true;
+    if (same(path, "info.txt") || same(path, "objects.txt") || same(path, "NOTICE.txt") || object_path(path))
+        return true;
     if (!is_machine(p.kind)) {
         if (same(path, "extension.json")) return true;
     } else if (same(path, "machine.json") || same(path, "catalog.txt")) return true;
@@ -128,7 +138,8 @@ bool regex_space(Byte c) { return c == ' ' || (c >= '\t' && c <= '\r'); }
 U32 id_match(const Byte* p, U32 n, U32 i) {   // /"id":\s*\d+/ at i: the end of its digits, or none
     const char* key = "\"id\":";
     if (n - i < 6) return none;
-    for (U32 k = 0; k != 5; ++k) if (p[i + k] != Byte(key[k])) return none;
+    for (U32 k = 0; k != 5; ++k)
+        if (p[i + k] != Byte(key[k])) return none;
     U32 j = i + 5;
     while (j < n && regex_space(p[j])) ++j;
     if (j >= n || !digit(p[j])) return none;
@@ -140,7 +151,10 @@ __attribute__((noinline)) U32 decimal(U32 v, Byte* out) {            // digits b
     U32 n = 0;
     for (U32 k = 0; k != 10; ++k) {
         Byte d = 0;
-        while (v >= powers[k]) { v -= powers[k]; ++d; }
+        while (v >= powers[k]) {
+            v -= powers[k];
+            ++d;
+        }
         if (d || n || k == 9) out[n++] = Byte('0' + d);
     }
     return n;
@@ -152,9 +166,13 @@ bool entry_number(const Builder& b, const Package& p, U32& number) {
         if (compare(n.id, p.id)) continue;
         const mod_link::Identity& id = n.identity;
         if (!id.has_number || id.number < 0) return false;
-        if (p.kind == Kind::effect && id.slot == mod_link::slot_effect) { number = U32(id.number); return true; }
+        if (p.kind == Kind::effect && id.slot == mod_link::slot_effect) {
+            number = U32(id.number);
+            return true;
+        }
         if (p.kind == Kind::player && id.slot == mod_link::slot_player && U32(id.number) <= 0xfffffffbu) {
-            number = U32(id.number) + 4; return true;
+            number = U32(id.number) + 4;
+            return true;
         }
         return false;
     }
@@ -165,8 +183,9 @@ bool linked_machine(const Builder& b, const Package& p) {
     bool selected = false;
     for (U32 s = 0; s != b.selection->machine_count && !selected; ++s)
         selected = b.selection->machines[s] && same(b.selection->machines[s], p.id);
-    const U32 slot = instrument(p.kind) ? U32(mod_link::slot_engine) :
-                     p.kind == Kind::effect ? U32(mod_link::slot_effect) : U32(mod_link::slot_player);
+    const U32 slot = instrument(p.kind)     ? U32(mod_link::slot_engine) :
+                     p.kind == Kind::effect ? U32(mod_link::slot_effect) :
+                                              U32(mod_link::slot_player);
     mod_link::Number n;
     for (U32 i = 0; selected && mod_link::number_at(*b.link, i, n); ++i)
         if (!compare(n.id, p.id)) return n.identity.slot == slot;
@@ -174,22 +193,33 @@ bool linked_machine(const Builder& b, const Package& p) {
 }
 // Bytewise order of two unterminated strings (a prefix first).
 __attribute__((noinline)) int order(const Byte* a, U32 an, const Byte* c, U32 cn) {
-    for (U32 i = 0; i != an && i != cn; ++i) if (a[i] != c[i]) return a[i] < c[i] ? -1 : 1;
+    for (U32 i = 0; i != an && i != cn; ++i)
+        if (a[i] != c[i]) return a[i] < c[i] ? -1 : 1;
     return an == cn ? 0 : an < cn ? -1 : 1;
 }
 // Whether extensions.txt's chosen rows (linked.extensions) hold `id`; `count` = how many are chosen.
 bool extension_chosen(const Builder& b, const char* id, U32& count) {
     bool chosen = false;
-    const char* name; U32 length;
+    const char* name;
+    U32 length;
     count = 0;
     for (U32 i = 0; i != 32 && mod_link::extension_at(*b.link, i, name, length); ++i)
-        if ((b.linked->extensions >> i) & 1u) { ++count; chosen = chosen || same(name, id); }
+        if ((b.linked->extensions >> i) & 1u) {
+            ++count;
+            chosen = chosen || same(name, id);
+        }
     return chosen;
 }
 __attribute__((noinline)) void swap(Listed& a, Listed& c) {
-    const char* path = a.path; const U32 package = a.package; const hash::Digest* sha256 = a.sha256;
-    a.path = c.path; a.package = c.package; a.sha256 = c.sha256;
-    c.path = path; c.package = package; c.sha256 = sha256;
+    const char* path = a.path;
+    const U32 package = a.package;
+    const hash::Digest* sha256 = a.sha256;
+    a.path = c.path;
+    a.package = c.package;
+    a.sha256 = c.sha256;
+    c.path = path;
+    c.package = package;
+    c.sha256 = sha256;
 }
 void sift(Listed* l, U32 root, U32 n) {
     for (U32 guard = 0; guard != 32; ++guard) {
@@ -202,7 +232,8 @@ void sift(Listed* l, U32 root, U32 n) {
     }
 }
 struct Out {
-    Byte* at; U32 capacity, size;
+    Byte* at;
+    U32 capacity, size;
     __attribute__((noinline)) bool put(const Byte* p, U32 n) {
         if (n > capacity - size) return false;
         for (U32 i = 0; i != n; ++i) at[size + i] = p[i];
@@ -227,7 +258,8 @@ __attribute__((noinline)) Status add_package(Builder& b, U32 index) {
             return refuse(b, Status::package, "file", path && list_path_ok(path) ? path : p.id);
     }
     for (U32 j = 0; j != index; ++j)
-        if (same(b.packages[j].id, p.id) || (is_machine(b.packages[j].kind) == machine && b.packages[j].order == p.order))
+        if (same(b.packages[j].id, p.id) ||
+            (is_machine(b.packages[j].kind) == machine && b.packages[j].order == p.order))
             return refuse(b, Status::duplicate, "package", p.id);
     if (!machine) {
         U32 chosen_count;
@@ -246,7 +278,8 @@ __attribute__((noinline)) Status add_package(Builder& b, U32 index) {
             if (!t || !n || n > max_entry) return refuse(b, Status::entry, "catalog.txt", p.id);
             hash::Sha256 h;
             hash::Digest d;
-            h.update(t, n); h.finish(d);
+            h.update(t, n);
+            h.finish(d);
             if (!hash::equal(d, entry->sha256)) return refuse(b, Status::package, "catalog.txt sha256", p.id);
             U32 id_end;
             if (!entry_ok(t, n, p.numbered ? p.number_start : none, id_end))
@@ -255,8 +288,9 @@ __attribute__((noinline)) Status add_package(Builder& b, U32 index) {
             if (p.numbered) {
                 U32 number = 0;
                 Byte digits[10];
-                if (p.number_start >= p.number_end || p.number_end > n || id_match(t, n, p.number_start) != p.number_end ||
-                    id_end != p.number_end - 1) return refuse(b, Status::number, "position", p.id);
+                if (p.number_start >= p.number_end || p.number_end > n ||
+                    id_match(t, n, p.number_start) != p.number_end || id_end != p.number_end - 1)
+                    return refuse(b, Status::number, "position", p.id);
                 for (U32 q = 0; q != p.number_start; ++q)
                     if (id_match(t, n, q) != none) return refuse(b, Status::number, "position", p.id);
                 if (!entry_number(b, p, number)) return refuse(b, Status::number, "no number", p.id);
@@ -265,7 +299,10 @@ __attribute__((noinline)) Status add_package(Builder& b, U32 index) {
         } else if (p.catalog_text) return refuse(b, Status::package, "catalog.txt", p.id);
         b.entry_bytes[index] = written;
         U32 at = b.machine_count++;   // insertion sort by collection order
-        while (at && b.packages[b.machines[at - 1]].order > p.order) { b.machines[at] = b.machines[at - 1]; --at; }
+        while (at && b.packages[b.machines[at - 1]].order > p.order) {
+            b.machines[at] = b.machines[at - 1];
+            --at;
+        }
         b.machines[at] = (unsigned short)index;
     }
     U32 presets = 0;
@@ -293,7 +330,9 @@ __attribute__((noinline)) Status add_package(Builder& b, U32 index) {
         }
         if (b.listed_count == b.limit_files) return refuse(b, Status::capacity, "files");
         Listed& l = b.listed[b.listed_count++];
-        l.path = path; l.package = index; l.sha256 = &p.files[i].sha256;
+        l.path = path;
+        l.package = index;
+        l.sha256 = &p.files[i].sha256;
     }
     if (p.asset && !display) return refuse(b, Status::missing, "display", p.asset);
     if (machine && presets != p.presets) return refuse(b, Status::missing, "presets", p.id);
@@ -330,7 +369,8 @@ Status sort_listed(Builder& b) {
 // The bytes of `prefix` when path[0, n) starts with it, else 0.
 __attribute__((noinline)) U32 prefix_of(const Byte* path, U32 n, const char* prefix) {
     U32 k = 0;
-    for (; prefix[k]; ++k) if (k == n || path[k] != Byte(prefix[k])) return 0;
+    for (; prefix[k]; ++k)
+        if (k == n || path[k] != Byte(prefix[k])) return 0;
     return k;
 }
 // The official content list (content.sha256: "<64 hex> <space or *><path>" lines, paths relative to
@@ -348,7 +388,8 @@ Status check_official(Builder& b) {
         U32 bytes = 0;
         while (bytes != room - 66 && bytes != max_path && path[bytes] != '\n') ++bytes;
         if (!bytes || bytes == room - 66 || path[bytes] != '\n' ||
-            (previous && order(previous, previous_bytes, path, bytes) >= 0)) return refuse(b, Status::official, "list");
+            (previous && order(previous, previous_bytes, path, bytes) >= 0))
+            return refuse(b, Status::official, "list");
         for (; next != b.listed_count; ++next) {
             const Listed& l = b.listed[next];
             if (l.package == none) continue;   // the catalog: replaced by design
@@ -365,7 +406,8 @@ Status check_official(Builder& b) {
             if (!order(reinterpret_cast<const Byte*>(id), length(id, 33), path + skip, slash - skip))
                 return refuse(b, Status::official, "id", id);
         }
-        previous = path; previous_bytes = bytes;
+        previous = path;
+        previous_bytes = bytes;
         at += 67 + bytes;
     }
     return Status::ok;
@@ -387,7 +429,11 @@ Status finish(Builder& b) {
     U32 sorted[3] = {0, 1, 2};
     for (U32 x = 0; x != 3; ++x)
         for (U32 y = x + 1; y != 3; ++y)
-            if (at[sorted[y]] < at[sorted[x]]) { const U32 t = sorted[x]; sorted[x] = sorted[y]; sorted[y] = t; }
+            if (at[sorted[y]] < at[sorted[x]]) {
+                const U32 t = sorted[x];
+                sorted[x] = sorted[y];
+                sorted[y] = t;
+            }
     U32 position = 0;
     for (U32 g = 0; g != 3; ++g) {
         const U32 group = sorted[g];
@@ -414,7 +460,8 @@ Status finish(Builder& b) {
     }
     if (!out.put(b.catalog + position, b.catalog_size - position)) return refuse(b, Status::capacity, catalog_path);
     hash::Sha256 h;
-    h.update(out.at, out.size); h.finish(b.catalog_sha256);
+    h.update(out.at, out.size);
+    h.finish(b.catalog_sha256);
     b.catalog_bytes = out.size;
     Out list = {b.list, b.list_capacity, 0};
     for (U32 i = 0; i != n; ++i) {
@@ -427,7 +474,8 @@ Status finish(Builder& b) {
         line[64] = line[65] = ' ';
         const Byte newline = '\n';
         if (!list.put(line, 66) || !list.put(reinterpret_cast<const Byte*>(l.path), length(l.path, max_path)) ||
-            !list.put(&newline, 1)) return refuse(b, Status::capacity, "files.sha256");
+            !list.put(&newline, 1))
+            return refuse(b, Status::capacity, "files.sha256");
     }
     b.list_bytes = list.size;
     return Status::ok;
@@ -447,27 +495,42 @@ U32 scratch_bytes(const Limits& l) {
 
 Status start(Builder& b, const Catalog& pins, const Byte* catalog, U32 catalog_size, const Byte* official,
              U32 official_bytes, const Package* packages, U32 count, const mod_link::Selection& selection,
-             const mod_link::Workspace& link, const mod_link::Result& linked, Byte* out, U32 out_capacity,
-             Byte* list, U32 list_capacity, const Limits& limits, Byte* scratch, U32 scratch_capacity) {
-    b.pins = &pins; b.catalog = catalog; b.catalog_size = catalog_size; b.packages = packages; b.count = count;
-    b.official = official; b.official_bytes = official_bytes; b.selection = &selection;
-    b.link = &link; b.linked = &linked; b.out = out; b.out_capacity = out_capacity; b.list = list; b.list_capacity = list_capacity;
-    b.phase = failed; b.failure = Status::argument; b.detail[0] = 0;
+             const mod_link::Workspace& link, const mod_link::Result& linked, Byte* out, U32 out_capacity, Byte* list,
+             U32 list_capacity, const Limits& limits, Byte* scratch, U32 scratch_capacity) {
+    b.pins = &pins;
+    b.catalog = catalog;
+    b.catalog_size = catalog_size;
+    b.packages = packages;
+    b.count = count;
+    b.official = official;
+    b.official_bytes = official_bytes;
+    b.selection = &selection;
+    b.link = &link;
+    b.linked = &linked;
+    b.out = out;
+    b.out_capacity = out_capacity;
+    b.list = list;
+    b.list_capacity = list_capacity;
+    b.phase = failed;
+    b.failure = Status::argument;
+    b.detail[0] = 0;
     b.cursor = b.listed_count = b.machine_count = b.extension_count = b.aux = b.aux_folders = 0;
     b.catalog_bytes = b.list_bytes = 0;
     const U32 need = scratch_bytes(limits);
     if (!catalog || !packages || !count || !out || !list || !need || !scratch || !official || !official_bytes ||
-        official_bytes > max_catalog ||
-        (reinterpret_cast<unsigned long>(scratch) & 3) || scratch_capacity < need || count > limits.packages ||
-        linked.status != mod_link::Status::ok) return refuse(b, Status::argument, "arguments");
-    b.limit_packages = limits.packages; b.limit_files = limits.files;
+        official_bytes > max_catalog || (reinterpret_cast<unsigned long>(scratch) & 3) || scratch_capacity < need ||
+        count > limits.packages || linked.status != mod_link::Status::ok)
+        return refuse(b, Status::argument, "arguments");
+    b.limit_packages = limits.packages;
+    b.limit_files = limits.files;
     b.listed = reinterpret_cast<Listed*>(scratch);
     b.entry_bytes = reinterpret_cast<U32*>(scratch + limits.files * sizeof(Listed));
     b.machines = reinterpret_cast<unsigned short*>(scratch + limits.files * sizeof(Listed) + limits.packages * 4);
     // The official catalog: size, SHA-256, the three insertion points (after an entry, before "]").
     if (!catalog_size || catalog_size > max_catalog) return refuse(b, Status::catalog, "size");
     hash::Sha256 h;
-    h.update(catalog, catalog_size); h.finish(b.catalog_sha256);
+    h.update(catalog, catalog_size);
+    h.finish(b.catalog_sha256);
     if (!hash::equal(b.catalog_sha256, pins.sha256)) return refuse(b, Status::catalog, "sha256");
     ArrayEnd ends[3];
     U32 marked;
@@ -477,10 +540,13 @@ Status start(Builder& b, const Catalog& pins, const Byte* catalog, U32 catalog_s
     for (U32 k = 0; k != 3; ++k) {
         const ArrayEnd& e = ends[k];
         if (e.found != 1 || e.last == none || catalog[e.last] != '}' || at[k] <= e.last || at[k] > e.close ||
-            at[k] == at[k ? k - 1 : 2]) return refuse(b, Status::insert, group_keys[k]);
+            at[k] == at[k ? k - 1 : 2])
+            return refuse(b, Status::insert, group_keys[k]);
     }
     Listed& l = b.listed[b.listed_count++];
-    l.path = catalog_path; l.package = none; l.sha256 = &b.catalog_sha256;   // its digest: set by finish()
+    l.path = catalog_path;
+    l.package = none;
+    l.sha256 = &b.catalog_sha256;   // its digest: set by finish()
     b.phase = packages_phase;
     return Status::more;
 }
@@ -507,14 +573,17 @@ Status step(Builder& b) {
 
 Status check_object(const Byte* d, U32 size) {
     if (!d || size < 52 || size > (1u << 20) || d[0] != 0x7f || d[1] != 'E' || d[2] != 'L' || d[3] != 'F' ||
-        d[4] != 1 || d[5] != 1 || le16(d + 16) != 1 || le16(d + 18) != 106) return Status::package;
+        d[4] != 1 || d[5] != 1 || le16(d + 16) != 1 || le16(d + 18) != 106)
+        return Status::package;
     const U32 table = le32(d + 32), count = le16(d + 48);
-    if (le16(d + 46) != 40 || !count || count >= 4096 || table > size || count * 40 > size - table) return Status::package;
+    if (le16(d + 46) != 40 || !count || count >= 4096 || table > size || count * 40 > size - table)
+        return Status::package;
     for (U32 s = 0; s != count; ++s) {
         const Byte* sh = d + table + s * 40;
         if (le32(sh + 4) != 2) continue;   // SHT_SYMTAB
         const U32 at = le32(sh + 16), bytes = le32(sh + 20), names = le32(sh + 24);
-        if (at > size || bytes > size - at || le32(sh + 36) != 16 || (bytes & 15) || names >= count) return Status::package;
+        if (at > size || bytes > size - at || le32(sh + 36) != 16 || (bytes & 15) || names >= count)
+            return Status::package;
         const Byte* link = d + table + names * 40;
         const U32 strings = le32(link + 16), string_bytes = le32(link + 20);
         if (strings > size || string_bytes > size - strings) return Status::package;
@@ -546,4 +615,4 @@ const char* status_name(Status s) {
     }
     return "unknown";
 }
-} }
+}}

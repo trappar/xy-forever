@@ -1,11 +1,13 @@
 """Read-only directory listings and live content comparison for xyf_host.py."""
+
 import hashlib
 import json
 import struct
 import sys
 import time
 
-from . import content_manifest, paths, usb_proto as P
+from . import content_manifest, paths
+from . import usb_proto as P
 
 
 def configure(sub):
@@ -14,7 +16,8 @@ def configure(sub):
     ls.add_argument('--json', action='store_true')
     content = sub.add_parser('content', help='inspect the device content folder')
     content.add_subparsers(required=True).add_parser(
-        'status', help='hash the live files and compare them with the private official content manifests')
+        'status', help='hash the live files and compare them with the private official content manifests'
+    )
 
 
 def list_directory(dev, path, as_json):
@@ -23,8 +26,10 @@ def list_directory(dev, path, as_json):
         print('ls %s: %s' % (path, P.status_name(code)))
         return code
     kinds = ('file', 'dir', 'other')
-    rows = [dict(name=name.decode('utf-8', 'replace'), type=kinds[k] if k < len(kinds) else 'kind_%d' % k,
-                 size=size) for k, size, name in entries]
+    rows = [
+        dict(name=name.decode('utf-8', 'replace'), type=kinds[k] if k < len(kinds) else 'kind_%d' % k, size=size)
+        for k, size, name in entries
+    ]
     if as_json:
         print(json.dumps(rows, ensure_ascii=False, indent=1))
     else:
@@ -83,8 +88,11 @@ def read_inventory(dev):
                 raise ValueError('read exceeds listed size or range for %s' % full)
             digest.update(block)
             if time.monotonic() - last_progress >= 30:
-                print('Read %d files. Reading %s (%d/%d bytes).' % (len(files), rel, offset, size),
-                      file=sys.stderr, flush=True)
+                print(
+                    'Read %d files. Reading %s (%d/%d bytes).' % (len(files), rel, offset, size),
+                    file=sys.stderr,
+                    flush=True,
+                )
                 last_progress = time.monotonic()
             if len(block) < P.ids.MAX_READ:
                 break
@@ -98,17 +106,32 @@ def compare_sets(files, special, official):
     differences, matches = {}, []
     for version, manifest in official.items():
         diff = content_manifest.compare(manifest, files)
-        differences[version] = {label: diff[key]['paths'] for label, key in
-                                [('missing', 'only_a'), ('extra_files', 'only_b'), ('changed', 'differ')]}
+        differences[version] = {
+            label: diff[key]['paths']
+            for label, key in [('missing', 'only_a'), ('extra_files', 'only_b'), ('changed', 'differ')]
+        }
         if diff['identical'] and not special:
             matches.append(version)
-    unknown = sorted(rel for rel, (digest, _) in files.items()
-                     if not any(rel in entry and entry[rel][0] == digest for entry in official.values()))
+    unknown = sorted(
+        rel
+        for rel, (digest, _) in files.items()
+        if not any(rel in entry and entry[rel][0] == digest for entry in official.values())
+    )
     catalog = files.get('op1_factory.json', (None, None))[0]
-    catalog_matches = [version for version, entry in official.items()
-                       if 'op1_factory.json' in entry and entry['op1_factory.json'][0] == catalog]
-    return dict(exact_matches=matches, file_count=len(files), catalog_sha256=catalog, catalog_matches=catalog_matches,
-                matches_no_official_file=unknown, special_entries=special, differences=differences)
+    catalog_matches = [
+        version
+        for version, entry in official.items()
+        if 'op1_factory.json' in entry and entry['op1_factory.json'][0] == catalog
+    ]
+    return dict(
+        exact_matches=matches,
+        file_count=len(files),
+        catalog_sha256=catalog,
+        catalog_matches=catalog_matches,
+        matches_no_official_file=unknown,
+        special_entries=special,
+        differences=differences,
+    )
 
 
 def content_status(dev):

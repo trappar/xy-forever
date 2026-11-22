@@ -14,7 +14,8 @@ import type { ViteDevServer } from 'vite';
 import { findSimulator, startAll } from 'xy-forever-client/test/simulators.ts';
 import { protocol as v1 } from 'xy-forever-client';
 
-const nav = (page: Page, name: string): Locator => page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
+const nav = (page: Page, name: string): Locator =>
+  page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
 
 const found = findSimulator();
 if (found.why) console.warn(`\nweb e2e skipped: ${found.why}\n`);
@@ -23,11 +24,15 @@ const state = process.env['XYF_SIM_STATE'] ?? join(found.sessions ?? '', `web-e2
 let stopSim: (() => Promise<void>) | undefined;
 let server: ViteDevServer | undefined;
 let browser: Browser | undefined;
-const NO_DEVICE = ['--disable-blink-features=Serial'];   // no real Web Serial: tests may not open a real device
+const NO_DEVICE = ['--disable-blink-features=Serial']; // no real Web Serial: tests may not open a real device
 
 test.beforeAll(async () => {
   if (!found.why) stopSim = (await startAll(state, port, [['web', 0, []]])).stopAll;
-  server = await createServer({ configFile: fileURLToPath(new URL('../vite.config.ts', import.meta.url)), server: { port: 0, host: '127.0.0.1' }, logLevel: 'error' });
+  server = await createServer({
+    configFile: fileURLToPath(new URL('../vite.config.ts', import.meta.url)),
+    server: { port: 0, host: '127.0.0.1' },
+    logLevel: 'error',
+  });
   await server.listen();
   browser = await chromium.launch({ channel: 'chrome', headless: true, args: NO_DEVICE });
 });
@@ -50,7 +55,10 @@ test('connects to the simulator and shows the device and its files', async () =>
   const page = await browser!.newPage();
   let deviceRequests = 0;
   page.on('websocket', (socket) => {
-    if (new URL(socket.url()).pathname === '/xyf-relay') socket.on('framesent', () => { deviceRequests++; });
+    if (new URL(socket.url()).pathname === '/xyf-relay')
+      socket.on('framesent', () => {
+        deviceRequests++;
+      });
   });
   await page.goto(appUrl(`?sim=${port}`));
   expect(await page.evaluate(() => 'serial' in navigator)).toBe(false);
@@ -63,7 +71,10 @@ test('connects to the simulator and shows the device and its files', async () =>
   const connected = JSON.parse((await json.textContent())!);
   expect(connected).toMatchObject({
     connected: true,
-    device: { firmwareVersion: await page.locator('[data-fact=version]').textContent(), protocolVersion: expect.stringMatching(/^1\.\d+$/) },
+    device: {
+      firmwareVersion: await page.locator('[data-fact=version]').textContent(),
+      protocolVersion: expect.stringMatching(/^1\.\d+$/),
+    },
     activity: expect.arrayContaining([{ event: 'connect', outcome: 'finished' }]),
   });
   await preview.getByRole('button', { name: 'Close' }).click();
@@ -91,13 +102,25 @@ test('installs a newer XY Forever and restarts into its menu', async () => {
   const imagePath = candidate!;
   const image = readFileSync(imagePath);
   const sha256 = createHash('sha256').update(image).digest('hex');
-  const { version } = JSON.parse(readFileSync(join(dirname(imagePath), 'manifest.json'), 'utf8')) as { version: string };
-  const release = { schema: 1, version, sha256, image: sha256.slice(0, 8), bytes: image.length, notes: 'Faster updates.' };
+  const { version } = JSON.parse(readFileSync(join(dirname(imagePath), 'manifest.json'), 'utf8')) as {
+    version: string;
+  };
+  const release = {
+    schema: 1,
+    version,
+    sha256,
+    image: sha256.slice(0, 8),
+    bytes: image.length,
+    notes: 'Faster updates.',
+  };
   const page = await browser!.newPage();
   try {
-    await page.route('**/src/install/release.json*', (route) => route.fulfill({
-      contentType: 'text/javascript', body: `export default ${JSON.stringify(release)};`,
-    }));
+    await page.route('**/src/install/release.json*', (route) =>
+      route.fulfill({
+        contentType: 'text/javascript',
+        body: `export default ${JSON.stringify(release)};`,
+      }),
+    );
     await page.route('**/release/os.ldr', (route) => route.fulfill({ body: image }));
     let restart: number | undefined;
     await page.routeWebSocket('**/xyf-relay?*', (socket) => {
@@ -131,7 +154,9 @@ test('installs a newer XY Forever and restarts into its menu', async () => {
     await update.waitFor();
     expect(await page.getByText(release.notes).isVisible()).toBe(true);
     await update.click();
-    await expect(page.getByTestId('update-status')).toHaveText(`XY Forever ${version} is running in the menu.`, { timeout: 30_000 });
+    await expect(page.getByTestId('update-status')).toHaveText(`XY Forever ${version} is running in the menu.`, {
+      timeout: 30_000,
+    });
     expect(restart).toBe(2);
     expect(await page.locator('[data-fact=image]').textContent()).toBe(release.image);
     expect(await update.count()).toBe(0);
@@ -145,7 +170,12 @@ test('previews and downloads the same offline snapshot after a connection error'
   const failure = 'synthetic port selection error with unit serial XY-DISCONNECTED-TEST';
   await page.addInitScript((message) => {
     Object.defineProperty(navigator, 'serial', {
-      value: { getPorts: async () => [], requestPort: () => { throw new Error(message); } },
+      value: {
+        getPorts: async () => [],
+        requestPort: () => {
+          throw new Error(message);
+        },
+      },
     });
   }, failure);
   await page.goto(appUrl());
@@ -160,7 +190,9 @@ test('previews and downloads the same offline snapshot after a connection error'
   await report.click();
   const json = (await preview.locator('pre').textContent())!;
   expect(JSON.parse(json)).toMatchObject({
-    bundleVersion: 1, connected: false, device: null,
+    bundleVersion: 1,
+    connected: false,
+    device: null,
     activity: expect.arrayContaining([{ event: 'connect', outcome: 'failed', code: 'app_error' }]),
   });
   expect(json).not.toContain('XY-DISCONNECTED-TEST');

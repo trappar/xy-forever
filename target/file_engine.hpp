@@ -69,8 +69,23 @@ static const uint32_t upload_tail = 18;                                   // the
 // other requests by operation (TimingSlot; xy_forever/mtp_timing.py A_OPS names them in this order), checks: the
 // part of the sum in A's own checks (the stats around a change, the engine spans' CRC), not the stock executor.
 enum TimingSlot : uint32_t {
-    t_mount, t_unmount, t_access, t_rename_from, t_rename_to, t_stat, t_statfs, t_unlink, t_mkdir, t_rmdir, t_open,
-    t_seek, t_close, t_opendir, t_readdir, t_closedir, t_other,
+    t_mount,
+    t_unmount,
+    t_access,
+    t_rename_from,
+    t_rename_to,
+    t_stat,
+    t_statfs,
+    t_unlink,
+    t_mkdir,
+    t_rmdir,
+    t_open,
+    t_seek,
+    t_close,
+    t_opendir,
+    t_readdir,
+    t_closedir,
+    t_other,
     t_window_open,      // the request (any operation) that opened the read-write window, instead of its own slot
     timing_op_slots
 };
@@ -121,15 +136,19 @@ bool raw_request(uint32_t vtable, uint32_t op);
 // xy_forever/census.py ENGINE_ACTIONS).
 enum Action : uint32_t {
     refuse_off = 0x60,  // no engine entry yet, or its stock code check failed
-    refuse_class, refuse_op,
+    refuse_class,
+    refuse_op,
     refuse_raw_layer,   // decide_engine: refuse_raw
     refuse_bad_path,    // not in the stock path buffer, or decide_engine: refuse_path, refuse_depth
-    refuse_outside_path, refuse_protected_path, refuse_tmp_path,   // decide_engine
+    refuse_outside_path,
+    refuse_protected_path,
+    refuse_tmp_path,   // decide_engine
     refuse_mount,       // no storage session (op 8 first)
     refuse_read_only,   // a change without the read-write window
     refuse_handle,      // a file or folder handle a did not open for b
     refuse_full,        // a's handle table is full
-    run_mount, run_unmount,
+    run_mount,
+    run_unmount,
     run_file,           // partition 0x2c lseek, 0x2d close (by file handle)
     run_closedir,       // partition 0x30
     run_open,           // path 0x29
@@ -148,7 +167,9 @@ enum Action : uint32_t {
 // What a knows when it decides (each nonzero = true). session: a's storage session for this
 // entry is mounted; window: the read-write window is open; partition: install mode has a boot
 // partition selected (the stock select 88a08710 switches the chip's partition register).
-struct State { uint32_t on, session, window, fd_known, fd_space, dir_known, dir_space, partition; };
+struct State {
+    uint32_t on, session, window, fd_known, fd_space, dir_known, dir_space, partition;
+};
 // Every request: the raw layer first (whatever the state), then a selected boot partition (every
 // request refused, op 8 and op 9 too), then class and op, then the path policy for path
 // requests, then op 8 / op 9, then session, window, handles. argument = word +8
@@ -157,5 +178,5 @@ struct State { uint32_t on, session, window, fd_known, fd_space, dir_known, dir_
 // set times 0x35, fsync 0x34 / 0x28.
 Action decide_request(uint32_t vtable, uint32_t op, uint32_t argument, uint32_t path_pointer, const char* path,
                       const State& state, const char* source = 0);
-} }
+}}
 #endif

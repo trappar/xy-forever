@@ -7,12 +7,13 @@ tests/conftest.py and scripts/check.py set it, and so does importing xy_forever 
 unittest, so every test and every script a test runs as a subprocess inherits it. There is no way to turn it off
 in a test: a test fakes the opener instead.
 """
+
 import os
 import re
 import sys
 
 ENV = 'XYF_NO_DEVICE'
-PTY = re.compile(r'/dev/(ttys|pts/)\d')     # a pseudo-terminal (macOS, Linux): a test's fake tty, never a device
+PTY = re.compile(r'/dev/(ttys|pts/)\d')  # a pseudo-terminal (macOS, Linux): a test's fake tty, never a device
 
 
 class DeviceRefused(BaseException):

@@ -17,8 +17,13 @@ int a_check_read(void* context, U32 offset, uint8_t* out, U32 count) {
         const U32 at = offset + done;
         if (at < f.base || at - f.base >= f.bytes) {
             if (at < f.position) {
-                if (f.storage.direct_close(f.fd)) { f.fd = -1; return -1; }
-                f.fd = f.storage.direct_open(f.path); f.position = 0; f.bytes = 0;
+                if (f.storage.direct_close(f.fd)) {
+                    f.fd = -1;
+                    return -1;
+                }
+                f.fd = f.storage.direct_open(f.path);
+                f.position = 0;
+                f.bytes = 0;
                 if (f.fd < 0) return -1;
             }
             do {
@@ -28,7 +33,8 @@ int a_check_read(void* context, U32 offset, uint8_t* out, U32 count) {
                 f.base = f.position - keep;
                 const int got = f.storage.direct_read(f.fd, f.cache + keep, sizeof(f.cache) - keep);
                 if (got < 0 || got > int(sizeof(f.cache) - keep)) return -1;
-                f.bytes = keep + U32(got); f.position += U32(got);
+                f.bytes = keep + U32(got);
+                f.position += U32(got);
                 if (!got) return int(done);
             } while (at >= f.position);
         }
@@ -42,14 +48,23 @@ int a_check_read(void* context, U32 offset, uint8_t* out, U32 count) {
 bool tfw_probe_query(void* context, U32 request, Stock121PeerSession& session) {
     const U32 argument = word(request + 8), op = argument & 0xffu;
     if (word(request) != path_class || byte(request + 5) != 0x21u ||
-        (argument & tfw_role_probe::tag_mask) != (tfw_role_probe::tag & tfw_role_probe::tag_mask)) return false;
+        (argument & tfw_role_probe::tag_mask) != (tfw_role_probe::tag & tfw_role_probe::tag_mask))
+        return false;
     cold_storage::Stock121ReadOnlySession& storage = *static_cast<cold_storage::Stock121ReadOnlySession*>(context);
     if ((argument >> 24) != tfw_role_probe::version) {
-        tfw_reply_ready = false; session.reply(request, xyf::usbp::s_unsupported, tfw_role_probe::version); return true;
+        tfw_reply_ready = false;
+        session.reply(request, xyf::usbp::s_unsupported, tfw_role_probe::version);
+        return true;
     }
-    if (!op) { tfw_reply_ready = false; session.reply(request, tfw_role_probe::version, 0); return true; }
+    if (!op) {
+        tfw_reply_ready = false;
+        session.reply(request, tfw_role_probe::version, 0);
+        return true;
+    }
     if (probe_mode || boot_selected() || window_now() || held_files() || engine != entry_read) {
-        tfw_reply_ready = false; session.reply(request, xyf::usbp::s_busy, 0); return true;
+        tfw_reply_ready = false;
+        session.reply(request, xyf::usbp::s_busy, 0);
+        return true;
     }
     if (op == 1) {
         tfw_reply_ready = false;

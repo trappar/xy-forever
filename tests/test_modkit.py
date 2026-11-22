@@ -5,24 +5,28 @@ manifest and files.sha256 readers (tests/test_xyf_manifest.py's binding), edits.
 kit and every refusal. The real published kit, stock os.ldr and op1_factory.json (private area)
 and open-xy's core.mjs (the open-xy upstream clone at the kit's SDK commit) run the byte-for-byte proof on a
 fixed sample of selections when present and skip otherwise (`modkit prove` runs every selection)."""
+
 import base64
 import copy
 import hashlib
 import json
-from pathlib import Path
 import random
 import shutil
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 import pytest
-
-from xy_forever import modkit as M, package_records as R, paths, xyf_entry as E
 import test_xyf_manifest as TM
 
-SDK_COMMIT = '52c8de911a415e043fd4d1afc396c3869fcd1029'    # open-xy main, release 0.0.6 (the kit's SDK)
-OPEN_XY = paths.OPEN_XY_UPSTREAM                     # a fresh upstream clone (never ../open-xy)
+from xy_forever import modkit as M
+from xy_forever import package_records as R
+from xy_forever import paths
+from xy_forever import xyf_entry as E
+
+SDK_COMMIT = '52c8de911a415e043fd4d1afc396c3869fcd1029'  # open-xy main, release 0.0.6 (the kit's SDK)
+OPEN_XY = paths.OPEN_XY_UPSTREAM  # a fresh upstream clone (never ../open-xy)
 REAL_KIT = paths.PUBLISHED_KIT
 STOCK = paths.STOCK_121 / 'os.ldr'
 CATALOG = paths.CATALOG_121
@@ -46,71 +50,189 @@ def sampled_selections(selections, count=8, seed=232):
 def obj(exports=(), imports=(), text=b'\0\0\0\0', data=b'', bss=0, absolute=()):
     sections = [('.text', text)] + ([('.data', data)] if data else []) + ([('.bss', bss)] if bss else [])
     syms = [(n, 1, 0, GLOBAL, FUNC) for n in exports] + [(n, 0, 0, GLOBAL, 0) for n in imports]
-    syms += [(n, M.SHN_ABS, 0x8d000000, 0, OBJ) for n in absolute]
+    syms += [(n, M.SHN_ABS, 0x8D000000, 0, OBJ) for n in absolute]
     relocs = [(1, 0, 18, len(exports) + 1, 0)] if imports else []
     return M.make_object(sections, syms, relocs)
 
 
 def entry(name, data, **tags):
-    return dict(name=name, owner=tags.pop('owner', None), sha256=hashlib.sha256(data).hexdigest(),
-                bytes=base64.b64encode(data).decode(), **tags)
+    return dict(
+        name=name,
+        owner=tags.pop('owner', None),
+        sha256=hashlib.sha256(data).hexdigest(),
+        bytes=base64.b64encode(data).decode(),
+        **tags,
+    )
 
 
 def synthetic_kit():
     """A small kit with every part the tool handles: core, service and runtime objects, a synth, an effect,
     an event extension, a master processor, edits of every kind."""
-    profile = dict(schema=1, id='opxy-test', stock_sha256='ab' * 32, stock_bytes=4096,
-                   stock_catalog_sha256=hashlib.sha256(CATALOG_BYTES).hexdigest(),
-                   stock_catalog_inserts=dict(engine_types=20, fx_types=40, seq_types=52),
-                   module_base=0x8d2d0380, reserved_bytes=0x200000, table_bytes=0x4000, stock_records=3,
-                   heap_fill_base=0x8d4d0380, heap_fill_bytes=0x1000,
-                   identities=dict(engines=64, engine_none=10, stock_engines=[2, 3], pages=48, page_none=20,
-                                   sample_pages=[], effects=[1, 5], effect_page=21, players=[6]),
-                   services={'extensions': ['extension'], 'master_filter': ['master_filter'], 'drums': ['drum']},
-                   patches=[
-                       dict(kind='heap', name='heap', address='0x8d4d03ba', file_offset='0x107616', length=8,
-                            before='01da400100000000', after='01da200100000000'),
-                       dict(kind='startup', name='label', address='0x8d000010', file_offset='0x10', length=10,
-                            before='00' * 10, symbol='sdk_start'),
-                       dict(kind='hook', address='0x8d000040', file_offset='0x40', length=4, before='ffe38bfe',
-                            symbol='sdk_ext_event', call=True, service='extensions', events=['context']),
-                       dict(kind='hook', address='0x8d000050', file_offset='0x50', length=4, before='ffe38bfe',
-                            symbol='sdk_start', call=False, profiling=False),
-                       dict(kind='text', name='allow', address='0x8d000060', file_offset='0x60', length=2,
-                            before='0000', after='0100', service='drums')])
+    profile = dict(
+        schema=1,
+        id='opxy-test',
+        stock_sha256='ab' * 32,
+        stock_bytes=4096,
+        stock_catalog_sha256=hashlib.sha256(CATALOG_BYTES).hexdigest(),
+        stock_catalog_inserts=dict(engine_types=20, fx_types=40, seq_types=52),
+        module_base=0x8D2D0380,
+        reserved_bytes=0x200000,
+        table_bytes=0x4000,
+        stock_records=3,
+        heap_fill_base=0x8D4D0380,
+        heap_fill_bytes=0x1000,
+        identities=dict(
+            engines=64,
+            engine_none=10,
+            stock_engines=[2, 3],
+            pages=48,
+            page_none=20,
+            sample_pages=[],
+            effects=[1, 5],
+            effect_page=21,
+            players=[6],
+        ),
+        services={'extensions': ['extension'], 'master_filter': ['master_filter'], 'drums': ['drum']},
+        patches=[
+            dict(
+                kind='heap',
+                name='heap',
+                address='0x8d4d03ba',
+                file_offset='0x107616',
+                length=8,
+                before='01da400100000000',
+                after='01da200100000000',
+            ),
+            dict(
+                kind='startup',
+                name='label',
+                address='0x8d000010',
+                file_offset='0x10',
+                length=10,
+                before='00' * 10,
+                symbol='sdk_start',
+            ),
+            dict(
+                kind='hook',
+                address='0x8d000040',
+                file_offset='0x40',
+                length=4,
+                before='ffe38bfe',
+                symbol='sdk_ext_event',
+                call=True,
+                service='extensions',
+                events=['context'],
+            ),
+            dict(
+                kind='hook',
+                address='0x8d000050',
+                file_offset='0x50',
+                length=4,
+                before='ffe38bfe',
+                symbol='sdk_start',
+                call=False,
+                profiling=False,
+            ),
+            dict(
+                kind='text',
+                name='allow',
+                address='0x8d000060',
+                file_offset='0x60',
+                length=2,
+                before='0000',
+                after='0100',
+                service='drums',
+            ),
+        ],
+    )
     source = json.dumps(profile, indent=2).encode()
     art = b'<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>'
     objects = [
-        entry('alpha/voice.o', obj(['alpha_register'], ['sdk_start', 'alpha_engine_id'], data=b'1234', bss=64),
-              owner='alpha'),
+        entry(
+            'alpha/voice.o',
+            obj(['alpha_register'], ['sdk_start', 'alpha_engine_id'], data=b'1234', bss=64),
+            owner='alpha',
+        ),
         entry('beta/fx.o', obj(['beta_register'], ['sdk_start', 'beta_fx_id']), owner='beta'),
         entry('sdk/core.o', obj(['sdk_start', 'kit_absent', 'sdk_ext_event'], ['stock_insert'], bss=16)),
         entry('sdk/drums.o', obj(['sdk_drum'], ['sdk_start']), service='drums'),
         entry('sdk/extension_cap.o', obj(['sdk_extension_cap_hooks'], ['sdk_start']), extension='cap'),
-        entry('sdk/extension_flt.o', obj(['sdk_extension_flt_hooks', 'sdk_extension_flt_processor',
-                                          'sdk_extension_flt_panel'], ['___mulsi3']), extension='flt'),
-        entry('sdk/runtime/_mul.o', obj(['___mulsi3']), runtime=True)]
+        entry(
+            'sdk/extension_flt.o',
+            obj(['sdk_extension_flt_hooks', 'sdk_extension_flt_processor', 'sdk_extension_flt_panel'], ['___mulsi3']),
+            extension='flt',
+        ),
+        entry('sdk/runtime/_mul.o', obj(['___mulsi3']), runtime=True),
+    ]
     src = dict(repository='https://github.com/example/alpha', tag='v1.0.0', commit='1' * 40, maintainer='example')
     machines = [
-        dict(id='alpha', name='Alpha', kind='synth', prefix='alpha', identity=dict(engine=None, page=None),
-             absent=dict(alpha_register='kit_absent'), catalog=',\n  {"type": "alpha"}\n', origin='catalog',
-             source=src, artwork='<g id="alpha"/>', asset='alpha.svg', preview=dict(wasm='AAAA', defaults=[1]),
-             presets={}, keywords=['fm']),
-        dict(id='beta', name='Beta', kind='effect', prefix='beta', identity=dict(effect=None, page=2),
-             absent=dict(beta_register='kit_absent'), catalog=',\n  {"type": "beta", "id": 0}\n',
-             origin='official', source=dict(src, repository='https://github.com/example/beta'))]
+        dict(
+            id='alpha',
+            name='Alpha',
+            kind='synth',
+            prefix='alpha',
+            identity=dict(engine=None, page=None),
+            absent=dict(alpha_register='kit_absent'),
+            catalog=',\n  {"type": "alpha"}\n',
+            origin='catalog',
+            source=src,
+            artwork='<g id="alpha"/>',
+            asset='alpha.svg',
+            preview=dict(wasm='AAAA', defaults=[1]),
+            presets={},
+            keywords=['fm'],
+        ),
+        dict(
+            id='beta',
+            name='Beta',
+            kind='effect',
+            prefix='beta',
+            identity=dict(effect=None, page=2),
+            absent=dict(beta_register='kit_absent'),
+            catalog=',\n  {"type": "beta", "id": 0}\n',
+            origin='official',
+            source=dict(src, repository='https://github.com/example/beta'),
+        ),
+    ]
     extensions = [
-        dict(id='cap', origin='official', claims=['record_double_tap'], actions=['notify'], name='Capture',
-             description='Keeps what you play.', claim_labels=dict(record_double_tap='Record double-tap')),
-        dict(id='flt', origin='catalog', claims=[], actions=[], name='Filter', description='A filter.',
-             claim_labels={}, master_processor=dict(state_id='dj', asset='flt.svg', sha256=M.sha256(art),
-                                                    artwork=base64.b64encode(art).decode()))]
-    return dict(format=M.KIT_FORMAT, version='0.0.9', profile=profile,
-                profileSource=base64.b64encode(source).decode(), definitions=dict(stock_insert=0x8d5c3a28),
-                fixed=dict(alpha=dict(engine=34, page=82)), linked=['alpha'], machines=machines, objects=objects,
-                notices='OP-XY SDK modules\n\nMIT License\n', extensions=extensions,
-                stockCatalog=base64.b64encode(CATALOG_BYTES).decode(), screenTemplate=TEMPLATE,
-                serviceFallbacks=dict(drums=dict(sdk_drum_entry='kit_absent')))
+        dict(
+            id='cap',
+            origin='official',
+            claims=['record_double_tap'],
+            actions=['notify'],
+            name='Capture',
+            description='Keeps what you play.',
+            claim_labels=dict(record_double_tap='Record double-tap'),
+        ),
+        dict(
+            id='flt',
+            origin='catalog',
+            claims=[],
+            actions=[],
+            name='Filter',
+            description='A filter.',
+            claim_labels={},
+            master_processor=dict(
+                state_id='dj', asset='flt.svg', sha256=M.sha256(art), artwork=base64.b64encode(art).decode()
+            ),
+        ),
+    ]
+    return dict(
+        format=M.KIT_FORMAT,
+        version='0.0.9',
+        profile=profile,
+        profileSource=base64.b64encode(source).decode(),
+        definitions=dict(stock_insert=0x8D5C3A28),
+        fixed=dict(alpha=dict(engine=34, page=82)),
+        linked=['alpha'],
+        machines=machines,
+        objects=objects,
+        notices='OP-XY SDK modules\n\nMIT License\n',
+        extensions=extensions,
+        stockCatalog=base64.b64encode(CATALOG_BYTES).decode(),
+        screenTemplate=TEMPLATE,
+        serviceFallbacks=dict(drums=dict(sdk_drum_entry='kit_absent')),
+    )
 
 
 def finish(kit):
@@ -150,7 +272,7 @@ class Synthetic(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        TM.ManifestTest.setUpClass.__func__(cls)                  # the device readers (the host extension)
+        TM.ManifestTest.setUpClass.__func__(cls)  # the device readers (the host extension)
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-modkit-')
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.work = Path(cls.tmp.name)
@@ -193,16 +315,23 @@ class Synthetic(unittest.TestCase):
         self.assertEqual((sizes['alpha']['code'], sizes['alpha']['data'], sizes['alpha']['state']), (4, 4, 64))
         self.assertEqual(self.report['total_bytes'], sum(p.stat().st_size for p in self.gen.rglob('*') if p.is_file()))
         alpha = json.loads((self.gen / 'alpha' / R.NATIVE).read_bytes())
-        for key, value in dict(code=4, data=4, state=64, order=0, engine=None, page=None, asset='alpha.svg', presets=1).items():
+        for key, value in dict(
+            code=4, data=4, state=64, order=0, engine=None, page=None, asset='alpha.svg', presets=1
+        ).items():
             self.assertEqual(alpha[key], value)
         self.assertEqual(json.loads((self.gen / 'beta' / R.NATIVE).read_bytes())['catalog_number'], [21, 28])
         self.assertEqual((self.gen / 'beta/catalog.txt').read_bytes()[21:28], b'"id": 0')
         flt = json.loads((self.gen / 'ext-flt' / R.NATIVE).read_bytes())
-        for key, value in dict(machine='extension', services=['extensions', 'master_filter'],
-                               accessors=['hooks', 'processor', 'panel'], processor='master_processor',
-                               state_id='dj', link=5).items():
+        for key, value in dict(
+            machine='extension',
+            services=['extensions', 'master_filter'],
+            accessors=['hooks', 'processor', 'panel'],
+            processor='master_processor',
+            state_id='dj',
+            link=5,
+        ).items():
             self.assertEqual(flt[key], value)
-        self.assertNotIn('artwork', json.loads((self.gen / 'alpha/machine.json').read_text()))   # held by the svg
+        self.assertNotIn('artwork', json.loads((self.gen / 'alpha/machine.json').read_text()))  # held by the svg
         self.assertNotIn('wasm', (self.gen / 'alpha/machine.json').read_text())
 
     def test_device_readers_accept_every_package(self):
@@ -218,7 +347,7 @@ class Synthetic(unittest.TestCase):
                     self.assertEqual((fields['type'], fields['needs_os']), ('mod-base', 'ab' * 32))
                 else:
                     self.assertEqual(fields['type'], 'mod')
-                    self.assertNotIn('needs_os', fields)          # the device reader refuses it for type=mod
+                    self.assertNotIn('needs_os', fields)  # the device reader refuses it for type=mod
                 listed = (folder / 'files.sha256').read_bytes()
                 status, entries, _, _ = self.listing(listed)
                 self.assertEqual(status, 'ok')
@@ -248,14 +377,22 @@ class Synthetic(unittest.TestCase):
             else:
                 keep = ('id', 'kind', 'prefix', 'identity', 'absent', 'origin', 'source', 'features')
                 out['machines'].append({k: v for k, v in m.items() if k in keep})
-        out['objects'] = [o for o in kit['objects'] if o.get('extension') is None and o['owner'] in (None, *machines)
-                          or o.get('extension') in extensions]
+        out['objects'] = [
+            o
+            for o in kit['objects']
+            if o.get('extension') is None and o['owner'] in (None, *machines) or o.get('extension') in extensions
+        ]
         out['extensions'] = [e for e in kit['extensions'] if e['id'] in extensions]
         return out
 
     def test_rebuild_gives_the_kit_back(self):
-        for machines, exts in ((['alpha'], []), (['alpha', 'beta'], []), (['beta'], ['cap']),
-                               (['alpha'], ['cap', 'flt']), (['beta'], ['flt'])):
+        for machines, exts in (
+            (['alpha'], []),
+            (['alpha', 'beta'], []),
+            (['beta'], ['cap']),
+            (['alpha'], ['cap', 'flt']),
+            (['beta'], ['flt']),
+        ):
             with self.subTest(machines=machines, extensions=exts):
                 got = M.rebuild_kit(self.gen, machines, exts, CATALOG_BYTES)
                 want = self.expected(machines, exts)
@@ -263,7 +400,7 @@ class Synthetic(unittest.TestCase):
                 got['objects'] = [o for o in got['objects'] if o not in placeholders]
                 got['extensions'] = [e for e in got['extensions'] if e['id'] in exts]
                 self.assertEqual(json.loads(json.dumps(got)), json.loads(json.dumps(want)))
-                for o in placeholders:          # an absent extension: its accessors only, never linked
+                for o in placeholders:  # an absent extension: its accessors only, never linked
                     eid = o['extension']
                     exports = M.object_summary(base64.b64decode(o['bytes']), o['name'])['exports']
                     want_acc = {'cap': {'hooks'}, 'flt': {'hooks', 'processor', 'panel'}}[eid]
@@ -272,9 +409,11 @@ class Synthetic(unittest.TestCase):
 
     # -- refusals --------------------------------------------------------------------------------
     def test_refuses_unknown_kit_versions(self):
-        for change, pattern in ((dict(format='opxy-browser-kit/2'), 'unknown kit format'),
-                                (dict(version='1.0'), 'unknown kit version'),
-                                (dict(future=1), 'newer than this tool')):
+        for change, pattern in (
+            (dict(format='opxy-browser-kit/2'), 'unknown kit format'),
+            (dict(version='1.0'), 'unknown kit version'),
+            (dict(future=1), 'newer than this tool'),
+        ):
             with self.subTest(change=change):
                 self.refused(dict(synthetic_kit(), **change), pattern)
         kit = synthetic_kit()
@@ -288,10 +427,11 @@ class Synthetic(unittest.TestCase):
         self.refused(kit, 'unknown profile schema')
 
     def test_refuses_foreign_imports(self):
-        cases = (('alpha/voice.o', obj(['alpha_register'], ['beta_register']), 'machine alpha imports'),
-                 ('alpha/voice.o', obj(['alpha_register'], ['stock_insert']), 'machine alpha imports'),
-                 ('sdk/extension_cap.o', obj(['sdk_extension_cap_hooks'], ['alpha_engine_id']),
-                  'extension cap imports'))
+        cases = (
+            ('alpha/voice.o', obj(['alpha_register'], ['beta_register']), 'machine alpha imports'),
+            ('alpha/voice.o', obj(['alpha_register'], ['stock_insert']), 'machine alpha imports'),
+            ('sdk/extension_cap.o', obj(['sdk_extension_cap_hooks'], ['alpha_engine_id']), 'extension cap imports'),
+        )
         for name, data, pattern in cases:
             with self.subTest(name=name, pattern=pattern):
                 kit = synthetic_kit()
@@ -327,16 +467,34 @@ class Synthetic(unittest.TestCase):
 
     def test_base_carries_rules_patch_facts_and_labels(self):
         base = self.gen / 'base'
-        self.assertEqual((base / 'identities.txt').read_text().splitlines()[1:],
-                         ['engines 64', 'engine_none 10', 'pages 48', 'page_none 20', 'effect_page 21',
-                          'stock_engines 2,3', 'sample_pages -', 'effects 1,5', 'players 6'])
+        self.assertEqual(
+            (base / 'identities.txt').read_text().splitlines()[1:],
+            [
+                'engines 64',
+                'engine_none 10',
+                'pages 48',
+                'page_none 20',
+                'effect_page 21',
+                'stock_engines 2,3',
+                'sample_pages -',
+                'effects 1,5',
+                'players 6',
+            ],
+        )
         info = json.loads((base / R.NATIVE).read_bytes())
-        for key, value in dict(stock_records=3, reserved_bytes=2097152, heap_fill_base=0x8d4d0380, heap_fill_bytes=4096).items():
+        for key, value in dict(
+            stock_records=3, reserved_bytes=2097152, heap_fill_base=0x8D4D0380, heap_fill_bytes=4096
+        ).items():
             self.assertEqual(info[key], value)
         rows = (base / 'extensions.txt').read_text().splitlines()
         self.assertIn(' claims=record_double_tap labels=Record%20double-tap ', rows[1])
-        self.assertNotIn('labels', json.loads((self.gen / 'ext-cap' / R.NATIVE).read_bytes()))   # extension.json holds them
-        for path, old, new in (('identities.txt', 'players 6', 'players 7'), (R.NATIVE, '"stock_records":3', '"stock_records":4')):
+        self.assertNotIn(
+            'labels', json.loads((self.gen / 'ext-cap' / R.NATIVE).read_bytes())
+        )  # extension.json holds them
+        for path, old, new in (
+            ('identities.txt', 'players 6', 'players 7'),
+            (R.NATIVE, '"stock_records":3', '"stock_records":4'),
+        ):
             with self.subTest(path=path):
                 gen = self.copy_generation()
                 rewrite(gen / 'base', path, (base / path).read_text().replace(old, new).encode())
@@ -347,29 +505,37 @@ class Synthetic(unittest.TestCase):
         """expanded_base follows core.mjs offersExpandedMemory; split writes expanded_module_base only when
         offered; rebuild refuses a key that differs from the profile."""
         mib = 1 << 20
-        load = lambda value: M.struct.pack('<4H', 0xda01, value >> 16, value & 0xffff, 0).hex()  # noqa: E731
+        load = lambda value: M.struct.pack('<4H', 0xDA01, value >> 16, value & 0xFFFF, 0).hex()  # noqa: E731
         fill, base, end = 0x81000000, 0x81000000 + 18 * mib, 0x81000000 + 20 * mib
         hooks = [dict(kind='hook', address='0x%08x' % (base - 0x1000), length=4)]
         heaps = [dict(kind='heap', before=load(20 * mib), after=load(18 * mib)) for _ in range(2)]
-        profile = dict(module_base=base, reserved_bytes=2 * mib, heap_fill_base=fill, heap_fill_bytes=20 * mib,
-                       patches=heaps + hooks,
-                       experimental_memory=dict(module_base=base - 2 * mib, reserved_bytes=4 * mib, heap_after=load(16 * mib)))
+        profile = dict(
+            module_base=base,
+            reserved_bytes=2 * mib,
+            heap_fill_base=fill,
+            heap_fill_bytes=20 * mib,
+            patches=heaps + hooks,
+            experimental_memory=dict(module_base=base - 2 * mib, reserved_bytes=4 * mib, heap_after=load(16 * mib)),
+        )
         self.assertEqual(M.expanded_base(profile), base - 2 * mib)
         self.assertEqual(M.expanded_heap_after(heaps[0]['after'], 16 * mib), load(16 * mib))
-        broken = (dict(experimental_memory=None), dict(patches=heaps[:1] + hooks),
-                  dict(experimental_memory=dict(profile['experimental_memory'], heap_after=load(15 * mib))),
-                  dict(experimental_memory=dict(profile['experimental_memory'], reserved_bytes=3 * mib)),
-                  dict(experimental_memory=dict(profile['experimental_memory'], module_base=base - 2 * mib + 4)),
-                  dict(experimental_memory=dict(profile['experimental_memory'], extra=1)),
-                  dict(patches=heaps + [dict(hooks[0], address='0x%08x' % (base + (1 << 24)))]),
-                  dict(heap_fill_bytes=24 * mib))
+        broken = (
+            dict(experimental_memory=None),
+            dict(patches=heaps[:1] + hooks),
+            dict(experimental_memory=dict(profile['experimental_memory'], heap_after=load(15 * mib))),
+            dict(experimental_memory=dict(profile['experimental_memory'], reserved_bytes=3 * mib)),
+            dict(experimental_memory=dict(profile['experimental_memory'], module_base=base - 2 * mib + 4)),
+            dict(experimental_memory=dict(profile['experimental_memory'], extra=1)),
+            dict(patches=heaps + [dict(hooks[0], address='0x%08x' % (base + (1 << 24)))]),
+            dict(heap_fill_bytes=24 * mib),
+        )
         for change in broken:
             with self.subTest(change=sorted(change)):
                 self.assertIsNone(M.expanded_base(dict(profile, **change)))
-        self.assertNotIn('expanded_module_base', (self.gen / 'base' / R.NATIVE).read_text())   # not offered
+        self.assertNotIn('expanded_module_base', (self.gen / 'base' / R.NATIVE).read_text())  # not offered
         gen = self.copy_generation()
         info = json.loads((gen / 'base' / R.NATIVE).read_bytes())
-        info['expanded_module_base'] = 0x8d0d0380
+        info['expanded_module_base'] = 0x8D0D0380
         rewrite(gen / 'base', R.NATIVE, (json.dumps(info) + '\n').encode())
         with self.assertRaisesRegex(M.KitError, 'expanded_module_base differs'):
             M.rebuild_kit(gen, ['alpha'], [], CATALOG_BYTES)
@@ -378,17 +544,19 @@ class Synthetic(unittest.TestCase):
         gen = self.copy_generation()
         info = (gen / 'beta' / R.NATIVE).read_text().replace(self.gen.name, '0.0.8-000000000000')
         rewrite(gen / 'beta', R.NATIVE, info.encode())
-        M.rebuild_kit(gen, ['alpha'], [], CATALOG_BYTES)            # beta not chosen: fine
+        M.rebuild_kit(gen, ['alpha'], [], CATALOG_BYTES)  # beta not chosen: fine
         with self.assertRaisesRegex(M.KitError, 'cannot mix generations'):
             M.rebuild_kit(gen, ['alpha', 'beta'], [], CATALOG_BYTES)
 
     def test_refuses_damaged_or_incomplete_selections(self):
         gen = self.copy_generation()
         (gen / 'alpha/objects/alpha/voice.o').write_bytes(b'tampered')
-        cases = ((gen, ['alpha'], [], CATALOG_BYTES, 'differs from files.sha256'),
-                 (self.gen, [], ['cap'], CATALOG_BYTES, 'at least one machine'),
-                 (self.gen, ['gamma'], [], CATALOG_BYTES, 'not in this generation'),
-                 (self.gen, ['alpha'], [], b'{}', 'op1_factory.json differs'))
+        cases = (
+            (gen, ['alpha'], [], CATALOG_BYTES, 'differs from files.sha256'),
+            (self.gen, [], ['cap'], CATALOG_BYTES, 'at least one machine'),
+            (self.gen, ['gamma'], [], CATALOG_BYTES, 'not in this generation'),
+            (self.gen, ['alpha'], [], b'{}', 'op1_factory.json differs'),
+        )
         for folder, machines, exts, catalog, pattern in cases:
             with self.subTest(pattern=pattern), self.assertRaisesRegex(M.KitError, pattern):
                 M.rebuild_kit(folder, machines, exts, catalog)
@@ -399,11 +567,18 @@ class Synthetic(unittest.TestCase):
             M.split_kit(path, self.work / 'packages', finish=finish)
 
 
-@unittest.skipUnless(shutil.which('node') and REAL_KIT.is_file() and STOCK.is_file() and CATALOG.is_file() and
-                     (OPEN_XY / '.git').exists() and subprocess.run(
-                         ['git', '-C', str(OPEN_XY), 'cat-file', '-e', SDK_COMMIT + '^{commit}'],
-                         capture_output=True).returncode == 0,
-                     'published kit, stock os.ldr + op1_factory.json, Node or the open-xy upstream clone at %s absent' % SDK_COMMIT[:7])
+@unittest.skipUnless(
+    shutil.which('node')
+    and REAL_KIT.is_file()
+    and STOCK.is_file()
+    and CATALOG.is_file()
+    and (OPEN_XY / '.git').exists()
+    and subprocess.run(
+        ['git', '-C', str(OPEN_XY), 'cat-file', '-e', SDK_COMMIT + '^{commit}'], capture_output=True
+    ).returncode
+    == 0,
+    'published kit, stock os.ldr + op1_factory.json, Node or the open-xy upstream clone at %s absent' % SDK_COMMIT[:7],
+)
 @pytest.mark.gate
 class PublishedKit(unittest.TestCase):
     """The real kit: split, then a sample of the selections linked by core.mjs from the kit and from the packages."""
@@ -416,13 +591,27 @@ class PublishedKit(unittest.TestCase):
         work = Path(cls.tmp.name)
         cls.report = M.split_kit(REAL_KIT, work / 'out', OPEN_XY, sdk_commit=SDK_COMMIT)
         selections = sampled_selections(M.selections_for(M.load_kit(REAL_KIT), cls.report['root']))
-        cls.rows = {r['selection']: r for r in M.prove(REAL_KIT, cls.report['root'], OPEN_XY, CATALOG, STOCK,
-                                                       scratch=work, selections=selections, sdk_commit=SDK_COMMIT)}
+        cls.rows = {
+            r['selection']: r
+            for r in M.prove(
+                REAL_KIT,
+                cls.report['root'],
+                OPEN_XY,
+                CATALOG,
+                STOCK,
+                scratch=work,
+                selections=selections,
+                sdk_commit=SDK_COMMIT,
+            )
+        }
 
     def test_published_kit(self):
         """One test, so no scheduler splits the class and repeats its setup (about 4 s)."""
-        for check in (self.sampled_selections_are_byte_identical, self.extension_memory_matches_record_014,
-                      self.package_set):
+        for check in (
+            self.sampled_selections_are_byte_identical,
+            self.extension_memory_matches_record_014,
+            self.package_set,
+        ):
             with self.subTest(check.__name__):
                 check()
 
@@ -431,23 +620,28 @@ class PublishedKit(unittest.TestCase):
         for name, row in self.rows.items():
             with self.subTest(selection=name):
                 self.assertTrue(row['identical'], row)
-                if name == 'all':                   # 79 machines exceed 2032 KiB: the same refusal both ways
+                if name == 'all':  # 79 machines exceed 2032 KiB: the same refusal both ways
                     self.assertIn('need more than the 2032 KiB', row['error'])
                 else:
                     self.assertIsNone(row['error'])
                     self.assertTrue(row['ldr'] and row['content_matches_packages'], row)
 
     def extension_memory_matches_record_014(self):
-        allocated = {name: self.rows[name]['allocated'] for name in
-                     ('one', 'one+capture', 'one+master_dj_filter', 'one+all-extensions')}
-        self.assertEqual(allocated, {'one': 148120, 'one+capture': 161440, 'one+master_dj_filter': 194484,
-                                     'one+all-extensions': 202584})
+        allocated = {
+            name: self.rows[name]['allocated']
+            for name in ('one', 'one+capture', 'one+master_dj_filter', 'one+all-extensions')
+        }
+        self.assertEqual(
+            allocated,
+            {'one': 148120, 'one+capture': 161440, 'one+master_dj_filter': 194484, 'one+all-extensions': 202584},
+        )
 
     def package_set(self):
         packages = self.report['packages']
         self.assertEqual(len(packages), 1 + 79 + 2)
-        self.assertEqual((packages['fm2op']['code'], packages['fm2op']['data'], packages['fm2op']['state']),
-                         (10692, 7112, 7532))
+        self.assertEqual(
+            (packages['fm2op']['code'], packages['fm2op']['data'], packages['fm2op']['state']), (10692, 7112, 7532)
+        )
 
 
 if __name__ == '__main__':

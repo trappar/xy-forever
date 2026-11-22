@@ -1,12 +1,19 @@
 // Part of stock.cpp, included inside its anonymous namespace.
 // ---- yaffs: the host folder standing in for /yaffs2 (A) ------------------------------------
-struct Handle { bool used = false, directory = false, written = false, library = false; int fd = -1; DIR* dir = 0; };
+struct Handle {
+    bool used = false, directory = false, written = false, library = false;
+    int fd = -1;
+    DIR* dir = 0;
+};
 const unsigned max_handles = 64;
 Handle handles[max_handles];
 int last_error = 0;
 uint32_t yaffs_device = 0;
 const uint32_t media_write = 0x88a3454au;              // fresh-shape media write callback (dev + 0x80)
-int fail(int error) { last_error = error; return -1; }
+int fail(int error) {
+    last_error = error;
+    return -1;
+}
 bool to_host(const char* path, std::string& out, bool stat_parents = false) {
     if (!path || strncmp(path, "/yaffs2", 7) || (path[7] && path[7] != '/')) return false;
     std::string rest = path + 7;
@@ -35,12 +42,19 @@ bool read_only() { return r32(yaffs_device + 0xe8) != 0; }
 // A media write: allowed only on a read-write mount whose media callbacks are the stock ones.
 // A deny gate there (cold_storage begin_fresh) is called as the media would call it.
 bool media(int& error) {
-    if (!mounted()) { error = 19; return false; }
-    if (read_only()) { error = 30; return false; }
+    if (!mounted()) {
+        error = 19;
+        return false;
+    }
+    if (read_only()) {
+        error = 30;
+        return false;
+    }
     const uint32_t gate = r32(yaffs_device + 0x80);
     if (gate != media_write) {
         if (gate >= 0xc0000000u) function<int()>(gate)();
-        error = 5; return false;
+        error = 5;
+        return false;
     }
     media_change("write");
     return true;
@@ -50,11 +64,19 @@ bool write_fault(uint32_t bytes, int& error, bool data = true) {
     const int32_t n = data ? int32_t(shared->fail_write) : 0;
     if (n > 0) {
         shared->fail_write = n - 1;
-        if (n == 1) { log("fault: storage write failed"); error = 5; return true; }
+        if (n == 1) {
+            log("fault: storage write failed");
+            error = 5;
+            return true;
+        }
     }
     const int64_t space = shared->space;
     if (space >= 0) {
-        if (int64_t(bytes) > space) { log("fault: storage full"); error = 28; return true; }
+        if (int64_t(bytes) > space) {
+            log("fault: storage full");
+            error = 28;
+            return true;
+        }
         shared->space = space - bytes;
     }
     return false;
@@ -71,13 +93,16 @@ int open_file(const char* path, bool write, bool create, bool truncate, bool exc
     if ((create || truncate) && write_fault(0, error, false)) return fail(error);
     struct stat st;
     if (!stat(where.c_str(), &st) && S_ISDIR(st.st_mode)) return fail(21);
-    const int flags = (write ? O_RDWR : O_RDONLY) | (create ? O_CREAT : 0) | (truncate ? O_TRUNC : 0) |
-                      (exclusive ? O_EXCL : 0);
+    const int flags =
+        (write ? O_RDWR : O_RDONLY) | (create ? O_CREAT : 0) | (truncate ? O_TRUNC : 0) | (exclusive ? O_EXCL : 0);
     const int fd = open(where.c_str(), flags, 0644);
     if (fd < 0) return fail(errno);
     for (unsigned i = 0; i != max_handles; ++i)
         if (!handles[i].used) {
-            handles[i] = Handle(); handles[i].used = true; handles[i].fd = fd; handles[i].written = create || truncate;
+            handles[i] = Handle();
+            handles[i].used = true;
+            handles[i].fd = fd;
+            handles[i].written = create || truncate;
             if (create || truncate) storage_op_done();
             return int(i);
         }
@@ -117,7 +142,10 @@ int path_op(uint32_t op, const char* path) {          // mkdir 0x26, unlink 0x25
     std::string where;
     if (!mounted()) return fail(19);
     if (!to_host(path, where)) return fail(2);
-    if (op == 0x21) { struct stat st; return stat(where.c_str(), &st) ? fail(errno) : 0; }
+    if (op == 0x21) {
+        struct stat st;
+        return stat(where.c_str(), &st) ? fail(errno) : 0;
+    }
     int error = 0;
     if (!media(error) || write_fault(0, error, false)) return fail(error);
     // The device's yaffs error numbers (1.2.1 listing 889fa4b0), not the Mac's: a folder for unlink
@@ -141,7 +169,10 @@ int path_op(uint32_t op, const char* path) {          // mkdir 0x26, unlink 0x25
 // (88a009c2), a folder into itself EINVAL 22; an existing target is otherwise replaced (yaffs_rename_obj
 // 88a01afa). The host's rename(2) gives the same outcomes and numbers but ENOTEMPTY (66 there).
 int rename_object(const char* from, const char* to) {
-    auto failed = [](int error) { w32(0x8806f940u, uint32_t(-error)); return fail(error); };
+    auto failed = [](int error) {
+        w32(0x8806f940u, uint32_t(-error));
+        return fail(error);
+    };
     std::string a, b;
     if (!mounted()) return failed(19);
     if (!to_host(from, a) || !to_host(to, b)) return failed(2);
@@ -151,9 +182,15 @@ int rename_object(const char* from, const char* to) {
     if (!media(error) || write_fault(0, error, false)) return failed(error);
     const int32_t n = shared->rename_fault, kind = shared->rename_fault_kind;   // fault hook
     const bool hit = n > 0 && (shared->rename_fault = n - 1) == 0;
-    if (hit && kind == 1) { log("fault: rename failed"); return failed(5); }
+    if (hit && kind == 1) {
+        log("fault: rename failed");
+        return failed(5);
+    }
     if (rename(a.c_str(), b.c_str())) return failed(errno == ENOTEMPTY ? 93 : errno);
-    if (hit && kind == 3) { log("fault: A silent after this rename"); shared->a_silent = 1; }
+    if (hit && kind == 3) {
+        log("fault: A silent after this rename");
+        shared->a_silent = 1;
+    }
     if (hit && kind == 2) shared->cut_after = 1;                         // the power cut right after it
     storage_op_done();
     return 0;
@@ -168,25 +205,36 @@ int stat_record(const char* path, uint32_t* out) {
     if (!to_host(path, where, true)) return fail(2);
     struct stat st;
     if (stat(where.c_str(), &st)) return fail(errno);
-    const uint32_t record[9] = {uint32_t(st.st_dev), uint32_t(st.st_ino), uint32_t(st.st_mode), uint32_t(st.st_nlink),
-                                0, 0, 0, uint32_t(st.st_size), uint32_t(st.st_ctime)};
+    const uint32_t record[9] = {
+        uint32_t(st.st_dev),  uint32_t(st.st_ino),  uint32_t(st.st_mode), uint32_t(st.st_nlink), 0, 0, 0,
+        uint32_t(st.st_size), uint32_t(st.st_ctime)};
     memcpy(out, record, sizeof(record));
     return 0;
 }
 const uint32_t dir_handles = 0x8aa98000u, dirents = 0x8aa90000u, dirent_bytes = 0x120u;
 uint32_t open_directory(const char* path) {
     std::string where;
-    if (!mounted() || !to_host(path, where)) { last_error = 2; return 0; }
+    if (!mounted() || !to_host(path, where)) {
+        last_error = 2;
+        return 0;
+    }
     DIR* d = opendir(where.c_str());
-    if (!d) { last_error = errno; return 0; }
+    if (!d) {
+        last_error = errno;
+        return 0;
+    }
     for (unsigned i = 0; i != max_handles; ++i)
         if (!handles[i].used) {
-            handles[i] = Handle(); handles[i].used = true; handles[i].directory = true; handles[i].dir = d;
+            handles[i] = Handle();
+            handles[i].used = true;
+            handles[i].directory = true;
+            handles[i].dir = d;
             const size_t n = strlen(path);
             handles[i].library = n >= 20 && !strcmp(path + n - 20, "/xy-forever/firmware");
             return dir_handles + i * 16;
         }
-    closedir(d); last_error = 24;
+    closedir(d);
+    last_error = 24;
     return 0;
 }
 int directory_of(uint32_t handle) {
@@ -195,7 +243,10 @@ int directory_of(uint32_t handle) {
 }
 uint32_t next_entry(uint32_t handle) {                 // yaffs_dirent: type at +10, name at +11
     const int i = directory_of(handle);
-    if (i < 0) { last_error = 9; return 0; }
+    if (i < 0) {
+        last_error = 9;
+        return 0;
+    }
     for (;;) {
         dirent* e = readdir(handles[i].dir);
         if (!e) return 0;
@@ -213,8 +264,14 @@ int close_directory(uint32_t handle) {
     const bool fault = handles[i].library && shared->fail_list;     // fault hook: A's library scan fails
     closedir(handles[i].dir);
     handles[i] = Handle();
-    if (fault) { log("fault: library listing failed"); return fail(5); }
+    if (fault) {
+        log("fault: library listing failed");
+        return fail(5);
+    }
     return 0;
 }
-bool any_open() { for (const Handle& h : handles) if (h.used) return true; return false; }
-
+bool any_open() {
+    for (const Handle& h : handles)
+        if (h.used) return true;
+    return false;
+}

@@ -7,18 +7,19 @@ U32 checksum(const Report& report) {
     U32 crc = 0xffffffffu;
     for (U32 i = 0; i != sizeof(Report); ++i) {
         crc ^= i >= 12 && i < 16 ? 0 : data[i];
-        for (U32 bit = 0; bit != 8; ++bit)
-            crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
+        for (U32 bit = 0; bit != 8; ++bit) crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
     }
     return ~crc;
 }
 }
 void seal(Report& report) {
-    report.magic = 0x32525058u; report.version = 1; report.bytes = sizeof(Report);
+    report.magic = 0x32525058u;
+    report.version = 1;
+    report.bytes = sizeof(Report);
     report.checksum = checksum(report);
 }
 bool valid(const Report& report) {
-    return report.magic == 0x32525058u && report.version == 1 &&
-        report.bytes == sizeof(Report) && report.checksum == checksum(report);
+    return report.magic == 0x32525058u && report.version == 1 && report.bytes == sizeof(Report) &&
+           report.checksum == checksum(report);
 }
-} }
+}}

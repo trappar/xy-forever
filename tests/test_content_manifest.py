@@ -1,27 +1,37 @@
 """Content-set manifests (xy_forever/content_manifest.py): synthetic folders made here;
 the official sets in the private area are checked only when present (nothing from them is kept)."""
+
 import contextlib
 import hashlib
 import io
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 import pytest
 
-from xy_forever import content_manifest as CM, paths
+from xy_forever import content_manifest as CM
+from xy_forever import paths
 from xy_forever.xyf_entry import read_files_sha256
 
 ROOT = Path(__file__).resolve().parents[1]
 
-FILES = {'a/b.txt': b'one', 'a-b.txt': b'two', 'a b/c.json': b'{}', 'B.wav': b'\0' * 1000,
-         'samples/#1/x.aif': b'xyz', 'op1.json': b'[]'}
-OFFICIAL = (('1.1.33', 'opxy_firmware_1_1_33/extracted/firmware/blackfin/content'),
-            ('1.2.1', 'opxy_firmware_1_2_1/extracted/firmware/blackfin/content'),
-            ('1.2.5', 'opxy_firmware_1_2_5/firmware/blackfin/content'))
+FILES = {
+    'a/b.txt': b'one',
+    'a-b.txt': b'two',
+    'a b/c.json': b'{}',
+    'B.wav': b'\0' * 1000,
+    'samples/#1/x.aif': b'xyz',
+    'op1.json': b'[]',
+}
+OFFICIAL = (
+    ('1.1.33', 'opxy_firmware_1_1_33/extracted/firmware/blackfin/content'),
+    ('1.2.1', 'opxy_firmware_1_2_1/extracted/firmware/blackfin/content'),
+    ('1.2.5', 'opxy_firmware_1_2_5/firmware/blackfin/content'),
+)
 
 
 def make_package(base, files=FILES, version=b'9.8.7+0\n'):
@@ -58,14 +68,17 @@ class ContentManifestTest(unittest.TestCase):
         self.assertEqual([p for _, p in read_files_sha256(data)][:3], ['B.wav', 'a b/c.json', 'a-b.txt'])
         self.assertEqual(data.split(b'\n')[0], hashlib.sha256(FILES['B.wav']).hexdigest().encode() + b'  B.wav')
         total = sum(len(v) for v in FILES.values())
-        self.assertEqual(out.strip(), 'version=9.8.7+0 files=%d bytes=%d list_sha256=%s'
-                         % (len(FILES), total, hashlib.sha256(data).hexdigest()))
+        self.assertEqual(
+            out.strip(),
+            'version=9.8.7+0 files=%d bytes=%d list_sha256=%s' % (len(FILES), total, hashlib.sha256(data).hexdigest()),
+        )
         self.assertEqual((self.tmp / 'm/firmware.version').read_bytes(), b'9.8.7+0\n')
         self.assertEqual((self.tmp / 'm/content.sizes').read_bytes().split(b'\n')[0], b'1000  B.wav')
         shasum = shutil.which('shasum')
         if shasum:
-            made = subprocess.run([shasum, '-a', '256', *[p.decode() for p in order]], cwd=content, check=True,
-                                  capture_output=True).stdout
+            made = subprocess.run(
+                [shasum, '-a', '256', *[p.decode() for p in order]], cwd=content, check=True, capture_output=True
+            ).stdout
             self.assertEqual(made, data)
         # The longest allowed path: 160 bytes.
         longest = '/'.join(['d' * 39] * 4)
@@ -74,16 +87,18 @@ class ContentManifestTest(unittest.TestCase):
         CM.write_manifest(self.tmp / 'long/firmware/blackfin/content', self.tmp / 'm2', self.tmp / 'm/firmware.version')
 
     def test_refusals(self):
-        long = '/'.join(['d' * 40] * 4) + 'x'                     # 164 bytes
-        cases = [({long: b'1'}, 'longer than 160'),
-                 ({'café.wav': b'1'}, 'printable ASCII'),
-                 ({'a\tb': b'1'}, 'printable ASCII'),
-                 ({'a\\b': b'1'}, 'printable ASCII'),
-                 ({'a/b.': b'1'}, 'ending in'),
-                 ({'a /b': b'1'}, 'ending in'),
-                 ({'x/BootLoader.ldr': b'1'}, 'refused name'),
-                 ({'files.sha256': b'1'}, 'refused name'),
-                 ({}, 'empty content set')]
+        long = '/'.join(['d' * 40] * 4) + 'x'  # 164 bytes
+        cases = [
+            ({long: b'1'}, 'longer than 160'),
+            ({'café.wav': b'1'}, 'printable ASCII'),
+            ({'a\tb': b'1'}, 'printable ASCII'),
+            ({'a\\b': b'1'}, 'printable ASCII'),
+            ({'a/b.': b'1'}, 'ending in'),
+            ({'a /b': b'1'}, 'ending in'),
+            ({'x/BootLoader.ldr': b'1'}, 'refused name'),
+            ({'files.sha256': b'1'}, 'refused name'),
+            ({}, 'empty content set'),
+        ]
         for i, (files, message) in enumerate(cases):
             with self.subTest(files=files):
                 content = make_package(self.tmp / str(i), files)
@@ -135,9 +150,12 @@ class ContentManifestTest(unittest.TestCase):
         for name, content in (('a', a), ('b', b)):
             CM.write_manifest(content, self.tmp / name / 'm')
         ma, mb = str(self.tmp / 'a/m/content.sha256'), str(self.tmp / 'b/m/content.sha256')
-        want = dict(only_a=dict(count=1, bytes=3, paths=['a-b.txt']),
-                    only_b=dict(count=1, bytes=5, paths=['new/n.bin']),
-                    differ=dict(count=1, bytes_a=2, bytes_b=6, paths=['op1.json']), identical=False)
+        want = dict(
+            only_a=dict(count=1, bytes=3, paths=['a-b.txt']),
+            only_b=dict(count=1, bytes=5, paths=['new/n.bin']),
+            differ=dict(count=1, bytes_a=2, bytes_b=6, paths=['op1.json']),
+            identical=False,
+        )
         for x, y in ((ma, mb), (ma, str(b)), (str(a), mb), (str(a), str(b))):
             with self.subTest(a=x, b=y):
                 self.assertEqual(CM.compare(CM.load(x), CM.load(y)), want)

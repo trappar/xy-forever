@@ -2,7 +2,9 @@
 #define XYF_BOOT_HPP
 #include <stdint.h>
 #include "xyf_catalog.hpp"
-namespace xy_forever { namespace peer_services { class Stock121PeerSession; } }
+namespace xy_forever { namespace peer_services {
+class Stock121PeerSession;
+}}
 // XY Forever menu boot (Test030, on top of library boot):
 // one staged link session per boot (Stock121PeerSession::stage).
 //  - a (role 0): opens the session, then mounts read-only, scans the library
@@ -44,9 +46,16 @@ static const uint32_t boot_transfer_ms = 30000;      // b: bound for the image t
 // only in A's own report. A zero duration is meaningful only when its bit is set.
 static const uint32_t timing_magic = 0x31544d42u;   // "BMT1"
 enum TimingValid : uint32_t {
-    timing_mount = 1, timing_scan = 2, timing_read = 4, timing_crc = 8,
-    timing_a_admit = 16, timing_sha = 32, timing_freeze = 64,
-    timing_check = 128, timing_receive = 256, timing_b_admit = 512,
+    timing_mount = 1,
+    timing_scan = 2,
+    timing_read = 4,
+    timing_crc = 8,
+    timing_a_admit = 16,
+    timing_sha = 32,
+    timing_freeze = 64,
+    timing_check = 128,
+    timing_receive = 256,
+    timing_b_admit = 512,
     timing_handoff = 1024
 };
 struct TimingInfo {
@@ -129,7 +138,8 @@ struct MenuInfo {
     uint32_t play, catalog_bytes, catalog_ok, catalog_entries;
     uint32_t choice, choice_entry, commands, commands_seen;   // choice: 0 none, 1 default, 2 entry
     uint32_t blobs, catalog_ms, menu_ms, boot_ms;
-    uint32_t last_command, scan_error, refused, state_write;   // state_write: status | result << 8 | step << 16 | seq << 24
+    uint32_t last_command, scan_error, refused,
+        state_write;   // state_write: status | result << 8 | step << 16 | seq << 24
 };
 static_assert(sizeof(MenuInfo) == 64, "MenuInfo layout");
 // key_ui hooks (b): keepalive tick (true when the status text changed),
@@ -190,8 +200,15 @@ const char* set_default(uint32_t entry);
 static const uint32_t item_stage2 = 0x12;
 static const uint32_t stage2_ms = 15000;        // b: bound for the stage-2 blob (incl. a's read + hash)
 enum Stage2Status : uint32_t {
-    s2_none = 0, s2_ready = 1, s2_storage = 2, s2_open = 3, s2_read = 4, s2_check = 5,
-    s2_link = 6, s2_copy = 7, s2_refused = 8
+    s2_none = 0,
+    s2_ready = 1,
+    s2_storage = 2,
+    s2_open = 3,
+    s2_read = 4,
+    s2_check = 5,
+    s2_link = 6,
+    s2_copy = 7,
+    s2_refused = 8
 };
 struct Stage2Info {
     uint32_t status, check, file_bytes, version;   // a: served/refused; b: received/accepted
@@ -207,5 +224,5 @@ void stage2_done(uint32_t exit, uint32_t run_ms);
 const uint8_t* catalog_blob(uint32_t& bytes);
 #endif
 #endif
-} }
+}}
 #endif

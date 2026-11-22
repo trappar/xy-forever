@@ -10,16 +10,16 @@ uint32_t local_select(uint32_t p) {
     return 0;
 }
 uint32_t boot_capacity() { return role ? b_call(0, 5, 0, 0, 0, 0, 0, 0, 0) : shared->capacity; }
-uint32_t boot_select(uint32_t p) {
-    return role ? b_call(cls_partition, 0x18, p, 0, 0, 0, 0, 0, 0) : local_select(p);
-}
+uint32_t boot_select(uint32_t p) { return role ? b_call(cls_partition, 0x18, p, 0, 0, 0, 0, 0, 0) : local_select(p); }
 uint32_t boot_read(uint32_t sector, uint8_t* out, uint32_t count) {
     return role ? b_call(cls_sector, count == 1 ? 0x11 : 0x12, sector, count, 0, 0, 0, out, count * 512u) :
-                  sectors_io(false, sector, count, out) ? 0 : uint32_t(-1);
+           sectors_io(false, sector, count, out) ? 0 :
+                                                   uint32_t(-1);
 }
 uint32_t boot_write(uint32_t sector, uint8_t* data, uint32_t count) {
     return role ? b_call(cls_write, sector ? 0x16 : 0x15, sector, count, 0, data, count * 512u, 0, 0) :
-                  sectors_io(true, sector, count, data) ? 0 : uint32_t(-1);
+           sectors_io(true, sector, count, data) ? 0 :
+                                                   uint32_t(-1);
 }
 uint32_t boot_trim(uint32_t block) {
     return role ? b_call(cls_partition, 0x14, block, 0, 0, 0, 0, 0, 0) : trim(block) ? 0 : uint32_t(-1);
@@ -33,7 +33,8 @@ uint32_t stock_writer(uint8_t* image, uint32_t size) {
     if (!image || (uintptr_t(image) & 3u) || size + 512 < 10000 || size + 512 > capacity) return 0;
     uint8_t header[512] = {}, back[512];
     const uint32_t words[3] = {3, size, crc32(image, size)};
-    memcpy(header, words, sizeof(words)); header[12] = 1;
+    memcpy(header, words, sizeof(words));
+    header[12] = 1;
     boot_crypto_mark(header);                        // crypt_prepare success represented, never real AES
     if (const uint32_t error = boot_select(1)) return error;
     while (boot_read(0, back, 1)) {}
@@ -47,7 +48,8 @@ uint32_t stock_writer(uint8_t* image, uint32_t size) {
     }
     char text[96];
     for (uint32_t b = 0; b * erase_block < size + 512; ++b) {
-        snprintf(text, sizeof(text), "erase block: %u", b); stock_log(text);
+        snprintf(text, sizeof(text), "erase block: %u", b);
+        stock_log(text);
         while (boot_trim(b)) {}
     }
     const uint32_t sectors = (size >> 9) + 1;         // stock writes an extra sector for aligned size
@@ -55,7 +57,8 @@ uint32_t stock_writer(uint8_t* image, uint32_t size) {
         const uint32_t n = sectors - s < 128 ? sectors - s : 128;
         uint8_t* chunk = image + s * 512;
         boot_crypt(chunk, n * 512, s * 512);          // mutates padding too, once before write retries
-        snprintf(text, sizeof(text), "write sectors: %u-%u", 1 + s, s + n); stock_log(text);
+        snprintf(text, sizeof(text), "write sectors: %u-%u", 1 + s, s + n);
+        stock_log(text);
         while (boot_write(1 + s, chunk, n)) {}
     }
     bool mismatch = false;

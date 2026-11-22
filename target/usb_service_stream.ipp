@@ -31,7 +31,8 @@ void stream_abandon() {
     if (mounted == file_client::mounted_stale) return;
     file_client::close_write(stream_fd, mounted);
     file_client::remove_partial(stream_tmp, mounted);
-    writes_due = 1; writes_ms = now();
+    writes_due = 1;
+    writes_ms = now();
 }
 void stream_turn() {                                                     // the menu loop: a write left without data
     if (stream_open && now() - stream_ms > stream_idle_ms) stream_abandon();
@@ -49,7 +50,8 @@ void write_begin(uint8_t seq, const uint8_t* payload, U32 length) {
     else if (!storage_server::valid_write_path(path)) code = P::s_refused;
     else if ((code = enter_writes()) == P::s_ok) {
         storage_used = 1;
-        stream_size = P::get32(payload + n + 1); stream_crc = P::get32(payload + n + 5);
+        stream_size = P::get32(payload + n + 1);
+        stream_crc = P::get32(payload + n + 5);
         for (U32 i = 0; i != 32; ++i) stream_sha[i] = payload[n + 9 + i];
         for (U32 i = 0; i <= n; ++i) stream_target[i] = path[i];
         file_engine::upload_name(stream_tmp, stream_size, stream_crc);
@@ -59,10 +61,13 @@ void write_begin(uint8_t seq, const uint8_t* payload, U32 length) {
             if (mounted != file_client::mounted_stale) file_client::close_write(stream_fd, mounted);
         }
         if (code == P::s_ok) {
-            stream_open = 1; stream_received = 0; stream_running = 0;
+            stream_open = 1;
+            stream_received = 0;
+            stream_running = 0;
             stream_hash().reset();
         }
-        writes_due = 1; writes_ms = stream_ms = now();
+        writes_due = 1;
+        writes_ms = stream_ms = now();
     }
     result.last_status = code;
     status_only(P::t_write_begin, seq, code);
@@ -70,11 +75,16 @@ void write_begin(uint8_t seq, const uint8_t* payload, U32 length) {
 
 // FILE_WRITE_DATA: u32 offset + bytes, written to the tmp file before the reply. Reply: u32 status, u32 received.
 void write_data(uint8_t seq, const uint8_t* payload, U32 length) {
-    if (!stream_open || length < 5) { status_only(P::t_write_data, seq, P::s_state); return; }
+    if (!stream_open || length < 5) {
+        status_only(P::t_write_data, seq, P::s_state);
+        return;
+    }
     const U32 offset = P::get32(payload), n = length - 4;
     U32 code = P::s_ok;
-    if (offset < stream_received && offset + n <= stream_received) {}  // a resend: file.write_end checks the file
-    else if (offset != stream_received || offset + n > stream_size) code = P::s_range;
+    if (offset < stream_received && offset + n <= stream_received) {
+    }  // a resend: file.write_end checks the file
+    else if (offset != stream_received || offset + n > stream_size)
+        code = P::s_range;
     else {
         uint32_t written = 0;
         code = file_client::write_more(stream_fd, payload + 4, n, written, mounted);
@@ -83,11 +93,17 @@ void write_data(uint8_t seq, const uint8_t* payload, U32 length) {
             stream_running = xyf::crc::update(stream_running, payload + 4, n);
             stream_hash().update(payload + 4, n);
         } else stream_abandon();
-        writes_due = 1; writes_ms = stream_ms = now();
+        writes_due = 1;
+        writes_ms = stream_ms = now();
     }
     result.last_status = code;
-    if (code != P::s_ok) { status_only(P::t_write_data, seq, code); return; }
-    uint8_t p[8]; P::put32(p, code); P::put32(p + 4, stream_received);
+    if (code != P::s_ok) {
+        status_only(P::t_write_data, seq, code);
+        return;
+    }
+    uint8_t p[8];
+    P::put32(p, code);
+    P::put32(p + 4, stream_received);
     send(P::t_write_data, seq, p, 8);
 }
 
@@ -95,24 +111,33 @@ void write_data(uint8_t seq, const uint8_t* payload, U32 length) {
 // the target. Any failure removes the tmp file. Reply: u32 status, u32 written, u32 read-back CRC, u32 A's error.
 void write_end(uint8_t seq) {
     U32 code = P::s_ok;
-    if (stream_done) {}                                                  // a retry after a lost reply
-    else if (!stream_open || stream_received != stream_size) code = P::s_state;
+    if (stream_done) {
+    }                                                  // a retry after a lost reply
+    else if (!stream_open || stream_received != stream_size)
+        code = P::s_state;
     else {
-        stream_open = 0; stream_back = 0; stream_error = 0;
+        stream_open = 0;
+        stream_back = 0;
+        stream_error = 0;
         xyf_core::hash::Digest digest;
         code = file_client::close_write(stream_fd, mounted);
         if (code == P::s_ok && stream_running != stream_crc) code = P::s_crc;
-        else if (code == P::s_ok && (!stream_hash().finish(digest) || !sha_equal(digest.bytes, stream_sha))) code = P::s_sha;
+        else if (code == P::s_ok && (!stream_hash().finish(digest) || !sha_equal(digest.bytes, stream_sha)))
+            code = P::s_sha;
         uint32_t total = 0;
         if (code == P::s_ok) code = file_client::read_crc(stream_tmp, stream_size, total, stream_back, mounted);
         if (code == P::s_ok && (total != stream_size || stream_back != stream_crc)) code = P::s_crc;
         if (code == P::s_ok) code = file_client::rename(stream_tmp, stream_target, stream_error, mounted, true);
         if (code != P::s_ok && mounted != file_client::mounted_stale) file_client::remove_partial(stream_tmp, mounted);
         stream_done = code == P::s_ok;
-        writes_due = 1; writes_ms = now();
+        writes_due = 1;
+        writes_ms = now();
         say(code == P::s_ok ? "File written and verified." : "File write FAILED.", stream_target);
     }
-    uint8_t p[16]; P::put32(p, code); P::put32(p + 4, stream_received); P::put32(p + 8, stream_back);
+    uint8_t p[16];
+    P::put32(p, code);
+    P::put32(p + 4, stream_received);
+    P::put32(p + 8, stream_back);
     P::put32(p + 12, stream_error);
     result.last_status = code;
     send(P::t_write_end, seq, p, 16);

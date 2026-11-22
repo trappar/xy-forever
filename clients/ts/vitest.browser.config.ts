@@ -21,9 +21,17 @@ export default defineConfig({
       provider: playwright({
         launchOptions: {
           channel: 'chrome',
-          args: ['--disable-background-networking', '--disable-component-update', '--disable-domain-reliability',
-            '--disable-sync', '--metrics-recording-only', '--no-default-browser-check', '--no-first-run', '--no-pings',
-            '--disable-blink-features=Serial'],
+          args: [
+            '--disable-background-networking',
+            '--disable-component-update',
+            '--disable-domain-reliability',
+            '--disable-sync',
+            '--metrics-recording-only',
+            '--no-default-browser-check',
+            '--no-first-run',
+            '--no-pings',
+            '--disable-blink-features=Serial',
+          ],
         },
       }),
       instances: [{ browser: 'chromium' }],

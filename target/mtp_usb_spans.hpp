@@ -11,5 +11,5 @@ static const uint32_t table[][3] = {
     {0x88a0c0b0u, 0x80u, 0xcd2ec45bu},   // TX start; device CRC matched the 1.2.1 image
 };
 static const uint32_t count = sizeof(table) / sizeof(table[0]);
-} }
+}}
 #endif

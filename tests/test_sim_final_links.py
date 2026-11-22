@@ -1,13 +1,13 @@
 """A refuses a writable open whose final link reaches an inbox file (issue #6: final_link_reaches_inbox, the one
 caller of the stock lookup 889fa2be). Simulator only: host links stand for yaffs links (absolute ones by their host
 path), so yaffs hardlinks are not modelled here."""
+
 import unittest
 
 import pytest
-
 import test_simulator as S
 
-WRITE = 0x8301                                  # the stock "wb" open flags
+WRITE = 0x8301  # the stock "wb" open flags
 LOG = '/yaffs2/xy-forever/log/'
 
 
@@ -30,23 +30,24 @@ class FinalLinks(unittest.TestCase):
         (root / 'upgrade/sub/x.tfw').write_bytes(b'unchanged')
         (root / 'user').mkdir()
         (root / 'user/song.bin').write_bytes(b'mine')
-        (log / 'rel').symlink_to('../../upgrade/sub/x.tfw')                  # relative, from the link's folder
-        (log / 'abs').symlink_to(root / 'upgrade/sub/x.tfw')                # absolute (/yaffs2/upgrade/sub/x.tfw)
-        (log / 'chain').symlink_to('rel')                                   # relative -> relative
-        (root / 'user/hop').symlink_to(root / 'xy-forever/log/rel')         # absolute -> relative
+        (log / 'rel').symlink_to('../../upgrade/sub/x.tfw')  # relative, from the link's folder
+        (log / 'abs').symlink_to(root / 'upgrade/sub/x.tfw')  # absolute (/yaffs2/upgrade/sub/x.tfw)
+        (log / 'chain').symlink_to('rel')  # relative -> relative
+        (root / 'user/hop').symlink_to(root / 'xy-forever/log/rel')  # absolute -> relative
         (log / 'chain-abs').symlink_to(root / 'user/hop')
-        (log / 'missing').symlink_to('../../upgrade/sub/new.tfw')           # a missing target in the inbox
-        (log / 'dangling').symlink_to('../../user/new.bin')                 # a missing target outside it
-        (log / 'song').symlink_to('../../user/song.bin')                    # benign
+        (log / 'missing').symlink_to('../../upgrade/sub/new.tfw')  # a missing target in the inbox
+        (log / 'dangling').symlink_to('../../user/new.bin')  # a missing target outside it
+        (log / 'song').symlink_to('../../user/song.bin')  # benign
         (log / 'loop-a').symlink_to('loop-b')
         (log / 'loop-b').symlink_to('loop-a')
-        (log / 'long').symlink_to('long-1')                                 # 7 links, then the inbox file
+        (log / 'long').symlink_to('long-1')  # 7 links, then the inbox file
         for i in range(1, 7):
             (log / ('long-%d' % i)).symlink_to('long-%d' % (i + 1) if i < 6 else 'rel')
-        for n in (6, 7):                                                    # n links, then an ordinary file
+        for n in (6, 7):  # n links, then an ordinary file
             for i in range(n):
-                (log / ('to-song-%d-%d' % (n, i))).symlink_to('to-song-%d-%d' % (n, i + 1) if i < n - 1 else
-                                                              '../../user/song.bin')
+                (log / ('to-song-%d-%d' % (n, i))).symlink_to(
+                    'to-song-%d-%d' % (n, i + 1) if i < n - 1 else '../../user/song.bin'
+                )
         self.connect(startup_ready=True)
         if entry:
             self.write_entry()
@@ -55,7 +56,7 @@ class FinalLinks(unittest.TestCase):
     def open_close(self, path, flags=WRITE):
         fd, error = self.a_request(S.PATH_CLASS, 0x29, flags, path=path)
         if fd >= 0:
-            self.assertEqual(self.a_request(S.PARTITION_CLASS, 0x2d, fd), (0, 0))
+            self.assertEqual(self.a_request(S.PARTITION_CLASS, 0x2D, fd), (0, 0))
         return fd, error
 
     @pytest.mark.sim
@@ -66,7 +67,7 @@ class FinalLinks(unittest.TestCase):
             self.assertEqual(self.open_close(LOG + name), (-1, S.EACCES), name)
         self.assertEqual((root / 'upgrade/sub/x.tfw').read_bytes(), b'unchanged')
         self.assertEqual(sorted(p.name for p in (root / 'upgrade/sub').iterdir()), ['x.tfw'])
-        fd, error = self.open_close(LOG + 'chain-abs', 0)                   # reading through them: as before
+        fd, error = self.open_close(LOG + 'chain-abs', 0)  # reading through them: as before
         self.assertEqual(error, 0)
         self.assertGreaterEqual(fd, 0)
 
@@ -76,7 +77,7 @@ class FinalLinks(unittest.TestCase):
         root = self.seed(entry=False)
         dev = self.links[-1]
         for name in ('rel', 'abs', 'chain-abs'):
-            self.assertEqual(self.write(dev, b'replaced', LOG + name)[0], S.ids.S_STORAGE, name)   # A's EACCES
+            self.assertEqual(self.write(dev, b'replaced', LOG + name)[0], S.ids.S_STORAGE, name)  # A's EACCES
         self.assertEqual((root / 'upgrade/sub/x.tfw').read_bytes(), b'unchanged')
         self.assertEqual(self.write(dev, b'new song', LOG + 'song')[0], 0)
         self.assertEqual((root / 'user/song.bin').read_bytes(), b'new song')

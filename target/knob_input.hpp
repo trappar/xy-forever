@@ -47,5 +47,5 @@ void start(bool identity_ok);
 // (not a job's screen); otherwise the counts are dropped. Returns the rows to
 // move, -max_moves..max_moves (positive: down, as +).
 int32_t pass(uint32_t now_ms, bool selection);
-} }
+}}
 #endif

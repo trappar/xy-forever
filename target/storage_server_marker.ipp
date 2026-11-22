@@ -1,12 +1,18 @@
 // Part of storage_server.cpp, included there at this point: not compiled alone.
 // #144: A's own checks inside a request (stat_into below, engine_identity) counted and timed for
 // storage_server_timing.ipp, so a request's time splits into ours and the stock executor's.
-struct Checks { U32 count; uint64_t cycles; };
+struct Checks {
+    U32 count;
+    uint64_t cycles;
+};
 Checks a_checks __attribute__((section(".data"))) = {0, 0};
 struct CheckSpan {
     const uint64_t start;
     CheckSpan() : start(xyf::clock::cycles()) {}
-    ~CheckSpan() { ++a_checks.count; a_checks.cycles += xyf::clock::cycles() - start; }
+    ~CheckSpan() {
+        ++a_checks.count;
+        a_checks.cycles += xyf::clock::cycles() - start;
+    }
 };
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
 // The dev-menu marker around every unlink and rmdir (the operations that remove a name;
@@ -32,7 +38,8 @@ __attribute__((noinline)) bool stat_into(const char* path, U32* record) {   // n
     return stock<0x889f3516u, int>(path, record) == 0;                 // stock posix stat (on a: yaffs)
 }
 bool same_record(const U32* a, const U32* b) {
-    for (U32 i = 0; i != record_words; ++i) if (a[i] != b[i]) return false;
+    for (U32 i = 0; i != record_words; ++i)
+        if (a[i] != b[i]) return false;
     return true;
 }
 bool same_object() { return same_record(marker_record[0], marker_record[1]); }
@@ -71,7 +78,10 @@ const U32 protect_parent_steps = max_path / 2;
 char protect_walk[max_path + 3 * protect_parent_steps] __attribute__((section(".data"))) = {0};
 bool directory_reaches_inbox(const char* path) {
     U32 end = 0;
-    while (end != max_path && path[end]) { protect_walk[end] = path[end]; ++end; }
+    while (end != max_path && path[end]) {
+        protect_walk[end] = path[end];
+        ++end;
+    }
     if (end == max_path || !mount_root_exists()) return true;       // no ancestry proof: refuse the change
     protect_walk[end] = 0;
     // Missing names and regular files have no usable /.. lookup. Start from their nearest existing directory;
@@ -85,7 +95,10 @@ bool directory_reaches_inbox(const char* path) {
     for (U32 step = 0; step != protect_parent_steps; ++step) {
         if (same_identity(marker_record[3], marker_record[2])) return true;
         if (same_identity(marker_record[3], marker_record[4])) return false;
-        protect_walk[end++] = '/'; protect_walk[end++] = '.'; protect_walk[end++] = '.'; protect_walk[end] = 0;
+        protect_walk[end++] = '/';
+        protect_walk[end++] = '.';
+        protect_walk[end++] = '.';
+        protect_walk[end] = 0;
         if (!stat_into(protect_walk, marker_record[3])) return true;
     }
     return true;
@@ -175,8 +188,14 @@ U32 rename_now(char* to, bool over) {
     const bool marker = marker_exists();           // (the source as the marker by another name: refused above)
     const int r = a_side::rename_object(from, to);
     U32 error = 0;
-    if (r == -2) { note(0x21, file_engine::refuse_off, 0xfff7u); error = error_io; }   // spans differ: not called
-    else if (r < 0) { error = U32(-int32_t(word(yaffs_error))); if (!error || error > 0xffffu) error = error_io; }
+    if (r == -2) {
+        note(0x21, file_engine::refuse_off, 0xfff7u);
+        error = error_io;
+    }   // spans differ: not called
+    else if (r < 0) {
+        error = U32(-int32_t(word(yaffs_error)));
+        if (!error || error > 0xffffu) error = error_io;
+    }
     if (marker && !stat_into(marker_path, marker_record[1])) restore_marker(0x21);
     return error;
 }

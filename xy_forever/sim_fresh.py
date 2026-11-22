@@ -1,9 +1,10 @@
 """The simulator's seed of a stock OP-XY just after Track 5 wrote XY Forever (#178; xy_forever/sim.py)."""
+
 from pathlib import Path
 
 from . import paths
 
-STOCK_UPGRADE = 'upgrade/firmware/blackfin/bin/os.ldr'     # the stock updater's own os.ldr (#178: the device adopts it)
+STOCK_UPGRADE = 'upgrade/firmware/blackfin/bin/os.ldr'  # the stock updater's own os.ldr (#178: the device adopts it)
 
 
 def seed_fresh(root, stock='stock', image=None):

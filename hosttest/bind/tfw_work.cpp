@@ -12,8 +12,10 @@ namespace nb = nanobind;
 using namespace xyf_core;
 
 // A failed check raises (the glue builds without assert's NDEBUG dependence).
-#define CHECK(condition) \
-    do { if (!(condition)) throw std::runtime_error("tfw_work line " + std::to_string(__LINE__) + ": " #condition); } while (0)
+#define CHECK(condition)                                                                                               \
+    do {                                                                                                               \
+        if (!(condition)) throw std::runtime_error("tfw_work line " + std::to_string(__LINE__) + ": " #condition);     \
+    } while (0)
 
 namespace {
 
@@ -35,8 +37,7 @@ bool keep_going(void* context) {
     Source& s = *static_cast<Source*>(context);
     Progress& p = s.progress;
     REQUIRE_IN(s, !p.stopped);
-    p.stopped = ++p.polls == p.stop_at || (p.stop_after_signature && p.signatures) ||
-                (p.stop_on_output && p.written);
+    p.stopped = ++p.polls == p.stop_at || (p.stop_after_signature && p.signatures) || (p.stop_on_output && p.written);
     return !p.stopped;
 }
 bool read(void* context, U32 offset, Byte* out, U32 count) {
@@ -80,35 +81,34 @@ void run(Source& s) {
     hash::Digest digest = unchanged;
     Work interrupted_hash(&s, keep_going);
     p.stop_at = 3;
-    CHECK(tfw::ciphertext_digest(source, buffer, sizeof(buffer), digest, tfw::op_xy_sku, &interrupted_hash)
-          == tfw::Status::cancelled);
+    CHECK(tfw::ciphertext_digest(source, buffer, sizeof(buffer), digest, tfw::op_xy_sku, &interrupted_hash) ==
+          tfw::Status::cancelled);
     CHECK(p.reads == 2 && p.read_bytes == 320 + 512 && hash::equal(digest, unchanged));
     CHECK(!interrupted_hash.checkpoint() && p.polls == 3);
 
     p = {};
     Work hashing(&s, keep_going);
-    CHECK(tfw::ciphertext_digest(source, buffer, sizeof(buffer), digest, tfw::op_xy_sku, &hashing)
-          == tfw::Status::ok);
+    CHECK(tfw::ciphertext_digest(source, buffer, sizeof(buffer), digest, tfw::op_xy_sku, &hashing) == tfw::Status::ok);
     CHECK(p.read_bytes == s.data.size() - tfw::header_bytes + 320 && !p.keys);
 
     tfw::Archive decrypted;
     p = {};
     Work wrong_digest(&s, keep_going);
-    CHECK(decrypted.open_digested(source, keys, unchanged, signature, buffer, tfw::op_xy_sku, &wrong_digest)
-          == tfw::Status::ciphertext_hash);
+    CHECK(decrypted.open_digested(source, keys, unchanged, signature, buffer, tfw::op_xy_sku, &wrong_digest) ==
+          tfw::Status::ciphertext_hash);
     CHECK(p.signatures == 1 && !p.keys && !decrypted.reader().read);
 
     p = {};
     Work before_key(&s, keep_going);
     p.stop_after_signature = true;
-    CHECK(decrypted.open_digested(source, keys, digest, signature, buffer, tfw::op_xy_sku, &before_key)
-          == tfw::Status::cancelled);
+    CHECK(decrypted.open_digested(source, keys, digest, signature, buffer, tfw::op_xy_sku, &before_key) ==
+          tfw::Status::cancelled);
     CHECK(p.signatures == 1 && !p.keys && !decrypted.reader().read);
 
     p = {};
     Work during_decryption(&s, keep_going);
-    CHECK(decrypted.open_digested(source, keys, digest, signature, buffer, tfw::op_xy_sku, &during_decryption)
-          == tfw::Status::ok);
+    CHECK(decrypted.open_digested(source, keys, digest, signature, buffer, tfw::op_xy_sku, &during_decryption) ==
+          tfw::Status::ok);
     p.stop_at = p.polls + 3;
     const U32 read_before = p.read_bytes;
     CHECK(!input::read(decrypted.reader(), 0, buffer, sizeof(buffer)));
@@ -117,8 +117,8 @@ void run(Source& s) {
 
     p = {};
     Work opening_directory(&s, keep_going);
-    CHECK(decrypted.open_digested(source, keys, digest, signature, buffer, tfw::op_xy_sku, &opening_directory)
-          == tfw::Status::ok);
+    CHECK(decrypted.open_digested(source, keys, digest, signature, buffer, tfw::op_xy_sku, &opening_directory) ==
+          tfw::Status::ok);
     input::Reader clear = decrypted.reader();
     std::vector<zip::Entry> entries(16);
     zip::Archive archive;
@@ -130,8 +130,8 @@ void run(Source& s) {
 
     p = {};
     Work extraction(&s, keep_going);
-    CHECK(decrypted.open_digested(source, keys, digest, signature, buffer, tfw::op_xy_sku, &extraction)
-          == tfw::Status::ok);
+    CHECK(decrypted.open_digested(source, keys, digest, signature, buffer, tfw::op_xy_sku, &extraction) ==
+          tfw::Status::ok);
     clear = decrypted.reader();
     CHECK(zip::open({clear.context, clear.size, clear.read}, zip::Limits(), entries.data(), U32(entries.size()),
                     archive, &extraction) == zip::Status::ok);
@@ -158,8 +158,8 @@ void run(Source& s) {
     workspace.scratch = reinterpret_cast<Byte*>(scratch.data());
     workspace.capacity = U32(scratch.size() * sizeof(U32));
     tfw_os::Result result;
-    CHECK(tfw_os::extract(source, keys, digest, signature, policy, 0x11a00000u, limits,
-                          workspace, {&s, sink}, result, &writing_image) == tfw_os::Status::cancelled);
+    CHECK(tfw_os::extract(source, keys, digest, signature, policy, 0x11a00000u, limits, workspace, {&s, sink}, result,
+                          &writing_image) == tfw_os::Status::cancelled);
     CHECK(result.ldr == Error::ok && !result.bytes && result.written == 32768 && p.writes == 1);
     CHECK(!workspace.archive.reader().read);
 }
@@ -171,7 +171,8 @@ void bind_tfw_work(nb::module_ m) {
     m.def("run", [](nb::bytes data, nb::bytes public_key) {
         const Byte* d = reinterpret_cast<const Byte*>(data.c_str());
         const Byte* k = reinterpret_cast<const Byte*>(public_key.c_str());
-        Source s = {std::vector<Byte>(d, d + data.size()), std::vector<Byte>(k, k + public_key.size()), {}, std::string()};
+        Source s = {
+            std::vector<Byte>(d, d + data.size()), std::vector<Byte>(k, k + public_key.size()), {}, std::string()};
         CHECK(!s.data.empty() && s.public_key.size() == tfw::signature_public_key_bytes);
         run(s);
         if (!s.failure.empty()) throw std::runtime_error("tfw_work callback: " + s.failure);

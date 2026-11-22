@@ -19,37 +19,50 @@ bool phase_zlp(InPhase& p, const uint8_t* data, uint32_t n) {
     for (uint32_t i = 0; i != n;) {
         if (p.sent < 4) {
             p.head[p.sent++] = data[i++];
-            if (p.sent == 4) p.length = uint32_t(p.head[0]) | uint32_t(p.head[1]) << 8 | uint32_t(p.head[2]) << 16 |
-                                        uint32_t(p.head[3]) << 24;
+            if (p.sent == 4)
+                p.length = uint32_t(p.head[0]) | uint32_t(p.head[1]) << 8 | uint32_t(p.head[2]) << 16 |
+                           uint32_t(p.head[3]) << 24;
             continue;
         }
         const uint32_t left = p.length > p.sent ? p.length - p.sent : 0;
         const uint32_t take = n - i < left ? n - i : left;
-        p.sent += take; i += take;
+        p.sent += take;
+        i += take;
         if (p.sent >= p.length) {                               // the container ended
             zlp = (p.length & (packet_bytes - 1)) == 0;
-            p.sent = 0; p.length = 0;
+            p.sent = 0;
+            p.length = 0;
         }
     }
     if (p.sent >= 4 && p.sent >= p.length) {                    // a container of only its header (length 4)
         zlp = (p.length & (packet_bytes - 1)) == 0;
-        p.sent = 0; p.length = 0;
+        p.sent = 0;
+        p.length = 0;
     }
     return zlp;
 }
 void files_init(Files& f, volatile uint32_t* mounted, uint32_t (*on_change)()) {
-    f.mounted = mounted; f.on_change = on_change;
+    f.mounted = mounted;
+    f.on_change = on_change;
     f.link = f.window = f.writing = f.last_change_ms = f.requests = f.data_requests = f.data_bytes = 0;
     f.timing = Timing();
-    f.write_fd = -1; f.write_n = 0;
-    f.ahead_fd = -1; f.ahead_left = f.ahead_half = f.ahead_at = f.ahead_end = f.ahead_asked = 0;
-    for (uint32_t i = 0; i != max_open; ++i) { f.open[i] = -1; f.open_write[i] = 0; }
+    f.write_fd = -1;
+    f.write_n = 0;
+    f.ahead_fd = -1;
+    f.ahead_left = f.ahead_half = f.ahead_at = f.ahead_end = f.ahead_asked = 0;
+    for (uint32_t i = 0; i != max_open; ++i) {
+        f.open[i] = -1;
+        f.open_write[i] = 0;
+    }
 }
 #if defined(__bfin__) || defined(XYF_SIM)
 namespace {
 const uint32_t entry_room = 6 + C::max_name;
 static_assert(sizeof(Files::page) == M::page * entry_room, "one list page");
-Files& of(void* c) { ++static_cast<Files*>(c)->requests; return *static_cast<Files*>(c); }
+Files& of(void* c) {
+    ++static_cast<Files*>(c)->requests;
+    return *static_cast<Files*>(c);
+}
 // #144: one file call's cycles into f.timing (data: a read or write request of bytes, else another call).
 struct Span {
     Timing& t;
@@ -59,18 +72,25 @@ struct Span {
     static uint32_t longest(uint32_t was, uint64_t c) { return c > was ? (c >> 32 ? 0xffffffffu : uint32_t(c)) : was; }
     void read(int32_t got) {
         const uint64_t c = took();
-        ++t.reads; t.read_units += uint32_t(c >> 10); t.read_max = longest(t.read_max, c);
+        ++t.reads;
+        t.read_units += uint32_t(c >> 10);
+        t.read_max = longest(t.read_max, c);
         if (got > 0) t.read_bytes += uint32_t(got);
     }
     void write(int32_t put) {
         const uint64_t c = took();
-        ++t.writes; t.write_units += uint32_t(c >> 10); t.write_max = longest(t.write_max, c);
+        ++t.writes;
+        t.write_units += uint32_t(c >> 10);
+        t.write_max = longest(t.write_max, c);
         if (put > 0) t.write_bytes += uint32_t(put);
     }
 };
 struct Call : Span {                                                // every other file call
     explicit Call(Files& f) : Span(f) {}
-    ~Call() { ++t.calls; t.call_units += uint32_t(took() >> 10); }
+    ~Call() {
+        ++t.calls;
+        t.call_units += uint32_t(took() >> 10);
+    }
 };
 int fail(Files& f, const C::Reply& r) {
     if (r.outcome == C::link || r.outcome == C::lost || r.outcome == C::busy) {
@@ -82,12 +102,18 @@ int fail(Files& f, const C::Reply& r) {
 }
 int from_status(Files& f, uint32_t code) {
     if (code == P::s_ok) return 0;
-    if (code == P::s_link) { f.link = 1; return M::f_link; }
+    if (code == P::s_link) {
+        f.link = 1;
+        return M::f_link;
+    }
     return code == P::s_not_found ? M::f_not_found : code == P::s_refused ? M::f_refused : M::f_storage;
 }
 int errno_result(uint32_t error) {
-    return error == C::enoent ? M::f_not_found : error == C::eacces ? M::f_refused : error == C::eexist ? M::f_exists :
-           error == C::enotempty ? M::f_not_empty : M::f_storage;
+    return error == C::enoent    ? M::f_not_found :
+           error == C::eacces    ? M::f_refused :
+           error == C::eexist    ? M::f_exists :
+           error == C::enotempty ? M::f_not_empty :
+                                   M::f_storage;
 }
 // The write rule and the engine's policy for this change (the depth rule binds writes, mkdir and
 // renames, never removals: #124), then A's window. to: a rename's target.
@@ -96,7 +122,10 @@ bool may_change(Files& f, const char* path, file_engine::Operation op, const cha
     if (to ? !storage_server::valid_rename(path, to) : !storage_server::valid_change_path(path, op)) return false;
     f.last_change_ms = xyf::clock::ms();
     if (f.window) return true;
-    if (f.on_change() != P::s_ok) { f.link = 1; return false; }
+    if (f.on_change() != P::s_ok) {
+        f.link = 1;
+        return false;
+    }
     f.window = 1;
     return true;
 }
@@ -105,7 +134,8 @@ void name_copy(char* out, const uint8_t* name, uint32_t n) {
     for (uint32_t i = 0; i != n; ++i) out[i] = char(name[i]);
     out[n] = 0;
 }
-int list(void* c, const char* folder, xyf_core::U32 skip, M::Entry* out, xyf_core::U32 room, xyf_core::U32& count, xyf_core::U32& more) {
+int list(void* c, const char* folder, xyf_core::U32 skip, M::Entry* out, xyf_core::U32 room, xyf_core::U32& count,
+         xyf_core::U32& more) {
     Files& f = of(c);
     const Call span(f);
     count = more = 0;
@@ -154,7 +184,9 @@ int space(void* c, const char* path, xyf_core::U32& block, xyf_core::U32& blocks
     const C::Reply r = C::statfs(path, record);
     if (r.outcome) return fail(f, r);
     if (r.value != 0) return errno_result(r.error);
-    block = P::get32(record); blocks = P::get32(record + 4); free_blocks = P::get32(record + 8);
+    block = P::get32(record);
+    blocks = P::get32(record + 4);
+    free_blocks = P::get32(record + 8);
     return block ? 0 : M::f_storage;
 }
 int open(void* c, const char* path, bool write) {
@@ -168,7 +200,8 @@ int open(void* c, const char* path, bool write) {
     const C::Reply r = C::open(path, write ? storage_server::write_open_flags : 0u);   // op 0x29
     if (r.outcome) return fail(f, r);
     if (r.value < 0) return errno_result(r.error);
-    f.open[slot] = r.value; f.open_write[slot] = write ? 1 : 0;
+    f.open[slot] = r.value;
+    f.open_write[slot] = write ? 1 : 0;
     if (write) ++f.writing;
     return r.value;
 }
@@ -180,8 +213,12 @@ void ask(Files& f) {                                                // the next 
     if (f.ahead_asked || !f.ahead_left || f.link) return;
     const uint32_t n = f.ahead_left < C::stream_max ? f.ahead_left : C::stream_max;
     const C::Reply r = C::read_start(f.ahead_fd, (f.ahead_half ^ 1u) * half_bytes, n);   // op 0x2a, left out
-    if (r.outcome) { f.ahead_left = 0; return; }                    // nothing sent: the reads go on one by one
-    f.ahead_asked = n; f.ahead_left -= n;
+    if (r.outcome) {
+        f.ahead_left = 0;
+        return;
+    }                    // nothing sent: the reads go on one by one
+    f.ahead_asked = n;
+    f.ahead_left -= n;
 }
 int take(Files& f) {                                                // the request out, awaited: its half is next
     const uint32_t n = f.ahead_asked;
@@ -189,11 +226,20 @@ int take(Files& f) {                                                // the reque
     Span span(f);
     const C::Reply r = C::left_poll(true);                          // bounded (request_ms)
     span.read(r.outcome ? 0 : r.value);
-    if (r.outcome) { f.ahead_left = 0; return fail(f, r); }
-    if (r.value < 0 || uint32_t(r.value) > n) { f.ahead_left = 0; return M::f_storage; }
+    if (r.outcome) {
+        f.ahead_left = 0;
+        return fail(f, r);
+    }
+    if (r.value < 0 || uint32_t(r.value) > n) {
+        f.ahead_left = 0;
+        return M::f_storage;
+    }
     if (uint32_t(r.value) < n) f.ahead_left = 0;                    // the file ended early: nothing more to ask
-    ++f.data_requests; f.data_bytes += uint32_t(r.value);
-    f.ahead_half ^= 1u; f.ahead_at = 0; f.ahead_end = uint32_t(r.value);
+    ++f.data_requests;
+    f.data_bytes += uint32_t(r.value);
+    f.ahead_half ^= 1u;
+    f.ahead_at = 0;
+    f.ahead_end = uint32_t(r.value);
     C::stream(f.ahead_half * half_bytes, f.ahead_end);              // its cache lines invalidated
     return 0;
 }
@@ -202,7 +248,10 @@ void ahead(void* c, int fd, xyf_core::U32 count) {
     const Call span(f);
     drop_ahead(f);
     if (f.link || f.write_fd >= 0 || C::left_out()) return;         // another request is left out: none
-    f.ahead_fd = fd; f.ahead_left = count; f.ahead_half = 1; f.ahead_at = f.ahead_end = 0;
+    f.ahead_fd = fd;
+    f.ahead_left = count;
+    f.ahead_half = 1;
+    f.ahead_at = f.ahead_end = 0;
     ask(f);                                                         // into half 0
     if (!f.ahead_asked) f.ahead_fd = -1;
 }
@@ -230,7 +279,8 @@ int read(void* c, int fd, xyf_core::Byte* out, xyf_core::U32 n) {
     span.read(r.outcome ? 0 : r.value);
     if (r.outcome) return fail(f, r);
     if (r.value < 0 || uint32_t(r.value) > n) return M::f_storage;
-    ++f.data_requests; f.data_bytes += uint32_t(r.value);
+    ++f.data_requests;
+    f.data_bytes += uint32_t(r.value);
     return r.value;
 }
 }
@@ -240,19 +290,22 @@ void drop_ahead(Files& f) {
         const C::Reply r = C::left_poll(true);                      // bounded; its bytes are not needed
         if (r.outcome) fail(f, r);
     }
-    f.ahead_fd = -1; f.ahead_left = f.ahead_at = f.ahead_end = 0;
+    f.ahead_fd = -1;
+    f.ahead_left = f.ahead_at = f.ahead_end = 0;
 }
 int collect(Files& f) {
     drop_ahead(f);
     if (f.write_fd < 0) return 0;
     const uint32_t n = f.write_n;
-    f.write_fd = -1; f.write_n = 0;
+    f.write_fd = -1;
+    f.write_n = 0;
     Span span(f);
     const C::Reply r = C::left_poll(true);
     span.write(r.outcome ? 0 : r.value);
     if (r.outcome) return fail(f, r);
     if (r.value < 0 || uint32_t(r.value) != n) return M::f_storage;
-    ++f.data_requests; f.data_bytes += n;
+    ++f.data_requests;
+    f.data_bytes += n;
     return 0;
 }
 namespace {
@@ -267,7 +320,8 @@ int write(void* c, int fd, const xyf_core::Byte* data, xyf_core::U32 n) {
     f.last_change_ms = xyf::clock::ms();
     const C::Reply r = C::write_start(fd, data, n);                // op 0x2b, left out
     if (r.outcome) return fail(f, r);
-    f.write_fd = fd; f.write_n = n;
+    f.write_fd = fd;
+    f.write_n = n;
     return int(n);
 }
 int seek(void* c, int fd, xyf_core::U32 offset) {
@@ -286,7 +340,11 @@ int close(void* c, int fd) {
     for (uint32_t i = 0; i != max_open; ++i)
         if (f.open[i] == fd) {
             f.open[i] = -1;
-            if (f.open_write[i]) { f.open_write[i] = 0; --f.writing; wrote = true; }
+            if (f.open_write[i]) {
+                f.open_write[i] = 0;
+                --f.writing;
+                wrote = true;
+            }
         }
     if (wrote) f.last_change_ms = xyf::clock::ms();
     if (f.link) return M::f_link;
@@ -298,8 +356,9 @@ int change(void* c, uint32_t op, const char* path) {
     Files& f = of(c);
     const Call span(f);
     if (f.link) return M::f_link;
-    const file_engine::Operation policy = op == 0x25u ? file_engine::op_unlink : op == 0x27u ? file_engine::op_rmdir :
-                                          file_engine::op_mkdir;
+    const file_engine::Operation policy = op == 0x25u ? file_engine::op_unlink :
+                                          op == 0x27u ? file_engine::op_rmdir :
+                                                        file_engine::op_mkdir;
     if (!may_change(f, path, policy)) return f.link ? M::f_link : M::f_refused;
     const C::Reply r = op == 0x25u ? C::unlink(path) : op == 0x27u ? C::rmdir(path) : C::mkdir(path);
     if (r.outcome) return fail(f, r);
@@ -316,7 +375,10 @@ int move(void* c, const char* from, const char* to, bool over) {
     uint32_t error = 0;
     const uint32_t code = C::rename(from, to, error, *f.mounted, over);
     if (code == P::s_ok) return 0;
-    if (code == P::s_link) { f.link = 1; return M::f_link; }
+    if (code == P::s_link) {
+        f.link = 1;
+        return M::f_link;
+    }
     return error ? errno_result(error) : from_status(f, code);
 }
 int rename(void* c, const char* from, const char* to) { return move(c, from, to, false); }
@@ -335,9 +397,14 @@ int upload(void* c, const char* path, xyf_core::U32 size, xyf_core::U32 tag) {
         return f.link ? M::f_link : M::f_refused;
     int fd = -1;
     const uint32_t code = C::open_write(f.upload, fd, *f.mounted);   // mkdir -p, op 0x29 "wb"
-    if (code == P::s_link) { f.link = 1; return M::f_link; }
+    if (code == P::s_link) {
+        f.link = 1;
+        return M::f_link;
+    }
     if (code != P::s_ok) return from_status(f, code);
-    f.open[slot] = fd; f.open_write[slot] = 1; ++f.writing;
+    f.open[slot] = fd;
+    f.open_write[slot] = 1;
+    ++f.writing;
     return fd;
 }
 int commit(void* c, const char* path, bool keep) {
@@ -345,10 +412,10 @@ int commit(void* c, const char* path, bool keep) {
 }
 }
 M::FileOps file_ops(Files& f) {
-    M::FileOps ops = {&f, list, stat, space, open, read, write, seek, close, mkdir, unlink, rmdir, rename, 0, 0,
-                      upload, commit, ahead};
+    M::FileOps ops = {&f,    list,   stat,  space,  open, read, write,  seek,   close,
+                      mkdir, unlink, rmdir, rename, 0,    0,    upload, commit, ahead};
     return ops;
 }
 #endif
-} }
+}}
 #endif

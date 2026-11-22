@@ -7,6 +7,7 @@ toggles were flipped there. Nothing is built then: the next boot of XY Forever c
 carries it, and a set here sends it back as saved, never changing it. The developer commands (`mods apply`,
 `mods dev`, `set-default`, `boot`) change what boots behind the saved inputs, once: the next plain power-on returns
 to them."""
+
 import hashlib
 import struct
 import time
@@ -15,15 +16,16 @@ from . import transport
 from . import usb_proto as P
 
 COMMANDS = ('status', 'set')
-EXPANDED, SAFE, UNVERIFIED = 1, 2, 4                    # config.get / config.set flags (SAFE: kept as saved)
+EXPANDED, SAFE, UNVERIFIED = 1, 2, 4  # config.get / config.set flags (SAFE: kept as saved)
 SAVING = ('saved', 'waiting for a quiet moment to be written', 'the last write failed: set it again')
-READ_S = 60.0                                           # s: the device reads its package list for a set
+READ_S = 60.0  # s: the device reads its package list for a set
 
 
 def get(dev):
     """(status, fields or None): config.get, mods as a list."""
-    code, body = dev.call(P.ids.CONFIG_GET, struct.pack('<I', 1),
-                          timeout=P.ids.COMMANDS[P.ids.CONFIG_GET]['timeout_ms'] / 1000.0)
+    code, body = dev.call(
+        P.ids.CONFIG_GET, struct.pack('<I', 1), timeout=P.ids.COMMANDS[P.ids.CONFIG_GET]['timeout_ms'] / 1000.0
+    )
     _, f = P.decode_reply(P.ids.CONFIG_GET, struct.pack('<I', code) + body)
     if code or f is None:
         return code or P.ids.S_BAD_REQUEST, None
@@ -42,8 +44,9 @@ def set_inputs(dev, mods, flags, sleep=None, clock=time.monotonic, timeout=READ_
     sleep = sleep or (lambda s: transport.pause(dev.t, s))
     start = clock()
     while True:
-        code, body = dev.call(P.ids.CONFIG_SET, request(mods, flags),
-                              timeout=P.ids.COMMANDS[P.ids.CONFIG_SET]['timeout_ms'] / 1000.0)
+        code, body = dev.call(
+            P.ids.CONFIG_SET, request(mods, flags), timeout=P.ids.COMMANDS[P.ids.CONFIG_SET]['timeout_ms'] / 1000.0
+        )
         if code != P.ids.S_BUSY or clock() - start > timeout:
             return code, body[4:].decode('ascii', 'replace') if len(body) > 4 else ''
         sleep(0.2)
@@ -62,13 +65,21 @@ def written(dev, sleep=None, clock=time.monotonic, timeout=30.0):
 
 
 def describe(f):
-    lines = ['saved: %s' % ('%d mod%s on %s (%s)' % (f['count'], '' if f['count'] == 1 else 's', f['base'] or '?',
-                                                    f['generation'] or '?') if f['record'] else
-                            'none (no mods: %s boots)' % (f['base'] or 'the default'))]
+    lines = [
+        'saved: %s'
+        % (
+            '%d mod%s on %s (%s)'
+            % (f['count'], '' if f['count'] == 1 else 's', f['base'] or '?', f['generation'] or '?')
+            if f['record']
+            else 'none (no mods: %s boots)' % (f['base'] or 'the default')
+        )
+    ]
     if f['mods']:
         lines.append('mods: %s' % ', '.join(f['mods']))
-    lines.append('Mod memory: %s%s' % ('4 MiB' if f['flags'] & EXPANDED else '2 MiB',
-                                     '; unknown base allowed' if f['flags'] & UNVERIFIED else ''))
+    lines.append(
+        'Mod memory: %s%s'
+        % ('4 MiB' if f['flags'] & EXPANDED else '2 MiB', '; unknown base allowed' if f['flags'] & UNVERIFIED else '')
+    )
     lines.append('write: %s' % (SAVING[f['saving']] if f['saving'] < len(SAVING) else f['saving']))
     return lines
 
@@ -92,7 +103,7 @@ def command(dev, args, out=print):
     if args.mods_command == 'status':
         out('\n'.join(describe(f)))
         return 0
-    flags = f['flags'] & (EXPANDED | SAFE | UNVERIFIED)    # safe mode as saved: only the device changes it
+    flags = f['flags'] & (EXPANDED | SAFE | UNVERIFIED)  # safe mode as saved: only the device changes it
     mods = list(args.mods) + ['ext-' + e for e in args.ext]
     if args.memory:
         flags = (flags & ~EXPANDED) | (EXPANDED if args.memory == 'expanded' else 0)

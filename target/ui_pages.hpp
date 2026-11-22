@@ -12,7 +12,13 @@ static const uint32_t list_visible = 7;          // the compact title bar leaves
 // files", "MTP: transfer"; null: nothing), on the home page right-aligned under the marks, on the other pages
 // in place of the hint line; version: the release version ("v0.1.0"), on the home page only; image: the
 // running image ("image f458e3cc"), on the Info page. A null Chrome: none.
-struct Chrome { const char* version; bool usb; const char* activity; bool mtp; const char* image; };
+struct Chrome {
+    const char* version;
+    bool usb;
+    const char* activity;
+    bool mtp;
+    const char* image;
+};
 // The marks (188): "MTP" and "USB" in black on accent boxes, mark_w x mark_h each, mark_gap apart, the USB
 // box's right edge at right, each at a fixed place; a mark that is off is not drawn (both are always
 // available; lit only while active). marks_w: the width both take.
@@ -28,12 +34,17 @@ uint32_t subtitle_room(const char* title);
 // The home pages' logo header (the logo, the marks' place, 188: the activity right-aligned under the
 // marks at home_activity_y, the rule at home_bar) and footer: status as the line above the hint; the
 // version right-aligned on the hint line.
-static const int home_bar = 56, home_logo_x = 20, home_logo_y = 11, home_activity_y = home_logo_y + mark_h + 5;   // the logo's left edge = the list text's
+static const int home_bar = 56, home_logo_x = 20, home_logo_y = 11,
+                 home_activity_y = home_logo_y + mark_h + 5;   // the logo's left edge = the list text's
 void home_header(uint16_t* fb, const Chrome* chrome);
 void home_footer(uint16_t* fb, const char* status, const char* hint, const Chrome* chrome);
 // The bottom line (y): the activity in accent while there is one, else hint (grey; may be null).
 void footer_line(uint16_t* fb, int y, const char* hint, const Chrome* chrome);
-struct ListRow { const char* title; const char* detail; bool marked; };   // marked = default (large: the detail in accent)
+struct ListRow {
+    const char* title;
+    const char* detail;
+    bool marked;
+};   // marked = default (large: the detail in accent)
 // large (#21: the Settings page, an option list): the detail at the title's size (2x, as the home menu's rows),
 // and a marked row's detail in accent instead of "(default)".
 struct List {
@@ -69,5 +80,5 @@ void draw_home_empty(uint16_t* fb, const Chrome* chrome);
 uint32_t list_first(uint32_t count, uint32_t selected);
 // floor(a * b / c) without a hardware/library divide; c == 0 -> 0.
 uint32_t scale(uint32_t a, uint32_t b, uint32_t c);
-} }
+}}
 #endif

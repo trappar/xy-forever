@@ -3,6 +3,7 @@
     python3 re/reach.py ADDR... > reach.txt      lines "<start> <end>", then "external ..."
 Output feeds re/spans.py.
 """
+
 import sys
 from pathlib import Path
 

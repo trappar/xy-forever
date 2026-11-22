@@ -17,7 +17,8 @@ export const RELEASE_FILTERS: readonly Filter[] = [USB_FILTERS[1]];
 
 /** What to choose when Chrome lists more than one entry: XY Forever's composite and its stock-CDC fallback service
  * (docs/protocol/transport.md) both speak XY Forever's protocol. */
-export const CHOOSE_TEXT = 'Chrome may list both "OP-XY (XY Forever)" and "OP_XY Boot": both are XY Forever, and either is fine to choose.';
+export const CHOOSE_TEXT =
+  'Chrome may list both "OP-XY (XY Forever)" and "OP_XY Boot": both are XY Forever, and either is fine to choose.';
 
 export interface SerialConnectOptions extends ConnectOptions {
   serial?: SerialLike | null | undefined;
@@ -37,12 +38,13 @@ export interface SerialConnectOptions extends ConnectOptions {
 export async function connectWebSerial(options: SerialConnectOptions = {}): Promise<Client> {
   const serial = options.serial === undefined ? webSerial() : options.serial;
   if (!serial) throw new Error('this browser has no Web Serial: use Chrome, Edge or Opera on a computer');
-  const filters = options.filters ?? USB_FILTERS, probeMs = options.probeMs ?? 1500;
+  const filters = options.filters ?? USB_FILTERS,
+    probeMs = options.probeMs ?? 1500;
   const picker = new PortPicker(serial, filters, probeMs);
   if ((await grantedPorts(serial)).some((port) => matches(port, filters))) {
     try {
       const client = await Client.connect(picker.opener, options);
-      picker.probing = false;                  // found: reconnect tries every granted port again, as after the chooser
+      picker.probing = false; // found: reconnect tries every granted port again, as after the chooser
       return client;
     } catch (error) {
       if (error !== picker.none) throw error;
@@ -56,7 +58,11 @@ export async function connectWebSerial(options: SerialConnectOptions = {}): Prom
     return await Client.connect(picker.opener, options);
   } catch (error) {
     if (!isXyfError(error, 'timeout')) throw error;
-    throw new XyfError('timeout', `The chosen port did not answer as XY Forever. Is your OP-XY in the XY Forever menu? ${CHOOSE_TEXT}`, { cause: error });
+    throw new XyfError(
+      'timeout',
+      `The chosen port did not answer as XY Forever. Is your OP-XY in the XY Forever menu? ${CHOOSE_TEXT}`,
+      { cause: error },
+    );
   }
 }
 
@@ -78,14 +84,18 @@ function openHere(error: unknown): boolean {
  */
 class PortPicker {
   readonly silent = new Set<SerialPortLike>();
-  readonly none = new XyfError('aborted', 'no granted port answered');   // handshake gives an opener's `aborted` back at once
+  readonly none = new XyfError('aborted', 'no granted port answered'); // handshake gives an opener's `aborted` back at once
   readonly held = new XyfError('aborted', 'XY Forever is already connected in this page: close that connection first');
   preferred: SerialPortLike | null = null;
   probing = true;
   private readonly serial: SerialLike;
   private readonly filters: readonly Filter[];
   private readonly probeMs: number;
-  constructor(serial: SerialLike, filters: readonly Filter[], probeMs: number) { this.serial = serial; this.filters = filters; this.probeMs = probeMs; }
+  constructor(serial: SerialLike, filters: readonly Filter[], probeMs: number) {
+    this.serial = serial;
+    this.filters = filters;
+    this.probeMs = probeMs;
+  }
 
   readonly opener: Opener = async () => {
     for (;;) {
@@ -95,10 +105,14 @@ class PortPicker {
       if (candidates.length === 0) {
         if (this.probing) throw this.none;
         if (ports.length === 0) throw new Error('no XY Forever port granted or attached');
-        this.silent.clear(); candidates = ports;
+        this.silent.clear();
+        candidates = ports;
       }
       const port = this.preferred && candidates.includes(this.preferred) ? this.preferred : candidates[0]!;
-      const quiet = (): void => { this.silent.add(port); if (port === this.preferred) this.preferred = null; };
+      const quiet = (): void => {
+        this.silent.add(port);
+        if (port === this.preferred) this.preferred = null;
+      };
       try {
         return new Probe(await WebSerialTransport.open(port), this.probeMs, quiet);
       } catch (error) {
@@ -117,19 +131,38 @@ class Probe implements Transport {
   private readonly inner: Transport;
   private readonly ms: number;
   private readonly silent: () => void;
-  constructor(inner: Transport, ms: number, silent: () => void) { this.inner = inner; this.ms = ms; this.silent = silent; }
+  constructor(inner: Transport, ms: number, silent: () => void) {
+    this.inner = inner;
+    this.ms = ms;
+    this.silent = silent;
+  }
 
   start(sink: TransportSink): void {
     this.inner.start({
-      data: (bytes) => { this.heard = true; if (this.timer) clearTimeout(this.timer); this.timer = null; sink.data(bytes); },
-      closed: (error) => { if (this.timer) clearTimeout(this.timer); this.timer = null; sink.closed(error); },
+      data: (bytes) => {
+        this.heard = true;
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = null;
+        sink.data(bytes);
+      },
+      closed: (error) => {
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = null;
+        sink.closed(error);
+      },
     });
   }
 
   write(data: Uint8Array): Promise<void> {
-    if (!this.heard && !this.timer) this.timer = setTimeout(() => { this.silent(); void this.inner.close(); }, this.ms);
+    if (!this.heard && !this.timer)
+      this.timer = setTimeout(() => {
+        this.silent();
+        void this.inner.close();
+      }, this.ms);
     return this.inner.write(data);
   }
 
-  close(): Promise<void> { return this.inner.close(); }
+  close(): Promise<void> {
+    return this.inner.close();
+  }
 }

@@ -81,8 +81,15 @@ static const uint32_t usb_mode_item = 7;
 static const uint32_t dry_run_item = 9;        // usb_service.hpp: a resets instead of starting the OS
 static const uint32_t sector_class = 0x11907348u, write_class = 0x11907710u;
 enum InstallAction : uint32_t {
-    install_none = 0, install_select, install_trim, install_read, install_write,
-    install_refuse_partition, install_refuse_selected, install_refuse_op, install_refuse_files
+    install_none = 0,
+    install_select,
+    install_trim,
+    install_read,
+    install_write,
+    install_refuse_partition,
+    install_refuse_selected,
+    install_refuse_op,
+    install_refuse_files
 };
 // Pure decision for install-mode requests (host-tested). argument = word +8.
 // Returns install_none for requests the read-only allowlist handles.
@@ -182,5 +189,5 @@ bool library_changed();
 static const uint32_t engine_leave_item = 11;
 void run_engine(peer_services::Stock121PeerSession& session, cold_storage::Stock121ReadOnlySession& storage);
 #endif
-} }
+}}
 #endif

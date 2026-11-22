@@ -40,15 +40,26 @@ export function parseConfig(text: string): SavedConfig {
   const raw = parseKeyValues(text);
   const opt = (k: string): string | null => (raw[k] ?? '') || null;
   return {
-    base: opt('base'), profile: opt('profile'), generation: opt('generation'), unverified: raw['unverified'] === '1', safe: raw['safe'] === '1',
-    slot: opt('slot'), mods: (raw['mods'] ?? '').split(',').map((s) => s.trim()).filter(Boolean), raw,
+    base: opt('base'),
+    profile: opt('profile'),
+    generation: opt('generation'),
+    unverified: raw['unverified'] === '1',
+    safe: raw['safe'] === '1',
+    slot: opt('slot'),
+    mods: (raw['mods'] ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    raw,
   };
 }
 
 /** The saved configuration in plain words. */
 export function configText(config: SavedConfig | null): string {
   if (!config) return 'No mods saved: the OP-XY boots its official firmware setup.';
-  const on = config.mods.length ? `${config.mods.length} mod${config.mods.length === 1 ? '' : 's'} on (${config.mods.join(', ')})` : 'all mods off';
+  const on = config.mods.length
+    ? `${config.mods.length} mod${config.mods.length === 1 ? '' : 's'} on (${config.mods.join(', ')})`
+    : 'all mods off';
   const built = config.slot ? `built into library entry ${config.slot}` : 'not built yet';
   return `${on}, ${built}.`;
 }
@@ -58,7 +69,8 @@ export function contentText(text: string | null, oldExists: boolean): string {
   if (text === null) return oldExists ? 'Needs repair: a content switch did not finish.' : 'Official content.';
   const s = parseKeyValues(text);
   if (s['state'] === 'installed') return `Mod content installed for ${s['entry'] ?? 'an unknown entry'}.`;
-  if (s['state'] === 'switching') return `Needs repair: the switch to ${s['target'] ?? 'another entry'} did not finish.`;
+  if (s['state'] === 'switching')
+    return `Needs repair: the switch to ${s['target'] ?? 'another entry'} did not finish.`;
   if (s['state'] === 'official' || !s['state']) return 'Official content.';
   return `Unknown content state "${s['state']}".`;
 }
@@ -67,7 +79,13 @@ export function contentText(text: string | null, oldExists: boolean): string {
 export const KINDS = ['synth', 'drum', 'sampler', 'effect', 'player', 'extension'] as const;
 export type Kind = (typeof KINDS)[number] | 'other';
 export const KIND_LABEL: Readonly<Record<Kind, string>> = {
-  synth: 'Synths', drum: 'Drums', sampler: 'Samplers', effect: 'Effects', player: 'Players', extension: 'Extensions', other: 'Other',
+  synth: 'Synths',
+  drum: 'Drums',
+  sampler: 'Samplers',
+  effect: 'Effects',
+  player: 'Players',
+  extension: 'Extensions',
+  other: 'Other',
 };
 
 export interface ModRow {
@@ -86,19 +104,35 @@ export interface ModRow {
   readonly on: boolean | null;
 }
 
-export interface ModGroup { readonly kind: Kind; readonly label: string; readonly rows: readonly ModRow[] }
+export interface ModGroup {
+  readonly kind: Kind;
+  readonly label: string;
+  readonly rows: readonly ModRow[];
+}
 
 /** One held package as a mod row; null for the base package (not a mod). */
 export function modRow(p: HeldPackage, config: SavedConfig | null | undefined): ModRow | null {
   const type = p.info['type'];
   if (p.name === 'base' || type === 'base') return null;
   const machine = (p.info['machine'] ?? '').toLowerCase();
-  const kind: Kind = (KINDS as readonly string[]).includes(machine) ? machine as Kind : p.name.startsWith('ext-') ? 'extension' : 'other';
+  const kind: Kind = (KINDS as readonly string[]).includes(machine)
+    ? (machine as Kind)
+    : p.name.startsWith('ext-')
+      ? 'extension'
+      : 'other';
   const extension = kind === 'extension';
   const id = p.info['id'] || (extension ? p.name.replace(/^ext-/, '') : p.name);
   return {
-    folder: p.name, id, name: p.info['name'] || p.name, kind, extension, order: Number(p.info['order'] ?? 0) || 0,
-    version: p.info['version'] ?? '', bytes: p.bytes, complete: p.complete, on: config === undefined ? null : (config?.mods.includes(id) ?? false),
+    folder: p.name,
+    id,
+    name: p.info['name'] || p.name,
+    kind,
+    extension,
+    order: Number(p.info['order'] ?? 0) || 0,
+    version: p.info['version'] ?? '',
+    bytes: p.bytes,
+    complete: p.complete,
+    on: config === undefined ? null : (config?.mods.includes(id) ?? false),
   };
 }
 
@@ -106,10 +140,13 @@ export function modRow(p: HeldPackage, config: SavedConfig | null | undefined): 
 export function groupMods(packages: readonly HeldPackage[], config: SavedConfig | null | undefined): ModGroup[] {
   const rows = packages.map((p) => modRow(p, config)).filter((r): r is ModRow => r !== null);
   const order: readonly Kind[] = [...KINDS, 'other'];
-  return order.map((kind) => ({
-    kind, label: KIND_LABEL[kind],
-    rows: rows.filter((r) => r.kind === kind).sort((a, b) => a.name.localeCompare(b.name)),
-  })).filter((g) => g.rows.length > 0);
+  return order
+    .map((kind) => ({
+      kind,
+      label: KIND_LABEL[kind],
+      rows: rows.filter((r) => r.kind === kind).sort((a, b) => a.name.localeCompare(b.name)),
+    }))
+    .filter((g) => g.rows.length > 0);
 }
 
 // ---- Paths ------------------------------------------------------------------------------------------
@@ -117,7 +154,9 @@ export function groupMods(packages: readonly HeldPackage[], config: SavedConfig 
 export const ROOT = '/yaffs2';
 
 /** dir + '/' + name, without doubled slashes. */
-export function joinPath(dir: string, name: string): string { return `${dir.replace(/\/+$/, '')}/${name.replace(/^\/+/, '')}`; }
+export function joinPath(dir: string, name: string): string {
+  return `${dir.replace(/\/+$/, '')}/${name.replace(/^\/+/, '')}`;
+}
 
 /** The parent folder, never above /yaffs2. */
 export function parentOf(path: string): string {
@@ -127,7 +166,9 @@ export function parentOf(path: string): string {
 }
 
 /** Whether a folder's contents can be changed (the client's inWriteArea for a name inside it). */
-export function folderWritable(dir: string): boolean { return inWriteArea(`${dir.replace(/\/+$/, '')}/x`); }
+export function folderWritable(dir: string): boolean {
+  return inWriteArea(`${dir.replace(/\/+$/, '')}/x`);
+}
 
 /**
  * Why the device would refuse a change at path, in plain words; null: allowed. Uses the
@@ -136,11 +177,14 @@ export function folderWritable(dir: string): boolean { return inWriteArea(`${dir
  */
 export function changeRefusal(path: string, folder = false): string | null {
   if (inWriteArea(path)) {
-    return foldersOf(path, folder) <= MAX_FOLDERS ? null
+    return foldersOf(path, folder) <= MAX_FOLDERS
+      ? null
       : `That is more than ${MAX_FOLDERS} folders below /yaffs2: deeper hangs the dev menu's file transfer.`;
   }
-  if (!WRITE_ROOTS.some((r) => path.startsWith(r))) return `Only files under ${WRITE_ROOTS.join(' and ')} can be changed.`;
-  if (inWriteArea(path.replace(/^\/yaffs2\//, '/yaffs2/x/'))) return `${PROTECTED_NAMES.join(' and ')} (and what is inside it) are never changed by hand.`;
+  if (!WRITE_ROOTS.some((r) => path.startsWith(r)))
+    return `Only files under ${WRITE_ROOTS.join(' and ')} can be changed.`;
+  if (inWriteArea(path.replace(/^\/yaffs2\//, '/yaffs2/x/')))
+    return `${PROTECTED_NAMES.join(' and ')} (and what is inside it) are never changed by hand.`;
   return 'That name is not allowed (empty, "." or "..").';
 }
 

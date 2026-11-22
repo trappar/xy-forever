@@ -4,8 +4,8 @@
 #include "usb_proto.hpp"
 #include "../native/tfw_signature.hpp"
 namespace {
-using xyf_core::U32;
 using xyf_core::Byte;
+using xyf_core::U32;
 using namespace xy_forever;
 // Separate address spaces on A/B. Existing command/request exclusion makes this invocation
 // synchronous. Only run() sets this pointer to its caller's live automatic File, then clears it.
@@ -29,7 +29,7 @@ __attribute__((noinline, noclone)) U32 tfw_check_run(const char* path, Byte* rep
         const auto& r = *active_auth;
         const xyf_core::tfw::HeaderCheck signature = {&keys, verify_vendor};
         return U32(r.archive.open_digested(r.source, keys.aes, r.ciphertext, signature, r.header,
-                                          xyf_core::tfw::op_xy_sku, r.work));
+                                           xyf_core::tfw::op_xy_sku, r.work));
     }
     xyf_core::tfw_check::Workspace work;
     xyf_core::tfw_check::Result result;
@@ -56,5 +56,5 @@ xyf_core::tfw::Status authenticate(const char* path, const Authentication& reque
     active_auth = nullptr;
     return code;
 }
-} }
+}}
 #endif

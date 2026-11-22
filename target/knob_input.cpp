@@ -3,7 +3,7 @@
 namespace xy_forever { namespace knob_input {
 // Initialized data, not BSS: the cold link has no zero-initialization.
 Result result __attribute__((section(".data"))) = {magic};
-} }
+}}
 
 namespace {
 using namespace xy_forever::knob_input;
@@ -49,7 +49,10 @@ int32_t frame(uint32_t a) {
         const int32_t change = int16_t(uint16_t(byte(at + 1) << 8 | byte(at + 2)));
         if (id - 1u < 4u && (change > max_change || change < -max_change)) ok = false;
     }
-    if (!ok) { ++r.dropped; return 0; }
+    if (!ok) {
+        ++r.dropped;
+        return 0;
+    }
     int32_t total = 0;
     for (uint32_t at = a + 4; at != a + 4 + length; at += 3) {
         const uint32_t id = byte(at);
@@ -69,7 +72,10 @@ void start(bool identity_ok) {
     for (uint32_t* p = &r.state; p != reinterpret_cast<uint32_t*>(&r + 1); ++p) *p = 0;
     r.version = 1;
     pending = 0;
-    if (!identity_ok) { r.state = state_identity; return; }
+    if (!identity_ok) {
+        r.state = state_identity;
+        return;
+    }
     cursor = r.write_index = word(write_index);          // frames from before the menu are not turns
     r.read_index = word(read_index);
     r.state = state_on;
@@ -79,7 +85,8 @@ int32_t pass(uint32_t now_ms, bool selection) {
     Result& r = result;
     if (r.state != state_on) return 0;
     const uint32_t read = word(read_index), write = word(write_index);
-    r.read_index = read; r.write_index = write;
+    r.read_index = read;
+    r.write_index = write;
     int32_t total = 0;
     uint32_t ahead = distance(cursor, write);
     if (distance(read, write) > slots || ahead > window) resync(write, write - cursor);   // see resync()
@@ -93,16 +100,31 @@ int32_t pass(uint32_t now_ms, bool selection) {
         r.pass_read = n;
         if (n > r.max_read) r.max_read = n;
     }
-    if (total) { pending += total; pending_ms = now_ms; }    // opposite counts cancel: a leftover never adds to a
+    if (total) {
+        pending += total;
+        pending_ms = now_ms;
+    }    // opposite counts cancel: a leftover never adds to a
                                                              // turn the other way (|pending| < N before this)
-    if (pending && (!selection || now_ms - pending_ms > leftover_ms)) { r.idle += magnitude(pending); pending = 0; }
+    if (pending && (!selection || now_ms - pending_ms > leftover_ms)) {
+        r.idle += magnitude(pending);
+        pending = 0;
+    }
     int32_t moves = 0;
-    while (pending >= counts_per_row && moves != max_moves) { pending -= counts_per_row; ++moves; }
-    while (pending <= -counts_per_row && moves != -max_moves) { pending += counts_per_row; --moves; }
-    if (pending >= counts_per_row || pending <= -counts_per_row) { r.idle += magnitude(pending); pending = 0; }
+    while (pending >= counts_per_row && moves != max_moves) {
+        pending -= counts_per_row;
+        ++moves;
+    }
+    while (pending <= -counts_per_row && moves != -max_moves) {
+        pending += counts_per_row;
+        --moves;
+    }
+    if (pending >= counts_per_row || pending <= -counts_per_row) {
+        r.idle += magnitude(pending);
+        pending = 0;
+    }
     const uint32_t rows = magnitude(moves);
     r.moves += rows;
     if (rows > r.max_moves) r.max_moves = rows;
     return moves;
 }
-} }
+}}

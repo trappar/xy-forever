@@ -4,16 +4,44 @@ Frame (little endian): b'XF' | type u8 | seq u8 | length u32 | payload | crc32 u
 (zlib CRC over every byte before it). Replies use type | 0x80 and start with a
 u32 status.
 """
+
 import struct
 import zlib
 
 from xy_forever import usb_proto_ids as ids
+
 # Numbers: generated from protocol/v1.json (scripts/protogen.py; docs/PROTOCOL.md).
 from xy_forever.usb_proto_ids import (  # noqa: F401  (re-exported for the host tools)
-    HELLO, STATUS, READ_FILE, SCREEN, PEEK, MTP_TEST, PUT_BEGIN, PUT_DATA, PUT_END, FILE_WRITE, INSTALL,
-    UNINSTALL, REBOOT, CONTINUE, HOLD, KEY, SET_DEFAULT, LOG, REPLY, MAX_PAYLOAD, MAX_DATA,
-    LIST_DIR, DELETE_FILE, REMOVE_DIR, MAKE_DIR, RENAME_FILE, COPY_FILE,
-    STATUS_NAMES)
+    CONTINUE,
+    COPY_FILE,
+    DELETE_FILE,
+    FILE_WRITE,
+    HELLO,
+    HOLD,
+    INSTALL,
+    KEY,
+    LIST_DIR,
+    LOG,
+    MAKE_DIR,
+    MAX_DATA,
+    MAX_PAYLOAD,
+    MTP_TEST,
+    PEEK,
+    PUT_BEGIN,
+    PUT_DATA,
+    PUT_END,
+    READ_FILE,
+    REBOOT,
+    REMOVE_DIR,
+    RENAME_FILE,
+    REPLY,
+    SCREEN,
+    SET_DEFAULT,
+    STATUS,
+    STATUS_NAMES,
+    UNINSTALL,
+)
+
 OK, STATE = ids.S_OK, ids.S_STATE
 # Stock 1.2.1 os.ldr (dev-menu restore image): the only image UNINSTALL accepts.
 STOCK_OS_LDR_BYTES = 2373336
@@ -29,7 +57,7 @@ def answered(switches):
     return sum(1 << t for t, c in ids.COMMANDS.items() if c['switch'] is None or c['switch'] in switches)
 
 
-STAGE2_LOADED = 'XYF_STAGE2_LOADED'      # the run-time switch of stage2.info
+STAGE2_LOADED = 'XYF_STAGE2_LOADED'  # the run-time switch of stage2.info
 
 
 def hello_text(version, image, mode, switches, stage2=0, confirm=1, trust='none', serial='on'):
@@ -39,8 +67,17 @@ def hello_text(version, image, mode, switches, stage2=0, confirm=1, trust='none'
     its question's state (none, asking, allowed, refused); serial: off with USB mode MTP (#191; on as compiled)."""
     bits = answered(set(switches) | ({STAGE2_LOADED} if stage2 else set()))
     dev = any(bits >> t & 1 for t, c in ids.COMMANDS.items() if c['cls'] == 'dev')
-    values = dict(release=version, image=image or 'unknown', mode=mode, cmds='%032x' % bits, dev='1' if dev else None,
-                  stage2=str(stage2), confirm=str(confirm), trust=trust, serial=serial)
+    values = dict(
+        release=version,
+        image=image or 'unknown',
+        mode=mode,
+        cmds='%032x' % bits,
+        dev='1' if dev else None,
+        stage2=str(stage2),
+        confirm=str(confirm),
+        trust=trust,
+        serial=serial,
+    )
     items = [ids.HELLO_PREFIX]
     for name, _, source, text in ids.HELLO_KEYS:
         value = text if source == 'fixed' else values[source]
@@ -56,7 +93,7 @@ class Hello:
     def __init__(self, text):
         self.text = text
         self.keys = dict(item.split('=', 1) for item in text.split(';') if '=' in item)
-        self.proto = self.keys.get('proto', '1')             # missing keys: a pre-v1 device
+        self.proto = self.keys.get('proto', '1')  # missing keys: a pre-v1 device
         self.major = self.proto.split('.')[0]
         cmds = self.keys.get('cmds', '')
         self.cmds = int(cmds, 16) if len(cmds) == 32 and all(c in '0123456789abcdef' for c in cmds) else None
@@ -71,17 +108,21 @@ class Hello:
     def describe(self):
         if self.pre_v1:
             return 'protocol %s: pre-v1 device (XY Forever build 153 or earlier; no command list)' % self.proto
-        if 'version' not in self.keys:                       # 1.1..1.14: a build number
+        if 'version' not in self.keys:  # 1.1..1.14: a build number
             return 'protocol %s, build %s (%s)' % (self.proto, self.keys.get('build', '?'), self.keys.get('mode', '?'))
-        return 'protocol %s, version %s, image %s (%s)' % (self.proto, self.keys['version'], self.keys.get('image', '?'),
-                                                         self.keys.get('mode', '?'))
+        return 'protocol %s, version %s, image %s (%s)' % (
+            self.proto,
+            self.keys['version'],
+            self.keys.get('image', '?'),
+            self.keys.get('mode', '?'),
+        )
 
 
 def encode(kind, seq, payload=b''):
     if len(payload) > MAX_PAYLOAD:
         raise ValueError('payload too long')
-    head = b'XF' + bytes((kind & 0xff, seq & 0xff)) + struct.pack('<I', len(payload)) + payload
-    return head + struct.pack('<I', zlib.crc32(head) & 0xffffffff)
+    head = b'XF' + bytes((kind & 0xFF, seq & 0xFF)) + struct.pack('<I', len(payload)) + payload
+    return head + struct.pack('<I', zlib.crc32(head) & 0xFFFFFFFF)
 
 
 INTS = {'u8': '<B', 'u16': '<H', 'u32': '<I'}
@@ -123,12 +164,12 @@ def unpack(fields, payload, exact=True):
     values, at = {}, 0
     for name, kind, size, optional, encoding in fields:
         if optional and at == len(payload) and not any(f[3] and f[0] in values for f in fields):
-            break                                       # optional fields: all present or none
+            break  # optional fields: all present or none
         if kind in INTS or kind == 'bytes':
             size = struct.calcsize(INTS[kind]) if kind in INTS else size
             if at + size > len(payload):
                 raise ValueError('%s: payload too short' % name)
-            values[name] = struct.unpack_from(INTS[kind], payload, at)[0] if kind in INTS else payload[at:at + size]
+            values[name] = struct.unpack_from(INTS[kind], payload, at)[0] if kind in INTS else payload[at : at + size]
             at += size
         elif kind == 'cstr':
             end = payload.find(b'\0', at)
@@ -170,19 +211,25 @@ class Parser:
         b = self.buffer
         while True:
             if len(b) >= 1 and b[0] != 0x58:
-                del b[0]; self.dropped += 1; continue
+                del b[0]
+                self.dropped += 1
+                continue
             if len(b) >= 2 and b[1] != 0x46:
-                del b[0]; self.dropped += 1; continue
+                del b[0]
+                self.dropped += 1
+                continue
             if len(b) < 8:
                 return None
             length = struct.unpack_from('<I', b, 4)[0]
             if length > MAX_PAYLOAD:
-                del b[0]; self.dropped += 1; continue
+                del b[0]
+                self.dropped += 1
+                continue
             total = 12 + length
             if len(b) < total:
                 return None
-            body = bytes(b[:total - 4])
-            if struct.unpack_from('<I', b, total - 4)[0] == zlib.crc32(body) & 0xffffffff:
+            body = bytes(b[: total - 4])
+            if struct.unpack_from('<I', b, total - 4)[0] == zlib.crc32(body) & 0xFFFFFFFF:
                 del b[:total]
                 return (body[2], body[3], body[8:])
             self.bad_crc += 1
@@ -190,7 +237,7 @@ class Parser:
 
     def feed(self, data):
         """Returns a list of (type, seq, payload) for every complete valid frame."""
-        self.buffer += data                     # whole chunks: the same frames as one byte at a time
+        self.buffer += data  # whole chunks: the same frames as one byte at a time
         frames = []
         frame = self._settle()
         while frame:

@@ -3,42 +3,49 @@ namespace xyf_core { namespace p224 {
 namespace {
 // FIPS 186-4 D.1.2.2, big-endian. The 1.2.1 bootloader's verifier holds the same values
 // (0x11b00ea4 p, 0x11b00edc b, 0x11b00ef8 Gx, 0x11b00f14 Gy, 0x11b00f30 n); a = -3.
-const Byte p_bytes[28] = {
-    0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01};
-const Byte b_bytes[28] = {
-    0xb4,0x05,0x0a,0x85,0x0c,0x04,0xb3,0xab,0xf5,0x41,0x32,0x56,0x50,0x44,0xb0,0xb7,
-    0xd7,0xbf,0xd8,0xba,0x27,0x0b,0x39,0x43,0x23,0x55,0xff,0xb4};
-const Byte gx_bytes[28] = {
-    0xb7,0x0e,0x0c,0xbd,0x6b,0xb4,0xbf,0x7f,0x32,0x13,0x90,0xb9,0x4a,0x03,0xc1,0xd3,
-    0x56,0xc2,0x11,0x22,0x34,0x32,0x80,0xd6,0x11,0x5c,0x1d,0x21};
-const Byte gy_bytes[28] = {
-    0xbd,0x37,0x63,0x88,0xb5,0xf7,0x23,0xfb,0x4c,0x22,0xdf,0xe6,0xcd,0x43,0x75,0xa0,
-    0x5a,0x07,0x47,0x64,0x44,0xd5,0x81,0x99,0x85,0x00,0x7e,0x34};
-const Byte n_bytes[28] = {
-    0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x16,0xa2,
-    0xe0,0xb8,0xf0,0x3e,0x13,0xdd,0x29,0x45,0x5c,0x5c,0x2a,0x3d};
+const Byte p_bytes[28] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                          0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+const Byte b_bytes[28] = {0xb4, 0x05, 0x0a, 0x85, 0x0c, 0x04, 0xb3, 0xab, 0xf5, 0x41, 0x32, 0x56, 0x50, 0x44,
+                          0xb0, 0xb7, 0xd7, 0xbf, 0xd8, 0xba, 0x27, 0x0b, 0x39, 0x43, 0x23, 0x55, 0xff, 0xb4};
+const Byte gx_bytes[28] = {0xb7, 0x0e, 0x0c, 0xbd, 0x6b, 0xb4, 0xbf, 0x7f, 0x32, 0x13, 0x90, 0xb9, 0x4a, 0x03,
+                           0xc1, 0xd3, 0x56, 0xc2, 0x11, 0x22, 0x34, 0x32, 0x80, 0xd6, 0x11, 0x5c, 0x1d, 0x21};
+const Byte gy_bytes[28] = {0xbd, 0x37, 0x63, 0x88, 0xb5, 0xf7, 0x23, 0xfb, 0x4c, 0x22, 0xdf, 0xe6, 0xcd, 0x43,
+                           0x75, 0xa0, 0x5a, 0x07, 0x47, 0x64, 0x44, 0xd5, 0x81, 0x99, 0x85, 0x00, 0x7e, 0x34};
+const Byte n_bytes[28] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                          0x16, 0xa2, 0xe0, 0xb8, 0xf0, 0x3e, 0x13, 0xdd, 0x29, 0x45, 0x5c, 0x5c, 0x2a, 0x3d};
 
 // A 224-bit number as 14 16-bit digits, least significant first, one per U32: a digit
 // product plus two digits is at most 2^32 - 1, so no wider type (and no library multiply)
 // is ever needed.
 const U32 digits = 14, bits = 224, mask = 0xffffu;
-struct Number { U32 d[digits]; };
+struct Number {
+    U32 d[digits];
+};
 // An odd modulus m with 2^223 < m < 2^224 (p and n both qualify), with R = 2^224:
 // rr = R^2 mod m and inverse = -m^-1 mod 2^16, for Montgomery multiplication.
-struct Modulus { Number m, rr; U32 inverse; };
-struct Point { Number x, y, z; };          // Jacobian (x/z^2, y/z^3); z = 0 is infinity
+struct Modulus {
+    Number m, rr;
+    U32 inverse;
+};
+struct Point {
+    Number x, y, z;
+};          // Jacobian (x/z^2, y/z^3); z = 0 is infinity
 
 void set(Number& out, U32 value) {
     for (U32 i = 0; i < digits; ++i) out.d[i] = 0;
     out.d[0] = value & mask;
     out.d[1] = value >> 16;
 }
-void copy(Number& out, const Number& a) { for (U32 i = 0; i < digits; ++i) out.d[i] = a.d[i]; }
-void copy(Point& out, const Point& a) { copy(out.x, a.x); copy(out.y, a.y); copy(out.z, a.z); }
+void copy(Number& out, const Number& a) {
+    for (U32 i = 0; i < digits; ++i) out.d[i] = a.d[i];
+}
+void copy(Point& out, const Point& a) {
+    copy(out.x, a.x);
+    copy(out.y, a.y);
+    copy(out.z, a.z);
+}
 void load(Number& out, const Byte* big_endian) {   // 28 bytes
-    for (U32 i = 0; i < digits; ++i)
-        out.d[i] = U32(big_endian[27 - 2 * i]) | U32(big_endian[26 - 2 * i]) << 8;
+    for (U32 i = 0; i < digits; ++i) out.d[i] = U32(big_endian[27 - 2 * i]) | U32(big_endian[26 - 2 * i]) << 8;
 }
 bool is_zero(const Number& a) {
     U32 any = 0;
@@ -148,10 +155,16 @@ void prepare(Modulus& m, const Byte* big_endian) {
 
 // The curve y^2 = x^3 - 3x + b over p, Jacobian coordinates, formulas from the Explicit-
 // Formulas Database (hyperelliptic.org/EFD, short Weierstrass a = -3, Jacobian).
-struct Curve { Modulus p; Number b; };
+struct Curve {
+    Modulus p;
+    Number b;
+};
 // dbl-2001-b. out may be a.
 void twice(Point& out, const Point& a, const Curve& c) {
-    if (is_zero(a.z)) { copy(out, a); return; }
+    if (is_zero(a.z)) {
+        copy(out, a);
+        return;
+    }
     const Modulus& p = c.p;
     Number delta, gamma, beta, alpha, t, u;
     multiply(delta, a.z, a.z, p);                       // delta = Z1^2
@@ -182,8 +195,14 @@ void twice(Point& out, const Point& a, const Curve& c) {
 // add-1998-cmo-2, with the cases it excludes handled first: either input at infinity,
 // equal inputs (doubling) and opposite inputs (infinity). out may be a or b.
 void sum(Point& out, const Point& a, const Point& b, const Curve& c) {
-    if (is_zero(a.z)) { copy(out, b); return; }
-    if (is_zero(b.z)) { copy(out, a); return; }
+    if (is_zero(a.z)) {
+        copy(out, b);
+        return;
+    }
+    if (is_zero(b.z)) {
+        copy(out, a);
+        return;
+    }
     const Modulus& p = c.p;
     Number z1z1, z2z2, u1, u2, s1, s2, t;
     multiply(z1z1, a.z, a.z, p);
@@ -197,8 +216,13 @@ void sum(Point& out, const Point& a, const Point& b, const Curve& c) {
     subtract_mod(u2, u2, u1, p);                        // H = U2-U1 (in u2)
     subtract_mod(s2, s2, s1, p);                        // r = S2-S1 (in s2)
     if (is_zero(u2)) {
-        if (is_zero(s2)) { twice(out, a, c); return; }  // the same point
-        set(out.x, 1); set(out.y, 1); set(out.z, 0);    // opposite points: infinity
+        if (is_zero(s2)) {
+            twice(out, a, c);
+            return;
+        }  // the same point
+        set(out.x, 1);
+        set(out.y, 1);
+        set(out.z, 0);    // opposite points: infinity
         return;
     }
     Number hh, hhh;
@@ -230,8 +254,8 @@ bool on_curve(const Number& x, const Number& y, const Curve& c) {
 }
 // Steps 2-4 of SEC 1 4.1.4: e = the digest's leftmost 224 bits as an integer, mod n;
 // w = s^-1; u1 = e*w, u2 = r*w (mod n). Separate functions keep every frame small.
-__attribute__((noinline)) void scalars(Number& u1, Number& u2, const Byte* digest, U32 digest_bytes,
-                                       const Number& r, const Number& s, const Modulus& n) {
+__attribute__((noinline)) void scalars(Number& u1, Number& u2, const Byte* digest, U32 digest_bytes, const Number& r,
+                                       const Number& s, const Modulus& n) {
     Byte leftmost[28];
     const U32 used = digest_bytes < 28 ? digest_bytes : 28;
     for (U32 i = 0; i < 28; ++i) leftmost[i] = i < 28 - used ? 0 : digest[i - (28 - used)];
@@ -244,14 +268,15 @@ __attribute__((noinline)) void scalars(Number& u1, Number& u2, const Byte* diges
 }
 // Step 5: x = the affine x of u1*G + u2*Q (Shamir's trick: one doubling per bit, then add
 // G, Q or G+Q); false for the point at infinity.
-__attribute__((noinline)) bool combine(Number& x, const Number& u1, const Number& u2, const Point& q,
-                                       const Curve& c) {
+__attribute__((noinline)) bool combine(Number& x, const Number& u1, const Number& u2, const Point& q, const Curve& c) {
     Point g, both, result;
     load(g.x, gx_bytes);
     load(g.y, gy_bytes);
     set(g.z, 1);
     sum(both, g, q, c);
-    set(result.x, 1); set(result.y, 1); set(result.z, 0);
+    set(result.x, 1);
+    set(result.y, 1);
+    set(result.z, 0);
     for (U32 i = bits; i-- > 0;) {
         twice(result, result, c);
         const U32 pick = U32(bit(u1, i)) | U32(bit(u2, i)) << 1;
@@ -297,4 +322,4 @@ const char* status_name(Status status) {
     }
     return "unknown";
 }
-} }
+}}

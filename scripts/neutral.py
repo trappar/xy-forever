@@ -16,17 +16,18 @@ can be traced by comparing the two module.asm files. No device is involved.
 Opt-in (mise run neutral [REF]): on a clean tree the working tree's product build is the one scripts/check.py
 verified for that tree (builds/<image>/check.json names it), when there is one, instead of a new build.
 """
+
 import argparse
 import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
+from pathlib import Path
 
 from xy_forever.paths import BUILDS, PRIVATE_ROOT, SESSIONS
 from xy_forever.toolchain import authenticate
@@ -44,8 +45,13 @@ def build(source, out, env):
     mode = out.name
     if out.exists():
         shutil.rmtree(out)
-    run = subprocess.run([sys.executable, str(source / 'xyf_build.py'), '--' + mode, '--out', str(out)],
-                         cwd=source, env=env, capture_output=True, text=True)
+    run = subprocess.run(
+        [sys.executable, str(source / 'xyf_build.py'), '--' + mode, '--out', str(out)],
+        cwd=source,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
     candidate = out / 'candidate.ldr'
     digest = hashlib.sha256(candidate.read_bytes()).hexdigest() if candidate.is_file() else None
     return digest, 'ok' if run.returncode == 0 else (run.stderr.strip().splitlines() or ['failed'])[-1]
@@ -62,8 +68,10 @@ def checked_product(tree):
     for marker in BUILDS.glob('*/check.json'):
         try:
             if json.loads(marker.read_text()).get('tree') == tree:
-                return hashlib.sha256((marker.parent / 'candidate.ldr').read_bytes()).hexdigest(), "ok (the check's build)"
-        except (OSError, ValueError):
+                return hashlib.sha256(
+                    (marker.parent / 'candidate.ldr').read_bytes()
+                ).hexdigest(), "ok (the check's build)"
+        except OSError, ValueError:
             continue
     return None
 
@@ -75,7 +83,7 @@ def build_all(source, base, env, cached=False, known=None):
         results[mode] = (known or {}).get(mode) or cached and result_of(out) or None
         if results[mode] is None:
             digest, status = build(source, out, env)
-            out.mkdir(parents=True, exist_ok=True)      # a build that refused its mode made no folder
+            out.mkdir(parents=True, exist_ok=True)  # a build that refused its mode made no folder
             (out / 'neutral.txt').write_text((digest or '-') + '\n' + status)
             results[mode] = (digest or '-', status)
     return results
@@ -89,9 +97,9 @@ def main():
     compiler, _ = authenticate()
     env = dict(os.environ, XYF_PRIVATE=str(PRIVATE_ROOT), XYF_TOOLCHAIN=str(compiler['root']))
     work = SESSIONS / 'neutral'
-    if ROOT.name != 'xy-forever':                   # a separate git worktree gets its own folder
+    if ROOT.name != 'xy-forever':  # a separate git worktree gets its own folder
         work = work / ROOT.name
-    for old in work.glob('*'):                      # keep one ref's builds (about 50 MB each)
+    for old in work.glob('*'):  # keep one ref's builds (about 50 MB each)
         if old.is_dir() and old.name not in (commit[:12], 'worktree') and not old.name.startswith('xyf-'):
             shutil.rmtree(old)
     with tempfile.TemporaryDirectory() as tmp:
@@ -104,7 +112,7 @@ def main():
     print('%-16s %-14s %-14s %s' % ('mode', args.ref[:14], 'working tree', 'result'))
     for mode in MODES:
         (old, old_status), (new, new_status) = before[mode], after[mode]
-        added = old == '-' and new != '-'               # REF has no such candidate: nothing to compare
+        added = old == '-' and new != '-'  # REF has no such candidate: nothing to compare
         match = old == new and old != '-'
         same = same and (match or added)
         print('%-16s %-14s %-14s %s' % (mode, old[:12], new[:12], 'new' if added else 'same' if match else 'DIFFERENT'))
@@ -113,8 +121,12 @@ def main():
             print('    %s build: %s' % (args.ref, old_status))
         if not new_status.startswith('ok'):
             print('    working tree build: ' + new_status)
-    print('neutral: every candidate REF also builds is unchanged' if same else
-          'NOT neutral: compare %s/<mode>/module.asm with %s/<mode>/module.asm' % (work / commit[:12], work / 'worktree'))
+    print(
+        'neutral: every candidate REF also builds is unchanged'
+        if same
+        else 'NOT neutral: compare %s/<mode>/module.asm with %s/<mode>/module.asm'
+        % (work / commit[:12], work / 'worktree')
+    )
     return 0 if same else 1
 
 

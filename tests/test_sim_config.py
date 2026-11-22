@@ -9,16 +9,17 @@ slot= still holds what built= says); a build failure, a content switch failure a
 next plain power-on converges), the switch and the record write (the menu opens and Continue again repairs it); a
 selection that cannot be built. Synthetic packages (test_sim_mod_job's kit). Needs clang++ and the private stock 1.2.1 images
 (skipped without them). No device access."""
+
 import hashlib
 import time
 import unittest
-
-import pytest
 import zlib
 
+import pytest
 import test_sim_content_switch as CS
 import test_sim_mod_job as J
-from sim_mods_page import (PageBase, synthetic_setup, PLAY, STOP, MINUS, SHIFT)
+from sim_mods_page import MINUS, PLAY, SHIFT, STOP, PageBase, synthetic_setup
+
 from xy_forever import bounds, native_json
 
 CONFIG = 'xy-forever/config.json'
@@ -38,6 +39,7 @@ def mark_text(root, default):
 
 class ConfigBase(PageBase, CS.Switch):
     """The helpers (test_sim_safemode uses them too)."""
+
     base = 'modbase'
     unverified = True
 
@@ -68,15 +70,18 @@ class ConfigBase(PageBase, CS.Switch):
                 continue
             text = path.read_bytes()
             body, _, crc = text.rpartition(b'crc32=')
-            if crc.strip() != b'%08x' % (zlib.crc32(body) & 0xffffffff):
+            if crc.strip() != b'%08x' % (zlib.crc32(body) & 0xFFFFFFFF):
                 continue
             f = dict(line.split('=', 1) for line in body.decode().splitlines() if '=' in line)
             best = max(best, (int(f['seq']), f['default']))
         return best[1]
 
     def snapshot(self):
-        return {p.relative_to(self.root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                for p in self.root.rglob('*') if p.is_file()}
+        return {
+            p.relative_to(self.root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in self.root.rglob('*')
+            if p.is_file()
+        }
 
     def home(self):
         rows = self.lines('menu: home row: ')
@@ -87,25 +92,32 @@ class ConfigBase(PageBase, CS.Switch):
         """Open the Mods page, (allow the unknown synthetic base), toggle folders, back to the home menu."""
         self.open_page()
         if unknown and not self.page()['text'].startswith('Unknown mod bases allowed'):
-            self.key(SHIFT, 1); self.press(STOP); self.key(SHIFT, 0)       # SHIFT + STOP
+            self.key(SHIFT, 1)
+            self.press(STOP)
+            self.key(SHIFT, 0)  # SHIFT + STOP
             self.wait(lambda p: p['text'].startswith('Unknown mod bases allowed'), 'unknown base allowed', 5.0)
         self.toggle(folders)
         self.press(STOP)
         self.wait(lambda p: p['shown'] == 0, 'left the page', 5.0)
-        for _ in range(2):                                                 # Mods row -> Continue
+        for _ in range(2):  # Mods row -> Continue
             self.press(MINUS)
 
     def cont(self):
         """PLAY on the first row (Continue): it converges to what is saved and boots (#197: no dialog)."""
         self.mark = len(self.lines('menu: boots the default ')), len(self.lines('menu: save failed: '))
-        self.key(PLAY, 1)                                                  # it boots: no release reaches B
+        self.key(PLAY, 1)  # it boots: no release reaches B
 
     def saved(self, mods):
         """The flips are saved (desired.mods, written at a quiet moment) and the write is over."""
         want = ','.join(mods)
-        self.wait_log(lambda: (self.config() or {}).get('mods') == want and
-                      len(self.lines('mods: selection written')) == len(self.lines('mods: saving the selection')),
-                      'mods=%s saved' % want, 30.0)
+        self.wait_log(
+            lambda: (
+                (self.config() or {}).get('mods') == want
+                and len(self.lines('mods: selection written')) == len(self.lines('mods: saving the selection'))
+            ),
+            'mods=%s saved' % want,
+            30.0,
+        )
         return self.config()
 
     def wait_log(self, cond, what, timeout=bounds.WAIT_S):
@@ -116,9 +128,14 @@ class ConfigBase(PageBase, CS.Switch):
 
     def booted(self, timeout=bounds.WAIT_S):
         """The menu booted the default: its id; both processors in the OS."""
-        seen, failures = self.mark                                         # counted before the key (cont)
-        self.wait_log(lambda: len(self.lines('menu: boots the default ')) > seen or
-                      len(self.lines('menu: save failed: ')) > failures, 'boot', timeout)
+        seen, failures = self.mark  # counted before the key (cont)
+        self.wait_log(
+            lambda: (
+                len(self.lines('menu: boots the default ')) > seen or len(self.lines('menu: save failed: ')) > failures
+            ),
+            'boot',
+            timeout,
+        )
         self.assertEqual(self.lines('menu: save failed: ')[failures:], [])
         entry = self.lines('menu: boots the default ')[-1]
         self.wait_log(lambda: self.sim.status()['a'] == 'os' and self.sim.status()['b'] == 'os', 'the OS')
@@ -131,13 +148,13 @@ class ConfigBase(PageBase, CS.Switch):
 
     def menu_again(self):
         """A power cycle with PLAY: the menu, USB on."""
-        rows = len(self.lines('menu: home row: '))                        # rows of earlier boots do not count
+        rows = len(self.lines('menu: home row: '))  # rows of earlier boots do not count
         self.sim.control('power play')
         self.sim.wait_listening(30.0)
         self.reconnect()
         self.assertEqual(self.dev.hello()[0], 0)
         self.wait_log(lambda: len(self.lines('menu: home row: ')) > rows, 'the home row')
-        self.sim.settle()                                                  # its start-up work done, as a host finds it
+        self.sim.settle()  # its start-up work done, as a host finds it
 
     def plain_boots_without_writing(self, entry):
         before = self.snapshot()
@@ -181,7 +198,6 @@ class ConfigBase(PageBase, CS.Switch):
         self.assertEqual(self.dev.hello()[0], 0)
 
 
-
 @unittest.skipIf(J.UNAVAILABLE, J.UNAVAILABLE)
 class Config(ConfigBase, unittest.TestCase):
     # -- the tests ---------------------------------------------------------------------------------
@@ -207,14 +223,19 @@ class Config(ConfigBase, unittest.TestCase):
         cuts = self.sim.status()['cuts']
         rows = len(self.lines('menu: home row: '))
         self.sim.set('rename_fault_kind', 2)
-        self.sim.set('rename_fault', 2)                                    # cut after publishing config.json
+        self.sim.set('rename_fault', 2)  # cut after publishing config.json
         self.sim.set('a_slow_ms', 0)
         self.cut(cuts)
-        self.assertEqual(self.config()['mods'], 'alpha')                   # the new record, the old default
+        self.assertEqual(self.config()['mods'], 'alpha')  # the new record, the old default
         self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'journal/default completion')
         self.assertEqual(self.disk_default(), a)
-        self.wait_log(lambda: len(self.lines('menu: home row: ')) > rows and
-                      self.home().startswith('Open-XY - 1 mod - 1.2.1 pending=0'), 'the recovered home row')
+        self.wait_log(
+            lambda: (
+                len(self.lines('menu: home row: ')) > rows
+                and self.home().startswith('Open-XY - 1 mod - 1.2.1 pending=0')
+            ),
+            'the recovered home row',
+        )
         since = len(self.progress())
         self.cont()
         self.assertEqual(self.booted(), a)
@@ -223,6 +244,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.assertEqual(CS.content(self.root), self.expected(a))
         self.assertTrue(self.record().startswith('state=installed\nentry=%s\n' % a))
         self.assertTrue((self.root / CONFIG_OLD).exists())
+
 
 if __name__ == '__main__':
     unittest.main()

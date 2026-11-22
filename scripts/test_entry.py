@@ -25,33 +25,45 @@ removed when the run passed, unless --keep; each first needs Settings > Ask befo
 This script writes only firmware/<id>/ and loaded/<id>/; never /yaffs2/content/, content-state.txt,
 the saved configuration or the state slots (only the device's set-default does, in --boot).
 """
+
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import sys
 import tempfile
 import time
 import zlib
+from pathlib import Path
 
 import device_pass as dp
-from xy_forever import xyf_host as host
+
 from xy_forever import modpatch, package_records, xyf_entry
+from xy_forever import xyf_host as host
 
 StepFail = dp.StepFail
 XYF = '/yaffs2/xy-forever'
 RECORD = XYF + '/content-state.txt'
-T_SWITCH = 300.0               # set-default with the content switch (a job; xyf_host waits for it)
+T_SWITCH = 300.0  # set-default with the content switch (a job; xyf_host waits for it)
 
 
 def entry_files(image, content, name, needs_os, generation, profile, machines=None):
     """{path: bytes} of the entry, as modpatch.entry_files (the device job's host twin) builds one."""
     files = {'content/' + p: b for p, b in content.items()}
     files['os.ldr'] = image
-    files[package_records.NATIVE] = package_records.document(dict(
-        type='firmware', name=name, kind='open-xy', bytes=len(image), crc32='%08x' % (zlib.crc32(image) & 0xffffffff),
-        sha256=hashlib.sha256(image).hexdigest(), needs_os=needs_os, generation=generation,
-        profile=profile, **({'machines': machines} if machines is not None else {})))
+    files[package_records.NATIVE] = package_records.document(
+        dict(
+            type='firmware',
+            name=name,
+            kind='open-xy',
+            bytes=len(image),
+            crc32='%08x' % (zlib.crc32(image) & 0xFFFFFFFF),
+            sha256=hashlib.sha256(image).hexdigest(),
+            needs_os=needs_os,
+            generation=generation,
+            profile=profile,
+            **({'machines': machines} if machines is not None else {}),
+        )
+    )
     files['files.sha256'] = modpatch.list_text(files).encode()
     xyf_entry.read_files_sha256(files['files.sha256'])
     package_records.parse(files[package_records.NATIVE], package_records.NATIVE)
@@ -72,7 +84,7 @@ def candidate(folder, entry_id):
 
 
 class TestEntry(dp.Pass):
-    allow_boot = True              # --boot: library.boot of the test entry
+    allow_boot = True  # --boot: library.boot of the test entry
 
     def say(self, text):
         print('  ' + text, flush=True)
@@ -88,7 +100,7 @@ class TestEntry(dp.Pass):
         if code:
             raise StepFail('ls %s: %s' % (path, dp.why(code, out, err)))
         files, folders = {}, []
-        for e in json.loads(out[out.index('['):]):
+        for e in json.loads(out[out.index('[') :]):
             if e['type'] == 'dir':
                 sub = self.walk('%s/%s' % (path, e['name']))
                 folders += [e['name']] + ['%s/%s' % (e['name'], d) for d in sub[1]]
@@ -141,12 +153,15 @@ class TestEntry(dp.Pass):
         stock = self.read_metadata('%s/firmware/%s' % (XYF, o.stock_entry), 'stock', '--all')
         like = self.read_metadata('%s/firmware/%s' % (XYF, o.like), 'like', '--all')
         if not stock or not {'generation', 'profile'} <= set(like):
-            raise StepFail('firmware/%s or firmware/%s package metadata (generation, profile) missing'
-                           % (o.stock_entry, o.like))
-        if 'sha256' not in stock and like.get('needs_os'):              # an official entry's info.txt may lack it
+            raise StepFail(
+                'firmware/%s or firmware/%s package metadata (generation, profile) missing' % (o.stock_entry, o.like)
+            )
+        if 'sha256' not in stock and like.get('needs_os'):  # an official entry's info.txt may lack it
             stock['sha256'] = like['needs_os']
-            self.say('note: firmware/%s metadata has no SHA-256; needs_os taken from firmware/%s metadata'
-                     % (o.stock_entry, o.like))
+            self.say(
+                'note: firmware/%s metadata has no SHA-256; needs_os taken from firmware/%s metadata'
+                % (o.stock_entry, o.like)
+            )
         elif 'sha256' not in stock:
             local = self.artifact('stock-os.ldr')
             self.ok(['get', '%s/firmware/%s/os.ldr' % (XYF, o.stock_entry), local], 60.0)
@@ -157,9 +172,18 @@ class TestEntry(dp.Pass):
         for path, data in files.items():
             (local / path).parent.mkdir(parents=True, exist_ok=True)
             (local / path).write_bytes(data)
-        self.say('entry: %d files (%d content), os.ldr %d B sha256 %s; needs_os %s (%s), generation %s'
-                 % (len(files), len(content), len(image), hashlib.sha256(image).hexdigest(), stock['sha256'],
-                    o.stock_entry, like['generation']))
+        self.say(
+            'entry: %d files (%d content), os.ldr %d B sha256 %s; needs_os %s (%s), generation %s'
+            % (
+                len(files),
+                len(content),
+                len(image),
+                hashlib.sha256(image).hexdigest(),
+                stock['sha256'],
+                o.stock_entry,
+                like['generation'],
+            )
+        )
         old = self.walk(self.entry())
         keep_os = False
         if old is not None:
@@ -175,15 +199,19 @@ class TestEntry(dp.Pass):
             for folder in sorted(old[1], key=len, reverse=True):
                 if not any(f.startswith(folder + '/') for f in files):
                     self.remove('--dir', self.entry(folder))
-            self.say('firmware/%s existed (%d files): %d stale removed, os.ldr %s'
-                     % (o.id, len(old[0]), len(stale), 'kept (same size and sha256)' if keep_os else 'replaced'))
-        order = sorted(f for f in files if f not in ('os.ldr', package_records.NATIVE)) + ([] if keep_os else ['os.ldr'])
+            self.say(
+                'firmware/%s existed (%d files): %d stale removed, os.ldr %s'
+                % (o.id, len(old[0]), len(stale), 'kept (same size and sha256)' if keep_os else 'replaced')
+            )
+        order = sorted(f for f in files if f not in ('os.ldr', package_records.NATIVE)) + (
+            [] if keep_os else ['os.ldr']
+        )
         self.put_tree(self.entry(), order + [package_records.NATIVE], local)
         if extras:
             for path, data in extras.items():
                 (self.folder / 'extra' / path).parent.mkdir(parents=True, exist_ok=True)
                 (self.folder / 'extra' / path).write_bytes(data)
-            self.put_tree(XYF + '/loaded', [p[len('loaded/'):] for p in sorted(extras)], self.folder / 'extra/loaded')
+            self.put_tree(XYF + '/loaded', [p[len('loaded/') :] for p in sorted(extras)], self.folder / 'extra/loaded')
             self.say('loaded/%s/: %d files' % (o.id, len(extras)))
         window = self.window_status()[2]
         listed = self.walk(self.entry())[0]
@@ -193,10 +221,14 @@ class TestEntry(dp.Pass):
         self.settled(window, 'upload')
         item = [i for i in self.menu_catalog('catalog.bin')['items'] if i['id'] == o.id]
         if not item or not item[0]['content_missing'] or item[0]['name'] != o.name:
-            raise StepFail('menu catalog: %s is %s (expected listed, content not installed)'
-                           % (o.id, item[0] if item else 'missing'))
-        self.say('ls matches; catalog lists %s %r, content not installed (installed by --boot); default %s'
-                 % (o.id, o.name, default))
+            raise StepFail(
+                'menu catalog: %s is %s (expected listed, content not installed)'
+                % (o.id, item[0] if item else 'missing')
+            )
+        self.say(
+            'ls matches; catalog lists %s %r, content not installed (installed by --boot); default %s'
+            % (o.id, o.name, default)
+        )
 
     # -- boot ----------------------------------------------------------------------------------
     def boot(self):
@@ -214,9 +246,11 @@ class TestEntry(dp.Pass):
         self.say('content switch done: content-state.txt installed entry=%s; default=%s' % (o.id, o.id))
         self.ok(['boot', o.id, '--yes-boot'])
         self.gone(dp.T_DRY, 'boot (library.boot)')
-        self.say('library.boot ok; USB gone: %s is booting. Back: a plain power-on converges to the saved setup '
-                 '(#197; none saved: hold PLAY at power-on, then `xyf_host.py set-default %s --yes-write`); then '
-                 '`scripts/test_entry.py --id %s --cleanup`' % (o.id, default, o.id))
+        self.say(
+            'library.boot ok; USB gone: %s is booting. Back: a plain power-on converges to the saved setup '
+            '(#197; none saved: hold PLAY at power-on, then `xyf_host.py set-default %s --yes-write`); then '
+            '`scripts/test_entry.py --id %s --cleanup`' % (o.id, default, o.id)
+        )
 
     # -- cleanup -------------------------------------------------------------------------------
     def cleanup(self):
@@ -229,7 +263,9 @@ class TestEntry(dp.Pass):
         m = self.remove_tree('%s/loaded/%s' % (XYF, o.id))
         if o.id in self.names(XYF + '/firmware'):
             raise StepFail('firmware/%s still listed' % o.id)
-        self.say('firmware/%s removed (%d files), loaded/%s removed (%d files); default %s' % (o.id, n, o.id, m, default))
+        self.say(
+            'firmware/%s removed (%d files), loaded/%s removed (%d files); default %s' % (o.id, n, o.id, m, default)
+        )
 
 
 def parse_args(argv):
@@ -258,13 +294,16 @@ def main(argv=None, device=None, sleep=time.sleep, folder=None):
         host.sim_address(o.sim)
         host.SIM = o.sim
     run = TestEntry(device or dp.HostDevice(), o, None, sleep)
-    run.folder = Path(folder) if folder else (Path(tempfile.mkdtemp(prefix='xyf-test-entry-')) if o.sim else
-                                              dp.new_folder(dp.SESSIONS, 'test-entry'))
+    run.folder = (
+        Path(folder)
+        if folder
+        else (Path(tempfile.mkdtemp(prefix='xyf-test-entry-')) if o.sim else dp.new_folder(dp.SESSIONS, 'test-entry'))
+    )
     mode = 'boot' if o.boot else 'cleanup' if o.cleanup else 'upload'
     print('test_entry %s firmware/%s (evidence %s)' % (mode, o.id, run.folder), flush=True)
     code = 0
     try:
-        if dp.confirm_on(run.ok(['wait'], dp.T_ANSWER)):              # #65: the device would ask first
+        if dp.confirm_on(run.ok(['wait'], dp.T_ANSWER)):  # #65: the device would ask first
             raise StepFail(dp.CONFIRM_ON)
         getattr(run, mode)()
         print('PASS', flush=True)

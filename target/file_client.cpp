@@ -9,14 +9,17 @@
 namespace xy_forever { namespace file_client {
 uint32_t bound_ms(uint32_t op, uint32_t argument) {
     const bool change = op == 8 || op == 9 || op == 0x25 || op == 0x26 || op == 0x27 || op == 0x2b || op == 0x2d ||
-                        (op == 0x29 && argument) || (op == 0x21 && (argument == file_engine::rename_to ||
-                        argument == file_engine::rename_over || argument == file_engine::rename_upload));
+                        (op == 0x29 && argument) ||
+                        (op == 0x21 && (argument == file_engine::rename_to || argument == file_engine::rename_over ||
+                                        argument == file_engine::rename_upload));
     return change ? change_ms : request_ms;
 }
 uint32_t status(uint32_t outcome) { return outcome == refused ? xyf::usbp::s_refused : xyf::usbp::s_link; }
 uint32_t change_status(uint32_t error) {
-    return error == enoent ? xyf::usbp::s_not_found : error == eacces ? xyf::usbp::s_refused :
-           error == enotempty ? xyf::usbp::s_state : xyf::usbp::s_storage;
+    return error == enoent    ? xyf::usbp::s_not_found :
+           error == eacces    ? xyf::usbp::s_refused :
+           error == enotempty ? xyf::usbp::s_state :
+                                xyf::usbp::s_storage;
 }
 uint32_t rename_status(uint32_t error) { return error == eexist ? xyf::usbp::s_state : change_status(error); }
 uint32_t list_entry(const uint8_t* entry, bool have_record, const uint8_t* record, uint8_t* out, uint32_t room) {
@@ -39,13 +42,22 @@ uint32_t list_entry(const uint8_t* entry, bool have_record, const uint8_t* recor
 uint32_t readdir_result(int32_t value) { return !value ? folder_end : value == -1 ? folder_error : folder_entry; }
 bool child_path(const char* folder, const char* name, char* out) {
     uint32_t k = 0;
-    for (; folder[k]; ++k) { if (k + 1 >= file_engine::max_path) return false; out[k] = folder[k]; }
-    if (!k || out[k - 1] != '/') { if (k + 1 >= file_engine::max_path) return false; out[k++] = '/'; }
-    for (uint32_t i = 0; name[i]; ++i) { if (k + 1 >= file_engine::max_path) return false; out[k++] = name[i]; }
+    for (; folder[k]; ++k) {
+        if (k + 1 >= file_engine::max_path) return false;
+        out[k] = folder[k];
+    }
+    if (!k || out[k - 1] != '/') {
+        if (k + 1 >= file_engine::max_path) return false;
+        out[k++] = '/';
+    }
+    for (uint32_t i = 0; name[i]; ++i) {
+        if (k + 1 >= file_engine::max_path) return false;
+        out[k++] = name[i];
+    }
     out[k] = 0;
     return true;
 }
-} }
+}}
 
 #if defined(__bfin__)
 #include "peer_services.hpp"
@@ -60,7 +72,7 @@ typedef unsigned int U32;
 // One noinline, noclone instantiation per stock entry (straight-line call audit). The builder
 // allows the five request builders only through this namespace's wrappers (xyf_build.py).
 template<U32 A, class R, class... Args> __attribute__((noinline, noclone)) R stock(Args... args) {
-    return reinterpret_cast<R(*)(Args...)>(A)(args...);
+    return reinterpret_cast<R (*)(Args...)>(A)(args...);
 }
 void lines(U32 address, U32 bytes, bool invalidate) {
     for (U32 a = address & ~31u; a < address + bytes; a += 32) {
@@ -81,7 +93,10 @@ U32 crc(U32 address, U32 count) {
     return xyf::crc::update_volatile(0, reinterpret_cast<const volatile uint8_t*>(address), count);
 }
 
-Reply outcome(uint32_t o) { const Reply r = {o, -1, 0}; return r; }
+Reply outcome(uint32_t o) {
+    const Reply r = {o, -1, 0};
+    return r;
+}
 // #144: the one request the client leaves out for its owner to collect (unmount_start, mkdir_start, write_start):
 // its session, when it left and its bound (left_session 0: none). Any other request's claim collects it first
 // (link_claim waits, bounded, for the slot) and keeps its answer here (left_kept) until the owner asks: the slot
@@ -98,7 +113,9 @@ U32* claim(Stock121PeerSession*& session, Reply& why) {
     if (session && left_session && !left_kept && !session->filing()) {   // the left one answered: kept for its owner
         uint32_t value, error;
         xyf_boot::link_answer(value, error);
-        left_value = value; left_error = error; left_kept = 1;
+        left_value = value;
+        left_error = error;
+        left_kept = 1;
     }
     U32* request = session ? session->request_slot() : 0;
     if (!request) why = outcome(xyf_boot::link_lost() ? lost : busy);
@@ -165,7 +182,12 @@ Reply partition(U32 op, U32 a0, U32 a1, U32 a2) {
 }
 // A request built and submitted, left out for its owner (left_poll), or why not (busy: one is left already).
 Reply leave(Stock121PeerSession* session, const Reply& submitted, U32 bound) {
-    if (!submitted.outcome) { left_session = session; left_start = xyf_boot::clock_ms(); left_bound = bound; left_kept = 0; }
+    if (!submitted.outcome) {
+        left_session = session;
+        left_start = xyf_boot::clock_ms();
+        left_bound = bound;
+        left_kept = 0;
+    }
     return submitted;
 }
 // A path-class request (the only call site of its builder, behind the policy check). left: only
@@ -174,18 +196,23 @@ Reply leave(Stock121PeerSession* session, const Reply& submitted, U32 bound) {
 Reply path_request(const char* path, file_engine::Operation policy, U32 op, U32 argument,
                    Stock121PeerSession** left = 0, const char* sent = 0, U32 bound = 0) {
     if (!allowed(path, policy)) return outcome(refused);
-    Stock121PeerSession* session; Reply why;
+    Stock121PeerSession* session;
+    Reply why;
     U32* request = claim(session, why);
     if (!request) return why;
     if (sent) path = sent;                                              // (its target passed the check above)
     place(path);
     stock<0x889f8d22u, void>(request, op, path_copy(), argument, 0u);   // path class (flushes the path)
-    if (left) { *left = session; return submit(*session, op); }
+    if (left) {
+        *left = session;
+        return submit(*session, op);
+    }
     return send(*session, op, bound ? bound : bound_ms(op, argument));
 }
 Reply query(const char* path, U32 op, uint8_t* out, U32 bytes) {
     if (!allowed(path, file_engine::op_stat)) return outcome(refused);
-    Stock121PeerSession* session; Reply why;
+    Stock121PeerSession* session;
+    Reply why;
     U32* request = claim(session, why);
     if (!request) return why;
     place(path);
@@ -213,10 +240,16 @@ Reply left_poll(bool wait) {
     Stock121PeerSession* session = left_session;
     if (!session) return outcome(refused);
     Reply r;
-    if (left_kept) { r.outcome = done; r.value = int32_t(left_value); r.error = left_error; }
-    else if (wait) r = await_answer(*session, left_bound, left_start);
+    if (left_kept) {
+        r.outcome = done;
+        r.value = int32_t(left_value);
+        r.error = left_error;
+    } else if (wait) r = await_answer(*session, left_bound, left_start);
     else r = answer(*session, left_start, left_bound);
-    if (r.outcome != busy) { left_session = 0; left_kept = 0; }   // past its bound (link): out, no owner now
+    if (r.outcome != busy) {
+        left_session = 0;
+        left_kept = 0;
+    }   // past its bound (link): out, no owner now
     return r;
 }
 Reply unmount_start() {
@@ -298,7 +331,9 @@ const uint8_t* stream(uint32_t at, uint32_t count) {
     if (at <= stream_capacity && count <= stream_capacity - at) lines(stream_buffer + at, count, true);
     return reinterpret_cast<const uint8_t*>(stream_buffer + at);
 }
-Reply a_timing(uint32_t k) { return path_request("/yaffs2", file_engine::op_stat, 0x21, file_engine::timing_tag | (k & 0xffu)); }
+Reply a_timing(uint32_t k) {
+    return path_request("/yaffs2", file_engine::op_stat, 0x21, file_engine::timing_tag | (k & 0xffu));
+}
 Reply tfw_probe(const char* path, uint32_t op) {
     return path_request(path, file_engine::op_stat, 0x21, tfw_role_probe::tag | op, 0, 0, 5000u);
 }
@@ -308,7 +343,8 @@ Reply tfw_hash_send(const char* path, uint32_t operation) {
     if (left_session) return outcome(busy);
     if ((operation != th::start && operation != th::status && operation != th::cancel &&
          (operation < th::digest || operation >= th::digest + th::digest_words)) ||
-        !services::loader_path(path)) return outcome(refused);
+        !services::loader_path(path))
+        return outcome(refused);
     Stock121PeerSession* session = 0;
     const Reply sent = path_request(path, file_engine::op_read, 0x21, th::tag | operation, &session);
     return leave(session, sent, request_ms);
@@ -320,7 +356,8 @@ Reply boot_probe(uint32_t op) {
 Reply boot_select(uint32_t p) { return p <= 2 ? partition(0x18, p, 0, 0) : outcome(refused); }
 Reply boot_sector(uint32_t at, uint8_t* out) {
     if (at > boot_partition_probe::max_bytes / 512u) return outcome(refused);
-    Stock121PeerSession* session; Reply why;
+    Stock121PeerSession* session;
+    Reply why;
     U32* request = claim(session, why);
     if (!request) return why;
     stock<0x889f8872u, void>(request, 0x11u, at, 1u, 0u, data(), 512u); // same sector builder as peer_services
@@ -332,7 +369,8 @@ Reply boot_sector(uint32_t at, uint8_t* out) {
     return r;
 }
 Reply readdir(uint32_t folder, uint8_t* entry) {
-    Stock121PeerSession* session; Reply why;
+    Stock121PeerSession* session;
+    Reply why;
     U32* request = claim(session, why);
     if (!request) return why;
     stock<0x889f88acu, void>(request, 0x2fu, folder, 0u, data(), entry_bytes);   // sector class (invalidates)
@@ -355,7 +393,8 @@ uint32_t close_name_scan(NameScan& scan, volatile uint32_t& mounted) {
 uint32_t scan_name(const char* path, NameScan& scan, volatile uint32_t& mounted) {
     namespace P = xyf::usbp;
     const char* name = path;
-    for (const char* p = path; *p; ++p) if (*p == '/') name = p + 1;
+    for (const char* p = path; *p; ++p)
+        if (*p == '/') name = p + 1;
     if (name == path || !*name || uint32_t(name - path) > file_engine::max_path) return P::s_bad_request;
     if (!scan.folder) {
         char parent[file_engine::max_path];
@@ -366,12 +405,17 @@ uint32_t scan_name(const char* path, NameScan& scan, volatile uint32_t& mounted)
         if (r.outcome == link) mounted = mounted_stale;
         if (r.outcome) return status(r.outcome);
         if (!r.value || r.value == -1) return change_status(r.error);
-        scan.folder = uint32_t(r.value); scan.seen = 0;
+        scan.folder = uint32_t(r.value);
+        scan.seen = 0;
         return scan_again;
     }
     uint8_t entry[entry_bytes + 4];
     const Reply r = readdir(scan.folder, entry);
-    if (r.outcome == link) { mounted = mounted_stale; scan.folder = 0; return P::s_link; }
+    if (r.outcome == link) {
+        mounted = mounted_stale;
+        scan.folder = 0;
+        return P::s_link;
+    }
     uint32_t code = r.outcome ? status(r.outcome) : uint32_t(P::s_storage);
     if (!r.outcome) {
         const U32 got = readdir_result(r.value);
@@ -379,7 +423,10 @@ uint32_t scan_name(const char* path, NameScan& scan, volatile uint32_t& mounted)
         else if (got == folder_entry) {
             entry[11 + max_name] = 0;
             const char* text = reinterpret_cast<const char*>(entry + 11);
-            while (*text && *name == *text) { ++text; ++name; }
+            while (*text && *name == *text) {
+                ++text;
+                ++name;
+            }
             if (*text == *name) code = P::s_ok;
             else if (++scan.seen != 0x10000u) return scan_again;
         }
@@ -424,16 +471,22 @@ uint32_t mount_ready(volatile uint32_t& mounted) {
     return xyf::usbp::s_ok;
 }
 
-uint32_t read_file(const char* path, uint32_t offset, bool ranged, uint8_t* out, uint32_t capacity,
-                   uint32_t& bytes, volatile uint32_t& mounted, Open* left) {
+uint32_t read_file(const char* path, uint32_t offset, bool ranged, uint8_t* out, uint32_t capacity, uint32_t& bytes,
+                   volatile uint32_t& mounted, Open* left) {
     bytes = 0;
-    if (left) { left->fd = -1; left->probe = false; }
+    if (left) {
+        left->fd = -1;
+        left->probe = false;
+    }
     if (!storage_server::valid_path(path)) return xyf::usbp::s_bad_request;
     if (file_engine::decide_engine(file_engine::op_read, path) != file_engine::allow) return xyf::usbp::s_refused;
     const uint32_t ready = mount_ready(mounted);
     if (ready != xyf::usbp::s_ok) return ready;
     // Past its bound a request stays out: A may still answer it (an open: a handle B never closes).
-    auto failed = [&mounted](const Reply& r) -> uint32_t { if (r.outcome == link) mounted = mounted_stale; return status(r.outcome); };
+    auto failed = [&mounted](const Reply& r) -> uint32_t {
+        if (r.outcome == link) mounted = mounted_stale;
+        return status(r.outcome);
+    };
     const Reply o = open(path, 0);                                       // op 0x29, O_RDONLY
     if (o.outcome) return failed(o);
     if (o.value < 0) return o.error == emfile ? xyf::usbp::s_storage : xyf::usbp::s_not_found;
@@ -450,15 +503,28 @@ uint32_t read_file(const char* path, uint32_t offset, bool ranged, uint8_t* out,
         // Range full: the 1-byte probe still runs (Test 041: ranged reads that closed right after
         // a full read hung a after four; reads ending with a probe or EOF never did). A ranged
         // read's probe decides nothing: with left, it runs in finish_read, before the close.
-        if (!room && ranged && left) { left->fd = fd; left->probe = true; return code; }
+        if (!room && ranged && left) {
+            left->fd = fd;
+            left->probe = true;
+            return code;
+        }
         const Reply g = read(fd, room ? out + bytes : probe, room ? (room < chunk ? room : chunk) : 1u);   // op 0x2a
         if (g.outcome) return failed(g);
-        if (g.value < 0) { code = xyf::usbp::s_storage; break; }
+        if (g.value < 0) {
+            code = xyf::usbp::s_storage;
+            break;
+        }
         if (!g.value) break;
-        if (!room) { code = ranged ? xyf::usbp::s_ok : xyf::usbp::s_too_large; break; }
+        if (!room) {
+            code = ranged ? xyf::usbp::s_ok : xyf::usbp::s_too_large;
+            break;
+        }
         bytes += U32(g.value);
     }
-    if (left) { left->fd = fd; return code; }                            // closed in finish_read
+    if (left) {
+        left->fd = fd;
+        return code;
+    }                            // closed in finish_read
     const Reply c = close(fd);                                           // op 0x2d
     if (c.outcome) return failed(c);
     return code;
@@ -466,17 +532,25 @@ uint32_t read_file(const char* path, uint32_t offset, bool ranged, uint8_t* out,
 void finish_read(const Open& left, volatile uint32_t& mounted) {
     if (left.fd < 0) return;
     uint8_t probe[4];
-    if (left.probe && read(left.fd, probe, 1).outcome == link) { mounted = mounted_stale; return; }   // op 0x2a
+    if (left.probe && read(left.fd, probe, 1).outcome == link) {
+        mounted = mounted_stale;
+        return;
+    }   // op 0x2a
     if (close(left.fd).outcome == link) mounted = mounted_stale;                                       // op 0x2d
 }
 
 uint32_t list(const char* path, uint32_t skip, uint8_t* out, uint32_t capacity, uint32_t& count, uint32_t& more,
               uint32_t& bytes, volatile uint32_t& mounted) {
-    count = 0; more = 0; bytes = 0;
+    count = 0;
+    more = 0;
+    bytes = 0;
     if (file_engine::decide_engine(file_engine::op_list, path) != file_engine::allow) return xyf::usbp::s_refused;
     const uint32_t ready = mount_ready(mounted);
     if (ready != xyf::usbp::s_ok) return ready;
-    auto failed = [&mounted](const Reply& r) -> uint32_t { if (r.outcome == link) mounted = mounted_stale; return status(r.outcome); };
+    auto failed = [&mounted](const Reply& r) -> uint32_t {
+        if (r.outcome == link) mounted = mounted_stale;
+        return status(r.outcome);
+    };
     const Reply d = opendir(path);                                      // op 0x2e
     if (d.outcome) return failed(d);
     if (!d.value || d.value == -1) return d.error == emfile ? xyf::usbp::s_storage : xyf::usbp::s_not_found;   // NULL
@@ -489,9 +563,15 @@ uint32_t list(const char* path, uint32_t skip, uint8_t* out, uint32_t capacity, 
         if (r.outcome) return failed(r);
         const U32 got = readdir_result(r.value);
         if (got == folder_end) break;
-        if (got == folder_error) { code = xyf::usbp::s_storage; break; }
+        if (got == folder_error) {
+            code = xyf::usbp::s_storage;
+            break;
+        }
         if (seen < skip) continue;
-        if (count == max_page) { more = 1; break; }
+        if (count == max_page) {
+            more = 1;
+            break;
+        }
         entry[11 + max_name] = 0;
         bool have = false;
         if (child_path(path, reinterpret_cast<const char*>(entry + 11), child)) {
@@ -500,8 +580,12 @@ uint32_t list(const char* path, uint32_t skip, uint8_t* out, uint32_t capacity, 
             have = q.outcome == done && q.value == 0;
         }
         const U32 n = list_entry(entry, have, record, out + bytes, capacity - bytes);
-        if (!n) { more = 1; break; }
-        bytes += n; ++count;
+        if (!n) {
+            more = 1;
+            break;
+        }
+        bytes += n;
+        ++count;
     }
     const Reply c = closedir(folder);                                    // op 0x30
     if (c.outcome) return failed(c);
@@ -517,5 +601,5 @@ void release(volatile uint32_t& mounted) {
 #if defined(XYF_USB_FILE_WRITE)
 #include "file_client_write.ipp"   // the write commands
 #endif
-} }
+}}
 #endif

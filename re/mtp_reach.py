@@ -4,10 +4,11 @@
 
 Function starts: LINK instructions, CALL targets, and the first line after an address gap.
 """
+
 import bisect
+import re
 from collections import deque
 from pathlib import Path
-import re
 
 from xy_forever.paths import LISTING_121
 
@@ -36,32 +37,32 @@ roots = (
     [
         addrs[s]
         for s in starts
-        if 0x889f1bf0 <= addrs[s] < 0x889f2800
-        or 0x88a08700 <= addrs[s] < 0x88a14000
-        or 0x889f2800 <= addrs[s] < 0x889f9000
+        if 0x889F1BF0 <= addrs[s] < 0x889F2800
+        or 0x88A08700 <= addrs[s] < 0x88A14000
+        or 0x889F2800 <= addrs[s] < 0x889F9000
     ]
-    + [0x88a34fec, 0x88a35044]
-    + [0x88a1247a, 0x88a1d69e, 0x88a1d72c]
+    + [0x88A34FEC, 0x88A35044]
+    + [0x88A1247A, 0x88A1D69E, 0x88A1D72C]
 )
 bad = {
-    0x889f6e5a: 'sector write 0x15',
-    0x889f6eac: 'sector write 0x16',
-    0x889f683c: 'select 0x18',
-    0x889f68d4: 'trim 0x14',
-    0x88a06a7e: 'mmc_tools writer',
-    0x11a062c6: 'spi flash',
-    0x11a06376: 'spi flash',
-    0x11a06470: 'spi flash',
-    0x11a05312: 'spi meta',
-    0x88a2863c: 'updater',
-    0x88a2775e: 'updater',
-    0x88a2830e: 'updater',
-    0x88a35668: 'bootloader main',
-    0x88a2742c: 'companion',
-    0x88a2756e: 'companion',
-    0x88a26f90: 'companion',
-    0x88a26a80: 'companion',
-    0x88a27278: 'companion',
+    0x889F6E5A: 'sector write 0x15',
+    0x889F6EAC: 'sector write 0x16',
+    0x889F683C: 'select 0x18',
+    0x889F68D4: 'trim 0x14',
+    0x88A06A7E: 'mmc_tools writer',
+    0x11A062C6: 'spi flash',
+    0x11A06376: 'spi flash',
+    0x11A06470: 'spi flash',
+    0x11A05312: 'spi meta',
+    0x88A2863C: 'updater',
+    0x88A2775E: 'updater',
+    0x88A2830E: 'updater',
+    0x88A35668: 'bootloader main',
+    0x88A2742C: 'companion',
+    0x88A2756E: 'companion',
+    0x88A26F90: 'companion',
+    0x88A26A80: 'companion',
+    0x88A27278: 'companion',
 }
 prev = {r: None for r in roots}
 q = deque(roots)

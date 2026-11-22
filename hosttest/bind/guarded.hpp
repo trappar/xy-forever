@@ -21,7 +21,7 @@ inline const Byte* optional_bytes(const nb::object& data, nb::bytes& hold) {
 
 // Runs write(out, capacity, produced) on an output of capacity bytes with 16 guard bytes on each side, every byte
 // 0xA5 before the call and produced 0xFFFFFFFF: (status, produced, the whole buffer, guards included).
-template <class Write> std::tuple<int, unsigned, nb::bytes> guarded(unsigned capacity, Write write) {
+template<class Write> std::tuple<int, unsigned, nb::bytes> guarded(unsigned capacity, Write write) {
     std::vector<Byte> buffer(capacity + 32u, 0xA5);
     unsigned produced = 0xFFFFFFFFu;
     const int status = static_cast<int>(write(buffer.data() + 16, capacity, produced));

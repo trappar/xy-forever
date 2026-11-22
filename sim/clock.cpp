@@ -44,39 +44,48 @@
 
 namespace xyf_sim {
 namespace {
-const uint32_t idle_reads = 32;             // clock reads with nothing done between them: a polling loop, idle
-const uint64_t read_ns = 1000, link_ns = 20000, link_byte_ns = 200;   // ~5 MB/s link (docs/hardware/devices.md)
-const uint64_t min_step = 1000000, quiet_limit = 60000000000ull;   // 60 s of device time with nothing done: hung
+const uint32_t idle_reads = 32; // clock reads with nothing done between them: a polling loop, idle
+const uint64_t read_ns = 1000, link_ns = 20000, link_byte_ns = 200; // ~5 MB/s link (docs/hardware/devices.md)
+const uint64_t min_step = 1000000, quiet_limit = 60000000000ull; // 60 s of device time with nothing done: hung
 // A step's most: B's own timers fire at most that late. Waiting away from rest (B's own time-outs, polled) 10 ms;
 // at rest (its menu's timers: a retry, a mark's end) 100 ms, so a long advance takes few steps.
 const uint64_t max_step = 10000000, max_rest_step = 100000000;
-const uint64_t rest_limit = 1000000000ull;  // work at rest runs the clock 1 s past the last news from outside
-uint64_t start_ns = 0;                       // this processor's clock at its first read (its counter's zero)
+const uint64_t rest_limit = 1000000000ull; // work at rest runs the clock 1 s past the last news from outside
+uint64_t start_ns = 0; // this processor's clock at its first read (its counter's zero)
 bool started = false;
 uint32_t seen_work = 0, seen_steps = 0, spin = 0;
 bool charging = false;
 int usb_fd = -1, usb_bytes = 0;
 uint32_t usb_conn = 0;
-bool usb_ready = false, next_ready = false;    // next_ready: a new host's connection seen on the listener
-uint32_t usb_news = 0;                      // usb_check()s that found news (cdc_wait: one seen inside block())
+bool usb_ready = false, next_ready = false; // next_ready: a new host's connection seen on the listener
+uint32_t usb_news = 0; // usb_check()s that found news (cdc_wait: one seen inside block())
 
-void wake(int which) { const char b = 1; if (write(shared->wake[which][1], &b, 1) < 0) {} }
-void drain_wake(int which) { char b[64]; while (read(shared->wake[which][0], b, sizeof(b)) == ssize_t(sizeof(b))) {} }
+void wake(int which) {
+    const char b = 1;
+    if (write(shared->wake[which][1], &b, 1) < 0) {}
+}
+void drain_wake(int which) {
+    char b[64];
+    while (read(shared->wake[which][0], b, sizeof(b)) == ssize_t(sizeof(b))) {}
+}
 bool main_thread() {
-    static pthread_t main = pthread_self();          // the first caller: the processor's main thread
+    static pthread_t main = pthread_self(); // the first caller: the processor's main thread
     return pthread_equal(main, pthread_self());
 }
 bool in_flight() {
-    for (int k = 0; k != 2; ++k) if (shared->inflight[k].load() || shared->outflight[k].load()) return true;
+    for (int k = 0; k != 2; ++k)
+        if (shared->inflight[k].load() || shared->outflight[k].load()) return true;
     return false;
 }
 // The board steps only with no message in flight; while one is, whoever takes it last wakes the board
 // (its own loop for outflight, link_taken() for inflight), so an idle processor need not.
-bool menu_pause = false;                    // B: inside cdc_wait (at rest there: its menu loop; elsewhere: a hang)
+bool menu_pause = false; // B: inside cdc_wait (at rest there: its menu loop; elsewhere: a hang)
 void publish(uint32_t work, uint32_t steps, uint64_t until, bool rest) {
     // A idle is at rest (its loop); B only where it says so: 1 its menu loop's pause, 2 a hang (it never answers).
     shared->idle_rest[role] = role == 0 ? 1 : !rest ? 0 : menu_pause ? 1 : 2;
-    shared->idle_until[role] = until; shared->idle_steps[role] = steps; shared->idle_work[role] = work;
+    shared->idle_until[role] = until;
+    shared->idle_steps[role] = steps;
+    shared->idle_work[role] = work;
     if (!in_flight()) wake(2);
 }
 // B: USB bytes or a connection that arrived since the main thread last looked count as activity, once
@@ -88,16 +97,36 @@ bool usb_check(bool readable, bool next = false) {
     if (fd < 0 || ioctl(fd, FIONREAD, &bytes) || bytes < 0) bytes = 0;
     bool news = false;
     const uint32_t conn = cdc_connection();
-    if (fd != usb_fd || conn != usb_conn) { next_ready = false; usb_ready = false; usb_bytes = 0; usb_fd = fd; usb_conn = conn; }
-    if (bytes != usb_bytes) { news = bytes > usb_bytes; usb_bytes = bytes; usb_ready = false; }
-    if (readable && !usb_ready) { usb_ready = true; news = true; }
-    if (next && !next_ready) { next_ready = true; news = true; }
-    if (news) { ++shared->work[1]; ++shared->outside; ++usb_news; }
+    if (fd != usb_fd || conn != usb_conn) {
+        next_ready = false;
+        usb_ready = false;
+        usb_bytes = 0;
+        usb_fd = fd;
+        usb_conn = conn;
+    }
+    if (bytes != usb_bytes) {
+        news = bytes > usb_bytes;
+        usb_bytes = bytes;
+        usb_ready = false;
+    }
+    if (readable && !usb_ready) {
+        usb_ready = true;
+        news = true;
+    }
+    if (next && !next_ready) {
+        next_ready = true;
+        news = true;
+    }
+    if (news) {
+        ++shared->work[1];
+        ++shared->outside;
+        ++usb_news;
+    }
     return news;
 }
 // Until a step, work, new USB data or (B) room for a reply the host had not read yet: no time limit.
 void block() {
-    if (role == 0 && a_held.load()) wake(3);            // the slave may be open now: the link thread looks again
+    if (role == 0 && a_held.load()) wake(3); // the slave may be open now: the link thread looks again
     pollfd p[4] = {{shared->wake[role][0], POLLIN, 0}, {-1, POLLIN, 0}, {-1, POLLOUT, 0}, {-1, POLLIN, 0}};
     if (role == 1) {
         if (usb_check(false)) return;
@@ -115,33 +144,42 @@ uint64_t to_ns(uint64_t cycles) { return start_ns + (cycles - 400000000u) * 5 / 
 }
 
 uint64_t now_us() {
-    timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+    timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
     return uint64_t(t.tv_sec) * 1000000u + uint64_t(t.tv_nsec) / 1000u;
 }
 uint64_t device_cycles() {
     const uint64_t ns = shared->clock_ns.load();
-    if (!started) { start_ns = ns; started = true; }
-    return (ns - start_ns) * 2 / 5 + 400000000u;                // 400 MHz; one second in, as after boot
+    if (!started) {
+        start_ns = ns;
+        started = true;
+    }
+    return (ns - start_ns) * 2 / 5 + 400000000u; // 400 MHz; one second in, as after boot
 }
 void cycles(uint32_t& low, uint32_t& high) {
-    host_poll();                                                // sim/boot.cpp
+    host_poll(); // sim/boot.cpp
     if (shared && (role == 0 || role == 1)) ++shared->clock_reads[role];
     if (main_thread()) {
         const uint32_t work = shared->work[role].load(), steps = shared->steps.load();
         if (work != seen_work || steps != seen_steps) {
-            charging = charging || work != seen_work;           // activity, not a step: busy reads cost time
-            seen_work = work; seen_steps = steps; spin = 0;
+            charging = charging || work != seen_work; // activity, not a step: busy reads cost time
+            seen_work = work;
+            seen_steps = steps;
+            spin = 0;
         }
         if (spin < idle_reads) {
-            if (++spin == idle_reads) { charging = false; publish(work, steps, 0, false); }
-            else if (charging) shared->clock_ns += read_ns;
+            if (++spin == idle_reads) {
+                charging = false;
+                publish(work, steps, 0, false);
+            } else if (charging) shared->clock_ns += read_ns;
         } else block();
     }
     const uint64_t c = device_cycles();
-    low = uint32_t(c); high = uint32_t(c >> 32);
+    low = uint32_t(c);
+    high = uint32_t(c >> 32);
 }
 
-void kick(int which, bool link) {                              // the main thread and (link) the link thread look again
+void kick(int which, bool link) { // the main thread and (link) the link thread look again
     ++shared->work[which];
     wake(which);
     if (link) wake(3 + which);
@@ -156,7 +194,7 @@ void idle_pause(uint64_t bound, bool rest) {
     publish(shared->work[role].load(), shared->steps.load(), bound ? to_ns(bound) : 0, rest);
     block();
 }
-void cdc_wait(int ms, uint64_t event) {                         // B's menu loop pause, woken by USB data
+void cdc_wait(int ms, uint64_t event) { // B's menu loop pause, woken by USB data
     const int fd = cdc_fd();
     pollfd p[2] = {{fd, POLLIN, 0}, {cdc_next_fd(), POLLIN, 0}};
     // Not a bound for the board's steps: the loop's pause is no device event; event (a held key's next repeat,
@@ -167,44 +205,56 @@ void cdc_wait(int ms, uint64_t event) {                         // B's menu loop
     if (shared->clock_reads[1].load() - reads >= idle_reads) active();
     const uint32_t seen = usb_news;
     for (const uint64_t until = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < until;) {
-        if (fd >= 0 && ::poll(p, 2, 0) > 0 && usb_check(p[0].revents, p[1].revents)) break;   // new, not left unread
-        menu_pause = true; idle_pause(event > device_cycles() ? event : 0, true); menu_pause = false;
-        if (usb_news != seen) break;                                        // block() saw it arrive
+        if (fd >= 0 && ::poll(p, 2, 0) > 0 && usb_check(p[0].revents, p[1].revents)) break; // new, not left unread
+        menu_pause = true;
+        idle_pause(event > device_cycles() ? event : 0, true);
+        menu_pause = false;
+        if (usb_news != seen) break; // block() saw it arrive
     }
     reads = shared->clock_reads[1].load();
 }
 
 // ---- board ----------------------------------------------------------------------------------
 namespace {
-struct Advance { int client; uint64_t until; };
-std::vector<Advance> advances;              // control "advance" lines not answered yet
-std::vector<int> settles;                   // control "settle" lines not answered yet
-uint64_t step_ns = min_step, quiet_ns = 0;   // quiet_ns: device time stepped since the last work
-uint64_t outside_ns = 0;                    // clock_ns at the last news from outside (outside_any: there was one)
-bool idle_wall = false, wall_idle = false;   // --idle-wall; wall_idle: following the host's clock since wall_base
-uint64_t wall_base = 0;                     // host ns less device ns while following
+struct Advance {
+    int client;
+    uint64_t until;
+};
+std::vector<Advance> advances; // control "advance" lines not answered yet
+std::vector<int> settles; // control "settle" lines not answered yet
+uint64_t step_ns = min_step, quiet_ns = 0; // quiet_ns: device time stepped since the last work
+uint64_t outside_ns = 0; // clock_ns at the last news from outside (outside_any: there was one)
+bool idle_wall = false, wall_idle = false; // --idle-wall; wall_idle: following the host's clock since wall_base
+uint64_t wall_base = 0; // host ns less device ns while following
 bool outside_any = false;
 uint32_t stepped_work = 0, seen_outside = 0;
 bool hung = false;
 bool quiescent(const bool running[2]) {
-    for (int k = 0; k != 2; ++k) if (shared->inflight[k] || shared->outflight[k]) return false;
+    for (int k = 0; k != 2; ++k)
+        if (shared->inflight[k] || shared->outflight[k]) return false;
     const uint32_t steps = shared->steps.load();
     for (int k = 0; k != 2; ++k) {
         if (!running[k]) continue;
         if (shared->idle_work[k].load() != shared->work[k].load()) return false;
-        if (shared->idle_steps[k].load() != steps) return false;   // not yet seen the last step (woken by it)
+        if (shared->idle_steps[k].load() != steps) return false; // not yet seen the last step (woken by it)
     }
     return true;
 }
 }
 void board_link_cost(uint32_t bytes) { shared->clock_ns += link_ns + link_byte_ns * bytes; }
 void board_reset_flight(int which) {
-    shared->inflight[which] = 0; shared->outflight[which] = 0;
-    if (which == 1) { shared->usb_held = 0; shared->usb_asked = 0; }   // B's held reply went with it, and the request
+    shared->inflight[which] = 0;
+    shared->outflight[which] = 0;
+    if (which == 1) {
+        shared->usb_held = 0;
+        shared->usb_asked = 0;
+    } // B's held reply went with it, and the request
 }
 void board_jump(int64_t ms) {
     shared->clock_ns += uint64_t(ms) * 1000000u;
-    ++shared->steps; wake(0); wake(1);
+    ++shared->steps;
+    wake(0);
+    wake(1);
 }
 void board_advance(int client, int64_t ms) {
     advances.push_back({client, shared->clock_ns.load() + uint64_t(ms) * 1000000u});
@@ -212,31 +262,45 @@ void board_advance(int client, int64_t ms) {
 void board_settle(int client) { settles.push_back(client); }
 void board_idle_wall() { idle_wall = true; }
 void board_forget(int client) {
-    for (size_t i = 0; i < advances.size();) if (advances[i].client == client) advances.erase(advances.begin() + long(i)); else ++i;
-    for (size_t i = 0; i < settles.size();) if (settles[i] == client) settles.erase(settles.begin() + long(i)); else ++i;
+    for (size_t i = 0; i < advances.size();)
+        if (advances[i].client == client) advances.erase(advances.begin() + long(i));
+        else ++i;
+    for (size_t i = 0; i < settles.size();)
+        if (settles[i] == client) settles.erase(settles.begin() + long(i));
+        else ++i;
 }
 int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
     if (woken) drain_wake(2);
-    if (!quiescent(running)) return -1;                         // a processor wakes the board when idle
+    if (!quiescent(running)) return -1; // a processor wakes the board when idle
     const uint64_t now = shared->clock_ns.load();
-    uint64_t due = 0;                                           // the nearest time something is due
+    uint64_t due = 0; // the nearest time something is due
     for (size_t i = 0; i < advances.size();) {
         if (advances[i].until <= now) {
             if (write(advances[i].client, "{\"ok\": true}\n", 13) < 0) {}
             advances.erase(advances.begin() + long(i));
-        } else { if (!due || advances[i].until < due) due = advances[i].until; ++i; }
+        } else {
+            if (!due || advances[i].until < due) due = advances[i].until;
+            ++i;
+        }
     }
     if (deadline_ns > now && (!due || deadline_ns < due)) due = deadline_ns;
-    uint64_t bound = due;                                       // a step goes no further: also a processor's wait's end
+    uint64_t bound = due; // a step goes no further: also a processor's wait's end
     for (int k = 0; k != 2; ++k) {
         const uint64_t until = running[k] ? shared->idle_until[k].load() : 0;
         if (until > now && (!bound || until < bound)) bound = until;
     }
     const uint32_t outside = shared->outside.load();
-    if (outside != seen_outside) { seen_outside = outside; outside_ns = now; outside_any = true; }
+    if (outside != seen_outside) {
+        seen_outside = outside;
+        outside_ns = now;
+        outside_any = true;
+    }
     const uint32_t work = shared->work[0].load() + shared->work[1].load();
     const bool worked = work != stepped_work;
-    if (worked) { quiet_ns = 0; hung = false; }
+    if (worked) {
+        quiet_ns = 0;
+        hung = false;
+    }
     // Waited on: B waiting on device time away from rest (a delay, a time-out, a slice), or at rest on A for a host
     // request it read (a request it sent A since: not a frame it has not read whole), unless a host that does not
     // read holds its reply up. Up to quiet_limit with nothing done: then nothing will be (a hung processor),
@@ -257,19 +321,24 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
     // whole (a frame split across host writes) is no work: B's idle frame time-out waits for the rest as on the device.
     const bool asked = asked_a != 0;
     const bool working = worked && (waited || asked || (outside_any && now - outside_ns < rest_limit));
-    if (!due && !working && (!waited || hung)) {                // nothing is due: the clock stands still
-        for (int client : settles) if (write(client, "{\"ok\": true}\n", 13) < 0) {}
+    if (!due && !working && (!waited || hung)) { // nothing is due: the clock stands still
+        for (int client : settles)
+            if (write(client, "{\"ok\": true}\n", 13) < 0) {}
         settles.clear();
         if (!idle_wall) return -1;
         // --idle-wall: the next step (to max_rest_step or a processor's wait's end) once the host's clock is there.
         const uint64_t wall = now_us() * 1000u;
-        if (!wall_idle) { wall_idle = true; wall_base = wall - now; }
+        if (!wall_idle) {
+            wall_idle = true;
+            wall_base = wall - now;
+        }
         const uint64_t to = bound && bound - now < max_rest_step ? bound : now + max_rest_step;
         if (wall - wall_base < to) return int((to - (wall - wall_base)) / 1000000u) + 1;
         stepped_work = work;
         shared->clock_ns += to - now;
         ++shared->steps;
-        wake(0); wake(1);
+        wake(0);
+        wake(1);
         return running[0] || running[1] ? -1 : 0;
     }
     wall_idle = false;
@@ -281,7 +350,8 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
     stepped_work = work;
     shared->clock_ns += step;
     ++shared->steps;
-    wake(0); wake(1);
-    return running[0] || running[1] ? -1 : 0;                  // a running processor wakes the board when idle
+    wake(0);
+    wake(1);
+    return running[0] || running[1] ? -1 : 0; // a running processor wakes the board when idle
 }
 }

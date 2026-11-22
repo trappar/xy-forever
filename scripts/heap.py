@@ -7,14 +7,15 @@ Prints the allocator's break (it never decreases), the free-list length and the 
 bytes. Run it before and after a feature (an MTP session, a USB restart) to see whether
 stock code keeps memory: growth of "used" per repetition is a leak.
 """
+
 import argparse
 import struct
 import sys
 
-from xy_forever import xyf_host
 from xy_forever import usb_proto as P
+from xy_forever import xyf_host
 
-CONTEXT = 0x88a65bf8                 # target/cold_heap.hpp: arena_context
+CONTEXT = 0x88A65BF8  # target/cold_heap.hpp: arena_context
 
 
 def peek(dev, address, n):
@@ -33,14 +34,16 @@ def main(argv=None):
     nodes = free = 0
     node = head
     while node and nodes < 4096:
-        if not 0x88000000 <= node < 0x88b00000 - 12:
+        if not 0x88000000 <= node < 0x88B00000 - 12:
             print('free list leaves the PEEK range at 0x%08x after %d nodes' % (node, nodes))
             break
         size, _, node = struct.unpack('<3I', peek(dev, node, 12))
         nodes += 1
         free += size
-    print('heap: break 0x%08x (%d bytes from base), free nodes %d, free %d, used %d'
-          % (brk, brk - base, nodes, free, brk - base - free))
+    print(
+        'heap: break 0x%08x (%d bytes from base), free nodes %d, free %d, used %d'
+        % (brk, brk - base, nodes, free, brk - base - free)
+    )
     return 0
 
 

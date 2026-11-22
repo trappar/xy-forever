@@ -36,8 +36,8 @@ void bind_ldr(nb::module_ m) {
     m.def("expand", [](nb::bytes data, unsigned offset, unsigned delta, unsigned capacity) {
         std::vector<Byte> out(capacity ? capacity : 1);
         U32 produced = 0;
-        const Error error = xyf_core::expand(bytes_of(data), static_cast<U32>(data.size()), offset, delta,
-                                             out.data(), capacity, produced);
+        const Error error = xyf_core::expand(bytes_of(data), static_cast<U32>(data.size()), offset, delta, out.data(),
+                                             capacity, produced);
         return std::make_tuple(static_cast<int>(error),
                                nb::bytes(reinterpret_cast<const char*>(out.data()), error == Error::ok ? produced : 0));
     });

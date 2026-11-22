@@ -10,23 +10,28 @@ repairs. Refusals before any change; boot once refused; a plain power-on with co
 record or default (#197: it converges first, nothing to apply with no setup saved) and the menu says why.
 Synthetic packages (test_sim_mod_job.py's kit) always; the published 0.0.6 set when present. Needs clang++ and
 the private stock 1.2.1 images (skipped without them). No device access."""
+
 import hashlib
+import json
 import shutil
-from pathlib import Path
 import sys
 import tempfile
 import threading
 import time
-import json
 import unittest
+from pathlib import Path
 
 import pytest
-
-from xy_forever import xyf_host as host
-from xy_forever import bounds, modkit as M, modpatch as MP, modsend as MS
-from xy_forever import usb_proto as P, usb_proto_ids as ids
 from test_modpatch import CATALOG, OFFICIAL, finish, kit_for, profile_for, stock
-from test_sim_mod_job import Base, LIB, UNAVAILABLE
+from test_sim_mod_job import LIB, UNAVAILABLE, Base
+
+from xy_forever import bounds
+from xy_forever import modkit as M
+from xy_forever import modpatch as MP
+from xy_forever import modsend as MS
+from xy_forever import usb_proto as P
+from xy_forever import usb_proto_ids as ids
+from xy_forever import xyf_host as host
 
 RECORD = 'xy-forever/content-state.txt'
 SAVED = 'xy-forever/content-official'
@@ -43,8 +48,10 @@ def official_list():
 def content(root):
     """/yaffs2/content/: {path: bytes} and the set of folders."""
     c = Path(root) / 'content'
-    return ({p.relative_to(c).as_posix(): p.read_bytes() for p in c.rglob('*') if p.is_file()},
-            {p.relative_to(c).as_posix() for p in c.rglob('*') if p.is_dir()})
+    return (
+        {p.relative_to(c).as_posix(): p.read_bytes() for p in c.rglob('*') if p.is_file()},
+        {p.relative_to(c).as_posix() for p in c.rglob('*') if p.is_dir()},
+    )
 
 
 class Switch(Base):
@@ -120,8 +127,14 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         cls.work = Path(cls.tmp.name)
         data = stock()
         (cls.work / 'kit.json').write_text(json.dumps(kit_for(profile_for(data))))
-        gen = Path(M.split_kit(cls.work / 'kit.json', cls.work / 'packages', finish=finish,
-                               sdk_source='https://github.com/example/sdk@abc')['root'])
+        gen = Path(
+            M.split_kit(
+                cls.work / 'kit.json',
+                cls.work / 'packages',
+                finish=finish,
+                sdk_source='https://github.com/example/sdk@abc',
+            )['root']
+        )
         cls.seed_with(gen, MP.info_values(gen / 'base/info.txt')['profile'], data, CATALOG, official_list()[1])
         cls.seed_content()
 
@@ -134,31 +147,40 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         f = self.switched(a)
         own = {p: b for p, b in content(self.root / LIB / a)[0].items() if p != 'op1_factory.json'}
         self.assertTrue(own, 'the synthetic set installs files of its own')
-        self.assertEqual(self.record(), 'state=installed\nentry=%s\n' % a +       # each file's SHA-256 written
-                         ''.join('file=%s\t%s\n' % (p, hashlib.sha256(own[p]).hexdigest()) for p in sorted(own)))
-        log = (self.root / 'xy-forever/log/save-times.txt').read_text().splitlines()[-1]   # the switch's line
+        self.assertEqual(
+            self.record(),
+            'state=installed\nentry=%s\n' % a  # each file's SHA-256 written
+            + ''.join('file=%s\t%s\n' % (p, hashlib.sha256(own[p]).hexdigest()) for p in sorted(own)),
+        )
+        log = (self.root / 'xy-forever/log/save-times.txt').read_text().splitlines()[-1]  # the switch's line
         fields = dict(f.split('=', 1) for f in log.split())
-        self.assertEqual((fields['kind'], fields['result'], fields['written'], fields['read']),
-                         ('switch', 'ok', str(len(own) + 1), '0'), log)
+        self.assertEqual(
+            (fields['kind'], fields['result'], fields['written'], fields['read']),
+            ('switch', 'ok', str(len(own) + 1), '0'),
+            log,
+        )
         self.assertEqual((self.root / SAVED / 'content.sha256').read_text(), self.official_text)
         self.assertEqual((self.root / SAVED / 'op1_factory.json').read_bytes(), CATALOG)
         self.assertEqual(self.usable()[a], (True, False))
-        self.assertEqual(self.usable()['opxy-121'], (False, True))       # stock entries need the official content
-        self.assertEqual(self.dev.library_boot('opxy-121'), ids.S_NO_CONTENT)   # boot once: never installs
-        print('\nswitch to %s: %d steps, longest pass %d ms, %d ms device clock' % (a, f['steps'], f['longest_ms'],
-                                                                              f['elapsed_ms']), file=sys.stderr)
-        b = self.build(['gamma'])                                         # built while A's content is installed
+        self.assertEqual(self.usable()['opxy-121'], (False, True))  # stock entries need the official content
+        self.assertEqual(self.dev.library_boot('opxy-121'), ids.S_NO_CONTENT)  # boot once: never installs
+        print(
+            '\nswitch to %s: %d steps, longest pass %d ms, %d ms device clock'
+            % (a, f['steps'], f['longest_ms'], f['elapsed_ms']),
+            file=sys.stderr,
+        )
+        b = self.build(['gamma'])  # built while A's content is installed
         self.assertNotEqual(a, b)
         self.switched(b)
         gone = set(own) - set(content(self.root / LIB / b)[0])
         self.assertTrue(gone, 'A has files B lacks')
         self.assertFalse(gone & set(content(self.root)[0]))
         self.assertEqual(self.usable()[a], (False, True))
-        self.switched('opxy-121', official=True)                          # the Undo
-        self.assertEqual(content(self.root), self.official)               # byte for byte, folders too
+        self.switched('opxy-121', official=True)  # the Undo
+        self.assertEqual(content(self.root), self.official)  # byte for byte, folders too
         self.assertEqual(self.record(), 'state=official\n')
         self.assertEqual(self.usable()['opxy-121'], (True, False))
-        self.assertEqual(self.dev.set_default('opxy-121-stock')[0], 0)    # official: no switch
+        self.assertEqual(self.dev.set_default('opxy-121-stock')[0], 0)  # official: no switch
         self.assertEqual(self.dev.call(P.STATUS)[0], 0)
 
     # -- faults at every rename of a switch (official -> A) ------------------------------------------------
@@ -196,7 +218,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             reply = {}
             thread = threading.Thread(target=lambda: reply.setdefault('r', MS.job_status(self.dev, 0)), daemon=True)
             thread.start()
-            for _ in range(12):                                         # the request's bound, then the close's
+            for _ in range(12):  # the request's bound, then the close's
                 self.sim.advance(6000)
                 thread.join(0.1)
                 if 'r' in reply:
@@ -209,7 +231,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             self.assertEqual((code, MS.PHASES[f['phase']], MS.ERRORS[f['error']]), (0, 'failed', 'link'), f)
             self.assertEqual(self.dev.call(P.STATUS, timeout=5.0)[0], 0)  # B answers
             self.sim.set('a_silent', 0)
-            self.sim.control('power play')                              # a power cycle holding PLAY
+            self.sim.control('power play')  # a power cycle holding PLAY
             self.sim.wait_listening(30.0)
             self.reconnect()
             self.assertEqual(self.dev.hello()[0], 0)
@@ -218,18 +240,20 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             until = time.monotonic() + 30
             while (self.root / 'xy-forever/job.txt').exists() or (self.root / 'xy-forever/job.old').exists():
                 self.assertLess(time.monotonic(), until, 'automatic replay')
-                self.dev.hello(); self.sim.advance(10)
+                self.dev.hello()
+                self.sim.advance(10)
             self.assertEqual(MS.served(self.dev, out=lambda _: None), 0)
         self.assertEqual(self.sim.status()['rw_open'], 0)
         record = self.record()
-        self.assertIn(record if record is None else record.split('\n')[0],
-                      (None, 'state=switching', 'state=installed'), record)
-        if record and record.startswith('state=switching'):              # nothing boots from a plain power-on
+        self.assertIn(
+            record if record is None else record.split('\n')[0], (None, 'state=switching', 'state=installed'), record
+        )
+        if record and record.startswith('state=switching'):  # nothing boots from a plain power-on
             self.assertFalse(any(u for u, _ in self.usable().values()), self.usable())
         if kind == 1 or not (record or '').startswith('state=installed'):
-            self.assertEqual(self.default(), before_default)            # the default only after a success
+            self.assertEqual(self.default(), before_default)  # the default only after a success
         self.sim.set('rename_fault', 0)
-        self.switched(entry, installed=(record or '').startswith('state=installed'))   # a repeat repairs
+        self.switched(entry, installed=(record or '').startswith('state=installed'))  # a repeat repairs
 
     def faults(self, kind):
         a = self.build(['alpha'])
@@ -239,7 +263,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             with self.subTest(rename=n):
                 self.fresh_official()
                 self.fault_case(a, n, kind)
-        if kind == 1:                                                   # that was every rename: one more never hits
+        if kind == 1:  # that was every rename: one more never hits
             self.fresh_official()
             self.sim.set('rename_fault_kind', 1)
             self.sim.set('rename_fault', total + 1)
@@ -266,6 +290,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
     @pytest.mark.sweep
     def test_a_silent_at_each_step(self):
         self.faults(3)
+
 
 if __name__ == '__main__':
     unittest.main()

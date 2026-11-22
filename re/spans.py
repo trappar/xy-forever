@@ -7,12 +7,14 @@ image in any cold census report (REPORTS/test-0*/**/*.bin, Tests 017-024) are
 excluded, because they change at run time. Prints C++ table rows; the build
 re-checks every CRC against the authenticated bootloader.
 """
+
 import glob
 import sys
 import zlib
 from pathlib import Path
 
 import bootloader as img
+
 from xy_forever import census
 from xy_forever.paths import REPORTS
 
@@ -23,11 +25,13 @@ def pieces_of(a, e):
     while a < e:
         i = img.bisect.bisect_right(img.starts, a) - 1
         if i < 0:
-            a += 4; continue
+            a += 4
+            continue
         s, d = img.blocks[i]
         if a - s >= len(d):
             nxt = img.starts[i + 1] if i + 1 < len(img.starts) else e
-            a = max(a + 4, nxt); continue
+            a = max(a + 4, nxt)
+            continue
         end = min(e, s + len(d))
         out.append((a, end))
         a = end
@@ -41,8 +45,11 @@ def main(files):
             p = line.split()
             if len(p) == 2 and len(p[0]) == 8 and p[0] != 'external':
                 a, e = int(p[0], 16), int(p[1], 16) + 2
-                if (0x889e0000 <= a < 0x88a36000 or 0x0803c000 <= a < 0x08040000) and e - a < 0x3000 and \
-                        e <= (0x88a36000 if a >= 0x889e0000 else 0x08040000):
+                if (
+                    (0x889E0000 <= a < 0x88A36000 or 0x0803C000 <= a < 0x08040000)
+                    and e - a < 0x3000
+                    and e <= (0x88A36000 if a >= 0x889E0000 else 0x08040000)
+                ):
                     ranges.append((a, e))
     ranges.sort()
     merged = []
@@ -66,7 +73,7 @@ def main(files):
         data = img.read(a, e - a)
         start, i = a, 0
         while i < len(data):
-            if data[i:i + 16] == bytes(16):
+            if data[i : i + 16] == bytes(16):
                 j = i
                 while j < len(data) and data[j] == 0:
                     j += 1
@@ -89,9 +96,9 @@ def main(files):
                 continue
             covered += 1
             for i in range(0, e - a, 4):
-                if live[i:i + 4] != image[i:i + 4]:
+                if live[i : i + 4] != image[i : i + 4]:
                     bad.add(a + i)
-        start = a                                   # split around mutable words
+        start = a  # split around mutable words
         for w in sorted(bad) + [e]:
             if w > start:
                 spans.append((start, w - start, zlib.crc32(img.read(start, w - start)), covered))

@@ -21,21 +21,32 @@ export interface WebSim {
   control: number;
   root: string;
 }
-export interface WebSims { why: string | null; xyf: WebSim | null; preV1: WebSim | null }
+export interface WebSims {
+  why: string | null;
+  xyf: WebSim | null;
+  preV1: WebSim | null;
+}
 declare module 'vitest' {
-  export interface ProvidedContext { web: WebSims }
+  export interface ProvidedContext {
+    web: WebSims;
+  }
 }
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
   const found = findSimulator();
   const web: WebSims = { why: found.why, xyf: null, preV1: null };
   const base = parseInt(process.env['XYF_TS_BROWSER_SIM_PORT'] ?? String(randomBase()), 10);
-  const state = found.sessions ? process.env['XYF_TS_BROWSER_SIM_STATE'] ?? join(found.sessions, `ts-client-browser-${base}`) : null;
+  const state = found.sessions
+    ? (process.env['XYF_TS_BROWSER_SIM_STATE'] ?? join(found.sessions, `ts-client-browser-${base}`))
+    : null;
   const relays: Relay[] = [];
   let stopAll = async (): Promise<void> => undefined;
   if (!web.why && state) {
     try {
-      const started = await startAll(state, base, [['xyf', 0, []], ['preV1', 2, ['--pre-v1']]]);
+      const started = await startAll(state, base, [
+        ['xyf', 0, []],
+        ['preV1', 2, ['--pre-v1']],
+      ]);
       stopAll = started.stopAll;
       for (const name of ['xyf', 'preV1'] as const) {
         const sim = started.infos[name]!;

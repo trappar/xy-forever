@@ -5,14 +5,16 @@ First prove against a simulator: --sim HOST:PORT --base opxy-121 --yes-write.
 Without --sim the same plan uses USB. No boot, reset, live-content or state write;
 the existing base image is read over USB and copied into two temporary entries.
 """
+
 import argparse
 import hashlib
-from pathlib import Path
 import secrets
 import sys
+from pathlib import Path
 
+from xy_forever import package_store as store
+from xy_forever import xyf_entry
 from xy_forever import xyf_host as host
-from xy_forever import package_store as store, xyf_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,8 +34,12 @@ def exercise(dev, base):
             if session.entries(store.LIBRARY + '/' + entry):
                 raise store.StoreError('probe destination already exists: ' + entry)
             sources = dict(content, **unique) if index == 0 else content
-            files = {'os.ldr': image, 'info.txt': xyf_entry.info_text('Package pass v1', '0', 'custom', image).encode(),
-                     'content.sha256': store.list_text(sources), 'firmware.version': b'package-pass-v1\n'}
+            files = {
+                'os.ldr': image,
+                'info.txt': xyf_entry.info_text('Package pass v1', '0', 'custom', image).encode(),
+                'content.sha256': store.list_text(sources),
+                'firmware.version': b'package-pass-v1\n',
+            }
             files['files.sha256'] = store.list_text(files)
             store.validate(files)
             session.retain(xyf_entry.read_files_sha256(files['content.sha256']), sources)
@@ -41,11 +47,15 @@ def exercise(dev, base):
             for path, data in files.items():
                 if session.read(store.LIBRARY + '/' + entry + '/' + path) != data:
                     raise store.StoreError('published bytes differ: ' + entry)
-        session.remove(store.LIBRARY + '/' + ids[0]); session.collect()
-        if session.read(store.BLOBS + '/' + shared_hash, optional=True) is None or \
-                session.read(store.BLOBS + '/' + unique_hash, optional=True) is not None:
+        session.remove(store.LIBRARY + '/' + ids[0])
+        session.collect()
+        if (
+            session.read(store.BLOBS + '/' + shared_hash, optional=True) is None
+            or session.read(store.BLOBS + '/' + unique_hash, optional=True) is not None
+        ):
             raise store.StoreError('GC did not preserve exactly the remaining references')
-        session.remove(store.LIBRARY + '/' + ids[1]); session.collect()
+        session.remove(store.LIBRARY + '/' + ids[1])
+        session.collect()
         if session.read(store.BLOBS + '/' + shared_hash, optional=True) is not None:
             raise store.StoreError('last-reference GC left the probe blob')
         if before != {name: session.read(store.ROOT + '/' + name, optional=True) for name in states}:
@@ -55,13 +65,18 @@ def exercise(dev, base):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--sim'); parser.add_argument('--base', default='opxy-121')
+    parser.add_argument('--sim')
+    parser.add_argument('--base', default='opxy-121')
     parser.add_argument('--yes-write', action='store_true')
     args = parser.parse_args(argv)
-    print('Plan: copy %s into two fresh pkg-pass-* entries; retain synthetic content blobs, remove the entries,' % args.base)
+    print(
+        'Plan: copy %s into two fresh pkg-pass-* entries; retain synthetic content blobs, remove the entries,'
+        % args.base
+    )
     print('      verify shared/last-reference GC and identical state slots. No live content or boot operation.')
     if not args.yes_write:
-        print('DRY RUN: nothing sent. Re-run with --yes-write to execute this storage test.'); return 0
+        print('DRY RUN: nothing sent. Re-run with --yes-write to execute this storage test.')
+        return 0
     host.SIM = args.sim
     dev, _, _ = host.connect(30)
     try:

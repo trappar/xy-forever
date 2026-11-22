@@ -29,11 +29,18 @@ export class WebSocketTransport implements Transport {
         options.signal?.removeEventListener('abort', cancel);
         socket.onopen = socket.onerror = socket.onclose = null;
       };
-      const fail = (why: string): void => { done(); socket.close(); reject(new Error(`${url}: ${why}`)); };
+      const fail = (why: string): void => {
+        done();
+        socket.close();
+        reject(new Error(`${url}: ${why}`));
+      };
       const cancel = (): void => fail('cancelled');
       const timer = setTimeout(() => fail('timed out'), options.timeoutMs ?? 2000);
       options.signal?.addEventListener('abort', cancel, { once: true });
-      socket.onopen = () => { done(); resolve(new WebSocketTransport(socket)); };
+      socket.onopen = () => {
+        done();
+        resolve(new WebSocketTransport(socket));
+      };
       socket.onerror = () => fail('could not connect');
       socket.onclose = (e) => fail(`closed (${e.code})`);
     });
@@ -43,13 +50,17 @@ export class WebSocketTransport implements Transport {
     this.socket = socket;
     this.gone = new Promise((resolve) => {
       socket.onmessage = (e: MessageEvent) => {
-        if (!(e.data instanceof ArrayBuffer)) return;   // the relay sends binary frames only
+        if (!(e.data instanceof ArrayBuffer)) return; // the relay sends binary frames only
         const bytes = new Uint8Array(e.data);
-        if (this.sink) this.sink.data(bytes); else this.early.push(bytes);
+        if (this.sink) this.sink.data(bytes);
+        else this.early.push(bytes);
       };
-      socket.onerror = () => { this.error ??= new Error('the relay connection failed'); };
+      socket.onerror = () => {
+        this.error ??= new Error('the relay connection failed');
+      };
       socket.onclose = (e: CloseEvent) => {
-        if (!this.closing && e.code !== 1000) this.error ??= new Error(`the relay closed the connection (${e.code} ${e.reason})`);
+        if (!this.closing && e.code !== 1000)
+          this.error ??= new Error(`the relay closed the connection (${e.code} ${e.reason})`);
         this.finish();
         resolve();
       };
@@ -64,7 +75,7 @@ export class WebSocketTransport implements Transport {
 
   async write(data: Uint8Array): Promise<void> {
     if (this.ended || this.socket.readyState !== WebSocket.OPEN) throw new Error('the connection is closed');
-    this.socket.send(data as Uint8Array<ArrayBuffer>);   // never a SharedArrayBuffer here
+    this.socket.send(data as Uint8Array<ArrayBuffer>); // never a SharedArrayBuffer here
   }
 
   async close(): Promise<void> {

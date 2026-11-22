@@ -12,8 +12,8 @@ __attribute__((noinline)) void probe_zero_body(U32 request) {
 }
 bool boot_probe_query(U32 request, Stock121PeerSession& session) {
     const U32 argument = word(request + 8);
-    if (word(request) != path_class || byte(request + 5) != 0x21u ||
-        (argument & ~0xffu) != boot_partition_probe::tag) return false;
+    if (word(request) != path_class || byte(request + 5) != 0x21u || (argument & ~0xffu) != boot_partition_probe::tag)
+        return false;
     const U32 op = argument & 0xffu;
     const bool writable =
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
@@ -23,12 +23,14 @@ bool boot_probe_query(U32 request, Stock121PeerSession& session) {
 #endif
     if (!op && !probe_mode && !boot_selected() && !writable && !held_files()) {
         // Fixed DDR data addresses from #7. Never OTP, MMRs, or instruction SRAM.
-        probe_menu = word(0x88a1f3c4u); probe_resume = byte(0x88a291c0u);
+        probe_menu = word(0x88a1f3c4u);
+        probe_resume = byte(0x88a291c0u);
         probe_mode = 1;
         session.reply(request, boot_partition_probe::version, 0);
     } else if (op == 1 && probe_mode) session.reply(request, probe_menu, probe_resume);
     else if (op == 2 && probe_mode && !selected_partition && !select_attempted) {
-        probe_mode = 0; session.reply(request, 0, 0);
+        probe_mode = 0;
+        session.reply(request, 0, 0);
     } else session.reply(request, 0xffffffffu, error_busy);
     return true;
 }
@@ -39,12 +41,15 @@ bool serve_boot_probe(U32 request, Stock121PeerSession& session) {
         if (argument) select_attempted = 1;
         stock<0x889f76cau, void>(request);
         // A failed select can already have changed the hardware partition.
-        if (!word(request + 0x10)) { selected_partition = argument; if (!argument) select_attempted = 0; }
-        else selected_partition = 0;
+        if (!word(request + 0x10)) {
+            selected_partition = argument;
+            if (!argument) select_attempted = 0;
+        } else selected_partition = 0;
         return true;
     }
     if (action == boot_partition_probe::read && word(cls + 0x14) == 0x889f6b7cu) {
-        stock<0x889f6b7cu, void>(request); return true;
+        stock<0x889f6b7cu, void>(request);
+        return true;
     }
     if (cls == partition_class || cls == write_class || (cls == sector_class && op != 0x2fu)) {
         if (cls == sector_class && op == 0x11u) {

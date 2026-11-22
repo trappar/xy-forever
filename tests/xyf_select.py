@@ -11,22 +11,23 @@ Each run records, per test that ran, those files' hashes (pytest's cache, key xy
 a test whose recorded files changed is taken out of testmon's deselection, so it runs, with the rest of its
 class (a setUpClass compile is recorded by the class's first test).
 """
+
 import hashlib
 import os
-from pathlib import Path
 import re
+from pathlib import Path
 
 import pytest
+import xyf_hosttest
 
 from xy_forever import hostbuild
-import xyf_hosttest
 
 ROOT = Path(__file__).resolve().parents[1]
 KEY = 'xyf/deps'
 _hashes = {}
 _includes = {}
 INCLUDE = re.compile(rb'^\s*#\s*include\s*"([^"]+)"', re.M)
-SEARCH = ('', 'native', 'target', 'third_party/doctest')    # hosttest/CMakeLists.txt's include folders
+SEARCH = ('', 'native', 'target', 'third_party/doctest')  # hosttest/CMakeLists.txt's include folders
 
 
 def includes(rel):
@@ -71,6 +72,7 @@ def digest(rel):
 
 class Recorder:
     """Worker side (or the only process): the files each test used, in its report's user_properties."""
+
     def __init__(self):
         self.files, self.compile_s, self.compile_cpu_s = set(), 0.0, 0.0
         hostbuild.observer = self.compiled
@@ -99,12 +101,13 @@ class Recorder:
         if call.when == 'teardown':
             report.user_properties.append(('xyf_deps', {f: digest(f) for f in sorted(self.files)}))
         report.user_properties += [('xyf_compile_s', self.compile_s), ('xyf_compile_cpu_s', self.compile_cpu_s)]
-        self.compile_s = self.compile_cpu_s = 0.0                          # charged to this phase, then reset
+        self.compile_s = self.compile_cpu_s = 0.0  # charged to this phase, then reset
         return report
 
 
 class Selector:
     """Controller side: stores the recorded files and, with --testmon, keeps tests whose files changed."""
+
     def __init__(self, config):
         self.config, self.recorded = config, config.cache.get(KEY, {}) if config.cache else {}
 
@@ -113,9 +116,8 @@ class Selector:
         select = self.config.pluginmanager.get_plugin('TestmonSelect')
         if select is None:
             return
-        changed = {test for test, files in self.recorded.items()
-                   if any(digest(f) != h for f, h in files.items())}
-        classes = tuple(t.rsplit('::', 1)[0] + '::' for t in changed)   # a class fixture's compile: its first test
+        changed = {test for test, files in self.recorded.items() if any(digest(f) != h for f, h in files.items())}
+        classes = tuple(t.rsplit('::', 1)[0] + '::' for t in changed)  # a class fixture's compile: its first test
         select.deselected_tests = [t for t in select.deselected_tests if not t.startswith(classes)]
         homes = {t.split('::')[0] for t in changed}
         select.deselected_files = [f for f in select.deselected_files if f not in homes]

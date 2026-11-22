@@ -2,25 +2,27 @@
 real USB: the menu's MTP mode row starts it, the dev command diag.mtp (0x61) is the test transport, and the
 scripted MTP client of test_mtp_responder.py drives it. Needs clang++ and the private stock 1.2.1 images
 (skipped without them). No device access."""
-from pathlib import Path
+
 import random
 import shutil
 import struct
 import tempfile
 import time
 import unittest
+from pathlib import Path
 
 import pytest
-
-from xy_forever import xyf_host as host
-from xy_forever import bounds, paths, sim, usb_proto_ids as P
 import test_mtp_responder as R
+
+from xy_forever import bounds, paths, sim
+from xy_forever import usb_proto_ids as P
+from xy_forever import xyf_host as host
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 TUNNEL = 0x61
 PLAY, STOP, PLUS = 51, 52, 54
-PASS_BOUND_MS = 250                                                       # one request per pass (sim timing)
-STREAM_MAX = 8192                                                         # file_client.hpp stream_max (#144)
+PASS_BOUND_MS = 250  # one request per pass (sim timing)
+STREAM_MAX = 8192  # file_client.hpp stream_max (#144)
 
 
 class TunnelClient(R.Client):
@@ -31,7 +33,7 @@ class TunnelClient(R.Client):
         self.dev, self.tid, self.zlps = dev, 0, 0
 
     def tunnel(self, op, body=b''):
-        info, self.dev.hello_info = self.dev.hello_info, None             # diag.mtp is not in the hello list
+        info, self.dev.hello_info = self.dev.hello_info, None  # diag.mtp is not in the hello list
         try:
             return self.dev.call(TUNNEL, bytes([op]) + body, timeout=10.0)
         finally:
@@ -78,9 +80,9 @@ class MtpSessionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         paths.SESSIONS.mkdir(parents=True, exist_ok=True)
-        cls.work = Path(tempfile.mkdtemp(prefix='sim-mtp-session-', dir=paths.SESSIONS))   # evidence: private only
+        cls.work = Path(tempfile.mkdtemp(prefix='sim-mtp-session-', dir=paths.SESSIONS))  # evidence: private only
         cls.seeded = sim.seed(cls.work / 'seed')
-        cls.big = random.Random(35).randbytes(200 * 1024 + 500)            # + the 12-byte header: a multiple of 512 (ZLP)
+        cls.big = random.Random(35).randbytes(200 * 1024 + 500)  # + the 12-byte header: a multiple of 512 (ZLP)
         (cls.seeded / 'xy-forever/big.bin').write_bytes(cls.big)
         (cls.seeded / 'xy-forever/tmp').mkdir(parents=True, exist_ok=True)
         (cls.seeded / 'user').mkdir(exist_ok=True)
@@ -126,7 +128,7 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual(self.c.state()['stage'], 1)
 
     def leave(self, n=1):
-        self.assertEqual(self.c.tunnel(1)[0], P.S_OK)                     # diag.mtp op 1
+        self.assertEqual(self.c.tunnel(1)[0], P.S_OK)  # diag.mtp op 1
         deadline = time.monotonic() + 60
         while self.c.state()['busy']:
             self.assertLess(time.monotonic(), deadline, 'the session never ended')
@@ -148,7 +150,7 @@ class MtpSessionTests(unittest.TestCase):
         """Kept: MTP smoke test: browse, download, upload and delete through both processors."""
         self.assertEqual(self.file_command(), P.S_OK)
         self.enter()
-        self.assertEqual(self.file_command(), P.S_OK)                    # an open session holds nothing
+        self.assertEqual(self.file_command(), P.S_OK)  # an open session holds nothing
         code, _, info = self.c.transaction(0x1001)
         self.assertEqual(code, R.OK)
         self.assertTrue(info)
@@ -159,25 +161,27 @@ class MtpSessionTests(unittest.TestCase):
         self.assertIn('tmp', names)
         code, _, data = self.c.transaction(0x1009, names['big.bin'])
         self.assertEqual(code, R.OK)
-        self.assertEqual(data, self.big)                                   # byte for byte
-        self.assertGreaterEqual(self.c.zlps, 1)                            # 12 + 200 KiB + 500: a ZLP after the data
+        self.assertEqual(data, self.big)  # byte for byte
+        self.assertGreaterEqual(self.c.zlps, 1)  # 12 + 200 KiB + 500: a ZLP after the data
         tmp = names['tmp']
         body = random.Random(7).randbytes(5000)
-        code, params, _ = self.c.transaction(0x100C, R.STORAGE, tmp, data=R.object_info('up.bin', len(body), parent=tmp))
+        code, params, _ = self.c.transaction(
+            0x100C, R.STORAGE, tmp, data=R.object_info('up.bin', len(body), parent=tmp)
+        )
         self.assertEqual(code, R.OK, hex(code))
         handle = params[2]
         self.assertEqual(self.c.transaction(0x100D, data=body)[0], R.OK)
         self.assertEqual((self.root / 'xy-forever/tmp/up.bin').read_bytes(), body)
         self.assertEqual(self.c.transaction(0x100B, handle)[0], R.OK)
         self.assertFalse((self.root / 'xy-forever/tmp/up.bin').exists())
-        user = self.folder('user')                                         # the write rule: user/ is writable
+        user = self.folder('user')  # the write rule: user/ is writable
         code, params, _ = self.c.transaction(0x100C, R.STORAGE, user, data=R.object_info('x.bin', 3, parent=user))
         self.assertEqual(code, R.OK)
         self.assertEqual(self.c.transaction(0x100D, data=b'abc')[0], R.OK)
         self.assertEqual((self.root / 'user/x.bin').read_bytes(), b'abc')
         self.assertEqual(self.c.transaction(0x100B, params[2])[0], R.OK)
         self.assertFalse((self.root / 'user/x.bin').exists())
-        shutil.rmtree(self.root / 'xy-forever/tmp')                       # #144: tmp/ gone: the open makes it again
+        shutil.rmtree(self.root / 'xy-forever/tmp')  # #144: tmp/ gone: the open makes it again
         code, params, _ = self.c.transaction(0x100C, R.STORAGE, user, data=R.object_info('y.bin', 3, parent=user))
         self.assertEqual(code, R.OK)
         self.assertEqual(self.c.transaction(0x100D, data=b'def')[0], R.OK)
@@ -186,14 +190,14 @@ class MtpSessionTests(unittest.TestCase):
         (self.root / 'upgrade').mkdir(exist_ok=True)
         inbox = self.folder('upgrade')
         code, _, _ = self.c.transaction(0x100C, R.STORAGE, inbox, data=R.object_info('x.tfw', 3, parent=inbox))
-        self.assertEqual(code, R.ACCESS_DENIED)                            # never in the stock updater's inbox
+        self.assertEqual(code, R.ACCESS_DENIED)  # never in the stock updater's inbox
         self.assertFalse((self.root / 'upgrade/x.tfw').exists())
         s = self.c.state()
         self.assertLess(s['longest_ms'], PASS_BOUND_MS, s)
         self.assertEqual(s['link'], 0)
         self.assertIn('mtp screen: stage=1', self.log())
         self.leave()
-        self.assertEqual(self.file_command(), P.S_OK)                      # serial commands work again
+        self.assertEqual(self.file_command(), P.S_OK)  # serial commands work again
 
     @pytest.mark.sim
     def test_a_silent_clean_error_b_alive(self):
@@ -203,23 +207,24 @@ class MtpSessionTests(unittest.TestCase):
         xyf = self.folder('xy-forever')
         before = self.sim.status()['a_silenced']
         self.sim.set('a_silent', 1)
-        self.c.out(self.c.command(0x1007, R.STORAGE, 0, xyf))            # a listing: B's next request is held
+        self.c.out(self.c.command(0x1007, R.STORAGE, 0, xyf))  # a listing: B's next request is held
         deadline = time.monotonic() + 30.0
         while self.sim.status()['a_silenced'] == before:
             self.assertLess(time.monotonic(), deadline)
             self.sim.advance(5)
         for _ in range(3):
-            self.sim.advance(6000)                              # past the request's bound
+            self.sim.advance(6000)  # past the request's bound
         self.sim.set('a_silent', 0)
         answers = self.c.answers(self.c.take(timeout=bounds.WAIT_S))
-        self.assertEqual(answers[-1][1], R.BUSY)                           # a clean error (f_link: Device_Busy)
+        self.assertEqual(answers[-1][1], R.BUSY)  # a clean error (f_link: Device_Busy)
         self.assertEqual(self.c.state()['link'], 1)
-        self.assertEqual(self.dev.hello()[0], 0)                           # B alive
+        self.assertEqual(self.dev.hello()[0], 0)  # B alive
         self.assertEqual(self.dev.call(P.STATUS)[0], P.S_OK)
-        self.leave()                                                       # leaving still works cleanly
-        self.assertEqual(self.file_command(), P.S_LINK)                    # the link is down: B answers link
+        self.leave()  # leaving still works cleanly
+        self.assertEqual(self.file_command(), P.S_LINK)  # the link is down: B answers link
         # Entering needs nothing of A (the composite enables the session at its start); each operation that
         # needs the files checks A first and answers Device_Busy while A is gone (the link above).
+
 
 if __name__ == '__main__':
     unittest.main()

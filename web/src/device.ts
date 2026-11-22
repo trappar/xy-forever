@@ -2,7 +2,17 @@
 // Every mutation shares one scope, so the OP-XY gets one action at a time (a second waits for the first); queries read
 // what the pages show. Each outcome goes to the bug report, a failure to the notice line, and a lost link to Connect.
 import { MutationCache, MutationObserver, QueryCache, QueryClient, useMutation } from '@tanstack/react-query';
-import { ASK_TEXT, Client, JobError, SERIAL_OFF_TEXT, connectWebSerial, fileReason, isXyfError, readModsConfig, webSerial } from 'xy-forever-client';
+import {
+  ASK_TEXT,
+  Client,
+  JobError,
+  SERIAL_OFF_TEXT,
+  connectWebSerial,
+  fileReason,
+  isXyfError,
+  readModsConfig,
+  webSerial,
+} from 'xy-forever-client';
 import type { SerialConnectOptions } from 'xy-forever-client';
 import { webSocketOpener } from 'xy-forever-client/dev';
 import { bugReport } from './bug-report.ts';
@@ -15,7 +25,10 @@ import { navigatePath, simPort } from './routing.ts';
 
 type DeviceMeta = { action: Action; label?: string };
 declare module '@tanstack/react-query' {
-  interface Register { queryMeta: DeviceMeta; mutationMeta: DeviceMeta }
+  interface Register {
+    queryMeta: DeviceMeta;
+    mutationMeta: DeviceMeta;
+  }
 }
 
 export function describe(error: unknown): string {
@@ -28,13 +41,18 @@ export function describe(error: unknown): string {
 function failed(action: Action | undefined, error: unknown): void {
   if (action) bugReport.record(action, 'failed', error);
   const { client } = useConnection.getState();
-  if (client && !client.connected) { useConnection.setState({ client: null }); navigatePath('/connect'); }
+  if (client && !client.connected) {
+    useConnection.setState({ client: null });
+    navigatePath('/connect');
+  }
   notice(describe(error), 'error');
 }
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
-    onSuccess: (_data, query) => { if (query.meta) bugReport.record(query.meta.action, 'finished'); },
+    onSuccess: (_data, query) => {
+      if (query.meta) bugReport.record(query.meta.action, 'finished');
+    },
     onError: (error, query) => failed(query.meta?.action, error),
   }),
   mutationCache: new MutationCache({
@@ -51,7 +69,9 @@ export const queryClient = new QueryClient({
   },
 });
 // A new connection (or none) makes every answer read so far stale.
-useConnection.subscribe((now, before) => { if (now.client !== before.client) queryClient.removeQueries(); });
+useConnection.subscribe((now, before) => {
+  if (now.client !== before.client) queryClient.removeQueries();
+});
 
 const meta = (action: Action, label: string | undefined): DeviceMeta => (label ? { action, label } : { action });
 
@@ -62,7 +82,10 @@ export function useAction<V = void, T = unknown>(action: Action, work: (variable
 
 /** The same outside React; resolves once it ends (a failure is already reported). */
 export function runAction(action: Action, work: () => Promise<unknown>, label?: string): Promise<void> {
-  return new MutationObserver(queryClient, { mutationFn: work, meta: meta(action, label) }).mutate().then(() => {}, () => {});
+  return new MutationObserver(queryClient, { mutationFn: work, meta: meta(action, label) }).mutate().then(
+    () => {},
+    () => {},
+  );
 }
 
 /** A device action or query runs. */
@@ -80,18 +103,26 @@ export const canConnect = (): boolean => simPort() !== null || webSerial() !== n
 
 /** The simulator, else Web Serial: a granted port that answers, the chooser (only from a click) when none does
  * (serial-connect.ts). filters: the install's release image has only the stock pair (RELEASE_FILTERS). */
-export async function openDevice(options: Pick<SerialConnectOptions, 'filters' | 'choose' | 'timeoutMs'> = {}): Promise<Client> {
+export async function openDevice(
+  options: Pick<SerialConnectOptions, 'filters' | 'choose' | 'timeoutMs'> = {},
+): Promise<Client> {
   const port = simPort();
-  if (port) return Client.connect(webSocketOpener(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/xyf-relay?sim=${encodeURIComponent(port)}`), { timeoutMs: 10_000 });
+  if (port)
+    return Client.connect(
+      webSocketOpener(
+        `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/xyf-relay?sim=${encodeURIComponent(port)}`,
+      ),
+      { timeoutMs: 10_000 },
+    );
   return connectWebSerial({ timeoutMs: 10_000, ...options });
 }
 
 /** Makes found this app's connection. */
 export function adopt(found: Client): void {
   bugReport.updateStatus(found.info);
-  found.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
+  found.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy')); // #65
   useConnection.setState({ client: found, stockRestored: false });
-  if (!found.info.serial) notice(SERIAL_OFF_TEXT, 'error');                     // #191: hello serial=off
+  if (!found.info.serial) notice(SERIAL_OFF_TEXT, 'error'); // #191: hello serial=off
 }
 
 /** Closes this app's connection. */
@@ -103,11 +134,18 @@ export async function disconnect(): Promise<void> {
 
 /** A text file on the device, or null when it is not there. */
 export async function readText(client: Client, path: string): Promise<string | null> {
-  try { return new TextDecoder().decode(await client.readFile(path)); } catch (e) { if (isXyfError(e, 'not_found')) return null; throw e; }
+  try {
+    return new TextDecoder().decode(await client.readFile(path));
+  } catch (e) {
+    if (isXyfError(e, 'not_found')) return null;
+    throw e;
+  }
 }
 
 /** The saved mods (/yaffs2/xy-forever/config.json): null when none is saved, undefined with the reason when unreadable. */
-export async function savedConfig(client: Client): Promise<{ config: SavedConfig | null; error?: never } | { config: undefined; error: string }> {
+export async function savedConfig(
+  client: Client,
+): Promise<{ config: SavedConfig | null; error?: never } | { config: undefined; error: string }> {
   try {
     const text = await readModsConfig(client);
     return { config: text === null ? null : parseConfig(text) };

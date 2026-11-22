@@ -28,16 +28,32 @@ static const uint32_t scratch = 0x8b800000u, scratch_bytes = 0x10000u;
 static const uint32_t staging = 0x8b820000u, staging_bytes = 0x7e0000u;   // to 0x8c000000
 static const uint32_t role0_idle_ms = 3000;    // a: no request from b for 3 s -> give up
 enum Outcome : uint32_t {
-    outcome_none = 0, outcome_file = 1, outcome_no_image = 2, outcome_refused = 3,
-    outcome_link = 4, outcome_copy = 5, outcome_role = 6
+    outcome_none = 0,
+    outcome_file = 1,
+    outcome_no_image = 2,
+    outcome_refused = 3,
+    outcome_link = 4,
+    outcome_copy = 5,
+    outcome_role = 6
 };
 // Load/admission reasons (0 = admitted).
 enum Reason : uint32_t {
-    reason_ok = 0, reason_storage = 1, reason_open = 2, reason_size = 3, reason_read = 4,
-    reason_policy = 5, reason_entry = 6, reason_report_slot = 7, reason_census_slot = 8,
-    reason_heap = 9, reason_unmount = 10, reason_not_run = 11,
-    reason_no_library = 12, reason_mismatch = 13,     // library boot: nothing bootable / info.txt size or CRC
-    reason_content = 14, reason_content_repair = 15   // its content is not installed / a switch is unfinished
+    reason_ok = 0,
+    reason_storage = 1,
+    reason_open = 2,
+    reason_size = 3,
+    reason_read = 4,
+    reason_policy = 5,
+    reason_entry = 6,
+    reason_report_slot = 7,
+    reason_census_slot = 8,
+    reason_heap = 9,
+    reason_unmount = 10,
+    reason_not_run = 11,
+    reason_no_library = 12,
+    reason_mismatch = 13,     // library boot: nothing bootable / info.txt size or CRC
+    reason_content = 14,
+    reason_content_repair = 15   // its content is not installed / a switch is unfinished
 };
 // Library boot: a picks the image from the XY Forever library (xyf_cold_library).
 struct LibraryInfo {
@@ -52,7 +68,8 @@ struct Result {
     uint32_t image_bytes, image_crc, admit_reason, read_result;
     uint32_t begin_result, poll_result, end_result, polls;
     uint32_t committed, declined, copy_crc, heap_brk;
-    uint32_t start_cycles, storage_ms, hash_ms, link_ms;   // b: storage_ms = a's first command answer, hash_ms = the longest wait for one
+    uint32_t start_cycles, storage_ms, hash_ms,
+        link_ms;   // b: storage_ms = a's first command answer, hash_ms = the longest wait for one
     uint32_t admit_ms, end_ms, stack_used, received_bytes;
     uint32_t digest[8];
     cold_storage::Diagnostic storage;
@@ -80,12 +97,13 @@ static const uint32_t stage2_bytes = sizeof(xyf_boot::Stage2Info);
 static const uint32_t stage2_bytes = 0;
 #endif
 static_assert(sizeof(Result) == 36 * 4 + sizeof(cold_storage::Diagnostic) + sizeof(peer_services::Diagnostic) +
-              library_bytes + menu_bytes + timing_bytes + stage2_bytes, "Result layout");
+                                    library_bytes + menu_bytes + timing_bytes + stage2_bytes,
+              "Result layout");
 extern Result result;
 #if defined(XYF_TFW_CHECK)
 void discard_prepared(); // A: revoke normal CHECK/BOOT lease before developer staging
 #endif
-} }
+}}
 // Pre-copy hook (both roles). Sets the storage-image handoff variables only
 // after a commit; always returns.
 extern "C" void xy_forever_file_boot();

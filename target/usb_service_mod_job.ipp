@@ -19,7 +19,7 @@
 namespace mj = xyf_core::mod_job;
 const U32 job_slot_bytes = 0x10000u, job_slice_ms = 20, job_ids = 32, job_say_ms = 1000;
 #if defined(XYF_MTP_SESSION)
-const U32 mtp_slot_bytes = 0x10000u, job_work_end = XYF_JOB_REGION_END - mtp_slot_bytes;   // the MTP session's slot above
+const U32 mtp_slot_bytes = 0x10000u, job_work_end = XYF_JOB_REGION_END - mtp_slot_bytes; // the MTP session's slot above
 #else
 const U32 job_work_end = XYF_JOB_REGION_END;
 #endif
@@ -28,37 +28,46 @@ const char job_firmware[] = "/yaffs2/xy-forever/firmware/", job_mods[] = "/yaffs
 const char job_tmp[] = "/yaffs2/xy-forever/tmp", job_catalog[] = "/yaffs2/content/op1_factory.json";
 enum JobState : U32 { job_none = 0, job_busy, job_ended };
 // Removing one folder tree under tmp/ in bounded steps (tree_step), and the sweep of leftovers.
-struct Tree { char path[file_engine::max_path]; U32 root; };
-struct Sweep { Tree tree; U32 removing, skip, calls; char keep[file_engine::max_path]; };
-enum JobStage : U32 { js_sweep = 0, js_assemble, js_away, js_in, js_clean, js_wipe, js_cache, js_gc };   // js_wipe
+struct Tree {
+    char path[file_engine::max_path];
+    U32 root;
+};
+struct Sweep {
+    Tree tree;
+    U32 removing, skip, calls;
+    char keep[file_engine::max_path];
+};
+enum JobStage : U32 { js_sweep = 0, js_assemble, js_away, js_in, js_clean, js_wipe, js_cache, js_gc }; // js_wipe
 struct JobSlot {
     mj::Job job;
     mj::Input input;
     mj::Files calls;
     const char* machines[max_job_machines];
     const char* extensions[max_job_extensions];
-    char text[1536];                                                     // the request's ids and name
+    char text[1536]; // the request's ids and name
     char base[file_engine::max_path], stock[file_engine::max_path], official[file_engine::max_path];
     char generation[file_engine::max_path], out[file_engine::max_path], sweep[file_engine::max_path];
     char line[48];
     U32 id, started_ms, ended_ms, longest_ms, link, debris, said_ms, said_phase;
-    uint8_t page[read_range_max];                                        // the tree steps' listing
+    uint8_t page[read_range_max]; // the tree steps' listing
     file_client::NameScan metadata_scan;
     // The commit and the sweep.
     char target[8], entry[file_engine::max_path], old[file_engine::max_path];
     U32 stage, had_old, commit_error, commit_code, extra_steps, clean_calls;
     xyf::blob::Collect garbage;
-    xyf::blob::Copy cache; U32 cache_index, cache_active;
-    Tree tree;                                                           // the old entry's tree in tmp/
+    xyf::blob::Copy cache;
+    U32 cache_index, cache_active;
+    Tree tree; // the old entry's tree in tmp/
     Sweep leftovers;
     char state_text[xyf::store::max_text];
 };
 static_assert(sizeof(JobSlot) <= job_slot_bytes, "the job's state fits before its work region");
 volatile U32 job_state __attribute__((section(".data"))) = job_none;
 volatile U32 job_counter __attribute__((section(".data"))) = 0;
-volatile U32 job_last_target __attribute__((section(".data"))) = 0;   // 1 mods-a, 2 mods-b (this boot)
-volatile U32 job_kind __attribute__((section(".data"))) = 0;          // 0 mods.apply, 1 content switch, 2 config, 3 adoption, 4 MTP session
-volatile U32 job_usb __attribute__((section(".data"))) = 0;           // the job was started over USB
+volatile U32 job_last_target __attribute__((section(".data"))) = 0; // 1 mods-a, 2 mods-b (this boot)
+volatile U32 job_kind __attribute__((section(".data"))) =
+    0; // 0 mods.apply, 1 content switch, 2 config, 3 adoption, 4 MTP session
+volatile U32 job_usb __attribute__((section(".data"))) = 0; // the job was started over USB
 JobSlot& slot() { return *reinterpret_cast<JobSlot*>(XYF_JOB_REGION_BEGIN); }
 volatile U32 blob_collecting __attribute__((section(".data"))) = 0;
 volatile U32 package_active __attribute__((section(".data"))) = 0;
@@ -72,73 +81,97 @@ bool journal_kept() {
     if (journal_present || recovery_pending) return true;
     uint8_t record[file_client::record_bytes];
     const char* paths[2] = {"/yaffs2/xy-forever/job.txt", "/yaffs2/xy-forever/job.old"};
-    for (U32 i=0;i!=2;++i) {
-        const file_client::Reply r=file_client::stat(paths[i],record);
-        if (r.outcome || r.value==0 || r.error!=file_client::enoent) return true;
+    for (U32 i = 0; i != 2; ++i) {
+        const file_client::Reply r = file_client::stat(paths[i], record);
+        if (r.outcome || r.value == 0 || r.error != file_client::enoent) return true;
     }
     return false;
 }
 volatile U32 menu_pack_active __attribute__((section(".data"))) = 0;
-bool job_running() { return menu_pack_active || job_state == job_busy || package_active || blob_collecting || reporting; }
+bool job_running() {
+    return menu_pack_active || job_state == job_busy || package_active || blob_collecting || reporting;
+}
 #if defined(XYF_MTP_SESSION)
-bool mtp_busy();                                                        // an MTP operation in flight
+bool mtp_busy(); // an MTP operation in flight
 #define XYF_OR_MTP_BUSY || mtp_busy()
-#define XYF_AND_NOT_MTP_BUSY && !mtp_busy()
+#define XYF_AND_NOT_MTP_BUSY &&!mtp_busy()
 #else
-#define XYF_OR_MTP_BUSY                                                 // the product: the same tokens as before
+#define XYF_OR_MTP_BUSY // the product: the same tokens as before
 #define XYF_AND_NOT_MTP_BUSY
 #endif
 void stop_idle_gc();
-bool job_blocks(U32 type) {                                             // also while settle_begin's op 9 is out
-    if (blob_collecting && type != P::t_status && type != P::t_screen && type != P::t_peek &&
-        type != P::t_job_status && type != P::t_job_cancel) stop_idle_gc();
-    if (package_active && (type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space || type == P::t_read_file || type == P::t_list_dir || type == P::t_delete_file ||
-        type == P::t_remove_dir || type == P::t_make_dir || type == P::t_rename_file || type == P::t_write_begin ||
-        type == P::t_write_data || type == P::t_write_end)) { package_ms = now(); package_file = 1; return false; }
-    if (recovery_pending && !boot_probe_active() && !rehearsal_active() && !job_running() && !closing XYF_AND_NOT_MTP_BUSY) {
+bool job_blocks(U32 type) { // also while settle_begin's op 9 is out
+    if (blob_collecting && type != P::t_status && type != P::t_screen && type != P::t_peek && type != P::t_job_status &&
+        type != P::t_job_cancel)
+        stop_idle_gc();
+    if (package_active &&
+        (type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space || type == P::t_read_file ||
+         type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir || type == P::t_make_dir ||
+         type == P::t_rename_file || type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end)) {
+        package_ms = now();
+        package_file = 1;
+        return false;
+    }
+    if (recovery_pending && !boot_probe_active() && !rehearsal_active() && !job_running() &&
+        !closing XYF_AND_NOT_MTP_BUSY) {
         if (type == P::t_read_file || type == P::t_list_dir) return false;
         // Only the readonly scan: preserve every write-window, held-request and original boot-path check.
         if (!writes_due && mounted != file_client::mounted_stale && !file_client::left_out() && menu_link::usb_idle() &&
-            (type == P::t_reboot || type == P::t_continue || type == P::t_library_boot)) return false;
+            (type == P::t_reboot || type == P::t_continue || type == P::t_library_boot))
+            return false;
     }
-    if (!boot_probe_active() && !rehearsal_active() && !job_running() && !recovery_pending && !closing XYF_AND_NOT_MTP_BUSY) return false;
-    return type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space || type == P::t_read_file || type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end ||
+    if (!boot_probe_active() && !rehearsal_active() && !job_running() && !recovery_pending &&
+        !closing XYF_AND_NOT_MTP_BUSY)
+        return false;
+    return type == P::t_package_list || type == P::t_state_get || type == P::t_storage_space ||
+           type == P::t_read_file || type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end ||
            type == P::t_file_write || type == P::t_list_dir || type == P::t_delete_file || type == P::t_remove_dir ||
            type == P::t_make_dir || type == P::t_rename_file || type == P::t_copy_file || type == P::t_install ||
-           type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end ||
-           type == P::t_uninstall || type == P::t_reboot || type == P::t_continue || type == P::t_library_boot ||
-           type == P::t_mods_apply || type == P::t_mtp_test || type == P::t_set_default || type == P::t_tfw_check;
+           type == P::t_write_begin || type == P::t_write_data || type == P::t_write_end || type == P::t_uninstall ||
+           type == P::t_reboot || type == P::t_continue || type == P::t_library_boot || type == P::t_mods_apply ||
+           type == P::t_mtp_test || type == P::t_set_default || type == P::t_tfw_check;
 }
 // String helpers (no library calls).
-U32 text_bytes(const char* s) { U32 n = 0; while (s[n]) ++n; return n; }
+U32 text_bytes(const char* s) {
+    U32 n = 0;
+    while (s[n]) ++n;
+    return n;
+}
 bool join(char* out, const char* a, const char* b, const char* c = "") {
     const char* parts[3] = {a, b, c};
     U32 n = 0;
     for (U32 k = 0; k != 3; ++k)
-        for (const char* s = parts[k]; *s; ++s) { if (n + 1 >= file_engine::max_path) return false; out[n++] = *s; }
+        for (const char* s = parts[k]; *s; ++s) {
+            if (n + 1 >= file_engine::max_path) return false;
+            out[n++] = *s;
+        }
     out[n] = 0;
     return true;
 }
-U32 decimal_text(char* at, U32 v) {                                     // no division (no libgcc)
+U32 decimal_text(char* at, U32 v) { // no division (no libgcc)
     static const U32 tens[10] = {1000000000u, 100000000u, 10000000u, 1000000u, 100000u, 10000u, 1000u, 100u, 10u, 1u};
     U32 n = 0;
     for (U32 k = 0; k != 10; ++k) {
         char d = '0';
-        while (v >= tens[k]) { v -= tens[k]; ++d; }
+        while (v >= tens[k]) {
+            v -= tens[k];
+            ++d;
+        }
         if (d != '0' || n || k == 9) at[n++] = d;
     }
     at[n] = 0;
     return n;
 }
-bool inside(const char* path, const char* folder) {                    // folder/... (folder without its '/')
+bool inside(const char* path, const char* folder) { // folder/... (folder without its '/')
     U32 i = 0;
-    for (; folder[i]; ++i) if (path[i] != folder[i]) return false;
+    for (; folder[i]; ++i)
+        if (path[i] != folder[i]) return false;
     return path[i] == '/' && path[i + 1];
 }
 bool job_read_ok(const JobSlot& s, const char* path) {
     if (!storage_server::valid_path(path)) return false;
     if (inside(path, s.generation) || inside(path, s.base) || inside(path, s.out)) return true;
-    const char* catalog = s.input.catalog;                              // or the saved official copy
+    const char* catalog = s.input.catalog; // or the saved official copy
     U32 i = 0;
     while (catalog[i] && path[i] == catalog[i]) ++i;
     return !catalog[i] && !path[i];
@@ -176,14 +209,14 @@ bool job_ids_split(char* text, const char** out, U32 max, U32& count) {
 JobSlot& of(void* c) { return *static_cast<JobSlot*>(c); }
 int job_fail(JobSlot& s, const file_client::Reply& r) {
     if (r.outcome == file_client::link) mounted = file_client::mounted_stale;
-    if (r.outcome != file_client::refused) s.link = 1;                // nothing more is sent
+    if (r.outcome != file_client::refused) s.link = 1; // nothing more is sent
     return -1;
 }
 int job_size(void* c, const char* path, xyf_core::U32* bytes) {
     JobSlot& s = of(c);
     if (s.link || !job_read_ok(s, path)) return -1;
     uint8_t record[file_client::record_bytes];
-    const file_client::Reply r = file_client::stat(path, record);       // op 0x22
+    const file_client::Reply r = file_client::stat(path, record); // op 0x22
     if (r.outcome) return job_fail(s, r);
     if (r.value != 0) return r.error == file_client::enoent ? mj::missing_file : -1;
     if ((P::get32(record + 8) & 0xf000u) != 0x8000u) return -1;
@@ -201,12 +234,12 @@ int job_probe_metadata(void* c, const char* path) {
     if (code == file_client::scan_again) return mj::probe_again;
     if (code == P::s_not_found) return mj::missing_file;
     if (code == P::s_link) s.link = 1;
-    return -1;       // the native name exists but stat could not read a regular file
+    return -1; // the native name exists but stat could not read a regular file
 }
 int job_open(void* c, const char* path, bool write) {
     JobSlot& s = of(c);
     if (s.link || !(write ? job_write_ok(s, path) : job_read_ok(s, path))) return -1;
-    const file_client::Reply r = file_client::open(path, write ? storage_server::write_open_flags : 0u);   // op 0x29
+    const file_client::Reply r = file_client::open(path, write ? storage_server::write_open_flags : 0u); // op 0x29
     if (r.outcome) return job_fail(s, r);
     return r.value < 0 ? -1 : r.value;
 }
@@ -215,7 +248,7 @@ int job_read(void* c, int handle, xyf_core::Byte* data, xyf_core::U32 bytes) {
     if (s.link || handle < 0) return -1;
     const U32 n = bytes < file_client::chunk ? bytes : file_client::chunk;
     if (!n) return 0;
-    const file_client::Reply r = file_client::read(handle, data, n);    // op 0x2a
+    const file_client::Reply r = file_client::read(handle, data, n); // op 0x2a
     if (r.outcome) return job_fail(s, r);
     return r.value < 0 ? -1 : U32(r.value) > n ? int(n) : r.value;
 }
@@ -224,14 +257,14 @@ int job_write(void* c, int handle, const xyf_core::Byte* data, xyf_core::U32 byt
     if (s.link || handle < 0) return -1;
     const U32 n = bytes < file_client::chunk ? bytes : file_client::chunk;
     if (!n) return 0;
-    const file_client::Reply r = file_client::write(handle, data, n);   // op 0x2b
+    const file_client::Reply r = file_client::write(handle, data, n); // op 0x2b
     if (r.outcome) return job_fail(s, r);
     return r.value < 0 || U32(r.value) > n ? -1 : r.value;
 }
 int job_close(void* c, int handle) {
     JobSlot& s = of(c);
     if (s.link || handle < 0) return -1;
-    const file_client::Reply r = file_client::close(handle);            // op 0x2d
+    const file_client::Reply r = file_client::close(handle); // op 0x2d
     if (r.outcome) return job_fail(s, r);
     return r.value ? -1 : 0;
 }
@@ -246,27 +279,30 @@ int job_rename(void* c, const char* from, const char* to) {
 int job_remove(void* c, const char* path) {
     JobSlot& s = of(c);
     if (s.link || !job_write_ok(s, path)) return -1;
-    const file_client::Reply r = file_client::unlink(path);             // op 0x25
+    const file_client::Reply r = file_client::unlink(path); // op 0x25
     if (r.outcome) return job_fail(s, r);
     return r.value < 0 ? -1 : 0;
 }
 int job_mkdir(void* c, const char* path) {
     JobSlot& s = of(c);
     if (s.link || !job_write_ok(s, path)) return -1;
-    const file_client::Reply r = file_client::mkdir(path);              // op 0x26
+    const file_client::Reply r = file_client::mkdir(path); // op 0x26
     if (r.outcome) return job_fail(s, r);
     if (r.value >= 0) return 0;
     if (r.error != file_client::eexist) return -1;
-    uint8_t record[file_client::record_bytes];                           // there already: a folder?
+    uint8_t record[file_client::record_bytes]; // there already: a folder?
     const file_client::Reply q = file_client::stat(path, record);
     if (q.outcome) return job_fail(s, q);
     return q.value == 0 && (P::get32(record + 8) & 0xf000u) == 0x4000u ? 0 : -1;
 }
 // ---- Bounded tree removal under tmp/, the leftover sweep, the target id and the commit
-const U32 one_entry = 6 + file_client::max_name;                         // a file.list page of one entry
-const U32 sweep_cap = 600, clean_cap = 600, wipe_cap = 1024;             // calls per sweep, old tree, output
+const U32 one_entry = 6 + file_client::max_name; // a file.list page of one entry
+const U32 sweep_cap = 600, clean_cap = 600, wipe_cap = 1024; // calls per sweep, old tree, output
 enum TreeStep : U32 { tree_more = 0, tree_done, tree_failed };
-bool same_text(const char* a, const char* b) { while (*a && *a == *b) ++a, ++b; return *a == *b; }
+bool same_text(const char* a, const char* b) {
+    while (*a && *a == *b) ++a, ++b;
+    return *a == *b;
+}
 bool tmp_ok(const char* path) {
     return storage_server::valid_path(path) && inside(path, job_tmp) && storage_server::valid_write_path(path);
 }
@@ -280,8 +316,12 @@ bool tree_begin(Tree& t, const char* folder) {
 U32 tree_change(U32 op, const char* path) {
     uint32_t error = 0;
     U32 code = enter_writes();
-    if (code == P::s_ok) { storage_used = 1; code = file_client::change(op, path, error, mounted); }
-    writes_due = 1; writes_ms = now();
+    if (code == P::s_ok) {
+        storage_used = 1;
+        code = file_client::change(op, path, error, mounted);
+    }
+    writes_due = 1;
+    writes_ms = now();
     return code;
 }
 U32 tree_step(Tree& t, uint8_t* page) {
@@ -289,7 +329,7 @@ U32 tree_step(Tree& t, uint8_t* page) {
     if (file_client::list(t.path, 0, page, one_entry, count, more, bytes, mounted) != P::s_ok) return tree_failed;
     U32 n = text_bytes(t.path);
     if (!count) {
-        if (tree_change(0x27u, t.path) != P::s_ok) return tree_failed;   // rmdir
+        if (tree_change(0x27u, t.path) != P::s_ok) return tree_failed; // rmdir
         if (n == t.root) return tree_done;
         while (n > t.root && t.path[n] != '/') --n;
         t.path[n] = 0;
@@ -301,8 +341,8 @@ U32 tree_step(Tree& t, uint8_t* page) {
     for (U32 i = 0; i != name; ++i) t.path[n + 1 + i] = char(page[6 + i]);
     t.path[n + 1 + name] = 0;
     if (!tmp_ok(t.path)) return tree_failed;
-    if (page[0] == 1) return tree_more;                                  // a folder: into it
-    const U32 code = tree_change(0x25u, t.path);                         // unlink
+    if (page[0] == 1) return tree_more; // a folder: into it
+    const U32 code = tree_change(0x25u, t.path); // unlink
     t.path[n] = 0;
     return code == P::s_ok ? tree_more : tree_failed;
 }
@@ -324,10 +364,11 @@ bool sweep_step(Sweep& w, uint8_t* page) {
     name[n] = 0;
     const bool job = page[0] == 1 && n > 4 && name[0] == 'j' && name[1] == 'o' && name[2] == 'b' && name[3] == '-';
     const bool package = page[0] == 1 && n > 4 && name[0] == 'p' && name[1] == 'k' && name[2] == 'g' && name[3] == '-';
-    uint32_t size;                                                       // #4: an upload's tmp file left behind
+    uint32_t size; // #4: an upload's tmp file left behind
     if (page[0] == 0 && join(path, job_tmp, "/", name) && file_engine::upload_size(path, size))
-        return tree_change(0x25u, path) == P::s_ok;                      // unlink (uploading(): never the open one)
-    if ((job || package) && join(path, job_tmp, "/", name) && !same_text(path, w.keep) && tree_begin(w.tree, path)) w.removing = 1;
+        return tree_change(0x25u, path) == P::s_ok; // unlink (uploading(): never the open one)
+    if ((job || package) && join(path, job_tmp, "/", name) && !same_text(path, w.keep) && tree_begin(w.tree, path))
+        w.removing = 1;
     else ++w.skip;
     return true;
 }
@@ -342,30 +383,45 @@ void sweep_begin(Sweep& w, const char* keep) {
 // slot's sweep and page are free then. A job that starts ends it (its own sweep covers the same folders).
 // Bounded as the job's sweep: sweep_cap calls, the first failure ends it.
 volatile U32 gc_defer_ms __attribute__((section(".data"))) = 0;
-volatile U32 boot_sweep __attribute__((section(".data"))) = 0;          // 0 waiting, 1 running, 2 ended
+volatile U32 boot_sweep __attribute__((section(".data"))) = 0; // 0 waiting, 1 running, 2 ended
 // Background collection yields only between completed IO calls. Foreground
 // jobs may then reuse the workspace; deletion was based on a complete snapshot.
 void stop_idle_gc() {
     if (!blob_collecting) return;
     xyf::blob::Collect& g = slot().garbage;
     ContentIo io = {0};
-    if (g.fd >= 0) { io.close(g.fd); g.fd = -1; }
-    blob_collecting = 0; boot_sweep = 3; gc_defer_ms = now();
+    if (g.fd >= 0) {
+        io.close(g.fd);
+        g.fd = -1;
+    }
+    blob_collecting = 0;
+    boot_sweep = 3;
+    gc_defer_ms = now();
 }
 void boot_sweep_turn() {
     if (boot_sweep == 2) return;
-    if (mounted == file_client::mounted_stale) { blob_collecting = 0; boot_sweep = 2; return; }
+    if (mounted == file_client::mounted_stale) {
+        blob_collecting = 0;
+        boot_sweep = 2;
+        return;
+    }
     if (blob_collecting) {
         JobSlot& s = slot();
-        GarbageIo io; io.link = 0;
+        GarbageIo io;
+        io.link = 0;
         const int done = xyf::blob::collect_step(s.garbage, io);
         if (done) {
             if (s.garbage.fd >= 0 && !io.link) io.close(s.garbage.fd);
-            blob_collecting = 0; boot_sweep = 2; settle_begin();
+            blob_collecting = 0;
+            boot_sweep = 2;
+            settle_begin();
         }
         return;
     }
-    if (job_running()) { if (boot_sweep != 3) boot_sweep = 2; return; }
+    if (job_running()) {
+        if (boot_sweep != 3) boot_sweep = 2;
+        return;
+    }
     if (closing || uploading() XYF_OR_MTP_BUSY) return;
 #if defined(XYF_ONE_SESSION)
     if (!boot_sweep && xyf_boot::storage_view() != xyf::menu::storage_ready) return;
@@ -374,25 +430,37 @@ void boot_sweep_turn() {
 #endif
     JobSlot& s = slot();
     if (boot_sweep == 3) {
-        if (journal_present) { boot_sweep = 2; return; }
+        if (journal_present) {
+            boot_sweep = 2;
+            return;
+        }
         if (writes_due || !menu_link::usb_idle() || now() - rx_quiet_from < storage_server::window_settle_ms ||
-            now() - gc_defer_ms < storage_server::window_settle_ms) return;
-        if (!a_serving()) { boot_sweep = 2; return; }
-        xyf::blob::collect_begin(s.garbage, reinterpret_cast<uint8_t*>(job_work_end - xyf::blob::index_bytes), xyf::blob::index_bytes);
-        blob_collecting = 1; return;
+            now() - gc_defer_ms < storage_server::window_settle_ms)
+            return;
+        if (!a_serving()) {
+            boot_sweep = 2;
+            return;
+        }
+        xyf::blob::collect_begin(s.garbage, reinterpret_cast<uint8_t*>(job_work_end - xyf::blob::index_bytes),
+                                 xyf::blob::index_bytes);
+        blob_collecting = 1;
+        return;
     }
     if (!boot_sweep) {
         boot_sweep = a_serving() ? 1u : 2u;
         sweep_begin(s.leftovers, "");
         return;
     }
-    if (!sweep_step(s.leftovers, s.page)) { boot_sweep = 3; gc_defer_ms = now(); }
+    if (!sweep_step(s.leftovers, s.page)) {
+        boot_sweep = 3;
+        gc_defer_ms = now();
+    }
 }
 // the mods id that is neither the default nor the boot-once entry; of two, the
 // absent one, else the one not written last this boot (B sees no file times), else mods-a. Reads the
 // state slots (as A's scan: a, b, legacy) and stats both folders; s_state when both ids are taken.
 const char* const job_ids_mods[2] = {"mods-a", "mods-b"};
-U32 job_choice(JobSlot& s, xyf::state::Choice& choice) {                // the state slots, as A's scan
+U32 job_choice(JobSlot& s, xyf::state::Choice& choice) { // the state slots, as A's scan
     namespace st = xyf::state;
     for (U32 i = 0; i != sizeof(choice); ++i) reinterpret_cast<char*>(&choice)[i] = 0;
     static const char* const files[3] = {"/yaffs2/xy-forever/state-a.txt", "/yaffs2/xy-forever/state-b.txt",
@@ -422,8 +490,7 @@ U32 saved_mod_slot(char (&saved)[8]) {
     uint32_t bytes = 0;
     bool native = false;
     U32 code = P::s_busy;
-    for (U32 i = 0; i != 8 && code == P::s_busy; ++i)
-        code = config_io::read(scan, work.raw, bytes, native, mounted);
+    for (U32 i = 0; i != 8 && code == P::s_busy; ++i) code = config_io::read(scan, work.raw, bytes, native, mounted);
     if (code != P::s_ok) return code == P::s_not_found ? U32(P::s_ok) : code;
     const char* text = reinterpret_cast<const char*>(work.raw);
     if (native) {
@@ -439,23 +506,31 @@ U32 saved_mod_slot(char (&saved)[8]) {
 U32 job_target(JobSlot& s) {
     xyf::state::Choice choice;
     if (const U32 code = job_choice(s, choice)) return code;
-    char saved[8] = {0};                         // the saved Open-XY slot: never built over, safe mode too
+    char saved[8] = {0}; // the saved Open-XY slot: never built over, safe mode too
 #if defined(XYF_CONTENT_SWITCH)
     if (const U32 code = saved_mod_slot(saved)) return code;
 #endif
     bool open[2], present[2];
     for (U32 i = 0; i != 2; ++i) {
-        open[i] = !same_text(job_ids_mods[i], choice.state.default_id) && !same_text(job_ids_mods[i], choice.state.once) &&
-                  !same_text(job_ids_mods[i], saved);
+        open[i] = !same_text(job_ids_mods[i], choice.state.default_id) &&
+                  !same_text(job_ids_mods[i], choice.state.once) && !same_text(job_ids_mods[i], saved);
         char path[file_engine::max_path];
         join(path, job_firmware, job_ids_mods[i]);
         uint8_t record[file_client::record_bytes];
         const file_client::Reply r = file_client::stat(path, record);
-        if (r.outcome) { if (r.outcome == file_client::link) mounted = file_client::mounted_stale; return file_client::status(r.outcome); }
+        if (r.outcome) {
+            if (r.outcome == file_client::link) mounted = file_client::mounted_stale;
+            return file_client::status(r.outcome);
+        }
         present[i] = r.value == 0;
     }
-    const int pick = open[0] && open[1] ? (!present[0] ? 0 : !present[1] ? 1 : job_last_target == 1 ? 1 : 0) :
-                     open[0] ? 0 : open[1] ? 1 : -1;
+    const int pick = open[0] && open[1] ? (!present[0]          ? 0 :
+                                           !present[1]          ? 1 :
+                                           job_last_target == 1 ? 1 :
+                                                                  0) :
+                     open[0]            ? 0 :
+                     open[1]            ? 1 :
+                                          -1;
     if (pick < 0) return P::s_state;
     join(s.target, job_ids_mods[pick], "");
     join(s.entry, job_firmware, s.target);

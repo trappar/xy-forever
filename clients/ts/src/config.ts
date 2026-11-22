@@ -35,8 +35,15 @@ export interface InputsRequest {
 /** The saved inputs (config.get). */
 export async function configGet(client: Client, options: CallOptions = {}): Promise<SavedInputs> {
   const r = await client.call('config.get', { version: 1 }, options);
-  return { saved: r.record === 1, mods: r.mods ? r.mods.split(',') : [], expanded: (r.flags & 1) !== 0,
-    unverified: (r.flags & 4) !== 0, write: r.saving === 0 ? 'saved' : r.saving === 1 ? 'writing' : 'failed', base: r.base, generation: r.generation };
+  return {
+    saved: r.record === 1,
+    mods: r.mods ? r.mods.split(',') : [],
+    expanded: (r.flags & 1) !== 0,
+    unverified: (r.flags & 4) !== 0,
+    write: r.saving === 0 ? 'saved' : r.saving === 1 ? 'writing' : 'failed',
+    base: r.base,
+    generation: r.generation,
+  };
 }
 
 const delay = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
@@ -47,33 +54,51 @@ const delay = (ms: number): Promise<void> => new Promise((done) => setTimeout(do
  * selection it cannot build is an XyfError with code 'refused' and the device's reason as its message; on success it
  * resolves with config.get once the record is written.
  */
-export async function configSet(client: Client, request: InputsRequest, options: CallOptions & { readMs?: number; pollMs?: number } = {}): Promise<SavedInputs> {
+export async function configSet(
+  client: Client,
+  request: InputsRequest,
+  options: CallOptions & { readMs?: number; pollMs?: number } = {},
+): Promise<SavedInputs> {
   const confirm = async (safe: number) => {
-    const flags = (request.expanded ? CONFIG_FLAGS.expanded : 0) | safe | (request.unverified ? CONFIG_FLAGS.unverified : 0);
+    const flags =
+      (request.expanded ? CONFIG_FLAGS.expanded : 0) | safe | (request.unverified ? CONFIG_FLAGS.unverified : 0);
     const fields = { version: 1, flags, mods: request.mods.join(',') };
     const body = encodeConfigSetRequest({ ...fields, sha256: new Uint8Array(32) }).subarray(0, -32);
     return { ...fields, sha256: await sha256(body) };
   };
   let confirmed: Awaited<ReturnType<typeof confirm>> | undefined;
-  const pollMs = options.pollMs ?? 200, until = Date.now() + (options.readMs ?? 60000);
+  const pollMs = options.pollMs ?? 200,
+    until = Date.now() + (options.readMs ?? 60000);
   for (;;) {
     try {
       confirmed ??= await confirm((await client.call('config.get', { version: 1 }, options)).flags & CONFIG_FLAGS.safe);
       await client.call('config.set', confirmed, options);
       break;
     } catch (error) {
-      if (isXyfError(error, 'busy') && Date.now() < until) { await delay(pollMs); continue; }
+      if (isXyfError(error, 'busy') && Date.now() < until) {
+        await delay(pollMs);
+        continue;
+      }
       if (isXyfError(error, 'refused')) {
         const reason = String(error.fields?.['reason'] ?? '') || 'the selection cannot be built';
-        throw new XyfError('refused', reason, { command: 'config.set', status: error.status, fields: error.fields, cause: error });
+        throw new XyfError('refused', reason, {
+          command: 'config.set',
+          status: error.status,
+          fields: error.fields,
+          cause: error,
+        });
       }
       throw error;
     }
   }
   for (const writeUntil = Date.now() + 30000; ;) {
-    const saved = await configGet(client, options).catch((error: unknown) => { if (isXyfError(error, 'busy')) return null; throw error; });
+    const saved = await configGet(client, options).catch((error: unknown) => {
+      if (isXyfError(error, 'busy')) return null;
+      throw error;
+    });
     if (saved && saved.write !== 'writing') return saved;
-    if (Date.now() > writeUntil) throw new XyfError('timeout', 'config.set: the selection was not written in time', { command: 'config.set' });
+    if (Date.now() > writeUntil)
+      throw new XyfError('timeout', 'config.set: the selection was not written in time', { command: 'config.set' });
     await delay(pollMs);
   }
 }

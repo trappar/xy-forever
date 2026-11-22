@@ -12,7 +12,9 @@ void copy(char* out, uint32_t capacity, const char* in) {
     for (; in[i] && i + 1 < capacity; ++i) out[i] = in[i];
     out[i] = 0;
 }
-void zero(void* p, uint32_t n) { for (uint32_t i = 0; i != n; ++i) static_cast<char*>(p)[i] = 0; }
+void zero(void* p, uint32_t n) {
+    for (uint32_t i = 0; i != n; ++i) static_cast<char*>(p)[i] = 0;
+}
 bool decimal(const char* s, uint32_t& out) {
     if (!*s) return false;
     uint32_t v = 0;
@@ -27,7 +29,9 @@ bool hex8(const char* s, uint32_t& out) {
     uint32_t v = 0, n = 0;
     for (; *s; ++s, ++n) {
         const char c = *s;
-        const uint32_t d = c >= '0' && c <= '9' ? uint32_t(c - '0') : c >= 'a' && c <= 'f' ? uint32_t(c - 'a' + 10) : 16;
+        const uint32_t d = c >= '0' && c <= '9' ? uint32_t(c - '0') :
+                           c >= 'a' && c <= 'f' ? uint32_t(c - 'a' + 10) :
+                                                  16;
         if (d == 16 || n == 8) return false;
         v = v << 4 | d;
     }
@@ -40,8 +44,10 @@ void info_visit(void* context, const char* key, const char* value) {
     if (equal(key, "name")) copy(f.name, sizeof(f.name), value);
     else if (equal(key, "version")) copy(f.version, sizeof(f.version), value);
     else if (equal(key, "kind"))
-        f.kind = equal(value, "official") ? kind_official : equal(value, "open-xy") ? kind_open_xy :
-                 equal(value, "custom") ? kind_custom : kind_unknown;
+        f.kind = equal(value, "official") ? kind_official :
+                 equal(value, "open-xy")  ? kind_open_xy :
+                 equal(value, "custom")   ? kind_custom :
+                                            kind_unknown;
     else if (equal(key, "bytes")) f.has_bytes = decimal(value, f.bytes);
     else if (equal(key, "machines")) f.has_machines = decimal(value, f.machines) && f.machines <= 65535u;
     else if (equal(key, "crc32")) f.has_crc32 = hex8(value, f.crc32);
@@ -53,4 +59,4 @@ bool parse_info(const char* text, uint32_t length, Info& info) {
     zero(&info, sizeof(info));
     return parse_key_values(text, length, info_visit, &info) >= 0;
 }
-} }
+}}

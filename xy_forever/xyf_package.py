@@ -17,11 +17,12 @@ verify, and without the key it stops with "no .tfw public key". --allow-unverifi
 without the key: the output then says the signature was not checked and the entry is
 kind=custom. Requiring the signature is the default because this output goes onto a device.
 """
+
 import argparse
 import json
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 
 from xy_forever.paths import private_output
 from xy_forever.update_plan import prepare_update, review_update
@@ -29,25 +30,39 @@ from xy_forever.update_plan import prepare_update, review_update
 
 def extract_os(argv):
     from xy_forever.tfw_extract import extract_os as extract
-    parser = argparse.ArgumentParser(prog='xyf_package.py extract-os', description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser = argparse.ArgumentParser(
+        prog='xyf_package.py extract-os', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument('package', type=Path, help='official .tfw package (encrypted, as distributed)')
     parser.add_argument('--out', required=True, type=Path, help='new entry folder under private/ (must not exist)')
     parser.add_argument('--keys', type=Path, help='key file (default: <private>/keys/opxy-update-keys.json)')
-    parser.add_argument('--public-key', type=Path,
-                        help='vendor public key file (default: <private>/keys/opxy-tfw-public-key.json)')
-    parser.add_argument('--allow-unverified', action='store_true',
-                        help='extract even when no public key is available (signature NOT checked; kind=custom)')
+    parser.add_argument(
+        '--public-key', type=Path, help='vendor public key file (default: <private>/keys/opxy-tfw-public-key.json)'
+    )
+    parser.add_argument(
+        '--allow-unverified',
+        action='store_true',
+        help='extract even when no public key is available (signature NOT checked; kind=custom)',
+    )
     parser.add_argument('--name', help='display name (default: "OP-XY <version>")')
     args = parser.parse_args(argv)
     try:
         started = time.monotonic()
-        report = extract(args.package, private_output(args.out), keys=args.keys, public_key_file=args.public_key,
-                         require_signature=not args.allow_unverified, name=args.name)
-    except (OSError, ValueError) as error:     # ExtractError is a ValueError
+        report = extract(
+            args.package,
+            private_output(args.out),
+            keys=args.keys,
+            public_key_file=args.public_key,
+            require_signature=not args.allow_unverified,
+            name=args.name,
+        )
+    except (OSError, ValueError) as error:  # ExtractError is a ValueError
         parser.exit(1, 'extract-os failed: %s\n' % error)
-    summary = {k: report[k] for k in ('folder', 'version', 'package_version', 'bytes', 'crc32', 'sha256', 'records',
-                                      'signature')}
+    summary = {
+        k: report[k]
+        for k in ('folder', 'version', 'package_version', 'bytes', 'crc32', 'sha256', 'records', 'signature')
+    }
     if summary['signature'] != 'verified':
         summary['signature'] = 'NOT CHECKED: no public key (--allow-unverified); entry kind=custom'
     summary['seconds'] = round(time.monotonic() - started, 2)
@@ -57,8 +72,10 @@ def extract_os(argv):
 
 def index_command(argv):
     from xy_forever import modindex
-    parser = argparse.ArgumentParser(prog='xyf_package.py index', description=modindex.__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser = argparse.ArgumentParser(
+        prog='xyf_package.py index', description=modindex.__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = parser.add_subparsers(dest='index_command', required=True)
     b = sub.add_parser('build', help='index.json + one archive per package of a generation folder (local only)')
     b.add_argument('generation', type=Path, help='generation folder as modkit split writes it')
@@ -69,8 +86,14 @@ def index_command(argv):
     try:
         if args.index_command == 'build':
             record = modindex.build(args.generation, args.out)
-            print('%s: %d packages, %d archive bytes (not published; licence and source are placeholders)' % (
-                args.out / 'index.json', len(record['packages']), sum(p['archive']['size'] for p in record['packages'])))
+            print(
+                '%s: %d packages, %d archive bytes (not published; licence and source are placeholders)'
+                % (
+                    args.out / 'index.json',
+                    len(record['packages']),
+                    sum(p['archive']['size'] for p in record['packages']),
+                )
+            )
         else:
             print('%d packages verified' % modindex.verify(args.folder))
     except (modindex.Refused, OSError) as error:
@@ -86,24 +109,27 @@ def main(argv=None):
         return extract_os(argv[1:])
     if argv[:1] in (['content-manifest'], ['content-compare']):
         from xy_forever.content_manifest import main as content_main
+
         return content_main(argv)
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("archive", type=Path, help="decrypted official firmware ZIP (not the encrypted .tfw)")
-    parser.add_argument("--baseline", type=Path, help="previous vendor ZIP; does not establish installed device state")
-    parser.add_argument("--stage", type=Path, help="new host staging directory under private/; never mirror to device root")
+    parser.add_argument('archive', type=Path, help='decrypted official firmware ZIP (not the encrypted .tfw)')
+    parser.add_argument('--baseline', type=Path, help='previous vendor ZIP; does not establish installed device state')
+    parser.add_argument(
+        '--stage', type=Path, help='new host staging directory under private/; never mirror to device root'
+    )
     args = parser.parse_args(argv)
     try:
         if args.stage:
             output = private_output(args.stage)
             report = prepare_update(args.archive, output, args.baseline)
-            (output / "review.json").write_text(json.dumps(report, indent=2) + "\n")
+            (output / 'review.json').write_text(json.dumps(report, indent=2) + '\n')
         else:
             report = review_update(args.archive, args.baseline)
     except (OSError, ValueError) as error:
-        parser.exit(1, "Package review failed: " + str(error) + "\n")
+        parser.exit(1, 'Package review failed: ' + str(error) + '\n')
     print(json.dumps(report, indent=2))
     return 0
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())

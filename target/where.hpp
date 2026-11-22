@@ -29,10 +29,16 @@ inline uint32_t last(uint32_t word) { return word >> 16; }
 // Inlined (as crash_screen.hpp's put): "W" and the code in decimal (1..99; larger codes show 99) at out[at..];
 // cap bytes from at on, NUL included (4 suffice). No division (no libgcc call). Returns the new end.
 inline __attribute__((always_inline)) uint32_t label(char* out, uint32_t at, uint32_t cap, uint32_t code) {
-    if (cap < 4) { if (cap) out[at] = 0; return at; }
+    if (cap < 4) {
+        if (cap) out[at] = 0;
+        return at;
+    }
     uint32_t tens = 0;
     if (code > 99) code = 99;
-    while (code >= 10) { code -= 10; ++tens; }
+    while (code >= 10) {
+        code -= 10;
+        ++tens;
+    }
     out[at++] = 'W';
     if (tens) out[at++] = char('0' + tens);
     out[at++] = char('0' + code);
@@ -47,5 +53,5 @@ inline void draw(uint16_t* fb, uint32_t code) {
     gfx::fill(fb, gfx::width - w, 0, w, 11, gfx::accent);
     gfx::text(fb, gfx::width - w + 2, 2, text, gfx::black, 1);
 }
-} }
+}}
 #endif

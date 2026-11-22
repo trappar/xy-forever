@@ -13,10 +13,18 @@ import { staticPaths } from '../src/routing.ts';
 const PAGES_BASE = '/xy-forever/';
 
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));
-const types: Record<string, string> = { '.html': 'text/html', '.txt': 'text/plain; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript' };
+const types: Record<string, string> = {
+  '.html': 'text/html',
+  '.txt': 'text/plain; charset=utf-8',
+  '.css': 'text/css',
+  '.js': 'text/javascript',
+};
 const server = createServer(async (req, res) => {
   const url = new URL(req.url!, 'http://localhost');
-  if (!url.pathname.startsWith(PAGES_BASE)) { res.writeHead(404).end(); return; }
+  if (!url.pathname.startsWith(PAGES_BASE)) {
+    res.writeHead(404).end();
+    return;
+  }
   let file = join(dist, url.pathname.slice(PAGES_BASE.length));
   try {
     if ((await stat(file)).isDirectory()) {
@@ -42,15 +50,23 @@ try {
   const origin = `http://127.0.0.1:${address.port}`;
   const site = origin + PAGES_BASE;
 
-  browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--disable-blink-features=Serial,WebUSB'] });
+  browser = await chromium.launch({
+    channel: 'chrome',
+    headless: true,
+    args: ['--disable-blink-features=Serial,WebUSB'],
+  });
   const page = await browser.newPage({ acceptDownloads: true });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'requestMIDIAccess', { value: undefined });
     // Reloading a refusal page requires the refusal from the current session.
     if (!sessionStorage.getItem('xyf.install')) {
-      sessionStorage.setItem('xyf.install', JSON.stringify({
-        computer: 'windows', stop: { kind: 'reinstall', title: 'Reinstall OS 1.2.1', detail: 'The original OS file is missing.' },
-      }));
+      sessionStorage.setItem(
+        'xyf.install',
+        JSON.stringify({
+          computer: 'windows',
+          stop: { kind: 'reinstall', title: 'Reinstall OS 1.2.1', detail: 'The original OS file is missing.' },
+        }),
+      );
     }
   });
 
@@ -58,7 +74,9 @@ try {
     assert((await page.goto(site + path))?.ok(), `Direct navigation must serve ${path || 'the home page'}`);
     const stage = path.split('/')[1] ?? 'boot';
     // Fresh connections are required to show Device, Mods and Files.
-    const shown = path.startsWith('install') ? `[data-stage="${stage}"]:visible` : 'h1:text-is("Connect your OP-XY"):visible';
+    const shown = path.startsWith('install')
+      ? `[data-stage="${stage}"]:visible`
+      : 'h1:text-is("Connect your OP-XY"):visible';
     await page.locator(shown).waitFor();
     assert((await page.reload())?.ok(), `Reload must serve ${path || 'the home page'}`);
     await page.locator(shown).waitFor();
@@ -69,7 +87,7 @@ try {
   await page.goto(site + 'connect/?source=smoke');
   const connect = page.locator('a[data-page=connect]');
   const install = page.locator('a[data-page=install]');
-  assert.equal(await connect.getAttribute('href'), PAGES_BASE + 'connect/?source=smoke');   // the query is kept
+  assert.equal(await connect.getAttribute('href'), PAGES_BASE + 'connect/?source=smoke'); // the query is kept
   assert.equal(await install.getAttribute('href'), PAGES_BASE + 'install/?source=smoke');
   await page.getByRole('link', { name: 'Install XY Forever', exact: true }).click();
   await page.waitForURL(site + 'install/boot/?source=smoke');

@@ -22,18 +22,33 @@ const MAX_ARCHIVE = 256 << 20;
 const MAX_FILES = 4096;
 const KINDS = ['base', 'machine', 'extension'];
 
-export interface IndexFile { readonly path: string; readonly size: number; readonly sha256: string }
-export interface IndexPackage {
-  readonly id: string; readonly name: string; readonly kind: 'base' | 'machine' | 'extension';
-  readonly machine: string; readonly version: string;
-  readonly memory: { readonly code: number; readonly data: number; readonly state: number; readonly total: number };
-  readonly content_bytes: number; readonly files: readonly IndexFile[];
-  readonly archive: { readonly name: string; readonly size: number; readonly sha256: string };
-  readonly licence: string; readonly source: string;
+export interface IndexFile {
+  readonly path: string;
+  readonly size: number;
+  readonly sha256: string;
 }
-export interface IndexGeneration { readonly generation: string; readonly base: string; readonly packages: readonly IndexPackage[] }
+export interface IndexPackage {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: 'base' | 'machine' | 'extension';
+  readonly machine: string;
+  readonly version: string;
+  readonly memory: { readonly code: number; readonly data: number; readonly state: number; readonly total: number };
+  readonly content_bytes: number;
+  readonly files: readonly IndexFile[];
+  readonly archive: { readonly name: string; readonly size: number; readonly sha256: string };
+  readonly licence: string;
+  readonly source: string;
+}
+export interface IndexGeneration {
+  readonly generation: string;
+  readonly base: string;
+  readonly packages: readonly IndexPackage[];
+}
 export interface ModIndex {
-  readonly format: string; readonly publish: boolean; readonly notice: string;
+  readonly format: string;
+  readonly publish: boolean;
+  readonly notice: string;
   readonly profiles: readonly { readonly profile: string; readonly generations: readonly IndexGeneration[] }[];
   /** Where index.json was read from: archive names resolve against it. */
   readonly url: string;
@@ -44,14 +59,24 @@ export interface FetchOptions {
   readonly fetch?: typeof globalThis.fetch | undefined;
 }
 
-const need = (cond: unknown, what: string): void => { if (!cond) throw new PackageError(what); };
+const need = (cond: unknown, what: string): void => {
+  if (!cond) throw new PackageError(what);
+};
 const hex = (b: Uint8Array): string => [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
-const isInt = (v: unknown, max: number): v is number => Number.isInteger(v) && (v as number) > 0 && (v as number) <= max;
+const isInt = (v: unknown, max: number): v is number =>
+  Number.isInteger(v) && (v as number) > 0 && (v as number) <= max;
 
 function checkPath(profile: string, generation: string, pkg: string, rel: string): void {
   const parts = rel.split('/');
-  need(rel !== '' && !rel.startsWith('/') && !rel.includes('\\') && !parts.some((p) => p === '' || p === '.' || p === '..') &&
-       !parts[0]!.includes(':') && !/[\x00-\x1f\x7f]/.test(rel), `${pkg}: unusable path ${JSON.stringify(rel.slice(0, 80))}`);
+  need(
+    rel !== '' &&
+      !rel.startsWith('/') &&
+      !rel.includes('\\') &&
+      !parts.some((p) => p === '' || p === '.' || p === '..') &&
+      !parts[0]!.includes(':') &&
+      !/[\x00-\x1f\x7f]/.test(rel),
+    `${pkg}: unusable path ${JSON.stringify(rel.slice(0, 80))}`,
+  );
   const device = new TextEncoder().encode(`${MODS_ROOT}/${profile}/${generation}/${pkg}/${rel}`).length;
   need(device <= MAX_PATH, `${pkg}: path too long for the device (${device} bytes)`);
 }
@@ -73,10 +98,14 @@ function checkPackage(profile: string, generation: string, pkg: IndexPackage): v
   need(seen.has('files.sha256') && recordName(seen) !== undefined, `${id}: no files.sha256 or info.txt`);
   for (const p of seen) {
     const parts = p.split('/');
-    for (let i = 1; i < parts.length; i++) need(!seen.has(parts.slice(0, i).join('/')), `${id}: a file and a folder share a name`);
+    for (let i = 1; i < parts.length; i++)
+      need(!seen.has(parts.slice(0, i).join('/')), `${id}: a file and a folder share a name`);
   }
   const arc = pkg.archive;
-  need(arc?.name === `${profile}/${generation}/${id}.zip`, `${id}: archive name is not ${profile}/${generation}/${id}.zip`);
+  need(
+    arc?.name === `${profile}/${generation}/${id}.zip`,
+    `${id}: archive name is not ${profile}/${generation}/${id}.zip`,
+  );
   need(isInt(arc.size, MAX_ARCHIVE), `${id}: bad or oversize archive`);
   need(typeof arc.sha256 === 'string' && SHA.test(arc.sha256), `${id}: bad archive sha256`);
 }
@@ -93,7 +122,10 @@ export function checkIndex(value: unknown, url: string): ModIndex {
       need(typeof gen?.generation === 'string' && TOKEN.test(gen.generation), 'index: bad generation');
       need(Array.isArray(gen.packages), 'index: no packages list');
       const ids = gen.packages.map((p) => p?.id);
-      need(new Set(ids).size === ids.length && ids.includes('base'), `index ${gen.generation}: duplicate ids or no base`);
+      need(
+        new Set(ids).size === ids.length && ids.includes('base'),
+        `index ${gen.generation}: duplicate ids or no base`,
+      );
       for (const pkg of gen.packages) checkPackage(prof.profile, gen.generation, pkg);
     }
   }
@@ -126,12 +158,18 @@ async function get(url: string, limit: number, fetcher: typeof globalThis.fetch)
   }
   const out = new Uint8Array(size);
   let at = 0;
-  for (const p of parts) { out.set(p, at); at += p.length; }
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
   return out;
 }
 
 /** index.json at url (of the file, or of its folder ending in '/'). */
-export async function loadIndex(url: string, options: { fetch?: typeof globalThis.fetch | undefined } = {}): Promise<ModIndex> {
+export async function loadIndex(
+  url: string,
+  options: { fetch?: typeof globalThis.fetch | undefined } = {},
+): Promise<ModIndex> {
   const where = url.endsWith('.json') ? url : `${url.replace(/\/+$/, '')}/index.json`;
   const data = await get(where, MAX_INDEX, options.fetch ?? globalThis.fetch);
   let value: unknown;
@@ -149,14 +187,20 @@ function readZip(id: string, data: Uint8Array): Map<string, Uint8Array> {
   const names = new TextDecoder('utf-8', { fatal: true });
   let end = -1;
   for (let i = data.length - 22; i >= Math.max(0, data.length - 22 - 0xffff); i--) {
-    if (view.getUint32(i, true) === 0x06054b50) { end = i; break; }
+    if (view.getUint32(i, true) === 0x06054b50) {
+      end = i;
+      break;
+    }
   }
   need(end >= 0, `${id}: not a usable archive (no end record)`);
   const count = view.getUint16(end + 10, true);
   let at = view.getUint32(end + 16, true);
   const out = new Map<string, Uint8Array>();
   for (let n = 0; n < count; n++) {
-    need(at + 46 <= data.length && view.getUint32(at, true) === 0x02014b50, `${id}: not a usable archive (central directory)`);
+    need(
+      at + 46 <= data.length && view.getUint32(at, true) === 0x02014b50,
+      `${id}: not a usable archive (central directory)`,
+    );
     const method = view.getUint16(at + 10, true);
     const packed = view.getUint32(at + 20, true);
     const size = view.getUint32(at + 24, true);
@@ -165,7 +209,11 @@ function readZip(id: string, data: Uint8Array): Map<string, Uint8Array> {
     const local = view.getUint32(at + 42, true);
     need(at + 46 + nameLen <= data.length, `${id}: not a usable archive (name)`);
     let name: string;
-    try { name = names.decode(data.subarray(at + 46, at + 46 + nameLen)); } catch { throw new PackageError(`${id}: member name is not UTF-8`); }
+    try {
+      name = names.decode(data.subarray(at + 46, at + 46 + nameLen));
+    } catch {
+      throw new PackageError(`${id}: member name is not UTF-8`);
+    }
     need(!out.has(name), `${id}: duplicate archive members`);
     need(method === 0, `${id}/${name}: compressed member`);
     need(packed === size && size <= MAX_FILE, `${id}/${name}: member size ${size}`);
@@ -180,7 +228,10 @@ function readZip(id: string, data: Uint8Array): Map<string, Uint8Array> {
 
 async function unpack(pkg: IndexPackage, data: Uint8Array): Promise<Map<string, Uint8Array>> {
   const id = pkg.id;
-  need(data.length === pkg.archive.size && hex(await sha256(data)) === pkg.archive.sha256, `${id}: archive differs from the index`);
+  need(
+    data.length === pkg.archive.size && hex(await sha256(data)) === pkg.archive.sha256,
+    `${id}: archive differs from the index`,
+  );
   const members = readZip(id, data);
   const want = new Map(pkg.files.map((f) => [f.path, f]));
   const unknown = [...members.keys()].filter((n) => !want.has(n));
@@ -194,8 +245,11 @@ async function unpack(pkg: IndexPackage, data: Uint8Array): Promise<Map<string, 
   }
   const listed = listPaths(members.get('files.sha256')!);
   const others = pkg.files.filter((f) => f.path !== 'files.sha256');
-  need(listed.length === others.length && listed.every(([sha, path]) => want.get(path)?.sha256 === sha && path !== 'files.sha256'),
-       `${id}: its files.sha256 does not match the index`);
+  need(
+    listed.length === others.length &&
+      listed.every(([sha, path]) => want.get(path)?.sha256 === sha && path !== 'files.sha256'),
+    `${id}: its files.sha256 does not match the index`,
+  );
   return members;
 }
 
@@ -203,10 +257,16 @@ async function unpack(pkg: IndexPackage, data: Uint8Array): Promise<Map<string, 
  * Downloads the base and the packages ids (all of the generation's when ids is empty), checks them and
  * returns the generation folder as a PackageSource for pushPackages.
  */
-export async function fetchPackages(index: ModIndex, ids: readonly string[] = [], options: FetchOptions = {}): Promise<PackageSource & { readonly profile: string; readonly generation: string }> {
+export async function fetchPackages(
+  index: ModIndex,
+  ids: readonly string[] = [],
+  options: FetchOptions = {},
+): Promise<PackageSource & { readonly profile: string; readonly generation: string }> {
   let gens = index.profiles.flatMap((p) => p.generations.map((g) => ({ profile: p.profile, gen: g })));
   if (options.generation) {
-    const [profile, name] = options.generation.includes('/') ? options.generation.split('/', 2) : [undefined, options.generation];
+    const [profile, name] = options.generation.includes('/')
+      ? options.generation.split('/', 2)
+      : [undefined, options.generation];
     gens = gens.filter((g) => g.gen.generation === name && (profile === undefined || g.profile === profile));
   }
   need(gens.length === 1, 'choose one generation (options.generation)');
@@ -223,7 +283,8 @@ export async function fetchPackages(index: ModIndex, ids: readonly string[] = []
     for (const [path, body] of await unpack(pkg, data)) files.set(`${id}/${path}`, body);
   }
   return {
-    profile, generation: gen.generation,
+    profile,
+    generation: gen.generation,
     paths: () => [...files.keys()],
     read: async (path) => {
       const body = files.get(path);

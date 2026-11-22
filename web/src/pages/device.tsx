@@ -24,43 +24,73 @@ async function loadDevice() {
   const state = await c.readState();
   let boots = 'No default set: the menu decides at power-on.';
   if (state?.default) {
-    const entry = await c.libraryEntry(state.default).catch(() => ({} as Record<string, string>));
+    const entry = await c.libraryEntry(state.default).catch(() => ({}) as Record<string, string>);
     boots = `${entry['name'] ?? state.default}${entry['version'] ? ` ${entry['version']}` : ''} (library entry ${state.default})`;
   }
   const { config, error } = await savedConfig(c);
   const content = await readText(c, CONTENT_STATE);
-  const old = content === null && await readText(c, CONTENT_STATE_OLD) !== null;
-  return { info, boots, saved: config === undefined ? `Could not read the saved configuration (${error}).` : configText(config), content: contentText(content, old) };
+  const old = content === null && (await readText(c, CONTENT_STATE_OLD)) !== null;
+  return {
+    info,
+    boots,
+    saved: config === undefined ? `Could not read the saved configuration (${error}).` : configText(config),
+    content: contentText(content, old),
+  };
 }
 type DeviceData = Awaited<ReturnType<typeof loadDevice>>;
 
 export default function DevicePage() {
-  const { data, refetch, isFetching } = useQuery({ queryKey: ['device'], queryFn: loadDevice, meta: { action: 'refresh_status' } });
+  const { data, refetch, isFetching } = useQuery({
+    queryKey: ['device'],
+    queryFn: loadDevice,
+    meta: { action: 'refresh_status' },
+  });
   return (
     <section>
       <PageHeader title="Device">What the OP-XY reports right now.</PageHeader>
-      {data && <>
-        <Card>
-          <dl id="device-facts" className="grid grid-cols-[max-content_1fr] gap-x-[22px] gap-y-2">
-            <Fact name="XY Forever" fact="version">{data.info.version ?? 'unknown'}</Fact>
-            <Fact name="Image" fact="image">{data.info.image ?? 'unknown'}</Fact>
-            <Fact name="Running">{modeText(data.info.mode)}</Fact>
-            <Fact name="Boots next" fact="boots">{data.boots}</Fact>
-            <Fact name="Saved mods">{data.saved}</Fact>
-            <Fact name="Content">{data.content}</Fact>
-            <Fact name="Protocol"><span className="text-muted-foreground">{data.info.proto}{data.info.dev ? ', developer build' : ''}</span></Fact>
-          </dl>
-        </Card>
-        <div className="mb-4"><Button disabled={isFetching} onClick={() => void refetch()}>Refresh</Button></div>
-        <UpdateCard info={data.info} />
-        <UninstallCard info={data.info} />
-      </>}
+      {data && (
+        <>
+          <Card>
+            <dl id="device-facts" className="grid grid-cols-[max-content_1fr] gap-x-[22px] gap-y-2">
+              <Fact name="XY Forever" fact="version">
+                {data.info.version ?? 'unknown'}
+              </Fact>
+              <Fact name="Image" fact="image">
+                {data.info.image ?? 'unknown'}
+              </Fact>
+              <Fact name="Running">{modeText(data.info.mode)}</Fact>
+              <Fact name="Boots next" fact="boots">
+                {data.boots}
+              </Fact>
+              <Fact name="Saved mods">{data.saved}</Fact>
+              <Fact name="Content">{data.content}</Fact>
+              <Fact name="Protocol">
+                <span className="text-muted-foreground">
+                  {data.info.proto}
+                  {data.info.dev ? ', developer build' : ''}
+                </span>
+              </Fact>
+            </dl>
+          </Card>
+          <div className="mb-4">
+            <Button disabled={isFetching} onClick={() => void refetch()}>
+              Refresh
+            </Button>
+          </div>
+          <UpdateCard info={data.info} />
+          <UninstallCard info={data.info} />
+        </>
+      )}
     </section>
   );
 }
 
-const Fact = ({ name, fact, children }: { name: string; fact?: string; children: ReactNode }) =>
-  <><dt className="text-muted-foreground">{name}</dt><dd data-fact={fact}>{children}</dd></>;
+const Fact = ({ name, fact, children }: { name: string; fact?: string; children: ReactNode }) => (
+  <>
+    <dt className="text-muted-foreground">{name}</dt>
+    <dd data-fact={fact}>{children}</dd>
+  </>
+);
 
 function UpdateCard({ info }: { info: DeviceInfo }) {
   const release = pinned();
@@ -68,8 +98,14 @@ function UpdateCard({ info }: { info: DeviceInfo }) {
   const update = useAction('update_xy_forever', async () => {
     try {
       bugReport.updateStatus(await updateXyf(device(), release!, setProgress));
-    } catch (error) { setProgress(''); throw error; }
-    queryClient.setQueryData<DeviceData>(['device'], (d) => d && { ...d, info: { ...d.info, version: release!.version, image: release!.image } });
+    } catch (error) {
+      setProgress('');
+      throw error;
+    }
+    queryClient.setQueryData<DeviceData>(
+      ['device'],
+      (d) => d && { ...d, info: { ...d.info, version: release!.version, image: release!.image } },
+    );
     setProgress(`XY Forever ${release!.version} is running in the menu.`);
   });
   if (!release || (!updateAvailable(info, release) && !update.isSuccess)) return null;
@@ -77,8 +113,16 @@ function UpdateCard({ info }: { info: DeviceInfo }) {
     <Card>
       <CardTitle>XY Forever {release.version} is available</CardTitle>
       {release.notes && <p>{release.notes}</p>}
-      {!update.isSuccess && <div><Button variant="default" disabled={update.isPending} onClick={() => update.mutate()}>Update to {release.version}</Button></div>}
-      <p role="status" data-testid="update-status">{progress}</p>
+      {!update.isSuccess && (
+        <div>
+          <Button variant="default" disabled={update.isPending} onClick={() => update.mutate()}>
+            Update to {release.version}
+          </Button>
+        </div>
+      )}
+      <p role="status" data-testid="update-status">
+        {progress}
+      </p>
     </Card>
   );
 }
@@ -86,21 +130,43 @@ function UpdateCard({ info }: { info: DeviceInfo }) {
 function UninstallCard({ info }: { info: DeviceInfo }) {
   const [progress, setProgress] = useState('');
   const uninstall = useAction('uninstall_xy_forever', async () => {
-    if (!await confirmAction('Uninstall XY Forever?',
-      'This restores official OS 1.2.1 and its content, removes your XY Forever library, mods and settings, then restarts your OP-XY.',
-      'Uninstall', true)) return;
+    if (
+      !(await confirmAction(
+        'Uninstall XY Forever?',
+        'This restores official OS 1.2.1 and its content, removes your XY Forever library, mods and settings, then restarts your OP-XY.',
+        'Uninstall',
+        true,
+      ))
+    )
+      return;
     useConnection.setState({ uninstalling: true });
-    try { await uninstallXyf(device(), setProgress); } finally { useConnection.setState({ uninstalling: false }); setProgress(''); }
+    try {
+      await uninstallXyf(device(), setProgress);
+    } finally {
+      useConnection.setState({ uninstalling: false });
+      setProgress('');
+    }
     useConnection.setState({ client: null, installed: false, stockRestored: true });
     navigatePath('/connect', { replace: true });
   });
   return (
     <Card>
       <CardTitle>Restore stock OS 1.2.1</CardTitle>
-      {uninstallAvailable(info) ? <>
-        <div><Button variant="danger" disabled={uninstall.isPending} onClick={() => uninstall.mutate()}>Uninstall XY Forever</Button></div>
-        <p role="status">{progress}</p>
-      </> : <p>Update XY Forever to use web uninstall. It requires device protocol {UNINSTALL_PROTOCOL} or later and the stock restore commands.</p>}
+      {uninstallAvailable(info) ? (
+        <>
+          <div>
+            <Button variant="danger" disabled={uninstall.isPending} onClick={() => uninstall.mutate()}>
+              Uninstall XY Forever
+            </Button>
+          </div>
+          <p role="status">{progress}</p>
+        </>
+      ) : (
+        <p>
+          Update XY Forever to use web uninstall. It requires device protocol {UNINSTALL_PROTOCOL} or later and the
+          stock restore commands.
+        </p>
+      )}
     </Card>
   );
 }

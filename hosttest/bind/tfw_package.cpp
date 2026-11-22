@@ -13,7 +13,10 @@ using namespace xyf_core;
 
 namespace {
 
-struct Source { const Byte* bytes; U32 size; };
+struct Source {
+    const Byte* bytes;
+    U32 size;
+};
 bool read_bytes(void* context, U32 offset, Byte* out, U32 count) {
     const Source& source = *static_cast<Source*>(context);
     if (offset > source.size || count > source.size - offset) return false;

@@ -2,8 +2,13 @@
 #if defined(XYF_MTP_SESSION)
 #if defined(XYF_SIM)
 }
-namespace xyf_sim { void log(const char* format, ...); }                // the session screen in the log (sim/runtime.hpp)
-namespace xyf_sim { uint32_t usb_bus_resets(); uint32_t ask(); }        // #65: control "unplug", --ask (sim/stock.cpp)
+namespace xyf_sim {
+void log(const char* format, ...);
+}                // the session screen in the log (sim/runtime.hpp)
+namespace xyf_sim {
+uint32_t usb_bus_resets();
+uint32_t ask();
+}        // #65: control "unplug", --ask (sim/stock.cpp)
 namespace {
 #endif
 // ---- The MTP session (mtp_session.hpp). Not a job: enabled when the composite starts (the test build)
@@ -19,40 +24,49 @@ namespace ms = xy_forever::mtp_session;
 namespace mr = xyf_core::mtp;
 ms::Session& mslot() { return *reinterpret_cast<ms::Session*>(job_work_end); }
 static_assert(sizeof(ms::Session) <= mtp_slot_bytes - file_client::stream_capacity &&      // #144: the read-ahead
-              job_work_end + mtp_slot_bytes == file_client::stream_buffer + file_client::stream_capacity,
+                  job_work_end + mtp_slot_bytes == file_client::stream_buffer + file_client::stream_capacity,
               "the session fits its slot below the file client's read-ahead buffer (the slot's top)");
-const uint8_t t_mtp_tunnel = 0x61;                                      // diag.mtp (dev, test only): the test transport
+const uint8_t t_mtp_tunnel = 0x61; // diag.mtp (dev, test only): the test transport
 const U32 mtp_slice_ms = 8, mtp_stall_ms = 10000, mtp_serving_ms = 1000;
-volatile U32 mtp_pass_ms __attribute__((section(".data"))) = 0;          // the composite's longest menu-loop pass
-volatile U32 mtp_on __attribute__((section(".data"))) = 0;               // the session is enabled
-volatile U32 mtp_piece __attribute__((section(".data"))) = mr::default_piece;   // #144: the transfer piece (op 7)
-U32 units_since(uint64_t start) { return U32((xyf::clock::cycles() - start) >> 10); }   // #144: 1024 cycles
-uint32_t mtp_window() {                                                  // the first change: A's write window
+volatile U32 mtp_pass_ms __attribute__((section(".data"))) = 0; // the composite's longest menu-loop pass
+volatile U32 mtp_on __attribute__((section(".data"))) = 0; // the session is enabled
+volatile U32 mtp_piece __attribute__((section(".data"))) = mr::default_piece; // #144: the transfer piece (op 7)
+U32 units_since(uint64_t start) { return U32((xyf::clock::cycles() - start) >> 10); } // #144: 1024 cycles
+uint32_t mtp_window() { // the first change: A's write window
     U32 code = enter_writes();
-    if (code == P::s_ok) { storage_used = 1; writes_due = 1; writes_ms = now(); code = file_client::mount_ready(mounted); }
-    return code;                                                         // then op 8 again if needed, as file.change
+    if (code == P::s_ok) {
+        storage_used = 1;
+        writes_due = 1;
+        writes_ms = now();
+        code = file_client::mount_ready(mounted);
+    }
+    return code; // then op 8 again if needed, as file.change
 }
 bool put_running() { return uploading(); }
-bool mtp_busy() {                                                        // an operation in flight, or the leave's closes
+bool mtp_busy() { // an operation in flight, or the leave's closes
     if (!mtp_on) return false;
     const U32 stage = mslot().stage;
     return stage == ms::st_leaving || stage == ms::st_closing ||
-           (stage == ms::st_running && (mslot().responder.busy() || mslot().files.write_fd >= 0 ||   // #144: a write
-                                         mslot().files.ahead_asked));                                  // or read out
+           (stage == ms::st_running && (mslot().responder.busy() || mslot().files.write_fd >= 0 || // #144: a write
+                                        mslot().files.ahead_asked)); // or read out
 }
-xyf_core::U32 mtp_prepare(void*) {                                                 // before an operation that needs the files
+xyf_core::U32 mtp_prepare(void*) { // before an operation that needs the files
     ms::Session& m = mslot();
     stop_idle_gc();
-    if (boot_probe_active() || rehearsal_active() || recovery_pending || job_running() || closing || put_running()) { ++m.refused_busy; return mr::r_device_busy; }
-    if (!writes_due) m.files.window = 0;                                 // the settle closed A's window
+    if (boot_probe_active() || rehearsal_active() || recovery_pending || job_running() || closing || put_running()) {
+        ++m.refused_busy;
+        return mr::r_device_busy;
+    }
+    if (!writes_due) m.files.window = 0; // the settle closed A's window
     // Speed (2026-11-15): A's check at most once per mtp_serving_ms (a request each; the open window
     // already skipped it).
     // #3: a stale request means op 9 goes out next (mount_ready): A is asked first, whatever the cache says.
-    const bool serving = mounted != file_client::mounted_stale &&
-                         (writes_due || (m.served_ms && now() - m.served_ms < mtp_serving_ms));
+    const bool serving =
+        mounted != file_client::mounted_stale && (writes_due || (m.served_ms && now() - m.served_ms < mtp_serving_ms));
     if (!serving && a_serving()) m.served_ms = now() | 1u;
-    if ((!serving && !m.served_ms) || file_client::mount_ready(mounted) != P::s_ok) {   // A gone or silent
-        m.files.link = 1; m.served_ms = 0;
+    if ((!serving && !m.served_ms) || file_client::mount_ready(mounted) != P::s_ok) { // A gone or silent
+        m.files.link = 1;
+        m.served_ms = 0;
         return mr::r_device_busy;
     }
     m.files.link = 0;
@@ -63,11 +77,14 @@ void mtp_log(void*, xyf_core::U32 code, const xyf_core::U32* params, xyf_core::U
              xyf_core::U32 data) {
     ms::Session& m = mslot();
     uint32_t* e = m.log[m.log_count % ms::log_entries];
-    e[0] = (code & 0xffffu) | response << 16; e[1] = params[0]; e[2] = params[1]; e[3] = params[2];
+    e[0] = (code & 0xffffu) | response << 16;
+    e[1] = params[0];
+    e[2] = params[1];
+    e[3] = params[2];
     e[4] = (data & 0xfu) | (nparams & 0xfu) << 4 | now() << 8;
     ++m.log_count;
     if (response && data < 3) {
-        const U32 op_ms = now() - m.command_ms;                          // speed: the command to its response
+        const U32 op_ms = now() - m.command_ms; // speed: the command to its response
         ++m.hist[op_ms < 2 ? 0 : op_ms < 5 ? 1 : op_ms <= 20 ? 2 : 3];
         ++m.operations;
         const U32 took = now() - m.op_started_ms;
@@ -97,11 +114,13 @@ U32 session_enter() {
     ms::Session& m = mslot();
     ms::files_init(m.files, &mounted, mtp_window);
     mr::FileOps ops = ms::file_ops(m.files);
-    ops.prepare = mtp_prepare; ops.log = mtp_log;
+    ops.prepare = mtp_prepare;
+    ops.log = mtp_log;
     m.responder.init(ops);
     m.responder.set_piece(mtp_piece);
     m.in.length = m.in.sent = 0;
-    m.stage = ms::st_running; m.bytes_in = m.bytes_out = m.longest_ms = m.steps = m.cancels = m.said_ms = 0;
+    m.stage = ms::st_running;
+    m.bytes_in = m.bytes_out = m.longest_ms = m.steps = m.cancels = m.said_ms = 0;
     m.stalls = m.refused_busy = m.log_count = m.operations = m.longest_op_ms = m.op_started_ms = 0;
     m.hist[0] = m.hist[1] = m.hist[2] = m.hist[3] = m.command_ms = m.served_ms = 0;
     m.started_ms = m.progress_ms = now();
@@ -112,7 +131,11 @@ U32 session_enter() {
 U32 session_leave() {
     if (!mtp_on || mslot().stage == ms::st_ended) return P::s_state;
     ms::Session& m = mslot();
-    if (m.stage == ms::st_running) { m.responder.cancel(); m.stage = ms::st_leaving; mtp_say(true); }
+    if (m.stage == ms::st_running) {
+        m.responder.cancel();
+        m.stage = ms::st_leaving;
+        mtp_say(true);
+    }
     return P::s_ok;
 }
 void mtp_pump() {
@@ -120,31 +143,44 @@ void mtp_pump() {
     ms::Session& m = mslot();
     const U32 start = now();
     if (m.stage == ms::st_running) {
-        if (job_running()) m.responder.invalidate();                     // speed: the job changes files (cache)
+        if (job_running()) m.responder.invalidate(); // speed: the job changes files (cache)
 #if defined(XYF_SETTINGS)
-        m.responder.refuse(xy_forever::usb_service::mtp_off() ? mr::r_access_denied : 0);   // #191: USB mode Serial
+        m.responder.refuse(xy_forever::usb_service::mtp_off() ? mr::r_access_denied : 0); // #191: USB mode Serial
 #endif
         ms::Timing& timing = m.files.timing;
-        for (;;) {                                                       // one file request per step
+        for (;;) { // one file request per step
             const uint64_t step_start = xyf::clock::cycles();
-            if (!m.responder.step()) { if (m.responder.busy()) ++timing.waits; break; }
-            ++timing.steps; timing.step_units += units_since(step_start);
-            ++m.steps; m.progress_ms = now();
+            if (!m.responder.step()) {
+                if (m.responder.busy()) ++timing.waits;
+                break;
+            }
+            ++timing.steps;
+            timing.step_units += units_since(step_start);
+            ++m.steps;
+            m.progress_ms = now();
             if (now() - start >= mtp_slice_ms) break;
         }
-        if (!m.responder.busy()) ms::collect(m.files);                 // #144: a write (read) left out, MTP idle
+        if (!m.responder.busy()) ms::collect(m.files); // #144: a write (read) left out, MTP idle
         if (m.responder.busy()) {
-            if (writes_due) writes_ms = now();                           // A's window stays while operations run
-            if (now() - m.progress_ms > mtp_stall_ms) { m.responder.cancel(); ++m.stalls; m.progress_ms = now(); }
+            if (writes_due) writes_ms = now(); // A's window stays while operations run
+            if (now() - m.progress_ms > mtp_stall_ms) {
+                m.responder.cancel();
+                ++m.stalls;
+                m.progress_ms = now();
+            }
         } else m.progress_ms = now();
         mtp_say(false);
     } else if (m.stage == ms::st_leaving) {
-        if (m.responder.step()) return;                                  // the cancel: close, remove a partial upload
+        if (m.responder.step()) return; // the cancel: close, remove a partial upload
         U32 i = 0;
         while (i != ms::max_open && m.files.open[i] < 0) ++i;
         const mr::FileOps ops = ms::file_ops(m.files);
-        if (i != ms::max_open) ops.close(ops.context, m.files.open[i]);  // one request per pass
-        else { ms::collect(m.files); m.stage = ms::st_closing; settle_begin(); }   // op 9 when a change opened it
+        if (i != ms::max_open) ops.close(ops.context, m.files.open[i]); // one request per pass
+        else {
+            ms::collect(m.files);
+            m.stage = ms::st_closing;
+            settle_begin();
+        } // op 9 when a change opened it
     } else if (m.stage == ms::st_closing && !closing) {
         m.stage = ms::st_ended;
         mtp_say(true);
@@ -159,8 +195,9 @@ bool h_deliver(const uint8_t* data, uint32_t n) {
     ms::Session& m = mslot();
     const bool command = mtp_live() && !m.responder.busy() && n >= 12 && data[4] == 1 && !data[5];
     if (!mtp_live() || !m.responder.receive(data, n)) return false;
-    if (command) m.command_ms = now();                                   // speed: the operation's start
-    m.bytes_in += n; m.progress_ms = now();
+    if (command) m.command_ms = now(); // speed: the operation's start
+    m.bytes_in += n;
+    m.progress_ms = now();
     return true;
 }
 uint32_t h_pending() { return mtp_live() ? mslot().responder.pending() : 0u; }
@@ -176,7 +213,8 @@ bool h_idle() { return !mtp_live() || !mslot().responder.busy(); }
 void h_cancel(bool reset) {
     ms::Session& m = mslot();
     if (!mtp_live() || (!m.responder.busy() && !(reset && m.responder.session_open()))) return;
-    if (reset) m.responder.reset(); else m.responder.cancel();
+    if (reset) m.responder.reset();
+    else m.responder.cancel();
     ++m.cancels;
 }
 uint16_t h_status() { return mtp_live() ? uint16_t(mslot().responder.device_status()) : uint16_t(mr::r_ok); }
@@ -198,7 +236,8 @@ void a_words(bool a_free, U32 first, U32 end, U32& n) {
         file_client::Reply r = {file_client::refused, 0, 0};
         if (a_ok) r = file_client::a_timing(k);
         if (r.outcome != file_client::done) a_ok = 0;
-        P::put32(files + n, a_ok ? U32(r.value) : 0u); P::put32(files + n + 4, a_ok ? r.error : 0u);
+        P::put32(files + n, a_ok ? U32(r.value) : 0u);
+        P::put32(files + n + 4, a_ok ? r.error : 0u);
     }
     P::put32(files + flag, a_ok);
 }
@@ -209,9 +248,8 @@ U32 mtp_timing(const uint8_t* payload, U32 length, bool live, U32& n) {
     // A leaves file RPC for a catalog refresh (including the one after a window close).
     // Admit the normal read service first: a raw timing request there would stay out and
     // block the very command needed to re-enter RPC. serving() preserves an occupied slot.
-    const bool a_free = length == 2 && (sub == 0 || sub == 1 || sub == 3) &&
-                        mtp_on && !mtp_busy() && !job_running() && !closing && !put_running() && !m.files.link &&
-                        a_serving();
+    const bool a_free = length == 2 && (sub == 0 || sub == 1 || sub == 3) && mtp_on && !mtp_busy() && !job_running() &&
+                        !closing && !put_running() && !m.files.link && a_serving();
     if (sub == 0 && length == 2) {
         P::put32(files + 4, mtp_piece);
         P::put32(files + 8, U32(xyf::clock::cycles() >> 10));
@@ -264,7 +302,10 @@ void mtp_tunnel(uint8_t seq, const uint8_t* payload, U32 length) {
         if (!live) code = P::s_state;
         else if (m.responder.receive(payload + 1, length - 1)) m.bytes_in += length - 1;
         else code = P::s_busy;
-        if (live) { ++m.files.timing.pumps; m.files.timing.pump_units += units_since(pump_start); }
+        if (live) {
+            ++m.files.timing.pumps;
+            m.files.timing.pump_units += units_since(pump_start);
+        }
     } else if (op == 3 && length == 5) {
         U32 room = P::get32(payload + 1);
         if (room > read_range_max - 8) room = read_range_max - 8;
@@ -272,23 +313,44 @@ void mtp_tunnel(uint8_t seq, const uint8_t* payload, U32 length) {
         if (!live) code = P::s_state;
         else {
             const uint64_t pump_start = xyf::clock::cycles();
-            got = m.responder.take(files + 8, ms::phase_room(m.in, room));   // never past a container's end
+            got = m.responder.take(files + 8, ms::phase_room(m.in, room)); // never past a container's end
             zlp = got && ms::phase_zlp(m.in, files + 8, got) ? 1u : 0u;
             m.bytes_out += got;
-            ++m.files.timing.pumps; m.files.timing.pump_units += units_since(pump_start);
+            ++m.files.timing.pumps;
+            m.files.timing.pump_units += units_since(pump_start);
         }
         P::put32(files + 4, zlp);
         n = 8 + got;
     } else if (op == 4 && length == 1) {
         if (!live) code = P::s_state;
-        else { m.responder.cancel(); ++m.cancels; m.in.length = m.in.sent = 0; }
+        else {
+            m.responder.cancel();
+            ++m.cancels;
+            m.in.length = m.in.sent = 0;
+        }
     } else if (op == 5 && length == 1) {
-        const U32 values[22] = {mtp_on ? m.stage : 0u, m.bytes_in, m.bytes_out, m.longest_ms,
+        const U32 values[22] = {mtp_on ? m.stage : 0u,
+                                m.bytes_in,
+                                m.bytes_out,
+                                m.longest_ms,
                                 live ? U32(m.responder.device_status()) : 0u,
-                                m.files.link, m.steps, m.files.requests, mtp_busy() ? 1u : 0u,
-                                m.stalls, m.refused_busy, m.operations, m.longest_op_ms, m.log_count,
-                                m.responder.cache_hits(), m.files.data_requests, m.files.data_bytes,
-                                m.hist[0], m.hist[1], m.hist[2], m.hist[3], mtp_pass_ms};
+                                m.files.link,
+                                m.steps,
+                                m.files.requests,
+                                mtp_busy() ? 1u : 0u,
+                                m.stalls,
+                                m.refused_busy,
+                                m.operations,
+                                m.longest_op_ms,
+                                m.log_count,
+                                m.responder.cache_hits(),
+                                m.files.data_requests,
+                                m.files.data_bytes,
+                                m.hist[0],
+                                m.hist[1],
+                                m.hist[2],
+                                m.hist[3],
+                                mtp_pass_ms};
         for (U32 i = 0; i != 22; ++i) P::put32(files + 4 + 4 * i, values[i]);
         n = 92;
     } else if (op == 6 && length == 1) {
@@ -299,7 +361,7 @@ void mtp_tunnel(uint8_t seq, const uint8_t* payload, U32 length) {
             for (U32 k = 0; k != 5; ++k, n += 4) P::put32(files + n, m.log[i % ms::log_entries][k]);
     } else if (op == 7 && length >= 2) {
         code = mtp_timing(payload, length, live, n);
-    } else code = xyf::unlisted_op::status(payload, length, 7);     // not in protocol/v1.json yet
+    } else code = xyf::unlisted_op::status(payload, length, 7); // not in protocol/v1.json yet
     P::put32(files, code);
     result.last_status = code;
     send(t_mtp_tunnel, seq, files, n);

@@ -41,8 +41,12 @@ function valuesOf(g: v1.GoldenFrame): Record<string, v1.Value> {
 }
 
 check('crc32', () => assert.equal(v1.crc32(new TextEncoder().encode('123456789')), 0xcbf43926));
-check('USB ids: the product composite (temporary pair) first, then the stock serial identity', () => assert.deepEqual(
-  v1.USB_FILTERS, [{ usbVendorId: 0x1209, usbProductId: 0x0001 }, { usbVendorId: 0x2367, usbProductId: 0x0021 }]));
+check('USB ids: the product composite (temporary pair) first, then the stock serial identity', () =>
+  assert.deepEqual(v1.USB_FILTERS, [
+    { usbVendorId: 0x1209, usbProductId: 0x0001 },
+    { usbVendorId: 0x2367, usbProductId: 0x0021 },
+  ]),
+);
 
 for (const g of v1.GOLDEN) {
   check(`golden: ${g.name}`, () => {
@@ -96,11 +100,17 @@ for (const vector of v1.STREAMS) {
   check(`stream: ${vector.name}`, () => {
     const expect = vector.frames.map((f) => ({ type: f.type, seq: f.seq, payload: v1.fromHex(f.payload) }));
     const parser = new v1.FrameParser();
-    assert.deepEqual(vector.chunks.flatMap((c) => parser.feed(v1.fromHex(c))), expect);
+    assert.deepEqual(
+      vector.chunks.flatMap((c) => parser.feed(v1.fromHex(c))),
+      expect,
+    );
     const whole = v1.fromHex(vector.chunks.join(''));
     assert.deepEqual(new v1.FrameParser().feed(whole), expect);
     const bytewise = new v1.FrameParser();
-    assert.deepEqual([...whole].flatMap((b) => bytewise.feed(Uint8Array.of(b))), expect);
+    assert.deepEqual(
+      [...whole].flatMap((b) => bytewise.feed(Uint8Array.of(b))),
+      expect,
+    );
   });
 }
 
@@ -109,7 +119,8 @@ check('hello', () => {
   const hello = v1.parseHello(product!.fields['info'] as string);
   assert.equal(hello.proto, v1.VERSION);
   assert.equal(hello.preV1, false);
-  for (const name of Object.keys(v1.COMMANDS) as v1.CommandName[])        // stage2.info: only with stage 2 loaded
+  for (const name of Object.keys(v1.COMMANDS) as v1.CommandName[])
+    // stage2.info: only with stage 2 loaded
     assert.equal(hello.answers(v1.TYPE[name]), v1.COMMANDS[name].switch !== 'XYF_STAGE2_LOADED');
   assert.equal(hello.answers(0x06), false);
   const old = v1.parseHello(preV1!.fields['info'] as string);

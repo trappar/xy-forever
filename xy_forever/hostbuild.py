@@ -18,20 +18,21 @@ listing's on a hit).
 Every compile (and its -M listing) runs in its own process group, ended past bounds.COMPILE_S (#230):
 subprocess.TimeoutExpired, as subprocess.run raises.
 """
+
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
 import tempfile
 import time
+from pathlib import Path
 
 from . import bounds, paths, procgroup
 
 KEEP = 300
-observer = None    # observer(files, seconds, cpu_s) after each cached compile (see above)
-_hashes = {}       # (path, size, mtime_ns) -> sha256, within one process
+observer = None  # observer(files, seconds, cpu_s) after each cached compile (see above)
+_hashes = {}  # (path, size, mtime_ns) -> sha256, within one process
 _compilers = {}
 
 
@@ -55,8 +56,9 @@ def file_hash(path):
 
 def compiler(cxx):
     if cxx not in _compilers:
-        _compilers[cxx] = procgroup.run([cxx, '--version'], capture_output=True, text=True,
-                                        timeout=bounds.COMPILE_S).stdout
+        _compilers[cxx] = procgroup.run(
+            [cxx, '--version'], capture_output=True, text=True, timeout=bounds.COMPILE_S
+        ).stdout
     return _compilers[cxx]
 
 
@@ -89,14 +91,14 @@ def _plan(argv, cwd):
         else:
             words.append(arg)
     key = hashlib.sha256(json.dumps(words).encode()).hexdigest()[:32]
-    deps = argv[:out - 1] + argv[out + 1:] + ['-M', '-Wno-unused-command-line-argument']
+    deps = argv[: out - 1] + argv[out + 1 :] + ['-M', '-Wno-unused-command-line-argument']
     return key, deps, out, roots
 
 
 def _portable(path, roots):
     for n, d in enumerate(roots):
         if path.startswith(d + os.sep):
-            return [n, path[len(d) + 1:]]
+            return [n, path[len(d) + 1 :]]
     return [None, path]
 
 
@@ -108,7 +110,7 @@ def _local(entry, roots):
 def _fresh(manifest, roots):
     try:
         return all(file_hash(_local(entry, roots)) == digest for entry, digest in manifest['deps'])
-    except (OSError, IndexError, KeyError, TypeError):
+    except OSError, IndexError, KeyError, TypeError:
         return False
 
 
@@ -120,7 +122,7 @@ def children_cpu():
 
 def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs):
     """subprocess.run(argv, ...) for a compile, through the cache when it can be."""
-    root, cpu = cache_dir(), children_cpu()                       # the -M listing's CPU counts as the compile's
+    root, cpu = cache_dir(), children_cpu()  # the -M listing's CPU counts as the compile's
     plan = _plan(argv, cwd) if root else None
     if plan is None or kwargs:
         kwargs.setdefault('timeout', bounds.COMPILE_S)
@@ -145,22 +147,29 @@ def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs)
             if observer:
                 observer([_local(e, roots) for e, _ in manifest['deps']], 0.0, children_cpu() - cpu)
             out_text, err_text = manifest['stdout'], manifest['stderr']
-            return subprocess.CompletedProcess(argv, 0, *((out_text, err_text) if text else
-                                                         (out_text.encode(), err_text.encode()))
-                                               if capture_output else (None, None))
-    except (OSError, ValueError, KeyError):
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                *((out_text, err_text) if text else (out_text.encode(), err_text.encode()))
+                if capture_output
+                else (None, None),
+            )
+    except OSError, ValueError, KeyError:
         pass
     start = time.monotonic()
     result = procgroup.run(argv, capture_output=True, cwd=cwd, timeout=bounds.COMPILE_S)
-    if not capture_output:                                     # as subprocess.run would have shown them
+    if not capture_output:  # as subprocess.run would have shown them
         os.write(1, result.stdout)
         os.write(2, result.stderr)
     if result.returncode == 0:
         files = _store(root, entry, deps_argv, cwd, roots, target, result)
         if observer and files:
             observer(files, time.monotonic() - start, children_cpu() - cpu)
-    stdout, stderr = ((result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace')) if text
-                      else (result.stdout, result.stderr))
+    stdout, stderr = (
+        (result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace'))
+        if text
+        else (result.stdout, result.stderr)
+    )
     done = subprocess.CompletedProcess(argv, result.returncode, *((stdout, stderr) if capture_output else (None, None)))
     if check:
         done.check_returncode()
@@ -175,8 +184,11 @@ def _store(root, entry, deps_argv, cwd, roots, target, result):
     names = listing.stdout.replace('\\\n', ' ').split()
     files = sorted({os.path.abspath(os.path.join(cwd or os.getcwd(), n)) for n in names if not n.endswith(':')})
     try:
-        manifest = dict(deps=[[_portable(f, roots), file_hash(f)] for f in files],
-                        stdout=result.stdout.decode(errors='replace'), stderr=result.stderr.decode(errors='replace'))
+        manifest = dict(
+            deps=[[_portable(f, roots), file_hash(f)] for f in files],
+            stdout=result.stdout.decode(errors='replace'),
+            stderr=result.stderr.decode(errors='replace'),
+        )
         root.mkdir(parents=True, exist_ok=True)
         work = Path(tempfile.mkdtemp(prefix='new-', dir=root))
         shutil.copyfile(target, work / 'output')
@@ -201,22 +213,24 @@ def _publish(root, work, entry):
     try:
         entry.rename(aside / 'entry')
     except OSError:
-        pass                                                   # gone already: another process moved it
+        pass  # gone already: another process moved it
     try:
         work.rename(entry)
     except OSError:
-        shutil.rmtree(work, ignore_errors=True)                # another process published it first
+        shutil.rmtree(work, ignore_errors=True)  # another process published it first
     shutil.rmtree(aside, ignore_errors=True)
 
 
 def prune(root, keep=KEEP):
     """Keeps the keep most recently used entries (and removes abandoned partial ones). Another process
     may remove an entry while this one looks: a vanished entry is skipped."""
+
     def used(p):
         try:
             return p.stat().st_mtime if p.is_dir() else None
         except OSError:
             return None
+
     entries = [(t, p) for p, t in ((p, used(p)) for p in root.iterdir()) if t is not None]
     for _, p in sorted(entries, key=lambda e: e[0], reverse=True)[keep:]:
         shutil.rmtree(p, ignore_errors=True)

@@ -39,8 +39,12 @@ export async function retryBusy<T>(client: Client, send: () => Promise<T>, optio
       if (!isXyfError(error, 'busy') || error.status === null) throw error;
       const cause = await busyCause(client, options);
       if (cause !== 'closing' || Date.now() + pause > until) {
-        throw new XyfError('busy', error.message, { command: error.command, status: error.status,
-          fields: { ...error.fields, busy: cause }, cause: error });
+        throw new XyfError('busy', error.message, {
+          command: error.command,
+          status: error.status,
+          fields: { ...error.fields, busy: cause },
+          cause: error,
+        });
       }
       await new Promise((resolve) => setTimeout(resolve, pause));
       if (options.signal?.aborted) throw new XyfError('aborted', 'cancelled', { cause: options.signal.reason });

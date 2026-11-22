@@ -17,7 +17,12 @@ TEST_CASE("save log line and merge") {
     lap(t, 1200, p_check);                 // list 200
     lap(t, 1205, p_job_base + 5);          // check 5, then link1
     lap(t, 2205, p_job_base + 7);          // link1 1000, then link2
-    t.mods = 30; t.expanded = 1; t.added = 1; t.ok = 1; t.written = 7; t.bytes = 4096000000u;
+    t.mods = 30;
+    t.expanded = 1;
+    t.added = 1;
+    t.ok = 1;
+    t.written = 7;
+    t.bytes = 4096000000u;
     static char text[max_text + 64];
     static char line[max_line];
     const unsigned n = format(line, sizeof(line), t, 3205);   // link2 1000 (running)

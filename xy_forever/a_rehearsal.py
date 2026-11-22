@@ -1,8 +1,10 @@
 """Developer A admission rehearsal. Uses only RAM staging; never invokes an install."""
+
 import hashlib
 import struct
 
-from xy_forever import transport, usb_proto_ids as P
+from xy_forever import transport
+from xy_forever import usb_proto_ids as P
 
 
 def call(dev, operation, extra=b''):
@@ -12,8 +14,9 @@ def call(dev, operation, extra=b''):
     if len(body) < 56 or struct.unpack_from('<I', body)[0] != 1:
         raise ValueError('unsupported A rehearsal reply version or truncated reply')
     version, phase, done, total, crc, result = struct.unpack_from('<6I', body)
-    return code, dict(version=version, phase=phase, done=done, total=total, crc32=crc,
-                      result=result, sha256=body[24:56].hex())
+    return code, dict(
+        version=version, phase=phase, done=done, total=total, crc32=crc, result=result, sha256=body[24:56].hex()
+    )
 
 
 def run(dev, data, uninstall=False, deadline_ms=120000, progress=None):
@@ -29,7 +32,9 @@ def run(dev, data, uninstall=False, deadline_ms=120000, progress=None):
             code, state = call(dev, 1)
             if code:
                 return code, state
-            transport.pause(dev.t, .02)  # status polling cadence (the simulator: its clock); never retries a failed request
+            transport.pause(
+                dev.t, 0.02
+            )  # status polling cadence (the simulator: its clock); never retries a failed request
     except KeyboardInterrupt:
         # Cancel only an intact protocol session. Transport failures propagate without recovery.
         code, state = call(dev, 2)

@@ -4,13 +4,17 @@
 namespace xyf { namespace state_write {
 namespace {
 void copy_state(store::State& to, const store::State& from) {
-    const char* f = reinterpret_cast<const char*>(&from); char* t = reinterpret_cast<char*>(&to);
+    const char* f = reinterpret_cast<const char*>(&from);
+    char* t = reinterpret_cast<char*>(&to);
     for (uint32_t i = 0; i != sizeof(store::State); ++i) t[i] = f[i];
 }
 }
 
 bool plan_default(const library::Library& lib, uint32_t index, Plan& out) {
-    out.path = 0; out.seq = 0; out.length = 0; out.text[0] = 0;
+    out.path = 0;
+    out.seq = 0;
+    out.length = 0;
+    out.text[0] = 0;
     if (index >= lib.count || !lib.entries[index].usable) return false;
     state::Choice current;
     copy_state(current.state, lib.state);
@@ -28,4 +32,4 @@ int32_t find_by_hash(const library::Library& lib, uint32_t hash) {
     }
     return found;
 }
-} }
+}}

@@ -1,6 +1,6 @@
 /* Tailwind 4 with the shadcn/ui theme tokens (dark only). */
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @theme {
   --color-background: #0e1013;
@@ -26,12 +26,19 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 10px;
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 @layer base {
-  * { @apply border-border; }
-  html { color-scheme: dark; font-size: 15px; }
-  body { @apply min-h-screen bg-background font-sans leading-normal text-foreground; }
+  * {
+    @apply border-border;
+  }
+  html {
+    color-scheme: dark;
+    font-size: 15px;
+  }
+  body {
+    @apply min-h-screen bg-background font-sans leading-normal text-foreground;
+  }
 }

@@ -7,13 +7,14 @@ among them) end with the command. tie_to_parent() makes a long-running wrapper p
 (`python3 -m xy_forever.sim`) end, through SIGTERM, when the process that started it is gone,
 even when that one was killed outright; its own cleanup then ends its group (kill_group).
 """
+
 import os
 import signal
 import subprocess
 import threading
 import time
 
-GRACE = 3.0                      # s between SIGTERM and SIGKILL
+GRACE = 3.0  # s between SIGTERM and SIGKILL
 
 
 def popen(argv, **kwargs):
@@ -25,7 +26,7 @@ def _signal_group(pgid, sig):
     try:
         os.killpg(pgid, sig)
         return True
-    except OSError:              # no process left in the group
+    except OSError:  # no process left in the group
         return False
 
 
@@ -35,7 +36,7 @@ def kill_group(process, grace=GRACE):
     if _signal_group(pgid, signal.SIGTERM):
         deadline = time.monotonic() + grace
         while time.monotonic() < deadline:
-            process.poll()       # reap the leader: a zombie still counts as a member
+            process.poll()  # reap the leader: a zombie still counts as a member
             if not _signal_group(pgid, 0):
                 break
             time.sleep(0.05)
@@ -71,7 +72,7 @@ def run(argv, timeout=None, input=None, capture_output=False, **kwargs):
         kill_group(process)
         raise subprocess.TimeoutExpired(argv, timeout, *_drain(process)) from None
     finally:
-        kill_group(process)      # anything the command left running in its group
+        kill_group(process)  # anything the command left running in its group
     return subprocess.CompletedProcess(argv, process.returncode, out, err)
 
 
@@ -83,6 +84,7 @@ def _when_parent_gone(act, poll):
         while os.getppid() == parent:
             time.sleep(poll)
         act()
+
     threading.Thread(target=watch, name='parent-watch', daemon=True).start()
 
 
@@ -95,10 +97,12 @@ def end_group_with_parent(poll=0.5):
 def tie_to_parent(poll=0.5):
     """For a process's __main__: SIGTERM and SIGHUP raise SystemExit (so finally blocks run, once), and this
     process gets SIGTERM once its parent is gone."""
+
     def ending(sig, frame):
         for s in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
-            signal.signal(s, signal.SIG_IGN)          # the cleanup runs once, uninterrupted
+            signal.signal(s, signal.SIG_IGN)  # the cleanup runs once, uninterrupted
         raise SystemExit(128 + sig)
+
     for s in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(s, ending)
     _when_parent_gone(lambda: os.kill(os.getpid(), signal.SIGTERM), poll)

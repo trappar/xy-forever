@@ -16,9 +16,24 @@ struct Snapshot {
     U32 device, mounted, readonly;
 };
 enum class Result {
-    ok, unavailable, identity, role, lifecycle, irq, device, busy,
-    activate, mount, write_attempt, open_handles, unmount, shutdown,
-    write_refused, write_failed, verify_failed, remount      // state slot write (XY Forever)
+    ok,
+    unavailable,
+    identity,
+    role,
+    lifecycle,
+    irq,
+    device,
+    busy,
+    activate,
+    mount,
+    write_attempt,
+    open_handles,
+    unmount,
+    shutdown,
+    write_refused,
+    write_failed,
+    verify_failed,
+    remount      // state slot write (XY Forever)
 };
 enum class Stage { idle, captured, guarded, activated, mounted, closed, failed };
 struct Diagnostic {
@@ -88,8 +103,8 @@ public:
     // session unmounted (end() is still ok). readback: caller buffer >= count + 1
     // (one extra byte detects a longer file).
     // step: last step reached (diagnostics).
-    Result write_state_slot(const char* path, const services::Byte* data, U32 count,
-                            services::Byte* readback, U32& step);
+    Result write_state_slot(const char* path, const services::Byte* data, U32 count, services::Byte* readback,
+                            U32& step);
     static bool state_slot_path(const char* path);      // exact allowlist (host-tested)
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
     // XY Forever MTP mode (a, product; Test 049 also the USB file write). open_write_window: fresh
@@ -121,6 +136,7 @@ public:
     // executing a payload. It does not qualify physical RAM or peer state.
     bool safe_to_handoff() const;
     static bool capture(Snapshot& output);
+
 private:
     Stock121ReadOnlySession(const Stock121ReadOnlySession&);
     Stock121ReadOnlySession& operator=(const Stock121ReadOnlySession&);
@@ -133,5 +149,5 @@ private:
     Result fail(Result result);
     Result mount_guarded();
 };
-} }
+}}
 #endif

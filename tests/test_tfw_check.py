@@ -5,31 +5,33 @@ answers B's OTP reads with the private keys (xy_forever/sim.py otp_fields) or fa
 Synthetic packages use the public test AES vector and a synthetic P-224 key (test_tfw_os.py). The
 private parts skip without ../private/keys and the official packages; nothing here prints a key.
 """
+
 import hashlib
 import os
-from pathlib import Path
 import struct
 import tempfile
 import unittest
-
-import pytest
+from pathlib import Path
 
 import p224_reference as ecdsa
-from test_tfw import container, KEY
-from test_tfw_os import (BOOTLOADER, Extractor, KEYS, OS, PUBLIC_KEY, SIGNING_KEY, build_zip, package, signed,
-                         standard)
+import pytest
+from test_tfw import KEY, container
+from test_tfw_os import BOOTLOADER, KEYS, OS, PUBLIC_KEY, SIGNING_KEY, Extractor, build_zip, package, signed, standard
 
-from xy_forever.source_text import unit_text
-from xy_forever import xyf_build as builder
-from xy_forever import xyf_host as host
 from xy_forever import bounds, paths, sim, tfw_extract
 from xy_forever import usb_proto_ids as ids
+from xy_forever import xyf_build as builder
+from xy_forever import xyf_host as host
+from xy_forever.source_text import unit_text
 
 ROOT = Path(__file__).resolve().parents[1]
 
 OFFICIAL = sorted((paths.FIRMWARE / 'official').glob('opxy_firmware_*.tfw'))
-PRIVATE = None if tfw_extract.KEYS.is_file() and tfw_extract.PUBLIC_KEY.is_file() and OFFICIAL else \
-    'private keys or official packages absent'
+PRIVATE = (
+    None
+    if tfw_extract.KEYS.is_file() and tfw_extract.PUBLIC_KEY.is_file() and OFFICIAL
+    else 'private keys or official packages absent'
+)
 REASONS = ('pass', 'read', 'not_package', 'key_index', 'no_otp', 'public_key', 'signature', 'decrypt', 'directory')
 
 
@@ -49,14 +51,20 @@ class NativeCheck(Extractor):
 
     def test_reason_codes_match_the_spec(self):
         import json
+
         spec = json.loads((ROOT / 'protocol/v1.json').read_text())
         command = next(c for c in spec['commands'] if c['name'] == 'tfw.check')
         reason = next(f for f in command['reply']['fields'] if f['name'] == 'reason')
         self.assertEqual(sorted(map(int, reason['values'])), list(range(len(REASONS))))
         enum = (ROOT / 'native/tfw_check.hpp').read_text().split('enum class Reason')[1].split('};')[0]
-        self.assertEqual([line.split(',')[0].split()[0] for line in enum.splitlines()[1:]
-                          if line.strip() and not line.strip().startswith('//')],
-                         list(REASONS))
+        self.assertEqual(
+            [
+                line.split(',')[0].split()[0]
+                for line in enum.splitlines()[1:]
+                if line.strip() and not line.strip().startswith('//')
+            ],
+            list(REASONS),
+        )
 
     def test_a_signed_package_passes_and_the_public_key_hash_is_reported(self):
         report = self.reason(signed(package()), 'pass')
@@ -64,12 +72,19 @@ class NativeCheck(Extractor):
         self.assertEqual((report['public_key_calls'], report['key_calls'], report['entries']), (1, 1, 6))
 
     def test_keys_are_read_only_for_a_well_formed_header(self):
-        for data in (b'', b'short', b'not a package at all, but longer than its header' * 30,
-                     signed(package()) + b'x', signed(package())[:-1], bytes(0x380) + bytes(288)):
+        for data in (
+            b'',
+            b'short',
+            b'not a package at all, but longer than its header' * 30,
+            signed(package()) + b'x',
+            signed(package())[:-1],
+            bytes(0x380) + bytes(288),
+        ):
             with self.subTest(size=len(data)):
                 report = self.reason(data, 'not_package')
-                self.assertEqual((report['public_key_calls'], report['key_calls'], report['public_key_sha256']),
-                                 (0, 0, ''))
+                self.assertEqual(
+                    (report['public_key_calls'], report['key_calls'], report['public_key_sha256']), (0, 0, '')
+                )
 
     def test_the_device_public_key(self):
         good = signed(package())
@@ -79,20 +94,20 @@ class NativeCheck(Extractor):
         self.assertEqual(report['public_key_sha256'], hashlib.sha256(off_curve).hexdigest())
         other = ecdsa.encode_point(ecdsa.public_key(SIGNING_KEY + 1))
         self.assertEqual(self.reason(good, 'signature', public_key=other)['key_calls'], 0)
-        self.reason(package(), 'signature')                                        # r = s = 0
+        self.reason(package(), 'signature')  # r = s = 0
         changed = bytearray(good)
-        changed[0x80 + 0x90] ^= 1                                                  # a signed field (version)
+        changed[0x80 + 0x90] ^= 1  # a signed field (version)
         self.reason(bytes(changed), 'signature')
 
     def test_key_indexes_other_than_zero_are_refused_unread(self):
         sig = bytearray(package())
-        sig[0x80 + 0x89] = 1                        # signature key index: refused with the header
+        sig[0x80 + 0x89] = 1  # signature key index: refused with the header
         report = self.reason(signed(bytes(sig)), 'not_package')
         self.assertEqual((report['public_key_calls'], report['key_calls']), (0, 0))
         payload, _, _ = build_zip(standard())
         report = self.reason(signed(container(payload, index=1)), 'key_index', keys=bytes([1]) + KEY)
         self.assertEqual((report['public_key_calls'], report['key_calls']), (1, 0))
-        self.reason(signed(container(payload, index=0xfe)), 'key_index')
+        self.reason(signed(container(payload, index=0xFE)), 'key_index')
 
     def test_the_device_aes_key(self):
         good = signed(package())
@@ -104,9 +119,13 @@ class NativeCheck(Extractor):
         no_os = [m for m in standard() if m['name'] != OS.encode()]
         two = standard() + [dict(standard()[2])]
         bad_record = [dict(m, flags=8) if m['name'] == BOOTLOADER.encode() else m for m in standard()]
-        for name, members, options in (('no os.ldr', no_os, {}), ('os.ldr twice', two, {}),
-                                       ('comment', standard(), {'comment': b'x'}), ('flags', bad_record, {}),
-                                       ('count', standard(), {'eocd': {'here': 5, 'total': 5}})):
+        for name, members, options in (
+            ('no os.ldr', no_os, {}),
+            ('os.ldr twice', two, {}),
+            ('comment', standard(), {'comment': b'x'}),
+            ('flags', bad_record, {}),
+            ('count', standard(), {'eocd': {'here': 5, 'total': 5}}),
+        ):
             with self.subTest(name):
                 payload, _, _ = build_zip(members, **options)
                 self.reason(signed(container(payload)), 'directory')
@@ -120,13 +139,13 @@ class NativeCheck(Extractor):
         # The whole package, read only where a cut holds it: header, name block, then the tail.
         _, _, directory = build_zip(standard())
         start = (0x480 + directory) & ~15
-        allow = ('--allow', '0:%d' % 0x480, '--allow', '%d:%d' % (start - 16, len(good) + 16))   # + the end probe
+        allow = ('--allow', '0:%d' % 0x480, '--allow', '%d:%d' % (start - 16, len(good) + 16))  # + the end probe
         report = self.check(good, *allow, name='allowed')
         self.assertEqual((report['reason'], report['refused_reads']), ('pass', 0), report)
-        short_tail = tfw_extract.cut(good, tail=64)                 # the directory is not in it
+        short_tail = tfw_extract.cut(good, tail=64)  # the directory is not in it
         self.reason(short_tail, 'read')
         wrong = bytearray(piece)
-        struct.pack_into('<I', wrong, 4, len(good) + 16)            # its sizes disagree
+        struct.pack_into('<I', wrong, 4, len(good) + 16)  # its sizes disagree
         self.reason(bytes(wrong), 'not_package')
         self.reason(piece + b'x', 'not_package')
 
@@ -136,8 +155,13 @@ class OfficialPackages(Extractor):
     """The three official packages (about 98 MB each; only the header and the directory are read)."""
 
     def run_check(self, path, keys=None, public_key=None):
-        return tfw_extract.run(self.binary, 'check', path, keys=tfw_extract.key_records() if keys is None else keys,
-                               public_key=tfw_extract.public_key() if public_key is None else public_key)
+        return tfw_extract.run(
+            self.binary,
+            'check',
+            path,
+            keys=tfw_extract.key_records() if keys is None else keys,
+            public_key=tfw_extract.public_key() if public_key is None else public_key,
+        )
 
     def test_each_official_package_and_its_cut_pass(self):
         expected = hashlib.sha256(tfw_extract.public_key()).hexdigest()
@@ -152,7 +176,7 @@ class OfficialPackages(Extractor):
 
     def test_a_corrupted_header_and_a_wrong_key_fail(self):
         piece = bytearray(tfw_extract.cut(OFFICIAL[-1]))
-        piece[16 + 0x80 + 0x9c] ^= 1                              # the signed ciphertext hash
+        piece[16 + 0x80 + 0x9C] ^= 1  # the signed ciphertext hash
         path = self.root / 'corrupt.cut'
         path.write_bytes(bytes(piece))
         self.assertEqual(self.run_check(path)['reason'], 'signature')
@@ -186,11 +210,12 @@ class SimulatorCheck(unittest.TestCase):
             last = OFFICIAL[-1]
             (folder / 'good.cut').write_bytes(tfw_extract.cut(last))
             corrupt = bytearray(tfw_extract.cut(last))
-            corrupt[16 + 0x80 + 0x9c] ^= 1
+            corrupt[16 + 0x80 + 0x9C] ^= 1
             (folder / 'corrupt.cut').write_bytes(bytes(corrupt))
         cls.otp = None if PRIVATE else sim.otp_fields()
-        cls.sim = sim.Simulator(root, Path(cls.tmp.name) / 'bootpart.bin', otp=cls.otp,
-                                log=Path(cls.tmp.name) / 'log.txt').start()
+        cls.sim = sim.Simulator(
+            root, Path(cls.tmp.name) / 'bootpart.bin', otp=cls.otp, log=Path(cls.tmp.name) / 'log.txt'
+        ).start()
         cls.addClassCleanup(cls.sim.stop)
 
     def setUp(self):
@@ -217,7 +242,7 @@ class SimulatorCheck(unittest.TestCase):
         expected = hashlib.sha256(tfw_extract.public_key()).digest()
         for path in OFFICIAL + [Path('good.cut')]:
             with self.subTest(package=path.name):
-                self.assertEqual(self.check(path.name), (0, 'pass', expected, 3))   # selectors 9, 3, 4
+                self.assertEqual(self.check(path.name), (0, 'pass', expected, 3))  # selectors 9, 3, 4
 
 
 def line(address, code):
@@ -226,6 +251,7 @@ def line(address, code):
 
 class BuilderRules(unittest.TestCase):
     """xyf_build.py's OTP and boot-ROM rules on synthetic listings (the real one: every product build)."""
+
     WRAPPER_READ = '__ZN10xy_forever8otp_keys12_GLOBAL__N_15stockILj67108936EjJjPhEEET0_DpT1_'
     WRAPPER_INIT = '__ZN10xy_forever8otp_keys12_GLOBAL__N_15stockILj67108948EvJjEEET0_DpT1_'
 
@@ -233,39 +259,77 @@ class BuilderRules(unittest.TestCase):
         read_owner = read_owner or self.WRAPPER_READ
         parts = [
             '8ab0f76c <%s>:' % self.WRAPPER_INIT,
-            line(0x8ab0f76c, 'P2.H = 0x400'), line(0x8ab0f770, 'R0 = 0x0 (X)'), line(0x8ab0f772, 'P2.L = 0x54'),
-            line(0x8ab0f776, 'JUMP (P2)'), '',
+            line(0x8AB0F76C, 'P2.H = 0x400'),
+            line(0x8AB0F770, 'R0 = 0x0 (X)'),
+            line(0x8AB0F772, 'P2.L = 0x54'),
+            line(0x8AB0F776, 'JUMP (P2)'),
+            '',
             '8ab0f778 <%s>:' % read_owner,
-            line(0x8ab0f778, 'P2.L = 0x48'), line(0x8ab0f77c, 'P2.H = 0x400'), line(0x8ab0f780, 'JUMP (P2)'), '',
+            line(0x8AB0F778, 'P2.L = 0x48'),
+            line(0x8AB0F77C, 'P2.H = 0x400'),
+            line(0x8AB0F780, 'JUMP (P2)'),
+            '',
             '8ab0f784 <__ZN10xy_forever8otp_keys12_GLOBAL__N_17prepareEv>:',
-            line(0x8ab0f784, 'P1.H = 0x11b0'), line(0x8ab0f788, 'P1.L = 0x1650'),
-            line(0x8ab0f78c, 'CALL 0x8ab0f76c <%s>' % self.WRAPPER_INIT), '',
+            line(0x8AB0F784, 'P1.H = 0x11b0'),
+            line(0x8AB0F788, 'P1.L = 0x1650'),
+            line(0x8AB0F78C, 'CALL 0x8ab0f76c <%s>' % self.WRAPPER_INIT),
+            '',
             '8ab0f7ac <__ZN10xy_forever8otp_keys10public_keyEPvPh>:',
-            line(0x8ab0f7ac, 'CALL 0x8ab0f778 <%s>' % read_owner), '',
+            line(0x8AB0F7AC, 'CALL 0x8ab0f778 <%s>' % read_owner),
+            '',
             '8ab0f900 <%s>:' % caller,
-            line(0x8ab0f900, 'R1.H = 0x8ab0'),
+            line(0x8AB0F900, 'R1.H = 0x8ab0'),
             '8ab0f904:\t00 00       \tR1.L = 0xf7ac;\t\t/* R1=0x8ab0f7ac <__ZN10xy_forever8otp_keys10public_keyEPvPh> */',
-            *extra]
+            *extra,
+        ]
         return '\n'.join(parts) + '\n'
 
     def symbols(self, listing):
         return {m: {} for m in __import__('re').findall(r'<([^>+]+)>:', listing)}
 
     def test_halves_in_either_order_build_a_constant(self):
-        lines = [line(0, 'P2.H = 0x400'), line(2, 'P2.L = 0x48'), line(4, 'R0.L = 0x54'), line(6, 'R1 = R0'),
-                 line(8, 'R0.H = 0x400'), line(10, 'P0.L = 0x50'), line(12, 'P0 = [P1]'), line(14, 'P0.H = 0x400')]
+        lines = [
+            line(0, 'P2.H = 0x400'),
+            line(2, 'P2.L = 0x48'),
+            line(4, 'R0.L = 0x54'),
+            line(6, 'R1 = R0'),
+            line(8, 'R0.H = 0x400'),
+            line(10, 'P0.L = 0x50'),
+            line(12, 'P0 = [P1]'),
+            line(14, 'P0.H = 0x400'),
+        ]
         self.assertEqual(builder.loaded_values(lines), {0x04000048, 0x04000054})
-        stale = [line(0, 'P2.H = 0x8ab0'), line(2, 'P2.L = 0xb764'), line(4, 'IF CC JUMP 0x8ab0015c'),
-                 line(6, 'P2.H = 0x402'), line(8, 'P2.L = 0x1c4'), line(10, 'CALL (P2)')]
-        self.assertEqual(builder.loaded_values(stale), {0x8ab0b764, 0x040201c4})   # not 0x0402b764
-        listing = self.listing(extra=[line(0x8ab0f908, 'P3.L = 0x4c'), line(0x8ab0f90c, 'P3.H = 0x400')])
+        stale = [
+            line(0, 'P2.H = 0x8ab0'),
+            line(2, 'P2.L = 0xb764'),
+            line(4, 'IF CC JUMP 0x8ab0015c'),
+            line(6, 'P2.H = 0x402'),
+            line(8, 'P2.L = 0x1c4'),
+            line(10, 'CALL (P2)'),
+        ]
+        self.assertEqual(builder.loaded_values(stale), {0x8AB0B764, 0x040201C4})  # not 0x0402b764
+        listing = self.listing(extra=[line(0x8AB0F908, 'P3.L = 0x4c'), line(0x8AB0F90C, 'P3.H = 0x400')])
         self.assertEqual(builder.rom_references(listing), {'04000048', '04000054', '0400004c'})
 
     def test_the_rom_and_forbidden_lists(self):
         self.assertEqual(builder.ROM_TARGETS, {'040201c4', '04000048', '04000054'})
         self.assertEqual(builder.OTP_CALLS, {'04000048', '04000054'})
-        for entry in ('88a25d28', '88a25c6c', '88a2901a', '88a28cfc', '88a27d00', '88a196cc', '88a18cae', '88a1871c',
-                      '88a14820', '11a05340', '88a21456', '88a34ed0', '0400004c', '04000050'):
+        for entry in (
+            '88a25d28',
+            '88a25c6c',
+            '88a2901a',
+            '88a28cfc',
+            '88a27d00',
+            '88a196cc',
+            '88a18cae',
+            '88a1871c',
+            '88a14820',
+            '11a05340',
+            '88a21456',
+            '88a34ed0',
+            '0400004c',
+            '04000050',
+        ):
             self.assertIn(entry, builder.FORBIDDEN_TARGETS)
         self.assertFalse(builder.ROM_TARGETS & builder.FORBIDDEN_TARGETS)
         self.assertEqual(builder.TFW_CHECK_MODES, ('xyf-product',))
@@ -283,19 +347,19 @@ class BuilderRules(unittest.TestCase):
         other = self.listing(caller='__ZN12_GLOBAL__N_19read_fileEhPKhj')
         with self.assertRaisesRegex(ValueError, 'outside the tfw.check handler'):
             builder.check_otp_rules(other, self.symbols(other), True)
-        for caller in ('__ZN12_GLOBAL__N_116tfw_check_escapeEPKcPh',
-                       '__ZN12_GLOBAL__N_113tfw_check_runEPKcPh_extra'):
+        for caller in ('__ZN12_GLOBAL__N_116tfw_check_escapeEPKcPh', '__ZN12_GLOBAL__N_113tfw_check_runEPKcPh_extra'):
             with self.subTest(caller=caller), self.assertRaisesRegex(ValueError, 'outside the tfw.check handler'):
                 listing = self.listing(caller=caller)
                 builder.check_otp_rules(listing, self.symbols(listing), True)
-        twice = self.listing(extra=[line(0x8ab0f908, 'P3.L = 0x48'), line(0x8ab0f90c, 'P3.H = 0x400')])
+        twice = self.listing(extra=[line(0x8AB0F908, 'P3.L = 0x48'), line(0x8AB0F90C, 'P3.H = 0x400')])
         with self.assertRaisesRegex(ValueError, 'loaded by 2 functions'):
             builder.check_otp_rules(twice, self.symbols(twice), True)
-        plain = '8ab00000 <__ZN12_GLOBAL__N_19read_fileEhPKhj>:\n' + line(0x8ab00000, 'RTS') + '\n'
+        plain = '8ab00000 <__ZN12_GLOBAL__N_19read_fileEhPKhj>:\n' + line(0x8AB00000, 'RTS') + '\n'
         builder.check_otp_rules(plain, self.symbols(plain), False)
 
     def test_old_reader_cannot_be_linked_in_any_mode(self):
         from xy_forever.otp_audit import OLD_READERS
+
         good = self.listing()
         for name in OLD_READERS:
             for enabled in (False, True):
@@ -304,15 +368,26 @@ class BuilderRules(unittest.TestCase):
 
     def test_data_pointers_cannot_bypass_the_instruction_audit(self):
         symbol = '__ZN10xy_forever8otp_keys10public_keyEPvPh'
-        symbols = {symbol: dict(value=0x8ab0f7ac, size=12, type=2)}
+        symbols = {symbol: dict(value=0x8AB0F7AC, size=12, type=2)}
         for section in ('.data', '.rodata'):
+
             def data(*values):
-                return {section: dict(address=0x8ab10000, data=struct.pack('<%dI' % len(values), *values))}
-            for value in (0x04000000, 0x04000048, 0x0400004c, 0x04000050, 0x04000054, 0x040001fc,
-                          0x8ab0f7ac, 0x8ab0f7ae, 0x8ab0f7b7):
+                return {section: dict(address=0x8AB10000, data=struct.pack('<%dI' % len(values), *values))}
+
+            for value in (
+                0x04000000,
+                0x04000048,
+                0x0400004C,
+                0x04000050,
+                0x04000054,
+                0x040001FC,
+                0x8AB0F7AC,
+                0x8AB0F7AE,
+                0x8AB0F7B7,
+            ):
                 with self.subTest(section=section, value=hex(value)), self.assertRaises(ValueError):
                     builder.check_otp_data(data(0, value), symbols)
-            builder.check_otp_data(data(0, 0x03ffffff, 0x04000200, 0x040201c4, 0x8ab0f7ab, 0x8ab0f7b8), symbols)
+            builder.check_otp_data(data(0, 0x03FFFFFF, 0x04000200, 0x040201C4, 0x8AB0F7AB, 0x8AB0F7B8), symbols)
         builder.check_otp_data({}, symbols)
 
     def test_sources(self):
@@ -326,5 +401,7 @@ class BuilderRules(unittest.TestCase):
                 self.assertNotIn('0x04000048', path.read_text(), path.name)
                 self.assertNotIn('0x04000054', path.read_text(), path.name)
         service = unit_text(ROOT / 'target/usb_service.cpp')
-        self.assertIn('#if defined(XYF_TFW_CHECK)\n        else if (type == P::t_tfw_check) tfw_check(seq, payload, length);',
-                      service)
+        self.assertIn(
+            '#if defined(XYF_TFW_CHECK)\n        else if (type == P::t_tfw_check) tfw_check(seq, payload, length);',
+            service,
+        )

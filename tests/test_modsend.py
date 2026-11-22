@@ -5,26 +5,30 @@ leaves a package folder with files.sha256 unless every listed file is there and 
 completes it; --verify passes. The proof that matters: the host build of the device job (host/mod_assemble.cpp
 `job`) run on the files as they sit in the simulator's storage gives exactly what it gives on the host
 package set. Synthetic packages always; the published 0.0.6 set when present. No device access."""
+
 import contextlib
 import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import shutil
 import struct
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import pytest
-
-from xy_forever import xyf_host as host
-from xy_forever import  hostbuild, modkit as M, modpatch as MP, modsend as S, modstore, package_records, sim
-from xy_forever import usb_proto as P
+import test_modkit as TK
 from test_mod_job import run
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
-import test_modkit as TK
+
+from xy_forever import hostbuild, modstore, package_records, sim
+from xy_forever import modkit as M
+from xy_forever import modpatch as MP
+from xy_forever import modsend as S
+from xy_forever import usb_proto as P
+from xy_forever import xyf_host as host
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -75,8 +79,9 @@ class Harness:
         type(self).runs += 1
         self.dir = self.work / ('run-%d' % self.runs)
         shutil.copytree(self.seeded, self.dir / 'yaffs2')
-        self.sim = sim.Simulator(self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out,
-                                 log=self.dir / 'log.txt').start()
+        self.sim = sim.Simulator(
+            self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out, log=self.dir / 'log.txt'
+        ).start()
         self.links = []
         self.addCleanup(self.stop)
         info = MP.info_values(self.gen / 'base/info.txt')
@@ -149,16 +154,29 @@ class Synthetic(Harness, unittest.TestCase):
         (cls.work / 'op1_factory.json').write_bytes(CATALOG)
         (cls.work / 'content.sha256').write_text(official_text(OFFICIAL))
         (cls.work / 'kit.json').write_text(json.dumps(kit_for(profile_for(data))))
-        cls.gen = Path(M.split_kit(cls.work / 'kit.json', cls.work / 'packages', finish=finish,
-                                   sdk_source='https://github.com/example/sdk@abc')['root'])
+        cls.gen = Path(
+            M.split_kit(
+                cls.work / 'kit.json',
+                cls.work / 'packages',
+                finish=finish,
+                sdk_source='https://github.com/example/sdk@abc',
+            )['root']
+        )
 
     def job_text(self, generation, machines, exts):
-        return MP.job_text(generation, machines, exts, self.work / 'os.ldr', self.work / 'op1_factory.json',
-                           official=self.work / 'content.sha256', unverified=True)
+        return MP.job_text(
+            generation,
+            machines,
+            exts,
+            self.work / 'os.ldr',
+            self.work / 'op1_factory.json',
+            official=self.work / 'content.sha256',
+            unverified=True,
+        )
 
     @pytest.mark.sweep
     def test_a_cut_push_never_looks_complete_and_a_second_push_completes_it(self):
-        files = len(store_of(self.gen))                                  # store.txt first, then the packages
+        files = len(store_of(self.gen))  # store.txt first, then the packages
         for after in (0, 1, 5, files // 2, files - 1):
             with self.subTest(after=after):
                 with self.assertRaises(Cut):
@@ -185,15 +203,23 @@ class Synthetic(Harness, unittest.TestCase):
         self.assert_stored()
         self.assert_job_identical(['alpha'], [])
 
+
 class StoredNames(unittest.TestCase):
     """xy_forever/modstore.py (native/mod_job.hpp stored_name and clients/ts/src/modstore.ts are the same rule)."""
 
     def test_names(self):
         sha = 'ab' * 32
-        for rel, want in (('info.txt', 'info.txt'), ('content/presets/acidline/x.json', 'abababababab.json'),
-                          ('objects/sdk/runtime/_muldi3.o', 'abababababab.o'), ('a/.hidden', 'abababababab'),
-                          ('a/b.tar.gz', 'abababababab.gz'), ('a/b.toolong8', 'abababababab'), ('a/b.j-s', 'abababababab'),
-                          ('a/noext', 'abababababab'), ('a/b.SVG', 'abababababab.SVG')):
+        for rel, want in (
+            ('info.txt', 'info.txt'),
+            ('content/presets/acidline/x.json', 'abababababab.json'),
+            ('objects/sdk/runtime/_muldi3.o', 'abababababab.o'),
+            ('a/.hidden', 'abababababab'),
+            ('a/b.tar.gz', 'abababababab.gz'),
+            ('a/b.toolong8', 'abababababab'),
+            ('a/b.j-s', 'abababababab'),
+            ('a/noext', 'abababababab'),
+            ('a/b.SVG', 'abababababab.SVG'),
+        ):
             self.assertEqual(modstore.stored_name(rel, sha), want, rel)
 
     def test_same_content_shares_a_name_and_a_clash_is_refused(self):
@@ -204,13 +230,31 @@ class StoredNames(unittest.TestCase):
                 modstore.stored_files('p', [('a/x.o', b'1'), ('b/y.o', b'2')])
 
     def test_version(self):
-        self.assertEqual([modstore.version_of(b) for b in (modstore.TEXT, b'version=1', b'version=2\r\n', b'version=',
-                                                             b'version=1x', b'', None, b'Version=1')], [1, 1, 2, 0, 0, 0, 0, 0])
+        self.assertEqual(
+            [
+                modstore.version_of(b)
+                for b in (
+                    modstore.TEXT,
+                    b'version=1',
+                    b'version=2\r\n',
+                    b'version=',
+                    b'version=1x',
+                    b'',
+                    None,
+                    b'Version=1',
+                )
+            ],
+            [1, 1, 2, 0, 0, 0, 0, 0],
+        )
 
 
 def _published():
-    return (package_records.local_name(PACKAGES / 'base') and TK.STOCK.is_file() and TK.CATALOG.is_file() and
-            MP.default_official(PACKAGES).is_file())
+    return (
+        package_records.local_name(PACKAGES / 'base')
+        and TK.STOCK.is_file()
+        and TK.CATALOG.is_file()
+        and MP.default_official(PACKAGES).is_file()
+    )
 
 
 @unittest.skipUnless(package_records.local_name(PACKAGES / 'base'), 'published-kit packages absent (setup.py fixtures)')
@@ -222,15 +266,19 @@ class RealSetDepth(unittest.TestCase):
 
     def test_every_device_path_keeps_the_depth_rule(self):
         from xy_forever import depth
+
         _, generation, packages = S.local_set(PACKAGES)
-        paths_ = ['%s/%s/%s/%s' % (S.ROOT, generation, name, stored) for name, files in packages.items()
-                  for stored, _, _ in modstore.stored_files(name, files)] + ['%s/%s/%s' % (S.ROOT, generation, modstore.FILE)]
+        paths_ = [
+            '%s/%s/%s/%s' % (S.ROOT, generation, name, stored)
+            for name, files in packages.items()
+            for stored, _, _ in modstore.stored_files(name, files)
+        ] + ['%s/%s/%s' % (S.ROOT, generation, modstore.FILE)]
         self.assertGreater(len(paths_), 1000)
         self.assertEqual(depth.MAX_FOLDERS, 6)
         self.assertEqual({depth.folders(p) for p in paths_ if not p.endswith('/' + modstore.FILE)}, {4})
         self.assertEqual([p for p in paths_ if depth.refusal(p)], [])
         self.assertLessEqual(max(len(p.rsplit('/', 1)[1]) for p in paths_), 17)  # 12 hex digits + ".json"
-        entry = '/yaffs2/xy-forever/tmp/job-4294967295-old'          # the deepest folder an entry passes through
+        entry = '/yaffs2/xy-forever/tmp/job-4294967295-old'  # the deepest folder an entry passes through
         content = [rel for files in packages.values() for rel, _ in files if rel.startswith('content/')]
         self.assertTrue(content)
         self.assertEqual([r for r in content if depth.refusal('%s/%s' % (entry, r))], [])
@@ -239,6 +287,7 @@ class RealSetDepth(unittest.TestCase):
 
 class WaitAllowance(unittest.TestCase):
     """193: job.status unanswered while B waits in one request to A: wait asks again (QUIET), then gives up."""
+
     def run_wait(self, silent_calls):
         clock = [0.0]
         replies = []
@@ -246,16 +295,27 @@ class WaitAllowance(unittest.TestCase):
         def fake_status(dev, job):
             replies.append(job)
             if len(replies) <= silent_calls:
-                clock[0] += 5.0                                          # one call's timeout
+                clock[0] += 5.0  # one call's timeout
                 raise TimeoutError('no reply to 0x45')
-            return 0, {'phase': S.DONE, 'steps': 1, 'detail': 'x', 'done': 1, 'total': 1, 'error': 0, 'code': 0,
-                       'elapsed_ms': 0, 'longest_ms': 0, 'debris': 0}
+            return 0, {
+                'phase': S.DONE,
+                'steps': 1,
+                'detail': 'x',
+                'done': 1,
+                'total': 1,
+                'error': 0,
+                'code': 0,
+                'elapsed_ms': 0,
+                'longest_ms': 0,
+                'debris': 0,
+            }
+
         lines = []
         with mock.patch.object(S, 'job_status', fake_status):
             return S.wait(None, 0, out=lines.append, sleep=lambda s: None, clock=lambda: clock[0]), lines
 
     def test_a_late_first_answer_is_waited_for(self):
-        f, lines = self.run_wait(3)                                      # 15 s without an answer
+        f, lines = self.run_wait(3)  # 15 s without an answer
         self.assertEqual(f['phase'], S.DONE)
         self.assertEqual(sum('no answer yet' in l for l in lines), 1)
 
@@ -282,16 +342,19 @@ class ApplySelection(unittest.TestCase):
 
     def run_apply(self, words, *options):
         import argparse
+
         parser = argparse.ArgumentParser()
         parser.add_argument('--timeout', type=float, default=5.0)
         S.add_arguments(parser.add_subparsers(dest='command').add_parser('mods'))
-        args = parser.parse_args(['mods', 'apply', '--base', 'opxy-121-stock', '--generation', 'opxy-1.2.1/g1']
-                                 + list(words) + list(options))
+        args = parser.parse_args(
+            ['mods', 'apply', '--base', 'opxy-121-stock', '--generation', 'opxy-1.2.1/g1'] + list(words) + list(options)
+        )
         dev, connected = self.Dev(), []
 
         def connect(timeout):
             connected.append(timeout)
             return dev, 'fake', 'XYF1;service=usb;role=b;proto=%s' % self.proto
+
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed):
             code = S.command(args, connect)
@@ -306,8 +369,9 @@ class ApplySelection(unittest.TestCase):
         code, out, payloads, _ = self.run_apply(['m1'])
         self.assertEqual((code, payloads), (2, []))
         self.assertIn('protocol 1.16 or later', out)
-        self.assertEqual([S.layout_ok(v) for v in ('1.16', '1.20', '2.0', '1.15', '1', 'x')],
-                         [True, True, True, False, False, False])
+        self.assertEqual(
+            [S.layout_ok(v) for v in ('1.16', '1.20', '2.0', '1.15', '1', 'x')], [True, True, True, False, False, False]
+        )
 
     def test_ids_in_one_word_are_split(self):
         ids = ['m%02d' % i for i in range(30)]
@@ -316,13 +380,14 @@ class ApplySelection(unittest.TestCase):
             self.assertEqual(code, 0, out)
             ((type_, payload),) = payloads
             self.assertEqual(type_, P.ids.MODS_APPLY)
-            self.assertEqual(payload, S.apply_request('opxy-121-stock', 'opxy-1.2.1', 'g1', ids, ['e1', 'e2'],
-                                                      'Measure 30'))
+            self.assertEqual(
+                payload, S.apply_request('opxy-121-stock', 'opxy-1.2.1', 'g1', ids, ['e1', 'e2'], 'Measure 30')
+            )
             self.assertEqual(self.fields(payload)[3], ','.join(ids).encode())
 
     def test_the_largest_selection_is_sent(self):
-        ids = ['m%014d' % i for i in range(64)]                          # 64 ids of 15 characters: 1023 bytes
-        exts = ['e%030d' % i for i in range(8)]                          # 8 of 31: 255 bytes
+        ids = ['m%014d' % i for i in range(64)]  # 64 ids of 15 characters: 1023 bytes
+        exts = ['e%030d' % i for i in range(8)]  # 8 of 31: 255 bytes
         code, out, payloads, _ = self.run_apply(ids, '--ext', *exts, '--name', 'N' * 47)
         self.assertEqual(code, 0, out)
         self.assertEqual(len(self.fields(payloads[0][1])[3]), 1023)

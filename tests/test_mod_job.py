@@ -11,27 +11,30 @@ failure at every step, cancel at every step, a region one byte short, missing, t
 missing or damaged content file, an os.ldr that fails start_verify) must end in their error code with no
 output name left and the same Job reusable. Synthetic packages always; the published 0.0.6 package set when
 present; the Blackfin compile when the toolchain is present."""
+
 import json
 import os
-from pathlib import Path
 import re
-import subprocess
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 import pytest
-
-from xy_forever import hostbuild, modkit as M, modpatch as P, package_records, paths, xyf_entry
-from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
 import test_modkit as TK
+from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
 from test_xyf_freestanding import compiler
+
+from xy_forever import hostbuild, package_records, paths, xyf_entry
+from xy_forever import modkit as M
+from xy_forever import modpatch as P
 
 ROOT = Path(__file__).resolve().parents[1]
 
 REGION = 8 << 20
-DEVICE_REGION = (8 << 20) - (64 << 10)   # B's job region less the job's state (usb_service.cpp job_slot_bytes)
+DEVICE_REGION = (8 << 20) - (64 << 10)  # B's job region less the job's state (usb_service.cpp job_slot_bytes)
 CHUNK = 64 * 1024
 SLICE = 128 * 1024
 
@@ -44,7 +47,7 @@ def run(binary, *args):
 
 
 class Harness:
-    def job(self, machines, exts=(), **kw):   # kw: job_text's
+    def job(self, machines, exts=(), **kw):  # kw: job_text's
         folder = Path(tempfile.mkdtemp(dir=self.work))
         (folder / 'job.txt').write_text(self.job_text(list(machines), list(exts), **kw))
         (folder / 'out').mkdir()
@@ -68,20 +71,22 @@ class Harness:
         self.assertTrue(report['ldr_identical'] and report['catalog_identical'] and report['list_identical'], report)
         self.assertEqual(report['open_handles'], 0)
         tree, want = P.tree(out), self.expected(out, machines, exts, memory)
-        self.assertEqual(sorted(tree), sorted(want))                  # finals only: no .part left
+        self.assertEqual(sorted(tree), sorted(want))  # finals only: no .part left
         for path in want:
             self.assertEqual(tree[path], want[path], path)
         self.assertNotIn('layout.json', tree)
-        self.assertEqual(package_records.parse(tree[package_records.NATIVE], package_records.NATIVE)['machines'], len(machines))
+        self.assertEqual(
+            package_records.parse(tree[package_records.NATIVE], package_records.NATIVE)['machines'], len(machines)
+        )
         listed = {path: digest for digest, path in xyf_entry.read_files_sha256(tree['files.sha256'])}
         self.assertEqual(set(listed), set(tree) - {'files.sha256'})
         self.assertTrue(all(M.sha256(tree[path]) == digest for path, digest in listed.items()))
         self.assertLessEqual(report['peak'], DEVICE_REGION)
-        for phase in ('inputs', 'write'):                             # one read or write call of <= 64 KiB
+        for phase in ('inputs', 'write'):  # one read or write call of <= 64 KiB
             self.assertLessEqual(report['largest'][phase], CHUNK, phase)
-        self.assertLessEqual(report['largest']['verify'], SLICE)      # a read-back call, or one image-check slice
-        self.assertLessEqual(report['largest']['link'], 1 << 20)       # one object (elf max_bytes) or zero slice
-        self.assertLessEqual(report['largest']['patch'], SLICE)        # a patch or CRC-32 slice
+        self.assertLessEqual(report['largest']['verify'], SLICE)  # a read-back call, or one image-check slice
+        self.assertLessEqual(report['largest']['link'], 1 << 20)  # one object (elf max_bytes) or zero slice
+        self.assertLessEqual(report['largest']['patch'], SLICE)  # a patch or CRC-32 slice
         return tree
 
     def assert_faults(self, report, stride, first=1):
@@ -107,16 +112,34 @@ class Synthetic(Harness, unittest.TestCase):
         (cls.work / 'op1_factory.json').write_bytes(CATALOG)
         (cls.work / 'content.sha256').write_text(official_text(OFFICIAL))
         (cls.work / 'kit.json').write_text(json.dumps(kit_for(profile_for(data))))
-        cls.gen = Path(M.split_kit(cls.work / 'kit.json', cls.work / 'packages', finish=finish,
-                                   sdk_source='https://github.com/example/sdk@abc')['root'])
+        cls.gen = Path(
+            M.split_kit(
+                cls.work / 'kit.json',
+                cls.work / 'packages',
+                finish=finish,
+                sdk_source='https://github.com/example/sdk@abc',
+            )['root']
+        )
 
     def job_text(self, machines, exts, profiling=False):
-        return P.job_text(self.gen, machines, exts, self.work / 'os.ldr', self.work / 'op1_factory.json', profiling,
-                          official=self.work / 'content.sha256', unverified=True)
+        return P.job_text(
+            self.gen,
+            machines,
+            exts,
+            self.work / 'os.ldr',
+            self.work / 'op1_factory.json',
+            profiling,
+            official=self.work / 'content.sha256',
+            unverified=True,
+        )
 
     def test_matches_the_one_shot_assembler(self):
-        for machines, exts, profiling in ((['alpha'], [], False), (['alpha', 'beta', 'gamma', 'delta'], [], False),
-                                          (['alpha', 'gamma'], ['cap', 'flt'], False), (['delta', 'alpha'], ['flt'], True)):
+        for machines, exts, profiling in (
+            (['alpha'], [], False),
+            (['alpha', 'beta', 'gamma', 'delta'], [], False),
+            (['alpha', 'gamma'], ['cap', 'flt'], False),
+            (['delta', 'alpha'], ['flt'], True),
+        ):
             with self.subTest(machines=machines, extensions=exts):
                 report, out = self.job(machines, exts, profiling=profiling)
                 self.assert_identical(report, out, machines, exts)
@@ -144,8 +167,17 @@ class Synthetic(Harness, unittest.TestCase):
         gen = work / self.gen.name
         shutil.copytree(self.gen, gen)
         spec = work / 'job.txt'
-        spec.write_text(P.job_text(gen, machines, exts, self.work / 'os.ldr', self.work / 'op1_factory.json',
-                                   official=self.work / 'content.sha256', unverified=True))
+        spec.write_text(
+            P.job_text(
+                gen,
+                machines,
+                exts,
+                self.work / 'os.ldr',
+                self.work / 'op1_factory.json',
+                official=self.work / 'content.sha256',
+                unverified=True,
+            )
+        )
 
         def assemble(out):
             out.mkdir()
@@ -184,10 +216,17 @@ class Synthetic(Harness, unittest.TestCase):
                 if update_list:
                     listing.write_text(M.files_sha256_text(folder))
                 if label == 'unlisted':
-                    listing.write_bytes(b''.join(line for line in original_list.splitlines(keepends=True)
-                                                 if not line.endswith(b'  manifest.json\n')))
+                    listing.write_bytes(
+                        b''.join(
+                            line
+                            for line in original_list.splitlines(keepends=True)
+                            if not line.endswith(b'  manifest.json\n')
+                        )
+                    )
                 refused = assemble(work / label)
-                self.assertEqual((refused['phase'], refused['error'], refused['reference']), ('failed', error, False), refused)
+                self.assertEqual(
+                    (refused['phase'], refused['error'], refused['reference']), ('failed', error, False), refused
+                )
                 self.assertIn('gamma/manifest.json', refused['detail'])
                 self.assertEqual(P.tree(work / label), {})
 
@@ -197,7 +236,11 @@ class Synthetic(Harness, unittest.TestCase):
         self.assertIn('case missing content file', report['counts'])
 
     def test_refusals_leave_nothing(self):
-        for machines, error in ((['../alpha'], 'argument'), (['alpha', 'nosuch'], 'open'), (['alpha', 'alpha'], 'link')):
+        for machines, error in (
+            (['../alpha'], 'argument'),
+            (['alpha', 'nosuch'], 'open'),
+            (['alpha', 'alpha'], 'link'),
+        ):
             with self.subTest(machines=machines):
                 report, out = self.job(machines)
                 self.assertEqual((report['phase'], report['error']), ('failed', error), report)
@@ -220,15 +263,32 @@ class JobFuzz(unittest.TestCase):
             (work / 'op1_factory.json').write_bytes(CATALOG)
             (work / 'content.sha256').write_text(official_text(OFFICIAL))
             (work / 'kit.json').write_text(json.dumps(kit_for(profile_for(data))))
-            gen = Path(M.split_kit(work / 'kit.json', work / 'packages', finish=finish,
-                                   sdk_source='https://github.com/example/sdk@abc')['root'])
-            (work / 'job.txt').write_text(P.job_text(gen, ['alpha', 'gamma'], ['cap', 'flt'], work / 'os.ldr',
-                                                     work / 'op1_factory.json', official=work / 'content.sha256',
-                                                     unverified=True))
+            gen = Path(
+                M.split_kit(
+                    work / 'kit.json', work / 'packages', finish=finish, sdk_source='https://github.com/example/sdk@abc'
+                )['root']
+            )
+            (work / 'job.txt').write_text(
+                P.job_text(
+                    gen,
+                    ['alpha', 'gamma'],
+                    ['cap', 'flt'],
+                    work / 'os.ldr',
+                    work / 'op1_factory.json',
+                    official=work / 'content.sha256',
+                    unverified=True,
+                )
+            )
             long = bool(os.environ.get('XYF_FUZZ'))
             seconds = float(os.environ.get('XYF_FUZZ_SECONDS', '110' if long else '60'))
-            report = run(binary, 'jobfuzz', work / 'job.txt', os.environ.get('XYF_FUZZ_SEED', '54'),
-                         1000000 if long else 400, seconds)
+            report = run(
+                binary,
+                'jobfuzz',
+                work / 'job.txt',
+                os.environ.get('XYF_FUZZ_SEED', '54'),
+                1000000 if long else 400,
+                seconds,
+            )
         if long:
             print('\njob fuzz:', json.dumps(report), file=sys.stderr)
         self.assertEqual(report['violations'], [])
@@ -236,9 +296,14 @@ class JobFuzz(unittest.TestCase):
         self.assertIn('done none', report['counts'])
         self.assertGreater(len(report['counts']), 6)
 
+
 def _published():
-    return (package_records.local_name(PACKAGES / 'base') and TK.STOCK.is_file() and TK.CATALOG.is_file() and
-            P.default_official(PACKAGES).is_file())
+    return (
+        package_records.local_name(PACKAGES / 'base')
+        and TK.STOCK.is_file()
+        and TK.CATALOG.is_file()
+        and P.default_official(PACKAGES).is_file()
+    )
 
 
 @pytest.mark.gate
@@ -267,23 +332,28 @@ class PublishedPackages(Harness, unittest.TestCase):
         core.mjs, test_modpatch PublishedKitExpanded), native metadata has the count, and
         the larger image still fits B's region (the image is kept last; link files use the module's free part)."""
         from test_modpatch import LARGE, NEAR
+
         for name, machines in (('large', LARGE), ('near', NEAR)):
             with self.subTest(name):
                 report, out = self.job(machines, [], memory='expanded')
                 tree = self.assert_identical(report, out, machines, [], memory='expanded')
                 self.assertLessEqual(report['peak'], DEVICE_REGION)
         report, out = self.job(LARGE, [])
-        self.assertEqual((report['error'], report['phase']), ('link', 'failed'))     # standard: does not fit
+        self.assertEqual((report['error'], report['phase']), ('link', 'failed'))  # standard: does not fit
         self.assertFalse(any(out.iterdir()))
 
     def test_selections_match_the_one_shot_assembler(self):
         self.assertEqual(len(self.fit), 16)
-        for name, machines, exts in (('1', self.fit[:1], []), ('7', self.fit[:7], []), ('16', self.fit, []),
-                                     ('1+both extensions', self.fit[:1], ['capture', 'master_dj_filter'])):
+        for name, machines, exts in (
+            ('1', self.fit[:1], []),
+            ('7', self.fit[:7], []),
+            ('16', self.fit, []),
+            ('1+both extensions', self.fit[:1], ['capture', 'master_dj_filter']),
+        ):
             with self.subTest(name):
                 report, out = self.job(machines, exts)
                 tree = self.assert_identical(report, out, machines, exts)
-                if 'fm2op' in machines:                                 # the content a mod firmware opens at boot
+                if 'fm2op' in machines:  # the content a mod firmware opens at boot
                     self.assertIn('content/display/fm2op.svg', tree)
                     self.assertIn('content/presets/fm2op/default.json', tree)
         self.assertEqual(self.fit[0], 'fm2op')
@@ -306,10 +376,23 @@ class BlackfinCompile(unittest.TestCase):
         if not gxx:
             self.skipTest('Blackfin toolchain absent')
         from xy_forever import toolchain
+
         with tempfile.TemporaryDirectory(prefix='xyf-modjob-cross-') as tmp:
             asm = Path(tmp) / 'mod_job.s'
-            subprocess.run([str(gxx), *toolchain.CXX_FLAGS, '-fstack-usage', '-S', str(ROOT / 'native/mod_job.cpp'),
-                            '-o', str(asm)], check=True, capture_output=True, cwd=tmp)
+            subprocess.run(
+                [
+                    str(gxx),
+                    *toolchain.CXX_FLAGS,
+                    '-fstack-usage',
+                    '-S',
+                    str(ROOT / 'native/mod_job.cpp'),
+                    '-o',
+                    str(asm),
+                ],
+                check=True,
+                capture_output=True,
+                cwd=tmp,
+            )
             text = asm.read_text()
             calls = {c for c in re.findall(r'\bcall\s+(_[A-Za-z0-9_.]+)', text) if not c.startswith('__Z')}
             self.assertEqual(calls, set())

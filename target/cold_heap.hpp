@@ -27,5 +27,5 @@ Result inspect(const Memory& memory, Snapshot& output);
 // the module/stack outside [arena_context,arena_end). No post-mount floor check:
 // subsequent allocations may use the consumed outer-stream memory legitimately.
 bool guard(Snapshot& output, Result& result);
-} }
+}}
 #endif

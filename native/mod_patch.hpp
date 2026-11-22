@@ -18,8 +18,25 @@ namespace xyf_core { namespace mod_patch {
 // must accept the image. The work runs in steps (step(): Status::more) of one slice of hashing or
 // one pass over the edits. No heap, no BSS, no library calls, every loop bounded.
 enum class Status {
-    ok, more, wait, argument, capacity, edits, stock, layout, mapping, preimage, service, destination, branch,
-    overlap, module, verify, policy, base, unverified
+    ok,
+    more,
+    wait,
+    argument,
+    capacity,
+    edits,
+    stock,
+    layout,
+    mapping,
+    preimage,
+    service,
+    destination,
+    branch,
+    overlap,
+    module,
+    verify,
+    policy,
+    base,
+    unverified
 };
 // The profile facts the patch is checked against (profile.json: stock_sha256, stock_bytes,
 // stock_records, module_base, reserved_bytes, reserved - table_bytes, heap_fill_base/_bytes) and the
@@ -29,7 +46,8 @@ enum class Status {
 // (core.mjs expandedProfile): the module starts at expanded_base and ends where it did (the relocated
 // tables at its top, every hook and other edit unchanged), and the two heap edits load the smaller heap
 // (expanded_base - heap_fill_base). The facts stay the standard ones; the patch derives the layout.
-struct Profile {   // field order fixed: the known-base table (mod_patch.cpp) matches its first 96 bytes (92 + expanded_base)
+struct
+    Profile { // field order fixed: the known-base table (mod_patch.cpp) matches its first 96 bytes (92 + expanded_base)
     hash::Digest stock_sha256, catalog_sha256;
     U32 stock_bytes, stock_records, module_base, reserved_bytes, module_bytes, heap_fill_base, heap_fill_bytes;
     U32 expanded_base;
@@ -39,40 +57,48 @@ struct Profile {   // field order fixed: the known-base table (mod_patch.cpp) ma
 // asked for and the base offers no valid larger layout (no expanded_base, or the sizes do not fit together).
 bool layout(const Profile& profile, Profile& out);
 struct Limits {
-    U32 edits, records, slice_bytes;   // edits.bin edits, stock loader records, bytes hashed per step
+    U32 edits, records, slice_bytes; // edits.bin edits, stock loader records, bytes hashed per step
     Limits() : edits(512), records(2048), slice_bytes(131072) {}
 };
 struct Edit {
-    U32 address, offset, before, after;   // before/after: offsets into edits.bin (after 0: none)
-    unsigned short length, symbol;        // symbol: string offset, 0xffff none
+    U32 address, offset, before, after; // before/after: offsets into edits.bin (after 0: none)
+    unsigned short length, symbol; // symbol: string offset, 0xffff none
     Byte kind, flags, service, active;
-    Byte redirect[12];                    // a hook's or the startup label's computed bytes
+    Byte redirect[12]; // a hook's or the startup label's computed bytes
 };
-struct Record { U32 offset, target, count, code; };
+struct Record {
+    U32 offset, target, count, code;
+};
 // Workspace for the tables: 4-byte aligned, scratch_bytes(limits) bytes (0: limits out of range).
 U32 scratch_bytes(const Limits& limits);
-static const U32 max_edits = 4096, max_records = 16384, max_services = 32, max_edit_bytes = 128,
-                 max_edits_file = 65536, detail_bytes = 32;
+static const U32 max_edits = 4096, max_records = 16384, max_services = 32, max_edit_bytes = 128, max_edits_file = 65536,
+                 detail_bytes = 32;
 // Caller-owned state of one patch (or verify) run; not shared between concurrent runs. The profile,
 // policy, edits.bin and the linker's workspace and result must stay alive until the run ends.
 struct Patcher {
-    const Profile* profile; const Policy* policy;                           // the caller's, kept alive
-    const mod_link::Workspace* link; const mod_link::Result* linked;          // the linker's (mod_link.hpp)
+    const Profile* profile;
+    const Policy* policy; // the caller's, kept alive
+    const mod_link::Workspace* link;
+    const mod_link::Result* linked; // the linker's (mod_link.hpp)
     U32 slice_bytes, limit_edits, limit_records;
-    const Byte* edits; Byte* image; U32 edits_bytes, capacity;
-    Edit* table; unsigned short* order; Record* records;
+    const Byte* edits;
+    Byte* image;
+    U32 edits_bytes, capacity;
+    Edit* table;
+    unsigned short* order;
+    Record* records;
     U32 edit_count, service_count, record_count, strings, string_bytes;
-    Profile layout;                       // the layout in use (layout() of *profile)
+    Profile layout; // the layout in use (layout() of *profile)
     U32 phase, cursor, module_bytes, total, applied;
     bool profiling;
-    bool known;                           // the base is in the known-base table (else confirmed unverified)
-    Status failure;                       // after a refusal: what step() keeps returning
+    bool known; // the base is in the known-base table (else confirmed unverified)
+    Status failure; // after a refusal: what step() keeps returning
     unsigned short service_names[max_services];
     Byte final[16];
     hash::Sha256 whole, restored;
-    hash::Digest sha256;                  // of the assembled (or verified) image, after ok
-    Summary ldr;                          // ldr::inspect's summary (after ok)
-    char detail[detail_bytes];            // which edit, record or check refused
+    hash::Digest sha256; // of the assembled (or verified) image, after ok
+    Summary ldr; // ldr::inspect's summary (after ok)
+    char detail[detail_bytes]; // which edit, record or check refused
 };
 // Known bases: official open-xy bases compiled in (mod_known_bases.inc, written by `modkit
 // known-base`). Before any byte of edits.bin is used, start() and start_verify() look the base up by
@@ -110,5 +136,5 @@ Status start_verify(Patcher& p, const Profile& profile, const Byte* edits, U32 e
 // do not fit together.
 Status read_profile(const Byte* info, U32 bytes, Profile& profile, char (&detail)[detail_bytes]);
 const char* status_name(Status status);
-} }
+}}
 #endif

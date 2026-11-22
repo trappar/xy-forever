@@ -20,6 +20,9 @@ try {
   skip(`the system Chrome cannot start (${(error as Error).message.split('\n')[0]})`);
 }
 const vitest = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url));
-const run = spawnSync(process.execPath, [vitest, 'run', '--config', 'vitest.browser.config.ts', ...process.argv.slice(2)],
-  { stdio: 'inherit', cwd: fileURLToPath(new URL('..', import.meta.url)) });
+const run = spawnSync(
+  process.execPath,
+  [vitest, 'run', '--config', 'vitest.browser.config.ts', ...process.argv.slice(2)],
+  { stdio: 'inherit', cwd: fileURLToPath(new URL('..', import.meta.url)) },
+);
 process.exit(run.status ?? 1);

@@ -25,10 +25,15 @@ const staticSite: Plugin = {
       if (index?.type !== 'asset') throw new Error('The web build did not produce index.html.');
       // The router's paths, read at build time by Node itself (the config bundle would follow its lazy pages).
       const routing = new URL('./src/routing.ts', import.meta.url).href;
-      const { staticPaths } = await import(/* @vite-ignore */ routing) as typeof import('./src/routing.ts');
-      for (const path of staticPaths()) this.emitFile({ type: 'asset', fileName: `${path}/index.html`, source: index.source });
-      const notices = ['../LICENSE', 'src/vendor/open-xy/LICENSE', 'src/vendor/open-xy/ferret.LICENSE',
-        '../third_party/tiny-json/LICENSE'].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8').trim());
+      const { staticPaths } = (await import(/* @vite-ignore */ routing)) as typeof import('./src/routing.ts');
+      for (const path of staticPaths())
+        this.emitFile({ type: 'asset', fileName: `${path}/index.html`, source: index.source });
+      const notices = [
+        '../LICENSE',
+        'src/vendor/open-xy/LICENSE',
+        'src/vendor/open-xy/ferret.LICENSE',
+        '../third_party/tiny-json/LICENSE',
+      ].map((path) => readFileSync(new URL(path, import.meta.url), 'utf8').trim());
       this.emitFile({ type: 'asset', fileName: 'LICENSES.txt', source: notices.join('\n\n') + '\n' });
     },
   },

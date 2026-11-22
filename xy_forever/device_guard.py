@@ -1,16 +1,17 @@
 """The conformance runner's device guard (xy_forever/conformance.py): which frames a real device may get.
 Split out of conformance.py (source budget). Stdlib only."""
+
 import hashlib
 import struct
 
 REPLY_BIT = 0x80
-UNSAFE_TOKEN = b'\xff' * 32          # a confirmation token no staging's SHA-256 matches
+UNSAFE_TOKEN = b'\xff' * 32  # a confirmation token no staging's SHA-256 matches
 
 
 def path_in(path, area):
     if not path.startswith(area):
         return False
-    parts = path[len(area):].split('/')
+    parts = path[len(area) :].split('/')
     return all(p and p not in ('.', '..') for p in parts)
 
 
@@ -36,58 +37,72 @@ def device_guard(spec, kind, payload, test_area):
         return None
     name = command['name']
     value = struct.unpack('<I', payload)[0] if len(payload) == 4 else None
-    if name in ('hello', 'diag.status', 'file.read', 'file.list', 'screen.read', 'stage.begin', 'stage.data',
-                'stage.end', 'job.status'):
+    if name in (
+        'hello',
+        'diag.status',
+        'file.read',
+        'file.list',
+        'screen.read',
+        'stage.begin',
+        'stage.data',
+        'stage.end',
+        'job.status',
+    ):
         return None
     if name == 'storage.space' and value == 1:
-        return None                                          # read-only startup readiness probe, version 1
-    if name == 'mods.apply':                                  # 1.10: only requests refused before anything
-        if len(payload) < 33 or hashlib.sha256(payload[:-32]).digest() != payload[-32:] or \
-                payload.startswith(b'xyf-conformance-'):
-            return None                                       # bad_request, sha, or a base no device holds
+        return None  # read-only startup readiness probe, version 1
+    if name == 'mods.apply':  # 1.10: only requests refused before anything
+        if (
+            len(payload) < 33
+            or hashlib.sha256(payload[:-32]).digest() != payload[-32:]
+            or payload.startswith(b'xyf-conformance-')
+        ):
+            return None  # bad_request, sha, or a base no device holds
         return 'mods.apply is sent to a real device only when refused (sha, or a base named xyf-conformance-*)'
     if name == 'job.cancel':
-        if value is None or value == 0xffffffff:
-            return None                                       # bad_request, or a job id no job has
+        if value is None or value == 0xFFFFFFFF:
+            return None  # bad_request, or a job id no job has
         return 'job.cancel is sent to a real device only for job 4294967295 (no such job)'
     if name in ('file.delete', 'file.rmdir', 'file.mkdir'):
         end = payload.find(b'\0')
         if end < 0 or len(payload) != end + 1 + 32:
-            return None                                       # bad_request: the length does not match
+            return None  # bad_request: the length does not match
         path = payload[:end].decode('utf-8', 'replace')
-        if path_in(path, test_area) or payload[end + 1:] == UNSAFE_TOKEN:
+        if path_in(path, test_area) or payload[end + 1 :] == UNSAFE_TOKEN:
             return None
         return '%s outside the test area %s needs a token no path matches' % (name, test_area)
     if name == 'file.rename':
         first = payload.find(b'\0')
         second = payload.find(b'\0', first + 1) if first >= 0 else -1
         if second < 0 or len(payload) != second + 1 + 32:
-            return None                                       # bad_request: the length does not match
-        paths = [payload[:first].decode('utf-8', 'replace'), payload[first + 1:second].decode('utf-8', 'replace')]
-        if all(path_in(p, test_area) for p in paths) or payload[second + 1:] == UNSAFE_TOKEN:
+            return None  # bad_request: the length does not match
+        paths = [payload[:first].decode('utf-8', 'replace'), payload[first + 1 : second].decode('utf-8', 'replace')]
+        if all(path_in(p, test_area) for p in paths) or payload[second + 1 :] == UNSAFE_TOKEN:
             return None
         return 'file.rename outside the test area %s needs a token no pair matches' % test_area
-    if name == 'file.copy':                                   # 1.9: the source is only read
+    if name == 'file.copy':  # 1.9: the source is only read
         first = payload.find(b'\0')
         second = payload.find(b'\0', first + 1) if first >= 0 else -1
         if second < 0 or len(payload) != second + 1 + 32:
-            return None                                       # bad_request: the length does not match
-        if path_in(payload[first + 1:second].decode('utf-8', 'replace'), test_area) or \
-                payload[second + 1:] == UNSAFE_TOKEN:
+            return None  # bad_request: the length does not match
+        if (
+            path_in(payload[first + 1 : second].decode('utf-8', 'replace'), test_area)
+            or payload[second + 1 :] == UNSAFE_TOKEN
+        ):
             return None
         return 'file.copy outside the test area %s needs a token no pair matches' % test_area
     if name == 'file.write_staged':
         end = payload.find(b'\0')
         if end < 0 or len(payload) != end + 1 + 32:
-            return None                                       # bad_request: the length does not match
+            return None  # bad_request: the length does not match
         path = payload[:end].decode('utf-8', 'replace')
-        if path_in(path, test_area) or payload[end + 1:] == UNSAFE_TOKEN:
+        if path_in(path, test_area) or payload[end + 1 :] == UNSAFE_TOKEN:
             return None
         return 'file.write_staged outside the test area %s needs a token no staging matches' % test_area
-    if name == 'file.write_begin':                            # 1.18: data and end only reach what it names
+    if name == 'file.write_begin':  # 1.18: data and end only reach what it names
         end = payload.find(b'\0')
         if end < 0 or len(payload) != end + 1 + 40:
-            return None                                       # bad_request: the length does not match
+            return None  # bad_request: the length does not match
         if path_in(payload[:end].decode('utf-8', 'replace'), test_area):
             return None
         return 'file.write_begin outside the test area %s' % test_area
@@ -96,8 +111,11 @@ def device_guard(spec, kind, payload, test_area):
     if name == 'device.reboot':
         return 'device.reboot to the OS' if value == 1 else None
     if name == 'menu.continue':
-        return None if (len(payload) not in (0, 4) or (value is not None and value >= 2)) else \
-            'menu.continue leaves the menu'
+        return (
+            None
+            if (len(payload) not in (0, 4) or (value is not None and value >= 2))
+            else 'menu.continue leaves the menu'
+        )
     if name == 'service.hold':
         return None if value is None or value > 1 else 'service.hold changes every restart until power-off'
     return '%s is never sent to a real device' % name

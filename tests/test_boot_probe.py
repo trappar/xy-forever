@@ -1,11 +1,11 @@
 """#7's read-only diagnostic and actual host runner. Simulator/fakes only; never a device."""
+
 import importlib.util
-from pathlib import Path
 import struct
 import tempfile
 import unittest
 import zlib
-
+from pathlib import Path
 
 from xy_forever import usb_proto_ids as P
 
@@ -33,10 +33,15 @@ class RunnerTests(unittest.TestCase):
         image = b'abc'
         good = struct.pack('<IIIBB', 3, len(image), zlib.crc32(image), 1, 0).ljust(512, b'\0')
         for end_status in (P.S_OK, P.S_STORAGE):
-            dev = Fake([(0, struct.pack('<III', 1, 0, 0)), (0, struct.pack('<I', 1) + good),
-                        (0, struct.pack('<I', 1) + bytes(512)),
-                        (0, struct.pack('<I', 1) + image.ljust(512, b'\0')),
-                        (end_status, struct.pack('<I', 1))])
+            dev = Fake(
+                [
+                    (0, struct.pack('<III', 1, 0, 0)),
+                    (0, struct.pack('<I', 1) + good),
+                    (0, struct.pack('<I', 1) + bytes(512)),
+                    (0, struct.pack('<I', 1) + image.ljust(512, b'\0')),
+                    (end_status, struct.pack('<I', 1)),
+                ]
+            )
             with tempfile.TemporaryDirectory() as tmp:
                 result = B.run(dev, Path(tmp))
             self.assertEqual(result['go'], end_status == P.S_OK)
@@ -54,13 +59,10 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual([x[1] for x in dev.calls], [B.BEGIN, B.HEADER])
 
     def test_responsive_read_error_restores_but_link_error_stops(self):
-        for error, expected in ((P.S_STORAGE, [B.BEGIN, B.HEADER, B.END]),
-                                (P.S_LINK, [B.BEGIN, B.HEADER])):
-            dev = Fake([(0, struct.pack('<III', 1, 0, 0)), (error, struct.pack('<I', 1)),
-                        (0, struct.pack('<I', 1))])
+        for error, expected in ((P.S_STORAGE, [B.BEGIN, B.HEADER, B.END]), (P.S_LINK, [B.BEGIN, B.HEADER])):
+            dev = Fake([(0, struct.pack('<III', 1, 0, 0)), (error, struct.pack('<I', 1)), (0, struct.pack('<I', 1))])
             with tempfile.TemporaryDirectory() as tmp:
                 result = B.run(dev, Path(tmp))
             self.assertEqual([x[1] for x in dev.calls], expected)
             self.assertEqual(result['restored'], error == P.S_STORAGE)
             self.assertFalse(result['go'])
-

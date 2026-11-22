@@ -16,14 +16,20 @@ void put_word(Bytes& out, unsigned value) {
 // One LDR block header (the XOR checksum in byte 2).
 Bytes header(unsigned flags, unsigned address, unsigned count, unsigned argument = 0) {
     Bytes out;
-    put_word(out, 0xad000000u | flags); put_word(out, address); put_word(out, count); put_word(out, argument);
+    put_word(out, 0xad000000u | flags);
+    put_word(out, address);
+    put_word(out, count);
+    put_word(out, argument);
     unsigned char checksum = 0;
     for (unsigned char byte : out) checksum ^= byte;
     out[2] = checksum;
     return out;
 }
 
-struct Record { unsigned address; Bytes data; };
+struct Record {
+    unsigned address;
+    Bytes data;
+};
 
 // A first extent, a 4-byte boot record, the data records, the final record (tests/test_trace_slot.py image()).
 Bytes image(const std::vector<Record>& records, unsigned entry = 0x1000) {
@@ -41,7 +47,10 @@ Bytes image(const std::vector<Record>& records, unsigned entry = 0x1000) {
     return out;
 }
 
-struct Found { std::string status; unsigned offset; };
+struct Found {
+    std::string status;
+    unsigned offset;
+};
 
 // locate_zero under the test policy (0x1000..0x400000 allowed); it never modifies the image.
 Found locate(const Bytes& data, unsigned target, unsigned count) {
@@ -71,8 +80,7 @@ TEST_CASE("locate_zero refuses mismatches, duplicates, overlaps, misses, bad siz
     first[0] = 1;
     CHECK(locate(image({{0x20000, first}}), 0x20000, size).status == "preimage_mismatch");
     CHECK(locate(image({{0x20000, Bytes(size)}, {0x20000, Bytes(size)}}), 0x20000, size).status == "duplicate_slot");
-    CHECK(locate(image({{0x20000, Bytes(size)}, {0x20100, Bytes(16)}}), 0x20000, size).status ==
-          "overlapping_record");
+    CHECK(locate(image({{0x20000, Bytes(size)}, {0x20100, Bytes(16)}}), 0x20000, size).status == "overlapping_record");
     CHECK(locate(image({{0x20000, Bytes(size)}}), 0x30000, size).status == "missing_slot");
     CHECK(locate(image({{0x20000, Bytes(size)}}), 0x20000, 0x400001).status == "invalid_argument");
     Bytes trailing = image({{0x20000, Bytes(size)}});

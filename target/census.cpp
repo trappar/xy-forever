@@ -15,7 +15,9 @@
 #endif
 namespace xy_forever { namespace census {
 namespace {
-struct Region { uint32_t address, bytes; };
+struct Region {
+    uint32_t address, bytes;
+};
 // Bootloader-initialized ranges only (exact 1.2.1 LDR loads/FILLs).
 const Region fixed[] = {
     {0x1fc02104u, 12},          // IMASK, IPEND, ILAT (IMASK read safely since 008)
@@ -37,7 +39,12 @@ uint32_t crc_update(uint32_t crc, const uint8_t* p, uint32_t n) {
     }
     return crc;
 }
-void put(uint8_t* p, uint32_t v) { p[0] = uint8_t(v); p[1] = uint8_t(v >> 8); p[2] = uint8_t(v >> 16); p[3] = uint8_t(v >> 24); }
+void put(uint8_t* p, uint32_t v) {
+    p[0] = uint8_t(v);
+    p[1] = uint8_t(v >> 8);
+    p[2] = uint8_t(v >> 16);
+    p[3] = uint8_t(v >> 24);
+}
 uint32_t copy_words(uint8_t* out, uint32_t address, uint32_t bytes) {
     const volatile uint32_t* in = reinterpret_cast<const volatile uint32_t*>(address);
     for (uint32_t i = 0; i != bytes / 4; ++i) put(out + i * 4, in[i]);
@@ -51,26 +58,32 @@ uint32_t fill(uint8_t* out, uint32_t capacity, uint32_t role, uint32_t gpio) {
     uint32_t at = data, n = 0;
     for (uint32_t i = 0; i != count; ++i) {
         if (fixed[i].bytes > capacity - at) return 0;
-        put(out + table + n * 12, fixed[i].address); put(out + table + n * 12 + 4, fixed[i].bytes);
+        put(out + table + n * 12, fixed[i].address);
+        put(out + table + n * 12 + 4, fixed[i].bytes);
         put(out + table + n * 12 + 8, at);
-        at += copy_words(out + at, fixed[i].address, fixed[i].bytes); ++n;
+        at += copy_words(out + at, fixed[i].address, fixed[i].bytes);
+        ++n;
     }
     {   // Test018: the key UI result block (module data), as its own region.
         const uint32_t address = reinterpret_cast<uint32_t>(&key_ui::result);
         const uint32_t bytes = sizeof(key_ui::Result);
         if (bytes > capacity - at) return 0;
-        put(out + table + n * 12, address); put(out + table + n * 12 + 4, bytes);
+        put(out + table + n * 12, address);
+        put(out + table + n * 12 + 4, bytes);
         put(out + table + n * 12 + 8, at);
-        at += copy_words(out + at, address, bytes); ++n;
+        at += copy_words(out + at, address, bytes);
+        ++n;
     }
 #if defined(XYF_MENU_LINK)
     {   // Test024: the held processor link result block (module data).
         const uint32_t address = reinterpret_cast<uint32_t>(&menu_link::result);
         const uint32_t bytes = sizeof(menu_link::Result);
         if (bytes > capacity - at) return 0;
-        put(out + table + n * 12, address); put(out + table + n * 12 + 4, bytes);
+        put(out + table + n * 12, address);
+        put(out + table + n * 12 + 4, bytes);
         put(out + table + n * 12 + 8, at);
-        at += copy_words(out + at, address, bytes); ++n;
+        at += copy_words(out + at, address, bytes);
+        ++n;
     }
 #endif
 #if defined(XYF_REMOTE_READ)
@@ -78,9 +91,11 @@ uint32_t fill(uint8_t* out, uint32_t capacity, uint32_t role, uint32_t gpio) {
         const uint32_t address = reinterpret_cast<uint32_t>(&storage_server::result);
         const uint32_t bytes = sizeof(storage_server::Result);
         if (bytes > capacity - at) return 0;
-        put(out + table + n * 12, address); put(out + table + n * 12 + 4, bytes);
+        put(out + table + n * 12, address);
+        put(out + table + n * 12 + 4, bytes);
         put(out + table + n * 12 + 8, at);
-        at += copy_words(out + at, address, bytes); ++n;
+        at += copy_words(out + at, address, bytes);
+        ++n;
     }
 #endif
 #if defined(XYF_USB_SERVICE)
@@ -88,9 +103,11 @@ uint32_t fill(uint8_t* out, uint32_t capacity, uint32_t role, uint32_t gpio) {
         const uint32_t address = reinterpret_cast<uint32_t>(&usb_service::result);
         const uint32_t bytes = sizeof(usb_service::Result);
         if (bytes > capacity - at) return 0;
-        put(out + table + n * 12, address); put(out + table + n * 12 + 4, bytes);
+        put(out + table + n * 12, address);
+        put(out + table + n * 12 + 4, bytes);
         put(out + table + n * 12 + 8, at);
-        at += copy_words(out + at, address, bytes); ++n;
+        at += copy_words(out + at, address, bytes);
+        ++n;
     }
 #endif
 #if defined(XYF_FILE_BOOT)
@@ -98,29 +115,41 @@ uint32_t fill(uint8_t* out, uint32_t capacity, uint32_t role, uint32_t gpio) {
         const uint32_t address = reinterpret_cast<uint32_t>(&file_boot::result);
         const uint32_t bytes = sizeof(file_boot::Result);
         if (bytes > capacity - at) return 0;
-        put(out + table + n * 12, address); put(out + table + n * 12 + 4, bytes);
+        put(out + table + n * 12, address);
+        put(out + table + n * 12 + 4, bytes);
         put(out + table + n * 12 + 8, at);
-        at += copy_words(out + at, address, bytes); ++n;
+        at += copy_words(out + at, address, bytes);
+        ++n;
     }
 #endif
     // Live heap below its validated break, as much as fits.
-    cold_heap::Snapshot heap; cold_heap::Result heap_result;
+    cold_heap::Snapshot heap;
+    cold_heap::Result heap_result;
     uint32_t brk = 0;
     if (cold_heap::guard(heap, heap_result)) {
         brk = heap.brk;
         uint32_t bytes = (heap.brk - cold_heap::arena_context) & ~3u;
         if (bytes > capacity - at) bytes = (capacity - at) & ~3u;
-        put(out + table + n * 12, cold_heap::arena_context); put(out + table + n * 12 + 4, bytes);
+        put(out + table + n * 12, cold_heap::arena_context);
+        put(out + table + n * 12 + 4, bytes);
         put(out + table + n * 12 + 8, at);
-        at += copy_words(out + at, cold_heap::arena_context, bytes); ++n;
+        at += copy_words(out + at, cold_heap::arena_context, bytes);
+        ++n;
     }
     uint32_t low, high;
     __asm__ volatile("%0 = CYCLES; %1 = CYCLES2;" : "=d"(low), "=d"(high));
     for (uint32_t i = 0; i != header_bytes; ++i) out[i] = 0;
-    put(out, magic); put(out + 4, 1); put(out + 8, at); put(out + 12, n);
-    put(out + 16, role); put(out + 20, gpio); put(out + 24, low); put(out + 28, high);
-    put(out + 32, brk); put(out + 36, ~crc_update(0xffffffffu, out + header_bytes, at - header_bytes));
+    put(out, magic);
+    put(out + 4, 1);
+    put(out + 8, at);
+    put(out + 12, n);
+    put(out + 16, role);
+    put(out + 20, gpio);
+    put(out + 24, low);
+    put(out + 28, high);
+    put(out + 32, brk);
+    put(out + 36, ~crc_update(0xffffffffu, out + header_bytes, at - header_bytes));
     put(out + 40, uint32_t(heap_result));
     return at;
 }
-} }
+}}

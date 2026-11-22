@@ -7,9 +7,11 @@
 /** What an app shows while the device asks. */
 export const ASK_TEXT = 'Allow on your OP-XY';
 /** The `declined` error's text. */
-export const NOT_ALLOWED_TEXT = "not allowed: Don't allow was chosen on the OP-XY; unplug the USB cable and plug it in again to be asked again";
+export const NOT_ALLOWED_TEXT =
+  "not allowed: Don't allow was chosen on the OP-XY; unplug the USB cable and plug it in again to be asked again";
 export const RETRY_MS = 500;
 /** #191: USB mode MTP (hello serial=off): every command but hello answers `serial_off`; apps show this. */
-export const SERIAL_OFF_TEXT = 'Serial is off on your OP-XY: its USB mode is MTP. Pick MTP + Serial in Settings > USB mode on the OP-XY.';
+export const SERIAL_OFF_TEXT =
+  'Serial is off on your OP-XY: its USB mode is MTP. Pick MTP + Serial in Settings > USB mode on the OP-XY.';
 /** hello trust=: the question on this connection. */
 export type Trust = 'none' | 'asking' | 'allowed' | 'refused';

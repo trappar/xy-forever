@@ -28,11 +28,19 @@ async function timed<T>(work: Promise<T>): Promise<[T | unknown, number]> {
 
 describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: ${sims.why})`}`, () => {
   let client: Client;
-  beforeAll(async () => { client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 }); });
-  afterAll(async () => { await client?.close(); });
+  beforeAll(async () => {
+    client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
+  });
+  afterAll(async () => {
+    await client?.close();
+  });
 
   test('connect and hello', async () => {
-    expect(client.info).toMatchObject({ proto: VERSION, mode: 'product', limits: { read: 1024, payload: 4160, stage: 7340032 } });
+    expect(client.info).toMatchObject({
+      proto: VERSION,
+      mode: 'product',
+      limits: { read: 1024, payload: 4160, stage: 7340032 },
+    });
     expect(client.info.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(client.info.image).toMatch(/^([0-9a-f]{8}|unknown)$/);
     expect((await client.status()).proto).toBe(VERSION);
@@ -43,7 +51,9 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
     const data = new Uint8Array(randomBytes(5000));
     seed('/yaffs2/xy-forever/log/web/read.bin', data);
     const progress: number[] = [];
-    expect(await client.readFile('/yaffs2/xy-forever/log/web/read.bin', { onProgress: (done) => progress.push(done) })).toEqual(data);
+    expect(
+      await client.readFile('/yaffs2/xy-forever/log/web/read.bin', { onProgress: (done) => progress.push(done) }),
+    ).toEqual(data);
     expect(progress).toEqual([1024, 2048, 3072, 4096, 5000]);
     expect(await client.readRange('/yaffs2/xy-forever/log/web/read.bin', 4990, 1024)).toEqual(data.subarray(4990));
     await expect(client.readFile('/yaffs2/xy-forever/log/web/none.bin')).rejects.toMatchObject({ code: 'not_found' });
@@ -53,11 +63,16 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
     const path = '/yaffs2/xy-forever/log/web/written.bin';
     const data = new Uint8Array(randomBytes(3000));
     const staged: number[] = [];
-    expect(await client.writeFile(path, data, { onProgress: (done) => staged.push(done) })).toMatchObject({ written: 3000 });
+    expect(await client.writeFile(path, data, { onProgress: (done) => staged.push(done) })).toMatchObject({
+      written: 3000,
+    });
     expect(staged).toEqual([1024, 2048, 3000]);
     expect(await client.readFile(path)).toEqual(data);
     expect(onMac(path)).toEqual(data);
-    await expect(client.writeFile('/yaffs2/upgrade/elsewhere.bin', data)).rejects.toMatchObject({ code: 'refused', command: 'file.write_staged' });
+    await expect(client.writeFile('/yaffs2/upgrade/elsewhere.bin', data)).rejects.toMatchObject({
+      code: 'refused',
+      command: 'file.write_staged',
+    });
   });
 
   test('a screenshot decoded to pixels', async () => {
@@ -76,7 +91,11 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
 
   test('library and state queries, set the default', async () => {
     expect(await client.readState()).toMatchObject({ default: 'opxy-121' });
-    expect(await client.libraryEntry('opxy-121')).toMatchObject({ name: 'OP-XY 1.2.1', version: '1.2.1', kind: 'official' });
+    expect(await client.libraryEntry('opxy-121')).toMatchObject({
+      name: 'OP-XY 1.2.1',
+      version: '1.2.1',
+      kind: 'official',
+    });
     await client.setDefault('opxy-121-stock');
     expect(await client.readState()).toMatchObject({ default: 'opxy-121-stock' });
     await client.setDefault('opxy-121');
@@ -98,7 +117,7 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
   test('cable pulled mid-read: disconnected at once, then reconnect', async () => {
     seed('/yaffs2/xy-forever/log/web/pull.bin', new Uint8Array(randomBytes(8000)));
     await client.readRange('/yaffs2/xy-forever/log/web/pull.bin', 0, 16);
-    await control(sim!.control, 'set cable_pull 10');           // 10 bytes of the next reply, then the cable goes
+    await control(sim!.control, 'set cable_pull 10'); // 10 bytes of the next reply, then the cable goes
     const [error, ms] = await timed(client.readFile('/yaffs2/xy-forever/log/web/pull.bin'));
     expect(isXyfError(error, 'disconnected')).toBe(true);
     expect(ms).toBeLessThan(2000);
@@ -120,7 +139,7 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
       await control(sim!.control, 'set a_silent 0');
       await control(sim!.control, 'advance 6000');
     }
-    await control(sim!.control, 'power');                       // a clean link again: power cycle (PLAY held)
+    await control(sim!.control, 'power'); // a clean link again: power cycle (PLAY held)
     await client.reconnect({ timeoutMs: 15_000, goneMs: 5000 });
     expect(new TextDecoder().decode(await client.readFile(path))).toBe('1.2.1\n');
   });

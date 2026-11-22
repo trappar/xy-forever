@@ -28,33 +28,50 @@ static const uint32_t max_rel = 160;                    // a listed path (docs/s
 static const uint32_t head_bytes = 64;                  // A reads only this much of the record
 
 enum Kind : uint32_t { official = 0, installed = 1, switching = 2 };
-struct State { uint32_t kind; char entry[32]; };        // entry: for installed
+struct State {
+    uint32_t kind;
+    char entry[32];
+};        // entry: for installed
 
-static inline bool id_char(uint8_t c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_'; }
+static inline bool id_char(uint8_t c) {
+    return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+}
 static inline bool starts(const uint8_t* t, uint32_t n, const char* s, uint32_t& at) {
-    for (at = 0; s[at]; ++at) if (at >= n || t[at] != uint8_t(s[at])) return false;
+    for (at = 0; s[at]; ++at)
+        if (at >= n || t[at] != uint8_t(s[at])) return false;
     return true;
 }
 // The record's head. Anything but the two exact forms above is "switching" (needs repair: nothing boots).
 static inline void parse(const uint8_t* t, uint32_t n, State& s) {
-    s.kind = switching; s.entry[0] = 0;
+    s.kind = switching;
+    s.entry[0] = 0;
     uint32_t at = 0;
-    if (starts(t, n, "state=official\n", at)) { s.kind = official; return; }
+    if (starts(t, n, "state=official\n", at)) {
+        s.kind = official;
+        return;
+    }
     if (!starts(t, n, "state=installed\nentry=", at)) return;
     uint32_t k = 0;
     for (; at < n && k != 31 && id_char(t[at]); ++at, ++k) s.entry[k] = char(t[at]);
     s.entry[k] = 0;
-    if (!k || at >= n || t[at] != '\n') { s.entry[0] = 0; return; }
+    if (!k || at >= n || t[at] != '\n') {
+        s.entry[0] = 0;
+        return;
+    }
     s.kind = installed;
 }
 // Processor A (library scan, read-only direct API): no record (and no .old) = official; only a .old, or a
 // record it cannot read whole enough = switching.
-template <class Fs> static void read_state(Fs& fs, State& s) {
-    s.kind = official; s.entry[0] = 0;
+template<class Fs> static void read_state(Fs& fs, State& s) {
+    s.kind = official;
+    s.entry[0] = 0;
     const int fd = fs.direct_open(record_path);
     if (fd < 0) {
         const int old = fs.direct_open(record_old);
-        if (old >= 0) { fs.direct_close(old); s.kind = switching; }
+        if (old >= 0) {
+            fs.direct_close(old);
+            s.kind = switching;
+        }
         return;
     }
     uint8_t head[head_bytes];
@@ -67,7 +84,10 @@ template <class Fs> static void read_state(Fs& fs, State& s) {
     fs.direct_close(fd);
     parse(head, n, s);
 }
-static inline bool same(const char* a, const char* b) { while (*a && *a == *b) ++a, ++b; return *a == *b; }
+static inline bool same(const char* a, const char* b) {
+    while (*a && *a == *b) ++a, ++b;
+    return *a == *b;
+}
 // THE rule (xyf_library content_installed): an assembled mod set's content is installed when the state is
 // installed for it; every other entry runs on the official content. Switching: nothing is installed.
 static inline bool matches(const State& s, const char* id, bool mod_set) {
@@ -86,7 +106,11 @@ enum class Use : uint32_t {
     remove_file,     // a file the record says XY Forever installed (or its .part)
     remove_folder    // a folder left empty by remove_file
 };
-static inline bool prefix(const char* s, const char* p) { for (; *p; ++p, ++s) if (*s != *p) return false; return true; }
+static inline bool prefix(const char* s, const char* p) {
+    for (; *p; ++p, ++s)
+        if (*s != *p) return false;
+    return true;
+}
 static inline bool with_part(const char* path, const char* name) {      // name, or name + ".part"
     while (*name && *path == *name) ++path, ++name;
     return !*name && (!*path || same(path, ".part"));
@@ -101,7 +125,8 @@ static inline bool well_formed(const char* path) {
         const char c = path[i];
         if (c == '/' || !c) {
             const uint32_t n = i - component;
-            if (!n || (n == 1 && path[component] == '.') || (n == 2 && path[component] == '.' && path[component + 1] == '.'))
+            if (!n || (n == 1 && path[component] == '.') ||
+                (n == 2 && path[component] == '.' && path[component + 1] == '.'))
                 return false;
             if (!c) break;
             component = i + 1;
@@ -127,8 +152,9 @@ static inline bool allowed(Use use, const char* path, bool official) {
         if (prefix(path, scratch)) {
             const char* name = path + sizeof(scratch) - 1;
             for (uint32_t i = 0; i != 17; ++i) {
-                if (i == 8) { if (name[i] != '-') return false; }
-                else if (!((name[i] >= '0' && name[i] <= '9') || (name[i] >= 'a' && name[i] <= 'f'))) return false;
+                if (i == 8) {
+                    if (name[i] != '-') return false;
+                } else if (!((name[i] >= '0' && name[i] <= '9') || (name[i] >= 'a' && name[i] <= 'f'))) return false;
             }
             return !name[17];
         }
@@ -141,19 +167,23 @@ static inline bool allowed(Use use, const char* path, bool official) {
         return n == 64 && !name[n];
     }
     if (use == Use::record) return with_part(path, record_path) || same(path, record_old);
-    if (use == Use::saved) return same(path, saved_folder) || with_part(path, saved_list) || with_part(path, saved_catalog);
+    if (use == Use::saved)
+        return same(path, saved_folder) || with_part(path, saved_list) || with_part(path, saved_catalog);
     if (!prefix(path, root) || !path[root_bytes]) return false;
     const char* rel = path + root_bytes;
     if (use == Use::catalog) return with_part(rel, catalog);
     if (with_part(rel, catalog)) return false;
-    const bool dlc = (rel[0] | 0x20) == 'd' && (rel[1] | 0x20) == 'l' && (rel[2] | 0x20) == 'c' && (!rel[3] || rel[3] == '/');
+    const bool dlc =
+        (rel[0] | 0x20) == 'd' && (rel[1] | 0x20) == 'l' && (rel[2] | 0x20) == 'c' && (!rel[3] || rel[3] == '/');
     if (dlc) return false;
     if (use == Use::make_folder) return true;           // making a folder that exists changes nothing
     return !official;
 }
 
 // ---- shasum lists (files.sha256, content.sha256): `<64 hex><space><space or *><path>` LF
-struct Line { uint32_t hash, path, bytes, next; };      // offsets into the text
+struct Line {
+    uint32_t hash, path, bytes, next;
+};      // offsets into the text
 static inline bool hex_digit(uint8_t c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }
 // The line at `at`. False at the end (bad = false) or on a malformed line (bad = true).
 static inline bool line(const uint8_t* t, uint32_t n, uint32_t at, Line& l, bool& bad) {
@@ -161,18 +191,26 @@ static inline bool line(const uint8_t* t, uint32_t n, uint32_t at, Line& l, bool
     if (at >= n) return false;
     bad = true;
     if (n - at < 68) return false;
-    for (uint32_t i = 0; i != 64; ++i) if (!hex_digit(t[at + i])) return false;
+    for (uint32_t i = 0; i != 64; ++i)
+        if (!hex_digit(t[at + i])) return false;
     if (t[at + 64] != ' ' || (t[at + 65] != ' ' && t[at + 65] != '*')) return false;
     uint32_t e = at + 66;
-    while (e < n && t[e] != '\n') { if (t[e] < 0x20 || t[e] > 0x7e) return false; ++e; }
+    while (e < n && t[e] != '\n') {
+        if (t[e] < 0x20 || t[e] > 0x7e) return false;
+        ++e;
+    }
     if (e >= n || e == at + 66 || e - at - 66 > max_rel) return false;
-    l.hash = at; l.path = at + 66; l.bytes = e - at - 66; l.next = e + 1;
+    l.hash = at;
+    l.path = at + 66;
+    l.bytes = e - at - 66;
+    l.next = e + 1;
     bad = false;
     return true;
 }
 // Bytewise order of two byte strings (LC_ALL=C sort).
 static inline int order(const uint8_t* a, uint32_t an, const uint8_t* b, uint32_t bn) {
-    for (uint32_t i = 0; i != an && i != bn; ++i) if (a[i] != b[i]) return a[i] < b[i] ? -1 : 1;
+    for (uint32_t i = 0; i != an && i != bn; ++i)
+        if (a[i] != b[i]) return a[i] < b[i] ? -1 : 1;
     return an == bn ? 0 : an < bn ? -1 : 1;
 }
 static inline uint32_t unhex(uint8_t c) { return c <= '9' ? uint32_t(c - '0') : uint32_t(c - 'a' + 10); }
@@ -181,5 +219,5 @@ static inline bool hash_equal(const uint8_t* hex, const uint8_t* digest) {
     for (uint32_t i = 0; i != 32; ++i) d |= (unhex(hex[2 * i]) << 4 | unhex(hex[2 * i + 1])) ^ digest[i];
     return !d;
 }
-} }
+}}
 #endif

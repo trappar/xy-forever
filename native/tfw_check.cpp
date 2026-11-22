@@ -7,12 +7,16 @@ namespace {
 const char os_path[] = "firmware/blackfin/bin/os.ldr";
 U32 le16(const Byte* p) { return U32(p[0]) | U32(p[1]) << 8; }
 U32 le32(const Byte* p) { return le16(p) | le16(p + 2) << 16; }
-void erase(void* p, U32 count) { volatile Byte* wipe = static_cast<Byte*>(p); for (U32 i = 0; i != count; ++i) wipe[i] = 0; }
+void erase(void* p, U32 count) {
+    volatile Byte* wipe = static_cast<Byte*>(p);
+    for (U32 i = 0; i != count; ++i) wipe[i] = 0;
+}
 bool same(const Byte* name, U32 size, const char* text) {
     U32 n = 0;
     while (text[n]) ++n;
     if (size != n) return false;
-    for (U32 i = 0; i != size; ++i) if (name[i] != Byte(text[i])) return false;
+    for (U32 i = 0; i != size; ++i)
+        if (name[i] != Byte(text[i])) return false;
     return true;
 }
 
@@ -33,8 +37,14 @@ __attribute__((noinline)) bool aes(const tfw::KeyProvider& keys, U32 index, Byte
 }
 bool fetch(View& v, U32 at, Byte* out, U32 count) {
     const int got = file_read(v.file, at, out, count);
-    if (got < 0) { v.error = true; return false; }
-    if (U32(got) != count) { v.short_read = true; return false; }
+    if (got < 0) {
+        v.error = true;
+        return false;
+    }
+    if (U32(got) != count) {
+        v.short_read = true;
+        return false;
+    }
     return true;
 }
 bool view_read(void* context, U32 offset, Byte* out, U32 count) {
@@ -56,14 +66,24 @@ bool ends_at(View& v, U32 bytes) {
 }
 
 // One check's key requests and why the last one failed.
-struct Session { const Keys* keys; Result* result; Reason reason; };
+struct Session {
+    const Keys* keys;
+    Result* result;
+    Reason reason;
+};
 // The extractor's HeaderCheck (after the header's structure passed): the signature key index
 // first, so a header that names another key never reaches the device's memory; then the public
 // key into a buffer erased here, its SHA-256 for the reply, and the stock signature rule.
 bool header_check(void* context, const Byte* header, U32 size) {
     Session& s = *static_cast<Session*>(context);
-    if (size != tfw::crypto_header_bytes) { s.reason = Reason::not_package; return false; }
-    if (header[tfw::signature_key_index]) { s.reason = Reason::key_index; return false; }
+    if (size != tfw::crypto_header_bytes) {
+        s.reason = Reason::not_package;
+        return false;
+    }
+    if (header[tfw::signature_key_index]) {
+        s.reason = Reason::key_index;
+        return false;
+    }
     Byte key[tfw::signature_public_key_bytes];
     erase(key, sizeof(key));
     if (!s.keys->public_key || !public_key(*s.keys, key)) {
@@ -79,15 +99,22 @@ bool header_check(void* context, const Byte* header, U32 size) {
     const tfw::Signature verdict = tfw::verify_header(header, size, key);
     erase(key, sizeof(key));
     if (verdict == tfw::Signature::valid) return true;
-    s.reason = verdict == tfw::Signature::key ? Reason::public_key :
-               verdict == tfw::Signature::key_index ? Reason::key_index : Reason::signature;
+    s.reason = verdict == tfw::Signature::key       ? Reason::public_key :
+               verdict == tfw::Signature::key_index ? Reason::key_index :
+                                                      Reason::signature;
     return false;
 }
 // The extractor's KeyProvider: key index 0 only (OTP selectors 3/4); Archive erases the key.
 bool aes_key(void* context, U32 index, Byte key[32]) {
     Session& s = *static_cast<Session*>(context);
-    if (index) { s.reason = Reason::key_index; return false; }
-    if (!s.keys->aes.read || !aes(s.keys->aes, index, key)) { s.reason = Reason::no_otp; return false; }
+    if (index) {
+        s.reason = Reason::key_index;
+        return false;
+    }
+    if (!s.keys->aes.read || !aes(s.keys->aes, index, key)) {
+        s.reason = Reason::no_otp;
+        return false;
+    }
     return true;
 }
 
@@ -96,8 +123,9 @@ Reason opened(const View& v, const Session& s, tfw::Status status) {
     case tfw::Status::ok: return Reason::pass;
     case tfw::Status::io: return v.error || v.short_read ? Reason::read : Reason::not_package;
     case tfw::Status::signature: return s.reason;
-    case tfw::Status::key: return s.reason == Reason::pass ? Reason::key_index : s.reason;   // 0xfe: the clear container
-    case tfw::Status::padding: case tfw::Status::filename: return Reason::decrypt;
+    case tfw::Status::key: return s.reason == Reason::pass ? Reason::key_index : s.reason; // 0xfe: the clear container
+    case tfw::Status::padding:
+    case tfw::Status::filename: return Reason::decrypt;
     default: return Reason::not_package;
     }
 }
@@ -121,10 +149,12 @@ Reason directory(const input::Reader& zip, const View& v, Byte* e, Result& r) {
         const U32 n = le16(e + 28);
         if (le32(e) != 0x02014b50u || le16(e + 6) > 20 || le16(e + 8) || le16(e + 10) != 8 || le16(e + 30) ||
             le16(e + 32) || le16(e + 34) || le32(e + 20) == 0xffffffffu || le32(e + 24) == 0xffffffffu ||
-            le32(e + 42) == 0xffffffffu || !n || n > 255 || n > size - cursor - 46) return broken;
+            le32(e + 42) == 0xffffffffu || !n || n > 255 || n > size - cursor - 46)
+            return broken;
         const U32 local = le32(e + 42), compressed = le32(e + 20);
         if (!input::read(zip, offset + cursor + 46, e + 46, n)) return missed(v);
-        for (U32 k = 0; k != n; ++k) if (e[46 + k] < 0x20 || e[46 + k] > 0x7e || e[46 + k] == '\\') return broken;
+        for (U32 k = 0; k != n; ++k)
+            if (e[46 + k] < 0x20 || e[46 + k] > 0x7e || e[46 + k] == '\\') return broken;
         if (local > offset || 30 + n > offset - local || compressed > offset - local - 30 - n) return broken;
         if (same(e + 46, n, os_path)) ++os;
         cursor += 46 + n;
@@ -141,8 +171,12 @@ Reason run(const File& file, const Keys& keys, Workspace& w, Result& r) {
         const U32 package = le32(h + 4), head = le32(h + 8), tail = le32(h + 12);
         if (head > tail || tail > package || head > 0xffffffffu - cut_header_bytes - (package - tail))
             return Reason::not_package;
-        v.cut = true; v.head = head; v.tail = tail; v.size = package;
-        if (!ends_at(v, cut_header_bytes + head + (package - tail))) return v.error ? Reason::read : Reason::not_package;
+        v.cut = true;
+        v.head = head;
+        v.tail = tail;
+        v.size = package;
+        if (!ends_at(v, cut_header_bytes + head + (package - tail)))
+            return v.error ? Reason::read : Reason::not_package;
     }
     // The header's own sizes say how long the package is; the file (or the cut) must agree.
     if (!view_read(&v, 0, h, 320)) return v.error ? Reason::read : Reason::not_package;
@@ -154,7 +188,7 @@ Reason run(const File& file, const Keys& keys, Workspace& w, Result& r) {
     const U32 declared = base + tfw::crypto_header_bytes + ciphertext;
     if (v.cut ? declared != v.size : !ends_at(v, declared)) return v.error ? Reason::read : Reason::not_package;
     v.size = declared;
-    hash::Digest digest;                     // the header's own: tfw.check does not hash the payload
+    hash::Digest digest; // the header's own: tfw.check does not hash the payload
     for (U32 i = 0; i != 32; ++i) digest.bytes[i] = h[base + 0x9c + i];
     Session s = {&keys, &r, Reason::pass};
     const input::Reader reader = {&v, v.size, view_read};
@@ -174,7 +208,7 @@ Reason check(const File& file, const Keys& keys, Workspace& w, Result& r) {
     r.container = tfw::Status::ok;
     r.entries = 0;
     r.reason = file.read ? run(file, keys, w, r) : Reason::read;
-    w.archive.close();                       // erases the AES schedule
+    w.archive.close(); // erases the AES schedule
     erase(w.header, sizeof(w.header));
     erase(w.record, sizeof(w.record));
     return r.reason;
@@ -194,4 +228,4 @@ const char* reason_name(Reason reason) {
     }
     return "unknown";
 }
-} }
+}}

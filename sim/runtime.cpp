@@ -35,7 +35,9 @@ bool hold_mod_verify() { return shared->hold_mod_verify.load() != 0; }
 
 // ---- memory -----------------------------------------------------------------------------
 namespace {
-struct Region { uint32_t begin, end; };
+struct Region {
+    uint32_t begin, end;
+};
 const Region regions[] = {
     {0x08000000u, 0x08100000u},     // L2
     {0x11800000u, 0x11c00000u},     // L1 data and instruction
@@ -52,14 +54,21 @@ std::mutex slot_lock;
 
 void map_region(const Region& r, int fd) {
     void* want = reinterpret_cast<void*>(base + r.begin);
-    void* got = fd < 0 ? mmap(want, r.end - r.begin, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0)
-                       : mmap(want, r.end - r.begin, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
-    if (got != want) { fprintf(stderr, "xyf_sim: cannot map %08x\n", r.begin); _exit(exit_crash); }
+    void* got = fd < 0 ?
+                    mmap(want, r.end - r.begin, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0) :
+                    mmap(want, r.end - r.begin, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
+    if (got != want) {
+        fprintf(stderr, "xyf_sim: cannot map %08x\n", r.begin);
+        _exit(exit_crash);
+    }
 }
 void ensure() {
     if (base) return;
     void* window = mmap(0, size_t(1) << 32, PROT_NONE, MAP_ANON | MAP_PRIVATE, -1, 0);
-    if (window == MAP_FAILED) { fprintf(stderr, "xyf_sim: no address window\n"); _exit(exit_crash); }
+    if (window == MAP_FAILED) {
+        fprintf(stderr, "xyf_sim: no address window\n");
+        _exit(exit_crash);
+    }
     base = reinterpret_cast<uintptr_t>(window);
     for (const Region& r : regions) map_region(r, -1);
 }
@@ -93,25 +102,43 @@ uint32_t r32(uint32_t a) { return *static_cast<volatile uint32_t*>(host(a)); }
 void w32(uint32_t a, uint32_t v) { *static_cast<volatile uint32_t*>(host(a)) = v; }
 uint8_t r8(uint32_t a) { return *static_cast<volatile uint8_t*>(host(a)); }
 void w8(uint32_t a, uint8_t v) { *static_cast<volatile uint8_t*>(host(a)) = v; }
-void reset_private_memory() { ensure(); for (unsigned i = 0; i != sdram; ++i) map_region(regions[i], -1); }
-void attach_sdram(int fd) { ensure(); map_region(regions[sdram], fd); }
+void reset_private_memory() {
+    ensure();
+    for (unsigned i = 0; i != sdram; ++i) map_region(regions[i], -1);
+}
+void attach_sdram(int fd) {
+    ensure();
+    map_region(regions[sdram], fd);
+}
 
-uint32_t stack_pointer() { return 0x8ab80200u; }   // module stack (WIDE layout: WIDE_STACK + 0x200), below XYF_STACK_END
+uint32_t stack_pointer() { return 0x8ab80200u; } // module stack (WIDE layout: WIDE_STACK + 0x200), below XYF_STACK_END
 
 void log(const char* format, ...) {
     char text[600];
-    va_list args; va_start(args, format); vsnprintf(text, sizeof(text), format, args); va_end(args);
-    fprintf(stderr, "[sim %s %8.3f] %s\n", role == 0 ? "A" : role == 1 ? "B" : "board", double(now_us() % 100000000u) / 1e6,
-            text);
+    va_list args;
+    va_start(args, format);
+    vsnprintf(text, sizeof(text), format, args);
+    va_end(args);
+    fprintf(stderr, "[sim %s %8.3f] %s\n",
+            role == 0 ? "A" :
+            role == 1 ? "B" :
+                        "board",
+            double(now_us() % 100000000u) / 1e6, text);
 }
 void crash(const char* format, ...) {
     char text[600];
-    va_list args; va_start(args, format); vsnprintf(text, sizeof(text), format, args); va_end(args);
+    va_list args;
+    va_start(args, format);
+    vsnprintf(text, sizeof(text), format, args);
+    va_end(args);
     fprintf(stderr, "[sim %s] CRASH: %s\n", role == 0 ? "A" : role == 1 ? "B" : "board", text);
     fflush(stderr);
     _exit(exit_crash);
 }
-void exit_processor(int code) { fflush(stderr); _exit(code); }
+void exit_processor(int code) {
+    fflush(stderr);
+    _exit(code);
+}
 
 }
 
@@ -120,11 +147,12 @@ extern "C" void xy_forever_file_boot();
 extern "C" volatile uint32_t xy_forever_storage_image_loaded;
 extern "C" void xy_forever_no_image();
 namespace xyf_sim {
-void cold_state(int role, bool power_on, bool play);   // sim/devices.cpp
-void load_stock();                                     // sim/devices.cpp
+void cold_state(int role, bool power_on, bool play); // sim/devices.cpp
+void load_stock(); // sim/devices.cpp
 void processor(int which, int fd, int sdram_fd, bool power_on) {
-    role = which; link_fd = fd;
-    if (which == 0) shared->partition = 0;             // A's stock entry runs from the user area again
+    role = which;
+    link_fd = fd;
+    if (which == 0) shared->partition = 0; // A's stock entry runs from the user area again
     signal(SIGPIPE, SIG_IGN);
     reset_private_memory();
     attach_sdram(sdram_fd);
@@ -138,16 +166,16 @@ void processor(int which, int fd, int sdram_fd, bool power_on) {
     if (!power_on) {
         stock_bootloader();
         load_stock();
-        cold_state(which, false, false);              // the retained state its teardown leaves
+        cold_state(which, false, false); // the retained state its teardown leaves
         host_start();
     }
     log("cold entry (%s)", power_on ? "power-on" : "reset");
-    xy_forever_file_boot();                            // cold.cpp: the boot decision
+    xy_forever_file_boot(); // cold.cpp: the boot decision
     if (xy_forever_storage_image_loaded == 1) {
         log("committed: would start the OS image now (the simulator stops this processor)");
         exit_processor(exit_os);
     }
-    xy_forever_no_image();                             // cold.cpp: no image, halt until a power cycle
+    xy_forever_no_image(); // cold.cpp: no image, halt until a power cycle
     log("halted (no image): needs a power cycle");
     exit_processor(exit_halt);
 }
@@ -158,28 +186,35 @@ namespace {
 using namespace xyf_sim;
 struct Proc {
     pid_t pid = 0;
-    int fd = -1;                    // board end of its link
-    std::string state = "off";      // off, running, halted, os, crashed, resetting
+    int fd = -1; // board end of its link
+    std::string state = "off"; // off, running, halted, os, crashed, resetting
     int boots = 0;
-    uint64_t restart_at = 0;        // us; 0 = none
-    std::vector<uint8_t> in;        // partial message
-    bool cut = false;               // B: a reply was cut mid-body (cut_body); nothing more reaches it
+    uint64_t restart_at = 0; // us; 0 = none
+    std::vector<uint8_t> in; // partial message
+    bool cut = false; // B: a reply was cut mid-body (cut_body); nothing more reaches it
 };
 Proc procs[2];
 int sdram_fds[2] = {-1, -1};
-struct Pending { uint64_t at; Message m; std::vector<uint8_t> body; };
-std::deque<Pending> to_a;           // delayed B -> A messages (A slow)
+struct Pending {
+    uint64_t at;
+    Message m;
+    std::vector<uint8_t> body;
+};
+std::deque<Pending> to_a; // delayed B -> A messages (A slow)
 int control_fd = -1;
 std::vector<int> clients;
 std::vector<std::string> client_in;
 int power_ons = 0;
-unsigned relayed[2] = {0, 0};        // link messages delivered to A and to B (status: to_a, to_b)
+unsigned relayed[2] = {0, 0}; // link messages delivered to A and to B (status: to_a, to_b)
 uint64_t cut_pending = 0;
 const char* names[2] = {"A", "B"};
 // Raw requests to A sent by the board itself, as if from B but past B's own checks:
 // A must refuse every brick path on its own. Their answers stay here; B never sees them.
 const uint32_t inject_bit = 0x80000000u;
-struct Injected { bool done; uint32_t result, error, body; };
+struct Injected {
+    bool done;
+    uint32_t result, error, body;
+};
 std::map<uint32_t, Injected> injected;
 uint32_t inject_count = 0;
 // Class requests B sent that A took and has not answered (by tag). After a reset of A
@@ -187,14 +222,17 @@ uint32_t inject_count = 0;
 // flight" was answered by A's bootloader [F]; how the stock link carries it over is not known [U]).
 // A request sent while a processor is resetting is lost (forward(): nobody on the link) [I: 154's
 // USB loss 25 s + B's 1 s patience after A's alone reset needs B's keepalive to go unanswered].
-struct Held { Message m; std::vector<uint8_t> body; };
+struct Held {
+    Message m;
+    std::vector<uint8_t> body;
+};
 std::map<uint32_t, Held> outstanding;
 uint64_t board_start_us = 0;
-int64_t b_sent_ms = -1, reset_ms[2] = {-1, -1};      // board clock (ms) of B's last link message, last resets
-uint64_t board_us() { return shared->clock_ns.load() / 1000u; }          // the device clock: sim/clock.cpp
+int64_t b_sent_ms = -1, reset_ms[2] = {-1, -1}; // board clock (ms) of B's last link message, last resets
+uint64_t board_us() { return shared->clock_ns.load() / 1000u; } // the device clock: sim/clock.cpp
 int64_t board_ms() { return int64_t(shared->clock_ns.load() / 1000000u); }
 
-int make_sdram() {                                 // a sparse unlinked file: one per processor
+int make_sdram() { // a sparse unlinked file: one per processor
     const char* dir = getenv("TMPDIR");
     std::string name = std::string(dir && *dir ? dir : "/tmp") + "/xyfsim-sdram-XXXXXX";
     std::vector<char> path(name.begin(), name.end());
@@ -219,16 +257,26 @@ void start(int which, bool power_on) {
         close(pair[0]);
         if (control_fd >= 0) close(control_fd);
         for (int c : clients) close(c);
-        for (int k = 0; k != 2; ++k) if (procs[k].fd >= 0) close(procs[k].fd);
+        for (int k = 0; k != 2; ++k)
+            if (procs[k].fd >= 0) close(procs[k].fd);
         processor(which, pair[1], sdram_fds[which], power_on);
     }
     close(pair[1]);
     fcntl(pair[0], F_SETFL, O_NONBLOCK);
-    p.pid = pid; p.fd = pair[0]; p.state = "running"; ++p.boots; p.restart_at = 0; p.in.clear(); p.cut = false;
-    kick(which);                                    // not idle until it says so (sim/clock.cpp)
+    p.pid = pid;
+    p.fd = pair[0];
+    p.state = "running";
+    ++p.boots;
+    p.restart_at = 0;
+    p.in.clear();
+    p.cut = false;
+    kick(which); // not idle until it says so (sim/clock.cpp)
     if (which == 0) to_a.clear();
     if (power_on) return;
-    if (which == 1) { outstanding.clear(); return; }  // the master that sent them is gone
+    if (which == 1) {
+        outstanding.clear();
+        return;
+    } // the master that sent them is gone
     std::map<uint32_t, Held> carried;
     carried.swap(outstanding);
     if (!shared->a_redeliver.load()) return;
@@ -251,8 +299,9 @@ void resetting(int which) {
     else {
         shared->b_waits_a = 0;
         shared->b_gate = reset_ms[0] >= 0 && board_ms() - reset_ms[0] <= shared->boot_a_window_ms.load() ? 1 : 0;
-        log("board: B resets %lld ms after A's last reset: its bootloader %s", (long long)(reset_ms[0] >= 0 ?
-            board_ms() - reset_ms[0] : -1), shared->b_gate.load() ? "finds A fresh" : "will find A running");
+        log("board: B resets %lld ms after A's last reset: its bootloader %s",
+            (long long)(reset_ms[0] >= 0 ? board_ms() - reset_ms[0] : -1),
+            shared->b_gate.load() ? "finds A fresh" : "will find A running");
     }
     // On the board clock (sim/clock.cpp), so a test can pass the start time unwaited.
     p.restart_at = board_us() + uint64_t(which ? shared->b_boot_ms.load() : shared->a_boot_ms.load()) * 1000u;
@@ -262,31 +311,45 @@ void resetting(int which) {
 }
 void stop(int which) {
     Proc& p = procs[which];
-    if (p.pid > 0) { kill(p.pid, SIGKILL); waitpid(p.pid, 0, 0); }
+    if (p.pid > 0) {
+        kill(p.pid, SIGKILL);
+        waitpid(p.pid, 0, 0);
+    }
     if (p.fd >= 0) close(p.fd);
     board_reset_flight(which);
-    p.pid = 0; p.fd = -1; p.restart_at = 0; p.in.clear();
+    p.pid = 0;
+    p.fd = -1;
+    p.restart_at = 0;
+    p.in.clear();
 }
 void power_cycle(bool play, const char* why) {
     for (int k = 0; k != 2; ++k) stop(k);
     to_a.clear();
     outstanding.clear();
     for (int k = 0; k != 2; ++k) {
-        clear_sdram(k); procs[k].state = "off"; shared->in_bootloader[k] = 0; reset_ms[k] = -1;
+        clear_sdram(k);
+        procs[k].state = "off";
+        shared->in_bootloader[k] = 0;
+        reset_ms[k] = -1;
     }
-    shared->b_waits_a = 0; shared->b_gate = 0;
+    shared->b_waits_a = 0;
+    shared->b_gate = 0;
     shared->play = play ? 1 : 0;
     shared->b_listening = 0;
-    ++power_ons; ++shared->outside;                      // a power-on is news: the device boots on its own
+    ++power_ons;
+    ++shared->outside; // a power-on is news: the device boots on its own
     log("power on (%s, %s)", why, play ? "PLAY held" : "no keys");
-    start(1, true);                      // B enters first on the device; A about 0.5 s later
+    start(1, true); // B enters first on the device; A about 0.5 s later
     start(0, true);
 }
 bool forward(int to, const Message& m, const std::vector<uint8_t>& body) {
     Proc& p = procs[to];
-    if (p.fd < 0 || p.state != "running") return false;    // a dead, halted or resetting processor hears nothing
-    ++shared->inflight[to];                                // taken by its link thread (sim/link.cpp)
-    if (!send_message(p.fd, m, body.empty() ? 0 : body.data())) { --shared->inflight[to]; return false; }
+    if (p.fd < 0 || p.state != "running") return false; // a dead, halted or resetting processor hears nothing
+    ++shared->inflight[to]; // taken by its link thread (sim/link.cpp)
+    if (!send_message(p.fd, m, body.empty() ? 0 : body.data())) {
+        --shared->inflight[to];
+        return false;
+    }
     board_link_cost(uint32_t(body.size()));
     ++relayed[to];
     if (to == 0 && m.kind == k_request && m.cls && !(m.tag & inject_bit)) outstanding[m.tag] = {m, body};
@@ -294,19 +357,29 @@ bool forward(int to, const Message& m, const std::vector<uint8_t>& body) {
 }
 void route(int from, const Message& m, std::vector<uint8_t>& body) {
     if (m.kind == k_event) {
-        if (m.op == e_cut) { log("power cut after storage operation %d", shared->storage_ops.load()); cut_pending = 1; }
+        if (m.op == e_cut) {
+            log("power cut after storage operation %d", shared->storage_ops.load());
+            cut_pending = 1;
+        }
         return;
     }
-    if (from == 1) {                                       // B -> A
+    if (from == 1) { // B -> A
         b_sent_ms = board_ms();
         if (m.cls == cls_partition && m.op == 0x18 && (m.a0 >> 16) == 0x434du) {
-            if (m.a0 & 7u) {                               // never from XY Forever's B
+            if (m.a0 & 7u) { // never from XY Forever's B
                 ++shared->odd_selects;
                 log("board: B's tagged select %08x has low bits %u", m.a0, m.a0 & 7u);
             }
         }
-        if (shared->a_silent) { if (m.cls) ++shared->a_silenced; return; }
-        if (m.cls && shared->drop_request > 0) { --shared->drop_request; log("fault: dropped request op %02x", m.op); return; }
+        if (shared->a_silent) {
+            if (m.cls) ++shared->a_silenced;
+            return;
+        }
+        if (m.cls && shared->drop_request > 0) {
+            --shared->drop_request;
+            log("fault: dropped request op %02x", m.op);
+            return;
+        }
         // A slow: A's loop takes each class request N ms late; the stock ISR still answers
         // generic ops (handshake, op-10 echoes, release) at once.
         const int32_t slow = shared->a_slow_ms;
@@ -315,19 +388,27 @@ void route(int from, const Message& m, std::vector<uint8_t>& body) {
             return;
         }
         forward(0, m, body);
-    } else {                                               // A -> B
+    } else { // A -> B
         if (m.kind == k_response && (m.tag & inject_bit)) {
             auto it = injected.find(m.tag);
             if (it != injected.end()) it->second = {true, m.result, m.error, m.body};
             return;
         }
         if (m.kind == k_response) outstanding.erase(m.tag);
-        if (shared->a_silent) { if (m.kind == k_response && m.cls) ++shared->a_silenced; return; }
-        if (m.body && shared->drop_body > 0) { --shared->drop_body; log("fault: dropped reply body op %02x", m.op); return; }
-        if (procs[1].cut) return;                          // the link dropped mid-body: B hears nothing more
+        if (shared->a_silent) {
+            if (m.kind == k_response && m.cls) ++shared->a_silenced;
+            return;
+        }
+        if (m.body && shared->drop_body > 0) {
+            --shared->drop_body;
+            log("fault: dropped reply body op %02x", m.op);
+            return;
+        }
+        if (procs[1].cut) return; // the link dropped mid-body: B hears nothing more
         const int32_t cut = shared->cut_body;
-        if (m.kind == k_response && cut > 0 && uint32_t(cut) < m.body && procs[1].fd >= 0 && procs[1].state == "running") {
-            shared->cut_body = 0;                          // the header and cut bytes of the body, then nothing
+        if (m.kind == k_response && cut > 0 && uint32_t(cut) < m.body && procs[1].fd >= 0 &&
+            procs[1].state == "running") {
+            shared->cut_body = 0; // the header and cut bytes of the body, then nothing
             std::vector<uint8_t> frame(sizeof(m) + uint32_t(cut));
             memcpy(frame.data(), &m, sizeof(m));
             memcpy(frame.data() + sizeof(m), body.data(), uint32_t(cut));
@@ -350,10 +431,11 @@ void drain(int which) {
         const ssize_t n = read(p.fd, chunk, sizeof(chunk));
         if (n <= 0) break;
         p.in.insert(p.in.end(), chunk, chunk + n);
-        if (size_t(n) < sizeof(chunk)) break;              // all of it
+        if (size_t(n) < sizeof(chunk)) break; // all of it
     }
     while (p.in.size() >= sizeof(Message)) {
-        Message m; memcpy(&m, p.in.data(), sizeof(m));
+        Message m;
+        memcpy(&m, p.in.data(), sizeof(m));
         if (m.magic != message_magic) crash("bad link message from %s", names[which]);
         if (p.in.size() < sizeof(m) + m.body) break;
         std::vector<uint8_t> body(p.in.begin() + sizeof(m), p.in.begin() + sizeof(m) + m.body);
@@ -370,20 +452,31 @@ void reap() {
         for (int k = 0; k != 2; ++k) {
             Proc& p = procs[k];
             if (p.pid != pid) continue;
-            if (p.fd >= 0) { drain(k); close(p.fd); }
-            p.pid = 0; p.fd = -1;
+            if (p.fd >= 0) {
+                drain(k);
+                close(p.fd);
+            }
+            p.pid = 0;
+            p.fd = -1;
             board_reset_flight(k);
             const int code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
             if (k == 1) shared->b_listening = 0;
             if (code == exit_reset) resetting(k);
             else if (code == exit_halt) p.state = "halted";
             else if (code == exit_os) p.state = "os";
-            else { p.state = "crashed"; log("processor %s ended (status %d)", names[k], status); }
+            else {
+                p.state = "crashed";
+                log("processor %s ended (status %d)", names[k], status);
+            }
             if (k == 0) to_a.clear();
         }
     }
 }
-int otp_fields() { int n = 0; for (uint8_t length : shared->otp_length) n += length != 0; return n; }
+int otp_fields() {
+    int n = 0;
+    for (uint8_t length : shared->otp_length) n += length != 0;
+    return n;
+}
 // --otp-stdin: records {u8 selector < 16, u8 length <= 64, bytes} until the end of stdin.
 bool load_otp() {
     uint8_t head[2];
@@ -391,7 +484,8 @@ bool load_otp() {
         const bool a = (head[0] & 0x80u) != 0;
         const uint8_t selector = head[0] & 0x7fu;
         if (selector >= 16 || !head[1] || head[1] > 64 ||
-            fread(a ? shared->a_otp_field[selector] : shared->otp_field[selector], 1, head[1], stdin) != head[1]) return false;
+            fread(a ? shared->a_otp_field[selector] : shared->otp_field[selector], 1, head[1], stdin) != head[1])
+            return false;
         (a ? shared->a_otp_length : shared->otp_length)[selector] = head[1];
     }
     return true;
@@ -410,15 +504,20 @@ int listen_on(int port) {
     const int one = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
     sockaddr_in a = {};
-    a.sin_family = AF_INET; a.sin_port = htons(uint16_t(port)); a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if (bind(fd, reinterpret_cast<sockaddr*>(&a), sizeof(a)) || listen(fd, 8)) crash("control port %d: %s", port, strerror(errno));
+    a.sin_family = AF_INET;
+    a.sin_port = htons(uint16_t(port));
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (bind(fd, reinterpret_cast<sockaddr*>(&a), sizeof(a)) || listen(fd, 8))
+        crash("control port %d: %s", port, strerror(errno));
     fcntl(fd, F_SETFL, O_NONBLOCK);
     return fd;
 }
 int usage() {
-    fprintf(stderr, "usage: xyf_sim --root DIR --bootpart FILE --stock MEMORY [--port 7341] [--control 7342 | --control-fd FD]\n"
-                    "               [--capacity BYTES] [--plain] [--otp-stdin] [--otp-initialized] [--ask] [--idle-wall]\n"
-                    "               [--deadline-s S] [--set FAULT=VALUE ...]\n");
+    fprintf(
+        stderr,
+        "usage: xyf_sim --root DIR --bootpart FILE --stock MEMORY [--port 7341] [--control 7342 | --control-fd FD]\n"
+        "               [--capacity BYTES] [--plain] [--otp-stdin] [--otp-initialized] [--ask] [--idle-wall]\n"
+        "               [--deadline-s S] [--set FAULT=VALUE ...]\n");
     return 2;
 }
 }
@@ -427,7 +526,8 @@ int usage() {
 // exits 124; past S + 2 s, in case the board itself is stuck, SIGALRM ends both processors and the board.
 const int exit_deadline = 124;
 void deadline_passed(int) {
-    for (int k = 0; k != 2; ++k) if (procs[k].pid > 0) kill(procs[k].pid, SIGKILL);
+    for (int k = 0; k != 2; ++k)
+        if (procs[k].pid > 0) kill(procs[k].pid, SIGKILL);
     _exit(exit_deadline);
 }
 
@@ -435,10 +535,14 @@ int main(int argc, char** argv) {
     using namespace xyf_sim;
     void* block = mmap(0, sizeof(Shared), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANON, -1, 0);
     shared = new (block) Shared();
-    shared->space = -1; shared->capacity = 0x400000u; shared->port = 7341;
+    shared->space = -1;
+    shared->capacity = 0x400000u;
+    shared->port = 7341;
     // [U] bootloader start times: A's comes first after a REBOOT's 100 ms stagger (REBOOTs
     // work on the device) and outlasts B's 250 ms keepalive interval (154: B lost the link).
-    shared->a_boot_ms = 300; shared->b_boot_ms = 400; shared->a_redeliver = 1;
+    shared->a_boot_ms = 300;
+    shared->b_boot_ms = 400;
+    shared->a_redeliver = 1;
     // a REBOOT's A-then-B stagger (100 ms on the device, plus host scheduling here) must fall
     // inside the window, every lone restart (B notices a lost A after 1 s or more) outside it. The device
     // boundary lies between 0.15 s and 1.4 s [U]; 400 ms sits in that range.
@@ -447,23 +551,41 @@ int main(int argc, char** argv) {
     int control_port = 0, control_listener = -1;
     bool play = true, otp = false;
     uint64_t deadline_us = 0;
-    std::vector<std::string> faults;                      // --set NAME=VALUE: a fault armed before the power-on
+    std::vector<std::string> faults; // --set NAME=VALUE: a fault armed before the power-on
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         const char* v = i + 1 < argc ? argv[i + 1] : 0;
-        if (a == "--plain") { play = false; continue; }
-        if (a == "--otp-stdin") { otp = true; continue; }
-        if (a == "--a-otp-initialized") { shared->a_otp_preinit = 1; continue; }
-        if (a == "--otp-initialized") { shared->otp_preinit = 1; continue; }
-        if (a == "--ask") { shared->ask = 1; continue; }                 // #65 (else the setting reads Off)
-        if (a == "--idle-wall") { board_idle_wall(); continue; }         // interactive runs only (sim/clock.cpp)
+        if (a == "--plain") {
+            play = false;
+            continue;
+        }
+        if (a == "--otp-stdin") {
+            otp = true;
+            continue;
+        }
+        if (a == "--a-otp-initialized") {
+            shared->a_otp_preinit = 1;
+            continue;
+        }
+        if (a == "--otp-initialized") {
+            shared->otp_preinit = 1;
+            continue;
+        }
+        if (a == "--ask") {
+            shared->ask = 1;
+            continue;
+        } // #65 (else the setting reads Off)
+        if (a == "--idle-wall") {
+            board_idle_wall();
+            continue;
+        } // interactive runs only (sim/clock.cpp)
         if (!v) return usage();
         if (a == "--root") snprintf(shared->root, sizeof(shared->root), "%s", v);
         else if (a == "--bootpart") snprintf(shared->bootpart, sizeof(shared->bootpart), "%s", v);
         else if (a == "--stock") stock_path = v;
         else if (a == "--port") shared->port = atoi(v);
         else if (a == "--control") control_port = atoi(v);
-        else if (a == "--control-fd") control_listener = atoi(v);   // listening already (xy_forever/sim.py)
+        else if (a == "--control-fd") control_listener = atoi(v); // listening already (xy_forever/sim.py)
         else if (a == "--capacity") shared->capacity = uint32_t(strtoul(v, 0, 0));
         else if (a == "--deadline-s") deadline_us = uint64_t(atof(v) * 1e6);
         else if (a == "--set" && strchr(v, '=')) faults.push_back(std::string("set ") + v);
@@ -472,7 +594,11 @@ int main(int argc, char** argv) {
     }
     if (!shared->root[0] || !shared->bootpart[0] || !stock_path) return usage();
     if (!control_port) control_port = shared->port + 1;
-    if (otp && !load_otp()) { wipe_otp(); fprintf(stderr, "xyf_sim: bad OTP records on stdin\n"); return 2; }
+    if (otp && !load_otp()) {
+        wipe_otp();
+        fprintf(stderr, "xyf_sim: bad OTP records on stdin\n");
+        return 2;
+    }
     signal(SIGPIPE, SIG_IGN);
     srand(unsigned(getpid()));
     for (int k = 0; k != 2; ++k) sdram_fds[k] = make_sdram();
@@ -480,19 +606,27 @@ int main(int argc, char** argv) {
         if (pipe(w)) crash("pipe: %s", strerror(errno));
         for (int end : w) fcntl(end, F_SETFL, O_NONBLOCK);
     }
-    if (control_listener >= 0) { control_fd = control_listener; fcntl(control_fd, F_SETFL, O_NONBLOCK); }
-    else control_fd = listen_on(control_port);
+    if (control_listener >= 0) {
+        control_fd = control_listener;
+        fcntl(control_fd, F_SETFL, O_NONBLOCK);
+    } else control_fd = listen_on(control_port);
     log("USB CDC endpoint 127.0.0.1:%d, control 127.0.0.1:%d, storage %s", shared->port, control_port, shared->root);
     bool quit = false;
     for (std::string& f : faults) {
         f[f.find('=')] = ' ';
-        if (command(f, quit, -1).find("\"ok\": true") == std::string::npos) { fprintf(stderr, "xyf_sim: %s\n", f.c_str()); return 2; }
+        if (command(f, quit, -1).find("\"ok\": true") == std::string::npos) {
+            fprintf(stderr, "xyf_sim: %s\n", f.c_str());
+            return 2;
+        }
     }
     power_cycle(play, "start");
     int code = 0;
-    if (deadline_us) { signal(SIGALRM, deadline_passed); alarm(unsigned(deadline_us / 1000000u) + 2); }
+    if (deadline_us) {
+        signal(SIGALRM, deadline_passed);
+        alarm(unsigned(deadline_us / 1000000u) + 2);
+    }
     const pid_t parent = getppid();
-    std::thread([parent] {                   // the parent gone: the board's wake pipe (it never polls for it)
+    std::thread([parent] { // the parent gone: the board's wake pipe (it never polls for it)
         const int q = kqueue();
         struct kevent e;
         EV_SET(&e, uintptr_t(parent), EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, 0);
@@ -500,10 +634,14 @@ int main(int argc, char** argv) {
         while (kevent(q, 0, 0, &e, 1, 0) < 0 && errno == EINTR) {}
         const char b = 1;
         if (write(shared->wake[2][1], &b, 1) < 0) {}
-    }).detach();
-    bool woken = true;                       // the wake pipe fired at the last poll
+    })
+        .detach();
+    bool woken = true; // the wake pipe fired at the last poll
     while (!quit) {
-        if (getppid() != parent) { log("parent gone: stopping"); break; }   // never outlive the tool that started it
+        if (getppid() != parent) {
+            log("parent gone: stopping");
+            break;
+        } // never outlive the tool that started it
         if (deadline_us && now_us() - board_start_us >= deadline_us) {
             log("deadline: %.1f s passed (--deadline-s): stopping", double(deadline_us) / 1e6);
             code = exit_deadline;
@@ -514,13 +652,18 @@ int main(int argc, char** argv) {
         for (int c : clients) fds.push_back({c, POLLIN, 0});
         int link_index[2] = {-1, -1};
         for (int k = 0; k != 2; ++k)
-            if (procs[k].fd >= 0) { link_index[k] = int(fds.size()); fds.push_back({procs[k].fd, POLLIN, 0}); }
+            if (procs[k].fd >= 0) {
+                link_index[k] = int(fds.size());
+                fds.push_back({procs[k].fd, POLLIN, 0});
+            }
         const size_t wake_index = fds.size();
-        fds.push_back({shared->wake[2][0], POLLIN, 0});   // a processor went idle (sim/clock.cpp)
+        fds.push_back({shared->wake[2][0], POLLIN, 0}); // a processor went idle (sim/clock.cpp)
         // The board's next event (a delayed message to A, a restart): the clock's steps stop there.
         uint64_t next = to_a.empty() ? 0 : to_a.front().at;
-        for (const Proc& p : procs) if (p.restart_at && (!next || p.restart_at < next)) next = p.restart_at;
-        const bool running[2] = {procs[0].pid > 0 && procs[0].state == "running", procs[1].pid > 0 && procs[1].state == "running"};
+        for (const Proc& p : procs)
+            if (p.restart_at && (!next || p.restart_at < next)) next = p.restart_at;
+        const bool running[2] = {procs[0].pid > 0 && procs[0].state == "running",
+                                 procs[1].pid > 0 && procs[1].state == "running"};
         int wait_ms = board_clock(running, next * 1000u, woken);
         if (deadline_us) {
             const uint64_t spent = now_us() - board_start_us;
@@ -541,7 +684,8 @@ int main(int argc, char** argv) {
             to_a.pop_front();
         }
         if (cut_pending) {
-            cut_pending = 0; ++shared->cuts;
+            cut_pending = 0;
+            ++shared->cuts;
             power_cycle(true, "power cut");
             continue;
         }
@@ -549,15 +693,22 @@ int main(int argc, char** argv) {
             if (procs[k].restart_at && procs[k].restart_at <= board_us()) start(k, false);
         if (fds[0].revents & POLLIN) {
             const int c = accept(control_fd, 0, 0);
-            if (c >= 0) { clients.push_back(c); client_in.emplace_back(); }
+            if (c >= 0) {
+                clients.push_back(c);
+                client_in.emplace_back();
+            }
         }
         for (size_t i = 0; i < clients.size();) {
             char buffer[512];
-            const ssize_t n = (fds.size() > i + 1 && fds[i + 1].fd == clients[i] && (fds[i + 1].revents & (POLLIN | POLLHUP)))
-                              ? read(clients[i], buffer, sizeof(buffer)) : -2;
+            const ssize_t n =
+                (fds.size() > i + 1 && fds[i + 1].fd == clients[i] && (fds[i + 1].revents & (POLLIN | POLLHUP))) ?
+                    read(clients[i], buffer, sizeof(buffer)) :
+                    -2;
             if (n == 0 || (n < 0 && n != -2 && errno != EAGAIN)) {
                 board_forget(clients[i]);
-                close(clients[i]); clients.erase(clients.begin() + long(i)); client_in.erase(client_in.begin() + long(i));
+                close(clients[i]);
+                clients.erase(clients.begin() + long(i));
+                client_in.erase(client_in.begin() + long(i));
                 continue;
             }
             if (n > 0) client_in[i].append(buffer, size_t(n));
@@ -566,9 +717,11 @@ int main(int argc, char** argv) {
                 const std::string line = client_in[i].substr(0, eol), reply = command(line, quit, clients[i]);
                 client_in[i].erase(0, eol + 1);
                 if (line.compare(0, 6, "status") && line.compare(0, 8, "injected") && line != "settle" &&
-                    line.compare(0, 7, "advance")) {           // a fault, a key, an injected request: look again
-                    if (line.compare(0, 6, "inject")) ++shared->outside;   // news from outside (not the board's own link end)
-                    kick(0); kick(1);
+                    line.compare(0, 7, "advance")) { // a fault, a key, an injected request: look again
+                    if (line.compare(0, 6, "inject"))
+                        ++shared->outside; // news from outside (not the board's own link end)
+                    kick(0);
+                    kick(1);
                 }
                 if (!reply.empty() && write(clients[i], (reply + "\n").data(), reply.size() + 1) < 0) break;
             }

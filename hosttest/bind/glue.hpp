@@ -29,7 +29,7 @@ public:
     ~Buffer() { PyBuffer_Release(&view_); }
     Buffer(const Buffer&) = delete;
     Buffer& operator=(const Buffer&) = delete;
-    template <class T> T* data() const { return static_cast<T*>(view_.buf); }
+    template<class T> T* data() const { return static_cast<T*>(view_.buf); }
     size_t bytes() const { return static_cast<size_t>(view_.len); }
 
 private:
@@ -39,12 +39,18 @@ private:
 }  // namespace xyf_glue
 
 namespace nanobind { namespace detail {
-template <> struct has_arg_defaults<xyf_glue::CStr> : std::true_type {};   // None: a null pointer
-template <> struct type_caster<xyf_glue::CStr> {
+template<> struct has_arg_defaults<xyf_glue::CStr> : std::true_type {};   // None: a null pointer
+template<> struct type_caster<xyf_glue::CStr> {
     NB_TYPE_CASTER(xyf_glue::CStr, const_name("bytes | str"))
     bool from_python(handle src, uint32_t, cleanup_list*) noexcept {
-        if (src.is_none()) { value.p = nullptr; return true; }
-        if (PyBytes_Check(src.ptr())) { value.p = PyBytes_AsString(src.ptr()); return true; }
+        if (src.is_none()) {
+            value.p = nullptr;
+            return true;
+        }
+        if (PyBytes_Check(src.ptr())) {
+            value.p = PyBytes_AsString(src.ptr());
+            return true;
+        }
         if (PyUnicode_Check(src.ptr())) {
             value.p = PyUnicode_AsUTF8(src.ptr());
             if (!value.p) PyErr_Clear();
@@ -56,5 +62,5 @@ template <> struct type_caster<xyf_glue::CStr> {
         return s.p ? PyBytes_FromString(s.p) : none().release();
     }
 };
-} }
+}}
 #endif

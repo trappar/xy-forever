@@ -4,6 +4,7 @@ A build is named by its image (the first 8 hex digits of its candidate's SHA-256
 every build between two releases carries the same version. The firmware gets it as XYF_VERSION (text,
 hello `version=`, the menu) and XYF_VERSION_CODE (a number: stage 2's min_stage1, reports).
 """
+
 VERSION = '0.1.0'
 
 

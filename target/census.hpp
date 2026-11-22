@@ -18,5 +18,5 @@ static const uint32_t max_regions = XYF_CENSUS_REGIONS;
 // Fills out[0..capacity). Returns bytes written (0 on failure); header word 9
 // holds a CRC32 of everything after the header.
 uint32_t fill(uint8_t* out, uint32_t capacity, uint32_t role, uint32_t gpio);
-} }
+}}
 #endif

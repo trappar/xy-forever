@@ -17,13 +17,15 @@ bool inbox_path(const char* path) {
     if (!services::loader_path(path) || file_engine::decide_engine(file_engine::op_read, path) != file_engine::allow)
         return false;
     static const char inbox[] = "/yaffs2/xy-forever/inbox/";
-    for (uint32_t i = 0; i != sizeof(inbox) - 1; ++i) if (path[i] != inbox[i]) return false;
+    for (uint32_t i = 0; i != sizeof(inbox) - 1; ++i)
+        if (path[i] != inbox[i]) return false;
     return path[sizeof(inbox) - 1];
 }
 }
 
-Source::Source() : path_{}, size_(0), progress_(0), error_(0), operation_(0), position_(0), cached_at_(0),
-                   cached_bytes_(0), phase_(SourcePhase::idle), pending_(false), lease_(false), fd_(-1), digest_{} {}
+Source::Source()
+    : path_{}, size_(0), progress_(0), error_(0), operation_(0), position_(0), cached_at_(0), cached_bytes_(0),
+      phase_(SourcePhase::idle), pending_(false), lease_(false), fd_(-1), digest_{} {}
 
 uint32_t Source::file_size(uint32_t& bytes) const {
     uint8_t record[file_client::record_bytes];
@@ -38,7 +40,8 @@ uint32_t Source::file_size(uint32_t& bytes) const {
 uint32_t Source::begin(const char* path) {
     if (phase_ == SourcePhase::hashing || fd_ >= 0) return P::s_busy;
     if (!inbox_path(path)) return P::s_bad_request;
-    for (uint32_t i = 0; i != sizeof(path_); ++i) if (!(path_[i] = path[i])) break;
+    for (uint32_t i = 0; i != sizeof(path_); ++i)
+        if (!(path_[i] = path[i])) break;
     progress_ = 0;
     error_ = file_size(size_);
     if (!error_ && size_ < xyf_core::tfw::prefix_bytes) error_ = P::s_bad_request;
@@ -65,19 +68,28 @@ SourcePhase Source::hash_step() {
     if (phase_ != SourcePhase::hashing) return phase_;
     if (!pending_) {
         if (error_) {
-            if (!lease_) { finish_hash(); return phase_; }
+            if (!lease_) {
+                finish_hash();
+                return phase_;
+            }
             operation_ = rpc::cancel;
         }
         const auto sent = file_client::tfw_hash_send(path_, operation_);
         if (sent.outcome == file_client::busy) return phase_;
-        if (sent.outcome) { error_ = file_client::status(sent.outcome); finish_hash(); }
-        else pending_ = true;
+        if (sent.outcome) {
+            error_ = file_client::status(sent.outcome);
+            finish_hash();
+        } else pending_ = true;
         return phase_;
     }
     const auto r = file_client::left_poll(false);
     if (r.outcome == file_client::busy) return phase_;
     pending_ = false;
-    if (r.outcome) { error_ = file_client::status(r.outcome); finish_hash(); return phase_; }
+    if (r.outcome) {
+        error_ = file_client::status(r.outcome);
+        finish_hash();
+        return phase_;
+    }
     const uint32_t code = uint32_t(r.value);
     if (operation_ == rpc::cancel) {
         if (code != P::s_ok && !(error_ && code == P::s_state)) error_ = P::s_storage;
@@ -95,8 +107,10 @@ SourcePhase Source::hash_step() {
         P::put32(digest_.bytes + 4 * (operation_ - rpc::digest), r.error);
         if (++operation_ == rpc::digest + rpc::digest_words) operation_ = rpc::cancel;
     } else if (!error_) {
-        error_ = code == P::s_bad_request || code == P::s_not_found || code == P::s_storage ||
-                 code == P::s_busy || code == P::s_unsupported ? code : uint32_t(P::s_link);
+        error_ = code == P::s_bad_request || code == P::s_not_found || code == P::s_storage || code == P::s_busy ||
+                         code == P::s_unsupported ?
+                     code :
+                     uint32_t(P::s_link);
     }
     return phase_;
 }
@@ -180,8 +194,7 @@ bool Source::load(uint32_t offset) {
 
 bool Source::read_at(void* context, xyf_core::U32 offset, xyf_core::Byte* out, xyf_core::U32 count) {
     auto& source = *static_cast<Source*>(context);
-    if (source.fd_ < 0 || source.error_ || offset > source.size_ || count > source.size_ - offset)
-        return false;
+    if (source.fd_ < 0 || source.error_ || offset > source.size_ || count > source.size_ - offset) return false;
     while (count) {
         if ((offset < source.cached_at_ || offset - source.cached_at_ >= source.cached_bytes_) && !source.load(offset))
             return false;
@@ -195,8 +208,6 @@ bool Source::read_at(void* context, xyf_core::U32 offset, xyf_core::Byte* out, x
     return true;
 }
 
-xyf_core::input::Reader Source::reader() {
-    return archive_.reader();
-}
-} }
+xyf_core::input::Reader Source::reader() { return archive_.reader(); }
+}}
 #endif

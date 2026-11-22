@@ -1,16 +1,18 @@
 """No teenage engineering bytes in a release image (#178): xy_forever/stock_bytes.py on synthetic images, on this
 source's verified product build against the private stock pair, and scripts/web_release.py's pin and staging."""
+
 import hashlib
 import json
-from pathlib import Path
 import random
 import tempfile
 import unittest
+from pathlib import Path
 
 import pytest
-
-from xy_forever import paths, stock_bytes as S
 import web_release
+
+from xy_forever import paths
+from xy_forever import stock_bytes as S
 
 
 def noise(n, seed):
@@ -23,15 +25,15 @@ class SharedRunsTest(unittest.TestCase):
         self.ours = noise(60_000, 2)
 
     def test_a_copied_run_is_found_with_its_place(self):
-        image = self.ours[:1000] + self.stock[5003:5003 + 64] + self.ours[1000:]
+        image = self.ours[:1000] + self.stock[5003 : 5003 + 64] + self.ours[1000:]
         self.assertEqual(S.shared_runs(image, {'os.ldr': self.stock}), [(64, 1000, 'os.ldr', 5003)])
 
     def test_a_shorter_run_does_not_count(self):
-        image = self.ours[:1000] + self.stock[5003:5003 + S.MIN_RUN - 1] + self.ours[1000:]
+        image = self.ours[:1000] + self.stock[5003 : 5003 + S.MIN_RUN - 1] + self.ours[1000:]
         self.assertEqual(S.shared_runs(image, {'os.ldr': self.stock}), [])
 
     def test_a_long_copy_counts_once(self):
-        image = self.ours[:10] + self.stock[777:777 + 5000] + self.ours[10:]
+        image = self.ours[:10] + self.stock[777 : 777 + 5000] + self.ours[10:]
         self.assertEqual(S.shared_runs(image, {'s': self.stock}), [(5000, 10, 's', 777)])
 
     def test_public_tables_and_filler_do_not_count(self):
@@ -42,7 +44,7 @@ class SharedRunsTest(unittest.TestCase):
 
     def test_the_tables_are_the_public_ones(self):
         self.assertEqual(S.crc32_table()[1], 0x77073096)
-        self.assertEqual(S.sha256_constants()[:2] + S.sha256_constants()[-1:], [0x428a2f98, 0x71374491, 0xc67178f2])
+        self.assertEqual(S.sha256_constants()[:2] + S.sha256_constants()[-1:], [0x428A2F98, 0x71374491, 0xC67178F2])
 
 
 class ReleaseImageTest(unittest.TestCase):
@@ -52,16 +54,16 @@ class ReleaseImageTest(unittest.TestCase):
             self.skipTest('the private stock 1.2.1 pair is absent (setup.py import-stock)')
         return {f.name: f.read_bytes() for f in files}
 
-    @pytest.mark.gate                     # a scan of the whole image: 0.3 s of CPU
+    @pytest.mark.gate  # a scan of the whole image: 0.3 s of CPU
     def test_this_sources_product_build_has_no_stock_bytes(self):
         stocks = self.stocks()
         build = paths.newest_verified_build()
         if build is None:
             self.skipTest('no verified product build of this source (scripts/check.py builds one)')
         self.assertEqual(S.shared_runs((build / 'candidate.ldr').read_bytes(), stocks), [])
-        self.assertTrue(S.shared_runs(stocks['os.ldr'][:4096], stocks))        # the check sees stock bytes
+        self.assertTrue(S.shared_runs(stocks['os.ldr'][:4096], stocks))  # the check sees stock bytes
 
-    @pytest.mark.gate                     # a scan of the whole image: 0.3 s of CPU
+    @pytest.mark.gate  # a scan of the whole image: 0.3 s of CPU
     def test_the_pinned_release_has_no_stock_bytes(self):
         pin = json.loads(web_release.PIN.read_text())
         if not pin['sha256']:

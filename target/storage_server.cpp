@@ -29,7 +29,11 @@ Result result __attribute__((section(".data"))) = {magic};
 #endif
 
 namespace {
-bool prefix(const char* s, const char* p) { for (; *p; ++p, ++s) if (*s != *p) return false; return true; }
+bool prefix(const char* s, const char* p) {
+    for (; *p; ++p, ++s)
+        if (*s != *p) return false;
+    return true;
+}
 }
 
 bool valid_path(const char* path) {
@@ -40,7 +44,8 @@ bool valid_path(const char* path) {
         if (c == '/' || !c) {
             const uint32_t n = i - component;
             if (!n || (n == 1 && path[component] == '.') ||
-                (n == 2 && path[component] == '.' && path[component + 1] == '.')) return false;
+                (n == 2 && path[component] == '.' && path[component + 1] == '.'))
+                return false;
             if (!c) return true;
             component = i + 1;
         }
@@ -49,9 +54,10 @@ bool valid_path(const char* path) {
 }
 
 static_assert(max_path == file_engine::max_path && path_buffer == file_engine::path_buffer &&
-              partition_class == file_engine::partition_class && path_class == file_engine::path_class &&
-              read_class == file_engine::read_class && sector_class == file_engine::sector_class &&
-              write_class == file_engine::write_class, "the engine decides on the server's request shapes");
+                  partition_class == file_engine::partition_class && path_class == file_engine::path_class &&
+                  read_class == file_engine::read_class && sector_class == file_engine::sector_class &&
+                  write_class == file_engine::write_class,
+              "the engine decides on the server's request shapes");
 
 #if defined(XYF_USB_FILE_WRITE)
 // The write rule (since 1.13): the USB write area is all of /yaffs2; decide_engine refuses
@@ -96,7 +102,7 @@ InstallAction decide_install(uint32_t vtable, uint32_t op, uint32_t argument, ui
     return boot ? install_refuse_files : install_none;         // path/read classes only on partition 0
 }
 #endif
-} }
+}}
 
 #if defined(__bfin__)
 namespace xy_forever { namespace storage_server { namespace a_side {
@@ -104,7 +110,7 @@ typedef peer_services::U32 U32;      // unsigned int (uint32_t is unsigned long 
 // One noinline, noclone instantiation per stock entry (straight-line call audit). Named (not
 // anonymous): the builder scopes a's own posix calls (the marker check) to these wrappers.
 template<U32 A, class R, class... Args> __attribute__((noinline, noclone)) R stock(Args... args) {
-    return reinterpret_cast<R(*)(Args...)>(A)(args...);
+    return reinterpret_cast<R (*)(Args...)>(A)(args...);
 }
 #if defined(XYF_USB_FILE_WRITE)
 // The admitted yaffs rename (xyf_build.py A_RENAME_CALLS): 889fa834(old, new)
@@ -118,12 +124,12 @@ __attribute__((noinline)) int rename_object(const char* from, const char* to) {
     return stock<0x889fa834u, int>(from, to);
 }
 #endif
-} } }
+}}}
 namespace {
 using namespace xy_forever;
 using namespace xy_forever::storage_server;
-using peer_services::Stock121PeerSession;
 using a_side::stock;
+using peer_services::Stock121PeerSession;
 typedef peer_services::U32 U32;
 volatile U32& word(U32 address) { return *reinterpret_cast<volatile U32*>(address); }
 volatile uint8_t& byte(U32 address) { return *reinterpret_cast<volatile uint8_t*>(address); }
@@ -169,21 +175,65 @@ volatile U32 provider_registered __attribute__((section(".data"))) = 0;
 volatile int fds[max_fds] __attribute__((section(".data"))) = {-1, -1, -1, -1};
 volatile U32 dirs[max_fds] __attribute__((section(".data"))) = {0, 0, 0, 0};       // stock DIR pointers
 
-bool known(int fd) { for (U32 i = 0; i != max_fds; ++i) if (fd >= 0 && fds[i] == fd) return true; return false; }
-bool space() { for (U32 i = 0; i != max_fds; ++i) if (fds[i] < 0) return true; return false; }
-void track(int fd) { for (U32 i = 0; i != max_fds; ++i) if (fds[i] < 0) { fds[i] = fd; ++result.open_fds; return; } }
-void untrack(int fd) { for (U32 i = 0; i != max_fds; ++i) if (fds[i] == fd) { fds[i] = -1; --result.open_fds; } }
-bool dir_known(U32 dir) { for (U32 i = 0; i != max_fds; ++i) if (dir && dirs[i] == dir) return true; return false; }
-bool dir_space() { for (U32 i = 0; i != max_fds; ++i) if (!dirs[i]) return true; return false; }
-void track_dir(U32 dir) { for (U32 i = 0; i != max_fds; ++i) if (!dirs[i]) { dirs[i] = dir; return; } }
-void untrack_dir(U32 dir) { for (U32 i = 0; i != max_fds; ++i) if (dirs[i] == dir) dirs[i] = 0; }
+bool known(int fd) {
+    for (U32 i = 0; i != max_fds; ++i)
+        if (fd >= 0 && fds[i] == fd) return true;
+    return false;
+}
+bool space() {
+    for (U32 i = 0; i != max_fds; ++i)
+        if (fds[i] < 0) return true;
+    return false;
+}
+void track(int fd) {
+    for (U32 i = 0; i != max_fds; ++i)
+        if (fds[i] < 0) {
+            fds[i] = fd;
+            ++result.open_fds;
+            return;
+        }
+}
+void untrack(int fd) {
+    for (U32 i = 0; i != max_fds; ++i)
+        if (fds[i] == fd) {
+            fds[i] = -1;
+            --result.open_fds;
+        }
+}
+bool dir_known(U32 dir) {
+    for (U32 i = 0; i != max_fds; ++i)
+        if (dir && dirs[i] == dir) return true;
+    return false;
+}
+bool dir_space() {
+    for (U32 i = 0; i != max_fds; ++i)
+        if (!dirs[i]) return true;
+    return false;
+}
+void track_dir(U32 dir) {
+    for (U32 i = 0; i != max_fds; ++i)
+        if (!dirs[i]) {
+            dirs[i] = dir;
+            return;
+        }
+}
+void untrack_dir(U32 dir) {
+    for (U32 i = 0; i != max_fds; ++i)
+        if (dirs[i] == dir) dirs[i] = 0;
+}
 // b's leftovers, through the stock posix layer (noinline: the builder scopes a's posix close here).
 __attribute__((noinline)) void close_handles() {
     for (U32 i = 0; i != max_fds; ++i)
-        if (fds[i] >= 0) { stock<0x889f285au, int>(int(fds[i])); fds[i] = -1; }   // stock posix close
+        if (fds[i] >= 0) {
+            stock<0x889f285au, int>(int(fds[i]));
+            fds[i] = -1;
+        }   // stock posix close
 #if defined(XYF_MTP)
     for (U32 i = 0; i != max_fds; ++i)
-        if (dirs[i]) { stock<0x889f44f4u, int>(U32(dirs[i])); dirs[i] = 0; }      // stock posix closedir
+        if (dirs[i]) {
+            stock<0x889f44f4u, int>(U32(dirs[i]));
+            dirs[i] = 0;
+        }      // stock posix closedir
 #endif
     result.open_fds = 0;
 }
@@ -195,7 +245,8 @@ void note(U32 op, U32 action, U32 value) {
 }
 
 U32 heap_break() {
-    cold_heap::Snapshot heap; cold_heap::Result code;
+    cold_heap::Snapshot heap;
+    cold_heap::Result code;
     return cold_heap::guard(heap, code) ? heap.brk : 0;
 }
 
@@ -218,7 +269,8 @@ bool mount(cold_storage::Stock121ReadOnlySession& storage) {
             if (!r.registered) return false;
             provider_registered = 1;
         }
-        used = 1; mounted = 1;
+        used = 1;
+        mounted = 1;
         return true;
     }
     if (used) return mounted;
@@ -242,9 +294,12 @@ bool mount(cold_storage::Stock121ReadOnlySession& storage) {
     provider_object = 0x11906448u;
     stock<0x889f3910u, void>(&provider_object, 0x119073acu);              // "/yaffs2"
     const U32 begin = word(0x8803f6bcu), end = word(0x8803f6c0u);       // Test 033: was +0/+4 (always failed)
-    r.registered = end - begin == 8 && word(begin) == reinterpret_cast<U32>(&provider_object) &&
-                   word(begin + 4) == 0x119073acu;
-    if (!r.registered) { r.mount_end = U32(storage.end()); return false; }
+    r.registered =
+        end - begin == 8 && word(begin) == reinterpret_cast<U32>(&provider_object) && word(begin + 4) == 0x119073acu;
+    if (!r.registered) {
+        r.mount_end = U32(storage.end());
+        return false;
+    }
     mounted = 1;
     return true;
 }
@@ -253,7 +308,10 @@ void unmount(cold_storage::Stock121ReadOnlySession& storage) {
     Result& r = result;
     if (!mounted) return;
     close_handles();
-    if (adopted) { mounted = 0; return; }            // Test 065: the file boot ends the shared mount
+    if (adopted) {
+        mounted = 0;
+        return;
+    }            // Test 065: the file boot ends the shared mount
     r.mount_end = U32(storage.end());
     r.mount_safe = storage.safe_to_handoff() && r.mount_end == U32(cold_storage::Result::ok);
     r.denied_writes = r.storage.denied_writes;
@@ -281,10 +339,13 @@ bool serve_install(U32 request, U32 vtable, U32 op, Stock121PeerSession& session
         return true;
     }
     const U32 executor = action == install_select || action == install_trim ? 0x889f76cau :
-                         action == install_read ? 0x889f6b7cu : action == install_write ? 0x889f6dcau : 0;
+                         action == install_read                             ? 0x889f6b7cu :
+                         action == install_write                            ? 0x889f6dcau :
+                                                                              0;
     if (!executor || word(vtable + 0x14) != executor) {
         session.reply(request, 0xffffffffu, error_access);
-        ++u.a_refused; u.a_last_refused = op | vtable << 8;
+        ++u.a_refused;
+        u.a_last_refused = op | vtable << 8;
         note(op, 0x40u + U32(action), 0xfffeu);
         return true;
     }
@@ -300,14 +361,25 @@ bool serve_install(U32 request, U32 vtable, U32 op, Stock121PeerSession& session
             selected_partition = argument;
             if (!argument) select_attempted = 0;
         } else selected_partition = 0;
-        ++u.a_selects; u.a_selected = selected_partition | select_attempted << 8;
+        ++u.a_selects;
+        u.a_selected = selected_partition | select_attempted << 8;
         break;
     }
-    case install_trim: stock<0x889f76cau, void>(request); ++u.a_trims; break;
-    case install_read: stock<0x889f6b7cu, void>(request); ++u.a_reads; break;
-    default: stock<0x889f6dcau, void>(request); ++u.a_writes; break;
+    case install_trim:
+        stock<0x889f76cau, void>(request);
+        ++u.a_trims;
+        break;
+    case install_read:
+        stock<0x889f6b7cu, void>(request);
+        ++u.a_reads;
+        break;
+    default:
+        stock<0x889f6dcau, void>(request);
+        ++u.a_writes;
+        break;
     }
-    ++result.executed; note(op, 0x40u + U32(action), word(request + 0x10));   // 0x4n: install
+    ++result.executed;
+    note(op, 0x40u + U32(action), word(request + 0x10));   // 0x4n: install
     return true;
 }
 #endif
@@ -385,26 +457,31 @@ void latch(Stock121PeerSession& session) {
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
 // The read-write window on a's read-only mount (fresh, or the adopted one): op 8 in the run entry;
 // in the write entry the first request that changes storage.
-__attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession& storage) {   // noinline: builder scope
-    if (window_open) return window_result == U32(cold_storage::Result::ok);   // not after a failed close
-    if (boot_selected()) return false;                         // never read-write on a boot partition
+__attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession& storage) { // noinline: builder scope
+    if (window_open) return window_result == U32(cold_storage::Result::ok); // not after a failed close
+    if (boot_selected()) return false; // never read-write on a boot partition
     // (009: the window opens only with nothing open, else busy): files or folders b opened in
     // the read-only entry would make the read-only unmount fail and end a's storage for this boot.
     // They stay b's; op 9 closes them.
     if (held_files()) return false;
-    if ((used && !adopted) || !mount(storage)) return false;   // v3: the adopted mount is reusable
+    if ((used && !adopted) || !mount(storage)) return false; // v3: the adopted mount is reusable
     services::U32 step = 0;
     const cold_storage::Result w = storage.open_write_window(step);
-    window_step = step; window_result = U32(w);
+    window_step = step;
+    window_result = U32(w);
     // A failed read-write mount has already restored the gates. Restore the shared read-only
     // mount too; identity, refusal or unmount failures must not attempt a new mount.
     if (w == cold_storage::Result::mount && adopted) {
         const cold_storage::Result resumed = storage.reopen_read_only();
         if (resumed != cold_storage::Result::ok) window_result = U32(resumed);
     }
-    if (w != cold_storage::Result::ok) { unmount(storage); return false; }
-    window_open = 1; window_touched = 1;
-    if (engine == entry_write) library_dirty = 1;              // (the run entry rescans after itself)
+    if (w != cold_storage::Result::ok) {
+        unmount(storage);
+        return false;
+    }
+    window_open = 1;
+    window_touched = 1;
+    if (engine == entry_write) library_dirty = 1; // (the run entry rescans after itself)
     return true;
 }
 #endif
@@ -427,7 +504,7 @@ __attribute__((noinline)) void close_engine(cold_storage::Stock121ReadOnlySessio
             window_open = 0;
             if (adopted) window_result = U32(storage.reopen_read_only());
         }
-        note(9, 0x20u, window_result);                       // 0x20: a window close (any trigger)
+        note(9, 0x20u, window_result); // 0x20: a window close (any trigger)
         if (window_open) return;
     }
 #endif
@@ -444,10 +521,10 @@ void close_between(cold_storage::Stock121ReadOnlySession& storage) {
 }
 #endif
 
-#include "storage_server_boot_probe.ipp"              // #7: read-only raw requests and fixed RAM snapshot
-#include "storage_server_marker.ipp"                  // the marker checks, rename_now
+#include "storage_server_boot_probe.ipp" // #7: read-only raw requests and fixed RAM snapshot
+#include "storage_server_marker.ipp" // the marker checks, rename_now
 
-#include "storage_server_engine.ipp"                  // serve_engine: every request in the engine
+#include "storage_server_engine.ipp" // serve_engine: every request in the engine
 
 void serve(void* context, U32 request, Stock121PeerSession& session) {
     Result& r = result;
@@ -460,40 +537,42 @@ void serve(void* context, U32 request, Stock121PeerSession& session) {
     if (!probe_mode) {
 #endif
 #if defined(XYF_USB_SERVICE)
-    if (!install_enabled && session.commands_seen() && (session.last_command() >> 8 & 0xffu) == install_item) {
-        usb_service::result.a_identity = usb_service::identity();
-        install_enabled = usb_service::result.a_identity == 0;
-        usb_service::result.a_install_enabled = install_enabled;
-        if (install_enabled && engine == entry_none) {     // install mode also serves reads
-            engine = entry_read; r.enabled = entry_read;
+        if (!install_enabled && session.commands_seen() && (session.last_command() >> 8 & 0xffu) == install_item) {
+            usb_service::result.a_identity = usb_service::identity();
+            install_enabled = usb_service::result.a_identity == 0;
+            usb_service::result.a_install_enabled = install_enabled;
+            if (install_enabled && engine == entry_none) { // install mode also serves reads
+                engine = entry_read;
+                r.enabled = entry_read;
+            }
         }
-    }
-    // The exemption from F1 holds only while the boot-partition writer is active (b's latest
-    // command is install_item; b sends command_item once the install ends, failed or not) or a boot
-    // partition is selected, not for the rest of the boot.
-    const bool install_mode = install_enabled && engine != entry_write && engine != entry_run &&
-        ((session.last_command() >> 8 & 0xffu) == install_item || boot_selected());
+        // The exemption from F1 holds only while the boot-partition writer is active (b's latest
+        // command is install_item; b sends command_item once the install ends, failed or not) or a boot
+        // partition is selected, not for the rest of the boot.
+        const bool install_mode = install_enabled && engine != entry_write && engine != entry_run &&
+                                  ((session.last_command() >> 8 & 0xffu) == install_item || boot_selected());
 #else
     const bool install_mode = false;
 #endif
-    // F1: outside install mode a boot request is b's stock bootloader (b
-    // restarted alone): no answer; the session holds it and the owner closes storage and restarts a.
-    if (!install_mode && peer_services::boot_request(vtable, op, word(request + 8), word(request + 0x18))) {
-        session.follow(request); ++r.refused; note(op, file_engine::refuse_raw_layer, 0xfffbu);
-        return;
-    }
+        // F1: outside install mode a boot request is b's stock bootloader (b
+        // restarted alone): no answer; the session holds it and the owner closes storage and restarts a.
+        if (!install_mode && peer_services::boot_request(vtable, op, word(request + 8), word(request + 0x18))) {
+            session.follow(request);
+            ++r.refused;
+            note(op, file_engine::refuse_raw_layer, 0xfffbu);
+            return;
+        }
 #if defined(XYF_USB_SERVICE)
-    // Install mode answers the boot-partition writer's requests (and refuses file requests
-    // while a boot partition is selected), except while a writable engine entry is open.
-    if (install_mode && serve_install(request, vtable, op, session))
-        return;
-    }  // !probe_mode
+        // Install mode answers the boot-partition writer's requests (and refuses file requests
+        // while a boot partition is selected), except while a writable engine entry is open.
+        if (install_mode && serve_install(request, vtable, op, session)) return;
+    } // !probe_mode
 #endif
     serve_engine(request, vtable, op, storage, session);
 }
 
 }
-#include "storage_server_timing.ipp"                  // #144: timed_serve; engine_identity
+#include "storage_server_timing.ipp" // #144: timed_serve; engine_identity
 
 namespace xy_forever { namespace storage_server {
 void install(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySession& storage) {
@@ -507,16 +586,20 @@ void finish(cold_storage::Stock121ReadOnlySession& storage) {
     a_stage.clear();
 #endif
     close_engine(storage);
-}   // the window too
+} // the window too
 #if defined(XYF_TFW_CHECK)
-bool discard_install_stage() { const bool held = a_stage.active; a_stage.clear(); return held; }
+bool discard_install_stage() {
+    const bool held = a_stage.active;
+    a_stage.clear();
+    return held;
+}
 #endif
 void adopt() { adopted = 1; }
 void close_files(cold_storage::Stock121ReadOnlySession& storage) {
 #if defined(XYF_TFW_CHECK)
     a_stage.clear();
 #endif
-    close_engine(storage);                // the read-write window first (checkpoint), then b's handles
+    close_engine(storage); // the read-write window first (checkpoint), then b's handles
     close_handles();
     mounted = 0;
 }
@@ -536,10 +619,14 @@ void tick(cold_storage::Stock121ReadOnlySession& storage, uint32_t now) {
     if (a_stage.expired(clock)) a_stage.clear();
     tfw_hash_step(storage, clock);
 #endif
-    if (!window_open || engine != entry_write) return;      // the run entry holds its own window (097)
-    if (window_touched) { window_touched = 0; window_since = now; return; }
+    if (!window_open || engine != entry_write) return; // the run entry holds its own window (097)
+    if (window_touched) {
+        window_touched = 0;
+        window_since = now;
+        return;
+    }
     if (now - window_since < window_idle_ms) return;
-    window_since = now;                                     // a failed close is tried again after another idle time
+    window_since = now; // a failed close is tried again after another idle time
     close_between(storage);
 }
 void end_writes(cold_storage::Stock121ReadOnlySession& storage) {
@@ -548,7 +635,10 @@ void end_writes(cold_storage::Stock121ReadOnlySession& storage) {
 #endif
     if (engine != entry_write) return;
     if (window_open) close_between(storage);
-    if (!window_open) { engine = entry_read; result.enabled = entry_read; }
+    if (!window_open) {
+        engine = entry_read;
+        result.enabled = entry_read;
+    }
 }
 bool library_changed() {
     if (window_open || !library_dirty) return false;
@@ -568,14 +658,14 @@ void run_engine(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySess
         session.touch(xyf_boot::clock_ms());
         const peer_services::Result s = session.poll(xyf_boot::clock_ms());
         if (s != peer_services::Result::waiting && s != peer_services::Result::choose_image) break;
-        if (session.follow_now(xyf_boot::clock_ms())) break;   // b restarted: follow it (F1)
+        if (session.follow_now(xyf_boot::clock_ms())) break; // b restarted: follow it (F1)
         if (session.commands_seen() != seen) {
             seen = session.commands_seen();
             const U32 item = session.last_command() >> 8 & 0xffu;
             if (item == engine_leave_item) {
                 close_engine(storage);
-                if (window_open) continue;            // still read-write: stay in the run entry
-                engine = entry_read;                  // home read-only serving again
+                if (window_open) continue; // still read-write: stay in the run entry
+                engine = entry_read; // home read-only serving again
                 result.enabled = entry_read;
                 return;
             }
@@ -584,10 +674,10 @@ void run_engine(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySess
 #if defined(XYF_TFW_CHECK)
     a_stage.clear();
 #endif
-    close_engine(storage);                // the read-write window first, always
-    usb_service::reset_self();            // never returns
+    close_engine(storage); // the read-write window first, always
+    usb_service::reset_self(); // never returns
 }
 #endif
 
-} }
+}}
 #endif

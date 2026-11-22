@@ -1,5 +1,7 @@
 """Selection and bounded decoding of saved Mods configuration on the host."""
-from . import native_json, usb_proto as P
+
+from . import native_json
+from . import usb_proto as P
 
 ROOT = '/yaffs2/xy-forever'
 NAMES = ('config.json', 'config.json.old', 'config.txt', 'config.old')
@@ -26,7 +28,9 @@ def fields(data, name):
         except ValueError as error:
             raise ValueError('%s: %s' % (name, error)) from error
     text = data.decode('utf-8', 'replace')
-    if not native and any(line.startswith('format=') and line.removesuffix('\r') != 'format=1' for line in text.split('\n')):
+    if not native and any(
+        line.startswith('format=') and line.removesuffix('\r') != 'format=1' for line in text.split('\n')
+    ):
         raise ValueError('%s: unsupported legacy configuration format' % name)
     return dict(line.split('=', 1) for line in text.splitlines() if '=' in line)
 

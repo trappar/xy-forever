@@ -9,5 +9,5 @@ namespace xyf { namespace unlisted_op {
 inline uint32_t status(const uint8_t* payload, uint32_t length, uint8_t last_op) {
     return !length || payload[0] > last_op ? usbp::s_unsupported : usbp::s_bad_request;
 }
-} }
+}}
 #endif

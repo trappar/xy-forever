@@ -3,8 +3,9 @@ host (tests/native/xyf_settings_test.cpp): defaults when absent (confirm on, PLA
 knob= key, one before power_on / usb (#21), a newer format (the defaults, newer set), the page rows and their texts,
 and the gate (only
 a real PLAY / STOP answers; injected keys and releases are ignored; 30 s bound, wrap-safe)."""
-from pathlib import Path
+
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,7 +23,7 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn('settings()', composite)
         self.assertIn('    const bool trial = true;\n#endif', composite)
         self.assertIn('mu::begin(mu::stock_port())', composite)
-        self.assertNotIn('kConfigMtp', (ROOT / 'target/mtp_usb.cpp').read_text())     # #186's MTP alone: gone
+        self.assertNotIn('kConfigMtp', (ROOT / 'target/mtp_usb.cpp').read_text())  # #186's MTP alone: gone
         settings = (ROOT / 'target/usb_service_settings.ipp').read_text()
         self.assertIn('bool serial_off() { return settings_record.usb == xs::usb_mtp_only; }', settings)
         self.assertIn('bool mtp_off() { return settings_record.usb == xs::usb_serial; }', settings)
@@ -32,8 +33,15 @@ class SettingsTests(unittest.TestCase):
         self.assertIn('off = type != P::t_hello && serial_refuses(type);', home_text)
         self.assertIn('else if (off) status_only(type, seq, P::s_serial_off);', home_text)
         home = (ROOT / 'target/usb_service_home.ipp').read_text()
-        wait = home.index('if (usb_deferred && !settings_load() && now() - usb_deferred_ms < usb_settings_ms) return 0;')
-        self.assertLess(wait, home.index('if (usb_deferred) { usb_deferred = 0; usb_begin(); return 0; }'))
+        wait = home.index(
+            'if (usb_deferred && !settings_load() && now() - usb_deferred_ms < usb_settings_ms) return 0;'
+        )
+        self.assertLess(
+            wait,
+            home.index(
+                'if (usb_deferred) {\n        usb_deferred = 0;\n        usb_begin();\n        return 0;\n    }'
+            ),
+        )
         a_menu = (ROOT / 'target/file_boot_a_menu.ipp').read_text()
         self.assertLess(a_menu.index('a_power_on(storage, mounted)'), a_menu.index('xyf_boot::CheckStatus& s = '))
         b_menu = (ROOT / 'target/file_boot_b_menu.ipp').read_text()

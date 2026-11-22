@@ -71,15 +71,19 @@ Reply tfw_hash_send(const char* name, uint32_t op) {
 
 Reply left_poll(bool wait) {
     assert(!wait && peer.operation);
-    if (!peer.waited) { peer.waited = true; return {busy, -1, 0}; }
+    if (!peer.waited) {
+        peer.waited = true;
+        return {busy, -1, 0};
+    }
     const U32 op = peer.operation;
     peer.operation = 0;
     switch (op) {
-    case rpc::start:
-        peer.lease = true;
-        return {done, P::s_ok, peer.declared_size};
+    case rpc::start: peer.lease = true; return {done, P::s_ok, peer.declared_size};
     case rpc::status:
-        if (!peer.reported_busy) { peer.reported_busy = true; return {done, P::s_busy, peer.final_size / 2}; }
+        if (!peer.reported_busy) {
+            peer.reported_busy = true;
+            return {done, P::s_busy, peer.final_size / 2};
+        }
         return {done, P::s_ok, peer.final_size};
     case rpc::cancel:
         peer.lease = false;
@@ -121,7 +125,7 @@ Reply close(int fd) {
     peer.file = false;
     return {done, 0, 0};
 }
-} }
+}}
 
 namespace xy_forever { namespace otp_keys {
 bool public_key(void*, Byte out[56]) {
@@ -136,7 +140,7 @@ bool aes_key(void*, U32 index, Byte out[32]) {
     for (U32 i = 0; i != 32; ++i) out[i] = Byte(i);
     return true;
 }
-} }
+}}
 
 int main(int argc, char** argv) {
     assert(argc == 5);

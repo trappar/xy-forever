@@ -18,8 +18,21 @@ enum Part : uint32_t {
     p_list = 0,       // the page's package list and saved toggles (before the build is asked for)
     p_check,          // the save's checks: base, the slot's stamp, the request
     p_job_base,       // mod job: base list, info, edits (TimingPart order from here)
-    p_job_packages, p_job_catalog, p_job_stock, p_job_patch1, p_job_link1, p_job_zero, p_job_link2,
-    p_job_set_module, p_job_patch2, p_job_crc, p_job_content, p_job_write, p_job_verify, p_job_check, p_job_finish,
+    p_job_packages,
+    p_job_catalog,
+    p_job_stock,
+    p_job_patch1,
+    p_job_link1,
+    p_job_zero,
+    p_job_link2,
+    p_job_set_module,
+    p_job_patch2,
+    p_job_crc,
+    p_job_content,
+    p_job_write,
+    p_job_verify,
+    p_job_check,
+    p_job_finish,
     p_away,           // commit: the old entry into tmp/
     p_in,             // commit: the new entry renamed in
     p_clean,          // commit: the old entry's tree removed (or a failed job's output)
@@ -31,9 +44,9 @@ enum Part : uint32_t {
     p_count
 };
 static const char* const part_names[p_count] = {
-    "list", "check", "base", "packages", "catalog", "stock", "patch1", "link1", "zero", "link2", "set_module", "patch2",
-    "crc", "content", "write", "verify", "image_check", "finish", "away", "in", "clean", "close", "stamp", "switch",
-    "switch_close", "config"};
+    "list",  "check",      "base",   "packages", "catalog", "stock",  "patch1",       "link1",       "zero",
+    "link2", "set_module", "patch2", "crc",      "content", "write",  "verify",       "image_check", "finish",
+    "away",  "in",         "clean",  "close",    "stamp",   "switch", "switch_close", "config"};
 enum Kind : uint32_t { k_none = 0, k_save, k_build, k_switch };
 struct Times {
     uint32_t kind, ok, mods, expanded, added, removed;
@@ -45,25 +58,38 @@ struct Times {
 static inline void begin(Times& t, uint32_t kind, uint32_t now, uint32_t part) {
     uint8_t* b = reinterpret_cast<uint8_t*>(&t);
     for (uint32_t i = 0; i != sizeof(Times); ++i) b[i] = 0;
-    t.kind = kind; t.begin_ms = t.mark_ms = now; t.current = part;
+    t.kind = kind;
+    t.begin_ms = t.mark_ms = now;
+    t.current = part;
 }
 static inline void lap(Times& t, uint32_t now, uint32_t part) {
     if (!t.kind) return;
     if (t.current < p_count) t.ms[t.current] += now - t.mark_ms;
-    t.mark_ms = now; t.current = part;
+    t.mark_ms = now;
+    t.current = part;
 }
 static inline bool put(char* out, uint32_t room, uint32_t& n, const char* s) {
-    for (; *s; ++s) { if (n + 1 >= room) return false; out[n++] = *s; }
+    for (; *s; ++s) {
+        if (n + 1 >= room) return false;
+        out[n++] = *s;
+    }
     return true;
 }
 static inline bool put(char* out, uint32_t room, uint32_t& n, uint32_t v) {   // no division (no libgcc on B)
-    static const uint32_t powers[10] = {1000000000u, 100000000u, 10000000u, 1000000u, 100000u, 10000u, 1000u, 100u, 10u, 1u};
+    static const uint32_t powers[10] = {1000000000u, 100000000u, 10000000u, 1000000u, 100000u,
+                                        10000u,      1000u,      100u,      10u,      1u};
     bool lead = true;
     for (uint32_t i = 0; i != 10; ++i) {
         char d = '0';
-        while (v >= powers[i]) { v -= powers[i]; ++d; }
+        while (v >= powers[i]) {
+            v -= powers[i];
+            ++d;
+        }
         if (d != '0' || i == 9) lead = false;
-        if (!lead) { if (n + 1 >= room) return false; out[n++] = d; }
+        if (!lead) {
+            if (n + 1 >= room) return false;
+            out[n++] = d;
+        }
     }
     return true;
 }
@@ -83,8 +109,7 @@ static inline uint32_t format(char* out, uint32_t room, const Times& t, uint32_t
         ok = field(out, room, n, part_names[i], t.ms[i] + (i == t.current ? now - t.mark_ms : 0u));
     ok = ok && field(out, room, n, "entry_files", t.entry_files) && field(out, room, n, "compared", t.compared) &&
          field(out, room, n, "read", t.read) && field(out, room, n, "written", t.written) &&
-         field(out, room, n, "removed_files", t.removed_files) && field(out, room, n, "bytes", t.bytes) &&
-         n + 1 < room;
+         field(out, room, n, "removed_files", t.removed_files) && field(out, room, n, "bytes", t.bytes) && n + 1 < room;
     if (!ok) return 0;
     out[n++] = '\n';
     return n;
@@ -98,12 +123,13 @@ static inline uint32_t merge(char* text, uint32_t old_n, const char* line, uint3
     uint32_t from = 0;
     while (lines + 1 > max_records || old_n - from + line_n > max_text) {   // drop the oldest
         while (text[from] != '\n') ++from;
-        ++from; --lines;
+        ++from;
+        --lines;
     }
     for (uint32_t i = 0; i != old_n - from; ++i) text[i] = text[from + i];
     uint32_t n = old_n - from;
     for (uint32_t i = 0; i != line_n; ++i) text[n++] = line[i];
     return n;
 }
-} }
+}}
 #endif

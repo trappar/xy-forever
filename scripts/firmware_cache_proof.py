@@ -10,24 +10,25 @@ them, and that failure is not cached either); a moved toolchain or changed pins 
 toolchain and pnpm's store (`pnpm install` here). The worktree and its files go in
 <private>/xy-forever/sessions/<date>-cache-proof/, removed after (--keep leaves them).
 """
+
 import datetime
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from xy_forever import paths
 
 ROOT = Path(__file__).resolve().parents[1]
 
-TURBO = Path('node_modules/.bin/turbo')       # the scratch tree's own (pnpm run would relink a shared one)
-CHANGED = 'target/ui_gfx.cpp'                # a build source
-OUTSIDE = 'scripts/check.py'                 # not one
+TURBO = Path('node_modules/.bin/turbo')  # the scratch tree's own (pnpm run would relink a shared one)
+CHANGED = 'target/ui_gfx.cpp'  # a build source
+OUTSIDE = 'scripts/check.py'  # not one
 
 
 def digest(data):
@@ -47,8 +48,15 @@ class Proof:
     def run(self, *argv, env=None):
         """(exit status, turbo's cache statuses in order, seconds) of a command in the scratch tree."""
         start = time.monotonic()
-        proc = subprocess.run([str(a) for a in argv], cwd=self.tree, env=dict(self.env, **(env or {})), text=True,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=300)
+        proc = subprocess.run(
+            [str(a) for a in argv],
+            cwd=self.tree,
+            env=dict(self.env, **(env or {})),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=300,
+        )
         return proc.returncode, re.findall(r'^cache (hit|miss)', proc.stdout, re.M), time.monotonic() - start
 
     def cached(self, task, env=None):
@@ -56,10 +64,22 @@ class Proof:
 
     def dry_status(self, env):
         """The build task's cache status (HIT or MISS) in a dry run under env: nothing is built."""
-        key = subprocess.run(['uv', 'run', '--frozen', 'scripts/firmware_cache.py', 'key'], cwd=self.tree,
-                             env=dict(self.env, **env), capture_output=True, text=True, check=True).stdout.strip()
-        run = subprocess.run([str(self.tree / TURBO), 'run', 'firmware-build', '--dry=json'], cwd=self.tree,
-                             check=True, env=dict(self.env, **env, XYF_BUILD_KEY=key), capture_output=True, text=True)
+        key = subprocess.run(
+            ['uv', 'run', '--frozen', 'scripts/firmware_cache.py', 'key'],
+            cwd=self.tree,
+            env=dict(self.env, **env),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        run = subprocess.run(
+            [str(self.tree / TURBO), 'run', 'firmware-build', '--dry=json'],
+            cwd=self.tree,
+            check=True,
+            env=dict(self.env, **env, XYF_BUILD_KEY=key),
+            capture_output=True,
+            text=True,
+        )
         return json.loads(run.stdout)['tasks'][0]['cache']['status']
 
     def record(self, case, ok, detail):
@@ -73,8 +93,12 @@ class Proof:
         snap = snapshot(self.tree) if status == 0 else None
         if same_as is not None:
             ok = ok and snap == same_as
-        self.record(case, ok, '%s, exit %d, %.1f s%s' % ('/'.join(seen) or 'no task', status, seconds,
-                                                         ', bytes identical' if same_as is not None and ok else ''))
+        self.record(
+            case,
+            ok,
+            '%s, exit %d, %.1f s%s'
+            % ('/'.join(seen) or 'no task', status, seconds, ', bytes identical' if same_as is not None and ok else ''),
+        )
         return snap
 
 
@@ -89,10 +113,12 @@ def main(argv=None):
     session = paths.SESSIONS / (datetime.date.today().isoformat() + '-cache-proof')
     tree, private = session / 'tree', session / 'private'
     shutil.rmtree(session, ignore_errors=True)
-    subprocess.run(['git', 'worktree', 'add', '--force', '--detach', '--quiet', str(tree), 'HEAD'], cwd=ROOT,
-                   check=True)
-    subprocess.run(['pnpm', 'install', '--frozen-lockfile', '--offline', '--silent'], cwd=tree, check=True,
-                   timeout=300)                 # from the store pnpm install filled for this checkout
+    subprocess.run(
+        ['git', 'worktree', 'add', '--force', '--detach', '--quiet', str(tree), 'HEAD'], cwd=ROOT, check=True
+    )
+    subprocess.run(
+        ['pnpm', 'install', '--frozen-lockfile', '--offline', '--silent'], cwd=tree, check=True, timeout=300
+    )  # from the store pnpm install filled for this checkout
     env = {k: v for k, v in os.environ.items() if k not in ('VIRTUAL_ENV', 'XYF_BUILD_KEY')}
     proof = Proof(tree, dict(env, TURBO_TELEMETRY_DISABLED='1'))
     try:
@@ -102,26 +128,48 @@ def main(argv=None):
         original = edit(tree / CHANGED, '\n// cache proof\n')
         changed = proof.build_case('%s changed: miss, rebuilt' % CHANGED, 'miss')
         manifest = json.loads((tree / 'build/product/manifest.json').read_text())
-        proof.record('  ... the rebuild hashed the changed file', changed != first and
-                     manifest['source_sha256'][CHANGED] == digest((tree / CHANGED).read_bytes()), 'manifest')
+        proof.record(
+            '  ... the rebuild hashed the changed file',
+            changed != first and manifest['source_sha256'][CHANGED] == digest((tree / CHANGED).read_bytes()),
+            'manifest',
+        )
         proof.build_case('changed, again: hit, same bytes as its build', 'hit', changed)
 
         candidate = tree / 'build/product/candidate.ldr'
         candidate.write_bytes(b'\0' + candidate.read_bytes()[1:])
-        key = subprocess.run(['uv', 'run', '--frozen', 'scripts/firmware_cache.py', 'key'], cwd=tree, env=proof.env,
-                             capture_output=True, text=True, check=True).stdout.strip()
+        key = subprocess.run(
+            ['uv', 'run', '--frozen', 'scripts/firmware_cache.py', 'key'],
+            cwd=tree,
+            env=proof.env,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
         for n in (1, 2):
-            status, seen, seconds = proof.run(tree / TURBO, 'run', 'firmware-verify', '--only', '--cache=local:rw',
-                                              '--ui=stream', '--log-prefix=none',
-                                              env=dict(XYF_BUILD_KEY=key))
-            proof.record('tampered candidate, verify run %d: miss, fails' % n, seen == ['miss'] and status != 0,
-                         '%s, exit %d, %.1f s' % ('/'.join(seen), status, seconds))
+            status, seen, seconds = proof.run(
+                tree / TURBO,
+                'run',
+                'firmware-verify',
+                '--only',
+                '--cache=local:rw',
+                '--ui=stream',
+                '--log-prefix=none',
+                env=dict(XYF_BUILD_KEY=key),
+            )
+            proof.record(
+                'tampered candidate, verify run %d: miss, fails' % n,
+                seen == ['miss'] and status != 0,
+                '%s, exit %d, %.1f s' % ('/'.join(seen), status, seconds),
+            )
         status, seen, seconds = proof.cached('verify')
-        proof.record('verify: build hit restores, verify passes', seen == ['hit', 'miss'] and status == 0 and
-                     snapshot(tree) == changed, '%s, exit %d, %.1f s' % ('/'.join(seen), status, seconds))
+        proof.record(
+            'verify: build hit restores, verify passes',
+            seen == ['hit', 'miss'] and status == 0 and snapshot(tree) == changed,
+            '%s, exit %d, %.1f s' % ('/'.join(seen), status, seconds),
+        )
 
         (tree / CHANGED).write_bytes(original)
-        proof.build_case('reverted: hit, the first build\'s bytes', 'hit', first)
+        proof.build_case("reverted: hit, the first build's bytes", 'hit', first)
         original = edit(tree / OUTSIDE, '\n# cache proof\n')
         proof.build_case('comment in %s: hit, same bytes' % OUTSIDE, 'hit', first)
         (tree / OUTSIDE).write_bytes(original)
@@ -133,10 +181,17 @@ def main(argv=None):
         data[-1] ^= 1
         (stock / 'os.ldr').write_bytes(bytes(data))
         for n in (1, 2):
-            proof.build_case('stock os.ldr changed, run %d: miss, refused' % n, 'miss', fails=True,
-                             env=dict(XYF_PRIVATE=str(private)))
-        proof.record('toolchain moved: miss (dry run)', proof.dry_status(dict(XYF_TOOLCHAIN=str(private / 'tc'))) ==
-                     'MISS', 'XYF_TOOLCHAIN elsewhere')
+            proof.build_case(
+                'stock os.ldr changed, run %d: miss, refused' % n,
+                'miss',
+                fails=True,
+                env=dict(XYF_PRIVATE=str(private)),
+            )
+        proof.record(
+            'toolchain moved: miss (dry run)',
+            proof.dry_status(dict(XYF_TOOLCHAIN=str(private / 'tc'))) == 'MISS',
+            'XYF_TOOLCHAIN elsewhere',
+        )
         original = edit(tree / 'toolchains.json', '\n')
         proof.record('toolchain pins changed: miss (dry run)', proof.dry_status({}) == 'MISS', 'toolchains.json')
         (tree / 'toolchains.json').write_bytes(original)

@@ -39,56 +39,94 @@ Stages:
 Evidence: ../private/xy-forever/sessions/<date>-mod-boot-<n>/ (sim: -sim-mod-boot-, removed when
 everything passed unless --keep-evidence). Exit 0 nothing failed, 1 FAIL, 2 usage, 3 NEED.
 """
+
 import argparse
-from datetime import datetime, timezone
 import hashlib
 import json
-from pathlib import Path
 import sys
 import time
 import zlib
+from datetime import datetime, timezone
+from pathlib import Path
 
 import device_pass as dp
-from xy_forever import xyf_host as host
+
 from xy_forever import modpatch, package_records, paths, xyf_entry
+from xy_forever import xyf_host as host
 from xy_forever.ldr import inspect_ldr, parse_ldr
 
 StepFail, StepSkip = dp.StepFail, dp.StepSkip
 SCRATCH = 'xyf-mods-test'
 LIBRARY = dp.LIBRARY
-ENTRY = 0x11a00000
+ENTRY = 0x11A00000
 PACKAGES = paths.PUBLISHED_MODS
 CATALOG = paths.CATALOG_121
-PUT_KIB_S, GET_KIB_S = 158.0, 168.0                         # measured in a build 166 device pass
-LOOK_FOR = ('On the OP-XY, look for: the screen goes dark, then the normal OP-XY 1.2.1 start-up and its main screen '
-            'within about 15 s; keys and sound work (play a few notes on track 1). The mod machines are in the '
-            'menus only if --content wrote the content delta. A black screen, a freeze or a restart '
-            'loop: the image did not boot.')
+PUT_KIB_S, GET_KIB_S = 158.0, 168.0  # measured in a build 166 device pass
+LOOK_FOR = (
+    'On the OP-XY, look for: the screen goes dark, then the normal OP-XY 1.2.1 start-up and its main screen '
+    'within about 15 s; keys and sound work (play a few notes on track 1). The mod machines are in the '
+    'menus only if --content wrote the content delta. A black screen, a freeze or a restart '
+    'loop: the image did not boot.'
+)
 CONTENT = '/yaffs2/content'
 CATALOG_LEAF = 'op1_factory.json'
-RECOVERY = ('RECOVERY: power off, then power on holding PLAY, release at the logo: XY Forever\'s menu returns '
-            'and the default (%s) is unchanged. Then: python3 scripts/mod_boot.py --cleanup')
+RECOVERY = (
+    "RECOVERY: power off, then power on holding PLAY, release at the logo: XY Forever's menu returns "
+    'and the default (%s) is unchanged. Then: python3 scripts/mod_boot.py --cleanup'
+)
 
 STAGES = (
     ('check', (('check', 'HELLO + STATUS (else NEED, exit 3)'),)),
-    ('assemble', (('assemble', 'native assembly; patch/verify ok, base known, entry 0x11a00000; LDR checks; SHA-256'),)),
-    ('upload', (('entry-free', 'ls firmware/: <id> absent (or --replace), not the default'),
-                ('put-os', 'mkdir firmware/<id>; put os.ldr (~%g KiB/s)' % PUT_KIB_S),
-                ('put-info', 'put info.txt (strict manifest, type=firmware)'),
-                ('ls-entry', 'ls firmware/<id>: both files, right sizes'),
-                ('read-back', 'get os.ldr (whole file, ~%g KiB/s): SHA-256 equal' % GET_KIB_S),
-                ('library', 'window closed: menu catalog lists <id> usable; firmware/ lists it; default unchanged'))),
-    ('content', (('content-save', 'get content/op1_factory.json (SHA-256) and any delta file already there; '
-                                  'no saved catalog: FAIL, nothing written'),
-                 ('content-put', 'mkdir missing folders; put display/<id>.svg, presets/<id>/*.json, then '
-                                 'op1_factory.json (each read back)'))),
+    (
+        'assemble',
+        (('assemble', 'native assembly; patch/verify ok, base known, entry 0x11a00000; LDR checks; SHA-256'),),
+    ),
+    (
+        'upload',
+        (
+            ('entry-free', 'ls firmware/: <id> absent (or --replace), not the default'),
+            ('put-os', 'mkdir firmware/<id>; put os.ldr (~%g KiB/s)' % PUT_KIB_S),
+            ('put-info', 'put info.txt (strict manifest, type=firmware)'),
+            ('ls-entry', 'ls firmware/<id>: both files, right sizes'),
+            ('read-back', 'get os.ldr (whole file, ~%g KiB/s): SHA-256 equal' % GET_KIB_S),
+            ('library', 'window closed: menu catalog lists <id> usable; firmware/ lists it; default unchanged'),
+        ),
+    ),
+    (
+        'content',
+        (
+            (
+                'content-save',
+                'get content/op1_factory.json (SHA-256) and any delta file already there; '
+                'no saved catalog: FAIL, nothing written',
+            ),
+            (
+                'content-put',
+                'mkdir missing folders; put display/<id>.svg, presets/<id>/*.json, then '
+                'op1_factory.json (each read back)',
+            ),
+        ),
+    ),
     ('accept', (('dry-run-named', 'dry run of a named entry (none exists: SKIP)'),)),
-    ('boot-once', (('boot-prepare', 'slots: the default, no once; menu catalog lists <id> usable'),
-                   ('boot', 'boot <id> --yes-boot (library.boot, once); USB goes'))),
-    ('cleanup', (('cleanup-state', 'slots: default = the recorded one, no once'),
-                 ('cleanup-content', 'catalog put back (saved or --official-catalog), SHA-256 read back; '
-                                     'replaced files put back, added files and folders removed'),
-                 ('cleanup-remove', 'rm os.ldr, info.txt, rmdir (unless --keep); ls firmware/: gone'))),
+    (
+        'boot-once',
+        (
+            ('boot-prepare', 'slots: the default, no once; menu catalog lists <id> usable'),
+            ('boot', 'boot <id> --yes-boot (library.boot, once); USB goes'),
+        ),
+    ),
+    (
+        'cleanup',
+        (
+            ('cleanup-state', 'slots: default = the recorded one, no once'),
+            (
+                'cleanup-content',
+                'catalog put back (saved or --official-catalog), SHA-256 read back; '
+                'replaced files put back, added files and folders removed',
+            ),
+            ('cleanup-remove', 'rm os.ldr, info.txt, rmdir (unless --keep); ls firmware/: gone'),
+        ),
+    ),
     ('end', (('keepalive', 'real device, not booted: scripts/keepalive.sh on the folder'),)),
 )
 
@@ -99,8 +137,11 @@ def assemble(generation, machines, stock, catalog, out, official=None, extension
     out.mkdir(parents=True, exist_ok=True)
     binary = modpatch.build(out.parent / 'bin', run=modpatch._cached())
     job = out.parent / 'job.txt'
-    job.write_text(modpatch.job_text(generation, list(machines), list(extensions), stock, catalog,
-                                     official=official, unverified=unverified))
+    job.write_text(
+        modpatch.job_text(
+            generation, list(machines), list(extensions), stock, catalog, official=official, unverified=unverified
+        )
+    )
     return modpatch.run(binary, job, out)
 
 
@@ -120,8 +161,10 @@ def image_problems(data, report=None, known=True):
     if report is not None:
         steps = tuple(report.get(k) for k in ('input', 'link_status', 'patch', 'verify', 'content', 'copy'))
         if steps != ('ok',) * 6:
-            problems.append('assembly input/link/patch/verify/content/copy = %s (%s)' % (
-                '/'.join(map(str, steps)), report.get('patch_detail') or report.get('link_detail') or ''))
+            problems.append(
+                'assembly input/link/patch/verify/content/copy = %s (%s)'
+                % ('/'.join(map(str, steps)), report.get('patch_detail') or report.get('link_detail') or '')
+            )
         if report.get('entry') != ENTRY:
             problems.append('adapter entry %s' % report.get('entry'))
         if report.get('sha256') != hashlib.sha256(data).hexdigest():
@@ -132,13 +175,21 @@ def image_problems(data, report=None, known=True):
 
 
 def info_for(data, name, version):
-    return xyf_entry.manifest_text(dict(type='firmware', name=name, version=version, kind='open-xy', bytes=len(data),
-                                        crc32='%08x' % (zlib.crc32(data) & 0xffffffff),
-                                        sha256=hashlib.sha256(data).hexdigest())).encode('ascii')
+    return xyf_entry.manifest_text(
+        dict(
+            type='firmware',
+            name=name,
+            version=version,
+            kind='open-xy',
+            bytes=len(data),
+            crc32='%08x' % (zlib.crc32(data) & 0xFFFFFFFF),
+            sha256=hashlib.sha256(data).hexdigest(),
+        )
+    ).encode('ascii')
 
 
 class ModBoot(dp.Pass):
-    allow_boot = True              # its boot step: library.boot of the scratch entry
+    allow_boot = True  # its boot step: library.boot of the scratch entry
 
     def entry_path(self, leaf=''):
         return '%s/%s%s' % (LIBRARY, self.opts.id, '/' + leaf if leaf else '')
@@ -166,8 +217,11 @@ class ModBoot(dp.Pass):
             raise StepFail('; '.join(problems))
         self.state['image'] = data
         self.state['sha256'] = hashlib.sha256(data).hexdigest()
-        delta = '' if report is None else '; content delta %d files in %s' % (
-            report['files'], (self.folder / 'assembled/content').name)
+        delta = (
+            ''
+            if report is None
+            else '; content delta %d files in %s' % (report['files'], (self.folder / 'assembled/content').name)
+        )
         return '%s: %d B, sha256 %s%s' % (o.label, len(data), self.state['sha256'], delta)
 
     # -- upload --------------------------------------------------------------------------------
@@ -183,7 +237,10 @@ class ModBoot(dp.Pass):
         if self.state['exists']:
             if not self.opts.replace:
                 raise StepFail('firmware/%s exists: rerun with --replace, or --cleanup first' % self.opts.id)
-            return 'firmware/%s exists: --replace, its info.txt %s' % (self.opts.id, self.remove(self.entry_path('info.txt')))
+            return 'firmware/%s exists: --replace, its info.txt %s' % (
+                self.opts.id,
+                self.remove(self.entry_path('info.txt')),
+            )
         return 'firmware/%s absent; default %s' % (self.opts.id, default)
 
     def put(self, leaf, data):
@@ -199,13 +256,17 @@ class ModBoot(dp.Pass):
         data = self.state['image']
         seconds = self.put('os.ldr', data)
         self.state['put_s'] = round(seconds, 1)
-        return '%d B in %.1f s (%.1f KiB/s; device CRC checked)' % (len(data), seconds, len(data) / 1024.0 / max(seconds, 1e-6))
+        return '%d B in %.1f s (%.1f KiB/s; device CRC checked)' % (
+            len(data),
+            seconds,
+            len(data) / 1024.0 / max(seconds, 1e-6),
+        )
 
     def step_put_info(self):
         info = info_for(self.state['image'], self.opts.label, self.opts.version)
         self.put('info.txt', info)
         self.state['info'] = info
-        self.state['window'] = self.window_status()[2]          # right after the last write: still open
+        self.state['window'] = self.window_status()[2]  # right after the last write: still open
         return info.decode().strip().replace('\n', ' ')
 
     def step_ls_entry(self):
@@ -244,7 +305,12 @@ class ModBoot(dp.Pass):
         if default != self.state['default']:
             raise StepFail('default is %s, was %s' % (default, self.state['default']))
         return 'menu lists %s %r usable (item %d of %d); default %s unchanged' % (
-            self.opts.id, item[0]['name'], catalog['items'].index(item[0]), catalog['count'], default)
+            self.opts.id,
+            item[0]['name'],
+            catalog['items'].index(item[0]),
+            catalog['count'],
+            default,
+        )
 
     # -- content -------------------------------------------------------------------------------
     def listing(self, path):
@@ -254,7 +320,7 @@ class ModBoot(dp.Pass):
             return None
         if code:
             raise StepFail('ls %s: %s' % (path, dp.why(code, out, err)))
-        return {e['name']: (e['type'], e['size']) for e in json.loads(out[out.index('['):])}
+        return {e['name']: (e['type'], e['size']) for e in json.loads(out[out.index('[') :])}
 
     def get_saved(self, remote, local):
         self.ok(['get', remote, local])
@@ -270,44 +336,60 @@ class ModBoot(dp.Pass):
             sha = self.get_saved(catalog, saved / CATALOG_LEAF)
         except StepFail as error:
             raise StepFail('the device catalog could not be saved first (%s): no content written' % error)
-        record = dict(folder=str(self.folder), catalog=dict(saved='content-saved/' + CATALOG_LEAF, sha256=sha),
-                      replaced=[], added_files=[], added_dirs=[], files=[rel for rel, _ in delta])
+        record = dict(
+            folder=str(self.folder),
+            catalog=dict(saved='content-saved/' + CATALOG_LEAF, sha256=sha),
+            replaced=[],
+            added_files=[],
+            added_dirs=[],
+            files=[rel for rel, _ in delta],
+        )
         for rel, _ in delta:
             if rel == CATALOG_LEAF:
                 continue
             parts, remote = rel.split('/'), '%s/%s' % (CONTENT, rel)
-            for depth in range(1, len(parts)):                      # the folders the put creates
+            for depth in range(1, len(parts)):  # the folders the put creates
                 folder = '%s/%s' % (CONTENT, '/'.join(parts[:depth]))
-                parent = self.listing(folder.rsplit('/', 1)[0]) if folder.rsplit('/', 1)[0] not in \
-                    record['added_dirs'] else {}
+                parent = (
+                    self.listing(folder.rsplit('/', 1)[0])
+                    if folder.rsplit('/', 1)[0] not in record['added_dirs']
+                    else {}
+                )
                 if folder not in record['added_dirs'] and (parent is None or parts[depth - 1] not in parent):
                     record['added_dirs'].append(folder)
             folder = remote.rsplit('/', 1)[0]
             here = None if folder in record['added_dirs'] else self.listing(folder)
             if here and parts[-1] in here:
                 local = saved / rel.replace('/', '__')
-                record['replaced'].append(dict(remote=remote, saved='content-saved/' + local.name,
-                                               sha256=self.get_saved(remote, local)))
+                record['replaced'].append(
+                    dict(remote=remote, saved='content-saved/' + local.name, sha256=self.get_saved(remote, local))
+                )
             else:
                 record['added_files'].append(remote)
         self.state['content'] = record
         self.state['content_delta'] = delta
-        return ('catalog saved (sha256 %s); delta of %d files from %s: %d new, %d replace a file (saved), '
-                '%d new folders' % (sha, len(delta), source, len(record['added_files']), len(record['replaced']),
-                                    len(record['added_dirs'])))
+        return (
+            'catalog saved (sha256 %s); delta of %d files from %s: %d new, %d replace a file (saved), '
+            '%d new folders'
+            % (sha, len(delta), source, len(record['added_files']), len(record['replaced']), len(record['added_dirs']))
+        )
 
     def step_content_put(self):
         record, delta = self.state['content'], self.state['content_delta']
         for folder in record['added_dirs']:
             self.ok(['mkdir', folder])
-        for rel, local in delta:                                     # the catalog last (content_delta)
+        for rel, local in delta:  # the catalog last (content_delta)
             self.ok(['put', local, '%s/%s' % (CONTENT, rel)])
         return 'mkdir %d; put %d files (each read back identical), op1_factory.json last' % (
-            len(record['added_dirs']), len(delta))
+            len(record['added_dirs']),
+            len(delta),
+        )
 
     def step_dry_run_named(self):
-        raise StepSkip('no dry run of a named entry exists: CONTINUE mode 1 dry-runs the default only '
-                       '(docs/protocol/cmd-boot.md, 0x31)')
+        raise StepSkip(
+            'no dry run of a named entry exists: CONTINUE mode 1 dry-runs the default only '
+            '(docs/protocol/cmd-boot.md, 0x31)'
+        )
 
     # -- boot once -----------------------------------------------------------------------------
     def slot_fields(self, tag):
@@ -330,7 +412,9 @@ class ModBoot(dp.Pass):
         self.ok(['boot', self.opts.id, '--yes-boot'])
         self.gone(dp.T_DRY, 'boot (library.boot)')
         return 'library.boot ok; USB gone: %s is booting once (default %s unchanged)' % (
-            self.opts.id, self.state['default'])
+            self.opts.id,
+            self.state['default'],
+        )
 
     # -- cleanup -------------------------------------------------------------------------------
     def step_cleanup_state(self):
@@ -363,8 +447,10 @@ class ModBoot(dp.Pass):
                 self.ok(['put', Path(record['folder']) / r['saved'], r['remote']])
             removed = [self.remove(f) for f in record['added_files']]
             folders = [self.remove('--dir', d) for d in sorted(record['added_dirs'], key=len, reverse=True)]
-            done.append('%d replaced files put back; %d added files removed (%s); %d added folders removed' % (
-                len(record['replaced']), len(removed), '/'.join(sorted(set(removed))) or '-', len(folders)))
+            done.append(
+                '%d replaced files put back; %d added files removed (%s); %d added folders removed'
+                % (len(record['replaced']), len(removed), '/'.join(sorted(set(removed))) or '-', len(folders))
+            )
         return '; '.join(done)
 
     def step_cleanup_remove(self):
@@ -395,9 +481,18 @@ def content_delta(source):
     for path in sorted(p for p in source.rglob('*') if p.is_file()):
         rel = path.relative_to(source).as_posix()
         parts = rel.split('/')
-        allowed = rel == CATALOG_LEAF or (len(parts) == 2 and parts[0] == 'display' and rel.endswith('.svg') and
-                                          xyf_entry.ID.fullmatch(parts[1][:-4])) or \
-            (len(parts) == 3 and parts[0] == 'presets' and rel.endswith('.json') and xyf_entry.ID.fullmatch(parts[1]))
+        allowed = (
+            rel == CATALOG_LEAF
+            or (
+                len(parts) == 2
+                and parts[0] == 'display'
+                and rel.endswith('.svg')
+                and xyf_entry.ID.fullmatch(parts[1][:-4])
+            )
+            or (
+                len(parts) == 3 and parts[0] == 'presets' and rel.endswith('.json') and xyf_entry.ID.fullmatch(parts[1])
+            )
+        )
         if not allowed:
             raise StepFail('content delta: %s is not display/<id>.svg, presets/<id>/*.json or %s' % (rel, CATALOG_LEAF))
         out.append((rel, path))
@@ -410,7 +505,7 @@ def recorded_content(sessions, sim):
     for folder in sorted(Path(sessions).glob('*-%s-*' % kind), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             summary = json.loads((folder / 'summary.json').read_text())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             continue
         if summary.get('mode') == 'run' and summary.get('content'):
             return summary['content']
@@ -423,7 +518,7 @@ def recorded_default(sessions, sim):
     for folder in sorted(Path(sessions).glob('*-%s-*' % kind), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             summary = json.loads((folder / 'summary.json').read_text())
-        except (OSError, ValueError):
+        except OSError, ValueError:
             continue
         if summary.get('mode') == 'run' and summary.get('default_at_start'):
             return summary['default_at_start']
@@ -442,10 +537,20 @@ def parse_args(argv):
     p.add_argument('--catalog', type=Path, default=CATALOG)
     p.add_argument('--id', default=SCRATCH, help='scratch entry id (default %s)' % SCRATCH)
     p.add_argument('--replace', action='store_true', help='overwrite the scratch entry if it exists')
-    p.add_argument('--content', nargs='?', const='', metavar='DIR', help='after upload: save the device catalog, '
-                   'then write the content delta (DIR: one made earlier, needed with --image; default: the assembled one)')
-    p.add_argument('--official-catalog', type=Path, metavar='PATH', help='with --cleanup: put this op1_factory.json '
-                   'back instead of the one the content run saved')
+    p.add_argument(
+        '--content',
+        nargs='?',
+        const='',
+        metavar='DIR',
+        help='after upload: save the device catalog, '
+        'then write the content delta (DIR: one made earlier, needed with --image; default: the assembled one)',
+    )
+    p.add_argument(
+        '--official-catalog',
+        type=Path,
+        metavar='PATH',
+        help='with --cleanup: put this op1_factory.json back instead of the one the content run saved',
+    )
     p.add_argument('--boot-once', action='store_true', help='after upload: boot the entry once (leaves XY Forever)')
     p.add_argument('--cleanup', action='store_true', help='alone: check default/once, remove the scratch entry')
     p.add_argument('--keep', action='store_true', help='with --cleanup: keep the entry')
@@ -482,12 +587,16 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     o = parse_args(argv)
     o.machines = [m.strip() for m in o.mods.split(',') if m.strip()]
     o.content_dir = Path(o.content) if o.content else None
-    o.label = ('Mods test: image' if o.image else 'Mods test: ' + ','.join(o.machines))
+    o.label = 'Mods test: image' if o.image else 'Mods test: ' + ','.join(o.machines)
     if len(o.label) > 47:
         o.label = 'Mods test: %d machines' % len(o.machines)
-    o.version = ('image' if o.image else
-                 package_records.read_values(o.packages / 'base').get('generation', 'mods')
-                 if package_records.local_name(o.packages / 'base') else 'mods')
+    o.version = (
+        'image'
+        if o.image
+        else package_records.read_values(o.packages / 'base').get('generation', 'mods')
+        if package_records.local_name(o.packages / 'base')
+        else 'mods'
+    )
     try:
         chosen = chosen_stages(o)
         if not xyf_entry.ID.fullmatch(o.id):
@@ -521,7 +630,9 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
             if stage not in chosen:
                 continue
             if failed and stage != 'end':
-                rows.append(dict(stage=stage, step=name, result='SKIP', seconds=0.0, detail='after FAIL of %s' % failed))
+                rows.append(
+                    dict(stage=stage, step=name, result='SKIP', seconds=0.0, detail='after FAIL of %s' % failed)
+                )
                 continue
             if run.folder is None and stage != 'check':
                 run.folder = dp.new_folder(run.sessions, kind)
@@ -535,20 +646,34 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
             if row['result'] == 'FAIL':
                 failed = '%s/%s' % (stage, name)
     code = dp.EXIT_FAIL if failed else dp.EXIT_PASS
-    summary = dict(format='xyf-mod-boot/1', mode='cleanup' if o.cleanup else 'run', argv=list(argv or sys.argv[1:]),
-                   started_utc=started.isoformat(), finished_utc=datetime.now(timezone.utc).isoformat(),
-                   entry=o.id, selection=o.machines, image_bytes=len(run.state.get('image', b'')) or None,
-                   image_sha256=run.state.get('sha256'), put_s=run.state.get('put_s'), get_s=run.state.get('get_s'),
-                   default_at_start=run.state.get('default'), booted=bool(run.state.get('booted')),
-                   content=run.state.get('content'),
-                   keepalives_stopped=stopped, steps=rows, exit_code=code)
+    summary = dict(
+        format='xyf-mod-boot/1',
+        mode='cleanup' if o.cleanup else 'run',
+        argv=list(argv or sys.argv[1:]),
+        started_utc=started.isoformat(),
+        finished_utc=datetime.now(timezone.utc).isoformat(),
+        entry=o.id,
+        selection=o.machines,
+        image_bytes=len(run.state.get('image', b'')) or None,
+        image_sha256=run.state.get('sha256'),
+        put_s=run.state.get('put_s'),
+        get_s=run.state.get('get_s'),
+        default_at_start=run.state.get('default'),
+        booted=bool(run.state.get('booted')),
+        content=run.state.get('content'),
+        keepalives_stopped=stopped,
+        steps=rows,
+        exit_code=code,
+    )
     (run.folder / 'summary.json').write_text(json.dumps(summary, indent=1) + '\n')
     booted = run.state.get('booted')
-    keep = booted or run.state.get('content')                      # the saved catalog lives in the folder
+    keep = booted or run.state.get('content')  # the saved catalog lives in the folder
     print(dp.table(rows, dp.settle_folder(run.folder, o.sim, code == dp.EXIT_PASS and not keep, o.keep_evidence)))
     if booted:
-        print('BOOTING firmware/%s once (%s, %d B, sha256 %s).' % (o.id, o.label, len(run.state['image']),
-                                                                  run.state['sha256']))
+        print(
+            'BOOTING firmware/%s once (%s, %d B, sha256 %s).'
+            % (o.id, o.label, len(run.state['image']), run.state['sha256'])
+        )
         print(LOOK_FOR)
         print(RECOVERY % run.state['default'])
     return code

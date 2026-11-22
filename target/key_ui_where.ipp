@@ -11,7 +11,9 @@ volatile uint32_t where_shown __attribute__((section(".data"))) = 0;
 volatile uint32_t where_screen __attribute__((section(".data"))) = 0;
 void present();
 // From present, after the screen: the label in the top-right corner (where.hpp draw).
-void where_draw(uint16_t* fb) { if (where_shown) xyf::where::draw(fb, where_shown); }
+void where_draw(uint16_t* fb) {
+    if (where_shown) xyf::where::draw(fb, where_shown);
+}
 }
 namespace xy_forever { namespace key_ui {
 uint32_t where_enter(uint32_t code) {
@@ -34,7 +36,7 @@ void where_leave(uint32_t before) {
     where_shown = 0;
     if (where_screen) present();
 }
-} }
+}}
 namespace {
 #else
 void where_draw(uint16_t*) {}

@@ -16,7 +16,10 @@ pthread_t main_thread;
 bool have_main = false;
 }
 
-void host_start() { main_thread = pthread_self(); have_main = true; }
+void host_start() {
+    main_thread = pthread_self();
+    have_main = true;
+}
 
 void host_poll() {
     if (!have_main || !pthread_equal(pthread_self(), main_thread)) return;
@@ -56,7 +59,10 @@ uint32_t fetch() {
     uint8_t sector[512];
     read_retried(0, 1, sector);
     bool found = sector[12] != 0;
-    if (!found && !select(2)) { read_retried(0, 1, sector); found = sector[12] != 0; }
+    if (!found && !select(2)) {
+        read_retried(0, 1, sector);
+        found = sector[12] != 0;
+    }
     const bool model_crypto = boot_crypto_model(sector);
     uint32_t size = 0;
     memcpy(&size, sector + 4, 4);
@@ -64,14 +70,16 @@ uint32_t fetch() {
         for (uint32_t at = 0, left = (size >> 9) + 1; left;) {
             const uint32_t n = left < 128 ? left : 128;
             read_retried(1 + at, n, host(0x8a000000u + at * 512u));
-            at += n; left -= n;
+            at += n;
+            left -= n;
         }
     if (found && size <= 0x800000u && model_crypto) boot_crypt(static_cast<uint8_t*>(host(0x8a000000u)), size);
     while (select(0)) {}
     // The simulator's boot partition file is only the evidence of installs (it starts empty), and its
     // bytes are never run: an empty or invalid one counts as XY Forever read (the stock bootloader would
     // log "failed to find any active firmware" and not boot [L]; CRC not checked).
-    if (!found || size > 0x800000u) log("stock bootloader (B): no active firmware in the file: XY Forever taken as read");
+    if (!found || size > 0x800000u)
+        log("stock bootloader (B): no active firmware in the file: XY Forever taken as read");
     return found && size <= 0x800000u && size ? size : 1;
 }
 
@@ -96,16 +104,22 @@ void b_bootloader() {
     b_boot_a();
     log("stock bootloader (B): handshake, then the boot partition through A (every request waits without a bound)");
     uint32_t r = generic(1, 0);                        // 889f55a2: asserts init_request.m_result == 0xfedebeda [L]
-    if (r != 0xfedebedau) { log("stock bootloader (B): handshake answered %08x: assert, halted", r); exit_processor(exit_halt); }
+    if (r != 0xfedebedau) {
+        log("stock bootloader (B): handshake answered %08x: assert, halted", r);
+        exit_processor(exit_halt);
+    }
     r = generic(10, 0x12345678u);                      // 889f55f4: asserts the complement [L]
-    if (r != 0xedcba987u) { log("stock bootloader (B): op 10 answered %08x: assert, halted", r); exit_processor(exit_halt); }
+    if (r != 0xedcba987u) {
+        log("stock bootloader (B): op 10 answered %08x: assert, halted", r);
+        exit_processor(exit_halt);
+    }
     const uint32_t length = fetch();
     // 88a34a00 [L]: any nonzero length counts as read: release A (op 7, 889f7b56, no bound), teardown,
     // RAM boot of 0x8a000000. After a refused select that is what memory still holds: [I] (016 §1) the
     // XY Forever os.ldr the last boot loaded there, so XY Forever's cold entry again.
     generic(7, 0);
-    log("stock bootloader (B): %s (length %u), released A: booting from RAM", leftover
-        ? "select refused, 0x8a000000 boots as it is" : "image read", length);
+    log("stock bootloader (B): %s (length %u), released A: booting from RAM",
+        leftover ? "select refused, 0x8a000000 boots as it is" : "image read", length);
 }
 
 // 88a35b90 [L]: A serves B's requests until B's release (op 7, the slave ISR sets the release byte,
@@ -113,11 +127,17 @@ void b_bootloader() {
 // (1, 10 echoes for any argument [L 889f7af4], 5, 7) from sim/link.cpp; class requests come here.
 void a_bootloader() {
     log("stock bootloader (A): slave open, serving B until its release (op 7), no time-out");
-    w32(0x8804f6e0u, primary); w32(primary, 0); w32(primary + 4, 0);
+    w32(0x8804f6e0u, primary);
+    w32(primary, 0);
+    w32(primary + 4, 0);
     w32(0x20057004u, r32(0x20057004u) | 0x2000u);      // slave open (link.cpp answers only then)
     for (;;) {
         a_service();
-        if (const uint32_t request = r32(primary + 4)) { w32(primary + 4, 0); a_boot_request(request); continue; }
+        if (const uint32_t request = r32(primary + 4)) {
+            w32(primary + 4, 0);
+            a_boot_request(request);
+            continue;
+        }
         if (r8(primary)) break;
         idle_pause(0);
     }
@@ -150,7 +170,8 @@ void power_on_image() {
 void stock_bootloader() {
     shared->in_bootloader[role] = 1;
     kick(1 - role);                                    // B may wait for A's
-    if (role == 0) a_bootloader(); else b_bootloader();
+    if (role == 0) a_bootloader();
+    else b_bootloader();
     shared->in_bootloader[role] = 0;
 }
 }

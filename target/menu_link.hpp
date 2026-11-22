@@ -35,5 +35,5 @@ uint32_t keepalives();                      // Test 065: keepalive count of the 
 void usb_patience(uint32_t ms);
 bool usb_idle();
 #endif
-} }
+}}
 #endif

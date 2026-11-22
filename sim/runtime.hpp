@@ -25,19 +25,19 @@ struct Shared {
     std::atomic<int32_t> a_silent, a_slow_ms, drop_request, drop_body, cable_pull, cut_after, fail_write;
     std::atomic<int32_t> fail_mount;              // the Nth yaffs mount from now fails (EIO)
     std::atomic<int32_t> hold_mod_verify;         // hold a USB mod job after it writes its output parts
-    std::atomic<int32_t> a_silenced;              // B's class requests a_silent kept from A, or A's answer to (tests: B waits)
-    std::atomic<uint32_t> clock_reads[2];         // device clock reads by A and B (tests: B waits on a request)
+    std::atomic<int32_t> a_silenced; // B's class requests a_silent kept from A, or A's answer to (tests: B waits)
+    std::atomic<uint32_t> clock_reads[2]; // device clock reads by A and B (tests: B waits on a request)
     // Test hooks: the Nth stock select on A switches the partition and then answers failure;
     // every yaffs unmount fails while fail_unmount is set; the Nth posix open on A (the marker's
     // restore) fails; the next path body reaches the stock path buffer whole (240 bytes, no NUL
     // added) instead of cut at 239 bytes.
     std::atomic<int32_t> fail_select, fail_unmount, fail_open, full_path;
-    std::atomic<int64_t> space;                  // bytes yaffs may still write (< 0: unlimited)
+    std::atomic<int64_t> space; // bytes yaffs may still write (< 0: unlimited)
     std::atomic<int32_t> statfs_override, statfs_block_bytes, statfs_free_blocks, statfs_fail;
     std::atomic<int32_t> storage_ops, play, cuts;
-    std::atomic<int32_t> b_listening;            // the USB CDC endpoint is open (TCP port listening)
-    std::atomic<uint32_t> usb_bus_resets;        // control "unplug": the cable out and in (#65; B closes its client)
-    std::atomic<int32_t> ask;                    // --ask: #65's setting as settings.txt says (else it reads Off)
+    std::atomic<int32_t> b_listening; // the USB CDC endpoint is open (TCP port listening)
+    std::atomic<uint32_t> usb_bus_resets; // control "unplug": the cable out and in (#65; B closes its client)
+    std::atomic<int32_t> ask; // --ask: #65's setting as settings.txt says (else it reads Off)
     // The chip's partition register as A's last stock select left it (0 user area: yaffs; 1, 2 boot
     // partitions), and the yaffs media changes made while a boot partition was selected (on the
     // device they would land on that boot partition).
@@ -46,7 +46,7 @@ struct Shared {
     // checkpoint written), and the mounts that found one (on the device: a full scan, a slow boot).
     std::atomic<int32_t> rw_open, unclean_mounts;
     std::atomic<int32_t> mount_calls, raw_boot_changes, stage_executor_hits, a_stage_corrupt, defer_save_boot;
-    std::atomic<int32_t> rw_mounts;              // read-write mounts since the simulator started (window opens)
+    std::atomic<int32_t> rw_mounts; // read-write mounts since the simulator started (window opens)
     // Test hook (control "swap PATH"): the next path or query executor on A finds PATH in the stock
     // path buffer, as if a second request's body had arrived between A's check and the executor.
     std::atomic<int32_t> swap_armed;
@@ -62,11 +62,11 @@ struct Shared {
     // wake: pipes that wake processor A, B, the board, and A's and B's link threads.
     std::atomic<int32_t> usb_held;
     std::atomic<uint32_t> outside;
-    std::atomic<int32_t> usb_asked;              // B read host bytes and wrote none to the host since (2: then asked A)
+    std::atomic<int32_t> usb_asked; // B read host bytes and wrote none to the host since (2: then asked A)
     std::atomic<uint64_t> clock_ns;
     std::atomic<uint32_t> steps, work[2], idle_work[2], idle_steps[2];
     std::atomic<uint64_t> idle_until[2];
-    std::atomic<int32_t> idle_rest[2];            // that wait is at rest (A: any; B: 1 its menu loop's pause, 2 a hang)
+    std::atomic<int32_t> idle_rest[2]; // that wait is at rest (A: any; B: 1 its menu loop's pause, 2 a hang)
     std::atomic<int32_t> inflight[2], outflight[2];
     int wake[5][2];
     // Processor B's OTP as its boot-ROM stand-in answers it (sim/stock.cpp: ROM 04000048/04000054):
@@ -135,7 +135,9 @@ struct Shared {
     // all); set knob_wrap 1: the indexes wrap at 128 (else they count on); knob_jump: both indexes step by N
     // once every frame sent before it is in the queue (knob_jump_at: the mailbox position it applies at)
     // (frames lost or a restart); set knob_identity_fail 1: the stock identity the reader depends on differs.
-    struct KnobFrame { uint8_t length, bytes[47]; };
+    struct KnobFrame {
+        uint8_t length, bytes[47];
+    };
     static const uint32_t knob_frames = 512;
     KnobFrame knob_frame[knob_frames];
     std::atomic<uint32_t> knob_head, knob_tail, knob_jump_at;
@@ -149,15 +151,16 @@ struct Shared {
     uint8_t otp_length[16];
     uint8_t a_otp_field[16][64], a_otp_length[16];
     char swap_path[240];
-    uint32_t capacity;                           // boot partition bytes (each of the two)
-    int port;                                    // the USB CDC endpoint's TCP port (127.0.0.1)
+    uint32_t capacity; // boot partition bytes (each of the two)
+    int port; // the USB CDC endpoint's TCP port (127.0.0.1)
     char root[1024], bootpart[1024];
 };
 extern Shared* shared;
-extern int role;                                 // 0 = processor A, 1 = processor B
+extern int role; // 0 = processor A, 1 = processor B
 extern int link_fd;
-extern const char* stock_path;                   // the stock memory image (xy_forever/sim.py)                              // this processor's end of the link (to the board)
-void otp_start();                                // B's retained ROM/init-flag state at cold entry
+extern const char*
+    stock_path; // the stock memory image (xy_forever/sim.py)                              // this processor's end of the link (to the board)
+void otp_start(); // B's retained ROM/init-flag state at cold entry
 void log(const char* format, ...) __attribute__((format(printf, 1, 2)));
 [[noreturn]] void crash(const char* format, ...) __attribute__((format(printf, 1, 2)));
 [[noreturn]] void exit_processor(int code);
@@ -169,14 +172,14 @@ enum Event : uint32_t { e_cut = 1 };
 struct Message {
     uint32_t magic, kind, tag, cls, op, a0, a1, a2, result, error, body;
 };
-static const uint32_t message_magic = 0x4d495358u;   // "XSIM"
-bool send_message(int fd, const Message& m, const void* body);   // whole message or false
+static const uint32_t message_magic = 0x4d495358u; // "XSIM"
+bool send_message(int fd, const Message& m, const void* body); // whole message or false
 // Stock SPI request classes (storage_server.hpp, peer_services.cpp); 0 = generic op.
 static const uint32_t cls_partition = 0x11907694u, cls_path = 0x119076b4u, cls_read = 0x11907368u,
                       cls_sector = 0x11907348u, cls_write = 0x11907710u, cls_query = 0x11907388u;
 // Link services (sim/link.cpp).
-void link_start();                               // the receiving thread ("interrupt") of this processor
-extern std::atomic<int> a_held;                  // A: class requests its link thread holds until A's slave opens
+void link_start(); // the receiving thread ("interrupt") of this processor
+extern std::atomic<int> a_held; // A: class requests its link thread holds until A's slave opens
 // B: send a request and wait for its answer (stock client RPC: unbounded, as 889f7b12).
 uint32_t b_call(uint32_t cls, uint32_t op, uint32_t a0, uint32_t a1, uint32_t a2, const void* body, uint32_t bytes,
                 void* out, uint32_t capacity, uint32_t* error = 0);
@@ -192,44 +195,44 @@ void b_link_closed();
 void a_respond(uint32_t request);
 // A: the request in service sends one body (+0x20, +0x24) and is re-posted at primary + 4 (889f66fc) for A's loop.
 void a_stream(uint32_t request);
-bool a_service();                                // A: deliver a queued request if the slot is free (true: delivered)
+bool a_service(); // A: deliver a queued request if the slot is free (true: delivered)
 // A: fixed buffers in A's SDRAM for request bodies.
 static const uint32_t a_in_buffer = 0x8aa70000u, a_out_buffer = 0x8aa80000u, a_buffer_bytes = 0x10000u;
 // A: the cold retained state the 1.2.1 bootloader leaves (sim/devices.cpp).
 static const uint32_t a_driver = 0x88a66000u, b_driver = 0x88a66000u, primary = 0x88a66400u;
 uint32_t driver();
 // Storage (sim/yaffs.cpp): the host folder standing in for /yaffs2, with the mount state.
-void storage_op_done();                          // one mutating storage operation finished (power-cut hook)
+void storage_op_done(); // one mutating storage operation finished (power-cut hook)
 // sim/boot.cpp: the stock bootloader after a lone reset.
 // sim/clock.cpp: the device clock (runtime.hpp: Shared clock_ns).
-uint64_t device_cycles();                        // this processor's CCLK cycle count (advance included)
-void kick(int which, bool link = true);          // work for processor which (its main thread wakes; link: its link thread too)
-void active();                                   // the main thread did something (it is not idle)
-void link_taken();                               // a link thread took its message (after kick)
+uint64_t device_cycles(); // this processor's CCLK cycle count (advance included)
+void kick(int which, bool link = true); // work for processor which (its main thread wakes; link: its link thread too)
+void active(); // the main thread did something (it is not idle)
+void link_taken(); // a link thread took its message (after kick)
 // One pause of a wait on the main thread (B's stock request, a bootloader's wait, a fault's delay): idle
 // meanwhile. bound: the device_cycles() at which the wait ends by itself (the board steps no further), 0
 // none. rest (B): nothing inside the device ends it (the clock may stand still); else B waits on device time.
 void idle_pause(uint64_t bound, bool rest = false);
-void cdc_wait(int ms, uint64_t event = 0);       // B's menu loop pause, woken by USB data (event: its next timer, cycles)
-int cdc_fd();                                    // B: the USB client's socket, else the listener's (-1: USB off)
-uint32_t cdc_connection();                       // B: changes whenever cdc_fd() may name another socket
-int cdc_next_fd();                               // B: the listener while a client is attached (a new host), else -1
+void cdc_wait(int ms, uint64_t event = 0); // B's menu loop pause, woken by USB data (event: its next timer, cycles)
+int cdc_fd(); // B: the USB client's socket, else the listener's (-1: USB off)
+uint32_t cdc_connection(); // B: changes whenever cdc_fd() may name another socket
+int cdc_next_fd(); // B: the listener while a client is attached (a new host), else -1
 // Board: one step of the clock when both processors are idle and something is due (deadline: the board's own
 // next event, clock_ns; 0 none; woken: its wake pipe had news); returns how long the board may wait for events
 // (ms; -1: until one comes).
 int board_clock(const bool running[2], uint64_t deadline_ns, bool woken);
-void board_advance(int client, int64_t ms);      // control "advance MS": answered once the clock is there
-void board_settle(int client);                   // control "settle": answered once the clock stands still
-void board_idle_wall();                          // --idle-wall: idle device time follows the host's (interactive only)
+void board_advance(int client, int64_t ms); // control "advance MS": answered once the clock is there
+void board_settle(int client); // control "settle": answered once the clock stands still
+void board_idle_wall(); // --idle-wall: idle device time follows the host's (interactive only)
 void board_forget(int client);
-void board_jump(int64_t ms);                     // control "jump MS": both clocks jump at once (a slow pass)
-std::string input_command(const std::string& line, const char* verb);   // sim/devices.cpp: knob*, realkey
-void board_link_cost(uint32_t bytes);            // a relayed link message's transfer time
-void board_reset_flight(int which);              // processor which stopped: its link messages are gone
-void host_start();                               // processor start: this thread is main
-void host_poll();                                // at host calls on the main thread (A's control stall)
-void stock_bootloader();                         // after a reset: the stock bootloader's side of the boot
-void power_on_image();                           // B at power-on: the image its bootloader read (boot.cpp)
-void a_boot_request(uint32_t request);           // A's bootloader: answer one pool request (sim/stock.cpp)
+void board_jump(int64_t ms); // control "jump MS": both clocks jump at once (a slow pass)
+std::string input_command(const std::string& line, const char* verb); // sim/devices.cpp: knob*, realkey
+void board_link_cost(uint32_t bytes); // a relayed link message's transfer time
+void board_reset_flight(int which); // processor which stopped: its link messages are gone
+void host_start(); // processor start: this thread is main
+void host_poll(); // at host calls on the main thread (A's control stall)
+void stock_bootloader(); // after a reset: the stock bootloader's side of the boot
+void power_on_image(); // B at power-on: the image its bootloader read (boot.cpp)
+void a_boot_request(uint32_t request); // A's bootloader: answer one pool request (sim/stock.cpp)
 }
 #endif

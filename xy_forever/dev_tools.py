@@ -3,11 +3,12 @@
 mise installs the tools mise.toml pins (Python, uv, Node, pnpm, gh; checksums in mise.lock), `uv sync` the
 Python dependencies (pyproject.toml, uv.lock, into .venv), `pnpm install` the JS ones (one pnpm-lock.yaml for
 the workspace: web/ and clients/ts). Every call keeps the contributor's global mise config out (IGNORE)."""
+
 import json
 import os
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MISE_URL = 'https://mise.jdx.dev/installing-mise.html'
@@ -82,9 +83,11 @@ def doctor_rows(root=ROOT):
     m = mise()
     version = quiet([m, '--version'], root).stdout.split()[:1] if m else []
     rows = [('mise', bool(m), version[0] if version else 'not found: %s' % MISE_URL)]
-    for label, problem, fine in (('tools', tools_missing(root), 'mise.toml pins installed'),
-                                 ('python deps', python_deps_stale(root), '.venv matches uv.lock'),
-                                 ('js deps', js_deps_stale(root), 'node_modules matches pnpm-lock.yaml')):
+    for label, problem, fine in (
+        ('tools', tools_missing(root), 'mise.toml pins installed'),
+        ('python deps', python_deps_stale(root), '.venv matches uv.lock'),
+        ('js deps', js_deps_stale(root), 'node_modules matches pnpm-lock.yaml'),
+    ):
         rows.append((label, problem is None, problem or fine))
     return rows
 
@@ -100,9 +103,11 @@ def bootstrap_steps(do, run, root=ROOT):
     if problem and 'run `mise install`' in problem:
         do('mise install (the pins of mise.toml)', run, [mise(), 'install'], cwd=root, env=env())
     elif problem:
-        return                                             # untrusted or broken: the message says what to do
-    for label, stale, cmd in (('python deps', python_deps_stale, ['uv', 'sync', '--locked']),
-                              ('js deps', js_deps_stale, ['pnpm', 'install', '--frozen-lockfile'])):
+        return  # untrusted or broken: the message says what to do
+    for label, stale, cmd in (
+        ('python deps', python_deps_stale, ['uv', 'sync', '--locked']),
+        ('js deps', js_deps_stale, ['pnpm', 'install', '--frozen-lockfile']),
+    ):
         why = stale(root)
         print('%s: %s' % (label, why or 'ok'))
         if why:

@@ -22,8 +22,7 @@ TEST_CASE("report checksum and marker") {
         bytes[i] ^= Byte(1u << (i % 8));
     }
     REQUIRE(valid(report));
-    for (U32 i = 0; i != 512; ++i)
-        REQUIRE(marker_byte(i) == Byte((i * 73u + 19u) ^ (i >> 1)));
+    for (U32 i = 0; i != 512; ++i) REQUIRE(marker_byte(i) == Byte((i * 73u + 19u) ^ (i >> 1)));
 }
 
 TEST_CASE("the report-only fixture" * doctest::skip()) {

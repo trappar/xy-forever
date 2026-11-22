@@ -7,20 +7,29 @@
 #include "xyf_stage2.hpp"
 #include "usb_proto_ids.hpp"
 
-extern "C" uint32_t xyf_stage2_main(const xyf::stage2::Call* call)
-    __asm__("xyf_stage2_main") __attribute__((section(".text.entry"), used));
+extern "C" uint32_t xyf_stage2_main(const xyf::stage2::Call* call) __asm__("xyf_stage2_main")
+    __attribute__((section(".text.entry"), used));
 
 namespace {
 namespace S2 = xyf::stage2;
 // Initialized data, not BSS (the stage-2 link has none). op_init sets every field.
 uint32_t turns __attribute__((section(".data"))) = 0;
-void put32(uint8_t* p, uint32_t v) { p[0] = uint8_t(v); p[1] = uint8_t(v >> 8); p[2] = uint8_t(v >> 16); p[3] = uint8_t(v >> 24); }
+void put32(uint8_t* p, uint32_t v) {
+    p[0] = uint8_t(v);
+    p[1] = uint8_t(v >> 8);
+    p[2] = uint8_t(v >> 16);
+    p[3] = uint8_t(v >> 24);
+}
 
 // stage2.info: u32 status, u32 stage-2 version, 8 bytes of the image SHA-256, u32 services
 // version, u32 loop turns seen since init. Any request bytes: bad_request (status only).
 uint32_t info(const S2::Call& c) {
     uint8_t p[24];
-    if (c.length) { put32(p, xyf::usbp::s_bad_request); c.services->reply(c.type, c.seq, p, 4); return S2::handled; }
+    if (c.length) {
+        put32(p, xyf::usbp::s_bad_request);
+        c.services->reply(c.type, c.seq, p, 4);
+        return S2::handled;
+    }
     put32(p, xyf::usbp::s_ok);
     put32(p + 4, c.header->version);
     for (uint32_t i = 0; i != 8; ++i) p[8 + i] = c.header->image_sha256[i];
@@ -40,12 +49,8 @@ extern "C" uint32_t xyf_stage2_main(const S2::Call* c) {
         turns = 0;
         c->services->trace(S2::trace_init, c->header->version);
         return S2::init_ok;
-    case S2::op_turn:
-        ++turns;
-        return S2::turn_ok;
-    case S2::op_command:
-        return c->type == xyf::usbp::t_stage2_info ? info(*c) : S2::not_handled;
-    default:
-        return 0xffffffffu;
+    case S2::op_turn: ++turns; return S2::turn_ok;
+    case S2::op_command: return c->type == xyf::usbp::t_stage2_info ? info(*c) : S2::not_handled;
+    default: return 0xffffffffu;
     }
 }

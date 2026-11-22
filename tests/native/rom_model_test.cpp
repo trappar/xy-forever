@@ -6,11 +6,13 @@
 using namespace xy_forever::boot_rom;
 
 namespace {
-struct Memory { uint8_t bytes[8]; unsigned calls; };
+struct Memory {
+    uint8_t bytes[8];
+    unsigned calls;
+};
 static bool copy(void* user, uint32_t destination, const uint8_t* bytes, uint32_t count) {
     Memory& memory = *static_cast<Memory*>(user);
-    if (destination > sizeof(memory.bytes) || count > sizeof(memory.bytes) - destination)
-        return false;
+    if (destination > sizeof(memory.bytes) || count > sizeof(memory.bytes) - destination) return false;
     memcpy(memory.bytes + destination, bytes, count);
     ++memory.calls;
     return true;

@@ -15,8 +15,7 @@ struct Descriptor {
     uint32_t l1_copy_crc32; // [0x0803e0c0, 0x0803e142)
 };
 static_assert(sizeof(Descriptor) == 28, "cold descriptor layout");
-} }
-extern "C" const xy_forever::cold::Descriptor xy_forever_cold_descriptor
-    __asm__("xy_forever_cold_descriptor");
+}}
+extern "C" const xy_forever::cold::Descriptor xy_forever_cold_descriptor __asm__("xy_forever_cold_descriptor");
 extern "C" void xy_forever_cold_run() __asm__("xy_forever_cold_run");
 #endif

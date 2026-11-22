@@ -2,26 +2,26 @@
 files are current, the golden frames round-trip through the real host codec (and the device
 encoder), the device dispatch answers exactly the spec's commands, and the hand-written values
 that stay outside the generated files agree with the spec. No device access."""
+
 import copy
 import ctypes as C
 import itertools
-from pathlib import Path
 import re
 import struct
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
+import protogen
 import pytest
 
-from xy_forever.source_text import unit_text
-from xy_forever import hostbuild, release
-import protogen
+from xy_forever import hostbuild, release, xyf_host
 from xy_forever import usb_proto as P
 from xy_forever import usb_proto_ids as ids
 from xy_forever import xyf_build as builder
-from xy_forever import xyf_host
+from xy_forever.source_text import unit_text
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -49,8 +49,9 @@ class SpecTest(unittest.TestCase):
 
     @pytest.mark.uses('scripts/protogen.py')
     def test_generated_files_are_current(self):
-        self.assertEqual(protogen.stale(protogen.generate(spec())), [],
-                         'generated files are stale: run python3 scripts/protogen.py')
+        self.assertEqual(
+            protogen.stale(protogen.generate(spec())), [], 'generated files are stale: run python3 scripts/protogen.py'
+        )
         run = subprocess.run([sys.executable, str(ROOT / 'scripts/protogen.py'), '--check'], capture_output=True)
         self.assertEqual(run.returncode, 0, run.stderr)
         for rel in (protogen.CPP, protogen.PY, protogen.TS, protogen.DOC) + protogen.DOC_LEAVES:
@@ -68,19 +69,27 @@ class SpecTest(unittest.TestCase):
         broken(lambda s: s['commands'][0]['request'].update(bogus=True), "unknown key 'bogus'")
         broken(lambda s: s['statuses'][3].update(code=4), 'codes must run')
         broken(lambda s: command(s, 'diag.key').update(type='0x32'), 'already used')
-        for retired in ('0x33', '0x60'):                 # diag.guard, diag.hang until 1.13: never reused
+        for retired in ('0x33', '0x60'):  # diag.guard, diag.hang until 1.13: never reused
             broken(lambda s: command(s, 'diag.key').update(type=retired), 'reserved retired range')
-        broken(lambda s: s['commands'].append(dict(copy.deepcopy(command(s, 'hello')), name='other', symbol='other')),
-               'already used')
+        broken(
+            lambda s: s['commands'].append(dict(copy.deepcopy(command(s, 'hello')), name='other', symbol='other')),
+            'already used',
+        )
         broken(lambda s: s['events'][0].update(type='0x81'), 'already used')
-        broken(lambda s: s['reserved']['types'].append(dict(s['reserved']['types'][0], first='0x7f', last='0x80')),
-               'overlaps')
-        broken(lambda s: command(s, 'stage.begin').update(**{'class': 'product', 'type': '0x61'}),
-               'reserved dev range')
+        broken(
+            lambda s: s['reserved']['types'].append(dict(s['reserved']['types'][0], first='0x7f', last='0x80')),
+            'overlaps',
+        )
+        broken(lambda s: command(s, 'stage.begin').update(**{'class': 'product', 'type': '0x61'}), 'reserved dev range')
         broken(lambda s: command(s, 'stage.begin')['request'].update(size=[41, 41]), 'does not add up')
         broken(lambda s: command(s, 'stage.data')['request']['fields'][1].update(max_bytes=4157), 'does not add up')
-        broken(lambda s: command(s, 'stage.data')['request'].update(size=[5, 4161]) or
-               command(s, 'stage.data')['request']['fields'][1].update(max_bytes=4157), 'above max_payload')
+        broken(
+            lambda s: (
+                command(s, 'stage.data')['request'].update(size=[5, 4161])
+                or command(s, 'stage.data')['request']['fields'][1].update(max_bytes=4157)
+            ),
+            'above max_payload',
+        )
         broken(lambda s: command(s, 'file.read').update(errors=['nope']), 'not a failure status')
         broken(lambda s: s['reserved']['statuses'].append(dict(code=16, name='later', item='x', doc='x')), 'collides')
         broken(lambda s: s['statuses'][14].update(since='1'), 'since must be')
@@ -88,14 +97,21 @@ class SpecTest(unittest.TestCase):
         broken(lambda s: s['hello']['keys'][4].update(max_bytes=99), 'max_bytes must be')
         broken(lambda s: s['hello']['keys'][0].update(value='a;b'), 'printable ASCII')
         broken(lambda s: s['hello']['keys'][0].update(value='x' * 60), 'above max_hello')
-        broken(lambda s: command(s, 'hello')['reply'].update(size=[1, 92]) or
-               command(s, 'hello')['reply']['fields'][0].update(max_bytes=92), 'at most max_hello')
+        broken(
+            lambda s: (
+                command(s, 'hello')['reply'].update(size=[1, 92])
+                or command(s, 'hello')['reply']['fields'][0].update(max_bytes=92)
+            ),
+            'at most max_hello',
+        )
         broken(lambda s: command(s, 'stage.begin').update(test_only=True), 'test_only')
         broken(lambda s: s['golden'][0].update(message='nothing'), 'unknown message')
         # optional fields, encodings, extensible replies, switches, common errors, transport, streams.
         broken(lambda s: command(s, 'file.read')['request'].pop('optional_fields'), 'optional_fields is required')
-        broken(lambda s: command(s, 'stage.begin')['request'].update(optional_fields='all_or_none'),
-               'optional_fields is required')
+        broken(
+            lambda s: command(s, 'stage.begin')['request'].update(optional_fields='all_or_none'),
+            'optional_fields is required',
+        )
         broken(lambda s: command(s, 'file.read')['request'].update(optional_fields='any'), 'all_or_none')
         broken(lambda s: command(s, 'file.read')['request']['fields'][0].pop('encoding'), 'needs encoding')
         broken(lambda s: command(s, 'file.read')['request']['fields'][1].update(encoding='ascii'), 'only for cstr/text')
@@ -125,14 +141,33 @@ class GoldenFramesTest(unittest.TestCase):
         # The device encoder (target/usb_proto.cpp with the generated header), built for the host.
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-proto-')
         bridge = Path(cls.tmp.name) / 'bridge.cpp'
-        bridge.write_text('#include "usb_proto.hpp"\nextern "C" unsigned proto_encode(unsigned t, unsigned s, '
-                          'const uint8_t* p, unsigned n, uint8_t* out, unsigned cap) '
-                          '{ return xyf::usbp::encode(uint8_t(t), uint8_t(s), p, n, out, cap); }\n')
+        bridge.write_text(
+            '#include "usb_proto.hpp"\nextern "C" unsigned proto_encode(unsigned t, unsigned s, '
+            'const uint8_t* p, unsigned n, uint8_t* out, unsigned cap) '
+            '{ return xyf::usbp::encode(uint8_t(t), uint8_t(s), p, n, out, cap); }\n'
+        )
         lib = Path(cls.tmp.name) / 'proto.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-I', str(ROOT / 'target'), str(ROOT / 'target/usb_proto.cpp'),
-                       str(ROOT / 'target/xyf_crc32.cpp'), str(bridge), '-o', str(lib)],
-                      check=True, capture_output=True)
+        hostbuild.run(
+            [
+                '/usr/bin/clang++',
+                '-std=c++11',
+                '-O1',
+                '-shared',
+                '-fPIC',
+                '-Wall',
+                '-Wextra',
+                '-Werror',
+                '-I',
+                str(ROOT / 'target'),
+                str(ROOT / 'target/usb_proto.cpp'),
+                str(ROOT / 'target/xyf_crc32.cpp'),
+                str(bridge),
+                '-o',
+                str(lib),
+            ],
+            check=True,
+            capture_output=True,
+        )
         cls.lib = C.CDLL(str(lib))
         cls.lib.proto_encode.restype = C.c_uint
 
@@ -153,11 +188,14 @@ class GoldenFramesTest(unittest.TestCase):
                 prefix = struct.pack('<I', ids.STATUS_NAMES.index(g['status']))
                 on_error = ids.COMMANDS[t]['reply_on_error']
                 if g['status'] != 'ok' and not g['fields']:
-                    fields = ()                               # the status alone (a common status)
+                    fields = ()  # the status alone (a common status)
                 elif g['status'] != 'ok' and on_error != 'full':
                     fields = tuple(f for f in fields if on_error != 'status' and f[0] in on_error)
-        values = {f[0]: bytes.fromhex(g['fields'][f[0]]) if f[1] in ('bytes', 'rest') else g['fields'][f[0]]
-                  for f in fields if f[0] in g['fields']}
+        values = {
+            f[0]: bytes.fromhex(g['fields'][f[0]]) if f[1] in ('bytes', 'rest') else g['fields'][f[0]]
+            for f in fields
+            if f[0] in g['fields']
+        }
         return kind, fields, prefix, values
 
     def test_golden_frames_round_trip(self):
@@ -174,28 +212,43 @@ class GoldenFramesTest(unittest.TestCase):
                 self.assertEqual(out.raw[:n], frame)
                 [(t, seq, body)] = P.Parser().feed(b'\x00noise' + bytes.fromhex(g['hex']))
                 self.assertEqual((t, seq), (kind, g['seq']))
-                self.assertEqual(body[:len(prefix)], prefix)
-                self.assertEqual(P.unpack(fields, body[len(prefix):]), values)
+                self.assertEqual(body[: len(prefix)], prefix)
+                self.assertEqual(P.unpack(fields, body[len(prefix) :]), values)
                 if g['direction'] == 'reply':
                     status = ids.STATUS_NAMES.index(g['status'])
                     expect = values if values or not status else None
-                    self.assertEqual(P.decode_reply(kind & 0x7f, body), (status, expect))
-                    if ids.COMMANDS[kind & 0x7f]['reply_extensible'] and expect is not None:
+                    self.assertEqual(P.decode_reply(kind & 0x7F, body), (status, expect))
+                    if ids.COMMANDS[kind & 0x7F]['reply_extensible'] and expect is not None:
                         # lenient: a later 1.x may add fields at the end of a reply
-                        self.assertEqual(P.decode_reply(kind & 0x7f, body + b'\xaa\xbb\xcc\xdd'), (status, expect))
+                        self.assertEqual(P.decode_reply(kind & 0x7F, body + b'\xaa\xbb\xcc\xdd'), (status, expect))
                 elif g['direction'] == 'request' and fields:
-                    with self.assertRaises(ValueError):           # strict: exactly the request's fields
+                    with self.assertRaises(ValueError):  # strict: exactly the request's fields
                         P.unpack(fields, body + b'\0')
 
     def device_hello(self, switches, version='0.1.0', mode='product'):
         """(hello text, cmds) as the generated header composes them for a build with these switches."""
         source = Path(self.tmp.name) / 'hello.cpp'
-        source.write_text('#include <stdio.h>\n#include "usb_proto_ids.hpp"\n'
-                          'int main() { printf("%s\\n%s", XYF_USBP_HELLO_TEXT, XYF_USBP_CMDS); return 0; }\n')
+        source.write_text(
+            '#include <stdio.h>\n#include "usb_proto_ids.hpp"\n'
+            'int main() { printf("%s\\n%s", XYF_USBP_HELLO_TEXT, XYF_USBP_CMDS); return 0; }\n'
+        )
         exe = Path(self.tmp.name) / 'hello'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Werror', '-I', str(ROOT / 'target'),
-                       '-DXYF_VERSION="%s"' % version, '-DXYF_BUILD_MODE="%s"' % mode] +
-                      ['-D%s=1' % s for s in switches] + [str(source), '-o', str(exe)], check=True, capture_output=True)
+        hostbuild.run(
+            [
+                '/usr/bin/clang++',
+                '-std=c++11',
+                '-Wall',
+                '-Werror',
+                '-I',
+                str(ROOT / 'target'),
+                '-DXYF_VERSION="%s"' % version,
+                '-DXYF_BUILD_MODE="%s"' % mode,
+            ]
+            + ['-D%s=1' % s for s in switches]
+            + [str(source), '-o', str(exe)],
+            check=True,
+            capture_output=True,
+        )
         return subprocess.run([str(exe)], check=True, capture_output=True, text=True).stdout.split('\n')
 
     def test_hello_golden_is_the_device_text(self):
@@ -209,34 +262,43 @@ class GoldenFramesTest(unittest.TestCase):
         compiled = self.device_hello(product, info.keys['version'], info.keys['mode'])[0]
         self.assertEqual(compiled, g['fields']['info'].replace(';image=%s;' % image, ';image=unknown;'))
         self.assertEqual(P.hello_text(info.keys['version'], image, info.keys['mode'], product), g['fields']['info'])
-        self.assertEqual(builder.hello_defines('xyf-product'),
-                         ('-DXYF_VERSION="%s"' % release.VERSION, '-DXYF_VERSION_CODE=%#xu' % release.code(),
-                          '-DXYF_BUILD_MODE="product"'))
+        self.assertEqual(
+            builder.hello_defines('xyf-product'),
+            (
+                '-DXYF_VERSION="%s"' % release.VERSION,
+                '-DXYF_VERSION_CODE=%#xu' % release.code(),
+                '-DXYF_BUILD_MODE="product"',
+            ),
+        )
         self.assertLessEqual(len(g['fields']['info']), ids.MAX_HELLO)
-        self.assertEqual(len(g['fields']['info']), 220)                   # 1.15: version=0.1.0;image=<8 hex>; 1.23: confirm, trust; 1.25: serial
-        self.assertTrue(g['fields']['info'].endswith(';stage2=0'))         # set at run time
+        self.assertEqual(
+            len(g['fields']['info']), 220
+        )  # 1.15: version=0.1.0;image=<8 hex>; 1.23: confirm, trust; 1.25: serial
+        self.assertTrue(g['fields']['info'].endswith(';stage2=0'))  # set at run time
         loaded = P.hello_text(info.keys['version'], image, info.keys['mode'], product, stage2=12)
         self.assertTrue(loaded.endswith(';stage2=12') and P.Hello(loaded).answers(P.ids.STAGE2_INFO))
         self.assertFalse(info.answers(P.ids.STAGE2_INFO))
         us = text('target/usb_service.cpp')
-        self.assertIn('const char* text = XYF_USBP_HELLO_TEXT;', us)                 # usb_service_identity.ipp
+        self.assertIn('const char* text = XYF_USBP_HELLO_TEXT;', us)  # usb_service_identity.ipp
         self.assertIn('U32 n = hello_text(p, 4, sizeof(p));', us)
-        self.assertIn('static_assert(sizeof(XYF_USBP_HELLO_TEXT) - 1 <= P::max_hello, "hello text above max_hello");', us)
+        self.assertIn(
+            'static_assert(sizeof(XYF_USBP_HELLO_TEXT) - 1 <= P::max_hello, "hello text above max_hello");', us
+        )
         self.assertIn('uint8_t p[4 + P::max_hello];', us)
 
     def test_cmds_bitmap_follows_the_switches(self):
         """Six combinations of the build switches (none, all, and four where each switch is on in its own two:
         every switch on and off, and any two differ both ways): the generated #if blocks give the spec's bitmap."""
         switches = sorted({c['switch'] for c in spec()['commands'] if c['switch']})
-        self.assertEqual(len(switches), 5)                 # with the run-time XYF_STAGE2_LOADED
-        rows = list(itertools.combinations(range(4), 2))   # distinct pairs of the four mixed combinations
+        self.assertEqual(len(switches), 5)  # with the run-time XYF_STAGE2_LOADED
+        rows = list(itertools.combinations(range(4), 2))  # distinct pairs of the four mixed combinations
         combos = [set(), set(switches)] + [{s for s, row in zip(switches, rows) if r in row} for r in range(4)]
         for on in combos:
             with self.subTest(switches=on):
                 hello, cmds = self.device_hello(on)
                 self.assertEqual(int(cmds, 16), P.answered(on))
                 self.assertEqual(int(cmds, 16), protogen.answered(spec(), on))
-                self.assertEqual(hello, P.hello_text('0.1.0', None, 'product', on))      # as compiled: image=unknown
+                self.assertEqual(hello, P.hello_text('0.1.0', None, 'product', on))  # as compiled: image=unknown
                 parsed = P.Hello(hello)
                 for c in spec()['commands']:
                     self.assertEqual(parsed.answers(int(c['type'], 16)), c['switch'] in on or c['switch'] is None)
@@ -262,11 +324,11 @@ class SpecDataTest(unittest.TestCase):
                 self.assertEqual(P.Parser().feed(whole), expect)
                 bytewise = P.Parser()
                 self.assertEqual([fr for b in whole for fr in bytewise.feed(bytes((b,)))], expect)
-                for t, seq, payload in expect:                    # each frame decodes with the codecs
+                for t, seq, payload in expect:  # each frame decodes with the codecs
                     if t & 0x80 and t in ids.EVENTS:
                         P.unpack(ids.EVENTS[t]['payload'], payload, exact=False)
                     elif t & 0x80:
-                        P.decode_reply(t & 0x7f, payload)
+                        P.decode_reply(t & 0x7F, payload)
                     else:
                         P.unpack(ids.COMMANDS[t]['request'], payload)
 
@@ -277,16 +339,35 @@ class SpecDataTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             P.pack(fields, {'path': path, 'offset': 0})
         with self.assertRaises(ValueError):
-            P.unpack(fields, path.encode() + b'\0' + bytes(4))       # offset without length
+            P.unpack(fields, path.encode() + b'\0' + bytes(4))  # offset without length
 
     def test_text_encodings(self):
         s = spec()
-        encodings = {(c['name'], f['name']): f['encoding'] for c in s['commands'] for part in ('request', 'reply')
-                     for f in c[part]['fields'] if 'encoding' in f}
-        self.assertEqual({k for k, v in encodings.items() if v == 'utf-8'},
-                         {('file.read', 'path'), ('file.write_staged', 'path'), ('file.write_begin', 'path'), ('tfw.check', 'path'), ('tfw.check_role', 'path'),
-                          ('file.list', 'path'), ('file.delete', 'path'), ('file.rmdir', 'path'), ('file.mkdir', 'path'),
-                          ('file.rename', 'source'), ('file.rename', 'target'), ('file.copy', 'source'), ('file.copy', 'target')})
+        encodings = {
+            (c['name'], f['name']): f['encoding']
+            for c in s['commands']
+            for part in ('request', 'reply')
+            for f in c[part]['fields']
+            if 'encoding' in f
+        }
+        self.assertEqual(
+            {k for k, v in encodings.items() if v == 'utf-8'},
+            {
+                ('file.read', 'path'),
+                ('file.write_staged', 'path'),
+                ('file.write_begin', 'path'),
+                ('tfw.check', 'path'),
+                ('tfw.check_role', 'path'),
+                ('file.list', 'path'),
+                ('file.delete', 'path'),
+                ('file.rmdir', 'path'),
+                ('file.mkdir', 'path'),
+                ('file.rename', 'source'),
+                ('file.rename', 'target'),
+                ('file.copy', 'source'),
+                ('file.copy', 'target'),
+            },
+        )
         fields = ids.COMMANDS[P.READ_FILE]['request']
         path = '/yaffs2/xy-forever/caf\u00e9.bin'
         payload = P.pack(fields, {'path': path, 'offset': 0, 'length': 16})
@@ -297,18 +378,34 @@ class SpecDataTest(unittest.TestCase):
 
     def test_common_errors(self):
         s = spec()
-        self.assertEqual([(e['status'], e['except']) for e in s['common_errors']],
-                         [('state', ['hello']), ('unsupported', ['hello']), ('busy', ['hello']),
-                          ('waiting', ['hello']), ('declined', ['hello']),                   # 1.23: #65
-                          ('serial_off', ['hello'])])                                         # 1.25: #191
-        self.assertEqual(ids.COMMON_ERRORS, ((ids.S_STATE, ('hello',)), (ids.S_UNSUPPORTED, ('hello',)),
-                                             (ids.S_BUSY, ('hello',)), (ids.S_WAITING, ('hello',)),
-                                             (ids.S_DECLINED, ('hello',)), (ids.S_SERIAL_OFF, ('hello',))))
+        self.assertEqual(
+            [(e['status'], e['except']) for e in s['common_errors']],
+            [
+                ('state', ['hello']),
+                ('unsupported', ['hello']),
+                ('busy', ['hello']),
+                ('waiting', ['hello']),
+                ('declined', ['hello']),  # 1.23: #65
+                ('serial_off', ['hello']),
+            ],
+        )  # 1.25: #191
+        self.assertEqual(
+            ids.COMMON_ERRORS,
+            (
+                (ids.S_STATE, ('hello',)),
+                (ids.S_UNSUPPORTED, ('hello',)),
+                (ids.S_BUSY, ('hello',)),
+                (ids.S_WAITING, ('hello',)),
+                (ids.S_DECLINED, ('hello',)),
+                (ids.S_SERIAL_OFF, ('hello',)),
+            ),
+        )
         # a common status comes alone even where on_error is "full"
         self.assertEqual(P.decode_reply(P.FILE_WRITE, struct.pack('<I', ids.S_STATE)), (ids.S_STATE, None))
 
     def test_transport_facts_agree(self):
         from xy_forever import sim
+
         t = spec()['transport']
         self.assertEqual(t['simulator_port']['value'], sim.DEFAULT_PORT)
         self.assertIn('VENDOR = %d ' % t['usb_vendor_id']['value'], text('scripts/usb_timeline.py'))
@@ -321,8 +418,10 @@ class SpecDataTest(unittest.TestCase):
         the device code uses it, and the frame header comment agrees."""
         s = spec()
         self.assertEqual(protogen.constants(s)['idle_reset_ms'], 250)
-        self.assertIn('is dropped once no byte has arrived for `idle_reset_ms`',
-                      next(r['text'] for r in s['rules'] if r['name'] == 'resync'))
+        self.assertIn(
+            'is dropped once no byte has arrived for `idle_reset_ms`',
+            next(r['text'] for r in s['rules'] if r['name'] == 'resync'),
+        )
         self.assertIn('P::idle_reset_ms', text('target/usb_service.cpp'))
         self.assertIn('idle_reset_ms of silence', text('target/usb_proto.hpp'))
 
@@ -332,7 +431,7 @@ class DeviceAgreesTest(unittest.TestCase):
         """{symbol: build switch or None} of every type home_pump answers (source text: the builder's
         call audit cannot resolve a handler table, so the dispatch is an if-chain)."""
         source = text('target/usb_service.cpp')
-        body = source[source.index('uint32_t home_pump()'):source.index('void menu_release()')]
+        body = source[source.index('uint32_t home_pump()') : source.index('void menu_release()')]
         handled, switches = {}, []
         for line in body.splitlines():
             m = re.match(r'\s*#if defined\((XYF_\w+)\)', line)
@@ -352,7 +451,7 @@ class DeviceAgreesTest(unittest.TestCase):
         commands = {c['symbol']: c['switch'] for c in spec()['commands'] if c['switch'] != 'XYF_STAGE2_LOADED'}
         self.assertEqual(sorted(handled), sorted(commands), 'dispatch and spec answer different types')
         self.assertEqual(handled, commands, 'a command is compiled under a different switch than the spec says')
-        self.assertIn('else status_only(type, seq, P::s_unsupported);', text('target/usb_service.cpp'))
+        self.assertIn('else\n            status_only(type, seq, P::s_unsupported);', text('target/usb_service.cpp'))
         self.assertIn('else if (!home_greeted) status_only(type, seq, P::s_state);', text('target/usb_service.cpp'))
 
     def test_numbers_only_in_generated_files(self):
@@ -363,7 +462,7 @@ class DeviceAgreesTest(unittest.TestCase):
         py = text('xy_forever/usb_proto.py')
         self.assertNotRegex(py, r'(?m)^(HELLO|STATUS_NAMES|MAX_PAYLOAD|REPLY|LOG)\b.*=')
         self.assertEqual(P.STATUS_NAMES, tuple(s['name'] for s in spec()['statuses']))
-        self.assertEqual((P.OK, P.STATE, P.MAX_PAYLOAD, P.LOG | P.REPLY), (0, 3, 4160, 0xd0))
+        self.assertEqual((P.OK, P.STATE, P.MAX_PAYLOAD, P.LOG | P.REPLY), (0, 3, 4160, 0xD0))
 
     def test_hand_written_values_agree(self):
         """Values outside the generated files (layout headers, the host tool) match the spec."""
@@ -372,27 +471,38 @@ class DeviceAgreesTest(unittest.TestCase):
         self.assertEqual(header_value(usb, 'read_range_max'), k['max_read'])
         self.assertEqual(header_value(usb, 'image_capacity'), k['max_stage'])
         self.assertEqual(header_value(usb, 'log_text_max'), k['max_log_text'])
-        self.assertEqual(header_value(usb, 'screen_bytes'), command(s, 'screen.read')['request']['fields'][0]['range'][1] + 1)
+        self.assertEqual(
+            header_value(usb, 'screen_bytes'), command(s, 'screen.read')['request']['fields'][0]['range'][1] + 1
+        )
         targets = command(s, 'device.reboot')['request']['fields'][0]['values']
-        self.assertEqual([header_value(usb, n) for n in ('reboot_service', 'reboot_os', 'reboot_menu')],
-                         [int(v) for v in sorted(targets)])
+        self.assertEqual(
+            [header_value(usb, n) for n in ('reboot_service', 'reboot_os', 'reboot_menu')],
+            [int(v) for v in sorted(targets)],
+        )
         self.assertEqual(header_value(text('target/storage_server.hpp'), 'max_path'), k['max_path'])
-        self.assertEqual(header_value(text('target/xyf_store.hpp'), 'max_id') + 1,
-                         command(s, 'library.set_default')['request']['fields'][0]['max_bytes'])
-        self.assertEqual((xyf_host.READ_RANGE, xyf_host.PUT_CHUNK, xyf_host.IMAGE_CAPACITY),
-                         (k['max_read'], k['put_chunk'], k['max_stage']))
+        self.assertEqual(
+            header_value(text('target/xyf_store.hpp'), 'max_id') + 1,
+            command(s, 'library.set_default')['request']['fields'][0]['max_bytes'],
+        )
+        self.assertEqual(
+            (xyf_host.READ_RANGE, xyf_host.PUT_CHUNK, xyf_host.IMAGE_CAPACITY),
+            (k['max_read'], k['put_chunk'], k['max_stage']),
+        )
 
     def test_write_path_check_is_refused(self):
         """A write path the check rejects is refused (a wrong length stays bad_request)."""
         us = text('target/usb_service.cpp')
-        self.assertIn('    if (path_bytes + 1 + 32 != length) code = P::s_bad_request;\n'
-                      '    else if (!storage_server::valid_write_path(path)) code = P::s_refused;\n', us)
+        self.assertIn(
+            '    if (path_bytes + 1 + 32 != length) code = P::s_bad_request;\n'
+            '    else if (!storage_server::valid_write_path(path)) code = P::s_refused;\n',
+            us,
+        )
         client_write = text('target/file_client_write.ipp')
         self.assertIn('if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;', client_write)
         self.assertIn('refused', command(spec(), 'file.write_staged')['errors'])
         self.assertEqual((ids.S_UNSUPPORTED, ids.S_REFUSED, ids.S_BUSY, ids.S_CANCELLED), (2, 14, 15, 16))
         write_path = client_write + text('target/storage_server_engine.ipp')
-        self.assertNotIn('s_busy', write_path)                 # USB job arbitration happens before file dispatch
+        self.assertNotIn('s_busy', write_path)  # USB job arbitration happens before file dispatch
         self.assertIn('else if (job_blocks(type)) status_only(type, seq, P::s_busy);', us)
         # The product A rehearsal can be cancelled; the old staged file writer still cannot.
         self.assertNotIn('s_cancelled', text('target/usb_service_file_write.ipp') + write_path)
@@ -405,7 +515,7 @@ class DeviceAgreesTest(unittest.TestCase):
                 self.assertNotIn(heading, doc, c['name'])
             else:
                 self.assertIn('### %s %s' % (c['type'], heading), doc)
-        self.assertEqual(command(spec(), 'screen.read')['class'], 'product')   # project rule
+        self.assertEqual(command(spec(), 'screen.read')['class'], 'product')  # project rule
 
 
 if __name__ == '__main__':

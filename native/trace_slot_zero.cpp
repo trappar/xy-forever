@@ -3,12 +3,8 @@
 // images that never use it link byte-identically to hardware-proven builds.
 namespace xyf_core { namespace trace_slot {
 namespace {
-U32 word(const Byte* p) {
-    return U32(p[0]) | U32(p[1]) << 8 | U32(p[2]) << 16 | U32(p[3]) << 24;
-}
-Result refused(Status status, Error error = Error::ok) {
-    return {status, no_offset, error};
-}
+U32 word(const Byte* p) { return U32(p[0]) | U32(p[1]) << 8 | U32(p[2]) << 16 | U32(p[3]) << 24; }
+Result refused(Status status, Error error = Error::ok) { return {status, no_offset, error}; }
 }
 Result locate_zero(const Byte* image, U32 image_bytes, const Policy& policy, U32 target, U32 slot_bytes) {
     if (!image || !slot_bytes || slot_bytes > max_zero_slot || slot_bytes > 0xffffffffu - target)
@@ -27,8 +23,7 @@ Result locate_zero(const Byte* image, U32 image_bytes, const Policy& policy, U32
         if (flags == 4 && address == target && bytes == slot_bytes) {
             ++matches;
             slot = offset + 16;
-        } else if ((flags == 4 || flags == 0x104) && bytes &&
-                   address < end && target < address + bytes) {
+        } else if ((flags == 4 || flags == 0x104) && bytes && address < end && target < address + bytes) {
             overlap = true;
         }
         offset += 16 + (flags == 0x104 ? 0 : bytes);
@@ -43,4 +38,4 @@ Result locate_zero(const Byte* image, U32 image_bytes, const Policy& policy, U32
         if (image[slot + i]) return refused(Status::preimage_mismatch);
     return {Status::ok, slot, Error::ok};
 }
-} }
+}}

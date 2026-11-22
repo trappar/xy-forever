@@ -26,11 +26,11 @@ void bind_trace_slot(nb::module_ m) {
         const unsigned char* next = static_cast<const unsigned char*>(replacement.data());
         unsigned char* input = image;
         xyf_core::Range allowed[] = {{0x1000, 0x10000}};
-        xyf_core::Range stock_allowed[] = {{0x08000000, 0x08040000}, {0x11800000, 0x11c00000},
-                                           {0x80000000, 0x90000000}};
-        xyf_core::Range stock_protected[] = {{0x0803e0c0, 0x0803e142}, {0x11803000, 0x11804000},
-            {0x8803d000, 0x8803d02a}, {0x88a346a6, 0x88a3481c}, {0x88a34aec, 0x88a34d6c},
-            {0x8a000000, 0x8a800000}, {0x8ab00000, 0x8ab10000}, {0x8b000000, 0x8b800000}};
+        xyf_core::Range stock_allowed[] = {
+            {0x08000000, 0x08040000}, {0x11800000, 0x11c00000}, {0x80000000, 0x90000000}};
+        xyf_core::Range stock_protected[] = {
+            {0x0803e0c0, 0x0803e142}, {0x11803000, 0x11804000}, {0x8803d000, 0x8803d02a}, {0x88a346a6, 0x88a3481c},
+            {0x88a34aec, 0x88a34d6c}, {0x8a000000, 0x8a800000}, {0x8ab00000, 0x8ab10000}, {0x8b000000, 0x8b800000}};
         xyf_core::Range protected_range[] = {{target, target + count}};
         if (mode == "alias_start") next = image;
         if (mode == "alias_end") next = image + size - 1;
@@ -44,7 +44,10 @@ void bind_trace_slot(nb::module_ m) {
         if (mode == "null_replacement") next = 0;
         const bool protect = mode == "protect", stock = mode == "stock";
         const xyf_core::Policy policy = {stock ? stock_allowed : allowed, stock ? 3u : 1u,
-            stock ? stock_protected : protected_range, stock ? 8u : protect ? 1u : 0u};
+                                         stock ? stock_protected : protected_range,
+                                         stock   ? 8u :
+                                         protect ? 1u :
+                                                   0u};
         const xyf_core::trace_slot::Result result =
             xyf_core::trace_slot::replace(input, unsigned(size), policy, target, preimage, next, count);
         return std::make_tuple(std::string(xyf_core::trace_slot::status_name(result.status)), result.file_offset,

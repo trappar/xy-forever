@@ -38,5 +38,5 @@ struct Info {
 };
 bool parse_info(const char* text, uint32_t length, Info& info);
 
-} }
+}}
 #endif

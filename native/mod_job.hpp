@@ -37,30 +37,30 @@ static const int missing_file = -2, probe_again = 1;
 struct Files {
     void* context;
     int (*probe_metadata)(void* context, const char* path);                // 0, missing_file, probe_again, or error
-    int (*size)(void* context, const char* path, U32* bytes);               // 0, missing_file, or other negative error
-    int (*open)(void* context, const char* path, bool write);               // write: create or truncate
-    int (*read)(void* context, int handle, Byte* data, U32 bytes);          // bytes read (0: end), or < 0
-    int (*write)(void* context, int handle, const Byte* data, U32 bytes);   // bytes written, or < 0
-    int (*close)(void* context, int handle);                                // 0, or < 0
-    int (*rename)(void* context, const char* from, const char* to);         // 0, or < 0 (`to` is absent)
-    int (*remove)(void* context, const char* path);                         // 0, or < 0 (absent included)
-    int (*mkdir)(void* context, const char* path);                          // 0: the folder exists now (made
-                                                                            // or already there), or < 0
+    int (*size)(void* context, const char* path, U32* bytes); // 0, missing_file, or other negative error
+    int (*open)(void* context, const char* path, bool write); // write: create or truncate
+    int (*read)(void* context, int handle, Byte* data, U32 bytes); // bytes read (0: end), or < 0
+    int (*write)(void* context, int handle, const Byte* data, U32 bytes); // bytes written, or < 0
+    int (*close)(void* context, int handle); // 0, or < 0
+    int (*rename)(void* context, const char* from, const char* to); // 0, or < 0 (`to` is absent)
+    int (*remove)(void* context, const char* path); // 0, or < 0 (absent included)
+    int (*mkdir)(void* context, const char* path); // 0: the folder exists now (made
+    // or already there), or < 0
 };
 // The selection and the files, as host/mod_assemble.cpp's job; everything must stay valid until the
 // job ends.
 struct Input {
-    mod_link::Selection selection;   // machines, extensions, prior number reservations, memory option
-    const char* generation;          // folder holding base/, <machine>/, ext-<id>/
-    const char* stock;               // stock os.ldr
-    const char* catalog;             // stock content/op1_factory.json
-    const char* official;            // the firmware's content.sha256
-    const char* out;                 // output folder; it exists (the job makes the folders under it)
-    const char* name;                // manifest name: 1-47 printable ASCII bytes, no space at either end
-    const Policy* policy;            // ldr::inspect's policy (the cold LDR policy)
-    bool profiling;                  // false: the website's mode
-    bool unverified;                 // the user confirmed a base that is not a known one
-    bool flat;                       // the device's store (docs/storage/mods.md): package files under stored_name
+    mod_link::Selection selection; // machines, extensions, prior number reservations, memory option
+    const char* generation; // folder holding base/, <machine>/, ext-<id>/
+    const char* stock; // stock os.ldr
+    const char* catalog; // stock content/op1_factory.json
+    const char* official; // the firmware's content.sha256
+    const char* out; // output folder; it exists (the job makes the folders under it)
+    const char* name; // manifest name: 1-47 printable ASCII bytes, no space at either end
+    const Policy* policy; // ldr::inspect's policy (the cold LDR policy)
+    bool profiling; // false: the website's mode
+    bool unverified; // the user confirmed a base that is not a known one
+    bool flat; // the device's store (docs/storage/mods.md): package files under stored_name
 };
 // A package file's name in the device's flat store (#124): a top-level path as it is, a path with a folder
 // as the first 12 hex digits of its SHA-256 plus the extension of its last part (the text from its last
@@ -68,12 +68,20 @@ struct Input {
 // package's folder. out: at least 21 bytes. xy_forever/modstore.py and clients/ts/src/modstore.ts match it.
 inline void stored_name(const char* path, const hash::Digest& sha, char* out) {
     U32 slash = 0, n = 0;
-    for (U32 i = 0; path[i]; ++i) if (path[i] == '/') slash = i + 1;
-    if (!slash) { while ((out[n] = path[n])) ++n; return; }
+    for (U32 i = 0; path[i]; ++i)
+        if (path[i] == '/') slash = i + 1;
+    if (!slash) {
+        while ((out[n] = path[n])) ++n;
+        return;
+    }
     const char* digits = "0123456789abcdef";
-    for (U32 k = 0; k != 6; ++k) { out[n++] = digits[sha.bytes[k] >> 4]; out[n++] = digits[sha.bytes[k] & 15]; }
+    for (U32 k = 0; k != 6; ++k) {
+        out[n++] = digits[sha.bytes[k] >> 4];
+        out[n++] = digits[sha.bytes[k] & 15];
+    }
     U32 dot = 0, end = slash;
-    for (; path[end]; ++end) if (path[end] == '.') dot = end;
+    for (; path[end]; ++end)
+        if (path[end] == '.') dot = end;
     bool ext = dot > slash && end - dot >= 2 && end - dot <= 8;
     for (U32 i = dot + 1; ext && i != end; ++i) {
         const char c = path[i];
@@ -85,80 +93,112 @@ inline void stored_name(const char* path, const hash::Digest& sha, char* out) {
 enum class Phase { idle, inputs, link, patch, content, write, verify, finish, done, failed, cancelled };
 enum class Error {
     none,
-    argument,    // start(): a missing input, file call or region, an unaligned region, too many packages
-    path,        // a composed path over path_bytes
-    region,      // the work region is too small for what comes next
-    open,        // size() or open() failed: the file is absent or unreadable
-    read,        // read() or a read handle's close() failed
-    truncated,   // the file ended before its size
-    size,        // a file over its bound (stock larger than the image buffer)
-    list,        // a files.sha256 line is not "<64 hex>  <path>"
-    unlisted,    // a file the job needs is not in its package's files.sha256 (or the package is unknown)
-    sha256,      // a file differs from its files.sha256 entry
-    info,        // a package info.txt field (catalog_number)
-    base,        // the base info.txt: patch facts or catalog offsets (mod_patch::read_profile), no edits.bin, or a base that is not a known one and not confirmed (status: mod_patch unverified)
-    link,        // the linker refused (status: mod_link::Status)
-    patch,       // the patch refused (status: mod_patch::Status)
-    content,     // the content step refused, or a mod object failed check_object (status: mod_content::Status)
-    write,       // open, write or close of an output failed
-    rename,      // removing or renaming an output failed
-    verify,      // an output read back differs from what was written
+    argument, // start(): a missing input, file call or region, an unaligned region, too many packages
+    path, // a composed path over path_bytes
+    region, // the work region is too small for what comes next
+    open, // size() or open() failed: the file is absent or unreadable
+    read, // read() or a read handle's close() failed
+    truncated, // the file ended before its size
+    size, // a file over its bound (stock larger than the image buffer)
+    list, // a files.sha256 line is not "<64 hex>  <path>"
+    unlisted, // a file the job needs is not in its package's files.sha256 (or the package is unknown)
+    sha256, // a file differs from its files.sha256 entry
+    info, // a package info.txt field (catalog_number)
+    base, // the base info.txt: patch facts or catalog offsets (mod_patch::read_profile), no edits.bin, or a base that is not a known one and not confirmed (status: mod_patch unverified)
+    link, // the linker refused (status: mod_link::Status)
+    patch, // the patch refused (status: mod_patch::Status)
+    content, // the content step refused, or a mod object failed check_object (status: mod_content::Status)
+    write, // open, write or close of an output failed
+    rename, // removing or renaming an output failed
+    verify, // an output read back differs from what was written
     cancelled,
-    image        // os.ldr read back fails start_verify or differs from the assembly (status: mod_patch::Status)
+    image // os.ldr read back fails start_verify or differs from the assembly (status: mod_patch::Status)
 };
-static const U32 chunk_bytes = 64u * 1024u, path_bytes = 240, detail_bytes = 33,
-                 catalog_bytes = 16384, list_bytes = 65536, info_bytes = 1024,
-                 crc_slice = 128u * 1024u;
+static const U32 chunk_bytes = 64u * 1024u, path_bytes = 240, detail_bytes = 33, catalog_bytes = 16384,
+                 list_bytes = 65536, info_bytes = 1024, crc_slice = 128u * 1024u;
 // State of one job; caller-owned (no BSS), reusable: start() resets it.
 struct Job {
-    struct Package {                 // one package as the job holds it
-        const char* name;            // "base", the machine id, "ext-<id>"
-        Byte* list; U32 list_bytes;  // files.sha256, each line's end turned into a NUL
-        mod_content::File* files; U32 file_count;   // its lines, package metadata excluded
-        const hash::Digest *info_sha256, *native_sha256;   // original records' digests (0: not listed)
-        const char* metadata;              // selected on-disk record name
-        Byte* info; U32 info_bytes;
-        Byte* catalog; U32 catalog_bytes;
+    struct Package { // one package as the job holds it
+        const char* name; // "base", the machine id, "ext-<id>"
+        Byte* list;
+        U32 list_bytes; // files.sha256, each line's end turned into a NUL
+        mod_content::File* files;
+        U32 file_count; // its lines, package metadata excluded
+        const hash::Digest *info_sha256, *native_sha256; // original records' digests (0: not listed)
+        const char* metadata; // selected on-disk record name
+        Byte* info;
+        U32 info_bytes;
+        Byte* catalog;
+        U32 catalog_bytes;
     };
-    struct Load {                    // the file being read
-        int handle; Byte* data; U32 size, done; const hash::Digest* want;
+    struct Load { // the file being read
+        int handle;
+        Byte* data;
+        U32 size, done;
+        const hash::Digest* want;
         hash::Sha256 sha;
         bool active, ready, stream, back;
     };
-    const Input* input; const Files* files;
-    Byte* region; U32 region_bytes, low, peak;   // region[0, low) is held; peak: the most ever used
-    Phase phase; Error error; U32 status;        // status: the refusing step's own Status, as a number
-    char detail[detail_bytes];                   // which file, object, edit or check
-    U32 stage, index, steps, work, done, total;  // work: bytes handled by the last step
-    Package* packages; U32 package_count;
+    const Input* input;
+    const Files* files;
+    Byte* region;
+    U32 region_bytes, low, peak; // region[0, low) is held; peak: the most ever used
+    Phase phase;
+    Error error;
+    U32 status; // status: the refusing step's own Status, as a number
+    char detail[detail_bytes]; // which file, object, edit or check
+    U32 stage, index, steps, work, done, total; // work: bytes handled by the last step
+    Package* packages;
+    U32 package_count;
     mod_content::Package* content_packages;
     Load load;
     int out_handle;
     U32 out_index, out_done;
-    U32 out_count, out_written;                  // outputs (content files + 3); how many were opened
-    U32* out_sizes;                              // each output's size (a content file's once loaded)
-    const Byte* source;                          // the content file being written (loaded from its package)
-    bool check_object;                           // the file being read is a mod object (check_object)
-    Byte* spare; U32 spare_bytes;                // where a link file may go instead of region[low...) (step_link)
+    U32 out_count, out_written; // outputs (content files + 3); how many were opened
+    U32* out_sizes; // each output's size (a content file's once loaded)
+    const Byte* source; // the content file being written (loaded from its package)
+    bool check_object; // the file being read is a mod object (check_object)
+    Byte* spare;
+    U32 spare_bytes; // where a link file may go instead of region[low...) (step_link)
     char path[path_bytes];
     // the assembly
-    mod_patch::Profile profile; mod_content::Catalog pins;
-    U32 module_limit, reserved_bytes;            // the layout in use (mod_patch::layout; expanded or not)
-    Byte* image; U32 image_bytes;
-    const Byte* edits; U32 edits_bytes;
+    mod_patch::Profile profile;
+    mod_content::Catalog pins;
+    U32 module_limit, reserved_bytes; // the layout in use (mod_patch::layout; expanded or not)
+    Byte* image;
+    U32 image_bytes;
+    const Byte* edits;
+    U32 edits_bytes;
     Byte *stock_catalog, *official, *link_scratch, *patch_scratch, *content_scratch, *catalog_out, *list_out;
     U32 stock_catalog_bytes, official_bytes;
-    mod_link::Workspace workspace; mod_link::Result linked;
-    mod_patch::Patcher patcher; mod_content::Builder builder;
+    mod_link::Workspace workspace;
+    mod_link::Result linked;
+    mod_patch::Patcher patcher;
+    mod_content::Builder builder;
     Byte* info_out;
     U32 info_size, list_size, ldr_bytes, crc, crc_done;
     hash::Digest ldr_sha256, info_sha256, list_sha256;
-    U32 link_pass;                               // timing: the link's last step: 1 tables/pass 1, 2 zero, 3 pass 2
+    U32 link_pass; // timing: the link's last step: 1 tables/pass 1, 2 zero, 3 pass 2
 };
 // The part of the job a step belongs to, finer than Phase (the save-time log, target/xyf_save_log.hpp).
 enum TimingPart : U32 {
-    tp_base, tp_packages, tp_catalog, tp_stock, tp_patch1, tp_link1, tp_zero, tp_link2, tp_set_module, tp_patch2,
-    tp_crc, tp_content, tp_write, tp_verify, tp_check, tp_finish, tp_count
+    tp_base,
+    tp_packages,
+    tp_catalog,
+    tp_stock,
+    tp_patch1,
+    tp_link1,
+    tp_zero,
+    tp_link2,
+    tp_set_module,
+    tp_patch2,
+    tp_crc,
+    tp_content,
+    tp_write,
+    tp_verify,
+    tp_check,
+    tp_finish,
+    tp_count
 };
 U32 timing_part(const Job& job);
 // Starts a job over `region` (4-byte aligned; the device gives 8 MiB - 64 KiB at 0x8b010000; peak with the
@@ -173,9 +213,13 @@ void cancel(Job& job);
 // Progress of the current phase: done of total units (total 0: not known ahead). inputs: bytes read;
 // link, patch: steps (the CRC-32 slices included); content: packages; write, verify, finish: outputs
 // written, read back (os.ldr's image check included), renamed.
-struct Progress { Phase phase; Error error; U32 status, done, total; };
+struct Progress {
+    Phase phase;
+    Error error;
+    U32 status, done, total;
+};
 void progress(const Job& job, Progress& out);
 const char* error_name(Error error);
 const char* phase_name(Phase phase);
-} }
+}}
 #endif

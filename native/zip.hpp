@@ -5,9 +5,9 @@
 namespace xyf_core { namespace zip {
 struct Limits {
     U32 entries, member_bytes, total_bytes, archive_bytes, expansion_ratio;
-    Limits() : entries(4096), member_bytes(64u * 1024u * 1024u),
-        total_bytes(256u * 1024u * 1024u), archive_bytes(256u * 1024u * 1024u),
-        expansion_ratio(1024) {}
+    Limits()
+        : entries(4096), member_bytes(64u * 1024u * 1024u), total_bytes(256u * 1024u * 1024u),
+          archive_bytes(256u * 1024u * 1024u), expansion_ratio(1024) {}
 };
 // ZIP32 names use a deliberately narrow portable ASCII subset (max255 bytes).
 // Both known official packages fit it; Unicode/ZIP64/encryption are unsupported.
@@ -26,12 +26,12 @@ struct Archive {
 // No extraction or writes. The entry table is caller-owned, must remain
 // immutable and must outlive Archive. Source bytes must also remain immutable.
 // Pass the source's Work, if any, to propagate cancellation from a reader.
-Status open(const Reader& reader, const Limits& limits, Entry* entries,
-            U32 capacity, Archive& archive, Work* work=nullptr);
+Status open(const Reader& reader, const Limits& limits, Entry* entries, U32 capacity, Archive& archive,
+            Work* work = nullptr);
 // Extracts a single indexed member to a caller sink, or validates with null sink.
 // On any failure all sink output is provisional and must be discarded.
 // Pass the source's Work, if any, as in open().
-Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace,
-               const Sink& sink, Extraction& result, Work* work=nullptr);
-} }
+Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace, const Sink& sink, Extraction& result,
+               Work* work = nullptr);
+}}
 #endif

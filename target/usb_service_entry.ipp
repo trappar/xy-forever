@@ -36,8 +36,10 @@ void a_set_default(cold_storage::Stock121ReadOnlySession& storage, uint32_t hash
                     name[n] = char(entry[library::dirent_name + n]);
                 name[n] = 0;
                 if (entry[library::dirent_type] == library::dirent_regular || !store::valid_id(name) ||
-                    state_write::id_hash(name) != hash) continue;
-                if (!matches++) for (U32 k = 0; k <= n; ++k) id[k] = name[k];
+                    state_write::id_hash(name) != hash)
+                    continue;
+                if (!matches++)
+                    for (U32 k = 0; k <= n; ++k) id[k] = name[k];
             }
             storage.direct_closedir(dir);
         }
@@ -69,9 +71,9 @@ void a_set_default(cold_storage::Stock121ReadOnlySession& storage, uint32_t hash
             if (!state_write::plan_default_id(choice, id, plan)) status = state_write::status_plan;
             else {
                 seq = plan.seq;
-                const cold_storage::Result w = storage.write_state_slot(plan.path,
-                    reinterpret_cast<const uint8_t*>(plan.text), plan.length,
-                    reinterpret_cast<uint8_t*>(state_write::a_readback), step);
+                const cold_storage::Result w =
+                    storage.write_state_slot(plan.path, reinterpret_cast<const uint8_t*>(plan.text), plan.length,
+                                             reinterpret_cast<uint8_t*>(state_write::a_readback), step);
                 written = U32(w);
                 status = w == cold_storage::Result::ok ? state_write::status_ok : state_write::status_storage;
             }
@@ -86,12 +88,16 @@ void a_dry_run() { dry_run = 1; }
 void dry_run_finish(const void* block, uint32_t bytes) {
     if (result.role == 1) {
         // The session already ended; a link not shown closed halts b (never the OS).
-        if (!b_link_closed(false)) { say("Internal link lost.", "Turn the OP-XY off and on."); for (;;) {} }
+        if (!b_link_closed(false)) {
+            say("Internal link lost.", "Turn the OP-XY off and on.");
+            for (;;) {}
+        }
         menu_release();                                // USB off (already off after the boot's release)
         const U32 n = bytes < dry_run_max_bytes ? bytes : dry_run_max_bytes;
         const uint8_t* from = static_cast<const uint8_t*>(block);
         for (U32 i = 0; i != n; ++i) byte(dry_run_area + 8 + i) = from[i];
-        word(dry_run_area + 4) = n; word(dry_run_area) = dry_run_magic;
+        word(dry_run_area + 4) = n;
+        word(dry_run_area) = dry_run_magic;
         lines(dry_run_area, 8 + n, false);
         marker_write(marker_reboot | carried_flags, 0);
     }
@@ -109,14 +115,18 @@ volatile U32 usb_deferred_ms __attribute__((section(".data"))) = 0;   // #21: si
 const U32 usb_settings_ms = 3000;
 #endif
 void menu_start_usb() {
-    if (menu_usb == 3u) { menu_usb = 1; return; }      // Test 062: USB kept from the service
+    if (menu_usb == 3u) {
+        menu_usb = 1;
+        return;
+    }      // Test 062: USB kept from the service
     if (menu_usb) return;
     usb_off = identity() ? 1u : file_client::identity() ? 2u : 0u;
     if (usb_off) return;
     P::reset(parser, rx);
     result.stock_callback = cdc_callback();
 #if defined(XYF_MTP_USB)
-    usb_deferred = 1; usb_deferred_ms = now();         // home_pump reads USB mode and the flag, then starts USB
+    usb_deferred = 1;
+    usb_deferred_ms = now();         // home_pump reads USB mode and the flag, then starts USB
 #else
     set_cdc_callback(0);
     usb_start();
@@ -125,7 +135,8 @@ void menu_start_usb() {
 }
 const char* usb_notice() {
     return usb_off == 1u ? "USB off: stock USB code changed (1)." :
-           usb_off == 2u ? "USB off: stock storage code changed (2)." : 0;
+           usb_off == 2u ? "USB off: stock storage code changed (2)." :
+                           0;
 }
 #endif
 // Test 062: file-boot progress on the service screen (only after a HELLO this boot).
@@ -140,19 +151,34 @@ volatile U32 host_framed __attribute__((section(".data"))) = 0;          // a va
 volatile U32 host_frame_ms __attribute__((section(".data"))) = 0;        // now() at the last one
 volatile U32 host_change __attribute__((section(".data"))) = 0;          // the last changing request's line
 volatile U32 host_change_ms __attribute__((section(".data"))) = 0;
-enum HostLine : U32 { line_none = 0, line_stage, line_files, line_install, line_uninstall, line_default, line_build,
-                      line_content, line_mods };
+enum HostLine : U32 {
+    line_none = 0,
+    line_stage,
+    line_files,
+    line_install,
+    line_uninstall,
+    line_default,
+    line_build,
+    line_content,
+    line_mods
+};
 const char* host_line(U32 line) {
-    return line == line_stage ? "USB: receiving a file" : line == line_files ? "USB: writing files" :
-           line == line_install ? "USB: installing XY Forever" : line == line_uninstall ? "USB: uninstalling XY Forever" :
-           line == line_default ? "USB: setting the default" : line == line_build ? "USB: building Open-XY" :
-           line == line_content ? "USB: changing content" : line == line_mods ? "USB: setting the mods" : nullptr;
+    return line == line_stage     ? "USB: receiving a file" :
+           line == line_files     ? "USB: writing files" :
+           line == line_install   ? "USB: installing XY Forever" :
+           line == line_uninstall ? "USB: uninstalling XY Forever" :
+           line == line_default   ? "USB: setting the default" :
+           line == line_build     ? "USB: building Open-XY" :
+           line == line_content   ? "USB: changing content" :
+           line == line_mods      ? "USB: setting the mods" :
+                                    nullptr;
 }
 U32 change_line(uint8_t type) {                                          // the requests that change something
     if (type == P::t_put_begin || type == P::t_put_data || type == P::t_put_end) return line_stage;
     if (type == P::t_file_write || type == P::t_delete_file || type == P::t_remove_dir || type == P::t_make_dir ||
         type == P::t_rename_file || type == P::t_copy_file || type == P::t_write_begin || type == P::t_write_data ||
-        type == P::t_write_end) return line_files;
+        type == P::t_write_end)
+        return line_files;
     if (type == P::t_install) return line_install;
     if (type == P::t_uninstall) return line_uninstall;
     if (type == P::t_set_default) return line_default;

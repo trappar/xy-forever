@@ -4,7 +4,7 @@ using namespace xy_forever::usb_service;
 namespace P = xyf::usbp;
 typedef unsigned int U32;
 template<U32 A, class R, class... Args> __attribute__((noinline, noclone)) R stock(Args... args) {
-    return reinterpret_cast<R(*)(Args...)>(A)(args...);
+    return reinterpret_cast<R (*)(Args...)>(A)(args...);
 }
 volatile U32& word(U32 address) { return *reinterpret_cast<volatile U32*>(address); }
 volatile uint8_t& byte(U32 address) { return *reinterpret_cast<volatile uint8_t*>(address); }
@@ -34,11 +34,13 @@ void usb_stop() { stock<0x88a34fecu, void>(1u); }                    // release 
 volatile U32 composite_on __attribute__((section(".data"))) = 0;   // usb_begin sets it, menu_release clears it
 U32 cdc_available() {
     if (composite_on) return xyf::mtp_usb::serial_available();
-    const int n = stock<0x88a13328u, int>(0u); return n > 0 ? U32(n) : 0;
+    const int n = stock<0x88a13328u, int>(0u);
+    return n > 0 ? U32(n) : 0;
 }
 U32 cdc_read(uint8_t* out, U32 n) {
     if (composite_on) return xyf::mtp_usb::serial_read(out, n);
-    const int got = stock<0x88a1334au, int>(0u, out, n); return got > 0 ? U32(got) : 0;
+    const int got = stock<0x88a1334au, int>(0u, out, n);
+    return got > 0 ? U32(got) : 0;
 }
 int cdc_write(const uint8_t* data, U32 n) {
     if (composite_on) return xyf::mtp_usb::serial_write(data, n);
@@ -46,8 +48,14 @@ int cdc_write(const uint8_t* data, U32 n) {
 }
 U32 write_chunk() { return composite_on ? U32(xyf::mtp_usb::kSerialInMax) : 512u; }
 #else
-U32 cdc_available() { const int n = stock<0x88a13328u, int>(0u); return n > 0 ? U32(n) : 0; }
-U32 cdc_read(uint8_t* out, U32 n) { const int got = stock<0x88a1334au, int>(0u, out, n); return got > 0 ? U32(got) : 0; }
+U32 cdc_available() {
+    const int n = stock<0x88a13328u, int>(0u);
+    return n > 0 ? U32(n) : 0;
+}
+U32 cdc_read(uint8_t* out, U32 n) {
+    const int got = stock<0x88a1334au, int>(0u, out, n);
+    return got > 0 ? U32(got) : 0;
+}
 int cdc_write(const uint8_t* data, U32 n) { return stock<0x88a132f6u, int>(0u, data, n); }
 #endif
 // Test 032: the stock bootloader's USB-serial transport (L1 11a03b6e) leaves its
@@ -92,15 +100,20 @@ U32 flags() { return held ? marker_held : 0; }
 volatile U32 reset_refused __attribute__((section(".data"))) = 0;
 #if defined(XYF_ONE_SESSION) && defined(XYF_SERVICE_ON_MARKER_ONLY)
 bool b_link_closed(bool wait) {
-    if (reset_refused || !xyf_boot::link_close(wait)) { reset_refused = 1; return false; }
+    if (reset_refused || !xyf_boot::link_close(wait)) {
+        reset_refused = 1;
+        return false;
+    }
     return true;
 }
 #else
 bool b_link_closed(bool) { return true; }
 #endif
 void marker_write(U32 reason, U32 crashes) {
-    word(reboot_marker + 8) = reason; word(reboot_marker + 12) = crashes;
-    word(reboot_marker) = reboot_magic; word(reboot_marker + 4) = ~reboot_magic;
+    word(reboot_marker + 8) = reason;
+    word(reboot_marker + 12) = crashes;
+    word(reboot_marker) = reboot_magic;
+    word(reboot_marker + 4) = ~reboot_magic;
     lines(reboot_marker, 16, false);                    // to SDRAM before any reset
 }
 void marker_clear() {
@@ -127,7 +140,8 @@ bool raw_send(const uint8_t* frame, U32 n) {
         const key_ui::Where where(xyf::where::usb_log);   // no wait(): inside the stock writer, 200 ms at most
         const U32 start = now();
         int wrote = -1;
-        while ((wrote = cdc_write(frame + at, chunk)) < 0) if (now() - start > 200u) return false;
+        while ((wrote = cdc_write(frame + at, chunk)) < 0)
+            if (now() - start > 200u) return false;
         at += U32(wrote) ? U32(wrote) : chunk;
     }
     return true;
@@ -135,15 +149,22 @@ bool raw_send(const uint8_t* frame, U32 n) {
 void log_line(const char* text) {
     Result& r = result;
     ++r.log_lines;
-    if (!log_open || in_interrupt()) { ++r.log_skipped; return; }
+    if (!log_open || in_interrupt()) {
+        ++r.log_skipped;
+        return;
+    }
     uint8_t* const payload = reinterpret_cast<uint8_t*>(log_frame);
     uint8_t* const out = payload + 0x100;
-    P::put32(payload, P::s_ok); P::put32(payload + 4, now());
+    P::put32(payload, P::s_ok);
+    P::put32(payload + 4, now());
     U32 n = 8;
     for (; text && *text && n != 8 + log_text_max; ++text) payload[n++] = uint8_t(*text);
     const U32 size = P::encode(uint8_t(P::t_log | P::t_reply), 0, payload, n, out, 0x100);
     if (size && raw_send(out, size)) ++r.log_sent;
-    else { ++r.log_skipped; log_open = 0; }        // host not reading: stop, never slow the writer
+    else {
+        ++r.log_skipped;
+        log_open = 0;
+    }        // host not reading: stop, never slow the writer
 }
 // Stock sink signature (11a01d96 calls each non-zero sink as sink(level, text)).
 // text starts with 4 binary time bytes (88a34230), then "file[line]: message"
@@ -153,7 +174,11 @@ void hook_logs() {
     Result& r = result;
     r.log_level_before = word(log_level_address);
     U32 any = 0;
-    for (U32 i = 0; i != 4; ++i) { saved_sinks[i] = word(log_sinks + 4 * i); any |= saved_sinks[i]; word(log_sinks + 4 * i) = 0; }
+    for (U32 i = 0; i != 4; ++i) {
+        saved_sinks[i] = word(log_sinks + 4 * i);
+        any |= saved_sinks[i];
+        word(log_sinks + 4 * i) = 0;
+    }
     r.log_sink_before = any;
     word(log_sinks) = reinterpret_cast<U32>(&log_sink);
     if (r.log_level_before < log_level) word(log_level_address) = log_level;
@@ -164,7 +189,8 @@ void unhook_logs() {
 }
 // "xyf install step N value 0xXXXXXXXX"
 void beacon(U32 step, U32 value) {
-    result.install_step = step; result.install_step_ms = now();
+    result.install_step = step;
+    result.install_step_ms = now();
     char text[40];
     const char* head = "xyf install step ";
     U32 n = 0;
@@ -193,7 +219,10 @@ bool send(uint8_t type, uint8_t seq, const uint8_t* payload, U32 length) {
         while ((wrote = cdc_write(tx + at, chunk)) < 0) {
             tick();
             where.wait();
-            if (now() - start > 500u) { ++result.write_errors; return false; }
+            if (now() - start > 500u) {
+                ++result.write_errors;
+                return false;
+            }
         }
         at += U32(wrote) ? U32(wrote) : chunk;
     }
@@ -201,7 +230,8 @@ bool send(uint8_t type, uint8_t seq, const uint8_t* payload, U32 length) {
     return true;
 }
 bool status_only(uint8_t type, uint8_t seq, U32 status) {
-    uint8_t p[4]; P::put32(p, status);
+    uint8_t p[4];
+    P::put32(p, status);
     result.last_status = status;
     return send(type, seq, p, 4);
 }
@@ -232,7 +262,9 @@ void hello(uint8_t seq) {
 U32 append_block(uint8_t* p, U32 n, const void* data, U32 bytes) {
     if (n + 8 + bytes > P::max_data) return n;
     const uint8_t* d = static_cast<const uint8_t*>(data);
-    P::put32(p + n, P::get32(d)); P::put32(p + n + 4, bytes); n += 8;
+    P::put32(p + n, P::get32(d));
+    P::put32(p + n + 4, bytes);
+    n += 8;
     for (U32 i = 0; i != bytes; ++i) p[n++] = d[i];
     return n;
 }
@@ -263,4 +295,3 @@ void status(uint8_t seq) {
 // after a lone restart, would serve the request with no path policy)? One bounded link round trip
 // per command (file_client::serving).
 bool a_serving() { return (read_enabled = file_client::serving() == P::s_ok) != 0; }
-

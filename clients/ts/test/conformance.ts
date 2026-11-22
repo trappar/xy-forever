@@ -26,7 +26,7 @@ type Want = 'int' | 'str' | 'bytes' | 'any';
 export class CaseError extends Error {}
 class Fail extends Error {}
 class Skip extends Error {}
-const DRY = Symbol('dry');                     // a value known only while running (check mode)
+const DRY = Symbol('dry'); // a value known only while running (check mode)
 
 const HERE = new URL('.', import.meta.url);
 const SPEC = JSON.parse(readFileSync(new URL('../../../protocol/v1.json', HERE), 'utf-8')) as Obj;
@@ -36,7 +36,18 @@ const CODECS = { ...v1.codecs, ...v1.dev } as unknown as Record<string, { encode
 const REPLY = v1.REPLY;
 const EVENT_LOG = v1.TYPE.log;
 
-const ACTIONS = ['send', 'send_type', 'send_bytes', 'stream', 'each_type', 'stage', 'write', 'disconnect', 'reconnect', 'sim'];
+const ACTIONS = [
+  'send',
+  'send_type',
+  'send_bytes',
+  'stream',
+  'each_type',
+  'stage',
+  'write',
+  'disconnect',
+  'reconnect',
+  'sim',
+];
 const STEP_COMMON = new Set(['expect', 'repeat', 'seq', 'doc', 'fields', 'payload']);
 const EXPECTS: Record<string, string[]> = {
   send: ['status', 'alone', 'fields', 'hello', 'save', 'events'],
@@ -45,7 +56,10 @@ const EXPECTS: Record<string, string[]> = {
   send_bytes: ['replies', 'none_within_ms'],
 };
 const KEYS: Record<string, [string[], string[]]> = {
-  case: [['name', 'doc', 'effects', 'real_device', 'steps'], ['rules', 'variant', 'needs', 'why_not', 'given']],
+  case: [
+    ['name', 'doc', 'effects', 'real_device', 'steps'],
+    ['rules', 'variant', 'needs', 'why_not', 'given'],
+  ],
   given: [[], ['boot', 'hello', 'files', 'faults']],
   file: [['path', 'data'], []],
   repeat: [['var', 'from', 'to', 'step'], []],
@@ -60,10 +74,20 @@ const KEYS: Record<string, [string[], string[]]> = {
   frame: [['type', 'seq'], ['payload']],
 };
 const FORMS: [string, string[]][] = [
-  ['prefix', ['prefix', 'fill', 'length']], ['text', ['text']], ['hex', ['hex']], ['fill', ['fill', 'count']],
-  ['ramp', ['ramp']], ['blob', ['blob', 'from', 'length']], ['size', ['size', 'plus']], ['crc32', ['crc32']],
-  ['sha256', ['sha256']], ['const', ['const', 'plus']], ['hello', ['hello', 'plus']], ['var', ['var', 'plus']],
-  ['frame', ['frame', 'from', 'length']], ['concat', ['concat']],
+  ['prefix', ['prefix', 'fill', 'length']],
+  ['text', ['text']],
+  ['hex', ['hex']],
+  ['fill', ['fill', 'count']],
+  ['ramp', ['ramp']],
+  ['blob', ['blob', 'from', 'length']],
+  ['size', ['size', 'plus']],
+  ['crc32', ['crc32']],
+  ['sha256', ['sha256']],
+  ['const', ['const', 'plus']],
+  ['hello', ['hello', 'plus']],
+  ['var', ['var', 'plus']],
+  ['frame', ['frame', 'from', 'length']],
+  ['concat', ['concat']],
 ];
 const CONSTRAINTS = new Set(['len', 'len_min', 'len_max', 'min', 'max', 'matches', 'one_of']);
 const FIXTURES = ['stock_os_ldr', 'xyf_build'];
@@ -89,7 +113,10 @@ function hex(text: Json | undefined, where: string): Uint8Array {
 function concat(parts: Uint8Array[]): Uint8Array {
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let at = 0;
-  for (const p of parts) { out.set(p, at); at += p.length; }
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
   return out;
 }
 function utf8(text: string): Uint8Array {
@@ -103,7 +130,9 @@ function equal(a: Val, b: Val): boolean {
   return a === b;
 }
 function show(v: Val): string {
-  return v instanceof Uint8Array ? v1.toHex(v.subarray(0, 32)) + (v.length > 32 ? `... (${v.length} B)` : '') : JSON.stringify(v);
+  return v instanceof Uint8Array
+    ? v1.toHex(v.subarray(0, 32)) + (v.length > 32 ? `... (${v.length} B)` : '')
+    : JSON.stringify(v);
 }
 function constant(name: string): number {
   const value = (v1 as unknown as Record<string, unknown>)[name.toUpperCase()];
@@ -129,7 +158,9 @@ class Context {
   helloText: string | null = null;
   blobs = new Map<string, Uint8Array>();
   constructor(data: Obj, fixtures: Record<string, string>, dry: boolean) {
-    this.data = data; this.fixtures = fixtures; this.dry = dry;
+    this.data = data;
+    this.fixtures = fixtures;
+    this.dry = dry;
   }
 
   blob(name: Json | undefined): Uint8Array {
@@ -142,7 +173,8 @@ class Context {
         if (!FIXTURES.includes(b['fixture'] as string)) throw new CaseError(`blob ${name}: unknown fixture`);
         const path = this.fixtures[b['fixture'] as string];
         if (path === undefined) {
-          if (!this.dry) throw new Skip(`needs fixture ${String(b['fixture'])} (--fixture ${String(b['fixture'])}=PATH)`);
+          if (!this.dry)
+            throw new Skip(`needs fixture ${String(b['fixture'])} (--fixture ${String(b['fixture'])}=PATH)`);
           out = new Uint8Array(0);
         } else out = new Uint8Array(readFileSync(path));
       } else out = bytesForm(b, `blob ${name}`);
@@ -164,10 +196,18 @@ function bytesForm(v: Obj, where: string): Uint8Array {
   const keys = Object.keys(v).sort().join(',');
   if (keys === 'text' && typeof v['text'] === 'string') return utf8(v['text']);
   if (keys === 'hex') return hex(v['hex'], where);
-  if (keys === 'count,fill' && int(v['fill']) && v['fill'] >= 0 && v['fill'] <= 255 && int(v['count']) && v['count'] >= 0) {
+  if (
+    keys === 'count,fill' &&
+    int(v['fill']) &&
+    v['fill'] >= 0 &&
+    v['fill'] <= 255 &&
+    int(v['count']) &&
+    v['count'] >= 0
+  ) {
     return new Uint8Array(v['count']).fill(v['fill']);
   }
-  if (keys === 'ramp' && int(v['ramp']) && v['ramp'] >= 0) return Uint8Array.from({ length: v['ramp'] }, (_, i) => i & 0xff);
+  if (keys === 'ramp' && int(v['ramp']) && v['ramp'] >= 0)
+    return Uint8Array.from({ length: v['ramp'] }, (_, i) => i & 0xff);
   throw new CaseError(`${where}: not a blob form`);
 }
 
@@ -209,7 +249,8 @@ function resolve(v: Json | undefined, want: Want, ctx: Context, where = 'value')
     return parseInt(out, 10);
   }
   if (typeof out === 'number' && want === 'str') return String(out);
-  if (out instanceof Uint8Array && (want === 'int' || want === 'str')) throw new CaseError(`${where}: bytes where a ${want} is wanted`);
+  if (out instanceof Uint8Array && (want === 'int' || want === 'str'))
+    throw new CaseError(`${where}: bytes where a ${want} is wanted`);
   if (typeof out === 'number' && want === 'bytes') throw new CaseError(`${where}: a number where bytes are wanted`);
   return out;
 }
@@ -225,7 +266,8 @@ function form_(v: Obj, form: string, ctx: Context, where: string): Val | typeof 
   switch (form) {
     case 'prefix': {
       const length = resolve(v['length'], 'int', ctx, where) as number;
-      const prefix = v['prefix'], fill = v['fill'];
+      const prefix = v['prefix'],
+        fill = v['fill'];
       if (typeof prefix !== 'string' || typeof fill !== 'string' || utf8(fill).length !== 1) {
         throw new CaseError(`${where}: prefix is text, fill one ASCII character`);
       }
@@ -234,12 +276,20 @@ function form_(v: Obj, form: string, ctx: Context, where: string): Val | typeof 
     case 'text':
       if (typeof v['text'] !== 'string') throw new CaseError(`${where}: text must be a string`);
       return v['text'];
-    case 'hex': case 'fill': case 'ramp': return bytesForm(v, where);
-    case 'blob': return slice(ctx.blob(v['blob']));
-    case 'size': return ctx.blob(v['size']).length + plus;
-    case 'crc32': return v1.crc32(ctx.blob(v['crc32']));
-    case 'sha256': return sha256(ctx.blob(v['sha256']));
-    case 'const': return constant(String(v['const'])) + plus;
+    case 'hex':
+    case 'fill':
+    case 'ramp':
+      return bytesForm(v, where);
+    case 'blob':
+      return slice(ctx.blob(v['blob']));
+    case 'size':
+      return ctx.blob(v['size']).length + plus;
+    case 'crc32':
+      return v1.crc32(ctx.blob(v['crc32']));
+    case 'sha256':
+      return sha256(ctx.blob(v['sha256']));
+    case 'const':
+      return constant(String(v['const'])) + plus;
     case 'hello': {
       const value = ctx.helloKey(String(v['hello']));
       if (plus && value !== DRY) {
@@ -256,10 +306,22 @@ function form_(v: Obj, form: string, ctx: Context, where: string): Val | typeof 
     }
     case 'frame': {
       const f = checkKeys(v['frame'], 'frame', where);
-      if (typeof f['type'] !== 'string' || !/^0x[0-9a-f]{2}$/.test(f['type']) || !int(f['seq']) || f['seq'] < 0 || f['seq'] > 255) {
+      if (
+        typeof f['type'] !== 'string' ||
+        !/^0x[0-9a-f]{2}$/.test(f['type']) ||
+        !int(f['seq']) ||
+        f['seq'] < 0 ||
+        f['seq'] > 255
+      ) {
         throw new CaseError(`${where}: frame type "0xNN", seq 0..255`);
       }
-      return slice(v1.encodeFrame(parseInt(f['type'], 16), f['seq'], resolve(f['payload'] ?? '', 'bytes', ctx, where) as Uint8Array));
+      return slice(
+        v1.encodeFrame(
+          parseInt(f['type'], 16),
+          f['seq'],
+          resolve(f['payload'] ?? '', 'bytes', ctx, where) as Uint8Array,
+        ),
+      );
     }
     case 'concat':
       if (!Array.isArray(v['concat'])) throw new CaseError(`${where}: concat takes a list`);
@@ -269,20 +331,30 @@ function form_(v: Obj, form: string, ctx: Context, where: string): Val | typeof 
 }
 
 function fieldWant(f: v1.Field): Want {
-  return f.type === 'u8' || f.type === 'u16' || f.type === 'u32' ? 'int' : f.type === 'cstr' || f.type === 'text' ? 'str' : 'bytes';
+  return f.type === 'u8' || f.type === 'u16' || f.type === 'u32'
+    ? 'int'
+    : f.type === 'cstr' || f.type === 'text'
+      ? 'str'
+      : 'bytes';
 }
 
 // ---- requests ---------------------------------------------------------------------------------
 
-interface Request { type: number; payload: Uint8Array; command: v1.Command | null }
+interface Request {
+  type: number;
+  payload: Uint8Array;
+  command: v1.Command | null;
+}
 
 function requestOf(step: Obj, ctx: Context, where: string): Request {
   if ('send' in step) {
     const name = step['send'];
-    if (typeof name !== 'string' || !PUBLISHED.has(name)) throw new CaseError(`${where}: ${String(name)} is not a published command`);
+    if (typeof name !== 'string' || !PUBLISHED.has(name))
+      throw new CaseError(`${where}: ${String(name)} is not a published command`);
     const command = v1.COMMANDS[name as v1.CommandName];
-    if (('fields' in step) === ('payload' in step)) throw new CaseError(`${where}: send takes fields or payload`);
-    if ('payload' in step) return { type: command.type, payload: resolve(step['payload'], 'bytes', ctx, where) as Uint8Array, command };
+    if ('fields' in step === 'payload' in step) throw new CaseError(`${where}: send takes fields or payload`);
+    if ('payload' in step)
+      return { type: command.type, payload: resolve(step['payload'], 'bytes', ctx, where) as Uint8Array, command };
     const given = step['fields'];
     if (!isObj(given)) throw new CaseError(`${where}: fields must be an object`);
     const unknown = Object.keys(given).filter((k) => !command.request.fields.some((f) => f.name === k));
@@ -302,7 +374,11 @@ function requestOf(step: Obj, ctx: Context, where: string): Request {
   if (typeof kind !== 'string' || !/^0x[0-7][0-9a-f]$/.test(kind) || ALL_TYPES.has(parseInt(kind, 16))) {
     throw new CaseError(`${where}: send_type is "0xNN" below 0x80 and no command`);
   }
-  return { type: parseInt(kind, 16), payload: resolve(step['payload'] ?? '', 'bytes', ctx, where) as Uint8Array, command: null };
+  return {
+    type: parseInt(kind, 16),
+    payload: resolve(step['payload'] ?? '', 'bytes', ctx, where) as Uint8Array,
+    command: null,
+  };
 }
 
 function actionOf(step: Json, where: string): string {
@@ -312,17 +388,29 @@ function actionOf(step: Json, where: string): string {
   const unknown = Object.keys(step).filter((k) => !STEP_COMMON.has(k) && !ACTIONS.includes(k));
   if (unknown.length) throw new CaseError(`${where}: unknown step key(s) ${unknown}`);
   const action = actions[0]!;
-  if (action !== 'send' && action !== 'send_type' && ('fields' in step || 'payload' in step)) throw new CaseError(`${where}: fields/payload belong to send`);
-  if ('expect' in step !== action in EXPECTS) throw new CaseError(`${where}: ${action} ${action in EXPECTS ? 'needs' : 'takes no'} expect`);
-  if ('repeat' in step && action !== 'send' && action !== 'send_type') throw new CaseError(`${where}: repeat belongs to send`);
+  if (action !== 'send' && action !== 'send_type' && ('fields' in step || 'payload' in step))
+    throw new CaseError(`${where}: fields/payload belong to send`);
+  if ('expect' in step !== action in EXPECTS)
+    throw new CaseError(`${where}: ${action} ${action in EXPECTS ? 'needs' : 'takes no'} expect`);
+  if ('repeat' in step && action !== 'send' && action !== 'send_type')
+    throw new CaseError(`${where}: repeat belongs to send`);
   return action;
 }
 
 function stageFrames(body: Uint8Array): Request[] {
-  const out: Request[] = [{ type: v1.TYPE['stage.begin'], command: null,
-    payload: v1.encodeStageBeginRequest({ size: body.length, crc32: v1.crc32(body), sha256: sha256(body) }) }];
+  const out: Request[] = [
+    {
+      type: v1.TYPE['stage.begin'],
+      command: null,
+      payload: v1.encodeStageBeginRequest({ size: body.length, crc32: v1.crc32(body), sha256: sha256(body) }),
+    },
+  ];
   for (let at = 0; at < body.length; at += v1.PUT_CHUNK) {
-    out.push({ type: v1.TYPE['stage.data'], command: null, payload: v1.encodeStageDataRequest({ offset: at, data: body.subarray(at, at + v1.PUT_CHUNK) }) });
+    out.push({
+      type: v1.TYPE['stage.data'],
+      command: null,
+      payload: v1.encodeStageDataRequest({ offset: at, data: body.subarray(at, at + v1.PUT_CHUNK) }),
+    });
   }
   out.push({ type: v1.TYPE['stage.end'], command: null, payload: new Uint8Array(0) });
   return out;
@@ -352,7 +440,8 @@ function interpret(c: Json, data: Obj, fixtures: Record<string, string>): string
     if (action === 'send' || action === 'send_type') command = requestOf(step, ctx, at).command;
     else if (action === 'send_bytes') resolve(step['send_bytes'], 'bytes', ctx, at);
     else if (action === 'stream') {
-      if (!v1.STREAMS.some((st) => st.name === step['stream'] && st.direction === 'to_device')) throw new CaseError(`${at}: unknown stream`);
+      if (!v1.STREAMS.some((st) => st.name === step['stream'] && st.direction === 'to_device'))
+        throw new CaseError(`${at}: unknown stream`);
     } else if (action === 'each_type') {
       if (step['each_type'] !== 'unlisted') throw new CaseError(`${at}: each_type is "unlisted"`);
     } else if (action === 'stage') stageFrames(resolve(step['stage'], 'bytes', ctx, at) as Uint8Array);
@@ -366,8 +455,7 @@ function interpret(c: Json, data: Obj, fixtures: Record<string, string>): string
       if (typeof (connect['ready'] ?? false) !== 'boolean' || (connect['ready'] && connect['hello'] === false)) {
         throw new CaseError(`${at}: ready is a boolean and requires hello`);
       }
-    }
-    else if (action === 'sim' && typeof step['sim'] !== 'string') throw new CaseError(`${at}: sim is a control line`);
+    } else if (action === 'sim' && typeof step['sim'] !== 'string') throw new CaseError(`${at}: sim is a control line`);
     if ('expect' in step) {
       const e = checkKeys(step['expect'], 'expect', at);
       const extra = Object.keys(e).filter((k) => !EXPECTS[action]!.includes(k));
@@ -387,7 +475,8 @@ function interpret(c: Json, data: Obj, fixtures: Record<string, string>): string
       if ('hello' in e) {
         const h = checkKeys(e['hello'], 'hello', at);
         for (const value of Object.values(isObj(h['keys']) ? h['keys'] : {})) expected(value, 'str', ctx, at);
-        for (const name of (h['answers'] ?? []) as Json[]) if (!PUBLISHED.has(String(name))) throw new CaseError(`${at}: answers ${String(name)}`);
+        for (const name of (h['answers'] ?? []) as Json[])
+          if (!PUBLISHED.has(String(name))) throw new CaseError(`${at}: answers ${String(name)}`);
       }
       if ('events' in e) checkKeys(checkKeys(e['events'], 'events', at)['log'], 'count', at);
       for (const r of (e['replies'] ?? []) as Json[]) checkKeys(r, 'reply', at);
@@ -416,18 +505,28 @@ class CaseLink {
   barrier = 0;
   constructor(link: Link) {
     this.link = link;
-    link.onEvent((f) => { if (f.type === EVENT_LOG) this.events++; });
+    link.onEvent((f) => {
+      if (f.type === EVENT_LOG) this.events++;
+    });
   }
 
   static async open(host: string, port: number, log: string[]): Promise<CaseLink> {
     const trace = (_dir: '<' | '>', d: v1.Frame | Uint8Array): void => {
-      log.push(d instanceof Uint8Array ? `> ${d.length} B ${v1.toHex(d.subarray(0, 48))}${d.length > 48 ? '...' : ''}`
-        : `< 0x${d.type.toString(16)} seq ${d.seq} ${d.payload.length} B ${v1.toHex(d.payload.subarray(0, 24))}`);
+      log.push(
+        d instanceof Uint8Array
+          ? `> ${d.length} B ${v1.toHex(d.subarray(0, 48))}${d.length > 48 ? '...' : ''}`
+          : `< 0x${d.type.toString(16)} seq ${d.seq} ${d.payload.length} B ${v1.toHex(d.payload.subarray(0, 24))}`,
+      );
     };
     return new CaseLink(new Link(await TcpTransport.connect(host, port), trace));
   }
 
-  async request(type: number, payload: Uint8Array, ms: number, seq?: number): Promise<{ payload: Uint8Array; events: number }> {
+  async request(
+    type: number,
+    payload: Uint8Array,
+    ms: number,
+    seq?: number,
+  ): Promise<{ payload: Uint8Array; events: number }> {
     const before = this.events;
     try {
       const reply = await this.link.request(type, payload, { timeoutMs: ms, seq });
@@ -440,7 +539,12 @@ class CaseLink {
     }
   }
 
-  async exchange(chunks: Uint8Array[], gapMs: number, ms: number, until: (frames: readonly v1.Frame[]) => boolean): Promise<v1.Frame[]> {
+  async exchange(
+    chunks: Uint8Array[],
+    gapMs: number,
+    ms: number,
+    until: (frames: readonly v1.Frame[]) => boolean,
+  ): Promise<v1.Frame[]> {
     try {
       return await this.link.exchange(chunks, { gapMs, timeoutMs: ms, until });
     } catch (error) {
@@ -472,7 +576,10 @@ class Runner {
   capMs = 5000;
 
   constructor(data: Obj, host: string, port: number, fixtures: Record<string, string>) {
-    this.data = data; this.host = host; this.port = port; this.fixtures = fixtures;
+    this.data = data;
+    this.host = host;
+    this.port = port;
+    this.fixtures = fixtures;
     this.timing = data['timing'] as Obj;
     this.ctx = new Context(data, fixtures, false);
   }
@@ -487,13 +594,25 @@ class Runner {
       try {
         const link = await CaseLink.open(this.host, this.port, this.lines);
         this.lines.push('# connected');
-        if (hello) await this.hello(link).catch(async (error: unknown) => { await link.close(); throw error; });
+        if (hello)
+          await this.hello(link).catch(async (error: unknown) => {
+            await link.close();
+            throw error;
+          });
         if (ready) {
           try {
-            await waitStartupReady(this.helloText!, async (remaining) => {
-              const reply = await link.request(v1.TYPE['storage.space'], v1.encodeStorageSpaceRequest({ version: 1 }), remaining);
-              return v1.decodeStorageSpaceReply(reply.payload).status;
-            }, this.capMs);
+            await waitStartupReady(
+              this.helloText!,
+              async (remaining) => {
+                const reply = await link.request(
+                  v1.TYPE['storage.space'],
+                  v1.encodeStorageSpaceRequest({ version: 1 }),
+                  remaining,
+                );
+                return v1.decodeStorageSpaceReply(reply.payload).status;
+              },
+              this.capMs,
+            );
           } catch (error) {
             await link.close();
             throw error instanceof Fail ? error : new Fail((error as Error).message);
@@ -501,7 +620,8 @@ class Runner {
         }
         return link;
       } catch (error) {
-        if (error instanceof Fail || Date.now() > deadline) throw error instanceof Fail ? error : new Fail(`the port did not come back within ${waitMs} ms`);
+        if (error instanceof Fail || Date.now() > deadline)
+          throw error instanceof Fail ? error : new Fail(`the port did not come back within ${waitMs} ms`);
         await new Promise((ok) => setTimeout(ok, 50));
       }
     }
@@ -519,7 +639,13 @@ class Runner {
       const sock = net.createConnection({ host: this.host, port: this.port + 1 });
       let text = '';
       sock.on('connect', () => sock.write(line + '\n'));
-      sock.on('data', (d: Buffer) => { text += d.toString(); if (text.endsWith('\n')) { sock.destroy(); ok(text); } });
+      sock.on('data', (d: Buffer) => {
+        text += d.toString();
+        if (text.endsWith('\n')) {
+          sock.destroy();
+          ok(text);
+        }
+      });
       sock.on('error', fail);
       sock.on('close', () => ok(text));
     });
@@ -530,9 +656,11 @@ class Runner {
 
   whySkip(c: Obj): string | null {
     const variant = (c['variant'] as string | undefined) ?? 'v1';
-    if (variant !== (this.preV1 ? 'pre_v1' : 'v1')) return `needs a ${variant} device; this one is ${this.preV1 ? 'pre-v1' : 'v1'}`;
+    if (variant !== (this.preV1 ? 'pre_v1' : 'v1'))
+      return `needs a ${variant} device; this one is ${this.preV1 ? 'pre-v1' : 'v1'}`;
     for (const need of (c['needs'] ?? []) as string[]) {
-      if (need.startsWith('fixture:') && !(need.slice(8) in this.fixtures)) return `needs fixture ${need.slice(8)} (--fixture ${need.slice(8)}=PATH)`;
+      if (need.startsWith('fixture:') && !(need.slice(8) in this.fixtures))
+        return `needs fixture ${need.slice(8)} (--fixture ${need.slice(8)}=PATH)`;
     }
     return null;
   }
@@ -555,7 +683,11 @@ class Runner {
       }
       for (const [name, value] of Object.entries(faults)) await this.control(`set ${name} ${String(value)}`);
       for (const f of (given['files'] ?? []) as Obj[]) {
-        await this.write(link, resolve(f['path'], 'str', this.ctx) as string, resolve(f['data'], 'bytes', this.ctx) as Uint8Array);
+        await this.write(
+          link,
+          resolve(f['path'], 'str', this.ctx) as string,
+          resolve(f['data'], 'bytes', this.ctx) as Uint8Array,
+        );
       }
       const steps = c['steps'] as Obj[];
       for (let n = 0; n < steps.length; n++) {
@@ -574,12 +706,14 @@ class Runner {
       throw error;
     } finally {
       await link?.close();
-      for (const name of Object.keys(faults)) await this.control(`set ${name} ${name === 'space' ? -1 : 0}`).catch(() => undefined);
+      for (const name of Object.keys(faults))
+        await this.control(`set ${name} ${name === 'space' ? -1 : 0}`).catch(() => undefined);
     }
   }
 
   async disconnect(link: CaseLink): Promise<void> {
-    if (!(await link.gone(this.timing['gone_ms'] as number))) throw new Fail(`the connection did not drop within ${String(this.timing['gone_ms'])} ms`);
+    if (!(await link.gone(this.timing['gone_ms'] as number)))
+      throw new Fail(`the connection did not drop within ${String(this.timing['gone_ms'])} ms`);
     await link.close();
     this.lines.push('# disconnected');
   }
@@ -593,10 +727,16 @@ class Runner {
 
   async stage(link: CaseLink, body: Uint8Array): Promise<void> {
     for (const r of stageFrames(body)) {
-      const name = r.type === v1.TYPE['stage.begin'] ? 'stage.begin' : r.type === v1.TYPE['stage.data'] ? 'stage.data' : 'stage.end';
+      const name =
+        r.type === v1.TYPE['stage.begin']
+          ? 'stage.begin'
+          : r.type === v1.TYPE['stage.data']
+            ? 'stage.data'
+            : 'stage.end';
       const reply = await this.expectOk(link, name, r.payload);
       if (name === 'stage.data') {
-        const at = v1.u32(r.payload, 0), received = v1.u32(reply, 4);
+        const at = v1.u32(r.payload, 0),
+          received = v1.u32(reply, 4);
         if (received !== at + r.payload.length - 4) throw new Fail(`stage.data at ${at}: received ${received}`);
       }
     }
@@ -604,8 +744,9 @@ class Runner {
 
   async write(link: CaseLink, path: string, body: Uint8Array): Promise<void> {
     await this.stage(link, body);
-    const reply = v1.decodeFileWriteStagedReply(await this.expectOk(link, 'file.write_staged',
-      v1.encodeFileWriteStagedRequest({ path, sha256: sha256(body) })));
+    const reply = v1.decodeFileWriteStagedReply(
+      await this.expectOk(link, 'file.write_staged', v1.encodeFileWriteStagedRequest({ path, sha256: sha256(body) })),
+    );
     if (!reply.ok || reply.fields.written !== body.length || reply.fields.readback_crc !== v1.crc32(body)) {
       throw new Fail(`file.write_staged ${path}: not written and read back`);
     }
@@ -616,7 +757,8 @@ class Runner {
     if (action === 'send' || action === 'send_type') {
       const r = step['repeat'];
       if (isObj(r)) {
-        const from = resolve(r['from'], 'int', this.ctx) as number, to = resolve(r['to'], 'int', this.ctx) as number;
+        const from = resolve(r['from'], 'int', this.ctx) as number,
+          to = resolve(r['to'], 'int', this.ctx) as number;
         const by = resolve(r['step'], 'int', this.ctx) as number;
         if (by <= 0) throw new CaseError('repeat step must be above 0');
         for (let value = from; value < to; value += by) {
@@ -636,16 +778,29 @@ class Runner {
         }
       }
     } else if (action === 'send_bytes') {
-      await this.sendBytes(link, [resolve(step['send_bytes'], 'bytes', this.ctx) as Uint8Array], false, step['expect'] as Obj);
+      await this.sendBytes(
+        link,
+        [resolve(step['send_bytes'], 'bytes', this.ctx) as Uint8Array],
+        false,
+        step['expect'] as Obj,
+      );
     } else if (action === 'stream') {
       const st = v1.STREAMS.find((s) => s.name === step['stream'])!;
-      await this.sendBytes(link, st.chunks.map((c) => v1.fromHex(c)), true,
-        { replies: st.frames.map((f) => ({ type: `0x${(f.type | REPLY).toString(16)}`, seq: f.seq })) });
+      await this.sendBytes(
+        link,
+        st.chunks.map((c) => v1.fromHex(c)),
+        true,
+        { replies: st.frames.map((f) => ({ type: `0x${(f.type | REPLY).toString(16)}`, seq: f.seq })) },
+      );
     } else if (action === 'stage') {
       await this.stage(link, resolve(step['stage'], 'bytes', this.ctx) as Uint8Array);
     } else if (action === 'write') {
       const w = step['write'] as Obj;
-      await this.write(link, resolve(w['path'], 'str', this.ctx) as string, resolve(w['data'], 'bytes', this.ctx) as Uint8Array);
+      await this.write(
+        link,
+        resolve(w['path'], 'str', this.ctx) as string,
+        resolve(w['data'], 'bytes', this.ctx) as Uint8Array,
+      );
     } else if (action === 'disconnect') {
       await this.disconnect(link);
     } else if (action === 'reconnect') {
@@ -667,7 +822,7 @@ class Runner {
   }
 
   async sendBytes(link: CaseLink, chunks: Uint8Array[], separate: boolean, e: Obj): Promise<void> {
-    const gap = separate ? 5 : 0;                                         // separate reads on the device side
+    const gap = separate ? 5 : 0; // separate reads on the device side
     if ('none_within_ms' in e) {
       // The simulator's clock moves only when told: the bytes, its own time on (advance), then any frame it sent.
       const ms = e['none_within_ms'] as number;
@@ -676,19 +831,38 @@ class Runner {
         await this.control(`advance ${String(ms)}`);
         early = await link.exchange([], 0, 50, (fs) => fs.length > 0);
       }
-      if (early.length) throw new Fail(`expected no frame within ${String(e['none_within_ms'])} ms, got 0x${early[0]!.type.toString(16)} seq ${early[0]!.seq}`);
+      if (early.length)
+        throw new Fail(
+          `expected no frame within ${String(e['none_within_ms'])} ms, got 0x${early[0]!.type.toString(16)} seq ${early[0]!.seq}`,
+        );
       return;
     }
-    const barrier = 200 + (link.barrier++ % 50);                         // a hello after the bytes
+    const barrier = 200 + (link.barrier++ % 50); // a hello after the bytes
     const isBarrier = (f: v1.Frame): boolean => f.type === (v1.TYPE.hello | REPLY) && f.seq === barrier;
-    const got = await link.exchange([...chunks, v1.encodeFrame(v1.TYPE.hello, barrier)], gap, this.capMs, (fs) => fs.some(isBarrier));
+    const got = await link.exchange([...chunks, v1.encodeFrame(v1.TYPE.hello, barrier)], gap, this.capMs, (fs) =>
+      fs.some(isBarrier),
+    );
     const at = got.findIndex(isBarrier);
     if (at < 0) throw new Fail('no reply to the hello sent after the bytes');
     got.length = at;
-    const want = (e['replies'] as Obj[]).map((r) => ({ type: parseInt(r['type'] as string, 16), seq: r['seq'] as number, status: r['status'] as string | undefined }));
-    const have = got.map((f) => ({ type: f.type, seq: f.seq, status: f.payload.length >= 4 ? v1.statusName(v1.u32(f.payload, 0)) : '?' }));
-    const same = have.length === want.length && have.every((h, i) => h.type === want[i]!.type && h.seq === want[i]!.seq &&
-      (want[i]!.status === undefined || want[i]!.status === h.status));
+    const want = (e['replies'] as Obj[]).map((r) => ({
+      type: parseInt(r['type'] as string, 16),
+      seq: r['seq'] as number,
+      status: r['status'] as string | undefined,
+    }));
+    const have = got.map((f) => ({
+      type: f.type,
+      seq: f.seq,
+      status: f.payload.length >= 4 ? v1.statusName(v1.u32(f.payload, 0)) : '?',
+    }));
+    const same =
+      have.length === want.length &&
+      have.every(
+        (h, i) =>
+          h.type === want[i]!.type &&
+          h.seq === want[i]!.seq &&
+          (want[i]!.status === undefined || want[i]!.status === h.status),
+      );
     if (!same) {
       const text = (xs: { type: number; seq: number; status?: string | undefined }[]): string =>
         xs.map((x) => `0x${x.type.toString(16)} seq ${x.seq} ${x.status ?? 'any'}`).join(', ') || 'none';
@@ -703,7 +877,8 @@ class Runner {
       const want = ([] as Json[]).concat(e['status'] ?? []) as string[];
       if (!want.includes(name)) throw new Fail(`${name}, expected ${want.join(' or ')}`);
     }
-    if (e['alone'] === true && payload.length !== 4) throw new Fail(`${name} with ${payload.length - 4} bytes after the status, expected the status alone`);
+    if (e['alone'] === true && payload.length !== 4)
+      throw new Fail(`${name} with ${payload.length - 4} bytes after the status, expected the status alone`);
     let values: Record<string, v1.Value> | null = null;
     if (command && (isObj(e['fields']) || isObj(e['save']) || isObj(e['hello']))) {
       try {
@@ -732,13 +907,15 @@ class Runner {
 
   checkHello(h: Obj, text: string): void {
     const items = text.split(';');
-    if ('prefix' in h && items[0] !== h['prefix']) throw new Fail(`hello starts ${String(items[0])}, expected ${String(h['prefix'])}`);
+    if ('prefix' in h && items[0] !== h['prefix'])
+      throw new Fail(`hello starts ${String(items[0])}, expected ${String(h['prefix'])}`);
     const keys = helloKeys(items.slice(1).join(';'));
     for (const [key, want] of Object.entries(isObj(h['keys']) ? h['keys'] : {})) {
       if (!(key in keys)) throw new Fail(`hello has no key ${key}`);
       this.match(keys[key]!, want, `hello ${key}`);
     }
-    for (const key of (h['lacks'] ?? []) as string[]) if (key in keys) throw new Fail(`hello has key ${key}, expected none`);
+    for (const key of (h['lacks'] ?? []) as string[])
+      if (key in keys) throw new Fail(`hello has key ${key}, expected none`);
     const hello = v1.parseHello(text);
     if ('pre_v1' in h && hello.preV1 !== h['pre_v1']) throw new Fail(`hello is ${hello.preV1 ? 'pre-v1' : 'v1'}`);
     for (const name of (h['answers'] ?? []) as string[]) {
@@ -751,17 +928,21 @@ class Runner {
     if (isObj(want) && formOf(want) === null) {
       for (const [k, v] of Object.entries(want)) {
         if (k === 'len' || k === 'len_min' || k === 'len_max') {
-          const n = (actual as string | Uint8Array).length, bound = resolve(v, 'int', this.ctx) as number;
+          const n = (actual as string | Uint8Array).length,
+            bound = resolve(v, 'int', this.ctx) as number;
           if ((k === 'len' && n !== bound) || (k === 'len_min' && n < bound) || (k === 'len_max' && n > bound)) {
             throw new Fail(`${what}: length ${n}, expected ${k} ${bound}`);
           }
         } else if (k === 'min' || k === 'max') {
           const bound = resolve(v, 'int', this.ctx) as number;
-          if ((k === 'min' && (actual as number) < bound) || (k === 'max' && (actual as number) > bound)) throw new Fail(`${what}: ${String(actual)}, expected ${k} ${bound}`);
+          if ((k === 'min' && (actual as number) < bound) || (k === 'max' && (actual as number) > bound))
+            throw new Fail(`${what}: ${String(actual)}, expected ${k} ${bound}`);
         } else if (k === 'matches') {
-          if (!new RegExp(String(v)).test(String(actual))) throw new Fail(`${what}: ${String(actual)} does not match ${String(v)}`);
+          if (!new RegExp(String(v)).test(String(actual)))
+            throw new Fail(`${what}: ${String(actual)} does not match ${String(v)}`);
         } else if (k === 'one_of') {
-          if (!(v as Json[]).some((x) => equal(actual, resolve(x, kind, this.ctx)))) throw new Fail(`${what}: ${show(actual)} is not one of ${JSON.stringify(v)}`);
+          if (!(v as Json[]).some((x) => equal(actual, resolve(x, kind, this.ctx))))
+            throw new Fail(`${what}: ${show(actual)} is not one of ${JSON.stringify(v)}`);
         }
       }
       return;
@@ -773,20 +954,35 @@ class Runner {
 
 // ---- running a file -----------------------------------------------------------------------------
 
-export interface Row { name: string; result: 'PASS' | 'FAIL' | 'SKIP'; seconds: number; detail: string; log: string[] }
+export interface Row {
+  name: string;
+  result: 'PASS' | 'FAIL' | 'SKIP';
+  seconds: number;
+  detail: string;
+  log: string[];
+}
 
 /** The cases of a conformance file, checked by interpret() first (throws CaseError on bad data). */
-export function loadCases(path: string | URL = new URL('../../../protocol/v1.conformance.json', HERE),
-  fixtures: Record<string, string> = {}): Obj {
+export function loadCases(
+  path: string | URL = new URL('../../../protocol/v1.conformance.json', HERE),
+  fixtures: Record<string, string> = {},
+): Obj {
   const data = JSON.parse(readFileSync(path, 'utf-8')) as Obj;
-  if (data['format'] !== 'xyf-conformance/1' || data['protocol'] !== v1.VERSION) throw new CaseError('format or protocol version differs');
+  if (data['format'] !== 'xyf-conformance/1' || data['protocol'] !== v1.VERSION)
+    throw new CaseError('format or protocol version differs');
   for (const c of data['cases'] as Json[]) interpret(c, data, fixtures);
   return data;
 }
 
 /** Runs every case (matching only) against the simulator at host:port; null when it does not answer. */
-export async function runCases(data: Obj, host: string, port: number, fixtures: Record<string, string>,
-  only: RegExp | null = null, each?: (row: Row) => void): Promise<Row[] | null> {
+export async function runCases(
+  data: Obj,
+  host: string,
+  port: number,
+  fixtures: Record<string, string>,
+  only: RegExp | null = null,
+  each?: (row: Row) => void,
+): Promise<Row[] | null> {
   const runner = new Runner(data, host, port, fixtures);
   try {
     await (await runner.open(true, 2000)).close();
@@ -798,7 +994,13 @@ export async function runCases(data: Obj, host: string, port: number, fixtures: 
     if (only && !only.test(String(c['name']))) continue;
     const start = Date.now();
     const [result, detail] = await runner.runCase(c);
-    const row = { name: String(c['name']), result: result as Row['result'], seconds: (Date.now() - start) / 1000, detail, log: runner.lines };
+    const row = {
+      name: String(c['name']),
+      result: result as Row['result'],
+      seconds: (Date.now() - start) / 1000,
+      detail,
+      log: runner.lines,
+    };
     rows.push(row);
     each?.(row);
   }
@@ -817,10 +1019,16 @@ async function main(argv: string[]): Promise<number> {
       const value = argv[++i]!;
       if (a === '--fixture') {
         const [name, path] = [value.slice(0, value.indexOf('=')), value.slice(value.indexOf('=') + 1)];
-        if (!FIXTURES.includes(name)) { console.error(`conformance: --fixture ${value}: NAME is one of ${FIXTURES}`); return 2; }
+        if (!FIXTURES.includes(name)) {
+          console.error(`conformance: --fixture ${value}: NAME is one of ${FIXTURES}`);
+          return 2;
+        }
         fixtures[name] = path;
       } else opts[a.slice(2)] = value;
-    } else { console.error(`conformance: unknown argument ${a}`); return 2; }
+    } else {
+      console.error(`conformance: unknown argument ${a}`);
+      return 2;
+    }
   }
   let data: Obj;
   try {
@@ -834,17 +1042,28 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   const m = /^(127\.0\.0\.1|localhost|::1):([0-9]+)$/.exec(opts['sim'] ?? '');
-  if (!m) { console.error('conformance: --sim 127.0.0.1:PORT (the simulator; this runner has no USB transport)'); return 2; }
-  const rows = await runCases(data, m[1]!, parseInt(m[2]!, 10), fixtures, opts['only'] ? new RegExp(opts['only']) : null, (row) => {
-    if (row.result === 'FAIL' && process.env['XYF_CONFORMANCE_LOG']) console.error(row.log.join('\n'));
-  });
+  if (!m) {
+    console.error('conformance: --sim 127.0.0.1:PORT (the simulator; this runner has no USB transport)');
+    return 2;
+  }
+  const rows = await runCases(
+    data,
+    m[1]!,
+    parseInt(m[2]!, 10),
+    fixtures,
+    opts['only'] ? new RegExp(opts['only']) : null,
+    (row) => {
+      if (row.result === 'FAIL' && process.env['XYF_CONFORMANCE_LOG']) console.error(row.log.join('\n'));
+    },
+  );
   if (rows === null) {
     console.log(`NEED: start the simulator (python3 -m xy_forever.sim), then rerun with --sim ${opts['sim']}`);
     return 3;
   }
   const width = Math.max(4, ...rows.map((r) => r.name.length));
   console.log(`${'case'.padEnd(width)}  result seconds  detail`);
-  for (const r of rows) console.log(`${r.name.padEnd(width)}  ${r.result.padEnd(6)} ${r.seconds.toFixed(1).padStart(7)}  ${r.detail}`);
+  for (const r of rows)
+    console.log(`${r.name.padEnd(width)}  ${r.result.padEnd(6)} ${r.seconds.toFixed(1).padStart(7)}  ${r.detail}`);
   return rows.some((r) => r.result === 'FAIL') ? 1 : 0;
 }
 

@@ -15,9 +15,7 @@ inline uint32_t ms_from_cycles(uint32_t low, uint32_t high) {
     return ((21u * units_high) << 19) + ((21u * (units_low >> 16)) << 3) + ((21u * (units_low & 0xffffu)) >> 13);
 }
 // Milliseconds for a 32-bit difference of cycles >> 10 (intervals up to ~3 h), without overflow.
-inline uint32_t ms_from_units(uint32_t units) {
-    return (units >> 13) * 21u + (((units & 0x1fffu) * 21u) >> 13);
-}
+inline uint32_t ms_from_units(uint32_t units) { return (units >> 13) * 21u + (((units & 0x1fffu) * 21u) >> 13); }
 #if defined(__bfin__)
 // the 64-bit cycle counter (400 MHz); always inlined: a call through a register is refused by the call audit
 __attribute__((always_inline)) inline uint64_t cycles() {
@@ -30,5 +28,5 @@ inline uint32_t ms() {
     return ms_from_cycles(uint32_t(c), uint32_t(c >> 32));
 }
 #endif
-} }
+}}
 #endif

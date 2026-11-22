@@ -3,7 +3,14 @@
 // does not fit is lost. And Chrome on a Mac lists one OP-XY twice (cu. and tty.): two open entries split its replies.
 import { afterEach, describe, expect, inject, test } from 'vitest';
 import { commands } from 'vitest/browser';
-import { Client, RELEASE_FILTERS, SERIAL_OPEN, USB_FILTERS, WebSerialTransport, connectWebSerial } from '../../src/index.ts';
+import {
+  Client,
+  RELEASE_FILTERS,
+  SERIAL_OPEN,
+  USB_FILTERS,
+  WebSerialTransport,
+  connectWebSerial,
+} from '../../src/index.ts';
 import type { Opener, Transport, TransportSink } from '../../src/index.ts';
 import { FakeSerial } from './fake-serial.ts';
 import type { FakePort } from './fake-serial.ts';
@@ -17,24 +24,51 @@ const toBase64 = (b: Uint8Array): string => btoa(String.fromCharCode(...b));
 class DefaultsTransport implements Transport {
   private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   private readonly port: FakePort;
-  constructor(port: FakePort) { this.port = port; }
-  static async open(port: FakePort): Promise<DefaultsTransport> { await port.open({ baudRate: 115200 }); return new DefaultsTransport(port); }
+  constructor(port: FakePort) {
+    this.port = port;
+  }
+  static async open(port: FakePort): Promise<DefaultsTransport> {
+    await port.open({ baudRate: 115200 });
+    return new DefaultsTransport(port);
+  }
   start(sink: TransportSink): void {
-    const reader = this.reader = this.port.readable!.getReader();
+    const reader = (this.reader = this.port.readable!.getReader());
     void (async () => {
-      try { for (;;) { const { value, done } = await reader.read(); if (done) break; if (value) sink.data(value); } } catch { /* lost */ }
-      reader.releaseLock(); await this.port.close().catch(() => undefined); sink.closed();
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) sink.data(value);
+        }
+      } catch {
+        /* lost */
+      }
+      reader.releaseLock();
+      await this.port.close().catch(() => undefined);
+      sink.closed();
     })();
   }
-  async write(data: Uint8Array): Promise<void> { const w = this.port.writable!.getWriter(); try { await w.write(data); } finally { w.releaseLock(); } }
-  async close(): Promise<void> { await this.reader?.cancel().catch(() => undefined); }
+  async write(data: Uint8Array): Promise<void> {
+    const w = this.port.writable!.getWriter();
+    try {
+      await w.write(data);
+    } finally {
+      w.releaseLock();
+    }
+  }
+  async close(): Promise<void> {
+    await this.reader?.cancel().catch(() => undefined);
+  }
 }
 
 describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${web.why})`}`, () => {
   const stock = USB_FILTERS[1];
   const data = crypto.getRandomValues(new Uint8Array(3000));
   let client: Client | null = null;
-  afterEach(async () => { await client?.close(); client = null; });
+  afterEach(async () => {
+    await client?.close();
+    client = null;
+  });
 
   test('every path opens with 64 KiB: a 1 KiB file.read reply arrives whole, nothing dropped', async () => {
     expect(SERIAL_OPEN).toEqual({ baudRate: 115200, bufferSize: 65536 });
@@ -47,15 +81,21 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${web.w
     expect(serial.xyfPorts.at(-1)!.dropped).toBe(0);
   });
 
-  test('Chrome\'s default buffer (255 bytes) loses the reply: the same read over a port opened with defaults never answers', async () => {
+  test("Chrome's default buffer (255 bytes) loses the reply: the same read over a port opened with defaults never answers", async () => {
     await commands.simWrite(sim!.root, PATH, toBase64(data));
     const serial = new FakeSerial(sim!.relay, { identity: stock, granted: true });
     const live = (await serial.getPorts()).at(-1)!;
     const opener: Opener = async () => DefaultsTransport.open(live);
-    const failed = await Client.connect(opener, { timeoutMs: 2500 }).then(async (c) => {
-      client = c;                                                         // hello fitted: the 1 KiB reply cannot
-      return c.readRange(PATH, 0, 1024, { timeoutMs: 1500 }).then(() => null, (e: unknown) => e);
-    }, (e: unknown) => e);
+    const failed = await Client.connect(opener, { timeoutMs: 2500 }).then(
+      async (c) => {
+        client = c; // hello fitted: the 1 KiB reply cannot
+        return c.readRange(PATH, 0, 1024, { timeoutMs: 1500 }).then(
+          () => null,
+          (e: unknown) => e,
+        );
+      },
+      (e: unknown) => e,
+    );
     expect(failed).toMatchObject({ code: 'timeout' });
     expect(live.dropped).toBeGreaterThan(0);
   });
@@ -66,8 +106,10 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${web.w
     client = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800 });
     const live = serial.xyfPorts.at(-1)!;
     await expect(WebSerialTransport.open(serial.twin!)).rejects.toMatchObject({ name: 'InvalidStateError' });
-    const second = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800, choose: false }).catch((e: unknown) => e);
-    expect(second).toMatchObject({ code: 'aborted' });                // "already connected in this page"
+    const second = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800, choose: false }).catch(
+      (e: unknown) => e,
+    );
+    expect(second).toMatchObject({ code: 'aborted' }); // "already connected in this page"
     expect(serial.twin!.opens).toBe(0);
     expect(await client.readFile(PATH)).toEqual(data);
     expect(live.dropped).toBe(0);
@@ -77,14 +119,32 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${web.w
     await commands.simWrite(sim!.root, PATH, toBase64(data));
     const serial = new FakeSerial(sim!.relay, { identity: stock, twin: 'granted' });
     client = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800 });
-    await serial.twin!.open({ ...SERIAL_OPEN });                          // a second reader, past WebSerialTransport's refusal
+    await serial.twin!.open({ ...SERIAL_OPEN }); // a second reader, past WebSerialTransport's refusal
     const thief = serial.twin!.readable!.getReader();
     let stolen = 0;
-    void (async () => { try { for (;;) { const { value, done } = await thief.read(); if (done) break; stolen += value?.length ?? 0; } } catch { /* closed */ } })();
+    void (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await thief.read();
+          if (done) break;
+          stolen += value?.length ?? 0;
+        }
+      } catch {
+        /* closed */
+      }
+    })();
     const results: unknown[] = [];
-    for (const _ of [0, 1]) results.push(await client.readRange(PATH, 0, 1024, { timeoutMs: 1500 }).then(() => 'ok', (e: { code?: string }) => e.code));
-    expect(results).toEqual(['timeout', 'ok']);                         // the bursts take turns: one reply lost, the next one read
+    for (const _ of [0, 1])
+      results.push(
+        await client.readRange(PATH, 0, 1024, { timeoutMs: 1500 }).then(
+          () => 'ok',
+          (e: { code?: string }) => e.code,
+        ),
+      );
+    expect(results).toEqual(['timeout', 'ok']); // the bursts take turns: one reply lost, the next one read
     expect(stolen).toBeGreaterThan(0);
-    await thief.cancel(); thief.releaseLock(); await serial.twin!.close();
+    await thief.cancel();
+    thief.releaseLock();
+    await serial.twin!.close();
   });
 });

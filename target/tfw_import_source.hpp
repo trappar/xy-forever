@@ -30,6 +30,7 @@ public:
     uint32_t progress() const { return progress_; }
     uint32_t error() const { return error_; }
     SourcePhase phase() const { return phase_; }
+
 private:
     Source(const Source&) = delete;
     Source& operator=(const Source&) = delete;
@@ -46,5 +47,5 @@ private:
     xyf_core::tfw::Archive archive_;
     xyf_core::Byte cache_[file_client::piece_max];
 };
-} }
+}}
 #endif

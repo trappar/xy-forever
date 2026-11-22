@@ -1,6 +1,4 @@
-void restart_config_lookup() {
-    io.config_scan.skip = io.config_scan.choice = 0;
-}
+void restart_config_lookup() { io.config_scan.skip = io.config_scan.choice = 0; }
 
 uint32_t read_record(bool toggles, uint32_t& bytes) {
     namespace P = xyf::usbp;
@@ -9,18 +7,21 @@ uint32_t read_record(bool toggles, uint32_t& bytes) {
     const uint32_t code = config_io::read(io.config_scan, work.raw, bytes, native, usb_service::page_mount());
     if (code == P::s_busy) return code;
     io.config_error = nullptr;
-    if (code == P::s_not_found) { xg::clear(rec, xg::none); bytes = 0; }
-    else if (code != s_ok) {
+    if (code == P::s_not_found) {
+        xg::clear(rec, xg::none);
+        bytes = 0;
+    } else if (code != s_ok) {
         io.config_error = "Could not read the saved configuration.";
         xg::clear(rec, xg::failed);
         return code;
     } else {
         if (native) {
-            const json::Document doc = json::parse(reinterpret_cast<const char*>(work.raw), bytes, work.parse.json, json::config_schema);
+            const json::Document doc =
+                json::parse(reinterpret_cast<const char*>(work.raw), bytes, work.parse.json, json::config_schema);
             const json::Status status = json::config_text(doc, reinterpret_cast<char*>(io.buffer), read_bytes, bytes);
             if (status != json::ok) {
                 io.config_error = status == json::version ? "Saved configuration needs a newer XY Forever." :
-                                  "Invalid saved configuration in config.json or its backup.";
+                                                            "Invalid saved configuration in config.json or its backup.";
                 xg::clear(rec, xg::failed);
                 return status == json::version ? P::s_unsupported : P::s_refused;
             }
@@ -29,11 +30,13 @@ uint32_t read_record(bool toggles, uint32_t& bytes) {
             xg::clear(rec, xg::failed);
             return P::s_unsupported;
         }
-        if (!native) for (uint32_t i = 0; i != bytes; ++i) io.buffer[i] = work.raw[i];
+        if (!native)
+            for (uint32_t i = 0; i != bytes; ++i) io.buffer[i] = work.raw[i];
         xg::parse(reinterpret_cast<const char*>(io.buffer), bytes, rec);
     }
     uint32_t n = 0;
-    const char* list = rec.state == xg::present ? xg::value(reinterpret_cast<const char*>(io.buffer), bytes, "mods", n) : 0;
+    const char* list =
+        rec.state == xg::present ? xg::value(reinterpret_cast<const char*>(io.buffer), bytes, "mods", n) : 0;
     rec_set = 0;
     for (uint32_t at = 0; list && at < n;) {
         uint32_t end = at;
@@ -45,9 +48,9 @@ uint32_t read_record(bool toggles, uint32_t& bytes) {
     uint32_t marked = 0;
     for (uint32_t r = 0; r != p.shown; ++r) {
         m::Package& k = p.packages[p.rows[r]];
-        const bool on = rec.state == xg::present &&
-                        xg::listed(reinterpret_cast<const char*>(io.buffer), bytes, k.kind == m::kind_extension ? "ext-" : "",
-                                   m::text_at(p, k.id));
+        const bool on =
+            rec.state == xg::present && xg::listed(reinterpret_cast<const char*>(io.buffer), bytes,
+                                                   k.kind == m::kind_extension ? "ext-" : "", m::text_at(p, k.id));
         k.flags = uint8_t((k.flags & ~m::flag_saved) | (on ? m::flag_saved : 0));
         if (toggles) k.flags = uint8_t((k.flags & ~m::flag_on) | (on ? m::flag_on : 0));
         marked += on ? 1u : 0u;
@@ -88,7 +91,8 @@ bool config_build(const xg::Record& record, json::ConfigBuild& build) {
     } while (*p >= '0' && *p <= '9');
     build.expanded = xg::same(p, " expanded");
     if (*p && !build.expanded) return false;
-    build.slot = record.slot; build.sha256 = record.stamp;
+    build.slot = record.slot;
+    build.sha256 = record.stamp;
     return true;
 }
 
@@ -96,8 +100,9 @@ uint32_t encode_config(const xg::Record& record, const char* mods, bool require_
     json::ConfigBuild build;
     const bool has_build = config_build(record, build);
     if (require_build && !has_build) return 0;
-    const json::Config fields = {record.base, record.profile, record.generation, record.expanded != 0,
-                                 record.unverified != 0, record.safe != 0, mods, has_build ? &build : nullptr};
+    const json::Config fields = {
+        record.base,      record.profile, record.generation,           record.expanded != 0, record.unverified != 0,
+        record.safe != 0, mods,           has_build ? &build : nullptr};
     auto& work = *static_cast<MetadataWork*>(usb_service::mods_metadata_work());
     char* const raw = reinterpret_cast<char*>(work.raw);
     uint32_t n = 0, view_bytes = 0;

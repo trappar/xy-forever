@@ -1,4 +1,5 @@
 """Library metadata read and legacy scratch-entry check for the device pass."""
+
 from xy_forever import config_records, package_records
 from xy_forever.xyf_entry import manifest_text
 
@@ -13,18 +14,22 @@ def change(self, scratch_info, scratch_id, fail):
     if server['b_window'] != 3:
         raise fail('op 9 answered %s (3 = it closed the open window)' % server['b_window'])
     if usb.get('crash_restarts') != self.state['crashes1']:
-        raise fail('crash restarts %s -> %s: the device restarted' % (self.state['crashes1'],
-                                                                     usb.get('crash_restarts')))
+        raise fail(
+            'crash restarts %s -> %s: the device restarted' % (self.state['crashes1'], usb.get('crash_restarts'))
+        )
     entry = [i for i in self.menu_catalog('catalog.bin')['items'] if i['id'] == scratch_id]
     if not entry or entry[0]['name'] != label:
-        raise fail('menu catalog: %s is %s, expected the name %r' % (
-            scratch_id, entry[0]['name'] if entry else 'missing', label))
+        raise fail(
+            'menu catalog: %s is %s, expected the name %r'
+            % (scratch_id, entry[0]['name'] if entry else 'missing', label)
+        )
     return 'menu shows %s = %r without a restart (removed again by scratch-cleanup)' % (scratch_id, label)
 
 
 def read_metadata(self, folder, artifact, extra, names, parse_info, fail):
-    candidates = (package_records.NATIVE, package_records.LEGACY) if names is None else (
-        package_records.record_name(names),)
+    candidates = (
+        (package_records.NATIVE, package_records.LEGACY) if names is None else (package_records.record_name(names),)
+    )
     for name in candidates:
         if name is None:
             break
@@ -39,7 +44,6 @@ def read_metadata(self, folder, artifact, extra, names, parse_info, fail):
         except ValueError as error:
             raise fail('%s: %s' % (path, error)) from error
     return {}
-
 
 
 def read_config(device_pass, skip):

@@ -11,6 +11,7 @@ stored name are refused (a 48-bit prefix clash: rebuild or rename the package). 
 layout (mods/<profile>/<generation>/ before protocol 1.16, or a mirrored package tree), listed so that it
 can be removed. clients/ts/src/modstore.ts is the same.
 """
+
 import hashlib
 import re
 
@@ -67,13 +68,16 @@ def copy_set(generation_dir, folder):
     """Writes a generation folder as `modkit split` left it into folder (a mods/<generation>/ on a simulator's or a
     test's storage) as a push leaves it: store.txt, then each package's files under their stored names."""
     from pathlib import Path
+
     root, folder = Path(generation_dir), Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     (folder / FILE).write_bytes(TEXT)
     for package in sorted(p for p in root.iterdir() if (p / 'files.sha256').is_file()):
         listed = (package / 'files.sha256').read_bytes()
-        files = [(rel, (package / rel).read_bytes()) for rel in
-                 (line.split('  ', 1)[1] for line in listed.decode().splitlines())] + [('files.sha256', listed)]
+        files = [
+            (rel, (package / rel).read_bytes())
+            for rel in (line.split('  ', 1)[1] for line in listed.decode().splitlines())
+        ] + [('files.sha256', listed)]
         (folder / package.name).mkdir(exist_ok=True)
         for stored, _, data in stored_files(package.name, files):
             (folder / package.name / stored).write_bytes(data)

@@ -3,8 +3,8 @@
 import hashlib
 import json
 import os
-from pathlib import Path
 import platform
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PIN_SHA256 = '81b2900fce63fe9b8871f72f4d9a9388ff7ea390a3795866d53ba1e22c2c9856'
@@ -41,6 +41,7 @@ def location(environ=os.environ):
     """Where the toolchain is looked for: XYF_TOOLCHAIN, else tools/blackfin beside the main checkout
     (paths.TOOLCHAIN: ../tools/blackfin in a plain clone, the same folder from any worktree)."""
     from . import paths
+
     return Path(environ['XYF_TOOLCHAIN']) if environ.get('XYF_TOOLCHAIN') else paths.TOOLCHAIN
 
 

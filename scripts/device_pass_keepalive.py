@@ -1,14 +1,15 @@
 """The device pass's scripts/keepalive.sh handling (split out of device_pass.py, which re-exports it)."""
+
 import contextlib
 import os
-from pathlib import Path
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXIT_NEED = 3                                              # device_pass.EXIT_NEED
+EXIT_NEED = 3  # device_pass.EXIT_NEED
 KEEPALIVE_NEED = 'NEED: keepalive.sh pid %d still runs: kill it (its folder %s), then rerun'
 SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
 
@@ -22,10 +23,9 @@ class Keepalive:
         except OSError:
             return []
         mine, pid = set(), os.getpid()
-        while pid > 1 and pid not in mine:              # this script and its ancestors (the shell that ran it)
+        while pid > 1 and pid not in mine:  # this script and its ancestors (the shell that ran it)
             mine.add(pid)
-            pid = int(subprocess.run(['ps', '-o', 'ppid=', '-p', str(pid)], capture_output=True, text=True).stdout
-                      or 0)
+            pid = int(subprocess.run(['ps', '-o', 'ppid=', '-p', str(pid)], capture_output=True, text=True).stdout or 0)
         found = []
         for pid in set(map(int, pids)) - mine:
             args = subprocess.run(['ps', '-o', 'args=', '-p', str(pid)], capture_output=True, text=True).stdout.split()
@@ -39,14 +39,17 @@ class Keepalive:
         call and to it. One that outlives that still holds the port: its NEED line, then SystemExit(EXIT_NEED)."""
         stopped = []
         for pid, statedir in self.running():
-            print('[%s] stopping keepalive.sh pid %d (%s)' % (time.strftime('%H:%M:%S'), pid, statedir),
-                  file=sys.stderr, flush=True)
+            print(
+                '[%s] stopping keepalive.sh pid %d (%s)' % (time.strftime('%H:%M:%S'), pid, statedir),
+                file=sys.stderr,
+                flush=True,
+            )
             with contextlib.suppress(OSError):
                 (Path(statedir) / 'stop-keepalive').touch()
             deadline = time.monotonic() + wait
             while time.monotonic() < deadline and alive(pid):
                 time.sleep(0.2)
-            if alive(pid):                       # stuck in a status call (read-only): end it
+            if alive(pid):  # stuck in a status call (read-only): end it
                 subprocess.run(['pkill', '-TERM', '-P', str(pid)], capture_output=True)
                 with contextlib.suppress(OSError):
                     os.kill(pid, signal.SIGTERM)
@@ -61,9 +64,14 @@ class Keepalive:
 
     def start(self, folder):
         log = open(folder / 'keepalive.log', 'ab')
-        proc = subprocess.Popen(['/bin/sh', str(ROOT / 'scripts/keepalive.sh'), str(folder)], cwd=ROOT,
-                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-                                start_new_session=True)
+        proc = subprocess.Popen(
+            ['/bin/sh', str(ROOT / 'scripts/keepalive.sh'), str(folder)],
+            cwd=ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
         log.close()
         (folder / 'keepalive.pid').write_text('%d\n' % proc.pid)
         return proc.pid

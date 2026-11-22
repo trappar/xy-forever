@@ -9,6 +9,7 @@ started through xy_forever/procgroup lead groups of their own and end with their
 
 Loaded by tests/conftest.py, and with `-p xyf_bounds` by a test that runs pytest on a planted hang.
 """
+
 import faulthandler
 import os
 import signal
@@ -22,7 +23,7 @@ from xy_forever import bounds, procgroup
 
 def pytest_configure(config):
     if os.environ.get('PYTEST_XDIST_WORKER') and os.getpgrp() != os.getpid():
-        os.setpgid(0, 0)                             # this worker leads a group: a hang ends it with its children
+        os.setpgid(0, 0)  # this worker leads a group: a hang ends it with its children
         procgroup.end_group_with_parent()
 
 
@@ -39,6 +40,7 @@ def pytest_runtest_protocol(item, nextitem):
     """A simulator test's build (the default one) comes before its bound: a cold build is a compile, not the test."""
     if item.get_closest_marker('sim') or item.get_closest_marker('sweep'):
         from xy_forever import sim
+
         if not sim.available():
             sim.build()
     yield
@@ -52,11 +54,12 @@ def pytest_runtest_setup(item):
 def _hung(item, seconds):
     nodeid, capture = item.nodeid, item.config.pluginmanager.getplugin('capturemanager')
     if capture:
-        capture.suspend_global_capture(in_=True)     # to the real stderr (xdist: the controller's terminal)
+        capture.suspend_global_capture(in_=True)  # to the real stderr (xdist: the controller's terminal)
         out, err = capture.read_global_capture()
         sys.stderr.write(out + err)
-    sys.stderr.write('\nHUNG: %s ran past its %g s bound; every thread, then its process group ends:\n'
-                     % (nodeid, seconds))
+    sys.stderr.write(
+        '\nHUNG: %s ran past its %g s bound; every thread, then its process group ends:\n' % (nodeid, seconds)
+    )
     sys.stderr.flush()
     faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
     sys.stderr.flush()

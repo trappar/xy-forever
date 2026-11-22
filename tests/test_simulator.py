@@ -2,12 +2,12 @@
 boot and peer session, built for the Mac, driven over TCP by xyf_host.py's own client.
 Covers every command the product build answers, the HELLO, a device pass and each fault hook.
 Needs clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
+
 import contextlib
 import gc
 import hashlib
 import io
 import json
-from pathlib import Path
 import shutil
 import socket
 import struct
@@ -15,15 +15,16 @@ import tempfile
 import threading
 import time
 import unittest
-
-import pytest
 import warnings
 import zlib
+from pathlib import Path
 
-from xy_forever import xyf_build
-from xy_forever import xyf_host as host
-from xy_forever import bounds, census, paths, release, sim, usb_proto as P
+import pytest
+
+from xy_forever import bounds, census, paths, release, sim, xyf_build
+from xy_forever import usb_proto as P
 from xy_forever import usb_proto_ids as ids
+from xy_forever import xyf_host as host
 from xy_forever.startup_ready import wait_startup_ready
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,24 +33,38 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 BASE = '/yaffs2/xy-forever/'
 PRE_V1 = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e'
 SPEC = json.loads((ROOT / 'protocol' / 'v1.json').read_text())
-BUILD = paths.newest_verified_build()                    # a verified build of this source, when present
+BUILD = paths.newest_verified_build()  # a verified build of this source, when present
 
 
-PARTITION_CLASS, PATH_CLASS, SECTOR_CLASS, WRITE_CLASS = 0x11907694, 0x119076b4, 0x11907348, 0x11907710
+PARTITION_CLASS, PATH_CLASS, SECTOR_CLASS, WRITE_CLASS = 0x11907694, 0x119076B4, 0x11907348, 0x11907710
 READ_CLASS = 0x11907368
 EACCES, EBADF, EROFS, EBUSY, EMFILE = 13, 9, 30, 16, 24
-COMMAND_TAG = 0x434d                                # peer_services.hpp: a command item's argument tag
-INSTALL_ITEM, USB_MODE_ITEM, FILE_WRITE_ITEM = 4, 7, 10   # storage_server.hpp
-MARKER_SPELLINGS = ['/yaffs2/bootloader.dev', '/yaffs2//bootloader.dev', '/yaffs2/bootloader.dev/',
-                    '/yaffs2/BOOTLOADER.DEV', '/yaffs2/Bootloader.Dev//']
+COMMAND_TAG = 0x434D  # peer_services.hpp: a command item's argument tag
+INSTALL_ITEM, USB_MODE_ITEM, FILE_WRITE_ITEM = 4, 7, 10  # storage_server.hpp
+MARKER_SPELLINGS = [
+    '/yaffs2/bootloader.dev',
+    '/yaffs2//bootloader.dev',
+    '/yaffs2/bootloader.dev/',
+    '/yaffs2/BOOTLOADER.DEV',
+    '/yaffs2/Bootloader.Dev//',
+]
 ROOT_SPELLINGS = ['/yaffs2', '/yaffs2/', '/yaffs2//']
-RAW_LAYER = [(PARTITION_CLASS, 0x18, 1, b''), (PARTITION_CLASS, 0x14, 0, b''), (PARTITION_CLASS, 4, 0, b''),
-             (SECTOR_CLASS, 0x11, 0, b''), (SECTOR_CLASS, 0x12, 1, b''), (WRITE_CLASS, 0x15, 0, bytes(512)),
-             (WRITE_CLASS, 0x16, 1, bytes(512))]
+RAW_LAYER = [
+    (PARTITION_CLASS, 0x18, 1, b''),
+    (PARTITION_CLASS, 0x14, 0, b''),
+    (PARTITION_CLASS, 4, 0, b''),
+    (SECTOR_CLASS, 0x11, 0, b''),
+    (SECTOR_CLASS, 0x12, 1, b''),
+    (WRITE_CLASS, 0x15, 0, bytes(512)),
+    (WRITE_CLASS, 0x16, 1, bytes(512)),
+]
 # F1: the stock bootloader's boot read (b restarted alone): outside install mode a never answers
 # these; it holds the request, closes storage and restarts. The rest of the raw layer is refused.
-BOOT_REQUESTS = [(c, o, a, b) for c, o, a, b in RAW_LAYER if (c, o) in ((PARTITION_CLASS, 0x18), (SECTOR_CLASS, 0x11),
-                                                                    (SECTOR_CLASS, 0x12))]
+BOOT_REQUESTS = [
+    (c, o, a, b)
+    for c, o, a, b in RAW_LAYER
+    if (c, o) in ((PARTITION_CLASS, 0x18), (SECTOR_CLASS, 0x11), (SECTOR_CLASS, 0x12))
+]
 REFUSED_RAW = [r for r in RAW_LAYER if r not in BOOT_REQUESTS]
 
 
@@ -57,13 +72,12 @@ def raw_path(path):
     return path.encode('utf-8') + b'\0'
 
 
-
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class SimulatorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-sim-')
-        cls.out = sim.build()                            # the shared build cache (by input hash)
+        cls.out = sim.build()  # the shared build cache (by input hash)
         cls.seeded = sim.seed(Path(cls.tmp.name) / 'seed')
         cls.runs = 0
 
@@ -75,8 +89,9 @@ class SimulatorTest(unittest.TestCase):
         type(self).runs += 1
         self.dir = Path(self.tmp.name) / ('run-%d' % self.runs)
         shutil.copytree(self.seeded, self.dir / 'yaffs2')
-        self.sim = sim.Simulator(self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out,
-                                 log=self.dir / 'log.txt').start()
+        self.sim = sim.Simulator(
+            self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out, log=self.dir / 'log.txt'
+        ).start()
         self.links = []
 
     def tearDown(self):
@@ -93,12 +108,13 @@ class SimulatorTest(unittest.TestCase):
             code, text = dev.hello()
             self.assertEqual(code, 0)
             if startup_ready:
-                wait_startup_ready(text, lambda remaining: dev.call(
-                    ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0])
+                wait_startup_ready(
+                    text, lambda remaining: dev.call(ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0]
+                )
         return dev
 
     def file(self, path):
-        return (self.dir / 'yaffs2' / path[len('/yaffs2/'):]).read_bytes()
+        return (self.dir / 'yaffs2' / path[len('/yaffs2/') :]).read_bytes()
 
     def wait(self, predicate, timeout=10.0, what='simulator state'):
         """Until predicate(status). A processor's restart delay (its bootloader's start time) runs on
@@ -127,14 +143,25 @@ class SimulatorTest(unittest.TestCase):
     def test_hello_is_the_generated_text_and_state_comes_first(self):
         """Kept: HELLO over the USB endpoint is the first contract every host relies on."""
         dev = self.connect(hello=False)
-        for kind in (P.STATUS, P.READ_FILE, P.PUT_BEGIN, P.REBOOT, 0x5f):
-            self.assertEqual(dev.call(kind, b'')[0], ids.S_STATE, kind)       # before HELLO: state, nothing done
+        for kind in (P.STATUS, P.READ_FILE, P.PUT_BEGIN, P.REBOOT, 0x5F):
+            self.assertEqual(dev.call(kind, b'')[0], ids.S_STATE, kind)  # before HELLO: state, nothing done
         code, text = dev.hello()
-        self.assertEqual((code, text), (0, P.hello_text(release.VERSION, None, 'product',   # an empty boot partition
-                                                   xyf_build.usb_switches('xyf-product'), confirm=0)))   # sim.seed
+        self.assertEqual(
+            (code, text),
+            (
+                0,
+                P.hello_text(
+                    release.VERSION,
+                    None,
+                    'product',  # an empty boot partition
+                    xyf_build.usb_switches('xyf-product'),
+                    confirm=0,
+                ),
+            ),
+        )  # sim.seed
         self.assertEqual(P.Hello(text).cmds, P.answered(xyf_build.usb_switches('xyf-product')))
-        dev.hello_info = None                             # xyf_host refuses types missing from cmds
-        self.assertEqual(dev.call(0x5f, b''), (ids.S_UNSUPPORTED, b''))     # not in cmds: status only
+        dev.hello_info = None  # xyf_host refuses types missing from cmds
+        self.assertEqual(dev.call(0x5F, b''), (ids.S_UNSUPPORTED, b''))  # not in cmds: status only
         self.assertEqual(self.sim.status()['b_boots'], 1)
 
     @pytest.mark.sim
@@ -150,19 +177,19 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(data, self.file(os_ldr)[:8192])
         self.assertEqual(dev.read_file(BASE + 'missing.txt')[0], ids.S_NOT_FOUND)
         self.assertEqual(dev.read_file('/fat32/x')[0], ids.S_BAD_REQUEST)
-        self.assertEqual(dev.read_file(os_ldr)[0], ids.S_TOO_LARGE)         # whole form above 4096 B
+        self.assertEqual(dev.read_file(os_ldr)[0], ids.S_TOO_LARGE)  # whole form above 4096 B
         code, body = dev.call(P.SCREEN, struct.pack('<I', 0))
         self.assertEqual((code, len(body)), (0, 4 + 1024))
-        self.assertEqual(dev.call(P.SCREEN, struct.pack('<I', 0x3c000))[0], ids.S_RANGE)
-        code, body = dev.call(P.PEEK, struct.pack('<II', 0x8bfff000, 16))
+        self.assertEqual(dev.call(P.SCREEN, struct.pack('<I', 0x3C000))[0], ids.S_RANGE)
+        code, body = dev.call(P.PEEK, struct.pack('<II', 0x8BFFF000, 16))
         self.assertEqual(code, 0)
-        self.assertEqual(dev.call(P.PEEK, struct.pack('<II', 0x11a00000, 16))[0], ids.S_RANGE)   # L1 instruction
+        self.assertEqual(dev.call(P.PEEK, struct.pack('<II', 0x11A00000, 16))[0], ids.S_RANGE)  # L1 instruction
 
     @pytest.mark.sim
     def test_staging_and_file_write(self):
         """Kept: A file write crosses host, B staging, the link and A storage byte for byte."""
         dev = self.connect(startup_ready=True)
-        self.assertEqual(dev.call(P.PUT_DATA, struct.pack('<I', 0) + b'x')[0], ids.S_STATE)   # nothing announced
+        self.assertEqual(dev.call(P.PUT_DATA, struct.pack('<I', 0) + b'x')[0], ids.S_STATE)  # nothing announced
         self.assertEqual(dev.call(P.FILE_WRITE, (BASE + 'x.bin\0').encode() + bytes(32))[0], ids.S_STATE)
         data = bytes(range(256)) * 10
         path = BASE + 'log/sim/a.bin'
@@ -176,29 +203,31 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(dev.call(P.PUT_BEGIN, struct.pack('<II', 0, 0) + bytes(32))[0], ids.S_TOO_LARGE)
         self.assertEqual(dev.call(P.PUT_BEGIN, struct.pack('<II', 4, 0) + bytes(32))[0], 0)
         self.assertEqual(dev.call(P.PUT_DATA, struct.pack('<I', 1) + b'x')[0], ids.S_RANGE)
-        self.assertEqual(dev.call(P.PUT_END)[0], ids.S_STATE)                 # incomplete: discarded
+        self.assertEqual(dev.call(P.PUT_END)[0], ids.S_STATE)  # incomplete: discarded
 
     @pytest.mark.sim
     def test_restart_dry_run_and_continue_link(self):
         """Kept: Reset: restart, dry run and continue keep the link and the host session working."""
         dev = self.connect()
         self.assertEqual(dev.call(P.HOLD, struct.pack('<I', 1))[0], 0)
-        self.assertEqual(dev.call(P.CONTINUE, struct.pack('<I', 2))[0], ids.S_LINK)    # modes >= 2: link
+        self.assertEqual(dev.call(P.CONTINUE, struct.pack('<I', 2))[0], ids.S_LINK)  # modes >= 2: link
         self.assertEqual(dev.call(P.REBOOT, struct.pack('<I', 3))[0], ids.S_BAD_REQUEST)
         boots = self.sim.status()['b_boots']
         self.assertEqual(dev.call(P.REBOOT, struct.pack('<I', 2))[0], 0)
         self.restarted(boots)
         dev = self.connect()
         usb = host.decode_status(dev.call(P.STATUS)[1])['usb_service']
-        self.assertEqual((usb['present'], usb['crash_restarts']), (3 | 1 << 4, 0))      # marker: home
-        code, marker = dev.call(P.PEEK, struct.pack('<II', 0x8bfff000, 16))
+        self.assertEqual((usb['present'], usb['crash_restarts']), (3 | 1 << 4, 0))  # marker: home
+        code, marker = dev.call(P.PEEK, struct.pack('<II', 0x8BFFF000, 16))
         magic, inverse, reason, _ = struct.unpack('<4I', marker[4:20])
-        self.assertEqual((magic, reason & 0x100), (0x52465859, 0x100))                  # held, carried
+        self.assertEqual((magic, reason & 0x100), (0x52465859, 0x100))  # held, carried
         boots = self.sim.status()['b_boots']
         self.assertEqual(dev.call(P.CONTINUE, struct.pack('<I', 1))[0], 0)
         self.restarted(boots)
         dry = host.decode_status(self.connect().call(P.STATUS)[1])['dry_run_file_boot']
-        self.assertEqual((dry['outcome'], dry['committed'], dry['image_bytes']), ('file', 1, sim.STOCK_OS.stat().st_size))
+        self.assertEqual(
+            (dry['outcome'], dry['committed'], dry['image_bytes']), ('file', 1, sim.STOCK_OS.stat().st_size)
+        )
 
     @pytest.mark.sim
     def test_continue_boots_the_default_and_plain_power_on_does_too(self):
@@ -206,12 +235,10 @@ class SimulatorTest(unittest.TestCase):
         dev = self.connect()
         self.assertEqual(dev.call(P.CONTINUE)[0], 0)
         self.wait(lambda s: s['a'] == 'os' and s['b'] == 'os' and not s['listening'], what='both in the OS')
-        self.sim.control('power plain')                                  # no PLAY: straight to the default
+        self.sim.control('power plain')  # no PLAY: straight to the default
         self.wait(lambda s: s['power_ons'] == 2 and s['a'] == 'os' and s['b'] == 'os', what='plain boot')
         self.sim.control('power play')
         self.wait(lambda s: s['listening'], what='menu with USB')
-
-
 
     # -- the file engine on A, B's checks bypassed ----------------------------------
     def a_request(self, cls, op, argument=0, path=None, body=b'', timeout=3.0):
@@ -222,9 +249,9 @@ class SimulatorTest(unittest.TestCase):
         """One command item to A from the board (as b's ask(): partition 0x18 with the command tag);
         True once A acknowledged it."""
         type(self).sequence = getattr(type(self), 'sequence', 0) + 1
-        value = COMMAND_TAG << 16 | item << 8 | (self.sequence & 0xff)
+        value = COMMAND_TAG << 16 | item << 8 | (self.sequence & 0xFF)
         reply = self.sim.ask_a(PARTITION_CLASS, 0x18, value)
-        return reply is not None and reply[0] & 0xffffffff == ~value & 0xffffffff
+        return reply is not None and reply[0] & 0xFFFFFFFF == ~value & 0xFFFFFFFF
 
     def write_entry(self):
         """A's write entry with its read-write window open, entered from the board (B bypassed).
@@ -244,8 +271,9 @@ class SimulatorTest(unittest.TestCase):
         def run():
             try:
                 reply['r'] = dev.call(P.MTP_TEST, struct.pack('<I', hold_ms), timeout=20.0 + hold_ms / 1000.0)
-            except Exception as e:                         # a power cycle ends it
+            except Exception as e:  # a power cycle ends it
                 reply['error'] = e
+
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
         deadline = time.monotonic() + 5.0
@@ -278,16 +306,25 @@ class SimulatorTest(unittest.TestCase):
         # The run entry (diag.engine_test's held read-write window): every brick path refused...
         thread, reply = self.hold_window(dev, 4000, '/yaffs2/probe-1')
         for path in MARKER_SPELLINGS + ROOT_SPELLINGS:
-            for op in (0x25, 0x27):                        # unlink, rmdir
+            for op in (0x25, 0x27):  # unlink, rmdir
                 self.assertEqual(self.a_request(PATH_CLASS, op, path=path), (-1, EACCES), (path, hex(op)))
-        for path in ('/fat32/bootloader.dev', '/yaffs2/a/../bootloader.dev', '/yaffs2/./bootloader.dev',
-                     '/YAFFS2/bootloader.dev', '/yaffs2/bootloader.dev\x01'):   # (length: the stock body copy cuts)
+        for path in (
+            '/fat32/bootloader.dev',
+            '/yaffs2/a/../bootloader.dev',
+            '/yaffs2/./bootloader.dev',
+            '/YAFFS2/bootloader.dev',
+            '/yaffs2/bootloader.dev\x01',
+        ):  # (length: the stock body copy cuts)
             self.assertEqual(self.a_request(PATH_CLASS, 0x25, path=path), (-1, EACCES), path)
-        for cls, op, argument, path in ((PARTITION_CLASS, 0x36, 0, None), (PARTITION_CLASS, 0x34, 0, None),
-                                        (PATH_CLASS, 0x35, 0, '/yaffs2/probe-2'), (PATH_CLASS, 0x28, 0, '/yaffs2')):
-            self.assertEqual(self.a_request(cls, op, argument, path=path), (-1, EACCES), hex(op))   # not exposed
-        self.assertEqual(self.a_request(PARTITION_CLASS, 0x2d, 77), (-1, EBADF))      # a handle a never opened
-        self.assertEqual(self.a_request(SECTOR_CLASS, 0x2f, 0x1234), (-1, EBADF))     # readdir: refused
+        for cls, op, argument, path in (
+            (PARTITION_CLASS, 0x36, 0, None),
+            (PARTITION_CLASS, 0x34, 0, None),
+            (PATH_CLASS, 0x35, 0, '/yaffs2/probe-2'),
+            (PATH_CLASS, 0x28, 0, '/yaffs2'),
+        ):
+            self.assertEqual(self.a_request(cls, op, argument, path=path), (-1, EACCES), hex(op))  # not exposed
+        self.assertEqual(self.a_request(PARTITION_CLASS, 0x2D, 77), (-1, EBADF))  # a handle a never opened
+        self.assertEqual(self.a_request(SECTOR_CLASS, 0x2F, 0x1234), (-1, EBADF))  # readdir: refused
         self.assertEqual((root / 'bootloader.dev').read_bytes(), b'dev menu\n')
         # The write rule: the marker is never written either.
         self.assertEqual(self.a_request(PATH_CLASS, 0x29, 0x8301, path='/yaffs2//bootloader.dev'), (-1, EACCES))
@@ -298,10 +335,10 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(self.a_request(PATH_CLASS, 0x27, path='/yaffs2/emptydir'), (0, 0))
         self.assertFalse((root / 'xy-forever/log/old.bin').exists() or (root / 'emptydir').exists())
         self.assertTrue((root / 'newdir').is_dir())
-        self.sim.advance(4000)                 # the hold's end, not waited for (B waits on A's reply)
+        self.sim.advance(4000)  # the hold's end, not waited for (B waits on A's reply)
         thread.join(30.0)
         code, body = reply['r']
-        self.assertEqual((code, struct.unpack('<16I', body[:64])[0]), (0, 11))       # the self-test still passes
+        self.assertEqual((code, struct.unpack('<16I', body[:64])[0]), (0, 11))  # the self-test still passes
         self.assertTrue((root / 'bootloader.dev').exists())
         # The raw layer in the run entry is b's bootloader asking (b restarted alone): a never
         # answers or runs it; it closes storage and restarts.
@@ -336,16 +373,19 @@ class SimulatorTest(unittest.TestCase):
                 tag = self.sim.inject(cls, op, argument, 0, body)
                 self.wait(lambda s: s['a_boots'] > status['a_boots'], what='A restarted')
                 self.assertFalse(self.sim.injected(tag)['done'])
-                self.sim.advance(3000)                         # B's keepalives and patience, on the device clock
+                self.sim.advance(3000)  # B's keepalives and patience, on the device clock
                 self.wait(lambda s: s['a'] == 'running' and s['a_bootloader'] == 1, what="A's bootloader")
                 after = self.sim.status()
                 self.assertEqual((after['rw_open'], after['unclean_mounts'], after['boot_writes']), (0, 0, 0))
                 self.assertEqual((after['b_boots'], after['b'], after['listening']), (status['b_boots'], 'running', 1))
-                self.assertEqual(dev.call(P.READ_FILE, (BASE + 'state-a.txt').encode() + b'\0', timeout=10.0)[0],
-                                 ids.S_LINK)
-                self.sim.control('power')                      # the way out: a power cycle
-                self.wait(lambda s: s['listening'] and s['a'] == 'running' and s['b'] == 'running',
-                          what='menu with USB after the power cycle')
+                self.assertEqual(
+                    dev.call(P.READ_FILE, (BASE + 'state-a.txt').encode() + b'\0', timeout=10.0)[0], ids.S_LINK
+                )
+                self.sim.control('power')  # the way out: a power cycle
+                self.wait(
+                    lambda s: s['listening'] and s['a'] == 'running' and s['b'] == 'running',
+                    what='menu with USB after the power cycle',
+                )
                 dev = self.connect()
                 self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)
         self.assertFalse(any(bootpart.read_bytes()) if bootpart.exists() else False)
@@ -364,9 +404,13 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(self.sim.status()['partition'], 1)
         self.assertEqual(self.a_request(PATH_CLASS, 0x29, 0, path=BASE + 'state-a.txt'), (-1, EACCES))
         self.assertTrue(self.command(FILE_WRITE_ITEM))
-        for request in ((PARTITION_CLASS, 8, 0, None), (PATH_CLASS, 0x29, 0x8301, '/yaffs2/new.bin'),
-                        (PATH_CLASS, 0x26, 0, '/yaffs2/newdir'), (PATH_CLASS, 0x29, 0, BASE + 'state-a.txt'),
-                        (PARTITION_CLASS, 9, 0, None)):
+        for request in (
+            (PARTITION_CLASS, 8, 0, None),
+            (PATH_CLASS, 0x29, 0x8301, '/yaffs2/new.bin'),
+            (PATH_CLASS, 0x26, 0, '/yaffs2/newdir'),
+            (PATH_CLASS, 0x29, 0, BASE + 'state-a.txt'),
+            (PARTITION_CLASS, 9, 0, None),
+        ):
             cls, op, argument, path = request
             self.assertEqual(self.a_request(cls, op, argument, path=path), (-1, EACCES), hex(op))
         status = self.sim.status()
@@ -381,7 +425,6 @@ class SimulatorTest(unittest.TestCase):
         self.sim.control('power')
         self.wait(lambda s: s['listening'] and s['partition'] == 0, what='menu with USB after the power cycle')
 
-
     # -- hardening -------------------------------------------------------
     @pytest.mark.sim
     def test_failed_select_counts_as_selected(self):
@@ -391,19 +434,21 @@ class SimulatorTest(unittest.TestCase):
         self.connect(startup_ready=True)
         self.assertTrue(self.command(INSTALL_ITEM))
         self.sim.set('fail_select', 1)
-        self.assertEqual(self.a_request(PARTITION_CLASS, 0x18, 1), (1, 0))      # failed, but switched
+        self.assertEqual(self.a_request(PARTITION_CLASS, 0x18, 1), (1, 0))  # failed, but switched
         self.assertEqual(self.sim.status()['partition'], 1)
-        for cls, op, argument, path, body in ((PARTITION_CLASS, 8, 0, None, b''),
-                                              (PATH_CLASS, 0x29, 0, BASE + 'state-a.txt', b''),
-                                              (PARTITION_CLASS, 0x14, 0, None, b''),
-                                              (WRITE_CLASS, 0x16, 1, None, bytes(512))):
+        for cls, op, argument, path, body in (
+            (PARTITION_CLASS, 8, 0, None, b''),
+            (PATH_CLASS, 0x29, 0, BASE + 'state-a.txt', b''),
+            (PARTITION_CLASS, 0x14, 0, None, b''),
+            (WRITE_CLASS, 0x16, 1, None, bytes(512)),
+        ):
             self.assertEqual(self.a_request(cls, op, argument, path=path, body=body), (-1, EACCES), hex(op))
         self.assertEqual(self.sim.status()['boot_writes'], 0)
-        self.assertEqual(self.a_request(PARTITION_CLASS, 0x18, 0), (0, 0))      # back to the user area
+        self.assertEqual(self.a_request(PARTITION_CLASS, 0x18, 0), (0, 0))  # back to the user area
         self.assertEqual(self.a_request(PARTITION_CLASS, 8), (0, 0))
         fd, error = self.a_request(PATH_CLASS, 0x29, 0, path=BASE + 'state-a.txt')
         self.assertGreaterEqual(fd, 0, error)
-        self.assertEqual(self.a_request(PARTITION_CLASS, 0x2d, fd), (0, 0))
+        self.assertEqual(self.a_request(PARTITION_CLASS, 0x2D, fd), (0, 0))
 
     @pytest.mark.sim
     def test_write_entry_refuses_brick_paths_with_b_bypassed(self):
@@ -423,24 +468,28 @@ class SimulatorTest(unittest.TestCase):
                 self.assertEqual(self.a_request(PATH_CLASS, op, path=path), (-1, EACCES), (path, hex(op)))
         for path in ('/fat32/x', '/yaffs2/../x', '/yaffs2/./bootloader.dev', '/YAFFS2/bootloader.dev', '/yaffs2/a\x1b'):
             self.assertEqual(self.a_request(PATH_CLASS, 0x29, 0x8301, path=path), (-1, EACCES), path)
-        for cls, op, argument, body in REFUSED_RAW:        # refused (boot requests: b's restart, F1)
+        for cls, op, argument, body in REFUSED_RAW:  # refused (boot requests: b's restart, F1)
             self.assertEqual(self.a_request(cls, op, argument, body=body), (-1, EACCES), (hex(cls), hex(op)))
-        for cls, op, path in ((PARTITION_CLASS, 0x36, None), (PARTITION_CLASS, 0x34, None),
-                              (PATH_CLASS, 0x35, '/yaffs2/probe'), (PATH_CLASS, 0x28, '/yaffs2')):
+        for cls, op, path in (
+            (PARTITION_CLASS, 0x36, None),
+            (PARTITION_CLASS, 0x34, None),
+            (PATH_CLASS, 0x35, '/yaffs2/probe'),
+            (PATH_CLASS, 0x28, '/yaffs2'),
+        ):
             self.assertEqual(self.a_request(cls, op, path=path), (-1, EACCES), hex(op))
         self.assertEqual(self.sim.status()['a'], 'running')
         # Allowed: a new file in content/, written and closed; a folder made and one removed; a file
         # deleted. The marker is not overwritten (a name holding "bootloader").
         fd, error = self.a_request(PATH_CLASS, 0x29, 0x8301, path='/yaffs2/content/projects-new.bin')
         self.assertGreaterEqual(fd, 0, error)
-        self.assertEqual(self.a_request(WRITE_CLASS, 0x2b, fd, body=b'outside xy-forever'), (18, 0))
-        self.assertEqual(self.a_request(PARTITION_CLASS, 0x2d, fd), (0, 0))
+        self.assertEqual(self.a_request(WRITE_CLASS, 0x2B, fd, body=b'outside xy-forever'), (18, 0))
+        self.assertEqual(self.a_request(PARTITION_CLASS, 0x2D, fd), (0, 0))
         self.assertEqual((root / 'content/projects-new.bin').read_bytes(), b'outside xy-forever')
         self.assertEqual(self.a_request(PATH_CLASS, 0x26, path=BASE + 'newdir'), (0, 0))
         self.assertEqual(self.a_request(PATH_CLASS, 0x27, path=BASE + 'emptydir'), (0, 0))
         self.assertEqual(self.a_request(PATH_CLASS, 0x25, path=BASE + 'probe'), (0, 0))
         self.assertEqual(self.a_request(PATH_CLASS, 0x29, 0x8301, path='/yaffs2/bootloader.dev'), (-1, EACCES))
-        self.assertEqual(self.a_request(PARTITION_CLASS, 9), (3, 0))   # 3 = closed the window
+        self.assertEqual(self.a_request(PARTITION_CLASS, 9), (3, 0))  # 3 = closed the window
         self.assertTrue((root / 'xy-forever/newdir').is_dir())
         self.assertFalse((root / 'xy-forever/emptydir').exists() or (root / 'xy-forever/probe').exists())
         self.assertEqual((root / 'bootloader.dev').read_bytes(), b'dev menu\n')
@@ -469,7 +518,7 @@ class SimulatorTest(unittest.TestCase):
         self.connect(startup_ready=True)
         self.assertTrue(self.command(USB_MODE_ITEM))
         self.write_entry()
-        self.sim.advance(200)                             # A's loop has seen the last request
+        self.sim.advance(200)  # A's loop has seen the last request
         self.sim.set('a_silent', 1)
         self.sim.advance(8000)
         status = self.sim.status()
@@ -484,7 +533,7 @@ class SimulatorTest(unittest.TestCase):
 
     # -- the write window (A opens it on the first change and keeps it; B closes it once no
     # write came for SETTLE_MS, A on its own after IDLE_MS; every other command item closes it) ---
-    SETTLE_MS, IDLE_MS = 8000, 10000                     # storage_server.hpp window_settle_ms / window_idle_ms
+    SETTLE_MS, IDLE_MS = 8000, 10000  # storage_server.hpp window_settle_ms / window_idle_ms
 
     def menu_catalog(self, dev):
         """The menu's catalog as B holds it (PEEK of its buffer), decoded."""
@@ -569,11 +618,11 @@ class SimulatorTest(unittest.TestCase):
         """Kept: Fault: a failed mount recovers without a power cycle. The boot's read-only mount fails: the menu says so, file commands answer storage (as on the
         device), and B asks again every retry_ms: A mounts again and the library appears."""
         dev = self.connect()
-        self.sim.set('fail_mount', 1)                    # the next yaffs mount on A fails
+        self.sim.set('fail_mount', 1)  # the next yaffs mount on A fails
         dev = self.reboot_home(dev)
         st = self.storage_phase(dev, 'A mount failed, asking again')
         self.assertEqual((st['a_mount']['result'], st['a_mount']['attempts']), ('mount', 1))
-        self.assertEqual(st['a_mount']['repair'], {'state': 'not needed'})   # 192: only after write_attempt
+        self.assertEqual(st['a_mount']['repair'], {'state': 'not needed'})  # 192: only after write_attempt
         self.assertEqual(self.menu_catalog(dev)['items'], [])
         self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], ids.S_STORAGE)
         self.assertEqual(dev.hello()[0], 0)
@@ -593,25 +642,34 @@ class SimulatorTest(unittest.TestCase):
         dev = self.connect()
         rw = self.sim.status()['rw_mounts']
         self.sim.set('needs_repair', 1)
-        self.sim.set('unmount_ms', 600000)               # the repair's checkpoint: until cleared
+        self.sim.set('unmount_ms', 600000)  # the repair's checkpoint: until cleared
         dev = self.reboot_home(dev)
         self.wait(lambda s: s['rw_open'] == 1, what='the repair mounted read-write')
         st = self.storage_start(dev)
         self.assertEqual(st['phase'], 'A mount failed, asking again')
-        self.assertEqual((st['a_mount']['result'], st['a_mount']['attempts'], st['a_mount']['repair']),
-                         ('write_attempt', 1, {'state': 'pending'}))
+        self.assertEqual(
+            (st['a_mount']['result'], st['a_mount']['attempts'], st['a_mount']['repair']),
+            ('write_attempt', 1, {'state': 'pending'}),
+        )
         self.assertGreater(st['a_mount']['denied_writes'], 0)
-        self.assertEqual(st['asks'], 2)                  # asked again at once (no retry_ms wait)
-        self.assertEqual(dev.hello()[0], 0)              # the menu answers during the repair
-        self.sim.set('unmount_ms', 0)                    # the checkpoint ends
+        self.assertEqual(st['asks'], 2)  # asked again at once (no retry_ms wait)
+        self.assertEqual(dev.hello()[0], 0)  # the menu answers during the repair
+        self.sim.set('unmount_ms', 0)  # the checkpoint ends
         st = self.storage_phase(dev, 'up')
-        self.assertEqual((st['a_mount']['result'], st['a_mount']['attempts'], st['a_mount']['repair']['state'],
-                          st['a_mount']['repair']['result']), ('ok', 2, 'done', 'ok'))
+        self.assertEqual(
+            (
+                st['a_mount']['result'],
+                st['a_mount']['attempts'],
+                st['a_mount']['repair']['state'],
+                st['a_mount']['repair']['result'],
+            ),
+            ('ok', 2, 'done', 'ok'),
+        )
         status = self.sim.status()
         self.assertEqual((status['needs_repair'], status['rw_open'], status['rw_mounts']), (0, 0, rw + 1))
         self.assertTrue(self.menu_catalog(dev)['items'])
         self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)
-        dev = self.reboot_home(dev)                      # repaired: the next boot is clean
+        dev = self.reboot_home(dev)  # repaired: the next boot is clean
         st = self.storage_phase(dev, 'up')
         self.assertEqual((st['a_mount']['attempts'], st['a_mount']['repair']), (1, {'state': 'not needed'}))
 
@@ -624,14 +682,15 @@ class SimulatorTest(unittest.TestCase):
         dev = self.reboot_home(dev)
         self.wait(lambda s: s['rw_open'] == 1, what='the repair mounted read-write')
         boots = self.sim.status()['b_boots']
-        self.sim.control('cut')                          # before the checkpoint
+        self.sim.control('cut')  # before the checkpoint
         self.sim.set('unmount_ms', 0)
         self.assertEqual(self.sim.status()['needs_repair'], 1)
         self.restarted(boots)
         dev = self.connect()
         st = self.storage_phase(dev, 'up')
-        self.assertEqual((st['a_mount']['result'], st['a_mount']['attempts'], st['a_mount']['repair']['state']),
-                         ('ok', 2, 'done'))
+        self.assertEqual(
+            (st['a_mount']['result'], st['a_mount']['attempts'], st['a_mount']['repair']['state']), ('ok', 2, 'done')
+        )
         self.assertEqual(self.sim.status()['needs_repair'], 0)
         self.assertTrue(self.menu_catalog(dev)['items'])
 
@@ -643,8 +702,11 @@ class SimulatorTest(unittest.TestCase):
     @staticmethod
     def fault_taken(before, now):
         """A one-shot fault fired, a request was held in B's driver or kept from a silent A."""
-        return (any(before[f] > 0 and now[f] == 0 for f in ('drop_request', 'drop_body', 'cut_body'))
-                or now['b_queued'] > before['b_queued'] or now['a_silenced'] > before['a_silenced'])
+        return (
+            any(before[f] > 0 and now[f] == 0 for f in ('drop_request', 'drop_body', 'cut_body'))
+            or now['b_queued'] > before['b_queued']
+            or now['a_silenced'] > before['a_silenced']
+        )
 
     def call_while_advancing(self, dev, kind, payload, ms, timeout=8.0):
         """dev.call in a thread while the device clocks jump ms ahead (B waits on A's reply)."""
@@ -653,8 +715,9 @@ class SimulatorTest(unittest.TestCase):
         def run():
             try:
                 reply['r'] = dev.call(kind, payload, timeout=timeout)
-            except Exception as e:                         # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
                 reply['error'] = e
+
         before = self.sim.status()
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
@@ -690,14 +753,17 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual((status['b'], status['listening'], status['b_boots']), ('running', 1, boots))
         self.sim.advance(21300)
         status = self.sim.status()
-        self.assertEqual((status['b'], status['listening'], status['b_boots'], status['b_waits_a']),
-                         ('running', 1, boots, 0))
+        self.assertEqual(
+            (status['b'], status['listening'], status['b_boots'], status['b_waits_a']), ('running', 1, boots, 0)
+        )
         usb = host.decode_status(dev.call(P.STATUS, timeout=2.0)[1])['usb_service']
         self.assertEqual(usb['crash_restarts'], 0)
         self.assertEqual(dev.call(P.READ_FILE, path, timeout=2.0)[0], ids.S_LINK)
         self.sim.control('power')
-        self.wait(lambda s: s['listening'] and s['a'] == 'running' and s['b'] == 'running',
-                  what='menu with USB after the power cycle')
+        self.wait(
+            lambda s: s['listening'] and s['a'] == 'running' and s['b'] == 'running',
+            what='menu with USB after the power cycle',
+        )
         self.assertEqual(self.connect().read_file(BASE + 'state-a.txt')[0], 0)
 
     @pytest.mark.sim
@@ -706,9 +772,9 @@ class SimulatorTest(unittest.TestCase):
         ends with link within its bound and B's menu keeps answering USB."""
         dev = self.connect()
         path = (BASE + 'state-a.txt').encode() + b'\0'
-        self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)     # read mode on, mounted
+        self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)  # read mode on, mounted
         self.settled(dev)
-        self.sim.set('a_silent', 1)                       # A answers nothing (stock ISR echoes too)
+        self.sim.set('a_silent', 1)  # A answers nothing (stock ISR echoes too)
         self.assertEqual(self.call_while_advancing(dev, P.READ_FILE, path, 6000)[0], ids.S_LINK)
         self.sim.set('a_silent', 0)
         self.lost_but_answering(dev)
@@ -736,7 +802,7 @@ class SimulatorTest(unittest.TestCase):
         dev = self.connect()
         first, other = BASE + 'firmware/opxy-121/os.ldr', BASE + 'firmware/opxy-121-stock/info.txt'
         self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)
-        self.held_then_late(dev, self.ranged(first, 512), nth=3)        # open, seek pass; the read is late
+        self.held_then_late(dev, self.ranged(first, 512), nth=3)  # open, seek pass; the read is late
         self.assertEqual(dev.read_file(other, 0, 64), (0, self.file(other)[:64]))
         self.assertNotEqual(self.file(first)[512:576], self.file(other)[:64])
         self.assertEqual(dev.read_file(first, 0, 64), (0, self.file(first)[:64]))
@@ -748,20 +814,20 @@ class SimulatorTest(unittest.TestCase):
         asks before every file command whether A is still XY Forever: link, and no file request
         reaches the bootloader (before: read mode stayed latched and the open went to it)."""
         dev = self.connect()
-        self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)    # read mode latched, mounted
+        self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)  # read mode latched, mounted
         self.sim.set('a_boot_ms', 0)
         self.wait(lambda s: s['clock_ms'] - s['b_sent_ms'] < 60, what='a keepalive just answered')
         self.sim.control('reset a')
         self.wait(lambda s: s['a_bootloader'] == 1, what="A's stock bootloader on the link")
         self.assertEqual(dev.call(P.READ_FILE, raw_path(BASE + 'state-a.txt'), timeout=5.0)[0], ids.S_LINK)
         log = (self.dir / 'log.txt').read_text(errors='replace')
-        self.assertNotIn("A's bootloader: class %08x" % PATH_CLASS, log)   # (B then takes the lost-link path)
+        self.assertNotIn("A's bootloader: class %08x" % PATH_CLASS, log)  # (B then takes the lost-link path)
 
     @pytest.mark.sim
     def test_dropped_request_and_link_error_mid_body_end_as_link(self):
         """Kept: Link fault: a dropped request or a mid-body error ends as a link error, never a hang. Before B's timed file client B waited for good. Now: link within the bound; the request stays out (later
         file commands: link at once) until the lost limit; USB answers throughout."""
-        for fault in ('drop_request', 'drop_body'):       # drop_body: the reply, body and all, is lost
+        for fault in ('drop_request', 'drop_body'):  # drop_body: the reply, body and all, is lost
             dev = self.connect()
             path = (BASE + 'state-a.txt').encode() + b'\0'
             self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)
@@ -770,7 +836,7 @@ class SimulatorTest(unittest.TestCase):
             payload = path if fault == 'drop_request' else path[:-1] + b'\0' + struct.pack('<II', 0, 64)
             self.assertEqual(self.call_while_advancing(dev, P.READ_FILE, payload, 6000)[0], ids.S_LINK, fault)
             self.assertEqual(self.sim.status()[fault], 0)
-            self.assertEqual(dev.call(P.READ_FILE, path, timeout=2.0)[0], ids.S_LINK)   # the slot is still out
+            self.assertEqual(dev.call(P.READ_FILE, path, timeout=2.0)[0], ids.S_LINK)  # the slot is still out
             self.assertEqual(dev.call(P.STATUS, timeout=2.0)[0], 0)
             self.lost_but_answering(dev)
 
@@ -782,7 +848,7 @@ class SimulatorTest(unittest.TestCase):
         path = BASE + 'firmware/opxy-121/os.ldr'
         self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)
         self.settled(dev)
-        self.sim.set('cut_body', 100)                                  # 100 of the read's 1024 bytes
+        self.sim.set('cut_body', 100)  # 100 of the read's 1024 bytes
         code, body = self.call_while_advancing(dev, P.READ_FILE, self.ranged(path, 0, 1024), 6000)
         self.assertEqual((code, body), (ids.S_LINK, b''))
         self.assertEqual(self.sim.status()['cut_body'], 0)
@@ -794,7 +860,7 @@ class SimulatorTest(unittest.TestCase):
     def test_cable_pulled_mid_frame(self):
         """Kept: USB fault: a cable pull mid-frame leaves B ready for the next host."""
         dev = self.connect()
-        self.sim.set('cable_pull', 10)                    # the device side: 10 bytes of the reply, then gone
+        self.sim.set('cable_pull', 10)  # the device side: 10 bytes of the reply, then gone
         with self.assertRaises(OSError):
             dev.call(P.STATUS, timeout=2.0)
         dev = self.connect()
@@ -831,13 +897,13 @@ class SimulatorTest(unittest.TestCase):
             parser = P.Parser()
             s.sendall(P.encode(P.HELLO, 1))
             self.assertEqual(len(self.frames(s, parser, lambda g: g, 2.0)), 1)
-            s.sendall(P.encode(P.PUT_DATA, 2, bytes(ids.MAX_PAYLOAD))[:10])   # 4172-byte frame cut after 10
+            s.sendall(P.encode(P.PUT_DATA, 2, bytes(ids.MAX_PAYLOAD))[:10])  # 4172-byte frame cut after 10
             self.sim.advance(int(2.5 * ids.IDLE_RESET_MS))
             s.sendall(P.encode(P.HELLO, 3))
             got = self.frames(s, parser, lambda g: g, 2.0)
             self.assertEqual([(t, seq) for t, seq, _ in got], [(P.HELLO | P.REPLY, 3)])
             s.sendall(P.encode(P.PUT_DATA, 4, bytes(ids.MAX_PAYLOAD))[:10] + P.encode(P.HELLO, 5))
-            self.assertEqual(self.frames(s, parser, lambda g: g, 0.1), [])    # swallowed: within the frame
+            self.assertEqual(self.frames(s, parser, lambda g: g, 0.1), [])  # swallowed: within the frame
             for rounds in range(1, 8):
                 s.sendall(bytes(ids.PUT_CHUNK) + P.encode(P.HELLO, 10 + rounds))
                 if self.frames(s, parser, lambda g: g, 0.05):
@@ -849,27 +915,27 @@ class SimulatorTest(unittest.TestCase):
         """Kept: Fault: a full storage and a failed write are reported, nothing half-written."""
         dev = self.connect(startup_ready=True)
         data = bytes(3000)
-        for fault, value in (('space', 1500), ('fail_write', 2)):     # the second 1 KiB write fails
+        for fault, value in (('space', 1500), ('fail_write', 2)):  # the second 1 KiB write fails
             self.sim.set(fault, value)
             code, written, _ = self.write(dev, data, BASE + 'log/full.bin')
             self.assertEqual((code, written), (ids.S_STORAGE, 1024))
             self.sim.set('space', -1)
-            self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)    # A back read-only, still serving
+            self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)  # A back read-only, still serving
         self.assertEqual(self.write(dev, data, BASE + 'log/full.bin')[0], 0)
 
     @pytest.mark.sim
     def test_power_cut_between_storage_operations(self):
         """Kept: Power cut between storage operations: the next start is clean."""
         dev = self.connect(startup_ready=True)
-        data = bytes(range(256)) * 12                      # 3 KiB: mkdir, create, 3 writes, close, ...
+        data = bytes(range(256)) * 12  # 3 KiB: mkdir, create, 3 writes, close, ...
         path = BASE + 'log/cut/file.bin'
         ops = self.sim.status()['storage_ops']
-        self.sim.set('cut_after', 3)                      # mkdir log/cut, create file.bin, first write
+        self.sim.set('cut_after', 3)  # mkdir log/cut, create file.bin, first write
         with self.assertRaises((OSError, TimeoutError)):
             self.write(dev, data, path)
         status = self.wait(lambda s: s['cuts'] == 1 and s['listening'], what='power cut and restart')
         self.assertEqual((status['storage_ops'], status['power_ons']), (ops + 3, 2))
-        self.assertEqual(self.file(path), data[:1024])    # what reached storage before the cut stays
+        self.assertEqual(self.file(path), data[:1024])  # what reached storage before the cut stays
         dev = self.connect()
         self.assertEqual(dev.read_file(BASE + 'state-a.txt')[0], 0)
         self.assertEqual(self.write(dev, data, path)[0], 0)
@@ -929,16 +995,20 @@ class SimulatorTest(unittest.TestCase):
                 self.assertEqual(dev.change(kind, path), (ids.S_REFUSED, 0), (path, kind))
             self.assertEqual(dev.list_page(path)[0], ids.S_REFUSED, path)
         self.assertEqual(dev.stage(b'not the marker'), 0)
-        self.assertEqual(dev.file_write('/yaffs2/bootloader.dev', hashlib.sha256(b'not the marker').digest(),
-                                        10.0)[0], ids.S_REFUSED)
+        self.assertEqual(
+            dev.file_write('/yaffs2/bootloader.dev', hashlib.sha256(b'not the marker').digest(), 10.0)[0], ids.S_REFUSED
+        )
         after = self.sim.status()
-        self.assertEqual((after['to_a'], after['storage_ops'], after['rw_mounts']),
-                         (before['to_a'], before['storage_ops'], before['rw_mounts']))
+        self.assertEqual(
+            (after['to_a'], after['storage_ops'], after['rw_mounts']),
+            (before['to_a'], before['storage_ops'], before['rw_mounts']),
+        )
         self.assertEqual((root / 'bootloader.dev').read_bytes(), b'dev menu\n')
         raw = b'/yaffs2/xy-forever/x\0'
-        self.assertEqual(dev.call(P.DELETE_FILE, raw + bytes(32))[0], ids.S_SHA)   # the confirmation binds the path
-        self.assertEqual([c['name'] for c in SPEC['commands'] if 'rename' in c['name'] or 'move' in c['name']],
-                         ['file.rename'])                     # test_file_rename_refuses_... below
+        self.assertEqual(dev.call(P.DELETE_FILE, raw + bytes(32))[0], ids.S_SHA)  # the confirmation binds the path
+        self.assertEqual(
+            [c['name'] for c in SPEC['commands'] if 'rename' in c['name'] or 'move' in c['name']], ['file.rename']
+        )  # test_file_rename_refuses_... below
 
     # -- file.rename ----------------------------------------------------------------------
 
@@ -959,10 +1029,11 @@ class SimulatorTest(unittest.TestCase):
         def cp(*argv):
             out = io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()), warnings.catch_warnings():
-                warnings.simplefilter('ignore', ResourceWarning)     # the tool leaves its port to the process exit
+                warnings.simplefilter('ignore', ResourceWarning)  # the tool leaves its port to the process exit
                 code = host.main(['--sim', self.sim.address, 'cp'] + list(argv))
                 gc.collect()
             return code, out.getvalue()
+
         code, out = cp(BASE + 'cli/a.txt', BASE + 'cli/z.txt')
         self.assertEqual(code, 0, out)
         self.assertEqual((work / 'z.txt').read_bytes(), b'a')
@@ -972,10 +1043,14 @@ class SimulatorTest(unittest.TestCase):
         code, out = cp('-r', BASE + 'cli/f/', BASE + 'cli/h')
         self.assertEqual(code, 0, out)
         self.assertEqual([(work / 'h' / n).read_bytes() for n in ('b.txt', 'g/c.txt')], [b'bb', b'ccc'])
-        self.assertEqual(cp('-r', BASE + 'cli/f', BASE + 'cli/f/g/x'),
-                         (2, 'refused: cp: the target %scli/f/g/x is inside the source %scli/f\n' % (BASE, BASE)))
-        self.assertEqual(cp(BASE + 'cli/a.txt', '/yaffs2/upgrade/a.txt'), (2, 'refused: cp writes only under '
-                         '/yaffs2/, never bootloader.dev or upgrade/ (file.copy)\n'))
+        self.assertEqual(
+            cp('-r', BASE + 'cli/f', BASE + 'cli/f/g/x'),
+            (2, 'refused: cp: the target %scli/f/g/x is inside the source %scli/f\n' % (BASE, BASE)),
+        )
+        self.assertEqual(
+            cp(BASE + 'cli/a.txt', '/yaffs2/upgrade/a.txt'),
+            (2, 'refused: cp writes only under /yaffs2/, never bootloader.dev or upgrade/ (file.copy)\n'),
+        )
         code, out = cp(BASE + 'cli/a.txt', BASE + 'cli/z.txt')
         self.assertEqual(code, ids.S_STATE, out)
         self.assertIn('state (error 17)', out)
@@ -988,11 +1063,11 @@ class SimulatorTest(unittest.TestCase):
         is walked (refused when a folder inside it would sit too deep). Reads, listing and deletes of an older
         deep tree still work. xyf_host.py says why before it connects, and cp -r checks the whole tree."""
         root = self.dir / 'yaffs2'
-        W = BASE + 'wt/'                                                  # 2 folders
-        six = W + 'a/b/c/d'                                               # 6 folders
-        (root / 'xy-forever/wt/a/b/c/d/e').mkdir(parents=True)           # e: 7, made before the rule
+        W = BASE + 'wt/'  # 2 folders
+        six = W + 'a/b/c/d'  # 6 folders
+        (root / 'xy-forever/wt/a/b/c/d/e').mkdir(parents=True)  # e: 7, made before the rule
         (root / 'xy-forever/wt/a/b/c/d/e/old.txt').write_bytes(b'old')
-        (root / 'xy-forever/wt/t/u/v').mkdir(parents=True)               # a tree 3 folders tall
+        (root / 'xy-forever/wt/t/u/v').mkdir(parents=True)  # a tree 3 folders tall
         (root / 'xy-forever/wt/t/u/v/x.txt').write_bytes(b'x')
         (root / 'xy-forever/wt/s.txt').write_bytes(b's')
         dev = self.connect(startup_ready=True)
@@ -1004,16 +1079,16 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(dev.stage(b'abc'), 0)
         code, _ = dev.call(P.FILE_WRITE, (six + '/e/w.txt').encode() + b'\0' + hashlib.sha256(b'abc').digest())
         self.assertEqual(code, ids.S_REFUSED)
-        self.assertEqual(self.sim.status()['to_a'], before['to_a'])       # refused on B
-        self.assertEqual(host.put(dev, b'abc', six + '/w.txt'), 0)         # at the limit
+        self.assertEqual(self.sim.status()['to_a'], before['to_a'])  # refused on B
+        self.assertEqual(host.put(dev, b'abc', six + '/w.txt'), 0)  # at the limit
         self.assertEqual(dev.copy(W + 's.txt', six + '/c.txt')[0], 0)
         self.assertEqual(dev.change(P.MAKE_DIR, W + 'a/b/c/n'), (0, 0))
-        self.assertEqual(dev.rename(W + 't/u', W + 'a/u'), (0, 0))       # a/u/v: 5 folders
-        self.assertEqual(dev.rename(W + 'a/u', W + 'a/b/u'), (0, 0))     # 6
-        self.assertEqual(dev.rename(W + 'a/b/u', W + 'a/b/c/u'), (ids.S_REFUSED, 0))   # v would be 7th
-        self.assertEqual(dev.rename(W + 'a/b/u', W + 'u'), (0, 0))       # shallower: no walk
+        self.assertEqual(dev.rename(W + 't/u', W + 'a/u'), (0, 0))  # a/u/v: 5 folders
+        self.assertEqual(dev.rename(W + 'a/u', W + 'a/b/u'), (0, 0))  # 6
+        self.assertEqual(dev.rename(W + 'a/b/u', W + 'a/b/c/u'), (ids.S_REFUSED, 0))  # v would be 7th
+        self.assertEqual(dev.rename(W + 'a/b/u', W + 'u'), (0, 0))  # shallower: no walk
         self.assertEqual((root / 'xy-forever/wt/u/v/x.txt').read_bytes(), b'x')
-        self.assertEqual(dev.read_file(six + '/e/old.txt'), (0, b'old'))   # an older deep tree: read, list, delete
+        self.assertEqual(dev.read_file(six + '/e/old.txt'), (0, b'old'))  # an older deep tree: read, list, delete
         self.assertEqual(dev.list_dir(six + '/e'), (0, [(0, 3, b'old.txt')]))
         self.assertEqual(dev.change(P.DELETE_FILE, six + '/e/old.txt'), (0, 0))
         self.assertEqual(dev.change(P.REMOVE_DIR, six + '/e'), (0, 0))
@@ -1025,13 +1100,14 @@ class SimulatorTest(unittest.TestCase):
                 code = host.main(['--sim', self.sim.address] + list(argv))
                 gc.collect()
             return code, out.getvalue()
+
         text = 'is more than 6 folders below /yaffs2'
         for argv in (['mkdir', six + '/g'], ['mv', W + 's.txt', six + '/g/s.txt'], ['cp', W + 's.txt', six + '/g/s']):
             code, out = run(*argv)
             self.assertEqual(code, 2, out)
             self.assertIn(text, out)
             self.assertNotIn('connected', out)
-        code, out = run('cp', '-r', W + 'u', W + 'a/b/c/u')                # u/v: v would be 7th
+        code, out = run('cp', '-r', W + 'u', W + 'a/b/c/u')  # u/v: v would be 7th
         self.assertEqual(code, 2, out)
         self.assertIn('with the folders inside it ' + text, out)
         self.assertFalse((root / 'xy-forever/wt/a/b/c/u').exists())
@@ -1046,9 +1122,9 @@ class SimulatorTest(unittest.TestCase):
         raw = entry_id.encode()
         return dev.call(ids.LIBRARY_BOOT, raw + b'\0' + (token or hashlib.sha256(raw).digest()), timeout=10.0)
 
+
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class SimulatorVariantTest(unittest.TestCase):
-
     def test_sim_address_is_loopback_only(self):
         for bad in ('10.0.0.2:7341', 'example.com:7341', '127.0.0.1'):
             with self.assertRaises(ValueError):

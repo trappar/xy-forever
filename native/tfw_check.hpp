@@ -26,10 +26,17 @@ enum class Reason : U32 {
     directory       // the decrypted ZIP end record or central directory is malformed
 };
 // Bytes from offset into out: count, fewer at the end of the file, or -1 on an error.
-struct File { void* context; int (*read)(void*, U32 offset, Byte* out, U32 count); };
+struct File {
+    void* context;
+    int (*read)(void*, U32 offset, Byte* out, U32 count);
+};
 // The device's keys, each written into a buffer the caller passes and erases. public_key: Qx || Qy
 // (56 bytes); aes: the extractor's key provider (tfw::KeyProvider). false: no key.
-struct Keys { void* context; bool (*public_key)(void*, Byte out[56]); tfw::KeyProvider aes; };
+struct Keys {
+    void* context;
+    bool (*public_key)(void*, Byte out[56]);
+    tfw::KeyProvider aes;
+};
 static const U32 cut_magic = 0x54434658u, cut_header_bytes = 16;   // "XFCT"
 // Caller-owned working memory; on the device it is on the stack (the AES schedule is in
 // `archive`, erased before check() returns).
@@ -47,5 +54,5 @@ struct Result {
 };
 Reason check(const File& file, const Keys& keys, Workspace& workspace, Result& result);
 const char* reason_name(Reason reason);
-} }
+}}
 #endif

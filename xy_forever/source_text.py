@@ -3,11 +3,12 @@
 target/usb_service.cpp includes its parts (usb_service_*.ipp) where their text was. Tests that read
 the file as text read unit_text(path): the same text as before the split, whatever the parts are.
 """
+
 import re
 from pathlib import Path
 
 PART = re.compile(r'^#include "(\w+\.ipp)".*\n', re.M)
-HEADER = '// Part of '     # each part's first line says what it is part of
+HEADER = '// Part of '  # each part's first line says what it is part of
 
 
 def unit_text(path):
@@ -17,4 +18,5 @@ def unit_text(path):
     def part(match):
         text = (path.parent / match.group(1)).read_text()
         return text.split('\n', 1)[1] if text.startswith(HEADER) else text
+
     return PART.sub(part, path.read_text())

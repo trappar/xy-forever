@@ -67,12 +67,16 @@ struct ContentIo {
         uint32_t count = 0, more = 0, bytes = 0;
         const U32 code = file_client::list(folder, skip, page, sizeof(page), count, more, bytes, mounted);
         if (code == P::s_not_found) return 0;
-        if (code != P::s_ok) { if (code == P::s_link) link = 1; return -1; }
+        if (code != P::s_ok) {
+            if (code == P::s_link) link = 1;
+            return -1;
+        }
         if (!count) return 0;
         kind = page[0];
         const U32 n = page[5];
         for (U32 i = 0; i != n; ++i) name[i] = char(page[6 + i]);
-        name[n] = 0; return 1;
+        name[n] = 0;
+        return 1;
     }
     bool lost() const { return link != 0; }
 };
@@ -84,8 +88,13 @@ struct GarbageIo : ContentIo {
     int unlink(const char* p) {
         if (link || journal_kept()) return -1;
         const U32 code = enter_writes();
-        if (code != P::s_ok) { if (code == P::s_link) link = 1; return -1; }
-        storage_used = 1; writes_due = 1; writes_ms = now();
+        if (code != P::s_ok) {
+            if (code == P::s_link) link = 1;
+            return -1;
+        }
+        storage_used = 1;
+        writes_due = 1;
+        writes_ms = now();
         return ContentIo::unlink(p);
     }
 };

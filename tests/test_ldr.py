@@ -6,23 +6,26 @@ from xy_forever.ldr import parse_ldr, replay
 
 
 def header(flags, target, count, argument=0):
-    raw = bytearray(struct.pack('<4I', 0xad000000 | flags, target, count, argument))
+    raw = bytearray(struct.pack('<4I', 0xAD000000 | flags, target, count, argument))
     checksum = 0
     for byte in raw:
         checksum ^= byte
     raw[2] = checksum
     return bytes(raw)
 
+
 def image(records, entry=0x1000):
-    body = b''.join(header(flags, address, count, arg) + payload
-                    for flags, address, count, arg, payload in records)
+    body = b''.join(header(flags, address, count, arg) + payload for flags, address, count, arg, payload in records)
     body += header(0x8004, entry, 0)
     return header(0x5004, entry, 0, len(body)) + body
 
+
 class Native:
     """native/ldr.hpp through the host extension (hosttest/bind/ldr.cpp)."""
+
     def __init__(self):
-        import xyf_hosttest      # here, not at the top: web tests import this file's helpers without hosttest
+        import xyf_hosttest  # here, not at the top: web tests import this file's helpers without hosttest
+
         self.native = xyf_hosttest.module('ldr')
 
     def inspect(self, data, allowed=((0x1000, 0x10000),), protected=()):
@@ -34,20 +37,21 @@ class Native:
             raise ValueError(f'native expansion failed: {error}')
         return output
 
+
 class LdrTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.native = Native()
 
     def test_overlap_and_non_word_fill(self):
-        data = image([(4, 0x1000, 16, 0, bytes(range(16))),
-                      (0x104, 0x1005, 7, 0x12345678, b'')])
+        data = image([(4, 0x1000, 16, 0, bytes(range(16))), (0x104, 0x1005, 7, 0x12345678, b'')])
         memory = {}
-        entry = replay(data, [(0x1000, 0x2000)], [],
-                       lambda at, chunk: memory.update(enumerate(chunk, at)))
+        entry = replay(data, [(0x1000, 0x2000)], [], lambda at, chunk: memory.update(enumerate(chunk, at)))
         self.assertEqual(entry, 0x1000)
-        self.assertEqual(bytes(memory[i] for i in range(0x1000, 0x1010)),
-                         bytes(range(5)) + bytes.fromhex('78563412785634') + bytes(range(12, 16)))
+        self.assertEqual(
+            bytes(memory[i] for i in range(0x1000, 0x1010)),
+            bytes(range(5)) + bytes.fromhex('78563412785634') + bytes(range(12, 16)),
+        )
         r = parse_ldr(data)[2]
         self.assertEqual(self.native.expand(data, r.offset, 1, 5), bytes.fromhex('5634127856'))
         self.assertEqual(self.native.inspect(data)[0], 0)
@@ -83,14 +87,13 @@ class LdrTests(unittest.TestCase):
 
     def test_differential_mutations(self):
         rng = random.Random(5549)
-        original = image([(4, 0x1000, 20, 0, bytes(range(20))),
-                          (0x104, 0x1014, 40, 0x01020304, b'')])
+        original = image([(4, 0x1000, 20, 0, bytes(range(20))), (0x104, 0x1014, 40, 0x01020304, b'')])
         for _ in range(1800):
             data = bytearray(original)
             for _ in range(rng.randrange(1, 5)):
                 data[rng.randrange(len(data))] ^= rng.randrange(1, 256)
             if rng.randrange(4) == 0:
-                data = data[:rng.randrange(len(data))]
+                data = data[: rng.randrange(len(data))]
             try:
                 replay(data, [(0x1000, 0x10000)], [], lambda *args: None)
                 valid = True
@@ -100,10 +103,13 @@ class LdrTests(unittest.TestCase):
 
     def test_framing_expansion_and_address_limits(self):
         good = image([(4, 0x1000, 4, 0, b'abcd')])
-        variants = [good + b'x', good[:-16],
-                    image([(4, 0xfffffffe, 4, 0, b'abcd')]),
-                    image([(4, 0x1000, 4, 0, b'abcd'), (0x104, 0x2000, 0x10000001, 0, b'')]),
-                    image([(4, 0x1000, 4, 0, b'abcd'), (0x5004, 0x1000, 0, 0, b'')])]
+        variants = [
+            good + b'x',
+            good[:-16],
+            image([(4, 0xFFFFFFFE, 4, 0, b'abcd')]),
+            image([(4, 0x1000, 4, 0, b'abcd'), (0x104, 0x2000, 0x10000001, 0, b'')]),
+            image([(4, 0x1000, 4, 0, b'abcd'), (0x5004, 0x1000, 0, 0, b'')]),
+        ]
         for data in variants:
             with self.subTest(size=len(data)):
                 with self.assertRaises(ValueError):
@@ -115,6 +121,7 @@ class LdrTests(unittest.TestCase):
         self.assertNotEqual(self.native.inspect(data, allowed=())[0], 0)
         self.assertNotEqual(self.native.inspect(data, allowed=((0x2000, 0x1000),))[0], 0)
         self.assertNotEqual(self.native.inspect(data, protected=((0x1000, 0x1000),))[0], 0)
+
 
 if __name__ == '__main__':
     unittest.main()

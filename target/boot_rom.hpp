@@ -31,10 +31,8 @@ inline void put32(uint8_t* p, uint32_t value) {
 
 // Addresses are explicit target addresses rather than truncated host pointers.
 // Context and auxiliary storage must be retained outside every payload write.
-inline bool prepare(Context& context, Auxiliary& auxiliary,
-                    uint32_t reader_target, uint32_t auxiliary_target) {
-    if (!reader_target || (reader_target & 1u) || !auxiliary_target ||
-        (auxiliary_target & 3u)) return false;
+inline bool prepare(Context& context, Auxiliary& auxiliary, uint32_t reader_target, uint32_t auxiliary_target) {
+    if (!reader_target || (reader_target & 1u) || !auxiliary_target || (auxiliary_target & 3u)) return false;
     for (size_t i = 0; i != context_size; ++i) context.bytes[i] = 0;
     for (size_t i = 0; i != auxiliary_size; ++i) auxiliary.bytes[i] = 0;
     put32(context.bytes + reader_offset, reader_target);
@@ -52,25 +50,21 @@ struct ReadRequest {
 static_assert(sizeof(ReadRequest) == 12, "ROM read request prefix");
 
 enum class ReadResult { ok, source_bounds, destination_bounds, copy_failed };
-typedef bool (*Copy)(void* user, uint32_t destination,
-                     const uint8_t* source, uint32_t count);
+typedef bool (*Copy)(void* user, uint32_t destination, const uint8_t* source, uint32_t count);
 
 // Pure callback model. The actual native callback must stop boot irrevocably on
 // failure: ROM's observed stock callback has no established error-return channel.
 // Copy supplies target-memory validation and cache maintenance; it must not be a
 // bare memcpy into an arbitrary address supplied by a malformed stream.
-inline ReadResult read(ReadRequest& request, const uint8_t* source,
-                       uint32_t source_size, Copy copy, void* user) {
-    if (request.offset > source_size || request.count > source_size - request.offset)
-        return ReadResult::source_bounds;
+inline ReadResult read(ReadRequest& request, const uint8_t* source, uint32_t source_size, Copy copy, void* user) {
+    if (request.offset > source_size || request.count > source_size - request.offset) return ReadResult::source_bounds;
     if (!request.count) return ReadResult::ok;
     if (!source || !copy || request.count - 1u > UINT32_MAX - request.destination)
         return ReadResult::destination_bounds;
-    if (!copy(user, request.destination, source + request.offset, request.count))
-        return ReadResult::copy_failed;
+    if (!copy(user, request.destination, source + request.offset, request.count)) return ReadResult::copy_failed;
     request.offset += request.count;
     return ReadResult::ok;
 }
 
-} }
+}}
 #endif

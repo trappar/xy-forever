@@ -1,17 +1,18 @@
 """Install and remove plain sound packs from the inbox without touching other content."""
+
 import contextlib
 import io
 import json
 import unittest
-
-import pytest
 from unittest.mock import patch
 
-from xy_forever import xyf_host as host
-from test_sim_mod_job import UNAVAILABLE
-from sim_settings import Rows
+import pytest
 from sim_mods_page import MINUS, PLAY, PLUS
+from sim_settings import Rows
+from test_sim_mod_job import UNAVAILABLE
+
 from xy_forever import package_store
+from xy_forever import xyf_host as host
 
 
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
@@ -20,17 +21,18 @@ class PackChanges(Rows, unittest.TestCase):
         folder = self.root / 'xy-forever/inbox' / pack_id
         folder.mkdir(parents=True)
         (folder / 'manifest.json').write_text(json.dumps(dict(name='Test Sounds', folder=pack_id, version='1.0')))
-        media = folder / 'samples/kits/one/hand.wav'                    # six folders below yaffs2
+        media = folder / 'samples/kits/one/hand.wav'  # six folders below yaffs2
         media.parent.mkdir(parents=True)
         media.write_bytes(b'RIFF' + bytes(range(128)))
         return folder
 
     def packs(self, *args):
-        with patch.object(host, 'connect', return_value=(self.dev, 'sim', self.dev.hello_info.text)), \
-                contextlib.redirect_stdout(io.StringIO()) as out:
+        with (
+            patch.object(host, 'connect', return_value=(self.dev, 'sim', self.dev.hello_info.text)),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
             code = host.main(['packs', *args])
         return code, out.getvalue()
-
 
     def confirm_pack(self):
         self.press(PLAY)
@@ -48,7 +50,7 @@ class PackChanges(Rows, unittest.TestCase):
         self.press(PLAY)
         self.until(lambda: self.count('pack page 0: 1 entries, more=0'), 'installed pack')
         cuts = self.sim.status()['cuts']
-        self.sim.set('rename_fault_kind', 2)                 # power loss immediately after the rename
+        self.sim.set('rename_fault_kind', 2)  # power loss immediately after the rename
         self.sim.set('rename_fault', 1)
         self.confirm_pack()
         self.until(lambda: self.sim.status()['cuts'] == cuts + 1 and self.sim.status()['listening'], 'restart')

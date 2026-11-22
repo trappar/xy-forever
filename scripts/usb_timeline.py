@@ -10,13 +10,14 @@ own USB device (or XY Forever's CDC service) appears later. The difference is th
 power-on-to-USB time, measured the same way for stock and XY Forever builds.
 Read-only: it only lists the macOS USB registry (ioreg); nothing is sent.
 """
+
 import argparse
 import re
 import subprocess
 import sys
 import time
 
-VENDOR = 9063          # 0x2367 teenage engineering
+VENDOR = 9063  # 0x2367 teenage engineering
 
 
 def devices():
@@ -31,8 +32,9 @@ def devices():
     if not names:
         return set()
     # Interfaces are IOUSBHostInterface objects (service plane), not in the IOUSB plane.
-    iface = subprocess.run(['ioreg', '-r', '-c', 'IOUSBHostInterface', '-l', '-w0'], capture_output=True,
-                           text=True).stdout
+    iface = subprocess.run(
+        ['ioreg', '-r', '-c', 'IOUSBHostInterface', '-l', '-w0'], capture_output=True, text=True
+    ).stdout
     classes = set()
     for block in iface.split('+-o ')[1:]:
         if '"idVendor" = %d' % VENDOR in block or '"idVendor"=%d' % VENDOR in block:
@@ -52,9 +54,13 @@ def main():
         now = devices()
         t = time.time()
         for d in sorted(last - now):
-            print('%s %.3f - %s pid %d class %s' % (time.strftime('%H:%M:%S'), t, d[0], d[1], ','.join(d[2])), flush=True)
+            print(
+                '%s %.3f - %s pid %d class %s' % (time.strftime('%H:%M:%S'), t, d[0], d[1], ','.join(d[2])), flush=True
+            )
         for d in sorted(now - last):
-            print('%s %.3f + %s pid %d class %s' % (time.strftime('%H:%M:%S'), t, d[0], d[1], ','.join(d[2])), flush=True)
+            print(
+                '%s %.3f + %s pid %d class %s' % (time.strftime('%H:%M:%S'), t, d[0], d[1], ','.join(d[2])), flush=True
+            )
         last = now
         time.sleep(args.interval)
     return 0

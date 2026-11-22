@@ -14,25 +14,25 @@
 #include "xyf_crc32.hpp"
 #include "xyf_cold_library.hpp"
 #if defined(XYF_MENU_ON_FAILURE) && defined(XYF_ONE_SESSION) && defined(XYF_USB_FILE_WRITE)
-#define XYF_POWER_ON_CONVERGE 1         // #197: the menu converges (the Mods page's build: xyf_mods_io.hpp XYF_MODS_PAGE)
-#include "xyf_converge.hpp"      // the fingerprint a plain power-on compares (a_converge)
+#define XYF_POWER_ON_CONVERGE 1 // #197: the menu converges (the Mods page's build: xyf_mods_io.hpp XYF_MODS_PAGE)
+#include "xyf_converge.hpp" // the fingerprint a plain power-on compares (a_converge)
 #include "xyf_job_journal.hpp"
 #endif
 #if defined(XYF_STATE_WRITE) || defined(XYF_ONE_SESSION)
 #include "xyf_state_write.hpp"
 #endif
 #if defined(XYF_ONE_SESSION)
-#include "storage_server.hpp"   // Test 065: a serves b's file requests in this session
+#include "storage_server.hpp" // Test 065: a serves b's file requests in this session
 #endif
 #if defined(XYF_STAGE2)
 #include "xyf_stage2.hpp"
 #endif
-#include "key_ui.hpp"            // xy_forever_key_ui(): the menu on b
+#include "key_ui.hpp" // xy_forever_key_ui(): the menu on b
 // Test025 (see file_boot.hpp).
 namespace xy_forever { namespace file_boot {
 // Initialized data, not BSS: the cold link has no zero-initialization.
 Result result __attribute__((section(".data"))) = {magic};
-} }
+}}
 // Storage-image handoff read by cold.cpp: set to
 // 1 only after a commit and an exact copy to the RAM-boot source.
 extern "C" {
@@ -44,8 +44,8 @@ extern const xyf_core::Policy* volatile xy_forever_cold_policy;
 extern "C" char xy_forever_module_end[] __asm__("__end");
 
 namespace {
-using xyf_core::U32;
 using xyf_core::Byte;
+using xyf_core::U32;
 using namespace xy_forever;
 using namespace xy_forever::file_boot;
 typedef peer_services::Result SessionResult;
@@ -56,7 +56,7 @@ U32 cycles_div1024() {
     return (low >> 10) | (high << 22);
 }
 // 400 MHz core clock: ms = units * 0.00256 ~= units * 21 / 8192 (see key_ui).
-volatile U32 start_ms __attribute__((section(".data"))) = 0;   // xyf_clock: wrap-safe, no session cap needed
+volatile U32 start_ms __attribute__((section(".data"))) = 0; // xyf_clock: wrap-safe, no session cap needed
 U32 now() { return xyf::clock::ms() - start_ms; }
 Byte byte(U32 address) { return *reinterpret_cast<const volatile Byte*>(address); }
 
@@ -64,7 +64,11 @@ Byte byte(U32 address) { return *reinterpret_cast<const volatile Byte*>(address)
 U32 crc32(const volatile Byte* data, U32 count) { return xyf::crc::update_volatile(0, data, count); }
 
 const U32 paint = 0x5ca1ab1eu, stack_top = XYF_STACK_END;
-U32 stack_pointer() { U32 sp; __asm__ volatile("%0 = SP;" : "=d"(sp)); return sp; }
+U32 stack_pointer() {
+    U32 sp;
+    __asm__ volatile("%0 = SP;" : "=d"(sp));
+    return sp;
+}
 U32 paint_stack() {
     U32 begin = (reinterpret_cast<U32>(xy_forever_module_end) + 3u) & ~3u;
 #if defined(XYF_STACK_PAINT_FLOOR)
@@ -88,7 +92,9 @@ U32 stack_used(U32 begin) {
 #if defined(XYF_PLAIN_IMAGES)
 // Test 051: 1 when the last admitted image is plain (an official os.ldr: no
 // report slot, so no reporter); cold.cpp then boots it without the report patch.
-extern "C" { volatile uint32_t xy_forever_storage_image_plain __attribute__((section(".data"))) = 0; }
+extern "C" {
+volatile uint32_t xy_forever_storage_image_plain __attribute__((section(".data"))) = 0;
+}
 #endif
 
 U32 admit(Byte* image, U32 bytes) {
@@ -100,21 +106,21 @@ U32 admit(Byte* image, U32 bytes) {
     xyf_core::Summary summary;
     if (xyf_core::inspect(image, bytes, *policy, summary) != xyf_core::Error::ok) return reason_policy;
     if (summary.entry != 0x11a00000u) return reason_entry;
-    const xyf_core::trace_slot::Result slot = xyf_core::trace_slot::replace(
-        image, bytes, *policy, storage_probe::carry_base, xy_forever_trace_expected,
-        xy_forever_trace_expected, sizeof(storage_probe::Report));
+    const xyf_core::trace_slot::Result slot =
+        xyf_core::trace_slot::replace(image, bytes, *policy, storage_probe::carry_base, xy_forever_trace_expected,
+                                      xy_forever_trace_expected, sizeof(storage_probe::Report));
 #if defined(XYF_PLAIN_IMAGES)
     // Test 051: no report slot at all = a plain official image. Same cold policy
     // and entry as every image; no reporter, so no report or census slot needed.
     if (slot.status == xyf_core::trace_slot::Status::missing_slot) {
         xy_forever_storage_image_plain = 1;
-        result.library.flags |= 8u;                    // plain image admitted
+        result.library.flags |= 8u; // plain image admitted
         return reason_ok;
     }
 #endif
     if (slot.status != xyf_core::trace_slot::Status::ok) return reason_report_slot;
-    if (xyf_core::trace_slot::locate_zero(image, bytes, *policy, XYF_CENSUS_BASE,
-                                         XYF_CENSUS_BYTES).status != xyf_core::trace_slot::Status::ok)
+    if (xyf_core::trace_slot::locate_zero(image, bytes, *policy, XYF_CENSUS_BASE, XYF_CENSUS_BYTES).status !=
+        xyf_core::trace_slot::Status::ok)
         return reason_census_slot;
     return reason_ok;
 }
@@ -144,14 +150,14 @@ bool hand_off(U32 bytes, U32 crc) {
 
 // ---- XY Forever menu boot (see xyf_boot.hpp) --------------------------------
 using peer_services::Stock121PeerSession;
-const U32 keepalive_ms = 250, answer_ms = 500, keepalive_tag = 0x4b41u;   // as the Test024 held link
-const U32 handshake_ms = 2000;                                              // b: Test023 took 540 ms
+const U32 keepalive_ms = 250, answer_ms = 500, keepalive_tag = 0x4b41u; // as the Test024 held link
+const U32 handshake_ms = 2000; // b: Test023 took 540 ms
 static_assert(xyf_boot::scan_capacity >= xyf::library::scratch_needed, "scan scratch");
 static_assert(sizeof(xyf::library::Library) <= xyf_boot::scan_buffer - xyf_boot::library_buffer, "library");
 static_assert(sizeof(xyf::catalog::Catalog) <= xyf_boot::scan_buffer - xyf_boot::library_buffer, "catalog");
 static_assert(xyf::catalog::max_bytes <= xyf_boot::catalog_capacity, "catalog buffer");
 
-#include "file_boot_b_link.ipp"   // B: link state, poll, settle, ask, send
+#include "file_boot_b_link.ipp" // B: link state, poll, settle, ask, send
 
 // a: path and info.txt promises for library entry index.
 bool entry_selection(const xyf::library::Library& lib, U32 index, xyf::cold_library::Selection& out) {
@@ -160,8 +166,10 @@ bool entry_selection(const xyf::library::Library& lib, U32 index, xyf::cold_libr
     const xyf::library::Entry& e = lib.entries[index];
     if (!xyf::library::detail::path(out.path, "/yaffs2/xy-forever/firmware/", e.id, "/os.ldr")) return false;
     out.index = index;
-    out.has_bytes = e.has_info && e.info.has_bytes; out.bytes = e.info.bytes;
-    out.has_crc32 = e.has_info && e.info.has_crc32; out.crc32 = e.info.crc32;
+    out.has_bytes = e.has_info && e.info.has_bytes;
+    out.bytes = e.info.bytes;
+    out.has_crc32 = e.has_info && e.info.has_crc32;
+    out.crc32 = e.info.crc32;
     return true;
 }
 // a: read the selected image into staging (bounded).
@@ -170,12 +178,15 @@ U32 read_image(cold_storage::Stock121ReadOnlySession& storage, const char* path,
     const int fd = storage.direct_open(path);
     if (fd < 0) return reason_open;
     Byte* target = reinterpret_cast<Byte*>(staging);
-    const U32 capacity = staging_bytes - 512;          // client keeps the stock extra sector
+    const U32 capacity = staging_bytes - 512; // client keeps the stock extra sector
     U32 reason = reason_ok;
     int got = 0;
     for (U32 guard = 0; guard != 0x200; ++guard) {
         const U32 want = capacity - bytes < 0x10000u ? capacity - bytes : 0x10000u;
-        if (!want) { reason = reason_size; break; }
+        if (!want) {
+            reason = reason_size;
+            break;
+        }
         got = storage.direct_read(fd, target + bytes, want);
         if (got <= 0) break;
         bytes += U32(got);
@@ -195,7 +206,8 @@ static_assert(xyf::stage2::window_end <= staging && xyf::stage2::window_begin >=
 static_assert(xyf::stage2::window_end <= xyf_boot::catalog_buffer, "stage-2 window overlaps the catalog");
 
 // a: answer STAGE2 with the accepted file, or an 8-byte refusal blob.
-__attribute__((noinline)) void a_serve_stage2(Stock121PeerSession& session, cold_storage::Stock121ReadOnlySession& storage, bool mounted) {
+__attribute__((noinline)) void a_serve_stage2(Stock121PeerSession& session,
+                                              cold_storage::Stock121ReadOnlySession& storage, bool mounted) {
     xyf_boot::Stage2Info& s = result.stage2;
     U32 status = xyf_boot::s2_storage, bytes = 0;
     U32 check = 0;
@@ -206,22 +218,27 @@ __attribute__((noinline)) void a_serve_stage2(Stock121PeerSession& session, cold
         else if (reason != reason_ok) status = xyf_boot::s2_read;
         else {
             xyf::stage2::Header header;
-            const xyf::stage2::Check c = xyf::stage2::accept(reinterpret_cast<const Byte*>(staging), bytes,
-                                                             xyf::stage2::this_stage1, header);
+            const xyf::stage2::Check c =
+                xyf::stage2::accept(reinterpret_cast<const Byte*>(staging), bytes, xyf::stage2::this_stage1, header);
             check = U32(c);
-            if (c == xyf::stage2::Check::ok) { status = xyf_boot::s2_ready; s.version = header.version; s.entry = header.entry; }
-            else status = xyf_boot::s2_check;
+            if (c == xyf::stage2::Check::ok) {
+                status = xyf_boot::s2_ready;
+                s.version = header.version;
+                s.entry = header.entry;
+            } else status = xyf_boot::s2_check;
         }
     }
-    s.status = status; s.check = check;
+    s.status = status;
+    s.check = check;
     if (status != xyf_boot::s2_ready) {
         volatile U32* note = reinterpret_cast<volatile U32*>(staging);
-        note[0] = xyf::stage2::refusal_magic; note[1] = status | check << 8;
+        note[0] = xyf::stage2::refusal_magic;
+        note[1] = status | check << 8;
         bytes = 8;
     }
     session.touch(now());
     if (session.freeze_blob(reinterpret_cast<const Byte*>(staging), bytes) != SessionResult::ok)
-        s.status |= 0x100u;                              // could not freeze: b times out, both boot built-in
+        s.status |= 0x100u; // could not freeze: b times out, both boot built-in
     s.load_ms = now();
 }
 
@@ -276,7 +293,7 @@ xyf::state_write::Collector a_collector __attribute__((section(".data"))) = {0, 
 volatile U32 a_prepared __attribute__((section(".data"))) = 0xffffffffu;
 
 U32 a_default_index(xyf::library::Library& lib) {
-    lib.state.once[0] = 0;                              // no "once" while read-only
+    lib.state.once[0] = 0; // no "once" while read-only
     uint32_t choice = 0;
     return xyf::library::boot_choice(lib, choice) == xyf::library::Choice::menu ? 0xffu : U32(choice);
 }
@@ -330,12 +347,21 @@ bool a_config(cold_storage::Stock121ReadOnlySession& storage, Byte* text, uint32
     bool done = false;
     for (uint32_t i = 0; i != 256; ++i) {
         const Byte* entry = storage.direct_readdir(dir);
-        if (!entry) { done = true; break; }
+        if (!entry) {
+            done = true;
+            break;
+        }
         const char* name = reinterpret_cast<const char*>(entry + xyf::library::dirent_name);
         for (uint32_t k = 0; k != index; ++k) {
-            if (xg::same(name, xg::names[k])) { index = k; break; }
+            if (xg::same(name, xg::names[k])) {
+                index = k;
+                break;
+            }
         }
-        if (!index) { done = true; break; }
+        if (!index) {
+            done = true;
+            break;
+        }
     }
     if (storage.direct_closedir(dir) || !done) return false;
     if (index == xg::path_count) return true;
@@ -368,8 +394,8 @@ U32 a_converge(cold_storage::Stock121ReadOnlySession&, bool, const xyf::library:
 
 // Read, match against info.txt and admit entry index into staging; storage stays
 // mounted (admission only inspects memory). Records the library fields.
-U32 a_prepare(cold_storage::Stock121ReadOnlySession& storage, bool mounted, const xyf::library::Library& lib,
-              U32 index, U32& bytes, U32& crc) {
+U32 a_prepare(cold_storage::Stock121ReadOnlySession& storage, bool mounted, const xyf::library::Library& lib, U32 index,
+              U32& bytes, U32& crc) {
     Result& r = result;
     xyf_boot::TimingInfo& timing = r.timing;
     timing.valid &= xyf_boot::timing_mount | xyf_boot::timing_scan;
@@ -381,15 +407,18 @@ U32 a_prepare(cold_storage::Stock121ReadOnlySession& storage, bool mounted, cons
     if (mounted && storage.direct_ready() && entry_selection(lib, index, selection)) {
         const char* id = lib.entries[index].id;
         for (U32 i = 0; i != 31; ++i) r.library.id[i] = id[i];
-        r.library.expected_bytes = selection.bytes; r.library.expected_crc = selection.crc32;
+        r.library.expected_bytes = selection.bytes;
+        r.library.expected_crc = selection.crc32;
         r.library.flags = (selection.has_bytes ? 1u : 0u) | (selection.has_crc32 ? 2u : 0u);
         U32 phase = now();
         reason = read_image(storage, selection.path, bytes);
-        timing.a_read_ms = now() - phase; timing.valid |= xyf_boot::timing_read;
+        timing.a_read_ms = now() - phase;
+        timing.valid |= xyf_boot::timing_read;
         if (reason == reason_ok) {
             phase = now();
             crc = crc32(reinterpret_cast<const volatile Byte*>(staging), bytes);
-            timing.a_crc_ms = now() - phase; timing.valid |= xyf_boot::timing_crc;
+            timing.a_crc_ms = now() - phase;
+            timing.valid |= xyf_boot::timing_crc;
             const bool matched = xyf::cold_library::matches(selection, bytes, crc);
             r.library.flags |= matched ? 4u : 0u;
             if (!matched) reason = reason_mismatch;
@@ -397,7 +426,8 @@ U32 a_prepare(cold_storage::Stock121ReadOnlySession& storage, bool mounted, cons
         if (reason == reason_ok) {
             phase = now();
             r.admit_reason = admit(reinterpret_cast<Byte*>(staging), bytes);
-            timing.a_admit_ms = now() - phase; timing.valid |= xyf_boot::timing_a_admit;
+            timing.a_admit_ms = now() - phase;
+            timing.valid |= xyf_boot::timing_a_admit;
             if (r.admit_reason != reason_ok) reason = reason_policy;
         }
     }
@@ -410,7 +440,7 @@ U32 a_prepare(cold_storage::Stock121ReadOnlySession& storage, bool mounted, cons
 // 191: A's storage start for B (the catalog's reserved word, xyf_boot.hpp) and its mount attempts.
 volatile U32 a_storage_word __attribute__((section(".data"))) = 0;
 volatile U32 a_attempts __attribute__((section(".data"))) = 0;
-volatile U32 a_failure_served __attribute__((section(".data"))) = 0;   // B has seen the failed mount
+volatile U32 a_failure_served __attribute__((section(".data"))) = 0; // B has seen the failed mount
 // 192: A's storage repair this boot (xyf_boot::repair_*): pending after a read-only mount failed with
 // write_attempt; done or failed after the one attempt (then no more mounts this boot).
 volatile U32 a_repair __attribute__((section(".data"))) = 0;
@@ -419,12 +449,12 @@ void a_note_mount(cold_storage::Stock121ReadOnlySession& storage, U32 outcome, U
     ++a_attempts;
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
     if (a_repair == xyf_boot::repair_none && outcome == U32(cold_storage::Result::write_attempt))
-        a_repair = xyf_boot::repair_pending;          // only this failure: yaffs wants to repair
+        a_repair = xyf_boot::repair_pending; // only this failure: yaffs wants to repair
 #endif
     const U32 code = outcome ? cap255(outcome) : storage.direct_ready() ? 0u : xyf_boot::storage_unreadable;
     const U32 denied = result.storage.denied_writes > 63 ? 63u : result.storage.denied_writes;
     a_storage_word = code | cap255(a_attempts) << 8 | denied << 16 | a_repair << 22 |
-                     cap255(took_ms >> 10) << 24;   // 1.024 s units (no division)
+                     cap255(took_ms >> 10) << 24; // 1.024 s units (no division)
 }
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
 // 192: the storage repair (repair_fresh: read-write mount, unmount, read-only mount), once per boot,
@@ -455,12 +485,13 @@ U32 a_rescan(cold_storage::Stock121ReadOnlySession& storage, bool mounted, xyf::
     xyf::library::detail::reset(lib);
     r.menu.scan_error = 0xffu;
     if (mounted && storage.direct_ready()) {
-        const xyf::library::Error error = xyf::library::scan_direct(storage, lib,
-            reinterpret_cast<Byte*>(xyf_boot::scan_buffer), xyf_boot::scan_capacity);
+        const xyf::library::Error error = xyf::library::scan_direct(
+            storage, lib, reinterpret_cast<Byte*>(xyf_boot::scan_buffer), xyf_boot::scan_capacity);
         r.menu.scan_error = U32(error);
         if (error != xyf::library::Error::ok) xyf::library::detail::reset(lib);
     }
-    r.library.count = lib.count; r.library.skipped = lib.skipped;
+    r.library.count = lib.count;
+    r.library.skipped = lib.skipped;
     r.menu.catalog_bytes = xyf::catalog::encode(lib, reinterpret_cast<Byte*>(xyf_boot::catalog_buffer),
                                                 xyf_boot::catalog_capacity, a_storage_word);
     return r.menu.catalog_bytes;
@@ -469,19 +500,18 @@ U32 a_rescan(cold_storage::Stock121ReadOnlySession& storage, bool mounted, xyf::
 static_assert(xyf_boot::role0_cap_ms == peer_services::no_cap && xyf_boot::role1_menu_cap_ms == peer_services::no_cap,
               "v3 link sessions have no cap");
 #endif
-#include "file_boot_a_menu.ipp"   // A: storage session, command dispatch, image ownership
+#include "file_boot_a_menu.ipp" // A: storage session, command dispatch, image ownership
 
-#include "file_boot_b_menu.ipp"   // B: checks, catalog, stage 2 load, role1_menu_boot
+#include "file_boot_b_menu.ipp" // B: checks, catalog, stage 2 load, role1_menu_boot
 }
-
 
 #if defined(XYF_TFW_CHECK)
 namespace xy_forever { namespace file_boot {
 void discard_prepared() { a_prepared = 0xffffffffu; }
-} }
+}}
 #endif
 
-#include "file_boot_b_api.ipp"    // B: the xyf_boot functions
+#include "file_boot_b_api.ipp" // B: the xyf_boot functions
 
 extern "C" void xy_forever_file_boot() {
     Result& r = result;
@@ -490,8 +520,10 @@ extern "C" void xy_forever_file_boot() {
     r.stage2.exit = 0xffffffffu;
 #elif defined(XYF_MENU_ON_FAILURE)
     r.version = 6;
-    r.timing.magic = xyf_boot::timing_magic; r.timing.version = 1;
-    r.detail.magic = xyf_boot::timing_detail_magic; r.detail.version = 1;
+    r.timing.magic = xyf_boot::timing_magic;
+    r.timing.version = 1;
+    r.detail.magic = xyf_boot::timing_detail_magic;
+    r.detail.version = 1;
 #else
     r.version = 3;                                     // 1 and 2: the file and library boots before the menu
 #endif
@@ -502,19 +534,24 @@ extern "C" void xy_forever_file_boot() {
     r.storage_begin = r.storage_end = U32(cold_storage::Result::unavailable);
     r.load_reason = r.admit_reason = reason_not_run;
     xy_forever_storage_image_loaded = 0;
-    if (r.role > 1) { r.outcome = outcome_role; return; }
+    if (r.role > 1) {
+        r.outcome = outcome_role;
+        return;
+    }
     const U32 painted = paint_stack();
     U32 bytes = 0, crc = 0;
     const bool committed = r.role == 0 ? role0_menu_boot(bytes, crc) : role1_menu_boot(bytes);
     const bool serve = r.role == 0 && !r.menu.refused;
     if (r.role == 1 && committed) {
-        crc = r.image_crc;                             // the transfer's CRC, checked at its last sector
+        crc = r.image_crc; // the transfer's CRC, checked at its last sector
         r.image_bytes = bytes;
     }
     r.committed = committed;
     if (committed) {
-        if (hand_off(bytes, crc)) { xy_forever_storage_image_loaded = 1; r.outcome = outcome_file; }
-        else r.outcome = outcome_copy;
+        if (hand_off(bytes, crc)) {
+            xy_forever_storage_image_loaded = 1;
+            r.outcome = outcome_file;
+        } else r.outcome = outcome_copy;
     } else {
         r.outcome = r.declined ? (r.role == 0 && !serve ? outcome_no_image : outcome_refused) : outcome_link;
     }
@@ -534,9 +571,9 @@ extern "C" void xy_forever_no_image() {
     using namespace xy_forever::file_boot;
     if (result.role != 1) return;
     const U32 o = result.outcome;
-    xy_forever::key_ui::service_screen(
-        o == outcome_link ? "Internal link lost." : o == outcome_copy ? "Firmware copy failed." :
-                            "No firmware could be started.",
-        "Turn the OP-XY off and on.", "", "");
+    xy_forever::key_ui::service_screen(o == outcome_link ? "Internal link lost." :
+                                       o == outcome_copy ? "Firmware copy failed." :
+                                                           "No firmware could be started.",
+                                       "Turn the OP-XY off and on.", "", "");
 }
 #endif

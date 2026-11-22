@@ -12,13 +12,16 @@
 #if defined(__bfin__) && defined(XYF_TFW_CHECK)
 namespace xy_forever { namespace otp_keys {
 namespace {
-using xyf_core::U32;
 using xyf_core::Byte;
+using xyf_core::U32;
 template<U32 A, class R, class... Args> __attribute__((noinline, noclone)) R stock(Args... args) {
-    return reinterpret_cast<R(*)(Args...)>(A)(args...);
+    return reinterpret_cast<R (*)(Args...)>(A)(args...);
 }
 const U32 init_flag = 0x11b01650u, scratch_bytes = 0x200u;
-void wipe(Byte* p, U32 count) { volatile Byte* clear = p; for (U32 i = 0; i != count; ++i) clear[i] = 0; }
+void wipe(Byte* p, U32 count) {
+    volatile Byte* clear = p;
+    for (U32 i = 0; i != count; ++i) clear[i] = 0;
+}
 void prepare() {
     volatile Byte& initialised = *reinterpret_cast<volatile Byte*>(init_flag);
     if (initialised) return;
@@ -34,7 +37,8 @@ bool public_key(void*, Byte out[56]) {
     prepare();
     wipe(scratch, sizeof(scratch));
     const bool answered = rom_read(9u, scratch) != 0;
-    if (answered) for (U32 i = 0; i != public_key_bytes; ++i) out[i] = scratch[i];
+    if (answered)
+        for (U32 i = 0; i != public_key_bytes; ++i) out[i] = scratch[i];
     wipe(scratch, sizeof(scratch));
     return answered;
 }
@@ -46,9 +50,10 @@ bool aes_key(void*, U32 index, Byte out[32]) {
     prepare();
     wipe(scratch, sizeof(scratch));
     const bool answered = rom_read(3u, scratch) == 1u && rom_read(4u, scratch + 16) == 1u;
-    if (answered) for (U32 i = 0; i != aes_key_bytes; ++i) out[i] = scratch[i];
+    if (answered)
+        for (U32 i = 0; i != aes_key_bytes; ++i) out[i] = scratch[i];
     wipe(scratch, sizeof(scratch));
     return answered;
 }
-} }
+}}
 #endif

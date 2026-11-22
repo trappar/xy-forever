@@ -25,31 +25,33 @@ step passed writes <private>/xy-forever/checks/<tree>.json (`git rev-parse HEAD^
 the same tree prints it and stops (--force reruns). A failed run writes <tree>.failed.json. A dirty tree is
 refused: commit first. A receipt never stands in for a device test, and CI is the merge check.
 """
+
 import argparse
 import datetime
 import hashlib
 import json
 import os
 import re
-from pathlib import Path
 import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
+
+import firmware_cache
 
 from xy_forever import dev_tools, no_device, paths, procgroup
-import firmware_cache
 
 ROOT = Path(__file__).resolve().parents[1]
 
-VERSION = 1                                  # receipt format; a reader refuses a newer one
-CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json
-KEEP_BUILDS = 5                              # builds/<image> folders a check made (check.json) kept, ~7 MB each
-RECENT = 15 * 60                             # seconds: a build folder touched since then is never pruned
-STEP_S = 120                                 # seconds: a step past it ends with its process group (#230)
-STEP_BUDGET_S = 15                           # seconds: a step over it fails the check (see the docstring)
+VERSION = 1  # receipt format; a reader refuses a newer one
+CHECKS = paths.XYF / 'checks'  # receipts: <tree>.json (passed), <tree>.failed.json
+KEEP_BUILDS = 5  # builds/<image> folders a check made (check.json) kept, ~7 MB each
+RECENT = 15 * 60  # seconds: a build folder touched since then is never pruned
+STEP_S = 120  # seconds: a step past it ends with its process group (#230)
+STEP_BUDGET_S = 15  # seconds: a step over it fails the check (see the docstring)
 TOTAL_BUDGET_S = 30
 PYTEST = ('-m', 'pytest', '-p', 'no:randomly', '--dist', 'worksteal')
 
@@ -74,8 +76,10 @@ def require_clean(root, when):
     dirty = git(root, 'status', '--porcelain')
     if dirty:
         lines = dirty.splitlines()
-        raise CheckError('working tree not clean %s: no receipt (commit first)\n%s' % (
-            when, '\n'.join(lines[:10] + (['... %d more' % (len(lines) - 10)] if len(lines) > 10 else []))))
+        raise CheckError(
+            'working tree not clean %s: no receipt (commit first)\n%s'
+            % (when, '\n'.join(lines[:10] + (['... %d more' % (len(lines) - 10)] if len(lines) > 10 else [])))
+        )
 
 
 def merge_base(root):
@@ -93,7 +97,9 @@ def changed(root, *folders):
     base = merge_base(root)
     if base is None:
         return True
-    return subprocess.run(['git', 'diff', '--quiet', base, 'HEAD', '--', *folders], cwd=root, timeout=60).returncode != 0
+    return (
+        subprocess.run(['git', 'diff', '--quiet', base, 'HEAD', '--', *folders], cwd=root, timeout=60).returncode != 0
+    )
 
 
 def step(name, cmd, cwd, env=None, parse=None, timeout=STEP_S):
@@ -121,10 +127,17 @@ def last_json(text):
 
 def tests_parser(tier):
     """Passed when pytest exits 0; its counts (the summary line) go into the receipt."""
+
     def parse(status, text):
-        counts = {k: int(n) for n, k in re.findall(r'(\d+) (passed|failed|skipped|errors?|deselected)\b',
-                                                   text.strip().splitlines()[-1] if text.strip() else '')}
+        counts = {
+            k: int(n)
+            for n, k in re.findall(
+                r'(\d+) (passed|failed|skipped|errors?|deselected)\b',
+                text.strip().splitlines()[-1] if text.strip() else '',
+            )
+        }
         return status == 0 and counts.get('passed', 0) > 0, dict(tests={tier: counts})
+
     return parse
 
 
@@ -132,6 +145,7 @@ def verify_parser(out, tree, commit, test_builds):
     """--verify passed, and the candidate's bytes match the build's manifest. Then a copy of the build goes to
     BUILDS/<image> (out itself stays: it is the cache's output), and check.json there maps it to the tree and
     commit."""
+
     def parse(status, text):
         result, candidate = last_json(text), out / 'candidate.ldr'
         if status or not result or result.get('passed') is not True or not candidate.is_file():
@@ -140,7 +154,7 @@ def verify_parser(out, tree, commit, test_builds):
         digest = hashlib.sha256(data).hexdigest()
         try:
             recorded = json.loads((out / 'manifest.json').read_text()).get('candidate_sha256')
-        except (OSError, ValueError):
+        except OSError, ValueError:
             recorded = None
         if recorded != digest:
             return False, {}
@@ -152,6 +166,7 @@ def verify_parser(out, tree, commit, test_builds):
         shutil.copytree(staged, test_builds / digest[:8])
         named = paths.name_by_image(staged)
         return True, dict(candidate=dict(sha256=digest, image=named.name, bytes=len(data), build=str(named)))
+
     return parse
 
 
@@ -175,9 +190,12 @@ def prune_builds(now=None):
     for folder in paths.BUILDS.glob('check-*'):
         if now - touched(folder) > RECENT:
             shutil.rmtree(folder, ignore_errors=True)
-    made = sorted((p for p in paths.BUILDS.glob('*/check.json') if paths.IMAGE_NAME.fullmatch(p.parent.name)),
-                  key=lambda p: p.stat().st_mtime, reverse=True)
-    for marker in made[KEEP_BUILDS - 1:]:
+    made = sorted(
+        (p for p in paths.BUILDS.glob('*/check.json') if paths.IMAGE_NAME.fullmatch(p.parent.name)),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for marker in made[KEEP_BUILDS - 1 :]:
         if now - touched(marker.parent) > RECENT:
             shutil.rmtree(marker.parent, ignore_errors=True)
 
@@ -185,24 +203,35 @@ def prune_builds(now=None):
 def standard_steps(args, root, tree, work):
     """The gate's steps for this run (work: a temporary folder for the tests' copy of the build)."""
     py = sys.executable
-    js = js_steps(args, root)                    # before anything runs: a missing node_modules stops the run
+    js = js_steps(args, root)  # before anything runs: a missing node_modules stops the run
     prune_builds()
     test_builds = Path(work) / 'builds'
     env = {paths.CHECK_TEST_BUILDS: str(test_builds)}
     cached = root / 'scripts/firmware_cache.py'
     install = dev_tools.js_install(root)
-    return [*([step('pnpm install', install, root)] if install else []),
-            step('product build', [py, cached, 'build'], root),
-            step('verify', [py, cached, 'verify'], root,
-                 parse=verify_parser(firmware_cache.OUT, tree, git(root, 'rev-parse', 'HEAD'), test_builds)),
-            step('protocol files', [py, root / 'scripts/protogen.py', '--check'], root),
-            *js,
-            step('fast and sim tiers', [py, *PYTEST, '-n', '12', '-m', 'fast or sim'], root, env,
-                 tests_parser('fast and sim')),
-            step('gate tier', [py, *PYTEST, '-n', '12', '-m', 'gate'], root, env, tests_parser('gate'))]
+    return [
+        *([step('pnpm install', install, root)] if install else []),
+        step('product build', [py, cached, 'build'], root),
+        step(
+            'verify',
+            [py, cached, 'verify'],
+            root,
+            parse=verify_parser(firmware_cache.OUT, tree, git(root, 'rev-parse', 'HEAD'), test_builds),
+        ),
+        step('protocol files', [py, root / 'scripts/protogen.py', '--check'], root),
+        *js,
+        step(
+            'fast and sim tiers',
+            [py, *PYTEST, '-n', '12', '-m', 'fast or sim'],
+            root,
+            env,
+            tests_parser('fast and sim'),
+        ),
+        step('gate tier', [py, *PYTEST, '-n', '12', '-m', 'gate'], root, env, tests_parser('gate')),
+    ]
 
 
-JS = (('clients/ts', ('clients/ts',)), ('web', ('web', 'clients/ts')))   # folder, what changing it rechecks
+JS = (('clients/ts', ('clients/ts',)), ('web', ('web', 'clients/ts')))  # folder, what changing it rechecks
 
 
 def js_steps(args, root):
@@ -219,8 +248,11 @@ def js_steps(args, root):
 
 def over_budget(results):
     """The budget lines for a run whose steps all passed: a step over STEP_BUDGET_S, the whole over TOTAL_BUDGET_S."""
-    lines = ['%s took %.1f s: over the %d s a step' % (r['name'], r['seconds'], STEP_BUDGET_S)
-             for r in results if r['seconds'] > STEP_BUDGET_S]
+    lines = [
+        '%s took %.1f s: over the %d s a step' % (r['name'], r['seconds'], STEP_BUDGET_S)
+        for r in results
+        if r['seconds'] > STEP_BUDGET_S
+    ]
     total = sum(r['seconds'] for r in results)
     return lines + (['the check took %.1f s: over %d s' % (total, TOTAL_BUDGET_S)] if total > TOTAL_BUDGET_S else [])
 
@@ -235,12 +267,22 @@ def run_steps(steps, log):
             f.flush()
             start = time.monotonic()
             try:
-                proc = procgroup.run(s['cmd'], cwd=s['cwd'], env=dict(os.environ, **s['env']), stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, errors='replace', timeout=s['timeout'])
+                proc = procgroup.run(
+                    s['cmd'],
+                    cwd=s['cwd'],
+                    env=dict(os.environ, **s['env']),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    errors='replace',
+                    timeout=s['timeout'],
+                )
                 status, text = proc.returncode, proc.stdout
             except subprocess.TimeoutExpired as e:
-                status, text = 124, (e.output or '') + '\nHUNG: %s ran past its %g s bound: ended\n' % (s['name'],
-                                                                                                    s['timeout'])
+                status, text = (
+                    124,
+                    (e.output or '') + '\nHUNG: %s ran past its %g s bound: ended\n' % (s['name'], s['timeout']),
+                )
             except OSError as e:
                 status, text = 127, str(e)
             f.write(text)
@@ -248,8 +290,15 @@ def run_steps(steps, log):
             passed, found = s['parse'](status, text) if s['parse'] else (status == 0, {})
             passed = passed and status == 0
             facts.update(found)
-            results.append(dict(name=s['name'], command=shown(s), result='pass' if passed else 'fail',
-                                exit=status, seconds=round(time.monotonic() - start, 1)))
+            results.append(
+                dict(
+                    name=s['name'],
+                    command=shown(s),
+                    result='pass' if passed else 'fail',
+                    exit=status,
+                    seconds=round(time.monotonic() - start, 1),
+                )
+            )
             print('  %-4s  %-24s %7.1f s' % (results[-1]['result'], s['name'], results[-1]['seconds']), flush=True)
             if not passed:
                 break
@@ -274,8 +323,12 @@ def check(root, steps_for, checks=CHECKS, log=None):
     Returns the record; raises CheckError, writing nothing, when the tree is not clean at the start or end."""
     require_clean(root, 'at start')
     tree, commit = tree_of(root), git(root, 'rev-parse', 'HEAD')
-    log = Path(log or paths.SESSIONS / (datetime.date.today().isoformat() + '-check') /
-               ('%s-%s.log' % (tree[:12], time.strftime('%H%M%S'))))
+    log = Path(
+        log
+        or paths.SESSIONS
+        / (datetime.date.today().isoformat() + '-check')
+        / ('%s-%s.log' % (tree[:12], time.strftime('%H%M%S')))
+    )
     started = now()
     steps = steps_for(tree)
     results, facts = run_steps(steps, log)
@@ -287,9 +340,19 @@ def check(root, steps_for, checks=CHECKS, log=None):
     for line in budget:
         print('BUDGET: ' + line, file=sys.stderr)
     passed = passed and not (budget and os.environ.get('XYF_BUDGETS') != 'off')
-    record = dict(version=VERSION, passed=passed, tree=tree, commit=commit,
-                  branch=git(root, 'rev-parse', '--abbrev-ref', 'HEAD'), started=started, finished=now(),
-                  steps=results, tests=facts.get('tests'), candidate=facts.get('candidate'), log=str(log))
+    record = dict(
+        version=VERSION,
+        passed=passed,
+        tree=tree,
+        commit=commit,
+        branch=git(root, 'rev-parse', '--abbrev-ref', 'HEAD'),
+        started=started,
+        finished=now(),
+        steps=results,
+        tests=facts.get('tests'),
+        candidate=facts.get('candidate'),
+        log=str(log),
+    )
     receipt, failed = checks / (tree + '.json'), checks / (tree + '.failed.json')
     write_json(receipt if passed else failed, record)
     (failed if passed else receipt).unlink(missing_ok=True)
@@ -307,14 +370,20 @@ def load(path):
     if not isinstance(data, dict) or not isinstance(data.get('version'), int):
         raise CheckError('failed receipt: %s has no version' % path)
     if data['version'] > VERSION:
-        raise CheckError('%s is receipt version %d, newer than this check.py reads (%d): update this checkout'
-                         % (path, data['version'], VERSION))
+        raise CheckError(
+            '%s is receipt version %d, newer than this check.py reads (%d): update this checkout'
+            % (path, data['version'], VERSION)
+        )
     return data
 
 
 def is_ancestor(root, commit, ref):
-    return subprocess.run(['git', 'merge-base', '--is-ancestor', commit, ref], cwd=root,
-                          capture_output=True, timeout=60).returncode == 0
+    return (
+        subprocess.run(
+            ['git', 'merge-base', '--is-ancestor', commit, ref], cwd=root, capture_output=True, timeout=60
+        ).returncode
+        == 0
+    )
 
 
 def older_receipt(root, ref, checks):
@@ -331,8 +400,9 @@ def older_receipt(root, ref, checks):
         if data and data.get('passed') is True:
             found.append(data)
     found.sort(key=lambda d: d.get('finished', ''), reverse=True)
-    return (next((d for d in found if d.get('branch') == branch), None) or
-            next((d for d in found if d.get('commit') and is_ancestor(root, d['commit'], ref)), None))
+    return next((d for d in found if d.get('branch') == branch), None) or next(
+        (d for d in found if d.get('commit') and is_ancestor(root, d['commit'], ref)), None
+    )
 
 
 def confirm(root, ref='HEAD', checks=CHECKS):
@@ -343,48 +413,74 @@ def confirm(root, ref='HEAD', checks=CHECKS):
         raise CheckError('%s is not a commit here' % ref)
     receipt = load(checks / (tree + '.json'))
     if receipt is not None:
-        if (receipt.get('passed') is not True or receipt.get('tree') != tree or not receipt.get('steps')
-                or any(s.get('result') != 'pass' for s in receipt['steps'])):
-            raise CheckError('failed receipt: %s does not record a pass for tree %s' % (checks / (tree + '.json'), tree))
+        if (
+            receipt.get('passed') is not True
+            or receipt.get('tree') != tree
+            or not receipt.get('steps')
+            or any(s.get('result') != 'pass' for s in receipt['steps'])
+        ):
+            raise CheckError(
+                'failed receipt: %s does not record a pass for tree %s' % (checks / (tree + '.json'), tree)
+            )
         return receipt
     failed = load(checks / (tree + '.failed.json'))
     if failed is not None:
         bad = [s.get('name') for s in failed.get('steps', []) if s.get('result') != 'pass']
-        raise CheckError('failed: the last check of %s (tree %s, %s) failed at %s; log %s' % (
-            ref, tree[:12], failed.get('finished'), ', '.join(bad) or 'an unknown step', failed.get('log')))
+        raise CheckError(
+            'failed: the last check of %s (tree %s, %s) failed at %s; log %s'
+            % (ref, tree[:12], failed.get('finished'), ', '.join(bad) or 'an unknown step', failed.get('log'))
+        )
     older = older_receipt(root, ref, checks)
     if older:
-        raise CheckError('tree differs: %s has tree %s; the newest receipt for it covers tree %s (commit %s, %s). '
-                         'Rerun python3 scripts/check.py on %s' % (ref, tree[:12], older['tree'][:12],
-                                                                  older.get('commit', '?')[:12], older.get('finished'), ref))
-    raise CheckError('no receipt for %s (tree %s): run python3 scripts/check.py on a clean checkout of it' % (ref, tree[:12]))
+        raise CheckError(
+            'tree differs: %s has tree %s; the newest receipt for it covers tree %s (commit %s, %s). '
+            'Rerun python3 scripts/check.py on %s'
+            % (ref, tree[:12], older['tree'][:12], older.get('commit', '?')[:12], older.get('finished'), ref)
+        )
+    raise CheckError(
+        'no receipt for %s (tree %s): run python3 scripts/check.py on a clean checkout of it' % (ref, tree[:12])
+    )
 
 
 def describe(record):
     """What a receipt records, as printed lines."""
-    lines = ['%s: tree %s, commit %s (%s), %s' % ('receipt' if record.get('passed') else 'FAILED check',
-                                                  record['tree'], record['commit'][:12], record.get('branch'),
-                                                  record.get('finished'))]
+    lines = [
+        '%s: tree %s, commit %s (%s), %s'
+        % (
+            'receipt' if record.get('passed') else 'FAILED check',
+            record['tree'],
+            record['commit'][:12],
+            record.get('branch'),
+            record.get('finished'),
+        )
+    ]
     for s in record['steps']:
         lines.append('  %-4s  %-24s %7.1f s  %s' % (s['result'], s['name'], s['seconds'], s['command']))
     t, c = record.get('tests'), record.get('candidate')
     for tier, counts in (t or {}).items():
         lines.append('%s tier: %s' % (tier, ', '.join('%d %s' % (n, k) for k, n in counts.items())))
     if c:
-        lines.append('candidate: image %s, sha256 %s, %d bytes, %s' % (c.get('image', c['sha256'][:8]), c['sha256'],
-                                                                      c['bytes'], c['build']))
+        lines.append(
+            'candidate: image %s, sha256 %s, %d bytes, %s'
+            % (c.get('image', c['sha256'][:8]), c['sha256'], c['bytes'], c['build'])
+        )
     lines.append('log: %s' % record.get('log'))
     return lines
 
 
 def main(argv=None, root=ROOT, checks=CHECKS):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--confirm', nargs='?', const='HEAD', metavar='REF',
-                        help="exit 0 only when a passing receipt matches REF's tree (default HEAD)")
+    parser.add_argument(
+        '--confirm',
+        nargs='?',
+        const='HEAD',
+        metavar='REF',
+        help="exit 0 only when a passing receipt matches REF's tree (default HEAD)",
+    )
     parser.add_argument('--js', action='store_true', help='the TypeScript type checks even when unchanged')
     parser.add_argument('--force', action='store_true', help='run even when a passing receipt matches the tree')
     args = parser.parse_args(argv)
-    no_device.switch_on()                        # every step and its subprocesses: no real device
+    no_device.switch_on()  # every step and its subprocesses: no real device
     try:
         if args.confirm:
             print('\n'.join(describe(confirm(root, args.confirm, checks))))
@@ -403,8 +499,13 @@ def main(argv=None, root=ROOT, checks=CHECKS):
         print('check: %s' % e, file=sys.stderr)
         return 1
     print('\n'.join(describe(record)))
-    print('%s: %s' % ('receipt' if record['passed'] else 'no receipt; failure recorded in',
-                      checks / (record['tree'] + ('.json' if record['passed'] else '.failed.json'))))
+    print(
+        '%s: %s'
+        % (
+            'receipt' if record['passed'] else 'no receipt; failure recorded in',
+            checks / (record['tree'] + ('.json' if record['passed'] else '.failed.json')),
+        )
+    )
     return 0 if record['passed'] else 1
 
 

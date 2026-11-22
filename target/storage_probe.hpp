@@ -27,5 +27,5 @@ void seal(Report& report);
 bool valid(const Report& report);
 // Test012 pre-copy probe result, carried by the stream patch.
 extern Report fresh_report;
-} }
+}}
 #endif

@@ -6,7 +6,16 @@
 import { Session } from '../vendor/open-xy/ferret.mjs';
 import type { Identity } from '../vendor/open-xy/ferret.mjs';
 import { Device } from '../vendor/open-xy/mtp.mjs';
-import { STOCK_121, STOCK_MISSING, STOCK_PATH, STOCK_WRONG, bootVerdict, needBytes, sha256Hex, spaceVerdict } from './checks.ts';
+import {
+  STOCK_121,
+  STOCK_MISSING,
+  STOCK_PATH,
+  STOCK_WRONG,
+  bootVerdict,
+  needBytes,
+  sha256Hex,
+  spaceVerdict,
+} from './checks.ts';
 import type { Verdict } from './checks.ts';
 
 export type MidiAccess = (options: { sysex: boolean }) => Promise<unknown>;
@@ -14,7 +23,10 @@ export type MidiAccess = (options: { sysex: boolean }) => Promise<unknown>;
 /** A Verdict that stops the install; the page shows its title and detail. */
 export class InstallStop extends Error {
   readonly verdict: Verdict;
-  constructor(verdict: Verdict) { super(`${verdict.title}: ${verdict.detail}`); this.verdict = verdict; }
+  constructor(verdict: Verdict) {
+    super(`${verdict.title}: ${verdict.detail}`);
+    this.verdict = verdict;
+  }
 }
 
 /** te-boot over Web MIDI: read the identity and judge it; switch the dev menu on only for an accepted device. */
@@ -23,15 +35,28 @@ export class TeBoot {
   private identity: Identity | null = null;
   private readonly access: MidiAccess;
   private readonly onProgress: (text: string) => void;
-  constructor(access: MidiAccess, onProgress: (text: string) => void = () => {}) { this.access = access; this.onProgress = onProgress; }
+  constructor(access: MidiAccess, onProgress: (text: string) => void = () => {}) {
+    this.access = access;
+    this.onProgress = onProgress;
+  }
 
   /** Connects (MIDI permission with SysEx), reads te-boot's identity and judges it. Changes nothing. */
   async check(): Promise<{ identity: Identity; verdict: Verdict }> {
     this.close();
-    const session = new Session(this.access, () => { this.session = null; }, 2500, { onProgress: this.onProgress });
+    const session = new Session(
+      this.access,
+      () => {
+        this.session = null;
+      },
+      2500,
+      { onProgress: this.onProgress },
+    );
     const identity = await session.connect();
     const verdict = bootVerdict(identity);
-    if (verdict.kind === 'ok') { this.session = session; this.identity = identity; } else session.close();
+    if (verdict.kind === 'ok') {
+      this.session = session;
+      this.identity = identity;
+    } else session.close();
     return { identity, verdict };
   }
 
@@ -47,10 +72,16 @@ export class TeBoot {
     await this.session!.enable();
   }
 
-  close(): void { this.session?.close(); this.session = null; this.identity = null; }
+  close(): void {
+    this.session?.close();
+    this.session = null;
+    this.identity = null;
+  }
 }
 
-export interface CopyProgress { (text: string, fraction?: number): void }
+export interface CopyProgress {
+  (text: string, fraction?: number): void;
+}
 
 /**
  * The Mac path, in the dev menu's "mtp file transfer (mac)" mode: checks that the device's own stock os.ldr is there
@@ -67,13 +98,17 @@ export async function copyOverMtp(usb: unknown, image: Uint8Array, progress: Cop
     if (stock === null) throw new InstallStop(STOCK_MISSING);
     if (stock !== STOCK_121.bytes) throw new InstallStop(STOCK_WRONG);
     const { free } = await device.space();
-    const space = spaceVerdict(free + (await device.size('os.ldr') ?? 0), needBytes(image.length));   // an older /os.ldr is replaced
+    const space = spaceVerdict(free + ((await device.size('os.ldr')) ?? 0), needBytes(image.length)); // an older /os.ldr is replaced
     if (space.kind !== 'ok') throw new InstallStop(space);
     progress('Copying XY Forever to your OP-XY...', 0);
-    await device.send('os.ldr', image, { replace: async () => true, onProgress: (f) => progress('Copying XY Forever to your OP-XY...', f) });
+    await device.send('os.ldr', image, {
+      replace: async () => true,
+      onProgress: (f) => progress('Copying XY Forever to your OP-XY...', f),
+    });
     progress('Checking the copy...');
     const back = await device.read('os.ldr', { maxBytes: image.length });
-    if (await sha256Hex(back) !== await sha256Hex(image)) throw new Error('The copy on your OP-XY differs from XY Forever\'s file. Try again.');
+    if ((await sha256Hex(back)) !== (await sha256Hex(image)))
+      throw new Error("The copy on your OP-XY differs from XY Forever's file. Try again.");
   } finally {
     await device.close();
   }

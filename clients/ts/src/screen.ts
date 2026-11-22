@@ -11,9 +11,15 @@ export function decodeScreen(raw: Uint8Array): { width: number; height: number; 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const at = ((width - 1 - x) * stride + y) * 2;
-      const v = raw[at]! | raw[at + 1]! << 8;
-      const r = v >> 11, g = (v >> 5) & 63, b = v & 31, o = (y * width + x) * 4;
-      rgba[o] = r << 3 | r >> 2; rgba[o + 1] = g << 2 | g >> 4; rgba[o + 2] = b << 3 | b >> 2; rgba[o + 3] = 255;
+      const v = raw[at]! | (raw[at + 1]! << 8);
+      const r = v >> 11,
+        g = (v >> 5) & 63,
+        b = v & 31,
+        o = (y * width + x) * 4;
+      rgba[o] = (r << 3) | (r >> 2);
+      rgba[o + 1] = (g << 2) | (g >> 4);
+      rgba[o + 2] = (b << 3) | (b >> 2);
+      rgba[o + 3] = 255;
     }
   }
   return { width, height, rgba };

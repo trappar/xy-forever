@@ -23,11 +23,11 @@ public open-xy only when no stock copy is present); by hand, copy the same files
 Pins: stock.json. Network: fixtures clones public open-xy and fetches its published kit; bootstrap
 downloads the toolchain archive.
 """
+
 import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import platform
 import shutil
 import subprocess
@@ -36,22 +36,36 @@ import tempfile
 import urllib.error
 import urllib.request
 import zipfile
+from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO))     # bootstrap runs on mise's Python, before uv sync installs the package
+sys.path.insert(0, str(REPO))  # bootstrap runs on mise's Python, before uv sync installs the package
 from xy_forever import dev_tools, mtp_read, package_records, paths  # noqa: E402
 
 PINS = json.loads((REPO / 'stock.json').read_text())
 PAIR = ('os.ldr', 'bootloader.ldr')
-CATALOG = 'op1_factory.json'                                  # the device's /content/op1_factory.json
-DEVICE_FILES = {'/upgrade/firmware/blackfin/bin/os.ldr': 'os.ldr',
-                '/upgrade/firmware/blackfin/bin/bootloader.ldr': 'bootloader.ldr',
-                '/content/' + CATALOG: CATALOG}
-LAYOUT = ('FIRMWARE', 'STOCK_121', 'XYF', 'BUILDS', 'RECOVERY', 'FIXTURES', 'REPORTS', 'ANALYSIS', 'PREVIEWS',
-          'SESSIONS', 'MOD_PACKAGES')
+CATALOG = 'op1_factory.json'  # the device's /content/op1_factory.json
+DEVICE_FILES = {
+    '/upgrade/firmware/blackfin/bin/os.ldr': 'os.ldr',
+    '/upgrade/firmware/blackfin/bin/bootloader.ldr': 'bootloader.ldr',
+    '/content/' + CATALOG: CATALOG,
+}
+LAYOUT = (
+    'FIRMWARE',
+    'STOCK_121',
+    'XYF',
+    'BUILDS',
+    'RECOVERY',
+    'FIXTURES',
+    'REPORTS',
+    'ANALYSIS',
+    'PREVIEWS',
+    'SESSIONS',
+    'MOD_PACKAGES',
+)
 
 
-MIN_PYTHON = (3, 14)                # pyproject.toml requires-python; XY Forever's own scripts and tests (and bootstrap)
+MIN_PYTHON = (3, 14)  # pyproject.toml requires-python; XY Forever's own scripts and tests (and bootstrap)
 
 
 class SetupError(Exception):
@@ -63,8 +77,10 @@ def python_problem(version=None):
     v = tuple((version or sys.version_info)[:3])
     if v[:2] >= MIN_PYTHON:
         return None
-    return ('Python %d.%d.%d is too old: XY Forever needs 3.14+. Run it with the pinned one: `mise run setup` '
-            '(or `uv run scripts/setup.py doctor`; mise: %s)' % (v + (dev_tools.MISE_URL,)))
+    return (
+        'Python %d.%d.%d is too old: XY Forever needs 3.14+. Run it with the pinned one: `mise run setup` '
+        '(or `uv run scripts/setup.py doctor`; mise: %s)' % (v + (dev_tools.MISE_URL,))
+    )
 
 
 def require_python(version=None):
@@ -87,6 +103,7 @@ def inside_checkout(path):
 
 # init
 
+
 def read_config(config):
     """The local config's values ({} without one)."""
     try:
@@ -100,7 +117,7 @@ def write_config(private, config=paths.LOCAL_CONFIG):
     private = Path(private).expanduser().resolve()
     if inside_checkout(private):
         raise SetupError('the private folder must be outside every git checkout: %s' % private)
-    values = read_config(config)                                      # keep other keys (leak_patterns)
+    values = read_config(config)  # keep other keys (leak_patterns)
     values['private'] = str(private)
     Path(config).write_text(json.dumps(values, indent=2) + '\n')
     return private
@@ -129,6 +146,7 @@ def cmd_init(args):
             raise SetupError('XYF_PRIVATE=%s overrides --private %s; unset it or use the same folder' % (env, chosen))
         write_config(chosen)
         import importlib
+
         paths = importlib.reload(paths)
     if inside_checkout(paths.PRIVATE_ROOT):
         raise SetupError('the private folder must be outside every git checkout: %s' % paths.PRIVATE_ROOT)
@@ -136,8 +154,10 @@ def cmd_init(args):
     ensure_leak_patterns(paths.LOCAL_CONFIG)
     print('private folder: %s (%s)' % (paths.PRIVATE_ROOT, private_source()))
     if not paths.leak_patterns():
-        print('next: add your name, emails and host name as regexes to "leak_patterns" in %s '
-              '(case-sensitive; "(?i)" first matches any case)' % paths.LOCAL_CONFIG.name)
+        print(
+            'next: add your name, emails and host name as regexes to "leak_patterns" in %s '
+            '(case-sensitive; "(?i)" first matches any case)' % paths.LOCAL_CONFIG.name
+        )
     print('next: python3 scripts/setup.py import-stock DIR   (DIR: os.ldr + bootloader.ldr, or a copied /upgrade/)')
 
 
@@ -150,14 +170,17 @@ def private_source():
 
 # import-stock
 
+
 def find_pair(folder):
     """The os.ldr + bootloader.ldr in folder, or in its upgrade tree (folder = /upgrade/ or its parent)."""
     folder = Path(folder).expanduser()
     for base in (folder, folder / 'firmware/blackfin/bin', folder / 'upgrade/firmware/blackfin/bin'):
         if all((base / n).is_file() for n in PAIR):
             return {n: base / n for n in PAIR}
-    raise SetupError('no os.ldr + bootloader.ldr in %s (give the folder holding both, or the copied /upgrade/ '
-                     'folder: they are in /upgrade/firmware/blackfin/bin/ on the OP-XY)' % folder)
+    raise SetupError(
+        'no os.ldr + bootloader.ldr in %s (give the folder holding both, or the copied /upgrade/ '
+        'folder: they are in /upgrade/firmware/blackfin/bin/ on the OP-XY)' % folder
+    )
 
 
 def identify(name, digest, pins=None):
@@ -183,10 +206,13 @@ def import_stock(folder, dest=None, pins=None):
             'these are stock %s files: this OP-XY is on 1.2.5, and XY Forever cannot be installed on it. '
             'XY Forever needs a device still on 1.2.1 (the stock 1.2.1 bootloader, whose dev menu installs it). '
             'The 1.2.5 bootloader has no dev menu, and a device on 1.2.5 cannot be downgraded with '
-            'teenage engineering\'s built-in firmware updater.' % ' and '.join(sorted(set(versions.values()))))
+            "teenage engineering's built-in firmware updater." % ' and '.join(sorted(set(versions.values())))
+        )
     if set(versions.values()) != {'1.2.1'}:
-        raise SetupError('these are stock %s files; XY Forever needs the stock 1.2.1 pair (os.ldr and '
-                         'bootloader.ldr both 1.2.1).' % ' and '.join(sorted(set(versions.values()))))
+        raise SetupError(
+            'these are stock %s files; XY Forever needs the stock 1.2.1 pair (os.ldr and '
+            'bootloader.ldr both 1.2.1).' % ' and '.join(sorted(set(versions.values())))
+        )
     dest.mkdir(parents=True, exist_ok=True)
     for name, path in found.items():
         target = dest / name
@@ -212,8 +238,10 @@ def import_catalog(folder, pair_dir, dest):
         digest = sha256(source)
         target = dest / CATALOG
         if digest != pinned:
-            print('stock catalog %s: ignored, not the stock 1.2.1 file (SHA-256 %s; Open-XY mods rewrite it); '
-                  'fixtures downloads it from open-xy' % (source, digest))
+            print(
+                'stock catalog %s: ignored, not the stock 1.2.1 file (SHA-256 %s; Open-XY mods rewrite it); '
+                'fixtures downloads it from open-xy' % (source, digest)
+            )
             continue
         if not (target.is_file() and sha256(target) == pinned):
             tmp = target.with_suffix('.part')
@@ -239,10 +267,11 @@ def import_from_device(incoming=None, dest=None, pins=None, transport=None):
         raise SetupError('%s%s' % (e, manual))
     pair = [p for p in missing if DEVICE_FILES[p] in PAIR]
     if pair:
-        raise SetupError('%s: not on the OP-XY (is it in the dev menu\'s MTP mode, on stock?)%s'
-                         % (', '.join(pair), manual))
+        raise SetupError(
+            "%s: not on the OP-XY (is it in the dev menu's MTP mode, on stock?)%s" % (', '.join(pair), manual)
+        )
     if missing:
-        (incoming / CATALOG).unlink(missing_ok=True)            # never an older copy in its place
+        (incoming / CATALOG).unlink(missing_ok=True)  # never an older copy in its place
         print('stock catalog %s: not on the OP-XY; fixtures downloads it from open-xy' % missing[0])
     return import_stock(incoming, dest, pins)
 
@@ -257,6 +286,7 @@ def cmd_import_stock(args):
 
 # fixtures
 
+
 def run(cmd, **kw):
     env = dict(kw.pop('env', os.environ), XYF_PRIVATE=str(paths.PRIVATE_ROOT))
     r = subprocess.run(cmd, cwd=kw.pop('cwd', REPO), env=env, capture_output=True, text=True, **kw)
@@ -267,12 +297,14 @@ def run(cmd, **kw):
 
 def has_commit(repo, commit):
     return (repo / '.git').exists() and subprocess.run(
-        ['git', '-C', str(repo), 'cat-file', '-e', commit + '^{commit}'], capture_output=True).returncode == 0
+        ['git', '-C', str(repo), 'cat-file', '-e', commit + '^{commit}'], capture_output=True
+    ).returncode == 0
 
 
 def stock_present():
-    return all((paths.STOCK_121 / n).is_file() and sha256(paths.STOCK_121 / n) == PINS['stock']['1.2.1'][n]
-               for n in PAIR)
+    return all(
+        (paths.STOCK_121 / n).is_file() and sha256(paths.STOCK_121 / n) == PINS['stock']['1.2.1'][n] for n in PAIR
+    )
 
 
 def fixture_open_xy():
@@ -289,8 +321,11 @@ def fixture_open_xy():
 
 def git_show(path):
     ox = PINS['open_xy']
-    return subprocess.run(['git', '-C', str(paths.OPEN_XY_UPSTREAM), 'show', ox['sdk_commit'] + ':' + path],
-                          capture_output=True, check=True).stdout
+    return subprocess.run(
+        ['git', '-C', str(paths.OPEN_XY_UPSTREAM), 'show', ox['sdk_commit'] + ':' + path],
+        capture_output=True,
+        check=True,
+    ).stdout
 
 
 def fixture_catalog():
@@ -303,8 +338,10 @@ def fixture_catalog():
     if hashlib.sha256(data).hexdigest() != ox['catalog_sha256']:
         raise SetupError('open-xy %s does not match the pinned stock catalog' % ox['catalog_path'])
     (paths.STOCK_121 / CATALOG).write_bytes(data)
-    print('stock catalog %s: from open-xy %s (no stock device copy; import-stock takes /content/%s)'
-          % (CATALOG, ox['sdk_commit'][:7], CATALOG))
+    print(
+        'stock catalog %s: from open-xy %s (no stock device copy; import-stock takes /content/%s)'
+        % (CATALOG, ox['sdk_commit'][:7], CATALOG)
+    )
 
 
 def fixture_kit():
@@ -321,8 +358,7 @@ def fixture_kit():
             shutil.copyfileobj(r, f)
     except OSError as e:
         tmp.unlink(missing_ok=True)
-        print('  could not fetch it (%s): the tests that need kit %s and its package set skip'
-              % (e, ox['kit_version']))
+        print('  could not fetch it (%s): the tests that need kit %s and its package set skip' % (e, ox['kit_version']))
         return False
     if sha256(tmp) != ox['kit_sha256']:
         try:
@@ -330,8 +366,10 @@ def fixture_kit():
         except ValueError:
             version = 'unreadable'
         tmp.unlink()
-        print('  %s now serves kit %s, not the pinned %s: the tests that need kit %s and its package set skip'
-              % (ox['kit_url'], version, ox['kit_version'], ox['kit_version']))
+        print(
+            '  %s now serves kit %s, not the pinned %s: the tests that need kit %s and its package set skip'
+            % (ox['kit_url'], version, ox['kit_version'], ox['kit_version'])
+        )
         return False
     tmp.replace(kit)
     print('published kit %s: ok' % ox['kit_version'])
@@ -353,9 +391,25 @@ def fixture_mods():
     with tempfile.TemporaryDirectory(dir=paths.SESSIONS, prefix='setup-') as tmp:
         catalog = Path(tmp) / 'extensions.json'
         catalog.write_bytes(git_show('catalog/extensions.json'))
-        run([sys.executable, '-m', 'xy_forever.modkit', 'split', str(paths.PUBLISHED_KIT),
-             '--sdk', str(paths.OPEN_XY_UPSTREAM), '--sdk-commit', ox['sdk_commit'], '--out', str(paths.MOD_PACKAGES),
-             '--sdk-source', '%s@%s' % (ox['repository'], ox['sdk_commit']), '--extension-catalog', str(catalog)])
+        run(
+            [
+                sys.executable,
+                '-m',
+                'xy_forever.modkit',
+                'split',
+                str(paths.PUBLISHED_KIT),
+                '--sdk',
+                str(paths.OPEN_XY_UPSTREAM),
+                '--sdk-commit',
+                ox['sdk_commit'],
+                '--out',
+                str(paths.MOD_PACKAGES),
+                '--sdk-source',
+                '%s@%s' % (ox['repository'], ox['sdk_commit']),
+                '--extension-catalog',
+                str(catalog),
+            ]
+        )
     if not mod_packages():
         raise SetupError('modkit split did not write %s' % paths.PUBLISHED_MODS)
     print('mod package set: %s' % paths.PUBLISHED_MODS)
@@ -364,6 +418,7 @@ def fixture_mods():
 def toolchain_problem(directory=None):
     """None, or why the toolchain (XYF_TOOLCHAIN, ../tools/blackfin, or directory) fails its pins."""
     from xy_forever import toolchain
+
     try:
         toolchain.authenticate(directory)
     except (ValueError, OSError) as e:
@@ -384,7 +439,7 @@ def fixture_build():
     print('building and verifying the product (under a minute)')
     run([sys.executable, 'xyf_build.py', '--xyf-product', '--out', str(out)])
     run([sys.executable, 'xyf_build.py', '--verify', '--out', str(out)])
-    out = paths.name_by_image(out)                     # builds/<image>
+    out = paths.name_by_image(out)  # builds/<image>
     if paths.newest_verified_build() != out:
         raise SetupError('%s did not verify' % out)
     print('verified product build: %s' % out.name)
@@ -404,15 +459,19 @@ def cmd_fixtures(args):
 
 # doctor
 
+
 def toolchain_hint():
-    return ['`python3 scripts/setup.py bootstrap` downloads open-xy\'s toolchain-1 release into %s (darwin-arm64, '
-            'windows-x86_64); linux-x86_64: build it (open-xy docs/build.md "On Linux"), then put it there or set '
-            'XYF_TOOLCHAIN.' % paths.TOOLCHAIN]
+    return [
+        "`python3 scripts/setup.py bootstrap` downloads open-xy's toolchain-1 release into %s (darwin-arm64, "
+        'windows-x86_64); linux-x86_64: build it (open-xy docs/build.md "On Linux"), then put it there or set '
+        'XYF_TOOLCHAIN.' % paths.TOOLCHAIN
+    ]
 
 
 def doctor():
     """[(label, ok, detail)] plus the list of what will skip."""
     from xy_forever import sim
+
     rows, skips = [], []
     problem = python_problem()
     rows.append(('python', problem is None, problem or '%d.%d.%d' % tuple(sys.version_info[:3])))
@@ -424,30 +483,53 @@ def doctor():
     for name in PAIR:
         path = paths.STOCK_121 / name
         version = identify(name, sha256(path)) if path.is_file() else None
-        rows.append(('stock ' + name, version == '1.2.1', '1.2.1' if version == '1.2.1' else
-                     ('stock %s, not 1.2.1' % version if version else 'unknown file' if path.is_file()
-                      else 'missing: run import-stock')))
+        rows.append(
+            (
+                'stock ' + name,
+                version == '1.2.1',
+                '1.2.1'
+                if version == '1.2.1'
+                else (
+                    'stock %s, not 1.2.1' % version
+                    if version
+                    else 'unknown file'
+                    if path.is_file()
+                    else 'missing: run import-stock'
+                ),
+            )
+        )
     ox = PINS['open_xy']
     catalog = paths.CATALOG_121.is_file() and sha256(paths.CATALOG_121) == ox['catalog_sha256']
     upstream = has_commit(paths.OPEN_XY_UPSTREAM, ox['sdk_commit'])
     kit = paths.PUBLISHED_KIT.is_file()
     mods = bool(mod_packages())
     build = paths.newest_verified_build()
-    rows += [('open-xy clone', upstream, ox['sdk_commit'][:7] if upstream else 'missing: run fixtures'),
-             ('stock catalog', catalog, 'ok' if catalog else 'missing: run fixtures'),
-             ('published kit', kit, ox['kit_version'] if kit else 'missing: run fixtures'),
-             ('mod package set', mods, paths.PUBLISHED_MODS.name if mods else 'missing: run fixtures'),
-             ('verified build', bool(build), build.name if build else 'none of this source: run fixtures')]
+    rows += [
+        ('open-xy clone', upstream, ox['sdk_commit'][:7] if upstream else 'missing: run fixtures'),
+        ('stock catalog', catalog, 'ok' if catalog else 'missing: run fixtures'),
+        ('published kit', kit, ox['kit_version'] if kit else 'missing: run fixtures'),
+        ('mod package set', mods, paths.PUBLISHED_MODS.name if mods else 'missing: run fixtures'),
+        ('verified build', bool(build), build.name if build else 'none of this source: run fixtures'),
+    ]
     rows += dev_tools.doctor_rows(REPO)
     why = sim.available()
     rows.append(('simulator', why is None, why or 'buildable'))
     leaks = paths.leak_patterns()
-    rows.append(('leak patterns', bool(leaks), '%d private regexes for tests/test_no_leaks.py' % len(leaks) if leaks else
-                 'none: add your name and emails as regexes to "leak_patterns" in %s (case-sensitive; "(?i)" first '
-                 'matches any case)' % paths.LOCAL_CONFIG.name))
+    rows.append(
+        (
+            'leak patterns',
+            bool(leaks),
+            '%d private regexes for tests/test_no_leaks.py' % len(leaks)
+            if leaks
+            else 'none: add your name and emails as regexes to "leak_patterns" in %s (case-sensitive; "(?i)" first '
+            'matches any case)' % paths.LOCAL_CONFIG.name,
+        )
+    )
     if not (paths.DECRYPTED.is_dir() and any(paths.DECRYPTED.iterdir())):
-        skips.append('official .tfw packages, update keys, decrypted packages and content manifests: never made '
-                      'from the stock pair')
+        skips.append(
+            'official .tfw packages, update keys, decrypted packages and content manifests: never made '
+            'from the stock pair'
+        )
     if not (paths.FIXTURES / 'ble-images.json').is_file():
         skips.append('BLE images (fixtures/ble-images.json)')
     if not (paths.REPORTS.is_dir() and any(paths.REPORTS.iterdir())):
@@ -470,8 +552,8 @@ def cmd_doctor(args):
 
 # bootstrap
 
-TOOLCHAIN_DIR = 'tools/blackfin'        # <workspace>/tools/blackfin: open-xy's toolchain-1 release, unpacked
-OLD_STATUS = 'docs/status'             # where the status notes lived in the main checkout before #237 (moved once)
+TOOLCHAIN_DIR = 'tools/blackfin'  # <workspace>/tools/blackfin: open-xy's toolchain-1 release, unpacked
+OLD_STATUS = 'docs/status'  # where the status notes lived in the main checkout before #237 (moved once)
 
 
 def copy_into(source, target):
@@ -488,6 +570,8 @@ def move_children(source, target):
             shutil.move(str(entry), str(target / entry.name))
     if not any(source.iterdir()):
         source.rmdir()
+
+
 WORKSPACE_GUIDE = """# XY Forever workspace
 
 This folder is an XY Forever development workspace, set up by `%(repo)s/scripts/setup.py bootstrap`.
@@ -544,15 +628,21 @@ def install_toolchain(record, destination, archive=None):
             try:
                 download(record['url'], archive)
             except (urllib.error.URLError, OSError) as e:
-                note = (' (macOS: run "Install Certificates.command" in the Python folder in Applications)'
-                        if 'CERTIFICATE_VERIFY_FAILED' in str(e) else '')
-                raise SetupError('could not download %s (%s)%s. Download it in a browser, then run '
-                                 '`python3 scripts/setup.py bootstrap --toolchain-archive <the zip>`'
-                                 % (record['url'], e, note))
+                note = (
+                    ' (macOS: run "Install Certificates.command" in the Python folder in Applications)'
+                    if 'CERTIFICATE_VERIFY_FAILED' in str(e)
+                    else ''
+                )
+                raise SetupError(
+                    'could not download %s (%s)%s. Download it in a browser, then run '
+                    '`python3 scripts/setup.py bootstrap --toolchain-archive <the zip>`' % (record['url'], e, note)
+                )
         got = sha256(archive)
         if got != record['sha256']:
-            raise SetupError('toolchain archive hash mismatch: %s is %s, the pin (stock.json) is %s: not the '
-                             'toolchain-1 release for this host' % (archive, got, record['sha256']))
+            raise SetupError(
+                'toolchain archive hash mismatch: %s is %s, the pin (stock.json) is %s: not the '
+                'toolchain-1 release for this host' % (archive, got, record['sha256'])
+            )
         staged = Path(tmp) / 'blackfin'
         try:
             unpack(archive, record['folder'], staged)
@@ -567,19 +657,25 @@ def install_toolchain(record, destination, archive=None):
 def fixtures_missing():
     """What `setup.py fixtures` would still make (the doctor rows it fills)."""
     ox = PINS['open_xy']
-    return [name for name, ok in (
-        ('open-xy clone', has_commit(paths.OPEN_XY_UPSTREAM, ox['sdk_commit'])),
-        ('stock catalog', paths.CATALOG_121.is_file() and sha256(paths.CATALOG_121) == ox['catalog_sha256']),
-        ('published kit', paths.PUBLISHED_KIT.is_file()),
-        ('mod package set', mod_packages()),
-        ('verified build', bool(paths.newest_verified_build()) or toolchain_problem() is not None)) if not ok]
+    return [
+        name
+        for name, ok in (
+            ('open-xy clone', has_commit(paths.OPEN_XY_UPSTREAM, ox['sdk_commit'])),
+            ('stock catalog', paths.CATALOG_121.is_file() and sha256(paths.CATALOG_121) == ox['catalog_sha256']),
+            ('published kit', paths.PUBLISHED_KIT.is_file()),
+            ('mod package set', mod_packages()),
+            ('verified build', bool(paths.newest_verified_build()) or toolchain_problem() is not None),
+        )
+        if not ok
+    ]
 
 
 class Bootstrap:
     """`setup.py bootstrap`: every step looks first and acts only on what is missing. Never deletes anything."""
 
-    def __init__(self, workspace=None, repo=REPO, config=None, dry_run=False, environ=os.environ,
-                 toolchain_archive=None):
+    def __init__(
+        self, workspace=None, repo=REPO, config=None, dry_run=False, environ=os.environ, toolchain_archive=None
+    ):
         self.repo = Path(repo).resolve()
         self.main = paths.main_checkout(self.repo)
         self.workspace = Path(workspace or self.main.parent).expanduser().resolve()
@@ -628,12 +724,14 @@ class Bootstrap:
             self.do('record it in %s (it is not next to this clone)' % self.config.name, self.record_private, root)
         wanted = [root / getattr(paths, name).relative_to(paths.PRIVATE_ROOT) for name in LAYOUT]
         if not (root / paths.STOCK_121.relative_to(paths.PRIVATE_ROOT) / PAIR[0]).is_file():
-            wanted.append(root / 'incoming')                            # where the stock pair is copied to (Next)
+            wanted.append(root / 'incoming')  # where the stock pair is copied to (Next)
         missing = [d for d in wanted if not d.is_dir()]
         if missing:
-            self.do('create %s of the private layout (xy_forever/paths.py) under it'
-                    % ('%d folders' % len(missing) if len(missing) > 1 else missing[0].name),
-                    lambda: [d.mkdir(parents=True, exist_ok=True) for d in missing])
+            self.do(
+                'create %s of the private layout (xy_forever/paths.py) under it'
+                % ('%d folders' % len(missing) if len(missing) > 1 else missing[0].name),
+                lambda: [d.mkdir(parents=True, exist_ok=True) for d in missing],
+            )
         self.private_root = root
 
     def record_private(self, root):
@@ -641,21 +739,26 @@ class Bootstrap:
         write_config(root, self.config)
         if self.config.resolve() == paths.LOCAL_CONFIG.resolve():
             import importlib
+
             paths = importlib.reload(paths)
 
     def local_files(self):
         status, old = self.private_root / paths.STATUS.relative_to(paths.PRIVATE_ROOT), self.main / OLD_STATUS
         index = status / 'README.md'
         print('status notes: %s' % ('%s' % index if index.exists() else 'missing'))
-        if old.is_dir() and not index.exists():         # once: the notes leave the checkout (#237)
+        if old.is_dir() and not index.exists():  # once: the notes leave the checkout (#237)
             self.do('move %s to %s' % (old, status), move_children, old, status)
         elif old.is_dir():
             print('  note: %s is still there beside %s: merge it by hand, then delete it' % (old, status))
         elif not index.exists():
-            self.do('copy docs/STATUS.template.md to %s' % index, copy_into, self.repo / 'docs/STATUS.template.md', index)
+            self.do(
+                'copy docs/STATUS.template.md to %s' % index, copy_into, self.repo / 'docs/STATUS.template.md', index
+            )
         leaks = self.settings().get('leak_patterns')
-        print('%s: %s' % (self.config.name, 'no "leak_patterns" list' if leaks is None else
-                          '%d leak patterns' % len(leaks)))
+        print(
+            '%s: %s'
+            % (self.config.name, 'no "leak_patterns" list' if leaks is None else '%d leak patterns' % len(leaks))
+        )
         if leaks is None:
             self.do('add an empty "leak_patterns" list to %s' % self.config.name, ensure_leak_patterns, self.config)
 
@@ -668,24 +771,35 @@ class Bootstrap:
             print('toolchain: ok at %s' % folder)
             return self.toolchain_note(folder)
         if folder.exists() or folder.is_symlink():
-            raise SetupError('%s exists but fails its pins (%s): move it aside, then rerun bootstrap (it never deletes)'
-                             % (folder, toolchain_problem(folder)))
+            raise SetupError(
+                '%s exists but fails its pins (%s): move it aside, then rerun bootstrap (it never deletes)'
+                % (folder, toolchain_problem(folder))
+            )
         host = host_name()
         record = PINS['toolchain']['archives'].get(host)
         if host == 'linux-x86_64':
-            print('toolchain: missing; open-xy publishes no download for linux-x86_64: build it with Docker '
-                  '(open-xy docs/build.md, "On Linux"), then put it at %s or set XYF_TOOLCHAIN' % folder)
+            print(
+                'toolchain: missing; open-xy publishes no download for linux-x86_64: build it with Docker '
+                '(open-xy docs/build.md, "On Linux"), then put it at %s or set XYF_TOOLCHAIN' % folder
+            )
             return
         if not record:
-            print('toolchain: no pinned toolchain for %s (stock.json): use macOS arm64, Windows x86_64 or '
-                  'Linux x86_64' % host)
+            print(
+                'toolchain: no pinned toolchain for %s (stock.json): use macOS arm64, Windows x86_64 or '
+                'Linux x86_64' % host
+            )
             return
         if self.toolchain_archive and not self.toolchain_archive.is_file():
             raise SetupError('--toolchain-archive %s: no such file' % self.toolchain_archive)
         print("toolchain: missing; open-xy's toolchain-1 release for %s goes into %s" % (host, folder))
         source = ('%s (given)' % self.toolchain_archive) if self.toolchain_archive else 'download %s' % record['url']
-        self.do('%s, check its SHA-256, unpack it, check every file against toolchains.json' % source,
-                install_toolchain, record, folder, self.toolchain_archive)
+        self.do(
+            '%s, check its SHA-256, unpack it, check every file against toolchains.json' % source,
+            install_toolchain,
+            record,
+            folder,
+            self.toolchain_archive,
+        )
         self.toolchain_note(folder)
 
     def workspace_guide(self):
@@ -693,10 +807,15 @@ class Bootstrap:
             print('workspace AGENTS.md: skipped (%s is not inside the workspace %s)' % (self.main, self.workspace))
             return
         repo = self.main.relative_to(self.workspace).as_posix()
-        private = (self.private_root.relative_to(self.workspace).as_posix()
-                   if self.workspace in self.private_root.parents else str(self.private_root))
-        for name, text in (('AGENTS.md', WORKSPACE_GUIDE % {'repo': repo, 'private': private}),
-                           ('CLAUDE.md', '@AGENTS.md\n')):
+        private = (
+            self.private_root.relative_to(self.workspace).as_posix()
+            if self.workspace in self.private_root.parents
+            else str(self.private_root)
+        )
+        for name, text in (
+            ('AGENTS.md', WORKSPACE_GUIDE % {'repo': repo, 'private': private}),
+            ('CLAUDE.md', '@AGENTS.md\n'),
+        ):
             path = self.workspace / name
             if path.exists():
                 print('workspace %s: present (left as it is; bootstrap never overwrites it)' % name)
@@ -706,10 +825,15 @@ class Bootstrap:
 
     def toolchain_note(self, link):
         if self.environ.get('XYF_TOOLCHAIN'):
-            print('  note: XYF_TOOLCHAIN=%s is set and fails its pins; it wins over %s: unset it'
-                  % (self.environ['XYF_TOOLCHAIN'], link))
+            print(
+                '  note: XYF_TOOLCHAIN=%s is set and fails its pins; it wins over %s: unset it'
+                % (self.environ['XYF_TOOLCHAIN'], link)
+            )
         elif self.workspace != self.main.parent:
-            print('  note: this clone is not in %s: set XYF_TOOLCHAIN=%s in every shell that builds' % (self.workspace, link))
+            print(
+                '  note: this clone is not in %s: set XYF_TOOLCHAIN=%s in every shell that builds'
+                % (self.workspace, link)
+            )
 
     def tools(self):
         dev_tools.bootstrap_steps(self.do, run, self.repo)
@@ -721,20 +845,27 @@ class Bootstrap:
         missing = fixtures_missing()
         print('fixtures: %s' % ('ok' if not missing else 'missing ' + ', '.join(missing)))
         if missing:
-            self.do('run setup.py fixtures (network: public open-xy and its kit; one product build)', cmd_fixtures, None)
+            self.do(
+                'run setup.py fixtures (network: public open-xy and its kit; one product build)', cmd_fixtures, None
+            )
 
     def next_steps(self):
         incoming = self.private_root / 'incoming'
         steps = []
         if not stock_present():
-            steps += ['Put your OP-XY (stock 1.2.1) in MTP mode: hold COM while switching it on, Track 3 (dev menu), '
-                      'Track 2 (MTP) (docs/operating/first-install.md).',
-                      'python3 scripts/setup.py import-stock --from-device   (reads them into %s; if that fails, '
-                      'copy /upgrade/firmware/blackfin/bin/os.ldr, bootloader.ldr and /content/op1_factory.json there '
-                      'and run import-stock %s)' % (incoming, incoming),
-                      'python3 scripts/setup.py fixtures']
-        where = ('%s (or %s)' % (self.workspace, self.main) if (self.workspace / 'AGENTS.md').is_file()
-                 and self.workspace in self.main.parents else str(self.main))
+            steps += [
+                'Put your OP-XY (stock 1.2.1) in MTP mode: hold COM while switching it on, Track 3 (dev menu), '
+                'Track 2 (MTP) (docs/operating/first-install.md).',
+                'python3 scripts/setup.py import-stock --from-device   (reads them into %s; if that fails, '
+                'copy /upgrade/firmware/blackfin/bin/os.ldr, bootloader.ldr and /content/op1_factory.json there '
+                'and run import-stock %s)' % (incoming, incoming),
+                'python3 scripts/setup.py fixtures',
+            ]
+        where = (
+            '%s (or %s)' % (self.workspace, self.main)
+            if (self.workspace / 'AGENTS.md').is_file() and self.workspace in self.main.parents
+            else str(self.main)
+        )
         steps.append('Open your agent in %s and say "Continue development".' % where)
         print('\nNext:')
         for n, step in enumerate(steps, 1):
@@ -752,19 +883,32 @@ def main(argv=None):
     i.add_argument('--private', help='private folder for this clone (recorded in xyf.local.json)')
     s = sub.add_parser('import-stock', help='copy the stock 1.2.1 pair')
     s.add_argument('dir', nargs='?', help='folder holding the copied files')
-    s.add_argument('--from-device', action='store_true', help="read them off the OP-XY in the dev menu's MTP "
-                   'mode (read only) into private/incoming/')
+    s.add_argument(
+        '--from-device',
+        action='store_true',
+        help="read them off the OP-XY in the dev menu's MTP mode (read only) into private/incoming/",
+    )
     sub.add_parser('fixtures', help='make test inputs from the stock pair and public open-xy')
     sub.add_parser('doctor', help='summary')
     b = sub.add_parser('bootstrap', help='set up this workspace (all that needs no OP-XY); safe to rerun')
-    b.add_argument('--workspace', help="the folder that holds this clone, private/ and tools/ (default: the clone's parent)")
+    b.add_argument(
+        '--workspace', help="the folder that holds this clone, private/ and tools/ (default: the clone's parent)"
+    )
     b.add_argument('--dry-run', action='store_true', help='print every action without doing it')
-    b.add_argument('--toolchain-archive', metavar='ZIP', help="open-xy's toolchain-1 release zip for this host, already "
-                   'downloaded (default: bootstrap downloads it)')
+    b.add_argument(
+        '--toolchain-archive',
+        metavar='ZIP',
+        help="open-xy's toolchain-1 release zip for this host, already downloaded (default: bootstrap downloads it)",
+    )
     args = p.parse_args(argv)
     try:
-        return {'init': cmd_init, 'import-stock': cmd_import_stock, 'fixtures': cmd_fixtures,
-                'doctor': cmd_doctor, 'bootstrap': cmd_bootstrap}[args.command](args) or 0
+        return {
+            'init': cmd_init,
+            'import-stock': cmd_import_stock,
+            'fixtures': cmd_fixtures,
+            'doctor': cmd_doctor,
+            'bootstrap': cmd_bootstrap,
+        }[args.command](args) or 0
     except SetupError as e:
         print('setup: ' + str(e), file=sys.stderr)
         return 1

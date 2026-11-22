@@ -6,12 +6,12 @@ namespace {
 U32 word(const Byte* p) { return static_cast<U32>(p[0]) | (static_cast<U32>(p[1]) << 8); }
 U32 dword(const Byte* p) { return word(p) | (word(p + 2) << 16); }
 bool read(const Reader& reader, U32 offset, Byte* output, U32 count) {
-    return offset <= reader.size && count <= reader.size - offset &&
-        reader.read(reader.context, offset, output, count);
+    return offset <= reader.size && count <= reader.size - offset && reader.read(reader.context, offset, output, count);
 }
 char lower(char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c + ('a' - 'A')) : c; }
 bool same_prefix(const char* a, const char* b, U32 count) {
-    for (U32 i = 0; i != count; ++i) if (lower(a[i]) != lower(b[i])) return false;
+    for (U32 i = 0; i != count; ++i)
+        if (lower(a[i]) != lower(b[i])) return false;
     return true;
 }
 bool ratio_exceeded(U32 expanded, U32 compressed, U32 ratio) {
@@ -38,8 +38,9 @@ bool safe(const char* name, U32 size, bool directory) {
         if (i == end || name[i] == '/') {
             U32 length = i - component;
             if (!length || (length == 1 && name[component] == '.') ||
-                (length == 2 && name[component] == '.' && name[component + 1] == '.') ||
-                name[i - 1] == '.' || name[i - 1] == ' ') return false;
+                (length == 2 && name[component] == '.' && name[component + 1] == '.') || name[i - 1] == '.' ||
+                name[i - 1] == ' ')
+                return false;
             component = i + 1;
         } else {
             unsigned char c = static_cast<unsigned char>(name[i]);
@@ -56,7 +57,8 @@ Status extras(const Reader& reader, U32 offset, U32 count, Work* work) {
         U32 tag = word(header), size = word(header + 2);
         if (size > count - 4) return Status::layout;
         if (tag == 1 || tag == 0x7075 || tag == 0x6375) return Status::unsupported;
-        count -= size + 4; offset += size + 4;
+        count -= size + 4;
+        offset += size + 4;
     }
     return Status::ok;
 }
@@ -65,11 +67,13 @@ Status local(const Reader& reader, Entry& entry, U32 directory_offset, Work* wor
     if (!read(reader, entry.local_offset, header, 30)) return Status::truncated;
     if (dword(header) != 0x04034b50u) return Status::layout;
     if (word(header + 4) > 20 || word(header + 6) != entry.flags || word(header + 8) != entry.method ||
-        word(header + 26) != entry.name_size) return Status::layout;
+        word(header + 26) != entry.name_size)
+        return Status::layout;
     U32 crc = dword(header + 14), compressed = dword(header + 18), size = dword(header + 22);
     if (entry.flags & 8u) {
         if ((crc && crc != entry.crc32) || (compressed && compressed != entry.compressed_size) ||
-            (size && size != entry.size)) return Status::layout;
+            (size && size != entry.size))
+            return Status::layout;
     } else if (crc != entry.crc32 || compressed != entry.compressed_size || size != entry.size) return Status::layout;
     U32 name_offset = entry.local_offset + 30, extra_size = word(header + 28);
     if (name_offset > directory_offset || entry.name_size > directory_offset - name_offset) return Status::layout;
@@ -85,22 +89,30 @@ Status local(const Reader& reader, Entry& entry, U32 directory_offset, Work* wor
     entry.local_end = entry.data_offset + entry.compressed_size;
     if (entry.flags & 8u) {
         Byte descriptor[16];
-        if (directory_offset - entry.local_end < 12 || !read(reader, entry.local_end, descriptor, 12)) return Status::truncated;
+        if (directory_offset - entry.local_end < 12 || !read(reader, entry.local_end, descriptor, 12))
+            return Status::truncated;
         U32 shift = 0, length = 12;
         if (dword(descriptor) == 0x08074b50u) {
-            if (directory_offset - entry.local_end < 16 || !read(reader, entry.local_end, descriptor, 16)) return Status::truncated;
-            shift = 4; length = 16;
+            if (directory_offset - entry.local_end < 16 || !read(reader, entry.local_end, descriptor, 16))
+                return Status::truncated;
+            shift = 4;
+            length = 16;
         }
         if (dword(descriptor + shift) != entry.crc32 || dword(descriptor + shift + 4) != entry.compressed_size ||
-            dword(descriptor + shift + 8) != entry.size) return Status::layout;
+            dword(descriptor + shift + 8) != entry.size)
+            return Status::layout;
         entry.local_end += length;
     }
     return Status::ok;
 }
 Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capacity, Archive& archive, Work* work) {
-    archive.entries = 0; archive.count = 0; archive.total_bytes = 0; archive.directory_offset = 0;
-    if (!reader.read || !entries || !limits.entries || !limits.member_bytes ||
-        !limits.total_bytes || !limits.archive_bytes || !limits.expansion_ratio) return Status::argument;
+    archive.entries = 0;
+    archive.count = 0;
+    archive.total_bytes = 0;
+    archive.directory_offset = 0;
+    if (!reader.read || !entries || !limits.entries || !limits.member_bytes || !limits.total_bytes ||
+        !limits.archive_bytes || !limits.expansion_ratio)
+        return Status::argument;
     if (reader.size < 22) return Status::truncated;
     if (reader.size > limits.archive_bytes) return Status::bounds;
     Byte end[22];
@@ -109,7 +121,10 @@ Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
     for (;;) {
         if (!checkpoint(work)) return Status::cancelled;
         if (!read(reader, offset, end, 22)) return Status::io;
-        if (dword(end) == 0x06054b50u && word(end + 20) == reader.size - offset - 22) { found = true; break; }
+        if (dword(end) == 0x06054b50u && word(end + 20) == reader.size - offset - 22) {
+            found = true;
+            break;
+        }
         if (offset == minimum) break;
         --offset;
     }
@@ -127,12 +142,15 @@ Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
         if (cursor > offset || offset - cursor < 46 || !read(reader, cursor, header, 46)) return Status::truncated;
         if (dword(header) != 0x02014b50u) return Status::layout;
         Entry& entry = entries[index];
-        entry.flags = word(header + 8); entry.method = word(header + 10);
-        if (word(header + 6) > 20 || (entry.flags & ~0x080eu) ||
-            (entry.method != 0 && entry.method != 8) || (!entry.method && (entry.flags & 6u)) ||
-            word(header + 34)) return Status::unsupported;
-        entry.crc32 = dword(header + 16); entry.compressed_size = dword(header + 20);
-        entry.size = dword(header + 24); entry.name_size = word(header + 28);
+        entry.flags = word(header + 8);
+        entry.method = word(header + 10);
+        if (word(header + 6) > 20 || (entry.flags & ~0x080eu) || (entry.method != 0 && entry.method != 8) ||
+            (!entry.method && (entry.flags & 6u)) || word(header + 34))
+            return Status::unsupported;
+        entry.crc32 = dword(header + 16);
+        entry.compressed_size = dword(header + 20);
+        entry.size = dword(header + 24);
+        entry.name_size = word(header + 28);
         entry.local_offset = dword(header + 42);
         U32 extra_size = word(header + 30), comment_size = word(header + 32);
         if (entry.size == 0xffffffffu || entry.compressed_size == 0xffffffffu || entry.local_offset == 0xffffffffu)
@@ -145,8 +163,9 @@ Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
         entry.directory = entry.name[entry.name_size - 1] == '/';
         if (!safe(entry.name, entry.name_size, entry.directory)) return Status::name;
         U32 mode = dword(header + 38) >> 16, kind = mode & 0170000u;
-        if ((kind && kind != 0100000u && kind != 0040000u) ||
-            (kind == 0040000u && !entry.directory) || (kind == 0100000u && entry.directory)) return Status::unsupported;
+        if ((kind && kind != 0100000u && kind != 0040000u) || (kind == 0040000u && !entry.directory) ||
+            (kind == 0100000u && entry.directory))
+            return Status::unsupported;
         if (entry.size > limits.member_bytes || entry.size > limits.total_bytes - total) return Status::bounds;
         if (!entry.compressed_size && entry.size) return Status::layout;
         if (entry.compressed_size && ratio_exceeded(entry.size, entry.compressed_size, limits.expansion_ratio))
@@ -171,7 +190,8 @@ Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
             if (!same_prefix(entry.name, other.name, common)) continue;
             if (a == b) return Status::duplicate;
             if ((a < b && !entry.directory && other.name[a] == '/') ||
-                (b < a && !other.directory && entry.name[b] == '/')) return Status::layout;
+                (b < a && !other.directory && entry.name[b] == '/'))
+                return Status::layout;
         }
         cursor += 46 + variable;
     }
@@ -186,7 +206,9 @@ Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
     archive.limits.archive_bytes = limits.archive_bytes;
     archive.limits.expansion_ratio = limits.expansion_ratio;
     archive.entries = entries;
-    archive.count = count; archive.total_bytes = total; archive.directory_offset = directory_offset;
+    archive.count = count;
+    archive.total_bytes = total;
+    archive.directory_offset = directory_offset;
     return Status::ok;
 }
 }
@@ -196,18 +218,19 @@ Status open(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
     return cancelled(work) ? Status::cancelled : status;
 }
 
-Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace, const Sink& sink,
-               Extraction& result, Work* work) {
-    result = Extraction{0,0,0};
+Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace, const Sink& sink, Extraction& result,
+               Work* work) {
+    result = Extraction{0, 0, 0};
     if (!archive.entries || index >= archive.count) return Status::argument;
     const Entry& entry = archive.entries[index];
     if (entry.directory) return Status::argument;
     if (entry.size > archive.limits.member_bytes || entry.data_offset > archive.directory_offset ||
-        entry.compressed_size > archive.directory_offset - entry.data_offset) return Status::bounds;
-    Extraction extracted = {0,0,0};
+        entry.compressed_size > archive.directory_offset - entry.data_offset)
+        return Status::bounds;
+    Extraction extracted = {0, 0, 0};
     if (entry.method == 8) {
-        Status status = inflate_raw(archive.reader, entry.data_offset, entry.compressed_size,
-                                    entry.size, workspace, sink, extracted, work);
+        Status status = inflate_raw(archive.reader, entry.data_offset, entry.compressed_size, entry.size, workspace,
+                                    sink, extracted, work);
         if (status != Status::ok) return status;
     } else if (entry.method == 0) {
         if (entry.compressed_size != entry.size) return Status::layout;
@@ -236,4 +259,4 @@ Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace, c
     result = extracted;
     return Status::ok;
 }
-} }
+}}

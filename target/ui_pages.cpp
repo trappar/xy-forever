@@ -11,7 +11,12 @@ void hint_line(uint16_t* fb, const char* hint, const Chrome* chrome) { footer_li
 void button(uint16_t* fb, int x, int y, const char* label, bool on) {
     const int w = text_width(label, 2) + 20;
     if (on) fill(fb, x, y, w, 24, white);
-    else { fill(fb, x, y, w, 1, grey); fill(fb, x, y + 23, w, 1, grey); fill(fb, x, y, 1, 24, grey); fill(fb, x + w - 1, y, 1, 24, grey); }
+    else {
+        fill(fb, x, y, w, 1, grey);
+        fill(fb, x, y + 23, w, 1, grey);
+        fill(fb, x, y, 1, 24, grey);
+        fill(fb, x + w - 1, y, 1, 24, grey);
+    }
     text(fb, x + 10, y + 4, label, on ? black : white, 2);
 }
 }
@@ -51,7 +56,10 @@ void compact_header(uint16_t* fb, const char* title, const char* subtitle, const
         char cut[64];
         const uint32_t room = subtitle_room(title);
         uint32_t n = 0;
-        while (subtitle[n] && n + 1 < sizeof(cut) && n < room) { cut[n] = subtitle[n]; ++n; }
+        while (subtitle[n] && n + 1 < sizeof(cut) && n < room) {
+            cut[n] = subtitle[n];
+            ++n;
+        }
         cut[n] = 0;
         text(fb, subtitle_x(title), 9, cut, grey, 1);
     }
@@ -126,7 +134,10 @@ void draw_list(uint16_t* fb, const List& list) {
         const int size = large ? 2 : 1;
         if (row.detail && *row.detail)
             text(fb, width - margin - 4 - text_width(row.detail, size), large ? y : y + 4, row.detail,
-                 row.marked && large ? accent : on ? dark : grey, size);
+                 row.marked && large ? accent :
+                 on                  ? dark :
+                                       grey,
+                 size);
     }
     if (list.count > list_visible) {          // scroll bar on the right edge
         const int track = int(list_visible) * row_height - 4;
@@ -162,9 +173,24 @@ void draw_progress(uint16_t* fb, const Progress& p) {
     const uint32_t percent = scale(100, done, p.total);
     char digits[5] = {0, 0, 0, '%', 0};
     uint32_t v = percent, n = 0;
-    if (v >= 100) { digits[n++] = '1'; v -= 100; digits[n++] = '0'; digits[n++] = '0'; }
-    else { if (v >= 10) { char t = '0'; while (v >= 10) { v -= 10; ++t; } digits[n++] = t; } digits[n++] = char('0' + v); }
-    digits[n++] = '%'; digits[n] = 0;
+    if (v >= 100) {
+        digits[n++] = '1';
+        v -= 100;
+        digits[n++] = '0';
+        digits[n++] = '0';
+    } else {
+        if (v >= 10) {
+            char t = '0';
+            while (v >= 10) {
+                v -= 10;
+                ++t;
+            }
+            digits[n++] = t;
+        }
+        digits[n++] = char('0' + v);
+    }
+    digits[n++] = '%';
+    digits[n] = 0;
     text(fb, margin, bar_y + bar_h + 30, digits, grey, 1);
     if (p.warning && *p.warning) text(fb, margin, height - 30, p.warning, accent, 1);
     hint_line(fb, "", p.chrome);                      // the activity line only
@@ -183,4 +209,4 @@ void draw_home_empty(uint16_t* fb, const Chrome* chrome) {
     text(fb, margin + 4, y + 46, "About", black, 2);
     home_footer(fb, "", "PLAY  select", chrome);
 }
-} }
+}}
