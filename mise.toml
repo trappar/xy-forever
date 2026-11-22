@@ -161,7 +161,7 @@ description = "Web app and TypeScript client tests, then their type checks (abou
 run = [
   "uv run pnpm --filter xy-forever-client test",   # uv: its simulator tests start python3 -m xy_forever.sim from the project venv
   "pnpm --filter xy-forever-web test",
-  "pnpm --recursive --parallel typecheck",
+  "pnpm --recursive --parallel run typecheck",
 ]
 
 [tasks.web-test-changed]
