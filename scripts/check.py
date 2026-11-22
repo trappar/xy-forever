@@ -5,10 +5,11 @@
     uv run scripts/check.py --confirm [REF]      (what the receipt for REF's tree records)
 
 The steps, in order, stopping at the first failure:
-  - the product build into a fresh private build folder (<private>/xy-forever/builds/check-<tree>), then
-    xyf_build.py --verify of it; a verified build moves to builds/<image> (its name: the first 8 hex digits of
-    the candidate's SHA-256, hello image=), with check.json naming the tree and commit (scripts/neutral.py
-    reuses it: mise run neutral);
+  - the product build into the checkout's gitignored build/product, then xyf_build.py --verify of it, both through
+    Turborepo's local cache (scripts/firmware_cache.py: an unchanged build and its verify restore in about 0.2 s);
+    a verified build is copied to <private>/xy-forever/builds/<image> (its name: the first 8 hex digits of the
+    candidate's SHA-256, hello image=), with check.json naming the tree and commit (scripts/neutral.py reuses it:
+    mise run neutral);
   - lint and type checks: the generated protocol files match protocol/ (protogen --check), and `pnpm run
     typecheck` in clients/ts and web when they differ from the merge base with main (or with --js; refused
     up front, naming pnpm install, when a needed node_modules is missing);
@@ -38,8 +39,9 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path[:0] = [str(ROOT), str(ROOT / 'scripts')]
 from xy_forever import no_device, paths, procgroup  # noqa: E402
+import firmware_cache  # noqa: E402
 
 VERSION = 1                                  # receipt format; a reader refuses a newer one
 CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json
@@ -126,8 +128,9 @@ def tests_parser(tier):
 
 
 def verify_parser(out, tree, commit, test_builds):
-    """--verify passed, and the candidate's bytes match the build's manifest. Then the build moves to
-    BUILDS/<image>, and check.json there maps it to the tree and commit."""
+    """--verify passed, and the candidate's bytes match the build's manifest. Then a copy of the build goes to
+    BUILDS/<image> (out itself stays: it is the cache's output), and check.json there maps it to the tree and
+    commit."""
     def parse(status, text):
         result, candidate = last_json(text), out / 'candidate.ldr'
         if status or not result or result.get('passed') is not True or not candidate.is_file():
@@ -140,10 +143,13 @@ def verify_parser(out, tree, commit, test_builds):
             recorded = None
         if recorded != digest:
             return False, {}
-        write_json(out / 'check.json', dict(image=digest[:8], tree=tree, commit=commit))
+        staged = paths.BUILDS / ('.check-' + tree[:12])
+        shutil.rmtree(staged, ignore_errors=True)
+        shutil.copytree(out, staged)
+        write_json(staged / 'check.json', dict(image=digest[:8], tree=tree, commit=commit))
         # A second checkout can publish the same image bytes with different source hashes.
-        shutil.copytree(out, test_builds / digest[:8])
-        named = paths.name_by_image(out)
+        shutil.copytree(staged, test_builds / digest[:8])
+        named = paths.name_by_image(staged)
         return True, dict(candidate=dict(sha256=digest, image=named.name, bytes=len(data), build=str(named)))
     return parse
 
@@ -160,33 +166,32 @@ def touched(folder):
     return newest
 
 
-def fresh_build_folder(tree, now=None):
-    """BUILDS/check-<tree>, emptied (and any other check-* left by a failed run); of the builds/<image>
-    folders a check made, those beyond the KEEP_BUILDS - 1 newest are removed. A folder touched in the last
-    RECENT seconds stays (other than this run's own): another run (a check in another worktree) may still be
-    building it or reading it."""
-    own, now = paths.BUILDS / ('check-' + tree[:12]), time.time() if now is None else now
+def prune_builds(now=None):
+    """Of the builds/<image> folders a check made, those beyond the KEEP_BUILDS - 1 newest are removed, with any
+    check-* build folder an older check.py left. A folder touched in the last RECENT seconds stays: another run (a
+    check in another worktree) may still be copying it or reading it."""
+    now = time.time() if now is None else now
     for folder in paths.BUILDS.glob('check-*'):
-        if folder == own or now - touched(folder) > RECENT:
+        if now - touched(folder) > RECENT:
             shutil.rmtree(folder, ignore_errors=True)
     made = sorted((p for p in paths.BUILDS.glob('*/check.json') if paths.IMAGE_NAME.fullmatch(p.parent.name)),
                   key=lambda p: p.stat().st_mtime, reverse=True)
     for marker in made[KEEP_BUILDS - 1:]:
         if now - touched(marker.parent) > RECENT:
             shutil.rmtree(marker.parent, ignore_errors=True)
-    return own
 
 
 def standard_steps(args, root, tree, work):
     """The gate's steps for this run (work: a temporary folder for the tests' copy of the build)."""
     py = sys.executable
     js = js_steps(args, root)                    # before anything runs: a missing node_modules stops the run
-    out = fresh_build_folder(tree)
+    prune_builds()
     test_builds = Path(work) / 'builds'
     env = {paths.CHECK_TEST_BUILDS: str(test_builds)}
-    return [step('product build', [py, root / 'xyf_build.py', '--xyf-product', '--out', out], root),
-            step('verify', [py, root / 'xyf_build.py', '--verify', '--out', out], root,
-                 parse=verify_parser(out, tree, git(root, 'rev-parse', 'HEAD'), test_builds)),
+    cached = root / 'scripts/firmware_cache.py'
+    return [step('product build', [py, cached, 'build'], root),
+            step('verify', [py, cached, 'verify'], root,
+                 parse=verify_parser(firmware_cache.OUT, tree, git(root, 'rev-parse', 'HEAD'), test_builds)),
             step('protocol files', [py, root / 'scripts/protogen.py', '--check'], root),
             *js,
             step('fast tier', [py, *PYTEST, '-n', '6', '-m', 'fast'], root, env, tests_parser('fast')),

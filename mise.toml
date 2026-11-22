@@ -19,6 +19,7 @@ gh = "2.105.0"
 # the shell too. The tools above win over same-named global ones either way.
 MISE_IGNORED_CONFIG_PATHS = "{{ env.HOME }}/.config/mise"
 UV_PYTHON_DOWNLOADS = "never"   # uv uses the Python pinned above, never a download of its own
+TURBO_TELEMETRY_DISABLED = "1"  # Turborepo (the firmware cache): no telemetry; turbo.json turns remote caching off
 
 [tasks.setup]
 description = "Set up tools, dependencies, private folder, toolchain, fixtures"
@@ -73,7 +74,7 @@ usage = 'arg "[args]..." help="pytest arguments (-m fast: one tier)" var=#true'
 run = 'uv run pytest -n 12 --dist worksteal --durations=25 {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.check]
-description = "PR gate: build, verify, type checks, fast and gate tiers (under 30 s)"
+description = "PR gate: build, verify (cached), type checks, fast and gate tiers (under 30 s)"
 usage = 'arg "[args]..." help="check.py flags (--js, --force, --confirm [REF])" var=#true'
 run = 'uv run scripts/check.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
@@ -82,13 +83,16 @@ description = "Same firmware as a ref? (reuses the check's product build)"
 usage = 'arg "[ref]" help="the git ref to compare with" default="HEAD"'
 run = 'uv run scripts/neutral.py {{ usage.ref | quote }}'
 
+# Through Turborepo's local cache (scripts/firmware_cache.py, turbo.json): unchanged, both restore in about 0.2 s.
 [tasks.build]
-description = "Product firmware build (../private/xy-forever/builds/current)"
-run = "uv run xyf_build.py --xyf-product --out ../private/xy-forever/builds/current"
+description = "Product firmware build into build/product (cached)"
+usage = 'flag "--force" help="build past the cache"'
+run = 'uv run scripts/firmware_cache.py build {% if usage.force %}--force{% endif %}'
 
 [tasks.verify]
-description = "Verify the current product build"
-run = "uv run xyf_build.py --verify --out ../private/xy-forever/builds/current"
+description = "Product build, then --verify of it (cached)"
+usage = 'flag "--force" help="build and verify past the cache"'
+run = 'uv run scripts/firmware_cache.py verify {% if usage.force %}--force{% endif %}'
 
 [tasks.sim]
 description = "Device simulator on 127.0.0.1:7341"

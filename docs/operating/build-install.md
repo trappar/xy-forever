@@ -60,7 +60,7 @@ Python tracking the C++ each test compiled (`hostbuild`'s `clang -M` record) and
 subprocess (`@pytest.mark.uses('scripts/x.py')`); its first run runs everything.
 
 `mise run check` (`scripts/check.py`) is the PR gate on a clean, committed tree: the product build into
-`../private/xy-forever/builds/check-<tree>` plus `--verify`, `protogen --check`, `pnpm run typecheck` in
+`build/product` plus `--verify` (cached, below; a verified build is copied to `../private/xy-forever/builds/<image>`), `protogen --check`, `pnpm run typecheck` in
 `clients/ts` and `web` when they differ from the merge base with `origin/main` (or with `--js`; it stops first,
 naming `pnpm install`, when a needed `node_modules` is missing), then the fast and gate tiers with a temporary
 copy of the verified build. Budgets: 15 s a step, 30 s in all. Step output goes to a log in
@@ -71,6 +71,14 @@ stops at once (`--force` reruns); `--confirm [REF]` prints what it records. `mis
 checks.yml`: every tier without private files, with open-xy's public toolchain; the web and client suites) is
 the merge check. Neither stands in for a device test. Firmware may also be built into the checkout's gitignored
 `build/` folder; TE bytes are never committed or uploaded.
+
+`mise run build`, `mise run verify` and the check's build steps go through Turborepo's local cache
+(`scripts/firmware_cache.py`, `turbo.json`). The key is every file `xyf_build.py` hashes as its sources, plus the
+SHA-256 of the stock pair, the toolchain's location and pins, the Python running it and the checkout's path,
+computed on every run. With all of them unchanged, `build/product` and the `--verify` log are restored in about
+0.2 s; anything else rebuilds. A failed build or verify is never cached. The cache is `.turbo/cache` in the
+checkout (gitignored, at most 1 GB, never uploaded: remote caching is off). `--force` (`mise run build --force`)
+builds past it; deleting `.turbo/` clears it. `scripts/firmware_cache_proof.py` re-proves the hit and miss cases.
 
 Tests never open a real device: `tests/conftest.py`, `check.py` and any process that loads `unittest` set
 `XYF_NO_DEVICE` for themselves and every process they start, and with it every real-device opener (the serial

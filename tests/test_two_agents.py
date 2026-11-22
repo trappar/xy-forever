@@ -189,8 +189,7 @@ class Pruning(unittest.TestCase):
                 os.utime(builds / image / 'check.json', (old + n, old + n))
             os.utime(builds / images[1], (now, now))                     # another run is reading it
             os.utime(builds / 'check-bbbbbbbbbbbb' / 'part.o', (now, now))   # another run is building it
-            own = CHECK.fresh_build_folder('a' * 40, now)
-            self.assertEqual(own, builds / 'check-aaaaaaaaaaaa')
+            CHECK.prune_builds(now)
             self.assertEqual(sorted(p.name for p in builds.iterdir()),
                              [images[1]] + images[3:] + ['check-bbbbbbbbbbbb'])
 
