@@ -25,7 +25,7 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   up to 10 ms, 100 ms with B at rest, never past a known event: a reset delay, a delayed link message, a fault's delay, a held key's
   repeat) only while both processors are idle (no link message in flight, each main thread in a wait or polling the clock with nothing
   done) and something is due: an `advance`, a board event, B waiting on device time away from its menu loop's
-  pause (a delay, a time-out), or work since the last step (with B at rest: only while B owes a host request its
+  pause (a delay, a time-out) or on A for a host request it passed on, or work since the last step (with B at rest: only while B owes a host request its
   answer, or for 1 s past the last power-on, USB data or control command, so a device that polls on its own comes
   to rest). Otherwise it stands still and every process blocks with no CPU: an idle device's own timers
   (keepalives, a deferred save, an idle window's close, a frame's idle reset) wait for an `advance`, which is how

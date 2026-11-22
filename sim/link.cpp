@@ -31,6 +31,7 @@ bool send_message(int fd, const Message& m, const void* body) {
     static std::mutex lock;
     std::lock_guard<std::mutex> hold(lock);
     if (role == 0 || role == 1) { ++shared->outflight[role]; active(); }   // sim/clock.cpp
+    if (role == 1 && shared->usb_asked.load() == 1) shared->usb_asked = 2;  // B acts on a host request it read
     // Header and body in one writev: the reader wakes once, with the whole message there.
     iovec v[2] = {{const_cast<Message*>(&m), sizeof(m)}, {const_cast<void*>(body), body ? m.body : 0}};
     for (int k = 0, count = v[1].iov_len ? 2 : 1; k != count;) {

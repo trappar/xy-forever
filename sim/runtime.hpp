@@ -62,7 +62,7 @@ struct Shared {
     // wake: pipes that wake processor A, B, the board, and A's and B's link threads.
     std::atomic<int32_t> usb_held;
     std::atomic<uint32_t> outside;
-    std::atomic<int32_t> usb_asked;              // B read host bytes and has not written to the host since
+    std::atomic<int32_t> usb_asked;              // B read host bytes and wrote none to the host since (2: then asked A)
     std::atomic<uint64_t> clock_ns;
     std::atomic<uint32_t> steps, work[2], idle_work[2], idle_steps[2];
     std::atomic<uint64_t> idle_until[2];
