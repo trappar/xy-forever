@@ -38,4 +38,4 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 | `hosttest/` | the C++ built for the host for the tests: one nanobind extension (`xyf_hosttest._native`, a submodule per `bind/NAME.cpp`) and the doctest binary of the C++ unit tests (`tests/native/`); `uv sync` builds it |
 | `host/` | host-only C++ around the device code: the `.tfw` extractor (`tfw_extract.cpp`) and mod assembly (`mod_assemble.cpp`) |
 | `web/` | the web app (Chrome, Web Serial): mod package manager and file manager; `web/README.md` |
-| `third_party/` | vendored C++ with its licences: doctest (the C++ unit tests), tiny-json, micro-ecc (`p224`), tiny-AES-c (`aes`) |
+| `third_party/` | vendored C++ with its licences: doctest (the C++ unit tests), tiny-json, micro-ecc (`p224`), rijndael-alg-fst (`aes`) |

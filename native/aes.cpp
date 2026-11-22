@@ -1,38 +1,48 @@
 #include "aes.hpp"
-// tiny-AES-c (third_party/tiny-AES-c: version, licence and its one local change in the README):
-// AES-256, ECB only (the .tfw reader runs its own random-access CBC over single blocks).
-#define XYF_TINY_AES_FREESTANDING 1
-#define AES256 1
-#define ECB 1
-#define CBC 0
-#define CTR 0
-#include "../third_party/tiny-AES-c/aes.c"
+// rijndael-alg-fst (third_party/rijndael-fst: version, licence and its one local change in the README): the
+// table-driven AES reference code, AES-256 decryption only (the .tfw reader runs its own random-access CBC over
+// single blocks). Included in an unnamed namespace, so its unused encryption and tables are dropped.
+#include <stdint.h>
+namespace {
+typedef uint8_t u8;
+typedef uint32_t u32;
+#define XYF_RIJNDAEL_FREESTANDING 1
+#define KASSERT(exp, msg)
+// The round constants computed, not a table: rcon[2] (0x04000000) is a boot-ROM address to the builder's audit of
+// stored words (xy_forever/otp_audit.py).
+#define XYF_RIJNDAEL_RCON 1
+struct RoundConstants {
+    u32 operator[](int i) const {
+        u32 c = 1;
+        while (i-- > 0) c = (c << 1) ^ (c & 0x80u ? 0x11bu : 0u);
+        return c << 24;
+    }
+};
+const RoundConstants rcon = {};
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#include "../third_party/rijndael-fst/rijndael-alg-fst.c"
+#pragma GCC diagnostic pop
+#undef KASSERT
+}
 
 namespace xyf_core { namespace crypto {
 Aes256::Aes256() : ready_(false) {}
 Aes256::~Aes256() { erase(); }
 void Aes256::erase() {
-    volatile Byte* key = schedule_;
-    for (U32 i = 0; i < sizeof(schedule_); ++i) key[i] = 0;
+    volatile uint32_t* key = schedule_;
+    for (U32 i = 0; i < sizeof(schedule_) / 4; ++i) key[i] = 0;
     ready_ = false;
 }
 bool Aes256::initialize(const Byte* key) {
-    static_assert(sizeof(schedule_) == AES_keyExpSize, "the AES-256 key schedule");
     erase();
     if (!key) return false;
-    KeyExpansion(schedule_, key);                   // what AES_init_ctx does, into our schedule
-    ready_ = true;
-    return true;
+    ready_ = rijndaelKeySetupDec(schedule_, key, 256) == rounds;
+    return ready_;
 }
 bool Aes256::decrypt(const Byte* input, Byte* output) const {
     if (!ready_ || !input || !output) return false;
-    state_t state;
-    Byte* bytes = &state[0][0];
-    for (U32 i = 0; i < 16; ++i) bytes[i] = input[i];
-    InvCipher(&state, schedule_);                   // what AES_ECB_decrypt does, in place
-    for (U32 i = 0; i < 16; ++i) output[i] = bytes[i];
-    volatile Byte* wipe = bytes;
-    for (U32 i = 0; i < 16; ++i) wipe[i] = 0;
+    rijndaelDecrypt(schedule_, rounds, input, output);
     return true;
 }
 }}

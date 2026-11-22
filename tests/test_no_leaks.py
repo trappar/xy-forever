@@ -32,7 +32,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 MARKER = 'leak-ok'
 EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}')
-EMAILS_OK = {'noreply@anthropic.com', 'git@github.com'}  # commit attribution; GitHub's SSH clone user
+EMAILS_OK = {
+    'noreply@anthropic.com',  # commit attribution
+    'git@github.com',  # GitHub's SSH clone user
+    'vincent.rijmen@esat.kuleuven.ac.be',  # third_party/rijndael-fst: the authors in its public-domain header
+    'antoon.bosselaers@esat.kuleuven.ac.be',
+    'paulo.barreto@terra.com.br',
+}
 EXAMPLE_DOMAINS = re.compile(r'@(.+\.)?example\.(com|org|net)$', re.I)
 HOME = re.compile(r'(?:/Users|/home)/(?!<|Shared\b)[A-Za-z0-9._-]+|[A-Za-z]:\\+Users\\+(?!<)[A-Za-z0-9._-]+')
 EVIDENCE = re.compile(r'xy-forever/(sessions|analysis|reports)/([^\s/`\'"<>)]+)')
