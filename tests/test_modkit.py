@@ -380,7 +380,7 @@ class Synthetic(unittest.TestCase):
         out['objects'] = [
             o
             for o in kit['objects']
-            if o.get('extension') is None and o['owner'] in (None, *machines) or o.get('extension') in extensions
+            if (o.get('extension') is None and o['owner'] in (None, *machines)) or o.get('extension') in extensions
         ]
         out['extensions'] = [e for e in kit['extensions'] if e['id'] in extensions]
         return out
@@ -505,8 +505,8 @@ class Synthetic(unittest.TestCase):
         """expanded_base follows core.mjs offersExpandedMemory; split writes expanded_module_base only when
         offered; rebuild refuses a key that differs from the profile."""
         mib = 1 << 20
-        load = lambda value: M.struct.pack('<4H', 0xDA01, value >> 16, value & 0xFFFF, 0).hex()  # noqa: E731
-        fill, base, end = 0x81000000, 0x81000000 + 18 * mib, 0x81000000 + 20 * mib
+        load = lambda value: M.struct.pack('<4H', 0xDA01, value >> 16, value & 0xFFFF, 0).hex()
+        fill, base = 0x81000000, 0x81000000 + 18 * mib
         hooks = [dict(kind='hook', address='0x%08x' % (base - 0x1000), length=4)]
         heaps = [dict(kind='heap', before=load(20 * mib), after=load(18 * mib)) for _ in range(2)]
         profile = dict(

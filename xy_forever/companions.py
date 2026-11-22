@@ -11,7 +11,6 @@ import re
 import struct
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Tuple
 
 
 class CompanionError(ValueError):
@@ -36,11 +35,11 @@ class CyacdImage:
     silicon_id: int
     silicon_revision: int
     checksum_type: int
-    rows: Tuple[CyacdRow, ...]
+    rows: tuple[CyacdRow, ...]
     sha256: str
 
     @classmethod
-    def parse(cls, data: bytes) -> 'CyacdImage':
+    def parse(cls, data: bytes) -> CyacdImage:
         if not 1 <= len(data) <= 0x30000:
             raise CompanionError('CYACD length exceeds the stock 0x30000-byte limit')
         try:
@@ -114,7 +113,7 @@ class CypressStep:
     expect_nonzero: bool = False
 
 
-def backplane_program_steps(image: CyacdImage, transfer_size: int) -> Tuple[CypressStep, ...]:
+def backplane_program_steps(image: CyacdImage, transfer_size: int) -> tuple[CypressStep, ...]:
     """Build row transactions after device identity and bounds have been checked.
 
     transfer_size is the bridge callback's maximum *whole packet* size, not an
@@ -229,7 +228,7 @@ class NordicApplication:
     sha256: str
 
     @classmethod
-    def parse(cls, data: bytes) -> 'NordicApplication':
+    def parse(cls, data: bytes) -> NordicApplication:
         if not 8 <= len(data) <= 0x70000 or len(data) % 4:
             raise CompanionError('BLE application length is invalid')
         stack, reset = struct.unpack_from('<II', data)
@@ -242,26 +241,26 @@ class NordicApplication:
             raise CompanionError('BLE image does not have an application Thumb reset vector')
         return cls(data, stack, reset, crc16_ccitt(data), sha256(data).hexdigest())
 
-    def transfer_header(self, version: Tuple[int, int, int, int], device_id: int) -> bytes:
+    def transfer_header(self, version: tuple[int, int, int, int], device_id: int) -> bytes:
         """Encode the stock TE 64-byte header sent through bridge command 0x0d."""
         _validate_ble_metadata(version, device_id)
         # 1.2.1 Nordic bootloader: CRC-16 at bytes 9-10, version at 11-18.
         header = struct.pack('>IBIH4HII', 0xBEEFCAFE, 3, len(self.data), self.checksum, *version, 0x1F000, device_id)
         return header.ljust(64, b'\0')
 
-    def data_packets(self) -> Tuple[bytes, ...]:
+    def data_packets(self) -> tuple[bytes, ...]:
         """Bridge request bodies; the bridge framing/ACK state is not implemented."""
         return tuple(b'\x03' + self.data[offset : offset + 0xF8] for offset in range(0, len(self.data), 0xF8))
 
 
-def _validate_ble_metadata(version: Tuple[int, int, int, int], device_id: int) -> None:
+def _validate_ble_metadata(version: tuple[int, int, int, int], device_id: int) -> None:
     if len(version) != 4 or any(not isinstance(x, int) or not 0 <= x <= 0xFFFF for x in version):
         raise CompanionError('BLE version needs four unsigned 16-bit fields')
     if not isinstance(device_id, int) or not 0 <= device_id <= 0xFFFFFFFF:
         raise CompanionError('BLE device identity must fit 32 bits')
 
 
-def ble_start_packet(version: Tuple[int, int, int, int], image_kind: int, device_id: int) -> bytes:
+def ble_start_packet(version: tuple[int, int, int, int], image_kind: int, device_id: int) -> bytes:
     _validate_ble_metadata(version, device_id)
     if not 0 <= image_kind <= 255:
         raise CompanionError('BLE image kind must fit one byte')
@@ -315,7 +314,7 @@ def ble_metadata_field(payload: bytes, key: str) -> bytes:
     return found
 
 
-def ble_parse_version(text: bytes) -> Tuple[int, int, int, int]:
+def ble_parse_version(text: bytes) -> tuple[int, int, int, int]:
     match = re.fullmatch(rb'(\d+)\.(\d+)\.(\d+)\+(\d+)', text)
     if match is None or any(int(x) > 0xFFFF for x in match.groups()):
         raise CompanionError('BLE version text is invalid')

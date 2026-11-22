@@ -832,7 +832,7 @@ def check_expect(spec, step, action, command, where, ctx):
         if name not in reply_fields:
             raise CaseError('%s: the reply has no field %r' % (where, name))
         check_expected(value, field_kind(reply_fields[name]), ctx, '%s %s' % (where, name))
-    for var, name in e.get('save', {}).items():
+    for _var, name in e.get('save', {}).items():
         if name not in reply_fields:
             raise CaseError('%s: save from unknown field %r' % (where, name))
     if 'hello' in e:

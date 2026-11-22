@@ -12,7 +12,7 @@ import json
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from xy_forever import paths as xyf_paths
@@ -45,7 +45,7 @@ def capture(out, paths, timeout, connect=host.connect):
     out.mkdir(parents=True, exist_ok=False)
     manifest = {
         'format': 'xyf-session-capture/1',
-        'started_utc': datetime.now(timezone.utc).isoformat(),
+        'started_utc': datetime.now(UTC).isoformat(),
         'complete': False,
         'writes_storage': False,
         'changes_host_presence': True,
@@ -98,7 +98,7 @@ def capture(out, paths, timeout, connect=host.connect):
                 dev.t.close()
             except OSError as error:
                 manifest['close_error'] = str(error)
-        manifest['finished_utc'] = datetime.now(timezone.utc).isoformat()
+        manifest['finished_utc'] = datetime.now(UTC).isoformat()
         (out / 'capture.json').write_text(json.dumps(manifest, indent=2) + '\n')
     return manifest
 

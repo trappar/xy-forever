@@ -96,7 +96,7 @@ class RemoteReadTest(unittest.TestCase):
     def test_spans_cover_calls_and_avoid_l1_instruction(self):
         spans = server_spans()
         self.assertEqual(len(spans), 7)
-        for address, length, _ in spans:
+        for address, _length, _ in spans:
             self.assertFalse(0x11A00000 <= address < 0x11A0C000)
         covered = [(a, n) for a, n, _ in spans + peer_spans()]
         for call in SERVER_CALLS | A_MARKER_CALLS | A_RENAME_CALLS | A_FIND_CALLS:

@@ -46,7 +46,7 @@ import json
 import sys
 import time
 import zlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import device_pass as dp
@@ -621,7 +621,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     run = ModBoot(device or dp.HostDevice(), o, keepalive, sleep)
     run.sessions = Path(sessions or dp.SESSIONS)
     stopped = [] if o.sim or 'check' not in chosen else keepalive.stop_running()
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     rows, index, failed = [], 0, None
     kind = ('sim-' if o.sim else '') + 'mod-boot'
     for stage, steps in STAGES:
@@ -651,7 +651,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
         mode='cleanup' if o.cleanup else 'run',
         argv=list(argv or sys.argv[1:]),
         started_utc=started.isoformat(),
-        finished_utc=datetime.now(timezone.utc).isoformat(),
+        finished_utc=datetime.now(UTC).isoformat(),
         entry=o.id,
         selection=o.machines,
         image_bytes=len(run.state.get('image', b'')) or None,

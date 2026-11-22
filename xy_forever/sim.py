@@ -33,7 +33,6 @@ import zlib
 from pathlib import Path
 
 from xy_forever import bounds, paths, procgroup
-from xy_forever import usb_proto as P
 from xy_forever.sim_sources import DEVICE_PARTS, NATIVE_SOURCES, SIM_SOURCES, TARGET_SOURCES
 
 ROOT = Path(__file__).resolve().parents[1]

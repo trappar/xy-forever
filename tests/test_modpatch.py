@@ -523,8 +523,8 @@ class Synthetic(unittest.TestCase):
 
             return self.variant(edit)
 
-        drop = lambda key: lambda t: re.sub(r'(?m)^%s=.*\n' % key, '', t)  # noqa: E731
-        put = lambda key, v: lambda t: re.sub(r'(?m)^%s=.*$' % key, '%s=%s' % (key, v), t)  # noqa: E731
+        drop = lambda key: lambda t: re.sub(r'(?m)^%s=.*\n' % key, '', t)
+        put = lambda key, v: lambda t: re.sub(r'(?m)^%s=.*$' % key, '%s=%s' % (key, v), t)
         for key in (
             'stock_records',
             'reserved_bytes',
@@ -544,7 +544,7 @@ class Synthetic(unittest.TestCase):
         ):
             with self.subTest(malformed=key):
                 self.refused(['alpha'], 'input', 'base', gen=info(put(key, value)), detail=key)
-        twice = lambda t: t + 'heap_fill_bytes=4096\n'  # noqa: E731
+        twice = lambda t: t + 'heap_fill_bytes=4096\n'
         self.refused(['alpha'], 'input', 'base', gen=info(twice), detail='heap_fill_bytes')
         self.refused(['alpha'], 'input', 'base', gen=info(put('reserved_bytes', 4096)), detail='profile')
         hexed = info(put('stock_records', '0x%x' % self.profile['stock_records']))  # the 0x form

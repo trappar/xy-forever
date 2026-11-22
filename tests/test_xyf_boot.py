@@ -1,6 +1,7 @@
 """Test030 menu boot (staged link: catalog blob + chosen library entry): layout, decoder,
 buffers and protocol rules; no device execution."""
 
+import itertools
 import re
 import struct
 import unittest
@@ -176,7 +177,7 @@ class XyfBootTest(unittest.TestCase):
             self.assertTrue(scratch[1] <= start and start + size <= staging[0], hex(start))
             self.assertEqual(start % 32, 0)
         spans = sorted((s, s + n) for s, n in buffers)
-        for (a, b), (c, d) in zip(spans, spans[1:]):
+        for (_a, b), (c, _d) in itertools.pairwise(spans):
             self.assertLessEqual(b, c)
         self.assertIn('static_assert(xyf_boot::scan_capacity >= xyf::library::scratch_needed', SOURCE)
         self.assertIn('static_assert(xyf::catalog::max_bytes <= xyf_boot::catalog_capacity', SOURCE)

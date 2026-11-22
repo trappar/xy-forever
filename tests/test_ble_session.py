@@ -432,7 +432,7 @@ class BleSessionTests(unittest.TestCase):
         for start in ('app', 'loop'):
             for name, cut, expected in cuts:
                 with self.subTest(start=start, cut=name):
-                    for session, chip, requests, outcome in self.run_both({'mode': start}, cut=cut):
+                    for session, chip, _requests, outcome in self.run_both({'mode': start}, cut=cut):
                         self.assertEqual(outcome, 'cut')
                         self.assertEqual((chip.mode, chip.valid, chip.sw_version()), expected)
                         self.assertIn(b'sw_version:' + expected[2].encode(), chip.metadata())

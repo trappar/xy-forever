@@ -43,7 +43,7 @@ class UiPagesTest(unittest.TestCase):
             self.assertEqual(self.lib.ui_scale(a, b, c), expected, (a, b, c))
 
     def test_list_scrolling_keeps_selection_visible(self):
-        for count in range(0, 16):
+        for count in range(16):
             for selected in range(count):
                 first = self.lib.ui_list_first(count, selected)
                 self.assertTrue(first <= selected < first + 7, (count, selected, first))

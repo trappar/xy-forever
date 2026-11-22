@@ -141,7 +141,7 @@ class DeviceGuardTest(unittest.TestCase):
         return C.device_guard(s, kind, payload, AREA)
 
     def test_allows_reads_staging_area_writes_and_menu_restarts(self):
-        u32 = lambda v: struct.pack('<I', v)  # noqa: E731
+        u32 = lambda v: struct.pack('<I', v)
         for name, payload in (
             ('hello', b''),
             ('file.read', b'/yaffs2/x\0'),
@@ -168,7 +168,7 @@ class DeviceGuardTest(unittest.TestCase):
             self.assertIsNone(self.guard(name, payload), (name, payload))
 
     def test_refuses_what_changes_more(self):
-        u32 = lambda v: struct.pack('<I', v)  # noqa: E731
+        u32 = lambda v: struct.pack('<I', v)
         for name, payload in (
             ('boot.install', bytes(32)),
             ('boot.uninstall', bytes(32)),

@@ -23,6 +23,22 @@ export default defineConfig([
     files: ['**/*.{ts,tsx,mts,mjs}'],
     extends: [js.configs.recommended, tseslint.configs.recommended],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
+    rules: {
+      // A leading _ marks a name unused on purpose (as tsc's noUnusedParameters).
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+        },
+      ],
+    },
+  },
+  {
+    files: ['**/test/**', '**/e2e/**'],
+    rules: { '@typescript-eslint/no-explicit-any': 'off' }, // tests edit parsed JSON freely
   },
   {
     files: ['web/src/**/*.{ts,tsx}'],

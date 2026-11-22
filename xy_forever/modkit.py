@@ -41,7 +41,7 @@ from elftools.elf.enums import ENUM_SH_TYPE_BASE, ENUM_ST_INFO_BIND, ENUM_ST_INF
 
 from . import package_records
 from .build_formats import elf_records, number
-from .xyf_entry import files_sha256_text, read_files_sha256
+from .xyf_entry import ManifestError, files_sha256_text
 
 KIT_FORMAT = 'opxy-browser-kit/1'
 PROFILE_SCHEMA = 1
@@ -354,7 +354,7 @@ def decode_edits(data):
     check(version == 1, 'edits.bin: unknown version %d' % version)
     at = 12 + 2 * nservices
     strings = data[at : at + nstrings]
-    name = lambda off: strings[off : strings.index(b'\0', off)].decode()  # noqa: E731
+    name = lambda off: strings[off : strings.index(b'\0', off)].decode()
     services = [name(struct.unpack_from('<H', data, 12 + 2 * i)[0]) for i in range(nservices)]
     at += nstrings
     edits = []
@@ -464,7 +464,7 @@ def expanded_base(profile):
     """The module base of the profile's reviewed larger layout (core.mjs offersExpandedMemory, the 4 MiB option),
     or None when the profile offers none. The heap edits then load expanded_heap_after(...)."""
     x, heaps = profile.get('experimental_memory'), [p for p in profile.get('patches') or [] if p.get('kind') == 'heap']
-    whole = lambda *ns: all(isinstance(n, int) and not isinstance(n, bool) and n % MIB == 0 for n in ns)  # noqa
+    whole = lambda *ns: all(isinstance(n, int) and not isinstance(n, bool) and n % MIB == 0 for n in ns)
     if not (isinstance(x, dict) and sorted(x) == ['heap_after', 'module_base', 'reserved_bytes']):
         return None
     base, fill = x['module_base'], profile['heap_fill_base']
@@ -1148,7 +1148,7 @@ def rebuild_kit(generation_dir, machines, extensions, catalog):
             object_entry(int(order), path, base[path], service=service, runtime=True if kind == 'runtime' else None)
         )
     kit_machines = []
-    for mid, (order, row) in sorted(rows.items(), key=lambda kv: kv[1][0]):
+    for mid, (_order, row) in sorted(rows.items(), key=lambda kv: kv[1][0]):
         f = fields_of(row)
         slot = next(k for k in ('engine', 'effect', 'player') if k in f)
         m = dict(
@@ -1190,7 +1190,7 @@ def rebuild_kit(generation_dir, machines, extensions, catalog):
                 objects.append(object_entry(int(order_), path, files[path], owner=mid))
         kit_machines.append(m)
     kit_extensions = []
-    for eid, (order, f) in sorted(ext_rows.items(), key=lambda kv: kv[1][0]):
+    for eid, (_order, f) in sorted(ext_rows.items(), key=lambda kv: kv[1][0]):
         claims = [] if f['claims'] == '-' else f['claims'].split(',')
         accessors = f['accessors'].split(',')
         path = 'sdk/extension_%s.o' % eid
@@ -1295,7 +1295,7 @@ def fitting(generation_dir, ids, margin=96 * 1024):
     root = Path(generation_dir)
     from .package_records import read_values as info
 
-    sizes = lambda f, prefix='': sum(int(f[prefix + k]) for k in ('code', 'data', 'state'))  # noqa: E731
+    sizes = lambda f, prefix='': sum(int(f[prefix + k]) for k in ('code', 'data', 'state'))
     base = info(root / 'base')
     used = (
         sizes(base)

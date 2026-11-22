@@ -336,7 +336,7 @@ class PublishedPackages(Harness, unittest.TestCase):
         for name, machines in (('large', LARGE), ('near', NEAR)):
             with self.subTest(name):
                 report, out = self.job(machines, [], memory='expanded')
-                tree = self.assert_identical(report, out, machines, [], memory='expanded')
+                self.assert_identical(report, out, machines, [], memory='expanded')
                 self.assertLessEqual(report['peak'], DEVICE_REGION)
         report, out = self.job(LARGE, [])
         self.assertEqual((report['error'], report['phase']), ('link', 'failed'))  # standard: does not fit

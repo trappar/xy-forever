@@ -44,7 +44,7 @@ import math
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import device_pass as dp
@@ -265,7 +265,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, cleanup_dir=None
         keepalive.stop_running()
         if opts.roles:
             time.sleep(2)  # let the previous keeper release its USB port
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     check = probe.run('check', 'check', probe.step_check)
     if check['result'] == 'FAIL' and (probe.no_answer or probe.state.get('need')):
         print(probe.state.get('need') or (dp.SIM_NEED if opts.sim else dp.NEED))
@@ -316,7 +316,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, cleanup_dir=None
         folder=str(probe.folder),
         argv=list(argv or sys.argv[1:]),
         started_utc=started.isoformat(),
-        finished_utc=datetime.now(timezone.utc).isoformat(),
+        finished_utc=datetime.now(UTC).isoformat(),
         packages=names,
         hello=probe.state.get('hello'),
         steps=probe.rows,

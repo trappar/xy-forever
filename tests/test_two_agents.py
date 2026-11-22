@@ -149,7 +149,7 @@ class DeviceLock(unittest.TestCase):
             text=True,
         )
         self.addCleanup(proc.stdout.close)
-        self.addCleanup(lambda: proc.poll() is None and proc.kill() or proc.wait())
+        self.addCleanup(lambda: (proc.poll() is None and proc.kill()) or proc.wait())
         self.assertEqual(proc.stdout.readline().strip(), 'held')
         return proc
 
@@ -220,7 +220,7 @@ class Pruning(unittest.TestCase):
                 (builds / name).mkdir()
                 (builds / name / 'part.o').write_bytes(b'x')
             images = ['%08x' % n for n in range(7)]
-            for n, image in enumerate(images):
+            for image in images:
                 (builds / image).mkdir()
                 (builds / image / 'check.json').write_text('{}')
             old = now - CHECK.RECENT - 60

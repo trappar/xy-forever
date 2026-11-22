@@ -160,7 +160,7 @@ def base_tables(generation_dir):
     """Machines, extensions and linked ids from the base, in collection order."""
     base = Path(generation_dir) / 'base'
     rows = modkit.read_table((base / 'machines.txt').read_bytes())
-    machines = [dict(id=r[1], **{k: v for k, v in modkit.fields_of(r[2:]).items()}) for r in rows]
+    machines = [dict(id=r[1], **dict(modkit.fields_of(r[2:]).items())) for r in rows]
     for m in machines:
         m['features'] = [] if m.get('features', '-') == '-' else m['features'].split(',')
     extensions = [r[1] for r in modkit.read_table((base / 'extensions.txt').read_bytes())]

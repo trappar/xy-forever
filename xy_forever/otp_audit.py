@@ -106,7 +106,7 @@ def check_otp_rules(raw, symbols, enabled):
     """tfw.check's OTP provider: the ROM read and init are each loaded by one stock<> wrapper of
     target/otp_keys.cpp, those wrappers and the init flag are used only inside otp_keys, and the
     provider's functions are reached only from the tfw.check handler. Without the feature, none of it."""
-    has = lambda text: any(text in name for name in symbols)  # noqa: E731
+    has = lambda text: any(text in name for name in symbols)
     old = [name for name in symbols if any(reader in name for reader in OLD_READERS)]
     require(not old, 'Old update-key reader linked: ' + ', '.join(sorted(old)))
     if not enabled:

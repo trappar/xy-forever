@@ -149,7 +149,7 @@ def _inventory(archive, limits):
         names[key] = directory
         mode = info.external_attr >> 16
         kind = stat.S_IFMT(mode)
-        if kind not in (0, stat.S_IFREG, stat.S_IFDIR) or (kind == stat.S_IFDIR) != directory and kind != 0:
+        if kind not in (0, stat.S_IFREG, stat.S_IFDIR) or ((kind == stat.S_IFDIR) != directory and kind != 0):
             raise PackageError(f'special-file package member: {name}')
         if info.flag_bits & 1:
             raise PackageError('encrypted ZIP members are unsupported; decrypt the TFW first')

@@ -16,14 +16,25 @@ import zlib
 from xy_forever import release, stock_bytes, usb_proto
 from xy_forever import xyf_stage2 as S2
 from xy_forever.build_formats import Firmware, elf32, header, parse_stream, require
+from xy_forever.build_modules import (
+    GC_MODULES,
+    JSON_MODULES,
+    MOD_JOB_MODULES,
+    MODS_PAGE_MODULES,
+    TFW_CHECK_MODULES,
+    TFW_TARGET_MODULES,
+    USB_STORAGE_MODULES,
+    compile_tfw,
+)
+from xy_forever.build_modules import own_sources as build_sources
 from xy_forever.compile import SOURCE, compile_core, invoke, sha, toolchain
 from xy_forever.ldr import parse_ldr, validate_memory
-from xy_forever.otp_audit import (
+from xy_forever.otp_audit import (  # function_bodies, loaded_values: re-exported (tests use the builder's)
     check_otp_data,
     check_otp_rules,
-    function_bodies,
+    function_bodies,  # noqa: F401
     functions_loading,
-    loaded_values,
+    loaded_values,  # noqa: F401
     referencing_symbols,
     rom_references,
 )
@@ -369,17 +380,6 @@ OTP_READ, OTP_INIT, OTP_INIT_FLAG = 0x04000048, 0x04000054, 0x11B01650  # the fl
 # tfw.check (XYF_TFW_CHECK): the only feature that reads OTP, and with it the native
 # .tfw check (native/tfw_check and the decoder parts it uses) and the key provider.
 TFW_CHECK_MODES = ('xyf-product',)
-from xy_forever.build_modules import (
-    GC_MODULES,
-    JSON_MODULES,
-    MOD_JOB_MODULES,
-    MODS_PAGE_MODULES,
-    TFW_CHECK_MODULES,
-    TFW_TARGET_MODULES,
-    USB_STORAGE_MODULES,
-    compile_tfw,
-)
-from xy_forever.build_modules import own_sources as build_sources
 
 # The mod assembly job (native/mod_job and the linker, patch and content steps) runs on B.
 # The menu's Mods page (target/xyf_mods*: model, view, B's reading and the job's start), product only.
@@ -1375,7 +1375,7 @@ def build(out, stock, boot, mode):
             'ASSERT(SIZEOF(.bss) == 0, "No implicit BSS")\n'
             'ASSERT(__end <= ' + hex(limit) + ', "Module exceeds reservation")\n'
         )
-        gc = ['--gc-sections'] if stem == 'module' or stem == 'stage2' and (stage2_menu or stage2_service) else []
+        gc = ['--gc-sections'] if stem == 'module' or (stem == 'stage2' and (stage2_menu or stage2_service)) else []
         for suffix, keep in [('', [])] + ([('.audit', ['-q'])] if audited else []):
             invoke(
                 [

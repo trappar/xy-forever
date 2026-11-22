@@ -53,7 +53,7 @@ def package_name(name):
 
 def validate(files):
     """Strict admission before any write. The boot/library reader remains lenient."""
-    listed = dict((path, sha) for sha, path in read_files_sha256(files['files.sha256']))
+    listed = {path: sha for sha, path in read_files_sha256(files['files.sha256'])}
     if set(files) != set(listed) | {'files.sha256'}:
         raise StoreError('files.sha256 does not own exactly the staged package')
     for path, sha in listed.items():

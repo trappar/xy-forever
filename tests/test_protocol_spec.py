@@ -15,6 +15,7 @@ import unittest
 from pathlib import Path
 
 import protogen
+import protogen_hello
 import pytest
 
 from xy_forever import hostbuild, release, xyf_host
@@ -297,7 +298,7 @@ class GoldenFramesTest(unittest.TestCase):
             with self.subTest(switches=on):
                 hello, cmds = self.device_hello(on)
                 self.assertEqual(int(cmds, 16), P.answered(on))
-                self.assertEqual(int(cmds, 16), protogen.answered(spec(), on))
+                self.assertEqual(int(cmds, 16), protogen_hello.answered(spec(), on))
                 self.assertEqual(hello, P.hello_text('0.1.0', None, 'product', on))  # as compiled: image=unknown
                 parsed = P.Hello(hello)
                 for c in spec()['commands']:
@@ -324,7 +325,7 @@ class SpecDataTest(unittest.TestCase):
                 self.assertEqual(P.Parser().feed(whole), expect)
                 bytewise = P.Parser()
                 self.assertEqual([fr for b in whole for fr in bytewise.feed(bytes((b,)))], expect)
-                for t, seq, payload in expect:  # each frame decodes with the codecs
+                for t, _seq, payload in expect:  # each frame decodes with the codecs
                     if t & 0x80 and t in ids.EVENTS:
                         P.unpack(ids.EVENTS[t]['payload'], payload, exact=False)
                     elif t & 0x80:

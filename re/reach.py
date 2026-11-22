@@ -5,7 +5,6 @@ Output feeds re/spans.py.
 """
 
 import sys
-from pathlib import Path
 
 import bootloader
 

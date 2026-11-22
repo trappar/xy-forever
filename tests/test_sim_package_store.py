@@ -10,8 +10,8 @@ from pathlib import Path
 import pytest
 from test_ldr import image
 
-from xy_forever import bounds, sim, xyf_entry
 from xy_forever import package_store as S
+from xy_forever import sim, xyf_entry
 from xy_forever import xyf_host as host
 
 

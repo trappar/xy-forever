@@ -20,10 +20,9 @@ import hashlib
 import re
 import struct
 import time
-import zlib
 from pathlib import Path
 
-from . import depth, modconfig, modstore, package_records, package_store, transport
+from . import modconfig, modstore, package_records, package_store, transport
 from . import usb_proto as P
 
 ROOT = '/yaffs2/xy-forever/mods'

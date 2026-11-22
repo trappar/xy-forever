@@ -715,7 +715,7 @@ class SimulatorTest(unittest.TestCase):
         def run():
             try:
                 reply['r'] = dev.call(kind, payload, timeout=timeout)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 reply['error'] = e
 
         before = self.sim.status()
@@ -880,7 +880,7 @@ class SimulatorTest(unittest.TestCase):
         while not until(got) and time.monotonic() < deadline:
             try:
                 data = sock.recv(4096)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             if not data:
                 break
@@ -956,7 +956,7 @@ class SimulatorTest(unittest.TestCase):
         (folder / 'sub').mkdir()
         want[b'sub'] = (1, 0)
         (folder / 'café.txt').write_bytes(b'12345')
-        want['café.txt'.encode('utf-8')] = (0, 5)
+        want['café.txt'.encode()] = (0, 5)
         dev = self.connect()
         pages, skip = 0, 0
         while True:

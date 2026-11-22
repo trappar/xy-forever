@@ -11,7 +11,6 @@ re-checks every CRC against the authenticated bootloader.
 import glob
 import sys
 import zlib
-from pathlib import Path
 
 import bootloader as img
 

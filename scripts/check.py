@@ -173,7 +173,7 @@ def verify_parser(out, tree, commit, test_builds):
 def touched(folder):
     """When folder or anything in it last changed (its newest mtime; 0 when it is gone)."""
     newest = 0
-    for top, dirs, files in os.walk(folder):
+    for top, _dirs, files in os.walk(folder):
         for name in [''] + files:
             try:
                 newest = max(newest, os.stat(os.path.join(top, name)).st_mtime)
@@ -306,7 +306,7 @@ def run_steps(steps, log):
 
 
 def now():
-    return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    return datetime.datetime.now(datetime.UTC).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
 def write_json(path, data):

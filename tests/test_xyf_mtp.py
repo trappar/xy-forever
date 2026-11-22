@@ -96,7 +96,7 @@ class MtpTest(unittest.TestCase):
         self.assertFalse({'%08x' % a for a in WRITE_ENTRIES} & MTP_CALLS)
         self.assertNotIn('88a06a7e', MTP_CALLS)  # never the boot-partition writer
         spans = mtp_spans()
-        for address, length, _ in spans:
+        for address, _length, _ in spans:
             self.assertFalse(0x11A00000 <= address < 0x11A0C000)
         covered = [(a, n) for a, n, _ in spans + server_spans() + peer_spans()]
         for call in MTP_CALLS | SERVER_CALLS | A_MARKER_CALLS:

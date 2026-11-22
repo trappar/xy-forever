@@ -95,7 +95,6 @@ from protogen_hello import (  # noqa: E402
     HELLO_SOURCES,
     RUNTIME_BYTES,
     RUNTIME_SWITCHES,
-    answered,
     hello_fixed,
     hello_source,
     render_cpp_hello,
@@ -187,7 +186,7 @@ class Checker:
         return required <= set(value)
 
     def typed(self, value, kinds, where):
-        if isinstance(value, bool) and bool not in kinds or not isinstance(value, kinds):
+        if (isinstance(value, bool) and bool not in kinds) or not isinstance(value, kinds):
             self.fail(where, 'must be %s' % '/'.join(k.__name__ for k in kinds))
             return False
         return True
@@ -977,7 +976,7 @@ def render_conformance(cases):
     if cases is None:
         return []
     every = cases['cases']
-    count = lambda effect: sum(effect in c['effects'] for c in every)  # noqa: E731
+    count = lambda effect: sum(effect in c['effects'] for c in every)
     md = ['', '## Conformance suite', '']
     for para in cases['doc']:
         md += [para, '']
@@ -1023,7 +1022,7 @@ def anchor(cmd, here=None):
 
 def render_md(spec, cases=None):
     """{repository-relative path: text} of the specification: the index docs/PROTOCOL.md and every leaf."""
-    p, k = spec['protocol'], constants(spec)
+    p = spec['protocol']
     pages = {}  # leaf file name: (title, what it holds, body lines)
     t = spec['transport']
     md = ['', '## Transport', '', t['doc'], '', '| Fact | Value | Verified | Notes |', '|---|---|---|---|']
@@ -1115,7 +1114,7 @@ def render_md(spec, cases=None):
         '`boot.uninstall`.',
     ]
     pages['commands.md'] = ('commands', 'the table of commands with a link to each', md)
-    for first, last, name, title in CMD_LEAVES:
+    for _first, _last, name, title in CMD_LEAVES:
         md = []
         held = [c for c in main if cmd_leaf(c) == name]
         for c in held:
@@ -1694,7 +1693,7 @@ def ts_command(cmd, out):
 
 
 def render_ts(spec):
-    k, p, t = constants(spec), spec['protocol'], spec['transport']
+    p, t = spec['protocol'], spec['transport']
     commands = [c for c in sorted(spec['commands'], key=lambda c: int(c['type'], 16)) if published(c)]
     names = {c['name'] for c in commands}
     out = [

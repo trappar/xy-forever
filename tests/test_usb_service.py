@@ -224,7 +224,7 @@ class UsbServiceTest(unittest.TestCase):
         from xy_forever import xyf_build as B
 
         B.check_usb_spans(boot.read_bytes())
-        for a, n, _ in B.usb_spans():
+        for a, _n, _ in B.usb_spans():
             self.assertFalse(0x11A00000 <= a < 0x11A0C000)
         self.assertTrue(B.FORBIDDEN_TARGETS.isdisjoint(B.USB_CALLS))
 

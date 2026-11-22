@@ -1089,7 +1089,7 @@ class DevicePassTest(unittest.TestCase):
             raw = call
 
         wire = dp.Wire(Link(), [])
-        u32 = lambda v: struct.pack('<I', v)  # noqa: E731
+        u32 = lambda v: struct.pack('<I', v)
         for kind, payload, raw in (
             (P.INSTALL, bytes(32), False),
             (P.UNINSTALL, bytes(32), False),

@@ -48,7 +48,7 @@ import re
 import struct
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import device_pass as dp
@@ -178,7 +178,7 @@ class Run(dp.Pass):
                 'diag.crash answered %s (unsupported: not the crash trigger test build; state: the '
                 'vector is not armed)' % P.status_name(code)
             )
-        self.state['sent_utc'] = datetime.now(timezone.utc).isoformat()
+        self.state['sent_utc'] = datetime.now(UTC).isoformat()
         return 'diag.crash %s (kind %d): ok' % (self.opts.kind, KINDS[self.opts.kind][0])
 
     def step_silent(self):
@@ -286,7 +286,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
     run.rows = []
     if not opts.sim:
         keepalive.stop_running()
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     check = run.run('check', 'check', run.step_check)
     if check['result'] == 'FAIL' and run.no_answer:
         print(dp.SIM_NEED if opts.sim else dp.NEED)
@@ -332,7 +332,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=time.sleep
         folder=str(run.folder),
         argv=list(argv if argv is not None else sys.argv[1:]),
         started_utc=started.isoformat(),
-        finished_utc=datetime.now(timezone.utc).isoformat(),
+        finished_utc=datetime.now(UTC).isoformat(),
         hello=run.state.get('hello'),
         identity=run.state.get('identity'),
         cplb=run.state.get('cplb'),

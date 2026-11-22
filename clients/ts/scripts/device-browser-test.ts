@@ -74,7 +74,7 @@ let page: Page | null = null;
 async function step(name: string, work: () => Promise<string>): Promise<boolean> {
   const start = Date.now();
   let ok = false,
-    detail = '';
+    detail: string;
   try {
     detail = await Promise.race([
       work(),

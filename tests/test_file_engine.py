@@ -355,7 +355,7 @@ class FileEngineTest(unittest.TestCase):
     def test_rename_pair(self):
         """Path 0x21 with rename_from keeps a source (checked as one: never /yaffs2 or the marker);
         rename_to needs one and decides the pair (never onto /yaffs2) and is a change (the window)."""
-        RNFR, RNTO = 0x52464E52, 0x4F544E52
+        RNFR = 0x52464E52
         ok, other = '/yaffs2/xy-forever/a.txt', '/yaffs2/xy-forever/b.txt'
         self.assertEqual(self.request(PATH, 0x21, RNFR, BUFFER, ok, window=0), 'run_rename_from')
         for path in MARKERS + ROOTS:

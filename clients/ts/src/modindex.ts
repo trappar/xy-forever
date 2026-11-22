@@ -74,6 +74,7 @@ function checkPath(profile: string, generation: string, pkg: string, rel: string
       !rel.includes('\\') &&
       !parts.some((p) => p === '' || p === '.' || p === '..') &&
       !parts[0]!.includes(':') &&
+      // eslint-disable-next-line no-control-regex -- control characters are what it refuses
       !/[\x00-\x1f\x7f]/.test(rel),
     `${pkg}: unusable path ${JSON.stringify(rel.slice(0, 80))}`,
   );

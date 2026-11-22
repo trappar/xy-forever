@@ -92,9 +92,17 @@ ignore = [
   "C408",     # dict(a=1) calls: the repository's style
   "RUF005",   # [*a, b] over a + [b]
   "B904",     # raise ... from inside except: tracebacks only
+  "B023",     # a closure using its loop's variable: here each is called within its own iteration
   "B905",     # zip() without strict=
   "RUF012",   # ClassVar on mutable class attributes
+  "RUF059",   # unused names in tuple unpacking: they document the tuple's shape
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Held pull requests rewrite these files (#253); their findings are fixed there, then these lines go.
+"xy_forever/mtp_read.py" = ["B007"]
+"xy_forever/transport.py" = ["RUF046"]
+"tests/test_p224.py" = ["RUF021"]   # #249
 
 [tool.ruff.format]
 quote-style = "single"   # the repository's style

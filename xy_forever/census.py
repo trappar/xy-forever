@@ -583,7 +583,7 @@ def catalog(data):
     size = 16 + count * CATALOG_ITEM + 4
     if count > 16 or len(data) < size or struct.unpack_from('<I', data, size - 4)[0] != zlib.crc32(data[: size - 4]):
         return None
-    text = lambda b: b.split(b'\0')[0].decode('utf-8', 'replace')  # noqa: E731
+    text = lambda b: b.split(b'\0')[0].decode('utf-8', 'replace')
     items = [
         dict(
             id=text(data[at : at + 32]),

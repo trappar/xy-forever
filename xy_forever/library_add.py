@@ -155,7 +155,7 @@ def write(dev, args, files, fresh, put, out=print):
                 package_store.validate(body)
                 sources = {}
                 if args.content is not None:
-                    for sha, rel in read_files_sha256(body[LIST]):
+                    for _sha, rel in read_files_sha256(body[LIST]):
                         source = args.content / rel
                         if source.is_file():
                             sources[rel] = source.read_bytes()

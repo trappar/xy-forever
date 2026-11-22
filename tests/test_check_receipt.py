@@ -203,7 +203,7 @@ class CheckReceiptTests(unittest.TestCase):
         for rel in ('clients/ts/node_modules', 'web/node_modules'):
             (self.root / rel).mkdir(parents=True)
         self.git('switch', '-q', '-c', '8-topic')
-        names = lambda: [s['name'] for s in C.js_steps(C.argparse.Namespace(js=False), self.root)]  # noqa: E731
+        names = lambda: [s['name'] for s in C.js_steps(C.argparse.Namespace(js=False), self.root)]
         self.assertEqual(names(), [])
         self.commit('web/a.ts', 'web only')
         self.assertEqual(names(), ['pnpm run typecheck (web)'])

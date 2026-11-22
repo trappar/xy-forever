@@ -77,10 +77,17 @@ from xy_forever import (
     transport,
 )
 from xy_forever import usb_proto as P
-from xy_forever.host_install import DESCRIPTOR, IMAGE_CAPACITY, MIN_IMAGE, USB_MODES, load_build, load_stock
+from xy_forever.host_install import (  # noqa: F401 (re-exported: scripts and tests use host.load_build, ...)
+    DESCRIPTOR,
+    IMAGE_CAPACITY,
+    MIN_IMAGE,
+    USB_MODES,
+    load_build,
+    load_stock,
+)
 from xy_forever.host_screen import SCREEN_BYTES, SCREEN_H, SCREEN_STRIDE, SCREEN_W, screen_png  # noqa: F401
 from xy_forever.host_write import AREA_TEXT, in_write_area
-from xy_forever.ldr import MAX_IMAGE, inspect_ldr
+from xy_forever.ldr import MAX_IMAGE, inspect_ldr  # noqa: F401
 from xy_forever.library_add import ID_RE
 from xy_forever.transport import SerialPort, TcpPort, device_ports, sim_address
 
@@ -179,7 +186,7 @@ class Device:
                     continue
                 if k == kind | P.REPLY and seq == self.seq:
                     if len(body) < 4:
-                        raise IOError('short reply')
+                        raise OSError('short reply')
                     return struct.unpack_from('<I', body)[0], body[4:]
         raise TimeoutError('no reply to 0x%02x within %.1f s' % (kind, timeout))
 
@@ -255,11 +262,11 @@ class Device:
         if code:
             return code, [], 0
         if len(body) < 8:
-            raise IOError('file.list: short reply for %s' % path)
+            raise OSError('file.list: short reply for %s' % path)
         count, more = struct.unpack_from('<II', body)
         entries = parse_entries(body[8:])
         if len(entries) != count:
-            raise IOError('file.list: %d entries announced, %d decoded' % (count, len(entries)))
+            raise OSError('file.list: %d entries announced, %d decoded' % (count, len(entries)))
         return code, entries, more
 
     def list_dir(self, path):
@@ -318,11 +325,11 @@ def parse_entries(data):
     while at + 6 <= len(data):
         kind, size, n = struct.unpack_from('<BIB', data, at)
         if at + 6 + n > len(data):
-            raise IOError('file.list: an entry runs past the reply')
+            raise OSError('file.list: an entry runs past the reply')
         out.append((kind, size, bytes(data[at + 6 : at + 6 + n])))
         at += 6 + n
     if at != len(data):
-        raise IOError('file.list: %d bytes after the last entry' % (len(data) - at))
+        raise OSError('file.list: %d bytes after the last entry' % (len(data) - at))
     return out
 
 
@@ -431,7 +438,7 @@ def connect(timeout, hello_every=0.5, hello_window=8.0):
                                 text = body[4:].decode('ascii', 'replace')
                                 dev.hello_info = P.Hello(text)
                                 return dev, port, text
-        except (OSError, TimeoutError, IOError) as error:
+        except (OSError, TimeoutError) as error:
             log('%s: %s' % (port, error))
         log('no HELLO reply on %s: %d sent, %d bytes received' % (port, sent, received))
         try:

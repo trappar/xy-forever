@@ -8,7 +8,6 @@ Function starts: LINK instructions, CALL targets, and the first line after an ad
 import bisect
 import re
 from collections import deque
-from pathlib import Path
 
 from xy_forever.paths import LISTING_121
 
@@ -64,7 +63,7 @@ bad = {
     0x88A26A80: 'companion',
     0x88A27278: 'companion',
 }
-prev = {r: None for r in roots}
+prev = dict.fromkeys(roots)
 q = deque(roots)
 while q:
     a = q.popleft()

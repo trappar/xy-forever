@@ -1,6 +1,7 @@
 """Standalone bounded ELF32 and BF70x loader inspection for build verification."""
 
 import hashlib
+import itertools
 import struct
 from dataclasses import dataclass
 
@@ -82,7 +83,7 @@ class Firmware:
         require(not any(r.flags & 0x400 for r in writes), 'Callback/compressed streams cannot be flattened')
         boundaries = sorted({edge for r in writes for edge in (r.address, r.address + r.length)})
         self.segments = []
-        for lo, hi in zip(boundaries, boundaries[1:]):
+        for lo, hi in itertools.pairwise(boundaries):
             record = next((r for r in reversed(writes) if r.address <= lo and hi <= r.address + r.length), None)
             if record is None:
                 continue
@@ -181,7 +182,7 @@ def elf32(data, relocations=False):
         name = string(names, h['sh_name'])
         kind = number(h['sh_type'], ENUM_SH_TYPE_BASE)
         require(name not in sections, 'Duplicate ELF section')
-        require(not (kind in (4, 9) and h['sh_size']) or relocations and kind == 4, 'Unresolved ELF relocations')
+        require(not (kind in (4, 9) and h['sh_size']) or (relocations and kind == 4), 'Unresolved ELF relocations')
         body = contents(h)
         sections[name] = dict(type=kind, flags=h['sh_flags'], address=h['sh_addr'], size=h['sh_size'], data=body)
         if kind != 2:

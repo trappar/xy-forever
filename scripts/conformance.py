@@ -33,7 +33,7 @@ import re
 import socket
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import device_pass  # (NEED, session folders, keepalive)
@@ -185,7 +185,7 @@ def main(argv=None, sessions=None):
         print(device_pass.SIM_NEED if opts.sim else device_pass.NEED)
         return EXIT_NEED
     folder = device_pass.new_folder(Path(sessions or paths.SESSIONS), 'sim-conformance' if opts.sim else 'conformance')
-    started, rows = datetime.now(timezone.utc), []
+    started, rows = datetime.now(UTC), []
     for n, case in enumerate(cases, 1):
         print('[%s] %s' % (time.strftime('%H:%M:%S'), case['name']), file=sys.stderr, flush=True)
         start = time.monotonic()
@@ -216,7 +216,7 @@ def main(argv=None, sessions=None):
         target=opts.sim or 'usb',
         hello=hello,
         started_utc=started.isoformat(),
-        finished_utc=datetime.now(timezone.utc).isoformat(),
+        finished_utc=datetime.now(UTC).isoformat(),
         keepalives_stopped=stopped,
         cases=rows,
         exit_code=code,

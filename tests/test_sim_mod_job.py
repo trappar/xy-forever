@@ -374,7 +374,7 @@ class SpecNames(unittest.TestCase):
         spec = {c['name']: c for c in json.loads((ROOT / 'protocol/v1.json').read_text())['commands']}
         values = lambda command, kind, field: [
             v
-            for _, v in sorted(  # noqa: E731
+            for _, v in sorted(
                 (int(k), v)
                 for k, v in next(f for f in spec[command][kind]['fields'] if f['name'] == field)['values'].items()
             )

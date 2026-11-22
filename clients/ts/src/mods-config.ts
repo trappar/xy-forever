@@ -38,6 +38,6 @@ export async function readModsConfig(client: Client, options: CallOptions = {}):
       throw new Error('unsupported legacy configuration format');
     return text;
   } catch (error) {
-    throw new Error(`${entry}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(`${entry}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
 }

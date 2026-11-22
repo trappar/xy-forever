@@ -119,7 +119,7 @@ import sys
 import time
 import traceback
 import zlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from PIL import Image
@@ -582,7 +582,7 @@ class Wire:
             code, body = (self.link.raw if raw else self.link.call)(kind, payload, timeout)
         except host.Unsupported as error:
             raise StepFail('xyf_host refused %s: %s' % (name, error))
-        except (OSError, IOError) as error:  # TimeoutError: no reply within timeout
+        except OSError as error:  # TimeoutError: no reply within timeout
             self.log.append(
                 '> %s %d B: %s after %.1f ms\n' % (name, len(payload), error, (time.monotonic() - start) * 1000)
             )
@@ -1644,7 +1644,7 @@ class Pass:
         expect = 'mods-b' if 'mods-a' in entries else 'mods-a'
         try:
             want = mods_reference(packages, [MODS_MACHINE], MODS_NAME)
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:
             raise StepFail('host reference: %s' % error)
         as_found = self.saved_state('apply-before')  # the menu compares these with saved configuration
         start = time.monotonic()
@@ -2440,7 +2440,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=None):
     run = Pass(device or HostDevice(), opts, keepalive, sleep)
     stopped = [] if opts.sim else keepalive.stop_running()  # the simulator shares no port with them
 
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     rows, index = [], 0
     index += 1
     check = run.run_step(index, 'check', 'check')
@@ -2495,7 +2495,7 @@ def main(argv=None, device=None, keepalive=None, sessions=None, sleep=None):
         folder=str(run.folder),
         argv=list(argv or sys.argv[1:]),
         started_utc=started.isoformat(),
-        finished_utc=datetime.now(timezone.utc).isoformat(),
+        finished_utc=datetime.now(UTC).isoformat(),
         stages={stage: stage in chosen for stage, _ in STAGES},
         install_sha256=opts.build_sha,
         keepalives_stopped=stopped,

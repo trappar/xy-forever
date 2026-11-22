@@ -640,7 +640,7 @@ class Synthetic(unittest.TestCase):
         return change
 
     def test_refuses_capacity(self):
-        r = self.refusal(None, ['zeta'], ('capacity', '2032'))
+        self.refusal(None, ['zeta'], ('capacity', '2032'))
         self.assertEqual(
             L.same_refusal(
                 'capacity', '2032', 'These machines need more than the 2032 KiB available: zeta 2048.0 KiB, sdk 0.1 KiB'
@@ -720,7 +720,7 @@ class Synthetic(unittest.TestCase):
         def link(change, path='identities.txt'):
             return self.link(['alpha'], gen=self.variant(edit(path, change)))
 
-        sub = lambda a, b: lambda t: t.replace(a, b)  # noqa: E731
+        sub = lambda a, b: lambda t: t.replace(a, b)
         self.assertEqual(
             (self.gen / 'base/identities.txt').read_text().splitlines()[1:3], ['engines 64', 'engine_none 10']
         )

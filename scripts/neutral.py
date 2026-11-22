@@ -80,7 +80,7 @@ def build_all(source, base, env, cached=False, known=None):
     results = {}
     for mode in MODES:
         out = base / mode
-        results[mode] = (known or {}).get(mode) or cached and result_of(out) or None
+        results[mode] = (known or {}).get(mode) or (cached and result_of(out)) or None
         if results[mode] is None:
             digest, status = build(source, out, env)
             out.mkdir(parents=True, exist_ok=True)  # a build that refused its mode made no folder

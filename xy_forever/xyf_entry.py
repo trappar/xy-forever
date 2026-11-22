@@ -2,7 +2,6 @@
 on the host: firmware/<id>/{os.ldr, manifest.json}. Offline only."""
 
 import hashlib
-import json
 import re
 import zlib
 from pathlib import Path
@@ -334,11 +333,9 @@ def files_sha256_text(folder, exclude=('files.sha256',)):
 
     folder = Path(folder)
     paths = sorted(
-        (
-            p.relative_to(folder).as_posix().encode()
-            for p in folder.rglob('*')
-            if p.is_file() and p.relative_to(folder).as_posix() not in exclude
-        )
+        p.relative_to(folder).as_posix().encode()
+        for p in folder.rglob('*')
+        if p.is_file() and p.relative_to(folder).as_posix() not in exclude
     )
     text = b''.join(
         b'%s  %s\n' % (hashlib.sha256((folder / p.decode()).read_bytes()).hexdigest().encode(), p) for p in paths

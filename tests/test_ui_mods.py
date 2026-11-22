@@ -5,6 +5,7 @@ over the limit, building, done, failed) drawn inside the visible rows. Synthetic
 published 0.0.6 set when present, whose previews are kept in
 <private>/xy-forever/previews/mods-page/. No device, no simulator."""
 
+import itertools
 import json
 import re
 import sys
@@ -245,7 +246,7 @@ class Progress(Base, unittest.TestCase):
         ):
             values = self.run_trace(trace)
             last_change = 0
-            for (_, a), (ms, b) in zip(values, values[1:]):
+            for (_, a), (ms, b) in itertools.pairwise(values):
                 self.assertGreaterEqual(b, a, name)
                 if b != a:
                     last_change = ms
@@ -888,7 +889,7 @@ class PublishedPage(Base, unittest.TestCase):
         self.assertEqual((lib.mods_refusal(), lib.mods_save_refusal()), (b'', b''))  # fits the 4 MiB layout
         payload = lib.mods_payload(b'opxy-121', 1, 2048)
         self.assertEqual(int.from_bytes(payload[-4:], 'little'), 3)  # unverified | expanded
-        on = [f for f in machines[:32]]
+        on = list(machines[:32])
         services = {
             s.split()[0]: sum(
                 int(x.split('=')[1]) for x in s.split()[1:] if x.split('=')[0] in ('code', 'data', 'state')

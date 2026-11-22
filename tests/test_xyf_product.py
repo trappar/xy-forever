@@ -59,7 +59,7 @@ class ProductLayoutTest(unittest.TestCase):
             try:
                 for k, v in patch.items():
                     setattr(builder, k, v)
-                with self.assertRaises(Exception, msg=repr(patch)):
+                with self.assertRaises(ValueError, msg=repr(patch)):
                     builder.check_memory_map()
             finally:
                 for k, v in saved.items():
