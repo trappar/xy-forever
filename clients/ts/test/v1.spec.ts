@@ -1,8 +1,8 @@
 // Checks the generated protocol module (src/v1.ts) against the spec's own test data: every golden
 // frame through the typed codecs, the frame encoder and the parser, and every stream vector through
-// the parser. Run: node test/v1.test.ts (Node 22.18+/23.6+ strips the types). No device, no I/O.
-// `pnpm test` runs it before Vitest.
+// the parser. No device, no I/O.
 import assert from 'node:assert/strict';
+import { test } from 'vitest';
 import * as v1 from '../src/v1.ts';
 
 type Codec = {
@@ -12,16 +12,6 @@ type Codec = {
   decodeReply(payload: Uint8Array): { ok: boolean; status: number; fields: unknown };
 };
 const codecs = { ...v1.codecs, ...v1.dev } as unknown as Record<string, Codec>;
-let checks = 0;
-function check(what: string, test: () => void): void {
-  try {
-    test();
-    checks++;
-  } catch (error) {
-    console.error(`FAIL ${what}`);
-    throw error;
-  }
-}
 
 function layoutOf(g: v1.GoldenFrame): v1.Layout {
   if (g.direction === 'event') return v1.EVENTS[g.message as v1.EventName].payload;
@@ -40,16 +30,15 @@ function valuesOf(g: v1.GoldenFrame): Record<string, v1.Value> {
   return values;
 }
 
-check('crc32', () => assert.equal(v1.crc32(new TextEncoder().encode('123456789')), 0xcbf43926));
-check('USB ids: the product composite (temporary pair) first, then the stock serial identity', () =>
+test('crc32', () => assert.equal(v1.crc32(new TextEncoder().encode('123456789')), 0xcbf43926));
+test('USB ids: the product composite (temporary pair) first, then the stock serial identity', () =>
   assert.deepEqual(v1.USB_FILTERS, [
     { usbVendorId: 0x1209, usbProductId: 0x0001 },
     { usbVendorId: 0x2367, usbProductId: 0x0021 },
-  ]),
-);
+  ]));
 
 for (const g of v1.GOLDEN) {
-  check(`golden: ${g.name}`, () => {
+  test(`golden: ${g.name}`, () => {
     const values = valuesOf(g);
     let type: number;
     let payload: Uint8Array;
@@ -97,7 +86,7 @@ for (const g of v1.GOLDEN) {
 }
 
 for (const vector of v1.STREAMS) {
-  check(`stream: ${vector.name}`, () => {
+  test(`stream: ${vector.name}`, () => {
     const expect = vector.frames.map((f) => ({ type: f.type, seq: f.seq, payload: v1.fromHex(f.payload) }));
     const parser = new v1.FrameParser();
     assert.deepEqual(
@@ -114,7 +103,7 @@ for (const vector of v1.STREAMS) {
   });
 }
 
-check('hello', () => {
+test('hello', () => {
   const [product, preV1] = v1.GOLDEN.filter((g) => g.message === 'hello' && g.direction === 'reply');
   const hello = v1.parseHello(product!.fields['info'] as string);
   assert.equal(hello.proto, v1.VERSION);
@@ -128,7 +117,7 @@ check('hello', () => {
   assert.equal(old.answers(0x06), true);
 });
 
-check('optional fields are all or none', () => {
+test('optional fields are all or none', () => {
   const path = '/yaffs2/firmware.version';
   assert.deepEqual(v1.decodeFileReadRequest(v1.encodeFileReadRequest({ path })), { path });
   const partial = { path, offset: 0 } as unknown as v1.FileReadRequest;
@@ -137,7 +126,7 @@ check('optional fields are all or none', () => {
   assert.throws(() => v1.decodeFileReadRequest(offsetOnly), RangeError);
 });
 
-check('text encodings', () => {
+test('text encodings', () => {
   const path = '/yaffs2/xy-forever/café.bin';
   const payload = v1.encodeFileReadRequest({ path, offset: 0, length: 16 });
   assert.equal(v1.toHex(payload.subarray(19, 24)), '636166c3a9');
@@ -145,10 +134,8 @@ check('text encodings', () => {
   assert.throws(() => v1.encodeLibrarySetDefaultRequest({ id: 'café' }), RangeError);
 });
 
-check('common statuses come alone', () => {
+test('common statuses come alone', () => {
   const reply = v1.decodeFileWriteStagedReply(Uint8Array.of(v1.STATUS.state, 0, 0, 0));
   assert.deepEqual(reply, { ok: false, status: v1.STATUS.state, fields: null });
   assert.equal(v1.statusName(99), 'status_99');
 });
-
-console.log(`ok ${checks} checks`);

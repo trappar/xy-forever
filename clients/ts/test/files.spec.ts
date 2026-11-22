@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, inject, test, vi } from 'vitest';
 import { Client, XyfError, crc32, isXyfError, sha256 } from '../src/node.ts';
-import { tcpOpener } from '../src/node.ts';
+import { simOpener } from './simulators.ts';
 
 const sims = inject('sims');
 const sim = sims.files;
@@ -31,7 +31,7 @@ async function failure(work: Promise<unknown>): Promise<Error> {
 describe.skipIf(!sim)(`file methods against the simulator${sim ? '' : ` (skipped: ${sims.why})`}`, () => {
   let client: Client;
   beforeAll(async () => {
-    client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
+    client = await Client.connect(simOpener(sim!), { timeoutMs: 5000 });
   });
   afterAll(async () => {
     await client?.close();

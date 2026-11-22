@@ -31,14 +31,15 @@ export async function busyCause(client: Client, options: CallOptions = {}): Prom
  * cause in `fields.busy`.
  */
 export async function retryBusy<T>(client: Client, send: () => Promise<T>, options: CallOptions = {}): Promise<T> {
-  const until = Date.now() + BUSY_WAIT.totalMs;
+  // Waits are counted in pauses (Client.pause: device time on the simulator), not in wall time.
+  let waited = 0;
   for (let pause: number = BUSY_WAIT.firstMs; ; pause = Math.min(pause * 2, BUSY_WAIT.longestMs)) {
     try {
       return await send();
     } catch (error) {
       if (!isXyfError(error, 'busy') || error.status === null) throw error;
       const cause = await busyCause(client, options);
-      if (cause !== 'closing' || Date.now() + pause > until) {
+      if (cause !== 'closing' || waited + pause > BUSY_WAIT.totalMs) {
         throw new XyfError('busy', error.message, {
           command: error.command,
           status: error.status,
@@ -46,8 +47,8 @@ export async function retryBusy<T>(client: Client, send: () => Promise<T>, optio
           cause: error,
         });
       }
-      await new Promise((resolve) => setTimeout(resolve, pause));
-      if (options.signal?.aborted) throw new XyfError('aborted', 'cancelled', { cause: options.signal.reason });
+      await client.pause(pause, options.signal);
+      waited += pause;
     }
   }
 }

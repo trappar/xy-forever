@@ -296,6 +296,15 @@ export class Client {
     return !this.current.closed;
   }
 
+  /** A pause between polls: ms of the device's time (the transport's pause, the simulator's clock), else of wall
+   * time. Rejects with XyfError `aborted` when signal fires first. */
+  async pause(ms: number, signal?: AbortSignal): Promise<void> {
+    const transport = this.current.transport;
+    if (!transport.pause) return sleep(ms, signal);
+    if (signal?.aborted) throw new XyfError('aborted', 'cancelled', { cause: signal.reason });
+    await transport.pause(ms);
+  }
+
   /** log events (install progress lines); returns the unsubscribe function. */
   onLog(listener: (event: v1.LogEvent) => void): () => void {
     this.logListeners.add(listener);

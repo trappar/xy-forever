@@ -1,4 +1,5 @@
-// A fake navigator.serial for the browser tests: XY Forever's port is the device simulator behind
+// A fake navigator.serial for the Web Serial tests (in Node: webserial, chooser and buffer.spec.ts, through
+// gesture.ts; in Chrome: web/e2e/install-sim.e2e.ts): XY Forever's port is the device simulator behind
 // the development relay (test/relay.ts); next to it, an unrelated USB serial adapter this origin
 // was already granted. It follows Chrome's Web Serial where src/webserial.ts depends on it:
 // - requestPort() needs a user gesture (navigator.userActivation), checks the filters as Chrome
@@ -23,7 +24,7 @@
 //   The chooser takes options.pick ('stale': as if the owner clicked that entry), and records each call's filters.
 // Not modelled: setSignals/getSignals (DTR), the 'connect' event's timing, read errors that leave
 // the port usable (break, framing, parity, overrun), exclusive opening against other programs.
-import { USB_FILTERS } from '../../src/index.ts';
+import { USB_FILTERS } from '../src/index.ts';
 
 export interface PortInfo {
   usbVendorId?: number;

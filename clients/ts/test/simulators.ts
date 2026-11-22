@@ -6,11 +6,15 @@
 //   ws           XYF_TS_SIM_PORT + 6   the WebSocket transport through the relay (websocket.spec.ts)
 //   files        XYF_TS_SIM_PORT + 8   the file methods (files.spec.ts)
 //   mods         XYF_TS_SIM_PORT + 20  mod packages (mods.spec.ts)
-// Control ports are N + 1. XYF_TS_SIM_PORT: a random base by default (randomBase: parallel runs and
+//   serial       XYF_TS_SIM_PORT + 10  Web Serial through the fake navigator.serial and a relay (webserial.spec.ts)
+//   chooser      XYF_TS_SIM_PORT + 12  choosing the port (chooser.spec.ts)
+//   buffer       XYF_TS_SIM_PORT + 14  the port's receive buffer (buffer.spec.ts)
+// Control ports are N + 1; pre-v1 and the Web Serial ones have a relay too (test/relay.ts, a free port). They start
+// at the same time. XYF_TS_SIM_PORT: a random base by default (randomBase: parallel runs and
 // checkouts do not collide); state under <private sessions>/ts-client-BASE (XYF_TS_SIM_STATE), removed
 // afterwards unless XYF_KEEP_SIM=1. Without python3, the private stock
 // images or clang++, the simulator tests are skipped with the reason; the codec tests still run.
-// The browser suite (test/browser/setup.ts) uses the same functions with its own ports and folder.
+// web/e2e uses the same functions with its own ports and folders.
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
@@ -18,7 +22,10 @@ import * as net from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TestProject } from 'vitest/node';
-import { control } from './relay.ts';
+import { tcpOpener } from '../src/tcp.ts';
+import type { Opener } from '../src/transport.ts';
+import { control, startRelay } from './relay.ts';
+import type { Relay } from './relay.ts';
 
 export { control };
 
@@ -30,13 +37,20 @@ export interface SimInfo {
   /** The simulator's /yaffs2 folder on the Mac. */
   root: string;
 }
+/** A simulator with a relay in front: the WebSocket URL fake-serial.ts and the WebSocket transport reach it by. */
+export interface RelayedSim extends SimInfo {
+  relay: string;
+}
 export interface Sims {
   why: string | null;
-  preV1: SimInfo | null;
+  preV1: RelayedSim | null;
   e2e: SimInfo | null;
   ws: SimInfo | null;
   files: SimInfo | null;
   mods: SimInfo | null;
+  serial: RelayedSim | null;
+  chooser: RelayedSim | null;
+  buffer: RelayedSim | null;
   fixtures: Record<string, string>;
 }
 declare module 'vitest' {
@@ -152,8 +166,11 @@ async function stop(info: SimInfo, child: ChildProcess): Promise<void> {
   await control(info.control, 'quit', 2000).catch(() => undefined);
   const exited = new Promise<boolean>((ok) => {
     if (child.exitCode !== null) ok(true);
-    child.once('exit', () => ok(true));
-    setTimeout(() => ok(false), 5000);
+    const timer = setTimeout(() => ok(false), 5000);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      ok(true);
+    });
   });
   if (!(await exited)) stopChild(child);
 }
@@ -242,11 +259,24 @@ export async function until<T>(
       throw new Error(
         `${what} not reached within ${limitMs} ms of device time: ${JSON.stringify(await control(controlPort, 'status'))}`,
       );
-    if ((await control(controlPort, `advance ${step}`, 60_000))['ok'] !== true)
-      throw new Error(`advance ${step} refused`);
+    await advance(controlPort, step);
     spent += step;
     step = Math.min(step * 2, 1000);
   }
+}
+
+/** The simulator's clock moved on ms (control advance: answered once it is there), in no host time. */
+export async function advance(controlPort: number, ms: number): Promise<void> {
+  const step = Math.max(1, Math.round(ms));
+  if ((await control(controlPort, `advance ${step}`, 60_000))['ok'] !== true)
+    throw new Error(`advance ${step} refused`);
+}
+
+/** tcpOpener to a simulator whose transport pauses on the simulator's clock (Transport.pause): a client's polls
+ * and waits take device time, never host time, as xy_forever/transport.py's sim_pause. */
+export function simOpener(info: SimInfo, options: { timeoutMs?: number } = {}): Opener {
+  const open = tcpOpener(info.address, options);
+  return async (signal) => Object.assign(await open(signal), { pause: (ms: number) => advance(info.control, ms) });
 }
 
 export interface Found {
@@ -281,26 +311,25 @@ export function findSimulator(): Found {
   return { why: found.why, sessions: found.sessions, fixtures };
 }
 
-/** Starts the simulators of plan (name, port offset from base, extra arguments) in order; all or none. */
+/** Starts the simulators of plan (name, port offset from base, extra arguments) at the same time; all or none. */
 export async function startAll(
   state: string,
   base: number,
   plan: readonly (readonly [string, number, readonly string[]])[],
 ): Promise<{ infos: Record<string, SimInfo>; stopAll(): Promise<void> }> {
-  const running: [SimInfo, ChildProcess][] = [];
+  const outcomes = await Promise.allSettled(
+    plan.map(([name, offset, extra]) => start(name, base + offset, state, [...extra])),
+  );
+  const running = outcomes.flatMap((o) => (o.status === 'fulfilled' ? [o.value] : []));
   const stopAll = (): Promise<void> =>
     Promise.all(running.map(([info, child]) => stop(info, child))).then(() => undefined);
-  const infos: Record<string, SimInfo> = {};
-  try {
-    for (const [name, offset, extra] of plan) {
-      const started = await start(name, base + offset, state, [...extra]);
-      running.push(started);
-      infos[name] = started[0];
-    }
-  } catch (error) {
+  const failed = outcomes.find((o) => o.status === 'rejected');
+  if (failed) {
     await stopAll();
-    throw error;
+    throw failed.reason;
   }
+  const infos: Record<string, SimInfo> = {};
+  plan.forEach(([name], i) => (infos[name] = running[i]![0]));
   return { infos, stopAll };
 }
 
@@ -313,11 +342,15 @@ export default async function setup(project: TestProject): Promise<() => Promise
     ws: null,
     files: null,
     mods: null,
+    serial: null,
+    chooser: null,
+    buffer: null,
     fixtures: found.fixtures,
   };
   const base = parseInt(process.env['XYF_TS_SIM_PORT'] ?? String(randomBase()), 10);
   const state = found.sessions ? (process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, `ts-client-${base}`)) : null;
   let stopAll = async (): Promise<void> => undefined;
+  const relays: Relay[] = [];
   if (!sims.why && state) {
     try {
       const started = await startAll(state, base, [
@@ -325,10 +358,19 @@ export default async function setup(project: TestProject): Promise<() => Promise
         ['e2e', 4, []],
         ['ws', 6, []],
         ['files', 8, []],
+        ['serial', 10, []],
+        ['chooser', 12, []],
+        ['buffer', 14, []],
         ['mods', 20, []],
       ]);
       Object.assign(sims, started.infos);
       stopAll = started.stopAll;
+      for (const name of ['preV1', 'serial', 'chooser', 'buffer'] as const) {
+        const sim = started.infos[name]!;
+        const relay = await startRelay({ target: sim.port, control: sim.control });
+        relays.push(relay);
+        sims[name] = { ...sim, relay: relay.url };
+      }
     } catch (error) {
       sims.why = (error as Error).message;
     }
@@ -336,6 +378,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
   if (sims.why) console.warn(`\nsimulator tests skipped: ${sims.why}\n`);
   project.provide('sims', sims);
   return async () => {
+    await Promise.all(relays.map((r) => r.close()));
     await stopAll();
     if (state && process.env['XYF_KEEP_SIM'] !== '1') rmSync(state, { recursive: true, force: true });
   };

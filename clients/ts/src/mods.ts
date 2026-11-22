@@ -586,17 +586,6 @@ export interface ApplyOptions {
   stallMs?: number | undefined;
 }
 
-const pause = (ms: number, signal: AbortSignal | undefined): Promise<void> =>
-  new Promise((ok) => {
-    const done = (): void => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', done);
-      ok();
-    };
-    const timer = setTimeout(done, ms);
-    signal?.addEventListener('abort', done, { once: true });
-  });
-
 /** A finished build (applyMods): the library entry it became. */
 export interface BuiltEntry {
   /** The library entry id (mods-a or mods-b; the final job.status detail). */
@@ -668,8 +657,9 @@ async function follow(
 ): Promise<JobStatus> {
   const signal = options.signal;
   const stallMs = options.stallMs ?? 90_000;
+  const pollMs = options.pollMs ?? 500;
   let steps = -1,
-    moved = Date.now(),
+    still = 0, // paused since the step count last moved (Client.pause: device time on the simulator)
     cancelled = false;
   for (;;) {
     if (signal?.aborted && !cancelled && what === 'build') {
@@ -686,9 +676,9 @@ async function follow(
     if (status.final) throw new JobError(status, what);
     if (status.steps !== steps) {
       steps = status.steps;
-      moved = Date.now();
+      still = 0;
     }
-    if (Date.now() - moved > stallMs) {
+    if (still > stallMs) {
       throw new XyfError(
         'timeout',
         `job ${job}: no progress for ${Math.round(stallMs / 1000)} s (${steps} steps); stopped waiting ` +
@@ -696,7 +686,13 @@ async function follow(
         { command: 'job.status' },
       );
     }
-    if (!cancelled) await pause(options.pollMs ?? 500, what === 'build' ? signal : undefined);
+    // A cancel ends the pause at once: the next look sends job.cancel.
+    if (!cancelled) {
+      await client.pause(pollMs, what === 'build' ? signal : undefined).catch((error: unknown) => {
+        if (!isXyfError(error, 'aborted')) throw error;
+      });
+      still += pollMs;
+    }
   }
 }
 

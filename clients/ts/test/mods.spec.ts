@@ -49,11 +49,10 @@ import {
   localSet,
   pushPackages,
   removePackage,
-  tcpOpener,
 } from '../src/node.ts';
 import { STORE_FILE, STORE_TEXT, storedName } from '../src/modstore.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
-import { REPO, control, makeModBase, makeModSet } from './simulators.ts';
+import { REPO, control, makeModBase, makeModSet, simOpener } from './simulators.ts';
 
 const sims = inject('sims');
 const sim = sims.mods;
@@ -74,7 +73,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
   const source = () => folderSource(gen);
   const clients: Client[] = [];
   const connect = async (): Promise<Client> => {
-    const client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
+    const client = await Client.connect(simOpener(sim!), { timeoutMs: 5000 });
     clients.push(client);
     return client;
   };
@@ -300,7 +299,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
       readFileSync(join(gen, 'base', 'manifest.json')),
       'manifest.json',
     );
-    client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
+    client = await Client.connect(simOpener(sim!), { timeoutMs: 5000 });
     await pushPackages(client, folderSource(gen));
     makeModBase(sim!.root, 'modbase');
     request = {

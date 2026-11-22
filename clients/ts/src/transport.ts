@@ -15,6 +15,9 @@ export interface Transport {
   write(data: Uint8Array): Promise<void>;
   /** Ends the link (sink.closed follows). Safe to call more than once. */
   close(): Promise<void>;
+  /** A host's pause of ms, where the link has a device clock of its own (the simulator: its clock moves on that long,
+   * in no host time). Without it, a pause is ms of wall time (Client.pause). */
+  pause?(ms: number): Promise<void>;
 }
 
 /** Opens a new transport to the device: called on connect and again after a restart. */

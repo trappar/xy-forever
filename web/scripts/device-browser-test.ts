@@ -1,4 +1,4 @@
-// The web app (../../web) driven in the system Chrome by Playwright, with no human step: Connect, the Device
+// The web app driven in the system Chrome by Playwright, with no human step: Connect, the Device
 // page, list /yaffs2/xy-forever, upload a scratch file, download and compare it, delete it, list mod packages,
 // disconnect. PASS/FAIL per step, result.json and a screenshot per step in --out; exit status 1 on any
 // failure. The scratch file is deleted even after a failure (a second connection if the first is gone).
@@ -13,7 +13,7 @@
 //
 // No restart check (the --reboot of #207 went with the demo page in #242): the app has no restart action of its own, only
 // an update restarts the OP-XY. Against the simulator, reconnection after a restart is covered already, so a check
-// here would repeat it: test/browser/serial.spec.ts and chooser.spec.ts (the port lost, then found again without the
+// here would repeat it: clients/ts/test/webserial.spec.ts and chooser.spec.ts (the port lost, then found again without the
 // chooser) and web/e2e/app.e2e.ts (an update restarts into the menu and reconnects). On the OP-XY, an update through
 // the app checks it.
 //
@@ -30,14 +30,14 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
-import type { Browser, BrowserContext, Page } from 'playwright';
+import { chromium } from '@playwright/test';
+import type { Browser, BrowserContext, Page } from '@playwright/test';
+import { createServer as createViteServer } from 'vite';
+import type { ViteDevServer } from 'vite';
 
-const here = fileURLToPath(new URL('..', import.meta.url));
-const web = resolve(here, '../../web');
+const web = fileURLToPath(new URL('..', import.meta.url));
 const args = process.argv.slice(2);
 const opt = (name: string): string | undefined => {
   const i = args.indexOf(name);
@@ -54,7 +54,7 @@ if ((!out && !grant) || (!sim && !serial) || (sim && serial) || (grant && args.i
   process.exit(2);
 }
 if (out) mkdirSync(out, { recursive: true });
-const privateRoot = resolve(process.env['XYF_PRIVATE'] ?? join(here, '../../../private')); // as xy_forever/paths.py
+const privateRoot = resolve(process.env['XYF_PRIVATE'] ?? join(web, '../../private')); // as xy_forever/paths.py
 const profile = resolve(opt('--profile') ?? join(privateRoot, 'xy-forever/chrome-device-test'));
 const DIR = '/yaffs2/xy-forever';
 const scratchName = `xyf-browser-test-${Date.now()}.txt`;
@@ -99,42 +99,17 @@ async function step(name: string, work: () => Promise<string>): Promise<boolean>
   return ok;
 }
 
-function freePort(): Promise<number> {
-  return new Promise((done, fail) => {
-    const srv = createServer();
-    srv.once('error', fail);
-    srv.listen(0, '127.0.0.1', () => {
-      const p = (srv.address() as { port: number }).port;
-      srv.close(() => done(p));
-    });
+/** The web app's dev server (vite.config.ts) on 127.0.0.1:port (0: a free one), once it listens; its URL. */
+async function startVite(port: number): Promise<[ViteDevServer, string]> {
+  const server = await createViteServer({
+    configFile: join(web, 'vite.config.ts'),
+    root: web,
+    server: { port, strictPort: true, host: '127.0.0.1' },
+    logLevel: 'error',
   });
-}
-
-/** The web app's dev server (pnpm run dev in web/) on 127.0.0.1:port; resolves once it answers. */
-async function startVite(port: number): Promise<ChildProcess> {
-  const vite = spawn(
-    process.execPath,
-    [join(web, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort'],
-    { cwd: web, stdio: ['ignore', 'pipe', 'pipe'] },
-  );
-  let log = '';
-  vite.stdout!.on('data', (d: Buffer) => {
-    log += d.toString();
-  });
-  vite.stderr!.on('data', (d: Buffer) => {
-    log += d.toString();
-  });
-  for (const until = Date.now() + 30_000; Date.now() < until;) {
-    if (vite.exitCode !== null) throw new Error(`the dev server stopped: ${log.trim()}`);
-    try {
-      if ((await fetch(`http://127.0.0.1:${port}/`)).ok) return vite;
-    } catch {
-      /* not yet */
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
-  vite.kill();
-  throw new Error(`the dev server did not answer in 30 s: ${log.trim()}`);
+  await server.listen();
+  const address = server.httpServer!.address();
+  return [server, `http://127.0.0.1:${typeof address === 'object' && address ? address.port : port}/`];
 }
 
 const nav = (name: string): Promise<void> =>
@@ -225,7 +200,7 @@ async function grantedHere(p: Page): Promise<{ mine: number; all: number }> {
     if (!s) throw new Error('this Chrome has no Web Serial');
     return (await s.getPorts()).map((x) => x.getInfo());
   });
-  const { USB_FILTERS } = await import('../src/v1.ts');
+  const { USB_FILTERS } = await import('xy-forever-client');
   const ours = (x: { usbVendorId?: number; usbProductId?: number }) =>
     USB_FILTERS.some((f) => x.usbVendorId === f.usbVendorId && x.usbProductId === f.usbProductId);
   return { mine: ports.filter(ours).length, all: ports.length };
@@ -250,7 +225,7 @@ async function reserveDevice(): Promise<ChildProcess> {
       ].join('\n'),
       'device-browser-test.ts',
     ],
-    { cwd: resolve(here, '../..'), stdio: ['pipe', 'pipe', 'inherit'] },
+    { cwd: resolve(web, '..'), stdio: ['pipe', 'pipe', 'inherit'] },
   );
   await new Promise<void>((ready, fail) => {
     holder.on('error', fail);
@@ -271,8 +246,7 @@ async function reserveDevice(): Promise<ChildProcess> {
  */
 async function grantMode(): Promise<number> {
   const port = opt('--vite-port') ? Number(opt('--vite-port')) : 5173;
-  const origin = `http://127.0.0.1:${port}/`;
-  const server = await startVite(port);
+  const [server, origin] = await startVite(port);
   let ctx: BrowserContext | null = null;
   try {
     ctx = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false });
@@ -309,7 +283,7 @@ async function grantMode(): Promise<number> {
     return 1;
   } finally {
     await ctx?.close().catch(() => undefined);
-    server.kill();
+    await server.close();
   }
 }
 
@@ -331,24 +305,26 @@ if (grant) {
   process.exit(code);
 }
 
-let vite: ChildProcess | null = null;
+let vite: ViteDevServer | null = null;
+let base = '';
 let context: BrowserContext | null = null;
 let browser: Browser | null = null;
 let uploaded = false,
   deleted = false;
 const started = new Date().toISOString();
 try {
-  const port = opt('--vite-port') ? Number(opt('--vite-port')) : serial ? 5173 : await freePort(); // a grant is per origin: serial keeps one
+  const port = opt('--vite-port') ? Number(opt('--vite-port')) : serial ? 5173 : 0; // a grant is per origin: serial keeps one
   await step('dev server', async () => {
-    vite = await startVite(port);
-    return `http://127.0.0.1:${port}/`;
+    const [server, url] = await startVite(port);
+    vite = server;
+    return (base = url);
   });
   if (vite) {
     const launch = { channel: 'chrome', headless: !args.includes('--headed'), acceptDownloads: true };
     if (serial) context = await chromium.launchPersistentContext(profile, launch);
     else context = await (browser = await chromium.launch(launch)).newContext({ acceptDownloads: true });
     page = context.pages()[0] ?? (await context.newPage());
-    await page.goto(`http://127.0.0.1:${port}/${sim ? `?sim=${encodeURIComponent(sim)}` : ''}`);
+    await page.goto(`${base}${sim ? `?sim=${encodeURIComponent(sim)}` : ''}`);
     let ready = true;
     if (serial) {
       ready = await step('serial port granted', async () => {
@@ -357,7 +333,7 @@ try {
           console.log(
             'NEED: connect the OP-XY in the XY Forever menu and grant this Chrome profile access with --grant.',
           );
-          throw new Error(`no granted XY Forever port in profile ${profile} for http://127.0.0.1:${port}`);
+          throw new Error(`no granted XY Forever port in profile ${profile} for ${base}`);
         }
         return `${mine} granted port(s), ${all} in all`;
       });
@@ -411,7 +387,7 @@ try {
   if (page && (await connected().catch(() => false))) await step('disconnect', disconnect);
   await context?.close().catch(() => undefined);
   await (browser as Browser | null)?.close().catch(() => undefined);
-  (vite as ChildProcess | null)?.kill();
+  await (vite as ViteDevServer | null)?.close();
   deviceLock?.stdin?.end();
   const pass = steps.length > 0 && steps.every((s) => s.ok);
   writeFileSync(

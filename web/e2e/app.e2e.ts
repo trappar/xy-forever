@@ -6,11 +6,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { chromium, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { Browser, Locator, Page } from '@playwright/test';
-import { createServer } from 'vite';
-import type { ViteDevServer } from 'vite';
 import { findSimulator, startAll } from 'xy-forever-client/test/simulators.ts';
 import { protocol as v1 } from 'xy-forever-client';
 
@@ -22,33 +19,20 @@ if (found.why) console.warn(`\nweb e2e skipped: ${found.why}\n`);
 const port = 21000 + 2 * Math.floor(Math.random() * 5000);
 const state = process.env['XYF_SIM_STATE'] ?? join(found.sessions ?? '', `web-e2e-${port}`);
 let stopSim: (() => Promise<void>) | undefined;
-let server: ViteDevServer | undefined;
-let browser: Browser | undefined;
-const NO_DEVICE = ['--disable-blink-features=Serial']; // no real Web Serial: tests may not open a real device
+let browser: Browser | undefined; // the project's Chrome (playwright.config.ts: no real Web Serial)
 
-test.beforeAll(async () => {
+test.beforeAll(async ({ browser: projectBrowser }) => {
+  browser = projectBrowser;
   if (!found.why) stopSim = (await startAll(state, port, [['web', 0, []]])).stopAll;
-  server = await createServer({
-    configFile: fileURLToPath(new URL('../vite.config.ts', import.meta.url)),
-    server: { port: 0, host: '127.0.0.1' },
-    logLevel: 'error',
-  });
-  await server.listen();
-  browser = await chromium.launch({ channel: 'chrome', headless: true, args: NO_DEVICE });
 });
 
 test.afterAll(async () => {
-  await browser?.close();
-  await server?.close();
   await stopSim?.();
   if (!found.why) rmSync(state, { recursive: true, force: true });
 });
 
-function appUrl(query = ''): string {
-  const address = server!.httpServer!.address();
-  const httpPort = typeof address === 'object' && address ? address.port : 0;
-  return `http://127.0.0.1:${httpPort}/${query}`;
-}
+/** The run's dev server (playwright.config.ts webServer). */
+const appUrl = (query = ''): string => `${process.env['XYF_E2E_URL']!}${query}`;
 
 test('connects to the simulator and shows the device and its files', async () => {
   test.skip(found.why !== null, 'skipped: see the warning above');
