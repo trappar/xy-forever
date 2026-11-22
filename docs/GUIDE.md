@@ -15,7 +15,7 @@ What it keeps intact:
 - **The real bootloader.** It stays at version 1.2.1 and is never written. Holding COM
   at power-on still opens the stock recovery menu.
 - **The 1.2.5 bootloader.** It is never installed.
-- **The companion chips** (keyboard and Bluetooth). They are never programmed.
+- **The companion chips** (keyboard and Bluetooth). XY Forever does not program them yet.
 - **The file `bootloader.dev`**, which keeps the stock dev menu working. Nothing in
   XY Forever can delete it.
 - **The stock updater inbox** in `/upgrade/`. XY Forever can read it for stock setup.

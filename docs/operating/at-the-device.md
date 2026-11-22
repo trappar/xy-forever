@@ -94,8 +94,5 @@ an OS reinstall, so crash logs can be fetched from it.
   cannot be clicked by automation: a Chrome profile holding a grant gets past it, made once by hand with
   `--grant` (`web/docs/testing.md`). Never ask the developer to click through a page; they are needed
   only for physical actions (power, keys, the OP-XY's own screen).
-- **Cleanups are logged.** Removing files from the device or the private folder writes
-  `../private/archive/cleanup-<date>-<topic>.json` first: what, where from, why, and how to
-  restore it.
 - **Keys** are read from `../private/keys/opxy-update-keys.json`. Never print or
   commit them.

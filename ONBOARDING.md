@@ -1,8 +1,7 @@
 # Onboarding
 
 From an empty workspace folder to working on the plan, for the developer's coding agent. Run every command
-yourself; ask the developer only for what needs their hands or their decision, one question at a time, with
-your recommendation. Stop at the first step that fails, fix what is yours to fix, say plainly what is missing,
+yourself; ask the developer only for what needs their hands or their decision. Stop at the first step that fails, fix what is yours to fix, say plainly what is missing,
 and resume there.
 
 Two parts: **setup without a device** (below; enough for host code, the web app, docs and tests) and the
@@ -61,5 +60,5 @@ Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor) are 
 
 Open your coding agent in the workspace folder (or `xy-forever/`) and say "Continue development". Ask it to
 read `AGENTS.md` first if the harness does not load it; `CLAUDE.md` imports it for Claude Code. It follows
-[ORCHESTRATION.md](docs/ORCHESTRATION.md): claim an issue, then one branch and PR per item. Device items wait
+[ORCHESTRATION.md](docs/ORCHESTRATION.md): one branch and PR per item. Device items wait
 until the [first device install](docs/operating/first-install.md) is done.

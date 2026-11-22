@@ -4,7 +4,7 @@ about: A question I have not decided yet
 labels: decision
 ---
 
-Undecided for now: <!-- the question, in one sentence -->
+<!-- The question, in one sentence. -->
 
 <!-- A short paragraph of context a newcomer needs. -->
 

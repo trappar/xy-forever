@@ -36,11 +36,11 @@ If step 2 fails, its one line says why. Fallback: the developer copies those fil
 Then `mise run setup` again: it runs `setup.py fixtures` (network: public open-xy and its kit; one verified
 product build). `mise run doctor` shows the stock and fixture rows ok.
 
-## 2. Approvals for this device
+## 2. Host access for this device
 
-Device work needs the developer's explicit yes. Ask for the two standing approvals of
-[SAFETY.md](../SAFETY.md#approvals) (host access, routine USB installs) in one question, recommending yes, and
-record the answer and its scope in the status notes ("Standing approvals"), never in git.
+Agents operate the developer's OP-XY only after the developer grants host access for it
+([SAFETY.md](../SAFETY.md#host-access)). Ask for it, and record the answer in the status notes ("Approvals"),
+never in git.
 
 ## 3. First install and recovery kit
 
@@ -66,7 +66,7 @@ at the logo. First-start errors: the [guide](../GUIDE.md).
 
 ## 4. Device pass and known-good kit
 
-Run `uv run scripts/device_pass.py --wait 120` (`--plan` first shows every step), relaying its `NEED:` line
-([device pass](device-pass.md)). When it passes, copy the build's `candidate.ldr` to
+Run `uv run scripts/device_pass.py --wait 120` (`--plan` first shows every step); a `NEED:` line it prints
+says what the device needs ([device pass](device-pass.md)). When it passes, copy the build's `candidate.ldr` to
 `../private/xy-forever/recovery/known-good-<image>/os.ldr` and fill in the status notes: device state,
 installed build, known-good build and kit. End in keepalive, never in the OS.

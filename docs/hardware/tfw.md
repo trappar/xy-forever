@@ -52,7 +52,7 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   [--stage DIR]` reviews and stages a decrypted vendor ZIP (host only, unauthenticated,
   bootloader members never staged).
 
-## Companion recovery hazards (offline findings; programming is forbidden)
+## Companion recovery hazards (offline findings; programming is not built yet)
 
 A silent keyboard/backplane PSoC can prevent NAND boot and the COM recovery path:
 keys and power management depend on it. Recovery after interrupted programming without

@@ -15,4 +15,4 @@ device-tested), **planned**.
 - [Simulator control](architecture/simulator-control.md): the simulator's control port: faults, power, device time, status
 - [Self-update and build modes](architecture/build.md): self-update and uninstall, build modes (`xyf_build.py`), feature switches
 - [Code map](architecture/code-map.md): where the code lives; mods (open-xy): offline findings
-- [Safety rules](architecture/code-rules.md): the rules for all code
+- [Safety rules](architecture/code-rules.md): the rules for all code, versioned formats

@@ -18,7 +18,7 @@ B, transfers it to A's separate RAM, checks it on A and prints the admission dig
 command writes no storage and never installs or resets. `--deadline-ms` bounds it (1..120000);
 Ctrl-C cancels an intact session. Status remains responsive; a lost link stops without recovery.
 Manual changes may touch `/yaffs2` except the protected marker and updater inbox in SAFETY.md.
-Creating the report folder is a storage write and requires the developer's approval:
+Creating the report folder is a storage write, so it takes `--yes-write`:
 `uv run xyf-host put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.
 
 ### Sound packs
