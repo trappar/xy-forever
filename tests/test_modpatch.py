@@ -28,17 +28,16 @@ import pytest
 import test_modkit as TK
 from test_ldr import header, image
 
-from xy_forever import hostbuild, package_records, paths
 from xy_forever import modkit as M
 from xy_forever import modlink as L
 from xy_forever import modpatch as P
+from xy_forever import package_records, paths
 from xy_forever import xyf_entry as E
 
 BASE = 0x8D2D0380
 TEXT = 0x8D000000
 TEXT_AT = 112  # file offset of the text record's payload (see stock())
 ENTRY = 0x11A00000
-SANITIZE = ('-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-sanitize-recover=all')
 CATALOG = (
     b'{\n  "engine_types": [\n    {"type": "e1"}\n  ],\n  "fx_types": [\n    {"type": "f1", "id": 1}\n  ],\n'
     b'  "seq_types": [\n    {"type": "s1", "id": 5}\n  ]\n}\n'
@@ -258,8 +257,8 @@ class Synthetic(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-modpatch-')
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.work = Path(cls.tmp.name)
-        cls.binary = P.build(cls.work / 'bin', run=hostbuild.run)
-        cls.bridge = L.build(cls.work / 'bin')
+        cls.binary = P.build()
+        cls.bridge = L.build()
         cls.stock = stock()
         (cls.work / 'os.ldr').write_bytes(cls.stock)
         (cls.work / 'op1_factory.json').write_bytes(CATALOG)
@@ -789,7 +788,7 @@ class Synthetic(unittest.TestCase):
 
     def fuzz(self, rounds):
         """`rounds` damaged jobs through the sanitized assembler (seed 5); returns its outcome counts."""
-        binary = P.build(self.work / 'sanitized', flags=SANITIZE, run=hostbuild.run)
+        binary = P.build(sanitize=True)
         folder = self.folder()
         (folder / 'job.txt').write_text(
             P.job_text(
@@ -957,7 +956,7 @@ class PublishedKitExpanded(unittest.TestCase):
                 selections=EXPANDED_SELECTIONS[:2],
             )
         }
-        cls.binary = P.build(Path(cls.tmp.name) / 'bin', run=hostbuild.run)
+        cls.binary = P.build()
 
     def test_expanded_is_byte_identical(self):
         limit = 4080 * 1024

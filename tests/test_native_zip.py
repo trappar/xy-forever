@@ -17,8 +17,6 @@ import fork_each
 import pytest
 import xyf_hosttest
 
-from xy_forever import hostbuild
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -375,25 +373,7 @@ class NativeZipTests(unittest.TestCase):
             self.assertEqual(result.stderr.strip(), status)
 
     def test_freestanding_objects_have_no_runtime_symbols(self):
-        objects = []
-        for source in ('zip', 'inflate'):
-            target = self.directory / (source + '.o')
-            command = [
-                '/usr/bin/clang++',
-                '-std=c++11',
-                '-O2',
-                '-ffreestanding',
-                '-fno-builtin',
-                '-fno-exceptions',
-                '-fno-rtti',
-                '-fno-stack-protector',
-                '-c',
-                str(ROOT / ('native/' + source + '.cpp')),
-                '-o',
-                str(target),
-            ]
-            hostbuild.run(command, check=True, capture_output=True)
-            objects.append(target)
+        objects = [xyf_hosttest.program('zip_freestanding')]  # zip and inflate, freestanding -O2 (hosttest/)
         output = subprocess.run(
             ['/usr/bin/nm', '-u', *map(str, objects)], check=True, capture_output=True, text=True
         ).stdout
@@ -402,27 +382,7 @@ class NativeZipTests(unittest.TestCase):
                 self.assertIn('xyf_core3zip', line)
 
     def test_deterministic_damage_under_address_and_undefined_sanitizers(self):
-        sanitized = self.directory / 'zip_bridge_sanitized'
-        hostbuild.run(
-            [
-                '/usr/bin/clang++',
-                '-fsanitize=address,undefined',
-                '-fno-omit-frame-pointer',
-                '-std=c++11',
-                '-O1',
-                '-Wall',
-                '-Wextra',
-                '-Werror',
-                *fork_each.FLAGS,  # one sanitizer start for the 100 runs
-                str(ROOT / 'tests/zip_bridge.cpp'),
-                str(ROOT / 'native/zip.cpp'),
-                str(ROOT / 'native/inflate.cpp'),
-                '-o',
-                str(sanitized),
-            ],
-            check=True,
-            capture_output=True,
-        )
+        sanitized = xyf_hosttest.program('zip_bridge_sanitized')  # with tests/fork_each.cpp
         rng = random.Random(1951)
         original = zip_bytes([('os.ldr', b'abc' * 3000)])
         compressed = raw(b'abc' * 3000)

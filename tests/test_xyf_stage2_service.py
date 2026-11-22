@@ -54,7 +54,7 @@ class Stage2ServiceTest(unittest.TestCase):
             (self.dir / 'yaffs2/xy-forever/stage2').mkdir(parents=True)
             (self.dir / 'yaffs2/xy-forever/stage2/main.xys2').write_bytes(data)
         self.sim = sim.Simulator(
-            self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out, play=play, log=self.dir / 'log.txt'
+            self.dir / 'yaffs2', self.dir / 'bootpart.bin', binary=self.out, play=play, log=self.dir / 'log.txt'
         ).start()
         self.addCleanup(self.sim.stop)
 

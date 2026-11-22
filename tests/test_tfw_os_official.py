@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from xy_forever import hostbuild, paths, tfw_extract
+from xy_forever import paths, tfw_extract
 from xy_forever.xyf_entry import firmware_document
 
 OFFICIAL = paths.FIRMWARE / 'official'
@@ -60,7 +60,7 @@ class OfficialPackageTests(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-tfw-os-official-')
         cls.addClassCleanup(cls.tmp.cleanup)
-        cls.binary = tfw_extract.build(cls.tmp.name, run=hostbuild.run)
+        cls.binary = tfw_extract.build()
         paths.SESSIONS.mkdir(parents=True, exist_ok=True)
 
     def test_each_package_gives_the_reference_os_ldr(self):
@@ -142,7 +142,7 @@ class OfficialSignatureTests(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-tfw-sig-official-', dir=paths.SESSIONS)
         cls.addClassCleanup(cls.tmp.cleanup)
-        cls.binary = tfw_extract.build(cls.tmp.name, run=hostbuild.run)
+        cls.binary = tfw_extract.build()
 
     def test_a_flipped_ciphertext_bit_fails_through_the_signed_hash(self):
         package = PACKAGES[2][0]

@@ -1,13 +1,12 @@
 """Our MTP function driver (target/mtp_usb.*) against a host model of the stock USB stack."""
 
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 
 import pytest
+import xyf_hosttest
 
-from xy_forever import hostbuild
 from xy_forever.source_text import unit_text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,45 +19,24 @@ class MtpUsbTest(unittest.TestCase):
         # sessions, 1 MiB paced sink with bounded passes, source, loopback, EP0 class requests by interface (CDC
         # line coding, control lines, break; MTP), the serial ring with held urbs (flow control), serial writes
         # (one in flight, ZLP), deconfigure / bus reset / suspend mid-transfer, leave with a held urb; twice.
-        with tempfile.TemporaryDirectory(prefix='xyf-mtpusb-') as tmp:
-            for kick in ('0', '1'):  # default (no kick) and the off-by-default option
-                binary = Path(tmp) / ('mtpusb' + kick)
-                hostbuild.run(
-                    [
-                        '/usr/bin/clang++',
-                        '-std=c++11',
-                        '-Wall',
-                        '-Wextra',
-                        '-Werror',
-                        '-fsanitize=address,undefined',
-                        '-fno-omit-frame-pointer',
-                        '-DXYF_MTP_USB_KICK=' + kick,
-                        str(ROOT / 'target/mtp_usb.cpp'),
-                        str(ROOT / 'target/mtp_usb_test.cpp'),
-                        str(ROOT / 'native/mtp_responder.cpp'),
-                        '-o',
-                        str(binary),
-                    ],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
-                self.assertRegex(result.stdout, r'[1-9][0-9]* checks passed')
-                if kick == '0':  # without a kick a parked RX packet is never resumed
-                    self.assertRegex(result.stdout, r'no kick: OUT stalled after 49664 bytes')
-                # 186-005: a freeze in each stock step leaves the marks naming it (forked children).
-                for line in (
-                    'freeze in register: last mark 2 flag-deleted',
-                    "freeze in start(0x200): the controller init's 5-tick wait: last mark 4 before-start-0x200",
-                    'freeze in configure (the first alloc): last mark 8 first-setup',
-                ):
-                    self.assertIn(line, result.stdout)
-                self.assertEqual(result.stdout.count('freeze in '), 5)
-            # The model fires the USB interrupt (which mallocs) inside any unmasked heap call: it must fail.
-            bad = subprocess.run([str(binary), 'unmasked-free'], capture_output=True, text=True)
-            self.assertNotEqual(bad.returncode, 0)
-            self.assertIn('failed', bad.stderr)
+        for kick in ('0', '1'):  # default (no kick) and the off-by-default option
+            binary = xyf_hosttest.program('mtp_usb_kick' + kick)
+            result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
+            self.assertRegex(result.stdout, r'[1-9][0-9]* checks passed')
+            if kick == '0':  # without a kick a parked RX packet is never resumed
+                self.assertRegex(result.stdout, r'no kick: OUT stalled after 49664 bytes')
+            # 186-005: a freeze in each stock step leaves the marks naming it (forked children).
+            for line in (
+                'freeze in register: last mark 2 flag-deleted',
+                "freeze in start(0x200): the controller init's 5-tick wait: last mark 4 before-start-0x200",
+                'freeze in configure (the first alloc): last mark 8 first-setup',
+            ):
+                self.assertIn(line, result.stdout)
+            self.assertEqual(result.stdout.count('freeze in '), 5)
+        # The model fires the USB interrupt (which mallocs) inside any unmasked heap call: it must fail.
+        bad = subprocess.run([str(binary), 'unmasked-free'], capture_output=True, text=True)
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertIn('failed', bad.stderr)
 
     def test_stock_binding_matches_allowlist(self):
         import re

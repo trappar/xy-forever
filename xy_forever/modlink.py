@@ -24,7 +24,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import hostbuild, modkit, paths
+from . import modkit, paths
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ('mod_link', 'mod_elf', 'mod_numbers')
@@ -118,30 +118,13 @@ def same_refusal(status, detail, reference):
 # ---------------------------------------------------------------- the host bridge
 
 
-def build(folder, sanitize=False):
-    """Compile tests/mod_link_bridge.cpp with the linker sources (cached by hostbuild); XYF_SANITIZE=1 in the
-    environment makes every build the ASan/UBSan one (the whole mod test set once under the sanitizers)."""
+def build(sanitize=False):
+    """tests/mod_link_bridge.cpp with the linker sources (hosttest/CMakeLists.txt; `uv sync` builds it). XYF_SANITIZE=1
+    in the environment makes every build the ASan/UBSan one (the whole mod test set once under the sanitizers)."""
+    import xyf_hosttest
+
     sanitize = sanitize or bool(os.environ.get('XYF_SANITIZE'))
-    out = Path(folder) / ('mod_link_bridge' + ('_sanitized' if sanitize else ''))
-    command = [
-        '/usr/bin/clang++',
-        '-std=c++11',
-        '-O1' if sanitize else '-O2',
-        '-Wall',
-        '-Wextra',
-        '-Werror',
-        '-DXYF_MOD_WORK_COUNT',
-        *(['-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-sanitize-recover=all'] if sanitize else []),
-        str(ROOT / 'tests/mod_link_bridge.cpp'),
-        *[str(ROOT / 'native' / (s + '.cpp')) for s in (*SOURCES, 'json')],
-        *[str(ROOT / 'target' / (s + '.cpp')) for s in ('xyf_manifest', 'xyf_package_record')],
-        '-o',
-        str(out),
-    ]
-    run = hostbuild.run(command, capture_output=True, text=True)
-    if run.returncode:
-        raise RuntimeError('bridge compile failed: ' + run.stderr[-3000:])
-    return out
+    return xyf_hosttest.program('mod_link_bridge' + ('_sanitized' if sanitize else ''))
 
 
 def rules_text(profile):
@@ -349,7 +332,7 @@ def prove_selections(generation_dir, selections, sdk, catalog, scratch, bridge=N
     generation_dir = Path(generation_dir).resolve()
     with tempfile.TemporaryDirectory(dir=scratch, prefix='modlink-') as tmp:
         tmp = Path(tmp)
-        bridge = bridge or build(tmp)
+        bridge = bridge or build()
         jobs, refusals = [], {}
         for name, machines, exts in selections:
             layout = (layouts or {}).get(name)
@@ -505,7 +488,7 @@ def main(argv=None):
         if args.command == 'link':
             out = paths.private_output(args.out)
             with tempfile.TemporaryDirectory(dir=scratch, prefix='modlink-') as tmp:
-                bridge = build(tmp)
+                bridge = build()
                 result = link_native(bridge, args.generation.resolve(), args.machine, args.extension, tmp, keep=out)
                 print(json.dumps({k: result[k] for k in ('status', 'detail', 'sizes', 'step', 'usage') if k in result}))
             return 0

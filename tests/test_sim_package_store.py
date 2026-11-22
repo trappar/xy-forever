@@ -68,9 +68,7 @@ class Packages(unittest.TestCase):
     def setUp(self):
         self.dir = Path(tempfile.mkdtemp(dir=self.work))
         self.root = sim.seed(self.dir / 'yaffs2', image([(4, 0x1000, 2, 0, b'base')]))
-        self.sim = sim.Simulator(
-            self.root, self.dir / 'boot.bin', build_dir=self.build, log=self.dir / 'sim.log'
-        ).start()
+        self.sim = sim.Simulator(self.root, self.dir / 'boot.bin', binary=self.build, log=self.dir / 'sim.log').start()
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
         self.addCleanup(self.close)

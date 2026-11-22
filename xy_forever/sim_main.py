@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from xy_forever import paths, procgroup
-from xy_forever.sim import DEFAULT_PORT, STATE, Simulator, available, build, otp_fields, seed
+from xy_forever.sim import DEFAULT_PORT, PRE_V1_HELLO, STATE, Simulator, available, build, otp_fields, seed
 from xy_forever.sim_fresh import seed_fresh
 
 
@@ -19,8 +19,7 @@ def main(argv=None):
         '--state',
         type=Path,
         default=STATE,
-        help='folder for yaffs2/ (seeded when missing) and bootpart.bin (default %(default)s); the build '
-        "cache is always the default folder's builds/, shared, so a new state folder starts at once",
+        help='folder for yaffs2/ (seeded when missing) and bootpart.bin (default %(default)s)',
     )
     parser.add_argument('--plain', action='store_true', help='power on without PLAY (boots the default: no USB)')
     parser.add_argument('--version', help="hello version= (default: this checkout's release version)")
@@ -59,10 +58,10 @@ def main(argv=None):
     root = state / 'yaffs2'
     if not root.exists():
         seed_fresh(root, args.fresh) if args.fresh else seed(root)
-    hello = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e' if args.pre_v1 else None
-    print('building the simulator...', file=sys.stderr, flush=True)
     out = build(
-        None, version=args.version, hello=hello, mode='xyf-crash-trigger' if args.crash_trigger else 'xyf-product'
+        version=args.version,
+        hello=PRE_V1_HELLO if args.pre_v1 else None,
+        mode='xyf-crash-trigger' if args.crash_trigger else 'xyf-product',
     )
     otp = None if args.no_otp else otp_fields()
     print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
@@ -70,7 +69,7 @@ def main(argv=None):
         root,
         state / 'bootpart.bin',
         port=args.port,
-        build_dir=out,
+        binary=out,
         play=not args.plain,
         otp=otp,
         ask=args.ask,

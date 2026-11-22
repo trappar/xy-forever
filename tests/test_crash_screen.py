@@ -3,73 +3,27 @@ is put in place and taken out again (source order; the vector itself runs only o
 
 import re
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 
 import pytest
 import ui_preview as P
+import xyf_hosttest
 
-from xy_forever import hostbuild
 from xy_forever.source_text import unit_text
 
 ROOT = Path(__file__).resolve().parents[1]
-
-PROGRAM = r"""
-#include "crash_screen.hpp"
-#include <stdio.h>
-int main() {
-    const xyf::crash::Record records[] = {{1, 0x26, 0x8ab03d14, 0x8ab05a20}, {1, 0x2021, 0x889eed60, 0x8ab02f00},
-                                          {1, 0x03, 0x8ab00010, 0}, {1, 0x3f, 0xffffffff, 0xffffffff}};
-    // B's where word (#114): in W1; none now, the last W12; never; in W3 after W12 (the last half stays).
-    const uint32_t wheres[] = {0x00010001, 0x000c0000, 0, 0x000c0003};
-    for (unsigned i = 0; i != 4; ++i) {
-        const xyf::crash::Record& r = records[i];
-        xyf::crash::Text t;
-        xyf::crash::describe(r, wheres[i], t);
-        const xyf::ui::Chrome chrome = {"v0.1.0", false, nullptr, false, "image f458e3cc"};
-        const xyf::ui::Message m = xyf::crash::message(t, &chrome);
-        for (unsigned i = 0; i != m.count; ++i) printf("%s\n", m.lines[i]);
-        printf("%s\n--\n", m.hint);
-    }
-    return 0;
-}
-"""
 
 
 @pytest.mark.gate
 class CrashScreenTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-crash-')
-        source, binary = Path(cls.tmp.name) / 'crash.cpp', Path(cls.tmp.name) / 'crash'
-        source.write_text(PROGRAM)
-        hostbuild.run(
-            [
-                '/usr/bin/clang++',
-                '-std=c++11',
-                '-Wall',
-                '-Wextra',
-                '-Werror',
-                '-fsanitize=address,undefined',
-                '-I',
-                str(ROOT / 'target'),
-                str(source),
-                '-o',
-                str(binary),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        binary = xyf_hosttest.program('crash_screen')  # tests/crash_screen_main.cpp, sanitized
         out = subprocess.run([str(binary)], check=True, capture_output=True, text=True).stdout
         cls.screens = [s.strip('\n').split('\n') for s in out.split('--\n') if s.strip()]
         cls.lib = P.build()
         cls.fb = P.framebuffer(cls.lib)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
 
     def test_lines_name_the_cause_and_the_addresses(self):
         miss, undefined, software, unknown = self.screens

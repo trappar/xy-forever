@@ -27,9 +27,9 @@ import test_modkit as TK
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
 from test_xyf_freestanding import compiler
 
-from xy_forever import hostbuild, package_records, paths, xyf_entry
 from xy_forever import modkit as M
 from xy_forever import modpatch as P
+from xy_forever import package_records, paths, xyf_entry
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -106,7 +106,7 @@ class Synthetic(Harness, unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-modjob-')
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.work = Path(cls.tmp.name)
-        cls.binary = P.build(cls.work / 'bin', run=hostbuild.run)
+        cls.binary = P.build()
         data = stock()
         (cls.work / 'os.ldr').write_bytes(data)
         (cls.work / 'op1_factory.json').write_bytes(CATALOG)
@@ -257,7 +257,7 @@ class JobFuzz(unittest.TestCase):
     def test_fuzz(self):
         with tempfile.TemporaryDirectory(prefix='xyf-modjob-fuzz-') as tmp:
             work = Path(tmp)
-            binary = P.build(work / 'bin', flags=P.SANITIZE, run=hostbuild.run)
+            binary = P.build(sanitize=True)
             data = stock()
             (work / 'os.ldr').write_bytes(data)
             (work / 'op1_factory.json').write_bytes(CATALOG)
@@ -318,7 +318,7 @@ class PublishedPackages(Harness, unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory(prefix='mod-job-real-', dir=paths.SESSIONS)
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.work = Path(cls.tmp.name)
-        cls.binary = P.build(cls.work / 'bin', run=hostbuild.run)
+        cls.binary = P.build()
         ids = [row[1] for row in M.read_table((PACKAGES / 'base/machines.txt').read_bytes())]
         cls.fit = M.fitting(PACKAGES, ids)
 

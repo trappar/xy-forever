@@ -135,7 +135,7 @@ def assemble(generation, machines, stock, catalog, out, official=None, extension
     """modpatch's native job into out (os.ldr, content/, files.sha256); the adapter's report."""
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    binary = modpatch.build(out.parent / 'bin', run=modpatch._cached())
+    binary = modpatch.build()
     job = out.parent / 'job.txt'
     job.write_text(
         modpatch.job_text(

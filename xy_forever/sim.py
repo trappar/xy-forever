@@ -15,25 +15,21 @@ the build. The stock 1.2.1 bootloader image (private) is loaded into each proces
 so every CRC identity check runs against the real bytes.
 """
 
-import concurrent.futures
-import fcntl
 import hashlib
 import json
 import os
 import random
 import re
-import shutil
 import socket
 import struct
 import subprocess
 import sys
 import tempfile
-import time
 import zlib
 from pathlib import Path
 
 from xy_forever import bounds, paths, procgroup
-from xy_forever.sim_sources import DEVICE_PARTS, NATIVE_SOURCES, SIM_SOURCES, TARGET_SOURCES
+from xy_forever.sim_sources import DEVICE_PARTS, TARGET_SOURCES
 
 ROOT = Path(__file__).resolve().parents[1]
 SIM = ROOT / 'sim'
@@ -202,151 +198,66 @@ def available():
     return None
 
 
-KEEP_BUILDS = 12  # the most recently used builds kept in a cache folder (others: a day unused)
+PRE_V1_HELLO = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e'  # builds 153 and earlier (--pre-v1)
+# The variants `uv sync` builds (hosttest/CMakeLists.txt): name -> product_defines() options. Another one (--version,
+# --crash-trigger) is built on first use (build()).
+VARIANTS = {'default': {}, 'pre-v1': {'hello': PRE_V1_HELLO}}
 
 
-_built = {}  # (cache, defines) -> folder: build() hashes its inputs once a process (sources do not change mid-run)
+def build(**options):
+    """The simulator binary for product_defines(**options): a variant `uv sync` built (VARIANTS), else one CMake
+    builds into the repository's build/sim/ (hosttest/sim/CMakeLists.txt; incremental, one folder per variant)."""
+    import xyf_hosttest
 
-
-def build(cache=None, **options):
-    """Builds the simulator (cached by the hash of every input: sources, defines, the compiler,
-    the stock image) and returns its folder. The tests share the default cache."""
     defines = product_defines(**options)
-    key = (str(cache), json.dumps(defines))
-    if key in _built and (_built[key] / 'xyf_sim').is_file():
-        return _built[key]
-    _built[key] = out = _build(cache, defines)
+    for name, known in VARIANTS.items():
+        if product_defines(**known) == defines:
+            return xyf_hosttest.program('sim-' + name)
+    key = json.dumps(options, sort_keys=True)
+    folder = ROOT / 'build' / 'sim' / hashlib.sha256(key.encode()).hexdigest()[:12]
+    venv = Path(sys.executable).parent  # cmake and ninja: the native dependency group
+    configure = [str(venv / 'cmake'), '-S', str(ROOT / 'hosttest/sim'), '-B', str(folder), '-G', 'Ninja']
+    configure += ['-DCMAKE_MAKE_PROGRAM=%s' % (venv / 'ninja'), '-DPython_EXECUTABLE=%s' % sys.executable]
+    for argv in (configure + ['-DXYF_SIM_OPTIONS=' + key], [str(venv / 'cmake'), '--build', str(folder)]):
+        result = procgroup.run(argv, capture_output=True, text=True, timeout=bounds.COMPILE_S)
+        if result.returncode:
+            raise RuntimeError('simulator build failed:\n%s' % (result.stdout + result.stderr)[-4000:])
+    return folder / 'xyf_sim'
+
+
+def stock_mem():
+    """The stock image file (stock_image()) the simulator loads, rewritten when the private bootloader changes."""
+    out = STATE / ('stock-%s.mem' % hashlib.sha256(STOCK_BOOTLOADER.read_bytes()).hexdigest()[:16])
+    if not out.is_file():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fd, partial = tempfile.mkstemp(prefix='.stock-', dir=out.parent)
+        os.close(fd)
+        stock_image(partial)
+        os.replace(partial, out)  # whole, never half-written: parallel tests start simulators at once
     return out
 
 
-def _build(cache, defines):
-    inputs = hashlib.sha256(json.dumps(defines).encode())
-    inputs.update(procgroup.run([CXX, '--version'], capture_output=True, timeout=bounds.COMPILE_S).stdout)
-    here = Path(__file__).parent
-    for path in sorted(
-        [
-            *ROOT.glob('target/*.?pp'),
-            *ROOT.glob('native/*.?pp'),
-            *ROOT.glob('native/*.inc'),
-            *SIM.glob('*.?pp'),
-            *(p for p in (ROOT / 'third_party').rglob('*') if p.is_file()),
-            Path(__file__),
-            here / 'probe_report.py',
-            here / 'build_formats.py',
-            here / 'build_modules.py',
-        ]
-    ):
-        inputs.update(path.name.encode() + path.read_bytes())
-    inputs.update(STOCK_BOOTLOADER.read_bytes())
-    cache = Path(cache or STATE / 'builds')
-    out = cache / inputs.hexdigest()[:16]
-    binary = out / 'xyf_sim'
-    if binary.is_file():
-        os.utime(out)  # recently used: kept by prune()
-        return out
-    cache.mkdir(parents=True, exist_ok=True)
-    with open(cache / 'build.lock', 'w') as lock:  # one build at a time: test jobs wait for it, never compile it again
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        if binary.is_file():
-            return out
-        return _compile_build(cache, out, defines)
-
-
-def _compile_build(cache, out, defines):
-    work = Path(tempfile.mkdtemp(prefix='build-', dir=cache))
-    try:
-        compile_into(work, defines)
-    except BaseException:
-        shutil.rmtree(work, ignore_errors=True)
-        raise
-    try:
-        work.rename(out)
-    except OSError:  # another build finished first
-        shutil.rmtree(work, ignore_errors=True)
-    prune(cache)
-    return out
-
-
-def prune(cache, keep=KEEP_BUILDS):
-    """Removes builds beyond the keep most recently used that no build() asked for in a day (a
-    simulator started from one may still be running), and partial builds over an hour old."""
-    now = time.time()
-
-    def mtime(path):  # None: gone (another test job pruned it first)
-        try:
-            return path.stat().st_mtime if path.is_dir() else None
-        except OSError:
-            return None
-
-    times = {p: mtime(p) for p in cache.iterdir()}
-    builds = sorted(
-        (p for p, t in times.items() if t is not None and not p.name.startswith('build-')), key=times.get, reverse=True
-    )
-    old = [p for p in builds[keep:] if now - times[p] > 86400]
-    partial = [p for p, t in times.items() if t is not None and p.name.startswith('build-') and now - t > 3600]
-    for path in old + partial:
-        shutil.rmtree(path, ignore_errors=True)
-
-
-def compile_into(work, defines):
+def write_sources(out, write):
+    """The simulator's sources as it compiles them, into out (hosttest/generate.py, at build time): target/ rewritten
+    (REWRITES), native/ and third_party/ as they are, gen/ cold.cpp's ranges and the trace fixture. write(path, bytes)
+    writes one file."""
     from xy_forever.probe_report import report_only_fixture
 
-    (work / 'target').mkdir()
-    (work / 'native').mkdir()
-    shutil.copytree(ROOT / 'third_party', work / 'third_party')
+    out = Path(out)
     for path in ROOT.glob('target/*.?pp'):
         text = rewrite(path.name, path.read_text())
         owner = re.match(r'// Part of (\w+)\.cpp', text)  # a part of a source the simulator does not host
-        if owner and owner.group(1) not in TARGET_SOURCES:  # (key_ui's) is not compiled either
-            (work / 'target' / path.name).write_text(text)
-            continue
-        if '__asm__ volatile' in text and (path.suffix in ('.hpp', '.ipp') or path.stem in TARGET_SOURCES):
+        hosted = not owner or owner.group(1) in TARGET_SOURCES  # (key_ui's) is not compiled either
+        if hosted and '__asm__ volatile' in text and (path.suffix in ('.hpp', '.ipp') or path.stem in TARGET_SOURCES):
             raise RuntimeError('simulator: %s has asm no rewrite covers' % path.name)
-        (work / 'target' / path.name).write_text(text)
+        write(out / 'target' / path.name, text)
     for path in [*ROOT.glob('native/*.?pp'), *ROOT.glob('native/*.inc')]:  # mod_patch: mod_known_bases.inc
-        (work / 'native' / path.name).write_bytes(path.read_bytes())
-    (work / 'gen').mkdir()
-    (work / 'gen/cold_policy.inc').write_text(policy_source())
-    (work / 'gen/trace_expected.inc').write_text(','.join(str(b) for b in report_only_fixture()) + '\n')
-    stock_image(work / 'stock.mem')
-    base = [CXX, '-std=c++17', '-O1', '-w', '-fno-strict-aliasing', '-pthread']
-    device = base + ['-include', str(SIM / 'sim.hpp'), *defines, '-I', str(work / 'target'), '-I', str(work / 'gen')]
-    jobs = [(device, work / 'target' / (n + '.cpp')) for n in TARGET_SOURCES]
-    jobs += [(base, work / 'native' / (n + '.cpp')) for n in NATIVE_SOURCES]
-    jobs += [(device + ['-I', str(SIM)], SIM / (n + '.cpp')) for n in SIM_SOURCES]
-
-    def compile_one(job):
-        flags, source = job
-        obj = work / (source.parent.name + '-' + source.stem + '.o')
-        result = procgroup.run(
-            [*flags, '-c', str(source), '-o', str(obj)], capture_output=True, text=True, timeout=bounds.COMPILE_S
-        )
-        return obj, result.stderr if result.returncode else None
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
-        compiled = list(pool.map(compile_one, jobs))
-    # Every compile runs, and every failing source is named in source order: the error does not
-    # depend on which compile finished first (a missing switch can break several sources).
-    failed = [(source.name, error) for (_, source), (_, error) in zip(jobs, compiled) if error is not None]
-    if failed:
-        raise RuntimeError(
-            'simulator build failed: %s\n%s'
-            % (
-                ', '.join(name for name, _ in failed),
-                '\n'.join('%s:\n%s' % (name, error[-4000:]) for name, error in failed),
-            )
-        )
-    objects = [obj for obj, _ in compiled]
-    result = procgroup.run(
-        [CXX, '-pthread', *map(str, objects), '-o', str(work / 'xyf_sim')],
-        capture_output=True,
-        text=True,
-        timeout=bounds.COMPILE_S,
-    )
-    if result.returncode:
-        raise RuntimeError('simulator link failed:\n%s' % result.stderr[-4000:])
-    for obj in objects:
-        obj.unlink()
+        write(out / 'native' / path.name, path.read_bytes())
+    for path in (ROOT / 'third_party').rglob('*'):
+        if path.is_file():
+            write(out / path.relative_to(ROOT), path.read_bytes())
+    write(out / 'gen/cold_policy.inc', policy_source())
+    write(out / 'gen/trace_expected.inc', ','.join(str(b) for b in report_only_fixture()) + '\n')
 
 
 def slot_text(default, seq):
@@ -437,7 +348,7 @@ class Simulator:
         root,
         bootpart,
         port=None,
-        build_dir=None,
+        binary=None,
         play=True,
         log=None,
         capacity=0x400000,
@@ -469,7 +380,7 @@ class Simulator:
         self.chosen = port is None  # a free pair picked here: start() may pick again
         self.port = port or free_port()
         self.control_port = self.port + 1
-        self.build_dir = Path(build_dir) if build_dir else build()
+        self.binary = Path(binary) if binary else build()
         self.play, self.log, self.capacity, self.ask = play, log, capacity, ask
         self.deadline_s = deadline_s
         self.process = None
@@ -483,13 +394,13 @@ class Simulator:
         """control_fd: the control port's listening socket, made here and inherited (else xyf_sim binds it)."""
         return (
             [
-                str(self.build_dir / 'xyf_sim'),
+                str(self.binary),
                 '--root',
                 str(self.root),
                 '--bootpart',
                 str(self.bootpart),
                 '--stock',
-                str(self.build_dir / 'stock.mem'),
+                str(stock_mem()),
                 '--port',
                 str(self.port),
             ]

@@ -2,18 +2,12 @@
 
 import ctypes
 import random
-import tempfile
 import unittest
 from pathlib import Path
 
-from xy_forever import hostbuild
+import xyf_hosttest
 
 ROOT = Path(__file__).resolve().parents[1]
-BRIDGE = r"""
-#include "xyf_clock.hpp"
-extern "C" unsigned clock_ms(unsigned low, unsigned high) { return xyf::clock::ms_from_cycles(low, high); }
-extern "C" unsigned clock_units(unsigned units) { return xyf::clock::ms_from_units(units); }
-"""
 
 
 def exact(cycles):
@@ -23,36 +17,12 @@ def exact(cycles):
 class ClockTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-clock-')
-        src = Path(cls.tmp.name) / 'bridge.cpp'
-        src.write_text(BRIDGE)
-        lib = Path(cls.tmp.name) / 'clock.dylib'
-        hostbuild.run(
-            [
-                '/usr/bin/clang++',
-                '-std=c++11',
-                '-Wall',
-                '-Wextra',
-                '-Werror',
-                '-shared',
-                '-fPIC',
-                '-I',
-                str(ROOT / 'target'),
-                str(src),
-                '-o',
-                str(lib),
-            ],
-            check=True,
-        )
+        lib = xyf_hosttest.program('clock')  # tests/clock_bridge.cpp
         cls.lib = ctypes.CDLL(str(lib))
         for f in (cls.lib.clock_ms, cls.lib.clock_units):
             f.restype = ctypes.c_uint
         cls.lib.clock_ms.argtypes = [ctypes.c_uint, ctypes.c_uint]
         cls.lib.clock_units.argtypes = [ctypes.c_uint]
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
 
     def ms(self, cycles):
         return self.lib.clock_ms(cycles & 0xFFFFFFFF, cycles >> 32)

@@ -23,10 +23,10 @@ import test_modkit as TK
 from test_mod_job import run
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
 
-from xy_forever import hostbuild, modstore, package_records, sim
 from xy_forever import modkit as M
 from xy_forever import modpatch as MP
 from xy_forever import modsend as S
+from xy_forever import modstore, package_records, sim
 from xy_forever import usb_proto as P
 from xy_forever import xyf_host as host
 
@@ -72,7 +72,7 @@ class Harness:
         cls.work = Path(work)
         cls.out = sim.build()
         cls.seeded = sim.seed(cls.work / 'seed')
-        cls.binary = MP.build(cls.work / 'bin', run=hostbuild.run)
+        cls.binary = MP.build()
         cls.runs = 0
 
     def setUp(self):
@@ -80,7 +80,7 @@ class Harness:
         self.dir = self.work / ('run-%d' % self.runs)
         shutil.copytree(self.seeded, self.dir / 'yaffs2')
         self.sim = sim.Simulator(
-            self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out, log=self.dir / 'log.txt'
+            self.dir / 'yaffs2', self.dir / 'bootpart.bin', binary=self.out, log=self.dir / 'log.txt'
         ).start()
         self.links = []
         self.addCleanup(self.stop)

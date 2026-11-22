@@ -5,6 +5,7 @@ rules. No device execution."""
 
 import ctypes as C
 import re
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -15,7 +16,6 @@ from pathlib import Path
 import pytest
 import xyf_hosttest
 
-from xy_forever import hostbuild
 from xy_forever import xyf_build as builder
 from xy_forever import xyf_stage2 as S
 from xy_forever.source_text import unit_text
@@ -56,39 +56,9 @@ LIBRARY = catalog_blob(
 
 
 def build_stage2(tmp, tag):
-    lib = Path(tmp) / ('stage2-menu-%s.dylib' % tag)
-    sources = [
-        'target/stage2_menu.cpp',
-        'target/xyf_menu.cpp',
-        'target/xyf_menu_view.cpp',
-        'target/ui_pages.cpp',
-        'target/ui_screens.cpp',
-        'target/ui_gfx.cpp',
-        'target/xyf_catalog.cpp',
-        'target/xyf_store.cpp',
-        'tests/stage2_menu_bridge.cpp',
-    ]
-    hostbuild.run(
-        [
-            '/usr/bin/clang++',
-            '-std=c++11',
-            '-O1',
-            '-shared',
-            '-fPIC',
-            '-Wall',
-            '-Wextra',
-            '-Werror',
-            '-ffreestanding',
-            '-fno-builtin',
-            '-fno-exceptions',
-            '-fno-rtti',
-            *[str(ROOT / s) for s in sources],
-            '-o',
-            str(lib),
-        ],
-        check=True,
-        capture_output=True,
-    )
+    # Its own copy of the library (hosttest/CMakeLists.txt): a fresh load, so fresh static state.
+    lib = Path(tmp) / ('stage2-menu-%s.so' % tag)
+    shutil.copy2(xyf_hosttest.program('stage2_menu'), lib)
     lib = C.CDLL(str(lib))
     lib.s2_run.argtypes = [
         C.POINTER(C.c_uint16),

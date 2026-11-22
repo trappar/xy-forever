@@ -1,7 +1,7 @@
 [project]
 name = "xyf-hosttest"
 version = "0.1.0"
-description = "XY Forever's native code built for the host, for the tests: one nanobind extension and one doctest binary"
+description = "XY Forever's native code built for the host: the tests' nanobind extension, doctest binary and programs, the host tools, the simulator"
 license = "MIT"
 requires-python = ">=3.14"
 
@@ -20,5 +20,9 @@ wheel.packages = ["src/xyf_hosttest"]
 cache-keys = [
   { file = "pyproject.toml" }, { file = "CMakeLists.txt" }, { file = "bind/*" },
   { file = "../native/**/*" }, { file = "../target/**/*" }, { file = "../tests/native/**/*" },
-  { file = "../sim/*.ipp" }, { file = "../third_party/**/*" },
+  { file = "../sim/*" }, { file = "../host/*" }, { file = "../tests/*.cpp" }, { file = "../third_party/**/*" },
+  { file = "generate.py" }, { file = "simulator.cmake" }, { file = "sim/CMakeLists.txt" },
+  # The simulator's rewrite and defines (generate.py).
+  { file = "../xy_forever/sim.py" }, { file = "../xy_forever/sim_sources.py" }, { file = "../xy_forever/release.py" },
+  { file = "../xy_forever/xyf_build.py" }, { file = "../xy_forever/probe_report.py" },
 ]

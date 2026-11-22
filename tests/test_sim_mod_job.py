@@ -23,7 +23,7 @@ import pytest
 import test_modkit as TK
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
 
-from xy_forever import bounds, census, hostbuild, modstore, package_records, sim
+from xy_forever import bounds, census, modstore, package_records, sim
 from xy_forever import modkit as M
 from xy_forever import modpatch as MP
 from xy_forever import modsend as MS
@@ -79,7 +79,7 @@ class Base:
         (entry / 'content.sha256').write_text(official_text_)
         (cls.seeded / 'content/op1_factory.json').write_bytes(catalog)
         cls.profile, cls.generation, cls.gen_dir = profile, gen_dir.name, gen_dir
-        cls.binary = MP.build(cls.work / 'bin', run=hostbuild.run)
+        cls.binary = MP.build()
         cls.runs = 0
 
     def setUp(self):

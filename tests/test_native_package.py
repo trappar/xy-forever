@@ -16,7 +16,6 @@ import xyf_hosttest
 from test_companions import cyacd
 from test_ldr import image
 
-from xy_forever import hostbuild
 from xy_forever.companions import CyacdImage, NordicApplication
 from xy_forever.packages import destination_for
 
@@ -273,28 +272,7 @@ class NativePackageTests(unittest.TestCase):
         self.assertEqual(report['begun'], 0)
 
     def test_damage_and_write_faults_under_sanitizers(self):
-        target = self.directory / 'sanitized'
-        hostbuild.run(
-            [
-                '/usr/bin/clang++',
-                '-fsanitize=address,undefined',
-                '-fno-omit-frame-pointer',
-                '-std=c++11',
-                '-O1',
-                '-Wall',
-                '-Wextra',
-                '-Werror',
-                str(ROOT / 'tests/package_bridge.cpp'),
-                *[
-                    str(ROOT / 'native' / (name + '.cpp'))
-                    for name in ('package', 'images', 'zip', 'inflate', 'hash', 'package_policy', 'companions', 'ldr')
-                ],
-                '-o',
-                str(target),
-            ],
-            check=True,
-            capture_output=True,
-        )
+        target = xyf_hosttest.program('package_bridge_sanitized')
         original = package(self.complete_rows(), comment=b'comment')
         for fault in ('', 'mutate-before', 'mutate-during', 'mutate-comment', 'write-fail', 'forged-path'):
             _, _, errors = self.run_bridge('stage', original, fault, binary=target)

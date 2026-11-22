@@ -297,7 +297,7 @@ def run_script(argv):
 class SimulatorRunTest(unittest.TestCase):
     def simulator(self, tmp):
         root = sim.seed(Path(tmp) / 'yaffs2')
-        return sim.Simulator(root, Path(tmp) / 'bootpart.bin', build_dir=sim.build(), log=Path(tmp) / 'log.txt')
+        return sim.Simulator(root, Path(tmp) / 'bootpart.bin', binary=sim.build(), log=Path(tmp) / 'log.txt')
 
     @pytest.mark.sim
     def test_one_case_per_command_against_the_simulator(self):

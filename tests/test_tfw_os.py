@@ -20,7 +20,7 @@ import pytest
 from test_ldr import image
 from test_tfw import KEY, container
 
-from xy_forever import hostbuild, tfw_extract
+from xy_forever import tfw_extract
 from xy_forever.xyf_entry import firmware_document
 
 KEYS = bytes([0]) + KEY
@@ -166,14 +166,14 @@ def build_zip(members, *, comment=b'', eocd=None, gap_after=None):
 class Extractor(unittest.TestCase):
     """Builds the host extractor once per class (the same build xyf-package uses)."""
 
-    flags = ('-O2',)
+    sanitize = False
 
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-tfw-os-')
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.root = Path(cls.tmp.name)
-        cls.binary = tfw_extract.build(cls.root, cls.flags, run=hostbuild.run)
+        cls.binary = tfw_extract.build(cls.sanitize)
 
     def extract(self, package, *args, keys=KEYS, public_key=None, name='package'):
         """Unsigned synthetic packages run --unverified unless a test names a signature mode
@@ -555,14 +555,7 @@ class ExtractorTests(Extractor):
 class SanitizedDamageTests(Extractor):
     """Random damage to the clear ZIP (re-encrypted, so it gets past the container checks)."""
 
-    flags = (
-        '-O1',
-        '-g',
-        '-fsanitize=address,undefined',
-        '-fno-omit-frame-pointer',
-        '-fno-sanitize-recover=all',
-        *fork_each.FLAGS,  # one sanitizer start for the 120 runs
-    )
+    sanitize = True  # ASan/UBSan, with tests/fork_each.cpp: one sanitizer start for the 120 runs
 
     def test_random_damage_fails_cleanly_or_changes_nothing(self):
         payload, spans, directory = build_zip(standard())

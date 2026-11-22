@@ -44,8 +44,8 @@ file or output that answers the question. A doc over its budget is split into a 
   and correct it if it is wrong, then give one recommendation with its reasons and what is
   uncertain. Do not adopt a view only because of pushback. Product scope, risk to the device and
   approvals stay the developer's.
-- **Checks:** after each change, `mise run test-changed`; once per PR, `mise run check`; CI is the merge
-  check. None stands in for a device test ([checks](docs/operating/build-install.md#checks)).
+- **Checks:** after each change, `mise run test-changed`; once per PR, `mise run check` (lint, the build,
+  every tier but the sweeps); CI is the merge check. None stands in for a device test ([checks](docs/operating/build-install.md#checks)).
 - **No flashing scripts.** Host tools talk to XY Forever's USB service (`uv run xyf-host`) and standard MTP;
   test files go in a scratch folder, removed after. `docs/SAFETY.md` rules every device action.
 - **Git:** one branch per plan item and one pull request per branch, after claiming the item's

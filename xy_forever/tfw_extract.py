@@ -14,7 +14,6 @@ signature as not checked and labels the entry kind=custom, not official.
 import json
 import struct
 import subprocess
-import tempfile
 import zlib
 from pathlib import Path
 
@@ -22,47 +21,21 @@ from . import package_records, paths
 from .xyf_entry import firmware_document
 
 ROOT = Path(__file__).resolve().parents[1]
-CXX = '/usr/bin/clang++'
 KEYS = paths.PRIVATE_ROOT / 'keys' / 'opxy-update-keys.json'
 PUBLIC_KEY = paths.PRIVATE_ROOT / 'keys' / 'opxy-tfw-public-key.json'
-NATIVE = ('tfw_os', 'tfw', 'tfw_check', 'tfw_signature', 'p224', 'aes', 'hash', 'inflate', 'ldr', 'package_policy')
 VERIFIED = 'verified'
-# The policy file boot admits images with: cold.cpp's ranges, with the product's wider
-# module + stack reservation (xyf-build --xyf-product).
-PRODUCT_STACK_END = '0x8ab84000u'
 
 
 class ExtractError(ValueError):
     pass
 
 
-def build(directory, flags=('-O2',), run=subprocess.run):
-    """Compile the host extractor into directory; returns the executable's path. run: the tests
-    pass xy_forever.hostbuild.run (a cached compile)."""
-    from .sim import policy_source  # cold.cpp's allowed and protected ranges, verbatim
+def build(sanitize=False):
+    """The host extractor, host/tfw_extract.cpp (hosttest/CMakeLists.txt; `uv sync` builds it); sanitized: the
+    ASan/UBSan one, its main run by tests/fork_each.cpp."""
+    import xyf_hosttest
 
-    directory = Path(directory)
-    (directory / 'cold_policy.inc').write_text(policy_source())
-    binary = directory / 'tfw_extract'
-    command = [
-        CXX,
-        '-std=c++11',
-        *flags,
-        '-Wall',
-        '-Wextra',
-        '-Werror',
-        '-DXYF_STACK_END=' + PRODUCT_STACK_END,
-        '-I',
-        str(directory),
-        str(ROOT / 'host/tfw_extract.cpp'),
-        *[str(ROOT / 'native' / (name + '.cpp')) for name in NATIVE],
-        '-o',
-        str(binary),
-    ]
-    result = run(command, capture_output=True, text=True)
-    if result.returncode:
-        raise ExtractError('host extractor build failed:\n' + result.stderr[-2000:])
-    return binary
+    return xyf_hosttest.program('tfw_extract' + ('_sanitized' if sanitize else ''))
 
 
 def key_records(path=None):
@@ -138,44 +111,41 @@ def extract_os(package, out, *, keys=None, public_key_file=None, require_signatu
             raise
         vendor = None
     records = key_records(keys)
-    with tempfile.TemporaryDirectory(prefix='xyf-tfw-extract-') as work:
-        binary = binary or build(work)
-        out.mkdir(parents=True)
-        partial = out / 'os.ldr.partial'
-        try:
-            report = run(
-                binary,
-                'extract',
-                package,
-                partial,
-                *(() if vendor else ('--unverified',)),
-                keys=records,
-                public_key=vendor,
+    binary = binary or build()
+    out.mkdir(parents=True)
+    partial = out / 'os.ldr.partial'
+    try:
+        report = run(
+            binary,
+            'extract',
+            package,
+            partial,
+            *(() if vendor else ('--unverified',)),
+            keys=records,
+            public_key=vendor,
+        )
+        if report.get('status') != 'ok':
+            details = ['%s=%s' % (k, report.get(k)) for k in ('container', 'inflate', 'ldr') if report.get(k) != 'ok']
+            if report.get('container') == 'signature':
+                details.append('signature=%s' % report.get('signature'))
+            raise ExtractError('extraction refused: %s (%s)' % (report.get('status'), ', '.join(details)))
+        if (report.get('signature') == VERIFIED) != bool(vendor):
+            raise ExtractError('signature state differs from the request: %s' % report.get('signature'))
+        data = partial.read_bytes()
+        if (len(data), '%08x' % (zlib.crc32(data) & 0xFFFFFFFF)) != (report['bytes'], report['crc32']):
+            raise ExtractError('written os.ldr differs from what the extractor checked')
+        partial.rename(out / 'os.ldr')
+        (out / package_records.NATIVE).write_bytes(
+            firmware_document(
+                name or entry_name(report['version']), report['version'], 'official' if vendor else 'custom', data
             )
-            if report.get('status') != 'ok':
-                details = [
-                    '%s=%s' % (k, report.get(k)) for k in ('container', 'inflate', 'ldr') if report.get(k) != 'ok'
-                ]
-                if report.get('container') == 'signature':
-                    details.append('signature=%s' % report.get('signature'))
-                raise ExtractError('extraction refused: %s (%s)' % (report.get('status'), ', '.join(details)))
-            if (report.get('signature') == VERIFIED) != bool(vendor):
-                raise ExtractError('signature state differs from the request: %s' % report.get('signature'))
-            data = partial.read_bytes()
-            if (len(data), '%08x' % (zlib.crc32(data) & 0xFFFFFFFF)) != (report['bytes'], report['crc32']):
-                raise ExtractError('written os.ldr differs from what the extractor checked')
-            partial.rename(out / 'os.ldr')
-            (out / package_records.NATIVE).write_bytes(
-                firmware_document(
-                    name or entry_name(report['version']), report['version'], 'official' if vendor else 'custom', data
-                )
-            )
-        except BaseException:
-            for path in (partial, out / 'os.ldr', out / package_records.NATIVE):
-                if path.exists():
-                    path.unlink()
-            out.rmdir()
-            raise
+        )
+    except BaseException:
+        for path in (partial, out / 'os.ldr', out / package_records.NATIVE):
+            if path.exists():
+                path.unlink()
+        out.rmdir()
+        raise
     report['folder'] = str(out)
     return report
 

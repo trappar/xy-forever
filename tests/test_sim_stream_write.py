@@ -41,7 +41,7 @@ class StreamWriteTest(unittest.TestCase):
         self.dir = Path(self.tmp.name) / ('run-%d' % self.runs)
         shutil.copytree(self.seeded, self.dir / 'yaffs2')
         self.sim = sim.Simulator(
-            self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out, log=self.dir / 'log.txt'
+            self.dir / 'yaffs2', self.dir / 'bootpart.bin', binary=self.out, log=self.dir / 'log.txt'
         ).start()
         self.links = []
 
