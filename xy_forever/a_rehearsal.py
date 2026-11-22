@@ -1,9 +1,8 @@
 """Developer A admission rehearsal. Uses only RAM staging; never invokes an install."""
 import hashlib
 import struct
-import time
 
-from xy_forever import usb_proto_ids as P
+from xy_forever import transport, usb_proto_ids as P
 
 
 def call(dev, operation, extra=b''):
@@ -30,7 +29,7 @@ def run(dev, data, uninstall=False, deadline_ms=120000, progress=None):
             code, state = call(dev, 1)
             if code:
                 return code, state
-            time.sleep(.02)  # status polling cadence; never retries a failed request
+            transport.pause(dev.t, .02)  # status polling cadence (the simulator: its clock); never retries a failed request
     except KeyboardInterrupt:
         # Cancel only an intact protocol session. Transport failures propagate without recovery.
         code, state = call(dev, 2)

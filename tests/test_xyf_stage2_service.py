@@ -179,7 +179,7 @@ class Stage2ServiceTest(unittest.TestCase):
             s = self.sim.status()
             if predicate(s):
                 return s
-            time.sleep(0.01)
+            self.sim.advance(10)                         # device time: the boot runs on the simulator clock
         self.fail('%s not reached: %s' % (what, self.sim.status()))
 
     def test_plain_boot_never_reads_the_file(self):

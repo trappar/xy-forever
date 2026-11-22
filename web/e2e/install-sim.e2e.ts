@@ -68,11 +68,13 @@ async function powerOn(stock: 'stock' | 'missing', plain: boolean): Promise<SimI
 }
 
 const status = async (sim: SimInfo): Promise<Record<string, unknown>> => control(sim.control, 'status');
+/** Until cond, the device's clock moved on 100 ms between looks (it moves only when told: xy-forever sim/clock.cpp). */
 async function until(what: string, cond: () => Promise<boolean>, ms = 120_000): Promise<void> {
   const deadline = Date.now() + ms;
   while (!(await cond())) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await new Promise((ok) => setTimeout(ok, 100));
+    if (running) await control(running.sim.control, 'advance 100');
+    await new Promise((ok) => setTimeout(ok, 20));
   }
 }
 const inOs = async (sim: SimInfo): Promise<boolean> => { const s = await status(sim); return s['a'] === 'os' && s['b'] === 'os'; };

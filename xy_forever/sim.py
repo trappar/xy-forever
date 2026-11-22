@@ -341,14 +341,14 @@ class Simulator:
 
     def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None,
                  otp_initialized=False, otp_a=None, a_otp_initialized=False, ask=False,
-                 deadline_s=bounds.sim_deadline_s):
+                 deadline_s=bounds.sim_deadline_s, faults=None):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
         Device time moves only under the simulator's control (sim/clock.cpp). otp_initialized starts B with both its ROM and the stock initialization
         guard already set, as after the stock bootloader's encrypted-image read. ask: #65's question as on the device
         (Ask before USB control as settings.txt says); False (tests that are not about it): the setting reads Off,
         so no serial request waits for an answer nobody gives. deadline_s: the board stops on its own that
         long after it started (#230; None: never, interactive runs); default bounds.sim_deadline_s(): 10 s,
-        or SLOW_S in a test marked @bounds.slow (#233)."""
+        or SLOW_S in a test marked @bounds.slow (#233). faults: {name: value} armed before the power-on (control set)."""
         self.root, self.bootpart = Path(root), Path(bootpart)
         # B records retain their original framing; bit7 marks independent A selectors.
         a_records = bytearray()
@@ -367,6 +367,7 @@ class Simulator:
         self.play, self.log, self.capacity, self.ask = play, log, capacity, ask
         self.deadline_s = deadline_s() if callable(deadline_s) else deadline_s
         self.process = None
+        self.faults = dict(faults or {})
 
     @property
     def address(self):
@@ -381,7 +382,8 @@ class Simulator:
             (['--otp-stdin'] if self.otp else []) + \
             (['--otp-initialized'] if self.otp_initialized else []) + \
             (['--a-otp-initialized'] if self.a_otp_initialized else []) + (['--ask'] if self.ask else []) + \
-            (['--deadline-s', '%g' % self.deadline_s] if self.deadline_s else [])
+            (['--deadline-s', '%g' % self.deadline_s] if self.deadline_s else []) + \
+            [w for name, value in self.faults.items() for w in ('--set', '%s=%d' % (name, value))]
 
     def listen_control(self):
         """The control port's socket, listening before the simulator starts (control() never waits for it)."""

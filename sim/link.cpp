@@ -195,6 +195,7 @@ bool a_service() {
     if (in_service || queue.empty() || r32(primary + 4)) return false;
     Incoming in = std::move(queue.front());
     queue.pop_front();
+    if (in.m.cls != cls_partition) ++shared->file_requests;   // storage work: news for the clock (sim/clock.cpp)
     const uint32_t slot = driver() + 0x3c + 0x60 * (next_slot++ & 3u);
     memset(host(slot), 0, 0x60);
     w32(slot, in.m.cls); w8(slot + 5, uint8_t(in.m.op)); w32(slot + 8, in.m.a0);

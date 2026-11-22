@@ -277,7 +277,7 @@ void power_cycle(bool play, const char* why) {
     shared->b_waits_a = 0; shared->b_gate = 0;
     shared->play = play ? 1 : 0;
     shared->b_listening = 0;
-    ++power_ons;
+    ++power_ons; ++shared->outside;                      // a power-on is news: the device boots on its own
     log("power on (%s, %s)", why, play ? "PLAY held" : "no keys");
     start(1, true);                      // B enters first on the device; A about 0.5 s later
     start(0, true);
@@ -418,7 +418,7 @@ int listen_on(int port) {
 int usage() {
     fprintf(stderr, "usage: xyf_sim --root DIR --bootpart FILE --stock MEMORY [--port 7341] [--control 7342 | --control-fd FD]\n"
                     "               [--capacity BYTES] [--plain] [--otp-stdin] [--otp-initialized] [--ask]\n"
-                    "               [--deadline-s S]\n");
+                    "               [--deadline-s S] [--set FAULT=VALUE ...]\n");
     return 2;
 }
 }
@@ -447,6 +447,7 @@ int main(int argc, char** argv) {
     int control_port = 0, control_listener = -1;
     bool play = true, otp = false;
     uint64_t deadline_us = 0;
+    std::vector<std::string> faults;                      // --set NAME=VALUE: a fault armed before the power-on
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         const char* v = i + 1 < argc ? argv[i + 1] : 0;
@@ -464,6 +465,7 @@ int main(int argc, char** argv) {
         else if (a == "--control-fd") control_listener = atoi(v);   // listening already (xy_forever/sim.py)
         else if (a == "--capacity") shared->capacity = uint32_t(strtoul(v, 0, 0));
         else if (a == "--deadline-s") deadline_us = uint64_t(atof(v) * 1e6);
+        else if (a == "--set" && strchr(v, '=')) faults.push_back(std::string("set ") + v);
         else return usage();
         ++i;
     }
@@ -480,8 +482,12 @@ int main(int argc, char** argv) {
     if (control_listener >= 0) { control_fd = control_listener; fcntl(control_fd, F_SETFL, O_NONBLOCK); }
     else control_fd = listen_on(control_port);
     log("USB CDC endpoint 127.0.0.1:%d, control 127.0.0.1:%d, storage %s", shared->port, control_port, shared->root);
-    power_cycle(play, "start");
     bool quit = false;
+    for (std::string& f : faults) {
+        f[f.find('=')] = ' ';
+        if (command(f, quit, -1).find("\"ok\": true") == std::string::npos) { fprintf(stderr, "xyf_sim: %s\n", f.c_str()); return 2; }
+    }
+    power_cycle(play, "start");
     int code = 0;
     if (deadline_us) { signal(SIGALRM, deadline_passed); alarm(unsigned(deadline_us / 1000000u) + 2); }
     const pid_t parent = getppid();

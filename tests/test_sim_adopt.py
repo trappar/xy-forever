@@ -65,9 +65,8 @@ class Adopt(unittest.TestCase):
         """slow_ms: A slowed from the first step on (the start's own job left to run while the test watches)."""
         sim.seed_fresh(self.root, stock, self.image)
         self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', build_dir=self.build_dir, play=play,
-                                 log=self.dir / 'log.txt').start(settle=not slow_ms)
-        if slow_ms:
-            self.sim.set('a_slow_ms', slow_ms)
+                                 log=self.dir / 'log.txt', faults={'a_slow_ms': slow_ms} if slow_ms else None
+                                 ).start(settle=not slow_ms)
         if play:
             self.connect()
 

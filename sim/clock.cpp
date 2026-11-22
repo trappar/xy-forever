@@ -12,9 +12,9 @@
 //    with nothing done; or work done since the last step (a link message, USB data, a control command, a menu
 //    pass that polled the clock). With B at rest, work counts only while B owes a host request its answer (it
 //    read host bytes and wrote none since: a reply that takes many passes) or for rest_limit past the last
-//    news from outside (USB data or a connection, a control command other than status, inject, injected,
-//    settle and advance): a device that polls on its own comes to rest, and a frame B has not read whole
-//    waits for its rest. A processor's bounded wait does not run the clock by itself (A's long mount behind
+//    news (a power-on, a file request A served, USB data or a connection, a control command other than status,
+//    inject, injected, settle and advance): a device that polls on its own (a pass that asks A the same partition
+//    request every time) comes to rest, and a frame B has not read whole waits for its rest. A processor's bounded wait does not run the clock by itself (A's long mount behind
 //    B's menu). Otherwise device time stands still and every process blocks, with no CPU, until the host or a
 //    control command brings something: an idle device's own timers (keepalives, a deferred save, an idle
 //    window's close, a frame's idle reset) wait for an advance, which is how a host's pause reaches the device
@@ -222,7 +222,7 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
         const uint64_t until = running[k] ? shared->idle_until[k].load() : 0;
         if (until > now && (!bound || until < bound)) bound = until;
     }
-    const uint32_t outside = shared->outside.load();
+    const uint32_t outside = shared->outside.load() + shared->file_requests.load();   // storage work is news too
     if (outside != seen_outside) { seen_outside = outside; outside_ns = now; outside_any = true; }
     const uint32_t work = shared->work[0].load() + shared->work[1].load();
     const bool worked = work != stepped_work;
