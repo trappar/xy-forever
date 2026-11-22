@@ -11,6 +11,12 @@
 //   options: --headed (show the window), --fail-after-upload (a failing step after the upload: shows the cleanup), --profile DIR (serial: the Chrome profile; default
 //            <private>/xy-forever/chrome-device-test; <private> is XYF_PRIVATE, else ../private next to the repository), --vite-port N (default: 5173 with --serial, a grant being per origin; else a free one)
 //
+// No restart check (the --reboot of #207 went with the demo page in #242): the app has no restart action of its own, only
+// an update restarts the OP-XY. Against the simulator, reconnection after a restart is covered already, so a check
+// here would repeat it: test/browser/serial.spec.ts and chooser.spec.ts (the port lost, then found again without the
+// chooser) and web/e2e/app.e2e.ts (an update restarts into the menu and reconnects). On the OP-XY, an update through
+// the app checks it.
+//
 // Web Serial and the port chooser (checked with Chrome 157.0.8103.51 and Playwright 1.65.1, 2026-11-15):
 // Playwright's grantPermissions refuses 'serial' ("Unknown permission"); CDP Browser.grantPermissions has
 // no serial permission; the DevTools DeviceAccess domain enables but never sends deviceRequestPrompted for

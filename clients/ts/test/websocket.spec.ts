@@ -1,7 +1,7 @@
 // The development relay (test/relay.ts) and the WebSocket transport (src/websocket.ts) under Node:
 // first against a plain TCP server standing in for the simulator, then the call layer through the
-// relay to the ws simulator (test/simulators.ts). Relay ports: XYF_TS_RELAY_PORT + 2 and + 3
-// (default 7752, 7753); the stand-in listens on XYF_TS_SIM_PORT + 48 and + 49 (7748, 7749).
+// relay to the ws simulator (test/simulators.ts). The relays and the stand-in listen on free ports the
+// system picks.
 import * as net from 'node:net';
 import { afterAll, beforeAll, describe, expect, inject, test } from 'vitest';
 import { WebSocket as WsClient } from 'ws';
@@ -12,16 +12,15 @@ import { Client, VERSION, isXyfError } from '../src/index.ts';
 
 const sims = inject('sims');
 const sim = sims.ws;
-const RELAY = parseInt(process.env['XYF_TS_RELAY_PORT'] ?? '7750', 10);
-const STAND_IN = parseInt(process.env['XYF_TS_SIM_PORT'] ?? '7700', 10) + 48;
 
 function listen(port: number, onSocket: (s: net.Socket) => void): Promise<net.Server> {
   return new Promise((resolve, reject) => {
     const server = net.createServer(onSocket);
     server.once('error', reject);
-    server.listen(port, '127.0.0.1', () => resolve(server));
+    server.listen(port, '127.0.0.1', () => resolve(server));   // 0: a free port (portOf)
   });
 }
+const portOf = (server: net.Server): number => (server.address() as net.AddressInfo).port;
 function closeServer(server: net.Server | undefined): Promise<void> {
   return new Promise((done) => { if (!server) { done(); return; } server.close(() => done()); });
 }
@@ -43,9 +42,9 @@ describe('the relay, against a TCP stand-in for the simulator', () => {
   let peers: net.Socket[] = [];
   let listening = 1;
   beforeAll(async () => {
-    target = await listen(STAND_IN, (s) => { peers.push(s); s.on('data', (d) => s.write(Buffer.from([...(d as Buffer)].reverse()))); });
-    controlServer = await listen(STAND_IN + 1, (s) => s.on('data', () => s.end(JSON.stringify({ listening }) + '\n')));
-    relay = await startRelay({ port: RELAY + 3, target: STAND_IN });
+    target = await listen(0, (s) => { peers.push(s); s.on('data', (d) => s.write(Buffer.from([...(d as Buffer)].reverse()))); });
+    controlServer = await listen(0, (s) => s.on('data', () => s.end(JSON.stringify({ listening }) + '\n')));
+    relay = await startRelay({ target: portOf(target), control: portOf(controlServer) });
   });
   afterAll(async () => {
     await relay?.close();
@@ -86,7 +85,10 @@ describe('the relay, against a TCP stand-in for the simulator', () => {
     const local = new WsClient(relay.url, { origin: 'http://localhost:5173' });
     await new Promise((ok) => local.once('open', ok));
     local.close();
-    const away = await startRelay({ port: RELAY + 2, target: STAND_IN - 1 });   // nothing listens there
+    const free = await listen(0, () => undefined);
+    const nothing = portOf(free);
+    await closeServer(free);
+    const away = await startRelay({ target: nothing });   // nothing listens there
     try {
       await expect(WebSocketTransport.open(away.url)).rejects.toThrow(/could not connect|closed/);
     } finally {
@@ -111,7 +113,7 @@ describe.skipIf(!sim)(`the call layer through the relay${sim ? '' : ` (skipped: 
   let relay: Relay;
   let client: Client;
   beforeAll(async () => {
-    relay = await startRelay({ port: RELAY + 2, target: sim!.port });
+    relay = await startRelay({ target: sim!.port });
     client = await Client.connect(webSocketOpener(relay.url), { timeoutMs: 5000 });
   });
   afterAll(async () => {

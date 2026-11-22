@@ -6,13 +6,14 @@
 //   ws           XYF_TS_SIM_PORT + 6   the WebSocket transport through the relay (websocket.spec.ts)
 //   files        XYF_TS_SIM_PORT + 8   the file methods (files.spec.ts)
 //   mods         XYF_TS_SIM_PORT + 20  mod packages (mods.spec.ts)
-// Control ports are N + 1. Defaults: ports from 7700; state under <private sessions>/ts-client
-// (XYF_TS_SIM_STATE), removed afterwards unless XYF_KEEP_SIM=1. Without python3, the private stock
+// Control ports are N + 1. XYF_TS_SIM_PORT: a random base by default (randomBase: parallel runs and
+// checkouts do not collide); state under <private sessions>/ts-client-BASE (XYF_TS_SIM_STATE), removed
+// afterwards unless XYF_KEEP_SIM=1. Without python3, the private stock
 // images or clang++, the simulator tests are skipped with the reason; the codec tests still run.
 // The browser suite (test/browser/setup.ts) uses the same functions with its own ports and folder.
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { mkdirSync, openSync, rmSync } from 'node:fs';
+import { mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
 import * as net from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,24 +72,36 @@ async function start(name: string, port: number, state: string, extra: string[])
   // In this process's group (a group kill of the test run reaches it); the wrapper ends its own
   // xyf_sim group when it is terminated or this process is gone (xy_forever/procgroup.py, #133).
   // Device time moves only under the simulator's control, so a loaded host never runs out a device
-  // time-out (sim/clock.cpp).
+  // time-out (sim/clock.cpp). Its output goes to sim.log through here: B's "USB on: listening" line
+  // says it is up (no polling); then the control port's settle answers once the power-on's work is done and the
+  // device's clock stands still, as a host that comes a moment later finds it.
   const child = spawn('python3', ['-m', 'xy_forever.sim', '--port', String(port), '--state', dir, ...extra],
-    { cwd: REPO, stdio: ['ignore', log, log] });
+    { cwd: REPO, stdio: ['ignore', 'pipe', 'pipe'] });
   live.add(child);
   child.once('exit', () => live.delete(child));
   endWithThisProcess();
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`the ${name} simulator exited (${child.exitCode}); see ${dir}/sim.log`);
-    try {
-      if ((await control(port + 1, 'status', 500))['listening'] === 1) {
-        return [{ address: `127.0.0.1:${port}`, host: '127.0.0.1', port, control: port + 1, root: join(dir, 'yaffs2') }, child];
-      }
-    } catch { /* not up yet */ }
-    await new Promise((ok) => setTimeout(ok, 100));
-  }
-  stopChild(child);
-  throw new Error(`the ${name} simulator did not listen within 60 s; see ${dir}/sim.log`);
+  const info: SimInfo = { address: `127.0.0.1:${port}`, host: '127.0.0.1', port, control: port + 1, root: join(dir, 'yaffs2') };
+  return new Promise((resolve, reject) => {
+    let seen = '', ready = false;
+    const timer = setTimeout(() => fail(`did not listen within 60 s`), 60_000);
+    const fail = (why: string): void => { clearTimeout(timer); stopChild(child); reject(new Error(`the ${name} simulator ${why}; see ${dir}/sim.log`)); };
+    const exited = (code: number | null): void => fail(`exited (${code})`);
+    child.once('exit', exited);
+    const output = (data: Buffer): void => {
+      writeSync(log, data);
+      if (ready) return;
+      seen = (seen + data.toString()).slice(-4096);
+      if (!/USB on: listening/.test(seen)) return;
+      ready = true;
+      control(info.control, 'settle', 60_000).then(() => {
+        clearTimeout(timer);
+        child.off('exit', exited);
+        resolve([info, child]);
+      }, (error: Error) => fail(`did not settle (${error.message})`));
+    };
+    child.stdout!.on('data', output);
+    child.stderr!.on('data', output);
+  });
 }
 
 function stopChild(child: ChildProcess): void {
@@ -177,6 +190,28 @@ export function makeModBase(root: string, base: string): void {
   if (run.status !== 0) throw new Error(`the synthetic mod base: ${run.stderr.trim()}`);
 }
 
+/** A random base port for simulators (base + N and N + 1, N < 100), below the system's ephemeral ports (49152 on): parallel
+ * runs and other checkouts do not collide (start() refuses a port in use). */
+export function randomBase(): number {
+  return 20_000 + 100 * Math.floor(Math.random() * 290);
+}
+
+/**
+ * cond()'s value once truthy, the simulator's clock moved on between tries (advance 1 ms, doubling to 1 s): no host
+ * time waited (xy_forever/sim.py Simulator.until). An Error past limitMs of device time.
+ */
+export async function until<T>(controlPort: number, what: string, cond: () => T | Promise<T>, limitMs = 60_000): Promise<T> {
+  let spent = 0, step = 1;
+  for (;;) {
+    const value = await cond();
+    if (value) return value;
+    if (spent >= limitMs) throw new Error(`${what} not reached within ${limitMs} ms of device time: ${JSON.stringify(await control(controlPort, 'status'))}`);
+    if ((await control(controlPort, `advance ${step}`, 60_000))['ok'] !== true) throw new Error(`advance ${step} refused`);
+    spent += step;
+    step = Math.min(step * 2, 1000);
+  }
+}
+
 export interface Found {
   /** Why the simulator cannot run here; null when it can. */
   why: string | null;
@@ -221,10 +256,10 @@ export async function startAll(state: string, base: number, plan: readonly (read
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
   const found = findSimulator();
   const sims: Sims = { why: found.why, preV1: null, e2e: null, ws: null, files: null, mods: null, fixtures: found.fixtures };
-  const state = found.sessions ? process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, 'ts-client') : null;
+  const base = parseInt(process.env['XYF_TS_SIM_PORT'] ?? String(randomBase()), 10);
+  const state = found.sessions ? process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, `ts-client-${base}`) : null;
   let stopAll = async (): Promise<void> => undefined;
   if (!sims.why && state) {
-    const base = parseInt(process.env['XYF_TS_SIM_PORT'] ?? '7700', 10);
     try {
       const started = await startAll(state, base, [['preV1', 2, ['--pre-v1']], ['e2e', 4, []], ['ws', 6, []], ['files', 8, []], ['mods', 20, []]]);
       Object.assign(sims, started.infos);

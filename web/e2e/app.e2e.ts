@@ -55,7 +55,7 @@ test('connects to the simulator and shows the device and its files', async () =>
   await page.goto(appUrl(`?sim=${port}`));
   expect(await page.evaluate(() => 'serial' in navigator)).toBe(false);
   await page.getByRole('button', { name: 'Connect' }).click();
-  await expect.poll(() => page.locator('[data-fact=version]').textContent(), { timeout: 20_000 }).toMatch(/^\d+\.\d+\.\d+$/);
+  await expect(page.locator('[data-fact=version]')).toHaveText(/^\d+\.\d+\.\d+$/, { timeout: 20_000 });
   const requestsBeforeReport = deviceRequests;
   await page.getByRole('button', { name: 'Bug report' }).click();
   const preview = page.getByRole('dialog', { name: 'Bug report preview' });
@@ -69,13 +69,13 @@ test('connects to the simulator and shows the device and its files', async () =>
   await preview.getByRole('button', { name: 'Close' }).click();
   expect(deviceRequests).toBe(requestsBeforeReport);
   await nav(page, 'Files').click();
-  await expect.poll(() => page.getByRole('navigation', { name: 'Folder' }).textContent(), { timeout: 10_000 }).toContain('yaffs2');
-  await expect.poll(() => page.getByTestId('files-rules').textContent()).toContain('never /yaffs2/bootloader.dev or /yaffs2/upgrade');
+  await expect(page.getByRole('navigation', { name: 'Folder' })).toContainText('yaffs2', { timeout: 10_000 });
+  await expect(page.getByTestId('files-rules')).toContainText('never /yaffs2/bootloader.dev or /yaffs2/upgrade');
   await nav(page, 'Mods').click();
-  await expect.poll(() => page.getByRole('heading', { level: 1, name: 'Mods' }).textContent(), { timeout: 10_000 }).toBe('Mods');
+  await expect(page.getByRole('heading', { level: 1, name: 'Mods' })).toHaveText('Mods', { timeout: 10_000 });
   await page.getByRole('link', { name: 'Connect' }).click();
   await page.getByRole('button', { name: 'Disconnect' }).click();
-  await expect.poll(() => page.getByRole('button', { name: 'Connect', exact: true }).isVisible()).toBe(true);
+  await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Bug report' }).click();
   expect(JSON.parse((await json.textContent())!)).toMatchObject({
     connected: false,
@@ -131,8 +131,7 @@ test('installs a newer XY Forever and restarts into its menu', async () => {
     await update.waitFor();
     expect(await page.getByText(release.notes).isVisible()).toBe(true);
     await update.click();
-    await expect.poll(() => page.getByTestId('update-status').textContent(), { timeout: 30_000 })
-      .toBe(`XY Forever ${version} is running in the menu.`);
+    await expect(page.getByTestId('update-status')).toHaveText(`XY Forever ${version} is running in the menu.`, { timeout: 30_000 });
     expect(restart).toBe(2);
     expect(await page.locator('[data-fact=image]').textContent()).toBe(release.image);
     expect(await update.count()).toBe(0);
@@ -157,7 +156,7 @@ test('previews and downloads the same offline snapshot after a connection error'
   await preview.getByRole('button', { name: 'Close' }).click();
 
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  await expect.poll(() => page.getByTestId('notice').textContent()).toBe(failure);
+  await expect(page.getByTestId('notice')).toHaveText(failure);
   await report.click();
   const json = (await preview.locator('pre').textContent())!;
   expect(JSON.parse(json)).toMatchObject({

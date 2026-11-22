@@ -26,7 +26,7 @@ it('round-trips only allowed fields and passes the repository leak scanner', () 
   bugReport.updateStatus(raw);
   bugReport.record('connect', 'finished');
   bugReport.record('upload_files', 'failed', new XyfError('refused', hostPath, { fields: { filename, aes }, cause: raw }));
-  bugReport.record('build', 'failed', new Error(publicKey));
+  bugReport.record('save_mods', 'failed', new Error(publicKey));
   const snapshot = bugReport.snapshot(true);
   expect(JSON.parse(snapshot)).toEqual({
     bundleVersion: 1,
@@ -38,7 +38,7 @@ it('round-trips only allowed fields and passes the repository leak scanner', () 
     activity: [
       { event: 'connect', outcome: 'finished' },
       { event: 'upload_files', outcome: 'failed', code: 'refused' },
-      { event: 'build', outcome: 'failed', code: 'app_error' },
+      { event: 'save_mods', outcome: 'failed', code: 'app_error' },
     ],
   });
 
@@ -89,9 +89,9 @@ it('keeps a bounded activity log and can export before any device connects', () 
   const bugReport = new BugReport();
   const first = bugReport.snapshot(false);
   bugReport.record('connect', 'failed', new XyfError('timeout', serial));
-  for (let i = 0; i < 24; i++) bugReport.record('browse_files', 'blocked');
+  for (let i = 0; i < 24; i++) bugReport.record('browse_files', 'finished');
   expect(JSON.parse(first)).toMatchObject({ connected: false, device: null, activity: [] });
   expect(JSON.parse(bugReport.snapshot(false)).activity).toEqual(
-    Array.from({ length: 24 }, () => ({ event: 'browse_files', outcome: 'blocked' })),
+    Array.from({ length: 24 }, () => ({ event: 'browse_files', outcome: 'finished' })),
   );
 });
