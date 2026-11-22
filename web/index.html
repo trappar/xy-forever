@@ -11,7 +11,7 @@
   <div class="shell">
     <aside class="side">
       <div class="brand"><span class="mark">XY</span><span>Forever</span></div>
-      <nav id="nav">
+      <nav id="nav" aria-label="Pages">
         <a href="%BASE_URL%connect/" data-page="connect">Connect</a>
         <a href="%BASE_URL%install/" data-page="install">Install</a>
         <a href="%BASE_URL%device/" data-page="device">Device</a>
@@ -19,14 +19,14 @@
         <a href="%BASE_URL%files/" data-page="files">Files</a>
       </nav>
       <button type="button" id="bug-report">Bug report</button>
-      <div class="link" id="link"><span class="dot"></span><span id="link-text">Not connected</span></div>
+      <div class="link" id="link"><span class="dot"></span><span id="link-text" data-testid="link">Not connected</span></div>
     </aside>
     <main>
-      <div id="installed" class="notice installed" role="status" hidden>
+      <div id="installed" data-testid="installed" class="notice installed" role="status" hidden>
         <span>XY Forever is installed, with your OP-XY's OS 1.2.1 as the firmware it starts. Add mods here.</span>
         <button type="button" id="installed-dismiss">Dismiss</button>
       </div>
-      <div id="notice" class="notice" hidden></div>
+      <div id="notice" data-testid="notice" class="notice" hidden></div>
       <section id="page-connect" class="page"></section>
       <section id="page-install" class="page" hidden></section>
       <section id="page-device" class="page" hidden></section>

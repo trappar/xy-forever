@@ -119,7 +119,7 @@ this information in memory for the current tab, so the preview is available even
 ```sh
 npm test             # Vitest: config parsing, mod grouping, path rules, the install checks and steps (test/)
 npm run typecheck
-npm run test:e2e     # the app in the system Chrome (headless) against the simulator, and the Install page (e2e/)
+npm run test:e2e     # Playwright Test: the app in the system Chrome (headless) against the simulator, and the Install page (e2e/)
 ```
 
 `test:e2e` starts `python3 -m xy_forever.sim --virtual-clock` from the repository root on a random port in 21000-31000, with its

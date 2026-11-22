@@ -45,6 +45,7 @@ export function notice(text: string, kind: 'error' | 'busy' | 'info' = 'info'): 
   const n = document.getElementById('notice')!;
   n.hidden = text === '';
   n.className = `notice ${kind}`;
+  n.dataset['kind'] = kind;
   n.textContent = text;
 }
 

@@ -6,8 +6,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
-import type { Browser } from 'playwright';
+import { chromium } from '@playwright/test';
+import type { Browser } from '@playwright/test';
 import { INSTALL_STAGES, PAGES, PAGES_BASE } from '../src/routes.ts';
 
 const dist = fileURLToPath(new URL('../dist/', import.meta.url));

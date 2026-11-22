@@ -12,15 +12,15 @@
     "smoke:pages": "node scripts/smoke-pages.ts",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:e2e": "vitest run -c vitest.e2e.config.ts"
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "xy-forever-client": "file:../clients/ts"
   },
   "devDependencies": {
+    "@playwright/test": "1.65.1",
     "@types/node": "24.19.2",
     "@types/ws": "^8.18.2",
-    "playwright": "1.65.1",
     "typescript": "7.0.2",
     "vite": "8.3.8",
     "vitest": "5.1.0",

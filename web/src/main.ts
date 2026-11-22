@@ -192,7 +192,7 @@ async function savedConfig(): Promise<{ config: SavedConfig | null; error?: neve
 function updateCard(c: Client): HTMLElement | null {
   const release = pinned();
   if (!release || !updateAvailable(c.info, release)) return null;
-  const progress = h('p', { role: 'status' });
+  const progress = h('p', { role: 'status', 'data-testid': 'update-status' });
   const button = btn(`Update to ${release.version}`, () => void run('update_xy_forever', async () => {
     button.disabled = true;
     try {
@@ -414,7 +414,7 @@ async function browse(path: string): Promise<void> {
   entries.sort((a, b) => Number(a.kind !== 'folder') - Number(b.kind !== 'folder') || a.name.localeCompare(b.name));
   const writable = folderWritable(cwd);
   const parts = cwd.split('/').filter(Boolean);
-  const crumbs = h('div', { class: 'crumbs', id: 'crumbs' }, ...parts.flatMap((p, i) => {
+  const crumbs = h('nav', { class: 'crumbs', 'aria-label': 'Folder' }, ...parts.flatMap((p, i) => {
     const here = '/' + parts.slice(0, i + 1).join('/');
     return [i > 0 ? '/' : '', i === parts.length - 1 ? h('b', {}, p) : btn(p, () => void run('browse_files', () => browse(here)))];
   }));
@@ -427,7 +427,7 @@ async function browse(path: string): Promise<void> {
   page('files').replaceChildren(
     h('h1', {}, 'Files'),
     h('p', { class: 'lede' }, 'Browse the OP-XY\'s storage. Everything can be downloaded.'),
-    h('p', { class: 'rules', id: 'files-rules' }, `Changes are allowed ${WRITE_RULE}. `, writable ? 'This folder accepts changes.' : 'This folder is read-only.'),
+    h('p', { class: 'rules', 'data-testid': 'files-rules' }, `Changes are allowed ${WRITE_RULE}. `, writable ? 'This folder accepts changes.' : 'This folder is read-only.'),
     h('div', { class: 'card' },
       h('div', { class: 'row' }, crumbs, h('span', { class: 'spacer' }),
         writable && h('label', { class: 'button' }, 'Upload...', upload),
