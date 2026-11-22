@@ -47,50 +47,19 @@ The [workflow](docs/ORCHESTRATION.md) also supports agents without delegation.
 For OP-XY owners: [docs/GUIDE.md](docs/GUIDE.md) (the menu, the Mods page, the host
 tool). For mod writers: [docs/MODS-DEV.md](docs/MODS-DEV.md).
 
-## Layout
+## Layout and requirements
 
-```
-xy_forever/       the Python package (uv installs it): build helpers, report decoder, USB protocol, private paths,
-                  and the tools: xyf-build (build + verify a candidate os.ldr: CRC, call and symbol audits),
-                  xyf-host (XY Forever's USB service: install, files, screen, keys), xyf-package
-xyf_*.py          shims: `uv run xyf-host` = `uv run xyf-host`
-tests/            the suite, plus ui_preview.py (the device UI as PNG) and verify_ldr.py (the native LDR
-                  parser against official images), which drive its C++ bridges
-target/           cold-time device code (C++/asm, freestanding, both processors)
-native/           freestanding codecs: LDR, SHA-256, inflate/ZIP, AES/TFW, packages, companions
-protocol/v1.json  the USB serial protocol spec; scripts/protogen.py generates its code and docs/PROTOCOL.md
-clients/ts/       TypeScript protocol module (src/v1.ts, generated) for the web app; never built into firmware
-web/              the web app (Chrome, Web Serial): mod package manager and file manager; see web/README.md
-re/               reverse-engineering tools over the private 1.2.1 listing
-scripts/          device session helpers; neutral.py compares candidates between a git ref and the working tree
-tests/            unit tests (host-compiled C++ bridges + Python)
-docs/             SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORAGE, GOALS,
-                  ORCHESTRATION, GUIDE, MODS-DEV; current reference leaves
-```
-
-## Requirements
-
-- macOS (arm64) or Windows x86_64 host with clang for the host tests, and mise: it installs the pinned
-  Python, uv, Node, pnpm and gh (`mise.toml`). uv manages the Python dependencies (`pyproject.toml`), pnpm
-  the JS ones (one workspace: `web/`, `clients/ts`).
-- The Blackfin toolchain (`bfin-elf` GCC 8): Open-XY's `toolchain-1` release, which
-  `setup.py bootstrap` downloads into `../tools/blackfin` (or `$XYF_TOOLCHAIN`). The archive is
-  checked against `stock.json` and every file against `toolchains.json`.
-- Private inputs outside the repo (`../private/` or `$XYF_PRIVATE`): the stock 1.2.1
-  `os.ldr` and `bootloader.ldr`, and the decrypted official packages. They are not
-  distributed. Tests that need them skip when they are absent. `mise run setup` creates the folder;
-  `uv run scripts/setup.py import-stock --from-device` imports the stock pair.
+Where code lives: [docs/architecture/code-map.md](docs/architecture/code-map.md). Supported hosts and
+everything setup installs: [ONBOARDING.md](ONBOARDING.md). Firmware builds need the Blackfin toolchain
+(Open-XY's `toolchain-1` release, which `mise run setup` installs and checks against `toolchains.json`) and
+private inputs outside the repository: the stock 1.2.1 `os.ldr` and `bootloader.ldr` from your own OP-XY,
+which are not distributed. Tests that need them skip when they are absent.
 
 ## Build and verify after the first device install
 
-```sh
-mise run test                     # the fast tier; test-changed, test-all
-mise run build && mise run verify # the product build and its audits
-mise run check                    # once per PR: build, verify, type checks, fast and gate tiers
-mise run neutral                  # after a refactor: every build mode's candidate is unchanged
-```
-
-Installing on a device: [docs/operating/build-install.md](docs/operating/build-install.md), under the rules in
+`mise run build` and `mise run verify` build the product and run its audits; the tests and the PR gate:
+[checks](docs/operating/build-install.md#checks). Installing on a device:
+[docs/operating/build-install.md](docs/operating/build-install.md), under the rules in
 [docs/SAFETY.md](docs/SAFETY.md).
 
 ## Native codec limits

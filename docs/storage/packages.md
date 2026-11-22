@@ -37,8 +37,8 @@ Any other known key for a type is refused. Dependencies are exact matches, check
 on the device: a base or an assembled set runs only on the entry whose `sha256` is
 its `needs_os`; a mod's `generation` (and `profile`, if given) equals its base's; an
 assembled set's `generation`, `needs_os` and `profile` equal its base's. Host twin:
-`xy_forever/package_records.py` (`parse`, `document`). The `python3 -m
-xy_forever library-entry` command builds an entry and `xyf_host.py library-add` sends one.
+`xy_forever/package_records.py` (`parse`, `document`). The `uv run -m
+xy_forever library-entry` command builds an entry and `uv run xyf-host library-add` sends one.
 
 ## `files.sha256`
 
@@ -51,7 +51,7 @@ itself or a name containing `bootloader`. Lines are sorted by path, bytewise
 list with one line of memory, at most 4096 entries. Host: `files_sha256_text`.
 
 `content.sha256` (a firmware entry's content set) is the same form, with paths relative to
-`/yaffs2/content/`. `xyf_package.py content-manifest CONTENT --out DIR` writes it from an
+`/yaffs2/content/`. `uv run xyf-package content-manifest CONTENT --out DIR` writes it from an
 official package's `firmware/blackfin/content/` with `content.sizes` (host only, `<bytes>  <path>`)
 and `firmware.version`; `content-compare A B` (lists or folders) exits 0 when identical.
 

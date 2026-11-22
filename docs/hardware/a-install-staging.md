@@ -51,7 +51,7 @@ For individual repetitions after readiness, the equivalent CLIs are
 `uv run xyf-host dev-a-rehearsal "$STOCK" --uninstall`.
 
 ```sh
-python3 - "$BUILD" "$STOCK" <<'PY'
+uv run python - "$BUILD" "$STOCK" <<'PY'
 import hashlib, json, struct, sys, time
 from pathlib import Path
 import xyf_host as host

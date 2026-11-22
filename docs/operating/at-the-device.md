@@ -37,7 +37,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
   Files are `/yaffs2/xy-forever/log/prod-{a,b}.bin` (`pfile-` from a library image); the
   next boot overwrites them. Inside, B's USB service block names the release version and image
   (as HELLO `version=` and `image=`) that wrote them; builds before #107 wrote `prod-NNN-{a,b}.bin`.
-- **Fetch:** `xyf_host.py read PATH --all --out FILE`, or dev MTP (below).
+- **Fetch:** `uv run xyf-host read PATH --all --out FILE`, or dev MTP (below).
 - **Decode:** `uv run -m xy_forever.census FILE.bin`.
 - **Dry-run summary:** `uv run scripts/dryshow.py STATUS.json`.
 - **Evidence capture:** `scripts/capture_session.py --out DIR --state --report prod`

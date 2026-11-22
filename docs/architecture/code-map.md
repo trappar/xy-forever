@@ -6,11 +6,11 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 
 | Path | What |
 |---|---|
-| `xy_forever/xyf_build.py` (`uv run xyf-build`; root `xyf_build.py` is a shim) | build + verify a candidate `os.ldr` (all audits) |
-| `xy_forever/xyf_host.py` (`uv run xyf-host`; root `xyf_host.py` is a shim) | host tool for XY Forever's USB service; its serial and simulator ports in `xy_forever/transport.py` (the serial port is exclusive to one process) |
+| `xy_forever/xyf_build.py` (`uv run xyf-build`) | build + verify a candidate `os.ldr` (all audits) |
+| `xy_forever/xyf_host.py` (`uv run xyf-host`) | host tool for XY Forever's USB service; its serial and simulator ports in `xy_forever/transport.py` (the serial port is exclusive to one process) |
 | `tests/ui_preview.py` | render the device UI to PNG on the host (same C++, through the test bridges; `mise run preview`) |
 | `tests/verify_ldr.py` | cross-check the native LDR parser against official images |
-| `xy_forever/xyf_package.py` (`uv run xyf-package`; root shim) | review and stage a decrypted official ZIP on the host (HARDWARE, `.tfw`); `extract-os`: OS-only library entry from an official `.tfw`, run by the device's own extractor compiled for the Mac (`host/tfw_extract.cpp`, `xy_forever/tfw_extract.py`) |
+| `xy_forever/xyf_package.py` (`uv run xyf-package`) | review and stage a decrypted official ZIP on the host (HARDWARE, `.tfw`); `extract-os`: OS-only library entry from an official `.tfw`, run by the device's own extractor compiled for the Mac (`host/tfw_extract.cpp`, `xy_forever/tfw_extract.py`) |
 | `target/cold.cpp`, `storage_probe_entry.s` | cold entry on both processors; boots the loaded library image |
 | `target/xyf_clock.hpp` | wrap-safe millisecond clock for every cold module |
 | `target/file_boot.cpp`, `file_boot_b_*.ipp`, `xyf_boot.hpp` | file/library boot session on both roles; B's side (link, menu boot, `xyf_boot` functions) in the parts |
@@ -30,27 +30,12 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 | `native/` | freestanding codecs: LDR, SHA-256, inflate/zip, AES/TFW, package admission, OS-only `.tfw` extractor (`tfw_os`) and P-224 signature check (`p224`, `tfw_signature`), content, companions, BLE session, peer boot, `tfw.check`'s verdict (`tfw_check`, linked with `tfw`, `p224`, `aes`), the mod linker (`mod_link`, `mod_elf`, `mod_numbers`: core.mjs `linkKit` in file steps), mod assembly's patch and content steps (`mod_patch`, `mod_content`; they read the linker's result); host-tested, the rest not linked yet |
 | `xy_forever/` | Python: build helpers (`compile.py`, `outer.py`, `toolchain.py`), report decoder (`census.py`), USB protocol, library entries, stage-2 packer, private paths (`paths.py`), mod packages from an open-xy kit (`modkit.py`; STORAGE.md), the native linker's host proof (`modlink.py`), the native patch/content steps on the host (`modpatch.py`, `host/mod_assemble.cpp`) |
 | `re/` | reverse-engineering tools over the private 1.2.1 listing (reach, MTP reach, CRC spans) |
-| `scripts/` | device session helpers (`keepalive.sh`, `dryshow.py`, `capture_session.py`); `neutral.py` (candidate comparison); `check.py` (the PR gate: build, verify, type checks, fast and gate tiers; a receipt per tree as a cache); `modkit_core.mjs`, `modlink_core.mjs` (run open-xy's `core.mjs` for `modkit.py`, `modlink.py`; `link_out` writes its link result) |
+| `scripts/` | device session helpers (`keepalive.sh`, `dryshow.py`, `capture_session.py`); `neutral.py` (candidate comparison); `check.py` (the PR gate, [checks](../operating/build-install.md#checks); a receipt per tree as a cache); `modkit_core.mjs`, `modlink_core.mjs` (run open-xy's `core.mjs` for `modkit.py`, `modlink.py`; `link_out` writes its link result) |
 | `sim/`, `xy_forever/sim.py` | the device simulator (above); `xy_forever/procgroup.py`: child processes (the simulator, node and pnpm in the tests) that end with what started them |
 | `protocol/v1.json`, `scripts/protogen.py` | the serial protocol spec and its generator: `target/usb_proto_ids.hpp`, `xy_forever/usb_proto_ids.py`, `clients/ts/src/v1.ts`, `docs/PROTOCOL.md` |
 | `clients/ts/` | TypeScript client for the web app: generated `v1.ts`, call layer, Node TCP and Web Serial transports; `pnpm test` (Vitest, simulators started by the tests); `clients/ts/README.md` |
-| `tests/` | `python3 -m unittest discover -s tests` (host-compiled C++ bridges + Python) |
-
-## Mods (open-xy): offline findings (nothing ran on the device)
-
-- Upstream release `v0.0.6` (`52c8de9`) and its public kit (`opxy-browser-kit/1`: normalized Blackfin
-  relocatable objects, ownership/fallback metadata, a browser linker) let a selection be linked without a
-  compiler. An offline replay matched GNU ld byte for byte (superseded by `modkit.py` and `modlink.py`).
-  FM2OP + Reaction: 146,948 initialized bytes; the reserved region is 2 MiB.
-- Select at boot and restart after a menu change: upstream has no stable binary ABI, so no live unloading.
-  A kit is an ABI generation (collection-generated tables): pin profile, linker rules and object hashes together.
-- The kit JSON (21.6 MB, base64 ELF and artwork) is not for the device: a native package must split link
-  data from UI data.
-- Upstream links its module at `0x8d2d0380`; XY Forever runs at `0x8ab00000`. The diagnostic reporter range
-  `0x8d4ce380..0x8d4d0380` falls in upstream's relocated-table zone (reported, unchecked).
-- Every selection changes `content/op1_factory.json` (and screens, presets): library switching alone does
-  not activate matching content. A boot writes only through a convergence ([boot convergence](boot/convergence.md)).
-- Project companions need a matching project size and CRC and exclude players; a missing engine falls back
-  to Prism, a missing effect to none.
-- A private relocation kernel (resolved fixups only; ELF types 6, 7, 10, 13, 18) matched GNU output on the
-  host; its Blackfin build was compiled, never run.
+| `tests/` | the suite, under pytest (`mise run test`; tiers and budgets: [checks](../operating/build-install.md#checks)): Python, and C++ through the host-built bridges |
+| `hosttest/` | the C++ built for the host for the tests: one nanobind extension (`xyf_hosttest._native`, a submodule per `bind/NAME.cpp`) and the doctest binary of the C++ unit tests (`tests/native/`); `uv sync` builds it |
+| `host/` | host-only C++ around the device code: the `.tfw` extractor (`tfw_extract.cpp`) and mod assembly (`mod_assemble.cpp`) |
+| `web/` | the web app (Chrome, Web Serial): mod package manager and file manager; `web/README.md` |
+| `third_party/` | vendored C++ with its licences: doctest (the C++ unit tests), tiny-json |

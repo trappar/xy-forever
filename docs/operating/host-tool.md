@@ -4,17 +4,12 @@ Part of [Operating the device](../OPERATING.md).
 
 The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 
-## Host tool `xyf_host.py` (macOS `/dev/cu.usbmodem*`)
+## Host tool `uv run xyf-host` (macOS `/dev/cu.usbmodem*`)
 
-`wait`, `status`, `read PATH [--all --out F]`, `install BUILD --yes-install`,
-`reboot --yes-reboot [--to service|os|menu]`, `set-default ID --yes-write`,
-`put-file LOCAL /yaffs2/xy-forever/PATH --yes-write` (creates missing folders),
-`library-add ID OS_LDR --name --version [--content DIR] --yes-write` (`--content`: the release's official content;
-the entry gets `content.sha256` + `firmware.version` and verified content blobs, which mod builds need of their base;
-list-only imports need matching live content or existing verified blobs), `screenshot --out F.png`,
-`library-remove ID --yes-write`, `library-gc --yes-write`, `continue [--dry-run]`, `boot ID --yes-boot` (1.7: boot a library entry once; leaves XY
-Forever), `key K`, `hold
-on|off`, `uninstall STOCK_OS_LDR --yes-uninstall`.
+`uv run xyf-host --help` lists the commands, with examples; `uv run xyf-host COMMAND --help` gives a command's
+flags. For `library-add --content DIR`: the release's official content; the entry gets `content.sha256` +
+`firmware.version` and verified content blobs, which mod builds need of their base (list-only imports need
+matching live content or existing verified blobs).
 
 Commands with `--yes-*` are dry runs without that flag. The file commands below act at once.
 
@@ -47,7 +42,7 @@ Use + then PLAY to confirm, or STOP to go back.
 
 `uv run xyf-host content status` reads free space, walks `/yaffs2/content/` and hashes each regular file
 over USB. It compares the paths and SHA-256 digests with each available private
-`xy-forever/content-manifests/<version>/content.sha256` (made with `xyf_package.py content-manifest`).
+`xy-forever/content-manifests/<version>/content.sha256` (made with `uv run xyf-package content-manifest`).
 The report gives every exact match, which releases match the live catalog hash, and missing, extra and changed files per release.
 `matches_no_official_file` lists files whose path and digest match none of those releases.
 Links and other special entries are reported separately. Keep the content folder unchanged during the scan.

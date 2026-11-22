@@ -79,7 +79,7 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   (125,790,852 B) are identical. 1.1.33 has 829 content files: 825 identical, 3
   changed, 1 added, 11 only in 1.2.1; its firmware label is 1.1.33+1, its OS 1.1.33+0.
   Skip a content write only after comparing the device's actual files.
-- **Host tools:** `../tools/tfw-decrypt/`; `xyf_package.py ZIP [--baseline ZIP]
+- **Host tools:** `../tools/tfw-decrypt/`; `uv run xyf-package ZIP [--baseline ZIP]
   [--stage DIR]` reviews and stages a decrypted vendor ZIP (host only, unauthenticated,
   bootloader members never staged).
 

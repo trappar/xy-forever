@@ -99,7 +99,7 @@ and switches content if it differs. After the switch it publishes the record and
 Convergence writes `converged.txt` when its fingerprint differs. A plain power-on that finds the same
 configuration bytes and default can boot immediately ([boot convergence](../architecture/boot/convergence.md)).
 
-`log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `xyf_host.py save-times`): one line per
+`log/save-times.txt` (#27, `target/xyf_save_log.hpp`; read with `uv run xyf-host save-times`): one line per
 menu converge, USB build or content switch, the last 20; `kind result mods memory added removed total` then each
 part's milliseconds and the switch's counts. Written by B in the last write window of the sequence (`.part`,
 the old file removed, renamed); a failed write is ignored, a failed converge writes none.

@@ -171,29 +171,11 @@ leaving the page; never a restart.
 
 A settings file from a newer XY Forever reads as the defaults and is kept unchanged.
 
-## The host tool: `xyf_host.py`
+## The host tool: `uv run xyf-host`
 
-Connect over USB with XY Forever running. Boot-changing commands are dry runs without
-their `--yes-…` flag. File commands can change `user/` and most of the drive.
-
-| Command | Example |
-|---|---|
-| status | `uv run xyf-host status` (protocol, build and device state) |
-| ls | `uv run xyf-host ls /yaffs2/xy-forever [--json]` |
-| get | `uv run xyf-host get /yaffs2/xy-forever/config.json config.json` |
-| put | `uv run xyf-host put notes.txt /yaffs2/xy-forever/notes.txt` (read back and compared; `--no-verify` skips that) |
-| rm | `uv run xyf-host rm /yaffs2/xy-forever/notes.txt` (`--dir` for an empty folder) |
-| mkdir | `uv run xyf-host mkdir /yaffs2/xy-forever/log` (the parent must exist) |
-| mv | `uv run xyf-host mv /yaffs2/xy-forever/a.txt /yaffs2/xy-forever/b.txt` |
-| cp | `uv run xyf-host cp -r /yaffs2/xy-forever/firmware/a /yaffs2/xy-forever/firmware/b` |
-| boot | `uv run xyf-host boot ID --yes-boot` (boot an entry once; leaves XY Forever) |
-| set-default | `uv run xyf-host set-default ID --yes-write` (without the flag: prints the plan) |
-| mods push | `uv run xyf-host mods push DIR [--only ID ...] [--verify]` (send a package set) |
-| mods list | `uv run xyf-host mods list` (package sets and packages on the device, with sizes) |
-| mods remove | `uv run xyf-host mods remove GENERATION --yes` (without `--yes`: dry run) |
-| mods set | `uv run xyf-host mods set MACHINE ... [--ext ID ...]` (the mods it runs; `mods status`) |
-| mods apply | `uv run xyf-host mods apply --base ID --generation GEN MACHINE ... --wait` (developers) |
-| screenshot | `uv run xyf-host screenshot --out screen.png` |
+Connect over USB with XY Forever running, then `uv run xyf-host --help`: every command, with an example
+(`uv run xyf-host COMMAND --help`: its flags). Boot-changing commands are dry runs without their `--yes-…`
+flag. File commands can change `user/` and most of the drive.
 
 `mods set` saves the mods the OP-XY runs, as turning them on in the Mods page does: the OP-XY
 checks that it can build them and keeps them, or says why not, and builds them the next time it
@@ -201,9 +183,7 @@ starts; `mods set` with no mods turns them all off. Boot without mods stays on t
 developers, `mods apply` only builds into library entry `mods-a` or `mods-b` (`--memory expanded`:
 the 4 MiB layout; `mods cancel` stops it); making it the default boots it until the next plain power-on.
 
-`--sim HOST:PORT` talks to the device simulator (`python3 -m xy_forever.sim`) instead
-of the USB port. The examples above were checked against each command's `--help`, not
-run on a device.
+`--sim HOST:PORT` talks to the device simulator (`mise run sim`) instead of the USB port.
 
 ## Planned (not in this build)
 

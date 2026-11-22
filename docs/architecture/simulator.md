@@ -20,7 +20,7 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   last, the other erased even on verify failure; model encryption below), the retained cold state, `cold.cpp` (its policy is extracted; an OS
   start stops both processes: `os`; no image: `halted`) and `key_ui` (the menu loop without screen or keys:
   `home_pump`, tick, link check; SCREEN shows a test pattern, KEY does nothing).
-- **Device time** (`sim/clock.cpp`, every run: tests, `python3 -m xy_forever.sim`, the web app, `conformance.py
+- **Device time** (`sim/clock.cpp`, every run: tests, `uv run -m xy_forever.sim`, the web app, `conformance.py
   --sim`): a clock only the simulator moves, never host time. The board steps it (1 ms after activity, doubling
   up to 10 ms, 100 ms with B at rest, never past a known event: a reset delay, a delayed link message, a fault's delay, a held key's
   repeat) only while both processors are idle (no link message in flight, each main thread in a wait or polling the clock with nothing
@@ -38,8 +38,8 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   first: on only if A reset <= `boot_a_window_ms` (400; device 0.15-1.4 s) before B or later, else waits (`b_waits_a`).
 - **Not hosted:** the menu's screen and keys, os.ldr itself, CDC ring and USB timing, NAND timing, real encryption,
   stage 2; yaffs is a (case-insensitive) host folder.
-- **Run:** `mise run sim` (`python3 -m xy_forever.sim --idle-wall`; `SESSIONS/simulator/` in the private folder: seeded `yaffs2/`, `bootpart.bin`,
-  `builds/`; `--port`, `--plain`, `--version V`, `--pre-v1`, `--ask`), then `xyf_host.py --sim 127.0.0.1:7341` (or `XYF_SIM`),
+- **Run:** `mise run sim` (`uv run -m xy_forever.sim --idle-wall`; `SESSIONS/simulator/` in the private folder: seeded `yaffs2/`, `bootpart.bin`,
+  `builds/`; `--port`, `--plain`, `--version V`, `--pre-v1`, `--ask`), then `uv run xyf-host --sim 127.0.0.1:7341` (or `XYF_SIM`),
   `scripts/device_pass.py` / `scripts/conformance.py --sim …` (evidence removed when nothing failed, unless `--keep`).
 - **Control** (port + 1, one line, JSON reply): `status` (A's `partition`; `boot_writes`, yaffs changes on a boot
   partition; `rw_open`/`unclean_mounts`, read-write mounts never unmounted; `to_a`/`to_b`, link messages relayed),

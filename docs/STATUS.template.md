@@ -15,12 +15,12 @@ Last updated:
 
 ## Standing approvals
 
-What you granted for this device (docs/operating/first-install.md), with its scope: host access, routine USB
+What you granted for this device (docs/SAFETY.md, "Approvals"), with its scope: host access, routine USB
 installs. A specific yes for one item: one line here (date, issue, what exactly). Everything else is asked each time.
 
 ## Installed build
 
-Build number, output folder, candidate SHA-256, commit, size, protocol version, device pass result.
+Image (`builds/<image>/`, HELLO `image=`), candidate SHA-256, commit, size, protocol version, device pass result.
 
 ## Known-good build and recovery kit
 

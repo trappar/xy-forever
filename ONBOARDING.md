@@ -10,9 +10,10 @@ Two parts: **setup without a device** (below; enough for host code, the web app,
 
 ## Setup without a device
 
-A macOS host on Apple silicon with Homebrew (the tested one; toolchain pins also exist for Windows and Linux
-x86_64, USB tools untested there: install mise as https://mise.jdx.dev/installing-mise.html shows). Start in the
-workspace folder, where the coding agent was opened:
+A macOS host on Apple silicon with Homebrew: the tested one (CI runs the suite there). The Blackfin toolchain is
+pinned for Windows x86_64 (downloaded) and Linux x86_64 (built with Docker) too; the rest is untested there
+(install mise as https://mise.jdx.dev/installing-mise.html shows). Start in the workspace folder, where the
+coding agent was opened:
 
 ```sh
 xcode-select --install                 # git and clang++ (host tests)
@@ -23,19 +24,22 @@ gh auth login                          # once: issues and pull requests
 ```
 
 Skip what is already there (`gh auth status`, `xcode-select -p`, `mise --version`). `mise install` gets the
-pinned Python, uv, Node, pnpm and gh (`mise.toml`); in a shell without `mise activate`, prefix commands with
-`mise exec --`. `mise run setup` (`--dry-run`: print, change nothing)
+pinned Python, uv, Node, pnpm and gh (`mise.toml`), and also the tools of your global mise config
+(`MISE_IGNORED_CONFIG_PATHS=~/.config/mise mise install` skips those); in a shell without `mise activate`, prefix
+commands with `mise exec --`. `mise run setup` (`--dry-run`: print, change nothing)
 acts only on what is missing and never deletes:
 
 - **Private folder:** `../private/` (layout: `xy_forever/paths.py`): builds, sessions and your status notes
-  (`xy-forever/status/README.md`, from `docs/STATUS.template.md`). Elsewhere: `XYF_PRIVATE`, or
-  `uv run scripts/setup.py init --private DIR` first (recorded in `xyf.local.json`).
+  (`xy-forever/status/README.md`, from `docs/STATUS.template.md`). Elsewhere: `uv run scripts/setup.py init
+  --private DIR` first (recorded in `xyf.local.json`), or `XYF_PRIVATE`.
 - **Workspace guide** (`AGENTS.md`, `CLAUDE.md` beside the clone; never overwritten).
 - **Toolchain:** Open-XY's `toolchain-1` release for this host, checked against `stock.json` and every file
   against `toolchains.json`, into `../tools/blackfin`. No download (proxy, certificates): get the zip from the
   release page in a browser, then `mise run setup --toolchain-archive <zip>`. Linux: build it with Docker
-  (open-xy `docs/build.md`, "On Linux"). Never edit the pins.
-- **Dependencies:** `uv sync`, `pnpm install`.
+  (open-xy `docs/build.md`, "On Linux"). Elsewhere: `uv run scripts/setup.py init --toolchain DIR` (recorded in
+  `xyf.local.json`). Never edit the pins.
+- **Dependencies:** `uv sync`, `pnpm install`, the git hook. Setup starts on mise's Python and continues under
+  `uv run` once `uv sync` is done.
 - It ends with `doctor` and a "Next:" list.
 
 Then:
