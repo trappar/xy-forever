@@ -5,13 +5,13 @@ current. It delegates implementation when it can, or does the work itself. Read 
 
 ## One item
 
-1. `mise run plan` (`--agent NAME` if another agent works here: [two agents](operating/two-agents.md)); read
+1. `mise run plan` (`-- --agent NAME` if another agent works here: [two agents](operating/two-agents.md)); read
    local `docs/status/README.md`. Setup unfinished: [ONBOARDING.md](../ONBOARDING.md) first.
 2. `uv run xyf_host.py --timeout 5 status`: ready `kind:device` items go first when the device is connected.
    If the developer says it is absent, skip the check and device items.
 3. Take the first item under "Yours" (interrupted work), else "Next" (milestone order, then issue number).
-4. **Claim** it: read `gh issue view <N>`; `gh issue edit <N> --add-assignee @me` (with `--agent`:
-   `plan.py claim <N>` first). **Branch** from up-to-date `main`: `git switch -c <N>-<slug>`.
+4. **Claim** it: read `gh issue view <N>`; `gh issue edit <N> --add-assignee @me` (with `--agent`, also
+   `--add-label agent:NAME`). **Branch** from up-to-date `main`: `git switch -c <N>-<slug>`.
 5. Work in small commits. After each change run the tests it affects (`mise run test-changed`, or
    `mise run test-one TARGET`); `mise run test` (the fast tier) at any time.
 6. Once per PR, `mise run check` (the PR gate: build, verify, type checks, the fast and gate tiers, under
