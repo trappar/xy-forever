@@ -209,7 +209,7 @@ uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint
 // read-only, read to EOF (at most size + 3 KiB) with CRC-32, close. mounted as write_file.
 Reply stage_blob_link(const char* temporary, const uint8_t* hash, bool seal);
 Reply copy_blob_piece();
-uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted);
+uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted, uint32_t* why = 0);   // why: #195 detail
 uint32_t make_folders(const char* path, volatile uint32_t& mounted);  // open_write's mkdir -p alone (mounted)
 uint32_t write_more(int fd, const uint8_t* bytes, uint32_t size, uint32_t& written, volatile uint32_t& mounted);
 uint32_t close_write(int fd, volatile uint32_t& mounted);

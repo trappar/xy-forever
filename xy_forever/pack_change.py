@@ -163,9 +163,26 @@ def signed_request(dev, operation, name=''):
     if code == P.ids.S_REFUSED and operation == OP_ENABLE:
         raise store.StoreError('compatibility unknown or pack path refused')
     store.check(code, 'signed pack')
-    if len(body) != 16:
-        raise store.StoreError('short signed pack reply')
-    return struct.unpack('<IIII', body)
+    if len(body) != 24:
+        raise store.StoreError('signed pack reply of %d bytes, expected 24' % len(body))
+    return struct.unpack('<6I', body)
+
+
+def failure_site(site, detail):
+    """The device's record of where a failed import stopped (#195), as one line."""
+    steps = ('hash', 'admit', 'window', 'extract', 'blob setup', 'blobs', 'record', 'publish', 'cleanup', 'close')
+    calls = {1: 'open', 2: 'extract', 3: 'write', 4: 'close'}
+    step = (site >> 8) & 0xFF
+    text = 'step %s' % (steps[step] if step < len(steps) else step)
+    if site & 0xFF:
+        text += ', %s' % calls.get(site & 0xFF, site & 0xFF)
+    text += ', member %d, detail 0x%04x' % (detail >> 16, detail & 0xFFFF)
+    flags = [
+        name
+        for bit, name in ((0x10000, 'source close failed'), (0x20000, 'link lost'), (0x40000, 'cleanup started'))
+        if site & bit
+    ]
+    return text + ('; ' + ', '.join(flags) if flags else '')
 
 
 def signed_change(dev, action, pack_id):
@@ -177,11 +194,13 @@ def signed_change(dev, action, pack_id):
     previous = None
     try:
         while True:
-            phase, done, total, error = signed_request(dev, OP_STATUS)
+            phase, done, total, error, site, detail = signed_request(dev, OP_STATUS)
             if phase == 3:
                 print('Imported %s. The signed pack is retained.' % pack_id)
                 return 0
             if phase == 4:
+                if site:
+                    print('Stopped at %s.' % failure_site(site, detail))
                 store.check(error or P.ids.S_STATE, 'signed pack import')
             if phase not in (1, 2):
                 raise store.StoreError('signed pack import stopped unexpectedly')

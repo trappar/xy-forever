@@ -28,6 +28,26 @@ volatile U32 signed_pack_phase __attribute__((section(".data"))) = pack_idle;
 U32 signed_pack_done __attribute__((section(".data"))) = 0;
 U32 signed_pack_total __attribute__((section(".data"))) = 0;
 U32 signed_pack_error __attribute__((section(".data"))) = 0;
+// #195: where a failed import stopped, for the status reply. site: the step << 8 | the call (pack_site),
+// plus pack_source_close / pack_link_lost / pack_cleanup; detail: the member << 16 | A's errno or 0x8000 | an outcome.
+enum PackSite : U32 {
+    site_open = 1,
+    site_extract = 2,
+    site_flush = 3,
+    site_close = 4,
+    pack_source_close = 0x10000,
+    pack_link_lost = 0x20000,
+    pack_cleanup = 0x40000
+};
+U32 signed_pack_site __attribute__((section(".data"))) = 0;
+U32 signed_pack_detail __attribute__((section(".data"))) = 0;
+U32 pack_fail(U32 site, U32 detail, U32 code) {
+    if (!signed_pack_site) {
+        signed_pack_site = site;
+        signed_pack_detail = detail;
+    }
+    return code;
+}
 
 void signed_pack_usb_turn();
 void storage_space_product(U32 block, U32 blocks, U32& hi, U32& lo);
@@ -137,7 +157,7 @@ U32 signed_pack_start(const char* name) {
     if (code) return code;
     signed_pack_active = 1;
     signed_pack_phase = pack_authenticating;
-    signed_pack_done = signed_pack_error = 0;
+    signed_pack_done = signed_pack_error = signed_pack_site = signed_pack_detail = 0;
     signed_pack_total = j.source.size();
     return P::s_ok;
 }
@@ -151,8 +171,10 @@ void signed_pack_end(SignedPackJob& j, U32 code) {
         if (!code) code = closed;
     }
     signed_pack_error = code;
+    if (code) signed_pack_site |= (closed ? U32(pack_source_close) : 0u) | (j.io.lost() ? U32(pack_link_lost) : 0u);
     if (j.seal_open) settle_begin();
     if (j.created && code && !closed && !j.io.lost() && tree_begin(j.tree, j.staging)) {
+        signed_pack_site |= pack_cleanup;
         j.step = ps_cleanup;
         return;
     }
@@ -225,11 +247,16 @@ U32 signed_pack_window(SignedPackJob& j) {
 bool signed_pack_flush(SignedPackJob& j) {
     if (!j.pending_bytes) return true;
     const auto wrote = file_client::write(j.fd, j.pending, j.pending_bytes);
+    const U32 at = U32(ps_extract) << 8 | site_flush, member = (j.member - 1) << 16;
     if (wrote.outcome) {
         j.io.fail(wrote);
+        pack_fail(at, member | 0x8000u | wrote.outcome, 0);
         return false;
     }
-    if (wrote.value != int(j.pending_bytes)) return false;
+    if (wrote.value != int(j.pending_bytes)) {
+        pack_fail(at, member | (wrote.error & 0xfffu), 0);
+        return false;
+    }
     j.pending_bytes = 0;
     return true;
 }
@@ -264,14 +291,19 @@ U32 signed_pack_member(SignedPackJob& j) {
     }
     char path[file_engine::max_path];
     if (!join(path, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
-    const U32 opened = file_client::open_write(path, j.fd, mounted);
-    if (opened) return opened;
+    uint32_t why = 0;
+    const U32 opened = file_client::open_write(path, j.fd, mounted, &why);
+    if (opened) return pack_fail(U32(ps_extract) << 8 | site_open, (j.member - 1) << 16 | why, opened);
     j.pending_bytes = 0;
     j.hash.reset();
     zip::Extraction result;
     const auto status = zip::extract(j.archive, j.member - 1, j.inflate, {&j, signed_pack_sink}, result, &j.work);
     const bool flushed = status == zip::Status::ok && signed_pack_flush(j);
-    if (j.io.close(j.fd)) return P::s_storage;
+    if (status != zip::Status::ok)
+        pack_fail(U32(ps_extract) << 8 | site_extract, (j.member - 1) << 16 | U32(status), 0);
+    if (j.io.close(j.fd))
+        return pack_fail(U32(ps_extract) << 8 | site_close, (j.member - 1) << 16 | (j.io.lost() ? 0x8000u : 0u),
+                         P::s_storage);
     j.fd = -1;
     if (!flushed)
         return status == zip::Status::cancelled ? P::s_cancelled :
@@ -353,6 +385,8 @@ U32 signed_pack_record(SignedPackJob& j) {
     return file_client::write_file(path, bytes, size, xyf::crc::update(0, bytes, size), written, crc, mounted);
 }
 
+U32 signed_pack_member_index(const SignedPackJob& j) { return j.member << 16 | U32(j.blob_step); }
+
 void signed_pack_pump() {
     if (!signed_pack_active) return;
     auto& j = signed_pack();
@@ -381,6 +415,7 @@ void signed_pack_pump() {
         return;
     }
     U32 code = P::s_ok;
+    const SignedStep was = j.step;
     switch (j.step) {
     case ps_hash: {
         if (j.cancelled) j.source.cancel_hash();
@@ -425,7 +460,10 @@ void signed_pack_pump() {
         break;
     default: return;
     }
-    if (code) signed_pack_end(j, code);
+    if (code) {
+        pack_fail(U32(was) << 8, signed_pack_member_index(j), code);
+        signed_pack_end(j, code);
+    }
 }
 
 U32 signed_pack_toggle(const char* name, bool enable) {
@@ -489,12 +527,14 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
             else if (op >= pack_enable) code = signed_pack_toggle(name, op == pack_enable);
         }
     }
-    uint8_t reply[20];
+    uint8_t reply[28];
     P::put32(reply, code);
     P::put32(reply + 4, signed_pack_phase);
     P::put32(reply + 8, signed_pack_done);
     P::put32(reply + 12, signed_pack_total);
     P::put32(reply + 16, signed_pack_error);
+    P::put32(reply + 20, signed_pack_site);
+    P::put32(reply + 24, signed_pack_detail);
     send(P::t_packs_manage, seq, reply, code ? 4 : sizeof(reply));
 }
 #endif

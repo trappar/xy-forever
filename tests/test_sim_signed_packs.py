@@ -77,7 +77,7 @@ class SignedPackImport(unittest.TestCase):
         while time.monotonic() < deadline:
             code, body = self.call(packs.OP_STATUS)
             self.assertEqual(code, ids.S_OK)
-            phase, done, total, error = struct.unpack('<IIII', body)
+            phase, done, total, error, self.site, self.detail = struct.unpack('<6I', body)
             if phase in (3, 4):
                 return phase, done, total, error
             time.sleep(0.02)
@@ -119,6 +119,18 @@ class SignedPackImport(unittest.TestCase):
         self.assertEqual(self.finish()[-1], ids.S_SHA)
         self.assertFalse(self.retained.exists())
         self.assertFalse(self.live.exists())
+
+    def test_failed_member_write_reports_its_site_and_removes_scratch(self):
+        self.machine.set('fail_write', 1)  # A's first data write: EIO
+        self.assertEqual(self.start()[0], ids.S_OK)
+        self.assertEqual(self.finish()[-1], ids.S_STORAGE)
+        self.assertEqual(self.site & 0xFFFF, 3 << 8 | 3)  # extract step, the member's write
+        self.assertEqual(self.site & 0x30000, 0)  # the source closed, the link held
+        self.assertTrue(self.site & 0x40000)  # so the scratch was removed
+        self.assertEqual(self.detail, 1 << 16 | 5)  # member 1 (manifest.json), EIO
+        self.assertIn('write, member 1', packs.failure_site(self.site, self.detail))
+        self.assertFalse(self.retained.exists())
+        self.assertEqual(list((self.root / 'xy-forever/tmp').glob('pkg-v1-*')), [])
 
     def test_preflight_refuses_insufficient_space_before_writes(self):
         self.machine.set('statfs_block_bytes', 4096)

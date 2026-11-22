@@ -62,13 +62,15 @@ completion. Cancel during authentication or staging leaves the current packs int
 | `operation` | u32 | 0 status, 1 admit, 2 cancel, 3 enable, 4 disable (0..4) |
 | `name` | cstr ASCII, 1..128 B | Inbox .tfw basename for admission, pack ID to toggle, empty for status or cancel |
 
-| Reply field, after the status (20 bytes) | Type | Meaning |
+| Reply field, after the status (28 bytes) | Type | Meaning |
 |---|---|---|
 | `status` | u32 | Whether the request was accepted |
 | `phase` | u32 | 0 idle, 1 authenticating, 2 staging, 3 complete, 4 failed |
 | `done` | u32 | Ciphertext bytes scanned or pack files staged |
 | `total` | u32 | Total source bytes or pack files for the current phase |
 | `error` | u32 | Final admission status when phase is failed |
+| `site` | u32 | Where a failed import stopped: the job step << 8 \| the call (1 open, 2 extract, 3 write, 4 close), plus 0x10000 source close failed, 0x20000 link lost, 0x40000 scratch cleanup started; 0 otherwise |
+| `detail` | u32 | For a failure: the archive member << 16 \| A's errno, 0x8000 \| a link outcome, or the blob step |
 
 On an error: the status only. Errors: `bad_request`, `unsupported`, `busy`, `link`, `storage`, `state`, `not_found`, `refused`. The reply never gains fields (it
 ends in `u32`). Tool timeout: 60 s. **Destructive**: ask the user first. Build switch `XYF_TFW_CHECK` (on in product builds; without it: `unsupported`). Since

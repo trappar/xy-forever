@@ -1035,12 +1035,14 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
       { name: "operation", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: [0, 4] },
       { name: "name", type: "cstr", bytes: null, optional: false, encoding: "ascii", maxBytes: 128, range: null },
     ] },
-    reply: { size: [20, 20], onError: "status", extensible: false, fields: [
+    reply: { size: [28, 28], onError: "status", extensible: false, fields: [
       { name: "status", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "phase", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "done", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "total", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "error", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
+      { name: "site", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
+      { name: "detail", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
     ] },
   },
 };
@@ -1668,7 +1670,7 @@ export function decodeConfigSetReply(payload: Uint8Array): ConfigSetReply {
 
 // ---- 0x4f packs.manage: admit or toggle a signed sound pack and inspect progress ----
 export type PacksManageRequest = { version: number; operation: number; name: string };
-export type PacksManageReplyFields = { status: number; phase: number; done: number; total: number; error: number };
+export type PacksManageReplyFields = { status: number; phase: number; done: number; total: number; error: number; site: number; detail: number };
 export type PacksManageReply = Reply<PacksManageReplyFields, never>;
 export function encodePacksManageRequest(request: PacksManageRequest): Uint8Array {
   return pack(COMMANDS["packs.manage"].request, request);

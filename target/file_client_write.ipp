@@ -23,14 +23,23 @@ uint32_t make_folders(const char* path, volatile uint32_t& mounted) {
     return xyf::usbp::s_ok;
 }
 
-uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted) {
+uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted, uint32_t* why) {
     fd = -1;
+    uint32_t ignored = 0;
+    uint32_t& detail = why ? *why : ignored;                             // #195: A's errno, 0x8000 | an outcome
+    detail = 0;
     if (!storage_server::valid_write_path(path)) return xyf::usbp::s_refused;
     if (mounted == mounted_stale) return xyf::usbp::s_state;            // the caller sends op 9 first
     if (!mounted) {
         const Reply m = mount();                                         // op 8: a's read-only mount
-        if (m.outcome) return status(m.outcome);
-        if (m.value) return xyf::usbp::s_storage;
+        if (m.outcome) {
+            detail = 0x8000u | m.outcome;
+            return status(m.outcome);
+        }
+        if (m.value) {
+            detail = 0x4000u | (m.error & 0xfffu);
+            return xyf::usbp::s_storage;
+        }
         mounted = 1;
     }
     // a opens its read-write window on the first change below and keeps it for the next
@@ -39,14 +48,26 @@ uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted) {
     // #144: the open first; the folders (mkdir -p) only when it fails ENOENT, then the open again: an upload's
     // tmp/ is there after the first one, so a file takes one request here instead of one per folder too.
     Reply o = open(path, storage_server::write_open_flags);              // op 0x29, "wb"
-    if (o.outcome) return failed(o, mounted);
+    if (o.outcome) {
+        detail = 0x8000u | o.outcome;
+        return failed(o, mounted);
+    }
     if (o.value < 0 && o.error == enoent) {
         const U32 made = make_folders(path, mounted);
-        if (made != xyf::usbp::s_ok) return made;
+        if (made != xyf::usbp::s_ok) {
+            detail = 0x2000u;
+            return made;
+        }
         o = open(path, storage_server::write_open_flags);
-        if (o.outcome) return failed(o, mounted);
+        if (o.outcome) {
+            detail = 0x8000u | o.outcome;
+            return failed(o, mounted);
+        }
     }
-    if (o.value < 0) return xyf::usbp::s_storage;
+    if (o.value < 0) {
+        detail = o.error & 0xfffu;
+        return xyf::usbp::s_storage;
+    }
     fd = o.value;
     return xyf::usbp::s_ok;
 }
