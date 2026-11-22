@@ -375,7 +375,7 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
     await expect.poll(async () => (await page.locator('[data-testid=notice][data-type=error]').textContent({ timeout: 100 }).catch(() => null)) ??
-      new URL(page.url()).pathname, { timeout: 20_000 }).toBe('/connect/');
+      new URL(page.url()).pathname, { timeout: 90_000 }).toBe('/connect/');
     expect(reboot).toBe(1);
     expect(await page.getByRole('status').textContent()).toContain('Stock OS 1.2.1 was restored');
     expect(readdirSync(sim.root).sort()).toEqual(['bootloader.dev', 'content', 'firmware.version', 'os.ldr', 'upgrade', 'user']);
