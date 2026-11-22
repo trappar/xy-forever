@@ -31,9 +31,10 @@ jobs:
           cache: true
       - run: uv sync --locked
       - run: pnpm install --frozen-lockfile
-      - name: Unit tests (the TypeScript client's and the web app's suites run inside)
+      - name: Unit tests (with the Install page's Chrome e2e; the web job runs the JS suites)
         env:
           XYF_PRIVATE: ${{ runner.temp }}/private   # empty: every test that needs private files skips
+          XYF_JS_SUITES_ELSEWHERE: '1'              # the pnpm test wrappers skip: the web job runs them directly
         run: mkdir -p "$XYF_PRIVATE" && uv run scripts/run_tests.py --jobs 4
 
   web:

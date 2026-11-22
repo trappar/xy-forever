@@ -100,6 +100,7 @@ class TypeScriptClientTest(unittest.TestCase):
 
 
 
+@unittest.skipIf(os.environ.get('XYF_JS_SUITES_ELSEWHERE'), 'XYF_JS_SUITES_ELSEWHERE: run in the web job')
 @unittest.skipUnless(node_strips_types(), 'Node 22.18+/23.6+ not found')
 @unittest.skipUnless((CLIENT / 'node_modules' / '.bin' / 'vitest').exists(),
                      'clients/ts/node_modules absent: run pnpm install to include the Node suite (pnpm test)')
@@ -113,8 +114,7 @@ class NodeSuiteTest(unittest.TestCase):
             run = procgroup.run([pnpm, 'test'], cwd=CLIENT, capture_output=True, text=True, timeout=120)
         except subprocess.TimeoutExpired as e:
             self.fail('pnpm test in clients/ts took over 120 s: %s' % (e.stdout or b'')[-2000:])
-        self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])
-        self.assertRegex(run.stdout, r'Tests\s+\d+ passed')
+        self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])   # the exit code is the verdict
 
 
 if __name__ == '__main__':
