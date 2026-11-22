@@ -39,10 +39,13 @@ description = "What is set up and which tests will skip"
 run = "uv run scripts/setup.py doctor"
 
 # The suite (pytest; tiers and budgets: tests/conftest.py). Arguments pass through to pytest.
+# Named tests (a file, a node id, a folder) run whatever their tier; otherwise the fast tier.
 [tasks.test]
-description = "Fast tier of the suite (about 2 s)"
-usage = 'arg "[args]..." help="pytest arguments (files, -k EXPR, -x, ...)" var=#true'
-run = 'uv run pytest -n 6 --dist worksteal -m fast {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+description = "Fast tier of the suite (about 2 s), or the named tests, any tier"
+usage = 'arg "[args]..." help="pytest arguments (files or node ids: any tier; -k EXPR, -x, ...)" var=#true'
+run = """{% set tier = "-m fast " %}{% for a in usage.args %}{% if a is ending_with(pat=".py") or "::" in a \
+or a is starting_with(pat="tests") %}{% set_global tier = "" %}{% endif %}{% endfor %}\
+uv run pytest -n 6 --dist worksteal {{ tier }}{% for a in usage.args %}{{ a | quote }} {% endfor %}"""
 
 [tasks.test-changed]
 description = "Tests affected by your changes, any tier (testmon: Python, C++, scripts)"

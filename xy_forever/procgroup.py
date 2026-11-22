@@ -57,57 +57,48 @@ def _drain(process):
 
 def run(argv, timeout=None, input=None, capture_output=False, **kwargs):
     """subprocess.run(argv, ...) in its own process group, which ends with it however the call ends,
-    and when the command itself ends (what it left running would hold its output pipes open). A
+    and as soon as the command itself ends (what it left running would hold its output pipes open). A
     timeout raises subprocess.TimeoutExpired, as subprocess.run does, with what output came."""
     if capture_output:
         kwargs['stdout'] = kwargs['stderr'] = subprocess.PIPE
     if input is not None:
         kwargs['stdin'] = subprocess.PIPE
     process = popen(argv, **kwargs)
-    deadline = None if timeout is None else time.monotonic() + timeout
+    threading.Thread(target=lambda: (process.wait(), kill_group(process)), name='group-end', daemon=True).start()
     try:
-        while True:
-            step = 0.5 if deadline is None else max(0.0, min(0.5, deadline - time.monotonic()))
-            try:
-                out, err = process.communicate(input, timeout=step)
-                return subprocess.CompletedProcess(argv, process.returncode, out, err)
-            except subprocess.TimeoutExpired:
-                input = None                          # sent once
-            if process.poll() is not None:
-                kill_group(process)
-                return subprocess.CompletedProcess(argv, process.returncode, *_drain(process))
-            if deadline is not None and time.monotonic() >= deadline:
-                kill_group(process)
-                raise subprocess.TimeoutExpired(argv, timeout, *_drain(process))
+        out, err = process.communicate(input, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        kill_group(process)
+        raise subprocess.TimeoutExpired(argv, timeout, *_drain(process)) from None
     finally:
         kill_group(process)      # anything the command left running in its group
+    return subprocess.CompletedProcess(argv, process.returncode, out, err)
 
 
-def end_group_with_parent(poll=0.5):
-    """For a group leader (started by popen()): a daemon thread SIGKILLs its whole group, this process
-    included, once its parent is gone (a test runner interrupted or killed: its workers end with it)."""
+def _when_parent_gone(act, poll):
+    """A daemon thread calls act() once this process's parent is gone (it is re-parented)."""
     parent = os.getppid()
 
     def watch():
         while os.getppid() == parent:
             time.sleep(poll)
-        os.killpg(os.getpgid(0), signal.SIGKILL)
+        act()
     threading.Thread(target=watch, name='parent-watch', daemon=True).start()
 
 
+def end_group_with_parent(poll=0.5):
+    """For a group leader (started by popen()): SIGKILL its whole group, this process included, once its parent
+    is gone (a test runner interrupted or killed: its workers end with it)."""
+    _when_parent_gone(lambda: os.killpg(os.getpgid(0), signal.SIGKILL), poll)
+
+
 def tie_to_parent(poll=0.5):
-    """For a process's __main__: SIGTERM and SIGHUP raise SystemExit (so finally blocks run, once),
-    and a daemon thread sends this process SIGTERM when its parent is gone (re-parented)."""
+    """For a process's __main__: SIGTERM and SIGHUP raise SystemExit (so finally blocks run, once), and this
+    process gets SIGTERM once its parent is gone."""
     def ending(sig, frame):
         for s in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
             signal.signal(s, signal.SIG_IGN)          # the cleanup runs once, uninterrupted
         raise SystemExit(128 + sig)
     for s in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(s, ending)
-    parent = os.getppid()
-
-    def watch():
-        while os.getppid() == parent:
-            time.sleep(poll)
-        os.kill(os.getpid(), signal.SIGTERM)
-    threading.Thread(target=watch, name='parent-watch', daemon=True).start()
+    _when_parent_gone(lambda: os.kill(os.getpid(), signal.SIGTERM), poll)

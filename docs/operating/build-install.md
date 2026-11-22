@@ -42,7 +42,7 @@ offline. Every hardware qualification still needs the checks and approvals in [S
 ## Checks
 
 ```sh
-mise run test                    # the fast tier (about 2 s): any time
+mise run test                    # the fast tier (about 2 s): any time; named files or node ids: any tier
 mise run test-changed            # after each change: the tests it affects, any tier (testmon)
 mise run test-one TARGET         # one file, class or test (tests/test_aes.py::NativeAesTests)
 mise run test-failed             # what failed last time

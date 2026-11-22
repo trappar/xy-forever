@@ -4,7 +4,8 @@ script selection (xyf_select.py). Commands: `mise tasks` (test, test-changed, te
 Tiers, each a marker set on a test: `gate`, `sim` (the simulator core, #233: each kept test says why in its
 docstring) and `sweep` (power-cut and fault sweeps on the simulator, parked until they move to native tests:
 `mise run test-sweeps`, in no routine run); every other test is `fast`. `mise run test` runs the fast tier
-(-m fast), `mise run check` the fast, sim and gate tiers, `mise run test-all` every tier but `sweep`.
+(-m fast; named files or node ids: any tier), `mise run check` the fast, sim and gate tiers, `mise run test-all`
+every tier but `sweep`.
 
 Budgets, per tier below: one test's time and the run's wall time. A test's time sums its setup, call and
 teardown, less the host compiles it waited for (a C++ edit never fails a budget). It is CPU time (this process

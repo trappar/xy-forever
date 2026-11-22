@@ -133,8 +133,8 @@ class DeviceLock(unittest.TestCase):
         got = self.second()
         self.assertEqual(got.returncode, 1)
         self.assertRegex(got.stderr, r'device busy: pid %d \(-c .*\) since .* is talking to the OP-XY' % proc.pid)
-        got = self.second(0.5)
-        self.assertIn('waiting up to 0.5 s', got.stderr)
+        got = self.second(0.2)
+        self.assertIn('waiting up to 0.2 s', got.stderr)
         self.assertEqual(got.returncode, 1)
 
     def test_the_lock_goes_with_the_process_even_on_a_kill(self):
