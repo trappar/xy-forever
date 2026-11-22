@@ -2,7 +2,8 @@
 // One Vite dev server serves the whole run (webServer, on a free port chosen once and passed to the workers in the
 // environment), so a cold dependency cache is optimized once. Files run in parallel, tests in a file in order (but
 // install-sim.e2e.ts, parallel). Projects: app (Web Serial off) and install (Web Serial and WebUSB off: the pages use
-// the fakes); bounds runs the planted hang (planted-hang.ts) in a nested run, the only place it runs (XYF_E2E_PLANTED).
+// the fakes); bounds runs the planted hang (planted-hang.ts) in a nested run, the only place it runs (XYF_E2E_PLANTED),
+// and only when asked for (`pnpm run test:e2e:bounds`, `mise run web-e2e-bounds`: CI runs it when the rig changes).
 // Budgets (e2e/budgets.ts, enforced, on CPU time: a test's worker, Chrome and the simulators, e2e/cpu.ts; about twice
 // an unloaded run's and at least 1.5x a run's beside `mise run test-all`, whose load adds CPU too: polls and the
 // page's timers run longer; scaled on slower hardware): each test's, by project, and the sum of the run's. The hang bounds,

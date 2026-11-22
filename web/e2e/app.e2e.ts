@@ -1,8 +1,8 @@
 // The app in the system Chrome (headless) against the device simulator: connect with ?sim=PORT,
-// see the Device page, then browse Files. Starts `python3 -m xy_forever.sim` from this repository
+// see the Device page, then browse Files. Starts `python -m xy_forever.sim` from this repository's venv
 // through the client's simulator helpers, with its state under <private sessions>/web-e2e (the
 // private folder of xy_forever/paths.py, so XYF_PRIVATE applies; override with XYF_SIM_STATE), and
-// removes the state afterwards. Skipped with the reason when the simulator cannot run here.
+// removes the state afterwards. Skipped with the reason without the private stock files or clang++.
 import { createHash } from 'node:crypto';
 import { readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -18,7 +18,7 @@ const nav = (page: Page, name: string): Locator =>
 const found = findSimulator();
 if (found.why) console.warn(`\nweb e2e skipped: ${found.why}\n`);
 const port = 21000 + 2 * Math.floor(Math.random() * 5000);
-const state = process.env['XYF_SIM_STATE'] ?? join(found.sessions ?? '', `web-e2e-${port}`);
+const state = process.env['XYF_SIM_STATE'] ?? join(found.sessions, `web-e2e-${port}`);
 let stopSim: (() => Promise<void>) | undefined;
 let browser: Browser | undefined; // the project's Chrome (playwright.config.ts: no real Web Serial)
 

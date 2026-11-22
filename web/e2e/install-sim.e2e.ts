@@ -243,6 +243,10 @@ async function simulatedTrack5(sim: SimInfo, bytes: Uint8Array): Promise<void> {
  * fails). The stock os.ldr's 2.3 MB moves several times in an uninstall (read, staged, the root's restore and
  * read-backs): each uninstall test does one, the tests run in parallel. */
 async function installedWithMods(build: string, interrupted: boolean) {
+  // A hang bound, not a speed limit (the CPU budget holds that: e2e/budgets.ts): the real stock OS 1.2.1, whose
+  // digest the page and the device check, moves both ways in 1 KB requests (the protocol's limits), about 5 s alone
+  // and past the 15 s default on a loaded machine.
+  test.setTimeout(60_000);
   const candidate = readFileSync(build);
   const stock = readFileSync(found.fixtures['stock_os_ldr']!);
   image = digestOf(candidate).slice(0, 8);
@@ -418,7 +422,8 @@ test("an uninstall cancelled, then stopped at the boot write, keeps XY Forever, 
 
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
-    await expect(page.getByTestId('notice')).toHaveText(/boot\.uninstall|read-back/i);
+    // After the 2.3 MB read and upload: bounded by the test's time-out only, as the first test's wait is.
+    await expect(page.getByTestId('notice')).toHaveText(/boot\.uninstall|read-back/i, { timeout: 0 });
     expect(bootWrites()).toBe(1);
     expectActive(sim, candidate);
     expect(existsSync(file('xy-forever/firmware'))).toBe(true);

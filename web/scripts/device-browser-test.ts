@@ -212,7 +212,7 @@ const PICK = "Click Connect, pick the OP-XY in Chrome's list once, then wait: th
 /** Hold the shared Python flock until Chrome closes. The pipe also closes if this process exits. */
 async function reserveDevice(): Promise<ChildProcess> {
   const holder = spawn(
-    'python3',
+    resolve(web, '../.venv/bin/python'), // the project venv's, not one on PATH
     [
       '-c',
       [

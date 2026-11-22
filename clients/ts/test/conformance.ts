@@ -1062,7 +1062,7 @@ async function main(argv: string[]): Promise<number> {
     },
   );
   if (rows === null) {
-    console.log(`NEED: start the simulator (python3 -m xy_forever.sim), then rerun with --sim ${opts['sim']}`);
+    console.log(`NEED: start the simulator (uv run python -m xy_forever.sim), then rerun with --sim ${opts['sim']}`);
     return 3;
   }
   const width = Math.max(4, ...rows.map((r) => r.name.length));

@@ -1,5 +1,5 @@
 // Development and tests only: a WebSocket-to-TCP relay, so that a page reaches the device simulator
-// (python3 -m xy_forever.sim) as it reaches the OP-XY through Web Serial. Node only; uses `ws`.
+// (python -m xy_forever.sim) as it reaches the OP-XY through Web Serial. Node only; uses `ws`.
 //   ws://127.0.0.1:PORT/  each WebSocket is one TCP connection to the simulator's endpoint; binary
 //                         frames only, in both directions; either side's close closes the other.
 //                         The upgrade is answered only once the TCP connection is up (502 if not).

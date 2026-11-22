@@ -52,7 +52,7 @@ import {
 } from '../src/node.ts';
 import { STORE_FILE, STORE_TEXT, storedName } from '../src/modstore.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
-import { REPO, control, makeModBase, makeModSet, simOpener } from './simulators.ts';
+import { REPO, control, makeModBase, makeModSet, simOpener, venvBin } from './simulators.ts';
 import { countSim } from './cpu-setup.ts';
 
 const sims = inject('sims');
@@ -184,7 +184,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     const again = await push();
     expect(again).toMatchObject({ sent: 0, skipped: names.length, files: 0, bytes: 0 });
     expect(again.packages.every((r) => r.state === 'skipped' && r.files === 0)).toBe(true);
-    const run = spawnSync('uv', ['run', '--quiet', 'xyf-host', '--sim', sim!.address, 'mods', 'push', gen], {
+    const run = spawnSync(venvBin('xyf-host'), ['--sim', sim!.address, 'mods', 'push', gen], {
       cwd: REPO,
       encoding: 'utf-8',
       timeout: 60_000,

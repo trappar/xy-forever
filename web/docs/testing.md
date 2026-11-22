@@ -23,12 +23,13 @@ drives the app in the system Chrome, headless, never a downloaded browser:
   refusal and guidance branch of the Install page against fake te-boot MIDI and a fake dev-menu MTP device,
   `test/fake-devices.ts`; `e2e/install-sim.e2e.ts`: the install's end against the simulator, a stock OP-XY just
   after Track 5, through the client's fake Web Serial port, `clients/ts/test/fake-serial.ts`), Web Serial and WebUSB
-  off. `bounds` (`e2e/hang-bound.e2e.ts`): a nested run of a planted hung page (`e2e/planted-hang.ts`) must fail,
-  naming that test, within its bound.
-- **The simulator.** The specs start `python3 -m xy_forever.sim` on random ports, state in the private sessions
-  folder (`XYF_PRIVATE` applies; `XYF_SIM_STATE` overrides app.e2e.ts's), removed afterwards; skipped with the
-  reason when it cannot run (no private stock files, no clang++). Device time moves only when a test moves it; the
-  page's own timers run on Playwright's clock.
+  off. `bounds` (`e2e/hang-bound.e2e.ts`, only in `mise run web-e2e-bounds`: a check of the rig, so CI runs it when
+  the rig's files change): a nested run of a planted hung page (`e2e/planted-hang.ts`) must fail, naming that test,
+  within its bound.
+- **The simulator.** The specs start `python -m xy_forever.sim` from the project venv on random ports, state in the
+  private sessions folder (`XYF_PRIVATE` applies; `XYF_SIM_STATE` overrides app.e2e.ts's), removed afterwards;
+  skipped with the reason without the private stock files or clang++; a missing venv fails the run. Device time
+  moves only when a test moves it; the page's own timers run on Playwright's clock.
 - **Budgets** (`e2e/budgets.ts`, enforced on CPU time: the worker's, Chrome's and the simulators', `e2e/cpu.ts`):
   each test's, by project, and the sum of the run's, about twice an unloaded run's and scaled on slower hardware
   (the client's `test/cpu.ts`); over one fails the run and names the test. Wall time is only reported. The hang
@@ -37,7 +38,7 @@ drives the app in the system Chrome, headless, never a downloaded browser:
 - **The verified build.** The specs that install it (`e2e/needs.ts`) skip and say why when there is none, and fail
   when this checkout's verified build exists but is not found.
 - **Targeted runs.** `pnpm exec playwright test --project install`, `pnpm exec playwright test e2e/app.e2e.ts -g
-  'offline'` (from `web/`, under `uv run` for the simulator specs).
+  'offline'` (from `web/`).
 
 `tests/test_web.py` in the Python suite only checks that the web build output stays untracked.
 

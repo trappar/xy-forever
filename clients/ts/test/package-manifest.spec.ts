@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { parseManifest, parseFileList } from '../src/package-manifest.ts';
-import { REPO } from './simulators.ts';
+import { PYTHON, REPO } from './simulators.ts';
 
 test('strict browser admission agrees with the Python/native manifest fixtures', () => {
   const folder = join(REPO, 'tests/manifests');
@@ -18,7 +18,7 @@ test('strict browser admission agrees with the Python/native manifest fixtures',
     Buffer.from('type=mod\nname=Test\nname=Again\nmachine=synth\ngeneration=v1\n'),
   );
   const python = spawnSync(
-    'python3',
+    PYTHON,
     [
       '-c',
       'import json,sys; from xy_forever.xyf_entry import parse_manifest\n' +
