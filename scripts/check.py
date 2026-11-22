@@ -190,7 +190,7 @@ def standard_steps(args, root, tree, work):
             step('protocol files', [py, root / 'scripts/protogen.py', '--check'], root),
             *js,
             step('fast tier', [py, *PYTEST, '-n', '6', '-m', 'fast'], root, env, tests_parser('fast')),
-            step('gate tier', [py, *PYTEST, '-n', '8', '-m', 'gate'], root, env, tests_parser('gate'))]
+            step('gate tier', [py, *PYTEST, '-n', '12', '-m', 'gate'], root, env, tests_parser('gate'))]
 
 
 JS = (('clients/ts', ('clients/ts',)), ('web', ('web', 'clients/ts')))   # folder, what changing it rechecks

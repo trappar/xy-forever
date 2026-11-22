@@ -422,7 +422,14 @@ class PublishedKit(unittest.TestCase):
         cls.rows = {r['selection']: r for r in M.prove(REAL_KIT, cls.report['root'], OPEN_XY, CATALOG, STOCK,
                                                        scratch=work, selections=selections, sdk_commit=SDK_COMMIT)}
 
-    def test_sampled_selections_are_byte_identical(self):
+    def test_published_kit(self):
+        """One test, so no scheduler splits the class and repeats its setup (about 4 s)."""
+        for check in (self.sampled_selections_are_byte_identical, self.extension_memory_matches_record_014,
+                      self.package_set):
+            with self.subTest(check.__name__):
+                check()
+
+    def sampled_selections_are_byte_identical(self):
         self.assertEqual(len(self.rows), 8)
         for name, row in self.rows.items():
             with self.subTest(selection=name):
@@ -433,13 +440,13 @@ class PublishedKit(unittest.TestCase):
                     self.assertIsNone(row['error'])
                     self.assertTrue(row['ldr'] and row['content_matches_packages'], row)
 
-    def test_extension_memory_matches_record_014(self):
+    def extension_memory_matches_record_014(self):
         allocated = {name: self.rows[name]['allocated'] for name in
                      ('one', 'one+capture', 'one+master_dj_filter', 'one+all-extensions')}
         self.assertEqual(allocated, {'one': 148120, 'one+capture': 161440, 'one+master_dj_filter': 194484,
                                      'one+all-extensions': 202584})
 
-    def test_package_set(self):
+    def package_set(self):
         packages = self.report['packages']
         self.assertEqual(len(packages), 1 + 79 + 2)
         self.assertEqual((packages['fm2op']['code'], packages['fm2op']['data'], packages['fm2op']['state']),
