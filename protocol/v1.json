@@ -1154,15 +1154,16 @@
         ]
       },
       "reply": {
-        "size": [28, 28], "extensible": false, "on_error": "status",
+        "size": [32, 32], "extensible": false, "on_error": "status",
         "fields": [
           {"name": "status", "type": "u32", "doc": "Whether the request was accepted"},
           {"name": "phase", "type": "u32", "doc": "0 idle, 1 authenticating, 2 staging, 3 complete, 4 failed"},
           {"name": "done", "type": "u32", "doc": "Ciphertext bytes scanned or pack files staged"},
           {"name": "total", "type": "u32", "doc": "Total source bytes or pack files for the current phase"},
           {"name": "error", "type": "u32", "doc": "Final admission status when phase is failed"},
-          {"name": "site", "type": "u32", "doc": "Where a failed import stopped: the job step << 8 | the call (1 open, 2 extract, 3 write, 4 close), plus 0x10000 source close failed, 0x20000 link lost, 0x40000 scratch cleanup started; 0 otherwise"},
-          {"name": "detail", "type": "u32", "doc": "For a failure: the archive member << 16 | A's errno, 0x8000 | a link outcome, or the blob step"}
+          {"name": "site", "type": "u32", "doc": "Where a failed import stopped: the job step << 8 | the call (1 open, 2 extract, 3 write, 4 close, 5 source reopen), plus 0x10000 source close failed, 0x20000 link lost, 0x40000 scratch cleanup started; 0 otherwise"},
+          {"name": "detail", "type": "u32", "doc": "For a failure: the archive member << 16 | A's errno, 0x8000 | a link outcome, or the blob step; 0x1000: a member open failed again with the source closed (#195 diagnostic)"},
+          {"name": "recovered", "type": "u32", "doc": "#195 diagnostic: member opens that failed with the source open and worked with it closed (the source then reopened; call 5 in site when that reopen failed)"}
         ]
       },
       "errors": ["bad_request", "unsupported", "busy", "link", "storage", "state", "not_found", "refused"],

@@ -12,6 +12,7 @@ from . import usb_proto as P
 DLC = '/yaffs2/content/dlc'
 INBOX = store.ROOT + '/inbox'
 SIGNED_RECORD = b'xyf-pack.txt'
+RETRY_FAILED = 0x1000  # #195 diagnostic: a member open failed again with the source closed
 OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE = range(5)
 SIGNED_OPERATIONS = {'import': OP_IMPORT, 'enable': OP_ENABLE, 'disable': OP_DISABLE}
 
@@ -169,20 +170,22 @@ def signed_request(dev, operation, name='', busy_s=0.0):
     if code == P.ids.S_REFUSED and operation == OP_ENABLE:
         raise store.StoreError('compatibility unknown or pack path refused')
     store.check(code, 'signed pack')
-    if len(body) != 24:
-        raise store.StoreError('signed pack reply of %d bytes, expected 24' % len(body))
-    return struct.unpack('<6I', body)
+    if len(body) != 28:
+        raise store.StoreError('signed pack reply of %d bytes, expected 28' % len(body))
+    return struct.unpack('<7I', body)
 
 
 def failure_site(site, detail):
     """The device's record of where a failed import stopped (#195), as one line."""
     steps = ('hash', 'admit', 'window', 'extract', 'blob setup', 'blobs', 'record', 'publish', 'cleanup', 'close')
-    calls = {1: 'open', 2: 'extract', 3: 'write', 4: 'close'}
+    calls = {1: 'open', 2: 'extract', 3: 'write', 4: 'close', 5: 'source reopen'}
     step = (site >> 8) & 0xFF
     text = 'step %s' % (steps[step] if step < len(steps) else step)
     if site & 0xFF:
         text += ', %s' % calls.get(site & 0xFF, site & 0xFF)
     text += ', member %d, detail 0x%04x' % (detail >> 16, detail & 0xFFFF)
+    if site & 0xFF == 1 and detail & RETRY_FAILED:
+        text += ' (the open failed again with the source closed)'
     flags = [
         name
         for bit, name in ((0x10000, 'source close failed'), (0x20000, 'link lost'), (0x40000, 'cleanup started'))
@@ -200,7 +203,9 @@ def signed_change(dev, action, pack_id):
     previous = None
     try:
         while True:
-            phase, done, total, error, site, detail = signed_request(dev, OP_STATUS)
+            phase, done, total, error, site, detail, recovered = signed_request(dev, OP_STATUS)
+            if phase in (3, 4) and recovered:
+                print('Recovered %d opens by closing the source.' % recovered)
             if phase == 3:
                 print('Imported %s. The signed pack is retained.' % pack_id)
                 return 0

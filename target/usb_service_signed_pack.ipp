@@ -35,12 +35,17 @@ enum PackSite : U32 {
     site_extract = 2,
     site_flush = 3,
     site_close = 4,
+    site_reopen = 5, // #195 diagnostic: the source's reopen after a recovered member open
     pack_source_close = 0x10000,
     pack_link_lost = 0x20000,
     pack_cleanup = 0x40000
 };
 U32 signed_pack_site __attribute__((section(".data"))) = 0;
 U32 signed_pack_detail __attribute__((section(".data"))) = 0;
+// #195 diagnostic (device: a member's open answered EBADF while the source was open): member opens that
+// worked once the source was closed, the source then reopened. retry_failed marks the detail when even that open failed.
+U32 signed_pack_recovered __attribute__((section(".data"))) = 0;
+const U32 retry_failed = 0x1000u;
 U32 pack_fail(U32 site, U32 detail, U32 code) {
     if (!signed_pack_site) {
         signed_pack_site = site;
@@ -157,7 +162,7 @@ U32 signed_pack_start(const char* name) {
     if (code) return code;
     signed_pack_active = 1;
     signed_pack_phase = pack_authenticating;
-    signed_pack_done = signed_pack_error = signed_pack_site = signed_pack_detail = 0;
+    signed_pack_done = signed_pack_error = signed_pack_site = signed_pack_detail = signed_pack_recovered = 0;
     signed_pack_total = j.source.size();
     return P::s_ok;
 }
@@ -292,7 +297,22 @@ U32 signed_pack_member(SignedPackJob& j) {
     char path[file_engine::max_path];
     if (!join(path, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
     uint32_t why = 0;
-    const U32 opened = file_client::open_write(path, j.fd, mounted, &why);
+    U32 opened = file_client::open_write(path, j.fd, mounted, &why);
+    if (opened && j.source.phase() == tf::SourcePhase::authenticated) {
+        // #195 diagnostic: the same open with the source closed; on success the source is reopened and the
+        // import goes on (signed_pack_recovered counts it). Not the fix: it only tells whether the open source is
+        // why the open failed.
+        const U32 closed = j.source.close(true);
+        if (closed) return pack_fail(U32(ps_extract) << 8 | site_open, (j.member - 1) << 16 | why, closed);
+        opened = file_client::open_write(path, j.fd, mounted, &why);
+        if (opened)
+            return pack_fail(U32(ps_extract) << 8 | site_open, (j.member - 1) << 16 | why | retry_failed, opened);
+        ++signed_pack_recovered;
+        const U32 reopened = j.source.open(&j.work);
+        if (reopened) return pack_fail(U32(ps_extract) << 8 | site_reopen, (j.member - 1) << 16, reopened);
+        const auto reader = j.source.reader();
+        j.archive.reader = {reader.context, reader.size, reader.read};
+    }
     if (opened) return pack_fail(U32(ps_extract) << 8 | site_open, (j.member - 1) << 16 | why, opened);
     j.pending_bytes = 0;
     j.hash.reset();
@@ -527,7 +547,7 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
             else if (op >= pack_enable) code = signed_pack_toggle(name, op == pack_enable);
         }
     }
-    uint8_t reply[28];
+    uint8_t reply[32];
     P::put32(reply, code);
     P::put32(reply + 4, signed_pack_phase);
     P::put32(reply + 8, signed_pack_done);
@@ -535,6 +555,7 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
     P::put32(reply + 16, signed_pack_error);
     P::put32(reply + 20, signed_pack_site);
     P::put32(reply + 24, signed_pack_detail);
+    P::put32(reply + 28, signed_pack_recovered);
     send(P::t_packs_manage, seq, reply, code ? 4 : sizeof(reply));
 }
 #endif

@@ -83,7 +83,7 @@ class SignedPackImport(unittest.TestCase):
         while time.monotonic() < hang_deadline:
             code, body = self.call(packs.OP_STATUS)
             self.assertEqual(code, ids.S_OK)
-            phase, done, total, error, self.site, self.detail = struct.unpack('<6I', body)
+            phase, done, total, error, self.site, self.detail, self.recovered = struct.unpack('<7I', body)
             if phase in (3, 4):
                 return phase, done, total, error
             self.sim.advance(20)
@@ -95,6 +95,7 @@ class SignedPackImport(unittest.TestCase):
         original = catalog.read_bytes()
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish(), (3, 2, 2, ids.S_OK))
+        self.assertEqual(self.recovered, 0)  # every open worked with the source open
         sample = self.retained / 'samples/hand.wav'
         self.assertEqual(sample.read_bytes(), SAMPLE)
         digest = hashlib.sha256(SAMPLE).hexdigest()
@@ -169,3 +170,21 @@ class SignedPackImport(unittest.TestCase):
         sample = self.retained / 'samples/hand.wav'
         blob = self.root / 'xy-forever/blobs' / hashlib.sha256(SAMPLE).hexdigest()
         self.assertEqual(sample.stat().st_ino, blob.stat().st_ino)
+
+    def test_member_open_retried_with_the_source_closed(self):
+        """Kept: #195's device diagnostic. A member open that fails while the source is open is tried once more
+        with the source closed: failing again stops the import with the retry flag; working, the source is reopened,
+        the import completes and the status counts it."""
+        self.sim.set('fail_write_open', 2)  # the member's open and its retry
+        self.assertEqual(self.start()[0], ids.S_OK)
+        self.assertEqual(self.finish()[-1], ids.S_STORAGE)
+        self.assertEqual(self.site & 0xFFFF, 3 << 8 | 1)  # extract step, the member's open
+        self.assertEqual(self.detail, 1 << 16 | packs.RETRY_FAILED | 9)  # member 1 (manifest.json), EBADF
+        self.assertEqual(self.recovered, 0)
+        self.assertIn('failed again with the source closed', packs.failure_site(self.site, self.detail))
+        self.assertFalse(self.retained.exists())
+        self.sim.set('fail_write_open', 1)  # the member's open only
+        self.assertEqual(self.start()[0], ids.S_OK)
+        self.assertEqual(self.finish(), (3, 2, 2, ids.S_OK))
+        self.assertEqual(self.recovered, 1)
+        self.assertEqual((self.retained / 'samples/hand.wav').read_bytes(), SAMPLE)

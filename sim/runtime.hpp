@@ -31,8 +31,8 @@ struct Shared {
     // Test hooks: the Nth stock select on A switches the partition and then answers failure;
     // every yaffs unmount fails while fail_unmount is set; the Nth posix open on A (the marker's
     // restore) fails; the next path body reaches the stock path buffer whole (240 bytes, no NUL
-    // added) instead of cut at 239 bytes.
-    std::atomic<int32_t> fail_select, fail_unmount, fail_open, full_path;
+    // added) instead of cut at 239 bytes; the next fail_write_open opens for writing that B sends to A answer EBADF (#195).
+    std::atomic<int32_t> fail_select, fail_unmount, fail_open, full_path, fail_write_open;
     std::atomic<int64_t> space; // bytes yaffs may still write (< 0: unlimited)
     std::atomic<int32_t> statfs_override, statfs_block_bytes, statfs_free_blocks, statfs_fail;
     std::atomic<int32_t> storage_ops, play, cuts;
