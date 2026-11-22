@@ -51,6 +51,8 @@ xyf_module(tfw native/tfw.cpp native/aes.cpp native/hash.cpp)
 xyf_module(tfw_package native/tfw.cpp native/aes.cpp native/package.cpp native/images.cpp native/zip.cpp native/inflate.cpp
            native/hash.cpp native/package_policy.cpp native/companions.cpp native/ldr.cpp)
 xyf_module(crc32 target/xyf_crc32.cpp native/inflate.cpp)
+xyf_module(sound_pack_archive target/file_engine.cpp target/xyf_manifest.cpp native/zip.cpp native/inflate.cpp
+           native/mod_content.cpp native/mod_link.cpp native/mod_elf.cpp native/mod_numbers.cpp native/json.cpp)
 xyf_module(storage_server target/storage_server.cpp target/file_engine.cpp)
 xyf_module(file_write target/storage_server.cpp target/file_engine.cpp)
 xyf_module(store target/xyf_store.cpp target/xyf_info.cpp)
