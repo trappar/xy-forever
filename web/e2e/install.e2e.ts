@@ -68,10 +68,12 @@ async function open(fields: string, files: Record<string, string> = {}, free = 6
 }
 
 const stage = (page: Page): Promise<string | null> => page.locator('[data-stage]').getAttribute('data-stage');
+/** Once the page shows that stage (a locator check: it waits for the page, not for a polling interval). */
+const atStage = (page: Page, name: string): Promise<void> => expect(page.locator('[data-stage]')).toHaveAttribute('data-stage', name);
 const sent = (page: Page): Promise<number[]> => page.evaluate(() => (window as unknown as { fakes: { midi: { sent: { type: number }[] } } }).fakes.midi.sent.map((f) => f.type));
 
 async function refusal(page: Page): Promise<{ kind: string | null; text: string }> {
-  await expect.poll(() => stage(page), { timeout: 15_000 }).toBe('stop');
+  await atStage(page, 'stop');
   const card = page.locator('[data-verdict]');
   return { kind: await card.getAttribute('data-verdict'), text: (await card.textContent()) ?? '' };
 }
@@ -82,7 +84,7 @@ const CHECK = /Check my OP/;
 /** From te-boot to the copy step: the dev menu already on, then the computer, the dev menu and its transfer mode. */
 async function toTransfer(page: Page, computer: 'Mac' | 'Windows'): Promise<void> {
   await press(page, CHECK);
-  await expect.poll(() => stage(page), { timeout: 15_000 }).toBe('menu');
+  await atStage(page, 'menu');
   await press(page, 'Yes, I see it');
   await press(page, computer);
   await press(page, 'Dev menu is open');
@@ -121,10 +123,10 @@ test('switches the dev menu on, then stops on a missing stock os.ldr and on low 
   test.skip(why !== null, 'skipped: see the warning above');
   let page = await open(OK_121, { 'content/op1_factory.json': '{}' });
   await press(page, CHECK);
-  await expect.poll(() => stage(page), { timeout: 15_000 }).toBe('menu');
+  await atStage(page, 'menu');
   await press(page, 'No, it’s missing');
   await press(page, 'Enable dev menu');
-  await expect.poll(() => stage(page)).toBe('refresh-open');
+  await atStage(page, 'refresh-open');
   expect((await sent(page)).at(-1)).toBe(0xac);
   expect(await page.evaluate(() => [...(window as unknown as { fakes: { midi: { sent: { payload: Uint8Array }[] } } }).fakes.midi.sent.at(-1)!.payload.slice(-2)]))
     .toEqual([0xba, 0xa7]);                                     // on, never off
@@ -185,7 +187,7 @@ test('copies os.ldr over WebUSB, never reading the stock os.ldr, and ends with T
   const page = await open(OK_121, { [STOCK]: STOCK_SIZE });
   await toTransfer(page, 'Mac');
   await press(page, 'Send to OP–XY');
-  await expect.poll(() => page.getByRole('button', { name: 'File sent · Continue' }).isVisible(), { timeout: 30_000 }).toBe(true);
+  await page.getByRole('button', { name: 'File sent · Continue' }).waitFor();
   const fakes = (): Promise<{ copied: number[]; reads: string[] }> => page.evaluate(() => {
     const usb = (window as unknown as { fakes: { usb: { find: (p: string) => { data: Uint8Array }; reads: string[] } } }).fakes.usb;
     return { copied: [...usb.find('os.ldr').data], reads: usb.reads };
@@ -196,9 +198,9 @@ test('copies os.ldr over WebUSB, never reading the stock os.ldr, and ends with T
   await press(page, 'File sent · Continue');
   expect(await stage(page)).toBe('exit-transfer');
   await press(page, '← Back');                                          // back at transfer: the file can be sent again
-  await expect.poll(() => stage(page)).toBe('transfer');
+  await atStage(page, 'transfer');
   await press(page, 'Send to OP–XY');
-  await expect.poll(() => page.getByRole('button', { name: 'File sent · Continue' }).isVisible(), { timeout: 30_000 }).toBe(true);
+  await page.getByRole('button', { name: 'File sent · Continue' }).waitFor();
   expect((await fakes()).reads).toEqual(['os.ldr', 'os.ldr']);
   await press(page, 'File sent · Continue');
   await press(page, 'I’m back at the dev menu');
@@ -218,7 +220,7 @@ test('asks the owner to find the stock file in Explorer, then hands over our os.
   test.skip(why !== null, 'skipped: see the warning above');
   let page = await open(OK_121);
   await press(page, CHECK);
-  await expect.poll(() => stage(page), { timeout: 15_000 }).toBe('menu');
+  await atStage(page, 'menu');
   for (const name of ['Yes, I see it', 'Windows', 'Dev menu is open', 'I see "mtp mode active"']) await press(page, name);
   expect(await stage(page)).toBe('check-stock');
   expect(await page.locator('[data-stage]').textContent()).toContain('upgrade › firmware › blackfin › bin. os.ldr must be there, about 2,318 KB');
@@ -248,15 +250,15 @@ test('keeps the stage and the chosen computer over a reload, and goes back and f
   expect(await stage(page)).toBe('transfer');
   expect(new URL(page.url()).pathname).toBe('/install/transfer/');
   await page.reload();
-  await expect.poll(() => stage(page)).toBe('transfer');
+  await atStage(page, 'transfer');
   await page.goBack();
-  await expect.poll(() => stage(page)).toBe('check-stock');
+  await atStage(page, 'check-stock');
   await page.goBack();
-  await expect.poll(() => stage(page)).toBe('start-transfer');
+  await atStage(page, 'start-transfer');
   expect(await page.locator('[data-stage]').textContent()).toContain('3. mtp file transfer (windows)');   // the computer, kept
   await page.goForward();
   await page.goForward();
-  await expect.poll(() => stage(page)).toBe('transfer');
+  await atStage(page, 'transfer');
   expect(await page.getByRole('button', { name: 'Find my OP–XY' }).count()).toBe(0);      // no Web Serial here: nothing to look for
   await page.close();
 });

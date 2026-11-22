@@ -15,7 +15,7 @@ simulator's TCP port). Strict TypeScript, ES modules, no runtime dependencies.
 ```sh
 pnpm install      # from the repository root (one workspace with web/): TypeScript, Vitest, @types/node (dev only)
 pnpm test         # type-check, test/v1.test.ts, then Vitest: codec, call layer, end to end, relay, files, mods (push, build)
-pnpm run test:browser  # Web Serial in the system Chrome (headless): simulators 7710-7713, relays 7750-7751
+pnpm run test:browser  # Web Serial in the system Chrome (headless): two simulators and relays on random ports
 node test/conformance.ts --sim 127.0.0.1:7341    # the conformance cases against a running simulator
 node scripts/device-browser-test.ts --out DIR --sim PORT   # the web app (../../web) driven in Chrome, no human step (--serial: the OP-XY)
 ```
@@ -34,8 +34,8 @@ that already holds a grant for the dev server's origin `http://127.0.0.1:5173`. 
 
 Serial runs hold the shared OP-XY device lock. The script prints a `NEED:` line if the granted port or lock is unavailable, or if **Ask before USB control** is on.
 
-The Vitest run starts its own simulators (`python3 -m xy_forever.sim`, ports 7700-7709 and 7720-7721, state under
-the private sessions folder; `XYF_TS_SIM_PORT`, `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`) and skips the
+The Vitest run starts its own simulators (`python3 -m xy_forever.sim`, from a random base port so that parallel runs do not
+collide, state under the private sessions folder; `XYF_TS_SIM_PORT` fixes the base, `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`) and skips the
 simulator tests with the reason when they cannot start. Node 26 (pinned in `mise.toml`).
 
 ## Use

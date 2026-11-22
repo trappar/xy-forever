@@ -121,7 +121,7 @@ run = "pnpm run dev"
 [tasks.web-test]
 description = "Web app and TypeScript client tests and type checks"
 run = [
-  "pnpm --filter xy-forever-client test",
+  "uv run pnpm --filter xy-forever-client test",   # uv: its simulator tests start python3 -m xy_forever.sim from the project venv
   "pnpm --filter xy-forever-web test",
   "pnpm --filter xy-forever-web typecheck",
 ]

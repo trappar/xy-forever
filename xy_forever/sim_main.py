@@ -15,7 +15,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='Run the XY Forever device simulator in the foreground.')
     parser.add_argument('--port', type=int, default=DEFAULT_PORT, help='USB endpoint port (control: port + 1)')
     parser.add_argument('--state', type=Path, default=STATE,
-                        help='folder for yaffs2/ (seeded when missing), bootpart.bin and builds (default %(default)s)')
+                        help='folder for yaffs2/ (seeded when missing) and bootpart.bin (default %(default)s); the build '
+                             'cache is always the default folder\'s builds/, shared, so a new state folder starts at once')
     parser.add_argument('--plain', action='store_true', help='power on without PLAY (boots the default: no USB)')
     parser.add_argument('--version', help='hello version= (default: this checkout\'s release version)')
     parser.add_argument('--pre-v1', action='store_true', help='serve the pre-v1 hello text (builds 153 and earlier)')
@@ -42,7 +43,7 @@ def main(argv=None):
         seed_fresh(root, args.fresh) if args.fresh else seed(root)
     hello = 'XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e' if args.pre_v1 else None
     print('building the simulator...', file=sys.stderr, flush=True)
-    out = build(state / 'builds', version=args.version, hello=hello,
+    out = build(None, version=args.version, hello=hello,
                 mode='xyf-crash-trigger' if args.crash_trigger else 'xyf-product')
     otp = None if args.no_otp else otp_fields()
     print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
