@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_build                                    # noqa: E402
 import xyf_host as host                             # noqa: E402
-from xy_forever import census, paths, release, sim, usb_proto as P   # noqa: E402
+from xy_forever import bounds, census, paths, release, sim, usb_proto as P   # noqa: E402
 from xy_forever import usb_proto_ids as ids         # noqa: E402
 from xy_forever.startup_ready import wait_startup_ready
 
@@ -106,7 +106,7 @@ class SimulatorTest(unittest.TestCase):
     def wait(self, predicate, timeout=10.0, what='simulator state'):
         """Until predicate(status). A processor's restart delay (its bootloader's start time) runs on
         the board clock and is passed with advance, not waited for; host time only bounds a hang."""
-        deadline = time.monotonic() + max(timeout, 60.0)
+        deadline = time.monotonic() + max(timeout, bounds.WAIT_S)
         while time.monotonic() < deadline:
             status = self.sim.status()
             if predicate(status):
@@ -1717,6 +1717,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual((status['rw_mounts'] - mounts, status['unclean_mounts']), (1, 0))
         print('\nfile.copy 300,196 B in the simulator: %.2f s' % seconds, file=sys.stderr)
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_file_copy_refuses_before_a_and_checks_its_request(self):
         """A source file.read refuses or a target file.write_staged refuses is refused on B: not one request
         reaches A. A wrong confirmation is sha; a request without the target's NUL or a byte short is

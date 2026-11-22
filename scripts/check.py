@@ -50,6 +50,8 @@ VERSION = 1                                  # receipt format; a reader refuses 
 CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json
 KEEP_BUILDS = 5                              # builds/<image> folders a check made (check.json) kept, ~7 MB each
 RECENT = 15 * 60                             # seconds: a build folder touched since then is never pruned
+STEP_S = 300                                 # seconds: a step past it ends with its process group (#230)
+SUITE_S = 480                                # the exhaustive suite's bound (~2-3 min today)
 
 
 class CheckError(Exception):
@@ -57,7 +59,7 @@ class CheckError(Exception):
 
 
 def git(root, *args):
-    run = subprocess.run(['git', *args], cwd=root, capture_output=True, text=True)
+    run = subprocess.run(['git', *args], cwd=root, capture_output=True, text=True, timeout=60)
     if run.returncode:
         raise CheckError('git %s: %s' % (' '.join(args), run.stderr.strip() or 'failed'))
     return run.stdout.rstrip()
@@ -91,12 +93,13 @@ def changed(root, *folders):
     base = merge_base(root)
     if base is None:
         return True
-    return subprocess.run(['git', 'diff', '--quiet', base, 'HEAD', '--', *folders], cwd=root).returncode != 0
+    return subprocess.run(['git', 'diff', '--quiet', base, 'HEAD', '--', *folders], cwd=root, timeout=60).returncode != 0
 
 
-def step(name, cmd, cwd, env=None, parse=None):
-    """One check: a command, run in cwd with env added; parse(exit status, output) -> (passed, facts)."""
-    return dict(name=name, cmd=[str(c) for c in cmd], cwd=Path(cwd), env=env or {}, parse=parse)
+def step(name, cmd, cwd, env=None, parse=None, timeout=STEP_S):
+    """One check: a command, run in cwd with env added and ended (its whole process group) past timeout
+    seconds; parse(exit status, output) -> (passed, facts)."""
+    return dict(name=name, cmd=[str(c) for c in cmd], cwd=Path(cwd), env=env or {}, parse=parse, timeout=timeout)
 
 
 def shown(s):
@@ -189,7 +192,8 @@ def standard_steps(args, root, tree, work):
              step('verify', [py, root / 'xyf_build.py', '--verify', '--out', out], root,
                   parse=verify_parser(out, tree, git(root, 'rev-parse', 'HEAD'), test_builds)),
              step('unit tests (exhaustive)', [py, root / 'scripts/run_tests.py', *jobs, '--summary', summary],
-                  root, {'XYF_EXHAUSTIVE': '1', paths.CHECK_TEST_BUILDS: str(test_builds)}, tests_parser(summary))]
+                  root, {'XYF_EXHAUSTIVE': '1', paths.CHECK_TEST_BUILDS: str(test_builds)}, tests_parser(summary),
+                  timeout=SUITE_S)]
     if args.neutral is not None:
         ref = args.neutral or merge_base(root)
         if not ref:
@@ -229,8 +233,11 @@ def run_steps(steps, log):
             start = time.monotonic()
             try:
                 proc = procgroup.run(s['cmd'], cwd=s['cwd'], env=dict(os.environ, **s['env']), stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, errors='replace')
+                                     stderr=subprocess.STDOUT, text=True, errors='replace', timeout=s['timeout'])
                 status, text = proc.returncode, proc.stdout
+            except subprocess.TimeoutExpired as e:
+                status, text = 124, (e.output or '') + '\nHUNG: %s ran past its %g s bound: ended\n' % (s['name'],
+                                                                                                    s['timeout'])
             except OSError as e:
                 status, text = 127, str(e)
             f.write(text)
@@ -307,7 +314,7 @@ def load(path):
 
 def is_ancestor(root, commit, ref):
     return subprocess.run(['git', 'merge-base', '--is-ancestor', commit, ref], cwd=root,
-                          capture_output=True).returncode == 0
+                          capture_output=True, timeout=60).returncode == 0
 
 
 def older_receipt(root, ref, checks):

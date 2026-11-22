@@ -12,7 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / 'web'
 sys.path.insert(0, str(ROOT))
-from xy_forever import procgroup  # noqa: E402
+from xy_forever import bounds, procgroup  # noqa: E402
 
 
 class WebAppTest(unittest.TestCase):
@@ -29,6 +29,7 @@ class WebAppTest(unittest.TestCase):
         self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])
         self.assertRegex(run.stdout, r'Tests\s+\d+ passed')
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_install_page_in_chrome(self):
         npm = shutil.which('npm')
         if not shutil.which('node') or not npm:
@@ -37,9 +38,9 @@ class WebAppTest(unittest.TestCase):
             self.skipTest('web/node_modules absent: run npm ci in web/')
         try:
             run = procgroup.run([npm, 'run', 'test:e2e', '--', 'e2e/install.e2e.ts', 'e2e/install-sim.e2e.ts'], cwd=WEB,
-                                capture_output=True, text=True, timeout=240)
+                                capture_output=True, text=True, timeout=bounds.SLOW_S)
         except subprocess.TimeoutExpired as e:
-            self.fail('the install browser test took over 240 s: %s' % (e.stdout or b'')[-2000:])
+            self.fail('the install browser test took over %g s: %s' % (bounds.SLOW_S, (e.stdout or b'')[-2000:]))
         self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])
         if 'install browser test skipped' in run.stdout + run.stderr:
             self.skipTest('the system Chrome cannot start')

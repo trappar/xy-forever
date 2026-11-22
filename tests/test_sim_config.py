@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_content_switch as CS                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_mods_page import (PageBase, synthetic_setup, PLAY, STOP, MINUS, PLUS, SHIFT, VIEW_LIST)   # noqa: E402
-from xy_forever import native_json, package_records                                       # noqa: E402
+from xy_forever import bounds, native_json, package_records                                       # noqa: E402
 
 CONFIG = 'xy-forever/config.json'
 CONFIG_OLD = CONFIG + '.old'
@@ -113,13 +113,13 @@ class ConfigBase(PageBase, CS.Switch):
                       'mods=%s saved' % want, 30.0)
         return self.config()
 
-    def wait_log(self, cond, what, timeout=60.0):
+    def wait_log(self, cond, what, timeout=bounds.WAIT_S):
         deadline = time.monotonic() + timeout
         while not cond():
             self.assertLess(time.monotonic(), deadline, what)
             time.sleep(0.02)
 
-    def booted(self, timeout=180.0):
+    def booted(self, timeout=bounds.WAIT_S):
         """The menu booted the default: its id; both processors in the OS."""
         seen, failures = self.mark                                         # counted before the key (cont)
         self.wait_log(lambda: len(self.lines('menu: boots the default ')) > seen or
@@ -129,7 +129,7 @@ class ConfigBase(PageBase, CS.Switch):
         self.wait_log(lambda: self.sim.status()['a'] == 'os' and self.sim.status()['b'] == 'os', 'the OS')
         return entry
 
-    def failed(self, timeout=180.0):
+    def failed(self, timeout=bounds.WAIT_S):
         seen = self.mark[1]
         self.wait_log(lambda: len(self.lines('menu: save failed: ')) > seen, 'the save fails', timeout)
         return self.lines('menu: save failed: ')[-1]
@@ -352,7 +352,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.change(['alpha'])
         self.sim.set('a_slow_ms', 30)
         self.cont()
-        self.wait_progress(lambda p: p['save'] & 2, 'building', 60.0)
+        self.wait_progress(lambda p: p['save'] & 2, 'building', bounds.WAIT_S)
         self.press(STOP)
         self.assertIn('Cancelled', self.failed())
         self.sim.set('a_slow_ms', 0)
@@ -380,7 +380,7 @@ class Config(ConfigBase, unittest.TestCase):
         self.wait_log(lambda: '(rebuild) pending=1' in self.home(), 'still pending')
         self.sim.set('a_slow_ms', 30)
         self.cont()
-        self.wait_progress(lambda p: p['save'] & 2, 'building', 60.0)
+        self.wait_progress(lambda p: p['save'] & 2, 'building', bounds.WAIT_S)
         self.press(PLAY)                                                   # on the converge's own progress screen
         self.sim.set('a_slow_ms', 0)
         self.saved_as(self.booted(), ['alpha'])
@@ -448,13 +448,14 @@ class Config(ConfigBase, unittest.TestCase):
         self.assertEqual(self.booted(), a)
         self.saved_as(a, ['alpha'])
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_power_cut_in_the_record_write_then_save(self):
         a = self.all_off_saved()
         self.change(['alpha'], unknown=False)
         self.saved(['alpha'])
         self.sim.set('a_slow_ms', 150)
         self.cont()
-        self.wait_progress(lambda p: p['stage'] == 2, 'saving', 120.0)
+        self.wait_progress(lambda p: p['stage'] == 2, 'saving', bounds.SLOW_S)
         cuts = self.sim.status()['cuts']
         rows = len(self.lines('menu: home row: '))
         self.sim.set('rename_fault_kind', 2)

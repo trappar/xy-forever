@@ -2,6 +2,7 @@
 line, compiler and file contents (sources and every header the compile read), never for a failure."""
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -10,7 +11,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import bounds, hostbuild  # noqa: E402
 
 CXX = '/usr/bin/clang++'
 
@@ -37,13 +38,13 @@ class HostBuildTest(unittest.TestCase):
         """(the program's output, compiles run) for one hostbuild.run."""
         self.runs += 1
         out = out or self.dir / ('program-%d' % self.runs)
-        compiles, real = [], subprocess.run
+        compiles, real, compile = [], subprocess.run, hostbuild.procgroup.run
 
         def counting(argv, *args, **kwargs):
             if '-o' in argv:
                 compiles.append(argv)
-            return real(argv, *args, **kwargs)
-        with mock.patch.object(hostbuild.subprocess, 'run', counting):
+            return compile(argv, *args, **kwargs)
+        with mock.patch.object(hostbuild.procgroup, 'run', counting):
             hostbuild.run([CXX, '-std=c++11', '-Wall', '-Werror', *extra, '-I', str(folder),
                            str(folder / 'main.cpp'), '-o', str(out)], check=True, capture_output=True)
         return real([str(out)], capture_output=True, text=True, check=True).stdout, len(compiles)
@@ -72,11 +73,59 @@ class HostBuildTest(unittest.TestCase):
 
     def test_no_cache_without_one_output(self):
         src = self.source('src', 4)
-        with mock.patch.object(hostbuild.subprocess, 'run', wraps=subprocess.run) as run:
+        with mock.patch.object(hostbuild.procgroup, 'run', wraps=hostbuild.procgroup.run) as run:
             for _ in range(2):
                 hostbuild.run([CXX, '-fsyntax-only', str(src / 'main.cpp'), '-I', str(src)], check=True)
         self.assertEqual(run.call_count, 2)
         self.assertFalse((self.dir / 'cache').exists())
+
+
+class CacheRaceTest(unittest.TestCase):
+    """Entries publish whole (a stale one is replaced, a concurrent one kept), and pruning skips an entry
+    another process removed meanwhile (#230)."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(prefix='xyf-hostbuild-')
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def entry(self, name, text):
+        folder = self.root / name
+        folder.mkdir()
+        (folder / 'output').write_text(text)
+        return folder
+
+    def test_publish_replaces_a_stale_entry_in_one_rename(self):
+        stale, work = self.entry('key', 'stale'), self.entry('new-1', 'fresh')
+        hostbuild._publish(self.root, work, stale)
+        self.assertEqual((self.root / 'key' / 'output').read_text(), 'fresh')
+        self.assertEqual(sorted(p.name for p in self.root.iterdir()), ['key'])
+
+    def test_publish_into_an_empty_slot(self):
+        work = self.entry('new-1', 'fresh')
+        hostbuild._publish(self.root, work, self.root / 'key')
+        self.assertEqual(sorted(p.name for p in self.root.iterdir()), ['key'])
+
+    def test_prune_skips_an_entry_removed_meanwhile(self):
+        for n in range(4):
+            self.entry('e%d' % n, str(n))
+        gone, real = self.root / 'e0', Path.stat
+
+        def racing(path, *args, **kwargs):
+            if path == gone and os.path.isdir(gone):
+                shutil.rmtree(gone)                    # another process pruned it between listing and stat
+            return real(path, *args, **kwargs)
+        with mock.patch.object(Path, 'stat', racing):
+            hostbuild.prune(self.root, keep=2)
+        self.assertEqual(len(list(self.root.iterdir())), 2)
+
+
+@unittest.skipUnless(Path(CXX).exists(), 'no clang++')
+class CompileBoundTest(unittest.TestCase):
+    def test_a_compile_past_its_bound_ends(self):
+        with mock.patch.object(bounds, 'COMPILE_S', 0.5), mock.patch.dict(os.environ, {'XYF_HOST_BUILDS': 'off'}):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                hostbuild.run([sys.executable, '-c', 'import time; time.sleep(30)', '-o', 'x'])
 
 
 if __name__ == '__main__':

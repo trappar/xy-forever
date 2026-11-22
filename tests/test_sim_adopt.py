@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import modsend as MS, native_json, sim, usb_proto_ids as ids           # noqa: E402
+from xy_forever import bounds, modsend as MS, native_json, sim, usb_proto_ids as ids           # noqa: E402
 from test_sim_mod_job import UNAVAILABLE                                  # noqa: E402
 
 ENTRY = 'xy-forever/firmware/opxy-121'
@@ -71,7 +71,7 @@ class Adopt(unittest.TestCase):
     def connect(self):
         if self.dev:
             self.dev.t.close()
-        self.sim.wait_listening(60)
+        self.sim.wait_listening(bounds.WAIT_S)
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
 
@@ -79,7 +79,7 @@ class Adopt(unittest.TestCase):
         log = (self.dir / 'log.txt').read_text(errors='replace') if (self.dir / 'log.txt').exists() else ''
         return [line[line.find(marker) + len(marker):] for line in log.splitlines() if marker in line]
 
-    def wait(self, cond, what, timeout=120.0):
+    def wait(self, cond, what, timeout=bounds.WAIT_S):
         deadline = time.monotonic() + timeout
         while not cond():
             self.assertLess(time.monotonic(), deadline, what)
@@ -202,6 +202,7 @@ class Adopt(unittest.TestCase):
     def test_wrong_file_refuses(self):
         self.refused('wrong', 10, 'OS file is not official 1.2.1.' + REINSTALL)
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_power_cut_mid_copy_is_redone_at_the_next_start(self):
         self.start()
         self.wait(lambda: self.lines('menu: line: OS 1.2.1'), 'the first adoption')

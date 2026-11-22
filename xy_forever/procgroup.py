@@ -83,6 +83,18 @@ def run(argv, timeout=None, input=None, capture_output=False, **kwargs):
         kill_group(process)      # anything the command left running in its group
 
 
+def end_group_with_parent(poll=0.5):
+    """For a group leader (started by popen()): a daemon thread SIGKILLs its whole group, this process
+    included, once its parent is gone (a test runner interrupted or killed: its workers end with it)."""
+    parent = os.getppid()
+
+    def watch():
+        while os.getppid() == parent:
+            time.sleep(poll)
+        os.killpg(os.getpgid(0), signal.SIGKILL)
+    threading.Thread(target=watch, name='parent-watch', daemon=True).start()
+
+
 def tie_to_parent(poll=0.5):
     """For a process's __main__: SIGTERM and SIGHUP raise SystemExit (so finally blocks run, once),
     and a daemon thread sends this process SIGTERM when its parent is gone (re-parented)."""

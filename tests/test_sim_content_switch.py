@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import modkit as M, modpatch as MP, modsend as MS, sim   # noqa: E402
+from xy_forever import bounds, modkit as M, modpatch as MP, modsend as MS, sim   # noqa: E402
 from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, finish, kit_for, profile_for, stock   # noqa: E402
 from test_sim_mod_job import Base, LIB, PACKAGES, UNAVAILABLE, _published, TK   # noqa: E402
@@ -88,7 +88,7 @@ class Switch(Base):
         found = self.catalog()
         return found['items'][found['default']]['id'] if found['default'] < len(found['items']) else None
 
-    def switch(self, entry, timeout=120.0):
+    def switch(self, entry, timeout=bounds.WAIT_S):
         """library.set_default; for a started switch, its job.status until the end (and the window closed)."""
         code, _ = self.dev.set_default(entry)
         return code, (self.finished(0, timeout) if code == ids.S_STARTED else None)
@@ -354,6 +354,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
     def test_a_power_cut_at_each_step(self):
         self.faults(2)
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_a_silent_at_each_step(self):
         self.faults(3)
 

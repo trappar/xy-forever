@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever.source_text import unit_text  # noqa: E402
 import xyf_host as host                              # noqa: E402
-from xy_forever import paths, sim, tfw_extract       # noqa: E402
+from xy_forever import bounds, paths, sim, tfw_extract       # noqa: E402
 from xy_forever import usb_proto_ids as ids          # noqa: E402
 
 OFFICIAL = sorted((paths.FIRMWARE / 'official').glob('opxy_firmware_*.tfw'))
@@ -202,7 +202,7 @@ class SimulatorCheck(unittest.TestCase):
     def check(self, name, fail=0):
         self.sim.set('otp_fail', fail)
         before = self.sim.status()['otp_reads']
-        code, body = self.dev.call(ids.TFW_CHECK, (DIR + name).encode() + b'\0', timeout=60.0)
+        code, body = self.dev.call(ids.TFW_CHECK, (DIR + name).encode() + b'\0', timeout=bounds.WAIT_S)
         self.assertEqual((code, len(body)), (0, 40))
         verdict, reason = struct.unpack_from('<II', body)
         return verdict, REASONS[reason], body[8:], self.sim.status()['otp_reads'] - before

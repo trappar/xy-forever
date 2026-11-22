@@ -8,7 +8,11 @@ miss compiles exactly as subprocess.run would, records its stdout and stderr (re
 and its dependency list. A failed compile is never cached.
 
 The cache is ../private/xy-forever/sessions/host-builds/ (never the repository; XYF_HOST_BUILDS
-moves it, XYF_HOST_BUILDS=off turns it off). The KEEP most recently used entries stay.
+moves it, XYF_HOST_BUILDS=off turns it off). The KEEP most recently used entries stay. Entries are
+published whole by a rename, and pruning tolerates entries other processes remove meanwhile.
+
+Every compile (and its -M listing) runs in its own process group, ended past bounds.COMPILE_S (#230):
+subprocess.TimeoutExpired, as subprocess.run raises.
 """
 import hashlib
 import json
@@ -18,7 +22,7 @@ import shutil
 import subprocess
 import tempfile
 
-from . import paths
+from . import bounds, paths, procgroup
 
 KEEP = 300
 _hashes = {}       # (path, size, mtime_ns) -> sha256, within one process
@@ -45,7 +49,8 @@ def file_hash(path):
 
 def compiler(cxx):
     if cxx not in _compilers:
-        _compilers[cxx] = subprocess.run([cxx, '--version'], capture_output=True, text=True).stdout
+        _compilers[cxx] = procgroup.run([cxx, '--version'], capture_output=True, text=True,
+                                        timeout=bounds.COMPILE_S).stdout
     return _compilers[cxx]
 
 
@@ -106,7 +111,11 @@ def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs)
     root = cache_dir()
     plan = _plan(argv, cwd) if root else None
     if plan is None or kwargs:
-        return subprocess.run(argv, check=check, capture_output=capture_output, text=text, cwd=cwd, **kwargs)
+        kwargs.setdefault('timeout', bounds.COMPILE_S)
+        done = procgroup.run(argv, capture_output=capture_output, text=text, cwd=cwd, **kwargs)
+        if check:
+            done.check_returncode()
+        return done
     key, deps_argv, out, roots = plan
     target = Path(cwd or '.') / str(argv[out])
     entry = root / key
@@ -127,7 +136,7 @@ def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs)
                                                if capture_output else (None, None))
     except (OSError, ValueError, KeyError):
         pass
-    result = subprocess.run(argv, capture_output=True, cwd=cwd)
+    result = procgroup.run(argv, capture_output=True, cwd=cwd, timeout=bounds.COMPILE_S)
     if not capture_output:                                     # as subprocess.run would have shown them
         os.write(1, result.stdout)
         os.write(2, result.stderr)
@@ -142,7 +151,7 @@ def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs)
 
 
 def _store(root, entry, deps_argv, cwd, roots, target, result):
-    listing = subprocess.run(deps_argv, capture_output=True, text=True, cwd=cwd)
+    listing = procgroup.run(deps_argv, capture_output=True, text=True, cwd=cwd, timeout=bounds.COMPILE_S)
     if listing.returncode:
         return
     names = listing.stdout.replace('\\\n', ' ').split()
@@ -155,15 +164,40 @@ def _store(root, entry, deps_argv, cwd, roots, target, result):
         shutil.copyfile(target, work / 'output')
         shutil.copymode(target, work / 'output')
         (work / 'manifest.json').write_text(json.dumps(manifest))
-        shutil.rmtree(entry, ignore_errors=True)
-        work.rename(entry)
+        _publish(root, work, entry)
     except OSError:
         return
     prune(root)
 
 
+def _publish(root, work, entry):
+    """work becomes entry in one rename, never a half-written entry: a rename onto an existing (stale)
+    entry fails, so that one moves aside first; another process publishing the same entry meanwhile wins."""
+    try:
+        work.rename(entry)
+        return
+    except OSError:
+        pass
+    aside = Path(tempfile.mkdtemp(prefix='old-', dir=root))
+    try:
+        entry.rename(aside / 'entry')
+    except OSError:
+        pass                                                   # gone already: another process moved it
+    try:
+        work.rename(entry)
+    except OSError:
+        shutil.rmtree(work, ignore_errors=True)                # another process published it first
+    shutil.rmtree(aside, ignore_errors=True)
+
+
 def prune(root, keep=KEEP):
-    """Keeps the keep most recently used entries (and removes abandoned partial ones)."""
-    entries = sorted((p for p in root.iterdir() if p.is_dir()), key=lambda p: p.stat().st_mtime, reverse=True)
-    for p in entries[keep:]:
+    """Keeps the keep most recently used entries (and removes abandoned partial ones). Another process
+    may remove an entry while this one looks: a vanished entry is skipped."""
+    def used(p):
+        try:
+            return p.stat().st_mtime if p.is_dir() else None
+        except OSError:
+            return None
+    entries = [(t, p) for p, t in ((p, used(p)) for p in root.iterdir()) if t is not None]
+    for _, p in sorted(entries, key=lambda e: e[0], reverse=True)[keep:]:
         shutil.rmtree(p, ignore_errors=True)

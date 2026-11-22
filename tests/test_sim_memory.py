@@ -12,6 +12,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
+from xy_forever import bounds                                              # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 import test_sim_config as SC                                              # noqa: E402
 from test_ui_mods import info                                             # noqa: E402
@@ -42,7 +43,7 @@ class Memory(SC.Config):
         self.press(PLUS)
         self.press(PLAY)
 
-    def home_has(self, text, timeout=60.0):
+    def home_has(self, text, timeout=bounds.WAIT_S):
         self.wait_log(lambda: text in self.home(), 'home row with %r: %s' % (text, self.home()), timeout)
         return self.home()
 
@@ -78,6 +79,7 @@ class PublishedMemory(Memory, unittest.TestCase):
     def memory_saved(self, value):
         self.wait_log(lambda: (self.config() or {}).get('memory') == value, 'memory=%s saved' % value, 30.0)
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_flip_saved_power_on_no_change_and_back(self):
         self.settings()
         self.home_has(STANDARD)                                            # "Checking the mod packages..." until the base
@@ -89,7 +91,7 @@ class PublishedMemory(Memory, unittest.TestCase):
         self.assertIn('note=;', row)                                       # fits the 4 MiB layout
         self.back_to_continue()
         self.cont()                                            # PLAY: it builds, then boots
-        entry = self.booted(600.0)
+        entry = self.booted(bounds.SLOW_S)
         c = self.saved_as(entry, self.machines)
         self.assertEqual(c['memory'], 'expanded')
         self.assertTrue(c['built'].endswith(' 32 expanded'), c['built'])

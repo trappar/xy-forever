@@ -30,7 +30,7 @@ import tempfile
 import time
 import zlib
 
-from xy_forever import paths, procgroup
+from xy_forever import bounds, paths, procgroup
 from xy_forever import usb_proto as P
 from xy_forever.sim_sources import DEVICE_PARTS, NATIVE_SOURCES, SIM_SOURCES, TARGET_SOURCES
 
@@ -162,7 +162,7 @@ def build(cache=None, **options):
     the stock image) and returns its folder. The tests share the default cache."""
     defines = product_defines(**options)
     inputs = hashlib.sha256(json.dumps(defines).encode())
-    inputs.update(subprocess.run([CXX, '--version'], capture_output=True).stdout)
+    inputs.update(procgroup.run([CXX, '--version'], capture_output=True, timeout=bounds.COMPILE_S).stdout)
     here = Path(__file__).parent
     for path in sorted([*ROOT.glob('target/*.?pp'), *ROOT.glob('native/*.?pp'), *ROOT.glob('native/*.inc'),
                         *SIM.glob('*.?pp'), *(p for p in (ROOT / 'third_party').rglob('*') if p.is_file()), Path(__file__),
@@ -238,7 +238,8 @@ def compile_into(work, defines):
     def compile_one(job):
         flags, source = job
         obj = work / (source.parent.name + '-' + source.stem + '.o')
-        result = subprocess.run([*flags, '-c', str(source), '-o', str(obj)], capture_output=True, text=True)
+        result = procgroup.run([*flags, '-c', str(source), '-o', str(obj)], capture_output=True, text=True,
+                               timeout=bounds.COMPILE_S)
         return obj, result.stderr if result.returncode else None
     with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as pool:
         compiled = list(pool.map(compile_one, jobs))
@@ -249,8 +250,8 @@ def compile_into(work, defines):
         raise RuntimeError('simulator build failed: %s\n%s' % (', '.join(name for name, _ in failed), '\n'.join(
             '%s:\n%s' % (name, error[-4000:]) for name, error in failed)))
     objects = [obj for obj, _ in compiled]
-    result = subprocess.run([CXX, '-pthread', *map(str, objects), '-o', str(work / 'xyf_sim')], capture_output=True,
-                            text=True)
+    result = procgroup.run([CXX, '-pthread', *map(str, objects), '-o', str(work / 'xyf_sim')], capture_output=True,
+                           text=True, timeout=bounds.COMPILE_S)
     if result.returncode:
         raise RuntimeError('simulator link failed:\n%s' % result.stderr[-4000:])
     for obj in objects:
@@ -327,6 +328,10 @@ def free_port():
     raise RuntimeError('no free local port pair')
 
 
+class DeadlinePassed(TimeoutError):
+    """The simulator stopped on its own at its deadline (xyf_sim --deadline-s, #230)."""
+
+
 class PortTaken(RuntimeError):
     """The simulator stopped before its endpoint listened (a port already in use, most likely)."""
 
@@ -335,13 +340,16 @@ class Simulator:
     """One running simulator: start() it, talk to 127.0.0.1:port, control() its board."""
 
     def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None,
-                 virtual=True, otp_initialized=False, otp_a=None, a_otp_initialized=False, ask=False):
+                 virtual=True, otp_initialized=False, otp_a=None, a_otp_initialized=False, ask=False,
+                 deadline_s=bounds.sim_deadline_s):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
         virtual: device time moves only under the simulator's control (sim/clock.cpp: test runs); False: real
         time (interactive runs). otp_initialized starts B with both its ROM and the stock initialization
         guard already set, as after the stock bootloader's encrypted-image read. ask: #65's question as on the device
         (Ask before USB control as settings.txt says); False (tests that are not about it): the setting reads Off,
-        so no serial request waits for an answer nobody gives."""
+        so no serial request waits for an answer nobody gives. deadline_s: the board stops on its own that
+        long after it started (#230; None: never, interactive runs); default bounds.sim_deadline_s(): 10 s,
+        or SLOW_S in a test marked @bounds.slow (#233)."""
         self.root, self.bootpart = Path(root), Path(bootpart)
         # B records retain their original framing; bit7 marks independent A selectors.
         a_records = bytearray()
@@ -358,6 +366,7 @@ class Simulator:
         self.control_port = self.port + 1
         self.build_dir = Path(build_dir) if build_dir else build()
         self.play, self.log, self.capacity, self.ask = play, log, capacity, ask
+        self.deadline_s = deadline_s() if callable(deadline_s) else deadline_s
         self.process = None
 
     @property
@@ -370,14 +379,16 @@ class Simulator:
                 '--control', str(self.control_port), '--capacity', str(self.capacity)] + ([] if self.play else ['--plain']) + \
             (['--otp-stdin'] if self.otp else []) + (['--virtual'] if self.virtual else []) + \
             (['--otp-initialized'] if self.otp_initialized else []) + \
-            (['--a-otp-initialized'] if self.a_otp_initialized else []) + (['--ask'] if self.ask else [])
+            (['--a-otp-initialized'] if self.a_otp_initialized else []) + (['--ask'] if self.ask else []) + \
+            (['--deadline-s', '%g' % self.deadline_s] if self.deadline_s else [])
 
     def start(self, timeout=10.0):
         os.environ.setdefault('XYF_ASK_LIMIT_S', '30')      # #65: a host here never waits on the question unbounded
         for attempt in range(3):
             log = open(self.log, 'ab') if self.log else subprocess.DEVNULL
-            self.process = subprocess.Popen(self.argv(), stdin=subprocess.PIPE if self.otp else subprocess.DEVNULL,
-                                            stdout=log, stderr=log)
+            # Its own session: stop() ends its whole group (the board and both processors).
+            self.process = procgroup.popen(self.argv(), stdin=subprocess.PIPE if self.otp else subprocess.DEVNULL,
+                                           stdout=log, stderr=log)
             if self.otp:                               # on a pipe: never on disk or the command line
                 self.process.stdin.write(self.otp)
                 self.process.stdin.close()
@@ -391,8 +402,7 @@ class Simulator:
                 # running in parallel): a new pair, when the pair was picked here. Never "quit" over
                 # the control port: it may be another simulator's.
                 self._close_control()
-                self.process.kill()
-                self.process.wait()
+                procgroup.kill_group(self.process, grace=1.0)
                 self.process = None
                 if not self.chosen or attempt == 2:
                     raise
@@ -420,6 +430,9 @@ class Simulator:
                 return json.loads(reply.decode())
             except (ConnectionRefusedError, ConnectionResetError, BrokenPipeError):
                 self._close_control()
+                if self.process is not None and self.process.poll() == 124:
+                    raise DeadlinePassed('simulator: stopped at its %g s deadline (--deadline-s; a test that needs '
+                                         'longer: @bounds.slow, #233)' % self.deadline_s)
                 if line == 'quit' or time.monotonic() > deadline:
                     raise
                 time.sleep(0.05)
@@ -445,7 +458,7 @@ class Simulator:
         Real time: one jump."""
         if ms <= 0:
             return
-        if not self.control('advance %d' % ms, timeout=60.0 + ms / 1000.0).get('ok'):
+        if not self.control('advance %d' % ms, timeout=bounds.WAIT_S).get('ok'):
             raise ValueError('simulator: advance %r refused' % ms)
 
     def jump(self, ms):
@@ -511,8 +524,8 @@ class Simulator:
             self.control('quit', timeout=2.0)
             self.process.wait(timeout=5.0)
         except Exception:
-            self.process.kill()
-            self.process.wait()
+            pass
+        procgroup.kill_group(self.process, grace=1.0)     # whatever is left of its group: SIGKILL
         self._close_control()
         self.process = None
 
@@ -558,7 +571,7 @@ def main(argv=None):
     otp = None if args.no_otp else otp_fields()
     print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
     sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp,
-                    virtual=args.virtual_clock, ask=args.ask)
+                    virtual=args.virtual_clock, ask=args.ask, deadline_s=None)
     print('simulator: USB endpoint 127.0.0.1:%d (python3 xyf_host.py --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
           ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root), file=sys.stderr, flush=True)
     # Its own process group (the board and both processors), ended with this process however it ends:
