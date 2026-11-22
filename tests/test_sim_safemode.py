@@ -10,18 +10,13 @@ nothing). A mod build never takes the
 saved slot. A content switch failure and a power cut in the switch: the record is the previous one and doing the same
 again repairs it. With no setup saved the row is "Boot without mods" and PLAY only says why. Synthetic packages (test_sim_config). Needs
 clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
-from pathlib import Path
-import sys
 import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import test_sim_mod_job as J                                               # noqa: E402
-from test_sim_config import  ConfigBase                                           # noqa: E402
-from sim_mods_page import  PLAY                                     # noqa: E402
+import test_sim_mod_job as J
+from test_sim_config import  ConfigBase
+from sim_mods_page import  PLAY
 
 TRACK1, TRACK2 = 6, 7                                                      # the first row, the safe-mode row
 

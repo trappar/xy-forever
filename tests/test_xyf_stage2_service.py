@@ -6,7 +6,6 @@ import hashlib
 from pathlib import Path
 import shutil
 import struct
-import sys
 import tempfile
 import time
 import unittest
@@ -14,12 +13,10 @@ import zlib
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import xyf_build                                    # noqa: E402
-import xyf_host as host                             # noqa: E402
-from xy_forever import sim, usb_proto as P, xyf_stage2 as S2   # noqa: E402
-from xy_forever import usb_proto_ids as ids         # noqa: E402
+from xy_forever import xyf_build
+from xy_forever import xyf_host as host
+from xy_forever import sim, usb_proto as P, xyf_stage2 as S2
+from xy_forever import usb_proto_ids as ids
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 STAGE1 = xyf_build.release.code()                  # this stage 1's release (XYF_VERSION_CODE)

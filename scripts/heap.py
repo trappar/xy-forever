@@ -8,13 +8,11 @@ bytes. Run it before and after a feature (an MTP session, a USB restart) to see 
 stock code keeps memory: growth of "used" per repetition is a leak.
 """
 import argparse
-import os
 import struct
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import xyf_host                      # noqa: E402
-from xy_forever import usb_proto as P   # noqa: E402
+from xy_forever import xyf_host
+from xy_forever import usb_proto as P
 
 CONTEXT = 0x88a65bf8                 # target/cold_heap.hpp: arena_context
 

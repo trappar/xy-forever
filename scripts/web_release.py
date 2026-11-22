@@ -18,9 +18,9 @@ from pathlib import Path
 import shutil
 import sys
 
+from xy_forever import paths, release, stock_bytes
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import paths, release, stock_bytes  # noqa: E402
 
 PIN = ROOT / 'web/src/install/release.json'
 STAGED = ROOT / 'web/public/release/os.ldr'

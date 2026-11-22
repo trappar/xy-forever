@@ -38,7 +38,7 @@ import urllib.request
 import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO))     # bootstrap runs on mise's Python, before uv sync installs the package
 from xy_forever import dev_tools, mtp_read, package_records, paths  # noqa: E402
 
 PINS = json.loads((REPO / 'stock.json').read_text())

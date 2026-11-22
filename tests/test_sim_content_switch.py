@@ -22,14 +22,11 @@ import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import xyf_host as host                                                   # noqa: E402
-from xy_forever import bounds, modkit as M, modpatch as MP, modsend as MS        # noqa: E402
-from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
-from test_modpatch import CATALOG, OFFICIAL, finish, kit_for, profile_for, stock   # noqa: E402
-from test_sim_mod_job import Base, LIB, UNAVAILABLE                             # noqa: E402
+from xy_forever import xyf_host as host
+from xy_forever import bounds, modkit as M, modpatch as MP, modsend as MS
+from xy_forever import usb_proto as P, usb_proto_ids as ids
+from test_modpatch import CATALOG, OFFICIAL, finish, kit_for, profile_for, stock
+from test_sim_mod_job import Base, LIB, UNAVAILABLE
 
 RECORD = 'xy-forever/content-state.txt'
 SAVED = 'xy-forever/content-official'

@@ -1,15 +1,11 @@
 """Phase-1 A staging: production transport, independent RAM, admission and no-write evidence."""
 import hashlib
-from pathlib import Path
 import struct
-import sys
 import unittest
 import zlib
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / 'tests')]
 import test_simulator as T
 from xy_forever import a_rehearsal as R, sim, usb_proto_ids as P
 

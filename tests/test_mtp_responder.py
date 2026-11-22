@@ -4,13 +4,12 @@ from pathlib import Path
 import random
 import struct
 import subprocess
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 OK, GENERAL, NO_SESSION, NOT_SUPPORTED = 0x2001, 0x2002, 0x2003, 0x2005
 INVALID_HANDLE, WRITE_PROTECTED, ACCESS_DENIED, PARTIAL_DELETION = 0x2009, 0x200D, 0x200F, 0x2012

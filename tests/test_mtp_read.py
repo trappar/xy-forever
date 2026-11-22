@@ -7,14 +7,13 @@ import importlib.util
 import io
 from pathlib import Path
 import struct
-import sys
 import tempfile
 import unittest
 from unittest import mock
 
+from xy_forever import mtp_read as M
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import mtp_read as M  # noqa: E402
 
 spec = importlib.util.spec_from_file_location('xyf_setup_mtp', ROOT / 'scripts/setup.py')
 S = importlib.util.module_from_spec(spec)

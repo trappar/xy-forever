@@ -16,11 +16,9 @@ import sys
 import time
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import xyf_host as host  # noqa: E402
-from xy_forever import paths  # noqa: E402
-from device_pass import Keepalive  # noqa: E402
+from xy_forever import xyf_host as host
+from xy_forever import paths
+from device_pass import Keepalive
 
 COMMAND, VERSION, MAX_BYTES = 0x64, 1, 0x700000
 BEGIN, HEADER, SECTOR, END = range(4)

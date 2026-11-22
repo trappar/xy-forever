@@ -13,17 +13,13 @@ from pathlib import Path
 import random
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import modkit as M, package_records as R, paths, xyf_entry as E  # noqa: E402
-import test_xyf_manifest as TM  # noqa: E402
+from xy_forever import modkit as M, package_records as R, paths, xyf_entry as E
+import test_xyf_manifest as TM
 
 SDK_COMMIT = '52c8de911a415e043fd4d1afc396c3869fcd1029'    # open-xy main, release 0.0.6 (the kit's SDK)
 OPEN_XY = paths.OPEN_XY_UPSTREAM                     # a fresh upstream clone (never ../open-xy)

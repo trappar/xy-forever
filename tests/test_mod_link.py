@@ -16,16 +16,13 @@ import re
 import shutil
 import struct
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import test_modkit as TK  # noqa: E402
-from xy_forever import modkit as M, modlink as L, paths, xyf_entry as E  # noqa: E402
+import test_modkit as TK
+from xy_forever import modkit as M, modlink as L, paths, xyf_entry as E
 
 OPEN_XY = paths.OPEN_XY_UPSTREAM                     # a fresh upstream clone (never ../open-xy)
 REAL = Path(os.environ.get('XYF_MOD_PACKAGES', paths.PUBLISHED_MODS))

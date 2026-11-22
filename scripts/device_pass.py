@@ -123,12 +123,12 @@ import zlib
 
 from PIL import Image
 
+from xy_forever import xyf_build
+from xy_forever import xyf_host as host
+from xy_forever import census, config_records, package_records, paths, usb_proto as P, usb_proto_ids as ids
+from scripts.device_pass_keepalive import Keepalive, keepalive_dir   # noqa: F401
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import xyf_build                                           # noqa: E402
-import xyf_host as host                                    # noqa: E402
-from xy_forever import census, config_records, package_records, paths, usb_proto as P, usb_proto_ids as ids   # noqa: E402
-from scripts.device_pass_keepalive import Keepalive, keepalive_dir   # noqa: E402,F401
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
 NEED = 'NEED: power off, then power on holding PLAY; release it at the logo'

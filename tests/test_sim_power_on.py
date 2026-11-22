@@ -6,19 +6,14 @@ plain boot ever did. Saved inputs changed and then the power lost (a flip saved,
 says is built again) and an open journal each make the plain power-on converge on the progress screen first (the menu's
 own journal replay included), store the fingerprint and boot. PLAY held at power-on only opens the menu. Synthetic
 packages (test_sim_config). Needs clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
-from pathlib import Path
-import sys
 import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import test_sim_mod_job as J                                               # noqa: E402
-from test_sim_config import   ConfigBase                                                      # noqa: E402
-from test_sim_job_recovery import intent, JOURNAL                          # noqa: E402
-from xy_forever import bounds                                            # noqa: E402
+import test_sim_mod_job as J
+from test_sim_config import   ConfigBase
+from test_sim_job_recovery import intent, JOURNAL
+from xy_forever import bounds
 
 CONVERGE = 'menu: power-on converge: doubt '                               # sim/devices.cpp, as key_ui.cpp
 

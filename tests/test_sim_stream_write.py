@@ -6,7 +6,6 @@ import hashlib
 from pathlib import Path
 import shutil
 import struct
-import sys
 import tempfile
 import time
 import unittest
@@ -14,11 +13,9 @@ import unittest
 import pytest
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import xyf_host as host                                                   # noqa: E402
-from xy_forever import bounds, host_write, sim, usb_proto_ids as P               # noqa: E402
-from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
+from xy_forever import xyf_host as host
+from xy_forever import bounds, host_write, sim, usb_proto_ids as P
+from xy_forever.startup_ready import wait_startup_ready
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 TARGET = '/yaffs2/user/stream/song.bin'

@@ -5,14 +5,13 @@ import random
 import tempfile
 import unittest
 import zlib
-import sys
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild
 from xy_forever.paths import STOCK_121
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.gate

@@ -6,8 +6,7 @@ Output feeds re/spans.py.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import bootloader  # noqa: E402
+import bootloader
 
 
 def reach(roots):

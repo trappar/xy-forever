@@ -1,13 +1,12 @@
 """Exercise the production request dispatcher with arrivals between polls."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 
 class PeerDispatchTest(unittest.TestCase):

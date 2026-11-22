@@ -13,22 +13,20 @@ import os
 from pathlib import Path
 import shutil
 import struct
-import sys
 import tempfile
 import unittest
 from unittest import mock
 
 import pytest
 
+from xy_forever import xyf_host as host
+from xy_forever import  hostbuild, modkit as M, modpatch as MP, modsend as S, modstore, package_records, sim
+from xy_forever import usb_proto as P
+from test_mod_job import run
+from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
+import test_modkit as TK
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import xyf_host as host                                                       # noqa: E402
-from xy_forever import  hostbuild, modkit as M, modpatch as MP, modsend as S, modstore, package_records, sim                # noqa: E402
-from xy_forever import usb_proto as P                                         # noqa: E402
-from test_mod_job import run                                                  # noqa: E402
-from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
-import test_modkit as TK                                                      # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 

@@ -4,15 +4,11 @@ import hashlib
 import json
 from pathlib import Path
 import random
-import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'scripts'))
-from xy_forever import paths, stock_bytes as S  # noqa: E402
-import web_release  # noqa: E402
+from xy_forever import paths, stock_bytes as S
+import web_release
 
 
 def noise(n, seed):

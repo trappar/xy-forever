@@ -2,18 +2,17 @@
 from pathlib import Path
 import struct
 import subprocess
-import sys
 import tempfile
 import unittest
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
-from xyf_build import (CARRY, END, HEAP_BASE, HEAP_BYTES, REPORTER,
-                                 heap_record, inner_image, patches, verify_inner)
+from xy_forever import hostbuild
+from xy_forever.xyf_build import (CARRY, END, HEAP_BASE, HEAP_BYTES, REPORTER,
+                                            heap_record, inner_image, patches, verify_inner)
 from xy_forever.build_formats import header
 from xy_forever.probe_report import decode, report_only_fixture
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def synthetic_stock():

@@ -50,13 +50,10 @@ import struct
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'scripts'))
-import device_pass as dp                                   # noqa: E402
-import xyf_build                                           # noqa: E402
-import xyf_host as host                                    # noqa: E402
-from xy_forever import usb_proto as P, usb_proto_ids as ids   # noqa: E402
+import device_pass as dp
+from xy_forever import xyf_build
+from xy_forever import xyf_host as host
+from xy_forever import usb_proto as P, usb_proto_ids as ids
 
 T_CRASH = 0x63                    # diag.crash (dev, test build only; usb_service_crash_trigger.ipp)
 KINDS = {'excpt': (1, 0x01, 'software exception (EXCPT)', 2),

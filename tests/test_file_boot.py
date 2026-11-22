@@ -2,15 +2,14 @@
 from pathlib import Path
 import re
 import struct
-import sys
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-import xyf_build as builder
+from xy_forever.source_text import unit_text
+from xy_forever import xyf_build as builder
 from xy_forever.census import (FILE_BOOT_BYTES, FILE_BOOT_FIELDS, FILE_BOOT_MAGIC, PEER_DIAGNOSTIC_FIELDS,
                                    PEER_SNAPSHOT_WORDS, STORAGE_DIAGNOSTIC_WORDS, file_boot)
+
+ROOT = Path(__file__).resolve().parents[1]
 
 HEADER = (ROOT / 'target/file_boot.hpp').read_text()
 SOURCE = unit_text(ROOT / 'target/file_boot.cpp')

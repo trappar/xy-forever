@@ -3,16 +3,13 @@ rest it stands still (blocking, no CPU) until something is due; advance moves it
 moves it at once. --idle-wall (interactive runs only) lets idle device time follow the host's clock. Needs clang++
 and the private stock 1.2.1 images (skipped without them). No device access."""
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import sim                                                 # noqa: E402
-import xyf_host as host                                                    # noqa: E402
+from xy_forever import sim
+from xy_forever import xyf_host as host
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 PATH = '/yaffs2/xy-forever/state-a.txt'

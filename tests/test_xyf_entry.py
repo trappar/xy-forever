@@ -1,13 +1,10 @@
 """Host preparation of XY Forever library entries (no device access)."""
 import json
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 from xy_forever.xyf_entry import info_text, make_entry
 from xy_forever.paths import STOCK_121
 

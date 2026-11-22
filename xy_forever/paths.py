@@ -135,7 +135,7 @@ def newest_verified_build():
 
     The manifest's source hashes must still match, as with --verify. Outside a check run, look in BUILDS.
     """
-    import xyf_build
+    from xy_forever import xyf_build
     source = xyf_build.source_hashes()
     found = []
     builds = Path(os.environ.get(CHECK_TEST_BUILDS) or BUILDS)

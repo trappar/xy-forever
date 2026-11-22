@@ -1,7 +1,6 @@
 """Large zero diagnostic slot lookup (census dump transport); host only."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
@@ -9,9 +8,9 @@ import pytest
 
 from test_trace_slot import data_record, image
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 
 @pytest.mark.gate

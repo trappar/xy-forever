@@ -15,16 +15,15 @@ hardware).
 """
 import os
 from pathlib import Path
-import sys
 import time
 
 import pytest
 
+from xy_forever import no_device
+import xyf_bounds
+import xyf_select
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT)]
-from xy_forever import no_device  # noqa: E402
-import xyf_bounds  # noqa: E402
-import xyf_select  # noqa: E402
 
 no_device.switch_on()                 # every test and every process it starts: no real device
 os.chdir(ROOT)

@@ -2,14 +2,13 @@
 and xyf_host.py save-times' table over its lines."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+from xy_forever import xyf_host
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
-import xyf_host  # noqa: E402
 
 PROGRAM = r'''
 #include "xyf_save_log.hpp"

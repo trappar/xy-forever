@@ -6,19 +6,15 @@ from pathlib import Path
 import random
 import shutil
 import struct
-import sys
 import tempfile
 import time
 import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import xyf_host as host                                                   # noqa: E402
-from xy_forever import bounds, paths, sim, usb_proto_ids as P                    # noqa: E402
-import test_mtp_responder as R                                            # noqa: E402
+from xy_forever import xyf_host as host
+from xy_forever import bounds, paths, sim, usb_proto_ids as P
+import test_mtp_responder as R
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 TUNNEL = 0x61

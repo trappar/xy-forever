@@ -3,16 +3,12 @@ tests went in #233): PageBase, synthetic_setup and the key constants."""
 from pathlib import Path
 import shutil
 import struct
-import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import bounds, modsend as MS, package_records, sim       # noqa: E402
-from xy_forever import usb_proto as P                                      # noqa: E402
-import test_sim_mod_job as J                                               # noqa: E402
-from test_ui_mods import FILTER_ON                                        # noqa: E402
+from xy_forever import bounds, modsend as MS, package_records, sim
+from xy_forever import usb_proto as P
+import test_sim_mod_job as J
+from test_ui_mods import FILTER_ON
 
 PLAY, STOP, MINUS, PLUS, SHIFT = 51, 52, 53, 54, 55
 MODS_ROW = 2                                                               # xyf_menu item_mods

@@ -16,9 +16,9 @@ import uuid
 
 import pytest
 
+from xy_forever import  procgroup, sim
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import  procgroup, sim        # noqa: E402
 
 CLIENT = ROOT / 'clients' / 'ts'
 NODE = shutil.which('node')

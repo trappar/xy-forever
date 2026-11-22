@@ -1,17 +1,12 @@
 """#102 crash trigger test build: never in the product; the device script's decoding; the script against the simulator."""
-from pathlib import Path
 import struct
-import sys
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'scripts'))
-import xyf_build as B  # noqa: E402
-import xyf_host as host  # noqa: E402
-from xy_forever import  sim        # noqa: E402
-import crash_trigger as ct  # noqa: E402
+from xy_forever import xyf_build as B
+from xy_forever import xyf_host as host
+from xy_forever import  sim
+import crash_trigger as ct
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 

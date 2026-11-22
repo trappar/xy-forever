@@ -7,19 +7,18 @@ from pathlib import Path
 import re
 import struct
 import subprocess
-import sys
 import tempfile
 import unittest
 import zlib
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
-from xy_forever.source_text import unit_text  # noqa: E402
-import xyf_build as builder
+from xy_forever import hostbuild
+from xy_forever.source_text import unit_text
+from xy_forever import xyf_build as builder
 from xy_forever import xyf_stage2 as S
+
+ROOT = Path(__file__).resolve().parents[1]
 
 KEY_UI = unit_text(ROOT / 'target/key_ui.cpp')
 STAGE2_H = (ROOT / 'target/xyf_stage2.hpp').read_text()

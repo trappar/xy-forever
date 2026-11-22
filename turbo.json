@@ -27,7 +27,6 @@
         "xy_forever/*.inc",
         "xy_forever/*.s",
         "xy_forever/*.py",
-        "xyf_build.py",
         "toolchains.json",
         "third_party/**",
         "scripts/firmware_cache.py"
@@ -67,7 +66,6 @@
         "xy_forever/*.inc",
         "xy_forever/*.s",
         "xy_forever/*.py",
-        "xyf_build.py",
         "toolchains.json",
         "third_party/**",
         "scripts/firmware_cache.py"

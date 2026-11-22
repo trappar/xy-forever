@@ -5,19 +5,18 @@ import ctypes as C
 from pathlib import Path
 import re
 import struct
-import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
-import xyf_build as builder
+from xy_forever.source_text import unit_text
+from xy_forever import hostbuild
+from xy_forever import xyf_build as builder
 from xy_forever import xyf_stage2 as S
 from xy_forever.census import (FILE_BOOT_BYTES, FILE_BOOT_FIELDS, FILE_BOOT_LIBRARY_BYTES, FILE_BOOT_MAGIC,
                                    FILE_BOOT_MENU_BYTES, FILE_BOOT_STAGE2_BYTES, FILE_BOOT_STAGE2_FIELDS,
                                    STAGE2_CHECKS, STAGE2_STATUS, file_boot)
+
+ROOT = Path(__file__).resolve().parents[1]
 
 XYF = (ROOT / 'target/xyf_boot.hpp').read_text()
 STAGE2_H = (ROOT / 'target/xyf_stage2.hpp').read_text()

@@ -5,20 +5,18 @@ import ctypes as C
 import io
 from pathlib import Path
 import struct
-import sys
 import tempfile
 import unittest
 import zlib
 
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
-sys.path.insert(0, str(ROOT / 'tests'))
-import xyf_build as builder
+from xy_forever import hostbuild
+from xy_forever import xyf_build as builder
 from xy_forever import usb_proto as P
 from xy_forever.paths import STOCK_121
+
+ROOT = Path(__file__).resolve().parents[1]
 
 GOOD = b'/yaffs2/xy-forever/firmware/opxy-121/os.ldr'
 
@@ -97,7 +95,7 @@ class FileWriteBuilderTest(unittest.TestCase):
 
 class FileWriteHostTest(unittest.TestCase):
     def setUp(self):
-        import xyf_host
+        from xy_forever import xyf_host
         self.host = xyf_host
 
     def test_dry_run_and_refusals(self):
@@ -153,7 +151,7 @@ class LibraryAddTest(unittest.TestCase):
     # test_sim_package_store (a parked power-cut sweep).
 
     def test_refusals(self):
-        import xyf_host as host
+        from xy_forever import xyf_host as host
         with tempfile.TemporaryDirectory() as tmp:
             junk = Path(tmp) / 'junk'; junk.write_bytes(b'not an ldr stream at all')
             self.assertEqual(host.main(['library-add', 'x', str(junk), '--name', 'a', '--version', 'b']), 2)
@@ -166,7 +164,7 @@ class LibraryAddTest(unittest.TestCase):
         import contextlib
         import hashlib
         import io
-        import xyf_host as host
+        from xy_forever import xyf_host as host
         from test_ldr import image
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -206,7 +204,7 @@ class ScreenTest(unittest.TestCase):
     """Test 053: the host's PNG conversion of the framebuffer view (SCREEN)."""
 
     def test_png_orientation_and_colours(self):
-        import xyf_host as host
+        from xy_forever import xyf_host as host
         raw = bytearray(host.SCREEN_BYTES)
         def put(x, y, v):
             struct.pack_into('<H', raw, ((479 - x) * 256 + y) * 2, v)

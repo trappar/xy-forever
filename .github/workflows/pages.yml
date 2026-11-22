@@ -30,7 +30,7 @@ jobs:
           release_version=$(node -p "require('./web/src/install/release.json').version")
           mkdir -p web/public/release
           gh release download "v${release_version}" --repo "$GITHUB_REPOSITORY" --pattern os.ldr --output web/public/release/os.ldr
-          python scripts/web_release.py --check
+          uv run scripts/web_release.py --check
       - run: pnpm run build:pages
         working-directory: web
       - run: pnpm run smoke:pages

@@ -35,12 +35,9 @@ import socket
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'scripts'))
-import device_pass                                         # noqa: E402  (NEED, session folders, keepalive)
-import xyf_host as host                                    # noqa: E402
-from xy_forever import bounds, conformance as C, paths     # noqa: E402
+import device_pass  # (NEED, session folders, keepalive)
+from xy_forever import xyf_host as host
+from xy_forever import bounds, conformance as C, paths
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
 REPLY_CAP = {'sim': bounds.SIM_CALL_S, 'device': 20.0}   # longest wait for one reply (spec timeouts: longer)

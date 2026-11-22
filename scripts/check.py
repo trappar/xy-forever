@@ -38,10 +38,10 @@ import sys
 import tempfile
 import time
 
+from xy_forever import no_device, paths, procgroup
+import firmware_cache
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / 'scripts')]
-from xy_forever import no_device, paths, procgroup  # noqa: E402
-import firmware_cache  # noqa: E402
 
 VERSION = 1                                  # receipt format; a reader refuses a newer one
 CHECKS = paths.XYF / 'checks'                # receipts: <tree>.json (passed), <tree>.failed.json

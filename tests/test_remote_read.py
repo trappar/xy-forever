@@ -4,17 +4,16 @@ import ctypes as C
 from pathlib import Path
 import re
 import struct
-import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
-from xyf_build import A_FIND_CALLS, A_MARKER_CALLS, A_RENAME_CALLS, SERVER_CALLS, WRITE_ENTRIES, peer_spans, server_spans
+from xy_forever import hostbuild
+from xy_forever.xyf_build import A_FIND_CALLS, A_MARKER_CALLS, A_RENAME_CALLS, SERVER_CALLS, WRITE_ENTRIES, peer_spans, server_spans
 from xy_forever.census import (REMOTE_READ_ACTIONS, REMOTE_READ_BYTES, REMOTE_READ_FIELDS, REMOTE_READ_MAGIC,
                                    STORAGE_DIAGNOSTIC_WORDS, remote_read)
 from xy_forever.paths import STOCK_121
+
+ROOT = Path(__file__).resolve().parents[1]
 
 A = {name: i for i, name in enumerate(REMOTE_READ_ACTIONS)}
 

@@ -46,13 +46,10 @@ import re
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'scripts'))
-import device_pass as dp                                   # noqa: E402
-import xyf_host as host                                    # noqa: E402
-from xy_forever import paths, tfw_extract                  # noqa: E402
-from xy_forever import usb_proto as P                      # noqa: E402
+import device_pass as dp
+from xy_forever import xyf_host as host
+from xy_forever import paths, tfw_extract
+from xy_forever import usb_proto as P
 
 PACKAGES = ('opxy_firmware_1_2_1.tfw', 'opxy_firmware_1_2_5.tfw')
 REMOTE = '/yaffs2/xy-forever/probe/'

@@ -11,7 +11,6 @@ import io
 import json
 from pathlib import Path
 import shutil
-import sys
 import tempfile
 import threading
 import unittest
@@ -19,13 +18,10 @@ import zipfile
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import xyf_host as host                                                     # noqa: E402
-import xyf_package                                                          # noqa: E402
-from xy_forever import modindex as I, modkit as M, modpatch as MP, modsend as S, sim            # noqa: E402
-from test_modpatch import finish, kit_for, profile_for, stock               # noqa: E402
+from xy_forever import xyf_host as host
+from xy_forever import xyf_package
+from xy_forever import modindex as I, modkit as M, modpatch as MP, modsend as S, sim
+from test_modpatch import finish, kit_for, profile_for, stock
 
 SIM_UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 

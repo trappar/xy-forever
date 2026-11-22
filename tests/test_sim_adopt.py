@@ -9,7 +9,6 @@ them). No device access."""
 import hashlib
 from pathlib import Path
 import shutil
-import sys
 import tempfile
 import time
 import unittest
@@ -17,12 +16,9 @@ import unittest
 import pytest
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import xyf_host as host                                                   # noqa: E402
-from xy_forever import bounds, modsend as MS, native_json, sim                                 # noqa: E402
-from test_sim_mod_job import UNAVAILABLE                                  # noqa: E402
+from xy_forever import xyf_host as host
+from xy_forever import bounds, modsend as MS, native_json, sim
+from test_sim_mod_job import UNAVAILABLE
 
 ENTRY = 'xy-forever/firmware/opxy-121'
 STATE_FILE = '/yaffs2/xy-forever/state-a.txt'

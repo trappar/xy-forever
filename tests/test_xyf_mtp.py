@@ -3,20 +3,19 @@ window and serve hook pins, stock calls, spans. A's decisions: tests/test_file_e
 device execution."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 import zlib
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-import xyf_build as builder
-from xyf_build import (A_MARKER_CALLS, FORBIDDEN_TARGETS, MTP_CALLS, SERVER_CALLS, WRITE_ENTRIES, mtp_spans,
-                       peer_spans, server_spans)
+from xy_forever.source_text import unit_text
+from xy_forever import xyf_build as builder
+from xy_forever.xyf_build import (A_MARKER_CALLS, FORBIDDEN_TARGETS, MTP_CALLS, SERVER_CALLS, WRITE_ENTRIES, mtp_spans,
+                                  peer_spans, server_spans)
 from xy_forever.paths import STOCK_121
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.gate
@@ -102,7 +101,7 @@ class MtpTest(unittest.TestCase):
     def test_only_the_product_has_mtp(self):
         self.assertNotIn('xyf-mtp', builder.MODES)                       # removed
         self.assertEqual([m for m in builder.MODES if builder.features(m)['mtp']], ['xyf-product'])
-        src = (ROOT / 'xyf_build.py').read_text()
+        src = (ROOT / 'xy_forever/xyf_build.py').read_text()
         self.assertIn("require(not has('serve_only')", src)
 
     def test_ranged_read_lseek_is_the_file_client_s(self):

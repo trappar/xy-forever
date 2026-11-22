@@ -4,15 +4,11 @@ nothing on the device's mods/ at first. Needs clang++ and the private stock 1.2.
 them). No device access."""
 from pathlib import Path
 import shutil
-import sys
 import tempfile
 import unittest
 from unittest import mock
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import moddev                                                             # noqa: E402
+from xy_forever import moddev
 
 PRESET = 'content/presets/alpha/default.json'
 

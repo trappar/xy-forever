@@ -22,6 +22,6 @@ def own_sources(source, suffixes):
     """Build fingerprints include pinned vendor code and its provenance/license."""
     files = [p for d in ('target', 'native', 'xy_forever') for p in (source / d).iterdir()
              if p.is_file() and p.suffix in suffixes]
-    files += [source / 'xyf_build.py', source / 'toolchains.json']
+    files += [source / 'toolchains.json']
     files += [p for p in (source / 'third_party').rglob('*') if p.is_file()]
     return sorted(str(p.relative_to(source)) for p in files)

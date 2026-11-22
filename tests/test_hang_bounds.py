@@ -18,7 +18,6 @@ import unittest
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 
 PLANTED = '''import os, subprocess, sys, time, unittest
 class Hang(unittest.TestCase):

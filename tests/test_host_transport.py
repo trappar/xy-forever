@@ -3,11 +3,9 @@ poll followed by EAGAIN is no data yet (issue #128), writes survive EAGAIN and p
 stage completes with its data intact. The call's own timeout still applies. On a pty: a port that does
 not open, drain or answer costs no more than the caller's timeout, and a close never waits (issue #118)."""
 import os
-from pathlib import Path
 import random
 import select
 import struct
-import sys
 import time
 import unittest
 from unittest import mock
@@ -15,11 +13,9 @@ import zlib
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import transport  # noqa: E402
-from xy_forever import usb_proto as P  # noqa: E402
-import xyf_host  # noqa: E402
+from xy_forever import transport
+from xy_forever import usb_proto as P
+from xy_forever import xyf_host
 
 
 class FakeDevice:

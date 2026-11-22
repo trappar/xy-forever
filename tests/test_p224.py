@@ -24,7 +24,6 @@ from pathlib import Path
 import random
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 
@@ -33,9 +32,9 @@ import pytest
 import p224_reference as ref
 from xy_forever import paths, tfw_extract
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 VALID, ARGUMENT, KEY, RANGE, MISMATCH = range(5)               # p224::Status
 H_VALID, H_SIZE, H_KEY_INDEX, H_KEY, H_RANGE, H_MISMATCH = range(6)   # tfw::Signature
 

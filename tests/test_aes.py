@@ -2,15 +2,14 @@ import ctypes
 from pathlib import Path
 import random
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
-ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild
+
+ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.gate
 class NativeAesTests(unittest.TestCase):

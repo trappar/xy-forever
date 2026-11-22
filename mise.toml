@@ -138,7 +138,7 @@ run = 'uv run scripts/plan.py {% for a in usage.args %}{{ a | quote }} {% endfor
 
 [tasks.preview]
 description = "Render the menu screens (../private/xy-forever/previews)"
-run = "uv run ui_preview.py"
+run = "uv run tests/ui_preview.py"
 
 [tasks.clean]
 description = "Remove old private sessions and builds (dry run; --yes)"

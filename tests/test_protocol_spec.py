@@ -15,16 +15,15 @@ import unittest
 
 import pytest
 
+from xy_forever.source_text import unit_text
+from xy_forever import hostbuild, release
+import protogen
+from xy_forever import usb_proto as P
+from xy_forever import usb_proto_ids as ids
+from xy_forever import xyf_build as builder
+from xy_forever import xyf_host
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-from xy_forever import hostbuild, release  # noqa: E402
-sys.path.insert(0, str(ROOT / 'scripts'))
-import protogen  # noqa: E402
-from xy_forever import usb_proto as P  # noqa: E402
-from xy_forever import usb_proto_ids as ids  # noqa: E402
-import xyf_build as builder  # noqa: E402
-import xyf_host  # noqa: E402
 
 
 def spec():

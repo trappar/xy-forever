@@ -2,15 +2,14 @@
 import importlib.util
 from pathlib import Path
 import struct
-import sys
 import tempfile
 import unittest
 import zlib
 
 
+from xy_forever import usb_proto_ids as P
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / 'scripts'), str(ROOT / 'tests')]
-from xy_forever import usb_proto_ids as P  # noqa: E402
 
 spec = importlib.util.spec_from_file_location('boot_probe_script', ROOT / 'scripts/boot_probe.py')
 B = importlib.util.module_from_spec(spec)

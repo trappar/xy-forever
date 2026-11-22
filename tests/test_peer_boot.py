@@ -3,16 +3,14 @@ import ctypes as C
 import hashlib
 from pathlib import Path
 import struct
-import sys
 import tempfile
 import unittest
 import zlib
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from xy_forever import hostbuild  # noqa: E402
-from xy_forever.source_text import unit_text  # noqa: E402
+from xy_forever import hostbuild
+from xy_forever.source_text import unit_text
 
 U32=C.c_uint
 BYTE=C.c_ubyte

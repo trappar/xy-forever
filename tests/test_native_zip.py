@@ -6,7 +6,6 @@ import random
 import stat
 import struct
 import subprocess
-import sys
 import tempfile
 import unittest
 import warnings
@@ -16,9 +15,9 @@ import zlib
 import pytest
 
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 
 class Bits:

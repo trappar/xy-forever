@@ -18,9 +18,9 @@ from unittest import mock
 
 import pytest
 
+from xy_forever import device_lock, paths
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import device_lock, paths  # noqa: E402
 
 
 def script(name):
@@ -103,9 +103,9 @@ class Workspace(unittest.TestCase):
 
 
 
-HOLD = ('import sys, time; sys.path.insert(0, %r); from xy_forever import device_lock; '
+HOLD = ('import sys, time; from xy_forever import device_lock; '
         'device_lock.hold(float(sys.argv[3]), sys.argv[1], sys.argv[2]); print("held", flush=True); '
-        'time.sleep(float(sys.argv[4]))' % str(ROOT))
+        'time.sleep(float(sys.argv[4]))')
 
 
 @pytest.mark.gate
@@ -159,7 +159,7 @@ class DeviceLock(unittest.TestCase):
         self.assertFalse(self.lock.exists())
 
     def test_the_simulator_takes_no_lock(self):
-        import xyf_host
+        from xy_forever import xyf_host
         with mock.patch.object(xyf_host, 'SIM', '127.0.0.1:1'), mock.patch.object(xyf_host, 'find_port', lambda: None), \
                 mock.patch.object(device_lock, 'hold') as hold, contextlib.redirect_stderr(io.StringIO()), \
                 self.assertRaisesRegex(SystemExit, 'not found'):

@@ -3,17 +3,16 @@ is put in place and taken out again (source order; the vector itself runs only o
 from pathlib import Path
 import re
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
+import ui_preview as P
+from xy_forever import hostbuild
+from xy_forever.source_text import unit_text
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import ui_preview as P  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
-from xy_forever.source_text import unit_text  # noqa: E402
 
 PROGRAM = r'''
 #include "crash_screen.hpp"

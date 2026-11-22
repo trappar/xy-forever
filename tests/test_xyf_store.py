@@ -1,14 +1,12 @@
 """XY Forever storage formats (docs/STORAGE.md): host-built device C++."""
 import ctypes as C
-import json
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 
 class State(C.Structure):
@@ -82,8 +80,7 @@ class StoreTest(unittest.TestCase):
         self.assertEqual((f.kind, f.has_crc32, f.has_bytes), (2, False, False))
 
     def test_host_tool_output_round_trips(self):
-        import sys, zlib
-        sys.path.insert(0, str(ROOT))
+        import zlib
         from xy_forever.xyf_entry import info_text
         data = bytes(range(256)) * 9
         text = info_text('OP-XY 1.2.5', '1.2.5+0', 'open-xy', data).encode()

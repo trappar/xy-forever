@@ -27,9 +27,9 @@ import shutil
 import subprocess
 import sys
 
+from xy_forever import paths, toolchain
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import paths, toolchain  # noqa: E402
 
 OUT = paths.BUILD / 'product'                 # the task's output (turbo.json outputs), gitignored
 TASKS = {'build': 'firmware-build', 'verify': 'firmware-verify'}

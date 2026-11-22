@@ -12,11 +12,9 @@ import sys
 import zlib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT)); sys.path.insert(0, str(ROOT / 're'))
-import bootloader as img  # noqa: E402
-from xy_forever import census  # noqa: E402
-from xy_forever.paths import REPORTS  # noqa: E402
+import bootloader as img
+from xy_forever import census
+from xy_forever.paths import REPORTS
 
 
 def pieces_of(a, e):

@@ -1,13 +1,12 @@
 """XY Forever library scanner: host build with an in-memory filesystem."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 
 class LibraryTest(unittest.TestCase):

@@ -11,10 +11,10 @@ from pathlib import Path
 import secrets
 import sys
 
+from xy_forever import xyf_host as host
+from xy_forever import package_store as store, xyf_entry
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import xyf_host as host  # noqa: E402
-from xy_forever import package_store as store, xyf_entry  # noqa: E402
 
 
 def exercise(dev, base):

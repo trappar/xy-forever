@@ -10,21 +10,20 @@ from pathlib import Path
 import random
 import struct
 import time
-import sys
 import tempfile
 import unittest
 import zlib
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild
 from xy_forever import usb_proto as P
 from xy_forever.census import (USB_SERVICE_FIELDS, USB_SERVICE_V2_WORDS, USB_SERVICE_V3_WORDS,
                                    USB_SERVICE_V4_WORDS, usb_service)
 from xy_forever import paths
 from xy_forever.paths import STOCK_121
+
+ROOT = Path(__file__).resolve().parents[1]
 
 PARTITION, SECTOR, WRITE, PATH, READ = 0x11907694, 0x11907348, 0x11907710, 0x119076b4, 0x11907368
 (NONE, SELECT, TRIM, RD, WR, REFUSE_PARTITION, REFUSE_SELECTED, REFUSE_OP, REFUSE_FILES) = range(9)
@@ -224,7 +223,7 @@ class UsbServiceTest(unittest.TestCase):
         boot = STOCK_121 / 'bootloader.ldr'
         if not boot.exists():
             self.skipTest('private bootloader absent')
-        import xyf_build as B
+        from xy_forever import xyf_build as B
         B.check_usb_spans(boot.read_bytes())
         for a, n, _ in B.usb_spans():
             self.assertFalse(0x11a00000 <= a < 0x11a0c000)
@@ -319,7 +318,7 @@ class ReadThenContinueTest(unittest.TestCase):
     refused CONTINUE (state); the host REBOOTs, reconnects and continues (still supported)."""
 
     def test_host_reboots_then_continues(self):
-        import xyf_host as host
+        from xy_forever import xyf_host as host
 
         class Booting(FakeDevice):
             def __init__(self, log, read_done):
@@ -351,7 +350,7 @@ class ReadThenContinueTest(unittest.TestCase):
 @pytest.mark.gate
 class HostToolTest(unittest.TestCase):
     def setUp(self):
-        import xyf_host
+        from xy_forever import xyf_host
         self.host = xyf_host
 
     def build_dir(self, tmp, data, passed=True):
@@ -545,7 +544,7 @@ class PutChunkTest(unittest.TestCase):
 
     def test_put_frames_fit_the_cdc_ring(self):
         import importlib.util
-        spec = importlib.util.spec_from_file_location('xyf_host_chunk', ROOT / 'xyf_host.py')
+        spec = importlib.util.spec_from_file_location('xyf_host_chunk', ROOT / 'xy_forever/xyf_host.py')
         host = importlib.util.module_from_spec(spec); spec.loader.exec_module(host)
         frame = len(P.encode(P.PUT_DATA, 1, bytes(4 + host.PUT_CHUNK)))
         self.assertLess(frame, 0x800)                       # one frame in flight fits the ring
@@ -564,7 +563,7 @@ class InstallLogTest(unittest.TestCase):
     frames to the host while it waits for the install."""
 
     def test_host_collects_log_frames_while_waiting(self):
-        import xyf_host as host
+        from xy_forever import xyf_host as host
         class Logging(FakeDevice):
             def handle(self, kind, payload):
                 if kind == P.INSTALL:
@@ -588,7 +587,7 @@ class RangedReadTest(unittest.TestCase):
     """Test 038: ranged READ_FILE brings reports (~1 MB) over USB in small ranges."""
 
     def test_host_reads_a_large_file_in_ranges(self):
-        import xyf_host as host
+        from xy_forever import xyf_host as host
         self.assertLessEqual(host.READ_RANGE, 1024)                   # ranged reads stay small
         report = bytes(range(256)) * 4000 + b'tail'                  # 1,024,004 bytes
         fake = FakeDevice({'/yaffs2/xy-forever/log/usb-038-b.bin': report})
@@ -607,7 +606,7 @@ class HoldTest(unittest.TestCase):
     (GUARD, HANG) is gone."""
 
     def test_host_commands(self):
-        import xyf_host as host
+        from xy_forever import xyf_host as host
         self.assertEqual(P.HOLD, 0x32)
         for gone in (['guard', 'on'], ['test-hang']):
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):

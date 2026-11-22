@@ -1605,8 +1605,6 @@ def generate(spec, cases=None):
     validate(spec)
     if cases is None:
         cases = load(CONFORMANCE)
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
     from xy_forever import conformance
     try:
         conformance.validate(spec, cases)

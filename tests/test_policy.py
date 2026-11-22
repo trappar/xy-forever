@@ -1,13 +1,12 @@
 import ctypes
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 from xy_forever.packages import destination_for
 
-ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild
+
+ROOT = Path(__file__).resolve().parents[1]
 ROLES=('os','backplane','ble','metadata','content','excluded-bootloader','excluded-host-metadata')
 
 class NativePolicyTests(unittest.TestCase):

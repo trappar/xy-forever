@@ -5,15 +5,14 @@ it supplies no cryptographic evidence about the real bootloader.
 """
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class StockWriterModel(unittest.TestCase):
