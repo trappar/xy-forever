@@ -11,6 +11,7 @@ from . import usb_proto as P
 
 DLC = '/yaffs2/content/dlc'
 INBOX = store.ROOT + '/inbox'
+RETAINED = store.ROOT + '/packs'  # signed packs kept read-only while not active
 SIGNED_RECORD = b'xyf-pack.txt'
 OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE, OP_TRACE = range(6)
 # B's log of its requests to A (target/file_client.hpp log_add): outcomes, flags, the ops it names
@@ -257,11 +258,12 @@ def signed_change(dev, action, pack_id):
         print('%s pack %s' % ('Enabled' if operation == OP_ENABLE else 'Disabled', pack_id))
         return 0
     previous = None
+    started = time.monotonic()
     try:
         while True:
             phase, done, total, error, site, detail, traced = signed_request(dev, OP_STATUS)
             if phase == 3:
-                print('Imported %s. The signed pack is retained.' % pack_id)
+                print('Imported %s in %.0f s. The signed pack is retained.' % (pack_id, time.monotonic() - started))
                 return 0
             if phase == 4:
                 if site:
@@ -276,7 +278,8 @@ def signed_change(dev, action, pack_id):
             percent = done * 100 // max(total, 1)
             mark = (phase, percent // 10)
             if mark != previous:
-                print('%s %d%%' % ('Authenticating' if phase == 1 else 'Staging', percent), flush=True)
+                what = 'Authenticating' if phase == 1 else 'Staging'
+                print('%s %d%% (%.0f s)' % (what, percent, time.monotonic() - started), flush=True)
                 previous = mark
             time.sleep(0.25)
     except KeyboardInterrupt:
@@ -303,14 +306,14 @@ def command(dev, args):
     return 0
 
 
-def list_packs(dev):
-    code, children = dev.list_dir(DLC)
+def pack_rows(dev, root, state, rows):
+    """Append a row per pack folder of root (one with a manifest.json); 0, or the status that stopped it."""
+    code, children = dev.list_dir(root)
     if code == P.ids.S_NOT_FOUND:
         children = []
     elif code:
-        print('list %s: %s' % (DLC, P.status_name(code)))
+        print('list %s: %s' % (root, P.status_name(code)))
         return code
-    rows = []
     for kind, _, raw in children:
         if kind != 1:
             continue
@@ -318,19 +321,23 @@ def list_packs(dev):
         if not pack or pack in ('.', '..') or '/' in pack or '\0' in pack:
             print('invalid pack folder in directory listing: %r' % pack)
             return 1
-        folder = DLC + '/' + pack
+        folder = root + '/' + pack
         code, entries = dev.list_dir(folder)
         if code:
             print('list %s: %s' % (folder, P.status_name(code)))
             return code
-        if not any(k == 0 and name == b'manifest.json' for k, _, name in entries):
+        names = {name for k, _, name in entries if k == 0}
+        if b'manifest.json' not in names:
             continue
         path = folder + '/manifest.json'
         code, body = dev.read_all(path, limit=1 << 16)
         if code and code != P.ids.S_TOO_LARGE:
             print('read %s: %s' % (path, P.status_name(code)))
             return code
-        row = dict(id=pack)
+        row = dict(id=pack, state=state)
+        if SIGNED_RECORD in names:
+            row['signed'] = True
+            row['compatibility'] = 'unknown'
         if code:
             row['error'] = 'manifest too large'
         else:
@@ -344,5 +351,17 @@ def list_packs(dev):
             except (ValueError, RecursionError) as error:
                 row['error'] = 'invalid manifest: %s' % error
         rows.append(row)
+    return 0
+
+
+def list_packs(dev):
+    """Installed packs (content/dlc/, state active) and retained signed packs (xy-forever/packs/, state retained),
+    with their manifest's metadata; a signed pack (its xyf-pack.txt record) shows its compatibility, unknown until
+    playback qualification pins it."""
+    rows = []
+    for root, state in ((DLC, 'active'), (RETAINED, 'retained')):
+        code = pack_rows(dev, root, state, rows)
+        if code:
+            return code
     print(json.dumps(rows, ensure_ascii=False, indent=2))
     return 0

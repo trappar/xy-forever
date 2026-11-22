@@ -30,8 +30,10 @@ exact pack and firmware combinations qualified on an OP-XY. An unqualified pack 
 **Compatibility unknown** and stays in the inbox pack list. Use `packs enable ID --yes`
 or `packs disable ID --yes` to toggle a retained signed pack.
 
-`uv run xyf-host packs list` lists installed sound packs in `/yaffs2/content/dlc/`.
-Each row gives the pack folder ID and the vendor manifest's name, version, author and description when present.
+`uv run xyf-host packs list` lists the sound packs in `/yaffs2/content/dlc/` (state `active`) and the retained
+signed packs in `/yaffs2/xy-forever/packs/` (state `retained`). Each row gives the pack folder ID, its state and the
+vendor manifest's name, version, author and description when present; a signed pack also shows `"signed": true` and
+its compatibility (`unknown` until playback qualification).
 A malformed manifest is reported beside its folder ID.
 
 Place a complete, unpacked sound pack in `/yaffs2/xy-forever/inbox/ID/`. Its `manifest.json` must

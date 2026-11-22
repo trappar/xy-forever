@@ -1,6 +1,9 @@
 """Exercise signed inbox admission through the menu and serial service."""
 
+import contextlib
 import hashlib
+import io
+import json
 import struct
 import tempfile
 import time
@@ -95,7 +98,12 @@ class SignedPackImport(unittest.TestCase):
         original = catalog.read_bytes()
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish(), (3, 2, 2, ids.S_OK))
-        self.assertEqual(self.traced, 0)  # nothing failed: no trace read
+        self.assertEqual(self.traced, 0)  # nothing failed: no log kept
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(packs.list_packs(self.dev), 0)
+        listed = [row for row in json.loads(out.getvalue()) if row['id'] == 'fixture']
+        self.assertEqual(listed, [dict(id='fixture', state='retained', signed=True, compatibility='unknown')])
         sample = self.retained / 'samples/hand.wav'
         self.assertEqual(sample.read_bytes(), SAMPLE)
         digest = hashlib.sha256(SAMPLE).hexdigest()

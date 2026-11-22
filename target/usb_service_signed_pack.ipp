@@ -447,10 +447,16 @@ void signed_pack_pump() {
         code = signed_pack_begin_blobs(j);
         j.step = ps_blobs;
         break;
-    case ps_blobs:
-        if (j.member == j.archive.count) j.step = ps_record;
-        else code = signed_pack_blob(j);
+    case ps_blobs: {
+        // One step is one request (a 4 KiB copy piece or check read): steps for a slice per pass, as the mod job
+        // does, instead of one step per menu loop pass. USB and the menu still run between slices.
+        const U32 start = now();
+        do {
+            if (j.member == j.archive.count) j.step = ps_record;
+            else code = signed_pack_blob(j);
+        } while (!code && j.step == ps_blobs && now() - start < job_slice_ms);
         break;
+    }
     case ps_record:
         code = signed_pack_record(j);
         j.step = ps_publish;
