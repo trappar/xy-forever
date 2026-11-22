@@ -6,11 +6,11 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 
 ## Start here
 
-- **Main agent of a session** (asked to "continue development" or "resume work"): if `python3
-  scripts/setup.py doctor` exits non-zero, or your local `docs/status/README.md` is missing or records no
+- **Main agent of a session** (asked to "continue development" or "resume work"): if `mise run
+  doctor` exits non-zero, or your local `docs/status/README.md` is missing or records no
   standing-approvals answer yet, onboarding is unfinished: follow [ONBOARDING.md](ONBOARDING.md) first.
   Otherwise follow [docs/ORCHESTRATION.md](docs/ORCHESTRATION.md): work the GitHub issues
-  (`python3 scripts/plan.py`), delegating when available or using its sequential workflow.
+  (`mise run plan`), delegating when available or using its sequential workflow.
 - **Sub-agent with a brief:** read what the brief names, plus
   [docs/SAFETY.md](docs/SAFETY.md) (**binding**: never brick the developer's OP-XY) before
   anything that reaches the firmware or the device.
@@ -34,8 +34,9 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 - **Private data stays out of git.** Firmware, keys, decompiled listings, build outputs and device
   reports live in `../private/` (layout: `xy_forever/paths.py`; set up by `scripts/setup.py`),
   outside every checkout. Never print or commit key material.
-- **Python 3.9+ and toolchain:** the authenticated Blackfin toolchain at `../tools/blackfin` (or
-  `XYF_TOOLCHAIN`; `setup.py bootstrap` downloads it). Never change its pinned hashes (`toolchains.json`).
+- **Tools:** mise pins Python, uv, Node, pnpm, gh (`mise.toml`); uv the Python dependencies (`uv.lock`),
+  pnpm the JS ones (`web/`, `clients/ts`). `mise tasks`: the commands. The Blackfin toolchain at
+  `../tools/blackfin` (or `XYF_TOOLCHAIN`; `mise run setup` gets it): never change its pins (`toolchains.json`).
 - **Open-XY facts come from a fresh upstream clone** (`../private/xy-forever/open-xy-upstream/`,
   made by `setup.py fixtures`; fetch it again when a question needs current upstream) and name
   the commit used. Never from another local open-xy checkout. If the developer cites an open-xy
@@ -44,8 +45,8 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
   and correct it if it is wrong, then give one recommendation with its reasons and what is
   uncertain. Do not adopt a view only because of pushback. Product scope, risk to the device and
   approvals stay the developer's.
-- **Checks:** iterate with `python3 scripts/run_tests.py NAMES`. Every change ends, committed, with
-  `python3 scripts/check.py` (exhaustive suite, product build, `--verify`; `--neutral` for a behaviour-neutral
+- **Checks:** iterate with `mise run test NAMES`. Every change ends, committed, with
+  `mise run check` (exhaustive suite, product build, `--verify`; `--neutral` for a behaviour-neutral
   change): it leaves a receipt for the tree. A receipt never stands in for a device test.
   [Checks and receipts](docs/operating/build-install.md#checks-and-receipts).
 - **Source files stay under 32 KB** (`tests/test_source_budget.py`): to grow a file on its over-cap list,
@@ -67,18 +68,19 @@ NAND boot partition, and it boots firmware files from `/yaffs2/xy-forever/`.
 ## Quick reference
 
 ```sh
-python3 scripts/setup.py doctor                         # private folder: stock files, fixtures (bootstrap, import-stock)
-python3 scripts/plan.py                                 # the plan: next items, decisions waiting (--all: blocked, threads)
-python3 scripts/run_tests.py --jobs 6                   # unit tests in parallel (simulator tests run on device time: sim/clock.cpp)
-XYF_EXHAUSTIVE=1 python3 scripts/run_tests.py --jobs 6  # everything (+ exhaustive bit flips): ~1-2 min
-python3 scripts/check.py                                # end of every change -> receipt (--confirm REF)
-python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/current   # check.py: builds/<image>
-python3 xyf_build.py --verify --out ../private/xy-forever/builds/current
-python3 scripts/neutral.py                              # working tree vs HEAD: same candidates?
-python3 xyf_host.py status                              # device over USB
-python3 -m xy_forever.sim                               # device simulator (127.0.0.1:7341; xyf_host.py --sim)
-(cd web && npm ci && npm run dev)                       # web app on 127.0.0.1:5173 (?sim=7341); npm test, npm run test:e2e
-python3 scripts/conformance.py --sim 127.0.0.1:7341     # protocol conformance suite (no --sim: OP-XY, safe cases)
-python3 -m xy_forever.census REPORT.bin                 # decode a device report
-python3 ui_preview.py                                   # menu screens -> ../private/xy-forever/previews
+mise run setup                              # tools, dependencies, private folder, toolchain, fixtures (rerun: safe)
+mise run doctor                             # what is set up, what will skip
+mise run plan                               # the plan: next items, decisions waiting (--all: blocked, threads)
+mise run test --jobs 6                      # unit tests in parallel (simulator tests run on device time: sim/clock.cpp)
+XYF_EXHAUSTIVE=1 mise run test              # everything (+ exhaustive bit flips): ~1-2 min
+mise run check                              # end of every change -> receipt (--confirm REF)
+mise run build && mise run verify           # product build into ../private/xy-forever/builds/current (check.py: builds/<image>)
+uv run scripts/neutral.py                   # working tree vs HEAD: same candidates?
+uv run xyf_host.py status                   # device over USB
+mise run sim                                # device simulator (127.0.0.1:7341; xyf_host.py --sim)
+mise run web                                # web app on 127.0.0.1:5173 (?sim=7341); mise run web-test, web-e2e
+mise run conformance                        # protocol conformance suite on the simulator
+uv run -m xy_forever.census REPORT.bin      # decode a device report
+mise run preview                            # menu screens -> ../private/xy-forever/previews
+mise run clean                              # old private sessions and builds (dry run; --yes deletes)
 ```

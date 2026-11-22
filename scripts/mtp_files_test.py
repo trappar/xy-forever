@@ -189,7 +189,7 @@ def main():
         import usb.util
         usb.core.find(idVendor=0xffff, idProduct=0xffff)
     except Exception as error:                     # noqa: BLE001
-        raise SystemExit('pyusb with libusb is needed (brew install libusb; python3 -m pip install pyusb): %s' % error)
+        raise SystemExit('pyusb with libusb is needed (brew install libusb; pyusb: `uv sync`, then `uv run` the script): %s' % error)
     run = probe.Run(new_run_dir())
     result = dict(seed=args.seed)
     blob = random.Random(args.seed).randbytes(UPLOAD_BYTES)

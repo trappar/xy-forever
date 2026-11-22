@@ -14,14 +14,18 @@ bootloader stays untouched and loads it from the NAND boot partition, and the de
 
 ## Try the source
 
-Clone the repository and run a host-only check. These commands need Python 3.9+ and git.
+Clone the repository and run a host-only check. These commands need git and
+[mise](https://mise.jdx.dev/installing-mise.html), which installs every other pinned tool.
 
 ```sh
 git clone https://github.com/trappar/xy-forever.git
 cd xy-forever
-python3 -m unittest discover -s tests -p 'test_setup.py'
-python3 -m unittest discover -s tests -p 'test_protocol_spec.py'
+mise trust && mise install
+mise run test test_setup test_protocol_spec
 ```
+
+Full setup, about six steps: `xcode-select --install`, install mise, `brew install libusb`, clone and
+`mise trust && mise install`, `mise run setup`, `gh auth login`. `mise tasks` lists the commands.
 
 For full development setup, follow [ONBOARDING.md](ONBOARDING.md). It covers the
 Blackfin toolchain, simulator, and stock files from your own OP-XY. Device builds
@@ -66,8 +70,9 @@ docs/             SAFETY, OPERATING, ARCHITECTURE, HARDWARE, STORAGE, GOALS,
 
 ## Requirements
 
-- macOS (arm64) or Windows x86_64 host with Python 3.9+ (standard library only) and clang
-  for the host tests. Node 22.18+ for `clients/ts` and `web/`.
+- macOS (arm64) or Windows x86_64 host with clang for the host tests, and mise: it installs the pinned
+  Python, uv, Node, pnpm and gh (`mise.toml`). uv manages the Python dependencies (`pyproject.toml`), pnpm
+  the JS ones (one workspace: `web/`, `clients/ts`).
 - The Blackfin toolchain (`bfin-elf` GCC 8): Open-XY's `toolchain-1` release, which
   `setup.py bootstrap` downloads into `../tools/blackfin` (or `$XYF_TOOLCHAIN`). The archive is
   checked against `stock.json` and every file against `toolchains.json`.

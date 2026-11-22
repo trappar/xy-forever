@@ -10,9 +10,9 @@ Budget: 10 KB (10000 bytes).
 ## 0. What the developer needs
 
 - A host computer: macOS on Apple silicon (the tested host; toolchain pins also exist for Windows
-  and Linux x86_64, USB tools untested there). Python 3.9+ (macOS's own `python3` will do), git,
-  `gh` (GitHub CLI, logged in for step 9 to claim issues),
-  clang++ (simulator, host bridges), Node 22.18+ or 23.6+ (`clients/ts`, `web/`).
+  and Linux x86_64, USB tools untested there) with git and clang++ (macOS: `xcode-select --install`) and
+  [mise](https://mise.jdx.dev/installing-mise.html): it installs the pinned Python, uv, Node, pnpm and `gh`
+  (`mise.toml`); `gh auth login` once (step 9 claims issues).
 - An OP-XY still on stock 1.2.1, never updated to 1.2.5: a 1.2.5 device cannot run XY Forever,
   and teenage engineering's built-in updater cannot downgrade it. To tell: the version the OS shows
   is 1.2.1, te-boot (hold COM while switching on) shows "3. dev menu" (1.2.5 has none; on 1.2.1,
@@ -33,7 +33,9 @@ Start in the workspace folder (where the coding agent was opened); it ends up as
 ```sh
 git clone https://github.com/trappar/xy-forever.git   # if xy-forever/ is absent
 cd xy-forever
-python3 scripts/setup.py bootstrap    # only what is missing; never deletes; --dry-run: print, change nothing
+mise trust && mise install            # the pinned tools (mise.toml, mise.lock)
+mise run setup                        # bootstrap: only what is missing; never deletes; --dry-run: print, change nothing
+gh auth status || gh auth login       # the developer logs in, once
 ```
 
 Rerun it even if the developer already did (README). Each step acts only when its result is missing:
@@ -41,7 +43,7 @@ Rerun it even if the developer already did (README). Each step acts only when it
 - **Private folder:** `private/`'s layout (`xy_forever/paths.py`) and `private/incoming/` (step 4).
   Elsewhere: `XYF_PRIVATE`, or `setup.py init --private DIR` first (recorded in `xyf.local.json`).
 - **Workspace guide** (`AGENTS.md`, `CLAUDE.md`), **toolchain** (step 2), **local files** (step 3),
-  **`npm ci`** in `clients/ts`, `web/` (skipped without Node), with the stock pair `fixtures` (step 5).
+  **`uv sync`**, **`pnpm install`** (skipped without mise), with the stock pair `fixtures` (step 5).
 - It asks for nothing and ends with `doctor` and a "Next:" list (steps 4, 5). It stops with a message
   (a rerun carries on) when the download fails or `tools/blackfin` fails its pins (move it aside).
 
@@ -53,7 +55,7 @@ Open-XY publishes the pinned toolchain (`toolchain-1`) for macOS arm64 and Windo
 Linux x86_64: it points at open-xy `docs/build.md`, "On Linux" (Docker); put the result there yourself.
 
 - No download (proxy, certificates): get the zip from the `toolchain-1` release page in a browser and
-  run `python3 scripts/setup.py bootstrap --toolchain-archive <zip>`. Never edit the pins.
+  run `mise run setup --toolchain-archive <zip>`. Never edit the pins.
 - Reverse-engineering tools (Ghidra, a JDK, BlackFinPlus, a `.tfw` decryptor): research items only, under `tools/`
   ([docs/hardware/tools.md](docs/hardware/tools.md)).
 
@@ -88,9 +90,8 @@ If step 3 fails, its one line says why. Fallback: the developer copies those fil
 
 ```sh
 python3 scripts/setup.py fixtures     # network: public open-xy and its kit; builds and verifies one product build
-python3 scripts/setup.py bootstrap    # npm ci in clients/ts and web/ if Node came later; else "nothing to do"
-python3 scripts/setup.py doctor       # required build inputs present; reports optional fixtures separately
-python3 scripts/run_tests.py          # the full suite; the first run compiles host bridges (slower)
+mise run doctor                       # required build inputs present; reports optional fixtures separately
+mise run test                         # the full suite; the first run compiles host bridges (slower)
 ```
 
 Done when `doctor` exits 0 and the suite passes. It lists expected skips, including mod-kit checks if

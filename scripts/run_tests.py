@@ -50,7 +50,7 @@ FIRST = ('test_simulator', 'test_conformance', 'test_ts_client', 'test_p224',
 SPLIT = {'test_simulator': 'test', 'test_sim_mod_job': 'test', 'test_sim_content_switch': 'test',
          'test_sim_config': 'test', 'test_mod_link': 'class', 'test_modpatch': 'class',
          'test_sim_mods_page': 'class', 'test_modsend': 'class', 'test_sim_memory': 'class',
-         'test_ts_client': 'class',      # NodeSuiteTest (npm test, up to ~120 s) in its own process
+         'test_ts_client': 'class',      # NodeSuiteTest (pnpm test, up to ~120 s) in its own process
          'test_p224': 'test',            # exhaustive: every bit of each official header, one test a package
          'test_mod_job': 'test'}         # exhaustive: the published job's faults at every step, in four tests
 

@@ -17,7 +17,7 @@ Each agent works in its own `git worktree` of the main checkout, one per item:
 `git worktree add ../xy-forever-<N> -b <N>-<slug> origin/main`. Two agents never share a working tree.
 A worktree finds the same private folder, toolchain, `xyf.local.json` and local `docs/status/` as the main
 checkout (`main_checkout` in `xy_forever/paths.py`; `XYF_PRIVATE` and `XYF_TOOLCHAIN` still win). Its
-`node_modules` are its own: `npm ci` there before web or client checks. Never `git stash`: the stash is shared.
+`.venv` and `node_modules` are its own: `uv sync` and `pnpm install` there (or `mise run setup`) before checks. Never `git stash`: the stash is shared.
 
 ## Claims
 

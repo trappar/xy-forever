@@ -71,7 +71,7 @@ class RunTest(unittest.TestCase):
 
 
 @unittest.skipUnless(node_strips_types(), 'Node 22.18+/23.6+ not found')
-@unittest.skipUnless((CLIENT / 'node_modules' / 'ws').exists(), 'clients/ts/node_modules absent (npm ci in clients/ts)')
+@unittest.skipUnless((CLIENT / 'node_modules' / 'ws').exists(), 'clients/ts/node_modules absent (pnpm install)')
 @unittest.skipIf(SIM_UNAVAILABLE, SIM_UNAVAILABLE)
 class SuiteSimulatorTest(unittest.TestCase):
     """A Node process that started a simulator ends: nothing from that run remains."""

@@ -15,16 +15,14 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v6
+      - uses: jdx/mise-action@v5
         with:
-          node-version: '24'
-      - run: npm ci
-        working-directory: clients/ts
-      - run: npm ci
-        working-directory: web
+          version: 2026.11.12
+          cache: true
+      - run: pnpm install --frozen-lockfile
       - name: Get the pinned release image
         env:
           GH_TOKEN: ${{ github.token }}
@@ -32,12 +30,12 @@ jobs:
           release_version=$(node -p "require('./web/src/install/release.json').version")
           mkdir -p web/public/release
           gh release download "v${release_version}" --repo "$GITHUB_REPOSITORY" --pattern os.ldr --output web/public/release/os.ldr
-          python3 scripts/web_release.py --check
-      - run: npm run build:pages
+          python scripts/web_release.py --check
+      - run: pnpm run build:pages
         working-directory: web
-      - run: npm run smoke:pages
+      - run: pnpm run smoke:pages
         working-directory: web
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: web/dist
 
@@ -53,4 +51,4 @@ jobs:
     steps:
       - name: Publish the checked web build
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

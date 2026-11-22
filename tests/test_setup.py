@@ -1,7 +1,7 @@
 """scripts/setup.py with synthetic stand-ins for the stock files (never the real bytes): the pin check, the 1.2.5
 refusal, unknown files, a copied /upgrade/ tree as input, and where the private folder comes from
-(XYF_PRIVATE > xyf.local.json > ../private), the Python check (3.9+), and `bootstrap` in a temporary workspace
-with the toolchain download (a synthetic zip) and npm stubbed (no network)."""
+(XYF_PRIVATE > xyf.local.json > ../private), the Python check (3.14+), and `bootstrap` in a temporary workspace
+with the toolchain download (a synthetic zip) and the tool steps (mise, uv, pnpm) stubbed (no network)."""
 import contextlib
 import hashlib
 import io
@@ -17,7 +17,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import modlink, node_deps, outer, paths, usb_proto  # noqa: E402
+from xy_forever import dev_tools, modlink, outer, paths, usb_proto  # noqa: E402
 
 spec = importlib.util.spec_from_file_location('xyf_setup', ROOT / 'scripts/setup.py')
 S = importlib.util.module_from_spec(spec)
@@ -179,13 +179,13 @@ class Pins(unittest.TestCase):
 
 
 class PythonVersion(unittest.TestCase):
-    def test_39_or_newer_runs(self):
-        for v in ((3, 9, 6), (3, 10, 14), (3, 11, 0), (3, 12, 4), (4, 0, 0)):
+    def test_314_or_newer_runs(self):
+        for v in ((3, 14, 0), (3, 15, 2), (4, 0, 0)):
             self.assertIsNone(S.python_problem(v))
             S.require_python(v)
 
-    def test_older_than_39_is_refused_before_doing_anything(self):
-        self.assertRegex(S.python_problem((3, 8, 10)), r'3\.8\.10 is too old: XY Forever needs 3\.9\+.*python3\.12')
+    def test_older_than_314_is_refused_before_doing_anything(self):
+        self.assertRegex(S.python_problem((3, 9, 6)), r'3\.9\.6 is too old: XY Forever needs 3\.14\+.*mise run setup')
         old = (3, 8, 10, 'final', 0)
         with mock.patch.object(S.sys, 'version_info', old), mock.patch.object(S, 'make_layout') as layout:
             for cmd in (S.cmd_init, S.cmd_fixtures):
@@ -260,7 +260,8 @@ class ToolchainPins(unittest.TestCase):
 
 
 class Bootstrap(unittest.TestCase):
-    """bootstrap in a temporary workspace: the toolchain download serves a synthetic zip and npm ci is stubbed."""
+    """bootstrap in a temporary workspace: the toolchain download serves a synthetic zip; mise, uv and pnpm are
+    stubbed (dev_tools: what is installed is self.done)."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -269,10 +270,8 @@ class Bootstrap(unittest.TestCase):
         self.repo = self.ws / 'xy-forever'
         (self.repo / 'docs').mkdir(parents=True)
         (self.repo / 'docs/STATUS.template.md').write_text('# status\n')
-        for d in S.NPM_DIRS:
-            (self.repo / d).mkdir(parents=True)
         self.config = self.repo / 'xyf.local.json'
-        self.calls, self.stock, self.which, self.served = [], False, {'node', 'npm'}, GOOD_ZIP
+        self.calls, self.stock, self.which, self.served, self.done = [], False, {'mise'}, GOOD_ZIP, set()
         self.record = {'url': 'https://example.invalid/%s.zip' % FOLDER, 'folder': FOLDER,
                        'sha256': hashlib.sha256(GOOD_ZIP).hexdigest()}
         for name, value in (('run', self.fake_run), ('toolchain_problem', self.fake_toolchain),
@@ -283,14 +282,23 @@ class Bootstrap(unittest.TestCase):
             patcher = mock.patch.object(S, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
+        stale = lambda name, why: lambda root=None: None if name in self.done else why  # noqa: E731
+        for name, value in (('mise', lambda: '/bin/mise' if 'mise' in self.which else None),
+                            ('tools_missing', lambda root=None: 'mise not found: install it' if 'mise' not in self.which
+                             else stale('mise', 'missing python: run `mise install`')()),
+                            ('python_deps_stale', stale('uv', 'run `uv sync`')),
+                            ('js_deps_stale', stale('pnpm', 'run `pnpm install`')), ('tool', lambda name: ['/bin/' + name])):
+            patcher = mock.patch.object(S.dev_tools, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         for patcher in (mock.patch.object(S.shutil, 'which', self.fake_which),
                         mock.patch.dict(S.PINS, {'toolchain': {'archives': {'darwin-arm64': self.record}}})):
             patcher.start()
             self.addCleanup(patcher.stop)
 
-    def fake_run(self, cmd, cwd=None):
+    def fake_run(self, cmd, cwd=None, env=None):
         self.calls.append(' '.join(map(str, cmd[:2])))
-        (Path(cwd) / 'node_modules').mkdir()
+        self.done.add(Path(cmd[0]).name)
 
     def fake_download(self, url, path):
         self.calls.append('download ' + url)
@@ -324,7 +332,7 @@ class Bootstrap(unittest.TestCase):
         self.assertFalse(tools.is_symlink())
         self.assertEqual((tools / 'bin/bfin-elf-as').read_bytes(), b'as')
         self.assertEqual(sorted(p.name for p in (self.ws / 'tools').iterdir()), ['blackfin'])   # no temporary left
-        self.assertEqual(self.calls, ['download ' + self.record['url'], '/bin/npm ci', '/bin/npm ci'])
+        self.assertEqual(self.calls, ['/bin/mise install', '/bin/uv sync', '/bin/pnpm install', 'download ' + self.record['url']])
         self.assertEqual((self.ws / 'CLAUDE.md').read_text(), '@AGENTS.md\n')
         guide = (self.ws / 'AGENTS.md').read_text()
         self.assertIn('Read `xy-forever/AGENTS.md` first and follow it', guide)
@@ -361,9 +369,10 @@ class Bootstrap(unittest.TestCase):
         self.assertEqual((self.calls, self.tree()), ([], before))
         for what in ('create 12 folders', 'copy docs/STATUS.template.md to docs/status/README.md', '"leak_patterns"',
                      'write %s' % (self.ws / 'AGENTS.md'), 'write %s' % (self.ws / 'CLAUDE.md'),
-                     'download %s, check its SHA-256' % self.record['url'], 'npm ci in clients/ts', 'npm ci in web'):
+                     'download %s, check its SHA-256' % self.record['url'], 'mise install', 'uv sync --locked',
+                     'pnpm install --frozen-lockfile'):
             self.assertRegex(out, r'  would .*' + re.escape(what))
-        self.assertIn('dry run: the 8 actions above would run; nothing changed', out)
+        self.assertIn('dry run: the 9 actions above would run; nothing changed', out)
 
     def test_an_archive_with_the_wrong_hash_is_refused_and_nothing_stays(self):
         self.served = GOOD_ZIP + b'tampered'
@@ -403,18 +412,18 @@ class Bootstrap(unittest.TestCase):
         with mock.patch.object(S, 'toolchain_problem', lambda directory=None: None):
             b, out = self.bootstrap()
         self.assertIn('toolchain: ok', out)
-        self.assertEqual(self.calls, ['/bin/npm ci', '/bin/npm ci'])
+        self.assertEqual(self.calls, ['/bin/mise install', '/bin/uv sync', '/bin/pnpm install'])
         self.calls = []
         with mock.patch.object(S, 'host_name', lambda: 'linux-x86_64'):
             b, out = self.bootstrap()
         self.assertIn('build it with Docker (open-xy docs/build.md, "On Linux")', out)
         self.assertEqual((self.calls, (self.ws / 'tools').exists()), ([], False))
 
-    def test_no_node_skips_npm_with_a_note(self):
+    def test_no_mise_skips_the_tools_with_a_note(self):
         self.which = set()
         b, out = self.bootstrap()
-        self.assertNotIn('/bin/npm ci', self.calls)
-        self.assertIn('clients/ts: skipped: Node not found', out)
+        self.assertEqual(self.calls, ['download ' + self.record['url']])
+        self.assertIn('tools: skipped: mise not found', out)
 
     def test_another_workspace_is_recorded_unless_the_private_folder_is_set(self):
         other = self.ws.parent / 'other'
@@ -451,7 +460,7 @@ class Bootstrap(unittest.TestCase):
         with self.assertRaisesRegex(S.SetupError, 'exists but fails its pins'):
             self.bootstrap()
         self.assertTrue(tools.is_symlink())
-        self.assertEqual(self.calls, [])
+        self.assertNotIn('download', ' '.join(self.calls))
 
     def test_the_workspace_guide_names_a_private_folder_elsewhere_in_full(self):
         elsewhere = self.ws.parent / 'elsewhere'
@@ -467,33 +476,40 @@ class Bootstrap(unittest.TestCase):
 
 
 
-class DoctorNodeRows(unittest.TestCase):
-    """doctor's node rows: one for clients/ts and one for web, each ready once its node_modules tools are."""
+class DevToolRows(unittest.TestCase):
+    """doctor's tool rows (xy_forever/dev_tools.py): mise, its pins, the Python and the JS dependencies."""
 
-    def rows(self, root, node='/bin/node'):
-        version = mock.Mock(stdout='v24.0.0\n')
-        with mock.patch.object(node_deps.shutil, 'which', lambda name: node), \
-                mock.patch.object(node_deps.subprocess, 'run', return_value=version):
-            return node_deps.doctor_rows(root)
+    def test_tools_missing(self):
+        with mock.patch.object(dev_tools, 'mise', lambda: None):
+            self.assertRegex(dev_tools.tools_missing(), '^mise not found: install it')
+        for out, rc, err, want in (('{}', 0, '', None), ('{"node": []}', 0, '', 'missing node: run `mise install`'),
+                                   ('', 1, 'mise.toml is not trusted\n', 'mise.toml is not trusted (`mise trust` here')):
+            done = mock.Mock(returncode=rc, stdout=out, stderr=err)
+            with mock.patch.object(dev_tools, 'mise', lambda: '/bin/mise'), \
+                    mock.patch.object(dev_tools, 'quiet', return_value=done):
+                problem = dev_tools.tools_missing()
+            self.assertEqual(problem, want) if want is None else self.assertIn(want, problem)
 
-    def test_rows(self):
+    def test_js_deps_follow_the_lockfile(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self.assertEqual(self.rows(root), [
-                ('node (clients/ts)', False, 'v24.0.0; run `npm ci` in clients/ts'),
-                ('node (web)', False, 'v24.0.0; run `npm ci` in web')])
-            for rel in ('clients/ts/node_modules/.bin/tsc', 'web/node_modules/.bin/tsc'):
-                (root / rel).parent.mkdir(parents=True, exist_ok=True)
-                (root / rel).touch()
-            self.assertEqual([r[1:] for r in self.rows(root)],
-                             [(True, 'v24.0.0; node_modules ok'), (False, 'v24.0.0; run `npm ci` in web')])
-            (root / 'web/node_modules/.bin/vitest').touch()
-            self.assertEqual([r[1] for r in self.rows(root)], [True, True])
-            self.assertEqual([r[1:] for r in self.rows(root, node=None)],
-                             [(False, 'not found (Node 22.18+ or 23.6+); node_modules ok')] * 2)
+            (root / 'pnpm-lock.yaml').write_text('lock')
+            self.assertEqual(dev_tools.js_deps_stale(root), 'run `pnpm install`')
+            for rel in ('node_modules', 'web/node_modules', 'clients/ts/node_modules'):
+                (root / rel).mkdir(parents=True)
+            (root / 'node_modules/.modules.yaml').write_text('')
+            self.assertIsNone(dev_tools.js_deps_stale(root))
+            later = (root / 'node_modules/.modules.yaml').stat().st_mtime + 10
+            dev_tools.os.utime(root / 'pnpm-lock.yaml', (later, later))
+            self.assertIn('pnpm-lock.yaml changed', dev_tools.js_deps_stale(root))
+
+    def test_global_mise_config_is_kept_out(self):
+        self.assertEqual(dev_tools.env({})['MISE_IGNORED_CONFIG_PATHS'], str(Path.home() / '.config/mise'))
 
     def test_doctor_reports_them(self):
-        self.assertEqual([r[0] for r in S.doctor()[0] if r[0].startswith('node')], ['node (clients/ts)', 'node (web)'])
+        labels = [r[0] for r in S.doctor()[0]]
+        self.assertEqual([x for x in labels if x in ('mise', 'tools', 'python deps', 'js deps')],
+                         ['mise', 'tools', 'python deps', 'js deps'])
 
 
 if __name__ == '__main__':

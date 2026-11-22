@@ -153,39 +153,39 @@ class CheckReceiptTests(unittest.TestCase):
         self.assertEqual(C.merge_base(self.root), stale)    # no origin/main: the local main
         self.assertTrue(C.changed(self.root, 'clients/ts'))
 
-    def test_npm_needs_node_modules(self):
-        args = C.argparse.Namespace(npm=True)
-        self.assertEqual(C.npm_steps(args, self.root), [])  # no clients/ts: nothing to test
+    def test_js_needs_node_modules(self):
+        args = C.argparse.Namespace(js=True)
+        self.assertEqual(C.js_steps(args, self.root), [])  # no clients/ts: nothing to test
         (self.root / 'clients/ts').mkdir(parents=True)
-        with self.assertRaisesRegex(C.CheckError, 'node_modules, which is missing: run `npm ci`'):
-            C.npm_steps(args, self.root)
+        with self.assertRaisesRegex(C.CheckError, 'clients/ts/node_modules, which is missing: run `pnpm install`'):
+            C.js_steps(args, self.root)
         (self.root / 'clients/ts/node_modules').mkdir()
-        self.assertEqual(C.npm_steps(args, self.root), [])   # its npm test runs in the suite (NodeSuiteTest)
-        self.assertEqual(C.npm_steps(C.argparse.Namespace(npm=False), self.root), [])   # unchanged on main
+        self.assertEqual(C.js_steps(args, self.root), [])   # its tests run in the suite (NodeSuiteTest)
+        self.assertEqual(C.js_steps(C.argparse.Namespace(js=False), self.root), [])   # unchanged on main
         (self.root / 'web').mkdir()
-        with self.assertRaisesRegex(C.CheckError, 'web/node_modules, which is missing: run `npm ci` in web'):
-            C.npm_steps(args, self.root)
+        with self.assertRaisesRegex(C.CheckError, 'web/node_modules, which is missing: run `pnpm install`'):
+            C.js_steps(args, self.root)
         (self.root / 'web/node_modules').mkdir()
-        steps = C.npm_steps(args, self.root)
-        self.assertEqual([s['name'] for s in steps], ['npm test (web)', 'npm run typecheck (web)'])
-        self.assertEqual([s['cmd'][1:] for s in steps], [['test'], ['run', 'typecheck']])
+        steps = C.js_steps(args, self.root)
+        self.assertEqual([s['name'] for s in steps], ['pnpm run typecheck (web)'])   # its tests: test_web.py
+        self.assertEqual([s['cmd'][1:] for s in steps], [['run', 'typecheck']])
         self.assertEqual(steps[-1]['cwd'], self.root / 'web')
 
     def test_web_steps_follow_web_and_clients(self):
         for rel in ('clients/ts/node_modules', 'web/node_modules'):
             (self.root / rel).mkdir(parents=True)
         self.git('switch', '-q', '-c', '8-topic')
-        names = lambda: [s['name'] for s in C.npm_steps(C.argparse.Namespace(npm=False), self.root)]  # noqa: E731
+        names = lambda: [s['name'] for s in C.js_steps(C.argparse.Namespace(js=False), self.root)]  # noqa: E731
         self.assertEqual(names(), [])
         self.commit('web/a.ts', 'web only')
-        self.assertEqual(names(), ['npm test (web)', 'npm run typecheck (web)'])
+        self.assertEqual(names(), ['pnpm run typecheck (web)'])
         self.commit('clients/ts/a.ts', 'the client web uses')
-        self.assertEqual(names(), ['npm test (web)', 'npm run typecheck (web)'])
+        self.assertEqual(names(), ['pnpm run typecheck (web)'])
 
     def test_failing_web_step_fails_the_check(self):
-        tsc = C.step('npm run typecheck (web)', [sys.executable, '-c', 'raise SystemExit(2)'], '.')
+        tsc = C.step('pnpm run typecheck (web)', [sys.executable, '-c', 'raise SystemExit(2)'], '.')
         results, _ = C.run_steps([ok(), tsc, ok('after')], self.log)
-        self.assertEqual([(r['name'], r['result']) for r in results], [('ok', 'pass'), ('npm run typecheck (web)', 'fail')])
+        self.assertEqual([(r['name'], r['result']) for r in results], [('ok', 'pass'), ('pnpm run typecheck (web)', 'fail')])
 
     def test_verify_parser(self):
         with tempfile.TemporaryDirectory() as tmp:

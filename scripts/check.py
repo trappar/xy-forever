@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Run the standard checks once and leave a receipt tied to the exact source tree.
 
-    python3 scripts/check.py [--jobs N] [--neutral [REF]] [--npm]
-    python3 scripts/check.py --confirm [REF]      (default REF: HEAD; fast, builds nothing)
+    uv run scripts/check.py [--jobs N] [--neutral [REF]] [--js]     (mise run check [FLAGS])
+    uv run scripts/check.py --confirm [REF]      (default REF: HEAD; fast, builds nothing)
 
 The standard set, in order, stopping at the first failure:
   - the product build into a fresh private build folder (<private>/xy-forever/builds/check-<tree>),
@@ -12,10 +12,10 @@ The standard set, in order, stopping at the first failure:
     the build, with a private copy of the verified artifact for the tests so a shared image name can be
     replaced during the run without affecting them;
   - scripts/neutral.py REF with --neutral (default REF: the merge base with origin/main, else main);
-  - npm test and npm run typecheck in web/ when web/ or clients/ts (which it uses) differs from that merge
-    base, or with --npm. npm test in clients/ts runs once, inside the suite (NodeSuiteTest); when clients/ts
-    differs (or with --npm) its node_modules is required so that test cannot skip. Refused up front, naming
-    npm ci, when a needed folder's node_modules is missing.
+  - pnpm run typecheck in web/ when web/ or clients/ts (which it uses) differs from that merge base, or
+    with --js. The tests of both run once, inside the suite (tests/test_ts_client.py NodeSuiteTest,
+    tests/test_web.py); when a folder differs (or with --js) its node_modules is required so they cannot
+    skip. Refused up front, naming pnpm install, when a needed folder's node_modules is missing.
 Step output goes to a log under <private>/xy-forever/sessions/<date>-check/; a short summary is printed.
 
 The working tree must be clean (`git status --porcelain` empty: untracked files count, gitignored ones
@@ -184,7 +184,7 @@ def fresh_build_folder(tree, now=None):
 def standard_steps(args, root, tree, work):
     """The standard set for this run (work: a temporary folder for the suite's counts)."""
     py, summary = sys.executable, Path(work) / 'tests.json'
-    npm = npm_steps(args, root)                  # before anything runs: a missing node_modules stops the run
+    js = js_steps(args, root)                    # before anything runs: a missing node_modules stops the run
     jobs = ['--jobs', str(args.jobs)] if args.jobs else []
     out = fresh_build_folder(tree)
     test_builds = Path(work) / 'builds'
@@ -199,26 +199,25 @@ def standard_steps(args, root, tree, work):
         if not ref:
             raise CheckError('--neutral: no main to compare with; name a REF')
         steps.append(step('neutral vs %s' % ref[:12], [py, root / 'scripts/neutral.py', ref], root))
-    steps += npm
+    steps += js
     return steps
 
 
-NPM = (('clients/ts', ('clients/ts',), ()),      # folder, what changing reruns it, steps; clients/ts: no step,
-       ('web', ('web', 'clients/ts'), (('npm test', ['test']), ('npm run typecheck', ['run', 'typecheck']))))
-# its npm test runs inside the suite (NodeSuiteTest, whenever node_modules is there), so it is only required.
+JS = (('clients/ts', ('clients/ts',), ()),       # folder, what changing reruns it, steps; their tests run in
+      ('web', ('web', 'clients/ts'), (('pnpm run typecheck', ['run', 'typecheck']),)))   # the suite: only required
 
 
-def npm_steps(args, root):
-    """NPM's steps for each folder that changed (or all with --npm); CheckError when its node_modules is not
+def js_steps(args, root):
+    """JS's steps for each folder that changed (or all with --js); CheckError when its node_modules is not
     installed."""
-    steps, npm = [], shutil.which('npm') or 'npm'
-    for rel, watched, commands in NPM:
+    steps, pnpm = [], shutil.which('pnpm') or 'pnpm'
+    for rel, watched, commands in JS:
         folder = root / rel
-        if not folder.is_dir() or not (args.npm or changed(root, *watched)):
+        if not folder.is_dir() or not (args.js or changed(root, *watched)):
             continue
         if not (folder / 'node_modules').is_dir():
-            raise CheckError('npm test needs %s/node_modules, which is missing: run `npm ci` in %s' % (rel, rel))
-        steps += [step('%s (%s)' % (name, rel), [npm, *words], folder) for name, words in commands]
+            raise CheckError('the %s tests need %s/node_modules, which is missing: run `pnpm install`' % (rel, rel))
+        steps += [step('%s (%s)' % (name, rel), [pnpm, *words], folder) for name, words in commands]
     return steps
 
 
@@ -384,7 +383,7 @@ def main(argv=None, root=ROOT, checks=CHECKS):
     parser.add_argument('--jobs', type=int, help="unit-test processes at a time (default: run_tests.py's)")
     parser.add_argument('--neutral', nargs='?', const='', metavar='REF',
                         help='also scripts/neutral.py REF (default REF: the merge base with origin/main, else main)')
-    parser.add_argument('--npm', action='store_true', help='the web npm steps and the clients/ts node_modules check even when unchanged')
+    parser.add_argument('--js', action='store_true', help='the web typecheck and the node_modules checks even when unchanged')
     args = parser.parse_args(argv)
     test_run = no_device.on()                    # a test run never waits for, nor blocks, a real check run
     no_device.switch_on()                        # every step and its subprocesses: no real device

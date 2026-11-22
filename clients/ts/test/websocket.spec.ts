@@ -43,7 +43,7 @@ describe('the relay, against a TCP stand-in for the simulator', () => {
   let peers: net.Socket[] = [];
   let listening = 1;
   beforeAll(async () => {
-    target = await listen(STAND_IN, (s) => { peers.push(s); s.on('data', (d) => s.write(Buffer.from([...d].reverse()))); });
+    target = await listen(STAND_IN, (s) => { peers.push(s); s.on('data', (d) => s.write(Buffer.from([...(d as Buffer)].reverse()))); });
     controlServer = await listen(STAND_IN + 1, (s) => s.on('data', () => s.end(JSON.stringify({ listening }) + '\n')));
     relay = await startRelay({ port: RELAY + 3, target: STAND_IN });
   });

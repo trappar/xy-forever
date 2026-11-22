@@ -7,21 +7,21 @@ simulator's TCP port). Strict TypeScript, ES modules, no runtime dependencies.
 - `src/link.ts`, `src/client.ts`, `src/errors.ts`: the call layer (one request at a time, timeouts,
   cancellation, the `cmds` check, typed commands, `XyfError` with a `code`).
 - `src/webserial.ts` (Chrome against the simulator; not yet on an OP-XY), `src/tcp.ts` (Node), `src/websocket.ts` (the simulator via `test/relay.ts`; `./dev`).
-- Entries: `.` (browser and Node), `./node` (adds TCP), `./dev` (raw link, developer commands).
+- Entries: `.` (browser and Node), `./node` (adds TCP), `./dev` (raw link, developer commands), `./test/*`
+  (the simulators and relay, for the web app's dev server and e2e tests). All point at the TypeScript source.
 
 ## Build and test
 
 ```sh
-npm ci            # TypeScript, Vitest, @types/node (dev only)
-npm test          # type-check, test/v1.test.ts, then Vitest: codec, call layer, conformance, end to end, relay, files, mods (push, build)
-npm run test:browser   # Web Serial, the demo page and its Files and Mods panels in the system Chrome (headless): simulators 7710-7715, relays 7750-7751 and 7754
-npm run build     # dist/ (JavaScript + .d.ts)
+pnpm install      # from the repository root (one workspace with web/): TypeScript, Vitest, @types/node (dev only)
+pnpm test         # type-check, test/v1.test.ts, then Vitest: codec, call layer, conformance, end to end, relay, files, mods (push, build)
+pnpm run test:browser  # Web Serial, the demo page and its Files and Mods panels in the system Chrome (headless): simulators 7710-7715, relays 7750-7751 and 7754
 node test/conformance.ts --sim 127.0.0.1:7341    # the conformance cases against a running simulator
 node scripts/device-browser-test.ts --out DIR --sim PORT   # the demo driven in Chrome, no human step (--serial: the OP-XY)
 node scripts/device-browser-test.ts --out DIR --sim PORT --reboot   # also restart to the menu, reconnect, and list files
 ```
 
-The repository's Python suite runs `npm test` too (`tests/test_ts_client.py`, when `node_modules` is installed).
+The repository's Python suite runs `pnpm test` too (`tests/test_ts_client.py`, when `node_modules` is installed).
 
 `--serial` cannot answer Chrome's serial port chooser (no automation can), so it needs a Chrome profile
 (`--profile`, default `<private>/xy-forever/chrome-device-test`; `<private>` is `XYF_PRIVATE` or `../private`)
@@ -41,7 +41,7 @@ Demo page (`demo/`: Connect, device info, read a file, screenshot, and a Files p
 per generation, an interrupted package flagged, choose a package folder and Send, Remove a package; and Build
 on device: a generation's machines and extensions as a checklist, a base entry, a name, Build with live progress
 and Cancel, then where the result is and how long it took, or why it failed; the other panels wait meanwhile):
-`npm run dev` serves it on
+`pnpm run dev` serves it on
 http://127.0.0.1:5173/. Simulator: start `python3 -m xy_forever.sim` (port 7341), then open
 `/?sim=7341` (through the dev server's relay, `xyfRelay` in `test/relay.ts`). OP-XY: open `/` in
 Chrome; Connect shows the port chooser (XY Forever only). Tested by `test/browser/demo.spec.ts`,
@@ -49,7 +49,7 @@ Chrome; Connect shows the port chooser (XY Forever only). Tested by `test/browse
 
 The Vitest run starts its own simulators (`python3 -m xy_forever.sim --virtual-clock`, ports 7700-7709 and 7720-7721, state under
 the private sessions folder; `XYF_TS_SIM_PORT`, `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`) and skips the
-simulator tests with the reason when they cannot start. Node 22.18 or later.
+simulator tests with the reason when they cannot start. Node 26 (pinned in `mise.toml`).
 
 ## Use
 

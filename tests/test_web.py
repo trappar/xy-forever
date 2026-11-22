@@ -1,8 +1,10 @@
-"""The web app in web/ (Vite + TypeScript, on clients/ts): its Vitest unit suite (`npm test` in web/)
-runs here when Node and web/node_modules (`npm ci` in web/) are present, else it is skipped with the
-reason. Of its e2e tests (`npm run test:e2e`, the system Chrome) only the Install page's run here
+"""The web app in web/ (Vite + TypeScript, on clients/ts): its Vitest unit suite (`pnpm test` in web/)
+runs here when Node and web/node_modules (`pnpm install`) are present, else it is skipped with the
+reason. Of its e2e tests (`pnpm run test:e2e`, the system Chrome) only the Install page's run here
 (`e2e/install.e2e.ts`: fake te-boot MIDI and MTP devices, no simulator; `e2e/install-sim.e2e.ts`: the install's end
-against the device simulator through the fake Web Serial port; each skips itself without Chrome or the simulator)."""
+against the device simulator through the fake Web Serial port; each skips itself without Chrome or the simulator).
+A JS suite passes on its exit code. XYF_JS_SUITES_ELSEWHERE skips the `pnpm test` wrapper (CI's web job runs it)."""
+import os
 from pathlib import Path
 import re
 import shutil
@@ -17,39 +19,39 @@ from xy_forever import bounds, procgroup  # noqa: E402
 
 
 class WebAppTest(unittest.TestCase):
-    def test_npm_test(self):
-        npm = shutil.which('npm')
-        if not shutil.which('node') or not npm:
-            self.skipTest('Node or npm not found')
-        if not (WEB / 'node_modules' / '.bin' / 'vitest').exists():
-            self.skipTest('web/node_modules absent: run npm ci in web/ to include the web app suite (npm test)')
+    @unittest.skipIf(os.environ.get('XYF_JS_SUITES_ELSEWHERE'), 'XYF_JS_SUITES_ELSEWHERE: run in the web job')
+    def test_pnpm_test(self):
+        pnpm = shutil.which('pnpm')
+        if not shutil.which('node') or not pnpm:
+            self.skipTest('Node or pnpm not found')
+        if not (WEB / 'node_modules' / '.bin' / 'playwright').exists():
+            self.skipTest('web/node_modules absent: run pnpm install to include the web app suite (pnpm test)')
         try:
-            run = procgroup.run([npm, 'test'], cwd=WEB, capture_output=True, text=True, timeout=120)
+            run = procgroup.run([pnpm, 'test'], cwd=WEB, capture_output=True, text=True, timeout=120)
         except subprocess.TimeoutExpired as e:
-            self.fail('npm test in web/ took over 120 s: %s' % (e.stdout or b'')[-2000:])
-        self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])
-        self.assertRegex(run.stdout, r'Tests\s+\d+ passed')
+            self.fail('pnpm test in web/ took over 120 s: %s' % (e.stdout or b'')[-2000:])
+        self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])   # the exit code is the verdict
 
     @bounds.slow                                    # #233: needs longer under the paced clock
     def test_install_page_in_chrome(self):
-        npm = shutil.which('npm')
-        if not shutil.which('node') or not npm:
-            self.skipTest('Node or npm not found')
+        pnpm = shutil.which('pnpm')
+        if not shutil.which('node') or not pnpm:
+            self.skipTest('Node or pnpm not found')
         if not (WEB / 'node_modules' / '.bin' / 'playwright').exists():
-            self.skipTest('web/node_modules absent: run npm ci in web/')
+            self.skipTest('web/node_modules absent: run pnpm install')
         try:
-            run = procgroup.run([npm, 'run', 'test:e2e', '--', 'e2e/install.e2e.ts', 'e2e/install-sim.e2e.ts'], cwd=WEB,
+            run = procgroup.run([pnpm, 'run', 'test:e2e', 'e2e/install.e2e.ts', 'e2e/install-sim.e2e.ts'], cwd=WEB,
                                 capture_output=True, text=True, timeout=bounds.SLOW_S)
         except subprocess.TimeoutExpired as e:
             self.fail('the install browser test took over %g s: %s' % (bounds.SLOW_S, (e.stdout or b'')[-2000:]))
         self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])
-        if 'install browser test skipped' in run.stdout + run.stderr or not re.search(r'\d+ passed', run.stdout):
+        out = re.sub(r'\x1b\[[0-9;]*m', '', run.stdout)                    # CI colours the reporter
+        if 'install browser test skipped' in out + run.stderr or not re.search(r'\d+ passed', out):
             self.skipTest('the system Chrome cannot start')     # Playwright Test: every test skipped
-        self.assertRegex(run.stdout, r'\d+ passed')
 
     def test_build_output_not_tracked(self):
         git = subprocess.run(['git', 'ls-files', '--', 'web'], cwd=ROOT, capture_output=True, text=True)
-        if git.returncode == 0:                                      # npm ci and build output never in git
+        if git.returncode == 0:                                      # pnpm install and build output never in git
             self.assertFalse([p for p in git.stdout.split() if p.split('/')[1] in ('node_modules', 'dist', '.vite')])
 
 

@@ -7,11 +7,11 @@ The host never assembles firmware: it sends mod packages and asks the OP-XY to b
 
 ## Run
 
-From `web/` (Node 22.18+):
+From the repository root (the tools pinned in `mise.toml`; `pnpm install` covers `web/` and `clients/ts`):
 
 ```sh
-npm ci
-npm run dev          # http://127.0.0.1:5173/
+pnpm install
+mise run web         # pnpm run dev in web/: http://127.0.0.1:5173/
 ```
 
 Open it in Chrome, start the OP-XY into the XY Forever menu, connect USB, press Connect.
@@ -94,8 +94,8 @@ Then run the deployment checks with Chrome installed.
 
 ```sh
 python3 scripts/web_release.py --check
-npm --prefix web run build:pages
-npm --prefix web run smoke:pages
+pnpm --filter xy-forever-web run build:pages
+pnpm --filter xy-forever-web run smoke:pages
 ```
 
 The smoke test serves the built files at `/xy-forever/` on localhost without a fallback for missing
@@ -117,9 +117,9 @@ this information in memory for the current tab, so the preview is available even
 ## Test
 
 ```sh
-npm test             # Vitest: config parsing, mod grouping, path rules, the install checks and steps (test/)
-npm run typecheck
-npm run test:e2e     # Playwright Test: the app in the system Chrome (headless) against the simulator, and the Install page (e2e/)
+pnpm test            # Vitest: config parsing, mod grouping, path rules, the install checks and steps (test/)
+pnpm run typecheck
+pnpm run test:e2e    # Playwright Test: the app in the system Chrome (headless) against the simulator, and the Install page (e2e/)
 ```
 
 `test:e2e` starts `python3 -m xy_forever.sim --virtual-clock` from the repository root on a random port in 21000-31000, with its
@@ -129,14 +129,14 @@ afterwards. It is skipped with the reason when the simulator cannot run (no priv
 stand in for the OP-XY, with Web Serial and WebUSB switched off in Chrome. `e2e/install-sim.e2e.ts` runs the
 install's end against the simulator (a stock OP-XY just after Track 5: `--fresh`) through the client's fake Web Serial
 port (Chrome's 255-byte default buffer, the chooser, granted ports): the setup on the device, then the hand-off to
-Mods; a missing stock file refused. The repository's suite runs `npm test` here and both install browser tests
-(`tests/test_web.py`) once `npm ci` has run.
+Mods; a missing stock file refused. The repository's suite runs `pnpm test` here and both install browser tests
+(`tests/test_web.py`) once `pnpm install` has run.
 
 ## The client library
 
-`xy-forever-client` is a `file:` dependency on `../clients/ts`, used from its TypeScript source through aliases in
-`vite.config.ts` and `tsconfig.json` (it has no built `dist/` yet); the dev server's simulator relay and the e2e
-test's simulator helpers come from its `test/` folder.
+`xy-forever-client` is a pnpm workspace package (`workspace:*`, `clients/ts`). Its `exports` point at its
+TypeScript source, so Vite, Vitest and `tsc` use it as it is, with no build step; the dev server's simulator relay
+and the e2e tests' simulator helpers come from its `./test/*` export.
 
 ## Not built yet
 

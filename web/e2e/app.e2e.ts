@@ -11,8 +11,8 @@ import { chromium, expect, test } from '@playwright/test';
 import type { Browser, Locator, Page } from '@playwright/test';
 import { createServer } from 'vite';
 import type { ViteDevServer } from 'vite';
-import { findSimulator, startAll } from '../node_modules/xy-forever-client/test/simulators.ts';
-import * as v1 from '../node_modules/xy-forever-client/src/v1.ts';
+import { findSimulator, startAll } from 'xy-forever-client/test/simulators.ts';
+import { protocol as v1 } from 'xy-forever-client';
 
 const nav = (page: Page, name: string): Locator => page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
 

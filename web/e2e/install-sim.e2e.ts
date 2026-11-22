@@ -14,16 +14,16 @@ import { chromium, expect, test } from '@playwright/test';
 import type { Browser, Page, Locator } from '@playwright/test';
 import { createServer } from 'vite';
 import type { ViteDevServer } from 'vite';
-import { startRelay } from '../node_modules/xy-forever-client/test/relay.ts';
-import type { Relay } from '../node_modules/xy-forever-client/test/relay.ts';
-import { control, findSimulator, startAll } from '../node_modules/xy-forever-client/test/simulators.ts';
-import type { SimInfo } from '../node_modules/xy-forever-client/test/simulators.ts';
-import { Client, tcpOpener } from '../node_modules/xy-forever-client/src/node.ts';
-import { protocol as wire } from '../node_modules/xy-forever-client/src/index.ts';
+import { startRelay } from 'xy-forever-client/test/relay.ts';
+import type { Relay } from 'xy-forever-client/test/relay.ts';
+import { control, findSimulator, startAll } from 'xy-forever-client/test/simulators.ts';
+import type { SimInfo } from 'xy-forever-client/test/simulators.ts';
+import { Client, tcpOpener } from 'xy-forever-client/node';
+import { protocol as wire } from 'xy-forever-client';
 
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
-const FAKE_SERIAL = fileURLToPath(new URL('../node_modules/xy-forever-client/test/browser/fake-serial.ts', import.meta.url));
+const FAKE_SERIAL = fileURLToPath(import.meta.resolve('xy-forever-client/test/browser/fake-serial.ts'));
 const ENTRY = 'xy-forever/firmware/opxy-121';
 // A random base (simulator, control, relay at +10) and state folder: another checkout may run this test at the same time.
 const BASE = parseInt(process.env['XYF_WEB_SIM_PORT'] ?? String(22000 + 20 * Math.floor(Math.random() * 400)), 10);

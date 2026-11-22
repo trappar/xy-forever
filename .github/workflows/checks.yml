@@ -1,0 +1,59 @@
+# The checks every pull request and main run. No Teenage Engineering bytes ever reach CI: the private folder is an
+# empty temporary one, so the tests that need the stock os.ldr, the decrypted packages or a device report skip,
+# and the firmware build modes (all of them read the stock os.ldr) are left to scripts/check.py on a
+# contributor's machine.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python suite (macOS, no private files)
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@v5
+        with:
+          version: 2026.11.12
+          cache: true
+      - run: uv sync --locked
+      - run: pnpm install --frozen-lockfile
+      - name: Unit tests (with the Install page's Chrome e2e; the web job runs the JS suites)
+        env:
+          XYF_PRIVATE: ${{ runner.temp }}/private   # empty: every test that needs private files skips
+          XYF_JS_SUITES_ELSEWHERE: '1'              # the pnpm test wrappers skip: the web job runs them directly
+        run: mkdir -p "$XYF_PRIVATE" && uv run scripts/run_tests.py --jobs 4
+
+  web:
+    name: Web app, client, protocol check (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@v5
+        with:
+          version: 2026.11.12
+          cache: true
+      - run: uv sync --locked
+      - run: pnpm install --frozen-lockfile
+      - name: The generated protocol files match protocol/v1.json
+        run: mise run protogen
+      - name: Client tests, web tests, web type check
+        run: mise run web-test
+      - name: Web build
+        run: pnpm --filter xy-forever-web run build

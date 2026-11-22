@@ -8,3 +8,4 @@ docs/status/
 docs/STATUS.md
 # the web app's staged release image (scripts/web_release.py): a build output
 web/public/release/
+.venv/

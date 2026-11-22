@@ -89,7 +89,7 @@ an OS reinstall, so crash logs can be fetched from it.
   plus a few seconds (a probe answers within 3 s; a freeze shows within seconds), polled rather
   than one long wait. Report the moment the result is clear ("frozen: power cycle it"); never
   leave the developer waiting out a long timeout.
-- **Browser tests run by automation** (Playwright on the system Chrome: `npm run test:browser`
+- **Browser tests run by automation** (Playwright on the system Chrome: `pnpm run test:browser`
   in `clients/ts`), against the real device too. Never ask the developer to click through a page.
   Chrome's serial port chooser is the one step page automation cannot click: verify a way past
   it (DevTools device-prompt handling, or a managed policy granting the device) before relying
