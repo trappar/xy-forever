@@ -157,12 +157,21 @@ dir = "web"
 run = "pnpm run dev"
 
 [tasks.web-test]
-description = "Web app and TypeScript client tests and type checks"
+description = "Web app and TypeScript client tests, then their type checks (one tsc each)"
 run = [
   "uv run pnpm --filter xy-forever-client test",   # uv: its simulator tests start python3 -m xy_forever.sim from the project venv
   "pnpm --filter xy-forever-web test",
-  "pnpm --filter xy-forever-web typecheck",
+  "pnpm --recursive --parallel typecheck",
 ]
+
+[tasks.web-test-changed]
+description = "Web app and client tests affected by uncommitted changes, or by the files given (about 1 s if none)"
+usage = 'arg "[files]..." help="files: the tests that import them (vitest related); none: uncommitted changes (--changed)" var=#true'
+run = """{% set sel = "run --changed" %}{% if usage.files %}{% set sel = "related --run" %}{% for f in usage.files %}\
+{% if f is starting_with(pat="/") %}{% set p = f %}{% else %}{% set p = config_root ~ "/" ~ f %}{% endif %}\
+{% set_global sel = sel ~ " " ~ p | quote %}{% endfor %}{% endif %}\
+cd clients/ts && uv run node_modules/.bin/vitest {{ sel }} --passWithNoTests && \
+cd ../../web && node_modules/.bin/vitest {{ sel }} --passWithNoTests"""
 
 [tasks.web-e2e]
 description = "Web app e2e tests (Chrome, simulator): CI runs them when web/ changes"

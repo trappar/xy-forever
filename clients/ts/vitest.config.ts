@@ -9,6 +9,6 @@ export default defineConfig({
     globalSetup: ['test/simulators.ts'],
     testTimeout: 10_000,
     hookTimeout: 10_000,
-    reporters: ['default', new RunBudget(30_000)],
+    reporters: ['default', new RunBudget({ runMs: 8_000, testMs: 2_500, hangMs: 30_000 })],
   },
 });

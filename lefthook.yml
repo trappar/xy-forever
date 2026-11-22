@@ -2,6 +2,10 @@
 # parallel. Formatters fix the layout and the fix is staged; a lint finding stops the commit
 # (`mise run lint-fix` applies the safe fixes). Unstaged changes in a staged file are hidden while it runs.
 # By hand: `lefthook run pre-commit` (staged files) or `lefthook run pre-commit --all-files`.
+# Output: only the tools' own output and a failed job's name (no banner, no skipped or empty job lines).
+output:
+  - execution_out
+  - failure
 pre-commit:
   parallel: true
   jobs:

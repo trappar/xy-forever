@@ -18,6 +18,7 @@ import type { Relay } from 'xy-forever-client/test/relay.ts';
 import { control, findSimulator, randomBase, startAll, until as simUntil } from 'xy-forever-client/test/simulators.ts';
 import type { SimInfo } from 'xy-forever-client/test/simulators.ts';
 import { Client, tcpOpener } from 'xy-forever-client/node';
+import { verifiedBuild } from './needs.ts';
 import { protocol as wire } from 'xy-forever-client';
 
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
@@ -185,7 +186,6 @@ const UPGRADE = 'upgrade/firmware/blackfin/bin/os.ldr';
 const CATALOG = 'content/op1_factory.json';
 const MOD_FILE = 'content/uninstall-probe.txt';
 const SAVED = 'xy-forever/content-official';
-const asset = found.fixtures['xyf_build'];
 const digestOf = (data: Uint8Array): string => createHash('sha256').update(data).digest('hex');
 
 /** The simulator's writer models device encryption with an XOR. The active slot must contain every byte. */
@@ -238,9 +238,12 @@ async function simulatedTrack5(sim: SimInfo, bytes: Uint8Array): Promise<void> {
   expectActive(sim, bytes);
 }
 
-test('uninstalls to a verified stock partition, then installs again from the same browser', async () => {
-  test.skip(why !== null || !asset, 'skipped: see the warning above');
-  const candidate = readFileSync(asset!);
+/** An installed XY Forever with a recorded mod and modded content, an owner's files, the app handed off to its Mods
+ * page; the page's link to the device checked on the relay as it passes (interrupted: the first boot write's select
+ * fails). The stock os.ldr's 2.3 MB moves several times in an uninstall (read, staged, the root's restore and
+ * read-backs): each uninstall test does one, the tests run in parallel. */
+async function installedWithMods(build: string, interrupted: boolean) {
+  const candidate = readFileSync(build);
   const stock = readFileSync(found.fixtures['stock_os_ldr']!);
   image = digestOf(candidate).slice(0, 8);
   const sim = await powerOn('stock', false);
@@ -288,7 +291,7 @@ test('uninstalls to a verified stock partition, then installs again from the sam
             bootWrites++;
             expect(readFileSync(file(CATALOG)).equals(catalog)).toBe(true);
             expect(existsSync(file(MOD_FILE))).toBe(false);
-            if (bootWrites === 1) await control(sim.control, 'set fail_select 1');
+            if (bootWrites === 1 && interrupted) await control(sim.control, 'set fail_select 1');
           }
           if (frame.type === wire.TYPE['file.list']) commands.push(wire.decodeFileListRequest(frame.payload).path);
           if (frame.type === wire.TYPE['job.status']) await jobToEnd(sim, frame, device);
@@ -334,28 +337,29 @@ test('uninstalls to a verified stock partition, then installs again from the sam
           }),
     );
   });
+  await handedOff(page);
+  return {
+    sim,
+    page,
+    relay,
+    file,
+    candidate,
+    stock,
+    catalog,
+    commands,
+    bootWrites: () => bootWrites,
+    reboot: () => reboot,
+    showSerial: () => (serialVisible = true),
+  };
+}
+
+test('uninstalls to a verified stock partition, then installs again from the same browser', async () => {
+  const { sim, page, relay, file, candidate, stock, commands, reboot, showSerial } = await installedWithMods(
+    verifiedBuild(found),
+    false,
+  );
   try {
-    await handedOff(page);
     await nav(page, 'Device').click();
-    await press(page, 'Uninstall XY Forever');
-    await press(page, 'Cancel');
-    expect(bootWrites).toBe(0);
-    expect(existsSync(file(MOD_FILE))).toBe(true);
-
-    await press(page, 'Uninstall XY Forever');
-    await press(page, 'Uninstall');
-    await expect(page.getByTestId('notice')).toHaveText(/boot\.uninstall|read-back/i);
-    expect(bootWrites).toBe(1);
-    expectActive(sim, candidate);
-    expect(existsSync(file('xy-forever/firmware'))).toBe(true);
-    expect(readFileSync(file('os.ldr')).equals(candidate)).toBe(true);
-
-    // At this boundary the old XY Forever partition is still active. Bring its menu back after the failed select.
-    await nav(page, 'Connect').click();
-    await press(page, 'Disconnect');
-    await control(sim.control, 'power play');
-    await until('the original XY Forever menu after the interruption', () => listening(sim));
-    await press(page, 'Connect');
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
     // The stock os.ldr's 2.3 MB upload (4,600 requests), the boot partition write and the reboot: /connect/, or the error.
@@ -366,7 +370,7 @@ test('uninstalls to a verified stock partition, then installs again from the sam
         throw new Error(`uninstall failed: ${await failure.textContent()}`);
       }),
     ]);
-    expect(reboot).toBe(1);
+    expect(reboot()).toBe(1);
     expect(await page.getByRole('status').textContent()).toContain('Stock OS 1.2.1 was restored');
     expect(readdirSync(sim.root).sort()).toEqual([
       'bootloader.dev',
@@ -391,13 +395,35 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     writeFileSync(file('os.ldr'), candidate); // the test's fake dev-menu MTP copy
     await simulatedTrack5(sim, candidate);
     await control(sim.control, 'power play');
-    serialVisible = true;
+    showSerial();
     await until('the menu after the new install', () => listening(sim));
     await page.clock.fastForward(LOOK_MS); // the last stage's next look
     await handedOff(page);
     adopted(sim);
     expect(readFileSync(file('user/project.xy'), 'utf8')).toBe('owner project');
     expect(relay.tapErrors).toEqual([]);
+  } finally {
+    await page.close();
+  }
+});
+
+test("an uninstall cancelled, then stopped at the boot write, keeps XY Forever, its mods and the owner's files", async () => {
+  const { sim, page, file, candidate, bootWrites } = await installedWithMods(verifiedBuild(found), true);
+  try {
+    await nav(page, 'Device').click();
+    await press(page, 'Uninstall XY Forever');
+    await press(page, 'Cancel');
+    expect(bootWrites()).toBe(0);
+    expect(existsSync(file(MOD_FILE))).toBe(true);
+
+    await press(page, 'Uninstall XY Forever');
+    await press(page, 'Uninstall');
+    await expect(page.getByTestId('notice')).toHaveText(/boot\.uninstall|read-back/i);
+    expect(bootWrites()).toBe(1);
+    expectActive(sim, candidate);
+    expect(existsSync(file('xy-forever/firmware'))).toBe(true);
+    expect(readFileSync(file('os.ldr')).equals(candidate)).toBe(true);
+    expect(readFileSync(file('user/project.xy'), 'utf8')).toBe('owner project');
   } finally {
     await page.close();
   }

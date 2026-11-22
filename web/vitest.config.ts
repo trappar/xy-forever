@@ -11,6 +11,6 @@ export default defineConfig({
     environment: 'node',
     testTimeout: 2_000,
     hookTimeout: 5_000,
-    reporters: ['default', new RunBudget(15_000)],
+    reporters: ['default', new RunBudget({ runMs: 2_000, testMs: 300, hangMs: 15_000 })],
   },
 });
