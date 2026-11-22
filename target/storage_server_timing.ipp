@@ -51,6 +51,50 @@ U32 op_slot(U32 op, U32 argument) {                          // file_client's op
     default: return t_other;
     }
 }
+// #195 diagnostic (file_engine.hpp trace_k): A's last engine requests and its own window closes, a ring.
+struct ATrace {
+    U32 count;
+    U32 entry[file_engine::trace_entries][2];
+};
+static_assert((file_engine::trace_entries & (file_engine::trace_entries - 1)) == 0, "a ring by mask");
+ATrace a_trace __attribute__((section(".data"))) = {};
+void trace(U32 head, U32 tail) {
+    U32* e = a_trace.entry[a_trace.count++ & (file_engine::trace_entries - 1)];
+    e[0] = head;
+    e[1] = tail;
+}
+U32 trace_state() {
+    U32 held = 0;
+    for (U32 i = 0; i != max_fds; ++i) held += fds[i] >= 0 ? 1u : 0u;
+    U32 s = (mounted ? 1u : 0u) | (engine & 3u) << 3 | held << 5 | (tfw_hash_open() ? 0x100u : 0u);
+#if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
+    s |= (window_open ? 2u : 0u) | (window_result == U32(cold_storage::Result::ok) ? 4u : 0u);
+#endif
+    return s;
+}
+void trace_now(U32 j, U32& a, U32& b) {
+    const U32 table = 0x8803f6c8u;                            // the stock posix descriptors {?, begin, end, capacity}
+    const U32 begin = word(table + 4), end = word(table + 8), fd = j - 1;   // j >= 4: descriptor 3, 4, ...
+    a = b = ~0u;
+    if (j == 0) {
+        a = a_trace.count;
+        b = 0;
+        for (U32 i = 0; i != max_fds; ++i) b |= U32(fds[i] >= 0 && fds[i] < 0xff ? fds[i] : 0xff) << (8 * i);
+    } else if (j == 1) {
+        a = word(0x8803f6bcu);                                // the stock provider registry (mount() reads it too)
+        b = word(0x8803f6c0u);
+    } else if (j == 2) {
+        a = begin;
+        b = end;
+    } else if (j == 3) {
+        a = word(0x8807da98u);                                // posix errno
+        b = word(0x8806f940u);                                // yaffs error (storage_server_marker.ipp yaffs_error)
+    } else if (!(begin & 7u) && begin >= cold_heap::arena_base && end <= cold_heap::arena_end && begin < end &&
+               fd < (end - begin) / 8) {                      // only inside the stock heap: never a stray address
+        a = word(begin + 8 * fd);
+        b = word(begin + 8 * fd + 4);
+    }
+}
 bool timing_query(U32 request, Stock121PeerSession& session) {
     const U32 argument = word(request + 8);
     if (word(request) != file_engine::path_class || byte(request + 5) != 0x21u ||
@@ -67,7 +111,16 @@ bool timing_query(U32 request, Stock121PeerSession& session) {
         a_checks.count = 0;
         session.reply(request, 0, 0);
     } else if (2 * k + 1 < file_engine::timing_words) session.reply(request, w[2 * k], w[2 * k + 1]);
-    else session.reply(request, 0xffffffffu, error_access);
+    else if (k >= file_engine::trace_k && k < file_engine::trace_state) {
+        const U32 held = a_trace.count < file_engine::trace_entries ? a_trace.count : file_engine::trace_entries;
+        const U32 i = k - file_engine::trace_k;
+        const U32* e = a_trace.entry[(a_trace.count - held + i) & (file_engine::trace_entries - 1)];
+        session.reply(request, i < held ? e[0] : 0, i < held ? e[1] : 0);
+    } else if (k >= file_engine::trace_state && k < file_engine::trace_state + file_engine::trace_state_words) {
+        U32 a, b;
+        trace_now(k - file_engine::trace_state, a, b);
+        session.reply(request, a, b);
+    } else session.reply(request, 0xffffffffu, error_access);
     return true;
 }
 // The serve hook: serve() timed.
@@ -89,7 +142,11 @@ void timed_serve(void* context, U32 request, Stock121PeerSession& session) {
     const U32 vtable = word(request), op = byte(request + 5), argument = word(request + 8);
     const bool had_window = window_now();
     const uint64_t checked = a_checks.cycles;
+    const U32 before = trace_state();
+    traced_action = 0;
     serve(context, request, session);
+    trace(op | (traced_action & 0xffu) << 8 | before << 16, (word(request + 0x10) & 0xffffu) | word(request + 0x14)
+                                                                                                   << 16);
     const uint64_t end = xyf::clock::cycles(), took = end - start;
     ATiming& t = a_timing;
     if (a_last_end && start - a_last_end < gap_bound) {

@@ -8,12 +8,13 @@ import time
 from . import depth
 from . import package_store as store
 from . import usb_proto as P
+from .census import ENGINE_ACTIONS
 
 DLC = '/yaffs2/content/dlc'
 INBOX = store.ROOT + '/inbox'
 SIGNED_RECORD = b'xyf-pack.txt'
-RETRY_FAILED = 0x1000  # #195 diagnostic: a member open failed again with the source closed
-OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE = range(5)
+OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE, OP_TRACE = range(6)
+TRACE_ENTRIES = 32  # target/file_engine.hpp trace_entries; then trace_state_words of A's state
 SIGNED_OPERATIONS = {'import': OP_IMPORT, 'enable': OP_ENABLE, 'disable': OP_DISABLE}
 
 
@@ -170,28 +171,71 @@ def signed_request(dev, operation, name='', busy_s=0.0):
     if code == P.ids.S_REFUSED and operation == OP_ENABLE:
         raise store.StoreError('compatibility unknown or pack path refused')
     store.check(code, 'signed pack')
-    if len(body) != 28:
-        raise store.StoreError('signed pack reply of %d bytes, expected 28' % len(body))
-    return struct.unpack('<7I', body)
+    if len(body) < 28 or (len(body) - 28) % 8 or (operation != OP_TRACE and len(body) != 28):
+        raise store.StoreError('signed pack reply of %d bytes' % len(body))
+    return struct.unpack_from('<7I', body)
+
+
+def signed_trace(dev):
+    """The trace words of the last failed import (packs.manage operation 5)."""
+    payload = struct.pack('<II', 1, OP_TRACE) + b'\0'
+    code, body = dev.call(P.ids.PACKS_MANAGE, payload, timeout=60.0)
+    store.check(code, 'signed pack trace')
+    count = struct.unpack_from('<7I', body)[6]
+    if len(body) != 28 + 8 * count:
+        raise store.StoreError('signed pack trace of %d bytes for %d pairs' % (len(body), count))
+    return struct.unpack_from('<%dI' % (2 * count), body, 28)
 
 
 def failure_site(site, detail):
     """The device's record of where a failed import stopped (#195), as one line."""
     steps = ('hash', 'admit', 'window', 'extract', 'blob setup', 'blobs', 'record', 'publish', 'cleanup', 'close')
-    calls = {1: 'open', 2: 'extract', 3: 'write', 4: 'close', 5: 'source reopen'}
+    calls = {1: 'open', 2: 'extract', 3: 'write', 4: 'close'}
     step = (site >> 8) & 0xFF
     text = 'step %s' % (steps[step] if step < len(steps) else step)
     if site & 0xFF:
         text += ', %s' % calls.get(site & 0xFF, site & 0xFF)
     text += ', member %d, detail 0x%04x' % (detail >> 16, detail & 0xFFFF)
-    if site & 0xFF == 1 and detail & RETRY_FAILED:
-        text += ' (the open failed again with the source closed)'
     flags = [
         name
         for bit, name in ((0x10000, 'source close failed'), (0x20000, 'link lost'), (0x40000, 'cleanup started'))
         if site & bit
     ]
     return text + ('; ' + ', '.join(flags) if flags else '')
+
+
+def trace_lines(words):
+    """#195 diagnostic: A's trace pairs (packs.manage operation 5) as text, one request or state word per line."""
+    pairs = list(zip(words[0::2], words[1::2]))
+    entries, state = pairs[:TRACE_ENTRIES], pairs[TRACE_ENTRIES:]
+    lines = []
+    for head, tail in entries:
+        if not head and not tail:
+            continue
+        op, flags = head & 0xFF, head >> 16
+        before = 'mounted=%d window=%d/%d engine=%d handles=%d hash=%d' % (
+            flags & 1,
+            flags >> 1 & 1,
+            flags >> 2 & 1,
+            flags >> 3 & 3,
+            flags >> 5 & 7,
+            flags >> 8 & 1,
+        )
+        if op == 0xF1:
+            lines.append('A closed its idle window: result %d; before: %s' % (tail, before))
+        elif op == 0xF2:
+            lines.append('A left its write entry for another command item: result %d; before: %s' % (tail, before))
+        else:
+            value = tail & 0xFFFF
+            action = head >> 8 & 0xFF
+            name = ENGINE_ACTIONS[action - 0x60] if 0x60 <= action < 0x60 + len(ENGINE_ACTIONS) else hex(action)
+            shown = '0x%04x' % value if op in (0x2E, 0x2F) else str(value - 0x10000 if value & 0x8000 else value)
+            lines.append('op 0x%02x %s -> %s errno %d; before: %s' % (op, name, shown, tail >> 16, before))
+    names = ('traced, handles', 'registry begin, end', 'descriptors begin, end', 'posix errno, yaffs error')
+    for i, (a, b) in enumerate(state):
+        name = names[i] if i < len(names) else 'descriptor %d (provider, handle)' % (i - 1)
+        lines.append('A now: %s = 0x%08x, 0x%08x' % (name, a, b))
+    return lines
 
 
 def signed_change(dev, action, pack_id):
@@ -203,15 +247,17 @@ def signed_change(dev, action, pack_id):
     previous = None
     try:
         while True:
-            phase, done, total, error, site, detail, recovered = signed_request(dev, OP_STATUS)
-            if phase in (3, 4) and recovered:
-                print('Recovered %d opens by closing the source.' % recovered)
+            phase, done, total, error, site, detail, traced = signed_request(dev, OP_STATUS)
             if phase == 3:
                 print('Imported %s. The signed pack is retained.' % pack_id)
                 return 0
             if phase == 4:
                 if site:
                     print('Stopped at %s.' % failure_site(site, detail))
+                if traced:
+                    print("A's trace (#195 diagnostic), oldest first:")
+                    for line in trace_lines(signed_trace(dev)):
+                        print('  ' + line)
                 store.check(error or P.ids.S_STATE, 'signed pack import')
             if phase not in (1, 2):
                 raise store.StoreError('signed pack import stopped unexpectedly')

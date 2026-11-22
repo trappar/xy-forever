@@ -420,8 +420,8 @@ COMMANDS = {
         destructive=True, timeout_ms=60000, errors=('bad_request', 'unsupported', 'busy', 'link', 'storage', 'state', 'not_found', 'refused'),
         request_size=(9, 136), request_ignored=False,
         request=(('version', 'u32', 4, False, None), ('operation', 'u32', 4, False, None), ('name', 'cstr', None, False, 'ascii')),
-        reply_size=(32, 32), reply_on_error='status', reply_extensible=False,
-        reply=(('status', 'u32', 4, False, None), ('phase', 'u32', 4, False, None), ('done', 'u32', 4, False, None), ('total', 'u32', 4, False, None), ('error', 'u32', 4, False, None), ('site', 'u32', 4, False, None), ('detail', 'u32', 4, False, None), ('recovered', 'u32', 4, False, None))),
+        reply_size=(32, 352), reply_on_error='status', reply_extensible=False,
+        reply=(('status', 'u32', 4, False, None), ('phase', 'u32', 4, False, None), ('done', 'u32', 4, False, None), ('total', 'u32', 4, False, None), ('error', 'u32', 4, False, None), ('site', 'u32', 4, False, None), ('detail', 'u32', 4, False, None), ('traced', 'u32', 4, False, None), ('trace', 'rest', None, False, None))),
 }
 EVENTS = {
     0xd0: dict(name='log', symbol='log', size=(8, 208), extensible=False,

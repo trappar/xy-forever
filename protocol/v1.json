@@ -1148,22 +1148,23 @@
         "size": [9, 136],
         "fields": [
           {"name": "version", "type": "u32", "doc": "API version 1"},
-          {"name": "operation", "type": "u32", "range": [0, 4], "doc": "0 status, 1 admit, 2 cancel, 3 enable, 4 disable"},
+          {"name": "operation", "type": "u32", "range": [0, 5], "doc": "0 status, 1 admit, 2 cancel, 3 enable, 4 disable, 5 status with the trace"},
           {"name": "name", "type": "cstr", "encoding": "ascii", "min_bytes": 1, "max_bytes": 128,
            "doc": "Inbox .tfw basename for admission, pack ID to toggle, empty for status or cancel"}
         ]
       },
       "reply": {
-        "size": [32, 32], "extensible": false, "on_error": "status",
+        "size": [32, 352], "extensible": false, "on_error": "status",
         "fields": [
           {"name": "status", "type": "u32", "doc": "Whether the request was accepted"},
           {"name": "phase", "type": "u32", "doc": "0 idle, 1 authenticating, 2 staging, 3 complete, 4 failed"},
           {"name": "done", "type": "u32", "doc": "Ciphertext bytes scanned or pack files staged"},
           {"name": "total", "type": "u32", "doc": "Total source bytes or pack files for the current phase"},
           {"name": "error", "type": "u32", "doc": "Final admission status when phase is failed"},
-          {"name": "site", "type": "u32", "doc": "Where a failed import stopped: the job step << 8 | the call (1 open, 2 extract, 3 write, 4 close, 5 source reopen), plus 0x10000 source close failed, 0x20000 link lost, 0x40000 scratch cleanup started; 0 otherwise"},
-          {"name": "detail", "type": "u32", "doc": "For a failure: the archive member << 16 | A's errno, 0x8000 | a link outcome, or the blob step; 0x1000: a member open failed again with the source closed (#195 diagnostic)"},
-          {"name": "recovered", "type": "u32", "doc": "#195 diagnostic: member opens that failed with the source open and worked with it closed (the source then reopened; call 5 in site when that reopen failed)"}
+          {"name": "site", "type": "u32", "doc": "Where a failed import stopped: the job step << 8 | the call (1 open, 2 extract, 3 write, 4 close), plus 0x10000 source close failed, 0x20000 link lost, 0x40000 scratch cleanup started; 0 otherwise"},
+          {"name": "detail", "type": "u32", "doc": "For a failure: the archive member << 16 | A's errno, 0x8000 | a link outcome, or the blob step"},
+          {"name": "traced", "type": "u32", "doc": "#195 diagnostic: A's trace pairs read when the last import failed (0: none), operation 5 returns them"},
+          {"name": "trace", "type": "rest", "max_bytes": 320, "doc": "Operation 5 only: `traced` pairs of u32 (value, errno) A answered to `file_engine::trace_k` + i (target/file_engine.hpp): its last engine requests, then its state; decoder: `xy_forever/pack_change.py`"}
         ]
       },
       "errors": ["bad_request", "unsupported", "busy", "link", "storage", "state", "not_found", "refused"],

@@ -22,7 +22,7 @@ enum SignedStep {
     ps_close
 };
 enum PackBlobStep { pb_stage, pb_seed, pb_seal, pb_copy, pb_open, pb_read, pb_sealed, pb_link };
-enum PackOp : U32 { pack_status, pack_import, pack_cancel, pack_enable, pack_disable };
+enum PackOp : U32 { pack_status, pack_import, pack_cancel, pack_enable, pack_disable, pack_trace };
 const char* const pack_record_head = "version=1\nsha256=";
 volatile U32 signed_pack_phase __attribute__((section(".data"))) = pack_idle;
 U32 signed_pack_done __attribute__((section(".data"))) = 0;
@@ -35,17 +35,26 @@ enum PackSite : U32 {
     site_extract = 2,
     site_flush = 3,
     site_close = 4,
-    site_reopen = 5, // #195 diagnostic: the source's reopen after a recovered member open
     pack_source_close = 0x10000,
     pack_link_lost = 0x20000,
     pack_cleanup = 0x40000
 };
 U32 signed_pack_site __attribute__((section(".data"))) = 0;
 U32 signed_pack_detail __attribute__((section(".data"))) = 0;
-// #195 diagnostic (device: a member's open answered EBADF while the source was open): member opens that
-// worked once the source was closed, the source then reopened. retry_failed marks the detail when even that open failed.
-U32 signed_pack_recovered __attribute__((section(".data"))) = 0;
-const U32 retry_failed = 0x1000u;
+// #195 diagnostic (device: a member's open answered EBADF and the source's close failed after it): A's last requests
+// and its state (file_engine.hpp trace_k), read once the import failed, before the window closes.
+const U32 pack_trace_pairs = file_engine::trace_entries + file_engine::trace_state_words;
+U32 signed_pack_trace[2 * pack_trace_pairs] __attribute__((section(".data"))) = {};
+U32 signed_pack_traced __attribute__((section(".data"))) = 0;   // pairs read
+void signed_pack_read_trace() {
+    for (U32 k = 0; k != pack_trace_pairs; ++k) {
+        const file_client::Reply r = file_client::a_timing(file_engine::trace_k + k);
+        if (r.outcome) return;
+        signed_pack_trace[2 * k] = U32(r.value);
+        signed_pack_trace[2 * k + 1] = r.error;
+        signed_pack_traced = k + 1;
+    }
+}
 U32 pack_fail(U32 site, U32 detail, U32 code) {
     if (!signed_pack_site) {
         signed_pack_site = site;
@@ -162,7 +171,7 @@ U32 signed_pack_start(const char* name) {
     if (code) return code;
     signed_pack_active = 1;
     signed_pack_phase = pack_authenticating;
-    signed_pack_done = signed_pack_error = signed_pack_site = signed_pack_detail = signed_pack_recovered = 0;
+    signed_pack_done = signed_pack_error = signed_pack_site = signed_pack_detail = signed_pack_traced = 0;
     signed_pack_total = j.source.size();
     return P::s_ok;
 }
@@ -177,6 +186,7 @@ void signed_pack_end(SignedPackJob& j, U32 code) {
     }
     signed_pack_error = code;
     if (code) signed_pack_site |= (closed ? U32(pack_source_close) : 0u) | (j.io.lost() ? U32(pack_link_lost) : 0u);
+    if (code && code != P::s_cancelled && !j.io.lost() && !file_client::left_out()) signed_pack_read_trace();
     if (j.seal_open) settle_begin();
     if (j.created && code && !closed && !j.io.lost() && tree_begin(j.tree, j.staging)) {
         signed_pack_site |= pack_cleanup;
@@ -297,22 +307,7 @@ U32 signed_pack_member(SignedPackJob& j) {
     char path[file_engine::max_path];
     if (!join(path, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
     uint32_t why = 0;
-    U32 opened = file_client::open_write(path, j.fd, mounted, &why);
-    if (opened && j.source.phase() == tf::SourcePhase::authenticated) {
-        // #195 diagnostic: the same open with the source closed; on success the source is reopened and the
-        // import goes on (signed_pack_recovered counts it). Not the fix: it only tells whether the open source is
-        // why the open failed.
-        const U32 closed = j.source.close(true);
-        if (closed) return pack_fail(U32(ps_extract) << 8 | site_open, (j.member - 1) << 16 | why, closed);
-        opened = file_client::open_write(path, j.fd, mounted, &why);
-        if (opened)
-            return pack_fail(U32(ps_extract) << 8 | site_open, (j.member - 1) << 16 | why | retry_failed, opened);
-        ++signed_pack_recovered;
-        const U32 reopened = j.source.open(&j.work);
-        if (reopened) return pack_fail(U32(ps_extract) << 8 | site_reopen, (j.member - 1) << 16, reopened);
-        const auto reader = j.source.reader();
-        j.archive.reader = {reader.context, reader.size, reader.read};
-    }
+    const U32 opened = file_client::open_write(path, j.fd, mounted, &why);
     if (opened) return pack_fail(U32(ps_extract) << 8 | site_open, (j.member - 1) << 16 | why, opened);
     j.pending_bytes = 0;
     j.hash.reset();
@@ -528,15 +523,16 @@ U32 signed_pack_toggle(const char* name, bool enable) {
     return ok ? P::s_ok : io.lost() ? P::s_link : P::s_storage;
 }
 void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
-    U32 code = P::s_bad_request;
+    U32 code = P::s_bad_request, op = pack_status;
     if (bytes >= 9 && bytes <= 136) {
-        const U32 version = P::get32(payload), op = P::get32(payload + 4);
+        const U32 version = P::get32(payload);
+        op = P::get32(payload + 4);
         U32 end = 8;
         while (end < bytes && payload[end]) ++end;
         const char* name = reinterpret_cast<const char*>(payload + 8);
         if (version != 1) code = P::s_unsupported;
-        else if (end + 1 == bytes && op <= pack_disable) {
-            if (op == pack_status && !*name) code = P::s_ok;
+        else if (end + 1 == bytes && op <= pack_trace) {
+            if ((op == pack_status || op == pack_trace) && !*name) code = P::s_ok;
             else if (op == pack_cancel && !*name) {
                 if (!signed_pack_active) code = P::s_state;
                 else {
@@ -544,10 +540,10 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
                     code = P::s_ok;
                 }
             } else if (op == pack_import) code = signed_pack_start(name);
-            else if (op >= pack_enable) code = signed_pack_toggle(name, op == pack_enable);
+            else if (op == pack_enable || op == pack_disable) code = signed_pack_toggle(name, op == pack_enable);
         }
     }
-    uint8_t reply[32];
+    uint8_t reply[32 + 8 * pack_trace_pairs];
     P::put32(reply, code);
     P::put32(reply + 4, signed_pack_phase);
     P::put32(reply + 8, signed_pack_done);
@@ -555,7 +551,9 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
     P::put32(reply + 16, signed_pack_error);
     P::put32(reply + 20, signed_pack_site);
     P::put32(reply + 24, signed_pack_detail);
-    P::put32(reply + 28, signed_pack_recovered);
-    send(P::t_packs_manage, seq, reply, code ? 4 : sizeof(reply));
+    P::put32(reply + 28, signed_pack_traced);
+    const U32 traced = op == pack_trace ? signed_pack_traced : 0;
+    for (U32 i = 0; i != 2 * traced; ++i) P::put32(reply + 32 + 4 * i, signed_pack_trace[i]);
+    send(P::t_packs_manage, seq, reply, code ? 4 : 32 + 8 * traced);
 }
 #endif

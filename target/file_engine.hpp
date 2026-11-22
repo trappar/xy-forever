@@ -91,6 +91,14 @@ enum TimingSlot : uint32_t {
 };
 static const uint32_t timing_tag = 0x4d495400u, timing_clear = 0xffu;   // "\0TIM" (LE) | k
 static const uint32_t timing_base_words = 12, timing_words = timing_base_words + 4 * timing_op_slots;
+// #195 diagnostic, the same access: k = trace_k + i (i < trace_entries) answers the i-th of A's last trace_entries
+// engine requests, oldest first, as (op | its action << 8 | A's state before it << 16, value & 0xffff | errno << 16),
+// (0, 0) past the last. State: 1 mounted, 2 window open, 4 window ok, engine << 3, B's handles << 5, 0x100 A's hash
+// file open. Op 0xf1 / 0xf2: A closed the window itself (idle / another command item); value: window_result. Then
+// k = trace_state + j (j < trace_state_words), A's state now: (requests traced, B's handles: a byte each, 0xff none),
+// the stock provider registry (begin, end), the stock descriptor table (begin, end), (posix errno, yaffs error), then
+// descriptors 3.. of that table (provider, yaffs handle; all ones: not readable).
+static const uint32_t trace_k = 0x80, trace_entries = 32, trace_state = trace_k + trace_entries, trace_state_words = 8;
 enum Operation : uint32_t {
     op_read = 1,        // open for reading (flags 0)
     op_list,            // open a folder
