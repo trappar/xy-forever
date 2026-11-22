@@ -12,8 +12,10 @@
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
     "noEmit": true,
+    "jsx": "react-jsx",
     "skipLibCheck": true,
     "paths": {
+      "@/*": ["./src/*"],
       "xy-forever-client": ["./node_modules/xy-forever-client/src/index.ts"],
       "xy-forever-client/dev": ["./node_modules/xy-forever-client/src/dev.ts"]
     }

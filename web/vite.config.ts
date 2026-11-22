@@ -4,6 +4,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import type { Plugin } from 'vite';
 import { INSTALL_STAGES, PAGES, PAGES_BASE } from './src/routes.ts';
 import { xyfRelay } from './node_modules/xy-forever-client/test/relay.ts';
@@ -11,6 +13,7 @@ import { xyfRelay } from './node_modules/xy-forever-client/test/relay.ts';
 const client = (file: string): string => fileURLToPath(new URL(`./node_modules/xy-forever-client/src/${file}`, import.meta.url));
 
 export const alias = [
+  { find: /^@\//, replacement: fileURLToPath(new URL('./src/', import.meta.url)) },
   { find: /^xy-forever-client$/, replacement: client('index.ts') },
   { find: /^xy-forever-client\/dev$/, replacement: client('dev.ts') },
 ];
@@ -38,5 +41,5 @@ export default defineConfig(({ mode }) => ({
   base: mode === 'pages' ? PAGES_BASE : '/',
   server: { host: '127.0.0.1' },
   resolve: { alias, preserveSymlinks: false },
-  plugins: [xyfRelay(), staticSite],
+  plugins: [react(), tailwindcss(), xyfRelay(), staticSite],
 }));

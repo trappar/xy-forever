@@ -1,5 +1,5 @@
-// The XY Forever web app: Connect, Install, Device, Mods, Files. Plain DOM; one device action at a time.
-// ?sim=PORT: the device simulator on 127.0.0.1:PORT through the dev server's relay (development and tests).
+// The pages not moved to React yet: Connect, Install, Device, Mods, Files. Plain DOM in the shell's sections; one device
+// action at a time.
 import { ASK_TEXT, Client, RELEASE_FILTERS, SERIAL_OFF_TEXT, JobError, configGet, configSet, connectWebSerial, fileListSource, fileReason, isXyfError,
   listPackages, localSet, pushPackages, readModsConfig, removePackage, webSerial } from 'xy-forever-client';
 import type { DirEntry, HeldGeneration, LocalSet, PackageSource, SavedInputs } from 'xy-forever-client';
@@ -7,9 +7,12 @@ import { webSocketOpener } from 'xy-forever-client/dev';
 import { CONTENT_STATE, CONTENT_STATE_OLD, ROOT, WRITE_RULE, changeRefusal, configText, contentText, folderWritable, groupMods,
   human, joinPath, modeText, nameProblem, parentOf, parseConfig } from './model.ts';
 import type { SavedConfig } from './model.ts';
-import { BugReport } from './bug-report.ts';
 import type { Action } from './bug-report.ts';
-import { confirmAction, downloadBlob, h, notice, previewBugReport, promptText } from './ui.ts';
+import { h } from './ui.ts';
+import { confirmAction, promptText } from './ask.tsx';
+import { notice } from './notice.ts';
+import { bugReport, sim, useConnection } from './connection.ts';
+import { downloadBlob } from './lib/download.ts';
 import { installPage } from './install/page.ts';
 import type { Lease } from './install/page.ts';
 import { currentPath, navigate, startRouter } from './router.ts';
@@ -21,11 +24,9 @@ import { pinned } from './install/release.ts';
 import { updateAvailable, updateXyf } from './update.ts';
 import { UNINSTALL_PROTOCOL, uninstallAvailable, uninstallXyf } from './uninstall.ts';
 
-const sim = new URLSearchParams(location.search).get('sim');
 let client: Client | null = null;
 let busy = false;
 let uninstalling = false, stockRestored = false;
-const bugReport = new BugReport();
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
 
 // ---- Navigation and actions ---------------------------------------------------------------------------
@@ -50,10 +51,7 @@ function route(path = currentPath(), how: How = 'push'): void {
   else if (client || OPEN_PAGES.includes(p)) void loaders[p]();
 }
 
-function setLink(): void {
-  document.getElementById('link')!.classList.toggle('on', client !== null);
-  document.getElementById('link-text')!.textContent = client ? `Connected${sim ? ' (simulator)' : ''}` : 'Not connected';
-}
+function setLink(): void { useConnection.setState({ client }); }
 
 /** Runs one device action; errors are shown in plain words. A second action waits for the first. */
 async function run(action: Action, work: () => Promise<void>, label = ''): Promise<void> {
@@ -153,7 +151,7 @@ function installDeps(): Parameters<typeof installPage>[1] {
     find: findDevice,
     handoff: (lease) => {                     // installed: the connection becomes the app's, then the Mods page
       if (client !== lease.client) use(lease.client);
-      document.getElementById('installed')!.hidden = false;
+      useConnection.setState({ installed: true });
       navigate('/mods');
     },
     onPort: (listener) => nav.serial?.addEventListener?.('connect', listener),
@@ -239,7 +237,7 @@ function uninstallCard(c: Client): HTMLElement {
       client = null;
       setLink();
       install?.reset();
-      document.getElementById('installed')!.hidden = true;
+      useConnection.setState({ installed: false });
       stockRestored = true;
       navigate('/connect', { replace: true });
     }
@@ -517,9 +515,11 @@ async function removePath(path: string, e: DirEntry): Promise<void> {
 
 // ---- Start -------------------------------------------------------------------------------------------
 
-setLink();
-document.getElementById('installed-dismiss')!.addEventListener('click', () => { document.getElementById('installed')!.hidden = true; });
-startRouter(route);
-document.getElementById('bug-report')!.addEventListener('click', () => {
-  previewBugReport(bugReport.snapshot(client?.connected === true));
-});
+let started = false;
+/** Starts the pages once their sections are in the document (StrictMode runs effects twice). */
+export function startLegacy(): void {
+  if (started) return;
+  started = true;
+  setLink();
+  startRouter(route);
+}
