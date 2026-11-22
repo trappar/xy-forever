@@ -20,8 +20,8 @@
 //    window's close, a frame's idle reset) wait for an advance, which is how a host's pause reaches the device
 //    (xy_forever/transport.py sim_pause, Simulator.advance; Simulator.settle runs it until nothing is done).
 //  - A step goes no further than the next known event (a processor's bounded wait's end too); it is 1 ms after
-//    any activity and doubles while nothing happens, up to max_step (the device's own timers are not known
-//    events, but for a held key's next repeat: they fire within max_step).
+//    any activity and doubles while nothing happens, up to max_step (max_rest_step with B at rest; the device's
+//    own timers are not known events, but for a held key's next repeat: they fire within that).
 //  - It also moves by a relayed link message's transfer time (link_ns + link_byte_ns per byte) and, while a
 //    processor is busy (just after activity), by read_ns per clock read, so work takes device time.
 // A processor that is busy (computing, or waiting for the other) stops the clock: its slowness on a busy
@@ -42,7 +42,9 @@ namespace {
 const uint32_t idle_reads = 32;             // clock reads with nothing done between them: a polling loop, idle
 const uint64_t read_ns = 1000, link_ns = 20000, link_byte_ns = 200;   // ~5 MB/s link (docs/hardware/devices.md)
 const uint64_t min_step = 1000000, quiet_limit = 60000000000ull;   // 60 s of device time with nothing done: hung
-const uint64_t max_step = 10000000;         // a step's most: the device's own timers fire at most 10 ms late
+// A step's most: B's own timers fire at most that late. Waiting away from rest (B's own time-outs, polled) 10 ms;
+// at rest (its menu's timers: a retry, a mark's end) 100 ms, so a long advance takes few steps.
+const uint64_t max_step = 10000000, max_rest_step = 100000000;
 const uint64_t rest_limit = 1000000000ull;  // work at rest runs the clock 1 s past the last news from outside
 uint64_t start_ns = 0;                       // this processor's clock at its first read (its counter's zero)
 bool started = false;
@@ -252,7 +254,8 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
     }
     uint64_t step = worked ? min_step : step_ns;
     if (bound && bound - now < step) step = bound - now;
-    step_ns = worked ? 2 * min_step : (step_ns * 2 < max_step ? step_ns * 2 : max_step);
+    const uint64_t most = rest ? max_rest_step : max_step;
+    step_ns = worked ? 2 * min_step : (step_ns * 2 < most ? step_ns * 2 : most);
     quiet_ns += step;
     stepped_work = work;
     shared->clock_ns += step;

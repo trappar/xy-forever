@@ -22,7 +22,7 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   `home_pump`, tick, link check; SCREEN shows a test pattern, KEY does nothing).
 - **Device time** (`sim/clock.cpp`, every run: tests, `python3 -m xy_forever.sim`, the web app, `conformance.py
   --sim`): a clock only the simulator moves, never host time. The board steps it (1 ms after activity, doubling
-  up to 10 ms, never past a known event: a reset delay, a delayed link message, a fault's delay, a held key's
+  up to 10 ms, 100 ms with B at rest, never past a known event: a reset delay, a delayed link message, a fault's delay, a held key's
   repeat) only while both processors are idle (no link message in flight, each main thread in a wait or polling the clock with nothing
   done) and something is due: an `advance`, a board event, B waiting on device time away from its menu loop's
   pause (a delay, a time-out), or work since the last step (with B at rest: only while B owes a host request its

@@ -614,7 +614,7 @@ class PageAndSwitch(PageBase, CS.Switch, unittest.TestCase):
     def test_opened_during_a_usb_job_write_phase(self):
         """A USB mods.apply in its write phase (A slowed): the page opened fresh says busy, sends nothing, lists
         when the job is over; the job's result is the same."""
-        self.sim.set('a_slow_ms', 300)                  # the write phase outlasts what the device runs on its own
+        self.sim.set('a_slow_ms', 120)                  # the write phase outlasts what the device runs on its own
         job = self.start(['alpha', 'gamma'])
         self.until_phase(job, MS.PHASES.index('write'))
         self.opened_busy('a USB job')
