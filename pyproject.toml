@@ -26,6 +26,13 @@ dev = [
 [tool.uv]
 package = false   # not an installable package yet (#234)
 
+[tool.vulture]
+# `uv run vulture`: dead code. The names below are found by pytest and the device pass, not by calls.
+paths = ["xy_forever", "scripts", "tests", "re", "xyf_build.py", "xyf_host.py", "xyf_package.py", "ui_preview.py",
+         "verify.py"]
+ignore_names = ["step_*", "test_*", "setUp*", "tearDown*", "pytest_*", "Test*", "log_message"]
+min_confidence = 61
+
 [tool.pytest]
 # The suite: tests/ (unittest.TestCase classes, run by pytest). tests/conftest.py holds the tiers, the hard
 # bounds (#230), the budgets and the C++ and script selection for --testmon. `mise tasks` lists the commands.

@@ -55,7 +55,7 @@ EDIT_KEYS = {'kind', 'name', 'address', 'file_offset', 'length', 'before', 'afte
 MACHINE_ID = re.compile(r'[a-z][a-z0-9_]{0,14}')
 EXTENSION_ID = re.compile(r'[a-z][a-z0-9_]{0,31}')
 RELOCATIONS = (6, 7, 10, 13, 18)   # LUIMM16, HUIMM16, PCREL24, PCREL24_JUMP_L, BYTE4_DATA
-SHN_ABS, SHN_COMMON = 0xfff1, 0xfff2
+SHN_ABS = 0xfff1
 STT_FILE = 4
 # Files a mod package may hold (anything else, e.g. edits or definitions, belongs only to the base).
 MOD_FILES = re.compile(r'manifest\.json|info\.txt|files\.sha256|objects\.txt|objects/[A-Za-z0-9_./-]+\.o|catalog\.txt|'

@@ -101,15 +101,6 @@ def remote_tree(dev, folder, other=None):
     return files, dirs
 
 
-def write_file(dev, data, path):
-    code = dev.stage(data)
-    check(code, 'stage %s' % path)
-    code, written, back = dev.file_write(path, hashlib.sha256(data).digest(), timeout=60.0 + len(data) / 20000.0)
-    check(code, 'file.write_staged %s' % path)
-    if written != len(data) or back != zlib.crc32(data) & 0xffffffff:
-        raise Refused('file.write_staged %s: written %d of %d, read-back CRC differs' % (path, written, len(data)))
-
-
 def delete(dev, path, folder=False):
     code, error = dev.change(P.ids.REMOVE_DIR if folder else P.ids.DELETE_FILE, path)
     check(code, '%s %s (error %d)' % ('file.rmdir' if folder else 'file.delete', path, error))
