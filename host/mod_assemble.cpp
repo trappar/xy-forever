@@ -308,7 +308,8 @@ void assemble(const Job& job, Inputs& in, Assembly& a, mod_patch::Patcher& p, mo
     const unsigned long long size = job.image_limit ? job.image_limit :
         (unsigned long long)used.stock_bytes + 16 + used.module_bytes;
     if (size > (64u << 20) || size < a.profile.stock_bytes) { a.input = "base"; a.input_detail = "image size"; return; }
-    a.image.assign(size_t(size), 0);
+    a.image.resize(size_t(size));                 // zeroed with memset: a fuzz round reuses the allocation
+    std::memset(a.image.data(), 0, a.image.size());
     std::memcpy(a.image.data(), in.stock.data(), std::min(in.stock.size(), a.image.size()));
     const mod_patch::Limits plimits;
     static Bytes pscratch;
@@ -329,7 +330,8 @@ void assemble(const Job& job, Inputs& in, Assembly& a, mod_patch::Patcher& p, mo
     a.selection.expanded = job.expanded;
     const mod_link::Limits llimits;
     const U32 lbytes = mod_link::scratch_bytes(llimits);
-    a.link_scratch.assign(lbytes / 4 + 1, 0);
+    a.link_scratch.resize(lbytes / 4 + 1);
+    std::memset(a.link_scratch.data(), 0, a.link_scratch.size() * sizeof(U32));
     a.ws.scratch = reinterpret_cast<Byte*>(a.link_scratch.data()); a.ws.capacity = lbytes;
     const U32 stock = std::min<U32>(a.profile.stock_bytes, U32(a.image.size()));
     a.linked = true;
@@ -529,8 +531,12 @@ int fuzz(const Job& job, unsigned seed, unsigned count) {
             set_info(pk, key, values[rng() % 8]);
         }
         static Assembly a;
+        Bytes image;                  // the large buffers outlive the fresh Assembly (assemble zeroes them):
+        std::vector<U32> scratch;     // allocating them each round is most of a sanitized round's time
+        image.swap(a.image), scratch.swap(a.link_scratch);
         a.~Assembly();
         new (&a) Assembly();
+        a.image.swap(image), a.link_scratch.swap(scratch);
         assemble(job, in, a, p, b);
         std::string key = "input=" + a.input;
         if (a.linked) key += " link=" + std::to_string(int(a.link));
