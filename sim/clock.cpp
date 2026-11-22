@@ -81,6 +81,12 @@ bool in_flight() {
 // (its own loop for outflight, link_taken() for inflight), so an idle processor need not.
 bool menu_pause = false; // B: inside cdc_wait (at rest there: its menu loop; elsewhere: a hang)
 void publish(uint32_t work, uint32_t steps, uint64_t until, bool rest) {
+    // A whose slave is open now, with a request its link thread holds (it came before the open): not idle. The link
+    // thread hands it over (kick: work), so the board never steps B's wait on it while A would answer.
+    if (role == 0 && a_held.load() && (r32(0x20057004u) & 0x2000u)) {
+        wake(3);
+        return;
+    }
     // A idle is at rest (its loop); B only where it says so: 1 its menu loop's pause, 2 a hang (it never answers).
     shared->idle_rest[role] = role == 0 ? 1 : !rest ? 0 : menu_pause ? 1 : 2;
     shared->idle_until[role] = until;
@@ -201,9 +207,12 @@ void cdc_wait(int ms, uint64_t event) { // B's menu loop pause, woken by USB dat
     // device_cycles()) is one. B is at rest
     // here: the clock stands still unless something is due. A pass that polled the clock (a slice of a job, a
     // wait) counts as work, so the next pass comes 1 ms later.
-    static uint32_t reads = 0;
+    static uint32_t reads = 0, told = 0; // told: the USB news the last pause ended on
     if (shared->clock_reads[1].load() - reads >= idle_reads) active();
     const uint32_t seen = usb_news;
+    // News a wait inside the pass saw (B waiting on A while the host sent its next request): the pass may have read
+    // the port before it came, so the next pass looks now. Else B rests on unread bytes no step will come for.
+    if (seen != told) ms = 0;
     for (const uint64_t until = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < until;) {
         if (fd >= 0 && ::poll(p, 2, 0) > 0 && usb_check(p[0].revents, p[1].revents)) break; // new, not left unread
         menu_pause = true;
@@ -211,6 +220,7 @@ void cdc_wait(int ms, uint64_t event) { // B's menu loop pause, woken by USB dat
         menu_pause = false;
         if (usb_news != seen) break; // block() saw it arrive
     }
+    told = usb_news;
     reads = shared->clock_reads[1].load();
 }
 
@@ -306,7 +316,9 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
     // read holds its reply up. Up to quiet_limit with nothing done: then nothing will be (a hung processor),
     // and the clock stands still until something comes.
     const int32_t rest = shared->idle_rest[1].load();
-    const bool held = shared->usb_held.load() != 0;
+    // set hold_clock 1: nothing B waits on or works at runs the clock, only advance, jump and board events (a test
+    // that acts while B waits, so that B's wait never ends at the host's pace).
+    const bool hold = shared->hold_clock.load() != 0, held = hold || shared->usb_held.load() != 0;
     const int32_t asked_a = running[1] && rest == 1 && !held ? shared->usb_asked.load() : 0;
     const bool waited = running[1] && !held && (!rest || asked_a == 2);
     if (waited && !worked && quiet_ns >= quiet_limit && !hung) {
@@ -320,7 +332,7 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
     // come to rest. A host that waits for more moves the clock on (advance: its pause). A request B has not read
     // whole (a frame split across host writes) is no work: B's idle frame time-out waits for the rest as on the device.
     const bool asked = asked_a != 0;
-    const bool working = worked && (waited || asked || (outside_any && now - outside_ns < rest_limit));
+    const bool working = worked && !hold && (waited || asked || (outside_any && now - outside_ns < rest_limit));
     if (!due && !working && (!waited || hung)) { // nothing is due: the clock stands still
         for (int client : settles)
             if (write(client, "{\"ok\": true}\n", 13) < 0) {}

@@ -25,6 +25,7 @@ struct Shared {
     std::atomic<int32_t> a_silent, a_slow_ms, drop_request, drop_body, cable_pull, cut_after, fail_write;
     std::atomic<int32_t> fail_mount;              // the Nth yaffs mount from now fails (EIO)
     std::atomic<int32_t> hold_mod_verify;         // hold a USB mod job after it writes its output parts
+    std::atomic<int32_t> hold_clock;              // device time moves only by advance, jump and board events
     std::atomic<int32_t> a_silenced; // B's class requests a_silent kept from A, or A's answer to (tests: B waits)
     std::atomic<uint32_t> clock_reads[2]; // device clock reads by A and B (tests: B waits on a request)
     // Test hooks: the Nth stock select on A switches the partition and then answers failure;

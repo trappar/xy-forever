@@ -109,6 +109,7 @@ std::string command(const std::string& line, bool& quit, int client) {
                       {"otp_fail", &shared->otp_fail},
                       {"otp_preinit", &shared->otp_preinit},
                       {"hold_mod_verify", &shared->hold_mod_verify},
+                      {"hold_clock", &shared->hold_clock},
                       {"fail_select", &shared->fail_select},
                       {"statfs_override", &shared->statfs_override},
                       {"statfs_block_bytes", &shared->statfs_block_bytes},

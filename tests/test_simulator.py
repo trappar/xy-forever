@@ -263,8 +263,12 @@ class SimulatorTest(unittest.TestCase):
 
     def hold_window(self, dev, hold_ms, probe):
         """diag.engine_test in a thread (A's run entry holds the read-write window for hold_ms);
-        returns (thread, reply) once A deletes probe, i.e. the window is open."""
+        returns (thread, reply) once A deletes probe, i.e. the window is open. The clock is held (hold_clock): B's
+        hold ends only by the test's advance, never at the host's pace while the test acts in the window."""
         reply = {}
+        self.sim.set('hold_clock', 1)
+        # The call waits on the test's own steps, not on the simulator alone: no SIM_CALL_S cap (timeout: a hang bound).
+        dev.sim_call_s = None
 
         def run():
             try:
@@ -274,10 +278,9 @@ class SimulatorTest(unittest.TestCase):
 
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
-        deadline = time.monotonic() + 5.0
-        while self.a_request(PATH_CLASS, 0x25, path=probe) != (0, 0):
-            self.assertLess(time.monotonic(), deadline, 'the read-write window never opened')
-            self.sim.advance(20)
+        self.sim.until(
+            lambda: self.a_request(PATH_CLASS, 0x25, path=probe) == (0, 0), 'the read-write window open', 5000
+        )
         return thread, reply
 
     @pytest.mark.sim
@@ -334,6 +337,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertFalse((root / 'xy-forever/log/old.bin').exists() or (root / 'emptydir').exists())
         self.assertTrue((root / 'newdir').is_dir())
         self.sim.advance(4000)  # the hold's end, not waited for (B waits on A's reply)
+        self.sim.set('hold_clock', 0)
         thread.join(30.0)
         code, body = reply['r']
         self.assertEqual((code, struct.unpack('<16I', body[:64])[0]), (0, 11))  # the self-test still passes
@@ -344,6 +348,7 @@ class SimulatorTest(unittest.TestCase):
         thread, reply = self.hold_window(dev, 3000, '/yaffs2/probe-2')
         tag = self.sim.inject(PARTITION_CLASS, 0x14, 0)
         self.wait(lambda s: s['a_boots'] > boots, what='A restarted')
+        self.sim.set('hold_clock', 0)
         self.assertFalse(self.sim.injected(tag)['done'])
         self.assertEqual(bootpart.read_bytes() if bootpart.exists() else None, before)
         self.assertTrue((root / 'bootloader.dev').exists())
