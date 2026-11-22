@@ -422,7 +422,8 @@ test("an uninstall cancelled, then stopped at the boot write, keeps XY Forever, 
 
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
-    await expect(page.getByTestId('notice')).toHaveText(/boot\.uninstall|read-back/i);
+    // After the 2.3 MB read and upload: bounded by the test's time-out only, as the first test's wait is.
+    await expect(page.getByTestId('notice')).toHaveText(/boot\.uninstall|read-back/i, { timeout: 0 });
     expect(bootWrites()).toBe(1);
     expectActive(sim, candidate);
     expect(existsSync(file('xy-forever/firmware'))).toBe(true);
