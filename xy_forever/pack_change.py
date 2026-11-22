@@ -157,9 +157,16 @@ def change(session, action, pack_id):
             print('Pack detached; cleanup pending: %s' % error)
 
 
-def signed_request(dev, operation, name=''):
+def signed_request(dev, operation, name='', busy_s=0.0):
+    """busy_s: how long a busy device is asked again (an import right after a change waits for the
+    write window to settle, about 8 s)."""
     payload = struct.pack('<II', 1, operation) + name.encode('utf-8') + b'\0'
-    code, body = dev.call(P.ids.PACKS_MANAGE, payload, timeout=60.0)
+    deadline = time.monotonic() + busy_s
+    while True:
+        code, body = dev.call(P.ids.PACKS_MANAGE, payload, timeout=60.0)
+        if code != P.ids.S_BUSY or time.monotonic() >= deadline:
+            break
+        time.sleep(0.5)
     if code == P.ids.S_REFUSED and operation == OP_ENABLE:
         raise store.StoreError('compatibility unknown or pack path refused')
     store.check(code, 'signed pack')
@@ -187,7 +194,7 @@ def failure_site(site, detail):
 
 def signed_change(dev, action, pack_id):
     operation = SIGNED_OPERATIONS[action]
-    signed_request(dev, operation, pack_id)
+    signed_request(dev, operation, pack_id, busy_s=20.0 if operation == OP_IMPORT else 0.0)
     if operation != OP_IMPORT:
         print('%s pack %s' % ('Enabled' if operation == OP_ENABLE else 'Disabled', pack_id))
         return 0
