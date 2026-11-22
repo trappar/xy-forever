@@ -19,7 +19,7 @@ std::string status_json() {
         "\"partition\": %d, \"boot_writes\": %d, \"rw_open\": %d, \"unclean_mounts\": %d, "
         "\"to_a\": %u, \"to_b\": %u, \"otp_fields\": %d, \"otp_fail\": %d, \"otp_inits\": %d, \"otp_reads\": %d, "
         "\"a_bootloader\": %d, \"b_bootloader\": %d, \"clock_ms\": %lld, "
-        "\"b_sent_ms\": %lld, \"a_reset_ms\": %lld, \"b_reset_ms\": %lld, \"outstanding\": %zu, "
+        "\"b_sent_ms\": %lld, \"a_reset_ms\": %lld, \"b_reset_ms\": %lld, \"outstanding\": %zu, \"a_delayed\": %zu, "
         "\"odd_selects\": %d, \"b_queue\": %d, \"b_queued\": %d, \"cut_body\": %d, "
         "\"boot_a_window_ms\": %d, \"b_waits_a\": %d, \"b_close_stuck\": %d, \"rw_mounts\": %d, "
         "\"stage2_opens\": %d, \"stage2_calls\": %d, \"a_silenced\": %d, \"a_clock_reads\": %u, \"b_clock_reads\": %u, \"needs_repair\": %d, %s}",
@@ -30,7 +30,7 @@ std::string status_json() {
         shared->boot_writes.load(), shared->rw_open.load(), shared->unclean_mounts.load(), relayed[0], relayed[1],
         otp_fields(), shared->otp_fail.load(), shared->otp_inits.load(), shared->otp_reads.load(),
         shared->in_bootloader[0].load(), shared->in_bootloader[1].load(), (long long)board_ms(), (long long)b_sent_ms,
-        (long long)reset_ms[0], (long long)reset_ms[1], outstanding.size(), shared->odd_selects.load(),
+        (long long)reset_ms[0], (long long)reset_ms[1], outstanding.size(), to_a.size(), shared->odd_selects.load(),
         shared->b_queue.load(), shared->b_queued.load(), shared->cut_body.load(), shared->boot_a_window_ms.load(),
         shared->b_waits_a.load(), shared->b_close_stuck.load(), shared->rw_mounts.load(), shared->stage2_opens.load(),
         shared->stage2_calls.load(), shared->a_silenced.load(), shared->clock_reads[0].load(),

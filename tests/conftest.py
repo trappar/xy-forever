@@ -49,6 +49,7 @@ BUDGETS = {
 }
 TIERS = tuple(BUDGETS)
 PROBE_S = 0.035  # probe_s() on the reference machine (Apple M5 Max), idle: more scales the limits
+FAILURES = ROOT / 'build' / 'test-failures.log'  # every run's failures, appended (FailureLog)
 TRACING = 2.5  # --testmon: coverage tracing took 1.6x a test's CPU time (median), 2.2x at worst
 
 
@@ -76,6 +77,8 @@ def pytest_configure(config):
     config.pluginmanager.register(CpuClock(), 'xyf-cpu')
     if not hasattr(config, 'workerinput'):
         config.pluginmanager.register(Budgets(config), 'xyf-budgets')
+        if config.rootpath == ROOT:  # not a planted run (test_budgets, test_hang_bounds)
+            config.pluginmanager.register(FailureLog(), 'xyf-failures')
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -206,3 +209,30 @@ class Budgets:
     def pytest_terminal_summary(self, terminalreporter):
         for line in self.lines:
             terminalreporter.write_line(line, red=line.startswith('BUDGET'))
+
+
+class FailureLog:
+    """Controller side: every failure (a test, a subtest, a crashed worker, a budget) is appended, with its
+    output, to FAILURES, so an intermittent one names its test after the terminal is gone."""
+
+    def __init__(self):
+        self.lines = []
+
+    def pytest_runtest_logreport(self, report):
+        if report.failed:
+            context = getattr(report, 'context', None)  # a subtest's: its message or parameters
+            sub = context and (context.msg or context.kwargs)
+            name = report.nodeid + (' [subtest %s]' % (sub,) if context else '')
+            self.lines.append('FAILED %s (%s)\n%s\n' % (name, report.when, report.longreprtext))
+
+    def pytest_terminal_summary(self, terminalreporter, config):
+        budgets = config.pluginmanager.get_plugin('xyf-budgets')
+        self.lines += [line + '\n' for line in budgets.lines if line.startswith('BUDGET')]
+        if self.lines:
+            FAILURES.parent.mkdir(parents=True, exist_ok=True)
+            with open(FAILURES, 'a') as f:
+                f.write(
+                    '== %s: pytest %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), ' '.join(config.invocation_params.args))
+                )
+                f.writelines(self.lines)
+            terminalreporter.write_line('failures logged: %s' % FAILURES.relative_to(ROOT), red=True)

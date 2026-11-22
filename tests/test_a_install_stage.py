@@ -69,8 +69,11 @@ class AStagingTests(unittest.TestCase):
         self.sim.set('a_slow_ms', 1000)
         for _ in range(400):  # 50 ms of device time between looks: inside A's 1 s answers
             progress = self.progress()
-            if 0 < progress['done'] < progress['total'] and self.sim.status()['outstanding']:
-                break  # A acknowledged bytes; the accepted transfer now has a class request out
+            status = self.sim.status()
+            # A acknowledged bytes; the accepted transfer now has a class request out: held for A's 1 s delay
+            # (a_delayed) or in A's hands (outstanding). In A's hands alone was missed under load (#229).
+            if 0 < progress['done'] < progress['total'] and status['outstanding'] + status['a_delayed']:
+                break
             self.sim.advance(50)
         else:
             self.fail('no class request out mid transfer: %s' % progress)
