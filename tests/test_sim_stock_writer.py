@@ -6,7 +6,7 @@ import unittest
 
 import pytest
 import test_simulator as support
-from test_simulator import bounds, sim, BUILD, ids, BASE
+from test_simulator import sim, BUILD, ids
 
 
 KEY = bytes((0xa5 + i * 29) & 255 for i in range(256))                   # the representation's period: 256 bytes
@@ -24,8 +24,6 @@ class StockWriterIntegration(unittest.TestCase):
     setUp = support.SimulatorTest.setUp
     tearDown = support.SimulatorTest.tearDown
     connect = support.SimulatorTest.connect
-    write = support.SimulatorTest.write
-    file = support.SimulatorTest.file
     wait = support.SimulatorTest.wait
 
     @pytest.mark.sim
@@ -50,32 +48,3 @@ class StockWriterIntegration(unittest.TestCase):
             self.assertEqual(struct.unpack_from('<3I', raw, 0x400000), (3, len(data), zlib.crc32(data)))
         self.assertEqual(dev.stage(stock), 0)
         self.assertEqual(dev.install(hashlib.sha256(stock).digest())[0], ids.S_IMAGE)    # no cold descriptor
-
-    @pytest.mark.sweep
-    def test_transient_writer_error_retries_and_returns_to_user_partition(self):
-        """Stock retries the failed trim; B still verifies encrypted staging and restores user media."""
-        dev = self.connect(startup_ready=True)
-        stock = sim.STOCK_OS.read_bytes()
-        self.assertEqual(dev.stage(stock), 0)
-        self.sim.set('fail_write', 1)                      # the writer's first boot-partition write fails
-        code, written, partition, _ = dev.uninstall(hashlib.sha256(stock).digest())
-        self.assertEqual((code, written, partition), (0, len(stock), 1))
-        status = self.sim.status()
-        self.assertEqual((status['partition'], status['fail_write']), (0, 0))
-        data = b'written after a failed install'
-        self.assertEqual(self.write(dev, data, BASE + 'log/after.bin'), (0, len(data), zlib.crc32(data)))
-        self.assertEqual(self.file(BASE + 'log/after.bin'), data)
-        self.assertEqual(self.sim.status()['boot_writes'], 0)
-
-    @pytest.mark.sweep
-    def test_readback_select_error_after_success_is_refused(self):
-        dev = self.connect()
-        stock = sim.STOCK_OS.read_bytes()
-        digest = hashlib.sha256(stock).digest()
-        self.assertEqual(dev.stage(stock), 0)
-        self.assertEqual(dev.uninstall(digest), (0, len(stock), 1, len(stock) // 512 + 1))
-        self.assertEqual(dev.stage(stock), 0)
-        # The second write uses partition 2. Fail reselecting it after its header was found.
-        self.sim.set('fail_select', 7)
-        self.assertEqual(dev.uninstall(digest), (ids.S_INSTALL, len(stock), 2, 0))
-        self.assertEqual(self.sim.status()['partition'], 0)

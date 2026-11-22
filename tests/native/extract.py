@@ -1,11 +1,13 @@
-"""Build time (hosttest/CMakeLists.txt): the production code three C++ tests run, cut from the sources as they are.
+"""Build time (hosttest/CMakeLists.txt): the production code four C++ tests run, cut from the sources as they are.
 
 usage: extract.py ROOT OUT. Writes into OUT:
 - role_a_dispatch.inc: role A's request dispatch in Stock121PeerSession::poll (peer_dispatch_test.cpp);
 - lifecycle.inc: the write window's open/close/reopen and the server's open_window/close_engine
   (v3_write_lifecycle_test.cpp; only the Blackfin memory barrier is dropped);
 - fake_fs.inc, default.inc: xyf_library_test.cpp's in-memory file system, and the USB set-default command with the
-  A/B cache updates it drives (v3_default_refresh_test.cpp).
+  A/B cache updates it drives (v3_default_refresh_test.cpp);
+- install_verify.inc: B's INSTALL read-back of the boot partition, verify and header_matches
+  (sim_stock_writer_test.cpp).
 """
 import sys
 from pathlib import Path
@@ -61,8 +63,14 @@ def default_refresh():
     return fs, bodies
 
 
+def install_verify():
+    usb = unit_text(ROOT / 'target/usb_service.cpp')
+    return (function(usb, 'bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {') +
+            function(usb, 'U32 verify(U32 size, U32 crc) {'))
+
+
 OUT.mkdir(parents=True, exist_ok=True)
 fake_fs, default = default_refresh()
 for name, text in (('role_a_dispatch.inc', peer_dispatch()), ('lifecycle.inc', lifecycle()),
-                   ('fake_fs.inc', fake_fs), ('default.inc', default)):
+                   ('fake_fs.inc', fake_fs), ('default.inc', default), ('install_verify.inc', install_verify())):
     (OUT / name).write_text(text)

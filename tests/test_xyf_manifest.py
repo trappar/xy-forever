@@ -105,10 +105,10 @@ class ManifestTest(unittest.TestCase):
         return got
 
     def legacy_same(self, text):
-        status, strict, legacy, (name, version, kind, size, has_bytes) = self.lib.legacy(text)
+        status, strict, legacy, fields = self.lib.legacy(text)
         self.assertEqual(STATUS[status], 'ok', text)
         self.assertEqual(strict, legacy, text)
-        return types.SimpleNamespace(name=name, version=version, kind=kind, bytes=size, has_bytes=has_bytes)
+        return types.SimpleNamespace(**fields)          # xyf_store::Info's fields
 
     # -- info.txt ------------------------------------------------------------------------------
     def test_struct_layouts_match(self):

@@ -79,8 +79,7 @@ void bind_manifest(nb::module_ m) {
         const int status = parse(text_.c_str(), static_cast<uint32_t>(text_.size()), out);
         return std::make_tuple(status, out);
     });
-    // legacy(text) -> (status, strict view raw, xyf_store::parse_info raw, (name, version, kind, bytes, has_bytes)
-    // of the latter): the strict reader's legacy view and parse_info's fields for the same text (both zeroed first).
+    // legacy(text) -> (status, strict view raw, xyf_store::parse_info raw, the latter's fields by name): the strict reader's legacy view and parse_info's fields for the same text (both zeroed first).
     m.def("legacy", [](nb::bytes text_) {
         xyf::store::Info strict, legacy;
         std::memset(&strict, 0, sizeof strict);
@@ -89,9 +88,18 @@ void bind_manifest(nb::module_ m) {
         const int status = parse(text_.c_str(), static_cast<uint32_t>(text_.size()), parsed);
         legacy_info(parsed, strict);
         xyf::store::parse_info(text_.c_str(), static_cast<uint32_t>(text_.size()), legacy);
-        return std::make_tuple(status, raw_of(strict), raw_of(legacy),
-                               std::make_tuple(text(legacy.name), text(legacy.version), static_cast<int>(legacy.kind),
-                                               legacy.bytes, legacy.has_bytes));
+        nb::dict fields;
+        fields["name"] = text(legacy.name);
+        fields["version"] = text(legacy.version);
+        fields["kind"] = static_cast<int>(legacy.kind);
+        fields["bytes"] = legacy.bytes;
+        fields["crc32"] = legacy.crc32;
+        fields["machines"] = legacy.machines;
+        fields["has_bytes"] = legacy.has_bytes;
+        fields["has_crc32"] = legacy.has_crc32;
+        fields["has_machines"] = legacy.has_machines;
+        fields["has_generation"] = legacy.has_generation;
+        return std::make_tuple(status, raw_of(strict), raw_of(legacy), fields);
     });
     // list(data, chunk, stop_at) -> (status, the visited entries (see collect), count, lines): the list fed in pieces
     // of chunk bytes.

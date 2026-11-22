@@ -129,11 +129,11 @@ target_include_directories(doctest PRIVATE ${ROOT}/native ${ROOT}/target ${ROOT}
                            ${ROOT}/third_party/doctest)
 install(TARGETS doctest RUNTIME DESTINATION xyf_hosttest)
 
-# Three case files run production code cut from the sources at build time (tests/native/extract.py), with the
+# Four case files run production code cut from the sources at build time (tests/native/extract.py), with the
 # defines that code is built with.
 set(EXTRACTED ${CMAKE_CURRENT_BINARY_DIR}/extracted)
 set(EXTRACT_OUT ${EXTRACTED}/role_a_dispatch.inc ${EXTRACTED}/lifecycle.inc ${EXTRACTED}/fake_fs.inc
-                ${EXTRACTED}/default.inc)
+                ${EXTRACTED}/default.inc ${EXTRACTED}/install_verify.inc)
 file(GLOB EXTRACT_PARTS CONFIGURE_DEPENDS ${ROOT}/target/usb_service*.ipp ${ROOT}/target/file_boot*.ipp)
 add_custom_command(OUTPUT ${EXTRACT_OUT}
   COMMAND ${Python_EXECUTABLE} ${ROOT}/tests/native/extract.py ${ROOT} ${EXTRACTED}
