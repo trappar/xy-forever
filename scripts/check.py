@@ -116,16 +116,6 @@ def shown(s):
     return shlex.join(['%s=%s' % kv for kv in s['env'].items()] + words)
 
 
-def last_json(text):
-    """The last JSON object printed at the start of a line (xyf_build.py's result), or None."""
-    at = text.rfind('\n{')
-    at = at + 1 if at >= 0 else (0 if text.startswith('{') else -1)
-    try:
-        return json.JSONDecoder().raw_decode(text, at)[0] if at >= 0 else None
-    except ValueError:
-        return None
-
-
 def tests_parser(tier):
     """Passed when pytest exits 0; its counts (the summary line) go into the receipt."""
 
@@ -143,13 +133,14 @@ def tests_parser(tier):
 
 
 def verify_parser(out, tree, commit):
-    """--verify passed, and the candidate's bytes match the build's manifest. Then a copy of the build goes to
+    """--verify exited 0 and its verification.json in out records a pass, and the candidate's bytes match the
+    build's manifest. Then a copy of the build goes to
     BUILDS/<image> (out itself stays: it is the cache's output), and check.json there maps it to the tree and
     commit."""
 
     def parse(status, text):
-        result, candidate = last_json(text), out / 'candidate.ldr'
-        if status or not result or result.get('passed') is not True or not candidate.is_file():
+        candidate = out / 'candidate.ldr'
+        if status or not paths.verified(out):
             return False, {}
         data = candidate.read_bytes()
         digest = hashlib.sha256(data).hexdigest()

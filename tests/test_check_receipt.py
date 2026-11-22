@@ -242,12 +242,14 @@ class CheckReceiptTests(unittest.TestCase):
             digest = __import__('hashlib').sha256(b'candidate').hexdigest()
             parse = C.verify_parser(out, 't' * 40, 'c' * 40)
             (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256='0' * 64, image='00000000')))
-            self.assertFalse(parse(0, '{\n  "passed": true\n}\n')[0])  # bytes differ from the manifest
+            self.assertFalse(parse(0, '')[0])  # bytes differ from the manifest
             (out / 'manifest.json').write_text(json.dumps(dict(candidate_sha256=digest, image=digest[:8])))
-            self.assertFalse(parse(0, '{\n  "passed": false\n}\n')[0])
-            self.assertFalse(parse(1, '{\n  "passed": true\n}\n')[0])
+            self.assertFalse(parse(1, '')[0])
+            (out / 'verification.json').write_text(json.dumps(dict(passed=False, mode='xyf-product')))
+            self.assertFalse(parse(0, '')[0])
+            (out / 'verification.json').write_text(json.dumps(dict(passed=True, mode='xyf-product')))
             with mock.patch.object(C.paths, 'BUILDS', builds):
-                passed, facts = parse(0, 'log line\n{\n  "passed": true\n}\n')
+                passed, facts = parse(0, 'firmware verify: build/product (image %s, built)\n' % digest[:8])
             self.assertTrue(passed)
             named = builds / digest[:8]  # copied to builds/<image>
             self.assertEqual(facts['candidate'], dict(sha256=digest, image=digest[:8], bytes=9, build=str(named)))
