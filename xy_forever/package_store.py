@@ -11,11 +11,13 @@ import hashlib
 import re
 import secrets
 import struct
-import time
 
 from . import depth, host_write, package_records
 from . import usb_proto as P
+from .transport import pause
 from .xyf_entry import read_files_sha256
+
+BUSY_S = 60  # how long a busy device is waited for (its time)
 
 ROOT = '/yaffs2/xy-forever'
 TMP = ROOT + '/tmp'
@@ -92,13 +94,12 @@ class Session:
         check(code, 'package.session')
 
     def __enter__(self):
-        until = time.monotonic() + 60
-        while True:
+        for tries in range(BUSY_S * 20, -1, -1):  # 50 ms apart, on the device's clock (the simulator's, in tests)
             code, _ = self.dev.call(P.ids.PACKAGE_SESSION, struct.pack('<II', 1, 0) + self.token)
-            if code != P.ids.S_BUSY or time.monotonic() >= until:
+            if code != P.ids.S_BUSY or not tries:
                 check(code, 'package.session')
                 break
-            time.sleep(0.05)
+            pause(getattr(self.dev, 't', None), 0.05)
         if self.sweep_on_enter:
             self.sweep()
         return self
@@ -113,13 +114,12 @@ class Session:
     def finish(self):
         self.command(2)
         # The close resynchronizes A's library view. USB remains live meanwhile.
-        until = time.monotonic() + 60
-        while True:
+        for tries in range(BUSY_S * 50, -1, -1):  # 20 ms apart, on the device's clock
             code, _ = self.dev.list_dir(ROOT)
-            if code != P.ids.S_BUSY or time.monotonic() >= until:
+            if code != P.ids.S_BUSY or not tries:
                 check(code, 'package window close')
                 break
-            time.sleep(0.02)
+            pause(getattr(self.dev, 't', None), 0.02)
 
     def read(self, path, optional=False):
         self.command(1)
