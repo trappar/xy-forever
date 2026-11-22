@@ -91,7 +91,7 @@ If step 3 fails, its one line says why. Fallback: the developer copies those fil
 ```sh
 python3 scripts/setup.py fixtures     # network: public open-xy and its kit; builds and verifies one product build
 mise run doctor                       # required build inputs present; reports optional fixtures separately
-mise run test                         # the full suite; the first run compiles host bridges (slower)
+mise run test-all                     # every tier; the first run compiles host bridges (slower)
 ```
 
 Done when `doctor` exits 0 and the suite passes. It lists expected skips, including mod-kit checks if

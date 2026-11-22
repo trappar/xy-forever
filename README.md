@@ -21,7 +21,7 @@ Clone the repository and run a host-only check. These commands need git and
 git clone https://github.com/trappar/xy-forever.git
 cd xy-forever
 mise trust && mise install
-mise run test test_setup test_protocol_spec
+mise run test tests/test_setup.py tests/test_protocol_spec.py
 ```
 
 Full setup, about six steps: `xcode-select --install`, install mise, `brew install libusb`, clone and
