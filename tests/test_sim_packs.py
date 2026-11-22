@@ -39,7 +39,8 @@ class PackChanges(Rows, unittest.TestCase):
         self.press(PLUS)
         self.press(PLAY)
 
-    @pytest.mark.sweep
+    @pytest.mark.gate  # a simulator sweep
+    @pytest.mark.uses('sim/')
     def test_menu_cut_on_detach_resumes_cleanup(self):
         self.seed_pack()
         target = self.root / 'content/dlc/fixture'
@@ -59,7 +60,8 @@ class PackChanges(Rows, unittest.TestCase):
         self.until(lambda: not any(name.startswith('pkg-v1-') for name in self.leftovers()), 'scratch cleanup')
         self.assertEqual((self.root / 'content/op1_factory.json').read_bytes(), before)
 
-    @pytest.mark.sweep
+    @pytest.mark.gate  # a simulator sweep
+    @pytest.mark.uses('sim/')
     def test_renamed_away_before_interrupted_cleanup(self):
         self.seed_pack()
         self.assertEqual(self.packs('install', 'fixture', '--yes')[0], 0)

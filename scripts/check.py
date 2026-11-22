@@ -10,14 +10,15 @@ The steps, in order, stopping at the first failure:
     a verified build is copied to <private>/xy-forever/builds/<image> (its name: the first 8 hex digits of the
     candidate's SHA-256, hello image=), with check.json naming the tree and commit (scripts/neutral.py reuses it:
     mise run neutral);
-  - lint and type checks: the generated protocol files match protocol/ (protogen --check), and `pnpm run
-    typecheck` in clients/ts and web when they differ from the merge base with main (or with --js);
-  - the fast and sim tiers in one run, then the gate tier (pytest -m 'fast or sim', -m gate: tests/conftest.py),
-    the tests given a private copy of the verified build (a shared image name can be replaced during the run).
+  - lint and type checks: the generated protocol files match protocol/ (protogen --check), `mise run lint`, and
+    `pnpm run typecheck` in clients/ts and web when they differ from the merge base with main (or with --js);
+  - every tier but the sweeps in one pytest run (-m 'not sweep': tests/conftest.py, which enforces the CPU
+    budgets), the tests given a private copy of the verified build (a shared image name can be replaced during
+    the run).
 First, when node_modules is missing or older than pnpm-lock.yaml (a fresh worktree), `pnpm install --frozen-lockfile`
 (Turborepo and the type checks need it).
-Budgets: the whole check STEP_BUDGET_S a step and TOTAL_BUDGET_S in all (about twice the measured times); going
-over fails the check and names the step (XYF_BUDGETS=off only reports it). Each step's hard bound is STEP_S.
+Wall time: a step over STEP_WALL_S or the whole over TOTAL_WALL_S is reported, never failed (a busy machine
+stretches wall time; the suite's CPU budgets are what fail). Each step's hard bound is STEP_S.
 Step output goes to a log under <private>/xy-forever/sessions/<date>-check/; a short summary is printed.
 
 The receipt is a cache keyed on the tree: a run on a clean tree (`git status --porcelain` empty) where every
@@ -51,9 +52,9 @@ CHECKS = paths.XYF / 'checks'  # receipts: <tree>.json (passed), <tree>.failed.j
 KEEP_BUILDS = 5  # builds/<image> folders a check made (check.json) kept, ~7 MB each
 RECENT = 15 * 60  # seconds: a build folder touched since then is never pruned
 STEP_S = 120  # seconds: a step past it ends with its process group (#230)
-STEP_BUDGET_S = 15  # seconds: a step over it fails the check (see the docstring)
-TOTAL_BUDGET_S = 30
-PYTEST = ('-m', 'pytest', '-p', 'no:randomly', '--dist', 'worksteal')
+STEP_WALL_S = 15  # seconds: a step over it is reported (see the docstring)
+TOTAL_WALL_S = 30
+PYTEST = ('-m', 'pytest', '-n', 'auto', '--dist', 'worksteal')
 
 
 class CheckError(Exception):
@@ -109,8 +110,9 @@ def step(name, cmd, cwd, env=None, parse=None, timeout=STEP_S):
 
 
 def shown(s):
-    """A step's command as recorded: env first, the interpreter as python3, paths relative to the repository."""
-    words = ['python3' if c == sys.executable else c for c in s['cmd']]
+    """A step's command as recorded: env first, the interpreter as `uv run python`, paths relative to the
+    repository."""
+    words = [w for c in s['cmd'] for w in (('uv', 'run', 'python') if c == sys.executable else (c,))]
     words = [os.path.relpath(c, s['cwd']) if c.startswith(str(ROOT) + os.sep) else c for c in words]
     return shlex.join(['%s=%s' % kv for kv in s['env'].items()] + words)
 
@@ -219,15 +221,9 @@ def standard_steps(args, root, tree, work):
             parse=verify_parser(firmware_cache.OUT, tree, git(root, 'rev-parse', 'HEAD'), test_builds),
         ),
         step('protocol files', [py, root / 'scripts/protogen.py', '--check'], root),
+        step('lint', [shutil.which('mise') or 'mise', 'run', '--quiet', 'lint'], root),
         *js,
-        step(
-            'fast and sim tiers',
-            [py, *PYTEST, '-n', '12', '-m', 'fast or sim'],
-            root,
-            env,
-            tests_parser('fast and sim'),
-        ),
-        step('gate tier', [py, *PYTEST, '-n', '12', '-m', 'gate'], root, env, tests_parser('gate')),
+        step('tests', [py, *PYTEST, '-m', 'not sweep'], root, env, tests_parser('every tier but the sweeps')),
     ]
 
 
@@ -246,15 +242,15 @@ def js_steps(args, root):
     return steps
 
 
-def over_budget(results):
-    """The budget lines for a run whose steps all passed: a step over STEP_BUDGET_S, the whole over TOTAL_BUDGET_S."""
+def over_wall(results):
+    """The wall-time lines (reported only): a step over STEP_WALL_S, the whole over TOTAL_WALL_S."""
     lines = [
-        '%s took %.1f s: over the %d s a step' % (r['name'], r['seconds'], STEP_BUDGET_S)
+        '%s took %.1f s: over the %d s a step' % (r['name'], r['seconds'], STEP_WALL_S)
         for r in results
-        if r['seconds'] > STEP_BUDGET_S
+        if r['seconds'] > STEP_WALL_S
     ]
     total = sum(r['seconds'] for r in results)
-    return lines + (['the check took %.1f s: over %d s' % (total, TOTAL_BUDGET_S)] if total > TOTAL_BUDGET_S else [])
+    return lines + (['the check took %.1f s: over %d s' % (total, TOTAL_WALL_S)] if total > TOTAL_WALL_S else [])
 
 
 def run_steps(steps, log):
@@ -336,10 +332,8 @@ def check(root, steps_for, checks=CHECKS, log=None):
     if tree_of(root) != tree:
         raise CheckError('HEAD changed during the run: no receipt')
     passed = len(results) == len(steps) and all(r['result'] == 'pass' for r in results)
-    budget = over_budget(results) if passed else []
-    for line in budget:
-        print('BUDGET: ' + line, file=sys.stderr)
-    passed = passed and not (budget and os.environ.get('XYF_BUDGETS') != 'off')
+    for line in over_wall(results) if passed else []:
+        print('wall time (reported only): ' + line, file=sys.stderr)
     record = dict(
         version=VERSION,
         passed=passed,
@@ -434,12 +428,10 @@ def confirm(root, ref='HEAD', checks=CHECKS):
     if older:
         raise CheckError(
             'tree differs: %s has tree %s; the newest receipt for it covers tree %s (commit %s, %s). '
-            'Rerun python3 scripts/check.py on %s'
+            'Rerun mise run check on %s'
             % (ref, tree[:12], older['tree'][:12], older.get('commit', '?')[:12], older.get('finished'), ref)
         )
-    raise CheckError(
-        'no receipt for %s (tree %s): run python3 scripts/check.py on a clean checkout of it' % (ref, tree[:12])
-    )
+    raise CheckError('no receipt for %s (tree %s): run mise run check on a clean checkout of it' % (ref, tree[:12]))
 
 
 def describe(record):
@@ -458,7 +450,7 @@ def describe(record):
         lines.append('  %-4s  %-24s %7.1f s  %s' % (s['result'], s['name'], s['seconds'], s['command']))
     t, c = record.get('tests'), record.get('candidate')
     for tier, counts in (t or {}).items():
-        lines.append('%s tier: %s' % (tier, ', '.join('%d %s' % (n, k) for k, n in counts.items())))
+        lines.append('tests, %s: %s' % (tier, ', '.join('%d %s' % (n, k) for k, n in counts.items())))
     if c:
         lines.append(
             'candidate: image %s, sha256 %s, %d bytes, %s'

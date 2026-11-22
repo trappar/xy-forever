@@ -75,6 +75,7 @@ class FakeDevice:
 
 class ProbeSequence(unittest.TestCase):
     def setUp(self):
+        probe.paths.SESSIONS.mkdir(parents=True, exist_ok=True)  # firmware output stays under the private root
         self.tmp = tempfile.TemporaryDirectory(dir=probe.paths.SESSIONS)
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)

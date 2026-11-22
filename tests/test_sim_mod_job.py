@@ -279,7 +279,8 @@ class SyntheticJob(Base, unittest.TestCase):
         for key, pressed in keys:
             self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
 
-    @pytest.mark.sweep
+    @pytest.mark.gate  # a simulator sweep
+    @pytest.mark.uses('sim/')
     def test_power_cut_at_every_new_content_blob_publication(self):
         wanted = self.reference(['alpha'], [])
         count = len({hashlib.sha256(data).digest() for path, data in wanted.items() if path.startswith('content/')})
@@ -301,7 +302,8 @@ class SyntheticJob(Base, unittest.TestCase):
                     self.assertEqual(blob.name, hashlib.sha256(blob.read_bytes()).hexdigest())
         self.assemble_and_compare(['alpha'])
 
-    @pytest.mark.sweep
+    @pytest.mark.gate  # a simulator sweep
+    @pytest.mark.uses('sim/')
     def test_power_cut_at_each_commit_step_then_the_sweep(self):
         """A power cut right after the rename in (the new entry listed) and right after the rename away (the
         target missing, the other entry intact); the restarted USB service sweeps tmp/job-* (the old tree, the

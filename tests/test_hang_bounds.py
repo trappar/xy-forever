@@ -2,9 +2,7 @@
 
 pytest (tests/xyf_bounds.py): a test that sleeps past its bound is reported as HUNG: <test id> with every
 thread's traceback, its xdist worker's whole process group ends (the child the test started with it), and
-the run fails naming the test. scripts/check.py: a step past its bound fails. The simulator: a stalled one
-(SIGSTOP) fails a host call within SIM_CALL_S and stop() ends its whole group; an idle one exits on its own
-at its deadline (xyf_sim --deadline-s) and says so.
+the run fails naming the test. scripts/check.py: a step past its bound fails, named.
 """
 
 import importlib.util

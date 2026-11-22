@@ -279,15 +279,17 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             self.assertLess(time.monotonic(), deadline, what)
             self.sim.advance(50)
 
-    @pytest.mark.sweep
+    @pytest.mark.gate  # a simulator sweep
+    @pytest.mark.uses('sim/')
     def test_a_failed_rename_at_each_step(self):
         self.faults(1)
 
-    @pytest.mark.sweep
+    @pytest.mark.gate  # a simulator sweep
+    @pytest.mark.uses('sim/')
     def test_a_power_cut_at_each_step(self):
         self.faults(2)
 
-    @pytest.mark.sweep
+    @pytest.mark.sweep  # parked: a serial chain of simulator restarts, the run's critical path
     def test_a_silent_at_each_step(self):
         self.faults(3)
 

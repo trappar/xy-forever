@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check that the working tree builds the same firmware as a git ref.
 
-    python3 scripts/neutral.py [REF]        (default REF: HEAD)
+    uv run scripts/neutral.py [REF]        (mise run neutral [REF]; default REF: HEAD)
 
 Builds every mode from REF (a clean export, cached per commit) and from the
 working tree, then compares the candidate SHA-256 of each mode. A change meant
@@ -13,14 +13,15 @@ but still compared. A mode that REF cannot build (a mode added since) is shown a
 (the working tree's and the last REF's; older ones are removed), so a difference
 can be traced by comparing the two module.asm files. No device is involved.
 
-Opt-in (mise run neutral [REF]): on a clean tree the working tree's product build is the one scripts/check.py
-verified for that tree (builds/<image>/check.json names it), when there is one, instead of a new build.
+A clean working tree compared with HEAD is HEAD: "same" at once, nothing built. The working tree's product
+build goes through Turborepo's firmware cache (scripts/firmware_cache.py: unchanged, restored in about 0.2 s,
+the same build `mise run check` verified); on a clean tree its other modes are cached per tree, as REF's are
+per commit.
 """
 
 import argparse
 import hashlib
 import io
-import json
 import os
 import shutil
 import subprocess
@@ -29,7 +30,9 @@ import tarfile
 import tempfile
 from pathlib import Path
 
-from xy_forever.paths import BUILDS, PRIVATE_ROOT, SESSIONS
+import firmware_cache
+
+from xy_forever.paths import PRIVATE_ROOT, SESSIONS
 from xy_forever.toolchain import authenticate
 from xy_forever.xyf_build import MODES
 
@@ -63,17 +66,15 @@ def result_of(out):
     return tuple(note.read_text().split('\n', 1)) if note.is_file() else None
 
 
-def checked_product(tree):
-    """(candidate sha, 'ok (the check's build)') of the product build check.py verified for tree, or None."""
-    for marker in BUILDS.glob('*/check.json'):
-        try:
-            if json.loads(marker.read_text()).get('tree') == tree:
-                return hashlib.sha256(
-                    (marker.parent / 'candidate.ldr').read_bytes()
-                ).hexdigest(), "ok (the check's build)"
-        except OSError, ValueError:
-            continue
-    return None
+def cached_product():
+    """(candidate sha or '-', status) of the working tree's product build, through the firmware cache."""
+    run = subprocess.run(
+        [sys.executable, str(ROOT / 'scripts/firmware_cache.py'), 'build'], cwd=ROOT, capture_output=True, text=True
+    )
+    candidate = firmware_cache.OUT / 'candidate.ldr'
+    if run.returncode or not candidate.is_file():
+        return '-', ((run.stderr or run.stdout).strip().splitlines() or ['failed'])[-1]
+    return hashlib.sha256(candidate.read_bytes()).hexdigest(), 'ok (the firmware cache)'
 
 
 def build_all(source, base, env, cached=False, known=None):
@@ -94,20 +95,23 @@ def main():
     parser.add_argument('ref', nargs='?', default='HEAD', help='git ref to compare with (default: HEAD)')
     args = parser.parse_args()
     commit = git('rev-parse', '--verify', args.ref + '^{commit}').decode().strip()
+    clean = not git('status', '--porcelain').strip()
+    if clean and commit == git('rev-parse', 'HEAD').decode().strip():
+        print('neutral: the working tree is clean and REF is HEAD: same, nothing to build')
+        return 0
     compiler, _ = authenticate()
     env = dict(os.environ, XYF_PRIVATE=str(PRIVATE_ROOT), XYF_TOOLCHAIN=str(compiler['root']))
     work = SESSIONS / 'neutral'
     if ROOT.name != 'xy-forever':  # a separate git worktree gets its own folder
         work = work / ROOT.name
-    for old in work.glob('*'):  # keep one ref's builds (about 50 MB each)
-        if old.is_dir() and old.name not in (commit[:12], 'worktree') and not old.name.startswith('xyf-'):
+    tree = 'tree-' + git('rev-parse', 'HEAD^{tree}').decode().strip()[:12] if clean else 'worktree'
+    for old in work.glob('*'):  # keep one ref's builds and one tree's (about 50 MB each)
+        if old.is_dir() and old.name not in (commit[:12], tree) and not old.name.startswith('xyf-'):
             shutil.rmtree(old)
     with tempfile.TemporaryDirectory() as tmp:
         tarfile.open(fileobj=io.BytesIO(git('archive', commit))).extractall(tmp)
         before = build_all(Path(tmp), work / commit[:12], env, cached=True)
-    clean = not git('status', '--porcelain').strip()
-    product = clean and checked_product(git('rev-parse', 'HEAD^{tree}').decode().strip())
-    after = build_all(ROOT, work / 'worktree', env, known={'xyf-product': product} if product else None)
+    after = build_all(ROOT, work / tree, env, cached=clean, known={'xyf-product': cached_product()})
     same = True
     print('%-16s %-14s %-14s %s' % ('mode', args.ref[:14], 'working tree', 'result'))
     for mode in MODES:

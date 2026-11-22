@@ -12,9 +12,9 @@ import struct
 import tempfile
 import unittest
 import zlib
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import fork_each
 import p224_reference as ecdsa
 import pytest
 from test_ldr import image
@@ -555,7 +555,14 @@ class ExtractorTests(Extractor):
 class SanitizedDamageTests(Extractor):
     """Random damage to the clear ZIP (re-encrypted, so it gets past the container checks)."""
 
-    flags = ('-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-sanitize-recover=all')
+    flags = (
+        '-O1',
+        '-g',
+        '-fsanitize=address,undefined',
+        '-fno-omit-frame-pointer',
+        '-fno-sanitize-recover=all',
+        *fork_each.FLAGS,  # one sanitizer start for the 120 runs
+    )
 
     def test_random_damage_fails_cleanly_or_changes_nothing(self):
         payload, spans, directory = build_zip(standard())
@@ -572,8 +579,18 @@ class SanitizedDamageTests(Extractor):
                 at = rng.choice(hot) if iteration % 4 else rng.randrange(len(data))
                 data[at] ^= rng.randrange(1, 256)
             damaged.append(container(bytes(data)))
-        with ThreadPoolExecutor(max_workers=6) as pool:  # independent runs, each its own files
-            reports = list(pool.map(lambda n: self.extract(damaged[n], name='damaged-%d' % n), range(len(damaged))))
+        runs = []
+        for n, package in enumerate(damaged):
+            path = self.root / ('damaged-%d.tfw' % n)
+            path.write_bytes(package)
+            runs.append((('extract', path, self.root / ('damaged-%d.os.ldr' % n), '--unverified'), KEYS))
+        reports = []
+        for n, result in enumerate(fork_each.run(self.binary, runs, self.root)):
+            self.assertNotIn(b'Sanitizer', result.stderr)
+            report = json.loads(result.stdout)
+            out = self.root / ('damaged-%d.os.ldr' % n)
+            report['output'] = out.read_bytes() if out.exists() else None
+            reports.append(report)
         for report in reports:
             self.assertNotEqual(report['status'], 'usage')
             if report['status'] == 'ok':

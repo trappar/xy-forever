@@ -159,7 +159,7 @@ class Device:
         self.hello_info = None  # P.Hello of the last HELLO reply (None: not seen, nothing refused)
         self.on_ask = host_trust.say_ask  # #65: the device asks (waiting): said once per call, sent again
         # #230: the simulator answers at once, so a whole call to it (asks included) ends within this
-        self.sim_call_s = bounds.sim_call_s() if isinstance(transport, TcpPort) else None
+        self.sim_call_s = bounds.SIM_CALL_S if isinstance(transport, TcpPort) else None
 
     def _log_frame(self, body):
         if len(body) < 8:

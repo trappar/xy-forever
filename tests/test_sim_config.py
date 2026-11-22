@@ -212,14 +212,15 @@ class Config(ConfigBase, unittest.TestCase):
         self.menu_again()
         return a
 
-    @pytest.mark.sweep
+    @pytest.mark.gate  # a simulator sweep
+    @pytest.mark.uses('sim/')
     def test_power_cut_in_the_record_write_then_save(self):
         a = self.all_off_saved()
         self.change(['alpha'], unknown=False)
         self.saved(['alpha'])
         self.sim.set('a_slow_ms', 150)
         self.cont()
-        self.wait_progress(lambda p: p['stage'] == 2, 'saving', bounds.SLOW_S)
+        self.wait_progress(lambda p: p['stage'] == 2, 'saving', bounds.WAIT_S)
         cuts = self.sim.status()['cuts']
         rows = len(self.lines('menu: home row: '))
         self.sim.set('rename_fault_kind', 2)

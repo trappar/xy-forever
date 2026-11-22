@@ -446,7 +446,7 @@ class Simulator:
         otp_a=None,
         a_otp_initialized=False,
         ask=False,
-        deadline_s=bounds.sim_deadline_s,
+        deadline_s=bounds.SIM_DEADLINE_S,
         faults=None,
     ):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
@@ -454,8 +454,7 @@ class Simulator:
         guard already set, as after the stock bootloader's encrypted-image read. ask: #65's question as on the device
         (Ask before USB control as settings.txt says); False (tests that are not about it): the setting reads Off,
         so no serial request waits for an answer nobody gives. deadline_s: the board stops on its own that
-        long after it started (#230; None: never, interactive runs); default bounds.sim_deadline_s(): 10 s,
-        or SLOW_S in a parked sweep (#233). faults: {name: value} armed before the power-on (control set)."""
+        long after it started (#230; None: never, interactive runs); default bounds.SIM_DEADLINE_S. faults: {name: value} armed before the power-on (control set)."""
         self.root, self.bootpart = Path(root), Path(bootpart)
         # B records retain their original framing; bit7 marks independent A selectors.
         a_records = bytearray()
@@ -472,7 +471,7 @@ class Simulator:
         self.control_port = self.port + 1
         self.build_dir = Path(build_dir) if build_dir else build()
         self.play, self.log, self.capacity, self.ask = play, log, capacity, ask
-        self.deadline_s = deadline_s() if callable(deadline_s) else deadline_s
+        self.deadline_s = deadline_s
         self.process = None
         self.faults = dict(faults or {})
 

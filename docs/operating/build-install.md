@@ -42,30 +42,31 @@ offline. Every hardware qualification still needs the checks and approvals in [S
 ## Checks
 
 ```sh
-mise run test                    # the fast tier (about 2 s): any time; named files or node ids: any tier
-mise run test-changed            # after each change: the tests it affects, any tier (testmon)
+mise run test                    # the fast tier (about 2 s); a file, node id, -k or -m: any tier
+mise run test-changed            # after each change: the tests it affects (testmon), sweeps aside
 mise run test-one TARGET         # one file, class or test (tests/test_aes.py::NativeAesTests)
-mise run test-failed             # what failed last time
+mise run test-failed             # what failed last time (nothing failed: nothing runs)
 mise run check                   # once per PR: the gate, under 30 s
-mise run test-all                # every tier but the parked sweeps, the simulator core included; CI runs it
-mise run lint                    # ruff, ESLint, Prettier, clang-format (CI runs it); format, lint-fix: apply
+mise run test-all                # every tier but the sweeps (about 11 s); check and CI run it
+mise run test-sweeps             # the five long simulator sweeps (about 8 s)
+mise run lint                    # ruff, ESLint, Prettier, clang-format; format, lint-fix: apply
 ```
 
 The pre-commit hook (`lefthook.yml`, installed by `mise run setup`) formats and lints the staged files (about a
 second); a finding stops the commit.
 
-The suite runs under pytest (config: `pyproject.toml`; tiers, budgets and plugins: `tests/conftest.py`). Each
-test is in a tier: `fast` (the default), `gate` (slower: sanitizer builds, fuzzing, the published kit), `sim`
-(the simulator core: about 50 tests, each saying in its docstring why it is kept) or `sweep` (power-cut and fault
-sweeps on the simulator, parked until they move to native tests: `mise run test-sweeps`, in no routine run).
-Budgets are enforced: the fast tier 3 s and 0.3 s a test, the gate tier 15 s and 10 s a test, the sim tier 5 s
-and 1.5 s a test; going over fails the run and names the test or tier (make it faster or move it
-a tier). A test's time is its CPU time (or wall time when less; a sim test's is wall time), so a busy Mac does
-not fail it; a calibration probe raises the limits on slower or busy machines, and `--testmon` by its tracing
-overhead. CI enforces the CPU budgets and reports the wall-time ones (`XYF_BUDGETS`: `tests/conftest.py`). Every test is bounded (`timeout`, `bounds.TEST_S`; a simulator core test `SIM_TEST_S`, a parked sweep `SLOW_S`): past it the run
-prints HUNG with every thread's traceback and its worker's process group ends. `test-changed` adds to testmon's
-Python tracking the C++ each test used (a `hosttest/` module or doctest file and what it includes, or a remaining
-`hostbuild` compile's `clang -M` record) and the files a test runs as a subprocess (`@pytest.mark.uses('scripts/x.py')`); its first run runs everything.
+The suite runs under pytest (`pyproject.toml`; tiers, budgets, plugins: `tests/conftest.py`), `-n auto`. Each test is in a tier: `fast` (the default), `gate` (slower: sanitizer builds,
+fuzzing, the published kit, the short simulator sweeps), `sim` (the simulator core, each test saying why it is
+kept) or `sweep` (five 3-9 s chains of simulator restarts: they doubled a shared run, so only `test-sweeps`).
+
+Budgets are enforced on CPU time everywhere, CI too: one test's and each tier's sum (`BUDGETS`, e.g. fast 0.3 s
+a test). A test's CPU time is its phases in its worker plus the child processes it waited for (a simulator it
+stopped), less the host compiles. Going over fails the run, naming the test or tier: make it faster or move
+it a tier. A busy machine stretches wall time, not CPU time; a probe raises the limits on slower hardware, and
+`--testmon` by its tracing. Wall time is only reported. Every test is also bounded, to end a hang, never a slow run (`bounds.TEST_S`, `SIM_TEST_S`): past it
+the run prints HUNG with every thread's traceback and its worker's process group ends. `test-changed` adds to testmon's Python tracking
+the C++ each test used (a `hosttest/` module or doctest file and its includes, or a `hostbuild` compile's
+`clang -M` record) and files it runs as a subprocess (`@pytest.mark.uses('scripts/x.py')`).
 
 The tests' native code is `hosttest/`: one nanobind extension (`xyf_hosttest.module(NAME)`, a submodule per
 `hosttest/bind/NAME.cpp`) and one doctest binary (the C++ unit tests in `tests/native/`, sanitized, run as one gate-tier test by
@@ -73,16 +74,18 @@ The tests' native code is `hosttest/`: one nanobind extension (`xyf_hosttest.mod
 touched (`uv run` syncs first).
 
 `mise run check` (`scripts/check.py`) is the PR gate on a clean, committed tree: the product build into
-`build/product` plus `--verify` (cached, below; a verified build is copied to `../private/xy-forever/builds/<image>`), `protogen --check`, `pnpm run typecheck` in
-`clients/ts` and `web` when they differ from the merge base with `origin/main` (or with `--js`), then the fast
-and sim tiers (one run) and the gate tier with a temporary copy of the verified build. A missing or stale
-`node_modules` (a fresh worktree) gets `pnpm install` first; `mise run build` does the same. Budgets: 15 s a step, 30 s in all. Step output goes to a log in
+`build/product` plus `--verify` (cached, below; a verified build is copied to `../private/xy-forever/builds/<image>`),
+`protogen --check`, `mise run lint`, `pnpm run typecheck` in `clients/ts` and `web` when they differ from the
+merge base with `origin/main` (or with `--js`), then one pytest run of every tier but the sweeps with a temporary
+copy of the verified build. A missing or stale `node_modules` (a fresh worktree) gets `pnpm install` first;
+`mise run build` does the same. A step over 15 s, or the whole over 30 s, is reported, never failed. Step output goes to a log in
 `../private/xy-forever/sessions/<date>-check/`. A passing run writes the receipt
 `../private/xy-forever/checks/<tree>.json` (`git rev-parse HEAD^{tree}`): a cache, so a rerun on the same tree
 stops at once (`--force` reruns); `--confirm [REF]` prints what it records. `mise run neutral [REF]`
-(opt-in) compares every build mode with REF and reuses the check's product build. CI (`.github/workflows/
-checks.yml`: every tier without private files, with open-xy's public toolchain; the web and client suites) is
-the merge check. Neither stands in for a device test. Firmware may also be built into the checkout's gitignored
+(opt-in) compares every build mode with REF: a clean tree against HEAD is "same" at once; the working tree's
+product build comes through the firmware cache, its other modes are cached per clean tree, REF's per commit. CI
+(`.github/workflows/checks.yml`: `mise run test-all` without private files, with open-xy's public toolchain from
+`setup.py toolchain`; lint, the web and client suites) is the merge check. Neither stands in for a device test. Firmware may also be built into the checkout's gitignored
 `build/` folder; TE bytes are never committed or uploaded.
 
 `mise run build`, `mise run verify` and the check's build steps go through Turborepo's local cache

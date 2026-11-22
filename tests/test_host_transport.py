@@ -7,6 +7,7 @@ import os
 import random
 import select
 import struct
+import sys
 import time
 import unittest
 import zlib
@@ -152,6 +153,12 @@ class SerialTransportTest(unittest.TestCase):
         self.assertEqual(calls, [transport.termios.TIOCEXCL])
 
 
+def slow_detached(seconds):
+    """transport.DETACHED for a device whose open (or last close) the kernel holds for seconds."""
+    code = 'import runpy, sys, time; time.sleep(%g); runpy.run_module("xy_forever.transport", run_name="__main__")'
+    return [sys.executable, '-c', code % seconds]
+
+
 @pytest.mark.gate
 @unittest.skipUnless(hasattr(os, 'openpty'), 'needs a pty')
 class SilentDeviceTest(unittest.TestCase):
@@ -190,7 +197,7 @@ class SilentDeviceTest(unittest.TestCase):
 
     def test_open_that_hangs_times_out_and_is_not_started_twice(self):
         with (
-            mock.patch.object(transport, '_open_tty', lambda path: time.sleep(1.5)),
+            mock.patch.object(transport, 'DETACHED', slow_detached(1.5)),
             mock.patch.object(transport, '_opener', wraps=transport._opener) as opener,
         ):
             for _ in range(2):
@@ -201,8 +208,7 @@ class SilentDeviceTest(unittest.TestCase):
         self.assertEqual(opener.call_count, 1)
 
     def test_a_late_open_reaches_the_next_port(self):
-        real = transport._open_tty
-        with mock.patch.object(transport, '_open_tty', lambda path: time.sleep(0.2) or real(path)):
+        with mock.patch.object(transport, 'DETACHED', slow_detached(0.2)):
             with self.assertRaises(TimeoutError):
                 transport.SerialPort(self.path, timeout=0.05)
             port = transport.SerialPort(self.path, timeout=2.0)
@@ -220,7 +226,7 @@ class SilentDeviceTest(unittest.TestCase):
 
     def test_close_never_waits_for_the_kernel(self):
         port = transport.SerialPort(self.path)
-        with mock.patch.object(transport, '_final_close', lambda fd, done: time.sleep(1.5)):
+        with mock.patch.object(transport, 'DETACHED', slow_detached(1.5)):
             start = time.monotonic()
             port.close()
         self.assertQuick(start, 0.5)

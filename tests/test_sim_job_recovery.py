@@ -77,7 +77,7 @@ class Recovery(Switch, unittest.TestCase):
         self.repaired(target)
         self.assertEqual(self.dev.hello()[0], 0)
 
-    @pytest.mark.sweep
+    @pytest.mark.sweep  # parked: a serial chain of simulator restarts, the run's critical path
     def test_repair_and_undo_cut_at_every_io_boundary(self):
         previous = self.default()
         target = self.build(['alpha'])
@@ -136,7 +136,8 @@ class Recovery(Switch, unittest.TestCase):
             self.reconnect()
             self.dev.hello()
 
-    @pytest.mark.sweep
+    @pytest.mark.gate  # a simulator sweep
+    @pytest.mark.uses('sim/')
     def test_repeated_interrupted_replay_and_undo(self):
         previous = self.default()
         target = self.build(['alpha'])

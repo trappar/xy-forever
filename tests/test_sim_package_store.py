@@ -89,7 +89,7 @@ class Packages(unittest.TestCase):
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
 
-    @pytest.mark.sweep
+    @pytest.mark.sweep  # parked: a serial chain of simulator restarts, the run's critical path
     def test_cut_between_every_add_remove_and_gc_step(self):
         target = S.LIBRARY + '/package-cut'
         kept = S.LIBRARY + '/package-kept'

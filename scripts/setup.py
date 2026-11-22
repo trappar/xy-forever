@@ -18,6 +18,7 @@
                                                    the same, read off the OP-XY in the dev menu's MTP mode
                                                    into private/incoming/ (read only: xy_forever/mtp_read.py)
     uv run scripts/setup.py fixtures               what tests need from the stock pair + public open-xy
+    uv run scripts/setup.py toolchain              only the pinned Blackfin toolchain (CI)
     mise run doctor                                what is set up, what is missing, what will skip
 
 Bootstrap starts on mise's Python, before the project environment exists: it installs the tools and `uv sync`s
@@ -935,6 +936,22 @@ class Bootstrap:
             print('  %d. %s' % (n, step))
 
 
+def cmd_toolchain(args):
+    """Only the pinned Blackfin toolchain, into XYF_TOOLCHAIN (else ../tools/blackfin): CI's step. One that
+    passes its pins stays."""
+    from xy_forever import toolchain
+
+    destination = toolchain.location(os.environ).expanduser()
+    if destination.is_dir() and toolchain_problem(destination) is None:
+        print('toolchain: %s passes its pins' % destination)
+        return 0
+    if destination.exists():
+        raise SetupError('%s exists and fails its pins: move it aside' % destination)
+    install_toolchain(PINS['toolchain']['archives'][host_name()], destination, archive=args.archive)
+    print('toolchain: installed into %s' % destination)
+    return 0
+
+
 def cmd_bootstrap(args):
     return Bootstrap(args.workspace, dry_run=args.dry_run, toolchain_archive=args.toolchain_archive).run()
 
@@ -956,6 +973,8 @@ def main(argv=None):
     )
     sub.add_parser('fixtures', help='make test inputs from the stock pair and public open-xy')
     sub.add_parser('doctor', help='summary')
+    t = sub.add_parser('toolchain', help='only the pinned Blackfin toolchain (XYF_TOOLCHAIN or ../tools/blackfin)')
+    t.add_argument('--archive', metavar='ZIP', type=Path, help="open-xy's toolchain-1 release zip, already downloaded")
     b = sub.add_parser('bootstrap', help='set up this workspace (all that needs no OP-XY); safe to rerun')
     b.add_argument(
         '--workspace', help="the folder that holds this clone, private/ and tools/ (default: the clone's parent)"
@@ -973,6 +992,7 @@ def main(argv=None):
             'import-stock': cmd_import_stock,
             'fixtures': cmd_fixtures,
             'doctor': cmd_doctor,
+            'toolchain': cmd_toolchain,
             'bootstrap': cmd_bootstrap,
         }[args.command](args) or 0
     except SetupError as e:

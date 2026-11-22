@@ -91,7 +91,7 @@ class Recorder:
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_runtest_setup(self, item):
-        self.files, self.compile_s = set(), 0.0
+        self.files, self.compile_s, self.compile_cpu_s = set(), 0.0, 0.0
         for mark in item.iter_markers('uses'):
             self.files.update(str(p).rstrip('/') for p in mark.args)
 

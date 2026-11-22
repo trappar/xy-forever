@@ -174,7 +174,7 @@ class Synthetic(Harness, unittest.TestCase):
             unverified=True,
         )
 
-    @pytest.mark.sweep
+    @pytest.mark.sweep  # parked: a serial chain of simulator restarts, the run's critical path
     def test_a_cut_push_never_looks_complete_and_a_second_push_completes_it(self):
         files = len(store_of(self.gen))  # store.txt first, then the packages
         for after in (0, 1, 5, files // 2, files - 1):

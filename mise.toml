@@ -39,24 +39,26 @@ python scripts/setup.py bootstrap {% if usage.dry_run %}--dry-run{% endif %} \
 description = "What is set up and which tests will skip"
 run = "uv run scripts/setup.py doctor"
 
-# The suite (pytest; tiers and budgets: tests/conftest.py). Arguments pass through to pytest.
-# Named tests (a file, a node id, a folder) run whatever their tier; otherwise the fast tier.
+# The suite (pytest; tiers, budgets: tests/conftest.py; docs/operating/build-install.md#checks). Arguments pass
+# through to pytest. A selection (a file, a node id, a folder, -k or -m) runs whatever its tier; otherwise
+# `test` runs the fast tier. Every run uses one worker per core (-n auto).
 [tasks.test]
-description = "Fast tier of the suite (about 2 s), or the named tests, any tier"
-usage = 'arg "[args]..." help="pytest arguments (files or node ids: any tier; -k EXPR, -x, ...)" var=#true'
+description = "Fast tier of the suite (about 2 s), or the selected tests, any tier"
+usage = 'arg "[args]..." help="pytest arguments (files, node ids, -k EXPR or -m EXPR: any tier; -x, ...)" var=#true'
 run = """{% set tier = "-m fast " %}{% for a in usage.args %}{% if a is ending_with(pat=".py") or "::" in a \
-or a is starting_with(pat="tests") %}{% set_global tier = "" %}{% endif %}{% endfor %}\
-uv run pytest -n 6 --dist worksteal {{ tier }}{% for a in usage.args %}{{ a | quote }} {% endfor %}"""
+or a is starting_with(pat="tests") or a is starting_with(pat="-k") or a is starting_with(pat="-m") %}\
+{% set_global tier = "" %}{% endif %}{% endfor %}\
+uv run pytest -n auto --dist worksteal {{ tier }}{% for a in usage.args %}{{ a | quote }} {% endfor %}"""
 
 [tasks.test-changed]
-description = "Tests affected by your changes, any tier (testmon: Python, C++, scripts)"
+description = "Tests affected by your changes, every tier but the sweeps (testmon: Python, C++, scripts)"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
-run = 'uv run pytest -n 6 --dist worksteal --testmon {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = 'uv run pytest -n auto --dist worksteal -m "not sweep" --testmon {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.test-failed]
-description = "Rerun the tests that failed last time"
+description = "Rerun the tests that failed last time (none failed: nothing runs)"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
-run = 'uv run pytest -n 6 --dist worksteal --lf {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = 'uv run pytest -n auto --dist worksteal --lf --lfnf none {% for a in usage.args %}{{ a | quote }} {% endfor %}|| test $? = 5'
 
 [tasks.test-one]
 description = "One test file, class or test, any tier, in one process"
@@ -64,26 +66,26 @@ usage = 'arg "<target>" help="e.g. tests/test_aes.py or tests/test_aes.py::Nativ
 run = 'uv run pytest -p no:xdist {{ usage.target | quote }}'
 
 [tasks.test-watch]
-description = "Rerun affected tests on every save"
-run = 'uv run ptw --now . -n 6 --dist worksteal --testmon'
+description = "Rerun affected tests on every save (every tier but the sweeps)"
+run = 'uv run ptw --now . -n auto --dist worksteal -m "not sweep" --testmon'
 
 [tasks.test-all]
-description = "Every tier but the parked sweeps, the simulator core included (about 10 s)"
+description = "Every tier but the sweeps, the simulator core included (about 13 s); check and CI run it"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
-run = 'uv run pytest -n 12 --dist worksteal -m "not sweep" {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = 'uv run pytest -n auto --dist worksteal -m "not sweep" {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.test-sweeps]
-description = "The simulator's power-cut and fault sweeps, parked until they move to native tests (#233)"
+description = "The long simulator sweeps (about 25 s of CPU), in no shared run"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
-run = 'uv run pytest -n 12 --dist worksteal -m sweep {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = 'uv run pytest -n auto --dist worksteal -m sweep {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.test-slow]
-description = "Every tier with the slowest tests listed"
+description = "Every tier but the sweeps, with the slowest tests listed"
 usage = 'arg "[args]..." help="pytest arguments (-m fast: one tier)" var=#true'
-run = 'uv run pytest -n 12 --dist worksteal --durations=25 {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = 'uv run pytest -n auto --dist worksteal -m "not sweep" --durations=25 {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.check]
-description = "PR gate: build, verify (cached), type checks, fast, sim and gate tiers (under 30 s)"
+description = "PR gate: build, verify (cached), lint and type checks, every tier but the sweeps (under 30 s)"
 usage = 'arg "[args]..." help="check.py flags (--js, --force, --confirm [REF])" var=#true'
 run = 'uv run scripts/check.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 

@@ -1,5 +1,6 @@
 """The suite's budgets (tests/conftest.py): a fast test is held to its CPU time, so one that waits passes and
-one that computes past the limit fails the run, named."""
+one that computes past the limit fails the run, named. The planted run fixes the scale at 1
+(XYF_BUDGETS_SCALE): a busy machine's probe would raise the 0.3 s limit past the planted 0.6 s."""
 
 import os
 import subprocess
@@ -44,7 +45,7 @@ class BudgetsTest(unittest.TestCase):
                     str(Path(tmp) / 'test_planted.py'),
                 ],
                 cwd=tmp,
-                env=dict(os.environ, PYTHONPATH=str(ROOT / 'tests'), XYF_BUDGETS='on'),
+                env=dict(os.environ, PYTHONPATH=str(ROOT / 'tests'), XYF_BUDGETS='on', XYF_BUDGETS_SCALE='1'),
                 capture_output=True,
                 text=True,
                 timeout=60,
