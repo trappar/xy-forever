@@ -181,7 +181,6 @@ inline void stack_watch(uint32_t) {}        // no USB status in builds without t
 // Test 065 (b): one link session; the menu is home and answers every USB command.
 void rpc_reset();
 bool home_active();
-bool home_hold();
 bool home_begin();
 void home_start();
 uint32_t home_pump();

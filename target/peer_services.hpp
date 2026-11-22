@@ -118,7 +118,6 @@ public:
     // boot embedded. watch(): role0 fails once idle_ms pass without a request.
     void decline();
     void watch(U32 idle_ms);
-    void hold_touch(U32 now);      // Test 048: role0 held session, a long local job (state write) is activity
     bool declined() const;
     // Commit point (the boot decision; independent of later drain/close):
     // role0 once the release byte arrives after a completed transfer and
@@ -175,7 +174,6 @@ public:
     // follow_now(): the owner closes storage and restarts a now (a held request, or follow_ms after
     // the handshake without one).
     void follow(U32 request);
-    bool peer_restarted() const { return peer_restart_; }
     bool follow_now(U32 now_ms) const;
     static const U32 follow_ms = 2000;
     // Role0: true while an answer queued by poll() has not left yet (stock finished

@@ -104,32 +104,6 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertEqual(self.B.MTP_USB_IDS, (0x2367, 0x0021))
         self.assertNotEqual(self.B.mtp_usb_pid(), 0)
 
-    def test_probe_script_matches_the_device(self):
-        import importlib.util
-        import re
-        spec = importlib.util.spec_from_file_location('mtp_usb_probe', ROOT / 'scripts/mtp_usb_probe.py')
-        script = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(script)                    # imports only: pyusb is loaded in main()
-        service = unit_text(ROOT / 'target/usb_service.cpp')
-        self.assertIn('const uint8_t t_mtp_usb = 0x%02x;' % script.T_MTP_USB, service)
-        self.assertIn('const U32 probe_words = %d;' % len(script.PROBE_WORDS), service)
-        names = re.search(r'enum : U32 \{ (p_state.*?) \};', service, re.S).group(1)
-        self.assertEqual([n.strip()[2:] for n in names.split(',')],
-                         [w[:-3] if w.endswith('_ms') else w for w in script.PROBE_WORDS])
-        driver = re.search(r'const U32 driver\[\] = \{(.*?)\};', service, re.S).group(1)
-        fields = [re.sub(r'U32\((.*)\)', r'\1', f.strip()) for f in driver.split(',')]
-        self.assertEqual([f.replace('st.', '').replace('mu::state()', 'state') for f in fields], list(script.DRIVER_WORDS))
-        self.assertEqual((script.VID, script.PID), self.B.MTP_USB_IDS)
-        self.assertIn('op_test_sink = 0x%04x' % script.OP_SINK, (ROOT / 'target/mtp_usb.hpp').read_text())
-        self.assertIn("'mtp-usb'", repr(self.B.hello_defines(self.B.MTP_USB_MODE)[-1].split('"')[1:2]))
-
-    def _script(self):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location('mtp_usb_probe', ROOT / 'scripts/mtp_usb_probe.py')
-        script = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(script)
-        return script
-
     def test_composite_started_once(self):
         # Composite: register, start(0x200), never a stop or a start inside the boot but the leave
         # (stop(0): GP timer 7 kept) before a restart or a boot; the flag deleted before anything starts.
@@ -165,29 +139,6 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertIn('#if defined(XYF_MTP_USB)\n    usb_deferred = 1;', service[start:start + 800])
         self.assertIn('const U32 stack_attached = 0x88a137a0u;', service)
 
-    def test_device_info_parser_reads_the_device_dataset(self):
-        # Run 005 (186-006): the parser read the header-stripped body at offset 12. The body as device_info()
-        # builds it (target/mtp_usb.cpp) is 133 bytes, what the host received.
-        import struct
-        script = self._script()
-
-        def string(text):
-            return bytes([len(text) + 1]) + (text + '\0').encode('utf-16-le')
-
-        def array(values):
-            return struct.pack('<I%dH' % len(values), len(values), *values)
-        body = struct.pack('<HIH', 100, 6, 100) + string('') + struct.pack('<H', 0) + \
-            array([0x1001, 0x1002, 0x1003, 0x9801, 0x9802, 0x9803]) + array([]) * 4 + \
-            string('XY Forever') + string('OP-XY (XY Forever)') + string('3.2') + string('XYF0001')
-        self.assertEqual(len(body), 133)
-        info = script.parse_device_info(body)
-        self.assertEqual((info['standard'], info['vendor_extension'], info['model'], info['serial']),
-                         (100, 6, 'OP-XY (XY Forever)', 'XYF0001'))
-        self.assertIn('0x9801', info['operations'])
-        lines = []
-        script.log_container(lines.append, struct.pack('<IHHI', 12, 3, 0x2001, 1))
-        self.assertIn('0c00000003000120' + '01000000', lines[0])
-
     def test_config_record_is_the_stock_size(self):
         # the stock config record is 0x18 (n_iads at +0x10, IAD array at +0x14); ours ends in two zeros.
         header = (ROOT / 'target/mtp_usb.hpp').read_text()
@@ -197,67 +148,6 @@ class MtpUsbBuildGateTest(unittest.TestCase):
                       (ROOT / 'target/mtp_usb.cpp').read_text())
         self.assertIn('static_assert(sizeof(Iad) == 0xc && __builtin_offsetof(Iad, first) == 7 && sizeof(CdcExtra) == 0x3c',
                       header)
-
-    def test_marks_match_the_device(self):
-        import re
-        script = self._script()
-        driver = (ROOT / 'target/mtp_usb.cpp').read_text()
-        names = re.search(r'kMarkNames\[mark_count\] = \{(.*?)\};', driver, re.S).group(1)
-        names = re.findall(r'"([^"]*)"', names)
-        self.assertEqual(names[1:], [n for n, _ in script.MARKS])
-        self.assertEqual(len(script.MARKS), 14)
-        self.assertEqual(script.PASS_MARKS, list(range(1, 7)) + [8, 9, 10, 11])
-        service = unit_text(ROOT / 'target/usb_service.cpp')
-        self.assertIn('const char marks_path[] = "%s";' % script.MARKS_PATH, service)
-        self.assertTrue(script.MARKS_PATH.startswith('/yaffs2/xy-forever/tmp/'))
-        # The whole file fits one 1 KiB write: header + 15 lines of "NN <10 digits> <name>".
-        header = len('xy-forever mtp-usb composite marks, build 186: step ms name\n')
-        self.assertLessEqual(header + sum(3 + 10 + 1 + len(n) + 1 for n in names[1:]), 1024)
-        text = 'xy-forever mtp-usb probe marks, build 186: step ms name\n01 1200 checks-passed\n05 1290 before-start-0\n'
-        head, marks = script.parse_marks(text)
-        self.assertTrue(head.startswith('xy-forever mtp-usb'))
-        self.assertEqual(marks, [dict(step=1, ms=1200, name='checks-passed'), dict(step=5, ms=1290, name='before-start-0')])
-        # 186-006: the result file is op 1's reply as text; the script turns it back into the reply body.
-        self.assertIn('const char result_path[] = "%s";' % script.RESULT_PATH, service)
-        words = list(range(1, len(script.PROBE_WORDS) + len(script.DRIVER_WORDS) + 1))
-        text = ('xy-forever mtp-usb probe result, build 186\nprobe %s\ndriver %s\nsha256 %s\nrefusal %s\n' % (
-            ' '.join('%08x' % w for w in words[:len(script.PROBE_WORDS)]),
-            ' '.join('%08x' % w for w in words[len(script.PROBE_WORDS):]), 'ab' * 32,
-            ' '.join(['00000000'] * len(script.REFUSAL_WORDS))))
-        probe, driver, digest = script.decode_result(script.result_body(text))
-        self.assertEqual((probe['state'], driver['handler_urbs_in'], digest), ('deferred', words[-1], 'ab' * 32))
-        self.assertEqual(script.decode_refusal(script.result_body(text))['check'], 'none')
-        for label in ('"probe", probe, probe_words', '"driver", driver, n_driver_words',
-                      '"refusal", refusal, gate::record_words'):
-            self.assertIn(label, service)
-        source = (ROOT / 'scripts/mtp_usb_probe.py').read_text()
-        self.assertIn("'--no-trial'", source)
-        self.assertIn("'--marks-only'", source)
-        self.assertNotIn('retry', source.lower().replace('never retries', ''))
-
-    def test_refusal_words_match_the_device(self):
-        # 186-002: op 1 ends with why the last start answered identity (probe_why, the start's check order).
-        import importlib.util
-        import re
-        import struct
-        spec = importlib.util.spec_from_file_location('mtp_usb_probe', ROOT / 'scripts/mtp_usb_probe.py')
-        script = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(script)
-        service = unit_text(ROOT / 'target/usb_service.cpp')
-        gate = (ROOT / 'target/mtp_usb_gate.hpp').read_text()
-        self.assertIn('const uint32_t record_words = %d;' % len(script.REFUSAL_WORDS), gate)
-        names = re.search(r'enum : uint32_t \{ (r_check.*?) \};', gate, re.S).group(1)
-        self.assertEqual([n.strip()[2:] for n in names.split(',')],
-                         ['check', 'index', 'address', 'length', 'crc', 'failing'])
-        self.assertIn('enum Check : uint32_t { check_none, check_usb, check_engine, check_probe };', gate)
-        self.assertEqual(len(script.REFUSAL_CHECKS), 4)
-        self.assertIn('uint32_t probe_refusal[gate::record_words]', service)
-        head = 4 * (len(script.PROBE_WORDS) + len(script.DRIVER_WORDS)) + 32
-        self.assertIsNone(script.decode_refusal(bytes(head)))           # a 186-001 reply
-        body = bytes(head) + struct.pack('<6I', 1, 65, 0x88a13460, 0x344, 0x12345678, 2)
-        self.assertEqual(script.decode_refusal(body),
-                         dict(check='boot-time identity() usb_spans.hpp failed', index=65, address='0x88a13460',
-                              length='0x00000344', crc_now='0x12345678', failing=2))
 
     def test_start_gate_against_span_model(self):
         # 186-003: the start uses the boot-time identity() result and still

@@ -31,7 +31,7 @@ def main(argv=None):
     ap.add_argument('--timeout', type=float, default=15)
     args = ap.parse_args(argv)
     dev, _, _ = xyf_host.connect(args.timeout)
-    base, extent, _, brk, _, _, head = struct.unpack('<7I', peek(dev, CONTEXT, 28))
+    base, _, _, brk, _, _, head = struct.unpack('<7I', peek(dev, CONTEXT, 28))
     nodes = free = 0
     node = head
     while node and nodes < 4096:

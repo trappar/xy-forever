@@ -115,40 +115,10 @@ def delete(dev, path, folder=False):
     check(code, '%s %s (error %d)' % ('file.rmdir' if folder else 'file.delete', path, error))
 
 
-def remote_hashes(dev, path):
-    """{relative path: sha256 hex} from the device's files.sha256 at path ({} when absent or unreadable)."""
-    code, data = dev.read_all(path, limit=1 << 20)
-    if code:
-        return {}
-    try:
-        return {rel: sha for sha, rel in list_paths(data)}
-    except Refused:
-        return {}
-
-
-def store_check(dev, gen_path, have):
-    """Writes store.txt into a new generation folder (have: its remote_tree, None when absent). Refused when the
-    folder holds another layout: an older one (no store.txt) or a newer store version."""
-    if have and modstore.FILE in have[0]:
-        code, data = dev.read_all('%s/%s' % (gen_path, modstore.FILE), limit=1024)
-        check(code, 'file.read %s/%s' % (gen_path, modstore.FILE))
-        version = modstore.version_of(data)
-        if version == modstore.VERSION:
-            return
-        if version > modstore.VERSION:
-            raise Refused('%s: store version %d, newer than this tool writes: update XY Forever\'s tools' % (gen_path, version))
-    if have and (have[0] or have[1]):
-        raise Refused('%s holds an older layout (no %s): xyf_host.py mods remove %s --yes deletes it, then push '
-                      'again' % (gen_path, modstore.FILE, gen_path.rsplit('/', 1)[1]))
-    write_file(dev, modstore.TEXT, '%s/%s' % (gen_path, modstore.FILE))
-
-
-def push(dev, package_dir, only=(), verify=False, out=print, by_hash=False):
+def push(dev, package_dir, only=(), verify=False, out=print):
     """Puts the package set on the device; returns the summary dict (sent: [(package, path)] too). Raises
     Refused (or the transport's error) on the first failure: what was written stays, and running it again
-    completes it. by_hash (mods dev): a top-level file is skipped only when the device's files.sha256 lists it
-    with the same SHA-256 and the device copy has the same size (a rebuilt mod often keeps its size); a stored
-    name already holds its content."""
+    completes it. A stored name already holds its content, so only changed files are sent."""
     profile, generation, packages = local_set(package_dir, only)
     gen_path = '%s/%s' % (ROOT, generation)
     start = time.monotonic()
@@ -269,19 +239,6 @@ def targets(dev, what):
     if what in dirs:                                      # a generation (or an older mods/<profile>/ folder)
         return [what]
     return [d for d in dirs if d.count('/') == 1 and d.split('/')[1] == what]
-
-
-def remove_folder(dev, folder):
-    """Deletes folder and everything below it: files.sha256 of each package first, then the files, then
-    the folders, deepest first. Returns (files, bytes) removed."""
-    files, dirs = remote_tree(dev, folder) or ({}, [])
-    order = sorted(files, key=lambda p: (p.rsplit('/', 1)[-1] != LIST, p))
-    for rel in order:
-        delete(dev, folder + '/' + rel)
-    for rel in sorted(dirs, key=lambda d: -d.count('/')):
-        delete(dev, folder + '/' + rel, folder=True)
-    delete(dev, folder, folder=True)
-    return len(files), sum(files.values())
 
 
 def remove(dev, what, yes=False, out=print):

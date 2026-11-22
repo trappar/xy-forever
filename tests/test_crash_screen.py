@@ -2,7 +2,6 @@
 is put in place and taken out again (source order; the vector itself runs only on the device)."""
 from pathlib import Path
 import re
-import struct
 import subprocess
 import sys
 import tempfile
@@ -15,13 +14,6 @@ sys.path.insert(0, str(ROOT))
 import ui_preview as P  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 from xy_forever.source_text import unit_text  # noqa: E402
-from xy_forever import paths, sim  # noqa: E402
-import xyf_host as host  # noqa: E402
-
-sys.path.insert(0, str(ROOT / 'scripts'))
-import crash_probe  # noqa: E402
-
-UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 
 PROGRAM = r'''
 #include "crash_screen.hpp"
@@ -159,47 +151,6 @@ class CrashScreenTest(unittest.TestCase):
         self.assertEqual(vector.count('P0.L = xyf_crash_record;'), 1)
         for banned in ('CALL', 'JUMP (', 'RAISE', 'EXCPT', 'STI'):
             self.assertNotIn(banned, vector)
-
-
-@pytest.mark.sim
-class CrashProbeTest(unittest.TestCase):
-    """scripts/crash_probe.py: its decode, and the script against the simulator (read-only peeks)."""
-
-    def test_decode_lists_the_handled_causes(self):
-        l1 = bytearray(crash_probe.L1_BYTES)
-        for cause, slot, entry in ((0x26, 0x0d, 0x11a007ec), (0x2c, 0x0d, 0x11a007ec), (0x03, 0x0e, 0x88a00000)):
-            l1[crash_probe.CAUSE_SLOT - crash_probe.L1 + cause] = slot
-            at = crash_probe.HANDLERS - crash_probe.L1 + slot * 8
-            l1[at:at + 8] = struct.pack('<II', entry, 0x1234)
-        l1[crash_probe.COUNT - crash_probe.L1] = 3
-        d = crash_probe.decode(bytes(l1), struct.pack('<3I', 0x881f, 0x8010, 0x20))
-        self.assertEqual(sorted(d['handled']), ['0x03', '0x26', '0x2c'])
-        self.assertEqual(d['handled']['0x26'], dict(slot=0x0d, entry='0x11a007ec', argument='0x00001234'))
-        self.assertEqual((d['registered'], d['software']), (3, ['0x03']))
-        self.assertTrue(d['hardware_error_latched'] and d['hardware_error_masked'])
-
-    @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
-    def test_the_device_probe_script(self):
-        import contextlib
-        import io
-        with tempfile.TemporaryDirectory(prefix='xyf-sim-crash-', dir=str(paths.SESSIONS)) as tmp:
-            root = sim.seed(Path(tmp) / 'yaffs2')
-            simulator = sim.Simulator(root, Path(tmp) / 'bootpart.bin', log=Path(tmp) / 'log.txt').start()
-            try:
-                sessions = Path(tmp) / 'sessions'
-                sessions.mkdir()
-                out = io.StringIO()
-                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-                    code = crash_probe.main(['--sim', simulator.address], sessions=sessions)
-                self.assertEqual(code, 0, out.getvalue())
-                self.assertRegex(out.getvalue(), r'probe/decode +PASS')
-                self.assertEqual(list(sessions.iterdir()), [])                 # a passing simulator run leaves nothing
-                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-                    code = crash_probe.main(['--sim', '127.0.0.1:1', '--wait', '0.5'], sessions=sessions)
-                self.assertEqual(code, 3)
-            finally:
-                simulator.stop()
-                host.SIM = None
 
 
 if __name__ == '__main__':

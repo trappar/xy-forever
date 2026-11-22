@@ -104,22 +104,6 @@ def sqrt_mod_p(value):
     return root
 
 
-def recover(digest, r, s):
-    """Every public key for which (r, s) is a valid signature of digest (SEC 1 4.1.6)."""
-    keys = []
-    for x in (r, r + N):
-        if x >= P:
-            continue
-        y = sqrt_mod_p(x * x * x + A * x + B)
-        if y is None:
-            continue
-        for candidate in ((x, y), (x, P - y)):
-            q = multiply(pow(r, -1, N), add(multiply(s, candidate), negate(multiply(bits2int(digest) % N, G))))
-            if q is not None and verify(q, digest, r, s) and q not in keys:
-                keys.append(q)
-    return keys
-
-
 def encode_point(point):
     """Qx || Qy, 28-byte big-endian each: the layout the stock verifier reads from OTP selector 9."""
     return point[0].to_bytes(SIZE, 'big') + point[1].to_bytes(SIZE, 'big')

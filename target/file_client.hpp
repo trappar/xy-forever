@@ -144,7 +144,6 @@ static const uint32_t scan_again = 0xffffffffu;
 struct NameScan { uint32_t folder, seen; };
 uint32_t scan_name(const char* path, NameScan& scan, volatile uint32_t& mounted);
 uint32_t close_name_scan(NameScan& scan, volatile uint32_t& mounted);
-Reply free_space(const char* path, uint8_t* bytes);                 // existing query 0x31, eight bytes
 Reply statfs(const char* path, uint8_t* space);                     // space_bytes
 Reply opendir(const char* path);
 Reply readdir(uint32_t folder, uint8_t* entry);                     // entry_bytes
