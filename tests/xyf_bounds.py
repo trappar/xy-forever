@@ -1,7 +1,7 @@
 """Hard bounds on every test (#230, xy_forever/bounds.py), as a pytest plugin over pytest-timeout.
 
 Each test, with the fixtures before it, is bounded by the ini `timeout` (bounds.TEST_S), a simulator core
-test by bounds.SIM_TEST_S, and a parked sweep (the `sweep` marker) by bounds.SLOW_S. Past it, a thread prints HUNG: <test id> and every
+test by bounds.SIM_TEST_S. Past it, a thread prints HUNG: <test id> and every
 thread's traceback, then ends the process: under xdist each worker leads its own process group, and the
 whole group is killed (a child the test started with it); xdist names the test whose worker crashed. A
 worker whose controller is gone ends with its group too (procgroup.end_group_with_parent). Children
@@ -29,26 +29,20 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(items):
     for item in items:
-        if item.get_closest_marker('sweep'):
-            item.add_marker(pytest.mark.timeout(bounds.SLOW_S))
-        elif item.get_closest_marker('sim'):
+        if next((m.name for m in item.iter_markers() if m.name in ('gate', 'sim')), None) == 'sim':  # closest
             item.add_marker(pytest.mark.timeout(bounds.SIM_TEST_S))
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_protocol(item):
-    """A simulator test's build (the default one) comes before its bound: a cold build is a compile, not the test."""
-    if item.get_closest_marker('sim') or item.get_closest_marker('sweep'):
+    """A test that uses the simulator (sim/) gets its build (the default one) before its bound: a cold build is a
+    compile, not the test."""
+    if any('sim/' in m.args for m in item.iter_markers('uses')):
         from xy_forever import sim
 
         if not sim.available():
             sim.build()
     yield
-
-
-@pytest.hookimpl(tryfirst=True)
-def pytest_runtest_setup(item):
-    bounds.slow_now = item.get_closest_marker('sweep') is not None  # simulators and Devices it makes
 
 
 def _hung(item, seconds):

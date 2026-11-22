@@ -185,7 +185,7 @@ class Adopt(unittest.TestCase):
         self.assertIn('default=opxy-121\n', state)
         self.assertIn('default=opxy-121\n', (self.root / 'xy-forever/converged.txt').read_text())
 
-    @pytest.mark.sweep
+    @pytest.mark.sweep  # parked: a serial chain of simulator restarts, the run's critical path
     def test_power_cut_mid_copy_is_redone_at_the_next_start(self):
         self.start()
         self.wait(lambda: self.lines('menu: line: OS 1.2.1'), 'the first adoption')

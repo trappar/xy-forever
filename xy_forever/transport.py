@@ -9,6 +9,8 @@ import glob
 import os
 import select
 import socket
+import subprocess
+import sys
 import termios
 import threading
 import time
@@ -17,6 +19,8 @@ from xy_forever import device_lock, no_device
 
 WRITE_STALL = 2.0  # seconds a write may make no progress before it is a timeout
 OPEN_LIMIT = 3.0  # seconds SerialPort waits for the port to open before it is a timeout
+DETACHED = [sys.executable, '-m', 'xy_forever.transport']  # the detached side's command (_detached)
+_children = []  # detached processes not yet reaped (_detached)
 _opening = {}  # path: the socket of an open that outlived its wait (the next SerialPort waits on it)
 
 
@@ -28,27 +32,21 @@ def device_ports():
     return sorted(glob.glob('/dev/cu.usbmodem*'))
 
 
-def _detached(work, keep):
-    """Runs work() in a detached grandchild (own session, stdio on /dev/null, every fd but keep closed):
-    nothing waits for it, so a system call the kernel holds there holds no caller (issue #118)."""
-    pid = os.fork()
-    if pid:
-        os.waitpid(pid, 0)  # the middle child exits at once: no zombie is left
-        return
-    try:
-        os.setsid()
-        if os.fork() == 0:
-            null = os.open(os.devnull, os.O_RDWR)
-            for std in (0, 1, 2):
-                os.dup2(null, std)
-            for fd in {int(name) for name in os.listdir('/dev/fd')} - set(keep) - {0, 1, 2}:
-                try:
-                    os.close(fd)
-                except OSError:
-                    pass  # listdir's own, already closed
-            work()
-    finally:
-        os._exit(0)
+def _detached(keep, *args):
+    """Runs DETACHED ARGS (python -m xy_forever.transport) detached (own session, stdio on /dev/null, every fd but keep
+    closed): nothing waits for it, so a system call the kernel holds there holds no caller (issue #118). A new
+    process, never a fork: the caller may have threads. Ended children are reaped at the next call."""
+    _children[:] = [child for child in _children if child.poll() is None]
+    _children.append(
+        subprocess.Popen(
+            [*DETACHED, *map(str, args)],
+            pass_fds=keep,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    )
 
 
 def _open_tty(path):
@@ -73,20 +71,22 @@ def _open_tty(path):
 def _opener(path):
     """A socket that receives path's fd (or 'errno text') from a detached _open_tty."""
     ours, theirs = socket.socketpair()
-
-    def work():
-        try:
-            fd = _open_tty(path)
-        except OSError as error:
-            theirs.sendall(('%d %s' % (error.errno or 0, error.strerror or error)).encode())
-        else:
-            socket.send_fds(theirs, [b'ok'], [fd])
-
     try:
-        _detached(work, (theirs.fileno(),))
+        _detached((theirs.fileno(),), 'open', path, theirs.fileno())
     finally:
         theirs.close()
     return ours
+
+
+def _send_open(path, fd):
+    """The detached side of _opener: path's fd, or 'errno text', on the socket fd."""
+    with socket.socket(fileno=fd) as theirs:
+        try:
+            tty = _open_tty(path)
+        except OSError as error:
+            theirs.sendall(('%d %s' % (error.errno or 0, error.strerror or error)).encode())
+        else:
+            socket.send_fds(theirs, [b'ok'], [tty])
 
 
 def _final_close(fd, parent_done):
@@ -167,7 +167,7 @@ class SerialPort:
             return
         done, hold = os.pipe()
         try:
-            _detached(lambda: _final_close(fd, done), (fd, done))
+            _detached((fd, done), 'close', fd, done)
         finally:
             os.close(done)
             os.close(fd)
@@ -255,3 +255,10 @@ class TcpPort:
         if self.fd is not None:
             self.sock.close()
             self.fd = None
+
+
+if __name__ == '__main__':  # the detached side (_detached): open PATH SOCKET_FD | close FD PARENT_DONE_FD
+    if sys.argv[1] == 'open':
+        _send_open(sys.argv[2], int(sys.argv[3]))
+    else:
+        _final_close(int(sys.argv[2]), int(sys.argv[3]))

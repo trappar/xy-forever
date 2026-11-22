@@ -159,7 +159,7 @@ class CheckReceiptTests(unittest.TestCase):
         self.run_check(facts)
         status, text = self.confirm()
         self.assertEqual(status, 0)
-        self.assertIn('fast tier: 12 passed, 1 skipped', text)
+        self.assertIn('tests, fast: 12 passed, 1 skipped', text)
         self.assertIn('candidate: image abababab, sha256 ' + 'ab' * 32 + ', 1234 bytes', text)
 
     def test_merge_base_prefers_origin_main(self):
@@ -217,10 +217,10 @@ class CheckReceiptTests(unittest.TestCase):
             [(r['name'], r['result']) for r in results], [('ok', 'pass'), ('pnpm run typecheck (web)', 'fail')]
         )
 
-    def test_budgets_name_the_step_and_the_total(self):
-        self.assertEqual(C.over_budget([dict(name='a', seconds=10.0), dict(name='b', seconds=12.0)]), [])
+    def test_wall_time_lines_name_the_step_and_the_total(self):
+        self.assertEqual(C.over_wall([dict(name='a', seconds=10.0), dict(name='b', seconds=12.0)]), [])
         self.assertEqual(
-            C.over_budget([dict(name='a', seconds=16.0), dict(name='b', seconds=15.0)]),
+            C.over_wall([dict(name='a', seconds=16.0), dict(name='b', seconds=15.0)]),
             ['a took 16.0 s: over the 15 s a step', 'the check took 31.0 s: over 30 s'],
         )
 

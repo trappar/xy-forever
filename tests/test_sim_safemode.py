@@ -63,7 +63,8 @@ class SafeMode(ConfigBase, unittest.TestCase):
 
     # -- the tests ---------------------------------------------------------------------------------
 
-    @pytest.mark.sweep
+    @pytest.mark.gate  # a simulator sweep
+    @pytest.mark.uses('sim/')
     def test_power_cut_in_the_safe_mode_switch_then_again(self):
         a = self.first_save()
         self.menu_again()

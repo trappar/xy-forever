@@ -33,24 +33,19 @@ jobs:
       - run: uv sync --locked
       - run: pnpm install --frozen-lockfile
       - name: Blackfin toolchain cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/tools/blackfin
           key: blackfin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stock.json', 'toolchains.json') }}
       - name: Blackfin toolchain (open-xy's public release, checked against toolchains.json)
         env:
           XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
-        run: |
-          test -d "$XYF_TOOLCHAIN" || uv run python -c 'import importlib.util, os, pathlib, sys
-          spec = importlib.util.spec_from_file_location("setup", "scripts/setup.py"); s = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(s)
-          s.install_toolchain(s.PINS["toolchain"]["archives"][s.host_name()], pathlib.Path(os.environ["XYF_TOOLCHAIN"]))'
-      - name: Every tier of the suite (CPU budgets enforced; wall-time budgets reported on CI hardware)
+        run: uv run scripts/setup.py toolchain
+      - name: The suite, every tier but the sweeps (mise run test-all; CPU budgets enforced, wall time reported)
         env:
           XYF_PRIVATE: ${{ runner.temp }}/private   # empty: every test that needs private files skips
           XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
-          XYF_BUDGETS: ci                   # CPU budgets enforced; wall-time ones only reported
-        run: mkdir -p "$XYF_PRIVATE" && uv run pytest -n auto --dist worksteal -m "not sweep"
+        run: mkdir -p "$XYF_PRIVATE" && mise run test-all
 
   web:
     name: Lint, web app, client, protocol check (Linux)
