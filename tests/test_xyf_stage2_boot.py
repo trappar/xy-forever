@@ -1,15 +1,13 @@
 """Stage-2 "hello" path (--xyf-stage2): b's decisions (same C++ as the device),
 the result record and decoder, read-only and PLAY-only rules, buffers, and the
 builder's single-trampoline audit. No device execution."""
-import ctypes as C
 from pathlib import Path
 import re
 import struct
-import tempfile
 import unittest
 
+import xyf_hosttest
 from xy_forever.source_text import unit_text
-from xy_forever import hostbuild
 from xy_forever import xyf_build as builder
 from xy_forever import xyf_stage2 as S
 from xy_forever.census import (FILE_BOOT_BYTES, FILE_BOOT_FIELDS, FILE_BOOT_LIBRARY_BYTES, FILE_BOOT_MAGIC,
@@ -42,22 +40,10 @@ def constant(text, name):
 class Stage2DecisionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-stage2-boot-')
-        lib = Path(cls.tmp.name) / 'stage2.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-ffreestanding', '-fno-builtin', str(ROOT / 'target/xyf_stage2.cpp'),
-                       str(ROOT / 'target/xyf_crc32.cpp'), str(ROOT / 'native/hash.cpp'),
-                       str(ROOT / 'tests/xyf_stage2_bridge.cpp'), '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-        cls.lib.stage2_classify.argtypes = [C.c_char_p, C.c_uint, C.c_uint, C.POINTER(C.c_uint)]
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('stage2')
 
     def classify(self, data, stage1=1):
-        detail = C.c_uint(0xdead)
-        return self.lib.stage2_classify(data, len(data), stage1, C.byref(detail)), detail.value
+        return self.lib.classify(data, stage1)
 
     def test_blob_decisions(self):
         good = S.pack(b'\x01\x02' * 64, BEGIN, BEGIN, 1, 'hello')
@@ -74,11 +60,11 @@ class Stage2DecisionTest(unittest.TestCase):
         self.assertEqual(constant(STAGE2_H, 'refusal_magic'), struct.unpack('<I', b'XYSN')[0])
 
     def test_exit_decisions(self):
-        self.assertEqual(self.lib.stage2_after(0, 0), BOOT_DEFAULT)
-        self.assertEqual(self.lib.stage2_after(1, 0), MENU)
-        self.assertEqual(self.lib.stage2_after(7, 0), BOOT_DEFAULT)          # unknown: as continue
+        self.assertEqual(self.lib.after(0, 0), BOOT_DEFAULT)
+        self.assertEqual(self.lib.after(1, 0), MENU)
+        self.assertEqual(self.lib.after(7, 0), BOOT_DEFAULT)          # unknown: as continue
         for code in (0, 1, 7):
-            self.assertEqual(self.lib.stage2_after(code, 1), BOOT_BUILTIN)
+            self.assertEqual(self.lib.after(code, 1), BOOT_BUILTIN)
 
 
 class Stage2BootTest(unittest.TestCase):

@@ -3,13 +3,11 @@ import os
 from pathlib import Path
 import random
 import struct
-import subprocess
 import tempfile
 import unittest
 
-from xy_forever import hostbuild
+import xyf_hosttest
 
-ROOT = Path(__file__).resolve().parents[1]
 
 OK, GENERAL, NO_SESSION, NOT_SUPPORTED = 0x2001, 0x2002, 0x2003, 0x2005
 INVALID_HANDLE, WRITE_PROTECTED, ACCESS_DENIED, PARTIAL_DELETION = 0x2009, 0x200D, 0x200F, 0x2012
@@ -38,30 +36,19 @@ def object_info(name, size=0, fmt=FILE, parent=0):
 
 
 class Client:
-    def __init__(self, bridge, folder):
-        self.process = subprocess.Popen([str(bridge), str(folder)], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    def __init__(self, folder):
+        self.native = xyf_hosttest.module("mtp_responder").Responder(str(folder))   # folder: /yaffs2
         self.tid = 0
 
-    def close(self):
-        self.process.stdin.close()
-        self.process.wait(10)
-        self.process.stdout.close()
-
-    def call(self, command, payload=b""):
-        self.process.stdin.write(command + struct.pack("<I", len(payload)) + payload)
-        self.process.stdin.flush()
-        size = struct.unpack("<I", self.process.stdout.read(4))[0]
-        return self.process.stdout.read(size)
-
     def out(self, transfer):
-        assert self.call(b"R", transfer) == b"\1", "the responder never took the transfer"
+        assert self.native.receive(transfer), "the responder never took the transfer"
 
     def take(self, most=1 << 30):
-        return self.call(b"I", struct.pack("<I", most))
+        return self.native.take(most)
 
     def status(self):
-        return struct.unpack("<HIIIII", self.call(b"S"))   # device status, open files, handles, most calls/step,
-        #                                                    cache hits, file calls in all
+        return self.native.status()   # device status, open files, handles, most calls/step,
+        #                               cache hits, file calls in all
 
     def command(self, code, *params):
         self.tid += 1
@@ -117,10 +104,6 @@ class MtpResponderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix="xyf-mtp-")
-        cls.bridge = Path(cls.temporary.name) / "mtp_responder_bridge"
-        hostbuild.run(["/usr/bin/clang++", "-std=c++11", "-O2", "-Wall", "-Wextra", "-Werror",
-                       str(ROOT / "tests/mtp_responder_bridge.cpp"), str(ROOT / "native/mtp_responder.cpp"),
-                       "-o", str(cls.bridge)], check=True, capture_output=True)
         cls.big = random.Random(35).randbytes(1 << 20)
 
     @classmethod
@@ -137,11 +120,10 @@ class MtpResponderTests(unittest.TestCase):
         (self.folder / "readme.txt").write_bytes(b"in the root")
         (self.folder / "upgrade").mkdir()
         (self.folder / "upgrade/x.tfw").write_bytes(b"tfw")
-        self.client = Client(self.bridge, self.folder)
+        self.client = Client(self.folder)
 
     def tearDown(self):
         status = self.client.status()
-        self.client.close()
         self.assertEqual(status[1], 0, "a file was left open")
         self.assertLessEqual(status[3], 1, "a step made more than one file call")
 
@@ -205,7 +187,7 @@ class MtpResponderTests(unittest.TestCase):
         self.assertEqual(c.status()[4:], (hits + 3, calls))
         (self.folder / "readme.txt").write_bytes(b"longer text now")
         self.assertEqual(c.info(root["readme.txt"])["size"], 11)          # cached: a change outside MTP not seen
-        c.call(b"X")
+        c.native.invalidate()
         self.assertEqual(c.info(root["readme.txt"])["size"], 15)          # stat again
         self.assertEqual(c.status()[5], calls + 1)
         self.assertEqual(c.info(root["readme.txt"])["size"], 15)          # fresh again
@@ -240,13 +222,13 @@ class MtpResponderTests(unittest.TestCase):
         big = c.named(c.named()["xy-forever"])["big.bin"]
         calls = c.status()[5]
         c.out(c.command(0x1009, big))                                 # the default piece: 4 KiB
-        containers = c.answers(c.call(b"J", struct.pack("<I", 1 << 30)))
+        containers = c.answers(c.native.take_packets(1 << 30))
         self.assertEqual((containers[0][3], containers[-1][1]), (self.big, OK))
         self.assertLess(c.status()[5] - calls, (1 << 20) // 4096 + 8)  # 4 KiB per read call, not 1 KiB
         for asked, piece in ((512, 1024), (5000, 4096), (4096, 4096)):
-            self.assertEqual(struct.unpack("<I", c.call(b"Z", struct.pack("<I", asked)))[0], piece)
+            self.assertEqual(c.native.set_piece(asked), piece)
         c.out(c.command(0x101B, big, 1000, 9000))
-        containers = c.answers(c.call(b"J", struct.pack("<I", 1 << 30)))
+        containers = c.answers(c.native.take_packets(1 << 30))
         self.assertEqual((containers[0][3], containers[-1][1]), (self.big[1000:10000], OK))
         body = random.Random(4).randbytes(50000)
         code, handle = self.upload(c.named()["xy-forever"], "up.bin", body)
@@ -424,9 +406,9 @@ class MtpResponderTests(unittest.TestCase):
         c.out(c.command(0x1009, big))
         self.assertEqual(len(c.take(20000)), 20000)
         self.assertEqual(c.status()[1], 1)
-        c.call(b"C")
+        c.native.cancel()
         self.assertEqual(c.status()[0], BUSY)
-        c.call(b"P")
+        c.native.run()
         self.assertEqual(c.status()[:2], (OK, 0))
         self.assertEqual(c.take(), b"")
         self.assertEqual(c.transaction(0x1009, c.named(folder)["note.txt"])[2], b"hello")
@@ -435,9 +417,9 @@ class MtpResponderTests(unittest.TestCase):
         self.assertEqual(code, OK)
         c.out(c.command(0x100D))
         c.send_data(0x100D, bytes(100000), stop=3 * 4096)
-        c.call(b"P")
-        c.call(b"C")
-        c.call(b"P")
+        c.native.run()
+        c.native.cancel()
+        c.native.run()
         self.assertEqual(c.status()[:2], (OK, 0))
         self.assertFalse((self.folder / "xy-forever/half.bin").exists())
         self.assertEqual(c.info(params[2]), INVALID_HANDLE)
@@ -469,8 +451,8 @@ class MtpResponderTests(unittest.TestCase):
         code, params, _ = c.transaction(0x100C, STORAGE, folder, data=object_info("note.txt", 100000))
         c.out(c.command(0x100D))
         c.send_data(0x100D, bytes(100000), stop=3 * 4096)
-        for op in (b"P", b"C", b"P"):
-            c.call(op)
+        for op in (c.native.run, c.native.cancel, c.native.run):
+            op()
         self.assertEqual(c.status()[:2], (OK, 0))
         self.assertEqual((note.read_bytes(), self.uploads()), (b"new note\n" * 1000, []))
         self.assertNotEqual(old, note.read_bytes())

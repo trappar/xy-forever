@@ -81,6 +81,6 @@ to represent in-place encryption of all padded sectors. Header version 3, plaint
 encrypted bytes retain their stock positions. Boot fetch reverses only this marked representation;
 older plaintext files remain readable. This models ownership and ciphertext readback, not AES, OTP,
 crypt-prepare failure, callback execution, media timing or hardware write atomicity. No private keys are used.
-Tests: `test_sim_stock_writer_model` (both roles, retries, verification failures and cuts),
+Tests: `tests/native/sim_stock_writer_test.cpp` (both roles, retries, verification failures and cuts),
 `test_sim_stock_writer` (B installer; its fault cases are parked sweeps, #233).
 

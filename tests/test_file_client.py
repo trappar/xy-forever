@@ -1,15 +1,13 @@
 """B's timed file client (file_client.cpp): the six admitted stock calls, their
 scope and CRC spans, the request bounds, the removed stock client. Behaviour (silent, slow, lossy
 A): tests/test_simulator.py. No device execution."""
-import ctypes as C
 from pathlib import Path
 import struct
-import tempfile
 import unittest
 import zlib
 
+import xyf_hosttest
 from xy_forever.source_text import unit_text
-from xy_forever import hostbuild
 from xy_forever import xyf_build as B
 from xy_forever import usb_proto_ids as ids
 from xy_forever.paths import STOCK_121
@@ -89,48 +87,38 @@ class AllowlistTest(unittest.TestCase):
 class BoundsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-file-client-')
-        lib = Path(cls.tmp.name) / 'client.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-ffreestanding', '-fno-builtin', '-fno-exceptions', '-fno-rtti', '-I', str(ROOT / 'target'),
-                       str(ROOT / 'target/file_client.cpp'), str(ROOT / 'tests/file_client_bridge.cpp'),
-                       '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('file_client')
 
     def test_bounds(self):
-        short, long = self.lib.fc_request_ms(), self.lib.fc_change_ms()
+        short, long = self.lib.request_ms(), self.lib.change_ms()
         self.assertEqual((short, long), (5000, 45000))         # 009: 5 s; 45 s (a read-write mount took 16.85 s)
         for op, argument in ((8, 0), (9, 0), (0x25, 0), (0x26, 0), (0x27, 0), (0x2b, 0), (0x2d, 3), (0x29, 0x8301)):
-            self.assertEqual(self.lib.fc_bound_ms(op, argument), long, hex(op))
+            self.assertEqual(self.lib.bound_ms(op, argument), long, hex(op))
         for op, argument in ((0x29, 0), (0x2a, 0), (0x2c, 3), (0x2e, 0), (0x2f, 0), (0x30, 0), (0x22, 0), (0x23, 0)):
-            self.assertEqual(self.lib.fc_bound_ms(op, argument), short, hex(op))
+            self.assertEqual(self.lib.bound_ms(op, argument), short, hex(op))
         # file.rename's rename_to opens the write window and renames (long), as rename_over and rename_upload (#144);
         # rename_from only keeps it.
         for argument in (0x4f544e52, 0x4f545052, 0x54555052):
-            self.assertEqual(self.lib.fc_bound_ms(0x21, argument), long, hex(argument))
+            self.assertEqual(self.lib.bound_ms(0x21, argument), long, hex(argument))
         for argument in (0x52464e52, 0, 4):
-            self.assertEqual(self.lib.fc_bound_ms(0x21, argument), short, hex(argument))
+            self.assertEqual(self.lib.bound_ms(0x21, argument), short, hex(argument))
         boot = (ROOT / 'target/xyf_boot.hpp').read_text()
         self.assertIn('static const uint32_t lost_ms = 60000;', boot)   # > the longest bound and a's 25 s alone reset
 
     def test_status(self):
-        self.assertEqual(self.lib.fc_status(1), ids.S_REFUSED)        # refused: never sent
+        self.assertEqual(self.lib.status(1), ids.S_REFUSED)        # refused: never sent
         for outcome in (2, 3, 4):                                     # link, busy, lost
-            self.assertEqual(self.lib.fc_status(outcome), ids.S_LINK)
+            self.assertEqual(self.lib.status(outcome), ids.S_LINK)
 
     def test_change_status(self):
         # A's yaffs error numbers (1.2.1 listing 889fa4b0): ENOENT 2, A's policy EACCES 13, ENOTEMPTY 93.
         for error, status in ((2, ids.S_NOT_FOUND), (13, ids.S_REFUSED), (93, ids.S_STATE), (17, ids.S_STORAGE),
                               (20, ids.S_STORAGE), (21, ids.S_STORAGE), (30, ids.S_STORAGE), (0, ids.S_STORAGE)):
-            self.assertEqual(self.lib.fc_change_status(error), status, error)
+            self.assertEqual(self.lib.change_status(error), status, error)
         # file.rename: A's EEXIST (the target exists: refused before the stock rename) is state.
         for error, status in ((17, ids.S_STATE), (2, ids.S_NOT_FOUND), (13, ids.S_REFUSED), (93, ids.S_STATE),
                               (22, ids.S_STORAGE), (5, ids.S_STORAGE), (0, ids.S_STORAGE)):
-            self.assertEqual(self.lib.fc_rename_status(error), status, error)
+            self.assertEqual(self.lib.rename_status(error), status, error)
 
     def entry(self, name, kind, have=None, room=300):
         dirent = bytearray(0x10c)
@@ -140,9 +128,7 @@ class BoundsTest(unittest.TestCase):
         if have:
             record[8:12] = struct.pack('<I', have[0])
             record[0x1c:0x20] = struct.pack('<I', have[1])
-        out = C.create_string_buffer(300)
-        n = self.lib.fc_list_entry(bytes(dirent), 1 if have else 0, bytes(record), out, room)
-        return out.raw[:n]
+        return self.lib.list_entry(bytes(dirent), bool(have), bytes(record), room)
 
     def test_list_entry(self):
         name = 'caf\u00e9.txt'.encode('utf-8')
@@ -161,9 +147,9 @@ class BoundsTest(unittest.TestCase):
         # device folder listed empty), 0 at the end; A's refusal -1 (storage_server).
         entry, end, error = 0, 1, 2
         for value in (0x8806f9a4 - (1 << 32), 0x0804f700, 1, 0x7fffffff, -2):
-            self.assertEqual(self.lib.fc_readdir_result(value), entry, hex(value))
-        self.assertEqual(self.lib.fc_readdir_result(0), end)
-        self.assertEqual(self.lib.fc_readdir_result(-1), error)
+            self.assertEqual(self.lib.readdir_result(value), entry, hex(value))
+        self.assertEqual(self.lib.readdir_result(0), end)
+        self.assertEqual(self.lib.readdir_result(-1), error)
         # All three B file-client walks use it: file.list, rename depth, and native metadata name lookup.
         client = unit_text(ROOT / 'target/file_client.cpp')
         self.assertEqual(client.count(' = readdir('), 3)
@@ -171,13 +157,11 @@ class BoundsTest(unittest.TestCase):
         self.assertIn('C::readdir_result(int32_t(v))', unit_text(ROOT / 'target/usb_service.cpp'))
 
     def test_child_path(self):
-        out = C.create_string_buffer(240)
         for folder, name, want in ((b'/yaffs2', b'a', b'/yaffs2/a'), (b'/yaffs2/', b'a', b'/yaffs2/a'),
                                    (b'/yaffs2/x', b'b c', b'/yaffs2/x/b c')):
-            self.assertEqual(self.lib.fc_child_path(folder, name, out), 1)
-            self.assertEqual(out.value, want)
-        self.assertEqual(self.lib.fc_child_path(b'/yaffs2/' + b'd' * 220, b'n' * 10, out), 1)    # 239 B + NUL
-        self.assertEqual(self.lib.fc_child_path(b'/yaffs2/' + b'd' * 220, b'n' * 11, out), 0)
+            self.assertEqual(self.lib.child_path(folder, name), want)
+        self.assertEqual(len(self.lib.child_path(b'/yaffs2/' + b'd' * 220, b'n' * 10)), 239)    # 239 B + NUL
+        self.assertIsNone(self.lib.child_path(b'/yaffs2/' + b'd' * 220, b'n' * 11))
 
 
 if __name__ == '__main__':

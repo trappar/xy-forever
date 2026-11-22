@@ -1,14 +1,12 @@
 """Stage-2 file format: host packer vs device validator (same C++ as the device)."""
-import ctypes as C
 import hashlib
 from pathlib import Path
 import re
 import struct
-import tempfile
 import unittest
 import zlib
 
-from xy_forever import hostbuild
+import xyf_hosttest
 from xy_forever import xyf_stage2 as S
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,27 +25,13 @@ def repack(data, image):
 class Stage2Test(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-stage2-')
-        lib = Path(cls.tmp.name) / 'stage2.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-ffreestanding', '-fno-builtin', str(ROOT / 'target/xyf_stage2.cpp'),
-                       str(ROOT / 'target/xyf_crc32.cpp'), str(ROOT / 'native/hash.cpp'),
-                       str(ROOT / 'tests/xyf_stage2_bridge.cpp'), '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-        for name in ('stage2_validate', 'stage2_accept'):
-            getattr(cls.lib, name).argtypes = [C.c_char_p, C.c_uint, C.c_uint]
-        cls.lib.stage2_constant.restype = C.c_uint
-        cls.lib.stage2_path.restype = C.c_char_p
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('stage2')
 
     def check(self, data, stage1=1):
-        return self.lib.stage2_validate(data, len(data), stage1)
+        return self.lib.validate(data, stage1)
 
     def accept(self, data, stage1=1):
-        return self.lib.stage2_accept(data, len(data), stage1)
+        return self.lib.accept(data, stage1)
 
     def test_round_trip_and_rejections(self):
         image = bytes(range(256)) * 64
@@ -90,13 +74,13 @@ class Stage2Test(unittest.TestCase):
             self.assertEqual(self.check(bytes(good)), expect, hex(load))
 
     def test_constants_match_host_tool_and_layout(self):
-        v = [self.lib.stage2_constant(i) for i in range(10)]
+        v = [self.lib.constant(i) for i in range(10)]
         self.assertEqual((v[0], v[1]), S.WINDOW)
         self.assertEqual((v[0], v[1]), (BEGIN, END))
         self.assertEqual(v[2], END - BEGIN)
         self.assertEqual((v[3], v[4], v[5]), (S.HEADER_BYTES, S.ABI, 1))
         self.assertEqual((v[6], v[7], v[8], v[9]), (0, 1, 0x10000, 0xffffffff))
-        self.assertEqual(self.lib.stage2_path().decode(), S.PATH)
+        self.assertEqual(self.lib.path().decode(), S.PATH)
         # Window lies in the module's 1 MiB region, above the stack top, clear of every other buffer.
         self.assertEqual(BEGIN >> 20, 0x8ab00000 >> 20)
         self.assertEqual((END - 1) >> 20, 0x8ab00000 >> 20)

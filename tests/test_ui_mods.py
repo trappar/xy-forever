@@ -4,7 +4,6 @@ an independent Python sum, mods.apply's request bytes, the result lines, and pre
 over the limit, building, done, failed) drawn inside the visible rows. Synthetic packages always; the
 published 0.0.6 set when present, whose previews are kept in
 <private>/xy-forever/previews/mods-page/. No device, no simulator."""
-import ctypes
 import json
 from pathlib import Path
 import re
@@ -15,7 +14,7 @@ import unittest
 import pytest
 
 import ui_preview as P
-from xy_forever import hostbuild, modkit as M, modsend as MS, package_records, paths
+from xy_forever import modkit as M, modsend as MS, package_records, paths
 from test_modpatch import PACKAGES, finish, kit_for, profile_for, stock
 
 PLAY, STOP, MINUS, PLUS, SHIFT = 51, 52, 53, 54, 55
@@ -57,14 +56,8 @@ def estimate(gen, on):
     return used + sum(services[n] for n in names)
 
 
-def build_lib(tmp):
-    lib = P.build(tmp, run=hostbuild.run)
-    for name in ('mods_text', 'mods_note', 'mods_refusal', 'mods_save_refusal', 'mods_row_id', 'mods_list_id', 'mods_sorted_name',
-                 'mods_sorted_id', 'mods_flip_memory'):
-        getattr(lib, name).restype = ctypes.c_char_p
-    lib.mods_payload.argtypes = [ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p, ctypes.c_uint]
-    lib.mods_compare.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
-    return lib
+def build_lib():
+    return P.build()
 
 
 def load(lib, gen, base_text=None):
@@ -73,11 +66,11 @@ def load(lib, gen, base_text=None):
     lib.mods_reset()
     b = base_text if base_text is not None else metadata_view(gen / 'base')
     s = (gen / 'base/services.txt').read_bytes()
-    assert lib.mods_base(b, len(b)) and lib.mods_services(s, len(s))
+    assert lib.mods_base(b) and lib.mods_services(s)
     for d in sorted(p for p in gen.iterdir() if p.is_dir() and p.name != 'base'):
         if (d / 'files.sha256').is_file():
             t = metadata_view(d)
-            assert lib.mods_package(lib.mods_add(d.name.encode()), t, len(t)), d
+            assert lib.mods_package(lib.mods_add(d.name.encode()), t), d
     lib.mods_ready(info(gen / 'base')['profile'].encode(), gen.name.encode())
 
 
@@ -118,7 +111,7 @@ class Base:
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-mods-page-')
         cls.addClassCleanup(cls.tmp.cleanup)
-        cls.lib = build_lib(cls.tmp.name)
+        cls.lib = build_lib()
         cls.fb = P.framebuffer(cls.lib)
 
     def hidden_writes(self):
@@ -437,12 +430,11 @@ class SyntheticPage(Base, unittest.TestCase):
         self.assertEqual(shifted(lib, STOP), REDRAW)
         self.assertEqual(self.text(), 'Unknown mod bases refused.')
         self.assertEqual(shifted(lib, STOP), REDRAW)
-        out = ctypes.create_string_buffer(1024)
-        n = lib.mods_payload(b'modbase', 1, out, 1024)
+        payload = lib.mods_payload(b'modbase', 1, 1024)
         want = MS.apply_request('modbase', info(self.gen / 'base')['profile'], self.gen.name,
                                 [m for m in machines if m in on], ['cap'], 'Mods: 3', True)
-        self.assertEqual(out.raw[:n], want[:-32])
-        self.assertEqual(lib.mods_payload(b'modbase', 0, out, 20), 0)       # does not fit: nothing
+        self.assertEqual(payload, want[:-32])
+        self.assertEqual(lib.mods_payload(b'modbase', 0, 20), b'')       # does not fit: nothing
 
     def test_keys(self):
         lib = self.lib
@@ -617,10 +609,10 @@ class PageOrder(Base, unittest.TestCase):
         # read in any folder order: the same display order
         lib.mods_reset()
         b, sv = metadata_view(self.gen / 'base'), (self.gen / 'base/services.txt').read_bytes()
-        lib.mods_base(b, len(b)); lib.mods_services(sv, len(sv))
+        lib.mods_base(b); lib.mods_services(sv)
         for d in sorted((p for p in self.gen.iterdir() if p.is_dir() and p.name != 'base'), reverse=True):
             t = metadata_view(d)
-            lib.mods_package(lib.mods_add(d.name.encode()), t, len(t))
+            lib.mods_package(lib.mods_add(d.name.encode()), t)
         self.assertEqual(listed(lib), [f for f, _ in self.order])
 
     def test_filter_cycle_and_counts(self):
@@ -782,9 +774,8 @@ class PublishedPage(Base, unittest.TestCase):
         used = lib.mods_used()
         self.assertTrue(2080768 < used <= 4177920, used)
         self.assertEqual((lib.mods_refusal(), lib.mods_save_refusal()), (b'', b''))     # fits the 4 MiB layout
-        out = ctypes.create_string_buffer(2048)
-        n = lib.mods_payload(b'opxy-121', 1, out, 2048)
-        self.assertEqual(int.from_bytes(out.raw[n - 4:n], 'little'), 3)                 # unverified | expanded
+        payload = lib.mods_payload(b'opxy-121', 1, 2048)
+        self.assertEqual(int.from_bytes(payload[-4:], 'little'), 3)                 # unverified | expanded
         on = [f for f in machines[:32]]
         services = {s.split()[0]: sum(int(x.split('=')[1]) for x in s.split()[1:] if x.split('=')[0] in
                                       ('code', 'data', 'state'))
@@ -798,8 +789,8 @@ class PublishedPage(Base, unittest.TestCase):
         self.assertEqual(lib.mods_flip_memory(1), b'')                                  # back to standard
         self.assertEqual((lib.mods_expanded(), lib.mods_memory_limit()), (0, 2080768))
         self.assertEqual(lib.mods_save_refusal(), b'Too big for the mods memory: turn some mods off.')
-        n = lib.mods_payload(b'opxy-121', 0, out, 2048)
-        self.assertEqual(int.from_bytes(out.raw[n - 4:n], 'little'), 0)
+        payload = lib.mods_payload(b'opxy-121', 0, 2048)
+        self.assertEqual(int.from_bytes(payload[-4:], 'little'), 0)
         lib.mods_mark_saved()
         lib.mods_set_memory(1, 1)                                                       # saved expanded: no change
         self.assertEqual(lib.mods_changed(), 0)

@@ -1,18 +1,19 @@
 """Package manifests (docs/storage/packages.md, docs/STORAGE.md): the strict
 info.txt reader, the files.sha256 reader, the recogniser and the dependency rules, as host-built
 device C++ (target/xyf_manifest.hpp), compared with the host twin in xy_forever/xyf_entry.py."""
-import ctypes as C
 import hashlib
 from pathlib import Path
 import random
 import shutil
 import subprocess
 import tempfile
+import types
 import unittest
 import zlib
 
-from xy_forever import hostbuild
 from xy_forever import paths, sim, xyf_entry as E
+
+import xyf_hosttest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -29,25 +30,6 @@ REASONS = ('ok', 'bad_name', 'short', 'unknown', 'refused', 'host_only', 'need_m
 DEPENDENCY = ('ok', 'invalid', 'not_firmware', 'not_base', 'not_mod', 'not_dependent', 'no_sha256', 'os_mismatch',
               'generation', 'profile')
 TEXT = ('name', 'version', 'content', 'generation', 'profile', 'source', 'licence')
-
-
-class Info(C.Structure):          # xyf_store::Info (tests/test_xyf_store.py)
-    _fields_ = [('name', C.c_char * 48), ('version', C.c_char * 32), ('kind', C.c_uint32),
-                ('bytes', C.c_uint32), ('crc32', C.c_uint32), ('machines', C.c_uint32), ('has_bytes', C.c_bool), ('has_crc32', C.c_bool), ('has_machines', C.c_bool), ('has_generation', C.c_bool)]
-
-
-class Manifest(C.Structure):
-    _fields_ = [('status', C.c_uint8), ('type', C.c_uint8), ('kind', C.c_uint8), ('machine', C.c_uint8),
-                ('key', C.c_uint8), ('reserved', C.c_uint8), ('line', C.c_uint16), ('keys', C.c_uint16),
-                ('lines', C.c_uint16), ('bytes', C.c_uint32), ('crc32', C.c_uint32), ('machines', C.c_uint32),
-                ('sha256', C.c_uint8 * 32), ('needs_os', C.c_uint8 * 32),
-                ('name', C.c_char * 48), ('version', C.c_char * 32), ('content', C.c_char * 32),
-                ('generation', C.c_char * 32), ('profile', C.c_char * 32), ('source', C.c_char * 128),
-                ('licence', C.c_char * 64)]
-
-
-class Recognition(C.Structure):
-    _fields_ = [('kind', C.c_uint8), ('reason', C.c_uint8), ('accepted', C.c_bool), ('content_set', C.c_bool)]
 
 
 def fields(m):
@@ -67,7 +49,7 @@ def fields(m):
         elif key == 'crc32':
             out[key] = '%08x' % m.crc32
         elif key in ('sha256', 'needs_os'):
-            out[key] = bytes(getattr(m, key)).hex()
+            out[key] = getattr(m, key).hex()
         else:
             out[key] = getattr(m, key).decode()
     return out
@@ -98,24 +80,11 @@ def ldr_first(size, flags=0x5004):
 class ManifestTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-manifest-')
-        lib = Path(cls.tmp.name) / 'manifest.dylib'
-        sources = ['target/xyf_manifest.cpp', 'target/xyf_filelist.cpp', 'target/xyf_recognise.cpp',
-                   'target/xyf_store.cpp', 'target/xyf_info.cpp', 'tests/manifest_bridge.cpp']
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-ffreestanding', '-fno-builtin', '-fno-exceptions', '-fno-rtti',
-                       *[str(ROOT / s) for s in sources], '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-        cls.lib.mf_sizes.restype = C.c_uint
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('manifest')
 
     # -- helpers ------------------------------------------------------------------------------
     def parse(self, text):
-        m = Manifest()
-        status = self.lib.mf_parse(text, len(text), C.byref(m))
+        status, m = self.lib.parse(text)
         self.assertEqual(status, m.status)
         return m
 
@@ -131,23 +100,20 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(got, twin, text)
         if status != 'ok':
             self.assertEqual(m.keys, 0)
-            self.assertEqual(bytes(m)[12:], bytes(len(bytes(m)) - 12), 'fields not cleared on error')
+            rest = m.after_error_fields()
+            self.assertEqual(rest, bytes(len(rest)), 'fields not cleared on error')
         return got
 
     def legacy_same(self, text):
-        strict, legacy = Info(), Info()
-        status = self.lib.mf_legacy(text, len(text), C.byref(strict), C.byref(legacy))
+        status, strict, legacy, (name, version, kind, size, has_bytes) = self.lib.legacy(text)
         self.assertEqual(STATUS[status], 'ok', text)
-        self.assertEqual(bytes(strict), bytes(legacy), text)
-        return legacy
+        self.assertEqual(strict, legacy, text)
+        return types.SimpleNamespace(name=name, version=version, kind=kind, bytes=size, has_bytes=has_bytes)
 
     # -- info.txt ------------------------------------------------------------------------------
     def test_struct_layouts_match(self):
-        self.assertEqual(self.lib.mf_sizes(0), C.sizeof(Manifest))
-        self.assertEqual(self.lib.mf_sizes(2), C.sizeof(Recognition))
-        self.assertEqual(self.lib.mf_sizes(3), C.sizeof(Info))
-        self.assertLessEqual(C.sizeof(Manifest), 512)
-        self.assertLessEqual(self.lib.mf_sizes(1), 512)
+        self.assertLessEqual(self.lib.sizes(0), 512)        # Manifest
+        self.assertLessEqual(self.lib.sizes(1), 512)        # ListReader
 
     def test_every_kind_example(self):
         expect = {
@@ -314,11 +280,8 @@ class ManifestTest(unittest.TestCase):
 
     # -- files.sha256 ---------------------------------------------------------------------------
     def listing(self, data, chunk=4096, stop_at=0xffffffff):
-        out = C.create_string_buffer(len(data) + 4096)
-        used, count, lines = C.c_uint(), C.c_uint(), C.c_uint()
-        status = self.lib.mf_list(data, len(data), chunk, stop_at, out, len(out), C.byref(used), C.byref(count),
-                                  C.byref(lines))
-        entries, raw, at = [], out.raw[:used.value], 0
+        status, raw, count, lines = self.lib.list(data, chunk, stop_at)
+        entries, at = [], 0
         while at < len(raw):
             end = raw.index(b'\0', at + 33)
             entries.append((raw[at:at + 32].hex(), raw[at + 33:end].decode(), raw[at + 32]))
@@ -329,9 +292,9 @@ class ManifestTest(unittest.TestCase):
                 twin = ('ok', [(h, p) for h, p in E.read_files_sha256(data)])
             except E.ListError as error:
                 twin = (error.status, error.line)
-            self.assertEqual(twin, ('ok', [(h, p) for h, p, _ in entries]) if status == 'ok' else (status, lines.value),
+            self.assertEqual(twin, ('ok', [(h, p) for h, p, _ in entries]) if status == 'ok' else (status, lines),
                              data[:200])
-        return status, entries, lines.value, count.value
+        return status, entries, lines, count
 
     def test_list_reads_shasum_format_in_any_pieces(self):
         h = [hashlib.sha256(b'%d' % i).hexdigest().encode() for i in range(4)]
@@ -450,27 +413,24 @@ class ManifestTest(unittest.TestCase):
 
     # -- recogniser ----------------------------------------------------------------------------
     def file(self, name, data, size=None, handed=0x10c):
-        out = Recognition()
         prefix = data[:handed]
-        self.lib.mf_file(name.encode() if isinstance(name, str) else name, len(data) if size is None else size,
-                         prefix, len(prefix), C.byref(out))
-        return FILE_KINDS[out.kind], REASONS[out.reason], out.accepted
+        kind, reason, accepted, _ = self.lib.file(name.encode() if isinstance(name, str) else name,
+                                                  len(data) if size is None else size, prefix)
+        return FILE_KINDS[kind], REASONS[reason], accepted
 
     def folder(self, names, info=None, name='package', vendor_pack=False):
-        out = Recognition()
-        array = (C.c_char_p * max(1, len(names)))(*[n.encode() for n in names])
         m = None
         if info is not None:
             m = self.parse(info)
-        self.lib.mf_folder(name.encode(), array, len(names), C.byref(m) if m is not None else None,
-                           C.byref(out), C.c_bool(vendor_pack))
-        return FILE_KINDS[out.kind], REASONS[out.reason], out.accepted, out.content_set
+        kind, reason, accepted, content_set = self.lib.folder(name.encode(), [n.encode() for n in names], m,
+                                                              vendor_pack)
+        return FILE_KINDS[kind], REASONS[reason], accepted, content_set
 
     def test_valid_names(self):
         for good in ('opxy_firmware_1_2_5.tfw', 'a', 'x' * 127, 'that tom.json', '#1'):
-            self.assertTrue(self.lib.mf_valid_name(good.encode()), good)
+            self.assertTrue(self.lib.valid_name(good.encode()), good)
         for bad in (b'', b'x' * 128, b'.', b'..', b'a.', b'a ', b'a/b', b'a\\b', b'c:', b'a\tb', b'caf\xc3\xa9'):
-            self.assertFalse(self.lib.mf_valid_name(bad), bad)
+            self.assertFalse(self.lib.valid_name(bad), bad)
 
     def test_files_by_magic_not_extension(self):
         ldr = ldr_first(4096) + bytes(4080)
@@ -515,11 +475,9 @@ class ManifestTest(unittest.TestCase):
         self.assertEqual(self.file('x', b'abc', handed=3), ('unknown', 'unknown', False))
         # A handed length beyond the file's size is clipped to it.
         self.assertEqual(self.file('a.tfw', tfw, size=0x100, handed=0x380), ('unknown', 'short', False))
-        # Bytes are passed in an exactly sized buffer: a read past it would be outside the bytes object.
-        out = Recognition()
-        head = (C.c_uint8 * 4)(0xba, 0xbe, 0xca, 0xfe)
-        self.lib.mf_file(b'a.tfw', 100000000, head, 4, C.byref(out))
-        self.assertEqual(REASONS[out.reason], 'short')
+        # Bytes are passed in an exactly sized buffer: a read past it would be outside it.
+        reason = self.lib.file(b'a.tfw', 100000000, bytes((0xba, 0xbe, 0xca, 0xfe)))[1]
+        self.assertEqual(REASONS[reason], 'short')
 
     def test_real_magic_bytes(self):
         """Official .tfw headers, the stock LDRs and a built stage 2 (private area; skipped without them)."""
@@ -596,56 +554,54 @@ class ManifestTest(unittest.TestCase):
                                       load('mod-base.txt'), load('mod-fm2op.txt'))
         assembled, legacy = load('assembled.txt'), load('legacy-xyf-entry.txt')
         bad = self.parse(b'name=x\nname=y\n')
-        dep = lambda f, a, b: DEPENDENCY[getattr(self.lib, f)(C.byref(a), C.byref(b))]
+        dep = lambda f, a, b: DEPENDENCY[getattr(self.lib, f)(a, b)]
         other_gen = self.parse((DATA / 'mod-fm2op.txt').read_bytes().replace(b'kit-0.0.6', b'kit-0.0.7'))
         other_profile = self.parse((DATA / 'mod-fm2op.txt').read_bytes() + b'profile=opxy-1.2.5\n')
         same_profile = self.parse((DATA / 'mod-fm2op.txt').read_bytes() + b'profile=opxy-1.2.1\n')
         no_sha = self.parse(b'name=OP-XY 1.2.1\nbytes=1\ncrc32=00000000\n')
         # The base (and an assembled set) runs only on the entry whose sha256 is its needs_os.
-        self.assertEqual(dep('mf_check_os', base, stock), 'ok')
-        self.assertEqual(dep('mf_check_os', assembled, stock), 'ok')
-        self.assertEqual(dep('mf_check_os', base, official), 'os_mismatch')
-        self.assertEqual(dep('mf_check_os', base, no_sha), 'no_sha256')
-        self.assertEqual(dep('mf_check_os', base, legacy), 'no_sha256')
-        self.assertEqual(dep('mf_check_os', base, mod), 'not_firmware')
-        self.assertEqual(dep('mf_check_os', mod, stock), 'not_dependent')
-        self.assertEqual(dep('mf_check_os', stock, stock), 'not_dependent')
-        self.assertEqual(dep('mf_check_os', bad, stock), 'invalid')
-        self.assertEqual(dep('mf_check_os', base, bad), 'invalid')
+        self.assertEqual(dep('check_os', base, stock), 'ok')
+        self.assertEqual(dep('check_os', assembled, stock), 'ok')
+        self.assertEqual(dep('check_os', base, official), 'os_mismatch')
+        self.assertEqual(dep('check_os', base, no_sha), 'no_sha256')
+        self.assertEqual(dep('check_os', base, legacy), 'no_sha256')
+        self.assertEqual(dep('check_os', base, mod), 'not_firmware')
+        self.assertEqual(dep('check_os', mod, stock), 'not_dependent')
+        self.assertEqual(dep('check_os', stock, stock), 'not_dependent')
+        self.assertEqual(dep('check_os', bad, stock), 'invalid')
+        self.assertEqual(dep('check_os', base, bad), 'invalid')
         # Mods come from the same kit export (and profile, when named) as the base.
-        self.assertEqual(dep('mf_check_mod', base, mod), 'ok')
-        self.assertEqual(dep('mf_check_mod', base, same_profile), 'ok')
-        self.assertEqual(dep('mf_check_mod', base, other_gen), 'generation')
-        self.assertEqual(dep('mf_check_mod', base, other_profile), 'profile')
-        self.assertEqual(dep('mf_check_mod', mod, mod), 'not_base')
-        self.assertEqual(dep('mf_check_mod', base, base), 'not_mod')
-        self.assertEqual(dep('mf_check_mod', base, bad), 'invalid')
+        self.assertEqual(dep('check_mod', base, mod), 'ok')
+        self.assertEqual(dep('check_mod', base, same_profile), 'ok')
+        self.assertEqual(dep('check_mod', base, other_gen), 'generation')
+        self.assertEqual(dep('check_mod', base, other_profile), 'profile')
+        self.assertEqual(dep('check_mod', mod, mod), 'not_base')
+        self.assertEqual(dep('check_mod', base, base), 'not_mod')
+        self.assertEqual(dep('check_mod', base, bad), 'invalid')
         # An assembled set belongs to the base that made it.
-        self.assertEqual(dep('mf_check_assembled', base, assembled), 'ok')
-        self.assertEqual(dep('mf_check_assembled', base, stock), 'not_dependent')
-        self.assertEqual(dep('mf_check_assembled', base, mod), 'not_firmware')
-        self.assertEqual(dep('mf_check_assembled', mod, assembled), 'not_base')
+        self.assertEqual(dep('check_assembled', base, assembled), 'ok')
+        self.assertEqual(dep('check_assembled', base, stock), 'not_dependent')
+        self.assertEqual(dep('check_assembled', base, mod), 'not_firmware')
+        self.assertEqual(dep('check_assembled', mod, assembled), 'not_base')
         moved = self.parse((DATA / 'assembled.txt').read_bytes().replace(b'generation=kit-0.0.6', b'generation=kit-0.0.5'))
-        self.assertEqual(dep('mf_check_assembled', base, moved), 'generation')
+        self.assertEqual(dep('check_assembled', base, moved), 'generation')
         other_os = self.parse((DATA / 'assembled.txt').read_bytes().replace(b'needs_os=fb', b'needs_os=fc'))
-        self.assertEqual(dep('mf_check_assembled', base, other_os), 'os_mismatch')
+        self.assertEqual(dep('check_assembled', base, other_os), 'os_mismatch')
         other_set = self.parse((DATA / 'assembled.txt').read_bytes().replace(b'profile=opxy-1.2.1', b'profile=opxy-1.2.5'))
-        self.assertEqual(dep('mf_check_assembled', base, other_set), 'profile')
+        self.assertEqual(dep('check_assembled', base, other_set), 'profile')
         # Apply: the base on the entry, then every mod on the base; the failing mod's index.
-        failed = C.c_uint()
-        mods = (C.POINTER(Manifest) * 3)(C.pointer(mod), C.pointer(same_profile), C.pointer(other_gen))
-        apply = lambda entry, b, n: (DEPENDENCY[self.lib.mf_check_apply(C.byref(entry), C.byref(b), mods, n,
-                                                                         C.byref(failed))], failed.value)
+        mods = [mod, same_profile, other_gen]
+        apply = lambda entry, b, n: (lambda d, failed: (DEPENDENCY[d], failed))(*self.lib.check_apply(entry, b, mods, n))
         self.assertEqual(apply(stock, base, 2), ('ok', 2))
         self.assertEqual(apply(stock, base, 3), ('generation', 2))
         self.assertEqual(apply(official, base, 2), ('os_mismatch', 2))
         self.assertEqual(apply(stock, mod, 2), ('not_base', 2))
         self.assertEqual(apply(stock, base, 0), ('ok', 0))
         # Remove lists dependents (it does not refuse).
-        self.assertTrue(self.lib.mf_needs(C.byref(base), C.byref(stock)))
-        self.assertTrue(self.lib.mf_needs(C.byref(assembled), C.byref(stock)))
-        self.assertFalse(self.lib.mf_needs(C.byref(base), C.byref(official)))
-        self.assertFalse(self.lib.mf_needs(C.byref(mod), C.byref(stock)))
+        self.assertTrue(self.lib.needs(base, stock))
+        self.assertTrue(self.lib.needs(assembled, stock))
+        self.assertFalse(self.lib.needs(base, official))
+        self.assertFalse(self.lib.needs(mod, stock))
 
     def test_host_writer_emits_only_what_the_device_reads(self):
         fields = E.parse_manifest((DATA / 'mod-base.txt').read_bytes())

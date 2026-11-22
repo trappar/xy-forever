@@ -5,44 +5,25 @@ the chip (NordicChip). Synthetic images only; the official images' hashes come
 from a private fixture at run time and that test skips without it.
 """
 from hashlib import sha256
-import ctypes
 import json
-from pathlib import Path
 import random
 import struct
-import tempfile
 import unittest
 
 import pytest
 
-from xy_forever import hostbuild, paths
+from xy_forever import paths
 from xy_forever.companions import (
     BLE_DELAY, BLE_EXCHANGE, BLE_LISTEN, BLE_PHASES, BLE_WRITE, BleSession, CompanionError,
     CyacdImage, CypressSession, cypress_packet, crc16_ccitt,
 )
 from test_companions import cyacd, enter_response, response
-from test_native_companions import Row
 
-U32 = ctypes.c_uint
-BYTE = ctypes.c_ubyte
-PTR = ctypes.POINTER(BYTE)
-VOID = ctypes.c_void_p
-UPTR = ctypes.POINTER(U32)
+import xyf_hosttest
+
 TERMINAL = ("complete", "aborted", "failed")
 OLD, NEW = (1, 0, 1, 0), (1, 0, 2, 0)
 FIXTURE = paths.FIXTURES / "ble-images.json"
-
-
-class Request(ctypes.Structure):
-    _fields_ = [("action", U32), ("command", U32), ("timeout_ms", U32), ("delay_us", U32)]
-
-
-class Known(ctypes.Structure):
-    _fields_ = [("sha256", BYTE * 32), ("version", U32 * 4)]
-
-
-def buffer(data):
-    return (BYTE * len(data)).from_buffer_copy(data)
 
 
 def image(size=0x304, seed=0):
@@ -152,50 +133,39 @@ class Native:
     """The native BleSession behind the Python model's interface."""
 
     def __init__(self, lib, data, known, revision=7):
-        self.lib = lib
-        self.storage = ctypes.create_string_buffer(lib.ble_session_size())
-        lib.ble_session_construct(self.storage)
-        self.image = buffer(data)
-        entries = [Known((BYTE * 32)(*bytes.fromhex(digest)), (U32 * 4)(*version))
-                   for digest, version in known.items()]
-        self.known = (Known * max(1, len(entries)))(*entries)
-        self.check(lib.ble_session_initialize(self.storage, self.image, len(data), self.known,
-                                              len(entries), revision))
+        self.storage = lib.BleSession()
+        self.check(self.storage.init(data, [(bytes.fromhex(digest), tuple(version))
+                                            for digest, version in known.items()], revision))
 
     @staticmethod
     def check(status):
         if status:
             raise CompanionError("native status %d" % status)
 
-    phase = property(lambda self: BLE_PHASES[self.lib.ble_session_phase(self.storage)])
-    offset = property(lambda self: self.lib.ble_session_offset(self.storage))
-    in_session = property(lambda self: bool(self.lib.ble_session_in_session(self.storage)))
-    application_valid = property(lambda self: bool(self.lib.ble_session_valid(self.storage)))
+    phase = property(lambda self: BLE_PHASES[self.storage.phase()])
+    offset = property(lambda self: self.storage.offset())
+    in_session = property(lambda self: self.storage.in_session())
+    application_valid = property(lambda self: self.storage.valid())
 
     def request(self, capacity=249):
-        backing = (BYTE * (capacity + 32)).from_buffer_copy(b"\xA5" * (capacity + 32))
-        output = ctypes.cast(ctypes.byref(backing, 16), PTR)
-        produced, info = U32(123), Request()
-        status = self.lib.ble_session_request(self.storage, output, capacity, ctypes.byref(produced),
-                                              ctypes.byref(info))
-        assert bytes(backing[:16]) + bytes(backing[capacity + 16:]) == b"\xA5" * 32
+        status, produced, backing, (action, command, timeout_ms, delay_us) = self.storage.request(capacity)
+        assert backing[:16] + backing[capacity + 16:] == b"\xA5" * 32
         if status:
-            assert produced.value == 0 and bytes(backing[16:16 + capacity]) == b"\xA5" * capacity
+            assert produced == 0 and backing[16:16 + capacity] == b"\xA5" * capacity
         self.check(status)
-        return (info.action, info.command, bytes(backing[16:16 + produced.value]), info.timeout_ms,
-                info.delay_us)
+        return (action, command, backing[16:16 + produced], timeout_ms, delay_us)
 
     def complete(self, success):
-        self.check(self.lib.ble_session_complete(self.storage, int(success)))
+        self.check(self.storage.complete(success))
 
     def accept(self, command, payload):
-        self.check(self.lib.ble_session_accept(self.storage, command, buffer(payload), len(payload)))
+        self.check(self.storage.accept(command, payload))
 
     def transport_failed(self):
-        self.check(self.lib.ble_session_failed(self.storage))
+        self.check(self.storage.failed())
 
     def abort(self):
-        self.check(self.lib.ble_session_abort(self.storage))
+        self.check(self.storage.abort())
 
 
 def quiet(call, *args):
@@ -243,44 +213,7 @@ def drive(session, chip, cut=None):
 class BleSessionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary = tempfile.TemporaryDirectory(prefix="xyf-ble-native-")
-        root = Path(__file__).resolve().parents[1]
-        cls.command = ["/usr/bin/clang++", "-std=c++11", "-O2", "-Wall", "-Wextra", "-Werror",
-                       "-fno-exceptions", "-fno-rtti", "-ffreestanding", "-fno-builtin",
-                       "-fno-stack-protector", "-shared", "-fPIC",
-                       str(root / "native/companions.cpp"), str(root / "native/ble_session.cpp"),
-                       str(root / "native/hash.cpp"),
-                       str(root / "tests/ble_session_bridge.cpp"), "-o",
-                       str(Path(cls.temporary.name) / "ble.dylib")]
-        hostbuild.run(cls.command, check=True, capture_output=True)
-        cls.lib = ctypes.CDLL(cls.command[-1])
-        for name, args in {
-            "construct": [VOID], "initialize": [VOID, PTR, U32, VOID, U32, U32],
-            "request": [VOID, PTR, U32, UPTR, ctypes.POINTER(Request)],
-            "complete": [VOID, ctypes.c_int], "accept": [VOID, U32, PTR, U32],
-            "failed": [VOID], "abort": [VOID], "phase": [VOID], "offset": [VOID],
-            "platform": [VOID], "in_session": [VOID], "valid": [VOID],
-            "mode": [PTR, U32, UPTR], "word": [U32, UPTR], "version": [PTR, U32, UPTR],
-            "cypress_entry": [PTR, U32, PTR, U32, UPTR],
-        }.items():
-            method = getattr(cls.lib, "ble_session_" + name)
-            method.argtypes = args
-            method.restype = None if name == "construct" else ctypes.c_int
-        cls.lib.ble_session_size.restype = U32
-        cls.lib.ble_known_size.restype = U32
-        for name, args in {
-            "construct": [VOID], "initialize": [VOID, ctypes.POINTER(Row), U32, PTR, U32],
-            "request": [VOID, PTR, U32, UPTR], "accept": [VOID, PTR, U32],
-            "exit": [VOID, PTR, U32, UPTR], "phase": [VOID],
-        }.items():
-            method = getattr(cls.lib, "backplane_session_" + name)
-            method.argtypes = args
-            method.restype = None if name == "construct" else ctypes.c_int
-        cls.lib.backplane_session_size.restype = U32
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.temporary.cleanup()
+        cls.lib = xyf_hosttest.module("ble_session")
 
     def pair(self, data=None, version=NEW, revision=7):
         data = image() if data is None else data
@@ -299,7 +232,7 @@ class BleSessionTests(unittest.TestCase):
         return results
 
     def test_known_image_size_matches_struct(self):
-        self.assertEqual(self.lib.ble_known_size(), ctypes.sizeof(Known))
+        self.assertEqual(self.lib.known_size(), 32 + 4 * 4)      # sha256, four version words
 
     def test_full_update_from_every_starting_mode_matches_python_model(self):
         for size in (8, 248, 252, 4096, 0x70000):
@@ -385,14 +318,10 @@ class BleSessionTests(unittest.TestCase):
                 BleSession(data, empty, 7)
             with self.assertRaises(CompanionError):
                 Native(self.lib, data, empty)
-        storage = ctypes.create_string_buffer(self.lib.ble_session_size())
-        self.lib.ble_session_construct(storage)
-        entry = (Known * 1)(Known((BYTE * 32)(*sha256(data[:-4]).digest()), (U32 * 4)(*NEW)))
-        self.assertNotEqual(self.lib.ble_session_initialize(storage, buffer(data), len(data), entry, 1, 7), 0)
-        self.assertEqual(BLE_PHASES[self.lib.ble_session_phase(storage)], "failed")
-        backing, produced, info = (BYTE * 249)(), U32(), Request()
-        self.assertNotEqual(self.lib.ble_session_request(storage, backing, 249, ctypes.byref(produced),
-                                                         ctypes.byref(info)), 0)
+        storage = self.lib.BleSession()
+        self.assertNotEqual(storage.init(data, [(sha256(data[:-4]).digest(), NEW)], 7), 0)
+        self.assertEqual(BLE_PHASES[storage.phase()], "failed")
+        self.assertNotEqual(storage.request(249)[0], 0)
         # The platform word is not checked by the chip: any revision updates the same way.
         for revision in (0, 7, 999):
             for session in (Native(self.lib, data, known, revision), BleSession(data, known, revision)):
@@ -567,13 +496,13 @@ class BleSessionTests(unittest.TestCase):
 
     def test_version_parser_matches_python(self):
         for text in (b"1.0.2+0", b"65535.0.0+65535", b"0.0.0+0"):
-            out = (U32 * 4)()
-            self.assertEqual(self.lib.ble_session_version(buffer(text), len(text), out), 0)
-            self.assertEqual(tuple(out), tuple(int(x) for x in text.replace(b"+", b".").split(b".")))
+            status, out = self.lib.version(text)
+            self.assertEqual(status, 0)
+            self.assertEqual(out, tuple(int(x) for x in text.replace(b"+", b".").split(b".")))
         for text in (b"1.0.2", b"1.0.2+", b"1.0.2+0x", b"65536.0.0+0", b".0.2+0", b"1.0.2.0", b"a"):
-            out = (U32 * 4)(9, 9, 9, 9)
-            self.assertNotEqual(self.lib.ble_session_version(buffer(text), len(text), out), 0)
-            self.assertEqual(tuple(out), (9, 9, 9, 9))
+            status, out = self.lib.version(text)
+            self.assertNotEqual(status, 0)
+            self.assertEqual(out, (9, 9, 9, 9))
 
     def test_capacity_failure_does_not_advance_or_modify_output(self):
         session = self.pair()[0]
@@ -585,12 +514,11 @@ class BleSessionTests(unittest.TestCase):
         self.assertEqual(session.phase, "header")
 
     def test_default_session_and_transport_failures_stay_stopped(self):
-        storage = ctypes.create_string_buffer(b"\xA5" * self.lib.ble_session_size())
-        self.lib.ble_session_construct(storage)
-        self.assertEqual(BLE_PHASES[self.lib.ble_session_phase(storage)], "uninitialized")
-        for call, args in (("complete", (storage, 1)), ("failed", (storage,)), ("abort", (storage,)),
-                           ("accept", (storage, 0x0E, buffer(b"\x54"), 1))):
-            self.assertNotEqual(getattr(self.lib, "ble_session_" + call)(*args), 0)
+        storage = self.lib.BleSession()          # constructed over 0xA5 bytes
+        self.assertEqual(BLE_PHASES[storage.phase()], "uninitialized")
+        for call, args in (("complete", (True,)), ("failed", ()), ("abort", ()),
+                           ("accept", (0x0E, b"\x54"))):
+            self.assertNotEqual(getattr(storage, call)(*args), 0)
         for session in self.pair():
             self.assertFalse(quiet(session.transport_failed))
             self.assertEqual(session.phase, "failed")
@@ -600,53 +528,45 @@ class BleSessionTests(unittest.TestCase):
         for payload, expected in ((b"mode:bootloader", 1),
                                   (b"hw_rev:7;mode:bootloader;serial:01234567", 1),
                                   (b"mode:application;", 0)):
-            out = U32()
-            self.assertEqual(self.lib.ble_session_mode(buffer(payload), len(payload), ctypes.byref(out)), 0)
-            self.assertEqual(out.value, expected)
+            self.assertEqual(self.lib.mode(payload), (0, expected))
         for payload in (b"", b"modejunk:bootloader", b"mode:bootloader;mode:application",
                         b"mode:bootloader\0", b"mode", b";mode:bootloader", b"x" * 249):
-            out = U32(1)
-            self.assertNotEqual(self.lib.ble_session_mode(buffer(payload), len(payload), ctypes.byref(out)), 0)
-            self.assertEqual(out.value, 0)
+            status, out = self.lib.mode(payload)
+            self.assertNotEqual(status, 0)
+            self.assertEqual(out, 0)
 
     def test_platform_identity_is_derived_from_hardware_revision(self):
         for revision in (0, 1, 7, 999):
-            out = U32()
-            self.assertEqual(self.lib.ble_session_word(revision, ctypes.byref(out)), 0)
-            self.assertEqual(out.value, (0x21 << 14) | revision)
+            self.assertEqual(self.lib.word(revision), (0, (0x21 << 14) | revision))
         for revision in (1000, 1023, 0xFFFFFFFF):
-            out = U32(123)
-            self.assertNotEqual(self.lib.ble_session_word(revision, ctypes.byref(out)), 0)
-            self.assertEqual(out.value, 0)
+            status, out = self.lib.word(revision)
+            self.assertNotEqual(status, 0)
+            self.assertEqual(out, 0)
 
     def test_cypress_security_key_is_caller_supplied_and_length_checked(self):
         key = b"ABCDEF"  # Synthetic; captured stock key stays private.
-        output = (BYTE * 32)(*([0xA5] * 32))
-        produced = U32()
-        self.assertEqual(self.lib.ble_session_cypress_entry(buffer(key), 6, output, 32, ctypes.byref(produced)), 0)
-        self.assertEqual(bytes(output[:produced.value]), cypress_packet(0x38, key))
+        status, produced, output = self.lib.cypress_entry(key, 6, 32)
+        self.assertEqual(status, 0)
+        self.assertEqual(output[16:16 + produced], cypress_packet(0x38, key))
         for size, capacity in ((5, 32), (6, 12)):
-            output = (BYTE * 32)(*([0xA5] * 32))
-            self.assertNotEqual(self.lib.ble_session_cypress_entry(buffer(key), size, output, capacity, ctypes.byref(produced)), 0)
-            self.assertEqual(produced.value, 0)
-            self.assertEqual(bytes(output), b"\xA5" * 32)
+            status, produced, output = self.lib.cypress_entry(key, size, capacity)
+            self.assertNotEqual(status, 0)
+            self.assertEqual(produced, 0)
+            self.assertEqual(output, b"\xA5" * (capacity + 32))
 
     def test_backplane_wrapper_uses_private_key_and_proven_62_byte_mtu(self):
         image = CyacdImage.parse(cyacd())
-        keepalive = [buffer(row.data) for row in image.rows]
-        rows = (Row * len(image.rows))(*(Row(row.array_id, row.number, data, len(row.data))
-                                        for row, data in zip(image.rows, keepalive)))
-        native = ctypes.create_string_buffer(self.lib.backplane_session_size())
-        self.lib.backplane_session_construct(native)
+        rows = [(row.array_id, row.number, bytes(row.data)) for row in image.rows]
+        native = self.lib.BackplaneSession()
         key = b"ABCDEF"
-        self.assertEqual(self.lib.backplane_session_initialize(native, rows, len(rows), buffer(key), 6), 0)
+        self.assertEqual(native.init(rows, len(rows), key, 6), 0)
         golden = CypressSession(image, 62)
         while not golden.finished:
-            output, produced = (BYTE * 62)(), U32()
-            self.assertEqual(self.lib.backplane_session_request(native, output, 62, ctypes.byref(produced)), 0)
-            self.assertLessEqual(produced.value, 62)
+            status, produced, output = native.request(62)
+            self.assertEqual(status, 0)
+            self.assertLessEqual(produced, 62)
             expected = cypress_packet(0x38, key) if golden.position == -2 else golden.request()
-            self.assertEqual(bytes(output[:produced.value]), expected)
+            self.assertEqual(output[16:16 + produced], expected)
             if golden.position == -2:
                 reply = enter_response()
             elif golden.position == -1:
@@ -655,20 +575,20 @@ class BleSessionTests(unittest.TestCase):
                 step = golden.steps[golden.position]
                 reply = response(step.expected_payload if step.expected_payload else
                                  b"\1" if step.expect_nonzero else b"")
-            self.assertEqual(self.lib.backplane_session_accept(native, buffer(reply), len(reply)), 0)
+            self.assertEqual(native.accept(reply), 0)
             golden.accept(reply)
-        self.assertEqual(self.lib.backplane_session_phase(native), 6)
-        self.assertEqual(self.lib.backplane_session_exit(native, output, 62, ctypes.byref(produced)), 0)
-        self.assertEqual(bytes(output[:produced.value]), golden.exit_request())
+        self.assertEqual(native.phase(), 6)
+        status, produced, output = native.exit(62)
+        self.assertEqual(status, 0)
+        self.assertEqual(output[16:16 + produced], golden.exit_request())
 
     def test_backplane_wrapper_rejects_missing_key_and_uninitialized_use(self):
-        native = ctypes.create_string_buffer(self.lib.backplane_session_size())
-        self.lib.backplane_session_construct(native)
-        output, produced = (BYTE * 62)(), U32(123)
-        self.assertNotEqual(self.lib.backplane_session_request(native, output, 62, ctypes.byref(produced)), 0)
-        self.assertEqual(produced.value, 0)
-        self.assertNotEqual(self.lib.backplane_session_initialize(native, None, 367, None, 6), 0)
-        self.assertNotEqual(self.lib.backplane_session_exit(native, output, 62, ctypes.byref(produced)), 0)
+        native = self.lib.BackplaneSession()
+        status, produced, _ = native.request(62)
+        self.assertNotEqual(status, 0)
+        self.assertEqual(produced, 0)
+        self.assertNotEqual(native.init(None, 367, None, 6), 0)
+        self.assertNotEqual(native.exit(62)[0], 0)
 
 
 if __name__ == "__main__":

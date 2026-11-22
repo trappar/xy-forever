@@ -1,11 +1,9 @@
 """XY Forever screens: host-rendered with the device C++ (no device execution)."""
 from pathlib import Path
 import re
-import tempfile
 import unittest
 
 import ui_preview as P
-from xy_forever import hostbuild
 from xy_forever.source_text import unit_text
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,13 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 class UiScreensTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-ui-')
-        cls.lib = P.build(cls.tmp.name, run=hostbuild.run)
+        cls.lib = P.build()
         cls.fb = P.framebuffer(cls.lib)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
 
     def visible(self):
         """(x, y) of every non-black pixel, plus any write in the hidden rows 216..255."""

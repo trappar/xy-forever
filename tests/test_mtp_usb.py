@@ -148,19 +148,6 @@ class MtpUsbBuildGateTest(unittest.TestCase):
         self.assertIn('static_assert(sizeof(Iad) == 0xc && __builtin_offsetof(Iad, first) == 7 && sizeof(CdcExtra) == 0x3c',
                       header)
 
-    def test_start_gate_against_span_model(self):
-        # 186-003: the start uses the boot-time identity() result and still
-        # scans engine_identity()'s and probe_spans()'s spans: census words changed -> start; an MTP or the
-        # probe span changed -> refused, naming the check and span; boot-time check failed -> refused.
-        with tempfile.TemporaryDirectory(prefix='xyf-mtpgate-') as tmp:
-            binary = Path(tmp) / 'gate'
-            hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                           '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                           str(ROOT / 'target/mtp_usb_gate_test.cpp'), str(ROOT / 'target/xyf_crc32.cpp'),
-                           '-o', str(binary)], check=True, capture_output=True, text=True)
-            result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
-            self.assertRegex(result.stdout, r'[1-9][0-9]* checks passed')
-
     def test_start_does_not_repeat_identity(self):
         import re
         service = unit_text(ROOT / 'target/usb_service.cpp')

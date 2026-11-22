@@ -1,15 +1,9 @@
-import os
-from pathlib import Path
 import struct
-import subprocess
-import tempfile
 import unittest
 
 import pytest
 
-from xy_forever import hostbuild
-
-ROOT = Path(__file__).resolve().parents[1]
+import xyf_hosttest
 
 
 def header(flags, address, count, argument=0):
@@ -37,33 +31,17 @@ def data_record(address, data):
 class TraceSlotTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temp = tempfile.TemporaryDirectory(prefix='trace-slot-')
-        cls.directory = Path(cls.temp.name)
-        cls.binary = cls.directory / 'bridge'
-        flags = ['-fsanitize=address,undefined', '-fno-omit-frame-pointer'] if os.getenv('TRACE_SLOT_SANITIZE') else []
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                       *flags, str(ROOT / 'native/trace_slot.cpp'), str(ROOT / 'native/ldr.cpp'),
-                       str(ROOT / 'tests/trace_slot_bridge.cpp'), '-o', str(cls.binary)], check=True)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.temp.cleanup()
+        cls.native = xyf_hosttest.module('trace_slot')
 
     def edit(self, source, expected=b'old!', replacement=b'new!', target=0x2000,
              count=None, mode='normal', status='ok'):
-        paths = [self.directory / name for name in ('input', 'expected', 'replacement', 'output')]
-        for path, content in zip(paths, (source, expected, replacement)):
-            path.write_bytes(content)
-        command = [str(self.binary), *map(str, paths), hex(target),
-                   str(len(expected) if count is None else count), mode]
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        actual, offset, validation = result.stdout.strip().split()
-        self.assertEqual(actual, status, result.stderr)
-        output = paths[3].read_bytes()
+        actual, offset, validation, output = self.native.replace(
+            source, expected, replacement, target, len(expected) if count is None else count, mode)
+        self.assertEqual(actual, status)
         if status != 'ok':
             self.assertEqual(output, source)
-            self.assertEqual(int(offset), 0xffffffff)
-        return output, int(offset), validation
+            self.assertEqual(offset, 0xffffffff)
+        return output, offset, validation
 
     def test_only_exact_slot_bytes_change_and_headers_remain_identical(self):
         source = image([data_record(0x1800, b'before'), data_record(0x2000, b'old!'),

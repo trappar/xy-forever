@@ -1,5 +1,4 @@
 """Shared native/Python/browser schema cases, source preservation and freestanding budgets."""
-import ctypes
 import json
 from pathlib import Path
 import subprocess
@@ -8,7 +7,9 @@ import unittest
 
 import pytest
 
-from xy_forever import hostbuild, native_json as J, toolchain
+from xy_forever import native_json as J, toolchain
+
+import xyf_hosttest
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / 'tests/native-json.json'
@@ -21,20 +22,12 @@ class NativeJson(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-json-')
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.work = Path(cls.tmp.name)
-        cls.sources = [str(ROOT / p) for p in ('native/json.cpp', 'tests/native_json_bridge.cpp')]
-        cls.flags = ['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror', '-O1']
-        cls.binary = cls.work / 'json.dylib'
-        hostbuild.run([*cls.flags, '-shared', '-fPIC', *cls.sources, '-o', str(cls.binary)],
-                      check=True, capture_output=True)
-        cls.lib = ctypes.CDLL(str(cls.binary))
-        cls.lib.json_view.restype = ctypes.c_uint
-        cls.lib.json_view.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_uint]
+        cls.lib = xyf_hosttest.module('json')
 
     def native(self, source, config=False, capacity=4096):
-        raw, out = ctypes.create_string_buffer(source), ctypes.create_string_buffer(capacity)
-        result = self.lib.json_view(raw, len(source), int(config), out, capacity)
-        self.assertEqual(raw.raw[:len(source)], source)
-        return None if result & 0x80000000 else out.raw[:result]
+        text, raw = self.lib.view(source, config, capacity)
+        self.assertEqual(raw, source)
+        return text
 
     def test_shared_schema_fixtures(self):
         for case in json.loads(FIXTURES.read_text()):
@@ -128,16 +121,6 @@ class NativeJson(unittest.TestCase):
             self.assertIsNone(self.native(source))
             with self.assertRaises(J.RecordError):
                 J.package_text(source)
-
-    def test_truncated_and_mutated_documents_under_sanitizers(self):
-        binary = self.work / 'sanitized'
-        hostbuild.run([*self.flags, '-DXYF_JSON_SANITIZE', '-fsanitize=address,undefined',
-                       '-fno-omit-frame-pointer', *self.sources, '-o', str(binary)], check=True, capture_output=True)
-        paths = []
-        for i, case in enumerate(json.loads(FIXTURES.read_text())):
-            path = self.work / ('case%d.json' % i)
-            path.write_text(case['source']); paths.append(str(path))
-        subprocess.run([str(binary), *paths], check=True, capture_output=True)
 
     def test_blackfin_code_stack_and_workspace(self):
         if not (toolchain.location() / 'bin/bfin-elf-g++').exists():

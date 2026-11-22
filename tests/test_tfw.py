@@ -1,17 +1,13 @@
-import ctypes
 import hashlib
 import random
-from pathlib import Path
 import struct
 import subprocess
-import tempfile
 import unittest
 
 import pytest
 
-from xy_forever import hostbuild
+import xyf_hosttest
 
-ROOT = Path(__file__).resolve().parents[1]
 KEY=bytes(range(32))  # Public synthetic test vector, not a device key.
 IV=bytes(range(16))
 
@@ -37,25 +33,10 @@ def container(payload,*,short=False,index=0,filename=b'firmware.zip',sku=0x84001
 class NativeTfwTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp=tempfile.TemporaryDirectory(prefix='xyf-tfw-')
-        path=Path(cls.tmp.name)/'tfw.dylib'
-        cls.command=['/usr/bin/clang++','-std=c++11','-O2','-Wall','-Wextra','-Werror','-shared','-fPIC',
-                     *[str(ROOT/'native'/name) for name in ('tfw.cpp','aes.cpp','hash.cpp')],
-                     str(ROOT/'tests/tfw_bridge.cpp'),'-o',str(path)]
-        hostbuild.run(cls.command,check=True,capture_output=True)
-        cls.lib=ctypes.CDLL(str(path))
-        cls.lib.tfw_read_memory.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_void_p,ctypes.c_uint,
-                                        ctypes.c_void_p,ctypes.c_uint,ctypes.c_void_p,ctypes.c_void_p]
-
-    @classmethod
-    def tearDownClass(cls):cls.tmp.cleanup()
+        cls.lib=xyf_hosttest.module('tfw')
 
     def read(self,source,offset,count,key=KEY):
-        out=ctypes.create_string_buffer(b'X'*count,count or 1)
-        index,calls=ctypes.c_uint(),ctypes.c_uint()
-        status=self.lib.tfw_read_memory(source,len(source),key,offset,out,count,
-                                       ctypes.byref(index),ctypes.byref(calls))
-        return status,out.raw[:count],index.value,calls.value
+        return self.lib.read(source,key,offset,count)
 
     def test_both_wrappers_and_continuous_cbc_across_filename_and_random_reads(self):
         rng=random.Random(84001)

@@ -20,6 +20,8 @@ from test_ldr import image
 
 from xy_forever import hostbuild
 
+import xyf_hosttest
+
 ROOT = Path(__file__).resolve().parents[1]
 OS = "firmware/blackfin/bin/os.ldr"
 BACKPLANE = "firmware/backplane/bin/backplane.cyacd"
@@ -43,13 +45,7 @@ class NativePackageTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix="xyf-synthetic-")
         cls.directory = Path(cls.temporary.name)
-        cls.bridge = cls.directory / "package_bridge"
-        cls.command = ["/usr/bin/clang++", "-std=c++11", "-O2", "-Wall", "-Wextra", "-Werror",
-                       str(ROOT / "tests/package_bridge.cpp"),
-                       *[str(ROOT / "native" / (name + ".cpp")) for name in
-                         ("package", "images", "zip", "inflate", "hash", "package_policy", "companions", "ldr")],
-                       "-o", str(cls.bridge)]
-        hostbuild.run(cls.command, check=True, capture_output=True)
+        cls.lib = xyf_hosttest.module("package")
         cls.cyacd = cyacd()
 
     @classmethod
@@ -57,9 +53,14 @@ class NativePackageTests(unittest.TestCase):
         cls.temporary.cleanup()
 
     def run_bridge(self, mode, data, fault="", *, binary=None):
+        """The driver's mode on data: in the host extension, or in a built binary (tests/package_bridge.cpp)."""
+        if binary is None:
+            code, out = self.lib.run(mode, bytes(data), str(fault))
+            self.assertIn(code, (0, 1))
+            return code, json.loads(out), b""
         path = self.directory / "input.bin"
         path.write_bytes(data)
-        result = subprocess.run([str(binary or self.bridge), mode, str(path), str(fault)], capture_output=True)
+        result = subprocess.run([str(binary), mode, str(path), str(fault)], capture_output=True)
         self.assertIn(result.returncode, (0, 1), result.stderr)
         return result.returncode, json.loads(result.stdout), result.stderr
 
@@ -249,11 +250,11 @@ class NativePackageTests(unittest.TestCase):
 
     def test_damage_and_write_faults_under_sanitizers(self):
         target = self.directory / "sanitized"
-        command = list(self.command)
-        command[command.index("-O2")] = "-O1"
-        command[-1] = str(target)
-        command[1:1] = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
-        hostbuild.run(command, check=True, capture_output=True)
+        hostbuild.run(["/usr/bin/clang++", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-std=c++11",
+                       "-O1", "-Wall", "-Wextra", "-Werror", str(ROOT / "tests/package_bridge.cpp"),
+                       *[str(ROOT / "native" / (name + ".cpp")) for name in
+                         ("package", "images", "zip", "inflate", "hash", "package_policy", "companions", "ldr")],
+                       "-o", str(target)], check=True, capture_output=True)
         original = package(self.complete_rows(), comment=b"comment")
         for fault in ("", "mutate-before", "mutate-during", "mutate-comment", "write-fail", "forged-path"):
             _, _, errors = self.run_bridge("stage", original, fault, binary=target)

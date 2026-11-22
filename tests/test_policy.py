@@ -1,32 +1,17 @@
-import ctypes
-from pathlib import Path
-import tempfile
 import unittest
 from xy_forever.packages import destination_for
 
-from xy_forever import hostbuild
+import xyf_hosttest
 
-ROOT = Path(__file__).resolve().parents[1]
 ROLES=('os','backplane','ble','metadata','content','excluded-bootloader','excluded-host-metadata')
 
 class NativePolicyTests(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):
-        cls.tmp=tempfile.TemporaryDirectory(prefix='xyf-policy-')
-        path=Path(cls.tmp.name)/'policy.dylib'
-        hostbuild.run(['/usr/bin/clang++','-std=c++11','-Wall','-Wextra','-Werror','-shared','-fPIC',
-                       str(ROOT/'native/package_policy.cpp'),str(ROOT/'tests/policy_bridge.cpp'),'-o',str(path)],check=True)
-        cls.lib=ctypes.CDLL(str(path))
-        cls.lib.package_destination.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_void_p,ctypes.c_void_p]
-        cls.lib.package_version.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_void_p]
-
-    @classmethod
-    def tearDownClass(cls):cls.tmp.cleanup()
+    def setUpClass(cls):cls.native=xyf_hosttest.module('policy')
 
     def classify(self,name):
-        raw=name.encode('utf-8');role=ctypes.c_uint();path=ctypes.create_string_buffer(257)
-        status=self.lib.package_destination(raw,len(raw),ctypes.byref(role),path)
-        return status,ROLES[role.value],path.value.decode('ascii') or None
+        status,role,path=self.native.destination(name.encode('utf-8'))
+        return status,ROLES[role],path.decode('ascii') or None
 
     def test_host_and_native_component_rules_agree(self):
         paths=['firmware/blackfin/bin/os.ldr','firmware/backplane/bin/backplane.cyacd',
@@ -54,10 +39,8 @@ class NativePolicyTests(unittest.TestCase):
 
     def test_stock_version_formats_and_malformed_numbers(self):
         for raw in (b'1.2.5+0',b'1.2.5+0\n',b'1.2.5+0@'+b'a'*40+b'\r\n'):
-            fields=(ctypes.c_uint*4)()
-            self.assertEqual(self.lib.package_version(raw,len(raw),fields),0)
-            self.assertEqual(list(fields),[1,2,5,0])
+            self.assertEqual(self.native.version(raw),(0,(1,2,5,0)))
         for raw in (b'',b'1.2.5',b'1.2.5+65536',b'1.2.5+0garbage',b'1.2.5+0@bad',b'1.2.5+-1'):
-            fields=(ctypes.c_uint*4)(99,99,99,99)
-            self.assertNotEqual(self.lib.package_version(raw,len(raw),fields),0)
-            self.assertEqual(list(fields),[99]*4)
+            status,fields=self.native.version(raw)
+            self.assertNotEqual(status,0)
+            self.assertIsNone(fields)

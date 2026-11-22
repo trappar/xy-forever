@@ -1,7 +1,6 @@
 """XY Forever USB file write (Test 049, --xyf-product): b's path scope, the stock "wb" open
 flags, the host tool and builder wiring, the library add plan and the SCREEN PNG. No device
 execution."""
-import ctypes as C
 import io
 from pathlib import Path
 import struct
@@ -11,7 +10,7 @@ import zlib
 
 from PIL import Image
 
-from xy_forever import hostbuild
+import xyf_hosttest
 from xy_forever import xyf_build as builder
 from xy_forever import usb_proto as P
 from xy_forever.paths import STOCK_121
@@ -27,22 +26,11 @@ class FileWritePathTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-file-write-')
-        lib = Path(cls.tmp.name) / 'fw.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-ffreestanding', '-fno-builtin', '-fno-exceptions', '-fno-rtti', '-DXYF_USB_FILE_WRITE=1',
-                       '-I', str(ROOT / 'target'), str(ROOT / 'target/storage_server.cpp'),
-                       str(ROOT / 'target/file_engine.cpp'), str(ROOT / 'tests/file_write_bridge.cpp'),
-                       '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('file_write')
 
     def test_constants(self):
-        self.assertEqual(self.lib.fw_item(), 10)
-        self.assertEqual(self.lib.fw_open_flags(), 0x8301)
+        self.assertEqual(self.lib.item(), 10)
+        self.assertEqual(self.lib.open_flags(), 0x8301)
 
     def test_paths(self):
         for path in (b'/yaffs2/xy-forever/', b'/yaffs2/xy-forever/../a', b'/yaffs2/xy-forever/./a',
@@ -50,15 +38,15 @@ class FileWritePathTest(unittest.TestCase):
                      b'yaffs2/xy-forever/a', b'/yaffs2/xy-forever/' + b'a' * 240, b'/yaffs2/bootloader.dev',
                      b'/yaffs2/BootLoader.DEV', b'/yaffs2/upgrade', b'/yaffs2/upgrade/x.tfw', b'/yaffs2/UPGRADE/a/b',
                      b'/yaffs2/xy-forever/a\x01b', b'/yaffs2/xy-forever/a\tb', b'/yaffs2/xy-forever/a\x7f'):
-            self.assertFalse(self.lib.fw_valid_path(path), path)
+            self.assertFalse(self.lib.valid_path(path), path)
         # The write rule (since 1.13): the root, user/ and every other folder are writable.
         for path in (b'/yaffs2/firmware.version', b'/yaffs2/xy-forever', b'/yaffs2/xy-foreverx/a', b'/yaffs2/projects/x',
                      b'/yaffs2/user/song.xy', b'/yaffs2/upgrades/x', b'/yaffs2/a/upgrade/x', b'/yaffs2/bootloader.dev2'):
-            self.assertTrue(self.lib.fw_valid_path(path), path)
+            self.assertTrue(self.lib.valid_path(path), path)
         for path in (GOOD, b'/yaffs2/xy-forever/test.txt', b'/yaffs2/xy-forever/state-a.txt',
                      b'/yaffs2/xy-forever/' + b'a' * (239 - 19), b'/yaffs2/xy-forever/\xc3\xa9t\xc3\xa9.txt'):
-            self.assertTrue(self.lib.fw_valid_path(path), path)
-        self.assertFalse(self.lib.fw_valid_path(b'/yaffs2/xy-forever/' + b'a' * (240 - 19)))
+            self.assertTrue(self.lib.valid_path(path), path)
+        self.assertFalse(self.lib.valid_path(b'/yaffs2/xy-forever/' + b'a' * (240 - 19)))
 
 
 class StockOpenFlagsTest(unittest.TestCase):

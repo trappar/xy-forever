@@ -1,24 +1,14 @@
 """XY Forever pages: host-rendered device C++ (list, confirm, progress, home)."""
-import tempfile
 import unittest
 
 import ui_preview as P
-from xy_forever import hostbuild
 
 
 class UiPagesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-pages-')
-        cls.lib = P.build(cls.tmp.name, run=hostbuild.run)
+        cls.lib = P.build()
         cls.fb = P.framebuffer(cls.lib)
-        import ctypes
-        cls.lib.ui_scale.restype = ctypes.c_uint32
-        cls.lib.ui_scale.argtypes = [ctypes.c_uint32] * 3
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
 
     def hidden_writes(self):
         return sum(1 for col in range(P.WIDTH) for y in range(P.HEIGHT, P.STRIDE)

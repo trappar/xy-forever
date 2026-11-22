@@ -1,29 +1,14 @@
-"""Set-default planning and command decoding (host build of the device C++)."""
+"""The set-default write window (the planning and command decoding: tests/native/xyf_state_write_test.cpp)."""
 from pathlib import Path
 import re
-import subprocess
-import tempfile
 import unittest
 
 from xy_forever.source_text import unit_text
-from xy_forever import hostbuild
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class StateWriteTest(unittest.TestCase):
-    def test_planner(self):
-        with tempfile.TemporaryDirectory(prefix='xyf-state-write-') as tmp:
-            binary = Path(tmp) / 'sw'
-            hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                           '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
-                           *(str(ROOT / 'target' / f) for f in ('xyf_store.cpp', 'xyf_info.cpp', 'xyf_crc32.cpp', 'xyf_state.cpp',
-                                                                 'xyf_library.cpp', 'xyf_state_write.cpp', 'xyf_state_write_library.cpp',
-                                                                 'xyf_state_write_test.cpp')),
-                            '-o', str(binary)], check=True, capture_output=True, text=True)
-            out = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
-            self.assertRegex(out.stdout, r'[1-9][0-9]* checks passed')
-
     def test_write_window_is_narrow(self):
         """Source pins: the only write path, its flags, its path allowlist, gates re-installed."""
         src = (ROOT / 'target/cold_storage.cpp').read_text()

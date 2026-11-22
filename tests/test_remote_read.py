@@ -1,13 +1,11 @@
 """Test027 remote read: B's READ_FILE path format, result layout, spans; no device execution.
 (A's decisions: the file engine, tests/test_file_engine.py.)"""
-import ctypes as C
 from pathlib import Path
 import re
 import struct
-import tempfile
 import unittest
 
-from xy_forever import hostbuild
+import xyf_hosttest
 from xy_forever.xyf_build import A_FIND_CALLS, A_MARKER_CALLS, A_RENAME_CALLS, SERVER_CALLS, WRITE_ENTRIES, peer_spans, server_spans
 from xy_forever.census import (REMOTE_READ_ACTIONS, REMOTE_READ_BYTES, REMOTE_READ_FIELDS, REMOTE_READ_MAGIC,
                                    STORAGE_DIAGNOSTIC_WORDS, remote_read)
@@ -21,27 +19,16 @@ A = {name: i for i, name in enumerate(REMOTE_READ_ACTIONS)}
 class RemoteReadTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='remote-read-')
-        lib = Path(cls.tmp.name) / 'server.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-ffreestanding', '-fno-builtin', '-fno-exceptions', '-fno-rtti', '-I', str(ROOT / 'target'),
-                       str(ROOT / 'target/storage_server.cpp'), str(ROOT / 'target/file_engine.cpp'),
-                       str(ROOT / 'tests/storage_server_bridge.cpp'),
-                       '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('storage_server')
 
     def test_read_file_path_format(self):
         good = (b'/yaffs2/firmware.version', b'/yaffs2/xy-forever/state.txt', b'/yaffs2/a')
         bad = (b'', b'/yaffs2/', b'/yaffs2//a', b'/yaffs2/./a', b'/yaffs2/../a', b'/yaffs2/a/..',
                b'/yaffs2/a/', b'yaffs2/a', b'/yaffs20/a', b'/yaffs2/' + b'a' * 240)
         for path in good:
-            self.assertTrue(self.lib.server_valid_path(path), path)
+            self.assertTrue(self.lib.valid_path(path), path)
         for path in bad:
-            self.assertFalse(self.lib.server_valid_path(path), path)
+            self.assertFalse(self.lib.valid_path(path), path)
 
     def test_result_layout_matches_header_and_decoder(self):
         text = (ROOT / 'target/storage_server.hpp').read_text()
@@ -50,7 +37,7 @@ class RemoteReadTest(unittest.TestCase):
         for decl in re.findall(r'uint32_t ([^;]+);', body):
             names += [n.strip() for n in decl.split(',') if '[' not in n]
         self.assertEqual(names, REMOTE_READ_FIELDS)
-        self.assertEqual(self.lib.server_result_bytes(), REMOTE_READ_BYTES)
+        self.assertEqual(self.lib.result_bytes(), REMOTE_READ_BYTES)
         words = [0] * (REMOTE_READ_BYTES // 4)
         values = dict(magic=REMOTE_READ_MAGIC, version=1, role=1, enabled=1, b_fd=3, b_bytes=10, b_close=0,
                       log_count=4, b_catalogs=5)

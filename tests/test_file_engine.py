@@ -2,17 +2,15 @@
 docs/architecture/link.md), compiled for the host: every operation against every
 protected path and its spellings, the limits, the request classes; and the wiring that makes A
 apply it to every request and B before it sends. No device execution."""
-import ctypes as C
 import itertools
 from pathlib import Path
 import re
-import tempfile
 import unittest
 
 import pytest
 
+import xyf_hosttest
 from xy_forever.source_text import unit_text
-from xy_forever import hostbuild
 from xy_forever.census import ENGINE_ACTIONS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,31 +52,15 @@ def raw(path):
 class FileEngineTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-engine-')
-        lib = Path(cls.tmp.name) / 'engine.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-ffreestanding', '-fno-builtin', '-fno-exceptions', '-fno-rtti', '-I', str(ROOT / 'target'),
-                       str(ROOT / 'target/file_engine.cpp'), str(ROOT / 'tests/file_engine_bridge.cpp'),
-                       '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-        cls.lib.engine_decide.argtypes = [C.c_uint, C.c_char_p, C.c_char_p]
-        cls.lib.engine_decide.restype = C.c_uint
-        cls.lib.engine_request.argtypes = [C.c_uint] * 4 + [C.c_char_p] + [C.c_int] * 8
-        cls.lib.engine_request.restype = C.c_uint
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('file_engine')
 
     def decide(self, op, path, second=None):
         """path / second: str, bytes (as the C string up to its first NUL), or None (no pointer)."""
-        buffers = [None if p is None else C.create_string_buffer(raw(p), len(raw(p)) + 1) for p in (path, second)]
-        return VERDICTS[self.lib.engine_decide(OPS[op], *[None if b is None else C.cast(b, C.c_char_p)
-                                                            for b in buffers])]
+        return VERDICTS[self.lib.decide(OPS[op], *[None if p is None else raw(p) for p in (path, second)])]
 
     def request(self, vt, op, argument=0, pointer=0, path=None, on=1, session=1, window=1, fd_known=1, fd_space=1,
                 dir_known=1, dir_space=1, partition=0):
-        value = self.lib.engine_request(vt, op, argument, pointer, None if path is None else raw(path), on, session,
+        value = self.lib.request(vt, op, argument, pointer, None if path is None else raw(path), on, session,
                                         window, fd_known, fd_space, dir_known, dir_space, partition)
         return ENGINE_ACTIONS[value - 0x60]
 
@@ -138,7 +120,7 @@ class FileEngineTest(unittest.TestCase):
 
     def test_operation_values_fail_closed(self):
         for value in (0, 11, 12, 0x60, 0xffffffff):
-            self.assertEqual(VERDICTS[self.lib.engine_decide(value, b'/yaffs2/a', None)], 'refuse_operation', value)
+            self.assertEqual(VERDICTS[self.lib.decide(value, b'/yaffs2/a', None)], 'refuse_operation', value)
         for op in OPS:                                          # a second path only for rename
             if op not in ('rename', 'raw'):
                 self.assertEqual(self.decide(op, '/yaffs2/a', '/yaffs2/b'), 'refuse_operation', op)
@@ -148,7 +130,7 @@ class FileEngineTest(unittest.TestCase):
                 self.assertEqual(self.decide(op, None), 'refuse_path', op)
 
     def test_length_limit(self):
-        self.assertEqual(self.lib.engine_max_path(), MAX_PATH)
+        self.assertEqual(self.lib.max_path(), MAX_PATH)
         longest = '/yaffs2/' + 'a' * (MAX_PATH - 1 - len('/yaffs2/'))
         self.assertEqual(len(longest), MAX_PATH - 1)
         marker = '/yaffs2/bootloader.dev' + '/' * (MAX_PATH - 1 - len('/yaffs2/bootloader.dev'))
@@ -218,9 +200,7 @@ class FileEngineTest(unittest.TestCase):
         self.assertEqual(self.decide('rename', deep(3), deep(8)), 'refuse_depth')
         self.assertEqual(self.decide('rename', deep(8), deep(3)), 'refuse_depth')      # A's rename_from: the source too
         self.assertEqual(self.decide('mkdir', '/yaffs2/upgrade' + deep(9, '')), 'refuse_protected')
-        self.lib.engine_depth.argtypes = [C.c_char_p]
-        self.lib.engine_depth.restype = C.c_uint
-        self.assertEqual([self.lib.engine_depth(p) for p in (b'/yaffs2', b'/yaffs2//a/b/', b'/yaffs2/a/../b', b'/x')],
+        self.assertEqual([self.lib.depth(p) for p in (b'/yaffs2', b'/yaffs2//a/b/', b'/yaffs2/a/../b', b'/x')],
                          [0, 2, 0xffffffff, 0xffffffff])
         PATH_OPS = dict(open=(0x29, 0x8301), mkdir=(0x26, 0))
         self.assertEqual(self.request(PATH, *PATH_OPS['open'], BUFFER, deep(8)), 'refuse_bad_path')
@@ -268,21 +248,17 @@ class FileEngineTest(unittest.TestCase):
         self.assertEqual(self.request(PATH, 0x21, RNFR, BUFFER, '/fat32/a'), 'refuse_outside_path')
         self.assertEqual(self.request(PATH, 0x21, RNFR, 0x1000, ok), 'refuse_bad_path')
         lib = self.lib
-        lib.engine_rename_to.argtypes = [C.c_char_p, C.c_char_p, C.c_int]
-        lib.engine_rename_to.restype = C.c_uint
 
         def to(source, target, window=1):
-            return ENGINE_ACTIONS[lib.engine_rename_to(None if source is None else raw(source), raw(target), window) - 0x60]
+            return ENGINE_ACTIONS[lib.rename_to(None if source is None else raw(source), raw(target), window) - 0x60]
         self.assertEqual(to(ok, other), 'run_rename_to')
         self.assertEqual(to(ok, other, window=0), 'refuse_read_only')
         self.assertEqual(to(None, other), 'refuse_op')                       # no rename_from just before
         # #4: rename_over only from an upload's temporary file (A then checks its size against the name)
-        lib.engine_rename_over.argtypes = [C.c_char_p, C.c_char_p, C.c_int]
-        lib.engine_rename_over.restype = C.c_uint
         upload = '/yaffs2/xy-forever/tmp/put-0000000a-deadbeef'
 
         def over(source, target, window=1):
-            return ENGINE_ACTIONS[lib.engine_rename_over(None if source is None else raw(source), raw(target), window) - 0x60]
+            return ENGINE_ACTIONS[lib.rename_over(None if source is None else raw(source), raw(target), window) - 0x60]
         self.assertEqual(over(upload, other), 'run_rename_over')
         self.assertEqual(over(upload, other, window=0), 'refuse_read_only')
         self.assertEqual(over(None, other), 'refuse_op')
@@ -291,21 +267,15 @@ class FileEngineTest(unittest.TestCase):
         for path in MARKERS + INBOX + ROOTS:
             self.assertEqual(over(upload, path), 'refuse_protected_path', path)
         # #144: rename_upload: rename_over in one request, the source's tail after the mark in the target's path
-        lib.engine_join_upload.argtypes = [C.c_char_p, C.c_char_p, C.c_char_p]
-        lib.engine_split_upload.argtypes = [C.c_char_p, C.c_char_p]
-        lib.engine_rename_upload.argtypes = [C.c_char_p, C.c_int]
-        lib.engine_rename_upload.restype = C.c_uint
 
         def join(source, target):
-            out = C.create_string_buffer(240)
-            return out.value if lib.engine_join_upload(raw(source), raw(target), out) else None
+            return lib.join_upload(raw(source), raw(target))
 
         def split(path):
-            buf, source = C.create_string_buffer(bytes(path), 240), C.create_string_buffer(240)
-            return (buf.value, source.value) if lib.engine_split_upload(buf, source) else None
+            return lib.split_upload(bytes(path))
 
         def one(path, window=1):
-            return ENGINE_ACTIONS[lib.engine_rename_upload(bytes(path), window) - 0x60]
+            return ENGINE_ACTIONS[lib.rename_upload(bytes(path), window) - 0x60]
         joined = join(upload, other)
         self.assertEqual(joined, other.encode() + b'\x010000000a-deadbeef')
         self.assertEqual(split(joined), (other.encode(), upload.encode()))
@@ -349,11 +319,11 @@ class FileEngineTest(unittest.TestCase):
         raw_ops = [(PARTITION, 4), (PARTITION, 0x14), (PARTITION, 0x18), (SECTOR, 0x11), (SECTOR, 0x12), (WRITE, 0x15),
                    (WRITE, 0x16)]
         for (vt, op), state in itertools.product(raw_ops, itertools.product((0, 1), repeat=8)):
-            self.assertTrue(self.lib.engine_raw(vt, op))
+            self.assertTrue(self.lib.raw(vt, op))
             self.assertEqual(self.request(vt, op, 1, BUFFER, '/yaffs2/a', *state), 'refuse_raw_layer', (hex(op), state))
         for vt, op in ((PARTITION, 8), (PARTITION, 9), (PARTITION, 0x2c), (SECTOR, 0x2f), (WRITE, 0x2b), (PATH, 0x29),
                        (READ, 0x2a), (QUERY, 0x22), (PATH, 0x14), (READ, 0x11), (QUERY, 0x15)):
-            self.assertFalse(self.lib.engine_raw(vt, op), (hex(vt), hex(op)))
+            self.assertFalse(self.lib.raw(vt, op), (hex(vt), hex(op)))
 
     def test_brick_paths_are_refused_in_every_state(self):
         for path, (op, kind) in itertools.product(ROOTS + MARKERS, ((0x25, 'unlink'), (0x27, 'rmdir'))):
@@ -429,15 +399,12 @@ class FileEngineTest(unittest.TestCase):
     def test_upload_name_and_size(self):
         """#4: an upload's temporary file name, tmp/put-<size>-<tag> (8 lowercase hex digits each)."""
         lib = self.lib
-        out = C.create_string_buffer(64)
-        lib.engine_upload_name(out, 0x12345, 0xdeadbeef)
-        self.assertEqual(out.value, b'/yaffs2/xy-forever/tmp/put-00012345-deadbeef')
-        size = C.c_uint()
-        self.assertTrue(lib.engine_upload_size(out.value, C.byref(size)))
-        self.assertEqual(size.value, 0x12345)
+        name = lib.upload_name(0x12345, 0xdeadbeef)
+        self.assertEqual(name, b'/yaffs2/xy-forever/tmp/put-00012345-deadbeef')
+        self.assertEqual(lib.upload_size(name), 0x12345)
         for bad in (b'/yaffs2/xy-forever/tmp/put-0001234-deadbeef', b'/yaffs2/xy-forever/tmp/put-00012345_deadbeef',
                     b'/yaffs2/xy-forever/tmp/put-0001234G-deadbeef', b'/yaffs2/xy-forever/tmp/put-00012345-deadbeef/x'):
-            self.assertFalse(lib.engine_upload_size(bad, C.byref(size)), bad)
+            self.assertIsNone(lib.upload_size(bad), bad)
 
 
 @pytest.mark.gate

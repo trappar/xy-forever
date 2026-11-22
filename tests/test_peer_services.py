@@ -1,26 +1,34 @@
 """Check necessary cold SPI lifecycle predicates; fixtures are not live state."""
-import ctypes as C
-from pathlib import Path
-import tempfile
+import copy
+import struct
 import unittest
 import random
 
-from xy_forever import hostbuild
+import xyf_hosttest
 
-U32=C.c_uint
 OK,WAITING,CHOOSE,ADMIT,READY,UNAVAILABLE,IDENTITY,ROLE,LIFECYCLE,IRQ,BOUNDS,PROTOCOL,TIMEOUT,DRAIN,CLOSE=range(15)
-
-class Interrupt(C.Structure):
-    _fields_=[(name,U32) for name in ('id','index','handler','context','control')]
-
-class Snapshot(C.Structure):
-    _fields_=[(name,U32) for name in (
-        'role','gpio_role','driver','vtable','spi','tx_dma','rx_dma','interrupt_mask','spi_control',
+INTERRUPT=('id','index','handler','context','control')
+BEFORE=('role','gpio_role','driver','vtable','spi','tx_dma','rx_dma','interrupt_mask','spi_control',
         'spi_status','spi_count','tx_config','rx_config','driver_phase','active_request','queue_head',
-        'queue_tail','deferred_head','deferred_tail','gpio_table','gpio_slots')]+[
-        ('gpio_matches',U32*2)]+[(name,U32) for name in
-        ('tx_pending','rx_pending','direction','primary_state','pending_request','released','protocol_state')]+[
-        ('interrupts',Interrupt*6)]
+        'queue_tail','deferred_head','deferred_tail','gpio_table','gpio_slots')
+AFTER=('tx_pending','rx_pending','direction','primary_state','pending_request','released','protocol_state')
+
+
+class Interrupt:
+    def __init__(self,*values):
+        for name,value in zip(INTERRUPT,values or (0,)*5):setattr(self,name,value)
+
+
+class Snapshot:
+    """target/peer_services.hpp's Snapshot: its words in order (pack: the bytes the check reads)."""
+    def __init__(self):
+        for name in BEFORE+AFTER:setattr(self,name,0)
+        self.gpio_matches=[0,0];self.interrupts=[Interrupt() for _ in range(6)]
+
+    def pack(self):
+        words=[getattr(self,n) for n in BEFORE]+self.gpio_matches+[getattr(self,n) for n in AFTER]
+        for i in self.interrupts:words+=[getattr(i,n) for n in INTERRUPT]
+        return struct.pack('<%dI'%len(words),*words)
 
 
 def configured(role,opened=False):
@@ -44,44 +52,30 @@ def configured(role,opened=False):
 class PeerServicesTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.temporary=tempfile.TemporaryDirectory(prefix='xyf-peer-services-')
-        root=Path(__file__).resolve().parents[1];shared=Path(cls.temporary.name)/'services.dylib'
-        cls.command=['/usr/bin/clang++','-std=c++11','-O2','-shared','-fPIC','-Wall','-Wextra','-Werror',
-            '-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-exceptions','-fno-rtti',
-            *(str(root/p) for p in ('target/peer_services.cpp','native/peer_boot.cpp','native/hash.cpp',
-                                    'native/inflate.cpp','target/xyf_crc32.cpp','tests/peer_services_bridge.cpp')),'-o',str(shared)]
-        hostbuild.run(cls.command,check=True,capture_output=True);cls.lib=C.CDLL(str(shared))
-        cls.lib.peer_services_check.argtypes=[U32,C.POINTER(Snapshot)];cls.lib.peer_services_check.restype=U32
-        for name in ('dma_range','request_slot'):
-            method=getattr(cls.lib,'peer_services_'+name);method.argtypes=[U32,U32];method.restype=U32
-        cls.lib.peer_services_size.restype=cls.lib.peer_services_diagnostic_size.restype=U32
-        cls.lib.peer_services_construct.argtypes=[C.c_void_p,C.c_void_p]
-        cls.lib.peer_services_begin_host.argtypes=cls.lib.peer_services_ready.argtypes=[C.c_void_p]
+        cls.lib=xyf_hosttest.module('peer_services')
+        assert len(Snapshot().pack())==cls.lib.snapshot_bytes()
 
-    @classmethod
-    def tearDownClass(cls):cls.temporary.cleanup()
-
-    def check(self,s,which=0):return self.lib.peer_services_check(which,C.byref(s))
+    def check(self,s,which=0):return self.lib.check(which,s.pack())
 
     def test_dma_ranges_reject_live_heap_and_both_module_stacks(self):
         valid=((0x8aa65c00,32),(0x8ab10000,65536),(0x8fffffe0,32))
-        for address,count in valid:self.assertTrue(self.lib.peer_services_dma_range(address,count),(hex(address),count))
+        for address,count in valid:self.assertTrue(self.lib.dma_range(address,count),(hex(address),count))
         invalid=((0x8a000000,32),(0x8a7fffe0,64),(0x8a800000,1),(0x8a80c000,32),
                  (0x8a80ffe0,64),(0x8aa65be0,32),(0x8aafffe0,64),(0x8ab00000,32),
                  (0x8ab0c000,32),(0x8ab0ffe0,64))
-        for address,count in invalid:self.assertFalse(self.lib.peer_services_dma_range(address,count),(hex(address),count))
+        for address,count in invalid:self.assertFalse(self.lib.dma_range(address,count),(hex(address),count))
         # Exact half-open edges: heap end is unaligned, next aligned address is
         # admitted; relocated module start rejects only when actually touched.
-        self.assertTrue(self.lib.peer_services_dma_range(0x8aa65c00,0x8ab00000-0x8aa65c00))
-        self.assertFalse(self.lib.peer_services_dma_range(0x8aa65c00,0x8ab00001-0x8aa65c00))
+        self.assertTrue(self.lib.dma_range(0x8aa65c00,0x8ab00000-0x8aa65c00))
+        self.assertFalse(self.lib.dma_range(0x8aa65c00,0x8ab00001-0x8aa65c00))
 
     def test_dma_ranges_reject_alignment_zero_overflow_and_ram_boundaries(self):
         for address,count in ((0,32),(0x89ffffe0,32),(0x8ab10001,32),(0x8ab10000,0),
                               (0x8fffffe0,33),(0x90000000,1),(0xffffffe0,64),
                               (0x8ab10000,0xffffffff),(0xffffffff,1)):
-            self.assertFalse(self.lib.peer_services_dma_range(address,count),(hex(address),count))
+            self.assertFalse(self.lib.dma_range(address,count),(hex(address),count))
         for misalignment in range(1,32):
-            self.assertFalse(self.lib.peer_services_dma_range(0x8ab10000+misalignment,1))
+            self.assertFalse(self.lib.dma_range(0x8ab10000+misalignment,1))
 
     def test_request_pool_exact_slots_match_original_valid_driver_predicate(self):
         rng=random.Random(0x706)
@@ -89,14 +83,14 @@ class PeerServicesTests(unittest.TestCase):
             for offset in range(-16,0x1dd):
                 request=driver+offset
                 original=(request>=driver+0x3c and request<driver+0x1bc and (request-driver-0x3c)%0x60==0)
-                self.assertEqual(bool(self.lib.peer_services_request_slot(driver,request)),original,(hex(driver),offset))
+                self.assertEqual(bool(self.lib.request_slot(driver,request)),original,(hex(driver),offset))
         for _ in range(500):
             driver=rng.randrange(0x80000000,0x8ffffe35,4)
             slot=rng.choice((0x3c,0x9c,0xfc,0x15c))
-            self.assertTrue(self.lib.peer_services_request_slot(driver,driver+slot))
-            self.assertFalse(self.lib.peer_services_request_slot(driver,driver+slot+1))
+            self.assertTrue(self.lib.request_slot(driver,driver+slot))
+            self.assertFalse(self.lib.request_slot(driver,driver+slot+1))
         for driver in (0,0x7ffffffc,0x8ffffe38,0x90000000,0xfffffffc):
-            self.assertFalse(self.lib.peer_services_request_slot(driver,(driver+0x3c)&0xffffffff))
+            self.assertFalse(self.lib.request_slot(driver,(driver+0x3c)&0xffffffff))
 
     def test_both_roles_have_distinct_controller_dma_irq_identities(self):
         for role in (0,1):
@@ -160,16 +154,15 @@ class PeerServicesTests(unittest.TestCase):
             s=configured(role,True);s.released=1
             self.assertEqual(self.check(s,2),OK)
             for field in ('active_request','queue_head','queue_tail','deferred_head','deferred_tail','pending_request','tx_pending'):
-                probe=Snapshot.from_buffer_copy(s);setattr(probe,field,1)
+                probe=copy.deepcopy(s);setattr(probe,field,1)
                 self.assertEqual(self.check(probe,2),WAITING,(role,field))
         s=configured(0,True);self.assertEqual(self.check(s,2),WAITING)
         s.released=1;s.driver_phase=1;self.assertEqual(self.check(s,2),WAITING)
         s.driver_phase=0;s.rx_pending=1;self.assertEqual(self.check(s,2),OK)
 
     def test_command_requests_cannot_be_confused_with_transfer_or_install_selects(self):
-        is_command=self.lib.peer_services_command_request
-        is_command.argtypes=[U32,U32,U32];is_command.restype=U32
-        ack=self.lib.peer_services_command_ack;ack.argtypes=[U32];ack.restype=U32
+        is_command=self.lib.command_request
+        ack=self.lib.command_ack
         tag=0x434d
         for item in (0x03,0x10,0x11,0x13,0x2f,0x3f,0x64,0xff):
             for seq in (0,1,0xff):
@@ -185,12 +178,10 @@ class PeerServicesTests(unittest.TestCase):
             self.assertFalse(is_command(0x18,value,0),hex(value))
 
     def test_host_cannot_claim_live_services_or_handoff(self):
-        state=(C.c_uint64*((self.lib.peer_services_size()+7)//8))()
-        diagnostic=(C.c_uint64*((self.lib.peer_services_diagnostic_size()+7)//8))()
-        self.lib.peer_services_construct(state,diagnostic)
-        self.assertFalse(self.lib.peer_services_ready(state))
-        self.assertEqual(self.lib.peer_services_begin_host(state),UNAVAILABLE)
-        self.assertFalse(self.lib.peer_services_ready(state))
+        ready,begun,ready_after=self.lib.host_session()
+        self.assertFalse(ready)
+        self.assertEqual(begun,UNAVAILABLE)
+        self.assertFalse(ready_after)
 
 
 if __name__=='__main__':unittest.main()

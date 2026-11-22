@@ -1,31 +1,23 @@
 """Render XY Forever screens on the host (same C++ as the device) to PNG.
 Usage: uv run tests/ui_preview.py [OUTDIR] (mise run preview)  (default: private/xy-forever/previews). Offline only."""
-import ctypes as C, subprocess, sys, tempfile
+from array import array
+import sys, tempfile
 from pathlib import Path
 
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parents[1]
+import xyf_hosttest
+
 WIDTH, HEIGHT, STRIDE = 480, 216, 256
 
 
-def build(out, run=subprocess.run):
-    """Compile the screens into out/ui.dylib and load it (run: the tests pass a cached compile)."""
-    lib = Path(out) / 'ui.dylib'
-    run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-        '-ffreestanding', '-fno-builtin', '-fno-exceptions', '-fno-rtti',
-        str(ROOT / 'target/ui_gfx.cpp'), str(ROOT / 'target/ui_screens.cpp'),
-        str(ROOT / 'target/ui_pages.cpp'), str(ROOT / 'tests/ui_preview_bridge.cpp'),
-        str(ROOT / 'tests/ui_pages_bridge.cpp'), str(ROOT / 'target/xyf_store.cpp'), str(ROOT / 'target/xyf_info.cpp'),
-        str(ROOT / 'target/xyf_library.cpp'), str(ROOT / 'target/xyf_state.cpp'), str(ROOT / 'target/xyf_crc32.cpp'), str(ROOT / 'target/xyf_catalog.cpp'),
-        str(ROOT / 'target/xyf_menu.cpp'), str(ROOT / 'target/xyf_menu_view.cpp'),
-        str(ROOT / 'tests/ui_flow_bridge.cpp'), str(ROOT / 'target/xyf_mods.cpp'), str(ROOT / 'target/xyf_mods_view.cpp'),
-        str(ROOT / 'tests/ui_mods_bridge.cpp'), '-o', str(lib)], check=True, capture_output=True)
-    return C.CDLL(str(lib))
+def build():
+    """The screens' C++ (the extension's ui module: hosttest/bind/ui.cpp)."""
+    return xyf_hosttest.module('ui')
 
 
 def framebuffer(lib):
-    return (C.c_uint16 * lib.ui_framebuffer_halfwords())()
+    return array('H', bytes(2 * lib.ui_framebuffer_halfwords()))
 
 
 def rgb888(v):
@@ -51,7 +43,7 @@ def main():
     from xy_forever.paths import PREVIEWS
     out = Path(sys.argv[1]) if sys.argv[1:] else PREVIEWS; out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
-        lib = build(tmp)
+        lib = build()
         fb = framebuffer(lib)
         lib.ui_render_menu(fb, 0, b''); png(out / 'menu.png', pixels(fb))
         lib.ui_render_menu(fb, 3, b'Not available in this build.'); png(out / 'menu-status.png', pixels(fb))

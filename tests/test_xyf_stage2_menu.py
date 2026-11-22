@@ -13,6 +13,7 @@ import zlib
 
 import pytest
 
+import xyf_hosttest
 from xy_forever import hostbuild
 from xy_forever.source_text import unit_text
 from xy_forever import xyf_build as builder
@@ -159,22 +160,10 @@ class Stage2MenuProgramTest(unittest.TestCase):
 class Stage1DecisionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-stage2-decide-')
-        lib = Path(cls.tmp.name) / 'decide.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-ffreestanding', '-fno-builtin', str(ROOT / 'target/xyf_stage2.cpp'),
-                       str(ROOT / 'target/xyf_crc32.cpp'), str(ROOT / 'native/hash.cpp'),
-                       str(ROOT / 'tests/xyf_stage2_bridge.cpp'), '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-        cls.lib.stage2_decide.argtypes = [C.c_uint, C.c_uint, C.c_uint, C.c_uint, C.POINTER(C.c_uint)]
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('stage2')
 
     def decide(self, exit, lost=0, count=3, features=F_CATALOG):
-        entry = C.c_uint(0xdead)
-        return self.lib.stage2_decide(exit, lost, count, features, C.byref(entry)), entry.value
+        return self.lib.decide(exit, lost, count, features)
 
     def test_requests(self):
         self.assertEqual(self.decide(0), (BOOT_DEFAULT, 0))
