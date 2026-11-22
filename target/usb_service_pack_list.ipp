@@ -90,13 +90,15 @@ static bool pack_list_step(xyf::menu::State& s) {
     }
     if (!found) {
         packs.folder[0] = 0;
+#if defined(XYF_TFW_CHECK)
+        char records[file_engine::max_path];                               // its records (#195): a signed pack
+        packs.signed_record = packs.has_manifest && join(records, xyf::blob::pack_records, "/", packs.id) &&
+                              pack_kind(io, records, sp::record_name) == 0;
+#endif
         if (!packs.has_manifest || (packs.kept && !packs.signed_record)) return false;
         const auto type = packs.kept ? retained_pack : packs.signed_record ? enabled_pack : plain_pack;
         return pack_list_add(s, packs.id, type);
     }
     if (kind == 0 && xj::same(name, "manifest.json")) packs.has_manifest = true;
-#if defined(XYF_TFW_CHECK)
-    if (kind == 0 && xj::same(name, sp::record_name)) packs.signed_record = true;
-#endif
     return false;
 }

@@ -100,22 +100,59 @@ U32 copy_managed_seal(cold_storage::Stock121ReadOnlySession& storage, U32& detai
     return HP::s_ok;
 }
 
+// #195: create's file (a sealed file B writes itself): open without a source.
+bool managed_writing() { return managed_blob_out >= 0 && managed_blob_in < 0; }
+
+U32 create_managed(cold_storage::Stock121ReadOnlySession& storage) {
+    if (!write_root(path_copy) || file_engine::decide_engine(file_engine::op_write, path_copy) != file_engine::allow ||
+        reaches_protected(path_copy))
+        return HP::s_refused;
+    managed_blob_out = storage.managed_blob_create(path_copy);
+    return managed_blob_out >= 0 ? HP::s_ok : HP::s_storage;
+}
+
+// put: B's piece is the write request's body (+0x20, its bytes +0x24), as the stock write executor reads it (and A's
+// staging, storage_server_a_stage.ipp: the stock receiver stores the count at +0x18 too).
+U32 put_managed(cold_storage::Stock121ReadOnlySession& storage, U32 request, U32& detail) {
+    const U32 bytes = word(request + 0x24);
+    if (!bytes || bytes > ml::piece_bytes || word(request + 0x18) != bytes || !word(request + 0x20)) {
+        close_managed_blob(storage);
+        return HP::s_bad_request;
+    }
+    if (storage.managed_blob_write(managed_blob_out, reinterpret_cast<const void*>(word(request + 0x20)), bytes) !=
+        cold_storage::Result::ok) {
+        close_managed_blob(storage);
+        return HP::s_storage;
+    }
+    detail = bytes;
+    return HP::s_ok;
+}
+
 bool managed_link_query(void* context, U32 request, Stock121PeerSession& session) {
     const U32 arg = word(request + 8), op = arg & 0xffu;
-    if (word(request) != path_class || byte(request + 5) != 0x21u || (arg & ml::mask) != ml::tag) return false;
+    const bool put = word(request) == file_engine::write_class && byte(request + 5) == 0x2bu;
+    if ((!put && (word(request) != path_class || byte(request + 5) != 0x21u)) || (arg & ml::mask) != ml::tag)
+        return false;
     rename_armed = 0;
     const char* hash = 0;
     U32 code = HP::s_ok, detail = 0;
     if (arg >> 24 != ml::version) code = HP::s_unsupported;
-    else if (op > ml::copy || word(request + 0x18) != path_buffer) code = HP::s_bad_request;
-    else if (op != ml::copy) {
+    else if (put ? op != ml::put : op > ml::create || word(request + 0x18) != path_buffer) code = HP::s_bad_request;
+    else if (op == ml::create) {
+        U32 n = 0;
+        while (n != max_path && (path_copy[n] = char(byte(path_buffer + n)))) ++n;
+        if (n == max_path || !ml::scratch_path(path_copy)) code = HP::s_bad_request;
+    } else if (!put && op != ml::copy) {
         for (U32 i = 0; i != ml::frame_bytes; ++i) path_copy[i] = char(byte(path_buffer + i));
         if (!ml::decode(path_copy, hash, op == ml::seal)) code = HP::s_bad_request;
     }
     if (!code) {
         latch(session);
-        if (probe_mode || boot_selected() || held_files() || !window_open || engine != entry_write ||
-            (op == ml::copy) != managed_blob_active() || window_result != U32(cold_storage::Result::ok))
+        // B's own files (its source) may stay open while it writes create's file; the links and seals need none.
+        const bool writing = managed_writing(), own = op == ml::create || op == ml::put || (op == ml::copy && writing);
+        const bool state = op == ml::put ? writing : (op == ml::copy) == managed_blob_active();
+        if (probe_mode || boot_selected() || (!own && held_files()) || !window_open || engine != entry_write ||
+            !state || window_result != U32(cold_storage::Result::ok))
             code = HP::s_busy;
         else if (engine_refused || !spans_match()) code = HP::s_identity;
         else {
@@ -127,7 +164,12 @@ bool managed_link_query(void* context, U32 request, Stock121PeerSession& session
             if (!code) {
                 auto& storage = *static_cast<cold_storage::Stock121ReadOnlySession*>(context);
                 window_touched = 1;
-                if (op == ml::copy) code = copy_managed_seal(storage, detail);
+                if (op == ml::put) code = put_managed(storage, request, detail);
+                else if (op == ml::create) code = create_managed(storage);
+                else if (op == ml::copy && writing) {
+                    if (!close_managed_blob(storage)) code = HP::s_storage;
+                    else detail = 1;                                      // closed: B's hash names it
+                } else if (op == ml::copy) code = copy_managed_seal(storage, detail);
                 else {
                     const char* name = path_copy + sizeof(ml::scratch) - 1;
                     ManagedObjects found = {};

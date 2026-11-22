@@ -12,6 +12,7 @@ from . import usb_proto as P
 DLC = '/yaffs2/content/dlc'
 INBOX = store.ROOT + '/inbox'
 RETAINED = store.ROOT + '/packs'  # signed packs kept read-only while not active
+RECORDS = store.PACK_RECORDS  # a signed pack's records (RECORDS/<id>/xyf-pack.txt), outside the folder the OS reads
 SIGNED_RECORD = b'xyf-pack.txt'
 OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE, OP_TRACE = range(6)
 # B's log of its requests to A (target/file_client.hpp log_add): outcomes, flags, the ops it names
@@ -41,6 +42,8 @@ B_OPS = {
     0xC0: 'command item',
     0xC1: 'transfer item',
 }
+# A's managed blob requests (target/managed_blob_link.hpp): op 0x21 or 0x2b, argument 0x42 << 8 | the operation
+B_BLOB_OPS = {0: 'blob link', 1: 'blob seal', 2: 'blob close', 3: 'blob create', 4: 'blob put'}
 SIGNED_OPERATIONS = {'import': OP_IMPORT, 'enable': OP_ENABLE, 'disable': OP_DISABLE}
 
 
@@ -60,6 +63,9 @@ def configure(sub):
         parser = actions.add_parser(name, help=name + ' one plain-folder pack')
         parser.add_argument('id', help='exact pack folder name')
         parser.add_argument('--yes', action='store_true', help='apply the change')
+    parser = actions.add_parser('forget', help='delete a retained signed pack and the blobs only it used')
+    parser.add_argument('id', help='exact pack ID')
+    parser.add_argument('--yes', action='store_true', help='apply the change')
 
 
 def plan(args):
@@ -170,7 +176,7 @@ def change(session, action, pack_id):
         session.rename(source, installed)
     else:
         folder(session, DLC, pack_id)
-        if kind_at(session, installed, SIGNED_RECORD.decode('ascii')) is not None:
+        if signed(session, pack_id):
             raise store.StoreError('signed pack: use packs disable to retain it')
         manifest(session, installed, pack_id)
         folder(session, store.ROOT, 'tmp', optional=True)
@@ -182,6 +188,39 @@ def change(session, action, pack_id):
             session.erase(scratch)
         except OSError as error:
             print('Pack detached; cleanup pending: %s' % error)
+
+
+def signed(session, pack_id):
+    """Whether pack_id has a signed pack's record."""
+    return kind_at(session, RECORDS + '/' + pack_id, SIGNED_RECORD.decode('ascii')) == 0
+
+
+def detach(session, path):
+    """Move path into a scratch folder of tmp/ by one rename, then erase it there."""
+    folder(session, store.ROOT, 'tmp', optional=True)
+    scratch = store.TMP + '/pkg-v1-' + secrets.token_hex(8)
+    check_tree(session, path, scratch)
+    session.change(P.ids.MAKE_DIR, store.TMP)
+    session.rename(path, scratch)
+    session.erase(scratch)
+
+
+def forget(session, pack_id):
+    """A retained signed pack deleted, then its records, then every blob nothing else references (the pack's own
+    unless another pack or firmware shares them); the number of blobs removed. An active pack is refused."""
+    if not valid_name(pack_id):
+        raise store.StoreError('invalid pack ID')
+    retained = kind_at(session, RETAINED, pack_id) == 1
+    records = kind_at(session, RECORDS, pack_id) == 1
+    if records and kind_at(session, DLC, pack_id) is not None:
+        raise store.StoreError('active signed pack: use packs disable first')
+    if not retained and not records:
+        raise store.StoreError('no retained signed pack %s' % pack_id)
+    if retained:
+        detach(session, RETAINED + '/' + pack_id)  # first: records without their pack list nothing
+    if records:
+        detach(session, RECORDS + '/' + pack_id)
+    return session.collect()
 
 
 def signed_request(dev, operation, name='', busy_s=0.0):
@@ -233,7 +272,10 @@ def b_log_lines(words):
     for head, sent, value, tail in zip(words[0::4], words[1::4], words[2::4], words[3::4]):
         op, outcome, flags, argument = head & 0xFF, head >> 8 & 0xF, head >> 12 & 0xF, head >> 16
         took = tail >> 16
-        text = '%+7d ms op 0x%02x %s 0x%04x' % ((sent - first) & 0xFFFFFFFF, op, B_OPS.get(op, '?'), argument)
+        name = B_OPS.get(op, '?')
+        if op in (0x21, 0x2B) and argument >> 8 == 0x42:
+            name = B_BLOB_OPS.get(argument & 0xFF, name)
+        text = '%+7d ms op 0x%02x %s 0x%04x' % ((sent - first) & 0xFFFFFFFF, op, name, argument)
         if outcome == 0 and op < 0xA0:
             shown = '0x%08x' % value if op in (0x2E, 0x2F) else value - (1 << 32) if value & 0x80000000 else value
             text += ' -> %s errno %d' % (shown, tail & 0xFFFF)
@@ -297,6 +339,10 @@ def command(dev, args):
         if action in SIGNED_OPERATIONS:
             return signed_change(dev, action, pack_id)
         with store.Session(dev, sweep=False) as session:
+            if action == 'forget':
+                removed = forget(session, pack_id)
+                print('Forgot pack %s; removed %d unshared blobs.' % (pack_id, removed))
+                return 0
             change(session, action, pack_id)
     except (OSError, ValueError, RecursionError) as error:
         print('pack %s failed: %s' % (action, error))
@@ -305,8 +351,9 @@ def command(dev, args):
     return 0
 
 
-def pack_rows(dev, root, state, rows):
-    """Append a row per pack folder of root (one with a manifest.json); 0, or the status that stopped it."""
+def pack_rows(dev, root, state, rows, records):
+    """Append a row per pack folder of root (one with a manifest.json); 0, or the status that stopped it. records: the
+    IDs with a signed pack's record."""
     code, children = store.unless_busy(dev, lambda: dev.list_dir(root))  # a toggle's window still settling
     if code == P.ids.S_NOT_FOUND:
         children = []
@@ -334,7 +381,7 @@ def pack_rows(dev, root, state, rows):
             print('read %s: %s' % (path, P.status_name(code)))
             return code
         row = dict(id=pack, state=state)
-        if SIGNED_RECORD in names:
+        if raw in records:
             row['signed'] = True
             row['firmware'] = 'not tested on this firmware'
         if code:
@@ -355,11 +402,28 @@ def pack_rows(dev, root, state, rows):
 
 def list_packs(dev):
     """Installed packs (content/dlc/, state active) and retained signed packs (xy-forever/packs/, state retained),
-    with their manifest's metadata; a signed pack (its xyf-pack.txt record) is trusted on any official base but not
+    with their manifest's metadata; a signed pack (its record in pack-records/) is trusted on any official base but not
     tested on this firmware, and says so."""
     rows = []
+    code, folders = store.unless_busy(dev, lambda: dev.list_dir(RECORDS))
+    if code == P.ids.S_NOT_FOUND:
+        folders = []
+    elif code:
+        print('list %s: %s' % (RECORDS, P.status_name(code)))
+        return code
+    records = set()
+    for kind, _, raw in folders:
+        if kind != 1:
+            continue
+        folder = RECORDS + '/' + raw.decode('utf-8')
+        code, entries = store.unless_busy(dev, lambda: dev.list_dir(folder))
+        if code:
+            print('list %s: %s' % (folder, P.status_name(code)))
+            return code
+        if (0, SIGNED_RECORD) in {(k, name) for k, _, name in entries}:
+            records.add(raw)
     for root, state in ((DLC, 'active'), (RETAINED, 'retained')):
-        code = pack_rows(dev, root, state, rows)
+        code = pack_rows(dev, root, state, rows, records)
         if code:
             return code
     print(json.dumps(rows, ensure_ascii=False, indent=2))

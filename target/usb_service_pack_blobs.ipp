@@ -1,4 +1,5 @@
-// Seal and link the verified members only after closing the TFW reader.
+// Publish and link the verified members only after closing the TFW reader. Each member is already a sealed file
+// (mode 0444, written by B and hashed as it went): it becomes its blob by one rename, unless the blob is there.
 U32 signed_pack_begin_blobs(SignedPackJob& j) {
     if (const U32 closed = j.source.close()) return closed;
     const int kind = pack_kind(j.io, "/yaffs2/xy-forever", "blobs");
@@ -15,40 +16,30 @@ U32 signed_pack_blob(SignedPackJob& j) {
         return P::s_ok;
     }
     const uint8_t* const expected = j.references[signed_pack_done];
-    char path[file_engine::max_path];
+    char path[file_engine::max_path], file[file_engine::max_path];
+    if (!join(file, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
     switch (j.blob_step) {
     case pb_stage: {
+        // A link to the sealed blob in the scratch folder (stage: 0); no blob yet (1); an unsealed one (2).
         ml::temporary(j.partial, member.size);
-        if (j.io.unlink(j.partial) < 0) break;
+        if (!j.published && j.io.unlink(j.partial) < 0) break;
         const int status = j.io.stage_blob_link(j.partial, expected);
-        if (status < 0) break;
-        j.blob_step = status == 1 ? pb_seed : status == 2 ? pb_seal : pb_open;
+        if (status < 0 || (j.published && status)) break;
+        j.blob_step = status == 1 ? pb_publish : status == 2 ? pb_replace : j.published ? pb_link : pb_open;
         return P::s_ok;
     }
-    case pb_seed: {
-        char original[file_engine::max_path];
-        if (!join(original, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
+    case pb_replace: // an unsealed blob (never linked): this member's file replaces it
         ml::blob_path(path, reinterpret_cast<const char*>(expected));
-        if (j.io.rename(original, path)) break;
-        j.blob_step = pb_seal;
+        if (j.io.unlink(path) < 0) break;
+        j.blob_step = pb_publish;
         return P::s_ok;
-    }
-    case pb_seal:
-        ml::temporary(j.partial, member.size, true);
-        if (j.io.unlink(j.partial) < 0 || j.io.stage_blob_link(j.partial, expected, true)) break;
-        j.sealing = j.seal_open = true;
-        j.blob_step = pb_copy;
+    case pb_publish:
+        ml::blob_path(path, reinterpret_cast<const char*>(expected));
+        if (j.io.rename(file, path)) break;
+        j.published = true;
+        j.blob_step = pb_stage;
         return P::s_ok;
-    case pb_copy: {
-        const int done = j.io.copy_blob_piece();
-        if (done < 0) break;
-        if (done) {
-            j.seal_open = false;
-            j.blob_step = pb_open;
-        }
-        return P::s_ok;
-    }
-    case pb_open:
+    case pb_open: // a blob that was there: read it back before linking it
         j.fd = j.io.open(j.partial, false);
         if (j.fd < 0) break;
         j.hash.reset();
@@ -75,21 +66,13 @@ U32 signed_pack_blob(SignedPackJob& j) {
             if (hex[digest.bytes[i] >> 4] != expected[2 * i] || hex[digest.bytes[i] & 15] != expected[2 * i + 1])
                 return P::s_sha;
         }
-        j.blob_step = j.sealing ? pb_sealed : pb_link;
-        return P::s_ok;
-    }
-    case pb_sealed:
-        ml::blob_path(path, reinterpret_cast<const char*>(expected));
-        if (j.io.publish_blob_link(j.partial, path)) break;
-        ml::temporary(j.partial, member.size);
-        if (j.io.unlink(j.partial) < 0 || j.io.stage_blob_link(j.partial, expected)) break;
-        j.sealing = false;
         j.blob_step = pb_link;
         return P::s_ok;
-    case pb_link:
-        if (!join(path, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
-        if (j.io.publish_blob_link(j.partial, path) || j.io.unlink(j.partial) < 0) break;
+    }
+    case pb_link: // over this member's own file when the blob was there
+        if (j.io.publish_blob_link(j.partial, file)) break;
         j.partial[0] = 0;
+        j.published = false;
         ++j.member;
         ++signed_pack_done;
         j.blob_step = pb_stage;

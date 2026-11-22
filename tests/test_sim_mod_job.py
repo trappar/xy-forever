@@ -304,7 +304,7 @@ class SyntheticJob(Base, unittest.TestCase):
             self.assertLess(time.monotonic(), deadline)
             self.sim.advance(20)
         self.assertEqual((phase, error), (3, 0), packs.failure_site(site, detail))
-        self.assertTrue((self.root / 'xy-forever/packs/fixture/xyf-pack.txt').is_file())
+        self.assertTrue((self.root / 'xy-forever/pack-records/fixture/xyf-pack.txt').is_file())
 
     @pytest.mark.gate  # a simulator sweep
     @pytest.mark.uses('sim/')

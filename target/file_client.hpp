@@ -220,6 +220,10 @@ uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint
 // read-only, read to EOF (at most size + 3 KiB) with CRC-32, close. mounted as write_file.
 Reply stage_blob_link(const char* temporary, const uint8_t* hash, bool seal);
 Reply copy_blob_piece();
+// #195: a new sealed file below the scratch folder that B writes itself (put_blob, then copy_blob_piece closes it);
+// put_blob_start's answer (left out: left_poll): value a status, error the bytes A wrote.
+Reply create_blob(const char* path);
+Reply put_blob_start(const uint8_t* data, uint32_t count);
 uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted, uint32_t* why = 0);   // why: #195 detail
 uint32_t make_folders(const char* path, volatile uint32_t& mounted);  // open_write's mkdir -p alone (mounted)
 uint32_t write_more(int fd, const uint8_t* bytes, uint32_t size, uint32_t& written, volatile uint32_t& mounted);

@@ -418,6 +418,14 @@ Reply copy_blob_piece() {
     namespace ml = managed_blob_link;
     return path_request("/yaffs2", file_engine::op_stat, 0x21, ml::version << 24 | ml::tag | ml::copy, 0, 0, change_ms);
 }
+Reply create_blob(const char* path) {
+    namespace ml = managed_blob_link;
+    if (!ml::scratch_path(path)) return outcome(refused);
+    return path_request(path, file_engine::op_write, 0x21, ml::version << 24 | ml::tag | ml::create, 0, 0, change_ms);
+}
+Reply put_blob_start(const uint8_t* data, uint32_t count) {
+    return write_start(int(managed_blob_link::put_handle), data, count);
+}
 #endif
 Reply boot_probe(uint32_t op) {
     return path_request("/yaffs2", file_engine::op_stat, 0x21, boot_partition_probe::tag | (op & 0xffu));

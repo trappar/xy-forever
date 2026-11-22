@@ -153,26 +153,19 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         g.candidate[64] = 0;
         if (!contains(g)) g.stage = 8;
         return 0;
-    case 9: {
-        const char* const folder = g.area == 1 ? "/yaffs2/xy-forever/packs" : "/yaffs2/content/dlc";
-        n = io.list_one(folder, g.entry_skip, name, kind);
+    case 9:                                             // the signed packs' records, retained or active alike
+        n = io.list_one(pack_records, g.entry_skip, name, kind);
         if (n < 0) return -1;
         if (!n) {
-            if (g.area == 1) {
-                g.area = 2;
-                g.entry_skip = 0;
-            } else {
-                g.cursor = g.refs.count >> 1;
-                g.stage = 5;
-            }
+            g.cursor = g.refs.count >> 1;
+            g.stage = 5;
             return 0;
         }
         ++g.entry_skip;
         if (kind != 1) return 0;
-        if (!path(g.path, folder, "/") || !path(g.entry, g.path, name)) return -1;
+        if (!path(g.path, pack_records, "/") || !path(g.entry, g.path, name)) return -1;
         g.stage = 1;
         return 0;
-    }
     default:
         if (!path(g.path, root, "/")) return -1;
         {

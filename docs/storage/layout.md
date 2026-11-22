@@ -16,7 +16,8 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   log/                      device reports, prod-a.bin / prod-b.bin, pfile-a.bin / pfile-b.bin
   stage2/main.xys2          stage 2: B loads it at the first HELLO of a boot; see below
   inbox/                    MTP drop folder for sound packs
-  packs/<id>/               retained signed pack with a versioned record and SHA-256 references
+  packs/<id>/               retained signed pack: the pack folder alone (enabled: content/dlc/<id>/)
+  pack-records/<id>/        its records, retained or enabled: xyf-pack.txt (version, signed digest), xyf-pack-v1.sha256
   tmp/job-<id>/             mods.apply's output until the commit; -old: the replaced entry; swept (below)
   tmp/pkg-v1-<token>/       host package transaction; -old: detached old package, both swept
   tmp/adopt-<id>/           the stock entry's adoption until its rename into firmware/ (#178; jobs.md); swept by the next one

@@ -76,7 +76,11 @@ void timed_serve(void* context, U32 request, Stock121PeerSession& session) {
     if (stage_query(request, session)) return;
 #if defined(XYF_CONTENT_SWITCH)
     if (managed_link_query(context, request, session)) return;
-    if (managed_blob_active() && (word(request) != partition_class || byte(request + 5) != 9) &&
+    // While B writes create's file (#195) it still reads its source: reads and seeks pass, as anything else waits.
+    const bool source =
+        managed_writing() && ((word(request) == file_engine::read_class && byte(request + 5) == 0x2au) ||
+                              (word(request) == partition_class && byte(request + 5) == 0x2cu));
+    if (managed_blob_active() && !source && (word(request) != partition_class || byte(request + 5) != 9) &&
         !peer_services::boot_request(word(request), byte(request + 5), word(request + 8), word(request + 0x18))) {
         storage_busy_reply(request, session);
         return;

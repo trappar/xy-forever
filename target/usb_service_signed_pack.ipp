@@ -21,7 +21,7 @@ enum SignedStep {
     ps_cleanup,
     ps_close
 };
-enum PackBlobStep { pb_stage, pb_seed, pb_seal, pb_copy, pb_open, pb_read, pb_sealed, pb_link };
+enum PackBlobStep { pb_stage, pb_replace, pb_publish, pb_open, pb_read, pb_link };
 enum PackOp : U32 { pack_status, pack_import, pack_cancel, pack_enable, pack_disable, pack_trace };
 const char* const pack_record_head = "version=1\nsha256=";
 volatile U32 signed_pack_phase __attribute__((section(".data"))) = pack_idle;
@@ -66,22 +66,22 @@ struct SignedPackJob {
     zip::Entry entries[4096];
     Tree tree;
     SignedStep step;
-    U32 member, last_usb, pending_bytes, refs, verified_bytes;
+    U32 member, last_usb, pending_bytes, put_bytes, refs, verified_bytes;   // put_bytes: the piece left out, 0 none
     PackBlobStep blob_step;
-    bool sealing, seal_open;
+    bool writing, published;   // writing: the member's sealed file open on A (create); published: it is the blob
     pack_hash::Sha256 hash;
     char partial[file_engine::max_path];
     uint8_t references[4096][64];
     uint16_t ref_members[4096], ref_order[4096];
     uint8_t ref_text[4096 * (xyf::manifest::list_line + 1)];
-    bool cancelled, created;
+    bool cancelled, created, recorded;   // created: the staging folder; recorded: the records' scratch folder
     int fd;
-    char staging[file_engine::max_path], target[file_engine::max_path];
+    char staging[file_engine::max_path], target[file_engine::max_path], records[file_engine::max_path];
     uint8_t pending[file_client::piece_max];
     SignedPackJob()
-        : work(this, signed_pack_checkpoint), io{0}, step(ps_hash), member(0), last_usb(0), pending_bytes(0), refs(0),
-          verified_bytes(0), blob_step(pb_stage), sealing(false), seal_open(false), partial{}, cancelled(false),
-          created(false), fd(-1) {}
+        : work(this, signed_pack_checkpoint), io{0}, step(ps_hash), member(0), last_usb(0), pending_bytes(0),
+          put_bytes(0), refs(0), verified_bytes(0), blob_step(pb_stage), writing(false), published(false), partial{},
+          cancelled(false), created(false), recorded(false), fd(-1) {}
 };
 constexpr U32 signed_pack_work = XYF_JOB_REGION_BEGIN + job_slot_bytes + content_slot_bytes + 0x20000u;
 static_assert(sizeof(SignedPackJob) < job_work_end - signed_pack_work, "signed pack workspace");
@@ -165,7 +165,36 @@ U32 signed_pack_start(const char* name) {
     return P::s_ok;
 }
 
+// The last piece's put, left out while B worked on the next one: its answer (the next request to A waits for it).
+bool signed_pack_collect(SignedPackJob& j) {
+    if (!j.put_bytes) return true;
+    const U32 bytes = j.put_bytes;
+    j.put_bytes = 0;
+    const auto wrote = file_client::left_poll(true);
+    const U32 at = U32(ps_extract) << 8 | site_flush, member = (j.member - 1) << 16;
+    if (wrote.outcome) {
+        j.io.fail(wrote);
+        pack_fail(at, member | 0x8000u | wrote.outcome, 0);
+        return false;
+    }
+    if (wrote.value != P::s_ok || wrote.error != bytes) {
+        j.writing = false;                                                // A closed it
+        pack_fail(at, member | 0x4000u | (wrote.value & 0xfffu), 0);
+        return false;
+    }
+    return true;
+}
+
+// The member's sealed file closed on A (create's); A takes nothing else while it is open but the source's reads.
+bool signed_pack_close(SignedPackJob& j) {
+    const bool collected = signed_pack_collect(j);
+    if (!j.writing) return collected;
+    j.writing = false;
+    return !j.io.lost() && j.io.copy_blob_piece() == 1 && collected; // else op 9 closes it (close_engine)
+}
+
 void signed_pack_end(SignedPackJob& j, U32 code) {
+    if (!signed_pack_close(j) && !code) code = P::s_storage;
     if (j.fd >= 0 && j.io.close(j.fd) && !code) code = P::s_storage;
     j.fd = -1;
     const U32 closed = j.source.close();
@@ -176,7 +205,6 @@ void signed_pack_end(SignedPackJob& j, U32 code) {
     signed_pack_error = code;
     if (code) signed_pack_site |= (closed ? U32(pack_source_close) : 0u) | (j.io.lost() ? U32(pack_link_lost) : 0u);
     if (code && code != P::s_cancelled) signed_pack_traced = file_client::log_copy(signed_pack_trace);
-    if (j.seal_open) settle_begin();
     if (j.created && code && !closed && !j.io.lost() && tree_begin(j.tree, j.staging)) {
         signed_pack_site |= pack_cleanup;
         j.step = ps_cleanup;
@@ -227,7 +255,7 @@ U32 signed_pack_window(SignedPackJob& j) {
     U32 token = now();
     for (U32 i = 0; i != 8; ++i) nonce[i] = "0123456789abcdef"[(token >> (28u - i * 4u)) & 15u];
     nonce[8] = 0;
-    if (!join(j.staging, job_tmp, "/pkg-v1-", nonce)) return P::s_refused;
+    if (!join(j.staging, job_tmp, "/pkg-v1-", nonce) || !join(j.records, j.staging, "-record")) return P::s_refused;
     if (tmp == 1 && pack_kind(j.io, job_tmp, j.staging + sizeof(job_tmp)) != -2) return P::s_state;
     U32 code = enter_writes();
     if (code) return code;
@@ -249,19 +277,18 @@ U32 signed_pack_window(SignedPackJob& j) {
     return P::s_ok;
 }
 
+// One piece to A, left out (file_client::write_start copies it): B decrypts, inflates and hashes the next piece while
+// A writes this one.
 bool signed_pack_flush(SignedPackJob& j) {
     if (!j.pending_bytes) return true;
-    const auto wrote = file_client::write(j.fd, j.pending, j.pending_bytes);
-    const U32 at = U32(ps_extract) << 8 | site_flush, member = (j.member - 1) << 16;
-    if (wrote.outcome) {
-        j.io.fail(wrote);
-        pack_fail(at, member | 0x8000u | wrote.outcome, 0);
+    if (!signed_pack_collect(j)) return false;
+    const auto sent = file_client::put_blob_start(j.pending, j.pending_bytes);
+    if (sent.outcome) {
+        j.io.fail(sent);
+        pack_fail(U32(ps_extract) << 8 | site_flush, (j.member - 1) << 16 | 0x8000u | sent.outcome, 0);
         return false;
     }
-    if (wrote.value != int(j.pending_bytes)) {
-        pack_fail(at, member | (wrote.error & 0xfffu), 0);
-        return false;
-    }
+    j.put_bytes = j.pending_bytes;
     j.pending_bytes = 0;
     return true;
 }
@@ -294,11 +321,22 @@ U32 signed_pack_member(SignedPackJob& j) {
         }
         return P::s_ok;
     }
+    // The member goes straight into a sealed file (mode 0444) that B writes itself, hashing what it sends: the blob
+    // phase then publishes that file as the blob, with no copy and no read-back.
     char path[file_engine::max_path];
     if (!join(path, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
-    uint32_t why = 0;
-    const U32 opened = file_client::open_write(path, j.fd, mounted, &why);
-    if (opened) return pack_fail(U32(ps_extract) << 8 | site_open, (j.member - 1) << 16 | why, opened);
+    auto opened = file_client::create_blob(path);
+    if (!opened.outcome && opened.value == P::s_storage && file_client::make_folders(path, mounted) == P::s_ok)
+        opened = file_client::create_blob(path); // its folders first (mkdir -p), as open_write
+    if (opened.outcome || opened.value) {
+        if (opened.outcome) j.io.fail(opened);
+        const U32 why = opened.outcome ? 0x8000u | opened.outcome : 0x4000u | (opened.value & 0xfffu);
+        return pack_fail(U32(ps_extract) << 8 | site_open, (j.member - 1) << 16 | why,
+                         opened.outcome == file_client::link ? P::s_link :
+                         opened.value == P::s_busy           ? P::s_busy :
+                                                               P::s_storage);
+    }
+    j.writing = true;
     j.pending_bytes = 0;
     j.hash.reset();
     zip::Extraction result;
@@ -306,10 +344,9 @@ U32 signed_pack_member(SignedPackJob& j) {
     const bool flushed = status == zip::Status::ok && signed_pack_flush(j);
     if (status != zip::Status::ok)
         pack_fail(U32(ps_extract) << 8 | site_extract, (j.member - 1) << 16 | U32(status), 0);
-    if (j.io.close(j.fd))
+    if (!signed_pack_close(j))
         return pack_fail(U32(ps_extract) << 8 | site_close, (j.member - 1) << 16 | (j.io.lost() ? 0x8000u : 0u),
                          P::s_storage);
-    j.fd = -1;
     if (!flushed)
         return status == zip::Status::cancelled ? P::s_cancelled :
                status == zip::Status::checksum  ? P::s_crc :
@@ -368,15 +405,18 @@ U32 signed_pack_refs(SignedPackJob& j) {
     return used;
 }
 
+// The records go to their own scratch folder, published beside (never in) the pack folder: the OS reads that one.
 U32 signed_pack_record(SignedPackJob& j) {
     char path[file_engine::max_path], record[96];
-    if (!join(path, j.staging, "/", xyf::blob::pack_refs)) return P::s_refused;
+    if (j.io.mkdir(j.records)) return j.io.lost() ? P::s_link : P::s_storage;
+    j.recorded = true;
+    if (!join(path, j.records, "/", xyf::blob::pack_refs)) return P::s_refused;
     uint32_t written = 0, crc = 0;
     const U32 size_refs = signed_pack_refs(j);
     const U32 refs = file_client::write_file(path, j.ref_text, size_refs, xyf::crc::update(0, j.ref_text, size_refs),
                                              written, crc, mounted);
     if (refs) return refs;
-    if (!join(path, j.staging, "/", sp::record_name)) return P::s_refused;
+    if (!join(path, j.records, "/", sp::record_name)) return P::s_refused;
     const U32 head = text_bytes(pack_record_head);
     for (U32 i = 0; i != head; ++i) record[i] = pack_record_head[i];
     const auto& digest = j.source.identity();
@@ -388,6 +428,25 @@ U32 signed_pack_record(SignedPackJob& j) {
     const U32 size = head + 65;
     const auto bytes = reinterpret_cast<const uint8_t*>(record);
     return file_client::write_file(path, bytes, size, xyf::crc::update(0, bytes, size), written, crc, mounted);
+}
+
+// The records first, by one rename of their folder (records left by an import cut short are moved aside into tmp/,
+// which the startup sweep empties), then the pack by one rename: a cut between the two leaves records without their
+// pack, which nothing lists and the next import of the pack replaces.
+U32 signed_pack_publish(SignedPackJob& j) {
+    char records[file_engine::max_path], stale[file_engine::max_path];
+    if (!join(records, xyf::blob::pack_records, "/", j.layout.folder) || !join(stale, j.staging, "-stale"))
+        return P::s_refused;
+    const int root = pack_kind(j.io, "/yaffs2/xy-forever", "pack-records");
+    if (root != 1 && root != -2) return root == -1 ? P::s_storage : P::s_refused;
+    if (root == -2 && j.io.mkdir(xyf::blob::pack_records)) return P::s_storage;
+    const int old = root == 1 ? pack_kind(j.io, xyf::blob::pack_records, j.layout.folder) : -2;
+    if (old != 1 && old != -2) return old == -1 ? P::s_storage : P::s_state;
+    if ((old == 1 && j.io.rename(records, stale)) || j.io.rename(j.records, records)) return P::s_storage;
+    j.recorded = false;
+    if (j.io.rename(j.staging, j.target)) return P::s_storage;
+    j.created = false;
+    return P::s_ok;
 }
 
 U32 signed_pack_member_index(const SignedPackJob& j) { return j.member << 16 | U32(j.blob_step); }
@@ -409,7 +468,8 @@ void signed_pack_pump() {
             j.partial[0] = 0;
         }
         const U32 result = tree_step(j.tree, j.pending);
-        if (result != tree_more) {
+        if (result == tree_done && j.recorded && tree_begin(j.tree, j.records)) j.recorded = false; // then the records'
+        else if (result != tree_more) {
             settle_begin();
             j.step = ps_close;
         }
@@ -448,8 +508,8 @@ void signed_pack_pump() {
         j.step = ps_blobs;
         break;
     case ps_blobs: {
-        // One step is one request (a 4 KiB copy piece or check read): steps for a slice per pass, as the mod job
-        // does, instead of one step per menu loop pass. USB and the menu still run between slices.
+        // One step is one request (a link, a rename, or a read of a blob that was there): steps for a slice per pass,
+        // as the mod job does, instead of one step per menu loop pass. USB and the menu still run between slices.
         const U32 start = now();
         do {
             if (j.member == j.archive.count) j.step = ps_record;
@@ -462,9 +522,9 @@ void signed_pack_pump() {
         j.step = ps_publish;
         break;
     case ps_publish:
-        if (j.io.rename(j.staging, j.target)) code = j.io.lost() ? P::s_link : P::s_storage;
-        else {
-            j.created = false;
+        code = signed_pack_publish(j);
+        if (code == P::s_storage && j.io.lost()) code = P::s_link;
+        if (!code) {
             signed_pack_end(j, P::s_ok);
             return;
         }
@@ -492,10 +552,13 @@ U32 signed_pack_toggle(const char* name, bool enable) {
     const char* from_root = enable ? kept_packs : live_packs;
     const char* to_root = enable ? live_packs : kept_packs;
     char from[file_engine::max_path], to[file_engine::max_path], path[file_engine::max_path];
+    char records[file_engine::max_path];
+    if (!join(records, xyf::blob::pack_records, "/", name)) return P::s_refused;
     if (from_kind != 1 || pack_kind(io, from_root, name) != 1 || !join(from, from_root, "/", name) ||
-        pack_kind(io, from, sp::record_name) != 0)
+        pack_kind(io, "/yaffs2/xy-forever", "pack-records") != 1 || pack_kind(io, xyf::blob::pack_records, name) != 1 ||
+        pack_kind(io, records, sp::record_name) != 0)
         return P::s_not_found;
-    if (!join(path, from, "/", sp::record_name) || !join(to, to_root, "/", name)) return P::s_refused;
+    if (!join(path, records, "/", sp::record_name) || !join(to, to_root, "/", name)) return P::s_refused;
     uint8_t record[96];
     uint32_t size = 0;
     const U32 read = file_client::read_file(path, 0, false, record, sizeof(record), size, mounted);

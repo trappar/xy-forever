@@ -10,7 +10,7 @@ HARDLINK_CREATOR = '88a0199a'  # stock yaffs object creator (type 4: a hardlink)
 
 def check_state_write(raw, address, managed):
     """yaffs_write is loaded only by the y_write wrapper, reached only from the state write and, with the content
-    switch, the sealed blob copy."""
+    switch, the sealed blob copy and the sealed file B writes itself (#195)."""
     users = set()
     current = None
     for line in raw.splitlines():
@@ -27,7 +27,7 @@ def check_state_write(raw, address, managed):
         'yaffs_write loaded outside the y_write wrapper: ' + ', '.join(sorted(map(str, users))),
     )
     callers = referencing_symbols(raw, next(iter(users)))
-    expected = ('write_state_slot', 'managed_blob_copy') if managed else ('write_state_slot',)
+    expected = ('write_state_slot', 'managed_blob_copy', 'managed_blob_write') if managed else ('write_state_slot',)
     require(
         len(callers) == len(expected) and all(any(name in caller for caller in callers) for name in expected),
         'y_write reached outside its scope: ' + ', '.join(sorted(map(str, callers))),
@@ -42,6 +42,8 @@ def check_hardlink_scope(raw, has, managed):
         'stage_blob_link',
         'managed_blob_open',
         'managed_blob_copy',
+        'managed_blob_create',
+        'managed_blob_write',
     ):
         require(has(symbol) == managed, 'Managed link symbol outside its build modes: ' + symbol)
     require(

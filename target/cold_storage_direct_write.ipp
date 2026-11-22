@@ -35,4 +35,21 @@ Result Stock121ReadOnlySession::managed_blob_copy(int input, int output, U32 byt
     if (bytes && y_write(output, chunk, bytes) != count) return Result::write_failed;
     return Result::ok;
 }
+
+int Stock121ReadOnlySession::managed_blob_create(const char* path) {
+    if (!fresh_ || !mounted_ || !direct_ok_ || media_guarded(device_) || word(device_ + 0xe4) != 1 ||
+        word(device_ + 0xe8) != 0 || diagnostic_.handles || !managed_blob_link::scratch_path(path))
+        return -1;
+    const int fd = y_open(path, 0xc1, 0444);                         // new only (O_EXCL): never an existing link
+    if (fd >= 0) ++diagnostic_.handles;
+    return fd;
+}
+
+Result Stock121ReadOnlySession::managed_blob_write(int output, const void* data, U32 bytes) {
+    if (output < 0 || !data || !bytes || bytes > managed_blob_link::piece_bytes || !fresh_ || !mounted_ ||
+        !direct_ok_ || diagnostic_.handles != 1 || media_guarded(device_) || word(device_ + 0xe4) != 1 ||
+        word(device_ + 0xe8) != 0)
+        return Result::write_refused;
+    return y_write(output, data, bytes) == int(bytes) ? Result::ok : Result::write_failed;
+}
 #endif

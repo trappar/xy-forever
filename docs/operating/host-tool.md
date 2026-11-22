@@ -28,10 +28,12 @@ Settings > Content packs > Inbox, or run `uv run xyf-host packs import NAME.tfw 
 XY Forever authenticates the archive and retains the extracted pack. A pack whose TE signature verified is
 trusted on any official firmware: `packs enable ID --yes` (or the menu) enables it, noting that it is not tested
 on this firmware, and `packs disable ID --yes` retains it again. Enabling moves the pack folder only; getting its
-sounds into the OS is #188.
+sounds into the OS is #188. `packs forget ID --yes` deletes a retained signed pack, its records and the blobs no
+other pack or firmware uses, so it can be imported again.
 
 `uv run xyf-host packs list` lists the sound packs in `/yaffs2/content/dlc/` (state `active`) and the retained
-signed packs in `/yaffs2/xy-forever/packs/` (state `retained`); an enabled signed pack is `active`. Each row gives the pack folder ID, its state and the
+signed packs in `/yaffs2/xy-forever/packs/` (state `retained`); an enabled signed pack is `active`. A signed pack's
+records are in `/yaffs2/xy-forever/pack-records/ID/`, outside the folder the OS reads. Each row gives the pack folder ID, its state and the
 vendor manifest's name, version, author and description when present; a signed pack also shows `"signed": true` and
 `"firmware": "not tested on this firmware"`.
 A malformed manifest is reported beside its folder ID.

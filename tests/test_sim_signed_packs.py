@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import json
+import random
 import struct
 import tempfile
 import time
@@ -68,6 +69,7 @@ class SignedPackImport(unittest.TestCase):
             )
         self.retained = self.root / 'xy-forever/packs/fixture'
         self.live = self.root / 'content/dlc/fixture'
+        self.records = self.root / 'xy-forever/pack-records/fixture'
 
     def call(self, op, name='', version=1):
         return self.dev.call(ids.PACKS_MANAGE, struct.pack('<II', version, op) + name.encode() + b'\0')
@@ -107,8 +109,9 @@ class SignedPackImport(unittest.TestCase):
         self.fail('signed import did not finish')
 
     def test_signed_import_retains_one_tree_then_enables_and_disables(self):
-        """Kept: #195's import end to end: one retained tree of hardlinked blobs and its record, listed; then enable
-        (a verified signed pack is trusted, listed as not tested on this firmware) and disable."""
+        """Kept: #195's import end to end: one retained tree of hardlinked blobs, its records beside it, listed; then
+        enable (a verified signed pack is trusted, listed as not tested on this firmware) and disable; then packs
+        forget deletes it and its blobs, so the same pack imports again."""
         catalog = self.root / 'content/op1_factory.json'
         original = catalog.read_bytes()
         self.assertEqual(self.start()[0], ids.S_OK)
@@ -122,18 +125,19 @@ class SignedPackImport(unittest.TestCase):
         digest = hashlib.sha256(SAMPLE).hexdigest()
         blob = self.root / 'xy-forever/blobs' / digest
         self.assertEqual(sample.stat().st_ino, blob.stat().st_ino)
-        refs = (self.retained / 'xyf-pack-v1.sha256').read_text().splitlines()
+        self.assertEqual(sorted(p.name for p in self.retained.iterdir()), ['manifest.json', 'samples'])  # no records
+        refs = (self.records / 'xyf-pack-v1.sha256').read_text().splitlines()
         self.assertEqual([line[66:] for line in refs], ['manifest.json', 'samples/hand.wav'])
         self.assertEqual(refs[1], digest + '  samples/hand.wav')
         self.assertEqual(sample.stat().st_mode & 0o777, 0o444)
         with package_store.Session(self.dev, sweep=False) as session:
             self.assertIn(digest, session.references())
             self.assertEqual(session.collect(), 0)
-        record = (self.retained / 'xyf-pack.txt').read_text()
+        record = (self.records / 'xyf-pack.txt').read_text()
         self.assertEqual(record, 'version=1\nsha256=' + hashlib.sha256(self.data[0x380:]).hexdigest() + '\n')
         self.assertEqual(self.settled(packs.OP_ENABLE, 'fixture'), ids.S_OK)
         self.assertEqual(self.listed('fixture'), [dict(untested, state='active')])
-        self.assertTrue((self.live / 'xyf-pack.txt').is_file())
+        self.assertEqual(sorted(p.name for p in self.live.iterdir()), ['manifest.json', 'samples'])
         self.assertFalse(self.retained.exists())
         self.assertEqual(self.settled(packs.OP_DISABLE, 'fixture'), ids.S_OK)
         self.assertEqual(self.listed('fixture'), [dict(untested, state='retained')])
@@ -142,6 +146,14 @@ class SignedPackImport(unittest.TestCase):
         self.assertEqual(self.finish()[-1], ids.S_STATE)
         self.assertEqual(catalog.read_bytes(), original)
         self.assertEqual((self.inbox / 'test.tfw').read_bytes(), self.data)
+        with package_store.Session(self.dev, sweep=False) as session:
+            self.assertEqual(packs.forget(session, 'fixture'), 2)  # the manifest's blob and the sample's
+        self.assertFalse(self.retained.exists())
+        self.assertFalse(self.records.exists())
+        self.assertFalse(blob.exists())
+        self.assertEqual(self.start()[0], ids.S_OK)
+        self.assertEqual(self.finish()[-1], ids.S_OK)
+        self.assertEqual(sample.read_bytes(), SAMPLE)
 
     def test_corrupt_source_never_publishes(self):
         """Kept: a request or archive that fails authentication publishes nothing."""
@@ -163,7 +175,7 @@ class SignedPackImport(unittest.TestCase):
         self.assertEqual(self.site & 0xFFFF, 3 << 8 | 3)  # extract step, the member's write
         self.assertEqual(self.site & 0x30000, 0)  # the source closed, the link held
         self.assertTrue(self.site & 0x40000)  # so the scratch was removed
-        self.assertEqual(self.detail, 1 << 16 | 5)  # member 1 (manifest.json), EIO
+        self.assertEqual(self.detail, 1 << 16 | 0x4000 | ids.S_STORAGE)  # member 1 (manifest.json), A's status
         self.assertIn('write, member 1', packs.failure_site(self.site, self.detail))
         self.assertFalse(self.retained.exists())
         self.assertEqual(list((self.root / 'xy-forever/tmp').glob('pkg-v1-*')), [])
@@ -200,18 +212,46 @@ class SignedPackImport(unittest.TestCase):
     def test_failed_member_open_reports_bs_log(self):
         """Kept: #195's device diagnostic, a cheap permanent aid. A failed import keeps B's log of its last requests to
         A (nothing asked of A), and packs.manage operation 5 returns it: here the source authenticated, then the
-        member's open that A's stock open failed (EBADF), then the source's close."""
-        self.sim.set('fail_write_open', 1)  # the member's open: EBADF from the stock open
+        member's sealed file that A failed to create, its folders (mkdir -p), the create again, then the source's
+        close."""
+        self.sim.set('fail_write_open', 2)  # the member's sealed file: A's create fails, and again after mkdir -p
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_STORAGE)
         self.assertEqual(self.site & 0xFFFF, 3 << 8 | 1)  # extract step, the member's open
-        self.assertEqual(self.detail, 1 << 16 | 9)  # member 1 (manifest.json), EBADF
+        self.assertEqual(self.detail, 1 << 16 | 0x4000 | ids.S_STORAGE)  # member 1 (manifest.json), A's status
         self.assertEqual(self.traced, 32)  # the log is full
         log = packs.b_log_lines(packs.signed_trace(self.dev))
         self.assertEqual(len(log), 32)
         authenticated = next(i for i, line in enumerate(log) if 'mark 0x0001' in line)
         after = log[authenticated + 1 :]
-        self.assertEqual(len(after), 2, log)
-        self.assertRegex(after[0], r'op 0x29 open 0x\w+ -> -1 errno 9, \d+ ms$')
-        self.assertRegex(after[1], r'op 0x2d close 0x\w+ -> 0 errno 0, \d+ ms$')
+        self.assertRegex(after[0], r'op 0x21 blob create 0x4203 -> 7 errno 0, \d+ ms$')
+        self.assertTrue(all('mkdir' in line for line in after[1:-2]), after)
+        self.assertRegex(after[-2], r'op 0x21 blob create 0x4203 -> 7 errno 0, \d+ ms$')
+        self.assertRegex(after[-1], r'op 0x2d close 0x\w+ -> 0 errno 0, \d+ ms$')
         self.assertFalse(self.retained.exists())
+
+    def test_requests_per_mib_of_members_stay_bounded(self):
+        """Kept: #195's speed. Each 4 KiB of member data costs one source read and one write to A, and nothing else:
+        each member goes straight into its sealed blob file (no copy on A, no read-back). The old seal path took about
+        1,150 requests per MiB; this bound fails it."""
+        mib = 4
+        noise = random.Random(5).randbytes(mib << 19)  # random bytes: stored as they are, so reads match writes
+        data = signed(
+            container(
+                package(
+                    [
+                        (PREFIX + 'partial_upgrade', b''),
+                        (PREFIX + 'dlc/fixture/manifest.json', b'{"folder":"fixture"}'),
+                        (PREFIX + 'dlc/fixture/samples/a.wav', noise),
+                        (PREFIX + 'dlc/fixture/samples/b.wav', noise[::-1]),
+                    ]
+                )
+            )
+        )
+        (self.inbox / 'big.tfw').write_bytes(data)
+        before = self.sim.status()['to_a']
+        self.assertEqual(self.start('big.tfw')[0], ids.S_OK)
+        self.assertEqual(self.finish()[-1], ids.S_OK)
+        requests = self.sim.status()['to_a'] - before
+        self.assertLessEqual(requests, 600 * mib, requests)  # 2 x 256 per MiB, plus the fixed steps
+        self.assertEqual((self.retained / 'samples/b.wav').read_bytes(), noise[::-1])

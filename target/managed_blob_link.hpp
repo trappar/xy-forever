@@ -3,12 +3,16 @@
 #include "file_engine.hpp"
 
 namespace xy_forever { namespace managed_blob_link {
-enum Operation : uint32_t { stage = 0, seal = 1, copy = 2 };
+// create, put (#195): B writes a sealed file itself. create opens a new file (mode 0444) in XY Forever's scratch on A;
+// each put (a write-class request whose descriptor is put_handle) writes B's piece to it; copy then closes it. B
+// hashes what it sends: no copy and no read-back.
+enum Operation : uint32_t { stage = 0, seal = 1, copy = 2, create = 3, put = 4 };
 constexpr uint32_t piece_bytes = 4096;
 constexpr uint32_t version = 1, tag = 0x004d4200u, mask = 0x00ffff00u;
 constexpr char scratch[] = "/yaffs2/xy-forever/tmp/";
 constexpr char tail[] = "-b10b1a5e", seal_tail[] = "-b10b5ea1";
 constexpr char blob_dir[] = "/yaffs2/xy-forever/blobs/";
+constexpr uint32_t put_handle = version << 24 | tag | put;
 static_assert(sizeof(tail) == sizeof(seal_tail), "same encoding for both scratch names");
 constexpr uint32_t name_bytes = 4 + 8 + sizeof(tail) - 1;
 constexpr uint32_t scratch_bytes = sizeof(scratch) - 1 + name_bytes;
@@ -45,6 +49,12 @@ inline bool temporary_path(const char* path, bool sealed = false) {
     for (uint32_t i = 0; i != sizeof(tail); ++i)
         if (path[i] != end[i]) return false;
     return true;
+}
+// create's path: a new file somewhere below the scratch folder.
+inline bool scratch_path(const char* path) {
+    for (uint32_t i = 0; i != sizeof(scratch) - 1; ++i)
+        if (*path++ != scratch[i]) return false;
+    return *path != 0;
 }
 inline bool decode(char* path, const char*& hash, bool sealed = false) {
     for (uint32_t i = 0; i != frame_bytes - 1; ++i)
