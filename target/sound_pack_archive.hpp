@@ -2,6 +2,7 @@
 #define XYF_SOUND_PACK_ARCHIVE_HPP
 
 #include "file_engine.hpp"
+#include "xyf_blob.hpp"
 #include "xyf_manifest.hpp"
 #include "../native/mod_content.hpp"
 #include "../native/zip.hpp"
@@ -15,11 +16,12 @@ using xyf_core::U32;
 
 constexpr char prefix[] = "firmware/blackfin/content/dlc/";
 constexpr char marker[] = "firmware/blackfin/content/partial_upgrade";
+constexpr char record_name[] = "xyf-pack.txt";
 constexpr U32 manifest_bytes = 4096, name_bytes = 127;
 
 struct Layout {
     char folder[name_bytes + 1];
-    U32 manifest, files, bytes, relative_at;
+    U32 manifest, files, bytes, largest, relative_at;
 };
 struct ManifestBuffer {
     Byte text[manifest_bytes];
@@ -53,12 +55,13 @@ inline bool archive_parent(const char* name) {
 inline bool valid_output(const Layout& pack, const char* relative, U32 size, bool directory) {
     // The staging root is the same depth as the live pack root. Its basename is
     // the bounded transaction token, regardless of the vendor pack name.
-    const char* const roots[] = {"/yaffs2/content/dlc/", "/yaffs2/xy-forever/tmp/pkg-v1-00000000"};
-    for (U32 i = 0; i != 2; ++i) {
+    const char* const roots[] = {"/yaffs2/content/dlc/", "/yaffs2/xy-forever/packs/",
+                                 "/yaffs2/xy-forever/tmp/pkg-v1-00000000"};
+    for (U32 i = 0; i != 3; ++i) {
         char path[file_engine::max_path];
         U32 end = 0;
         for (const char* p = roots[i]; *p; ++p) path[end++] = *p;
-        if (!i)
+        if (i != 2)
             for (const char* p = pack.folder; *p; ++p) path[end++] = *p;
         path[end++] = '/';
         if (size >= sizeof(path) - end) return false;
@@ -124,6 +127,11 @@ inline zip::Status admit(const zip::Archive& archive, zip::InflateWorkspace& inf
             pos = e == size ? e : e + 1;
         }
         if (!valid_output(pack, relative, size, entry.directory)) return zip::Status::bounds;
+        if ((starts_with(relative, record_name) &&
+             (!relative[sizeof(record_name) - 1] || relative[sizeof(record_name) - 1] == '/')) ||
+            (starts_with(relative, xyf::blob::pack_refs) &&
+             (!relative[sizeof(xyf::blob::pack_refs) - 1] || relative[sizeof(xyf::blob::pack_refs) - 1] == '/')))
+            return zip::Status::layout;
         if (entry.directory) continue;
         if (same(relative, "manifest.json")) {
             pack.manifest = i;
@@ -132,6 +140,7 @@ inline zip::Status admit(const zip::Archive& archive, zip::InflateWorkspace& inf
         ++pack.files;
         if (entry.size > limits().total_bytes - pack.bytes) return zip::Status::bounds;
         pack.bytes += entry.size;
+        if (pack.largest < entry.size) pack.largest = entry.size;
     }
     if (!saw_marker || pack.manifest == ~0u) return zip::Status::layout;
     manifest.bytes = 0;

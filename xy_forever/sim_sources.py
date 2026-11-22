@@ -52,6 +52,7 @@ NATIVE_SOURCES = (
     'tfw_signature',
     'p224',
     'aes',
+    'zip',
     'mod_job',
     'mod_link',
     'mod_elf',

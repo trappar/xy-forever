@@ -143,7 +143,7 @@ bool settings_view(xyf::menu::State& s, const char*& line) {
         changed = true;
     }
     if (pack_change_step(s)) changed = true;
-    if (s.screen == Screen::packs && !menu_pack_active && pack_list_step(s)) changed = true;
+    if (s.screen == Screen::packs && !s.pack_busy && pack_list_step(s)) changed = true;
     if (r.newer && !s.settings_note) {
         s.settings_note = xs::note_newer;
         changed = true;

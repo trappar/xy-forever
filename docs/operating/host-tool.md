@@ -23,6 +23,13 @@ Creating the report folder is a storage write, so it takes `--yes-write`:
 
 ### Sound packs
 
+Copy an original signed sound pack `.tfw` to `/yaffs2/xy-forever/inbox/`. Select it in
+Settings > Content packs > Inbox, or run `uv run xyf-host packs import NAME.tfw --yes`.
+XY Forever authenticates the archive and retains the extracted pack. Enable is available for
+exact pack and firmware combinations qualified on an OP-XY. An unqualified pack reports
+**Compatibility unknown** and stays in the inbox pack list. Use `packs enable ID --yes`
+or `packs disable ID --yes` to toggle a retained signed pack.
+
 `uv run xyf-host packs list` lists installed sound packs in `/yaffs2/content/dlc/`.
 Each row gives the pack folder ID and the vendor manifest's name, version, author and description when present.
 A malformed manifest is reported beside its folder ID.

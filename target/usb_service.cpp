@@ -89,6 +89,15 @@ bool header_matches(const uint8_t* sector, uint32_t size, uint32_t crc) {
 #include "xyf_settings.hpp"         // #21: settings.txt (through the config job), the confirm gate
 #endif
 #if defined(XYF_TFW_CHECK)
+#if defined(XYF_USB_FILE_WRITE)
+#include "sound_pack_archive.hpp"
+#include "tfw_import_source.hpp"
+#if defined(XYF_SIM)
+#include <new>
+#else
+inline void* operator new(__SIZE_TYPE__, void* address) noexcept { return address; }
+#endif
+#endif
 #include "a_install_stage.hpp"
 #include "tfw_device_check.hpp"
 #include "tfw_role_probe.hpp"
@@ -115,6 +124,7 @@ bool rehearsal_active();
 #include "usb_service_recovery.ipp" // durable content intent, menu/service startup only
 #include "usb_service_mtp_session.ipp" // the MTP session (with XYF_SIM it leaves this namespace for one declaration)
 #include "usb_service_mods_apply.ipp" // MODS_APPLY
+#include "usb_service_signed_pack.ipp"
 #include "usb_service_config.ipp" // CONFIG_GET, CONFIG_SET (#26)
 }
 namespace xy_forever { namespace usb_service { // the Mods page's hooks (usb_service.hpp)
@@ -141,4 +151,9 @@ namespace xy_forever { namespace usb_service {
 #include "usb_service_trust.ipp"            // #65: Ask before USB control
 #include "usb_service_home.ipp"             // the home loop
 }}
+#if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
+namespace {
+void signed_pack_usb_turn() { xy_forever::usb_service::home_receive(); }
+}
+#endif
 #endif

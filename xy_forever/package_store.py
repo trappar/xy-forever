@@ -23,6 +23,8 @@ ROOT = '/yaffs2/xy-forever'
 TMP = ROOT + '/tmp'
 BLOBS = ROOT + '/blobs'
 LIBRARY = ROOT + '/firmware'
+PACK_ROOTS = (ROOT + '/packs', '/yaffs2/content/dlc')
+PACK_REFERENCES = '/xyf-blobs-v1.sha256'
 HEX = re.compile(r'[0-9a-f]{64}\Z')
 MISSING = P.ids.S_NOT_FOUND
 
@@ -245,6 +247,22 @@ class Session:
                 for sha, rel in read_files_sha256(text):
                     if manifest == 'content.sha256' or rel.startswith('content/'):
                         keep.add(sha)
+        for root in PACK_ROOTS:
+            for kind, _, name in self.entries(root):
+                if kind != 1:
+                    continue
+                folder = root + '/' + name.decode('utf-8', 'strict')
+                data = self.read(folder + PACK_REFERENCES, optional=True)
+                if data is None:
+                    continue
+                rows = data.split(b'\n')
+                if rows[-1] or not 2 <= len(rows) <= 4097:
+                    raise StoreError('invalid pack blob references in %s' % folder)
+                for row in rows[:-1]:
+                    sha = row.decode('ascii', 'strict')
+                    if not HEX.fullmatch(sha):
+                        raise StoreError('invalid pack blob reference in %s' % folder)
+                    keep.add(sha)
         return keep
 
     def collect(self):

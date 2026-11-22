@@ -69,12 +69,21 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
 #if defined(XYF_SETTING_OPTIONS)
         if (s.pack_confirm && s.pack_selected < s.pack_count) {
             ui::Confirm dialog;                       // assign fields to keep the cold build free of memset
-            dialog.heading = s.pack_inbox ? "Install sound pack?" : "Remove sound pack?";
+            const uint8_t kind = s.pack_kinds ? s.pack_kinds[s.pack_selected] : 0;
+            dialog.heading = kind == 1    ? "Import signed pack?" :
+                             kind == 2    ? "Enable sound pack?" :
+                             kind == 3    ? "Disable sound pack?" :
+                             s.pack_inbox ? "Install sound pack?" :
+                                            "Remove sound pack?";
             dialog.lines[0] = s.pack_names[s.pack_selected];
             dialog.lines[1] = dialog.lines[2] = dialog.lines[3] = "";
             dialog.count = 1;
             dialog.cancel = "Cancel";
-            dialog.accept = s.pack_inbox ? "Install" : "Remove";
+            dialog.accept = kind == 1    ? "Import" :
+                            kind == 2    ? "Enable" :
+                            kind == 3    ? "Disable" :
+                            s.pack_inbox ? "Install" :
+                                           "Remove";
             dialog.accept_selected = s.confirm_accept;
             dialog.chrome = chrome;
             ui::draw_confirm(fb, dialog);
@@ -82,11 +91,12 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
         }
         static ui::ListRow rows[packs_per_page] XYF_DATA = {};
         for (uint32_t i = 0; i != s.pack_count; ++i) rows[i].title = s.pack_names[i];
-        const char* hint = s.pack_busy   ? "Working..." :
-                           s.pack_result ? s.pack_result :
-                           s.pack_note   ? s.pack_note :
-                           s.pack_inbox  ? "PLAY install  SHIFT+PLAY installed  STOP back" :
-                                           "PLAY remove  SHIFT+PLAY inbox  STOP back";
+        const char* hint = s.pack_importing ? "Importing...   STOP cancel" :
+                           s.pack_busy      ? "Working..." :
+                           s.pack_result    ? s.pack_result :
+                           s.pack_note      ? s.pack_note :
+                           s.pack_inbox     ? "PLAY install  SHIFT+PLAY installed  STOP back" :
+                                              "PLAY remove  SHIFT+PLAY inbox  STOP back";
         const ui::List list = {
             s.pack_inbox ? "Inbox packs" : "Content packs", rows, s.pack_count, s.pack_selected, hint, chrome, false};
         ui::draw_list(fb, list);

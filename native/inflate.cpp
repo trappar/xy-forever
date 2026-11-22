@@ -111,7 +111,7 @@ struct Output {
             status = Status::cancelled;
             return false;
         }
-        if (count && sink.write && !sink.write(sink.context, workspace.window, count)) {
+        if (count && sink.write && !write_to_sink(sink, workspace.window, count)) {
             status = Status::sink;
             return false;
         }
@@ -210,11 +210,6 @@ bool compressed(Bits& bits, Output& output, InflateWorkspace& workspace) {
                                                    31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
     static const Byte length_extra[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
                                           2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
-    static const unsigned short distance_base[30] = {1,    2,    3,    4,    5,    7,    9,    13,    17,    25,
-                                                     33,   49,   65,   97,   129,  193,  257,  385,   513,   769,
-                                                     1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577};
-    static const Byte distance_extra[30] = {0, 0, 0, 0, 1, 1, 2, 2,  3,  3,  4,  4,  5,  5,  6,
-                                            6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
     for (;;) {
         U32 code;
         if (!symbol(bits, workspace.literal, code)) return false;
@@ -235,8 +230,11 @@ bool compressed(Bits& bits, Output& output, InflateWorkspace& workspace) {
             bits.status = Status::deflate;
             return false;
         }
-        if (!bits.take(distance_extra[code], extra)) return false;
-        U32 distance = distance_base[code] + extra;
+        // The first four distance codes each encode one distance. Later
+        // pairs encode two equally sized ranges, doubling on every pair.
+        const U32 shift = code < 4 ? 0 : (code >> 1) - 1;
+        if (!bits.take(shift, extra)) return false;
+        const U32 distance = (code < 4 ? code + 1 : ((2 + (code & 1u)) << shift) + 1) + extra;
         if (distance > output.produced || length > output.expected - output.produced) {
             bits.status = Status::bounds;
             return false;

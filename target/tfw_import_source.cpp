@@ -156,8 +156,9 @@ uint32_t Source::open(xyf_core::Work* work) {
     return P::s_ok;
 }
 
-uint32_t Source::close() {
+uint32_t Source::close(bool reopen) {
     if (phase_ == SourcePhase::hashing) return P::s_busy;
+    reopen = reopen && phase_ == SourcePhase::authenticated;
     archive_.close();
     if (fd_ >= 0) {
         const auto r = file_client::close(fd_);
@@ -169,7 +170,7 @@ uint32_t Source::close() {
         }
         fd_ = -1;
     }
-    phase_ = SourcePhase::idle;
+    phase_ = reopen ? SourcePhase::hashed : SourcePhase::idle;
     return P::s_ok;
 }
 

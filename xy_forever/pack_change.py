@@ -2,6 +2,8 @@
 
 import json
 import secrets
+import struct
+import time
 
 from . import depth
 from . import package_store as store
@@ -9,12 +11,24 @@ from . import usb_proto as P
 
 DLC = '/yaffs2/content/dlc'
 INBOX = store.ROOT + '/inbox'
+RETAINED = store.ROOT + '/packs'
+SIGNED_RECORD = b'xyf-pack.txt'
+OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE = range(5)
+SIGNED_OPERATIONS = {'import': OP_IMPORT, 'enable': OP_ENABLE, 'disable': OP_DISABLE}
 
 
 def configure(sub):
     packs = sub.add_parser('packs', help='manage installed and inbox sound packs')
     actions = packs.add_subparsers(dest='pack_command', required=True)
     actions.add_parser('list', help='list installed pack IDs and vendor metadata')
+    for action, help_text in (
+        ('import', 'authenticate an inbox .tfw and retain it'),
+        ('enable', 'activate a compatible signed pack'),
+        ('disable', 'retain a signed pack without activating it'),
+    ):
+        parser = actions.add_parser(action, help=help_text)
+        parser.add_argument('id', help='inbox .tfw filename' if action == 'import' else 'exact pack ID')
+        parser.add_argument('--yes', action='store_true', help='apply the change')
     for name in ('install', 'remove'):
         parser = actions.add_parser(name, help=name + ' one plain-folder pack')
         parser.add_argument('id', help='exact pack folder name')
@@ -26,6 +40,9 @@ def plan(args):
         return None
     if not valid_name(args.id):
         print('refused: invalid pack folder ID')
+        return 2
+    if args.pack_command == 'import' and not args.id.lower().endswith('.tfw'):
+        print('refused: expected an inbox .tfw filename')
         return 2
     print('Plan: %s pack %s.' % (args.pack_command, args.id))
     if not args.yes:
@@ -89,6 +106,8 @@ def reject_constant(value):
 
 def manifest(session, source, pack_id):
     entries = {raw: kind for kind, _, raw in session.entries(source)}
+    if SIGNED_RECORD in entries:
+        raise store.StoreError('signed pack record is reserved')
     if entries.get(b'manifest.json') != 0 or b'info.txt' in entries or b'os.ldr' in entries:
         raise store.StoreError('expected an unambiguous sound pack with a regular manifest.json')
     code, data = session.dev.read_all(source + '/manifest.json', limit=4097)
@@ -124,6 +143,8 @@ def change(session, action, pack_id):
         session.rename(source, installed)
     else:
         folder(session, DLC, pack_id)
+        if kind_at(session, installed, SIGNED_RECORD.decode('ascii')) is not None:
+            raise store.StoreError('signed pack: use packs disable to retain it')
         manifest(session, installed, pack_id)
         folder(session, store.ROOT, 'tmp', optional=True)
         scratch = store.TMP + '/pkg-v1-' + secrets.token_hex(8)
@@ -136,11 +157,55 @@ def change(session, action, pack_id):
             print('Pack detached; cleanup pending: %s' % error)
 
 
+def signed_request(dev, operation, name=''):
+    payload = struct.pack('<II', 1, operation) + name.encode('utf-8') + b'\0'
+    code, body = dev.call(P.ids.PACKS_MANAGE, payload, timeout=60.0)
+    if code == P.ids.S_REFUSED and operation == OP_ENABLE:
+        raise store.StoreError('compatibility unknown or pack path refused')
+    store.check(code, 'signed pack')
+    if len(body) != 16:
+        raise store.StoreError('short signed pack reply')
+    return struct.unpack('<IIII', body)
+
+
+def signed_change(dev, action, pack_id):
+    operation = SIGNED_OPERATIONS[action]
+    signed_request(dev, operation, pack_id)
+    if operation != OP_IMPORT:
+        print('%s pack %s' % ('Enabled' if operation == OP_ENABLE else 'Disabled', pack_id))
+        return 0
+    previous = None
+    try:
+        while True:
+            phase, done, total, error = signed_request(dev, OP_STATUS)
+            if phase == 3:
+                print('Imported %s. The signed pack is retained.' % pack_id)
+                return 0
+            if phase == 4:
+                store.check(error or P.ids.S_STATE, 'signed pack import')
+            if phase not in (1, 2):
+                raise store.StoreError('signed pack import stopped unexpectedly')
+            percent = done * 100 // max(total, 1)
+            mark = (phase, percent // 10)
+            if mark != previous:
+                print('%s %d%%' % ('Authenticating' if phase == 1 else 'Staging', percent), flush=True)
+                previous = mark
+            time.sleep(0.25)
+    except KeyboardInterrupt:
+        signed_request(dev, OP_CANCEL)
+        while signed_request(dev, OP_STATUS)[0] in (1, 2):
+            time.sleep(0.25)
+        print('Signed pack import stopped.')
+        return 130
+
+
 def command(dev, args):
     if args.pack_command == 'list':
         return list_packs(dev)
     action, pack_id = args.pack_command, args.id
     try:
+        if action in SIGNED_OPERATIONS:
+            return signed_change(dev, action, pack_id)
         with store.Session(dev, sweep=False) as session:
             change(session, action, pack_id)
     except (OSError, ValueError, RecursionError) as error:

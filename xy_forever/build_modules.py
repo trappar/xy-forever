@@ -1,6 +1,6 @@
 """Freestanding module groups shared by the product builder. No stock-call policy."""
 
-TFW_CHECK_MODULES = ('tfw_check', 'tfw', 'tfw_signature', 'p224', 'aes')
+TFW_CHECK_MODULES = ('tfw_check', 'tfw', 'tfw_signature', 'p224', 'aes', 'zip')
 JSON_MODULES = ('json',)
 TFW_TARGET_MODULES = ('otp_keys', 'tfw_device_check', 'tfw_import_source')
 MOD_JOB_MODULES = ('mod_job', 'mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content')

@@ -57,6 +57,11 @@ Action key(State& s, uint32_t k, bool pressed) {
     const bool minus = k == key_minus, plus = k == key_plus, play = k == key_play;
     if (k == key_stop) {                              // back
 #if defined(XYF_SETTING_OPTIONS)
+        if (s.screen == Screen::packs && s.pack_importing) {
+            s.pack_cancel = true;
+            return Action::redraw;
+        }
+        if (s.screen == Screen::packs && s.pack_busy) return Action::none;
         if (s.screen == Screen::packs && s.pack_confirm) {
             s.pack_confirm = false;
             return Action::redraw;
