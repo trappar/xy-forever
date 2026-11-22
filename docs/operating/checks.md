@@ -61,7 +61,7 @@ hour.
 once; the working tree's product build comes through the firmware cache, its other modes are cached per clean
 tree, REF's per commit. CI (`.github/workflows/checks.yml`, on Linux: `mise run test-all` without private files
 or the Blackfin toolchain, whose tests only `check` or a manual macOS run cover; lint, the web and client suites;
-the browser tests when the web app changes) is the merge check, on pull requests only.
+the browser tests when the web app changes) is the merge check; a merge to main runs the Python suite again.
 Firmware may also be built into the checkout's gitignored `build/` folder; TE bytes are never committed or
 uploaded.
 
