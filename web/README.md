@@ -29,7 +29,7 @@ development and `/xy-forever/` for GitHub Pages.
 
 - **Connect**: Web Serial, or the simulator with `?sim=PORT`; a clear message in browsers without Web Serial.
 - **Install** (#178): installs XY Forever on a stock OP-XY, no other apps. Its flow, wording, MTP FAQ and "start fresh
-  with OS 1.2.1" path are Open-XY's builder flow (`src/install/page.ts`), and its te-boot (Web MIDI) and dev-menu MTP
+  with OS 1.2.1" path are Open-XY's builder flow (`src/install/flow.ts`, `content.ts`), and its te-boot (Web MIDI) and dev-menu MTP
   (WebUSB) code is Open-XY's `ferret.mjs` and `mtp.mjs` (`src/vendor/open-xy/`, MIT, notices kept; the Ferret copy has
   no disable command). The page reads te-boot's identity and refuses a 1.2.5 bootloader or unknown firmware (older than
   1.2.1: the official 1.2.1 update, named exactly), switches the dev menu on (never off), then copies our `os.ldr`:

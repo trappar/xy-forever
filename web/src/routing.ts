@@ -32,14 +32,14 @@ const device = createRoute({ getParentRoute: () => root, path: 'device', beforeL
 const mods = createRoute({ getParentRoute: () => root, path: 'mods', beforeLoad: connected, component: lazyRouteComponent(() => import('./pages/mods.tsx')) });
 const files = createRoute({ getParentRoute: () => root, path: 'files', beforeLoad: connected, component: lazyRouteComponent(() => import('./pages/files.tsx')) });
 const install = createRoute({ getParentRoute: () => root, path: 'install' });
-const installIndex = createRoute({ getParentRoute: () => install, path: '/', component: lazyRouteComponent(() => import('./legacy-page.tsx'), 'LegacyInstall') });
+const installIndex = createRoute({ getParentRoute: () => install, path: '/', component: lazyRouteComponent(() => import('./pages/install.tsx')) });
 const installStage = createRoute({
   getParentRoute: () => install, path: '$stage',
   params: {
     parse: ({ stage }): { stage: InstallStage } => { if (!isInstallStage(stage)) throw redirect({ to: '/install/' }); return { stage }; },
     stringify: ({ stage }) => ({ stage }),
   },
-  component: lazyRouteComponent(() => import('./legacy-page.tsx'), 'LegacyInstall'),
+  component: lazyRouteComponent(() => import('./pages/install.tsx')),
 });
 
 const routeTree = root.addChildren([home, connect, device, mods, files, install.addChildren([installIndex, installStage])]);
