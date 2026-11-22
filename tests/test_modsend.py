@@ -339,7 +339,7 @@ class PublishedPackages(Harness, unittest.TestCase):
     def job_text(self, generation, machines, exts):
         return MP.job_text(generation, machines, exts, TK.STOCK, TK.CATALOG, official=MP.default_official(PACKAGES))
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under load (#240)
     def test_push_twice_and_the_job_reads_the_device_copy(self):
         total, _ = self.push()
         self.assertEqual((total['sent'], total['skipped']), (3, 0))

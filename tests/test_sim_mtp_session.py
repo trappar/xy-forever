@@ -285,7 +285,6 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual(self.file_command(), P.S_OK)
         self.assertEqual(self.sim.status()['rw_open'], 0)
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_timing_does_not_steal_a_pending_file_request(self):
         """A timed-out file request still owns its slot; diagnostics must not cancel or replace it."""
         from xy_forever import mtp_timing as T

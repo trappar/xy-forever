@@ -11,7 +11,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever import bounds, sim                                                 # noqa: E402
+from xy_forever import sim                                                 # noqa: E402
 import xyf_host as host                                                    # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
@@ -45,7 +45,6 @@ class WhereCodes(unittest.TestCase):
         self.sim.advance(200)
         self.assertEqual(self.where(), [])
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_a_long_answer_wait_shows_its_code_then_clears(self):
         self.assertEqual(self.dev.read_file(PATH)[0], 0)                    # mounted: the next read is file requests only
         self.sim.set('a_slow_ms', 800)                                       # each file request answered 800 ms late

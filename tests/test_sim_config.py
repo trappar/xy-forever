@@ -449,7 +449,6 @@ class Config(ConfigBase, unittest.TestCase):
         self.assertEqual(self.booted(), a)
         self.saved_as(a, ['alpha'])
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_power_cut_in_the_record_write_then_save(self):
         a = self.all_off_saved()
         self.change(['alpha'], unknown=False)

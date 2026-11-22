@@ -118,7 +118,7 @@ class Reports(unittest.TestCase):
                 self.assertEqual((row['type'], row['valid']), ('unknown', '0'))
                 self.assertNotEqual(row['version'], 'legacy')
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under load (#240)
     def test_large_inbox_identity_is_streamed_without_size_cap(self):
         inbox = self.root / 'xy-forever/inbox'
         inbox.mkdir()

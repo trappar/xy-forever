@@ -16,7 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'scripts'), str(ROOT / 'tests')]
 import test_simulator as T  # noqa: E402
-from xy_forever import bounds, usb_proto_ids as P  # noqa: E402
+from xy_forever import usb_proto_ids as P  # noqa: E402
 
 spec = importlib.util.spec_from_file_location('boot_probe_script', ROOT / 'scripts/boot_probe.py')
 B = importlib.util.module_from_spec(spec)
@@ -187,7 +187,6 @@ class BootProbeTests(unittest.TestCase):
         self.assertEqual(self.sim.status()['partition'], 0)
         B.call(self.dev, B.END)
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_silent_a_returns_link_without_resetting_b_or_resuming_files(self):
         self.seed_image()
         self.begin()

@@ -1718,7 +1718,6 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual((status['rw_mounts'] - mounts, status['unclean_mounts']), (1, 0))
         print('\nfile.copy 300,196 B in the simulator: %.2f s' % seconds, file=sys.stderr)
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_file_copy_refuses_before_a_and_checks_its_request(self):
         """A source file.read refuses or a target file.write_staged refuses is refused on B: not one request
         reaches A. A wrong confirmation is sha; a request without the target's NUL or a byte short is

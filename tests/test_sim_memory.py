@@ -79,7 +79,7 @@ class PublishedMemory(Memory, unittest.TestCase):
     def memory_saved(self, value):
         self.wait_log(lambda: (self.config() or {}).get('memory') == value, 'memory=%s saved' % value, 30.0)
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under load (#240)
     def test_flip_saved_power_on_no_change_and_back(self):
         self.settings()
         self.home_has(STANDARD)                                            # "Checking the mod packages..." until the base

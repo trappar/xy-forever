@@ -287,7 +287,6 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assert_clean_failure(job, self.status(job), 'cancelled', 'cancelled')
         self.assemble_and_compare(['alpha'])                                # the next job works
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_cancel_with_a_large_output_answers_throughout(self):
         """a cancelled job whose output holds a large tree: the removal runs one step per
         loop pass ("cleaning up", storage commands busy); job.cancel, HELLO and status answer throughout (no
@@ -732,7 +731,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertNotIn('old.txt', tree(self.entry('mods-b')))
         self.assertEqual([n for n in self.leftovers() if n.startswith('job-')], ['job-2-old'])
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under load (#240)
     def test_sweep_at_job_start_bounded(self):
         """Before its first step the job removes leftover tmp/job-* folders (files, subfolders), nothing else in
         tmp/; a leftover larger than the sweep's cap is cut short and the job still completes."""
@@ -818,7 +817,7 @@ class PublishedJob(Base, unittest.TestCase):
         ids_ = [row[1] for row in M.read_table((PACKAGES / 'base/machines.txt').read_bytes())]
         cls.fit = M.fitting(PACKAGES, ids_)
 
-    @bounds.slow                                    # #233: needs longer under the paced clock
+    @bounds.slow                                    # #233: over the normal bounds under load (#240)
     def test_entries_match_the_reference(self):
         self.assertEqual(self.fit[0], 'fm2op')
         for machines, exts in ((self.fit[:1], []), (self.fit[:7], []), (self.fit[:1], ['capture', 'master_dj_filter'])):
