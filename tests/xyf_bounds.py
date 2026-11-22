@@ -36,7 +36,7 @@ def pytest_collection_modifyitems(items):
 
 
 @pytest.hookimpl(hookwrapper=True, tryfirst=True)
-def pytest_runtest_protocol(item, nextitem):
+def pytest_runtest_protocol(item):
     """A simulator test's build (the default one) comes before its bound: a cold build is a compile, not the test."""
     if item.get_closest_marker('sim') or item.get_closest_marker('sweep'):
         from xy_forever import sim

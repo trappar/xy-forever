@@ -5,7 +5,6 @@ import type { HeldPackage } from 'xy-forever-client';
 
 export const CONTENT_STATE = '/yaffs2/xy-forever/content-state.txt';
 export const CONTENT_STATE_OLD = '/yaffs2/xy-forever/content-state.old';
-export { WRITE_ROOTS };
 
 /** The write rule in plain words (since protocol 1.13): all of /yaffs2 except the protected names. */
 export const WRITE_RULE = `under ${WRITE_ROOTS.join(' and ')}, never ${PROTECTED_NAMES.join(' or ')} (or inside it)`;
@@ -76,9 +75,9 @@ export function contentText(text: string | null, oldExists: boolean): string {
 }
 
 /** Package kinds in the device menu's order (GUIDE: synths, drums, samplers, effects, players, extensions). */
-export const KINDS = ['synth', 'drum', 'sampler', 'effect', 'player', 'extension'] as const;
-export type Kind = (typeof KINDS)[number] | 'other';
-export const KIND_LABEL: Readonly<Record<Kind, string>> = {
+const KINDS = ['synth', 'drum', 'sampler', 'effect', 'player', 'extension'] as const;
+type Kind = (typeof KINDS)[number] | 'other';
+const KIND_LABEL: Readonly<Record<Kind, string>> = {
   synth: 'Synths',
   drum: 'Drums',
   sampler: 'Samplers',
@@ -88,7 +87,7 @@ export const KIND_LABEL: Readonly<Record<Kind, string>> = {
   other: 'Other',
 };
 
-export interface ModRow {
+interface ModRow {
   /** The folder name on the device (what removePackage takes). */
   readonly folder: string;
   /** The mod ID in the saved selection and in mods.apply's machines/extensions. */
@@ -111,7 +110,7 @@ export interface ModGroup {
 }
 
 /** One held package as a mod row; null for the base package (not a mod). */
-export function modRow(p: HeldPackage, config: SavedConfig | null | undefined): ModRow | null {
+function modRow(p: HeldPackage, config: SavedConfig | null | undefined): ModRow | null {
   const type = p.info['type'];
   if (p.name === 'base' || type === 'base') return null;
   const machine = (p.info['machine'] ?? '').toLowerCase();

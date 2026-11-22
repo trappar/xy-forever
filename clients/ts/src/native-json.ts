@@ -1,8 +1,8 @@
 /** Native record schemas. JSON.parse owns syntax; this adapter checks native semantics and bounds. */
-export const PACKAGE_SCHEMA = 'xy-forever.package';
-export const CONFIG_SCHEMA = 'xy-forever.config';
-export const DOCUMENT_BYTES = 8448,
-  PROPERTY_COUNT = 128,
+const PACKAGE_SCHEMA = 'xy-forever.package';
+const CONFIG_SCHEMA = 'xy-forever.config';
+export const DOCUMENT_BYTES = 8448;
+const PROPERTY_COUNT = 128,
   FIELD_COUNT = 32,
   LIST_COUNT = 96,
   MAX_DEPTH = 4;
@@ -87,7 +87,7 @@ function duplicates(source: string, schema: string): void {
     }
   }
 }
-export function parseNative(data: Uint8Array, schema: string): ObjectValue {
+function parseNative(data: Uint8Array, schema: string): ObjectValue {
   need(data.length > 0 && data.length <= DOCUMENT_BYTES, 'JSON document size');
   const source = new TextDecoder('utf-8', { fatal: true }).decode(data);
   let escaped = false;

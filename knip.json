@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreBinaries": ["uv"],
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.mjs"],
+      "ignoreDependencies": ["turbo"]
+    },
+    "web": {
+      "entry": ["e2e/*.ts", "scripts/*.ts", "test/*.ts"],
+      "project": ["src/**/*.{ts,tsx,css}", "e2e/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
+    },
+    "clients/ts": {
+      "entry": ["test/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    }
+  }
+}

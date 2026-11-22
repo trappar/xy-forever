@@ -8,13 +8,13 @@ import type { CallOptions, Client } from './client.ts';
 import { XyfError, isXyfError } from './errors.ts';
 
 /** What a `busy` answer meant, in the error's `fields.busy`: fileReason words it. */
-export type BusyCause = 'job' | 'session' | 'closing';
+type BusyCause = 'job' | 'session' | 'closing';
 
 /** How long a closing write window is waited out, in all, and the first and longest pause between tries. */
-export const BUSY_WAIT = { totalMs: 30_000, firstMs: 50, longestMs: 1_000 } as const;
+const BUSY_WAIT = { totalMs: 30_000, firstMs: 50, longestMs: 1_000 } as const;
 
 /** Asks job.status what a `busy` answer meant. */
-export async function busyCause(client: Client, options: CallOptions = {}): Promise<BusyCause> {
+async function busyCause(client: Client, options: CallOptions = {}): Promise<BusyCause> {
   try {
     const status = await client.call('job.status', { job: 0 }, { signal: options.signal });
     return status.phase < 8 ? 'job' : 'closing';
