@@ -37,7 +37,7 @@ import tempfile
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-from elftools.elf.enums import ENUM_SH_TYPE_BASE, ENUM_ST_INFO_BIND, ENUM_ST_INFO_TYPE, ENUM_ST_SHNDX
+from elftools.elf.enums import ENUM_SH_TYPE_BASE
 
 from . import package_records
 from .build_formats import elf_records, number
@@ -46,6 +46,9 @@ from .xyf_entry import ManifestError, files_sha256_text
 KIT_FORMAT = 'opxy-browser-kit/1'
 PROFILE_SCHEMA = 1
 DRIVER = Path(__file__).resolve().parents[1] / 'scripts/modkit_core.mjs'
+DRIVERS = (
+    4  # Node processes at once (run_driver): the published kit's 16 jobs took 1.4 s in one, 0.8 s in 4, 1.4 s in 9
+)
 KIT_KEYS = {
     'format',
     'version',
@@ -173,17 +176,18 @@ def read_object(data, name='object'):
     table = tables[0]
     check(table['stride'] == 16 and table['size'] % 16 == 0 and table['link'] < count, name + ': invalid symbol table')
     symbols = []
-    for at in range(table['offset'], table['offset'] + table['size'], 16):
-        e = structs.Elf_Sym.parse(data[at : at + 16])
-        shndx = number(e['st_shndx'], ENUM_ST_SHNDX)
+    # Symbols and relocations with struct (little-endian ELF32, checked above): pyelftools' construct records
+    # parse each in about 10 us, and a kit has tens of thousands.
+    entries = data[table['offset'] : table['offset'] + table['size']]
+    for st_name, value, size, info, _other, shndx in struct.iter_unpack('<IIIBBH', entries):
         check(shndx < count or shndx == SHN_ABS, name + ': COMMON or extended symbol sections are unsupported')
         symbols.append(
             dict(
-                name=string(sections[table['link']], e['st_name']),
-                value=e['st_value'],
-                size=e['st_size'],
-                binding=number(e['st_info']['bind'], ENUM_ST_INFO_BIND),
-                type=number(e['st_info']['type'], ENUM_ST_INFO_TYPE),
+                name=string(sections[table['link']], st_name),
+                value=value,
+                size=size,
+                binding=info >> 4,
+                type=info & 0xF,
                 section=shndx,
             )
         )
@@ -196,17 +200,10 @@ def read_object(data, name='object'):
             s['link'] == table['index'] and s['info'] < count and s['stride'] == 12 and s['size'] % 12 == 0,
             name + ': invalid relocation table',
         )
-        for at in range(s['offset'], s['offset'] + s['size'], 12):
-            r = structs.Elf_Rela.parse(data[at : at + 12])
-            check(r['r_info_type'] in RELOCATIONS and r['r_info_sym'] < len(symbols), name + ': unsupported relocation')
+        for offset, info, addend in struct.iter_unpack('<IIi', data[s['offset'] : s['offset'] + s['size']]):
+            check(info & 0xFF in RELOCATIONS and info >> 8 < len(symbols), name + ': unsupported relocation')
             relocations.append(
-                dict(
-                    section=s['info'],
-                    offset=r['r_offset'],
-                    type=r['r_info_type'],
-                    symbol=r['r_info_sym'],
-                    addend=r['r_addend'],
-                )
+                dict(section=s['info'], offset=offset, type=info & 0xFF, symbol=info >> 8, addend=addend)
             )
     return dict(sections=sections, symbols=symbols, relocations=relocations)
 
@@ -637,18 +634,30 @@ def notice_sections(notices, names):
 
 
 def run_driver(sdk, jobs, scratch):
-    """Run scripts/modkit_core.mjs (open-xy's core.mjs from sdk) on jobs; returns its results."""
+    """Run scripts/modkit_core.mjs (open-xy's core.mjs from sdk) on jobs; returns its results, in job order.
+    Opening a kit takes most of a job's time, so each kit's jobs stay in one Node process; the kits are spread
+    over up to DRIVERS processes, run at once, most jobs first."""
     core = Path(sdk) / 'builder/core.mjs'
     check(core.is_file(), 'no builder/core.mjs in %s' % sdk)
-    jobs_path, out_path = Path(scratch) / 'jobs.json', Path(scratch) / 'results.json'
-    jobs_path.write_text(json.dumps(jobs))
-    run = subprocess.run(
-        ['node', str(DRIVER), '--core', str(core), '--jobs', str(jobs_path), '--out', str(out_path)],
-        capture_output=True,
-        text=True,
-    )
-    check(run.returncode == 0, 'core.mjs driver failed: ' + (run.stderr or run.stdout)[-2000:])
-    return json.loads(out_path.read_text())
+    by_kit = {}
+    for i, job in enumerate(jobs):
+        by_kit.setdefault(job['kit'], []).append(i)
+    shares = [[] for _ in range(min(len(by_kit), DRIVERS))]
+    for kit_jobs in sorted(by_kit.values(), key=len, reverse=True):
+        min(shares, key=len).extend(kit_jobs)
+    runs = []
+    for k, share in enumerate(shares):
+        jobs_path, out_path = Path(scratch) / ('jobs-%d.json' % k), Path(scratch) / ('results-%d.json' % k)
+        jobs_path.write_text(json.dumps([jobs[i] for i in share]))
+        cmd = ['node', str(DRIVER), '--core', str(core), '--jobs', str(jobs_path), '--out', str(out_path)]
+        runs.append((subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True), out_path))
+    outputs = [run.communicate()[0] for run, _ in runs]  # every process ends before any failure is raised
+    results = [None] * len(jobs)
+    for share, (run, out_path), output in zip(shares, runs, outputs):
+        check(run.returncode == 0, 'core.mjs driver failed: ' + output[-2000:])
+        for i, result in zip(share, json.loads(out_path.read_text())):
+            results[i] = result
+    return results
 
 
 def write_package(folder, files):

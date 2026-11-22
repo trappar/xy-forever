@@ -1,6 +1,6 @@
 """Hard bounds on every test (#230, xy_forever/bounds.py), as a pytest plugin over pytest-timeout.
 
-Each test, with the fixtures before it, is bounded by the ini `timeout` (bounds.TEST_S), a simulator core
+Each test, with the fixtures before it, is bounded by pytest-timeout's timeout (bounds.TEST_S), a simulator core
 test by bounds.SIM_TEST_S. Past it, a thread prints HUNG: <test id> and every
 thread's traceback, then ends the process: under xdist each worker leads its own process group, and the
 whole group is killed (a child the test started with it); xdist names the test whose worker crashed. A

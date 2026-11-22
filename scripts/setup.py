@@ -195,7 +195,8 @@ def cmd_init(args):
             'next: add your name, emails and host name as regexes to "leak_patterns" in %s '
             '(case-sensitive; "(?i)" first matches any case)' % paths.LOCAL_CONFIG.name
         )
-    print('next: uv run scripts/setup.py import-stock DIR   (DIR: os.ldr + bootloader.ldr, or a copied /upgrade/)')
+    if not all((paths.STOCK_121 / name).is_file() for name in PAIR):
+        print('next: uv run scripts/setup.py import-stock DIR   (DIR: os.ldr + bootloader.ldr, or a copied /upgrade/)')
 
 
 def private_source():
@@ -721,7 +722,15 @@ class Bootstrap:
     """`setup.py bootstrap`: every step looks first and acts only on what is missing. Never deletes anything."""
 
     def __init__(
-        self, workspace=None, repo=REPO, config=None, dry_run=False, environ=os.environ, toolchain_archive=None
+        self,
+        workspace=None,
+        repo=REPO,
+        config=None,
+        dry_run=False,
+        environ=os.environ,
+        toolchain_archive=None,
+        private=None,
+        toolchain=None,
     ):
         self.repo = Path(repo).resolve()
         self.main = paths.main_checkout(self.repo)
@@ -730,6 +739,9 @@ class Bootstrap:
         self.dry_run, self.environ, self.actions = dry_run, environ, []
         self.private_root = None
         self.toolchain_archive = Path(toolchain_archive).expanduser().resolve() if toolchain_archive else None
+        # init's --private and --toolchain: recorded in xyf.local.json before the steps that read it
+        self.chosen_private = Path(private).expanduser().resolve() if private else None
+        self.chosen_toolchain = Path(toolchain).expanduser().resolve() if toolchain else None
 
     def do(self, what, action, *args, **kw):
         self.actions.append(what)
@@ -750,6 +762,7 @@ class Bootstrap:
                 print('bootstrap: continuing under uv run (the project environment)', flush=True)
                 return self.continue_under_uv()
         print('bootstrap: workspace %s%s' % (self.workspace, ' (dry run: nothing changes)' if self.dry_run else ''))
+        self.chosen()
         for step in (self.private, self.local_files, self.workspace_guide, self.tools, self.toolchain, self.fixtures):
             step()
         if not self.actions:
@@ -763,11 +776,36 @@ class Bootstrap:
         self.next_steps()
         return 0
 
+    def chosen(self):
+        """--private and --toolchain, as init records them (once: a rerun finds them recorded)."""
+        settings = self.settings()
+        if self.chosen_private and settings.get('private') != str(self.chosen_private):
+            env = self.environ.get('XYF_PRIVATE')
+            if env and Path(env).expanduser().resolve() != self.chosen_private:
+                raise SetupError(
+                    'XYF_PRIVATE=%s overrides --private %s; unset it or use the same folder'
+                    % (env, self.chosen_private)
+                )
+            self.do(
+                'record the private folder %s in %s' % (self.chosen_private, self.config.name),
+                self.record_private,
+                self.chosen_private,
+            )
+        if self.chosen_toolchain and settings.get('toolchain') != str(self.chosen_toolchain):
+            self.do(
+                'record the toolchain %s in %s' % (self.chosen_toolchain, self.config.name),
+                record_toolchain,
+                self.chosen_toolchain,
+                self.config,
+            )
+
     def continue_under_uv(self):
         """Run bootstrap again under `uv run` (the project environment), with the same arguments."""
         argv = ['bootstrap', '--workspace', str(self.workspace)]
         argv += ['--dry-run'] if self.dry_run else []
         argv += ['--toolchain-archive', str(self.toolchain_archive)] if self.toolchain_archive else []
+        argv += ['--private', str(self.chosen_private)] if self.chosen_private else []
+        argv += ['--toolchain', str(self.chosen_toolchain)] if self.chosen_toolchain else []
         cmd = dev_tools.tool('uv') + ['run', '--no-sync', 'python', str(self.repo / 'scripts/setup.py')] + argv
         return subprocess.run(cmd, cwd=self.repo, env=dev_tools.env(self.environ)).returncode
 
@@ -960,7 +998,13 @@ def cmd_toolchain(args):
 
 
 def cmd_bootstrap(args):
-    return Bootstrap(args.workspace, dry_run=args.dry_run, toolchain_archive=args.toolchain_archive).run()
+    return Bootstrap(
+        args.workspace,
+        dry_run=args.dry_run,
+        toolchain_archive=args.toolchain_archive,
+        private=args.private,
+        toolchain=args.toolchain,
+    ).run()
 
 
 def main(argv=None):
@@ -992,6 +1036,8 @@ def main(argv=None):
         metavar='ZIP',
         help="open-xy's toolchain-1 release zip for this host, already downloaded (default: bootstrap downloads it)",
     )
+    b.add_argument('--private', help='private folder for this clone, as init records it (default ../private)')
+    b.add_argument('--toolchain', help='an installed Blackfin toolchain folder, as init records it (checked first)')
     args = p.parse_args(argv)
     try:
         return {

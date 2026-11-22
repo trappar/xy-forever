@@ -4,9 +4,10 @@ A bound ends a hang, never a slow run: each is several times what its work takes
 CPU budgets (tests/conftest.py) are what hold a test to its speed. Never raise one to make a test pass.
 """
 
-TEST_S = 60.0  # one test with the fixtures before it (pytest's timeout ini, tests/xyf_bounds.py: HUNG)
+TEST_S = 60.0  # one test with the fixtures before it (pytest-timeout's timeout, set by tests/conftest.py; HUNG)
 SIM_TEST_S = 20.0  # one simulator core test (the `sim` tier, #233): hard-killed past it
-SIM_DEADLINE_S = 20.0  # a test's simulator exits on its own this long after it started (xyf_sim --deadline-s)
+SIM_DEADLINE_S = 45.0  # a test's simulator exits on its own this long after it started (xyf_sim --deadline-s); a
+# sweep's one board ran past 20 s at load 48: that ended a slow run, not a hang (a sim-tier test ends at SIM_TEST_S)
 SIM_CALL_S = 5.0  # one host call to the simulator, wall time (xyf-host --sim, conformance.py --sim)
 SIM_CONNECT_S = 5.0  # finding the simulator's endpoint and its HELLO (xyf-host connect --sim)
 WAIT_S = 10.0  # a test's wait for the simulator to reach a state

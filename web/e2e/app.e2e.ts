@@ -17,14 +17,17 @@ const nav = (page: Page, name: string): Locator =>
 
 const found = findSimulator();
 if (found.why) console.warn(`\nweb e2e skipped: ${found.why}\n`);
-const port = 21000 + 2 * Math.floor(Math.random() * 5000);
-const state = process.env['XYF_SIM_STATE'] ?? join(found.sessions, `web-e2e-${port}`);
+const state = process.env['XYF_SIM_STATE'] ?? join(found.sessions, `web-e2e-${process.pid}`);
 let stopSim: (() => Promise<void>) | undefined;
+let simPort = 0; // the simulator's USB endpoint: a port it holds (simulators.ts)
 let browser: Browser | undefined; // the project's Chrome (playwright.config.ts: no real Web Serial)
 
 test.beforeAll(async ({ browser: projectBrowser }) => {
   browser = projectBrowser;
-  if (!found.why) stopSim = (await startAll(state, port, [['web', 0, []]])).stopAll;
+  if (found.why) return;
+  const started = await startAll(state, [['web', []]]);
+  stopSim = started.stopAll;
+  simPort = started.infos['web']!.port;
 });
 
 test.afterAll(async () => {
@@ -45,7 +48,7 @@ test('connects to the simulator and shows the device and its files', async () =>
         deviceRequests++;
       });
   });
-  await page.goto(appUrl(`?sim=${port}`));
+  await page.goto(appUrl(`?sim=${simPort}`));
   expect(await page.evaluate(() => 'serial' in navigator)).toBe(false);
   await page.getByRole('button', { name: 'Connect' }).click();
   await expect(page.locator('[data-fact=version]')).toHaveText(/^\d+\.\d+\.\d+$/, { timeout: 20_000 });
@@ -131,7 +134,7 @@ test('installs a newer XY Forever and restarts into its menu', async () => {
         }
       });
     });
-    await page.goto(appUrl(`?sim=${port}`));
+    await page.goto(appUrl(`?sim=${simPort}`));
     await page.getByRole('button', { name: 'Connect', exact: true }).click();
     const update = page.getByRole('button', { name: `Update to ${version}`, exact: true });
     await update.waitFor();

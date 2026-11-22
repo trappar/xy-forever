@@ -61,6 +61,13 @@ void cdc_start() {
     a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     if (bind(listener, reinterpret_cast<sockaddr*>(&a), sizeof(a)) || listen(listener, 4))
         crash("USB endpoint 127.0.0.1:%d: %s", shared->port, strerror(errno));
+    // --port 0: the port the system picked, kept for every later USB on (status: port; SO_REUSEADDR rebinds it even
+    // when an outgoing connection took it as its local port meanwhile).
+    if (!shared->port) {
+        socklen_t size = sizeof(a);
+        getsockname(listener, reinterpret_cast<sockaddr*>(&a), &size);
+        shared->port = ntohs(a.sin_port);
+    }
     fcntl(listener, F_SETFL, O_NONBLOCK);
     ++connections;
     shared->b_listening = 1;

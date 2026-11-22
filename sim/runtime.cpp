@@ -599,7 +599,7 @@ int main(int argc, char** argv) {
         ++i;
     }
     if (!shared->root[0] || !shared->bootpart[0] || !stock_path) return usage();
-    if (!control_port) control_port = shared->port + 1;
+    if (!control_port && shared->port) control_port = shared->port + 1; // --port 0: --control-fd or --control
     if (otp && !load_otp()) {
         wipe_otp();
         fprintf(stderr, "xyf_sim: bad OTP records on stdin\n");

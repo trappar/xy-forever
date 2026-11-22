@@ -1,26 +1,25 @@
 // Vitest global setup: starts the device simulators the spec files use and stops them after the
-// run. Each is `python -m xy_forever.sim --port N --state DIR` (the repository's own simulator,
+// run. Each is `python -m xy_forever.sim --port 0 --state DIR` (the repository's own simulator,
 // built from target/; python: the project venv's, PYTHON, however Vitest was started), one per spec file so that
 // files can run in parallel:
-//   pre-v1       XYF_TS_SIM_PORT + 2   the pre-v1 hello (--pre-v1)
-//   e2e          XYF_TS_SIM_PORT + 4   end-to-end and fault tests
-//   ws           XYF_TS_SIM_PORT + 6   the WebSocket transport through the relay (websocket.spec.ts)
-//   files        XYF_TS_SIM_PORT + 8   the file methods (files.spec.ts)
-//   mods         XYF_TS_SIM_PORT + 20  mod packages (mods.spec.ts)
-//   serial       XYF_TS_SIM_PORT + 10  Web Serial through the fake navigator.serial and a relay (webserial.spec.ts)
-//   chooser      XYF_TS_SIM_PORT + 12  choosing the port (chooser.spec.ts)
-//   buffer       XYF_TS_SIM_PORT + 14  the port's receive buffer (buffer.spec.ts)
-// Control ports are N + 1; pre-v1 and the Web Serial ones have a relay too (test/relay.ts, a free port). They start
-// at the same time. XYF_TS_SIM_PORT: a random base by default (randomBase: parallel runs and
-// checkouts do not collide); state under <private sessions>/ts-client-BASE (XYF_TS_SIM_STATE), removed
-// afterwards unless XYF_KEEP_SIM=1. Without the private stock images or clang++ (CI), the simulator tests are
+//   preV1        the pre-v1 hello (--pre-v1)
+//   e2e          end-to-end and fault tests
+//   ws           the WebSocket transport through the relay (websocket.spec.ts)
+//   files        the file methods (files.spec.ts)
+//   mods         mod packages (mods.spec.ts)
+//   serial       Web Serial through the fake navigator.serial and a relay (webserial.spec.ts)
+//   chooser      choosing the port (chooser.spec.ts)
+//   buffer       the port's receive buffer (buffer.spec.ts)
+// Its USB endpoint and control port are ports the system picks, named in its output (xy_forever/sim_main.py, B's
+// "USB on: listening" line): nothing here picks a port, so parallel runs never race for one. preV1 and the Web
+// Serial ones have a relay too (test/relay.ts, a free port). They start at the same time. State under
+// <private sessions>/ts-client-PID (XYF_TS_SIM_STATE), removed afterwards unless XYF_KEEP_SIM=1. Without the private stock images or clang++ (CI), the simulator tests are
 // skipped with the reason; the codec tests still run. Anything else that stops a simulator (no venv, a venv that
 // cannot load xy_forever, a simulator that does not start) fails the run.
 // web/e2e uses the same functions with its own ports and folders.
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { mkdirSync, openSync, rmSync, writeSync } from 'node:fs';
-import * as net from 'node:net';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TestProject } from 'vitest/node';
@@ -77,20 +76,11 @@ print(json.dumps({
     'xyf_build': str(build / 'candidate.ldr') if build else None}))
 `;
 
-function portBusy(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const sock = net.createConnection({ host: '127.0.0.1', port });
-    sock.on('connect', () => {
-      sock.destroy();
-      resolve(true);
-    });
-    sock.on('error', () => resolve(false));
-  });
-}
+/** xy_forever/sim_main.py's line naming the control port, and B's naming its endpoint's once it listens. */
+const CONTROL = /simulator: USB endpoint .* control 127\.0\.0\.1:(\d+)/;
+const LISTENING = /USB on: listening on 127\.0\.0\.1:(\d+)/;
 
-async function start(name: string, port: number, state: string, extra: string[]): Promise<[SimInfo, ChildProcess]> {
-  for (const p of [port, port + 1])
-    if (await portBusy(p)) throw new Error(`port ${p} is in use (XYF_TS_SIM_PORT picks others)`);
+async function start(name: string, state: string, extra: string[]): Promise<[SimInfo, ChildProcess]> {
   const dir = join(state, name);
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
@@ -98,26 +88,20 @@ async function start(name: string, port: number, state: string, extra: string[])
   // In this process's group (a group kill of the test run reaches it); the wrapper ends its own
   // xyf_sim group when it is terminated or this process is gone (xy_forever/procgroup.py, #133).
   // Device time moves only under the simulator's control, so a loaded host never runs out a device
-  // time-out (sim/clock.cpp). Its output goes to sim.log through here: B's "USB on: listening" line
-  // says it is up (no polling); then the control port's settle answers once the power-on's work is done and the
+  // time-out (sim/clock.cpp). Its output goes to sim.log through here: its first line names its control port, then
+  // B's "USB on: listening" line its endpoint's and that it is up (no polling); then the control port's settle answers once the power-on's work is done and the
   // device's clock stands still, as a host that comes a moment later finds it.
-  const child = spawn(PYTHON, ['-m', 'xy_forever.sim', '--port', String(port), '--state', dir, ...extra], {
+  const child = spawn(PYTHON, ['-m', 'xy_forever.sim', '--port', '0', '--state', dir, ...extra], {
     cwd: REPO,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   live.add(child);
   child.once('exit', () => live.delete(child));
   endWithThisProcess();
-  const info: SimInfo = {
-    address: `127.0.0.1:${port}`,
-    host: '127.0.0.1',
-    port,
-    control: port + 1,
-    root: join(dir, 'yaffs2'),
-  };
   return new Promise((resolve, reject) => {
     let seen = '',
-      ready = false;
+      ready = false,
+      controlPort = 0;
     const timer = setTimeout(() => fail(`did not listen within 60 s`), 60_000);
     const fail = (why: string): void => {
       clearTimeout(timer);
@@ -130,13 +114,23 @@ async function start(name: string, port: number, state: string, extra: string[])
       writeSync(log, data);
       if (ready) return;
       seen = (seen + data.toString()).slice(-4096);
-      if (!/USB on: listening/.test(seen)) return;
+      controlPort ||= Number(CONTROL.exec(seen)?.[1] ?? 0);
+      const listening = controlPort ? LISTENING.exec(seen) : null;
+      if (!listening) return;
+      const port = Number(listening[1]);
+      const started: SimInfo = {
+        address: `127.0.0.1:${port}`,
+        host: '127.0.0.1',
+        port,
+        control: controlPort,
+        root: join(dir, 'yaffs2'),
+      };
       ready = true;
-      control(info.control, 'settle', 60_000).then(
+      control(started.control, 'settle', 60_000).then(
         () => {
           clearTimeout(timer);
           child.off('exit', exited);
-          resolve([info, child]);
+          resolve([started, child]);
         },
         (error: Error) => fail(`did not settle (${error.message})`),
       );
@@ -237,12 +231,6 @@ export function makeModBase(root: string, base: string): void {
   if (run.status !== 0) throw new Error(`the synthetic mod base: ${run.stderr.trim()}`);
 }
 
-/** A random base port for simulators (base + N and N + 1, N < 100), below the system's ephemeral ports (49152 on): parallel
- * runs and other checkouts do not collide (start() refuses a port in use). */
-export function randomBase(): number {
-  return 20_000 + 100 * Math.floor(Math.random() * 290);
-}
-
 /**
  * cond()'s value once truthy, the simulator's clock moved on between tries (advance 1 ms, doubling to 1 s): no host
  * time waited (xy_forever/sim.py Simulator.until). An Error past limitMs of device time.
@@ -314,15 +302,12 @@ export function findSimulator(): Found {
   return { why: found.why, sessions: found.sessions, fixtures, noBuild: found.xyf_build ? null : found.no_build };
 }
 
-/** Starts the simulators of plan (name, port offset from base, extra arguments) at the same time; all or none. */
+/** Starts the simulators of plan (name, extra arguments) at the same time; all or none. */
 export async function startAll(
   state: string,
-  base: number,
-  plan: readonly (readonly [string, number, readonly string[]])[],
+  plan: readonly (readonly [string, readonly string[]])[],
 ): Promise<{ infos: Record<string, SimInfo>; stopAll(): Promise<void> }> {
-  const outcomes = await Promise.allSettled(
-    plan.map(([name, offset, extra]) => start(name, base + offset, state, [...extra])),
-  );
+  const outcomes = await Promise.allSettled(plan.map(([name, extra]) => start(name, state, [...extra])));
   const running = outcomes.flatMap((o) => (o.status === 'fulfilled' ? [o.value] : []));
   const stopAll = (): Promise<void> =>
     Promise.all(running.map(([info, child]) => stop(info, child))).then(() => undefined);
@@ -350,21 +335,20 @@ export default async function setup(project: TestProject): Promise<() => Promise
     buffer: null,
     fixtures: found.fixtures,
   };
-  const base = parseInt(process.env['XYF_TS_SIM_PORT'] ?? String(randomBase()), 10);
-  const state = process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, `ts-client-${base}`);
+  const state = process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, `ts-client-${process.pid}`);
   let stopAll = async (): Promise<void> => undefined;
   const relays: Relay[] = [];
   if (sims.why) console.warn(`\nsimulator tests skipped: ${sims.why}\n`);
   else {
-    const started = await startAll(state, base, [
-      ['preV1', 2, ['--pre-v1']],
-      ['e2e', 4, []],
-      ['ws', 6, []],
-      ['files', 8, []],
-      ['serial', 10, []],
-      ['chooser', 12, []],
-      ['buffer', 14, []],
-      ['mods', 20, []],
+    const started = await startAll(state, [
+      ['preV1', ['--pre-v1']],
+      ['e2e', []],
+      ['ws', []],
+      ['files', []],
+      ['serial', []],
+      ['chooser', []],
+      ['buffer', []],
+      ['mods', []],
     ]);
     Object.assign(sims, started.infos);
     stopAll = started.stopAll;

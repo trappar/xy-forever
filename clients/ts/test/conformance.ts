@@ -568,6 +568,7 @@ class Runner {
   data: Obj;
   host: string;
   port: number;
+  controlPort: number;
   fixtures: Record<string, string>;
   timing: Obj;
   helloText: string | null = null;
@@ -575,10 +576,11 @@ class Runner {
   ctx: Context;
   capMs = 5000;
 
-  constructor(data: Obj, host: string, port: number, fixtures: Record<string, string>) {
+  constructor(data: Obj, sim: Endpoints, fixtures: Record<string, string>) {
     this.data = data;
-    this.host = host;
-    this.port = port;
+    this.host = sim.host;
+    this.port = sim.port;
+    this.controlPort = sim.control;
     this.fixtures = fixtures;
     this.timing = data['timing'] as Obj;
     this.ctx = new Context(data, fixtures, false);
@@ -641,7 +643,7 @@ class Runner {
 
   async control(line: string, logged = true): Promise<void> {
     const reply = await new Promise<string>((ok, fail) => {
-      const sock = net.createConnection({ host: this.host, port: this.port + 1 });
+      const sock = net.createConnection({ host: this.host, port: this.controlPort });
       let text = '';
       sock.on('connect', () => sock.write(line + '\n'));
       sock.on('data', (d: Buffer) => {
@@ -979,16 +981,22 @@ export function loadCases(
   return data;
 }
 
-/** Runs every case (matching only) against the simulator at host:port; null when it does not answer. */
+/** A simulator's USB endpoint (host:port) and its control port. */
+export interface Endpoints {
+  host: string;
+  port: number;
+  control: number;
+}
+
+/** Runs every case (matching only) against the simulator; null when it does not answer. */
 export async function runCases(
   data: Obj,
-  host: string,
-  port: number,
+  sim: Endpoints,
   fixtures: Record<string, string>,
   only: RegExp | null = null,
   each?: (row: Row) => void,
 ): Promise<Row[] | null> {
-  const runner = new Runner(data, host, port, fixtures);
+  const runner = new Runner(data, sim, fixtures);
   try {
     await (await runner.open(true, 2000)).close();
   } catch {
@@ -1051,10 +1059,10 @@ async function main(argv: string[]): Promise<number> {
     console.error('conformance: --sim 127.0.0.1:PORT (the simulator; this runner has no USB transport)');
     return 2;
   }
+  const port = parseInt(m[2]!, 10);
   const rows = await runCases(
     data,
-    m[1]!,
-    parseInt(m[2]!, 10),
+    { host: m[1]!, port, control: port + 1 }, // uv run -m xy_forever.sim --port N: control N + 1
     fixtures,
     opts['only'] ? new RegExp(opts['only']) : null,
     (row) => {

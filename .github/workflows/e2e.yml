@@ -1,0 +1,62 @@
+# The web app's browser tests (`mise run web-e2e`: Playwright in the runner's preinstalled Google Chrome), only when
+# the web app, the client it uses or the protocol changes; no part of the routine suite (#233). Without private files
+# the simulator specs skip, so this runs the install page against its fake devices. The rig's own hang bound
+# (`mise run web-e2e-bounds`, a nested Playwright run) runs only when the rig changes.
+name: Web app e2e
+
+on:
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'clients/ts/**'
+      - 'protocol/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/e2e.yml'
+      - '.github/actions/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Web app e2e (Chrome)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read   # the paths-filter step lists the pull request's files
+    env:
+      UV_NO_SYNC: "1"   # uv run keeps the sync below: no hosttest build
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: changed
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            rig:
+              - 'web/playwright.config.ts'
+              - 'web/e2e/budgets.ts'
+              - 'web/e2e/cpu.ts'
+              - 'web/e2e/hang-bound.e2e.ts'
+              - 'web/e2e/planted-hang.ts'
+              - 'clients/ts/test/cpu.ts'
+              - 'web/package.json'
+      - uses: ./.github/actions/mise
+      - run: uv sync --locked --no-group native   # no Python suite here: skip building hosttest/
+      - run: pnpm install --frozen-lockfile
+      - name: Install page and app in Chrome
+        env:
+          XYF_PRIVATE: ${{ runner.temp }}/private   # empty: the simulator specs skip
+        run: mkdir -p "$XYF_PRIVATE" && mise run web-e2e
+      - name: The e2e rig's hang bound (when the rig changed)
+        if: github.event_name != 'pull_request' || steps.changed.outputs.rig == 'true'
+        run: mise run web-e2e-bounds
