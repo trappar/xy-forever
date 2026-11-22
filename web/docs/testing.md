@@ -25,9 +25,9 @@ drives the app in the system Chrome, headless, never a downloaded browser:
   after Track 5, through the client's fake Web Serial port, `clients/ts/test/fake-serial.ts`), Web Serial and WebUSB
   off. `bounds` (`e2e/hang-bound.e2e.ts`): a nested run of a planted hung page (`e2e/planted-hang.ts`) must fail,
   naming that test, within its bound.
-- **The simulator.** The specs start `python3 -m xy_forever.sim` on random ports, state in the private sessions
-  folder (`XYF_PRIVATE` applies; `XYF_SIM_STATE` overrides app.e2e.ts's), removed afterwards; skipped with the
-  reason when it cannot run (no private stock files, no clang++). Device time moves only when a test moves it; the
+- **The simulator.** The specs start `python -m xy_forever.sim` from the project venv on random ports, state in the
+  private sessions folder (`XYF_PRIVATE` applies; `XYF_SIM_STATE` overrides app.e2e.ts's), removed afterwards;
+  skipped with the reason without the private stock files or clang++; a missing venv fails the run. Device time moves only when a test moves it; the
   page's own timers run on Playwright's clock.
 - **Budgets** (`e2e/budgets.ts`, enforced on CPU time: the worker's, Chrome's and the simulators', `e2e/cpu.ts`):
   each test's, by project, and the sum of the run's, about twice an unloaded run's and scaled on slower hardware

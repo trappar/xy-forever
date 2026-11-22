@@ -1,4 +1,4 @@
-// Node TCP transport: the device simulator's port (python3 -m xy_forever.sim; 127.0.0.1:7341 by
+// Node TCP transport: the device simulator's port (python -m xy_forever.sim; 127.0.0.1:7341 by
 // default) carries the same byte stream as the USB CDC port. Node only.
 import * as net from 'node:net';
 import type { Opener, Transport, TransportSink } from './transport.ts';

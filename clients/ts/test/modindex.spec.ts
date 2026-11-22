@@ -3,7 +3,7 @@
 // loadIndex + fetchPackages give a PackageSource that localSet (what pushPackages reads first) accepts and
 // whose files are byte-identical to the generation folder; refusals for a changed archive, a traversing
 // path, an unlisted member, a compressed member, an unknown id and a bad format.
-// Needs uv (the repository's Python environment: the test modules import pytest); no device.
+// Needs the project venv (PYTHON: the test modules import pytest); no device.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -11,13 +11,12 @@ import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, write
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, relative, sep } from 'node:path';
 import { deflateRawSync } from 'node:zlib';
 import { afterAll, beforeAll, beforeEach, test } from 'vitest';
 import { PackageError, fetchPackages, loadIndex, localSet } from '../src/index.ts';
+import { PYTHON, REPO } from './simulators.ts';
 
-const REPO = resolve(fileURLToPath(import.meta.url), '../../../..');
 const MAKE = `
 import json, sys
 from pathlib import Path
@@ -55,7 +54,7 @@ const server = createServer((req, res) => {
 });
 
 beforeAll(async () => {
-  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MAKE, work], { cwd: REPO, encoding: 'utf-8' });
+  const run = spawnSync(PYTHON, ['-c', MAKE, work], { cwd: REPO, encoding: 'utf-8' });
   assert.equal(run.status, 0, run.stderr);
   gen = run.stdout.trim();
   await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));

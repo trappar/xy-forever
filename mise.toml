@@ -168,7 +168,7 @@ run = "pnpm run dev"
 [tasks.web-test]
 description = "Web app and TypeScript client tests, then their type checks (about 7 s)"
 run = [
-  "uv run pnpm --filter xy-forever-client test",   # uv: its simulator tests start python3 -m xy_forever.sim from the project venv
+  "uv run pnpm --filter xy-forever-client test",   # uv: syncs the project venv its simulator tests run
   "pnpm --filter xy-forever-web test",
   "pnpm --recursive --parallel run typecheck",
 ]
@@ -185,7 +185,7 @@ cd ../../web && node_modules/.bin/vitest {{ sel }} --passWithNoTests"""
 [tasks.web-e2e]
 description = "Web app e2e tests (Chrome, simulator): CI runs them when web/ changes"
 dir = "web"
-run = "uv run pnpm run test:e2e"   # uv: the simulator specs start python3 -m xy_forever.sim from the project venv
+run = "uv run pnpm run test:e2e"   # uv: syncs the project venv the simulator specs run
 
 [tasks.plan]
 description = "Next plan items and decisions waiting (--all: more)"

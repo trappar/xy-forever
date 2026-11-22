@@ -1,6 +1,7 @@
 // Vitest global setup: starts the device simulators the spec files use and stops them after the
-// run. Each is `python3 -m xy_forever.sim --port N --state DIR` (the repository's own simulator,
-// built from target/), one per spec file so that files can run in parallel:
+// run. Each is `python -m xy_forever.sim --port N --state DIR` (the repository's own simulator,
+// built from target/; python: the project venv's, PYTHON, however Vitest was started), one per spec file so that
+// files can run in parallel:
 //   pre-v1       XYF_TS_SIM_PORT + 2   the pre-v1 hello (--pre-v1)
 //   e2e          XYF_TS_SIM_PORT + 4   end-to-end and fault tests
 //   ws           XYF_TS_SIM_PORT + 6   the WebSocket transport through the relay (websocket.spec.ts)
@@ -12,8 +13,9 @@
 // Control ports are N + 1; pre-v1 and the Web Serial ones have a relay too (test/relay.ts, a free port). They start
 // at the same time. XYF_TS_SIM_PORT: a random base by default (randomBase: parallel runs and
 // checkouts do not collide); state under <private sessions>/ts-client-BASE (XYF_TS_SIM_STATE), removed
-// afterwards unless XYF_KEEP_SIM=1. Without python3, the private stock
-// images or clang++, the simulator tests are skipped with the reason; the codec tests still run.
+// afterwards unless XYF_KEEP_SIM=1. Without the private stock images or clang++ (CI), the simulator tests are
+// skipped with the reason; the codec tests still run. Anything else that stops a simulator (no venv, a venv that
+// cannot load xy_forever, a simulator that does not start) fails the run.
 // web/e2e uses the same functions with its own ports and folders.
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
@@ -60,6 +62,9 @@ declare module 'vitest' {
 }
 
 export const REPO = fileURLToPath(new URL('../../..', import.meta.url));
+/** A program in the project venv (`mise run setup` makes it), never one on PATH: the tests need its packages. */
+export const venvBin = (name: string): string => join(REPO, '.venv', 'bin', name);
+export const PYTHON = venvBin('python');
 const QUERY = `
 import json
 from xy_forever import paths, sim
@@ -96,7 +101,7 @@ async function start(name: string, port: number, state: string, extra: string[])
   // time-out (sim/clock.cpp). Its output goes to sim.log through here: B's "USB on: listening" line
   // says it is up (no polling); then the control port's settle answers once the power-on's work is done and the
   // device's clock stands still, as a host that comes a moment later finds it.
-  const child = spawn('python3', ['-m', 'xy_forever.sim', '--port', String(port), '--state', dir, ...extra], {
+  const child = spawn(PYTHON, ['-m', 'xy_forever.sim', '--port', String(port), '--state', dir, ...extra], {
     cwd: REPO,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -193,7 +198,7 @@ print(M.split_kit(out / 'kit.json', out / 'packages', finish=finish, sdk_source=
  * kit) written under out (which must not hold one yet); returns its generation folder.
  */
 export function makeModSet(out: string): string {
-  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MOD_SET, out], { cwd: REPO, encoding: 'utf-8' });
+  const run = spawnSync(PYTHON, ['-c', MOD_SET, out], { cwd: REPO, encoding: 'utf-8' });
   if (run.status !== 0) throw new Error(`the synthetic mod package set: ${run.stderr.trim()}`);
   return run.stdout.trim();
 }
@@ -228,10 +233,7 @@ for path, blob in body.items():
  * not a known one: apply it with unverified.
  */
 export function makeModBase(root: string, base: string): void {
-  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MOD_BASE, root, base], {
-    cwd: REPO,
-    encoding: 'utf-8',
-  });
+  const run = spawnSync(PYTHON, ['-c', MOD_BASE, root, base], { cwd: REPO, encoding: 'utf-8' });
   if (run.status !== 0) throw new Error(`the synthetic mod base: ${run.stderr.trim()}`);
 }
 
@@ -281,29 +283,24 @@ export function simOpener(info: SimInfo, options: { timeoutMs?: number } = {}): 
 }
 
 export interface Found {
-  /** Why the simulator cannot run here; null when it can. */
+  /** Why the simulator cannot run here (no private stock files or clang++: a skip); null when it can. */
   why: string | null;
   /** The private sessions folder (state folders go under it). */
-  sessions: string | null;
+  sessions: string;
   fixtures: Record<string, string>;
   /** Why fixtures has no xyf_build (a verified build of this checkout's sources: paths.verified_build()); null when
    * it is there. */
   noBuild: string | null;
 }
 
-/** Whether python3 can build and run the simulator here, and where its files are. */
+/** Whether the simulator can be built and run here, and where its files are; throws when the project venv cannot
+ * answer (a broken setup is a failure, never a skip). */
 export function findSimulator(): Found {
-  const query = spawnSync('python3', ['-c', QUERY], { cwd: REPO, encoding: 'utf-8' });
-  if (query.error || query.status !== 0) {
-    return {
-      why: query.error
-        ? 'python3 not found'
-        : `python3 could not load xy_forever: ${query.stderr.trim().split('\n').pop()}`,
-      sessions: null,
-      fixtures: {},
-      noBuild: 'python3 could not look for one',
-    };
-  }
+  const query = spawnSync(PYTHON, ['-c', QUERY], { cwd: REPO, encoding: 'utf-8' });
+  if (query.error || query.status !== 0)
+    throw new Error(
+      `the project venv's ${PYTHON} ${query.error ? 'is missing' : `could not load xy_forever (${query.stderr.trim().split('\n').pop()})`}: run \`mise run setup\` in ${REPO}`,
+    );
   const found = JSON.parse(query.stdout) as {
     why: string | null;
     sessions: string;
@@ -354,38 +351,34 @@ export default async function setup(project: TestProject): Promise<() => Promise
     fixtures: found.fixtures,
   };
   const base = parseInt(process.env['XYF_TS_SIM_PORT'] ?? String(randomBase()), 10);
-  const state = found.sessions ? (process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, `ts-client-${base}`)) : null;
+  const state = process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, `ts-client-${base}`);
   let stopAll = async (): Promise<void> => undefined;
   const relays: Relay[] = [];
-  if (!sims.why && state) {
-    try {
-      const started = await startAll(state, base, [
-        ['preV1', 2, ['--pre-v1']],
-        ['e2e', 4, []],
-        ['ws', 6, []],
-        ['files', 8, []],
-        ['serial', 10, []],
-        ['chooser', 12, []],
-        ['buffer', 14, []],
-        ['mods', 20, []],
-      ]);
-      Object.assign(sims, started.infos);
-      stopAll = started.stopAll;
-      for (const name of ['preV1', 'serial', 'chooser', 'buffer'] as const) {
-        const sim = started.infos[name]!;
-        const relay = await startRelay({ target: sim.port, control: sim.control });
-        relays.push(relay);
-        sims[name] = { ...sim, relay: relay.url };
-      }
-    } catch (error) {
-      sims.why = (error as Error).message;
+  if (sims.why) console.warn(`\nsimulator tests skipped: ${sims.why}\n`);
+  else {
+    const started = await startAll(state, base, [
+      ['preV1', 2, ['--pre-v1']],
+      ['e2e', 4, []],
+      ['ws', 6, []],
+      ['files', 8, []],
+      ['serial', 10, []],
+      ['chooser', 12, []],
+      ['buffer', 14, []],
+      ['mods', 20, []],
+    ]);
+    Object.assign(sims, started.infos);
+    stopAll = started.stopAll;
+    for (const name of ['preV1', 'serial', 'chooser', 'buffer'] as const) {
+      const sim = started.infos[name]!;
+      const relay = await startRelay({ target: sim.port, control: sim.control });
+      relays.push(relay);
+      sims[name] = { ...sim, relay: relay.url };
     }
   }
-  if (sims.why) console.warn(`\nsimulator tests skipped: ${sims.why}\n`);
   project.provide('sims', sims);
   return async () => {
     await Promise.all(relays.map((r) => r.close()));
     await stopAll();
-    if (state && process.env['XYF_KEEP_SIM'] !== '1') rmSync(state, { recursive: true, force: true });
+    if (process.env['XYF_KEEP_SIM'] !== '1') rmSync(state, { recursive: true, force: true });
   };
 }
