@@ -14,6 +14,8 @@ import time
 import unittest
 import zlib
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_host as host                              # noqa: E402
@@ -63,6 +65,7 @@ class EntryFiles(unittest.TestCase):
                 te.candidate(c, 'loader-test')
 
 
+@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class TestEntrySimulator(unittest.TestCase):
     def setUp(self):

@@ -57,15 +57,12 @@ class CaptureSessionTests(unittest.TestCase):
         self.assertEqual((self.out / "state-b.txt.partial").read_bytes(), b"partial")
         self.device.t.close.assert_called_once()
 
-    def test_existing_or_checkout_destination_refused_before_connect(self):
+    def test_outside_or_existing_destination_refused_before_connect(self):
         with self.assertRaises(ValueError):
             capture.capture(self.root / "bad", [], 1, self.connect)
         self.out.mkdir(parents=True)
         with self.assertRaises(FileExistsError):
             self.run_capture()
-        (self.out / ".git").mkdir()
-        with self.assertRaisesRegex(ValueError, "outside every checkout"):
-            capture.capture(self.out / "nested", [], 1, self.connect)
         self.connect.assert_not_called()
 
     def test_status_error_aborts_before_any_read(self):

@@ -12,6 +12,8 @@ import tempfile
 import time
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
@@ -26,6 +28,7 @@ UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private s
 ENTRY = '/yaffs2/xy-forever/firmware/xyf-mods-test'
 
 
+@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class ModBootSimulator(unittest.TestCase):
     def setUp(self):
@@ -142,6 +145,7 @@ class ModBootSimulator(unittest.TestCase):
 @unittest.skipUnless(package_records.local_name(mb.PACKAGES / 'base') and mb.CATALOG.is_file() and sim.STOCK_OS.is_file() and
                      mb.modpatch.default_official(mb.PACKAGES).is_file(),
                      'published-kit packages, stock os.ldr, op1_factory.json or the official content.sha256 absent')
+@pytest.mark.gate
 class ModBootAssemble(unittest.TestCase):
     def test_fm2op_assembles_and_passes_the_checks(self):
         paths.SESSIONS.mkdir(parents=True, exist_ok=True)

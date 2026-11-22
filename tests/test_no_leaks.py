@@ -24,6 +24,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import paths  # noqa: E402
@@ -100,6 +102,7 @@ def find_leaks(texts, private_patterns=()):
     return hits
 
 
+@pytest.mark.gate
 class NoLeaksTest(unittest.TestCase):
     def test_tracked_files_have_no_personal_data(self):
         try:

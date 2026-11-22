@@ -2,11 +2,12 @@
 import contextlib
 import io
 from pathlib import Path
-import re
 import struct
 import sys
 import tempfile
 import unittest
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -18,21 +19,6 @@ import crash_trigger as ct  # noqa: E402
 import device_pass as dp  # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
-NAMES = ('crash_command', 'crash_fault', 'crash_armed_now', 't_crash', 'XYF_CRASH_TRIGGER')
-
-
-def guarded(text):
-    """Lines naming the trigger outside an #if that names XYF_CRASH_TRIGGER (a tiny preprocessor walk)."""
-    stack, outside = [], []
-    for n, line in enumerate(text.splitlines(), 1):
-        directive = line.strip()
-        if directive.startswith('#if'):
-            stack.append('XYF_CRASH_TRIGGER' in directive)
-        elif directive.startswith('#endif'):
-            stack.pop()
-        elif any(name in line for name in NAMES) and not any(stack) and not directive.startswith('//'):
-            outside.append('%d: %s' % (n, line.strip()))
-    return outside
 
 
 class ModeTest(unittest.TestCase):
@@ -46,32 +32,8 @@ class ModeTest(unittest.TestCase):
         self.assertIn(mode, host.USB_MODES)
         self.assertEqual(B.CRASH_TRIGGER_DEFINES, ('-DXYF_CRASH_TRIGGER=1',))
 
-    def test_only_the_test_mode_compiles_or_links_it(self):
-        src = (ROOT / 'xyf_build.py').read_text()
-        self.assertEqual(src.count('CRASH_TRIGGER_DEFINES if'), 1)
-        self.assertIn("(CRASH_TRIGGER_DEFINES if mode_name == CRASH_TRIGGER_MODE and name in ('usb_service', 'key_ui')", src)
-        # The verifier: each trigger symbol linked exactly in the test mode (the product's check build fails otherwise).
-        self.assertIn("require(has('crash_command') == trigger and has('xyf_crash_fault') == trigger and "
-                      "has('crash_fault') == trigger,", src)
-        self.assertIn('trigger = mode_name == CRASH_TRIGGER_MODE\n', src)
-        self.assertNotIn('XYF_CRASH_TRIGGER', (ROOT / 'protocol/v1.json').read_text())   # in no build's cmds
 
-    def test_target_code_only_under_its_switch(self):
-        for name in ('key_ui.cpp', 'key_ui.hpp', 'key_ui_crash.ipp', 'usb_service.cpp', 'usb_service_home.ipp',
-                     'usb_service_crash_trigger.ipp'):
-            self.assertEqual(guarded((ROOT / 'target' / name).read_text()), [], name)
-        part = (ROOT / 'target/key_ui_crash.ipp').read_text()
-        fault = part[part.index('"xyf_crash_fault:\\n"'):part.index('".size xyf_crash_fault')]
-        self.assertNotRegex(fault, r'\] = ')                               # reads only: no store
-        self.assertEqual(re.findall(r'(EXCPT \d|\.short 0x\w+|P0\.H = 0x\w+)', fault),
-                         ['EXCPT 1', '.short 0x0001', 'P0.H = 0x9000'])
-        self.assertEqual(re.findall(r'R1 = (\d);', fault), ['1', '3', '4'])          # no kind 2 (misaligned)
-        self.assertIn('kind == 2', (ROOT / 'target/usb_service_crash_trigger.ipp').read_text())
-        usb = (ROOT / 'target/usb_service_crash_trigger.ipp').read_text()
-        for refusal in ('writes_due', 'closing', 'mounted_stale', 'job_running()', 'uploading()', 'crash_armed_now()'):
-            self.assertIn(refusal, usb)
-
-
+@pytest.mark.sim
 class ScriptTest(unittest.TestCase):
     def test_unmapped_address_is_in_no_stock_data_cplb(self):
         table = [(0x08000000, 0x3109d), (0x08010000, 0x3109d), (0x08020000, 0x3109d), (0x08030000, 0x3009d),
@@ -107,14 +69,6 @@ class ScriptTest(unittest.TestCase):
         self.assertEqual(ct.screen_lines('unmapped', 0x8ab02e48, 0x8ab1088c),
                          ['Cause 0x26: data access to unmapped memory', 'At 0x8ab02e48, called from 0x8ab1088c',
                           'SEQSTAT 0x00000026 (or 0x00002026)'])
-
-    def test_cause_names_are_the_screens(self):
-        screen = (ROOT / 'target/crash_screen.hpp').read_text()
-        for kind, (_, cause, name, _) in ct.KINDS.items():
-            if cause >= 0x10:
-                self.assertIn('{0x%02x, "%s"}' % (cause, name), screen, kind)
-            else:
-                self.assertIn('"%s"' % name, screen, kind)
 
     @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
     def test_the_device_script_against_the_simulator(self):

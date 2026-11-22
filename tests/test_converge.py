@@ -5,10 +5,13 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+
+import pytest
 from xy_forever import hostbuild
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.gate
 class Converge(unittest.TestCase):
     def test_plan_table_and_planning_twice_gives_nothing(self):
         with tempfile.TemporaryDirectory(prefix='xyf-converge-') as tmp:

@@ -12,6 +12,8 @@ import tempfile
 import unittest
 import zlib
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild  # noqa: E402
@@ -76,6 +78,7 @@ class Stage2Program:
         return exit, frames.value, ms.value
 
 
+@pytest.mark.gate
 class Stage2MenuProgramTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

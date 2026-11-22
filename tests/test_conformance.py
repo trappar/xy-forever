@@ -2,7 +2,8 @@
 every case is interpretable; the validator refuses bad data; the device guard refuses what could
 change a real device beyond the test area; scripts/conformance.py runs every case against the
 simulator (and the pre-v1 variant), and prints one NEED line when nothing answers. The TypeScript
-runner of the same file: tests/test_ts_client.py. No device access: every run uses --sim."""
+runner of the same file (clients/ts/test/conformance.ts) runs its pre-v1 cases in the client's own suite.
+No device access: every run uses --sim."""
 import contextlib
 import copy
 import io
@@ -13,6 +14,8 @@ import sys
 import tempfile
 import time
 import unittest
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -40,6 +43,7 @@ def case(d, name):
     return next(c for c in d['cases'] if c['name'] == name)
 
 
+@pytest.mark.gate
 class CaseFileTest(unittest.TestCase):
     def test_every_case_validates_and_is_interpreted(self):
         d = data()
@@ -194,6 +198,7 @@ class FakeTarget:
         return self.device
 
 
+@pytest.mark.gate
 class RealDevicePathTest(unittest.TestCase):
     """The real-device code path without a device: HELLO retried as xyf_host.connect does, and
     the guard stopping a frame a case should never send (nothing reaches the port)."""
@@ -226,6 +231,7 @@ def run_script(argv):
     return code, out.getvalue(), summary
 
 
+@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class SimulatorRunTest(unittest.TestCase):
     def simulator(self, tmp, hello=None):

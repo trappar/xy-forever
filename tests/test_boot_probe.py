@@ -11,6 +11,8 @@ import time
 import unittest
 import zlib
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'scripts'), str(ROOT / 'tests')]
 import test_simulator as T  # noqa: E402
@@ -70,6 +72,7 @@ class RunnerTests(unittest.TestCase):
             self.assertFalse(result['go'])
 
 
+@pytest.mark.sim
 @unittest.skipIf(T.UNAVAILABLE, T.UNAVAILABLE)
 class BootProbeTests(unittest.TestCase):
     @classmethod
@@ -118,6 +121,7 @@ class BootProbeTests(unittest.TestCase):
         self.assertEqual(self.sim.status()['boot_writes'], 0)
         self.assertEqual(dev.read_file(T.BASE + 'state-a.txt')[0], 0)
 
+    @pytest.mark.uses('scripts/boot_probe.py')
     def test_final_cli_records_private_evidence_and_returns_restored(self):
         self.seed_image()
         with tempfile.TemporaryDirectory(prefix='boot-probe-cli-', dir=B.paths.SESSIONS) as tmp:

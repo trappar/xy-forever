@@ -3,10 +3,13 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+
+import pytest
 from xy_forever import hostbuild
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.gate
 class Journal(unittest.TestCase):
     def test_publication_and_source_identity(self):
         with tempfile.TemporaryDirectory(prefix='xyf-journal-') as tmp:

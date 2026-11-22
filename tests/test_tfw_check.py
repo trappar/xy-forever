@@ -13,6 +13,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 import p224_reference as ecdsa
 from test_tfw import container, KEY
 from test_tfw_os import (BOOTLOADER, Extractor, KEYS, OS, PUBLIC_KEY, SIGNING_KEY, build_zip, package, signed,
@@ -31,6 +33,7 @@ PRIVATE = None if tfw_extract.KEYS.is_file() and tfw_extract.PUBLIC_KEY.is_file(
 REASONS = ('pass', 'read', 'not_package', 'key_index', 'no_otp', 'public_key', 'signature', 'decrypt', 'directory')
 
 
+@pytest.mark.gate
 class NativeCheck(Extractor):
     """The host build of the device's check (host/tfw_extract.cpp check)."""
 
@@ -161,6 +164,7 @@ SIM_UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'priva
 DIR = '/yaffs2/xy-forever/packages/'
 
 
+@pytest.mark.sim
 @unittest.skipIf(SIM_UNAVAILABLE, SIM_UNAVAILABLE)
 class SimulatorCheck(unittest.TestCase):
     """tfw.check through the real B code on the simulator. The official packages are hard-linked

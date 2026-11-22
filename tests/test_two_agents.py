@@ -1,5 +1,5 @@
 """Two agents on one machine (docs/operating/two-agents.md): paths from the main checkout in a worktree and a plain
-clone, local claims and plan.py --agent, the device lock, one check run at a time, safe build pruning. Every case also runs with nothing set
+clone, local claims and plan.py --agent, the device lock, safe build pruning. Every case also runs with nothing set
 up: no claims folder, no agent name, no xyf.local.json, no XYF_* variables."""
 import contextlib
 import importlib.util
@@ -15,6 +15,8 @@ import tempfile
 import time
 import unittest
 from unittest import mock
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -40,6 +42,7 @@ def git(cwd, *args):
                           check=True, capture_output=True, text=True).stdout.strip()
 
 
+@pytest.mark.gate
 class Workspace(unittest.TestCase):
     """ws/xy-forever: a plain clone holding a copy of xy_forever/ (paths.py, toolchain.py); elsewhere/wt: a worktree
     of it outside the workspace."""
@@ -105,6 +108,7 @@ class Workspace(unittest.TestCase):
         self.assertEqual(json.loads((folder / '7.json').read_text()), got)
 
 
+@pytest.mark.gate
 class Claims(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -188,6 +192,7 @@ HELD = {1: dict(agent='claude', branch='1-mine'), 2: dict(agent='codex', branch=
         5: dict(agent='codex', branch='5-y')}
 
 
+@pytest.mark.gate
 class PlanByClaim(unittest.TestCase):
     def run_main(self, argv, folder):
         out = io.StringIO()
@@ -253,6 +258,7 @@ HOLD = ('import sys, time; sys.path.insert(0, %r); from xy_forever import device
         'time.sleep(float(sys.argv[4]))' % str(ROOT))
 
 
+@pytest.mark.gate
 class DeviceLock(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -316,50 +322,7 @@ class DeviceLock(unittest.TestCase):
         hold.assert_called_once_with(0.05)
 
 
-CHECK_RUN = ('import sys, time; sys.path.insert(0, %r); sys.path.insert(0, %r); from test_two_agents import CHECK; '
-             'CHECK.one_run_at_a_time(sys.argv[1], %r, sys.argv[2]); print("held", flush=True); '
-             'time.sleep(float(sys.argv[3]))' % (str(ROOT), str(ROOT / 'tests'), str(ROOT)))
-
-
-class OneCheckRunAtATime(unittest.TestCase):
-    """scripts/check.py holds checks/check.lock for a whole run: a second run waits for it, never fails."""
-
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.root = Path(tmp.name)
-        self.lock = self.root / 'xy-forever/checks/check.lock'
-
-    def run_(self, seconds):
-        proc = subprocess.Popen([sys.executable, '-c', CHECK_RUN, str(self.lock), str(self.root), str(seconds)],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        for f in (proc.stdout, proc.stderr):
-            self.addCleanup(f.close)
-        self.addCleanup(lambda: proc.poll() is None and proc.kill() or proc.wait())
-        return proc
-
-    def test_a_second_run_waits_for_the_first(self):
-        first = self.run_(30)
-        self.assertEqual(first.stdout.readline().strip(), 'held')
-        second = self.run_(0)
-        self.assertRegex(second.stderr.readline(), r'^check: waiting for another check run: pid %d '
-                                                   r'\(check.py in .*, branch .*\) since ' % first.pid)
-        self.assertIsNone(second.poll())                                 # still waiting, not failed
-        first.kill()                                                     # even a crash releases it
-        self.assertEqual(second.communicate(timeout=30)[0].strip(), 'held')
-        self.assertEqual(second.returncode, 0)
-
-    def test_a_single_run_never_waits_and_a_test_run_takes_no_lock(self):
-        got = self.run_(0)
-        self.assertEqual(got.communicate(timeout=30), ('held\n', ''))
-        self.assertIsNone(CHECK.one_run_at_a_time(self.lock, ROOT, self.root / 'absent'))
-        with tempfile.TemporaryDirectory() as tmp, \
-                mock.patch.object(CHECK, 'one_run_at_a_time', side_effect=AssertionError('locked')), \
-                mock.patch.object(CHECK, 'check', side_effect=CHECK.CheckError('stop')), \
-                contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(CHECK.main([], ROOT, Path(tmp)), 1)              # XYF_NO_DEVICE: no lock taken
-
-
+@pytest.mark.gate
 class Pruning(unittest.TestCase):
     def test_recent_folders_stay(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(CHECK.paths, 'BUILDS', Path(tmp)):

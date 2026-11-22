@@ -6,6 +6,8 @@ import tempfile
 import time
 import unittest
 
+import pytest
+
 from test_tfw import container
 from xy_forever import paths, sim, usb_proto_ids as ids
 
@@ -16,6 +18,7 @@ TAG, START, STATUS, CANCEL, DIGEST = 0x01544800, 1, 2, 3, 0x10
 DIR = '/yaffs2/xy-forever/packages/'
 
 
+@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class TfwHashRpcTests(unittest.TestCase):
     def setUp(self):

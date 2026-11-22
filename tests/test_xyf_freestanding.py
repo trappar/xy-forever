@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = ('xyf_store', 'xyf_info', 'xyf_manifest', 'xyf_filelist', 'xyf_recognise', 'xyf_library', 'xyf_catalog', 'xyf_menu', 'xyf_menu_view', 'xyf_crc32', 'xyf_state', 'xyf_state_write', 'xyf_state_write_library', 'xyf_stage2', 'stage2_menu', 'stage2_hello', 'usb_proto', 'ui_gfx', 'ui_screens', 'ui_pages', 'file_engine')
 FLAGS = ['-mcpu=bf707', '-std=gnu++11', '-ffreestanding', '-fno-exceptions', '-fno-rtti', '-fno-threadsafe-statics',
@@ -56,6 +58,7 @@ def compiler():
     return path if path.exists() else None
 
 
+@pytest.mark.gate
 class FreestandingTest(unittest.TestCase):
     def test_no_library_calls_and_small_stacks(self):
         gxx = compiler()

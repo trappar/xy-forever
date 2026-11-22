@@ -11,6 +11,8 @@ import unittest
 from unittest.mock import patch
 import zlib
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('device_pass', ROOT / 'scripts/device_pass.py')
 dp = importlib.util.module_from_spec(spec)
@@ -339,6 +341,7 @@ class FakeKeepalive:
         return 4242
 
 
+@pytest.mark.sim
 class ModsRowTest(unittest.TestCase):
     """The Mods page row of a package: kind, then name (A-Z folded), then folder (packages only)."""
     def test_sorted_order(self):
@@ -368,6 +371,7 @@ class ModsRowTest(unittest.TestCase):
         self.assertEqual(dp.mods_screen_row(80, 81), 8)
 
 
+@pytest.mark.sim
 class DevicePassTest(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
@@ -993,6 +997,7 @@ class DevicePassTest(unittest.TestCase):
             link.call(0x5f, b'', 1.0)
 
 
+@pytest.mark.sim
 class SilentExitTest(unittest.TestCase):
     """#50: a run never stops without saying why."""
 

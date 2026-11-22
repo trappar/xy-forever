@@ -13,6 +13,8 @@ import unittest
 from unittest import mock
 import zlib
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import transport  # noqa: E402
@@ -98,6 +100,7 @@ class FakeTty:
         return port
 
 
+@pytest.mark.gate
 class SerialTransportTest(unittest.TestCase):
     def stage(self, tty, size):
         data = random.Random(128).randbytes(size)
@@ -128,8 +131,8 @@ class SerialTransportTest(unittest.TestCase):
         dev = xyf_host.Device(port, on_log=None)
         start = time.monotonic()
         with self.assertRaises(TimeoutError):
-            dev.call(P.HELLO, timeout=0.3)
-        self.assertLess(time.monotonic() - start, 2.0)
+            dev.call(P.HELLO, timeout=0.05)
+        self.assertLess(time.monotonic() - start, 1.0)
 
     def test_write_that_never_progresses_times_out(self):
         port = FakeTty(None, write_eagain=1).patch(self)
@@ -151,6 +154,7 @@ class SerialTransportTest(unittest.TestCase):
         self.assertEqual(calls, [transport.termios.TIOCEXCL])
 
 
+@pytest.mark.gate
 @unittest.skipUnless(hasattr(os, 'openpty'), 'needs a pty')
 class SilentDeviceTest(unittest.TestCase):
     """Issue #118: a device that stops answering USB (a halted B) held the port's open in the kernel
@@ -192,13 +196,13 @@ class SilentDeviceTest(unittest.TestCase):
             for _ in range(2):
                 start = time.monotonic()
                 with self.assertRaises(TimeoutError):
-                    transport.SerialPort(self.path, timeout=0.3)
+                    transport.SerialPort(self.path, timeout=0.05)
                 self.assertQuick(start, 1.0)
         self.assertEqual(opener.call_count, 1)
 
     def test_a_late_open_reaches_the_next_port(self):
         real = transport._open_tty
-        with mock.patch.object(transport, '_open_tty', lambda path: time.sleep(0.4) or real(path)):
+        with mock.patch.object(transport, '_open_tty', lambda path: time.sleep(0.2) or real(path)):
             with self.assertRaises(TimeoutError):
                 transport.SerialPort(self.path, timeout=0.05)
             port = transport.SerialPort(self.path, timeout=2.0)
@@ -209,7 +213,7 @@ class SilentDeviceTest(unittest.TestCase):
     def test_undrained_port_times_out_and_closes_at_once(self):
         port = transport.SerialPort(self.path)
         start = time.monotonic()
-        with mock.patch.object(transport, 'WRITE_STALL', 0.2), self.assertRaises(TimeoutError):
+        with mock.patch.object(transport, 'WRITE_STALL', 0.05), self.assertRaises(TimeoutError):
             port.write(b'x' * (1 << 20))         # nobody reads the pty: its queue fills and stays full
         self.assertQuick(start, 1.0)
         self.assertClosedByDetachedProcess(port)
@@ -226,16 +230,17 @@ class SilentDeviceTest(unittest.TestCase):
         with mock.patch.object(xyf_host, 'SIM', None), mock.patch.object(xyf_host, 'log'), \
                 mock.patch.object(xyf_host, 'find_port', return_value=self.path), \
                 self.assertRaises(SystemExit):
-            xyf_host.connect(timeout)
+            xyf_host.connect(timeout, hello_every=0.05)
         return time.monotonic() - start
 
     def test_connect_to_a_silent_port_keeps_its_timeout(self):
-        self.assertLess(self.connect(1.0), 1.0 + 1.0)
+        self.assertLess(self.connect(0.05), 0.05 + 1.0)
 
     def test_connect_to_a_port_that_never_opens_keeps_its_timeout(self):
         with mock.patch.object(transport, '_open_tty', lambda path: time.sleep(3.0)), \
-                mock.patch.object(transport, 'OPEN_LIMIT', 0.5):
-            self.assertLess(self.connect(1.0), 1.0 + 0.5 + 0.5)
+                mock.patch.object(transport, 'OPEN_LIMIT', 0.05):
+            self.assertLess(self.connect(0.05), 0.05 + 0.05 + 1.0)
+
 
 if __name__ == '__main__':
     unittest.main()

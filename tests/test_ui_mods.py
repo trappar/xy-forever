@@ -12,6 +12,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
@@ -206,6 +208,7 @@ def build_trace(slow=1, stall=None):
     return out
 
 
+@pytest.mark.gate
 class Progress(Base, unittest.TestCase):
     """The building screen's bar (forward only, moving every 500 ms) and its incremental drawing."""
 
@@ -309,6 +312,7 @@ class Progress(Base, unittest.TestCase):
 CONFIG_PREVIEWS = paths.PREVIEWS / 'mods-config'
 
 
+@pytest.mark.gate
 class SaveModel(Base, unittest.TestCase):
     """The home row (#197: no Save dialog: PLAY converges to what is saved; a selection that cannot be built says why on
     the first row's status line), the safe-mode row (Boot without mods and Restore Open-XY, both at once), the Mods
@@ -374,6 +378,7 @@ class SaveModel(Base, unittest.TestCase):
             self.draw(); self.keep(name + '.png')
 
 
+@pytest.mark.gate
 class SyntheticPage(Base, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -574,6 +579,7 @@ def to_filter(lib, want):
     raise AssertionError('filter %d never reached' % want)
 
 
+@pytest.mark.gate
 class PageOrder(Base, unittest.TestCase):
     """The order (kind, then name), the filter row (All, each kind present, On only), all shown on / off,
     and the meter counting every mod whatever the filter shows. The published set when present (previews kept
@@ -731,6 +737,7 @@ class PageOrder(Base, unittest.TestCase):
         self.keep('on-only')
 
 
+@pytest.mark.gate
 @unittest.skipUnless(package_records.local_name(PACKAGES / 'base'), 'published 0.0.6 package set absent')
 class PublishedPage(Base, unittest.TestCase):
     """The real 0.0.6 set: 79 machines + 2 extensions; the estimate against the linker's own figures

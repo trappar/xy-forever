@@ -6,12 +6,15 @@ import subprocess
 import tempfile
 import unittest
 
+import pytest
+
 from xy_forever import hostbuild, native_json as J, toolchain
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / 'tests/native-json.json'
 
 
+@pytest.mark.gate
 class NativeJson(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

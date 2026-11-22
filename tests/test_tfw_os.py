@@ -14,6 +14,8 @@ import tempfile
 import unittest
 import zlib
 
+import pytest
+
 import p224_reference as ecdsa
 from test_ldr import image
 from test_tfw import container, KEY
@@ -85,6 +87,7 @@ def build_zip(members, *, comment=b'', eocd=None, gap_after=None):
     return body + central + end, spans, len(body)
 
 
+@pytest.mark.gate
 class Extractor(unittest.TestCase):
     """Builds the host extractor once per class (the same build xyf_package.py uses)."""
     flags = ('-O2',)

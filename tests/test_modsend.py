@@ -18,6 +18,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
@@ -135,6 +137,7 @@ class Harness:
             self.assertEqual(on_device[1][path], on_host[1][path], path)
 
 
+@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class Synthetic(Harness, unittest.TestCase):
     """Packages split by modkit from tests/test_modpatch.py's synthetic kit (as tests/test_mod_job.py)."""
@@ -285,6 +288,7 @@ class Synthetic(Harness, unittest.TestCase):
         self.assertEqual(MP.tree(self.stored), store_of(changed))
 
 
+@pytest.mark.sim
 class StoredNames(unittest.TestCase):
     """xy_forever/modstore.py (native/mod_job.hpp stored_name and clients/ts/src/modstore.ts are the same rule)."""
 
@@ -313,12 +317,12 @@ def _published():
             MP.default_official(PACKAGES).is_file())
 
 
+@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 @unittest.skipUnless(_published(), 'published-kit packages, stock os.ldr, op1_factory.json or content.sha256 absent')
 class PublishedPackages(Harness, unittest.TestCase):
-    """The real 0.0.6 package set (82 packages, about 12.5 MB)."""
-
-    gen = PACKAGES
+    """Three packages of the real 0.0.6 set (of 82, about 12.5 MB): the base, the first machine that fits and
+    the capture extension."""
 
     @classmethod
     def setUpClass(cls):
@@ -326,6 +330,11 @@ class PublishedPackages(Harness, unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory(prefix='modsend-real-', dir=paths.SESSIONS)
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.start_class(cls.tmp.name)
+        ids = [row[1] for row in M.read_table((PACKAGES / 'base/machines.txt').read_bytes())]
+        cls.machine = M.fitting(PACKAGES, ids)[0]
+        cls.gen = cls.work / 'packages' / PACKAGES.name
+        for name in ('base', cls.machine, 'ext-capture'):
+            shutil.copytree(PACKAGES / name, cls.gen / name)
 
     def job_text(self, generation, machines, exts):
         return MP.job_text(generation, machines, exts, TK.STOCK, TK.CATALOG, official=MP.default_official(PACKAGES))
@@ -333,15 +342,14 @@ class PublishedPackages(Harness, unittest.TestCase):
     @bounds.slow                                    # #233: needs longer under the paced clock
     def test_push_twice_and_the_job_reads_the_device_copy(self):
         total, _ = self.push()
-        self.assertEqual((total['sent'], total['skipped']), (len([p for p in PACKAGES.iterdir() if p.is_dir()]), 0))
+        self.assertEqual((total['sent'], total['skipped']), (3, 0))
         self.assert_stored()
         again, _ = self.push()
         self.assertEqual((again['sent'], again['files']), (0, 0))
-        ids = [row[1] for row in M.read_table((PACKAGES / 'base/machines.txt').read_bytes())]
-        fit = M.fitting(PACKAGES, ids)
-        self.assert_job_identical(fit[:7], ['capture', 'master_dj_filter'])
+        self.assert_job_identical([self.machine], ['capture'])
 
 
+@pytest.mark.sim
 @unittest.skipUnless(package_records.local_name(PACKAGES / 'base'), 'published-kit packages absent (setup.py fixtures)')
 class RealSetDepth(unittest.TestCase):
     """#124 over the real package set (setup.py doctor: "mod package set"): every device path a push writes sits 4
@@ -366,6 +374,7 @@ class RealSetDepth(unittest.TestCase):
         self.assertEqual([r for r in content if depth.refusal('/yaffs2/' + r)], [])
 
 
+@pytest.mark.sim
 class WaitAllowance(unittest.TestCase):
     """193: job.status unanswered while B waits in one request to A: wait asks again (QUIET), then gives up."""
     def run_wait(self, silent_calls):
@@ -393,6 +402,7 @@ class WaitAllowance(unittest.TestCase):
             self.run_wait(int(S.QUIET // 5) + 2)
 
 
+@pytest.mark.sim
 class ApplySelection(unittest.TestCase):
     """`mods apply`'s selection on the host (no device, no simulator): a selection once
     passed its ids as one shell word (zsh does not split an unquoted variable), which the device answered

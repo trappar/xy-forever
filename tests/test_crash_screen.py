@@ -8,6 +8,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import ui_preview as P  # noqa: E402
@@ -43,6 +45,7 @@ int main() {
 '''
 
 
+@pytest.mark.gate
 class CrashScreenTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -158,6 +161,7 @@ class CrashScreenTest(unittest.TestCase):
             self.assertNotIn(banned, vector)
 
 
+@pytest.mark.sim
 class CrashProbeTest(unittest.TestCase):
     """scripts/crash_probe.py: its decode, and the script against the simulator (read-only peeks)."""
 

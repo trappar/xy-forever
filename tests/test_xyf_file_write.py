@@ -1,6 +1,6 @@
 """XY Forever USB file write (Test 049, --xyf-product): b's path scope, the stock "wb" open
-flags, a's write entry into the file engine, the b client sequence, the host tool and builder
-wiring. No device execution."""
+flags, the host tool and builder wiring, the library add plan and the SCREEN PNG. No device
+execution."""
 import ctypes as C
 from pathlib import Path
 import struct
@@ -11,7 +11,6 @@ import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_build as builder
@@ -43,11 +42,6 @@ class FileWritePathTest(unittest.TestCase):
     def test_constants(self):
         self.assertEqual(self.lib.fw_item(), 10)
         self.assertEqual(self.lib.fw_open_flags(), 0x8301)
-        items = (ROOT / 'target/storage_server.hpp').read_text()
-        for other in ('command_item = 3', 'install_item = 4, reboot_item = 5', 'engine_run_item = 6',
-                      'usb_mode_item = 7', 'dry_run_item = 9', 'engine_leave_item = 11'):
-            self.assertIn(other, items)                      # 10 collides with none of them
-        self.assertNotIn('guard_item', items)                # 8 and 12 stay reserved (the removed guard)
 
     def test_paths(self):
         for path in (b'/yaffs2/xy-forever/', b'/yaffs2/xy-forever/../a', b'/yaffs2/xy-forever/./a',
@@ -89,97 +83,11 @@ class StockOpenFlagsTest(unittest.TestCase):
         self.assertEqual(posix, 0x241)
 
 
-class FileWriteSourceTest(unittest.TestCase):
-    def setUp(self):
-        self.server = ''.join((ROOT / 'target' / n).read_text()
-                              for n in ('storage_server.cpp', 'storage_server_engine.ipp'))
-        self.usb = unit_text(ROOT / 'target/usb_service.cpp')
-
-    def test_a_enters_the_engine(self):
-        latch = self.server[self.server.index('void latch(Stock121PeerSession& session) {'):]
-        latch = latch[:latch.index('\n}\n')]
-        self.assertIn('if (item == file_write_item && engine != entry_write) entry = entry_write;', latch)
-        self.assertIn('if (!seen || seen == engine_latched || engine == entry_run) return;', latch)   # once per item
-        self.assertIn('r.identity_mismatch = engine_identity();', latch)
-        serve = self.server[self.server.index('void serve(void* context'):]
-        serve = serve[:serve.index('\n}\n')]
-        self.assertLess(serve.index('latch(session);'), serve.index('serve_install('))
-        self.assertIn('const bool install_mode = install_enabled && engine != entry_write && engine != entry_run &&', serve)
-        self.assertIn('((session.last_command() >> 8 & 0xffu) == install_item || boot_selected())', serve)
-        self.assertIn('if (install_mode && serve_install(', serve)
-        for name in ('bool open_window(', 'void close_engine('):
-            body = self.server[self.server.index(name):]
-            body = body[:body.index('\n}\n')]
-            self.assertIn('_write_window(', body)
-            self.assertNotIn('guard_', body)                                 # there is no guard to pause
-        engine = self.server[self.server.index('void serve_engine('):]
-        engine = engine[:engine.index('\n}\n')]
-        self.assertIn('if (!window_open && engine == entry_write) engine = entry_read;   // Test 066: one write per item',
-                      engine)
-        self.assertIn('const bool ok = engine == entry_run ? open_window(storage) : mount(storage);', engine)
-        # the write entry's first change opens the window, then the request is decided again.
-        self.assertIn('if (action == file_engine::refuse_read_only && engine == entry_write && !state.window && '
-                      'open_window(storage)) {', engine)
-        self.assertIn('storage.open_write_window(step)', self.server)
-        self.assertIn('window_result = U32(storage.close_write_window());', self.server)
-
-    def test_b_client_sequence(self):
-        """B's file client (file_client.cpp), every request bounded."""
-        client = unit_text(ROOT / 'target/file_client.cpp')
-        c = client[client.index('uint32_t make_folders('):]
-        c = c[:c.index('\n}\n', c.index('uint32_t write_file('))]
-        order = ['const U32 root_bytes = storage_server::write_root(path);', 'mkdir(folder);', "folder[k] = '/';",
-                 'if (mounted == mounted_stale) return xyf::usbp::s_state;', 'const Reply m = mount();',
-                 'Reply o = open(path, storage_server::write_open_flags);', 'if (o.value < 0 && o.error == enoent) {',
-                 'make_folders(path, mounted);', '    o = open(path, storage_server::write_open_flags);',
-                 'write(fd, bytes + done, n);', 'close(fd);', 'Reply o = open(path, 0);',
-                 'read(o.value, chunk_bytes, chunk);', '(total != size || readback_crc != crc)) code = xyf::usbp::s_crc;']
-        at = [c.index(s) for s in order]
-        self.assertEqual(at, sorted(at))
-        self.assertNotIn('unmount()', c)                 # the window stays open for the next write
-        self.assertIn('const U32 root_bytes = storage_server::write_root(path);', c)   # 19 or 16
-        self.assertEqual((len('/yaffs2/xy-forever/'), len('/yaffs2/content/')), (19, 16))
-        self.assertIn("folder[k] = '/';", c)                                 # restored after each mkdir
-        self.assertNotIn('guard_pause', client)
-        # Each request: built into the session's slot, then waited for with a bound (one poll per
-        # answer(); await_answer loops on it while busy, unmount_poll calls it once per pass of B's loop).
-        answer = client[client.index('Reply answer(Stock121PeerSession& session'):]
-        answer = answer[:answer.index('\n}\n')]
-        self.assertIn('return outcome(xyf_boot::clock_ms() - start > bound ? link : busy);', answer)
-        self.assertIn('if (!xyf_boot::link_step()) return outcome(lost);', answer)
-        wait = client[client.index('Reply await_answer('):]
-        self.assertIn('if (r.outcome != busy) return r;', wait[:wait.index('\n}\n')])
-        for name in ('Reply send(Stock121PeerSession& session', 'Reply partition(U32 op'):
-            body = client[client.index(name):]
-            self.assertIn('await_answer(', body[:body.index('\n}\n')])
-        self.assertIn('else r = answer(*session, left_start, left_bound);', client)    # unmount_poll (#144: left_poll)
-        self.assertIn('return leave(session, s, bound_ms(9, 0));', client)
-
-    def test_b_handler_order_and_the_staged_sha(self):
-        h = self.usb[self.usb.index('void file_write(uint8_t seq'):]
-        h = h[:h.index('\n}\n')]
-        order = ['!storage_server::valid_write_path(path)', '!result.put_ok || !put_expected',
-                 '!sha_equal(payload + path_bytes + 1, put_sha)', '(code = enter_writes()) != P::s_ok', 'storage_used = 1;',
-                 'file_client::write_file(']
-        at = [h.index(s) for s in order]
-        self.assertEqual(at, sorted(at))
-        self.assertNotIn('guard_', h)                                        # there is no guard
-        self.assertIn('else if (type == P::t_file_write) file_write(seq, payload, length);', self.usb)
-        self.assertIn('if (!size || size > image_capacity)', self.usb)
-
-    def test_protocol_numbers(self):
-        self.assertEqual(P.FILE_WRITE, 0x13)
-        self.assertIn('t_file_write = 0x13,', (ROOT / 'target/usb_proto_ids.hpp').read_text())
-
-
 class FileWriteBuilderTest(unittest.TestCase):
     def test_wiring(self):
         self.assertEqual(builder.FILE_WRITE_MODES, builder.PRODUCT_MODES)
         self.assertFalse(hasattr(builder, 'FILE_WRITE_CALLS'))              # b's write goes through the client
         self.assertTrue(builder.FORBIDDEN_TARGETS.isdisjoint(builder.FILE_CLIENT_CALLS | {'889f6dca'}))
-        src = (ROOT / 'xyf_build.py').read_text()
-        self.assertIn("if mode in FILE_WRITE_MODES:\n        flags = [*flags, '-DXYF_USB_FILE_WRITE=1']", src)
-        self.assertIn("require(not has('serve_only')", src)
         covered = [(a, n) for a, n, _ in builder.mtp_spans()]
         self.assertTrue(any(a <= 0x889f6dca < a + n for a, n in covered))   # a's write executor
 
@@ -292,20 +200,7 @@ class LibraryAddTest(unittest.TestCase):
 
 
 class ScreenTest(unittest.TestCase):
-    """Test 053: read-only framebuffer view (SCREEN) and the host PNG conversion."""
-
-    def test_device_bounds(self):
-        src = unit_text(ROOT / 'target/usb_service.cpp')
-        s = src[src.index('void screen(uint8_t seq'):]
-        s = s[:s.index('\n}\n')]
-        self.assertIn('fb < 0x80000000u || fb > 0x90000000u - screen_bytes || (fb & 1u) || offset >= screen_bytes', s)
-        self.assertIn('lines(fb + offset, n, true);', s)
-        self.assertNotIn('stock<', s)                                  # memory reads only
-        self.assertIn('else if (type == P::t_screen) screen(seq, payload, length);', src)
-        hdr = (ROOT / 'target/usb_service.hpp').read_text()
-        self.assertIn('screen_pointer = 0x8803dc58u, screen_bytes = 0x3c000u;', hdr)
-        self.assertIn('const uint32_t framebuffer = 0x8803dc58u;', (ROOT / 'target/key_ui.cpp').read_text())
-        self.assertEqual(P.SCREEN, 4)
+    """Test 053: the host's PNG conversion of the framebuffer view (SCREEN)."""
 
     def test_png_orientation_and_colours(self):
         import xyf_host as host

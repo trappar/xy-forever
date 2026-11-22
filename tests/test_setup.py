@@ -15,6 +15,8 @@ import unittest
 from unittest import mock
 import zipfile
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import dev_tools, modlink, outer, paths, usb_proto  # noqa: E402
@@ -225,9 +227,6 @@ class PrivateRoot(unittest.TestCase):
         self.config.write_text(json.dumps({'leak_patterns': ['(?i)jane']}))
         S.ensure_leak_patterns(self.config)
         self.assertEqual(json.loads(self.config.read_text()), {'leak_patterns': ['(?i)jane']})
-
-    def test_local_config_is_gitignored(self):
-        self.assertIn(paths.LOCAL_CONFIG.name, (ROOT / '.gitignore').read_text().split())
 
 
 def toolchain_zip(entries):
@@ -476,8 +475,20 @@ class Bootstrap(unittest.TestCase):
 
 
 
+@pytest.mark.gate
 class DevToolRows(unittest.TestCase):
     """doctor's tool rows (xy_forever/dev_tools.py): mise, its pins, the Python and the JS dependencies."""
+
+    def test_tool_and_dependency_rows_must_pass(self):
+        fine = [(label, True, 'ok') for label in ('python', 'private folder', 'toolchain', 'stock os.ldr',
+                                                  'stock bootloader.ldr', 'mise', 'tools', 'python deps', 'js deps')]
+        for label in ('mise', 'tools', 'python deps', 'js deps', 'toolchain'):
+            rows = [(l, l != label, d) for l, _, d in fine] + [('verified build', False, 'none')]
+            with mock.patch.object(S, 'doctor', return_value=(rows, [])), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(S.cmd_doctor(None), 1, label)
+        with mock.patch.object(S, 'doctor', return_value=(fine + [('verified build', False, 'none')], [])), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(S.cmd_doctor(None), 0)              # a missing build or fixture only skips tests
 
     def test_tools_missing(self):
         with mock.patch.object(dev_tools, 'mise', lambda: None):

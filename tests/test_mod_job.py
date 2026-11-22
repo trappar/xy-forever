@@ -21,6 +21,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
@@ -29,8 +31,6 @@ from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official
 import test_modkit as TK  # noqa: E402
 from test_xyf_freestanding import code_bytes, compiler  # noqa: E402
 
-EXHAUSTIVE = bool(os.environ.get('XYF_EXHAUSTIVE'))
-FAULT_SHARDS = 4                         # PublishedPackages.test_faults_0 .. _3
 REGION = 8 << 20
 DEVICE_REGION = (8 << 20) - (64 << 10)   # B's job region less the job's state (usb_service.cpp job_slot_bytes)
 CHUNK = 64 * 1024
@@ -93,6 +93,7 @@ class Harness:
         self.assertGreater(report['counts']['write'], 0)
 
 
+@pytest.mark.gate
 class Synthetic(Harness, unittest.TestCase):
     """Packages split by modkit from tests/test_modpatch.py's synthetic kit (an unverified base, confirmed)."""
 
@@ -204,6 +205,7 @@ class Synthetic(Harness, unittest.TestCase):
                 self.assertEqual(P.tree(out), {})
 
 
+@pytest.mark.gate
 class JobFuzz(unittest.TestCase):
     """Damaged copies of every file the job reads (deterministic seed; hashes and pins mostly refreshed) run
     through the stepped job in the sanitizer build: each must end done or failed, no output left, no handle
@@ -240,10 +242,11 @@ def _published():
             P.default_official(PACKAGES).is_file())
 
 
+@pytest.mark.gate
 @unittest.skipUnless(_published(), 'published-kit packages, stock os.ldr, op1_factory.json or content.sha256 absent')
 class PublishedPackages(Harness, unittest.TestCase):
     """The real 0.0.6 package set: 1, 7 and 16 machines (modkit fitting, in collection order) and one machine
-    with both extensions."""
+    with both extensions; faults at every 23rd step of the one-machine job."""
 
     @classmethod
     def setUpClass(cls):
@@ -286,29 +289,15 @@ class PublishedPackages(Harness, unittest.TestCase):
                     self.assertIn('content/presets/fm2op/default.json', tree)
         self.assertEqual(self.fit[0], 'fm2op')
 
-    # Every 23rd step in test_faults_0; with XYF_EXHAUSTIVE every step (~25 s) in FAULT_SHARDS tests, each every
-    # FAULT_SHARDS-th step from its own first, so scripts/run_tests.py runs them side by side.
-    def faults_shard(self, shard):
-        if not EXHAUSTIVE and shard:
-            self.skipTest('set XYF_EXHAUSTIVE=1 (without it test_faults_0 takes every 23rd step)')
-        stride, first = (FAULT_SHARDS, 1 + shard) if EXHAUSTIVE else (23, 1)
+    def test_faults(self):
+        """Every 23rd step (the fault cases at each one); the job's step count is far above 23."""
+        stride, first = 23, 1
         report = self.faults(self.fit[:1], stride=stride, first=first)
         self.assert_faults(report, stride, first)
         self.assertLess(first, report['steps'])
 
-    def test_faults_0(self):
-        self.faults_shard(0)
 
-    def test_faults_1(self):
-        self.faults_shard(1)
-
-    def test_faults_2(self):
-        self.faults_shard(2)
-
-    def test_faults_3(self):
-        self.faults_shard(3)
-
-
+@pytest.mark.gate
 class BlackfinCompile(unittest.TestCase):
     """native/mod_job.cpp at the firmware's flags: no calls outside xyf_core, no BSS or data, small frames;
     its text + rodata is measured (no bound: compile and assemble only)."""

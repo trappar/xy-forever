@@ -13,6 +13,8 @@ import warnings
 import zipfile
 import zlib
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -75,6 +77,7 @@ def manual_zip(name, data, compressed, *, method=8, flags=0, descriptor=None):
     return local + central + struct.pack("<I4H2IH", 0x06054B50, 0, 0, 1, 1, len(central), len(local), 0)
 
 
+@pytest.mark.gate
 class NativeZipTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

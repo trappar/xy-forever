@@ -1,7 +1,7 @@
 // Checks the generated protocol module (src/v1.ts) against the spec's own test data: every golden
 // frame through the typed codecs, the frame encoder and the parser, and every stream vector through
 // the parser. Run: node test/v1.test.ts (Node 22.18+/23.6+ strips the types). No device, no I/O.
-// tests/test_ts_client.py runs it as part of the Python suite when Node is installed.
+// `pnpm test` runs it before Vitest.
 import assert from 'node:assert/strict';
 import * as v1 from '../src/v1.ts';
 

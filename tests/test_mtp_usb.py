@@ -5,12 +5,15 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 
 
+@pytest.mark.gate
 class MtpUsbTest(unittest.TestCase):
     def test_driver_against_stack_model(self):
         # Composite: descriptors (EF/02/01, IAD, CDC extras, one FIFO per endpoint number), GetDeviceInfo,

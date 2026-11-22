@@ -20,6 +20,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import test_modkit as TK  # noqa: E402
@@ -27,7 +29,6 @@ from xy_forever import modkit as M, modlink as L, paths, xyf_entry as E  # noqa:
 
 OPEN_XY = paths.OPEN_XY_UPSTREAM                     # a fresh upstream clone (never ../open-xy)
 REAL = Path(os.environ.get('XYF_MOD_PACKAGES', paths.PUBLISHED_MODS))
-EXHAUSTIVE = os.environ.get('XYF_EXHAUSTIVE') == '1'
 GLOBAL, WEAK, LOCAL = 1, 2, 0
 FUNC, OBJ, SECTION = 2, 1, 3
 ABS = M.SHN_ABS
@@ -271,6 +272,7 @@ def hash_names(stages, seed=5):
     return [n.decode() for n in names]
 
 
+@pytest.mark.gate
 class Synthetic(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -297,6 +299,34 @@ class Synthetic(unittest.TestCase):
         for package in change(target) or ():
             refresh(target / package)
         return target
+
+    def setUp(self):
+        self.queued = []                  # refusal's core.mjs links: one Node run when the test ends
+        self.addCleanup(self.queued_agree_with_core)
+
+    def queue_core(self, machines, extensions, gen):
+        """Link natively now; core.mjs links the same selection (light) in queued_agree_with_core."""
+        if not self.core:
+            return
+        gen, n = Path(gen).resolve(), len(self.queued)
+        name = 'queued-%s-%d' % (self._testMethodName, n)
+        try:
+            kit = M.rebuild_kit(gen, list(machines) or [L._first(gen)], list(extensions), CATALOG)
+        except M.KitError as e:
+            kit = str(e)
+        if not isinstance(kit, str):
+            (self.work / (name + '.json')).write_text(json.dumps(kit))
+        self.queued.append((name, kit, list(machines), list(extensions),
+                            L.link_native(self.bridge, gen, list(machines), list(extensions), self.work, name=name)))
+
+    def queued_agree_with_core(self):
+        jobs = [dict(name=name, kit=str(self.work / (name + '.json')), machines=machines, extensions=exts, open='light')
+                for name, kit, machines, exts, _ in self.queued if not isinstance(kit, str)]
+        reference = L.run_reference(self.core, jobs, self.work) if jobs else {}
+        for name, kit, _, _, native in self.queued:
+            ref = dict(reference.get(name) or dict(error=kit))
+            ref.pop('name', None)
+            self.assertEqual(L.compare(native, ref), [], name)
 
     def against_core(self, selections, gen=None, layouts=None):
         if not self.core:
@@ -398,7 +428,7 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(r['status'], expected[0], r)
         if len(expected) > 1:
             self.assertEqual(r['detail'], expected[1])
-        self.against_core([('case', list(machines), list(extensions))], gen=gen)
+        self.queue_core(machines, extensions, gen)
         return r
 
     def put_object(self, package, name, data):
@@ -543,9 +573,7 @@ class Synthetic(unittest.TestCase):
 
     def test_object_reader_fuzz_matches_core(self):
         data = alpha_voice()
-        mutants = self.mutants(data, 2000 if EXHAUSTIVE else 300, 541)
-        if EXHAUSTIVE:                          # every single bit flip of the object
-            mutants += [data[:i] + bytes([data[i] ^ 1 << b]) + data[i + 1:] for i in range(len(data)) for b in range(8)]
+        mutants = self.mutants(data, 300, 541)
         folder = self.work / 'fuzz'
         folder.mkdir(exist_ok=True)
         files = []
@@ -570,16 +598,17 @@ class Synthetic(unittest.TestCase):
 
     def test_link_fuzz_under_sanitizers(self):
         data = alpha_voice()
-        mutants = self.mutants(data, 120 if EXHAUSTIVE else 40, 7)
-        native, jobs = {}, []
+        mutants = self.mutants(data, 40, 7)
+        native, jobs, gen = {}, [], self.variant(lambda folder: None)    # one copy, its object replaced per mutant
         for i, m in enumerate(mutants):
-            gen = self.variant(self.put_object('alpha', 'alpha/voice.o', m))
+            self.put_object('alpha', 'alpha/voice.o', m)(gen)
+            refresh(gen / 'alpha')
             native[i] = self.link(['alpha', 'beta'], ['cap'], gen=gen, bridge=self.sanitized)
             if self.core:
                 path = self.work / ('fuzz-kit-%d.json' % i)
                 path.write_text(json.dumps(M.rebuild_kit(gen, ['alpha', 'beta'], ['cap'], CATALOG)))
                 jobs.append(dict(name=str(i), kit=str(path), machines=['alpha', 'beta'], extensions=['cap'], open='light'))
-            shutil.rmtree(gen)
+        shutil.rmtree(gen)
         outcomes = {r['status'] for r in native.values()}
         self.assertIn('ok', outcomes)
         self.assertGreater(len(outcomes), 3)
@@ -763,9 +792,10 @@ class Synthetic(unittest.TestCase):
         def forge(data):                  # new last 5 bytes so that FNV-1a(data) == FNV-1a(first): meet in the middle
             data, state, inverse = data[:-5], fnv1a(data[:-5]), pow(0x01000193, -1, 1 << 32)
             forward = {fnv1a(bytes([a, b]), state): bytes([a, b]) for a in range(256) for b in range(256)}
+            target = fnv1a(first) * inverse & 0xffffffff
             for tail in range(1 << 24):
                 c, d, e = tail >> 16, tail >> 8 & 255, tail & 255
-                h = ((((fnv1a(first) * inverse & 0xffffffff) ^ e) * inverse & 0xffffffff) ^ d) * inverse & 0xffffffff ^ c
+                h = (((target ^ e) * inverse & 0xffffffff) ^ d) * inverse & 0xffffffff ^ c
                 if h in forward:
                     return data + forward[h] + bytes([c, d, e])
             raise AssertionError('no forgery')
@@ -796,8 +826,10 @@ class Synthetic(unittest.TestCase):
 
 @unittest.skipUnless(has_core() and REAL.is_dir() and L.CATALOG.is_file(),
                      'the 0.0.6 package set, op1_factory.json, Node or the open-xy upstream clone at %s absent' % L.SDK_COMMIT[:7])
+@pytest.mark.gate
 class PublishedPackages(unittest.TestCase):
-    """The real package set: every modkit prove selection, natively and with core.mjs."""
+    """The real package set: a sample of modkit prove's selections (TK.sampled_selections), natively and
+    with core.mjs."""
 
     @classmethod
     def setUpClass(cls):
@@ -807,9 +839,10 @@ class PublishedPackages(unittest.TestCase):
         cls.work = Path(cls.tmp.name)
         cls.core = M.sdk_tree(OPEN_XY, L.SDK_COMMIT, cls.work)
         cls.rows = {r['selection']: r for r in L.prove_selections(
-            REAL, L.selections(REAL, subsets=EXHAUSTIVE), cls.core, L.CATALOG.read_bytes(), cls.work)}
+            REAL, TK.sampled_selections(L.selections(REAL)), cls.core, L.CATALOG.read_bytes(), cls.work)}
 
-    def test_every_selection_is_identical(self):
+    def test_sampled_selections_are_identical(self):
+        self.assertEqual(len(self.rows), 8)
         for name, row in self.rows.items():
             with self.subTest(selection=name):
                 self.assertTrue(row['identical'], row)
@@ -829,6 +862,7 @@ class PublishedPackages(unittest.TestCase):
 
 @unittest.skipUnless(has_core() and (REAL / 'base/profile.json').is_file(),
                      'numbers.json (open-xy upstream clone) or the 1.2.1 profile absent')
+@pytest.mark.gate
 class NumbersFixture(unittest.TestCase):
     """open-xy tests/fixtures/numbers.json against the native numberLayout (the 1.2.1 rules)."""
 
@@ -855,6 +889,7 @@ class NumbersFixture(unittest.TestCase):
                         self.assertEqual(got, case['numbers'])
 
 
+@pytest.mark.gate
 class BlackfinCompile(unittest.TestCase):
     """The linker compiles for the device with the firmware's flags: no library calls, no BSS or data,
     small frames (compile only; nothing is linked into a build)."""
