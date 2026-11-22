@@ -20,6 +20,10 @@
 //    control command brings something: an idle device's own timers (keepalives, a deferred save, an idle
 //    window's close, a frame's idle reset) wait for an advance, which is how a host's pause reaches the device
 //    (xy_forever/transport.py sim_pause, Simulator.advance; Simulator.settle runs it until nothing is done).
+//  - --idle-wall (interactive runs only: python -m xy_forever.sim --idle-wall, mise run sim): where the clock
+//    would stand still, it follows the host's clock instead, in steps of up to max_rest_step, so an idle
+//    device's own timers (a deferred save, a keepalive) fire at a person's pace. Never in tests: their device
+//    time moves only by advance, until and settle, so a loaded host never changes an outcome (#240).
 //  - A step goes no further than the next known event (a processor's bounded wait's end too); it is 1 ms after
 //    any activity and doubles while nothing happens, up to max_step (max_rest_step with B at rest; the device's
 //    own timers are not known events, but for a held key's next repeat: they fire within that).
@@ -177,6 +181,8 @@ std::vector<Advance> advances;              // control "advance" lines not answe
 std::vector<int> settles;                   // control "settle" lines not answered yet
 uint64_t step_ns = min_step, quiet_ns = 0;   // quiet_ns: device time stepped since the last work
 uint64_t outside_ns = 0;                    // clock_ns at the last news from outside (outside_any: there was one)
+bool idle_wall = false, wall_idle = false;   // --idle-wall; wall_idle: following the host's clock since wall_base
+uint64_t wall_base = 0;                     // host ns less device ns while following
 bool outside_any = false;
 uint32_t stepped_work = 0, seen_outside = 0;
 bool hung = false;
@@ -204,6 +210,7 @@ void board_advance(int client, int64_t ms) {
     advances.push_back({client, shared->clock_ns.load() + uint64_t(ms) * 1000000u});
 }
 void board_settle(int client) { settles.push_back(client); }
+void board_idle_wall() { idle_wall = true; }
 void board_forget(int client) {
     for (size_t i = 0; i < advances.size();) if (advances[i].client == client) advances.erase(advances.begin() + long(i)); else ++i;
     for (size_t i = 0; i < settles.size();) if (settles[i] == client) settles.erase(settles.begin() + long(i)); else ++i;
@@ -253,8 +260,19 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
     if (!due && !working && (!waited || hung)) {                // nothing is due: the clock stands still
         for (int client : settles) if (write(client, "{\"ok\": true}\n", 13) < 0) {}
         settles.clear();
-        return -1;
+        if (!idle_wall) return -1;
+        // --idle-wall: the next step (to max_rest_step or a processor's wait's end) once the host's clock is there.
+        const uint64_t wall = now_us() * 1000u;
+        if (!wall_idle) { wall_idle = true; wall_base = wall - now; }
+        const uint64_t to = bound && bound - now < max_rest_step ? bound : now + max_rest_step;
+        if (wall - wall_base < to) return int((to - (wall - wall_base)) / 1000000u) + 1;
+        stepped_work = work;
+        shared->clock_ns += to - now;
+        ++shared->steps;
+        wake(0); wake(1);
+        return running[0] || running[1] ? -1 : 0;
     }
+    wall_idle = false;
     uint64_t step = worked ? min_step : step_ns;
     if (bound && bound - now < step) step = bound - now;
     const uint64_t most = rest ? max_rest_step : max_step;

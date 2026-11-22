@@ -27,6 +27,10 @@ def main(argv=None):
                         help='seed a missing yaffs2/ just after Track 5 (sim_fresh.py, #178)')
     parser.add_argument('--no-otp', action='store_true',
                         help="processor B's OTP answers nothing (default: the private keys, when present)")
+    parser.add_argument('--idle-wall', action='store_true',
+                        help='idle device time follows the clock on the wall, so the device\'s own timers (a deferred '
+                             'save, a keepalive) fire at a person\'s pace: for interactive use (mise run sim), never '
+                             'in tests (sim/clock.cpp)')
     args = parser.parse_args(argv)
     why = available()
     if why:
@@ -48,7 +52,8 @@ def main(argv=None):
           ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root), file=sys.stderr, flush=True)
     # Its own process group (the board and both processors), ended with this process however it ends:
     # Ctrl-C, SIGTERM or SIGHUP, or (tie_to_parent) the process that started this one gone (#133).
-    process = procgroup.popen(sim.argv(), stdin=subprocess.PIPE if otp else None)
+    argv = sim.argv() + (['--idle-wall'] if args.idle_wall else [])
+    process = procgroup.popen(argv, stdin=subprocess.PIPE if otp else None)
     try:
         if otp:
             process.stdin.write(otp)

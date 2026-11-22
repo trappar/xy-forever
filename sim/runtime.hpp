@@ -220,6 +220,7 @@ int cdc_next_fd();                               // B: the listener while a clie
 int board_clock(const bool running[2], uint64_t deadline_ns, bool woken);
 void board_advance(int client, int64_t ms);      // control "advance MS": answered once the clock is there
 void board_settle(int client);                   // control "settle": answered once the clock stands still
+void board_idle_wall();                          // --idle-wall: idle device time follows the host's (interactive only)
 void board_forget(int client);
 void board_jump(int64_t ms);                     // control "jump MS": both clocks jump at once (a slow pass)
 std::string input_command(const std::string& line, const char* verb);   // sim/devices.cpp: knob*, realkey

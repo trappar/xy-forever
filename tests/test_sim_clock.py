@@ -1,9 +1,11 @@
 """#88, #240: the simulator's device clock (sim/clock.cpp). Device time moves only under the simulator's control: at
 rest it stands still (blocking, no CPU) until something is due; advance moves it on with the link kept alive; jump
-moves it at once. Needs clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
+moves it at once. --idle-wall (interactive runs only) lets idle device time follow the host's clock. Needs clang++
+and the private stock 1.2.1 images (skipped without them). No device access."""
 from pathlib import Path
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +55,23 @@ class EventClock(unittest.TestCase):
         before = self.clock()
         self.sim.jump(5000)
         self.assertGreaterEqual(self.clock() - before, 5000)
+
+
+@unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
+class IdleWall(unittest.TestCase):
+    """python -m xy_forever.sim --idle-wall (mise run sim): idle device time follows the host's clock, so a person
+    at the web app sees the device's own timers fire. The only wall-time wait in the simulator tests: every
+    other test runs without the flag, on device time that moves only by advance, until and settle."""
+
+    def test_idle_device_time_follows_the_wall(self):
+        with tempfile.TemporaryDirectory(prefix='xyf-sim-') as tmp:
+            root = sim.seed(Path(tmp) / 'yaffs2')
+            running = sim.Simulator(root, Path(tmp) / 'bootpart.bin', build_dir=sim.build(), log=Path(tmp) / 'log.txt')
+            running.argv = lambda *a, argv=running.argv: argv(*a) + ['--idle-wall']
+            with running.start():
+                before = running.status()['clock_ms']
+                time.sleep(0.5)
+                self.assertGreater(running.status()['clock_ms'], before)
 
 
 if __name__ == '__main__':

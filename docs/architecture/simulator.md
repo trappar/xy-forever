@@ -31,12 +31,14 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
   (keepalives, a deferred save, an idle window's close, a frame's idle reset) wait for an `advance`, which is how
   a host's pause reaches the device (host tools pause with `transport.sim_pause`, tests with `Simulator.advance`,
   `until`, `settle`: until nothing is done). A relayed message and a busy processor's clock reads add their
-  own time, so no device time-out depends on host load (sim/clock.cpp has the rule).
+  own time, so no device time-out depends on host load (sim/clock.cpp has the rule). Interactive runs pass
+  `--idle-wall` (`mise run sim`): where the clock would stand still it follows the wall instead, so a person sees
+  the device's own timers fire. Tests never pass it: their device time moves only by `advance`, `until`, `settle`.
 - **Resets** (`sim/boot.cpp`): a stock reset always lands in the bootloader stand-in (no WDOG0 model). B's probes A
   first: on only if A reset <= `boot_a_window_ms` (400; device 0.15-1.4 s) before B or later, else waits (`b_waits_a`).
 - **Not hosted:** the menu's screen and keys, os.ldr itself, CDC ring and USB timing, NAND timing, real encryption,
   stage 2; yaffs is a (case-insensitive) host folder.
-- **Run:** `python3 -m xy_forever.sim` (`SESSIONS/simulator/` in the private folder: seeded `yaffs2/`, `bootpart.bin`,
+- **Run:** `mise run sim` (`python3 -m xy_forever.sim --idle-wall`; `SESSIONS/simulator/` in the private folder: seeded `yaffs2/`, `bootpart.bin`,
   `builds/`; `--port`, `--plain`, `--version V`, `--pre-v1`, `--ask`), then `xyf_host.py --sim 127.0.0.1:7341` (or `XYF_SIM`),
   `scripts/device_pass.py` / `scripts/conformance.py --sim …` (evidence removed when nothing failed, unless `--keep`).
 - **Control** (port + 1, one line, JSON reply): `status` (A's `partition`; `boot_writes`, yaffs changes on a boot

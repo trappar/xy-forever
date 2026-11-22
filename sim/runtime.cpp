@@ -417,7 +417,7 @@ int listen_on(int port) {
 }
 int usage() {
     fprintf(stderr, "usage: xyf_sim --root DIR --bootpart FILE --stock MEMORY [--port 7341] [--control 7342 | --control-fd FD]\n"
-                    "               [--capacity BYTES] [--plain] [--otp-stdin] [--otp-initialized] [--ask]\n"
+                    "               [--capacity BYTES] [--plain] [--otp-stdin] [--otp-initialized] [--ask] [--idle-wall]\n"
                     "               [--deadline-s S] [--set FAULT=VALUE ...]\n");
     return 2;
 }
@@ -456,6 +456,7 @@ int main(int argc, char** argv) {
         if (a == "--a-otp-initialized") { shared->a_otp_preinit = 1; continue; }
         if (a == "--otp-initialized") { shared->otp_preinit = 1; continue; }
         if (a == "--ask") { shared->ask = 1; continue; }                 // #65 (else the setting reads Off)
+        if (a == "--idle-wall") { board_idle_wall(); continue; }         // interactive runs only (sim/clock.cpp)
         if (!v) return usage();
         if (a == "--root") snprintf(shared->root, sizeof(shared->root), "%s", v);
         else if (a == "--bootpart") snprintf(shared->bootpart, sizeof(shared->bootpart), "%s", v);
