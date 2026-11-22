@@ -39,7 +39,7 @@ python scripts/setup.py bootstrap {% if usage.dry_run %}--dry-run{% endif %} \
 description = "What is set up and which tests will skip"
 run = "uv run scripts/setup.py doctor"
 
-# The suite (pytest; tiers, budgets: tests/conftest.py; docs/operating/build-install.md#checks). Arguments pass
+# The suite (pytest; tiers, budgets: tests/conftest.py; docs/operating/checks.md). Arguments pass
 # through to pytest. A selection (a file, a node id, a folder, -k or -m) runs whatever its tier; otherwise
 # `test` runs the fast tier. Every run uses one worker per core (-n auto).
 [tasks.test]

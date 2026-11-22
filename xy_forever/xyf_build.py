@@ -32,12 +32,10 @@ from xy_forever.build_modules import (
 from xy_forever.build_modules import own_sources as build_sources
 from xy_forever.compile import SOURCE, compile_core, invoke, sha, toolchain
 from xy_forever.ldr import parse_ldr, validate_memory
-from xy_forever.otp_audit import (  # function_bodies, loaded_values: re-exported (tests use the builder's)
+from xy_forever.otp_audit import (
     check_otp_data,
     check_otp_rules,
-    function_bodies,  # noqa: F401
     functions_loading,
-    loaded_values,  # noqa: F401
     referencing_symbols,
     rom_references,
 )

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""The PR gate: the checks a pull request passes on this machine, in under 30 s, before CI.
+"""The PR gate: the checks a pull request passes on this machine, before CI (mise.toml: how long it takes).
 
     uv run scripts/check.py [--js] [--force]     (mise run check)
     uv run scripts/check.py --confirm [REF]      (what the receipt for REF's tree records)
 
 The steps, in order, stopping at the first failure:
   - the product build into the checkout's gitignored build/product, then xyf_build.py --verify of it, both through
-    Turborepo's local cache (scripts/firmware_cache.py: an unchanged build and its verify restore in about 0.2 s);
+    Turborepo's local cache (scripts/firmware_cache.py: an unchanged build and its verify are restored);
     a verified build is copied to <private>/xy-forever/builds/<image> (its name: the first 8 hex digits of the
     candidate's SHA-256, hello image=; installs take it from there), with check.json naming the tree and commit;
   - lint and type checks: the generated protocol files match protocol/ (protogen --check), `mise run lint`;
@@ -41,6 +41,7 @@ import tempfile
 import time
 from pathlib import Path
 
+import clean
 import firmware_cache
 
 from xy_forever import dev_tools, no_device, paths, procgroup
@@ -444,6 +445,8 @@ def main(argv=None, root=ROOT, checks=CHECKS):
                 print('check: this tree already passed (the receipt above); --force reruns')
                 return 0
         record = check(root, lambda tree: standard_steps(args, root, tree), checks)
+        if record['passed']:
+            clean.prune_builds()  # the one pruning of builds/ (scripts/clean.py), after the receipt
     except CheckError as e:
         print('check: %s' % e, file=sys.stderr)
         return 1

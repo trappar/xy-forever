@@ -9,7 +9,7 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 | `xy_forever/xyf_build.py` (`uv run xyf-build`) | build + verify a candidate `os.ldr` (all audits) |
 | `xy_forever/xyf_host.py` (`uv run xyf-host`) | host tool for XY Forever's USB service; its serial and simulator ports in `xy_forever/transport.py` (the serial port is exclusive to one process) |
 | `tests/ui_preview.py` | render the device UI to PNG on the host (same C++, through the test bridges; `mise run preview`) |
-| `tests/verify_ldr.py` | cross-check the native LDR parser against official images |
+| `tests/test_ldr.py` | the LDR parser; OfficialImages: the native one against official images |
 | `xy_forever/xyf_package.py` (`uv run xyf-package`) | review and stage a decrypted official ZIP on the host (HARDWARE, `.tfw`); `extract-os`: OS-only library entry from an official `.tfw`, run by the device's own extractor compiled for the Mac (`host/tfw_extract.cpp`, `xy_forever/tfw_extract.py`) |
 | `target/cold.cpp`, `storage_probe_entry.s` | cold entry on both processors; boots the loaded library image |
 | `target/xyf_clock.hpp` | wrap-safe millisecond clock for every cold module |

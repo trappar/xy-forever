@@ -1,5 +1,5 @@
 """The suite under pytest: tiers, enforced CPU budgets, hard bounds (xyf_bounds.py), --testmon's C++ and
-script selection (xyf_select.py). The commands and the policy: docs/operating/build-install.md#checks.
+script selection (xyf_select.py). The commands and the policy: docs/operating/checks.md.
 
 Tiers, each a marker on a test (the closest marker wins): `gate`, `sim` (the simulator core, #233: each kept
 test says why in its docstring) and `sweep` (simulator sweeps too long to share a run: `mise run test-sweeps`);

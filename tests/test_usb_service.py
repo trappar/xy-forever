@@ -19,7 +19,7 @@ import xyf_hosttest
 from conftest import verified_build
 
 from xy_forever import usb_proto as P
-from xy_forever.census import (
+from xy_forever.census_usb import (
     USB_SERVICE_FIELDS,
     USB_SERVICE_V2_WORDS,
     USB_SERVICE_V3_WORDS,

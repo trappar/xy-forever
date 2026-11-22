@@ -15,6 +15,8 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
+from scripts.device_pass_keepalive import keepalive_dir
+
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('device_pass', ROOT / 'scripts/device_pass.py')
 dp = importlib.util.module_from_spec(spec)
@@ -1161,7 +1163,7 @@ class SilentExitTest(unittest.TestCase):
                 ['sh', 'scripts/keepalive.sh', tmp],
                 ['bash', '-c', 'scripts/keepalive.sh', tmp, '>/dev/null'],
             ):
-                self.assertEqual(dp.keepalive_dir(args), tmp, args)
+                self.assertEqual(keepalive_dir(args), tmp, args)
             for args in (
                 ['grep', '-v', '-e', 'keepalive.sh', '-e', tmp],  # a filter on the script's output
                 ['/bin/zsh', '-c', 'pgrep', '-fl', 'keepalive.sh', '&&', 'python3'],  # the shell that ran it
@@ -1169,7 +1171,7 @@ class SilentExitTest(unittest.TestCase):
                 ['sh', 'scripts/keepalive.sh'],
                 [],
             ):
-                self.assertIsNone(dp.keepalive_dir(args), args)
+                self.assertIsNone(keepalive_dir(args), args)
 
     def test_an_error_after_the_folder_is_written_there(self):
         with (

@@ -1,4 +1,4 @@
-"""Tests never open a real OP-XY (docs/operating/build-install.md, "Checks").
+"""Tests never open a real OP-XY (docs/operating/checks.md).
 
 With XYF_NO_DEVICE set, every opener of a real device raises DeviceRefused before it looks for one: the serial
 port (xyf_host.find_port's glob, transport.SerialPort) and USB MTP (mtp_read.open_op_xy, scripts/usb_alive.py).

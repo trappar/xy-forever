@@ -36,7 +36,8 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-import device_pass  # (NEED, session folders, keepalive)
+import device_pass  # (NEED, session folders)
+from device_pass_keepalive import Keepalive
 
 from xy_forever import bounds, paths
 from xy_forever import conformance as C
@@ -169,7 +170,7 @@ def main(argv=None, sessions=None):
         return EXIT_PASS
     real = not opts.sim
     host.SIM = opts.sim
-    keepalive = device_pass.Keepalive()
+    keepalive = Keepalive()
     stopped = keepalive.stop_running() if real else []
     runner = C.Runner(
         spec,

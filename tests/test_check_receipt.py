@@ -217,10 +217,12 @@ class CheckReceiptTests(unittest.TestCase):
     def test_the_step_table_prints_once(self):
         with (
             mock.patch.object(C, 'standard_steps', lambda args, root, tree: [ok('only-step')]),
+            mock.patch.object(C.clean, 'prune_builds') as prune,
             contextlib.redirect_stdout(io.StringIO()) as out,
         ):
             self.assertEqual(C.main(['--force'], self.root, self.checks), 0)
         self.assertEqual(out.getvalue().count('only-step'), 1)
+        prune.assert_called_once_with()  # after the receipt: scripts/clean.py is the one pruning
         self.assertIn('receipt: ', out.getvalue())
 
     def test_wall_time_lines_name_the_step_and_the_total(self):

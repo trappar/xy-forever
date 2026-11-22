@@ -7,6 +7,7 @@ import struct
 import zlib
 from pathlib import Path
 
+from .census_usb import usb_service
 from .probe_report import decode
 
 MAGIC = 0x31534E43
@@ -666,28 +667,6 @@ def remote_read(regions, dump):
         out['address'] = hex(r['address'])
         return out
     return None
-
-
-# The USB service block lives in census_usb.py (re-exported here).
-from .census_usb import (  # noqa: E402,F401
-    USB_DIAG_SNAPSHOTS,
-    USB_DIAG_WORDS,
-    USB_INSTALL_STEPS,
-    USB_SERVICE_EXITS,
-    USB_SERVICE_FIELDS,
-    USB_SERVICE_MAGIC,
-    USB_SERVICE_V2_FIELDS,
-    USB_SERVICE_V2_WORDS,
-    USB_SERVICE_V3_FIELDS,
-    USB_SERVICE_V3_WORDS,
-    USB_SERVICE_V4_FIELDS,
-    USB_SERVICE_V4_WORDS,
-    USB_STAGE2_FIELDS,
-    USB_STAGE2_STATUS,
-    USB_STATUS,
-    usb_diag,
-    usb_service,
-)
 
 
 def main():

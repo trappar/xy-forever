@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Proves the firmware cache's hit and miss cases (scripts/firmware_cache.py) on a scratch worktree of HEAD.
 
-    uv run scripts/firmware_cache_proof.py [--keep]      (about 30 s: two real builds; never the OP-XY)
+    uv run scripts/firmware_cache_proof.py [--keep]      (mise run firmware-cache-proof; two real builds; never the OP-XY)
 
 The cases, in order: a fresh build misses; unchanged, a hit restores the same bytes; one source changed misses and
 rebuilds, and a hit then restores that build; a --verify failure is not cached (it misses again); reverted, a hit
