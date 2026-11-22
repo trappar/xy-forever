@@ -939,7 +939,7 @@ class Runner(ConformanceConnection):
                 try:
                     link = Link(self.target.open(), self.spec, self.log)
                 except OSError:
-                    time.sleep(0.2)
+                    getattr(self.target, 'pause', time.sleep)(0.2)
                     continue
                 try:
                     return self.greet(link, True, deadline)
@@ -947,7 +947,7 @@ class Runner(ConformanceConnection):
                     pass
                 finally:
                     link.close()
-            time.sleep(0.2)
+            getattr(self.target, 'pause', time.sleep)(0.2)
         return None
 
     @property
@@ -1116,7 +1116,7 @@ class Runner(ConformanceConnection):
             link.write(data)
         for chunk in chunks:
             link.write(chunk)
-            time.sleep(0.005)                       # separate reads on the device side
+            getattr(self.target, 'pause', time.sleep)(0.005)                       # separate reads on the device side
         if 'none_within_ms' in expect:
             got = link.quiet(expect['none_within_ms'])
             if got:

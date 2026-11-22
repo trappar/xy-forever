@@ -74,7 +74,7 @@ class StreamWriteTest(unittest.TestCase):
                 self.sim.advance(100)
             else:
                 self.sim.advance(250)
-                time.sleep(0.01)
+                self.sim.advance(10)
         self.fail('%s not reached within %g s' % (what, timeout))
 
     def begin(self, dev, path, data, crc=None, sha=None):

@@ -79,7 +79,7 @@ class AskTest(unittest.TestCase):
         deadline = time.monotonic() + timeout
         while not cond():
             self.assertLess(time.monotonic(), deadline, 'never ' + what)
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def keys(self):
         """hello's confirm= and trust=."""
@@ -142,9 +142,9 @@ class AskTest(unittest.TestCase):
         self.ask()
         for kind, payload in ((P.STATUS, b''), (P.SET_DEFAULT, ENTRY), (P.READ_FILE, (XYF + 'state-a.txt\0').encode()),
                               (ids.SCREEN, b''), (ids.WRITE_BEGIN, b'')):
-            start = time.monotonic()
+            start = self.sim.status()['clock_ms']
             self.assertEqual(self.once(kind, payload), ids.S_WAITING, kind)
-            self.assertLess(time.monotonic() - start, 5.0)                # at once: nothing held open
+            self.assertLess(self.sim.status()['clock_ms'] - start, 5000)  # at once (device time): nothing held open
         self.assertEqual(self.keys(), ('1', 'asking'))
         self.assertEqual(self.slots(), before)
         self.assertEqual(self.lines('trust: asks'), [''])                 # asked once

@@ -71,7 +71,7 @@ class Packages(unittest.TestCase):
         self.dev.t.close()
         until = time.monotonic() + 15
         while not self.sim.status()['listening']:
-            self.assertLess(time.monotonic(), until); time.sleep(0.02)
+            self.assertLess(time.monotonic(), until); self.sim.advance(20)
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
 
@@ -99,7 +99,7 @@ class Packages(unittest.TestCase):
         self.sim.advance(1100)
         until = time.monotonic() + 5
         while request(1, 0, b'b' * 32) == P.ids.S_BUSY:
-            self.assertLess(time.monotonic(), until); time.sleep(0.02)
+            self.assertLess(time.monotonic(), until); self.sim.advance(20)
         self.assertEqual(request(1, 1), P.ids.S_STATE)
         self.assertEqual(request(1, 2, b'b' * 32), 0)
 
@@ -149,4 +149,4 @@ class Packages(unittest.TestCase):
                         session.collect()
                     until = time.monotonic() + 10
                     while list((self.root / 'xy-forever/tmp').glob('pkg-v1-*')):
-                        self.assertLess(time.monotonic(), until); time.sleep(0.02)
+                        self.assertLess(time.monotonic(), until); self.sim.advance(20)

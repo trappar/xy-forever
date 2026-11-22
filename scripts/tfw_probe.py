@@ -105,7 +105,7 @@ class Probe:
             code, out, err = self.host(command, self.opts.check_timeout)
             if not role or code != P.ids.S_BUSY or time.monotonic() >= deadline:
                 break
-            time.sleep(.05)                 # A closes the preceding upload's write window between requests
+            host.pause(.05)                 # A closes the preceding upload's write window between requests
         if self.no_answer:
             raise dp.StepFail('power cycle needed: tfw.check stopped answering; no more commands sent')
         report = dp.parse_json(out)

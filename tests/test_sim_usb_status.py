@@ -45,7 +45,7 @@ class UsbStatus(J.Base, unittest.TestCase):
         while time.monotonic() < deadline:
             if cond(self.usb()):
                 return self.usb()
-            time.sleep(0.02)
+            self.sim.advance(20)
         self.fail('%s not logged: %s' % (what, self.usb()))
 
     def lines(self):

@@ -20,7 +20,7 @@ class ConformanceConnection:
             while not self.target.present():
                 if time.monotonic() > deadline:
                     raise Fail('the port did not come back within %.1f s' % wait)
-                time.sleep(0.05)
+                getattr(self.target, 'pause', time.sleep)(0.05)
             last = None
             while True:
                 try:
@@ -30,7 +30,7 @@ class ConformanceConnection:
                     last = error
                     if time.monotonic() > deadline:
                         raise Fail('the port did not open: %s' % last)
-                    time.sleep(0.1)
+                    getattr(self.target, 'pause', time.sleep)(0.1)
             self.log('# connected')
             if not (hello or self.real):
                 return link
@@ -43,7 +43,7 @@ class ConformanceConnection:
                     raise
                 link.close()
                 self.log('# the connection dropped during the greeting: connecting again')
-                time.sleep(0.1)
+                getattr(self.target, 'pause', time.sleep)(0.1)
                 continue
             if ready:
                 def probe(remaining):

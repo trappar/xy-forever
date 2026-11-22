@@ -21,7 +21,7 @@ class Reports(unittest.TestCase):
             if result[0] != P.ids.S_BUSY:
                 return result
             self.assertLess(time.monotonic(), until)
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def packages(self, area):
         outer = inner = 0

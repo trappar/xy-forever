@@ -340,11 +340,10 @@ class Simulator:
     """One running simulator: start() it, talk to 127.0.0.1:port, control() its board."""
 
     def __init__(self, root, bootpart, port=None, build_dir=None, play=True, log=None, capacity=0x400000, otp=None,
-                 virtual=True, otp_initialized=False, otp_a=None, a_otp_initialized=False, ask=False,
+                 otp_initialized=False, otp_a=None, a_otp_initialized=False, ask=False,
                  deadline_s=bounds.sim_deadline_s):
         """otp: B's OTP fields for the ROM stand-in (otp_fields()); None: an OTP that answers nothing.
-        virtual: device time moves only under the simulator's control (sim/clock.cpp: test runs); False: real
-        time (interactive runs). otp_initialized starts B with both its ROM and the stock initialization
+        Device time moves only under the simulator's control (sim/clock.cpp). otp_initialized starts B with both its ROM and the stock initialization
         guard already set, as after the stock bootloader's encrypted-image read. ask: #65's question as on the device
         (Ask before USB control as settings.txt says); False (tests that are not about it): the setting reads Off,
         so no serial request waits for an answer nobody gives. deadline_s: the board stops on its own that
@@ -358,7 +357,7 @@ class Simulator:
             selector, count = otp_a[at:at + 2]
             a_records += bytes((selector | 0x80, count)) + otp_a[at + 2:at + 2 + count]
             at += 2 + count
-        self.otp, self.virtual = (otp or b'') + a_records, virtual
+        self.otp = (otp or b'') + a_records
         self.a_otp_initialized = a_otp_initialized
         self.otp_initialized = otp_initialized
         self.chosen = port is None                     # a free pair picked here: start() may pick again
@@ -373,22 +372,44 @@ class Simulator:
     def address(self):
         return '127.0.0.1:%d' % self.port
 
-    def argv(self):
+    def argv(self, control_fd=None):
+        """control_fd: the control port's listening socket, made here and inherited (else xyf_sim binds it)."""
         return [str(self.build_dir / 'xyf_sim'), '--root', str(self.root), '--bootpart', str(self.bootpart),
-                '--stock', str(self.build_dir / 'stock.mem'), '--port', str(self.port),
-                '--control', str(self.control_port), '--capacity', str(self.capacity)] + ([] if self.play else ['--plain']) + \
-            (['--otp-stdin'] if self.otp else []) + (['--virtual'] if self.virtual else []) + \
+                '--stock', str(self.build_dir / 'stock.mem'), '--port', str(self.port)] + \
+            (['--control-fd', str(control_fd)] if control_fd is not None else ['--control', str(self.control_port)]) + \
+            ['--capacity', str(self.capacity)] + ([] if self.play else ['--plain']) + \
+            (['--otp-stdin'] if self.otp else []) + \
             (['--otp-initialized'] if self.otp_initialized else []) + \
             (['--a-otp-initialized'] if self.a_otp_initialized else []) + (['--ask'] if self.ask else []) + \
             (['--deadline-s', '%g' % self.deadline_s] if self.deadline_s else [])
+
+    def listen_control(self):
+        """The control port's socket, listening before the simulator starts (control() never waits for it)."""
+        for attempt in range(20):
+            listener = socket.socket()
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                listener.bind(('127.0.0.1', self.control_port))
+                listener.listen(8)
+                return listener
+            except OSError:
+                listener.close()
+                if not self.chosen or attempt == 19:
+                    raise
+                self.port = free_port()
+                self.control_port = self.port + 1
 
     def start(self, timeout=10.0):
         os.environ.setdefault('XYF_ASK_LIMIT_S', '30')      # #65: a host here never waits on the question unbounded
         for attempt in range(3):
             log = open(self.log, 'ab') if self.log else subprocess.DEVNULL
+            listener = self.listen_control()
             # Its own session: stop() ends its whole group (the board and both processors).
-            self.process = procgroup.popen(self.argv(), stdin=subprocess.PIPE if self.otp else subprocess.DEVNULL,
-                                           stdout=log, stderr=log)
+            try:
+                self.process = procgroup.popen(self.argv(listener.fileno()), stdin=subprocess.PIPE if self.otp else subprocess.DEVNULL,
+                                               stdout=log, stderr=log, pass_fds=(listener.fileno(),))
+            finally:
+                listener.close()                       # the simulator's copy only: gone with it
             if self.otp:                               # on a pipe: never on disk or the command line
                 self.process.stdin.write(self.otp)
                 self.process.stdin.close()
@@ -396,11 +417,11 @@ class Simulator:
                 log.close()
             try:
                 self.wait_listening(timeout)
+                self.settle()
                 return self
             except PortTaken:
-                # Another process took a port between free_port() and the simulator's bind (tests
-                # running in parallel): a new pair, when the pair was picked here. Never "quit" over
-                # the control port: it may be another simulator's.
+                # Another process took the endpoint's port between free_port() and B's bind (tests running in
+                # parallel): a new pair, when the pair was picked here.
                 self._close_control()
                 procgroup.kill_group(self.process, grace=1.0)
                 self.process = None
@@ -412,30 +433,26 @@ class Simulator:
     def control(self, line, timeout=5.0):
         """One control line on one kept connection (the board serves many lines per client), so a test
         polling status does not leave a closed socket per call (TIME_WAIT exhausts local ports)."""
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                if getattr(self, '_control', None) is None:
-                    self._control = socket.create_connection(('127.0.0.1', self.control_port), timeout=timeout)
-                    self._control_in = b''
-                s = self._control
-                s.settimeout(timeout)
-                s.sendall(line.encode() + b'\n')
-                while b'\n' not in self._control_in:
-                    chunk = s.recv(4096)
-                    if not chunk:
-                        raise ConnectionResetError('control connection closed')
-                    self._control_in += chunk
-                reply, self._control_in = self._control_in.split(b'\n', 1)
-                return json.loads(reply.decode())
-            except (ConnectionRefusedError, ConnectionResetError, BrokenPipeError):
-                self._close_control()
-                if self.process is not None and self.process.poll() == 124:
-                    raise DeadlinePassed('simulator: stopped at its %g s deadline (--deadline-s; a test that needs '
-                                         'longer: @bounds.slow, #233)' % self.deadline_s)
-                if line == 'quit' or time.monotonic() > deadline:
-                    raise
-                time.sleep(0.05)
+        try:
+            if getattr(self, '_control', None) is None:
+                self._control = socket.create_connection(('127.0.0.1', self.control_port), timeout=timeout)
+                self._control_in = b''
+            s = self._control
+            s.settimeout(timeout)
+            s.sendall(line.encode() + b'\n')
+            while b'\n' not in self._control_in:
+                chunk = s.recv(4096)
+                if not chunk:
+                    raise ConnectionResetError('control connection closed')
+                self._control_in += chunk
+            reply, self._control_in = self._control_in.split(b'\n', 1)
+            return json.loads(reply.decode())
+        except (ConnectionRefusedError, ConnectionResetError, BrokenPipeError):
+            self._close_control()
+            if self.process is not None and self.process.wait(timeout=2.0) == 124:
+                raise DeadlinePassed('simulator: stopped at its %g s deadline (--deadline-s; a test that needs '
+                                     'longer: @bounds.slow, #233)' % self.deadline_s)
+            raise
 
     def _close_control(self):
         if getattr(self, '_control', None) is not None:
@@ -451,15 +468,16 @@ class Simulator:
             raise ValueError('simulator: no fault %r' % name)
 
     def advance(self, ms):
-        """Moves device time ms ahead (both processors' cycle counters and the board's clock), so a time-out
-        passes without waiting for it. Virtual clock: in the simulator's own steps, each taken once both
-        processors are idle (the link keeps alive as on the device: keepalives, answers and time-outs
-        happen when they are due); returns once the clock is there and both processors are idle again.
-        Real time: one jump."""
+        """Moves device time ms ahead (both processors' cycle counters and the board's clock) in the simulator's own
+        steps, the link kept alive as on the device; returns once the clock is there and both processors are idle."""
         if ms <= 0:
             return
         if not self.control('advance %d' % ms, timeout=bounds.WAIT_S).get('ok'):
             raise ValueError('simulator: advance %r refused' % ms)
+
+    def settle(self):
+        """Returns once the device is at rest: its clock stands still, nothing due (sim/clock.cpp)."""
+        self.control('settle', timeout=bounds.WAIT_S)
 
     def jump(self, ms):
         """Moves device time ms ahead at once, whatever the processors are doing (a pass that took that long)."""
@@ -486,36 +504,42 @@ class Simulator:
         """A's answer to an injected request: {done, result (signed), error (errno), body (bytes)}."""
         return self.control('injected %d' % tag)
 
+    def until(self, predicate, what='simulator state', limit_ms=60000):
+        """predicate()'s value once true, the clock moved on between tries (advance 1 ms, doubling to 1 s): no
+        host time waited. AssertionError past limit_ms of device time."""
+        spent, step = 0, 1
+        while True:
+            value = predicate()
+            if value:
+                return value
+            if spent >= limit_ms:
+                raise AssertionError('%s not reached within %d ms of device time: %s' % (what, limit_ms, self.status()))
+            self.advance(step)
+            spent, step = spent + step, min(step * 2, 1000)
+
     def ask_a(self, cls, op, argument=0, argument2=0, body=b'', timeout=3.0):
-        """inject() and wait for A's answer: (result, errno), or None if A did not answer in time."""
+        """inject() and wait for A's answer: (result, errno), or None if A did not answer within timeout s of
+        device time."""
         tag = self.inject(cls, op, argument, argument2, body)
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            reply = self.injected(tag)
-            if reply['done']:
-                return reply['result'], reply['error']
-            time.sleep(0.01)
-        return None
+        try:
+            reply = self.until(lambda: self.injected(tag)['done'] and self.injected(tag), 'A\'s answer', timeout * 1000)
+        except AssertionError:
+            return None
+        return reply['result'], reply['error']
 
     def wait_listening(self, timeout=10.0):
-        """Until the USB endpoint accepts a connection (the service has USB on)."""
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if self.process and self.process.poll() is not None:     # the control port's bind failed, say
+        """Until the USB endpoint accepts a connection (the service has USB on): timeout s of device time."""
+        def listening():
+            if self.process and self.process.poll() is not None:     # the board ended
                 raise PortTaken('simulator exited with %s' % self.process.returncode)
-            try:
-                status = self.status()
-                if status.get('pid') != self.process.pid:      # another simulator's control port: ours failed
-                    raise PortTaken('another simulator (pid %s) answers on port %d' % (status.get('pid'),
-                                                                                     self.control_port))
-                if status.get('listening'):
-                    return
-                if status.get('b') == 'crashed' and status.get('b_boots') == 1:   # the endpoint's bind failed, say
-                    raise PortTaken('simulator: B crashed at its first boot')
-            except OSError:
-                pass
-            time.sleep(0.01)
-        raise TimeoutError('simulator endpoint not listening within %g s' % timeout)
+            status = self.status()
+            if status.get('b') == 'crashed' and status.get('b_boots') == 1:   # the endpoint's bind failed, say
+                raise PortTaken('simulator: B crashed at its first boot')
+            return status.get('listening')
+        try:
+            self.until(listening, 'the USB endpoint', timeout * 1000)
+        except AssertionError as e:
+            raise TimeoutError(str(e))
 
     def stop(self):
         if not self.process:
@@ -547,8 +571,6 @@ def main(argv=None):
     parser.add_argument('--pre-v1', action='store_true', help='serve the pre-v1 hello text (builds 153 and earlier)')
     parser.add_argument('--crash-trigger', action='store_true',
                         help='the crash trigger test build (#102): diag.crash halts B (no fault, no screen)')
-    parser.add_argument('--virtual-clock', action='store_true',
-                        help='device time moves only under the simulator\'s control, as in the tests (default: real time)')
     parser.add_argument('--ask', action='store_true',
                         help='#65: Ask before USB control as settings.txt says (default: it reads Off)')
     parser.add_argument('--fresh', choices=('stock', 'missing', 'wrong'),
@@ -571,7 +593,7 @@ def main(argv=None):
     otp = None if args.no_otp else otp_fields()
     print('OTP: %s' % ('the private keys' if otp else 'answers nothing (tfw.check: reason no_otp)'), file=sys.stderr)
     sim = Simulator(root, state / 'bootpart.bin', port=args.port, build_dir=out, play=not args.plain, otp=otp,
-                    virtual=args.virtual_clock, ask=args.ask, deadline_s=None)
+                    ask=args.ask, deadline_s=None)
     print('simulator: USB endpoint 127.0.0.1:%d (python3 xyf_host.py --sim 127.0.0.1:%d status), control 127.0.0.1:%d,'
           ' storage %s; Ctrl-C stops it' % (sim.port, sim.port, sim.control_port, root), file=sys.stderr, flush=True)
     # Its own process group (the board and both processors), ended with this process however it ends:

@@ -62,7 +62,7 @@ class Rows(PageBase):
             if got:
                 return got
             self.assertLess(time.monotonic(), deadline, 'never ' + what)
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def count(self, marker):
         return len(self.lines(marker))

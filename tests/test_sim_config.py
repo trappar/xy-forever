@@ -117,7 +117,7 @@ class ConfigBase(PageBase, CS.Switch):
         deadline = time.monotonic() + timeout
         while not cond():
             self.assertLess(time.monotonic(), deadline, what)
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def booted(self, timeout=bounds.WAIT_S):
         """The menu booted the default: its id; both processors in the OS."""

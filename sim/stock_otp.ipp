@@ -8,7 +8,7 @@ void otp_start() {
 void rom_otp_failure() {
     if ((role ? shared->otp_fail.load() : shared->a_otp_fail.load()) == 5) {
         log("fault: processor OTP ROM hangs until a power cycle");
-        for (;;) idle_pause(0, 1000000);              // clearing the fault does not return from a hung ROM call
+        for (;;) idle_pause(0, true);              // clearing the fault does not return from a hung ROM call
     }
     if ((role ? shared->otp_fail.load() : shared->a_otp_fail.load()) == 6) crash("processor OTP ROM fault");
 }

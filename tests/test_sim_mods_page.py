@@ -87,7 +87,7 @@ class PageBase(J.Base):
             if shown and cond(shown[-1]):
                 return shown[-1]
             self.assertLess(time.monotonic(), deadline, 'progress never %s: %s' % (what, shown[-1:]))
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def lines(self, marker):
         log = (self.dir / 'log.txt').read_text(errors='replace') if (self.dir / 'log.txt').exists() else ''
@@ -141,7 +141,7 @@ class PageBase(J.Base):
             if p is not None and cond(p):
                 return p
             self.assertLess(time.monotonic(), deadline, 'page never %s: %s' % (what, p))
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def open_page(self, timeout=bounds.WAIT_S):
         for _ in range(MODS_ROW):
@@ -232,7 +232,7 @@ class PageBase(J.Base):
         deadline = time.monotonic() + timeout
         while self.sim.status()['rw_open']:
             self.assertLess(time.monotonic(), deadline, 'the write window never closed')
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def committed(self, p):
         """The page said Built for its job: the library entry job.status names (mods-a or mods-b), its files

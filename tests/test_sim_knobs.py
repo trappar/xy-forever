@@ -66,7 +66,7 @@ class Knobs(PageBase, unittest.TestCase):
             if got:
                 return got
             self.assertLess(time.monotonic(), deadline, 'never %s: %s' % (what, self.last()))
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def until_frames(self, frames, what=''):
         return self.until(lambda: (self.last() or {}).get('frames', -1) >= frames and self.last(), 'read %d %s'
@@ -298,13 +298,13 @@ class SettingsPage(PageBase, unittest.TestCase):
         deadline = time.monotonic() + timeout
         while not self.lines(marker):
             self.assertLess(time.monotonic(), deadline, 'never ' + marker)
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def wait_rows(self, n, timeout=10.0):
         deadline = time.monotonic() + timeout
         while len(self.lines('menu: screen 0 row ')) < n:
             self.assertLess(time.monotonic(), deadline, 'the menu never moved')
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def test_real_keys_drive_the_menu_as_injected_ones(self):
         """Control "realkey K P" sends a key as the PSoC does (not the host's KEY command): logged as

@@ -70,9 +70,9 @@ async function start(name: string, port: number, state: string, extra: string[])
   const log = openSync(join(dir, 'sim.log'), 'a');
   // In this process's group (a group kill of the test run reaches it); the wrapper ends its own
   // xyf_sim group when it is terminated or this process is gone (xy_forever/procgroup.py, #133).
-  // --virtual-clock: device time moves only under the simulator's control, so a loaded host never
-  // runs out a device time-out (sim/clock.cpp).
-  const child = spawn('python3', ['-m', 'xy_forever.sim', '--virtual-clock', '--port', String(port), '--state', dir, ...extra],
+  // Device time moves only under the simulator's control, so a loaded host never runs out a device
+  // time-out (sim/clock.cpp).
+  const child = spawn('python3', ['-m', 'xy_forever.sim', '--port', String(port), '--state', dir, ...extra],
     { cwd: REPO, stdio: ['ignore', log, log] });
   live.add(child);
   child.once('exit', () => live.delete(child));

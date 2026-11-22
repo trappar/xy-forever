@@ -65,7 +65,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from xy_forever import bounds, depth, device_lock, host_inventory, host_read, host_trust, host_write, library_add, pack_change, usb_proto as P
+from xy_forever import bounds, depth, device_lock, host_inventory, host_read, host_trust, host_write, library_add, pack_change, transport, usb_proto as P
 from xy_forever.host_write import AREA_TEXT, in_write_area
 from xy_forever.host_screen import SCREEN_BYTES, SCREEN_H, SCREEN_STRIDE, SCREEN_W, screen_png  # noqa: F401
 from xy_forever.library_add import ID_RE
@@ -371,13 +371,13 @@ def connect(timeout, hello_every=0.5, hello_window=8.0):
             log('port %s' % (port or 'gone'))
             seen = port
         if not port:
-            time.sleep(0.1)
+            pause(0.1)
             continue
         try:
             transport = open_port(port)
         except OSError as error:
             log('open %s failed: %s' % (port, error))
-            time.sleep(0.3)
+            pause(0.3)
             continue
         dev, sent, received = Device(transport), 0, 0
         window = min(deadline, time.monotonic() + hello_window)
@@ -405,8 +405,16 @@ def connect(timeout, hello_every=0.5, hello_window=8.0):
             transport.close()
         except OSError:
             pass
-        time.sleep(0.3)
+        pause(0.3)
     raise SystemExit('XY Forever USB service not found (power on with USB attached, no keys held)')
+
+
+def pause(seconds):
+    """The host waits on the device: on the simulator its clock moves on instead (transport.sim_pause)."""
+    if SIM:
+        transport.sim_pause(SIM, seconds)
+    else:
+        time.sleep(seconds)
 
 
 def stage_progress(done, total):
@@ -426,7 +434,7 @@ def fresh(dev, timeout):
     if code:
         print('reboot: %s' % P.status_name(code)); return None
     dev.t.close()
-    time.sleep(1.0)
+    pause(1.0)
     dev, port, text = connect(timeout)
     print('connected %s: %s' % (port, text))
     return dev
@@ -758,7 +766,7 @@ def run(argv):
             print('refused: unknown key %r' % args.name); return 2
         code, _ = dev.call(P.KEY, struct.pack('<II', key, 1))
         if code == 0 and not args.hold:
-            time.sleep(0.15)
+            pause(0.15)
             try:
                 code, _ = dev.call(P.KEY, struct.pack('<II', key, 0))
             except OSError:

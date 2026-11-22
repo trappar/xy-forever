@@ -127,7 +127,7 @@ pnpm run typecheck
 pnpm run test:e2e    # Playwright Test: the app in the system Chrome (headless) against the simulator, and the Install page (e2e/)
 ```
 
-`test:e2e` starts `python3 -m xy_forever.sim --virtual-clock` from the repository root on a random port in 21000-31000, with its
+`test:e2e` starts `python3 -m xy_forever.sim` from the repository root on a random port in 21000-31000, with its
 state in the private sessions folder (`XYF_PRIVATE` applies; override with `XYF_SIM_STATE`), and removes the state
 afterwards. It is skipped with the reason when the simulator cannot run (no private stock files, no clang++).
 `e2e/install.e2e.ts` needs no simulator: fake te-boot MIDI and a fake dev-menu MTP device (`test/fake-devices.ts`)

@@ -83,7 +83,7 @@ class Adopt(unittest.TestCase):
         deadline = time.monotonic() + timeout
         while not cond():
             self.assertLess(time.monotonic(), deadline, what)
-            time.sleep(0.02)
+            self.sim.advance(20)
 
     def in_os(self):
         s = self.sim.status()
@@ -174,7 +174,7 @@ class Adopt(unittest.TestCase):
         while True:
             code, f = self.job()
             if code == ids.S_NOT_FOUND:                                      # not started yet
-                time.sleep(0.01)
+                self.sim.advance(10)
                 continue
             self.assertEqual(code, 0)
             if f['phase'] < 8:
@@ -184,7 +184,7 @@ class Adopt(unittest.TestCase):
                     self.assertEqual(f['total'], len(self.image), f)
                 if f['phase'] in (1, 5):
                     self.assertEqual(self.dev.read_file(STATE_FILE)[0], ids.S_BUSY)   # file commands wait for it
-                time.sleep(0.01)
+                self.sim.advance(10)
                 continue
             break
         self.sim.set('a_slow_ms', 0)
@@ -234,7 +234,7 @@ class Adopt(unittest.TestCase):
         self.wait(lambda: self.sim.status()['power_ons'] > ons, 'the PLAY start')
         self.connect()
         self.wait(lambda: self.dev.read_file('/yaffs2/xy-forever/config.txt')[0] == 0, 'the menu serves storage')
-        time.sleep(3)                                                        # the record read, the menu settled
+        self.sim.advance(3000)                                                        # the record read, the menu settled
         self.assertEqual(self.job()[0], ids.S_NOT_FOUND)                    # no job this boot
         self.assertEqual(self.lines('menu: line: ')[lines:], [])
         self.assertEqual(self.lines('menu: save failed: '), [])

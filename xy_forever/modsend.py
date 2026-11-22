@@ -22,7 +22,7 @@ import struct
 import time
 import zlib
 
-from . import depth, modconfig, modstore, package_records, package_store, usb_proto as P
+from . import depth, modconfig, modstore, package_records, package_store, transport, usb_proto as P
 
 ROOT = '/yaffs2/xy-forever/mods'
 LIST = 'files.sha256'
@@ -326,10 +326,12 @@ def describe(f):
         ', leftovers may remain' if f['debris'] else '')
 
 
-def wait(dev, job, out=print, poll=0.5, sleep=time.sleep, clock=time.monotonic):
+def wait(dev, job, out=print, poll=0.5, sleep=None, clock=time.monotonic):
     """Polls job.status until the job is final; prints each change of phase. The final fields, or None
     when the job vanished (not_found) or stalled STALL seconds. A job.status without an answer is asked
-    again until none came for QUIET seconds (then TimeoutError)."""
+    again until none came for QUIET seconds (then TimeoutError). sleep: the pause between polls (default: the
+    device's own, transport.pause)."""
+    sleep = sleep or (lambda s: transport.pause(dev.t, s))
     shown, steps, moved = None, -1, clock()
     answered, silent = clock(), False
     while True:
@@ -359,10 +361,11 @@ def wait(dev, job, out=print, poll=0.5, sleep=time.sleep, clock=time.monotonic):
         sleep(poll)
 
 
-def served(dev, out=print, poll=0.25, sleep=time.sleep, clock=time.monotonic):
+def served(dev, out=print, poll=0.25, sleep=None, clock=time.monotonic):
     """When a job ends, B closes A's write window (op 9; yaffs's checkpoint took up to about 17 s on
     the device) while USB keeps answering; file commands answer busy until it is closed. Lists tmp/ until
     the answer is not busy: that status (0 or not_found: served), or None after SERVED seconds."""
+    sleep = sleep or (lambda s: transport.pause(dev.t, s))
     start = clock()
     while True:
         code = dev.list_page(TMP)[0]

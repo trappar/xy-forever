@@ -53,7 +53,7 @@ class ProtocolSwitches(unittest.TestCase):
                             reply = dev.call(kind, struct.pack('<I', 0))
                             if reply[0] != ids.S_BUSY or time.monotonic() >= deadline:
                                 break
-                            time.sleep(0.02)
+                            running.advance(20)
                         self.assertEqual(reply, (ids.S_UNSUPPORTED, b''))
                     finally:
                         dev.t.close()

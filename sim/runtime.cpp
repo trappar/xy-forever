@@ -15,12 +15,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#include <sys/event.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 #include <deque>
+#include <thread>
 #include <map>
 #include <vector>
 
@@ -189,13 +191,8 @@ struct Held { Message m; std::vector<uint8_t> body; };
 std::map<uint32_t, Held> outstanding;
 uint64_t board_start_us = 0;
 int64_t b_sent_ms = -1, reset_ms[2] = {-1, -1};      // board clock (ms) of B's last link message, last resets
-uint64_t board_us() {                                // board clock (restarts, delayed messages): sim/clock.cpp
-    return virtual_clock() ? shared->clock_ns.load() / 1000u : now_us() + uint64_t(shared->clock_skip_us.load());
-}
-int64_t board_ms() {                                 // since start, at the device clocks' pace
-    if (virtual_clock()) return int64_t(shared->clock_ns.load() / 1000000u);
-    return int64_t((now_us() - board_start_us) / 1000u) + int64_t(shared->clock_skip_us.load() / 1000);
-}
+uint64_t board_us() { return shared->clock_ns.load() / 1000u; }          // the device clock: sim/clock.cpp
+int64_t board_ms() { return int64_t(shared->clock_ns.load() / 1000000u); }
 
 int make_sdram() {                                 // a sparse unlinked file: one per processor
     const char* dir = getenv("TMPDIR");
@@ -419,7 +416,7 @@ int listen_on(int port) {
     return fd;
 }
 int usage() {
-    fprintf(stderr, "usage: xyf_sim --root DIR --bootpart FILE --stock MEMORY [--port 7341] [--control 7342]\n"
+    fprintf(stderr, "usage: xyf_sim --root DIR --bootpart FILE --stock MEMORY [--port 7341] [--control 7342 | --control-fd FD]\n"
                     "               [--capacity BYTES] [--plain] [--otp-stdin] [--otp-initialized] [--ask]\n"
                     "               [--deadline-s S]\n");
     return 2;
@@ -447,7 +444,7 @@ int main(int argc, char** argv) {
     // boundary lies between 0.15 s and 1.4 s [U]; 400 ms sits in that range.
     shared->boot_a_window_ms = 400;
     board_start_us = now_us();
-    int control_port = 0;
+    int control_port = 0, control_listener = -1;
     bool play = true, otp = false;
     uint64_t deadline_us = 0;
     for (int i = 1; i < argc; ++i) {
@@ -457,7 +454,6 @@ int main(int argc, char** argv) {
         if (a == "--otp-stdin") { otp = true; continue; }
         if (a == "--a-otp-initialized") { shared->a_otp_preinit = 1; continue; }
         if (a == "--otp-initialized") { shared->otp_preinit = 1; continue; }
-        if (a == "--virtual") { shared->virtual_clock = 1; continue; }   // sim/clock.cpp (test runs)
         if (a == "--ask") { shared->ask = 1; continue; }                 // #65 (else the setting reads Off)
         if (!v) return usage();
         if (a == "--root") snprintf(shared->root, sizeof(shared->root), "%s", v);
@@ -465,6 +461,7 @@ int main(int argc, char** argv) {
         else if (a == "--stock") stock_path = v;
         else if (a == "--port") shared->port = atoi(v);
         else if (a == "--control") control_port = atoi(v);
+        else if (a == "--control-fd") control_listener = atoi(v);   // listening already (xy_forever/sim.py)
         else if (a == "--capacity") shared->capacity = uint32_t(strtoul(v, 0, 0));
         else if (a == "--deadline-s") deadline_us = uint64_t(atof(v) * 1e6);
         else return usage();
@@ -480,15 +477,24 @@ int main(int argc, char** argv) {
         if (pipe(w)) crash("pipe: %s", strerror(errno));
         for (int end : w) fcntl(end, F_SETFL, O_NONBLOCK);
     }
-    control_fd = listen_on(control_port);
+    if (control_listener >= 0) { control_fd = control_listener; fcntl(control_fd, F_SETFL, O_NONBLOCK); }
+    else control_fd = listen_on(control_port);
     log("USB CDC endpoint 127.0.0.1:%d, control 127.0.0.1:%d, storage %s", shared->port, control_port, shared->root);
     power_cycle(play, "start");
     bool quit = false;
     int code = 0;
     if (deadline_us) { signal(SIGALRM, deadline_passed); alarm(unsigned(deadline_us / 1000000u) + 2); }
     const pid_t parent = getppid();
+    std::thread([parent] {                   // the parent gone: the board's wake pipe (it never polls for it)
+        const int q = kqueue();
+        struct kevent e;
+        EV_SET(&e, uintptr_t(parent), EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, 0);
+        if (q < 0 || kevent(q, &e, 1, 0, 0, 0) < 0) return;
+        while (kevent(q, 0, 0, &e, 1, 0) < 0 && errno == EINTR) {}
+        const char b = 1;
+        if (write(shared->wake[2][1], &b, 1) < 0) {}
+    }).detach();
     bool woken = true;                       // the wake pipe fired at the last poll
-    uint64_t reaped_us = 0;
     while (!quit) {
         if (getppid() != parent) { log("parent gone: stopping"); break; }   // never outlive the tool that started it
         if (deadline_us && now_us() - board_start_us >= deadline_us) {
@@ -504,7 +510,7 @@ int main(int argc, char** argv) {
             if (procs[k].fd >= 0) { link_index[k] = int(fds.size()); fds.push_back({procs[k].fd, POLLIN, 0}); }
         const size_t wake_index = fds.size();
         fds.push_back({shared->wake[2][0], POLLIN, 0});   // a processor went idle (sim/clock.cpp)
-        // The board's next event (a delayed message to A, a restart): virtual, the steps stop there.
+        // The board's next event (a delayed message to A, a restart): the clock's steps stop there.
         uint64_t next = to_a.empty() ? 0 : to_a.front().at;
         for (const Proc& p : procs) if (p.restart_at && (!next || p.restart_at < next)) next = p.restart_at;
         const bool running[2] = {procs[0].pid > 0 && procs[0].state == "running", procs[1].pid > 0 && procs[1].state == "running"};
@@ -514,17 +520,13 @@ int main(int argc, char** argv) {
             const int left = spent < deadline_us ? int((deadline_us - spent) / 1000u) + 1 : 0;
             if (wait_ms < 0 || wait_ms > left) wait_ms = left;
         }
-        if (!virtual_clock() && next) {
-            const uint64_t now = board_us();
-            if (next - now < uint64_t(wait_ms) * 1000u || next <= now) wait_ms = next > now ? int((next - now) / 1000u) + 1 : 0;
-        }
-        const int ready = ::poll(fds.data(), fds.size(), wait_ms);
+        if (::poll(fds.data(), fds.size(), wait_ms) < 0 && errno != EINTR) crash("poll: %s", strerror(errno));
         woken = fds[wake_index].revents != 0;
-        // Ended processors: on a hung-up link, else every 2 ms (not a waitpid per message).
+        // Ended processors: on a hung-up link (a processor's end closes when it exits).
         bool hung_up = false;
         for (int k = 0; k != 2; ++k)
             if (link_index[k] >= 0 && (fds[link_index[k]].revents & (POLLHUP | POLLERR))) hung_up = true;
-        if (hung_up || ready <= 0 || now_us() - reaped_us >= 2000) { reap(); reaped_us = now_us(); }
+        if (hung_up) reap();
         for (int k = 0; k != 2; ++k)
             if (link_index[k] >= 0 && procs[k].fd >= 0 && (fds[link_index[k]].revents & (POLLIN | POLLHUP))) drain(k);
         while (!to_a.empty() && to_a.front().at <= board_us()) {
@@ -556,7 +558,7 @@ int main(int argc, char** argv) {
             while ((eol = client_in[i].find('\n')) != std::string::npos) {
                 const std::string line = client_in[i].substr(0, eol), reply = command(line, quit, clients[i]);
                 client_in[i].erase(0, eol + 1);
-                if (line.compare(0, 6, "status") && line.compare(0, 8, "injected")) { kick(0); kick(1); }   // a fault, a key
+                if (line.compare(0, 6, "status") && line.compare(0, 8, "injected") && line != "settle") { kick(0); kick(1); }   // a fault, a key
                 if (!reply.empty() && write(clients[i], (reply + "\n").data(), reply.size() + 1) < 0) break;
             }
             ++i;

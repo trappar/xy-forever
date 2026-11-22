@@ -16,6 +16,7 @@ std::string command(const std::string& line, bool& quit, int client) {
         board_advance(client, ms);
         return "";                                        // answered when the clock is there
     }
+    if (n == 1 && !strcmp(verb, "settle")) { board_settle(client); return ""; }   // answered at rest: sim/clock.cpp
     if (n >= 1 && !strcmp(verb, "cut")) {                 // power cut now, then power on (PLAY)
         ++shared->cuts;
         power_cycle(true, "power cut");

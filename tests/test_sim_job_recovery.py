@@ -41,7 +41,7 @@ class Recovery(Switch, unittest.TestCase):
         while not predicate():
             self.assertLess(time.monotonic(), end, what)
             self.dev.hello()
-            time.sleep(0.01)
+            self.sim.advance(10)
 
     def restart(self, plain=False):
         self.sim.control('power plain' if plain else 'power play')
@@ -126,7 +126,7 @@ class Recovery(Switch, unittest.TestCase):
         end = time.monotonic() + 30
         while not (self.sim.status()['power_ons'] > ons and self.sim.status()['a'] == 'os' and self.sim.status()['b'] == 'os'):
             self.assertLess(time.monotonic(), end)
-            time.sleep(0.01)
+            self.sim.advance(10)
         self.assertFalse((self.root / JOURNAL).exists())
         self.assertEqual(content(self.root), self.expected(target))
         self.restart()
@@ -166,7 +166,7 @@ class Recovery(Switch, unittest.TestCase):
                     end = time.monotonic() + 30
                     while self.sim.status()['cuts'] == cuts:
                         self.assertLess(time.monotonic(), end, 'the armed mutation boundary')
-                        time.sleep(0.01)
+                        self.sim.advance(10)
                     self.sim.wait_listening(30); self.reconnect(); self.dev.hello()
                     self.repaired(previous if undo else target, official=undo)
             self.dev.t.close(); self.sim.stop()
@@ -186,11 +186,11 @@ class Recovery(Switch, unittest.TestCase):
                 end = time.monotonic() + 30
                 while self.sim.status()['cuts'] == cuts:
                     self.assertLess(time.monotonic(), end, 'first interrupted replay')
-                    time.sleep(0.005)
+                    self.sim.advance(5)
                 self.sim.set('cut_after', 1)
                 while self.sim.status()['cuts'] < cuts + 2:
                     self.assertLess(time.monotonic(), end, 'replay interrupted again')
-                    time.sleep(0.005)
+                    self.sim.advance(5)
                 self.sim.set('a_slow_ms', 0)
                 self.sim.wait_listening(30); self.reconnect(); self.dev.hello()
                 self.repaired(previous if undo else target, official=undo)

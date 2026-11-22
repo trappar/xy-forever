@@ -114,7 +114,7 @@ class SimulatorTest(unittest.TestCase):
             if 'resetting' in (status['a'], status['b']):
                 self.sim.advance(100)
             else:
-                time.sleep(0.01)
+                self.sim.advance(10)
         self.fail('%s not reached within %g s: %s' % (what, timeout, self.sim.status()))
 
     def restarted(self, boots):
@@ -327,7 +327,7 @@ class SimulatorTest(unittest.TestCase):
         deadline = time.monotonic() + 5.0
         while self.a_request(PATH_CLASS, 0x25, path=probe) != (0, 0):
             self.assertLess(time.monotonic(), deadline, 'the read-write window never opened')
-            time.sleep(0.02)
+            self.sim.advance(20)
         return thread, reply
 
     def test_engine_refuses_brick_paths_on_a_with_b_bypassed(self):
@@ -923,7 +923,7 @@ class SimulatorTest(unittest.TestCase):
         self.wait(lambda s: s['rw_open'] == 1, what='settle tried')
         deadline = time.monotonic() + 10
         while self.b_window(dev)[0] != 0 and time.monotonic() < deadline:
-            time.sleep(0.05)
+            self.sim.advance(50)
         self.assertEqual(self.b_window(dev), (0, 0, 1))
         self.assertEqual(self.sim.status()['rw_open'], 1)
         self.sim.set('fail_unmount', 0)
@@ -973,7 +973,7 @@ class SimulatorTest(unittest.TestCase):
             if advance:
                 self.sim.advance(advance)
             else:
-                time.sleep(0.05)
+                self.sim.advance(50)
         self.fail('storage phase %r not reached: %s' % (phase, st))
 
     def test_slow_mount_ends_in_a_working_menu(self):
@@ -1027,7 +1027,7 @@ class SimulatorTest(unittest.TestCase):
             st = self.storage_start(dev)
             if st['a_mount'] and st['a_mount']['repair']['state'] == state:
                 return st
-            time.sleep(0.05)
+            self.sim.advance(50)
         self.fail('repair %r not reached: %s' % (state, st))
 
     def test_clean_mount_writes_nothing(self):
@@ -1142,7 +1142,7 @@ class SimulatorTest(unittest.TestCase):
             if reads is not None and now['b_clock_reads'] - reads >= 100:
                 break
             self.assertLess(time.monotonic(), deadline, 'B never waited on the request: %s' % now)
-            time.sleep(0.005)
+            self.sim.advance(5)
         self.sim.advance(ms)
         thread.join(timeout + 1.0)
         self.assertIn('r', reply, reply.get('error'))
@@ -1189,13 +1189,14 @@ class SimulatorTest(unittest.TestCase):
         dev = self.connect()
         path = BASE + 'state-a.txt'
         self.assertEqual(dev.read_file(path)[0], 0)
-        start = time.monotonic()
+        clock = lambda: self.sim.status()['clock_ms']    # noqa: E731 (device time)
+        start = clock()
         self.assertEqual(dev.read_file(path)[0], 0)
-        fast = time.monotonic() - start
+        fast = clock() - start
         self.sim.set('a_slow_ms', 100)                    # A's loop takes each request 100 ms late
-        start = time.monotonic()
+        start = clock()
         self.assertEqual(dev.read_file(path)[0], 0)
-        self.assertGreater(time.monotonic() - start, fast + 0.2)   # open, read, probe, close: >= 3 requests
+        self.assertGreaterEqual(clock() - start, fast + 300)   # open, read, probe, close: >= 3 requests
         self.sim.set('a_slow_ms', 0)
 
     # requests held in B's SPI driver (b_queue) and answered after their bound, on the device
@@ -1347,7 +1348,7 @@ class SimulatorTest(unittest.TestCase):
             for st in (st for st in SPEC['streams'] if st['direction'] == 'to_device'):
                 for chunk in st['chunks']:
                     s.sendall(bytes.fromhex(chunk))
-                    time.sleep(0.005)                     # separate reads on the device side
+                    self.sim.advance(5)                   # separate reads on the device side
                 expect = [(int(f['type'], 16) | P.REPLY, f['seq']) for f in st['frames']]
                 got = self.frames(s, parser, lambda g: len(g) >= len(expect), 2.0)
                 self.assertEqual([(t, seq) for t, seq, _ in got], expect, st['name'])

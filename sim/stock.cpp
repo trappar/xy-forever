@@ -43,6 +43,7 @@ int listener = -1, client = -1;
 void cdc_close_client(const char* why) {
     if (client < 0) return;
     close(client); client = -1;
+    shared->usb_held = 0;                                // sim/clock.cpp: no reply held up by that host
     log("USB host %s", why);
 }
 void cdc_start() {
@@ -109,9 +110,9 @@ int cdc_write(const uint8_t* data, uint32_t n) {
     const int32_t pull = shared->cable_pull;
     if (pull > 0 && uint32_t(pull) < allowed) allowed = uint32_t(pull);
     const ssize_t sent = send(client, data, allowed, MSG_DONTWAIT);
-    if (sent > 0) xyf_sim::active();
+    if (sent > 0) { xyf_sim::active(); shared->usb_held = 0; }
     if (sent < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) return -1;
+        if (errno == EAGAIN || errno == EWOULDBLOCK) { shared->usb_held = 1; return -1; }   // until the host reads
         cdc_close_client("went away");
         return int(n);
     }
@@ -168,7 +169,7 @@ int mount(uint32_t device, int read_only_mount) {
     if (const int32_t ms = slow.load()) {                // ends early once the fault is cleared
         log("fault: the %s mount takes %d ms", read_only_mount ? "read-only" : "read-write", ms);
         for (const uint64_t end = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < end && slow.load();)
-            idle_pause(end, 5000);
+            idle_pause(end);
     }
     if (read_only_mount && shared->needs_repair.load()) {   // 192: the scan wants to repair (erase)
         const uint32_t gate = r32(device + 0x88);
@@ -198,7 +199,7 @@ int unmount(uint32_t device) {
         if (const int32_t ms = shared->unmount_ms.load()) {           // ends early once the fault is cleared
             log("fault: the checkpoint takes %d ms", ms);
             for (const uint64_t end = device_cycles() + uint64_t(ms) * 400000u; device_cycles() < end &&
-                 shared->unmount_ms.load();) idle_pause(end, 5000);
+                 shared->unmount_ms.load();) idle_pause(end);
         }
         media_change("read-write unmount (checkpoint)"); shared->rw_open = 0;
         if (shared->needs_repair.exchange(0)) log("yaffs: repaired; the checkpoint is written");
@@ -279,7 +280,7 @@ void storage_op_done() {
         log("fault: power cut armed: cutting after this storage operation");
         Message m = {message_magic, k_event, 0, 0, e_cut, 0, 0, 0, 0, 0, 0};
         send_message(link_fd, m, 0);
-        for (;;) idle_pause(0, 1000000);               // the board cuts the power
+        for (;;) idle_pause(0, true);         // the board cuts the power
     }
 }
 #include "stock_otp.ipp"

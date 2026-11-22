@@ -178,12 +178,33 @@ def sim_address(address):
     return host, int(port)
 
 
+def sim_pause(address, seconds):
+    """A host's pause against the simulator: its device clock moves on that long (control "advance MS" on port + 1,
+    answered once it is there), in no host time. The device sees the pause as on the OP-XY (sim/clock.cpp: device
+    time stands still while nothing is due)."""
+    host, port = sim_address(address)
+    with socket.create_connection((host, port + 1), timeout=10.0) as control:
+        control.sendall(b'advance %d\n' % max(1, int(round(seconds * 1000))))
+        reply = b''
+        while not reply.endswith(b'\n'):
+            chunk = control.recv(256)
+            if not chunk:
+                raise OSError('the simulator closed its control port')
+            reply += chunk
+
+
+def pause(port, seconds):
+    """The host waits seconds on the device: time.sleep, or on the simulator (TcpPort) its clock moves on."""
+    getattr(port, 'pause', time.sleep)(seconds)
+
+
 class TcpPort:
     """The device simulator's USB endpoint (python3 -m xy_forever.sim): the same raw byte stream
     on a local TCP port. Only loopback addresses: the simulator never listens elsewhere."""
 
     def __init__(self, address):
         host, port = sim_address(address)
+        self.address = '%s:%d' % (host, port)
         self.sock = socket.create_connection((host, port), timeout=2.0)
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         self.fd = self.sock.fileno()
@@ -202,6 +223,9 @@ class TcpPort:
         if not data:
             raise OSError('the simulator closed the connection (device restart or USB off)')
         return data
+
+    def pause(self, seconds):
+        sim_pause(self.address, seconds)
 
     def close(self):
         if self.fd is not None:
