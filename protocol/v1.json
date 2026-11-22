@@ -1168,7 +1168,7 @@
         ]
       },
       "errors": ["bad_request", "unsupported", "busy", "link", "storage", "state", "not_found", "refused"],
-      "doc": "Admission uses the authenticated TFW reader and publishes one complete kept pack. Poll status until completion. Cancel during authentication or staging leaves the current packs intact. Enable requires stock compatibility for the exact signed pack."
+      "doc": "Admission uses the authenticated TFW reader and publishes one complete kept pack. Poll status until completion. Cancel during authentication or staging leaves the current packs intact. Enable moves a retained signed pack into the live packs (trusted on any official base, not tested there)."
     }
   ],
   "events": [

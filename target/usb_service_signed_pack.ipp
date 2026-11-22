@@ -507,8 +507,8 @@ U32 signed_pack_toggle(const char* name, bool enable) {
     for (U32 i = head; i < head + 64; ++i)
         if (!(record[i] >= '0' && record[i] <= '9') && !(record[i] >= 'a' && record[i] <= 'f')) return P::s_unsupported;
 
-    // Stock compatibility is pinned to an exact base and ciphertext digest after playback qualification.
-    if (enable) return P::s_refused;
+    // #195: a pack whose TE signature verified at import is trusted on any official base (untested there: the
+    // menu and packs list say so); disabling it from the menu recovers.
     if (to_kind != -2 && (to_kind != 1 || pack_kind(io, to_root, name) != -2)) return P::s_state;
     const U32 window = enter_writes();
     if (window) return window;

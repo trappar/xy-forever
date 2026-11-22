@@ -72,6 +72,27 @@ class SignedPackImport(unittest.TestCase):
     def call(self, op, name='', version=1):
         return self.dev.call(ids.PACKS_MANAGE, struct.pack('<II', version, op) + name.encode() + b'\0')
 
+    def settled(self, op, name):
+        """packs.manage op, sent again while it answers busy (a write window settling); its status."""
+        hang_deadline = time.monotonic() + bounds.WAIT_S
+        while (code := self.call(op, name)[0]) == ids.S_BUSY and time.monotonic() < hang_deadline:
+            self.sim.advance(20)
+        return code
+
+    def listed(self, pack_id):
+        """packs list's rows for pack_id."""
+        out = io.StringIO()
+        while True:  # a toggle's window close may still be out: the listing answers busy
+            out.seek(0)
+            out.truncate()
+            with contextlib.redirect_stdout(out):
+                code = packs.list_packs(self.dev)
+            if code != ids.S_BUSY:
+                break
+            self.sim.advance(20)
+        self.assertEqual(code, 0, out.getvalue())
+        return [row for row in json.loads(out.getvalue()) if row['id'] == pack_id]
+
     def start(self, name='test.tfw'):
         """packs.manage import, sent again while it answers busy (the write window settling)."""
         hang_deadline = time.monotonic() + bounds.WAIT_S
@@ -92,18 +113,17 @@ class SignedPackImport(unittest.TestCase):
             self.sim.advance(20)
         self.fail('signed import did not finish')
 
-    def test_signed_import_retains_one_tree_and_refuses_unknown_compatibility(self):
-        """Kept: #195's import end to end: one retained tree of hardlinked blobs, its record, and enable refused while compatibility is unknown."""
+    def test_signed_import_retains_one_tree_then_enables_and_disables(self):
+        """Kept: #195's import end to end: one retained tree of hardlinked blobs and its record, listed; then enable
+        (a verified signed pack is trusted, listed as not tested on this firmware) and disable."""
         catalog = self.root / 'content/op1_factory.json'
         original = catalog.read_bytes()
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish(), (3, 2, 2, ids.S_OK))
         self.assertEqual(self.traced, 0)  # nothing failed: no log kept
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            self.assertEqual(packs.list_packs(self.dev), 0)
-        listed = [row for row in json.loads(out.getvalue()) if row['id'] == 'fixture']
-        self.assertEqual(listed, [dict(id='fixture', state='retained', signed=True, compatibility='unknown')])
+        listed = self.listed('fixture')
+        untested = dict(id='fixture', signed=True, firmware='not tested on this firmware')
+        self.assertEqual(listed, [dict(untested, state='retained')])
         sample = self.retained / 'samples/hand.wav'
         self.assertEqual(sample.read_bytes(), SAMPLE)
         digest = hashlib.sha256(SAMPLE).hexdigest()
@@ -118,7 +138,12 @@ class SignedPackImport(unittest.TestCase):
             self.assertEqual(session.collect(), 0)
         record = (self.retained / 'xyf-pack.txt').read_text()
         self.assertEqual(record, 'version=1\nsha256=' + hashlib.sha256(self.data[0x380:]).hexdigest() + '\n')
-        self.assertEqual(self.call(packs.OP_ENABLE, 'fixture')[0], ids.S_REFUSED)
+        self.assertEqual(self.settled(packs.OP_ENABLE, 'fixture'), ids.S_OK)
+        self.assertEqual(self.listed('fixture'), [dict(untested, state='active')])
+        self.assertTrue((self.live / 'xyf-pack.txt').is_file())
+        self.assertFalse(self.retained.exists())
+        self.assertEqual(self.settled(packs.OP_DISABLE, 'fixture'), ids.S_OK)
+        self.assertEqual(self.listed('fixture'), [dict(untested, state='retained')])
         self.assertFalse(self.live.exists())
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_STATE)

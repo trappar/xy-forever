@@ -54,7 +54,8 @@ On an error: every field (zero where not reached). Errors: `bad_request`, `unsup
 ### 0x4f `packs.manage`
 
 Admit or toggle a signed sound pack and inspect progress. Admission uses the authenticated TFW reader and publishes one complete kept pack. Poll status until
-completion. Cancel during authentication or staging leaves the current packs intact. Enable requires stock compatibility for the exact signed pack.
+completion. Cancel during authentication or staging leaves the current packs intact. Enable moves a retained signed pack into the live packs (trusted on any
+official base, not tested there).
 
 | Request field (9 to 136 bytes) | Type | Meaning |
 |---|---|---|

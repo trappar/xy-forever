@@ -76,8 +76,9 @@ void draw(uint16_t* fb, const State& s, const char* status, const ui::Chrome* ch
                              s.pack_inbox ? "Install sound pack?" :
                                             "Remove sound pack?";
             dialog.lines[0] = s.pack_names[s.pack_selected];
-            dialog.lines[1] = dialog.lines[2] = dialog.lines[3] = "";
-            dialog.count = 1;
+            dialog.lines[1] = kind == 2 ? "Not tested on this firmware." : "";   // #195: a trusted signed pack
+            dialog.lines[2] = dialog.lines[3] = "";
+            dialog.count = kind == 2 ? 2 : 1;
             dialog.cancel = "Cancel";
             dialog.accept = kind == 1    ? "Import" :
                             kind == 2    ? "Enable" :

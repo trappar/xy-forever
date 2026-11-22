@@ -68,10 +68,9 @@ static void pack_start(xyf::menu::State& s) {
     if (kind == retained_pack || kind == enabled_pack) {
         const bool enable = kind == retained_pack;
         const U32 code = signed_pack_toggle(id, enable);
-        pack_finish(s, code == P::s_refused && enable ? "Compatibility unknown." :
-                       code                           ? "Cannot change pack." :
-                       enable                         ? "Pack enabled." :
-                                                        "Pack disabled.");
+        pack_finish(s, code   ? "Cannot change pack." :
+                       enable ? "Enabled. Not tested on this firmware." :
+                                "Pack disabled.");
         return;
     }
 #endif
@@ -228,7 +227,7 @@ static bool pack_change_step(xyf::menu::State& s) {
             return requested;
         }
         s.pack_importing = s.pack_cancel = false;
-        const char* message = "Pack imported. Compatibility unknown.";
+        const char* message = "Pack imported.";
         switch (signed_pack_error) {
         case P::s_ok: break;
         case P::s_cancelled: message = "Pack import cancelled."; break;

@@ -25,15 +25,15 @@ Creating the report folder is a storage write, so it takes `--yes-write`:
 
 Copy an original signed sound pack `.tfw` to `/yaffs2/xy-forever/inbox/`. Select it in
 Settings > Content packs > Inbox, or run `uv run xyf-host packs import NAME.tfw --yes`.
-XY Forever authenticates the archive and retains the extracted pack. Enable is available for
-exact pack and firmware combinations qualified on an OP-XY. An unqualified pack reports
-**Compatibility unknown** and stays in the inbox pack list. Use `packs enable ID --yes`
-or `packs disable ID --yes` to toggle a retained signed pack.
+XY Forever authenticates the archive and retains the extracted pack. A pack whose TE signature verified is
+trusted on any official firmware: `packs enable ID --yes` (or the menu) enables it, noting that it is not tested
+on this firmware, and `packs disable ID --yes` retains it again. Enabling moves the pack folder only; getting its
+sounds into the OS is #188.
 
 `uv run xyf-host packs list` lists the sound packs in `/yaffs2/content/dlc/` (state `active`) and the retained
-signed packs in `/yaffs2/xy-forever/packs/` (state `retained`). Each row gives the pack folder ID, its state and the
+signed packs in `/yaffs2/xy-forever/packs/` (state `retained`); an enabled signed pack is `active`. Each row gives the pack folder ID, its state and the
 vendor manifest's name, version, author and description when present; a signed pack also shows `"signed": true` and
-its compatibility (`unknown` until playback qualification).
+`"firmware": "not tested on this firmware"`.
 A malformed manifest is reported beside its folder ID.
 
 Place a complete, unpacked sound pack in `/yaffs2/xy-forever/inbox/ID/`. Its `manifest.json` must

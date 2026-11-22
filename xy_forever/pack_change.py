@@ -50,7 +50,7 @@ def configure(sub):
     actions.add_parser('list', help='list installed pack IDs and vendor metadata')
     for action, help_text in (
         ('import', 'authenticate an inbox .tfw and retain it'),
-        ('enable', 'activate a compatible signed pack'),
+        ('enable', 'activate a retained signed pack (not tested on this firmware)'),
         ('disable', 'retain a signed pack without activating it'),
     ):
         parser = actions.add_parser(action, help=help_text)
@@ -195,7 +195,7 @@ def signed_request(dev, operation, name='', busy_s=0.0):
             break
         time.sleep(0.5)
     if code == P.ids.S_REFUSED and operation == OP_ENABLE:
-        raise store.StoreError('compatibility unknown or pack path refused')
+        raise store.StoreError('pack path refused')
     store.check(code, 'signed pack')
     if len(body) < 28 or (len(body) - 28) % 16 or (operation != OP_TRACE and len(body) != 28):
         raise store.StoreError('signed pack reply of %d bytes' % len(body))
@@ -255,7 +255,11 @@ def signed_change(dev, action, pack_id):
     operation = SIGNED_OPERATIONS[action]
     signed_request(dev, operation, pack_id, busy_s=20.0 if operation == OP_IMPORT else 0.0)
     if operation != OP_IMPORT:
-        print('%s pack %s' % ('Enabled' if operation == OP_ENABLE else 'Disabled', pack_id))
+        print(
+            'Enabled pack %s (not tested on this firmware)' % pack_id
+            if operation == OP_ENABLE
+            else 'Disabled pack ' + pack_id
+        )
         return 0
     previous = None
     started = time.monotonic()
@@ -337,7 +341,7 @@ def pack_rows(dev, root, state, rows):
         row = dict(id=pack, state=state)
         if SIGNED_RECORD in names:
             row['signed'] = True
-            row['compatibility'] = 'unknown'
+            row['firmware'] = 'not tested on this firmware'
         if code:
             row['error'] = 'manifest too large'
         else:
@@ -356,8 +360,8 @@ def pack_rows(dev, root, state, rows):
 
 def list_packs(dev):
     """Installed packs (content/dlc/, state active) and retained signed packs (xy-forever/packs/, state retained),
-    with their manifest's metadata; a signed pack (its xyf-pack.txt record) shows its compatibility, unknown until
-    playback qualification pins it."""
+    with their manifest's metadata; a signed pack (its xyf-pack.txt record) is trusted on any official base but not
+    tested on this firmware, and says so."""
     rows = []
     for root, state in ((DLC, 'active'), (RETAINED, 'retained')):
         code = pack_rows(dev, root, state, rows)

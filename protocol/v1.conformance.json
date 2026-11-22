@@ -110,7 +110,7 @@
     {"command": "packs.manage", "status": "storage", "why": "requires a mount or storage operation to fail"},
     {"command": "packs.manage", "status": "state", "why": "requires an occupied pack ID or cancellation with no job"},
     {"command": "packs.manage", "status": "not_found", "why": "requires a missing inbox file or signed pack"},
-    {"command": "packs.manage", "status": "refused", "why": "requires incompatible pack or invalid destination state"},
+    {"command": "packs.manage", "status": "refused", "why": "requires a malformed pack record or an invalid pack path"},
     {"rule": "stale_replies", "why": "a rule for tools (both runners drop replies with another seq and reset their parser after a timeout); the device shows nothing"},
     {"rule": "link_lost", "why": "processor A must fail to answer (as file.read's link)"},
     {"rule": "versions", "why": "about later versions; one version has nothing to show"},
