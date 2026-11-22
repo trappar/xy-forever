@@ -64,7 +64,7 @@ jobs:
         with:
           version: 2026.11.12
           cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --no-group native   # no Python suite here: skip building hosttest/
       - run: pnpm install --frozen-lockfile
       - name: The generated protocol files match protocol/v1.json
         run: mise run protogen
