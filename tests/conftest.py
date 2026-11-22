@@ -8,8 +8,7 @@ every other test is `fast`. `mise run test` runs the fast tier (named tests: any
 
 Budgets (BUDGETS), on CPU time: one test's, and the sum of a tier's tests'. A test's CPU time sums its setup,
 call and teardown: this process (every thread) and the child processes it waited for (a simulator it stopped,
-a binary it ran), less the host compiles it waited for (hostbuild reports them: a C++ edit never fails a
-budget). A busy machine stretches wall time, barely CPU time. Every limit scales by probe_s() against PROBE_S:
+a binary it ran); the host C++ is built before the run (`uv sync`), never in a test. A busy machine stretches wall time, barely CPU time. Every limit scales by probe_s() against PROBE_S:
 slower hardware, or a busy machine at the run's start or end, raises them (never below the table);
 XYF_BUDGETS_SCALE=N fixes the scale instead. --testmon's coverage tracing scales them by TRACING. Going over
 fails the run, everywhere (CI too), and names the test or tier: make the test faster, or move it to a slower
@@ -157,7 +156,7 @@ class Budgets:
             return
         props = dict(report.user_properties)
         entry = self.tests.setdefault(report.nodeid, [props.get('xyf_tier', 'fast'), 0.0])
-        entry[1] += props.get('xyf_cpu_s', report.duration) - props.get('xyf_compile_cpu_s', 0.0)
+        entry[1] += props.get('xyf_cpu_s', report.duration)
 
     def pytest_sessionfinish(self, session):
         wall = time.monotonic() - self.start

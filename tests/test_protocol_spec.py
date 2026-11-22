@@ -3,6 +3,7 @@ files are current, the golden frames round-trip through the real host codec (and
 encoder), the device dispatch answers exactly the spec's commands, and the hand-written values
 that stay outside the generated files agree with the spec. No device access."""
 
+import ast
 import copy
 import ctypes as C
 import itertools
@@ -17,8 +18,9 @@ from pathlib import Path
 import protogen
 import protogen_hello
 import pytest
+import xyf_hosttest
 
-from xy_forever import hostbuild, release, xyf_host
+from xy_forever import release, xyf_host
 from xy_forever import usb_proto as P
 from xy_forever import usb_proto_ids as ids
 from xy_forever import xyf_build as builder
@@ -140,41 +142,9 @@ class GoldenFramesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # The device encoder (target/usb_proto.cpp with the generated header), built for the host.
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-proto-')
-        bridge = Path(cls.tmp.name) / 'bridge.cpp'
-        bridge.write_text(
-            '#include "usb_proto.hpp"\nextern "C" unsigned proto_encode(unsigned t, unsigned s, '
-            'const uint8_t* p, unsigned n, uint8_t* out, unsigned cap) '
-            '{ return xyf::usbp::encode(uint8_t(t), uint8_t(s), p, n, out, cap); }\n'
-        )
-        lib = Path(cls.tmp.name) / 'proto.dylib'
-        hostbuild.run(
-            [
-                '/usr/bin/clang++',
-                '-std=c++11',
-                '-O1',
-                '-shared',
-                '-fPIC',
-                '-Wall',
-                '-Wextra',
-                '-Werror',
-                '-I',
-                str(ROOT / 'target'),
-                str(ROOT / 'target/usb_proto.cpp'),
-                str(ROOT / 'target/xyf_crc32.cpp'),
-                str(bridge),
-                '-o',
-                str(lib),
-            ],
-            check=True,
-            capture_output=True,
-        )
+        lib = xyf_hosttest.program('proto')  # tests/proto_bridge.cpp
         cls.lib = C.CDLL(str(lib))
         cls.lib.proto_encode.restype = C.c_uint
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
 
     def frame_of(self, g):
         """(wire type, field table, payload prefix, values as the codec takes them)."""
@@ -227,30 +197,14 @@ class GoldenFramesTest(unittest.TestCase):
                         P.unpack(fields, body + b'\0')
 
     def device_hello(self, switches, version='0.1.0', mode='product'):
-        """(hello text, cmds) as the generated header composes them for a build with these switches."""
-        source = Path(self.tmp.name) / 'hello.cpp'
-        source.write_text(
-            '#include <stdio.h>\n#include "usb_proto_ids.hpp"\n'
-            'int main() { printf("%s\\n%s", XYF_USBP_HELLO_TEXT, XYF_USBP_CMDS); return 0; }\n'
-        )
-        exe = Path(self.tmp.name) / 'hello'
-        hostbuild.run(
-            [
-                '/usr/bin/clang++',
-                '-std=c++11',
-                '-Wall',
-                '-Werror',
-                '-I',
-                str(ROOT / 'target'),
-                '-DXYF_VERSION="%s"' % version,
-                '-DXYF_BUILD_MODE="%s"' % mode,
-            ]
-            + ['-D%s=1' % s for s in switches]
-            + [str(source), '-o', str(exe)],
-            check=True,
-            capture_output=True,
-        )
-        return subprocess.run([str(exe)], check=True, capture_output=True, text=True).stdout.split('\n')
+        """(hello text, cmds) as the generated header composes them for a build with these switches: the
+        preprocessor's expansion of its two macros (adjacent string literals, joined as C++ joins them)."""
+        source = '#include "usb_proto_ids.hpp"\n@hello XYF_USBP_HELLO_TEXT\n@cmds XYF_USBP_CMDS\n'
+        argv = ['/usr/bin/clang++', '-E', '-P', '-x', 'c++', '-std=c++11', '-I', str(ROOT / 'target')]
+        argv += ['-DXYF_VERSION="%s"' % version, '-DXYF_BUILD_MODE="%s"' % mode] + ['-D%s=1' % s for s in switches]
+        out = subprocess.run([*argv, '-'], input=source, check=True, capture_output=True, text=True).stdout
+        found = dict(line[1:].split(' ', 1) for line in out.splitlines() if line.startswith('@'))
+        return [ast.literal_eval(found['hello']), ast.literal_eval(found['cmds'])]
 
     def test_hello_golden_is_the_device_text(self):
         """The product build's hello (generated macros, the release version and mode; the device writes the image

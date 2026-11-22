@@ -412,13 +412,12 @@ def mods_reference(packages, machines, name):
     makes from the local package set, the stock 1.2.1 os.ldr and catalog: the device pass's reference only."""
     import tempfile
 
-    from xy_forever import hostbuild
     from xy_forever import modpatch as MP
 
     paths.SESSIONS.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix='mods-ref-', dir=paths.SESSIONS))
     try:
-        binary = MP.build(work / 'bin', run=hostbuild.run)
+        binary = MP.build()
         (work / 'job.txt').write_text(
             MP.job_text(packages, machines, [], paths.STOCK_121 / 'os.ldr', MODS_CATALOG, name=name)
         )

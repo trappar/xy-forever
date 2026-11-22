@@ -1,4 +1,4 @@
-// Many runs of a sanitized host binary in one process start (tests/fork_each.py builds and drives it).
+// Many runs of a sanitized host binary in one process start (tests/fork_each.py drives it; hosttest/CMakeLists.txt builds it in).
 //
 // The binary's own main is renamed by the build (-Dmain=fork_each_main) and this file supplies the real one:
 //   BINARY RUNS   where RUNS holds one run a line, tab-separated: STDIN STDOUT STDERR ARG...
@@ -46,7 +46,7 @@ int run(char* self, const std::vector<std::string>& each) {
         if (errno != EINTR) return 127;
     return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
 }
-}  // namespace
+} // namespace
 
 int main(int argc, char** argv) {
     if (argc != 2) return 2;

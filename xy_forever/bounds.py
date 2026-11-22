@@ -10,4 +10,4 @@ SIM_DEADLINE_S = 20.0  # a test's simulator exits on its own this long after it 
 SIM_CALL_S = 5.0  # one host call to the simulator, wall time (xyf-host --sim, conformance.py --sim)
 SIM_CONNECT_S = 5.0  # finding the simulator's endpoint and its HELLO (xyf-host connect --sim)
 WAIT_S = 10.0  # a test's wait for the simulator to reach a state
-COMPILE_S = 120.0  # one host compile or link (xy_forever/hostbuild.py)
+COMPILE_S = 120.0  # one CMake configure or build of a simulator variant (xy_forever/sim.py build())

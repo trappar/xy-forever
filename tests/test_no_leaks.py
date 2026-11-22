@@ -37,7 +37,7 @@ EXAMPLE_DOMAINS = re.compile(r'@(.+\.)?example\.(com|org|net)$', re.I)
 HOME = re.compile(r'(?:/Users|/home)/(?!<|Shared\b)[A-Za-z0-9._-]+|[A-Za-z]:\\+Users\\+(?!<)[A-Za-z0-9._-]+')
 EVIDENCE = re.compile(r'xy-forever/(sessions|analysis|reports)/([^\s/`\'"<>)]+)')
 TOOL_FOLDERS = {
-    'host-builds',  # xy_forever/hostbuild.py's cache
+    'simulator',  # xy_forever/sim.py's state and stock image
     'neutral',  # scripts/neutral.py's worktrees
     'bootloader-121-listing',
 }  # paths.LISTING_121, the re/ tools' input
@@ -123,7 +123,7 @@ class NoLeaksTest(unittest.TestCase):
             'commit trailer Co-Authored-By: Claude <noreply@anthropic.com>',
             'mail dev@example.com or ops@lists.example.org',
             'home: /Users/<you>/private, ~/private, /Users/Shared/x, C:\\Users\\<you>\\x',
-            'evidence: ../private/xy-forever/sessions/<date>-device-pass-<n>/ and sessions/host-builds/',
+            'evidence: ../private/xy-forever/sessions/<date>-device-pass-<n>/ and sessions/simulator/',
             'listing: private/xy-forever/analysis/bootloader-121-listing/FINDINGS.md',
             'keys: ../private/keys/opxy-update-keys.json; B = screen/keys/USB/PSoC',
             'pin: ' + 'ab' * 32,

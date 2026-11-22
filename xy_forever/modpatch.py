@@ -39,9 +39,6 @@ from . import modlink as L
 from . import package_records
 
 ROOT = Path(__file__).resolve().parents[1]
-CXX = '/usr/bin/clang++'
-NATIVE = ('mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content', 'mod_job', 'hash', 'ldr', 'inflate', 'json')
-PRODUCT_STACK_END = '0x8ab84000u'  # as xy_forever/tfw_extract.py: the product's module + stack
 SLOTS = ('engine', 'effect', 'player')
 KNOWN_BASES = ROOT / 'native/mod_known_bases.inc'
 KNOWN_NUMBERS = (
@@ -94,39 +91,13 @@ def known_bases_text(bases, stock=None, catalog=None):
     )
 
 
-SANITIZE = ('-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-sanitize-recover=all')
+def build(sanitize=False):
+    """The host adapter, host/mod_assemble.cpp (hosttest/CMakeLists.txt; `uv sync` builds it). XYF_SANITIZE=1 in the
+    environment makes every build the ASan/UBSan one."""
+    import xyf_hosttest
 
-
-def build(directory, flags=('-O2',), run=subprocess.run):
-    """Compile the host adapter into directory; returns its path (run: hostbuild.run caches). XYF_SANITIZE=1
-    in the environment makes every build the ASan/UBSan one (SANITIZE)."""
-    if os.environ.get('XYF_SANITIZE'):
-        flags = SANITIZE
-    from .sim import policy_source  # cold.cpp's allowed and protected ranges, verbatim
-
-    directory = Path(directory)
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / 'cold_policy.inc').write_text(policy_source())
-    binary = directory / 'mod_assemble'
-    command = [
-        CXX,
-        '-std=c++11',
-        *flags,
-        '-Wall',
-        '-Wextra',
-        '-Werror',
-        '-DXYF_STACK_END=' + PRODUCT_STACK_END,
-        '-I',
-        str(directory),
-        str(ROOT / 'host/mod_assemble.cpp'),
-        *[str(ROOT / 'native' / (n + '.cpp')) for n in NATIVE],
-        *[str(ROOT / 'target' / (n + '.cpp')) for n in ('xyf_manifest', 'xyf_package_record')],
-        '-o',
-        str(binary),
-    ]
-    result = run(command, capture_output=True, text=True)
-    M.check(result.returncode == 0, 'host adapter build failed:\n' + (result.stderr or '')[-2000:])
-    return binary
+    sanitize = sanitize or bool(os.environ.get('XYF_SANITIZE'))
+    return xyf_hosttest.program('mod_assemble' + ('_sanitized' if sanitize else ''))
 
 
 def job_text(
@@ -313,7 +284,7 @@ def prove(
         scratch.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=scratch, prefix='prove-patch-') as tmp:
         tmp = Path(tmp)
-        binary = binary or build(tmp / 'bin', run=_cached())
+        binary = binary or build()
         jobs, names = [], {}
         for n, (name, machines, exts) in enumerate(selections):
             work = tmp / ('s%02d' % n)
@@ -370,9 +341,3 @@ def proven(row):
         and (row['input'], row['link'], row['patch'], row['verify'], row['content'], row['copy'])
         == ('ok', 'ok', 'ok', 'ok', 'ok', 'ok')
     )
-
-
-def _cached():
-    from . import hostbuild
-
-    return hostbuild.run

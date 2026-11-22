@@ -77,7 +77,7 @@ class SimulatorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-sim-')
-        cls.out = sim.build()  # the shared build cache (by input hash)
+        cls.out = sim.build()  # the default variant `uv sync` built
         cls.seeded = sim.seed(Path(cls.tmp.name) / 'seed')
         cls.runs = 0
 
@@ -90,7 +90,7 @@ class SimulatorTest(unittest.TestCase):
         self.dir = Path(self.tmp.name) / ('run-%d' % self.runs)
         shutil.copytree(self.seeded, self.dir / 'yaffs2')
         self.sim = sim.Simulator(
-            self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=self.out, log=self.dir / 'log.txt'
+            self.dir / 'yaffs2', self.dir / 'bootpart.bin', binary=self.out, log=self.dir / 'log.txt'
         ).start()
         self.links = []
 

@@ -1,17 +1,14 @@
 """Many runs of a sanitized host binary for one sanitizer start (tests/fork_each.cpp).
 
-A test that runs a sanitized binary on many inputs adds FLAGS to its compile, then calls run(): each run is a
-fork of one started process, so the sanitizer runtime's start (about 0.2 s of CPU a process on CI's macOS VMs,
-against 0.01 s on an M-series Mac) is paid once, not per input.
+A test that runs a sanitized binary on many inputs builds it with FORK_EACH (hosttest/CMakeLists.txt xyf_program),
+then calls run(): each run is a fork of one started process, so the sanitizer runtime's start (about 0.2 s of CPU a
+process on CI's macOS VMs, against 0.01 s on an M-series Mac) is paid once, not per input.
 """
 
 import subprocess
 from pathlib import Path
 
 from xy_forever import bounds
-
-SOURCE = Path(__file__).resolve().parent / 'fork_each.cpp'
-FLAGS = ('-Dmain=fork_each_main', str(SOURCE))
 
 
 def run(binary, runs, work):

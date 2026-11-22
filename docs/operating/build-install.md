@@ -9,7 +9,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 ```sh
 cd xy-forever        # toolchain: ../tools/blackfin (elsewhere: docs/operating/dev-tools.md)
 mise run doctor                  # stock pair + fixtures in place? (first: operating/first-install.md)
-mise run check                   # build, --verify, fast and gate tiers: the build lands in builds/<image>
+mise run check                   # lint, build, --verify, every tier but the sweeps: the build lands in builds/<image>
 mise run check --confirm         # this commit's check receipt, with its image
 uv run xyf-build --xyf-product --out ../private/xy-forever/builds/repeat   # by hand: same candidate SHA
 uv run xyf-build --verify --out ../private/xy-forever/builds/repeat        # {"passed": true}
@@ -61,17 +61,20 @@ kept) or `sweep` (five 3-9 s chains of simulator restarts: they doubled a shared
 
 Budgets are enforced on CPU time everywhere, CI too: one test's and each tier's sum (`BUDGETS`, e.g. fast 0.3 s
 a test). A test's CPU time is its phases in its worker plus the child processes it waited for (a simulator it
-stopped), less the host compiles. Going over fails the run, naming the test or tier: make it faster or move
+stopped); the host C++ is built before the run, never in a test. Going over fails the run, naming the test or tier: make it faster or move
 it a tier. A busy machine stretches wall time, not CPU time; a probe raises the limits on slower hardware, and
 `--testmon` by its tracing. Wall time is only reported. Every test is also bounded, to end a hang, never a slow run (`bounds.TEST_S`, `SIM_TEST_S`): past it
 the run prints HUNG with every thread's traceback and its worker's process group ends. `test-changed` adds to testmon's Python tracking
-the C++ each test used (a `hosttest/` module or doctest file and its includes, or a `hostbuild` compile's
-`clang -M` record) and files it runs as a subprocess (`@pytest.mark.uses('scripts/x.py')`).
+the C++ each test used (a `hosttest/` module, doctest file or program and its includes) and files it runs as a
+subprocess (`@pytest.mark.uses('scripts/x.py')`).
 
-The tests' native code is `hosttest/`: one nanobind extension (`xyf_hosttest.module(NAME)`, a submodule per
-`hosttest/bind/NAME.cpp`) and one doctest binary (the C++ unit tests in `tests/native/`, sanitized, run as one gate-tier test by
-`tests/test_doctest.py`). `uv sync` builds both once, in `build/hosttest`, and rebuilds only what a C++ edit
-touched (`uv run` syncs first).
+All host C++ is one CMake build, `hosttest/` (scikit-build-core, ninja): one nanobind extension
+(`xyf_hosttest.module(NAME)`, a submodule per `hosttest/bind/NAME.cpp`), one doctest binary (the C++ unit tests in
+`tests/native/`, sanitized, run as one gate-tier test by `tests/test_doctest.py`), and the programs one shared build
+cannot serve (`xyf_hosttest.program(NAME)`): a library each test loads afresh, a define's variants, sanitized
+programs, the host tools (mod_link, mod_assemble, tfw_extract) and the simulator's test variants. `uv sync` builds it
+in `build/hosttest` and rebuilds only what an edit touched (`uv run` syncs first). Another simulator variant
+(`--version`, `--crash-trigger`) is built on first use by CMake into `build/sim/` (`hosttest/sim/`).
 
 `mise run check` (`scripts/check.py`) is the PR gate on a clean, committed tree: the product build into
 `build/product` plus `--verify` (cached, below; a verified build is copied to `../private/xy-forever/builds/<image>`),

@@ -23,7 +23,7 @@ class EventClock(unittest.TestCase):
         self.dir = Path(self.tmp.name)
         sim.seed(self.dir / 'yaffs2')
         self.sim = sim.Simulator(
-            self.dir / 'yaffs2', self.dir / 'bootpart.bin', build_dir=sim.build(), log=self.dir / 'log.txt'
+            self.dir / 'yaffs2', self.dir / 'bootpart.bin', binary=sim.build(), log=self.dir / 'log.txt'
         ).start()
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)

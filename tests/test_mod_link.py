@@ -451,8 +451,8 @@ class Synthetic(unittest.TestCase):
         path = cls.work / 'kit.json'
         path.write_text(json.dumps(strip_none(kit())))
         cls.gen = Path(M.split_kit(path, cls.work / 'packages', finish=finish)['root'])
-        cls.bridge = L.build(cls.work)
-        cls.sanitized = L.build(cls.work, sanitize=True)
+        cls.bridge = L.build()
+        cls.sanitized = L.build(sanitize=True)
         cls.core = None
         if has_core():
             cls.core = M.sdk_tree(OPEN_XY, L.SDK_COMMIT, cls.work)
@@ -1197,7 +1197,7 @@ class NumbersFixture(unittest.TestCase):
             ).stdout
         )
         with tempfile.TemporaryDirectory(prefix='mod-link-numbers-') as tmp:
-            bridge = L.build(tmp)
+            bridge = L.build()
             rules = Path(tmp) / 'rules.txt'
             rules.write_text(L.rules_text(json.loads((REAL / 'base/profile.json').read_text())))
             fixed = [tuple(f) for f in fixture['fixed']]

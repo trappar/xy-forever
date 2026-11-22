@@ -33,18 +33,6 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.timeout(bounds.SIM_TEST_S))
 
 
-@pytest.hookimpl(hookwrapper=True, tryfirst=True)
-def pytest_runtest_protocol(item):
-    """A test that uses the simulator (sim/) gets its build (the default one) before its bound: a cold build is a
-    compile, not the test."""
-    if any('sim/' in m.args for m in item.iter_markers('uses')):
-        from xy_forever import sim
-
-        if not sim.available():
-            sim.build()
-    yield
-
-
 def _hung(item, seconds):
     nodeid, capture = item.nodeid, item.config.pluginmanager.getplugin('capturemanager')
     if capture:

@@ -148,3 +148,135 @@ set_source_files_properties(${ROOT}/tests/native/v3_write_lifecycle_test.cpp PRO
                             COMPILE_DEFINITIONS "XYF_ONE_SESSION=1;XYF_USB_FILE_WRITE=1")
 set_source_files_properties(${ROOT}/tests/native/v3_default_refresh_test.cpp PROPERTIES
                             COMPILE_DEFINITIONS XYF_ONE_SESSION=1)
+
+# Programs and loadable libraries the tests and the host tools run (#229), each its own build with its own defines and
+# flags where the extension's one build cannot serve: fresh static state per test (a library copied and loaded
+# again), a define's variants, the sanitizers, a host tool, the simulator. xyf_hosttest.program(NAME) finds one
+# (programs.json: its file and the repository sources it compiles, for --testmon).
+# xyf_program(NAME [LIBRARY] [FORK_EACH] SOURCES... [OPTIONS...] [INCLUDES...] [USES...]): SOURCES relative to the
+# repository root, or absolute (generated); OPTIONS the compile flags (-O0 unless one is given; -fsanitize also
+# links); a LIBRARY is a loadable bundle for ctypes; FORK_EACH: tests/fork_each.cpp runs main (tests/fork_each.py);
+# USES: more repository files the build reads, for --testmon (a generated source's original).
+function(xyf_program name)
+  cmake_parse_arguments(P "LIBRARY;FORK_EACH" "" "SOURCES;OPTIONS;INCLUDES;USES" ${ARGN})
+  if(P_FORK_EACH)
+    list(APPEND P_SOURCES tests/fork_each.cpp)
+    list(APPEND P_OPTIONS -Dmain=fork_each_main)
+  endif()
+  set(sources)
+  set(listed)
+  foreach(source ${P_SOURCES} ${P_USES})
+    if(NOT IS_ABSOLUTE ${source})
+      list(APPEND listed "\"${source}\"")
+    endif()
+  endforeach()
+  foreach(source ${P_SOURCES})
+    if(IS_ABSOLUTE ${source})
+      list(APPEND sources ${source})
+    else()
+      list(APPEND sources ${ROOT}/${source})
+    endif()
+  endforeach()
+  if(P_LIBRARY)
+    add_library(${name} MODULE ${sources})
+    install(TARGETS ${name} LIBRARY DESTINATION xyf_hosttest/bin)
+  else()
+    add_executable(${name} ${sources})
+    install(TARGETS ${name} RUNTIME DESTINATION xyf_hosttest/bin)
+  endif()
+  set_target_properties(${name} PROPERTIES CXX_STANDARD 11 CXX_EXTENSIONS OFF PREFIX "")
+  target_compile_options(${name} PRIVATE -O0 -UNDEBUG ${P_OPTIONS})
+  list(FILTER P_OPTIONS INCLUDE REGEX "^-f(no-)?sanitize")
+  target_link_options(${name} PRIVATE ${P_OPTIONS})
+  target_include_directories(${name} PRIVATE ${P_INCLUDES})
+  list(JOIN listed ", " listed)
+  set_property(GLOBAL APPEND PROPERTY XYF_PROGRAMS
+               "\"${name}\": {\"file\": \"$<TARGET_FILE_NAME:${name}>\", \"sources\": [${listed}]}")
+endfunction()
+
+# The simulator's rewritten sources (sim_sources), its gen/cold_policy.inc the host tools include, xyf_simulator().
+include(${CMAKE_CURRENT_SOURCE_DIR}/simulator.cmake)
+set(STRICT -Wall -Wextra -Werror)
+set(ASAN -fsanitize=address,undefined -fno-omit-frame-pointer)
+set(ASAN_STRICT -O1 -g ${ASAN} -fno-sanitize-recover=all)
+set(FREESTANDING -ffreestanding -fno-builtin)
+
+# The stage-2 menu with its bridge: each test loads its own copy (fresh static state).
+xyf_program(stage2_menu LIBRARY OPTIONS -O1 ${STRICT} ${FREESTANDING} -fno-exceptions -fno-rtti
+  SOURCES target/stage2_menu.cpp target/xyf_menu.cpp target/xyf_menu_view.cpp target/ui_pages.cpp target/ui_screens.cpp
+          target/ui_gfx.cpp target/xyf_catalog.cpp target/xyf_store.cpp tests/stage2_menu_bridge.cpp)
+# tfw_import_source on the device's path (__bfin__) with the simulator's rewrite of the dispatcher.
+set(REWRITTEN ${CMAKE_BINARY_DIR}/rewritten/tfw_device_check.cpp)
+add_custom_command(OUTPUT ${REWRITTEN}
+  COMMAND ${Python_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/generate.py rewrite ${ROOT}
+          ${ROOT}/target/tfw_device_check.cpp ${REWRITTEN}
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/generate.py ${ROOT}/xy_forever/sim.py ${ROOT}/target/tfw_device_check.cpp VERBATIM)
+xyf_program(tfw_import_source OPTIONS -O2 ${STRICT} -Wno-unknown-attributes -D__bfin__=1 -DXYF_TFW_CHECK=1
+  INCLUDES ${ROOT}/target USES target/tfw_device_check.cpp
+  SOURCES tests/tfw_import_source_bridge.cpp ${REWRITTEN} target/tfw_import_source.cpp target/file_engine.cpp
+          target/boot_services.cpp native/tfw_check.cpp native/tfw.cpp native/tfw_signature.cpp native/p224.cpp
+          native/aes.cpp native/hash.cpp)
+xyf_program(clock LIBRARY OPTIONS ${STRICT} INCLUDES ${ROOT}/target SOURCES tests/clock_bridge.cpp)
+# The composite USB driver against the stack model, without and with the RX kick (XYF_MTP_USB_KICK).
+foreach(kick 0 1)
+  xyf_program(mtp_usb_kick${kick} OPTIONS ${STRICT} ${ASAN} -DXYF_MTP_USB_KICK=${kick}
+    SOURCES target/mtp_usb.cpp target/mtp_usb_test.cpp native/mtp_responder.cpp)
+endforeach()
+xyf_program(proto LIBRARY OPTIONS -O1 ${STRICT} INCLUDES ${ROOT}/target
+  SOURCES target/usb_proto.cpp target/xyf_crc32.cpp tests/proto_bridge.cpp)
+xyf_program(crash_screen OPTIONS ${STRICT} -fsanitize=address,undefined INCLUDES ${ROOT}/target
+  SOURCES tests/crash_screen_main.cpp)
+xyf_program(package_bridge_sanitized OPTIONS -O1 ${STRICT} ${ASAN}
+  SOURCES tests/package_bridge.cpp native/package.cpp native/images.cpp native/zip.cpp native/inflate.cpp native/hash.cpp
+          native/package_policy.cpp native/companions.cpp native/ldr.cpp)
+xyf_program(zip_bridge_sanitized FORK_EACH OPTIONS -O1 ${STRICT} ${ASAN}
+  SOURCES tests/zip_bridge.cpp native/zip.cpp native/inflate.cpp)
+# zip and inflate as the freestanding firmware builds them: their objects call no runtime (test_native_zip.py).
+add_library(zip_freestanding STATIC ${ROOT}/native/zip.cpp ${ROOT}/native/inflate.cpp)
+set_target_properties(zip_freestanding PROPERTIES CXX_STANDARD 11 CXX_EXTENSIONS OFF PREFIX "")
+target_compile_options(zip_freestanding PRIVATE -O2 ${FREESTANDING} -fno-exceptions -fno-rtti -fno-stack-protector)
+install(TARGETS zip_freestanding ARCHIVE DESTINATION xyf_hosttest/bin)
+set_property(GLOBAL APPEND PROPERTY XYF_PROGRAMS "\"zip_freestanding\": {\"file\": \
+\"$<TARGET_FILE_NAME:zip_freestanding>\", \"sources\": [\"native/zip.cpp\", \"native/inflate.cpp\"]}")
+# The narrow modes' nibble CRC table (XYF_SMALL_CRC): the extension builds these sources without it.
+xyf_program(crc32_small LIBRARY OPTIONS -O1 ${STRICT} ${FREESTANDING} -DXYF_SMALL_CRC=1
+  SOURCES native/inflate.cpp target/xyf_crc32.cpp tests/xyf_crc32_bridge.cpp tests/zip_crc_bridge.cpp)
+
+# The host tools (xy_forever/modlink.py, modpatch.py, tfw_extract.py): each also sanitized (XYF_SANITIZE=1).
+set(LINK_SOURCES native/mod_link.cpp native/mod_elf.cpp native/mod_numbers.cpp native/json.cpp target/xyf_manifest.cpp
+                 target/xyf_package_record.cpp)
+xyf_program(mod_link_bridge OPTIONS -O2 ${STRICT} -DXYF_MOD_WORK_COUNT SOURCES tests/mod_link_bridge.cpp ${LINK_SOURCES})
+xyf_program(mod_link_bridge_sanitized OPTIONS ${ASAN_STRICT} ${STRICT} -DXYF_MOD_WORK_COUNT
+  SOURCES tests/mod_link_bridge.cpp ${LINK_SOURCES})
+# The product's module + stack reservation (xyf-build --xyf-product), cold.cpp's ranges (gen/cold_policy.inc).
+set(POLICY ${CMAKE_BINARY_DIR}/sim-sources/gen/cold_policy.inc)
+set(ASSEMBLE_SOURCES host/mod_assemble.cpp native/mod_patch.cpp native/mod_content.cpp native/mod_job.cpp native/hash.cpp
+                     native/ldr.cpp native/inflate.cpp ${LINK_SOURCES} ${POLICY})
+set(EXTRACT_SOURCES host/tfw_extract.cpp native/tfw_os.cpp native/tfw.cpp native/tfw_check.cpp native/tfw_signature.cpp
+                    native/p224.cpp native/aes.cpp native/hash.cpp native/inflate.cpp native/ldr.cpp
+                    native/package_policy.cpp ${POLICY})
+set(PRODUCT -DXYF_STACK_END=0x8ab84000u)
+foreach(variant "" _sanitized)
+  set(flags -O2)
+  set(each)
+  if(variant)
+    set(flags ${ASAN_STRICT})
+    set(each FORK_EACH)  # many runs for one sanitizer start (tests/fork_each.py)
+  endif()
+  xyf_program(mod_assemble${variant} OPTIONS ${flags} ${STRICT} ${PRODUCT} INCLUDES ${CMAKE_BINARY_DIR}/sim-sources/gen
+    USES target/cold.cpp SOURCES ${ASSEMBLE_SOURCES})
+  xyf_program(tfw_extract${variant} ${each} OPTIONS ${flags} ${STRICT} ${PRODUCT}
+    INCLUDES ${CMAKE_BINARY_DIR}/sim-sources/gen USES target/cold.cpp SOURCES ${EXTRACT_SOURCES})
+endforeach()
+
+# The simulator variants the tests start (xy_forever/sim.py VARIANTS); another one builds on demand (hosttest/sim/).
+foreach(variant ${XYF_SIM_VARIANTS})
+  xyf_simulator(sim-${variant} ${variant})
+  install(TARGETS sim-${variant} RUNTIME DESTINATION xyf_hosttest/bin)
+  set_property(GLOBAL APPEND PROPERTY XYF_PROGRAMS "\"sim-${variant}\": {\"file\": \"sim-${variant}\", \"sources\": []}")
+endforeach()
+
+get_property(programs GLOBAL PROPERTY XYF_PROGRAMS)
+list(JOIN programs ",\n  " programs)
+file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/programs.json CONTENT "{\n  ${programs}\n}\n")
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/programs.json DESTINATION xyf_hosttest)

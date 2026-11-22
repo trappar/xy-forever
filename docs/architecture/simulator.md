@@ -39,7 +39,7 @@ framing of its own). Code reaches the device only after it passes here (ORCHESTR
 - **Not hosted:** the menu's screen and keys, os.ldr itself, CDC ring and USB timing, NAND timing, real encryption,
   stage 2; yaffs is a (case-insensitive) host folder.
 - **Run:** `mise run sim` (`uv run -m xy_forever.sim --idle-wall`; `SESSIONS/simulator/` in the private folder: seeded `yaffs2/`, `bootpart.bin`,
-  `builds/`; `--port`, `--plain`, `--version V`, `--pre-v1`, `--ask`), then `uv run xyf-host --sim 127.0.0.1:7341` (or `XYF_SIM`),
+  the stock image; the binary is `hosttest/`'s, built by `uv sync`; `--port`, `--plain`, `--version V`, `--pre-v1`, `--ask`), then `uv run xyf-host --sim 127.0.0.1:7341` (or `XYF_SIM`),
   `scripts/device_pass.py` / `scripts/conformance.py --sim …` (evidence removed when nothing failed, unless `--keep`).
 - **Control** (port + 1, one line, JSON reply): `status` (A's `partition`; `boot_writes`, yaffs changes on a boot
   partition; `rw_open`/`unclean_mounts`, read-write mounts never unmounted; `to_a`/`to_b`, link messages relayed),
@@ -82,5 +82,5 @@ encrypted bytes retain their stock positions. Boot fetch reverses only this mark
 older plaintext files remain readable. This models ownership and ciphertext readback, not AES, OTP,
 crypt-prepare failure, callback execution, media timing or hardware write atomicity. No private keys are used.
 Tests: `tests/native/sim_stock_writer_test.cpp` (both roles, retries, verification failures and cuts),
-`test_sim_stock_writer` (B installer; its fault cases are parked sweeps, #233).
+`test_sim_stock_writer` (B installer end to end; the fault cases are the C++ test's).
 

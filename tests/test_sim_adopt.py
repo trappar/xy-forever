@@ -53,7 +53,7 @@ class Adopt(unittest.TestCase):
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.work = Path(cls.tmp.name)
         cls.image = sim.STOCK_OS.read_bytes()
-        cls.build_dir = sim.build()
+        cls.binary = sim.build()
         cls.runs = 0
 
     def setUp(self):
@@ -76,7 +76,7 @@ class Adopt(unittest.TestCase):
         self.sim = sim.Simulator(
             self.root,
             self.dir / 'bootpart.bin',
-            build_dir=self.build_dir,
+            binary=self.binary,
             play=play,
             log=self.dir / 'log.txt',
             faults={'a_slow_ms': slow_ms} if slow_ms else None,
