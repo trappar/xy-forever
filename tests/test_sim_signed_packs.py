@@ -93,6 +93,9 @@ class SignedPackImport(unittest.TestCase):
         digest = hashlib.sha256(SAMPLE).hexdigest()
         blob = self.root / 'xy-forever/blobs' / digest
         self.assertEqual(sample.stat().st_ino, blob.stat().st_ino)
+        refs = (self.retained / 'xyf-pack-v1.sha256').read_text().splitlines()
+        self.assertEqual([line[66:] for line in refs], ['manifest.json', 'samples/hand.wav'])
+        self.assertEqual(refs[1], digest + '  samples/hand.wav')
         self.assertEqual(sample.stat().st_mode & 0o777, 0o444)
         with package_store.Session(self.dev, sweep=False) as session:
             self.assertIn(digest, session.references())

@@ -1027,7 +1027,7 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
   },
   "packs.manage": {
     type: 0x4f, name: "packs.manage", class: "product", since: "1.27",
-    summary: "import or toggle a signed sound pack and inspect progress",
+    summary: "admit or toggle a signed sound pack and inspect progress",
     switch: "XYF_TFW_CHECK", switchOptional: true, timeoutMs: 60000, destructive: true,
     errors: ["bad_request", "unsupported", "busy", "link", "storage", "state", "not_found", "refused"],
     request: { size: [9, 136], ignored: false, fields: [
@@ -1666,7 +1666,7 @@ export function decodeConfigSetReply(payload: Uint8Array): ConfigSetReply {
   return decodeReply(COMMANDS["config.set"], payload) as ConfigSetReply;
 }
 
-// ---- 0x4f packs.manage: import or toggle a signed sound pack and inspect progress ----
+// ---- 0x4f packs.manage: admit or toggle a signed sound pack and inspect progress ----
 export type PacksManageRequest = { version: number; operation: number; name: string };
 export type PacksManageReplyFields = { status: number; phase: number; done: number; total: number; error: number };
 export type PacksManageReply = Reply<PacksManageReplyFields, never>;
@@ -1749,8 +1749,8 @@ export const GOLDEN: readonly GoldenFrame[] = [
     fields: {},
     hex: "58460101000000004c8d0632" },
   { name: "hello, answered", message: "hello", direction: "reply", seq: 1, status: "ok",
-    fields: {"info": "XYF1;service=usb;role=b;proto=1.26;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000007ffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"},
-    hex: "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32363b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303037666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30937bf518" },
+    fields: {"info": "XYF1;service=usb;role=b;proto=1.27;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"},
+    hex: "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32373b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30db2d8d0e" },
   { name: "hello, answered by a pre-v1 device", message: "hello", direction: "reply", seq: 1, status: "ok",
     fields: {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"},
     hex: "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5" },

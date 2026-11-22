@@ -6,7 +6,7 @@
 // One bounded IO per step; publication only after the source and read-back hashes agree.
 namespace xyf { namespace blob {
 static const char root[] = "/yaffs2/xy-forever/blobs";
-static const char pack_refs[] = "xyf-blobs-v1.sha256";
+static const char pack_refs[] = "xyf-pack-v1.sha256";
 struct Copy {
     char source[240], temporary[240], target[240];
     uint8_t expected[32], buffer[1024];

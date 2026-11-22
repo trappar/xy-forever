@@ -61,9 +61,8 @@ uses the entry's existing verified file copy.
 Signed sound packs use the same verified blobs. The importer authenticates the TFW, checks the
 destination and available space, and extracts into a private transaction directory. Each file is
 published as a read-only link to its verified hash. The finished tree includes `xyf-pack.txt`
-with the signed ciphertext digest and `xyf-blobs-v1.sha256` with one lowercase file hash per
-line. The tree is retained under `xy-forever/packs/` and moves as a unit to or from
-`content/dlc/` when toggled. Both locations contribute to blob reachability.
+with the signed ciphertext digest and `xyf-pack-v1.sha256` with each file’s SHA-256 and relative path.
+The tree is retained under `xy-forever/packs/` and moves as a unit to or from `content/dlc/` when toggled. Both locations contribute to blob reachability.
 
 Collection follows host library changes, native publication and the idle sweep. An unresolved
 `job.txt` or `job.old` suspends all blob deletion until [replay or undo](jobs.md) completes. It holds the job

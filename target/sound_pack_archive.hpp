@@ -133,6 +133,7 @@ inline zip::Status admit(const zip::Archive& archive, zip::InflateWorkspace& inf
              (!relative[sizeof(xyf::blob::pack_refs) - 1] || relative[sizeof(xyf::blob::pack_refs) - 1] == '/')))
             return zip::Status::layout;
         if (entry.directory) continue;
+        if (size > xyf::manifest::max_path || same(relative, "files.sha256")) return zip::Status::bounds;
         if (same(relative, "manifest.json")) {
             pack.manifest = i;
             if (entry.size > manifest_bytes) return zip::Status::bounds;

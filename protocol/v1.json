@@ -1142,15 +1142,15 @@
     {
       "type": "0x4f", "name": "packs.manage", "symbol": "packs_manage", "class": "product",
       "since": "1.27", "switch": "XYF_TFW_CHECK", "switch_optional": true,
-      "summary": "import or toggle a signed sound pack and inspect progress",
+      "summary": "admit or toggle a signed sound pack and inspect progress",
       "timeout_ms": 60000, "destructive": true,
       "request": {
         "size": [9, 136],
         "fields": [
           {"name": "version", "type": "u32", "doc": "API version 1"},
-          {"name": "operation", "type": "u32", "range": [0, 4], "doc": "0 status, 1 import, 2 cancel, 3 enable, 4 disable"},
+          {"name": "operation", "type": "u32", "range": [0, 4], "doc": "0 status, 1 admit, 2 cancel, 3 enable, 4 disable"},
           {"name": "name", "type": "cstr", "encoding": "ascii", "min_bytes": 1, "max_bytes": 128,
-           "doc": "Inbox .tfw basename for import, pack ID to toggle, empty for status or cancel"}
+           "doc": "Inbox .tfw basename for admission, pack ID to toggle, empty for status or cancel"}
         ]
       },
       "reply": {
@@ -1160,11 +1160,11 @@
           {"name": "phase", "type": "u32", "doc": "0 idle, 1 authenticating, 2 staging, 3 complete, 4 failed"},
           {"name": "done", "type": "u32", "doc": "Ciphertext bytes scanned or pack files staged"},
           {"name": "total", "type": "u32", "doc": "Total source bytes or pack files for the current phase"},
-          {"name": "error", "type": "u32", "doc": "Final import status when phase is failed"}
+          {"name": "error", "type": "u32", "doc": "Final admission status when phase is failed"}
         ]
       },
       "errors": ["bad_request", "unsupported", "busy", "link", "storage", "state", "not_found", "refused"],
-      "doc": "Import uses the authenticated TFW reader and publishes one complete kept pack. Poll status until completion. Cancel during authentication or staging leaves the current packs intact. Enable requires stock compatibility for the exact signed pack."
+      "doc": "Admission uses the authenticated TFW reader and publishes one complete kept pack. Poll status until completion. Cancel during authentication or staging leaves the current packs intact. Enable requires stock compatibility for the exact signed pack."
     }
   ],
   "events": [
@@ -1205,7 +1205,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.26;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000007ffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32363b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303037666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30937bf518"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.27;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32373b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30db2d8d0e"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

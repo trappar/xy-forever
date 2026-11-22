@@ -47,7 +47,7 @@ answered; and (1.25) `serial`, as USB mode is picked. Tools ignore keys they do 
 The product build answers (220 bytes):
 
 ```text
-XYF1;service=usb;role=b;proto=1.26;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=0000000000007ffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0
+XYF1;service=usb;role=b;proto=1.27;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0
 ```
 
 ### 0x03 `file.read`

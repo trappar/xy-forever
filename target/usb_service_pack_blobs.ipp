@@ -14,7 +14,7 @@ U32 signed_pack_blob(SignedPackJob& j) {
         ++j.member;
         return P::s_ok;
     }
-    const uint8_t* const expected = j.references + 65 * signed_pack_done;
+    const uint8_t* const expected = j.references[signed_pack_done];
     char path[file_engine::max_path];
     switch (j.blob_step) {
     case pb_stage: {

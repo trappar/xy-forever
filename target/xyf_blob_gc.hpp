@@ -14,12 +14,12 @@ struct Collect {
     char candidate[65], entry[240], path[240];
     uint8_t expected[32], buffer[1024];
     uint32_t stage, blob_skip, entry_skip, which, removed, cursor, sorting;
-    uint32_t area, pack_line, pack_count;
+    uint32_t area;
     int fd;
 };
 static inline void collect_begin(Collect& g, uint8_t* workspace, uint32_t bytes) {
     g.stage = g.blob_skip = g.entry_skip = g.which = g.removed = g.cursor = g.sorting = 0;
-    g.area = g.pack_line = g.pack_count = 0;
+    g.area = 0;
     g.fd = -1;
     g.refs.data = workspace;
     g.refs.count = 0;
@@ -58,26 +58,6 @@ static inline bool contains(Collect& g) {
     }
     return false;
 }
-// A pack reference is one lowercase digest per newline. A short, empty or
-// malformed record stops the sweep before anything is removed.
-static inline bool pack_index_feed(Collect& g, uint32_t bytes) {
-    for (uint32_t i = 0; i != bytes; ++i) {
-        const uint8_t c = g.buffer[i];
-        if (g.pack_line == 64) {
-            if (c != '\n' || ++g.pack_count > manifest::max_files || g.refs.count == g.refs.capacity) return false;
-            for (uint32_t j = 0; j != 32; ++j) g.refs.data[g.refs.count * 32u + j] = g.expected[j];
-            ++g.refs.count;
-            g.pack_line = 0;
-        } else {
-            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return false;
-            const uint8_t value = uint8_t(c <= '9' ? c - '0' : c - 'a' + 10);
-            if (g.pack_line & 1u) g.expected[g.pack_line >> 1] |= value;
-            else g.expected[g.pack_line >> 1] = uint8_t(value << 4);
-            ++g.pack_line;
-        }
-    }
-    return true;
-}
 // 0 more, 1 complete, -1 failed. One bounded IO or heap operation per step.
 template<class Io> int collect_step(Collect& g, Io& io) {
     uint32_t kind = 0;
@@ -88,6 +68,7 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         n = io.list_one("/yaffs2/xy-forever/firmware", g.entry_skip, name, kind);
         if (n < 0) return -1;
         if (!n) {
+            g.area = 1;
             g.entry_skip = 0;
             g.stage = 9;
             return 0;
@@ -99,7 +80,12 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         g.stage = 1;
         return 0;
     case 1:
-        if (!path(g.path, g.entry, g.which ? "/files.sha256" : "/content.sha256")) return -1;
+        if (!path(g.path, g.entry,
+                  g.area  ? "/" :
+                  g.which ? "/files.sha256" :
+                            "/content.sha256") ||
+            (g.area && !path(g.path, g.path, pack_refs)))
+            return -1;
         g.fd = io.open(g.path, false);
         if (g.fd == -2) {
             g.stage = 4;
@@ -114,7 +100,7 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         if (n < 0 || n > int(sizeof(g.buffer))) return -1;
         if (n)
             return manifest::list_index_feed(g.reader, reinterpret_cast<const char*>(g.buffer), uint32_t(n), g.refs,
-                                             g.which != 0) == manifest::list_ok ?
+                                             !g.area && g.which != 0) == manifest::list_ok ?
                        0 :
                        -1;
         if (manifest::list_end(g.reader) != manifest::list_ok) return -1;
@@ -127,7 +113,8 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         g.stage = 4;
         return 0;
     case 4:
-        if (!g.which) {
+        if (g.area) g.stage = 9;
+        else if (!g.which) {
             g.which = 1;
             g.stage = 1;
         } else g.stage = 0;
@@ -167,12 +154,12 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         if (!contains(g)) g.stage = 8;
         return 0;
     case 9: {
-        const char* const folder = g.area ? "/yaffs2/content/dlc" : "/yaffs2/xy-forever/packs";
+        const char* const folder = g.area == 1 ? "/yaffs2/xy-forever/packs" : "/yaffs2/content/dlc";
         n = io.list_one(folder, g.entry_skip, name, kind);
         if (n < 0) return -1;
         if (!n) {
-            if (!g.area) {
-                g.area = 1;
+            if (g.area == 1) {
+                g.area = 2;
                 g.entry_skip = 0;
             } else {
                 g.cursor = g.refs.count >> 1;
@@ -183,33 +170,9 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         ++g.entry_skip;
         if (kind != 1) return 0;
         if (!path(g.path, folder, "/") || !path(g.entry, g.path, name)) return -1;
-        g.stage = 10;
+        g.stage = 1;
         return 0;
     }
-    case 10:
-        if (!path(g.path, g.entry, "/") || !path(g.path, g.path, pack_refs)) return -1;
-        g.fd = io.open(g.path, false);
-        if (g.fd == -2) {
-            g.stage = 9;
-            return 0;
-        }
-        if (g.fd < 0) return -1;
-        g.pack_line = g.pack_count = 0;
-        g.stage = 11;
-        return 0;
-    case 11:
-        n = io.read(g.fd, g.buffer, sizeof(g.buffer));
-        if (n < 0 || n > int(sizeof(g.buffer))) return -1;
-        if (n) return pack_index_feed(g, uint32_t(n)) ? 0 : -1;
-        if (!g.pack_count || g.pack_line) return -1;
-        g.stage = 12;
-        return 0;
-    case 12:
-        n = io.close(g.fd);
-        g.fd = -1;
-        if (n) return -1;
-        g.stage = 9;
-        return 0;
     default:
         if (!path(g.path, root, "/")) return -1;
         {

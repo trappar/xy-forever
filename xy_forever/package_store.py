@@ -24,7 +24,7 @@ TMP = ROOT + '/tmp'
 BLOBS = ROOT + '/blobs'
 LIBRARY = ROOT + '/firmware'
 PACK_ROOTS = (ROOT + '/packs', '/yaffs2/content/dlc')
-PACK_REFERENCES = '/xyf-blobs-v1.sha256'
+PACK_REFERENCES = '/xyf-pack-v1.sha256'
 HEX = re.compile(r'[0-9a-f]{64}\Z')
 MISSING = P.ids.S_NOT_FOUND
 
@@ -255,14 +255,7 @@ class Session:
                 data = self.read(folder + PACK_REFERENCES, optional=True)
                 if data is None:
                     continue
-                rows = data.split(b'\n')
-                if rows[-1] or not 2 <= len(rows) <= 4097:
-                    raise StoreError('invalid pack blob references in %s' % folder)
-                for row in rows[:-1]:
-                    sha = row.decode('ascii', 'strict')
-                    if not HEX.fullmatch(sha):
-                        raise StoreError('invalid pack blob reference in %s' % folder)
-                    keep.add(sha)
+                keep.update(sha for sha, _ in read_files_sha256(data))
         return keep
 
     def collect(self):

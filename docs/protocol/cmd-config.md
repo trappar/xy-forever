@@ -53,14 +53,14 @@ On an error: every field (zero where not reached). Errors: `bad_request`, `unsup
 
 ### 0x4f `packs.manage`
 
-Import or toggle a signed sound pack and inspect progress. Import uses the authenticated TFW reader and publishes one complete kept pack. Poll status until
+Admit or toggle a signed sound pack and inspect progress. Admission uses the authenticated TFW reader and publishes one complete kept pack. Poll status until
 completion. Cancel during authentication or staging leaves the current packs intact. Enable requires stock compatibility for the exact signed pack.
 
 | Request field (9 to 136 bytes) | Type | Meaning |
 |---|---|---|
 | `version` | u32 | API version 1 |
-| `operation` | u32 | 0 status, 1 import, 2 cancel, 3 enable, 4 disable (0..4) |
-| `name` | cstr ASCII, 1..128 B | Inbox .tfw basename for import, pack ID to toggle, empty for status or cancel |
+| `operation` | u32 | 0 status, 1 admit, 2 cancel, 3 enable, 4 disable (0..4) |
+| `name` | cstr ASCII, 1..128 B | Inbox .tfw basename for admission, pack ID to toggle, empty for status or cancel |
 
 | Reply field, after the status (20 bytes) | Type | Meaning |
 |---|---|---|
@@ -68,7 +68,7 @@ completion. Cancel during authentication or staging leaves the current packs int
 | `phase` | u32 | 0 idle, 1 authenticating, 2 staging, 3 complete, 4 failed |
 | `done` | u32 | Ciphertext bytes scanned or pack files staged |
 | `total` | u32 | Total source bytes or pack files for the current phase |
-| `error` | u32 | Final import status when phase is failed |
+| `error` | u32 | Final admission status when phase is failed |
 
 On an error: the status only. Errors: `bad_request`, `unsupported`, `busy`, `link`, `storage`, `state`, `not_found`, `refused`. The reply never gains fields (it
 ends in `u32`). Tool timeout: 60 s. **Destructive**: ask the user first. Build switch `XYF_TFW_CHECK` (on in product builds; without it: `unsupported`). Since

@@ -48,7 +48,9 @@ struct SignedPackJob {
     bool sealing, seal_open;
     pack_hash::Sha256 hash;
     char partial[file_engine::max_path];
-    uint8_t references[4096 * 65];
+    uint8_t references[4096][64];
+    uint16_t ref_members[4096], ref_order[4096];
+    uint8_t ref_text[4096 * (xyf::manifest::list_line + 1)];
     bool cancelled, created;
     int fd;
     char staging[file_engine::max_path], target[file_engine::max_path];
@@ -277,24 +279,65 @@ U32 signed_pack_member(SignedPackJob& j) {
                                                   P::s_storage;
     pack_hash::Digest digest;
     if (!j.hash.finish(digest)) return P::s_sha;
-    uint8_t* const line = j.references + 65 * j.refs++;
+    uint8_t* const line = j.references[j.refs];
+    j.ref_members[j.refs] = uint16_t(j.member - 1);
+    j.ref_order[j.refs] = uint16_t(j.refs);
+    ++j.refs;
     for (U32 i = 0; i != 32; ++i) {
         line[2 * i] = "0123456789abcdef"[digest.bytes[i] >> 4];
         line[2 * i + 1] = "0123456789abcdef"[digest.bytes[i] & 15];
     }
-    line[64] = '\n';
     return P::s_ok;
 }
 
 #include "usb_service_pack_blobs.ipp"
 
+const char* signed_pack_relative(const SignedPackJob& j, U32 ref) {
+    return j.entries[j.ref_members[ref]].name + j.layout.relative_at;
+}
+
+bool pack_path_before(const char* a, const char* b) {
+    while (*a && *a == *b) {
+        ++a;
+        ++b;
+    }
+    return *a < *b;
+}
+
+U32 signed_pack_refs(SignedPackJob& j) {
+    // Shell sort keeps the archive table intact. References use the same path
+    // ordering and line format as firmware asset lists.
+    for (U32 gap = j.refs >> 1; gap; gap >>= 1) {
+        for (U32 i = gap; i < j.refs; ++i) {
+            const uint16_t ref = j.ref_order[i];
+            const char* const path = signed_pack_relative(j, ref);
+            U32 at = i;
+            while (at >= gap && pack_path_before(path, signed_pack_relative(j, j.ref_order[at - gap]))) {
+                j.ref_order[at] = j.ref_order[at - gap];
+                at -= gap;
+            }
+            j.ref_order[at] = ref;
+        }
+    }
+    U32 used = 0;
+    for (U32 i = 0; i != j.refs; ++i) {
+        const U32 ref = j.ref_order[i];
+        for (uint8_t c : j.references[ref]) j.ref_text[used++] = c;
+        j.ref_text[used++] = ' ';
+        j.ref_text[used++] = ' ';
+        for (const char* p = signed_pack_relative(j, ref); *p; ++p) j.ref_text[used++] = uint8_t(*p);
+        j.ref_text[used++] = '\n';
+    }
+    return used;
+}
+
 U32 signed_pack_record(SignedPackJob& j) {
     char path[file_engine::max_path], record[96];
     if (!join(path, j.staging, "/", xyf::blob::pack_refs)) return P::s_refused;
     uint32_t written = 0, crc = 0;
-    const U32 size_refs = j.refs * 65;
-    const U32 refs = file_client::write_file(path, j.references, size_refs,
-                                             xyf::crc::update(0, j.references, size_refs), written, crc, mounted);
+    const U32 size_refs = signed_pack_refs(j);
+    const U32 refs = file_client::write_file(path, j.ref_text, size_refs, xyf::crc::update(0, j.ref_text, size_refs),
+                                             written, crc, mounted);
     if (refs) return refs;
     if (!join(path, j.staging, "/", sp::record_name)) return P::s_refused;
     const U32 head = text_bytes(pack_record_head);
