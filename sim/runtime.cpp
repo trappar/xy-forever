@@ -420,9 +420,18 @@ int listen_on(int port) {
 }
 int usage() {
     fprintf(stderr, "usage: xyf_sim --root DIR --bootpart FILE --stock MEMORY [--port 7341] [--control 7342]\n"
-                    "               [--capacity BYTES] [--plain] [--otp-stdin] [--otp-initialized] [--ask]\n");
+                    "               [--capacity BYTES] [--plain] [--otp-stdin] [--otp-initialized] [--ask]\n"
+                    "               [--deadline-s S]\n");
     return 2;
 }
+}
+
+// --deadline-s (#230): the board stops on its own S seconds of host time after it started (tests: 10 s), and
+// exits 124; past S + 2 s, in case the board itself is stuck, SIGALRM ends both processors and the board.
+const int exit_deadline = 124;
+void deadline_passed(int) {
+    for (int k = 0; k != 2; ++k) if (procs[k].pid > 0) kill(procs[k].pid, SIGKILL);
+    _exit(exit_deadline);
 }
 
 int main(int argc, char** argv) {
@@ -440,6 +449,7 @@ int main(int argc, char** argv) {
     board_start_us = now_us();
     int control_port = 0;
     bool play = true, otp = false;
+    uint64_t deadline_us = 0;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         const char* v = i + 1 < argc ? argv[i + 1] : 0;
@@ -456,6 +466,7 @@ int main(int argc, char** argv) {
         else if (a == "--port") shared->port = atoi(v);
         else if (a == "--control") control_port = atoi(v);
         else if (a == "--capacity") shared->capacity = uint32_t(strtoul(v, 0, 0));
+        else if (a == "--deadline-s") deadline_us = uint64_t(atof(v) * 1e6);
         else return usage();
         ++i;
     }
@@ -473,11 +484,18 @@ int main(int argc, char** argv) {
     log("USB CDC endpoint 127.0.0.1:%d, control 127.0.0.1:%d, storage %s", shared->port, control_port, shared->root);
     power_cycle(play, "start");
     bool quit = false;
+    int code = 0;
+    if (deadline_us) { signal(SIGALRM, deadline_passed); alarm(unsigned(deadline_us / 1000000u) + 2); }
     const pid_t parent = getppid();
     bool woken = true;                       // the wake pipe fired at the last poll
     uint64_t reaped_us = 0;
     while (!quit) {
         if (getppid() != parent) { log("parent gone: stopping"); break; }   // never outlive the tool that started it
+        if (deadline_us && now_us() - board_start_us >= deadline_us) {
+            log("deadline: %.1f s passed (--deadline-s): stopping", double(deadline_us) / 1e6);
+            code = exit_deadline;
+            break;
+        }
         std::vector<pollfd> fds;
         fds.push_back({control_fd, POLLIN, 0});
         for (int c : clients) fds.push_back({c, POLLIN, 0});
@@ -491,6 +509,11 @@ int main(int argc, char** argv) {
         for (const Proc& p : procs) if (p.restart_at && (!next || p.restart_at < next)) next = p.restart_at;
         const bool running[2] = {procs[0].pid > 0 && procs[0].state == "running", procs[1].pid > 0 && procs[1].state == "running"};
         int wait_ms = board_clock(running, next * 1000u, woken);
+        if (deadline_us) {
+            const uint64_t spent = now_us() - board_start_us;
+            const int left = spent < deadline_us ? int((deadline_us - spent) / 1000u) + 1 : 0;
+            if (wait_ms < 0 || wait_ms > left) wait_ms = left;
+        }
         if (!virtual_clock() && next) {
             const uint64_t now = board_us();
             if (next - now < uint64_t(wait_ms) * 1000u || next <= now) wait_ms = next > now ? int((next - now) / 1000u) + 1 : 0;
@@ -542,5 +565,5 @@ int main(int argc, char** argv) {
     for (int k = 0; k != 2; ++k) stop(k);
     wipe_otp();
     log("stopped");
-    return 0;
+    return code;
 }

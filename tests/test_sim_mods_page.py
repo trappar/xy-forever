@@ -24,7 +24,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import modsend as MS, modstore, package_records, sim  # noqa: E402
+from xy_forever import bounds, modsend as MS, modstore, package_records, sim  # noqa: E402
 from xy_forever import usb_proto as P                                      # noqa: E402
 import test_sim_mod_job as J                                               # noqa: E402
 import test_sim_content_switch as CS                                      # noqa: E402
@@ -80,7 +80,7 @@ class PageBase(J.Base):
             out.append(fields)
         return out
 
-    def wait_progress(self, cond, what, timeout=60.0):
+    def wait_progress(self, cond, what, timeout=bounds.WAIT_S):
         deadline = time.monotonic() + timeout
         while True:
             shown = self.progress()
@@ -134,7 +134,7 @@ class PageBase(J.Base):
         pages = self.pages()
         return pages[-1] if pages else None
 
-    def wait(self, cond, what, timeout=60.0):
+    def wait(self, cond, what, timeout=bounds.WAIT_S):
         deadline = time.monotonic() + timeout
         while True:
             p = self.page()
@@ -143,7 +143,7 @@ class PageBase(J.Base):
             self.assertLess(time.monotonic(), deadline, 'page never %s: %s' % (what, p))
             time.sleep(0.01)
 
-    def open_page(self, timeout=60.0):
+    def open_page(self, timeout=bounds.WAIT_S):
         for _ in range(MODS_ROW):
             self.press(PLUS)
         self.press(PLAY)
@@ -223,7 +223,7 @@ class PageBase(J.Base):
             self.press(PLAY)
             self.wait(lambda p: len(self.pages()) > before, 'toggled')
 
-    def ended(self, timeout=180.0):
+    def ended(self, timeout=bounds.WAIT_S):
         return self.wait(lambda p: p['view'] == VIEW_LIST and p['line'] in (LINE_INFO, LINE_ERROR, LINE_DONE) and
                          p['job'], 'ended', timeout)
 
@@ -604,7 +604,7 @@ class PageAndSwitch(PageBase, CS.Switch, unittest.TestCase):
     def listed_after(self, what):
         """The list once the job is over (the page stayed open), never a storage error, every pump pass
         short; the longest is printed."""
-        p = self.wait(lambda p: p['view'] == VIEW_LIST and p['shown'] == 1, 'listed after ' + what, 60.0)
+        p = self.wait(lambda p: p['view'] == VIEW_LIST and p['shown'] == 1, 'listed after ' + what, bounds.WAIT_S)
         self.assertEqual((p['count'], p['shown_rows'], p['line']), (len(self.folders),) * 2 + (LINE_NONE,), p)
         self.assertEqual([q['text'] for q in self.pages() if 'Could not read' in q['text']], [])
         self.assertLess(p['longest'], 60, p)
@@ -703,7 +703,7 @@ class PublishedPage(PageBase, unittest.TestCase):
 
     def test_real_set_listed_and_metered(self):
         t = time.monotonic()
-        p = self.open_page(120.0)
+        p = self.open_page(bounds.WAIT_S)
         self.assertEqual((p['shown_rows'], p['limit']), (81, 2080768))
         listed = time.monotonic() - t
         on = ['fm2op', 'ext-capture']

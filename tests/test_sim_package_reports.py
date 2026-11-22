@@ -3,7 +3,7 @@ import hashlib
 import struct
 import time
 import unittest
-from xy_forever import sim, usb_proto as P, package_store as S
+from xy_forever import bounds, sim, usb_proto as P, package_store as S
 import test_sim_package_store as PS
 package = PS.package
 
@@ -118,6 +118,7 @@ class Reports(unittest.TestCase):
                 self.assertEqual((row['type'], row['valid']), ('unknown', '0'))
                 self.assertNotEqual(row['version'], 'legacy')
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_large_inbox_identity_is_streamed_without_size_cap(self):
         inbox = self.root / 'xy-forever/inbox'
         inbox.mkdir()
@@ -128,7 +129,7 @@ class Reports(unittest.TestCase):
             for _ in range(100):  # representative official inbox size, bounded test-side memory too
                 stream.write(block)
                 sha.update(block)
-        code, body = self.dev.call(P.ids.PACKAGE_LIST, struct.pack('<4I', 1, 0, 0, 0), timeout=600)
+        code, body = self.dev.call(P.ids.PACKAGE_LIST, struct.pack('<4I', 1, 0, 0, 0), timeout=bounds.SLOW_S)
         self.assertEqual(code, 0)
         row = dict(line.split('=', 1) for line in body[16:].decode().splitlines())
         self.assertEqual(row['identity'], sha.hexdigest())

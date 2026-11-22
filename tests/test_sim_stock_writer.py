@@ -4,7 +4,7 @@ import struct
 import zlib
 import unittest
 import test_simulator as support
-from test_simulator import sim, BUILD, ids, BASE, P
+from test_simulator import bounds, sim, BUILD, ids, BASE, P
 
 
 def represented(data):
@@ -22,6 +22,7 @@ class StockWriterIntegration(unittest.TestCase):
     file = support.SimulatorTest.file
     wait = support.SimulatorTest.wait
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_read_files_after_verified_uninstall_in_same_session(self):
         stock = sim.STOCK_OS.read_bytes()
         root = self.dir / 'yaffs2'
@@ -43,6 +44,7 @@ class StockWriterIntegration(unittest.TestCase):
         self.assertEqual(dev.call(P.LIST_DIR, list_root)[0], 0)
         self.assertEqual(dev.call(P.READ_FILE, read), (0, b'user-area file'))
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_install_and_uninstall_write_the_boot_partition(self):
         dev = self.connect(startup_ready=True)                          # this case begins with a staged mutation
         stock = sim.STOCK_OS.read_bytes()

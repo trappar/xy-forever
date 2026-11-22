@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import xyf_entry, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, modstore, package_records, paths, sim   # noqa: E402
+from xy_forever import bounds, xyf_entry, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, modstore, package_records, paths, sim   # noqa: E402
 from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
 from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
@@ -108,7 +108,7 @@ class Base:
         self.assertEqual(code, 0)
         return f
 
-    def finished(self, job, timeout=120.0, served=True):
+    def finished(self, job, timeout=bounds.WAIT_S, served=True):
         deadline = time.monotonic() + timeout
         while True:
             f = self.status(job)
@@ -119,7 +119,7 @@ class Base:
             self.assertLess(time.monotonic(), deadline, 'job %d did not end: %s' % (job, f))
             time.sleep(0.02)
 
-    def until_phase(self, job, phase, timeout=60.0):
+    def until_phase(self, job, phase, timeout=bounds.WAIT_S):
         deadline = time.monotonic() + timeout
         while True:
             f = self.status(job)
@@ -287,6 +287,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assert_clean_failure(job, self.status(job), 'cancelled', 'cancelled')
         self.assemble_and_compare(['alpha'])                                # the next job works
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_cancel_with_a_large_output_answers_throughout(self):
         """a cancelled job whose output holds a large tree: the removal runs one step per
         loop pass ("cleaning up", storage commands busy); job.cancel, HELLO and status answer throughout (no
@@ -450,7 +451,7 @@ class SyntheticJob(Base, unittest.TestCase):
         rr = lambda: host.decode_status(self.dev.call(P.STATUS)[1])['remote_read']
         before = rr()['b_windows']
         job = self.start(['alpha'])
-        self.assertEqual(MS.PHASES[self.finished(job, timeout=60.0, served=False)['phase']], 'done')
+        self.assertEqual(MS.PHASES[self.finished(job, timeout=bounds.WAIT_S, served=False)['phase']], 'done')
         deadline = time.monotonic() + 15.0
         while self.dev.call(*FILE_COMMAND, timeout=2.5)[0] == ids.S_BUSY:   # until the close was collected
             self.assertLess(time.monotonic(), deadline)
@@ -728,6 +729,7 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertNotIn('old.txt', tree(self.entry('mods-b')))
         self.assertEqual([n for n in self.leftovers() if n.startswith('job-')], ['job-2-old'])
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_sweep_at_job_start_bounded(self):
         """Before its first step the job removes leftover tmp/job-* folders (files, subfolders), nothing else in
         tmp/; a leftover larger than the sweep's cap is cut short and the job still completes."""
@@ -813,6 +815,7 @@ class PublishedJob(Base, unittest.TestCase):
         ids_ = [row[1] for row in M.read_table((PACKAGES / 'base/machines.txt').read_bytes())]
         cls.fit = M.fitting(PACKAGES, ids_)
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_entries_match_the_reference(self):
         self.assertEqual(self.fit[0], 'fm2op')
         for machines, exts in ((self.fit[:1], []), (self.fit[:7], []), (self.fit[:1], ['capture', 'master_dj_filter'])):

@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_mod_job as J                                               # noqa: E402
 from test_sim_config import CONFIG, LEGACY_OLD, ConfigBase, MARK, mark_text                   # noqa: E402
 from test_sim_job_recovery import intent, JOURNAL                          # noqa: E402
-from xy_forever import native_json                                       # noqa: E402
+from xy_forever import bounds, native_json                               # noqa: E402
 
 CONVERGE = 'menu: power-on converge: doubt '                               # sim/devices.cpp, as key_ui.cpp
 
@@ -40,7 +40,7 @@ class PowerOn(ConfigBase, unittest.TestCase):
         def booted():
             s = self.sim.status()
             return s['power_ons'] > ons and s['a'] == 'os' and s['b'] == 'os'
-        self.wait_log(booted, 'both in the OS', 180.0)
+        self.wait_log(booted, 'both in the OS', bounds.WAIT_S)
         status = self.sim.status()
         self.messages = status['to_a'] - link[0], status['to_b'] - link[1]   # link messages relayed for the boot
         return before, status['clock_ms'] - start

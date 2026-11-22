@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                       # noqa: E402
-from xy_forever import hostbuild, modkit as M, modpatch as MP, modsend as S, modstore, package_records, paths, sim  # noqa: E402
+from xy_forever import bounds, hostbuild, modkit as M, modpatch as MP, modsend as S, modstore, package_records, paths, sim  # noqa: E402
 from xy_forever import usb_proto as P                                         # noqa: E402
 from test_mod_job import run                                                  # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
@@ -330,6 +330,7 @@ class PublishedPackages(Harness, unittest.TestCase):
     def job_text(self, generation, machines, exts):
         return MP.job_text(generation, machines, exts, TK.STOCK, TK.CATALOG, official=MP.default_official(PACKAGES))
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_push_twice_and_the_job_reads_the_device_copy(self):
         total, _ = self.push()
         self.assertEqual((total['sent'], total['skipped']), (len([p for p in PACKAGES.iterdir() if p.is_dir()]), 0))

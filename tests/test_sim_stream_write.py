@@ -15,7 +15,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import host_write, sim, usb_proto_ids as P               # noqa: E402
+from xy_forever import bounds, host_write, sim, usb_proto_ids as P               # noqa: E402
 from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
@@ -64,7 +64,7 @@ class StreamWriteTest(unittest.TestCase):
         tmp = self.local('/yaffs2/xy-forever/tmp')
         return sorted(p.name for p in tmp.iterdir() if p.name.startswith('put-')) if tmp.is_dir() else []
 
-    def until(self, predicate, what, timeout=60.0):
+    def until(self, predicate, what, timeout=bounds.WAIT_S):
         """predicate() on the files, advancing the device clock (B's idle and sweep turns run on it)."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -139,6 +139,7 @@ class StreamWriteTest(unittest.TestCase):
         self.assertTrue(self.local(folder).is_dir())
         self.assertEqual(self.uploads(), [])
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_larger_than_the_staging_area(self):
         dev = self.connect(startup_ready=True)
         data = bytes(range(251)) * ((P.MAX_STAGE + 4096) // 251 + 1)       # above stage= (7 MiB)

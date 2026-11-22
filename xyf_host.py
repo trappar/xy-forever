@@ -65,7 +65,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
-from xy_forever import depth, device_lock, host_inventory, host_read, host_trust, host_write, library_add, pack_change, usb_proto as P
+from xy_forever import bounds, depth, device_lock, host_inventory, host_read, host_trust, host_write, library_add, pack_change, usb_proto as P
 from xy_forever.host_write import AREA_TEXT, in_write_area
 from xy_forever.host_screen import SCREEN_BYTES, SCREEN_H, SCREEN_STRIDE, SCREEN_W, screen_png  # noqa: F401
 from xy_forever.library_add import ID_RE
@@ -132,6 +132,8 @@ class Device:
         self.log = []                # (device ms, text) of every LOG frame received
         self.hello_info = None       # P.Hello of the last HELLO reply (None: not seen, nothing refused)
         self.on_ask = host_trust.say_ask   # #65: the device asks (waiting): said once per call, sent again
+        # #230: the simulator answers at once, so a whole call to it (asks included) ends within this
+        self.sim_call_s = bounds.sim_call_s() if isinstance(transport, TcpPort) else None
 
     def _log_frame(self, body):
         if len(body) < 8:
@@ -142,7 +144,9 @@ class Device:
             self.on_log(ms, text)
 
     def call(self, kind, payload=b'', timeout=5.0):
-        return host_trust.call(lambda: self.once(kind, payload, timeout), kind, self.on_ask)
+        end = time.monotonic() + (self.sim_call_s or 0)
+        return host_trust.call(lambda: self.once(kind, payload, timeout if not self.sim_call_s else
+                                                 min(timeout, max(0.0, end - time.monotonic()))), kind, self.on_ask)
 
     def once(self, kind, payload=b'', timeout=5.0):
         info = self.hello_info
@@ -162,7 +166,7 @@ class Device:
                     if len(body) < 4:
                         raise IOError('short reply')
                     return struct.unpack_from('<I', body)[0], body[4:]
-        raise TimeoutError('no reply to 0x%02x' % kind)
+        raise TimeoutError('no reply to 0x%02x within %.1f s' % (kind, timeout))
 
     def hello(self):
         code, body = self.call(P.HELLO)
@@ -359,7 +363,7 @@ def connect(timeout, hello_every=0.5, hello_window=8.0):
     """Waits for a /dev/cu.usbmodem* port and sends HELLO every hello_every seconds on the same open
     port (the device answers only during its ~6 s service window). Every failed port is closed; the
     whole wait never exceeds timeout. The device lock first (xy_forever/device_lock.py; not for the simulator)."""
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + (min(timeout, bounds.SIM_CONNECT_S) if SIM else timeout)
     if not SIM:
         device_lock.hold(timeout)
     seen = None

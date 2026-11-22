@@ -603,7 +603,7 @@ class Synthetic(unittest.TestCase):
                                                    official=self.work / 'content.sha256', unverified=True))
         rounds = 4000 if os.environ.get('XYF_EXHAUSTIVE') else 1200
         run = subprocess.run([str(binary), 'fuzz', str(folder / 'job.txt'), '5', str(rounds)],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, timeout=60)
         self.assertEqual(run.returncode, 0, run.stderr[-3000:] + run.stdout[-500:])
         counts = json.loads(run.stdout)
         self.assertEqual(sum(counts.values()), rounds)

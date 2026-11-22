@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import paths, sim, usb_proto_ids as P                    # noqa: E402
+from xy_forever import bounds, paths, sim, usb_proto_ids as P                    # noqa: E402
 import test_mtp_responder as R                                            # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
@@ -285,6 +285,7 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual(self.file_command(), P.S_OK)
         self.assertEqual(self.sim.status()['rw_open'], 0)
 
+    @bounds.slow                                    # #233: needs longer under the paced clock
     def test_timing_does_not_steal_a_pending_file_request(self):
         """A timed-out file request still owns its slot; diagnostics must not cancel or replace it."""
         from xy_forever import mtp_timing as T
@@ -455,7 +456,7 @@ class MtpSessionTests(unittest.TestCase):
         for _ in range(3):
             self.sim.advance(6000)                              # past the request's bound
         self.sim.set('a_silent', 0)
-        answers = self.c.answers(self.c.take(timeout=60))
+        answers = self.c.answers(self.c.take(timeout=bounds.WAIT_S))
         self.assertEqual(answers[-1][1], R.BUSY)                           # a clean error (f_link: Device_Busy)
         self.assertEqual(self.c.state()['link'], 1)
         self.assertEqual(self.dev.hello()[0], 0)                           # B alive

@@ -40,10 +40,10 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
 import device_pass                                         # noqa: E402  (NEED, session folders, keepalive)
 import xyf_host as host                                    # noqa: E402
-from xy_forever import conformance as C, paths             # noqa: E402
+from xy_forever import bounds, conformance as C, paths     # noqa: E402
 
 EXIT_PASS, EXIT_FAIL, EXIT_USAGE, EXIT_NEED = 0, 1, 2, 3
-REPLY_CAP = {'sim': 5.0, 'device': 20.0}       # longest wait for one reply (spec timeouts are longer)
+REPLY_CAP = {'sim': bounds.SIM_CALL_S, 'device': 20.0}   # longest wait for one reply (spec timeouts: longer)
 
 
 class Target:

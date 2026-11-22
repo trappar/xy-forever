@@ -12,6 +12,11 @@ Each test is charged the wall time since the previous test of its process finish
 and module fixtures (bridge compiles, simulator starts) land on the first test that needed
 them. A module's output is shown only when it failed. Exit 1 if anything failed or errored.
 
+Hard bounds (#230, xy_forever/bounds.py): a watchdog in each process ends it when one test, or the
+fixtures between two tests, runs past bounds.TEST_S (SLOW_S for a test marked @bounds.slow), with
+every thread's traceback; a process past bounds.PROCESS_S gets SIGTERM (the same tracebacks), then
+SIGKILL, with its whole process group. Either way the run names it: HUNG: <test id>.
+
 The longest work starts first: each run records its per-test times (TIMES, outside git; one record per
 mode, as XYF_EXHAUSTIVE=1 runs some tests much longer, and a full run replaces it, dropping tests that
 are gone) and the next run orders its processes by them; without a record, FIRST sets the order.
@@ -19,10 +24,12 @@ are gone) and the next run orders its processes by them; without a record, FIRST
 import argparse
 import collections
 import concurrent.futures
+import faulthandler
 import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
@@ -32,7 +39,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / 'tests'
 sys.path.insert(0, str(ROOT))
-from xy_forever import no_device, paths  # noqa: E402
+from xy_forever import bounds, no_device, paths, procgroup  # noqa: E402
 
 TIMES = paths.SESSIONS / ('run-tests-times%s.json' % ('-exhaustive' if os.environ.get('XYF_EXHAUSTIVE') else ''))
 JOBS = max(1, min(16, (os.cpu_count() or 2) * 2 // 3))   # simulator tests start two threads each
@@ -49,16 +56,33 @@ SPLIT = {'test_simulator': 'test', 'test_sim_mod_job': 'test', 'test_sim_content
 
 
 class TimedResult(unittest.TextTestResult):
+    current = None       # a file kept naming the test (or fixtures) running, for the runner's HUNG line
+    limit = None         # every bound in seconds (--test-timeout), else TEST_S, or SLOW_S for @bounds.slow
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.mark = time.monotonic()
         self.times = []
+        self.watch('the fixtures before the first test', bounds.TEST_S)
+
+    def watch(self, label, seconds):
+        """The watchdog: past seconds, every thread's traceback and exit 1 (faulthandler: even in C code)."""
+        if self.current:
+            Path(self.current).write_text(label)
+        faulthandler.dump_traceback_later(self.limit or seconds, exit=True)
+
+    def startTest(self, test):
+        super().startTest(test)
+        bounds.slow_now = bounds.is_slow(test)
+        self.watch(test.id(), bounds.SLOW_S if bounds.slow_now else bounds.TEST_S)
 
     def stopTest(self, test):
         super().stopTest(test)
         now = time.monotonic()
         self.times.append((test.id(), now - self.mark))
         self.mark = now
+        bounds.slow_now = False
+        self.watch('the fixtures after ' + test.id(), bounds.TEST_S)
 
 
 def run_here(names, stream):
@@ -68,7 +92,10 @@ def run_here(names, stream):
     loader = unittest.TestLoader()
     suite = (loader.loadTestsFromNames(names) if names
              else loader.discover(str(TESTS), top_level_dir=str(TESTS)))
-    result = unittest.TextTestRunner(stream=stream, resultclass=TimedResult, verbosity=0).run(suite)
+    try:
+        result = unittest.TextTestRunner(stream=stream, resultclass=TimedResult, verbosity=0).run(suite)
+    finally:
+        faulthandler.cancel_dump_traceback_later()
     return dict(run=result.testsRun, skipped=len(result.skipped), times=result.times,
                 problems=[(kind, test.id(), text) for kind, items in (('FAIL', result.failures),
                           ('ERROR', result.errors), ('UNEXPECTED SUCCESS', [(t, '') for t in
@@ -76,18 +103,32 @@ def run_here(names, stream):
                           for test, text in items])
 
 
-def run_unit(names):
-    """Some tests (a module, a class, a test) in their own process (output kept for a failure)."""
+def run_unit(names, test_s=None, process_s=bounds.PROCESS_S):
+    """Some tests (a module, a class, a test) in their own process group, ended past process_s (output
+    kept for a failure). A process its watchdog or this bound ended: HUNG and what was running."""
     with tempfile.TemporaryDirectory(prefix='xyf-tests-') as tmp:
         report = Path(tmp) / 'report.json'
-        proc = subprocess.run([sys.executable, __file__, '--worker', str(report), *names], cwd=ROOT,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        argv = [sys.executable, __file__, '--worker', str(report)]
+        argv += ['--test-timeout', str(test_s)] if test_s else []
+        try:
+            proc = procgroup.run(argv + names, timeout=process_s, cwd=ROOT, stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, text=True, errors='replace')
+            status, output = proc.returncode, proc.stdout or ''
+        except subprocess.TimeoutExpired as e:
+            status, output = None, e.output or ''
         if report.is_file():
             result = json.loads(report.read_text())
         else:
-            result = dict(run=0, skipped=0, times=[],
-                          problems=[('ERROR', ' '.join(names), 'worker exited %d' % proc.returncode)])
-        result['output'] = proc.stdout
+            running = report.with_name('current')
+            running = running.read_text() if running.is_file() else ' '.join(names)
+            if status is None:
+                problem = ('HUNG', running, 'its process ran past %g s: ended with its group' % process_s)
+            elif 'Timeout (' in output:                               # faulthandler's watchdog
+                problem = ('HUNG', running, 'ran past its bound: its process ended with its group')
+            else:
+                problem = ('ERROR', running, 'worker exited %d' % status)
+            result = dict(run=0, skipped=0, times=[], problems=[problem])
+        result['output'] = output
         return result
 
 
@@ -168,9 +209,17 @@ def main():
     parser.add_argument('--times', action='store_true', help='print the slowest modules and tests')
     parser.add_argument('--top', type=int, default=15, help='rows per --times table (default %(default)s)')
     parser.add_argument('--summary', metavar='FILE', help='write the counts as JSON: run, skipped, failed, seconds, jobs')
+    parser.add_argument('--test-timeout', type=float, metavar='S',
+                        help='every test\'s bound instead of bounds.TEST_S and SLOW_S (tests of the bounds)')
+    parser.add_argument('--process-timeout', type=float, default=bounds.PROCESS_S, metavar='S',
+                        help='each process\'s bound (default %(default)g s)')
     parser.add_argument('--worker', metavar='REPORT', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    TimedResult.limit = args.test_timeout
     if args.worker:
+        TimedResult.current = Path(args.worker).with_name('current')
+        faulthandler.register(signal.SIGTERM, all_threads=True)   # the runner's bound: where it hung
+        procgroup.end_group_with_parent()                          # the runner gone: this group too
         stream = io.StringIO()
         result = run_here(args.names, stream)
         print(stream.getvalue())
@@ -181,8 +230,13 @@ def main():
         results = [run_here(args.names, sys.stderr)]
     else:
         times = recorded()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            results = list(pool.map(run_unit, units(args.names, times)))
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs)
+        try:
+            results = list(pool.map(lambda u: run_unit(u, args.test_timeout, args.process_timeout),
+                                    units(args.names, times)))
+        except KeyboardInterrupt:
+            os._exit(130)              # at once: each worker's group ends with this process
+        pool.shutdown()
         record(times if args.names else {}, results)
         for r in results:
             if r['problems']:
