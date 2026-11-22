@@ -1,17 +1,16 @@
 // The pages not moved to React yet: Connect, Install, Device, Mods, Files. Plain DOM in the shell's sections; one device
 // action at a time.
-import { ASK_TEXT, Client, RELEASE_FILTERS, SERIAL_OFF_TEXT, JobError, configGet, configSet, connectWebSerial, fileListSource, fileReason, isXyfError,
-  listPackages, localSet, pushPackages, readModsConfig, removePackage, webSerial } from 'xy-forever-client';
-import type { DirEntry, HeldGeneration, LocalSet, PackageSource, SavedInputs } from 'xy-forever-client';
-import { webSocketOpener } from 'xy-forever-client/dev';
+import { RELEASE_FILTERS, configGet, configSet, fileListSource, isXyfError, listPackages, localSet, pushPackages, readModsConfig,
+  removePackage } from 'xy-forever-client';
+import type { Client, DirEntry, HeldGeneration, LocalSet, PackageSource, SavedInputs } from 'xy-forever-client';
 import { CONTENT_STATE, CONTENT_STATE_OLD, ROOT, WRITE_RULE, changeRefusal, configText, contentText, folderWritable, groupMods,
   human, joinPath, modeText, nameProblem, parentOf, parseConfig } from './model.ts';
 import type { SavedConfig } from './model.ts';
-import type { Action } from './bug-report.ts';
 import { h } from './ui.ts';
 import { confirmAction, promptText } from './ask.tsx';
 import { notice } from './notice.ts';
 import { useConnection } from './connection.ts';
+import { adopt, canConnect, deviceBusy, disconnect as close, openDevice, runAction as run } from './device.ts';
 import { bugReport } from './bug-report.ts';
 import { downloadBlob } from './lib/download.ts';
 import { installPage } from './install/page.ts';
@@ -22,10 +21,8 @@ import { pinned } from './install/release.ts';
 import { updateAvailable, updateXyf } from './update.ts';
 import { UNINSTALL_PROTOCOL, uninstallAvailable, uninstallXyf } from './uninstall.ts';
 
-let client: Client | null = null;
-let busy = false;
-let stockRestored = false;
 const sim = (): string | null => simPort();
+const dev = (): Client => useConnection.getState().client!;
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
 
 // ---- Pages and actions -------------------------------------------------------------------------------
@@ -56,44 +53,13 @@ export function showInstall(stage: string | undefined): void {
 }
 let loadedOther = false;
 
-function setLink(): void { useConnection.setState({ client }); }
-
-/** Runs one device action; errors are shown in plain words. A second action waits for the first. */
-async function run(action: Action, work: () => Promise<void>, label = ''): Promise<void> {
-  if (busy) {
-    bugReport.record(action, 'blocked');
-    notice('Busy: wait for the current action to finish.', 'busy');
-    return;
-  }
-  busy = true;
-  notice(label, 'busy');
-  if (!label) notice('');
-  try {
-    await work();
-    bugReport.record(action, 'finished');
-    notice('');
-  } catch (error) {
-    bugReport.record(action, 'failed', error);
-    if (client && !client.connected) { client = null; setLink(); navigate('/connect'); }
-    notice(describe(error), 'error');
-  } finally {
-    busy = false;
-  }
-}
-
-function describe(error: unknown): string {
-  if (error instanceof JobError) return `The build stopped: ${error.message}`;
-  if (isXyfError(error, 'busy')) return 'The OP-XY is busy with a build. Wait for it to finish, then try again.';
-  if (isXyfError(error)) return error.fields && 'error' in error.fields ? fileReason(error) : error.message;
-  return error instanceof Error ? error.message : String(error);
-}
-
 const btn = (label: string, onclick: () => void, cls = ''): HTMLButtonElement => h('button', { type: 'button', class: cls, onclick }, label);
 
 // ---- Connect -----------------------------------------------------------------------------------------
 
 function renderConnect(): void {
-  const supported = sim() !== null || webSerial() !== null;
+  const supported = canConnect();
+  const { client, stockRestored } = useConnection.getState();
   page('connect').replaceChildren(
     h('h1', {}, 'Connect your OP-XY'),
     ...(stockRestored ? [h('p', { class: 'notice info', role: 'status' }, 'Stock OS 1.2.1 was restored and your OP-XY was asked to restart.')] : []),
@@ -110,35 +76,13 @@ function renderConnect(): void {
   );
 }
 
-/** The simulator, else Web Serial: a granted port that answers, the chooser only when none does (serial-connect.ts).
- * filters: the install's release image has only the stock pair (RELEASE_FILTERS). */
-async function connectDevice(filters?: typeof RELEASE_FILTERS): Promise<Client> {
-  const port = sim();
-  if (port) return Client.connect(webSocketOpener(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/xyf-relay?sim=${encodeURIComponent(port)}`), { timeoutMs: 10_000 });
-  return connectWebSerial({ timeoutMs: 10_000, filters });
-}
-
-/** Makes found this app's connection. */
-function use(found: Client): void {
-  client = found;
-  stockRestored = false;
-  bugReport.updateStatus(found.info);
-  found.onAsk((asking) => notice(asking ? `${ASK_TEXT}: it asks to allow this computer (PLAY allows).` : '', 'busy'));   // #65
-  if (!found.info.serial) notice(SERIAL_OFF_TEXT, 'error');                     // #191: hello serial=off
-  setLink();
-}
-
 async function connect(): Promise<void> {
-  use(await connectDevice());
-  busy = false;
+  adopt(await openDevice());
   navigate('/device');
 }
 
 async function disconnect(): Promise<void> {
-  const c = client;
-  client = null;
-  setLink();
-  await c?.close();
+  await close();
   renderConnect();
 }
 
@@ -152,11 +96,11 @@ function installDeps(): Parameters<typeof installPage>[1] {
   return {
     midi: nav.requestMIDIAccess ? nav.requestMIDIAccess.bind(nav) : null,
     usb: nav.usb ?? null,
-    serial: sim() !== null || webSerial() !== null,
-    connect: async () => own() ?? lease(await connectDevice(RELEASE_FILTERS)),
+    serial: canConnect(),
+    connect: async () => own() ?? lease(await openDevice({ filters: RELEASE_FILTERS })),
     find: findDevice,
     handoff: (lease) => {                     // installed: the connection becomes the app's, then the Mods page
-      if (client !== lease.client) use(lease.client);
+      if (useConnection.getState().client !== lease.client) adopt(lease.client);
       useConnection.setState({ installed: true });
       navigate('/mods');
     },
@@ -166,7 +110,7 @@ function installDeps(): Parameters<typeof installPage>[1] {
 
 /** This app's connection, lent (close keeps it): while it holds the port, the Install page uses it and never opens a
  * second link (two readers on one OP-XY split its replies). */
-function own(): Lease | null { return client?.connected ? { client, close: async () => {} } : null; }
+function own(): Lease | null { const { client } = useConnection.getState(); return client?.connected ? { client, close: async () => {} } : null; }
 const lease = (found: Client): Lease => ({ client: found, close: () => found.close() });
 
 /** XY Forever without the chooser, for the Install page to detect: this app's connection, else a granted port that
@@ -174,19 +118,19 @@ const lease = (found: Client): Lease => ({ client: found, close: () => found.clo
 async function findDevice(): Promise<Lease | null> {
   const mine = own();
   if (mine) return mine;
-  if (busy || (!sim() && !webSerial())) return null;
-  return lease(sim() ? await connectDevice() : await connectWebSerial({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false }));
+  if (deviceBusy() || !canConnect()) return null;
+  return lease(await openDevice({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false }));
 }
 
 // ---- Device ------------------------------------------------------------------------------------------
 
 async function readText(path: string): Promise<string | null> {
-  try { return new TextDecoder().decode(await client!.readFile(path)); } catch (e) { if (isXyfError(e, 'not_found')) return null; throw e; }
+  try { return new TextDecoder().decode(await dev().readFile(path)); } catch (e) { if (isXyfError(e, 'not_found')) return null; throw e; }
 }
 
 async function savedConfig(): Promise<{ config: SavedConfig | null; error?: never } | { config: undefined; error: string }> {
   try {
-    const text = await readModsConfig(client!);
+    const text = await readModsConfig(dev());
     return { config: text === null ? null : parseConfig(text) };
   } catch (error) {
     return { config: undefined, error: error instanceof Error ? error.message : String(error) };
@@ -240,11 +184,8 @@ function uninstallCard(c: Client): HTMLElement {
       }
     });
     if (finished) {
-      client = null;
-      setLink();
+      useConnection.setState({ client: null, installed: false, stockRestored: true });
       install?.reset();
-      useConnection.setState({ installed: false });
-      stockRestored = true;
       navigate('/connect', { replace: true });
     }
   }
@@ -253,7 +194,7 @@ function uninstallCard(c: Client): HTMLElement {
 }
 
 async function loadDevice(): Promise<void> {
-  const c = client!;
+  const c = dev();
   const info = await c.status();
   bugReport.updateStatus(info);
   const state = await c.readState();
@@ -288,7 +229,7 @@ let chosen: { source: PackageSource; set: LocalSet } | null = null;
 let held: HeldGeneration[] = [];
 
 async function loadMods(): Promise<void> {
-  const c = client!;
+  const c = dev();
   held = await listPackages(c);
   const { config, error: configError } = await savedConfig();
   const inputs = configError ? null : await configGet(c).catch((error: unknown) => { if (isXyfError(error, 'update_required', 'unsupported')) return null; throw error; });
@@ -360,7 +301,7 @@ async function send(): Promise<void> {
   if (!chosen) throw new Error('Choose a package folder first.');
   const bar = document.getElementById('mods-progress') as HTMLProgressElement;
   bar.hidden = false;
-  const summary = await pushPackages(client!, chosen.source, { onProgress: (done, total) => { bar.max = total || 1; bar.value = done; } });
+  const summary = await pushPackages(dev(), chosen.source, { onProgress: (done, total) => { bar.max = total || 1; bar.value = done; } });
   chosen = null;
   await loadMods();
   notice(`Sent ${summary.sent} package${summary.sent === 1 ? '' : 's'} (${human(summary.bytes)}); ${summary.skipped} already there.`);
@@ -368,10 +309,10 @@ async function send(): Promise<void> {
 
 async function remove(what: string, generation: string | null, label: string): Promise<void> {
   const opts = generation ? { generation } : {};
-  const plan = await removePackage(client!, what, { ...opts, dryRun: true });
+  const plan = await removePackage(dev(), what, { ...opts, dryRun: true });
   const files = plan.reduce((n, r) => n + r.files, 0);
   if (!await confirmAction(`Remove ${label}?`, `${files} files (${human(plan.reduce((n, r) => n + r.bytes, 0))}) are deleted from the OP-XY. A saved build that uses it keeps working until you change mods.`, 'Remove', true)) return;
-  await removePackage(client!, what, opts);
+  await removePackage(dev(), what, opts);
   await loadMods();
 }
 
@@ -395,7 +336,7 @@ function inputsCard(saved: SavedInputs | null): HTMLElement {
   const save = btn('Save', () => void run('save_mods', async () => {
     const mods = [...checks.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value);
     try {
-      await configSet(client!, { mods, expanded: memory.checked, unverified: unknown.checked });
+      await configSet(dev(), { mods, expanded: memory.checked, unverified: unknown.checked });
       status.textContent = 'Saved. The OP-XY builds and installs it the next time it starts.';
     } catch (error) {
       if (!isXyfError(error, 'refused')) throw error;
@@ -413,7 +354,7 @@ function inputsCard(saved: SavedInputs | null): HTMLElement {
 let cwd = ROOT;
 
 async function browse(path: string): Promise<void> {
-  const entries = await client!.listDir(path);
+  const entries = await dev().listDir(path);
   cwd = path.replace(/\/+$/, '') || ROOT;
   entries.sort((a, b) => Number(a.kind !== 'folder') - Number(b.kind !== 'folder') || a.name.localeCompare(b.name));
   const writable = folderWritable(cwd);
@@ -460,7 +401,7 @@ function bar(): HTMLProgressElement { const b = document.getElementById('files-p
 
 async function download(path: string, name: string): Promise<void> {
   const b = bar();
-  const data = await client!.readFile(path, { onProgress: (done) => { b.removeAttribute('value'); b.title = human(done); } });
+  const data = await dev().readFile(path, { onProgress: (done) => { b.removeAttribute('value'); b.title = human(done); } });
   downloadBlob(new Blob([data as BlobPart]), name);
   b.hidden = true;
 }
@@ -468,7 +409,7 @@ async function download(path: string, name: string): Promise<void> {
 async function uploadFiles(input: HTMLInputElement): Promise<void> {
   const files = [...input.files ?? []];
   input.value = '';
-  const existing = new Set((await client!.listDir(cwd)).map((e) => e.name));
+  const existing = new Set((await dev().listDir(cwd)).map((e) => e.name));
   const replaced = files.filter((f) => existing.has(f.name)).map((f) => f.name);
   if (replaced.length && !await confirmAction('Replace files?', `These are replaced on the OP-XY:\n${replaced.join('\n')}`, 'Replace', true)) return;
   const b = bar();
@@ -476,7 +417,7 @@ async function uploadFiles(input: HTMLInputElement): Promise<void> {
     const target = joinPath(cwd, f.name);
     const why = changeRefusal(target);
     if (why) throw new Error(why);
-    await client!.writeFile(target, new Uint8Array(await f.arrayBuffer()), { onProgress: (done, total) => { b.max = total ?? 1; b.value = done; } });
+    await dev().writeFile(target, new Uint8Array(await f.arrayBuffer()), { onProgress: (done, total) => { b.max = total ?? 1; b.value = done; } });
   }
   await browse(cwd);
 }
@@ -486,7 +427,7 @@ async function newFolder(): Promise<void> {
   if (name === null) return;
   const problem = nameProblem(name) ?? changeRefusal(joinPath(cwd, name), true);
   if (problem) throw new Error(problem);
-  await client!.makeDir(joinPath(cwd, name));
+  await dev().makeDir(joinPath(cwd, name));
   await browse(cwd);
 }
 
@@ -495,7 +436,7 @@ async function move(path: string): Promise<void> {
   if (target === null || target === path) return;
   const why = changeRefusal(target);
   if (why) throw new Error(why);
-  await client!.renamePath(path, target);
+  await dev().renamePath(path, target);
   await browse(cwd);
 }
 
@@ -505,16 +446,16 @@ async function copy(path: string, e: DirEntry): Promise<void> {
   if (target === null) return;
   const why = changeRefusal(target);
   if (why) throw new Error(why);
-  await client!.copyTree(path, target);
+  await dev().copyTree(path, target);
   await browse(cwd);
 }
 
 async function removePath(path: string, e: DirEntry): Promise<void> {
   if (e.kind === 'folder') {
-    const inside = await client!.listDir(path);
+    const inside = await dev().listDir(path);
     if (inside.length) throw new Error(`${e.name} is not empty: delete what it holds first.`);
   }
   if (!await confirmAction(`Delete ${e.name}?`, `${path} is deleted from the OP-XY. This cannot be undone.`, 'Delete', true)) return;
-  if (e.kind === 'folder') await client!.removeDir(path); else await client!.deleteFile(path);
+  if (e.kind === 'folder') await dev().removeDir(path); else await dev().deleteFile(path);
   await browse(cwd);
 }
