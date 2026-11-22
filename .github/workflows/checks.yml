@@ -5,11 +5,14 @@
 # so the tests that need one (the freestanding and stack checks) skip here too: `mise run check` runs them, and a
 # manual run with `macos` checked runs the suite on macOS with open-xy's public toolchain-1 release.
 #
-# Cost: a push cancels the PR's run in progress; a docs-only change runs only the lint job (with the doc budget
-# and leak tests); the browser tests run only when the web app, its client or the protocol change. A merge to main
-# runs only the Python suite: it checks the merged result and fills the caches every pull request restores from (a
-# pull request's caches are its own). The host C++ build goes through ccache, so a run recompiles only what changed
-# (85 s to 18 s). Measured and left out: a uv or pnpm cache (each restore costs what the download takes, 2-3 s).
+# Cost: a job bills whole minutes, so the checks are one job whose steps run by what changed (a paths-filter step,
+# no job of its own): a docs-only change (docs/, Markdown) runs lint, the doc budgets and the leak scan; the web
+# app, client and protocol steps run when those change; the Python suite when anything but docs does. The browser
+# tests are their own workflow (e2e.yml), on their own paths. A push cancels the PR's run in progress. A merge to
+# main runs only the Python suite: it checks the merged result and fills the caches every pull request restores
+# from (a pull request's caches are its own). The host C++ build goes through ccache, so a run recompiles only what
+# changed (85 s to 18 s). Measured and left out: a uv or pnpm cache (each restore costs what the download takes,
+# 2-3 s).
 name: Checks
 
 on:
@@ -32,53 +35,68 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  changes:
-    name: What changed
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+  checks:
+    name: Lint, web app, client, Python suite
+    runs-on: ${{ inputs.macos && 'macos-15' || 'ubuntu-24.04' }}
+    timeout-minutes: 20
     permissions:
-      pull-requests: read
-    outputs:
-      code: ${{ github.event_name != 'pull_request' || steps.code.outputs.code == 'true' }}
-      web: ${{ github.event_name == 'workflow_dispatch' || steps.web.outputs.web == 'true' }}
+      contents: read
+      pull-requests: read   # the paths-filter step lists the pull request's files
+    env:
+      CC: clang   # the host C++ build (hosttest/) with clang, as on a Mac, through ccache
+      CXX: clang++
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      UV_NO_SYNC: "1"   # uv run keeps the sync below (without hosttest when no Python suite runs)
+      PR: ${{ github.event_name == 'pull_request' }}
+      CODE: ${{ github.event_name != 'pull_request' }}   # on a pull request: the paths-filter step's
+      WEB: ${{ github.event_name == 'workflow_dispatch' }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - id: code
-        if: github.event_name == 'pull_request'
+        if: env.PR == 'true'
         uses: dorny/paths-filter@v4
         with:
           predicate-quantifier: every   # a file outside docs/ that is not Markdown
           filters: |
             code: ['**', '!docs/**', '!**/*.md']
       - id: web
-        if: github.event_name == 'pull_request'
+        if: env.PR == 'true'
         uses: dorny/paths-filter@v4
         with:
           filters: |
-            web: ['web/**', 'clients/ts/**', 'protocol/**', 'pnpm-lock.yaml', '.github/**']
-
-  python:
-    name: Python suite (no private files)
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ inputs.macos && 'macos-15' || 'ubuntu-24.04' }}
-    timeout-minutes: 20
-    env:
-      CC: clang   # the host C++ build (hosttest/) with clang, as on a Mac, through ccache
-      CXX: clang++
-      CMAKE_C_COMPILER_LAUNCHER: ccache
-      CMAKE_CXX_COMPILER_LAUNCHER: ccache
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
+            web: ['web/**', 'clients/ts/**', 'protocol/**', 'package.json', 'pnpm-lock.yaml', '.github/**']
+      - name: What runs (CODE - the Python suite; WEB - the web app and client)
+        if: env.PR == 'true'
+        run: |
+          echo "CODE=${{ steps.code.outputs.code }}" >> "$GITHUB_ENV"
+          echo "WEB=${{ steps.web.outputs.web }}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/mise
       - name: ccache (the host C++ build's objects)
+        if: env.CODE == 'true'
         uses: hendrikmuhs/ccache-action@v1.2.26
         with:
           key: hosttest-${{ runner.os }}-${{ runner.arch }}
           evict-old-files: job   # keep only what this build used
-      - run: uv sync --locked
+      - run: uv sync --locked ${{ env.CODE != 'true' && '--no-group native' || '' }}
       - run: pnpm install --frozen-lockfile
+      - name: Lint and format checks (ruff, vulture, ESLint, Prettier, knip, clang-format)
+        if: env.PR == 'true'
+        run: mise run lint
+      - name: Doc budgets, links and the leak scan (in the suite too; here when it does not run)
+        if: env.PR == 'true' && env.CODE != 'true'
+        run: uv run python -m unittest tests/test_docs_budget.py tests/test_no_leaks.py
+      - name: The generated protocol files match protocol/v1.json
+        if: env.PR == 'true' && env.CODE == 'true'
+        run: mise run protogen
+      - name: Client tests, web tests, web type check
+        if: env.WEB == 'true'
+        run: mise run web-test
+      - name: Web build
+        if: env.WEB == 'true'
+        run: pnpm --filter xy-forever-web run build
       - name: Blackfin toolchain cache
         if: runner.os == 'macOS'
         uses: actions/cache@v6
@@ -91,55 +109,8 @@ jobs:
           XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
         run: uv run scripts/setup.py toolchain
       - name: The suite, every tier but the sweeps (mise run test-all; CPU budgets enforced, wall time reported)
+        if: env.CODE == 'true'
         env:
           XYF_PRIVATE: ${{ runner.temp }}/private   # empty: every test that needs private files skips
           XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
         run: mkdir -p "$XYF_PRIVATE" && mise run test-all
-
-  web:
-    name: Lint, web app, client, protocol check
-    if: github.event_name != 'push'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    env:
-      UV_NO_SYNC: "1"   # uv run keeps the sync below: no hosttest build (no Python suite here)
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/mise
-      - run: uv sync --locked --no-group native   # no Python suite here: skip building hosttest/
-      - run: pnpm install --frozen-lockfile
-      - name: Lint and format checks (ruff, vulture, ESLint, Prettier, knip, clang-format)
-        run: mise run lint
-      - name: Doc budgets, links and the leak scan (also in the suite; here so a docs-only change runs them)
-        run: uv run python -m unittest tests/test_docs_budget.py tests/test_no_leaks.py
-      - name: The generated protocol files match protocol/v1.json
-        run: mise run protogen
-      - name: Client tests, web tests, web type check
-        run: mise run web-test
-      - name: Web build
-        run: pnpm --filter xy-forever-web run build
-
-  e2e:
-    # The web app's browser tests (`mise run web-e2e`: Playwright in the runner's preinstalled Google Chrome), only
-    # when the web app or the client it uses changes; no part of the routine suite (#233). Without private files the
-    # simulator specs skip, so this runs the install page against its fake devices.
-    name: Web app e2e (Chrome)
-    needs: changes
-    if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    env:
-      UV_NO_SYNC: "1"   # uv run keeps the sync below: no hosttest build
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/mise
-      - run: uv sync --locked --no-group native   # no Python suite here: skip building hosttest/
-      - run: pnpm install --frozen-lockfile
-      - name: Install page and app in Chrome
-        env:
-          XYF_PRIVATE: ${{ runner.temp }}/private   # empty: the simulator specs skip
-        run: mkdir -p "$XYF_PRIVATE" && mise run web-e2e
