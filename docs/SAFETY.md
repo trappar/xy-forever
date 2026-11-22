@@ -102,8 +102,8 @@ recorded in their `docs/status/`). The grant covers these routes and rules, noth
    changes into one install.
 5. Tell the developer at the device before every device-changing action: install, reboot
    into a new build, storage write. Routine USB installs may run on that developer's
-   standing yes. Ask first for new or risky behaviour, such as storage writes or new
-   every-boot paths.
+   standing yes. That grant may cover new storage paths under `/yaffs2/xy-forever/`.
+   Ask first for new risky writes, writes outside the grant and new every-boot paths.
 6. Read the reports afterwards, and stop at the first unexpected result.
 
 If any check is uncertain, do not install. Ask the developer, and prepare a dev-menu kit
