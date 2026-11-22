@@ -1,7 +1,7 @@
 """Hard bounds on every test (#230, xy_forever/bounds.py), as a pytest plugin over pytest-timeout.
 
-Each test, with the fixtures before it, is bounded by the ini `timeout` (bounds.TEST_S), or bounds.SLOW_S
-when marked @bounds.slow (the `slow` marker, #233). Past it, a thread prints HUNG: <test id> and every
+Each test, with the fixtures before it, is bounded by the ini `timeout` (bounds.TEST_S), a simulator core
+test by bounds.SIM_TEST_S, and a parked sweep (the `sweep` marker) by bounds.SLOW_S. Past it, a thread prints HUNG: <test id> and every
 thread's traceback, then ends the process: under xdist each worker leads its own process group, and the
 whole group is killed (a child the test started with it); xdist names the test whose worker crashed. A
 worker whose controller is gone ends with its group too (procgroup.end_group_with_parent). Children
@@ -21,7 +21,6 @@ from xy_forever import bounds, procgroup
 
 
 def pytest_configure(config):
-    config.addinivalue_line('markers', 'slow: needs bounds.SLOW_S under the paced clock (#233)')
     if os.environ.get('PYTEST_XDIST_WORKER') and os.getpgrp() != os.getpid():
         os.setpgid(0, 0)                             # this worker leads a group: a hang ends it with its children
         procgroup.end_group_with_parent()
@@ -29,15 +28,25 @@ def pytest_configure(config):
 
 def pytest_collection_modifyitems(items):
     for item in items:
-        fn, cls = getattr(item, 'obj', None), getattr(item, 'cls', None)
-        if getattr(fn, 'xyf_slow', False) or getattr(cls, 'xyf_slow', False):
-            item.add_marker(pytest.mark.slow)
+        if item.get_closest_marker('sweep'):
             item.add_marker(pytest.mark.timeout(bounds.SLOW_S))
+        elif item.get_closest_marker('sim'):
+            item.add_marker(pytest.mark.timeout(bounds.SIM_TEST_S))
+
+
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
+def pytest_runtest_protocol(item, nextitem):
+    """A simulator test's build (the default one) comes before its bound: a cold build is a compile, not the test."""
+    if item.get_closest_marker('sim') or item.get_closest_marker('sweep'):
+        from xy_forever import sim
+        if not sim.available():
+            sim.build()
+    yield
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item):
-    bounds.slow_now = item.get_closest_marker('slow') is not None   # simulators and Devices it makes
+    bounds.slow_now = item.get_closest_marker('sweep') is not None  # simulators and Devices it makes
 
 
 def _hung(item, seconds):

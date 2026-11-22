@@ -32,7 +32,7 @@ class SettingsTests(unittest.TestCase):
         Serial makes the MTP responder refuse every operation but GetDeviceInfo. A reads Menu at power-on
         with the default's check (settings.txt, else settings.old) before it builds the check's status in the same
         scratch, and B opens the menu only for always after a good check. (The simulator has no composite:
-        tests/test_sim_settings.py checks the rest.)"""
+        the simulator checked the rest until #233.)"""
         composite = (ROOT / 'target/usb_service_composite.ipp').read_text()
         self.assertNotIn('settings()', composite)
         self.assertIn('    const bool trial = true;\n#endif', composite)

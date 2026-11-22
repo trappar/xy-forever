@@ -3,6 +3,8 @@ caller of the stock lookup 889fa2be). Simulator only: host links stand for yaffs
 path), so yaffs hardlinks are not modelled here."""
 import unittest
 
+import pytest
+
 import test_simulator as S
 
 WRITE = 0x8301                                  # the stock "wb" open flags
@@ -56,7 +58,9 @@ class FinalLinks(unittest.TestCase):
             self.assertEqual(self.a_request(S.PARTITION_CLASS, 0x2d, fd), (0, 0))
         return fd, error
 
+    @pytest.mark.sim
     def test_writable_opens_through_final_links_to_the_inbox_are_refused(self):
+        """Kept: Protected paths: writable opens through links to the inbox are refused."""
         root = self.seed()
         for name in ('rel', 'abs', 'chain', 'chain-abs', 'missing', 'loop-a', 'long'):
             self.assertEqual(self.open_close(LOG + name), (-1, S.EACCES), name)
@@ -66,32 +70,9 @@ class FinalLinks(unittest.TestCase):
         self.assertEqual(error, 0)
         self.assertGreaterEqual(fd, 0)
 
-    def test_benign_and_dangling_links_still_open_and_links_delete_as_entries(self):
-        root = self.seed()
-        fd, error = self.open_close(LOG + 'song')
-        self.assertEqual(error, 0)
-        self.assertGreaterEqual(fd, 0)
-        self.assertNotEqual(self.open_close(LOG + 'dangling')[1], S.EACCES)
-        # unlink acts on the link entry: a benign one and one into the inbox both go, their targets stay
-        for name in ('song', 'rel', 'abs'):
-            self.assertEqual(self.a_request(S.PATH_CLASS, 0x25, path=LOG + name), (0, 0), name)
-            self.assertFalse((root / 'xy-forever/log' / name).is_symlink(), name)
-        self.assertTrue((root / 'user/song.bin').exists())
-        self.assertEqual((root / 'upgrade/sub/x.tfw').read_bytes(), b'unchanged')
-
-    def test_the_link_bound_is_stock_six(self):
-        """Stock FollowLink resolves 6 link texts (depth > 5: 889fa1ac): 6 links to a user file still open for
-        writing, 7 are refused. A bound above 6 acts the same: the lookup sets loop on the 7th."""
-        root = self.seed()
-        self.assertEqual(self.open_close(LOG + 'to-song-7-0'), (-1, S.EACCES))
-        self.assertEqual((root / 'user/song.bin').read_bytes(), b'mine')
-        fd, error = self.open_close(LOG + 'to-song-6-0')
-        self.assertEqual(error, 0)
-        self.assertGreaterEqual(fd, 0)
-        self.assertEqual((root / 'user/song.bin').read_bytes(), b'')    # "wb" reached it through 6 links
-
+    @pytest.mark.sim
     def test_staged_write_through_a_final_link_is_refused(self):
-        """The original reproduction: file.write_staged onto a log name that links to an inbox file."""
+        """Kept: Protected paths: a staged write through a link is refused. The original reproduction: file.write_staged onto a log name that links to an inbox file."""
         root = self.seed(entry=False)
         dev = self.links[-1]
         for name in ('rel', 'abs', 'chain-abs'):

@@ -82,4 +82,5 @@ encrypted bytes retain their stock positions. Boot fetch reverses only this mark
 older plaintext files remain readable. This models ownership and ciphertext readback, not AES, OTP,
 crypt-prepare failure, callback execution, media timing or hardware write atomicity. No private keys are used.
 Tests: `test_sim_stock_writer_model` (both roles, retries, verification failures and cuts),
-`test_sim_stock_writer` (unchanged B installer, readback/refusal, reboot identity).
+`test_sim_stock_writer` (B installer; its fault cases are parked sweeps, #233).
+

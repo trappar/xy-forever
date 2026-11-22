@@ -570,7 +570,7 @@ void job_ended(Page& p, const char* name, uint32_t phase, uint32_t error, uint32
 }
 
 // The stages' shares of the bar and typical device times: the simulator's stage times of real one- and
-// seven-mod builds (the published set; tests/test_sim_mods_page.py PublishedPage prints them), averaged as
+// seven-mod builds (the published set, measured in the simulator before #233), averaged as
 // shares and scaled to the device's 9 s and 12 s; the near-instant stages (start, content, finish, commit)
 // get a small floor so the bar visibly passes them.
 namespace {

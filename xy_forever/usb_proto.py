@@ -190,13 +190,12 @@ class Parser:
 
     def feed(self, data):
         """Returns a list of (type, seq, payload) for every complete valid frame."""
+        self.buffer += data                     # whole chunks: the same frames as one byte at a time
         frames = []
-        for byte in data:
-            self.buffer.append(byte)
+        frame = self._settle()
+        while frame:
+            frames.append(frame)
             frame = self._settle()
-            while frame:
-                frames.append(frame)
-                frame = self._settle()
         return frames
 
     def reset(self):

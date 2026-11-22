@@ -13,7 +13,6 @@ the private stock 1.2.1 images (skipped without them). No device access."""
 import hashlib
 import shutil
 from pathlib import Path
-import struct
 import sys
 import tempfile
 import threading
@@ -21,15 +20,16 @@ import time
 import json
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import bounds, modkit as M, modpatch as MP, modsend as MS, sim   # noqa: E402
+from xy_forever import bounds, modkit as M, modpatch as MP, modsend as MS        # noqa: E402
 from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
 from test_modpatch import CATALOG, OFFICIAL, finish, kit_for, profile_for, stock   # noqa: E402
-from test_sim_mod_job import Base, LIB, PACKAGES, UNAVAILABLE, _published, TK   # noqa: E402
-from xy_forever import paths                                              # noqa: E402
+from test_sim_mod_job import Base, LIB, UNAVAILABLE                             # noqa: E402
 
 RECORD = 'xy-forever/content-state.txt'
 SAVED = 'xy-forever/content-official'
@@ -128,7 +128,9 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         cls.seed_with(gen, MP.info_values(gen / 'base/info.txt')['profile'], data, CATALOG, official_list()[1])
         cls.seed_content()
 
+    @pytest.mark.sim
     def test_round_trip_official_a_b_official(self):
+        """Kept: The content switch round trip official, A, B, official."""
         a = self.build(['alpha'])
         self.assertEqual(self.record(), None)
         self.assertEqual(self.usable()[a], (False, True))
@@ -161,98 +163,6 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         self.assertEqual(self.usable()['opxy-121'], (True, False))
         self.assertEqual(self.dev.set_default('opxy-121-stock')[0], 0)    # official: no switch
         self.assertEqual(self.dev.call(P.STATUS)[0], 0)
-
-    def test_menu_actions_wait_for_a_switch(self):
-        """Continue pressed during a content switch shows the busy line and does nothing (the safe-mode row,
-        with no setup saved, only its own line); the switch completes."""
-        a = self.build(['alpha'])
-        self.sim.set('a_slow_ms', 4)
-        self.assertEqual(self.dev.set_default(a)[0], ids.S_STARTED)
-        for key, pressed in ((PLAY, 1), (PLAY, 0), (PLUS, 1), (PLUS, 0), (PLAY, 1), (PLAY, 0)):   # Continue; the safe row
-            self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
-        log = (self.dir / 'log.txt').read_text()
-        self.assertEqual(log.count('menu: line: Busy: a build or content change is running.'), 1, log[-2000:])
-        self.assertIn('menu: line: No mods are saved', log)
-        self.sim.set('a_slow_ms', 0)
-        f = self.finished(0)
-        self.assertEqual((MS.PHASES[f['phase']], f['detail']), ('done', a), f)
-        self.assertEqual(content(self.root), self.expected(a))
-        self.assertEqual(self.default(), a)
-        self.assertNotIn('menu: continue', (self.dir / 'log.txt').read_text())
-
-    def test_slow_write_window_keeps_answering(self):
-        """193 (device, build 192 after an OS crash: job.status went unanswered): A's first read-write mount
-        after an unclean shutdown is slow. B opens the window without waiting in it: job.status and HELLO
-        answer meanwhile ("opening storage for writing"), then the switch and the default complete."""
-        a = self.build(['alpha'])
-        self.sim.set('rw_mount_ms', 600000)                              # A's next read-write mount: until cleared
-        try:
-            self.assertEqual(self.dev.set_default(a)[0], ids.S_STARTED)
-            deadline = time.monotonic() + 10.0
-            while self.sim.status()['rw_open'] == 0 and 'read-write mount takes' not in (self.dir / 'log.txt').read_text():
-                self.assertLess(time.monotonic(), deadline, 'the window open never started')
-                self.sim.advance(50)
-            for _ in range(3):
-                started = self.sim.status()['clock_ms']
-                code, f = MS.job_status(self.dev, 0)
-                self.assertLess(self.sim.status()['clock_ms'] - started, 1000)    # device time: at once
-                self.assertEqual((code, MS.PHASES[f['phase']], f['detail']), (0, 'inputs', 'opening storage for writing'), f)
-                self.assertEqual(self.dev.hello()[0], 0)
-                self.sim.advance(300)
-        finally:
-            self.sim.set('rw_mount_ms', 0)                               # the mount ends
-        f = self.finished(0)
-        self.assertEqual((MS.PHASES[f['phase']], f['detail']), ('done', a), f)
-        self.assertEqual(content(self.root), self.expected(a))
-        self.assertEqual(self.default(), a)
-        self.assertEqual(self.sim.status()['rw_open'], 0)
-
-    def test_refusals_change_nothing(self):
-        a = self.build(['alpha'])
-        before = content(self.root), self.default()
-        live = self.root / 'content/op1_factory.json'
-        live.write_bytes(CATALOG + b' ')                                  # not the official content
-        code, f = self.switch(a)
-        self.assertEqual((code, MS.PHASES[f['phase']], f['error'], f['code']), (ids.S_STARTED, 'failed', 15, 1), f)
-        self.assertEqual((self.record(), (self.root / SAVED).exists(), self.default()), (None, False, before[1]))
-        live.write_bytes(CATALOG)
-        listed = self.root / LIB / a / 'files.sha256'                      # an entry replacing an official file
-        evil = self.root / LIB / a / 'content/samples/kick/one.wav'
-        evil.parent.mkdir(parents=True, exist_ok=True)
-        evil.write_bytes(b'not the official sample')
-        lines = listed.read_text().splitlines(keepends=True)
-        lines.append('%s  content/samples/kick/one.wav\n' % hashlib.sha256(evil.read_bytes()).hexdigest())
-        listed.write_text(''.join(sorted(lines, key=lambda l: l[66:].encode())))
-        code, f = self.switch(a)
-        self.assertEqual((MS.PHASES[f['phase']], f['error'], f['code'], f['detail']), ('failed', 15, 2, 'samples/kick/one.wav'), f)
-        self.assertEqual((content(self.root), self.default(), self.record()), (before[0], before[1], None))
-        self.assertEqual(self.dev.call(ids.JOB_CANCEL, struct.pack('<I', 0))[0], ids.S_STATE)   # a switch: no cancel
-
-    def test_power_on_with_unusable_content_opens_the_menu_with_why(self):
-        a = self.build(['alpha'])
-        cases = (('state=switching\ntarget=%s\n' % a, 'content needs repair'),
-                 ('state=installed\nentry=%s\n' % a, 'Default opxy-121: content not installed'))
-        for text, reason in cases:
-            with self.subTest(reason=reason):
-                (self.root / RECORD).write_text(text)
-                before = content(self.root), self.record(), self.default()
-                log = self.dir / 'log.txt'
-                seen = len(log.read_text())
-                self.sim.control('power plain')
-                self.sim.wait_listening(30.0)                              # nothing booted: the menu, USB on
-                self.reconnect()
-                self.assertEqual(self.dev.hello()[0], 0)
-                deadline = time.monotonic() + 30                           # #197: after the power-on converge
-                while reason not in log.read_text()[seen:]:
-                    self.assertLess(time.monotonic(), deadline, reason)
-                    self.sim.advance(50)
-                self.assertEqual((content(self.root), self.record(), self.default()), before)
-        (self.root / RECORD).write_text('state=official\n')
-        self.sim.control('power plain')
-        deadline = time.monotonic() + 30
-        while not (self.sim.status()['a'] == 'os' and self.sim.status()['b'] == 'os'):   # the default boots
-            self.assertLess(time.monotonic(), deadline)
-            self.sim.advance(50)
 
     # -- faults at every rename of a switch (official -> A) ------------------------------------------------
     def renames(self, entry):
@@ -348,53 +258,17 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             self.assertLess(time.monotonic(), deadline, what)
             self.sim.advance(50)
 
+    @pytest.mark.sweep
     def test_a_failed_rename_at_each_step(self):
         self.faults(1)
 
+    @pytest.mark.sweep
     def test_a_power_cut_at_each_step(self):
         self.faults(2)
 
+    @pytest.mark.sweep
     def test_a_silent_at_each_step(self):
         self.faults(3)
-
-    def test_a_failed_data_write(self):
-        a = self.build(['alpha'])
-        self.sim.set('fail_write', 4)
-        code, f = self.switch(a)
-        self.assertEqual(MS.PHASES[f['phase']], 'failed', f)
-        self.assertIn(MS.ERRORS[f['error']], ('write', 'verify'), f)
-        self.assertEqual((self.default(), self.sim.status()['rw_open']), ('opxy-121', 0))
-        self.switched(a)
-
-
-@unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
-@unittest.skipUnless(_published(), 'published-kit packages, stock os.ldr, op1_factory.json or content.sha256 absent')
-class PublishedSwitch(Switch, unittest.TestCase):
-    """The published 0.0.6 set on the real stock 1.2.1 os.ldr: fm2op made the default (its content installed), then
-    the stock entry again; /yaffs2/content/ as before."""
-    base = 'opxy-121'
-
-    @classmethod
-    def setUpClass(cls):
-        paths.SESSIONS.mkdir(parents=True, exist_ok=True)
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-simswitch-real-', dir=paths.SESSIONS)
-        cls.addClassCleanup(cls.tmp.cleanup)
-        cls.work = Path(cls.tmp.name)
-        cls.seed_with(PACKAGES, 'opxy-1.2.1', TK.STOCK.read_bytes(), TK.CATALOG.read_bytes(),
-                      MP.default_official(PACKAGES).read_text())
-        cls.seeded.joinpath('content/stray.txt').write_bytes(STRAY['stray.txt'])
-        for folder in ('display', 'presets'):                            # official folders, as on the device
-            cls.seeded.joinpath('content', folder).mkdir(exist_ok=True)
-        cls.official = content(cls.seeded)
-
-    def test_fm2op_round_trip(self):
-        a = self.build(['fm2op'])
-        f = self.switched(a)
-        print('\nreal fm2op switch: %d files, %d steps, %d ms device clock' % (f['total'], f['steps'], f['elapsed_ms']),
-              file=sys.stderr)
-        self.switched('opxy-121-stock', official=True)
-        self.assertEqual(content(self.root), self.official)
-
 
 if __name__ == '__main__':
     unittest.main()

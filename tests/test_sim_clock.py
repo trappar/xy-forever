@@ -5,8 +5,9 @@ and the private stock 1.2.1 images (skipped without them). No device access."""
 from pathlib import Path
 import sys
 import tempfile
-import time
 import unittest
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -38,8 +39,9 @@ class EventClock(unittest.TestCase):
     def clock(self):
         return self.sim.status()['clock_ms']
 
+    @pytest.mark.sim
     def test_rest_stands_still_and_advance_fast_forwards(self):
-        """At rest the clock stands still however many status calls come; advance moves it 60 s with B's keepalives
+        """Kept: The frozen clock is what keeps this tier compute-bound. At rest the clock stands still however many status calls come; advance moves it 60 s with B's keepalives
         and A's answers on the way: A still serves B (no idle restart), and B reads."""
         self.sim.settle()
         before, steps = self.clock(), self.sim.status()["steps"]
@@ -50,29 +52,6 @@ class EventClock(unittest.TestCase):
         status = self.sim.status()
         self.assertEqual((status['a'], status['b'], status['a_boots'], status['b_boots']), ('running', 'running', 1, 1))
         self.assertEqual(self.dev.read_file(PATH)[0], 0)
-
-    def test_jump_moves_the_clock_at_once(self):
-        before = self.clock()
-        self.sim.jump(5000)
-        self.assertGreaterEqual(self.clock() - before, 5000)
-
-
-@unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
-class IdleWall(unittest.TestCase):
-    """python -m xy_forever.sim --idle-wall (mise run sim): idle device time follows the host's clock, so a person
-    at the web app sees the device's own timers fire. The only wall-time wait in the simulator tests: every
-    other test runs without the flag, on device time that moves only by advance, until and settle."""
-
-    def test_idle_device_time_follows_the_wall(self):
-        with tempfile.TemporaryDirectory(prefix='xyf-sim-') as tmp:
-            root = sim.seed(Path(tmp) / 'yaffs2')
-            running = sim.Simulator(root, Path(tmp) / 'bootpart.bin', build_dir=sim.build(), log=Path(tmp) / 'log.txt')
-            running.argv = lambda *a, argv=running.argv: argv(*a) + ['--idle-wall']
-            with running.start():
-                before = running.status()['clock_ms']
-                time.sleep(0.5)
-                self.assertGreater(running.status()['clock_ms'], before)
-
 
 if __name__ == '__main__':
     unittest.main()

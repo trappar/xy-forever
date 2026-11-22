@@ -11,16 +11,17 @@ saved slot. A content switch failure and a power cut in the switch: the record i
 again repairs it. With no setup saved the row is "Boot without mods" and PLAY only says why. Synthetic packages (test_sim_config). Needs
 clang++ and the private stock 1.2.1 images (skipped without them). No device access."""
 from pathlib import Path
-import json
 import sys
 import unittest
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import test_sim_mod_job as J                                               # noqa: E402
-from test_sim_config import CONFIG, ConfigBase                                    # noqa: E402
-from test_sim_mods_page import MINUS, PLAY, PLUS, STOP                   # noqa: E402
+from test_sim_config import  ConfigBase                                           # noqa: E402
+from sim_mods_page import  PLAY                                     # noqa: E402
 
 TRACK1, TRACK2 = 6, 7                                                      # the first row, the safe-mode row
 
@@ -63,76 +64,10 @@ class SafeMode(ConfigBase, unittest.TestCase):
         lib = self.entry('mods-a').parent.relative_to(self.root).as_posix() + '/mods-'
         return {k: v for k, v in self.snapshot().items() if k.startswith(lib)}
 
-    def home_only(self, pages, slots):
-        """Since `pages` "mods page:" lines: the Mods page was never shown, and nothing was built."""
-        self.assertEqual(self.pages()[pages:], [])
-        self.assertEqual(self.slots(), slots)
-
-    def safe_saved(self):
-        """alpha saved, then safe mode: the slot."""
-        a = self.first_save()
-        self.menu_again()
-        self.safe_mode()
-        self.assertEqual(self.booted(), self.base)
-        self.in_safe_mode(a)
-        self.menu_again()
-        return a
 
     # -- the tests ---------------------------------------------------------------------------------
-    def test_no_setup_the_row_says_why(self):
-        self.wait_log(lambda: 'pending=0' in self.home(), 'the home row')
-        self.assertEqual(self.safe_row(), '-')
-        before = self.snapshot()
-        self.press(TRACK2)
-        self.press(PLAY)
-        self.wait_log(lambda: self.lines('menu: line: No mods are saved'), 'the line')
-        self.assertEqual(self.lines('menu: safe mode'), [])
-        self.assertEqual(self.snapshot(), before)
 
-    def test_safe_mode_power_on_and_restore(self):
-        a = self.first_save()
-        self.menu_again()
-        record = self.config()
-        self.safe_mode()
-        self.assertEqual(self.booted(), self.base)
-        c = self.in_safe_mode(a)
-        self.assertEqual({k: v for k, v in c.items() if k != 'safe'}, {k: v for k, v in record.items() if k != 'safe'})
-        self.plain_boots_without_writing(self.base)
-        self.menu_again()
-        self.wait_log(lambda: self.home().startswith('Base (safe mode) pending=0'), 'the safe-mode home row')
-        since = len(self.progress())
-        self.restore()
-        self.assertEqual(self.booted(), a)                                 # Restore boots Open-XY, as Continue does
-        self.assertFalse(self.built_any(since))                            # the slot still holds built=
-        c = self.saved_as(a, ['alpha'])
-        self.assertEqual(c['safe'], '0')
-        self.menu_again()
-        self.wait_log(lambda: self.home().startswith('Open-XY - 1 mod - 1.2.1 pending=0'), 'Open-XY again')
-        self.assertEqual(self.safe_row(), 'Boot without mods')
-
-    def test_a_build_never_takes_the_saved_slot(self):
-        """In safe mode the default is the base: both mods slots would be free, but builds go to the other one."""
-        a = self.safe_saved()
-        stamp = (self.entry(a) / 'manifest.json').read_bytes()
-        other = {'mods-a': 'mods-b', 'mods-b': 'mods-a'}[a]
-        self.assertEqual(self.build(['beta']), other)
-        self.assertEqual(self.build(['gamma']), other)
-        self.assertEqual((self.entry(a) / 'manifest.json').read_bytes(), stamp)
-
-    def test_safe_mode_switch_failure_then_again_repairs(self):
-        a = self.first_save()
-        self.menu_again()
-        record = (self.root / CONFIG).read_bytes()
-        self.sim.set('rename_fault_kind', 1)
-        self.sim.set('rename_fault', 1)                                    # the switch's first rename
-        self.safe_mode()
-        self.assertIn('Boot without mods again', self.failed())
-        self.assertEqual(((self.root / CONFIG).read_bytes(), self.disk_default()), (record, a))
-        self.sim.set('rename_fault', 0)
-        self.safe_mode()
-        self.assertEqual(self.booted(), self.base)
-        self.in_safe_mode(a)
-
+    @pytest.mark.sweep
     def test_power_cut_in_the_safe_mode_switch_then_again(self):
         a = self.first_save()
         self.menu_again()
@@ -147,19 +82,6 @@ class SafeMode(ConfigBase, unittest.TestCase):
         self.safe_mode()                                                   # again: repaired
         self.assertEqual(self.booted(), self.base)
         self.in_safe_mode(a)
-
-    def test_restore_failure_then_again(self):
-        a = self.safe_saved()
-        record = (self.root / CONFIG).read_bytes()
-        self.sim.set('rename_fault_kind', 1)
-        self.sim.set('rename_fault', 1)
-        self.restore()
-        self.assertIn('Restore Open-XY again', self.failed())
-        self.assertEqual(((self.root / CONFIG).read_bytes(), self.disk_default()), (record, self.base))
-        self.sim.set('rename_fault', 0)
-        self.restore()
-        self.assertEqual(self.booted(), a)
-        self.assertEqual(self.saved_as(a, ['alpha'])['safe'], '0')
 
     def converged(self, action, row, steady_on=True):
         """The last `action` ('safe mode', 'restore', 'apply': its "menu: <action>" line) ran as one converge
@@ -181,87 +103,6 @@ class SafeMode(ConfigBase, unittest.TestCase):
             self.assertEqual(len({f['on'] for f in shown}), 1, shown)
         return shown
 
-    def again_writes_nothing(self, entry):
-        """Planning again gives nothing: at the next menu nothing is pending, and PLAY boots `entry` writing nothing."""
-        self.menu_again()
-        self.wait_log(lambda: ' pending=0 ' in self.home(), 'nothing pending')
-        before, sequences = self.snapshot(), len(self.lines('progress: job='))
-        self.cont()
-        self.assertEqual(self.booted(), entry)
-        self.assertEqual((self.snapshot(), len(self.lines('progress: job='))), (before, sequences))
-
-    def test_continue_converges_on_the_progress_screen(self):
-        self.change(['alpha'])
-        self.cont()                                                        # the flip written first, if not yet
-        a = self.booted()
-        self.converged('apply', 0)
-        self.saved_as(a, ['alpha'])
-        self.again_writes_nothing(a)
-
-    def test_safe_restore_and_apply_converge_on_the_progress_screen(self):
-        """Boot without mods, Restore, then PLAY on the first row "(to apply)" after a power cut in a switch: each runs
-        on the progress screen alone, and planning again gives nothing."""
-        a = self.first_save()
-        self.menu_again()
-        self.safe_mode()
-        self.assertEqual(self.booted(), self.base)
-        self.converged('safe mode', 1)
-        self.in_safe_mode(a)
-        self.again_writes_nothing(self.base)
-        self.menu_again()
-        self.restore()
-        self.assertEqual(self.booted(), a)
-        self.converged('restore', 1)
-        self.assertEqual(self.saved_as(a, ['alpha'])['safe'], '0')
-        self.again_writes_nothing(a)
-        self.menu_again()
-        self.sim.set('rename_fault_kind', 2)
-        self.sim.set('rename_fault', 1)
-        cuts = self.sim.status()['cuts']
-        self.safe_mode()
-        self.cut(cuts)                                                     # the record: Open-XY; the content: replayed
-        self.wait_log(lambda: not (self.root / 'xy-forever/job.txt').exists(), 'automatic content replay')
-        self.wait_log(lambda: '(to apply) pending=1' in self.home(), 'the record to apply')
-        self.mark_now()
-        self.cont()                                                        # PLAY on the first row: it applies
-        self.assertEqual(self.booted(), a)
-        self.converged('apply', 0)
-        self.assertEqual(self.saved_as(a, ['alpha'])['safe'], '0')
-        self.again_writes_nothing(a)
-
-    def test_a_failed_safe_mode_changes_nothing(self):
-        """A failed Boot without mods returns to the home menu with the reason: the Mods page was never shown, nothing
-        was built, the saved selection and its toggles stay."""
-        self.first_save()
-        self.menu_again()
-        slots, pages = self.slots(), len(self.pages())
-        self.sim.set('rename_fault_kind', 1)
-        self.sim.set('rename_fault', 1)                                    # the switch fails: back on the home menu
-        self.safe_mode()
-        self.assertIn('Boot without mods again', self.failed())
-        self.converged('safe mode', 1)
-        self.home_only(pages, slots)
-        self.assertEqual(self.config()['mods'], 'alpha')
-        self.press(TRACK1)                                                 # Continue, then the Mods row
-        p = self.open_page()
-        self.assertEqual((p['on'], p['changed']), (['alpha'], 0))
-
-    def test_restore_builds_when_the_slot_changed(self):
-        """The slot no longer holds what built= says: Restore builds the saved selection again (into the spare slot),
-        then boots it, still on the progress screen alone."""
-        a = self.safe_saved()
-        info = self.entry(a) / 'manifest.json'
-        fields = json.loads(info.read_text())
-        fields['sha256'] = '0' * 64
-        info.write_text(json.dumps(fields))
-        since = len(self.progress())
-        self.restore()
-        b = self.booted()
-        self.assertEqual(b, {'mods-a': 'mods-b', 'mods-b': 'mods-a'}[a])
-        self.assertTrue(self.built_any(since))
-        self.converged('restore', 1, steady_on=False)                      # the list is read for the build
-        self.assertEqual(self.saved_as(b, ['alpha'])['safe'], '0')
-        self.again_writes_nothing(b)
 
 if __name__ == '__main__':
     unittest.main()

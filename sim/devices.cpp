@@ -135,7 +135,7 @@ int sim_pending = -1;                                               // logged on
 #include "settings_page.ipp"
 uint32_t device_ms() { return uint32_t(xyf_sim::device_cycles() / 400000u); }   // B's clock (advance included)
 #if defined(XYF_MODS_PAGE)
-void log_page() {                       // the page's state, for tests (tests/test_sim_mods_page.py)
+void log_page() {                       // the page's state, for tests (tests/sim_mods_page.py)
     using namespace xyf::mods;
     const Page& p = xy_forever::mods_io::page();
     static char on[2048];

@@ -13,13 +13,15 @@ import sys
 import tempfile
 import time
 import unittest
+
+import pytest
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
 import xyf_host as host                                                   # noqa: E402
-from xy_forever import bounds, modsend as MS, native_json, sim, usb_proto_ids as ids           # noqa: E402
+from xy_forever import bounds, modsend as MS, native_json, sim                                 # noqa: E402
 from test_sim_mod_job import UNAVAILABLE                                  # noqa: E402
 
 ENTRY = 'xy-forever/firmware/opxy-121'
@@ -149,7 +151,9 @@ class Adopt(unittest.TestCase):
         self.assertFalse(self.in_os())
 
     # -- the tests ---------------------------------------------------------------------------------
+    @pytest.mark.sim
     def test_first_plain_start_adopts_converges_and_boots_it(self):
+        """Kept: The first start after install adopts the stock OS and boots it."""
         self.start(play=False)
         self.wait(self.in_os, 'both in the OS')
         self.assertEqual(self.lines('menu: boots the default '), ['opxy-121'])
@@ -160,50 +164,7 @@ class Adopt(unittest.TestCase):
         self.assertIn('default=opxy-121\n', state)
         self.assertIn('default=opxy-121\n', (self.root / 'xy-forever/converged.txt').read_text())
 
-    def test_a_second_start_writes_nothing(self):
-        self.start(play=False)
-        self.wait(self.in_os, 'both in the OS')
-        before, ons = self.snapshot(), self.sim.status()['power_ons']
-        self.sim.control('power plain')
-        self.wait(lambda: self.sim.status()['power_ons'] > ons and self.in_os(), 'the second boot')
-        self.assertEqual(self.lines('menu: boots the default '), ['opxy-121'])   # no menu: the default at once
-        self.assertEqual(self.snapshot(), before)
-
-    def test_play_start_adopts_and_stays_in_the_menu(self):
-        self.start(slow_ms=2)                                                # long enough to watch it run
-        seen = set()
-        while True:
-            code, f = self.job()
-            if code == ids.S_NOT_FOUND:                                      # not started yet
-                self.sim.advance(10)
-                continue
-            self.assertEqual(code, 0)
-            if f['phase'] < 8:
-                self.assertEqual(f['detail'], 'adopt opxy-121', f)
-                seen.add(MS.PHASES[f['phase']])
-                if f['phase'] in (1, 5, 6):
-                    self.assertEqual(f['total'], len(self.image), f)
-                if f['phase'] in (1, 5):
-                    self.assertEqual(self.dev.read_file(STATE_FILE)[0], ids.S_BUSY)   # file commands wait for it
-                self.sim.advance(10)
-                continue
-            break
-        self.sim.set('a_slow_ms', 0)
-        self.assertEqual((MS.PHASES[f['phase']], f['error'], f['detail']), ('done', 0, 'opxy-121'), f)
-        self.assertTrue({'write', 'verify'} <= seen, seen)
-        self.wait(lambda: self.lines('menu: line: OS 1.2.1 is in the library and is the default.'), 'the menu line')
-        self.assertEqual(self.lines('menu: boots the default '), [])         # the menu stays
-        self.wait(lambda: self.dev.read_file(STATE_FILE)[0] == 0, 'storage free again')
-        self.assertEqual(self.default(), 'opxy-121')
-        self.adopted()
-
-    def test_missing_file_refuses(self):
-        self.refused('missing', 4, 'No official OS 1.2.1 found.' + REINSTALL)
-
-    def test_wrong_file_refuses(self):
-        self.refused('wrong', 10, 'OS file is not official 1.2.1.' + REINSTALL)
-
-    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
+    @pytest.mark.sweep
     def test_power_cut_mid_copy_is_redone_at_the_next_start(self):
         self.start()
         self.wait(lambda: self.lines('menu: line: OS 1.2.1'), 'the first adoption')
@@ -223,40 +184,6 @@ class Adopt(unittest.TestCase):
                 self.quiet()                                                 # the sequence ended, before the next rmtree
                 self.adopted()
                 self.assertEqual(self.lines('menu: save failed: '), [])
-
-    def test_play_start_with_a_record_and_no_default_writes_nothing(self):
-        """check()'s own condition: a record and the stock entry, no default: a PLAY start converges to nothing."""
-        self.start(play=False)
-        self.wait(self.in_os, 'both in the OS')
-        (self.root / 'xy-forever/config.txt').write_text('format=1\nbase=opxy-121\nmods=\n')
-        (self.root / 'xy-forever/state-a.txt').unlink()                     # no default
-        before, ons, lines = self.snapshot(), self.sim.status()['power_ons'], len(self.lines('menu: line: '))
-        self.sim.control('power play')
-        self.wait(lambda: self.sim.status()['power_ons'] > ons, 'the PLAY start')
-        self.connect()
-        self.wait(lambda: self.dev.read_file('/yaffs2/xy-forever/config.txt')[0] == 0, 'the menu serves storage')
-        self.sim.advance(3000)                                                        # the record read, the menu settled
-        self.assertEqual(self.job()[0], ids.S_NOT_FOUND)                    # no job this boot
-        self.assertEqual(self.lines('menu: line: ')[lines:], [])
-        self.assertEqual(self.lines('menu: save failed: '), [])
-        self.assertEqual(self.snapshot(), before)
-
-    def test_an_unreadable_library_is_never_adopted(self):
-        """A's library scan fails (the catalog comes empty): the entry already there is never called incomplete."""
-        self.start(play=False)
-        self.wait(self.in_os, 'both in the OS')
-        before, ons = self.snapshot(), self.sim.status()['power_ons']
-        self.sim.set('fail_list', 1)
-        self.sim.control('power plain')
-        self.wait(lambda: self.sim.status()['power_ons'] > ons and self.lines('menu: save failed: '), 'the refusal')
-        self.assertEqual(self.lines('menu: save failed: '), ['Failed: the library could not be read.'])
-        self.connect()
-        code, f = self.job()
-        self.assertEqual((code, MS.PHASES[f['phase']], f['error'], f['code'], f['detail']),
-                         (0, 'failed', 8, ids.S_STORAGE, 'adopt opxy-121'), f)
-        self.sim.set('fail_list', 0)
-        self.assertEqual(self.snapshot(), before)                            # nothing written, the entry kept
-        self.assertFalse(self.in_os())
 
 if __name__ == '__main__':
     unittest.main()

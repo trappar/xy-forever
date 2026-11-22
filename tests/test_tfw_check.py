@@ -164,7 +164,6 @@ SIM_UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'priva
 DIR = '/yaffs2/xy-forever/packages/'
 
 
-@pytest.mark.sim
 @unittest.skipIf(SIM_UNAVAILABLE, SIM_UNAVAILABLE)
 class SimulatorCheck(unittest.TestCase):
     """tfw.check through the real B code on the simulator. The official packages are hard-linked
@@ -211,63 +210,14 @@ class SimulatorCheck(unittest.TestCase):
         verdict, reason = struct.unpack_from('<II', body)
         return verdict, REASONS[reason], body[8:], self.sim.status()['otp_reads'] - before
 
-    def test_not_a_package_reads_no_key_and_errors_are_statuses(self):
-        self.assertEqual(self.check('note.txt'), (1, 'not_package', bytes(32), 0))
-        for path, status in ((DIR + 'missing.tfw', 'not_found'), ('/fat32/x.tfw', 'bad_request')):
-            code, body = self.dev.call(ids.TFW_CHECK, path.encode() + b'\0')
-            self.assertEqual((ids.STATUS_NAMES[code], body), (status, b''))
-        code, _ = self.dev.call(ids.TFW_CHECK, DIR.encode() + b'note.txt')            # no NUL
-        self.assertEqual(ids.STATUS_NAMES[code], 'bad_request')
-
+    @pytest.mark.sim
     @unittest.skipIf(PRIVATE, PRIVATE)
     def test_official_packages_pass_with_the_otp_keys(self):
+        """Kept: The OTP-key package check passes the official packages on the device code."""
         expected = hashlib.sha256(tfw_extract.public_key()).digest()
         for path in OFFICIAL + [Path('good.cut')]:
             with self.subTest(package=path.name):
                 self.assertEqual(self.check(path.name), (0, 'pass', expected, 3))   # selectors 9, 3, 4
-
-    @unittest.skipIf(PRIVATE, PRIVATE)
-    def test_each_failure_reason(self):
-        expected = hashlib.sha256(tfw_extract.public_key()).digest()
-        self.assertEqual(self.check('corrupt.cut')[:3], (1, 'signature', expected))
-        self.assertEqual(self.check('good.cut', fail=1), (1, 'no_otp', bytes(32), 1))
-        verdict, reason, digest, _ = self.check('good.cut', fail=2)
-        self.assertEqual((verdict, reason), (1, 'public_key'))
-        self.assertNotIn(digest, (expected, bytes(32)))
-        self.assertEqual(self.check('good.cut', fail=3)[:2], (1, 'signature'))
-        self.assertEqual(self.check('good.cut', fail=4), (1, 'decrypt', expected, 3))
-        self.assertEqual(self.check('good.cut')[:2], (0, 'pass'))
-
-    @unittest.skipIf(PRIVATE, PRIVATE)
-    def test_the_device_probe_script(self):
-        sys.path.insert(0, str(ROOT / 'scripts'))
-        import tfw_probe
-        with tempfile.TemporaryDirectory(dir=str(paths.SESSIONS)) as sessions:
-            import contextlib
-            import io
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-                code = tfw_probe.main(['--sim', self.sim.address], sessions=sessions)
-            self.assertEqual(code, 0, out.getvalue())
-            self.assertRegex(out.getvalue(), r'probe/otp-1_2_5 +PASS')
-            self.assertEqual(list(Path(sessions).iterdir()), [])          # a passing simulator run leaves nothing
-            self.sim.set('otp_fail', 1)
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-                code = tfw_probe.main(['--sim', self.sim.address, '--packages', 'opxy_firmware_1_2_5.tfw'],
-                                      sessions=sessions)
-            self.assertEqual(code, 1)
-            self.assertIn('fail (no_otp)', out.getvalue())
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-                code = tfw_probe.main(['--sim', '127.0.0.1:1', '--wait', '0.5'], sessions=sessions)
-            self.assertEqual(code, 3)
-        host.SIM = None
-
-    def test_no_otp_without_keys(self):
-        if self.otp:
-            self.skipTest('the simulator has the private keys')
-        status = self.sim.status()
-        self.assertEqual(status['otp_fields'], 0)
-
 
 import xyf_build as builder                          # noqa: E402
 

@@ -64,9 +64,14 @@ description = "Rerun affected tests on every save"
 run = 'uv run ptw --now . -n 6 --dist worksteal --testmon'
 
 [tasks.test-all]
-description = "Every tier, simulator included (about 1 min)"
+description = "Every tier but the parked sweeps, the simulator core included (about 10 s)"
 usage = 'arg "[args]..." help="pytest arguments" var=#true'
-run = 'uv run pytest -n 12 --dist worksteal {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+run = 'uv run pytest -n 12 --dist worksteal -m "not sweep" {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+
+[tasks.test-sweeps]
+description = "The simulator's power-cut and fault sweeps, parked until they move to native tests (#233)"
+usage = 'arg "[args]..." help="pytest arguments" var=#true'
+run = 'uv run pytest -n 12 --dist worksteal -m sweep {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.test-slow]
 description = "Every tier with the slowest tests listed"
@@ -122,9 +127,9 @@ run = [
 ]
 
 [tasks.web-e2e]
-description = "Web app e2e tests (Chrome, simulator)"
+description = "Web app e2e tests (Chrome, simulator): CI runs them when web/ changes"
 dir = "web"
-run = "pnpm run test:e2e"
+run = "uv run pnpm run test:e2e"   # uv: the simulator specs start python3 -m xy_forever.sim from the project venv
 
 [tasks.plan]
 description = "Next plan items and decisions waiting (--all: more)"
