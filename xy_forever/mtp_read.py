@@ -15,7 +15,7 @@ from pathlib import Path
 
 from xy_forever import device_lock, no_device
 
-OP_XY_VID = 0x2367
+OP_XY_VID = 0x2367  # teenage engineering (the serial port too: transport.device_ports)
 READ_ONLY = {
     0x1001: 'GetDeviceInfo',
     0x1002: 'OpenSession',

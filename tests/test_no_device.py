@@ -1,5 +1,5 @@
 """xy_forever/no_device.py: no test opens a real OP-XY. Every opener refuses before it looks for a device: each
-test here replaces what the opener would touch next (the glob, the open, libusb) with a call that fails
+test here replaces what the opener would touch next (the port list, the open, libusb) with a call that fails
 the test, so none of them can reach a device even when the guard is broken."""
 
 import os
@@ -62,20 +62,26 @@ class GuardTest(unittest.TestCase):
 
 
 class SerialTest(unittest.TestCase):
-    def test_find_port_refuses_before_the_glob(self):
-        with mock.patch.object(host, 'SIM', None), mock.patch.object(transport.glob, 'glob', reached('the glob')):
+    def test_find_port_refuses_before_listing_ports(self):
+        with (
+            mock.patch.object(host, 'SIM', None),
+            mock.patch.object(transport.list_ports, 'comports', reached('the port list')),
+        ):
             with self.assertRaisesRegex(DeviceRefused, REFUSED + r'the serial port \(/dev/cu\.usbmodem\*\)$'):
                 host.find_port()
 
     def test_connect_refuses(self):
-        with mock.patch.object(host, 'SIM', None), mock.patch.object(transport.glob, 'glob', reached('the glob')):
+        with (
+            mock.patch.object(host, 'SIM', None),
+            mock.patch.object(transport.list_ports, 'comports', reached('the port list')),
+        ):
             with self.assertRaisesRegex(DeviceRefused, REFUSED):
                 host.connect(5.0)
 
     def test_a_script_run_by_a_test_refuses(self):
         code = (
-            'import glob, sys\nfrom xy_forever import xyf_host\n'
-            'glob.glob = lambda pattern: sys.exit("reached the glob")\nxyf_host.find_port()'
+            'import sys\nfrom serial.tools import list_ports\nfrom xy_forever import xyf_host\n'
+            'list_ports.comports = lambda: sys.exit("reached the port list")\nxyf_host.find_port()'
         )
         run = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
         self.assertEqual(run.returncode, 1)
@@ -102,13 +108,19 @@ class SerialTest(unittest.TestCase):
         server.listen(4)
         self.addCleanup(server.close)
         sim = '127.0.0.1:%d' % server.getsockname()[1]
-        with mock.patch.object(host, 'SIM', sim), mock.patch.object(transport.glob, 'glob', reached('the glob')):
+        with (
+            mock.patch.object(host, 'SIM', sim),
+            mock.patch.object(transport.list_ports, 'comports', reached('the port list')),
+        ):
             port = host.find_port()
             self.assertEqual(port, 'sim:' + sim)
             host.open_port(port).close()
 
     def test_conformance_without_sim_refuses(self):
-        with mock.patch.object(host, 'SIM', None), mock.patch.object(transport.glob, 'glob', reached('the glob')):
+        with (
+            mock.patch.object(host, 'SIM', None),
+            mock.patch.object(transport.list_ports, 'comports', reached('the port list')),
+        ):
             for call in (conformance.Target().present, conformance.Target().open):
                 with self.assertRaisesRegex(DeviceRefused, REFUSED):
                     call()
