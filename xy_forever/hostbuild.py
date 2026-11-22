@@ -12,7 +12,8 @@ moves it, XYF_HOST_BUILDS=off turns it off). The KEEP most recently used entries
 published whole by a rename, and pruning tolerates entries other processes remove meanwhile.
 
 observer, when set (tests/xyf_select.py), is told of every cached compile: observer(files, seconds, cpu_s), the
-absolute paths the compile read, the seconds spent compiling and the compiler's CPU time (both 0 on a hit).
+absolute paths the compile read, the seconds spent compiling (0 on a hit) and the compiler's CPU time (its -M
+listing's on a hit).
 
 Every compile (and its -M listing) runs in its own process group, ended past bounds.COMPILE_S (#230):
 subprocess.TimeoutExpired, as subprocess.run raises.
@@ -119,7 +120,7 @@ def children_cpu():
 
 def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs):
     """subprocess.run(argv, ...) for a compile, through the cache when it can be."""
-    root = cache_dir()
+    root, cpu = cache_dir(), children_cpu()                       # the -M listing's CPU counts as the compile's
     plan = _plan(argv, cwd) if root else None
     if plan is None or kwargs:
         kwargs.setdefault('timeout', bounds.COMPILE_S)
@@ -142,14 +143,14 @@ def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs)
             os.replace(partial, target)
             os.utime(entry)
             if observer:
-                observer([_local(e, roots) for e, _ in manifest['deps']], 0.0, 0.0)
+                observer([_local(e, roots) for e, _ in manifest['deps']], 0.0, children_cpu() - cpu)
             out_text, err_text = manifest['stdout'], manifest['stderr']
             return subprocess.CompletedProcess(argv, 0, *((out_text, err_text) if text else
                                                          (out_text.encode(), err_text.encode()))
                                                if capture_output else (None, None))
     except (OSError, ValueError, KeyError):
         pass
-    start, cpu = time.monotonic(), children_cpu()
+    start = time.monotonic()
     result = procgroup.run(argv, capture_output=True, cwd=cwd, timeout=bounds.COMPILE_S)
     if not capture_output:                                     # as subprocess.run would have shown them
         os.write(1, result.stdout)
