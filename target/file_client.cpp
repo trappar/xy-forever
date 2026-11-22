@@ -108,24 +108,47 @@ volatile U32 left_bound __attribute__((section(".data"))) = 0;
 volatile U32 left_kept __attribute__((section(".data"))) = 0;
 volatile uint32_t left_value __attribute__((section(".data"))) = 0;
 volatile uint32_t left_error __attribute__((section(".data"))) = 0;
-// The session with its slot free and a zeroed request object, or why not.
-U32* claim(Stock121PeerSession*& session, Reply& why) {
+// #195 diagnostic: B's log (log_add), the entries of the request in the slot (sent: no answer seen yet) and of the
+// left one.
+struct RequestLog {
+    U32 count;
+    U32 entry[log_entries][4];
+};
+static_assert((log_entries & (log_entries - 1)) == 0, "a ring by mask");
+RequestLog request_log __attribute__((section(".data"))) = {};
+const U32 no_entry = 0xffffffffu;
+volatile U32 log_sent __attribute__((section(".data"))) = no_entry;
+volatile U32 log_left_out __attribute__((section(".data"))) = no_entry;
+// The session with its slot free and a zeroed request object, or why not (logged: op, never sent).
+U32* claim(Stock121PeerSession*& session, Reply& why, U32 op) {
     session = xyf_boot::link_claim();                   // an outstanding request first (bounded: answer_ms)
-    if (session && left_session && !left_kept && !session->filing()) {   // the left one answered: kept for its owner
+    if (session && !session->filing()) {
         uint32_t value, error;
         xyf_boot::link_answer(value, error);
-        left_value = value;
-        left_error = error;
-        left_kept = 1;
+        if (left_session && !left_kept) {               // the left one answered: kept for its owner
+            left_value = value;
+            left_error = error;
+            left_kept = 1;
+            log_end(log_left_out, done, int32_t(value), error, log_kept);
+        } else log_end(log_sent, done, int32_t(value), error, log_late);   // one past its bound answered
+        log_sent = no_entry;
     }
     U32* request = session ? session->request_slot() : 0;
-    if (!request) why = outcome(xyf_boot::link_lost() ? lost : busy);
+    if (!request) {
+        why = outcome(xyf_boot::link_lost() ? lost : busy);
+        log_end(log_add(op, 0), why.outcome, -1, 0, log_unsent);
+    }
     return request;
 }
 // Submit the built request (done: it left), or busy.
-Reply submit(Stock121PeerSession& session, U32 op) {
-    if (session.send_request(op) != peer_services::Result::waiting) return outcome(busy);
+Reply submit(Stock121PeerSession& session, U32 op, U32 argument) {   // argument: B's log only
+    const U32 entry = log_add(op, argument);
+    if (session.send_request(op) != peer_services::Result::waiting) {
+        log_end(entry, busy, -1, 0, log_unsent);
+        return outcome(busy);
+    }
     xyf_boot::link_sent();
+    log_sent = entry;
     const Reply r = {done, 0, 0};
     return r;
 }
@@ -136,10 +159,13 @@ Reply answer(Stock121PeerSession& session, U32 start, U32 bound) {
         uint32_t value, error;
         xyf_boot::link_answer(value, error);
         const Reply r = {done, int32_t(value), error};
+        log_end(log_sent, done, r.value, error);
+        log_sent = no_entry;
         return r;
     }
-    if (!xyf_boot::link_step()) return outcome(lost);
-    return outcome(xyf_boot::clock_ms() - start > bound ? link : busy);
+    const U32 o = !xyf_boot::link_step() ? lost : xyf_boot::clock_ms() - start > bound ? link : busy;
+    if (o != busy) log_end(log_sent, o, -1, 0);                         // link: still out (claim logs a late answer)
+    return outcome(o);
 }
 // Wait for A's answer to the request that left at start (default: just now), at most bound ms after it.
 Reply await_answer(Stock121PeerSession& session, U32 bound, U32 start = xyf_boot::clock_ms()) {
@@ -151,8 +177,8 @@ Reply await_answer(Stock121PeerSession& session, U32 bound, U32 start = xyf_boot
     }
 }
 // Submit the built request and wait for A's answer.
-Reply send(Stock121PeerSession& session, U32 op, U32 bound) {
-    const Reply s = submit(session, op);
+Reply send(Stock121PeerSession& session, U32 op, U32 bound, U32 argument) {
+    const Reply s = submit(session, op, argument);
     return s.outcome ? s : await_answer(session, bound);
 }
 bool allowed(const char* path, file_engine::Operation op) {
@@ -171,10 +197,10 @@ void place(const char* path) {
 // A partition-class request built and submitted (done), or why not.
 Reply partition_out(Stock121PeerSession*& session, U32 op, U32 a0, U32 a1, U32 a2) {
     Reply why;
-    U32* request = claim(session, why);
+    U32* request = claim(session, why, op);
     if (!request) return why;
     stock<0x889f87d4u, void>(request, op, a0, a1, a2);                  // partition class
-    return submit(*session, op);
+    return submit(*session, op, a0);
 }
 Reply partition(U32 op, U32 a0, U32 a1, U32 a2) {
     Stock121PeerSession* session = 0;
@@ -184,6 +210,8 @@ Reply partition(U32 op, U32 a0, U32 a1, U32 a2) {
 // A request built and submitted, left out for its owner (left_poll), or why not (busy: one is left already).
 Reply leave(Stock121PeerSession* session, const Reply& submitted, U32 bound) {
     if (!submitted.outcome) {
+        log_left_out = log_sent;
+        log_end(log_sent, log_pending, 0, 0, log_left);
         left_session = session;
         left_start = xyf_boot::clock_ms();
         left_bound = bound;
@@ -199,32 +227,58 @@ Reply path_request(const char* path, file_engine::Operation policy, U32 op, U32 
     if (!allowed(path, policy)) return outcome(refused);
     Stock121PeerSession* session;
     Reply why;
-    U32* request = claim(session, why);
+    U32* request = claim(session, why, op);
     if (!request) return why;
     if (sent) path = sent;                                              // (its target passed the check above)
     place(path);
     stock<0x889f8d22u, void>(request, op, path_copy(), argument, 0u);   // path class (flushes the path)
     if (left) {
         *left = session;
-        return submit(*session, op);
+        return submit(*session, op, argument);
     }
-    return send(*session, op, bound ? bound : bound_ms(op, argument));
+    return send(*session, op, bound ? bound : bound_ms(op, argument), argument);
 }
 Reply query(const char* path, U32 op, uint8_t* out, U32 bytes) {
     if (!allowed(path, file_engine::op_stat)) return outcome(refused);
     Stock121PeerSession* session;
     Reply why;
-    U32* request = claim(session, why);
+    U32* request = claim(session, why, op);
     if (!request) return why;
     place(path);
     stock<0x889f8e36u, void>(request, op, path_copy(), 0u, 0u, data(), bytes);   // query class
-    const Reply r = send(*session, op, bound_ms(op, 0));
+    const Reply r = send(*session, op, bound_ms(op, 0), 0);
     if (r.outcome == done) {
         lines(data_buffer, bytes, true);
         for (U32 i = 0; i != bytes; ++i) out[i] = data()[i];
     }
     return r;
 }
+}
+
+uint32_t log_add(uint32_t op, uint32_t argument) {
+    const U32 i = request_log.count++;
+    U32* e = request_log.entry[i & (log_entries - 1)];
+    e[0] = (op & 0xffu) | log_pending << 8 | (argument & 0xffffu) << 16;
+    e[1] = xyf_boot::clock_ms();
+    e[2] = e[3] = 0;
+    return i;
+}
+void log_end(uint32_t entry, uint32_t outcome, int32_t value, uint32_t error, uint32_t flags) {
+    if (entry == no_entry || request_log.count - entry > log_entries) return;   // none, or overwritten since
+    U32* e = request_log.entry[entry & (log_entries - 1)];
+    const U32 took = xyf_boot::clock_ms() - e[1];
+    e[0] = (e[0] & ~0xff00u) | (outcome & 0xfu) << 8 | ((e[0] >> 12 & 0xfu) | flags) << 12;
+    e[2] = U32(value);
+    e[3] = (error & 0xffffu) | (took < 0xffffu ? took : 0xffffu) << 16;
+}
+void log_note(uint32_t op, uint32_t argument) { log_end(log_add(op, argument), done, 0, 0); }
+uint32_t log_copy(uint32_t* out) {
+    const U32 held = request_log.count < log_entries ? request_log.count : log_entries;
+    for (U32 i = 0; i != held; ++i) {
+        const U32* e = request_log.entry[(request_log.count - held + i) & (log_entries - 1)];
+        for (U32 w = 0; w != 4; ++w) out[4 * i + w] = e[w];
+    }
+    return held;
 }
 
 uint32_t identity() {
@@ -250,6 +304,7 @@ Reply left_poll(bool wait) {
     if (r.outcome != busy) {
         left_session = 0;
         left_kept = 0;
+        log_left_out = no_entry;
     }   // past its bound (link): out, no owner now
     return r;
 }
@@ -282,11 +337,11 @@ Reply statfs(const char* path, uint8_t* space) { return query(path, 0x23, space,
 // (done), or why not. A streams the reply back in 0x1000-byte bodies.
 Reply read_out(Stock121PeerSession*& session, int fd, U32 dest, uint32_t count) {
     Reply why;
-    U32* request = claim(session, why);
+    U32* request = claim(session, why, 0x2au);
     if (!request) return why;
     lines(dest, count, true);                                            // no dirty line over what A sends
     stock<0x889f6c5cu, void>(request, 0x2au, U32(fd), U32(count), reinterpret_cast<uint8_t*>(dest), 0x1000u);
-    return submit(*session, 0x2a);
+    return submit(*session, 0x2a, U32(fd));
 }
 Reply read(int fd, uint8_t* out, uint32_t count) {
     if (!count || count > piece_max) return outcome(refused);
@@ -304,11 +359,11 @@ Reply read(int fd, uint8_t* out, uint32_t count) {
 Reply write_out(Stock121PeerSession*& session, int fd, const uint8_t* bytes, uint32_t count) {
     if (!count || count > piece_max) return outcome(refused);
     Reply why;
-    U32* request = claim(session, why);
+    U32* request = claim(session, why, 0x2bu);
     if (!request) return why;
     for (U32 i = 0; i != count; ++i) data()[i] = bytes[i];
     stock<0x889f8c10u, void>(request, 0x2bu, U32(fd), U32(count), data(), U32(count));   // write class (flushes)
-    return submit(*session, 0x2b);
+    return submit(*session, 0x2b, U32(fd));
 }
 Reply write(int fd, const uint8_t* bytes, uint32_t count) {
     Stock121PeerSession* session = 0;
@@ -372,10 +427,10 @@ Reply boot_sector(uint32_t at, uint8_t* out) {
     if (at > boot_partition_probe::max_bytes / 512u) return outcome(refused);
     Stock121PeerSession* session;
     Reply why;
-    U32* request = claim(session, why);
+    U32* request = claim(session, why, 0x11u);
     if (!request) return why;
     stock<0x889f8872u, void>(request, 0x11u, at, 1u, 0u, data(), 512u); // same sector builder as peer_services
-    const Reply r = send(*session, 0x11, request_ms);
+    const Reply r = send(*session, 0x11, request_ms, at);
     if (!r.outcome && !r.value) {
         lines(data_buffer, 512, true);
         for (U32 i = 0; i != 512; ++i) out[i] = data()[i];
@@ -385,10 +440,10 @@ Reply boot_sector(uint32_t at, uint8_t* out) {
 Reply readdir(uint32_t folder, uint8_t* entry) {
     Stock121PeerSession* session;
     Reply why;
-    U32* request = claim(session, why);
+    U32* request = claim(session, why, 0x2fu);
     if (!request) return why;
     stock<0x889f88acu, void>(request, 0x2fu, folder, 0u, data(), entry_bytes);   // sector class (invalidates)
-    const Reply r = send(*session, 0x2f, bound_ms(0x2f, 0));
+    const Reply r = send(*session, 0x2f, bound_ms(0x2f, 0), folder);
     if (r.outcome == done) {
         lines(data_buffer, entry_bytes, true);
         for (U32 i = 0; i != entry_bytes; ++i) entry[i] = data()[i];

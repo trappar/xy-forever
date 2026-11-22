@@ -99,7 +99,7 @@ class AllowlistTest(unittest.TestCase):
             body = client[client.index(name) :]
             body = body[: body.index('\n}\n')]
             self.assertIn('place(path);', body, name)
-            self.assertLess(body.index('claim(session, why)'), body.index('place(path);'), name)
+            self.assertLess(body.index('claim(session, why, op)'), body.index('place(path);'), name)
 
     def test_spans(self):
         client = B.client_spans()

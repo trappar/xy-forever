@@ -15,6 +15,33 @@ INBOX = store.ROOT + '/inbox'
 SIGNED_RECORD = b'xyf-pack.txt'
 OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE, OP_TRACE = range(6)
 TRACE_ENTRIES = 32  # target/file_engine.hpp trace_entries; then trace_state_words of A's state
+# #195 diagnostic: B's log (target/file_client.hpp log_add): outcomes, flags, the ops it names
+B_OUTCOMES = {0: 'answered', 1: 'refused', 2: 'no answer in its bound', 3: 'busy', 4: 'link lost', 15: 'pending'}
+B_FLAGS = ((1, 'left out'), (2, 'kept for its owner'), (4, 'answered late'), (8, 'not sent'))
+B_OPS = {
+    0x08: 'mount',
+    0x09: 'unmount',
+    0x11: 'sector',
+    0x18: 'select/command',
+    0x21: 'access',
+    0x22: 'stat',
+    0x23: 'statfs',
+    0x25: 'unlink',
+    0x26: 'mkdir',
+    0x27: 'rmdir',
+    0x29: 'open',
+    0x2A: 'read',
+    0x2B: 'write',
+    0x2C: 'seek',
+    0x2D: 'close',
+    0x2E: 'opendir',
+    0x2F: 'readdir',
+    0x30: 'closedir',
+    0x31: 'free space',
+    0xA0: 'mark',
+    0xC0: 'command item',
+    0xC1: 'transfer item',
+}
 SIGNED_OPERATIONS = {'import': OP_IMPORT, 'enable': OP_ENABLE, 'disable': OP_DISABLE}
 
 
@@ -171,7 +198,7 @@ def signed_request(dev, operation, name='', busy_s=0.0):
     if code == P.ids.S_REFUSED and operation == OP_ENABLE:
         raise store.StoreError('compatibility unknown or pack path refused')
     store.check(code, 'signed pack')
-    if len(body) < 28 or (len(body) - 28) % 8 or (operation != OP_TRACE and len(body) != 28):
+    if len(body) < 28 or (len(body) - 28) % 4 or (operation != OP_TRACE and len(body) != 28):
         raise store.StoreError('signed pack reply of %d bytes' % len(body))
     return struct.unpack_from('<7I', body)
 
@@ -182,9 +209,9 @@ def signed_trace(dev):
     code, body = dev.call(P.ids.PACKS_MANAGE, payload, timeout=60.0)
     store.check(code, 'signed pack trace')
     count = struct.unpack_from('<7I', body)[6]
-    if len(body) != 28 + 8 * count:
-        raise store.StoreError('signed pack trace of %d bytes for %d pairs' % (len(body), count))
-    return struct.unpack_from('<%dI' % (2 * count), body, 28)
+    if len(body) != 28 + 4 * count:
+        raise store.StoreError('signed pack trace of %d bytes for %d words' % (len(body), count))
+    return struct.unpack_from('<%dI' % count, body, 28)
 
 
 def failure_site(site, detail):
@@ -205,7 +232,43 @@ def failure_site(site, detail):
 
 
 def trace_lines(words):
-    """#195 diagnostic: A's trace pairs (packs.manage operation 5) as text, one request or state word per line."""
+    """#195 diagnostic: the trace words (packs.manage operation 5) as text: B's log, then A's trace."""
+    if not words:
+        return []
+    b_count, a_count, stop = words[0] & 0xFF, words[0] >> 8 & 0xFF, words[0] >> 16 & 0xFF
+    b_words = words[1 : 1 + 4 * b_count]
+    lines = ["B's last requests to A, oldest first (ms from the first):"]
+    lines += ['  ' + line for line in b_log_lines(b_words)]
+    if stop:
+        lines.append("A's trace: %d pairs, then its request %s" % (a_count, B_OUTCOMES.get(stop, stop)))
+    else:
+        lines.append("A's trace, oldest first:")
+    lines += ['  ' + line for line in a_trace_lines(words[1 + 4 * b_count : 1 + 4 * b_count + 2 * a_count])]
+    return lines
+
+
+def b_log_lines(words):
+    """#195 diagnostic: B's own log entries (target/file_client.hpp log_add), one per line."""
+    lines = []
+    first = words[1] if words else 0
+    for head, sent, value, tail in zip(words[0::4], words[1::4], words[2::4], words[3::4]):
+        op, outcome, flags, argument = head & 0xFF, head >> 8 & 0xF, head >> 12 & 0xF, head >> 16
+        took = tail >> 16
+        text = '%+7d ms op 0x%02x %s 0x%04x' % ((sent - first) & 0xFFFFFFFF, op, B_OPS.get(op, '?'), argument)
+        if outcome == 0 and op < 0xA0:
+            shown = '0x%08x' % value if op in (0x2E, 0x2F) else value - (1 << 32) if value & 0x80000000 else value
+            text += ' -> %s errno %d' % (shown, tail & 0xFFFF)
+        elif outcome:
+            text += ' -> %s' % B_OUTCOMES.get(outcome, outcome)
+        if op < 0xA0 or op == 0xC0:
+            text += ', %s ms' % ('>65534' if took == 0xFFFF else took)
+        named = [name for bit, name in B_FLAGS if flags & bit]
+        lines.append(text + ('; ' + ', '.join(named) if named else ''))
+    return lines
+
+
+def a_trace_lines(words):
+    """#195 diagnostic: A's trace pairs, one request or state word per line."""
     pairs = list(zip(words[0::2], words[1::2]))
     entries, state = pairs[:TRACE_ENTRIES], pairs[TRACE_ENTRIES:]
     lines = []
@@ -255,7 +318,7 @@ def signed_change(dev, action, pack_id):
                 if site:
                     print('Stopped at %s.' % failure_site(site, detail))
                 if traced:
-                    print("A's trace (#195 diagnostic), oldest first:")
+                    print('Trace (#195 diagnostic):')
                     for line in trace_lines(signed_trace(dev)):
                         print('  ' + line)
                 store.check(error or P.ids.S_STATE, 'signed pack import')

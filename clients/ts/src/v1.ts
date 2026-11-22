@@ -1035,7 +1035,7 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
       { name: "operation", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: [0, 5] },
       { name: "name", type: "cstr", bytes: null, optional: false, encoding: "ascii", maxBytes: 128, range: null },
     ] },
-    reply: { size: [32, 352], onError: "status", extensible: false, fields: [
+    reply: { size: [32, 868], onError: "status", extensible: false, fields: [
       { name: "status", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "phase", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "done", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
@@ -1044,7 +1044,7 @@ export const COMMANDS: Readonly<Record<CommandName, Command>> = {
       { name: "site", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "detail", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
       { name: "traced", type: "u32", bytes: 4, optional: false, encoding: null, maxBytes: null, range: null },
-      { name: "trace", type: "rest", bytes: null, optional: false, encoding: null, maxBytes: 320, range: null },
+      { name: "trace", type: "rest", bytes: null, optional: false, encoding: null, maxBytes: 836, range: null },
     ] },
   },
 };

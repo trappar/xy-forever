@@ -41,19 +41,31 @@ enum PackSite : U32 {
 };
 U32 signed_pack_site __attribute__((section(".data"))) = 0;
 U32 signed_pack_detail __attribute__((section(".data"))) = 0;
-// #195 diagnostic (device: a member's open answered EBADF and the source's close failed after it): A's last requests
-// and its state (file_engine.hpp trace_k), read once the import failed, before the window closes.
-const U32 pack_trace_pairs = file_engine::trace_entries + file_engine::trace_state_words;
-U32 signed_pack_trace[2 * pack_trace_pairs] __attribute__((section(".data"))) = {};
-U32 signed_pack_traced __attribute__((section(".data"))) = 0;   // pairs read
+// #195 diagnostic (device: a member's open answered EBADF and the source's close failed after it), read once the
+// import failed, before the window closes: B's own log first (file_client::log_copy: its last requests to A and
+// command items, kept without A), then A's last requests and its state (file_engine.hpp trace_k) until a request
+// for them fails. Word 0: B's entries | A's pairs << 8 | the outcome that stopped A's read << 16 (0: all read); then
+// 4 words per B entry, 2 per A pair.
+const U32 pack_a_pairs = file_engine::trace_entries + file_engine::trace_state_words;
+const U32 pack_trace_words = 1 + 4 * file_client::log_entries + 2 * pack_a_pairs;
+uint32_t signed_pack_trace[pack_trace_words] __attribute__((section(".data"))) = {};
+U32 signed_pack_traced __attribute__((section(".data"))) = 0;   // words in signed_pack_trace
 void signed_pack_read_trace() {
-    for (U32 k = 0; k != pack_trace_pairs; ++k) {
-        const file_client::Reply r = file_client::a_timing(file_engine::trace_k + k);
-        if (r.outcome) return;
-        signed_pack_trace[2 * k] = U32(r.value);
-        signed_pack_trace[2 * k + 1] = r.error;
-        signed_pack_traced = k + 1;
+    uint32_t* w = signed_pack_trace;
+    const U32 b = file_client::log_copy(w + 1);
+    uint32_t* pairs = w + 1 + 4 * b;
+    U32 a = 0, stop = 0;
+    for (; a != pack_a_pairs; ++a) {
+        const file_client::Reply r = file_client::a_timing(file_engine::trace_k + a);
+        if (r.outcome) {
+            stop = r.outcome;
+            break;
+        }
+        pairs[2 * a] = U32(r.value);
+        pairs[2 * a + 1] = r.error;
     }
+    w[0] = b | a << 8 | stop << 16;
+    signed_pack_traced = 1 + 4 * b + 2 * a;
 }
 U32 pack_fail(U32 site, U32 detail, U32 code) {
     if (!signed_pack_site) {
@@ -186,7 +198,7 @@ void signed_pack_end(SignedPackJob& j, U32 code) {
     }
     signed_pack_error = code;
     if (code) signed_pack_site |= (closed ? U32(pack_source_close) : 0u) | (j.io.lost() ? U32(pack_link_lost) : 0u);
-    if (code && code != P::s_cancelled && !j.io.lost() && !file_client::left_out()) signed_pack_read_trace();
+    if (code && code != P::s_cancelled) signed_pack_read_trace();    // also with a request left out: claim keeps it
     if (j.seal_open) settle_begin();
     if (j.created && code && !closed && !j.io.lost() && tree_begin(j.tree, j.staging)) {
         signed_pack_site |= pack_cleanup;
@@ -251,6 +263,7 @@ U32 signed_pack_window(SignedPackJob& j) {
     j.created = true;
     code = j.source.open(&j.work);
     if (code) return code;
+    file_client::log_note(file_client::log_mark, 1);                    // #195 diagnostic: the source authenticated
     const auto reader = j.source.reader();
     j.archive.reader = {reader.context, reader.size, reader.read};
     signed_pack_phase = pack_staging;
@@ -543,7 +556,7 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
             else if (op == pack_enable || op == pack_disable) code = signed_pack_toggle(name, op == pack_enable);
         }
     }
-    uint8_t reply[32 + 8 * pack_trace_pairs];
+    uint8_t reply[32 + 4 * pack_trace_words];
     P::put32(reply, code);
     P::put32(reply + 4, signed_pack_phase);
     P::put32(reply + 8, signed_pack_done);
@@ -553,7 +566,7 @@ void packs_manage(uint8_t seq, const uint8_t* payload, U32 bytes) {
     P::put32(reply + 24, signed_pack_detail);
     P::put32(reply + 28, signed_pack_traced);
     const U32 traced = op == pack_trace ? signed_pack_traced : 0;
-    for (U32 i = 0; i != 2 * traced; ++i) P::put32(reply + 32 + 4 * i, signed_pack_trace[i]);
-    send(P::t_packs_manage, seq, reply, code ? 4 : 32 + 8 * traced);
+    for (U32 i = 0; i != traced; ++i) P::put32(reply + 32 + 4 * i, signed_pack_trace[i]);
+    send(P::t_packs_manage, seq, reply, code ? 4 : 32 + 4 * traced);
 }
 #endif

@@ -172,22 +172,29 @@ class SignedPackImport(unittest.TestCase):
         self.assertEqual(sample.stat().st_ino, blob.stat().st_ino)
 
     def test_failed_member_open_reports_a_trace(self):
-        """Kept: #195's device diagnostic. A failed import reads A's last requests and state before its window
-        closes, and packs.manage operation 5 returns them: here the member's open that A's stock open failed (EBADF),
-        then the source's close."""
+        """Kept: #195's device diagnostic. A failed import keeps B's own log of its last requests to A (nothing asked
+        of A) and reads A's last requests and state before its window closes; packs.manage operation 5 returns
+        both: here the member's open that A's stock open failed (EBADF), then the source's close."""
         self.sim.set('fail_write_open', 1)  # the member's open: EBADF from the stock open
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_STORAGE)
         self.assertEqual(self.site & 0xFFFF, 3 << 8 | 1)  # extract step, the member's open
         self.assertEqual(self.detail, 1 << 16 | 9)  # member 1 (manifest.json), EBADF
-        self.assertEqual(self.traced, packs.TRACE_ENTRIES + 8)
-        lines = packs.trace_lines(packs.signed_trace(self.dev))
-        requests = [line for line in lines if line.startswith('op ')]
-        self.assertEqual(len(requests), packs.TRACE_ENTRIES)  # more requests than the ring holds
+        words = packs.signed_trace(self.dev)
+        self.assertEqual(len(words), self.traced)
+        b_count, a_count, stop = words[0] & 0xFF, words[0] >> 8 & 0xFF, words[0] >> 16
+        self.assertEqual((b_count, a_count, stop), (32, packs.TRACE_ENTRIES + 8, 0))  # both rings full, A answered
+        b_log = packs.b_log_lines(words[1 : 1 + 4 * b_count])
+        authenticated = next(i for i, line in enumerate(b_log) if 'mark 0x0001' in line)
+        after = b_log[authenticated + 1 :]
+        self.assertEqual(len(after), 2, b_log)
+        self.assertRegex(after[0], r'op 0x29 open 0x\w+ -> -1 errno 9, \d+ ms$')
+        self.assertRegex(after[1], r'op 0x2d close 0x\w+ -> 0 errno 0, \d+ ms$')
+        requests = packs.a_trace_lines(words[1 + 4 * b_count :])[: packs.TRACE_ENTRIES]
         self.assertTrue(
             requests[-2].startswith('op 0x29 run_open -> -1 errno 9; before: mounted=1 window=1/1'), requests[-2]
         )
         self.assertTrue(requests[-1].startswith('op 0x2d run_file -> 0 errno 0'), requests[-1])  # the source closed
-        registry = next(line for line in lines if 'registry' in line)
+        registry = next(line for line in packs.trace_lines(words) if 'registry' in line)
         self.assertNotIn('0x00000000, 0x00000000', registry)  # the provider registered
         self.assertFalse(self.retained.exists())
