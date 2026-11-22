@@ -32,6 +32,7 @@ from xy_forever.build_modules import (
 from xy_forever.build_modules import own_sources as build_sources
 from xy_forever.compile import SOURCE, compile_core, invoke, sha, toolchain
 from xy_forever.ldr import parse_ldr, validate_memory
+from xy_forever.managed_link_audit import HARDLINK_CREATOR, check_hardlink_scope, check_state_write
 from xy_forever.otp_audit import (
     check_otp_data,
     check_otp_rules,
@@ -572,22 +573,6 @@ def check_construct_spans(boot):
         )
 
 
-def functions_referencing(listing, address):
-    """Function labels whose bodies load the given address (=0x...)."""
-    names, current = set(), None
-    for line in listing.splitlines():
-        m = re.match(r'^[0-9a-f]{8} <(.+)>:$', line)
-        if m:
-            current = m.group(1)
-        elif '=0x%08x' % address in line and (
-            '.l = 0x%x' % (address & 0xFFFF) in line.lower() or re.search(r'\b[pr]\d = 0x%x\b' % address, line.lower())
-        ):
-            # Only the instruction that completes the address (objdump annotates a
-            # .H load with the register's stale value from the previous code).
-            names.add(current)
-    return names
-
-
 def check_scoped_calls(raw, addresses, wrapper, callers, what):
     """Each stock entry in addresses is loaded only by stock<> wrappers whose (mangled) name contains
     wrapper, and every function referencing such a wrapper has a name containing one of callers."""
@@ -957,30 +942,14 @@ def verify(out, stock, boot):
     require(has('census4fill') and has('locate_zero'), 'Module lacks the census writer')
     listing = (out / 'module.asm').read_text().lower()
     state_write = mode in WRITE_AUDIT_MODES
+    managed_link = mode in FILE_WRITE_MODES and mode in USB_SET_DEFAULT_MODES  # #202: the content switch's links
     for address in WRITE_ENTRIES:
         if state_write and address == STATE_WRITE_ENTRY:
             continue
         require('=0x%08x' % address not in listing, 'Module references a write entry')
     if state_write:
         check_write_spans(boot)
-        raw = (out / 'module.asm').read_text()
-        users = functions_referencing(raw, STATE_WRITE_ENTRY)
-        require(
-            len(users) == 1 and 'y_write' in next(iter(users)),
-            'yaffs_write loaded outside the y_write wrapper: ' + ', '.join(sorted(map(str, users))),
-        )
-        wrapper = next(iter(users))
-        callers, current = set(), None
-        for line in raw.splitlines():
-            m = re.match(r'^[0-9a-f]{8} <(.+)>:$', line)
-            if m:
-                current = m.group(1)
-            elif '<%s>' % wrapper in line and current != wrapper:
-                callers.add(current)
-        require(
-            len(callers) == 1 and 'write_state_slot' in next(iter(callers)),
-            'y_write reached outside write_state_slot: ' + ', '.join(sorted(map(str, callers))),
-        )
+        check_state_write((out / 'module.asm').read_text(), STATE_WRITE_ENTRY, managed_link)
     else:
         require(not has('write_state_slot') and not has('state_write'), 'State write linked outside the product builds')
     targets = call_targets(listing)
@@ -996,6 +965,7 @@ def verify(out, stock, boot):
         | (MTP_CALLS if mtp else set())
         | (OTP_CALLS if mode in TFW_CHECK_MODES else set())
         | ({'%08x' % STATE_WRITE_ENTRY} if state_write else set())
+        | ({HARDLINK_CREATOR} if managed_link else set())
         | ({'stage2-enter'} if stage2 or stage2_service else set())
     )
     entering = stage2 or stage2_service
@@ -1070,7 +1040,18 @@ def verify(out, stock, boot):
     check_scoped_calls(raw, A_MARKER_CALLS - SERVER_CALLS, '14storage_server6a_side', A_MARKER_CALLERS, 'Marker check')
     check_scoped_calls(raw, {'889f285a'}, '14storage_server6a_side', A_MARKER_CALLERS, 'Leftover close')
     check_scoped_calls(raw, A_RENAME_CALLS, '14storage_server6a_side', ('14storage_server',), 'Rename')
-    check_scoped_calls(raw, A_FIND_CALLS, '14storage_server6a_side', A_FIND_CALLERS, 'Final-link lookup')
+    check_hardlink_scope(raw, has, managed_link)
+    if managed_link:
+        check_scoped_calls(
+            raw, A_FIND_CALLS, '14storage_server6a_side', (*A_FIND_CALLERS, 'hardlink_lookup'), 'Final-link lookup'
+        )
+        check_scoped_calls(
+            raw, {HARDLINK_CREATOR}, '14storage_server6a_side', ('hardlink_create_alias',), 'Hardlink creator'
+        )
+        creator_tables = parse_spans(target_source('managed_blob_link.hpp'), 6, 'Hardlink dispatch')
+        check_spans(boot, creator_tables, 'Hardlink dispatch', {HARDLINK_CREATOR}, mtp_spans())
+    else:
+        check_scoped_calls(raw, A_FIND_CALLS, '14storage_server6a_side', A_FIND_CALLERS, 'Final-link lookup')
     check_scoped_calls(raw, FILE_CLIENT_CALLS, '11file_client', ('11file_client',), 'File client')
     if usb:
         check_client_spans(boot)

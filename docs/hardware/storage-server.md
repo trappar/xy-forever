@@ -44,7 +44,9 @@ The extra stats have not been timed on hardware.
 most 6 links as stock, then the target's parents by object (`yaffs_obj` parent `+0x1c`, type `+0x64`: 2 link,
 3 folder; link text `+0x68`). A missing target is judged by the folder that would hold it. A loop, a bound reached
 or a span mismatch refuses. Unlink, rmdir and rename act on the link entry, so a link into the inbox can be deleted.
-Hardlinks resolve through `equivalent`; the simulator does not model them.
+Hardlinks resolve through `equivalent`. The content switch's managed links (#202,
+[package transactions](../storage/package-transactions.md#content-retention-and-collection)) check six more stock
+dispatch tables on A (`managed_blob_link::creator_spans`) before calling the creator; the simulator models those links.
 
 ## Read-only boot-partition diagnostic (#7)
 

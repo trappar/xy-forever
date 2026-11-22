@@ -1,8 +1,6 @@
 // One quarantine seam, before probes, engine entry, mounts or FD dispatch. Product only.
-#if defined(XYF_TFW_CHECK)
-namespace ais = xy_forever::a_install_stage;
-ais::State a_stage __attribute__((section(".data"))) = {};
-void stage_refuse(U32 request, Stock121PeerSession& session) {
+#if defined(XYF_TFW_CHECK) || defined(XYF_CONTENT_SWITCH)
+void storage_busy_reply(U32 request, Stock121PeerSession& session) {
     const U32 cls = word(request), op = byte(request + 5);
     const U32 bytes = cls == file_engine::query_class ? (op == 0x23 ? 12u :
                                                          op == 0x31 ? 8u :
@@ -20,6 +18,10 @@ void stage_refuse(U32 request, Stock121PeerSession& session) {
     }
     session.reply(request, 0xffffffffu, error_busy);
 }
+#endif
+#if defined(XYF_TFW_CHECK)
+namespace ais = xy_forever::a_install_stage;
+ais::State a_stage __attribute__((section(".data"))) = {};
 bool stage_query(U32 request, Stock121PeerSession& session) {
     const U32 now = xyf::clock::ms();
     if (a_stage.expired(now)) a_stage.clear();
@@ -33,7 +35,7 @@ bool stage_query(U32 request, Stock121PeerSession& session) {
     // Even a malformed or inactive sentinel is never a file handle, in ANY class/op.
     if (!sentinel || word(request) != write_class || byte(request + 5) != 0x2b) {
         a_stage.clear();
-        stage_refuse(request, session);
+        storage_busy_reply(request, session);
         return true;
     }
     // Stock 889f87f2 stores write count at +0x18; +0xc belongs to the request queue.

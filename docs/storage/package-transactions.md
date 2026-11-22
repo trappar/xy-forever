@@ -51,6 +51,13 @@ Native copies stream into scratch, hash the source, read back and hash the scrat
 the hash name. A corrupt existing blob is refused rather than accepted by its name. Cuts leave only
 scratch or a complete blob. Host copies reuse the verified atomic upload and SHA-256 read-back.
 
+When switching mod content, an existing read-only blob can be linked into the upload scratch
+area. A verifies the real directories and the immutable blob before creating the hardlink.
+B hashes the staged alias before replacing the kept and active asset paths through atomic
+upload renames. A writable legacy blob is copied to an exclusive read-only scratch file in 4 KiB
+pieces. B verifies the full SHA-256 before atomically replacing the cache entry. A cache miss
+uses the entry's existing verified file copy.
+
 Collection follows host library changes, native publication and the idle sweep. An unresolved
 `job.txt` or `job.old` suspends all blob deletion until [replay or undo](jobs.md) completes. It holds the job
 exclusion while collecting all kept references, then deletes only unreferenced hash names. The native

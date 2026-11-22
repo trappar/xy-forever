@@ -8,6 +8,8 @@
 // A function the simulator does not stand in for ends the processor (crash), never guesses.
 #include "runtime.hpp"
 #include "boot_crypto.hpp"
+#include "usb_service.hpp"
+#include "managed_blob_link.hpp"
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
@@ -465,7 +467,12 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
         if (role) crash("B called the yaffs lookup (A's only)");
         return find_object(u(0), s(1), int(u(2)), static_cast<uint32_t*>(p(4)), static_cast<int*>(p(5)),
                            static_cast<int*>(p(6)));
-    case 0x889fa834u: // yaffs rename
+#if defined(XYF_CONTENT_SWITCH)
+    case 0x88a0199au: // yaffs object creator: a hardlink (managed content only)
+        if (role || u(0) != 4 || u(3) || u(4) || u(5) || u(7) || u(8)) crash("bad hardlink creator operands");
+        return create_managed_alias(u(1), s(2), u(6));
+#endif
+    case 0x889fa834u:                                   // yaffs rename
         if (role) crash("B called the yaffs rename (A's only)");
         return uint64_t(int64_t(rename_object(s(0), s(1))));
     case 0x889f285au: // posix close
@@ -496,7 +503,12 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     case 0x889fb02cu: return uint64_t(int64_t(unmount(u(0))));
     case 0x889fbfe6u: {
         const uint32_t f = u(1); // yaffs flags: 1 write, 2 read-write, 0x40 create, 0x200 trunc
-        return uint64_t(int64_t(open_file(s(0), (f & 3u) != 0, (f & 0x40u) != 0, (f & 0x200u) != 0, (f & 0x80u) != 0)));
+        uint32_t mode = 0644;
+#if defined(XYF_CONTENT_SWITCH)
+        if ((f & 0x40u) && xy_forever::managed_blob_link::temporary_path(s(0), true)) mode = u(2);
+#endif
+        return uint64_t(
+            int64_t(open_file(s(0), (f & 3u) != 0, (f & 0x40u) != 0, (f & 0x200u) != 0, (f & 0x80u) != 0, mode)));
     }
     case 0x889fb928u: return uint64_t(int64_t(read_file(int(u(0)), static_cast<uint8_t*>(p(1)), u(2))));
     case 0x889fbb0cu: return uint64_t(int64_t(write_file(int(u(0)), static_cast<const uint8_t*>(p(1)), u(2))));

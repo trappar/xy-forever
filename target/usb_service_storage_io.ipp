@@ -54,13 +54,31 @@ struct ContentIo {
         if (q.outcome) return fail(q);
         return q.value == 0 && (P::get32(record + 8) & 0xf000u) == 0x4000u ? 0 : -1;
     }
-    int rename(const char* from, const char* to) {
+    int rename(const char* from, const char* to, bool over = false) {
         if (link) return -1;
         uint32_t error = 0;
-        const U32 code = file_client::rename(from, to, error, mounted);
+        const U32 code = file_client::rename(from, to, error, mounted, over);
         if (code == P::s_link || code == P::s_state) link = 1;
         return code == P::s_ok ? 0 : -1;
     }
+#if defined(XYF_CONTENT_SWITCH)
+    int stage_blob_link(const char* temporary, const uint8_t* hash, bool seal = false) {
+        if (link || !writable(temporary)) return -1;
+        const file_client::Reply r = file_client::stage_blob_link(temporary, hash, seal);
+        if (r.outcome) return fail(r);
+        if (r.value == P::s_not_found) return 1;
+        if (r.value == P::s_state) return 2;
+        return r.value == P::s_ok ? 0 : -1;
+    }
+    int copy_blob_piece() {
+        const file_client::Reply r = file_client::copy_blob_piece();
+        if (r.outcome) return fail(r);
+        return r.value == P::s_ok && r.error <= 1 ? int(r.error) : -1;
+    }
+    int publish_blob_link(const char* from, const char* to) {
+        return writable(from) && writable(to) ? rename(from, to, true) : -1;
+    }
+#endif
     int list_one(const char* folder, U32 skip, char* name, uint32_t& kind) {
         if (link || !storage_server::valid_path(folder)) return -1;
         uint8_t page[6 + file_client::max_name];

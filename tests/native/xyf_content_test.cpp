@@ -34,6 +34,9 @@ struct Tree {
 };
 
 struct FakeIo {
+    int stage_blob_link(const char*, const uint8_t*, bool = false) { return 1; }
+    int copy_blob_piece() { return -1; }
+    int publish_blob_link(const char*, const char*) { return -1; }
     Tree t;
     struct Handle {
         std::string path;

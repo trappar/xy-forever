@@ -147,6 +147,14 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         f = self.switched(a)
         own = {p: b for p, b in content(self.root / LIB / a)[0].items() if p != 'op1_factory.json'}
         self.assertTrue(own, 'the synthetic set installs files of its own')
+        for path, data in own.items():  # #202: the kept and live paths share the blob, sealed read-only on the way
+            blob = self.blob(data).stat()
+            self.assertEqual(blob.st_mode & 0o777, 0o444, path)
+            self.assertEqual(
+                ((self.root / 'content' / path).stat().st_ino, (self.root / LIB / a / 'content' / path).stat().st_ino),
+                (blob.st_ino, blob.st_ino),
+                path,
+            )
         self.assertEqual(
             self.record(),
             'state=installed\nentry=%s\n' % a  # each file's SHA-256 written
@@ -178,16 +186,41 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         self.assertEqual(self.usable()[a], (False, True))
         self.switched('opxy-121', official=True)  # the Undo
         self.assertEqual(content(self.root), self.official)  # byte for byte, folders too
+        self.assertTrue(all(self.blob(data).read_bytes() == data for data in own.values()))  # kept: A's entry
         self.assertEqual(self.record(), 'state=official\n')
         self.assertEqual(self.usable()['opxy-121'], (True, False))
         self.assertEqual(self.dev.set_default('opxy-121-stock')[0], 0)  # official: no switch
         self.assertEqual(self.dev.call(P.STATUS)[0], 0)
 
+    def blob(self, data):
+        return self.root / 'xy-forever/blobs' / hashlib.sha256(data).hexdigest()
+
+    @pytest.mark.sim
+    def test_a_damaged_blob_is_never_published(self):
+        """Kept: #202's guard. A damaged blob, writable (its sealed copy fails the SHA-256) or read-only (the
+        staged link fails it), fails the switch before any live path changes; the writable one is left as it was."""
+        a = self.build(['alpha'])
+        path, data = next((p, b) for p, b in content(self.root / LIB / a)[0].items() if p != 'op1_factory.json')
+        blob = self.blob(data)
+        corrupt = bytes([data[0] ^ 1]) + data[1:]
+        blob.write_bytes(corrupt)
+        for read_only in (False, True):
+            with self.subTest(read_only=read_only):
+                if read_only:
+                    blob.chmod(0o444)
+                code, f = self.switch(a)
+                self.assertEqual(
+                    (code, MS.PHASES[f['phase']], MS.ERRORS[f['error']]), (ids.S_STARTED, 'failed', 'sha256'), f
+                )
+                self.assertEqual(blob.read_bytes(), corrupt)
+                self.assertEqual(blob.stat().st_mode & 0o222 != 0, not read_only)
+                self.assertFalse((self.root / 'content' / path).exists())
+
     # -- faults at every rename of a switch (official -> A) ------------------------------------------------
     def renames(self, entry):
-        """The renames of a switch official -> entry with nothing saved yet: the saved list and catalog, the record
-        (switching), each file, the catalog, the record again (record -> .old, .part -> record)."""
-        return len([p for p in content(self.root / LIB / entry)[0] if p != 'op1_factory.json']) + 7
+        """Renames from official with a sealed cache and no saved content state."""
+        assets = sum(p != 'op1_factory.json' for p in content(self.root / LIB / entry)[0])
+        return 2 * assets + 7
 
     def fresh_official(self):
         """Back to the official state with nothing saved (each case starts the same)."""
@@ -257,6 +290,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
 
     def faults(self, kind):
         a = self.build(['alpha'])
+        self.switched(a)  # Seal once so every fault starts with the same cache state.
         total = self.renames(a)
         self.assertGreater(total, 6)
         for n in range(1, total + 1):
