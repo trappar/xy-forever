@@ -11,7 +11,8 @@
 // - open() needs a baud rate, refuses a second open, and fails with NetworkError while the device
 //   is away. readable/writable are created on access while open; a byte stream for reading.
 // - bufferSize (default 255, as Chrome's): the bytes received and not yet taken by the page's reader. Each burst
-//   from the device (one relay message: a whole reply frame) fills it at once; what does not fit is lost
+//   from the device (a whole reply frame: the relay's messages are rejoined, as TCP may split one) fills it at once;
+//   what does not fit is lost
 //   silently (`dropped` counts it), so a port opened with Chrome's default never gets a 1 KiB file.read reply whole.
 // - A twin entry (options.twin): Chrome on a Mac lists one serial interface twice, by its cu. and tty. names, with
 //   the same USB ids. Alone it is the device; opened while the other entry is open too, both read the one byte
@@ -24,7 +25,7 @@
 //   The chooser takes options.pick ('stale': as if the owner clicked that entry), and records each call's filters.
 // Not modelled: setSignals/getSignals (DTR), the 'connect' event's timing, read errors that leave
 // the port usable (break, framing, parity, overrun), exclusive opening against other programs.
-import { USB_FILTERS } from '../src/index.ts';
+import { USB_FILTERS, protocol } from '../src/index.ts';
 
 export interface PortInfo {
   usbVendorId?: number;
@@ -82,6 +83,7 @@ export class FakePort extends EventTarget {
   private ws: WritableStream<Uint8Array> | null = null;
   private wc: WritableStreamDefaultController | null = null;
   private held: Uint8Array<ArrayBuffer>[] = []; // received while no readable exists
+  private part: Uint8Array<ArrayBuffer> = new Uint8Array(0); // the start of a frame the relay split
 
   constructor(owner: FakeSerial, info: PortInfo, relay: string | null, silent = false) {
     super();
@@ -137,7 +139,7 @@ export class FakePort extends EventTarget {
     this.socket = socket;
     this.state = 'open';
     this.opens++;
-    socket.onmessage = (e: MessageEvent) => this.received(new Uint8Array(e.data as ArrayBuffer));
+    socket.onmessage = (e: MessageEvent) => this.relayed(new Uint8Array(e.data as ArrayBuffer));
     socket.onclose = () => {
       if (this.socket === socket) this.lose();
     };
@@ -210,6 +212,7 @@ export class FakePort extends EventTarget {
     this.rs = this.rc = this.ws = this.wc = null;
     this.held = [];
     this.heldBytes = 0;
+    this.part = new Uint8Array(0);
     this.state = 'closed';
   }
 
@@ -223,6 +226,7 @@ export class FakePort extends EventTarget {
     this.rs = this.rc = this.ws = this.wc = null;
     this.held = [];
     this.heldBytes = 0;
+    this.part = new Uint8Array(0);
     if (this.host) {
       this.host.guest = null;
       this.host = null;
@@ -230,6 +234,29 @@ export class FakePort extends EventTarget {
     this.guest?.lose();
     this.dispatchEvent(new Event('disconnect'));
     this.owner.dispatchEvent(new Event('disconnect'));
+  }
+
+  /** A relay message: TCP may split a frame, which the device sends in one burst; each whole frame is one burst. */
+  private relayed(bytes: Uint8Array<ArrayBuffer>): void {
+    let all = new Uint8Array(this.part.length + bytes.length);
+    all.set(this.part);
+    all.set(bytes, this.part.length);
+    this.part = new Uint8Array(0);
+    while (all.length > 0) {
+      const magic = all[0] === 0x58 && (all.length < 2 || all[1] === 0x46);
+      const total =
+        all.length < protocol.HEADER_BYTES ? 0 : protocol.HEADER_BYTES + protocol.u32(all, 4) + protocol.TRAILER_BYTES;
+      if (!magic || total > protocol.MAX_FRAME) {
+        this.received(all); // not a frame: passed on as it came
+        return;
+      }
+      if (total === 0 || all.length < total) {
+        this.part = all; // the rest comes in the next message
+        return;
+      }
+      this.received(all.slice(0, total));
+      all = all.slice(total);
+    }
   }
 
   /** One burst from the device: with a twin open too, it reaches only one of the two entries. */
@@ -340,17 +367,20 @@ export class FakeSerial extends EventTarget {
     return [this.adapter, ...(this.stale && this.staleGranted ? [this.stale] : []), ...(xyf ? [xyf] : []), ...twin];
   }
 
-  /** XY Forever's port while the simulator's endpoint listens; a new object after it went away. */
-  private async xyfPort(): Promise<FakePort | null> {
-    let attached = false;
+  /** Whether the simulator's USB endpoint listens (the relay's GET /status); no port changes. */
+  async attached(): Promise<boolean> {
     try {
       const res = await fetch(this.relay.replace(/^ws/, 'http') + '/status', { cache: 'no-store' });
-      attached = ((await res.json()) as { attached?: boolean }).attached === true;
+      return ((await res.json()) as { attached?: boolean }).attached === true;
     } catch {
-      /* the relay is gone: not attached */
+      return false; // the relay is gone: not attached
     }
+  }
+
+  /** XY Forever's port while the simulator's endpoint listens; a new object after it went away. */
+  private async xyfPort(): Promise<FakePort | null> {
     let port = this.xyfPorts.at(-1);
-    if (!attached) {
+    if (!(await this.attached())) {
       port?.lose();
       return null;
     }

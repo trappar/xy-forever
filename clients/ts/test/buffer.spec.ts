@@ -1,7 +1,7 @@
 // Web Serial (#178): how a port is opened decides whether XY Forever's larger replies arrive. The fake port
 // (fake-serial.ts) keeps Chrome's receive buffer: bufferSize, 255 bytes unless open() names one, and a burst that
 // does not fit is lost. And Chrome on a Mac lists one OP-XY twice (cu. and tty.): two open entries split its replies.
-import { afterEach, describe, expect, inject, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, inject, test, vi } from 'vitest';
 import {
   Client,
   RELEASE_FILTERS,
@@ -11,6 +11,7 @@ import {
   connectWebSerial,
 } from '../src/index.ts';
 import type { Opener, Transport, TransportSink } from '../src/index.ts';
+import { expire, fakeTime, timersUntil } from './clock.ts';
 import { FakeSerial } from './fake-serial.ts';
 import { simWrite } from './gesture.ts';
 import type { FakePort } from './fake-serial.ts';
@@ -64,7 +65,9 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${sims.
   const stock = USB_FILTERS[1];
   const data = crypto.getRandomValues(new Uint8Array(3000));
   let client: Client | null = null;
+  beforeEach(fakeTime);
   afterEach(async () => {
+    vi.useRealTimers();
     await client?.close();
     client = null;
   });
@@ -73,7 +76,9 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${sims.
     expect(SERIAL_OPEN).toEqual({ baudRate: 115200, bufferSize: 65536 });
     await simWrite(sim!.root, PATH, data);
     const serial = new FakeSerial(sim!.relay, { identity: stock, stale: 'granted' });
-    client = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800 });
+    const connecting = connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800 });
+    await timersUntil(() => serial.stale!.opens === 1 && !serial.stale!.isOpen); // probed, then passed over
+    client = await connecting;
     expect(client.info.limits.read).toBe(1024);
     expect(await client.readRange(PATH, 0, 1024)).toEqual(data.subarray(0, 1024));
     expect(await client.readFile(PATH)).toEqual(data);
@@ -88,7 +93,10 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${sims.
     const failed = await Client.connect(opener, { timeoutMs: 2500 }).then(
       async (c) => {
         client = c; // hello fitted: the 1 KiB reply cannot
-        return c.readRange(PATH, 0, 1024, { timeoutMs: 1500 }).then(
+        const before = live.dropped;
+        const read = c.readRange(PATH, 0, 1024, { timeoutMs: 1500 });
+        const lost = (): boolean => live.dropped > before; // the reply came, and did not fit
+        return expire(read, lost).then(
           () => null,
           (e: unknown) => e,
         );
@@ -132,14 +140,12 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${sims.
         /* closed */
       }
     })();
-    const results: unknown[] = [];
-    for (const _ of [0, 1])
-      results.push(
-        await client.readRange(PATH, 0, 1024, { timeoutMs: 1500 }).then(
-          () => 'ok',
-          (e: { code?: string }) => e.code,
-        ),
+    const read = (): Promise<unknown> =>
+      client!.readRange(PATH, 0, 1024, { timeoutMs: 1500 }).then(
+        () => 'ok',
+        (e: { code?: string }) => e.code,
       );
+    const results = [await expire(read(), () => stolen > 0), await read()]; // the first reply went to the thief
     expect(results).toEqual(['timeout', 'ok']); // the bursts take turns: one reply lost, the next one read
     expect(stolen).toBeGreaterThan(0);
     await thief.cancel();
