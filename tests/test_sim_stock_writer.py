@@ -4,7 +4,7 @@ import struct
 import zlib
 import unittest
 import test_simulator as support
-from test_simulator import sim, BUILD, ids, BASE, P
+from test_simulator import bounds, sim, BUILD, ids, BASE, P
 
 
 def represented(data):
@@ -12,6 +12,7 @@ def represented(data):
 
 
 @unittest.skipIf(sim.available() or not sim.STOCK_OS.is_file(), 'simulator fixtures unavailable')
+@bounds.slow                    # #233: each test writes the boot partition (4,700 link requests): over 2 s a call under a second check (#240)
 class StockWriterIntegration(unittest.TestCase):
     setUpClass = classmethod(support.SimulatorTest.setUpClass.__func__)
     tearDownClass = classmethod(support.SimulatorTest.tearDownClass.__func__)

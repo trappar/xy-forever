@@ -8,7 +8,7 @@ import time
 import unittest
 
 import xyf_host as host
-from xy_forever import package_store as S, sim, usb_proto as P, xyf_entry
+from xy_forever import bounds, package_store as S, sim, usb_proto as P, xyf_entry
 from test_ldr import image
 from scripts.package_pass import exercise
 
@@ -103,6 +103,7 @@ class Packages(unittest.TestCase):
         self.assertEqual(request(1, 1), P.ids.S_STATE)
         self.assertEqual(request(1, 2, b'b' * 32), 0)
 
+    @bounds.slow                                    # #233: over the normal bounds under a second check's load (#240)
     def test_cut_between_every_add_remove_and_gc_step(self):
         target = S.LIBRARY + '/package-cut'
         kept = S.LIBRARY + '/package-kept'
