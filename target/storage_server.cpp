@@ -242,10 +242,8 @@ __attribute__((noinline)) void close_handles() {
     result.open_fds = 0;
 }
 
-volatile U32 traced_action __attribute__((section(".data"))) = 0;   // #195: the last note's action (timed_serve)
 void note(U32 op, U32 action, U32 value) {
     Result& r = result;
-    traced_action = action;
     if (r.log_count < max_log) r.log[r.log_count] = (op & 0xffu) | action << 8 | (value & 0xffffu) << 16;
     ++r.log_count;
 }
@@ -649,16 +647,13 @@ void tick(cold_storage::Stock121ReadOnlySession& storage, uint32_t now) {
     }
     if (now - window_since < window_idle_ms) return;
     window_since = now; // a failed close is tried again after another idle time
-    const U32 before = trace_state();
     close_between(storage);
-    trace(0xf1u | before << 16, window_result); // #195 diagnostic
 }
 void end_writes(cold_storage::Stock121ReadOnlySession& storage) {
 #if defined(XYF_TFW_CHECK)
     tfw_hash_clear(storage);
 #endif
     if (engine != entry_write) return;
-    trace(0xf2u | trace_state() << 16, window_result); // #195 diagnostic: before the close
     if (window_open) close_between(storage);
     if (!window_open) {
         engine = entry_read;

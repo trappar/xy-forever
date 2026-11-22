@@ -148,7 +148,9 @@ void config_pump();
 void adopt_pump();
 #endif
 void job_pump() {
-    if (menu_pack_active || package_active || blob_collecting || !job_running()) return;
+    // The slot's job only (#195: job_running() also covers the signed pack import, and the slot keeps its last
+    // job's stage: a stale commit step closed A's window with op 9 in the middle of an import).
+    if (menu_pack_active || package_active || blob_collecting || job_state != job_busy) return;
 #if defined(XYF_CONTENT_SWITCH)
     if (job_kind == 2) return config_pump();                             // the config job
     if (job_kind == 3) return adopt_pump();                              // #178: the stock entry's adoption

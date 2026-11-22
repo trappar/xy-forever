@@ -21,12 +21,14 @@ from pathlib import Path
 
 import pytest
 import test_modkit as TK
+import test_sim_signed_packs as SP
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
 
 from xy_forever import bounds, census, modstore, package_records, sim
 from xy_forever import modkit as M
 from xy_forever import modpatch as MP
 from xy_forever import modsend as MS
+from xy_forever import pack_change as packs
 from xy_forever import usb_proto as P
 from xy_forever import usb_proto_ids as ids
 from xy_forever import xyf_host as host
@@ -88,7 +90,7 @@ class Base:
         shutil.copytree(self.seeded, self.root)
         if getattr(self, 'settings_text', None):  # settings.txt for this test
             (self.root / 'xy-forever/settings.txt').write_bytes(self.settings_text)
-        self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', log=self.dir / 'log.txt').start()
+        self.sim = sim.Simulator(self.root, self.dir / 'bootpart.bin', otp=SP.OTP, log=self.dir / 'log.txt').start()
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
         # These fixtures begin with an admitted job; boot/recovery observations use later reconnects.
@@ -277,6 +279,32 @@ class SyntheticJob(Base, unittest.TestCase):
     def press(self, *keys):
         for key, pressed in keys:
             self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
+
+    @pytest.mark.sim
+    def test_signed_pack_import_after_a_job(self):
+        """Kept: #195 on the device. A signed pack import after a mod job this boot: the job's slot still held its
+        last stage, and B's job pump ran it again while the import was active (both count as a running job). That
+        stale commit step closed A's window with op 9 right after the source was authenticated, so the first member
+        open answered EBADF and the source's close failed."""
+        job = self.start(['alpha'])
+        self.assertEqual(MS.PHASES[self.finished(job)['phase']], 'done')
+        inbox = self.root / 'xy-forever/inbox'
+        inbox.mkdir(exist_ok=True)
+        (inbox / 'test.tfw').write_bytes(SP.fixture())
+        payload = struct.pack('<II', 1, packs.OP_IMPORT) + b'test.tfw\0'
+        deadline = time.monotonic() + bounds.WAIT_S
+        while (code := self.dev.call(ids.PACKS_MANAGE, payload)[0]) == ids.S_BUSY:  # the window settling
+            self.assertLess(time.monotonic(), deadline)
+            self.sim.advance(20)
+        self.assertEqual(code, 0)
+        while True:
+            phase, done, total, error, site, detail, _ = packs.signed_request(self.dev, packs.OP_STATUS)
+            if phase in (3, 4):
+                break
+            self.assertLess(time.monotonic(), deadline)
+            self.sim.advance(20)
+        self.assertEqual((phase, error), (3, 0), packs.failure_site(site, detail))
+        self.assertTrue((self.root / 'xy-forever/packs/fixture/xyf-pack.txt').is_file())
 
     @pytest.mark.gate  # a simulator sweep
     @pytest.mark.uses('sim/')

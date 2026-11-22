@@ -19,6 +19,7 @@ from xy_forever.usb_proto import ids
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock os.ldr absent')
 PREFIX = 'firmware/blackfin/content/'
+OTP = bytes((9, 56)) + PUBLIC_KEY + bytes((3, 16)) + KEY[:16] + bytes((4, 16)) + KEY[16:]  # the keys A and B read
 SAMPLE = b'RIFF' + bytes(range(128))
 
 
@@ -51,8 +52,7 @@ class SignedPackImport(unittest.TestCase):
         self.inbox.mkdir(exist_ok=True)
         self.data = fixture()
         (self.inbox / 'test.tfw').write_bytes(self.data)
-        otp = bytes((9, 56)) + PUBLIC_KEY + bytes((3, 16)) + KEY[:16] + bytes((4, 16)) + KEY[16:]
-        self.sim = machine = sim.Simulator(self.root, path / 'bootpart.bin', otp=otp, log=path / 'log.txt').start()
+        self.sim = machine = sim.Simulator(self.root, path / 'bootpart.bin', otp=OTP, log=path / 'log.txt').start()
         self.addCleanup(machine.stop)
         self.links = []
         self.addCleanup(lambda: [link.t.close() for link in self.links])
@@ -171,30 +171,21 @@ class SignedPackImport(unittest.TestCase):
         blob = self.root / 'xy-forever/blobs' / hashlib.sha256(SAMPLE).hexdigest()
         self.assertEqual(sample.stat().st_ino, blob.stat().st_ino)
 
-    def test_failed_member_open_reports_a_trace(self):
-        """Kept: #195's device diagnostic. A failed import keeps B's own log of its last requests to A (nothing asked
-        of A) and reads A's last requests and state before its window closes; packs.manage operation 5 returns
-        both: here the member's open that A's stock open failed (EBADF), then the source's close."""
+    def test_failed_member_open_reports_bs_log(self):
+        """Kept: #195's device diagnostic, a cheap permanent aid. A failed import keeps B's log of its last requests to
+        A (nothing asked of A), and packs.manage operation 5 returns it: here the source authenticated, then the
+        member's open that A's stock open failed (EBADF), then the source's close."""
         self.sim.set('fail_write_open', 1)  # the member's open: EBADF from the stock open
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_STORAGE)
         self.assertEqual(self.site & 0xFFFF, 3 << 8 | 1)  # extract step, the member's open
         self.assertEqual(self.detail, 1 << 16 | 9)  # member 1 (manifest.json), EBADF
-        words = packs.signed_trace(self.dev)
-        self.assertEqual(len(words), self.traced)
-        b_count, a_count, stop = words[0] & 0xFF, words[0] >> 8 & 0xFF, words[0] >> 16
-        self.assertEqual((b_count, a_count, stop), (32, packs.TRACE_ENTRIES + 8, 0))  # both rings full, A answered
-        b_log = packs.b_log_lines(words[1 : 1 + 4 * b_count])
-        authenticated = next(i for i, line in enumerate(b_log) if 'mark 0x0001' in line)
-        after = b_log[authenticated + 1 :]
-        self.assertEqual(len(after), 2, b_log)
+        self.assertEqual(self.traced, 32)  # the log is full
+        log = packs.b_log_lines(packs.signed_trace(self.dev))
+        self.assertEqual(len(log), 32)
+        authenticated = next(i for i, line in enumerate(log) if 'mark 0x0001' in line)
+        after = log[authenticated + 1 :]
+        self.assertEqual(len(after), 2, log)
         self.assertRegex(after[0], r'op 0x29 open 0x\w+ -> -1 errno 9, \d+ ms$')
         self.assertRegex(after[1], r'op 0x2d close 0x\w+ -> 0 errno 0, \d+ ms$')
-        requests = packs.a_trace_lines(words[1 + 4 * b_count :])[: packs.TRACE_ENTRIES]
-        self.assertTrue(
-            requests[-2].startswith('op 0x29 run_open -> -1 errno 9; before: mounted=1 window=1/1'), requests[-2]
-        )
-        self.assertTrue(requests[-1].startswith('op 0x2d run_file -> 0 errno 0'), requests[-1])  # the source closed
-        registry = next(line for line in packs.trace_lines(words) if 'registry' in line)
-        self.assertNotIn('0x00000000, 0x00000000', registry)  # the provider registered
         self.assertFalse(self.retained.exists())
