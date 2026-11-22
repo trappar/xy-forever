@@ -2,11 +2,14 @@
 
 pytest (tests/xyf_bounds.py): a test that sleeps past its bound is reported as HUNG: <test id> with every
 thread's traceback, its xdist worker's whole process group ends (the child the test started with it), and
-the run fails naming the test. scripts/check.py: a step past its bound fails, named.
+the run fails naming the test. scripts/check.py: a step past its bound fails, named. The simulator (sim.py): a
+control line to a stalled board times out without putting later replies out of step, and the board's own
+deadline exit is named (DeadlinePassed).
 """
 
 import importlib.util
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -15,6 +18,8 @@ import unittest
 from pathlib import Path
 
 import pytest
+
+from xy_forever import sim
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -96,6 +101,35 @@ class CheckStepBoundTest(unittest.TestCase):
             self.assertLess(time.monotonic() - start, 0.3 + SLACK)
             self.assertEqual((results[0]['result'], results[0]['exit']), ('fail', 124))
             self.assertIn('HUNG: stalls ran past its 0.3 s bound', log.read_text())
+
+
+@unittest.skipIf(sim.available(), sim.available())
+@unittest.skipUnless(sim.STOCK_OS.is_file(), 'private stock 1.2.1 os.ldr absent')
+class SimControlStallTest(unittest.TestCase):
+    @pytest.mark.sim
+    def test_a_stalled_board_times_out_in_step_then_its_deadline_is_named(self):
+        """Kept: the only test of control()'s failure paths (#229: a reply that came after its line timed out
+        answered the next line)."""
+        with tempfile.TemporaryDirectory(prefix='xyf-sim-') as tmp:
+            d = Path(tmp)
+            sim.seed(d / 'yaffs2')
+            board = sim.Simulator(d / 'yaffs2', d / 'bootpart.bin', binary=sim.build(), deadline_s=3)
+            board.start(settle=False)
+            try:
+                os.killpg(board.process.pid, signal.SIGSTOP)  # the board and both processors: a planted stall
+                try:
+                    with self.assertRaises(TimeoutError):
+                        board.control('status', timeout=0.2)
+                finally:
+                    os.killpg(board.process.pid, signal.SIGCONT)
+                self.assertIsNone(board._control)  # closed: the late status reply goes with it
+                self.assertEqual(board.control('set cut_after 7'), {'ok': True})  # not the status reply
+                self.assertIn('clock_ms', board.status())
+                board.process.wait(timeout=3 + SLACK)  # the board's own deadline: no host time spent waiting
+                with self.assertRaisesRegex(sim.DeadlinePassed, 'stopped at its 3 s deadline'):
+                    board.status()
+            finally:
+                board.stop()
 
 
 if __name__ == '__main__':
