@@ -1,7 +1,7 @@
 // Device calls: the connection, opened only from a click (Connect, the Install page's Find), and TanStack Query over it.
 // Every mutation shares one scope, so the OP-XY gets one action at a time (a second waits for the first); queries read
 // what the pages show. Each outcome goes to the bug report, a failure to the notice line, and a lost link to Connect.
-import { MutationCache, MutationObserver, QueryCache, QueryClient, useMutation } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, useMutation } from '@tanstack/react-query';
 import {
   ASK_TEXT,
   Client,
@@ -31,7 +31,7 @@ declare module '@tanstack/react-query' {
   }
 }
 
-export function describe(error: unknown): string {
+function describe(error: unknown): string {
   if (error instanceof JobError) return `The build stopped: ${error.message}`;
   if (isXyfError(error, 'busy')) return 'The OP-XY is busy with a build. Wait for it to finish, then try again.';
   if (isXyfError(error)) return error.fields && 'error' in error.fields ? fileReason(error) : error.message;
@@ -78,14 +78,6 @@ const meta = (action: Action, label: string | undefined): DeviceMeta => (label ?
 /** A device action for React: a mutation in the device scope, its outcome reported. */
 export function useAction<V = void, T = unknown>(action: Action, work: (variables: V) => Promise<T>, label?: string) {
   return useMutation({ mutationFn: work, meta: meta(action, label) });
-}
-
-/** The same outside React; resolves once it ends (a failure is already reported). */
-export function runAction(action: Action, work: () => Promise<unknown>, label?: string): Promise<void> {
-  return new MutationObserver(queryClient, { mutationFn: work, meta: meta(action, label) }).mutate().then(
-    () => {},
-    () => {},
-  );
 }
 
 /** A device action or query runs. */

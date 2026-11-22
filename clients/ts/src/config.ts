@@ -46,8 +46,6 @@ export async function configGet(client: Client, options: CallOptions = {}): Prom
   };
 }
 
-const delay = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
-
 /**
  * Destructive: saves a selection and Mod memory (config.set), as flipping the toggles on the device does, safe mode as
  * saved (read with config.get first); it builds nothing (the next boot does). The device first reads its package list (busy: sent again for up to readMs). A
@@ -67,16 +65,17 @@ export async function configSet(
     return { ...fields, sha256: await sha256(body) };
   };
   let confirmed: Awaited<ReturnType<typeof confirm>> | undefined;
+  // Waits are counted in pauses (Client.pause: device time on the simulator), not in wall time.
   const pollMs = options.pollMs ?? 200,
-    until = Date.now() + (options.readMs ?? 60000);
-  for (;;) {
+    readMs = options.readMs ?? 60000;
+  for (let waited = 0; ; waited += pollMs) {
     try {
       confirmed ??= await confirm((await client.call('config.get', { version: 1 }, options)).flags & CONFIG_FLAGS.safe);
       await client.call('config.set', confirmed, options);
       break;
     } catch (error) {
-      if (isXyfError(error, 'busy') && Date.now() < until) {
-        await delay(pollMs);
+      if (isXyfError(error, 'busy') && waited < readMs) {
+        await client.pause(pollMs, options.signal);
         continue;
       }
       if (isXyfError(error, 'refused')) {
@@ -91,14 +90,14 @@ export async function configSet(
       throw error;
     }
   }
-  for (const writeUntil = Date.now() + 30000; ;) {
+  for (let waited = 0; ; waited += pollMs) {
     const saved = await configGet(client, options).catch((error: unknown) => {
       if (isXyfError(error, 'busy')) return null;
       throw error;
     });
     if (saved && saved.write !== 'writing') return saved;
-    if (Date.now() > writeUntil)
+    if (waited > 30000)
       throw new XyfError('timeout', 'config.set: the selection was not written in time', { command: 'config.set' });
-    await delay(pollMs);
+    await client.pause(pollMs, options.signal);
   }
 }

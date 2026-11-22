@@ -10,8 +10,8 @@ export const STOCK_121 = {
   crc32: '89d08ddd',
 } as const;
 /** te-boot's bl_version of the 1.2.1 bootloader (also shipped with 1.1.33), and of 1.2.5's (never supported). */
-export const BOOTLOADER_121 = 20;
-export const BOOTLOADER_125 = 23;
+const BOOTLOADER_121 = 20;
+const BOOTLOADER_125 = 23;
 /** teenage engineering's own 1.2.1 update: named exactly, never "the latest" (1.2.5 cannot be undone). */
 export const OFFICIAL_121_TFW = 'https://teenage.engineering/_software/op-xy/opxy_firmware_1_2_1.tfw';
 export const OFFICIAL_UPDATE_GUIDE = 'https://teenage.engineering/guides/op-xy/te-boot';
@@ -23,7 +23,7 @@ export const HEADROOM = 1024 * 1024;
  * update: older than 1.2.1, install official 1.2.1 first. reinstall: the stock os.ldr is missing, reinstall
  * official 1.2.1 first. space: not enough free storage.
  */
-export type VerdictKind = 'ok' | 'refuse' | 'update' | 'reinstall' | 'space';
+type VerdictKind = 'ok' | 'refuse' | 'update' | 'reinstall' | 'space';
 export interface Verdict {
   readonly kind: VerdictKind;
   readonly title: string;
@@ -36,7 +36,7 @@ const NOT_125 =
   "Use exactly this 1.2.1 file, not the newest update on teenage engineering's site: 1.2.5 cannot be undone, and XY Forever cannot run on it.";
 
 /** major.minor.patch from a version text such as 1.2.1+0@483bb625 or 1000.0.20+0; null when there is none. */
-export function versionParts(text: string | undefined): [number, number, number] | null {
+function versionParts(text: string | undefined): [number, number, number] | null {
   const m = /(\d+)\.(\d+)\.(\d+)/.exec(text ?? '');
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
 }
@@ -129,7 +129,7 @@ export function spaceVerdict(free: number, need: number): Verdict {
   };
 }
 
-export const mib = (bytes: number): string => `${(bytes / 1048576).toFixed(1)} MB`;
+const mib = (bytes: number): string => `${(bytes / 1048576).toFixed(1)} MB`;
 
 export function hex(bytes: Uint8Array): string {
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');

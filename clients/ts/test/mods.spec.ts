@@ -1,7 +1,7 @@
 // Mod packages (src/mods.ts) against the simulator (test/simulators.ts, its own `mods` simulator), with
 // the synthetic package set of tests/test_modsend.py: a push leaves the set byte-identical, stored flat, under
 // /yaffs2/xy-forever/mods/<generation>/ and verify passes; a second push sends nothing, and
-// neither does `xyf_host.py mods push` (the Python tool agrees on the layout); a push cut off after N
+// neither does `xyf-host mods push` (the Python tool agrees on the layout); a push cut off after N
 // files never leaves a package folder holding files.sha256 without every listed file, and the next
 // push sends exactly the rest; only; list (an incomplete package flagged); remove. Checked through the
 // simulator's /yaffs2 folder on the Mac. Building on the device (applyMods): beside the pushed set, a
@@ -49,11 +49,10 @@ import {
   localSet,
   pushPackages,
   removePackage,
-  tcpOpener,
 } from '../src/node.ts';
 import { STORE_FILE, STORE_TEXT, storedName } from '../src/modstore.ts';
 import type { ApplyRequest, JobStatus, PackageResult } from '../src/node.ts';
-import { REPO, control, makeModBase, makeModSet } from './simulators.ts';
+import { REPO, control, makeModBase, makeModSet, simOpener } from './simulators.ts';
 
 const sims = inject('sims');
 const sim = sims.mods;
@@ -74,7 +73,7 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
   const source = () => folderSource(gen);
   const clients: Client[] = [];
   const connect = async (): Promise<Client> => {
-    const client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
+    const client = await Client.connect(simOpener(sim!), { timeoutMs: 5000 });
     clients.push(client);
     return client;
   };
@@ -179,12 +178,12 @@ describe.skipIf(!sim)(`mod packages against the simulator${sim ? '' : ` (skipped
     expect(order.slice(-2)).toEqual(['manifest.json', 'files.sha256']);
   });
 
-  test('a second push sends nothing; nor does xyf_host.py mods push (the same layout)', async () => {
+  test('a second push sends nothing; nor does xyf-host mods push (the same layout)', async () => {
     const names = readdirSync(gen);
     const again = await push();
     expect(again).toMatchObject({ sent: 0, skipped: names.length, files: 0, bytes: 0 });
     expect(again.packages.every((r) => r.state === 'skipped' && r.files === 0)).toBe(true);
-    const run = spawnSync('python3', ['xyf_host.py', '--sim', sim!.address, 'mods', 'push', gen], {
+    const run = spawnSync('uv', ['run', '--quiet', 'xyf-host', '--sim', sim!.address, 'mods', 'push', gen], {
       cwd: REPO,
       encoding: 'utf-8',
       timeout: 60_000,
@@ -300,7 +299,7 @@ describe.skipIf(!sim)(`building mod firmware on the device${sim ? '' : ` (skippe
       readFileSync(join(gen, 'base', 'manifest.json')),
       'manifest.json',
     );
-    client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
+    client = await Client.connect(simOpener(sim!), { timeoutMs: 5000 });
     await pushPackages(client, folderSource(gen));
     makeModBase(sim!.root, 'modbase');
     request = {

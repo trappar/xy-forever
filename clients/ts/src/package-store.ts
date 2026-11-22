@@ -5,7 +5,6 @@ import { isXyfError } from './errors.ts';
 import { remoteTree } from './modstore.ts';
 const ROOT = '/yaffs2/xy-forever',
   TMP = `${ROOT}/tmp`;
-const pause = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 20));
 
 export class PackageSession {
   readonly client: Client;
@@ -19,14 +18,13 @@ export class PackageSession {
     await this.client.call('package.session', { version: 1, action, token: this.token }, this.options);
   }
   async acquire(): Promise<void> {
-    const until = Date.now() + 60_000;
-    for (;;) {
+    for (let waited = 0; ; waited += 20) {
       try {
         await this.command(0);
         break;
       } catch (error) {
-        if (!isXyfError(error, 'busy') || Date.now() >= until) throw error;
-        await pause();
+        if (!isXyfError(error, 'busy') || waited >= 60_000) throw error;
+        await this.client.pause(20, this.options.signal);
       }
     }
   }
@@ -38,14 +36,13 @@ export class PackageSession {
   }
   async release(): Promise<void> {
     await this.command(2);
-    const until = Date.now() + 60_000;
-    for (;;) {
+    for (let waited = 0; ; waited += 20) {
       try {
         await this.client.listDir('/yaffs2', this.options);
         return;
       } catch (error) {
-        if (!isXyfError(error, 'busy') || Date.now() >= until) throw error;
-        await pause();
+        if (!isXyfError(error, 'busy') || waited >= 60_000) throw error;
+        await this.client.pause(20, this.options.signal);
       }
     }
   }

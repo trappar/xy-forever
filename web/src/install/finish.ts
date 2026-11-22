@@ -30,7 +30,7 @@ const REINSTALL =
  * The device's refusal (job.status error and code) as the page shows it, with the words its menu shows. Removing the
  * entry is advised only when the device says it is incomplete (rename with code state: an entry its library lists).
  */
-export function adoptVerdict(error: string, code: number): Verdict {
+function adoptVerdict(error: string, code: number): Verdict {
   if (error === 'open') {
     return {
       kind: 'reinstall',

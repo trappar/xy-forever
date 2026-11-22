@@ -1,4 +1,4 @@
-// Mod packages on the device, as `xyf_host.py mods push | list | remove` (xy_forever/modsend.py): the
+// Mod packages on the device, as `xyf-host mods push | list | remove` (xy_forever/modsend.py): the
 // host only puts packages on the OP-XY; the device assembles mod firmware from them itself.
 // A package set is one generation folder as `modkit split` writes it: base/, <machine>/, ext-<id>/,
 // each with info.txt and files.sha256 listing every file of the package. On the device it goes to
@@ -7,7 +7,7 @@
 // device holds with the same size (`verify` reads everything back). Within a package files.sha256 is
 // written last and deleted first whenever anything in the package changes, so a package folder holding
 // files.sha256 has every listed file; stored files it no longer names go after it.
-// Building (applyMods, as `xyf_host.py mods apply --wait | cancel`): the host asks the device to assemble
+// Building (applyMods, as `xyf-host mods apply --wait | cancel`): the host asks the device to assemble
 // mod firmware from the packages it holds (mods.apply), watches the job (job.status) and can stop it
 // (job.cancel); the device does all the work in TMP_ROOT/job-<id>/ and commits the result as library entry
 // mods-a or mods-b, listed with its content not installed. makeDefault (library.set_default) installs an
@@ -586,17 +586,6 @@ export interface ApplyOptions {
   stallMs?: number | undefined;
 }
 
-const pause = (ms: number, signal: AbortSignal | undefined): Promise<void> =>
-  new Promise((ok) => {
-    const done = (): void => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', done);
-      ok();
-    };
-    const timer = setTimeout(done, ms);
-    signal?.addEventListener('abort', done, { once: true });
-  });
-
 /** A finished build (applyMods): the library entry it became. */
 export interface BuiltEntry {
   /** The library entry id (mods-a or mods-b; the final job.status detail). */
@@ -668,8 +657,9 @@ async function follow(
 ): Promise<JobStatus> {
   const signal = options.signal;
   const stallMs = options.stallMs ?? 90_000;
+  const pollMs = options.pollMs ?? 500;
   let steps = -1,
-    moved = Date.now(),
+    still = 0, // paused since the step count last moved (Client.pause: device time on the simulator)
     cancelled = false;
   for (;;) {
     if (signal?.aborted && !cancelled && what === 'build') {
@@ -686,9 +676,9 @@ async function follow(
     if (status.final) throw new JobError(status, what);
     if (status.steps !== steps) {
       steps = status.steps;
-      moved = Date.now();
+      still = 0;
     }
-    if (Date.now() - moved > stallMs) {
+    if (still > stallMs) {
       throw new XyfError(
         'timeout',
         `job ${job}: no progress for ${Math.round(stallMs / 1000)} s (${steps} steps); stopped waiting ` +
@@ -696,7 +686,13 @@ async function follow(
         { command: 'job.status' },
       );
     }
-    if (!cancelled) await pause(options.pollMs ?? 500, what === 'build' ? signal : undefined);
+    // A cancel ends the pause at once: the next look sends job.cancel.
+    if (!cancelled) {
+      await client.pause(pollMs, what === 'build' ? signal : undefined).catch((error: unknown) => {
+        if (!isXyfError(error, 'aborted')) throw error;
+      });
+      still += pollMs;
+    }
   }
 }
 
@@ -729,7 +725,7 @@ export async function makeDefault(
   return { id, switched: true, status };
 }
 
-/** contentList: the entry has content.sha256, which a build needs of its base (`xyf_host.py library-add --content` writes it). */
+/** contentList: the entry has content.sha256, which a build needs of its base (`xyf-host library-add --content` writes it). */
 export interface BaseEntry {
   readonly id: string;
   readonly name: string;

@@ -4,7 +4,7 @@
 import type { Client } from 'xy-forever-client';
 import { create } from 'zustand';
 
-export interface Connection {
+interface Connection {
   client: Client | null;
   /** The install handed over: the "XY Forever is installed" notice shows until dismissed. */
   installed: boolean;

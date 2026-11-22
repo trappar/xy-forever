@@ -1,8 +1,7 @@
-// In Chrome (#178): how a port is opened decides whether XY Forever's larger replies arrive. The fake port
+// Web Serial (#178): how a port is opened decides whether XY Forever's larger replies arrive. The fake port
 // (fake-serial.ts) keeps Chrome's receive buffer: bufferSize, 255 bytes unless open() names one, and a burst that
 // does not fit is lost. And Chrome on a Mac lists one OP-XY twice (cu. and tty.): two open entries split its replies.
 import { afterEach, describe, expect, inject, test } from 'vitest';
-import { commands } from 'vitest/browser';
 import {
   Client,
   RELEASE_FILTERS,
@@ -10,15 +9,15 @@ import {
   USB_FILTERS,
   WebSerialTransport,
   connectWebSerial,
-} from '../../src/index.ts';
-import type { Opener, Transport, TransportSink } from '../../src/index.ts';
+} from '../src/index.ts';
+import type { Opener, Transport, TransportSink } from '../src/index.ts';
 import { FakeSerial } from './fake-serial.ts';
+import { simWrite } from './gesture.ts';
 import type { FakePort } from './fake-serial.ts';
 
-const web = inject('web');
-const sim = web.xyf;
+const sims = inject('sims');
+const sim = sims.buffer;
 const PATH = '/yaffs2/xy-forever/log/web/buffer.bin';
-const toBase64 = (b: Uint8Array): string => btoa(String.fromCharCode(...b));
 
 /** A port opened with only a baud rate, as a page that leaves Chrome's defaults would, and read continuously. */
 class DefaultsTransport implements Transport {
@@ -61,7 +60,7 @@ class DefaultsTransport implements Transport {
   }
 }
 
-describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${web.why})`}`, () => {
+describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${sims.why})`}`, () => {
   const stock = USB_FILTERS[1];
   const data = crypto.getRandomValues(new Uint8Array(3000));
   let client: Client | null = null;
@@ -72,7 +71,7 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${web.w
 
   test('every path opens with 64 KiB: a 1 KiB file.read reply arrives whole, nothing dropped', async () => {
     expect(SERIAL_OPEN).toEqual({ baudRate: 115200, bufferSize: 65536 });
-    await commands.simWrite(sim!.root, PATH, toBase64(data));
+    await simWrite(sim!.root, PATH, data);
     const serial = new FakeSerial(sim!.relay, { identity: stock, stale: 'granted' });
     client = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800 });
     expect(client.info.limits.read).toBe(1024);
@@ -82,7 +81,7 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${web.w
   });
 
   test("Chrome's default buffer (255 bytes) loses the reply: the same read over a port opened with defaults never answers", async () => {
-    await commands.simWrite(sim!.root, PATH, toBase64(data));
+    await simWrite(sim!.root, PATH, data);
     const serial = new FakeSerial(sim!.relay, { identity: stock, granted: true });
     const live = (await serial.getPorts()).at(-1)!;
     const opener: Opener = async () => DefaultsTransport.open(live);
@@ -101,7 +100,7 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${web.w
   });
 
   test('the same OP-XY listed twice (cu. and tty.): with one entry open in this page, the other is never opened', async () => {
-    await commands.simWrite(sim!.root, PATH, toBase64(data));
+    await simWrite(sim!.root, PATH, data);
     const serial = new FakeSerial(sim!.relay, { identity: stock, twin: 'granted' });
     client = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800 });
     const live = serial.xyfPorts.at(-1)!;
@@ -116,7 +115,7 @@ describe.skipIf(!sim)(`the port's receive buffer${sim ? '' : ` (skipped: ${web.w
   });
 
   test('why: both entries open split the replies between two readers, and a 1 KiB read gets no reply', async () => {
-    await commands.simWrite(sim!.root, PATH, toBase64(data));
+    await simWrite(sim!.root, PATH, data);
     const serial = new FakeSerial(sim!.relay, { identity: stock, twin: 'granted' });
     client = await connectWebSerial({ serial, filters: RELEASE_FILTERS, probeMs: 800 });
     await serial.twin!.open({ ...SERIAL_OPEN }); // a second reader, past WebSerialTransport's refusal

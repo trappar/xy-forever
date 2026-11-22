@@ -1,9 +1,8 @@
-// In Chrome: the real Web Serial transport (src/webserial.ts) and call layer against the simulator,
-// through the fake navigator.serial (fake-serial.ts) and the relay; then the WebSocket transport.
-// Files on the simulator's side are read and seeded through the browser commands (commands.ts).
+// The Web Serial transport (src/webserial.ts) and call layer against the simulator, through the fake
+// navigator.serial (fake-serial.ts) and the relay; then the WebSocket transport. Files on the simulator's side are
+// read and seeded in its /yaffs2 folder on the Mac (gesture.ts).
 import { afterAll, beforeAll, describe, expect, inject, test } from 'vitest';
-import { commands, userEvent } from 'vitest/browser';
-import { webSocketOpener } from '../../src/dev.ts';
+import { webSocketOpener } from '../src/dev.ts';
 import {
   Client,
   USB_FILTERS,
@@ -13,34 +12,16 @@ import {
   isXyfError,
   requestPort,
   webSerialOpener,
-} from '../../src/index.ts';
-import type { SerialPortLike } from '../../src/index.ts';
+} from '../src/index.ts';
+import type { SerialPortLike } from '../src/index.ts';
 import { FakeSerial } from './fake-serial.ts';
+import { fromClick, simRead, simWrite } from './gesture.ts';
+import { control } from './simulators.ts';
 import type { FakePort } from './fake-serial.ts';
 
-const web = inject('web');
-const sim = web.xyf;
+const sims = inject('sims');
+const sim = sims.serial;
 const text = (b: Uint8Array): string => new TextDecoder().decode(b);
-const fromBase64 = (s: string): Uint8Array => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-const toBase64 = (b: Uint8Array): string => btoa(String.fromCharCode(...b));
-
-/** Runs work from a real click (Playwright), as a page's Connect button would. */
-async function fromClick<T>(work: () => Promise<T>): Promise<T> {
-  const button = document.createElement('button');
-  button.textContent = 'Connect';
-  document.body.append(button);
-  let result!: Promise<T>;
-  button.addEventListener('click', () => {
-    result = work();
-    result.catch(() => undefined); // handled below; a chooser cancelled before the click resolves is not an unhandled rejection
-  });
-  try {
-    await userEvent.click(button);
-    return await result;
-  } finally {
-    button.remove();
-  }
-}
 
 function randomBytes(n: number): Uint8Array {
   const out = new Uint8Array(n);
@@ -48,11 +29,7 @@ function randomBytes(n: number): Uint8Array {
   return out;
 }
 
-test('Chrome has no real Web Serial here: tests may not open a real device (vitest.browser.config.ts)', () => {
-  expect('serial' in navigator).toBe(false);
-});
-
-describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` (skipped: ${web.why})`}`, () => {
+describe.skipIf(!sim)(`Web Serial against the simulator${sim ? '' : ` (skipped: ${sims.why})`}`, () => {
   const serial = new FakeSerial(sim?.relay ?? '');
   let uninstall = (): void => undefined;
   let client: Client;
@@ -99,11 +76,11 @@ describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` 
   });
 
   test('a file read matches the simulator', async () => {
-    const onMac = fromBase64(await commands.simRead(sim!.root, '/yaffs2/firmware.version'));
+    const onMac = simRead(sim!.root, '/yaffs2/firmware.version');
     expect(text(onMac)).toMatch(/^1\.2\.1/);
     expect(await client.readFile('/yaffs2/firmware.version')).toEqual(onMac);
     const data = randomBytes(5000);
-    await commands.simWrite(sim!.root, '/yaffs2/xy-forever/log/web/read.bin', toBase64(data));
+    await simWrite(sim!.root, '/yaffs2/xy-forever/log/web/read.bin', data);
     expect(await client.readFile('/yaffs2/xy-forever/log/web/read.bin')).toEqual(data);
   });
 
@@ -112,24 +89,17 @@ describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` 
     const data = randomBytes(3000);
     expect(await client.writeFile(path, data)).toMatchObject({ written: 3000 });
     expect(await client.readFile(path)).toEqual(data);
-    expect(fromBase64(await commands.simRead(sim!.root, path))).toEqual(data);
+    expect(simRead(sim!.root, path)).toEqual(data);
   });
 
-  test('a screenshot drawn to a canvas', async () => {
-    const { width, height, rgba } = decodeScreen(await client.screenshot());
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    document.body.append(canvas);
-    const context = canvas.getContext('2d')!;
-    context.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
-    const pixel = (x: number, y: number): number[] => [...context.getImageData(x, y, 1, 1).data];
+  test('a screenshot decoded to RGBA, as a canvas takes it (ImageData)', async () => {
+    const { width, rgba } = decodeScreen(await client.screenshot());
+    const pixel = (x: number, y: number): number[] => [...rgba.subarray((y * width + x) * 4, (y * width + x) * 4 + 4)];
     // The simulator's test pattern: 40-pixel squares of 0x2104 and black.
     expect(pixel(0, 0)).toEqual([33, 32, 33, 255]);
     expect(pixel(40, 0)).toEqual([0, 0, 0, 255]);
     expect(pixel(0, 40)).toEqual([0, 0, 0, 255]);
     expect(pixel(479, 215)).toEqual(pixel(479 - 80, 215 - 80));
-    canvas.remove();
   });
 
   test('a device reboot: the port is lost, then found again without the chooser', async () => {
@@ -151,8 +121,8 @@ describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` 
   });
 
   test('cable pulled mid-read: a typed error within the timeout, then reconnect', async () => {
-    await commands.simWrite(sim!.root, '/yaffs2/xy-forever/log/web/pull.bin', toBase64(randomBytes(8000)));
-    await commands.simControl(sim!.control, 'set cable_pull 10'); // 10 bytes of the next reply, then the cable goes
+    await simWrite(sim!.root, '/yaffs2/xy-forever/log/web/pull.bin', randomBytes(8000));
+    await control(sim!.control, 'set cable_pull 10'); // 10 bytes of the next reply, then the cable goes
     const started = performance.now();
     const error = await client.readFile('/yaffs2/xy-forever/log/web/pull.bin').catch((e: unknown) => e);
     expect(isXyfError(error, 'disconnected')).toBe(true);
@@ -162,7 +132,7 @@ describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` 
     await client.close();
   });
 
-  test('the WebSocket transport in the browser', async () => {
+  test('the WebSocket transport', async () => {
     const direct = await Client.connect(webSocketOpener(sim!.relay), { timeoutMs: 10_000 });
     try {
       expect(direct.info.proto).toBe(VERSION);
@@ -173,9 +143,9 @@ describe.skipIf(!sim)(`Web Serial in Chrome against the simulator${sim ? '' : ` 
   });
 });
 
-describe.skipIf(!web.preV1)(`a pre-1.1 device in Chrome${web.preV1 ? '' : ` (skipped: ${web.why})`}`, () => {
+describe.skipIf(!sims.preV1)(`a pre-1.1 device over Web Serial${sims.preV1 ? '' : ` (skipped: ${sims.why})`}`, () => {
   test('connect: update XY Forever', async () => {
-    const uninstall = new FakeSerial(web.preV1!.relay).install();
+    const uninstall = new FakeSerial(sims.preV1!.relay).install();
     try {
       await fromClick(() => requestPort());
       const error = await Client.connect(webSerialOpener(), { timeoutMs: 10_000 }).catch((e: unknown) => e);

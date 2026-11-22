@@ -1,5 +1,5 @@
 // The local mod package index (xy_forever/modindex.py, `xyf_package.py index build`), read the way
-// `xyf_host.py mods fetch` reads it: loadIndex(url) checks index.json (format xyf-mod-index/1);
+// `xyf-host mods fetch` reads it: loadIndex(url) checks index.json (format xyf-mod-index/1);
 // fetchPackages(index, ids) downloads the base and the chosen packages, checks every size and SHA-256 and
 // returns an in-memory PackageSource that pushPackages accepts (the generation folder, byte-identical to
 // the one the index was built from). Archives are ZIP files with STORED members only; anything else is

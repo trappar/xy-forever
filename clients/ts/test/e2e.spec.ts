@@ -6,8 +6,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, inject, test } from 'vitest';
 import { Client, VERSION, decodeScreen, isXyfError } from '../src/node.ts';
-import { tcpOpener } from '../src/node.ts';
-import { control } from './simulators.ts';
+import { control, simOpener } from './simulators.ts';
 
 const sims = inject('sims');
 const sim = sims.e2e;
@@ -29,7 +28,7 @@ async function timed<T>(work: Promise<T>): Promise<[T | unknown, number]> {
 describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: ${sims.why})`}`, () => {
   let client: Client;
   beforeAll(async () => {
-    client = await Client.connect(tcpOpener(sim!.address), { timeoutMs: 5000 });
+    client = await Client.connect(simOpener(sim!), { timeoutMs: 5000 });
   });
   afterAll(async () => {
     await client?.close();

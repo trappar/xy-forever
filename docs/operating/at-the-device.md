@@ -89,10 +89,10 @@ an OS reinstall, so crash logs can be fetched from it.
   than one long wait. Report the moment the result is clear ("frozen: power cycle it"); never
   leave the developer waiting out a long timeout.
 - **Browser tests run by automation.** On the OP-XY: `node scripts/device-browser-test.ts --out DIR
-  --serial` in `clients/ts` drives the web app in the system Chrome (Playwright), no human step;
-  `mise run web-e2e` and `pnpm run test:browser` cover the simulator. Chrome's serial port chooser
+  --serial` in `web` drives the web app in the system Chrome (Playwright), no human step;
+  `mise run web-e2e` covers the simulator. Chrome's serial port chooser
   cannot be clicked by automation: a Chrome profile holding a grant gets past it, made once by hand with
-  `--grant` (`clients/ts/README.md`). Never ask the developer to click through a page; they are needed
+  `--grant` (`web/docs/testing.md`). Never ask the developer to click through a page; they are needed
   only for physical actions (power, keys, the OP-XY's own screen).
 - **Cleanups are logged.** Removing files from the device or the private folder writes
   `../private/archive/cleanup-<date>-<topic>.json` first: what, where from, why, and how to

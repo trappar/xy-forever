@@ -3,14 +3,11 @@
 // navigator.requestMIDIAccess and navigator.usb before the page uses them). No simulator and no real device: Web Serial
 // and WebUSB are switched off in Chrome. The release pin and image are test ones, served in place of release.json and
 // release/os.ldr. The page never reads the stock os.ldr (XY Forever adopts it on the device: install-sim.e2e.ts), so a
-// stand-in file is enough. Skipped with the reason when Chrome cannot start.
+// stand-in file is enough.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { chromium, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { Browser, Page, Locator } from '@playwright/test';
-import { createServer } from 'vite';
-import type { ViteDevServer } from 'vite';
 
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
 const SHA = createHash('sha256').update(IMAGE).digest('hex');
@@ -22,38 +19,14 @@ const STOCK_SIZE = 'size:2373336'; // a stand-in of the stock 1.2.1 size: the pa
 const nav = (page: Page, name: string): Locator =>
   page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
 
-let server: ViteDevServer | undefined;
-let browser: Browser | undefined;
-let why: string | null = null;
-try {
-  browser = await chromium.launch({
-    channel: 'chrome',
-    headless: true,
-    args: ['--disable-blink-features=Serial,WebUSB'],
-  });
-} catch (error) {
-  why = `the system Chrome cannot start (${(error as Error).message.split('\n')[0]})`;
-  console.warn(`\ninstall browser test skipped: ${why}\n`);
-}
-
-test.beforeAll(async () => {
-  server = await createServer({
-    configFile: fileURLToPath(new URL('../vite.config.ts', import.meta.url)),
-    server: { port: 0, host: '127.0.0.1' },
-    logLevel: 'error',
-  });
-  await server.listen();
-});
-
-test.afterAll(async () => {
-  await browser?.close();
-  await server?.close();
+let browser: Browser | undefined; // the project's Chrome (playwright.config.ts: no real Web Serial or WebUSB)
+test.beforeAll(({ browser: projectBrowser }) => {
+  browser = projectBrowser;
 });
 
 /** The app with fake devices: te-boot answering with fields, an MTP device holding files (path -> test URL, size:N or text). */
 async function open(fields: string, files: Record<string, string> = {}, free = 64 * 1024 * 1024): Promise<Page> {
-  const address = server!.httpServer!.address();
-  const base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}/`;
+  const base = process.env['XYF_E2E_URL']!; // the run's dev server (playwright.config.ts webServer)
   const page = await browser!.newPage({ acceptDownloads: true });
   await page.route('**/src/install/release.json*', (route) =>
     route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(PIN)};` }),
@@ -117,7 +90,6 @@ async function toTransfer(page: Page, computer: 'Mac' | 'Windows'): Promise<void
 }
 
 test('refuses a 1.2.5 bootloader and unknown firmware, and guides an older OP-XY to official 1.2.1', async () => {
-  test.skip(why !== null, 'skipped: see the warning above');
   let page = await open('mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.23+0;os_version:1.2.5+0');
   await press(page, CHECK);
   let r = await refusal(page);
@@ -144,7 +116,6 @@ test('refuses a 1.2.5 bootloader and unknown firmware, and guides an older OP-XY
 });
 
 test('switches the dev menu on, then stops on a missing stock os.ldr and on low storage (Mac)', async () => {
-  test.skip(why !== null, 'skipped: see the warning above');
   let page = await open(OK_121, { 'content/op1_factory.json': '{}' });
   await press(page, CHECK);
   await atStage(page, 'menu');
@@ -198,7 +169,6 @@ test('switches the dev menu on, then stops on a missing stock os.ldr and on low 
 });
 
 test('links to no tool that can switch the dev menu off', async () => {
-  test.skip(why !== null, 'skipped: see the warning above');
   const page = await open(OK_121);
   await page.getByTestId('connection-help').locator('summary').click();
   expect(await page.getByTestId('connection-help').textContent()).toContain('site settings');
@@ -207,7 +177,6 @@ test('links to no tool that can switch the dev menu off', async () => {
 });
 
 test('offers the fresh start with official 1.2.1 when MTP fails', async () => {
-  test.skip(why !== null, 'skipped: see the warning above');
   const page = await open(OK_121);
   await toTransfer(page, 'Mac');
   await press(page, 'I’m having trouble connecting to MTP');
@@ -222,7 +191,6 @@ test('offers the fresh start with official 1.2.1 when MTP fails', async () => {
 });
 
 test('copies os.ldr over WebUSB, never reading the stock os.ldr, and ends with Track 5 and a power-on (Mac)', async () => {
-  test.skip(why !== null, 'skipped: see the warning above');
   const page = await open(OK_121, { [STOCK]: STOCK_SIZE });
   await toTransfer(page, 'Mac');
   await press(page, 'Send to OP–XY');
@@ -259,7 +227,6 @@ test('copies os.ldr over WebUSB, never reading the stock os.ldr, and ends with T
 });
 
 test('asks the owner to find the stock file in Explorer, then hands over our os.ldr to copy by hand (Windows)', async () => {
-  test.skip(why !== null, 'skipped: see the warning above');
   let page = await open(OK_121);
   await press(page, CHECK);
   await atStage(page, 'menu');
@@ -294,7 +261,6 @@ test('asks the owner to find the stock file in Explorer, then hands over our os.
 });
 
 test('keeps the stage and the chosen computer over a reload, and goes back and forward', async () => {
-  test.skip(why !== null, 'skipped: see the warning above');
   const page = await open(OK_121);
   await toTransfer(page, 'Windows');
   expect(await stage(page)).toBe('transfer');

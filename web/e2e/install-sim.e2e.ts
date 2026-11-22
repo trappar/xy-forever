@@ -2,7 +2,7 @@
 // code and command rules: after Track 5, XY Forever sets itself up on the device (it adopts the stock os.ldr as library
 // entry opxy-121, makes it the default, boots it), and the page hands the owner to the Mods page once it finds it.
 // te-boot and the dev menu's MTP are the fakes of test/fake-devices.ts; Web Serial is the fake navigator.serial of the
-// client's browser tests (clients/ts/test/browser/fake-serial.ts: Chrome's 255-byte default receive buffer, the chooser,
+// client's Web Serial tests (clients/ts/test/fake-serial.ts: Chrome's 255-byte default receive buffer, the chooser,
 // granted ports, a device that goes away and comes back), reaching the simulator through the relay. Each test starts
 // a fresh simulator: a stock OP-XY just after Track 5 (`--fresh`). Skipped with the reason when Chrome or the
 // simulator cannot run here. No real-time waits: the device's clock moves by `until` (sim/clock.cpp), the page's
@@ -11,10 +11,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import type { Browser, Page, Locator } from '@playwright/test';
-import { createServer } from 'vite';
-import type { ViteDevServer } from 'vite';
 import { startRelay } from 'xy-forever-client/test/relay.ts';
 import type { Relay } from 'xy-forever-client/test/relay.ts';
 import { control, findSimulator, randomBase, startAll, until as simUntil } from 'xy-forever-client/test/simulators.ts';
@@ -24,7 +22,7 @@ import { protocol as wire } from 'xy-forever-client';
 
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
-const FAKE_SERIAL = fileURLToPath(import.meta.resolve('xy-forever-client/test/browser/fake-serial.ts'));
+const FAKE_SERIAL = fileURLToPath(import.meta.resolve('xy-forever-client/test/fake-serial.ts'));
 const ENTRY = 'xy-forever/firmware/opxy-121';
 // A random base (simulator, control; the relay on a free port) and state folder: another checkout may run this test at the same time.
 const BASE = parseInt(process.env['XYF_WEB_SIM_PORT'] ?? String(randomBase()), 10);
@@ -36,48 +34,25 @@ const nav = (page: Page, name: string): Locator =>
   page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
 
 const found = findSimulator();
-let why: string | null = found.why;
-let browser: Browser | undefined;
+const why: string | null = found.why;
+let browser: Browser | undefined; // the project's Chrome (playwright.config.ts: no real Web Serial or WebUSB)
 
-let server: ViteDevServer | undefined;
 // The pin's image. Only a setup that never starts compares it (finish.ts), so any name will do; the uninstall test pins its build.
 let image = 'test-pin';
 let running: { sim: SimInfo; relay: Relay; stop: () => Promise<void> } | null = null;
 
-// Each test has its own simulator: they run in parallel (a worker each: its own Chrome, dev server and state folder).
+// Each test has its own simulator: they run in parallel (a worker each: its own Chrome and state folder).
 test.describe.configure({ mode: 'parallel' });
 
-test.beforeAll(async () => {
-  if (!why && !browser) {
-    try {
-      browser = await chromium.launch({
-        channel: 'chrome',
-        headless: true,
-        args: ['--disable-blink-features=Serial,WebUSB'],
-      });
-    } catch (error) {
-      why = `the system Chrome cannot start (${(error as Error).message.split('\n')[0]})`;
-    }
-  }
-  if (why) {
-    console.warn(`\ninstall simulator test skipped: ${why}\n`);
-    return;
-  }
-  server = await createServer({
-    configFile: fileURLToPath(new URL('../vite.config.ts', import.meta.url)),
-    server: { port: 0, host: '127.0.0.1' },
-    logLevel: 'error',
-  });
-  await server.listen();
+test.beforeAll(({ browser: projectBrowser }) => {
+  browser = projectBrowser;
+  if (why) console.warn(`\ninstall simulator test skipped: ${why}\n`);
 });
 test.afterEach(async () => {
   await running?.stop();
   running = null;
 });
 test.afterAll(async () => {
-  await browser?.close();
-  browser = undefined;
-  await server?.close();
   if (!why) rmSync(join(found.sessions!, `web-install-${BASE}`), { recursive: true, force: true });
 });
 
@@ -116,8 +91,7 @@ async function open(
   bytes = IMAGE,
   prepare?: (page: Page) => Promise<void>,
 ): Promise<Page> {
-  const address = server!.httpServer!.address();
-  const base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
+  const base = process.env['XYF_E2E_URL']!.slice(0, -1); // the run's dev server (playwright.config.ts webServer), no trailing /
   const pin = {
     schema: 1,
     version: '0.1.0',

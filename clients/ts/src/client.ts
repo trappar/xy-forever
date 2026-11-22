@@ -1,7 +1,7 @@
 // The call layer for apps: connect (hello, protocol 1.1+ required), the cmds check before every
 // command, typed commands with per-command timeouts, status codes as XyfError, cancellation by
 // AbortSignal, chunked transfers with progress, reconnect after a restart. Behaviour follows the
-// Python host tool (xyf_host.py) and docs/PROTOCOL.md.
+// Python host tool (xyf-host) and docs/PROTOCOL.md.
 import { depthRefusal, foldersBelow } from './depth.ts';
 import { XyfError, isXyfError, statusError } from './errors.ts';
 import { Link } from './link.ts';
@@ -73,7 +73,7 @@ export interface DirEntry {
 export type EntryKind = 'file' | 'folder' | 'other';
 const KINDS: readonly EntryKind[] = ['file', 'folder', 'other'];
 
-/** file.copy: the host waits the command's timeout plus 1 s per this many bytes (xyf_host.py COPY_RATE). */
+/** file.copy: the host waits the command's timeout plus 1 s per this many bytes (xy_forever/xyf_host.py COPY_RATE). */
 const COPY_RATE = 10_000;
 
 type ChangeCommand = 'file.write_staged' | 'file.delete' | 'file.rmdir' | 'file.mkdir' | 'file.rename' | 'file.copy';
@@ -294,6 +294,15 @@ export class Client {
   }
   get connected(): boolean {
     return !this.current.closed;
+  }
+
+  /** A pause between polls: ms of the device's time (the transport's pause, the simulator's clock), else of wall
+   * time. Rejects with XyfError `aborted` when signal fires first. */
+  async pause(ms: number, signal?: AbortSignal): Promise<void> {
+    const transport = this.current.transport;
+    if (!transport.pause) return sleep(ms, signal);
+    if (signal?.aborted) throw new XyfError('aborted', 'cancelled', { cause: signal.reason });
+    await transport.pause(ms);
   }
 
   /** log events (install progress lines); returns the unsubscribe function. */
@@ -540,7 +549,7 @@ export class Client {
   }
 
   /**
-   * Destructive: copies a file, or a folder and everything in it, as `xyf_host.py cp -r`: a folder is
+   * Destructive: copies a file, or a folder and everything in it, as `xyf-host cp -r`: a folder is
    * makeDir of the target, then copyTree of each entry of its listing (an entry neither file nor
    * folder is skipped); a file is copyFile. The target must not exist; one inside the source is a
    * RangeError, nothing sent. Stops at the first failure (what was copied stays). Progress: bytes

@@ -1,7 +1,7 @@
 // The call layer against a scripted device in memory: hello and the 1.1 requirement, the cmds
 // check, typed errors, timeouts, stale replies, one request at a time, cancellation, events,
 // chunk limits. No simulator.
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Client, XyfError, decodeScreen, parseSlot, SCREEN } from '../src/index.ts';
 import type { Transport, TransportSink } from '../src/index.ts';
 import * as v1 from '../src/v1.ts';
@@ -92,6 +92,21 @@ async function connected(dev: FakeDevice): Promise<Client> {
   return Client.connect(async () => dev, { timeoutMs: 1000 });
 }
 
+// Time-outs and pauses run on Vitest's fake clock where a test turns it on: no test waits for wall time.
+afterEach(() => {
+  vi.useRealTimers();
+});
+/** work's outcome (a value, or the error it threw), and whether it settled within ms of the fake clock. */
+async function within<T>(ms: number, work: Promise<T>): Promise<{ settled: boolean; outcome: Promise<T | unknown> }> {
+  let settled = false;
+  const outcome = work.then(
+    (v) => ((settled = true), v),
+    (e: unknown) => ((settled = true), e),
+  );
+  await vi.advanceTimersByTimeAsync(ms);
+  return { settled, outcome };
+}
+
 describe('connect', () => {
   test('hello gives the protocol, version, image and limits', async () => {
     const client = await connected(new FakeDevice());
@@ -124,11 +139,10 @@ describe('connect', () => {
       opens++;
       return new FakeDevice(() => undefined, null);
     };
-    const start = Date.now();
-    await expect(Client.connect(silent, { timeoutMs: 600, helloEveryMs: 100 })).rejects.toMatchObject({
-      code: 'timeout',
-    });
-    expect(Date.now() - start).toBeLessThan(1500);
+    vi.useFakeTimers();
+    const run = await within(600, Client.connect(silent, { timeoutMs: 600, helloEveryMs: 100 }));
+    expect(run.settled).toBe(true);
+    expect(await run.outcome).toMatchObject({ code: 'timeout' });
     expect(opens).toBeGreaterThanOrEqual(1);
   });
 });
@@ -168,11 +182,13 @@ describe('calls', () => {
     let n = 0;
     const dev = new FakeDevice((f, d) => d.reply(f, 0, Uint8Array.of(n++), n === 1 ? 300 : 0));
     const client = await connected(dev);
-    const start = Date.now();
-    await expect(client.readRange('/yaffs2/a', 0, 1, { timeoutMs: 100 })).rejects.toMatchObject({ code: 'timeout' });
-    expect(Date.now() - start).toBeLessThan(250);
-    await new Promise((ok) => setTimeout(ok, 300)); // the late reply arrives now
-    expect(await client.readRange('/yaffs2/a', 0, 1)).toEqual(Uint8Array.of(1));
+    vi.useFakeTimers();
+    const run = await within(100, client.readRange('/yaffs2/a', 0, 1, { timeoutMs: 100 }));
+    expect(run.settled).toBe(true);
+    expect(await run.outcome).toMatchObject({ code: 'timeout' });
+    await vi.advanceTimersByTimeAsync(200); // the late reply arrives now
+    const next = await within(0, client.readRange('/yaffs2/a', 0, 1));
+    expect(await next.outcome).toEqual(Uint8Array.of(1));
     expect(client.link.dropped).toBe(1);
   });
 
@@ -233,7 +249,11 @@ describe('calls', () => {
     expect([client.info.ask, client.info.trust]).toEqual([true, 'none']);
     const asks: boolean[] = [];
     client.onAsk((on) => asks.push(on));
-    expect(await client.bootInstall(new Uint8Array(32))).toEqual({ written: 1, partition: 1, sectors: 8 });
+    vi.useFakeTimers();
+    const run = await within(1100, client.bootInstall(new Uint8Array(32))); // sent again after RETRY_MS, twice
+    expect(run.settled).toBe(true);
+    expect(await run.outcome).toEqual({ written: 1, partition: 1, sectors: 8 });
+    vi.useRealTimers();
     expect([asks, dev.types().filter((t) => t === v1.TYPE['boot.install']).length]).toEqual([[true, false], 3]);
     const refused = await connected(new FakeDevice((f, d) => d.reply(f, v1.STATUS.declined)));
     await expect(refused.bootInstall(new Uint8Array(32))).rejects.toMatchObject({
