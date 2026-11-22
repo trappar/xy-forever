@@ -15,7 +15,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <string>
+#ifdef __APPLE__
 #include <sys/event.h>
+#else
+#include <sys/syscall.h>
+#endif
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -628,11 +632,17 @@ int main(int argc, char** argv) {
     }
     const pid_t parent = getppid();
     std::thread([parent] { // the parent gone: the board's wake pipe (it never polls for it)
+#ifdef __APPLE__
         const int q = kqueue();
         struct kevent e;
         EV_SET(&e, uintptr_t(parent), EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, 0);
         if (q < 0 || kevent(q, &e, 1, 0, 0, 0) < 0) return;
         while (kevent(q, 0, 0, &e, 1, 0) < 0 && errno == EINTR) {}
+#else // Linux: a pidfd turns readable when the process exits
+        pollfd p = {int(syscall(SYS_pidfd_open, parent, 0)), POLLIN, 0};
+        if (p.fd < 0) return;
+        while (poll(&p, 1, -1) < 0 && errno == EINTR) {}
+#endif
         const char b = 1;
         if (write(shared->wake[2][1], &b, 1) < 0) {}
     })

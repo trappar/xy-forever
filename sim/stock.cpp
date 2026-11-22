@@ -89,7 +89,9 @@ void cdc_accept() {
     fcntl(client, F_SETFL, O_NONBLOCK);
     const int one = 1;
     setsockopt(client, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+#ifdef SO_NOSIGPIPE // macOS; elsewhere SIGPIPE is ignored (runtime.cpp)
     setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+#endif
 }
 // #65: control "unplug" as our composite driver sees it (mtp_usb.cpp on_event 4): the connection ends, the count moves.
 uint32_t cdc_resets_seen = 0;

@@ -1,40 +1,92 @@
-# The merge check every pull request and main run. No Teenage Engineering bytes ever reach CI: the private folder is
-# an empty temporary one, so the tests that need the stock os.ldr, the decrypted packages or a device report skip,
-# and the firmware build modes (all of them read the stock os.ldr) are left to `mise run check` on a contributor's
-# machine. The Blackfin toolchain is open-xy's public toolchain-1 release (scripts/setup.py's pinned download),
-# cached, so the tests that need only the toolchain run here.
+# The merge check every pull request runs, on Linux (#229: macOS minutes bill at ten times Linux's). No Teenage
+# Engineering bytes ever reach CI: the private folder is an empty temporary one, so the tests that need the stock
+# os.ldr, the decrypted packages or a device report skip, and the firmware build modes (all of them read the stock
+# os.ldr) are left to `mise run check` on a contributor's machine. open-xy publishes no Linux Blackfin toolchain,
+# so the tests that need one (the freestanding and stack checks) skip here too: `mise run check` runs them, and a
+# manual run with `macos` checked runs the suite on macOS with open-xy's public toolchain-1 release.
+#
+# Cost: a push cancels the PR's run in progress; a docs-only change runs only the lint job (with the doc budget
+# and leak tests); the browser tests run only when the web app, its client or the protocol change. A merge to main
+# runs only the Python suite: it checks the merged result and fills the caches every pull request restores from (a
+# pull request's caches are its own). The host C++ build goes through ccache, so a run recompiles only what changed
+# (85 s to 18 s). Measured and left out: a uv or pnpm cache (each restore costs what the download takes, 2-3 s).
 name: Checks
 
 on:
   pull_request:
   push:
     branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
+  workflow_dispatch:
+    inputs:
+      macos:
+        description: Run the Python suite on macOS (with the Blackfin toolchain), at ten times the cost
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ github.event_name != 'pull_request' || steps.code.outputs.code == 'true' }}
+      web: ${{ github.event_name == 'workflow_dispatch' || steps.web.outputs.web == 'true' }}
+    steps:
+      - id: code
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v4
+        with:
+          predicate-quantifier: every   # a file outside docs/ that is not Markdown
+          filters: |
+            code: ['**', '!docs/**', '!**/*.md']
+      - id: web
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            web: ['web/**', 'clients/ts/**', 'protocol/**', 'pnpm-lock.yaml', '.github/**']
+
   python:
-    name: Python suite (macOS, no private files)
-    runs-on: macos-15
+    name: Python suite (no private files)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ${{ inputs.macos && 'macos-15' || 'ubuntu-24.04' }}
     timeout-minutes: 20
+    env:
+      CC: clang   # the host C++ build (hosttest/) with clang, as on a Mac, through ccache
+      CXX: clang++
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/mise
+      - name: ccache (the host C++ build's objects)
+        uses: hendrikmuhs/ccache-action@v1.2.26
+        with:
+          key: hosttest-${{ runner.os }}-${{ runner.arch }}
+          evict-old-files: job   # keep only what this build used
       - run: uv sync --locked
       - run: pnpm install --frozen-lockfile
       - name: Blackfin toolchain cache
+        if: runner.os == 'macOS'
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/tools/blackfin
           key: blackfin-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('stock.json', 'toolchains.json') }}
       - name: Blackfin toolchain (open-xy's public release, checked against toolchains.json)
+        if: runner.os == 'macOS'
         env:
           XYF_TOOLCHAIN: ${{ runner.temp }}/tools/blackfin
         run: uv run scripts/setup.py toolchain
@@ -45,7 +97,8 @@ jobs:
         run: mkdir -p "$XYF_PRIVATE" && mise run test-all
 
   web:
-    name: Lint, web app, client, protocol check (Linux)
+    name: Lint, web app, client, protocol check
+    if: github.event_name != 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -59,9 +112,34 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Lint and format checks (ruff, vulture, ESLint, Prettier, knip, clang-format)
         run: mise run lint
+      - name: Doc budgets, links and the leak scan (also in the suite; here so a docs-only change runs them)
+        run: uv run python -m unittest tests/test_docs_budget.py tests/test_no_leaks.py
       - name: The generated protocol files match protocol/v1.json
         run: mise run protogen
       - name: Client tests, web tests, web type check
         run: mise run web-test
       - name: Web build
         run: pnpm --filter xy-forever-web run build
+
+  e2e:
+    # The web app's browser tests (`mise run web-e2e`: Playwright in the runner's preinstalled Google Chrome), only
+    # when the web app or the client it uses changes; no part of the routine suite (#233). Without private files the
+    # simulator specs skip, so this runs the install page against its fake devices.
+    name: Web app e2e (Chrome)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      UV_NO_SYNC: "1"   # uv run keeps the sync below: no hosttest build
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/mise
+      - run: uv sync --locked --no-group native   # no Python suite here: skip building hosttest/
+      - run: pnpm install --frozen-lockfile
+      - name: Install page and app in Chrome
+        env:
+          XYF_PRIVATE: ${{ runner.temp }}/private   # empty: the simulator specs skip
+        run: mkdir -p "$XYF_PRIVATE" && mise run web-e2e
