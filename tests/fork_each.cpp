@@ -19,6 +19,10 @@
 
 int fork_each_main(int argc, char** argv);
 
+// No leak check in the runs: LeakSanitizer (on by default on Linux, off on macOS) stops the world in every forked
+// child's exit, which hangs there. The runs check memory errors and undefined behaviour, never leaks.
+extern "C" const char* __asan_default_options() { return "detect_leaks=0"; }
+
 namespace {
 std::vector<std::string> fields(const std::string& line) {
     std::vector<std::string> out(1);
