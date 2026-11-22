@@ -24,19 +24,19 @@ command writes no storage and never installs or resets. `--deadline-ms` bounds i
 Ctrl-C cancels an intact session. Status remains responsive; a lost link stops without recovery.
 Manual changes may touch `/yaffs2` except the protected marker and updater inbox in SAFETY.md.
 Creating the report folder is a storage write and requires the developer's approval:
-`uv run xyf_host.py put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.
+`uv run xyf-host put-file some.txt /yaffs2/xy-forever/log/README.txt --yes-write`.
 
 ### Sound packs
 
-`uv run xyf_host.py packs list` lists installed sound packs in `/yaffs2/content/dlc/`.
+`uv run xyf-host packs list` lists installed sound packs in `/yaffs2/content/dlc/`.
 Each row gives the pack folder ID and the vendor manifest's name, version, author and description when present.
 A malformed manifest is reported beside its folder ID.
 
 Place a complete, unpacked sound pack in `/yaffs2/xy-forever/inbox/ID/`. Its `manifest.json` must
 be a JSON object of up to 4,096 bytes and 32 nesting levels. A `folder` property, when present, must match the folder ID exactly.
 A manifest declaring the `xy-forever.package` schema belongs to the native package workflow.
-Run `uv run xyf_host.py packs install ID --yes` to move the folder to `/yaffs2/content/dlc/ID/`.
-An occupied ID stops the install. Use `uv run xyf_host.py packs remove ID --yes` to remove an installed pack.
+Run `uv run xyf-host packs install ID --yes` to move the folder to `/yaffs2/content/dlc/ID/`.
+An occupied ID stops the install. Use `uv run xyf-host packs remove ID --yes` to remove an installed pack.
 Omit `--yes` to see the planned action.
 
 On the OP-XY, open Settings > Content packs. SHIFT+PLAY switches between installed and inbox packs.
@@ -45,7 +45,7 @@ Use + then PLAY to confirm, or STOP to go back.
 
 ### Factory content inventory
 
-`uv run xyf_host.py content status` reads free space, walks `/yaffs2/content/` and hashes each regular file
+`uv run xyf-host content status` reads free space, walks `/yaffs2/content/` and hashes each regular file
 over USB. It compares the paths and SHA-256 digests with each available private
 `xy-forever/content-manifests/<version>/content.sha256` (made with `xyf_package.py content-manifest`).
 The report gives every exact match, which releases match the live catalog hash, and missing, extra and changed files per release.
@@ -66,15 +66,15 @@ There is no guard (watchdog) and no command for one: a hang needs a power cycle;
 [SAFETY.md](../SAFETY.md). Never send REBOOT after suspecting a lone restart of A.
 
 ```sh
-uv run xyf_host.py ls /yaffs2/xy-forever [--json]       # type, size, name (paged; any folder size)
-uv run xyf_host.py get /yaffs2/xy-forever/log/x.bin x.bin   # any size; size (ls) and 4 ranges re-read
-uv run xyf_host.py put x.bin /yaffs2/xy-forever/x.bin   # <= HELLO stage= (7 MiB); read back [--no-verify]
-uv run xyf_host.py mkdir /yaffs2/xy-forever/new         # the parent must exist
-uv run xyf_host.py rm /yaffs2/xy-forever/x.bin          # rm --dir: an empty folder only
-uv run xyf_host.py mv /yaffs2/xy-forever/a /yaffs2/content/b   # file or folder; no overwrite (state)
-uv run xyf_host.py cp [-r] /yaffs2/xy-forever/a /yaffs2/content/b   # <= 7 MiB per file; no overwrite (state)
-uv run xyf_host.py mods apply --base opxy-121 --generation opxy-1.2.1/GEN fm2op [--ext ID...] --wait   # B assembles into tmp/job-N/
-uv run xyf_host.py mods cancel                          # stop it (removes what it wrote)
+uv run xyf-host ls /yaffs2/xy-forever [--json]       # type, size, name (paged; any folder size)
+uv run xyf-host get /yaffs2/xy-forever/log/x.bin x.bin   # any size; size (ls) and 4 ranges re-read
+uv run xyf-host put x.bin /yaffs2/xy-forever/x.bin   # <= HELLO stage= (7 MiB); read back [--no-verify]
+uv run xyf-host mkdir /yaffs2/xy-forever/new         # the parent must exist
+uv run xyf-host rm /yaffs2/xy-forever/x.bin          # rm --dir: an empty folder only
+uv run xyf-host mv /yaffs2/xy-forever/a /yaffs2/content/b   # file or folder; no overwrite (state)
+uv run xyf-host cp [-r] /yaffs2/xy-forever/a /yaffs2/content/b   # <= 7 MiB per file; no overwrite (state)
+uv run xyf-host mods apply --base opxy-121 --generation opxy-1.2.1/GEN fm2op [--ext ID...] --wait   # B assembles into tmp/job-N/
+uv run xyf-host mods cancel                          # stop it (removes what it wrote)
 ```
 
 ### The mods the OP-XY runs (#26)

@@ -6,7 +6,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 
 ## Taking control of the device (no dev menu needed)
 
-1. Start a listener first: `uv run xyf_host.py --timeout 3600 status` (or a session
+1. Start a listener first: `uv run xyf-host --timeout 3600 status` (or a session
    script). Only then ask the developer to **power on holding PLAY and let go when the
    logo appears** (holding it longer is fine).
 2. The PLAY boot opens the boot menu (home) with USB; it answers the tool's HELLO and,

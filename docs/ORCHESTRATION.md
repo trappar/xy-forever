@@ -7,7 +7,7 @@ current. It delegates implementation when it can, or does the work itself. Read 
 
 1. `mise run plan` (`-- --agent NAME` if another agent works here: [two agents](operating/two-agents.md)); read
    your status notes (`<private>/xy-forever/status/README.md`). Setup unfinished: [ONBOARDING.md](../ONBOARDING.md) first.
-2. `uv run xyf_host.py --timeout 5 status`: ready `device` items go first when the device is connected.
+2. `uv run xyf-host --timeout 5 status`: ready `device` items go first when the device is connected.
    If the developer says it is absent, or there was no [first device install](operating/first-install.md) yet,
    skip the check and device items.
 3. Take the first item under "Yours" (interrupted work), else "Next" (milestone order, then issue number).

@@ -178,22 +178,22 @@ their `--yes-…` flag. File commands can change `user/` and most of the drive.
 
 | Command | Example |
 |---|---|
-| status | `python3 xyf_host.py status` (protocol, build and device state) |
-| ls | `python3 xyf_host.py ls /yaffs2/xy-forever [--json]` |
-| get | `python3 xyf_host.py get /yaffs2/xy-forever/config.json config.json` |
-| put | `python3 xyf_host.py put notes.txt /yaffs2/xy-forever/notes.txt` (read back and compared; `--no-verify` skips that) |
-| rm | `python3 xyf_host.py rm /yaffs2/xy-forever/notes.txt` (`--dir` for an empty folder) |
-| mkdir | `python3 xyf_host.py mkdir /yaffs2/xy-forever/log` (the parent must exist) |
-| mv | `python3 xyf_host.py mv /yaffs2/xy-forever/a.txt /yaffs2/xy-forever/b.txt` |
-| cp | `python3 xyf_host.py cp -r /yaffs2/xy-forever/firmware/a /yaffs2/xy-forever/firmware/b` |
-| boot | `python3 xyf_host.py boot ID --yes-boot` (boot an entry once; leaves XY Forever) |
-| set-default | `python3 xyf_host.py set-default ID --yes-write` (without the flag: prints the plan) |
-| mods push | `python3 xyf_host.py mods push DIR [--only ID ...] [--verify]` (send a package set) |
-| mods list | `python3 xyf_host.py mods list` (package sets and packages on the device, with sizes) |
-| mods remove | `python3 xyf_host.py mods remove GENERATION --yes` (without `--yes`: dry run) |
-| mods set | `python3 xyf_host.py mods set MACHINE ... [--ext ID ...]` (the mods it runs; `mods status`) |
-| mods apply | `python3 xyf_host.py mods apply --base ID --generation GEN MACHINE ... --wait` (developers) |
-| screenshot | `python3 xyf_host.py screenshot --out screen.png` |
+| status | `uv run xyf-host status` (protocol, build and device state) |
+| ls | `uv run xyf-host ls /yaffs2/xy-forever [--json]` |
+| get | `uv run xyf-host get /yaffs2/xy-forever/config.json config.json` |
+| put | `uv run xyf-host put notes.txt /yaffs2/xy-forever/notes.txt` (read back and compared; `--no-verify` skips that) |
+| rm | `uv run xyf-host rm /yaffs2/xy-forever/notes.txt` (`--dir` for an empty folder) |
+| mkdir | `uv run xyf-host mkdir /yaffs2/xy-forever/log` (the parent must exist) |
+| mv | `uv run xyf-host mv /yaffs2/xy-forever/a.txt /yaffs2/xy-forever/b.txt` |
+| cp | `uv run xyf-host cp -r /yaffs2/xy-forever/firmware/a /yaffs2/xy-forever/firmware/b` |
+| boot | `uv run xyf-host boot ID --yes-boot` (boot an entry once; leaves XY Forever) |
+| set-default | `uv run xyf-host set-default ID --yes-write` (without the flag: prints the plan) |
+| mods push | `uv run xyf-host mods push DIR [--only ID ...] [--verify]` (send a package set) |
+| mods list | `uv run xyf-host mods list` (package sets and packages on the device, with sizes) |
+| mods remove | `uv run xyf-host mods remove GENERATION --yes` (without `--yes`: dry run) |
+| mods set | `uv run xyf-host mods set MACHINE ... [--ext ID ...]` (the mods it runs; `mods status`) |
+| mods apply | `uv run xyf-host mods apply --base ID --generation GEN MACHINE ... --wait` (developers) |
+| screenshot | `uv run xyf-host screenshot --out screen.png` |
 
 `mods set` saves the mods the OP-XY runs, as turning them on in the Mods page does: the OP-XY
 checks that it can build them and keeps them, or says why not, and builds them the next time it

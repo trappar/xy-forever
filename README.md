@@ -53,7 +53,7 @@ tool). For mod writers: [docs/MODS-DEV.md](docs/MODS-DEV.md).
 xy_forever/       the Python package (uv installs it): build helpers, report decoder, USB protocol, private paths,
                   and the tools: xyf-build (build + verify a candidate os.ldr: CRC, call and symbol audits),
                   xyf-host (XY Forever's USB service: install, files, screen, keys), xyf-package
-xyf_*.py          shims: `uv run xyf_host.py` = `uv run xyf-host`
+xyf_*.py          shims: `uv run xyf-host` = `uv run xyf-host`
 tests/            the suite, plus ui_preview.py (the device UI as PNG) and verify_ldr.py (the native LDR
                   parser against official images), which drive its C++ bridges
 target/           cold-time device code (C++/asm, freestanding, both processors)
