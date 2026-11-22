@@ -79,6 +79,7 @@ class RunTest(unittest.TestCase):
         self.assertEqual(gone(self.marker, 5), '')
 
 
+@pytest.mark.sim                                                 # starts the client suite's simulators
 @unittest.skipUnless(NODE, 'node not found (mise install)')   # mise's Node runs .ts files without flags
 @unittest.skipUnless((CLIENT / 'node_modules' / 'ws').exists(), 'clients/ts/node_modules absent (pnpm install)')
 @unittest.skipIf(SIM_UNAVAILABLE, SIM_UNAVAILABLE)
