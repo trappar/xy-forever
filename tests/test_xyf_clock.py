@@ -2,13 +2,12 @@
 from pathlib import Path
 import ctypes
 import random
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 BRIDGE = r"""
 #include "xyf_clock.hpp"
 extern "C" unsigned clock_ms(unsigned low, unsigned high) { return xyf::clock::ms_from_cycles(low, high); }

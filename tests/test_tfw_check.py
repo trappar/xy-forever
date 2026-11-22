@@ -9,7 +9,6 @@ import hashlib
 import os
 from pathlib import Path
 import struct
-import sys
 import tempfile
 import unittest
 
@@ -20,12 +19,13 @@ from test_tfw import container, KEY
 from test_tfw_os import (BOOTLOADER, Extractor, KEYS, OS, PUBLIC_KEY, SIGNING_KEY, build_zip, package, signed,
                          standard)
 
+from xy_forever.source_text import unit_text
+from xy_forever import xyf_build as builder
+from xy_forever import xyf_host as host
+from xy_forever import bounds, paths, sim, tfw_extract
+from xy_forever import usb_proto_ids as ids
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-import xyf_host as host                              # noqa: E402
-from xy_forever import bounds, paths, sim, tfw_extract       # noqa: E402
-from xy_forever import usb_proto_ids as ids          # noqa: E402
 
 OFFICIAL = sorted((paths.FIRMWARE / 'official').glob('opxy_firmware_*.tfw'))
 PRIVATE = None if tfw_extract.KEYS.is_file() and tfw_extract.PUBLIC_KEY.is_file() and OFFICIAL else \
@@ -218,8 +218,6 @@ class SimulatorCheck(unittest.TestCase):
         for path in OFFICIAL + [Path('good.cut')]:
             with self.subTest(package=path.name):
                 self.assertEqual(self.check(path.name), (0, 'pass', expected, 3))   # selectors 9, 3, 4
-
-import xyf_build as builder                          # noqa: E402
 
 
 def line(address, code):

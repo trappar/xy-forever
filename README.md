@@ -50,13 +50,14 @@ tool). For mod writers: [docs/MODS-DEV.md](docs/MODS-DEV.md).
 ## Layout
 
 ```
-xyf_build.py      build + verify a candidate os.ldr (CRC, call and symbol audits)
-xyf_host.py       host tool for XY Forever's USB service (install, files, screen, keys)
-ui_preview.py     render the device UI to PNG on the host
-verify.py         cross-check the native LDR parser against official images
+xy_forever/       the Python package (uv installs it): build helpers, report decoder, USB protocol, private paths,
+                  and the tools: xyf-build (build + verify a candidate os.ldr: CRC, call and symbol audits),
+                  xyf-host (XY Forever's USB service: install, files, screen, keys), xyf-package
+xyf_*.py          shims: `uv run xyf-host` = `uv run xyf-host`
+tests/            the suite, plus ui_preview.py (the device UI as PNG) and verify_ldr.py (the native LDR
+                  parser against official images), which drive its C++ bridges
 target/           cold-time device code (C++/asm, freestanding, both processors)
 native/           freestanding codecs: LDR, SHA-256, inflate/ZIP, AES/TFW, packages, companions
-xy_forever/       Python package: build helpers, report decoder, USB protocol, private paths
 protocol/v1.json  the USB serial protocol spec; scripts/protogen.py generates its code and docs/PROTOCOL.md
 clients/ts/       TypeScript protocol module (src/v1.ts, generated) for the web app; never built into firmware
 web/              the web app (Chrome, Web Serial): mod package manager and file manager; see web/README.md

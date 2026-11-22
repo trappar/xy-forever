@@ -70,7 +70,7 @@ build `fixtures` verified (`doctor`, "verified build"), as in [at the device](at
 
 At first start XY Forever checks the device's stock copy in `/upgrade`, adds OS 1.2.1 to the library and makes
 it the default; let the "Adding OS 1.2.1" progress finish. No key is needed for that first start. To open the
-menu later, start `uv run xyf_host.py --timeout 120 status` first, then ask for a power-on holding PLAY, released
+menu later, start `uv run xyf-host --timeout 120 status` first, then ask for a power-on holding PLAY, released
 at the logo. First-start errors: the [guide](../GUIDE.md).
 
 ## 4. Device pass and known-good kit

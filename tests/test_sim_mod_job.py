@@ -20,15 +20,14 @@ import unittest
 import pytest
 import zlib
 
+from xy_forever import xyf_host as host
+from xy_forever import bounds, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, modstore, package_records, sim
+from xy_forever import usb_proto as P, usb_proto_ids as ids
+from xy_forever.startup_ready import wait_startup_ready
+from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
+import test_modkit as TK
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import xyf_host as host                                                   # noqa: E402
-from xy_forever import bounds, census, hostbuild, modkit as M, modpatch as MP, modsend as MS, modstore, package_records, sim                     # noqa: E402
-from xy_forever import usb_proto as P, usb_proto_ids as ids                # noqa: E402
-from xy_forever.startup_ready import wait_startup_ready                    # noqa: E402
-from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
-import test_modkit as TK                                                  # noqa: E402
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 NAME = 'OP-XY mods'

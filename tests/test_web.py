@@ -3,12 +3,10 @@ runs in `mise run web-test`, its browser tests (the system Chrome, fake devices 
 web-e2e`, which CI runs when web/ changes (.github/workflows/web-e2e.yml), never in the routine suite (#233)."""
 from pathlib import Path
 import subprocess
-import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / 'web'
-sys.path.insert(0, str(ROOT))
 
 
 class WebAppTest(unittest.TestCase):

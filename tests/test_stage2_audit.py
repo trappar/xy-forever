@@ -1,13 +1,10 @@
 """The standalone stage-2 data audit (xy_forever/stage2_audit.py, #97): relocation pass, literal ranges and
 the aligned-word scan, as a pure function over sections, relocations and literal ranges. The real hello and
 menu images (P5) are audited by every --xyf-stage2 / --xyf-stage2-menu build and --verify."""
-from pathlib import Path
 import struct
-import sys
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from xy_forever import stage2_audit as A  # noqa: E402
+from xy_forever import stage2_audit as A
 
 BEGIN = A.STAGE2_WINDOW[0]
 IMAGE = 0x800                       # image bytes: .text, then .rodata at +0x400 and .data at +0x600

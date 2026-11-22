@@ -11,20 +11,16 @@ import json
 from pathlib import Path
 import struct
 import re
-import sys
 import tempfile
 import time
 import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'scripts'))
-import conformance as script                          # noqa: E402  (scripts/conformance.py)
-import xyf_host as host                               # noqa: E402
-from xy_forever import conformance as C, paths, sim   # noqa: E402
-from xy_forever import usb_proto as P                 # noqa: E402
+import conformance as script  # (scripts/conformance.py)
+from xy_forever import xyf_host as host
+from xy_forever import conformance as C, paths, sim
+from xy_forever import usb_proto as P
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 AREA = '/yaffs2/xy-forever/log/conformance/'

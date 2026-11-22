@@ -13,14 +13,12 @@ The session and transport are xy_forever/mtp_read.py's (shared with setup.py
 import-stock --from-device), which refuses every operation that is not a read.
 """
 import argparse
-import os
 import struct
 import sys
 import zlib
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from xy_forever import mtp_read  # noqa: E402
-from xy_forever.mtp_read import DeviceDescriptor, OP_XY_VID, READ_ONLY as NAMES, MtpError, ptp_string  # noqa: E402,F401
+from xy_forever import mtp_read
+from xy_forever.mtp_read import DeviceDescriptor, OP_XY_VID, READ_ONLY as NAMES, MtpError, ptp_string  # noqa: F401
 
 
 def load():

@@ -34,12 +34,9 @@ import tempfile
 import time
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'scripts'))
-import device_pass as dp                                    # noqa: E402
-import xyf_host as host                                     # noqa: E402
-from xy_forever import modpatch, package_records, xyf_entry                  # noqa: E402
+import device_pass as dp
+from xy_forever import xyf_host as host
+from xy_forever import modpatch, package_records, xyf_entry
 
 StepFail = dp.StepFail
 XYF = '/yaffs2/xy-forever'

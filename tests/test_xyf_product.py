@@ -1,13 +1,10 @@
 """XY Forever product build (--xyf-product): the wide cold layout, the product mode's features,
 the host's build checks and the payload-free outer stream. No device access."""
-import sys
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import xyf_build as builder  # noqa: E402
-from xy_forever.paths import DECRYPTED, SESSIONS  # noqa: E402
+from xy_forever import xyf_build as builder
+from xy_forever.paths import DECRYPTED, SESSIONS
 
 
 class ProductLayoutTest(unittest.TestCase):
@@ -71,7 +68,7 @@ class ProductFlowTest(unittest.TestCase):
 class HostInstallTest(unittest.TestCase):
     def test_host_installs_only_builds_with_the_usb_service(self):
         import json, tempfile, hashlib
-        import xyf_host as host
+        from xy_forever import xyf_host as host
         self.assertEqual(host.USB_MODES, ('xyf-usb', *builder.PRODUCT_MODES, builder.MTP_USB_MODE, builder.CRASH_TRIGGER_MODE))
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
@@ -110,7 +107,7 @@ class PlainImageTest(unittest.TestCase):
 
 class MenuOverUsbHostTest(unittest.TestCase):
     def test_host_commands(self):
-        import xyf_host as host
+        from xy_forever import xyf_host as host
         self.assertEqual(host.KEYS['play'], 51); self.assertEqual(host.KEYS['minus'], 53)
         self.assertEqual(host.KEYS['plus'], 54); self.assertEqual(host.KEYS['track1'], 6)
         from xy_forever import usb_proto as P

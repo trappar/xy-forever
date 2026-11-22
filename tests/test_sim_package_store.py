@@ -8,7 +8,7 @@ import unittest
 
 import pytest
 
-import xyf_host as host
+from xy_forever import xyf_host as host
 from xy_forever import bounds, package_store as S, sim, xyf_entry
 from test_ldr import image
 

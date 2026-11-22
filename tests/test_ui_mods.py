@@ -14,12 +14,9 @@ import unittest
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import ui_preview as P                                                    # noqa: E402
-from xy_forever import hostbuild, modkit as M, modsend as MS, package_records, paths       # noqa: E402
-from test_modpatch import PACKAGES, finish, kit_for, profile_for, stock   # noqa: E402
+import ui_preview as P
+from xy_forever import hostbuild, modkit as M, modsend as MS, package_records, paths
+from test_modpatch import PACKAGES, finish, kit_for, profile_for, stock
 
 PLAY, STOP, MINUS, PLUS, SHIFT = 51, 52, 53, 54, 55
 NONE, REDRAW, LEAVE = range(3)

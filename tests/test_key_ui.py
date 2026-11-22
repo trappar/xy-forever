@@ -2,15 +2,14 @@
 from pathlib import Path
 import re
 import struct
-import sys
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 from xy_forever.source_text import unit_text
-from xyf_build import KEY_UI_CALLS, call_targets, key_ui_spans
+from xy_forever.xyf_build import KEY_UI_CALLS, call_targets, key_ui_spans
 from xy_forever.census import (KEYS, KEY_UI_DISPLAY_FIELDS, KEY_UI_FIELDS, KEY_UI_MAGIC, boot_key_snapshot,
                                    held_keys, key_ui)
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def regions_and_dump(blocks):

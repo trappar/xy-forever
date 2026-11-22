@@ -7,15 +7,14 @@ from pathlib import Path
 import random
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild
 from xy_forever import paths, sim, xyf_entry as E
+
+ROOT = Path(__file__).resolve().parents[1]
 
 DATA = ROOT / 'tests/manifests'
 KEYS = E.MANIFEST_KEYS

@@ -4,15 +4,14 @@ import io
 from contextlib import redirect_stdout
 from pathlib import Path
 import re
-import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
-import xyf_host as H
+from xy_forever import hostbuild
+from xy_forever import xyf_host as H
 from xy_forever import usb_proto as P
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class StateWriteHostTest(unittest.TestCase):

@@ -1,15 +1,14 @@
 """XY Forever screens: host-rendered with the device C++ (no device execution)."""
 from pathlib import Path
 import re
-import sys
 import tempfile
 import unittest
 
+import ui_preview as P
+from xy_forever import hostbuild
+from xy_forever.source_text import unit_text
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import ui_preview as P  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
-from xy_forever.source_text import unit_text  # noqa: E402
 
 
 class UiScreensTest(unittest.TestCase):

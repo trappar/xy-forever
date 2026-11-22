@@ -1,16 +1,15 @@
 """Our MTP function driver (target/mtp_usb.*) against a host model of the stock USB stack."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
+from xy_forever.source_text import unit_text
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
 
 
 @pytest.mark.gate
@@ -45,7 +44,7 @@ class MtpUsbTest(unittest.TestCase):
 
     def test_stock_binding_matches_allowlist(self):
         import re
-        import xyf_build as B
+        from xy_forever import xyf_build as B
         text = (ROOT / 'target/mtp_usb_stock.cpp').read_text()
         called = set(re.findall(r'stock<0x([0-9a-f]{8})u', text))
         self.assertEqual(called, B.MTP_USB_CALLS | B.MTP_USB_KICK_CALLS | {'88a35044', '88a34fec'})
@@ -68,7 +67,7 @@ class MtpUsbTest(unittest.TestCase):
 
 class MtpUsbBuildGateTest(unittest.TestCase):
     def setUp(self):
-        import xyf_build as B
+        from xy_forever import xyf_build as B
         self.B = B
 
     def test_no_calls_no_gate(self):

@@ -1,16 +1,11 @@
 """Helpers for the parked sweeps that drive the Settings page in the simulator (the tests that were here went in
 #233): Rows, its row and key constants."""
-from pathlib import Path
-import sys
 import time
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import xyf_host as host                                                    # noqa: E402
-from sim_mods_page import MINUS, PLAY, PLUS, PageBase, synthetic_setup   # noqa: E402
-from test_sim_config import MARK, mark_text                               # noqa: E402
+from xy_forever import xyf_host as host
+from sim_mods_page import MINUS, PLAY, PLUS, PageBase, synthetic_setup
+from test_sim_config import MARK, mark_text
 
 MAIN, INFO, SETTINGS, OPTIONS = 0, 1, 3, 4                                 # xyf_menu Screen (#197)
 R_OK = 0x2001                                                              # MTP OK

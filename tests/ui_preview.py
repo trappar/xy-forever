@@ -1,11 +1,11 @@
 """Render XY Forever screens on the host (same C++ as the device) to PNG.
-Usage: python3 ui_preview.py [OUTDIR]  (default: private/xy-forever/previews). Offline only."""
+Usage: uv run tests/ui_preview.py [OUTDIR] (mise run preview)  (default: private/xy-forever/previews). Offline only."""
 import ctypes as C, subprocess, sys, tempfile
 from pathlib import Path
 
 from PIL import Image
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 WIDTH, HEIGHT, STRIDE = 480, 216, 256
 
 
@@ -90,7 +90,6 @@ def stage2_previews(tmp, out):
     """Main stage 2 (ABI 2): the real stage-2 program (target/stage2_menu.cpp)
     run against a scripted stage 1 (tests/stage2_menu_bridge.cpp); each frame
     is what it presents through begin_frame/end_frame."""
-    sys.path.insert(0, str(ROOT / 'tests'))
     from test_xyf_stage2_menu import PLAY, PLUS, Stage2Program, build_stage2, press
     out.mkdir(parents=True, exist_ok=True)
     p = Stage2Program(build_stage2(tmp, 'preview'))

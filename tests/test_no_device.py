@@ -2,22 +2,18 @@
 test here replaces what the opener would touch next (the glob, the open, libusb, pyusb) with a call that fails
 the test, so none of them can reach a device even when the guard is broken."""
 import os
-from pathlib import Path
 import socket
 import subprocess
 import sys
 import unittest
 from unittest import mock
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'scripts'))
-import xyf_host as host                     # noqa: E402
-from xy_forever import mtp_read, no_device, transport  # noqa: E402
-from xy_forever.no_device import DeviceRefused  # noqa: E402
-import conformance                           # noqa: E402
-import setup                                 # noqa: E402
-import usb_alive                             # noqa: E402
+from xy_forever import xyf_host as host
+from xy_forever import mtp_read, no_device, transport
+from xy_forever.no_device import DeviceRefused
+import conformance
+import setup
+import usb_alive
 
 REFUSED = r'^tests may not open a real device: '
 DEVICE = '/dev/cu.usbmodemTEST1'
@@ -33,8 +29,7 @@ class GuardTest(unittest.TestCase):
     def test_on_in_every_test_and_its_subprocesses(self):
         self.assertTrue(no_device.on())
         self.assertEqual(os.environ.get(no_device.ENV), '1')
-        out = subprocess.run([sys.executable, '-c', 'import sys; sys.path.insert(0, %r)\n'
-                              'from xy_forever import no_device; print(no_device.on())' % str(ROOT)],
+        out = subprocess.run([sys.executable, '-c', 'from xy_forever import no_device; print(no_device.on())'],
                              capture_output=True, text=True, check=True).stdout
         self.assertEqual(out, 'True\n')
 
@@ -45,8 +40,7 @@ class GuardTest(unittest.TestCase):
 
     def test_off_outside_tests(self):
         env = {k: v for k, v in os.environ.items() if k != no_device.ENV}
-        out = subprocess.run([sys.executable, '-c', 'import sys; sys.path.insert(0, %r)\n'
-                              'from xy_forever import no_device; no_device.refuse("it"); print("allowed")' % str(ROOT)],
+        out = subprocess.run([sys.executable, '-c', 'from xy_forever import no_device; no_device.refuse("it"); print("allowed")'],
                              capture_output=True, text=True, check=True, env=env).stdout
         self.assertEqual(out, 'allowed\n')
 
@@ -67,8 +61,8 @@ class SerialTest(unittest.TestCase):
                 host.connect(5.0)
 
     def test_a_script_run_by_a_test_refuses(self):
-        code = ('import glob, sys; sys.path.insert(0, %r)\nimport xyf_host\n'
-                'glob.glob = lambda pattern: sys.exit("reached the glob")\nxyf_host.find_port()' % str(ROOT))
+        code = ('import glob, sys\nfrom xy_forever import xyf_host\n'
+                'glob.glob = lambda pattern: sys.exit("reached the glob")\nxyf_host.find_port()')
         run = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
         self.assertEqual(run.returncode, 1)
         self.assertIn('DeviceRefused: tests may not open a real device: the serial port', run.stderr)

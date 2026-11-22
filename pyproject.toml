@@ -23,13 +23,27 @@ dev = [
   "vulture>=2.16",
 ]
 
+[project.scripts]
+# `uv run xyf-host status` (or `uv run xyf_host.py status`: the root files are shims). scripts/ stays scripts:
+# `uv run scripts/NAME.py`, which import the installed package.
+xyf-host = "xy_forever.xyf_host:main"
+xyf-build = "xy_forever.xyf_build:main"
+xyf-package = "xy_forever.xyf_package:main"
+
+[build-system]
+# hatchling: pure Python. A compiled extension in the package itself (nanobind) would take scikit-build-core.
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["xy_forever"]
+
 [tool.uv]
-package = false   # not an installable package yet (#234)
+package = true    # `uv sync` installs xy_forever (editable) into .venv: no sys.path edits anywhere
 
 [tool.vulture]
 # `uv run vulture`: dead code. The names below are found by pytest and the device pass, not by calls.
-paths = ["xy_forever", "scripts", "tests", "re", "xyf_build.py", "xyf_host.py", "xyf_package.py", "ui_preview.py",
-         "verify.py"]
+paths = ["xy_forever", "scripts", "tests", "re"]
 ignore_names = ["step_*", "test_*", "setUp*", "tearDown*", "pytest_*", "Test*", "log_message"]
 min_confidence = 61
 
@@ -38,6 +52,7 @@ min_confidence = 61
 # bounds (#230), the budgets and the C++ and script selection for --testmon. `mise tasks` lists the commands.
 minversion = "9.0"
 testpaths = ["tests"]
+pythonpath = ["scripts"]              # tests import scripts/ modules (check, setup, protogen, ...); the package is installed
 python_files = ["test_*.py"]
 python_classes = ["Test"]             # unittest.TestCase subclasses only: a helper named Test* is no test
 python_functions = []

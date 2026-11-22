@@ -17,9 +17,9 @@ import zipfile
 
 import pytest
 
+from xy_forever import dev_tools, modlink, outer, paths, usb_proto
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import dev_tools, modlink, outer, paths, usb_proto  # noqa: E402
 
 spec = importlib.util.spec_from_file_location('xyf_setup', ROOT / 'scripts/setup.py')
 S = importlib.util.module_from_spec(spec)

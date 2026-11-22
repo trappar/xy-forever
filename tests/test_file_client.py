@@ -4,18 +4,17 @@ A): tests/test_simulator.py. No device execution."""
 import ctypes as C
 from pathlib import Path
 import struct
-import sys
 import tempfile
 import unittest
 import zlib
 
+from xy_forever.source_text import unit_text
+from xy_forever import hostbuild
+from xy_forever import xyf_build as B
+from xy_forever import usb_proto_ids as ids
+from xy_forever.paths import STOCK_121
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
-import xyf_build as B  # noqa: E402
-from xy_forever import usb_proto_ids as ids  # noqa: E402
-from xy_forever.paths import STOCK_121  # noqa: E402
 
 APPROVED_B = {'889f8d22', '889f6c5c', '889f8c10', '889f8e36', '889f88ac'}   # changes need the developer's explicit yes
 APPROVED_A = {'889fa834'}
@@ -46,7 +45,7 @@ class AllowlistTest(unittest.TestCase):
                 self.assertNotIn('0x%su' % call, text, (name, call))
 
     def test_scopes(self):
-        src = (ROOT / 'xyf_build.py').read_text()
+        src = (ROOT / 'xy_forever/xyf_build.py').read_text()
         for line in ("check_scoped_calls(raw, FILE_CLIENT_CALLS, '11file_client', ('11file_client',), 'File client')",
                      "check_scoped_calls(raw, A_RENAME_CALLS, '14storage_server6a_side', ('14storage_server',), 'Rename')",
                      "check_scoped_calls(raw, A_FIND_CALLS, '14storage_server6a_side', A_FIND_CALLERS, 'Final-link lookup')",

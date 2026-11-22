@@ -11,8 +11,8 @@ cd xy-forever        # toolchain: ../tools/blackfin (or set XYF_TOOLCHAIN)
 mise run doctor                  # stock pair + fixtures in place? (first: operating/first-install.md)
 mise run check                   # build, --verify, fast and gate tiers: the build lands in builds/<image>
 mise run check --confirm         # this commit's check receipt, with its image
-uv run xyf_build.py --xyf-product --out ../private/xy-forever/builds/repeat   # by hand: same candidate SHA
-uv run xyf_build.py --verify --out ../private/xy-forever/builds/repeat        # {"passed": true}
+uv run xyf-build --xyf-product --out ../private/xy-forever/builds/repeat   # by hand: same candidate SHA
+uv run xyf-build --verify --out ../private/xy-forever/builds/repeat        # {"passed": true}
 uv run scripts/device_pass.py --plan --install ../private/xy-forever/builds/IMAGE  # inspect the qualification plan
 ```
 
@@ -56,16 +56,18 @@ test is in a tier: `fast` (the default), `gate` (slower: sanitizer builds, fuzzi
 sweeps on the simulator, parked until they move to native tests: `mise run test-sweeps`, in no routine run).
 Budgets are enforced: the fast tier 3 s and 0.3 s a test, the gate tier 15 s and 10 s a test, the sim tier 5 s
 and 1.5 s a test; going over fails the run and names the test or tier (make it faster or move it
-a tier). Every test is bounded (`timeout`, `bounds.TEST_S`; a simulator core test `SIM_TEST_S`, a parked sweep `SLOW_S`): past it the run
+a tier). A test's time is its CPU time (or wall time when less; a sim test's is wall time), so a busy Mac does
+not fail it; a calibration probe raises the limits on slower or busy machines, and `--testmon` by its tracing
+overhead. CI enforces the CPU budgets and reports the wall-time ones (`XYF_BUDGETS`: `tests/conftest.py`). Every test is bounded (`timeout`, `bounds.TEST_S`; a simulator core test `SIM_TEST_S`, a parked sweep `SLOW_S`): past it the run
 prints HUNG with every thread's traceback and its worker's process group ends. `test-changed` adds to testmon's
 Python tracking the C++ each test compiled (`hostbuild`'s `clang -M` record) and the files a test runs as a
 subprocess (`@pytest.mark.uses('scripts/x.py')`); its first run runs everything.
 
 `mise run check` (`scripts/check.py`) is the PR gate on a clean, committed tree: the product build into
 `build/product` plus `--verify` (cached, below; a verified build is copied to `../private/xy-forever/builds/<image>`), `protogen --check`, `pnpm run typecheck` in
-`clients/ts` and `web` when they differ from the merge base with `origin/main` (or with `--js`; it stops first,
-naming `pnpm install`, when a needed `node_modules` is missing), then the fast and gate tiers with a temporary
-copy of the verified build. Budgets: 15 s a step, 30 s in all. Step output goes to a log in
+`clients/ts` and `web` when they differ from the merge base with `origin/main` (or with `--js`), then the fast
+and sim tiers (one run) and the gate tier with a temporary copy of the verified build. A missing or stale
+`node_modules` (a fresh worktree) gets `pnpm install` first; `mise run build` does the same. Budgets: 15 s a step, 30 s in all. Step output goes to a log in
 `../private/xy-forever/sessions/<date>-check/`. A passing run writes the receipt
 `../private/xy-forever/checks/<tree>.json` (`git rev-parse HEAD^{tree}`): a cache, so a rerun on the same tree
 stops at once (`--force` reruns); `--confirm [REF]` prints what it records. `mise run neutral [REF]`
@@ -75,7 +77,7 @@ the merge check. Neither stands in for a device test. Firmware may also be built
 `build/` folder; TE bytes are never committed or uploaded.
 
 `mise run build`, `mise run verify` and the check's build steps go through Turborepo's local cache
-(`scripts/firmware_cache.py`, `turbo.json`). The key is every file `xyf_build.py` hashes as its sources, plus the
+(`scripts/firmware_cache.py`, `turbo.json`). The key is every file `xyf-build` hashes as its sources, plus the
 SHA-256 of the stock pair, the toolchain's location and pins, the Python running it and the checkout's path,
 computed on every run. With all of them unchanged, `build/product` and the `--verify` log are restored in about
 0.2 s; anything else rebuilds. A failed build or verify is never cached. The cache is `.turbo/cache` in the

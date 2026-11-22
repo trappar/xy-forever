@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import unittest
 
-import xyf_build
+from xy_forever import xyf_build
 
 ROOT = Path(__file__).resolve().parents[1]
 TURBO = json.loads((ROOT / 'turbo.json').read_text())

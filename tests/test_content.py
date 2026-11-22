@@ -2,13 +2,12 @@ import ctypes as C
 import hashlib
 import os
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 
-ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild
+
+ROOT = Path(__file__).resolve().parents[1]
 Digest=C.c_ubyte*32
 SIZE=C.CFUNCTYPE(C.c_bool,C.c_void_p,C.c_char_p,C.POINTER(C.c_bool),C.POINTER(C.c_uint))
 READ=C.CFUNCTYPE(C.c_bool,C.c_void_p,C.c_char_p,C.c_uint,C.c_void_p,C.c_uint)

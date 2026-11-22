@@ -11,7 +11,6 @@ from pathlib import Path
 import shutil
 import socket
 import struct
-import sys
 import tempfile
 import threading
 import time
@@ -21,13 +20,13 @@ import pytest
 import warnings
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import xyf_build                                    # noqa: E402
-import xyf_host as host                             # noqa: E402
-from xy_forever import bounds, census, paths, release, sim, usb_proto as P   # noqa: E402
-from xy_forever import usb_proto_ids as ids         # noqa: E402
+from xy_forever import xyf_build
+from xy_forever import xyf_host as host
+from xy_forever import bounds, census, paths, release, sim, usb_proto as P
+from xy_forever import usb_proto_ids as ids
 from xy_forever.startup_ready import wait_startup_ready
+
+ROOT = Path(__file__).resolve().parents[1]
 
 UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 BASE = '/yaffs2/xy-forever/'

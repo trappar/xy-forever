@@ -4,10 +4,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import sys
 
-SOURCE = Path(__file__).resolve().parent
-sys.path.insert(0, str(SOURCE / 'tests'))
 from test_ldr import Native
 from xy_forever.build_formats import Firmware
 from xy_forever.paths import DECRYPTED, STOCK_121, private_output

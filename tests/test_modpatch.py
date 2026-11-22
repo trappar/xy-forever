@@ -20,19 +20,15 @@ import re
 import shutil
 import struct
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import hostbuild, modkit as M, modlink as L, modpatch as P, package_records, paths, xyf_entry as E  # noqa: E402
-from test_ldr import header, image  # noqa: E402
-import test_modkit as TK  # noqa: E402
+from xy_forever import hostbuild, modkit as M, modlink as L, modpatch as P, package_records, paths, xyf_entry as E
+from test_ldr import header, image
+import test_modkit as TK
 
 BASE = 0x8d2d0380
 TEXT = 0x8d000000

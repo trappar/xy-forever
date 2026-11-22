@@ -2,15 +2,14 @@
 with a fault, a power cut and A going silent at every request (target/xyf_content_test.cpp)."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 
 @pytest.mark.gate

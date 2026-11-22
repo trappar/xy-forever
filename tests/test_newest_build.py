@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import xyf_build
+from xy_forever import xyf_build
 from xy_forever import paths
 
 SOURCE = {'target/a.cpp': '11', 'xyf_build.py': '22'}

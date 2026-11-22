@@ -11,9 +11,7 @@ from unittest import mock
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import bounds, hostbuild  # noqa: E402
+from xy_forever import bounds, hostbuild
 
 CXX = '/usr/bin/clang++'
 

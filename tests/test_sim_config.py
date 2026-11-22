@@ -10,21 +10,16 @@ next plain power-on converges), the switch and the record write (the menu opens 
 selection that cannot be built. Synthetic packages (test_sim_mod_job's kit). Needs clang++ and the private stock 1.2.1 images
 (skipped without them). No device access."""
 import hashlib
-from pathlib import Path
-import sys
 import time
 import unittest
 
 import pytest
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-import test_sim_content_switch as CS                                      # noqa: E402
-import test_sim_mod_job as J                                               # noqa: E402
-from sim_mods_page import (PageBase, synthetic_setup, PLAY, STOP, MINUS, SHIFT)                    # noqa: E402
-from xy_forever import bounds, native_json                                                        # noqa: E402
+import test_sim_content_switch as CS
+import test_sim_mod_job as J
+from sim_mods_page import (PageBase, synthetic_setup, PLAY, STOP, MINUS, SHIFT)
+from xy_forever import bounds, native_json
 
 CONFIG = 'xy-forever/config.json'
 CONFIG_OLD = CONFIG + '.old'

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import xyf_host
+from xy_forever import xyf_host
 from xy_forever import host_inventory, usb_proto as P
 
 

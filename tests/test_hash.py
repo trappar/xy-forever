@@ -2,13 +2,12 @@ import ctypes
 import hashlib
 from pathlib import Path
 import random
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 class NativeHashTests(unittest.TestCase):
     @classmethod

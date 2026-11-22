@@ -20,15 +20,14 @@ import json
 from pathlib import Path
 import re
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
+from xy_forever import paths
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import paths  # noqa: E402
 
 MARKER = 'leak-ok'
 EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+\.)+[A-Za-z]{2,}')

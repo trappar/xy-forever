@@ -3,18 +3,17 @@ buffers and protocol rules; no device execution."""
 from pathlib import Path
 import re
 import struct
-import sys
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-import xyf_build as builder
+from xy_forever.source_text import unit_text
+from xy_forever import xyf_build as builder
 from xy_forever.census import (FILE_BOOT_BYTES, FILE_BOOT_FIELDS, FILE_BOOT_LIBRARY_BYTES, FILE_BOOT_MAGIC,
                                    FILE_BOOT_MENU_BYTES, FILE_BOOT_MENU_FIELDS, file_boot,
                                    BOOT_TIMING_FIELDS, BOOT_TIMING_MAGIC, BOOT_TIMING_BYTES,
                                    boot_timing_summary, boot_timing,
                                    BOOT_DETAIL_FIELDS, BOOT_DETAIL_MAGIC, BOOT_DETAIL_BYTES)
+
+ROOT = Path(__file__).resolve().parents[1]
 
 XYF = (ROOT / 'target/xyf_boot.hpp').read_text()
 SOURCE = unit_text(ROOT / 'target/file_boot.cpp')
@@ -87,7 +86,7 @@ class XyfBootTest(unittest.TestCase):
             self.assertIn('d.' + field + ' =', SOURCE)
 
     def test_timing_status_distinguishes_current_and_previous_boot(self):
-        import xyf_host
+        from xy_forever import xyf_host
         words = [BOOT_TIMING_MAGIC, 1] + [0] * 14
         encoded = struct.pack('<16I', *words)
         status = struct.pack('<II', BOOT_TIMING_MAGIC, len(encoded)) + encoded

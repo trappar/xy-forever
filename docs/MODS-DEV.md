@@ -56,7 +56,7 @@ The full format is in [storage/mods.md](storage/mods.md), section "Mod packages"
 ## 2. Send them to the device
 
 ```sh
-python3 xyf_host.py mods push DIR/mods/opxy-1.2.1/<generation> [--only ID ...] [--verify]
+uv run xyf-host mods push DIR/mods/opxy-1.2.1/<generation> [--only ID ...] [--verify]
 ```
 
 The set goes to `/yaffs2/xy-forever/mods/<generation>/`, stored flat (protocol 1.16 or later;
@@ -81,7 +81,7 @@ Without it booting from the first row stops with "Failed: no stock OP-XY firmwar
 machines on (saved at once), STOP, then PLAY on the first row. The OP-XY builds,
 installs content, sets the default and boots it.
 
-**From the computer:** `python3 xyf_host.py mods set MACHINE ... [--ext ID ...]` saves the same
+**From the computer:** `uv run xyf-host mods set MACHINE ... [--ext ID ...]` saves the same
 selection (checked, or refused with the reason; none: all off); it is built at the next start.
 
 To try your build once without changing what is saved: `mods dev --boot` (or `mods apply`, then

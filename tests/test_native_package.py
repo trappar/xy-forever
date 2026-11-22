@@ -6,7 +6,6 @@ from pathlib import Path
 import random
 import struct
 import subprocess
-import sys
 import tempfile
 import unittest
 import zipfile
@@ -19,9 +18,9 @@ from test_companions import cyacd
 from test_ldr import image
 
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 OS = "firmware/blackfin/bin/os.ldr"
 BACKPLANE = "firmware/backplane/bin/backplane.cyacd"
 BLE = "firmware/ble/bin/ble.bin"

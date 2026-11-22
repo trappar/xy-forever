@@ -6,16 +6,13 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 import struct
-import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT), str(ROOT / 'scripts')]
 import tfw_probe as probe
 import device_pass as dp
-import xyf_host as host
+from xy_forever import xyf_host as host
 from xy_forever import usb_proto as P
 
 PUBLIC = bytes(range(56))                         # synthetic bytes; no key fixture is opened

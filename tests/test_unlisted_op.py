@@ -4,13 +4,12 @@ bad_request and failed hello/unlisted-types)."""
 from pathlib import Path
 import re
 import subprocess
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 PROGRAM = r'''
 #include <stdio.h>

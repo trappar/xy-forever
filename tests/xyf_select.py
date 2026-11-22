@@ -40,14 +40,15 @@ def digest(rel):
 class Recorder:
     """Worker side (or the only process): the files each test used, in its report's user_properties."""
     def __init__(self):
-        self.files, self.compile_s = set(), 0.0
+        self.files, self.compile_s, self.compile_cpu_s = set(), 0.0, 0.0
         hostbuild.observer = self.compiled
 
-    def compiled(self, files, seconds):
+    def compiled(self, files, seconds, cpu_s):
         for f in files:
             if f.startswith(str(ROOT) + os.sep) and os.path.isfile(f):
                 self.files.add(os.path.relpath(f, ROOT))
         self.compile_s += seconds
+        self.compile_cpu_s += cpu_s
 
     @pytest.hookimpl(tryfirst=True)
     def pytest_runtest_setup(self, item):
@@ -60,8 +61,8 @@ class Recorder:
         report = yield
         if call.when == 'teardown':
             report.user_properties.append(('xyf_deps', {f: digest(f) for f in sorted(self.files)}))
-        report.user_properties.append(('xyf_compile_s', self.compile_s))   # charged to this phase, then reset
-        self.compile_s = 0.0
+        report.user_properties += [('xyf_compile_s', self.compile_s), ('xyf_compile_cpu_s', self.compile_cpu_s)]
+        self.compile_s = self.compile_cpu_s = 0.0                          # charged to this phase, then reset
         return report
 
 

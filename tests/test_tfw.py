@@ -4,15 +4,14 @@ import random
 from pathlib import Path
 import struct
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
-ROOT=Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild
+
+ROOT = Path(__file__).resolve().parents[1]
 KEY=bytes(range(32))  # Public synthetic test vector, not a device key.
 IV=bytes(range(16))
 

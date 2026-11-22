@@ -7,16 +7,15 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 import tempfile
 import unittest
 
 import pytest
 
+from xy_forever import content_manifest as CM, paths
+from xy_forever.xyf_entry import read_files_sha256
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import content_manifest as CM, paths  # noqa: E402
-from xy_forever.xyf_entry import read_files_sha256  # noqa: E402
 
 FILES = {'a/b.txt': b'one', 'a-b.txt': b'two', 'a b/c.json': b'{}', 'B.wav': b'\0' * 1000,
          'samples/#1/x.aif': b'xyz', 'op1.json': b'[]'}

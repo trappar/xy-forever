@@ -6,17 +6,16 @@ import ctypes as C
 import itertools
 from pathlib import Path
 import re
-import sys
 import tempfile
 import unittest
 
 import pytest
 
+from xy_forever.source_text import unit_text
+from xy_forever import hostbuild
+from xy_forever.census import ENGINE_ACTIONS
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
-from xy_forever.census import ENGINE_ACTIONS   # noqa: E402
 
 PARTITION, PATH, QUERY, READ, SECTOR, WRITE = 0x11907694, 0x119076b4, 0x11907388, 0x11907368, 0x11907348, 0x11907710
 BUFFER = 0x8803f6e0

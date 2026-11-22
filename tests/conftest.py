@@ -4,27 +4,36 @@ script selection (xyf_select.py). Commands: `mise tasks` (test, test-changed, te
 Tiers, each a marker set on a test: `gate`, `sim` (the simulator core, #233: each kept test says why in its
 docstring) and `sweep` (power-cut and fault sweeps on the simulator, parked until they move to native tests:
 `mise run test-sweeps`, in no routine run); every other test is `fast`. `mise run test` runs the fast tier
-(-m fast), `mise run check` the fast and gate tiers, `mise run test-all` every tier but `sweep`.
+(-m fast), `mise run check` the fast, sim and gate tiers, `mise run test-all` every tier but `sweep`.
 
-Budgets: a test's time (setup, call and teardown, less the host compiles it waited for: a C++ edit never
-fails a budget) and a run's wall time, per tier, below. Going over fails the run and names the test or the
-tier. The limits sit at about twice the measured times, so a busy machine passes: a test over its tier's
-limit is made faster, or moves to a slower tier. A run with --testmon (its coverage tracing slows every
-test), the sweeps, or the sim tier with others (test-all) only reports them, as does XYF_BUDGETS=off (CI: other
-hardware).
+Budgets, per tier below: one test's time and the run's wall time. A test's time sums its setup, call and
+teardown, less the host compiles it waited for (a C++ edit never fails a budget). It is CPU time (this process
+and the child processes it waited for), or wall time when that is less, since a busy machine stretches wall time
+but barely CPU time; a sim tier test's is wall time, as its work runs in simulator processes that outlive it.
+Every limit scales by probe_s() against PROBE_S: slower hardware, or a busy machine at the run's start or end,
+raises them (never below the table). --testmon's coverage tracing scales them by TRACING. Going over fails the
+run and names the test or tier: make the test faster, or move it to a slower tier. Runs that include the sweeps
+are not budgeted. XYF_BUDGETS=ci (CI: other hardware, another core count) enforces the CPU budgets and only
+reports the wall-time ones (the run's total and a sim test's); XYF_BUDGETS=off only reports.
 """
+import hashlib
 import os
 from pathlib import Path
-import sys
+import struct
 import time
+
+try:
+    import resource
+except ImportError:                   # Windows: the CPU time of child processes is not counted
+    resource = None
 
 import pytest
 
+from xy_forever import no_device
+import xyf_bounds
+import xyf_select
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT)]
-from xy_forever import no_device  # noqa: E402
-import xyf_bounds  # noqa: E402
-import xyf_select  # noqa: E402
 
 no_device.switch_on()                 # every test and every process it starts: no real device
 os.chdir(ROOT)
@@ -38,6 +47,8 @@ BUDGETS = {
     'sweep': (None, None),            # parked sweeps: not budgeted
 }
 TIERS = tuple(BUDGETS)
+PROBE_S = 0.035                       # probe_s() on the reference machine (Apple M5 Max), idle: more scales the limits
+TRACING = 2.5                         # --testmon: coverage tracing took 1.6x a test's CPU time (median), 2.2x at worst
 
 
 def tier_of(item):
@@ -54,8 +65,9 @@ def pytest_configure(config):
     config.addinivalue_line('markers', 'sweep: a simulator sweep waiting to move to native tests: mise run test-sweeps')
     config.pluginmanager.register(xyf_bounds, 'xyf-bounds')
     xyf_select.register(config)
+    config.pluginmanager.register(CpuClock(), 'xyf-cpu')
     if not hasattr(config, 'workerinput'):
-        config.pluginmanager.register(Budgets(), 'xyf-budgets')
+        config.pluginmanager.register(Budgets(config), 'xyf-budgets')
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -68,35 +80,92 @@ def pytest_collection_modifyitems(items):
         item.user_properties.append(('xyf_tier', tier))
 
 
+def cpu_s():
+    """CPU seconds of this process (every thread) and of the child processes it has waited for."""
+    children = resource.getrusage(resource.RUSAGE_CHILDREN) if resource else None
+    return time.process_time() + (children.ru_utime + children.ru_stime if children else 0.0)
+
+
+def probe_s():
+    """Wall seconds of a fixed workload (Python and hashing, as the fast tests mix them): PROBE_S on the
+    reference machine when idle; more on slower hardware or a busy machine (queued, or on efficiency cores)."""
+    start, total = time.perf_counter(), 0
+    for i in range(100_000):
+        digest = hashlib.sha256(struct.pack('<II', i, total & 0xffffffff)).digest()
+        total += sum(digest[:8]) + len({i: digest})
+    return time.perf_counter() - start
+
+
+class CpuClock:
+    """Worker side (or the only process): each phase's CPU time, in its report's user_properties."""
+    @pytest.hookimpl(wrapper=True)
+    def pytest_runtest_setup(self, item):
+        return (yield from self.timed())
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_runtest_call(self, item):
+        return (yield from self.timed())
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_runtest_teardown(self, item):
+        return (yield from self.timed())
+
+    def timed(self):
+        start = cpu_s()
+        try:
+            return (yield)
+        finally:
+            self.phase_s = cpu_s() - start
+
+    @pytest.hookimpl(wrapper=True)
+    def pytest_runtest_makereport(self, item, call):
+        report = yield
+        report.user_properties.append(('xyf_cpu_s', self.phase_s))
+        return report
+
+
 class Budgets:
-    """Controller side: sums each test's phases (less compile time) and checks the tiers at the end."""
-    def __init__(self):
-        self.start, self.tests, self.over, self.enforced = time.monotonic(), {}, [], True
+    """Controller side: sums each test's phases (less compiles) and checks the tests and tiers at the end."""
+    def __init__(self, config):
+        self.mode = os.environ.get('XYF_BUDGETS', 'on')
+        if self.mode not in ('on', 'ci', 'off'):
+            raise pytest.UsageError('XYF_BUDGETS=%s: on (the default), ci or off' % self.mode)
+        self.tracing = TRACING if config.getoption('testmon', False) else 1.0
+        self.probe = probe_s()                       # before the workers start, and again after they end
+        self.start, self.tests, self.over, self.failed = time.monotonic(), {}, [], False
 
     def pytest_runtest_logreport(self, report):
+        if hasattr(report, 'context'):               # a subtest's report: its time is in its test's call phase
+            return
         props = dict(report.user_properties)
-        entry = self.tests.setdefault(report.nodeid, [props.get('xyf_tier', 'fast'), 0.0])
+        entry = self.tests.setdefault(report.nodeid, [props.get('xyf_tier', 'fast'), 0.0, 0.0])
         entry[1] += report.duration - props.get('xyf_compile_s', 0.0)
+        entry[2] += props.get('xyf_cpu_s', report.duration) - props.get('xyf_compile_cpu_s', 0.0)
 
     def pytest_sessionfinish(self, session):
         wall = time.monotonic() - self.start
-        tiers = {tier for tier, _ in self.tests.values()}
-        for nodeid, (tier, seconds) in sorted(self.tests.items()):
-            limit = BUDGETS[tier][1]
-            if limit is not None and seconds > limit:
-                self.over.append('%s took %.2f s: over the %s tier\'s %g s a test' % (nodeid, seconds, tier, limit))
-        limit = sum(BUDGETS[t][0] or 0 for t in tiers)
+        self.probe = max(self.probe, probe_s())
+        self.scale = max(1.0, self.probe / PROBE_S) * self.tracing
+        tiers = {tier for tier, _, _ in self.tests.values()}
+        for nodeid, (tier, wall_s, cpu) in sorted(self.tests.items()):
+            limit, on_cpu = BUDGETS[tier][1], tier != 'sim'
+            seconds = min(wall_s, cpu) if on_cpu else wall_s
+            if limit is not None and seconds > limit * self.scale:
+                self.note(on_cpu, '%s took %.2f s%s: over the %s tier\'s %g s a test' % (
+                    nodeid, seconds, ' of CPU' if on_cpu and cpu < wall_s else '', tier, limit * self.scale))
+        limit = sum(BUDGETS[t][0] or 0 for t in tiers) * self.scale
         if tiers and 'sweep' not in tiers and wall > limit:
-            self.over.append('the %s tier%s took %.1f s: over %g s' % (
+            self.note(False, 'the %s tier%s took %.1f s: over %g s' % (
                 ' and '.join(t for t in TIERS if t in tiers), 's' if len(tiers) > 1 else '', wall, limit))
-        # Measured alone: a run that mixes the sim tier with others (test-all: 12 jobs) loads the fast tests too.
-        self.enforced = (os.environ.get('XYF_BUDGETS') != 'off' and 'sweep' not in tiers
-                         and (tiers == {'sim'} or 'sim' not in tiers)
-                         and not session.config.getoption('testmon', False))
-        if self.over and self.enforced and session.exitstatus == 0:
+        if self.failed and session.exitstatus == 0:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+    def note(self, on_cpu, line):
+        """CPU budgets fail the run unless XYF_BUDGETS=off; wall-time ones also report only under ci."""
+        enforced = self.mode == 'on' or (self.mode == 'ci' and on_cpu)
+        self.failed |= enforced
+        self.over.append(('BUDGET: ' if enforced else 'budget (not enforced): ') + line)
 
     def pytest_terminal_summary(self, terminalreporter):
         for line in self.over:
-            terminalreporter.write_line(('BUDGET: ' if self.enforced else 'budget (not enforced): ') + line,
-                                        red=self.enforced)
+            terminalreporter.write_line(line, red=line.startswith('BUDGET'))

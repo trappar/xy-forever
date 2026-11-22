@@ -1,13 +1,11 @@
 """Check necessary cold SPI lifecycle predicates; fixtures are not live state."""
 import ctypes as C
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 import random
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild
 
 U32=C.c_uint
 OK,WAITING,CHOOSE,ADMIT,READY,UNAVAILABLE,IDENTITY,ROLE,LIFECYCLE,IRQ,BOUNDS,PROTOCOL,TIMEOUT,DRAIN,CLOSE=range(15)

@@ -28,11 +28,11 @@ import sys
 import tarfile
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 from xy_forever.paths import BUILDS, PRIVATE_ROOT, SESSIONS
 from xy_forever.toolchain import authenticate
-from xyf_build import MODES
+from xy_forever.xyf_build import MODES
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def git(*args):

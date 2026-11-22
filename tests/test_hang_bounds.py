@@ -18,7 +18,6 @@ import unittest
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
 
 PLANTED = '''import os, subprocess, sys, time, unittest
 class Hang(unittest.TestCase):
@@ -49,7 +48,7 @@ class RunnerBoundsTest(unittest.TestCase):
             (Path(tmp) / 'test_planted_hang.py').write_text(PLANTED)
             (Path(tmp) / 'pytest.ini').write_text('[pytest]\n')
             pid_file = Path(tmp) / 'pid'
-            env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(ROOT / 'tests'), str(ROOT)]),
+            env = dict(os.environ, PYTHONPATH=str(ROOT / 'tests'),
                        XYF_PLANTED_PID=str(pid_file))
             start = time.monotonic()
             run = subprocess.run([sys.executable, '-m', 'pytest', '-p', 'xyf_bounds', '-p', 'no:cacheprovider', '-n', '1',

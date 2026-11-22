@@ -84,7 +84,7 @@ HELLO_OVERRIDE = ('#if defined(XYF_SIM_HELLO_TEXT)\n#undef XYF_USBP_HELLO_TEXT\n
 def product_defines(version=None, mode='xyf-product', switches=None, hello=None):
     """The product build's defines (xyf_build.py build()), the hello release version (another one: version)
     and mode, and optionally other usb build switches or a whole hello text (a pre-v1 device, say)."""
-    import xyf_build
+    from xy_forever import xyf_build
     from xy_forever import release
     switches = set(xyf_build.usb_switches(mode) if switches is None else switches)
     flags = ['-DXYF_SIM=1', '-DXYF_STACK_END=%#xu' % xyf_build.WIDE_STACK_END, '-DXYF_CENSUS_REGIONS=24',

@@ -1,13 +1,9 @@
 """XY Forever pages: host-rendered device C++ (list, confirm, progress, home)."""
-from pathlib import Path
-import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import ui_preview as P  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
+import ui_preview as P
+from xy_forever import hostbuild
 
 
 class UiPagesTest(unittest.TestCase):

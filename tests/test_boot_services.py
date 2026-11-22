@@ -1,13 +1,12 @@
 """Host checks for the loader path rule and the update-key reader; no target or hardware calls."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 
 class BootServicesTests(unittest.TestCase):

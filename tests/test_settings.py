@@ -5,13 +5,12 @@ and the gate (only
 a real PLAY / STOP answers; injected keys and releases are ignored; 30 s bound, wrap-safe)."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 
 class SettingsTests(unittest.TestCase):

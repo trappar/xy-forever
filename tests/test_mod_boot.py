@@ -7,16 +7,14 @@ import importlib.util
 import io
 from pathlib import Path
 import shutil
-import sys
 import tempfile
 import unittest
 
 import pytest
 
+from xy_forever import package_records, paths, sim
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import package_records, paths, sim                    # noqa: E402
 
 spec = importlib.util.spec_from_file_location('mod_boot', ROOT / 'scripts/mod_boot.py')
 mb = importlib.util.module_from_spec(spec)

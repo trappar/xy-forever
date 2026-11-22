@@ -3,14 +3,12 @@ SendObject and their data phase): folders, uploads, read back, the scratch-only 
 reach the transport (protected names in any case, the depth rule, paths outside /yaffs2). No device access."""
 from pathlib import Path
 import struct
-import sys
 import unittest
 
+from xy_forever import mtp_read as M, mtp_write as W
+import test_mtp_read as R
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import mtp_read as M, mtp_write as W  # noqa: E402
-import test_mtp_read as R  # noqa: E402
 
 WRITE_OPS = set(W.WRITES)
 

@@ -81,7 +81,7 @@ class UpdateReviewTests(unittest.TestCase):
         self.assertTrue((self.root / "stage" / "INCOMPLETE").exists())
 
     def test_cli_refuses_stage_outside_private(self):
-        import xyf_package
+        from xy_forever import xyf_package
         with self.assertRaises(SystemExit) as failure:
             xyf_package.main([str(self.package()), "--stage", str(self.root / "stage")])
         self.assertEqual(failure.exception.code, 1)

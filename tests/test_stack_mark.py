@@ -1,14 +1,13 @@
 """0.12: B's stack high-water mark, as STATUS reports it."""
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
+from xy_forever.source_text import unit_text
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
 
 
 class StackMarkTests(unittest.TestCase):

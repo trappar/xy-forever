@@ -36,9 +36,10 @@ file or output that answers the question. A doc over its budget is split into a 
   reports live in `../private/` (layout: `xy_forever/paths.py`; set up by `scripts/setup.py`); firmware may
   also go to the checkout's gitignored `build/`. Never print or commit key material.
 - **Tools:** mise pins Python, uv, Node, pnpm, gh (`mise.toml`); uv the Python dependencies (`uv.lock`),
-  pnpm the JS ones (`web/`, `clients/ts`). `mise tasks`: the commands. Run Python through `uv run` (the
-  pinned Python; a doc's `python3 x.py` means `uv run x.py`). The Blackfin toolchain at
-  `../tools/blackfin` (or `XYF_TOOLCHAIN`; `mise run setup` gets it): never change its pins (`toolchains.json`).
+  pnpm the JS ones (`web/`, `clients/ts`). `mise tasks`: the commands. Python runs via `uv run`
+  (`xy_forever` installed, no `sys.path` edits; a doc's `python3 x.py` is `uv run x.py`). The Blackfin
+  toolchain at `../tools/blackfin` (or `XYF_TOOLCHAIN`; `mise run setup` gets it): never change its pins
+  (`toolchains.json`).
 - **Open-XY facts come from upstream** (`../private/xy-forever/open-xy-upstream/`, made by
   `setup.py fixtures`; fetch it first when a question needs current upstream) and name the commit
   used. A workspace `../open-xy` is a fork (the developer's, for work on it): it shows what that fork
@@ -49,10 +50,10 @@ file or output that answers the question. A doc over its budget is split into a 
   uncertain. Do not adopt a view only because of pushback. Product scope, risk to the device and
   approvals stay the developer's.
 - **Checks:** after each change, the tests it affects: `mise run test-changed` (or `test-one TARGET`; `mise run
-  test`, the fast tier, any time). Once per PR, `mise run check` (the gate: build, `--verify`, type checks, fast
-  and gate tiers, under 30 s); CI is the merge check. Budgets fail a slow test: make it faster or move its tier.
+  test`, the fast tier, any time). Once per PR, `mise run check` (the gate: build, `--verify`, type checks, the
+  fast, gate, sim tiers; < 30 s); CI is the merge check. Budgets fail a slow test: make it faster or move its tier.
   Neither stands in for a device test. [Checks](docs/operating/build-install.md#checks).
-- **No flashing scripts.** Host tools talk to XY Forever's USB service (`xyf_host.py`) and standard MTP;
+- **No flashing scripts.** Host tools talk to XY Forever's USB service (`xyf-host`) and standard MTP;
   test files go in a scratch folder, removed after. `docs/SAFETY.md` rules every device action.
 - **Git:** one branch per plan item and one pull request per branch, after claiming the item's
   GitHub issue ([docs/ORCHESTRATION.md](docs/ORCHESTRATION.md)). Never push to `main`; never take an
@@ -72,12 +73,12 @@ mise run setup                              # dependencies, private folder, tool
 mise run doctor                             # what is set up, what will skip
 mise run plan                               # the plan: next items, decisions waiting (--all: blocked, threads)
 mise run test                               # the fast tier (~2 s); test-changed, test-one, test-failed, test-watch
-mise run test-all                           # every tier, simulator core included (~10 s; CI runs it)
+mise run test-all                           # every tier, simulator core included (CI runs it)
 mise run check                              # once per PR: the gate (< 30 s)
 mise run build && mise run verify           # product build into build/product (cached; check copies it to builds/<image>)
 mise run neutral                            # working tree vs HEAD: same candidates?
-uv run xyf_host.py status                   # device over USB
-mise run sim                                # device simulator (127.0.0.1:7341; xyf_host.py --sim)
+uv run xyf-host status                      # the device over USB
+mise run sim                                # simulator (127.0.0.1:7341; xyf-host --sim)
 mise run web                                # web app on 127.0.0.1:5173 (?sim=7341); mise run web-test, web-e2e
 mise run conformance                        # protocol conformance suite on the simulator
 uv run -m xy_forever.census REPORT.bin      # decode a device report

@@ -4,15 +4,14 @@ import hashlib
 from pathlib import Path
 import re
 import struct
-import sys
 import tempfile
 import unittest
 import zlib
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
+from xy_forever import hostbuild
 from xy_forever import xyf_stage2 as S
+
+ROOT = Path(__file__).resolve().parents[1]
 
 OK, SIZE, MAGIC, ABI, HEADER_CRC, FLAGS, WINDOW, ENTRY, IMAGE_CRC, STAGE1, BUILD_ID, IMAGE_SHA = range(12)
 BEGIN, END = 0x8ab90000, 0x8ac00000

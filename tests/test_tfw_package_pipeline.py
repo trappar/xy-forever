@@ -2,16 +2,15 @@
 import json
 from pathlib import Path
 import subprocess
-import sys
 import tempfile
 import unittest
 
 from test_native_package import package, VALID_OS, OS
 from test_tfw import container
 
+from xy_forever import hostbuild
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import hostbuild  # noqa: E402
 
 
 class TfwPackagePipelineTests(unittest.TestCase):

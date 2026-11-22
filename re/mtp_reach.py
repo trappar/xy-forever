@@ -8,9 +8,7 @@ import bisect
 from collections import deque
 from pathlib import Path
 import re
-import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from xy_forever.paths import LISTING_121
 
 lines = (LISTING_121 / 'linear121.ann.asm').read_text().splitlines()

@@ -18,9 +18,7 @@ import shutil
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import paths  # noqa: E402
+from xy_forever import paths
 
 KEEP = 10
 PROTECTED = {'2a96c724'}           # builds/: the known-good image installed on the device (never deleted)

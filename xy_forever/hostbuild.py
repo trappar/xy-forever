@@ -11,8 +11,9 @@ The cache is ../private/xy-forever/sessions/host-builds/ (never the repository; 
 moves it, XYF_HOST_BUILDS=off turns it off). The KEEP most recently used entries stay. Entries are
 published whole by a rename, and pruning tolerates entries other processes remove meanwhile.
 
-observer, when set (tests/xyf_select.py), is told of every cached compile: observer(files, seconds), the
-absolute paths the compile read and the seconds spent compiling (0 on a hit).
+observer, when set (tests/xyf_select.py), is told of every cached compile: observer(files, seconds, cpu_s), the
+absolute paths the compile read, the seconds spent compiling (0 on a hit) and the compiler's CPU time (its -M
+listing's on a hit).
 
 Every compile (and its -M listing) runs in its own process group, ended past bounds.COMPILE_S (#230):
 subprocess.TimeoutExpired, as subprocess.run raises.
@@ -29,7 +30,7 @@ import time
 from . import bounds, paths, procgroup
 
 KEEP = 300
-observer = None    # observer(files, seconds) after each cached compile (see above)
+observer = None    # observer(files, seconds, cpu_s) after each cached compile (see above)
 _hashes = {}       # (path, size, mtime_ns) -> sha256, within one process
 _compilers = {}
 
@@ -111,9 +112,15 @@ def _fresh(manifest, roots):
         return False
 
 
+def children_cpu():
+    """CPU seconds of the child processes this process has waited for (a compile's, once it has ended)."""
+    t = os.times()
+    return t.children_user + t.children_system
+
+
 def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs):
     """subprocess.run(argv, ...) for a compile, through the cache when it can be."""
-    root = cache_dir()
+    root, cpu = cache_dir(), children_cpu()                       # the -M listing's CPU counts as the compile's
     plan = _plan(argv, cwd) if root else None
     if plan is None or kwargs:
         kwargs.setdefault('timeout', bounds.COMPILE_S)
@@ -136,7 +143,7 @@ def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs)
             os.replace(partial, target)
             os.utime(entry)
             if observer:
-                observer([_local(e, roots) for e, _ in manifest['deps']], 0.0)
+                observer([_local(e, roots) for e, _ in manifest['deps']], 0.0, children_cpu() - cpu)
             out_text, err_text = manifest['stdout'], manifest['stderr']
             return subprocess.CompletedProcess(argv, 0, *((out_text, err_text) if text else
                                                          (out_text.encode(), err_text.encode()))
@@ -151,7 +158,7 @@ def run(argv, check=False, capture_output=False, text=False, cwd=None, **kwargs)
     if result.returncode == 0:
         files = _store(root, entry, deps_argv, cwd, roots, target, result)
         if observer and files:
-            observer(files, time.monotonic() - start)
+            observer(files, time.monotonic() - start, children_cpu() - cpu)
     stdout, stderr = ((result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace')) if text
                       else (result.stdout, result.stderr))
     done = subprocess.CompletedProcess(argv, result.returncode, *((stdout, stderr) if capture_output else (None, None)))

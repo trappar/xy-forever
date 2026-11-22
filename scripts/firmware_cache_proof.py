@@ -21,9 +21,9 @@ import subprocess
 import sys
 import time
 
+from xy_forever import paths
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import paths  # noqa: E402
 
 TURBO = Path('node_modules/.bin/turbo')       # the scratch tree's own (pnpm run would relink a shared one)
 CHANGED = 'target/ui_gfx.cpp'                # a build source

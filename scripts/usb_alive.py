@@ -12,13 +12,11 @@ Claims no interface (OpenMTP / the CDC port are unaffected). Needs Homebrew libu
 """
 import argparse
 import ctypes
-import os
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mtp_probe import DeviceDescriptor, OP_XY_VID, load   # noqa: E402
-from xy_forever import device_lock, no_device   # noqa: E402
+from mtp_probe import DeviceDescriptor, OP_XY_VID, load
+from xy_forever import device_lock, no_device
 
 
 def product(lib, ctx):

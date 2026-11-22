@@ -40,15 +40,15 @@ port. After the full checks, review and device approval, install the checked pro
 shipping B writer and reboot separately when needed (`BUILD` is its verified build directory):
 
 ```sh
-python3 xyf_host.py install "$BUILD" --yes-install
-python3 xyf_host.py reboot --to menu --yes-reboot
+uv run xyf-host install "$BUILD" --yes-install
+uv run xyf-host reboot --to menu --yes-reboot
 ```
 
 Then, with `STOCK` the exact stock 1.2.1 `os.ldr`, use this bounded readiness and no-write sequence.
 The `--uninstall` kind below only rehearses stock admission; it never invokes `boot.uninstall`.
 For individual repetitions after readiness, the equivalent CLIs are
-`python3 xyf_host.py dev-a-rehearsal "$BUILD"` and
-`python3 xyf_host.py dev-a-rehearsal "$STOCK" --uninstall`.
+`uv run xyf-host dev-a-rehearsal "$BUILD"` and
+`uv run xyf-host dev-a-rehearsal "$STOCK" --uninstall`.
 
 ```sh
 python3 - "$BUILD" "$STOCK" <<'PY'

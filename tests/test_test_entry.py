@@ -4,14 +4,13 @@ earlier run) completed, listed "content not installed", --boot (content switch, 
 --cleanup refused while installed, then restored and removed. No device access."""
 import importlib.util
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 
 
+from xy_forever import modpatch as MP, sim
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import modpatch as MP, sim                              # noqa: E402
 
 spec = importlib.util.spec_from_file_location('test_entry', ROOT / 'scripts/test_entry.py')
 te = importlib.util.module_from_spec(spec)

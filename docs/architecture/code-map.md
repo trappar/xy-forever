@@ -6,11 +6,11 @@ Part of [XY Forever architecture](../ARCHITECTURE.md).
 
 | Path | What |
 |---|---|
-| `xyf_build.py` | build + verify a candidate `os.ldr` (all audits) |
-| `xyf_host.py` | host tool for XY Forever's USB service; its serial and simulator ports in `xy_forever/transport.py` (the serial port is exclusive to one process) |
-| `ui_preview.py` | render the device UI to PNG on the host (same C++) |
-| `verify.py` | cross-check the native LDR parser against official images |
-| `xyf_package.py` | review and stage a decrypted official ZIP on the host (HARDWARE, `.tfw`); `extract-os`: OS-only library entry from an official `.tfw`, run by the device's own extractor compiled for the Mac (`host/tfw_extract.cpp`, `xy_forever/tfw_extract.py`) |
+| `xy_forever/xyf_build.py` (`uv run xyf-build`; root `xyf_build.py` is a shim) | build + verify a candidate `os.ldr` (all audits) |
+| `xy_forever/xyf_host.py` (`uv run xyf-host`; root `xyf_host.py` is a shim) | host tool for XY Forever's USB service; its serial and simulator ports in `xy_forever/transport.py` (the serial port is exclusive to one process) |
+| `tests/ui_preview.py` | render the device UI to PNG on the host (same C++, through the test bridges; `mise run preview`) |
+| `tests/verify_ldr.py` | cross-check the native LDR parser against official images |
+| `xy_forever/xyf_package.py` (`uv run xyf-package`; root shim) | review and stage a decrypted official ZIP on the host (HARDWARE, `.tfw`); `extract-os`: OS-only library entry from an official `.tfw`, run by the device's own extractor compiled for the Mac (`host/tfw_extract.cpp`, `xy_forever/tfw_extract.py`) |
 | `target/cold.cpp`, `storage_probe_entry.s` | cold entry on both processors; boots the loaded library image |
 | `target/xyf_clock.hpp` | wrap-safe millisecond clock for every cold module |
 | `target/file_boot.cpp`, `file_boot_b_*.ipp`, `xyf_boot.hpp` | file/library boot session on both roles; B's side (link, menu boot, `xyf_boot` functions) in the parts |

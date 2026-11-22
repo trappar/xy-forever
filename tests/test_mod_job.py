@@ -23,13 +23,12 @@ import unittest
 
 import pytest
 
+from xy_forever import hostbuild, modkit as M, modpatch as P, package_records, paths, xyf_entry
+from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
+import test_modkit as TK
+from test_xyf_freestanding import code_bytes, compiler
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
-from xy_forever import hostbuild, modkit as M, modpatch as P, package_records, paths, xyf_entry  # noqa: E402
-from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock  # noqa: E402
-import test_modkit as TK  # noqa: E402
-from test_xyf_freestanding import code_bytes, compiler  # noqa: E402
 
 REGION = 8 << 20
 DEVICE_REGION = (8 << 20) - (64 << 10)   # B's job region less the job's state (usb_service.cpp job_slot_bytes)

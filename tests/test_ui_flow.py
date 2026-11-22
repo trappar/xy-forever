@@ -1,13 +1,10 @@
 """Menu state machine + view on the host: actions and visible-row bounds."""
 from pathlib import Path
-import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import ui_preview as P  # noqa: E402
-from xy_forever import hostbuild  # noqa: E402
+import ui_preview as P
+from xy_forever import hostbuild
 
 NONE, REDRAW, CONTINUE, SAFE_MODE, RESTORE, OPEN_MODS, CHANGE_SETTING, PICK_SETTING = range(8)   # xyf_menu Action
 MAIN, INFO, HOME_EMPTY, SETTINGS, OPTIONS = range(5)            # xyf_menu Screen (#197: no confirm screens)
