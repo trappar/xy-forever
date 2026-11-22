@@ -58,7 +58,7 @@ which are not distributed. Tests that need them skip when they are absent.
 ## Build and verify after the first device install
 
 `mise run build` and `mise run verify` build the product and run its audits; the tests and the PR gate:
-[checks](docs/operating/build-install.md#checks). Installing on a device:
+[checks](docs/operating/checks.md). Installing on a device:
 [docs/operating/build-install.md](docs/operating/build-install.md), under the rules in
 [docs/SAFETY.md](docs/SAFETY.md).
 

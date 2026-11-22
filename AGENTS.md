@@ -24,7 +24,7 @@ file or output that answers the question. A doc over its budget is split into a 
 | Task | Read |
 |---|---|
 | Tools, commands, private folder, toolchain, Open-XY upstream | [docs/operating/dev-tools.md](docs/operating/dev-tools.md) |
-| Tests, tiers, budgets, the PR gate | [checks](docs/operating/build-install.md#checks) |
+| Tests, tiers, budgets, the PR gate | [checks](docs/operating/checks.md) |
 | Hardware session, install, reports, working with the developer at the device | [docs/OPERATING.md](docs/OPERATING.md) |
 | Design, boot flows, where code lives | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Stock addresses, keys, display, yaffs, `.tfw`, RE tools | [docs/HARDWARE.md](docs/HARDWARE.md) |
@@ -45,7 +45,7 @@ file or output that answers the question. A doc over its budget is split into a 
   uncertain. Do not adopt a view only because of pushback. Product scope, risk to the device and
   approvals stay the developer's.
 - **Checks:** after each change, `mise run test-changed`; once per PR, `mise run check` (lint, the build,
-  every tier but the sweeps); CI is the merge check. None stands in for a device test ([checks](docs/operating/build-install.md#checks)).
+  every tier but the sweeps); CI is the merge check. None stands in for a device test ([checks](docs/operating/checks.md)).
 - **No flashing scripts.** Host tools talk to XY Forever's USB service (`uv run xyf-host`) and standard MTP;
   test files go in a scratch folder, removed after. `docs/SAFETY.md` rules every device action.
 - **Git:** one branch per plan item and one pull request per branch, after claiming the item's

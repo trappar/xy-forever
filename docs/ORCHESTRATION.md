@@ -12,7 +12,7 @@ current. It delegates implementation when it can, or does the work itself. Read 
    skip the check and device items.
 3. Take the first item under "Yours" (interrupted work), else "Next" (milestone order, then issue number).
 4. **Claim** it: read `gh issue view <N>`; `gh issue edit <N> --add-assignee @me`. **Branch** from up-to-date `main`: `git switch -c <N>-<slug>`.
-5. Work in small commits; after each change, `mise run test-changed` ([checks](operating/build-install.md#checks)).
+5. Work in small commits; after each change, `mise run test-changed` ([checks](operating/checks.md)).
 6. Once per PR, `mise run check`. Then **PR**: push, `gh pr create`, body "Closes #<N>".
 7. **CI green** (`gh pr checks <n> --watch`) is the merge check; fix failures in the branch. A check never
    stands in for a device test.
