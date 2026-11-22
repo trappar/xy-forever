@@ -10,11 +10,13 @@ const LEGACY = 'opxy-121-stock';
 const stock = new Uint8Array(STOCK_121.bytes);
 const stockDigest = Uint8Array.from(STOCK_121.sha256.match(/../g)!, (pair) => parseInt(pair, 16));
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+const mockStock = (data: Uint8Array): boolean => data.length === stock.length && data.every((byte) => byte === 0);
+const RANGE = 1024;
 
 // Exact official bytes are exercised in Chrome against the simulator. Unit tests stand in only for the hash of those bytes.
 vi.mock(import('xy-forever-client'), async (original) => {
   const lib = await original();
-  return { ...lib, sha256: (bytes: Uint8Array) => bytes === stock ? Promise.resolve(stockDigest) : lib.sha256(bytes) };
+  return { ...lib, sha256: (bytes: Uint8Array) => mockStock(bytes) ? Promise.resolve(stockDigest) : lib.sha256(bytes) };
 });
 
 function fixture() {
@@ -23,7 +25,7 @@ function fixture() {
   const types = new Map<string, DirEntry['kind']>([[MOUNT, 'folder'], [MANAGER, 'folder'],
     [STOCK.slice(0, STOCK.lastIndexOf('/')), 'folder'], ...[...files.keys()].map((path) => [path, 'file'] as const)]);
   const client = {
-    info: { hello, proto: '1.26', serial: true, limits: { stage: 7 * 1024 * 1024 } },
+    info: { hello, proto: '1.26', serial: true, limits: { read: RANGE, stage: 7 * 1024 * 1024 } },
     listDir: vi.fn(async (path: string): Promise<DirEntry[]> => {
       if (types.get(path) !== 'folder') throw new XyfError('not_found', 'no folder');
       const entries: DirEntry[] = [];
@@ -35,14 +37,14 @@ function fixture() {
       }
       return entries;
     }),
-    readFile: vi.fn(async (path: string) => files.get(path)!),
-    readRange: vi.fn(async (path: string, offset: number, length: number) => files.get(path)!.slice(offset, offset + length)),
+    readRange: vi.fn(async (path: string, offset: number, length: number, _options?: { timeoutMs: number }) =>
+      files.get(path)!.slice(offset, offset + length)),
     libraryEntry: vi.fn(async (id: string) => {
       if (id !== LEGACY) throw new XyfError('not_found', 'no entry');
       return { sha256: STOCK_121.sha256 };
     }),
     setDefault: vi.fn(async () => { files.set(RECORD, encode('state=official\n')); }),
-    stage: vi.fn(async () => ({ size: stock.length, sha256: stockDigest, crc32: 0 })),
+    stage: vi.fn(async (_bytes: Uint8Array) => ({ size: stock.length, sha256: stockDigest, crc32: 0 })),
     bootUninstall: vi.fn(async () => ({ written: stock.length, partition: 1, sectors: Math.floor(stock.length / 512) + 1 })),
     call: vi.fn(async () => ({})),
     writeFile: vi.fn(async (path: string, bytes: Uint8Array) => { files.set(path, bytes); types.set(path, 'file'); }),
@@ -53,6 +55,48 @@ function fixture() {
   const run = (): Promise<void> => uninstallXyf(client as unknown as Client, () => {});
   return { client, files, types, run };
 }
+
+it('retries only the missing range at the same offset before staging the complete stock image', async () => {
+  const { client, run } = fixture();
+  const read = client.readRange.getMockImplementation()!;
+  let drops = 2;
+  client.readRange.mockImplementation(async (path, offset, length) => {
+    if (path === STOCK && offset === RANGE && drops-- > 0) throw new XyfError('timeout', 'one missing reply');
+    return read(path, offset, length);
+  });
+  await run();
+  expect(client.readRange.mock.calls.filter(([path, offset]) => path === STOCK && offset === RANGE)).toEqual([
+    [STOCK, RANGE, RANGE, { timeoutMs: 1800 }], [STOCK, RANGE, RANGE, { timeoutMs: 1800 }], [STOCK, RANGE, RANGE, { timeoutMs: 4000 }],
+  ]);
+  expect(mockStock(client.stage.mock.lastCall![0])).toBe(true);
+  expect(client.bootUninstall).toHaveBeenCalledTimes(1);
+});
+
+it.each([['timeout', 3], ['disconnected', 1]] as const)('stops before all writes when a stock range reports %s', async (code, attempts) => {
+  const { client, run } = fixture();
+  client.readRange.mockRejectedValue(new XyfError(code, 'read stopped'));
+  await expect(run()).rejects.toThrow('read stopped');
+  expect(client.readRange).toHaveBeenCalledTimes(attempts);
+  expect(client.setDefault).not.toHaveBeenCalled();
+  expect(client.stage).not.toHaveBeenCalled();
+});
+
+it('leaves cleanup for retry when exact root read-back cannot finish after the stock write', async () => {
+  const { client, files, types, run } = fixture();
+  const read = client.readRange.getMockImplementation()!;
+  client.readRange.mockImplementation(async (path, offset, length) => {
+    if (path === ROOT) throw new XyfError('timeout', 'read-back did not answer');
+    return read(path, offset, length);
+  });
+  await expect(run()).rejects.toThrow(/stock boot partition was restored.*read-back did not answer/);
+  expect(client.bootUninstall).toHaveBeenCalledTimes(1);
+  expect(client.writeFile).toHaveBeenCalledTimes(1);
+  expect(mockStock(files.get(ROOT)!)).toBe(true);
+  expect(types.has(MANAGER)).toBe(true);
+  expect(client.deleteFile).not.toHaveBeenCalled();
+  expect(client.reboot).not.toHaveBeenCalled();
+  expect(client.readRange.mock.calls.filter(([path]) => path === ROOT)).toHaveLength(3);
+});
 
 it('requires post-install file service before it offers web uninstall', () => {
   const { client } = fixture();
@@ -104,7 +148,7 @@ it('retries partial cleanup on the still-running service after the stock partiti
   client.deleteFile.mockImplementationOnce(async (path) => { types.delete(path); files.delete(path); });
   client.deleteFile.mockRejectedValueOnce(new Error('temporary file refusal'));
   await expect(run()).rejects.toThrow(/stock boot partition was restored.*Try Uninstall again/);
-  expect(files.get(ROOT)).toBe(stock);
+  expect(mockStock(files.get(ROOT)!)).toBe(true);
   expect(client.reboot).not.toHaveBeenCalled();
   expect(types.has(`${MANAGER}/library`)).toBe(false);
   expect(types.has(alias)).toBe(true);

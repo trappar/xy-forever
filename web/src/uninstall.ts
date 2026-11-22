@@ -10,6 +10,8 @@ const ROOT_IMAGE = `${MOUNT}/os.ldr`;
 const STOCK_IMAGE = `${MOUNT}/${STOCK_PATH}`;
 const STOCK_UPLOAD = `put-${STOCK_121.bytes.toString(16).padStart(8, '0')}-${STOCK_121.crc32}`;
 const OFFICIAL_RECORD = 'state=official\n';
+// A missed reply can be retried with a fresh sequence. Keep the combined wait below the idle file-session lease.
+const IMAGE_READ_TIMEOUTS = [1800, 1800, 4000] as const;
 const COMMANDS = [TYPE['file.read'], TYPE['file.list'], TYPE['library.set_default'], TYPE['job.status'],
   TYPE['stage.begin'], TYPE['stage.data'], TYPE['stage.end'], TYPE['boot.uninstall'], TYPE['file.write_begin'],
   TYPE['file.write_data'], TYPE['file.write_end'], TYPE['file.delete'], TYPE['file.rmdir'], TYPE['package.session'],
@@ -43,14 +45,36 @@ async function checkUpload(client: Client, manager: boolean): Promise<void> {
   if (upload && upload.kind !== 'file') throw new Error('The temporary OS file is not a regular file. Uninstall stopped.');
 }
 
+async function readImage(client: Client, path: string, progress?: (done: number) => void): Promise<Uint8Array> {
+  const bytes = new Uint8Array(STOCK_121.bytes);
+  const length = client.info.limits.read;
+  for (let offset = 0; ;) {
+    const data = await readImageRange(client, path, offset, length);
+    if (data.length > bytes.length - offset) throw new Error('The OS file is larger than official OS 1.2.1.');
+    bytes.set(data, offset);
+    offset += data.length;
+    progress?.(offset);
+    if (data.length < length) return bytes.subarray(0, offset);
+  }
+}
+
+async function readImageRange(client: Client, path: string, offset: number, length: number): Promise<Uint8Array> {
+  for (let attempt = 0; ; ++attempt) {
+    try {
+      return await client.readRange(path, offset, length, { timeoutMs: IMAGE_READ_TIMEOUTS[attempt]! });
+    } catch (error) {
+      if (!isXyfError(error, 'timeout') || attempt === IMAGE_READ_TIMEOUTS.length - 1) throw error;
+    }
+  }
+}
+
 async function readStock(client: Client, step: (message: string) => void): Promise<{ bytes: Uint8Array; digest: Uint8Array }> {
   const refusal = 'Your OP-XY does not have the exact official OS 1.2.1 in its protected upgrade folder. Nothing was changed.';
   try {
     const entry = (await client.listDir(STOCK_IMAGE.slice(0, STOCK_IMAGE.lastIndexOf('/')))).find((item) => item.name === 'os.ldr');
     if (entry?.kind !== 'file' || entry.size !== STOCK_121.bytes) throw new Error(refusal);
-    const bytes = await client.readFile(STOCK_IMAGE, {
-      onProgress: (done) => step(`Reading official OS 1.2.1 from your OP-XY… ${Math.floor(done * 100 / STOCK_121.bytes)}%`),
-    });
+    const bytes = await readImage(client, STOCK_IMAGE, (done) =>
+      step(`Reading official OS 1.2.1 from your OP-XY… ${Math.floor(done * 100 / STOCK_121.bytes)}%`));
     const digest = await sha256(bytes);
     if (bytes.length !== STOCK_121.bytes || hex(digest) !== STOCK_121.sha256) throw new Error(refusal);
     return { bytes, digest };
@@ -111,17 +135,18 @@ async function removeTree(client: Pick<Client, 'listDir' | 'deleteFile' | 'remov
 
 /** After the verified boot write, finish using the file session that excludes MTP, menu writes and the idle sweep. */
 async function finishUninstall(client: Client, bytes: Uint8Array, step: (message: string) => void): Promise<void> {
-  await withFileSession(client, {}, async () => {
+  await withFileSession(client, {}, async (session) => {
     const { manager, image } = await rootEntries(client);
     step('Checking the OS file at the root of your OP-XY…');
-    if (image?.size !== bytes.length || hex(await sha256(await client.readFile(ROOT_IMAGE))) !== STOCK_121.sha256) {
+    if (image?.size !== bytes.length || hex(await sha256(await readImage(client, ROOT_IMAGE))) !== STOCK_121.sha256) {
       await checkUpload(client, manager);
       step('Restoring the stock OS file at the root of your OP-XY…');
       await client.writeFile(ROOT_IMAGE, bytes);
-      if (hex(await sha256(await client.readFile(ROOT_IMAGE))) !== STOCK_121.sha256) {
+      if (hex(await sha256(await readImage(client, ROOT_IMAGE))) !== STOCK_121.sha256) {
         throw new Error('The restored OS file did not match official OS 1.2.1.');
       }
     }
+    await session.command(1);
     step('Removing XY Forever files…');
     if ((await rootEntries(client)).manager) await removeTree(client, MANAGER);
     if ((await rootEntries(client)).manager) throw new Error('The XY Forever directory is still present.');
