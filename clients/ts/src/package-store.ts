@@ -22,6 +22,8 @@ export class PackageSession {
         await pause();
       }
     }
+  }
+  async sweepScratch(): Promise<void> {
     for (const entry of await this.entries(TMP)) if (entry.kind === 'folder' && entry.name.startsWith('pkg-v1-')) {
       await this.erase(`${TMP}/${entry.name}`);
     }
@@ -30,7 +32,7 @@ export class PackageSession {
     await this.command(2);
     const until = Date.now() + 60_000;
     for (;;) {
-      try { await this.client.listDir(ROOT, this.options); return; } catch (error) {
+      try { await this.client.listDir('/yaffs2', this.options); return; } catch (error) {
         if (!isXyfError(error, 'busy') || Date.now() >= until) throw error;
         await pause();
       }
@@ -89,7 +91,7 @@ export class PackageSession {
   }
 }
 
-export async function packageTransaction<T>(client: Client, options: CallOptions, run: (session: PackageSession) => Promise<T>): Promise<T> {
+export async function withFileSession<T>(client: Client, options: CallOptions, run: (session: PackageSession) => Promise<T>): Promise<T> {
   const session = new PackageSession(client, options);
   await session.acquire();
   try {
@@ -100,4 +102,11 @@ export async function packageTransaction<T>(client: Client, options: CallOptions
     try { await session.release(); } catch { /* the ten-second abandoned-owner timeout releases it */ }
     throw error;
   }
+}
+
+export async function packageTransaction<T>(client: Client, options: CallOptions, run: (session: PackageSession) => Promise<T>): Promise<T> {
+  return withFileSession(client, options, async (session) => {
+    await session.sweepScratch();
+    return run(session);
+  });
 }

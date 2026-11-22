@@ -38,8 +38,9 @@ Part of [XY Forever goals](../GOALS.md).
    It shows what is installed and what a package would change, then installs
    with confirmation and a way back. Later goal: a web app as package manager
    (over the serial protocol), with a package index and dependency rules.
-9. **Uninstall.** Restore a stock OP-XY of your chosen official version and
-   delete all XY Forever files.
+9. **Uninstall.** Restore a stock OS 1.2.1 OP-XY from the web app. Restore official
+   content and the boot partition, then restore the root `os.ldr`, remove the
+   `xy-forever/` folder and restart.
 10. **Info.** Versions and storage use.
 11. **Safety:**
     - **XY Forever is home.** If there is no bootable firmware anywhere on

@@ -104,7 +104,9 @@ class FileWriteSourceTest(unittest.TestCase):
         serve = self.server[self.server.index('void serve(void* context'):]
         serve = serve[:serve.index('\n}\n')]
         self.assertLess(serve.index('latch(session);'), serve.index('serve_install('))
-        self.assertIn('engine != entry_write && engine != entry_run && serve_install(', serve)
+        self.assertIn('const bool install_mode = install_enabled && engine != entry_write && engine != entry_run &&', serve)
+        self.assertIn('((session.last_command() >> 8 & 0xffu) == install_item || boot_selected())', serve)
+        self.assertIn('if (install_mode && serve_install(', serve)
         for name in ('bool open_window(', 'void close_engine('):
             body = self.server[self.server.index(name):]
             body = body[:body.index('\n}\n')]

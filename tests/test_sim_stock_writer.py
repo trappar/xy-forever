@@ -22,6 +22,27 @@ class StockWriterIntegration(unittest.TestCase):
     file = support.SimulatorTest.file
     wait = support.SimulatorTest.wait
 
+    def test_read_files_after_verified_uninstall_in_same_session(self):
+        stock = sim.STOCK_OS.read_bytes()
+        root = self.dir / 'yaffs2'
+        (root / 'uninstall-probe.txt').write_bytes(b'user-area file')
+        dev = self.connect(startup_ready=True)
+        list_root = b'/yaffs2\0' + struct.pack('<I', 0)
+        read = b'/yaffs2/uninstall-probe.txt\0'
+        self.assertEqual(dev.call(P.LIST_DIR, list_root)[0], 0)
+        self.assertEqual(dev.call(P.READ_FILE, read), (0, b'user-area file'))
+        digest = hashlib.sha256(stock).digest()
+        self.assertEqual(dev.stage(stock), 0)
+        self.sim.set('fail_select', 1)
+        self.assertEqual(dev.uninstall(digest)[0], ids.S_INSTALL)
+        self.assertEqual(self.sim.status()['partition'], 0)
+        self.assertEqual(dev.call(P.LIST_DIR, list_root)[0], 0)
+        self.assertEqual(dev.stage(stock), 0)
+        self.assertEqual(dev.uninstall(digest), (0, len(stock), 1, len(stock) // 512 + 1))
+        self.assertEqual(self.sim.status()['partition'], 0)
+        self.assertEqual(dev.call(P.LIST_DIR, list_root)[0], 0)
+        self.assertEqual(dev.call(P.READ_FILE, read), (0, b'user-area file'))
+
     def test_install_and_uninstall_write_the_boot_partition(self):
         dev = self.connect(startup_ready=True)                          # this case begins with a staged mutation
         stock = sim.STOCK_OS.read_bytes()

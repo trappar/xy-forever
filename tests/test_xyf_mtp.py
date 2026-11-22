@@ -70,7 +70,7 @@ class MtpTest(unittest.TestCase):
         # A writable engine entry takes precedence over install mode; the engine serves the rest.
         hook = server[server.index('void serve(void* context'):]
         self.assertLess(hook.index('latch(session);'), hook.index('#if defined(XYF_USB_SERVICE)'))
-        self.assertLess(hook.index('engine != entry_write && engine != entry_run && serve_install('),
+        self.assertLess(hook.index('if (install_mode && serve_install('),
                         hook.index('serve_engine(request, vtable, op, storage, session);'))
         # The stock read-write provider mount and the write entries are never named.
         for address in WRITE_ENTRIES:

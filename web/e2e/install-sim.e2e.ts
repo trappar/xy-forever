@@ -7,7 +7,7 @@
 // a fresh simulator: a stock OP-XY just after Track 5 (`--fresh`). Skipped with the reason when Chrome or the
 // simulator cannot run here.
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -19,6 +19,8 @@ import { startRelay } from '../node_modules/xy-forever-client/test/relay.ts';
 import type { Relay } from '../node_modules/xy-forever-client/test/relay.ts';
 import { control, findSimulator, startAll } from '../node_modules/xy-forever-client/test/simulators.ts';
 import type { SimInfo } from '../node_modules/xy-forever-client/test/simulators.ts';
+import { Client, tcpOpener } from '../node_modules/xy-forever-client/src/node.ts';
+import { protocol as wire } from '../node_modules/xy-forever-client/src/index.ts';
 
 const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 + 7) & 0xff));
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
@@ -72,13 +74,14 @@ const inOs = async (sim: SimInfo): Promise<boolean> => { const s = await status(
 const listening = async (sim: SimInfo): Promise<boolean> => (await status(sim))['listening'] === 1;
 
 /** The app with fake te-boot, MTP and Web Serial (granted: this site was given the port before; no chooser needed). */
-async function open(relay: string, granted: boolean): Promise<Page> {
+async function open(relay: string, granted: boolean, bytes = IMAGE, prepare?: (page: Page) => Promise<void>): Promise<Page> {
   const address = server!.httpServer!.address();
   const base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
-  const pin = { schema: 1, version: '0.1.0', image, sha256: createHash('sha256').update(IMAGE).digest('hex'), bytes: IMAGE.length };
+  const pin = { schema: 1, version: '0.1.0', image, sha256: createHash('sha256').update(bytes).digest('hex'), bytes: bytes.length };
   const page = await browser!.newPage({ acceptDownloads: true });
   await page.route('**/src/install/release.json*', (route) => route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(pin)};` }));
-  await page.route('**/release/os.ldr', (route) => route.fulfill({ contentType: 'application/octet-stream', body: IMAGE }));
+  await page.route('**/release/os.ldr', (route) => route.fulfill({ contentType: 'application/octet-stream', body: bytes }));
+  await prepare?.(page);
   await page.goto(`${base}/connect`);
   await page.addScriptTag({ type: 'module', content: `
     import { FakeMidi, FakeUsb } from '/test/fake-devices.ts';
@@ -124,7 +127,7 @@ async function handedOff(page: Page): Promise<void> {
   expect(await page.locator('#installed').isVisible()).toBe(true);
   expect(await page.locator('#installed').textContent()).toContain('XY Forever is installed');
   expect(await page.locator('#link-text').textContent()).toMatch(/^Connected/);
-  expect(await page.locator('#page-mods').isVisible()).toBe(true);
+  await page.locator('#page-mods h1').waitFor({ state: 'visible' });
   await page.locator('#installed-dismiss').click();
   expect(await page.locator('#installed').isVisible()).toBe(false);
 }
@@ -243,4 +246,160 @@ it.skipIf(why !== null)('the device refuses a missing stock os.ldr: the page sho
   expect(await page.getByRole('link', { name: /Download official OS 1\.2\.1/ }).isVisible()).toBe(true);
   expect(new URL(page.url()).pathname).toBe('/install/stop');
   await page.close();
+}, 240_000);
+
+const UPGRADE = 'upgrade/firmware/blackfin/bin/os.ldr';
+const CATALOG = 'content/op1_factory.json';
+const MOD_FILE = 'content/uninstall-probe.txt';
+const SAVED = 'xy-forever/content-official';
+const asset = found.fixtures['xyf_build'];
+const digestOf = (data: Uint8Array): string => createHash('sha256').update(data).digest('hex');
+
+/** The simulator's writer models device encryption with an XOR. The active slot must contain every byte. */
+function expectActive(sim: SimInfo, expected: Uint8Array): void {
+  const raw = readFileSync(join(sim.root, '..', 'bootpart.bin'));
+  const partitions = [0, 0x400000].filter((p) => raw[p + 12]);
+  expect(partitions).toHaveLength(1);
+  const at = partitions[0]!;
+  expect(raw.readUInt32LE(at + 4)).toBe(expected.length);
+  expect(raw.readUInt32LE(at + 8)).toBe(wire.crc32(expected));
+  const plain = raw.subarray(at + 512, at + 512 + expected.length).map((byte, i) => byte ^ ((0xa5 + i * 29) & 255));
+  expect(digestOf(plain)).toBe(digestOf(expected));
+}
+
+/** The stock dev-menu Track 5 action is manual. Use the simulator writer for the image it puts in the partition. */
+async function simulatedTrack5(sim: SimInfo, bytes: Uint8Array): Promise<void> {
+  const c = await Client.connect(tcpOpener(sim.address), { timeoutMs: 20_000 });
+  try {
+    const { sha256 } = await c.stage(bytes);
+    expect((await c.bootInstall(sha256)).written).toBe(bytes.length);
+  } finally { await c.close(); }
+  expectActive(sim, bytes);
+}
+
+it.skipIf(why !== null || !asset)('uninstalls to a verified stock partition, then installs again from the same browser', async () => {
+  const candidate = readFileSync(asset!);
+  const stock = readFileSync(found.fixtures['stock_os_ldr']!);
+  image = digestOf(candidate).slice(0, 8);
+  const sim = await powerOn('stock', false);
+  await until('the first adoption', async () => existsSync(join(sim.root, 'xy-forever/state-a.txt')));
+  await simulatedTrack5(sim, candidate);
+  const file = (rel: string): string => join(sim.root, rel);
+  const catalog = readFileSync(file(CATALOG));
+  const mod = Buffer.from('only this recorded mod file should go away');
+  const modEntry = file('xy-forever/firmware/mods-a');
+  mkdirSync(modEntry, { recursive: true });
+  writeFileSync(join(modEntry, 'info.txt'), 'name=Uninstall test mod\nversion=1.2.1\ngeneration=test\n');
+  writeFileSync(join(modEntry, 'files.sha256'), `${digestOf(mod)}  ${MOD_FILE}\n`);
+  writeFileSync(join(modEntry, 'os.ldr'), candidate);
+  writeFileSync(file('os.ldr'), candidate);
+  mkdirSync(file('user'), { recursive: true });
+  writeFileSync(file('user/project.xy'), 'owner project');
+  writeFileSync(file('bootloader.dev'), 'recovery marker');
+  symlinkSync(file('user'), file('xy-forever/user-alias'));
+  mkdirSync(file(SAVED), { recursive: true });
+  writeFileSync(file(`${SAVED}/op1_factory.json`), catalog);
+  writeFileSync(file(`${SAVED}/content.sha256`), `${digestOf(catalog)}  op1_factory.json\n`);
+  writeFileSync(file(CATALOG), '{"modded":true}');
+  writeFileSync(file(MOD_FILE), mod);
+  writeFileSync(file('xy-forever/content-state.txt'), `state=installed\nentry=mods-a\nfile=uninstall-probe.txt\t${digestOf(mod)}\n`);
+  await control(sim.control, 'power play');
+  await until('the menu after preparing content', () => listening(sim));
+
+  let bootWrites = 0, stockChecked = false, serialVisible = true;
+  let reboot: number | undefined;
+  const commands: string[] = [];
+  const relay = running!.relay.url;
+  const page = await open(relay, true, candidate, async (tab) => {
+    const relayStatus = relay.replace(/^ws/, 'http') + '/status';
+    await tab.route(relayStatus, (route) => serialVisible ? route.continue() : route.fulfill({
+      headers: { 'access-control-allow-origin': '*' }, json: { attached: false },
+    }));
+    await tab.routeWebSocket(relay, (socket) => {
+      const server = socket.connectToServer(), requests = new wire.FrameParser(), replies = new wire.FrameParser();
+      socket.onMessage(async (message) => {
+        for (const frame of requests.feed(Buffer.from(message))) {
+          if (frame.type === wire.TYPE['boot.uninstall']) {
+            bootWrites++;
+            expect(readFileSync(file(CATALOG)).equals(catalog)).toBe(true);
+            expect(existsSync(file(MOD_FILE))).toBe(false);
+            if (bootWrites === 1) await control(sim.control, 'set fail_select 1');
+          }
+          if (frame.type === wire.TYPE['file.list']) commands.push(wire.decodeFileListRequest(frame.payload).path);
+          if (frame.type === wire.TYPE['device.reboot']) {
+            reboot = wire.decodeDeviceRebootRequest(frame.payload).target;
+            expect(stockChecked).toBe(true);
+            expect(existsSync(file('xy-forever'))).toBe(false);
+            expect(readFileSync(file('os.ldr')).equals(stock)).toBe(true);
+            // The simulator executes compiled XY Forever regardless of the installed image. Verify the request, then
+            // simulate disappearance of its serial service when real stock starts. Keep the same media for Track 5.
+            serialVisible = false;
+            const reply = wire.encodeDeviceRebootReply({ ok: true, status: 0, fields: {} });
+            socket.send(Buffer.from(wire.encodeFrame(frame.type | wire.REPLY, frame.seq, reply)));
+            setTimeout(() => socket.close(), 30);
+            return;
+          }
+        }
+        server.send(message);
+      });
+      server.onMessage((message) => {
+        for (const frame of replies.feed(Buffer.from(message))) {
+          if (frame.type === (wire.TYPE['boot.uninstall'] | wire.REPLY) && wire.decodeBootUninstallReply(frame.payload).ok) {
+            expectActive(sim, stock);
+            expect(readFileSync(file('os.ldr')).equals(candidate)).toBe(true);
+            expect(existsSync(file('xy-forever/firmware'))).toBe(true);
+            stockChecked = true;
+          }
+        }
+        socket.send(message);
+      });
+    });
+  });
+  try {
+    await handedOff(page);
+    await page.locator('#nav a[data-page=device]').click();
+    await press(page, 'Uninstall XY Forever');
+    await press(page, 'Cancel');
+    expect(bootWrites).toBe(0);
+    expect(existsSync(file(MOD_FILE))).toBe(true);
+
+    await press(page, 'Uninstall XY Forever');
+    await press(page, 'Uninstall');
+    await expect.poll(() => page.locator('#notice').textContent(), { timeout: 90_000 }).toMatch(/boot\.uninstall|read-back/i);
+    expect(bootWrites).toBe(1);
+    expectActive(sim, candidate);
+    expect(existsSync(file('xy-forever/firmware'))).toBe(true);
+    expect(readFileSync(file('os.ldr')).equals(candidate)).toBe(true);
+
+    // At this boundary the old XY Forever partition is still active. Bring its menu back after the failed select.
+    await page.locator('#nav a[data-page=connect]').click();
+    await press(page, 'Disconnect');
+    await control(sim.control, 'power play');
+    await until('the original XY Forever menu after the interruption', () => listening(sim));
+    await press(page, 'Connect');
+    await press(page, 'Uninstall XY Forever');
+    await press(page, 'Uninstall');
+    await expect.poll(async () => (await page.locator('#notice.error').textContent({ timeout: 100 }).catch(() => null)) ??
+      new URL(page.url()).pathname, { timeout: 20_000 }).toBe('/connect');
+    expect(reboot).toBe(1);
+    expect(await page.getByRole('status').textContent()).toContain('Stock OS 1.2.1 was restored');
+    expect(readdirSync(sim.root).sort()).toEqual(['bootloader.dev', 'content', 'firmware.version', 'os.ldr', 'upgrade', 'user']);
+    expect(readFileSync(file('bootloader.dev'), 'utf8')).toBe('recovery marker');
+    expect(readFileSync(file('user/project.xy'), 'utf8')).toBe('owner project');
+    expect(readFileSync(file(UPGRADE)).equals(stock)).toBe(true);
+    expect(commands.some((path) => path.endsWith('/user-alias'))).toBe(false);
+    expect((await status(sim))['rw_open']).toBe(0);
+
+    await page.getByRole('link', { name: 'Install XY Forever' }).click();
+    expect(await stage(page)).toBe('boot');
+    await toStart(page, 'Mac');
+    expect(await page.evaluate(() => (window as unknown as { fakes: { usb: { reads: string[] } } }).fakes.usb.reads)).toEqual(['os.ldr']);
+    writeFileSync(file('os.ldr'), candidate);                             // the test's fake dev-menu MTP copy
+    await simulatedTrack5(sim, candidate);
+    await control(sim.control, 'power play');
+    serialVisible = true;
+    await handedOff(page);
+    adopted(sim);
+    expect(readFileSync(file('user/project.xy'), 'utf8')).toBe('owner project');
+  } finally { await page.close(); }
 }, 240_000);
