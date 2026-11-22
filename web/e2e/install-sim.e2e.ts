@@ -7,7 +7,7 @@
 // a fresh simulator: a stock OP-XY just after Track 5 (`--fresh`). Skipped with the reason when Chrome or the
 // simulator cannot run here.
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect, test } from '@playwright/test';
@@ -25,7 +25,8 @@ const IMAGE = Buffer.from(Uint8Array.from({ length: 70_000 }, (_, i) => (i * 31 
 const OK_121 = 'mode:bootloader;product:OP-XY;serial:X1;bl_version:1000.0.20+0;os_version:1.2.1+0';
 const FAKE_SERIAL = fileURLToPath(new URL('../node_modules/xy-forever-client/test/browser/fake-serial.ts', import.meta.url));
 const ENTRY = 'xy-forever/firmware/opxy-121';
-const BASE = parseInt(process.env['XYF_WEB_SIM_PORT'] ?? '7860', 10);
+// A random base (simulator, control, relay at +10) and state folder: another checkout may run this test at the same time.
+const BASE = parseInt(process.env['XYF_WEB_SIM_PORT'] ?? String(22000 + 20 * Math.floor(Math.random() * 400)), 10);
 
 const nav = (page: Page, name: string): Locator => page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name, exact: true });
 
@@ -54,11 +55,11 @@ test.beforeAll(async () => {
   await server.listen();
 });
 test.afterEach(async () => { await running?.stop(); running = null; });
-test.afterAll(async () => { await browser?.close(); await server?.close(); });
+test.afterAll(async () => { await browser?.close(); await server?.close(); if (!why) rmSync(join(found.sessions!, `web-install-${BASE}`), { recursive: true, force: true }); });
 
 /** A fresh simulator: a stock OP-XY just after Track 5 (stock: its updater's os.ldr; plain: no PLAY at power-on). */
 async function powerOn(stock: 'stock' | 'missing', plain: boolean): Promise<SimInfo> {
-  const state = join(found.sessions!, 'web-install');
+  const state = join(found.sessions!, `web-install-${BASE}`);
   const started = await startAll(state, BASE, [['sim', 0, ['--fresh', stock, ...(plain ? ['--plain'] : [])]]]);
   const sim = started.infos['sim']!;
   const relay = await startRelay({ port: BASE + 10, target: sim.port, control: sim.control });
