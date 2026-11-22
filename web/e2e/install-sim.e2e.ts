@@ -377,6 +377,8 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     await press(page, 'Connect');
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
+    // The stock os.ldr's 2.3 MB upload, the boot partition write and the reboot: about 25 s of device time, one
+    // simulator step a menu pass (sim/clock.cpp), 7 s of host time alone; a full check beside it takes longer.
     await expect.poll(async () => (await page.locator('[data-testid=notice][data-type=error]').textContent({ timeout: 100 }).catch(() => null)) ??
       new URL(page.url()).pathname, { timeout: 90_000 }).toBe('/connect/');
     expect(reboot).toBe(1);
