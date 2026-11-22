@@ -1,19 +1,18 @@
-// The pages not moved to React yet: Install, Mods, Files. Plain DOM in the shell's sections; one device
+// The pages not moved to React yet: Install, Mods. Plain DOM in the shell's sections; one device
 // action at a time.
 import { RELEASE_FILTERS, configGet, configSet, fileListSource, isXyfError, listPackages, localSet, pushPackages, removePackage } from 'xy-forever-client';
-import type { Client, DirEntry, HeldGeneration, LocalSet, PackageSource, SavedInputs } from 'xy-forever-client';
-import { ROOT, WRITE_RULE, changeRefusal, folderWritable, groupMods, human, joinPath, nameProblem, parentOf } from './model.ts';
+import type { Client, HeldGeneration, LocalSet, PackageSource, SavedInputs } from 'xy-forever-client';
+import { groupMods, human } from './model.ts';
 import type { SavedConfig } from './model.ts';
 import { h } from './ui.ts';
-import { confirmAction, promptText } from './ask.tsx';
+import { confirmAction } from './ask.tsx';
 import { notice } from './notice.ts';
 import { useConnection } from './connection.ts';
 import { adopt, canConnect, deviceBusy, openDevice, runAction as run, savedConfig as savedConfigOf } from './device.ts';
-import { downloadBlob } from './lib/download.ts';
 import { installPage } from './install/page.ts';
 import type { Lease } from './install/page.ts';
 import { navigatePath as navigate } from './routing.ts';
-export type LegacyPage = 'mods' | 'files';
+export type LegacyPage = 'mods';
 
 const dev = (): Client => useConnection.getState().client!;
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
@@ -22,7 +21,6 @@ const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!
 
 const loaders: Record<LegacyPage, () => Promise<void>> = {
   mods: () => run('list_packages', loadMods),
-  files: () => run('browse_files', () => browse(cwd)),
 };
 
 /** Renders a page into its section (the router mounts it). */
@@ -210,115 +208,4 @@ function inputsCard(saved: SavedInputs | null): HTMLElement {
     h('div', { class: 'row' }, h('label', {}, memory, '4 MiB mod memory'), h('label', {}, unknown, 'Allow an unknown base')),
     h('div', { class: 'row' }, save), status);
   return card;
-}
-
-// ---- Files -------------------------------------------------------------------------------------------
-
-let cwd = ROOT;
-
-async function browse(path: string): Promise<void> {
-  const entries = await dev().listDir(path);
-  cwd = path.replace(/\/+$/, '') || ROOT;
-  entries.sort((a, b) => Number(a.kind !== 'folder') - Number(b.kind !== 'folder') || a.name.localeCompare(b.name));
-  const writable = folderWritable(cwd);
-  const parts = cwd.split('/').filter(Boolean);
-  const crumbs = h('nav', { class: 'crumbs', 'aria-label': 'Folder' }, ...parts.flatMap((p, i) => {
-    const here = '/' + parts.slice(0, i + 1).join('/');
-    return [i > 0 ? '/' : '', i === parts.length - 1 ? h('b', {}, p) : btn(p, () => void run('browse_files', () => browse(here)))];
-  }));
-  const upload = h('input', { type: 'file', multiple: true, onchange: () => void run('upload_files', () => uploadFiles(upload), 'Uploading...') });
-  const body = h('tbody', { id: 'files-body' });
-  if (cwd !== ROOT) body.append(h('tr', {}, h('td', { colspan: 3 }, h('button', { type: 'button', class: 'linkish', onclick: () => void run('browse_files', () => browse(parentOf(cwd))) }, '.. (up)'))));
-  for (const e of entries) body.append(fileRow(e, writable));
-  if (entries.length === 0) body.append(h('tr', {}, h('td', { colspan: 3, class: 'muted' }, 'Empty folder.')));
-  const progress = h('progress', { id: 'files-progress', value: 0, max: 1, hidden: true });
-  page('files').replaceChildren(
-    h('h1', {}, 'Files'),
-    h('p', { class: 'lede' }, 'Browse the OP-XY\'s storage. Everything can be downloaded.'),
-    h('p', { class: 'rules', 'data-testid': 'files-rules' }, `Changes are allowed ${WRITE_RULE}. `, writable ? 'This folder accepts changes.' : 'This folder is read-only.'),
-    h('div', { class: 'card' },
-      h('div', { class: 'row' }, crumbs, h('span', { class: 'spacer' }),
-        writable && h('label', { class: 'button' }, 'Upload...', upload),
-        writable && btn('New folder', () => void run('new_folder', newFolder))),
-      progress,
-      h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'Name'), h('th', { class: 'hide-narrow' }, 'Size'), h('th', {}))), body)),
-  );
-}
-
-function fileRow(e: DirEntry, writable: boolean): HTMLElement {
-  const path = joinPath(cwd, e.name);
-  const name = e.kind === 'folder'
-    ? h('button', { type: 'button', class: 'linkish', onclick: () => void run('browse_files', () => browse(path)) }, `${e.name}/`)
-    : h('span', {}, e.name);
-  return h('tr', { 'data-name': e.name },
-    h('td', {}, name),
-    h('td', { class: 'muted hide-narrow' }, e.kind === 'file' ? human(e.size) : ''),
-    h('td', { class: 'actions' },
-      e.kind === 'file' && btn('Download', () => void run('download_file', () => download(path, e.name), 'Downloading...'), 'small'),
-      e.kind !== 'other' && btn('Copy', () => void run('copy_file', () => copy(path, e)), 'small'),
-      writable && e.kind !== 'other' && btn('Rename/Move', () => void run('move_file', () => move(path)), 'small'),
-      writable && e.kind !== 'other' && btn('Delete', () => void run('delete_file', () => removePath(path, e)), 'small danger')));
-}
-
-function bar(): HTMLProgressElement { const b = document.getElementById('files-progress') as HTMLProgressElement; b.hidden = false; return b; }
-
-async function download(path: string, name: string): Promise<void> {
-  const b = bar();
-  const data = await dev().readFile(path, { onProgress: (done) => { b.removeAttribute('value'); b.title = human(done); } });
-  downloadBlob(new Blob([data as BlobPart]), name);
-  b.hidden = true;
-}
-
-async function uploadFiles(input: HTMLInputElement): Promise<void> {
-  const files = [...input.files ?? []];
-  input.value = '';
-  const existing = new Set((await dev().listDir(cwd)).map((e) => e.name));
-  const replaced = files.filter((f) => existing.has(f.name)).map((f) => f.name);
-  if (replaced.length && !await confirmAction('Replace files?', `These are replaced on the OP-XY:\n${replaced.join('\n')}`, 'Replace', true)) return;
-  const b = bar();
-  for (const f of files) {
-    const target = joinPath(cwd, f.name);
-    const why = changeRefusal(target);
-    if (why) throw new Error(why);
-    await dev().writeFile(target, new Uint8Array(await f.arrayBuffer()), { onProgress: (done, total) => { b.max = total ?? 1; b.value = done; } });
-  }
-  await browse(cwd);
-}
-
-async function newFolder(): Promise<void> {
-  const name = await promptText('New folder', `In ${cwd}`, '', 'Create');
-  if (name === null) return;
-  const problem = nameProblem(name) ?? changeRefusal(joinPath(cwd, name), true);
-  if (problem) throw new Error(problem);
-  await dev().makeDir(joinPath(cwd, name));
-  await browse(cwd);
-}
-
-async function move(path: string): Promise<void> {
-  const target = await promptText('Rename or move', `Type the new full path for ${path}. Nothing is replaced.`, path, 'Rename');
-  if (target === null || target === path) return;
-  const why = changeRefusal(target);
-  if (why) throw new Error(why);
-  await dev().renamePath(path, target);
-  await browse(cwd);
-}
-
-async function copy(path: string, e: DirEntry): Promise<void> {
-  const suggestion = folderWritable(cwd) ? `${path}-copy` : joinPath('/yaffs2/content', e.name);
-  const target = await promptText(`Copy ${e.kind}`, `Type the full path of the copy. It must be ${WRITE_RULE}.`, suggestion, 'Copy');
-  if (target === null) return;
-  const why = changeRefusal(target);
-  if (why) throw new Error(why);
-  await dev().copyTree(path, target);
-  await browse(cwd);
-}
-
-async function removePath(path: string, e: DirEntry): Promise<void> {
-  if (e.kind === 'folder') {
-    const inside = await dev().listDir(path);
-    if (inside.length) throw new Error(`${e.name} is not empty: delete what it holds first.`);
-  }
-  if (!await confirmAction(`Delete ${e.name}?`, `${path} is deleted from the OP-XY. This cannot be undone.`, 'Delete', true)) return;
-  if (e.kind === 'folder') await dev().removeDir(path); else await dev().deleteFile(path);
-  await browse(cwd);
 }
