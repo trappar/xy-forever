@@ -86,7 +86,8 @@ file(CONFIGURE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/modules.inc CONTENT "${REGISTR
 
 nanobind_add_module(_native NB_STATIC ${BIND_SOURCES} $<TARGET_OBJECTS:firmware>)
 set_target_properties(_native PROPERTIES CXX_STANDARD 17)
-target_compile_options(_native PRIVATE ${WARN})
+# Python.h first in every binding, as Python requires (on Linux, a standard header before it defines _POSIX_C_SOURCE).
+target_compile_options(_native PRIVATE ${WARN} "SHELL:-include Python.h")
 target_include_directories(_native PRIVATE ${ROOT} ${CMAKE_CURRENT_BINARY_DIR})
 install(TARGETS _native LIBRARY DESTINATION xyf_hosttest)
 
