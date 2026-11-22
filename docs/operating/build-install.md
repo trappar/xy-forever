@@ -68,13 +68,7 @@ the run prints HUNG with every thread's traceback and its worker's process group
 the C++ each test used (a `hosttest/` module, doctest file or program and its includes) and files it runs as a
 subprocess (`@pytest.mark.uses('scripts/x.py')`).
 
-All host C++ is one CMake build, `hosttest/` (scikit-build-core, ninja): one nanobind extension
-(`xyf_hosttest.module(NAME)`, a submodule per `hosttest/bind/NAME.cpp`), one doctest binary (the C++ unit tests in
-`tests/native/`, sanitized, run as one gate-tier test by `tests/test_doctest.py`), and the programs one shared build
-cannot serve (`xyf_hosttest.program(NAME)`): a library each test loads afresh, a define's variants, sanitized
-programs, the host tools (mod_link, mod_assemble, tfw_extract) and the simulator's test variants. `uv sync` builds it
-in `build/hosttest` and rebuilds only what an edit touched (`uv run` syncs first). Another simulator variant
-(`--version`, `--crash-trigger`) is built on first use by CMake into `build/sim/` (`hosttest/sim/`).
+All host C++ (the tests', the host tools', the simulator's) is one CMake build: [host C++](host-build.md).
 
 `mise run check` (`scripts/check.py`) is the PR gate on a clean, committed tree: the product build into
 `build/product` plus `--verify` (cached, below; a verified build is copied to `../private/xy-forever/builds/<image>`),
