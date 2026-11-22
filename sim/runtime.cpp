@@ -123,11 +123,12 @@ void log(const char* format, ...) {
     va_start(args, format);
     vsnprintf(text, sizeof(text), format, args);
     va_end(args);
-    fprintf(stderr, "[sim %s %8.3f] %s\n",
+    // Host time, then device time (sim/clock.cpp): a slow host shows in the first only.
+    fprintf(stderr, "[sim %s %8.3f d%9.3f] %s\n",
             role == 0 ? "A" :
             role == 1 ? "B" :
                         "board",
-            double(now_us() % 100000000u) / 1e6, text);
+            double(now_us() % 100000000u) / 1e6, shared ? double(shared->clock_ns.load()) / 1e9 : 0.0, text);
 }
 void crash(const char* format, ...) {
     char text[600];

@@ -62,21 +62,10 @@ declare module 'vitest' {
 export const REPO = fileURLToPath(new URL('../../..', import.meta.url));
 const QUERY = `
 import json
-from xy_forever import paths, sim, xyf_build
-build = paths.newest_verified_build()
-unusable = None
-if build is None:  # this checkout's own verified build (build/product) of its sources, not found among them?
-    try:
-        own = paths.BUILD / 'product'
-        m = json.loads((own / 'manifest.json').read_text())
-        if json.loads((own / 'verification.json').read_text()).get('passed') is True \\
-                and m.get('source_sha256') == xyf_build.source_hashes():
-            unusable = '%s is a verified build of these sources (image %s), but no verified build folder holds it' \\
-                ' (%s/%s: other sources?)' % (own, m.get('image'), paths.BUILDS, m.get('image'))
-    except (OSError, ValueError):
-        pass
+from xy_forever import paths, sim
+build, no_build = paths.verified_build()
 print(json.dumps({
-    'unusable': unusable,
+    'no_build': no_build,
     'why': sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent'),
     'sessions': str(paths.SESSIONS),
     'stock_os_ldr': str(sim.STOCK_OS) if sim.STOCK_OS.is_file() else None,
@@ -297,9 +286,9 @@ export interface Found {
   /** The private sessions folder (state folders go under it). */
   sessions: string | null;
   fixtures: Record<string, string>;
-  /** Why fixtures has no xyf_build (a verified build of this checkout's sources); unusable: one exists but is not
-   * found (a test that needs it fails rather than skips). Null when it is there. */
-  noBuild: { reason: string; unusable: boolean } | null;
+  /** Why fixtures has no xyf_build (a verified build of this checkout's sources: paths.verified_build()); null when
+   * it is there. */
+  noBuild: string | null;
 }
 
 /** Whether python3 can build and run the simulator here, and where its files are. */
@@ -312,7 +301,7 @@ export function findSimulator(): Found {
         : `python3 could not load xy_forever: ${query.stderr.trim().split('\n').pop()}`,
       sessions: null,
       fixtures: {},
-      noBuild: { reason: 'python3 could not look for one', unusable: false },
+      noBuild: 'python3 could not look for one',
     };
   }
   const found = JSON.parse(query.stdout) as {
@@ -320,17 +309,12 @@ export function findSimulator(): Found {
     sessions: string;
     stock_os_ldr: string | null;
     xyf_build: string | null;
-    unusable: string | null;
+    no_build: string | null;
   };
   const fixtures: Record<string, string> = {};
   if (found.stock_os_ldr) fixtures['stock_os_ldr'] = found.stock_os_ldr;
   if (found.xyf_build) fixtures['xyf_build'] = found.xyf_build;
-  const noBuild = found.xyf_build
-    ? null
-    : found.unusable
-      ? { reason: found.unusable, unusable: true }
-      : { reason: "no verified build of this checkout's sources (mise run verify)", unusable: false };
-  return { why: found.why, sessions: found.sessions, fixtures, noBuild };
+  return { why: found.why, sessions: found.sessions, fixtures, noBuild: found.xyf_build ? null : found.no_build };
 }
 
 /** Starts the simulators of plan (name, port offset from base, extra arguments) at the same time; all or none. */
