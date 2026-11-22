@@ -3,7 +3,6 @@
 // The page refuses any other bytes. Builds are deterministic, so anyone can rebuild the pinned image from its commit.
 import pin from './release.json';
 import { sha256Hex } from './checks.ts';
-import { siteHref } from '../site.ts';
 
 export interface ReleasePin {
   readonly schema: number;
@@ -13,7 +12,7 @@ export interface ReleasePin {
   readonly bytes: number;
   readonly notes?: string;
 }
-export const RELEASE_PATH = siteHref('/release/os.ldr');
+export const RELEASE_PATH = `${import.meta.env.BASE_URL}release/os.ldr`;
 
 /** The pinned release, or null when this app has none yet (install is then unavailable, and says so). */
 export function pinned(value: ReleasePin = pin): ReleasePin | null {

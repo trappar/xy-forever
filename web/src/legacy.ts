@@ -11,45 +11,50 @@ import type { Action } from './bug-report.ts';
 import { h } from './ui.ts';
 import { confirmAction, promptText } from './ask.tsx';
 import { notice } from './notice.ts';
-import { bugReport, sim, useConnection } from './connection.ts';
+import { useConnection } from './connection.ts';
+import { bugReport } from './bug-report.ts';
 import { downloadBlob } from './lib/download.ts';
 import { installPage } from './install/page.ts';
 import type { Lease } from './install/page.ts';
-import { currentPath, navigate, startRouter } from './router.ts';
-import { PAGES } from './routes.ts';
-import type { Page } from './routes.ts';
-import { siteHref } from './site.ts';
-import type { How } from './router.ts';
+import { navigatePath as navigate, simPort } from './routing.ts';
+import type { Page } from './routing.ts';
 import { pinned } from './install/release.ts';
 import { updateAvailable, updateXyf } from './update.ts';
 import { UNINSTALL_PROTOCOL, uninstallAvailable, uninstallXyf } from './uninstall.ts';
 
 let client: Client | null = null;
 let busy = false;
-let uninstalling = false, stockRestored = false;
+let stockRestored = false;
+const sim = (): string | null => simPort();
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
 
-// ---- Navigation and actions ---------------------------------------------------------------------------
-// One path per page (router.ts): /connect (also /), /install/<stage>, /device, /mods, /files.
+// ---- Pages and actions -------------------------------------------------------------------------------
 
-const OPEN_PAGES: readonly Page[] = ['connect', 'install'];   // without a connection
-const loaders: Record<Page, () => Promise<void>> = {
+const loaders: Record<Exclude<Page, 'install'>, () => Promise<void>> = {
   connect: () => run('show_connect', async () => renderConnect()),
-  install: async () => {},       // route() shows its stage
   device: () => run('refresh_status', loadDevice),
   mods: () => run('list_packages', loadMods),
   files: () => run('browse_files', () => browse(cwd)),
 };
 
-function route(path = currentPath(), how: How = 'push'): void {
-  const requested = PAGES.find((page) => page === path.split('/')[1]) ?? 'connect';
-  if (uninstalling && requested !== 'device') { navigate('/device', { replace: true }); return; }
-  const p = client || OPEN_PAGES.includes(requested) ? requested : 'connect';
-  for (const id of PAGES) page(id).hidden = id !== p;
-  for (const a of document.querySelectorAll<HTMLAnchorElement>('#nav a')) a.classList.toggle('active', a.dataset['page'] === p);
-  if (p === 'install') (install ??= installPage(page('install'), installDeps())).show(path, how);
-  else if (client || OPEN_PAGES.includes(p)) void loaders[p]();
+/** Renders a page into its section (the router mounts it). */
+export function showPage(p: Exclude<Page, 'install'>): void { loadedOther = true; void loaders[p](); }
+
+let shownInstall = false;
+/** The install flow's one section, kept across its stages. */
+export function installSection(): HTMLElement {
+  install ??= installPage(installRoot, installDeps());
+  return installRoot;
 }
+const installRoot = Object.assign(document.createElement('section'), { id: 'page-install', className: 'page', hidden: true });
+/** Shows an install stage: the first page this document shows counts as the load (a reload asks te-boot again). */
+export function showInstall(stage: string | undefined): void {
+  const how = shownInstall || loadedOther ? 'push' : 'load';
+  shownInstall = true;
+  installSection();
+  install!.show(`/install/${stage ?? ''}`, how);
+}
+let loadedOther = false;
 
 function setLink(): void { useConnection.setState({ client }); }
 
@@ -69,7 +74,7 @@ async function run(action: Action, work: () => Promise<void>, label = ''): Promi
     notice('');
   } catch (error) {
     bugReport.record(action, 'failed', error);
-    if (client && !client.connected) { client = null; setLink(); route(); }
+    if (client && !client.connected) { client = null; setLink(); navigate('/connect'); }
     notice(describe(error), 'error');
   } finally {
     busy = false;
@@ -88,18 +93,18 @@ const btn = (label: string, onclick: () => void, cls = ''): HTMLButtonElement =>
 // ---- Connect -----------------------------------------------------------------------------------------
 
 function renderConnect(): void {
-  const supported = sim !== null || webSerial() !== null;
+  const supported = sim() !== null || webSerial() !== null;
   page('connect').replaceChildren(
     h('h1', {}, 'Connect your OP-XY'),
     ...(stockRestored ? [h('p', { class: 'notice info', role: 'status' }, 'Stock OS 1.2.1 was restored and your OP-XY was asked to restart.')] : []),
     h('p', { class: 'lede' }, 'Start the OP-XY into the XY Forever menu, connect it by USB, then press Connect and choose XY Forever in the list. ',
-      'Not installed yet? ', h('a', { href: siteHref('/install/') }, 'Install XY Forever'), '.'),
+      'Not installed yet? ', h('a', { href: `${import.meta.env.BASE_URL}install/`, onclick: (e: MouseEvent) => { e.preventDefault(); navigate('/install'); } }, 'Install XY Forever'), '.'),
     h('div', { class: 'card' },
       supported
         ? h('div', { class: 'row' },
           client ? h('span', {}, `Connected to XY Forever ${client.info.version ?? '?'}.`) : btn('Connect', () => void run('connect', connect, 'Looking for the OP-XY...'), 'primary'),
           client && btn('Disconnect', () => void run('disconnect', disconnect)),
-          h('span', { class: 'muted' }, sim ? `Simulator on 127.0.0.1:${sim} (development)` : 'Web Serial over USB'))
+          h('span', { class: 'muted' }, sim() ? `Simulator on 127.0.0.1:${sim()} (development)` : 'Web Serial over USB'))
         : h('div', {}, h('h2', {}, 'This browser cannot talk to the OP-XY'),
           h('p', { class: 'muted' }, 'XY Forever needs Web Serial, which only desktop Chrome (and Edge) have. Open this page in Chrome on a computer. Safari, Firefox and phones are not supported.'))),
   );
@@ -108,7 +113,8 @@ function renderConnect(): void {
 /** The simulator, else Web Serial: a granted port that answers, the chooser only when none does (serial-connect.ts).
  * filters: the install's release image has only the stock pair (RELEASE_FILTERS). */
 async function connectDevice(filters?: typeof RELEASE_FILTERS): Promise<Client> {
-  if (sim) return Client.connect(webSocketOpener(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/xyf-relay?sim=${encodeURIComponent(sim)}`), { timeoutMs: 10_000 });
+  const port = sim();
+  if (port) return Client.connect(webSocketOpener(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/xyf-relay?sim=${encodeURIComponent(port)}`), { timeoutMs: 10_000 });
   return connectWebSerial({ timeoutMs: 10_000, filters });
 }
 
@@ -146,7 +152,7 @@ function installDeps(): Parameters<typeof installPage>[1] {
   return {
     midi: nav.requestMIDIAccess ? nav.requestMIDIAccess.bind(nav) : null,
     usb: nav.usb ?? null,
-    serial: sim !== null || webSerial() !== null,
+    serial: sim() !== null || webSerial() !== null,
     connect: async () => own() ?? lease(await connectDevice(RELEASE_FILTERS)),
     find: findDevice,
     handoff: (lease) => {                     // installed: the connection becomes the app's, then the Mods page
@@ -168,8 +174,8 @@ const lease = (found: Client): Lease => ({ client: found, close: () => found.clo
 async function findDevice(): Promise<Lease | null> {
   const mine = own();
   if (mine) return mine;
-  if (busy || (!sim && !webSerial())) return null;
-  return lease(sim ? await connectDevice() : await connectWebSerial({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false }));
+  if (busy || (!sim() && !webSerial())) return null;
+  return lease(sim() ? await connectDevice() : await connectWebSerial({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false }));
 }
 
 // ---- Device ------------------------------------------------------------------------------------------
@@ -222,13 +228,13 @@ function uninstallCard(c: Client): HTMLElement {
       if (!await confirmAction('Uninstall XY Forever?',
         'This restores official OS 1.2.1 and its content, removes your XY Forever library, mods and settings, then restarts your OP-XY.',
         'Uninstall', true)) return;
-      uninstalling = true;
+      useConnection.setState({ uninstalling: true });
       button.disabled = true;
       try {
         await uninstallXyf(c, (message) => { progress.textContent = message; });
         finished = true;
       } finally {
-        uninstalling = false;
+        useConnection.setState({ uninstalling: false });
         button.disabled = false;
         progress.textContent = '';
       }
@@ -511,15 +517,4 @@ async function removePath(path: string, e: DirEntry): Promise<void> {
   if (!await confirmAction(`Delete ${e.name}?`, `${path} is deleted from the OP-XY. This cannot be undone.`, 'Delete', true)) return;
   if (e.kind === 'folder') await client!.removeDir(path); else await client!.deleteFile(path);
   await browse(cwd);
-}
-
-// ---- Start -------------------------------------------------------------------------------------------
-
-let started = false;
-/** Starts the pages once their sections are in the document (StrictMode runs effects twice). */
-export function startLegacy(): void {
-  if (started) return;
-  started = true;
-  setLink();
-  startRouter(route);
 }

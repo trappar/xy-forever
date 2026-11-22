@@ -86,7 +86,7 @@ async function open(relay: string, granted: boolean, bytes = IMAGE, prepare?: (p
   await page.route('**/src/install/release.json*', (route) => route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(pin)};` }));
   await page.route('**/release/os.ldr', (route) => route.fulfill({ contentType: 'application/octet-stream', body: bytes }));
   await prepare?.(page);
-  await page.goto(`${base}/connect`);
+  await page.goto(`${base}/connect/`);
   await page.addScriptTag({ type: 'module', content: `
     import { FakeMidi, FakeUsb } from '/test/fake-devices.ts';
     import { FakeSerial } from '/@fs${FAKE_SERIAL}';
@@ -127,7 +127,7 @@ async function toStart(page: Page, computer: 'Mac' | 'Windows'): Promise<void> {
 
 /** The page handed the owner to the app: the Mods page, connected, the installed notice once. */
 async function handedOff(page: Page): Promise<void> {
-  await expect.poll(() => new URL(page.url()).pathname, { timeout: 60_000 }).toBe('/mods');
+  await expect.poll(() => new URL(page.url()).pathname, { timeout: 60_000 }).toBe('/mods/');
   expect(await page.getByTestId('installed').isVisible()).toBe(true);
   expect(await page.getByTestId('installed').textContent()).toContain('XY Forever is installed');
   expect(await page.getByTestId('link').textContent()).toMatch(/^Connected/);
@@ -238,7 +238,7 @@ test('the device refuses a missing stock os.ldr: the page shows its words and th
   expect(await card.getAttribute('data-verdict')).toBe('reinstall');
   expect(await card.textContent()).toContain('No official OS 1.2.1 found. Reinstall official OS 1.2.1, then start again.');
   expect(await page.getByRole('link', { name: /Download official OS 1\.2\.1/ }).isVisible()).toBe(true);
-  expect(new URL(page.url()).pathname).toBe('/install/stop');
+  expect(new URL(page.url()).pathname).toBe('/install/stop/');
   await page.close();
 });
 
@@ -375,7 +375,7 @@ test('uninstalls to a verified stock partition, then installs again from the sam
     await press(page, 'Uninstall XY Forever');
     await press(page, 'Uninstall');
     await expect.poll(async () => (await page.locator('[data-testid=notice][data-type=error]').textContent({ timeout: 100 }).catch(() => null)) ??
-      new URL(page.url()).pathname, { timeout: 20_000 }).toBe('/connect');
+      new URL(page.url()).pathname, { timeout: 20_000 }).toBe('/connect/');
     expect(reboot).toBe(1);
     expect(await page.getByRole('status').textContent()).toContain('Stock OS 1.2.1 was restored');
     expect(readdirSync(sim.root).sort()).toEqual(['bootloader.dev', 'content', 'firmware.version', 'os.ldr', 'upgrade', 'user']);

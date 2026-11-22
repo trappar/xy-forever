@@ -11,7 +11,10 @@ import { ADOPT_DETAIL, ENTRY, installState, otherImage } from '../src/install/fi
 import { InstallStop, TeBoot, copyOverMtp } from '../src/install/installer.ts';
 import { fetchRelease, pinned } from '../src/install/release.ts';
 import type { ReleasePin } from '../src/install/release.ts';
-import { INSTALL_STAGES, PAGES } from '../src/routes.ts';
+import { INSTALL_STAGES } from '../src/install/stages.ts';
+import { staticPaths } from '../src/routing.ts';
+
+const PAGES = staticPaths().filter((path) => !path.includes('/'));
 import { FakeMidi, FakeUsb } from './fake-devices.ts';
 
 const T = 'mode:bootloader;product:OP-XY;serial:X1';

@@ -73,3 +73,6 @@ export class BugReport {
     }, null, 2) + '\n';
   }
 }
+
+/** The bug report's activity and last known device, for this tab. */
+export const bugReport = new BugReport();

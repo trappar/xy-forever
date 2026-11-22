@@ -48,7 +48,7 @@ async function open(fields: string, files: Record<string, string> = {}, free = 6
   const page = await browser!.newPage({ acceptDownloads: true });
   await page.route('**/src/install/release.json*', (route) => route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(PIN)};` }));
   await page.route('**/release/os.ldr', (route) => route.fulfill({ contentType: 'application/octet-stream', body: IMAGE }));
-  await page.goto(`${base}#connect`);
+  await page.goto(`${base}connect/`);
   await page.addScriptTag({ type: 'module', content: `
     import { FakeMidi, FakeUsb } from '/test/fake-devices.ts';
     const fields = Object.fromEntries(${JSON.stringify(fields)}.split(';').map((kv) => kv.split(':')));
@@ -246,7 +246,7 @@ test('keeps the stage and the chosen computer over a reload, and goes back and f
   const page = await open(OK_121);
   await toTransfer(page, 'Windows');
   expect(await stage(page)).toBe('transfer');
-  expect(new URL(page.url()).pathname).toBe('/install/transfer');
+  expect(new URL(page.url()).pathname).toBe('/install/transfer/');
   await page.reload();
   await expect.poll(() => stage(page)).toBe('transfer');
   await page.goBack();

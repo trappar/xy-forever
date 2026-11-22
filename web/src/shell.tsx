@@ -1,14 +1,18 @@
 // The app's frame: navigation, the link status, the bug report, the installed notice, toasts and questions.
 import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { Link, Outlet, useSearch } from '@tanstack/react-router';
 import { Toaster } from '@/components/ui/sonner.tsx';
 import { Button } from '@/components/ui/button.tsx';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog.tsx';
 import { downloadBlob } from '@/lib/download.ts';
 import { AskDialog } from './ask.tsx';
-import { bugReport, sim, useConnection } from './connection.ts';
+import { bugReport } from './bug-report.ts';
+import { useConnection } from './connection.ts';
 
-const NAV = [['connect', 'Connect'], ['install', 'Install'], ['device', 'Device'], ['mods', 'Mods'], ['files', 'Files']] as const;
+const NAV = [['/connect/', 'Connect'], ['/install/', 'Install'], ['/device/', 'Device'], ['/mods/', 'Mods'], ['/files/', 'Files']] as const;
+
+export const AppShell = () => <Shell><Outlet /></Shell>;
 
 export function Shell({ children }: { children: ReactNode }) {
   return (
@@ -17,8 +21,11 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="flex items-center gap-2 text-[17px] font-semibold tracking-wide">
           <span className="rounded-sm bg-primary px-1.5 py-0.5 text-[13px] font-extrabold text-primary-foreground">XY</span>Forever
         </div>
-        <nav id="nav" aria-label="Pages" className="flex flex-row flex-wrap gap-0.5 md:flex-col">
-          {NAV.map(([page, label]) => <a key={page} href={`${import.meta.env.BASE_URL}${page}/`} data-page={page}>{label}</a>)}
+        <nav aria-label="Pages" className="flex flex-row flex-wrap gap-0.5 md:flex-col">
+          {NAV.map(([to, label]) => (
+            <Link key={to} to={to} data-page={to.slice(1, -1)} className="rounded-md px-2.5 py-1.5 text-muted-foreground no-underline hover:bg-secondary hover:text-foreground"
+              activeProps={{ className: 'bg-secondary text-foreground shadow-[inset_2px_0_0_var(--color-primary)]' }}>{label}</Link>
+          ))}
         </nav>
         <BugReportButton />
         <LinkStatus />
@@ -35,6 +42,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
 function LinkStatus() {
   const connected = useConnection((s) => s.client !== null);
+  const { sim } = useSearch({ strict: false });
   return (
     <div className="flex items-center gap-2 text-[13px] text-muted-foreground md:mt-auto">
       <span className={connected ? 'size-2 rounded-full bg-ok shadow-[0_0_8px_var(--color-ok)]' : 'size-2 rounded-full bg-border'} />
