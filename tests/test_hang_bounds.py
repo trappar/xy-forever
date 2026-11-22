@@ -43,7 +43,7 @@ def gone(pid):
 class RunnerBoundsTest(unittest.TestCase):
     @pytest.mark.uses('tests/xyf_bounds.py')
     def test_a_test_past_its_bound(self):
-        bound = 1.0
+        bound = 0.3                 # past it, HUNG: the planted test sleeps 300 s, so less waiting proves the same
         with tempfile.TemporaryDirectory(prefix='xyf-hang-') as tmp:
             (Path(tmp) / 'test_planted_hang.py').write_text(PLANTED)
             (Path(tmp) / 'pytest.ini').write_text('[pytest]\n')
@@ -75,12 +75,12 @@ class CheckStepBoundTest(unittest.TestCase):
         spec.loader.exec_module(check)
         with tempfile.TemporaryDirectory(prefix='xyf-hang-') as tmp:
             log = Path(tmp) / 'log.txt'
-            step = check.step('stalls', [sys.executable, '-c', 'import time; time.sleep(300)'], tmp, timeout=1)
+            step = check.step('stalls', [sys.executable, '-c', 'import time; time.sleep(300)'], tmp, timeout=0.3)
             start = time.monotonic()
             results, _ = check.run_steps([step], log)
-            self.assertLess(time.monotonic() - start, 1 + SLACK)
+            self.assertLess(time.monotonic() - start, 0.3 + SLACK)
             self.assertEqual((results[0]['result'], results[0]['exit']), ('fail', 124))
-            self.assertIn('HUNG: stalls ran past its 1 s bound', log.read_text())
+            self.assertIn('HUNG: stalls ran past its 0.3 s bound', log.read_text())
 
 
 if __name__ == '__main__':

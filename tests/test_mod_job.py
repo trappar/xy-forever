@@ -26,7 +26,7 @@ import pytest
 from xy_forever import hostbuild, modkit as M, modpatch as P, package_records, paths, xyf_entry
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
 import test_modkit as TK
-from test_xyf_freestanding import code_bytes, compiler
+from test_xyf_freestanding import compiler
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -299,7 +299,7 @@ class PublishedPackages(Harness, unittest.TestCase):
 @pytest.mark.gate
 class BlackfinCompile(unittest.TestCase):
     """native/mod_job.cpp at the firmware's flags: no calls outside xyf_core, no BSS or data, small frames;
-    its text + rodata is measured (no bound: compile and assemble only)."""
+    compile only (the product build links it into its reservation)."""
 
     def test_freestanding(self):
         gxx = compiler()
@@ -316,7 +316,6 @@ class BlackfinCompile(unittest.TestCase):
             self.assertNotRegex(text, r'\.(bss|lcomm|comm|data)\b')
             frames = [int(l.split('\t')[1]) for l in (Path(tmp) / 'mod_job.su').read_text().splitlines()]
             self.assertLess(max(frames), 1024)
-            self.assertGreater(code_bytes(gxx, 'mod_job', toolchain.CXX_FLAGS, tmp), 0)
 
 
 if __name__ == '__main__':

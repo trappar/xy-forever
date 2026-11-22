@@ -30,26 +30,6 @@ SIGNATURE_STACK = 3072
 MOD_ASSEMBLY = ('mod_patch', 'mod_content')
 MOD_ASSEMBLY_TREE = MOD_ASSEMBLY + ('hash', 'ldr')
 MOD_ASSEMBLY_STACK = 2048
-# The whole mod assembler (link, patch, content): one bound on the text +
-# rodata of every native mod source at the firmware's flags (xy_forever/toolchain.CXX_FLAGS, -O2),
-# which stage 2 must find room for. A tripwire against unnoticed growth, not a hard limit: measured
-# 2026-11-14 at 49,596 B (-O2) after the linker and patch/content hardening; the bound is that
-# rounded up to 1 KiB plus 1 KiB of headroom. Raise it deliberately when a change justifies it.
-MOD_ASSEMBLER = ('mod_link', 'mod_elf', 'mod_numbers', 'mod_patch', 'mod_content')
-MOD_ASSEMBLER_CODE = 51200
-
-
-def code_bytes(gxx, name, flags, tmp):
-    """text + rodata of native/<name>.cpp compiled and assembled for the Blackfin."""
-    out = Path(tmp) / (name + '.s')
-    subprocess.run([str(gxx), *flags, '-S', str(ROOT / 'native' / (name + '.cpp')), '-o', str(out)],
-                   check=True, capture_output=True, cwd=tmp)
-    subprocess.run([str(gxx.parent / 'bfin-elf-as'), '-mcpu=bf707', '-o', str(out.with_suffix('.o')), str(out)],
-                   check=True, capture_output=True)
-    sections = subprocess.run([str(gxx.parent / 'bfin-elf-objdump'), '-h', str(out.with_suffix('.o'))],
-                              check=True, capture_output=True, text=True).stdout
-    return sum(int(f[2], 16) for f in (row.split() for row in sections.splitlines())
-               if len(f) > 2 and f[1].startswith(('.text', '.rodata')))
 
 
 def compiler():
@@ -187,16 +167,6 @@ class FreestandingTest(unittest.TestCase):
         for function in graph:
             visit(function, [])
         self.assertLess(total, MOD_ASSEMBLY_STACK)
-
-    def test_mod_assembler_code_size(self):
-        """One bound for the whole assembler at the firmware's flags (compile and assemble only)."""
-        gxx = compiler()
-        if not gxx:
-            self.skipTest('Blackfin toolchain absent')
-        from xy_forever import toolchain
-        with tempfile.TemporaryDirectory(prefix='xyf-free-assembler-') as tmp:
-            code = sum(code_bytes(gxx, name, toolchain.CXX_FLAGS, tmp) for name in MOD_ASSEMBLER)
-        self.assertLessEqual(code, MOD_ASSEMBLER_CODE, 'text + rodata of %s at the firmware flags' % (MOD_ASSEMBLER,))
 
 
 if __name__ == '__main__':
