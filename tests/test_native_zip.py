@@ -11,9 +11,9 @@ import unittest
 import warnings
 import zipfile
 import zlib
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import fork_each
 import pytest
 import xyf_hosttest
 
@@ -413,6 +413,7 @@ class NativeZipTests(unittest.TestCase):
                 '-Wall',
                 '-Wextra',
                 '-Werror',
+                *fork_each.FLAGS,  # one sanitizer start for the 100 runs
                 str(ROOT / 'tests/zip_bridge.cpp'),
                 str(ROOT / 'native/zip.cpp'),
                 str(ROOT / 'native/inflate.cpp'),
@@ -437,16 +438,10 @@ class NativeZipTests(unittest.TestCase):
                 del data[rng.randrange(len(data)) :]
             else:
                 data[rng.randrange(len(data))] ^= rng.randrange(1, 256)
-            runs.append((command, data, args))
-        with ThreadPoolExecutor(max_workers=6) as pool:  # independent runs, each its own input
-            results = list(
-                pool.map(
-                    lambda n: self.run_bridge(
-                        runs[n][0], runs[n][1], *runs[n][2], binary=sanitized, name='damaged-%d' % n
-                    ),
-                    range(len(runs)),
-                )
-            )
+            path = self.directory / ('damaged-%d.bin' % iteration)
+            path.write_bytes(data)
+            runs.append(((command, path, *args), b''))
+        results = fork_each.run(sanitized, runs, self.directory)
         for result in results:
             self.assertNotIn(b'AddressSanitizer', result.stderr)
             self.assertNotIn(b'runtime error:', result.stderr)
