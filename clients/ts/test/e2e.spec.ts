@@ -127,13 +127,18 @@ describe.skipIf(!sim)(`end to end against the simulator${sim ? '' : ` (skipped: 
   test('processor A silent: the device gives up on A on its own clock and answers link', async () => {
     const path = '/yaffs2/firmware.version';
     await client.readFile(path);
+    // B closes the file after its reply: at rest first, so a_silent keeps only the next request from A.
+    await control(sim!.control, 'settle');
     await control(sim!.control, 'set a_silent 1');
     try {
       // B gives up on A after 5 s of its own clock. B waiting on A runs that clock on, in no host time
-      // (sim/clock.cpp): the answer comes well before 5 s here.
-      const [link, ms] = await timed(client.readRange(path, 0, 64));
+      // (sim/clock.cpp): device time, never the host's, measures it.
+      const before = (await control(sim!.control, 'status'))['clock_ms'] as number;
+      const link = await client.readRange(path, 0, 64).catch((e: unknown) => e);
       expect(isXyfError(link, 'link')).toBe(true);
-      expect(ms).toBeLessThan(5000);
+      const spent = ((await control(sim!.control, 'status'))['clock_ms'] as number) - before;
+      expect(spent).toBeGreaterThan(4900); // about 5 s (status and B's clock count from different starts)
+      expect(spent).toBeLessThan(6000);
     } finally {
       await control(sim!.control, 'set a_silent 0');
       await control(sim!.control, 'advance 6000');

@@ -42,7 +42,8 @@ ends #65's trust moves); `reset a|b`; `set a_boot_ms|b_boot_ms|a_redeliver|boot_
 `advance MS` moves device time ahead, so a device time-out (A's idle window, a held window) passes unwaited
 (`Simulator.advance`: in the board's idle steps, answered once there and idle again); `settle` answers once the
 clock stands still (`Simulator.settle`); `jump MS` moves it at once whatever runs (a slow pass,
-`Simulator.jump`).
+`Simulator.jump`). `set hold_clock 1`: only `advance`, `jump` and board events move it, not B's waits or work (a test
+that acts while B waits on device time: the wait never ends at the host's pace).
 
 ## Keys
 
