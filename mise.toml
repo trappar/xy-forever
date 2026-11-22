@@ -11,6 +11,7 @@ uv = "0.13.9"
 node = "26.13.1"
 pnpm = "12.22.0"
 gh = "2.105.0"
+lefthook = "2.2.2"   # the git pre-commit hook (lefthook.yml); `mise run setup` installs it
 
 [env]
 # A project cannot hide the contributor's global mise config (~/.config/mise) from the mise run that
@@ -115,6 +116,38 @@ run = 'uv run scripts/conformance.py --sim {{ usage.address | quote }}'
 description = "Check the generated protocol files (--write: regenerate)"
 usage = 'flag "--write" help="regenerate instead of checking"'
 run = 'uv run scripts/protogen.py {% if usage.write %}{% else %}--check{% endif %}'
+
+# Lint and format: ruff (Python), ESLint and Prettier (web/, clients/ts, scripts/*.mjs), clang-format (first-party
+# C++; .clang-format-ignore keeps third_party/ and generated headers out). Configs: pyproject.toml [tool.ruff],
+# eslint.config.mjs, .prettierrc.json, .clang-format. The pre-commit hook (lefthook.yml) runs the same on staged files.
+[tasks.lint]
+description = "Lint and format checks, all languages (CI runs it; about 3 s)"
+depends = ["lint:python", "lint:ts", "lint:cpp"]
+
+[tasks."lint:python"]
+hide = true
+run = ["uv run --no-sync ruff check --quiet", "uv run --no-sync ruff format --check --quiet"]
+
+[tasks."lint:ts"]
+hide = true
+run = ["pnpm exec eslint --max-warnings 0 .", "pnpm exec prettier --check --log-level warn web clients/ts 'scripts/*.mjs' eslint.config.mjs"]
+
+[tasks."lint:cpp"]
+hide = true
+run = "git ls-files -z -co --exclude-standard -- '*.cpp' '*.hpp' '*.ipp' '*.h' | xargs -0 uv run --no-sync clang-format --dry-run -Werror"
+
+[tasks.format]
+description = "Format every file in place: ruff (and its import order), Prettier, clang-format"
+run = [
+  "uv run --no-sync ruff check --select I --fix --quiet",
+  "uv run --no-sync ruff format --quiet",
+  "pnpm exec prettier --write --log-level warn web clients/ts 'scripts/*.mjs' eslint.config.mjs",
+  "git ls-files -z -co --exclude-standard -- '*.cpp' '*.hpp' '*.ipp' '*.h' | xargs -0 uv run --no-sync clang-format -i",
+]
+
+[tasks.lint-fix]
+description = "Apply the linters' safe fixes (ruff, ESLint), then format"
+run = ["uv run --no-sync ruff check --fix --quiet", "pnpm exec eslint --fix .", { task = "format" }]
 
 [tasks.web]
 description = "Web app dev server on 127.0.0.1:5173"

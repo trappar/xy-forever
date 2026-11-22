@@ -1,0 +1,5 @@
+# Generated files keep their generators' layout (their checks compare bytes); vendored code keeps its own.
+third_party/**
+target/usb_proto_ids.hpp
+target/mtp_spans.hpp
+target/usb_spans.hpp
