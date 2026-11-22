@@ -19,8 +19,8 @@
 
 int fork_each_main(int argc, char** argv);
 
-// No leak check in the runs: LeakSanitizer (on by default on Linux, off on macOS) stops the world in every forked
-// child's exit, which hangs there. The runs check memory errors and undefined behaviour, never leaks.
+// No leak check in the runs, as on macOS (LeakSanitizer is on by default only on Linux): they check memory errors and
+// undefined behaviour, and a run that exits leaves its memory to the system.
 extern "C" const char* __asan_default_options() { return "detect_leaks=0"; }
 
 namespace {
@@ -54,12 +54,17 @@ int run(char* self, const std::vector<std::string>& each) {
 
 int main(int argc, char** argv) {
     if (argc != 2) return 2;
+    // Read whole before the first fork: glibc's exit() in a child seeks a stream still open for reading back to its
+    // read position, and the offset it moves is the parent's too, so the parent would read the same runs again.
     std::FILE* runs = std::fopen(argv[1], "rb");
     if (!runs) return 2;
+    std::string text;
+    for (int c; (c = std::fgetc(runs)) != EOF;) text += char(c);
+    std::fclose(runs);
     std::string line;
-    for (int c; (c = std::fgetc(runs)) != EOF;) {
+    for (char c : text) {
         if (c != '\n') {
-            line += char(c);
+            line += c;
             continue;
         }
         const std::vector<std::string> each = fields(line);
@@ -67,6 +72,5 @@ int main(int argc, char** argv) {
         if (each.size() < 3) return 2;
         std::printf("%d\n", run(argv[0], each));
     }
-    std::fclose(runs);
     return 0;
 }
