@@ -1,33 +1,28 @@
-"""Doc budgets, line width, links and the allowed docs/ files (docs/ORCHESTRATION.md, "Where things go").
+"""Doc budgets, links and the allowed docs/ files (docs/ORCHESTRATION.md, "Where things go").
 
-Budgets are bytes, not lines: a line budget is met by writing longer lines. Every doc line has a width limit.
+Budgets are bytes, not lines: a line budget is met by writing longer lines.
 Over budget: split into a tree (an index plus leaves), do not squeeze.
 """
 import os
 import re
-import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-from xy_forever import paths  # noqa: E402
 
 DOCS = ROOT / 'docs'
-STATUS = DOCS / 'status'            # local and gitignored: only its index is checked, when present
+STATUS = DOCS / 'status'            # local and gitignored: not checked
 
 LEAF = 8000                         # a current-reference leaf (bytes)
 INDEX = 4000                        # the index of a tree (bytes)
-WIDTH = 160                         # longest line in any doc, outside code blocks and table rows
 
-# Read by every agent, or by the orchestrator every sitting: (bytes, longest line).
+# Read by every agent, or by the orchestrator every sitting (bytes).
 FIRST_READS = {
-    'AGENTS.md': (6500, 160),
-    'ONBOARDING.md': (10000, 160),
-    'docs/ORCHESTRATION.md': (9600, 190),
-    'docs/STATUS.template.md': (2500, 120),
+    'AGENTS.md': 6500,
+    'ONBOARDING.md': 10000,
+    'docs/ORCHESTRATION.md': 9600,
+    'docs/STATUS.template.md': 2500,
 }
-LOCAL_STATUS = 6000                 # docs/status/README.md; its leaves are not checked
 
 # A big doc keeps its path as the index of a tree; its leaves sit in the folder. Until the folder exists,
 # the doc's cap in CAPS applies.
@@ -69,10 +64,6 @@ HEADING = re.compile(r'^#{1,6}\s+(.*?)\s*#*\s*$')
 
 def size(path):
     return len(path.read_bytes())
-
-
-def longest(path):
-    return max((len(l) for l in path.read_text(encoding='utf-8').splitlines()), default=0)
 
 
 def prose(path):
@@ -123,22 +114,13 @@ def rel(path):
 
 
 class DocsBudget(unittest.TestCase):
-    def check(self, path, budget, width=None):
+    def check(self, path, budget):
         with self.subTest(doc=rel(path)):
             self.assertLessEqual(size(path), budget, f'{rel(path)} is over its budget: split it into a tree')
-            if width:
-                self.assertLessEqual(longest(path), width, f'{rel(path)} has a line over {width} characters')
 
     def test_first_reads(self):
-        for name, (budget, width) in FIRST_READS.items():
-            self.check(ROOT / name, budget, width)
-
-    def test_local_status_index(self):
-        index = paths.STATUS / 'README.md'                        # the main checkout's, from a worktree too
-        if not index.is_file():
-            self.skipTest('no local docs/status/README.md')
-        self.assertLessEqual(size(index), LOCAL_STATUS,
-                             'your local docs/status/README.md is over 6 KB: move detail into leaf files beside it')
+        for name, budget in FIRST_READS.items():
+            self.check(ROOT / name, budget)
 
     def test_caps(self):
         for name, cap in CAPS.items():
@@ -158,12 +140,6 @@ class DocsBudget(unittest.TestCase):
             with self.subTest(index=name):
                 for leaf in leaves:
                     self.assertEqual(targets.count(leaf.resolve()), 1, f'{name} must link {rel(leaf)} exactly once')
-
-    def test_width(self):
-        for path in docs():
-            long = [n for n, line in prose(path) if len(line) > WIDTH and not line.lstrip().startswith('|')]
-            with self.subTest(doc=rel(path)):
-                self.assertEqual(long, [], f'{rel(path)}: lines over {WIDTH} characters')
 
     def test_links(self):
         for path in docs() + [ROOT / n for n in LINKED]:

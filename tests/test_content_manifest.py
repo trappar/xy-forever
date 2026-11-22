@@ -11,6 +11,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import content_manifest as CM, paths  # noqa: E402
@@ -158,6 +160,7 @@ class ContentManifestTest(unittest.TestCase):
         self.assertEqual((code, 'order' in err), (2, True))
 
 
+@pytest.mark.gate
 class OfficialContentTest(unittest.TestCase):
     """Every official set present in the private area passes the device list rules (no output kept)."""
 

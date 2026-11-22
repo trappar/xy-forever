@@ -3,8 +3,7 @@
 Two agents from different tools may work this repository on one machine at the same time. They cannot message
 each other, so they coordinate through local files under the private folder; GitHub never learns about agents
 (no labels, comments, refs, branch names or PR text). All of it is optional: an agent working alone, or a person,
-never runs `claim`, and `plan.py` without `--agent` is unchanged. Sub-agents inside one session still follow the
-one-writer rule ([ORCHESTRATION.md](../ORCHESTRATION.md#agents)).
+never runs `claim`, and `plan.py` without `--agent` is unchanged.
 
 ## Agent names
 
@@ -39,7 +38,5 @@ checkout (`main_checkout` in `xy_forever/paths.py`; `XYF_PRIVATE` and `XYF_TOOLC
   `<private>/xy-forever/device.lock` (`xy_forever/device_lock.py`) until they exit, even on a crash. A second
   one waits up to its `--timeout`, then stops with "device busy" naming the holder. The simulator takes no lock.
   Device items still need the developer: work one agent's at a time.
-- One `scripts/check.py` run at a time: a run holds `<private>/xy-forever/checks/check.lock` until it exits,
-  and a second prints "waiting for another check run" (the holder's pid, worktree, branch) and waits, never
-  fails. Pruning skips build folders touched in the last 15 minutes. Receipts are keyed by tree: `--confirm`
-  works from any worktree.
+- `scripts/check.py` runs side by side; its pruning skips build folders touched in the last 15 minutes.
+  Receipts are keyed by tree: `--confirm` works from any worktree.

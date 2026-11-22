@@ -6,11 +6,14 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild  # noqa: E402
 
 
+@pytest.mark.gate
 class ContentSwitchTest(unittest.TestCase):
     def test_rule_head_round_trip_and_faults(self):
         with tempfile.TemporaryDirectory(prefix='xyf-content-') as tmp:

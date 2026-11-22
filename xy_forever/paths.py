@@ -87,13 +87,14 @@ PUBLISHED_MODS = MOD_PACKAGES / 'mods' / 'opxy-1.2.1' / '0.0.6-370a949e96aa'   #
 PUBLISHED_KIT = FIXTURES / 'open-xy-kit-0.0.6.json'   # open-xy's published plugin kit 0.0.6 (the set's source)
 
 
+BUILD = REPO / 'build'                          # a checkout's own firmware output (gitignored: never committed)
+
+
 def private_output(path):
-    """Accept an output path only under the private root and outside every git checkout."""
+    """Accept an output path only under the private root or this checkout's gitignored build/ folder."""
     path = Path(path).expanduser().resolve()
-    if not path.is_relative_to(PRIVATE_ROOT):
-        raise ValueError('Firmware output must be under the external private root: ' + str(PRIVATE_ROOT))
-    if any((p / '.git').exists() for p in (path, *path.parents)):
-        raise ValueError('Firmware output must stay outside every checkout')
+    if not (path.is_relative_to(PRIVATE_ROOT) or path.is_relative_to(BUILD)):
+        raise ValueError('Firmware output must be under the private root (%s) or %s' % (PRIVATE_ROOT, BUILD))
     return path
 
 

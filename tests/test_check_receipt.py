@@ -12,6 +12,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import pytest
+
 SPEC = importlib.util.spec_from_file_location('check_script', Path(__file__).resolve().parents[1] / 'scripts/check.py')
 C = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(C)
@@ -28,6 +30,7 @@ def fails(name='bad'):
     return C.step(name, [sys.executable, '-c', 'raise SystemExit(3)'], '.')
 
 
+@pytest.mark.gate
 class CheckReceiptTests(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -131,12 +134,12 @@ class CheckReceiptTests(unittest.TestCase):
 
     def test_confirm_prints_the_record(self):
         facts = C.step('facts', [sys.executable, '-c', 'pass'], '.', parse=lambda status, text: (True, dict(
-            tests=dict(run=12, skipped=1, failed=0, seconds=2.0),
+            tests=dict(fast=dict(passed=12, skipped=1)),
             candidate=dict(sha256='ab' * 32, bytes=1234, build='/private/builds/check-x'))))
         self.run_check(facts)
         status, text = self.confirm()
         self.assertEqual(status, 0)
-        self.assertIn('tests: 12 run, 1 skipped, 0 failed', text)
+        self.assertIn('fast tier: 12 passed, 1 skipped', text)
         self.assertIn('candidate: image abababab, sha256 ' + 'ab' * 32 + ', 1234 bytes', text)
 
     def test_merge_base_prefers_origin_main(self):
@@ -160,15 +163,15 @@ class CheckReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(C.CheckError, 'clients/ts/node_modules, which is missing: run `pnpm install`'):
             C.js_steps(args, self.root)
         (self.root / 'clients/ts/node_modules').mkdir()
-        self.assertEqual(C.js_steps(args, self.root), [])   # its tests run in the suite (NodeSuiteTest)
+        self.assertEqual([s['name'] for s in C.js_steps(args, self.root)], ['pnpm run typecheck (clients/ts)'])
         self.assertEqual(C.js_steps(C.argparse.Namespace(js=False), self.root), [])   # unchanged on main
         (self.root / 'web').mkdir()
         with self.assertRaisesRegex(C.CheckError, 'web/node_modules, which is missing: run `pnpm install`'):
             C.js_steps(args, self.root)
         (self.root / 'web/node_modules').mkdir()
         steps = C.js_steps(args, self.root)
-        self.assertEqual([s['name'] for s in steps], ['pnpm run typecheck (web)'])   # its tests: test_web.py
-        self.assertEqual([s['cmd'][1:] for s in steps], [['run', 'typecheck']])
+        self.assertEqual([s['name'] for s in steps], ['pnpm run typecheck (clients/ts)', 'pnpm run typecheck (web)'])
+        self.assertEqual([s['cmd'][1:] for s in steps], [['run', 'typecheck']] * 2)
         self.assertEqual(steps[-1]['cwd'], self.root / 'web')
 
     def test_web_steps_follow_web_and_clients(self):
@@ -180,12 +183,17 @@ class CheckReceiptTests(unittest.TestCase):
         self.commit('web/a.ts', 'web only')
         self.assertEqual(names(), ['pnpm run typecheck (web)'])
         self.commit('clients/ts/a.ts', 'the client web uses')
-        self.assertEqual(names(), ['pnpm run typecheck (web)'])
+        self.assertEqual(names(), ['pnpm run typecheck (clients/ts)', 'pnpm run typecheck (web)'])
 
     def test_failing_web_step_fails_the_check(self):
         tsc = C.step('pnpm run typecheck (web)', [sys.executable, '-c', 'raise SystemExit(2)'], '.')
         results, _ = C.run_steps([ok(), tsc, ok('after')], self.log)
         self.assertEqual([(r['name'], r['result']) for r in results], [('ok', 'pass'), ('pnpm run typecheck (web)', 'fail')])
+
+    def test_budgets_name_the_step_and_the_total(self):
+        self.assertEqual(C.over_budget([dict(name='a', seconds=10.0), dict(name='b', seconds=12.0)]), [])
+        self.assertEqual(C.over_budget([dict(name='a', seconds=16.0), dict(name='b', seconds=15.0)]),
+                         ['a took 16.0 s: over the 15 s a step', 'the check took 31.0 s: over 30 s'])
 
     def test_verify_parser(self):
         with tempfile.TemporaryDirectory() as tmp:

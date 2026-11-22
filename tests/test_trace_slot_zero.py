@@ -5,6 +5,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 from test_trace_slot import data_record, image
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild  # noqa: E402
 
 
+@pytest.mark.gate
 class TraceSlotZeroTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

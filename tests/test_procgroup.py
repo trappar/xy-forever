@@ -18,11 +18,15 @@ import time
 import unittest
 import uuid
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / 'tests'))
 from xy_forever import paths, procgroup, sim  # noqa: E402
-from test_ts_client import CLIENT, NODE, SIM_UNAVAILABLE, node_strips_types  # noqa: E402
+
+CLIENT = ROOT / 'clients' / 'ts'
+NODE = shutil.which('node')
+SIM_UNAVAILABLE = sim.available() or (None if sim.STOCK_OS.is_file() else 'private stock 1.2.1 os.ldr absent')
 
 # A child that starts a grandchild naming the marker (argv[1]), then waits: run() must end both.
 TREE = ('import subprocess, sys, time; subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)", '
@@ -46,20 +50,25 @@ def running(marker):
 def gone(marker, within):
     deadline = time.monotonic() + within
     while running(marker) and time.monotonic() < deadline:
-        time.sleep(0.1)
+        time.sleep(0.05)
     return running(marker)
 
 
+@pytest.mark.gate
 class RunTest(unittest.TestCase):
     def setUp(self):
         self.marker = 'xyf-procgroup-%s' % uuid.uuid4().hex
         self.addCleanup(subprocess.run, ['pkill', '-KILL', '-f', self.marker])
 
     def test_timeout_ends_the_whole_group(self):
-        start = time.monotonic()
-        with self.assertRaises(subprocess.TimeoutExpired) as caught:
-            procgroup.run([sys.executable, '-c', TREE, self.marker, 'wait'], capture_output=True, text=True, timeout=2)
-        self.assertLess(time.monotonic() - start, 30)
+        for timeout in (0.05, 0.2, 1.0, 5.0):          # longer only when the tree was not up yet (a busy machine)
+            start = time.monotonic()
+            with self.assertRaises(subprocess.TimeoutExpired) as caught:
+                procgroup.run([sys.executable, '-c', TREE, self.marker, 'wait'], capture_output=True, text=True,
+                              timeout=timeout)
+            self.assertLess(time.monotonic() - start, timeout + 25)
+            if 'up' in (caught.exception.stdout or ''):
+                break
         self.assertIn('up', caught.exception.stdout or '')
         self.assertEqual(gone(self.marker, 5), '')
 
@@ -70,7 +79,8 @@ class RunTest(unittest.TestCase):
         self.assertEqual(gone(self.marker, 5), '')
 
 
-@unittest.skipUnless(node_strips_types(), 'Node 22.18+/23.6+ not found')
+@pytest.mark.sim                                                 # starts the client suite's simulators
+@unittest.skipUnless(NODE, 'node not found (mise install)')   # mise's Node runs .ts files without flags
 @unittest.skipUnless((CLIENT / 'node_modules' / 'ws').exists(), 'clients/ts/node_modules absent (pnpm install)')
 @unittest.skipIf(SIM_UNAVAILABLE, SIM_UNAVAILABLE)
 class SuiteSimulatorTest(unittest.TestCase):

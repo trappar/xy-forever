@@ -3,7 +3,7 @@
 // loadIndex + fetchPackages give a PackageSource that localSet (what pushPackages reads first) accepts and
 // whose files are byte-identical to the generation folder; refusals for a changed archive, a traversing
 // path, an unlisted member, a compressed member, an unknown id and a bad format.
-// Run: node test/modindex.test.ts (Node 22.18+ strips the types). Needs python3; no device.
+// Run: node test/modindex.test.ts (Node 22.18+ strips the types). Needs uv (the repository's Python environment: the test modules import pytest); no device.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -42,7 +42,7 @@ function tree(dir: string): Map<string, Buffer> {
 const work = mkdtempSync(join(tmpdir(), 'xyf-modindex-'));
 let checks = 0;
 try {
-  const run = spawnSync('python3', ['-c', MAKE, work], { cwd: REPO, encoding: 'utf-8' });
+  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MAKE, work], { cwd: REPO, encoding: 'utf-8' });
   assert.equal(run.status, 0, run.stderr);
   const gen = run.stdout.trim();
   const served = join(work, 'served');

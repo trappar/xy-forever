@@ -13,6 +13,8 @@ import time
 import unittest
 import zlib
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import xyf_build                                    # noqa: E402
@@ -40,6 +42,7 @@ def reheader(data, offset, value):
     return bytes(head) + data[S2.HEADER_BYTES:]
 
 
+@pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
 class Stage2ServiceTest(unittest.TestCase):
     @classmethod

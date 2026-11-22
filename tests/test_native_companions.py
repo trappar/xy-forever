@@ -6,6 +6,8 @@ import random
 import tempfile
 import unittest
 
+import pytest
+
 from xy_forever import hostbuild
 from xy_forever.companions import (
     CyacdImage, CypressSession, NordicApplication, ble_start_packet,
@@ -29,6 +31,7 @@ def byte_buffer(data):
     return (BYTE * len(data)).from_buffer_copy(data)
 
 
+@pytest.mark.gate
 class NativeCompanionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -67,7 +70,7 @@ class NativeCompanionTests(unittest.TestCase):
 
     def output(self, method, *args, capacity=512):
         # Guard bytes are checked after every call, including rejected calls.
-        backing = (BYTE * (capacity + 32))(*([0xA5] * (capacity + 32)))
+        backing = (BYTE * (capacity + 32)).from_buffer_copy(b"\xA5" * (capacity + 32))
         out = ctypes.cast(ctypes.byref(backing, 16), PTR)
         count = U32(0xFFFFFFFF)
         status = method(*args, out, capacity, ctypes.byref(count))

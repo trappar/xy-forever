@@ -6,6 +6,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild  # noqa: E402
@@ -32,6 +34,7 @@ def data_record(address, data):
     return (4, address, len(data), 0, data)
 
 
+@pytest.mark.gate
 class TraceSlotTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

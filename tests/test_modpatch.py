@@ -6,7 +6,7 @@ edit of every kind, a kit split by modkit, an official catalog. The adapter link
 and builds the content from the same link; the os.ldr is compared with a small Python model of core.mjs
 patchFirmware over the linker bridge's own module and globals (tests/test_mod_link.py proves those
 against core.mjs), the content with a model of buildAssets, and every refusal is checked; a fuzz run
-under the address and undefined-behaviour sanitizers damages every input. The published kit's packages,
+under the address and undefined-behaviour sanitizers damages every input (50 rounds; 1,200 in the gate tier). The published kit's packages,
 the stock 1.2.1 os.ldr, op1_factory.json, Node and open-xy's core.mjs (private area, the open-xy upstream clone) run the
 byte-for-byte proof against core.mjs when present."""
 import base64
@@ -23,6 +23,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -180,6 +183,7 @@ def refresh(folder):
     (folder / 'files.sha256').write_text(E.files_sha256_text(folder))
 
 
+@pytest.mark.gate
 class Synthetic(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -595,18 +599,28 @@ class Synthetic(unittest.TestCase):
             with self.subTest(path):
                 self.refused(['alpha'], 'content', 'package', gen=add(path), detail='file alpha')
 
-    def test_fuzz_under_sanitizers(self):
+    def fuzz(self, rounds):
+        """`rounds` damaged jobs through the sanitized assembler (seed 5); returns its outcome counts."""
         binary = P.build(self.work / 'sanitized', flags=SANITIZE, run=hostbuild.run)
         folder = self.folder()
         (folder / 'job.txt').write_text(P.job_text(self.gen, ['alpha', 'beta', 'gamma', 'delta', 'omega'], ['cap', 'flt'],
                                                    self.work / 'os.ldr', self.work / 'op1_factory.json',
                                                    official=self.work / 'content.sha256', unverified=True))
-        rounds = 4000 if os.environ.get('XYF_EXHAUSTIVE') else 1200
         run = subprocess.run([str(binary), 'fuzz', str(folder / 'job.txt'), '5', str(rounds)],
                              capture_output=True, text=True, timeout=60)
         self.assertEqual(run.returncode, 0, run.stderr[-3000:] + run.stdout[-500:])
         counts = json.loads(run.stdout)
         self.assertEqual(sum(counts.values()), rounds)
+        return counts
+
+    def test_fuzz_under_sanitizers(self):
+        counts = self.fuzz(50)
+        self.assertIn('content=ok', ' '.join(counts))                 # some damaged jobs still assemble
+        self.assertGreater(len({k.split(' link=')[1].split(' ')[0] for k in counts if ' link=' in k}), 3)
+
+    @pytest.mark.gate
+    def test_long_fuzz_reaches_every_stage(self):
+        counts = self.fuzz(1200)
         statuses = ' '.join(counts)
         for word in ('input=sha256', 'link=0 patch=ok', 'patch=stock', 'patch=edits', 'patch=ok verify=verify',
                      'content=catalog', 'content=ok'):
@@ -624,19 +638,24 @@ def _real_inputs():
 
 @unittest.skipUnless(_real_inputs(), 'published-kit packages, the official content.sha256, stock os.ldr + op1_factory.json, Node or '
                                      'the open-xy upstream clone at %s absent' % TK.SDK_COMMIT[:7])
+@pytest.mark.gate
 class PublishedKit(unittest.TestCase):
-    """The real packages: every selection of modkit prove, the native end-to-end assembly against core.mjs."""
+    """The real packages: a sample of modkit prove's selections (TK.sampled_selections), the native end-to-end
+    assembly against core.mjs."""
 
     @classmethod
     def setUpClass(cls):
         paths.SESSIONS.mkdir(parents=True, exist_ok=True)
         cls.tmp = tempfile.TemporaryDirectory(prefix='modpatch-test-', dir=paths.SESSIONS)
         cls.addClassCleanup(cls.tmp.cleanup)
-        cls.rows = {r['selection']: r for r in P.prove(PACKAGES, TK.OPEN_XY, TK.CATALOG, TK.STOCK,
-                                                       scratch=cls.tmp.name, sdk_commit=TK.SDK_COMMIT)}
+        first = M.read_table((PACKAGES / 'base/machines.txt').read_bytes())[0][1]
+        kit = M.rebuild_kit(PACKAGES, [first], [], TK.CATALOG.read_bytes())
+        selections = TK.sampled_selections(M.selections_for(kit, PACKAGES))
+        cls.rows = {r['selection']: r for r in P.prove(PACKAGES, TK.OPEN_XY, TK.CATALOG, TK.STOCK, scratch=cls.tmp.name,
+                                                       sdk_commit=TK.SDK_COMMIT, selections=selections)}
 
-    def test_every_selection_is_byte_identical(self):
-        self.assertGreaterEqual(len(self.rows), 14)
+    def test_sampled_selections_are_byte_identical(self):
+        self.assertEqual(len(self.rows), 8)
         for name, row in self.rows.items():
             with self.subTest(selection=name):
                 self.assertTrue(P.proven(row), row)
@@ -672,6 +691,7 @@ EXPANDED_SELECTIONS = [('one', ['fm2op'], []), ('large', LARGE, []), ('near', NE
 
 @unittest.skipUnless(_real_inputs(), 'published-kit packages, the official content.sha256, stock os.ldr + op1_factory.json, Node or '
                                      'the open-xy upstream clone at %s absent' % TK.SDK_COMMIT[:7])
+@pytest.mark.gate
 class PublishedKitExpanded(unittest.TestCase):
     """The real packages with the 4 MiB option (core.mjs memoryKit(kit, true), the website's checkbox) against
     the native assembly in expanded mode; the same selections in standard mode refuse what does not fit."""

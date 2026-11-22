@@ -9,7 +9,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 ```sh
 cd xy-forever        # toolchain: ../tools/blackfin (or set XYF_TOOLCHAIN)
 python3 scripts/setup.py doctor   # stock pair + fixtures in place? (first: bootstrap, import-stock DIR)
-python3 scripts/check.py             # build, --verify, suite: the build lands in builds/<image> (receipt: its commit, tree)
+python3 scripts/check.py             # build, --verify, fast and gate tiers: the build lands in builds/<image>
 python3 scripts/check.py --confirm   # this commit's check receipt, with its image
 python3 xyf_build.py --xyf-product --out ../private/xy-forever/builds/repeat   # by hand: same candidate SHA
 python3 xyf_build.py --verify --out ../private/xy-forever/builds/repeat        # {"passed": true}
@@ -39,38 +39,40 @@ builds go to `../private/xy-forever/sessions/neutral/`.
 The device pass turns on no watchdog: there is none (protocol 1.14). `--plan` and simulator runs work
 offline. Every hardware qualification still needs the checks and approvals in [SAFETY.md](../SAFETY.md).
 
-## Checks and receipts
+## Checks
 
 ```sh
-python3 scripts/run_tests.py test_a test_b.SomeTests   # while iterating: the tests you touch (--times: slowest)
-python3 scripts/check.py                               # the end of every change, on its commit: a receipt
-python3 scripts/check.py --neutral                     # also scripts/neutral.py against main's merge base
-python3 scripts/check.py --confirm BRANCH              # seconds, no build: what the branch's receipt records
+mise run test                    # the fast tier (about 2 s): any time
+mise run test-changed            # after each change: the tests it affects, any tier (testmon)
+mise run test-one TARGET         # one file, class or test (tests/test_aes.py::NativeAesTests)
+mise run test-failed             # what failed last time
+mise run check                   # once per PR: the gate, under 30 s
+mise run test-all                # every tier, the simulator's included; CI runs it on every PR
 ```
 
-`scripts/check.py` runs once on a clean, committed tree: the product build into
-`../private/xy-forever/builds/check-<tree>` plus `--verify`, the exhaustive suite (`XYF_EXHAUSTIVE=1
-scripts/run_tests.py`, every test, never a subset; tests that use a build take only one made from this
-checkout's source, `paths.newest_verified_build`), `scripts/neutral.py` with `--neutral [REF]`, and
-`pnpm run typecheck` in `web` when `web` or `clients/ts` differs from the merge base with `origin/main` (else
-local `main`), or with `--js`. The `pnpm test` suites of both run once, inside the Python suite (`NodeSuiteTest`,
-`tests/test_web.py`, whenever `node_modules` is installed); when a folder differs (or with `--js`) the check
-requires its `node_modules` so they cannot skip. It stops first, naming `pnpm install`, when a needed
-`node_modules` is missing (`mise run doctor`: "js deps"). Tests use a temporary copy of the check's verified
-build so another checkout can publish the same image while the suite runs. Step output goes
-to a log in `../private/xy-forever/sessions/<date>-check/`; it prints a short summary. Only when every step
-passed and the tree was clean (`git status --porcelain` empty) at the start and the end does it write the
-receipt `../private/xy-forever/checks/<tree>.json`, keyed to `git rev-parse HEAD^{tree}`: each step's command,
-result and time, the test counts, the candidate SHA-256 and size, the build folder. A failed run leaves
-`<tree>.failed.json` instead and removes that tree's receipt.
+The suite runs under pytest (config: `pyproject.toml`; tiers, budgets and plugins: `tests/conftest.py`). Each
+test is in a tier: `fast` (the default), `gate` (slower: sanitizer builds, fuzzing, the published kit) or `sim`
+(today's paced-clock simulator tests; temporary until #233). Budgets are enforced: the fast tier 3 s and 0.3 s a
+test, the gate tier 15 s and 10 s a test; going over fails the run and names the test or tier (make it faster or
+move it a tier). Every test is bounded (`timeout`, `bounds.TEST_S`; `@bounds.slow`: `SLOW_S`): past it the run
+prints HUNG with every thread's traceback and its worker's process group ends. `test-changed` adds to testmon's
+Python tracking the C++ each test compiled (`hostbuild`'s `clang -M` record) and the files a test runs as a
+subprocess (`@pytest.mark.uses('scripts/x.py')`); its first run runs everything.
 
-`--confirm [REF]` (default `HEAD`) exits 0 only for a passing receipt of REF's tree, and prints it; otherwise
-it says what is missing: no receipt, a failed check, or a receipt for an older tree of the branch (rerun after
-a rebase or a merge onto a newer main). Others (the orchestrator, merging) run `--confirm <branch>` instead of
-rerunning, and rerun only when the receipt is missing or the tree changed. Host bridges and the simulator are
-cached per input hash in `../private/xy-forever/sessions/`, so a run after a source change is slower. A receipt never stands in for a device test.
+`mise run check` (`scripts/check.py`) is the PR gate on a clean, committed tree: the product build into
+`../private/xy-forever/builds/check-<tree>` plus `--verify`, `protogen --check`, `pnpm run typecheck` in
+`clients/ts` and `web` when they differ from the merge base with `origin/main` (or with `--js`; it stops first,
+naming `pnpm install`, when a needed `node_modules` is missing), then the fast and gate tiers with a temporary
+copy of the verified build. Budgets: 15 s a step, 30 s in all. Step output goes to a log in
+`../private/xy-forever/sessions/<date>-check/`. A passing run writes the receipt
+`../private/xy-forever/checks/<tree>.json` (`git rev-parse HEAD^{tree}`): a cache, so a rerun on the same tree
+stops at once (`--force` reruns); `--confirm [REF]` prints what it records. `mise run neutral [REF]`
+(opt-in) compares every build mode with REF and reuses the check's product build. CI (`.github/workflows/
+checks.yml`: every tier without private files, with open-xy's public toolchain; the web and client suites) is
+the merge check. Neither stands in for a device test. Firmware may also be built into the checkout's gitignored
+`build/` folder; TE bytes are never committed or uploaded.
 
-Tests never open a real device: `run_tests.py`, `check.py` and any process that loads `unittest` set
+Tests never open a real device: `tests/conftest.py`, `check.py` and any process that loads `unittest` set
 `XYF_NO_DEVICE` for themselves and every process they start, and with it every real-device opener (the serial
 port, USB MTP, pyusb; `xy_forever/no_device.py`) raises "tests may not open a real device" before it looks for
 one. There is no opt-out: a test fakes the opener, or uses the simulator (TCP) or a pty. The browser tests run

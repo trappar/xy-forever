@@ -7,12 +7,15 @@ import unittest
 import zlib
 import sys
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild  # noqa: E402
 from xy_forever.paths import STOCK_121
 
 
+@pytest.mark.gate
 class Crc32Test(unittest.TestCase):
     def test_matches_zlib_including_chaining(self):
         with tempfile.TemporaryDirectory(prefix='xyf-crc-') as tmp:
@@ -45,6 +48,7 @@ if __name__ == '__main__':
     unittest.main()
 
 
+@pytest.mark.gate
 class WordCrcAlignmentTest(unittest.TestCase):
     """Both CRCs read aligned input a word at a time: every start offset and length must agree with zlib."""
 

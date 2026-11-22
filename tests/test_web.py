@@ -1,10 +1,9 @@
-"""The web app in web/ (Vite + TypeScript, on clients/ts): its Vitest unit suite (`pnpm test` in web/)
-runs here when Node and web/node_modules (`pnpm install`) are present, else it is skipped with the
-reason. Of its e2e tests (`pnpm run test:e2e`, the system Chrome) only the Install page's run here
+"""The web app in web/ (Vite + TypeScript, on clients/ts). Its Vitest unit suite (`pnpm test` in web/) is
+not run here: `mise run web-test` and CI's web job run it. Of its e2e tests (`pnpm run test:e2e`, the system
+Chrome) only the Install page's run here, when Node and web/node_modules (`pnpm install`) are present
 (`e2e/install.e2e.ts`: fake te-boot MIDI and MTP devices, no simulator; `e2e/install-sim.e2e.ts`: the install's end
 against the device simulator through the fake Web Serial port; each skips itself without Chrome or the simulator).
-A JS suite passes on its exit code. XYF_JS_SUITES_ELSEWHERE skips the `pnpm test` wrapper (CI's web job runs it)."""
-import os
+The e2e suite passes on its exit code; the build output stays out of git."""
 from pathlib import Path
 import re
 import shutil
@@ -12,26 +11,16 @@ import subprocess
 import sys
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / 'web'
 sys.path.insert(0, str(ROOT))
 from xy_forever import bounds, procgroup  # noqa: E402
 
 
+@pytest.mark.sim
 class WebAppTest(unittest.TestCase):
-    @unittest.skipIf(os.environ.get('XYF_JS_SUITES_ELSEWHERE'), 'XYF_JS_SUITES_ELSEWHERE: run in the web job')
-    def test_pnpm_test(self):
-        pnpm = shutil.which('pnpm')
-        if not shutil.which('node') or not pnpm:
-            self.skipTest('Node or pnpm not found')
-        if not (WEB / 'node_modules' / '.bin' / 'playwright').exists():
-            self.skipTest('web/node_modules absent: run pnpm install to include the web app suite (pnpm test)')
-        try:
-            run = procgroup.run([pnpm, 'test'], cwd=WEB, capture_output=True, text=True, timeout=120)
-        except subprocess.TimeoutExpired as e:
-            self.fail('pnpm test in web/ took over 120 s: %s' % (e.stdout or b'')[-2000:])
-        self.assertEqual(run.returncode, 0, (run.stdout + run.stderr)[-6000:])   # the exit code is the verdict
-
     @bounds.slow                                    # #233: needs longer under the paced clock
     def test_install_page_in_chrome(self):
         pnpm = shutil.which('pnpm')

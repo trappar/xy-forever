@@ -5,7 +5,9 @@ Modes: --xyf-product (the product, boot model v3) and the offline-only
 --xyf-stage2 and --xyf-stage2-menu builds that the product will absorb.
 """
 import argparse
+import concurrent.futures
 import json
+import os
 import re
 import struct
 import zlib
@@ -982,14 +984,33 @@ def build(out, stock, boot, mode):
         # functions of the XY Forever modules.
         if mode in GC_MODES and name in GC_MODULES:
             sections = ['-ffunction-sections', '-fdata-sections']
-        invoke([compiler['cxx'], *flags, *sections, *defines, '-I', SOURCE / 'target', '-S', path,
-                '-o', out / (name + '.s')], commands)
-        invoke([tools['as'], '-mcpu=bf707', '-o', out / (name + '.o'), out / (name + '.s')], commands)
+        submit([compiler['cxx'], *flags, *sections, *defines, '-I', SOURCE / 'target', '-S', path,
+                '-o', out / (name + '.s')],
+               [tools['as'], '-mcpu=bf707', '-o', out / (name + '.o'), out / (name + '.s')])
 
     def assembly(name, path):
-        invoke([tools['as'], '-mcpu=bf707', '-o', out / (name + '.o'), path], commands)
+        submit([tools['as'], '-mcpu=bf707', '-o', out / (name + '.o'), path])
+
+    # The compiles run side by side (commands.json keeps their order); every link first waits for them all.
+    # A file compiled again (other defines) first waits for the earlier compile of it.
+    pool, pending, outputs = concurrent.futures.ThreadPoolExecutor(os.cpu_count() or 4), [], set()
+
+    def submit(*argvs):
+        made = {str(argv[argv.index('-o') + 1]) for argv in argvs}
+        if made & outputs:
+            compiled()
+        outputs.update(made)
+        for argv in argvs:
+            commands.append(list(map(str, argv)))
+        pending.append(pool.submit(lambda: [invoke(argv, []) for argv in argvs]))
+
+    def compiled():
+        while pending:
+            pending.pop(0).result()                  # the first failure raises here
+        outputs.clear()
 
     def link(stem, base, limit, entry, names, audited=False):
+        compiled()
         # audited (standalone stage 2): bracket the merged strings, then relink with -q (stage2_audit.py).
         literals = '%s = .; *(.rodata*.str1.*) %s = .; ' % S2_LITERALS if audited else ''
         script = out / (stem + '.ld')
@@ -1173,11 +1194,13 @@ def build(out, stock, boot, mode):
     hook_source = out / 'hook.s'
     hook_source.write_text('.text\n.short 0\n.global probe_hook\nprobe_hook:\n JUMP.L probe_reporter;\n')
     assembly('hook', hook_source)
+    compiled()
     invoke([tools['ld'], '-Ttext', hex(HOOK - 2), '-e', 'probe_hook', '--defsym=probe_reporter=' + hex(REPORTER),
             '-o', out / 'hook.elf', out / 'hook.o'], commands)
     invoke([tools['objcopy'], '-O', 'binary', out / 'hook.elf', out / 'hook.bin'], commands)
     require((out / 'hook.bin').read_bytes() == b'\0\0' + branch(HOOK, REPORTER) + b'\0\0',
             'Independent branch encoding differs')
+    pool.shutdown()
     require(source_hashes() == hashes, 'Sources changed during build')
     (out / 'commands.json').write_text(json.dumps(commands, indent=2) + '\n')
     artifacts = {p.name: sha(p.read_bytes()) for p in out.iterdir() if p.is_file()}

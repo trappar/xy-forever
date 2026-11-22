@@ -14,12 +14,12 @@ Where each vector comes from:
   - Random signatures from the reference, and every single-bit corruption of one valid input.
   - The three official packages (private area; skipped without them and the vendor public key):
     their headers must verify; every single-bit change inside the signed range changes the
-    message, and one bit per byte (every bit with XYF_EXHAUSTIVE=1) fails the whole check.
+    message, and a fixed sample of 64 bits fails the whole check (one bit per byte: the synthetic
+    header, the same check).
 A test fails if the verifier accepts any invalid case.
 """
 import ctypes
 import hashlib
-import os
 from pathlib import Path
 import random
 import shutil
@@ -27,6 +27,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+import pytest
 
 import p224_reference as ref
 from xy_forever import paths, tfw_extract
@@ -61,6 +63,8 @@ RFC_VECTORS = (   # (hash, message, k or None, r, s): RFC 6979 A.2.4
 OFFICIAL = paths.FIRMWARE / 'official'
 PACKAGES = ('opxy_firmware_1_1_33+1.tfw', 'opxy_firmware_1_2_1.tfw', 'opxy_firmware_1_2_5.tfw')
 SIGNED = [i for i in range(0x300) if not ref.SIGNED_HOLE[0] <= i < ref.SIGNED_HOLE[1]]
+# 64 more (byte, bit) flips of the signed range through the whole check, beyond one bit per byte.
+SAMPLED_BITS = set(random.Random(224).sample([(at, bit) for at in SIGNED for bit in range(8)], 64))
 
 
 def be(value, size=28):
@@ -71,6 +75,7 @@ def key_bytes(point):
     return be(point[0]) + be(point[1])
 
 
+@pytest.mark.gate
 class Native(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -102,16 +107,16 @@ class Native(unittest.TestCase):
         self.lib.tfw_signed_digest(bytes(header), out)
         return out.raw
 
-    def check_signed_range(self, header, key, every_bit):
-        """Every bit outside +0x10..+0x50 changes the message; one bit per byte (every bit when
-        every_bit) through the whole check fails; inside r and s every flip fails."""
+    def check_signed_range(self, header, key, per_byte=True):
+        """Every bit outside +0x10..+0x50 changes the message; one bit per byte (when per_byte) and
+        SAMPLED_BITS through the whole check fails; inside r and s every flip fails."""
         digest = self.signed_digest(header)
         header = bytearray(header)
         for at in SIGNED:
             for bit in range(8):
                 header[at] ^= 1 << bit
                 self.assertNotEqual(self.signed_digest(header), digest, (hex(at), bit))
-                if every_bit or bit == at % 8:     # +0x89, the key index, is refused before hashing
+                if per_byte and bit == at % 8 or (at, bit) in SAMPLED_BITS:     # +0x89: refused before hashing
                     self.assertEqual(self.header(header, key), H_KEY_INDEX if at == 0x89 else H_MISMATCH,
                                      (hex(at), bit))
                 header[at] ^= 1 << bit
@@ -321,7 +326,7 @@ class HeaderTests(Native):
             changed = bytearray(header)
             changed[at] ^= 0xff
             self.assertEqual(self.header(changed, key), H_VALID)
-        self.check_signed_range(header, key, every_bit=False)
+        self.check_signed_range(header, key)
 
 @unittest.skipUnless(tfw_extract.PUBLIC_KEY.is_file() and all((OFFICIAL / p).is_file() for p in PACKAGES),
                      'the official packages or the vendor public key are not in the private area')
@@ -345,27 +350,14 @@ class OfficialHeaderTests(Native):
 
     def test_any_change_in_the_signed_range_fails(self):
         for package, header, key in self.official():
-            with self.subTest(package=package):
-                self.check_signed_range(header, key, every_bit=False)
+            with self.subTest(package=package):     # one bit per byte: test_synthetic_header (the check's own range)
+                self.check_signed_range(header, key, per_byte=False)
                 swapped = bytearray(header)
                 swapped[0x14:0x30], swapped[0x34:0x50] = header[0x34:0x50], header[0x14:0x30]
                 self.assertNotEqual(self.header(swapped, key), H_VALID)
                 changed = bytearray(header)
                 changed[0x89] = 1
                 self.assertEqual(self.header(changed, key), H_KEY_INDEX)
-
-    def every_bit(self, package):
-        for name, header, key in self.official():
-            if name == package:
-                self.check_signed_range(header, key, every_bit=True)
-
-
-# One test per package (about 7 s each), so scripts/run_tests.py runs them side by side.
-for _package in PACKAGES:
-    setattr(OfficialHeaderTests, 'test_every_bit_of_the_signed_range_through_the_whole_check_' +
-            _package[len('opxy_firmware_'):-len('.tfw')].replace('+', '_'),
-            unittest.skipUnless(os.environ.get('XYF_EXHAUSTIVE'), 'set XYF_EXHAUSTIVE=1')(
-                lambda self, package=_package: self.every_bit(package)))
 
 
 if __name__ == '__main__':

@@ -12,6 +12,8 @@ import tempfile
 import unittest
 import zipfile
 
+import pytest
+
 from xy_forever import hostbuild, paths, tfw_extract
 from xy_forever.xyf_entry import firmware_document
 
@@ -37,6 +39,7 @@ def available():
                                               for p, z, r, _ in PACKAGES)
 
 
+@pytest.mark.gate
 @unittest.skipUnless(available(), 'official packages, references or the .tfw key are not in the private area')
 class OfficialPackageTests(unittest.TestCase):
     @classmethod
@@ -90,6 +93,7 @@ class OfficialPackageTests(unittest.TestCase):
 
 @unittest.skipUnless(available() and tfw_extract.PUBLIC_KEY.is_file(),
                      'official packages, the .tfw key or the vendor public key are not in the private area')
+@pytest.mark.gate
 class OfficialSignatureTests(unittest.TestCase):
     """The ciphertext is bound through the signed header hash; header-only
     signature cases are in test_p224.py."""

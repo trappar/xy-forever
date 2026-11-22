@@ -1,7 +1,6 @@
 // Vitest global setup: starts the device simulators the spec files use and stops them after the
 // run. Each is `python3 -m xy_forever.sim --port N --state DIR` (the repository's own simulator,
 // built from target/), one per spec file so that files can run in parallel:
-//   conformance  XYF_TS_SIM_PORT + 0   every case of protocol/v1.conformance.json
 //   pre-v1       XYF_TS_SIM_PORT + 2   the pre-v1 hello (--pre-v1)
 //   e2e          XYF_TS_SIM_PORT + 4   end-to-end and fault tests
 //   ws           XYF_TS_SIM_PORT + 6   the WebSocket transport through the relay (websocket.spec.ts)
@@ -32,7 +31,6 @@ export interface SimInfo {
 }
 export interface Sims {
   why: string | null;
-  conformance: SimInfo | null;
   preV1: SimInfo | null;
   e2e: SimInfo | null;
   ws: SimInfo | null;
@@ -140,7 +138,7 @@ print(M.split_kit(out / 'kit.json', out / 'packages', finish=finish, sdk_source=
  * kit) written under out (which must not hold one yet); returns its generation folder.
  */
 export function makeModSet(out: string): string {
-  const run = spawnSync('python3', ['-c', MOD_SET, out], { cwd: REPO, encoding: 'utf-8' });
+  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MOD_SET, out], { cwd: REPO, encoding: 'utf-8' });
   if (run.status !== 0) throw new Error(`the synthetic mod package set: ${run.stderr.trim()}`);
   return run.stdout.trim();
 }
@@ -175,7 +173,7 @@ for path, blob in body.items():
  * not a known one: apply it with unverified.
  */
 export function makeModBase(root: string, base: string): void {
-  const run = spawnSync('python3', ['-c', MOD_BASE, root, base], { cwd: REPO, encoding: 'utf-8' });
+  const run = spawnSync('uv', ['run', '--quiet', 'python', '-c', MOD_BASE, root, base], { cwd: REPO, encoding: 'utf-8' });
   if (run.status !== 0) throw new Error(`the synthetic mod base: ${run.stderr.trim()}`);
 }
 
@@ -222,13 +220,13 @@ export async function startAll(state: string, base: number, plan: readonly (read
 
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
   const found = findSimulator();
-  const sims: Sims = { why: found.why, conformance: null, preV1: null, e2e: null, ws: null, files: null, mods: null, fixtures: found.fixtures };
+  const sims: Sims = { why: found.why, preV1: null, e2e: null, ws: null, files: null, mods: null, fixtures: found.fixtures };
   const state = found.sessions ? process.env['XYF_TS_SIM_STATE'] ?? join(found.sessions, 'ts-client') : null;
   let stopAll = async (): Promise<void> => undefined;
   if (!sims.why && state) {
     const base = parseInt(process.env['XYF_TS_SIM_PORT'] ?? '7700', 10);
     try {
-      const started = await startAll(state, base, [['conformance', 0, []], ['preV1', 2, ['--pre-v1']], ['e2e', 4, []], ['ws', 6, []], ['files', 8, []], ['mods', 20, []]]);
+      const started = await startAll(state, base, [['preV1', 2, ['--pre-v1']], ['e2e', 4, []], ['ws', 6, []], ['files', 8, []], ['mods', 20, []]]);
       Object.assign(sims, started.infos);
       stopAll = started.stopAll;
     } catch (error) {

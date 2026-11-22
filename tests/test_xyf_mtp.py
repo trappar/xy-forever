@@ -8,6 +8,8 @@ import tempfile
 import unittest
 import zlib
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever.source_text import unit_text  # noqa: E402
@@ -17,6 +19,7 @@ from xyf_build import (A_MARKER_CALLS, FORBIDDEN_TARGETS, MTP_CALLS, SERVER_CALL
 from xy_forever.paths import STOCK_121
 
 
+@pytest.mark.gate
 class MtpTest(unittest.TestCase):
     """The engine's run entry (097's storage self-test; historically "MTP mode"): the read-write
     window, the serve hook, the stock calls and spans. The decisions: tests/test_file_engine.py."""

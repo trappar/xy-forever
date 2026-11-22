@@ -3,18 +3,21 @@
 Synthetic kits made here from scratch run in the standard suite: package layout, the device's
 manifest and files.sha256 readers (tests/test_xyf_manifest.py's bridge), edits.bin, the rebuilt
 kit and every refusal. The real published kit, stock os.ldr and op1_factory.json (private area)
-and open-xy's core.mjs (the open-xy upstream clone at the kit's SDK commit) run the byte-for-byte proof when
-present and skip otherwise."""
+and open-xy's core.mjs (the open-xy upstream clone at the kit's SDK commit) run the byte-for-byte proof on a
+fixed sample of selections when present and skip otherwise (`modkit prove` runs every selection)."""
 import base64
 import copy
 import hashlib
 import json
 from pathlib import Path
+import random
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -30,6 +33,18 @@ CATALOG = paths.CATALOG_121
 TEMPLATE = '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="220"><rect/></svg>'
 CATALOG_BYTES = b'{"engine_types": [], "fx_types": [], "seq_types": []}\n'
 GLOBAL, FUNC, OBJ = 1, 2, 1
+# The published-kit proofs (here, tests/test_mod_link.py, tests/test_modpatch.py) check a sample of modkit prove's
+# selections: the ones their tests name, then a seeded pick of the rest.
+NAMED_SELECTIONS = ('one', 'linked', 'all', 'one+capture', 'one+master_dj_filter', 'one+all-extensions')
+
+
+def sampled_selections(selections, count=8, seed=232):
+    """`count` of the (name, machines, extensions) selections, in their order: NAMED_SELECTIONS and the
+    largest fitting set ('fits<n>'), then a seeded random pick of the others."""
+    named = [s for s in selections if s[0] in NAMED_SELECTIONS or s[0].startswith('fits')]
+    rest = [s for s in selections if s not in named]
+    picked = named + random.Random(seed).sample(rest, max(0, min(len(rest), count - len(named))))
+    return [s for s in selections if s in picked]
 
 
 def obj(exports=(), imports=(), text=b'\0\0\0\0', data=b'', bss=0, absolute=()):
@@ -133,6 +148,7 @@ def legacy_record(folder):
     return old
 
 
+@pytest.mark.gate
 class Synthetic(unittest.TestCase):
     parse, outcome, listing = TM.ManifestTest.parse, TM.ManifestTest.outcome, TM.ManifestTest.listing
 
@@ -391,8 +407,9 @@ class Synthetic(unittest.TestCase):
                          ['git', '-C', str(OPEN_XY), 'cat-file', '-e', SDK_COMMIT + '^{commit}'],
                          capture_output=True).returncode == 0,
                      'published kit, stock os.ldr + op1_factory.json, Node or the open-xy upstream clone at %s absent' % SDK_COMMIT[:7])
+@pytest.mark.gate
 class PublishedKit(unittest.TestCase):
-    """The real kit: split, then every selection linked by core.mjs from the kit and from the packages."""
+    """The real kit: split, then a sample of the selections linked by core.mjs from the kit and from the packages."""
 
     @classmethod
     def setUpClass(cls):
@@ -401,10 +418,19 @@ class PublishedKit(unittest.TestCase):
         cls.addClassCleanup(cls.tmp.cleanup)
         work = Path(cls.tmp.name)
         cls.report = M.split_kit(REAL_KIT, work / 'out', OPEN_XY, sdk_commit=SDK_COMMIT)
+        selections = sampled_selections(M.selections_for(M.load_kit(REAL_KIT), cls.report['root']))
         cls.rows = {r['selection']: r for r in M.prove(REAL_KIT, cls.report['root'], OPEN_XY, CATALOG, STOCK,
-                                                       scratch=work, sdk_commit=SDK_COMMIT)}
+                                                       scratch=work, selections=selections, sdk_commit=SDK_COMMIT)}
 
-    def test_every_selection_is_byte_identical(self):
+    def test_published_kit(self):
+        """One test, so no scheduler splits the class and repeats its setup (about 4 s)."""
+        for check in (self.sampled_selections_are_byte_identical, self.extension_memory_matches_record_014,
+                      self.package_set):
+            with self.subTest(check.__name__):
+                check()
+
+    def sampled_selections_are_byte_identical(self):
+        self.assertEqual(len(self.rows), 8)
         for name, row in self.rows.items():
             with self.subTest(selection=name):
                 self.assertTrue(row['identical'], row)
@@ -414,13 +440,13 @@ class PublishedKit(unittest.TestCase):
                     self.assertIsNone(row['error'])
                     self.assertTrue(row['ldr'] and row['content_matches_packages'], row)
 
-    def test_extension_memory_matches_record_014(self):
+    def extension_memory_matches_record_014(self):
         allocated = {name: self.rows[name]['allocated'] for name in
                      ('one', 'one+capture', 'one+master_dj_filter', 'one+all-extensions')}
         self.assertEqual(allocated, {'one': 148120, 'one+capture': 161440, 'one+master_dj_filter': 194484,
                                      'one+all-extensions': 202584})
 
-    def test_package_set(self):
+    def package_set(self):
         packages = self.report['packages']
         self.assertEqual(len(packages), 1 + 79 + 2)
         self.assertEqual((packages['fm2op']['code'], packages['fm2op']['data'], packages['fm2op']['state']),

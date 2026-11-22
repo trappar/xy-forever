@@ -13,6 +13,8 @@ import struct
 import tempfile
 import unittest
 
+import pytest
+
 from xy_forever import hostbuild, paths
 from xy_forever.companions import (
     BLE_DELAY, BLE_EXCHANGE, BLE_LISTEN, BLE_PHASES, BLE_WRITE, BleSession, CompanionError,
@@ -171,7 +173,7 @@ class Native:
     application_valid = property(lambda self: bool(self.lib.ble_session_valid(self.storage)))
 
     def request(self, capacity=249):
-        backing = (BYTE * (capacity + 32))(*([0xA5] * (capacity + 32)))
+        backing = (BYTE * (capacity + 32)).from_buffer_copy(b"\xA5" * (capacity + 32))
         output = ctypes.cast(ctypes.byref(backing, 16), PTR)
         produced, info = U32(123), Request()
         status = self.lib.ble_session_request(self.storage, output, capacity, ctypes.byref(produced),
@@ -237,6 +239,7 @@ def drive(session, chip, cut=None):
     return requests, session.phase
 
 
+@pytest.mark.gate
 class BleSessionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

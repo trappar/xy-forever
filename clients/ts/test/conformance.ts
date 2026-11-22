@@ -2,7 +2,7 @@
 // codecs (src/v1.ts) through the call layer's link (src/link.ts) and TCP transport (src/tcp.ts)
 // against the device simulator. Same data and meaning as the Python
 // runner (xy_forever/conformance.py, scripts/conformance.py); validation and coverage live there.
-// test/conformance.spec.ts runs it under Vitest; this file also runs alone under Node.
+// test/pre-v1.spec.ts runs its pre-v1 cases under Vitest; this file also runs alone under Node.
 //
 //   node test/conformance.ts --check                  interpret every case (no simulator)
 //   node test/conformance.ts --sim 127.0.0.1:7341     run every case against a running simulator

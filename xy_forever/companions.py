@@ -6,6 +6,7 @@ The Cypress (backplane) details come from the 1.2.5 listings; the Bluetooth
 update session follows the 1.2.1 Nordic bootloader (native/ble_session.hpp).
 """
 
+import binascii
 from dataclasses import dataclass
 from hashlib import sha256
 import re
@@ -215,12 +216,7 @@ def crc16_ccitt(data: bytes, initial: int = 0) -> int:
     """Stock BLE transfer CRC: polynomial 0x1021, unreflected, no final XOR."""
     if not 0 <= initial <= 0xFFFF:
         raise CompanionError("CRC initial value must fit 16 bits")
-    crc = initial
-    for byte in data:
-        crc ^= byte << 8
-        for _ in range(8):
-            crc = ((crc << 1) ^ (0x1021 if crc & 0x8000 else 0)) & 0xFFFF
-    return crc
+    return binascii.crc_hqx(data, initial)        # the same CRC (CRC-CCITT, given initial value), in C
 
 
 @dataclass(frozen=True)

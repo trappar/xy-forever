@@ -7,6 +7,8 @@ import time
 import unittest
 import zlib
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'tests')]
 import test_simulator as T
@@ -19,6 +21,7 @@ def envelope(op, token=100, offset=0, count=0, crc=0, kind=0, data=b'', version=
     return struct.pack('<8I', MAGIC, version, op, token, offset, count, crc, kind) + data
 
 
+@pytest.mark.sim
 @unittest.skipIf(T.UNAVAILABLE, T.UNAVAILABLE)
 class AStagingTests(unittest.TestCase):
     setUpClass = classmethod(T.SimulatorTest.setUpClass.__func__)

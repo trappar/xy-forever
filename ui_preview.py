@@ -26,16 +26,16 @@ def framebuffer(lib):
     return (C.c_uint16 * lib.ui_framebuffer_halfwords())()
 
 
+def rgb888(v):
+    return bytes(((v >> 11 & 31) * 255 // 31, (v >> 5 & 63) * 255 // 63, (v & 31) * 255 // 31))
+
+
 def pixels(fb):
     """Device layout -> rows of RGB888 (x left to right, y top to bottom)."""
-    rows = []
-    for y in range(HEIGHT):
-        row = bytearray()
-        for x in range(WIDTH):
-            v = fb[(WIDTH - 1 - x) * STRIDE + y]
-            row += bytes(((v >> 11 & 31) * 255 // 31, (v >> 5 & 63) * 255 // 63, (v & 31) * 255 // 31))
-        rows.append(bytes(row))
-    return rows
+    halves = fb[:WIDTH * STRIDE]
+    colour = {v: rgb888(v) for v in set(halves)}        # a screen has few colours: each converted once
+    last = (WIDTH - 1) * STRIDE                         # x = 0 is the device's last column
+    return [b''.join(map(colour.__getitem__, halves[last + y::-STRIDE])) for y in range(HEIGHT)]
 
 
 def png(path, rows, scale=2):

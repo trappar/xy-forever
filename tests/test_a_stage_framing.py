@@ -5,9 +5,12 @@ import subprocess
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.gate
 class Framing(unittest.TestCase):
     def test_stock_request_layout_and_malformed_quarantine(self):
         compiler = shutil.which('clang++') or shutil.which('g++')

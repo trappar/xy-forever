@@ -12,7 +12,7 @@ The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
   script prints a PASS/FAIL table and the folder. On FAIL the orchestrator gives a
   research agent the folder, not the log text. A probe it needs is a new script.
 - **Simulator first, batched.** A device item starts only after its code passes the simulator and
-  has a check receipt (`scripts/check.py --confirm`). Ready `kind:device` items wait for a sitting and run together.
+  passed `mise run check` and CI. Ready `kind:device` items wait for a sitting and run together.
 - **`safe` items** run only main-loop code with timeouts. **`risky` items** add
   interrupt code, a new stock call, or new reset behaviour, and run last in a
   sitting, with the developer present.

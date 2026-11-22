@@ -8,6 +8,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import hostbuild  # noqa: E402
@@ -32,6 +34,7 @@ def container(payload,*,short=False,index=0,filename=b'firmware.zip',sku=0x84001
     header[base+0x9c:base+0xbc]=hashlib.sha256(cipher).digest()
     return bytes(header)+cipher
 
+@pytest.mark.gate
 class NativeTfwTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

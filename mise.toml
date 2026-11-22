@@ -21,7 +21,7 @@ MISE_IGNORED_CONFIG_PATHS = "{{ env.HOME }}/.config/mise"
 UV_PYTHON_DOWNLOADS = "never"   # uv uses the Python pinned above, never a download of its own
 
 [tasks.setup]
-description = "Set up this workspace: tools, Python and JS dependencies, private folder, toolchain, fixtures"
+description = "Set up tools, dependencies, private folder, toolchain, fixtures"
 usage = '''
 flag "--dry-run" help="print every action without doing it"
 flag "--workspace <dir>" help="the folder that holds this clone, private/ and tools/"
@@ -34,48 +34,78 @@ python scripts/setup.py bootstrap {% if usage.dry_run %}--dry-run{% endif %} \
 '''
 
 [tasks.doctor]
-description = "What is set up, what is missing, which tests will skip"
+description = "What is set up and which tests will skip"
 run = "uv run scripts/setup.py doctor"
 
+# The suite (pytest; tiers and budgets: tests/conftest.py). Arguments pass through to pytest.
 [tasks.test]
-description = "Unit tests in parallel (names: only those modules or tests; flags pass to run_tests.py)"
-usage = 'arg "[args]..." help="test modules or ids, and run_tests.py flags (--jobs N, --times)" var=#true'
-run = 'uv run scripts/run_tests.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+description = "Fast tier of the suite (about 2 s)"
+usage = 'arg "[args]..." help="pytest arguments (files, -k EXPR, -x, ...)" var=#true'
+run = 'uv run pytest -n 6 --dist worksteal -m fast {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+
+[tasks.test-changed]
+description = "Tests affected by your changes, any tier (testmon: Python, C++, scripts)"
+usage = 'arg "[args]..." help="pytest arguments" var=#true'
+run = 'uv run pytest -n 6 --dist worksteal --testmon {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+
+[tasks.test-failed]
+description = "Rerun the tests that failed last time"
+usage = 'arg "[args]..." help="pytest arguments" var=#true'
+run = 'uv run pytest -n 6 --dist worksteal --lf {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.test-one]
-description = "One test module, class or test, in this process (e.g. test_aes.NativeAesTests)"
-usage = 'arg "<target>" help="a test module, class or test id under tests/"'
-run = 'uv run scripts/run_tests.py --jobs 1 {{ usage.target | quote }}'
+description = "One test file, class or test, any tier, in one process"
+usage = 'arg "<target>" help="e.g. tests/test_aes.py or tests/test_aes.py::NativeAesTests::test_x"'
+run = 'uv run pytest -p no:xdist {{ usage.target | quote }}'
+
+[tasks.test-watch]
+description = "Rerun affected tests on every save"
+run = 'uv run ptw --now . -n 6 --dist worksteal --testmon'
+
+[tasks.test-all]
+description = "Every tier, simulator included (about 1 min)"
+usage = 'arg "[args]..." help="pytest arguments" var=#true'
+run = 'uv run pytest -n 12 --dist worksteal {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+
+[tasks.test-slow]
+description = "Every tier with the slowest tests listed"
+usage = 'arg "[args]..." help="pytest arguments (-m fast: one tier)" var=#true'
+run = 'uv run pytest -n 12 --dist worksteal --durations=25 {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.check]
-description = "End of every change: product build, verify, exhaustive suite; leaves a receipt"
-usage = 'arg "[args]..." help="check.py flags (--neutral [REF], --npm, --confirm [REF], --jobs N)" var=#true'
+description = "PR gate: build, verify, type checks, fast and gate tiers (under 30 s)"
+usage = 'arg "[args]..." help="check.py flags (--js, --force, --confirm [REF])" var=#true'
 run = 'uv run scripts/check.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
+[tasks.neutral]
+description = "Same firmware as a ref? (reuses the check's product build)"
+usage = 'arg "[ref]" help="the git ref to compare with" default="HEAD"'
+run = 'uv run scripts/neutral.py {{ usage.ref | quote }}'
+
 [tasks.build]
-description = "The product build into ../private/xy-forever/builds/current"
+description = "Product firmware build (../private/xy-forever/builds/current)"
 run = "uv run xyf_build.py --xyf-product --out ../private/xy-forever/builds/current"
 
 [tasks.verify]
-description = "Verify the build in ../private/xy-forever/builds/current"
+description = "Verify the current product build"
 run = "uv run xyf_build.py --verify --out ../private/xy-forever/builds/current"
 
 [tasks.sim]
-description = "The device simulator on 127.0.0.1:7341 (xyf_host.py --sim, web ?sim=7341)"
+description = "Device simulator on 127.0.0.1:7341"
 run = "uv run -m xy_forever.sim"
 
 [tasks.conformance]
-description = "Protocol conformance suite against the simulator (start it with mise run sim)"
+description = "Protocol conformance cases against the simulator"
 usage = 'arg "[address]" help="the simulator HOST:PORT" default="127.0.0.1:7341"'
 run = 'uv run scripts/conformance.py --sim {{ usage.address | quote }}'
 
 [tasks.protogen]
-description = "Check that the generated protocol files match protocol/ (--write to regenerate)"
+description = "Check the generated protocol files (--write: regenerate)"
 usage = 'flag "--write" help="regenerate instead of checking"'
 run = 'uv run scripts/protogen.py {% if usage.write %}{% else %}--check{% endif %}'
 
 [tasks.web]
-description = "The web app on http://127.0.0.1:5173 (?sim=7341 for the simulator)"
+description = "Web app dev server on 127.0.0.1:5173"
 dir = "web"
 run = "pnpm run dev"
 
@@ -88,25 +118,24 @@ run = [
 ]
 
 [tasks.web-e2e]
-description = "The web app's e2e tests in the system Chrome, against the simulator"
+description = "Web app e2e tests (Chrome, simulator)"
 dir = "web"
 run = "pnpm run test:e2e"
 
 [tasks.plan]
-description = "The plan: next items and decisions waiting (--all: blocked, threads)"
+description = "Next plan items and decisions waiting (--all: more)"
 usage = 'arg "[args]..." help="plan.py arguments (--all, claim N --agent A, ...)" var=#true'
 run = 'uv run scripts/plan.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.preview]
-description = "Render the menu screens into ../private/xy-forever/previews"
+description = "Render the menu screens (../private/xy-forever/previews)"
 run = "uv run ui_preview.py"
 
 [tasks.clean]
-description = "Remove old sessions and builds under the private folder (dry run unless --yes)"
+description = "Remove old private sessions and builds (dry run; --yes)"
 usage = '''
 flag "--keep <n>" help="sessions and builds to keep, newest first" default="10"
 flag "--yes" help="delete; without it, only list what would go"
 '''
 run = 'uv run scripts/clean.py --keep {{ usage.keep }} {% if usage.yes %}--yes{% endif %}'
 
-# #232 adds test-changed and test-failed (pytest, testmon) here.

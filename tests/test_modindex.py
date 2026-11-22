@@ -17,6 +17,8 @@ import threading
 import unittest
 import zipfile
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
@@ -37,6 +39,7 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
         pass
 
 
+@pytest.mark.sim
 class Index(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

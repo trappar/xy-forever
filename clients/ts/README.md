@@ -14,13 +14,13 @@ simulator's TCP port). Strict TypeScript, ES modules, no runtime dependencies.
 
 ```sh
 pnpm install      # from the repository root (one workspace with web/): TypeScript, Vitest, @types/node (dev only)
-pnpm test         # type-check, test/v1.test.ts, then Vitest: codec, call layer, conformance, end to end, relay, files, mods (push, build)
+pnpm test         # type-check, test/v1.test.ts, then Vitest: codec, call layer, end to end, relay, files, mods (push, build)
 pnpm run test:browser  # Web Serial in the system Chrome (headless): simulators 7710-7713, relays 7750-7751
 node test/conformance.ts --sim 127.0.0.1:7341    # the conformance cases against a running simulator
 node scripts/device-browser-test.ts --out DIR --sim PORT   # the web app (../../web) driven in Chrome, no human step (--serial: the OP-XY)
 ```
 
-The repository's Python suite runs `pnpm test` too (`tests/test_ts_client.py`, when `node_modules` is installed).
+`mise run web-test` and CI's web job run `pnpm test`; the repository's Python suite does not.
 
 `--serial` cannot answer Chrome's serial port chooser (no automation can), so it needs a Chrome profile
 (`--profile`, default `<private>/xy-forever/chrome-device-test`; `<private>` is `XYF_PRIVATE` or `../private`)

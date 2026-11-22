@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever import bounds, hostbuild  # noqa: E402
@@ -16,6 +18,7 @@ from xy_forever import bounds, hostbuild  # noqa: E402
 CXX = '/usr/bin/clang++'
 
 
+@pytest.mark.gate
 @unittest.skipUnless(Path(CXX).exists(), 'no clang++')
 class HostBuildTest(unittest.TestCase):
     def setUp(self):
@@ -80,6 +83,7 @@ class HostBuildTest(unittest.TestCase):
         self.assertFalse((self.dir / 'cache').exists())
 
 
+@pytest.mark.gate
 class CacheRaceTest(unittest.TestCase):
     """Entries publish whole (a stale one is replaced, a concurrent one kept), and pruning skips an entry
     another process removed meanwhile (#230)."""
@@ -120,6 +124,7 @@ class CacheRaceTest(unittest.TestCase):
         self.assertEqual(len(list(self.root.iterdir())), 2)
 
 
+@pytest.mark.gate
 @unittest.skipUnless(Path(CXX).exists(), 'no clang++')
 class CompileBoundTest(unittest.TestCase):
     def test_a_compile_past_its_bound_ends(self):

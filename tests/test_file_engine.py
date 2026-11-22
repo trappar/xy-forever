@@ -10,6 +10,8 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from xy_forever.source_text import unit_text  # noqa: E402
@@ -439,6 +441,7 @@ class FileEngineTest(unittest.TestCase):
             self.assertFalse(lib.engine_upload_size(bad, C.byref(size)), bad)
 
 
+@pytest.mark.gate
 class FileEngineWiringTest(unittest.TestCase):
     """A applies the engine to every request; B applies its policy before it sends."""
 

@@ -11,6 +11,8 @@ import tempfile
 import unittest
 import zipfile
 
+import pytest
+
 from xy_forever.companions import CyacdImage, NordicApplication
 from xy_forever.packages import destination_for
 from test_companions import cyacd
@@ -36,6 +38,7 @@ def package(rows, *, comment=b"", method=zipfile.ZIP_DEFLATED):
     return output.getvalue()
 
 
+@pytest.mark.gate
 class NativePackageTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

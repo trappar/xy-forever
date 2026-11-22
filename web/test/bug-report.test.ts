@@ -43,7 +43,7 @@ it('round-trips only allowed fields and passes the repository leak scanner', () 
   });
 
   // Run the same scanner as the repository on both the rejected inputs and the actual export.
-  const scan = spawnSync('python3', ['-c', `
+  const scan = spawnSync('uv', ['run', '--quiet', 'python', '-c', `
 import json, sys
 sys.path.insert(0, 'tests')
 from test_no_leaks import find_leaks

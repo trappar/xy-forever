@@ -9,8 +9,25 @@ dependencies = []
 [dependency-groups]
 # Synced by default (`uv sync`): what the scripts beyond the core use.
 dev = [
+  "pytest>=9.2.0",
+  "pytest-testmon>=2.3.1",
+  "pytest-timeout>=2.4.0",
+  "pytest-watcher>=0.6.3",
+  "pytest-xdist>=3.8.0",
   "pyusb>=1.3.1",   # scripts/mtp_usb_probe.py and scripts/mtp_files_test.py (with Homebrew libusb)
 ]
 
 [tool.uv]
 package = false   # not an installable package yet (#234)
+
+[tool.pytest]
+# The suite: tests/ (unittest.TestCase classes, run by pytest). tests/conftest.py holds the tiers, the hard
+# bounds (#230), the budgets and the C++ and script selection for --testmon. `mise tasks` lists the commands.
+minversion = "9.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test"]             # unittest.TestCase subclasses only: a helper named Test* is no test
+python_functions = []
+addopts = ["-q", "-rfE", "--strict-markers"]
+timeout = "60"                        # bounds.TEST_S: past it, HUNG (tests/xyf_bounds.py)
+timeout_method = "thread"            # the signal method cannot interrupt a hung ctypes call

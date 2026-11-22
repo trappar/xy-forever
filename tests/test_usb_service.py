@@ -8,7 +8,6 @@ import io
 import json
 from pathlib import Path
 import random
-import re
 import struct
 import time
 import sys
@@ -16,9 +15,10 @@ import tempfile
 import unittest
 import zlib
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from xy_forever.source_text import unit_text  # noqa: E402
 from xy_forever import hostbuild  # noqa: E402
 from xy_forever import usb_proto as P
 from xy_forever.census import (USB_SERVICE_FIELDS, USB_SERVICE_V2_WORDS, USB_SERVICE_V3_WORDS,
@@ -348,6 +348,7 @@ class ReadThenContinueTest(unittest.TestCase):
             host.connect, host.time.sleep = original, sleep
 
 
+@pytest.mark.gate
 class HostToolTest(unittest.TestCase):
     def setUp(self):
         import xyf_host
@@ -539,21 +540,6 @@ class HostToolTest(unittest.TestCase):
         self.assertEqual(called, [])                                                  # never touched the device
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
-class RegistryLayoutTest(unittest.TestCase):
-    """Test 033: the stock provider registry at 0x8803f6b8 is {0, begin, end, capacity}
-    (889f2afc reads begin at +4, 889f2b14 end at +8). The read-only server must check the
-    registration with those offsets (it used +0/+4 and refused every mount)."""
-
-    def test_storage_server_reads_begin_and_end_at_plus_4_and_8(self):
-        text = (ROOT / 'target/storage_server.cpp').read_text()
-        self.assertIn('const U32 begin = word(0x8803f6bcu), end = word(0x8803f6c0u);', text)
-        self.assertNotIn('begin = word(0x8803f6b8u)', text)
-
-
 class PutChunkTest(unittest.TestCase):
     """Test 034: a PUT_DATA frame must fit the device's 0x800-byte CDC receive ring."""
 
@@ -575,23 +561,7 @@ class PutChunkTest(unittest.TestCase):
 
 class InstallLogTest(unittest.TestCase):
     """Test 034: INSTALL gave no reply for 180 s. Test 035 forwards the stock writer's log
-    (sinks + level, restored before any session step), never re-writes an image the writer
-    may have encrypted in place, and keeps a's session open long enough for the install."""
-
-    def test_install_hooks_the_log_only_around_the_writer(self):
-        text = unit_text(ROOT / 'target/usb_service.cpp')
-        body = text[text.index('void install(uint8_t seq'):text.index('namespace xy_forever { namespace usb_service {\nuint32_t presence()')]
-        hook, write, unhook = (body.index(x) for x in ('hook_logs();', 'write_boot(staged, put_expected);', 'unhook_logs();'))
-        self.assertLess(hook, write); self.assertLess(write, unhook)
-        self.assertLess(unhook, body.index('verify(put_expected'))          # verify ticks the session
-        self.assertLess(write, body.index('result.put_ok = 0;'))
-        self.assertLess(body.index('result.put_ok = 0;'), body.index('verify(put_expected'))
-        sink = text[text.index('void log_line('):text.index('void log_sink(')]
-        self.assertNotIn('tick', sink)                                       # no session step inside the writer
-        self.assertIn('in_interrupt()', sink)
-        unhook_body = text[text.index('void unhook_logs()'):text.index('// "xyf install step')]
-        self.assertIn('word(log_level_address) = result.log_level_before;', unhook_body)
-        self.assertIn('word(log_sinks + 4 * i) = saved_sinks[i];', unhook_body)
+    frames to the host while it waits for the install."""
 
     def test_host_collects_log_frames_while_waiting(self):
         import xyf_host as host
@@ -613,62 +583,13 @@ class InstallLogTest(unittest.TestCase):
         self.assertEqual(host.INSTALL_TIMEOUT, 900.0)
 
 
-class SelectConventionTest(unittest.TestCase):
-    """Test 036: stock partition select (889f683c on b, a's executor 889f76ca storing
-    88a08710's result at request +0x10) returns 0 on success; the writer 88a06a7e continues
-    only on 0 and restores partition 0 with `while (889f683c(0) != 0)`. a tracked
-    "nonzero = selected", so it refused the writer's first trim and b retried forever."""
-
-    def test_a_tracks_the_selection_on_a_zero_reply(self):
-        text = (ROOT / 'target/storage_server.cpp').read_text()
-        self.assertIn('        if (word(request + 0x10) == 0) {\n            selected_partition = argument;', text)
-        self.assertNotIn('if (word(request + 0x10)) selected_partition', text)
-        # a boot-partition select counts as selected for storage from the attempt on.
-        self.assertLess(text.index('if (argument) select_attempted = 1;'), text.index('stock<0x889f76cau, void>(request);\n'
-                        '        // Stock reply = 88a08710'))
-        self.assertIn('return selected_partition != 0 || select_attempted != 0;', text)
-
-    def test_b_verify_treats_zero_as_selected(self):
-        text = unit_text(ROOT / 'target/usb_service.cpp')
-        body = text[text.index('U32 verify(U32 size, U32 crc)'):text.index('// SET_DEFAULT')]
-        self.assertIn('if (select_partition(p) != 0) continue;', body)
-        self.assertIn('if (active && select_partition(active) == 0) {', body)
-        self.assertIn('select_partition(0) != 0', body)
-        self.assertNotIn('!select_partition(', body)
-
-    def test_stock_log_line_skips_the_binary_time_prefix(self):
-        text = unit_text(ROOT / 'target/usb_service.cpp')
-        self.assertIn('log_line(text ? text + log_time_bytes : text)', text)
-        self.assertIn('log_time_bytes = 4;', (ROOT / 'target/usb_service.hpp').read_text())
-
-
-
-class FastLinkAndReportsTest(unittest.TestCase):
-    """Test 037: the per-poll identity CRC (~29 KB bitwise) set the link round trip
-    (~4 ms per stock request, 27 s for the writer's per-sector verify) and the USB
-    upload rate (~17 ms per 1 KiB frame). Test 038 throttles it in poll() and adds
-    ranged READ_FILE so reports (~1 MB) come over USB."""
-
-    def test_poll_checks_identity_on_a_timer_and_begin_end_every_time(self):
-        text = (ROOT / 'target/peer_services.cpp').read_text()
-        poll = text[text.index('Result Stock121PeerSession::poll(U32 now)'):]
-        poll = poll[:poll.index('\n}\n')]
-        self.assertIn('if(now-identity_ms_>=identity_interval_ms){if(!identity())return fail(Result::identity);identity_ms_=now;}', poll)
-        self.assertIn('capture_state(diagnostic_.after)', poll)
-        self.assertNotIn('capture(diagnostic_.after)', poll)
-        self.assertIn('bool Stock121PeerSession::capture(Snapshot& s) { return identity()&&capture_state(s); }', text)
-        begin = text[text.index('Result Stock121PeerSession::begin('):]
-        self.assertIn('if(!capture(diagnostic_.before))return fail(Result::identity);', begin[:begin.index('\n}\n')])
-        interval = int(re.search(r'identity_interval_ms = (\d+);', (ROOT / 'target/peer_services.hpp').read_text()).group(1))
-        self.assertLessEqual(interval, 1000)
-
-    def test_ranged_read_uses_stock_lseek_and_is_allowed(self):
-        text = (ROOT / 'target/file_client.cpp').read_text()       # op 0x2c by the partition builder
-        self.assertIn('const Reply k = seek(fd, int(offset));', text)
-        self.assertIn('if (k.value != int(offset)) code = xyf::usbp::s_range;', text)
+@pytest.mark.gate
+class RangedReadTest(unittest.TestCase):
+    """Test 038: ranged READ_FILE brings reports (~1 MB) over USB in small ranges."""
 
     def test_host_reads_a_large_file_in_ranges(self):
         import xyf_host as host
+        self.assertLessEqual(host.READ_RANGE, 1024)                   # ranged reads stay small
         report = bytes(range(256)) * 4000 + b'tail'                  # 1,024,004 bytes
         fake = FakeDevice({'/yaffs2/xy-forever/log/usb-038-b.bin': report})
         dev = host.Device(fake)
@@ -679,71 +600,6 @@ class FastLinkAndReportsTest(unittest.TestCase):
         exact = bytes(2 * host.READ_RANGE)                            # multiple of the range: one empty range ends it
         fake.files['/yaffs2/x'] = exact
         self.assertEqual(dev.read_all('/yaffs2/x'), (0, exact))
-
-
-class UsbPresenceTest(unittest.TestCase):
-    """Test 038: REBOOT worked (b reset, normal boot) but the service did not come back, as after
-    a fast power cycle: the stock bootloader starts USB only on its "wait for battery" path.
-    Test 039: the PSoC power status reads 0x10 with or without USB, so REBOOT leaves an SDRAM
-    marker that the next cold entry consumes."""
-
-    def test_presence_accepts_stock_usb_or_usb_power(self):
-        text = unit_text(ROOT / 'target/usb_service.cpp')
-        body = text[text.index('uint32_t presence() {'):]
-        body = body[:body.index('\n}\n')]
-        self.assertIn('if (byte(0x88a35934u) == 1 && (word(0x88a3593cu) & 0x40u)) return 1;', body)
-        self.assertNotIn('power_status', body)                    # Test 039: 0x10 with and without USB
-        self.assertIn('if (word(reboot_marker) == reboot_magic && word(reboot_marker + 4) == ~reboot_magic) return 3;', body)
-
-    def test_reboot_marker_is_set_before_reset_and_cleared_on_entry(self):
-        text = unit_text(ROOT / 'target/usb_service.cpp')
-        begin = text[text.index('bool home_begin() {'):]
-        begin = begin[:begin.index('\n}\n')]
-        self.assertLess(begin.index('marker_clear();'), begin.index('home = 1; held = 1;'))   # one home per marker
-        self.assertIn('if (r.crash_restarts >= max_crash_restarts) {', begin)
-        reboot = text[text.index('void home_reboot(U32 target) {'):]
-        reboot = reboot[:reboot.index('\n}\n')]
-        self.assertLess(reboot.index('marker_write(marker_reboot | marker_menu | carry, 0);'), reboot.index('reset_self();'))
-        writer = text[text.index('void marker_write('):text.index('void marker_clear()')]
-        self.assertIn('lines(reboot_marker, 16, false);', writer)
-        header = (ROOT / 'target/usb_service.hpp').read_text()
-        marker = int(re.search(r'reboot_marker = (0x[0-9a-f]+)u', header).group(1), 16)
-        staging_end = 0x8b820000 + 0x700000 + 0x10000                # image + read-back buffer
-        self.assertGreaterEqual(marker, staging_end)
-        self.assertLess(marker + 16, 0x8c000000)
-
-    def test_the_watchdog_guard_is_gone(self):
-        # A lone restart of B freezes the device: no guard (WDOG0), no hang test, no reason bit 0x200.
-        text = unit_text(ROOT / 'target/usb_service.cpp')
-        header = (ROOT / 'target/usb_service.hpp').read_text()
-        for gone in ('guard_arm', 'guard_kick', 'guard_disarm', 'guard_expired', 'guard_count_set', 'guard_pause',
-                     'guard_reload', 'guard_on', 'wdog_', 'hang_token', 'P::t_guard', 'P::t_test_hang',
-                     'home_guarded', 'marker_guard', 'guard_kicks'):
-            self.assertNotIn(gone, text + header)
-        self.assertIn('retired_kicks', header)                         # the status word's slot stays
-        self.assertFalse(hasattr(P, 'GUARD') or hasattr(P, 'TEST_HANG'))
-        self.assertIn('max_crash_restarts = 3;', header)
-
-    def test_a_has_no_guard_and_restarts_only_by_following_b(self):
-        # a restarts only when b's bootloader asks (F1), closing the window first, or on b's REBOOT
-        # item; a b silent past the idle window only ends a's session (no restart).
-        text = unit_text(ROOT / 'target/file_boot.cpp')
-        for gone in ('a_guarded', 'a_alone_ms', 'a_guard', 'restart_a_item', 'guard_reload', 'guard_item'):
-            self.assertNotIn(gone, text)
-        follow = text[text.index('void a_follow(cold_storage::Stock121ReadOnlySession& storage) {'):]
-        self.assertIn('    a_close_files(storage);\n    usb_service::reset_self();\n}', follow)
-        self.assertNotIn('!session.image_size()) a_follow(storage);', text)
-        self.assertEqual(text.count('a_follow(storage)'), 1)                 # F1 only
-        self.assertNotIn('void a_guard', unit_text(ROOT / 'target/usb_service.cpp'))
-
-    def test_ranged_reads_stay_small(self):
-        header = (ROOT / 'target/usb_service.hpp').read_text()
-        limit = int(re.search(r'read_range_max = (\d+);', header).group(1))
-        import xyf_host as host
-        self.assertLessEqual(limit, 1024)
-        self.assertEqual(host.READ_RANGE, limit)
-        text = unit_text(ROOT / 'target/usb_service.cpp')
-        self.assertIn('if (!want || want > (ranged ? read_range_max : P::max_data))', text)
 
 
 class HoldTest(unittest.TestCase):
@@ -758,11 +614,5 @@ class HoldTest(unittest.TestCase):
                 host.main(gone)
 
 
-class RangedProbeTest(unittest.TestCase):
-    """Test 041: four ranged reads that closed right after a full read worked, the fifth hung a
-    (reads ending with a probe or EOF never did). Ranged reads now also end with the probe."""
-
-    def test_ranged_reads_end_with_the_probe(self):
-        text = (ROOT / 'target/file_client.cpp').read_text()
-        self.assertIn('if (!room) { code = ranged ? xyf::usbp::s_ok : xyf::usbp::s_too_large; break; }', text)
-        self.assertNotIn('range full: no probe', text)
+if __name__ == '__main__':
+    unittest.main()

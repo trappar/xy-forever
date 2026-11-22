@@ -8,6 +8,8 @@ import tempfile
 import unittest
 import zlib
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from xy_forever import hostbuild  # noqa: E402
 from xy_forever.source_text import unit_text  # noqa: E402
@@ -25,6 +27,7 @@ def buffer(data):
     return (BYTE*len(data)).from_buffer_copy(data)
 
 
+@pytest.mark.gate
 class PeerBootTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -347,15 +350,8 @@ class PeerBootTests(unittest.TestCase):
         _,data=self.serve(server,self.request(client));bad=bytearray(data);bad[-1]=1
         self.assertEqual(self.lib.peer_client_accept(client,0,buffer(bad),len(bad)),PROTOCOL)
 
-
-if __name__=="__main__":
-    unittest.main()
-
-
-class SmallBlobCapacityTest(PeerBootTests):
-    """Test 063: a CheckStatus blob (52 bytes) needs a whole-sector destination (062 failure)."""
-
     def test_small_blob_needs_a_sector(self):
+        """Test 063: a CheckStatus blob (52 bytes) needs a whole-sector destination (062 failure)."""
         image = bytes(range(52))
         for capacity in (0x100, 511):
             self.source = buffer(image)
@@ -377,3 +373,7 @@ class SmallBlobCapacityTest(PeerBootTests):
         self.assertEqual(bytes(self.destination[:52]), image)
         fb = unit_text(root / 'target/file_boot.cpp')
         self.assertIn('session.transfer(status, xyf_boot::b_status_capacity, true)', fb)
+
+
+if __name__=="__main__":
+    unittest.main()

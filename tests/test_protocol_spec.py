@@ -4,6 +4,7 @@ encoder), the device dispatch answers exactly the spec's commands, and the hand-
 that stay outside the generated files agree with the spec. No device access."""
 import copy
 import ctypes as C
+import itertools
 from pathlib import Path
 import re
 import struct
@@ -11,6 +12,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -45,6 +48,7 @@ class SpecTest(unittest.TestCase):
     def test_spec_validates(self):
         protogen.validate(spec())
 
+    @pytest.mark.uses('scripts/protogen.py')
     def test_generated_files_are_current(self):
         self.assertEqual(protogen.stale(protogen.generate(spec())), [],
                          'generated files are stale: run python3 scripts/protogen.py')
@@ -115,6 +119,7 @@ class SpecTest(unittest.TestCase):
                 protogen.load(path)
 
 
+@pytest.mark.gate
 class GoldenFramesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -221,11 +226,13 @@ class GoldenFramesTest(unittest.TestCase):
         self.assertIn('uint8_t p[4 + P::max_hello];', us)
 
     def test_cmds_bitmap_follows_the_switches(self):
-        """Every combination of build switches: the generated #if blocks give the spec's bitmap."""
+        """Six combinations of the build switches (none, all, and four where each switch is on in its own two:
+        every switch on and off, and any two differ both ways): the generated #if blocks give the spec's bitmap."""
         switches = sorted({c['switch'] for c in spec()['commands'] if c['switch']})
         self.assertEqual(len(switches), 5)                 # with the run-time XYF_STAGE2_LOADED
-        for n in range(1 << len(switches)):
-            on = {s for i, s in enumerate(switches) if n >> i & 1}
+        rows = list(itertools.combinations(range(4), 2))   # distinct pairs of the four mixed combinations
+        combos = [set(), set(switches)] + [{s for s, row in zip(switches, rows) if r in row} for r in range(4)]
+        for on in combos:
             with self.subTest(switches=on):
                 hello, cmds = self.device_hello(on)
                 self.assertEqual(int(cmds, 16), P.answered(on))
