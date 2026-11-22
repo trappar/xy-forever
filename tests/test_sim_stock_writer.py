@@ -7,7 +7,8 @@ import zlib
 
 import pytest
 import test_simulator as support
-from test_simulator import BUILD, ids, sim
+from conftest import verified_build
+from test_simulator import ids, sim
 
 KEY = bytes((0xA5 + i * 29) & 255 for i in range(256))  # the representation's period: 256 bytes
 
@@ -39,8 +40,8 @@ class StockWriterIntegration(unittest.TestCase):
         self.assertEqual(raw[512 : 512 + len(stock)], represented(stock))
         self.assertEqual(raw[12:22], b'\x01\x01XYFSIM01')
         self.assertEqual(dev.uninstall(hashlib.sha256(stock).digest())[0], ids.S_STATE)  # staging used up
-        if BUILD:  # the second slot, the other erased
-            data = (BUILD / 'candidate.ldr').read_bytes()
+        with self.subTest('the second slot, the other erased'):
+            data = (verified_build(self) / 'candidate.ldr').read_bytes()  # without one: this part skips, named
             self.assertEqual(dev.stage(data), 0)
             self.assertEqual(dev.install(hashlib.sha256(data).digest())[:3], (0, len(data), 2))
             raw = (self.dir / 'bootpart.bin').read_bytes()
