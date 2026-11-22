@@ -11,10 +11,11 @@ The steps, in order, stopping at the first failure:
     candidate's SHA-256, hello image=), with check.json naming the tree and commit (scripts/neutral.py reuses it:
     mise run neutral);
   - lint and type checks: the generated protocol files match protocol/ (protogen --check), and `pnpm run
-    typecheck` in clients/ts and web when they differ from the merge base with main (or with --js; refused
-    up front, naming pnpm install, when a needed node_modules is missing);
-  - the fast tier and the gate tier of the suite (pytest -m fast, -m gate: tests/conftest.py), the tests given a
-    private copy of the verified build (a shared image name can be replaced during the run).
+    typecheck` in clients/ts and web when they differ from the merge base with main (or with --js);
+  - the fast and sim tiers in one run, then the gate tier (pytest -m 'fast or sim', -m gate: tests/conftest.py),
+    the tests given a private copy of the verified build (a shared image name can be replaced during the run).
+First, when node_modules is missing or older than pnpm-lock.yaml (a fresh worktree), `pnpm install --frozen-lockfile`
+(Turborepo and the type checks need it).
 Budgets: the whole check STEP_BUDGET_S a step and TOTAL_BUDGET_S in all (about twice the measured times); going
 over fails the check and names the step (XYF_BUDGETS=off only reports it). Each step's hard bound is STEP_S.
 Step output goes to a log under <private>/xy-forever/sessions/<date>-check/; a short summary is printed.
@@ -38,7 +39,7 @@ import sys
 import tempfile
 import time
 
-from xy_forever import no_device, paths, procgroup
+from xy_forever import dev_tools, no_device, paths, procgroup
 import firmware_cache
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -189,12 +190,15 @@ def standard_steps(args, root, tree, work):
     test_builds = Path(work) / 'builds'
     env = {paths.CHECK_TEST_BUILDS: str(test_builds)}
     cached = root / 'scripts/firmware_cache.py'
-    return [step('product build', [py, cached, 'build'], root),
+    install = dev_tools.js_install(root)
+    return [*([step('pnpm install', install, root)] if install else []),
+            step('product build', [py, cached, 'build'], root),
             step('verify', [py, cached, 'verify'], root,
                  parse=verify_parser(firmware_cache.OUT, tree, git(root, 'rev-parse', 'HEAD'), test_builds)),
             step('protocol files', [py, root / 'scripts/protogen.py', '--check'], root),
             *js,
-            step('fast tier', [py, *PYTEST, '-n', '6', '-m', 'fast'], root, env, tests_parser('fast')),
+            step('fast and sim tiers', [py, *PYTEST, '-n', '12', '-m', 'fast or sim'], root, env,
+                 tests_parser('fast and sim')),
             step('gate tier', [py, *PYTEST, '-n', '12', '-m', 'gate'], root, env, tests_parser('gate'))]
 
 
@@ -202,15 +206,13 @@ JS = (('clients/ts', ('clients/ts',)), ('web', ('web', 'clients/ts')))   # folde
 
 
 def js_steps(args, root):
-    """`pnpm run typecheck` for each folder that changed (or all with --js); CheckError when its node_modules is
-    not installed. Their test suites run in CI (mise run web-test)."""
+    """`pnpm run typecheck` for each folder that changed (or all with --js). Their test suites run in CI (mise run
+    web-test)."""
     steps, pnpm = [], shutil.which('pnpm') or 'pnpm'
     for rel, watched in JS:
         folder = root / rel
         if not folder.is_dir() or not (args.js or changed(root, *watched)):
             continue
-        if not (folder / 'node_modules').is_dir():
-            raise CheckError('the %s type check needs %s/node_modules, which is missing: run `pnpm install`' % (rel, rel))
         steps.append(step('pnpm run typecheck (%s)' % rel, [pnpm, 'run', 'typecheck'], folder))
     return steps
 

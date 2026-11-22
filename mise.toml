@@ -79,7 +79,7 @@ usage = 'arg "[args]..." help="pytest arguments (-m fast: one tier)" var=#true'
 run = 'uv run pytest -n 12 --dist worksteal --durations=25 {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 
 [tasks.check]
-description = "PR gate: build, verify (cached), type checks, fast and gate tiers (under 30 s)"
+description = "PR gate: build, verify (cached), type checks, fast, sim and gate tiers (under 30 s)"
 usage = 'arg "[args]..." help="check.py flags (--js, --force, --confirm [REF])" var=#true'
 run = 'uv run scripts/check.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
 

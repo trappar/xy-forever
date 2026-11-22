@@ -14,6 +14,8 @@ from unittest import mock
 
 import pytest
 
+from xy_forever import dev_tools
+
 SPEC = importlib.util.spec_from_file_location('check_script', Path(__file__).resolve().parents[1] / 'scripts/check.py')
 C = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(C)
@@ -156,23 +158,28 @@ class CheckReceiptTests(unittest.TestCase):
         self.assertEqual(C.merge_base(self.root), stale)    # no origin/main: the local main
         self.assertTrue(C.changed(self.root, 'clients/ts'))
 
-    def test_js_needs_node_modules(self):
+    def test_js_steps_follow_the_folders(self):
         args = C.argparse.Namespace(js=True)
         self.assertEqual(C.js_steps(args, self.root), [])  # no clients/ts: nothing to test
         (self.root / 'clients/ts').mkdir(parents=True)
-        with self.assertRaisesRegex(C.CheckError, 'clients/ts/node_modules, which is missing: run `pnpm install`'):
-            C.js_steps(args, self.root)
-        (self.root / 'clients/ts/node_modules').mkdir()
         self.assertEqual([s['name'] for s in C.js_steps(args, self.root)], ['pnpm run typecheck (clients/ts)'])
         self.assertEqual(C.js_steps(C.argparse.Namespace(js=False), self.root), [])   # unchanged on main
         (self.root / 'web').mkdir()
-        with self.assertRaisesRegex(C.CheckError, 'web/node_modules, which is missing: run `pnpm install`'):
-            C.js_steps(args, self.root)
-        (self.root / 'web/node_modules').mkdir()
         steps = C.js_steps(args, self.root)
         self.assertEqual([s['name'] for s in steps], ['pnpm run typecheck (clients/ts)', 'pnpm run typecheck (web)'])
         self.assertEqual([s['cmd'][1:] for s in steps], [['run', 'typecheck']] * 2)
         self.assertEqual(steps[-1]['cwd'], self.root / 'web')
+
+    def test_a_fresh_worktree_installs_node_modules_first(self):
+        (self.root / 'pnpm-lock.yaml').write_text('lockfileVersion: 9\n')
+        self.assertEqual(dev_tools.js_install(self.root)[1:], ['install', '--frozen-lockfile'])   # none installed
+        for rel in ('node_modules', 'web/node_modules', 'clients/ts/node_modules'):
+            (self.root / rel).mkdir(parents=True)
+        (self.root / 'node_modules/.modules.yaml').write_text('')
+        self.assertIsNone(dev_tools.js_install(self.root))                                          # current
+        later = (self.root / 'node_modules/.modules.yaml').stat().st_mtime + 10
+        os.utime(self.root / 'pnpm-lock.yaml', (later, later))
+        self.assertIsNotNone(dev_tools.js_install(self.root))                                       # lock changed
 
     def test_web_steps_follow_web_and_clients(self):
         for rel in ('clients/ts/node_modules', 'web/node_modules'):

@@ -27,7 +27,7 @@ import shutil
 import subprocess
 import sys
 
-from xy_forever import paths, toolchain
+from xy_forever import dev_tools, paths, toolchain
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,8 +67,8 @@ def turbo_command(task, force=False):
 
 
 def run_turbo(task, force=False):
-    if not TURBO.exists():
-        print('firmware_cache: %s is missing: run `pnpm install`' % TURBO, file=sys.stderr)
+    install = dev_tools.js_install(ROOT)        # a fresh worktree: Turborepo is a root devDependency
+    if install and subprocess.run(install, cwd=ROOT).returncode:
         return 1
     env = dict(os.environ, **ENV, **{KEY: build_key()})
     return subprocess.run(turbo_command(task, force), cwd=ROOT, env=env).returncode

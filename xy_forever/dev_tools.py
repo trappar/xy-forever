@@ -72,6 +72,11 @@ def js_deps_stale(root=ROOT):
     return None if marker.stat().st_mtime >= lock.stat().st_mtime else 'pnpm-lock.yaml changed: run `pnpm install`'
 
 
+def js_install(root=ROOT):
+    """The pnpm install command when node_modules is missing or stale (a fresh worktree), else None."""
+    return [shutil.which('pnpm') or 'pnpm', 'install', '--frozen-lockfile'] if js_deps_stale(root) else None
+
+
 def doctor_rows(root=ROOT):
     """[(label, ok, detail)]: the tools, then the Python and JS dependencies."""
     m = mise()
