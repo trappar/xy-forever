@@ -1,30 +1,11 @@
-// The pages not moved to React yet: Install, Mods. Plain DOM in the shell's sections; one device
-// action at a time.
-import { RELEASE_FILTERS, configGet, configSet, fileListSource, isXyfError, listPackages, localSet, pushPackages, removePackage } from 'xy-forever-client';
-import type { Client, HeldGeneration, LocalSet, PackageSource, SavedInputs } from 'xy-forever-client';
-import { groupMods, human } from './model.ts';
-import type { SavedConfig } from './model.ts';
-import { h } from './ui.ts';
-import { confirmAction } from './ask.tsx';
-import { notice } from './notice.ts';
+// The Install page, not moved to React yet: plain DOM in one section kept across its stages.
+import { RELEASE_FILTERS } from 'xy-forever-client';
+import type { Client } from 'xy-forever-client';
 import { useConnection } from './connection.ts';
-import { adopt, canConnect, deviceBusy, openDevice, runAction as run, savedConfig as savedConfigOf } from './device.ts';
+import { adopt, canConnect, deviceBusy, openDevice } from './device.ts';
 import { installPage } from './install/page.ts';
 import type { Lease } from './install/page.ts';
-import { navigatePath as navigate } from './routing.ts';
-export type LegacyPage = 'mods';
-
-const dev = (): Client => useConnection.getState().client!;
-const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
-
-// ---- Pages and actions -------------------------------------------------------------------------------
-
-const loaders: Record<LegacyPage, () => Promise<void>> = {
-  mods: () => run('list_packages', loadMods),
-};
-
-/** Renders a page into its section (the router mounts it). */
-export function showPage(p: LegacyPage): void { loadedOther = true; void loaders[p](); }
+import { loadPath, navigatePath as navigate } from './routing.ts';
 
 let shownInstall = false;
 /** The install flow's one section, kept across its stages. */
@@ -37,14 +18,12 @@ useConnection.subscribe((now, before) => { if (now.stockRestored && !before.stoc
 const installRoot = Object.assign(document.createElement('section'), { id: 'page-install', className: 'page', hidden: true });
 /** Shows an install stage: the first page this document shows counts as the load (a reload asks te-boot again). */
 export function showInstall(stage: string | undefined): void {
-  const how = shownInstall || loadedOther ? 'push' : 'load';
+  const how = shownInstall || !loadPath.includes('/install/') ? 'push' : 'load';
   shownInstall = true;
   installSection();
   install!.show(`/install/${stage ?? ''}`, how);
 }
-let loadedOther = false;
 
-const btn = (label: string, onclick: () => void, cls = ''): HTMLButtonElement => h('button', { type: 'button', class: cls, onclick }, label);
 
 // ---- Install (#178) -----------------------------------------------------------------------------------
 
@@ -80,132 +59,4 @@ async function findDevice(): Promise<Lease | null> {
   if (mine) return mine;
   if (deviceBusy() || !canConnect()) return null;
   return lease(await openDevice({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false }));
-}
-
-// ---- Mods --------------------------------------------------------------------------------------------
-
-let chosen: { source: PackageSource; set: LocalSet } | null = null;
-let held: HeldGeneration[] = [];
-
-async function savedConfig() { return savedConfigOf(dev()); }
-
-async function loadMods(): Promise<void> {
-  const c = dev();
-  held = await listPackages(c);
-  const { config, error: configError } = await savedConfig();
-  const inputs = configError ? null : await configGet(c).catch((error: unknown) => { if (isXyfError(error, 'update_required', 'unsupported')) return null; throw error; });
-  const root = page('mods');
-  const picker = h('input', { type: 'file', webkitdirectory: true, multiple: true, onchange: () => void pick(picker) });
-  root.replaceChildren(
-    h('h1', {}, 'Mods'),
-    h('p', { class: 'lede' }, 'Mod packages stored on the OP-XY, and the mods it runs.'),
-    ...(configError === undefined ? [] : [h('p', { class: 'muted' }, `Could not read the saved configuration (${configError}).`)]),
-    h('div', { class: 'card' },
-      h('div', { class: 'row' }, h('h2', { style: 'margin:0' }, 'Add packages'), h('span', { class: 'spacer' }),
-        h('label', { class: 'button' }, 'Choose package folder...', picker),
-        btn('Send to OP-XY', () => void run('send_packages', send, 'Sending packages...'), 'primary')),
-      h('p', { class: 'muted', id: 'mods-chosen' }, chosen ? chosenText(chosen.set) : 'Choose a generation folder (from modkit split): it holds base/ and one folder per mod.'),
-      h('progress', { id: 'mods-progress', value: 0, max: 1, hidden: true })),
-    ...(held.length === 0 ? [h('div', { class: 'card muted' }, 'No mod packages on this OP-XY yet.')] : held.map((g) => generationCard(g, config))),
-    inputsCard(inputs),
-  );
-}
-
-function chosenText(set: LocalSet): string {
-  const files = [...set.packages.values()].flat();
-  return `Chosen: ${set.profile} ${set.generation}, ${set.packages.size} packages, ${human(files.reduce((n, f) => n + f.data.length, 0))}.`;
-}
-
-function generationCard(g: HeldGeneration, config: SavedConfig | null | undefined): HTMLElement {
-  if (g.older || g.newer) {                          // no store.txt, or a newer store version (#124)
-    const kind = g.older ? 'older' : 'newer';
-    return h('div', { class: 'card' },
-      h('div', { class: 'row' }, h('h2', { style: 'margin:0' }, `${g.generation} (${kind} layout)`), h('span', { class: 'spacer' }),
-        btn('Remove all', () => void run('remove_packages', () => remove(g.generation, null, `the ${kind} ${g.generation} folder`)), 'small danger')),
-      h('p', { class: 'muted' }, g.older
-        ? 'Packages sent by an older XY Forever, in folders too deep for the dev menu\'s file transfer. Remove them, then send the package set again.'
-        : 'Packages in a newer layout than this page reads: update it, or remove them and send the package set again.'));
-  }
-  const sameSet = config && config.profile === g.profile && config.generation === g.generation;
-  const groups = groupMods(g.packages, sameSet || config === undefined ? config : null);
-  const body = h('tbody');
-  for (const group of groups) {
-    body.append(h('tr', {}, h('td', { class: 'group-title', colspan: 4 }, group.label)));
-    for (const r of group.rows) {
-      body.append(h('tr', { 'data-mod': r.folder },
-        h('td', {}, h('b', {}, r.name), ' ', h('span', { class: 'muted mono' }, r.version)),
-        h('td', {}, r.on === null ? h('span', { class: 'tag' }, 'unknown') : h('span', { class: r.on ? 'tag on' : 'tag' }, r.on ? 'on' : 'off'),
-          ' ', !r.complete && h('span', { class: 'tag warn', title: 'Sending was interrupted: send it again.' }, 'incomplete')),
-        h('td', { class: 'muted hide-narrow' }, human(r.bytes)),
-        h('td', { class: 'actions' }, btn('Remove', () => void run('remove_packages', () => remove(r.folder, g.generation, r.name)), 'small danger'))));
-    }
-  }
-  const baseHeld = g.packages.some((p) => p.name === 'base');
-  return h('div', { class: 'card' },
-    h('div', { class: 'row' }, h('h2', { style: 'margin:0' }, `${g.profile} ${g.generation}`), !baseHeld && h('span', { class: 'tag warn' }, 'no base package'),
-      h('span', { class: 'spacer' }), btn('Remove all', () => void run('remove_packages', () => remove(g.generation, null, `the whole ${g.generation} package set`)), 'small danger')),
-    h('p', { class: 'muted' }, config === undefined ? 'On/off: the saved configuration could not be read.' : sameSet ? 'On/off: as saved on the device.' : 'On/off: this set is not the saved one, so all are off.'),
-    h('table', {}, body));
-}
-
-async function pick(input: HTMLInputElement): Promise<void> {
-  const source = fileListSource([...input.files ?? []]);
-  input.value = '';
-  chosen = null;
-  await run('choose_packages', async () => {
-    chosen = { source, set: await localSet(source) };
-    document.getElementById('mods-chosen')!.textContent = chosenText(chosen.set);
-  });
-}
-
-async function send(): Promise<void> {
-  if (!chosen) throw new Error('Choose a package folder first.');
-  const bar = document.getElementById('mods-progress') as HTMLProgressElement;
-  bar.hidden = false;
-  const summary = await pushPackages(dev(), chosen.source, { onProgress: (done, total) => { bar.max = total || 1; bar.value = done; } });
-  chosen = null;
-  await loadMods();
-  notice(`Sent ${summary.sent} package${summary.sent === 1 ? '' : 's'} (${human(summary.bytes)}); ${summary.skipped} already there.`);
-}
-
-async function remove(what: string, generation: string | null, label: string): Promise<void> {
-  const opts = generation ? { generation } : {};
-  const plan = await removePackage(dev(), what, { ...opts, dryRun: true });
-  const files = plan.reduce((n, r) => n + r.files, 0);
-  if (!await confirmAction(`Remove ${label}?`, `${files} files (${human(plan.reduce((n, r) => n + r.bytes, 0))}) are deleted from the OP-XY. A saved build that uses it keeps working until you change mods.`, 'Remove', true)) return;
-  await removePackage(dev(), what, opts);
-  await loadMods();
-}
-
-/**
- * The mods the OP-XY runs (#26): saved as turning them on in the device's Mods menu does (config.set). The device checks
- * that it can build them and keeps them, or says why not; it builds them the next time XY Forever starts.
- */
-function inputsCard(saved: SavedInputs | null): HTMLElement {
-  const card = h('div', { class: 'card', id: 'inputs' });
-  const gens = held.filter((g) => g.packages.some((p) => p.name === 'base' && p.complete));
-  card.append(h('h2', {}, 'Mods on the OP-XY'),
-    h('p', { class: 'muted' }, 'Saving works like turning mods on in the device\'s Mods menu: the OP-XY checks that it can build them and keeps them. It builds them the next time it starts.'));
-  if (!saved) { card.append(h('p', {}, 'This OP-XY\'s XY Forever cannot set mods over USB (it needs protocol 1.24): update it first.')); return card; }
-  if (gens.length === 0) { card.append(h('p', {}, 'Send a package set with its base first.')); return card; }
-  const g = gens.find((x) => x.generation === saved.generation) ?? gens[0]!;
-  const checks = h('div', { class: 'checks' }, ...groupMods(g.packages.filter((p) => p.complete), null).flatMap((grp) => grp.rows).map((r) =>
-    h('label', {}, h('input', { type: 'checkbox', value: r.folder, checked: saved.mods.includes(r.folder) }), `${r.name}`, h('span', { class: 'muted' }, r.kind))));
-  const memory = h('input', { type: 'checkbox', checked: saved.expanded });
-  const unknown = h('input', { type: 'checkbox', checked: saved.unverified });
-  const status = h('p', { class: 'muted', id: 'inputs-status' }, saved.write === 'failed' ? 'The last change could not be written: save again.' : '');
-  const save = btn('Save', () => void run('save_mods', async () => {
-    const mods = [...checks.querySelectorAll<HTMLInputElement>('input:checked')].map((i) => i.value);
-    try {
-      await configSet(dev(), { mods, expanded: memory.checked, unverified: unknown.checked });
-      status.textContent = 'Saved. The OP-XY builds and installs it the next time it starts.';
-    } catch (error) {
-      if (!isXyfError(error, 'refused')) throw error;
-      status.textContent = `Not saved: ${error.message}`;
-    }
-  }, 'Saving on the OP-XY...'), 'primary');
-  card.append(checks,
-    h('div', { class: 'row' }, h('label', {}, memory, '4 MiB mod memory'), h('label', {}, unknown, 'Allow an unknown base')),
-    h('div', { class: 'row' }, save), status);
-  return card;
 }

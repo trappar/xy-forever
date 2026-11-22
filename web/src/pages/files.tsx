@@ -91,7 +91,7 @@ export default function FilesPage() {
       </p>
       <Card>
         <div className="flex flex-wrap items-center gap-2.5">
-          <nav aria-label="Folder" className="flex flex-1 flex-wrap items-center gap-1 font-mono text-[13px]">
+          <nav aria-label="Folder" className="flex flex-1 flex-row flex-wrap items-center gap-1 font-mono text-[13px]">
             {parts.map((p, i) => <span key={i} className="contents">
               {i > 0 && '/'}
               {i === parts.length - 1 ? <b>{p}</b> : <Button size="sm" className="font-mono" onClick={() => open('/' + parts.slice(0, i + 1).join('/'))}>{p}</Button>}
@@ -106,10 +106,10 @@ export default function FilesPage() {
         <Table>
           <TableHeader><TableRow><TableHead>Name</TableHead><TableHead className="max-md:hidden">Size</TableHead><TableHead /></TableRow></TableHeader>
           <TableBody id="files-body">
-            {cwd !== ROOT && <TableRow><TableCell colSpan={3}><Button variant="link" onClick={() => open(parentOf(cwd))}>.. (up)</Button></TableCell></TableRow>}
+            {cwd !== ROOT && <TableRow><TableCell colSpan={3}><Button variant="link" className="h-auto p-0" onClick={() => open(parentOf(cwd))}>.. (up)</Button></TableCell></TableRow>}
             {entries?.map((e) => (
               <TableRow key={e.name} data-name={e.name} data-kind={e.kind} data-size={e.kind === 'file' ? e.size : undefined}>
-                <TableCell>{e.kind === 'folder' ? <Button variant="link" onClick={() => open(joinPath(cwd, e.name))}>{e.name}/</Button> : e.name}</TableCell>
+                <TableCell>{e.kind === 'folder' ? <Button variant="link" className="h-auto p-0" onClick={() => open(joinPath(cwd, e.name))}>{e.name}/</Button> : e.name}</TableCell>
                 <TableCell className="text-muted-foreground max-md:hidden">{e.kind === 'file' ? human(e.size) : ''}</TableCell>
                 <TableCell className="space-x-1 text-right whitespace-nowrap">
                   {e.kind === 'file' && <Button size="sm" onClick={() => download.mutate(e)}>Download</Button>}

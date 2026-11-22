@@ -1,19 +1,7 @@
-// The pages not moved to React yet, mounted in the router's outlet: each renders its DOM into its section.
+// The Install page, not moved to React yet, mounted in the router's outlet.
 import { useEffect, useRef } from 'react';
 import { useParams } from '@tanstack/react-router';
-import { installSection, showInstall, showPage } from './legacy.ts';
-import type { LegacyPage as Legacy } from './legacy.ts';
-
-export function LegacyPage({ page }: { page: Legacy }) {
-  const ref = useRef<HTMLElement>(null);
-  const shown = useRef(false);
-  useEffect(() => {
-    if (shown.current) return;          // StrictMode runs effects twice: load the page once
-    shown.current = true;
-    showPage(page);
-  }, [page]);
-  return <section ref={ref} id={`page-${page}`} className="page" />;
-}
+import { installSection, showInstall } from './legacy.ts';
 
 /** The install flow keeps one section across its stages (it holds the flow's state). */
 export function LegacyInstall() {
