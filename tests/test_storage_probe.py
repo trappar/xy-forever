@@ -1,4 +1,5 @@
 """Report integrity and exact inner-OS mutation boundaries; no device execution."""
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -6,7 +7,7 @@ import tempfile
 import unittest
 import zlib
 
-from xy_forever import hostbuild
+import xyf_hosttest
 from xy_forever.xyf_build import (CARRY, END, HEAP_BASE, HEAP_BYTES, REPORTER,
                                             heap_record, inner_image, patches, verify_inner)
 from xy_forever.build_formats import header
@@ -295,18 +296,18 @@ class StorageProbeTests(unittest.TestCase):
             self.assertFalse(decode(pack())['probe_passed'])
             words[offset] = original
 
-    def test_native_report_checksum_and_marker_with_sanitizers(self):
+    def test_native_report_accepts_the_report_only_fixture(self):
+        # The C++ reader's checksum and fields (tests/native/storage_probe_record_test.cpp) agree with the writer's.
+        rel = 'tests/native/storage_probe_record_test.cpp'
+        xyf_hosttest.used(rel)
         with tempfile.TemporaryDirectory(prefix='xyf-probe-record-') as temporary:
-            binary = Path(temporary) / 'record'
-            hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                           '-fsanitize=address,undefined',
-                           str(ROOT / 'target/storage_probe_record.cpp'),
-                           str(ROOT / 'tests/storage_probe_record_test.cpp'), '-o', str(binary)],
-                          check=True, capture_output=True, text=True)
             fixture = Path(temporary) / 'fixture.bin'
             fixture.write_bytes(report_only_fixture())
-            subprocess.run([str(binary), str(fixture)], check=True, timeout=20)
-
+            run = subprocess.run([str(xyf_hosttest.DOCTEST), '--source-file=*' + rel, '--test-case=the report-only fixture',
+                                  '--no-skip', '--no-intro', '--no-version'], capture_output=True, text=True, timeout=20,
+                                 env=dict(os.environ, XYF_PROBE_FIXTURE=str(fixture)))
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            self.assertRegex(run.stdout, r'test cases: +1 \| +1 passed')
 
 if __name__ == '__main__':
     unittest.main()

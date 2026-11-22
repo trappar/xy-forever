@@ -56,6 +56,8 @@ jobs:
     name: Web app, client, protocol check (Linux)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      UV_NO_SYNC: "1"   # uv run keeps the sync below: no hosttest build (no Python suite here)
     steps:
       - uses: actions/checkout@v7
         with:
@@ -64,7 +66,7 @@ jobs:
         with:
           version: 2026.11.12
           cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --no-group native   # no Python suite here: skip building hosttest/
       - run: pnpm install --frozen-lockfile
       - name: The generated protocol files match protocol/v1.json
         run: mise run protogen

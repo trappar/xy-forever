@@ -1,34 +1,18 @@
-import ctypes
-from pathlib import Path
 import random
 import subprocess
-import tempfile
 import unittest
 
 import pytest
 
-from xy_forever import hostbuild
-
-ROOT = Path(__file__).resolve().parents[1]
+import xyf_hosttest
 
 @pytest.mark.gate
 class NativeAesTests(unittest.TestCase):
     @classmethod
-    def setUpClass(cls):
-        cls.tmp=tempfile.TemporaryDirectory(prefix='xyf-aes-')
-        path=Path(cls.tmp.name)/'aes.dylib'
-        hostbuild.run(['/usr/bin/clang++','-std=c++11','-Wall','-Wextra','-Werror','-shared','-fPIC',
-                       str(ROOT/'native/aes.cpp'),str(ROOT/'tests/aes_bridge.cpp'),'-o',str(path)],check=True)
-        cls.lib=ctypes.CDLL(str(path))
-        cls.lib.aes_decrypt.argtypes=[ctypes.c_void_p]*3
-
-    @classmethod
-    def tearDownClass(cls):cls.tmp.cleanup()
+    def setUpClass(cls):cls.native=xyf_hosttest.module('aes')
 
     def decrypt(self,key,data):
-        output=ctypes.create_string_buffer(16)
-        self.assertEqual(self.lib.aes_decrypt(key,data,output),0)
-        return output.raw
+        return self.native.decrypt(key,data)
 
     def test_fips197_aes256_known_answer(self):
         self.assertEqual(self.decrypt(bytes(range(32)),bytes.fromhex('8ea2b7ca516745bfeafc49904b496089')),  # FIPS-197 C.3 vector

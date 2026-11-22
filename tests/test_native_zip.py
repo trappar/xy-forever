@@ -7,6 +7,7 @@ import stat
 import struct
 import subprocess
 import tempfile
+import types
 import unittest
 import warnings
 import zipfile
@@ -16,6 +17,8 @@ import pytest
 
 
 from xy_forever import hostbuild
+
+import xyf_hosttest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -82,20 +85,20 @@ class NativeZipTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix="xyf-synthetic-")
         cls.directory = Path(cls.temporary.name)
-        cls.bridge = cls.directory / "zip_bridge"
-        cls.command = ["/usr/bin/clang++", "-std=c++11", "-O2", "-Wall", "-Wextra", "-Werror",
-                       str(ROOT / "tests/zip_bridge.cpp"), str(ROOT / "native/zip.cpp"),
-                       str(ROOT / "native/inflate.cpp"), "-o", str(cls.bridge)]
-        hostbuild.run(cls.command, check=True, capture_output=True)
+        cls.lib = xyf_hosttest.module("zip")
 
     @classmethod
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
     def run_bridge(self, command, data, *args, binary=None, name="input"):
+        """The driver's command on data: in the host extension, or in a built binary (tests/zip_bridge.cpp)."""
+        if binary is None:
+            code, out, err = self.lib.run(command, bytes(data), [str(a) for a in args])
+            return types.SimpleNamespace(returncode=code, stdout=out, stderr=err)
         path = self.directory / (name + ".bin")                 # name: runs at the same time
         path.write_bytes(data)
-        return subprocess.run([str(binary or self.bridge), command, str(path), *map(str, args)], capture_output=True)
+        return subprocess.run([str(binary), command, str(path), *map(str, args)], capture_output=True)
 
     def expect_raw(self, compressed, expected, *, valid=True):
         result = self.run_bridge("raw", compressed, len(expected))
@@ -350,11 +353,10 @@ class NativeZipTests(unittest.TestCase):
 
     def test_deterministic_damage_under_address_and_undefined_sanitizers(self):
         sanitized = self.directory / "zip_bridge_sanitized"
-        command = list(self.command)
-        command[command.index("-O2")] = "-O1"
-        command[-1] = str(sanitized)
-        command[1:1] = ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
-        hostbuild.run(command, check=True, capture_output=True)
+        hostbuild.run(["/usr/bin/clang++", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-std=c++11",
+                       "-O1", "-Wall", "-Wextra", "-Werror", str(ROOT / "tests/zip_bridge.cpp"),
+                       str(ROOT / "native/zip.cpp"), str(ROOT / "native/inflate.cpp"), "-o", str(sanitized)],
+                      check=True, capture_output=True)
         rng = random.Random(1951)
         original = zip_bytes([("os.ldr", b"abc" * 3000)])
         compressed = raw(b"abc" * 3000)

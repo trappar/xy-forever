@@ -18,7 +18,6 @@ Where each vector comes from:
     header, the same check).
 A test fails if the verifier accepts any invalid case.
 """
-import ctypes
 import hashlib
 from pathlib import Path
 import random
@@ -32,9 +31,8 @@ import pytest
 import p224_reference as ref
 from xy_forever import paths, tfw_extract
 
-from xy_forever import hostbuild
+import xyf_hosttest
 
-ROOT = Path(__file__).resolve().parents[1]
 VALID, ARGUMENT, KEY, RANGE, MISMATCH = range(5)               # p224::Status
 H_VALID, H_SIZE, H_KEY_INDEX, H_KEY, H_RANGE, H_MISMATCH = range(6)   # tfw::Signature
 
@@ -78,33 +76,19 @@ def key_bytes(point):
 class Native(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-p224-')
-        cls.addClassCleanup(cls.tmp.cleanup)
-        path = Path(cls.tmp.name) / 'p224.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O2', '-Wall', '-Wextra', '-Werror', '-shared', '-fPIC',
-                       *[str(ROOT / 'native' / n) for n in ('p224.cpp', 'tfw_signature.cpp', 'hash.cpp')],
-                       str(ROOT / 'tests/p224_bridge.cpp'), '-o', str(path)], check=True, capture_output=True)
-        cls.lib = ctypes.CDLL(str(path))
-        cls.lib.p224_verify.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p,
-                                        ctypes.c_char_p]
-        cls.lib.tfw_verify_header.argtypes = [ctypes.c_char_p, ctypes.c_uint, ctypes.c_char_p]
-        cls.lib.tfw_signed_digest.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
-        cls.lib.p224_time.argtypes = [ctypes.c_char_p] * 4 + [ctypes.c_uint]
-        cls.lib.p224_time.restype = ctypes.c_double
+        cls.native = xyf_hosttest.module('p224')
 
     def verify(self, key, digest, r, s):
         """Native status; key a point or 56 bytes, r and s integers or 28 bytes."""
         key = key if isinstance(key, bytes) else key_bytes(key)
         r, s = (v if isinstance(v, bytes) else be(v) for v in (r, s))
-        return self.lib.p224_verify(key, digest, len(digest), r, s)
+        return self.native.verify(key, digest, r, s)
 
     def header(self, header, key):
-        return self.lib.tfw_verify_header(bytes(header), len(header), key)
+        return self.native.verify_header(bytes(header), len(header), key)
 
     def signed_digest(self, header):
-        out = ctypes.create_string_buffer(32)
-        self.lib.tfw_signed_digest(bytes(header), out)
-        return out.raw
+        return self.native.signed_digest(bytes(header))
 
     def check_signed_range(self, header, key, per_byte=True):
         """Every bit outside +0x10..+0x50 changes the message; one bit per byte (when per_byte) and
@@ -208,18 +192,17 @@ class VerifierTests(Native):
         _, _, _, r, s = RFC_VECTORS[0]
         for digest in (b'', bytes(65)):
             self.assertEqual(self.verify(RFC_Q, digest, r, s), ARGUMENT)
-        self.assertEqual(self.lib.p224_verify(None, bytes(32), 32, be(r), be(s)), ARGUMENT)
+        self.assertEqual(self.native.verify(None, bytes(32), be(r), be(s)), ARGUMENT)
 
     def test_every_single_bit_corruption_is_refused(self):
         name, message, _, r, s = RFC_VECTORS[0]
         inputs = [bytearray(key_bytes(RFC_Q)), bytearray(hashlib.sha256(message).digest()),
                   bytearray(be(r)), bytearray(be(s))]
-        self.assertEqual(self.lib.p224_verify(*map(bytes, inputs[:2]), 32, *map(bytes, inputs[2:])), VALID)
+        self.assertEqual(self.native.verify(*map(bytes, inputs)), VALID)
         for which, data in enumerate(inputs):
             for bit in range(len(data) * 8):
                 data[bit // 8] ^= 1 << (bit % 8)
-                status = self.lib.p224_verify(bytes(inputs[0]), bytes(inputs[1]), 32, bytes(inputs[2]),
-                                              bytes(inputs[3]))
+                status = self.native.verify(*map(bytes, inputs))
                 data[bit // 8] ^= 1 << (bit % 8)
                 # Only the digest's leftmost 224 bits count (FIPS 186-4 6.4): its last four
                 # bytes are not part of e.
@@ -261,7 +244,7 @@ class VerifierTests(Native):
 
     def test_speed(self):
         name, message, _, r, s = RFC_VECTORS[0]
-        micros = self.lib.p224_time(key_bytes(RFC_Q), hashlib.sha256(message).digest(), be(r), be(s), 50)
+        micros = self.native.time(key_bytes(RFC_Q), hashlib.sha256(message).digest(), be(r), be(s), 50)
         self.assertGreater(micros, 0)
         self.assertLess(micros, 50000)       # host -O2: about 1 ms
 
@@ -305,8 +288,8 @@ class HeaderTests(Native):
         key = key_bytes(ref.public_key(SYNTHETIC_D))
         header = bytearray(synthetic_header(1))
         self.assertEqual(self.header(header, key), H_VALID)
-        self.assertEqual(self.lib.tfw_verify_header(bytes(header), 0x2ff, key), H_SIZE)
-        self.assertEqual(self.lib.tfw_verify_header(bytes(header) + b'\0', 0x301, key), H_SIZE)
+        self.assertEqual(self.native.verify_header(bytes(header), 0x2ff, key), H_SIZE)
+        self.assertEqual(self.native.verify_header(bytes(header) + b'\0', 0x301, key), H_SIZE)
         for index in (1, 0xff):
             changed = bytearray(header)
             changed[0x89] = index

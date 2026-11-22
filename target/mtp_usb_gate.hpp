@@ -1,7 +1,7 @@
 #ifndef XYF_MTP_USB_GATE_HPP
 #define XYF_MTP_USB_GATE_HPP
 // Which check refuses an MTP USB probe start (test build xyf-mtp-usb only: usb_service.cpp
-// probe_start; host test target/mtp_usb_gate_test.cpp). The record says why (op 1 sends it after the
+// probe_start; host test tests/native/mtp_usb_gate_test.cpp). The record says why (op 1 sends it after the
 // probe words): the check, its first differing span (index, address, length), that span's CRC as read
 // and how many of its spans differ. The span, not the word: B holds only CRCs.
 // All zero: no refusal.

@@ -1,37 +1,15 @@
 """Encrypted container -> random-access ZIP -> whole-package admission."""
-import json
-from pathlib import Path
-import subprocess
-import tempfile
 import unittest
 
 from test_native_package import package, VALID_OS, OS
 from test_tfw import container
 
-from xy_forever import hostbuild
-
-ROOT = Path(__file__).resolve().parents[1]
+import xyf_hosttest
 
 
 class TfwPackagePipelineTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix="xyf-tfw-pipeline-")
-        cls.addClassCleanup(cls.tmp.cleanup)
-        cls.root = Path(cls.tmp.name)
-        cls.bridge = cls.root / "bridge"
-        hostbuild.run(["/usr/bin/clang++", "-std=c++11", "-O2", "-Wall", "-Wextra", "-Werror",
-                       str(ROOT / "tests/tfw_package_bridge.cpp"),
-                       *[str(ROOT / "native" / (name + ".cpp")) for name in
-                          ("tfw", "aes", "package", "images", "zip", "inflate", "hash", "package_policy", "companions", "ldr")],
-                        "-o", str(cls.bridge)], check=True, capture_output=True)
-
     def run_pipeline(self, data):
-        path = self.root / "synthetic.tfw"
-        path.write_bytes(data)
-        result = subprocess.run([str(self.bridge), str(path)], capture_output=True, check=False)
-        self.assertIn(result.returncode, (0, 1), result.stderr)
-        return result.returncode, json.loads(result.stdout)
+        return xyf_hosttest.module("tfw_package").run(data)
 
     def test_both_encrypted_wrappers_and_clear_payload_compose(self):
         archive = package([(OS, VALID_OS), ("firmware/blackfin/bin/bootloader.ldr", b"excluded"),

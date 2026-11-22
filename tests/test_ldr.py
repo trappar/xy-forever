@@ -1,15 +1,9 @@
-import ctypes
 import random
-from pathlib import Path
 import struct
-import tempfile
 import unittest
 
 from xy_forever.ldr import parse_ldr, replay
 
-from xy_forever import hostbuild
-
-ROOT = Path(__file__).resolve().parents[1]
 
 def header(flags, target, count, argument=0):
     raw = bytearray(struct.pack('<4I', 0xad000000 | flags, target, count, argument))
@@ -25,52 +19,25 @@ def image(records, entry=0x1000):
     body += header(0x8004, entry, 0)
     return header(0x5004, entry, 0, len(body)) + body
 
-class Range(ctypes.Structure):
-    _fields_ = [('begin', ctypes.c_uint), ('end', ctypes.c_uint)]
-
-class Summary(ctypes.Structure):
-    _fields_ = [('records', ctypes.c_uint), ('expanded', ctypes.c_uint), ('entry', ctypes.c_uint)]
-
 class Native:
-    def __init__(self, directory):
-        self.path = Path(directory) / 'ldr.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                       '-shared', '-fPIC', str(ROOT / 'native/ldr.cpp'),
-                       str(ROOT / 'tests/native_bridge.cpp'), '-o', str(self.path)], check=True)
-        self.lib = ctypes.CDLL(str(self.path))
-        byte_ptr = ctypes.POINTER(ctypes.c_ubyte)
-        word = ctypes.c_uint
-        self.lib.inspect_ldr.argtypes = [byte_ptr, word, ctypes.POINTER(Range), word,
-                                        ctypes.POINTER(Range), word, ctypes.POINTER(Summary)]
-        self.lib.expand_ldr.argtypes = [byte_ptr, word, word, word, byte_ptr, word, ctypes.POINTER(word)]
-        self.lib.inspect_ldr.restype = self.lib.expand_ldr.restype = ctypes.c_int
+    """native/ldr.hpp through the host extension (hosttest/bind/ldr.cpp)."""
+    def __init__(self):
+        import xyf_hosttest      # here, not at the top: web tests import this file's helpers without hosttest
+        self.native = xyf_hosttest.module('ldr')
 
     def inspect(self, data, allowed=((0x1000, 0x10000),), protected=()):
-        raw = (ctypes.c_ubyte * len(data)).from_buffer_copy(data)
-        ranges = lambda rs: (Range * len(rs))(*(Range(*r) for r in rs))
-        result = Summary()
-        error = self.lib.inspect_ldr(raw, len(data), ranges(allowed), len(allowed),
-                                     ranges(protected), len(protected), ctypes.byref(result))
-        return error, result
+        return self.native.inspect(bytes(data), list(allowed), list(protected))
 
     def expand(self, data, offset, delta, capacity):
-        raw = (ctypes.c_ubyte * len(data)).from_buffer_copy(data)
-        output = (ctypes.c_ubyte * capacity)()
-        produced = ctypes.c_uint()
-        error = self.lib.expand_ldr(raw, len(data), offset, delta, output, capacity, ctypes.byref(produced))
+        error, output = self.native.expand(bytes(data), offset, delta, capacity)
         if error:
             raise ValueError(f'native expansion failed: {error}')
-        return bytes(output[:produced.value])
+        return output
 
 class LdrTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-tests-')
-        cls.native = Native(cls.tmp.name)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.native = Native()
 
     def test_overlap_and_non_word_fill(self):
         data = image([(4, 0x1000, 16, 0, bytes(range(16))),

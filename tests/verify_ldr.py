@@ -16,8 +16,8 @@ from xy_forever.outer import ALLOWED, PROTECTED
 def validate_image(path, native):
     data = path.read_bytes()
     report = inspect_ldr(data)
-    error, summary = native.inspect(data, ALLOWED, PROTECTED)
-    if error or (summary.records, summary.expanded, summary.entry) != (
+    error, summary = native.inspect(data, ALLOWED, PROTECTED)     # (records, expanded bytes, entry)
+    if error or summary != (
             report['records'], report['expanded_write_bytes'], int(report['entry'], 16)):
         raise ValueError(f'Native parser disagrees for {path}: {error}')
     independent = Firmware(data)
@@ -46,7 +46,7 @@ def main():
     args = parser.parse_args()
     out = private_output(args.out)
     out.mkdir(parents=True, exist_ok=False)
-    native = Native(out)
+    native = Native()
     reports = {}
     for version, image, package in (
         ('1.2.1', STOCK_121 / 'os.ldr', DECRYPTED / 'opxy_firmware_1_2_1/firmware_secure.zip'),

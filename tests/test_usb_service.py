@@ -2,7 +2,6 @@
 install allowlist, image/header checks, decoder layout, builder spans, and the
 host tool against a fake device. No device access."""
 import contextlib
-import ctypes as C
 import hashlib
 import io
 import json
@@ -16,7 +15,7 @@ import zlib
 
 import pytest
 
-from xy_forever import hostbuild
+import xyf_hosttest
 from xy_forever import usb_proto as P
 from xy_forever.census import (USB_SERVICE_FIELDS, USB_SERVICE_V2_WORDS, USB_SERVICE_V3_WORDS,
                                    USB_SERVICE_V4_WORDS, usb_service)
@@ -32,33 +31,13 @@ PARTITION, SECTOR, WRITE, PATH, READ = 0x11907694, 0x11907348, 0x11907710, 0x119
 class UsbServiceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-usb-')
-        lib = Path(cls.tmp.name) / 'usb.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-O1', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       '-DXYF_USB_SERVICE=1', '-I', str(ROOT / 'target'),
-                       str(ROOT / 'target/usb_proto.cpp'), str(ROOT / 'target/xyf_crc32.cpp'),
-                       str(ROOT / 'target/usb_service.cpp'), str(ROOT / 'target/storage_server.cpp'),
-                       str(ROOT / 'tests/usb_service_bridge.cpp'), '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-        cls.lib.stock_sha.restype = C.POINTER(C.c_ubyte)
-        for name in ('usb_encode', 'usb_feed', 'install_decide', 'usb_result_bytes', 'stock_bytes'):
-            getattr(cls.lib, name).restype = C.c_uint
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('usb_service')
 
     def device_encode(self, kind, seq, payload):
-        out = C.create_string_buffer(P.MAX_PAYLOAD + 16)
-        n = self.lib.usb_encode(kind, seq, payload, len(payload), out, len(out))
-        return out.raw[:n]
+        return self.lib.encode(kind, seq, payload, P.MAX_PAYLOAD + 16)
 
     def device_feed(self, data):
-        t, s, n, bad, dropped = (C.c_uint() for _ in range(5))
-        payload = C.create_string_buffer(P.MAX_PAYLOAD)
-        frames = self.lib.usb_feed(data, len(data), C.byref(t), C.byref(s), payload, C.byref(n), C.byref(bad),
-                                   C.byref(dropped))
-        return frames, t.value, s.value, payload.raw[:n.value], bad.value, dropped.value
+        return self.lib.feed(data)
 
     def test_codec_matches_between_device_and_host(self):
         rng = random.Random(1)
@@ -66,16 +45,16 @@ class UsbServiceTest(unittest.TestCase):
             payload = bytes(rng.getrandbits(8) for _ in range(size))
             frame = P.encode(0x11, 7, payload)
             self.assertEqual(self.device_encode(0x11, 7, payload), frame)
-            self.lib.usb_reset()
+            self.lib.reset()
             self.assertEqual(self.device_feed(b'noise' + frame)[:4], (1, 0x11, 7, payload))
             self.assertEqual(P.Parser().feed(b'noise' + frame), [(0x11, 7, payload)])
-        self.assertEqual(self.lib.usb_encode(1, 1, b'x' * (P.MAX_PAYLOAD + 1), P.MAX_PAYLOAD + 1, None, 0), 0)
+        self.assertEqual(self.lib.encode(1, 1, b'x' * (P.MAX_PAYLOAD + 1), 0), b'')
 
     def test_corruption_is_rejected_and_resynchronised(self):
         frame = P.encode(0x02, 3, b'hello')
         for i in range(len(frame)):
             bad = bytearray(frame); bad[i] ^= 0x10
-            self.lib.usb_reset()
+            self.lib.reset()
             frames, kind, seq, payload, bad_crc, _ = self.device_feed(bytes(bad) + frame)
             host = P.Parser().feed(bytes(bad) + frame)
             if frames:                                   # the good frame after it decodes...
@@ -83,10 +62,10 @@ class UsbServiceTest(unittest.TestCase):
                 self.assertEqual(host[-1], (0x02, 3, b'hello'))
             else:                                        # ...or a corrupted length still waits (home_pump's idle reset clears it)
                 self.assertTrue(4 <= i < 8, i)
-                self.lib.usb_reset()
+                self.lib.reset()
                 self.assertEqual(self.device_feed(frame)[:4], (1, 0x02, 3, b'hello'))
             self.assertNotIn((0x02, 3, b'hellp'), host)  # never a corrupted frame accepted
-        self.lib.usb_reset()
+        self.lib.reset()
         self.assertEqual(self.device_feed(b'XF\x01\x01' + struct.pack('<I', P.MAX_PAYLOAD + 1) + frame)[0], 1)
 
     def test_random_streams_decode_identically(self):
@@ -104,7 +83,7 @@ class UsbServiceTest(unittest.TestCase):
                     sent.append((0x11, k, payload))
                 stream += frame
             host = P.Parser().feed(bytes(stream))
-            self.lib.usb_reset()
+            self.lib.reset()
             device = []
             for byte in stream:
                 frames, kind, seq, payload, _, _ = self.device_feed(bytes([byte]))
@@ -137,25 +116,25 @@ class UsbServiceTest(unittest.TestCase):
 
     def test_image_and_header_checks(self):
         image = bytes(64) + struct.pack('<II', 0x584c4348, 1) + bytes(64)
-        self.assertTrue(self.lib.image_has_descriptor(image, len(image)))
-        self.assertFalse(self.lib.image_has_descriptor(bytes(200), 200))
-        self.assertFalse(self.lib.image_has_descriptor(image[:66] + image[67:], len(image) - 1))   # misaligned
+        self.assertTrue(self.lib.has_descriptor(image))
+        self.assertFalse(self.lib.has_descriptor(bytes(200)))
+        self.assertFalse(self.lib.has_descriptor(image[:66] + image[67:]))   # misaligned
         header = struct.pack('<IIIBB', 3, 1000, 0xdeadbeef, 1, 0) + bytes(498)
-        self.assertTrue(self.lib.boot_header_matches(header, 1000, 0xdeadbeef))
-        self.assertFalse(self.lib.boot_header_matches(header, 1001, 0xdeadbeef))
-        self.assertFalse(self.lib.boot_header_matches(header, 1000, 0xdeadbeee))
+        self.assertTrue(self.lib.header_matches(header, 1000, 0xdeadbeef))
+        self.assertFalse(self.lib.header_matches(header, 1001, 0xdeadbeef))
+        self.assertFalse(self.lib.header_matches(header, 1000, 0xdeadbeee))
         encrypted = struct.pack('<IIIBB', 3, 1000, 0xdeadbeef, 1, 1) + bytes(498)   # OTP key: writer encrypts
-        self.assertTrue(self.lib.boot_header_matches(encrypted, 1000, 0xdeadbeef))
+        self.assertTrue(self.lib.header_matches(encrypted, 1000, 0xdeadbeef))
         for bad in (struct.pack('<IIIBB', 1, 1000, 0xdeadbeef, 1, 0), struct.pack('<IIIBB', 3, 1000, 0xdeadbeef, 0, 0),
                     struct.pack('<IIIBB', 3, 1000, 0xdeadbeef, 1, 2)):
-            self.assertFalse(self.lib.boot_header_matches(bad + bytes(498), 1000, 0xdeadbeef))
+            self.assertFalse(self.lib.header_matches(bad + bytes(498), 1000, 0xdeadbeef))
 
     def test_uninstall_accepts_only_the_exact_stock_image(self):
         stock = bytes.fromhex(P.STOCK_OS_LDR_SHA256)
-        self.assertEqual(bytes(self.lib.stock_sha()[:32]), stock)                     # device == host constants
+        self.assertEqual(self.lib.stock_sha(), stock)                     # device == host constants
         self.assertEqual(self.lib.stock_bytes(), P.STOCK_OS_LDR_BYTES)
         size = P.STOCK_OS_LDR_BYTES
-        accept = lambda u, d, n, sha: self.lib.image_accept(u, d, n, sha)
+        accept = lambda u, d, n, sha: self.lib.accept_image(u, d, n, sha)
         self.assertTrue(accept(1, 0, size, stock))                                    # stock: no descriptor needed
         self.assertFalse(accept(1, 0, size - 1, stock))                               # size must match too
         self.assertFalse(accept(1, 1, size, bytes(32)))                               # any other image, descriptor or not
@@ -174,10 +153,10 @@ class UsbServiceTest(unittest.TestCase):
             self.skipTest('private stock 1.2.1 os.ldr absent')
         data = restore.read_bytes()
         self.assertEqual((len(data), hashlib.sha256(data).hexdigest()), (P.STOCK_OS_LDR_BYTES, P.STOCK_OS_LDR_SHA256))
-        self.assertFalse(self.lib.image_has_descriptor(data, len(data)))              # needs UNINSTALL, not INSTALL
+        self.assertFalse(self.lib.has_descriptor(data))              # needs UNINSTALL, not INSTALL
 
     def test_result_layout_matches_decoder(self):
-        self.assertEqual(self.lib.usb_result_bytes(), 4 * USB_SERVICE_V4_WORDS)
+        self.assertEqual(self.lib.result_bytes(), 4 * USB_SERVICE_V4_WORDS)
         words = [0] * USB_SERVICE_V4_WORDS
         words[USB_SERVICE_V2_WORDS:USB_SERVICE_V3_WORDS] = [57, 56, 1, 0, 0, 4, 81234, 900000]   # version 3: install log
         words[USB_SERVICE_V3_WORDS:] = [0x16, 0x28, 0, 0]                                       # version 4: presence

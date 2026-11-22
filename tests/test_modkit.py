@@ -1,7 +1,7 @@
 """Mod packages from an open-xy kit (xy_forever/modkit.py; docs/storage/mods.md).
 
 Synthetic kits made here from scratch run in the standard suite: package layout, the device's
-manifest and files.sha256 readers (tests/test_xyf_manifest.py's bridge), edits.bin, the rebuilt
+manifest and files.sha256 readers (tests/test_xyf_manifest.py's binding), edits.bin, the rebuilt
 kit and every refusal. The real published kit, stock os.ldr and op1_factory.json (private area)
 and open-xy's core.mjs (the open-xy upstream clone at the kit's SDK commit) run the byte-for-byte proof on a
 fixed sample of selections when present and skip otherwise (`modkit prove` runs every selection)."""
@@ -150,7 +150,8 @@ class Synthetic(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        TM.ManifestTest.setUpClass.__func__(cls)                  # the device readers, host-built
+        TM.ManifestTest.setUpClass.__func__(cls)                  # the device readers (the host extension)
+        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-modkit-')
         cls.addClassCleanup(cls.tmp.cleanup)
         cls.work = Path(cls.tmp.name)
         cls.kit = synthetic_kit()

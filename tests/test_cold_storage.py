@@ -1,28 +1,12 @@
-"""Readiness policy checks only; no card, mount or target execution."""
+"""Cold reads stay out of L1 instruction SRAM (the readiness policy: tests/native/cold_storage_test.cpp)."""
 from pathlib import Path
 import re
-import subprocess
-import tempfile
 import unittest
-
-from xy_forever import hostbuild
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class ColdStorageTests(unittest.TestCase):
-    def test_retained_state_requires_local_unmounted_irq_ready_device(self):
-        with tempfile.TemporaryDirectory(prefix="xyf-cold-storage-") as temporary:
-            binary = Path(temporary) / "cold-storage"
-            hostbuild.run([
-                "/usr/bin/clang++", "-std=c++11", "-Wall", "-Wextra", "-Werror",
-                "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-                str(ROOT / "target/cold_storage.cpp"),
-                str(ROOT / "target/cold_storage_test.cpp"), "-o", str(binary),
-            ], check=True, capture_output=True, text=True)
-            result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
-            self.assertIn("19 cold storage checks passed", result.stdout)
-
     def test_cold_reads_avoid_l1_instruction_sram(self):
         # Every stalled cold test (002/005/006) CRC-read stock code at
         # 0x11a01d96 with core data loads; 003/004/007 did not. Keep L1

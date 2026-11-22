@@ -1,10 +1,8 @@
 """Menu state machine + view on the host: actions and visible-row bounds."""
 from pathlib import Path
-import tempfile
 import unittest
 
 import ui_preview as P
-from xy_forever import hostbuild
 
 NONE, REDRAW, CONTINUE, SAFE_MODE, RESTORE, OPEN_MODS, CHANGE_SETTING, PICK_SETTING = range(8)   # xyf_menu Action
 MAIN, INFO, HOME_EMPTY, SETTINGS, OPTIONS = range(5)            # xyf_menu Screen (#197: no confirm screens)
@@ -13,13 +11,8 @@ MAIN, INFO, HOME_EMPTY, SETTINGS, OPTIONS = range(5)            # xyf_menu Scree
 class UiFlowTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-flow-')
-        cls.lib = P.build(cls.tmp.name, run=hostbuild.run)
+        cls.lib = P.build()
         cls.fb = P.framebuffer(cls.lib)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
 
     def drawn(self):
         self.lib.flow_draw(self.fb, b'status')

@@ -1,0 +1,24 @@
+[project]
+name = "xyf-hosttest"
+version = "0.1.0"
+description = "XY Forever's native code built for the host, for the tests: one nanobind extension and one doctest binary"
+license = "MIT"
+requires-python = ">=3.14"
+
+[build-system]
+requires = ["scikit-build-core>=0.11", "nanobind>=2.9"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+build-dir = "../build/hosttest/{wheel_tag}"   # kept between builds: a C++ edit recompiles only what it touched
+cmake.build-type = "Release"
+wheel.packages = ["src/xyf_hosttest"]
+
+[tool.uv]
+# `uv sync` (and so `uv run`) rebuilds the package when any of these change: the C++ it compiles.
+cache-keys = [
+  { file = "pyproject.toml" }, { file = "CMakeLists.txt" }, { file = "bind/*" },
+  { file = "../native/**/*" }, { file = "../target/**/*" }, { file = "../tests/native/**/*" },
+  { file = "../sim/*.ipp" }, { file = "../third_party/**/*" },
+]

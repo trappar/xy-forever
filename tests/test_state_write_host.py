@@ -1,13 +1,11 @@
 """Host side of 'set default': slot parser vs device writer, dry run, protocol constants."""
-import ctypes as C
 import io
 from contextlib import redirect_stdout
 from pathlib import Path
 import re
-import tempfile
 import unittest
 
-from xy_forever import hostbuild
+import xyf_hosttest
 from xy_forever import xyf_host as H
 from xy_forever import usb_proto as P
 
@@ -17,22 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 class StateWriteHostTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix='xyf-slot-')
-        lib = Path(cls.tmp.name) / 'slot.dylib'
-        hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror',
-                       *(str(ROOT / 'target' / f) for f in ('xyf_store.cpp', 'xyf_crc32.cpp', 'xyf_state.cpp')),
-                       str(ROOT / 'tests/xyf_state_bridge.cpp'), '-o', str(lib)], check=True, capture_output=True)
-        cls.lib = C.CDLL(str(lib))
-        cls.lib.slot_default.restype = C.c_uint
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
+        cls.lib = xyf_hosttest.module('state')
 
     def slot(self, entry_id, seq):
-        out = C.create_string_buffer(512)
-        n = self.lib.slot_default(entry_id.encode(), seq, out, 512)
-        return out.raw[:n]
+        return self.lib.slot_default(entry_id.encode(), seq, 512)
 
     def test_host_parser_matches_device_writer(self):
         a, b = self.slot('opxy-121', 3), self.slot('granular', 4)

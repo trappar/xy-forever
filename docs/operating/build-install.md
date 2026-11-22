@@ -60,8 +60,13 @@ a tier). A test's time is its CPU time (or wall time when less; a sim test's is 
 not fail it; a calibration probe raises the limits on slower or busy machines, and `--testmon` by its tracing
 overhead. CI enforces the CPU budgets and reports the wall-time ones (`XYF_BUDGETS`: `tests/conftest.py`). Every test is bounded (`timeout`, `bounds.TEST_S`; a simulator core test `SIM_TEST_S`, a parked sweep `SLOW_S`): past it the run
 prints HUNG with every thread's traceback and its worker's process group ends. `test-changed` adds to testmon's
-Python tracking the C++ each test compiled (`hostbuild`'s `clang -M` record) and the files a test runs as a
-subprocess (`@pytest.mark.uses('scripts/x.py')`); its first run runs everything.
+Python tracking the C++ each test used (a `hosttest/` module or doctest file and what it includes, or a remaining
+`hostbuild` compile's `clang -M` record) and the files a test runs as a subprocess (`@pytest.mark.uses('scripts/x.py')`); its first run runs everything.
+
+The tests' native code is `hosttest/`: one nanobind extension (`xyf_hosttest.module(NAME)`, a submodule per
+`hosttest/bind/NAME.cpp`) and one doctest binary (the C++ unit tests in `tests/native/`, sanitized, run as one gate-tier test by
+`tests/test_doctest.py`). `uv sync` builds both once, in `build/hosttest`, and rebuilds only what a C++ edit
+touched (`uv run` syncs first).
 
 `mise run check` (`scripts/check.py`) is the PR gate on a clean, committed tree: the product build into
 `build/product` plus `--verify` (cached, below; a verified build is copied to `../private/xy-forever/builds/<image>`), `protogen --check`, `pnpm run typecheck` in

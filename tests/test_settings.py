@@ -1,29 +1,15 @@
 """The settings record (/yaffs2/xy-forever/settings.txt) and the confirm gate, target/xyf_settings.hpp, on the
-host: defaults when absent (confirm on, PLAY held, MTP + Serial), exact values (usb=mtp from before MTP alone: MTP + Serial), round trip, a record with the old
+host (tests/native/xyf_settings_test.cpp): defaults when absent (confirm on, PLAY held, MTP + Serial), exact values (usb=mtp from before MTP alone: MTP + Serial), round trip, a record with the old
 knob= key, one before power_on / usb (#21), a newer format (the defaults, newer set), the page rows and their texts,
 and the gate (only
 a real PLAY / STOP answers; injected keys and releases are ignored; 30 s bound, wrap-safe)."""
 from pathlib import Path
-import subprocess
-import tempfile
 import unittest
-
-from xy_forever import hostbuild
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class SettingsTests(unittest.TestCase):
-    def test_record_page_and_gate(self):
-        with tempfile.TemporaryDirectory(prefix='xyf-settings-') as temp:
-            binary = Path(temp) / 'settings'
-            hostbuild.run(['/usr/bin/clang++', '-std=c++11', '-Wall', '-Wextra', '-Werror',
-                           '-fsanitize=address,undefined', str(ROOT / 'target/xyf_settings_test.cpp'),
-                           '-o', str(binary)], check=True, capture_output=True, text=True)
-            result = subprocess.run([str(binary)], capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertRegex(result.stdout, r'[1-9][0-9]* checks passed')
-
     def test_usb_mode_and_power_on_reach_the_product(self):
         """#191: the product's one USB start of a menu waits (bounded) for settings.txt, then always starts the composite
         (MTP + serial), whatever USB mode says: never a driver change within a boot. The mode is enforced live in our

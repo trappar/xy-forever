@@ -8,7 +8,7 @@
 // plan() compares the two and returns only the operations still needed, always in this order: build (the selection
 // into the spare slot), switch (the target's content), record (config.json), default (the target); the boot follows.
 // A switch always brings the record and the default after it: the config job ends the switch's journal. Running a
-// plan and planning again returns nothing (tests/converge_test.cpp). xyf_mods_io's converge sequence runs the plan.
+// plan and planning again returns nothing (tests/native/converge_test.cpp). xyf_mods_io's converge sequence runs the plan.
 // Pure and header-only: static functions (an inline, weak function is a register call on Blackfin).
 namespace xyf { namespace converge {
 enum Op : uint32_t { op_build = 1, op_switch = 2, op_record = 4, op_default = 8 };

@@ -48,7 +48,7 @@ class CrashScreenTest(unittest.TestCase):
                       text=True)
         out = subprocess.run([str(binary)], check=True, capture_output=True, text=True).stdout
         cls.screens = [s.strip('\n').split('\n') for s in out.split('--\n') if s.strip()]
-        cls.lib = P.build(cls.tmp.name, run=hostbuild.run)
+        cls.lib = P.build()
         cls.fb = P.framebuffer(cls.lib)
 
     @classmethod
