@@ -2,12 +2,14 @@
 // Every mutation shares one scope, so the OP-XY gets one action at a time (a second waits for the first); queries read
 // what the pages show. Each outcome goes to the bug report, a failure to the notice line, and a lost link to Connect.
 import { MutationCache, MutationObserver, QueryCache, QueryClient, useMutation } from '@tanstack/react-query';
-import { ASK_TEXT, Client, JobError, SERIAL_OFF_TEXT, connectWebSerial, fileReason, isXyfError, webSerial } from 'xy-forever-client';
+import { ASK_TEXT, Client, JobError, SERIAL_OFF_TEXT, connectWebSerial, fileReason, isXyfError, readModsConfig, webSerial } from 'xy-forever-client';
 import type { SerialConnectOptions } from 'xy-forever-client';
 import { webSocketOpener } from 'xy-forever-client/dev';
 import { bugReport } from './bug-report.ts';
 import type { Action } from './bug-report.ts';
 import { useConnection } from './connection.ts';
+import { parseConfig } from './model.ts';
+import type { SavedConfig } from './model.ts';
 import { notice } from './notice.ts';
 import { navigatePath, simPort } from './routing.ts';
 
@@ -97,4 +99,19 @@ export async function disconnect(): Promise<void> {
   const { client } = useConnection.getState();
   useConnection.setState({ client: null });
   await client?.close();
+}
+
+/** A text file on the device, or null when it is not there. */
+export async function readText(client: Client, path: string): Promise<string | null> {
+  try { return new TextDecoder().decode(await client.readFile(path)); } catch (e) { if (isXyfError(e, 'not_found')) return null; throw e; }
+}
+
+/** The saved mods (/yaffs2/xy-forever/config.json): null when none is saved, undefined with the reason when unreadable. */
+export async function savedConfig(client: Client): Promise<{ config: SavedConfig | null; error?: never } | { config: undefined; error: string }> {
+  try {
+    const text = await readModsConfig(client);
+    return { config: text === null ? null : parseConfig(text) };
+  } catch (error) {
+    return { config: undefined, error: error instanceof Error ? error.message : String(error) };
+  }
 }

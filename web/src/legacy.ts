@@ -1,25 +1,19 @@
-// The pages not moved to React yet: Connect, Install, Device, Mods, Files. Plain DOM in the shell's sections; one device
+// The pages not moved to React yet: Install, Mods, Files. Plain DOM in the shell's sections; one device
 // action at a time.
-import { RELEASE_FILTERS, configGet, configSet, fileListSource, isXyfError, listPackages, localSet, pushPackages, readModsConfig,
-  removePackage } from 'xy-forever-client';
+import { RELEASE_FILTERS, configGet, configSet, fileListSource, isXyfError, listPackages, localSet, pushPackages, removePackage } from 'xy-forever-client';
 import type { Client, DirEntry, HeldGeneration, LocalSet, PackageSource, SavedInputs } from 'xy-forever-client';
-import { CONTENT_STATE, CONTENT_STATE_OLD, ROOT, WRITE_RULE, changeRefusal, configText, contentText, folderWritable, groupMods,
-  human, joinPath, modeText, nameProblem, parentOf, parseConfig } from './model.ts';
+import { ROOT, WRITE_RULE, changeRefusal, folderWritable, groupMods, human, joinPath, nameProblem, parentOf } from './model.ts';
 import type { SavedConfig } from './model.ts';
 import { h } from './ui.ts';
 import { confirmAction, promptText } from './ask.tsx';
 import { notice } from './notice.ts';
 import { useConnection } from './connection.ts';
-import { adopt, canConnect, deviceBusy, openDevice, runAction as run } from './device.ts';
-import { bugReport } from './bug-report.ts';
+import { adopt, canConnect, deviceBusy, openDevice, runAction as run, savedConfig as savedConfigOf } from './device.ts';
 import { downloadBlob } from './lib/download.ts';
 import { installPage } from './install/page.ts';
 import type { Lease } from './install/page.ts';
 import { navigatePath as navigate } from './routing.ts';
-export type LegacyPage = 'device' | 'mods' | 'files';
-import { pinned } from './install/release.ts';
-import { updateAvailable, updateXyf } from './update.ts';
-import { UNINSTALL_PROTOCOL, uninstallAvailable, uninstallXyf } from './uninstall.ts';
+export type LegacyPage = 'mods' | 'files';
 
 const dev = (): Client => useConnection.getState().client!;
 const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!;
@@ -27,7 +21,6 @@ const page = (id: string): HTMLElement => document.getElementById(`page-${id}`)!
 // ---- Pages and actions -------------------------------------------------------------------------------
 
 const loaders: Record<LegacyPage, () => Promise<void>> = {
-  device: () => run('refresh_status', loadDevice),
   mods: () => run('list_packages', loadMods),
   files: () => run('browse_files', () => browse(cwd)),
 };
@@ -41,6 +34,8 @@ export function installSection(): HTMLElement {
   install ??= installPage(installRoot, installDeps());
   return installRoot;
 }
+// Uninstalled: the install flow starts over.
+useConnection.subscribe((now, before) => { if (now.stockRestored && !before.stockRestored) install?.reset(); });
 const installRoot = Object.assign(document.createElement('section'), { id: 'page-install', className: 'page', hidden: true });
 /** Shows an install stage: the first page this document shows counts as the load (a reload asks te-boot again). */
 export function showInstall(stage: string | undefined): void {
@@ -89,111 +84,12 @@ async function findDevice(): Promise<Lease | null> {
   return lease(await openDevice({ timeoutMs: 5_000, filters: RELEASE_FILTERS, choose: false }));
 }
 
-// ---- Device ------------------------------------------------------------------------------------------
-
-async function readText(path: string): Promise<string | null> {
-  try { return new TextDecoder().decode(await dev().readFile(path)); } catch (e) { if (isXyfError(e, 'not_found')) return null; throw e; }
-}
-
-async function savedConfig(): Promise<{ config: SavedConfig | null; error?: never } | { config: undefined; error: string }> {
-  try {
-    const text = await readModsConfig(dev());
-    return { config: text === null ? null : parseConfig(text) };
-  } catch (error) {
-    return { config: undefined, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-function updateCard(c: Client): HTMLElement | null {
-  const release = pinned();
-  if (!release || !updateAvailable(c.info, release)) return null;
-  const progress = h('p', { role: 'status', 'data-testid': 'update-status' });
-  const button = btn(`Update to ${release.version}`, () => void run('update_xy_forever', async () => {
-    button.disabled = true;
-    try {
-      const info = await updateXyf(c, release, (message) => { progress.textContent = message; });
-      bugReport.updateStatus(info);
-      page('device').querySelector('[data-fact=version]')!.textContent = release.version;
-      page('device').querySelector('[data-fact=image]')!.textContent = release.image;
-      button.remove();
-      progress.textContent = `XY Forever ${release.version} is running in the menu.`;
-    } catch (error) {
-      progress.textContent = '';
-      throw error;
-    } finally {
-      button.disabled = false;
-    }
-  }), 'primary');
-  return h('div', { class: 'card' }, h('h2', {}, `XY Forever ${release.version} is available`),
-    release.notes && h('p', {}, release.notes), button, progress);
-}
-
-function uninstallCard(c: Client): HTMLElement {
-  const heading = h('h2', {}, 'Restore stock OS 1.2.1');
-  if (!uninstallAvailable(c.info)) return h('div', { class: 'card' }, heading,
-    h('p', {}, `Update XY Forever to use web uninstall. It requires device protocol ${UNINSTALL_PROTOCOL} or later and the stock restore commands.`));
-  const progress = h('p', { role: 'status' });
-  async function uninstall(): Promise<void> {
-    let finished = false;
-    await run('uninstall_xy_forever', async () => {
-      if (!await confirmAction('Uninstall XY Forever?',
-        'This restores official OS 1.2.1 and its content, removes your XY Forever library, mods and settings, then restarts your OP-XY.',
-        'Uninstall', true)) return;
-      useConnection.setState({ uninstalling: true });
-      button.disabled = true;
-      try {
-        await uninstallXyf(c, (message) => { progress.textContent = message; });
-        finished = true;
-      } finally {
-        useConnection.setState({ uninstalling: false });
-        button.disabled = false;
-        progress.textContent = '';
-      }
-    });
-    if (finished) {
-      useConnection.setState({ client: null, installed: false, stockRestored: true });
-      install?.reset();
-      navigate('/connect', { replace: true });
-    }
-  }
-  const button = btn('Uninstall XY Forever', () => { void uninstall(); }, 'danger');
-  return h('div', { class: 'card' }, heading, button, progress);
-}
-
-async function loadDevice(): Promise<void> {
-  const c = dev();
-  const info = await c.status();
-  bugReport.updateStatus(info);
-  const state = await c.readState();
-  let boots = 'No default set: the menu decides at power-on.';
-  if (state?.default) {
-    const entry = await c.libraryEntry(state.default).catch(() => ({} as Record<string, string>));
-    boots = `${entry['name'] ?? state.default}${entry['version'] ? ` ${entry['version']}` : ''} (library entry ${state.default})`;
-  }
-  const { config, error: configError } = await savedConfig();
-  const content = await readText(CONTENT_STATE);
-  const old = content === null && await readText(CONTENT_STATE_OLD) !== null;
-  page('device').replaceChildren(
-    h('h1', {}, 'Device'), h('p', { class: 'lede' }, 'What the OP-XY reports right now.'),
-    h('div', { class: 'card' }, h('dl', { class: 'facts', id: 'device-facts' },
-      h('dt', {}, 'XY Forever'), h('dd', { 'data-fact': 'version' }, info.version ?? 'unknown'),
-      h('dt', {}, 'Image'), h('dd', { 'data-fact': 'image' }, info.image ?? 'unknown'),
-      h('dt', {}, 'Running'), h('dd', {}, modeText(info.mode)),
-      h('dt', {}, 'Boots next'), h('dd', { 'data-fact': 'boots' }, boots),
-      h('dt', {}, 'Saved mods'), h('dd', {}, config === undefined ? `Could not read the saved configuration (${configError}).` : configText(config)),
-      h('dt', {}, 'Content'), h('dd', {}, contentText(content, old)),
-      h('dt', {}, 'Protocol'), h('dd', { class: 'muted' }, `${info.proto}${info.dev ? ', developer build' : ''}`))),
-    h('div', { class: 'row' }, btn('Refresh', () => void run('refresh_status', loadDevice))),
-  );
-  const update = updateCard(c);
-  if (update) page('device').append(update);
-  page('device').append(uninstallCard(c));
-}
-
 // ---- Mods --------------------------------------------------------------------------------------------
 
 let chosen: { source: PackageSource; set: LocalSet } | null = null;
 let held: HeldGeneration[] = [];
+
+async function savedConfig() { return savedConfigOf(dev()); }
 
 async function loadMods(): Promise<void> {
   const c = dev();
