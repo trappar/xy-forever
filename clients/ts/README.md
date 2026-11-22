@@ -10,33 +10,29 @@ simulator's TCP port). Strict TypeScript, ES modules, no runtime dependencies.
 - Entries: `.` (browser and Node), `./node` (adds TCP), `./dev` (raw link, developer commands), `./test/*`
   (the simulators and relay, for the web app's dev server and e2e tests). All point at the TypeScript source.
 
+Guides: [files](docs/files.md) (the file methods and their errors), [mod packages and builds](docs/mods.md)
+(pushing packages, the saved inputs, building on the device).
+
 ## Build and test
 
 ```sh
 pnpm install      # from the repository root (one workspace with web/): TypeScript, Vitest, @types/node (dev only)
-pnpm test         # type-check, test/v1.test.ts, then Vitest: codec, call layer, end to end, relay, files, mods (push, build)
-pnpm run test:browser  # Web Serial in the system Chrome (headless): two simulators and relays on random ports
-node test/conformance.ts --sim 127.0.0.1:7341    # the conformance cases against a running simulator
-node scripts/device-browser-test.ts --out DIR --sim PORT   # the web app (../../web) driven in Chrome, no human step (--serial: the OP-XY)
+pnpm test         # type-check, then Vitest (about 5 s): codec, call layer, Web Serial, end to end, relay, files, mods
+pnpm exec vitest run test/files.spec.ts -t 'rename'   # one file, one test
+node test/conformance.ts --sim 127.0.0.1:7341         # the conformance cases against a running simulator
 ```
 
-`mise run web-test` and CI's web job run `pnpm test`; the repository's Python suite does not.
+`mise run web-test` and CI's web job run `pnpm test`; the repository's Python suite does not. One runner, Vitest, in
+Node: the Web Serial specs (`webserial`, `chooser`, `buffer`) drive the real transport through the fake
+`navigator.serial` of `test/fake-serial.ts` (Chrome's receive buffer, the chooser, granted ports); the app in Chrome
+with the same fake is `web/e2e/install-sim.e2e.ts`. The web app driven against the OP-XY itself:
+`web/scripts/device-browser-test.ts` ([web testing](../../web/docs/testing.md)).
 
-`--serial` cannot answer Chrome's serial port chooser (no automation can), so it needs a Chrome profile
-(`--profile`, default `<private>/xy-forever/chrome-device-test`; `<private>` is `XYF_PRIVATE` or `../private`)
-that already holds a grant for the dev server's origin `http://127.0.0.1:5173`. Two ways to get one:
-
-- once by hand: `node scripts/device-browser-test.ts --grant` opens that profile in a visible Chrome; pick
-  the OP-XY in the list once. It waits for the grant, checks that a new launch connects without the chooser,
-  and exits.
-- the Chrome policy `SerialAllowUsbDevicesForUrls` (the vendor and product id of `USB_FILTER`, that origin):
-  no pick, but on macOS it is a managed preference and needs admin rights.
-
-Serial runs hold the shared OP-XY device lock. The script prints a `NEED:` line if the granted port or lock is unavailable, or if **Ask before USB control** is on.
-
-The Vitest run starts its own simulators (`python3 -m xy_forever.sim`, from a random base port so that parallel runs do not
-collide, state under the private sessions folder; `XYF_TS_SIM_PORT` fixes the base, `XYF_TS_SIM_STATE`, `XYF_KEEP_SIM=1`) and skips the
-simulator tests with the reason when they cannot start. Node 26 (pinned in `mise.toml`).
+The run starts its own simulators at once (`python3 -m xy_forever.sim`, from a random base port so that parallel runs do
+not collide, state under the private sessions folder; `XYF_TS_SIM_PORT` fixes the base, `XYF_TS_SIM_STATE`,
+`XYF_KEEP_SIM=1`) and skips the simulator tests with the reason when they cannot start. Their transport pauses on the
+simulator's clock (`simOpener`, `Transport.pause`), so polls take no host time. Budgets: 10 s a test, 30 s the run
+(`test/run-budget.ts` names what still runs). Node 26 (pinned in `mise.toml`).
 
 ## Use
 
@@ -52,59 +48,5 @@ const { rgba } = decodeScreen(await client.screenshot());
 try { await client.reboot(); await client.reconnect(); } catch (e) { if (isXyfError(e, 'timeout')) {} }
 ```
 
-Files (`test/files.spec.ts`). Paths are absolute under `/yaffs2`; changes only under `WRITE_ROOTS`
-(`/yaffs2/xy-forever/`, `/yaffs2/content/`); destructive calls: show the user the path and ask first.
-A change whose path fails `inWriteArea(path)` (outside the roots, an empty, `.` or `..` part, a name
-holding `bootloader`) is `refused` here with the device's reason and `status: null`, nothing sent;
-the device checks again.
-
-| Method | Does |
-|---|---|
-| `listDir(path)` | every entry `{ name, nameBytes, kind: 'file' \| 'folder' \| 'other', size }`, all pages, device order |
-| `readFile(path, { onProgress })` | the whole file in 1 KiB ranges; `onProgress(done, null)` |
-| `writeFile(path, data, { onProgress })` | creates or replaces (missing folders made): stage, write, read-back CRC; 0 or above `info.limits.stage` bytes: `too_large`, nothing sent |
-| `deleteFile(path)`, `removeDir(path)`, `makeDir(path)` | one file; one empty folder (else `state`); one folder (parent must exist: `not_found`; exists: `storage`) |
-| `renamePath(source, target)` | renames or moves a file or a whole folder (1.8); target exists: `state`, nothing replaced; no source or target folder: `not_found`; a folder into itself: `storage` |
-| `copyFile(source, target, { size })` → `{ bytes }` | copies one file on the device (1.9; at most `info.limits.stage` bytes, else `too_large`); target exists: `state`; waits 60 s + 1 s per 10000 bytes of `size` (default: from the source's listing); discards a staging |
-| `copyTree(source, target, { onProgress })` → `{ files, bytes }` | as `xyf_host.py cp -r`: a folder is `makeDir` plus one `copyFile` per file, recursively; a file is `copyFile`; a target inside the source: `RangeError`, nothing sent; stops at the first failure |
-| `libraryBoot(id, { confirm: true })` | boots a library entry once and leaves XY Forever (the link drops); without `confirm: true` a `TypeError`, nothing sent |
-
-A device error is an `XyfError` with the status as `code` (`refused`, `not_found`, `state`, `storage`, ...), the file
-system's error number in `fields.error`, and a message `command path: reason` in plain words (`fileReason(error)`).
-
-Mod packages (`src/mods.ts`, `test/mods.spec.ts`), as `xyf_host.py mods push | list | remove`: the host
-only puts packages on the OP-XY (the device assembles mod firmware itself). A package set is one
-generation folder from `modkit split`; it goes to `MODS_ROOT/<generation>/<package>/<stored name>`, the flat
-store (`src/modstore.ts`, docs/storage/mods.md: `store.txt`, a file with a folder in its path under its
-SHA-256's first 12 hex digits and extension; `MODS_ROOT` = `/yaffs2/xy-forever/mods`; generation from
-`base/info.txt`; protocol 1.16, older devices are refused with `update_required`; a folder without `store.txt`
-lists with `older: true`, a newer store with `newer: true`). Every change keeps the depth rule (`src/depth.ts`,
-#124): at most 6 folders below `/yaffs2`. A device or
-package-set problem: `XyfError` or `PackageError`.
-
-| Function | Does |
-|---|---|
-| `pushPackages(client, source, { only, verify, onPackage, onProgress })` → `{ sent, skipped, files, bytes, seconds, packages, verified }` | checks every file against its package's `files.sha256` first (nothing sent on a bad set); per package (base first): the listed files, then `info.txt`, then `files.sha256` last; a file the device holds with the same size is skipped; if anything in a package goes over, the device's `files.sha256` is deleted first, so a folder holding it has every listed file. Stops at the first failure; pushing again sends exactly the rest. `only`: these packages plus base; `verify`: reads everything back. `onProgress(done, total, 'send' \| 'verify')` in bytes |
-| `listPackages(client)` → `[{ profile, generation, older, newer, packages: [{ name, info, files, bytes, complete }] }]` | what the device holds; `complete: false`: an interrupted push (push again) |
-| `removePackage(client, what, { generation, dryRun })` → `[{ path, files, bytes }]` | a generation folder (`what` names a generation) or that package in every generation (or in `generation`); `files.sha256` first, then the files and folders; `dryRun`: what would go (for the confirmation); `[]`: nothing named `what`. Ask first |
-| `fileListSource(files)` / `folderSource(dir)` (`./node`) | the `source`: a folder chosen with `<input type="file" webkitdirectory>` (the generation folder), or a folder on disk |
-| `localSet(source, only)` | the checked package set, in send order, without the device |
-
-Building on the device (`test/mods.spec.ts`), as `xyf_host.py mods apply --wait | cancel`: the OP-XY assembles
-the firmware itself from the packages it holds; the host only starts, watches and cancels the job. The job works in
-`jobFolder(id)` = `/yaffs2/xy-forever/tmp/job-<id>/` and commits the result as library entry `mods-a` or `mods-b`,
-listed with its content not installed (it does not boot until `makeDefault` installs its content). `applyMods` and
-`makeDefault` are developer tools: they change what boots behind the saved inputs until the next plain power-on.
-
-| Function | Does |
-|---|---|
-| `configGet(client)` → `{ saved, mods, expanded, unverified, write, base, generation }` | the saved inputs (`config.get`, protocol 1.24): what the next boot of XY Forever converges to |
-| `configSet(client, { mods, expanded, unverified }, { readMs, pollMs })` → as `configGet` | destructive (ask first): `config.set`, the product way to change mods, as the device's Mods page does (safe mode stays as saved: a recovery action on the device only): sent again while the device reads its package list (`busy`), then followed until written; a selection the device cannot build is an `XyfError` `refused` whose message is the device's reason. Builds nothing: the next boot does |
-| `applyMods(client, { base, profile, generation, machines, extensions, name, unverified }, { onProgress, signal, pollMs, stallMs })` → `{ entry, state, status }` | destructive (ask first): `mods.apply`, then `job.status` every `pollMs` (500) until the job ends; `onProgress(status)` each time; resolves with the library entry id (`mods-a` or `mods-b`, the final status's `detail`), `state: 'content not installed'` and the final status (`elapsedMs`, `steps`). `unverified`: the user confirmed a base that is not a known stock firmware. A refusal: `XyfError` with the device's code and a plain reason (`busy`; `not_found` with `fields.missing`, `MISSING_WORDS`); a failed or cancelled job: `JobError` (`status`, the reason in words); aborting `signal` sends `job.cancel` and waits for the clean-up; no step for `stallMs` (90 s): `XyfError` `timeout` (the job keeps running) |
-| `makeDefault(client, id, { onProgress, pollMs, stallMs })` → `{ id, switched, status }` | destructive (ask first): `library.set_default`; an entry whose content is not installed answers `started` and the content switch runs as a job, followed through `job.status` until the default is written (`switched: true`); a failed switch: `JobError` (`what: 'content switch'`, the default unchanged) |
-| `jobStatus(client, job = 0)` → `JobStatus` | `{ job, phase, done, total, error, code, elapsedMs, steps, longestMs, peak, debris, detail, final, folder }`; job 0: the running or last one; when done, `detail` is the library entry id; `folder`: its work folder in `tmp/` (debris of a failed job) |
-| `cancelJob(client, job = 0)` → `{ debris }` | stops a build; answers once its files are removed; one that ended, one in its library commit, or a content switch: `state` |
-| `libraryBases(client)` → `[{ id, name, contentList }]` | firmware library entries holding an `os.ldr` that are not assembled mod sets (candidates for `base`; `mods-a`/`mods-b` left out); `contentList`: it has `content.sha256`, which a build needs |
-
-While a job runs, every command that needs storage answers `busy`: `isXyfError(error, 'busy')`, with the reason
-in the message; wait for the job (or cancel it) and try again.
+The call layer's time-outs and pauses: a call's `timeoutMs`, `Client.pause` (wall time on a real device, device time on
+the simulator). The rest: [files](docs/files.md), [mod packages and builds](docs/mods.md).

@@ -70,6 +70,11 @@ development and `/xy-forever/` for GitHub Pages.
 
 File and package removals ask first in plain words.
 
+**Bug report** previews a JSON bundle and downloads that same snapshot when you choose **Download JSON**.
+It includes the app version, connection status, the last known XY Forever release, image ID, protocol,
+mode and developer-build flag, plus up to 24 recent app actions and their outcomes. The app keeps
+this information in memory for the current tab, so the preview is available even after disconnecting.
+
 ## Uninstall
 
 Connect in the web app and choose **Uninstall XY Forever** on the **Device** page (device protocol 1.26 or later).
@@ -79,69 +84,25 @@ the library, mods and settings, and requests a restart. Keep the OP-XY powered a
 If cleanup stops after the verified write, retry while the XY Forever menu still runs. A power cycle at that point
 starts stock OS 1.2.1.
 
-## The release image
-
-Install and Update use the `os.ldr` whose SHA-256 `src/install/release.json` pins, fetched from this site at
-`release/os.ldr`. `python3 scripts/web_release.py [BUILD] --notes "What changed"` (from the repository root) takes a verified product
-build, checks it shares no bytes with the stock pair (`xy_forever/stock_bytes.py`; `xyf_build.py --verify` checks it
-too), writes the pin (committed in a release pull request) and stages the image in `public/release/` (gitignored);
-`--check` says whether the staged image matches the pin. Without a pin the page says there is nothing to install.
-
-## GitHub Pages
-
-The planned launch URL is `https://trappar.github.io/xy-forever/`. Deployment and the public firmware
-asset are pending. A local Install or Update run requires a staged image matching the pin.
-The app and the pinned image share that project path. The project and third-party notices are served at `LICENSES.txt`. Only `web/dist/` goes into the Pages artifact.
-
-From the repository root, stage the `os.ldr` matching the checked-in pin in `web/public/release/`.
-Use the locally verified build or download the same asset from the published `v<version>` release.
-Then run the deployment checks with Chrome installed.
-
-```sh
-python3 scripts/web_release.py --check
-pnpm --filter xy-forever-web run build:pages
-pnpm --filter xy-forever-web run smoke:pages
-```
-
-The smoke test serves the built files at `/xy-forever/` on localhost without a fallback for missing
-paths. It checks direct links, reloads, back and forward, and the Install page's download of the
-pinned image.
-
-At launch, select [GitHub Actions as the Pages source](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
-Attach the staged `os.ldr` to the GitHub release tagged `v<version>` from `release.json`, then run
-**Deploy web app to GitHub Pages** on `main`. The workflow fetches that one asset, checks it against the
-pin, builds and runs the smoke test before deploying. It uses Node dependencies and the verified
-release asset. After it finishes, open the HTTPS site, reload an install stage and check the
-SHA-256 of `/xy-forever/release/os.ldr` against the release pin.
-
-**Bug report** previews a JSON bundle and downloads that same snapshot when you choose **Download JSON**.
-It includes the app version, connection status, the last known XY Forever release, image ID, protocol,
-mode and developer-build flag, plus up to 24 recent app actions and their outcomes. The app keeps
-this information in memory for the current tab, so the preview is available even after disconnecting.
-
 ## Test
 
 ```sh
-pnpm test            # Vitest: config parsing, mod grouping, path rules, the install checks and steps (test/)
-pnpm run typecheck
-pnpm run test:e2e    # Playwright Test: the app in the system Chrome (headless) against the simulator, and the Install page (e2e/)
+mise run web-test    # the client's Vitest run, then this app's (test/: config parsing, mod grouping, path rules,
+                     # the install checks and steps) and its type check
+mise run web-e2e     # Playwright: the app in the system Chrome against the simulator and fake devices (e2e/)
 ```
 
-`test:e2e` starts `python3 -m xy_forever.sim` from the repository root on a random port in 21000-31000, with its
-state in the private sessions folder (`XYF_PRIVATE` applies; override with `XYF_SIM_STATE`), and removes the state
-afterwards. It is skipped with the reason when the simulator cannot run (no private stock files, no clang++).
-`e2e/install.e2e.ts` needs no simulator: fake te-boot MIDI and a fake dev-menu MTP device (`test/fake-devices.ts`)
-stand in for the OP-XY, with Web Serial and WebUSB switched off in Chrome. `e2e/install-sim.e2e.ts` runs the
-install's end against the simulator (a stock OP-XY just after Track 5: `--fresh`) through the client's fake Web Serial
-port (Chrome's 255-byte default buffer, the chooser, granted ports): the setup on the device, then the hand-off to
-Mods; a missing stock file refused. The repository's suite runs `pnpm test` here and both install browser tests
-(`tests/test_web.py`) once `pnpm install` has run.
+What each covers, budgets, targeted runs and the run against the OP-XY itself: [testing](docs/testing.md).
 
 ## The client library
 
 `xy-forever-client` is a pnpm workspace package (`workspace:*`, `clients/ts`). Its `exports` point at its
 TypeScript source, so Vite, Vitest and `tsc` use it as it is, with no build step; the dev server's simulator relay
 and the e2e tests' simulator helpers come from its `./test/*` export.
+
+## Release
+
+The pinned release image and the GitHub Pages deployment: [release](docs/release.md).
 
 ## Not built yet
 
