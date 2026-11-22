@@ -4,7 +4,8 @@
 // install-sim.e2e.ts, parallel). Projects: app (Web Serial off) and install (Web Serial and WebUSB off: the pages use
 // the fakes); bounds runs the planted hang (planted-hang.ts) in a nested run, the only place it runs (XYF_E2E_PLANTED).
 // Budgets (e2e/budgets.ts, enforced, on CPU time: a test's worker, Chrome and the simulators, e2e/cpu.ts; about twice
-// an unloaded run's, scaled on slower hardware): each test's, by project, and the sum of the run's. The hang bounds,
+// an unloaded run's and at least 1.5x a run's beside `mise run test-all`, whose load adds CPU too: polls and the
+// page's timers run longer; scaled on slower hardware): each test's, by project, and the sum of the run's. The hang bounds,
 // on wall time, stay the outer limit: each test (timeout) and the run (globalTimeout); a hung page fails its test by
 // name within its bound.
 import { createServer } from 'node:net';
@@ -40,7 +41,7 @@ export default defineConfig({
   expect: { timeout: 5_000 },
   reporter: planted
     ? 'list'
-    : [['list'], ['./e2e/budgets.ts', { runMs: 70_000, tests: { app: 2_500, install: 16_000, bounds: 15_000 } }]],
+    : [['list'], ['./e2e/budgets.ts', { runMs: 70_000, tests: { app: 4_000, install: 20_000, bounds: 15_000 } }]],
   outputDir: 'node_modules/.cache/playwright',
   workers: 3,
   forbidOnly: true,

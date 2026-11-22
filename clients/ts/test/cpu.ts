@@ -29,12 +29,15 @@ function psMs(text: string): number {
 async function processes(): Promise<Map<number, [number, number]> | null> {
   const table = new Map<number, [number, number]>();
   if (process.platform === 'darwin') {
-    const out = await new Promise<string>((done, fail) =>
-      execFile('ps', ['-A', '-o', 'pid=,ppid=,time='], (error, stdout) => (error ? fail(error) : done(stdout))),
-    );
+    let ps = 0;
+    const out = await new Promise<string>((done, fail) => {
+      ps = execFile('ps', ['-A', '-o', 'pid=,ppid=,time='], (error, stdout) =>
+        error ? fail(error) : done(stdout),
+      ).pid!;
+    });
     for (const line of out.split('\n')) {
       const [pid, ppid, time] = line.trim().split(/\s+/);
-      if (time) table.set(Number(pid), [Number(ppid), psMs(time)]);
+      if (time && Number(pid) !== ps) table.set(Number(pid), [Number(ppid), psMs(time)]); // not this sample's own ps
     }
     return table;
   }
