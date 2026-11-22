@@ -102,8 +102,10 @@ class Workspace(unittest.TestCase):
         self.assertEqual(paths.main_checkout(self.wt), self.repo)
 
     def test_the_main_checkouts_config_and_the_variables_still_win(self):
-        (self.repo / 'xyf.local.json').write_text(json.dumps({'private': str(self.ws / 'mine')}))
-        self.assertEqual(self.show(self.wt)['private'], self.ws / 'mine')
+        config = {'private': str(self.ws / 'mine'), 'toolchain': str(self.ws / 'tc-mine')}
+        (self.repo / 'xyf.local.json').write_text(json.dumps(config))
+        got = self.show(self.wt)
+        self.assertEqual((got['private'], got['toolchain']), (self.ws / 'mine', self.ws / 'tc-mine'))
         got = self.show(self.wt, {'XYF_PRIVATE': str(self.ws / 'env'), 'XYF_TOOLCHAIN': str(self.ws / 'tc')})
         self.assertEqual((got['private'], got['toolchain']), (self.ws / 'env', self.ws / 'tc'))
         got = self.show(self.repo, {'XYF_PRIVATE': str(self.ws / 'env')})

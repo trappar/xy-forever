@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
-"""Set up a private folder for XY Forever development (Python 3.14+, run by mise: `mise run setup`).
+"""Set up a workspace for XY Forever development (Python 3.14+).
 
-    python3 scripts/setup.py init [--private DIR]   create the private layout; --private records DIR
-                                                   in xyf.local.json (gitignored; XYF_PRIVATE wins)
-    python3 scripts/setup.py import-stock DIR      copy the stock 1.2.1 os.ldr + bootloader.ldr from DIR
+    mise run setup [--workspace DIR] [--dry-run] [--toolchain-archive ZIP]   (setup.py bootstrap)
+                                                   all that needs no OP-XY: the pinned tools (mise install),
+                                                   uv sync, pnpm install, the git hook, the private layout, your
+                                                   status notes (private xy-forever/status/), the toolchain
+                                                   (open-xy's toolchain-1 release, or ZIP already downloaded)
+                                                   and the fixtures; safe to rerun
+    uv run scripts/setup.py init [--private DIR] [--toolchain DIR]
+                                                   create the private layout; --private and --toolchain record
+                                                   folders outside the standard layout in xyf.local.json
+                                                   (gitignored; XYF_PRIVATE and XYF_TOOLCHAIN win)
+    uv run scripts/setup.py import-stock DIR       copy the stock 1.2.1 os.ldr + bootloader.ldr from DIR
                                                    (the two files, or a copied /upgrade/ tree), and the
                                                    stock catalog op1_factory.json if beside them or in DIR/content/
-    python3 scripts/setup.py import-stock --from-device
+    uv run scripts/setup.py import-stock --from-device
                                                    the same, read off the OP-XY in the dev menu's MTP mode
                                                    into private/incoming/ (read only: xy_forever/mtp_read.py)
-    python3 scripts/setup.py fixtures              what tests need from the stock pair + public open-xy
-    python3 scripts/setup.py doctor                what is set up, what is missing, what will skip
-    python3 scripts/setup.py bootstrap [--workspace DIR] [--dry-run] [--toolchain-archive ZIP]
-                                                   all of the above that needs no OP-XY, plus the toolchain
-                                                   (open-xy's toolchain-1 release, or ZIP already downloaded),
-                                                   your status notes (private xy-forever/status/), the pinned tools (mise install),
-                                                   uv sync and pnpm install; safe to rerun
+    uv run scripts/setup.py fixtures               what tests need from the stock pair + public open-xy
+    mise run doctor                                what is set up, what is missing, what will skip
+
+Bootstrap starts on mise's Python, before the project environment exists: it installs the tools and `uv sync`s
+with the standard library only, then continues under `uv run` (doctor and the fixtures read xyf_build, which
+needs the Python dependencies). Without them (a dry run on a fresh clone), the steps that need them say so.
 
 The stock pair comes from your own OP-XY on stock 1.2.1, in the stock dev menu's MTP: --from-device reads
 /upgrade/firmware/blackfin/bin/os.ldr and bootloader.ldr, and /content/op1_factory.json (fixtures takes it from
@@ -26,6 +33,7 @@ downloads the toolchain archive.
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import platform
@@ -39,7 +47,7 @@ import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO))  # bootstrap runs on mise's Python, before uv sync installs the package
+sys.path.insert(0, str(REPO))  # bootstrap starts on mise's Python, before uv sync installs the package
 from xy_forever import dev_tools, mtp_read, package_records, paths  # noqa: E402
 
 PINS = json.loads((REPO / 'stock.json').read_text())
@@ -72,6 +80,20 @@ class SetupError(Exception):
     pass
 
 
+def project_env():
+    """True under the project environment (`uv run`): the Python dependencies import. Bootstrap starts without it."""
+    return importlib.util.find_spec('elftools') is not None
+
+
+NO_ENV = 'unknown until the Python dependencies are installed (mise run setup)'
+
+
+def verified_build():
+    """The newest verified product build of this source, or None (also without the project environment: it hashes
+    the sources with xyf_build)."""
+    return paths.newest_verified_build() if project_env() else None
+
+
 def python_problem(version=None):
     """None, or why this interpreter is too old for XY Forever (3.14+)."""
     v = tuple((version or sys.version_info)[:3])
@@ -79,7 +101,7 @@ def python_problem(version=None):
         return None
     return (
         'Python %d.%d.%d is too old: XY Forever needs 3.14+. Run it with the pinned one: `mise run setup` '
-        '(or `uv run scripts/setup.py doctor`; mise: %s)' % (v + (dev_tools.MISE_URL,))
+        '(or `mise run doctor`; mise: %s)' % (v + (dev_tools.MISE_URL,))
     )
 
 
@@ -136,9 +158,23 @@ def make_layout():
         getattr(paths, name).mkdir(parents=True, exist_ok=True)
 
 
+def record_toolchain(folder, config=paths.LOCAL_CONFIG):
+    """Record the toolchain folder in xyf.local.json, after checking it against its pins (toolchains.json)."""
+    folder = Path(folder).expanduser().resolve()
+    problem = toolchain_problem(folder)
+    if problem:
+        raise SetupError('%s fails the toolchain pins (toolchains.json): %s' % (folder, problem))
+    values = read_config(config)
+    values['toolchain'] = str(folder)
+    Path(config).write_text(json.dumps(values, indent=2) + '\n')
+    return folder
+
+
 def cmd_init(args):
     global paths
     require_python()
+    if args.toolchain:
+        print('toolchain: %s (recorded in %s)' % (record_toolchain(args.toolchain), paths.LOCAL_CONFIG.name))
     if args.private:
         chosen = Path(args.private).expanduser().resolve()
         env = os.environ.get('XYF_PRIVATE')
@@ -158,7 +194,7 @@ def cmd_init(args):
             'next: add your name, emails and host name as regexes to "leak_patterns" in %s '
             '(case-sensitive; "(?i)" first matches any case)' % paths.LOCAL_CONFIG.name
         )
-    print('next: python3 scripts/setup.py import-stock DIR   (DIR: os.ldr + bootloader.ldr, or a copied /upgrade/)')
+    print('next: uv run scripts/setup.py import-stock DIR   (DIR: os.ldr + bootloader.ldr, or a copied /upgrade/)')
 
 
 def private_source():
@@ -281,7 +317,7 @@ def cmd_import_stock(args):
         raise SetupError('import-stock takes DIR or --from-device (one of them)')
     dest = import_from_device() if args.from_device else import_stock(args.dir)
     print('stock 1.2.1 os.ldr + bootloader.ldr: %s' % dest)
-    print('next: python3 scripts/setup.py fixtures')
+    print('next: uv run scripts/setup.py fixtures')
 
 
 # fixtures
@@ -427,7 +463,7 @@ def toolchain_problem(directory=None):
 
 
 def fixture_build():
-    found = paths.newest_verified_build()
+    found = verified_build()
     if found:
         print('verified product build: %s' % found.name)
         return
@@ -437,16 +473,20 @@ def fixture_build():
         return
     out = paths.BUILDS / 'setup-build'
     print('building and verifying the product (under a minute)')
-    run([sys.executable, 'xyf_build.py', '--xyf-product', '--out', str(out)])
-    run([sys.executable, 'xyf_build.py', '--verify', '--out', str(out)])
+    run([sys.executable, '-m', 'xy_forever.xyf_build', '--xyf-product', '--out', str(out)])
+    run([sys.executable, '-m', 'xy_forever.xyf_build', '--verify', '--out', str(out)])
     out = paths.name_by_image(out)  # builds/<image>
-    if paths.newest_verified_build() != out:
+    if verified_build() != out:
         raise SetupError('%s did not verify' % out)
     print('verified product build: %s' % out.name)
 
 
 def cmd_fixtures(args):
     require_python()
+    if not project_env():
+        raise SetupError(
+            'fixtures needs the Python dependencies: `mise run setup`, or `uv run scripts/setup.py fixtures`'
+        )
     if not stock_present():
         raise SetupError('the stock 1.2.1 pair is missing from %s: run import-stock first' % paths.STOCK_121)
     make_layout()
@@ -462,9 +502,9 @@ def cmd_fixtures(args):
 
 def toolchain_hint():
     return [
-        "`python3 scripts/setup.py bootstrap` downloads open-xy's toolchain-1 release into %s (darwin-arm64, "
-        'windows-x86_64); linux-x86_64: build it (open-xy docs/build.md "On Linux"), then put it there or set '
-        'XYF_TOOLCHAIN.' % paths.TOOLCHAIN
+        "`mise run setup` downloads open-xy's toolchain-1 release into %s (darwin-arm64, windows-x86_64); "
+        'linux-x86_64: build it (open-xy docs/build.md "On Linux"), then put it there or record its folder: '
+        '`uv run scripts/setup.py init --toolchain DIR`.' % paths.TOOLCHAIN
     ]
 
 
@@ -503,13 +543,17 @@ def doctor():
     upstream = has_commit(paths.OPEN_XY_UPSTREAM, ox['sdk_commit'])
     kit = paths.PUBLISHED_KIT.is_file()
     mods = bool(mod_packages())
-    build = paths.newest_verified_build()
+    build = verified_build()
     rows += [
         ('open-xy clone', upstream, ox['sdk_commit'][:7] if upstream else 'missing: run fixtures'),
         ('stock catalog', catalog, 'ok' if catalog else 'missing: run fixtures'),
         ('published kit', kit, ox['kit_version'] if kit else 'missing: run fixtures'),
         ('mod package set', mods, paths.PUBLISHED_MODS.name if mods else 'missing: run fixtures'),
-        ('verified build', bool(build), build.name if build else 'none of this source: run fixtures'),
+        (
+            'verified build',
+            bool(build),
+            build.name if build else 'none of this source: run fixtures' if project_env() else NO_ENV,
+        ),
     ]
     rows += dev_tools.doctor_rows(REPO)
     why = sim.available()
@@ -574,7 +618,7 @@ def move_children(source, target):
 
 WORKSPACE_GUIDE = """# XY Forever workspace
 
-This folder is an XY Forever development workspace, set up by `%(repo)s/scripts/setup.py bootstrap`.
+This folder is an XY Forever development workspace, set up by `mise run setup` in `%(repo)s/`.
 
 | Path | What |
 |---|---|
@@ -635,7 +679,7 @@ def install_toolchain(record, destination, archive=None):
                 )
                 raise SetupError(
                     'could not download %s (%s)%s. Download it in a browser, then run '
-                    '`python3 scripts/setup.py bootstrap --toolchain-archive <the zip>`' % (record['url'], e, note)
+                    '`mise run setup --toolchain-archive <the zip>`' % (record['url'], e, note)
                 )
         got = sha256(archive)
         if got != record['sha256']:
@@ -664,7 +708,7 @@ def fixtures_missing():
             ('stock catalog', paths.CATALOG_121.is_file() and sha256(paths.CATALOG_121) == ox['catalog_sha256']),
             ('published kit', paths.PUBLISHED_KIT.is_file()),
             ('mod package set', mod_packages()),
-            ('verified build', bool(paths.newest_verified_build()) or toolchain_problem() is not None),
+            ('verified build', bool(verified_build()) or toolchain_problem() is not None),
         )
         if not ok
     ]
@@ -695,6 +739,13 @@ class Bootstrap:
 
     def run(self):
         require_python()
+        if not project_env() and sys.prefix == sys.base_prefix:  # mise's Python: no project environment yet
+            if dev_tools.python_deps_stale(self.repo) and not self.dry_run:
+                print('bootstrap: the tools and the Python dependencies first')
+                self.tools()
+            if dev_tools.python_deps_stale(self.repo) is None:
+                print('bootstrap: continuing under uv run (the project environment)', flush=True)
+                return self.continue_under_uv()
         print('bootstrap: workspace %s%s' % (self.workspace, ' (dry run: nothing changes)' if self.dry_run else ''))
         for step in (self.private, self.local_files, self.workspace_guide, self.tools, self.toolchain, self.fixtures):
             step()
@@ -708,6 +759,14 @@ class Bootstrap:
         cmd_doctor(None)
         self.next_steps()
         return 0
+
+    def continue_under_uv(self):
+        """Run bootstrap again under `uv run` (the project environment), with the same arguments."""
+        argv = ['bootstrap', '--workspace', str(self.workspace)]
+        argv += ['--dry-run'] if self.dry_run else []
+        argv += ['--toolchain-archive', str(self.toolchain_archive)] if self.toolchain_archive else []
+        cmd = dev_tools.tool('uv') + ['run', '--no-sync', 'python', str(self.repo / 'scripts/setup.py')] + argv
+        return subprocess.run(cmd, cwd=self.repo, env=dev_tools.env(self.environ)).returncode
 
     def private(self):
         env, configured = self.environ.get('XYF_PRIVATE'), self.settings().get('private')
@@ -763,7 +822,7 @@ class Bootstrap:
             self.do('add an empty "leak_patterns" list to %s' % self.config.name, ensure_leak_patterns, self.config)
 
     def toolchain(self):
-        folder = self.workspace / TOOLCHAIN_DIR
+        folder = Path(self.settings().get('toolchain') or self.workspace / TOOLCHAIN_DIR)
         if toolchain_problem() is None:
             print('toolchain: ok (authenticated against toolchains.json)')
             return
@@ -780,7 +839,8 @@ class Bootstrap:
         if host == 'linux-x86_64':
             print(
                 'toolchain: missing; open-xy publishes no download for linux-x86_64: build it with Docker '
-                '(open-xy docs/build.md, "On Linux"), then put it at %s or set XYF_TOOLCHAIN' % folder
+                '(open-xy docs/build.md, "On Linux"), then put it at %s or record its folder: '
+                '`uv run scripts/setup.py init --toolchain DIR`' % folder
             )
             return
         if not record:
@@ -831,8 +891,8 @@ class Bootstrap:
             )
         elif self.workspace != self.main.parent:
             print(
-                '  note: this clone is not in %s: set XYF_TOOLCHAIN=%s in every shell that builds'
-                % (self.workspace, link)
+                '  note: this clone is not in %s: record the toolchain with `uv run scripts/setup.py init '
+                '--toolchain %s`' % (self.workspace, link)
             )
 
     def tools(self):
@@ -841,6 +901,9 @@ class Bootstrap:
     def fixtures(self):
         if not stock_present():
             print('fixtures: waiting for the stock pair (Next, below)')
+            return
+        if not project_env():
+            print('fixtures: waiting for the Python dependencies (tools, above)')
             return
         missing = fixtures_missing()
         print('fixtures: %s' % ('ok' if not missing else 'missing ' + ', '.join(missing)))
@@ -856,10 +919,10 @@ class Bootstrap:
             steps += [
                 'Put your OP-XY (stock 1.2.1) in MTP mode: hold COM while switching it on, Track 3 (dev menu), '
                 'Track 2 (MTP) (docs/operating/first-install.md).',
-                'python3 scripts/setup.py import-stock --from-device   (reads them into %s; if that fails, '
+                'uv run scripts/setup.py import-stock --from-device   (reads them into %s; if that fails, '
                 'copy /upgrade/firmware/blackfin/bin/os.ldr, bootloader.ldr and /content/op1_factory.json there '
                 'and run import-stock %s)' % (incoming, incoming),
-                'python3 scripts/setup.py fixtures',
+                'uv run scripts/setup.py fixtures',
             ]
         where = (
             '%s (or %s)' % (self.workspace, self.main)
@@ -881,6 +944,9 @@ def main(argv=None):
     sub = p.add_subparsers(dest='command', required=True)
     i = sub.add_parser('init', help='create the private layout')
     i.add_argument('--private', help='private folder for this clone (recorded in xyf.local.json)')
+    i.add_argument(
+        '--toolchain', help='Blackfin toolchain folder outside ../tools/blackfin (recorded in xyf.local.json)'
+    )
     s = sub.add_parser('import-stock', help='copy the stock 1.2.1 pair')
     s.add_argument('dir', nargs='?', help='folder holding the copied files')
     s.add_argument(

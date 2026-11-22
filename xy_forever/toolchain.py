@@ -38,8 +38,8 @@ def digest(path):
 
 
 def location(environ=os.environ):
-    """Where the toolchain is looked for: XYF_TOOLCHAIN, else tools/blackfin beside the main checkout
-    (paths.TOOLCHAIN: ../tools/blackfin in a plain clone, the same folder from any worktree)."""
+    """Where the toolchain is looked for: XYF_TOOLCHAIN, else paths.TOOLCHAIN (xyf.local.json's "toolchain", else
+    tools/blackfin beside the main checkout: ../tools/blackfin in a plain clone, the same folder from any worktree)."""
     from . import paths
 
     return Path(environ['XYF_TOOLCHAIN']) if environ.get('XYF_TOOLCHAIN') else paths.TOOLCHAIN
@@ -59,7 +59,10 @@ def authenticate(directory=None):
     profile = records['hosts'][host]
     found = directory or location()
     if not directory and not os.environ.get('XYF_TOOLCHAIN') and not found.is_dir():
-        raise ValueError('Set XYF_TOOLCHAIN to the external Blackfin toolchain directory')
+        raise ValueError(
+            'No Blackfin toolchain at %s: `mise run setup` installs it there; for another folder, '
+            '`uv run scripts/setup.py init --toolchain DIR` (or XYF_TOOLCHAIN)' % found
+        )
     base = Path(found).expanduser().resolve()
     checked = {}
 
