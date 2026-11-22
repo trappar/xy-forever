@@ -283,7 +283,7 @@ void link_start() {
             }
             // Virtual clock (sim/clock.cpp): the main thread has something to look at before the
             // message counts as taken, so the board never steps the clock in between.
-            if (work) kick(role);
+            if (work) kick(role, false);                     // this thread looks again anyway
             if (got) link_taken();
         }
     }).detach();

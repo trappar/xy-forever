@@ -203,7 +203,7 @@ void storage_op_done();                          // one mutating storage operati
 // sim/boot.cpp: the stock bootloader after a lone reset.
 // sim/clock.cpp: the device clock (runtime.hpp: Shared clock_ns).
 uint64_t device_cycles();                        // this processor's CCLK cycle count (advance included)
-void kick(int which);                            // work for processor which (its main thread wakes)
+void kick(int which, bool link = true);          // work for processor which (its main thread wakes; link: its link thread too)
 void active();                                   // the main thread did something (it is not idle)
 void link_taken();                               // a link thread took its message (after kick)
 // One pause of a wait on the main thread (B's stock request, a bootloader's wait, a fault's delay): idle

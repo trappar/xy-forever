@@ -53,7 +53,7 @@ bool usb_ready = false, next_ready = false;    // next_ready: a new host's conne
 uint32_t usb_news = 0;                      // usb_check()s that found news (cdc_wait: one seen inside block())
 
 void wake(int which) { const char b = 1; if (write(shared->wake[which][1], &b, 1) < 0) {} }
-void drain_wake(int which) { char b[64]; while (read(shared->wake[which][0], b, sizeof(b)) > 0) {} }
+void drain_wake(int which) { char b[64]; while (read(shared->wake[which][0], b, sizeof(b)) == ssize_t(sizeof(b))) {} }
 bool main_thread() {
     static pthread_t main = pthread_self();          // the first caller: the processor's main thread
     return pthread_equal(main, pthread_self());
@@ -133,9 +133,10 @@ void cycles(uint32_t& low, uint32_t& high) {
     low = uint32_t(c); high = uint32_t(c >> 32);
 }
 
-void kick(int which) {                                         // the main thread and the link thread look again
+void kick(int which, bool link) {                              // the main thread and (link) the link thread look again
     ++shared->work[which];
-    wake(which); wake(3 + which);
+    wake(which);
+    if (link) wake(3 + which);
 }
 void active() { ++shared->work[role]; }
 void link_taken() {
@@ -181,7 +182,7 @@ bool quiescent(const bool running[2]) {
     for (int k = 0; k != 2; ++k) {
         if (!running[k]) continue;
         if (shared->idle_work[k].load() != shared->work[k].load()) return false;
-        if (shared->idle_steps[k].load() != steps) { wake(k); return false; }   // not yet seen the last step
+        if (shared->idle_steps[k].load() != steps) return false;   // not yet seen the last step (woken by it)
     }
     return true;
 }
@@ -252,6 +253,6 @@ int board_clock(const bool running[2], uint64_t deadline_ns, bool woken) {
     shared->clock_ns += step;
     ++shared->steps;
     wake(0); wake(1);
-    return 0;
+    return running[0] || running[1] ? -1 : 0;                  // a running processor wakes the board when idle
 }
 }

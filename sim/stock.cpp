@@ -229,9 +229,10 @@ void finish(uint32_t request, int result) {
 
 // ---- boot partition (A executors and role-dispatched stock writer) -----------------------------------------
 const uint32_t erase_block = 0x10000u;                 // trim unit (bytes)
-int bootpart() {
-    const int fd = open(shared->bootpart, O_RDWR | O_CREAT, 0644);
-    if (fd < 0) crash("boot partition %s: %s", shared->bootpart, strerror(errno));
+int bootpart() {                                       // opened once per processor start (a test rewrites it in place)
+    static int fd = -1;
+    if (fd < 0 && (fd = open(shared->bootpart, O_RDWR | O_CREAT, 0644)) < 0)
+        crash("boot partition %s: %s", shared->bootpart, strerror(errno));
     return fd;
 }
 bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
@@ -243,10 +244,9 @@ bool sectors_io(bool write, uint32_t sector, uint32_t count, uint8_t* data) {
     const off_t offset = off_t((selected - 1) * uint64_t(shared->capacity) + at);
     ssize_t n;
     int error = 0;
-    if (write && shared->fail_write > 0 && write_fault(0, error)) { close(fd); return false; }   // fault hook
+    if (write && shared->fail_write > 0 && write_fault(0, error)) return false;   // fault hook
     if (write) n = pwrite(fd, data, bytes, offset);
     else { memset(data, 0, bytes); n = pread(fd, data, bytes, offset); if (n >= 0) n = ssize_t(bytes); }
-    close(fd);
     if (write && n == ssize_t(bytes)) storage_op_done();
     return n == ssize_t(bytes);
 }
