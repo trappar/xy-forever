@@ -13,7 +13,7 @@ edited by hand:
   docs/protocol/*.md            its leaves (DOC_LEAVES; a file there that is not one is removed)
 It also validates the conformance suite, protocol/v1.conformance.json, against the spec
 (xy_forever/conformance.py: keys, values, coverage, real-device safety); its text and case
-counts go into docs/protocol/examples.md. Stdlib only (Python 3.9).
+counts go into docs/protocol/examples.md.
 """
 import argparse
 import json

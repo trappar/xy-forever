@@ -1,0 +1,112 @@
+# Every tool a contributor needs, pinned (mise.lock holds the checksums): `mise trust && mise install`.
+# The command catalogue: `mise tasks` lists them, `mise run <task> --help` shows a task's arguments.
+min_version = "2026.11.0"
+
+[settings]
+lockfile = true
+
+[tools]
+python = "3.15.2"
+uv = "0.13.9"
+node = "26.13.1"
+pnpm = "12.22.0"
+gh = "2.105.0"
+
+[env]
+# A project cannot hide the contributor's global mise config (~/.config/mise) from the mise run that
+# reads this file (mise keeps that power for the user). Exported here, it keeps that config out of
+# every mise call made inside a task or an activated shell; to keep it out everywhere, export it in
+# the shell too. The tools above win over same-named global ones either way.
+MISE_IGNORED_CONFIG_PATHS = "{{ env.HOME }}/.config/mise"
+UV_PYTHON_DOWNLOADS = "never"   # uv uses the Python pinned above, never a download of its own
+
+[tasks.setup]
+description = "Set up this workspace: tools, Python and JS dependencies, private folder, toolchain, fixtures"
+usage = '''
+flag "--dry-run" help="print every action without doing it"
+flag "--workspace <dir>" help="the folder that holds this clone, private/ and tools/"
+flag "--toolchain-archive <zip>" help="open-xy's toolchain-1 release zip, already downloaded"
+'''
+run = '''
+python scripts/setup.py bootstrap {% if usage.dry_run %}--dry-run{% endif %} \
+  {% if usage.workspace %}--workspace {{ usage.workspace | quote }}{% endif %} \
+  {% if usage.toolchain_archive %}--toolchain-archive {{ usage.toolchain_archive | quote }}{% endif %}
+'''
+
+[tasks.doctor]
+description = "What is set up, what is missing, which tests will skip"
+run = "uv run scripts/setup.py doctor"
+
+[tasks.test]
+description = "Unit tests in parallel (names: only those modules or tests; flags pass to run_tests.py)"
+usage = 'arg "[args]..." help="test modules or ids, and run_tests.py flags (--jobs N, --times)" var=#true'
+run = 'uv run scripts/run_tests.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+
+[tasks.test-one]
+description = "One test module, class or test, in this process (e.g. test_aes.NativeAesTests)"
+usage = 'arg "<target>" help="a test module, class or test id under tests/"'
+run = 'uv run scripts/run_tests.py --jobs 1 {{ usage.target | quote }}'
+
+[tasks.check]
+description = "End of every change: product build, verify, exhaustive suite; leaves a receipt"
+usage = 'arg "[args]..." help="check.py flags (--neutral [REF], --npm, --confirm [REF], --jobs N)" var=#true'
+run = 'uv run scripts/check.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+
+[tasks.build]
+description = "The product build into ../private/xy-forever/builds/current"
+run = "uv run xyf_build.py --xyf-product --out ../private/xy-forever/builds/current"
+
+[tasks.verify]
+description = "Verify the build in ../private/xy-forever/builds/current"
+run = "uv run xyf_build.py --verify --out ../private/xy-forever/builds/current"
+
+[tasks.sim]
+description = "The device simulator on 127.0.0.1:7341 (xyf_host.py --sim, web ?sim=7341)"
+run = "uv run -m xy_forever.sim"
+
+[tasks.conformance]
+description = "Protocol conformance suite against the simulator (start it with mise run sim)"
+usage = 'arg "[address]" help="the simulator HOST:PORT" default="127.0.0.1:7341"'
+run = 'uv run scripts/conformance.py --sim {{ usage.address | quote }}'
+
+[tasks.protogen]
+description = "Check that the generated protocol files match protocol/ (--write to regenerate)"
+usage = 'flag "--write" help="regenerate instead of checking"'
+run = 'uv run scripts/protogen.py {% if usage.write %}{% else %}--check{% endif %}'
+
+[tasks.web]
+description = "The web app on http://127.0.0.1:5173 (?sim=7341 for the simulator)"
+dir = "web"
+run = "pnpm run dev"
+
+[tasks.web-test]
+description = "Web app and TypeScript client tests and type checks"
+run = [
+  "pnpm --filter xy-forever-client test",
+  "pnpm --filter xy-forever-web test",
+  "pnpm --filter xy-forever-web typecheck",
+]
+
+[tasks.web-e2e]
+description = "The web app's e2e tests in the system Chrome, against the simulator"
+dir = "web"
+run = "pnpm run test:e2e"
+
+[tasks.plan]
+description = "The plan: next items and decisions waiting (--all: blocked, threads)"
+usage = 'arg "[args]..." help="plan.py arguments (--all, claim N --agent A, ...)" var=#true'
+run = 'uv run scripts/plan.py {% for a in usage.args %}{{ a | quote }} {% endfor %}'
+
+[tasks.preview]
+description = "Render the menu screens into ../private/xy-forever/previews"
+run = "uv run ui_preview.py"
+
+[tasks.clean]
+description = "Remove old sessions and builds under the private folder (dry run unless --yes)"
+usage = '''
+flag "--keep <n>" help="sessions and builds to keep, newest first" default="10"
+flag "--yes" help="delete; without it, only list what would go"
+'''
+run = 'uv run scripts/clean.py --keep {{ usage.keep }} {% if usage.yes %}--yes{% endif %}'
+
+# #232 adds test-changed and test-failed (pytest, testmon) here.

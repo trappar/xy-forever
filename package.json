@@ -1,0 +1,9 @@
+{
+  "name": "xy-forever-workspace",
+  "private": true,
+  "description": "pnpm workspace root: web/ and clients/ts share one lockfile (pnpm-lock.yaml)",
+  "packageManager": "pnpm@12.22.0",
+  "engines": {
+    "node": ">=26"
+  }
+}

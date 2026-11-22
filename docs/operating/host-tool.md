@@ -4,7 +4,7 @@ Part of [Operating the device](../OPERATING.md).
 
 The rules in [SAFETY.md](../SAFETY.md) are binding for everything here.
 
-## Host tool `xyf_host.py` (stdlib; macOS `/dev/cu.usbmodem*`)
+## Host tool `xyf_host.py` (macOS `/dev/cu.usbmodem*`)
 
 `wait`, `status`, `read PATH [--all --out F]`, `install BUILD --yes-install`,
 `reboot --yes-reboot [--to service|os|menu]`, `set-default ID --yes-write`,

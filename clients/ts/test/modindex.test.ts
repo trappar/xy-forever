@@ -6,6 +6,7 @@
 // Run: node test/modindex.test.ts (Node 22.18+ strips the types). Needs python3; no device.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -83,7 +84,7 @@ try {
     const p = pkg(index);
     writeFileSync(join(served, p.archive.name), zip);
     p.archive.size = zip.length;
-    p.archive.sha256 = spawnSync('shasum', ['-a', '256'], { input: zip }).stdout.toString().split(' ')[0];
+    p.archive.sha256 = createHash('sha256').update(zip).digest('hex');
     save(index);
   }
   const alpha = (): [string, Uint8Array][] => [...tree(join(gen, 'alpha'))].map(([p, b]) => [p, new Uint8Array(b)]);

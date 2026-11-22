@@ -1,5 +1,5 @@
-// npm run dev: the app on http://127.0.0.1:5173/. The client library is used from its TypeScript
-// source (it has no built dist/ yet); xyfRelay lets ?sim=PORT reach the simulator over a WebSocket. appType 'spa':
+// pnpm run dev: the app on http://127.0.0.1:5173/. The client library (a workspace package) is used from its
+// TypeScript source; xyfRelay lets ?sim=PORT reach the simulator over a WebSocket. appType 'spa':
 // every path without a file serves index.html in dev and preview (the router's paths, src/routing.ts).
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -7,18 +7,12 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import type { Plugin } from 'vite';
-import { xyfRelay } from './node_modules/xy-forever-client/test/relay.ts';
+import { xyfRelay } from 'xy-forever-client/test/relay.ts';
 
-const client = (file: string): string => fileURLToPath(new URL(`./node_modules/xy-forever-client/src/${file}`, import.meta.url));
-
-/** The GitHub Pages project path (npm run build:pages). */
+/** The GitHub Pages project path (pnpm run build:pages). */
 export const PAGES_BASE = '/xy-forever/';
 
-export const alias = [
-  { find: /^@\//, replacement: fileURLToPath(new URL('./src/', import.meta.url)) },
-  { find: /^xy-forever-client$/, replacement: client('index.ts') },
-  { find: /^xy-forever-client\/dev$/, replacement: client('dev.ts') },
-];
+export const alias = [{ find: /^@\//, replacement: fileURLToPath(new URL('./src/', import.meta.url)) }];
 
 // Copy the rewritten HTML for static routes and keep the notices with the published files.
 const staticSite: Plugin = {
@@ -44,6 +38,6 @@ export default defineConfig(({ mode }) => ({
   appType: 'spa',
   base: mode === 'pages' ? PAGES_BASE : '/',
   server: { host: '127.0.0.1' },
-  resolve: { alias, preserveSymlinks: false },
+  resolve: { alias },
   plugins: [react(), tailwindcss(), xyfRelay(), staticSite],
 }));

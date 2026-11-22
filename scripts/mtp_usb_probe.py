@@ -20,8 +20,8 @@ and the result file over the stock serial; the last mark names where it stopped.
 Evidence (log.txt, result.json, marks.txt, result.txt, ioreg.txt) in ../private/xy-forever/sessions/<date>-mtp-usb-probe/run-NNN/.
 Prints PASS/FAIL lines; exit 0 only if every check passed. It never retries by itself.
 
-Needs pyusb and libusb (brew install libusb; python3 -m pip install pyusb). Nothing is installed or changed on the
-Mac; the only side effect is `pkill -x ptpcamerad` when claiming interface 2 fails (launchd restarts it).
+Needs pyusb and libusb (brew install libusb; pyusb: `uv sync`, then `uv run` the script). Nothing is installed
+or changed on the Mac; the only side effect is `pkill -x ptpcamerad` when claiming interface 2 fails (launchd restarts it).
 """
 import argparse
 import datetime
@@ -472,7 +472,7 @@ def main():
         import usb.util
         usb.core.find(idVendor=0xffff, idProduct=0xffff)    # NoBackendError without libusb
     except Exception as error:                     # ImportError, or NoBackendError without libusb
-        raise SystemExit('pyusb with libusb is needed (brew install libusb; python3 -m pip install pyusb): %s' % error)
+        raise SystemExit('pyusb with libusb is needed (brew install libusb; pyusb: `uv sync`, then `uv run` the script): %s' % error)
     run = Run(new_run_dir())
     payload = random.Random(args.seed).randbytes(SINK_BYTES)
     digest = hashlib.sha256(payload).hexdigest()

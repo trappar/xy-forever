@@ -137,6 +137,8 @@ class NativeJson(unittest.TestCase):
         subprocess.run([str(binary), *paths], check=True, capture_output=True)
 
     def test_blackfin_code_stack_and_workspace(self):
+        if not (toolchain.location() / 'bin/bfin-elf-g++').exists():
+            self.skipTest('Blackfin toolchain absent')
         compiler, tools = toolchain.authenticate()
         asm, obj = self.work / 'json.s', self.work / 'json.o'
         subprocess.run([str(compiler['cxx']), *toolchain.CXX_FLAGS, '-fstack-usage', '-S',

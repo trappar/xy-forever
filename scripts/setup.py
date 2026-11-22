@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Set up a private folder for XY Forever development (plain Python 3, no packages).
+"""Set up a private folder for XY Forever development (Python 3.14+, run by mise: `mise run setup`).
 
     python3 scripts/setup.py init [--private DIR]   create the private layout; --private records DIR
                                                    in xyf.local.json (gitignored; XYF_PRIVATE wins)
@@ -14,7 +14,8 @@
     python3 scripts/setup.py bootstrap [--workspace DIR] [--dry-run] [--toolchain-archive ZIP]
                                                    all of the above that needs no OP-XY, plus the toolchain
                                                    (open-xy's toolchain-1 release, or ZIP already downloaded),
-                                                   docs/status/README.md and npm ci; safe to rerun
+                                                   docs/status/README.md, the pinned tools (mise install),
+                                                   uv sync and pnpm install; safe to rerun
 
 The stock pair comes from your own OP-XY on stock 1.2.1, in the stock dev menu's MTP: --from-device reads
 /upgrade/firmware/blackfin/bin/os.ldr and bootloader.ldr, and /content/op1_factory.json (fixtures takes it from
@@ -38,7 +39,7 @@ import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-from xy_forever import mtp_read, node_deps, package_records, paths  # noqa: E402
+from xy_forever import dev_tools, mtp_read, package_records, paths  # noqa: E402
 
 PINS = json.loads((REPO / 'stock.json').read_text())
 PAIR = ('os.ldr', 'bootloader.ldr')
@@ -50,7 +51,7 @@ LAYOUT = ('FIRMWARE', 'STOCK_121', 'XYF', 'BUILDS', 'RECOVERY', 'FIXTURES', 'REP
           'SESSIONS', 'MOD_PACKAGES')
 
 
-MIN_PYTHON = (3, 9)                 # XY Forever's own scripts and tests (and bootstrap)
+MIN_PYTHON = (3, 14)                # pyproject.toml requires-python; XY Forever's own scripts and tests (and bootstrap)
 
 
 class SetupError(Exception):
@@ -58,12 +59,12 @@ class SetupError(Exception):
 
 
 def python_problem(version=None):
-    """None, or why this interpreter is too old for XY Forever (3.9+)."""
+    """None, or why this interpreter is too old for XY Forever (3.14+)."""
     v = tuple((version or sys.version_info)[:3])
     if v[:2] >= MIN_PYTHON:
         return None
-    return ('Python %d.%d.%d is too old: XY Forever needs 3.9+. Run a newer one by name, e.g. '
-            '`python3.12 scripts/setup.py doctor` (macOS: `brew install python@3.12`, python.org, mise or pyenv)' % v)
+    return ('Python %d.%d.%d is too old: XY Forever needs 3.14+. Run it with the pinned one: `mise run setup` '
+            '(or `uv run scripts/setup.py doctor`; mise: %s)' % (v + (dev_tools.MISE_URL,)))
 
 
 def require_python(version=None):
@@ -257,7 +258,7 @@ def cmd_import_stock(args):
 # fixtures
 
 def run(cmd, **kw):
-    env = dict(os.environ, XYF_PRIVATE=str(paths.PRIVATE_ROOT))
+    env = dict(kw.pop('env', os.environ), XYF_PRIVATE=str(paths.PRIVATE_ROOT))
     r = subprocess.run(cmd, cwd=kw.pop('cwd', REPO), env=env, capture_output=True, text=True, **kw)
     if r.returncode:
         raise SetupError('%s failed:\n%s' % (' '.join(map(str, cmd[:4])), (r.stdout + r.stderr)[-2000:]))
@@ -437,7 +438,7 @@ def doctor():
              ('published kit', kit, ox['kit_version'] if kit else 'missing: run fixtures'),
              ('mod package set', mods, paths.PUBLISHED_MODS.name if mods else 'missing: run fixtures'),
              ('verified build', bool(build), build.name if build else 'none of this source: run fixtures')]
-    rows += node_deps.doctor_rows(REPO)
+    rows += dev_tools.doctor_rows(REPO)
     why = sim.available()
     rows.append(('simulator', why is None, why or 'buildable'))
     leaks = paths.leak_patterns()
@@ -479,7 +480,6 @@ def copy_into(source, target):
 def move_into(source, target):
     target.parent.mkdir(parents=True, exist_ok=True)
     source.rename(target)
-NPM_DIRS = ('clients/ts', 'web')         # web uses clients/ts: in this order
 WORKSPACE_GUIDE = """# XY Forever workspace
 
 This folder is an XY Forever development workspace, set up by `%(repo)s/scripts/setup.py bootstrap`.
@@ -502,7 +502,7 @@ def host_name():
 
 
 def download(url, path):
-    """url into path (stdlib only; GitHub wants a User-Agent)."""
+    """url into path (GitHub wants a User-Agent)."""
     request = urllib.request.Request(url, headers={'User-Agent': 'xy-forever-setup'})
     with urllib.request.urlopen(request, timeout=120) as response, Path(path).open('wb') as handle:
         shutil.copyfileobj(response, handle, 1 << 20)
@@ -592,7 +592,7 @@ class Bootstrap:
     def run(self):
         require_python()
         print('bootstrap: workspace %s%s' % (self.workspace, ' (dry run: nothing changes)' if self.dry_run else ''))
-        for step in (self.private, self.local_files, self.workspace_guide, self.toolchain, self.npm, self.fixtures):
+        for step in (self.private, self.local_files, self.workspace_guide, self.tools, self.toolchain, self.fixtures):
             step()
         if not self.actions:
             print('nothing to do: the workspace is already set up; nothing changed')
@@ -702,17 +702,8 @@ class Bootstrap:
         elif self.workspace != self.main.parent:
             print('  note: this clone is not in %s: set XYF_TOOLCHAIN=%s in every shell that builds' % (self.workspace, link))
 
-    def npm(self):
-        node, npm = shutil.which('node'), shutil.which('npm')
-        for rel in NPM_DIRS:
-            folder = self.repo / rel
-            if (folder / 'node_modules').is_dir():
-                print('%s: node_modules present' % rel)
-            elif not (node and npm):
-                print('%s: skipped: Node not found (install Node 22.18+ or 23.6+, then rerun bootstrap)' % rel)
-            else:
-                print('%s: node_modules missing' % rel)
-                self.do('npm ci in %s' % rel, run, [npm, 'ci', '--no-audit', '--no-fund'], cwd=folder)
+    def tools(self):
+        dev_tools.bootstrap_steps(self.do, run, self.repo)
 
     def fixtures(self):
         if not stock_present():

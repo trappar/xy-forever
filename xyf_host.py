@@ -1,6 +1,6 @@
 """XY Forever host tool: talk to the XY Forever USB service (CDC serial).
 
-Usage (stdlib only; macOS /dev/cu.usbmodem*):
+Usage (macOS /dev/cu.usbmodem*):
   python3 xyf_host.py wait                     wait for the service, send HELLO (prints protocol and build)
   python3 xyf_host.py status                   protocol, version, image and decoded result blocks
   python3 xyf_host.py read /yaffs2/firmware.version [--out FILE]

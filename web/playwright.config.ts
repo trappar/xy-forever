@@ -1,4 +1,4 @@
-// npm run test:e2e: the app in the system Chrome (headless) against the device simulator and fake devices (e2e/).
+// pnpm run test:e2e: the app in the system Chrome (headless) against the device simulator and fake devices (e2e/).
 // Each file starts its own Vite server, browser and simulators; files run in parallel, tests in a file in order.
 import { defineConfig } from '@playwright/test';
 
