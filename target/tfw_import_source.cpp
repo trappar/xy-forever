@@ -2,14 +2,12 @@
 #if defined(__bfin__) && defined(XYF_TFW_CHECK)
 #include "boot_services.hpp"
 #include "tfw_device_check.hpp"
-#include "tfw_hash_rpc.hpp"
 #include "usb_proto.hpp"
 #include "xyf_clock.hpp"
 
 namespace xy_forever { namespace tfw_import {
 namespace {
 namespace P = xyf::usbp;
-namespace rpc = tfw_hash_rpc;
 uint32_t read_status(const file_client::Reply& r) {
     if (r.outcome) return file_client::status(r.outcome);
     return r.value < 0 ? uint32_t(P::s_storage) : uint32_t(P::s_ok);
@@ -25,10 +23,9 @@ bool inbox_path(const char* path) {
 }
 
 Source::Source()
-    : path_{}, size_(0), progress_(0), error_(0), operation_(0), position_(0), cached_at_(0), cached_bytes_(0),
-      half_(0), ahead_at_(0), ahead_bytes_(0), tail_at_(0), reads_(0), waited_(0), cached_(nullptr),
-      phase_(SourcePhase::idle), pending_(false), lease_(false), ahead_(false), ahead_ready_(false), owner_kept_(false),
-      fd_(-1), owner_{}, digest_{}, tail_{} {}
+    : path_{}, size_(0), error_(0), position_(0), cached_at_(0), cached_bytes_(0), half_(0), ahead_at_(0),
+      ahead_bytes_(0), tail_at_(0), reads_(0), waited_(0), cached_(nullptr), phase_(SourcePhase::idle), ahead_(false),
+      ahead_ready_(false), owner_kept_(false), fd_(-1), owner_{}, digest_{}, tail_{} {}
 
 uint32_t Source::file_size(uint32_t& bytes) const {
     uint8_t record[file_client::record_bytes];
@@ -41,85 +38,19 @@ uint32_t Source::file_size(uint32_t& bytes) const {
 }
 
 uint32_t Source::begin(const char* path) {
-    if (phase_ == SourcePhase::hashing || fd_ >= 0) return P::s_busy;
+    if (fd_ >= 0) return P::s_busy;
     if (!inbox_path(path)) return P::s_bad_request;
     for (uint32_t i = 0; i != sizeof(path_); ++i)
         if (!(path_[i] = path[i])) break;
-    progress_ = 0;
     error_ = file_size(size_);
     if (!error_ && size_ < xyf_core::tfw::prefix_bytes) error_ = P::s_bad_request;
     if (!error_ && size_ > xyf_core::tfw::max_package_bytes) error_ = P::s_too_large;
-    if (error_) {
-        phase_ = SourcePhase::failed;
-        return error_;
-    }
-    phase_ = SourcePhase::hashing;
-    operation_ = rpc::start;
-    return P::s_ok;
-}
-
-void Source::finish_hash() {
-    pending_ = lease_ = false;
-    phase_ = error_ == P::s_cancelled ? SourcePhase::cancelled : error_ ? SourcePhase::failed : SourcePhase::hashed;
-}
-
-void Source::cancel_hash() {
-    if (phase_ == SourcePhase::hashing) error_ = P::s_cancelled;
-}
-
-SourcePhase Source::hash_step() {
-    if (phase_ != SourcePhase::hashing) return phase_;
-    if (!pending_) {
-        if (error_) {
-            if (!lease_) {
-                finish_hash();
-                return phase_;
-            }
-            operation_ = rpc::cancel;
-        }
-        const auto sent = file_client::tfw_hash_send(path_, operation_);
-        if (sent.outcome == file_client::busy) return phase_;
-        if (sent.outcome) {
-            error_ = file_client::status(sent.outcome);
-            finish_hash();
-        } else pending_ = true;
-        return phase_;
-    }
-    const auto r = file_client::left_poll(false);
-    if (r.outcome == file_client::busy) return phase_;
-    pending_ = false;
-    if (r.outcome) {
-        error_ = file_client::status(r.outcome);
-        finish_hash();
-        return phase_;
-    }
-    const uint32_t code = uint32_t(r.value);
-    if (operation_ == rpc::cancel) {
-        if (code != P::s_ok && !(error_ && code == P::s_state)) error_ = P::s_storage;
-        finish_hash();
-    } else if (operation_ == rpc::start && code == P::s_ok) {
-        lease_ = true;
-        if (!error_ && r.error != size_) error_ = P::s_bad_request;
-        operation_ = rpc::status;
-    } else if (operation_ == rpc::status && (code == P::s_busy || code == P::s_ok)) {
-        if (!error_ && (r.error < progress_ || r.error > size_ || (code == P::s_ok && r.error != size_)))
-            error_ = P::s_bad_request;
-        if (!error_) progress_ = r.error;
-        if (code == P::s_ok) operation_ = rpc::digest;
-    } else if (operation_ >= rpc::digest && code == P::s_ok) {
-        P::put32(digest_.bytes + 4 * (operation_ - rpc::digest), r.error);
-        if (++operation_ == rpc::digest + rpc::digest_words) operation_ = rpc::cancel;
-    } else if (!error_) {
-        error_ = code == P::s_bad_request || code == P::s_not_found || code == P::s_storage || code == P::s_busy ||
-                         code == P::s_unsupported ?
-                     code :
-                     uint32_t(P::s_link);
-    }
-    return phase_;
+    phase_ = error_ ? SourcePhase::failed : SourcePhase::ready;
+    return error_;
 }
 
 uint32_t Source::open(xyf_core::Work* work) {
-    if (phase_ != SourcePhase::hashed) return P::s_state;
+    if (phase_ != SourcePhase::ready) return P::s_state;
     uint32_t observed = 0;
     uint32_t code = xyf_core::checkpoint(work) ? file_size(observed) : uint32_t(P::s_cancelled);
     if (!code && size_ != observed) code = P::s_bad_request;
@@ -145,10 +76,10 @@ uint32_t Source::open(xyf_core::Work* work) {
         ahead_ready_ = false;
         const xyf_core::input::Reader source = {this, size_, read_at};
         xyf_core::Byte header[xyf_core::tfw::header_bytes];
-        const auto status = tfw_device_check::authenticate(path_, {source, digest_, archive_, header, work});
-        using xyf_core::tfw::Status;
-        if (status == Status::ciphertext_hash) code = P::s_sha;
-        else if (status != Status::ok) code = error_ ? error_ : uint32_t(P::s_image);
+        const auto status = tfw_device_check::open(path_, {source, archive_, header, work});
+        if (status != xyf_core::tfw::Status::ok) code = error_ ? error_ : uint32_t(P::s_image);
+        else
+            for (uint32_t i = 0; i != 32; ++i) digest_.bytes[i] = archive_.header().ciphertext_hash.bytes[i];
     }
     if (xyf_core::cancelled(work)) code = P::s_cancelled;
     if (code) {
@@ -157,13 +88,12 @@ uint32_t Source::open(xyf_core::Work* work) {
         phase_ = error_ == P::s_cancelled ? SourcePhase::cancelled : SourcePhase::failed;
         return error_;
     }
-    phase_ = SourcePhase::authenticated;
+    phase_ = SourcePhase::open;
     return P::s_ok;
 }
 
 uint32_t Source::close(bool reopen) {
-    if (phase_ == SourcePhase::hashing) return P::s_busy;
-    reopen = reopen && phase_ == SourcePhase::authenticated;
+    reopen = reopen && phase_ == SourcePhase::open;
     archive_.close();
     finish_ahead();                                                     // the read-ahead's answer first, if out
     ahead_ready_ = false;
@@ -177,7 +107,7 @@ uint32_t Source::close(bool reopen) {
         }
         fd_ = -1;
     }
-    phase_ = reopen ? SourcePhase::hashed : SourcePhase::idle;
+    phase_ = reopen ? SourcePhase::ready : SourcePhase::idle;
     return P::s_ok;
 }
 

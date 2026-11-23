@@ -15,7 +15,6 @@
 #include "a_install_stage.hpp"
 #include "file_boot.hpp"
 #include "file_client.hpp"
-#include "tfw_hash_rpc.hpp"
 #include "../native/tfw.hpp"
 #endif
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
@@ -333,15 +332,10 @@ volatile U32 selected_partition __attribute__((section(".data"))) = 0;
 volatile U32 select_attempted __attribute__((section(".data"))) = 0;
 volatile U32 probe_mode __attribute__((section(".data"))) = 0;
 
-bool tfw_hash_open();
 bool serve_install(U32 request, U32 vtable, U32 op, Stock121PeerSession& session) {
     usb_service::Result& u = usb_service::result;
     const InstallAction action = decide_install(vtable, op, word(request + 8), selected_partition);
     if (action == install_none) return false;
-    if (tfw_hash_open()) {
-        session.reply(request, 0xffffffffu, error_busy);
-        return true;
-    }
     const U32 executor = action == install_select || action == install_trim ? 0x889f76cau :
                          action == install_read                             ? 0x889f6b7cu :
                          action == install_write                            ? 0x889f6dcau :
@@ -456,8 +450,6 @@ void latch(Stock121PeerSession& session) {
     r.enabled = entry | (engine_refused ? 0x10u : 0u);
 }
 
-#include "storage_server_tfw_hash.ipp"
-
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
 // The read-write window on a's read-only mount (fresh, or the adopted one): op 8 in the run entry;
 // in the write entry the first request that changes storage.
@@ -507,10 +499,6 @@ bool close_managed_blob(cold_storage::Stock121ReadOnlySession& storage) {
 // when a closes the window between requests). A window that fails to close stays mounted (never
 // hand off read-write).
 __attribute__((noinline)) void close_engine(cold_storage::Stock121ReadOnlySession& storage, bool end = true) {
-#if defined(XYF_TFW_CHECK)
-    // Keep the mount available if stock refused to close the hash job's handle.
-    if (!tfw_hash_clear(storage)) return;
-#endif
 #if defined(XYF_CONTENT_SWITCH)
     if (!close_managed_blob(storage)) return;
 #endif
@@ -626,9 +614,6 @@ void close_files(cold_storage::Stock121ReadOnlySession& storage) {
 bool ensure_mounted(cold_storage::Stock121ReadOnlySession& storage) { return !boot_selected() && mount(storage); }
 uint32_t held_files() {
     uint32_t n = 0;
-#if defined(XYF_TFW_CHECK)
-    if (tfw_hash_open()) ++n;
-#endif
     for (U32 i = 0; i != max_fds; ++i) n += (fds[i] >= 0 ? 1u : 0u) + (dirs[i] ? 1u : 0u);
     return n;
 }
@@ -637,7 +622,6 @@ void tick(cold_storage::Stock121ReadOnlySession& storage, uint32_t now) {
 #if defined(XYF_TFW_CHECK)
     const U32 clock = xyf::clock::ms();
     if (a_stage.expired(clock)) a_stage.clear();
-    tfw_hash_step(storage, clock);
 #endif
     if (!window_open || engine != entry_write) return; // the run entry holds its own window (097)
     if (window_touched) {
@@ -650,9 +634,6 @@ void tick(cold_storage::Stock121ReadOnlySession& storage, uint32_t now) {
     close_between(storage);
 }
 void end_writes(cold_storage::Stock121ReadOnlySession& storage) {
-#if defined(XYF_TFW_CHECK)
-    tfw_hash_clear(storage);
-#endif
     if (engine != entry_write) return;
     if (window_open) close_between(storage);
     if (!window_open) {

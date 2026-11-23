@@ -13,7 +13,7 @@ uint32_t menu_pause_us() {
     if (loop_from) return mtp_pause_us;
 #endif
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
-    if (signed_pack_extracting()) return 500u;        // #279: the import runs between passes
+    if (pack_import_extracting()) return 500u;        // #279: the import runs between passes
 #endif
     return 5000u;
 }
@@ -135,14 +135,14 @@ uint32_t home_pump() {
     }   // the flag, then the boot's only start
 #endif
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
-    if (!signed_pack_active)
+    if (!pack_import_active)
 #endif
         stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
     rehearsal_pump();
     if (!boot_probe_active() && !rehearsal_active()) {
 #if defined(XYF_TFW_CHECK)
-        signed_pack_pump();
+        pack_import_pump();
 #endif
         recovery_turn();
         report_turn();
@@ -219,7 +219,7 @@ static U32 home_receive() {
                 if (!r.hello_at_ms) r.hello_at_ms = now();
             }
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
-            if (!signed_pack_active)
+            if (!pack_import_active)
 #endif
                 if (!s2_tried) stage2_load();                  // once per boot, before the reply
             hello(seq);
@@ -240,7 +240,7 @@ static U32 home_receive() {
 #if defined(XYF_USB_FILE_WRITE)
 #if defined(XYF_TFW_CHECK)
         else if (type == P::t_packs_manage) packs_manage(seq, payload, length);
-        else if (signed_pack_active && type != P::t_status && type != P::t_screen) status_only(type, seq, P::s_busy);
+        else if (pack_import_active && type != P::t_status && type != P::t_screen) status_only(type, seq, P::s_busy);
         else if (type == P::t_a_rehearsal) rehearsal_command(seq, payload, length);
         else if (rehearsal_active() && type != P::t_status && type != P::t_screen && type != P::t_peek)
             status_only(type, seq, P::s_busy);

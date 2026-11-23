@@ -110,11 +110,9 @@ Status Archive::open(const input::Reader& source, const KeyProvider& keys, U32 e
     source_ = source;
     return finish(h, keys);
 }
-Status Archive::open_digested(const input::Reader& source, const KeyProvider& keys,
-                              const hash::Digest& ciphertext_sha256, const HeaderCheck& signature, Byte* header,
-                              U32 expected_sku, Work* work) {
-    close();
-    if (!header || !signature.verify) return Status::argument;
+namespace {
+// The header (header_bytes into `header`) read and checked, as both opens do; the clear container is refused.
+Status read_header(const input::Reader& source, Byte* header, U32 expected_sku, Work* work, Header& h) {
     if (!usable(source)) return Status::size;
     if (!checkpoint(work)) return Status::cancelled;
     if (!input::read(source, 0, header, prefix_bytes)) return Status::io;
@@ -128,15 +126,36 @@ Status Archive::open_digested(const input::Reader& source, const KeyProvider& ke
         if (!input::read(source, at, header + at, amount)) return Status::io;
         at += amount;
     }
-    Header h;
     const Status parsed = parse(header, source.size, expected_sku, h);
     if (parsed != Status::ok) return parsed;
-    if (h.key_index == 0xfe) return Status::key;
+    return h.key_index == 0xfe ? Status::key : Status::ok;
+}
+}
+Status Archive::open_digested(const input::Reader& source, const KeyProvider& keys,
+                              const hash::Digest& ciphertext_sha256, const HeaderCheck& signature, Byte* header,
+                              U32 expected_sku, Work* work) {
+    close();
+    if (!header || !signature.verify) return Status::argument;
+    Header h;
+    const Status read = read_header(source, header, expected_sku, work, h);
+    if (read != Status::ok) return read;
     // The seam: nothing below this line runs for a header the check refuses.
     if (!checkpoint(work)) return Status::cancelled;
-    if (!verified(signature, header + base, crypto_header_bytes)) return Status::signature;
+    if (!verified(signature, header + h.crypto_offset, crypto_header_bytes)) return Status::signature;
     if (!checkpoint(work)) return Status::cancelled;
     if (!hash::equal(ciphertext_sha256, h.ciphertext_hash)) return Status::ciphertext_hash;
+    source_ = source;
+    work_ = work;
+    const Status status = finish(h, keys);
+    return cancelled(work) ? Status::cancelled : status;
+}
+Status Archive::open_unsigned(const input::Reader& source, const KeyProvider& keys, Byte* header, U32 expected_sku,
+                              Work* work) {
+    close();
+    if (!header) return Status::argument;
+    Header h;
+    const Status read = read_header(source, header, expected_sku, work, h);
+    if (read != Status::ok) return read;
     source_ = source;
     work_ = work;
     const Status status = finish(h, keys);

@@ -124,7 +124,7 @@ bool rehearsal_active();
 #include "usb_service_recovery.ipp" // durable content intent, menu/service startup only
 #include "usb_service_mtp_session.ipp" // the MTP session (with XYF_SIM it leaves this namespace for one declaration)
 #include "usb_service_mods_apply.ipp" // MODS_APPLY
-#include "usb_service_signed_pack.ipp"
+#include "usb_service_pack_import.ipp"
 #include "usb_service_config.ipp" // CONFIG_GET, CONFIG_SET (#26)
 }
 namespace xy_forever { namespace usb_service { // the Mods page's hooks (usb_service.hpp)
@@ -153,7 +153,7 @@ namespace xy_forever { namespace usb_service {
 }}
 #if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
 namespace {
-void signed_pack_usb_turn() { xy_forever::usb_service::home_receive(); }
+void pack_import_usb_turn() { xy_forever::usb_service::home_receive(); }
 }
 #endif
 #endif

@@ -153,7 +153,7 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         g.candidate[64] = 0;
         if (!contains(g)) g.stage = 8;
         return 0;
-    case 9:                                             // the signed packs' records, retained or active alike
+    case 9:                                             // the imported packs' records, retained or active alike
         n = io.list_one(pack_records, g.entry_skip, name, kind);
         if (n < 0) return -1;
         if (!n) {

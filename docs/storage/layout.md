@@ -16,12 +16,12 @@ it is changed, except the boot partition (`os.ldr`) and the components an offici
   log/                      device reports, prod-a.bin / prod-b.bin, pfile-a.bin / pfile-b.bin
   stage2/main.xys2          stage 2: B loads it at the first HELLO of a boot; see below
   inbox/                    MTP drop folder for sound packs
-  packs/<id>/               retained signed pack: the pack folder alone (enabled: content/dlc/<id>/)
-  pack-records/<id>/        its records, retained or enabled: xyf-pack.txt (version, signed digest), xyf-pack-v1.sha256
+  packs/<id>/               retained imported pack: the pack folder alone (enabled: content/dlc/<id>/)
+  pack-records/<id>/        its records, retained or enabled: xyf-pack.txt (version, declared digest), xyf-pack-v1.sha256
   tmp/job-<id>/             mods.apply's output until the commit; -old: the replaced entry; swept (below)
   tmp/pkg-v1-<token>/       host package transaction; -old: detached old package, both swept
   tmp/adopt-<id>/           the stock entry's adoption until its rename into firmware/ (#178; jobs.md); swept by the next one
-  blobs/<sha256>            verified content referenced by firmware and signed sound packs (package-transactions.md)
+  blobs/<sha256>            verified content referenced by firmware and imported sound packs (package-transactions.md)
   tmp/put-<size>-<tag>      an upload (file.write_*, MTP SendObject) until A renames it onto its name; swept (below)
   job.txt, job.old           version-1 content intent; menu/service replay or previous-entry undo (jobs.md)
   content-state.txt         what /yaffs2/content/ matches, and what XY Forever installed there (below)

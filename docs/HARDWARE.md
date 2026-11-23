@@ -17,5 +17,5 @@ raw listing: Ghidra's decompiler C is unreliable for parallel instructions and i
 - [A install staging rehearsal](hardware/a-install-staging.md): RAM transfer, ownership and no-write admission
 - [Read-only boot-partition probe](hardware/boot-partition-probe.md): protocol, restoration and measured A preconditions
 - [Firmware packages](hardware/tfw.md): the `.tfw` format, keys, signatures, package contents, companion hazards
-- [OTP and the package check](hardware/otp.md): the OTP boot-ROM table, XY Forever's reader, `tfw.check`, A's ciphertext hash
+- [OTP and the package check](hardware/otp.md): the OTP boot-ROM table, XY Forever's reader, `tfw.check`, the pack import's reader
 - [Reverse-engineering tools](hardware/tools.md): the listing scripts in `re/`, Ghidra

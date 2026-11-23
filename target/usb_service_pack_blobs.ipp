@@ -1,6 +1,6 @@
 // Publish and link the verified members only after closing the TFW reader. Each member is already a sealed file
 // (mode 0444, written by B and hashed as it went): it becomes its blob by one rename, unless the blob is there.
-U32 signed_pack_begin_blobs(SignedPackJob& j) {
+U32 pack_import_begin_blobs(PackImportJob& j) {
     if (const U32 closed = j.source.close()) return closed;
     const int kind = pack_kind(j.io, "/yaffs2/xy-forever", "blobs");
     if (kind != 1 && kind != -2) return P::s_refused;
@@ -9,13 +9,13 @@ U32 signed_pack_begin_blobs(SignedPackJob& j) {
     return P::s_ok;
 }
 
-U32 signed_pack_blob(SignedPackJob& j) {
+U32 pack_import_blob(PackImportJob& j) {
     const auto& member = j.entries[j.member];
     if (member.directory || sp::same(member.name, sp::marker)) {
         ++j.member;
         return P::s_ok;
     }
-    const uint8_t* const expected = j.references[signed_pack_done];
+    const uint8_t* const expected = j.references[pack_import_done];
     char path[file_engine::max_path], file[file_engine::max_path];
     if (!join(file, j.staging, "/", member.name + j.layout.relative_at)) return P::s_refused;
     switch (j.blob_step) {
@@ -74,7 +74,7 @@ U32 signed_pack_blob(SignedPackJob& j) {
         j.partial[0] = 0;
         j.published = false;
         ++j.member;
-        ++signed_pack_done;
+        ++pack_import_done;
         j.blob_step = pb_stage;
         return P::s_ok;
     }

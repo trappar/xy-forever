@@ -111,7 +111,7 @@ Reply write_start(int fd, const uint8_t* data, uint32_t count);     // count <= 
 // stream(at, value); short only at the end of the file). busy while one is left. The buffer is the client's, as
 // data_buffer is (an answer that arrives after its owner gave up lands only there): the top stream_capacity bytes
 // of the MTP session's slot (usb_service_mod_job.ipp mtp_slot_bytes; the Session stays below it), reserved only in
-// MTP builds. Its users: the MTP session, and the signed pack import's source (#279, tfw_import_source), which runs
+// MTP builds. Its users: the MTP session, and the pack import's source (#279, tfw_import_source), which runs
 // only while no MTP operation does.
 static const uint32_t stream_buffer = 0x8b7fc000u, stream_capacity = 0x4000u;
 // bytes per read_start: A streams them back in 0x1000-byte bodies, its stock read executor (889f6cd6) re-posting
@@ -143,11 +143,6 @@ uint32_t log_copy(uint32_t* out);
 // #7: only the dedicated read-only diagnostic uses these. A gates every raw request independently.
 Reply boot_probe(uint32_t operation);
 Reply tfw_probe(const char* path, uint32_t operation);
-#if defined(XYF_TFW_CHECK)
-// Submit one of tfw_hash_rpc's commands. The owner collects A's reply with left_poll(false)
-// and uses the same immutable path for the whole hash job and the subsequent package read.
-Reply tfw_hash_send(const char* path, uint32_t operation);
-#endif
 Reply boot_select(uint32_t partition);
 Reply boot_sector(uint32_t sector, uint8_t* out);
 Reply seek(int fd, int offset);                                     // SEEK_SET

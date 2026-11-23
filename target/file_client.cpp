@@ -4,7 +4,6 @@
 #include "boot_partition_probe.hpp"
 #include "managed_blob_link.hpp"
 #include "tfw_role_probe.hpp"
-#include "tfw_hash_rpc.hpp"
 #include "boot_services.hpp"
 // Processor B's file client (see file_client.hpp).
 namespace xy_forever { namespace file_client {
@@ -393,19 +392,6 @@ Reply a_timing(uint32_t k) {
 Reply tfw_probe(const char* path, uint32_t op) {
     return path_request(path, file_engine::op_stat, 0x21, tfw_role_probe::tag | op, 0, 0, 5000u);
 }
-#if defined(XYF_TFW_CHECK)
-Reply tfw_hash_send(const char* path, uint32_t operation) {
-    namespace th = tfw_hash_rpc;
-    if (left_session) return outcome(busy);
-    if ((operation != th::start && operation != th::status && operation != th::cancel &&
-         (operation < th::digest || operation >= th::digest + th::digest_words)) ||
-        !services::loader_path(path))
-        return outcome(refused);
-    Stock121PeerSession* session = 0;
-    const Reply sent = path_request(path, file_engine::op_read, 0x21, th::tag | operation, &session);
-    return leave(session, sent, request_ms);
-}
-#endif
 #if defined(XYF_USB_FILE_WRITE)
 Reply stage_blob_link(const char* temporary, const uint8_t* hash, bool seal) {
     namespace ml = managed_blob_link;

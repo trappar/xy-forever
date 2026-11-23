@@ -23,23 +23,23 @@ Creating the report folder is a storage write, so it takes `--yes-write`:
 
 ### Sound packs
 
-Copy an original signed sound pack `.tfw` to `/yaffs2/xy-forever/inbox/`. Select it in
+Copy a sound pack `.tfw` to `/yaffs2/xy-forever/inbox/`. Select it in
 Settings > Content packs > Inbox, or run `uv run xyf-host packs import NAME.tfw --yes`.
-XY Forever authenticates the archive and retains the extracted pack. A pack whose TE signature verified is
-trusted on any official firmware: `packs enable ID --yes` (or the menu) enables it, noting that it is not tested
+XY Forever decrypts the archive, checks every file's CRC-32 and SHA-256 (not the `.tfw` signature) and retains
+the extracted pack. `packs enable ID --yes` (or the menu) enables it, noting that it is not tested
 on this firmware, and `packs disable ID --yes` retains it again. Enabling moves the pack folder only; getting its
-sounds into the OS is #188. `packs forget ID --yes` deletes a retained signed pack, its records and the blobs no
+sounds into the OS is #188. `packs forget ID --yes` deletes a retained pack, its records and the blobs no
 other pack or firmware uses, so it can be imported again.
 
 When an import ends, `packs import` prints where its time went on B (`packs.manage` operation 6): the phases
-(authenticate, admit, extract, finish), then extraction by what B did: `source` and `put` are B waiting for A's
+(admit, extract, finish), then extraction by what B did: `source` and `put` are B waiting for A's
 reads and writes, `member` A's creates and closes, `aes`, `inflate` and `sha` B's own work, `service` its link and
 USB turns, `loop` the menu loop between steps.
 
 `uv run xyf-host packs list` lists the sound packs in `/yaffs2/content/dlc/` (state `active`) and the retained
-signed packs in `/yaffs2/xy-forever/packs/` (state `retained`); an enabled signed pack is `active`. A signed pack's
+imported packs in `/yaffs2/xy-forever/packs/` (state `retained`); an enabled one is `active`. An imported pack's
 records are in `/yaffs2/xy-forever/pack-records/ID/`, outside the folder the OS reads. Each row gives the pack folder ID, its state and the
-vendor manifest's name, version, author and description when present; a signed pack also shows `"signed": true` and
+vendor manifest's name, version, author and description when present; an imported pack also shows `"imported": true` and
 `"firmware": "not tested on this firmware"`.
 A malformed manifest is reported beside its folder ID.
 

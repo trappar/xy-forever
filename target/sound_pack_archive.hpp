@@ -7,7 +7,7 @@
 #include "../native/mod_content.hpp"
 #include "../native/zip.hpp"
 
-// The caller authenticates the TFW container and keeps its source immutable.
+// The caller opens the TFW container and keeps its source immutable.
 // This admission pass classifies ZIP members and reads the manifest before staging.
 namespace xy_forever { namespace sound_pack_archive {
 namespace zip = xyf_core::zip;

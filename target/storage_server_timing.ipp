@@ -86,7 +86,6 @@ void timed_serve(void* context, U32 request, Stock121PeerSession& session) {
         return;
     }
 #endif
-    if (tfw_hash_query(context, request, session)) return;
     if (tfw_probe_query(context, request, session)) return;
     if (boot_probe_query(request, session)) return;
     if (timing_query(request, session)) return;
