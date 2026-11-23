@@ -30,14 +30,51 @@ typedef std::map<std::string, std::string> Files;
 struct Tree {
     Files files;
     std::set<std::string> dirs;
+    std::map<std::string, uint32_t> objects;
+    uint32_t next_object = 1;
+    static constexpr uint32_t sealed = 0x80000000u;
+    uint32_t object(const std::string& path) {
+        if (!objects.count(path)) objects[path] = next_object++;
+        return objects[path];
+    }
     bool operator==(const Tree& o) const { return files == o.files && dirs == o.dirs; }
 };
 
 struct FakeIo {
-    int stage_blob_link(const char*, const uint8_t*, bool = false) { return 1; }
-    int copy_blob_piece() { return -1; }
-    int publish_blob_link(const char*, const char*) { return -1; }
     Tree t;
+    std::string seal_source, seal_target;
+    int stat_asset(const char* path, xyf::managed_asset::File& info) {
+        if (!request()) return -1;
+        if (!t.files.count(path)) return 1;
+        info = {1, t.object(path), uint32_t(t.files.at(path).size())};
+        return 0;
+    }
+    int stage_blob_link(const char* temporary, const uint8_t* hash, bool seal = false) {
+        if (!request()) return -1;
+        const std::string source =
+            std::string(xyf::blob::root) + "/" + std::string(reinterpret_cast<const char*>(hash), 64);
+        if (!t.files.count(source)) return 1;
+        if (!folder(parent(temporary)) || t.files.count(temporary)) return -1;
+        const auto id = t.object(source);
+        if (seal) {
+            if (id & Tree::sealed) return 2;
+            seal_source = source;
+            seal_target = temporary;
+        } else {
+            if (!(id & Tree::sealed)) return 2;
+            t.files[temporary] = t.files.at(source);
+            t.objects[temporary] = id;
+        }
+        written.push_back(temporary);
+        return 0;
+    }
+    int copy_blob_piece() {
+        if (!request()) return -1;
+        t.files[seal_target] = t.files.at(seal_source);
+        t.objects[seal_target] = Tree::sealed | t.next_object++;
+        return 1;
+    }
+    int publish_blob_link(const char* from, const char* to) { return rename(from, to, true); }
     struct Handle {
         std::string path;
         size_t pos;
@@ -64,6 +101,7 @@ struct FakeIo {
             if (!folder(parent(p)) || t.dirs.count(p)) return -1;
             written.push_back(p);
             t.files[p] = "";
+            t.objects.erase(p);
         } else if (reads.push_back(p), !t.files.count(p)) return -2;
         open_[next] = Handle{p, 0, write};
         return next++;
@@ -90,6 +128,7 @@ struct FakeIo {
     int unlink(const char* path) {
         if (!request()) return -1;
         written.push_back(path);
+        t.objects.erase(path);
         return t.files.erase(path) ? 0 : 1;
     }
     bool empty(const std::string& p) const {
@@ -114,10 +153,12 @@ struct FakeIo {
         t.dirs.insert(path);
         return 0;
     }
-    int rename(const char* from, const char* to) {
+    int rename(const char* from, const char* to, bool over = false) {
         if (!request()) return -1;
         written.push_back(to);
-        if (!t.files.count(from) || t.dirs.count(to) || t.files.count(to)) return -1; // as A's engine: never replaces
+        if (!t.files.count(from) || t.dirs.count(to) || (!over && t.files.count(to))) return -1;
+        t.objects[to] = t.object(from);
+        t.objects.erase(from);
         t.files[to] = t.files[from];
         t.files.erase(from);
         return 0;
@@ -146,6 +187,10 @@ static void add_mods(Tree& t, const std::string& id, const Files& content) {
             t.dirs.insert(p.substr(0, k));
         t.dirs.insert(e + "/content");
         t.files[p] = f.second;
+        const auto blob = std::string(xyf::blob::root) + "/" + hex(f.second);
+        t.dirs.insert(xyf::blob::root);
+        t.files[blob] = f.second;
+        t.objects[p] = t.objects[blob] = t.object(blob) | Tree::sealed;
         listed["content/" + f.first] = f.second;
     }
     listed["info.txt"] = "type=firmware\nname=" + id + "\nkind=open-xy\ngeneration=0.0.6-test\n";
@@ -236,9 +281,6 @@ static Tree expected(const Tree& base, const char* target) {
     t.dirs.insert(saved_folder);
     t.files[saved_list] = list_text(official_files);
     t.files[saved_catalog] = official_files.at("op1_factory.json");
-    t.files[std::string(xyf::blob::root) + "/" + hex(official_files.at("op1_factory.json"))] =
-        official_files.at("op1_factory.json");
-    t.dirs.insert(xyf::blob::root);
     t.dirs.insert("/yaffs2/xy-forever/tmp");
     return t;
 }
@@ -498,6 +540,12 @@ static void by_difference() {
     REQUIRE((run(io, "mods-c") == st_done &&
              content_writes(io, {"aux_presets/alpha/x", "aux_presets/alpha", "aux_presets"})));
     REQUIRE((job.removed == 1 && job.written == 1 && job.read == 0 && job.compared == 4 && job.done == job.total));
+    for (const auto& opened : io.reads) {
+        const bool asset =
+            opened.find("/content/") != std::string::npos && opened.find("op1_factory.json") == std::string::npos;
+        REQUIRE(!asset);
+        REQUIRE(opened.find("/tmp/put-") == std::string::npos); // no staged alias was read back
+    }
     REQUIRE((!count_of(io.reads, C + "display/alpha.svg") && !io.t.files.count(C + "aux_presets/alpha/x")));
     REQUIRE(io.t.files.at(C + "op1_factory.json") == removed.at("op1_factory.json"));
     io.written.clear();
@@ -505,32 +553,35 @@ static void by_difference() {
     REQUIRE((run(io, "mods-d") == st_done && content_writes(io, {"aux_presets/alpha/x", "presets/gamma/1.preset"})));
     REQUIRE(
         (job.written == 3 && job.removed == 0 && job.read == 0 && io.t.files.at(C + "presets/gamma/1.preset") == "g1"));
-    // Changed behind our back: a trusted switch does not read it; switching to the installed entry repairs it.
+    // A host replacement changes the file object, so the switch repairs the alias.
     io.t.files[C + "display/alpha.svg"] = "<svg changed/>";
+    io.t.objects.erase(C + "display/alpha.svg");
     io.t.files.erase(C + "presets/alpha/1.preset");
+    io.t.objects.erase(C + "presets/alpha/1.preset");
     io.written.clear();
     io.reads.clear();
     REQUIRE((run(io, "mods-d") == st_done && content_writes(io, {"display/alpha.svg", "presets/alpha/1.preset"})));
-    REQUIRE((job.read == 5 && job.written == 3 && io.t.files.at(C + "display/alpha.svg") == "<svg alpha/>"));
+    REQUIRE((job.read == 0 && job.written == 3 && io.t.files.at(C + "display/alpha.svg") == "<svg alpha/>"));
     REQUIRE(io.t.files.at(C + "presets/alpha/1.preset") == "a1");
-    // An untrusted record (switching, as after a cut) reads every live file and writes only what differs.
+    // A cut leaves the switching record. Replaying it checks identities and repairs replacements.
     io.t.files[C + "display/common.svg"] = "<svg changed/>";
+    io.t.objects.erase(C + "display/common.svg");
     io.t.files[record_path] =
         "state=switching\ntarget=mods-a\n" + io.t.files[record_path].substr(io.t.files[record_path].find("file="));
     io.written.clear();
     io.reads.clear();
     REQUIRE((run(io, "mods-a") == st_done &&
              content_writes(io, {"display/common.svg", "presets/gamma/1.preset", "presets/gamma"})));
-    REQUIRE((job.read == 5 && job.removed == 1 && job.written == 2));
+    REQUIRE((job.read == 0 && job.removed == 1 && job.written == 2));
     Tree want = expected(io.t, "mods-a");
     REQUIRE(record(io) == want.files.at(record_path));
-    // A record whose file= lines are out of order is not trusted (every file read).
+    // File order in the record does not affect the identity checks.
     std::string rec = record(io);
     const size_t first = rec.find("file="), second = rec.find("file=", first + 1);
     rec = rec.substr(0, first) + rec.substr(second) + rec.substr(first, second - first);
     io.t.files[record_path] = rec;
     io.reads.clear();
-    REQUIRE((run(io, "mods-c") == st_done && job.read == 4 && job.written == 1));
+    REQUIRE((run(io, "mods-c") == st_done && job.read == 0 && job.written == 1));
 }
 
 static void native_records() {

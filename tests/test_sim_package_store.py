@@ -87,6 +87,33 @@ class Packages(unittest.TestCase):
         self.dev = host.Device(host.TcpPort(self.sim.address), on_log=None)
         self.assertEqual(self.dev.hello()[0], 0)
 
+    @pytest.mark.sim
+    def test_factory_retention_reuses_live_files_without_reading_blobs(self):
+        sources = {'factory.bin': b'factory bytes', 'also-mod.bin': b'shared bytes', 'absent.bin': b'cached'}
+        references = xyf_entry.read_files_sha256(S.list_text(sources))
+        blobs = self.root / 'xy-forever/blobs'
+        blobs.mkdir(exist_ok=True)
+        (self.root / 'content').mkdir(exist_ok=True)
+        for sha, rel in references:
+            (blobs / sha).write_bytes(sources[rel])
+            if rel != 'absent.bin':
+                (self.root / 'content' / rel).write_bytes(sources[rel])
+        mod = self.root / 'xy-forever/firmware/mods-retained'
+        mod.mkdir()
+        (mod / 'files.sha256').write_bytes(S.list_text({'content/shared.bin': sources['also-mod.bin']}))
+
+        class Retain(S.Session):
+            def read(self, path, optional=False):
+                assert not path.startswith(S.BLOBS + '/'), path
+                return super().read(path, optional)
+
+        with Retain(self.dev) as session:
+            session.retain(references, sources, factory=True)
+        for sha, rel in references:
+            self.assertEqual((blobs / sha).exists(), rel != 'factory.bin')
+            if rel != 'absent.bin':
+                self.assertEqual((self.root / 'content' / rel).read_bytes(), sources[rel])
+
     @pytest.mark.sweep  # parked: a serial chain of simulator restarts, the run's critical path
     def test_cut_between_every_add_remove_and_gc_step(self):
         target = S.LIBRARY + '/package-cut'
