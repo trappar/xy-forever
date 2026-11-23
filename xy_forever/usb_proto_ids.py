@@ -103,7 +103,7 @@ TRANSPORT = {
     'usb_vendor_id': (9063, True),
     'usb_product_id': (33, True),
     'product_usb_ids': ((9063, 33), True),
-    'usb_product': ('OP_XY Boot', True),
+    'usb_product': ('OP-XY (XY Forever)', True),
     'interface_classes': ((2, 10), True),
     'stream': ('frames', True),
     'line_settings': ('ignored', True),
