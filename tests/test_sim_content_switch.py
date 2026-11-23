@@ -178,6 +178,16 @@ class SyntheticSwitch(Switch, unittest.TestCase):
             file=sys.stderr,
         )
         b = self.build(['gamma'])  # built while A's content is installed
+        rel, data = next(iter(own.items()))
+        live = self.root / 'content' / rel
+        live.unlink()
+        live.write_bytes(data)
+        self.assertNotEqual(live.stat().st_ino, self.blob(data).stat().st_ino)
+        self.switched('opxy-121', official=True)
+        live.parent.mkdir(parents=True, exist_ok=True)
+        live.write_bytes(data)
+        self.switched(a)
+        self.assertEqual(live.stat().st_ino, self.blob(data).stat().st_ino)
         self.assertNotEqual(a, b)
         self.switched(b)
         gone = set(own) - set(content(self.root / LIB / b)[0])
@@ -203,6 +213,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
         path, data = next((p, b) for p, b in content(self.root / LIB / a)[0].items() if p != 'op1_factory.json')
         blob = self.blob(data)
         corrupt = bytes([data[0] ^ 1]) + data[1:]
+        blob.unlink()
         blob.write_bytes(corrupt)
         for read_only in (False, True):
             with self.subTest(read_only=read_only):
@@ -220,7 +231,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
     def renames(self, entry):
         """Renames from official with a sealed cache and no saved content state."""
         assets = sum(p != 'op1_factory.json' for p in content(self.root / LIB / entry)[0])
-        return 2 * assets + 7
+        return assets + 7
 
     def fresh_official(self):
         """Back to the official state with nothing saved (each case starts the same)."""
@@ -290,7 +301,7 @@ class SyntheticSwitch(Switch, unittest.TestCase):
 
     def faults(self, kind):
         a = self.build(['alpha'])
-        self.switched(a)  # Seal once so every fault starts with the same cache state.
+        self.switched(a)  # Start each fault with the same published cache state.
         total = self.renames(a)
         self.assertGreater(total, 6)
         for n in range(1, total + 1):

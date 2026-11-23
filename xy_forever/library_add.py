@@ -159,7 +159,7 @@ def write(dev, args, files, fresh, put, out=print):
                         source = args.content / rel
                         if source.is_file():
                             sources[rel] = source.read_bytes()
-                    session.retain(read_files_sha256(body[LIST]), sources)
+                    session.retain(read_files_sha256(body[LIST]), sources, factory=True)
                 session.publish(base.rstrip('/'), body)
             removed = session.collect()
         out(

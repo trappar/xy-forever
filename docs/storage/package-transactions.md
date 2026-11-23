@@ -40,23 +40,16 @@ separate disk index or new serialized container. Firmware references come from e
 `content.sha256` and the `content/` lines of its `files.sha256`. A shared hash has one stored copy.
 The store may also retain a live file; collection depends on kept references, not current installation.
 
-Before host firmware publication, every content reference is verified against an existing blob, the
-supplied content folder or the live content file, and retained. A list-only import therefore needs
-matching live bytes or an already verified blob. Native assembly retains every output content asset
-and catalog before publishing its entry, including when its content is not installed. The existing
-content switch saves the outgoing official catalog to a verified blob before changing live content;
-its other official files remain untouched under the existing path rule.
+Host `library-add --content` hashes existing live factory files and uses a matching file directly.
+The saved official catalog can satisfy its own reference while mods are installed. A matching live
+file replaces a redundant legacy cache copy when no mod entry or recorded pack needs its blob name.
+Other hashes use the existing cache entry or a verified upload from the supplied files.
 
-Native copies stream into scratch, hash the source, read back and hash the scratch, then rename to
-the hash name. A corrupt existing blob is refused rather than accepted by its name. Cuts leave only
-scratch or a complete blob. Host copies reuse the verified atomic upload and SHA-256 read-back.
-
-When switching mod content, an existing read-only blob can be linked into the upload scratch
-area. A verifies the real directories and the immutable blob before creating the hardlink.
-B hashes the staged alias before replacing the kept and active asset paths through atomic
-upload renames. A writable legacy blob is copied to an exclusive read-only scratch file in 4 KiB
-pieces. B verifies the full SHA-256 before atomically replacing the cache entry. A cache miss
-uses the entry's existing verified file copy.
+Native assembly and first adoption bind each kept asset to its sealed blob. A missing blob is copied
+through scratch and verified. A writable legacy blob is sealed in 4 KiB pieces and checked by SHA-256
+before replacement. For an existing sealed blob whose filesystem identity differs from the kept file,
+the staged alias is verified before the kept name is replaced. Prepared assets use identity checks
+and links during switching ([content state](content-state.md)).
 
 `.tfw` sound packs use the same verified blobs. The importer decrypts it, checks the destination
 and space, and extracts into a private folder. B writes each file into a new

@@ -55,7 +55,8 @@ struct JobSlot {
     char target[8], entry[file_engine::max_path], old[file_engine::max_path];
     U32 stage, had_old, commit_error, commit_code, extra_steps, clean_calls, build_order;
     xyf::blob::Collect garbage;
-    xyf::blob::Copy cache;
+    xyf::managed_asset::Asset cache;
+    uint8_t cache_hash[64];
     U32 cache_index, cache_active;
     Tree tree; // the old entry's tree in tmp/
     Sweep leftovers;

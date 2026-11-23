@@ -264,7 +264,9 @@ class SyntheticJob(Base, unittest.TestCase):
         shutil.copytree(self.entry('mods-a'), self.entry('mods-b'))
         (self.entry('mods-b') / 'build-order.bin').unlink()  # simulate a legacy slot
         (self.entry('mods-b') / 'old.txt').write_bytes(b'the old entry\n')
-        return len(tree(self.entry('mods-a'))) - 1  # build-order.bin is staged without a rename
+        files = tree(self.entry('mods-a'))
+        # The next build renames each output and replaces each kept content path with an alias.
+        return len(files) - 1 + sum(path.startswith('content/') for path in files)
 
     def fault(self, n, kind, machines):
         self.sim.set('rename_fault_kind', kind)
@@ -363,7 +365,7 @@ class SyntheticJob(Base, unittest.TestCase):
         wanted = self.reference(['alpha'], [])
         count = len({hashlib.sha256(data).digest() for path, data in wanted.items() if path.startswith('content/')})
         before = outside_tmp(self.root)
-        for offset in range(1, count + 1):
+        for offset in range(1, 3 * count + 1):
             with self.subTest(blob=offset):
                 shutil.rmtree(self.root / 'xy-forever/blobs', ignore_errors=True)
                 cuts = self.sim.status()['cuts']

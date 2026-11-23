@@ -190,21 +190,33 @@ class Session:
         self.change(P.ids.MAKE_DIR, name)
         return name
 
-    def retain(self, references, sources=None):
-        """Verify named bytes before a package becomes reachable; duplicates share one blob."""
+    def retain(self, references, sources=None, *, factory=False):
+        """Retain missing hashes. An exact live factory file already satisfies its reference."""
         sources = sources or {}
+        existing = {name.decode('ascii') for kind, _, name in self.entries(BLOBS) if kind == 0 and name.isascii()}
+        live_hashes = set()
         for sha, rel in references:
-            existing = self.read(BLOBS + '/' + sha, optional=True)
-            if existing is not None:
-                if hashlib.sha256(existing).hexdigest() != sha:
-                    raise StoreError('corrupt content blob: %s' % sha)
+            live_path = '/yaffs2/content/' + rel
+            live = self.read(live_path, optional=True) if factory else None
+            if factory and rel == 'op1_factory.json' and (live is None or hashlib.sha256(live).hexdigest() != sha):
+                live = self.read(ROOT + '/content-official/op1_factory.json', optional=True)
+            if live is not None and hashlib.sha256(live).hexdigest() == sha:
+                live_hashes.add(sha)
+                continue
+            if sha in existing or sha in live_hashes:
                 continue
             data = sources.get(rel)
-            if data is None:
-                data = self.read('/yaffs2/content/' + rel, optional=True)
+            if data is None and not factory:
+                data = self.read(live_path, optional=True)
             if data is None or hashlib.sha256(data).hexdigest() != sha:
                 raise StoreError('content unavailable or differs: %s (%s)' % (rel, sha))
             self.write(BLOBS + '/' + sha, data)
+            existing.add(sha)
+        duplicates = live_hashes & existing
+        if duplicates:
+            # Mod entries and recorded packs may also need these hashes by their blob name.
+            for sha in sorted(duplicates - self.references(include_factory=False)):
+                self.change(P.ids.DELETE_FILE, BLOBS + '/' + sha)
 
     def publish(self, target, files):
         if not package_name(target.rsplit('/', 1)[-1]):
@@ -238,13 +250,13 @@ class Session:
         self.rename(target, scratch)
         self.erase(scratch)
 
-    def references(self):
+    def references(self, *, include_factory=True):
         keep = set()
         for kind, _, name in self.entries(LIBRARY):
             if kind != 1:
                 continue
             folder = LIBRARY + '/' + name.decode('utf-8', 'strict')
-            for manifest in ('content.sha256', 'files.sha256'):
+            for manifest in ('content.sha256', 'files.sha256') if include_factory else ('files.sha256',):
                 text = self.read(folder + '/' + manifest, optional=True)
                 if text is None:
                     continue

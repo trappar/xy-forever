@@ -62,6 +62,19 @@ struct ContentIo {
         return code == P::s_ok ? 0 : -1;
     }
 #if defined(XYF_CONTENT_SWITCH)
+    // File metadata from the existing stat RPC. Return 1 for an absent name.
+    int stat_asset(const char* path, xyf::managed_asset::File& file) {
+        if (link || !storage_server::valid_path(path)) return -1;
+        uint8_t record[file_client::record_bytes];
+        const file_client::Reply r = file_client::stat(path, record);
+        if (r.outcome) return fail(r);
+        if (r.value) return r.error == file_client::enoent ? 1 : -1;
+        if ((P::get32(record + 8) & 0xf000u) != 0x8000u) return -1;
+        file.device = P::get32(record);
+        file.inode = P::get32(record + 4);
+        file.size = P::get32(record + 28);
+        return 0;
+    }
     int stage_blob_link(const char* temporary, const uint8_t* hash, bool seal = false) {
         if (link || !writable(temporary)) return -1;
         const file_client::Reply r = file_client::stage_blob_link(temporary, hash, seal);

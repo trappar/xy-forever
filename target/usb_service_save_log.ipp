@@ -180,19 +180,29 @@ void job_pump() {
             ContentIo io = {s.link};
             if (!s.cache_active) {
                 const xyf_core::mod_content::Listed& f = s.job.builder.listed[s.cache_index];
-                char source[file_engine::max_path], temporary[file_engine::max_path];
-                if (!join(source, s.out, "/", f.path) || !join(temporary, s.out, "/blob.part") ||
-                    !xyf::blob::begin(s.cache, source, temporary, f.sha256->bytes))
+                char source[file_engine::max_path];
+                static const char hex[] = "0123456789abcdef";
+                for (U32 i = 0; i != 32; ++i) {
+                    s.cache_hash[2 * i] = hex[f.sha256->bytes[i] >> 4];
+                    s.cache_hash[2 * i + 1] = hex[f.sha256->bytes[i] & 15];
+                }
+                if (!join(source, s.out, "/", f.path) || !xyf::managed_asset::begin(s.cache, source, s.cache_hash))
                     return commit_fail(s, P::s_refused, 0, "blob path");
                 s.cache_active = 1;
             }
-            const int cached = xyf::blob::step(s.cache, io);
-            s.link = io.link;
-            if (cached < 0) {
-                xyf::blob::abandon(s.cache, io);
-                return commit_fail(s, s.link ? P::s_link : P::s_storage, 0, "blob verify");
-            }
-            if (cached) {
+            if (s.cache_active == 1) {
+                const auto prepared = xyf::managed_asset::step(s.cache, io);
+                s.link = io.link;
+                if (prepared < 0) {
+                    xyf::managed_asset::abandon(s.cache, io);
+                    return commit_fail(s, s.link ? P::s_link : P::s_storage, 0, "blob verify");
+                }
+                if (prepared == xyf::managed_asset::ready) s.cache_active = 2;
+            } else {
+                const int published =
+                    s.cache.bound ? io.unlink(s.cache.alias) : io.publish_blob_link(s.cache.alias, s.cache.copy.source);
+                s.link = io.link;
+                if (published < 0) return commit_fail(s, s.link ? P::s_link : P::s_storage, 0, "blob link");
                 ++s.cache_index;
                 s.cache_active = 0;
             }

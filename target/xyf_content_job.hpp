@@ -4,7 +4,7 @@
 #include "xyf_store.hpp"
 #include "xyf_blob.hpp"
 #include "xyf_package_record.hpp"
-#include "managed_blob_link.hpp"
+#include "xyf_managed_asset.hpp"
 #include "../native/hash.hpp"
 // The content switch (docs/storage/state.md "Content state"), run by processor B as a job: makes
 // /yaffs2/content/ match a target library entry. step() sends at most one file request per call (B's menu
@@ -24,15 +24,10 @@
 // files.sha256 (each path through `allowed`; one the official list names is refused). Every refusal comes
 // before the first write. Then: from the official state, that list and the catalog saved under
 // content-official/ (unless the same copies are there); the record "switching" (its files: the target's and
-// the previous ones); the previous files the target does not carry removed (and folders left empty); the
-// target's files copied (.part, read back, renamed over) unless the live file is the target's already (see
-// "by difference", below); the catalog last (a stock target: the saved official one); the record for the
-// target (installed: each file= line carries the SHA-256 it was written with).
-// By difference: a target file is skipped without a read when the record is trusted (state=installed, read
-// as is, its file= lines sorted, and the target is not the entry it names: switching to the installed entry
-// again is the repair, which reads everything) and its line carries the target's SHA-256. Otherwise the live
-// file is read and hashed: equal skips the write; missing or different writes it. A switching record (a cut,
-// a failure) is never trusted, so the repair reads every file and converges.
+// the previous ones); remove assets absent from the target, link prepared assets into place, install the
+// catalog, then publish the final record. Existing asset aliases are compared by filesystem identity.
+// Older entries establish their association with a sealed blob during first adoption. The staged alias
+// and pending state let the same steps resume after a cut.
 namespace xyf { namespace content {
 static const uint32_t chunk = 1024, max_files = 4096, max_candidates = 16;
 static const uint32_t text_capacity = 0x100000u;        // each list, the record and the plan
@@ -68,7 +63,6 @@ enum Stage : uint32_t {
     st_saved_list,
     st_saved_catalog,
     st_save,
-    st_blob,
     st_mark,
     st_remove,
     st_copy,
@@ -91,13 +85,12 @@ struct Job {
     uint32_t candidate_count, candidate;
     bool mods;                                           // the target is an assembled mod set
     bool record_on_disk;                                 // the record file exists (store renames it to .old)
-    bool sorted, trusted;                                // the record's file= lines sorted; trusted (above)
     uint32_t stage, leg, sub, error, code, done, total, steps, peak;
     uint32_t compared, read, written, removed, bytes;    // timing log: target files compared, live files read,
                                                          // files written (catalog too), removed; bytes written
     char detail[32];
     State state;                                         // the record's head as the job found it
-    blob::Copy cache;
+    managed_asset::Asset asset;
     Text official, list, record, plan, file;
     Ref* official_refs;
     Ref* list_refs;
@@ -214,7 +207,6 @@ static inline bool index_official(Job& j) {
 // longer than max_rel is never one XY Forever wrote: skipped. hash 0: none. sorted: strictly increasing.
 static inline bool index_record(Job& j) {
     j.record_count = 0;
-    j.sorted = true;
     const uint8_t* t = j.record.data;
     for (uint32_t at = 0; at < j.record.length;) {
         uint32_t e = at;
@@ -232,8 +224,6 @@ static inline bool index_record(Job& j) {
         }
         if (k == 5 && n && n <= max_rel) {
             if (j.record_count == max_files) return false;
-            if (j.record_count && compare_ref(j.record, j.record_refs[j.record_count - 1], t + at + 5, n) >= 0)
-                j.sorted = false;
             Ref& r = j.record_refs[j.record_count++];
             r.path = at + 5;
             r.bytes = n;
@@ -420,7 +410,6 @@ template<class Io> static uint32_t step(Job& j, Io& io) {
             fail(j, e_size, 0, record_path);
             break;
         }
-        j.trusted = j.record_on_disk && j.state.kind == installed && j.sorted && !same(j.state.entry, j.target);
         j.stage = j.state.kind == official ? st_live : st_load_saved;
         note(j, "official");
         break;
@@ -472,7 +461,7 @@ template<class Io> static uint32_t step(Job& j, Io& io) {
         r = load(j, io, saved_catalog, j.plan, j.plan.capacity);
         if (r == x_more || r == x_failed) break;
         j.leg = 0;
-        j.stage = r == x_done && hash_equal(j.official.data + j.official_catalog, j.digest.bytes) ? st_blob : st_save;
+        j.stage = r == x_done && hash_equal(j.official.data + j.official_catalog, j.digest.bytes) ? st_mark : st_save;
         break;
     case st_save:                                        // before the first change: the official list and catalog
         if (j.leg == 0) {
@@ -500,33 +489,10 @@ template<class Io> static uint32_t step(Job& j, Io& io) {
             break;
         }
         if (store(j, io, saved_catalog, j.file.data, j.file.length) == x_done) {
-            j.stage = st_blob;
-            j.leg = 0;
-        }
-        break;
-    case st_blob: {                                     // retain the outgoing official catalog before it disappears
-        if (!j.leg) {
-            static const char folder[] = "/yaffs2/xy-forever/tmp";
-            char temporary[max_path];
-            blob::scratch_name(temporary, j.file.length);
-            if (!allowed(Use::blob, folder, false) || !allowed(Use::blob, temporary, false) || io.mkdir(folder) < 0 ||
-                !blob::begin(j.cache, saved_catalog, temporary, j.live)) {
-                fail(j, io.lost() ? e_link : e_write, 0, folder);
-                break;
-            }
-            j.leg = 1;
-            break;
-        }
-        const int copied = blob::step(j.cache, io);
-        if (copied < 0) {
-            blob::abandon(j.cache, io);
-            fail(j, io.lost() ? e_link : e_verify, 0, "catalog blob");
-        } else if (copied) {
             j.stage = st_mark;
             j.leg = 0;
         }
         break;
-    }
     case st_load_saved:                                  // not the official state: the list saved before
         r = load(j, io, saved_list, j.official, j.official.capacity);
         if (r == x_more || r == x_failed) break;
@@ -564,7 +530,13 @@ template<class Io> static uint32_t step(Job& j, Io& io) {
         break;
     case st_mark:                                        // the record says "switching" from here on
         if (j.leg == 0) {
-            if (plan(j, true)) j.leg = 1;
+            if (!plan(j, true)) break;
+            static const char temporary[] = "/yaffs2/xy-forever/tmp";
+            if (io.mkdir(temporary) < 0) {
+                fail(j, io.lost() ? e_link : e_write, 0, temporary);
+                break;
+            }
+            j.leg = 1;
             break;
         }
         if (!allowed(Use::record, record_path, false)) {
