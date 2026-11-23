@@ -307,6 +307,15 @@ class NativeZipTests(unittest.TestCase):
             with self.subTest(data=bytes(data[:32])):
                 self.assertNotEqual(self.run_bridge('list', data).returncode, 0)
 
+    def test_open_reads_the_directory_then_the_local_headers(self):
+        """#279: open() checks the local headers after the whole directory, so a reader with a read-ahead cache (the
+        pack import's) reads each part in order: two jumps back (the end record to the directory, the directory to the
+        first local header), not one more per entry."""
+        data = zip_bytes([('a', b'one'), ('b', b'two'), ('c', b'three'), ('d', b'four')])
+        result = self.run_bridge('back', data)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, b'2\n')
+
     def test_crc_failure_and_real_output_length_enforced(self):
         data = b'data' * 10000
         good = manual_zip('os.ldr', data, raw(data))
