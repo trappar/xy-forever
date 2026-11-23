@@ -41,6 +41,27 @@ struct Result {
 };
 static_assert(sizeof(Result) == 0x50, "knob_input Result layout");
 extern Result result;
+// #288: the menu's raw input, newest last, for the host (diag.status block INP1): every key event as on_key
+// gets it (key id, press or release; knob clicks are keys 10..13, KEncClick1..4) and every record of an accepted
+// knob frame (its id, any of 1..13, and its signed count). Nothing on the device reads it. Event i of `count`
+// ever logged is in slot i % log_events; the oldest are overwritten.
+static const uint32_t log_magic = 0x31504e49u;           // "INP1" (diag.status block)
+static const uint32_t log_events = 32;                   // a power of two
+// Event.what: bits 0..1 the kind, bit 7 the host's key command (key: injected), bits 8..15 the id, 16..31 a
+// turn's count (int16).
+enum Kind : uint32_t { kind_release = 0, kind_press = 1, kind_turn = 2 };
+static const uint32_t what_injected = 0x80u;
+struct Event {
+    uint32_t ms; // the menu's clock (key_ui: since the hold-key UI started; the simulator: device time)
+    uint32_t what;
+};
+struct InputLog {
+    uint32_t magic, version, count, reserved;
+    Event event[log_events];
+};
+static_assert(sizeof(InputLog) == 16 + 8 * log_events, "InputLog layout");
+extern InputLog input_log;
+void log_key(uint32_t key, bool pressed, bool injected, uint32_t ms);
 // The menu opened. identity_ok: the stock identity the key path checked (key_ui's CRC spans) matched.
 void start(bool identity_ok);
 // One menu-loop pass, after the stock poll. selection: the page on screen moves a selection with - / +

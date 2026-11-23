@@ -23,6 +23,7 @@ extern "C" uint32_t xyf_stage2_enter(uint32_t entry, const xyf::stage2::Abi* abi
 namespace xy_forever { namespace key_ui {
 // Initialized data, not BSS: the cold link has no zero-initialization.
 Result result __attribute__((section(".data"))) = {magic};
+Frames frames __attribute__((section(".data"))) = {frames_magic, 1};
 }}
 
 namespace {
@@ -148,6 +149,7 @@ void on_key(uint32_t key, uint32_t pressed) {
     ++r.events;
     r.last_event = entry;
     last_key_ms = ms;
+    xy_forever::knob_input::log_key(key, pressed != 0, key_injected != 0, ms);   // #288: the raw input log
 #if defined(XYF_STAGE2)
     if (stage2_active) {
         if (key == play_key) {

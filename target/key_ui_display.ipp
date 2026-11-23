@@ -105,24 +105,51 @@ bool dma_idle(uint32_t limit_ms) {
     return true;
 }
 
+// #288 (key_ui.hpp Frames): one sample into last/min/max (min 0: no sample yet).
+void sample(uint32_t value, uint32_t& last, uint32_t& low, uint32_t& high) {
+    last = value;
+    if (!low || value < low) low = value;
+    if (value > high) high = value;
+}
+uint32_t transfer_started __attribute__((section(".data"))) = 0;   // the last transfer's start (0: none yet)
+
 // Finish the previous frame (stock wait clears the busy flag on DMA done),
 // then draw the screen and start the transfer directly.
 void present() {
     Result& r = result;
+    Frames& f = frames;
+    const uint32_t entry = cycles_div1024();
+    const bool running = (word(display_dma_stat) & dma_running) != 0;   // the previous frame's DMA, at entry
     if (!dma_idle(100)) {
         ++r.present_skips;
         return;
+    }
+    const uint32_t idle = cycles_div1024();
+    if (transfer_started) {
+        if (running) {
+            ++f.dma_count;
+            sample(idle - transfer_started, f.dma_last, f.dma_min, f.dma_max);
+        } else if (!f.idle_gap_min || entry - transfer_started < f.idle_gap_min)
+            f.idle_gap_min = entry - transfer_started;
     }
     wait_dma();
     if (byte(smc_dma_active)) {     // DMA idle without a done bit: flag is stale
         *reinterpret_cast<volatile uint8_t*>(smc_dma_active) = 0;
         r.present_skips += 0x10000u;
     }
+    const uint32_t drawing = cycles_div1024();
     draw_screen(reinterpret_cast<uint16_t*>(word(framebuffer)));   // full repaint
     where_draw(reinterpret_cast<uint16_t*>(word(framebuffer)));    // a long wait's code (key_ui_where.ipp)
     flush_framebuffer(word(framebuffer));
+    const uint32_t drawn = cycles_div1024();
     transfer();
+    transfer_started = cycles_div1024();
     if (byte(smc_dma_active)) ++r.presents;
+    ++f.presents;
+    sample(drawn - drawing, f.draw_last, f.draw_min, f.draw_max);
+    sample(transfer_started - entry, f.present_last, f.present_min, f.present_max);
+    f.wait_last = drawing - entry;
+    if (f.wait_last > f.wait_max) f.wait_max = f.wait_last;
 }
 
 void show(uint32_t screen, const char* status) {
