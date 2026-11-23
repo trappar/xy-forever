@@ -191,6 +191,9 @@ class Base:
         self.assertIn(f['detail'], ('mods-a', 'mods-b'), f)  # the library entry
         self.assertFalse(self.output(job).exists())  # moved into the library
         got, want = tree(self.entry(f['detail'])), self.reference(machines, exts)
+        version, order = struct.unpack('<II', got.pop('build-order.bin'))
+        self.assertEqual(version, 1)
+        self.assertGreater(order, 0)
         self.assertEqual(sorted(got), sorted(want))  # no .part, nothing else
         for path in want:
             self.assertEqual(got[path], want[path], path)
@@ -259,8 +262,9 @@ class SyntheticJob(Base, unittest.TestCase):
         number of files of the entry (the job's own renames before the commit's)."""
         self.assemble_and_compare(machines)
         shutil.copytree(self.entry('mods-a'), self.entry('mods-b'))
+        (self.entry('mods-b') / 'build-order.bin').unlink()  # simulate a legacy slot
         (self.entry('mods-b') / 'old.txt').write_bytes(b'the old entry\n')
-        return len(tree(self.entry('mods-a')))
+        return len(tree(self.entry('mods-a'))) - 1  # build-order.bin is staged without a rename
 
     def fault(self, n, kind, machines):
         self.sim.set('rename_fault_kind', kind)
@@ -279,6 +283,43 @@ class SyntheticJob(Base, unittest.TestCase):
     def press(self, *keys):
         for key, pressed in keys:
             self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
+
+    @pytest.mark.sim
+    def test_replaces_the_older_slot_after_power_cycle(self):
+        for target in ('mods-a', 'mods-b', 'mods-a'):
+            job = self.finished(self.start(['alpha']))
+            self.assertEqual((job['phase'], job['detail']), (MS.DONE, target), job)
+        boots = self.sim.status()['b_boots']
+        self.sim.control('power play')
+        self.wait_sim(lambda s: s['b_boots'] > boots and s['listening'], 'power cycle after assembly')
+        self.reconnect()
+        self.assertEqual(self.dev.hello()[0], 0)
+        wait_startup_ready(
+            self.dev.hello_info.text,
+            lambda remaining: self.dev.call(ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0],
+        )
+        job = self.finished(self.start(['alpha']))
+        self.assertEqual((job['phase'], job['detail']), (MS.DONE, 'mods-b'), job)
+
+    @pytest.mark.sim
+    def test_a_refuses_default_with_invalid_manifest(self):
+        entry = self.entry('opxy-121-stock')
+        (entry / 'manifest.json').write_bytes(b'invalid')
+        self.sim.control('power play')
+        self.sim.wait_listening(30)
+        self.reconnect()
+        self.assertEqual(self.dev.hello()[0], 0)
+        wait_startup_ready(
+            self.dev.hello_info.text,
+            lambda remaining: self.dev.call(ids.STORAGE_SPACE, struct.pack('<I', 1), timeout=remaining)[0],
+        )
+        item = self.listed('opxy-121-stock')
+        self.assertFalse(item['usable'])
+        self.assertFalse(item['content_missing'])  # B sends the default commit to A
+        slots = [self.root / 'xy-forever' / ('state-%s.txt' % name) for name in ('a', 'b')]
+        before = [p.read_bytes() if p.exists() else None for p in slots]
+        self.assertEqual(self.dev.set_default('opxy-121-stock')[0], ids.S_STORAGE)
+        self.assertEqual([p.read_bytes() if p.exists() else None for p in slots], before)
 
     @pytest.mark.sim
     def test_pack_import_after_a_job(self):
@@ -339,7 +380,7 @@ class SyntheticJob(Base, unittest.TestCase):
         (self.root / TMP / 'keep').mkdir()
         cuts = self.sim.status()['cuts']
         for n, target, other in ((files + 2, 'mods-b', 'mods-a'), (files + 1, 'mods-a', 'mods-b')):
-            with self.subTest(n=n - files):  # after a cut no last write is known: mods-a
+            with self.subTest(n=n - files):
                 kept = tree(self.entry(other))
                 self.fault(n, 2, ['alpha'])
                 cuts += 1

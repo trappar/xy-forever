@@ -473,6 +473,7 @@ U32 default_commit(U32 hash) {
         key_ui::refresh_catalog();
         const xyf::catalog::Catalog* catalog = xyf_boot::catalog();
         if (code == P::s_ok && (!catalog || catalog->default_index >= catalog->count ||
+                                !(catalog->items[catalog->default_index].flags & xyf::catalog::flag_usable) ||
                                 xyf::state_write::id_hash(catalog->items[catalog->default_index].id) != hash))
             code = P::s_storage;
     }

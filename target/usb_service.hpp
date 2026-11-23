@@ -4,6 +4,9 @@
 #include "usb_proto.hpp"
 #include "cold_storage.hpp"
 #include "xyf_settings.hpp"
+namespace xyf { namespace library {
+struct Library;
+}}
 namespace xyf { namespace menu {
 struct State;
 }}   // xyf_menu.hpp (settings_view)
@@ -186,7 +189,7 @@ uint32_t presence(); // 0 none, 1 stock USB running, 3 after an XY Forever REBOO
 // only write; xyf::state_write + cold_storage write_state_slot). Records
 // result.a_state_write. Uses the file server's read-only mount (one per boot).
 #if defined(XYF_USB_SET_DEFAULT)
-void a_set_default(cold_storage::Stock121ReadOnlySession& storage, uint32_t hash);
+void a_set_default(cold_storage::Stock121ReadOnlySession& storage, const xyf::library::Library& library, uint32_t hash);
 #endif
 // Dry-run boot (Test 045, product build): CONTINUE with payload u32 1. b tells
 // a (dry_run_item); both run the whole file/library boot (scan, transfer,
