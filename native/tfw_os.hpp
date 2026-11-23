@@ -67,7 +67,7 @@ struct Result {
     Error ldr;                                  // detail of image failures
 };
 // `ciphertext_sha256`: SHA-256 of the whole ciphertext computed by the caller without the
-// key (tfw::ciphertext_digest; on the device A's hash job). `signature`: tfw::signature_check;
+// key (tfw::ciphertext_digest). `signature`: tfw::signature_check;
 // the key is requested only after it accepts the header. `ram_policy` and `entry_point`:
 // the LDR policy file boot admits images with (cold.cpp's ranges, entry 0x11a00000).
 Status extract(const input::Reader& package, const tfw::KeyProvider& keys, const hash::Digest& ciphertext_sha256,

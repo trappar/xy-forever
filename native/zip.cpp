@@ -11,7 +11,7 @@ bool read(const Reader& reader, U32 offset, Byte* output, U32 count) {
 char lower(char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c + ('a' - 'A')) : c; }
 bool same_prefix(const char* a, const char* b, U32 count) {
     for (U32 i = 0; i != count; ++i)
-        if (lower(a[i]) != lower(b[i])) return false;
+        if (a[i] != b[i] && lower(a[i]) != lower(b[i])) return false;
     return true;
 }
 bool ratio_exceeded(U32 expanded, U32 compressed, U32 ratio) {
@@ -138,6 +138,8 @@ Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
     if (count > capacity) return Status::capacity;
     if (directory_offset > offset || directory_size != offset - directory_offset) return Status::layout;
     U32 cursor = directory_offset, total = 0, local_bytes = 0;
+    // The directory first, then (below) the local headers: a reader with a read-ahead cache (the pack import's)
+    // reads each part in order instead of jumping between them for every entry (#279).
     for (U32 index = 0; index != count; ++index) {
         if (!checkpoint(work)) return Status::cancelled;
         Byte header[46];
@@ -175,18 +177,11 @@ Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
         if (!entry.method && entry.compressed_size != entry.size) return Status::layout;
         if (entry.directory && (entry.size || entry.crc32)) return Status::layout;
         total += entry.size;
-        Status status = extras(reader, cursor + 46 + entry.name_size, extra_size, work);
+        const Status status = extras(reader, cursor + 46 + entry.name_size, extra_size, work);
         if (status != Status::ok) return status;
-        status = local(reader, entry, directory_offset, work);
-        if (status != Status::ok) return status;
-        if (entry.local_offset >= entry.local_end) return Status::layout;
-        U32 span = entry.local_end - entry.local_offset;
-        if (span > directory_offset - local_bytes) return Status::layout;
-        local_bytes += span;
         for (U32 previous = 0; previous != index; ++previous) {
             if ((previous & 31u) == 31u && !checkpoint(work)) return Status::cancelled;
             const Entry& other = entries[previous];
-            if (entry.local_offset < other.local_end && other.local_offset < entry.local_end) return Status::layout;
             U32 a = entry.name_size - (entry.directory ? 1 : 0), b = other.name_size - (other.directory ? 1 : 0);
             U32 common = a < b ? a : b;
             if (!same_prefix(entry.name, other.name, common)) continue;
@@ -197,7 +192,25 @@ Status scan(const Reader& reader, const Limits& limits, Entry* entries, U32 capa
         }
         cursor += 46 + variable;
     }
-    if (cursor != offset || local_bytes != directory_offset) return Status::layout;
+    if (cursor != offset) return Status::layout;
+    bool ascending = true; // every entry so far after the one before it: then none overlap, unchecked pairwise
+    for (U32 index = 0; index != count; ++index) {
+        if (!checkpoint(work)) return Status::cancelled;
+        Entry& entry = entries[index];
+        const Status status = local(reader, entry, directory_offset, work);
+        if (status != Status::ok) return status;
+        if (entry.local_offset >= entry.local_end) return Status::layout;
+        U32 span = entry.local_end - entry.local_offset;
+        if (span > directory_offset - local_bytes) return Status::layout;
+        local_bytes += span;
+        ascending = ascending && (!index || entry.local_offset >= entries[index - 1].local_end);
+        for (U32 previous = 0; !ascending && previous != index; ++previous) {
+            if ((previous & 31u) == 31u && !checkpoint(work)) return Status::cancelled;
+            const Entry& other = entries[previous];
+            if (entry.local_offset < other.local_end && other.local_offset < entry.local_end) return Status::layout;
+        }
+    }
+    if (local_bytes != directory_offset) return Status::layout;
     if (!checkpoint(work)) return Status::cancelled;
     archive.reader = reader;
     // Individual stores avoid the target compiler lowering a Limits aggregate

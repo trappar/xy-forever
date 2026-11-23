@@ -56,9 +56,9 @@ static void pack_start(xyf::menu::State& s) {
 #if defined(XYF_TFW_CHECK)
     const auto kind = packs.kinds[s.pack_selected];
     if (kind == archive_pack) {
-        const U32 code = signed_pack_start(id);
+        const U32 code = pack_import_start(id);
         if (code) {
-            pack_finish(s, "Cannot start signed pack import.");
+            pack_finish(s, "Cannot start pack import.");
             return;
         }
         s.pack_busy = s.pack_importing = true;
@@ -67,7 +67,7 @@ static void pack_start(xyf::menu::State& s) {
     }
     if (kind == retained_pack || kind == enabled_pack) {
         const bool enable = kind == retained_pack;
-        const U32 code = signed_pack_toggle(id, enable);
+        const U32 code = pack_import_toggle(id, enable);
         pack_finish(s, code   ? "Cannot change pack." :
                        enable ? "Enabled. Not tested on this firmware." :
                                 "Pack disabled.");
@@ -194,7 +194,7 @@ static void pack_check_tree(xyf::menu::State& s, PackChange& c) {
     }
     if (!c.level) {
         if (xj::same(name, reserved_pack_file)) {
-            pack_finish(s, "Signed pack record is reserved.");
+            pack_finish(s, "Pack record is reserved.");
             return;
         }
         if (xj::same(name, "info.txt") || xj::same(name, "os.ldr")) {
@@ -221,21 +221,21 @@ static bool pack_change_step(xyf::menu::State& s) {
     if (requested) pack_start(s);
 #if defined(XYF_TFW_CHECK)
     if (s.pack_importing) {
-        if (signed_pack_active) {
-            if (s.pack_cancel) signed_pack().cancelled = true;
+        if (pack_import_active) {
+            if (s.pack_cancel) import_job().cancelled = true;
             s.pack_cancel = false;
             return requested;
         }
         s.pack_importing = s.pack_cancel = false;
         const char* message = "Pack imported.";
-        switch (signed_pack_error) {
+        switch (pack_import_error) {
         case P::s_ok: break;
         case P::s_cancelled: message = "Pack import cancelled."; break;
         case P::s_too_large: message = "Not enough storage."; break;
         case P::s_state: message = "Pack ID already occupied."; break;
         case P::s_crc:
         case P::s_image:
-        case P::s_sha: message = "Invalid signed sound pack."; break;
+        case P::s_sha: message = "Invalid sound pack."; break;
         default: message = "Pack import failed."; break;
         }
         pack_finish(s, message);

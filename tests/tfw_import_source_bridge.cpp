@@ -1,7 +1,6 @@
 // Run the target source owner and OTP dispatcher against a controlled file client.
 #include "../target/tfw_import_source.hpp"
 #include "../target/otp_keys.hpp"
-#include "../target/tfw_hash_rpc.hpp"
 #include "../target/usb_proto.hpp"
 #include "../target/xyf_clock.hpp"
 #include <algorithm>
@@ -15,18 +14,16 @@ using namespace xyf_core;
 using xy_forever::tfw_import::Source;
 using xy_forever::tfw_import::SourcePhase;
 namespace P = xyf::usbp;
-namespace rpc = xy_forever::tfw_hash_rpc;
 
 namespace {
 const char path[] = "/yaffs2/xy-forever/inbox/synthetic.tfw";
 struct Peer {
-    std::vector<Byte> input, public_key;
-    hash::Digest hash;
-    U32 stat_size, declared_size, final_size, position, operation;
-    U32 stats, opens, reads, closes, cancels, public_reads, aes_reads;
+    std::vector<Byte> input;
+    U32 stat_size, position;
+    U32 stats, opens, reads, closes, public_reads, aes_reads;
     U32 ahead_bytes;   // a read left out (read_start) into stream: its answer, the bytes read
     U32 ahead_checks; // #279: checkpoints with a read left out, so while the source's caller works on the half before
-    bool file, lease, waited, reported_busy, fail_close, ahead;
+    bool file, fail_close, ahead;
 } peer;
 Byte stream_bytes[xy_forever::file_client::stream_capacity];
 
@@ -38,19 +35,13 @@ std::vector<Byte> load(const char* name) {
 void begin(Source& source) {
     char request[sizeof(path)];
     std::copy(std::begin(path), std::end(path), request);
-    assert(source.begin(request) == P::s_ok);
+    assert(source.begin(request) == P::s_ok && source.phase() == SourcePhase::ready);
     request[sizeof(path) - 2] = 'x'; // the caller's request buffer is free for the next frame
-    assert(!std::strcmp(source.path(), path) && !source.reader().read);
-}
-
-SourcePhase hashing(Source& source) {
-    for (U32 i = 0; i != 100 && source.phase() == SourcePhase::hashing; ++i) source.hash_step();
-    assert(!peer.operation && !peer.lease && !peer.file);
-    return source.phase();
+    assert(!std::strcmp(source.path(), path) && !source.reader().read && !peer.file);
 }
 
 bool stop(void*) { return false; }
-bool until_public_key(void*) { return peer.public_reads == 0; }
+bool until_key(void*) { return peer.aes_reads == 0; }
 bool until_stopped(void* stop) { return !*static_cast<bool*>(stop); }
 bool count_ahead(void*) {
     if (peer.ahead) ++peer.ahead_checks;
@@ -69,47 +60,14 @@ Reply stat(const char* name, uint8_t* record) {
     return {done, 0, 0};
 }
 
-Reply tfw_hash_send(const char* name, uint32_t op) {
-    assert(!std::strcmp(name, path) && !peer.operation && !peer.file);
-    assert(op == rpc::start ? !peer.lease : peer.lease);
-    peer.operation = op;
-    peer.waited = false;
-    return {done, 0, 0};
-}
-
-Reply left_poll(bool wait) {
-    if (peer.ahead) { // the source's read-ahead: answered at once
-        assert(wait && !peer.operation);
-        peer.ahead = false;
-        return {done, int32_t(peer.ahead_bytes), 0};
-    }
-    assert(!wait && peer.operation);
-    if (!peer.waited) {
-        peer.waited = true;
-        return {busy, -1, 0};
-    }
-    const U32 op = peer.operation;
-    peer.operation = 0;
-    switch (op) {
-    case rpc::start: peer.lease = true; return {done, P::s_ok, peer.declared_size};
-    case rpc::status:
-        if (!peer.reported_busy) {
-            peer.reported_busy = true;
-            return {done, P::s_busy, peer.final_size / 2};
-        }
-        return {done, P::s_ok, peer.final_size};
-    case rpc::cancel:
-        peer.lease = false;
-        ++peer.cancels;
-        return {done, P::s_ok, 0};
-    default:
-        assert(op >= rpc::digest && op < rpc::digest + rpc::digest_words);
-        return {done, P::s_ok, P::get32(peer.hash.bytes + 4 * (op - rpc::digest))};
-    }
+Reply left_poll(bool wait) { // the source's read-ahead: answered at once
+    assert(wait && peer.ahead);
+    peer.ahead = false;
+    return {done, int32_t(peer.ahead_bytes), 0};
 }
 
 Reply open(const char* name, uint32_t flags) {
-    assert(!std::strcmp(name, path) && !flags && !peer.file && !peer.lease);
+    assert(!std::strcmp(name, path) && !flags && !peer.file);
     peer.file = true;
     peer.position = 0;
     ++peer.opens;
@@ -131,10 +89,10 @@ Reply read(int fd, uint8_t* out, uint32_t count) {
     return {done, int32_t(bytes), 0};
 }
 
-bool left_out() { return peer.ahead || peer.operation; }
+bool left_out() { return peer.ahead; }
 
 Reply read_start(int fd, uint32_t at, uint32_t count) {
-    assert(fd == 7 && peer.file && !peer.ahead && !peer.operation && count && count <= stream_max && !(at % 32) &&
+    assert(fd == 7 && peer.file && !peer.ahead && count && count <= stream_max && !(at % 32) &&
            at + count <= stream_capacity);
     ++peer.reads;
     const U32 left = peer.position <= peer.input.size() ? U32(peer.input.size()) - peer.position : 0;
@@ -164,14 +122,14 @@ uint64_t cycles() { return 0; }
 }}
 
 namespace xy_forever { namespace otp_keys {
-bool public_key(void*, Byte out[56]) {
-    assert(peer.file && !peer.lease && peer.public_key.size() == 56);
+bool public_key(void*, Byte out[56]) { // never: the import checks no signature (#279)
     ++peer.public_reads;
-    std::copy(peer.public_key.begin(), peer.public_key.end(), out);
-    return true;
+    for (U32 i = 0; i != 56; ++i) out[i] = 0;
+    return false;
 }
-bool aes_key(void*, U32 index, Byte out[32]) {
-    assert(peer.file && !peer.lease && !index && peer.public_reads);
+bool aes_key(void*, U32 index, Byte out[32]) { // index 0 only, as the device's
+    assert(peer.file);
+    if (index) return false;
     ++peer.aes_reads;
     for (U32 i = 0; i != 32; ++i) out[i] = Byte(i);
     return true;
@@ -179,21 +137,17 @@ bool aes_key(void*, U32 index, Byte out[32]) {
 }}
 
 int main(int argc, char** argv) {
-    assert(argc == 5);
+    assert(argc == 3);
     peer.input = load(argv[1]);
     const auto archive = load(argv[2]);
-    peer.public_key = load(argv[3]);
-    const auto digest = load(argv[4]);
-    assert(digest.size() == sizeof(peer.hash.bytes));
-    std::copy(digest.begin(), digest.end(), peer.hash.bytes);
-    peer.stat_size = peer.declared_size = peer.final_size = U32(peer.input.size());
+    peer.stat_size = U32(peer.input.size());
     Source source;
     assert(source.begin("/yaffs2/upgrade/file.tfw") == P::s_bad_request && !peer.stats);
 
     begin(source);
-    assert(hashing(source) == SourcePhase::hashed && peer.cancels == 1 && !source.reader().read);
-    assert(source.open() == P::s_ok && source.phase() == SourcePhase::authenticated);
-    assert(peer.stats == 2 && peer.opens == 1 && peer.public_reads == 1 && peer.aes_reads == 1);
+    assert(source.open() == P::s_ok && source.phase() == SourcePhase::open);
+    assert(peer.stats == 2 && peer.opens == 1 && !peer.public_reads && peer.aes_reads == 1);
+    for (U32 i = 0; i != 32; ++i) assert(source.identity().bytes[i] == peer.input[0x80 + 0x9c + i]); // as declared
     const auto reader = source.reader();
     assert(reader.size == archive.size());
     std::vector<Byte> decrypted(reader.size);
@@ -207,66 +161,55 @@ int main(int argc, char** argv) {
     peer.fail_close = false;
     assert(source.close() == P::s_ok && !peer.file && peer.opens == peer.closes);
 
-    ++peer.declared_size;
+    // close(true) keeps it ready to open again (admission, then the staging window).
     begin(source);
-    assert(hashing(source) == SourcePhase::failed && source.error() == P::s_bad_request);
-    assert(peer.cancels == 2 && peer.opens == 1);
-    --peer.declared_size;
-
-    --peer.final_size;
-    begin(source);
-    assert(hashing(source) == SourcePhase::failed && source.error() == P::s_bad_request);
-    assert(peer.cancels == 3 && peer.opens == 1);
-    ++peer.final_size;
+    assert(source.open() == P::s_ok && source.close(true) == P::s_ok && source.phase() == SourcePhase::ready);
+    assert(source.open() == P::s_ok && source.close() == P::s_ok && source.phase() == SourcePhase::idle);
+    assert(source.open() == P::s_state && peer.opens == peer.closes);
 
     begin(source);
-    assert(source.hash_step() == SourcePhase::hashing && peer.operation == rpc::start);
-    source.cancel_hash();
-    assert(hashing(source) == SourcePhase::cancelled && peer.cancels == 4 && peer.opens == 1);
-
-    begin(source);
-    assert(hashing(source) == SourcePhase::hashed);
     const U32 stats = peer.stats;
     Work before_stat(nullptr, stop);
-    assert(source.open(&before_stat) == P::s_cancelled);
-    assert(peer.stats == stats && peer.opens == 1);
+    assert(source.open(&before_stat) == P::s_cancelled && source.phase() == SourcePhase::cancelled);
+    assert(peer.stats == stats && peer.opens == peer.closes);
+
+    ++peer.stat_size; // the file changed between begin and open
+    begin(source);
+    --peer.stat_size;
+    assert(source.open() == P::s_bad_request && !peer.file);
 
     for (bool short_file : {false, true}) {
         begin(source);
-        assert(hashing(source) == SourcePhase::hashed);
         const Byte end = peer.input.back();
         if (short_file) peer.input.pop_back();
         else peer.input.push_back(0);
         assert(source.open() == P::s_bad_request && !source.reader().read);
-        assert(!peer.file && peer.opens == peer.closes && peer.public_reads == 1);
+        assert(!peer.file && peer.opens == peer.closes);
         if (short_file) peer.input.push_back(end);
         else peer.input.pop_back();
     }
 
-    peer.hash.bytes[0] ^= 1;
+    // No signature is checked: a damaged one still opens.
+    peer.input[0x80 + 0x14] ^= 1;
     begin(source);
-    assert(hashing(source) == SourcePhase::hashed);
-    assert(source.open() == P::s_sha && !source.reader().read);
-    assert(!peer.file && peer.public_reads == 2 && peer.aes_reads == 1);
-    peer.hash.bytes[0] ^= 1;
+    assert(source.open() == P::s_ok && !peer.public_reads && source.close() == P::s_ok);
+    peer.input[0x80 + 0x14] ^= 1;
 
-    peer.public_reads = 0;
+    const U32 keys = peer.aes_reads;
     begin(source);
-    assert(hashing(source) == SourcePhase::hashed);
-    Work before_key(nullptr, until_public_key);
+    Work before_key(nullptr, until_key);
+    peer.aes_reads = 0;
     assert(source.open(&before_key) == P::s_cancelled && !source.reader().read);
-    assert(!peer.file && peer.public_reads == 1 && peer.aes_reads == 1);
-    assert(peer.opens == peer.closes);
+    assert(!peer.file && peer.aes_reads == 1 && peer.opens == peer.closes);
+    peer.aes_reads = keys;
 
     peer.input[0x84] = 1; // an AES selector the device never reads
     begin(source);
-    assert(hashing(source) == SourcePhase::hashed);
     assert(source.open() == P::s_image && !source.reader().read);
-    assert(!peer.file && peer.public_reads == 1 && peer.aes_reads == 1);
+    assert(!peer.file && !peer.public_reads);
     peer.input[0x84] = 0;
 
     begin(source);
-    assert(hashing(source) == SourcePhase::hashed);
     bool stopped = false;
     Work during_read(&stopped, until_stopped);
     assert(source.open(&during_read) == P::s_ok);
@@ -278,7 +221,6 @@ int main(int argc, char** argv) {
 
     // #279: read straight through, the next half is out (read ahead) while the reader decrypts the one before.
     begin(source);
-    assert(hashing(source) == SourcePhase::hashed);
     Work counting(nullptr, count_ahead);
     assert(source.open(&counting) == P::s_ok);
     peer.ahead_checks = 0;

@@ -31,10 +31,6 @@ Part of [Hardware and stock-code facts](../HARDWARE.md). The `.tfw` format and i
   connection leaves their exact paths in the session summary. Success starts keepalive. The simulator
   models independent A/B keys, ROM hang/fault (`a_otp_fail` / `otp_fail` = 5/6), init/guard state
   (`a_otp_initialized` / `otp_initialized`), counters, and stale RPC versions (`tfw_rpc_version`).
-- **A hashes ciphertext in a read-only job (#14).** The input is an immutable path under
-  `/yaffs2/xy-forever/`. The version-1 hash path query returns the declared total file size at start.
-  Each pass of A's menu loop reads at most 4 KiB and hashes only the ciphertext. A verifies the
-  declared end against actual EOF, closes the file, and then returns the digest to matching-path
-  queries. Cancel, engine teardown, or ten seconds without a matching poll release the job.
-  The shared B reader holds the same inbox path under exclusive storage ownership. It checks size
-  and EOF when reopening and exposes the ZIP only after the signed header and A's hash agree.
+- **The sound pack import's reader (#279)** holds an inbox path under exclusive storage ownership. It
+  checks size and EOF when opening and decrypts with B's AES key (index 0); it checks neither the
+  signature nor the ciphertext hash, since every member's CRC-32 and SHA-256 are checked.

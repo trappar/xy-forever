@@ -2,7 +2,7 @@
   "$comment": "XY Forever serial protocol v1: the single source. scripts/protogen.py validates it and generates target/usb_proto_ids.hpp, xy_forever/usb_proto_ids.py, clients/ts/src/v1.ts and docs/PROTOCOL.md. Describes the protocol as the device speaks it today; planned additions are only in 'reserved'. `since` on a command, status, event or hello key is the version that introduced its current form. `streams` are byte streams with the frames a correct parser finds in them (direction to_device: requests, which the simulator test also sends to the device code).",
   "protocol": {
     "name": "XY Forever serial protocol",
-    "version": "1.28",
+    "version": "1.29",
     "intro": [
       "XY Forever is a firmware and mod manager for the teenage engineering OP-XY. While its menu runs, the OP-XY's processor B answers this protocol over USB. Tools use it to list, read, write and delete files, take screenshots, stage and install builds, set the default firmware and restart the device.",
       "Transport: USB CDC serial, the raw frame stream (table below). The device answers only while the XY Forever menu runs: after an XY Forever restart, or when the OP-XY is powered on with PLAY held (release it at the logo).",
@@ -1142,33 +1142,33 @@
     {
       "type": "0x4f", "name": "packs.manage", "symbol": "packs_manage", "class": "product",
       "since": "1.27", "switch": "XYF_TFW_CHECK", "switch_optional": true,
-      "summary": "admit or toggle a signed sound pack and inspect progress",
+      "summary": "import or toggle a .tfw sound pack and inspect progress",
       "timeout_ms": 60000, "destructive": true,
       "request": {
         "size": [9, 136],
         "fields": [
           {"name": "version", "type": "u32", "doc": "API version 1"},
-          {"name": "operation", "type": "u32", "range": [0, 6], "doc": "0 status, 1 admit, 2 cancel, 3 enable, 4 disable, 5 status with B's request log, 6 status with the last import's timing (since 1.28)"},
+          {"name": "operation", "type": "u32", "range": [0, 6], "doc": "0 status, 1 import, 2 cancel, 3 enable, 4 disable, 5 status with B's request log, 6 status with the last import's timing (since 1.28)"},
           {"name": "name", "type": "cstr", "encoding": "ascii", "min_bytes": 1, "max_bytes": 128,
-           "doc": "Inbox .tfw basename for admission, pack ID to toggle, empty for status or cancel"}
+           "doc": "Inbox .tfw basename to import, pack ID to toggle, empty for status or cancel"}
         ]
       },
       "reply": {
         "size": [32, 544], "extensible": false, "on_error": "status",
         "fields": [
           {"name": "status", "type": "u32", "doc": "Whether the request was accepted"},
-          {"name": "phase", "type": "u32", "doc": "0 idle, 1 authenticating, 2 staging, 3 complete, 4 failed"},
-          {"name": "done", "type": "u32", "doc": "Ciphertext bytes scanned or pack files staged"},
-          {"name": "total", "type": "u32", "doc": "Total source bytes or pack files for the current phase"},
-          {"name": "error", "type": "u32", "doc": "Final admission status when phase is failed"},
+          {"name": "phase", "type": "u32", "doc": "0 idle, 1 opening (reading the archive's directory; before 1.29 authenticating the .tfw), 2 staging, 3 complete, 4 failed"},
+          {"name": "done", "type": "u32", "doc": "Pack files staged (0 while opening)"},
+          {"name": "total", "type": "u32", "doc": "Pack files to stage (0 while opening)"},
+          {"name": "error", "type": "u32", "doc": "Final import status when phase is failed"},
           {"name": "site", "type": "u32", "doc": "Where a failed import stopped: the job step << 8 | the call (1 open, 2 extract, 3 write, 4 close), plus 0x10000 source close failed, 0x20000 link lost, 0x40000 scratch cleanup started; 0 otherwise"},
           {"name": "detail", "type": "u32", "doc": "For a failure: the archive member << 16 | A's errno, 0x8000 | a link outcome, or the blob step"},
           {"name": "traced", "type": "u32", "doc": "Entries of B's request log kept when the last import failed (0: none), operation 5 returns them"},
-          {"name": "trace", "type": "rest", "max_bytes": 512, "doc": "Operation 5: `traced` entries of B's log of its last requests to A, 4 u32 each (`file_client::log_add`, target/file_client.hpp), oldest first. Operation 6: the last import's timing on B, u32 each: the bucket count n, n sums in units of 1024 cycles of the 400 MHz clock, then the source reads, pieces put, members written and member bytes (`PackClock`, target/usb_service_signed_pack.ipp). Decoder: `xy_forever/pack_change.py`"}
+          {"name": "trace", "type": "rest", "max_bytes": 512, "doc": "Operation 5: `traced` entries of B's log of its last requests to A, 4 u32 each (`file_client::log_add`, target/file_client.hpp), oldest first. Operation 6: the last import's timing on B, u32 each: the bucket count n, n sums in units of 1024 cycles of the 400 MHz clock, then the source reads, pieces put, members written and member bytes (`PackClock`, target/usb_service_pack_import.ipp; 1.29 dropped the first bucket, A's hash). Decoder: `xy_forever/pack_change.py`"}
         ]
       },
       "errors": ["bad_request", "unsupported", "busy", "link", "storage", "state", "not_found", "refused"],
-      "doc": "Admission uses the authenticated TFW reader and publishes one complete kept pack. Poll status until completion. Cancel during authentication or staging leaves the current packs intact. Enable moves a retained signed pack into the live packs (trusted on any official base, not tested there)."
+      "doc": "Import decrypts the .tfw with the device's key, checks every member's CRC-32 and SHA-256 (not the .tfw signature, since 1.29) and publishes one complete kept pack. Poll status until completion. Cancel while opening or staging leaves the current packs intact. Enable moves a retained pack into the live packs (not tested on this firmware)."
     }
   ],
   "events": [
@@ -1209,7 +1209,7 @@
     {"name": "hello", "message": "hello", "direction": "request", "seq": 1, "fields": {},
      "hex": "58460101000000004c8d0632"},
     {"name": "hello, answered", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
-     "fields": {"info": "XYF1;service=usb;role=b;proto=1.28;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32383b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d30b5a69f4e"},
+     "fields": {"info": "XYF1;service=usb;role=b;proto=1.29;install=stock-88a06a7e;version=0.1.0;image=f458e3cc;mode=product;payload=4160;read=1024;stage=7340032;cmds=000000000000fffb001700031fff00be;dev=1;confirm=1;trust=none;serial=on;stage2=0"}, "hex": "58468101e000000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d312e32393b696e7374616c6c3d73746f636b2d38386130366137653b76657273696f6e3d302e312e303b696d6167653d66343538653363633b6d6f64653d70726f647563743b7061796c6f61643d343136303b726561643d313032343b73746167653d373334303033323b636d64733d30303030303030303030303066666662303031373030303331666666303062653b6465763d313b636f6e6669726d3d313b74727573743d6e6f6e653b73657269616c3d6f6e3b7374616765323d300d8e3099"},
     {"name": "hello, answered by a pre-v1 device", "message": "hello", "direction": "reply", "seq": 1, "status": "ok",
      "fields": {"info": "XYF1;service=usb;role=b;proto=1;install=stock-88a06a7e"}, "hex": "584681013a00000000000000585946313b736572766963653d7573623b726f6c653d623b70726f746f3d313b696e7374616c6c3d73746f636b2d3838613036613765263515c5"},
     {"name": "read 1024 bytes from offset 0", "message": "file.read", "direction": "request", "seq": 2,

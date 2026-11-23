@@ -243,7 +243,7 @@ int main(int argc, char** argv) {
     long long digest_ms = 0;
     tfw::Status digest_status = tfw::Status::ok;
     if (!have_digest) {
-        // The keyless pass (on the device: A's hash job) sees the whole file as opaque
+        // The keyless pass sees the whole file as opaque
         // ciphertext; it runs before any read restriction and decrypts nothing.
         std::vector<Range64> restriction;
         restriction.swap(source.allowed);

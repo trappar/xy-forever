@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 import test_modkit as TK
-import test_sim_signed_packs as SP
+import test_sim_pack_import as SP
 from test_modpatch import CATALOG, OFFICIAL, PACKAGES, finish, kit_for, official_text, profile_for, stock
 
 from xy_forever import bounds, census, modstore, package_records, sim
@@ -281,8 +281,8 @@ class SyntheticJob(Base, unittest.TestCase):
             self.assertEqual(self.dev.call(P.KEY, struct.pack('<II', key, pressed))[0], 0)
 
     @pytest.mark.sim
-    def test_signed_pack_import_after_a_job(self):
-        """Kept: #195 on the device. A signed pack import after a mod job this boot: the job's slot still held its
+    def test_pack_import_after_a_job(self):
+        """Kept: #195 on the device. A pack import after a mod job this boot: the job's slot still held its
         last stage, and B's job pump ran it again while the import was active (both count as a running job). That
         stale commit step closed A's window with op 9 right after the source was authenticated, so the first member
         open answered EBADF and the source's close failed."""
@@ -298,7 +298,7 @@ class SyntheticJob(Base, unittest.TestCase):
             self.sim.advance(20)
         self.assertEqual(code, 0)
         while True:
-            phase, done, total, error, site, detail, _ = packs.signed_request(self.dev, packs.OP_STATUS)
+            phase, done, total, error, site, detail, _ = packs.manage_request(self.dev, packs.OP_STATUS)
             if phase in (3, 4):
                 break
             self.assertLess(time.monotonic(), deadline)

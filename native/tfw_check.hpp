@@ -5,9 +5,8 @@ namespace xyf_core { namespace tfw_check {
 // The `tfw.check` command's verdict (docs/hardware/tfw.md): is this file an official
 // package that this device's own keys open? Checks, in order: the header's structure (no key), the P-224 signature with the device's public key, the
 // AES key on the encrypted name block and the padding, then the ZIP end record and every central
-// directory record. Nothing is extracted or written, the payload hash is not checked (that is
-// A's keyless hash job, #14), and only the header, the name block, the last cipher block and
-// the directory are read.
+// directory record. Nothing is extracted or written, the payload hash is not checked, and only
+// the header, the name block, the last cipher block and the directory are read.
 //
 // A file may also be a cut (cut_magic): a package's first `head` bytes and its bytes from `tail`
 // on, behind a 16-byte header {magic, package bytes, head, tail} (u32 little-endian). The check

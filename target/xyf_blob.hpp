@@ -7,7 +7,7 @@
 namespace xyf { namespace blob {
 static const char root[] = "/yaffs2/xy-forever/blobs";
 static const char pack_refs[] = "xyf-pack-v1.sha256";
-// #195: a signed pack's records (pack_refs and its identity record) live in pack_records/<pack id>/, outside the pack
+// #195: an imported pack's records (pack_refs and its identity record) live in pack_records/<pack id>/, outside the pack
 // folder the OS reads, and stay there whether the pack is retained or active.
 static const char pack_records[] = "/yaffs2/xy-forever/pack-records";
 struct Copy {

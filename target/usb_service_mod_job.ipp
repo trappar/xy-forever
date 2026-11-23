@@ -89,12 +89,12 @@ bool journal_kept() {
 }
 volatile U32 menu_pack_active __attribute__((section(".data"))) = 0;
 #if defined(XYF_TFW_CHECK)
-volatile U32 signed_pack_active __attribute__((section(".data"))) = 0;
+volatile U32 pack_import_active __attribute__((section(".data"))) = 0;
 #else
-constexpr U32 signed_pack_active = 0;
+constexpr U32 pack_import_active = 0;
 #endif
 bool job_running() {
-    return signed_pack_active || menu_pack_active || job_state == job_busy || package_active || blob_collecting ||
+    return pack_import_active || menu_pack_active || job_state == job_busy || package_active || blob_collecting ||
            reporting;
 }
 #if defined(XYF_MTP_SESSION)

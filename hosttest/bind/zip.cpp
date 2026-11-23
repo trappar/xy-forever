@@ -20,10 +20,12 @@ namespace {
 
 struct Input {
     const Byte* data;
-    U32 size, fail_at;
+    U32 size, fail_at, last, back; // back: reads before the one before them (a jump back)
 };
 bool reader(void* context, U32 offset, Byte* output, U32 count) {
-    const Input& input = *static_cast<Input*>(context);
+    Input& input = *static_cast<Input*>(context);
+    input.back += offset < input.last;
+    input.last = offset;
     if (offset > input.fail_at || count > input.fail_at - offset) return false;
     if (offset > input.size || count > input.size - offset) return false;
     std::memcpy(output, input.data + offset, count);
@@ -49,11 +51,12 @@ Result failed(Result& r, z::Status status) {
 // The old zip_bridge's commands, over data in memory (args: after the input path):
 //   raw SIZE                                     inflate a raw stream of SIZE bytes out
 //   list [CAPACITY [MEMBER [TOTAL [RATIO]]]]     "name\tsize\tcrc32\tmethod\n" per entry (args[0]: unused)
+//   back                                         the reads of open() before the one before them, "N\n"
 //   extract NAME | all | fail-read NAME | fail-sink NAME
 // Exit codes: 0 ok, 1 refused (stderr: the status name), 2 usage or no member selected.
 Result run(const std::string& command, const Byte* data, U32 size, const std::vector<std::string>& args) {
     Result r = {0, std::string(), std::string()};
-    Input context = {data, size, 0xffffffffu};
+    Input context = {data, size, 0xffffffffu, 0, 0};
     z::Reader input = {&context, size, reader};
     z::Sink sink = {&r.out, writer};
     std::unique_ptr<z::InflateWorkspace> workspace(new z::InflateWorkspace);
@@ -73,6 +76,10 @@ Result run(const std::string& command, const Byte* data, U32 size, const std::ve
     z::Archive archive;
     z::Status status = z::open(input, limits, entries.data(), capacity, archive);
     if (status != z::Status::ok) return failed(r, status);
+    if (command == "back") {
+        r.out = std::to_string(context.back) + "\n";
+        return r;
+    }
     const bool all = command == "all";
     if (list) {
         for (U32 i = 0; i != archive.count; ++i) {

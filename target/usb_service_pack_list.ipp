@@ -3,7 +3,7 @@
 enum PackKind : uint8_t { plain_pack, archive_pack, retained_pack, enabled_pack };
 struct PackList {
     U32 page, outer, inner, skip;
-    bool inbox, kept, has_manifest, signed_record;
+    bool inbox, kept, has_manifest, has_record;
     uint8_t kinds[xyf::menu::packs_per_page];
     char folder[file_engine::max_path], id[file_client::max_name + 1];
     char ids[xyf::menu::packs_per_page][file_engine::max_path];
@@ -78,25 +78,25 @@ static bool pack_list_step(xyf::menu::State& s) {
             return true;
         }
 #if defined(XYF_TFW_CHECK)
-        if (s.pack_inbox && !packs.kept && kind == 0 && signed_pack_name(name))
+        if (s.pack_inbox && !packs.kept && kind == 0 && pack_import_name(name))
             return pack_list_add(s, name, archive_pack);
 #endif
         if (kind == 1 && join(packs.folder, root, "/", name)) {
             xj::copy(packs.id, name);
             packs.inner = 0;
-            packs.has_manifest = packs.signed_record = false;
+            packs.has_manifest = packs.has_record = false;
         } else packs.folder[0] = 0;
         return false;
     }
     if (!found) {
         packs.folder[0] = 0;
 #if defined(XYF_TFW_CHECK)
-        char records[file_engine::max_path];                               // its records (#195): a signed pack
-        packs.signed_record = packs.has_manifest && join(records, xyf::blob::pack_records, "/", packs.id) &&
-                              pack_kind(io, records, sp::record_name) == 0;
+        char records[file_engine::max_path];                               // its records (#195): an imported pack
+        packs.has_record = packs.has_manifest && join(records, xyf::blob::pack_records, "/", packs.id) &&
+                           pack_kind(io, records, sp::record_name) == 0;
 #endif
-        if (!packs.has_manifest || (packs.kept && !packs.signed_record)) return false;
-        const auto type = packs.kept ? retained_pack : packs.signed_record ? enabled_pack : plain_pack;
+        if (!packs.has_manifest || (packs.kept && !packs.has_record)) return false;
+        const auto type = packs.kept ? retained_pack : packs.has_record ? enabled_pack : plain_pack;
         return pack_list_add(s, packs.id, type);
     }
     if (kind == 0 && xj::same(name, "manifest.json")) packs.has_manifest = true;

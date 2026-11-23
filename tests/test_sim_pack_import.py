@@ -1,4 +1,4 @@
-"""Exercise signed inbox admission through the menu and serial service."""
+"""Exercise .tfw pack import through the menu and serial service."""
 
 import contextlib
 import hashlib
@@ -9,6 +9,7 @@ import struct
 import tempfile
 import time
 import unittest
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -27,28 +28,25 @@ OTP = bytes((9, 56)) + PUBLIC_KEY + bytes((3, 16)) + KEY[:16] + bytes((4, 16)) +
 SAMPLE = b'RIFF' + bytes(range(128))
 
 
+ROWS = [
+    (PREFIX + 'partial_upgrade', b''),
+    (PREFIX + 'dlc/fixture/manifest.json', b'{"folder":"fixture"}'),
+    (PREFIX + 'dlc/fixture/samples/hand.wav', SAMPLE),
+]
+
+
 def fixture():
-    return signed(
-        container(
-            package(
-                [
-                    (PREFIX + 'partial_upgrade', b''),
-                    (PREFIX + 'dlc/fixture/manifest.json', b'{"folder":"fixture"}'),
-                    (PREFIX + 'dlc/fixture/samples/hand.wav', SAMPLE),
-                ]
-            )
-        )
-    )
+    return signed(container(package(ROWS)))
 
 
 @pytest.mark.sim
 @unittest.skipIf(UNAVAILABLE, UNAVAILABLE)
-class SignedPackImport(unittest.TestCase):
+class PackImport(unittest.TestCase):
     connect = S.SimulatorTest.connect
     wait = S.SimulatorTest.wait
 
     def setUp(self):
-        tmp = tempfile.TemporaryDirectory(prefix='xyf-signed-pack-')
+        tmp = tempfile.TemporaryDirectory(prefix='xyf-pack-import-')
         self.addCleanup(tmp.cleanup)
         path = Path(tmp.name)
         self.root = sim.seed(path / 'yaffs2')
@@ -106,19 +104,19 @@ class SignedPackImport(unittest.TestCase):
             if phase in (3, 4):
                 return phase, done, total, error
             self.sim.advance(20)
-        self.fail('signed import did not finish')
+        self.fail('pack import did not finish')
 
-    def test_signed_import_retains_one_tree_then_enables_and_disables(self):
+    def test_import_retains_one_tree_then_enables_and_disables(self):
         """Kept: #195's import end to end: one retained tree of hardlinked blobs, its records beside it, listed; then
-        enable (a verified signed pack is trusted, listed as not tested on this firmware) and disable; then packs
-        forget deletes it and its blobs, so the same pack imports again."""
+        enable (listed as not tested on this firmware) and disable; then packs forget deletes it and its blobs, so the
+        same pack imports again."""
         catalog = self.root / 'content/op1_factory.json'
         original = catalog.read_bytes()
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish(), (3, 2, 2, ids.S_OK))
         self.assertEqual(self.traced, 0)  # nothing failed: no log kept
         listed = self.listed('fixture')
-        untested = dict(id='fixture', signed=True, firmware='not tested on this firmware')
+        untested = dict(id='fixture', imported=True, firmware='not tested on this firmware')
         self.assertEqual(listed, [dict(untested, state='retained')])
         sample = self.retained / 'samples/hand.wav'
         self.assertEqual(sample.read_bytes(), SAMPLE)
@@ -156,29 +154,56 @@ class SignedPackImport(unittest.TestCase):
         self.assertEqual(sample.read_bytes(), SAMPLE)
 
     def test_corrupt_source_never_publishes(self):
-        """Kept: a request or archive that fails authentication publishes nothing."""
+        """Kept: a request, archive or member the import refuses publishes nothing. #279: the .tfw signature is not
+        checked, so an unsigned pack imports."""
         self.assertEqual(self.call(packs.OP_STATUS, version=2)[0], ids.S_UNSUPPORTED)
         self.assertEqual(self.call(packs.OP_IMPORT, '../test.tfw')[0], ids.S_BAD_REQUEST)
         self.assertEqual(self.start('missing.tfw')[0], ids.S_NOT_FOUND)
-        data = self.data[:-32] + bytes(32)
-        (self.inbox / 'bad.tfw').write_bytes(data)
-        self.assertEqual(self.start('bad.tfw')[0], ids.S_OK)
-        self.assertEqual(self.finish()[-1], ids.S_SHA)
+        (self.inbox / 'cut.tfw').write_bytes(self.data[:-32] + bytes(32))  # its padding
+        self.assertEqual(self.start('cut.tfw')[0], ids.S_OK)
+        self.assertEqual(self.finish()[-1], ids.S_IMAGE)
+        sample = zipfile.ZipFile(io.BytesIO(package(ROWS))).getinfo(ROWS[2][0])
+        at = 0x380 + 256 + sample.header_offset + 30 + len(ROWS[2][0]) + 16  # in the sample's data, past its header
+        damaged = bytearray(self.data)
+        damaged[at] ^= 1
+        (self.inbox / 'damaged.tfw').write_bytes(bytes(damaged))
+        self.assertEqual(self.start('damaged.tfw')[0], ids.S_OK)
+        self.assertIn(self.finish()[-1], (ids.S_CRC, ids.S_IMAGE))  # its CRC-32, or its deflate stream
         self.assertFalse(self.retained.exists())
         self.assertFalse(self.live.exists())
+        (self.inbox / 'unsigned.tfw').write_bytes(container(package(ROWS)))
+        self.assertEqual(self.start('unsigned.tfw')[0], ids.S_OK)
+        self.assertEqual(self.finish()[-1], ids.S_OK)
+        self.assertEqual((self.retained / 'samples/hand.wav').read_bytes(), SAMPLE)
 
     def test_failed_member_write_reports_its_site_and_removes_scratch(self):
         """Kept: a failed member write names its step and member (the device's storage error 7) and removes the scratch."""
         self.sim.set('fail_write', 1)  # A's first data write: EIO
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_STORAGE)
-        self.assertEqual(self.site & 0xFFFF, 3 << 8 | 3)  # extract step, the member's write
+        self.assertEqual(self.site & 0xFFFF, 2 << 8 | 3)  # extract step, the member's write
         self.assertEqual(self.site & 0x30000, 0)  # the source closed, the link held
         self.assertTrue(self.site & 0x40000)  # so the scratch was removed
         self.assertEqual(self.detail, 1 << 16 | 0x4000 | ids.S_STORAGE)  # member 1 (manifest.json), A's status
         self.assertIn('write, member 1', packs.failure_site(self.site, self.detail))
         self.assertFalse(self.retained.exists())
         self.assertEqual(list((self.root / 'xy-forever/tmp').glob('pkg-v1-*')), [])
+
+    def test_blob_already_there_and_a_stale_link_name(self):
+        """Kept: #279's shorter blob step falls back where it must: a member whose blob is there (the same bytes twice
+        in one pack) is read back and linked; a link's scratch name left by a cut import is removed, then linked."""
+        rows = ROWS + [(PREFIX + 'dlc/fixture/samples/copy.wav', SAMPLE)]
+        (self.inbox / 'twice.tfw').write_bytes(signed(container(package(rows))))
+        tmp = self.root / 'xy-forever/tmp'
+        tmp.mkdir(exist_ok=True)
+        (tmp / ('put-%08x-b10b1a5e' % len(SAMPLE))).write_bytes(b'left by a cut import')
+        self.assertEqual(self.start('twice.tfw')[0], ids.S_OK)
+        self.assertEqual(self.finish()[-1], ids.S_OK)
+        blob = self.root / 'xy-forever/blobs' / hashlib.sha256(SAMPLE).hexdigest()
+        for name in ('hand.wav', 'copy.wav'):
+            sample = self.retained / 'samples' / name
+            self.assertEqual((sample.read_bytes(), sample.stat().st_ino), (SAMPLE, blob.stat().st_ino))
+        self.assertEqual(list(tmp.glob('put-*')), [])
 
     def test_preflight_refuses_insufficient_space_before_writes(self):
         """Kept: the free-space preflight refuses before any write."""
@@ -211,19 +236,19 @@ class SignedPackImport(unittest.TestCase):
 
     def test_failed_member_open_reports_bs_log(self):
         """Kept: #195's device diagnostic, a cheap permanent aid. A failed import keeps B's log of its last requests to
-        A (nothing asked of A), and packs.manage operation 5 returns it: here the source authenticated, then the
+        A (nothing asked of A), and packs.manage operation 5 returns it: here the source opened, then the
         member's sealed file that A failed to create, its folders (mkdir -p), the create again, then the source's
         close."""
         self.sim.set('fail_write_open', 2)  # the member's sealed file: A's create fails, and again after mkdir -p
         self.assertEqual(self.start()[0], ids.S_OK)
         self.assertEqual(self.finish()[-1], ids.S_STORAGE)
-        self.assertEqual(self.site & 0xFFFF, 3 << 8 | 1)  # extract step, the member's open
+        self.assertEqual(self.site & 0xFFFF, 2 << 8 | 1)  # extract step, the member's open
         self.assertEqual(self.detail, 1 << 16 | 0x4000 | ids.S_STORAGE)  # member 1 (manifest.json), A's status
         self.assertEqual(self.traced, 32)  # the log is full
-        log = packs.b_log_lines(packs.signed_trace(self.dev))
+        log = packs.b_log_lines(packs.import_trace(self.dev))
         self.assertEqual(len(log), 32)
-        authenticated = next(i for i, line in enumerate(log) if 'mark 0x0001' in line)
-        after = log[authenticated + 1 :]
+        opened = next(i for i, line in enumerate(log) if 'mark 0x0001' in line)
+        after = log[opened + 1 :]
         self.assertRegex(after[0], r'op 0x21 blob create 0x4203 -> 7 errno 0, \d+ ms$')
         self.assertTrue(all('mkdir' in line for line in after[1:-2]), after)
         self.assertRegex(after[-2], r'op 0x21 blob create 0x4203 -> 7 errno 0, \d+ ms$')
@@ -258,7 +283,7 @@ class SignedPackImport(unittest.TestCase):
         # took about 580 per MiB
         self.assertLessEqual(requests, 480 * mib, requests)
         self.assertEqual((self.retained / 'samples/b.wav').read_bytes(), noise[::-1])
-        spent, counts = packs.signed_timing(self.dev)  # #279: operation 6, the import's timing
+        spent, counts = packs.import_timing(self.dev)  # #279: operation 6, the import's timing
         self.assertEqual(list(spent), list(packs.TIMING_BUCKETS))
         self.assertEqual((counts['members'], counts['bytes']), (3, 2 * len(noise) + 20))
         self.assertEqual(counts['puts'], 2 * (len(noise) >> 12) + 1)

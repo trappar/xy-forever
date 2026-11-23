@@ -43,7 +43,7 @@ struct Header {
     Byte iv[16];
 };
 // Random-access view of the decrypted ZIP. No firmware/key file is written.
-// The source must remain immutable. open() verifies no signature; open_digested()
+// The source must remain immutable. open() and open_unsigned() verify no signature; open_digested()
 // runs the caller's HeaderCheck (tfw::signature_check for the vendor key).
 // An optional Work must outlive the open Archive and is shared with consumers of reader().
 // If reader() returns false, the consumer can use Work::cancelled() to distinguish cancellation.
@@ -54,13 +54,17 @@ public:
     Status open(const input::Reader& source, const KeyProvider& keys, U32 expected_sku = op_xy_sku);
     // Reads only the header (into `header`, header_bytes long), the encrypted name and the
     // last cipher block: never the rest of the ciphertext. The caller supplies the SHA-256
-    // of the ciphertext from this same immutable source (on the device: A's keyless hash
-    // job; see ciphertext_digest), compared with the header's after `signature` accepts it.
+    // of the ciphertext from this same immutable source (ciphertext_digest), compared with
+    // the header's after `signature` accepts it.
     // Refuses the clear container (key index 0xfe). The signature callback runs synchronously
     // between checkpoints.
     Status open_digested(const input::Reader& source, const KeyProvider& keys, const hash::Digest& ciphertext_sha256,
                          const HeaderCheck& signature, Byte* header, U32 expected_sku = op_xy_sku,
                          Work* work = nullptr);
+    // As open_digested, without the signature and the ciphertext hash: the sound pack import's (#279), whose
+    // caller checks every member's CRC-32 and SHA-256 instead.
+    Status open_unsigned(const input::Reader& source, const KeyProvider& keys, Byte* header,
+                         U32 expected_sku = op_xy_sku, Work* work = nullptr);
     void close();
     input::Reader reader();
     const Header& header() const { return header_; }

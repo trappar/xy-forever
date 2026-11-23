@@ -128,8 +128,7 @@ void serve_engine(U32 request, U32 vtable, U32 op, cold_storage::Stock121ReadOnl
         const bool ok = true, had = false;
 #endif
         // Stock success is 1 (889f7710); 3 when this op 9 closed a window.
-        const bool closed = ok && !tfw_hash_open();
-        session.reply(request, closed ? (had ? 3 : 1) : 0, closed ? 0 : error_access);
+        session.reply(request, ok ? (had ? 3 : 1) : 0, ok ? 0 : error_access);
         ++r.executed;
         note(op, action, mounted ? 0xfffeu : 1);
         return;
