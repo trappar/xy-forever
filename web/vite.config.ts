@@ -9,9 +9,6 @@ import tailwindcss from '@tailwindcss/vite';
 import type { Plugin } from 'vite';
 import { xyfRelay } from 'xy-forever-client/test/relay.ts';
 
-/** The GitHub Pages project path (pnpm run build:pages). */
-export const PAGES_BASE = '/xy-forever/';
-
 export const alias = [{ find: /^@\//, replacement: fileURLToPath(new URL('./src/', import.meta.url)) }];
 
 // Copy the rewritten HTML for static routes and keep the notices with the published files.
@@ -39,10 +36,9 @@ const staticSite: Plugin = {
   },
 };
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig({
   appType: 'spa',
-  base: mode === 'pages' ? PAGES_BASE : '/',
   server: { host: '127.0.0.1' },
   resolve: { alias },
   plugins: [react(), tailwindcss(), xyfRelay(), staticSite],
-}));
+});
