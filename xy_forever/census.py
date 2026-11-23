@@ -378,23 +378,23 @@ def input_line(event):
 
 
 FRAMES_MAGIC = 0x314D5246  # "FRM1": target/key_ui.hpp Frames
+FRAMES_VERSION = 2  # 1 (build 242505c6 only) guessed at the DMA; 2 times the stock transfer itself
 FRAMES_FIELDS = (
-    'magic version presents draw_last draw_min draw_max present_last present_min present_max wait_last wait_max '
-    'dma_count dma_last dma_min dma_max idle_gap_min'
+    'magic version presents draw_last draw_min draw_max transfer_last transfer_min transfer_max '
+    'present_last present_min present_max wait_last wait_max'
 ).split()
 UNIT_US = 1024 / 400  # one unit: 1024 cycles at 400 MHz
 
 
 def frame_time(block):
-    """The menu's frame times (diag.status block FRM1) in microseconds; None if not one."""
+    """The menu's frame times (diag.status block FRM1, version 2) in microseconds; None if not one."""
     if len(block) != 4 * len(FRAMES_FIELDS):
         return None
     out = dict(zip(FRAMES_FIELDS, struct.unpack('<%dI' % len(FRAMES_FIELDS), block)))
-    if out.pop('magic') != FRAMES_MAGIC or out['version'] != 1:
+    if out.pop('magic') != FRAMES_MAGIC or out['version'] != FRAMES_VERSION:
         return None
     for key in FRAMES_FIELDS[3:]:
-        if key != 'dma_count':
-            out[key + '_us'] = round(out.pop(key) * UNIT_US)
+        out[key + '_us'] = round(out.pop(key) * UNIT_US)
     return out
 
 

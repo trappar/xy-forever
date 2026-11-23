@@ -51,19 +51,18 @@ struct Result {
 static_assert(sizeof(Result) == 0xc0, "Result layout");
 extern Result result;
 // #288: how long the menu's frames take, for the host (diag.status block FRM1). Times are in units of 1024 CPU
-// cycles (2.56 us at 400 MHz); a min is ~0 until its first sample. Measured around today's present (one full
-// 480x216 RGB565 repaint, then the stock transfer start; the frame's DMA runs on while the loop goes on).
+// cycles (2.56 us at 400 MHz); a min is 0 until its first sample. present() is synchronous end to end: it
+// waits for any DMA still running, repaints all 480x216 RGB565 pixels, then the stock transfer (889efa6a with 1)
+// sends the frame and returns only once the display DMA is idle again (its loop at 889efc12).
 struct Frames {
     uint32_t magic, version, presents;                     // presents: frames measured (skipped ones are not)
     uint32_t draw_last, draw_min, draw_max;                // the repaint: draw_screen, where code, cache flush
-    uint32_t present_last, present_min, present_max;      // present() to the transfer started (wait + draw + start)
-    uint32_t wait_last, wait_max;                          // of that: the wait for the previous frame's DMA
-    // A frame's DMA, from its transfer start to idle: exact when the next present found it still running
-    // (dma_count of them); otherwise it took at most the gap to that present (idle_gap_min: the shortest).
-    uint32_t dma_count, dma_last, dma_min, dma_max, idle_gap_min;
+    uint32_t transfer_last, transfer_min, transfer_max;   // the stock transfer: the frame's DMA, start to idle
+    uint32_t present_last, present_min, present_max;      // the whole present(): wait + draw + transfer
+    uint32_t wait_last, wait_max;                          // of that: the wait for a DMA still running at entry
 };
-static_assert(sizeof(Frames) == 16 * 4, "Frames layout");
-static const uint32_t frames_magic = 0x314d5246u;          // "FRM1"
+static_assert(sizeof(Frames) == 14 * 4, "Frames layout");
+static const uint32_t frames_magic = 0x314d5246u;          // "FRM1" (version 2)
 extern Frames frames;
 // The exception vector the stock code left, back in place if the menu had put the crash screen's there
 // (key_ui_crash.ipp); a no-op otherwise (and on A). usb_service::reset_self calls it before B resets.

@@ -4,6 +4,7 @@ watch printing each new event once."""
 import re
 import struct
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from xy_forever import census, host_probe
@@ -86,14 +87,26 @@ class HostProbeTest(unittest.TestCase):
         self.assertEqual(out[3], '(8 events came faster than this read them)')
         self.assertEqual(len(out), 4 + census.INPUT_EVENTS)
 
-    def test_frames_in_microseconds_with_the_back_to_back_estimate(self):
-        # units of 1024 cycles (2.56 us): draw last/min/max, present last/min/max, wait last/max, then the DMA's
-        fields = [census.FRAMES_MAGIC, 1, 5, 3125, 2750, 3500, 3700, 3300, 11700, 400, 8200, 2, 7400, 7300, 7500, 0]
-        lines = self.run_lines(host_probe.frames, Device(block(census.FRAMES_MAGIC, struct.pack('<16I', *fields))))
+    def test_frames_in_microseconds_and_the_whole_present_as_the_frame_cost(self):
+        # units of 1024 cycles (2.56 us): draw, transfer, present (each last/min/max), then wait last/max
+        fields = [census.FRAMES_MAGIC, 2, 5, 3125, 2750, 3500, 5625, 5500, 5750, 8750, 8500, 9375, 1, 2]
+        lines = self.run_lines(host_probe.frames, Device(block(census.FRAMES_MAGIC, struct.pack('<14I', *fields))))
         self.assertEqual(lines[0], 'frames measured: 5')
         self.assertIn('last   8000 us  min   7040 us  max   8960 us', lines[1])
-        self.assertIn('max  19200 us  (2 measured)', lines[4])
-        self.assertEqual(lines[-1], 'back-to-back frames: about 28160 us each (draw max + DMA), 36 frames/s')
+        self.assertIn('last  14400 us  min  14080 us  max  14720 us', lines[2])
+        self.assertEqual(
+            lines[-1], 'a frame costs the whole present, the loop blocked: at most 42 frames/s (24000 us each)'
+        )
+
+    def test_version_1_frames_are_not_read(self):
+        old = struct.pack('<16I', census.FRAMES_MAGIC, 1, *([0] * 14))
+        with self.assertRaisesRegex(OSError, 'version 2'):
+            host_probe.frames(Device(block(census.FRAMES_MAGIC, old)), out=print)
+
+    def test_watch_lines_are_flushed(self):
+        with unittest.mock.patch('builtins.print') as printed:
+            host_probe.say('x')
+        printed.assert_called_once_with('x', flush=True)
 
     def test_space(self):
         self.assertEqual(self.run_lines(host_probe.space, Device(b'')), ['free: 3145728 bytes (3.0 MiB)'])
@@ -104,5 +117,32 @@ class HostProbeTest(unittest.TestCase):
         self.assertIn('log_magic = 0x%08xu;' % census.INPUT_MAGIC, knob)
         key_ui = (ROOT / 'target/key_ui.hpp').read_text()
         self.assertIn('frames_magic = 0x%08xu;' % census.FRAMES_MAGIC, key_ui)
+        self.assertIn('{frames_magic, %d}' % census.FRAMES_VERSION, (ROOT / 'target/key_ui.cpp').read_text())
         self.assertIn('sizeof(Frames) == %d * 4' % len(census.FRAMES_FIELDS), key_ui)
         self.assertTrue(re.search(r'kind_release = 0, kind_press = 1, kind_turn = 2', knob))
+
+
+class SetDefaultBusyTest(unittest.TestCase):
+    """#288: set-default right after a pack change met busy (the change's write window settling); it is asked again."""
+
+    def test_busy_is_asked_again(self):
+        from xy_forever import xyf_host
+
+        class Port:
+            waited = 0.0
+
+            def pause(self, seconds):
+                Port.waited += seconds
+
+        dev = xyf_host.Device(Port())
+        answers = [(P.ids.S_BUSY, b''), (P.ids.S_BUSY, b''), (0, struct.pack('<I', 0x586D1C48))]
+        sent = []
+
+        def call(command, payload, timeout):
+            sent.append((command, payload))
+            return answers.pop(0)
+
+        dev.call = call
+        self.assertEqual(dev.set_default('opxy-121'), (0, 0x586D1C48))
+        self.assertEqual(sent, [(P.SET_DEFAULT, b'opxy-121\0')] * 3)
+        self.assertEqual(Port.waited, 0.5)

@@ -299,7 +299,7 @@ void real_keys_deliver() {
 }
 namespace xy_forever { namespace key_ui {
 Result result = {magic};
-Frames frames = {frames_magic, 1}; // #288: no display here: no frame is measured
+Frames frames = {frames_magic, 2}; // #288: no display here: no frame is measured
 void crash_disarm() {} // no vector: the screen is not hosted
 #if defined(XYF_CRASH_TRIGGER)
 bool crash_armed_now() { return sim_menu; } // as key_ui: armed while the menu has the screen

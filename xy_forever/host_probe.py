@@ -13,6 +13,11 @@ from . import usb_proto as P
 WATCH_S = 0.2  # --watch: the pause between two diag.status reads
 
 
+def say(line):
+    """print, flushed: a redirected --watch shows each event as it comes."""
+    print(line, flush=True)
+
+
 def configure(sub):
     inputs = sub.add_parser(
         'inputs', help="the menu's last 32 raw key events and knob records, oldest first (diag.status, read-only)"
@@ -46,7 +51,7 @@ def input_log(dev):
     return log
 
 
-def inputs(dev, watch, out=print, sleep=time.sleep):
+def inputs(dev, watch, out=say, sleep=time.sleep):
     count, events = input_log(dev)
     out('%d events logged since the menu started%s' % (count, '' if count <= len(events) else ' (the last 32:)'))
     for event in events:
@@ -66,48 +71,35 @@ def inputs(dev, watch, out=print, sleep=time.sleep):
     return 0
 
 
-def frames(dev, out=print):
+def frames(dev, out=say):
     f = census.frame_time(read_status(dev).get(census.FRAMES_MAGIC, b''))
     if f is None:
-        raise OSError('this build has no frame times (diag.status block FRM1)')
+        raise OSError('this build reports no frame times this tool reads (diag.status block FRM1, version 2)')
     if not f['presents']:
         out('no frame measured yet (the menu has not drawn)')
         return 0
     out('frames measured: %d' % f['presents'])
     for name, label in (
         ('draw', 'draw (480x216 repaint + cache flush)'),
-        ('present', 'present (DMA wait + draw + transfer start)'),
+        ('transfer', 'transfer (the stock send, until its DMA ends)'),
+        ('present', 'present (all of it: wait + draw + transfer)'),
     ):
         out(
-            '%-44s last %6d us  min %6d us  max %6d us'
+            '%-46s last %6d us  min %6d us  max %6d us'
             % (label, f[name + '_last_us'], f[name + '_min_us'], f[name + '_max_us'])
         )
     out(
-        '%-44s last %6d us  max %6d us' % ('of that, waiting for the previous DMA', f['wait_last_us'], f['wait_max_us'])
+        '%-46s last %6d us  max %6d us' % ('of that, a DMA still running at entry', f['wait_last_us'], f['wait_max_us'])
     )
-    if f['dma_count']:
-        out(
-            '%-44s last %6d us  min %6d us  max %6d us  (%d measured)'
-            % (
-                'display DMA (transfer start to idle)',
-                f['dma_last_us'],
-                f['dma_min_us'],
-                f['dma_max_us'],
-                f['dma_count'],
-            )
-        )
-    else:
-        out('display DMA: never still running at the next present (no exact measurement)')
-    if f['idle_gap_min_us']:
-        out('display DMA took at most %d us (the shortest gap that found it idle)' % f['idle_gap_min_us'])
-    dma = f['dma_max_us'] if f['dma_count'] else f['idle_gap_min_us']
-    if dma:
-        period = f['draw_max_us'] + dma
-        out('back-to-back frames: about %d us each (draw max + DMA), %.0f frames/s' % (period, 1e6 / period))
+    # present() is synchronous end to end: the menu loop does nothing else meanwhile, so a frame costs all of it.
+    period = f['present_max_us']
+    out(
+        'a frame costs the whole present, the loop blocked: at most %.0f frames/s (%d us each)' % (1e6 / period, period)
+    )
     return 0
 
 
-def space(dev, out=print):
+def space(dev, out=say):
     free = host_inventory.free_bytes(dev)
     out('free: %d bytes (%.1f MiB)' % (free, free / 2**20))
     return 0

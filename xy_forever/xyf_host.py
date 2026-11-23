@@ -245,7 +245,13 @@ class Device:
         return code
 
     def set_default(self, entry_id):
-        code, body = self.call(P.SET_DEFAULT, entry_id.encode('ascii') + b'\0', timeout=75.0)  # b waits for a's write
+        # b waits for a's write. Busy is answered before anything is done: right after a pack change its write window
+        # is still settling (#288), so it is asked again for a while.
+        from xy_forever import package_store
+
+        code, body = package_store.unless_busy(
+            self, lambda: self.call(P.SET_DEFAULT, entry_id.encode('ascii') + b'\0', timeout=75.0), every=0.25
+        )
         sent_hash = struct.unpack_from('<I', body)[0] if len(body) >= 4 else 0
         return code, sent_hash
 

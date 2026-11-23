@@ -111,26 +111,16 @@ void sample(uint32_t value, uint32_t& last, uint32_t& low, uint32_t& high) {
     if (!low || value < low) low = value;
     if (value > high) high = value;
 }
-uint32_t transfer_started __attribute__((section(".data"))) = 0;   // the last transfer's start (0: none yet)
 
 // Finish the previous frame (stock wait clears the busy flag on DMA done),
-// then draw the screen and start the transfer directly.
+// then draw the screen and send it: the stock transfer returns once its DMA is done.
 void present() {
     Result& r = result;
     Frames& f = frames;
     const uint32_t entry = cycles_div1024();
-    const bool running = (word(display_dma_stat) & dma_running) != 0;   // the previous frame's DMA, at entry
     if (!dma_idle(100)) {
         ++r.present_skips;
         return;
-    }
-    const uint32_t idle = cycles_div1024();
-    if (transfer_started) {
-        if (running) {
-            ++f.dma_count;
-            sample(idle - transfer_started, f.dma_last, f.dma_min, f.dma_max);
-        } else if (!f.idle_gap_min || entry - transfer_started < f.idle_gap_min)
-            f.idle_gap_min = entry - transfer_started;
     }
     wait_dma();
     if (byte(smc_dma_active)) {     // DMA idle without a done bit: flag is stale
@@ -143,11 +133,12 @@ void present() {
     flush_framebuffer(word(framebuffer));
     const uint32_t drawn = cycles_div1024();
     transfer();
-    transfer_started = cycles_div1024();
+    const uint32_t sent = cycles_div1024();
     if (byte(smc_dma_active)) ++r.presents;
     ++f.presents;
     sample(drawn - drawing, f.draw_last, f.draw_min, f.draw_max);
-    sample(transfer_started - entry, f.present_last, f.present_min, f.present_max);
+    sample(sent - drawn, f.transfer_last, f.transfer_min, f.transfer_max);
+    sample(sent - entry, f.present_last, f.present_min, f.present_max);
     f.wait_last = drawing - entry;
     if (f.wait_last > f.wait_max) f.wait_max = f.wait_last;
 }
