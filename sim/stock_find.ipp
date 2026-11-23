@@ -11,6 +11,9 @@
 const uint32_t objects_base = 0x8aaa0000u, object_bytes = 0x200u, object_text = 0x70u;
 const uint32_t objects_max = (0x8ab00000u - objects_base) / object_bytes;
 std::vector<std::string> object_paths;
+#if defined(XYF_CONTENT_SWITCH)
+std::string managed_alias, managed_source; // create_managed_alias's last link
+#endif
 
 std::string link_text(const std::string& where) {
     char text[1024];
@@ -46,6 +49,19 @@ uint32_t object_at(const std::string& where) {
     memset(host(at), 0, object_bytes);
     w32(at + 0x1c, object_at(parent_of(where)));
     w32(at + 0x64, object_type(where));
+#if defined(XYF_CONTENT_SWITCH)
+    struct stat mode;
+    if (!lstat(where.c_str(), &mode)) w32(at + 0x34, mode.st_mode);
+    w32(at + 8, yaffs_device);
+    if (where == managed_alias) { // the managed hardlink: type 4, its equivalent object
+        struct stat source, alias;
+        if (!lstat(managed_source.c_str(), &source) && !lstat(where.c_str(), &alias) && source.st_dev == alias.st_dev &&
+            source.st_ino == alias.st_ino) {
+            w32(at + 0x64, 4);
+            w32(at + 0x68, object_at(managed_source));
+        }
+    }
+#endif
     if (r32(at + 0x64) == 2) {
         const std::string alias = link_text(where);
         if (alias.size() >= object_bytes - object_text) crash("simulated link text too long");
@@ -112,3 +128,25 @@ uint32_t find_object(uint32_t relative, const char* path, int depth, uint32_t* p
     if (parent) *parent = object_at(folder);
     return object_at(where);
 }
+
+#if defined(XYF_CONTENT_SWITCH)
+uint32_t create_managed_alias(uint32_t directory, const char* name, uint32_t source) {
+    const auto directory_path = object_path(directory);
+    const auto base = object_path(source);
+    std::string alias;
+    namespace ml = xy_forever::managed_blob_link;
+    std::string base_dir;
+    to_host("/yaffs2/xy-forever/blobs", base_dir);
+    const std::string scratch = std::string(ml::scratch) + name;
+    const bool managed =
+        parent_of(base) == base_dir && base.size() == base_dir.size() + 65 && ml::temporary_path(scratch.c_str());
+    if (managed) to_host(scratch.c_str(), alias);
+    if (alias.empty() || directory_path != parent_of(alias)) crash("hardlink creator outside managed scratch");
+    int error = 0;
+    if (!media(error) || write_fault(0, error, false) || link(base.c_str(), alias.c_str())) return 0;
+    storage_op_done();
+    managed_alias = alias;
+    managed_source = base;
+    return object_at(alias);
+}
+#endif

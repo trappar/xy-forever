@@ -83,7 +83,7 @@ bool write_fault(uint32_t bytes, int& error, bool data = true) {
 }
 bool provider();
 int handle_of(int fd) { return fd >= 0 && unsigned(fd) < max_handles && handles[fd].used ? fd : -1; }
-int open_file(const char* path, bool write, bool create, bool truncate, bool exclusive) {
+int open_file(const char* path, bool write, bool create, bool truncate, bool exclusive, uint32_t mode = 0644) {
     std::string where;
     if (path && strstr(path, "/xy-forever/stage2/")) ++shared->stage2_opens;          // test count
     if (!mounted()) return fail(19);
@@ -95,7 +95,7 @@ int open_file(const char* path, bool write, bool create, bool truncate, bool exc
     if (!stat(where.c_str(), &st) && S_ISDIR(st.st_mode)) return fail(21);
     const int flags =
         (write ? O_RDWR : O_RDONLY) | (create ? O_CREAT : 0) | (truncate ? O_TRUNC : 0) | (exclusive ? O_EXCL : 0);
-    const int fd = open(where.c_str(), flags, 0644);
+    const int fd = open(where.c_str(), flags, mode);
     if (fd < 0) return fail(errno);
     for (unsigned i = 0; i != max_handles; ++i)
         if (!handles[i].used) {

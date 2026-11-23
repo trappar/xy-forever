@@ -25,7 +25,7 @@ class StateWriteTest(unittest.TestCase):
         self.assertIn('y_open(path, 0x241, 0x180)', body)  # stock "wb": O_WRONLY|O_CREAT|O_TRUNC
         self.assertEqual(body.count('y_write('), 1)  # one yaffs_write call
         self.assertEqual(body.count('y_mount(device_, 0)'), 1)  # one read-write mount
-        self.assertEqual(src.count('0x889fbb0cu'), 2)  # yaffs_write: span table + y_write only
+        self.assertEqual(unit_text(ROOT / 'target/cold_storage.cpp').count('0x889fbb0cu'), 2)  # span table + y_write
         self.assertIn('reinterpret_cast<U32>(&deny_media_change)', body)  # gates re-installed
         for banned in ('889fae1c', '889fa5f2', '889fad92', '889fac36', '889fab0e'):  # unlink/rmdir/mkdir-like/sync-like
             self.assertNotIn(banned, body)

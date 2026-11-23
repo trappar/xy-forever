@@ -4,15 +4,19 @@
 #include "cold_heap.hpp"
 #include "xyf_clock.hpp"
 #include "boot_partition_probe.hpp"
+#if defined(XYF_USB_SERVICE)
+#include "usb_service.hpp"
+#endif
+#include "managed_blob_link.hpp"
+#if defined(XYF_CONTENT_SWITCH)
+#include "retained_lookup.hpp"
+#endif
 #if defined(XYF_TFW_CHECK)
 #include "a_install_stage.hpp"
 #include "file_boot.hpp"
 #include "file_client.hpp"
 #include "tfw_hash_rpc.hpp"
 #include "../native/tfw.hpp"
-#endif
-#if defined(XYF_USB_SERVICE)
-#include "usb_service.hpp"
 #endif
 #if defined(XYF_MTP) || defined(XYF_USB_FILE_WRITE)
 #include "mtp_spans.hpp"
@@ -486,6 +490,18 @@ __attribute__((noinline)) bool open_window(cold_storage::Stock121ReadOnlySession
 }
 #endif
 
+#if defined(XYF_CONTENT_SWITCH)
+int managed_blob_in __attribute__((section(".data"))) = -1;
+int managed_blob_out __attribute__((section(".data"))) = -1;
+U32 managed_blob_left __attribute__((section(".data"))) = 0;
+bool managed_blob_active() { return managed_blob_in >= 0 || managed_blob_out >= 0; }
+bool close_managed_blob(cold_storage::Stock121ReadOnlySession& storage) {
+    if (managed_blob_out >= 0 && !storage.direct_close(managed_blob_out)) managed_blob_out = -1;
+    if (managed_blob_in >= 0 && !storage.direct_close(managed_blob_in)) managed_blob_in = -1;
+    return !managed_blob_active();
+}
+#endif
+
 // Op 9 (or any end): close b's leftovers, close the read-write window (yaffs unmount writes its
 // checkpoint; gates back; the shared read-only mount again), then end the session (end; not
 // when a closes the window between requests). A window that fails to close stays mounted (never
@@ -494,6 +510,9 @@ __attribute__((noinline)) void close_engine(cold_storage::Stock121ReadOnlySessio
 #if defined(XYF_TFW_CHECK)
     // Keep the mount available if stock refused to close the hash job's handle.
     if (!tfw_hash_clear(storage)) return;
+#endif
+#if defined(XYF_CONTENT_SWITCH)
+    if (!close_managed_blob(storage)) return;
 #endif
     if (!mounted) return;
     close_handles();
@@ -523,6 +542,7 @@ void close_between(cold_storage::Stock121ReadOnlySession& storage) {
 
 #include "storage_server_boot_probe.ipp" // #7: read-only raw requests and fixed RAM snapshot
 #include "storage_server_marker.ipp" // the marker checks, rename_now
+#include "storage_server_hardlink.ipp" // #202: managed content links (content switch only)
 
 #include "storage_server_engine.ipp" // serve_engine: every request in the engine
 

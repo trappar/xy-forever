@@ -73,6 +73,24 @@ class AllowlistTest(unittest.TestCase):
             self.assertEqual(client.count('stock<0x%su' % call), 1, call)  # one call site each
         self.assertNotIn('guard_pause', client)
 
+    def test_scope_audit_ignores_only_an_overwritten_half_annotation(self):
+        from xy_forever.otp_audit import referencing_symbols
+
+        listing = """8ab09e38 <lookup>:
+8ab09f00 <stale>:
+8ab09f00: P2.H = 0x8ab0; /* P2=0x8ab09e38 <lookup> */
+8ab09f04: P2.L = 0x9f40; /* P2=0x8ab09f40 <creator> */
+8ab09f08: CALL (P2);
+8ab09f10 <actual>:
+8ab09f10: P2.H = 0x8ab0; /* P2=0x8ab09e38 <lookup> */
+8ab09f14: CALL (P2);
+8ab09f20 <direct>:
+8ab09f20: CALL 0x8ab09e38 <lookup>;
+8ab09f40 <creator>:
+"""
+        self.assertEqual(referencing_symbols(listing, 'lookup'), {'actual', 'direct'})
+        self.assertEqual(referencing_symbols(listing, 'creator'), {'stale'})
+
     def test_path_copied_only_after_the_slot_is_claimed(self):
         # a request left out past its bound points at path_buffer, and the stock driver reads
         # it only when it sends: no caller may write it before claim() succeeded.

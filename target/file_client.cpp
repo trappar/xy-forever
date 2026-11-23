@@ -2,6 +2,7 @@
 #include "file_engine.hpp"
 #include "usb_proto.hpp"
 #include "boot_partition_probe.hpp"
+#include "managed_blob_link.hpp"
 #include "tfw_role_probe.hpp"
 #include "tfw_hash_rpc.hpp"
 #include "boot_services.hpp"
@@ -348,6 +349,19 @@ Reply tfw_hash_send(const char* path, uint32_t operation) {
     Stock121PeerSession* session = 0;
     const Reply sent = path_request(path, file_engine::op_read, 0x21, th::tag | operation, &session);
     return leave(session, sent, request_ms);
+}
+#endif
+#if defined(XYF_USB_FILE_WRITE)
+Reply stage_blob_link(const char* temporary, const uint8_t* hash, bool seal) {
+    namespace ml = managed_blob_link;
+    char frame[ml::frame_bytes];
+    if (!ml::encode(temporary, hash, frame, seal)) return outcome(refused);
+    const uint32_t op = seal ? ml::seal : ml::stage;
+    return path_request(temporary, file_engine::op_write, 0x21, ml::version << 24 | ml::tag | op, 0, frame, change_ms);
+}
+Reply copy_blob_piece() {
+    namespace ml = managed_blob_link;
+    return path_request("/yaffs2", file_engine::op_stat, 0x21, ml::version << 24 | ml::tag | ml::copy, 0, 0, change_ms);
 }
 #endif
 Reply boot_probe(uint32_t op) {

@@ -4,6 +4,7 @@
 #include "xyf_store.hpp"
 #include "xyf_blob.hpp"
 #include "xyf_package_record.hpp"
+#include "managed_blob_link.hpp"
 #include "../native/hash.hpp"
 // The content switch (docs/storage/state.md "Content state"), run by processor B as a job: makes
 // /yaffs2/content/ match a target library entry. step() sends at most one file request per call (B's menu
@@ -629,104 +630,7 @@ template<class Io> static uint32_t step(Job& j, Io& io) {
         }
         break;
     }
-    case st_copy: {                                      // the target's files
-        if (j.index == j.list_count) {
-            j.stage = st_catalog;
-            j.leg = 0;
-            note(j, catalog);
-            break;
-        }
-        const Ref& f = j.list_refs[j.index];
-        const uint8_t* rel = j.list.data + f.path;
-        if (j.leg == 0) {                                // the trusted record's SHA-256 is the target's?
-            ++j.compared;
-            j.leg = 1;
-            if (j.trusted) {
-                const uint32_t at = lower(j.record, j.record_refs, j.record_count, rel, f.bytes);
-                const Ref* had = at != j.record_count && !compare_ref(j.record, j.record_refs[at], rel, f.bytes) ?
-                                     j.record_refs + at :
-                                     0;
-                uint32_t d = had && had->hash ? 0u : 1u;
-                for (uint32_t i = 0; !d && i != 64; ++i) d |= j.record.data[had->hash + i] ^ j.list.data[f.hash + i];
-                if (!d) {
-                    ++j.index;
-                    ++j.done;
-                    j.leg = 0;
-                }
-            }
-            break;
-        }
-        if (j.leg == 1) {                                // else the live file: the target's already? (no write)
-            join(p, root, rel, f.bytes);
-            r = load(j, io, p, j.file, j.file.capacity);
-            if (r == x_more || r == x_failed) break;
-            if (r == x_done) ++j.read;
-            if (r == x_done && hash_equal(j.list.data + f.hash, j.digest.bytes)) {
-                ++j.index;
-                ++j.done;
-                j.leg = 0;
-            } else j.leg = 2;
-            break;
-        }
-        if (j.leg == 2) {                                // its folders, shallowest first
-            uint32_t k = j.cursor;
-            while (k < f.bytes && rel[k] != '/') ++k;
-            if (k >= f.bytes) {
-                j.leg = 3;
-                j.cursor = 0;
-                break;
-            }
-            j.cursor = k + 1;
-            bool made = true;                            // a prefix of the last folder made
-            for (uint32_t i = 0; made && i != k; ++i) made = j.folder[i] == char(rel[i]);
-            if (made && (j.folder[k] == '/' || !j.folder[k])) break;      // (an official folder too: it may be gone)
-            join(p, root, rel, k);
-            if (!allowed(Use::make_folder, p, false)) {
-                fail(j, e_path, 0, p);
-                break;
-            }
-            if (io.mkdir(p) < 0) {
-                fail(j, io.lost() ? e_link : e_write, 0, p);
-                break;
-            }
-            join(j.folder, "", rel, k);
-            break;
-        }
-        if (j.leg == 3) {                                // the entry's copy, its SHA-256 as listed
-            if (!join(p, firmware, bytes(j.target), length(j.target), "/content/") ||
-                !join(p + length(p), "", rel, f.bytes)) {
-                fail(j, e_path, 0, j.target);
-                break;
-            }
-            note(j, p);
-            r = load(j, io, p, j.file, j.file.capacity);
-            if (r == x_more || r == x_failed) break;
-            if (r == x_missing) {
-                fail(j, e_open, 0, p);
-                break;
-            }
-            if (!hash_equal(j.list.data + f.hash, j.digest.bytes)) {
-                fail(j, e_sha256, 0, p);
-                break;
-            }
-            j.leg = 4;
-            break;
-        }
-        join(p, root, rel, f.bytes);
-        if (!allowed(Use::install, p, false)) {
-            fail(j, e_path, 0, p);
-            break;
-        }
-        if (store(j, io, p, j.file.data, j.file.length) == x_done) {
-            ++j.index;
-            ++j.done;
-            ++j.written;
-            j.bytes += j.file.length;
-            j.leg = 0;
-            j.cursor = 0;
-        }
-        break;
-    }
+#include "xyf_content_assets.ipp"
     case st_catalog:                                     // the catalog last (a stock target: the saved official one)
         if (j.leg == 0) {
             const char* source = saved_catalog;

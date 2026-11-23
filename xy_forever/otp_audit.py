@@ -52,13 +52,32 @@ def function_bodies(listing):
 def referencing_symbols(listing, part):
     """Functions that call, jump to or load the address of a function whose label contains part,
     other than such functions themselves (a branch inside one is not a reference)."""
+    reference = re.compile(r'<[^>]*%s[^>]*>' % re.escape(part))
     users = set()
     for name, lines in function_bodies(listing).items():
         if part in name:
             continue
-        if any(re.search(r'<[^>]*%s[^>]*>' % re.escape(part), line) for line in lines):
+        if any(reference.search(line) and not overwritten_half(lines, i, reference) for i, line in enumerate(lines)):
             users.add(name)
     return users
+
+
+def overwritten_half(lines, index, reference):
+    """A first-half annotation is stale if the other half is overwritten before any use."""
+    code = lines[index].split('/*', 1)[0]
+    half = HALF.search(code.lower())
+    if reference.search(code) or not half:
+        return False
+    reg, which, _ = half.groups()
+    mentions = re.compile(r'\b%s\b' % reg)
+    for line in lines[index + 1 :]:
+        code = line.split('/*', 1)[0].lower()
+        if re.search(r'\b(?:jump|call|rts|rti)\b', code):
+            return False
+        next_half = HALF.search(code)
+        if mentions.search(code):
+            return bool(next_half and next_half[1] == reg and next_half[2] != which)
+    return False
 
 
 HALF = re.compile(r'\b([pr][0-7])\.([hl]) = (?:0x)?([0-9a-f]+);')

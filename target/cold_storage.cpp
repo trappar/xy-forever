@@ -1,5 +1,8 @@
 #include "cold_storage.hpp"
 #include "retained_lookup.hpp"
+#if defined(XYF_USB_FILE_WRITE) && defined(XYF_USB_SET_DEFAULT) && defined(XYF_ONE_SESSION)
+#include "managed_blob_link.hpp"
+#endif
 namespace xy_forever { namespace cold_storage {
 namespace {
 Result controller_ready(const Snapshot& s) {
@@ -297,18 +300,7 @@ __attribute__((noinline)) int y_unmount(U32 device) {
 }
 #endif
 #if defined(XYF_STATE_WRITE) || defined(XYF_USB_SET_DEFAULT)
-namespace {
-__attribute__((noinline)) int y_open(const char* path, int flags, int mode) {
-    return call<int(const char*, int, int)>(0x889fbfe6u)(path, flags, mode);
-}
-__attribute__((noinline)) int y_write(int fd, const void* data, U32 count) {
-    return call<int(int, const void*, U32)>(0x889fbb0cu)(fd, data, count);
-}
-__attribute__((noinline)) int y_read(int fd, void* out, U32 count) {
-    return call<int(int, void*, U32)>(0x889fb928u)(fd, out, count);
-}
-__attribute__((noinline)) int y_close(int fd) { return call<int(int)>(0x889fb6fau)(fd); }
-}
+#include "cold_storage_direct_write.ipp"
 #endif
 Result Stock121ReadOnlySession::begin_fresh(services::Phase phase) {
     if (phase != services::Phase::cold_after_teardown) return fail(Result::unavailable);

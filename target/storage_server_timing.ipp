@@ -74,6 +74,14 @@ bool timing_query(U32 request, Stock121PeerSession& session) {
 void timed_serve(void* context, U32 request, Stock121PeerSession& session) {
     const uint64_t start = xyf::clock::cycles();
     if (stage_query(request, session)) return;
+#if defined(XYF_CONTENT_SWITCH)
+    if (managed_link_query(context, request, session)) return;
+    if (managed_blob_active() && (word(request) != partition_class || byte(request + 5) != 9) &&
+        !peer_services::boot_request(word(request), byte(request + 5), word(request + 8), word(request + 0x18))) {
+        storage_busy_reply(request, session);
+        return;
+    }
+#endif
     if (tfw_hash_query(context, request, session)) return;
     if (tfw_probe_query(context, request, session)) return;
     if (boot_probe_query(request, session)) return;
