@@ -12,6 +12,22 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   sets as (key, pressed).
 - **Links:** the boot teardown `88a35540` closes the PSoC and USB-serial links. The
   poll `88a24922(0x88a522c8)` reopens them and greets.
+- Names from the table: 6..9 `KTrack1..4`, 10..13 `KEncClick1..4`, 51 `KPlay`, 52 `KStop`,
+  53 `KLeft`, 54 `KRight`, 55 `KShift`.
+
+### What the menu sees (#288)
+
+The menu logs its last 32 raw input events: `uv run xyf-host inputs` (`--watch`: each new one as
+it comes). Each key event as the stock callback gives it (id, press or release; the host's `key`
+command marked "(host)"), and each record of an accepted knob frame (id, signed count), on the
+menu's millisecond clock (`target/knob_input.hpp` `InputLog`, diag.status block INP1).
+
+| Question | From the key table | On the device |
+|---|---|---|
+| H1: the four buttons under the screen (m1..m4) | keys 6..9 | _pending_ |
+| H2: m4 sends a release (a 1.2 s hold can be timed); SHIFT (55) held with an m key arrives as both | | _pending_ |
+| H3: each click of knobs 1..3 is its own event, apart from turns and the other knobs | keys 10..12 | _pending_ |
+| H4: the fourth knob's turns | id 4 | _pending_ |
 
 ## Knobs (B, through the PSoC)
 
@@ -34,6 +50,12 @@ reset the cursor on invalid indices/restart. Unknown ids do not control the menu
   5. `889efa6a(fb, 1)`
 - Zero the `0x3c000`-byte framebuffer before the first frame, or text appears over
   the logo. The stock text console is `889eeab2`.
+- **Frame time (#288):** `uv run xyf-host frames` (`key_ui.hpp` `Frames`, diag.status block FRM1). The
+  draw is one full 480x216 RGB565 repaint and its cache flush; the present waits for the previous
+  frame's DMA, draws, starts the transfer and returns while the DMA runs. The DMA's own time is exact
+  when the next present still finds it running, else bounded by the gap. Measured: draw _pending_,
+  DMA _pending_, back to back _pending_ frames/s. Short animations (a moving progress bar, a
+  spinner): _pending_.
 
 ### Where codes (#114)
 

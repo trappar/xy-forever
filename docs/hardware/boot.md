@@ -11,7 +11,7 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
 | Stock 1.2.1 `os.ldr` | SHA-256 `60358afd…2b52f`, 2,373,336 B, `STOCK_121/os.ldr` |
 | 1.2.5 `os.ldr` | SHA-256 `bed98a00…4283` |
 | 1.2.1 → 1.2.5 companions | backplane 1.0.7 → 1.0.8, BLE 1.0.1 → 1.0.2; factory content identical |
-| USB identities | stock OS: `2367:0021`, vendor class 0xFF (another mode `2367:8021`, class 01); XY Forever composite: `2367:0021`, device class EF/02/01, CDC plus MTP interface 2; stock CDC fallback: "OP_XY Boot", classes 02 + 0A; [transport](../protocol/transport.md) |
+| USB identities | stock OS: `2367:0021`, vendor class 0xFF (another mode `2367:8021`, class 01); XY Forever composite: `2367:0021`, device class EF/02/01, CDC plus MTP interface 2; stock CDC fallback: "OP_XY Boot", classes 02 + 0A; [transport](../protocol/transport.md), [USB identity](usb-identity.md) |
 | SDRAM | 256 MiB (DMC_CFG `0x522`) |
 | CCLK | 400 MHz (word `0x88a2ef28` = 400000000, written by `88a30fbc`); ms = cycles `*21 >> 13` |
 

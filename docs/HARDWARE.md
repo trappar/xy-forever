@@ -11,6 +11,7 @@ raw listing: Ghidra's decompiler C is unreliable for parallel instructions and i
 - [Boot and memory](hardware/boot.md): versions and identities, boot and processors, the memory map (product)
 - [Keys, display, storage](hardware/devices.md): keys (B, through the PSoC), the display (B), storage (A, yaffs)
 - [Boot partition and USB](hardware/usb.md): the boot partition and USB (B), the stock USB function-driver API and ownership rules
+- [USB identity](hardware/usb-identity.md): ids, names and the serial in each mode, who sets them, what a browser remembers a permission by
 - [Stock storage server requests](hardware/storage-server.md): role 0 requests, as MTP uses them; protected inbox paths
 - [Stock contracts](hardware/stock-contracts.md): restart order, B's fetch and request calls, WDOG0, the dev-menu marker, upgrade resume
 - [Write bodies and concurrency](hardware/write-concurrency.md): shared buffers and stock write serialization

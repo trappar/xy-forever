@@ -108,7 +108,7 @@ TRANSPORT = {
     'stream': ('frames', True),
     'line_settings': ('ignored', True),
     'control_lines': ('unknown', False),
-    'usb_serial_number': ('unknown', False),
+    'usb_serial_number': ('per unit', True),
     'simulator_port': (7341, True),
 }
 

@@ -366,7 +366,7 @@ class SpecDataTest(unittest.TestCase):
         self.assertIn('VENDOR = %d ' % t['usb_vendor_id']['value'], text('scripts/usb_timeline.py'))
         self.assertEqual(ids.TRANSPORT['usb_product_id'], (0x21, True))
         unverified = sorted(name for name, (_, verified) in ids.TRANSPORT.items() if not verified)
-        self.assertEqual(unverified, ['control_lines', 'usb_serial_number'])
+        self.assertEqual(unverified, ['control_lines'])
 
     def test_idle_reset(self):
         """A partial frame is dropped after idle_reset_ms of silence: the spec names the limit,
