@@ -109,6 +109,21 @@ void mtp_say(bool force) {
     (void)force;                                                         // the device: the menu stays (the MTP mark)
 #endif
 }
+// #288: the unit's own serial number, as the stock USB stack sends it in every mode (iSerialNumber) and the stock
+// dev-menu MTP repeats in DeviceInfo: the stock metadata's "serial" (8 characters), from its RAM copy, which the
+// stack's controller start (88a08d90 through 88a34edc) takes with each byte outside 0x20..0x7e made '0'. A plain
+// memory read; empty (the simulator; a unit without one): DeviceInfo says "0".
+char unit_serial_text[17] __attribute__((section(".data"))) = {};
+const char* unit_serial() {
+    const U32 metadata_serial = 0x8803d880u;
+    U32 n = 0;
+    for (; n != sizeof(unit_serial_text) - 1 && byte(metadata_serial + n); ++n) {
+        const uint8_t c = byte(metadata_serial + n);
+        unit_serial_text[n] = c < 0x20 || c > 0x7e ? '0' : char(c);
+    }
+    unit_serial_text[n] = 0;
+    return unit_serial_text;
+}
 U32 session_enter() {
     if (mtp_on && mslot().stage != ms::st_ended) return P::s_busy;
     ms::Session& m = mslot();
@@ -118,6 +133,7 @@ U32 session_enter() {
     ops.log = mtp_log;
     m.responder.init(ops);
     m.responder.set_piece(mtp_piece);
+    m.responder.set_serial(unit_serial());
     m.in.length = m.in.sent = 0;
     m.stage = ms::st_running;
     m.bytes_in = m.bytes_out = m.longest_ms = m.steps = m.cancels = m.said_ms = 0;

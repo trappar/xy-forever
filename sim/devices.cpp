@@ -68,6 +68,7 @@ void cold_state(int which, bool power_on, bool play) {
     w32(0x20004800u + rsi * 8, 5);
     for (uint32_t i = 0; i != 4; ++i) w32(0x8803d06cu + 4 * i, 0);   // stock log sinks (muted)
     for (uint32_t i = 0; i != 4; ++i) w32(0x8803f6b8u + 4 * i, 0);   // posix provider registry: empty
+    for (uint32_t i = 0; i != 9; ++i) w8(0x8803d880u + i, uint8_t("SIM00001"[i]));   // the metadata's serial (#288)
     // Stock allocator: one heap, break above the SPI driver records placed below.
     w32(0x889ebaa0u, 0x88a65bf8u);
     w32(0x889ebaa4u, 1);
