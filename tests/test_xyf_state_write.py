@@ -48,7 +48,8 @@ class StateWriteTest(unittest.TestCase):
         at = fb.index('storage.write_state_slot(')
         self.assertNotIn('#endif', fb[fb.rindex('#if defined(XYF_STATE_WRITE)\n', 0, at) : at])
         us = unit_text(ROOT / 'target/usb_service.cpp')
-        self.assertIn('void a_set_default(cold_storage::Stock121ReadOnlySession& storage, uint32_t hash) {', us)
+        commit = us[us.index('void a_set_default(') : us.index('bool dry_run_requested()')]
+        self.assertLess(commit.index('!entry->usable'), commit.index('storage.write_state_slot('))
 
 
 if __name__ == '__main__':

@@ -31,10 +31,10 @@ void job_status(uint8_t seq, const uint8_t* payload, U32 length) {
     const U32 phase = s.commit_error ? U32(mj::Phase::failed) : committing ? U32(mj::Phase::finish) : U32(g.phase);
     const U32 values[11] = {s.id,
                             phase,
-                            caching    ? (s.stage == js_gc ? 0 : s.cache_index) :
+                            caching    ? s.cache_index :
                             committing ? s.stage - js_away + 1 :
                                          g.done,
-                            caching    ? (s.stage == js_gc ? 0 : s.job.builder.listed_count) :
+                            caching    ? s.job.builder.listed_count :
                             committing ? 3u :
                                          g.total,
                             s.commit_error ? s.commit_error :

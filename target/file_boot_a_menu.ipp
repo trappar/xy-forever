@@ -164,7 +164,7 @@ bool role0_menu_boot(U32& bytes, U32& crc) {
 #endif
         if (xyf::state_write::collect(a_collector, command)) {
             a_prepared = 0xffffffffu;
-            usb_service::a_set_default(storage, a_collector.hash);
+            usb_service::a_set_default(storage, lib, a_collector.hash);
             // Refresh even after a failed write: the newer slot may have reached
             // storage before a later verification/remount failure was reported.
             xyf::library::detail::reset(lib);

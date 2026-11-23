@@ -23,9 +23,7 @@ void job_finish(JobSlot& s);
 void commit_fail(JobSlot& s, U32 code, uint32_t error, const char* step) {
     if (code == P::s_link) s.link = 1;
     s.commit_error = s.link ? job_link_error :
-                              U32(s.stage == js_cache ? mj::Error::verify :
-                                  s.stage == js_gc    ? mj::Error::list :
-                                                        mj::Error::rename);
+                              U32(s.stage == js_cache || s.stage == js_order ? mj::Error::verify : mj::Error::rename);
     s.commit_code = error ? error : code;
     job_text(s, "commit ", step);
     if (s.stage == js_in && s.had_old && !s.link) {
@@ -35,10 +33,8 @@ void commit_fail(JobSlot& s, U32 code, uint32_t error, const char* step) {
     job_finish(s);
 }
 void commit_done(JobSlot& s) {
-    job_last_target = s.target[5] == 'a' ? 1u : 2u;
-    xyf::blob::collect_begin(s.garbage, reinterpret_cast<uint8_t*>(job_work_end - xyf::blob::index_bytes),
-                             xyf::blob::index_bytes);
-    s.stage = js_gc;
+    job_text(s, s.target);
+    job_finish(s); // job_end schedules the idle collector after the write window closes
 }
 // One commit step per loop pass (js_away, js_in, js_clean).
 void commit_step(JobSlot& s) {
@@ -178,22 +174,8 @@ void job_pump() {
             save_times.entry_files = s.job.out_count;
         } else if (p == mj::Phase::failed || p == mj::Phase::cancelled) job_finish(s);
         else job_say(s, false);
-    } else if (s.stage == js_gc) {
-        ContentIo io = {s.link};
-        const int collected = journal_present ? 1 : xyf::blob::collect_step(s.garbage, io);
-        s.link = io.link;
-        ++s.extra_steps;
-        if (collected < 0) {
-            if (s.garbage.fd >= 0) io.close(s.garbage.fd);
-            s.debris = 1;
-            return commit_fail(s, s.link ? P::s_link : P::s_storage, 0, "blob gc");
-        }
-        if (collected) {
-            job_text(s, s.target);
-            job_finish(s);
-        }
     } else if (s.stage == js_cache) {
-        if (s.cache_index == s.job.builder.listed_count) s.stage = js_away;
+        if (s.cache_index == s.job.builder.listed_count) s.stage = js_order;
         else {
             ContentIo io = {s.link};
             if (!s.cache_active) {
@@ -216,6 +198,18 @@ void job_pump() {
             }
             ++s.extra_steps;
         }
+    } else if (s.stage == js_order) {
+        char path[file_engine::max_path];
+        join(path, s.out, job_order_name);
+        uint8_t data[job_order_bytes];
+        P::put32(data, job_order_version);
+        P::put32(data + 4, s.build_order);
+        uint32_t written = 0, back = 0;
+        const U32 code = file_client::write_file(path, data, sizeof(data), xyf::crc::update(0, data, sizeof(data)),
+                                                 written, back, mounted);
+        ++s.extra_steps;
+        if (code != P::s_ok) return commit_fail(s, code, 0, "build order");
+        s.stage = js_away;
     } else if (s.stage == js_wipe) wipe_step(s);                         // a failed job's output
     else commit_step(s);                                                 // into the library
     const U32 pass = now() - start;

@@ -14,47 +14,25 @@ uint32_t presence() {
 }
 
 #if defined(XYF_USB_SET_DEFAULT)
-void a_set_default(cold_storage::Stock121ReadOnlySession& storage, uint32_t hash) {
-    // No library scan on the USB path (module budget): find the one firmware
-    // folder whose name hashes to hash and has an os.ldr, read the two state
-    // slots (and legacy state.txt), plan the next slot, write it.
+void a_set_default(cold_storage::Stock121ReadOnlySession& storage, const xyf::library::Library& library,
+                   uint32_t hash) {
     using namespace xyf;
     U32 status = state_write::status_not_mounted, seq = 0, written = 0;
     services::U32 step = 0;
     if (storage_server::ensure_mounted(storage) && storage.direct_ready() && !storage_server::held_files()) {
-        char id[store::max_id + 1];
-        for (U32 i = 0; i != sizeof(id); ++i) id[i] = 0;
-        U32 matches = 0;
-        const U32 dir = storage.direct_opendir("/yaffs2/xy-forever/firmware");
-        if (dir) {
-            for (U32 guard = 0; guard != 256; ++guard) {
-                const uint8_t* entry = storage.direct_readdir(dir);
-                if (!entry) break;
-                char name[store::max_id + 2];
-                U32 n = 0;
-                for (; n != sizeof(name) - 1 && entry[library::dirent_name + n]; ++n)
-                    name[n] = char(entry[library::dirent_name + n]);
-                name[n] = 0;
-                if (entry[library::dirent_type] == library::dirent_regular || !store::valid_id(name) ||
-                    state_write::id_hash(name) != hash)
-                    continue;
-                if (!matches++)
-                    for (U32 k = 0; k <= n; ++k) id[k] = name[k];
+        const library::Entry* entry = nullptr;
+        bool ambiguous = false;
+        for (U32 i = 0; i != library.count; ++i) {
+            const library::Entry& candidate = library.entries[i];
+            if (state_write::id_hash(candidate.id) != hash) continue;
+            if (entry) {
+                ambiguous = true;
+                break;
             }
-            storage.direct_closedir(dir);
+            entry = &candidate;
         }
-        char path[96];
-        bool present = false;
-        U32 at = 0;
-        const char* const parts[3] = {"/yaffs2/xy-forever/firmware/", id, "/os.ldr"};
-        for (U32 k = 0; k != 3; ++k)
-            for (const char* c = parts[k]; *c && at + 1 < sizeof(path); ++c) path[at++] = *c;
-        path[at] = 0;
-        if (matches == 1) {
-            const int fd = storage.direct_open(path);
-            present = fd >= 0 && storage.direct_close(fd) == 0;
-        }
-        if (!present) status = state_write::status_hash;
+        if (!entry || ambiguous) status = state_write::status_hash;
+        else if (!entry->usable) status = state_write::status_unusable;
         else {
             state::Choice choice;
             for (U32 i = 0; i != sizeof(choice); ++i) reinterpret_cast<char*>(&choice)[i] = 0;
@@ -68,7 +46,7 @@ void a_set_default(cold_storage::Stock121ReadOnlySession& storage, uint32_t hash
                     state::consider(choice, sources[k], reinterpret_cast<const char*>(text), length);
             }
             state_write::Plan& plan = *reinterpret_cast<state_write::Plan*>(state_write::a_plan);
-            if (!state_write::plan_default_id(choice, id, plan)) status = state_write::status_plan;
+            if (!state_write::plan_default_id(choice, entry->id, plan)) status = state_write::status_plan;
             else {
                 seq = plan.seq;
                 const cold_storage::Result w =

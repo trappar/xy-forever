@@ -37,7 +37,7 @@ struct Sweep {
     U32 removing, skip, calls;
     char keep[file_engine::max_path];
 };
-enum JobStage : U32 { js_sweep = 0, js_assemble, js_away, js_in, js_clean, js_wipe, js_cache, js_gc }; // js_wipe
+enum JobStage : U32 { js_sweep = 0, js_assemble, js_away, js_in, js_clean, js_wipe, js_cache, js_order }; // js_wipe
 struct JobSlot {
     mj::Job job;
     mj::Input input;
@@ -53,7 +53,7 @@ struct JobSlot {
     file_client::NameScan metadata_scan;
     // The commit and the sweep.
     char target[8], entry[file_engine::max_path], old[file_engine::max_path];
-    U32 stage, had_old, commit_error, commit_code, extra_steps, clean_calls;
+    U32 stage, had_old, commit_error, commit_code, extra_steps, clean_calls, build_order;
     xyf::blob::Collect garbage;
     xyf::blob::Copy cache;
     U32 cache_index, cache_active;
@@ -64,7 +64,6 @@ struct JobSlot {
 static_assert(sizeof(JobSlot) <= job_slot_bytes, "the job's state fits before its work region");
 volatile U32 job_state __attribute__((section(".data"))) = job_none;
 volatile U32 job_counter __attribute__((section(".data"))) = 0;
-volatile U32 job_last_target __attribute__((section(".data"))) = 0; // 1 mods-a, 2 mods-b (this boot)
 volatile U32 job_kind __attribute__((section(".data"))) =
     0; // 0 mods.apply, 1 content switch, 2 config, 3 adoption, 4 MTP session
 volatile U32 job_usb __attribute__((section(".data"))) = 0; // the job was started over USB
@@ -462,9 +461,9 @@ void boot_sweep_turn() {
         gc_defer_ms = now();
     }
 }
-// the mods id that is neither the default nor the boot-once entry; of two, the
-// absent one, else the one not written last this boot (B sees no file times), else mods-a. Reads the
-// state slots (as A's scan: a, b, legacy) and stats both folders; s_state when both ids are taken.
+// Slot order is published with the entry's directory rename. Zero means a legacy entry without a record.
+const char job_order_name[] = "/build-order.bin";
+const U32 job_order_version = 1, job_order_bytes = 8;
 const char* const job_ids_mods[2] = {"mods-a", "mods-b"};
 U32 job_choice(JobSlot& s, xyf::state::Choice& choice) { // the state slots, as A's scan
     namespace st = xyf::state;
@@ -517,6 +516,7 @@ U32 job_target(JobSlot& s) {
     if (const U32 code = saved_mod_slot(saved)) return code;
 #endif
     bool open[2], present[2];
+    U32 order[2] = {};
     for (U32 i = 0; i != 2; ++i) {
         open[i] = !same_text(job_ids_mods[i], choice.state.default_id) &&
                   !same_text(job_ids_mods[i], choice.state.once) && !same_text(job_ids_mods[i], saved);
@@ -529,14 +529,27 @@ U32 job_target(JobSlot& s) {
             return file_client::status(r.outcome);
         }
         present[i] = r.value == 0;
+        if (!present[i]) {
+            if (r.error != file_client::enoent) return file_client::change_status(r.error);
+            continue;
+        }
+        join(path, job_firmware, job_ids_mods[i], job_order_name);
+        uint8_t data[job_order_bytes];
+        uint32_t bytes = 0;
+        const U32 code = file_client::read_file(path, 0, false, data, sizeof(data), bytes, mounted);
+        if (code == P::s_not_found) continue;
+        if (code != P::s_ok) return code;
+        if (bytes != sizeof(data) || P::get32(data) != job_order_version) return P::s_unsupported;
+        order[i] = P::get32(data + 4);
     }
-    const int pick = open[0] && open[1] ? (!present[0]          ? 0 :
-                                           !present[1]          ? 1 :
-                                           job_last_target == 1 ? 1 :
-                                                                  0) :
-                     open[0]            ? 0 :
-                     open[1]            ? 1 :
-                                          -1;
+    // Compare serial numbers across wrap. A missing record sorts before any recorded build.
+    const bool b_newer = order[1] && (!order[0] || (order[1] - order[0] < 0x80000000u && order[1] != order[0]));
+    const U32 newest = b_newer ? order[1] : order[0];
+    s.build_order = newest == 0xffffffffu ? 1u : newest + 1;
+    int pick = -1;
+    if (open[0] && open[1]) {
+        pick = !present[0] ? 0 : !present[1] ? 1 : !b_newer && order[0] != order[1] ? 1 : 0;
+    } else if (open[0] || open[1]) pick = open[0] ? 0 : 1;
     if (pick < 0) return P::s_state;
     join(s.target, job_ids_mods[pick], "");
     join(s.entry, job_firmware, s.target);

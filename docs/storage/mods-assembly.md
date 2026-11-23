@@ -29,13 +29,16 @@ Part of the [XY Forever storage layout](../STORAGE.md).
   `os.ldr` last: an entry with an `os.ldr` is complete.
 - **Content retention**: before publication, every output content asset and catalog is copied through
   scratch, verified by SHA-256 and retained as `blobs/<sha256>`, even while factory content is active.
-  After publication, unreferenced blobs are collected under the same job exclusion
-  ([transactions](package-transactions.md)).
+  Unreferenced blobs are collected once the menu is idle after publication. A large blob store does not
+  hold the assembly job open ([transactions](package-transactions.md)).
 - **Into the library** (B after the job's last step, one request per menu-loop pass): the target is
-  `mods-a` or `mods-b`, never the default or the boot-once entry (both taken:
-  `mods.apply` answers `state`); of two, the absent one, else the one not written last this boot (B sees no
-  file times), else `mods-a`. Order: rename `firmware/<target>` (if there) to `tmp/job-<id>-old`, rename
-  `tmp/job-<id>` to `firmware/<target>`, remove the old tree; B's window close makes A rescan the library.
+  `mods-a` or `mods-b`, excluding the default, boot-once entry and the saved Open-XY slot. If both
+  are available, B picks an empty slot first, then the older build. A legacy entry without a build
+  order sorts before a recorded build, with `mods-a` as the tie-breaker. The device stages
+  `build-order.bin` beside the package files, with two little-endian u32 words (format `1`, then a
+  nonzero serial number). It becomes visible with the new entry and survives a reboot. Order: rename
+  `firmware/<target>` (if there) to `tmp/job-<id>-old`, rename `tmp/job-<id>` to `firmware/<target>`,
+  remove the old tree. B's window close makes A rescan the library.
   A cut or a failure leaves the old entry (a failed rename in renames it back), the new one, or the
   target missing; never a part entry in `firmware/`. Debris stays in `tmp/job-*`: when the USB service starts
   (once the library is ready; #3, `boot_sweep_turn`) and again before a job's first step, B removes `tmp/job-*`
