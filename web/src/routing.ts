@@ -1,5 +1,5 @@
-// The app's routes (TanStack Router): /connect (also /), /install/$stage, /device, /mods, /files, under Vite's base
-// (/ in development, /xy-forever/ for GitHub Pages), always with a trailing slash so that each is a directory index on
+// The app's routes (TanStack Router): /connect (also /), /install/$stage, /device, /mods, /files, always
+// with a trailing slash so that each is a directory index on
 // static hosting. The query (?sim=PORT among it) is kept across navigation. Components load lazily: vite.config.ts
 // reads the paths it emits from this router in Node (staticPaths).
 import {

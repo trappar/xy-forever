@@ -29,8 +29,7 @@ from a click.
 Each page has its own path (TanStack Router, `src/routing.ts`). Routes include `/connect` (also `/`),
 `/device`, `/mods`, `/files` and install stages such as `/install/boot`, `/install/transfer`, `/install/start`
 and `/install/stop`. The install stages are listed in `src/install/stages.ts`. The build emits an HTML index
-for each route so direct links and reloads work on static hosting. The routing base is `/` in local
-development and `/xy-forever/` for GitHub Pages.
+for each route so direct links and reloads work on static hosting at `/`.
 
 - **Connect**: Web Serial, or the simulator with `?sim=PORT`; a clear message in browsers without Web Serial.
 - **Install** (#178): installs XY Forever on a stock OP-XY (Open-XY's builder flow: te-boot over Web MIDI, the dev
@@ -81,7 +80,7 @@ and the e2e tests' simulator helpers come from its `./test/*` export.
 
 ## Release
 
-The pinned release image and the GitHub Pages deployment: [release](docs/release.md).
+The pinned release image and Cloudflare Pages deployment are described in [release](docs/release.md).
 
 ## Not built yet
 
