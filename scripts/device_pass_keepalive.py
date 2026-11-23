@@ -8,6 +8,8 @@ import sys
 import time
 from pathlib import Path
 
+from xy_forever import device_lock
+
 ROOT = Path(__file__).resolve().parents[1]
 EXIT_NEED = 3  # device_pass.EXIT_NEED
 KEEPALIVE_NEED = 'NEED: keepalive.sh pid %d still runs: kill it (its folder %s), then rerun'
@@ -15,7 +17,7 @@ SHELLS = ('sh', 'bash', 'zsh', 'dash', 'ksh')
 
 
 class Keepalive:
-    """scripts/keepalive.sh processes (they share the port with every other host command)."""
+    """Handoff to and from scripts/keepalive.sh after a device pass."""
 
     def running(self):
         try:
@@ -37,6 +39,9 @@ class Keepalive:
     def stop_running(self, wait=8.0):
         """Stops every keepalive.sh loop: its stop file, then (still running after wait s) SIGTERM to its status
         call and to it. One that outlives that still holds the port: its NEED line, then SystemExit(EXIT_NEED)."""
+        # A different session may be running its own foreground keepalive. Take
+        # access before looking for loops we can stop.
+        device_lock.hold(wait)
         stopped = []
         for pid, statedir in self.running():
             print(
@@ -63,16 +68,19 @@ class Keepalive:
         return stopped
 
     def start(self, folder):
-        log = open(folder / 'keepalive.log', 'ab')
-        proc = subprocess.Popen(
-            ['/bin/sh', str(ROOT / 'scripts/keepalive.sh'), str(folder)],
-            cwd=ROOT,
-            stdin=subprocess.DEVNULL,
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        log.close()
+        """Start a standalone keepalive after the final port closes. A lease owns its own handoff."""
+        if os.environ.get(device_lock.SESSION_ENV):
+            return None
+        device_lock.release()
+        with open(folder / 'keepalive.log', 'ab') as log:
+            proc = subprocess.Popen(
+                ['/bin/sh', str(ROOT / 'scripts/keepalive.sh'), str(folder)],
+                cwd=ROOT,
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
         (folder / 'keepalive.pid').write_text('%d\n' % proc.pid)
         return proc.pid
 

@@ -2204,6 +2204,8 @@ class Pass:
 
     def step_keepalive(self):
         pid = self.keepalive.start(self.folder)
+        if pid is None:
+            raise StepSkip('the enclosing device lease manages keepalive')
         self.note('keepalive.sh pid %d' % pid)
         self.state['keepalive_pid'] = pid
         reply = self.folder / 'keepalive.json'

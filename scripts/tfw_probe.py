@@ -199,6 +199,8 @@ class Probe:
         if self.opts.sim:
             return 'simulator: no keepalive'
         pid = self.keepalive.start(self.folder)
+        if pid is None:
+            return 'the enclosing device lease manages keepalive'
         return 'keepalive.sh pid %d (stop: touch %s/stop-keepalive)' % (pid, self.folder)
 
     def run(self, stage, name, function):

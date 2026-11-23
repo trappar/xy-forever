@@ -52,7 +52,7 @@ tree (an index plus leaves under 8 KB each), never squeezed.
 
 ## The device
 
-- **One agent talks to the device at a time.** Until the device lease (#269) lands, that is the main agent.
+- **One agent talks to the device at a time.** Any agent can take the [session lease](operating/two-agents.md#device-lease).
 - **`device:risky` items run only with the developer present.**
 
 Everything else about device work: [SAFETY.md](SAFETY.md) (binding) and [OPERATING.md](OPERATING.md).

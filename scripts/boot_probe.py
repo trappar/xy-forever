@@ -171,7 +171,9 @@ def main(argv=None):
     finally:
         dev.t.close()
         if not args.sim and result is not None and not result.get('link_lost'):
-            print('keepalive pid', keep.start(folder))
+            pid = keep.start(folder)
+            if pid is not None:
+                print('keepalive pid', pid)
 
 
 if __name__ == '__main__':

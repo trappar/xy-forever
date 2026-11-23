@@ -210,7 +210,10 @@ def main(argv=None, sessions=None):
         rows.append(dict(case=case['name'], result=result, seconds=round(seconds, 2), detail=detail, file=name))
     if real:
         pid = keepalive.start(folder)
-        print('keepalive.sh pid %d polls the menu; stop it: touch %s/stop-keepalive' % (pid, folder), file=sys.stderr)
+        if pid is not None:
+            print(
+                'keepalive.sh pid %d polls the menu; stop it: touch %s/stop-keepalive' % (pid, folder), file=sys.stderr
+            )
     code = EXIT_FAIL if any(r['result'] == 'FAIL' for r in rows) else EXIT_PASS
     summary = dict(
         format='xyf-conformance-run/1',
