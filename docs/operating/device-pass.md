@@ -24,7 +24,8 @@ The session stage always runs: hold on. Default stages: read, protocol, boot (dr
   exits 3 with nothing changed. To start it before asking for the power-on, give
   it `--wait 120`.
 - **Stops at the first FAIL** (later steps SKIP), but the end steps always run: crash count cleared,
-  hold off, then `scripts/keepalive.sh` on the session folder. It ends with hold off and never boots the OS.
+  hold off, then `scripts/keepalive.sh` on the session folder for a standalone pass. Inside a
+  [device lease](two-agents.md#device-lease), the lease owner handles keepalive. The pass ends with hold off.
 - **Evidence:** `../private/xy-forever/sessions/<date>-device-pass-<n>/` (one file
   per step, `summary.json`); it prints a PASS/FAIL/SKIP table and the folder.
   Exit 0 only if nothing failed.

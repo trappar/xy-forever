@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import select
 import shutil
 import signal
 import subprocess
@@ -133,6 +134,32 @@ HOLD = (
     'device_lock.hold(float(sys.argv[3]), sys.argv[1], sys.argv[2]); print("held", flush=True); '
     'time.sleep(float(sys.argv[4]))'
 )
+BETWEEN_COMMANDS = """
+import subprocess, sys, time
+from pathlib import Path
+release, *command = sys.argv[1:]
+subprocess.run(command, stdout=subprocess.DEVNULL, check=True)
+print('between commands', flush=True)
+while not Path(release).exists():
+    time.sleep(0.02)
+subprocess.run(command, check=True)
+"""
+PARALLEL_COMMANDS = r"""
+import subprocess, sys
+*command, seconds = sys.argv[1:]
+with subprocess.Popen(command + [seconds], stdout=subprocess.PIPE, text=True) as first:
+    try:
+        assert first.stdout.readline() == 'held\n'
+        second = subprocess.run(command + ['0'], capture_output=True, text=True)
+        assert second.returncode == 1, second
+        assert 'pid %d' % first.pid in second.stderr, second
+    finally:
+        first.terminate()
+detached = subprocess.run(command + ['0'], capture_output=True, text=True, start_new_session=True)
+assert detached.returncode == 1, detached
+assert 'device session ended' in detached.stderr, detached
+subprocess.run(command + ['0'], check=True)
+"""
 
 
 @pytest.mark.gate
@@ -159,6 +186,71 @@ class DeviceLock(unittest.TestCase):
             [sys.executable, '-c', HOLD, str(self.lock), str(self.root), str(wait), '0'], capture_output=True, text=True
         )
 
+    def session(self, *command, timeout=10, wait=0):
+        return [
+            sys.executable,
+            '-m',
+            'xy_forever.device_session',
+            '--name',
+            'host qualification',
+            '--wait',
+            str(wait),
+            '--timeout',
+            str(timeout),
+            '--',
+            *command,
+        ]
+
+    def start_session(self, *command, timeout=10, ready='held'):
+        proc = subprocess.Popen(
+            self.session(*command, timeout=timeout),
+            env=dict(CLEAN_ENV, XYF_PRIVATE=str(self.root)),
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        self.addCleanup(proc.stdout.close)
+        self.addCleanup(lambda: (proc.poll() is None and proc.kill()) or proc.wait())
+        self.assertTrue(select.select([proc.stdout], [], [], 5)[0], 'session did not start')
+        self.assertEqual(proc.stdout.readline().strip(), ready)
+        return proc
+
+    def test_lease_excludes_other_tools_and_sessions_between_commands(self):
+        release = self.root / 'resume'
+        cmd = [sys.executable, '-c', HOLD, str(self.lock), str(self.root), '0', '0']
+        proc = self.start_session(sys.executable, '-c', BETWEEN_COMMANDS, str(release), *cmd, ready='between commands')
+        got = self.second()
+        self.assertEqual(got.returncode, 1)
+        self.assertIn('pid %d (lease: host qualification) since ' % proc.pid, got.stderr)
+        competing = subprocess.run(
+            self.session(*cmd, wait=0.1),
+            env=dict(CLEAN_ENV, XYF_PRIVATE=str(self.root)),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(competing.returncode, 1)
+        self.assertIn('waiting up to 0.1 s', competing.stderr)
+        release.touch()
+        self.assertEqual((proc.wait(timeout=5), proc.stdout.read().strip()), (0, 'held'))
+        self.assertEqual(self.second().returncode, 0)
+
+    def test_only_one_command_at_a_time_under_the_lease(self):
+        cmd = [sys.executable, '-c', HOLD, str(self.lock), str(self.root), '0', '30']
+        proc = self.start_session(sys.executable, '-c', PARALLEL_COMMANDS, *cmd)
+        self.assertEqual(proc.wait(timeout=5), 0)
+
+    def test_lease_expiry_ends_the_command_and_releases_access(self):
+        cmd = [sys.executable, '-c', HOLD, str(self.lock), str(self.root), '0', '30']
+        proc = self.start_session(*cmd, timeout=1)
+        self.assertEqual(proc.wait(timeout=6), 124)
+        self.assertEqual(self.second().returncode, 0)
+
+    def test_killing_the_lease_owner_ends_its_in_flight_command(self):
+        cmd = [sys.executable, '-c', HOLD, str(self.lock), str(self.root), '0', '30']
+        proc = self.start_session(*cmd)
+        proc.kill()
+        proc.wait(timeout=5)
+        self.assertEqual(self.second(wait=3).returncode, 0)
+
     def test_a_second_process_is_told_the_device_is_busy(self):
         proc = self.holder()
         got = self.second()
@@ -180,7 +272,7 @@ class DeviceLock(unittest.TestCase):
             self.assertEqual(device_lock.hold(path=self.lock, root=self.root), str(self.lock))
             self.assertEqual(device_lock.hold(path=self.lock, root=self.root), str(self.lock))
             self.assertIn('pid %d' % os.getpid(), self.lock.read_text())
-            device_lock._held[str(self.lock)].close()
+            device_lock.release(self.lock)
 
     def test_no_lock_without_a_private_folder_or_in_a_test_run(self):
         self.assertIsNone(device_lock.hold(path=self.lock, root=self.root / 'absent'))

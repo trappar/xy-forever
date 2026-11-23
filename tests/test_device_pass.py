@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import struct
 import tempfile
 import unittest
@@ -15,7 +16,9 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
+from scripts import device_pass_keepalive
 from scripts.device_pass_keepalive import keepalive_dir
+from xy_forever import device_lock
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('device_pass', ROOT / 'scripts/device_pass.py')
@@ -1172,6 +1175,42 @@ class SilentExitTest(unittest.TestCase):
                 [],
             ):
                 self.assertIsNone(keepalive_dir(args), args)
+
+    def test_keepalive_starts_after_releasing_the_pass_lock(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.dict(os.environ, {device_lock.SESSION_ENV: ''}),
+            patch.object(device_lock, 'release') as unlock,
+            patch.object(device_pass_keepalive.subprocess, 'Popen') as spawn,
+        ):
+
+            def start(*args, **kwargs):
+                unlock.assert_called_once_with()
+                return spawn.return_value
+
+            spawn.side_effect = start
+            spawn.return_value.pid = 123
+            self.assertEqual(dp.Keepalive().start(Path(tmp)), 123)
+            self.assertEqual((Path(tmp) / 'keepalive.pid').read_text(), '123\n')
+
+    def test_a_lease_skips_detached_keepalive(self):
+        with (
+            patch.dict(os.environ, {device_lock.SESSION_ENV: 'test-session'}),
+            patch.object(device_lock, 'release') as unlock,
+            patch.object(device_pass_keepalive.subprocess, 'Popen') as spawn,
+        ):
+            self.assertIsNone(dp.Keepalive().start(None))
+            unlock.assert_not_called()
+            spawn.assert_not_called()
+
+    def test_keepalive_stop_needs_access_to_the_device(self):
+        with (
+            patch.object(device_lock, 'hold', side_effect=device_lock.DeviceBusy('device busy')),
+            patch.object(dp.Keepalive, 'running') as running,
+            self.assertRaisesRegex(device_lock.DeviceBusy, 'device busy'),
+        ):
+            dp.Keepalive().stop_running()
+        running.assert_not_called()
 
     def test_an_error_after_the_folder_is_written_there(self):
         with (
