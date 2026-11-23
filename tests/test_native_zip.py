@@ -147,6 +147,31 @@ class NativeZipTests(unittest.TestCase):
                 with self.subTest(size=len(data), level=level, strategy=strategy):
                     self.expect_raw(raw(data, level=level, strategy=strategy), data)
 
+    def test_long_codes_and_far_distances_against_zlib(self):
+        # #279: codes past the root tables' bits (second tables): rare bytes get long literal codes, rare distances
+        # long distance codes; with expected sizes that end the member inside a match or a literal run.
+        rng = random.Random(279)
+        skewed = bytearray()
+        for _ in range(60000):
+            k = 0
+            while rng.random() < 0.55 and k < 255:
+                k += 1
+            skewed.append(k)
+        spread = bytearray(rng.randrange(256) for _ in range(2000))
+        while len(spread) < 90000:
+            back = min(len(spread), int(rng.expovariate(1 / rng.choice((4, 300, 9000, 30000)))) + 1)
+            for _ in range(rng.randrange(3, 259)):
+                spread.append(spread[-back])
+            spread.append(rng.randrange(256))
+        for data in (bytes(skewed), bytes(spread), bytes(skewed) + bytes(spread)):
+            for level in (1, 6, 9):
+                with self.subTest(size=len(data), level=level):
+                    self.expect_raw(raw(data, level=level), data)
+            compressed = raw(data)
+            for cut in (1, 2, 257, 258, 4097):
+                with self.subTest(size=len(data), short=cut):
+                    self.expect_raw(compressed, data[:-cut], valid=False)
+
     def test_maximum_history_distance_and_overlapping_matches(self):
         seed = bytes((i * 37 + i // 256) % 256 for i in range(32768))
         stored = b'\x00' + struct.pack('<HH', len(seed), 65535 ^ len(seed)) + seed
@@ -386,9 +411,14 @@ class NativeZipTests(unittest.TestCase):
         rng = random.Random(1951)
         original = zip_bytes([('os.ldr', b'abc' * 3000)])
         compressed = raw(b'abc' * 3000)
+        varied = bytes(rng.randrange(1 + i % 200) for i in range(20000))  # #279: long codes, many distances
+        varied_compressed = raw(varied)
         runs = []
-        for iteration in range(100):
-            if iteration & 1:
+        for iteration in range(150):
+            if iteration % 3 == 2:
+                data = bytearray(varied_compressed)
+                command, args = 'raw', (len(varied),)
+            elif iteration & 1:
                 data = bytearray(original)
                 command, args = 'extract', ('os.ldr',)
             else:

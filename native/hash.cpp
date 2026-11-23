@@ -19,6 +19,13 @@ typedef U32 __attribute__((may_alias)) AliasU32;
 U32 swap32(U32 w) { return w >> 24 | (w >> 8 & 0xff00u) | (w << 8 & 0xff0000u) | w << 24; }
 U32 sigma0(U32 x) { return rotate(x, 7) ^ rotate(x, 18) ^ (x >> 3); }
 U32 sigma1(U32 x) { return rotate(x, 17) ^ rotate(x, 19) ^ (x >> 10); }
+// #279: one round. Eight in a row, each with the state's names moved along by one, leave no state to move between
+// rounds: d and h are the two words a round changes.
+__attribute__((always_inline)) inline void sha_round(U32 a, U32 b, U32 c, U32& d, U32 e, U32 f, U32 g, U32& h, U32 kw) {
+    const U32 x = h + (rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25)) + (g ^ (e & (f ^ g))) + kw;
+    d += x;
+    h = x + (rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22)) + ((a & b) | (c & (a | b)));
+}
 void put32(Byte* p, U32 value) {
     p[0] = Byte(value >> 24);
     p[1] = Byte(value >> 16);
@@ -57,31 +64,25 @@ bool Sha256::update(const Byte* data, U32 count) {
     return true;
 }
 void Sha256::transform(const Byte* block) {
-    U32 words[16];                                 // the message schedule, 16 words in a ring
+    U32 w[64];                                     // #279: the whole message schedule first, then the rounds
     if ((reinterpret_cast<unsigned long>(block) & 3u) == 0) {
         const AliasU32* in = reinterpret_cast<const AliasU32*>(block);
-        for (U32 i = 0; i < 16; ++i) words[i] = swap32(in[i]);
+        for (U32 i = 0; i < 16; ++i) w[i] = swap32(in[i]);
     } else {
-        for (U32 i = 0; i < 16; ++i) words[i] = big32(block + 4 * i);
+        for (U32 i = 0; i < 16; ++i) w[i] = big32(block + 4 * i);
     }
+    for (U32 i = 16; i < 64; ++i) w[i] = w[i - 16] + sigma0(w[i - 15]) + w[i - 7] + sigma1(w[i - 2]);
     U32 a = state_[0], b = state_[1], c = state_[2], d = state_[3], e = state_[4], f = state_[5], g = state_[6],
         h = state_[7];
-    for (U32 i = 0; i < 64; ++i) {
-        U32 w = words[i & 15];
-        if (i >= 16) {
-            w += sigma0(words[(i - 15) & 15]) + words[(i - 7) & 15] + sigma1(words[(i - 2) & 15]);
-            words[i & 15] = w;
-        }
-        const U32 x = h + (rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25)) + ((e & f) ^ (~e & g)) + constants[i] + w;
-        const U32 y = (rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
-        h = g;
-        g = f;
-        f = e;
-        e = d + x;
-        d = c;
-        c = b;
-        b = a;
-        a = x + y;
+    for (U32 i = 0; i < 64; i += 8) {
+        sha_round(a, b, c, d, e, f, g, h, constants[i] + w[i]);
+        sha_round(h, a, b, c, d, e, f, g, constants[i + 1] + w[i + 1]);
+        sha_round(g, h, a, b, c, d, e, f, constants[i + 2] + w[i + 2]);
+        sha_round(f, g, h, a, b, c, d, e, constants[i + 3] + w[i + 3]);
+        sha_round(e, f, g, h, a, b, c, d, constants[i + 4] + w[i + 4]);
+        sha_round(d, e, f, g, h, a, b, c, constants[i + 5] + w[i + 5]);
+        sha_round(c, d, e, f, g, h, a, b, constants[i + 6] + w[i + 6]);
+        sha_round(b, c, d, e, f, g, h, a, constants[i + 7] + w[i + 7]);
     }
     state_[0] += a;
     state_[1] += b;

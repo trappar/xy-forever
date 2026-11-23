@@ -39,12 +39,14 @@ enum class Status {
 struct Extraction {
     U32 produced, crc32, consumed;
 };
-// fast (#279): the codes of up to fast_bits bits, indexed by the next fast_bits input bits (deflate's bit order),
-// each entry symbol << 4 | length; 0 for a longer or unused code, decoded bit by bit from the canonical tables.
-static const U32 fast_bits = 9;
+// table (#279): every code in one or two look-ups. The next root input bits (deflate's bit order) index the root
+// table. An entry is symbol << 4 | length, or for a longer code table_link | start << 3 | bits: a second table at
+// start, indexed by the bits input bits after those. 0: no code there (an unused code, or no room left for its
+// second table), decoded bit by bit from the canonical tables, as is a code the input ends inside.
+static const U32 table_entries = 1536, table_link = 0x8000u;
 struct Huffman {
-    U32 count[16], first[16], offset[16], symbols[288];
-    unsigned short fast[1u << fast_bits];
+    U32 count[16], first[16], offset[16], root;
+    unsigned short symbols[288], table[table_entries];
 };
 // Caller owns this workspace. It must not overlap the Entry table, source
 // reader storage or sink storage and cannot be shared by concurrent calls.

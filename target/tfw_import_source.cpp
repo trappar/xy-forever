@@ -183,7 +183,8 @@ uint32_t Source::close(bool reopen) {
 
 // #279: one request reads a half (stream_max, two of A's 0x1000-byte bodies) into the stream buffer, left out, so A
 // reads the next bytes while B decrypts, inflates and hashes these. Sequential reads ask for the next half as soon
-// as they start on one; a jump (the archive's directory, a header) is read on its own, as before.
+// as they start on one (also the first half after a jump); a jump (the archive's directory, a header) is read on its
+// own, as before.
 const uint32_t half_bytes = file_client::stream_max;
 static_assert(2 * half_bytes <= file_client::stream_capacity && half_bytes % 512 == 0, "two halves");
 
@@ -233,6 +234,8 @@ bool Source::load(uint32_t offset) {
 
 bool Source::load_from(uint32_t offset) {
     const bool next = ahead_bytes_ && offset >= ahead_at_ && offset - ahead_at_ < ahead_bytes_;
+    // Onward: this half follows the cached one, read ahead or (after a jump, when nothing was) read now.
+    const bool onward = next || (cached_bytes_ && offset - (cached_at_ + cached_bytes_) < half_bytes);
     if (!next) {                                                        // a jump: the half it is in, read now
         if (!finish_ahead()) return false;
         const uint32_t at = offset & ~511u;
@@ -250,7 +253,7 @@ bool Source::load_from(uint32_t offset) {
     ahead_bytes_ = 0;
     ahead_ready_ = false;
     const uint32_t end = cached_at_ + cached_bytes_;                    // the next half, while B works on this one
-    if (next && end < size_) ask(end, size_ - end < half_bytes ? size_ - end : half_bytes);
+    if (onward && end < size_) ask(end, size_ - end < half_bytes ? size_ - end : half_bytes);
     error_ = 0;                                                         // a failed read-ahead is asked again
     return true;
 }

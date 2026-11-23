@@ -7,6 +7,9 @@
 
 namespace xyf_core { namespace zip {
 namespace {
+// #279: the root tables' bits (Huffman::table): the longest code is 15 bits, so a second table needs at most
+// 15 - root bits, which fit an entry's three (the code-length code's longest is 7).
+const U32 literal_root = 10, distance_root = 8, code_root = 7;
 struct Bits {
     const Reader& reader;
     InflateWorkspace& workspace;
@@ -16,25 +19,35 @@ struct Bits {
     Bits(const Reader& r, InflateWorkspace& w, U32 offset, U32 length, Work* service)
         : reader(r), workspace(w), work(service), start(offset), size(length), consumed(0), buffered(0), cursor(0),
           value(0), count(0), status(Status::ok) {}
+    // #279: the input buffer's unread bytes moved to its start, then filled behind them from the reader, to a 16-byte
+    // boundary of the input where it can (an AES reader then decrypts no block twice); false with status set.
+    bool refill() {
+        if (!checkpoint(work)) {
+            status = Status::cancelled;
+            return false;
+        }
+        const U32 kept = buffered - cursor, at = start + consumed + kept;
+        for (U32 i = 0; i != kept; ++i) workspace.input[i] = workspace.input[cursor + i];
+        U32 more = size - consumed - kept;
+        if (more > sizeof(workspace.input) - kept) {
+            more = sizeof(workspace.input) - kept;
+            if (more > ((at + more) & 15u)) more -= (at + more) & 15u;
+        }
+        cursor = 0;
+        buffered = kept + more;
+        if (more && !reader.read(reader.context, at, workspace.input + kept, more)) {
+            status = cancelled(work) ? Status::cancelled : Status::io;
+            return false;
+        }
+        return true;
+    }
     // One more input byte into value (count < 25), refilling the input buffer; false with status set.
     bool load() {
         if (consumed == size) {
             status = Status::truncated;
             return false;
         }
-        if (cursor == buffered) {
-            if (!checkpoint(work)) {
-                status = Status::cancelled;
-                return false;
-            }
-            buffered = size - consumed;
-            if (buffered > sizeof(workspace.input)) buffered = sizeof(workspace.input);
-            if (!reader.read(reader.context, start + consumed, workspace.input, buffered)) {
-                status = cancelled(work) ? Status::cancelled : Status::io;
-                return false;
-            }
-            cursor = 0;
-        }
+        if (cursor == buffered && !refill()) return false;
         value |= static_cast<U32>(workspace.input[cursor++]) << count;
         ++consumed;
         count += 8;
@@ -62,7 +75,57 @@ struct Bits {
     }
 };
 
-bool build(Huffman& tree, const Byte* lengths, U32 symbols, bool allow_empty, bool require_complete) {
+// A code's bits arrive first bit first: its table index is the code reversed.
+U32 reversed(U32 code, U32 length) {
+    U32 result = 0;
+    for (U32 bit = 0; bit != length; ++bit) result |= ((code >> bit) & 1u) << (length - 1 - bit);
+    return result;
+}
+
+// #279: the look-up tables (Huffman::table). root: the root table's bits; codes up to that long take one look-up,
+// longer ones a second (a table per root entry they share, as large as the longest of them needs).
+void tables(Huffman& tree, U32 root) {
+    const U32 root_size = 1u << root, mark = 0x4000u;     // mark | bits: the second table's size, while counting
+    tree.root = root;
+    for (U32 i = 0; i != root_size; ++i) tree.table[i] = 0;
+    for (U32 length = 1; length != 16; ++length)
+        for (U32 k = 0; k != tree.count[length]; ++k) {
+            const U32 index = reversed(tree.first[length] + k, length);
+            const U32 symbol = tree.symbols[tree.offset[length] + k];
+            if (length <= root) {
+                for (U32 at = index; at < root_size; at += 1u << length)
+                    tree.table[at] = static_cast<unsigned short>(symbol << 4 | length);
+            } else {
+                unsigned short& entry = tree.table[index & (root_size - 1u)];
+                if (!entry || ((entry & mark) && (entry & 7u) < length - root))
+                    entry = static_cast<unsigned short>(mark | (length - root));
+            }
+        }
+    U32 next = root_size;
+    for (U32 i = 0; i != root_size; ++i) {
+        const U32 entry = tree.table[i];
+        if (!(entry & mark)) continue;
+        const U32 size = 1u << (entry & 7u);
+        if (size > table_entries - next) {                 // no room: the careful decoder takes these codes
+            tree.table[i] = 0;
+            continue;
+        }
+        tree.table[i] = static_cast<unsigned short>(table_link | next << 3 | (entry & 7u));
+        for (U32 at = 0; at != size; ++at) tree.table[next + at] = 0;
+        next += size;
+    }
+    for (U32 length = root + 1; length < 16; ++length)
+        for (U32 k = 0; k != tree.count[length]; ++k) {
+            const U32 index = reversed(tree.first[length] + k, length);
+            const U32 entry = tree.table[index & (root_size - 1u)];
+            if (!(entry & table_link)) continue;
+            const U32 symbol = tree.symbols[tree.offset[length] + k], second = entry >> 3 & 0xfffu;
+            for (U32 at = index >> root; at < (1u << (entry & 7u)); at += 1u << (length - root))
+                tree.table[second + at] = static_cast<unsigned short>(symbol << 4 | length);
+        }
+}
+
+bool build(Huffman& tree, const Byte* lengths, U32 symbols, bool allow_empty, bool require_complete, U32 root) {
     for (U32 i = 0; i != 16; ++i) {
         tree.count[i] = 0;
         tree.first[i] = 0;
@@ -77,7 +140,11 @@ bool build(Huffman& tree, const Byte* lengths, U32 symbols, bool allow_empty, bo
             if (lengths[i] > maximum) maximum = lengths[i];
         }
     }
-    if (!used) return allow_empty;
+    if (!used) {
+        tree.root = root;
+        for (U32 i = 0; i != (1u << root); ++i) tree.table[i] = 0;
+        return allow_empty;
+    }
     int remaining = 1;
     U32 offset = 0;
     for (U32 length = 1; length != 16; ++length) {
@@ -91,31 +158,32 @@ bool build(Huffman& tree, const Byte* lengths, U32 symbols, bool allow_empty, bo
     U32 next[16];
     for (U32 i = 0; i != 16; ++i) next[i] = tree.offset[i];
     for (U32 i = 0; i != symbols; ++i)
-        if (lengths[i]) tree.symbols[next[lengths[i]]++] = i;
-    // #279: the short codes' table. A code's bits arrive first bit first, so the index is the code reversed.
-    for (U32 i = 0; i != (1u << fast_bits); ++i) tree.fast[i] = 0;
-    for (U32 length = 1; length <= fast_bits; ++length)
-        for (U32 k = 0; k != tree.count[length]; ++k) {
-            const U32 code = tree.first[length] + k;
-            U32 reversed = 0;
-            for (U32 bit = 0; bit != length; ++bit) reversed |= ((code >> bit) & 1u) << (length - 1 - bit);
-            const unsigned short entry =
-                static_cast<unsigned short>(tree.symbols[tree.offset[length] + k] << 4 | length);
-            for (U32 index = reversed; index < (1u << fast_bits); index += 1u << length) tree.fast[index] = entry;
-        }
+        if (lengths[i]) tree.symbols[next[lengths[i]]++] = static_cast<unsigned short>(i);
+    tables(tree, root);
     return true;
 }
 
+// The table entry for the next input bits, or 0 (also when fewer bits are buffered than the look-up needs).
+U32 look_up(const Huffman& tree, U32 value, U32 count) {
+    if (count < tree.root) return 0;
+    U32 entry = tree.table[value & ((1u << tree.root) - 1u)];
+    if (entry & table_link) {
+        const U32 bits = entry & 7u;
+        entry = count < tree.root + bits ?
+                    0 :
+                    tree.table[(entry >> 3 & 0xfffu) + (value >> tree.root & ((1u << bits) - 1u))];
+    }
+    return entry;
+}
+
 bool symbol(Bits& bits, const Huffman& tree, U32& result) {
-    if (!bits.fill(fast_bits)) return false;
-    if (bits.count >= fast_bits) {                         // #279: a short code in one look-up
-        const U32 entry = tree.fast[bits.value & ((1u << fast_bits) - 1u)];
-        if (entry) {
-            bits.value >>= entry & 15u;
-            bits.count -= entry & 15u;
-            result = entry >> 4;
-            return true;
-        }
+    if (!bits.fill(15)) return false;
+    const U32 entry = look_up(tree, bits.value, bits.count);
+    if (entry) {                                           // #279: a code in one or two look-ups
+        bits.value >>= entry & 15u;
+        bits.count -= entry & 15u;
+        result = entry >> 4;
+        return true;
     }
     U32 code = 0;
     for (U32 length = 1; length != 16; ++length) {
@@ -172,9 +240,9 @@ struct Output {
 bool fixed(InflateWorkspace& workspace) {
     for (U32 i = 0; i != 288; ++i)
         workspace.lengths[i] = static_cast<Byte>(i < 144 ? 8 : i < 256 ? 9 : i < 280 ? 7 : 8);
-    if (!build(workspace.literal, workspace.lengths, 288, false, true)) return false;
+    if (!build(workspace.literal, workspace.lengths, 288, false, true, literal_root)) return false;
     for (U32 i = 0; i != 32; ++i) workspace.lengths[i] = 5;
-    return build(workspace.distance, workspace.lengths, 32, false, true);
+    return build(workspace.distance, workspace.lengths, 32, false, true, distance_root);
 }
 
 bool dynamic(Bits& bits, InflateWorkspace& workspace) {
@@ -194,7 +262,7 @@ bool dynamic(Bits& bits, InflateWorkspace& workspace) {
         if (!bits.take(3, length)) return false;
         workspace.lengths[order[i]] = static_cast<Byte>(length);
     }
-    if (!build(workspace.code, workspace.lengths, 19, false, true)) {
+    if (!build(workspace.code, workspace.lengths, 19, false, true, code_root)) {
         bits.status = Status::deflate;
         return false;
     }
@@ -230,20 +298,214 @@ bool dynamic(Bits& bits, InflateWorkspace& workspace) {
             while (count--) workspace.lengths[index++] = static_cast<Byte>(value);
         }
     }
-    if (!workspace.lengths[256] || !build(workspace.literal, workspace.lengths, literals, false, false) ||
-        !build(workspace.distance, workspace.lengths + literals, distances, true, false)) {
+    if (!workspace.lengths[256] || !build(workspace.literal, workspace.lengths, literals, false, false, literal_root) ||
+        !build(workspace.distance, workspace.lengths + literals, distances, true, false, distance_root)) {
         bits.status = Status::deflate;
         return false;
     }
     return true;
 }
 
-bool compressed(Bits& bits, Output& output, InflateWorkspace& workspace) {
-    static const unsigned short length_base[29] = {3,  4,  5,  6,  7,  8,  9,  10, 11,  13,  15,  17,  19,  23, 27,
-                                                   31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
-    static const Byte length_extra[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2,
-                                          2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+const unsigned short length_base[29] = {3,  4,  5,  6,  7,  8,  9,  10, 11,  13,  15,  17,  19,  23, 27,
+                                        31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258};
+const Byte length_extra[29] = {0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0};
+// The first four distance codes each encode one distance. Later pairs encode two equally sized ranges, doubling on
+// every pair: a code's extra bits, and the distance before them (computed: a table of them has the bytes of the
+// stock bootloader's own, which the build refuses, #178).
+const Byte distance_extra[30] = {0, 0, 0, 0, 1, 1, 2, 2,  3,  3,  4,  4,  5,  5,  6,
+                                 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13};
+U32 distance_base(U32 code, U32 shift) { return code < 4 ? code + 1 : ((2 + (code & 1u)) << shift) + 1; }
+
+// A match's distance, then its bytes, the careful way.
+bool match(Bits& bits, Output& output, const InflateWorkspace& workspace, U32 length) {
+    U32 code, extra;
+    if (!symbol(bits, workspace.distance, code)) return false;
+    if (code > 29) {
+        bits.status = Status::deflate;
+        return false;
+    }
+    if (!bits.take(distance_extra[code], extra)) return false;
+    const U32 distance = distance_base(code, distance_extra[code]) + extra;
+    if (distance > output.produced || length > output.expected - output.produced) {
+        bits.status = Status::bounds;
+        return false;
+    }
+    for (U32 i = 0; i != length; ++i) {
+        Byte value = workspace.window[(output.produced - distance) & 32767u];
+        if (!output.byte(value)) return false;
+    }
+    return true;
+}
+
+// #279: whole symbols with no call per bit or per byte, while the input buffer holds a symbol's worst case
+// (fast_input bytes) and the window has room before its flush. Run's state, in and out of run().
+const U32 fast_input = 12;
+struct Run {
+    U32 value, count, history, length, distance;           // history: the bytes produced before window[0]
+    const Byte *in, *in_last;
+    Byte *out, *end;                                       // end: the window's last byte, or the member's end
+    Byte* window;
+    const unsigned short *literals, *distances;
+    enum Next { input_low, block_end, careful, careful_literal, careful_match, careful_copy, deflate, bounds } next;
+};
+// What it decodes, and its checks, are the careful loop's in compressed(); a symbol it cannot finish (a code the
+// tables leave out, the window's or the member's end) it hands back half done (next). Each refill adds two bytes
+// when fewer than 16 bits are left: a literal takes at most one, a match four (fast_input covers them).
+__attribute__((always_inline)) inline void refill16(U32& value, U32& count, const Byte*& in) {
+    value |= (static_cast<U32>(in[0]) | static_cast<U32>(in[1]) << 8) << count;
+    in += 2;
+    count += 16;
+}
+// A match's bytes, from distance back (no further back than the window's start).
+__attribute__((always_inline)) inline Byte* copy(Byte* out, const Byte* from, U32 length) {
+    for (U32 i = 0; i != length; ++i) out[i] = from[i];
+    return out + length;
+}
+__attribute__((noinline)) void run(Run& r) {
+    U32 value = r.value, count = r.count;
+    const Byte* in = r.in;
+    const Byte* const in_last = r.in_last;
+    Byte* out = r.out;
+    Byte* const end = r.end;
+    const unsigned short* const literals = r.literals;
+    Run::Next next = Run::input_low;
+    while (in <= in_last) {
+        if (count < 16) refill16(value, count, in);
+        U32 entry = literals[value & ((1u << literal_root) - 1u)];
+        if (entry >= table_link)
+            entry = literals[(entry >> 3 & 0xfffu) + (value >> literal_root & ((1u << (entry & 7u)) - 1u))];
+        if (!entry) {
+            next = Run::careful;
+            break;
+        }
+        value >>= entry & 15u;
+        count -= entry & 15u;
+        const U32 symbol = entry >> 4;
+        if (symbol < 256) {
+            if (out == end) {
+                r.length = symbol;
+                next = Run::careful_literal;
+                break;
+            }
+            *out++ = static_cast<Byte>(symbol);
+            continue;
+        }
+        if (symbol == 256) {
+            next = Run::block_end;
+            break;
+        }
+        if (symbol > 285) {
+            next = Run::deflate;
+            break;
+        }
+        if (count < 16) refill16(value, count, in);
+        const U32 extra = length_extra[symbol - 257];
+        U32 length = length_base[symbol - 257] + (value & ((1u << extra) - 1u));
+        value >>= extra;
+        count -= extra;
+        if (count < 16) refill16(value, count, in);
+        entry = r.distances[value & ((1u << distance_root) - 1u)];
+        if (entry >= table_link)
+            entry = r.distances[(entry >> 3 & 0xfffu) + (value >> distance_root & ((1u << (entry & 7u)) - 1u))];
+        if (!entry) {
+            r.length = length;
+            next = Run::careful_match;
+            break;
+        }
+        value >>= entry & 15u;
+        count -= entry & 15u;
+        const U32 code = entry >> 4;
+        if (code > 29) {
+            next = Run::deflate;
+            break;
+        }
+        const U32 shift = distance_extra[code];
+        if (count < 16) refill16(value, count, in);
+        const U32 distance = distance_base(code, shift) + (value & ((1u << shift) - 1u));
+        value >>= shift;
+        count -= shift;
+        const U32 at = static_cast<U32>(out - r.window);
+        if (distance > r.history + at) {
+            next = Run::bounds;
+            break;
+        }
+        if (length > static_cast<U32>(end - out)) {            // the window's or the member's end: byte by byte
+            r.length = length;
+            r.distance = distance;
+            next = Run::careful_copy;
+            break;
+        }
+        if (at >= distance) out = copy(out, out - distance, length);
+        else {                                                 // the history wraps around the window's end
+            const U32 first = distance - at;                   // the bytes before the window's end
+            const Byte* const from = r.window + (32768u - first);
+            if (first >= length) out = copy(out, from, length);
+            else out = copy(copy(out, from, first), r.window, length - first);
+        }
+    }
+    r.value = value;
+    r.count = count;
+    r.in = in;
+    r.out = out;
+    r.next = next;
+}
+
+// 1: the block's end; -1: an error (bits.status or output.status set); 0: compressed() takes the next symbol.
+int fast(Bits& bits, Output& output, InflateWorkspace& workspace) {
+    Run r;
+    r.window = workspace.window;
+    r.literals = workspace.literal.table;
+    r.distances = workspace.distance.table;
     for (;;) {
+        if (bits.buffered - bits.cursor < fast_input) {
+            if (bits.consumed + (bits.buffered - bits.cursor) == bits.size) return 0;     // the input's end
+            if (!bits.refill()) return -1;
+            if (bits.buffered - bits.cursor < fast_input) return 0;
+        }
+        // The window's last byte is left to Output::byte, which flushes the window when it is full.
+        const U32 at = output.produced & 32767u, room = output.expected - output.produced;
+        r.value = bits.value;
+        r.count = bits.count;
+        r.history = output.produced - at;
+        r.in = workspace.input + bits.cursor;
+        r.in_last = workspace.input + (bits.buffered - fast_input);
+        r.out = workspace.window + at;
+        r.end = workspace.window + (room < 32767u - at ? at + room : 32767u);
+        run(r);
+        const U32 taken = static_cast<U32>(r.in - (workspace.input + bits.cursor));
+        bits.value = r.value;
+        bits.count = r.count;
+        bits.cursor += taken;
+        bits.consumed += taken;
+        output.produced += static_cast<U32>(r.out - (workspace.window + at));
+        switch (r.next) {
+        case Run::input_low: break;
+        case Run::block_end: return 1;
+        case Run::careful: return 0;
+        case Run::careful_literal:
+            if (!output.byte(static_cast<Byte>(r.length))) return -1;
+            break;
+        case Run::careful_match:
+            if (!match(bits, output, workspace, r.length)) return -1;
+            break;
+        case Run::careful_copy:
+            if (r.length > output.expected - output.produced) {
+                bits.status = Status::bounds;
+                return -1;
+            }
+            for (U32 i = 0; i != r.length; ++i)
+                if (!output.byte(workspace.window[(output.produced - r.distance) & 32767u])) return -1;
+            break;
+        case Run::deflate: bits.status = Status::deflate; return -1;
+        case Run::bounds: bits.status = Status::bounds; return -1;
+        }
+    }
+}
+
+bool compressed(Bits& bits, Output& output, InflateWorkspace& workspace) {
+    for (;;) {
+        const int quick = fast(bits, output, workspace);
+        if (quick) return quick > 0;
         U32 code;
         if (!symbol(bits, workspace.literal, code)) return false;
         if (code < 256) {
@@ -257,25 +519,7 @@ bool compressed(Bits& bits, Output& output, InflateWorkspace& workspace) {
         }
         U32 extra, length_index = code - 257;
         if (!bits.take(length_extra[length_index], extra)) return false;
-        U32 length = length_base[length_index] + extra;
-        if (!symbol(bits, workspace.distance, code)) return false;
-        if (code > 29) {
-            bits.status = Status::deflate;
-            return false;
-        }
-        // The first four distance codes each encode one distance. Later
-        // pairs encode two equally sized ranges, doubling on every pair.
-        const U32 shift = code < 4 ? 0 : (code >> 1) - 1;
-        if (!bits.take(shift, extra)) return false;
-        const U32 distance = (code < 4 ? code + 1 : ((2 + (code & 1u)) << shift) + 1) + extra;
-        if (distance > output.produced || length > output.expected - output.produced) {
-            bits.status = Status::bounds;
-            return false;
-        }
-        for (U32 i = 0; i != length; ++i) {
-            Byte value = workspace.window[(output.produced - distance) & 32767u];
-            if (!output.byte(value)) return false;
-        }
+        if (!match(bits, output, workspace, length_base[length_index] + extra)) return false;
     }
 }
 }

@@ -209,15 +209,24 @@ bool Archive::raw_read(U32 offset, Byte* destination, U32 count) {
         if (!checkpoint(work_) || amount > header_.ciphertext_size - block ||
             !input::read(source_, header_.ciphertext_offset + block, cipher, amount))
             return false;
+        // #279: the chain is the block before (no copy per block); a whole block goes without a count per byte.
+        const Byte* chain = previous;
         for (U32 at = 0; at < amount; at += 16) {
             if (!aes_.decrypt(cipher + at, clear)) return false;
-            for (U32 i = skip; i < 16 && count; ++i) {
-                *destination++ = clear[i] ^ previous[i];
-                --count;
+            if (!skip && count >= 16) {
+                for (U32 i = 0; i < 16; ++i) destination[i] = clear[i] ^ chain[i];
+                destination += 16;
+                count -= 16;
+            } else {
+                for (U32 i = skip; i < 16 && count; ++i) {
+                    *destination++ = clear[i] ^ chain[i];
+                    --count;
+                }
+                skip = 0;
             }
-            for (U32 i = 0; i < 16; ++i) previous[i] = cipher[at + i];
-            skip = 0;
+            chain = cipher + at;
         }
+        for (U32 i = 0; i < 16; ++i) previous[i] = cipher[amount - 16 + i];
         block += amount;
     }
     return true;

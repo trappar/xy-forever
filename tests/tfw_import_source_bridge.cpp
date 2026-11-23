@@ -25,6 +25,7 @@ struct Peer {
     U32 stat_size, declared_size, final_size, position, operation;
     U32 stats, opens, reads, closes, cancels, public_reads, aes_reads;
     U32 ahead_bytes;   // a read left out (read_start) into stream: its answer, the bytes read
+    U32 ahead_checks; // #279: checkpoints with a read left out, so while the source's caller works on the half before
     bool file, lease, waited, reported_busy, fail_close, ahead;
 } peer;
 Byte stream_bytes[xy_forever::file_client::stream_capacity];
@@ -38,7 +39,7 @@ void begin(Source& source) {
     char request[sizeof(path)];
     std::copy(std::begin(path), std::end(path), request);
     assert(source.begin(request) == P::s_ok);
-    request[sizeof(path) - 2] = 'x';  // the caller's request buffer is free for the next frame
+    request[sizeof(path) - 2] = 'x'; // the caller's request buffer is free for the next frame
     assert(!std::strcmp(source.path(), path) && !source.reader().read);
 }
 
@@ -51,6 +52,10 @@ SourcePhase hashing(Source& source) {
 bool stop(void*) { return false; }
 bool until_public_key(void*) { return peer.public_reads == 0; }
 bool until_stopped(void* stop) { return !*static_cast<bool*>(stop); }
+bool count_ahead(void*) {
+    if (peer.ahead) ++peer.ahead_checks;
+    return true;
+}
 }
 
 namespace xy_forever { namespace file_client {
@@ -73,7 +78,7 @@ Reply tfw_hash_send(const char* name, uint32_t op) {
 }
 
 Reply left_poll(bool wait) {
-    if (peer.ahead) {                                  // the source's read-ahead: answered at once
+    if (peer.ahead) { // the source's read-ahead: answered at once
         assert(wait && !peer.operation);
         peer.ahead = false;
         return {done, int32_t(peer.ahead_bytes), 0};
@@ -253,7 +258,7 @@ int main(int argc, char** argv) {
     assert(!peer.file && peer.public_reads == 1 && peer.aes_reads == 1);
     assert(peer.opens == peer.closes);
 
-    peer.input[0x84] = 1;  // an AES selector the device never reads
+    peer.input[0x84] = 1; // an AES selector the device never reads
     begin(source);
     assert(hashing(source) == SourcePhase::hashed);
     assert(source.open() == P::s_image && !source.reader().read);
@@ -270,4 +275,14 @@ int main(int argc, char** argv) {
     assert(!input::read(source.reader(), 8192, decrypted.data(), 512));
     assert(during_read.cancelled() && peer.reads == reads);
     assert(source.close() == P::s_ok && peer.opens == peer.closes);
+
+    // #279: read straight through, the next half is out (read ahead) while the reader decrypts the one before.
+    begin(source);
+    assert(hashing(source) == SourcePhase::hashed);
+    Work counting(nullptr, count_ahead);
+    assert(source.open(&counting) == P::s_ok);
+    peer.ahead_checks = 0;
+    assert(input::read(source.reader(), 0, decrypted.data(), reader.size) && decrypted == archive);
+    assert(reader.size > 3 * xy_forever::file_client::stream_max && peer.ahead_checks > 3);
+    assert(source.close() == P::s_ok && peer.opens == peer.closes && !peer.ahead);
 }
