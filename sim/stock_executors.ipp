@@ -20,6 +20,11 @@ void executor(uint32_t address, uint32_t request) {
         if (op == 0x34 || op == 0x36) return finish(request, handle_of(int(a0)) < 0 ? fail(9) : 0); // fsync, truncate
     }
     if (address == 0x889f6feau && cls == cls_path) {
+        if (op == 0x29 && (a0 & 3u) && shared->fail_write_open.load() > 0) { // test hook (#195)
+            --shared->fail_write_open;
+            log("fault: B's open for writing failed (EBADF)");
+            return finish(request, fail(9));
+        }
         if (op == 0x29) return finish(request, posix_open(path, a0));
         if (op == 0x26 || op == 0x25 || op == 0x27 || op == 0x21)
             return finish(request, provider() ? path_op(op, path) : fail(19));

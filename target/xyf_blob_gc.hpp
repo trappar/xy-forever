@@ -14,10 +14,12 @@ struct Collect {
     char candidate[65], entry[240], path[240];
     uint8_t expected[32], buffer[1024];
     uint32_t stage, blob_skip, entry_skip, which, removed, cursor, sorting;
+    uint32_t area;
     int fd;
 };
 static inline void collect_begin(Collect& g, uint8_t* workspace, uint32_t bytes) {
     g.stage = g.blob_skip = g.entry_skip = g.which = g.removed = g.cursor = g.sorting = 0;
+    g.area = 0;
     g.fd = -1;
     g.refs.data = workspace;
     g.refs.count = 0;
@@ -66,8 +68,9 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         n = io.list_one("/yaffs2/xy-forever/firmware", g.entry_skip, name, kind);
         if (n < 0) return -1;
         if (!n) {
-            g.cursor = g.refs.count >> 1;
-            g.stage = 5;
+            g.area = 1;
+            g.entry_skip = 0;
+            g.stage = 9;
             return 0;
         }
         ++g.entry_skip;
@@ -77,7 +80,12 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         g.stage = 1;
         return 0;
     case 1:
-        if (!path(g.path, g.entry, g.which ? "/files.sha256" : "/content.sha256")) return -1;
+        if (!path(g.path, g.entry,
+                  g.area  ? "/" :
+                  g.which ? "/files.sha256" :
+                            "/content.sha256") ||
+            (g.area && !path(g.path, g.path, pack_refs)))
+            return -1;
         g.fd = io.open(g.path, false);
         if (g.fd == -2) {
             g.stage = 4;
@@ -92,7 +100,7 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         if (n < 0 || n > int(sizeof(g.buffer))) return -1;
         if (n)
             return manifest::list_index_feed(g.reader, reinterpret_cast<const char*>(g.buffer), uint32_t(n), g.refs,
-                                             g.which != 0) == manifest::list_ok ?
+                                             !g.area && g.which != 0) == manifest::list_ok ?
                        0 :
                        -1;
         if (manifest::list_end(g.reader) != manifest::list_ok) return -1;
@@ -105,7 +113,8 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         g.stage = 4;
         return 0;
     case 4:
-        if (!g.which) {
+        if (g.area) g.stage = 9;
+        else if (!g.which) {
             g.which = 1;
             g.stage = 1;
         } else g.stage = 0;
@@ -143,6 +152,19 @@ template<class Io> int collect_step(Collect& g, Io& io) {
         if (name[64]) return 0;
         g.candidate[64] = 0;
         if (!contains(g)) g.stage = 8;
+        return 0;
+    case 9:                                             // the signed packs' records, retained or active alike
+        n = io.list_one(pack_records, g.entry_skip, name, kind);
+        if (n < 0) return -1;
+        if (!n) {
+            g.cursor = g.refs.count >> 1;
+            g.stage = 5;
+            return 0;
+        }
+        ++g.entry_skip;
+        if (kind != 1) return 0;
+        if (!path(g.path, pack_records, "/") || !path(g.entry, g.path, name)) return -1;
+        g.stage = 1;
         return 0;
     default:
         if (!path(g.path, root, "/")) return -1;

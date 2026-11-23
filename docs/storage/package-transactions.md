@@ -58,6 +58,15 @@ upload renames. A writable legacy blob is copied to an exclusive read-only scrat
 pieces. B verifies the full SHA-256 before atomically replacing the cache entry. A cache miss
 uses the entry's existing verified file copy.
 
+Signed sound packs use the same verified blobs. The importer authenticates the TFW, checks the
+destination and space, and extracts into a private transaction folder. B writes each file into a new
+read-only file A creates (`managed_blob_link` create, put), hashing what it sends: no copy, no read-back.
+One rename makes it the blob (an existing blob is read back, then linked), and the tree links to it.
+The records live in `xy-forever/pack-records/ID/`: `xyf-pack.txt` with the signed ciphertext digest and
+`xyf-pack-v1.sha256` with each file’s SHA-256 and relative path, published by one rename before the tree's.
+The tree is retained under `xy-forever/packs/` and moves to or from `content/dlc/` when toggled; the records stay
+and give its blobs' reachability.
+
 Collection follows host library changes, native publication and the idle sweep. An unresolved
 `job.txt` or `job.old` suspends all blob deletion until [replay or undo](jobs.md) completes. It holds the job
 exclusion while collecting all kept references, then deletes only unreferenced hash names. The native

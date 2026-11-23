@@ -128,6 +128,17 @@ Reply read(int fd, uint8_t* out, uint32_t count);                   // count <= 
 Reply write(int fd, const uint8_t* data, uint32_t count);           // count <= piece_max
 // #144: A's request timing words 2k and 2k + 1 (value, error), or k = file_engine::timing_clear zeroes them.
 Reply a_timing(uint32_t k);
+// #195 diagnostic: B's own log of its last log_entries requests to A, kept without A: every request this client
+// sends (or could not send) and the USB service's command items. An entry is 4 words: op | outcome << 8 | flags << 12
+// | (argument & 0xffff) << 16 (outcome log_pending until its caller saw one), B's clock when it left (ms), A's value,
+// A's errno & 0xffff | the ms to its outcome << 16 (0xffff: longer). log_copy: the entries, oldest first; their count.
+static const uint32_t log_entries = 32, log_pending = 0xf;
+enum LogFlag : uint32_t { log_left = 1, log_kept = 2, log_late = 4, log_unsent = 8 };
+enum LogOp : uint32_t { log_mark = 0xa0, log_command = 0xc0, log_transfer = 0xc1 };
+uint32_t log_add(uint32_t op, uint32_t argument);
+void log_end(uint32_t entry, uint32_t outcome, int32_t value, uint32_t error, uint32_t flags = 0);
+void log_note(uint32_t op, uint32_t argument);
+uint32_t log_copy(uint32_t* out);
 // #7: only the dedicated read-only diagnostic uses these. A gates every raw request independently.
 Reply boot_probe(uint32_t operation);
 Reply tfw_probe(const char* path, uint32_t operation);
@@ -209,7 +220,11 @@ uint32_t rename(const char* from, const char* to, uint32_t& error, volatile uint
 // read-only, read to EOF (at most size + 3 KiB) with CRC-32, close. mounted as write_file.
 Reply stage_blob_link(const char* temporary, const uint8_t* hash, bool seal);
 Reply copy_blob_piece();
-uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted);
+// #195: a new sealed file below the scratch folder that B writes itself (put_blob, then copy_blob_piece closes it);
+// put_blob_start's answer (left out: left_poll): value a status, error the bytes A wrote.
+Reply create_blob(const char* path);
+Reply put_blob_start(const uint8_t* data, uint32_t count);
+uint32_t open_write(const char* path, int& fd, volatile uint32_t& mounted, uint32_t* why = 0);   // why: #195 detail
 uint32_t make_folders(const char* path, volatile uint32_t& mounted);  // open_write's mkdir -p alone (mounted)
 uint32_t write_more(int fd, const uint8_t* bytes, uint32_t size, uint32_t& written, volatile uint32_t& mounted);
 uint32_t close_write(int fd, volatile uint32_t& mounted);

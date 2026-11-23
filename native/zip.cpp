@@ -65,7 +65,9 @@ Status extras(const Reader& reader, U32 offset, U32 count, Work* work) {
 Status local(const Reader& reader, Entry& entry, U32 directory_offset, Work* work) {
     Byte header[30], name[256];
     if (!read(reader, entry.local_offset, header, 30)) return Status::truncated;
-    if (dword(header) != 0x04034b50u) return Status::layout;
+    // Compare the two fields separately so the cold module has no literal
+    // with the same value as a boot-ROM address.
+    if (word(header) != 0x4b50u || word(header + 2) != 0x0403u) return Status::layout;
     if (word(header + 4) > 20 || word(header + 6) != entry.flags || word(header + 8) != entry.method ||
         word(header + 26) != entry.name_size)
         return Status::layout;
@@ -249,7 +251,7 @@ Status extract(const Archive& archive, U32 index, InflateWorkspace& workspace, c
                 copied += count;
             }
             if (!checkpoint(work)) return Status::cancelled;
-            if (sink.write && !sink.write(sink.context, workspace.window, chunk)) return Status::sink;
+            if (sink.write && !write_to_sink(sink, workspace.window, chunk)) return Status::sink;
             offset += chunk;
         }
         if (!checkpoint(work)) return Status::cancelled;

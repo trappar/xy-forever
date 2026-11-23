@@ -15,6 +15,11 @@ struct Sink {
     void* context;
     bool (*write)(void*, const Byte*, U32 count); // null discards validated output
 };
+// Keep the indirect callback load beside the call in the cold module.
+static __attribute__((noinline, unused)) bool write_to_sink(const Sink& sink, const Byte* bytes, U32 count) {
+    return sink.write(sink.context, bytes, count);
+}
+
 enum class Status {
     ok,
     argument,

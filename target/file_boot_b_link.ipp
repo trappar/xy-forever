@@ -101,7 +101,7 @@ bool b_ask(Stock121PeerSession& session, U32 value, U32 wait_ms) {
 // b: one tagged command item.
 bool b_send(Stock121PeerSession& session, U32 item, U32 wait_ms = xyf_boot::command_ms) {
 #if defined(XYF_ONE_SESSION)
-    usb_service::rpc_reset();                          // Test 065: a leaves RPC mode on every b_send item
+    usb_service::rpc_reset(item);                      // Test 065: a leaves RPC mode on every b_send item
 #endif
     // The low three bits stay 0 (a's bootloader's select takes the argument & 7: the user area).
     return b_ask(session, Stock121PeerSession::command_tag << 16 | (item & 0xffu) << 8 | (++b_sequence << 3 & 0xf8u),

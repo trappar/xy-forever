@@ -142,7 +142,10 @@ const char* usb_notice() {
 // Test 062: file-boot progress on the service screen (only after a HELLO this boot).
 void progress(const char* a, const char* b) { say(a, b); }
 // ---- Test 065: one link session; the menu is home and answers every USB command ----
-void rpc_reset() { read_enabled = 0; }               // a left RPC mode (a transfer item was sent)
+void rpc_reset(uint32_t item) {                      // a left RPC mode (a transfer item was sent)
+    read_enabled = 0;
+    file_client::log_note(file_client::log_transfer, item);   // #195 diagnostic: B's log
+}
 void stack_watch(uint32_t painted_begin) { stack_paint_begin = painted_begin; }
 bool home_active() { return home != 0; }
 bool home_usb() { return menu_usb != 0; }

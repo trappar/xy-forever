@@ -133,6 +133,9 @@ public:
     // Defined only with the content switch (#202): a sealed copy of one blob (cold_storage_direct_write.ipp).
     int managed_blob_open(const char* path, bool writing);
     Result managed_blob_copy(int input, int output, U32 bytes);
+    // #195: a new sealed file below the scratch folder that B writes itself, one piece at a time.
+    int managed_blob_create(const char* path);
+    Result managed_blob_write(int output, const void* data, U32 bytes);
     bool ready() const;
     // A failed unmount retains the barriers and cannot fall through to an OS.
     // After every attempted session, require end()==ok and this predicate before

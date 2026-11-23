@@ -112,11 +112,11 @@ struct LoopMark {
 #endif
 // Every pass of the menu loop: 0 = stay home, 1 = leave home and boot the default, 2 + i = leave
 // home and boot catalog entry i once (library.boot).
+static U32 home_receive();
 uint32_t home_pump() {
 #if defined(XYF_MTP_USB)
     const LoopMark loop;                               // #144: the menu loop between passes
 #endif
-    Result& r = result;
     image_step();                                      // the image's hash, a slice per pass
     if (!menu_usb) return 0;
 #if defined(XYF_MTP_USB)
@@ -131,10 +131,16 @@ uint32_t home_pump() {
         return 0;
     }   // the flag, then the boot's only start
 #endif
-    stage2_turn();
+#if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
+    if (!signed_pack_active)
+#endif
+        stage2_turn();
 #if defined(XYF_USB_FILE_WRITE)
     rehearsal_pump();
     if (!boot_probe_active() && !rehearsal_active()) {
+#if defined(XYF_TFW_CHECK)
+        signed_pack_pump();
+#endif
         recovery_turn();
         report_turn();
         package_turn();
@@ -158,6 +164,10 @@ uint32_t home_pump() {
 #if defined(XYF_SETTINGS)
     trust_turn();                                      // #65: the question's answer (the keys came this pass)
 #endif
+    return home_receive();
+}
+static U32 home_receive() {
+    Result& r = result;
     const U32 avail = cdc_available();
     if (!avail) {
         // A partial frame followed by idle_reset_ms of silence (nothing left in the receive
@@ -205,7 +215,10 @@ uint32_t home_pump() {
                 home_greeted = 1;
                 if (!r.hello_at_ms) r.hello_at_ms = now();
             }
-            if (!s2_tried) stage2_load();                  // once per boot, before the reply
+#if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
+            if (!signed_pack_active)
+#endif
+                if (!s2_tried) stage2_load();                  // once per boot, before the reply
             hello(seq);
 #if defined(XYF_MTP_USB)
             composite_hello();                         // the composite stays this boot; mark 11, marks end
@@ -223,6 +236,8 @@ uint32_t home_pump() {
 #endif
 #if defined(XYF_USB_FILE_WRITE)
 #if defined(XYF_TFW_CHECK)
+        else if (type == P::t_packs_manage) packs_manage(seq, payload, length);
+        else if (signed_pack_active && type != P::t_status && type != P::t_screen) status_only(type, seq, P::s_busy);
         else if (type == P::t_a_rehearsal) rehearsal_command(seq, payload, length);
         else if (rehearsal_active() && type != P::t_status && type != P::t_screen && type != P::t_peek)
             status_only(type, seq, P::s_busy);

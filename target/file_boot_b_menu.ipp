@@ -153,7 +153,7 @@ bool b_fetch_catalog(Stock121PeerSession& session) {
 void b_fetch_begin(Stock121PeerSession& session) {
     xyf_boot::StorageStart& st = xyf_boot::storage_start;
     if (!b_settle(session)) return;
-    usb_service::rpc_reset();
+    usb_service::rpc_reset(xyf_boot::item_catalog);
     b_fetch_echoes = session.echoes();
     if (session.ask(Stock121PeerSession::command_tag << 16 | (xyf_boot::item_catalog & 0xffu) << 8 |
                     (++b_sequence << 3 & 0xf8u)) != SessionResult::waiting) {

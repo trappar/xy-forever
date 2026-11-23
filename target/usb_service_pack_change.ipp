@@ -24,6 +24,7 @@ struct PackChange {
 };
 static PackChange& pack_work() { return *reinterpret_cast<PackChange*>(job_work_end - 0x10000u); }
 static_assert(sizeof(PackChange) <= 0x10000u, "pack transaction workspace");
+static const char reserved_pack_file[] = "xyf-pack.txt";
 static const char pack_root[] = "/yaffs2/content/dlc", pack_inbox[] = "/yaffs2/xy-forever/inbox";
 static void pack_reset_scan(PackChange& c) {
     c.index = c.at = c.bytes = 0;
@@ -52,6 +53,27 @@ static void pack_start(xyf::menu::State& s) {
         s.pack_result = "Storage busy or unavailable.";
         return;
     }
+#if defined(XYF_TFW_CHECK)
+    const auto kind = packs.kinds[s.pack_selected];
+    if (kind == archive_pack) {
+        const U32 code = signed_pack_start(id);
+        if (code) {
+            pack_finish(s, "Cannot start signed pack import.");
+            return;
+        }
+        s.pack_busy = s.pack_importing = true;
+        s.pack_result = 0;
+        return;
+    }
+    if (kind == retained_pack || kind == enabled_pack) {
+        const bool enable = kind == retained_pack;
+        const U32 code = signed_pack_toggle(id, enable);
+        pack_finish(s, code   ? "Cannot change pack." :
+                       enable ? "Enabled. Not tested on this firmware." :
+                                "Pack disabled.");
+        return;
+    }
+#endif
     PackChange& c = pack_work();
     c.install = s.pack_inbox;
     c.make_parent = c.has_manifest = false;
@@ -171,6 +193,10 @@ static void pack_check_tree(xyf::menu::State& s, PackChange& c) {
         return;
     }
     if (!c.level) {
+        if (xj::same(name, reserved_pack_file)) {
+            pack_finish(s, "Signed pack record is reserved.");
+            return;
+        }
         if (xj::same(name, "info.txt") || xj::same(name, "os.ldr")) {
             pack_finish(s, "Not a sound pack.");
             return;
@@ -193,6 +219,29 @@ static void pack_check_tree(xyf::menu::State& s, PackChange& c) {
 static bool pack_change_step(xyf::menu::State& s) {
     const bool requested = s.pack_execute;
     if (requested) pack_start(s);
+#if defined(XYF_TFW_CHECK)
+    if (s.pack_importing) {
+        if (signed_pack_active) {
+            if (s.pack_cancel) signed_pack().cancelled = true;
+            s.pack_cancel = false;
+            return requested;
+        }
+        s.pack_importing = s.pack_cancel = false;
+        const char* message = "Pack imported.";
+        switch (signed_pack_error) {
+        case P::s_ok: break;
+        case P::s_cancelled: message = "Pack import cancelled."; break;
+        case P::s_too_large: message = "Not enough storage."; break;
+        case P::s_state: message = "Pack ID already occupied."; break;
+        case P::s_crc:
+        case P::s_image:
+        case P::s_sha: message = "Invalid signed sound pack."; break;
+        default: message = "Pack import failed."; break;
+        }
+        pack_finish(s, message);
+        return true;
+    }
+#endif
     if (!menu_pack_active) return requested;
     PackChange& c = pack_work();
     if (c.step <= pc_target) pack_check_path(s, c);

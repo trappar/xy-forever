@@ -117,6 +117,7 @@ std::string command(const std::string& line, bool& quit, int client) {
                       {"statfs_fail", &shared->statfs_fail},
                       {"fail_unmount", &shared->fail_unmount},
                       {"fail_open", &shared->fail_open},
+                      {"fail_write_open", &shared->fail_write_open},
                       {"full_path", &shared->full_path},
                       {"a_boot_ms", &shared->a_boot_ms},
                       {"b_boot_ms", &shared->b_boot_ms},

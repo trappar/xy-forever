@@ -212,7 +212,7 @@ inline void stack_watch(uint32_t) {}        // no USB status in builds without t
 #endif
 #if defined(XYF_ONE_SESSION)
 // Test 065 (b): one link session; the menu is home and answers every USB command.
-void rpc_reset();
+void rpc_reset(uint32_t item);
 bool home_active();
 bool home_begin();
 void home_start();

@@ -103,8 +103,11 @@ struct State {
     const char* const* pack_names;
     const char* pack_note;
     const char* pack_result;
+    const uint8_t* pack_kinds;
     uint32_t pack_page, pack_count, pack_selected;
     bool pack_ready, pack_more, pack_inbox, pack_confirm, pack_execute, pack_busy;
+    bool pack_importing, pack_cancel;
+
     bool confirm_accept; // which button the pack dialog highlights
 #endif
     // 193: StorageView (the caller's, after start() and every pass) and the line a refused row left (0: none).

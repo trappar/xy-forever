@@ -1,7 +1,7 @@
 {
   "$comment": "Conformance suite of the XY Forever serial protocol v1 (spec: protocol/v1.json, protocol/v1.json). The behaviour a v1 device must show, as data: each case is a named exchange that every client runs the same way (Python: scripts/conformance.py; TypeScript: clients/ts/test/conformance.ts) against the simulator or a device. scripts/protogen.py validates this file against the spec (xy_forever/conformance.py) and the coverage rules; `syntax` documents every keyword. Frame-level vectors stay in v1.json (`streams`) and are referenced by name, not copied.",
   "format": "xyf-conformance/1",
-  "protocol": "1.26",
+  "protocol": "1.27",
   "doc": [
     "`protocol/v1.conformance.json` holds the conformance suite: the behaviour a v1 device must show, as data that any client can run. Each case is a named exchange: preconditions (`given`: a fresh boot before `hello`, files in the test area, simulator faults), requests by command name and field values (or raw bytes for malformed input and frame-level tests), and what must come back (status, field values, limits such as the device's `read=`), including reads that show what did not change. Every case says what it does (`effects`: none means read-only; `staging`, `writes_test_area`, `restarts`, `writes_device`, `boots_os`), what it needs (`needs`: simulator control, fixtures) and whether it is safe on a real device (`real_device`, else `why_not`). The keywords are documented in the file's `syntax` object.",
     "A third-party client conforms when it runs every case with its own codec and transport: send the requests in order, one at a time, and check each expectation. Two runners exist: `uv run scripts/conformance.py --sim 127.0.0.1:7341,7342` (or without `--sim` for the OP-XY, where only cases marked safe run and a guard refuses any request that could change more than the test area `/yaffs2/xy-forever/log/conformance/`), and `node clients/ts/test/conformance.ts --sim 127.0.0.1:7341,7342` for the TypeScript module. Both read the same file; `--check` only interprets every case."
@@ -102,6 +102,15 @@
     {"command": "tfw.check", "status": "link", "why": "processor A must fail to answer (as file.read)"},
     {"command": "tfw.check", "status": "storage", "why": "A's mount must fail (as file.read)"},
     {"command": "tfw.check", "status": "range", "why": "A's seek must fail (as file.read)"},
+    {"command": "packs.manage", "status": "ok", "why": "the command can write outside the conformance area and is covered by the signed pack simulator tests"},
+    {"command": "packs.manage", "status": "bad_request", "why": "the command can write outside the conformance area and is covered by the signed pack simulator tests"},
+    {"command": "packs.manage", "status": "unsupported", "why": "the command can write outside the conformance area and is covered by the signed pack simulator tests"},
+    {"command": "packs.manage", "status": "busy", "why": "requires an exclusive signed pack or storage job"},
+    {"command": "packs.manage", "status": "link", "why": "requires processor A to fail to answer"},
+    {"command": "packs.manage", "status": "storage", "why": "requires a mount or storage operation to fail"},
+    {"command": "packs.manage", "status": "state", "why": "requires an occupied pack ID or cancellation with no job"},
+    {"command": "packs.manage", "status": "not_found", "why": "requires a missing inbox file or signed pack"},
+    {"command": "packs.manage", "status": "refused", "why": "requires a malformed pack record or an invalid pack path"},
     {"rule": "stale_replies", "why": "a rule for tools (both runners drop replies with another seq and reset their parser after a timeout); the device shows nothing"},
     {"rule": "link_lost", "why": "processor A must fail to answer (as file.read's link)"},
     {"rule": "versions", "why": "about later versions; one version has nothing to show"},

@@ -806,7 +806,7 @@ class FileEngineWiringTest(unittest.TestCase):
             b = self.body(client, name)
             self.assertIn('if (!allowed(path, ', b, name)
             self.assertIn(
-                'return outcome(refused);', b[b.index('if (!allowed(path, ') : b.index('claim(session, why)')]
+                'return outcome(refused);', b[b.index('if (!allowed(path, ') : b.index('claim(session, why, op)')]
             )
             self.assertLess(b.index('if (!allowed(path, '), b.index('place(path);'), name)  # then claim, place
             self.assertLess(b.index('place(path);'), b.index('stock<'), name)

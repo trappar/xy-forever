@@ -503,10 +503,12 @@ uint64_t stock_call(uint32_t address, const uint64_t* a, unsigned count) {
     case 0x889fb02cu: return uint64_t(int64_t(unmount(u(0))));
     case 0x889fbfe6u: {
         const uint32_t f = u(1); // yaffs flags: 1 write, 2 read-write, 0x40 create, 0x200 trunc
-        uint32_t mode = 0644;
-#if defined(XYF_CONTENT_SWITCH)
-        if ((f & 0x40u) && xy_forever::managed_blob_link::temporary_path(s(0), true)) mode = u(2);
-#endif
+        const uint32_t mode = (f & 0x40u) ? u(2) : 0644;                   // a new file gets the caller's mode
+        if ((f & 0x41u) == 0x41u && shared->fail_write_open.load() > 0) { // test hook (#195): a sealed file B writes
+            --shared->fail_write_open;
+            log("fault: A's create for writing failed (EBADF)");
+            return uint64_t(int64_t(fail(9)));
+        }
         return uint64_t(
             int64_t(open_file(s(0), (f & 3u) != 0, (f & 0x40u) != 0, (f & 0x200u) != 0, (f & 0x80u) != 0, mode)));
     }

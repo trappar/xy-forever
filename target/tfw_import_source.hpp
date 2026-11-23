@@ -22,7 +22,8 @@ public:
     // Opens the same file read-only, checks its length, and verifies the signed header
     // and A's digest before admitting the archive. Work must outlive all member reads.
     uint32_t open(xyf_core::Work* work = nullptr);
-    uint32_t close();
+    uint32_t close(bool reopen = false);
+    const xyf_core::hash::Digest& identity() const { return digest_; }
     // The decrypted reader is borrowed and is valid only until close().
     xyf_core::input::Reader reader();
     const char* path() const { return path_; }
