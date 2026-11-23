@@ -111,7 +111,8 @@ Reply write_start(int fd, const uint8_t* data, uint32_t count);     // count <= 
 // stream(at, value); short only at the end of the file). busy while one is left. The buffer is the client's, as
 // data_buffer is (an answer that arrives after its owner gave up lands only there): the top stream_capacity bytes
 // of the MTP session's slot (usb_service_mod_job.ipp mtp_slot_bytes; the Session stays below it), reserved only in
-// MTP builds, whose session is its only user.
+// MTP builds. Its users: the MTP session, and the signed pack import's source (#279, tfw_import_source), which runs
+// only while no MTP operation does.
 static const uint32_t stream_buffer = 0x8b7fc000u, stream_capacity = 0x4000u;
 // bytes per read_start: A streams them back in 0x1000-byte bodies, its stock read executor (889f6cd6) re-posting
 // itself after each (889f66fc) and B's stock master taking each body into place, then the done byte: the stock

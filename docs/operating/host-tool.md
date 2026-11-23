@@ -31,6 +31,11 @@ on this firmware, and `packs disable ID --yes` retains it again. Enabling moves 
 sounds into the OS is #188. `packs forget ID --yes` deletes a retained signed pack, its records and the blobs no
 other pack or firmware uses, so it can be imported again.
 
+When an import ends, `packs import` prints where its time went on B (`packs.manage` operation 6): the phases
+(authenticate, admit, extract, finish), then extraction by what B did: `source` and `put` are B waiting for A's
+reads and writes, `member` A's creates and closes, `aes`, `inflate` and `sha` B's own work, `service` its link and
+USB turns, `loop` the menu loop between steps.
+
 `uv run xyf-host packs list` lists the sound packs in `/yaffs2/content/dlc/` (state `active`) and the retained
 signed packs in `/yaffs2/xy-forever/packs/` (state `retained`); an enabled signed pack is `active`. A signed pack's
 records are in `/yaffs2/xy-forever/pack-records/ID/`, outside the folder the OS reads. Each row gives the pack folder ID, its state and the

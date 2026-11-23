@@ -12,6 +12,9 @@ uint32_t menu_pause_us() {
 #if defined(XYF_MTP_USB)
     if (loop_from) return mtp_pause_us;
 #endif
+#if defined(XYF_TFW_CHECK) && defined(XYF_USB_FILE_WRITE)
+    if (signed_pack_extracting()) return 500u;        // #279: the import runs between passes
+#endif
     return 5000u;
 }
 void drawn(uint64_t start) {

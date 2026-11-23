@@ -14,7 +14,25 @@ INBOX = store.ROOT + '/inbox'
 RETAINED = store.ROOT + '/packs'  # signed packs kept read-only while not active
 RECORDS = store.PACK_RECORDS  # a signed pack's records (RECORDS/<id>/xyf-pack.txt), outside the folder the OS reads
 SIGNED_RECORD = b'xyf-pack.txt'
-OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE, OP_TRACE = range(6)
+OP_STATUS, OP_IMPORT, OP_CANCEL, OP_ENABLE, OP_DISABLE, OP_TRACE, OP_TIMING = range(7)
+# #279: the last import's time on B by bucket (target/usb_service_signed_pack.ipp PackClock), in units of 1024 cycles
+# of the 400 MHz clock; then its counts.
+TIMING_BUCKETS = (
+    'hash',
+    'admit',
+    'source',
+    'aes',
+    'inflate',
+    'sha',
+    'put',
+    'member',
+    'service',
+    'loop',
+    'other',
+    'finish',
+)
+TIMING_COUNTS = ('reads', 'puts', 'members', 'bytes')
+UNIT_S = 1024 / 400e6
 # B's log of its requests to A (target/file_client.hpp log_add): outcomes, flags, the ops it names
 B_OUTCOMES = {0: 'answered', 1: 'refused', 2: 'no answer in its bound', 3: 'busy', 4: 'link lost', 15: 'pending'}
 B_FLAGS = ((1, 'left out'), (2, 'kept for its owner'), (4, 'answered late'), (8, 'not sent'))
@@ -231,7 +249,7 @@ def signed_request(dev, operation, name='', busy_s=0.0):
     if code == P.ids.S_REFUSED and operation == OP_ENABLE:
         raise store.StoreError('pack path refused')
     store.check(code, 'signed pack')
-    if len(body) < 28 or (len(body) - 28) % 16 or (operation != OP_TRACE and len(body) != 28):
+    if len(body) < 28 or (len(body) - 28) % 4 or (operation not in (OP_TRACE, OP_TIMING) and len(body) != 28):
         raise store.StoreError('signed pack reply of %d bytes' % len(body))
     return struct.unpack_from('<7I', body)
 
@@ -245,6 +263,40 @@ def signed_trace(dev):
     if len(body) != 28 + 16 * count:
         raise store.StoreError('signed pack trace of %d bytes for %d entries' % (len(body), count))
     return struct.unpack_from('<%dI' % (4 * count), body, 28)
+
+
+def signed_timing(dev):
+    """The last import's timing (packs.manage operation 6): {bucket: seconds} and {count: value}."""
+    payload = struct.pack('<II', 1, OP_TIMING) + b'\0'
+    code, body = dev.call(P.ids.PACKS_MANAGE, payload, timeout=60.0)
+    store.check(code, 'signed pack timing')
+    words = struct.unpack_from('<%dI' % ((len(body) - 28) // 4), body, 28)
+    if not words or words[0] != len(TIMING_BUCKETS) or len(words) != 1 + len(TIMING_BUCKETS) + len(TIMING_COUNTS):
+        raise store.StoreError('signed pack timing of %d words' % len(words))
+    spent = dict(zip(TIMING_BUCKETS, (units * UNIT_S for units in words[1:])))
+    return spent, dict(zip(TIMING_COUNTS, words[1 + len(TIMING_BUCKETS) :]))
+
+
+def timing_lines(spent, counts):
+    """The timing as lines: the phases, then extraction by what B did."""
+    phases = ('hash', 'admit', 'finish')
+    extraction = sum(seconds for name, seconds in spent.items() if name not in phases)
+    return [
+        'Time on B: authenticate %.1f s, admit %.1f s, extract %.1f s, finish %.1f s'
+        % (spent['hash'], spent['admit'], extraction, spent['finish']),
+        'Extract: ' + ', '.join('%s %.1f s' % (name, seconds) for name, seconds in spent.items() if name not in phases),
+        'Extract: %(members)d members, %(bytes)d bytes, %(reads)d source reads, %(puts)d pieces put' % counts,
+    ]
+
+
+def print_timing(dev):
+    try:
+        lines = timing_lines(*signed_timing(dev))
+    except (OSError, store.StoreError) as error:  # an older device: no timing
+        print('No import timing: %s' % error)
+        return
+    for line in lines:
+        print(line)
 
 
 def failure_site(site, detail):
@@ -305,8 +357,10 @@ def signed_change(dev, action, pack_id):
             phase, done, total, error, site, detail, traced = signed_request(dev, OP_STATUS)
             if phase == 3:
                 print('Imported %s in %.0f s. The signed pack is retained.' % (pack_id, time.monotonic() - started))
+                print_timing(dev)
                 return 0
             if phase == 4:
+                print_timing(dev)
                 if site:
                     print('Stopped at %s.' % failure_site(site, detail))
                 if traced:

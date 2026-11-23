@@ -3,6 +3,7 @@
 #include "../target/otp_keys.hpp"
 #include "../target/tfw_hash_rpc.hpp"
 #include "../target/usb_proto.hpp"
+#include "../target/xyf_clock.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -23,8 +24,10 @@ struct Peer {
     hash::Digest hash;
     U32 stat_size, declared_size, final_size, position, operation;
     U32 stats, opens, reads, closes, cancels, public_reads, aes_reads;
-    bool file, lease, waited, reported_busy, fail_close;
+    U32 ahead_bytes;   // a read left out (read_start) into stream: its answer, the bytes read
+    bool file, lease, waited, reported_busy, fail_close, ahead;
 } peer;
+Byte stream_bytes[xy_forever::file_client::stream_capacity];
 
 std::vector<Byte> load(const char* name) {
     std::ifstream stream(name, std::ios::binary);
@@ -70,6 +73,11 @@ Reply tfw_hash_send(const char* name, uint32_t op) {
 }
 
 Reply left_poll(bool wait) {
+    if (peer.ahead) {                                  // the source's read-ahead: answered at once
+        assert(wait && !peer.operation);
+        peer.ahead = false;
+        return {done, int32_t(peer.ahead_bytes), 0};
+    }
     assert(!wait && peer.operation);
     if (!peer.waited) {
         peer.waited = true;
@@ -118,13 +126,36 @@ Reply read(int fd, uint8_t* out, uint32_t count) {
     return {done, int32_t(bytes), 0};
 }
 
+bool left_out() { return peer.ahead || peer.operation; }
+
+Reply read_start(int fd, uint32_t at, uint32_t count) {
+    assert(fd == 7 && peer.file && !peer.ahead && !peer.operation && count && count <= stream_max && !(at % 32) &&
+           at + count <= stream_capacity);
+    ++peer.reads;
+    const U32 left = peer.position <= peer.input.size() ? U32(peer.input.size()) - peer.position : 0;
+    const U32 bytes = std::min(count, left);
+    for (U32 i = 0; i != bytes; ++i) stream_bytes[at + i] = peer.input[peer.position++];
+    peer.ahead = true;
+    peer.ahead_bytes = bytes;
+    return {done, 0, 0};
+}
+
+const uint8_t* stream(uint32_t at, uint32_t count) {
+    assert(at + count <= stream_capacity);
+    return stream_bytes + at;
+}
+
 Reply close(int fd) {
-    assert(fd == 7 && peer.file);
+    assert(fd == 7 && peer.file && !peer.ahead);
     if (peer.fail_close) return {done, -1, 9};
     ++peer.closes;
     peer.file = false;
     return {done, 0, 0};
 }
+}}
+
+namespace xyf { namespace clock {
+uint64_t cycles() { return 0; }
 }}
 
 namespace xy_forever { namespace otp_keys {

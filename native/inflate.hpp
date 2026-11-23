@@ -39,8 +39,12 @@ enum class Status {
 struct Extraction {
     U32 produced, crc32, consumed;
 };
+// fast (#279): the codes of up to fast_bits bits, indexed by the next fast_bits input bits (deflate's bit order),
+// each entry symbol << 4 | length; 0 for a longer or unused code, decoded bit by bit from the canonical tables.
+static const U32 fast_bits = 9;
 struct Huffman {
     U32 count[16], first[16], offset[16], symbols[288];
+    unsigned short fast[1u << fast_bits];
 };
 // Caller owns this workspace. It must not overlap the Entry table, source
 // reader storage or sink storage and cannot be shared by concurrent calls.
