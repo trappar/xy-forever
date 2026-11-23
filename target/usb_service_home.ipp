@@ -42,7 +42,7 @@ const char* host_activity() {
     if (mtp_seen()) return mtp_busy() || mtp_traffic() ? "MTP: transfer" : "MTP: active";   // redraws the MTP mark
 #endif
 #if defined(XYF_USB_FILE_WRITE)
-    if (job_running() && job_usb) return host_line(job_kind == 1 ? line_content : line_build);
+    if (job_state == job_busy && job_usb) return host_line(job_kind == 1 ? line_content : line_build);
 #endif
     return host_change && now() - host_change_ms < host_activity_ms ? host_line(host_change) : nullptr;
 }

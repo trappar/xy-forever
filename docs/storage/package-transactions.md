@@ -67,7 +67,7 @@ The records live in `xy-forever/pack-records/ID/`: `xyf-pack.txt` with the heade
 The tree is retained under `xy-forever/packs/` and moves to or from `content/dlc/` when toggled; the records stay
 and give its blobs' reachability.
 
-Host library changes collect before releasing the session. Native publication schedules the idle collector. An unresolved
+Host changes collect in-session. Native publication schedules idle collection. An unresolved
 `job.txt` or `job.old` suspends all blob deletion until [replay or undo](jobs.md) completes. It holds the job
 exclusion while collecting all kept references, then deletes only unreferenced hash names. The native
 collector streams each list once, reuses 4 MiB of completed-job workspace for at most 131,072 hashes
