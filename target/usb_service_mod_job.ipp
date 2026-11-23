@@ -37,17 +37,7 @@ struct Sweep {
     U32 removing, skip, calls;
     char keep[file_engine::max_path];
 };
-enum JobStage : U32 {
-    js_sweep = 0,
-    js_assemble,
-    js_away,
-    js_in,
-    js_clean,
-    js_wipe,
-    js_cache,
-    js_order,
-    js_gc
-}; // js_wipe
+enum JobStage : U32 { js_sweep = 0, js_assemble, js_away, js_in, js_clean, js_wipe, js_cache, js_order }; // js_wipe
 struct JobSlot {
     mj::Job job;
     mj::Input input;

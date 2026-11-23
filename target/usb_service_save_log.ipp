@@ -23,9 +23,7 @@ void job_finish(JobSlot& s);
 void commit_fail(JobSlot& s, U32 code, uint32_t error, const char* step) {
     if (code == P::s_link) s.link = 1;
     s.commit_error = s.link ? job_link_error :
-                              U32(s.stage == js_cache || s.stage == js_order ? mj::Error::verify :
-                                  s.stage == js_gc                           ? mj::Error::list :
-                                                                               mj::Error::rename);
+                              U32(s.stage == js_cache || s.stage == js_order ? mj::Error::verify : mj::Error::rename);
     s.commit_code = error ? error : code;
     job_text(s, "commit ", step);
     if (s.stage == js_in && s.had_old && !s.link) {
@@ -35,9 +33,8 @@ void commit_fail(JobSlot& s, U32 code, uint32_t error, const char* step) {
     job_finish(s);
 }
 void commit_done(JobSlot& s) {
-    xyf::blob::collect_begin(s.garbage, reinterpret_cast<uint8_t*>(job_work_end - xyf::blob::index_bytes),
-                             xyf::blob::index_bytes);
-    s.stage = js_gc;
+    job_text(s, s.target);
+    job_finish(s); // job_end schedules the idle collector after the write window closes
 }
 // One commit step per loop pass (js_away, js_in, js_clean).
 void commit_step(JobSlot& s) {
@@ -177,20 +174,6 @@ void job_pump() {
             save_times.entry_files = s.job.out_count;
         } else if (p == mj::Phase::failed || p == mj::Phase::cancelled) job_finish(s);
         else job_say(s, false);
-    } else if (s.stage == js_gc) {
-        ContentIo io = {s.link};
-        const int collected = journal_present ? 1 : xyf::blob::collect_step(s.garbage, io);
-        s.link = io.link;
-        ++s.extra_steps;
-        if (collected < 0) {
-            if (s.garbage.fd >= 0) io.close(s.garbage.fd);
-            s.debris = 1;
-            return commit_fail(s, s.link ? P::s_link : P::s_storage, 0, "blob gc");
-        }
-        if (collected) {
-            job_text(s, s.target);
-            job_finish(s);
-        }
     } else if (s.stage == js_cache) {
         if (s.cache_index == s.job.builder.listed_count) s.stage = js_order;
         else {

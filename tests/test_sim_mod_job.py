@@ -322,6 +322,16 @@ class SyntheticJob(Base, unittest.TestCase):
         self.assertEqual([p.read_bytes() if p.exists() else None for p in slots], before)
 
     @pytest.mark.sim
+    def test_assembly_finishes_before_blob_collection(self):
+        blobs = self.root / 'xy-forever/blobs'
+        blobs.mkdir(exist_ok=True)
+        orphan = blobs / hashlib.sha256(b'unreferenced').hexdigest()
+        orphan.write_bytes(b'unreferenced')
+        result = self.finished(self.start(['alpha']), served=False)
+        self.assertEqual((result['phase'], result['detail']), (MS.DONE, 'mods-a'), result)
+        self.assertTrue(orphan.exists(), 'the job does not wait for blob collection')
+
+    @pytest.mark.sim
     def test_pack_import_after_a_job(self):
         """Kept: #195 on the device. A pack import after a mod job this boot: the job's slot still held its
         last stage, and B's job pump ran it again while the import was active (both count as a running job). That

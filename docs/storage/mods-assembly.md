@@ -29,8 +29,8 @@ Part of the [XY Forever storage layout](../STORAGE.md).
   `os.ldr` last: an entry with an `os.ldr` is complete.
 - **Content retention**: before publication, every output content asset and catalog is copied through
   scratch, verified by SHA-256 and retained as `blobs/<sha256>`, even while factory content is active.
-  After publication, unreferenced blobs are collected under the same job exclusion
-  ([transactions](package-transactions.md)).
+  Unreferenced blobs are collected once the menu is idle after publication. A large blob store does not
+  hold the assembly job open ([transactions](package-transactions.md)).
 - **Into the library** (B after the job's last step, one request per menu-loop pass): the target is
   `mods-a` or `mods-b`, excluding the default, boot-once entry and the saved Open-XY slot. If both
   are available, B picks an empty slot first, then the older build. A legacy entry without a build
