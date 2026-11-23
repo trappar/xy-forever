@@ -339,6 +339,65 @@ def knob_summary(block):
     return out
 
 
+INPUT_MAGIC = 0x31504E49  # "INP1": target/knob_input.hpp InputLog
+INPUT_EVENTS = 32
+INPUT_KINDS = ('release', 'press', 'turn')
+KNOB_CLICKS = {10: 1, 11: 2, 12: 3, 13: 4}  # KEncClick1..4 (docs/hardware/devices.md)
+
+
+def input_events(block):
+    """The menu's raw input log (diag.status block INP1): (count ever logged, events oldest first); None if not one.
+    An event: ms, kind (press, release, turn), id, injected (the host's key command), count (a turn's)."""
+    if len(block) != 16 + 8 * INPUT_EVENTS:
+        return None
+    magic, version, count, _ = struct.unpack_from('<4I', block)
+    if magic != INPUT_MAGIC or version != 1:
+        return None
+    events = []
+    for i in range(max(0, count - INPUT_EVENTS), count):
+        ms, what = struct.unpack_from('<II', block, 16 + 8 * (i % INPUT_EVENTS))
+        kind = what & 3
+        event = dict(n=i, ms=ms, kind=INPUT_KINDS[kind] if kind < 3 else kind, id=what >> 8 & 0xFF)
+        if kind == 2:
+            event['count'] = struct.unpack('<h', struct.pack('<H', what >> 16))[0]
+        if what & 0x80:
+            event['injected'] = True
+        events.append(event)
+    return count, events
+
+
+def input_line(event):
+    """One event as a line: `12345 ms  key 9 press`, `12400 ms  knob 4 turn +2`, `knob 1 click` for keys 10..13."""
+    if event['kind'] == 'turn':
+        what = 'knob id %d turn %+d' % (event['id'], event['count'])
+    elif event['id'] in KNOB_CLICKS:
+        what = 'key %d (knob %d click) %s' % (event['id'], KNOB_CLICKS[event['id']], event['kind'])
+    else:
+        what = 'key %d %s' % (event['id'], event['kind'])
+    return '%8d ms  %s%s' % (event['ms'], what, ' (host)' if event.get('injected') else '')
+
+
+FRAMES_MAGIC = 0x314D5246  # "FRM1": target/key_ui.hpp Frames
+FRAMES_VERSION = 2  # 1 (build 242505c6 only) guessed at the DMA; 2 times the stock transfer itself
+FRAMES_FIELDS = (
+    'magic version presents draw_last draw_min draw_max transfer_last transfer_min transfer_max '
+    'present_last present_min present_max wait_last wait_max'
+).split()
+UNIT_US = 1024 / 400  # one unit: 1024 cycles at 400 MHz
+
+
+def frame_time(block):
+    """The menu's frame times (diag.status block FRM1, version 2) in microseconds; None if not one."""
+    if len(block) != 4 * len(FRAMES_FIELDS):
+        return None
+    out = dict(zip(FRAMES_FIELDS, struct.unpack('<%dI' % len(FRAMES_FIELDS), block)))
+    if out.pop('magic') != FRAMES_MAGIC or out['version'] != FRAMES_VERSION:
+        return None
+    for key in FRAMES_FIELDS[3:]:
+        out[key + '_us'] = round(out.pop(key) * UNIT_US)
+    return out
+
+
 BOOT_DETAIL_MAGIC = 0x31445442
 BOOT_DETAIL_FIELDS = (
     'magic version b_metadata_ms b_data_ms b_last_poll_ms b_policy_ms b_admit_hash_ms b_release_ms'

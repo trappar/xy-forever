@@ -41,7 +41,8 @@ USB timing and host enumeration still require device qualification.
   registering a stock class. One composite exposes CDC interfaces 0..1 and MTP interface 2;
   the stock CDC/MTP combination collides on endpoint numbers. Every USB mode starts this composite (#191:
   a driver change within a boot froze B twice); the mode turns serial or MTP off in the USB service. See the
-  [transport identities](../protocol/transport.md) for current VID:PID and fallback.
+  [transport identities](../protocol/transport.md) for current VID:PID and fallback, and
+  [USB identity](usb-identity.md) for the names and serial the stack sends.
 - `ConfigDesc` is **0x18 bytes**, including `n_iads` at +0x10 (at most 4) and the IAD array at +0x14.
   The stack writes driver fields +0x10/+0x14/+0x1c. Layouts and endpoint numbers live beside the
   structures in `mtp_usb.hpp`; do not infer them from USB wire descriptor sizes.

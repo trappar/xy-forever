@@ -9,6 +9,8 @@ from pathlib import Path
 
 import xyf_hosttest
 
+from xy_forever import mtp_read
+
 OK, GENERAL, NO_SESSION, NOT_SUPPORTED = 0x2001, 0x2002, 0x2003, 0x2005
 INVALID_HANDLE, WRITE_PROTECTED, ACCESS_DENIED, PARTIAL_DELETION = 0x2009, 0x200D, 0x200F, 0x2012
 NO_OBJECT_INFO, SESSION_OPEN, BUSY = 0x2015, 0x201E, 0x2019
@@ -146,6 +148,10 @@ class MtpResponderTests(unittest.TestCase):
         count = struct.unpack_from('<I', data, at)[0]
         operations = set(struct.unpack_from('<%dH' % count, data, at + 4))
         self.assertTrue({0x1002, 0x1007, 0x1009, 0x100B, 0x100C, 0x100D, 0x101B} <= operations)
+        identity = dict(manufacturer='XY Forever', model='OP-XY', version='1', serial='0')
+        self.assertEqual(mtp_read.device_info(data), identity)
+        c.native.set_serial('ABCD1234')  # #288: the unit's serial, as the stock dev-menu MTP's
+        self.assertEqual(mtp_read.device_info(c.transaction(0x1001)[2]), dict(identity, serial='ABCD1234'))
         self.assertEqual(c.transaction(0x1004)[0], NO_SESSION)
         self.open()
         self.assertEqual(c.transaction(0x1002, 2)[:2], (SESSION_OPEN, (1,)))

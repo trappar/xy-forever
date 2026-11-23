@@ -26,8 +26,8 @@ Unstable: they may change or disappear in any version, outside the compatibility
 
 ### 0x02 `diag.status`
 
-Device counters as tagged binary blocks. Development aid: the USB service's counters, the processor link, the file server, boot timing and the last dry-run
-boot.
+Device counters as tagged binary blocks. Development aid: the USB service's counters, the processor link, the file server, boot timing, the last dry-run boot,
+the menu's last input events and its frame times (`uv run xyf-host inputs`, `frames`).
 
 Request: empty (the device ignores any payload).
 

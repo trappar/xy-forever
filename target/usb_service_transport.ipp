@@ -288,6 +288,9 @@ void status(uint8_t seq) {
 #endif
     if (word(dry_run_area) == dry_run_magic && word(dry_run_area + 4) <= dry_run_max_bytes)   // last dry-run boot
         n = append_block(p, n, reinterpret_cast<const void*>(dry_run_area + 8), word(dry_run_area + 4));
+    // #288, last: a block that does not fit is left out (append_block), never an earlier one
+    n = append_block(p, n, &knob_input::input_log, sizeof(knob_input::InputLog));   // #288: keys and knob records
+    n = append_block(p, n, &key_ui::frames, sizeof(key_ui::Frames));                 // #288: the menu's frame times
     send(P::t_status, seq, p, n);
 }
 

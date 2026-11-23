@@ -68,6 +68,7 @@ void cold_state(int which, bool power_on, bool play) {
     w32(0x20004800u + rsi * 8, 5);
     for (uint32_t i = 0; i != 4; ++i) w32(0x8803d06cu + 4 * i, 0);   // stock log sinks (muted)
     for (uint32_t i = 0; i != 4; ++i) w32(0x8803f6b8u + 4 * i, 0);   // posix provider registry: empty
+    for (uint32_t i = 0; i != 9; ++i) w8(0x8803d880u + i, uint8_t("SIM00001"[i]));   // the metadata's serial (#288)
     // Stock allocator: one heap, break above the SPI driver records placed below.
     w32(0x889ebaa0u, 0x88a65bf8u);
     w32(0x889ebaa4u, 1);
@@ -270,6 +271,7 @@ bool knob_identity() {
 #include "menu_keys.ipp" // dispatch: the keys, as key_ui
 // A key from the PSoC (real_keys_deliver) or the host's KEY command (inject_key), as key_ui's on_key.
 void key_event(uint32_t key, uint32_t pressed, bool injected) {
+    xy_forever::knob_input::log_key(key, pressed != 0, injected, device_ms()); // as key_ui's on_key
 #if defined(XYF_SETTINGS)
     if (xy_forever::usb_service::confirm_key(key, pressed, injected)) { // #65: the question has the keys
         xyf_sim::log("trust: key %u %s (%s)", key, pressed ? "pressed" : "released", injected ? "injected" : "real");
@@ -297,6 +299,7 @@ void real_keys_deliver() {
 }
 namespace xy_forever { namespace key_ui {
 Result result = {magic};
+Frames frames = {frames_magic, 2}; // #288: no display here: no frame is measured
 void crash_disarm() {} // no vector: the screen is not hosted
 #if defined(XYF_CRASH_TRIGGER)
 bool crash_armed_now() { return sim_menu; } // as key_ui: armed while the menu has the screen

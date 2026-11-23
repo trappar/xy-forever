@@ -46,6 +46,17 @@ def ptp_string(data, at):
     return data[at + 1 : at + 1 + 2 * n].decode('utf-16-le', 'replace').rstrip('\0'), at + 1 + 2 * n
 
 
+def device_info(data):
+    """GetDeviceInfo's identity strings: {manufacturer, model, version, serial} (#288: the USB identity record)."""
+    at = ptp_string(data, 8)[1] + 2  # standard and extension versions, the extension's text, the functional mode
+    for _ in range(5):  # operations, events, device properties, capture and playback formats
+        at += 4 + 2 * struct.unpack_from('<I', data, at)[0]
+    out = {}
+    for name in ('manufacturer', 'model', 'version', 'serial'):
+        out[name], at = ptp_string(data, at)
+    return out
+
+
 # the session (pure Python over any transport)
 
 

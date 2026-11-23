@@ -190,6 +190,7 @@ void Responder::init(const FileOps& file_ops) {
     pending_handle = pending_size = 0;
     hits = 0;
     piece = default_piece;
+    serial = 0;
     refusal = 0;
     clear_objects();
 }
@@ -457,7 +458,7 @@ void Responder::start() {
         w.str("XY Forever");
         w.str("OP-XY");
         w.str("1");
-        w.str("0");
+        w.str(serial && *serial ? serial : "0");
         begin_data(w.n);
         end_data(w.n);
         respond(r_ok);

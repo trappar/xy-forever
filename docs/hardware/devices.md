@@ -12,14 +12,37 @@ Part of [Hardware and stock-code facts](../HARDWARE.md).
   sets as (key, pressed).
 - **Links:** the boot teardown `88a35540` closes the PSoC and USB-serial links. The
   poll `88a24922(0x88a522c8)` reopens them and greets.
+- Names from the table: 6..9 `KTrack1..4`, 10..13 `KEncClick1..4`, 51 `KPlay`, 52 `KStop`,
+  53 `KLeft`, 54 `KRight`, 55 `KShift`.
+
+### What the menu sees (#288)
+
+The menu logs its last 32 raw input events: `uv run xyf-host inputs` (`--watch`: each new one as
+it comes). Each key event as the stock callback gives it (id, press or release; the host's `key`
+command marked "(host)"), and each record of an accepted knob frame (id, signed count), on the
+menu's millisecond clock (`target/knob_input.hpp` `InputLog`, diag.status block INP1).
+
+Checked on the device (2026-11-23, build `242505c6`):
+
+| Question | Answer |
+|---|---|
+| H1: the four buttons under the screen (m1..m4) | keys 6, 7, 8, 9 |
+| H2: m4 sends a release; SHIFT (55) held with an m key | a 2.9 s hold of m4 arrived as press, then release; SHIFT + m1 arrived as both keys |
+| H3: knob clicks | their own keys, apart from turns and from each other: knob 1 = 10, knob 2 = 11, knob 3 = 12. Today's menu reads every click as PLAY |
+| H4: the fourth knob's turns | records with id 4, one count each, two per detent (below) |
 
 ## Knobs (B, through the PSoC)
 
 Pushes are keys 10..13 (`KEncClick1..4`). Turns are frame type `0x45`: three-byte
 `[id][signed int16 big-endian delta]` records, ids 1..4. `knob_input` reads only consumed
 stock queue slots after polling; it sends no PSoC commands. Queue `0x88a522fc`: 128 slots of
-0xfd bytes, read/write indices +0x7e80/+0x7e84. Accept route 0x48, len <=249 divisible by 3;
+0xfd bytes, read/write indices +0x7e80/+0x7e84. Accept route 0x41, len <=39 divisible by 3;
 reset the cursor on invalid indices/restart. Unknown ids do not control the menu.
+
+One detent is two counts: a slow turn of knob 4 logged ±1 records in pairs 30–75 ms apart, pairs
+0.4–0.6 s apart (#288). The stock bootloader has no knob consumer (its poll drops type 0x45 frames), so
+this is the only count. The menu moves one row per 2 counts of all knobs together
+(`knob_input.hpp` `counts_per_row`, 2 since build 178), so a detent is one row.
 
 ## Display (B)
 
@@ -31,9 +54,16 @@ reset the cursor on invalid indices/restart. Unknown ids do not control the menu
   2. `889eed4c`
   3. clear the stale busy flag
   4. `889eea28`
-  5. `889efa6a(fb, 1)`
+  5. `889efa6a(fb, 1)`: with 1 it returns only once the display DMA is idle again (its loop at
+     `889efc12`), so the whole frame is sent before present returns.
 - Zero the `0x3c000`-byte framebuffer before the first frame, or text appears over
   the logo. The stock text console is `889eeab2`.
+- **Frame time (#288):** `uv run xyf-host frames` (`key_ui.hpp` `Frames`, diag.status block FRM1):
+  the repaint (one full 480x216 RGB565 frame and its cache flush), the stock transfer, and the whole
+  present. Measured on build `efb07ddc`: repaint 2.2–2.5 ms, transfer 15.1 ms (it waits for its own
+  DMA), whole present 17.3–17.6 ms, with the menu loop blocked throughout. So a frame costs about 17 ms:
+  at most 57 frames/s with nothing else running. A moving progress bar or a spinner fits at a few frames
+  per second; each frame still holds up USB and key handling for 17 ms.
 
 ### Where codes (#114)
 

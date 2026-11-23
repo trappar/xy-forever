@@ -31,6 +31,7 @@ struct Bridge {
     std::string upload_path;                      // #4: SendObject's temporary file, as B's mtp_session
     U32 upload_bytes = 0;
     U32 left = 0;                                 // take_packets: of the container at the head
+    std::string serial;                           // #288: set_serial's text
     std::unique_ptr<m::Responder> responder{new m::Responder};
 
     std::string host(const char* path) const {
@@ -225,6 +226,11 @@ void bind_mtp_responder(nb::module_ mod) {
              [](Bridge& b, U32 bytes) {
                  b.responder->set_piece(bytes);
                  return b.piece_limit = b.responder->piece_bytes();
+             })
+        .def("set_serial",                                                     // #288: DeviceInfo's
+             [](Bridge& b, const std::string& text) {
+                 b.serial = text;
+                 b.responder->set_serial(b.serial.c_str());
              })
         .def("cancel", [](Bridge& b) { b.responder->cancel(); })               // class request
         .def("invalidate", [](Bridge& b) { b.responder->invalidate(); })       // a change outside MTP

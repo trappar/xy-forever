@@ -51,6 +51,8 @@ def main(argv=None):
 
     transact(0x1002, 1)  # OpenSession
     info = transact(0x1001)  # GetDeviceInfo
+    if info:
+        print('device info', mtp_read.device_info(info))
     ids = transact(0x1004)  # GetStorageIDs
     storages = (
         list(struct.unpack_from('<%dI' % struct.unpack_from('<I', ids)[0], ids, 4)) if ids and len(ids) >= 4 else []

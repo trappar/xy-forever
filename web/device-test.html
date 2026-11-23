@@ -1,0 +1,138 @@
+<!doctype html>
+<!--
+  Dev-only page (#288): what Chrome remembers of an OP-XY in each USB mode, per API. Not part of the app's build.
+  Serve: pnpm --dir web dev, then open http://127.0.0.1:5173/device-test.html in Chrome.
+  Each "Ask" button opens that API's chooser once; "List" shows what this origin may use without asking, with the
+  ports and devices present now. Serial numbers show as a short hash (equal serials, equal hashes).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OP-XY browser identity</title>
+    <style>
+      body {
+        font:
+          14px system-ui,
+          sans-serif;
+        margin: 16px;
+      }
+      button {
+        margin: 0 8px 8px 0;
+      }
+      pre {
+        background: #f4f4f4;
+        padding: 8px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>OP-XY browser identity</h1>
+    <button id="ask-serial">Ask Web Serial</button>
+    <button id="ask-usb">Ask WebUSB</button>
+    <button id="ask-midi">Ask Web MIDI</button>
+    <button id="list">List</button>
+    <button id="copy">Copy log</button>
+    <button id="clear">Clear</button>
+    <pre id="log"></pre>
+    <script type="module">
+      const VENDOR = 0x2367;
+      const out = document.getElementById('log');
+      const hex = (n) => (n === undefined ? '-' : '0x' + n.toString(16).padStart(4, '0'));
+      const log = (line) => {
+        out.textContent += `${new Date().toISOString().slice(11, 23)} ${line}\n`;
+      };
+      async function serialTag(text) {
+        if (!text) return 'none';
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+        const bytes = [...new Uint8Array(digest).slice(0, 4)];
+        return `#${bytes.map((b) => b.toString(16).padStart(2, '0')).join('')} (${text.length} chars)`;
+      }
+      async function run(what, action) {
+        try {
+          await action();
+        } catch (error) {
+          log(`${what}: ${error.name}: ${error.message}`);
+        }
+      }
+
+      async function listSerial() {
+        if (!navigator.serial) return log('serial: no Web Serial in this browser');
+        const ports = await navigator.serial.getPorts();
+        log(`serial: ${ports.length} remembered port(s)`);
+        ports.forEach((port, i) => {
+          const info = port.getInfo();
+          log(
+            `  port ${i}: vendor ${hex(info.usbVendorId)} product ${hex(info.usbProductId)} ` +
+              `connected ${port.connected} info ${JSON.stringify(info)}`,
+          );
+        });
+      }
+      async function listUsb() {
+        if (!navigator.usb) return log('usb: no WebUSB in this browser');
+        const devices = await navigator.usb.getDevices();
+        log(`usb: ${devices.length} remembered device(s)`);
+        for (const [i, d] of devices.entries()) {
+          log(
+            `  device ${i}: ${hex(d.vendorId)}:${hex(d.productId)} class ${d.deviceClass}/${d.deviceSubclass}/` +
+              `${d.deviceProtocol} "${d.manufacturerName}" / "${d.productName}" serial ${await serialTag(d.serialNumber)}`,
+          );
+          for (const config of d.configurations)
+            for (const iface of config.interfaces) {
+              const a = iface.alternates[0];
+              log(
+                `    config ${config.configurationValue} interface ${iface.interfaceNumber}: class ` +
+                  `${a.interfaceClass}/${a.interfaceSubclass}/${a.interfaceProtocol} "${a.interfaceName ?? ''}"`,
+              );
+            }
+        }
+      }
+      let midi = null;
+      async function listMidi() {
+        if (!navigator.requestMIDIAccess) return log('midi: no Web MIDI in this browser');
+        const state = await navigator.permissions.query({ name: 'midi', sysex: true }).catch(() => null);
+        log(`midi: permission (sysex) ${state ? state.state : 'unknown'}`);
+        if (!midi) return log('  (press Ask Web MIDI to list ports)');
+        for (const [kind, ports] of [
+          ['input', midi.inputs],
+          ['output', midi.outputs],
+        ])
+          for (const port of ports.values())
+            log(`  ${kind} id ${port.id} "${port.manufacturer}" / "${port.name}" ${port.state} ${port.connection}`);
+      }
+      async function listAll() {
+        log('--- list');
+        await run('serial', listSerial);
+        await run('usb', listUsb);
+        await run('midi', listMidi);
+      }
+
+      document.getElementById('ask-serial').onclick = () =>
+        run('ask serial', async () => {
+          await navigator.serial.requestPort({ filters: [{ usbVendorId: VENDOR }] });
+          await listAll();
+        });
+      document.getElementById('ask-usb').onclick = () =>
+        run('ask usb', async () => {
+          await navigator.usb.requestDevice({ filters: [{ vendorId: VENDOR }] });
+          await listAll();
+        });
+      document.getElementById('ask-midi').onclick = () =>
+        run('ask midi', async () => {
+          midi = await navigator.requestMIDIAccess({ sysex: true });
+          midi.onstatechange = (e) => log(`midi: ${e.port.type} "${e.port.name}" ${e.port.state}`);
+          await listAll();
+        });
+      document.getElementById('list').onclick = listAll;
+      document.getElementById('copy').onclick = () => navigator.clipboard.writeText(out.textContent);
+      document.getElementById('clear').onclick = () => (out.textContent = '');
+      for (const api of [navigator.serial, navigator.usb])
+        if (api) {
+          api.addEventListener('connect', () => log('event: connect') || listAll());
+          api.addEventListener('disconnect', () => log('event: disconnect') || listAll());
+        }
+      log(`page ${location.origin}, ${navigator.userAgent}`);
+      listAll();
+    </script>
+  </body>
+</html>

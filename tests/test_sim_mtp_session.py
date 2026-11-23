@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import test_mtp_responder as R
 
-from xy_forever import bounds, paths, sim
+from xy_forever import bounds, mtp_read, paths, sim
 from xy_forever import usb_proto_ids as P
 from xy_forever import xyf_host as host
 
@@ -152,7 +152,7 @@ class MtpSessionTests(unittest.TestCase):
         self.assertEqual(self.file_command(), P.S_OK)  # an open session holds nothing
         code, _, info = self.c.transaction(0x1001)
         self.assertEqual(code, R.OK)
-        self.assertTrue(info)
+        self.assertEqual(mtp_read.device_info(info)['serial'], 'SIM00001')  # the simulator's metadata serial (#288)
         self.opened()
         xyf = self.folder('xy-forever')
         names = self.c.named(xyf)

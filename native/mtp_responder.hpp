@@ -195,6 +195,9 @@ public:
     // open session ends; 0 (init): answered as usual.
     void refuse(U16 response) { refusal = response; }
     U32 piece_bytes() const { return piece; }
+    // #288: DeviceInfo's SerialNumber (0 or empty: "0"), as the stock dev-menu MTP's: the unit's own serial, which
+    // the stock 88a0fd5e copies from its iSerialNumber. Kept by pointer: the text must outlive the session.
+    void set_serial(const char* text) { serial = text; }
 
 private:
     enum Phase : U32 { p_idle, p_data, p_work, p_close };
@@ -228,6 +231,7 @@ private:
     U32 hits;
     U32 piece; // set_piece (init: default_piece)
     U32 refusal; // refuse (init: 0)
+    const char* serial; // set_serial (init: 0)
     bool cached_info(); // GetObjectInfo from the table (true: answered)
     void object_info(U32 handle, const char* where); // the ObjectInfo dataset and the response
 

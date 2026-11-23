@@ -3,6 +3,14 @@
 namespace xy_forever { namespace knob_input {
 // Initialized data, not BSS: the cold link has no zero-initialization.
 Result result __attribute__((section(".data"))) = {magic};
+InputLog input_log __attribute__((section(".data"))) = {log_magic, 1};
+
+void log_key(uint32_t key, bool pressed, bool injected, uint32_t ms) {
+    InputLog& l = input_log;
+    Event& e = l.event[l.count++ & (log_events - 1)];
+    e.ms = ms;
+    e.what = (pressed ? kind_press : kind_release) | (injected ? what_injected : 0u) | (key & 0xffu) << 8;
+}
 }}
 
 namespace {
@@ -34,8 +42,15 @@ void resync(uint32_t to, uint32_t step) {
     cursor = to;
 }
 
+void log_turn(uint32_t id, int32_t change, uint32_t ms) {
+    InputLog& l = input_log;
+    Event& e = l.event[l.count++ & (log_events - 1)];
+    e.ms = ms;
+    e.what = kind_turn | (id & 0xffu) << 8 | uint32_t(uint16_t(change)) << 16;
+}
+
 // One slot: the change it adds (0 for any other frame type, or a refused knob frame).
-int32_t frame(uint32_t a) {
+int32_t frame(uint32_t a, uint32_t now_ms) {
     Result& r = result;
     const uint32_t first = byte(a), type = byte(a + 2), length = byte(a + 3);
     if (type != frame_type) return 0;                    // a key frame, a reply, a log: not ours
@@ -56,8 +71,9 @@ int32_t frame(uint32_t a) {
     int32_t total = 0;
     for (uint32_t at = a + 4; at != a + 4 + length; at += 3) {
         const uint32_t id = byte(at);
-        if (id - 1u >= 4u) continue;                     // other ids (5..13: other controls): ignored
         const int32_t change = int16_t(uint16_t(byte(at + 1) << 8 | byte(at + 2)));
+        log_turn(id, change, now_ms);                    // every id: the log names what moved
+        if (id - 1u >= 4u) continue;                     // other ids (5..13: other controls): ignored
         r.knob[id - 1] += change;
         total += change;
     }
@@ -93,7 +109,7 @@ int32_t pass(uint32_t now_ms, bool selection) {
     else if (ahead) {
         const uint32_t n = ahead < max_frames ? ahead : max_frames;
         for (uint32_t i = 0; i != n; ++i) {
-            total += frame(queue + (cursor & (slots - 1)) * slot_bytes);
+            total += frame(queue + (cursor & (slots - 1)) * slot_bytes, now_ms);
             ++cursor;
             if (write < slots && cursor >= slots) cursor -= slots;  // the writer wraps at 128
         }
