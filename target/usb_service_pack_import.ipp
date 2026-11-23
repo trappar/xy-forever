@@ -20,7 +20,7 @@ enum ImportStep {
     ps_cleanup,
     ps_close
 };
-enum PackBlobStep { pb_stage, pb_replace, pb_publish, pb_open, pb_read, pb_link };
+enum PackBlobStep { pb_try, pb_stage, pb_clear, pb_replace, pb_publish, pb_open, pb_read, pb_link };
 enum PackOp : U32 { pack_status, pack_import, pack_cancel, pack_enable, pack_disable, pack_trace, pack_timing };
 const char* const pack_record_head = "version=1\nsha256=";
 volatile U32 pack_import_phase __attribute__((section(".data"))) = pack_idle;
@@ -104,7 +104,8 @@ struct PackImportJob {
     ImportStep step;
     U32 member, last_usb, pending_bytes, put_bytes, refs, verified_bytes;   // put_bytes: the piece left out, 0 none
     PackBlobStep blob_step;
-    bool writing, published;   // writing: the member's sealed file open on A (create); published: it is the blob
+    bool writing, published, cleared;   // writing: the member's sealed file open on A (create); published: it is the
+                                        // blob; cleared: its link's scratch name removed
     pack_hash::Sha256 hash;
     char partial[file_engine::max_path];
     uint8_t references[4096][64];
@@ -116,8 +117,8 @@ struct PackImportJob {
     uint8_t pending[file_client::piece_max];
     PackImportJob()
         : work(this, pack_import_checkpoint), io{0}, step(ps_admit), member(0), last_usb(0), pending_bytes(0),
-          put_bytes(0), refs(0), verified_bytes(0), blob_step(pb_stage), writing(false), published(false), partial{},
-          cancelled(false), created(false), recorded(false), fd(-1) {}
+          put_bytes(0), refs(0), verified_bytes(0), blob_step(pb_try), writing(false), published(false), cleared(false),
+          partial{}, cancelled(false), created(false), recorded(false), fd(-1) {}
 };
 constexpr U32 pack_import_work = XYF_JOB_REGION_BEGIN + job_slot_bytes + content_slot_bytes + 0x20000u;
 static_assert(sizeof(PackImportJob) < job_work_end - pack_import_work, "pack import workspace");

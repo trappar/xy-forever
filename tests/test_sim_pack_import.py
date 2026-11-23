@@ -189,6 +189,22 @@ class PackImport(unittest.TestCase):
         self.assertFalse(self.retained.exists())
         self.assertEqual(list((self.root / 'xy-forever/tmp').glob('pkg-v1-*')), [])
 
+    def test_blob_already_there_and_a_stale_link_name(self):
+        """Kept: #279's shorter blob step falls back where it must: a member whose blob is there (the same bytes twice
+        in one pack) is read back and linked; a link's scratch name left by a cut import is removed, then linked."""
+        rows = ROWS + [(PREFIX + 'dlc/fixture/samples/copy.wav', SAMPLE)]
+        (self.inbox / 'twice.tfw').write_bytes(signed(container(package(rows))))
+        tmp = self.root / 'xy-forever/tmp'
+        tmp.mkdir(exist_ok=True)
+        (tmp / ('put-%08x-b10b1a5e' % len(SAMPLE))).write_bytes(b'left by a cut import')
+        self.assertEqual(self.start('twice.tfw')[0], ids.S_OK)
+        self.assertEqual(self.finish()[-1], ids.S_OK)
+        blob = self.root / 'xy-forever/blobs' / hashlib.sha256(SAMPLE).hexdigest()
+        for name in ('hand.wav', 'copy.wav'):
+            sample = self.retained / 'samples' / name
+            self.assertEqual((sample.read_bytes(), sample.stat().st_ino), (SAMPLE, blob.stat().st_ino))
+        self.assertEqual(list(tmp.glob('put-*')), [])
+
     def test_preflight_refuses_insufficient_space_before_writes(self):
         """Kept: the free-space preflight refuses before any write."""
         self.sim.set('statfs_block_bytes', 4096)
