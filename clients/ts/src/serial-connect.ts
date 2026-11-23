@@ -15,10 +15,11 @@ type Filter = { readonly usbVendorId: number; readonly usbProductId: number };
 /** The one USB id pair a release image's service has (the composite from 189-002, and its serial fallback). */
 export const RELEASE_FILTERS: readonly Filter[] = [USB_FILTERS[1]];
 
-/** What to choose when Chrome lists more than one entry: XY Forever's composite and its stock-CDC fallback service
- * (docs/protocol/transport.md) both speak XY Forever's protocol. */
+/** What to choose. Chrome remembers one Web Serial port for the OP-XY in every mode (on macOS, #288), named as it was
+ * when first chosen: "OP-XY (XY Forever)", or "OP-XY Boot" (the stock recovery menu's port, or XY Forever's
+ * stock-CDC fallback). Only XY Forever answers on it (docs/hardware/usb-identity.md). */
 export const CHOOSE_TEXT =
-  'Chrome may list both "OP-XY (XY Forever)" and "OP_XY Boot": both are XY Forever, and either is fine to choose.';
+  'Chrome may name your OP-XY "OP-XY (XY Forever)" or "OP-XY Boot": choose it either way, with the OP-XY in the XY Forever menu.';
 
 export interface SerialConnectOptions extends ConnectOptions {
   serial?: SerialLike | null | undefined;

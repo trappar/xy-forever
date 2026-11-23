@@ -27,7 +27,7 @@ serial is in (each brings an IAD), else 00. All records: vendor 0x2367, "teenage
 | 0x0001 (`88a1d71e`) | 0x8021 | 00 | OP-XY | 0 audio control, 1 MIDI streaming |
 | 0x4440 (`88a1d690`) | 0x0021 | EF/02/01 | OP-XY Boot | 0..1 CDC, 2 mass storage |
 | 0x0040 (`88a1d690`, `88a1dc30`) | 0x0021 | 00 | OP-XY Disk | 0 mass storage 08/06/50 (the charging loop) |
-| 0x0080 (`88a1d6b0`, dev-menu MTP) | 0x0021 | 00 | OP-XY | 0 MTP, class 6/1/1 in the record; the device showed 255/1/1 |
+| 0x0080 (`88a1d6b0`, before `mtp_init`) | 0x0021 | 00 | OP-XY | 0 MTP, class 6/1/1 in the record; the device showed 255/1/1 |
 | 0x0400 (XY Forever's serial fallback) | 0x0021 | 02 | OP-XY Boot | 0 CDC 02/02/01, 1 CDC data |
 
 ## XY Forever's own
@@ -40,37 +40,43 @@ serial is in (each brings an IAD), else 00. All records: vendor 0x2367, "teenage
 
 ## Recorded on the device (2026-11-23)
 
-| Mode | Vendor:product | Class | Vendor / product string | Serial | MTP DeviceInfo |
+| Mode | Vendor:product | Class | Vendor / product string | Interfaces | MTP DeviceInfo |
 |---|---|---|---|---|---|
-| Stock bootloader, COM at power-on (recovery menu) | 2367:0021 | EF | teenage engineering / OP-XY Boot | the unit's | - |
-| Stock dev-menu MTP | 2367:0021 | - | - | the unit's | teenage engineering, OP-XY, 1000.0.20 |
-| XY Forever menu (CDC + MTP) | 2367:0021 | EF | XY Forever / OP-XY (XY Forever) | the unit's | XY Forever, OP-XY, 1 |
+| Stock recovery menu (COM at power-on) | 2367:0021 | EF | teenage engineering / OP-XY Boot | 0–1 MIDI, 2–3 CDC | - |
+| Stock dev-menu MTP (Track 3, then Track 2) | 2367:0021 | EF | teenage engineering / OP-XY Boot | the probe saw 0: 255/1/1 | teenage engineering, OP-XY, 1000.0.20 |
+| XY Forever menu | 2367:0021 | EF | XY Forever / OP-XY (XY Forever) | 0–1 CDC, 2 MTP 6/1/1 | XY Forever, OP-XY, 1 |
+| Stock OS | 2367:8021 | 00 | OP-XY | - | - |
 
-Vendor id, product id and serial match in every mode; the strings differ, and XY Forever keeps its own.
-The dev-menu MTP's Model "OP-XY" is its iProduct, so that mode is most likely the 0x0080 record ("OP-XY",
-class 00, one interface), not the recovery menu's composite. macOS's ioreg shows `OP_XY Boot` and
-`OP_XY _XY Forever_`. Read with no hands: `ioreg -p IOUSB -l -w0`; MTP's strings: `uv run scripts/mtp_probe.py`.
-Never commit a unit's serial.
+Every mode sends the unit's serial, so vendor id, product id and serial match in every mode of the
+bootloader and XY Forever; the strings differ, and XY Forever keeps its own. Two things the record does not
+explain: through the dev-menu MTP an ioreg poll every second saw only the composite "OP-XY Boot", yet the MTP
+probe listed one interface; and GetDeviceInfo's Model said "OP-XY" although the stock builder takes it from
+iProduct. Read with no hands: `ioreg -p IOUSB -l -w0` (it shows `OP_XY Boot`, `OP_XY _XY Forever_`); MTP's
+strings: `uv run scripts/mtp_probe.py`. Never commit a unit's serial.
 
 ## What a browser keys a permission on
 
 Chrome, from Chromium `8e9fa951` (2026-11-23). The web app uses Web MIDI for te-boot, WebUSB for the dev-menu
-MTP copy, and Web Serial for XY Forever. Each API keeps its own permissions: a grant in one never covers another.
+MTP copy, and Web Serial for XY Forever.
 
 - **Web Serial** (`chrome/browser/serial/serial_chooser_context.cc`): a port is remembered only if it has a
   display name and, off Windows, a vendor id, product id and non-empty serial. It is matched on exactly those,
   plus on macOS the bundle id of the driver on its USB interface
   (`services/device/serial/serial_device_enumerator_mac.cc`: `GetUsbDriverName`). The display name (the USB
-  product string) is shown, not matched. On Windows it is matched on the port's device instance id. For a
-  composite device that id carries the interface number: CDC is interface 2 in the recovery menu, 0 in XY Forever.
+  product string) is shown, not matched. On Windows it is matched on the port's device instance id, which for
+  a composite device carries the interface number: CDC is interface 2 in the recovery menu, 0 in XY Forever.
 - **WebUSB** (`chrome/browser/usb/usb_chooser_context.cc`): remembered only with a non-empty serial, matched on
   vendor id, product id and serial: the whole device, whatever its interfaces.
 - **Web MIDI** ([spec](https://webaudio.github.io/web-midi-api/), `requestMIDIAccess`): the permission (`midi`,
-  with or without `sysex`) belongs to the origin, not a device. Only the stock audio modes have MIDI ports.
+  with or without `sysex`) belongs to the origin, not a device.
 
-Expected from the source, still to be checked: on macOS and Linux a Web Serial grant in XY Forever covers the
-recovery menu's "OP-XY Boot" port and the other way round. This holds only if both CDC functions get the same
-macOS driver. A WebUSB grant covers the unit in every mode, and Windows keeps the two serial ports apart.
-Settings lists every grant under the name it had, so two entries are not two permissions. The check is
-`web/device-test.html` (`pnpm --dir web dev`, then `/device-test.html`): it asks per API and lists what this
-origin may use. **Browser result: pending.**
+Checked on macOS (Chrome 157, build `efb07ddc`, `web/device-test.html`): the OP-XY is one device per API in
+every mode. A Web Serial grant given once in XY Forever's menu was the one remembered port, connected in the
+recovery menu and back in XY Forever, across two power cycles; the recovery menu's CDC port "OP-XY Boot" is
+that same port, though it does not speak XY Forever's protocol. A WebUSB grant was the same remembered device
+in both modes. Each API needs its own grant, and none is lost when the mode changes. Chrome's settings list
+each API's grant under the name it had, which looked like two devices. Windows is untested: from the source,
+Web Serial there keeps the two modes' ports apart (the interface number differs) and WebUSB does not.
+
+`web/device-test.html` (dev only: `pnpm --dir web dev`, then `/device-test.html`) asks each API once and lists
+what the page may use; rerun it after any change to the USB descriptors or on another OS.

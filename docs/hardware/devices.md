@@ -60,11 +60,10 @@ this is the only count. The menu moves one row per 2 counts of all knobs togethe
   the logo. The stock text console is `889eeab2`.
 - **Frame time (#288):** `uv run xyf-host frames` (`key_ui.hpp` `Frames`, diag.status block FRM1):
   the repaint (one full 480x216 RGB565 frame and its cache flush), the stock transfer, and the whole
-  present. Measured on build `242505c6`: repaint 2.2–2.5 ms, whole present about 17.3 ms, with 3 us of
-  it waiting for an earlier DMA. So about 15 ms is the transfer, which sends the frame and waits for
-  its DMA (the next build times it on its own). The menu loop is blocked for the whole present, so a
-  frame costs about 17 ms: at most about 57 frames/s with nothing else running. A moving progress bar
-  or a spinner fits at a few frames per second; each frame still holds up USB and key handling for 17 ms.
+  present. Measured on build `efb07ddc`: repaint 2.2–2.5 ms, transfer 15.1 ms (it waits for its own
+  DMA), whole present 17.3–17.6 ms, with the menu loop blocked throughout. So a frame costs about 17 ms:
+  at most 57 frames/s with nothing else running. A moving progress bar or a spinner fits at a few frames
+  per second; each frame still holds up USB and key handling for 17 ms.
 
 ### Where codes (#114)
 

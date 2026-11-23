@@ -10,9 +10,11 @@
 // ask te-boot again). At every stage (on load, on each stage change, on a serial port appearing, every few seconds at
 // the last stage) and on a click, the page looks for an OP-XY running XY Forever (granted ports only, never the
 // chooser unasked) and jumps ahead when it answers; never while a te-boot check over Web MIDI or a WebUSB MTP copy is
-// under way (it looks once that ends). te-boot itself is MIDI only, and the serial "OP_XY Boot" is XY Forever's own
-// fallback service. Once its stock entry is there and the default names a library entry (the stock one, or one with
-// mods) it hands the owner to the app's Mods page; while it sets up, or when it refuses, the page shows that.
+// under way (it looks once that ends). te-boot itself is MIDI only. A serial port named "OP-XY Boot" is the same
+// remembered port as XY Forever's (docs/hardware/usb-identity.md): in the stock recovery menu it never answers as XY
+// Forever, so the look finds nothing until XY Forever runs. Once its stock entry is there and the default names a
+// library entry (the stock one, or one with mods) it hands the owner to the app's Mods page; while it sets up, or when
+// it refuses, the page shows that.
 import type { Client } from 'xy-forever-client';
 import { create } from 'zustand';
 import { STOCK_WRONG } from './checks.ts';
